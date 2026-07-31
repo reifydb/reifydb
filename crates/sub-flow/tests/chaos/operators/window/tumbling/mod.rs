@@ -3,10 +3,7 @@
 
 pub mod reclaim;
 
-use reifydb_core::{
-	common::{WindowKind, WindowSize},
-	state::horizon::Horizon,
-};
+use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{pick, run_reported, split},
@@ -67,15 +64,14 @@ pub fn drive_reclaiming(seed: u64, params: Params, reclaim_pct: u32, sink_row_tt
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
 		grace: Duration::from_seconds(params.grace_secs as i64).unwrap(),
-		lateness: Duration::default(),
 	};
 
 	// A window seals on its own timer, so `resolve_horizon` overrides whatever is declared here with
-	// size + grace + lateness. Declaring that same value keeps the call site honest rather than
-	// relying on the override.
+	// size + grace. Declaring that same value keeps the call site honest rather than relying on the
+	// override.
 	let span = Duration::from_milliseconds((size_ms + grace_ms) as i64).expect("span is representable");
 
-	let mut harness = Harness::new(|runtime| build(&spec, runtime)).with_activity_grid(Horizon::of(span));
+	let mut harness = Harness::new(|runtime| build(&spec, runtime)).with_activity_grid();
 	if sink_row_ttl {
 		harness = harness.with_sink_row_ttl(span);
 	}
@@ -119,7 +115,6 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
 		grace: Duration::from_seconds(params.grace_secs as i64).unwrap(),
-		lateness: Duration::default(),
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));
@@ -231,10 +226,9 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 		},
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
-		// A count window forces grace and lateness to zero through its own accessors, so the
-		// sweep declares them zero rather than pretending they are a knob.
+		// A count window forces grace to zero through its own accessor, so the sweep declares it
+		// zero rather than pretending it is a knob.
 		grace: Duration::default(),
-		lateness: Duration::default(),
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));
@@ -306,7 +300,6 @@ pub fn drive_flow_shaped(seed: u64, params: Params) -> Corpus {
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
 		grace: Duration::from_seconds(params.grace_secs as i64).unwrap(),
-		lateness: Duration::default(),
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));

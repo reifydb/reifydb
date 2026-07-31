@@ -593,7 +593,6 @@ pub struct WindowNode<'bump> {
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
 	pub grace: Duration,
-	pub lateness: Duration,
 }
 
 #[derive(Debug)]
@@ -2339,7 +2338,6 @@ impl<'bump> Compiler<'bump> {
 						group_by: window.group_by,
 						aggregations: window.aggregations,
 						grace: window.grace,
-						lateness: window.lateness,
 						input,
 					}));
 				}

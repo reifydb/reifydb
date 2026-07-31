@@ -11,25 +11,23 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	key::{EncodableKey, flow_node_state::FlowNodeStateKey, operator_state::OperatorStateKey},
-	state::{budget::OperatorStateBudgetHandle, group::ActivityBuckets, horizon::Horizon},
+	state::{
+		budget::OperatorStateBudgetHandle,
+		group::ActivityBuckets,
+		horizon::{Cutoff, activity_buckets},
+	},
 };
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_flow::{
 	operator::Operator,
 	timer::Timer,
 	transaction::{ChangeCoordinate, DeferredParams, FlowTransaction, substrate::FlowSubstrate},
-	window::ledger::read_sealed_through,
 };
 use reifydb_runtime::context::{
 	RuntimeContext,
 	clock::{Clock, MockClock},
 };
-use reifydb_sub_flow::{
-	engine::register::{activity_grid_of, resolve_horizon},
-	execution::reclaim::{
-		PhaseReclaim, ReclaimBudget, ReclaimReport, SweepSpec, reclaim_nodes, resolve_sweep_inputs,
-	},
-};
+use reifydb_sub_flow::execution::reclaim::{PhaseReclaim, ReclaimBudget, ReclaimReport, SweepInputs, reclaim_nodes};
 use reifydb_testing_chaos::operator::{
 	reclaim::{Reclaimed, RetiredGroup, StateFootprint},
 	subject::Subject,
@@ -49,7 +47,6 @@ pub struct Harness<O: Operator> {
 	version: u64,
 	pending: Pending,
 	substrate: FlowSubstrate,
-	horizon: Option<Horizon>,
 	sink_row_ttl: Option<Duration>,
 	reclaim_budget: ReclaimBudget,
 	mapping_cursor: Option<EncodedKey>,
@@ -79,7 +76,6 @@ impl<O: Operator> Harness<O> {
 			version: 1,
 			pending: Pending::new(),
 			substrate: FlowSubstrate::new(),
-			horizon: None,
 			sink_row_ttl: None,
 			reclaim_budget: ReclaimBudget {
 				groups: 256,
@@ -96,22 +92,15 @@ impl<O: Operator> Harness<O> {
 	/// whose `event_grid()` is `None`, which is the condition the reclaim driver silently skips a
 	/// node on. So without this call a sweep is not inaccurate, it does not happen at all.
 	///
-	/// The argument is the *declared* horizon, exactly as a `with { ttl: ... }` clause supplies it.
-	/// It is not the horizon the sweep ends up using: production runs it through `resolve_horizon`,
-	/// where an operator that seals on its own timer overrides the declaration outright, and then
-	/// widens the grid against every keyspace and mapping span via `activity_grid_of`. Both are
-	/// production's own functions rather than a harness copy, because a suite that derived its own
-	/// span would be asserting against a node configuration the engine cannot register - a 60s window
-	/// declared at 16s reclaims on a cutoff and a slack that are both 3.75x off what ships.
+	/// The grid comes from the operator's own `retention_scale`, exactly as production's
+	/// `adopt_horizon` does. The harness takes no span of its own: a suite that gridded on a number
+	/// it chose would be asserting against a node configuration the engine cannot register - a 60s
+	/// window declared at 16s reclaims on a cutoff and a slack that are both 3.75x off what ships.
 	///
 	/// Opt-in rather than automatic, because it is only meaningful for a suite that also gives its
 	/// rows real event times - see `coordinate_of`.
-	pub fn with_activity_grid(mut self, declared: Horizon) -> Self {
-		let horizon = resolve_horizon(self.operator.seal_after_ms(), declared);
-		let grid =
-			activity_grid_of(horizon, &self.operator.keyspace_spans(), self.operator.node_mapping_span());
-		self.substrate.group.set_activity_grid(self.operator.id(), grid);
-		self.horizon = Some(horizon);
+	pub fn with_activity_grid(self) -> Self {
+		self.substrate.group.set_activity_grid(self.operator.id(), self.operator.retention_scale());
 		self
 	}
 
@@ -217,53 +206,42 @@ impl<O: Operator> Harness<O> {
 
 	/// Drives the real per-node sweep at `at_ms`, deriving its cutoffs the way the engine does.
 	///
-	/// This calls production's own `reclaim_nodes` through production's own `resolve_sweep_inputs`,
-	/// so the phase order, the shared budget, the early stop, the seal-ledger clamp on the data
-	/// cutoff and the one-grid-width slack on every other phase are the ones that ship. What stays
-	/// harness-local is only the *ingredients*: which node, which horizon, which sink row ttl.
+	/// This calls production's own `reclaim_nodes` on inputs built the same way `reclaim_flow`
+	/// builds them, so the phase order, the shared budget and the early stop are the ones that
+	/// ship. What stays harness-local is only the *ingredients*: which node, and which sink row ttl.
 	///
-	/// The seal ledger is read exactly when production reads it. `seals_on_timer` is node-typed and
-	/// so unreachable here, but `seal_after_ms()` is its operator-level equivalent - both resolve
-	/// through `window_horizon`, which is `Perpetual` (hence `span_ms() == None`) for precisely the
-	/// count-sized windows `seals_on_timer` excludes.
+	/// The frontier is the operator's own answer, so a windowed operator is bounded by its seal
+	/// ledger here for exactly the reason it is in production - the harness no longer has to
+	/// reproduce a node-type test it could never satisfy.
 	pub fn reclaim(&mut self, at_ms: u64) -> Result<Reclaimed> {
 		let node = self.operator.id();
-		let (Some(horizon), Some(grid)) = (self.horizon, self.substrate.group.buckets(node).event_grid())
-		else {
+		if self.substrate.group.buckets(node).event_grid().is_none() {
 			return Ok(Reclaimed::default());
-		};
+		}
 		let watermark = DateTime::from_timestamp_millis(at_ms)?;
-		let slack = grid.width();
 
 		let mut txn = self.begin(watermark);
-		let sealed_through = if self.operator.seal_after_ms().is_some() {
-			read_sealed_through(&mut txn, node)?.map(|sealed| sealed.at())
-		} else {
-			None
-		};
+		let reclaimable = self.operator.reclaimable_through(&mut txn, watermark)?;
 
-		let resolved = resolve_sweep_inputs(
-			SweepSpec {
-				node,
-				horizon,
-				keyspace_spans: self.operator.keyspace_spans(),
-				mapping_span: self.operator.node_mapping_span(),
-				identity_span: self.sink_row_ttl,
-				sealed_through,
-				slack,
-				mapping_cursor: self.mapping_cursor.take(),
-			},
-			watermark,
-			CommitVersion(self.version),
-		);
+		let inputs = SweepInputs {
+			node,
+			data: reclaimable.data.map(Cutoff),
+			identity: self.sink_row_ttl.map(|span| Cutoff(watermark.saturating_sub(span))),
+			keyspaces: reclaimable
+				.keyspaces
+				.into_iter()
+				.map(|(keyspace, at)| (keyspace, Cutoff(at)))
+				.collect(),
+			mapping: reclaimable.mapping.map(Cutoff),
+			mapping_cursor: self.mapping_cursor.take(),
+		};
 
 		let mut budget = self.reclaim_budget;
 		let mut report = ReclaimReport::default();
 		let operator = &self.operator;
-		let outcome =
-			reclaim_nodes(vec![resolved.inputs], &mut txn, &mut budget, &mut report, &mut |_, groups| {
-				operator.invalidate_groups(&groups);
-			})?;
+		let outcome = reclaim_nodes(vec![inputs], &mut txn, &mut budget, &mut report, &mut |_, groups| {
+			operator.invalidate_groups(&groups);
+		})?;
 		txn.flush_operator_states()?;
 		self.end(txn);
 		self.mapping_cursor = outcome.cursors.into_iter().next().and_then(|(_, cursor)| cursor);
@@ -363,7 +341,7 @@ fn a_group_falls_due_one_grid_width_after_its_span_elapses() {
 	// speaks milliseconds. A suite that guessed wrong would simply never make a group due, and would
 	// pass while asserting nothing.
 	let span = Duration::from_seconds(16).expect("16s is representable");
-	let grid = Horizon::of(span).buckets().event_grid().expect("a declared span buckets in event time");
+	let grid = activity_buckets(Some(span)).event_grid().expect("a declared span buckets in event time");
 
 	// Sixteen buckets per horizon, so a 16s span grids at 1s.
 	assert_eq!(grid.width(), Duration::from_seconds(1).unwrap());

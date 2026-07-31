@@ -17,8 +17,6 @@ use reifydb_core::{
 		},
 		identifier::{ColumnIdentifier, ColumnObject},
 	},
-	key::operator_state::Keyspace,
-	state::horizon::Horizon,
 	value::column::columns::Columns,
 };
 use reifydb_engine::flow::time_domain::check_time_domain;
@@ -71,46 +69,6 @@ use crate::{
 		window::operator::{WindowConfig, WindowOperator},
 	},
 };
-
-const MAX_SEAL_SPAN_MS: u64 = (i64::MAX / 1_000_000) as u64;
-
-fn coarser_of(current: Horizon, candidate: Horizon) -> Horizon {
-	match (current.usable_span(), candidate.usable_span()) {
-		(Some(current_span), Some(candidate_span)) => {
-			if current_span >= candidate_span {
-				current
-			} else {
-				candidate
-			}
-		}
-		(None, Some(_)) => candidate,
-		_ => current,
-	}
-}
-
-pub fn activity_grid_of(
-	horizon: Horizon,
-	keyspace_spans: &[(Keyspace, Duration)],
-	mapping_span: Option<Duration>,
-) -> Horizon {
-	let mut grid = horizon;
-	for (_, span) in keyspace_spans {
-		grid = coarser_of(grid, Horizon::of(*span));
-	}
-	if let Some(span) = mapping_span {
-		grid = coarser_of(grid, Horizon::of(span));
-	}
-	grid
-}
-
-pub fn resolve_horizon(seal_after_ms: Option<u64>, declared: Horizon) -> Horizon {
-	match seal_after_ms {
-		Some(span) if span > 0 && span <= MAX_SEAL_SPAN_MS => {
-			Duration::from_milliseconds(span as i64).map(Horizon::of).unwrap_or(declared)
-		}
-		_ => declared,
-	}
-}
 
 impl FlowEngineInner {
 	#[instrument(name = "flow::register", level = "info", skip(self, txn), fields(flow_id = ?flow.id))]
@@ -187,27 +145,17 @@ impl FlowEngineInner {
 	}
 
 	fn adopt_horizon(&self, node: &FlowNode) {
-		let horizon = self.node_horizon(node);
-		self.substrate.group.set_activity_grid(node.id, self.node_activity_grid(node, horizon));
+		let scale = self.node_retention_scale(node);
+		self.substrate.group.set_activity_grid(node.id, scale);
 		self.executor.services().node_horizon_store.set(NodeHorizonInfo {
 			node: node.id,
 			stateful: node.ty.holds_state(),
-			span: horizon.span(),
+			span: scale,
 		});
 	}
 
-	fn node_activity_grid(&self, node: &FlowNode, horizon: Horizon) -> Horizon {
-		let Some(operator) = self.operators.get(&node.id) else {
-			return horizon;
-		};
-		activity_grid_of(horizon, &operator.keyspace_spans(), operator.node_mapping_span())
-	}
-
-	pub(crate) fn node_horizon(&self, node: &FlowNode) -> Horizon {
-		resolve_horizon(
-			self.operators.get(&node.id).and_then(|operator| operator.seal_after_ms()),
-			node.ty.declared_horizon(self.catalog.find_operator_settings_latest(node.id).as_ref()),
-		)
+	pub(crate) fn node_retention_scale(&self, node: &FlowNode) -> Option<Duration> {
+		self.operators.get(&node.id).and_then(|operator| operator.retention_scale())
 	}
 
 	#[instrument(name = "flow::add", level = "debug", skip(self, txn, flow, ctx), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?mem::discriminant(&node.ty)))]
@@ -293,23 +241,22 @@ impl FlowEngineInner {
 			)?,
 			Distinct {
 				expressions,
-			} => self.add_distinct(node_id, &inputs, expressions, ctx)?,
-			Append {} => self.add_append(node_id, &inputs)?,
+			} => self.add_distinct(txn, node_id, &inputs, expressions, ctx)?,
+			Append {} => self.add_append(txn, node_id, &inputs)?,
 			Apply {
 				operator,
 				expressions,
-			} => self.add_apply(node_id, &inputs, operator, expressions)?,
+			} => self.add_apply(txn, node_id, &inputs, operator, expressions)?,
 			Aggregate {
 				by,
 				map,
-			} => self.add_aggregate(node_id, &inputs, by, map)?,
+			} => self.add_aggregate(txn, node_id, &inputs, by, map)?,
 			Window {
 				kind,
 				group_by,
 				aggregations,
 				grace,
-				lateness,
-			} => self.add_window(node_id, &inputs, kind, group_by, aggregations, grace, lateness, ctx)?,
+			} => self.add_window(node_id, &inputs, kind, group_by, aggregations, grace, ctx)?,
 		}
 
 		Ok(())
@@ -670,12 +617,14 @@ impl FlowEngineInner {
 	#[inline]
 	fn add_distinct(
 		&mut self,
+		txn: &mut Transaction<'_>,
 		node_id: FlowNodeId,
 		inputs: &[FlowNodeId],
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
+		let ttl = self.operator_ttl(txn, node_id)?;
 		self.operators.insert(
 			node_id,
 			OperatorCell::new(Operators::Distinct(DistinctOperator::new(
@@ -685,13 +634,14 @@ impl FlowEngineInner {
 				self.executor.routines.clone(),
 				self.runtime_context.clone(),
 				Arc::clone(ctx),
+				ttl,
 			))),
 		);
 		Ok(())
 	}
 
 	#[inline]
-	fn add_append(&mut self, node_id: FlowNodeId, inputs: &[FlowNodeId]) -> Result<()> {
+	fn add_append(&mut self, txn: &mut Transaction<'_>, node_id: FlowNodeId, inputs: &[FlowNodeId]) -> Result<()> {
 		if inputs.len() < 2 {
 			return Err(Error::from(FlowGraphError::NodeInputArity {
 				node: "Append",
@@ -715,9 +665,15 @@ impl FlowEngineInner {
 			parents.push(parent);
 		}
 
+		let ttl = self.operator_ttl(txn, node_id)?;
 		self.operators.insert(
 			node_id,
-			OperatorCell::new(Operators::Append(AppendOperator::new(node_id, parents, inputs.to_vec()))),
+			OperatorCell::new(Operators::Append(AppendOperator::new(
+				node_id,
+				parents,
+				inputs.to_vec(),
+				ttl,
+			))),
 		);
 		Ok(())
 	}
@@ -725,6 +681,7 @@ impl FlowEngineInner {
 	#[inline]
 	fn add_apply(
 		&mut self,
+		txn: &mut Transaction<'_>,
 		node_id: FlowNodeId,
 		inputs: &[FlowNodeId],
 		operator: String,
@@ -736,6 +693,7 @@ impl FlowEngineInner {
 			&self.runtime_context,
 		)?;
 		let cfg = Config::new(operator.as_str(), config.clone());
+		let ttl = self.operator_ttl(txn, node_id)?;
 
 		if let Some(factory) = self.custom_operators.get(operator.as_str()) {
 			let parent = self.parent(first_input(inputs)?)?;
@@ -749,7 +707,7 @@ impl FlowEngineInner {
 			};
 			self.operators.insert(
 				node_id,
-				OperatorCell::new(Operators::Apply(ApplyOperator::new(parent, node_id, inner))),
+				OperatorCell::new(Operators::Apply(ApplyOperator::new(parent, node_id, inner, ttl))),
 			);
 		} else {
 			#[cfg(reifydb_target = "native")]
@@ -768,7 +726,9 @@ impl FlowEngineInner {
 
 				self.operators.insert(
 					node_id,
-					OperatorCell::new(Operators::Apply(ApplyOperator::new(parent, node_id, inner))),
+					OperatorCell::new(Operators::Apply(ApplyOperator::new(
+						parent, node_id, inner, ttl,
+					))),
 				);
 			}
 			#[cfg(not(reifydb_target = "native"))]
@@ -791,7 +751,6 @@ impl FlowEngineInner {
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
 		grace: Duration,
-		lateness: Duration,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
@@ -804,7 +763,6 @@ impl FlowEngineInner {
 			runtime_context: self.runtime_context.clone(),
 			routines: self.executor.routines.clone(),
 			grace,
-			lateness,
 			state_budget: self.state_budget.clone(),
 			ctx: Arc::clone(ctx),
 		});
@@ -815,6 +773,7 @@ impl FlowEngineInner {
 	#[inline]
 	fn add_aggregate(
 		&mut self,
+		txn: &mut Transaction<'_>,
 		node_id: FlowNodeId,
 		inputs: &[FlowNodeId],
 		by: Vec<Expression>,
@@ -828,9 +787,14 @@ impl FlowEngineInner {
 			map,
 			self.executor.routines.clone(),
 			self.runtime_context.clone(),
+			self.operator_ttl(txn, node_id)?,
 		);
 		self.operators.insert(node_id, OperatorCell::new(Operators::Aggregate(operator)));
 		Ok(())
+	}
+
+	fn operator_ttl(&self, txn: &mut Transaction<'_>, node_id: FlowNodeId) -> Result<Option<Duration>> {
+		Ok(self.catalog.find_operator_settings(txn, node_id)?.and_then(|s| s.ttl).map(|ttl| ttl.duration))
 	}
 
 	fn parent(&self, input: FlowNodeId) -> Result<OperatorCell> {
@@ -900,86 +864,4 @@ fn natural_key_expr(name: &str) -> Expression {
 		},
 		name: Fragment::internal(name),
 	}))
-}
-
-#[cfg(test)]
-mod tests {
-	use reifydb_core::state::horizon::Horizon;
-	use reifydb_value::value::duration::Duration;
-
-	use super::{MAX_SEAL_SPAN_MS, coarser_of, resolve_horizon};
-
-	fn ms(milliseconds: i64) -> Duration {
-		Duration::from_milliseconds(milliseconds).expect("representable duration")
-	}
-
-	#[test]
-	fn an_operator_that_seals_decides_its_own_horizon_whatever_the_view_declared() {
-		// The seal span is arithmetic the operator can do and a view author cannot: a 60s window
-		// with 5s grace provably needs nothing older than 65s. A declared ttl is a guess at the same
-		// number, so it must never win - a shorter one would silently truncate live windows, which
-		// is the failure the derived horizon exists to make impossible.
-		let resolved = resolve_horizon(Some(65_000), Horizon::of(ms(1_000)));
-
-		assert_eq!(resolved, Horizon::of(ms(65_000)));
-	}
-
-	#[test]
-	fn a_seal_span_outranks_a_declared_ttl_and_silence_defers_to_it() {
-		// What survives of the old domain-selection invariant now that there is one domain. The
-		// fact it turned on is still load-bearing: a node that seals is aged by the span the
-		// operator derived, and a node that does not seal is aged by whatever the view declared.
-		// Getting the precedence backwards truncates live windows (a short declared ttl winning
-		// over a longer derived span) or retains forever (silence winning over a real ttl).
-		assert_eq!(resolve_horizon(Some(1), Horizon::Perpetual), Horizon::of(ms(1)));
-		assert_eq!(resolve_horizon(Some(65_000), Horizon::of(ms(1_000))), Horizon::of(ms(65_000)));
-
-		assert_eq!(resolve_horizon(None, Horizon::of(ms(1_000))), Horizon::of(ms(1_000)));
-		assert_eq!(resolve_horizon(None, Horizon::Perpetual), Horizon::Perpetual);
-	}
-
-	#[test]
-	fn an_unusable_seal_span_falls_back_instead_of_inventing_a_horizon() {
-		// A zero or unrepresentable span cannot be turned into a cutoff. Falling back to what the
-		// view declared keeps the node aged by SOME rule; inventing a seal horizon from a bad number
-		// would reclaim on a schedule nobody chose, and every uncertain conversion in this substrate
-		// degrades toward retaining rather than deleting.
-		assert_eq!(resolve_horizon(Some(0), Horizon::of(ms(1_000))), Horizon::of(ms(1_000)));
-		assert_eq!(resolve_horizon(Some(0), Horizon::Perpetual), Horizon::Perpetual);
-		assert_eq!(
-			resolve_horizon(Some(MAX_SEAL_SPAN_MS + 1), Horizon::of(ms(1_000))),
-			Horizon::of(ms(1_000)),
-			"a span past the representable range must not wrap into a short horizon"
-		);
-	}
-
-	#[test]
-	fn a_perpetual_horizon_still_grids_on_a_declared_side_span() {
-		// A join naming only one side is Perpetual at the GROUP horizon on purpose: the two sides
-		// share one group range, so it cannot be erased while the undeclared side is still probeable.
-		// The declared side does still age, on its own keyspace, and that sweep buckets activity on
-		// this grid. An undeclared grid stamps every side entry into a single bucket, so the sweep can
-		// neither locate them nor bound them - which is how a left-only ttl silently never evicted and
-		// a stale left row kept rejoining fresh right rows.
-		let side = ms(1_000);
-		let grid = coarser_of(Horizon::Perpetual, Horizon::of(side));
-
-		assert_eq!(grid.span(), Some(side));
-		assert!(grid.buckets().event_grid().is_some(), "the side sweep needs an event-time grid to stamp on");
-	}
-
-	#[test]
-	fn the_grid_takes_the_coarsest_declared_span_so_slack_is_never_understated() {
-		// Slack is one bucket width and a width is span/16, so a grid derived from a span SHORTER than
-		// something the node sweeps by would understate that sweep's slack and retire a group
-		// mid-bucket, while a coarser grid can only ever delay. The grid therefore takes the max, and
-		// a horizon that already covers its sides is left exactly as it was.
-		assert_eq!(coarser_of(Horizon::of(ms(600_000)), Horizon::of(ms(1_000))).span(), Some(ms(600_000)));
-		assert_eq!(coarser_of(Horizon::of(ms(1_000)), Horizon::of(ms(600_000))).span(), Some(ms(600_000)));
-		assert_eq!(
-			coarser_of(Horizon::Perpetual, Horizon::Perpetual),
-			Horizon::Perpetual,
-			"a node that declares nothing anywhere stays ungridded and is skipped entirely"
-		);
-	}
 }

@@ -36,6 +36,7 @@ use reifydb_core::{
 use reifydb_engine::vm::executor::Executor;
 use reifydb_extension::ffi_callbacks::builder::{BuilderRegistry, with_registry};
 use reifydb_flow::{
+	operator::Reclaimable,
 	timer::Timer,
 	transaction::{
 		FlowTransaction,
@@ -43,13 +44,18 @@ use reifydb_flow::{
 	},
 };
 use reifydb_sdk::{error::SdkError, ffi::arena::Arena};
-use reifydb_value::{Result, byte_size::ByteSize, count::Count, value::datetime::DateTime};
+use reifydb_value::{
+	Result,
+	byte_size::ByteSize,
+	count::Count,
+	value::{datetime::DateTime, duration::Duration},
+};
 use tracing::{Span, error, field, instrument};
 
 use crate::{
 	engine::lease_demand,
 	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
-	operator::Operator,
+	operator::{Operator, scale_from_millis, sealed_or_idle},
 };
 
 thread_local! {
@@ -238,11 +244,12 @@ impl Operator for FFIOperator {
 		&self.capabilities
 	}
 
-	fn seal_after_ms(&self) -> Option<u64> {
-		match unsafe { (self.vtable.seal_after_ms)(self.instance) } {
-			0 => None,
-			span => Some(span),
-		}
+	fn retention_scale(&self) -> Option<Duration> {
+		scale_from_millis(Some(unsafe { (self.vtable.seal_after_ms)(self.instance) }))
+	}
+
+	fn reclaimable_through(&self, txn: &mut FlowTransaction, watermark: DateTime) -> Result<Reclaimable> {
+		sealed_or_idle(txn, self.operator_id, watermark, self.retention_scale())
 	}
 
 	#[instrument(name = "flow::ffi::apply", level = "trace", skip_all, fields(

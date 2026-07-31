@@ -36,7 +36,7 @@ use reifydb_core::{
 };
 use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_flow::{
-	operator::Operator,
+	operator::{Operator, Reclaimable},
 	timer::Timer,
 	transaction::{
 		FlowTransaction,
@@ -58,6 +58,7 @@ use reifydb_value::{
 		constraint::TypeConstraint,
 		datetime::DateTime,
 		dictionary::{DictionaryEntryId, DictionaryId},
+		duration::Duration,
 		row_number::RowNumber,
 	},
 };
@@ -69,6 +70,7 @@ use crate::{
 	operator::{
 		BoxedOperator,
 		context::native::{NativeBridge, NativeOperatorContext},
+		scale_from_millis, sealed_or_idle,
 	},
 };
 
@@ -646,8 +648,12 @@ impl Operator for NativeBridgedOperator {
 		self.inner.apply(&mut bridge, change)
 	}
 
-	fn seal_after_ms(&self) -> Option<u64> {
-		self.inner.seal_after_ms()
+	fn retention_scale(&self) -> Option<Duration> {
+		scale_from_millis(self.inner.seal_after_ms())
+	}
+
+	fn reclaimable_through(&self, txn: &mut FlowTransaction, watermark: DateTime) -> Result<Reclaimable> {
+		sealed_or_idle(txn, self.node, watermark, self.retention_scale())
 	}
 
 	fn invalidate_groups(&self, groups: &GroupSet) {
@@ -674,7 +680,7 @@ mod tests {
 		common::CommitVersion,
 		interface::change::Change,
 		key::operator_state::{GroupId, GroupSet},
-		state::horizon::{Horizon, Position},
+		state::horizon::Position,
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_extension::operator::ffi_loader::check_operator_abi_tag;
@@ -751,8 +757,7 @@ mod tests {
 		);
 
 		let sealed = FlowNodeId(8);
-		txn.group_interner()
-			.set_activity_grid(sealed, Horizon::of(Duration::from_milliseconds(1_000).unwrap()));
+		txn.group_interner().set_activity_grid(sealed, Some(Duration::from_milliseconds(1_000).unwrap()));
 		let mut bridge = FlowNativeBridge::new(&mut txn, sealed);
 		bridge.intern_groups(&[key("sealed")]).unwrap();
 		assert_eq!(txn.node_position(sealed).unwrap(), Position(at));
@@ -812,10 +817,11 @@ mod tests {
 	#[test]
 	fn the_host_wrapper_forwards_seal_span_and_reclaimed_groups_to_the_dylib() {
 		// NativeBridgedOperator is the host-side Operator over a dylib's BridgedOperator.
-		// Its Operator impl forwarded seal_after_ms but silently dropped invalidate_groups
+		// Its Operator impl forwarded the seal span but silently dropped invalidate_groups
 		// (trait default no-op), so the reclaim driver could erase a native operator's
 		// group state on disk while the dylib kept serving it from RAM. Both must cross
-		// this seam.
+		// this seam. The dylib still answers in milliseconds; the host turns that into the
+		// retention scale that sizes the node's grid.
 		let invalidated = Arc::new(Mutex::new(Vec::new()));
 		let wrapper = NativeBridgedOperator::new(
 			Box::new(RecordingBridged {
@@ -825,7 +831,7 @@ mod tests {
 			&[],
 		);
 
-		assert_eq!(Operator::seal_after_ms(&wrapper), Some(65_000));
+		assert_eq!(Operator::retention_scale(&wrapper), Some(Duration::from_milliseconds(65_000).unwrap()));
 
 		Operator::invalidate_groups(&wrapper, &GroupSet::new([GroupId(3), GroupId(9)]));
 		assert_eq!(*invalidated.lock(), vec![GroupId(3), GroupId(9)]);

@@ -18,7 +18,7 @@ use reifydb_core::{
 };
 use reifydb_engine::flow::aggregate::AggregateContext;
 use reifydb_flow::{
-	operator::Operator,
+	operator::{Operator, Reclaimable},
 	transaction::FlowTransaction,
 	window::{
 		engine::{ExpiryAnchor, config::WindowEngineConfig, tumbling::TumblingBuckets},
@@ -48,6 +48,7 @@ type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKey, Vec<Opti
 
 pub struct AggregateOperator {
 	core: Aggregation,
+	ttl: Option<Duration>,
 }
 
 impl AggregateOperator {
@@ -58,6 +59,7 @@ impl AggregateOperator {
 		map: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
+		ttl: Option<Duration>,
 	) -> Self {
 		Self {
 			core: Aggregation::new(
@@ -70,6 +72,7 @@ impl AggregateOperator {
 				AggregateContext::Grouped,
 				Arc::new(FlowContext::default()),
 			),
+			ttl,
 		}
 	}
 
@@ -85,6 +88,14 @@ impl Operator for AggregateOperator {
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		OperatorCapability::STANDARD_WITH_RECLAIM
+	}
+
+	fn retention_scale(&self) -> Option<Duration> {
+		self.ttl
+	}
+
+	fn reclaimable_through(&self, _txn: &mut FlowTransaction, watermark: DateTime) -> Result<Reclaimable> {
+		Ok(self.ttl.map(|ttl| Reclaimable::data(watermark.saturating_sub(ttl))).unwrap_or_default())
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {

@@ -12,7 +12,6 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::operator_state::GroupSet,
 	metrics::heap::{HeapSize, OperatorSample},
-	state::store::StateStore,
 };
 use reifydb_flow::{
 	timer::Timer as FlowTimer,
@@ -194,7 +193,6 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	fn expire_through<C: OperatorContext>(
-		aggregator: &A,
 		engine: &mut TumblingEngine<A::GroupKey, SlotCoord<A::WindowSlot>, A::Accumulator>,
 		store: &mut OperatorContextStore<'_, C>,
 		horizon: SlotCoord<A::WindowSlot>,
@@ -202,14 +200,7 @@ where
 		if horizon <= <SlotCoord<A::WindowSlot> as WindowCoord>::from_order(0) {
 			return Ok(());
 		}
-		for expired in engine.expire(store, horizon.to_order().saturating_sub(1))? {
-			if expired.accumulator_present {
-				store.remove_row_number(
-					expired.group_id,
-					&aggregator.encode_row_key(&expired.group, expired.window_start),
-				)?;
-			}
-		}
+		engine.expire(store, horizon.to_order().saturating_sub(1))?;
 		engine.expire_meta(store, horizon.to_order())?;
 		Ok(())
 	}
@@ -296,7 +287,6 @@ where
 			return Ok(());
 		};
 		let Self {
-			aggregator,
 			engine,
 			..
 		} = &mut *self;
@@ -307,7 +297,7 @@ where
 			key: EncodedKey::new(timer.key),
 		});
 		let frontier = advance_seal_frontier(&mut store, fired)?;
-		Self::expire_through(aggregator, engine, &mut store, seal_horizon_of(frontier, seal_after))
+		Self::expire_through(engine, &mut store, seal_horizon_of(frontier, seal_after))
 	}
 
 	fn seal_after_ms(&self) -> Option<u64> {
@@ -328,7 +318,6 @@ where
 		let seal_after = self.aggregator.seal_after();
 		if let Some(seal_after) = seal_after {
 			let Self {
-				aggregator,
 				engine,
 				..
 			} = &mut *self;
@@ -351,7 +340,7 @@ where
 			if dropped > 0 {
 				debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
 			}
-			Self::expire_through(aggregator, engine, &mut store, horizon)?;
+			Self::expire_through(engine, &mut store, horizon)?;
 			if buckets.is_empty() {
 				return Ok(());
 			}

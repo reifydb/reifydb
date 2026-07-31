@@ -10,17 +10,17 @@ use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
 	key::operator_state::GroupSet,
 	metrics::heap::OperatorSample,
-	state::{budget::OperatorStateBudgetHandle, horizon::window_horizon},
+	state::{budget::OperatorStateBudgetHandle, horizon::window_retention_scale},
 	value::column::columns::Columns,
 };
 use reifydb_engine::flow::aggregate::AggregateContext;
 use reifydb_flow::{
-	operator::Operator,
+	operator::{Operator, Reclaimable},
 	timer::Timer,
 	transaction::FlowTransaction,
 	window::{
 		engine::{config::WindowEngineConfig, rolling::RollingEngine},
-		ledger::FiredAt,
+		ledger::{FiredAt, read_sealed_through},
 		meta::WindowMeta,
 		span::WindowCoord,
 	},
@@ -68,7 +68,6 @@ pub struct WindowConfig {
 	pub runtime_context: RuntimeContext,
 	pub routines: Routines,
 	pub grace: Duration,
-	pub lateness: Duration,
 	pub state_budget: OperatorStateBudgetHandle,
 	pub ctx: Arc<FlowContext>,
 }
@@ -83,7 +82,6 @@ pub struct WindowOperator {
 	pub kind: WindowKind,
 
 	pub grace: Duration,
-	pub lateness: Duration,
 	pub state_budget: OperatorStateBudgetHandle,
 	pub layout: RowShape,
 	sealed_drops: SealedDrops,
@@ -107,7 +105,6 @@ impl WindowOperator {
 			core,
 			kind: config.kind,
 			grace: config.grace,
-			lateness: config.lateness,
 			state_budget: config.state_budget.clone(),
 			layout: RowShape::operator_state(),
 			sealed_drops: SealedDrops::new(config.node, "mutations targeting sealed windows"),
@@ -161,18 +158,6 @@ impl WindowOperator {
 
 	pub fn grace_ms(&self) -> u64 {
 		self.grace().milliseconds().unwrap_or(0) as u64
-	}
-
-	pub fn lateness(&self) -> Duration {
-		if self.is_count_based() {
-			Duration::default()
-		} else {
-			self.lateness
-		}
-	}
-
-	pub fn lateness_ms(&self) -> u64 {
-		self.lateness().milliseconds().unwrap_or(0) as u64
 	}
 
 	pub(crate) fn note_sealed_drops(&self, dropped: u64) {
@@ -245,8 +230,14 @@ impl Operator for WindowOperator {
 		CAPABILITIES
 	}
 
-	fn seal_after_ms(&self) -> Option<u64> {
-		window_horizon(&self.kind, self.grace(), self.lateness()).span_ms()
+	fn retention_scale(&self) -> Option<Duration> {
+		window_retention_scale(&self.kind, self.grace())
+	}
+
+	fn reclaimable_through(&self, txn: &mut FlowTransaction, _watermark: DateTime) -> Result<Reclaimable> {
+		Ok(read_sealed_through(txn, self.core.node)?
+			.map(|sealed| Reclaimable::data(sealed.at()))
+			.unwrap_or_default())
 	}
 
 	fn invalidate_groups(&self, groups: &GroupSet) {

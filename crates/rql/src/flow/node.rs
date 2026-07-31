@@ -9,9 +9,7 @@ use reifydb_core::{
 		object::ObjectId,
 		series::SeriesKey,
 	},
-	row::OperatorSettings,
 	sort::SortKey,
-	state::horizon::{Horizon, keyed_horizon},
 };
 use reifydb_value::value::duration::Duration;
 use serde::{Deserialize, Serialize};
@@ -97,7 +95,6 @@ pub enum FlowNodeType {
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
 		grace: Duration,
-		lateness: Duration,
 	},
 }
 
@@ -144,13 +141,6 @@ impl FlowNodeType {
 				| FlowNodeType::Append { .. }
 				| FlowNodeType::Apply { .. } | FlowNodeType::Aggregate { .. }
 		)
-	}
-
-	pub fn declared_horizon(&self, settings: Option<&OperatorSettings>) -> Horizon {
-		match self.consults_declared_span() {
-			true => keyed_horizon(settings),
-			false => Horizon::Perpetual,
-		}
 	}
 
 	pub fn label(&self) -> String {
@@ -401,7 +391,6 @@ mod tests {
 		common::{JoinType, WindowKind, WindowSize},
 		interface::catalog::id::{RingBufferId, ViewId},
 		row::{JoinTtl, OperatorSettings, OperatorTtl},
-		state::horizon::Horizon,
 	};
 	use reifydb_value::value::duration::Duration;
 
@@ -411,13 +400,12 @@ mod tests {
 		Duration::from_milliseconds(milliseconds).expect("test duration must be representable")
 	}
 
-	fn window(kind: WindowKind, grace: Duration, lateness: Duration) -> FlowNodeType {
+	fn window(kind: WindowKind, grace: Duration) -> FlowNodeType {
 		FlowNodeType::Window {
 			kind,
 			group_by: vec![],
 			aggregations: vec![],
 			grace,
-			lateness,
 		}
 	}
 
@@ -429,109 +417,62 @@ mod tests {
 	}
 
 	#[test]
-	fn a_window_node_declares_no_horizon_because_its_operator_owns_that_answer() {
-		// A window's retention is intrinsic (span + grace + lateness), and the OPERATOR computes it -
-		// see WindowOperator::seal_after_ms. The node must not answer too, in any backend: two
-		// sources for one fact is how a node ends up stamping activity in one domain while the
-		// substrate ages it in another, which is silent in release and reclaims live state.
+	fn a_window_node_consults_no_declared_span_because_its_operator_owns_that_answer() {
+		// A window's retention is intrinsic (span + grace), and the OPERATOR computes it - see
+		// WindowOperator::retention_scale. The node must not answer too, in any backend: two sources
+		// for one fact is how a node ends up stamping activity in one domain while the substrate ages
+		// it in another, which is silent in release and reclaims live state. A window has no
+		// `with { ttl }` slot in the grammar precisely because of this, and FLOW_045 is what refuses
+		// one that reaches the node another way.
 		let node = window(
 			WindowKind::Tumbling {
 				size: WindowSize::Duration(ms(60_000)),
 			},
 			ms(5_000),
-			ms(0),
 		);
 
-		assert_eq!(node.declared_horizon(None), Horizon::Perpetual);
-		assert_eq!(
-			node.declared_horizon(Some(&OperatorSettings {
-				ttl: Some(OperatorTtl {
-					duration: ms(1),
-				}),
-				join: None,
-			})),
-			Horizon::Perpetual,
-			"a settings ttl must not reach a window either; the operator is the only source"
-		);
+		assert!(!node.consults_declared_span(), "a declared ttl must never reach a window");
 	}
 
 	#[test]
-	fn a_custom_apply_operator_gets_a_horizon_only_when_its_author_declared_one() {
+	fn the_node_types_that_accept_a_declared_span_are_exactly_those_that_keep_keyed_state() {
 		// The substrate cannot know what an extension operator's state means or how it ages, so it
-		// must never invent a horizon for one. The existing ttl clause on apply is the declaration
-		// channel: with it the group ages out, without it the operator is honestly perpetual and gets
-		// named in the report rather than silently reclaimed on a schedule nobody agreed to.
-		let declared = apply().declared_horizon(Some(&OperatorSettings {
-			ttl: Some(OperatorTtl {
-				duration: ms(3_600_000),
-			}),
-			join: None,
-		}));
+		// must never invent a scale for one - the ttl clause is the author saying it, and the
+		// operator carries it from registration. This classification is what decides whether the
+		// declaration is even legal: FLOW_045 refuses a span on anything answering false here.
+		//
+		// An aggregate is the case worth naming. It interns one group per `by` key, so its groups
+		// are reclaimable, but unlike a window it has no intrinsic span: any future row with the same
+		// key must fold into the existing accumulator, so nothing can derive when a key is done.
+		// Dropping it from this list is what left an ingestion view accumulating a group per slot
+		// forever.
+		for node in [
+			apply(),
+			join(),
+			FlowNodeType::Aggregate {
+				by: vec![],
+				map: vec![],
+			},
+			FlowNodeType::Distinct {
+				expressions: vec![],
+			},
+			FlowNodeType::Append {},
+		] {
+			assert!(node.consults_declared_span(), "{node:?} keeps keyed state and must accept a span");
+		}
 
-		assert_eq!(declared.span(), Some(ms(3_600_000)));
-		assert_eq!(apply().declared_horizon(None), Horizon::Perpetual);
-	}
-
-	#[test]
-	fn an_aggregate_ages_its_groups_only_when_a_ttl_was_declared() {
-		// An aggregate interns one group per `by` key and stamps commit versions, so its groups are
-		// reclaimable - but unlike a window it has no intrinsic span: any future row with the same key
-		// must fold into the existing accumulator, so the substrate cannot derive when a key is done.
-		// The ttl clause is the author saying it. Without one the node stays perpetual, which is what
-		// left an ingestion view accumulating a group per slot forever.
-		let aggregate = FlowNodeType::Aggregate {
-			by: vec![],
-			map: vec![],
-		};
-
-		assert_eq!(aggregate.declared_horizon(None), Horizon::Perpetual);
-
-		let declared = aggregate.declared_horizon(Some(&OperatorSettings {
-			ttl: Some(OperatorTtl {
-				duration: ms(60_000),
-			}),
-			join: None,
-		}));
-		assert_eq!(declared.span(), Some(ms(60_000)));
-	}
-
-	#[test]
-	fn a_join_reads_both_sides_of_its_settings() {
-		// Join sides share one group range, so the node horizon must come from the JoinTtl pair
-		// rather than the single-ttl field, which a join never writes.
-		let node = join().declared_horizon(Some(&OperatorSettings {
-			ttl: None,
-			join: Some(JoinTtl {
-				left: Some(OperatorTtl {
-					duration: ms(60_000),
-				}),
-				right: Some(OperatorTtl {
-					duration: ms(120_000),
-				}),
-			}),
-		}));
-
-		assert_eq!(node.span_ms(), Some(120_000));
-	}
-
-	#[test]
-	fn nodes_that_keep_no_keyed_state_are_never_reclaimed() {
-		// Filter and map hold nothing per group, so there is nothing for the driver to scan. They
-		// answer perpetual so a future driver cannot be handed a cutoff for a node with no groups.
-		assert_eq!(
+		// Filter and map hold nothing per group, so there is nothing for a sweep to scan. Accepting a
+		// span here would take a declaration the substrate then silently ignores.
+		for node in [
 			FlowNodeType::Filter {
-				conditions: vec![]
-			}
-			.declared_horizon(None),
-			Horizon::Perpetual
-		);
-		assert_eq!(
+				conditions: vec![],
+			},
 			FlowNodeType::Map {
-				expressions: vec![]
-			}
-			.declared_horizon(None),
-			Horizon::Perpetual
-		);
+				expressions: vec![],
+			},
+		] {
+			assert!(!node.consults_declared_span(), "{node:?} keeps no keyed state");
+		}
 	}
 
 	fn join() -> FlowNodeType {
@@ -648,8 +589,8 @@ mod tests {
 
 		for (node, settings) in reclaimable {
 			assert!(
-				node.declared_horizon(settings).reclaims(),
-				"precondition: this node must derive a reclaiming horizon: {node:?}"
+				node.consults_declared_span() && settings.is_some(),
+				"precondition: this node must accept a declared span: {node:?}"
 			);
 			assert!(node.ticks(), "a reclaimable node that never ticks is never reclaimed: {node:?}");
 		}
@@ -660,7 +601,6 @@ mod tests {
 			WindowKind::Tumbling {
 				size: WindowSize::Duration(ms(60_000)),
 			},
-			ms(0),
 			ms(0),
 		);
 		assert!(window_node.ticks(), "a window reclaims on tick, so it must request one: {window_node:?}");
@@ -725,8 +665,8 @@ mod tests {
 
 		for (node, settings) in reclaimable {
 			assert!(
-				node.declared_horizon(settings).reclaims(),
-				"precondition: this node must derive a reclaiming horizon: {node:?}"
+				node.consults_declared_span() && settings.is_some(),
+				"precondition: this node must accept a declared span: {node:?}"
 			);
 			assert!(node.holds_state(), "a node that can reclaim must be listed as stateful: {node:?}");
 		}
@@ -738,7 +678,6 @@ mod tests {
 				WindowKind::Tumbling {
 					size: WindowSize::Duration(ms(60_000)),
 				},
-				ms(0),
 				ms(0),
 			)
 			.holds_state(),

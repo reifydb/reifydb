@@ -44,7 +44,6 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
 		grace: Duration::from_seconds(params.grace_secs as i64).unwrap(),
-		lateness: Duration::default(),
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));
@@ -121,7 +120,6 @@ pub fn drive_count(seed: u64, params: CountParams) -> Corpus {
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
 		grace: Duration::default(),
-		lateness: Duration::default(),
 	};
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));

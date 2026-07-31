@@ -8,10 +8,7 @@ mod framework;
 #[path = "chaos/operators/mod.rs"]
 mod operators;
 
-use reifydb_core::{
-	common::{WindowKind, WindowSize},
-	state::horizon::Horizon,
-};
+use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_sub_flow::execution::reclaim::ReclaimBudget;
 use reifydb_testing_chaos::{
 	fuzz::run_reported,
@@ -40,7 +37,6 @@ fn tumbling_sum() -> WindowSpec {
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
 		grace: Duration::default(),
-		lateness: Duration::default(),
 	}
 }
 
@@ -538,13 +534,15 @@ fn a_harness_without_a_registered_grid_can_never_reclaim() {
 		"the default is the undeclared grid, which is exactly what the driver refuses to sweep"
 	);
 
+	// The grid comes from the operator, so the fixture has to declare a ttl for one to exist - an
+	// operator that declares nothing is perpetual and correctly stays ungridded.
 	let span = Duration::from_seconds(16).expect("16s is representable");
-	let declared = Harness::new(|_| operators::append::build(2)).with_activity_grid(Horizon::of(span));
-	let grid = declared.activity_grid().event_grid().expect("a declared horizon must grid in event time");
+	let declared = Harness::new(|_| operators::append::build_with_ttl(2, Some(span))).with_activity_grid();
+	let grid = declared.activity_grid().event_grid().expect("a declared scale must grid in event time");
 	assert_eq!(
 		grid.width(),
 		Duration::from_seconds(1).unwrap(),
-		"sixteen buckets per horizon, so the slack a sweep subtracts is one second here"
+		"sixteen buckets per scale, so a 16s ttl grids at one second here"
 	);
 }
 
@@ -556,15 +554,13 @@ fn the_harness_sweep_retires_a_group_only_once_the_watermark_clears_its_horizon(
 	// in every suite built on it, and a sweep that retired everything immediately would make every
 	// later assertion about what survives vacuous.
 	//
-	// The declared 16s is deliberately not the horizon the sweep uses. `resolve_horizon` lets an
-	// operator that seals on its own timer override the declaration, and this window's seal span is
-	// its own 60s size, so the cutoff is `watermark - 60s` and the grid is 60s/16 = 3.75s. A group
-	// stamped at t=0 sits in bucket 0 and is only reachable once the watermark clears 63.75s.
-	// Deriving the numbers from the declared 16s instead - which is what this suite used to do -
-	// sweeps a node configuration the engine cannot register.
-	let span = Duration::from_seconds(16).expect("16s is representable");
-	let mut harness = Harness::new(|runtime| operators::window::build(&tumbling_sum(), runtime))
-		.with_activity_grid(Horizon::of(span));
+	// The numbers come from the operator, not from the suite. This window's retention scale is its
+	// own 60s size plus zero grace, so the frontier is its seal ledger and the grid is 60s/16 =
+	// 3.75s. A group stamped at t=0 sits in bucket 0 and is only reachable once the watermark
+	// clears 63.75s. A suite that picked its own span would sweep a node configuration the engine
+	// cannot register.
+	let mut harness =
+		Harness::new(|runtime| operators::window::build(&tumbling_sum(), runtime)).with_activity_grid();
 
 	let at = |ms: u64| DateTime::from_timestamp_millis(ms).unwrap();
 	harness.apply(generator::insert(vec![generator::row(RowNumber(1), 1, 10, at(0))])).expect("apply must succeed");
@@ -584,9 +580,8 @@ fn a_truncated_budget_leaves_the_rest_of_the_due_groups_for_the_next_sweep() {
 	// The production budget is 256 groups per tick, which no chaos run approaches, so partial
 	// reclamation would never occur by accident - and partial reclamation is where the invariants
 	// with the most history live. Driving it has to be a scenario knob rather than a hope.
-	let span = Duration::from_seconds(16).expect("16s is representable");
 	let mut harness = Harness::new(|runtime| operators::window::build(&tumbling_sum(), runtime))
-		.with_activity_grid(Horizon::of(span))
+		.with_activity_grid()
 		.with_reclaim_budget(ReclaimBudget {
 			groups: 1,
 			rows: 1_024,
@@ -599,7 +594,7 @@ fn a_truncated_budget_leaves_the_rest_of_the_due_groups_for_the_next_sweep() {
 	]))
 	.expect("apply must succeed");
 
-	// 63.75s, not 17s: the window seals on its own 60s span, which overrides the declared 16s.
+	// 63.75s: the window's own 60s span plus one 3.75s bucket of grid.
 	let first = harness.reclaim(63_750).expect("sweep must succeed");
 	assert_eq!(first.data.len(), 1, "a one-group budget must stop after one group");
 

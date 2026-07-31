@@ -114,7 +114,7 @@ fn drains_a_stranded_window_group(view_kind: &str) {
 	db.command("DELETE app::t FILTER { id == 1 }");
 	db.await_exact_row_count("FROM app::w", 0, TIMEOUT);
 
-	// Push the event watermark well past that window's horizon (interval + grace + lateness = 2s), so
+	// Push the event watermark well past that window's horizon (interval + grace = 2s), so
 	// the stranded group is unambiguously idle while the new one is not.
 	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 7, ts: "2026-01-01T00:05:00Z" }]"#);
 	db.await_row_count("FROM app::w", 1, TIMEOUT);

@@ -133,7 +133,7 @@ mod tests {
 		actors::pending::PendingWrite,
 		common::CommitVersion,
 		key::operator_state::{Keyspace, OperatorStateKey, group_inner_range, keyspace_inner_range},
-		state::horizon::{Cutoff, Horizon},
+		state::horizon::Cutoff,
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -150,8 +150,8 @@ mod tests {
 	// A keyspace the substrate has never heard of, as a custom FFI operator would invent.
 	const NOVEL: Keyspace = Keyspace(0x55);
 
-	// The width Horizon::of(60s) derives (span / BUCKETS_PER_HORIZON, in nanoseconds); a cutoff
-	// must clear whole buckets, not land inside one.
+	// The width a 60s retention scale derives (scale / BUCKETS_PER_HORIZON, in nanoseconds); a
+	// cutoff must clear whole buckets, not land inside one.
 	const BUCKET_WIDTH: u64 = 3_750_000_000;
 
 	fn payload() -> EncodedRow {
@@ -212,7 +212,7 @@ mod tests {
 	// cutoff chosen for one quantisation is compared against buckets stamped in another.
 	fn restarted(engine: &TestEngine) -> FlowTransaction {
 		let txn = deferred(engine);
-		txn.group_interner().set_activity_grid(NODE, Horizon::of(Duration::from_seconds(60).unwrap()));
+		txn.group_interner().set_activity_grid(NODE, Some(Duration::from_seconds(60).unwrap()));
 		txn
 	}
 

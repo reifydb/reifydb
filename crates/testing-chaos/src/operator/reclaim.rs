@@ -26,11 +26,6 @@ impl Reclaimed {
 	}
 }
 
-/// What a whole run's sweeps added up to, so a suite can refuse to pass on a run that swept nothing.
-///
-/// A reclamation suite's characteristic failure is not a wrong answer, it is a vacuous one: every
-/// assertion about what survives a sweep holds trivially against a sweep that never reached anything,
-/// and nothing else in a green run distinguishes the two.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ReclaimTally {
 	pub sweeps: usize,

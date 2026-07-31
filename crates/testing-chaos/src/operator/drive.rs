@@ -50,32 +50,19 @@ where
 	let mut live: Vec<W::Row> = Vec::new();
 	let mut next_row = RowNumber(1);
 	let mut watermark = 0u64;
-	// The latest coordinate any row has actually arrived at. A watermark may not precede an arrival
-	// in production either - it is derived from source watermarks, which are derived from arrivals -
-	// and letting it run ahead here made every later event arrive past its own window's close time.
+
 	let mut arrival = 0u64;
 	let mut trace: Vec<String> = Vec::new();
 	let mut reclaimed = ReclaimTally::default();
 
 	let mut fingerprint = mix(0, seed);
 
-	// Where the phase branches end and the data-op branches begin. The remove and update branches
-	// have to start past the reclaim slice, not past the tick slice: reading `tick_pct + remove_pct`
-	// while reclamation sits between them silently takes reclaim's share out of remove rather than
-	// out of insert, so turning the sweep on would quietly reshape the corpus it is meant to observe.
-	// Identical to `tick_pct` when reclaim_pct is zero, so no existing corpus moves.
 	let phases = scenario.tick_pct + scenario.reclaim_pct;
 
 	for step in 0..scenario.steps {
 		let roll = rng.random_range(0..100);
 
 		if roll < scenario.tick_pct {
-			// The draw happens whether or not the clamp binds, so the number of values taken from the
-			// rng is unchanged; only the watermark it produces is. Unclamped, this accumulated up to
-			// half the coordinate span per tick against rows drawn from the whole span, so within a
-			// couple of ticks it passed every coordinate a row could ever carry. Every event after
-			// that arrived past its window's close and was refused, by the operator and by the oracle
-			// alike - so the suite stayed green while the second half of every run asserted nothing.
 			let drawn = rng.random_range(1..=scenario.coord_span_ms / 2);
 			watermark = watermark.saturating_add(drawn).min(arrival);
 			trace.push(format!("step {step}: seal at {watermark}"));
@@ -83,16 +70,9 @@ where
 			session.tick(watermark).expect("tick must succeed");
 			model.advance_ledger(watermark);
 		} else if roll < phases {
-			// Reusing the roll the tick branch already drew rather than taking a fresh one. With
-			// reclaim_pct at zero this condition reduces to the branch above, so a scenario that
-			// does not ask for reclamation consumes exactly the randomness it did before and the
-			// pinned corpora do not move.
 			fingerprint = mix(mix(fingerprint, 9), watermark);
 			let swept = session.reclaim(watermark).expect("reclaim must succeed");
-			// One line, not two: the trace's length is the step count a corpus reports, so a second
-			// push here would make a reclaiming run look longer than it is. The per-phase detail rides
-			// the same entry because it is what a divergence needs - which groups went, at which
-			// cutoff, in which phase - and the trace is only ever printed when one happens.
+
 			trace.push(format!(
 				"step {step}: reclaim at {watermark} -> data={:?} identity={:?} keyspace={:?} mapping_rows={}",
 				swept.data, swept.identity, swept.keyspace, swept.mapping_rows
@@ -311,15 +291,6 @@ where
 			return stopped(fingerprint, &trace, session, reclaimed, report);
 		}
 	} else {
-		// A sweep strands rows on purpose: it erases the state that would have retracted them and
-		// publishes no diff of its own, and which groups it reached depends on the budget it ran
-		// under. So the post-drain view is a range rather than a point, and `Exactly` is not merely
-		// strict here, it is unsatisfiable.
-		//
-		// Both directions are still checked, and the pair is only weaker than `Exactly` in the one
-		// direction reclamation actually makes unpredictable: every row the model says survives must
-		// still be present, and no row that was never admitted may appear. A row the sweep stranded
-		// sits between the two.
 		if let Err(report) = model.after_drain().check(
 			session.view(),
 			workload.projection(),

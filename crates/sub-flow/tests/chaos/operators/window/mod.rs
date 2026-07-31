@@ -33,7 +33,6 @@ pub struct WindowSpec {
 	pub group_by: &'static str,
 	pub aggregations: &'static str,
 	pub grace: Duration,
-	pub lateness: Duration,
 }
 
 fn routines() -> Routines {
@@ -56,7 +55,6 @@ pub fn build(spec: &WindowSpec, runtime: RuntimeContext) -> WindowOperator {
 		runtime_context: runtime,
 		routines: routines(),
 		grace: spec.grace,
-		lateness: spec.lateness,
 		state_budget: OperatorStateBudgetHandle::default(),
 		ctx: Arc::new(FlowContext::default()),
 	})

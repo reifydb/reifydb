@@ -60,18 +60,6 @@ impl Expectation for Vec<Vec<Value>> {
 	}
 }
 
-/// A multiset claim with a duplicate gate in front of it.
-///
-/// The positional multiset comparison below already catches a duplicated row *conditionally*:
-/// `contains_all` is multiset containment, so a second published row for one logical key breaches
-/// `AtMost` unless its projected tuple happens to coincide with some other row the model permits.
-/// For a window family that is a real hole - a stranded stale total can easily equal another
-/// window's total for the same group, and the duplicate then passes.
-///
-/// The gate closes it by rekeying the view on its logical identity first, so two rows for one key
-/// are reported as such however their values happen to land. It also names the colliding key instead
-/// of printing a value mismatch, which is the difference between a diagnosable failure and a
-/// puzzling one.
 #[derive(Debug, Clone)]
 pub struct KeyedMultiset {
 	pub key: RowKey,
@@ -103,8 +91,7 @@ impl Expectation for KeyedMultiset {
 				self.key, published.incoherent
 			));
 		}
-		// Deliberately against `actual`, not `published`: rekeying collapses the very duplicates the
-		// gate exists to find, so comparing the rekeyed view would hide anything that slipped past.
+
 		self.rows.check(actual, projection, tolerances, bound)
 	}
 }

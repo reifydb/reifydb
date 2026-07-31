@@ -18,10 +18,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	key::operator_state::{GroupId, GroupSet},
 	metrics::heap::{StateCompleteness, StateMemory},
-	state::{
-		cache::{StateCache, StateView},
-		store::StateStore,
-	},
+	state::{cache::StateCache, store::StateStore},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
@@ -49,12 +46,10 @@ struct ResolvedSlot {
 
 type SlotResolved<G, C> = HashMap<(G, WindowSpan<C>), ResolvedSlot>;
 
-pub struct ExpiredWindow<G, C, Output> {
+pub struct ExpiredWindow<G, C> {
 	pub group: G,
 	pub group_id: GroupId,
 	pub window_start: C,
-	pub value: Option<Output>,
-	pub accumulator_present: bool,
 }
 
 #[operator_state]
@@ -360,34 +355,17 @@ where
 		Ok(results)
 	}
 
-	pub fn expire<S: StateStore>(
-		&mut self,
-		store: &mut S,
-		threshold: u64,
-	) -> Result<Vec<ExpiredWindow<G, C, Accumulator::Output>>> {
+	pub fn expire<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<Vec<ExpiredWindow<G, C>>> {
 		self.hydrate_once(store)?;
 		let due = self.expiry.due(store, threshold, self.expire_batch)?;
 
-		let mut out: Vec<ExpiredWindow<G, C, Accumulator::Output>> = Vec::new();
+		let mut out: Vec<ExpiredWindow<G, C>> = Vec::new();
 		for (index_key, entry) in due {
-			let group_id = GroupId(entry.group_id);
-			let state_key = WindowStateKey::new(group_id, EncodedKey::new(&entry.slot_key));
 			self.expiry.drop_key(store, &index_key)?;
-			let found = self.accumulators.read(store, &state_key, |view| match view {
-				StateView::Native(accumulator) => Ok(accumulator.finalize()),
-				StateView::Archived(archived) => {
-					Accumulator::materialize(archived).map(|accumulator| accumulator.finalize())
-				}
-			})?;
-			let accumulator_present = found.is_some();
-			let value = found.transpose()?.flatten();
-			self.accumulators.remove(store, &state_key)?;
 			out.push(ExpiredWindow {
 				group: entry.group,
-				group_id,
+				group_id: GroupId(entry.group_id),
 				window_start: entry.window_start,
-				value,
-				accumulator_present,
 			});
 		}
 		note_when_expiry_capped(out.len(), self.expire_batch);
@@ -589,8 +567,10 @@ mod tests {
 			store.contains_row_mapping(group, &EncodedKey::new(Vec::new())),
 			"the identity the driver is about to release must still be resolvable from that group alone"
 		);
-		assert_eq!(expired[0].value, Some(5), "a group-scoped accumulator is still readable without hydration");
-		assert!(expired[0].accumulator_present, "state was there, so the driver must release the row number");
+		assert!(
+			store.contains_row_mapping(group, &EncodedKey::new(Vec::new())),
+			"sealing releases no identity of its own; the reaper collects it at or below the ledger"
+		);
 	}
 
 	#[test]
@@ -625,7 +605,7 @@ mod tests {
 	}
 
 	#[test]
-	fn expire_returns_only_due_windows_and_clears_their_state() {
+	fn expire_returns_only_due_windows_and_drops_only_their_index_entries() {
 		let mut store = MockStore::default();
 		// Two live windows; the face indexes each by its last_event_time (10 and 90).
 		let w0 = seed_window(&mut store, 0, 5);
@@ -640,42 +620,36 @@ mod tests {
 		engine.flush(&mut store).unwrap();
 		assert_eq!(expired.len(), 1, "exactly one window is due, not the whole population");
 		assert_eq!(expired[0].window_start, 0);
-		assert_eq!(expired[0].value, Some(5));
 		assert_eq!(store.index_entry_count(), 1, "the due window's index entry is gone, the other remains");
 
-		// The surviving window finalizes correctly once the threshold reaches it.
+		// The surviving window is reported once the threshold reaches it. Expiry is the seal's own
+		// index and nothing else: the accumulators behind both windows are still on disk here, and
+		// the reaper is what collects them at or below the ledger.
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let later = engine.expire(&mut store, 1000).unwrap();
 		assert_eq!(later.len(), 1);
 		assert_eq!(later[0].window_start, 100);
-		assert_eq!(later[0].value, Some(7));
 		assert_eq!(store.index_entry_count(), 0);
 	}
 
 	#[test]
-	fn an_expiry_entry_whose_state_was_reclaimed_reports_its_accumulator_absent() {
-		// The expiry index is ordered by due time, so a group's entries sit OUTSIDE its key range
-		// and survive phase-1 reclamation; they are left to drain on their own. When such a stale
-		// entry drains it must be inert, and the only way a caller can tell is this signal. Drivers
-		// key row-number removal off it: reporting a reclaimed group's accumulator as present would
-		// delete the identity of a group that may still own a live sink row, which for a coord-less
-		// operator mints a duplicate row on the next wake.
+	fn an_expiry_entry_whose_state_was_reclaimed_still_drains() {
+		// The expiry index is ordered by due time, so a group's entries sit OUTSIDE its key range and
+		// survive reclamation of that group's data; they are left to drain on their own. Draining has
+		// to be unconditional. An entry that refused to drop itself because the state behind it was
+		// already gone would sit in the index forever, which is unbounded growth on exactly the
+		// groups the reaper has already collected.
 		let mut store = MockStore::default();
 		let w = seed_window(&mut store, 0, 5);
 		reindex_window(&mut store, &w.group, w.span.start, None, Some(10)).unwrap();
 		assert_eq!(store.index_entry_count(), 1, "precondition: the window is indexed");
-		assert_eq!(store.drop_accumulator_entries(), 1, "precondition: reclaim erased the accumulator");
+		assert_eq!(store.drop_accumulator_entries(), 1, "precondition: the reaper erased the accumulator");
 
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let expired = engine.expire(&mut store, 10).unwrap();
 		engine.flush(&mut store).unwrap();
 
 		assert_eq!(expired.len(), 1, "the stale entry must still drain, or the index would grow forever");
-		assert!(
-			!expired[0].accumulator_present,
-			"the accumulator is gone, so the entry names state that no longer exists and must be \
-			 reported as such"
-		);
 		assert_eq!(store.index_entry_count(), 0, "a stale entry drops itself on the scan that finds it");
 	}
 
@@ -732,11 +706,12 @@ mod tests {
 	}
 
 	#[test]
-	fn an_emptied_window_still_reports_its_accumulator_present() {
-		// Presence must not be inferred from `value`. An accumulator drained to zero by retractions
-		// still EXISTS and still owns its row-number mapping, but finalizes to none - exactly the same
-		// `value` a reclaimed group produces. Collapsing the two signals would strand one mapping per
-		// emptied window forever, which is the leak this whole step exists to close.
+	fn an_emptied_window_seals_without_releasing_anything() {
+		// An accumulator drained to zero by retractions still EXISTS and still owns its row-number
+		// mapping, but finalizes to none - indistinguishable, on value alone, from a group the reaper
+		// already erased. Sealing used to have to tell those apart to decide whether to release the
+		// identity, and getting it wrong stranded one mapping per emptied window forever. It no
+		// longer decides: sealing releases nothing, so the distinction cannot be got wrong.
 		let mut store = MockStore::default();
 		let w = seed_window(&mut store, 0, 5);
 		apply_event(&mut store, 0, AccumulatorEvent::Remove(5));
@@ -747,10 +722,10 @@ mod tests {
 		engine.flush(&mut store).unwrap();
 
 		assert_eq!(expired.len(), 1);
-		assert_eq!(expired[0].value, None, "an emptied accumulator finalizes to nothing");
-		assert!(
-			expired[0].accumulator_present,
-			"the accumulator row still exists, so its identity must still be released on expiry"
+		assert_eq!(
+			store.drop_accumulator_entries(),
+			1,
+			"the emptied accumulator outlives the seal and is the reaper's to collect"
 		);
 	}
 
@@ -867,7 +842,6 @@ mod tests {
 		engine.flush(&mut store).unwrap();
 		assert_eq!(second.len(), 1, "the next tick picks up the deferred backlog");
 		assert_eq!(second[0].window_start, 0);
-		assert_eq!(second[0].value, Some(1), "a deferred window still finalizes with its state intact");
 		assert_eq!(store.index_entry_count(), 0);
 	}
 
@@ -1023,13 +997,12 @@ mod tests {
 	}
 
 	#[test]
-	fn expire_finalizes_from_resident_views_without_cloning() {
-		// expire() must serve finalize() from the cache view: a same-engine
-		// (Native-resident) entry finalizes by reference, and a store-loaded
-		// entry finalizes via the archived form without ever creating native
-		// residency. The old get()-based path deep-cloned the accumulator in
-		// both cases; the clone counter pins zero clones during expire, and the
-		// emitted values pin that both view arms produce the same output.
+	fn expire_touches_no_accumulator_on_either_residency_path() {
+		// expire() is the seal's index scan and nothing more. It used to finalize each due window
+		// through the cache view - deep-cloning the accumulator on the old get()-based path - and then
+		// throw the value away, because the seal published nothing. Now it reads no accumulator at
+		// all, on either the same-engine (Native-resident) path or the store-loaded archived one, so
+		// the clone counter must stay at zero for both.
 		let mut store = MockStore::default();
 		let mut engine = TumblingEngine::<u32, u64, CountingAcc>::new(test_config());
 		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
@@ -1052,14 +1025,14 @@ mod tests {
 		// Same engine: the window-0 accumulator is clean Native after flush.
 		let expired = engine.expire(&mut store, 10).unwrap();
 		assert_eq!(expired.len(), 1);
-		assert_eq!(expired[0].value, Some(5), "Native-view finalize output");
+		assert_eq!(expired[0].window_start, 0, "Native-resident path");
 
-		// Fresh engine: the window-100 accumulator loads from the store and
-		// finalizes through the archived view.
+		// Fresh engine: the window-100 entry would have loaded from the store and finalized through
+		// the archived view.
 		let mut fresh = TumblingEngine::<u32, u64, CountingAcc>::new(test_config());
 		let expired = fresh.expire(&mut store, 1000).unwrap();
 		assert_eq!(expired.len(), 1);
-		assert_eq!(expired[0].value, Some(7), "archived-view finalize output");
+		assert_eq!(expired[0].window_start, 100, "archived path");
 
 		assert_eq!(
 			COUNTING_ACC_CLONES.load(Ordering::SeqCst) - before,

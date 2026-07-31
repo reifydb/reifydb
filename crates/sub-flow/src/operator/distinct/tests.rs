@@ -66,6 +66,7 @@ fn make_op(node_id: u64, engine: &TestEngine) -> DistinctOperator {
 		routines,
 		rc,
 		Arc::new(FlowContext::default()),
+		None,
 	)
 }
 

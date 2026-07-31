@@ -15,6 +15,7 @@ use reifydb_testing_chaos::{
 		scenario::{BatchSize, Scenario},
 	},
 };
+use reifydb_value::value::duration::Duration;
 
 use crate::{
 	framework::harness::Harness,
@@ -25,12 +26,16 @@ use crate::{
 };
 
 pub fn build(inputs: usize) -> AppendOperator {
+	build_with_ttl(inputs, None)
+}
+
+pub fn build_with_ttl(inputs: usize, ttl: Option<Duration>) -> AppendOperator {
 	let nodes: Vec<FlowNodeId> = (0..inputs).map(input_node).collect();
 	let parents = nodes
 		.iter()
 		.map(|node| OperatorCell::new(Operators::SourceSeries(SourceSeriesOperator::new(*node))))
 		.collect();
-	AppendOperator::new(APPEND_NODE, parents, nodes)
+	AppendOperator::new(APPEND_NODE, parents, nodes, ttl)
 }
 
 #[derive(Debug, Clone)]

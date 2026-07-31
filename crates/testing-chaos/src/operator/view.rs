@@ -9,12 +9,6 @@ use reifydb_core::{
 };
 use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber};
 
-/// What makes two published rows the same row, for a family that does not key on the row number.
-///
-/// The row number is the wrong identity for exactly the failure reclamation can cause: a key whose
-/// mapping was retired mints a brand new number, so the duplicate it publishes beside its live row
-/// collides with nothing. `include_time` brings the window start into the key, which is the only
-/// thing that tells a second row for one window apart from a legitimate second window.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RowKey {
 	pub columns: Vec<String>,
@@ -30,9 +24,6 @@ impl RowKey {
 		}
 	}
 
-	/// Adds the emitted event position to the key. Only meaningful for an operator that stamps a
-	/// meaningful one - the fixed-grid window family stamps the window start, while rolling stamps
-	/// the change's own arrival time and must be keyed on its group columns alone.
 	pub fn with_time(mut self) -> Self {
 		self.include_time = true;
 		self
@@ -52,16 +43,6 @@ impl OutputKey {
 	}
 }
 
-/// The event position an emitted row carried, kept beside the named columns rather than among them.
-///
-/// A windowed operator publishes only its group-by and aggregate columns by name; the window it
-/// belongs to travels in the row's `#time` sidecar and is otherwise invisible. That makes the logical
-/// identity of a window output - (group, window start) - unrepresentable, and a second row minted for
-/// a window that already has one indistinguishable from a legitimate second window.
-///
-/// It is deliberately not a named column. `compare::diff_rows` walks the union of both sides' column
-/// maps, so a row carrying `#time` there would diverge against every oracle that builds its rows with
-/// `from_pairs` - which is all of them.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaterializedRow {
 	pub columns: BTreeMap<String, Value>,
@@ -201,10 +182,6 @@ impl MaterializedView {
 				.collect();
 
 			if key.include_time {
-				// Reported rather than substituted. The named-column arm above falls back to a
-				// placeholder, which is survivable because a missing column collapses rows that were
-				// already indistinguishable by that key. Doing the same for the event position would
-				// collapse every row in the view onto one key and report a duplicate on every step.
 				let Some(time) = row.time else {
 					out.incoherent.push(format!(
 						"a published row carries no event time, so it cannot be keyed by one: {row:?}"

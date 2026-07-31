@@ -26,7 +26,10 @@ use reifydb_engine::{
 	},
 	vm::executor::Executor,
 };
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
+use reifydb_flow::{
+	operator::{Operator, Reclaimable},
+	transaction::FlowTransaction,
+};
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -540,25 +543,41 @@ impl Operator for JoinOperator {
 		self.membership.invalidate();
 	}
 
-	fn keyspace_spans(&self) -> Vec<(Keyspace, Duration)> {
-		let mut spans = Vec::new();
+	fn retention_scale(&self) -> Option<Duration> {
+		match (self.left_ttl, self.right_ttl) {
+			(Some(left), Some(right)) => Some(left.max(right)),
+			(Some(only), None) | (None, Some(only)) => Some(only),
+			(None, None) => None,
+		}
+	}
+
+	fn reclaimable_through(&self, _txn: &mut FlowTransaction, watermark: DateTime) -> Result<Reclaimable> {
+		let behind = |span: Duration| watermark.saturating_sub(span);
+
+		let mut keyspaces = Vec::new();
 		if let Some(ttl) = self.left_ttl {
-			spans.push((Keyspace::JOIN_LEFT, ttl));
-			spans.extend(snapshot_ledger_keyspaces(self.snapshot).into_iter().map(|ks| (ks, ttl)));
+			keyspaces.push((Keyspace::JOIN_LEFT, behind(ttl)));
+			keyspaces.extend(snapshot_ledger_keyspaces(self.snapshot)
+				.into_iter()
+				.map(|ks| (ks, behind(ttl))));
 		}
 		if let Some(ttl) = self.right_ttl
 			&& !self.latest
 		{
-			spans.push((Keyspace::JOIN_RIGHT, ttl));
+			keyspaces.push((Keyspace::JOIN_RIGHT, behind(ttl)));
 		}
-		spans
-	}
 
-	fn node_mapping_span(&self) -> Option<Duration> {
-		match self.latest {
-			true => None,
-			false => self.left_ttl,
-		}
+		Ok(Reclaimable {
+			data: match (self.left_ttl, self.right_ttl) {
+				(Some(left), Some(right)) => Some(behind(left.max(right))),
+				_ => None,
+			},
+			keyspaces,
+			mapping: match self.latest {
+				true => None,
+				false => self.left_ttl.map(behind),
+			},
+		})
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
@@ -811,6 +830,22 @@ mod span_tests {
 	use super::*;
 	use crate::operator::join::store::{RowPresence, Store, group_bytes};
 
+	// The spans below are read off the frontier the operator reports, so every expectation is an
+	// instant behind a fixed watermark rather than a bare duration. Anchoring the watermark here
+	// keeps `WATERMARK - ttl` readable at each call site.
+	fn watermark() -> DateTime {
+		DateTime::from_millis(10_000_000)
+	}
+
+	fn behind(span: Duration) -> DateTime {
+		watermark().saturating_sub(span)
+	}
+
+	fn frontier(op: &JoinOperator, engine: &TestEngine) -> Reclaimable {
+		let mut txn = engine.flow_txn().deferred();
+		op.reclaimable_through(&mut txn, watermark()).expect("the join reports a frontier")
+	}
+
 	#[test]
 	fn each_declared_side_ttl_becomes_a_span_on_that_sides_keyspace_when_not_snapshotting() {
 		// This is the whole contract the join hands the reclaim sweep: which keyspace ages, and how
@@ -827,8 +862,8 @@ mod span_tests {
 		op.snapshot = false;
 
 		assert_eq!(
-			op.keyspace_spans(),
-			vec![(Keyspace::JOIN_LEFT, left), (Keyspace::JOIN_RIGHT, right)],
+			frontier(&op, &engine).keyspaces,
+			vec![(Keyspace::JOIN_LEFT, behind(left)), (Keyspace::JOIN_RIGHT, behind(right))],
 			"each side must age on its own keyspace at its own declared ttl"
 		);
 	}
@@ -843,14 +878,79 @@ mod span_tests {
 		let mut untimed_right = make_op(71, Some(left), None, &engine);
 		untimed_right.snapshot = false;
 		assert_eq!(
-			untimed_right.keyspace_spans(),
-			vec![(Keyspace::JOIN_LEFT, left)],
+			frontier(&untimed_right, &engine).keyspaces,
+			vec![(Keyspace::JOIN_LEFT, behind(left))],
 			"the untimed right side must not be enrolled"
 		);
 
 		let mut untimed = make_op(72, None, None, &engine);
 		untimed.snapshot = false;
-		assert!(untimed.keyspace_spans().is_empty(), "a join with no ttl at all ages only on the node horizon");
+		assert!(
+			frontier(&untimed, &engine).keyspaces.is_empty(),
+			"a join with no ttl at all ages only on the node horizon"
+		);
+	}
+
+	#[test]
+	fn a_join_naming_only_one_side_still_reports_a_scale_but_no_data_frontier() {
+		// Two properties that must not be conflated. The GROUP data range cannot be erased while
+		// the undeclared side is still probeable, so there is no data frontier - erasing it would
+		// drop rows the other side can still match. But the declared side does age on its own
+		// keyspace, and that sweep buckets activity on a grid sized from the node's scale. Reporting
+		// no scale would stamp every side entry into one bucket, so the sweep could neither locate
+		// them nor bound them - which is how a left-only ttl silently never evicted and a stale left
+		// row kept rejoining fresh right rows.
+		let engine = TestEngine::new();
+		let left = ttl(1_000);
+
+		let mut op = make_op(90, Some(left), None, &engine);
+		op.snapshot = false;
+
+		assert_eq!(op.retention_scale(), Some(left), "the side sweep needs an event-time grid to stamp on");
+		assert_eq!(frontier(&op, &engine).data, None, "one declared side cannot retire the shared group");
+	}
+
+	#[test]
+	fn a_frontier_saturates_while_the_watermark_is_younger_than_the_ttl() {
+		// Early in a node's life the watermark is below the declared ttl. Wrapping would put the
+		// frontier near u64::MAX and make every group due on the first tick, wiping state before a
+		// single row aged out. Every operator subtracts its span from the watermark this way, so the
+		// saturation has to hold at the subtraction, not at the sweep.
+		let engine = TestEngine::new();
+		let mut op = make_op(94, Some(ttl(60_000)), Some(ttl(60_000)), &engine);
+		op.snapshot = false;
+
+		let mut txn = engine.flow_txn().deferred();
+		let young = op.reclaimable_through(&mut txn, DateTime::from_millis(1_000)).unwrap();
+
+		assert_eq!(young.data, Some(DateTime::EPOCH), "a watermark below the ttl floors at the epoch");
+		assert_eq!(
+			young.keyspaces,
+			vec![(Keyspace::JOIN_LEFT, DateTime::EPOCH), (Keyspace::JOIN_RIGHT, DateTime::EPOCH),]
+		);
+	}
+
+	#[test]
+	fn the_scale_takes_the_longer_side_so_slack_is_never_understated() {
+		// Slack is one bucket width and a width is scale/16, so a grid derived from the SHORTER side
+		// would understate the longer side's slack and retire a group mid-bucket, while a coarser
+		// grid can only ever delay. The scale therefore takes the max, never the min and never an
+		// average, whichever order the sides are declared in.
+		let engine = TestEngine::new();
+
+		assert_eq!(
+			make_op(91, Some(ttl(600_000)), Some(ttl(1_000)), &engine).retention_scale(),
+			Some(ttl(600_000))
+		);
+		assert_eq!(
+			make_op(92, Some(ttl(1_000)), Some(ttl(600_000)), &engine).retention_scale(),
+			Some(ttl(600_000))
+		);
+		assert_eq!(
+			make_op(93, None, None, &engine).retention_scale(),
+			None,
+			"a node that declares nothing anywhere stays ungridded and is skipped entirely"
+		);
 	}
 
 	#[test]
@@ -863,9 +963,12 @@ mod span_tests {
 		let engine = TestEngine::new();
 		let left = ttl(50);
 
-		assert_eq!(make_op(74, Some(left), Some(ttl(9_000)), &engine).node_mapping_span(), Some(left));
 		assert_eq!(
-			make_op(75, None, Some(ttl(9_000)), &engine).node_mapping_span(),
+			frontier(&make_op(74, Some(left), Some(ttl(9_000)), &engine), &engine).mapping,
+			Some(behind(left))
+		);
+		assert_eq!(
+			frontier(&make_op(75, None, Some(ttl(9_000)), &engine), &engine).mapping,
 			None,
 			"a join with no left ttl declares no mapping span"
 		);
@@ -880,7 +983,7 @@ mod span_tests {
 		let mut op = make_op(76, Some(ttl(50)), None, &engine);
 		op.latest = true;
 
-		assert_eq!(op.node_mapping_span(), None);
+		assert_eq!(frontier(&op, &engine).mapping, None);
 	}
 
 	#[test]
@@ -900,8 +1003,8 @@ mod span_tests {
 		op.snapshot = false;
 
 		assert_eq!(
-			op.keyspace_spans(),
-			vec![(Keyspace::JOIN_LEFT, Duration::from_seconds(60).unwrap())],
+			frontier(&op, &engine).keyspaces,
+			vec![(Keyspace::JOIN_LEFT, behind(Duration::from_seconds(60).unwrap()))],
 			"latest mode declares the left span and withholds the right"
 		);
 	}
@@ -922,12 +1025,12 @@ mod span_tests {
 		let op = make_op(77, Some(left), Some(ttl(9_000)), &engine);
 
 		assert_eq!(
-			op.keyspace_spans(),
+			frontier(&op, &engine).keyspaces,
 			vec![
-				(Keyspace::JOIN_LEFT, left),
-				(Keyspace::JOIN_PUBLISHED, left),
-				(Keyspace::JOIN_PIN, left),
-				(Keyspace::JOIN_RIGHT, ttl(9_000)),
+				(Keyspace::JOIN_LEFT, behind(left)),
+				(Keyspace::JOIN_PUBLISHED, behind(left)),
+				(Keyspace::JOIN_PIN, behind(left)),
+				(Keyspace::JOIN_RIGHT, behind(ttl(9_000))),
 			],
 			"the ledger must age with the left side and be swept after it"
 		);

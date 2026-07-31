@@ -29,13 +29,19 @@ use reifydb_engine::expression::{
 	context::CompileContext,
 };
 use reifydb_flow::{
-	operator::Operator,
+	operator::{Operator, Reclaimable},
 	transaction::{FlowTransaction, slot::PersistFn},
 };
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{Result, byte_size::ByteSize, error::Error, util::hash::Hash128};
+use reifydb_value::{
+	Result,
+	byte_size::ByteSize,
+	error::Error,
+	util::hash::Hash128,
+	value::{datetime::DateTime, duration::Duration},
+};
 
 use crate::{
 	context::FlowContext,
@@ -89,6 +95,7 @@ pub struct DistinctOperator {
 	pub(super) runtime_context: RuntimeContext,
 	pub(super) ctx: Arc<FlowContext>,
 	pub(super) dropped: SealedDrops,
+	pub(super) ttl: Option<Duration>,
 }
 
 impl DistinctOperator {
@@ -99,6 +106,7 @@ impl DistinctOperator {
 		routines: Routines,
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
+		ttl: Option<Duration>,
 	) -> Self {
 		let compile_ctx = CompileContext {
 			symbols: &ctx.symbols,
@@ -118,6 +126,7 @@ impl DistinctOperator {
 			runtime_context,
 			ctx,
 			dropped: SealedDrops::new(node, DROP_REASON),
+			ttl,
 		}
 	}
 
@@ -224,6 +233,14 @@ impl Operator for DistinctOperator {
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		CAPABILITIES
+	}
+
+	fn retention_scale(&self) -> Option<Duration> {
+		self.ttl
+	}
+
+	fn reclaimable_through(&self, _txn: &mut FlowTransaction, watermark: DateTime) -> Result<Reclaimable> {
+		Ok(self.ttl.map(|ttl| Reclaimable::data(watermark.saturating_sub(ttl))).unwrap_or_default())
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {

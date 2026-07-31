@@ -187,15 +187,6 @@ impl Scenario {
 		self
 	}
 
-	/// Drives a reclaim sweep on `pct` of steps, at the run's current watermark.
-	///
-	/// The percentage is taken out of the same roll the tick branch reads rather than a fresh draw,
-	/// so a scenario that leaves this at zero consumes exactly the randomness it consumed before and
-	/// every existing corpus runs the sequence it always ran.
-	///
-	/// Reclamation is driven at the watermark, so a scenario also needs `tick_pct` above zero for a
-	/// sweep to ever reach anything: with no ticks the watermark never advances and every group stays
-	/// inside its horizon forever.
 	pub fn with_reclaim(mut self, pct: u32) -> Self {
 		self.reclaim_pct = pct;
 		self

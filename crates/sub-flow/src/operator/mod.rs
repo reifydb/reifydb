@@ -5,16 +5,34 @@ use std::{ops::Deref, sync::Arc};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
-	key::operator_state::{GroupSet, Keyspace},
-	metrics::heap::OperatorSample,
+	interface::catalog::flow::FlowNodeId, key::operator_state::GroupSet, metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
-use reifydb_flow::{timer::Timer, transaction::FlowTransaction};
+use reifydb_flow::{
+	operator::Reclaimable, timer::Timer, transaction::FlowTransaction, window::ledger::read_sealed_through,
+};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
 };
+
+pub(crate) fn scale_from_millis(span: Option<u64>) -> Option<Duration> {
+	span.filter(|millis| *millis > 0)
+		.and_then(|millis| i64::try_from(millis).ok())
+		.and_then(|millis| Duration::from_milliseconds(millis).ok())
+}
+
+pub(crate) fn sealed_or_idle(
+	txn: &mut FlowTransaction,
+	node: FlowNodeId,
+	watermark: DateTime,
+	scale: Option<Duration>,
+) -> Result<Reclaimable> {
+	if let Some(sealed) = read_sealed_through(txn, node)? {
+		return Ok(Reclaimable::data(sealed.at()));
+	}
+	Ok(scale.map(|scale| Reclaimable::data(watermark.saturating_sub(scale))).unwrap_or_default())
+}
 
 pub mod aggregation;
 pub mod append;
@@ -161,75 +179,51 @@ impl Operators {
 			Operators::SourceSeries(op) => op.capabilities(),
 		}
 	}
-	pub fn seal_after_ms(&self) -> Option<u64> {
+	pub fn retention_scale(&self) -> Option<Duration> {
 		match self {
-			Operators::Filter(op) => op.seal_after_ms(),
-			Operators::Gate(op) => op.seal_after_ms(),
-			Operators::Map(op) => op.seal_after_ms(),
-			Operators::Extend(op) => op.seal_after_ms(),
-			Operators::Join(op) => op.seal_after_ms(),
-			Operators::Sort(op) => op.seal_after_ms(),
-			Operators::Take(op) => op.seal_after_ms(),
-			Operators::Distinct(op) => op.seal_after_ms(),
-			Operators::Append(op) => op.seal_after_ms(),
-			Operators::Apply(op) => op.seal_after_ms(),
-			Operators::SinkTableView(op) => op.seal_after_ms(),
-			Operators::SinkRingBufferView(op) => op.seal_after_ms(),
-			Operators::SinkSeriesView(op) => op.seal_after_ms(),
-			Operators::Window(op) => op.seal_after_ms(),
-			Operators::Aggregate(op) => op.seal_after_ms(),
-			Operators::SourceTable(op) => op.seal_after_ms(),
-			Operators::SourceView(op) => op.seal_after_ms(),
-			Operators::SourceRingBuffer(op) => op.seal_after_ms(),
-			Operators::SourceSeries(op) => op.seal_after_ms(),
+			Operators::Filter(op) => op.retention_scale(),
+			Operators::Gate(op) => op.retention_scale(),
+			Operators::Map(op) => op.retention_scale(),
+			Operators::Extend(op) => op.retention_scale(),
+			Operators::Join(op) => op.retention_scale(),
+			Operators::Sort(op) => op.retention_scale(),
+			Operators::Take(op) => op.retention_scale(),
+			Operators::Distinct(op) => op.retention_scale(),
+			Operators::Append(op) => op.retention_scale(),
+			Operators::Apply(op) => op.retention_scale(),
+			Operators::SinkTableView(op) => op.retention_scale(),
+			Operators::SinkRingBufferView(op) => op.retention_scale(),
+			Operators::SinkSeriesView(op) => op.retention_scale(),
+			Operators::Window(op) => op.retention_scale(),
+			Operators::Aggregate(op) => op.retention_scale(),
+			Operators::SourceTable(op) => op.retention_scale(),
+			Operators::SourceView(op) => op.retention_scale(),
+			Operators::SourceRingBuffer(op) => op.retention_scale(),
+			Operators::SourceSeries(op) => op.retention_scale(),
 		}
 	}
 
-	pub fn keyspace_spans(&self) -> Vec<(Keyspace, Duration)> {
+	pub fn reclaimable_through(&self, txn: &mut FlowTransaction, watermark: DateTime) -> Result<Reclaimable> {
 		match self {
-			Operators::Filter(op) => op.keyspace_spans(),
-			Operators::Gate(op) => op.keyspace_spans(),
-			Operators::Map(op) => op.keyspace_spans(),
-			Operators::Extend(op) => op.keyspace_spans(),
-			Operators::Join(op) => op.keyspace_spans(),
-			Operators::Sort(op) => op.keyspace_spans(),
-			Operators::Take(op) => op.keyspace_spans(),
-			Operators::Distinct(op) => op.keyspace_spans(),
-			Operators::Append(op) => op.keyspace_spans(),
-			Operators::Apply(op) => op.keyspace_spans(),
-			Operators::SinkTableView(op) => op.keyspace_spans(),
-			Operators::SinkRingBufferView(op) => op.keyspace_spans(),
-			Operators::SinkSeriesView(op) => op.keyspace_spans(),
-			Operators::Window(op) => op.keyspace_spans(),
-			Operators::Aggregate(op) => op.keyspace_spans(),
-			Operators::SourceTable(op) => op.keyspace_spans(),
-			Operators::SourceView(op) => op.keyspace_spans(),
-			Operators::SourceRingBuffer(op) => op.keyspace_spans(),
-			Operators::SourceSeries(op) => op.keyspace_spans(),
-		}
-	}
-
-	pub fn node_mapping_span(&self) -> Option<Duration> {
-		match self {
-			Operators::Filter(op) => op.node_mapping_span(),
-			Operators::Gate(op) => op.node_mapping_span(),
-			Operators::Map(op) => op.node_mapping_span(),
-			Operators::Extend(op) => op.node_mapping_span(),
-			Operators::Join(op) => op.node_mapping_span(),
-			Operators::Sort(op) => op.node_mapping_span(),
-			Operators::Take(op) => op.node_mapping_span(),
-			Operators::Distinct(op) => op.node_mapping_span(),
-			Operators::Append(op) => op.node_mapping_span(),
-			Operators::Apply(op) => op.node_mapping_span(),
-			Operators::SinkTableView(op) => op.node_mapping_span(),
-			Operators::SinkRingBufferView(op) => op.node_mapping_span(),
-			Operators::SinkSeriesView(op) => op.node_mapping_span(),
-			Operators::Window(op) => op.node_mapping_span(),
-			Operators::Aggregate(op) => op.node_mapping_span(),
-			Operators::SourceTable(op) => op.node_mapping_span(),
-			Operators::SourceView(op) => op.node_mapping_span(),
-			Operators::SourceRingBuffer(op) => op.node_mapping_span(),
-			Operators::SourceSeries(op) => op.node_mapping_span(),
+			Operators::Filter(op) => op.reclaimable_through(txn, watermark),
+			Operators::Gate(op) => op.reclaimable_through(txn, watermark),
+			Operators::Map(op) => op.reclaimable_through(txn, watermark),
+			Operators::Extend(op) => op.reclaimable_through(txn, watermark),
+			Operators::Join(op) => op.reclaimable_through(txn, watermark),
+			Operators::Sort(op) => op.reclaimable_through(txn, watermark),
+			Operators::Take(op) => op.reclaimable_through(txn, watermark),
+			Operators::Distinct(op) => op.reclaimable_through(txn, watermark),
+			Operators::Append(op) => op.reclaimable_through(txn, watermark),
+			Operators::Apply(op) => op.reclaimable_through(txn, watermark),
+			Operators::SinkTableView(op) => op.reclaimable_through(txn, watermark),
+			Operators::SinkRingBufferView(op) => op.reclaimable_through(txn, watermark),
+			Operators::SinkSeriesView(op) => op.reclaimable_through(txn, watermark),
+			Operators::Window(op) => op.reclaimable_through(txn, watermark),
+			Operators::Aggregate(op) => op.reclaimable_through(txn, watermark),
+			Operators::SourceTable(op) => op.reclaimable_through(txn, watermark),
+			Operators::SourceView(op) => op.reclaimable_through(txn, watermark),
+			Operators::SourceRingBuffer(op) => op.reclaimable_through(txn, watermark),
+			Operators::SourceSeries(op) => op.reclaimable_through(txn, watermark),
 		}
 	}
 

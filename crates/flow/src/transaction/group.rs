@@ -22,13 +22,18 @@ use reifydb_core::{
 	metrics::heap::{StateCompleteness, StateMemory},
 	state::{
 		group::{ActivityBuckets, GroupRecord},
-		horizon::{Cutoff, Horizon, Position},
+		horizon::{Cutoff, Position, activity_buckets},
 		membership::{MEMBERSHIP_BYTE_CAP, MembershipTracker},
 	},
 };
 use reifydb_runtime::cache::slab::SlabLru;
 use reifydb_value::{
-	Result, byte_size::ByteSize, count::Count, reifydb_assertions, util::hash::xxh3_64, value::datetime::DateTime,
+	Result,
+	byte_size::ByteSize,
+	count::Count,
+	reifydb_assertions,
+	util::hash::xxh3_64,
+	value::{datetime::DateTime, duration::Duration},
 };
 
 use super::FlowTransaction;
@@ -248,9 +253,9 @@ impl GroupInterner {
 		}
 	}
 
-	pub fn set_activity_grid(&self, node: FlowNodeId, horizon: Horizon) {
+	pub fn set_activity_grid(&self, node: FlowNodeId, scale: Option<Duration>) {
 		let mut state = self.inner.nodes.entry(node).or_default();
-		state.buckets = Some(horizon.buckets());
+		state.buckets = Some(activity_buckets(scale));
 	}
 
 	pub fn buckets(&self, node: FlowNodeId) -> ActivityBuckets {
@@ -1640,7 +1645,7 @@ mod tests {
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 1_000);
 		// A 1600ms seal horizon quantises into sixteen buckets of 100, which is the narrow width this
 		// test needs; the width is never set directly because it must always be the horizon's own.
-		interner.set_activity_grid(FlowNodeId(2), Horizon::of(Duration::from_milliseconds(1_600).unwrap()));
+		interner.set_activity_grid(FlowNodeId(2), Some(Duration::from_milliseconds(1_600).unwrap()));
 		let mut txn = deferred(&engine);
 
 		let (wide, _) = intern_at(

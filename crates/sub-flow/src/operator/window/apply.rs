@@ -962,13 +962,6 @@ fn seal_due_windows(
 		res
 	};
 	Span::current().record("expired", expired.len());
-	let mut store = OperatorStateStore::new(txn, operator.core.node);
-	for window in expired {
-		operator.core.engine_meta().remove(&mut store, &EngineMetaKey(window.group_id))?;
-		if window.accumulator_present {
-			store.remove_row_number(window.group_id, &utils::empty_key())?;
-		}
-	}
 	Ok(Vec::new())
 }
 

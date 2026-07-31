@@ -120,8 +120,8 @@ impl<K> HeapSize for GroupMeta<K> {
 /// engine's per-group meta so the meta sweep is uniform. A group whose high water
 /// has fallen below the sweep threshold has stopped advancing (no recent events)
 /// and its meta is safe to reclaim: the meta only drives late-event rejection, and
-/// by the time the threshold (>= the operator's lateness/retention) passes it, any
-/// late event for the group is already past its horizon.
+/// by the time the threshold (>= the operator's retention) passes it, any late event
+/// for the group is already past its horizon.
 pub(crate) trait MetaHighWater: OperatorState {
 	fn archived_high_water_order(archived: &Self::Archived) -> Option<u64>;
 }

@@ -13,10 +13,7 @@
 //! registers an activity grid and stamps coordinates from the rows), and `MaterializedView` now
 //! reports an update that lands on a live row instead of silently overwriting it.
 
-use reifydb_core::{
-	common::{WindowKind, WindowSize},
-	state::horizon::Horizon,
-};
+use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_sub_flow::operator::window::operator::WindowOperator;
 use reifydb_testing_chaos::operator::{reclaim::Reclaimed, session::Session};
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
@@ -26,7 +23,7 @@ use crate::{
 	operators::window::{WindowSpec, build},
 };
 
-// Every shape below is sized at this, and with zero grace and zero lateness it is the horizon too.
+// Every shape below is sized at this, and with zero grace it is the horizon too.
 // The suite does not get to pick that number: `resolve_horizon` lets an operator's own seal span
 // override whatever a harness declares, so a hand-chosen span would describe a node the engine
 // cannot register and every cutoff derived from it would be arithmetic that never ships.
@@ -66,7 +63,6 @@ fn spec() -> WindowSpec {
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
 		grace: Duration::default(),
-		lateness: Duration::default(),
 	}
 }
 
@@ -75,7 +71,7 @@ fn harness() -> Harness<WindowOperator> {
 	// `reclaim_nodes` skips phase two outright, so every "the identity half survived" assertion in
 	// this file would hold because the phase never ran rather than because the split works.
 	let span = Duration::from_seconds(WINDOW_SECS).expect("span is representable");
-	Harness::new(|runtime| build(&spec(), runtime)).with_activity_grid(Horizon::of(span)).with_sink_row_ttl(span)
+	Harness::new(|runtime| build(&spec(), runtime)).with_activity_grid().with_sink_row_ttl(span)
 }
 
 fn at(ms: u64) -> DateTime {
@@ -128,9 +124,8 @@ fn harness_of(kind: WindowKind) -> Harness<WindowOperator> {
 		group_by: "g",
 		aggregations: "total: math::sum(v)",
 		grace: Duration::default(),
-		lateness: Duration::default(),
 	};
-	Harness::new(|runtime| build(&spec, runtime)).with_activity_grid(Horizon::of(span)).with_sink_row_ttl(span)
+	Harness::new(|runtime| build(&spec, runtime)).with_activity_grid().with_sink_row_ttl(span)
 }
 
 #[test]

@@ -12,8 +12,16 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
-use reifydb_value::{Result, error::Error, reifydb_assertions, value::row_number::RowNumber};
+use reifydb_flow::{
+	operator::{Operator, Reclaimable},
+	transaction::FlowTransaction,
+};
+use reifydb_value::{
+	Result,
+	error::Error,
+	reifydb_assertions,
+	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+};
 
 use crate::{
 	error::FlowGraphError,
@@ -39,10 +47,17 @@ pub struct AppendOperator {
 	input_nodes: Vec<FlowNodeId>,
 
 	dropped: SealedDrops,
+
+	ttl: Option<Duration>,
 }
 
 impl AppendOperator {
-	pub fn new(node: FlowNodeId, parents: Vec<OperatorCell>, input_nodes: Vec<FlowNodeId>) -> Self {
+	pub fn new(
+		node: FlowNodeId,
+		parents: Vec<OperatorCell>,
+		input_nodes: Vec<FlowNodeId>,
+		ttl: Option<Duration>,
+	) -> Self {
 		reifydb_assertions! {
 			assert_eq!(parents.len(), input_nodes.len());
 			assert!(parents.len() >= 2, "Append requires at least 2 inputs");
@@ -53,6 +68,7 @@ impl AppendOperator {
 			parents,
 			input_nodes,
 			dropped: SealedDrops::new(node, DROP_REASON),
+			ttl,
 		}
 	}
 
@@ -63,6 +79,7 @@ impl AppendOperator {
 			parents: Vec::new(),
 			input_nodes: Vec::new(),
 			dropped: SealedDrops::new(node, DROP_REASON),
+			ttl: None,
 		}
 	}
 
@@ -102,6 +119,14 @@ impl Operator for AppendOperator {
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		CAPABILITIES
+	}
+
+	fn retention_scale(&self) -> Option<Duration> {
+		self.ttl
+	}
+
+	fn reclaimable_through(&self, _txn: &mut FlowTransaction, watermark: DateTime) -> Result<Reclaimable> {
+		Ok(self.ttl.map(|ttl| Reclaimable::data(watermark.saturating_sub(ttl))).unwrap_or_default())
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
@@ -255,9 +280,7 @@ impl AppendOperator {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		common::CommitVersion,
-		key::operator_state::group_inner_range,
-		state::horizon::{Cutoff, Horizon},
+		common::CommitVersion, key::operator_state::group_inner_range, state::horizon::Cutoff,
 		value::column::columns::Columns,
 	};
 	use reifydb_engine::test_harness::TestEngine;
@@ -280,7 +303,7 @@ mod tests {
 	// bucket expectation are unchanged.
 	fn txn_at(engine: &TestEngine, node: FlowNodeId, coordinate: u64) -> FlowTransaction {
 		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
-		txn.group_interner().set_activity_grid(node, Horizon::of(Duration::from_seconds(60).unwrap()));
+		txn.group_interner().set_activity_grid(node, Some(Duration::from_seconds(60).unwrap()));
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: DateTime::from_nanos(coordinate),
 			version: CommitVersion(coordinate),

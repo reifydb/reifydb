@@ -7,9 +7,32 @@ use reifydb_core::{
 	key::operator_state::{GroupSet, Keyspace},
 	metrics::heap::OperatorSample,
 };
-use reifydb_value::{Result, value::duration::Duration};
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, duration::Duration},
+};
 
 use crate::{timer::Timer, transaction::FlowTransaction};
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Reclaimable {
+	pub data: Option<DateTime>,
+	pub keyspaces: Vec<(Keyspace, DateTime)>,
+	pub mapping: Option<DateTime>,
+}
+
+impl Reclaimable {
+	pub fn data(at: DateTime) -> Self {
+		Self {
+			data: Some(at),
+			..Self::default()
+		}
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.data.is_none() && self.keyspaces.is_empty() && self.mapping.is_none()
+	}
+}
 
 pub trait Operator: Send {
 	fn id(&self) -> FlowNodeId;
@@ -22,16 +45,12 @@ pub trait Operator: Send {
 		Ok(None)
 	}
 
-	fn seal_after_ms(&self) -> Option<u64> {
+	fn retention_scale(&self) -> Option<Duration> {
 		None
 	}
 
-	fn keyspace_spans(&self) -> Vec<(Keyspace, Duration)> {
-		Vec::new()
-	}
-
-	fn node_mapping_span(&self) -> Option<Duration> {
-		None
+	fn reclaimable_through(&self, _txn: &mut FlowTransaction, _watermark: DateTime) -> Result<Reclaimable> {
+		Ok(Reclaimable::default())
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

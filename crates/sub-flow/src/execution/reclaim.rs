@@ -13,15 +13,15 @@ use reifydb_core::{
 	},
 	key::operator_state::{GroupId, GroupSet, Keyspace},
 	lifecycle::class::{Floor, FloorTerm, RetentionClass},
-	state::horizon::{Cutoff, Horizon},
+	state::horizon::Cutoff,
 };
-use reifydb_flow::{transaction::FlowTransaction, window::ledger::read_sealed_through};
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_rql::flow::{flow::FlowDag, node::FlowNodeType};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
 };
-use tracing::instrument;
+use tracing::{Span, instrument};
 
 use crate::engine::FlowEngineInner;
 
@@ -99,9 +99,13 @@ pub struct ReclaimReport {
 }
 
 impl ReclaimReport {
-	fn bind(&mut self, cutoffs: &Cutoffs) {
-		self.data_floor = lowest(self.data_floor, Some(cutoffs.data_floor));
-		self.identity_floor = lowest(self.identity_floor, cutoffs.identity_floor);
+	fn bind(&mut self, data: Option<Cutoff>, checkpoint: CommitVersion) {
+		if data.is_none() {
+			return;
+		}
+		let floor = (Floor::Version(checkpoint), FloorTerm::OwningFlowCheckpoint);
+		self.data_floor = lowest(self.data_floor, Some(floor));
+		self.identity_floor = lowest(self.identity_floor, Some(floor));
 	}
 
 	pub fn node(&self, node: FlowNodeId) -> Option<&NodeReclaim> {
@@ -121,18 +125,13 @@ fn lowest(current: Option<(Floor, FloorTerm)>, candidate: Option<(Floor, FloorTe
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Cutoffs {
-	pub data: Cutoff,
-	pub identity: Option<Cutoff>,
-	pub watermark: DateTime,
-	pub slack: Duration,
-	pub data_floor: (Floor, FloorTerm),
-	pub identity_floor: Option<(Floor, FloorTerm)>,
-}
-
 impl FlowEngineInner {
-	#[instrument(name = "lifecycle::operator::group::scan", level = "debug", skip(self, txn), fields(flow_id = ?flow_id))]
+	#[instrument(
+		name = "lifecycle::operator::group::scan",
+		level = "debug",
+		skip(self, txn),
+		fields(flow_id = ?flow_id, perpetual_nodes = tracing::field::Empty, ungridded_nodes = tracing::field::Empty)
+	)]
 	pub fn reclaim_flow(
 		&self,
 		txn: &mut FlowTransaction,
@@ -149,9 +148,11 @@ impl FlowEngineInner {
 
 		let watermark = self.flow_watermark(txn, flow)?;
 
+		let identity = identity_cutoff(identity_span, watermark);
+
 		let mut inputs = Vec::new();
 		for node_id in flow.get_node_ids() {
-			let Some(node) = flow.get_node(&node_id) else {
+			let Some(_) = flow.get_node(&node_id) else {
 				continue;
 			};
 			let Some(operator) = self.operators.get(&node_id) else {
@@ -161,42 +162,33 @@ impl FlowEngineInner {
 				report.perpetual_nodes += 1;
 				continue;
 			}
-			let horizon = self.node_horizon(node);
-			let keyspace_spans = operator.keyspace_spans();
-			let mapping_span = operator.node_mapping_span();
-			if !horizon.reclaims() && keyspace_spans.is_empty() && mapping_span.is_none() {
+			let reclaimable = operator.reclaimable_through(txn, watermark)?;
+			if reclaimable.is_empty() {
 				report.perpetual_nodes += 1;
 				continue;
 			}
-			let Some(grid) = self.substrate.group.buckets(node_id).event_grid() else {
+			if self.substrate.group.buckets(node_id).event_grid().is_none() {
 				report.ungridded_nodes += 1;
 				continue;
-			};
-			let slack = grid.width();
-			let sealed_through = if seals_on_timer(&node.ty) {
-				read_sealed_through(txn, node_id)?.map(|sealed| sealed.at())
-			} else {
-				None
-			};
-			let resolved = resolve_sweep_inputs(
-				SweepSpec {
-					node: node_id,
-					horizon,
-					keyspace_spans,
-					mapping_span,
-					identity_span,
-					sealed_through,
-					slack,
-					mapping_cursor: self.mapping_cursors.entry(node_id).or_default().clone(),
-				},
-				watermark,
-				checkpoint,
-			);
-			if let Some(cutoffs) = &resolved.cutoffs {
-				report.bind(cutoffs);
 			}
-			inputs.push(resolved.inputs);
+			report.bind(reclaimable.data.map(Cutoff), checkpoint);
+			inputs.push(SweepInputs {
+				node: node_id,
+				data: reclaimable.data.map(Cutoff),
+				identity,
+				keyspaces: reclaimable
+					.keyspaces
+					.into_iter()
+					.map(|(keyspace, at)| (keyspace, Cutoff(at)))
+					.collect(),
+				mapping: reclaimable.mapping.map(Cutoff),
+				mapping_cursor: self.mapping_cursors.entry(node_id).or_default().clone(),
+			});
 		}
+
+		let span = Span::current();
+		span.record("perpetual_nodes", report.perpetual_nodes);
+		span.record("ungridded_nodes", report.ungridded_nodes);
 
 		let outcome = reclaim_nodes(inputs, txn, &mut remaining, &mut report, &mut |node, groups| {
 			if let Some(operator) = self.operators.get(&node) {
@@ -267,44 +259,6 @@ pub struct SweepInputs {
 
 pub struct SweepOutcome {
 	pub cursors: Vec<(FlowNodeId, Option<EncodedKey>)>,
-}
-
-pub struct SweepSpec {
-	pub node: FlowNodeId,
-	pub horizon: Horizon,
-	pub keyspace_spans: Vec<(Keyspace, Duration)>,
-	pub mapping_span: Option<Duration>,
-	pub identity_span: Option<Duration>,
-	pub sealed_through: Option<DateTime>,
-	pub slack: Duration,
-	pub mapping_cursor: Option<EncodedKey>,
-}
-
-pub struct ResolvedSweep {
-	pub inputs: SweepInputs,
-	pub cutoffs: Option<Cutoffs>,
-}
-
-pub fn resolve_sweep_inputs(spec: SweepSpec, watermark: DateTime, checkpoint: CommitVersion) -> ResolvedSweep {
-	let slack = spec.slack;
-	let cutoffs = seal_cutoffs(spec.horizon, watermark, spec.identity_span, spec.sealed_through, slack, checkpoint);
-	let behind = |span: Duration| Cutoff(watermark.saturating_sub(span).saturating_sub(slack));
-
-	ResolvedSweep {
-		inputs: SweepInputs {
-			node: spec.node,
-			data: cutoffs.as_ref().map(|cutoffs| cutoffs.data),
-			identity: cutoffs.as_ref().and_then(|cutoffs| cutoffs.identity),
-			keyspaces: spec
-				.keyspace_spans
-				.into_iter()
-				.map(|(keyspace, span)| (keyspace, behind(span)))
-				.collect(),
-			mapping: spec.mapping_span.map(behind),
-			mapping_cursor: spec.mapping_cursor,
-		},
-		cutoffs,
-	}
 }
 
 pub fn reclaim_nodes(
@@ -474,26 +428,8 @@ fn reclaim_identity(
 	Ok(reclaimed)
 }
 
-fn seal_cutoffs(
-	horizon: Horizon,
-	watermark: DateTime,
-	identity_span: Option<Duration>,
-	sealed_through: Option<DateTime>,
-	slack: Duration,
-	checkpoint: CommitVersion,
-) -> Option<Cutoffs> {
-	horizon.cutoff(watermark).map(|data| Cutoffs {
-		data: Cutoff(sealed_through.map_or(data, |sealed| data.min(sealed))),
-		identity: identity_span.map(|span| Cutoff(watermark.saturating_sub(span).saturating_sub(slack))),
-		watermark,
-		slack,
-		data_floor: (Floor::Version(checkpoint), FloorTerm::OwningFlowCheckpoint),
-		identity_floor: Some((Floor::Version(checkpoint), FloorTerm::OwningFlowCheckpoint)),
-	})
-}
-
-fn seals_on_timer(ty: &FlowNodeType) -> bool {
-	matches!(ty, FlowNodeType::Window { kind, .. } if !kind.size().is_some_and(|size| size.is_count()))
+fn identity_cutoff(identity_span: Option<Duration>, watermark: DateTime) -> Option<Cutoff> {
+	identity_span.map(|span| Cutoff(watermark.saturating_sub(span)))
 }
 
 fn sink_storage(ty: &FlowNodeType) -> Option<StorageId> {
@@ -528,7 +464,6 @@ mod tests {
 	use super::*;
 
 	const NODE: FlowNodeId = FlowNodeId(1);
-	const WIDTH: u64 = 100;
 
 	fn ms(milliseconds: i64) -> Duration {
 		Duration::from_milliseconds(milliseconds).expect("test duration must be representable")
@@ -553,7 +488,7 @@ mod tests {
 		);
 		// The width is never set on its own: it is always the one the node's horizon derives, and a
 		// 1600ms seal horizon derives exactly WIDTH. Stamping therefore happens in the event domain.
-		txn.group_interner().set_activity_grid(NODE, Horizon::of(ms(1_600)));
+		txn.group_interner().set_activity_grid(NODE, Some(ms(1_600)));
 		txn
 	}
 
@@ -593,7 +528,7 @@ mod tests {
 			Clock::Mock(MockClock::from_millis(0)),
 		);
 		for node in nodes {
-			txn.group_interner().set_activity_grid(*node, Horizon::of(ms(1_600)));
+			txn.group_interner().set_activity_grid(*node, Some(ms(1_600)));
 		}
 		txn
 	}
@@ -969,31 +904,6 @@ mod tests {
 	}
 
 	#[test]
-	fn a_side_span_is_measured_from_the_watermark_with_the_same_slack_identity_gets() {
-		// The side cutoff is derived in the driver from cutoffs.watermark and cutoffs.slack, so those
-		// have to survive on the struct with the meaning the identity cutoff already gives them:
-		// bucketed activity means a group stamped anywhere inside a bucket reads as active at the
-		// bucket start, and subtracting one width is what stops a side being retired mid-bucket.
-		let cutoffs = seal_cutoffs(
-			Horizon::of(ms(1_600)),
-			DateTime::from_millis(1_000_000),
-			Some(ms(60_000)),
-			None,
-			ms(WIDTH as i64),
-			CommitVersion(7),
-		)
-		.unwrap();
-
-		assert_eq!(cutoffs.watermark, DateTime::from_millis(1_000_000));
-		assert_eq!(cutoffs.slack, ms(WIDTH as i64));
-		assert_eq!(
-			Cutoff(cutoffs.watermark.saturating_sub(ms(60_000)).saturating_sub(cutoffs.slack)),
-			cutoffs.identity.unwrap(),
-			"a side span of the same length must land exactly where the identity span does"
-		);
-	}
-
-	#[test]
 	fn the_identity_phase_only_takes_groups_the_data_phase_already_finished() {
 		// The identity scan reads a different index precisely so it can never reach a live group. If it
 		// could, a group merely idle enough for its data horizon would lose its mapping at the same
@@ -1132,139 +1042,54 @@ mod tests {
 	}
 
 	#[test]
-	fn a_seal_node_measures_both_phases_in_event_time() {
-		// Seal spans are window coordinates and idle spans are wall-clock; there is no exchange rate. A
-		// seal node's identity horizon therefore has to be subtracted from the same watermark its data
-		// horizon is, or the two phases would be ordered by comparing milliseconds against commit
-		// versions and could fire in either order.
-		let horizon = Horizon::of(ms(1_600));
-		let cutoffs = seal_cutoffs(
-			horizon,
-			DateTime::from_millis(1_000_000),
-			Some(ms(60_000)),
-			None,
-			ms(WIDTH as i64),
-			CommitVersion(7),
-		)
-		.unwrap();
-
-		assert_eq!(cutoffs.data, Cutoff(DateTime::from_millis(998_400)), "watermark minus the seal span");
-		assert_eq!(
-			cutoffs.identity,
-			Some(Cutoff(DateTime::from_millis(1_000_000 - 60_000 - WIDTH))),
-			"watermark minus the sink row ttl, minus one bucket of slack"
-		);
-		assert!(
-			cutoffs.identity.unwrap().raw() < cutoffs.data.raw(),
-			"identity must always trail data, or the mapping dies before the state does"
-		);
-	}
-
-	#[test]
-	fn a_seal_node_with_a_forever_sink_reclaims_data_and_keeps_identity() {
-		// A sink row with no ttl lives forever, so the mapping it names has to as well. This is the
-		// honest perpetual case: the data phase still bounds the accumulators, and the identity residue
-		// is what the step-8 report is for.
-		let cutoffs = seal_cutoffs(
-			Horizon::of(ms(1_600)),
-			DateTime::from_millis(1_000_000),
-			None,
-			None,
-			ms(WIDTH as i64),
-			CommitVersion(7),
-		)
-		.unwrap();
-
-		assert_eq!(cutoffs.data, Cutoff(DateTime::from_millis(998_400)));
-		assert_eq!(cutoffs.identity, None);
-	}
-
-	#[test]
-	fn reclaim_never_advances_past_what_the_operator_has_sealed() {
-		// A live defect, not a hypothetical. Once reclaim reads the FLOW watermark, a processing
-		// domain flow's watermark is the wall clock and advances forever - so an idle node's state
-		// was reclaimed roughly one span after its last write, which beat that node's own Seal timer.
-		// The seal then fired, found the accumulator already erased, emitted NO withdrawal, and the
-		// row it had published stayed in the view forever while its window result was lost. Silent
-		// in every log.
-		// The reclaim cutoff must therefore never pass the operator's seal ledger: state that has not
-		// been sealed is not reclaimable, whatever the clock says.
-		let horizon = Horizon::of(ms(1_600));
+	fn the_sink_row_ttl_bounds_identity_from_the_same_watermark_the_operator_answered_against() {
+		// The identity phase is the one cutoff the engine still derives, because it belongs to the
+		// SINK, not to the operator: a mapping has to outlive the published row naming it, and that
+		// row lives exactly the sink's row ttl. Measuring it from a different clock than the
+		// operator's own frontier would order the two phases by comparing milliseconds against commit
+		// versions, and they could then fire in either order.
 		let watermark = DateTime::from_millis(1_000_000);
-		let sealed = DateTime::from_millis(990_000);
 
-		let clamped = seal_cutoffs(horizon, watermark, None, Some(sealed), ms(WIDTH as i64), CommitVersion(7))
-			.unwrap();
 		assert_eq!(
-			clamped.data,
-			Cutoff(sealed),
-			"the seal ledger is behind the watermark derived cutoff, so it must be the one that binds"
+			identity_cutoff(Some(ms(60_000)), watermark),
+			Some(Cutoff(DateTime::from_millis(940_000))),
+			"watermark minus the sink row ttl"
 		);
-
-		// An operator that has sealed further than the horizon reaches must not be dragged FORWARD by
-		// the clamp - the horizon still bounds it.
-		let ahead = seal_cutoffs(
-			horizon,
-			watermark,
-			None,
-			Some(DateTime::from_millis(999_999)),
-			ms(WIDTH as i64),
-			CommitVersion(7),
-		)
-		.unwrap();
-		assert_eq!(
-			ahead.data,
-			Cutoff(DateTime::from_millis(998_400)),
-			"the clamp is a floor on aggressiveness, never a licence to reclaim further"
-		);
-
-		// An operator that seals nothing (count based, or any non sealing operator) is unconstrained.
-		let unsealed =
-			seal_cutoffs(horizon, watermark, None, None, ms(WIDTH as i64), CommitVersion(7)).unwrap();
-		assert_eq!(unsealed.data, Cutoff(DateTime::from_millis(998_400)));
 	}
 
 	#[test]
-	fn the_owning_flow_is_always_the_binding_term_for_both_floors() {
-		// What survives of a_lagging_flow_holds_both_idle_cutoffs_down: a flow parked below the
-		// cutoff has input it has not applied yet, and reclaiming above its checkpoint would erase
-		// state its own unprocessed changes still refer to. The floor therefore binds to the flow's
-		// checkpoint, and the binding has to NAME the flow or a stalled node is indistinguishable
-		// from an idle one in the report.
-		// The cutoff itself is event-domain and no longer clamped by the checkpoint, so the
-		// checkpoint shows up exclusively as the reported floor. That is what this pins.
-		let cutoffs = seal_cutoffs(
-			Horizon::of(ms(1_600)),
-			DateTime::from_millis(1_000_000),
-			Some(ms(60_000)),
-			None,
-			ms(WIDTH as i64),
-			CommitVersion(10),
-		)
-		.unwrap();
+	fn a_forever_sink_keeps_identity_entirely() {
+		// A sink row with no ttl lives forever, so the mapping it names has to as well. This is the
+		// honest perpetual case: the data phase still bounds the accumulators from the operator's own
+		// frontier, and the identity residue is what the report is for.
+		assert_eq!(identity_cutoff(None, DateTime::from_millis(1_000_000)), None);
+	}
 
-		assert_eq!(cutoffs.data_floor, (Floor::Version(CommitVersion(10)), FloorTerm::OwningFlowCheckpoint));
+	#[test]
+	fn both_floors_bind_to_the_owning_flows_checkpoint_and_only_when_data_is_reclaimable() {
+		// A flow parked below the cutoff has input it has not applied yet, and reclaiming above its
+		// checkpoint would erase state its own unprocessed changes still refer to. The floor
+		// therefore binds to the flow's checkpoint, and the binding has to NAME the flow or a stalled
+		// node is indistinguishable from an idle one in the report.
+		// The cutoff itself is event-domain and is never clamped by the checkpoint, so the checkpoint
+		// shows up exclusively as the reported floor. A node reporting no data frontier contributes
+		// no floor at all, or a perpetual node would look like the one holding reclamation back.
+		let mut report = ReclaimReport::default();
+		report.bind(Some(Cutoff(DateTime::from_millis(998_400))), CommitVersion(10));
+
 		assert_eq!(
-			cutoffs.identity_floor,
+			report.data_floor,
 			Some((Floor::Version(CommitVersion(10)), FloorTerm::OwningFlowCheckpoint))
 		);
-	}
-
-	#[test]
-	fn a_perpetual_node_produces_no_cutoff() {
-		// Nothing derivable means nothing reclaimable. A cutoff of zero here would be equally safe, but
-		// it would still cost a scan per tick per node forever.
 		assert_eq!(
-			seal_cutoffs(
-				Horizon::Perpetual,
-				DateTime::from_millis(1_000_000),
-				Some(ms(60_000)),
-				None,
-				ms(WIDTH as i64),
-				CommitVersion(7)
-			),
-			None
+			report.identity_floor,
+			Some((Floor::Version(CommitVersion(10)), FloorTerm::OwningFlowCheckpoint))
 		);
+
+		let mut perpetual = ReclaimReport::default();
+		perpetual.bind(None, CommitVersion(10));
+		assert_eq!(perpetual.data_floor, None, "a node with no frontier holds nothing back");
+		assert_eq!(perpetual.identity_floor, None);
 	}
 
 	#[test]
@@ -1272,67 +1097,15 @@ mod tests {
 		// The plane reports one floor per class, and a class is only as free as its most constrained
 		// node. Reporting a later node's healthier floor would hide the one node actually holding
 		// reclamation back.
-		let at = |checkpoint: u64| {
-			seal_cutoffs(
-				Horizon::of(ms(1_600)),
-				DateTime::from_millis(1_000_000),
-				None,
-				None,
-				ms(WIDTH as i64),
-				CommitVersion(checkpoint),
-			)
-			.unwrap()
-		};
+		let data = Some(Cutoff(DateTime::from_millis(998_400)));
 		let mut report = ReclaimReport::default();
-		report.bind(&at(9_000));
-		report.bind(&at(400));
-		report.bind(&at(7_000));
+		report.bind(data, CommitVersion(9_000));
+		report.bind(data, CommitVersion(400));
+		report.bind(data, CommitVersion(7_000));
 
 		assert_eq!(
 			report.data_floor,
 			Some((Floor::Version(CommitVersion(400)), FloorTerm::OwningFlowCheckpoint))
-		);
-	}
-
-	#[test]
-	fn the_slack_is_the_width_the_interner_actually_stamps_with() {
-		// The slack exists because a group's recorded last-activity is only accurate to one bucket, so it
-		// has to be the width the stamping side really used. Deriving it independently from the horizon
-		// would silently diverge whenever the two disagreed, and an identity cutoff that is one bucket
-		// too high retires a mapping while the sink row naming it is still inside its own ttl.
-		let horizon = Horizon::of(ms(1_600));
-
-		assert_eq!(
-			horizon.buckets().event_grid().expect("a seal horizon buckets in event time").width(),
-			ms(WIDTH as i64),
-			"the width registration derives for this horizon"
-		);
-		assert_eq!(
-			seal_cutoffs(
-				horizon,
-				DateTime::from_millis(1_000_000),
-				Some(ms(60_000)),
-				None,
-				ms(WIDTH as i64),
-				CommitVersion(7)
-			)
-			.unwrap()
-			.identity,
-			Some(Cutoff(DateTime::from_millis(939_900)))
-		);
-		assert_eq!(
-			seal_cutoffs(
-				horizon,
-				DateTime::from_millis(1_000_000),
-				Some(ms(60_000)),
-				None,
-				ms(4_096),
-				CommitVersion(7)
-			)
-			.unwrap()
-			.identity,
-			Some(Cutoff(DateTime::from_millis(935_904))),
-			"a node stamping with a wider bucket must get correspondingly wider slack"
 		);
 	}
 }
