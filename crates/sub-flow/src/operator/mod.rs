@@ -9,7 +9,10 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_flow::{
-	operator::Reclaimable, timer::Timer, transaction::FlowTransaction, window::ledger::read_sealed_through,
+	operator::Reclaimable,
+	timer::Timer,
+	transaction::FlowTransaction,
+	window::{ledger::read_sealed_through, policy::SealPolicy},
 };
 use reifydb_value::{
 	Result,
@@ -28,10 +31,13 @@ pub(crate) fn sealed_or_idle(
 	watermark: DateTime,
 	scale: Option<Duration>,
 ) -> Result<Reclaimable> {
+	let Some(scale) = scale else {
+		return Ok(Reclaimable::default());
+	};
 	if let Some(sealed) = read_sealed_through(txn, node)? {
-		return Ok(Reclaimable::data(sealed.at()));
+		return Ok(SealPolicy::of(scale).sealed_anchor(sealed.at()).map(Reclaimable::data).unwrap_or_default());
 	}
-	Ok(scale.map(|scale| Reclaimable::data(watermark.saturating_sub(scale))).unwrap_or_default())
+	Ok(Reclaimable::data(watermark.saturating_sub(scale)))
 }
 
 pub mod aggregation;

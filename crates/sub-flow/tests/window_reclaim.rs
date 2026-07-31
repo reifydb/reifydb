@@ -114,9 +114,19 @@ fn drains_a_stranded_window_group(view_kind: &str) {
 	db.command("DELETE app::t FILTER { id == 1 }");
 	db.await_exact_row_count("FROM app::w", 0, TIMEOUT);
 
-	// Push the event watermark well past that window's horizon (interval + grace = 2s), so
-	// the stranded group is unambiguously idle while the new one is not.
-	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 7, ts: "2026-01-01T00:05:00Z" }]"#);
+	// A second window, emptied like the first. Its only job is to arm a seal timer one window later
+	// than the stranded group's own. Reclamation is bounded by the seal ledger, and a timer firing at
+	// T only proves windows anchored at or before T - interval - grace - 1 have closed - so the first
+	// window's timer alone leaves the frontier inside the very bucket the stranded group sits in, and
+	// nothing is reclaimable. This carries the ledger one window further so the frontier clears it.
+	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 5, ts: "2026-01-01T00:00:01Z" }]"#);
+	db.await_row_count("FROM app::w", 1, TIMEOUT);
+	db.command("DELETE app::t FILTER { id == 2 }");
+	db.await_exact_row_count("FROM app::w", 0, TIMEOUT);
+
+	// Push the event watermark well past both windows' horizon (interval + grace = 2s), which fires
+	// their seal timers and leaves the stranded groups unambiguously idle while the new one is not.
+	db.command(r#"INSERT app::t [{ id: 3, g: 1, v: 7, ts: "2026-01-01T00:05:00Z" }]"#);
 	db.await_row_count("FROM app::w", 1, TIMEOUT);
 
 	let reclaimed = db.await_row_count(RECLAIMED_A_GROUP, 1, TIMEOUT);
@@ -134,7 +144,7 @@ fn drains_a_stranded_window_group(view_kind: &str) {
 
 	// Reclamation must take only the idle group. The live window still owns its state and must keep
 	// accumulating onto it, or the pass has erased something a batch was still using.
-	db.command(r#"INSERT app::t [{ id: 3, g: 1, v: 4, ts: "2026-01-01T00:05:00.500Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 4, g: 1, v: 4, ts: "2026-01-01T00:05:00.500Z" }]"#);
 	let rows = db.await_row_count("FROM app::w FILTER { total == 11 }", 1, TIMEOUT);
 	assert_eq!(
 		rows,

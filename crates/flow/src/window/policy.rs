@@ -71,6 +71,12 @@ impl SealPolicy {
 		Self::extended_by_grace(span, grace)
 	}
 
+	pub fn of(admissible: Duration) -> Self {
+		Self {
+			admissible: AdmissibleSpan(admissible),
+		}
+	}
+
 	fn extended_by_grace(base: Duration, grace: Duration) -> Self {
 		Self {
 			admissible: AdmissibleSpan(base.try_add(grace).unwrap_or(base)),
@@ -93,6 +99,13 @@ impl SealPolicy {
 
 	pub fn seal_instant_from_order(self, anchor_order: u64) -> SealInstant {
 		self.seal_instant(<DateTime as WindowCoord>::from_order(anchor_order))
+	}
+
+	pub fn sealed_anchor(self, at: DateTime) -> Option<DateTime> {
+		at.to_order()
+			.checked_sub(self.admissible.millis())
+			.and_then(|anchor| anchor.checked_sub(1))
+			.map(<DateTime as WindowCoord>::from_order)
 	}
 }
 
@@ -143,6 +156,42 @@ mod tests {
 
 		assert_eq!(policy.admissible().millis(), 1_200);
 		assert_eq!(policy.seal_instant(at(5_000)).at(), at(6_201));
+	}
+
+	#[test]
+	fn the_sealed_anchor_trails_the_ledger_by_the_whole_admissible_span() {
+		// The seal ledger holds the instant a seal TIMER fired, which is a whole admissible span
+		// ahead of the newest window that timer actually sealed. Treating the ledger itself as the
+		// immutable frontier - which reclamation briefly did - erases the accumulator of a window
+		// that is still open and still taking rows, and the operator then publishes against state
+		// that is gone. That is the exact failure the seal clamp was introduced to prevent, so the
+		// gap between the two instants has to be a fact this file owns rather than a subtraction
+		// each caller repeats.
+		let policy = SealPolicy::tumbling(ms(30_000), ms(45_000));
+		let ledger = at(358_262);
+
+		let anchor = policy.sealed_anchor(ledger).expect("the ledger is past one admissible span");
+
+		assert_eq!(anchor, at(283_261), "ledger - (size + grace) - 1");
+		assert!(anchor < ledger, "a frontier at or past the ledger reclaims windows that have not sealed");
+		assert_eq!(
+			policy.seal_instant(anchor).at(),
+			ledger,
+			"and it is the exact inverse of arming, so a window anchored here sealed at precisely \
+			 this ledger rather than one millisecond either side of it"
+		);
+	}
+
+	#[test]
+	fn a_ledger_short_of_one_admissible_span_has_sealed_nothing() {
+		// Early in a node's life the ledger sits below its own span. Wrapping through u64 there
+		// would put the anchor near u64::MAX and report every window sealed, which reclaims the
+		// whole node in one sweep. None means "nothing has sealed yet", and nothing is reclaimable.
+		let policy = SealPolicy::tumbling(ms(30_000), ms(45_000));
+
+		assert_eq!(policy.sealed_anchor(at(0)), None);
+		assert_eq!(policy.sealed_anchor(at(75_000)), None, "the anchor would be 0 - 1, not 0");
+		assert_eq!(policy.sealed_anchor(at(75_001)), Some(at(0)));
 	}
 
 	#[test]

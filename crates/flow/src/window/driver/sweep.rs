@@ -3,7 +3,7 @@
 
 use reifydb_value::value::datetime::DateTime;
 
-use crate::window::{ledger::FiredAt, policy::SealPolicy, span::WindowCoord};
+use crate::window::{ledger::FiredAt, policy::SealPolicy};
 
 pub struct SealSweep {
 	policy: SealPolicy,
@@ -17,11 +17,7 @@ impl SealSweep {
 	}
 
 	pub fn horizon(&self, fired: FiredAt) -> Option<DateTime> {
-		fired.at()
-			.to_order()
-			.checked_sub(self.policy.admissible().millis())
-			.and_then(|anchor| anchor.checked_sub(1))
-			.map(<DateTime as WindowCoord>::from_order)
+		self.policy.sealed_anchor(fired.at())
 	}
 }
 
@@ -32,7 +28,7 @@ mod tests {
 	use reifydb_value::value::duration::Duration;
 
 	use super::*;
-	use crate::timer::Timer;
+	use crate::{timer::Timer, window::span::WindowCoord};
 
 	fn ms(millis: u64) -> Duration {
 		Duration::from_milliseconds_const(millis as i64)
