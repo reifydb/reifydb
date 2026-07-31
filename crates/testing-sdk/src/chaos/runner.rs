@@ -12,7 +12,7 @@ use reifydb_testing_chaos::{
 		event::{ChaosBatch, ChaosEvent},
 		model::Model,
 		scenario::Scenario,
-		view::MaterializedView,
+		view::{MaterializedView, RowKey},
 	},
 	seed::derive_seed,
 };
@@ -104,7 +104,7 @@ impl<T: FFIOperator> RunnableChaos<T> {
 
 		let oracle_table = model.after_drain().map(|claim| claim.view).unwrap_or_else(MaterializedView::empty);
 
-		let operator_table = driven.view.rekey(&self.schema.output_key_columns);
+		let operator_table = driven.view.rekey(&RowKey::columns(self.schema.output_key_columns.clone()));
 		let comparison = compare(&operator_table, &oracle_table, &self.tolerances);
 
 		ChaosOutcome {

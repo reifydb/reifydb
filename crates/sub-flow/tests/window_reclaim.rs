@@ -76,9 +76,14 @@ fn a_rolling_partition_that_wakes_after_reclamation_publishes_one_row_not_two() 
 	// Partition 1 wakes under the same key.
 	db.command(r#"INSERT app::t [{ id: 3, g: 1, v: 9, ts: "2026-01-01T00:05:01Z" }]"#);
 
-	let rows = db.await_row_count("FROM app::r FILTER { g == 1 }", 1, TIMEOUT);
+	// The flow has to have applied that insert before a count means anything. Awaiting a count of 1
+	// instead - which this did - returns on the very first poll, because the view already holds one
+	// row for g == 1 from the first insert. The duplicate this test is named for appears as a second
+	// row, so the assertion was being evaluated before the event that could produce it was processed.
+	assert!(db.await_all_flows(TIMEOUT), "the flow must settle before the row count is evidence");
+
 	assert_eq!(
-		rows,
+		db.row_count("FROM app::r FILTER { g == 1 }"),
 		1,
 		"a woken partition must own exactly one row; view now: {:?}",
 		db.query_as_root("FROM app::r", ())

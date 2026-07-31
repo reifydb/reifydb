@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod regression;
+pub mod reclaim;
 
 use rand::RngExt;
-use reifydb_core::common::{WindowKind, WindowSize};
+use reifydb_core::{
+	common::{WindowKind, WindowSize},
+	state::horizon::Horizon,
+};
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{pick, run_reported, split},
-	operator::{drive as driver, scenario::Scenario},
+	operator::{drive as driver, drive::DriveOutcome, scenario::Scenario},
 };
 use reifydb_value::value::duration::Duration;
 
@@ -53,6 +56,69 @@ impl Grid for SlidingGrid {
 			.filter(|start| coord_ms >= *start && coord_ms < start + self.size_ms)
 			.collect()
 	}
+}
+
+/// The same corpus and the same oracle, with the sweep wired into the step loop.
+///
+/// Sliding is the second driver on `GridOracle`, and the more searching of the two for this: its
+/// windows overlap, so one coordinate lands in several of them and a group carries many more live
+/// rows at once. That is also why the duplicate key matters more here - with more permitted totals
+/// per group, a stray second row has more values it can coincide with and slip past the multiset.
+///
+/// The declared span is size + grace and never the slide: `window_span` maps both Tumbling and
+/// Sliding to the size alone, so this is exactly what `resolve_horizon` produces from the operator's
+/// own seal span.
+pub fn drive_reclaiming(seed: u64, params: Params, reclaim_pct: u32, sink_row_ttl: bool) -> DriveOutcome {
+	let size_ms = params.size_secs * 1_000;
+	let slide_ms = params.slide_secs * 1_000;
+	let grace_ms = params.grace_secs * 1_000;
+	assert!(slide_ms < size_ms, "the sweep only covers overlapping sliding windows; slide must be < size");
+
+	let spec = WindowSpec {
+		kind: WindowKind::Sliding {
+			size: WindowSize::Duration(Duration::from_seconds(params.size_secs as i64).unwrap()),
+			slide: WindowSize::Duration(Duration::from_seconds(params.slide_secs as i64).unwrap()),
+		},
+		group_by: "g",
+		aggregations: "total: math::sum(v)",
+		grace: Duration::from_seconds(params.grace_secs as i64).unwrap(),
+		lateness: Duration::default(),
+	};
+
+	let span = Duration::from_milliseconds((size_ms + grace_ms) as i64).expect("span is representable");
+
+	let mut harness = Harness::new(|runtime| build(&spec, runtime)).with_activity_grid(Horizon::of(span));
+	if sink_row_ttl {
+		harness = harness.with_sink_row_ttl(span);
+	}
+	let workload = WindowWorkload {
+		groups: params.groups,
+		coord_span_ms: params.coord_span_ms,
+	};
+	let mut model = GridOracle::new(
+		SlidingGrid {
+			size_ms,
+			slide_ms,
+		},
+		size_ms,
+		grace_ms,
+	);
+
+	driver::drive(
+		seed,
+		Scenario::windowed(
+			params.steps,
+			params.max_batch,
+			params.coord_span_ms,
+			params.coord_span_ms + size_ms + grace_ms + 10_000,
+		)
+		.with_mix(params.remove_pct, params.update_pct, params.seal_pct)
+		.with_reclaim(reclaim_pct),
+		&mut harness,
+		&workload,
+		&mut model,
+	)
+	.assert_clean()
 }
 
 pub fn drive(seed: u64, params: Params) -> Corpus {
@@ -138,6 +204,23 @@ pub fn drive_random(seed: u64) {
 	let run = params.clone();
 	run_reported("window_sliding_random_chaos", sequence_seed, &params, || {
 		drive(sequence_seed, run);
+	});
+}
+
+/// A reclaiming run over a configuration drawn from the seed.
+///
+/// Sliding is where a divergence was seen once and then lost when the driver's roll space was
+/// corrected: model 27 against operator 51, with 51 being the pre-image and post-image of one update
+/// both counted. A sweep-off control passed and disabling the identity phase reproduced it
+/// identically, so the evidence was sound; only the sequence that produced it is gone.
+///
+/// One hand-picked seed cannot find that again. This exists to search the configuration space for
+/// it, and its value is entirely in the seeds it draws that nobody chose.
+pub fn drive_reclaiming_random(seed: u64) {
+	let (sequence_seed, params) = random_params(seed);
+	let run = params.clone();
+	run_reported("window_sliding_reclaim_random_chaos", sequence_seed, &params, || {
+		drive_reclaiming(sequence_seed, run, 20, true);
 	});
 }
 

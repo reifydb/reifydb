@@ -5,7 +5,7 @@ use reifydb_value::value::Value;
 
 use crate::operator::{
 	compare::{Tolerances, compare, contains_all},
-	view::MaterializedView,
+	view::{MaterializedView, RowKey},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,6 +60,55 @@ impl Expectation for Vec<Vec<Value>> {
 	}
 }
 
+/// A multiset claim with a duplicate gate in front of it.
+///
+/// The positional multiset comparison below already catches a duplicated row *conditionally*:
+/// `contains_all` is multiset containment, so a second published row for one logical key breaches
+/// `AtMost` unless its projected tuple happens to coincide with some other row the model permits.
+/// For a window family that is a real hole - a stranded stale total can easily equal another
+/// window's total for the same group, and the duplicate then passes.
+///
+/// The gate closes it by rekeying the view on its logical identity first, so two rows for one key
+/// are reported as such however their values happen to land. It also names the colliding key instead
+/// of printing a value mismatch, which is the difference between a diagnosable failure and a
+/// puzzling one.
+#[derive(Debug, Clone)]
+pub struct KeyedMultiset {
+	pub key: RowKey,
+	pub rows: Vec<Vec<Value>>,
+}
+
+impl KeyedMultiset {
+	pub fn new(key: RowKey, rows: Vec<Vec<Value>>) -> Self {
+		Self {
+			key,
+			rows,
+		}
+	}
+}
+
+impl Expectation for KeyedMultiset {
+	fn check(
+		&self,
+		actual: &MaterializedView,
+		projection: &[usize],
+		tolerances: &[Option<f64>],
+		bound: Bound,
+	) -> Result<(), String> {
+		let published = actual.rekey(&self.key);
+		if !published.incoherent.is_empty() {
+			return Err(format!(
+				"the published view holds rows its own key {:?} cannot tell apart, which is what a row \
+				 minted over one already published looks like: {:?}",
+				self.key, published.incoherent
+			));
+		}
+		// Deliberately against `actual`, not `published`: rekeying collapses the very duplicates the
+		// gate exists to find, so comparing the rekeyed view would hide anything that slipped past.
+		self.rows.check(actual, projection, tolerances, bound)
+	}
+}
+
 #[derive(Debug, Clone)]
 pub struct ViewClaim {
 	pub view: MaterializedView,
@@ -85,7 +134,7 @@ impl Expectation for ViewClaim {
 		_tolerances: &[Option<f64>],
 		bound: Bound,
 	) -> Result<(), String> {
-		let published = actual.rekey(&self.key_columns);
+		let published = actual.rekey(&RowKey::columns(self.key_columns.clone()));
 
 		if !published.incoherent.is_empty() {
 			return Err(format!(
@@ -123,6 +172,8 @@ impl<E: Expectation> Expectation for Option<E> {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_value::value::datetime::DateTime;
+
 	use super::*;
 	use crate::operator::view::{MaterializedRow, OutputKey};
 
@@ -205,6 +256,78 @@ mod tests {
 				.is_ok(),
 			"a present claim must still be checked against the view"
 		);
+	}
+
+	fn windowed(rows: &[(u64, i32, i32, u64)]) -> MaterializedView {
+		// (row number, g, total, window start). The row number is what the view folds on; the window
+		// start rides the event position, exactly as a window operator emits it.
+		let mut v = MaterializedView::empty();
+		v.columns = vec!["g".to_string(), "total".to_string()];
+		for (number, g, total, at) in rows {
+			v.insert(
+				OutputKey::new(vec![Value::Uint8(*number)]),
+				MaterializedRow::from_pairs(vec![
+					("g".to_string(), Value::Int4(*g)),
+					("total".to_string(), Value::Int4(*total)),
+				])
+				.at(DateTime::from_timestamp_millis(*at).ok()),
+			);
+		}
+		v
+	}
+
+	#[test]
+	fn a_second_row_for_one_window_is_caught_even_when_the_multiset_permits_its_value() {
+		// The hole the key closes. A key whose row-number mapping was reclaimed mints a brand new
+		// number, so its duplicate folds into the view without colliding with anything. The positional
+		// multiset then catches it only by coincidence - here both published tuples are values the
+		// model legitimately permits for other windows of the same group, so containment is satisfied
+		// and the duplicate passes unnoticed.
+		let duplicate = windowed(&[(1, 1, 5, 1_000), (2, 1, 9, 1_000)]);
+		let permitted: Vec<Vec<Value>> =
+			vec![vec![Value::Int4(1), Value::Int4(5)], vec![Value::Int4(1), Value::Int4(9)]];
+
+		assert!(
+			permitted.check(&duplicate, &[0, 1], &[], Bound::AtMost).is_ok(),
+			"precondition: the bare multiset must be satisfied, or this proves nothing about the key"
+		);
+
+		let keyed = KeyedMultiset::new(RowKey::columns(["g"]).with_time(), permitted.clone());
+		let report = keyed.check(&duplicate, &[0, 1], &[], Bound::AtMost).expect_err("the key must catch it");
+		assert!(report.contains("cannot tell apart"), "the failure must name the collision: {report}");
+
+		// The control that gives it meaning: the same two rows belonging to two different windows are
+		// an ordinary view, not a duplicate. Without this, a key that rejected everything would pass.
+		let distinct = windowed(&[(1, 1, 5, 1_000), (2, 1, 9, 2_000)]);
+		assert!(
+			keyed.check(&distinct, &[0, 1], &[], Bound::AtMost).is_ok(),
+			"two windows of one group are not a duplicate"
+		);
+	}
+
+	#[test]
+	fn a_row_carrying_no_event_time_is_reported_rather_than_folded_onto_one_key() {
+		// rekey substitutes a placeholder for a named column a row lacks, which is survivable there.
+		// Doing the same for a missing event position would drop every row onto one key and report a
+		// duplicate on every step of every suite - a detector that always fires is as useless as one
+		// that never does, and far more expensive to diagnose.
+		let mut timeless = windowed(&[(1, 1, 5, 1_000)]);
+		timeless.insert(
+			OutputKey::new(vec![Value::Uint8(2)]),
+			MaterializedRow::from_pairs(vec![
+				("g".to_string(), Value::Int4(2)),
+				("total".to_string(), Value::Int4(7)),
+			]),
+		);
+
+		let keyed = KeyedMultiset::new(
+			RowKey::columns(["g"]).with_time(),
+			vec![vec![Value::Int4(1), Value::Int4(5)], vec![Value::Int4(2), Value::Int4(7)]],
+		);
+		let report = keyed
+			.check(&timeless, &[0, 1], &[], Bound::AtMost)
+			.expect_err("a timeless row must be reported");
+		assert!(report.contains("no event time"), "the failure must say what is missing: {report}");
 	}
 
 	#[test]

@@ -17,6 +17,7 @@ use reifydb_core::{
 		},
 		identifier::{ColumnIdentifier, ColumnObject},
 	},
+	key::operator_state::Keyspace,
 	state::horizon::Horizon,
 	value::column::columns::Columns,
 };
@@ -87,7 +88,22 @@ fn coarser_of(current: Horizon, candidate: Horizon) -> Horizon {
 	}
 }
 
-fn resolve_horizon(seal_after_ms: Option<u64>, declared: Horizon) -> Horizon {
+pub fn activity_grid_of(
+	horizon: Horizon,
+	keyspace_spans: &[(Keyspace, Duration)],
+	mapping_span: Option<Duration>,
+) -> Horizon {
+	let mut grid = horizon;
+	for (_, span) in keyspace_spans {
+		grid = coarser_of(grid, Horizon::of(*span));
+	}
+	if let Some(span) = mapping_span {
+		grid = coarser_of(grid, Horizon::of(span));
+	}
+	grid
+}
+
+pub fn resolve_horizon(seal_after_ms: Option<u64>, declared: Horizon) -> Horizon {
 	match seal_after_ms {
 		Some(span) if span > 0 && span <= MAX_SEAL_SPAN_MS => {
 			Duration::from_milliseconds(span as i64).map(Horizon::of).unwrap_or(declared)
@@ -184,14 +200,7 @@ impl FlowEngineInner {
 		let Some(operator) = self.operators.get(&node.id) else {
 			return horizon;
 		};
-		let mut grid = horizon;
-		for (_, span) in operator.keyspace_spans() {
-			grid = coarser_of(grid, Horizon::of(span));
-		}
-		if let Some(span) = operator.node_mapping_span() {
-			grid = coarser_of(grid, Horizon::of(span));
-		}
-		grid
+		activity_grid_of(horizon, &operator.keyspace_spans(), operator.node_mapping_span())
 	}
 
 	pub(crate) fn node_horizon(&self, node: &FlowNode) -> Horizon {

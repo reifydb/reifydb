@@ -185,7 +185,14 @@ fn a_custom_operators_idle_group_is_reclaimed_through_the_flow_tick() {
 	// goes idle without being touched itself - the same shape as a quiet mint while others trade.
 	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "1970-01-01T00:10:00Z" }]"#);
 
-	db.await_row_count(RECLAIMED_A_GROUP, 1, TIMEOUT);
+	// Asserted, not merely awaited. `await_row_count` returns its last observation on timeout rather
+	// than panicking, so discarding it makes this test pass against a chain that reclaims nothing at
+	// all - it just takes the full timeout to do it.
+	assert_eq!(
+		db.await_row_count(RECLAIMED_A_GROUP, 1, TIMEOUT),
+		1,
+		"the guest operator must report reclamation work; a break anywhere in the chain leaves this at zero"
+	);
 }
 
 #[test]
@@ -208,9 +215,14 @@ fn a_group_that_wakes_after_reclamation_publishes_under_its_original_row() {
 	// Group 1 wakes under the same key.
 	db.command(r#"INSERT app::t [{ id: 3, g: 1, ts: "1970-01-01T00:10:00.001Z" }]"#);
 
-	let rows = db.await_row_count("FROM app::v FILTER { g == 1 }", 1, TIMEOUT);
+	// The flow has to have applied that insert before a count means anything. Awaiting a count of 1
+	// instead - which this did - returns on the very first poll, because the view already holds one
+	// row for g == 1 from the first insert. The duplicate this test is named for appears as a second
+	// row, so the assertion was being evaluated before the event that could produce it was processed.
+	assert!(db.await_all_flows(TIMEOUT), "the flow must settle before the row count is evidence");
+
 	assert_eq!(
-		rows,
+		db.row_count("FROM app::v FILTER { g == 1 }"),
 		1,
 		"a woken group must own exactly one row; view now: {:?}",
 		db.query_as_root("FROM app::v", ())

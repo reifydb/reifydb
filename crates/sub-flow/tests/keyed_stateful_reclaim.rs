@@ -217,7 +217,12 @@ fn a_woken_keys_state_restarted_because_the_sweep_actually_erased_it() {
 	db.await_row_count(RECLAIMED_A_GROUP, 1, TIMEOUT);
 
 	db.command(r#"INSERT app::t [{ id: 3, g: 1, ts: "1970-01-01T00:10:00.001Z" }]"#);
-	await_total(&db, 1, 1);
+
+	// Settling the flow, not polling for the value being asserted. `await_total(&db, 1, 1)` returned
+	// the instant the total read 1 - which it already did from the first event - so the assertion
+	// below could be evaluated against the pre-insert state and pass whether or not the sweep had
+	// really erased anything.
+	assert!(db.await_all_flows(TIMEOUT), "the flow must settle before the total is evidence");
 
 	assert_eq!(
 		total_for(&db, 1),
@@ -243,14 +248,4 @@ fn total_for(db: &TestDb, g: i32) -> Option<i64> {
 		}
 	}
 	None
-}
-
-fn await_total(db: &TestDb, g: i32, want: i64) {
-	let deadline = std::time::Instant::now() + TIMEOUT;
-	while std::time::Instant::now() < deadline {
-		if total_for(db, g) == Some(want) {
-			return;
-		}
-		std::thread::sleep(StdDuration::from_millis(20));
-	}
 }

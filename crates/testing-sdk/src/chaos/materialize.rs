@@ -5,7 +5,7 @@ use reifydb_codec::encoded::row::SHAPE_HEADER_SIZE;
 use reifydb_core::{interface::change::Change, row::Row};
 use reifydb_testing_chaos::operator::{
 	event::{ChaosBatch, ChaosEvent},
-	view::{MaterializedRow, MaterializedView, OutputKey},
+	view::{MaterializedRow, MaterializedView, OutputKey, RowKey},
 };
 use reifydb_value::value::{
 	Value, date::Date, datetime::DateTime, duration::Duration, row_number::RowNumber, time::Time,
@@ -17,7 +17,7 @@ pub fn materialize_history(history: &[Change], output_key_columns: &[String]) ->
 	for change in history {
 		table.fold(change);
 	}
-	table.rekey(output_key_columns)
+	table.rekey(&RowKey::columns(output_key_columns.to_vec()))
 }
 
 pub fn materialize_batches(batches: &[ChaosBatch], output_key_columns: &[String]) -> MaterializedView {
@@ -47,7 +47,7 @@ pub fn materialize_batches(batches: &[ChaosBatch], output_key_columns: &[String]
 			}
 		}
 	}
-	table.rekey(output_key_columns)
+	table.rekey(&RowKey::columns(output_key_columns.to_vec()))
 }
 
 fn identity_key(row_number: RowNumber) -> OutputKey {

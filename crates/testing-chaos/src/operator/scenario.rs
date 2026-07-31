@@ -105,6 +105,8 @@ pub struct Scenario {
 
 	pub tick_pct: u32,
 
+	pub reclaim_pct: u32,
+
 	pub coord_span_ms: u64,
 
 	pub drain_at_ms: u64,
@@ -129,6 +131,7 @@ impl Scenario {
 			remove_pct: 0,
 			update_pct: 0,
 			tick_pct: 0,
+			reclaim_pct: 0,
 			coord_span_ms,
 			drain_at_ms,
 			max_live: None,
@@ -148,6 +151,7 @@ impl Scenario {
 			remove_pct: 25,
 			update_pct: 30,
 			tick_pct: 0,
+			reclaim_pct: 0,
 			coord_span_ms: 0,
 			drain_at_ms: 0,
 			max_live: Some(50),
@@ -180,6 +184,20 @@ impl Scenario {
 		self.remove_pct = remove_pct;
 		self.update_pct = update_pct;
 		self.tick_pct = tick_pct;
+		self
+	}
+
+	/// Drives a reclaim sweep on `pct` of steps, at the run's current watermark.
+	///
+	/// The percentage is taken out of the same roll the tick branch reads rather than a fresh draw,
+	/// so a scenario that leaves this at zero consumes exactly the randomness it consumed before and
+	/// every existing corpus runs the sequence it always ran.
+	///
+	/// Reclamation is driven at the watermark, so a scenario also needs `tick_pct` above zero for a
+	/// sweep to ever reach anything: with no ticks the watermark never advances and every group stays
+	/// inside its horizon forever.
+	pub fn with_reclaim(mut self, pct: u32) -> Self {
+		self.reclaim_pct = pct;
 		self
 	}
 

@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod oracle;
-pub mod regression;
 
 use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_testing_chaos::{

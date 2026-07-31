@@ -44,7 +44,47 @@ impl ReclaimBudget {
 	}
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PhaseReclaim {
+	pub cutoff: Cutoff,
+	pub groups: Vec<GroupId>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyspaceReclaim {
+	pub keyspace: Keyspace,
+	pub cutoff: Cutoff,
+	pub groups: Vec<GroupId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MappingReclaim {
+	pub cutoff: Cutoff,
+	pub rows: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeReclaim {
+	pub node: FlowNodeId,
+	pub data: Option<PhaseReclaim>,
+	pub identity: Option<PhaseReclaim>,
+	pub keyspaces: Vec<KeyspaceReclaim>,
+	pub mapping: Option<MappingReclaim>,
+}
+
+impl NodeReclaim {
+	fn new(node: FlowNodeId) -> Self {
+		Self {
+			node,
+			data: None,
+			identity: None,
+			keyspaces: Vec::new(),
+			mapping: None,
+		}
+	}
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ReclaimReport {
 	pub data_groups: usize,
 	pub identity_groups: usize,
@@ -52,14 +92,20 @@ pub struct ReclaimReport {
 	pub rows: usize,
 	pub backlog: usize,
 	pub perpetual_nodes: usize,
+	pub ungridded_nodes: usize,
 	pub data_floor: Option<(Floor, FloorTerm)>,
 	pub identity_floor: Option<(Floor, FloorTerm)>,
+	pub nodes: Vec<NodeReclaim>,
 }
 
 impl ReclaimReport {
 	fn bind(&mut self, cutoffs: &Cutoffs) {
 		self.data_floor = lowest(self.data_floor, Some(cutoffs.data_floor));
 		self.identity_floor = lowest(self.identity_floor, cutoffs.identity_floor);
+	}
+
+	pub fn node(&self, node: FlowNodeId) -> Option<&NodeReclaim> {
+		self.nodes.iter().find(|reclaim| reclaim.node == node)
 	}
 }
 
@@ -76,13 +122,13 @@ fn lowest(current: Option<(Floor, FloorTerm)>, candidate: Option<(Floor, FloorTe
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Cutoffs {
-	data: Cutoff,
-	identity: Option<Cutoff>,
-	watermark: DateTime,
-	slack: Duration,
-	data_floor: (Floor, FloorTerm),
-	identity_floor: Option<(Floor, FloorTerm)>,
+pub struct Cutoffs {
+	pub data: Cutoff,
+	pub identity: Option<Cutoff>,
+	pub watermark: DateTime,
+	pub slack: Duration,
+	pub data_floor: (Floor, FloorTerm),
+	pub identity_floor: Option<(Floor, FloorTerm)>,
 }
 
 impl FlowEngineInner {
@@ -123,6 +169,7 @@ impl FlowEngineInner {
 				continue;
 			}
 			let Some(grid) = self.substrate.group.buckets(node_id).event_grid() else {
+				report.ungridded_nodes += 1;
 				continue;
 			};
 			let slack = grid.width();
@@ -131,25 +178,24 @@ impl FlowEngineInner {
 			} else {
 				None
 			};
-			let cutoffs =
-				seal_cutoffs(horizon, watermark, identity_span, sealed_through, slack, checkpoint);
-			if let Some(cutoffs) = &cutoffs {
+			let resolved = resolve_sweep_inputs(
+				SweepSpec {
+					node: node_id,
+					horizon,
+					keyspace_spans,
+					mapping_span,
+					identity_span,
+					sealed_through,
+					slack,
+					mapping_cursor: self.mapping_cursors.entry(node_id).or_default().clone(),
+				},
+				watermark,
+				checkpoint,
+			);
+			if let Some(cutoffs) = &resolved.cutoffs {
 				report.bind(cutoffs);
 			}
-			inputs.push(SweepInputs {
-				node: node_id,
-				data: cutoffs.as_ref().map(|cutoffs| cutoffs.data),
-				identity: cutoffs.as_ref().and_then(|cutoffs| cutoffs.identity),
-				keyspaces: keyspace_spans
-					.into_iter()
-					.map(|(keyspace, span)| {
-						(keyspace, Cutoff(watermark.saturating_sub(span).saturating_sub(slack)))
-					})
-					.collect(),
-				mapping: mapping_span
-					.map(|span| Cutoff(watermark.saturating_sub(span).saturating_sub(slack))),
-				mapping_cursor: self.mapping_cursors.entry(node_id).or_default().clone(),
-			});
+			inputs.push(resolved.inputs);
 		}
 
 		let outcome = reclaim_nodes(inputs, txn, &mut remaining, &mut report, &mut |node, groups| {
@@ -223,6 +269,44 @@ pub struct SweepOutcome {
 	pub cursors: Vec<(FlowNodeId, Option<EncodedKey>)>,
 }
 
+pub struct SweepSpec {
+	pub node: FlowNodeId,
+	pub horizon: Horizon,
+	pub keyspace_spans: Vec<(Keyspace, Duration)>,
+	pub mapping_span: Option<Duration>,
+	pub identity_span: Option<Duration>,
+	pub sealed_through: Option<DateTime>,
+	pub slack: Duration,
+	pub mapping_cursor: Option<EncodedKey>,
+}
+
+pub struct ResolvedSweep {
+	pub inputs: SweepInputs,
+	pub cutoffs: Option<Cutoffs>,
+}
+
+pub fn resolve_sweep_inputs(spec: SweepSpec, watermark: DateTime, checkpoint: CommitVersion) -> ResolvedSweep {
+	let slack = spec.slack;
+	let cutoffs = seal_cutoffs(spec.horizon, watermark, spec.identity_span, spec.sealed_through, slack, checkpoint);
+	let behind = |span: Duration| Cutoff(watermark.saturating_sub(span).saturating_sub(slack));
+
+	ResolvedSweep {
+		inputs: SweepInputs {
+			node: spec.node,
+			data: cutoffs.as_ref().map(|cutoffs| cutoffs.data),
+			identity: cutoffs.as_ref().and_then(|cutoffs| cutoffs.identity),
+			keyspaces: spec
+				.keyspace_spans
+				.into_iter()
+				.map(|(keyspace, span)| (keyspace, behind(span)))
+				.collect(),
+			mapping: spec.mapping_span.map(behind),
+			mapping_cursor: spec.mapping_cursor,
+		},
+		cutoffs,
+	}
+}
+
 pub fn reclaim_nodes(
 	inputs: Vec<SweepInputs>,
 	txn: &mut FlowTransaction,
@@ -236,9 +320,14 @@ pub fn reclaim_nodes(
 			break;
 		}
 		let node = input.node;
+		let mut reclaimed = NodeReclaim::new(node);
 
 		if let Some(cutoff) = input.identity {
-			reclaim_identity(txn, node, cutoff, remaining, report)?;
+			let groups = reclaim_identity(txn, node, cutoff, remaining, report)?;
+			reclaimed.identity = Some(PhaseReclaim {
+				cutoff,
+				groups,
+			});
 		}
 
 		for (keyspace, cutoff) in input.keyspaces {
@@ -247,8 +336,13 @@ pub fn reclaim_nodes(
 			}
 			let retired = reclaim_keyspace(txn, node, keyspace, cutoff, remaining, report)?;
 			if !retired.is_empty() {
-				invalidate(node, GroupSet::new(retired));
+				invalidate(node, GroupSet::new(retired.clone()));
 			}
+			reclaimed.keyspaces.push(KeyspaceReclaim {
+				keyspace,
+				cutoff,
+				groups: retired,
+			});
 		}
 
 		let mut cursor = input.mapping_cursor;
@@ -262,15 +356,25 @@ pub fn reclaim_nodes(
 			if cursor.is_some() {
 				report.backlog += 1;
 			}
+			reclaimed.mapping = Some(MappingReclaim {
+				cutoff,
+				rows: removed,
+			});
 		}
 		cursors.push((node, cursor));
 
 		if let Some(cutoff) = input.data {
 			let released = reclaim_data(txn, node, cutoff, remaining, report)?;
 			if !released.is_empty() {
-				invalidate(node, GroupSet::new(released));
+				invalidate(node, GroupSet::new(released.clone()));
 			}
+			reclaimed.data = Some(PhaseReclaim {
+				cutoff,
+				groups: released,
+			});
 		}
+
+		report.nodes.push(reclaimed);
 	}
 	Ok(SweepOutcome {
 		cursors,
@@ -345,7 +449,7 @@ fn reclaim_identity(
 	cutoff: Cutoff,
 	remaining: &mut ReclaimBudget,
 	report: &mut ReclaimReport,
-) -> Result<()> {
+) -> Result<Vec<GroupId>> {
 	let due = txn.due_identity_groups(node, cutoff, remaining.groups)?;
 	let mut reclaimed = Vec::new();
 	for group in due {
@@ -365,9 +469,9 @@ fn reclaim_identity(
 		report.identity_groups += 1;
 	}
 	if !reclaimed.is_empty() {
-		txn.invalidate_row_number_groups(node, &GroupSet::new(reclaimed));
+		txn.invalidate_row_number_groups(node, &GroupSet::new(reclaimed.clone()));
 	}
-	Ok(())
+	Ok(reclaimed)
 }
 
 fn seal_cutoffs(

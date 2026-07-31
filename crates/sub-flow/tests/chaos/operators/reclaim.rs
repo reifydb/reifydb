@@ -26,9 +26,16 @@ use crate::{
 	operators::window::{WindowSpec, build},
 };
 
-// Sixteen buckets per horizon, so this grids at one second and a group stamped in the first second
-// falls behind the data cutoff once the watermark passes seventeen.
-const SPAN_SECS: i64 = 16;
+// Every shape below is sized at this, and with zero grace and zero lateness it is the horizon too.
+// The suite does not get to pick that number: `resolve_horizon` lets an operator's own seal span
+// override whatever a harness declares, so a hand-chosen span would describe a node the engine
+// cannot register and every cutoff derived from it would be arithmetic that never ships.
+const WINDOW_SECS: i64 = 60;
+
+const SPAN_MS: u64 = WINDOW_SECS as u64 * 1_000;
+
+// Sixteen buckets per horizon, so a 60s span grids at 3.75s.
+const GRID_WIDTH_MS: u64 = SPAN_MS / 16;
 
 // Arrivals sit one second past the epoch, not on it. Rolling's eviction range is inclusive of its
 // cutoff, and that cutoff saturates to zero while the seal ledger is still at the epoch, so a row
@@ -36,8 +43,20 @@ const SPAN_SECS: i64 = 16;
 // all, which silently voided every per-shape assertion below rather than failing one.
 const ARRIVAL_MS: u64 = 1_000;
 
-// Far enough past the arrival for its activity bucket to fall behind the data cutoff.
-const SWEEP_MS: u64 = 18_000;
+// A group is due once its activity bucket falls strictly below the cutoff's. The data phase cuts at
+// watermark - span, and every arrival in this suite lands in bucket zero, so the watermark has to
+// reach one full grid width past the span before anything is reclaimable.
+const SWEEP_MS: u64 = SPAN_MS + GRID_WIDTH_MS;
+
+// One millisecond short of due, for the no-op control.
+const EARLY_SWEEP_MS: u64 = SWEEP_MS - 1;
+
+// The identity phase cuts at watermark - ttl - slack, where the data phase cuts at watermark - span.
+// With the sink ttl set equal to the span, identity therefore trails data by exactly one grid width,
+// and a group in bucket zero is reachable by the data phase a full width before its mapping is. That
+// gap is the whole point of the split: a mapping retired while the row naming it is still published
+// makes the next event on that key mint a second row beside it.
+const IDENTITY_SWEEP_MS: u64 = SPAN_MS + 2 * GRID_WIDTH_MS;
 
 fn spec() -> WindowSpec {
 	WindowSpec {
@@ -52,8 +71,11 @@ fn spec() -> WindowSpec {
 }
 
 fn harness() -> Harness<WindowOperator> {
-	let span = Duration::from_seconds(SPAN_SECS).expect("span is representable");
-	Harness::new(|runtime| build(&spec(), runtime)).with_activity_grid(Horizon::of(span))
+	// The sink ttl is what bounds the identity phase. Without it `identity_span` is none and
+	// `reclaim_nodes` skips phase two outright, so every "the identity half survived" assertion in
+	// this file would hold because the phase never ran rather than because the split works.
+	let span = Duration::from_seconds(WINDOW_SECS).expect("span is representable");
+	Harness::new(|runtime| build(&spec(), runtime)).with_activity_grid(Horizon::of(span)).with_sink_row_ttl(span)
 }
 
 fn at(ms: u64) -> DateTime {
@@ -97,7 +119,10 @@ fn kinds() -> Vec<(&'static str, WindowKind)> {
 }
 
 fn harness_of(kind: WindowKind) -> Harness<WindowOperator> {
-	let span = Duration::from_seconds(SPAN_SECS).expect("span is representable");
+	// The sink ttl is what bounds the identity phase. Without it `identity_span` is none and
+	// `reclaim_nodes` skips phase two outright, so every "the identity half survived" assertion in
+	// this file would hold because the phase never ran rather than because the split works.
+	let span = Duration::from_seconds(WINDOW_SECS).expect("span is representable");
 	let spec = WindowSpec {
 		kind,
 		group_by: "g",
@@ -105,7 +130,7 @@ fn harness_of(kind: WindowKind) -> Harness<WindowOperator> {
 		grace: Duration::default(),
 		lateness: Duration::default(),
 	};
-	Harness::new(|runtime| build(&spec, runtime)).with_activity_grid(Horizon::of(span))
+	Harness::new(|runtime| build(&spec, runtime)).with_activity_grid(Horizon::of(span)).with_sink_row_ttl(span)
 }
 
 #[test]
@@ -186,7 +211,7 @@ fn a_sweep_publishes_nothing_into_the_view() {
 	.expect("apply must succeed");
 	let before = session.view().rows.clone();
 
-	let reclaimed = session.reclaim(17_000).expect("sweep must succeed");
+	let reclaimed = session.reclaim(SWEEP_MS).expect("sweep must succeed");
 
 	assert!(!reclaimed.is_empty(), "precondition: the sweep must actually have retired something");
 	assert_eq!(session.view().rows, before, "a sweep must not change the published view");
@@ -205,7 +230,7 @@ fn a_group_removed_after_its_state_was_reclaimed_leaves_the_stream_foldable() {
 
 	let row = generator::row(RowNumber(1), 1, 10, at(0));
 	session.apply(generator::insert(vec![row.clone()])).expect("apply must succeed");
-	assert!(!session.reclaim(17_000).expect("sweep must succeed").is_empty());
+	assert!(!session.reclaim(SWEEP_MS).expect("sweep must succeed").is_empty());
 
 	session.apply(generator::remove(vec![row])).expect("apply must succeed");
 
@@ -226,9 +251,9 @@ fn a_key_that_wakes_after_reclamation_does_not_double_publish() {
 	let mut session = Session::new(&mut subject);
 
 	session.apply(generator::insert(vec![generator::row(RowNumber(1), 1, 10, at(0))])).expect("apply must succeed");
-	assert!(!session.reclaim(17_000).expect("sweep must succeed").is_empty());
+	assert!(!session.reclaim(SWEEP_MS).expect("sweep must succeed").is_empty());
 
-	session.apply(generator::insert(vec![generator::row(RowNumber(2), 1, 5, at(17_001))]))
+	session.apply(generator::insert(vec![generator::row(RowNumber(2), 1, 5, at(SWEEP_MS + 1))]))
 		.expect("apply must succeed");
 
 	assert!(
@@ -255,7 +280,7 @@ fn sweeping_bounds_the_state_while_leaving_the_identity_that_addresses_it() {
 	let before = subject.footprint().expect("footprint must succeed");
 	assert!(before.data_rows > 0, "precondition: the operator must be holding data to reclaim");
 
-	let reclaimed = subject.reclaim(17_000).expect("sweep must succeed");
+	let reclaimed = subject.reclaim(SWEEP_MS).expect("sweep must succeed");
 	let after = subject.footprint().expect("footprint must succeed");
 
 	assert!(!reclaimed.is_empty(), "the sweep must report what it retired");
@@ -263,6 +288,44 @@ fn sweeping_bounds_the_state_while_leaving_the_identity_that_addresses_it() {
 	assert_eq!(
 		after.identity_rows, before.identity_rows,
 		"the identity half must survive the data phase, or a woken group mints a duplicate row"
+	);
+}
+
+#[test]
+fn the_identity_phase_reaches_a_group_one_grid_width_after_the_data_phase() {
+	// Phase two, which no suite could reach at all until the harness could declare a sink row ttl.
+	// The ordering asserted here is the reason reclamation is split in two: identity must outlive the
+	// data it addresses, because a mapping retired under a live sink row makes the next event on that
+	// key mint a second row beside the one already published.
+	//
+	// Both halves are load-bearing. A sweep that took identity together with data would collapse the
+	// split silently, and a sweep that never took identity at all would leave every mapping in the
+	// database forever while this file's other assertions still passed.
+	let mut subject = harness();
+	subject.apply(generator::insert(vec![generator::row(RowNumber(1), 1, 10, at(ARRIVAL_MS))]))
+		.expect("apply must succeed");
+
+	let before = subject.footprint().expect("footprint must succeed");
+	assert!(before.identity_rows > 0, "precondition: the operator must have minted an identity to reclaim");
+
+	let data_only = subject.reclaim(SWEEP_MS).expect("sweep must succeed");
+	let mid = subject.footprint().expect("footprint must succeed");
+
+	assert!(!data_only.data.is_empty(), "the data phase must reach the group at its own cutoff");
+	assert!(
+		data_only.identity.is_empty(),
+		"identity trails data by one grid width and is not due yet, but the sweep took {:?}",
+		data_only.identity
+	);
+	assert_eq!(mid.identity_rows, before.identity_rows, "no mapping may be erased while data is still due");
+
+	let identity = subject.reclaim(IDENTITY_SWEEP_MS).expect("sweep must succeed");
+	let after = subject.footprint().expect("footprint must succeed");
+
+	assert!(!identity.identity.is_empty(), "once the ttl clears the bucket the identity phase must reach it");
+	assert!(
+		after.identity_rows < before.identity_rows,
+		"identity rows must actually shrink: {before:?} -> {after:?}"
 	);
 }
 
@@ -276,7 +339,7 @@ fn a_sweep_before_the_horizon_is_a_no_op_in_every_observable_way() {
 	subject.apply(generator::insert(vec![generator::row(RowNumber(1), 1, 10, at(0))])).expect("apply must succeed");
 
 	let before = subject.footprint().expect("footprint must succeed");
-	let reclaimed = subject.reclaim(16_999).expect("sweep must succeed");
+	let reclaimed = subject.reclaim(EARLY_SWEEP_MS).expect("sweep must succeed");
 	let after = subject.footprint().expect("footprint must succeed");
 
 	assert_eq!(reclaimed, Reclaimed::default(), "nothing is due one millisecond early");

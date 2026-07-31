@@ -69,7 +69,14 @@ fn an_aggregates_idle_group_is_reclaimed_through_the_flow_tick() {
 	// arriving, not a flow that stopped entirely.
 	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "1970-01-01T00:10:00Z" }]"#);
 
-	db.await_row_count(RECLAIMED_A_GROUP, 1, TIMEOUT);
+	// Asserted, not merely awaited. `await_row_count` returns its last observation on timeout rather
+	// than panicking, so discarding it makes this test pass against a chain that reclaims nothing at
+	// all - it just takes the full timeout to do it.
+	assert_eq!(
+		db.await_row_count(RECLAIMED_A_GROUP, 1, TIMEOUT),
+		1,
+		"the aggregate must report reclamation work; a break anywhere in the chain leaves this at zero"
+	);
 }
 
 #[test]

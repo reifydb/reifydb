@@ -7,7 +7,37 @@ use reifydb_core::{
 	interface::change::{Change, Diff},
 	value::column::columns::Columns,
 };
-use reifydb_value::value::{Value, row_number::RowNumber};
+use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber};
+
+/// What makes two published rows the same row, for a family that does not key on the row number.
+///
+/// The row number is the wrong identity for exactly the failure reclamation can cause: a key whose
+/// mapping was retired mints a brand new number, so the duplicate it publishes beside its live row
+/// collides with nothing. `include_time` brings the window start into the key, which is the only
+/// thing that tells a second row for one window apart from a legitimate second window.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowKey {
+	pub columns: Vec<String>,
+
+	pub include_time: bool,
+}
+
+impl RowKey {
+	pub fn columns(names: impl IntoIterator<Item = impl Into<String>>) -> Self {
+		Self {
+			columns: names.into_iter().map(Into::into).collect(),
+			include_time: false,
+		}
+	}
+
+	/// Adds the emitted event position to the key. Only meaningful for an operator that stamps a
+	/// meaningful one - the fixed-grid window family stamps the window start, while rolling stamps
+	/// the change's own arrival time and must be keyed on its group columns alone.
+	pub fn with_time(mut self) -> Self {
+		self.include_time = true;
+		self
+	}
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct OutputKey(pub Vec<Value>);
@@ -22,15 +52,28 @@ impl OutputKey {
 	}
 }
 
+/// The event position an emitted row carried, kept beside the named columns rather than among them.
+///
+/// A windowed operator publishes only its group-by and aggregate columns by name; the window it
+/// belongs to travels in the row's `#time` sidecar and is otherwise invisible. That makes the logical
+/// identity of a window output - (group, window start) - unrepresentable, and a second row minted for
+/// a window that already has one indistinguishable from a legitimate second window.
+///
+/// It is deliberately not a named column. `compare::diff_rows` walks the union of both sides' column
+/// maps, so a row carrying `#time` there would diverge against every oracle that builds its rows with
+/// `from_pairs` - which is all of them.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaterializedRow {
 	pub columns: BTreeMap<String, Value>,
+
+	pub time: Option<DateTime>,
 }
 
 impl MaterializedRow {
 	pub fn new() -> Self {
 		Self {
 			columns: BTreeMap::new(),
+			time: None,
 		}
 	}
 
@@ -41,7 +84,13 @@ impl MaterializedRow {
 	{
 		Self {
 			columns: pairs.into_iter().map(|(k, v)| (k.into(), v)).collect(),
+			time: None,
 		}
+	}
+
+	pub fn at(mut self, time: Option<DateTime>) -> Self {
+		self.time = time;
+		self
 	}
 
 	pub fn get(&self, name: &str) -> Option<&Value> {
@@ -130,26 +179,42 @@ impl MaterializedView {
 		if self.columns.is_empty() {
 			self.columns = names.clone();
 		}
+		let times = columns.time();
 		(0..columns.row_count())
 			.map(|i| {
 				let number: RowNumber = columns.row_numbers()[i];
-				let row = MaterializedRow::from_pairs(names.iter().cloned().zip(columns.row(i)));
+				let row = MaterializedRow::from_pairs(names.iter().cloned().zip(columns.row(i)))
+					.at(times.get(i).copied());
 				(OutputKey::new(vec![Value::Uint8(number.0)]), row)
 			})
 			.collect()
 	}
 
-	pub fn rekey(&self, key_columns: &[String]) -> MaterializedView {
+	pub fn rekey(&self, key: &RowKey) -> MaterializedView {
 		let mut out = MaterializedView::empty();
 		out.columns = self.columns.clone();
 		for row in self.rows.values() {
-			let key = OutputKey::new(
-				key_columns
-					.iter()
-					.map(|name| row.get(name).cloned().unwrap_or(Value::Boolean(false)))
-					.collect(),
-			);
+			let mut values: Vec<Value> = key
+				.columns
+				.iter()
+				.map(|name| row.get(name).cloned().unwrap_or(Value::Boolean(false)))
+				.collect();
 
+			if key.include_time {
+				// Reported rather than substituted. The named-column arm above falls back to a
+				// placeholder, which is survivable because a missing column collapses rows that were
+				// already indistinguishable by that key. Doing the same for the event position would
+				// collapse every row in the view onto one key and report a duplicate on every step.
+				let Some(time) = row.time else {
+					out.incoherent.push(format!(
+						"a published row carries no event time, so it cannot be keyed by one: {row:?}"
+					));
+					continue;
+				};
+				values.push(Value::DateTime(time));
+			}
+
+			let key = OutputKey::new(values);
 			if let Some(replaced) = out.rows.insert(key.clone(), row.clone()) {
 				out.incoherent.push(format!("two published rows share the key {key:?}: {replaced:?}"));
 			}
@@ -360,7 +425,7 @@ mod projection_tests {
 			);
 		}
 
-		let rekeyed = view.rekey(&["lid".to_string()]);
+		let rekeyed = view.rekey(&RowKey::columns(["lid"]));
 
 		assert_eq!(rekeyed.rows.len(), 1, "the collapse itself is unavoidable: one key holds one row");
 		assert_eq!(
@@ -384,7 +449,7 @@ mod projection_tests {
 			);
 		}
 
-		let rekeyed = view.rekey(&["lid".to_string()]);
+		let rekeyed = view.rekey(&RowKey::columns(["lid"]));
 
 		assert_eq!(rekeyed.rows.len(), 2);
 		assert!(rekeyed.incoherent.is_empty());

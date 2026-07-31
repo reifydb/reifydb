@@ -13,7 +13,10 @@ use reifydb_core::{
 	state::horizon::Horizon,
 };
 use reifydb_sub_flow::execution::reclaim::ReclaimBudget;
-use reifydb_testing_chaos::{fuzz::run_reported, operator::workload::Workload};
+use reifydb_testing_chaos::{
+	fuzz::run_reported,
+	operator::{view::RowKey, workload::Workload},
+};
 use reifydb_testing_macro::chaos_test;
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 
@@ -93,6 +96,72 @@ chaos_test!(window_tumbling_grace_chaos, |seed| {
 			seal_pct: 30,
 		},
 	);
+});
+
+chaos_test!(window_tumbling_reclaim_chaos, |seed| {
+	// The same shape as window_tumbling_grace_chaos above, with the sweep running underneath it.
+	// Grace wider than the size is the interesting region: a window stays open long past its own
+	// span, so the watermark can carry a group past the data cutoff while events are still arriving
+	// for it - which is where a sweep and a live window actually meet.
+	// Vacuity is NOT asserted per seed here, and that is a measured decision rather than a lax one.
+	// For a window the seal is the primary reclaimer: the data cutoff is clamped to the seal ledger,
+	// so the sweep can only reach state at or below the frontier the seal has already passed, and a
+	// seal that cleaned up after itself leaves nothing behind. Roughly one corpus in twenty therefore
+	// gives the sweep nothing to do, correctly. Failing on those would make this suite flaky for a
+	// reason that is not a defect.
+	//
+	// The guarantee that the sweep path works at all lives in
+	// `operators::window::tumbling::reclaim::a_generated_corpus_stays_foldable_while_the_sweep_runs_underneath_it`,
+	// which pins a seed that does reclaim and asserts it. What this sweep contributes is breadth:
+	// whatever the sweep does reach, across many corpora, must leave the operator consistent with its
+	// oracle.
+	operators::window::tumbling::drive_reclaiming(
+		seed,
+		operators::window::tumbling::Params {
+			size_secs: 30,
+			grace_secs: 45,
+			groups: 3,
+			steps: 60,
+			max_batch: 4,
+			coord_span_ms: 400_000,
+			remove_pct: 25,
+			update_pct: 15,
+			seal_pct: 30,
+		},
+		20,
+		true,
+	);
+});
+
+chaos_test!(window_tumbling_reclaim_random_chaos, |seed| {
+	operators::window::tumbling::drive_reclaiming_random(seed);
+});
+
+chaos_test!(window_sliding_reclaim_chaos, |seed| {
+	// The exact shape a divergence was observed at before the driver's roll space was corrected and
+	// the sequence moved out from under it. Same size, slide, grace and mix; only the seed varies, so
+	// this searches the neighbourhood of the lost reproduction rather than one point in it.
+	operators::window::sliding::drive_reclaiming(
+		seed,
+		operators::window::sliding::Params {
+			size_secs: 30,
+			slide_secs: 10,
+			grace_secs: 45,
+			groups: 3,
+			steps: 60,
+			max_batch: 4,
+			coord_span_ms: 400_000,
+			remove_pct: 25,
+			update_pct: 15,
+			seal_pct: 30,
+		},
+		20,
+		true,
+	);
+});
+
+chaos_test!(window_sliding_reclaim_random_chaos, |seed| {
+	operators::window::sliding::drive_reclaiming_random(seed);
 });
 
 chaos_test!(window_sliding_sum_chaos, |seed| {
@@ -487,8 +556,12 @@ fn the_harness_sweep_retires_a_group_only_once_the_watermark_clears_its_horizon(
 	// in every suite built on it, and a sweep that retired everything immediately would make every
 	// later assertion about what survives vacuous.
 	//
-	// A 16s horizon grids at 1s (sixteen buckets per horizon), so a group stamped at t=0 sits in
-	// bucket 0 and the data cutoff `watermark - 16s` only passes it once the watermark reaches 17s.
+	// The declared 16s is deliberately not the horizon the sweep uses. `resolve_horizon` lets an
+	// operator that seals on its own timer override the declaration, and this window's seal span is
+	// its own 60s size, so the cutoff is `watermark - 60s` and the grid is 60s/16 = 3.75s. A group
+	// stamped at t=0 sits in bucket 0 and is only reachable once the watermark clears 63.75s.
+	// Deriving the numbers from the declared 16s instead - which is what this suite used to do -
+	// sweeps a node configuration the engine cannot register.
 	let span = Duration::from_seconds(16).expect("16s is representable");
 	let mut harness = Harness::new(|runtime| operators::window::build(&tumbling_sum(), runtime))
 		.with_activity_grid(Horizon::of(span));
@@ -496,13 +569,13 @@ fn the_harness_sweep_retires_a_group_only_once_the_watermark_clears_its_horizon(
 	let at = |ms: u64| DateTime::from_timestamp_millis(ms).unwrap();
 	harness.apply(generator::insert(vec![generator::row(RowNumber(1), 1, 10, at(0))])).expect("apply must succeed");
 
-	let early = harness.reclaim(16_999).expect("sweep must succeed");
+	let early = harness.reclaim(63_749).expect("sweep must succeed");
 	assert!(
 		early.is_empty(),
 		"a group one millisecond inside its horizon must survive, but the sweep took {early:?}"
 	);
 
-	let due = harness.reclaim(17_000).expect("sweep must succeed");
+	let due = harness.reclaim(63_750).expect("sweep must succeed");
 	assert!(!due.data.is_empty(), "once the cutoff clears bucket 0 the group must be retired");
 }
 
@@ -526,13 +599,14 @@ fn a_truncated_budget_leaves_the_rest_of_the_due_groups_for_the_next_sweep() {
 	]))
 	.expect("apply must succeed");
 
-	let first = harness.reclaim(17_000).expect("sweep must succeed");
+	// 63.75s, not 17s: the window seals on its own 60s span, which overrides the declared 16s.
+	let first = harness.reclaim(63_750).expect("sweep must succeed");
 	assert_eq!(first.data.len(), 1, "a one-group budget must stop after one group");
 
-	let second = harness.reclaim(17_000).expect("sweep must succeed");
+	let second = harness.reclaim(63_750).expect("sweep must succeed");
 	assert_eq!(second.data.len(), 1, "the group left behind is still due and goes on the next sweep");
 
-	let third = harness.reclaim(17_000).expect("sweep must succeed");
+	let third = harness.reclaim(63_750).expect("sweep must succeed");
 	assert!(third.is_empty(), "and a drained node must not keep offering the same groups back");
 }
 
@@ -883,8 +957,8 @@ fn snapshot_changes_when_work_happens_not_what_the_answer_is() {
 		assert_eq!(plain.divergence, None, "{} diverged from its own oracle", base.label());
 		assert_eq!(snapshot.divergence, None, "{} diverged from its own oracle", base.with_snapshot().label());
 		assert_eq!(
-			plain.view.rekey(&["lid".to_string(), "other_rid".to_string()]),
-			snapshot.view.rekey(&["lid".to_string(), "other_rid".to_string()]),
+			plain.view.rekey(&RowKey::columns(["lid", "other_rid"])),
+			snapshot.view.rekey(&RowKey::columns(["lid", "other_rid"])),
 			"{} answers differently with snapshot on; over a static right side the flag must only \
 			 change how much is republished, never what the join holds",
 			base.label()

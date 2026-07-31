@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_testing_chaos::operator::model::Model;
+use reifydb_testing_chaos::operator::{expectation::KeyedMultiset, model::Model, view::RowKey};
 use reifydb_value::value::{Value, row_number::RowNumber};
 
 use crate::framework::workload::WindowRow;
@@ -56,8 +56,22 @@ impl<G: Grid> GridOracle<G> {
 	}
 }
 
+/// What makes two published rows the same row for a fixed-grid window.
+///
+/// The group-by column plus the window start. Every window spec in this tree groups by `g`, and the
+/// operator carries the window start in the row's event position rather than as a named column -
+/// `build_engine_row` publishes only the group and aggregate columns, and stamps `span.start` as the
+/// row's time.
+///
+/// Not the row number, which is what the view folds on by default. A key whose mapping the sweep
+/// retired mints a brand new row number, so the duplicate it publishes beside its live row collides
+/// with nothing and folds in looking legitimate.
+fn window_row_key() -> RowKey {
+	RowKey::columns(["g"]).with_time()
+}
+
 impl<G: Grid> Model<WindowRow> for GridOracle<G> {
-	type Expectation = Vec<Vec<Value>>;
+	type Expectation = KeyedMultiset;
 
 	fn admit(&mut self, event: &WindowRow) -> bool {
 		let WindowRow {
@@ -114,7 +128,7 @@ impl<G: Grid> Model<WindowRow> for GridOracle<G> {
 		self.ledger = self.ledger.max(at_ms);
 	}
 
-	fn live(&self) -> Vec<Vec<Value>> {
+	fn live(&self) -> KeyedMultiset {
 		// Closing a fixed-grid window stops it admitting events and lets the operator reclaim
 		// its accumulator, but the aggregate it already published stays in the view. Nothing
 		// evicts a grid window, so every window the oracle ever opened is required, not merely
@@ -122,11 +136,11 @@ impl<G: Grid> Model<WindowRow> for GridOracle<G> {
 		self.all()
 	}
 
-	fn all(&self) -> Vec<Vec<Value>> {
-		render(self.totals().into_iter())
+	fn all(&self) -> KeyedMultiset {
+		KeyedMultiset::new(window_row_key(), render(self.totals().into_iter()))
 	}
 
-	fn after_drain(&self) -> Vec<Vec<Value>> {
+	fn after_drain(&self) -> KeyedMultiset {
 		self.all()
 	}
 }

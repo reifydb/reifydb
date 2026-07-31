@@ -10,28 +10,26 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingLayers},
 	common::CommitVersion,
 	interface::{catalog::flow::FlowNodeId, change::Change},
-	key::{
-		EncodableKey,
-		flow_node_state::FlowNodeStateKey,
-		operator_state::{GroupSet, OperatorStateKey},
-	},
-	state::{
-		budget::OperatorStateBudgetHandle,
-		group::ActivityBuckets,
-		horizon::{Cutoff, Horizon},
-	},
+	key::{EncodableKey, flow_node_state::FlowNodeStateKey, operator_state::OperatorStateKey},
+	state::{budget::OperatorStateBudgetHandle, group::ActivityBuckets, horizon::Horizon},
 };
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_flow::{
 	operator::Operator,
 	timer::Timer,
 	transaction::{ChangeCoordinate, DeferredParams, FlowTransaction, substrate::FlowSubstrate},
+	window::ledger::read_sealed_through,
 };
 use reifydb_runtime::context::{
 	RuntimeContext,
 	clock::{Clock, MockClock},
 };
-use reifydb_sub_flow::execution::reclaim::{ReclaimBudget, ReclaimReport, SweepInputs, reclaim_nodes};
+use reifydb_sub_flow::{
+	engine::register::{activity_grid_of, resolve_horizon},
+	execution::reclaim::{
+		PhaseReclaim, ReclaimBudget, ReclaimReport, SweepSpec, reclaim_nodes, resolve_sweep_inputs,
+	},
+};
 use reifydb_testing_chaos::operator::{
 	reclaim::{Reclaimed, RetiredGroup, StateFootprint},
 	subject::Subject,
@@ -52,6 +50,7 @@ pub struct Harness<O: Operator> {
 	pending: Pending,
 	substrate: FlowSubstrate,
 	horizon: Option<Horizon>,
+	sink_row_ttl: Option<Duration>,
 	reclaim_budget: ReclaimBudget,
 	mapping_cursor: Option<EncodedKey>,
 }
@@ -81,6 +80,7 @@ impl<O: Operator> Harness<O> {
 			pending: Pending::new(),
 			substrate: FlowSubstrate::new(),
 			horizon: None,
+			sink_row_ttl: None,
 			reclaim_budget: ReclaimBudget {
 				groups: 256,
 				rows: 1_024,
@@ -96,11 +96,39 @@ impl<O: Operator> Harness<O> {
 	/// whose `event_grid()` is `None`, which is the condition the reclaim driver silently skips a
 	/// node on. So without this call a sweep is not inaccurate, it does not happen at all.
 	///
+	/// The argument is the *declared* horizon, exactly as a `with { ttl: ... }` clause supplies it.
+	/// It is not the horizon the sweep ends up using: production runs it through `resolve_horizon`,
+	/// where an operator that seals on its own timer overrides the declaration outright, and then
+	/// widens the grid against every keyspace and mapping span via `activity_grid_of`. Both are
+	/// production's own functions rather than a harness copy, because a suite that derived its own
+	/// span would be asserting against a node configuration the engine cannot register - a 60s window
+	/// declared at 16s reclaims on a cutoff and a slack that are both 3.75x off what ships.
+	///
 	/// Opt-in rather than automatic, because it is only meaningful for a suite that also gives its
 	/// rows real event times - see `coordinate_of`.
-	pub fn with_activity_grid(mut self, horizon: Horizon) -> Self {
-		self.substrate.group.set_activity_grid(self.operator.id(), horizon);
+	pub fn with_activity_grid(mut self, declared: Horizon) -> Self {
+		let horizon = resolve_horizon(self.operator.seal_after_ms(), declared);
+		let grid =
+			activity_grid_of(horizon, &self.operator.keyspace_spans(), self.operator.node_mapping_span());
+		self.substrate.group.set_activity_grid(self.operator.id(), grid);
 		self.horizon = Some(horizon);
+		self
+	}
+
+	/// Declares the row ttl of the sink this operator publishes into, which is what bounds the
+	/// identity phase.
+	///
+	/// Without it `identity_span` is `None` and `reclaim_nodes` skips phase two entirely, so the
+	/// mapping a published row still names is retained forever. That is the safe direction, but it
+	/// also means a harness that never calls this cannot exercise the hazard the two-phase split
+	/// exists for: an identity retired under a live sink row makes the next event on that key mint a
+	/// second row beside it.
+	///
+	/// Production derives this from the flow's one sink via `find_row_settings_latest`. The harness
+	/// drives a bare operator with no flow behind it, so the ttl has to be stated rather than looked
+	/// up.
+	pub fn with_sink_row_ttl(mut self, ttl: Duration) -> Self {
+		self.sink_row_ttl = Some(ttl);
 		self
 	}
 
@@ -189,9 +217,15 @@ impl<O: Operator> Harness<O> {
 
 	/// Drives the real per-node sweep at `at_ms`, deriving its cutoffs the way the engine does.
 	///
-	/// This calls production's own `reclaim_nodes` rather than a reimplementation, so the phase
-	/// order, the shared budget and the early stop are the ones that ship. Only the resolution above
-	/// it is harness-local, and it is deliberately thin: one node, no sinks, so no identity span.
+	/// This calls production's own `reclaim_nodes` through production's own `resolve_sweep_inputs`,
+	/// so the phase order, the shared budget, the early stop, the seal-ledger clamp on the data
+	/// cutoff and the one-grid-width slack on every other phase are the ones that ship. What stays
+	/// harness-local is only the *ingredients*: which node, which horizon, which sink row ttl.
+	///
+	/// The seal ledger is read exactly when production reads it. `seals_on_timer` is node-typed and
+	/// so unreachable here, but `seal_after_ms()` is its operator-level equivalent - both resolve
+	/// through `window_horizon`, which is `Perpetual` (hence `span_ms() == None`) for precisely the
+	/// count-sized windows `seals_on_timer` excludes.
 	pub fn reclaim(&mut self, at_ms: u64) -> Result<Reclaimed> {
 		let node = self.operator.id();
 		let (Some(horizon), Some(grid)) = (self.horizon, self.substrate.group.buckets(node).event_grid())
@@ -200,66 +234,83 @@ impl<O: Operator> Harness<O> {
 		};
 		let watermark = DateTime::from_timestamp_millis(at_ms)?;
 		let slack = grid.width();
-		let behind = |span: Duration| Cutoff(watermark.saturating_sub(span).saturating_sub(slack));
-
-		let inputs = vec![SweepInputs {
-			node,
-			data: horizon.cutoff(watermark).map(Cutoff),
-			// The harness drives one operator with no sink behind it, so there is no row ttl to
-			// derive an identity span from and the second phase never runs. A suite that needs
-			// identity reclamation has to go through a real flow.
-			identity: None,
-			keyspaces: self
-				.operator
-				.keyspace_spans()
-				.into_iter()
-				.map(|(keyspace, span)| (keyspace, behind(span)))
-				.collect(),
-			mapping: self.operator.node_mapping_span().map(behind),
-			mapping_cursor: self.mapping_cursor.take(),
-		}];
-		let data_cutoff = inputs[0].data;
-		let keyspace_cutoff = inputs[0].keyspaces.first().map(|(_, cutoff)| *cutoff);
 
 		let mut txn = self.begin(watermark);
+		let sealed_through = if self.operator.seal_after_ms().is_some() {
+			read_sealed_through(&mut txn, node)?.map(|sealed| sealed.at())
+		} else {
+			None
+		};
+
+		let resolved = resolve_sweep_inputs(
+			SweepSpec {
+				node,
+				horizon,
+				keyspace_spans: self.operator.keyspace_spans(),
+				mapping_span: self.operator.node_mapping_span(),
+				identity_span: self.sink_row_ttl,
+				sealed_through,
+				slack,
+				mapping_cursor: self.mapping_cursor.take(),
+			},
+			watermark,
+			CommitVersion(self.version),
+		);
+
 		let mut budget = self.reclaim_budget;
 		let mut report = ReclaimReport::default();
-		let mut retired: Vec<u64> = Vec::new();
 		let operator = &self.operator;
-		let outcome = reclaim_nodes(inputs, &mut txn, &mut budget, &mut report, &mut |_, groups: GroupSet| {
-			retired.extend(groups.as_slice().iter().map(|group| group.0));
-			operator.invalidate_groups(&groups);
-		})?;
+		let outcome =
+			reclaim_nodes(vec![resolved.inputs], &mut txn, &mut budget, &mut report, &mut |_, groups| {
+				operator.invalidate_groups(&groups);
+			})?;
 		txn.flush_operator_states()?;
 		self.end(txn);
 		self.mapping_cursor = outcome.cursors.into_iter().next().and_then(|(_, cursor)| cursor);
 
-		// The keyspace phase always precedes the data phase and each reports exactly the groups it
-		// retired, so the ordered list splits at the reported keyspace count. Attributing inside the
-		// callback is not possible - the report is mutably borrowed by the sweep - and guessing from
-		// the callback's own history would be a second source of truth for something the report
-		// already states.
-		let at = |cutoff: Option<Cutoff>| cutoff.map(|c| c.instant().to_millis()).unwrap_or_default();
-		let (swept_keyspaces, swept_data) = retired.split_at(report.keyspace_groups.min(retired.len()));
+		Ok(reclaimed_from(&report, node))
+	}
+}
 
-		Ok(Reclaimed {
-			data: swept_data
-				.iter()
-				.map(|group| RetiredGroup {
-					group: *group,
-					cutoff_ms: at(data_cutoff),
-				})
-				.collect(),
-			keyspace: swept_keyspaces
-				.iter()
-				.map(|group| RetiredGroup {
-					group: *group,
-					cutoff_ms: at(keyspace_cutoff),
-				})
-				.collect(),
+/// Restates the sweep's own report in the terms a chaos oracle checks.
+///
+/// Every group and every cutoff here comes from the report rather than from anything the harness
+/// derived, which is the point: an oracle that re-derived the cutoff would be checking the sweep
+/// against a copy of the sweep's arithmetic and could never catch a resolver defect.
+fn reclaimed_from(report: &ReclaimReport, node: FlowNodeId) -> Reclaimed {
+	let Some(reclaim) = report.node(node) else {
+		return Reclaimed {
 			rows: report.rows,
 			backlog: report.backlog,
-		})
+			..Default::default()
+		};
+	};
+	let retired = |phase: &PhaseReclaim| {
+		phase.groups
+			.iter()
+			.map(|group| RetiredGroup {
+				group: group.0,
+				cutoff_ms: phase.cutoff.instant().to_millis(),
+			})
+			.collect::<Vec<_>>()
+	};
+
+	Reclaimed {
+		data: reclaim.data.as_ref().map(retired).unwrap_or_default(),
+		identity: reclaim.identity.as_ref().map(retired).unwrap_or_default(),
+		keyspace: reclaim
+			.keyspaces
+			.iter()
+			.flat_map(|keyspace| {
+				keyspace.groups.iter().map(|group| RetiredGroup {
+					group: group.0,
+					cutoff_ms: keyspace.cutoff.instant().to_millis(),
+				})
+			})
+			.collect(),
+		mapping_rows: reclaim.mapping.map(|mapping| mapping.rows).unwrap_or_default(),
+		rows: report.rows,
+		backlog: report.backlog,
 	}
 }
 
