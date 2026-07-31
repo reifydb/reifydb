@@ -344,10 +344,8 @@ impl DistinctOperator {
 					groups[&post_hash],
 					&utils::empty_key(),
 				)?;
-				let post_out = Self::with_stable_rn(
-					post_columns.extract_by_indices(&[row_idx]),
-					stable_rn,
-				);
+				let post_out =
+					Self::with_stable_rn(post_columns.extract_by_indices(&[row_idx]), stable_rn);
 				match post_displaced_opt {
 					Some(old_visible) => result.push(Diff::update(
 						Self::with_stable_rn(old_visible.to_columns(&state.layout), stable_rn),

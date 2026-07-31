@@ -539,11 +539,7 @@ mod tests {
 		let mut txn = txn_at(&engine, op.node, 100);
 		op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[1, 2]))).unwrap();
 		let provider = txn.row_numbers();
-		assert_eq!(
-			provider.memory(op.node).entries,
-			Count::new(2),
-			"precondition: both mappings are cached"
-		);
+		assert_eq!(provider.memory(op.node).entries, Count::new(2), "precondition: both mappings are cached");
 
 		op.translate_append_remove(&mut txn, 0, rows(&[1])).unwrap().expect("a known row must translate");
 

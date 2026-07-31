@@ -725,11 +725,7 @@ mod tests {
 		assert!(matches!(published[0].kind, EmitKind::Insert), "precondition: the window publishes once");
 
 		assert!(store.drop_group_data_entries() > 0, "precondition: the sweep must have erased something");
-		assert_eq!(
-			store.row_mapping_count(),
-			1,
-			"precondition: the identity half must survive the data phase"
-		);
+		assert_eq!(store.row_mapping_count(), 1, "precondition: the identity half must survive the data phase");
 
 		let mut engine = Engine::new(carry_config(None));
 		let republished = feed_group(&mut engine, &mut store, "BTC", 0, 3.0);

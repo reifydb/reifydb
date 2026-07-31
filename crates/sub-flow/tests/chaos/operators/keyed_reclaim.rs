@@ -14,6 +14,8 @@
 //! the row that mapping names. An operator that treats "I have no state for this key" as "this key is
 //! new" then publishes an Insert over a live row, which is a diff no sink can fold.
 
+use std::sync::Arc;
+
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
@@ -46,7 +48,6 @@ use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
-use std::sync::Arc;
 
 use crate::framework::{generator, harness::Harness};
 
@@ -169,7 +170,8 @@ impl Tally {
 			let bytes = (prior + 1).encode_state(DateTime::default())?;
 			txn.state_set(self.node, &state, bytes.into_row())?;
 
-			let (number, is_new) = txn.get_or_create_row_number(self.node, group, &EncodedKey::new(vec![]))?;
+			let (number, is_new) =
+				txn.get_or_create_row_number(self.node, group, &EncodedKey::new(vec![]))?;
 			numbers.push(number);
 			if is_new {
 				minted.push(row);
@@ -309,7 +311,10 @@ fn an_append_mapping_survives_the_data_phase_and_falls_only_to_the_sweep_after_i
 	let released = session.reclaim(SWEEP_MS).expect("sweep must succeed");
 	assert!(released.identity.is_empty(), "the data phase must run first, even with no data to erase");
 	assert_eq!(
-		session.footprint().expect("footprint must succeed").expect("the subject reports a footprint").identity_rows,
+		session.footprint()
+			.expect("footprint must succeed")
+			.expect("the subject reports a footprint")
+			.identity_rows,
 		before.identity_rows,
 		"no mapping may be erased on the sweep that releases the group"
 	);
@@ -319,7 +324,10 @@ fn an_append_mapping_survives_the_data_phase_and_falls_only_to_the_sweep_after_i
 	let identity = session.reclaim(SWEEP_MS).expect("sweep must succeed");
 	assert!(!identity.identity.is_empty(), "the next sweep must take the mapping");
 	assert!(
-		session.footprint().expect("footprint must succeed").expect("the subject reports a footprint").identity_rows < before.identity_rows,
+		session.footprint()
+			.expect("footprint must succeed")
+			.expect("the subject reports a footprint")
+			.identity_rows < before.identity_rows,
 		"identity rows must actually shrink, or this proves nothing about the second phase"
 	);
 
@@ -452,8 +460,13 @@ fn a_sweep_one_millisecond_before_the_cutoff_clears_the_bucket_is_a_no_op() {
 	macro_rules! check {
 		($name:literal, $operator:expr, $tag:expr) => {{
 			let mut subject = harness($operator);
-			subject.apply($tag(generator::insert(vec![generator::row(RowNumber(1), 1, 10, at(ARRIVAL_MS))])))
-				.expect("apply must succeed");
+			subject.apply($tag(generator::insert(vec![generator::row(
+				RowNumber(1),
+				1,
+				10,
+				at(ARRIVAL_MS),
+			)])))
+			.expect("apply must succeed");
 			let before = subject.footprint().expect("footprint must succeed");
 			let reclaimed = subject.reclaim(EARLY_SWEEP_MS).expect("sweep must succeed");
 			let after = subject.footprint().expect("footprint must succeed");

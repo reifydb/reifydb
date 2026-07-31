@@ -165,11 +165,6 @@ fn flush_persists_only_mutated_entries() {
 
 #[test]
 fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_holds() {
-	// The data phase erases the DistinctEntry; the identity phase runs on a later cutoff, and never at
-	// all when the sink declares no row ttl, so the row-number mapping outlives it by design. The next
-	// sighting of that value therefore looks brand new to the operator while the sink still holds the
-	// row it names. Emitting an Insert there would insert a row over itself - a diff no sink can fold,
-	// and the exact defect class the join emission split was written to close.
 	let engine = TestEngine::new();
 	let op = make_op(6, &engine);
 	let mut txn = engine.flow_txn().catalog(engine.catalog()).deferred();
@@ -206,7 +201,8 @@ fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_hol
 		panic!("republishing over a row the sink still holds must be an update, got {diff:?}");
 	};
 	assert_eq!(
-		post.row_numbers()[0], published,
+		post.row_numbers()[0],
+		published,
 		"and it must reuse the row number the sink already knows, or the value now occupies two rows"
 	);
 }
