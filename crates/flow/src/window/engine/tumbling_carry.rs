@@ -501,6 +501,26 @@ mod tests {
 		fn row_mapping_count(&self) -> usize {
 			self.rows.len()
 		}
+
+		// Phase-1 group reclamation: every data keyspace inside a real group goes, node scope stays,
+		// and the row-number mappings live outside `data` so they survive exactly as they do under
+		// the group-major reaper.
+		fn drop_group_data_entries(&mut self) -> usize {
+			let keys: Vec<Vec<u8>> = self
+				.data
+				.keys()
+				.filter(|k| {
+					OperatorStateKey::decode_inner(k).is_some_and(|(group, found, _)| {
+						!group.is_node_scope() && found.is_data()
+					})
+				})
+				.cloned()
+				.collect();
+			for key in &keys {
+				self.data.remove(key);
+			}
+			keys.len()
+		}
 	}
 
 	impl StateStore for CountingStore {
@@ -687,6 +707,42 @@ mod tests {
 			store.row_mapping_count() <= 4,
 			"sealed windows must reclaim their row-number mappings; found {} live mappings after 60 windows",
 			store.row_mapping_count()
+		);
+	}
+
+	#[test]
+	fn a_window_whose_state_was_reclaimed_updates_its_row_rather_than_inserting_a_second() {
+		// The carry engine holds an accumulator, a carry meta and a last_output, and the data phase
+		// takes all three at once while the row-number mapping stays addressable. What comes back has
+		// no memory of the value it published, but the sink still holds that row, so the next event
+		// has to land on it. A second insert would put a duplicate row over a live one, and the carry
+		// engine is the one place where a re-publish also has to survive losing its seeded carry.
+		let mut store = CountingStore::default();
+		let mut engine = Engine::new(carry_config(None));
+		let published = feed_group(&mut engine, &mut store, "BTC", 0, 5.0);
+		engine.flush(&mut store).expect("flush");
+		assert_eq!(published.len(), 1);
+		assert!(matches!(published[0].kind, EmitKind::Insert), "precondition: the window publishes once");
+
+		assert!(store.drop_group_data_entries() > 0, "precondition: the sweep must have erased something");
+		assert_eq!(
+			store.row_mapping_count(),
+			1,
+			"precondition: the identity half must survive the data phase"
+		);
+
+		let mut engine = Engine::new(carry_config(None));
+		let republished = feed_group(&mut engine, &mut store, "BTC", 0, 3.0);
+
+		assert_eq!(republished.len(), 1);
+		assert_eq!(
+			republished[0].kind,
+			EmitKind::Update,
+			"the published row survived the sweep, so this is an update and not a second insert"
+		);
+		assert_eq!(
+			republished[0].row_number, published[0].row_number,
+			"the woken window keeps the row it published"
 		);
 	}
 

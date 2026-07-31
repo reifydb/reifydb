@@ -692,6 +692,26 @@ pub(crate) mod test_support {
 			keys.len()
 		}
 
+		/// The same phase, widened to every data keyspace a group can hold - the shape engines
+		/// that keep no ACCUMULATOR see. Node scope is excluded because the group-major reaper
+		/// structurally refuses it, which is what leaves the row-number mapping addressable.
+		pub(crate) fn drop_group_data_entries(&mut self) -> usize {
+			let keys: Vec<Vec<u8>> = self
+				.data
+				.keys()
+				.filter(|k| {
+					OperatorStateKey::decode_inner(k).is_some_and(|(group, found, _)| {
+						!group.is_node_scope() && found.is_data()
+					})
+				})
+				.cloned()
+				.collect();
+			for key in &keys {
+				self.data.remove(key);
+			}
+			keys.len()
+		}
+
 		pub(crate) fn mapping_entry_count(&mut self) -> usize {
 			self.keyspace_count(Keyspace::ROW_NUMBER_MAPPING)
 		}

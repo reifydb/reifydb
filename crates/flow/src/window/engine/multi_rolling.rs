@@ -529,6 +529,53 @@ mod tests {
 	}
 
 	#[test]
+	fn a_group_whose_state_was_reclaimed_updates_its_ranked_row_rather_than_inserting_a_second() {
+		// multi_rolling bundles the buffer and the last emitted ranking into one GroupState, so the
+		// data phase takes both and the group comes back with no memory of what it ranked. The ranked
+		// row's mapping survives, and it is the only thing left that knows the sink is still holding
+		// that row. Publishing an Insert against it would rank the same key twice.
+		let mut store = MockStore::default();
+		let ranked_key = row_key(&1, &0);
+
+		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
+		let published = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
+		engine.flush(&mut store).unwrap();
+		let published_row = match &published[0] {
+			MultiEmit::Insert {
+				row_number,
+				..
+			} => *row_number,
+			_ => panic!("precondition: the first ranking is an insert"),
+		};
+
+		let group = store.lookup_group(&state_key(&1)).unwrap().expect("applying the group interns it");
+		assert!(store.drop_group_data_entries() > 0, "precondition: the sweep must have erased something");
+		assert!(
+			store.contains_row_mapping(group, &ranked_key),
+			"precondition: the identity half must survive the data phase"
+		);
+
+		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(3)]);
+		let republished = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
+
+		assert_eq!(republished.len(), 1);
+		match &republished[0] {
+			MultiEmit::Update {
+				row_number,
+				..
+			} => assert_eq!(
+				*row_number, published_row,
+				"the woken group must re-rank on the row it published"
+			),
+			_ => panic!("the ranked row survived the sweep, so this is an update and not a second insert"),
+		}
+	}
+
+	#[test]
 	fn withdrawn_ranking_reclaims_its_row_number_mapping() {
 		// Every ranked (group, secondary) mints a row-number mapping ('M') via get_or_create_row_number.
 		// When the ranking is withdrawn (its secondary drops out of the emit) that mapping must be

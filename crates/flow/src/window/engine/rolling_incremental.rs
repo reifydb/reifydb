@@ -358,7 +358,7 @@ mod tests {
 	use std::collections::BTreeMap;
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::state::budget::OperatorStateBudgetHandle;
+	use reifydb_core::state::{budget::OperatorStateBudgetHandle, store::StateStore};
 
 	use crate::window::{
 		accumulator::WindowAccumulator,
@@ -430,6 +430,51 @@ mod tests {
 		assert_eq!(
 			withdrawn[0].row_number, published[0].row_number,
 			"the withdrawal targets the same row that was published"
+		);
+	}
+
+	#[test]
+	fn a_group_whose_state_was_reclaimed_updates_its_row_rather_than_inserting_a_second() {
+		// rolling_incremental keeps no ACCUMULATOR, so its share of the data phase is the buffer and
+		// the running total. Erasing both leaves the row it published still addressable through the
+		// node-scoped mapping, and the next event has to reach that row rather than mint a second one
+		// beside it. The engine decides Insert from whether the mapping was minted, so this is the
+		// assertion that keeps that decision tied to identity rather than to state a sweep can delete.
+		let mut store = MockStore::default();
+		let mut engine =
+			RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new(test_config());
+
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
+		let published: Vec<RollingResult<u32, i64>> =
+			engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
+		engine.flush(&mut store).unwrap();
+		assert_eq!(published.len(), 1);
+		assert!(matches!(published[0].kind, EmitKind::Insert), "precondition: the group publishes once");
+
+		let group_id = store.lookup_group(&row_key(&1)).unwrap().expect("precondition: the group is interned");
+		assert!(store.drop_group_data_entries() > 0, "precondition: the sweep must have erased something");
+		assert!(
+			store.contains_row_mapping(group_id, &row_key(&1)),
+			"precondition: the identity half must survive the data phase"
+		);
+
+		let mut engine =
+			RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(3)]);
+		let republished: Vec<RollingResult<u32, i64>> =
+			engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
+
+		assert_eq!(republished.len(), 1);
+		assert_eq!(
+			republished[0].kind,
+			EmitKind::Update,
+			"the published row survived the sweep, so this is an update and not a second insert"
+		);
+		assert_eq!(
+			republished[0].row_number, published[0].row_number,
+			"the woken group keeps the row it published"
 		);
 	}
 
