@@ -6,7 +6,7 @@ use std::mem;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::flow::{FlowId, FlowNodeId},
+		catalog::flow::{FlowId, OperatorId},
 		change::{Change, ChangeOrigin},
 	},
 };
@@ -105,7 +105,7 @@ impl SubscriptionWorkerActor {
 		base_query: &MultiReadTransaction,
 		change: &Change,
 		flow_id: FlowId,
-		node_id: FlowNodeId,
+		node_id: OperatorId,
 	) {
 		if let Some(gate) = flow_state.gate
 			&& change.version <= gate

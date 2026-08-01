@@ -8,7 +8,7 @@ use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapabili
 use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	interface::{
-		catalog::{flow::FlowNodeId, id::SubscriptionId, subscription::IMPLICIT_COLUMN_OP},
+		catalog::{flow::OperatorId, id::SubscriptionId, subscription::IMPLICIT_COLUMN_OP},
 		change::{Change, Diff},
 	},
 	internal,
@@ -48,7 +48,7 @@ fn delivered_state_usage(value: &dyn Any) -> ByteSize {
 pub struct EphemeralSinkSubscriptionOperator {
 	#[allow(dead_code)]
 	parent: OperatorCell,
-	node: FlowNodeId,
+	node: OperatorId,
 	subscription_id: SubscriptionId,
 	delivery: Arc<DeliveryBuffer>,
 	shape: RowShape,
@@ -57,7 +57,7 @@ pub struct EphemeralSinkSubscriptionOperator {
 impl EphemeralSinkSubscriptionOperator {
 	pub fn new(
 		parent: OperatorCell,
-		node: FlowNodeId,
+		node: OperatorId,
 		subscription_id: SubscriptionId,
 		delivery: Arc<DeliveryBuffer>,
 	) -> Self {
@@ -124,7 +124,7 @@ impl SingleStateful for EphemeralSinkSubscriptionOperator {
 }
 
 impl Operator for EphemeralSinkSubscriptionOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 

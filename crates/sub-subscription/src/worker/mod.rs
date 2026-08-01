@@ -15,7 +15,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::{
-			flow::{FlowId, FlowNodeId},
+			flow::{FlowId, OperatorId},
 			id::SubscriptionId,
 		},
 		change::Change,
@@ -82,7 +82,7 @@ pub enum SubscriptionWorkerMessage {
 }
 
 struct SubscriptionFlowState {
-	operator_states: HashMap<FlowNodeId, CarriedOperatorState>,
+	operator_states: HashMap<OperatorId, CarriedOperatorState>,
 	keyed_state: HashMap<EncodedKey, EncodedRow>,
 	gate: Option<CommitVersion>,
 }

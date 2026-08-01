@@ -19,7 +19,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
-			flow::FlowNodeId,
+			flow::OperatorId,
 		},
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
@@ -34,7 +34,7 @@ use reifydb_sub_lifecycle::{
 };
 use reifydb_value::{util::cowvec::CowVec, value::Value};
 
-const NODE: FlowNodeId = FlowNodeId(1);
+const NODE: OperatorId = OperatorId(1);
 
 /// Only `flush_watermark` is scripted; the tombstone reaper's floor is the flush watermark alone, so this drives
 /// its cutoff directly.

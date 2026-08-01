@@ -8,7 +8,7 @@ use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
 use reifydb_sub_flow::{
 	context::FlowContext,
 	engine::FlowEngineInner,
-	operator::{OperatorCell, Operators, apply::ApplyOperator},
+	operator::{OperatorCell, apply::ApplyOperator},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
@@ -42,12 +42,7 @@ pub(crate) fn register_ephemeral_flow(
 				);
 				engine.insert_operator(
 					node_id,
-					OperatorCell::new(Operators::Apply(ApplyOperator::new(
-						parent,
-						node_id,
-						Box::new(op),
-						None,
-					))),
+					OperatorCell::new(ApplyOperator::new(parent, node_id, Box::new(op), None)),
 				);
 			}
 			_ => {

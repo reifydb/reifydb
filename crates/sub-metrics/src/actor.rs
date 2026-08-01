@@ -431,7 +431,7 @@ mod tests {
 		actors::metrics::MetricsMessage,
 		event::metric::{Request, RequestExecutedEvent},
 		fingerprint::{RequestFingerprint, StatementFingerprint},
-		interface::catalog::flow::FlowNodeId,
+		interface::catalog::flow::OperatorId,
 		key::{
 			EncodableKey,
 			operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
@@ -449,7 +449,7 @@ mod tests {
 		// read per mapping per commit. It must answer over the structured key - a first-byte tag
 		// test stopped matching once mappings moved into the group keyspace, and a predicate that
 		// can never fire looks identical to one that is never needed.
-		let node = FlowNodeId(7);
+		let node = OperatorId(7);
 		let mapping = OperatorStateKey::new(
 			node,
 			OperatorGroupStateKey::inner_encoded(GroupId::FIRST, Keyspace::ROW_NUMBER_MAPPING, [1, 2, 3])
@@ -466,7 +466,7 @@ mod tests {
 	fn other_operator_state_is_not_write_once() {
 		// Accumulators are rewritten on every batch, so skipping their prior-size lookup
 		// would undercount every window operator's state growth.
-		let node = FlowNodeId(7);
+		let node = OperatorId(7);
 		let accumulator = OperatorStateKey::new(
 			node,
 			OperatorGroupStateKey::inner_encoded(GroupId::FIRST, Keyspace::ACCUMULATOR, [1, 2, 3])
