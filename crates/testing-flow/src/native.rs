@@ -14,7 +14,7 @@ use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, state::O
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers},
 	common::CommitVersion,
-	interface::{catalog::flow::FlowNodeId, change::Change},
+	interface::{catalog::flow::OperatorId, change::Change},
 	key::operator_group_state::GroupStateKey,
 	row::Row,
 	state::budget::OperatorStateBudgetHandle,
@@ -47,7 +47,7 @@ use reifydb_value::{
 pub struct NativeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> {
 	engine: TestEngine,
 	operator: NativeBridgedOperator,
-	node_id: FlowNodeId,
+	node_id: OperatorId,
 	version: u64,
 	pending: Pending,
 	substrate: FlowSubstrate,
@@ -187,7 +187,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 		self.history.clear();
 	}
 
-	pub fn node_id(&self) -> FlowNodeId {
+	pub fn node_id(&self) -> OperatorId {
 		self.node_id
 	}
 }
@@ -202,7 +202,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> Index<usize> for NativeOpera
 
 pub struct NativeOperatorHarnessBuilder<C> {
 	config: HashMap<String, Value>,
-	node_id: FlowNodeId,
+	node_id: OperatorId,
 	version: CommitVersion,
 	_phantom: PhantomData<C>,
 }
@@ -217,7 +217,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarnessBuilder
 	pub fn new() -> Self {
 		Self {
 			config: HashMap::new(),
-			node_id: FlowNodeId(1),
+			node_id: OperatorId(1),
 			version: CommitVersion(1),
 			_phantom: PhantomData,
 		}
@@ -237,7 +237,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarnessBuilder
 		self
 	}
 
-	pub fn with_node_id(mut self, node_id: FlowNodeId) -> Self {
+	pub fn with_node_id(mut self, node_id: OperatorId) -> Self {
 		self.node_id = node_id;
 		self
 	}

@@ -9,8 +9,8 @@ use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers},
 	common::CommitVersion,
-	interface::{catalog::flow::FlowNodeId, change::Change},
-	key::{EncodableKey, operator_state::OperatorStateKey},
+	interface::{catalog::flow::OperatorId, change::Change},
+	key::{EncodableKey, operator_group_state::OperatorGroupStateKey, operator_state::OperatorStateKey},
 	state::{budget::OperatorStateBudgetHandle, group::ActivityBuckets, horizon::Cutoff},
 };
 use reifydb_engine::test_harness::TestEngine;
@@ -27,7 +27,7 @@ use reifydb_sdk::{config::Config, operator::OperatorLogic};
 use reifydb_sub_flow::{
 	execution::reclaim::{PhaseReclaim, ReclaimBudget, ReclaimReport, SweepInputs, reclaim_nodes},
 	operator::{
-		OperatorCell, Operators,
+		OperatorCell,
 		apply::ApplyOperator,
 		native::{NativeBridgedOperator, NativeOperatorAdapter},
 		scan::series::SourceSeriesOperator,
@@ -89,7 +89,7 @@ impl<O: Operator> Harness<O> {
 impl Harness<ApplyOperator> {
 	pub fn guest<C: OperatorLogic + 'static>(
 		logic: C,
-		node: FlowNodeId,
+		node: OperatorId,
 		capabilities: &'static [OperatorCapability],
 		ttl: Option<Duration>,
 	) -> Self {
@@ -100,7 +100,7 @@ impl Harness<ApplyOperator> {
 				capabilities,
 			);
 			ApplyOperator::new(
-				OperatorCell::new(Operators::SourceSeries(SourceSeriesOperator::new(FlowNodeId(0)))),
+				OperatorCell::new(SourceSeriesOperator::new(OperatorId(0))),
 				node,
 				Box::new(bridged),
 				ttl,
@@ -109,7 +109,7 @@ impl Harness<ApplyOperator> {
 	}
 
 	pub fn guest_from_config<C: OperatorLogic + 'static>(
-		node: FlowNodeId,
+		node: OperatorId,
 		capabilities: &'static [OperatorCapability],
 		config: Vec<(&str, Value)>,
 		ttl: Option<Duration>,
@@ -239,7 +239,7 @@ impl<O: Operator> Harness<O> {
 	}
 }
 
-fn reclaimed_from(report: &ReclaimReport, node: FlowNodeId) -> Reclaimed {
+fn reclaimed_from(report: &ReclaimReport, node: OperatorId) -> Reclaimed {
 	let Some(reclaim) = report.node(node) else {
 		return Reclaimed {
 			rows: report.rows,
@@ -297,7 +297,7 @@ fn coordinate_of(change: &Change) -> DateTime {
 mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
-		interface::{catalog::flow::FlowNodeId, change::Change},
+		interface::{catalog::flow::OperatorId, change::Change},
 		state::horizon::activity_buckets,
 	};
 	use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
@@ -319,7 +319,7 @@ mod tests {
 		// No row time is not the same as time zero: it means the workload declared no position, and the
 		// change's own stamp is the only honest answer left.
 		let stamped = DateTime::from_timestamp_millis(4_242).unwrap();
-		let timeless = Change::from_flow(FlowNodeId(1), CommitVersion(1), Vec::new(), stamped);
+		let timeless = Change::from_flow(OperatorId(1), CommitVersion(1), Vec::new(), stamped);
 		assert_eq!(coordinate_of(&timeless), stamped);
 	}
 
