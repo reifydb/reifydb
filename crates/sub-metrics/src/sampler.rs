@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	lifecycle::metrics::RetentionMetrics,
 	metrics::sample::{MetricKind, MetricsSample, Reading},
+	value::column::columns::Columns,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
@@ -18,8 +19,10 @@ use reifydb_runtime::{
 use reifydb_store_multi::{MultiStore, tier::read::ReadBufferShardMetrics};
 use reifydb_value::{
 	count::Count,
-	value::{Value, duration::Duration, value_type::ValueType},
+	params::Params,
+	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
 };
+use tracing::error;
 
 use crate::{
 	domains::{
@@ -27,7 +30,7 @@ use crate::{
 		runtime::collect::{Collectors, collect_memory, collect_operators, collect_watermarks},
 	},
 	framework::{
-		accumulator::{Measure, MetricsAccumulator, MetricsRow},
+		accumulator::{Measure, MetricsAccumulator, MetricsRow, PublishedSurface},
 		spec::{MetricsDomain, Surface},
 		surfaces::MetricsSurfaces,
 	},
@@ -51,13 +54,16 @@ pub struct MetricsSamplerActor {
 	surfaces: Arc<MetricsSurfaces>,
 	clock: Clock,
 	interval: Duration,
+	snapshot_interval: Option<Duration>,
 }
 
 pub struct SamplerState {
 	accumulator: MetricsAccumulator,
+	last_snapshot: Option<DateTime>,
 }
 
 impl MetricsSamplerActor {
+	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		collectors: Collectors,
 		multi_store: MultiStore,
@@ -66,6 +72,7 @@ impl MetricsSamplerActor {
 		surfaces: Arc<MetricsSurfaces>,
 		clock: Clock,
 		interval: Duration,
+		snapshot_interval: Option<Duration>,
 	) -> Self {
 		Self {
 			collectors,
@@ -75,6 +82,31 @@ impl MetricsSamplerActor {
 			surfaces,
 			clock,
 			interval,
+			snapshot_interval,
+		}
+	}
+
+	fn snapshot_due(&self, state: &SamplerState, now: DateTime) -> bool {
+		let Some(interval) = self.snapshot_interval else {
+			return false;
+		};
+		match state.last_snapshot {
+			None => true,
+			Some(last) => {
+				now.to_nanos().saturating_sub(last.to_nanos()) >= interval.to_std().as_nanos() as u64
+			}
+		}
+	}
+
+	fn append_snapshot(&self, published: &PublishedSurface) {
+		let rows = snapshot_rows(&published.columns);
+		if rows.is_empty() {
+			return;
+		}
+		let mut builder = self.collectors.engine.bulk_insert_unchecked(IdentityId::system());
+		builder.series(published.domain.snapshots_path()).rows(rows).done();
+		if let Err(e) = builder.execute() {
+			error!("Failed to append {} snapshot: {}", published.domain.snapshots_path(), e);
 		}
 	}
 
@@ -111,10 +143,34 @@ impl MetricsSamplerActor {
 		);
 		accumulator.push(MetricsDomain::Lifecycle, Surface::Current, lifecycle_rows(&self.retention_metrics));
 
-		for published in accumulator.roll(self.clock.now()) {
+		let now = self.clock.now();
+		let snapshot_due = self.snapshot_due(state, now);
+		for published in state.accumulator.roll(now) {
+			if snapshot_due && published.surface == Surface::Current {
+				self.append_snapshot(&published);
+			}
 			self.surfaces.store(published);
 		}
+		if snapshot_due {
+			state.last_snapshot = Some(now);
+		}
 	}
+}
+
+fn snapshot_rows(columns: &Columns) -> Vec<Params> {
+	let row_count = columns.get(0).map(|column| column.data().len()).unwrap_or(0);
+	(0..row_count)
+		.map(|index| {
+			let mut row = HashMap::new();
+			for column in columns.iter() {
+				let value = column.data().get_value(index);
+				if !matches!(value, Value::None { .. }) {
+					row.insert(column.name().text().to_string(), value);
+				}
+			}
+			Params::Named(Arc::new(row))
+		})
+		.collect()
 }
 
 impl Actor for MetricsSamplerActor {
@@ -125,6 +181,7 @@ impl Actor for MetricsSamplerActor {
 		ctx.schedule_once(self.interval, || SamplerMessage::Tick);
 		SamplerState {
 			accumulator: MetricsAccumulator::new(MetricsDomain::ALL.map(MetricsDomain::spec)),
+			last_snapshot: None,
 		}
 	}
 

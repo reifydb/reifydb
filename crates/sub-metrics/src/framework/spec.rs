@@ -201,6 +201,21 @@ impl MetricsDomain {
 		MetricsDomain::ProfilerSpans,
 	];
 
+	pub fn snapshots_path(self) -> &'static str {
+		match self {
+			MetricsDomain::RuntimeMemory => "system::metrics::runtime::memory::snapshots",
+			MetricsDomain::RuntimeWatermarks => "system::metrics::runtime::watermarks::snapshots",
+			MetricsDomain::RuntimeOperators => "system::metrics::runtime::operators::snapshots",
+			MetricsDomain::ReadBuffer => "system::metrics::read_buffer::snapshots",
+			MetricsDomain::Instruments => "system::metrics::instruments::snapshots",
+			MetricsDomain::Epoch => "system::metrics::epoch::snapshots",
+			MetricsDomain::Lifecycle => "system::metrics::lifecycle::snapshots",
+			MetricsDomain::Storage => "system::metrics::storage::snapshots",
+			MetricsDomain::Cdc => "system::metrics::cdc::snapshots",
+			MetricsDomain::ProfilerSpans => "system::metrics::profiler::spans::snapshots",
+		}
+	}
+
 	pub fn spec(self) -> DomainSpec {
 		match self {
 			MetricsDomain::RuntimeMemory => {

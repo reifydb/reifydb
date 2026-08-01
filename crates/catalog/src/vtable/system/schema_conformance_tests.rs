@@ -183,7 +183,7 @@ fn every_system_vtable_emits_the_columns_its_schema_declares() {
 
 	assert!(failures.is_empty(), "system vtable schema drift:\n  {}", failures.join("\n  "));
 
-	assert_eq!(checked, 71, "expected every system vtable handler to be exercised");
+	assert_eq!(checked, 53, "expected every system vtable handler to be exercised");
 }
 
 #[test]

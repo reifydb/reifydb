@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
+use reifydb_core::value::column::columns::Columns;
+use reifydb_engine::engine::StandardEngine;
 use reifydb_profiler::{
 	callsite,
 	category::{ProfilerCategory, ProfilerCategory::*},
@@ -18,10 +20,14 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	sync::rwlock::RwLock,
 };
-use reifydb_value::value::duration::Duration;
+use reifydb_value::{
+	params::Params,
+	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId},
+};
+use tracing::error;
 
 use super::{accumulator::ProfilerAccumulator, instruments::ProfilerInstruments, publish::spans_columns};
-use crate::framework::current::CurrentCache;
+use crate::framework::{current::CurrentCache, spec::MetricsDomain};
 
 #[derive(Clone)]
 pub enum ProfilerMessage {
@@ -31,6 +37,8 @@ pub enum ProfilerMessage {
 		current_cache: CurrentCache,
 		total_cache: CurrentCache,
 		interval: Duration,
+		snapshot_interval: Option<Duration>,
+		engine: StandardEngine,
 	},
 	Tick,
 }
@@ -48,6 +56,8 @@ struct PublishTargets {
 	current_cache: CurrentCache,
 	total_cache: CurrentCache,
 	interval: Duration,
+	snapshot_interval: Option<Duration>,
+	engine: StandardEngine,
 }
 
 pub struct ProfilerActorState {
@@ -56,6 +66,7 @@ pub struct ProfilerActorState {
 	processed_records: u64,
 	horizon: ProfilerAccumulator,
 	targets: Option<PublishTargets>,
+	last_snapshot: Option<DateTime>,
 }
 
 impl ProfilerCollectorActor {
@@ -96,12 +107,53 @@ impl ProfilerCollectorActor {
 		let drained = self.accumulator.write().drain();
 		let mut window_records: Vec<_> = drained.iter().map(|(_, record)| record.clone()).collect();
 		let now = self.clock.now();
-		targets.current_cache.store(spans_columns(&mut window_records, now));
+		let current_columns = spans_columns(&mut window_records, now);
+		if self.snapshot_due(targets, state.last_snapshot, now) {
+			append_spans_snapshot(&targets.engine, &current_columns);
+			state.last_snapshot = Some(now);
+		}
+		targets.current_cache.store(current_columns);
 		for (ident, record) in drained {
 			state.horizon.absorb(ident, record);
 		}
 		let mut horizon_records = state.horizon.all();
 		targets.total_cache.store(spans_columns(&mut horizon_records, now));
+	}
+
+	fn snapshot_due(&self, targets: &PublishTargets, last: Option<DateTime>, now: DateTime) -> bool {
+		let Some(interval) = targets.snapshot_interval else {
+			return false;
+		};
+		match last {
+			None => true,
+			Some(last) => {
+				now.to_nanos().saturating_sub(last.to_nanos()) >= interval.to_std().as_nanos() as u64
+			}
+		}
+	}
+}
+
+fn append_spans_snapshot(engine: &StandardEngine, columns: &Columns) {
+	let row_count = columns.get(0).map(|column| column.data().len()).unwrap_or(0);
+	if row_count == 0 {
+		return;
+	}
+	let rows: Vec<Params> = (0..row_count)
+		.map(|index| {
+			let mut row = HashMap::new();
+			for column in columns.iter() {
+				let value = column.data().get_value(index);
+				if !matches!(value, Value::None { .. }) {
+					row.insert(column.name().text().to_string(), value);
+				}
+			}
+			Params::Named(Arc::new(row))
+		})
+		.collect();
+	let mut builder = engine.bulk_insert_unchecked(IdentityId::system());
+	builder.series(MetricsDomain::ProfilerSpans.snapshots_path()).rows(rows).done();
+	if let Err(e) = builder.execute() {
+		error!("Failed to append profiler spans snapshot: {}", e);
 	}
 }
 
@@ -146,6 +198,7 @@ impl Actor for ProfilerCollectorActor {
 				Arc::clone(&self.instruments),
 			),
 			targets: None,
+			last_snapshot: None,
 		}
 	}
 
@@ -163,12 +216,16 @@ impl Actor for ProfilerCollectorActor {
 				current_cache,
 				total_cache,
 				interval,
+				snapshot_interval,
+				engine,
 			} => {
 				let schedule = state.targets.is_none();
 				state.targets = Some(PublishTargets {
 					current_cache,
 					total_cache,
 					interval,
+					snapshot_interval,
+					engine,
 				});
 				if schedule {
 					ctx.schedule_once(interval, || ProfilerMessage::Tick);

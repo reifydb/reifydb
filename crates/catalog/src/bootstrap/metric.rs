@@ -36,138 +36,6 @@ use crate::{
 const REQUEST_HISTORY_CAPACITY: u64 = 10_000;
 const STATEMENT_STATS_CAPACITY: u64 = 5_000;
 
-const STORAGE_PRIMITIVE_NAMESPACES: [(NamespaceId, &str, &str, SeriesId, &[ColumnId]); 9] = [
-	(
-		NamespaceId::SYSTEM_METRICS_STORAGE_TABLE,
-		"system::metrics::storage::table",
-		"table",
-		SeriesId::STORAGE_TABLE_SNAPSHOTS,
-		&ColumnId::STORAGE_TABLE_SNAPSHOTS_COLUMNS,
-	),
-	(
-		NamespaceId::SYSTEM_METRICS_STORAGE_VIEW,
-		"system::metrics::storage::view",
-		"view",
-		SeriesId::STORAGE_VIEW_SNAPSHOTS,
-		&ColumnId::STORAGE_VIEW_SNAPSHOTS_COLUMNS,
-	),
-	(
-		NamespaceId::SYSTEM_METRICS_STORAGE_TABLE_VIRTUAL,
-		"system::metrics::storage::table_virtual",
-		"table_virtual",
-		SeriesId::STORAGE_TABLE_VIRTUAL_SNAPSHOTS,
-		&ColumnId::STORAGE_TABLE_VIRTUAL_SNAPSHOTS_COLUMNS,
-	),
-	(
-		NamespaceId::SYSTEM_METRICS_STORAGE_RINGBUFFER,
-		"system::metrics::storage::ringbuffer",
-		"ringbuffer",
-		SeriesId::STORAGE_RINGBUFFER_SNAPSHOTS,
-		&ColumnId::STORAGE_RINGBUFFER_SNAPSHOTS_COLUMNS,
-	),
-	(
-		NamespaceId::SYSTEM_METRICS_STORAGE_DICTIONARY,
-		"system::metrics::storage::dictionary",
-		"dictionary",
-		SeriesId::STORAGE_DICTIONARY_SNAPSHOTS,
-		&ColumnId::STORAGE_DICTIONARY_SNAPSHOTS_COLUMNS,
-	),
-	(
-		NamespaceId::SYSTEM_METRICS_STORAGE_SERIES,
-		"system::metrics::storage::series",
-		"series",
-		SeriesId::STORAGE_SERIES_SNAPSHOTS,
-		&ColumnId::STORAGE_SERIES_SNAPSHOTS_COLUMNS,
-	),
-	(
-		NamespaceId::SYSTEM_METRICS_STORAGE_FLOW,
-		"system::metrics::storage::flow",
-		"flow",
-		SeriesId::STORAGE_FLOW_SNAPSHOTS,
-		&ColumnId::STORAGE_FLOW_SNAPSHOTS_COLUMNS,
-	),
-	(
-		NamespaceId::SYSTEM_METRICS_STORAGE_OPERATOR,
-		"system::metrics::storage::operator",
-		"operator",
-		SeriesId::STORAGE_FLOW_NODE_SNAPSHOTS,
-		&ColumnId::STORAGE_FLOW_NODE_SNAPSHOTS_COLUMNS,
-	),
-	(
-		NamespaceId::SYSTEM_METRICS_STORAGE_SYSTEM,
-		"system::metrics::storage::system",
-		"system",
-		SeriesId::STORAGE_SYSTEM_SNAPSHOTS,
-		&ColumnId::STORAGE_SYSTEM_SNAPSHOTS_COLUMNS,
-	),
-];
-
-const CDC_PRIMITIVE_NAMESPACES: [(NamespaceId, &str, &str, SeriesId, &[ColumnId]); 9] = [
-	(
-		NamespaceId::SYSTEM_METRICS_CDC_TABLE,
-		"system::metrics::cdc::table",
-		"table",
-		SeriesId::CDC_TABLE_SNAPSHOTS,
-		&ColumnId::CDC_TABLE_SNAPSHOTS_COLUMNS,
-	),
-	(
-		NamespaceId::SYSTEM_METRICS_CDC_VIEW,
-		"system::metrics::cdc::view",
-		"view",
-		SeriesId::CDC_VIEW_SNAPSHOTS,
-		&ColumnId::CDC_VIEW_SNAPSHOTS_COLUMNS,
-	),
-	(
-		NamespaceId::SYSTEM_METRICS_CDC_TABLE_VIRTUAL,
-		"system::metrics::cdc::table_virtual",
-		"table_virtual",
-		SeriesId::CDC_TABLE_VIRTUAL_SNAPSHOTS,
-		&ColumnId::CDC_TABLE_VIRTUAL_SNAPSHOTS_COLUMNS,
-	),
-	(
-		NamespaceId::SYSTEM_METRICS_CDC_RINGBUFFER,
-		"system::metrics::cdc::ringbuffer",
-		"ringbuffer",
-		SeriesId::CDC_RINGBUFFER_SNAPSHOTS,
-		&ColumnId::CDC_RINGBUFFER_SNAPSHOTS_COLUMNS,
-	),
-	(
-		NamespaceId::SYSTEM_METRICS_CDC_DICTIONARY,
-		"system::metrics::cdc::dictionary",
-		"dictionary",
-		SeriesId::CDC_DICTIONARY_SNAPSHOTS,
-		&ColumnId::CDC_DICTIONARY_SNAPSHOTS_COLUMNS,
-	),
-	(
-		NamespaceId::SYSTEM_METRICS_CDC_SERIES,
-		"system::metrics::cdc::series",
-		"series",
-		SeriesId::CDC_SERIES_SNAPSHOTS,
-		&ColumnId::CDC_SERIES_SNAPSHOTS_COLUMNS,
-	),
-	(
-		NamespaceId::SYSTEM_METRICS_CDC_FLOW,
-		"system::metrics::cdc::flow",
-		"flow",
-		SeriesId::CDC_FLOW_SNAPSHOTS,
-		&ColumnId::CDC_FLOW_SNAPSHOTS_COLUMNS,
-	),
-	(
-		NamespaceId::SYSTEM_METRICS_CDC_OPERATOR,
-		"system::metrics::cdc::operator",
-		"operator",
-		SeriesId::CDC_FLOW_NODE_SNAPSHOTS,
-		&ColumnId::CDC_FLOW_NODE_SNAPSHOTS_COLUMNS,
-	),
-	(
-		NamespaceId::SYSTEM_METRICS_CDC_SYSTEM,
-		"system::metrics::cdc::system",
-		"system",
-		SeriesId::CDC_SYSTEM_SNAPSHOTS,
-		&ColumnId::CDC_SYSTEM_SNAPSHOTS_COLUMNS,
-	),
-];
-
 pub fn bootstrap_metric_ringbuffers(
 	multi: &MultiTransaction,
 	single: &SingleTransaction,
@@ -192,7 +60,7 @@ pub fn bootstrap_metric_ringbuffers(
 		"metrics",
 		NamespaceId::SYSTEM,
 	)?;
-	ensure_namespace(
+	let storage_ns = ensure_namespace(
 		&catalog_api,
 		&mut admin,
 		NamespaceId::SYSTEM_METRICS_STORAGE,
@@ -200,7 +68,16 @@ pub fn bootstrap_metric_ringbuffers(
 		"storage",
 		NamespaceId::SYSTEM_METRICS,
 	)?;
-	ensure_namespace(
+	ensure_snapshot_series(
+		&catalog_api,
+		&mut admin,
+		storage_ns,
+		"system::metrics::storage",
+		SeriesId::STORAGE_SNAPSHOTS,
+		storage_snapshot_columns(),
+		&ColumnId::STORAGE_SNAPSHOTS_COLUMNS,
+	)?;
+	let cdc_ns = ensure_namespace(
 		&catalog_api,
 		&mut admin,
 		NamespaceId::SYSTEM_METRICS_CDC,
@@ -208,45 +85,15 @@ pub fn bootstrap_metric_ringbuffers(
 		"cdc",
 		NamespaceId::SYSTEM_METRICS,
 	)?;
-
-	for (id, path, local_name, series_id, column_ids) in STORAGE_PRIMITIVE_NAMESPACES {
-		let ns = ensure_namespace(
-			&catalog_api,
-			&mut admin,
-			id,
-			path,
-			local_name,
-			NamespaceId::SYSTEM_METRICS_STORAGE,
-		)?;
-		ensure_snapshot_series(
-			&catalog_api,
-			&mut admin,
-			ns,
-			path,
-			series_id,
-			storage_snapshot_columns(),
-			column_ids,
-		)?;
-	}
-	for (id, path, local_name, series_id, column_ids) in CDC_PRIMITIVE_NAMESPACES {
-		let ns = ensure_namespace(
-			&catalog_api,
-			&mut admin,
-			id,
-			path,
-			local_name,
-			NamespaceId::SYSTEM_METRICS_CDC,
-		)?;
-		ensure_snapshot_series(
-			&catalog_api,
-			&mut admin,
-			ns,
-			path,
-			series_id,
-			cdc_snapshot_columns(),
-			column_ids,
-		)?;
-	}
+	ensure_snapshot_series(
+		&catalog_api,
+		&mut admin,
+		cdc_ns,
+		"system::metrics::cdc",
+		SeriesId::CDC_SNAPSHOTS,
+		cdc_snapshot_columns(),
+		&ColumnId::CDC_SNAPSHOTS_COLUMNS,
+	)?;
 
 	if catalog_api.find_ringbuffer_by_name(&mut Transaction::Admin(&mut admin), ns_id, "request_history")?.is_none()
 	{
@@ -350,7 +197,7 @@ fn statement_stats_schema(namespace: NamespaceId) -> RingBufferToCreate {
 	}
 }
 
-fn ensure_snapshot_series(
+pub(super) fn ensure_snapshot_series(
 	catalog_api: &Catalog,
 	admin: &mut AdminTransaction,
 	ns: NamespaceId,
@@ -386,17 +233,18 @@ fn ensure_snapshot_series(
 fn storage_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 	vec![
 		series_col("ts", ValueType::DateTime),
+		series_col("object_kind", ValueType::Utf8),
 		series_col("id", ValueType::Uint8),
 		series_col("namespace_id", ValueType::Uint8),
 		series_col("tier", ValueType::Utf8),
-		series_col("current_key_bytes", ValueType::Uint8),
-		series_col("current_value_bytes", ValueType::Uint8),
-		series_col("current_total_bytes", ValueType::Uint8),
-		series_col("current_count", ValueType::Uint8),
-		series_col("historical_key_bytes", ValueType::Uint8),
-		series_col("historical_value_bytes", ValueType::Uint8),
-		series_col("historical_total_bytes", ValueType::Uint8),
-		series_col("historical_count", ValueType::Uint8),
+		series_col("live_key_bytes", ValueType::Uint8),
+		series_col("live_value_bytes", ValueType::Uint8),
+		series_col("live_bytes", ValueType::Uint8),
+		series_col("live_count", ValueType::Uint8),
+		series_col("superseded_key_bytes", ValueType::Uint8),
+		series_col("superseded_value_bytes", ValueType::Uint8),
+		series_col("superseded_bytes", ValueType::Uint8),
+		series_col("superseded_count", ValueType::Uint8),
 		series_col("total_bytes", ValueType::Uint8),
 	]
 }
@@ -404,6 +252,7 @@ fn storage_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 fn cdc_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 	vec![
 		series_col("ts", ValueType::DateTime),
+		series_col("object_kind", ValueType::Utf8),
 		series_col("id", ValueType::Uint8),
 		series_col("namespace_id", ValueType::Uint8),
 		series_col("key_bytes", ValueType::Uint8),

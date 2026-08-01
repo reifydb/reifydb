@@ -136,5 +136,6 @@ fn runtime_columns() -> Vec<SeriesColumnToCreate> {
 		runtime_col("metric", ValueType::Utf8),
 		runtime_col("value", ValueType::Float8),
 		runtime_col("unit", ValueType::Utf8),
+		runtime_col("kind", ValueType::Utf8),
 	]
 }

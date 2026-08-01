@@ -153,10 +153,14 @@ impl SubsystemFactory for ProfilerSubsystemFactory {
 
 		if let Some(collector) = subsystem.collector() {
 			let interval = engine.catalog().get_config_duration(ConfigKey::MetricsSampleInterval);
+			let snapshot_interval =
+				engine.catalog().get_config_duration_opt(ConfigKey::MetricsSnapshotInterval);
 			let _ = collector.send(ProfilerMessage::Wire {
 				current_cache: current_cache.clone(),
 				total_cache: total_cache.clone(),
 				interval,
+				snapshot_interval,
+				engine: engine.clone(),
 			});
 		}
 
