@@ -234,27 +234,27 @@ impl MetricsCollector for FlowBacklog {
 		out.push(MetricsSample::heap("flow_backlog", "bytes", ByteSize::from_bytes(bytes)));
 		out.push(MetricsSample::count("flow_backlog", "entries", count));
 		out.push(MetricsSample::count("flow_backlog", "cover_from", cover_from));
-		out.push(MetricsSample::count(
+		out.push(MetricsSample::counter(
 			"flow_backlog",
 			"published_entries",
 			self.shared.published_entries.load(Ordering::Relaxed),
 		));
-		out.push(MetricsSample::count(
+		out.push(MetricsSample::counter(
 			"flow_backlog",
 			"pull_hits",
 			self.shared.pull_hits.load(Ordering::Relaxed),
 		));
-		out.push(MetricsSample::count(
+		out.push(MetricsSample::counter(
 			"flow_backlog",
 			"pull_behinds",
 			self.shared.pull_behinds.load(Ordering::Relaxed),
 		));
-		out.push(MetricsSample::count(
+		out.push(MetricsSample::counter(
 			"flow_backlog",
 			"evicted_floor",
 			self.shared.evicted_floor.load(Ordering::Relaxed),
 		));
-		out.push(MetricsSample::count(
+		out.push(MetricsSample::counter(
 			"flow_backlog",
 			"evicted_ceiling",
 			self.shared.evicted_ceiling.load(Ordering::Relaxed),

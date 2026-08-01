@@ -14,7 +14,10 @@ use reifydb_cdc::{consume::backlog::cdc_bytes, storage::CdcHotReader};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::Cdc,
-	metrics::{collect::MetricsCollector, sample::MetricsSample},
+	metrics::{
+		collect::MetricsCollector,
+		sample::{MetricsSample, Reading},
+	},
 };
 use reifydb_runtime::actor::{
 	context::Context,
@@ -63,16 +66,16 @@ struct LoaderMetricsInner {
 
 impl MetricsCollector for LoaderMetrics {
 	fn collect(&self, out: &mut Vec<MetricsSample>) {
-		out.push(MetricsSample::count("flow_loader", "loads", self.inner.loads.load(Ordering::Relaxed)));
-		out.push(MetricsSample::count(
+		out.push(MetricsSample::counter("flow_loader", "loads", self.inner.loads.load(Ordering::Relaxed)));
+		out.push(MetricsSample::counter(
 			"flow_loader",
 			"memo_hits",
 			self.inner.memo_hits.load(Ordering::Relaxed),
 		));
-		out.push(MetricsSample::heap(
+		out.push(MetricsSample::cumulative(
 			"flow_loader",
 			"bytes_loaded",
-			ByteSize::from_bytes(self.inner.bytes_loaded.load(Ordering::Relaxed)),
+			Reading::Heap(ByteSize::from_bytes(self.inner.bytes_loaded.load(Ordering::Relaxed))),
 		));
 	}
 }

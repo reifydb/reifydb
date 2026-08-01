@@ -51,7 +51,7 @@ impl Counter {
 
 impl MetricsReporter for Counter {
 	fn read(&self, out: &mut Vec<MetricsSample>) {
-		out.push(MetricsSample::count(self.name, "value", self.get() as u64));
+		out.push(MetricsSample::counter(self.name, "value", self.get() as u64));
 	}
 }
 

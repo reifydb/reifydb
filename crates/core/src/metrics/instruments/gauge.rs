@@ -66,11 +66,7 @@ impl Gauge {
 
 impl MetricsReporter for Gauge {
 	fn read(&self, out: &mut Vec<MetricsSample>) {
-		out.push(MetricsSample {
-			scope: self.name.into(),
-			metric: "value",
-			reading: self.kind.reading(self.get()),
-		});
+		out.push(MetricsSample::level(self.name, "value", self.kind.reading(self.get())));
 	}
 }
 

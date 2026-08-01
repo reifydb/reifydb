@@ -113,32 +113,12 @@ impl Histogram {
 impl MetricsReporter for Histogram {
 	fn read(&self, out: &mut Vec<MetricsSample>) {
 		let percentiles = self.percentiles();
-		out.push(MetricsSample::count(self.name, "count", self.count()));
-		out.push(MetricsSample {
-			scope: self.name.into(),
-			metric: "sum",
-			reading: self.kind.reading(self.sum()),
-		});
-		out.push(MetricsSample {
-			scope: self.name.into(),
-			metric: "p50",
-			reading: self.kind.reading(percentiles.p50),
-		});
-		out.push(MetricsSample {
-			scope: self.name.into(),
-			metric: "p95",
-			reading: self.kind.reading(percentiles.p95),
-		});
-		out.push(MetricsSample {
-			scope: self.name.into(),
-			metric: "p99",
-			reading: self.kind.reading(percentiles.p99),
-		});
-		out.push(MetricsSample {
-			scope: self.name.into(),
-			metric: "max",
-			reading: self.kind.reading(percentiles.max),
-		});
+		out.push(MetricsSample::counter(self.name, "count", self.count()));
+		out.push(MetricsSample::cumulative(self.name, "sum", self.kind.reading(self.sum())));
+		out.push(MetricsSample::distribution(self.name, "p50", self.kind.reading(percentiles.p50)));
+		out.push(MetricsSample::distribution(self.name, "p95", self.kind.reading(percentiles.p95)));
+		out.push(MetricsSample::distribution(self.name, "p99", self.kind.reading(percentiles.p99)));
+		out.push(MetricsSample::distribution(self.name, "max", self.kind.reading(percentiles.max)));
 	}
 }
 

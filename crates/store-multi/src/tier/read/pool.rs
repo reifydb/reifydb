@@ -125,13 +125,13 @@ impl MetricsCollector for MultiReadBufferTier {
 		let scope = READ_BUFFER_SCOPE;
 		let shards = &self.inner.shards;
 		let metrics = total_warm_metrics(shards);
-		out.push(MetricsSample::count(scope, "warms_started", metrics.warms_started as u64));
-		out.push(MetricsSample::count(scope, "warms_completed", metrics.warms_completed as u64));
-		out.push(MetricsSample::count(scope, "warms_dirty_aborted", metrics.warms_dirty_aborted as u64));
-		out.push(MetricsSample::count(scope, "warms_aborted", metrics.warms_aborted as u64));
-		out.push(MetricsSample::count(scope, "pages_warm_blocked", metrics.pages_warm_blocked as u64));
-		out.push(MetricsSample::count(scope, "pages_evicted", metrics.pages_evicted as u64));
-		out.push(MetricsSample::count(
+		out.push(MetricsSample::counter(scope, "warms_started", metrics.warms_started as u64));
+		out.push(MetricsSample::counter(scope, "warms_completed", metrics.warms_completed as u64));
+		out.push(MetricsSample::counter(scope, "warms_dirty_aborted", metrics.warms_dirty_aborted as u64));
+		out.push(MetricsSample::counter(scope, "warms_aborted", metrics.warms_aborted as u64));
+		out.push(MetricsSample::counter(scope, "pages_warm_blocked", metrics.pages_warm_blocked as u64));
+		out.push(MetricsSample::counter(scope, "pages_evicted", metrics.pages_evicted as u64));
+		out.push(MetricsSample::counter(
 			scope,
 			"complete_pages_invalidated",
 			metrics.complete_pages_invalidated as u64,

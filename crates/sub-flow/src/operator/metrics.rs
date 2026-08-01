@@ -110,7 +110,7 @@ pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, operator: Oper
 			("state_completeness_revocations", completeness.revocations),
 		] {
 			if count.as_u64() > 0 {
-				out.push(MetricsSample::count(
+				out.push(MetricsSample::counter(
 					format!("flow_node::{operator}"),
 					metric,
 					count.as_u64(),
@@ -121,7 +121,7 @@ pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, operator: Oper
 	if let Some(pool) = sample.pool {
 		out.push(MetricsSample::bytes(format!("flow_node::{operator}"), "state_pool_budget", pool.budget));
 		if pool.evictions.as_u64() > 0 {
-			out.push(MetricsSample::count(
+			out.push(MetricsSample::counter(
 				format!("flow_node::{operator}"),
 				"state_pool_evictions",
 				pool.evictions.as_u64(),
@@ -537,7 +537,7 @@ impl MetricsCollector for OperatorStateBudgetCollector {
 		out.push(MetricsSample::bytes("operator_state", "leased_bytes", snapshot.leased));
 		out.push(MetricsSample::count("operator_state", "silent_leases", self.budget.silent_leases().as_u64()));
 		out.push(MetricsSample::bytes("operator_state", "overage_bytes", snapshot.overage()));
-		out.push(MetricsSample::count("operator_state", "evictions", self.budget.evictions().as_u64()));
+		out.push(MetricsSample::counter("operator_state", "evictions", self.budget.evictions().as_u64()));
 	}
 }
 
@@ -571,7 +571,7 @@ pub(crate) fn push_group_samples(out: &mut Vec<MetricsSample>, operator: Operato
 		("group_revocations", sample.completeness.revocations),
 	] {
 		if count.as_u64() > 0 {
-			out.push(MetricsSample::count(scope.clone(), metric, count.as_u64()));
+			out.push(MetricsSample::counter(scope.clone(), metric, count.as_u64()));
 		}
 	}
 }
@@ -652,7 +652,7 @@ impl MetricsCollector for RowNumberMetricsCollector {
 				("row_number_revocations", sample.completeness.revocations),
 			] {
 				if count.as_u64() > 0 {
-					out.push(MetricsSample::count(scope.clone(), metric, count.as_u64()));
+					out.push(MetricsSample::counter(scope.clone(), metric, count.as_u64()));
 				}
 			}
 		}

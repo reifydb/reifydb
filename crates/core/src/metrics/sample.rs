@@ -10,6 +10,16 @@ pub struct MetricsSample {
 	pub scope: Cow<'static, str>,
 	pub metric: &'static str,
 	pub reading: Reading,
+	pub kind: MetricKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MetricKind {
+	Dimension,
+	Level,
+	Delta,
+	Counter,
+	Distribution,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -49,6 +59,7 @@ impl MetricsSample {
 			scope: scope.into(),
 			metric,
 			reading: Reading::Heap(bytes),
+			kind: MetricKind::Level,
 		}
 	}
 
@@ -57,6 +68,7 @@ impl MetricsSample {
 			scope: scope.into(),
 			metric,
 			reading: Reading::Bytes(bytes),
+			kind: MetricKind::Level,
 		}
 	}
 
@@ -65,6 +77,16 @@ impl MetricsSample {
 			scope: scope.into(),
 			metric,
 			reading: Reading::Count(Count::new(count)),
+			kind: MetricKind::Level,
+		}
+	}
+
+	pub fn counter(scope: impl Into<Cow<'static, str>>, metric: &'static str, count: u64) -> Self {
+		Self {
+			scope: scope.into(),
+			metric,
+			reading: Reading::Count(Count::new(count)),
+			kind: MetricKind::Counter,
 		}
 	}
 
@@ -73,6 +95,7 @@ impl MetricsSample {
 			scope: scope.into(),
 			metric,
 			reading: Reading::Ratio(ratio),
+			kind: MetricKind::Level,
 		}
 	}
 
@@ -81,6 +104,7 @@ impl MetricsSample {
 			scope: scope.into(),
 			metric,
 			reading: Reading::Version(version),
+			kind: MetricKind::Level,
 		}
 	}
 
@@ -89,6 +113,34 @@ impl MetricsSample {
 			scope: scope.into(),
 			metric,
 			reading: Reading::Duration(duration),
+			kind: MetricKind::Level,
+		}
+	}
+
+	pub fn level(scope: impl Into<Cow<'static, str>>, metric: &'static str, reading: Reading) -> Self {
+		Self {
+			scope: scope.into(),
+			metric,
+			reading,
+			kind: MetricKind::Level,
+		}
+	}
+
+	pub fn cumulative(scope: impl Into<Cow<'static, str>>, metric: &'static str, reading: Reading) -> Self {
+		Self {
+			scope: scope.into(),
+			metric,
+			reading,
+			kind: MetricKind::Counter,
+		}
+	}
+
+	pub fn distribution(scope: impl Into<Cow<'static, str>>, metric: &'static str, reading: Reading) -> Self {
+		Self {
+			scope: scope.into(),
+			metric,
+			reading,
+			kind: MetricKind::Distribution,
 		}
 	}
 }
