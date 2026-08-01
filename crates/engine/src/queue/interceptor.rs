@@ -7,14 +7,12 @@ use reifydb_core::{common::CommitVersion, interface::catalog::id::QueueId};
 use reifydb_transaction::{
 	change::{QueueRowAck, RowChange},
 	interceptor::transaction::{PostCommitContext, PostCommitInterceptor},
+	queue::scheduling::{QueueAdmission, admit_ready_items, apply_ack_transitions},
 	single::SingleTransaction,
 };
 use tracing::error;
 
-use crate::{
-	Result,
-	queue::scheduling::{QueueAdmission, admit_ready_items, apply_ack_transitions},
-};
+use crate::Result;
 
 pub struct QueueSchedulingInterceptor {
 	single: SingleTransaction,
@@ -42,6 +40,7 @@ impl PostCommitInterceptor for QueueSchedulingInterceptor {
 					admissions.entry((insertion.queue_id, insertion.partition)).or_default().push(
 						QueueAdmission {
 							row: insertion.row_number,
+							key_hash: insertion.key_hash,
 							not_before: insertion.not_before,
 						},
 					);

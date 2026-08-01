@@ -35,6 +35,7 @@ pub mod error;
 pub mod group;
 pub mod interceptor;
 pub mod multi;
+pub mod queue;
 pub mod single;
 pub mod transaction;
 

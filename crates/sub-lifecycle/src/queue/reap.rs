@@ -20,12 +20,13 @@ use reifydb_core::{
 	key::{EncodableKey, queue_attempt::QueueAttemptKey, queue_schedule::QueueItemStateKey},
 	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
 };
-use reifydb_engine::{
-	engine::StandardEngine,
-	queue::scheduling::{ExpiredLease, apply_reap_transition},
-};
+use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::clock::Clock;
-use reifydb_transaction::{change::QueueAckTransition, transaction::Transaction};
+use reifydb_transaction::{
+	change::QueueAckTransition,
+	queue::scheduling::{ExpiredLease, apply_reap_transition},
+	transaction::Transaction,
+};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId, row_number::RowNumber},
@@ -171,6 +172,7 @@ impl QueueLeaseReapTask {
 		let lease = ExpiredLease {
 			row: candidate.row,
 			attempt: candidate.state.attempt,
+			key_hash: queue.ordered_by().is_some().then_some(candidate.state.key_hash),
 			lease_deadline,
 		};
 

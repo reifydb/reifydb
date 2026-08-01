@@ -20,17 +20,19 @@ use reifydb_core::{
 		row::{RowKey, RowKeyRange},
 	},
 };
-use reifydb_transaction::{multi::RangeScope, single::SingleTransaction, transaction::Transaction};
+use reifydb_transaction::{
+	multi::RangeScope,
+	queue::scheduling::{QueueAdmission, admit_ready_items},
+	single::SingleTransaction,
+	transaction::Transaction,
+};
 use reifydb_value::value::{identity::IdentityId, row_number::RowNumber};
 use tracing::{info, instrument};
 
 use crate::{
 	Result,
 	engine::StandardEngine,
-	queue::{
-		partition::{ordered_by_index, partition_of},
-		scheduling::{QueueAdmission, admit_ready_items},
-	},
+	queue::partition::{ordered_by_index, placement_of},
 };
 
 const HYDRATE_BATCH: usize = 1024;
@@ -72,8 +74,8 @@ fn hydrate_queue(
 		let mut fetched = 0usize;
 
 		{
-			let range = RowKeyRange::scan_range(queue.id.into(), last_key.as_ref());
-			let mut stream = txn.range(range, RangeScope::All, HYDRATE_BATCH)?;
+			let range = RowKeyRange::scan_range_rev(queue.id.into(), last_key.as_ref());
+			let mut stream = txn.range_rev(range, RangeScope::All, HYDRATE_BATCH)?;
 
 			for _ in 0..HYDRATE_BATCH {
 				match stream.next() {
@@ -95,20 +97,21 @@ fn hydrate_queue(
 			let store = single.read_store();
 
 			for (row_number, encoded) in &batch {
-				let partition = partition_of(queue, &shape, encoded, ordered_by, *row_number);
-				let state_key = QueueItemStateKey::encoded(queue.id, partition, *row_number);
+				let placement = placement_of(queue, &shape, encoded, ordered_by, *row_number);
+				let state_key = QueueItemStateKey::encoded(queue.id, placement.partition, *row_number);
 				if SingleVersionGet::get(&store, &state_key)?.is_some() {
 					continue;
 				}
 
-				let items = pending.entry(partition).or_default();
+				let items = pending.entry(placement.partition).or_default();
 				items.push(QueueAdmission {
 					row: *row_number,
+					key_hash: placement.key_hash,
 					not_before: EncodedQueueRow::view(encoded).not_before(),
 				});
 
 				if items.len() >= HYDRATE_BATCH {
-					admitted += flush(single, queue.id, partition, items)?;
+					admitted += flush(single, queue.id, placement.partition, items)?;
 				}
 			}
 		}

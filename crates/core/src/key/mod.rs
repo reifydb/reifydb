@@ -359,7 +359,10 @@ impl Key {
 			KeyKind::Queue => QueueKey::decode(key).map(Self::Queue),
 			KeyKind::NamespaceQueue => NamespaceQueueKey::decode(key).map(Self::NamespaceQueue),
 			KeyKind::QueueDeduplication => QueueDeduplicationKey::decode(key).map(Self::QueueDeduplication),
-			KeyKind::QueuePartition | KeyKind::QueueItemState | KeyKind::QueueDue => None,
+			KeyKind::QueuePartition
+			| KeyKind::QueueItemState
+			| KeyKind::QueueDue
+			| KeyKind::QueueKeyActive => None,
 			KeyKind::QueueAttempt => QueueAttemptKey::decode(key).map(Self::QueueAttempt),
 			KeyKind::RingBuffer => RingBufferKey::decode(key).map(Self::RingBuffer),
 			KeyKind::RingBufferMetadata => RingBufferMetadataKey::decode(key).map(Self::RingBufferMetadata),

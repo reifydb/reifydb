@@ -48,7 +48,7 @@ use super::{
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
-	queue::partition::{ordered_by_index, partition_of},
+	queue::partition::{ordered_by_index, placement_of},
 	transaction::operation::{
 		dictionary::DictionaryOperations,
 		queue::{QueueInsertRow, QueueOperations},
@@ -134,15 +134,12 @@ pub(crate) fn insert_queue(
 				if let Some(key) = &item.deduplication_key {
 					write_deduplication_record(txn, &queue, key, row_number, now)?;
 				}
+				let placement =
+					placement_of(&queue, &shape, &item.encoded, ordered_by_index, row_number);
 				rows.push(QueueInsertRow {
 					row_number,
-					partition: partition_of(
-						&queue,
-						&shape,
-						&item.encoded,
-						ordered_by_index,
-						row_number,
-					),
+					partition: placement.partition,
+					key_hash: placement.key_hash,
 					not_before: item.not_before,
 					encoded: item.encoded.clone(),
 				});

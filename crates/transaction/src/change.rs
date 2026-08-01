@@ -1299,6 +1299,7 @@ pub struct TableRowInsertion {
 pub struct QueueRowInsertion {
 	pub queue_id: QueueId,
 	pub partition: u16,
+	pub key_hash: Option<u64>,
 	pub row_number: RowNumber,
 	pub not_before: Option<DateTime>,
 	pub encoded: EncodedBytes,
@@ -1317,6 +1318,7 @@ pub enum QueueAckTransition {
 pub struct QueueRowAck {
 	pub queue_id: QueueId,
 	pub partition: u16,
+	pub key_hash: Option<u64>,
 	pub row_number: RowNumber,
 	pub attempt: u32,
 	pub transition: QueueAckTransition,

@@ -7,5 +7,7 @@ mod ddl;
 mod extend;
 mod hydrate;
 mod insert;
+mod ordered;
+mod ordered_hydration;
 mod replay;
 mod schedule;

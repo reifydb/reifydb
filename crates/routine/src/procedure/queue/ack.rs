@@ -226,6 +226,7 @@ fn track(
 	ctx.tx.track_row_change(&[RowChange::QueueAck(QueueRowAck {
 		queue_id: token.queue,
 		partition: token.partition,
+		key_hash: queue.ordered_by().is_some().then_some(state.key_hash),
 		row_number: token.row,
 		attempt: token.attempt,
 		transition,

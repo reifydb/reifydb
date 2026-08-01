@@ -19,10 +19,10 @@ use reifydb_core::{
 		queue_schedule::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
 	},
 };
-use reifydb_engine::queue::scheduling::apply_ack_transitions;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
 	change::{QueueAckTransition, QueueRowAck},
+	queue::scheduling::apply_ack_transitions,
 	transaction::Transaction,
 };
 use reifydb_value::value::{Value, frame::frame::Frame, row_number::RowNumber};
@@ -368,6 +368,7 @@ fn apply_ack(t: &TestEngine, queue: QueueId, row: RowNumber, attempt: u32, trans
 		&[QueueRowAck {
 			queue_id: queue,
 			partition: 0,
+			key_hash: None,
 			row_number: row,
 			attempt,
 			transition,

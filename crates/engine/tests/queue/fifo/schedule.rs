@@ -139,7 +139,11 @@ fn test_a_multi_partition_insert_counts_each_partition_separately() {
 	let states = states(&t, queue);
 	let dues = dues(&t, queue);
 	assert_eq!(states.len(), 4, "every item needs its own state record");
-	assert_eq!(dues.len(), 4, "every item needs its own due entry");
+	assert_eq!(
+		dues.len(),
+		3,
+		"the second item of tenant a parks behind its sibling instead of entering the due index"
+	);
 
 	let mut per_partition: BTreeMap<u16, u64> = BTreeMap::new();
 	for (key, _) in &states {
@@ -200,4 +204,32 @@ fn test_drop_queue_wipes_the_scheduling_keyspace_of_that_queue_only() {
 
 	assert_eq!(states(&t, kept).len(), 1, "the surviving queue must keep its scheduling state");
 	assert_eq!(counters(&t, kept, 0).depth, 1);
+}
+
+#[test]
+fn test_a_keyed_queue_records_one_key_hash_per_ordered_by_value() {
+	let t = engine_with_queue(
+		"CREATE QUEUE test::jobs { id: int4, tenant: utf8 } WITH { fifo: { partitions: 1, ordered_by: tenant } }",
+	);
+	t.command(r#"INSERT test::jobs [{ id: 1, tenant: "a" }, { id: 2, tenant: "b" }, { id: 3, tenant: "a" }]"#);
+
+	let queue = queue_id(&t, "jobs");
+	let by_row: BTreeMap<u64, u64> =
+		states(&t, queue).iter().map(|(key, state)| (key.row.0, state.key_hash)).collect();
+
+	assert_eq!(by_row.len(), 3);
+	assert_eq!(by_row[&1], by_row[&3], "two items of tenant a must share one key hash");
+	assert_ne!(by_row[&1], by_row[&2], "tenant b must hash into its own chain");
+}
+
+#[test]
+fn test_an_unkeyed_queue_stores_no_key_hash() {
+	let t = engine_with_queue("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: { partitions: 4 } }");
+	t.command("INSERT test::jobs [{ id: 1 }, { id: 2 }, { id: 3 }]");
+
+	let queue = queue_id(&t, "jobs");
+
+	for (key, state) in states(&t, queue) {
+		assert_eq!(state.key_hash, 0, "item {} of an unkeyed queue must carry no key hash", key.row.0);
+	}
 }

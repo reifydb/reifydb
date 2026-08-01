@@ -84,6 +84,21 @@ impl RowKeyRange {
 			)
 		}
 	}
+
+	pub fn scan_range_rev(storage: StorageId, last_key: Option<&EncodedKey>) -> EncodedKeyRange {
+		let range = RowKeyRange {
+			storage,
+		};
+
+		if let Some(last_key) = last_key {
+			EncodedKeyRange::new(Bound::Included(range.start().unwrap()), Bound::Excluded(last_key.clone()))
+		} else {
+			EncodedKeyRange::new(
+				Bound::Included(range.start().unwrap()),
+				Bound::Included(range.end().unwrap()),
+			)
+		}
+	}
 }
 
 impl EncodableKeyRange for RowKeyRange {

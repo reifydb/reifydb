@@ -18,7 +18,7 @@ use reifydb_core::{
 		queue_schedule::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
 	},
 };
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{Value, frame::frame::Frame};
 
@@ -44,7 +44,7 @@ fn states(t: &TestEngine, queue: QueueId) -> Vec<(QueueItemStateKey, QueueItemSt
 		.items
 		.iter()
 		.map(|item| {
-			(QueueItemStateKey::decode(&item.key).unwrap(), decode_queue_item_state(&item.row).unwrap())
+			(QueueItemStateKey::decode(&item.key).unwrap(), decode_queue_item_state(&item.bytes).unwrap())
 		})
 		.collect()
 }
@@ -67,7 +67,7 @@ fn counters(t: &TestEngine, queue: QueueId, partition: u16) -> QueuePartitionCou
 	let store = t.inner().single().read_store();
 	SingleVersionGet::get(&store, &QueuePartitionKey::encoded(queue, partition))
 		.unwrap()
-		.map(|stored| decode_queue_partition_counters(&stored.row))
+		.map(|stored| decode_queue_partition_counters(&stored.bytes))
 		.unwrap_or_default()
 }
 
@@ -81,7 +81,7 @@ fn attempts(t: &TestEngine, queue: QueueId) -> Vec<(QueueAttemptKey, QueueAttemp
 	let mut out = Vec::new();
 	while let Some(item) = stream.next() {
 		let item = item.unwrap();
-		out.push((QueueAttemptKey::decode(&item.key).unwrap(), decode_queue_attempt(&item.row).unwrap()));
+		out.push((QueueAttemptKey::decode(&item.key).unwrap(), decode_queue_attempt(&item.bytes).unwrap()));
 	}
 	out
 }

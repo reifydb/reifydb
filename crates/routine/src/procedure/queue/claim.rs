@@ -28,6 +28,7 @@ use reifydb_value::{
 		value_type::ValueType,
 	},
 };
+use tracing::debug;
 
 use crate::procedure::{
 	identity::set_attribute::extract_args,
@@ -88,7 +89,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueClaim {
 				})?
 				.clone();
 
-		let leases = lease_due_items(&single, &queue, &worker, max_n, lease_ttl, now)?;
+		let leases = lease_due_items(ctx, &single, &queue, &worker, max_n, lease_ttl, now)?;
 
 		claimed_columns(ctx, &queue, &worker, &leases)
 	}
@@ -152,6 +153,7 @@ fn positive_duration(value: &Value, argument_index: usize) -> Result<Duration, R
 }
 
 fn lease_due_items(
+	ctx: &mut ProcedureContext<'_, '_>,
 	single: &SingleTransaction,
 	queue: &Queue,
 	worker: &str,
@@ -174,10 +176,36 @@ fn lease_due_items(
 			continue;
 		}
 
-		leases.extend(lease_candidates(single, queue, partition, &candidates, lease_ttl, now)?);
+		let readable = readable_candidates(ctx, queue, &candidates)?;
+		if readable.is_empty() {
+			continue;
+		}
+
+		leases.extend(lease_candidates(single, queue, partition, &readable, lease_ttl, now)?);
 	}
 
 	Ok(leases)
+}
+
+fn readable_candidates(
+	ctx: &mut ProcedureContext<'_, '_>,
+	queue: &Queue,
+	candidates: &[RowNumber],
+) -> Result<Vec<RowNumber>, RoutineError> {
+	let mut readable = Vec::with_capacity(candidates.len());
+	for row in candidates {
+		if ctx.tx.get(&RowKey::encoded(queue.id, *row))?.is_some() {
+			readable.push(*row);
+		} else {
+			debug!(
+				queue = queue.id.0,
+				item = row.0,
+				"the item row is not visible to this claim yet; leaving it for a later one"
+			);
+		}
+	}
+
+	Ok(readable)
 }
 
 fn due_candidates(

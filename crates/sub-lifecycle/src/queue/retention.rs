@@ -26,9 +26,9 @@ use reifydb_core::{
 		task::LifecycleTask,
 	},
 };
-use reifydb_engine::{engine::StandardEngine, queue::scheduling::remove_item_states};
+use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::clock::Clock;
-use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
+use reifydb_transaction::{multi::RangeScope, queue::scheduling::remove_item_states, transaction::Transaction};
 use reifydb_value::{
 	Result,
 	value::{

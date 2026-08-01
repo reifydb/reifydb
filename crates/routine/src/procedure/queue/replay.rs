@@ -3,35 +3,31 @@
 
 use std::sync::LazyLock;
 
-use reifydb_codec::encoded::row::EncodedRow;
 use reifydb_core::{
 	interface::{
-		catalog::queue::{
-			Queue, QueueItemStatus, decode_queue_item_state, decode_queue_partition_counters,
-			encode_queue_item_state, encode_queue_partition_counters,
-		},
+		catalog::queue::{Queue, decode_queue_item_state},
 		store::SingleVersionGet,
 	},
-	key::queue_schedule::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
+	key::queue_schedule::QueueItemStateKey,
 	value::column::columns::Columns,
 };
-use reifydb_transaction::single::SingleTransaction;
+use reifydb_routine_abi::{
+	Routine, RoutineInfo,
+	context::ProcedureContext,
+	error::{QueueError, RoutineError},
+};
+use reifydb_transaction::{
+	queue::scheduling::{ReplayOutcome, apply_replay_transition},
+	single::SingleTransaction,
+};
 use reifydb_value::{
 	fragment::Fragment,
-	util::cowvec::CowVec,
 	value::{Value, row_number::RowNumber, value_type::ValueType},
 };
 
-use crate::{
-	procedure::{
-		identity::set_attribute::extract_args,
-		queue::{require_command_transaction, resolve_queue_by_name, utf8_arg},
-	},
-	routine::{
-		Routine, RoutineInfo,
-		context::ProcedureContext,
-		error::{QueueError, RoutineError},
-	},
+use crate::procedure::{
+	identity::set_attribute::extract_args,
+	queue::{require_command_transaction, resolve_queue_by_name, utf8_arg},
 };
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("queue::replay"));
@@ -89,16 +85,36 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueReplay {
 			.into()
 		};
 
-		let Some(partition) = locate(&single, &queue, row)? else {
+		let Some((partition, key_hash)) = locate(&single, &queue, row)? else {
 			return Err(unknown());
 		};
 
-		revive(&single, &queue, partition, row, &queue_name, &fragment, &unknown)?;
+		let state = match apply_replay_transition(&single, queue.id, partition, row, key_hash)? {
+			ReplayOutcome::Ready => "ready",
+			ReplayOutcome::Parked => "parked",
+			ReplayOutcome::Unknown => return Err(unknown()),
+			ReplayOutcome::Unreadable => {
+				return Err(RoutineError::ProcedureExecutionFailed {
+					procedure: Fragment::internal(PROCEDURE),
+					reason: format!("the scheduling state of item {} is unreadable", row.0),
+				});
+			}
+			ReplayOutcome::NotDead(status) => {
+				return Err(QueueError::ReplayNotDead {
+					procedure: PROCEDURE,
+					fragment: fragment.clone(),
+					queue: queue_name.clone(),
+					item: row.0,
+					status: format!("{status:?}").to_lowercase(),
+				}
+				.into());
+			}
+		};
 
 		Ok(Columns::single_row([
 			("queue", Value::Utf8(queue_name)),
 			("item", Value::Uint8(row.0)),
-			("state", Value::Utf8("ready".to_string())),
+			("state", Value::Utf8(state.to_string())),
 		]))
 	}
 }
@@ -133,70 +149,21 @@ fn row_number_arg(value: &Value, argument_index: usize) -> Result<RowNumber, Rou
 	Ok(RowNumber(item as u64))
 }
 
-fn locate(single: &SingleTransaction, queue: &Queue, row: RowNumber) -> Result<Option<u16>, RoutineError> {
-	let store = single.read_store();
-	for partition in 0..queue.partitions() {
-		if SingleVersionGet::get(&store, &QueueItemStateKey::encoded(queue.id, partition, row))?.is_some() {
-			return Ok(Some(partition));
-		}
-	}
-	Ok(None)
-}
-
-fn revive(
+fn locate(
 	single: &SingleTransaction,
 	queue: &Queue,
-	partition: u16,
 	row: RowNumber,
-	queue_name: &str,
-	fragment: &Fragment,
-	unknown: &dyn Fn() -> RoutineError,
-) -> Result<(), RoutineError> {
-	let lock_key = QueuePartitionKey::encoded(queue.id, partition);
-	let mut tx = single.begin_command_ranged(
-		[&lock_key],
-		vec![
-			QueueItemStateKey::partition_scan(queue.id, partition),
-			QueueDueKey::partition_scan(queue.id, partition),
-		],
-	)?;
-
-	let state_key = QueueItemStateKey::encoded(queue.id, partition, row);
-	let Some(stored) = tx.get(&state_key)? else {
-		return Err(unknown());
-	};
-	let Some(mut state) = decode_queue_item_state(&stored.row) else {
-		return Err(RoutineError::ProcedureExecutionFailed {
-			procedure: Fragment::internal(PROCEDURE),
-			reason: format!("the scheduling state of item {} is unreadable", row.0),
-		});
-	};
-
-	if state.status != QueueItemStatus::Dead {
-		return Err(QueueError::ReplayNotDead {
-			procedure: PROCEDURE,
-			fragment: fragment.clone(),
-			queue: queue_name.to_string(),
-			item: row.0,
-			status: format!("{:?}", state.status).to_lowercase(),
-		}
-		.into());
+) -> Result<Option<(u16, Option<u64>)>, RoutineError> {
+	let store = single.read_store();
+	for partition in 0..queue.partitions() {
+		let Some(stored) =
+			SingleVersionGet::get(&store, &QueueItemStateKey::encoded(queue.id, partition, row))?
+		else {
+			continue;
+		};
+		let key_hash = decode_queue_item_state(&stored.bytes)
+			.and_then(|state| queue.ordered_by().is_some().then_some(state.key_hash));
+		return Ok(Some((partition, key_hash)));
 	}
-
-	state.status = QueueItemStatus::Ready;
-	state.budget_base = state.attempt;
-	state.backoff_until = None;
-	state.lease_deadline = None;
-
-	tx.set(&state_key, encode_queue_item_state(&state))?;
-	tx.set(&QueueDueKey::encoded(queue.id, partition, state.due(), row), EncodedRow(CowVec::new(vec![])))?;
-
-	let mut counters =
-		tx.get(&lock_key)?.map(|stored| decode_queue_partition_counters(&stored.row)).unwrap_or_default();
-	counters.depth += 1;
-	tx.set(&lock_key, encode_queue_partition_counters(&counters))?;
-
-	tx.commit()?;
-
-	Ok(())
+	Ok(None)
 }

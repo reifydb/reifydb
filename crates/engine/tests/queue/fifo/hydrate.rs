@@ -17,7 +17,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		queue_schedule::{QueueDueKey, QueueItemStateKey, QueuePartitionKey},
+		queue_schedule::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
 	},
 };
 use reifydb_engine::queue::hydrate::hydrate_queues;
@@ -97,6 +97,7 @@ where
 			vec![
 				QueueItemStateKey::partition_scan(queue.id, partition),
 				QueueDueKey::partition_scan(queue.id, partition),
+				QueueKeyActiveKey::partition_scan(queue.id, partition),
 			],
 		)
 		.unwrap();
@@ -108,12 +109,13 @@ fn crash_before_handoff(t: &TestEngine, queue: &Queue) {
 	for partition in 0..queue.partitions() {
 		let state_keys = keys_in(t, QueueItemStateKey::partition_scan(queue.id, partition));
 		let due_keys = keys_in(t, QueueDueKey::partition_scan(queue.id, partition));
+		let chain_keys = keys_in(t, QueueKeyActiveKey::partition_scan(queue.id, partition));
 		if state_keys.is_empty() && due_keys.is_empty() {
 			continue;
 		}
 
 		with_partition(t, queue, partition, |tx| {
-			for key in state_keys.iter().chain(due_keys.iter()) {
+			for key in state_keys.iter().chain(due_keys.iter()).chain(chain_keys.iter()) {
 				tx.remove(key).unwrap();
 			}
 			tx.remove(&QueuePartitionKey::encoded(queue.id, partition)).unwrap();
@@ -310,7 +312,11 @@ fn test_hydration_recomputes_the_original_partition_of_an_ordered_item() {
 	assert_eq!(after, before, "every recovered item must land in the partition it was enqueued to");
 
 	let dues = dues(&t, &queue);
+	assert_eq!(dues.len(), 3, "the second item of tenant a is parked behind its sibling, so it has no due entry");
 	for (row, partition) in &before {
-		assert_eq!(dues[row].partition, *partition, "the due entry must follow the item's partition");
+		let Some(due) = dues.get(row) else {
+			continue;
+		};
+		assert_eq!(due.partition, *partition, "the due entry must follow the item's partition");
 	}
 }
