@@ -22,6 +22,18 @@ pub enum MetricKind {
 	Distribution,
 }
 
+impl MetricKind {
+	pub fn name(&self) -> &'static str {
+		match self {
+			MetricKind::Dimension => "dimension",
+			MetricKind::Level => "level",
+			MetricKind::Delta => "delta",
+			MetricKind::Counter => "counter",
+			MetricKind::Distribution => "distribution",
+		}
+	}
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Reading {
 	Heap(ByteSize),
