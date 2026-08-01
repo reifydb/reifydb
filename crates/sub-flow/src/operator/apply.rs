@@ -3,7 +3,7 @@
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	interface::{catalog::flow::FlowNodeId, change::Change},
+	interface::{catalog::flow::OperatorId, change::Change},
 	key::operator_group_state::GroupSet,
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
@@ -18,17 +18,18 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
-use crate::operator::{BoxedOperator, OperatorCell};
+use crate::operator::{OperatorCell, max_input_time, stamp_output_time};
+use reifydb_flow::operator::BoxedOperator;
 
 pub struct ApplyOperator {
 	parent: OperatorCell,
-	node: FlowNodeId,
+	node: OperatorId,
 	inner: BoxedOperator,
 	ttl: Option<Duration>,
 }
 
 impl ApplyOperator {
-	pub fn new(parent: OperatorCell, node: FlowNodeId, inner: BoxedOperator, ttl: Option<Duration>) -> Self {
+	pub fn new(parent: OperatorCell, node: OperatorId, inner: BoxedOperator, ttl: Option<Duration>) -> Self {
 		Self {
 			parent,
 			node,
@@ -45,7 +46,7 @@ impl ApplyOperator {
 }
 
 impl Operator for ApplyOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 
@@ -70,15 +71,30 @@ impl Operator for ApplyOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		self.inner.apply(txn, change)
+		// The substrate stamps the output with the max input time here rather than trusting the
+		// wrapped operator, so a guest operator can stay oblivious to #time without breaking the
+		// clock (see `substrate_stamping_tests` in `crate::operator`).
+		let inherited = max_input_time(&change);
+		let mut out = self.inner.apply(txn, change)?;
+		stamp_output_time(&mut out, inherited);
+		Ok(out)
 	}
 
 	fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
-		self.inner.on_timer(txn, timer)
+		let at = timer.at;
+		let mut out = self.inner.on_timer(txn, timer)?;
+		if let Some(change) = out.as_mut() {
+			stamp_output_time(change, Some(at));
+		}
+		Ok(out)
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
 		self.inner.sample()
+	}
+
+	fn output_schema(&self) -> Option<Columns> {
+		self.output_schema()
 	}
 }
 
@@ -90,7 +106,7 @@ mod tests {
 	use reifydb_core::{
 		interface::{
 			catalog::{
-				flow::FlowNodeId,
+				flow::OperatorId,
 				id::{NamespaceId, TableId, ViewId},
 				view::{TableView, View, ViewKind},
 			},
@@ -109,7 +125,7 @@ mod tests {
 	};
 
 	use super::ApplyOperator;
-	use crate::operator::{OperatorCell, Operators, scale_from_millis, scan::view::SourceViewOperator};
+	use crate::operator::{OperatorCell, scale_from_millis, scan::view::SourceViewOperator};
 
 	fn ms(milliseconds: i64) -> Duration {
 		Duration::from_milliseconds(milliseconds).expect("representable duration")
@@ -126,7 +142,7 @@ mod tests {
 			storage: TableId(1),
 			sort: vec![],
 		});
-		OperatorCell::new(Operators::SourceView(SourceViewOperator::new(FlowNodeId(0), view)))
+		OperatorCell::new(SourceViewOperator::new(OperatorId(0), view))
 	}
 
 	struct RecordingInner {
@@ -146,8 +162,8 @@ mod tests {
 	}
 
 	impl Operator for RecordingInner {
-		fn id(&self) -> FlowNodeId {
-			FlowNodeId(7)
+		fn id(&self) -> OperatorId {
+			OperatorId(7)
 		}
 
 		fn capabilities(&self) -> &[OperatorCapability] {
@@ -178,7 +194,7 @@ mod tests {
 		// stamps event-time positions - a domain mismatch in the group interner.
 		let sealing = ApplyOperator::new(
 			noop_parent(),
-			FlowNodeId(7),
+			OperatorId(7),
 			Box::new(RecordingInner::new(Some(ms(65_000)), Arc::new(Mutex::new(Vec::new())))),
 			None,
 		);
@@ -186,7 +202,7 @@ mod tests {
 
 		let keyed = ApplyOperator::new(
 			noop_parent(),
-			FlowNodeId(7),
+			OperatorId(7),
 			Box::new(RecordingInner::new(None, Arc::new(Mutex::new(Vec::new())))),
 			None,
 		);
@@ -200,7 +216,7 @@ mod tests {
 		// win and truncate live windows.
 		let derived = ApplyOperator::new(
 			noop_parent(),
-			FlowNodeId(7),
+			OperatorId(7),
 			Box::new(RecordingInner::new(Some(ms(65_000)), Arc::new(Mutex::new(Vec::new())))),
 			Some(ms(1_000)),
 		);
@@ -208,7 +224,7 @@ mod tests {
 
 		let declared = ApplyOperator::new(
 			noop_parent(),
-			FlowNodeId(7),
+			OperatorId(7),
 			Box::new(RecordingInner::new(None, Arc::new(Mutex::new(Vec::new())))),
 			Some(ms(1_000)),
 		);
@@ -216,7 +232,7 @@ mod tests {
 
 		let neither = ApplyOperator::new(
 			noop_parent(),
-			FlowNodeId(7),
+			OperatorId(7),
 			Box::new(RecordingInner::new(None, Arc::new(Mutex::new(Vec::new())))),
 			None,
 		);
@@ -244,7 +260,7 @@ mod tests {
 		let invalidated = Arc::new(Mutex::new(Vec::new()));
 		let apply = ApplyOperator::new(
 			noop_parent(),
-			FlowNodeId(7),
+			OperatorId(7),
 			Box::new(RecordingInner::new(None, invalidated.clone())),
 			None,
 		);

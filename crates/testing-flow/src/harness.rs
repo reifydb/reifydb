@@ -10,7 +10,7 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingLayers},
 	common::CommitVersion,
 	interface::{catalog::flow::FlowNodeId, change::Change},
-	key::{EncodableKey, operator_state::OperatorStateKey, operator_state::OperatorStateKey},
+	key::{EncodableKey, operator_state::OperatorStateKey},
 	state::{budget::OperatorStateBudgetHandle, group::ActivityBuckets, horizon::Cutoff},
 };
 use reifydb_engine::test_harness::TestEngine;

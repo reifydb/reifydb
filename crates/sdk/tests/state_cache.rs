@@ -4,7 +4,7 @@
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_group_state::{IntoGroupStateKey, Keyspace, GroupStateKey},
+	key::operator_group_state::{GroupStateKey, IntoGroupStateKey, Keyspace},
 	metrics::heap::HeapSize,
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache},
 };

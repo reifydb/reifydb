@@ -41,7 +41,7 @@ pub trait RawStatefulOperator: Operator {
 pub mod tests {
 	use std::ops::Bound::{Excluded, Included};
 
-	use reifydb_core::interface::catalog::flow::FlowNodeId;
+	use reifydb_core::interface::catalog::flow::OperatorId;
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 	use reifydb_value::util::cowvec::CowVec;
@@ -55,7 +55,7 @@ pub mod tests {
 	fn test_simple_state_get_set() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::simple(FlowNodeId(1));
+		let operator = TestOperator::simple(OperatorId(1));
 		let key = test_key("simple_test");
 		let value = test_row();
 
@@ -71,7 +71,7 @@ pub mod tests {
 	fn test_simple_state_remove() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::simple(FlowNodeId(1));
+		let operator = TestOperator::simple(OperatorId(1));
 		let key = test_key("remove_test");
 		let value = test_row();
 
@@ -86,7 +86,7 @@ pub mod tests {
 	fn test_simple_state_scan_all() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::simple(FlowNodeId(1));
+		let operator = TestOperator::simple(OperatorId(1));
 
 		let entries = vec![("key_a", vec![1, 2]), ("key_b", vec![3, 4]), ("key_c", vec![5, 6])];
 		for (key_suffix, data) in &entries {
@@ -103,7 +103,7 @@ pub mod tests {
 	fn test_simple_state_range() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::simple(FlowNodeId(2));
+		let operator = TestOperator::simple(OperatorId(2));
 
 		for i in 0..10 {
 			let key = test_key(&format!("{:02}", i)); // padded so the keys sort numerically
@@ -128,7 +128,7 @@ pub mod tests {
 	fn test_simple_state_clear() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::simple(FlowNodeId(3));
+		let operator = TestOperator::simple(OperatorId(3));
 
 		for i in 0..5 {
 			let key = test_key(&format!("clear_{}", i));
@@ -149,8 +149,8 @@ pub mod tests {
 	fn test_operator_isolation() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator1 = TestOperator::simple(FlowNodeId(10));
-		let operator2 = TestOperator::simple(FlowNodeId(20));
+		let operator1 = TestOperator::simple(OperatorId(10));
+		let operator2 = TestOperator::simple(OperatorId(20));
 		let shared_key = test_key("shared");
 
 		let value1 = EncodedRow(CowVec::new(vec![1]));
@@ -170,7 +170,7 @@ pub mod tests {
 	fn test_empty_range() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::simple(FlowNodeId(4));
+		let operator = TestOperator::simple(OperatorId(4));
 
 		for i in 0..5 {
 			let key = test_key(&format!("item_{}", i));
@@ -192,7 +192,7 @@ pub mod tests {
 	fn test_overwrite_existing_key() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::simple(FlowNodeId(5));
+		let operator = TestOperator::simple(OperatorId(5));
 		let key = test_key("overwrite");
 
 		let value1 = EncodedRow(CowVec::new(vec![1, 1, 1]));
@@ -209,7 +209,7 @@ pub mod tests {
 	fn test_remove_non_existent_key() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::simple(FlowNodeId(6));
+		let operator = TestOperator::simple(OperatorId(6));
 		let key = test_key("non_existent");
 
 		operator.state_remove(&mut txn, &key).unwrap();
@@ -221,7 +221,7 @@ pub mod tests {
 	fn test_scan_after_partial_removal() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::simple(FlowNodeId(7));
+		let operator = TestOperator::simple(OperatorId(7));
 
 		for i in 0..5 {
 			let key = test_key(&format!("partial_{}", i));

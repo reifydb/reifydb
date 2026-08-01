@@ -16,7 +16,7 @@ use reifydb_codec::encoded::{
 };
 use reifydb_core::{
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
 	metrics::heap::HeapSize,
@@ -56,7 +56,7 @@ struct TakeState {
 
 pub struct TakeOperator {
 	parent: OperatorCell,
-	node: FlowNodeId,
+	node: OperatorId,
 	limit: usize,
 	shape: RowShape,
 }
@@ -83,7 +83,7 @@ fn decode_take_row(shape: &RowShape, row_number: RowNumber, encoded: &EncodedRow
 }
 
 impl TakeOperator {
-	pub fn new(parent: OperatorCell, node: FlowNodeId, limit: usize) -> Self {
+	pub fn new(parent: OperatorCell, node: OperatorId, limit: usize) -> Self {
 		Self {
 			parent,
 			node,
@@ -321,7 +321,7 @@ impl SingleStateful for TakeOperator {
 }
 
 impl Operator for TakeOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 
@@ -357,5 +357,9 @@ impl Operator for TakeOperator {
 		txn.put_operator_state(node_id, state, persist, Self::take_state_usage);
 
 		Ok(Change::from_flow(self.node, version, output_diffs, change.changed_at))
+	}
+
+	fn output_schema(&self) -> Option<Columns> {
+		self.output_schema()
 	}
 }

@@ -4,13 +4,10 @@
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_core::{
-	interface::catalog::flow::FlowNodeId, key::operator_group_state::GroupSet, metrics::heap::OperatorSample,
-	value::column::columns::Columns,
-};
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_group_state::GroupSet};
 #[cfg(reifydb_target = "native")]
 use reifydb_flow::window::{ledger::read_sealed_through, policy::SealPolicy};
-use reifydb_flow::{operator::Reclaimable, timer::Timer, transaction::FlowTransaction};
+use reifydb_flow::{operator::Reclaimable, transaction::FlowTransaction};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
@@ -26,7 +23,7 @@ pub(crate) fn scale_from_millis(span: Option<u64>) -> Option<Duration> {
 #[cfg(reifydb_target = "native")]
 pub(crate) fn sealed_or_idle(
 	txn: &mut FlowTransaction,
-	node: FlowNodeId,
+	node: OperatorId,
 	watermark: DateTime,
 	scale: Option<Duration>,
 ) -> Result<Reclaimable> {
@@ -65,282 +62,45 @@ pub mod store;
 pub mod take;
 pub mod window;
 
-use aggregation::operator::AggregateOperator;
-use append::AppendOperator;
-use apply::ApplyOperator;
-use distinct::operator::DistinctOperator;
-use extend::ExtendOperator;
-use filter::FilterOperator;
-use gate::GateOperator;
 use guard::enforce_apply_capabilities;
-use join::operator::JoinOperator;
-use map::MapOperator;
 use reifydb_core::interface::change::Change;
-use reifydb_flow::operator::{BoxedOperator, Operator};
-use scan::{
-	ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator, table::SourceTableOperator,
-	view::SourceViewOperator,
-};
-use sink::{
-	ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator, view::SinkTableViewOperator,
-};
-use sort::SortOperator;
-use take::TakeOperator;
-use window::operator::WindowOperator;
+use reifydb_flow::operator::Operator;
 
 #[derive(Clone)]
-pub struct OperatorCell(Arc<Operators>);
+pub struct OperatorCell(Arc<dyn Operator + Send>);
 
 impl OperatorCell {
 	#[allow(clippy::arc_with_non_send_sync)]
-	pub fn new(operators: Operators) -> Self {
-		Self(Arc::new(operators))
-	}
-}
-
-impl Deref for OperatorCell {
-	type Target = Operators;
-
-	fn deref(&self) -> &Operators {
-		&self.0
-	}
-}
-
-// SAFETY: operators are keyed by FlowNodeId and never shared between flows, so an Operators value
-// is reachable from exactly one thread at a time and the inner Arc is only cloned or dereferenced
-// from that owning thread. No aliasing of the !Sync interior can occur.
-unsafe impl Send for OperatorCell {}
-unsafe impl Sync for OperatorCell {}
-
-pub enum Operators {
-	SourceTable(SourceTableOperator),
-	SourceView(SourceViewOperator),
-	SourceRingBuffer(SourceRingBufferOperator),
-	SourceSeries(SourceSeriesOperator),
-	Filter(FilterOperator),
-	Gate(GateOperator),
-	Map(MapOperator),
-	Extend(ExtendOperator),
-	Join(JoinOperator),
-	Sort(SortOperator),
-	Take(TakeOperator),
-	Distinct(DistinctOperator),
-	Append(AppendOperator),
-	Apply(ApplyOperator),
-	SinkTableView(SinkTableViewOperator),
-	SinkRingBufferView(SinkRingBufferViewOperator),
-	SinkSeriesView(SinkSeriesViewOperator),
-	Window(Box<WindowOperator>),
-	Aggregate(AggregateOperator),
-}
-
-impl Operators {
-	pub fn id(&self) -> FlowNodeId {
-		match self {
-			Operators::Filter(op) => op.id(),
-			Operators::Gate(op) => op.id(),
-			Operators::Map(op) => op.id(),
-			Operators::Extend(op) => op.id(),
-			Operators::Join(op) => op.id(),
-			Operators::Sort(op) => op.id(),
-			Operators::Take(op) => op.id(),
-			Operators::Distinct(op) => op.id(),
-			Operators::Append(op) => op.id(),
-			Operators::Apply(op) => op.id(),
-			Operators::SinkTableView(op) => op.id(),
-			Operators::SinkRingBufferView(op) => op.id(),
-			Operators::SinkSeriesView(op) => op.id(),
-			Operators::Window(op) => op.id(),
-			Operators::Aggregate(op) => op.id(),
-			Operators::SourceTable(op) => op.id(),
-			Operators::SourceView(op) => op.id(),
-			Operators::SourceRingBuffer(op) => op.id(),
-			Operators::SourceSeries(op) => op.id(),
-		}
-	}
-
-	pub fn capabilities(&self) -> &[OperatorCapability] {
-		match self {
-			Operators::Filter(op) => op.capabilities(),
-			Operators::Gate(op) => op.capabilities(),
-			Operators::Map(op) => op.capabilities(),
-			Operators::Extend(op) => op.capabilities(),
-			Operators::Join(op) => op.capabilities(),
-			Operators::Sort(op) => op.capabilities(),
-			Operators::Take(op) => op.capabilities(),
-			Operators::Distinct(op) => op.capabilities(),
-			Operators::Append(op) => op.capabilities(),
-			Operators::Apply(op) => op.capabilities(),
-			Operators::SinkTableView(op) => op.capabilities(),
-			Operators::SinkRingBufferView(op) => op.capabilities(),
-			Operators::SinkSeriesView(op) => op.capabilities(),
-			Operators::Window(op) => op.capabilities(),
-			Operators::Aggregate(op) => op.capabilities(),
-			Operators::SourceTable(op) => op.capabilities(),
-			Operators::SourceView(op) => op.capabilities(),
-			Operators::SourceRingBuffer(op) => op.capabilities(),
-			Operators::SourceSeries(op) => op.capabilities(),
-		}
-	}
-	pub fn retention_scale(&self) -> Option<Duration> {
-		match self {
-			Operators::Filter(op) => op.retention_scale(),
-			Operators::Gate(op) => op.retention_scale(),
-			Operators::Map(op) => op.retention_scale(),
-			Operators::Extend(op) => op.retention_scale(),
-			Operators::Join(op) => op.retention_scale(),
-			Operators::Sort(op) => op.retention_scale(),
-			Operators::Take(op) => op.retention_scale(),
-			Operators::Distinct(op) => op.retention_scale(),
-			Operators::Append(op) => op.retention_scale(),
-			Operators::Apply(op) => op.retention_scale(),
-			Operators::SinkTableView(op) => op.retention_scale(),
-			Operators::SinkRingBufferView(op) => op.retention_scale(),
-			Operators::SinkSeriesView(op) => op.retention_scale(),
-			Operators::Window(op) => op.retention_scale(),
-			Operators::Aggregate(op) => op.retention_scale(),
-			Operators::SourceTable(op) => op.retention_scale(),
-			Operators::SourceView(op) => op.retention_scale(),
-			Operators::SourceRingBuffer(op) => op.retention_scale(),
-			Operators::SourceSeries(op) => op.retention_scale(),
-		}
-	}
-
-	pub fn reclaimable_through(&self, txn: &mut FlowTransaction, watermark: DateTime) -> Result<Reclaimable> {
-		match self {
-			Operators::Filter(op) => op.reclaimable_through(txn, watermark),
-			Operators::Gate(op) => op.reclaimable_through(txn, watermark),
-			Operators::Map(op) => op.reclaimable_through(txn, watermark),
-			Operators::Extend(op) => op.reclaimable_through(txn, watermark),
-			Operators::Join(op) => op.reclaimable_through(txn, watermark),
-			Operators::Sort(op) => op.reclaimable_through(txn, watermark),
-			Operators::Take(op) => op.reclaimable_through(txn, watermark),
-			Operators::Distinct(op) => op.reclaimable_through(txn, watermark),
-			Operators::Append(op) => op.reclaimable_through(txn, watermark),
-			Operators::Apply(op) => op.reclaimable_through(txn, watermark),
-			Operators::SinkTableView(op) => op.reclaimable_through(txn, watermark),
-			Operators::SinkRingBufferView(op) => op.reclaimable_through(txn, watermark),
-			Operators::SinkSeriesView(op) => op.reclaimable_through(txn, watermark),
-			Operators::Window(op) => op.reclaimable_through(txn, watermark),
-			Operators::Aggregate(op) => op.reclaimable_through(txn, watermark),
-			Operators::SourceTable(op) => op.reclaimable_through(txn, watermark),
-			Operators::SourceView(op) => op.reclaimable_through(txn, watermark),
-			Operators::SourceRingBuffer(op) => op.reclaimable_through(txn, watermark),
-			Operators::SourceSeries(op) => op.reclaimable_through(txn, watermark),
-		}
+	pub fn new(operator: impl Operator + Send + 'static) -> Self {
+		Self(Arc::new(operator))
 	}
 
 	pub fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		enforce_apply_capabilities(self.id(), self.capabilities(), &change);
-		match self {
-			Operators::Filter(op) => op.apply(txn, change),
-			Operators::Gate(op) => op.apply(txn, change),
-			Operators::Map(op) => op.apply(txn, change),
-			Operators::Extend(op) => op.apply(txn, change),
-			Operators::Join(op) => op.apply(txn, change),
-			Operators::Sort(op) => op.apply(txn, change),
-			Operators::Take(op) => op.apply(txn, change),
-			Operators::Distinct(op) => op.apply(txn, change),
-			Operators::Append(op) => op.apply(txn, change),
-			Operators::Apply(op) => {
-				let inherited = max_input_time(&change);
-				let mut out = op.apply(txn, change)?;
-				stamp_output_time(&mut out, inherited);
-				Ok(out)
-			}
-			Operators::SinkTableView(op) => op.apply(txn, change),
-			Operators::SinkRingBufferView(op) => op.apply(txn, change),
-			Operators::SinkSeriesView(op) => op.apply(txn, change),
-			Operators::Window(op) => op.apply(txn, change),
-			Operators::Aggregate(op) => op.apply(txn, change),
-			Operators::SourceTable(op) => op.apply(txn, change),
-			Operators::SourceView(op) => op.apply(txn, change),
-			Operators::SourceRingBuffer(op) => op.apply(txn, change),
-			Operators::SourceSeries(op) => op.apply(txn, change),
-		}
+		self.0.apply(txn, change)
 	}
 
-	pub fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
-		match self {
-			Operators::Filter(op) => op.on_timer(txn, timer),
-			Operators::Gate(op) => op.on_timer(txn, timer),
-			Operators::Map(op) => op.on_timer(txn, timer),
-			Operators::Extend(op) => op.on_timer(txn, timer),
-			Operators::Join(op) => op.on_timer(txn, timer),
-			Operators::Sort(op) => op.on_timer(txn, timer),
-			Operators::Take(op) => op.on_timer(txn, timer),
-			Operators::Distinct(op) => op.on_timer(txn, timer),
-			Operators::Append(op) => op.on_timer(txn, timer),
-			Operators::Apply(op) => {
-				let at = timer.at;
-				let mut out = op.on_timer(txn, timer)?;
-				if let Some(change) = out.as_mut() {
-					stamp_output_time(change, Some(at));
-				}
-				Ok(out)
-			}
-			Operators::SinkTableView(op) => op.on_timer(txn, timer),
-			Operators::SinkRingBufferView(op) => op.on_timer(txn, timer),
-			Operators::SinkSeriesView(op) => op.on_timer(txn, timer),
-			Operators::Window(op) => op.on_timer(txn, timer),
-			Operators::Aggregate(op) => op.on_timer(txn, timer),
-			Operators::SourceTable(op) => op.on_timer(txn, timer),
-			Operators::SourceView(op) => op.on_timer(txn, timer),
-			Operators::SourceRingBuffer(op) => op.on_timer(txn, timer),
-			Operators::SourceSeries(op) => op.on_timer(txn, timer),
-		}
-	}
 	pub fn invalidate_groups(&self, groups: &GroupSet) {
 		if groups.is_empty() || !self.capabilities().contains(&OperatorCapability::Reclaim) {
 			return;
 		}
-		match self {
-			Operators::Window(op) => op.invalidate_groups(groups),
-			Operators::Aggregate(op) => op.invalidate_groups(groups),
-			Operators::Join(op) => op.invalidate_groups(groups),
-			Operators::Distinct(op) => op.invalidate_groups(groups),
-			Operators::Apply(op) => op.invalidate_groups(groups),
-			Operators::Gate(op) => op.invalidate_groups(groups),
-			Operators::Append(op) => op.invalidate_groups(groups),
-			_ => {}
-		}
-	}
-
-	pub fn sample(&self) -> Option<OperatorSample> {
-		match self {
-			Operators::Window(op) => op.sample(),
-			Operators::Aggregate(op) => op.sample(),
-			Operators::Join(op) => op.sample(),
-			Operators::Distinct(op) => op.sample(),
-			Operators::Apply(op) => op.sample(),
-			_ => None,
-		}
-	}
-
-	pub fn output_schema(&self) -> Option<Columns> {
-		match self {
-			Operators::SourceTable(op) => Some(op.output_schema()),
-			Operators::SourceView(op) => Some(op.output_schema()),
-			Operators::SourceRingBuffer(op) => Some(op.output_schema()),
-			Operators::SourceSeries(_) => Some(Columns::empty()),
-			Operators::Filter(op) => op.output_schema(),
-			Operators::Gate(op) => op.output_schema(),
-			Operators::Map(op) => op.output_schema(),
-			Operators::Extend(op) => op.output_schema(),
-			Operators::Sort(op) => op.output_schema(),
-			Operators::Take(op) => op.output_schema(),
-			Operators::Distinct(op) => op.output_schema(),
-			Operators::Append(op) => op.output_schema(),
-			Operators::Window(op) => op.core.parent.output_schema(),
-			Operators::Aggregate(op) => op.output_schema(),
-			Operators::Apply(op) => op.output_schema(),
-			Operators::Join(_) => None,
-			Operators::SinkTableView(_) => None,
-			Operators::SinkRingBufferView(_) => None,
-			Operators::SinkSeriesView(_) => None,
-		}
+		self.0.invalidate_groups(groups);
 	}
 }
+
+impl Deref for OperatorCell {
+	type Target = dyn Operator + Send;
+
+	fn deref(&self) -> &Self::Target {
+		&*self.0
+	}
+}
+
+// SAFETY: operators are keyed by OperatorId and never shared between flows, so an OperatorCell value
+// is reachable from exactly one thread at a time and the inner Arc is only cloned or dereferenced
+// from that owning thread. No aliasing of the !Sync interior can occur.
+unsafe impl Send for OperatorCell {}
+unsafe impl Sync for OperatorCell {}
 
 pub(crate) fn max_input_time(change: &Change) -> Option<DateTime> {
 	change.diffs
@@ -350,7 +110,7 @@ pub(crate) fn max_input_time(change: &Change) -> Option<DateTime> {
 		.max()
 }
 
-fn stamp_output_time(change: &mut Change, inherited: Option<DateTime>) {
+pub(crate) fn stamp_output_time(change: &mut Change, inherited: Option<DateTime>) {
 	let Some(inherited) = inherited else {
 		return;
 	};
@@ -377,7 +137,7 @@ mod substrate_stamping_tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::{
-			catalog::flow::FlowNodeId,
+			catalog::flow::OperatorId,
 			change::{Diff, Diffs},
 		},
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -411,7 +171,7 @@ mod substrate_stamping_tests {
 	}
 
 	fn change(diffs: Diffs) -> Change {
-		Change::from_flow(FlowNodeId(1), CommitVersion(1), diffs, at(0))
+		Change::from_flow(OperatorId(1), CommitVersion(1), diffs, at(0))
 	}
 
 	#[test]

@@ -7,7 +7,7 @@ use reifydb_codec::state::{OperatorState, decode_state};
 #[cfg(feature = "runtime")]
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_core::{
-	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
+	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
 	metrics::heap::HeapSize,
 	state::store::StateStore,
 };

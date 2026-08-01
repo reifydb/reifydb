@@ -5,7 +5,7 @@ use std::{collections::HashMap, ops::Bound, sync::Arc};
 
 use reifydb_codec::key::encoded::EncodedKeyRange;
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
+	interface::catalog::flow::OperatorId,
 	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
 	metrics::heap::{StateCompleteness, StateMemory},
 	state::{
@@ -30,7 +30,7 @@ pub(crate) struct JoinState {
 }
 
 impl JoinState {
-	pub(crate) fn new(node_id: FlowNodeId, membership: Arc<JoinMembership>, snapshot: bool) -> Self {
+	pub(crate) fn new(node_id: OperatorId, membership: Arc<JoinMembership>, snapshot: bool) -> Self {
 		Self {
 			left: Store::new(node_id, JoinSide::Left, membership.clone())
 				.also_stamping(snapshot_ledger_keyspaces(snapshot)),
@@ -98,7 +98,7 @@ impl JoinMembership {
 		self.left.completeness().merge(self.right.completeness())
 	}
 
-	pub(crate) fn hydrate(&self, node: FlowNodeId, txn: &mut FlowTransaction) -> Result<()> {
+	pub(crate) fn hydrate(&self, node: OperatorId, txn: &mut FlowTransaction) -> Result<()> {
 		if self.left.is_hydrated() && self.right.is_hydrated() {
 			return Ok(());
 		}

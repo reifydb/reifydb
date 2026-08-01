@@ -5,8 +5,8 @@ pub mod oracle;
 pub mod workload;
 
 use rand::{RngExt, rngs::StdRng};
-use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_sub_flow::operator::{OperatorCell, Operators, append::AppendOperator, scan::series::SourceSeriesOperator};
+use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_sub_flow::operator::{OperatorCell, append::AppendOperator, scan::series::SourceSeriesOperator};
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{run_reported, split},
@@ -30,10 +30,10 @@ pub fn build(inputs: usize) -> AppendOperator {
 }
 
 pub fn build_with_ttl(inputs: usize, ttl: Option<Duration>) -> AppendOperator {
-	let nodes: Vec<FlowNodeId> = (0..inputs).map(input_node).collect();
+	let nodes: Vec<OperatorId> = (0..inputs).map(input_node).collect();
 	let parents = nodes
 		.iter()
-		.map(|node| OperatorCell::new(Operators::SourceSeries(SourceSeriesOperator::new(*node))))
+		.map(|node| OperatorCell::new(SourceSeriesOperator::new(*node)))
 		.collect();
 	AppendOperator::new(APPEND_NODE, parents, nodes, ttl)
 }

@@ -9,7 +9,7 @@ use std::time::Duration as StdDuration;
 
 use reifydb::{ConfigKey, Value, WithSubsystem, embedded};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_sdk::{
 	config::Config,
 	error::Result as SdkResult,
@@ -90,7 +90,7 @@ impl OperatorMetadata for Counter {
 }
 
 impl OperatorLogic for Counter {
-	fn create(_operator_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(Counter)
 	}
 

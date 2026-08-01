@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{catalog::flow::FlowNodeId, change::Change},
+	interface::{catalog::flow::OperatorId, change::Change},
 };
 use reifydb_flow::{
 	timer::Timer,
@@ -25,12 +25,12 @@ impl FlowEngineInner {
 		txn: &mut FlowTransaction,
 		flow: &FlowDag,
 		version: CommitVersion,
-		topo: &[FlowNodeId],
+		topo: &[OperatorId],
 	) -> Result<u32> {
 		let wheel = txn.timer_wheel();
 		let watermarks = txn.source_watermarks();
 		let domain = flow.time_domain();
-		let sources: Vec<FlowNodeId> = topo
+		let sources: Vec<OperatorId> = topo
 			.iter()
 			.copied()
 			.filter(|id| flow.get_node(id).is_some_and(|node| node.ty.is_source()))
@@ -45,7 +45,7 @@ impl FlowEngineInner {
 		loop {
 			let watermark = watermarks.flow_watermark(domain, &sources, txn)?;
 			txn.set_flow_watermark(watermark);
-			let mut due: Vec<(FlowNodeId, Timer)> = Vec::new();
+			let mut due: Vec<(OperatorId, Timer)> = Vec::new();
 			for node_id in topo {
 				if budget == 0 {
 					break;
@@ -75,7 +75,7 @@ impl FlowEngineInner {
 				))
 			});
 
-			let mut pending: HashMap<FlowNodeId, Vec<Change>> = HashMap::new();
+			let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
 			for (node_id, timer) in due {
 				fired_total += 1;
 				let Some(node) = flow.get_node(&node_id) else {

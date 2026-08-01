@@ -9,8 +9,8 @@ use reifydb_core::{
 	key::{
 		EncodableKey,
 		operator::{OperatorByFlowKey, OperatorKey},
-		operator_state::OperatorStateKey,
 		operator_group_state::{Keyspace, OperatorGroupStateKey},
+		operator_state::OperatorStateKey,
 	},
 };
 use reifydb_transaction::{
@@ -79,8 +79,8 @@ pub mod tests {
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
 		key::{
-			operator_state::OperatorStateKey,
 			operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
+			operator_state::OperatorStateKey,
 		},
 	};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
@@ -89,7 +89,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		test_utils::{create_operator, create_namespace, ensure_test_flow},
+		test_utils::{create_namespace, create_operator, ensure_test_flow},
 	};
 
 	#[test]

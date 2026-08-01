@@ -7,7 +7,7 @@ use rand::{RngExt, rngs::StdRng};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -20,9 +20,9 @@ use reifydb_value::{
 	},
 };
 
-pub const LEFT_NODE: FlowNodeId = FlowNodeId(10);
-pub const RIGHT_NODE: FlowNodeId = FlowNodeId(11);
-pub const JOIN_NODE: FlowNodeId = FlowNodeId(12);
+pub const LEFT_NODE: OperatorId = OperatorId(10);
+pub const RIGHT_NODE: OperatorId = OperatorId(11);
+pub const JOIN_NODE: OperatorId = OperatorId(12);
 
 pub const LEFT_COLUMNS: [(&str, ValueType); 3] =
 	[("lid", ValueType::Int8), ("k", ValueType::Int4), ("lv", ValueType::Int8)];
@@ -37,7 +37,7 @@ pub enum Side {
 }
 
 impl Side {
-	fn node(self) -> FlowNodeId {
+	fn node(self) -> OperatorId {
 		match self {
 			Side::Left => LEFT_NODE,
 			Side::Right => RIGHT_NODE,

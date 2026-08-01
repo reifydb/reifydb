@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use reifydb_codec::key::{encode_u64_asc, encode_u128_asc, encoded::EncodedKey};
 use reifydb_core::{
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
 	key::operator_group_state::GroupId,
@@ -60,7 +60,7 @@ pub(crate) fn partition_group_key(partition: Hash128) -> EncodedKey {
 }
 
 pub(crate) fn intern_window_groups(
-	node: FlowNodeId,
+	node: OperatorId,
 	txn: &mut FlowTransaction,
 	windows: &[(Hash128, u64)],
 ) -> Result<WindowGroups> {

@@ -10,7 +10,6 @@ use column_snapshot::{ColumnSnapshotKey, SeriesColumnSnapshotKey, TableColumnSna
 use columns::ColumnsKey;
 use dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey};
 use flow::FlowKey;
-use operator_state::OperatorStateKey;
 use granted_role::GrantedRoleKey;
 use handler::HandlerKey;
 use identity::IdentityKey;
@@ -33,6 +32,7 @@ use namespace_source::NamespaceSourceKey;
 use namespace_sumtype::NamespaceSumTypeKey;
 use namespace_table::NamespaceTableKey;
 use namespace_view::NamespaceViewKey;
+use operator_state::OperatorStateKey;
 use partition::PartitionKey;
 use partitioned_row::PartitionedRowKey;
 use policy::PolicyKey;
@@ -413,8 +413,8 @@ pub mod tests {
 		},
 		key::{
 			Key, column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey,
-			operator_state::OperatorStateKey, index::IndexKey, namespace::NamespaceKey,
-			namespace_sumtype::NamespaceSumTypeKey, namespace_table::NamespaceTableKey,
+			index::IndexKey, namespace::NamespaceKey, namespace_sumtype::NamespaceSumTypeKey,
+			namespace_table::NamespaceTableKey, operator_state::OperatorStateKey,
 			property::ColumnPropertyKey, row::RowKey, row_sequence::RowSequenceKey, sumtype::SumTypeKey,
 			system_sequence::SystemSequenceKey, table::TableKey,
 			transaction_version::TransactionVersionKey,

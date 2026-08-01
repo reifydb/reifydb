@@ -17,10 +17,10 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
-	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
+	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
 	metrics::heap::HeapSize,
 	value::column::columns::Columns,
 };
@@ -88,7 +88,7 @@ fn working_set_usage(value: &dyn Any) -> ByteSize {
 
 pub struct DistinctOperator {
 	parent: OperatorCell,
-	pub(super) node: FlowNodeId,
+	pub(super) node: OperatorId,
 	pub(super) compiled_expressions: Vec<CompiledExpr>,
 	pub(super) shape: RowShape,
 	pub(super) routines: Routines,
@@ -101,7 +101,7 @@ pub struct DistinctOperator {
 impl DistinctOperator {
 	pub fn new(
 		parent: OperatorCell,
-		node: FlowNodeId,
+		node: OperatorId,
 		expressions: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
@@ -227,7 +227,7 @@ impl SingleStateful for DistinctOperator {
 }
 
 impl Operator for DistinctOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 
@@ -247,55 +247,58 @@ impl Operator for DistinctOperator {
 		let node_id = self.node;
 		let touched = self.batch_hashes(&change.diffs)?;
 
-		let (mut working, persist) = txn.take_operator_group_state::<DistinctWorkingSet, _>(node_id, |txn| {
-			let layout = self.load_layout(txn)?;
-			let working = DistinctWorkingSet {
-				state: DistinctState {
-					entries: IndexMap::new(),
-					layout,
-					dirty: HashSet::new(),
-					layout_dirty: false,
-				},
-				loaded: HashSet::new(),
-				groups: HashMap::new(),
-			};
-			let persist: PersistFn = Box::new(move |txn, value| {
-				let working =
-					*value.downcast::<DistinctWorkingSet>().expect("DistinctWorkingSet slot type");
-				let now = txn.clock().now();
-				for hash in &working.state.dirty {
-					let key = Self::entry_key(working.groups[hash]);
-					match working.state.entries.get(hash) {
-						Some(entry) => {
-							let bytes = entry.encode_state(now).map_err(|e| {
+		let (mut working, persist) =
+			txn.take_operator_state::<DistinctWorkingSet, _>(node_id, |txn| {
+				let layout = self.load_layout(txn)?;
+				let working = DistinctWorkingSet {
+					state: DistinctState {
+						entries: IndexMap::new(),
+						layout,
+						dirty: HashSet::new(),
+						layout_dirty: false,
+					},
+					loaded: HashSet::new(),
+					groups: HashMap::new(),
+				};
+				let persist: PersistFn = Box::new(move |txn, value| {
+					let working = *value
+						.downcast::<DistinctWorkingSet>()
+						.expect("DistinctWorkingSet slot type");
+					let now = txn.clock().now();
+					for hash in &working.state.dirty {
+						let key = Self::entry_key(working.groups[hash]);
+						match working.state.entries.get(hash) {
+							Some(entry) => {
+								let bytes = entry.encode_state(now).map_err(|e| {
+									Error::from(FlowStateError::Encode {
+										state: "DistinctEntry",
+										cause: e.to_string(),
+									})
+								})?;
+								utils::state_set(node_id, txn, &key, bytes.into_row())?;
+							}
+							None => utils::state_remove(node_id, txn, &key)?,
+						}
+					}
+					if working.state.layout_dirty {
+						let layout_bytes =
+							working.state.layout.encode_state(now).map_err(|e| {
 								Error::from(FlowStateError::Encode {
-									state: "DistinctEntry",
+									state: "DistinctLayout",
 									cause: e.to_string(),
 								})
 							})?;
-							utils::state_set(node_id, txn, &key, bytes.into_row())?;
-						}
-						None => utils::state_remove(node_id, txn, &key)?,
+						utils::state_set(
+							node_id,
+							txn,
+							&Self::layout_storage_key(),
+							layout_bytes.into_row(),
+						)?;
 					}
-				}
-				if working.state.layout_dirty {
-					let layout_bytes = working.state.layout.encode_state(now).map_err(|e| {
-						Error::from(FlowStateError::Encode {
-							state: "DistinctLayout",
-							cause: e.to_string(),
-						})
-					})?;
-					utils::state_set(
-						node_id,
-						txn,
-						&Self::layout_storage_key(),
-						layout_bytes.into_row(),
-					)?;
-				}
-				Ok(())
-			});
-			Ok((working, persist))
-		})?;
+					Ok(())
+				});
+				Ok((working, persist))
+			})?;
 
 		let ordered: Vec<Hash128> = touched.into_iter().collect();
 		let group_keys: Vec<EncodedKey> = ordered.iter().map(|hash| Self::group_bytes(*hash)).collect();
@@ -362,5 +365,9 @@ impl Operator for DistinctOperator {
 		txn.put_operator_state(node_id, working, persist, working_set_usage);
 
 		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
+	}
+
+	fn output_schema(&self) -> Option<Columns> {
+		self.output_schema()
 	}
 }

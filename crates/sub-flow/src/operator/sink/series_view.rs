@@ -11,7 +11,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::{
 		catalog::{
-			flow::FlowNodeId, id::SeriesId, object::ObjectId, series::SeriesKey, storage::StorageId,
+			flow::OperatorId, id::SeriesId, object::ObjectId, series::SeriesKey, storage::StorageId,
 			view::View,
 		},
 		change::{Change, ChangeOrigin, Diff},
@@ -43,7 +43,7 @@ use crate::operator::OperatorCell;
 pub struct SinkSeriesViewOperator {
 	#[allow(dead_code)]
 	parent: OperatorCell,
-	node: FlowNodeId,
+	node: OperatorId,
 	view: ResolvedView,
 	series_id: SeriesId,
 	#[allow(dead_code)]
@@ -55,7 +55,7 @@ pub struct SinkSeriesViewOperator {
 impl SinkSeriesViewOperator {
 	pub fn new(
 		parent: OperatorCell,
-		node: FlowNodeId,
+		node: OperatorId,
 		view: ResolvedView,
 		series_id: SeriesId,
 		key: SeriesKey,
@@ -87,7 +87,7 @@ impl SinkSeriesViewOperator {
 }
 
 impl Operator for SinkSeriesViewOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
 	internal_err,
@@ -29,7 +29,7 @@ use crate::{context::FlowContext, operator::OperatorCell};
 
 pub struct FilterOperator {
 	parent: OperatorCell,
-	node: FlowNodeId,
+	node: OperatorId,
 	compiled_conditions: Vec<CompiledExpr>,
 	routines: Routines,
 	runtime_context: RuntimeContext,
@@ -39,7 +39,7 @@ pub struct FilterOperator {
 impl FilterOperator {
 	pub fn new(
 		parent: OperatorCell,
-		node: FlowNodeId,
+		node: OperatorId,
 		conditions: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
@@ -124,7 +124,7 @@ impl FilterOperator {
 }
 
 impl Operator for FilterOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 
@@ -154,6 +154,10 @@ impl Operator for FilterOperator {
 		}
 
 		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
+	}
+
+	fn output_schema(&self) -> Option<Columns> {
+		self.output_schema()
 	}
 }
 

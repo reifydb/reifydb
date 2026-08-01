@@ -4,7 +4,7 @@ use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
-use reifydb_core::key::{EncodableKey, operator_state::OperatorStateKey, operator_group_state::GroupStateKey};
+use reifydb_core::key::{EncodableKey, operator_group_state::GroupStateKey, operator_state::OperatorStateKey};
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
@@ -67,7 +67,7 @@ pub mod tests {
 	use std::ops::Bound::{Excluded, Unbounded};
 
 	use reifydb_codec::key::serializer::KeySerializer;
-	use reifydb_core::{interface::catalog::flow::FlowNodeId, key::operator_group_state::Keyspace};
+	use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_group_state::Keyspace};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 
@@ -104,7 +104,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_state() {
-		let operator = TestOperator::simple(FlowNodeId(1));
+		let operator = TestOperator::simple(OperatorId(1));
 		let state = operator.create_state();
 
 		assert!(state.len() > 0);
@@ -114,7 +114,7 @@ pub mod tests {
 	fn test_load_save_window_state() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::simple(FlowNodeId(1));
+		let operator = TestOperator::simple(OperatorId(1));
 		let window_key = test_window_key(42);
 
 		let state1 = operator.load_state(&mut txn, &window_key).unwrap();
@@ -132,7 +132,7 @@ pub mod tests {
 	fn test_multiple_windows() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::simple(FlowNodeId(1));
+		let operator = TestOperator::simple(OperatorId(1));
 
 		let window_keys: Vec<_> = (0..5).map(|i| test_window_key(i)).collect();
 		let layout = operator.layout();
@@ -152,7 +152,7 @@ pub mod tests {
 	fn test_expire_before() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::simple(FlowNodeId(1));
+		let operator = TestOperator::simple(OperatorId(1));
 
 		let window_keys: Vec<_> = (0..10).map(|i| test_window_key(i)).collect();
 		let layout = operator.layout();
@@ -183,7 +183,7 @@ pub mod tests {
 	fn test_expire_empty_range() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::simple(FlowNodeId(1));
+		let operator = TestOperator::simple(OperatorId(1));
 
 		let window_keys: Vec<_> = (5..10).map(|i| test_window_key(i)).collect();
 		let layout = operator.layout();
@@ -209,7 +209,7 @@ pub mod tests {
 	fn test_expire_all() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::simple(FlowNodeId(1));
+		let operator = TestOperator::simple(OperatorId(1));
 
 		let window_keys: Vec<_> = (0..5).map(|i| test_window_key(i)).collect();
 		let layout = operator.layout();
@@ -234,7 +234,7 @@ pub mod tests {
 	fn test_sliding_window_simulation() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::new(FlowNodeId(1));
+		let operator = TestOperator::new(OperatorId(1));
 
 		// A sliding window that keeps only the last three.
 		let window_size = 3;

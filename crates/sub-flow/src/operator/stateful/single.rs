@@ -49,7 +49,7 @@ pub trait SingleStateful: RawStatefulOperator {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::flow::FlowNodeId;
+	use reifydb_core::interface::catalog::flow::OperatorId;
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 
@@ -64,7 +64,7 @@ pub mod tests {
 
 	#[test]
 	fn testault_key() {
-		let operator = TestOperator::simple(FlowNodeId(1));
+		let operator = TestOperator::simple(OperatorId(1));
 		let key = operator.key();
 
 		assert_eq!(key.as_slice().len(), 0);
@@ -72,7 +72,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_state() {
-		let operator = TestOperator::simple(FlowNodeId(1));
+		let operator = TestOperator::simple(OperatorId(1));
 		let state = operator.create_state();
 
 		assert!(state.len() > 0);
@@ -82,7 +82,7 @@ pub mod tests {
 	fn test_load_save_state() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::simple(FlowNodeId(1));
+		let operator = TestOperator::simple(OperatorId(1));
 
 		let state1 = operator.load_state(&mut txn).unwrap();
 
@@ -99,7 +99,7 @@ pub mod tests {
 	fn test_update_state() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::simple(FlowNodeId(1));
+		let operator = TestOperator::simple(OperatorId(1));
 
 		let result = operator
 			.update_state(&mut txn, |shape, row| {
@@ -119,7 +119,7 @@ pub mod tests {
 	fn test_clear_state() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::simple(FlowNodeId(1));
+		let operator = TestOperator::simple(OperatorId(1));
 
 		operator.update_state(&mut txn, |shape, row| {
 			shape.set::<i64>(row, 0, 0x99);
@@ -139,8 +139,8 @@ pub mod tests {
 	fn test_multiple_operators_isolated() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator1 = TestOperator::simple(FlowNodeId(1));
-		let operator2 = TestOperator::simple(FlowNodeId(2));
+		let operator1 = TestOperator::simple(OperatorId(1));
+		let operator2 = TestOperator::simple(OperatorId(2));
 
 		operator1
 			.update_state(&mut txn, |shape, row| {
@@ -169,7 +169,7 @@ pub mod tests {
 	fn test_counter_simulation() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::new(FlowNodeId(1));
+		let operator = TestOperator::new(OperatorId(1));
 
 		// TestOperator::new lays state out as [Int8, Float8, Utf8], so field 0 is the counter.
 		for i in 1..=5 {

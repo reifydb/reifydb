@@ -16,8 +16,8 @@ use reifydb_core::{
 		flow::OperatorId,
 	},
 	key::{
-		operator_state::OperatorStateKey,
 		operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
+		operator_state::OperatorStateKey,
 	},
 };
 use reifydb_runtime::{

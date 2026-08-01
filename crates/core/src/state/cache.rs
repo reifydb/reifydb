@@ -20,7 +20,7 @@ use reifydb_value::{
 use rkyv::seal::Seal;
 
 use crate::{
-	key::operator_group_state::{GroupSet, IntoGroupStateKey, GroupStateKey, group_data_of_inner},
+	key::operator_group_state::{GroupSet, GroupStateKey, IntoGroupStateKey, group_data_of_inner},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		budget::OperatorStateBudgetHandle,
@@ -799,7 +799,8 @@ where
 		}
 
 		let selects = |key: &K| {
-			group_data_of_inner(key.into_group_state_key().as_slice()).is_some_and(|group| groups.contains(group))
+			group_data_of_inner(key.into_group_state_key().as_slice())
+				.is_some_and(|group| groups.contains(group))
 		};
 		let clean: Vec<K> = self.clean.keys().filter(|key| selects(key)).cloned().collect();
 		let dirty: HashSet<K> =
@@ -946,7 +947,9 @@ mod tests {
 	use super::*;
 	use crate::{
 		error::diagnostic::flow::flow_error,
-		key::operator_group_state::{GroupId, IntoGroupStateKey, Keyspace, OperatorGroupStateKey, GroupStateKey},
+		key::operator_group_state::{
+			GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorGroupStateKey,
+		},
 	};
 
 	/// A bare `String` would read as some other group's prefix; this frames the tests' string keys
@@ -2116,7 +2119,9 @@ mod tests {
 		move |encoded| {
 			candidates
 				.iter()
-				.find(|c| Key::new(c.to_string()).into_group_state_key().as_slice() == encoded.as_slice())
+				.find(|c| {
+					Key::new(c.to_string()).into_group_state_key().as_slice() == encoded.as_slice()
+				})
 				.map(|c| Key::new(c.to_string()))
 		}
 	}
@@ -2386,7 +2391,10 @@ mod tests {
 		let mut cache: StateCache<CollidingKey, Cell> = StateCache::new(big_pool());
 		let candidates = [key1.clone(), key2.clone()];
 		cache.hydrate(&mut store, full_range(), move |encoded| {
-			candidates.iter().find(|c| (*c).into_group_state_key().as_slice() == encoded.as_bytes()).cloned()
+			candidates
+				.iter()
+				.find(|c| (*c).into_group_state_key().as_slice() == encoded.as_bytes())
+				.cloned()
 		})
 		.unwrap();
 		cache.pool.set_budget(ByteSize::from_bytes(1));

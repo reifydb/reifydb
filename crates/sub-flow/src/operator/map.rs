@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
 	value::column::{ColumnWithName, columns::Columns},
@@ -25,7 +25,7 @@ use crate::{context::FlowContext, operator::OperatorCell};
 
 pub struct MapOperator {
 	parent: OperatorCell,
-	node: FlowNodeId,
+	node: OperatorId,
 	expressions: Vec<Expression>,
 	compiled_expressions: Vec<CompiledExpr>,
 	routines: Routines,
@@ -36,7 +36,7 @@ pub struct MapOperator {
 impl MapOperator {
 	pub fn new(
 		parent: OperatorCell,
-		node: FlowNodeId,
+		node: OperatorId,
 		expressions: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
@@ -121,7 +121,7 @@ impl MapOperator {
 }
 
 impl Operator for MapOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 
@@ -174,5 +174,9 @@ impl Operator for MapOperator {
 		}
 
 		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
+	}
+
+	fn output_schema(&self) -> Option<Columns> {
+		self.output_schema()
 	}
 }

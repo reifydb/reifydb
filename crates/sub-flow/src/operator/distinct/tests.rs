@@ -8,7 +8,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::{
-			flow::FlowNodeId,
+			flow::OperatorId,
 			id::{NamespaceId, TableId, ViewId},
 			view::{TableView, View, ViewKind},
 		},
@@ -16,8 +16,8 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::OperatorStateKey,
 		operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
+		operator_state::OperatorStateKey,
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
@@ -37,7 +37,7 @@ use reifydb_value::{
 use crate::{
 	context::FlowContext,
 	operator::{
-		OperatorCell, Operators, distinct::operator::DistinctOperator, scan::view::SourceViewOperator,
+		OperatorCell, distinct::operator::DistinctOperator, scan::view::SourceViewOperator,
 		stateful::utils,
 	},
 };
@@ -53,7 +53,7 @@ fn noop_parent() -> OperatorCell {
 		storage: TableId(1),
 		sort: vec![],
 	});
-	OperatorCell::new(Operators::SourceView(SourceViewOperator::new(FlowNodeId(0), view)))
+	OperatorCell::new(SourceViewOperator::new(OperatorId(0), view))
 }
 
 fn make_op(node_id: u64, engine: &TestEngine) -> DistinctOperator {
@@ -61,7 +61,7 @@ fn make_op(node_id: u64, engine: &TestEngine) -> DistinctOperator {
 	let rc = RuntimeContext::with_clock(engine.clock().clone());
 	DistinctOperator::new(
 		noop_parent(),
-		FlowNodeId(node_id),
+		OperatorId(node_id),
 		Vec::new(),
 		routines,
 		rc,
@@ -82,7 +82,7 @@ fn build_insert(value: i64, row_num: u64) -> Change {
 	);
 	let mut diffs = Diffs::new();
 	diffs.push(Diff::insert(columns));
-	Change::from_flow(FlowNodeId(99), CommitVersion(1), diffs, now)
+	Change::from_flow(OperatorId(99), CommitVersion(1), diffs, now)
 }
 
 fn build_remove(value: i64, row_num: u64) -> Change {
@@ -97,7 +97,7 @@ fn build_remove(value: i64, row_num: u64) -> Change {
 	);
 	let mut diffs = Diffs::new();
 	diffs.push(Diff::remove(columns));
-	Change::from_flow(FlowNodeId(99), CommitVersion(1), diffs, now)
+	Change::from_flow(OperatorId(99), CommitVersion(1), diffs, now)
 }
 
 fn persisted_rows(op: &DistinctOperator, txn: &mut FlowTransaction) -> BTreeMap<Vec<u8>, Vec<u8>> {

@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 use reifydb_core::{
 	common::{CommitVersion, TimeDomain},
 	interface::{
-		catalog::flow::{FlowId, FlowNodeId},
+		catalog::flow::{FlowId, OperatorId},
 		change::Change,
 	},
 };
@@ -69,19 +69,19 @@ impl FlowEngineInner {
 		flow_id: FlowId,
 		version: CommitVersion,
 		version_changes: Vec<Change>,
-		topo: &[FlowNodeId],
+		topo: &[OperatorId],
 	) -> Result<u32> {
-		let mut pending: HashMap<FlowNodeId, Vec<Change>> = HashMap::new();
+		let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
 		for change in version_changes {
 			self.seed_entry_nodes(flow, flow_id, change, &mut pending);
 		}
 
-		let sources: Vec<FlowNodeId> = topo
+		let sources: Vec<OperatorId> = topo
 			.iter()
 			.copied()
 			.filter(|id| flow.get_node(id).is_some_and(|node| node.ty.is_source()))
 			.collect();
-		let arrivals: Vec<(FlowNodeId, DateTime)> = pending
+		let arrivals: Vec<(OperatorId, DateTime)> = pending
 			.iter()
 			.filter_map(|(node_id, changes)| {
 				changes.iter().filter_map(max_input_time).max().map(|at| (*node_id, at))
@@ -98,8 +98,8 @@ impl FlowEngineInner {
 		&self,
 		txn: &mut FlowTransaction,
 		flow: &FlowDag,
-		mut pending: HashMap<FlowNodeId, Vec<Change>>,
-		topo: &[FlowNodeId],
+		mut pending: HashMap<OperatorId, Vec<Change>>,
+		topo: &[OperatorId],
 	) -> Result<u32> {
 		let mut nodes_processed = 0u32;
 		for node_id in topo {
@@ -151,8 +151,8 @@ impl FlowEngineInner {
 fn freeze_arrival_frontier(
 	txn: &mut FlowTransaction,
 	domain: TimeDomain,
-	sources: &[FlowNodeId],
-	arrivals: &[(FlowNodeId, DateTime)],
+	sources: &[OperatorId],
+	arrivals: &[(OperatorId, DateTime)],
 ) -> Result<()> {
 	let watermarks = txn.source_watermarks();
 	if !sources.is_empty() {
@@ -175,7 +175,7 @@ mod tests {
 
 	use super::*;
 
-	const SOURCE: FlowNodeId = FlowNodeId(1);
+	const SOURCE: OperatorId = OperatorId(1);
 
 	fn deferred(engine: &TestEngine) -> FlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();

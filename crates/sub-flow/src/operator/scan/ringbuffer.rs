@@ -4,7 +4,7 @@
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::{
-		catalog::{flow::FlowNodeId, ringbuffer::RingBuffer},
+		catalog::{flow::OperatorId, ringbuffer::RingBuffer},
 		change::{Change, Diff},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -15,12 +15,12 @@ use reifydb_value::{Result, fragment::Fragment};
 use crate::operator::sink::decode_dictionary_columns;
 
 pub struct SourceRingBufferOperator {
-	node: FlowNodeId,
+	node: OperatorId,
 	ringbuffer: RingBuffer,
 }
 
 impl SourceRingBufferOperator {
-	pub fn new(node: FlowNodeId, ringbuffer: RingBuffer) -> Self {
+	pub fn new(node: OperatorId, ringbuffer: RingBuffer) -> Self {
 		Self {
 			node,
 			ringbuffer,
@@ -29,7 +29,7 @@ impl SourceRingBufferOperator {
 }
 
 impl Operator for SourceRingBufferOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 
@@ -71,6 +71,10 @@ impl Operator for SourceRingBufferOperator {
 			});
 		}
 		Ok(Change::from_flow(self.node, change.version, decoded_diffs, change.changed_at))
+	}
+
+	fn output_schema(&self) -> Option<Columns> {
+		Some(self.output_schema())
 	}
 }
 

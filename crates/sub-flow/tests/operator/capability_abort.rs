@@ -10,7 +10,7 @@ use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
 	},
 	value::column::columns::Columns,
@@ -57,12 +57,12 @@ fn run_child() {
 
 	let mut diffs = Diffs::new();
 	diffs.push(Diff::update(Columns::empty(), Columns::empty()));
-	let change = Change::from_flow(FlowNodeId(42), CommitVersion(0), diffs, DateTime::default());
+	let change = Change::from_flow(OperatorId(42), CommitVersion(0), diffs, DateTime::default());
 
 	let caps = &[OperatorCapability::Insert];
 	assert!(!caps.contains(&OperatorCapability::Update));
 
-	enforce_apply_capabilities(FlowNodeId(42), caps, &change);
+	enforce_apply_capabilities(OperatorId(42), caps, &change);
 
 	unreachable!("enforce_apply_capabilities should have aborted on update diff");
 }

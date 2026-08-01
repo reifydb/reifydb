@@ -4,14 +4,14 @@
 use core::ffi::c_void;
 
 use reifydb_abi::{callbacks::host::HostCallbacks, context::context::ContextFFI};
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_engine::vm::executor::Executor;
 use reifydb_flow::transaction::FlowTransaction;
 
 pub(crate) fn new_ffi_context(
 	txn: &mut FlowTransaction,
 	executor: &Executor,
-	operator_id: FlowNodeId,
+	operator_id: OperatorId,
 	callbacks: HostCallbacks,
 ) -> ContextFFI {
 	let clock_now_nanos = txn.clock().now().to_nanos();

@@ -17,8 +17,8 @@ use reifydb_codec::{
 #[cfg(test)]
 use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
-	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey, keyspace_inner_range},
+	interface::catalog::flow::OperatorId,
+	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey, keyspace_inner_range},
 	state::{keyspace::fold_hash128, membership::MembershipAnswer},
 };
 use reifydb_flow::transaction::FlowTransaction;
@@ -56,7 +56,7 @@ pub(crate) fn hash_from_group_bytes(bytes: &EncodedKey) -> Option<Hash128> {
 }
 
 pub(crate) struct Store {
-	node_id: FlowNodeId,
+	node_id: OperatorId,
 	side: JoinSide,
 	shape_cache: RowShapeCacheCell,
 	membership: Arc<JoinMembership>,
@@ -64,7 +64,7 @@ pub(crate) struct Store {
 }
 
 impl Store {
-	pub(crate) fn new(node_id: FlowNodeId, side: JoinSide, membership: Arc<JoinMembership>) -> Self {
+	pub(crate) fn new(node_id: OperatorId, side: JoinSide, membership: Arc<JoinMembership>) -> Self {
 		Self {
 			node_id,
 			side,
@@ -389,7 +389,7 @@ mod tests {
 	fn put_row_then_rows_for_key_returns_inserted() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(FlowNodeId(1), JoinSide::Left, test_membership());
+		let store = Store::new(OperatorId(1), JoinSide::Left, test_membership());
 
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
 		store.put_row(&mut txn, &h(0xAAA), rn(2), &row(0x20), RowPresence::Unknown).unwrap();
@@ -413,7 +413,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
-		let node = FlowNodeId(51);
+		let node = OperatorId(51);
 		let left = Store::new(node, JoinSide::Left, membership.clone());
 
 		left.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
@@ -437,7 +437,7 @@ mod tests {
 		// updates is reclaimed on the strength of its first insert while the join still probes it.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = FlowNodeId(52);
+		let node = OperatorId(52);
 		let store = Store::new(node, JoinSide::Left, test_membership());
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
 		let group = txn.lookup_group(node, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
@@ -458,7 +458,7 @@ mod tests {
 		// later sweep would pay to reclaim an empty keyspace for a key never stored.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = FlowNodeId(53);
+		let node = OperatorId(53);
 		let store = Store::new(node, JoinSide::Left, test_membership());
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
 		let group = txn.lookup_group(node, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
@@ -479,7 +479,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
-		let node = FlowNodeId(50);
+		let node = OperatorId(50);
 		let left = Store::new(node, JoinSide::Left, membership.clone());
 		let right = Store::new(node, JoinSide::Right, membership);
 
@@ -510,7 +510,7 @@ mod tests {
 		// obligation per absent key - turning a degraded filter into unbounded group growth.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = FlowNodeId(51);
+		let node = OperatorId(51);
 		let membership = Arc::new(JoinMembership::with_byte_cap(64));
 		let store = Store::new(node, JoinSide::Left, membership.clone());
 
@@ -541,7 +541,7 @@ mod tests {
 		// point read must never fall back to a sibling row under the same hash.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(FlowNodeId(5), JoinSide::Right, test_membership());
+		let store = Store::new(OperatorId(5), JoinSide::Right, test_membership());
 
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
 		store.put_row(&mut txn, &h(0xAAA), RowNumber::MAX, &row(0x20), RowPresence::Unknown).unwrap();
@@ -564,7 +564,7 @@ mod tests {
 	fn update_row_overwrites_existing_returns_true() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(FlowNodeId(2), JoinSide::Right, test_membership());
+		let store = Store::new(OperatorId(2), JoinSide::Right, test_membership());
 
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
 		assert!(store.update_row(&mut txn, &h(0xAAA), rn(1), &row(0x99)).unwrap());
@@ -580,7 +580,7 @@ mod tests {
 	fn update_row_returns_false_when_missing() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(FlowNodeId(3), JoinSide::Left, test_membership());
+		let store = Store::new(OperatorId(3), JoinSide::Left, test_membership());
 
 		assert!(!store.update_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap());
 		assert!(store.rows_for_key(&mut txn, &h(0xAAA)).unwrap().is_empty());
@@ -590,7 +590,7 @@ mod tests {
 	fn remove_row_returns_existence_and_contains_key_reports_empty() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(FlowNodeId(4), JoinSide::Left, test_membership());
+		let store = Store::new(OperatorId(4), JoinSide::Left, test_membership());
 
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
 		store.put_row(&mut txn, &h(0xAAA), rn(2), &row(0x20), RowPresence::Unknown).unwrap();
@@ -609,7 +609,7 @@ mod tests {
 	fn get_row_shape_round_trips_written_shape() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(FlowNodeId(20), JoinSide::Left, test_membership());
+		let store = Store::new(OperatorId(20), JoinSide::Left, test_membership());
 
 		let shape = RowShape::testing(&[ValueType::Int4, ValueType::Utf8]);
 		store.set_row_shape(&mut txn, &shape).unwrap();
@@ -622,7 +622,7 @@ mod tests {
 	fn get_row_shape_loads_from_state_when_cache_is_cold() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = FlowNodeId(21);
+		let node = OperatorId(21);
 		let shape = RowShape::testing(&[ValueType::Int4]);
 
 		let writer = Store::new(node, JoinSide::Left, test_membership());
@@ -639,7 +639,7 @@ mod tests {
 		// without it they collide on identical fingerprints and a side decodes the other's shape.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = FlowNodeId(52);
+		let node = OperatorId(52);
 		let membership = test_membership();
 		let left = Store::new(node, JoinSide::Left, membership.clone());
 		let right = Store::new(node, JoinSide::Right, membership);
@@ -663,7 +663,7 @@ mod tests {
 	fn rows_for_key_block_pages_with_resume_cursor() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(FlowNodeId(30), JoinSide::Left, test_membership());
+		let store = Store::new(OperatorId(30), JoinSide::Left, test_membership());
 
 		for i in 1..=4u64 {
 			store.put_row(&mut txn, &h(0xAAA), rn(i), &row(i as u8), RowPresence::Unknown).unwrap();
@@ -688,7 +688,7 @@ mod tests {
 	fn rows_for_key_stitches_full_and_partial_blocks_without_loss() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(FlowNodeId(31), JoinSide::Right, test_membership());
+		let store = Store::new(OperatorId(31), JoinSide::Right, test_membership());
 
 		// One full block plus a partial one: a blocked probe risks dropping or duplicating rows
 		// at the boundary.
@@ -708,7 +708,7 @@ mod tests {
 	fn get_row_shape_returns_none_when_shape_absent() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(FlowNodeId(22), JoinSide::Right, test_membership());
+		let store = Store::new(OperatorId(22), JoinSide::Right, test_membership());
 
 		let fp = RowShape::testing(&[ValueType::Int4]).fingerprint();
 		assert_eq!(store.get_row_shape(&mut txn, fp).unwrap(), None);
@@ -721,7 +721,7 @@ mod tests {
 		// has to be retained rather than only the first.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let store = Store::new(FlowNodeId(23), JoinSide::Right, test_membership());
+		let store = Store::new(OperatorId(23), JoinSide::Right, test_membership());
 
 		let narrow = RowShape::testing(&[ValueType::Int4]);
 		let wide = RowShape::testing(&[ValueType::Int4, ValueType::Utf8]);
@@ -747,7 +747,7 @@ mod tests {
 		// not only the first.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = FlowNodeId(24);
+		let node = OperatorId(24);
 		let narrow = RowShape::testing(&[ValueType::Int4]);
 		let wide = RowShape::testing(&[ValueType::Int4, ValueType::Utf8]);
 
@@ -770,7 +770,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
-		let store = Store::new(FlowNodeId(40), JoinSide::Right, membership.clone());
+		let store = Store::new(OperatorId(40), JoinSide::Right, membership.clone());
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
 
 		assert!(!store.contains_key(&mut txn, &h(0xBBB)).unwrap());
@@ -796,7 +796,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
-		let store = Store::new(FlowNodeId(42), JoinSide::Right, membership.clone());
+		let store = Store::new(OperatorId(42), JoinSide::Right, membership.clone());
 		for i in 0..200u64 {
 			store.put_row(&mut txn, &h(0xAAA), rn(i + 1), &row(0x10), RowPresence::Unknown).unwrap();
 		}
@@ -821,7 +821,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
-		let store = Store::new(FlowNodeId(41), JoinSide::Left, membership.clone());
+		let store = Store::new(OperatorId(41), JoinSide::Left, membership.clone());
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
 		store.put_row(&mut txn, &h(0xAAA), rn(2), &row(0x20), RowPresence::Unknown).unwrap();
 
@@ -847,7 +847,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
-		let store = Store::new(FlowNodeId(42), JoinSide::Right, membership.clone());
+		let store = Store::new(OperatorId(42), JoinSide::Right, membership.clone());
 
 		store.put_row(&mut txn, &h(0xAAA), RowNumber::MAX, &row(0x01), RowPresence::New).unwrap();
 		for tick in 2..=4u8 {
@@ -873,7 +873,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
-		let store = Store::new(FlowNodeId(43), JoinSide::Left, membership.clone());
+		let store = Store::new(OperatorId(43), JoinSide::Left, membership.clone());
 
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x20), RowPresence::Unknown).unwrap();
@@ -893,7 +893,7 @@ mod tests {
 		// a false absence.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = FlowNodeId(45);
+		let node = OperatorId(45);
 		let writer = Store::new(node, JoinSide::Right, test_membership());
 		writer.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
 
@@ -917,7 +917,7 @@ mod tests {
 		// drops matches.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = FlowNodeId(54);
+		let node = OperatorId(54);
 		let writer = test_membership();
 		let left = Store::new(node, JoinSide::Left, writer.clone());
 		let right = Store::new(node, JoinSide::Right, writer);

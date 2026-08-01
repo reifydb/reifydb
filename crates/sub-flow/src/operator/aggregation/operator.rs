@@ -9,7 +9,7 @@ use std::{
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
 	key::operator_group_state::GroupSet,
@@ -54,7 +54,7 @@ pub struct AggregateOperator {
 impl AggregateOperator {
 	pub fn new(
 		parent: OperatorCell,
-		node: FlowNodeId,
+		node: OperatorId,
 		by: Vec<Expression>,
 		map: Vec<Expression>,
 		routines: Routines,
@@ -82,7 +82,7 @@ impl AggregateOperator {
 }
 
 impl Operator for AggregateOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.core.node
 	}
 
@@ -114,6 +114,10 @@ impl Operator for AggregateOperator {
 				.with_membership(engine.membership_memory())
 				.with_completeness(engine.completeness())
 		})
+	}
+
+	fn output_schema(&self) -> Option<Columns> {
+		self.output_schema()
 	}
 }
 

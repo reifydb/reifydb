@@ -7,7 +7,7 @@ use dashmap::DashMap;
 use reifydb_core::{
 	common::TimeDomain,
 	interface::catalog::flow::OperatorId,
-	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
+	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
 };
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 
@@ -272,8 +272,8 @@ mod tests {
 		// watermark at zero; a tag collision with NODE_WATERMARK would let the two overwrite each
 		// other on node-scope state.
 		let key = source_watermark_key();
-		let (group, keyspace, suffix) =
-			OperatorGroupStateKey::decode_inner(key.as_slice()).expect("the key must decode as inner state");
+		let (group, keyspace, suffix) = OperatorGroupStateKey::decode_inner(key.as_slice())
+			.expect("the key must decode as inner state");
 
 		assert_eq!(group, GroupId::NODE_SCOPE);
 		assert_eq!(keyspace, Keyspace::SOURCE_WATERMARK);

@@ -7,11 +7,11 @@ use reifydb_codec::{
 	state::StateBytes,
 };
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
+	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_state::OperatorStateKey,
 		operator_group_state::{GroupId, GroupStateKey},
+		operator_state::OperatorStateKey,
 	},
 	state::store::StateStore,
 };
@@ -23,12 +23,12 @@ use reifydb_value::{
 
 pub struct OperatorStateStore<'a> {
 	txn: &'a mut FlowTransaction,
-	node: FlowNodeId,
+	node: OperatorId,
 	now: DateTime,
 }
 
 impl<'a> OperatorStateStore<'a> {
-	pub fn new(txn: &'a mut FlowTransaction, node: FlowNodeId) -> Self {
+	pub fn new(txn: &'a mut FlowTransaction, node: OperatorId) -> Self {
 		let now = txn.clock().now();
 		Self {
 			txn,

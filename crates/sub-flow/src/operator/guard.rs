@@ -6,7 +6,7 @@ use std::process::abort;
 use Diff::*;
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::interface::{
-	catalog::flow::FlowNodeId,
+	catalog::flow::OperatorId,
 	change::{Change, Diff},
 };
 use tracing::error;
@@ -52,7 +52,7 @@ pub fn check_apply(caps: &[OperatorCapability], change: &Change) -> Result<(), C
 	Ok(())
 }
 
-pub fn enforce_apply_capabilities(operator_id: FlowNodeId, caps: &[OperatorCapability], change: &Change) {
+pub fn enforce_apply_capabilities(operator_id: OperatorId, caps: &[OperatorCapability], change: &Change) {
 	if let Err(CapabilityViolation::Apply {
 		kind,
 		missing,
@@ -75,7 +75,7 @@ mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::{
-			catalog::flow::FlowNodeId,
+			catalog::flow::OperatorId,
 			change::{Change, Diff, Diffs},
 		},
 		value::column::columns::Columns,
@@ -89,7 +89,7 @@ mod tests {
 		for d in diffs {
 			sv.push(d);
 		}
-		Change::from_flow(FlowNodeId(1), CommitVersion(0), sv, DateTime::default())
+		Change::from_flow(OperatorId(1), CommitVersion(0), sv, DateTime::default())
 	}
 
 	fn insert() -> Diff {

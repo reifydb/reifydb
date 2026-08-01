@@ -97,8 +97,7 @@ pub mod tests {
 		cache.set_operator(OperatorId(1), CommitVersion(1), Some(n1.clone()));
 		cache.set_operator(OperatorId(2), CommitVersion(1), Some(n2.clone()));
 
-		let mut listed =
-			cache.list_operators_by_flow_at(FlowId(10), CommitVersion(1)).expect("flow is cached");
+		let mut listed = cache.list_operators_by_flow_at(FlowId(10), CommitVersion(1)).expect("flow is cached");
 		listed.sort_by_key(|n| n.id.0);
 		assert_eq!(listed, vec![n1, n2]);
 	}

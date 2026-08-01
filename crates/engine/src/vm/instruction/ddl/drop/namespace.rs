@@ -132,9 +132,13 @@ pub(crate) fn drop_namespace(
 			},
 		)?);
 
-		dependents.extend(find_flow_dependents(&services.catalog, txn, &external_nodes, &flows, |node_type| {
-			matches!(node_type, OperatorDef::SourceRingBuffer { ringbuffer } if ringbuffer_ids.contains(ringbuffer))
-		})?);
+		dependents.extend(find_flow_dependents(
+			&services.catalog,
+			txn,
+			&external_nodes,
+			&flows,
+			|node_type| matches!(node_type, OperatorDef::SourceRingBuffer { ringbuffer } if ringbuffer_ids.contains(ringbuffer)),
+		)?);
 	}
 
 	if !dependents.is_empty() {

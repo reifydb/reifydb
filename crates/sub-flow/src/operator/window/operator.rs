@@ -7,7 +7,7 @@ use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	common::{CommitVersion, WindowKind, WindowSize},
-	interface::{catalog::flow::FlowNodeId, change::Change},
+	interface::{catalog::flow::OperatorId, change::Change},
 	key::operator_group_state::GroupSet,
 	metrics::heap::OperatorSample,
 	state::{budget::OperatorStateBudgetHandle, horizon::window_retention_scale},
@@ -62,7 +62,7 @@ const CAPABILITIES: &[OperatorCapability] = &[
 
 pub struct WindowConfig {
 	pub parent: OperatorCell,
-	pub node: FlowNodeId,
+	pub node: OperatorId,
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
@@ -225,7 +225,7 @@ impl WindowStateful for WindowOperator {
 }
 
 impl Operator for WindowOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.core.node
 	}
 
@@ -349,5 +349,9 @@ impl Operator for WindowOperator {
 				Ok(Some(Change::from_flow(self.core.node, CommitVersion(0), diffs, timer.at)))
 			}
 		})
+	}
+
+	fn output_schema(&self) -> Option<Columns> {
+		self.core.parent.output_schema()
 	}
 }

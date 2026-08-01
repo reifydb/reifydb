@@ -5,8 +5,8 @@ pub mod test {
 	use reifydb_abi::operator::capabilities::OperatorCapability;
 	use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 	use reifydb_core::{
-		interface::{catalog::flow::FlowNodeId, change::Change},
-		key::operator_group_state::{Keyspace, GroupStateKey},
+		interface::{catalog::flow::OperatorId, change::Change},
+		key::operator_group_state::{GroupStateKey, Keyspace},
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::FlowTransaction;
@@ -20,13 +20,13 @@ pub mod test {
 	use crate::operator::Operator;
 
 	pub struct TestOperator {
-		pub id: FlowNodeId,
+		pub id: OperatorId,
 		pub layout: RowShape,
 		pub key_types: Vec<ValueType>,
 	}
 
 	impl TestOperator {
-		pub fn new(id: FlowNodeId) -> Self {
+		pub fn new(id: OperatorId) -> Self {
 			Self {
 				id,
 				layout: RowShape::testing(&[ValueType::Int8, ValueType::Float8, ValueType::Utf8]),
@@ -34,7 +34,7 @@ pub mod test {
 			}
 		}
 
-		pub fn simple(id: FlowNodeId) -> Self {
+		pub fn simple(id: OperatorId) -> Self {
 			Self {
 				id,
 				layout: RowShape::testing(&[ValueType::Int8]),
@@ -42,7 +42,7 @@ pub mod test {
 			}
 		}
 
-		pub fn with_key_types(id: FlowNodeId, key_types: Vec<ValueType>) -> Self {
+		pub fn with_key_types(id: OperatorId, key_types: Vec<ValueType>) -> Self {
 			Self {
 				id,
 				layout: RowShape::testing(&[ValueType::Blob, ValueType::Int4]),
@@ -52,7 +52,7 @@ pub mod test {
 	}
 
 	impl Operator for TestOperator {
-		fn id(&self) -> FlowNodeId {
+		fn id(&self) -> OperatorId {
 			self.id
 		}
 

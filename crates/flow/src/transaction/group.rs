@@ -16,8 +16,8 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
+		operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey, keyspace_inner_range},
 		operator_state::OperatorStateKey,
-		operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey, keyspace_inner_range},
 	},
 	metrics::heap::{StateCompleteness, StateMemory},
 	state::{
@@ -316,7 +316,8 @@ impl GroupInterner {
 			return Ok(results.into_iter().map(|r| r.expect("every position filled")).collect());
 		}
 
-		let dictionary_keys: Vec<GroupStateKey> = to_resolve.iter().map(|i| dictionary_key(&groups[*i])).collect();
+		let dictionary_keys: Vec<GroupStateKey> =
+			to_resolve.iter().map(|i| dictionary_key(&groups[*i])).collect();
 
 		let mut consulted_store: Vec<bool> = Vec::new();
 		let found: HashMap<Vec<u8>, EncodedRow> = if state.complete {

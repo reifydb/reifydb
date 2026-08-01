@@ -5,7 +5,7 @@ use reifydb_core::{
 	common::{TimeDomain, TimeSource},
 	interface::catalog::{
 		column::ColumnIndex,
-		flow::{Flow, FlowEdge, FlowId, Operator, OperatorId, FlowStatus},
+		flow::{Flow, FlowEdge, FlowId, FlowStatus, Operator, OperatorId},
 		handler::Handler,
 		id::{RingBufferId, TableId},
 		namespace::Namespace,

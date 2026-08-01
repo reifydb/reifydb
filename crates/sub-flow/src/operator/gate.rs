@@ -10,10 +10,12 @@ use reifydb_codec::key::{
 };
 use reifydb_core::{
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
-	key::operator_group_state::{GroupId, IntoGroupStateKey, Keyspace, OperatorGroupStateKey, GroupStateKey, keyspace_inner_range},
+	key::operator_group_state::{
+		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorGroupStateKey, keyspace_inner_range,
+	},
 	metrics::heap::{HeapSize, OperatorSample},
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
 	value::column::columns::Columns,
@@ -138,7 +140,7 @@ impl GateState {
 
 pub struct GateOperator {
 	parent: OperatorCell,
-	node: FlowNodeId,
+	node: OperatorId,
 	compiled_conditions: Vec<CompiledExpr>,
 	routines: Routines,
 	runtime_context: RuntimeContext,
@@ -149,7 +151,7 @@ pub struct GateOperator {
 impl GateOperator {
 	pub fn new(
 		parent: OperatorCell,
-		node: FlowNodeId,
+		node: OperatorId,
 		conditions: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
@@ -253,7 +255,7 @@ impl GateOperator {
 impl RawStatefulOperator for GateOperator {}
 
 impl Operator for GateOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 
@@ -289,6 +291,10 @@ impl Operator for GateOperator {
 
 			Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
 		})
+	}
+
+	fn output_schema(&self) -> Option<Columns> {
+		self.output_schema()
 	}
 }
 
@@ -392,7 +398,9 @@ impl GateOperator {
 mod tests {
 	use std::ops::Bound;
 
-	use reifydb_core::key::operator_group_state::{GroupId, IntoGroupStateKey, Keyspace, OperatorGroupStateKey, group_inner_range};
+	use reifydb_core::key::operator_group_state::{
+		GroupId, IntoGroupStateKey, Keyspace, OperatorGroupStateKey, group_inner_range,
+	};
 	use reifydb_value::value::row_number::RowNumber;
 
 	use super::{VisibilityKey, decode_visibility_key, visibility_range};
@@ -452,8 +460,11 @@ mod tests {
 		};
 		assert!(start && end, "hydration scans this range, so it must contain the keys the operator writes");
 
-		let foreign =
-			OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::ACCUMULATOR, 7u64.to_be_bytes());
+		let foreign = OperatorGroupStateKey::inner_encoded(
+			GroupId::NODE_SCOPE,
+			Keyspace::ACCUMULATOR,
+			7u64.to_be_bytes(),
+		);
 		assert!(
 			decode_visibility_key(foreign.as_encoded()).is_none(),
 			"a neighbouring keyspace must not decode as visibility"

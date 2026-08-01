@@ -10,7 +10,7 @@ pub mod tumbling;
 use std::sync::Arc;
 
 use reifydb_core::{
-	common::WindowKind, interface::catalog::flow::FlowNodeId, state::budget::OperatorStateBudgetHandle,
+	common::WindowKind, interface::catalog::flow::OperatorId, state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_routine::{
 	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
@@ -21,7 +21,7 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_sub_flow::{
 	context::FlowContext,
 	operator::{
-		OperatorCell, Operators,
+		OperatorCell,
 		scan::series::SourceSeriesOperator,
 		window::operator::{WindowConfig, WindowOperator},
 	},
@@ -43,8 +43,8 @@ fn routines() -> Routines {
 }
 
 pub fn build(spec: &WindowSpec, runtime: RuntimeContext) -> WindowOperator {
-	let node = FlowNodeId(1);
-	let parent = OperatorCell::new(Operators::SourceSeries(SourceSeriesOperator::new(FlowNodeId(0))));
+	let node = OperatorId(1);
+	let parent = OperatorCell::new(SourceSeriesOperator::new(OperatorId(0)));
 
 	WindowOperator::new(WindowConfig {
 		parent,

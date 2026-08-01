@@ -13,8 +13,10 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
+		operator_group_state::{
+			GroupId, GroupSet, GroupStateKey, Keyspace, OperatorGroupStateKey, keyspace_inner_range,
+		},
 		operator_state::OperatorStateKey,
-		operator_group_state::{GroupId, GroupSet, Keyspace, OperatorGroupStateKey, GroupStateKey, keyspace_inner_range},
 	},
 	metrics::heap::{StateCompleteness, StateMemory},
 	state::horizon::Cutoff,
@@ -268,7 +270,8 @@ impl RowNumberProvider {
 
 		if !distinct_new.is_empty() {
 			let start = Self::mint(state, node, txn, distinct_new.len() as u64)?;
-			let mut assigned: HashMap<GroupStateKey, RowNumber> = HashMap::with_capacity(distinct_new.len());
+			let mut assigned: HashMap<GroupStateKey, RowNumber> =
+				HashMap::with_capacity(distinct_new.len());
 			for (offset, &slot) in distinct_new.iter().enumerate() {
 				let i = to_resolve[slot];
 				let map_key = &map_keys[slot];
@@ -434,7 +437,8 @@ impl RowNumberProvider {
 		txn: &mut FlowTransaction,
 		key_prefix: &[u8],
 	) -> Result<()> {
-		let inner_prefix = OperatorGroupStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix);
+		let inner_prefix =
+			OperatorGroupStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix);
 		let range = EncodedKeyRange::prefix(inner_prefix.as_ref());
 		let batch = txn.state_range(node, range, None)?;
 

@@ -9,8 +9,8 @@
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
-	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
+	interface::catalog::flow::OperatorId,
+	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
 	metrics::heap::{OperatorSample, StateMemory},
 };
 use reifydb_sdk::{
@@ -83,7 +83,7 @@ impl OperatorMetadata for ParityWindow {
 }
 
 impl OperatorLogic for ParityWindow {
-	fn create(_operator_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(ParityWindow)
 	}
 
@@ -171,7 +171,7 @@ impl OperatorMetadata for RowNumberProbe {
 }
 
 impl OperatorLogic for RowNumberProbe {
-	fn create(_operator_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(RowNumberProbe)
 	}
 
@@ -204,7 +204,7 @@ impl OperatorMetadata for FlushProbe {
 }
 
 impl OperatorLogic for FlushProbe {
-	fn create(_operator_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(FlushProbe)
 	}
 
@@ -240,7 +240,7 @@ impl OperatorMetadata for LeaseProbe {
 }
 
 impl OperatorLogic for LeaseProbe {
-	fn create(_operator_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(LeaseProbe)
 	}
 
@@ -270,7 +270,7 @@ impl OperatorMetadata for NoopOperator {
 }
 
 impl OperatorLogic for NoopOperator {
-	fn create(_operator_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(NoopOperator)
 	}
 
@@ -293,7 +293,7 @@ impl OperatorMetadata for ErroringOperator {
 }
 
 impl OperatorLogic for ErroringOperator {
-	fn create(_operator_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(ErroringOperator)
 	}
 

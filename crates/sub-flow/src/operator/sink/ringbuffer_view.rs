@@ -14,7 +14,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::{
 		catalog::{
-			flow::FlowNodeId,
+			flow::OperatorId,
 			id::RingBufferId,
 			object::ObjectId,
 			ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata, encode_ringbuffer_metadata},
@@ -26,7 +26,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
+		operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		ringbuffer::RingBufferMetadataKey,
 		row::RowKey,
@@ -107,7 +107,7 @@ fn decode_expiry_key(bytes: &[u8]) -> Result<(u64, u64)> {
 pub struct SinkRingBufferViewOperator {
 	#[allow(dead_code)]
 	parent: OperatorCell,
-	node: FlowNodeId,
+	node: OperatorId,
 	view: ResolvedView,
 	ringbuffer_id: RingBufferId,
 	capacity: u64,
@@ -122,7 +122,7 @@ impl SinkRingBufferViewOperator {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		parent: OperatorCell,
-		node: FlowNodeId,
+		node: OperatorId,
 		view: ResolvedView,
 		ringbuffer_id: RingBufferId,
 		capacity: u64,
@@ -368,7 +368,7 @@ impl SinkRingBufferViewOperator {
 impl RawStatefulOperator for SinkRingBufferViewOperator {}
 
 impl Operator for SinkRingBufferViewOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 
@@ -988,7 +988,7 @@ mod tests {
 	use reifydb_value::value::{constraint::TypeConstraint, datetime::DateTime, identity::IdentityId};
 
 	use super::*;
-	use crate::operator::{Operators, scan::view::SourceViewOperator};
+	use crate::operator::scan::view::SourceViewOperator;
 
 	const RB: RingBufferId = RingBufferId(42);
 	const T0: u64 = 1_000_000_000_000;
@@ -1044,13 +1044,13 @@ mod tests {
 			ResolvedNamespace::new(Fragment::internal("test"), Namespace::system()),
 			view.clone(),
 		);
-		let parent = OperatorCell::new(Operators::SourceView(SourceViewOperator::new(FlowNodeId(9), view)));
+		let parent = OperatorCell::new(SourceViewOperator::new(OperatorId(9), view));
 		let partition_by = if partitioned {
 			vec!["base".to_string()]
 		} else {
 			Vec::new()
 		};
-		SinkRingBufferViewOperator::new(parent, FlowNodeId(1), resolved, RB, 100, propagate, ttl, partition_by)
+		SinkRingBufferViewOperator::new(parent, OperatorId(1), resolved, RB, 100, propagate, ttl, partition_by)
 	}
 
 	fn deferred_txn(engine: &TestEngine) -> FlowTransaction {
@@ -1109,7 +1109,7 @@ mod tests {
 		op.apply(
 			&mut txn,
 			Change::from_flow(
-				FlowNodeId(1),
+				OperatorId(1),
 				CommitVersion(1),
 				vec![Diff::insert(columns_at(partitioned, rows, first_source_rn, time))],
 				DateTime::from_nanos(time),
@@ -1179,7 +1179,8 @@ mod tests {
 
 	fn forward_count(engine: &TestEngine, op: &SinkRingBufferViewOperator) -> usize {
 		let mut txn = deferred_txn(engine);
-		let prefix = OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_FORWARD, vec![]);
+		let prefix =
+			OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_FORWARD, vec![]);
 		op.state_range(&mut txn, EncodedKeyRange::prefix(prefix.as_ref()))
 			.collect::<Result<Vec<_>>>()
 			.unwrap()

@@ -35,7 +35,7 @@ use crate::operator::join::{
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_core::interface::catalog::flow::FlowNodeId;
+	use reifydb_core::interface::catalog::flow::OperatorId;
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 
@@ -67,7 +67,7 @@ mod tests {
 		// ever persisted.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let mut store = Store::new(FlowNodeId(70), JoinSide::Right, test_membership());
+		let mut store = Store::new(OperatorId(70), JoinSide::Right, test_membership());
 
 		let key_a = h(0xA);
 		let resolved = columns_with_fields(&[("mint", 1), ("decimals", 8)], 1);
@@ -91,7 +91,7 @@ mod tests {
 		// can carry different shape fingerprints and each must decode with its own.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let mut store = Store::new(FlowNodeId(71), JoinSide::Right, test_membership());
+		let mut store = Store::new(OperatorId(71), JoinSide::Right, test_membership());
 		let key = h(0xC);
 
 		let row1 = columns_with_fields(&[("mint", 111), ("flag", 1)], 1);

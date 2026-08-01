@@ -16,7 +16,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::{
-			flow::FlowNodeId,
+			flow::OperatorId,
 			id::{NamespaceId, TableId},
 			namespace::Namespace,
 			table::Table,
@@ -130,7 +130,7 @@ fn encode<T: OperatorState>(value: &T, now: DateTime) -> SdkResult<EncodedRow> {
 
 pub struct NativeOperatorContext<'a> {
 	bridge: *mut (dyn NativeBridge + 'a),
-	node: FlowNodeId,
+	node: OperatorId,
 	now: DateTime,
 	state_lease_bytes: u64,
 	diffs: Vec<Diff>,
@@ -138,7 +138,7 @@ pub struct NativeOperatorContext<'a> {
 }
 
 impl<'a> NativeOperatorContext<'a> {
-	pub fn new(bridge: &'a mut (dyn NativeBridge + 'a), node: FlowNodeId) -> Self {
+	pub fn new(bridge: &'a mut (dyn NativeBridge + 'a), node: OperatorId) -> Self {
 		let now = bridge.clock_now();
 		let state_lease_bytes = bridge.state_lease_bytes();
 		Self {
@@ -508,7 +508,7 @@ impl OperatorContext for NativeOperatorContext<'_> {
 	where
 		Self: 'a;
 
-	fn operator_id(&self) -> FlowNodeId {
+	fn operator_id(&self) -> OperatorId {
 		self.node
 	}
 	fn clock_now(&self) -> DateTime {

@@ -6,8 +6,8 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
-	key::{EncodableKey, operator_state::OperatorStateKey, operator_state::GroupStateKey},
+	interface::catalog::flow::OperatorId,
+	key::{EncodableKey, operator_group_state::GroupStateKey, operator_state::OperatorStateKey},
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_transaction::multi::RangeScope;
@@ -15,7 +15,7 @@ use reifydb_value::Result;
 
 use super::StateIterator;
 
-pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<Option<EncodedRow>> {
+pub fn state_get(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<Option<EncodedRow>> {
 	let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
 
 	match txn.get(&encoded_key)? {
@@ -24,19 +24,19 @@ pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &GroupStateKey)
 	}
 }
 
-pub fn state_set(id: FlowNodeId, txn: &mut FlowTransaction, key: &GroupStateKey, value: EncodedRow) -> Result<()> {
+pub fn state_set(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey, value: EncodedRow) -> Result<()> {
 	let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
 	txn.set(&encoded_key, value)?;
 	Ok(())
 }
 
-pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<()> {
+pub fn state_remove(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<()> {
 	let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
 	txn.remove_silent(&encoded_key)?;
 	Ok(())
 }
 
-pub fn state_scan_all(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+pub fn state_scan_all(id: OperatorId, txn: &mut FlowTransaction) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 	let range = OperatorStateKey::node_range(id);
 	let stream = txn.range(range, RangeScope::All, 1024);
 	let mut items = Vec::new();
@@ -51,12 +51,12 @@ pub fn state_scan_all(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<Vec<(
 	Ok(items)
 }
 
-pub fn state_range<'a>(id: FlowNodeId, txn: &'a mut FlowTransaction, range: EncodedKeyRange) -> StateIterator<'a> {
+pub fn state_range<'a>(id: OperatorId, txn: &'a mut FlowTransaction, range: EncodedKeyRange) -> StateIterator<'a> {
 	let prefixed_range = range.with_prefix(OperatorStateKey::encoded(id, vec![]));
 	StateIterator::new(txn.range(prefixed_range, RangeScope::All, 1024))
 }
 
-pub fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<()> {
+pub fn state_clear(id: OperatorId, txn: &mut FlowTransaction) -> Result<()> {
 	let range = OperatorStateKey::node_range(id);
 	let keys_to_remove = {
 		let stream = txn.range(range, RangeScope::All, 1024);
@@ -75,7 +75,7 @@ pub fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<()> {
 }
 
 pub fn load_or_create_row(
-	id: FlowNodeId,
+	id: OperatorId,
 	txn: &mut FlowTransaction,
 	key: &GroupStateKey,
 	shape: &RowShape,
@@ -86,7 +86,7 @@ pub fn load_or_create_row(
 	}
 }
 
-pub fn save_row(id: FlowNodeId, txn: &mut FlowTransaction, key: &GroupStateKey, row: EncodedRow) -> Result<()> {
+pub fn save_row(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey, row: EncodedRow) -> Result<()> {
 	state_set(id, txn, key, row)
 }
 
@@ -113,7 +113,7 @@ pub mod tests {
 	fn test_state_get_existing() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let key = test_key("get");
 		let value = test_row();
 
@@ -128,7 +128,7 @@ pub mod tests {
 	fn test_state_get_non_existing() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let key = test_key("nonexistent");
 
 		let result = state_get(node_id, &mut txn, &key).unwrap();
@@ -139,7 +139,7 @@ pub mod tests {
 	fn test_state_set_and_update() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let key = test_key("set");
 		let value1 = EncodedRow(CowVec::new(vec![1, 2, 3]));
 		let value2 = EncodedRow(CowVec::new(vec![4, 5, 6]));
@@ -157,7 +157,7 @@ pub mod tests {
 	fn test_state_remove() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let key = test_key("remove");
 		let value = test_row();
 
@@ -172,7 +172,7 @@ pub mod tests {
 	fn test_state_scan_all() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 
 		for i in 0..5 {
 			let key = test_key(&format!("scan_{:02}", i)); // padded so the keys sort numerically
@@ -192,7 +192,7 @@ pub mod tests {
 	fn test_state_range() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 
 		let keys = vec!["a", "b", "c", "d", "e"];
 		for key_suffix in &keys {
@@ -215,7 +215,7 @@ pub mod tests {
 	fn test_state_range_open_ended() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 
 		for i in 0..5 {
 			let key = test_key(&format!("range_{}", i));
@@ -252,7 +252,7 @@ pub mod tests {
 	fn test_state_clear() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 
 		for i in 0..3 {
 			let key = test_key(&format!("clear_{}", i));
@@ -291,7 +291,7 @@ pub mod tests {
 	fn test_load_or_create_row_existing() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let key = test_key("load_existing");
 		let value = test_row();
 		let layout = TestOperator::simple(node_id).layout;
@@ -306,7 +306,7 @@ pub mod tests {
 	fn test_load_or_create_row_new() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let key = test_key("load_new");
 		let shape = RowShape::testing(&[ValueType::Int4]);
 
@@ -318,7 +318,7 @@ pub mod tests {
 	fn test_save_row() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let key = test_key("save");
 		let value = test_row();
 
@@ -340,8 +340,8 @@ pub mod tests {
 	fn test_multiple_nodes_isolation() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node1 = FlowNodeId(1);
-		let node2 = FlowNodeId(2);
+		let node1 = OperatorId(1);
+		let node2 = OperatorId(2);
 		let key = test_key("shared");
 		let value1 = EncodedRow(CowVec::new(vec![1]));
 		let value2 = EncodedRow(CowVec::new(vec![2]));
@@ -364,7 +364,7 @@ pub mod tests {
 	fn test_large_values() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let key = test_key("large");
 
 		let large_value = EncodedRow(CowVec::new(vec![0xAB; 10240]));

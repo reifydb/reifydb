@@ -5,7 +5,7 @@ use reifydb_core::{
 	common::TimeDomain,
 	interface::catalog::{
 		change::CatalogTrackFlowChangeOperations,
-		flow::{Flow, FlowEdgeId, FlowId, OperatorId, FlowStatus},
+		flow::{Flow, FlowEdgeId, FlowId, FlowStatus, OperatorId},
 		id::NamespaceId,
 	},
 	internal,

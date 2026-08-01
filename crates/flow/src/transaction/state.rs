@@ -10,7 +10,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	key::{operator_state::OperatorStateKey, operator_group_state::GroupStateKey},
+	key::{operator_group_state::GroupStateKey, operator_state::OperatorStateKey},
 };
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
@@ -160,7 +160,12 @@ impl FlowTransaction {
 		key_len = key.as_slice().len(),
 		created
 	))]
-	pub fn load_or_create_row(&mut self, id: OperatorId, key: &GroupStateKey, shape: &RowShape) -> Result<EncodedRow> {
+	pub fn load_or_create_row(
+		&mut self,
+		id: OperatorId,
+		key: &GroupStateKey,
+		shape: &RowShape,
+	) -> Result<EncodedRow> {
 		match self.state_get(id, key)? {
 			Some(row) => {
 				Span::current().record("created", false);
@@ -330,7 +335,12 @@ pub mod tests {
 		},
 	};
 
-	fn commit_state_row(engine: &TestEngine, node: OperatorId, key: &GroupStateKey, row: EncodedRow) -> CommitVersion {
+	fn commit_state_row(
+		engine: &TestEngine,
+		node: OperatorId,
+		key: &GroupStateKey,
+		row: EncodedRow,
+	) -> CommitVersion {
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 		cmd.disable_conflict_tracking().unwrap();
 		cmd.set(&OperatorStateKey::encoded(node, key.as_slice()), row).unwrap();

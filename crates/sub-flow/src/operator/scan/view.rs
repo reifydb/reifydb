@@ -4,7 +4,7 @@
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::{
-		catalog::{flow::FlowNodeId, view::View},
+		catalog::{flow::OperatorId, view::View},
 		change::{Change, Diff},
 	},
 	value::column::columns::Columns,
@@ -15,12 +15,12 @@ use reifydb_value::Result;
 use crate::operator::sink::decode_dictionary_columns;
 
 pub struct SourceViewOperator {
-	node: FlowNodeId,
+	node: OperatorId,
 	view: View,
 }
 
 impl SourceViewOperator {
-	pub fn new(node: FlowNodeId, view: View) -> Self {
+	pub fn new(node: OperatorId, view: View) -> Self {
 		Self {
 			node,
 			view,
@@ -29,7 +29,7 @@ impl SourceViewOperator {
 }
 
 impl Operator for SourceViewOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 
@@ -71,6 +71,10 @@ impl Operator for SourceViewOperator {
 			});
 		}
 		Ok(Change::from_flow(self.node, change.version, decoded_diffs, change.changed_at))
+	}
+
+	fn output_schema(&self) -> Option<Columns> {
+		Some(self.output_schema())
 	}
 }
 

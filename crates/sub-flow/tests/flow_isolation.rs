@@ -9,7 +9,7 @@ use std::{thread, time::Duration as StdDuration};
 
 use reifydb::{WithSubsystem, embedded};
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_sdk::{
 	config::Config,
 	error::Result as SdkResult,
@@ -62,7 +62,7 @@ impl OperatorMetadata for SlowCounter {
 }
 
 impl OperatorLogic for SlowCounter {
-	fn create(_operator_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(SlowCounter)
 	}
 

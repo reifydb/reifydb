@@ -14,7 +14,7 @@ use reifydb_abi::{
 };
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
+	interface::catalog::flow::OperatorId,
 	key::operator_group_state::{Keyspace, OperatorGroupStateKey},
 };
 use reifydb_sdk::{
@@ -88,7 +88,7 @@ fn group_key(g: i32) -> EncodedKey {
 }
 
 impl OperatorLogic for Alarm {
-	fn create(_operator_id: FlowNodeId, config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, config: &Config) -> SdkResult<Self> {
 		Ok(Alarm {
 			seal_after_ms: config.u64_or("seal", SEAL_AFTER_MS),
 		})
@@ -305,7 +305,7 @@ impl OperatorMetadata for Snooze {
 }
 
 impl OperatorLogic for Snooze {
-	fn create(_operator_id: FlowNodeId, config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, config: &Config) -> SdkResult<Self> {
 		Ok(Snooze {
 			disarm_offset_ms: config.u64_or("disarm_offset", 0),
 		})

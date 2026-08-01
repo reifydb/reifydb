@@ -59,7 +59,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		test_utils::{create_flow, create_flow_edge, create_operator, create_namespace},
+		test_utils::{create_flow, create_flow_edge, create_namespace, create_operator},
 	};
 
 	#[test]

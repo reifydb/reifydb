@@ -23,8 +23,8 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::OperatorStateKey,
 		operator_group_state::{Keyspace, OperatorGroupStateKey},
+		operator_state::OperatorStateKey,
 	},
 	metrics::execution::StatementMetrics,
 };
@@ -434,8 +434,8 @@ mod tests {
 		interface::catalog::flow::FlowNodeId,
 		key::{
 			EncodableKey,
-			operator_state::OperatorStateKey,
 			operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
+			operator_state::OperatorStateKey,
 		},
 		metrics::execution::StatementMetrics,
 	};

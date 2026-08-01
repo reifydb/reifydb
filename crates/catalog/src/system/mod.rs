@@ -37,9 +37,9 @@ pub mod metrics_cdc;
 pub mod metrics_storage;
 pub mod migrations;
 pub mod namespaces;
+pub mod operator_libraries;
 pub mod operator_library_inputs;
 pub mod operator_library_outputs;
-pub mod operator_libraries;
 pub mod operator_types;
 pub mod operators;
 pub mod policies;
@@ -88,9 +88,9 @@ use metrics_cdc::metrics_cdc_vtable;
 use metrics_storage::metrics_storage_vtable;
 use migrations::migrations;
 use namespaces::namespaces;
+use operator_libraries::operator_libraries;
 use operator_library_inputs::operator_library_inputs;
 use operator_library_outputs::operator_library_outputs;
-use operator_libraries::operator_libraries;
 use operator_types::operator_types;
 use operators::operators;
 use policies::policies;
@@ -1264,11 +1264,7 @@ impl SystemCatalog {
 	}
 
 	pub fn get_system_metrics_cdc_operator_table() -> Arc<VTable> {
-		metrics_cdc_table_cached(
-			ids::vtable::METRICS_CDC_OPERATOR,
-			NamespaceId::SYSTEM_METRICS_CDC_OPERATOR,
-			7,
-		)
+		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_OPERATOR, NamespaceId::SYSTEM_METRICS_CDC_OPERATOR, 7)
 	}
 
 	pub fn get_system_metrics_cdc_system_table() -> Arc<VTable> {

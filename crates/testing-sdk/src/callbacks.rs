@@ -637,8 +637,8 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_state::OperatorStateKey,
 		operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
+		operator_state::OperatorStateKey,
 	},
 };
 use reifydb_value::value::datetime::DateTime;

@@ -9,7 +9,7 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	interface::catalog::flow::FlowNodeId,
-	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
+	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::test_harness::TestEngine;

@@ -6,11 +6,11 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_state::OperatorStateKey,
 		operator_group_state::{
-			GroupId, Keyspace, GroupStateKey, group_data_inner_range, group_identity_inner_range,
+			GroupId, GroupStateKey, Keyspace, group_data_inner_range, group_identity_inner_range,
 			keyspace_inner_range,
 		},
+		operator_state::OperatorStateKey,
 	},
 };
 use reifydb_value::{Result, reifydb_assertions};

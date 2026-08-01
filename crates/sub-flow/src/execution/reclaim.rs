@@ -16,7 +16,7 @@ use reifydb_core::{
 	state::horizon::Cutoff,
 };
 use reifydb_flow::transaction::FlowTransaction;
-use reifydb_rql::flow::{flow::FlowDag, node::OperatorDef};
+use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
@@ -462,7 +462,9 @@ fn sink_storage(ty: &OperatorDef) -> Option<StorageId> {
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, state::OperatorState};
-	use reifydb_core::key::operator_group_state::{Keyspace, OperatorGroupStateKey, group_inner_range, keyspace_inner_range};
+	use reifydb_core::key::operator_group_state::{
+		Keyspace, OperatorGroupStateKey, group_inner_range, keyspace_inner_range,
+	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::ChangeCoordinate;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -1162,7 +1164,7 @@ mod identity_span_tests {
 	};
 	use reifydb_rql::flow::{
 		flow::FlowDag,
-		node::{FlowEdge, FlowNode, OperatorDef},
+		operator::{FlowEdge, FlowNode, OperatorDef},
 	};
 	use reifydb_value::value::duration::Duration;
 

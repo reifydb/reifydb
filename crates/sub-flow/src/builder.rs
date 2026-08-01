@@ -5,7 +5,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 #[cfg(reifydb_target = "native")]
 use reifydb_abi::operator::capabilities::to_bitmask;
-use reifydb_core::{event::operator::OperatorColumn, interface::catalog::flow::FlowNodeId};
+use reifydb_core::{event::operator::OperatorColumn, interface::catalog::flow::OperatorId};
 use reifydb_flow::operator::BoxedOperator;
 #[cfg(reifydb_target = "native")]
 use reifydb_sdk::operator::{OperatorLogic, OperatorMetadata, column::operator::OperatorColumn as SdkOperatorColumn};
@@ -22,7 +22,7 @@ use crate::connector::ConnectorRegistry;
 #[cfg(reifydb_target = "native")]
 use crate::operator::native::{NativeBridgedOperator, NativeOperatorAdapter};
 
-pub(crate) type OperatorFactory = Arc<dyn Fn(FlowNodeId, &Config) -> Result<BoxedOperator> + Send + Sync>;
+pub(crate) type OperatorFactory = Arc<dyn Fn(OperatorId, &Config) -> Result<BoxedOperator> + Send + Sync>;
 
 #[derive(Clone)]
 pub struct CustomOperatorEntry {

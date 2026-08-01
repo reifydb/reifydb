@@ -4,7 +4,7 @@
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
+	interface::catalog::flow::OperatorId,
 	key::operator_group_state::{Keyspace, OperatorGroupStateKey},
 };
 use reifydb_sdk::{
@@ -24,7 +24,7 @@ use reifydb_value::value::{
 	value_type::ValueType,
 };
 
-const NODE: FlowNodeId = FlowNodeId(1);
+const NODE: OperatorId = OperatorId(1);
 const TTL_SECS: i64 = 60;
 const SPAN_MS: u64 = TTL_SECS as u64 * 1_000;
 const ARRIVAL_MS: u64 = 1_000;
@@ -71,7 +71,7 @@ impl OperatorMetadata for KeyedCounter {
 }
 
 impl OperatorLogic for KeyedCounter {
-	fn create(_node: FlowNodeId, _config: &Config) -> SdkResult<Self> {
+	fn create(_node: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(KeyedCounter)
 	}
 
@@ -97,7 +97,8 @@ impl OperatorLogic for KeyedCounter {
 				};
 				let group = ctx.intern_group(&EncodedKey::new(group_value.to_be_bytes().to_vec()))?;
 
-				let state = OperatorGroupStateKey::inner_encoded(group, Keyspace::FIRST_CUSTOM, b"count");
+				let state =
+					OperatorGroupStateKey::inner_encoded(group, Keyspace::FIRST_CUSTOM, b"count");
 				let count = ctx.state().get::<i64>(&state)?.unwrap_or(0) + 1;
 				ctx.state().set::<i64>(&state, &count)?;
 

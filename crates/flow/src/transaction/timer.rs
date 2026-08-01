@@ -13,8 +13,8 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
+		operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey, keyspace_inner_range},
 		operator_state::OperatorStateKey,
-		operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey, keyspace_inner_range},
 	},
 };
 use reifydb_value::{Result, value::datetime::DateTime};

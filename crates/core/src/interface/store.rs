@@ -12,7 +12,7 @@ use crate::{
 	delta::Delta,
 	interface::catalog::{flow::OperatorId, object::ObjectId, storage::StorageId},
 	key::{
-		EncodableKeyRange, Key, operator_state::OperatorStateKeyRange, kind::KeyKind,
+		EncodableKeyRange, Key, kind::KeyKind, operator_state::OperatorStateKeyRange,
 		partitioned_row::PartitionedRowKeyRange, row::RowKeyRange,
 	},
 };

@@ -14,10 +14,10 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
-	key::operator_group_state::{Keyspace, OperatorGroupStateKey, GroupStateKey},
+	key::operator_group_state::{GroupStateKey, Keyspace, OperatorGroupStateKey},
 	value::column::columns::Columns,
 };
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
@@ -30,7 +30,7 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_sub_flow::{
 	context::FlowContext,
 	operator::{
-		OperatorCell, Operators, aggregation::operator::AggregateOperator, append::AppendOperator,
+		OperatorCell, aggregation::operator::AggregateOperator, append::AppendOperator,
 		apply::ApplyOperator, distinct::operator::DistinctOperator, scan::series::SourceSeriesOperator,
 	},
 };
@@ -59,9 +59,9 @@ const SWEEP_MS: u64 = SPAN_MS + GRID_WIDTH_MS;
 // One millisecond short, for the no-op control.
 const EARLY_SWEEP_MS: u64 = SWEEP_MS - 1;
 
-const NODE: FlowNodeId = FlowNodeId(1);
+const NODE: OperatorId = OperatorId(1);
 
-const PARENT: FlowNodeId = FlowNodeId(0);
+const PARENT: OperatorId = OperatorId(0);
 
 fn ttl() -> Duration {
 	Duration::from_seconds(TTL_SECS).expect("the ttl is representable")
@@ -72,7 +72,7 @@ fn at(ms: u64) -> DateTime {
 }
 
 fn parent() -> OperatorCell {
-	OperatorCell::new(Operators::SourceSeries(SourceSeriesOperator::new(PARENT)))
+	OperatorCell::new(SourceSeriesOperator::new(PARENT))
 }
 
 fn routines() -> Routines {
@@ -127,7 +127,7 @@ fn append() -> AppendOperator {
 /// through `ApplyOperator` because the wrapper is what forwards `retention_scale`,
 /// `reclaimable_through` and `invalidate_groups`, each of which silently disables reclamation if lost.
 struct Tally {
-	node: FlowNodeId,
+	node: OperatorId,
 }
 
 const TALLY_CAPABILITIES: &[OperatorCapability] = &[
@@ -182,7 +182,7 @@ impl Tally {
 }
 
 impl Operator for Tally {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use reifydb_core::{
 	common::TimeDomain,
 	interface::{
-		catalog::flow::{FlowId, FlowNodeId},
+		catalog::flow::{FlowId, OperatorId},
 		change::{Change, ChangeOrigin},
 	},
 };
@@ -29,7 +29,7 @@ impl FlowEngineInner {
 		flow: &FlowDag,
 		flow_id: FlowId,
 		change: Change,
-		pending: &mut HashMap<FlowNodeId, Vec<Change>>,
+		pending: &mut HashMap<OperatorId, Vec<Change>>,
 	) {
 		match &change.origin {
 			ChangeOrigin::Object(source) => {

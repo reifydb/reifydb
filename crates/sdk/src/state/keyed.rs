@@ -5,7 +5,7 @@ use reifydb_codec::{
 	key::{encoded::EncodedKey, serializer::KeySerializer},
 	state::OperatorState,
 };
-use reifydb_core::key::operator_group_state::{Keyspace, OperatorGroupStateKey, GroupStateKey};
+use reifydb_core::key::operator_group_state::{GroupStateKey, Keyspace, OperatorGroupStateKey};
 use reifydb_value::value::{Value, value_type::ValueType};
 
 use super::RawStatefulOperator;

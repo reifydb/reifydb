@@ -7,8 +7,8 @@ use reifydb_codec::{
 	key::{decode_u64_asc, encode_u64_asc, encoded::EncodedKeyRange},
 };
 use reifydb_core::{
-	interface::{catalog::flow::FlowNodeId, change::Diff},
-	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
+	interface::{catalog::flow::OperatorId, change::Diff},
+	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
 	value::column::columns::Columns,
 };
 use reifydb_flow::transaction::FlowTransaction;
@@ -75,11 +75,11 @@ struct Pin {
 }
 
 pub(crate) struct SnapshotLedger {
-	node_id: FlowNodeId,
+	node_id: OperatorId,
 }
 
 impl SnapshotLedger {
-	pub(crate) fn new(node_id: FlowNodeId) -> Self {
+	pub(crate) fn new(node_id: OperatorId) -> Self {
 		Self {
 			node_id,
 		}
@@ -102,7 +102,8 @@ impl SnapshotLedger {
 	}
 
 	fn published_prefix(&self, group: GroupId, left: RowNumber) -> EncodedKeyRange {
-		let prefix = OperatorGroupStateKey::inner_encoded(group, Keyspace::JOIN_PUBLISHED, encode_u64_asc(left.0));
+		let prefix =
+			OperatorGroupStateKey::inner_encoded(group, Keyspace::JOIN_PUBLISHED, encode_u64_asc(left.0));
 		EncodedKeyRange::prefix(prefix.as_ref())
 	}
 
@@ -318,7 +319,7 @@ mod tests {
 
 	use super::*;
 
-	const NODE: FlowNodeId = FlowNodeId(90);
+	const NODE: OperatorId = OperatorId(90);
 	const GROUP: GroupId = GroupId(3);
 
 	fn ledger() -> SnapshotLedger {

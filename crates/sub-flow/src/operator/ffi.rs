@@ -25,7 +25,7 @@ use reifydb_abi::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
 	},
 	key::operator_group_state::GroupSet,
@@ -67,14 +67,14 @@ struct SendableInstance(*mut c_void);
 unsafe impl Send for SendableInstance {}
 unsafe impl Sync for SendableInstance {}
 
-pub struct FFIOperator {
+pub struct FFIOperatorHandle {
 	capabilities: Box<[OperatorCapability]>,
 
 	vtable: OperatorVTableFFI,
 
 	instance: *mut c_void,
 
-	operator_id: FlowNodeId,
+	operator_id: OperatorId,
 
 	executor: Executor,
 
@@ -87,11 +87,11 @@ pub struct FFIOperator {
 	state_budget: OperatorStateBudgetHandle,
 }
 
-impl FFIOperator {
+impl FFIOperatorHandle {
 	pub fn new(
 		descriptor: OperatorDescriptorFFI,
 		instance: *mut c_void,
-		operator_id: FlowNodeId,
+		operator_id: OperatorId,
 		executor: Executor,
 		state_budget: OperatorStateBudgetHandle,
 		lease: LeaseGrant,
@@ -140,10 +140,10 @@ impl FFIOperator {
 	}
 }
 
-// SAFETY: FFIOperator is only accessed from a single actor at a time.
-unsafe impl Send for FFIOperator {}
+// SAFETY: FFIOperatorHandle is only accessed from a single actor at a time.
+unsafe impl Send for FFIOperatorHandle {}
 
-impl Drop for FFIOperator {
+impl Drop for FFIOperatorHandle {
 	fn drop(&mut self) {
 		if !self.instance.is_null() {
 			unsafe { (self.vtable.destroy)(self.instance) };
@@ -164,10 +164,10 @@ fn call_vtable(
 	instance: *mut c_void,
 	ffi_ctx_ptr: *mut ContextFFI,
 	ffi_input: &ChangeFFI,
-	operator_id: FlowNodeId,
+	operator_id: OperatorId,
 ) -> i32 {
 	// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
-	// FFIOperator::drop calls destroy; ffi_ctx_ptr and ffi_input point at caller-owned values that outlive
+	// FFIOperatorHandle::drop calls destroy; ffi_ctx_ptr and ffi_input point at caller-owned values that outlive
 	// the call, and the host holds no Rust borrow of either while the guest runs.
 	let result = catch_unwind(AssertUnwindSafe(|| unsafe { (vtable.apply)(instance, ffi_ctx_ptr, ffi_input) }));
 
@@ -189,7 +189,7 @@ fn call_vtable(
 
 fn ensure_flush_slot(
 	txn: &mut FlowTransaction,
-	operator_id: FlowNodeId,
+	operator_id: OperatorId,
 	vtable: OperatorVTableFFI,
 	instance: *mut c_void,
 	executor: Executor,
@@ -241,8 +241,8 @@ fn ensure_flush_slot(
 	Ok(())
 }
 
-impl Operator for FFIOperator {
-	fn id(&self) -> FlowNodeId {
+impl Operator for FFIOperatorHandle {
+	fn id(&self) -> OperatorId {
 		self.operator_id
 	}
 
@@ -412,7 +412,7 @@ fn sample_from_usage(usage: &StateUsageFFI) -> OperatorSample {
 	sample
 }
 
-impl FFIOperator {
+impl FFIOperatorHandle {
 	#[inline]
 	fn invoke_under_panic_guard<F>(&self, op: &'static str, call: F) -> i32
 	where
@@ -443,7 +443,7 @@ impl FFIOperator {
 
 fn drain_emitted_diffs(
 	registry: &BuilderRegistry,
-	operator_id: FlowNodeId,
+	operator_id: OperatorId,
 	version: CommitVersion,
 	changed_at: DateTime,
 ) -> Change {

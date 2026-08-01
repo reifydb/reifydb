@@ -170,7 +170,8 @@ impl Keyspace {
 }
 
 pub fn is_framed_inner(inner: &[u8]) -> bool {
-	inner.is_empty() || OperatorGroupStateKey::decode_inner(inner).is_some_and(|(_, keyspace, _)| keyspace.is_known())
+	inner.is_empty()
+		|| OperatorGroupStateKey::decode_inner(inner).is_some_and(|(_, keyspace, _)| keyspace.is_known())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -403,9 +404,10 @@ mod tests {
 	use std::{ops::Bound, slice};
 
 	use super::{
-		EncodedKeyRange, GroupId, GroupSet, KeySerializer, Keyspace, OperatorGroupStateKey, group_data_inner_range,
-		group_data_of_inner, group_data_range, group_identity_inner_range, group_identity_range,
-		group_inner_prefix, group_inner_range, group_range, is_framed_inner, keyspace_range, node_range,
+		EncodedKeyRange, GroupId, GroupSet, KeySerializer, Keyspace, OperatorGroupStateKey,
+		group_data_inner_range, group_data_of_inner, group_data_range, group_identity_inner_range,
+		group_identity_range, group_inner_prefix, group_inner_range, group_range, is_framed_inner,
+		keyspace_range, node_range,
 	};
 	use crate::{
 		interface::{
@@ -541,7 +543,9 @@ mod tests {
 
 		for keyspace in DATA_KEYSPACES.iter().chain(IDENTITY_KEYSPACES.iter()) {
 			assert!(
-				is_framed_inner(OperatorGroupStateKey::inner_encoded(GroupId(3), *keyspace, []).as_slice()),
+				is_framed_inner(
+					OperatorGroupStateKey::inner_encoded(GroupId(3), *keyspace, []).as_slice()
+				),
 				"keyspace {keyspace:?} is one the substrate writes and must pass"
 			);
 		}
@@ -618,10 +622,15 @@ mod tests {
 		let encodings: Vec<Vec<u8>> = GROUPS
 			.iter()
 			.map(|group| {
-				OperatorGroupStateKey::new(OperatorId(1), GroupId(*group), Keyspace::ACCUMULATOR, vec![])
-					.encode()
-					.as_slice()
-					.to_vec()
+				OperatorGroupStateKey::new(
+					OperatorId(1),
+					GroupId(*group),
+					Keyspace::ACCUMULATOR,
+					vec![],
+				)
+				.encode()
+				.as_slice()
+				.to_vec()
 			})
 			.collect();
 
@@ -807,7 +816,8 @@ mod tests {
 		// Tier classification and the CDC exclusion both key off KeyKind::OperatorState. A key that
 		// stopped classifying as Operator would be routed to the wrong tier and appear in the CDC
 		// log, which operator state must never do.
-		let key = OperatorGroupStateKey::new(OperatorId(9), GroupId(4), Keyspace::ACCUMULATOR, vec![1]).encode();
+		let key =
+			OperatorGroupStateKey::new(OperatorId(9), GroupId(4), Keyspace::ACCUMULATOR, vec![1]).encode();
 
 		assert_eq!(classify_key(&key), EntryKind::Operator(OperatorId(9)));
 
@@ -836,7 +846,8 @@ mod tests {
 		let range = group_inner_range(GroupId::NODE_SCOPE)
 			.with_prefix(OperatorStateKey::encoded(OperatorId(17), vec![]));
 
-		let own = OperatorGroupStateKey::node_scoped(OperatorId(17), Keyspace::GROUP_DICTIONARY, vec![1]).encode();
+		let own = OperatorGroupStateKey::node_scoped(OperatorId(17), Keyspace::GROUP_DICTIONARY, vec![1])
+			.encode();
 		assert!(contains(&range, own.as_slice()), "the node's own dictionary entry must be in range");
 
 		for node in NODES {
@@ -844,9 +855,13 @@ mod tests {
 				continue;
 			}
 			for keyspace in [Keyspace::GROUP_DICTIONARY, Keyspace::ACCUMULATOR] {
-				let foreign =
-					OperatorGroupStateKey::new(OperatorId(node), GroupId::NODE_SCOPE, keyspace, vec![1])
-						.encode();
+				let foreign = OperatorGroupStateKey::new(
+					OperatorId(node),
+					GroupId::NODE_SCOPE,
+					keyspace,
+					vec![1],
+				)
+				.encode();
 				assert!(
 					!contains(&range, foreign.as_slice()),
 					"node {node} leaked into node 17's node-scope range"

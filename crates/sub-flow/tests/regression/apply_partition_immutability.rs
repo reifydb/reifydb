@@ -7,7 +7,7 @@
 
 use reifydb::{WithSubsystem, embedded};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_sdk::{
 	config::Config,
 	error::Result as SdkResult,
@@ -89,7 +89,7 @@ fn read_row(row: &impl RowView) -> FlipRow {
 }
 
 impl OperatorLogic for RegionFlip {
-	fn create(_operator_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(RegionFlip)
 	}
 

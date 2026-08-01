@@ -15,7 +15,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			dictionary::Dictionary,
-			flow::FlowNodeId,
+			flow::OperatorId,
 			id::TableId,
 			object::ObjectId,
 			view::{View, ViewSortKey},
@@ -53,7 +53,7 @@ const CREATED_AT_CACHE_CAPACITY: usize = 16_384;
 pub struct SinkTableViewOperator {
 	#[allow(dead_code)]
 	parent: OperatorCell,
-	node: FlowNodeId,
+	node: OperatorId,
 	view: ResolvedView,
 	storage: TableId,
 
@@ -69,7 +69,7 @@ pub struct SinkTableViewOperator {
 impl SinkTableViewOperator {
 	pub fn new(
 		parent: OperatorCell,
-		node: FlowNodeId,
+		node: OperatorId,
 		view: ResolvedView,
 		storage: TableId,
 		partition_by: Vec<String>,
@@ -162,7 +162,7 @@ impl SinkTableViewOperator {
 }
 
 impl Operator for SinkTableViewOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 
@@ -484,7 +484,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::operator::{Operators, scan::view::SourceViewOperator};
+	use crate::operator::scan::view::SourceViewOperator;
 
 	fn test_view_def() -> View {
 		View::Table(TableView {
@@ -513,11 +513,8 @@ mod tests {
 			ResolvedNamespace::new(Fragment::internal("system"), Namespace::system()),
 			test_view_def(),
 		);
-		let parent = OperatorCell::new(Operators::SourceView(SourceViewOperator::new(
-			FlowNodeId(9),
-			test_view_def(),
-		)));
-		SinkTableViewOperator::new(parent, FlowNodeId(1), resolved, TableId(7), vec![])
+		let parent = OperatorCell::new(SourceViewOperator::new(OperatorId(9), test_view_def()));
+		SinkTableViewOperator::new(parent, OperatorId(1), resolved, TableId(7), vec![])
 	}
 
 	fn one_row(v: f64, ts_nanos: u64) -> Columns {
@@ -565,7 +562,7 @@ mod tests {
 		sink.apply(
 			&mut txn,
 			Change::from_flow(
-				FlowNodeId(1),
+				OperatorId(1),
 				CommitVersion(1),
 				vec![Diff::insert(one_row(1.0, 1_000))],
 				DateTime::from_nanos(0),
@@ -580,7 +577,7 @@ mod tests {
 		sink.apply(
 			&mut txn,
 			Change::from_flow(
-				FlowNodeId(1),
+				OperatorId(1),
 				CommitVersion(2),
 				vec![Diff::update(one_row(1.0, 1_000), one_row(2.0, 5_000))],
 				DateTime::from_nanos(0),
@@ -607,7 +604,7 @@ mod tests {
 		rebuilt.apply(
 			&mut txn,
 			Change::from_flow(
-				FlowNodeId(1),
+				OperatorId(1),
 				CommitVersion(3),
 				vec![Diff::update(one_row(2.0, 5_000), one_row(3.0, 9_000))],
 				DateTime::from_nanos(0),

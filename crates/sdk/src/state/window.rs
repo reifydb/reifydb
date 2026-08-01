@@ -13,11 +13,20 @@ use crate::{
 pub trait WindowStateful: RawStatefulOperator {
 	type State: OperatorState;
 
-	fn load_state(&self, ctx: &mut impl OperatorContext, window_key: &GroupStateKey) -> Result<Option<Self::State>> {
+	fn load_state(
+		&self,
+		ctx: &mut impl OperatorContext,
+		window_key: &GroupStateKey,
+	) -> Result<Option<Self::State>> {
 		ctx.state().get::<Self::State>(window_key)
 	}
 
-	fn save_state(&self, ctx: &mut impl OperatorContext, window_key: &GroupStateKey, value: &Self::State) -> Result<()> {
+	fn save_state(
+		&self,
+		ctx: &mut impl OperatorContext,
+		window_key: &GroupStateKey,
+		value: &Self::State,
+	) -> Result<()> {
 		ctx.state().set(window_key, value)
 	}
 

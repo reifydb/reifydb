@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
+	interface::catalog::flow::OperatorId,
 	metrics::{collect::MetricsCollector, heap::OperatorSample, sample::MetricsSample},
 	state::budget::OperatorStateBudgetHandle,
 };
@@ -16,7 +16,7 @@ use reifydb_runtime::sync::mutex::Mutex;
 
 #[derive(Clone)]
 pub struct OperatorSampleRegistry {
-	inner: Arc<Mutex<HashMap<FlowNodeId, OperatorSample>>>,
+	inner: Arc<Mutex<HashMap<OperatorId, OperatorSample>>>,
 }
 
 impl OperatorSampleRegistry {
@@ -26,16 +26,16 @@ impl OperatorSampleRegistry {
 		}
 	}
 
-	pub fn record(&self, node: FlowNodeId, sample: OperatorSample) {
+	pub fn record(&self, node: OperatorId, sample: OperatorSample) {
 		self.inner.lock().insert(node, sample);
 	}
 
-	pub fn forget(&self, node: FlowNodeId) {
+	pub fn forget(&self, node: OperatorId) {
 		self.inner.lock().remove(&node);
 	}
 
-	pub fn snapshot(&self) -> Vec<(FlowNodeId, OperatorSample)> {
-		let mut out: Vec<(FlowNodeId, OperatorSample)> =
+	pub fn snapshot(&self) -> Vec<(OperatorId, OperatorSample)> {
+		let mut out: Vec<(OperatorId, OperatorSample)> =
 			self.inner.lock().iter().map(|(node, sample)| (*node, *sample)).collect();
 		out.sort_by_key(|(node, _)| *node);
 		out
@@ -60,7 +60,7 @@ impl OperatorSampleCollector {
 	}
 }
 
-pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, node: FlowNodeId, sample: &OperatorSample) {
+pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, node: OperatorId, sample: &OperatorSample) {
 	if let Some(memory) = sample.memory {
 		out.push(MetricsSample::count(format!("flow_node::{node}"), "state_entries", memory.entries.as_u64()));
 		out.push(MetricsSample::bytes(format!("flow_node::{node}"), "state_resident_bytes", memory.bytes));
@@ -133,7 +133,7 @@ impl MetricsCollector for OperatorSampleCollector {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		interface::catalog::flow::FlowNodeId,
+		interface::catalog::flow::OperatorId,
 		metrics::{
 			collect::MetricsCollector,
 			heap::{OperatorSample, StateCompleteness, StateMemory, StatePool},
@@ -166,7 +166,7 @@ mod tests {
 		};
 
 		let mut out = Vec::new();
-		push_group_samples(&mut out, FlowNodeId(4), &sample);
+		push_group_samples(&mut out, OperatorId(4), &sample);
 
 		let metrics: Vec<(&str, f64, Option<u64>)> =
 			out.iter().map(|s| (s.metric, s.reading.as_f64(), s.reading.heap_bytes())).collect();
@@ -196,7 +196,7 @@ mod tests {
 		};
 
 		let mut out = Vec::new();
-		push_group_samples(&mut out, FlowNodeId(1), &sample);
+		push_group_samples(&mut out, OperatorId(1), &sample);
 
 		let metrics: Vec<&str> = out.iter().map(|s| s.metric).collect();
 		assert_eq!(metrics, vec!["group_values_complete", "group_membership_complete"]);
@@ -220,7 +220,7 @@ mod tests {
 		};
 
 		let mut out = Vec::new();
-		push_group_samples(&mut out, FlowNodeId(9), &sample);
+		push_group_samples(&mut out, OperatorId(9), &sample);
 
 		let metrics: Vec<(&str, f64)> = out.iter().map(|s| (s.metric, s.reading.as_f64())).collect();
 		assert_eq!(
@@ -244,12 +244,12 @@ mod tests {
 	#[test]
 	fn snapshot_returns_recorded_samples_sorted_by_node() {
 		let registry = OperatorSampleRegistry::new();
-		registry.record(FlowNodeId(2), memory_sample(7, 700));
-		registry.record(FlowNodeId(1), memory_sample(3, 300));
+		registry.record(OperatorId(2), memory_sample(7, 700));
+		registry.record(OperatorId(1), memory_sample(3, 300));
 
 		assert_eq!(
 			registry.snapshot(),
-			vec![(FlowNodeId(1), memory_sample(3, 300)), (FlowNodeId(2), memory_sample(7, 700))],
+			vec![(OperatorId(1), memory_sample(3, 300)), (OperatorId(2), memory_sample(7, 700))],
 			"snapshot must be ordered by node so the metric log is stable across runs"
 		);
 	}
@@ -257,12 +257,12 @@ mod tests {
 	#[test]
 	fn record_overwrites_the_previous_sample_for_a_node() {
 		let registry = OperatorSampleRegistry::new();
-		registry.record(FlowNodeId(5), memory_sample(1, 10));
-		registry.record(FlowNodeId(5), memory_sample(2, 20));
+		registry.record(OperatorId(5), memory_sample(1, 10));
+		registry.record(OperatorId(5), memory_sample(2, 20));
 
 		assert_eq!(
 			registry.snapshot(),
-			vec![(FlowNodeId(5), memory_sample(2, 20))],
+			vec![(OperatorId(5), memory_sample(2, 20))],
 			"a fresh sample must supersede the stale one, not accumulate"
 		);
 	}
@@ -270,13 +270,13 @@ mod tests {
 	#[test]
 	fn forget_removes_a_stopped_operators_sample() {
 		let registry = OperatorSampleRegistry::new();
-		registry.record(FlowNodeId(1), memory_sample(3, 300));
-		registry.record(FlowNodeId(2), memory_sample(7, 700));
-		registry.forget(FlowNodeId(2));
+		registry.record(OperatorId(1), memory_sample(3, 300));
+		registry.record(OperatorId(2), memory_sample(7, 700));
+		registry.forget(OperatorId(2));
 
 		assert_eq!(
 			registry.snapshot(),
-			vec![(FlowNodeId(1), memory_sample(3, 300))],
+			vec![(OperatorId(1), memory_sample(3, 300))],
 			"a forgotten node must vanish so a stopped flow stops reporting stale memory"
 		);
 	}
@@ -285,7 +285,7 @@ mod tests {
 	fn a_clone_shares_the_same_backing_map() {
 		let registry = OperatorSampleRegistry::new();
 		let clone = registry.clone();
-		clone.record(FlowNodeId(9), memory_sample(1, 1));
+		clone.record(OperatorId(9), memory_sample(1, 1));
 
 		assert_eq!(
 			registry.snapshot().len(),
@@ -297,7 +297,7 @@ mod tests {
 	#[test]
 	fn collector_emits_entries_and_bytes_per_flow_node() {
 		let registry = OperatorSampleRegistry::new();
-		registry.record(FlowNodeId(7), memory_sample(4, 4096));
+		registry.record(OperatorId(7), memory_sample(4, 4096));
 
 		let collector = OperatorSampleCollector::new(registry);
 		let mut out = Vec::new();
@@ -328,7 +328,7 @@ mod tests {
 		let registry = OperatorSampleRegistry::new();
 		let sample = OperatorSample::with_memory(StateMemory::new(Count::new(4), ByteSize::from_bytes(4096)))
 			.with_dirty_memory(StateMemory::new(Count::new(1), ByteSize::from_bytes(512)));
-		registry.record(FlowNodeId(7), sample);
+		registry.record(OperatorId(7), sample);
 
 		let collector = OperatorSampleCollector::new(registry);
 		let mut out = Vec::new();
@@ -350,7 +350,7 @@ mod tests {
 	#[test]
 	fn collector_skips_a_sample_with_no_memory() {
 		let registry = OperatorSampleRegistry::new();
-		registry.record(FlowNodeId(7), OperatorSample::default());
+		registry.record(OperatorId(7), OperatorSample::default());
 
 		let collector = OperatorSampleCollector::new(registry);
 		let mut out = Vec::new();
@@ -366,7 +366,7 @@ mod tests {
 		let registry = OperatorSampleRegistry::new();
 		let sample = OperatorSample::with_memory(StateMemory::new(Count::new(4), ByteSize::from_bytes(4096)))
 			.with_row_number_cache(StateMemory::new(Count::new(9), ByteSize::from_bytes(900)));
-		registry.record(FlowNodeId(7), sample);
+		registry.record(OperatorId(7), sample);
 
 		let collector = OperatorSampleCollector::new(registry);
 		let mut out = Vec::new();
@@ -398,7 +398,7 @@ mod tests {
 				false_positives: Count::ZERO,
 				revocations: Count::ZERO,
 			});
-		registry.record(FlowNodeId(4), healthy);
+		registry.record(OperatorId(4), healthy);
 
 		let collector = OperatorSampleCollector::new(registry);
 		let mut out = Vec::new();
@@ -431,7 +431,7 @@ mod tests {
 			false_positives: Count::new(2),
 			revocations: Count::new(1),
 		});
-		registry.record(FlowNodeId(9), degraded);
+		registry.record(OperatorId(9), degraded);
 
 		let collector = OperatorSampleCollector::new(registry);
 		let mut out = Vec::new();
@@ -458,7 +458,7 @@ mod tests {
 		let registry = OperatorSampleRegistry::new();
 		let sample = OperatorSample::default()
 			.with_row_number_cache(StateMemory::new(Count::new(2), ByteSize::from_bytes(64)));
-		registry.record(FlowNodeId(3), sample);
+		registry.record(OperatorId(3), sample);
 
 		let collector = OperatorSampleCollector::new(registry);
 		let mut out = Vec::new();
@@ -481,12 +481,12 @@ mod tests {
 			budget: ByteSize::from_bytes(8 * 1024 * 1024),
 			evictions: Count::ZERO,
 		});
-		registry.record(FlowNodeId(4), healthy);
+		registry.record(OperatorId(4), healthy);
 		let evicting = OperatorSample::default().with_pool(StatePool {
 			budget: ByteSize::from_bytes(8 * 1024 * 1024),
 			evictions: Count::new(17),
 		});
-		registry.record(FlowNodeId(9), evicting);
+		registry.record(OperatorId(9), evicting);
 
 		let collector = OperatorSampleCollector::new(registry);
 		let mut out = Vec::new();
@@ -533,7 +533,7 @@ impl MetricsCollector for OperatorStateBudgetCollector {
 	}
 }
 
-pub(crate) fn push_group_samples(out: &mut Vec<MetricsSample>, node: FlowNodeId, sample: &GroupInternerSample) {
+pub(crate) fn push_group_samples(out: &mut Vec<MetricsSample>, node: OperatorId, sample: &GroupInternerSample) {
 	let scope = format!("flow_node::{node}");
 	if sample.cache.entries.as_u64() > 0 || sample.cache.bytes.as_bytes() > 0 {
 		out.push(MetricsSample::count(scope.clone(), "group_cache_entries", sample.cache.entries.as_u64()));

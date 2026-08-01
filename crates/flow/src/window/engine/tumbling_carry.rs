@@ -457,7 +457,7 @@ mod tests {
 	use reifydb_abi::operator::timer::TimerKind;
 	use reifydb_codec::{key::encoded::EncodedKeyRange, state::StateBytes};
 	use reifydb_core::{
-		key::operator_group_state::{Keyspace, OperatorGroupStateKey, GroupStateKey},
+		key::operator_group_state::{GroupStateKey, Keyspace, OperatorGroupStateKey},
 		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
@@ -480,7 +480,8 @@ mod tests {
 			self.data
 				.keys()
 				.filter(|k| {
-					OperatorGroupStateKey::decode_inner(k).is_some_and(|(_, found, _)| found == keyspace)
+					OperatorGroupStateKey::decode_inner(k)
+						.is_some_and(|(_, found, _)| found == keyspace)
 				})
 				.count()
 		}

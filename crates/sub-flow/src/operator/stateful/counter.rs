@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
-	key::operator_group_state::{Keyspace, GroupStateKey},
+	interface::catalog::flow::OperatorId,
+	key::operator_group_state::{GroupStateKey, Keyspace},
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_sdk::state::{decode_payload, encode_payload};
@@ -20,13 +20,13 @@ pub enum CounterDirection {
 }
 
 pub struct Counter {
-	node: FlowNodeId,
+	node: OperatorId,
 	key: GroupStateKey,
 	direction: CounterDirection,
 }
 
 impl Counter {
-	pub fn with_prefix(node: FlowNodeId, prefix: u8, direction: CounterDirection) -> Self {
+	pub fn with_prefix(node: OperatorId, prefix: u8, direction: CounterDirection) -> Self {
 		let key = GroupStateKey::node_scoped(Keyspace::NODE_COUNTER, vec![prefix]);
 		Self {
 			node,
@@ -35,7 +35,7 @@ impl Counter {
 		}
 	}
 
-	pub fn with_key(node: FlowNodeId, key: GroupStateKey, direction: CounterDirection) -> Self {
+	pub fn with_key(node: OperatorId, key: GroupStateKey, direction: CounterDirection) -> Self {
 		Self {
 			node,
 			key,
@@ -98,7 +98,7 @@ mod tests {
 	fn test_counter_starts_at_one() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Ascending);
+		let counter = Counter::with_prefix(OperatorId(1), b'T', CounterDirection::Ascending);
 
 		let value = counter.next(&mut txn).unwrap();
 		assert_eq!(value.0, 1);
@@ -108,7 +108,7 @@ mod tests {
 	fn test_counter_increments() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Ascending);
+		let counter = Counter::with_prefix(OperatorId(1), b'T', CounterDirection::Ascending);
 
 		let v1 = counter.next(&mut txn).unwrap();
 		let v2 = counter.next(&mut txn).unwrap();
@@ -123,7 +123,7 @@ mod tests {
 	fn test_counter_persistence() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = FlowNodeId(1);
+		let node = OperatorId(1);
 
 		{
 			let counter = Counter::with_prefix(node, b'P', CounterDirection::Ascending);
@@ -143,7 +143,7 @@ mod tests {
 	fn test_counter_current() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Ascending);
+		let counter = Counter::with_prefix(OperatorId(1), b'T', CounterDirection::Ascending);
 
 		let current = counter.current(&mut txn).unwrap();
 		assert_eq!(current, 1);
@@ -161,7 +161,7 @@ mod tests {
 	fn test_counter_set() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Ascending);
+		let counter = Counter::with_prefix(OperatorId(1), b'T', CounterDirection::Ascending);
 
 		counter.set(&mut txn, 100).unwrap();
 
@@ -184,7 +184,7 @@ mod tests {
 			GroupStateKey::node_scoped(Keyspace::NODE_COUNTER, serializer.finish().as_ref().to_vec())
 		};
 
-		let counter = Counter::with_key(FlowNodeId(1), custom_key, CounterDirection::Ascending);
+		let counter = Counter::with_key(OperatorId(1), custom_key, CounterDirection::Ascending);
 
 		let v1 = counter.next(&mut txn).unwrap();
 		let v2 = counter.next(&mut txn).unwrap();
@@ -197,7 +197,7 @@ mod tests {
 	fn test_multiple_counters_isolated() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = FlowNodeId(1);
+		let node = OperatorId(1);
 
 		let counter1 = Counter::with_prefix(node, b'A', CounterDirection::Ascending);
 		let counter2 = Counter::with_prefix(node, b'B', CounterDirection::Ascending);
@@ -218,8 +218,8 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 
-		let counter1 = Counter::with_prefix(FlowNodeId(1), b'X', CounterDirection::Ascending);
-		let counter2 = Counter::with_prefix(FlowNodeId(2), b'X', CounterDirection::Ascending);
+		let counter1 = Counter::with_prefix(OperatorId(1), b'X', CounterDirection::Ascending);
+		let counter2 = Counter::with_prefix(OperatorId(2), b'X', CounterDirection::Ascending);
 
 		let v1 = counter1.next(&mut txn).unwrap();
 		let v2 = counter2.next(&mut txn).unwrap();
@@ -234,7 +234,7 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 
 		// Exhausting the range wraps rather than panicking on overflow.
-		let counter = Counter::with_prefix(FlowNodeId(1), b'W', CounterDirection::Ascending);
+		let counter = Counter::with_prefix(OperatorId(1), b'W', CounterDirection::Ascending);
 		counter.set(&mut txn, u64::MAX).unwrap();
 		let v1 = counter.next(&mut txn).unwrap();
 		let v2 = counter.next(&mut txn).unwrap();
@@ -261,7 +261,7 @@ mod tests {
 	fn test_counter_descending_starts_at_max() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Descending);
+		let counter = Counter::with_prefix(OperatorId(1), b'T', CounterDirection::Descending);
 
 		let value = counter.next(&mut txn).unwrap();
 		assert_eq!(value.0, u64::MAX);
@@ -271,7 +271,7 @@ mod tests {
 	fn test_counter_descending_decrements() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Descending);
+		let counter = Counter::with_prefix(OperatorId(1), b'T', CounterDirection::Descending);
 
 		let v1 = counter.next(&mut txn).unwrap();
 		let v2 = counter.next(&mut txn).unwrap();
@@ -286,7 +286,7 @@ mod tests {
 	fn test_counter_descending_wrapping() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let counter = Counter::with_prefix(FlowNodeId(1), b'W', CounterDirection::Descending);
+		let counter = Counter::with_prefix(OperatorId(1), b'W', CounterDirection::Descending);
 
 		// Descending underflow wraps rather than panicking.
 		counter.set(&mut txn, 1).unwrap();

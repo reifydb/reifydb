@@ -115,9 +115,8 @@ impl OperatorDef {
 			self,
 			OperatorDef::Append { .. }
 				| OperatorDef::Distinct { .. }
-				| OperatorDef::Window { .. }
-				| OperatorDef::Apply { .. } | OperatorDef::Join { .. }
-				| OperatorDef::Aggregate { .. }
+				| OperatorDef::Window { .. } | OperatorDef::Apply { .. }
+				| OperatorDef::Join { .. } | OperatorDef::Aggregate { .. }
 				| OperatorDef::SinkRingBufferView { .. }
 		)
 	}
@@ -127,8 +126,8 @@ impl OperatorDef {
 			self,
 			OperatorDef::Join { .. }
 				| OperatorDef::Distinct { .. }
-				| OperatorDef::Append { .. }
-				| OperatorDef::Apply { .. } | OperatorDef::Aggregate { .. }
+				| OperatorDef::Append { .. } | OperatorDef::Apply { .. }
+				| OperatorDef::Aggregate { .. }
 				| OperatorDef::Window { .. }
 		)
 	}
@@ -138,8 +137,8 @@ impl OperatorDef {
 			self,
 			OperatorDef::Join { .. }
 				| OperatorDef::Distinct { .. }
-				| OperatorDef::Append { .. }
-				| OperatorDef::Apply { .. } | OperatorDef::Aggregate { .. }
+				| OperatorDef::Append { .. } | OperatorDef::Apply { .. }
+				| OperatorDef::Aggregate { .. }
 		)
 	}
 

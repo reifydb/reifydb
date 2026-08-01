@@ -35,7 +35,7 @@ impl Reclaimable {
 	}
 }
 
-pub trait FlowOperator: Send {
+pub trait Operator: Send {
 	fn id(&self) -> OperatorId;
 
 	fn capabilities(&self) -> &[OperatorCapability];
@@ -65,4 +65,4 @@ pub trait FlowOperator: Send {
 	}
 }
 
-pub type BoxedOperator = Box<dyn FlowOperator + Send>;
+pub type BoxedOperator = Box<dyn Operator + Send>;

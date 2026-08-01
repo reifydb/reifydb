@@ -94,7 +94,7 @@ pub mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::{
-			catalog::flow::FlowNodeId,
+			catalog::flow::OperatorId,
 			store::{MultiVersionBatch, MultiVersionRow},
 		},
 		key::{EncodableKey, operator_state::OperatorStateKey},
@@ -104,7 +104,7 @@ pub mod tests {
 	use super::*;
 
 	fn make_state_key(node_id: u64, key: &[u8]) -> EncodedKey {
-		OperatorStateKey::new(FlowNodeId(node_id), key.to_vec()).encode()
+		OperatorStateKey::new(OperatorId(node_id), key.to_vec()).encode()
 	}
 
 	fn make_value(data: &[u8]) -> EncodedRow {

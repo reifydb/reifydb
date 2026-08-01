@@ -58,8 +58,11 @@ pub trait StateApi {
 	fn scan_prefix<T: OperatorState>(&self, prefix: &GroupStateKey) -> Result<Vec<(GroupStateKey, T)>>;
 	fn get_many<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, T)>>;
 	fn keys_with_prefix(&self, prefix: &GroupStateKey) -> Result<Vec<GroupStateKey>>;
-	fn range<T: OperatorState>(&self, start: Bound<&GroupStateKey>, end: Bound<&GroupStateKey>)
-	-> Result<Vec<(GroupStateKey, T)>>;
+	fn range<T: OperatorState>(
+		&self,
+		start: Bound<&GroupStateKey>,
+		end: Bound<&GroupStateKey>,
+	) -> Result<Vec<(GroupStateKey, T)>>;
 	fn get_many_visit<T: OperatorState>(
 		&self,
 		keys: &[GroupStateKey],

@@ -231,7 +231,7 @@ mod tests {
 	use reifydb_core::{
 		interface::{
 			catalog::{
-				flow::FlowNodeId,
+				flow::OperatorId,
 				id::{TableId, ViewId},
 			},
 			change::Diff,
@@ -283,12 +283,12 @@ mod tests {
 	#[test]
 	fn flow_origin_changes_always_included() {
 		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
-		let cdcs = vec![cdc(5, vec![change(ChangeOrigin::Flow(FlowNodeId(42)), 5)])];
+		let cdcs = vec![cdc(5, vec![change(ChangeOrigin::Flow(OperatorId(42)), 5)])];
 
 		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources);
 
 		assert_eq!(out.len(), 1);
-		assert!(matches!(out[0].origin, ChangeOrigin::Flow(FlowNodeId(42))));
+		assert!(matches!(out[0].origin, ChangeOrigin::Flow(OperatorId(42))));
 	}
 
 	#[test]

@@ -12,7 +12,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::JoinType,
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::operator_group_state::{GroupId, GroupSet, Keyspace},
@@ -129,16 +129,16 @@ mod group_by_key_tests {
 }
 
 pub struct JoinSideConfig {
-	pub node: FlowNodeId,
+	pub node: OperatorId,
 	pub exprs: Vec<Expression>,
 	pub schema: Columns,
 }
 
 pub struct JoinOperator {
-	node: FlowNodeId,
+	node: OperatorId,
 	strategy: JoinStrategy,
-	left_node: FlowNodeId,
-	right_node: FlowNodeId,
+	left_node: OperatorId,
+	right_node: OperatorId,
 	compiled_left_exprs: Vec<CompiledExpr>,
 	compiled_right_exprs: Vec<CompiledExpr>,
 	alias: Option<String>,
@@ -160,7 +160,7 @@ impl JoinOperator {
 	pub fn new(
 		left: JoinSideConfig,
 		right: JoinSideConfig,
-		node: FlowNodeId,
+		node: OperatorId,
 		join_type: JoinType,
 		alias: Option<String>,
 		executor: Executor,
@@ -227,7 +227,7 @@ impl JoinOperator {
 	#[cfg(test)]
 	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new_for_state_tests(
-		node: FlowNodeId,
+		node: OperatorId,
 		left_ttl: Option<Duration>,
 		right_ttl: Option<Duration>,
 		routines: Routines,
@@ -236,8 +236,8 @@ impl JoinOperator {
 		Self {
 			node,
 			strategy: JoinStrategy::from(JoinType::Inner, false),
-			left_node: FlowNodeId(0),
-			right_node: FlowNodeId(0),
+			left_node: OperatorId(0),
+			right_node: OperatorId(0),
 			compiled_left_exprs: Vec::new(),
 			compiled_right_exprs: Vec::new(),
 			alias: None,
@@ -568,7 +568,7 @@ impl SingleStateful for JoinOperator {
 }
 
 impl Operator for JoinOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 
@@ -1138,7 +1138,7 @@ mod span_tests {
 		// tests place writes in event time via `at` instead.
 		let routines = engine.executor().routines.clone();
 		let rc = RuntimeContext::with_clock(engine.clock().clone());
-		JoinOperator::new_for_state_tests(FlowNodeId(node), left_ttl, right_ttl, routines, rc)
+		JoinOperator::new_for_state_tests(OperatorId(node), left_ttl, right_ttl, routines, rc)
 	}
 
 	fn op_row(payload: u8) -> EncodedRow {

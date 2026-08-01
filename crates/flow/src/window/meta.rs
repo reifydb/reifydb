@@ -6,7 +6,8 @@ use std::mem::size_of;
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	key::operator_group_state::{
-		GroupId, GroupSet, IntoGroupStateKey, Keyspace, OperatorGroupStateKey, GroupStateKey, keyspace_inner_range,
+		GroupId, GroupSet, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorGroupStateKey,
+		keyspace_inner_range,
 	},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
@@ -363,7 +364,9 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::{
-		key::operator_group_state::{GroupId, GroupSet, IntoGroupStateKey, OperatorGroupStateKey, group_data_inner_range},
+		key::operator_group_state::{
+			GroupId, GroupSet, IntoGroupStateKey, OperatorGroupStateKey, group_data_inner_range,
+		},
 		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
@@ -393,7 +396,8 @@ mod tests {
 		// its key with a decoder. A key that does not survive is dropped from the cache, the ledger
 		// re-derives to "nothing has been sealed", and every late row the gate exists to drop gets in.
 		assert!(
-			decode_seal_ledger_key((&SealLedgerKey).into_group_state_key().as_encoded()) == Some(SealLedgerKey),
+			decode_seal_ledger_key((&SealLedgerKey).into_group_state_key().as_encoded())
+				== Some(SealLedgerKey),
 			"seal ledger key did not survive the round trip"
 		);
 	}
@@ -422,7 +426,8 @@ mod tests {
 		// The seal ledger is per node, one entry for the whole operator. Under a real group id,
 		// reclaiming that group would reset it and every later event would look admissible again.
 		let key = (&SealLedgerKey).into_group_state_key();
-		let (group, _, _) = OperatorGroupStateKey::decode_inner(key.as_bytes()).expect("meta keys are structured");
+		let (group, _, _) =
+			OperatorGroupStateKey::decode_inner(key.as_bytes()).expect("meta keys are structured");
 		assert_eq!(group, GroupId::NODE_SCOPE);
 		assert!(!contains(&group_data_inner_range(GROUP), key.as_bytes()));
 	}
@@ -436,7 +441,8 @@ mod tests {
 		let session = (&SessionKey(GROUP)).into_group_state_key();
 		assert_ne!(count, session, "count and session must not share a key");
 
-		let (count_group, count_ks, count_suffix) = OperatorGroupStateKey::decode_inner(count.as_bytes()).unwrap();
+		let (count_group, count_ks, count_suffix) =
+			OperatorGroupStateKey::decode_inner(count.as_bytes()).unwrap();
 		let (session_group, session_ks, session_suffix) =
 			OperatorGroupStateKey::decode_inner(session.as_bytes()).unwrap();
 		assert_eq!(count_group, session_group, "both belong to the same partition");

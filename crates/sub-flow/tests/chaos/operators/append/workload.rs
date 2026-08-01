@@ -7,7 +7,7 @@ use rand::{RngExt, rngs::StdRng};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -18,10 +18,10 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType},
 };
 
-pub const APPEND_NODE: FlowNodeId = FlowNodeId(20);
+pub const APPEND_NODE: OperatorId = OperatorId(20);
 
-pub fn input_node(index: usize) -> FlowNodeId {
-	FlowNodeId(21 + index as u64)
+pub fn input_node(index: usize) -> OperatorId {
+	OperatorId(21 + index as u64)
 }
 
 pub const COLUMNS: [(&str, ValueType); 3] = [("src", ValueType::Int4), ("id", ValueType::Int8), ("v", ValueType::Int8)];

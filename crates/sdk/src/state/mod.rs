@@ -125,7 +125,9 @@ impl<'a> State<'a> {
 		end: Bound<&GroupStateKey>,
 		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
-		for (k, row) in ffi::range(self.ctx, start.map(GroupStateKey::as_encoded), end.map(GroupStateKey::as_encoded))? {
+		for (k, row) in
+			ffi::range(self.ctx, start.map(GroupStateKey::as_encoded), end.map(GroupStateKey::as_encoded))?
+		{
 			let Some(k) = GroupStateKey::from_framed(k) else {
 				continue;
 			};
@@ -155,11 +157,20 @@ pub fn decode_payload<T: OperatorState>(row: &EncodedRow) -> Result<T> {
 }
 
 pub trait RawStatefulOperator {
-	fn state_get<T: OperatorState>(&self, ctx: &mut impl OperatorContext, key: &GroupStateKey) -> Result<Option<T>> {
+	fn state_get<T: OperatorState>(
+		&self,
+		ctx: &mut impl OperatorContext,
+		key: &GroupStateKey,
+	) -> Result<Option<T>> {
 		ctx.state().get(key)
 	}
 
-	fn state_set<T: OperatorState>(&self, ctx: &mut impl OperatorContext, key: &GroupStateKey, value: &T) -> Result<()> {
+	fn state_set<T: OperatorState>(
+		&self,
+		ctx: &mut impl OperatorContext,
+		key: &GroupStateKey,
+		value: &T,
+	) -> Result<()> {
 		ctx.state().set(key, value)
 	}
 
@@ -175,7 +186,11 @@ pub trait RawStatefulOperator {
 		ctx.state().scan_prefix(prefix)
 	}
 
-	fn state_keys_with_prefix(&self, ctx: &mut impl OperatorContext, prefix: &GroupStateKey) -> Result<Vec<GroupStateKey>> {
+	fn state_keys_with_prefix(
+		&self,
+		ctx: &mut impl OperatorContext,
+		prefix: &GroupStateKey,
+	) -> Result<Vec<GroupStateKey>> {
 		ctx.state().keys_with_prefix(prefix)
 	}
 

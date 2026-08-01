@@ -5,7 +5,7 @@ use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	key::serializer::KeySerializer,
 };
-use reifydb_core::key::operator_group_state::{Keyspace, GroupStateKey};
+use reifydb_core::key::operator_group_state::{GroupStateKey, Keyspace};
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
 	Result,
@@ -64,7 +64,7 @@ pub trait KeyedStateful: RawStatefulOperator {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::flow::FlowNodeId;
+	use reifydb_core::interface::catalog::flow::OperatorId;
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 	use reifydb_value::value::{Value, value_type::ValueType};
@@ -85,7 +85,7 @@ pub mod tests {
 
 	#[test]
 	fn test_encode_key() {
-		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
+		let operator = TestOperator::with_key_types(OperatorId(1), vec![ValueType::Int4, ValueType::Utf8]);
 
 		let key1 = vec![Value::Int4(42), Value::Utf8("test".to_string())];
 		let encoded1 = operator.encode_state_key(&key1);
@@ -101,7 +101,7 @@ pub mod tests {
 
 	#[test]
 	fn test_create_state() {
-		let operator = TestOperator::new(FlowNodeId(1));
+		let operator = TestOperator::new(OperatorId(1));
 		let state = operator.create_state();
 
 		assert!(state.len() > 0);
@@ -111,7 +111,7 @@ pub mod tests {
 	fn test_load_save_state() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
+		let operator = TestOperator::with_key_types(OperatorId(1), vec![ValueType::Int4, ValueType::Utf8]);
 		let key = vec![Value::Int4(100), Value::Utf8("key1".to_string())];
 
 		let state1 = operator.load_state(&mut txn, &key).unwrap();
@@ -130,7 +130,7 @@ pub mod tests {
 	fn test_update_state() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
+		let operator = TestOperator::with_key_types(OperatorId(1), vec![ValueType::Int4, ValueType::Utf8]);
 		let key = vec![Value::Int4(200), Value::Utf8("update_key".to_string())];
 
 		let result = operator
@@ -151,7 +151,7 @@ pub mod tests {
 	fn test_remove_state() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
+		let operator = TestOperator::with_key_types(OperatorId(1), vec![ValueType::Int4, ValueType::Utf8]);
 		let key = vec![Value::Int4(300), Value::Utf8("remove_key".to_string())];
 
 		let state = operator.create_state();
@@ -169,7 +169,7 @@ pub mod tests {
 	fn test_multiple_keys() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
+		let operator = TestOperator::with_key_types(OperatorId(1), vec![ValueType::Int4, ValueType::Utf8]);
 
 		for i in 0..5 {
 			let key = vec![Value::Int4(i), Value::Utf8(format!("key_{}", i))];
@@ -190,7 +190,7 @@ pub mod tests {
 
 	#[test]
 	fn test_key_ordering() {
-		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
+		let operator = TestOperator::with_key_types(OperatorId(1), vec![ValueType::Int4, ValueType::Utf8]);
 
 		let key1 = vec![Value::Int4(1), Value::Utf8("a".to_string())];
 		let key2 = vec![Value::Int4(1), Value::Utf8("b".to_string())];

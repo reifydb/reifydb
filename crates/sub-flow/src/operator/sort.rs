@@ -3,7 +3,7 @@
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	interface::{catalog::flow::FlowNodeId, change::Change},
+	interface::{catalog::flow::OperatorId, change::Change},
 	value::column::columns::Columns,
 };
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
@@ -14,12 +14,12 @@ use crate::operator::OperatorCell;
 
 pub struct SortOperator {
 	parent: OperatorCell,
-	node: FlowNodeId,
+	node: OperatorId,
 	_expressions: Vec<Expression>,
 }
 
 impl SortOperator {
-	pub fn new(parent: OperatorCell, node: FlowNodeId, _expressions: Vec<Expression>) -> Self {
+	pub fn new(parent: OperatorCell, node: OperatorId, _expressions: Vec<Expression>) -> Self {
 		Self {
 			parent,
 			node,
@@ -35,7 +35,7 @@ impl SortOperator {
 }
 
 impl Operator for SortOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 
@@ -47,5 +47,9 @@ impl Operator for SortOperator {
 		// TODO: Implement single-encoded sort processing
 
 		Ok(Change::from_flow(self.node, change.version, change.diffs, change.changed_at))
+	}
+
+	fn output_schema(&self) -> Option<Columns> {
+		self.output_schema()
 	}
 }

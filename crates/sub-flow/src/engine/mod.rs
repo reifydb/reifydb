@@ -23,7 +23,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::catalog::{
 		config::ConfigKey,
-		flow::{FlowId, FlowNodeId},
+		flow::{FlowId, OperatorId},
 		id::{TableId, ViewId},
 		object::ObjectId,
 	},
@@ -55,7 +55,7 @@ use tracing::{debug, instrument};
 #[cfg(reifydb_target = "native")]
 use crate::error::{FlowStateError, NativeOperatorError};
 #[cfg(reifydb_target = "native")]
-use crate::operator::ffi::FFIOperator;
+use crate::operator::ffi::FFIOperatorHandle;
 #[cfg(reifydb_target = "native")]
 use crate::operator::native::native_operator_loader;
 use crate::{
@@ -67,10 +67,10 @@ use crate::{
 pub struct FlowEngineInner {
 	pub(crate) catalog: Catalog,
 	pub(crate) executor: Executor,
-	pub(crate) operators: BTreeMap<FlowNodeId, OperatorCell>,
+	pub(crate) operators: BTreeMap<OperatorId, OperatorCell>,
 	pub(crate) flows: BTreeMap<FlowId, FlowDag>,
-	pub(crate) sources: BTreeMap<ObjectId, Vec<(FlowId, FlowNodeId)>>,
-	pub(crate) sinks: BTreeMap<ObjectId, Vec<(FlowId, FlowNodeId)>>,
+	pub(crate) sources: BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
+	pub(crate) sinks: BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
 	pub(crate) analyzer: FlowGraphAnalyzer,
 	pub(crate) execution_level_cache: ExecutionLevelCache,
 	pub(crate) schedule_cache: ScheduleCache,
@@ -79,7 +79,7 @@ pub struct FlowEngineInner {
 	pub(crate) flow_creation_versions: BTreeMap<FlowId, CommitVersion>,
 	pub(crate) runtime_context: RuntimeContext,
 	pub(crate) custom_operators: CustomOperators,
-	pub(crate) mapping_cursors: DashMap<FlowNodeId, Option<EncodedKey>>,
+	pub(crate) mapping_cursors: DashMap<OperatorId, Option<EncodedKey>>,
 	pub(crate) substrate: FlowSubstrate,
 	pub(crate) operator_samples: OperatorSampleRegistry,
 	pub(crate) state_budget: OperatorStateBudgetHandle,
@@ -217,11 +217,11 @@ impl FlowEngineInner {
 		&self.runtime_context.clock
 	}
 
-	pub fn operator(&self, node_id: FlowNodeId) -> Option<OperatorCell> {
+	pub fn operator(&self, node_id: OperatorId) -> Option<OperatorCell> {
 		self.operators.get(&node_id).cloned()
 	}
 
-	pub fn insert_operator(&mut self, node_id: FlowNodeId, operator: OperatorCell) {
+	pub fn insert_operator(&mut self, node_id: OperatorId, operator: OperatorCell) {
 		self.operators.insert(node_id, operator);
 	}
 
@@ -238,7 +238,7 @@ impl FlowEngineInner {
 		!self.sources.is_empty()
 	}
 
-	pub fn flows_for_source_object(&self, object: ObjectId) -> Option<Vec<(FlowId, FlowNodeId)>> {
+	pub fn flows_for_source_object(&self, object: ObjectId) -> Option<Vec<(FlowId, OperatorId)>> {
 		self.sources.get(&object).cloned()
 	}
 
@@ -247,7 +247,7 @@ impl FlowEngineInner {
 	pub(crate) fn create_ffi_operator(
 		&self,
 		operator: &str,
-		node_id: FlowNodeId,
+		node_id: OperatorId,
 		config: &BTreeMap<String, Value>,
 	) -> Result<BoxedOperator> {
 		let loader = ffi_operator_loader();
@@ -274,7 +274,7 @@ impl FlowEngineInner {
 			}
 		};
 
-		Ok(Box::new(FFIOperator::new(
+		Ok(Box::new(FFIOperatorHandle::new(
 			descriptor,
 			instance,
 			node_id,
@@ -296,7 +296,7 @@ impl FlowEngineInner {
 	pub(crate) fn create_native_operator(
 		&self,
 		operator: &str,
-		node_id: FlowNodeId,
+		node_id: OperatorId,
 		config: &Config,
 	) -> Result<BoxedOperator> {
 		let loader = native_operator_loader();
@@ -341,7 +341,7 @@ impl FlowEngineInner {
 	}
 
 	pub fn remove_flow(&mut self, flow_id: FlowId) {
-		let node_ids: Vec<FlowNodeId> =
+		let node_ids: Vec<OperatorId> =
 			self.flows.get(&flow_id).map(|flow| flow.get_node_ids().collect()).unwrap_or_default();
 
 		for node_id in node_ids {

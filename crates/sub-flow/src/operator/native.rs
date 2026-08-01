@@ -24,7 +24,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::{
-			flow::FlowNodeId,
+			flow::OperatorId,
 			id::{NamespaceId, TableId},
 			namespace::Namespace,
 			table::Table,
@@ -64,17 +64,18 @@ use reifydb_value::{
 };
 use tracing::error;
 
+use reifydb_flow::operator::BoxedOperator;
+
 use crate::{
 	engine::{lease_demand, lease_report_from_sample},
 	error::NativeOperatorError,
 	operator::{
-		BoxedOperator,
 		context::native::{NativeBridge, NativeOperatorContext},
 		scale_from_millis, sealed_or_idle,
 	},
 };
 
-fn run_or_abort<R>(node: FlowNodeId, stage: &'static str, f: impl FnOnce() -> SdkResult<R>) -> R {
+fn run_or_abort<R>(node: OperatorId, stage: &'static str, f: impl FnOnce() -> SdkResult<R>) -> R {
 	match catch_unwind(AssertUnwindSafe(f)) {
 		Ok(Ok(value)) => value,
 		Ok(Err(e)) => {
@@ -95,7 +96,7 @@ pub const NATIVE_OPERATOR_MAGIC: u32 = 0x5244_424E;
 
 pub const NATIVE_ABI_TAG: u32 = 0x030A;
 
-pub type NativeOperatorCreateFn = fn(FlowNodeId, &Config) -> Result<BoxedBridgedOperator>;
+pub type NativeOperatorCreateFn = fn(OperatorId, &Config) -> Result<BoxedBridgedOperator>;
 
 pub struct NativeOperatorColumn {
 	pub name: String,
@@ -128,7 +129,7 @@ pub fn check_native_abi_tag(abi_tag: u32) -> Result<()> {
 }
 
 pub trait BridgedOperator: Send {
-	fn id(&self) -> FlowNodeId;
+	fn id(&self) -> OperatorId;
 
 	fn capabilities(&self) -> &'static [OperatorCapability];
 
@@ -157,12 +158,12 @@ pub type BoxedBridgedOperator = Box<dyn BridgedOperator>;
 
 pub struct FlowNativeBridge<'a> {
 	txn: &'a mut FlowTransaction,
-	node: FlowNodeId,
+	node: OperatorId,
 	now: DateTime,
 }
 
 impl<'a> FlowNativeBridge<'a> {
-	pub fn new(txn: &'a mut FlowTransaction, node: FlowNodeId) -> Self {
+	pub fn new(txn: &'a mut FlowTransaction, node: OperatorId) -> Self {
 		let now = txn.clock().now();
 		Self {
 			txn,
@@ -452,7 +453,7 @@ impl NativeOperatorLoader {
 	pub fn create_operator_by_name(
 		&mut self,
 		operator: &str,
-		operator_id: FlowNodeId,
+		operator_id: OperatorId,
 		config: &Config,
 	) -> Result<BoxedOperator> {
 		let path = self
@@ -502,12 +503,12 @@ impl Default for NativeOperatorLoader {
 
 pub struct NativeOperatorAdapter<C> {
 	logic: UnsafeCell<C>,
-	node: FlowNodeId,
+	node: OperatorId,
 	capabilities: &'static [OperatorCapability],
 }
 
 impl<C> NativeOperatorAdapter<C> {
-	pub fn new(logic: C, node: FlowNodeId, capabilities: &'static [OperatorCapability]) -> Self {
+	pub fn new(logic: C, node: OperatorId, capabilities: &'static [OperatorCapability]) -> Self {
 		Self {
 			logic: UnsafeCell::new(logic),
 			node,
@@ -519,7 +520,7 @@ impl<C> NativeOperatorAdapter<C> {
 unsafe impl<C: Send> Send for NativeOperatorAdapter<C> {}
 
 impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 
@@ -605,13 +606,13 @@ unsafe impl Send for SendableBridged {}
 
 pub struct NativeBridgedOperator {
 	inner: BoxedBridgedOperator,
-	node: FlowNodeId,
+	node: OperatorId,
 	capabilities: &'static [OperatorCapability],
 	last_registered_txn: Cell<u64>,
 }
 
 impl NativeBridgedOperator {
-	pub fn new(inner: BoxedBridgedOperator, node: FlowNodeId, capabilities: &'static [OperatorCapability]) -> Self {
+	pub fn new(inner: BoxedBridgedOperator, node: OperatorId, capabilities: &'static [OperatorCapability]) -> Self {
 		Self {
 			inner,
 			node,
@@ -644,7 +645,7 @@ impl NativeBridgedOperator {
 				}
 				Ok(())
 			});
-			let _ = txn.operator_group_state::<(), _>(node, zero_usage, move |_txn| Ok(((), persist)))?;
+			let _ = txn.operator_state::<(), _>(node, zero_usage, move |_txn| Ok(((), persist)))?;
 			txn.mark_state_dirty(node);
 			self.last_registered_txn.set(txn_version);
 		}
@@ -655,7 +656,7 @@ impl NativeBridgedOperator {
 unsafe impl Send for NativeBridgedOperator {}
 
 impl Operator for NativeBridgedOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 
@@ -714,11 +715,11 @@ mod tests {
 	};
 
 	use super::{
-		BridgedOperator, EncodedKey, FlowNativeBridge, FlowNodeId, NATIVE_ABI_TAG, NativeBridge,
-		NativeBridgedOperator, OperatorCapability, check_native_abi_tag,
+		BridgedOperator, EncodedKey, FlowNativeBridge, NATIVE_ABI_TAG, NativeBridge, NativeBridgedOperator,
+		OperatorCapability, OperatorId, check_native_abi_tag,
 	};
 
-	const NODE: FlowNodeId = FlowNodeId(1);
+	const NODE: OperatorId = OperatorId(1);
 
 	fn key(name: &str) -> EncodedKey {
 		EncodedKey::new(name.as_bytes())
@@ -769,7 +770,7 @@ mod tests {
 			 there is no second domain for it to fall back to"
 		);
 
-		let sealed = FlowNodeId(8);
+		let sealed = OperatorId(8);
 		txn.group_interner().set_activity_grid(sealed, Some(Duration::from_milliseconds(1_000).unwrap()));
 		let mut bridge = FlowNativeBridge::new(&mut txn, sealed);
 		bridge.intern_groups(&[key("sealed")]).unwrap();
@@ -805,7 +806,7 @@ mod tests {
 	}
 
 	impl BridgedOperator for RecordingBridged {
-		fn id(&self) -> FlowNodeId {
+		fn id(&self) -> OperatorId {
 			NODE
 		}
 

@@ -14,7 +14,6 @@ pub(crate) mod config;
 pub(crate) mod dictionary;
 pub(crate) mod flow;
 pub(crate) mod flow_edge;
-pub(crate) mod operator;
 pub(crate) mod granted_role;
 pub(crate) mod handler;
 pub(crate) mod identity;
@@ -23,6 +22,7 @@ pub(crate) mod identity_attribute_value;
 pub(crate) mod migration;
 pub(crate) mod namespace;
 pub(crate) mod object;
+pub(crate) mod operator;
 pub mod operator_settings;
 pub(crate) mod policy;
 #[allow(dead_code)]

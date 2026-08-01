@@ -5,7 +5,7 @@ use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_core::{
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::operator_group_state::{GroupId, GroupSet},
@@ -40,11 +40,11 @@ const REMOVE_RECLAIM_LIMIT: usize = 8;
 const DROP_REASON: &str = "mutations whose source row mapping was reclaimed";
 
 pub struct AppendOperator {
-	node: FlowNodeId,
+	node: OperatorId,
 
 	parents: Vec<OperatorCell>,
 
-	input_nodes: Vec<FlowNodeId>,
+	input_nodes: Vec<OperatorId>,
 
 	dropped: SealedDrops,
 
@@ -53,9 +53,9 @@ pub struct AppendOperator {
 
 impl AppendOperator {
 	pub fn new(
-		node: FlowNodeId,
+		node: OperatorId,
 		parents: Vec<OperatorCell>,
-		input_nodes: Vec<FlowNodeId>,
+		input_nodes: Vec<OperatorId>,
 		ttl: Option<Duration>,
 	) -> Self {
 		reifydb_assertions! {
@@ -73,7 +73,7 @@ impl AppendOperator {
 	}
 
 	#[cfg(test)]
-	pub(crate) fn new_for_state_tests(node: FlowNodeId) -> Self {
+	pub(crate) fn new_for_state_tests(node: OperatorId) -> Self {
 		Self {
 			node,
 			parents: Vec::new(),
@@ -113,7 +113,7 @@ impl AppendOperator {
 }
 
 impl Operator for AppendOperator {
-	fn id(&self) -> FlowNodeId {
+	fn id(&self) -> OperatorId {
 		self.node
 	}
 
@@ -175,6 +175,10 @@ impl Operator for AppendOperator {
 		}
 
 		Ok(Change::from_flow(self.node, change.version, result_diffs, change.changed_at))
+	}
+
+	fn output_schema(&self) -> Option<Columns> {
+		self.output_schema()
 	}
 }
 
@@ -297,10 +301,10 @@ mod tests {
 	const BUCKET_WIDTH: u64 = 3_750_000_000;
 
 	fn op(node: u64) -> AppendOperator {
-		AppendOperator::new_for_state_tests(FlowNodeId(node))
+		AppendOperator::new_for_state_tests(OperatorId(node))
 	}
 
-	fn txn_at(engine: &TestEngine, node: FlowNodeId, coordinate: u64) -> FlowTransaction {
+	fn txn_at(engine: &TestEngine, node: OperatorId, coordinate: u64) -> FlowTransaction {
 		// Registering the horizon mirrors what register.rs does in production; without it the
 		// node falls back to the interner's default bucket width and stamps in no domain.
 		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();

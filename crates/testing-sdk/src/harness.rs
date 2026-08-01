@@ -24,8 +24,8 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
+		operator_group_state::{GroupId, GroupSet, GroupStateKey, Keyspace, OperatorGroupStateKey},
 		operator_state::OperatorStateKey,
-		operator_group_state::{GroupId, GroupSet, Keyspace, OperatorGroupStateKey, GroupStateKey},
 	},
 	row::Row,
 };
@@ -218,9 +218,13 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 	pub fn group_id(&self, group_key: &[u8]) -> Option<GroupId> {
 		let dictionary_key = OperatorStateKey::new(
 			self.node_id,
-			OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group_key)
-				.as_slice()
-				.to_vec(),
+			OperatorGroupStateKey::inner_encoded(
+				GroupId::NODE_SCOPE,
+				Keyspace::GROUP_DICTIONARY,
+				group_key,
+			)
+			.as_slice()
+			.to_vec(),
 		)
 		.encode();
 		self.context
@@ -1108,7 +1112,10 @@ pub mod tests {
 	fn group_state_key(node: OperatorId, group: GroupId, keyspace: Keyspace) -> OperatorStateKey {
 		// Must compose the key the way the substrate does, or what these tests seed is not
 		// addressable by the phase ranges the sweep scans.
-		OperatorStateKey::new(node, OperatorGroupStateKey::inner_encoded(group, keyspace, b"k").as_slice().to_vec())
+		OperatorStateKey::new(
+			node,
+			OperatorGroupStateKey::inner_encoded(group, keyspace, b"k").as_slice().to_vec(),
+		)
 	}
 
 	#[test]

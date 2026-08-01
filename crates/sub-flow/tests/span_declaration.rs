@@ -8,7 +8,7 @@ use reifydb::{WithSubsystem, embedded};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
+	interface::catalog::flow::OperatorId,
 	key::operator_group_state::{Keyspace, OperatorGroupStateKey},
 };
 use reifydb_sdk::{
@@ -131,7 +131,7 @@ fn tally_apply(
 }
 
 impl OperatorLogic for Hoarder {
-	fn create(_operator_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(Hoarder)
 	}
 
@@ -141,7 +141,7 @@ impl OperatorLogic for Hoarder {
 }
 
 impl OperatorLogic for Sweeper {
-	fn create(_operator_id: FlowNodeId, _config: &Config) -> SdkResult<Self> {
+	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(Sweeper)
 	}
 

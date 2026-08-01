@@ -9,7 +9,7 @@ use reifydb_codec::{
 	key::{encoded::EncodedKey, serializer::KeySerializer},
 };
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
+	interface::catalog::flow::OperatorId,
 	key::operator_group_state::GroupSet,
 	metrics::heap::{StateCompleteness, StateMemory},
 	row::Row,
@@ -62,7 +62,7 @@ fn build_aggregation_shape(names: &[String], types: &[ValueType]) -> RowShape {
 }
 
 pub struct Aggregation {
-	pub node: FlowNodeId,
+	pub node: OperatorId,
 	pub parent: OperatorCell,
 	pub compiled_group_by: Vec<CompiledExpr>,
 	pub group_names: Vec<String>,
@@ -86,7 +86,7 @@ pub struct Aggregation {
 impl Aggregation {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
-		node: FlowNodeId,
+		node: OperatorId,
 		parent: OperatorCell,
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,

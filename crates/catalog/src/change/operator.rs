@@ -4,7 +4,7 @@
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	interface::catalog::flow::{FlowId, Operator, OperatorId},
-	key::{EncodableKey, operator::OperatorKey, kind::KeyKind},
+	key::{EncodableKey, kind::KeyKind, operator::OperatorKey},
 };
 use reifydb_transaction::transaction::Transaction;
 

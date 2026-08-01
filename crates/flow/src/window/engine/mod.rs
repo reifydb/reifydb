@@ -23,7 +23,9 @@ use reifydb_codec::{
 	state::OperatorState,
 };
 use reifydb_core::{
-	key::operator_group_state::{GroupId, IntoGroupStateKey, Keyspace, OperatorGroupStateKey, GroupStateKey, keyspace_inner_range},
+	key::operator_group_state::{
+		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorGroupStateKey, keyspace_inner_range,
+	},
 	metrics::heap::HeapSize,
 	state::{
 		cache::{StateCache, StateView},
@@ -514,7 +516,7 @@ pub(crate) mod test_support {
 		state::{StateBytes, decode_state},
 	};
 	use reifydb_core::{
-		key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
+		key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
 		metrics::heap::HeapSize,
 		state::{map::PersistedMap, store::StateStore},
 	};
@@ -605,7 +607,8 @@ pub(crate) mod test_support {
 			self.data
 				.keys()
 				.filter(|k| {
-					OperatorGroupStateKey::decode_inner(k).is_some_and(|(_, found, _)| found == keyspace)
+					OperatorGroupStateKey::decode_inner(k)
+						.is_some_and(|(_, found, _)| found == keyspace)
 				})
 				.count()
 		}
