@@ -129,13 +129,13 @@ mod group_by_key_tests {
 }
 
 pub struct JoinSideConfig {
-	pub node: OperatorId,
+	pub operator: OperatorId,
 	pub exprs: Vec<Expression>,
 	pub schema: Columns,
 }
 
 pub struct JoinOperator {
-	node: OperatorId,
+	operator: OperatorId,
 	strategy: JoinStrategy,
 	left_node: OperatorId,
 	right_node: OperatorId,
@@ -160,7 +160,7 @@ impl JoinOperator {
 	pub fn new(
 		left: JoinSideConfig,
 		right: JoinSideConfig,
-		node: OperatorId,
+		operator: OperatorId,
 		join_type: JoinType,
 		alias: Option<String>,
 		executor: Executor,
@@ -171,8 +171,8 @@ impl JoinOperator {
 		right_ttl: Option<Duration>,
 		ctx: Arc<FlowContext>,
 	) -> Self {
-		let left_node = left.node;
-		let right_node = right.node;
+		let left_node = left.operator;
+		let right_node = right.operator;
 		let left_exprs = left.exprs;
 		let right_exprs = right.exprs;
 		let right_schema = right.schema;
@@ -199,7 +199,7 @@ impl JoinOperator {
 		let runtime_context = executor.runtime_context.clone();
 
 		Self {
-			node,
+			operator,
 			strategy,
 			left_node,
 			right_node,
@@ -227,14 +227,14 @@ impl JoinOperator {
 	#[cfg(test)]
 	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new_for_state_tests(
-		node: OperatorId,
+		operator: OperatorId,
 		left_ttl: Option<Duration>,
 		right_ttl: Option<Duration>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
 	) -> Self {
 		Self {
-			node,
+			operator,
 			strategy: JoinStrategy::from(JoinType::Inner, false),
 			left_node: OperatorId(0),
 			right_node: OperatorId(0),
@@ -256,7 +256,7 @@ impl JoinOperator {
 	}
 
 	pub(crate) fn snapshot_ledger(&self) -> SnapshotLedger {
-		SnapshotLedger::new(self.node)
+		SnapshotLedger::new(self.operator)
 	}
 
 	pub(crate) fn compute_join_keys(
@@ -362,12 +362,12 @@ impl JoinOperator {
 	) -> Result<(Vec<RowNumber>, Vec<usize>, Vec<usize>)> {
 		match identity {
 			Identity::Mint => {
-				let minted = txn.get_or_create_row_numbers(self.node, GroupId::NODE_SCOPE, keys)?;
+				let minted = txn.get_or_create_row_numbers(self.operator, GroupId::NODE_SCOPE, keys)?;
 				let (fresh, existing) = (0..keys.len()).partition(|index| minted[*index].1);
 				Ok((minted.iter().map(|(number, _)| *number).collect(), fresh, existing))
 			}
 			Identity::Existing | Identity::Consume => {
-				let resolved = txn.get_row_numbers(self.node, GroupId::NODE_SCOPE, keys)?;
+				let resolved = txn.get_row_numbers(self.operator, GroupId::NODE_SCOPE, keys)?;
 				let existing: Vec<usize> = resolved
 					.iter()
 					.enumerate()
@@ -375,7 +375,11 @@ impl JoinOperator {
 					.collect();
 				if identity == Identity::Consume {
 					for index in &existing {
-						txn.remove_row_number(self.node, GroupId::NODE_SCOPE, &keys[*index])?;
+						txn.remove_row_number(
+							self.operator,
+							GroupId::NODE_SCOPE,
+							&keys[*index],
+						)?;
 					}
 				}
 				Ok((
@@ -429,7 +433,7 @@ impl JoinOperator {
 		serializer.extend_u64(left_number);
 		let prefix = serializer.finish();
 
-		txn.remove_row_numbers_by_prefix(self.node, GroupId::NODE_SCOPE, &prefix)
+		txn.remove_row_numbers_by_prefix(self.operator, GroupId::NODE_SCOPE, &prefix)
 	}
 
 	fn make_composite_key(left_num: RowNumber, right_num: RowNumber) -> EncodedKey {
@@ -569,7 +573,7 @@ impl SingleStateful for JoinOperator {
 
 impl Operator for JoinOperator {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -628,16 +632,16 @@ impl Operator for JoinOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		if let ChangeOrigin::Flow(from_node) = &change.origin
-			&& *from_node == self.node
+			&& *from_node == self.operator
 		{
-			return Ok(Change::from_flow(self.node, change.version, Vec::new(), DateTime::default()));
+			return Ok(Change::from_flow(self.operator, change.version, Vec::new(), DateTime::default()));
 		}
 
 		if self.natural && self.compiled_left_exprs.is_empty() {
-			return Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at));
+			return Ok(Change::from_flow(self.operator, change.version, Vec::new(), change.changed_at));
 		}
 
-		let mut state = JoinState::new(self.node, self.membership.clone(), self.snapshot);
+		let mut state = JoinState::new(self.operator, self.membership.clone(), self.snapshot);
 		let mut result = Vec::with_capacity(change.diffs.len() * 2);
 
 		let version = change.version;
@@ -679,7 +683,7 @@ impl Operator for JoinOperator {
 			}
 		}
 
-		Ok(Change::from_flow(self.node, version, result, change.changed_at))
+		Ok(Change::from_flow(self.operator, version, result, change.changed_at))
 	}
 }
 
@@ -911,7 +915,7 @@ mod span_tests {
 
 	#[test]
 	fn a_side_without_a_ttl_declares_no_span_when_not_snapshotting() {
-		// No ttl means the side is bounded by the node's own horizon, not by a per-side sweep.
+		// No ttl means the side is bounded by the operator's own horizon, not by a per-side sweep.
 		// Declaring a span here would retire rows the user never asked to expire.
 		let engine = TestEngine::new();
 		let left = Duration::from_seconds(60).unwrap();
@@ -928,7 +932,7 @@ mod span_tests {
 		untimed.snapshot = false;
 		assert!(
 			frontier(&untimed, &engine).keyspaces.is_empty(),
-			"a join with no ttl at all ages only on the node horizon"
+			"a join with no ttl at all ages only on the operator horizon"
 		);
 	}
 
@@ -949,7 +953,7 @@ mod span_tests {
 
 	#[test]
 	fn a_frontier_saturates_while_the_watermark_is_younger_than_the_ttl() {
-		// Early in a node's life the watermark is below the declared ttl, and wrapping would put
+		// Early in a operator's life the watermark is below the declared ttl, and wrapping would put
 		// the frontier near u64::MAX and make every group due on the first tick. The saturation
 		// has to hold at the subtraction, not at the sweep.
 		let engine = TestEngine::new();
@@ -984,7 +988,7 @@ mod span_tests {
 		assert_eq!(
 			make_op(93, None, None, &engine).retention_scale(),
 			None,
-			"a node that declares nothing anywhere stays ungridded and is skipped entirely"
+			"a operator that declares nothing anywhere stays ungridded and is skipped entirely"
 		);
 	}
 
@@ -1071,20 +1075,20 @@ mod span_tests {
 		let op = make_op(78, Some(ttl(50)), None, &engine);
 		let mut txn = engine.flow_txn().deferred();
 
-		let left = Store::new(op.node, JoinSide::Left, op.membership.clone())
+		let left = Store::new(op.operator, JoinSide::Left, op.membership.clone())
 			.also_stamping(snapshot_ledger_keyspaces(true));
 		let hash = Hash128(0xFEED);
 		at(&mut txn, 10);
 		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x01), RowPresence::Unknown).unwrap();
 
 		let group = txn
-			.lookup_group(op.node, &group_bytes(&hash))
+			.lookup_group(op.operator, &group_bytes(&hash))
 			.unwrap()
 			.expect("a stored left row must have interned its key");
 		let cutoff = Cutoff(DateTime::from_millis(20));
 		for keyspace in [Keyspace::JOIN_LEFT, Keyspace::JOIN_PUBLISHED, Keyspace::JOIN_PIN] {
 			assert_eq!(
-				txn.due_side_groups(op.node, keyspace, cutoff, 16).unwrap(),
+				txn.due_side_groups(op.operator, keyspace, cutoff, 16).unwrap(),
 				vec![group],
 				"{keyspace:?} must fall due with the left side it describes, not on its own clock"
 			);
@@ -1099,17 +1103,17 @@ mod span_tests {
 		let op = make_op(79, Some(ttl(50)), None, &engine);
 		let mut txn = engine.flow_txn().deferred();
 
-		let left = Store::new(op.node, JoinSide::Left, op.membership.clone())
+		let left = Store::new(op.operator, JoinSide::Left, op.membership.clone())
 			.also_stamping(snapshot_ledger_keyspaces(false));
 		let hash = Hash128(0xBEEF);
 		at(&mut txn, 10);
 		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x01), RowPresence::Unknown).unwrap();
 
 		let cutoff = Cutoff(DateTime::from_millis(20));
-		assert!(!txn.due_side_groups(op.node, Keyspace::JOIN_LEFT, cutoff, 16).unwrap().is_empty());
+		assert!(!txn.due_side_groups(op.operator, Keyspace::JOIN_LEFT, cutoff, 16).unwrap().is_empty());
 		for keyspace in [Keyspace::JOIN_PUBLISHED, Keyspace::JOIN_PIN] {
 			assert!(
-				txn.due_side_groups(op.node, keyspace, cutoff, 16).unwrap().is_empty(),
+				txn.due_side_groups(op.operator, keyspace, cutoff, 16).unwrap().is_empty(),
 				"{keyspace:?} must stay unenrolled on a join that never publishes to it"
 			);
 		}
@@ -1129,7 +1133,7 @@ mod span_tests {
 	}
 
 	fn make_op(
-		node: u64,
+		operator: u64,
 		left_ttl: Option<Duration>,
 		right_ttl: Option<Duration>,
 		engine: &TestEngine,
@@ -1138,7 +1142,7 @@ mod span_tests {
 		// tests place writes in event time via `at` instead.
 		let routines = engine.executor().routines.clone();
 		let rc = RuntimeContext::with_clock(engine.clock().clone());
-		JoinOperator::new_for_state_tests(OperatorId(node), left_ttl, right_ttl, routines, rc)
+		JoinOperator::new_for_state_tests(OperatorId(operator), left_ttl, right_ttl, routines, rc)
 	}
 
 	fn op_row(payload: u8) -> EncodedRow {
@@ -1159,15 +1163,15 @@ mod span_tests {
 
 		let old = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
 		at(&mut txn, 0);
-		txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &old).unwrap();
+		txn.get_or_create_row_number(op.operator, GroupId::NODE_SCOPE, &old).unwrap();
 
 		let young = JoinOperator::make_composite_key(RowNumber(2), RowNumber(1));
 		at(&mut txn, 40);
-		txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &young).unwrap();
+		txn.get_or_create_row_number(op.operator, GroupId::NODE_SCOPE, &young).unwrap();
 
 		let mut cursor = None;
 		txn.evict_row_numbers(
-			op.node,
+			op.operator,
 			GroupId::NODE_SCOPE,
 			Cutoff(DateTime::from_millis(10)),
 			&mut cursor,
@@ -1176,11 +1180,11 @@ mod span_tests {
 		.unwrap();
 
 		assert!(
-			txn.get_row_number(op.node, GroupId::NODE_SCOPE, &old).unwrap().is_none(),
+			txn.get_row_number(op.operator, GroupId::NODE_SCOPE, &old).unwrap().is_none(),
 			"a mapping stamped at or before the cutoff must be evicted"
 		);
 		assert!(
-			txn.get_row_number(op.node, GroupId::NODE_SCOPE, &young).unwrap().is_some(),
+			txn.get_row_number(op.operator, GroupId::NODE_SCOPE, &young).unwrap().is_some(),
 			"a mapping stamped after the cutoff must survive; the version-anchored sweep could not \
 			 express this and evicted both"
 		);
@@ -1196,16 +1200,16 @@ mod span_tests {
 		let mut txn = engine.flow_txn().deferred();
 
 		let membership = op.membership.clone();
-		let left = Store::new(op.node, JoinSide::Left, membership.clone());
+		let left = Store::new(op.operator, JoinSide::Left, membership.clone());
 		let hash = Hash128(0xABC);
 		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x10), RowPresence::Unknown).unwrap();
 		left.put_row(&mut txn, &hash, RowNumber(2), &op_row(0x20), RowPresence::Unknown).unwrap();
 
 		let group = txn
-			.lookup_group(op.node, &group_bytes(&hash))
+			.lookup_group(op.operator, &group_bytes(&hash))
 			.unwrap()
 			.expect("a stored key must have been interned");
-		txn.reclaim_group_data(op.node, group, 128).unwrap();
+		txn.reclaim_group_data(op.operator, group, 128).unwrap();
 		op.invalidate_groups(&GroupSet::new([group]));
 
 		let absences_before = membership.side(JoinSide::Left).completeness().absences_served.as_u64();
@@ -1227,22 +1231,22 @@ mod span_tests {
 
 		let first = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
 		at(&mut txn, 0);
-		let (n1, _) = txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &first).unwrap();
+		let (n1, _) = txn.get_or_create_row_number(op.operator, GroupId::NODE_SCOPE, &first).unwrap();
 
 		let mut cursor = None;
 		txn.evict_row_numbers(
-			op.node,
+			op.operator,
 			GroupId::NODE_SCOPE,
 			Cutoff(DateTime::from_millis(100)),
 			&mut cursor,
 			100,
 		)
 		.unwrap();
-		assert!(txn.get_row_number(op.node, GroupId::NODE_SCOPE, &first).unwrap().is_none());
+		assert!(txn.get_row_number(op.operator, GroupId::NODE_SCOPE, &first).unwrap().is_none());
 
 		let second = JoinOperator::make_composite_key(RowNumber(7), RowNumber(7));
 		at(&mut txn, 200);
-		let (n2, is_new) = txn.get_or_create_row_number(op.node, GroupId::NODE_SCOPE, &second).unwrap();
+		let (n2, is_new) = txn.get_or_create_row_number(op.operator, GroupId::NODE_SCOPE, &second).unwrap();
 		assert!(is_new);
 		assert!(n2.0 > n1.0, "counter must keep advancing past evicted mappings, not recycle ids");
 	}

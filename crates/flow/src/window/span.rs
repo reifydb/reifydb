@@ -460,7 +460,7 @@ mod tests {
 	fn a_count_domain_reports_no_millisecond_span() {
 		// A count window seals after N rows, with no elapsed time after which a further row becomes
 		// inadmissible. Handing the host a row count where it expects milliseconds would derive a
-		// node horizon from something that is not a duration; the host reads none as "no seal span".
+		// operator horizon from something that is not a duration; the host reads none as "no seal span".
 		assert_eq!(<u64 as WindowCoord>::span_millis(100), None);
 	}
 

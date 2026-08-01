@@ -231,7 +231,7 @@ pub struct GroupInterner {
 }
 
 struct GroupInternerInner {
-	nodes: DashMap<OperatorId, NodeState>,
+	operators: DashMap<OperatorId, NodeState>,
 	budget: ByteSize,
 	buckets: ActivityBuckets,
 }
@@ -246,50 +246,50 @@ impl GroupInterner {
 	pub fn new(budget: ByteSize, activity_bucket_width: u64) -> Self {
 		Self {
 			inner: Arc::new(GroupInternerInner {
-				nodes: DashMap::new(),
+				operators: DashMap::new(),
 				budget,
 				buckets: ActivityBuckets::undeclared(activity_bucket_width),
 			}),
 		}
 	}
 
-	pub fn set_activity_grid(&self, node: OperatorId, scale: Option<Duration>) {
-		let mut state = self.inner.nodes.entry(node).or_default();
+	pub fn set_activity_grid(&self, operator: OperatorId, scale: Option<Duration>) {
+		let mut state = self.inner.operators.entry(operator).or_default();
 		state.buckets = Some(activity_buckets(scale));
 	}
 
-	pub fn buckets(&self, node: OperatorId) -> ActivityBuckets {
-		self.buckets_of(node)
+	pub fn buckets(&self, operator: OperatorId) -> ActivityBuckets {
+		self.buckets_of(operator)
 	}
 
-	fn buckets_of(&self, node: OperatorId) -> ActivityBuckets {
-		self.inner.nodes.get(&node).and_then(|state| state.buckets).unwrap_or(self.inner.buckets)
+	fn buckets_of(&self, operator: OperatorId) -> ActivityBuckets {
+		self.inner.operators.get(&operator).and_then(|state| state.buckets).unwrap_or(self.inner.buckets)
 	}
 
 	pub fn intern(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		txn: &mut FlowTransaction,
 		group: &EncodedKey,
 	) -> Result<(GroupId, bool)> {
-		Ok(self.intern_many(node, txn, from_ref(group))?.into_iter().next().unwrap())
+		Ok(self.intern_many(operator, txn, from_ref(group))?.into_iter().next().unwrap())
 	}
 
 	pub fn intern_many(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		txn: &mut FlowTransaction,
 		groups: &[EncodedKey],
 	) -> Result<Vec<(GroupId, bool)>> {
 		let now = txn.clock().now();
 		let budget = self.inner.budget;
-		let mut guard = self.inner.nodes.entry(node).or_default();
-		Self::hydrate_once(&mut guard, node, txn, budget)?;
+		let mut guard = self.inner.operators.entry(operator).or_default();
+		Self::hydrate_once(&mut guard, operator, txn, budget)?;
 		let state = &mut *guard;
 		let position = Self::stamp_position(txn);
 
 		let buckets = state.buckets.unwrap_or(self.inner.buckets);
-		Self::advance_position(state, node, txn, position, buckets, now)?;
+		Self::advance_position(state, operator, txn, position, buckets, now)?;
 
 		let bucket = buckets.of(position);
 		let mut results: Vec<Option<(GroupId, bool)>> = (0..groups.len()).map(|_| None).collect();
@@ -308,7 +308,7 @@ impl GroupInterner {
 			}
 		}
 		for (i, id) in to_stamp {
-			let effective = Self::stamp(txn, node, id, &groups[i], bucket, now)?;
+			let effective = Self::stamp(txn, operator, id, &groups[i], bucket, now)?;
 			state.remember(&groups[i], id, effective);
 		}
 		if to_resolve.is_empty() {
@@ -336,7 +336,7 @@ impl GroupInterner {
 			if lookup.is_empty() {
 				HashMap::new()
 			} else {
-				let batch = txn.state_get_many(node, &lookup)?;
+				let batch = txn.state_get_many(operator, &lookup)?;
 				let mut found = HashMap::with_capacity(batch.items.len());
 				for item in batch.items {
 					let decoded = OperatorStateKey::decode(&item.key)
@@ -373,14 +373,14 @@ impl GroupInterner {
 		}
 
 		if !distinct_new.is_empty() {
-			let start = Self::mint(state, node, txn, distinct_new.len() as u64)?;
+			let start = Self::mint(state, operator, txn, distinct_new.len() as u64)?;
 			let mut assigned: HashMap<Vec<u8>, GroupId> = HashMap::with_capacity(distinct_new.len());
 			for (offset, &slot) in distinct_new.iter().enumerate() {
 				let i = to_resolve[slot];
 				let dictionary = &dictionary_keys[slot];
 				let id = GroupId(start + offset as u64);
-				txn.state_set(node, dictionary, encode_payload(&id.0, now)?)?;
-				Self::stamp(txn, node, id, &groups[i], bucket, now)?;
+				txn.state_set(operator, dictionary, encode_payload(&id.0, now)?)?;
+				Self::stamp(txn, operator, id, &groups[i], bucket, now)?;
 				state.remember(&groups[i], id, bucket);
 				state.membership.insert(membership_hash(&groups[i]));
 				assigned.insert(dictionary.as_slice().to_vec(), id);
@@ -396,7 +396,7 @@ impl GroupInterner {
 		}
 
 		for (i, id) in resolved_from_store {
-			let effective = Self::stamp(txn, node, id, &groups[i], bucket, now)?;
+			let effective = Self::stamp(txn, operator, id, &groups[i], bucket, now)?;
 			state.remember(&groups[i], id, effective);
 		}
 
@@ -420,7 +420,7 @@ impl GroupInterner {
 
 	fn stamp(
 		txn: &mut FlowTransaction,
-		node: OperatorId,
+		operator: OperatorId,
 		id: GroupId,
 		group: &EncodedKey,
 		bucket: u64,
@@ -434,7 +434,7 @@ impl GroupInterner {
 				 row-number mapping a live sink row still names (group={id:?})"
 			);
 		}
-		let effective = match Self::load_record(node, txn, id)? {
+		let effective = match Self::load_record(operator, txn, id)? {
 			Some(record) if record.activity_bucket != GroupRecord::RECLAIMED_BUCKET => {
 				record.activity_bucket.max(bucket)
 			}
@@ -444,17 +444,17 @@ impl GroupInterner {
 			return Ok(effective);
 		}
 		txn.state_set(
-			node,
+			operator,
 			&record_key(id),
 			encode_payload(&GroupRecord::new(group.as_ref().to_vec(), bucket), now)?,
 		)?;
-		txn.state_set(node, &index_key(Keyspace::ACTIVITY_INDEX, bucket, id), encode_payload(&1u64, now)?)?;
+		txn.state_set(operator, &index_key(Keyspace::ACTIVITY_INDEX, bucket, id), encode_payload(&1u64, now)?)?;
 		Ok(bucket)
 	}
 
 	fn advance_position(
 		state: &mut NodeState,
-		node: OperatorId,
+		operator: OperatorId,
 		txn: &mut FlowTransaction,
 		position: Position,
 		buckets: ActivityBuckets,
@@ -471,26 +471,26 @@ impl GroupInterner {
 		};
 		state.position = Some(position);
 		if persist {
-			txn.state_set(node, &watermark_key(), encode_payload(&position.raw(), now)?)?;
+			txn.state_set(operator, &watermark_key(), encode_payload(&position.raw(), now)?)?;
 		}
 		Ok(())
 	}
 
-	pub fn position(&self, node: OperatorId, txn: &mut FlowTransaction) -> Result<Position> {
+	pub fn position(&self, operator: OperatorId, txn: &mut FlowTransaction) -> Result<Position> {
 		let budget = self.inner.budget;
-		let mut guard = self.inner.nodes.entry(node).or_default();
-		Self::hydrate_once(&mut guard, node, txn, budget)?;
+		let mut guard = self.inner.operators.entry(operator).or_default();
+		Self::hydrate_once(&mut guard, operator, txn, budget)?;
 		Ok(guard.position.unwrap_or(Position::from_raw(0)))
 	}
 
-	pub fn defer(&self, node: OperatorId, txn: &mut FlowTransaction, id: GroupId) -> Result<bool> {
+	pub fn defer(&self, operator: OperatorId, txn: &mut FlowTransaction, id: GroupId) -> Result<bool> {
 		let budget = self.inner.budget;
 		let now = txn.clock().now();
-		let mut guard = self.inner.nodes.entry(node).or_default();
-		Self::hydrate_once(&mut guard, node, txn, budget)?;
+		let mut guard = self.inner.operators.entry(operator).or_default();
+		Self::hydrate_once(&mut guard, operator, txn, budget)?;
 		let state = &mut *guard;
 
-		let Some(record) = Self::load_record(node, txn, id)? else {
+		let Some(record) = Self::load_record(operator, txn, id)? else {
 			return Ok(false);
 		};
 		if record.is_data_reclaimed() {
@@ -499,22 +499,22 @@ impl GroupInterner {
 
 		let bucket = record.activity_bucket;
 		let group = EncodedKey::new(record.group.clone());
-		txn.state_remove(node, &index_key(Keyspace::ACTIVITY_INDEX, bucket, id))?;
-		txn.state_set(node, &index_key(Keyspace::IDENTITY_INDEX, bucket, id), encode_payload(&1u64, now)?)?;
-		txn.state_set(node, &record_key(id), encode_payload(&GroupRecord::reclaimed(record.group), now)?)?;
+		txn.state_remove(operator, &index_key(Keyspace::ACTIVITY_INDEX, bucket, id))?;
+		txn.state_set(operator, &index_key(Keyspace::IDENTITY_INDEX, bucket, id), encode_payload(&1u64, now)?)?;
+		txn.state_set(operator, &record_key(id), encode_payload(&GroupRecord::reclaimed(record.group), now)?)?;
 		state.remember(&group, id, GroupRecord::RECLAIMED_BUCKET);
 		Ok(true)
 	}
 
 	pub fn lookup(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		txn: &mut FlowTransaction,
 		group: &EncodedKey,
 	) -> Result<Option<GroupId>> {
 		let budget = self.inner.budget;
-		let mut guard = self.inner.nodes.entry(node).or_default();
-		Self::hydrate_once(&mut guard, node, txn, budget)?;
+		let mut guard = self.inner.operators.entry(operator).or_default();
+		Self::hydrate_once(&mut guard, operator, txn, budget)?;
 		let state = &mut *guard;
 
 		if let Some(interned) = state.cache.get(group) {
@@ -527,12 +527,12 @@ impl GroupInterner {
 			state.membership.count_absence();
 			return Ok(None);
 		}
-		let Some(row) = txn.state_get(node, &dictionary_key(group))? else {
+		let Some(row) = txn.state_get(operator, &dictionary_key(group))? else {
 			state.membership.record_store_miss();
 			return Ok(None);
 		};
 		let id = GroupId(decode_payload::<u64>(&row)?);
-		let bucket = match txn.state_get(node, &record_key(id))? {
+		let bucket = match txn.state_get(operator, &record_key(id))? {
 			Some(record) => decode_payload::<GroupRecord>(&record)?.activity_bucket,
 			None => 0,
 		};
@@ -541,10 +541,10 @@ impl GroupInterner {
 		Ok(Some(id))
 	}
 
-	pub fn forget(&self, node: OperatorId, txn: &mut FlowTransaction, group: &EncodedKey) -> Result<bool> {
+	pub fn forget(&self, operator: OperatorId, txn: &mut FlowTransaction, group: &EncodedKey) -> Result<bool> {
 		let budget = self.inner.budget;
-		let mut guard = self.inner.nodes.entry(node).or_default();
-		Self::hydrate_once(&mut guard, node, txn, budget)?;
+		let mut guard = self.inner.operators.entry(operator).or_default();
+		Self::hydrate_once(&mut guard, operator, txn, budget)?;
 		let state = &mut *guard;
 
 		let cached = state.cache.get(group);
@@ -554,27 +554,27 @@ impl GroupInterner {
 		if let Some(interned) = cached
 			&& interned.bucket != GroupRecord::RECLAIMED_BUCKET
 		{
-			txn.state_remove(node, &index_key(Keyspace::ACTIVITY_INDEX, interned.bucket, interned.id))?;
+			txn.state_remove(operator, &index_key(Keyspace::ACTIVITY_INDEX, interned.bucket, interned.id))?;
 		}
-		txn.state_remove(node, &dictionary_key(group))?;
+		txn.state_remove(operator, &dictionary_key(group))?;
 		Ok(existed)
 	}
 
 	pub fn due_groups(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		txn: &mut FlowTransaction,
 		cutoff: Cutoff,
 		limit: usize,
 	) -> Result<Vec<GroupId>> {
-		self.due_in(node, txn, Keyspace::ACTIVITY_INDEX, cutoff, limit, |record, bucket| {
+		self.due_in(operator, txn, Keyspace::ACTIVITY_INDEX, cutoff, limit, |record, bucket| {
 			record.activity_bucket == bucket
 		})
 	}
 
 	pub fn stamp_side(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		txn: &mut FlowTransaction,
 		id: GroupId,
 		side: Keyspace,
@@ -588,7 +588,7 @@ impl GroupInterner {
 		}
 		let now = txn.clock().now();
 		let position = Self::stamp_position(txn);
-		let bucket = self.buckets(node).of(position);
+		let bucket = self.buckets(operator).of(position);
 		reifydb_assertions! {
 			assert!(
 				bucket != GroupRecord::RECLAIMED_BUCKET,
@@ -598,19 +598,19 @@ impl GroupInterner {
 			);
 		}
 		let key = side_record_key(id, side);
-		if let Some(row) = txn.state_get(node, &key)?
+		if let Some(row) = txn.state_get(operator, &key)?
 			&& decode_payload::<u64>(&row)? >= bucket
 		{
 			return Ok(());
 		}
-		txn.state_set(node, &key, encode_payload(&bucket, now)?)?;
-		txn.state_set(node, &side_index_key(side, bucket, id), encode_payload(&1u64, now)?)?;
+		txn.state_set(operator, &key, encode_payload(&bucket, now)?)?;
+		txn.state_set(operator, &side_index_key(side, bucket, id), encode_payload(&1u64, now)?)?;
 		Ok(())
 	}
 
 	pub fn due_side_groups(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		txn: &mut FlowTransaction,
 		side: Keyspace,
 		cutoff: Cutoff,
@@ -619,12 +619,12 @@ impl GroupInterner {
 		if limit == 0 {
 			return Ok(Vec::new());
 		}
-		let first_live = self.buckets_of(node).first_live(cutoff);
+		let first_live = self.buckets_of(operator).first_live(cutoff);
 		let range = EncodedKeyRange::new(
 			Bound::Included(side_index_bound(side, 0).into_encoded()),
 			Bound::Excluded(side_index_bound(side, first_live).into_encoded()),
 		);
-		let batch = txn.state_range(node, range, Some(limit))?;
+		let batch = txn.state_range(operator, range, Some(limit))?;
 
 		let mut due = Vec::new();
 		let mut stale: Vec<GroupStateKey> = Vec::new();
@@ -645,7 +645,7 @@ impl GroupInterner {
 					 found={_found:?})"
 				);
 			}
-			let current = match txn.state_get(node, &side_record_key(id, side))? {
+			let current = match txn.state_get(operator, &side_record_key(id, side))? {
 				Some(row) => Some(decode_payload::<u64>(&row)?),
 				None => None,
 			};
@@ -656,34 +656,36 @@ impl GroupInterner {
 			}
 		}
 		for key in &stale {
-			txn.state_remove(node, key)?;
+			txn.state_remove(operator, key)?;
 		}
 		Ok(due)
 	}
 
 	pub fn forget_side(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		txn: &mut FlowTransaction,
 		id: GroupId,
 		side: Keyspace,
 	) -> Result<()> {
-		txn.state_remove(node, &side_record_key(id, side))
+		txn.state_remove(operator, &side_record_key(id, side))
 	}
 
 	pub fn due_identity_groups(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		txn: &mut FlowTransaction,
 		cutoff: Cutoff,
 		limit: usize,
 	) -> Result<Vec<GroupId>> {
-		self.due_in(node, txn, Keyspace::IDENTITY_INDEX, cutoff, limit, |record, _| record.is_data_reclaimed())
+		self.due_in(operator, txn, Keyspace::IDENTITY_INDEX, cutoff, limit, |record, _| {
+			record.is_data_reclaimed()
+		})
 	}
 
 	fn due_in(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		txn: &mut FlowTransaction,
 		keyspace: Keyspace,
 		cutoff: Cutoff,
@@ -693,12 +695,12 @@ impl GroupInterner {
 		if limit == 0 {
 			return Ok(Vec::new());
 		}
-		let first_live = self.buckets_of(node).first_live(cutoff);
+		let first_live = self.buckets_of(operator).first_live(cutoff);
 		let range = EncodedKeyRange::new(
 			Bound::Included(index_bound(keyspace, 0).into_encoded()),
 			Bound::Excluded(index_bound(keyspace, first_live).into_encoded()),
 		);
-		let batch = txn.state_range(node, range, Some(limit))?;
+		let batch = txn.state_range(operator, range, Some(limit))?;
 
 		let mut due = Vec::new();
 		let mut stale: Vec<GroupStateKey> = Vec::new();
@@ -719,20 +721,20 @@ impl GroupInterner {
 			let Some((bucket, id)) = decode_activity_suffix(&inner.2) else {
 				continue;
 			};
-			match Self::load_record(node, txn, id)? {
+			match Self::load_record(operator, txn, id)? {
 				Some(record) if live(&record, bucket) => due.push(id),
 				_ => stale.push(GroupStateKey::from_framed(EncodedKey::new(decoded.key.clone()))
 					.expect("the index range yields framed inner keys")),
 			}
 		}
 		for key in &stale {
-			txn.state_remove(node, key)?;
+			txn.state_remove(operator, key)?;
 		}
 		Ok(due)
 	}
 
-	fn load_record(node: OperatorId, txn: &mut FlowTransaction, id: GroupId) -> Result<Option<GroupRecord>> {
-		let Some(row) = txn.state_get(node, &record_key(id))? else {
+	fn load_record(operator: OperatorId, txn: &mut FlowTransaction, id: GroupId) -> Result<Option<GroupRecord>> {
+		let Some(row) = txn.state_get(operator, &record_key(id))? else {
 			return Ok(None);
 		};
 		Ok(Some(decode_payload::<GroupRecord>(&row)?))
@@ -740,11 +742,11 @@ impl GroupInterner {
 
 	pub fn group_bytes(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		txn: &mut FlowTransaction,
 		id: GroupId,
 	) -> Result<Option<EncodedKey>> {
-		let Some(row) = txn.state_get(node, &record_key(id))? else {
+		let Some(row) = txn.state_get(operator, &record_key(id))? else {
 			return Ok(None);
 		};
 		Ok(Some(EncodedKey::new(decode_payload::<GroupRecord>(&row)?.group)))
@@ -753,7 +755,7 @@ impl GroupInterner {
 	pub fn samples(&self) -> Vec<(OperatorId, GroupInternerSample)> {
 		let mut out: Vec<(OperatorId, GroupInternerSample)> = self
 			.inner
-			.nodes
+			.operators
 			.iter()
 			.map(|entry| {
 				let state = entry.value();
@@ -767,13 +769,13 @@ impl GroupInterner {
 				)
 			})
 			.collect();
-		out.sort_by_key(|(node, _)| *node);
+		out.sort_by_key(|(operator, _)| *operator);
 		out
 	}
 
 	fn hydrate_once(
 		state: &mut NodeState,
-		node: OperatorId,
+		operator: OperatorId,
 		txn: &mut FlowTransaction,
 		budget: ByteSize,
 	) -> Result<()> {
@@ -782,7 +784,7 @@ impl GroupInterner {
 		}
 		state.hydrated = true;
 		state.complete = true;
-		if let Some(row) = txn.state_get(node, &watermark_key())? {
+		if let Some(row) = txn.state_get(operator, &watermark_key())? {
 			state.position = Some(Position::from_raw(decode_payload::<u64>(&row)?));
 		}
 		let base = keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY);
@@ -790,7 +792,7 @@ impl GroupInterner {
 		let mut start = base.start.clone();
 		loop {
 			let range = EncodedKeyRange::new(start, base.end.clone());
-			let batch = txn.state_range(node, range, Some(HYDRATE_CHUNK))?;
+			let batch = txn.state_range(operator, range, Some(HYDRATE_CHUNK))?;
 			let mut last_inner: Option<EncodedKey> = None;
 			for item in &batch.items {
 				let decoded = OperatorStateKey::decode(&item.key)
@@ -802,7 +804,7 @@ impl GroupInterner {
 					assert!(
 						group_id == GroupId::NODE_SCOPE
 							&& keyspace == Keyspace::GROUP_DICTIONARY,
-						"the dictionary range scan must only yield node-scope dictionary keys; \
+						"the dictionary range scan must only yield operator-scope dictionary keys; \
 						 anything else means the range bounds are wrong and hydration would \
 						 poison the interning cache with another keyspace's payloads \
 						 (group={group_id:?}, keyspace={keyspace:?})"
@@ -811,7 +813,7 @@ impl GroupInterner {
 				let group = EncodedKey::new(inner.2);
 				hashes.push(membership_hash(&group));
 				let id = GroupId(decode_payload::<u64>(&item.row)?);
-				let bucket = match txn.state_get(node, &record_key(id))? {
+				let bucket = match txn.state_get(operator, &record_key(id))? {
 					Some(row) => decode_payload::<GroupRecord>(&row)?.activity_bucket,
 					None => 0,
 				};
@@ -831,10 +833,10 @@ impl GroupInterner {
 		Ok(())
 	}
 
-	fn mint(state: &mut NodeState, node: OperatorId, txn: &mut FlowTransaction, count: u64) -> Result<u64> {
+	fn mint(state: &mut NodeState, operator: OperatorId, txn: &mut FlowTransaction, count: u64) -> Result<u64> {
 		let seed = match state.next {
 			Some(next) => next,
-			None => match txn.state_get(node, &counter_key())? {
+			None => match txn.state_get(operator, &counter_key())? {
 				Some(row) => decode_payload::<u64>(&row)?,
 				None => GroupId::FIRST.0,
 			},
@@ -842,7 +844,7 @@ impl GroupInterner {
 		reifydb_assertions! {
 			assert!(
 				seed >= GroupId::FIRST.0,
-				"group id 0 is reserved for node scope, where the interning dictionary and the \
+				"group id 0 is reserved for operator scope, where the interning dictionary and the \
 				 counter live; minting it would put a real group's state on top of the table that \
 				 resolves every group (seed={seed})"
 			);
@@ -850,7 +852,7 @@ impl GroupInterner {
 		let high_water = seed + count;
 		state.next = Some(high_water);
 		let now = txn.clock().now();
-		txn.state_set(node, &counter_key(), encode_payload(&high_water, now)?)?;
+		txn.state_set(operator, &counter_key(), encode_payload(&high_water, now)?)?;
 		Ok(seed)
 	}
 }
@@ -912,24 +914,24 @@ mod tests {
 
 	fn intern_at(
 		interner: &GroupInterner,
-		node: OperatorId,
+		operator: OperatorId,
 		txn: &mut FlowTransaction,
 		group: &EncodedKey,
 		position: Position,
 	) -> Result<(GroupId, bool)> {
 		set_position(txn, position);
-		interner.intern(node, txn, group)
+		interner.intern(operator, txn, group)
 	}
 
 	fn intern_many_at(
 		interner: &GroupInterner,
-		node: OperatorId,
+		operator: OperatorId,
 		txn: &mut FlowTransaction,
 		groups: &[EncodedKey],
 		position: Position,
 	) -> Result<Vec<(GroupId, bool)>> {
 		set_position(txn, position);
-		interner.intern_many(node, txn, groups)
+		interner.intern_many(operator, txn, groups)
 	}
 
 	#[test]
@@ -1033,7 +1035,7 @@ mod tests {
 			intern_at(&interner, NODE, &mut txn, &group("first"), Position(DateTime::from_nanos(0)))
 				.unwrap();
 
-		assert_eq!(id, GroupId::FIRST, "the first group must not take the node-scope id");
+		assert_eq!(id, GroupId::FIRST, "the first group must not take the operator-scope id");
 		assert!(!id.is_node_scope());
 		assert!(is_new, "a never-seen group must report as newly interned");
 	}
@@ -1634,9 +1636,9 @@ mod tests {
 		.unwrap();
 
 		let ActivityBuckets::Undeclared(wide_grid) = interner.buckets(OperatorId(1)) else {
-			panic!("an unconfigured node declares no domain to bucket in");
+			panic!("an unconfigured operator declares no domain to bucket in");
 		};
-		assert_eq!(wide_grid.width(), 1_000, "an unconfigured node keeps the default");
+		assert_eq!(wide_grid.width(), 1_000, "an unconfigured operator keeps the default");
 		assert_eq!(
 			interner.buckets(OperatorId(2))
 				.event_grid()
@@ -1648,12 +1650,12 @@ mod tests {
 			interner.due_groups(OperatorId(1), &mut txn, Cutoff(DateTime::from_nanos(999)), 10)
 				.unwrap()
 				.is_empty(),
-			"the wide node's group is still inside its first bucket"
+			"the wide operator's group is still inside its first bucket"
 		);
 		assert_eq!(
 			interner.due_groups(OperatorId(2), &mut txn, Cutoff(DateTime::from_millis(999)), 10).unwrap(),
 			vec![narrow],
-			"the narrow node's group has cleared several of its own buckets by the same cutoff"
+			"the narrow operator's group has cleared several of its own buckets by the same cutoff"
 		);
 		assert_eq!(
 			interner.due_groups(OperatorId(1), &mut txn, Cutoff(DateTime::from_nanos(1_000)), 10).unwrap(),
@@ -1840,7 +1842,7 @@ mod tests {
 		.unwrap()
 		.0;
 
-		assert_eq!(first, second, "each node numbers its own groups from the same starting point");
+		assert_eq!(first, second, "each operator numbers its own groups from the same starting point");
 
 		let other = intern_at(
 			&interner,
@@ -1855,87 +1857,92 @@ mod tests {
 		assert_eq!(
 			interner.lookup(OperatorId(1), &mut txn, &group("only-on-two")).unwrap(),
 			None,
-			"a group interned on one node must not resolve on another"
+			"a group interned on one operator must not resolve on another"
 		);
 		assert_ne!(other, first);
 	}
 }
 
 impl FlowTransaction {
-	pub fn intern_group(&mut self, node: OperatorId, group: &EncodedKey) -> Result<(GroupId, bool)> {
+	pub fn intern_group(&mut self, operator: OperatorId, group: &EncodedKey) -> Result<(GroupId, bool)> {
 		let interner = self.group_interner();
-		let (id, is_new) = interner.intern(node, self, group)?;
+		let (id, is_new) = interner.intern(operator, self, group)?;
 		if is_new {
-			self.row_numbers().mark_fresh(node, id);
+			self.row_numbers().mark_fresh(operator, id);
 		}
 		Ok((id, is_new))
 	}
 
-	pub fn intern_groups(&mut self, node: OperatorId, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
+	pub fn intern_groups(&mut self, operator: OperatorId, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
 		let interner = self.group_interner();
-		let results = interner.intern_many(node, self, groups)?;
+		let results = interner.intern_many(operator, self, groups)?;
 		let provider = self.row_numbers();
 		for (id, is_new) in &results {
 			if *is_new {
-				provider.mark_fresh(node, *id);
+				provider.mark_fresh(operator, *id);
 			}
 		}
 		Ok(results)
 	}
 
-	pub fn due_groups(&mut self, node: OperatorId, cutoff: Cutoff, limit: usize) -> Result<Vec<GroupId>> {
+	pub fn due_groups(&mut self, operator: OperatorId, cutoff: Cutoff, limit: usize) -> Result<Vec<GroupId>> {
 		let interner = self.group_interner();
-		interner.due_groups(node, self, cutoff, limit)
+		interner.due_groups(operator, self, cutoff, limit)
 	}
 
-	pub fn due_identity_groups(&mut self, node: OperatorId, cutoff: Cutoff, limit: usize) -> Result<Vec<GroupId>> {
+	pub fn due_identity_groups(
+		&mut self,
+		operator: OperatorId,
+		cutoff: Cutoff,
+		limit: usize,
+	) -> Result<Vec<GroupId>> {
 		let interner = self.group_interner();
-		interner.due_identity_groups(node, self, cutoff, limit)
+		interner.due_identity_groups(operator, self, cutoff, limit)
 	}
 
-	pub fn stamp_side(&mut self, node: OperatorId, id: GroupId, side: Keyspace) -> Result<()> {
+	pub fn stamp_side(&mut self, operator: OperatorId, id: GroupId, side: Keyspace) -> Result<()> {
 		let interner = self.group_interner();
-		interner.stamp_side(node, self, id, side)
+		interner.stamp_side(operator, self, id, side)
 	}
 
 	pub fn due_side_groups(
 		&mut self,
-		node: OperatorId,
+		operator: OperatorId,
 		side: Keyspace,
 		cutoff: Cutoff,
 		limit: usize,
 	) -> Result<Vec<GroupId>> {
 		let interner = self.group_interner();
-		interner.due_side_groups(node, self, side, cutoff, limit)
+		interner.due_side_groups(operator, self, side, cutoff, limit)
 	}
 
-	pub fn forget_side(&mut self, node: OperatorId, id: GroupId, side: Keyspace) -> Result<()> {
+	pub fn forget_side(&mut self, operator: OperatorId, id: GroupId, side: Keyspace) -> Result<()> {
 		let interner = self.group_interner();
-		interner.forget_side(node, self, id, side)
+		interner.forget_side(operator, self, id, side)
 	}
 
-	pub fn node_position(&mut self, node: OperatorId) -> Result<Position> {
+	pub fn node_position(&mut self, operator: OperatorId) -> Result<Position> {
 		let interner = self.group_interner();
-		interner.position(node, self)
+		interner.position(operator, self)
 	}
 
-	pub fn defer_group(&mut self, node: OperatorId, id: GroupId) -> Result<bool> {
+	pub fn defer_group(&mut self, operator: OperatorId, id: GroupId) -> Result<bool> {
 		let interner = self.group_interner();
-		interner.defer(node, self, id)
+		interner.defer(operator, self, id)
 	}
 
-	pub fn lookup_group(&mut self, node: OperatorId, group: &EncodedKey) -> Result<Option<GroupId>> {
+	pub fn lookup_group(&mut self, operator: OperatorId, group: &EncodedKey) -> Result<Option<GroupId>> {
 		let interner = self.group_interner();
-		interner.lookup(node, self, group)
+		interner.lookup(operator, self, group)
 	}
 
-	pub fn forget_group(&mut self, node: OperatorId, group: &EncodedKey) -> Result<bool> {
+	pub fn forget_group(&mut self, operator: OperatorId, group: &EncodedKey) -> Result<bool> {
 		let interner = self.group_interner();
-		interner.forget(node, self, group)
+		interner.forget(operator, self, group)
 	}
 
-	pub fn group_bytes(&mut self, node: OperatorId, id: GroupId) -> Result<Option<EncodedKey>> {
+	pub fn group_bytes(&mut self, operator: OperatorId, id: GroupId) -> Result<Option<EncodedKey>> {
 		let interner = self.group_interner();
-		interner.group_bytes(node, self, id)
+		interner.group_bytes(operator, self, id)
 	}
 }

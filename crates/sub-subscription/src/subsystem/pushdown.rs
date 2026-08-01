@@ -21,12 +21,12 @@ pub(super) fn append_pushdown(q: &mut String, pd: SourcePushdown) {
 pub(super) fn walk_for_source_pushdown(flow: &FlowDag, source_id: &OperatorId) -> SourcePushdown {
 	let mut parts: Vec<String> = Vec::new();
 	let mut current = *source_id;
-	while let Some(node) = flow.get_node(&current) {
-		if node.outputs.len() != 1 {
+	while let Some(operator) = flow.get_operator(&current) {
+		if operator.outputs.len() != 1 {
 			break;
 		}
-		let next_id = node.outputs[0];
-		let next = match flow.get_node(&next_id) {
+		let next_id = operator.outputs[0];
+		let next = match flow.get_operator(&next_id) {
 			Some(n) => n,
 			None => break,
 		};

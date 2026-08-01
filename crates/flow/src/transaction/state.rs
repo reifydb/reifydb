@@ -20,7 +20,7 @@ use super::FlowTransaction;
 
 impl FlowTransaction {
 	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
-		node_id = id.0,
+		operator_id = id.0,
 		key_len = key.as_slice().len(),
 		found = field::Empty
 	))]
@@ -31,7 +31,7 @@ impl FlowTransaction {
 	}
 
 	#[instrument(name = "flow::state::get_many", level = "debug", skip(self, keys), fields(
-		node_id = id.0,
+		operator_id = id.0,
 		key_count = keys.len(),
 		found_count = field::Empty
 	))]
@@ -42,7 +42,7 @@ impl FlowTransaction {
 	}
 
 	#[instrument(name = "flow::state::set", level = "trace", skip(self, value), fields(
-		node_id = id.0,
+		operator_id = id.0,
 		key_len = key.as_slice().len(),
 		value_len = value.len()
 	))]
@@ -51,7 +51,7 @@ impl FlowTransaction {
 	}
 
 	#[instrument(name = "flow::state::remove", level = "trace", skip(self), fields(
-		node_id = id.0,
+		operator_id = id.0,
 		key_len = key.as_slice().len()
 	))]
 	pub fn state_remove(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<()> {
@@ -59,7 +59,7 @@ impl FlowTransaction {
 	}
 
 	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
-		node_id = id.0,
+		operator_id = id.0,
 		result_count = field::Empty
 	))]
 	pub fn state_scan_all(&mut self, id: OperatorId) -> Result<MultiVersionBatch> {
@@ -77,7 +77,7 @@ impl FlowTransaction {
 	}
 
 	#[instrument(name = "flow::state::range", level = "debug", skip(self, range), fields(
-		node_id = id.0
+		operator_id = id.0
 	))]
 	pub fn state_range_all(&mut self, id: OperatorId, range: EncodedKeyRange) -> Result<MultiVersionBatch> {
 		let prefixed_range = range.with_prefix(OperatorStateKey::encoded(id, vec![]));
@@ -93,7 +93,7 @@ impl FlowTransaction {
 	}
 
 	#[instrument(name = "flow::state::range_limited", level = "debug", skip(self, range), fields(
-		node_id = id.0
+		operator_id = id.0
 	))]
 	pub fn state_range(
 		&mut self,
@@ -120,7 +120,7 @@ impl FlowTransaction {
 	}
 
 	#[instrument(name = "flow::state::clear", level = "trace", skip(self), fields(
-		node_id = id.0,
+		operator_id = id.0,
 		keys_removed = field::Empty
 	))]
 	pub fn state_clear(&mut self, id: OperatorId) -> Result<()> {
@@ -134,7 +134,7 @@ impl FlowTransaction {
 	}
 
 	#[inline]
-	#[instrument(name = "flow::state::clear::scan", level = "trace", skip(self), fields(node_id = id.0))]
+	#[instrument(name = "flow::state::clear::scan", level = "trace", skip(self), fields(operator_id = id.0))]
 	fn scan_keys_for_clear(&mut self, id: OperatorId) -> Result<Vec<EncodedKey>> {
 		let range = OperatorStateKey::node_range(id);
 		let iter = self.range(range, RangeScope::All, 1024);
@@ -156,7 +156,7 @@ impl FlowTransaction {
 	}
 
 	#[instrument(name = "flow::state::load_or_create", level = "debug", skip(self, shape), fields(
-		node_id = id.0,
+		operator_id = id.0,
 		key_len = key.as_slice().len(),
 		created
 	))]
@@ -179,7 +179,7 @@ impl FlowTransaction {
 	}
 
 	#[instrument(name = "flow::state::save", level = "trace", skip(self, row), fields(
-		node_id = id.0,
+		operator_id = id.0,
 		key_len = key.as_slice().len()
 	))]
 	pub fn save_row(&mut self, id: OperatorId, key: &GroupStateKey, row: EncodedRow) -> Result<()> {
@@ -337,13 +337,13 @@ pub mod tests {
 
 	fn commit_state_row(
 		engine: &TestEngine,
-		node: OperatorId,
+		operator: OperatorId,
 		key: &GroupStateKey,
 		row: EncodedRow,
 	) -> CommitVersion {
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 		cmd.disable_conflict_tracking().unwrap();
-		cmd.set(&OperatorStateKey::encoded(node, key.as_slice()), row).unwrap();
+		cmd.set(&OperatorStateKey::encoded(operator, key.as_slice()), row).unwrap();
 		cmd.commit_unchecked().unwrap()
 	}
 
@@ -376,13 +376,13 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let key = make_key("state_key");
 		let value = make_value("state_value");
 
-		txn.state_set(node_id, &key, value.clone()).unwrap();
+		txn.state_set(operator_id, &key, value.clone()).unwrap();
 
-		let result = txn.state_get(node_id, &key).unwrap();
+		let result = txn.state_get(operator_id, &key).unwrap();
 		assert_eq!(result, Some(value));
 	}
 
@@ -397,15 +397,16 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = OperatorId(1);
-		txn.state_set(node_id, &make_key("a"), make_value("1")).unwrap();
-		txn.state_set(node_id, &make_key("b"), make_value("2")).unwrap();
+		let operator_id = OperatorId(1);
+		txn.state_set(operator_id, &make_key("a"), make_value("1")).unwrap();
+		txn.state_set(operator_id, &make_key("b"), make_value("2")).unwrap();
 
 		// One namespace, so re-writing a key resolves to the latest value; re-splitting the
 		// envelopes would return two rows for "a" here.
-		txn.state_set(node_id, &make_key("a"), make_value("data")).unwrap();
+		txn.state_set(operator_id, &make_key("a"), make_value("data")).unwrap();
 
-		let batch = txn.state_get_many(node_id, &[make_key("a"), make_key("b"), make_key("missing")]).unwrap();
+		let batch =
+			txn.state_get_many(operator_id, &[make_key("a"), make_key("b"), make_key("missing")]).unwrap();
 
 		// A key with no value is omitted rather than returned empty.
 		assert_eq!(batch.items.len(), 2);
@@ -430,10 +431,10 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let key = make_key("missing");
 
-		let result = txn.state_get(node_id, &key).unwrap();
+		let result = txn.state_get(operator_id, &key).unwrap();
 		assert_eq!(result, None);
 	}
 
@@ -448,15 +449,15 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let key = make_key("state_key");
 		let value = make_value("state_value");
 
-		txn.state_set(node_id, &key, value.clone()).unwrap();
-		assert_eq!(txn.state_get(node_id, &key).unwrap(), Some(value));
+		txn.state_set(operator_id, &key, value.clone()).unwrap();
+		assert_eq!(txn.state_get(operator_id, &key).unwrap(), Some(value));
 
-		txn.state_remove(node_id, &key).unwrap();
-		assert_eq!(txn.state_get(node_id, &key).unwrap(), None);
+		txn.state_remove(operator_id, &key).unwrap();
+		assert_eq!(txn.state_get(operator_id, &key).unwrap(), None);
 	}
 
 	#[test]
@@ -492,13 +493,13 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 
-		txn.state_set(node_id, &make_key("key1"), make_value("value1")).unwrap();
-		txn.state_set(node_id, &make_key("key2"), make_value("value2")).unwrap();
-		txn.state_set(node_id, &make_key("key3"), make_value("value3")).unwrap();
+		txn.state_set(operator_id, &make_key("key1"), make_value("value1")).unwrap();
+		txn.state_set(operator_id, &make_key("key2"), make_value("value2")).unwrap();
+		txn.state_set(operator_id, &make_key("key3"), make_value("value3")).unwrap();
 
-		let iter = txn.state_scan_all(node_id).unwrap();
+		let iter = txn.state_scan_all(operator_id).unwrap();
 		let items: Vec<_> = iter.items.into_iter().collect();
 
 		assert_eq!(items.len(), 3);
@@ -540,9 +541,9 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 
-		let iter = txn.state_scan_all(node_id).unwrap();
+		let iter = txn.state_scan_all(operator_id).unwrap();
 		assert!(iter.items.into_iter().next().is_none());
 	}
 
@@ -557,18 +558,18 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 
-		txn.state_set(node_id, &make_key("a"), make_value("1")).unwrap();
-		txn.state_set(node_id, &make_key("b"), make_value("2")).unwrap();
-		txn.state_set(node_id, &make_key("c"), make_value("3")).unwrap();
-		txn.state_set(node_id, &make_key("d"), make_value("4")).unwrap();
+		txn.state_set(operator_id, &make_key("a"), make_value("1")).unwrap();
+		txn.state_set(operator_id, &make_key("b"), make_value("2")).unwrap();
+		txn.state_set(operator_id, &make_key("c"), make_value("3")).unwrap();
+		txn.state_set(operator_id, &make_key("d"), make_value("4")).unwrap();
 
 		let range = EncodedKeyRange::new(
 			Bound::Included(make_key("b").into_encoded()),
 			Bound::Excluded(make_key("d").into_encoded()),
 		);
-		let iter = txn.state_range_all(node_id, range).unwrap();
+		let iter = txn.state_range_all(operator_id, range).unwrap();
 		let items: Vec<_> = iter.items.into_iter().collect();
 
 		assert_eq!(items.len(), 2);
@@ -585,17 +586,17 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 
-		txn.state_set(node_id, &make_key("key1"), make_value("value1")).unwrap();
-		txn.state_set(node_id, &make_key("key2"), make_value("value2")).unwrap();
-		txn.state_set(node_id, &make_key("key3"), make_value("value3")).unwrap();
+		txn.state_set(operator_id, &make_key("key1"), make_value("value1")).unwrap();
+		txn.state_set(operator_id, &make_key("key2"), make_value("value2")).unwrap();
+		txn.state_set(operator_id, &make_key("key3"), make_value("value3")).unwrap();
 
-		assert_eq!(txn.state_scan_all(node_id).unwrap().items.into_iter().count(), 3);
+		assert_eq!(txn.state_scan_all(operator_id).unwrap().items.into_iter().count(), 3);
 
-		txn.state_clear(node_id).unwrap();
+		txn.state_clear(operator_id).unwrap();
 
-		assert_eq!(txn.state_scan_all(node_id).unwrap().items.into_iter().count(), 0);
+		assert_eq!(txn.state_scan_all(operator_id).unwrap().items.into_iter().count(), 0);
 	}
 
 	#[test]
@@ -633,9 +634,9 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 
-		txn.state_clear(node_id).unwrap();
+		txn.state_clear(operator_id).unwrap();
 	}
 
 	#[test]
@@ -649,14 +650,14 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let key = make_key("key1");
 		let value = make_value("existing");
 		let shape = RowShape::testing(&[ValueType::Int8, ValueType::Float8]);
 
-		txn.state_set(node_id, &key, value.clone()).unwrap();
+		txn.state_set(operator_id, &key, value.clone()).unwrap();
 
-		let result = txn.load_or_create_row(node_id, &key, &shape).unwrap();
+		let result = txn.load_or_create_row(operator_id, &key, &shape).unwrap();
 		assert_eq!(result, value);
 	}
 
@@ -671,11 +672,11 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let key = make_key("key1");
 		let shape = RowShape::testing(&[ValueType::Int8, ValueType::Float8]);
 
-		let result = txn.load_or_create_row(node_id, &key, &shape).unwrap();
+		let result = txn.load_or_create_row(operator_id, &key, &shape).unwrap();
 
 		assert!(!result.is_empty());
 	}
@@ -691,13 +692,13 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let key = make_key("key1");
 		let row = make_value("row_data");
 
-		txn.save_row(node_id, &key, row.clone()).unwrap();
+		txn.save_row(operator_id, &key, row.clone()).unwrap();
 
-		let result = txn.state_get(node_id, &key).unwrap();
+		let result = txn.state_get(operator_id, &key).unwrap();
 		assert_eq!(result, Some(row));
 	}
 
@@ -736,9 +737,9 @@ pub mod tests {
 		// the reads that leave the transaction and never the ones the pending overlay serves, or
 		// the profiler misattributes the read amplification it exists to measure.
 		let engine = TestEngine::new();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let committed_key = make_key("committed");
-		commit_state_row(&engine, node_id, &committed_key, make_value("v"));
+		commit_state_row(&engine, operator_id, &committed_key, make_value("v"));
 
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
@@ -753,24 +754,24 @@ pub mod tests {
 
 		// A write is a pure overlay operation: neither it nor its overlay-served read-back counts.
 		let pending_key = make_key("pending");
-		txn.state_set(node_id, &pending_key, make_value("p")).unwrap();
-		assert_eq!(txn.state_get(node_id, &pending_key).unwrap(), Some(make_value("p")));
+		txn.state_set(operator_id, &pending_key, make_value("p")).unwrap();
+		assert_eq!(txn.state_get(operator_id, &pending_key).unwrap(), Some(make_value("p")));
 		assert_eq!(txn.store_reads(), 0, "overlay-served reads must not count as store reads");
 
 		// A committed row and a miss both reach the store: one point get each.
-		assert!(txn.state_get(node_id, &committed_key).unwrap().is_some());
+		assert!(txn.state_get(operator_id, &committed_key).unwrap().is_some());
 		assert_eq!(txn.store_reads(), 1);
-		assert!(txn.state_get(node_id, &make_key("absent")).unwrap().is_none());
+		assert!(txn.state_get(operator_id, &make_key("absent")).unwrap().is_none());
 		assert_eq!(txn.store_reads(), 2, "a store-reaching miss is still a store read");
 
 		// Batched reads count per external key, not per call.
-		let batch = txn.state_get_many(node_id, &[make_key("absent_a"), make_key("absent_b")]).unwrap();
+		let batch = txn.state_get_many(operator_id, &[make_key("absent_a"), make_key("absent_b")]).unwrap();
 		assert!(batch.items.is_empty());
 		assert_eq!(txn.store_reads(), 4);
 
 		// State writes carry their own anchors, so no write ever reads the prior row back.
 		let wide_key = make_key("wide");
-		txn.state_set(node_id, &wide_key, EncodedRow(CowVec::new(vec![0u8; 32]))).unwrap();
+		txn.state_set(operator_id, &wide_key, EncodedRow(CowVec::new(vec![0u8; 32]))).unwrap();
 		assert_eq!(txn.store_reads(), 4, "a state write must never reach the store");
 	}
 
@@ -780,9 +781,9 @@ pub mod tests {
 		// point or batch) must come from the read-through cache. Without it every operator re-pays
 		// a store roundtrip for state it already loaded in the same slice.
 		let engine = TestEngine::new();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let committed_key = make_key("committed");
-		commit_state_row(&engine, node_id, &committed_key, make_value("v"));
+		commit_state_row(&engine, operator_id, &committed_key, make_value("v"));
 
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
@@ -794,25 +795,28 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		assert_eq!(txn.state_get(node_id, &committed_key).unwrap(), Some(make_value("v")));
+		assert_eq!(txn.state_get(operator_id, &committed_key).unwrap(), Some(make_value("v")));
 		assert_eq!(txn.store_reads(), 1);
-		assert_eq!(txn.state_get(node_id, &committed_key).unwrap(), Some(make_value("v")));
+		assert_eq!(txn.state_get(operator_id, &committed_key).unwrap(), Some(make_value("v")));
 		assert_eq!(txn.store_reads(), 1, "a repeated state read must be served from the cache");
 
-		assert_eq!(txn.state_get(node_id, &make_key("absent")).unwrap(), None);
+		assert_eq!(txn.state_get(operator_id, &make_key("absent")).unwrap(), None);
 		assert_eq!(txn.store_reads(), 2);
-		assert_eq!(txn.state_get(node_id, &make_key("absent")).unwrap(), None);
+		assert_eq!(txn.state_get(operator_id, &make_key("absent")).unwrap(), None);
 		assert_eq!(txn.store_reads(), 2, "a miss must be cached too, or absent-key probes re-scan forever");
 
 		// The batch path shares the cache in both directions: prior point reads are not
 		// re-fetched, and batch-fetched keys serve later point reads.
 		let batch = txn
-			.state_get_many(node_id, &[committed_key.clone(), make_key("absent"), make_key("batch_only")])
+			.state_get_many(
+				operator_id,
+				&[committed_key.clone(), make_key("absent"), make_key("batch_only")],
+			)
 			.unwrap();
 		assert_eq!(batch.items.len(), 1);
 		assert_eq!(batch.items[0].row, make_value("v"));
 		assert_eq!(txn.store_reads(), 3, "only the never-read key may reach the store");
-		assert_eq!(txn.state_get(node_id, &make_key("batch_only")).unwrap(), None);
+		assert_eq!(txn.state_get(operator_id, &make_key("batch_only")).unwrap(), None);
 		assert_eq!(txn.store_reads(), 3);
 	}
 
@@ -822,9 +826,9 @@ pub mod tests {
 		// wins on every later read. Consulting the cache first would let an operator read back its
 		// own stale pre-write state and fold updates into a dead accumulator.
 		let engine = TestEngine::new();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let key = make_key("k");
-		commit_state_row(&engine, node_id, &key, make_value("old"));
+		commit_state_row(&engine, operator_id, &key, make_value("old"));
 
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
@@ -836,20 +840,20 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		assert_eq!(txn.state_get(node_id, &key).unwrap(), Some(make_value("old")));
-		txn.state_set(node_id, &key, make_value("new")).unwrap();
-		assert_eq!(txn.state_get(node_id, &key).unwrap(), Some(make_value("new")));
+		assert_eq!(txn.state_get(operator_id, &key).unwrap(), Some(make_value("old")));
+		txn.state_set(operator_id, &key, make_value("new")).unwrap();
+		assert_eq!(txn.state_get(operator_id, &key).unwrap(), Some(make_value("new")));
 
-		txn.state_remove(node_id, &key).unwrap();
-		assert_eq!(txn.state_get(node_id, &key).unwrap(), None);
-		let batch = txn.state_get_many(node_id, &[key.clone()]).unwrap();
+		txn.state_remove(operator_id, &key).unwrap();
+		assert_eq!(txn.state_get(operator_id, &key).unwrap(), None);
+		let batch = txn.state_get_many(operator_id, &[key.clone()]).unwrap();
 		assert!(batch.items.is_empty(), "a removed key must not resurface through the batch path");
 
 		// A key first seen as a cached miss must surface a later write.
 		let fresh = make_key("fresh");
-		assert_eq!(txn.state_get(node_id, &fresh).unwrap(), None);
-		txn.state_set(node_id, &fresh, make_value("live")).unwrap();
-		assert_eq!(txn.state_get(node_id, &fresh).unwrap(), Some(make_value("live")));
+		assert_eq!(txn.state_get(operator_id, &fresh).unwrap(), None);
+		txn.state_set(operator_id, &fresh, make_value("live")).unwrap();
+		assert_eq!(txn.state_get(operator_id, &fresh).unwrap(), Some(make_value("live")));
 	}
 
 	#[test]
@@ -858,9 +862,9 @@ pub mod tests {
 		// op. Reading the prior row back to carry created_at forward costs a store read per written
 		// key per flush, and defeats the caches above once one of them serves the load.
 		let engine = TestEngine::new();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let key = make_key("acc");
-		commit_state_row(&engine, node_id, &key, anchored_row(b"v0", 1_000, 1_000));
+		commit_state_row(&engine, operator_id, &key, anchored_row(b"v0", 1_000, 1_000));
 
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
@@ -872,12 +876,12 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		assert!(txn.state_get(node_id, &key).unwrap().is_some());
+		assert!(txn.state_get(operator_id, &key).unwrap().is_some());
 		assert_eq!(txn.store_reads(), 1);
-		txn.state_set(node_id, &key, anchored_row(b"v1", 5_000, 5_000)).unwrap();
+		txn.state_set(operator_id, &key, anchored_row(b"v1", 5_000, 5_000)).unwrap();
 		assert_eq!(txn.store_reads(), 1, "a save must not read the prior row back");
 
-		let stored = txn.state_get(node_id, &key).unwrap().unwrap();
+		let stored = txn.state_get(operator_id, &key).unwrap().unwrap();
 		assert_eq!(
 			stored.created_at(),
 			DateTime::from_nanos(5_000),
@@ -892,15 +896,15 @@ pub mod tests {
 		// any input data version. Bounding operator-state reads to the later consume's own object
 		// version would hide the other side of the join and emit an unmatched none result.
 		let engine = TestEngine::new();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let inner_key = make_key("late_right_side");
 		let value = make_value("matched_row");
 
 		// Two further commits push the operator-state write more than one version above the object
 		// version, so the read bound (object_version + 1) cannot reach it on its own.
-		let object_version = commit_state_row(&engine, node_id, &make_key("warmup_a"), make_value("a"));
-		commit_state_row(&engine, node_id, &make_key("warmup_b"), make_value("b"));
-		let committed_at = commit_state_row(&engine, node_id, &inner_key, value.clone());
+		let object_version = commit_state_row(&engine, operator_id, &make_key("warmup_a"), make_value("a"));
+		commit_state_row(&engine, operator_id, &make_key("warmup_b"), make_value("b"));
+		let committed_at = commit_state_row(&engine, operator_id, &inner_key, value.clone());
 		assert!(
 			committed_at.0 >= object_version.0 + 2,
 			"operator state must commit at least two versions above the object version: committed_at={committed_at:?} object_version={object_version:?}"
@@ -925,7 +929,7 @@ pub mod tests {
 			state_budget: OperatorStateBudgetHandle::default(),
 		});
 
-		let batch = txn.state_get_many(node_id, &[inner_key]).unwrap();
+		let batch = txn.state_get_many(operator_id, &[inner_key]).unwrap();
 		assert_eq!(
 			batch.items.len(),
 			1,
@@ -940,10 +944,10 @@ pub mod tests {
 		// command rather than the in-memory pending and become durable when the flow commits,
 		// alongside state committed by prior transactions.
 		let engine = TestEngine::new();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let prior_key = make_key("prior");
 		let prior_value = make_value("prior_value");
-		commit_state_row(&engine, node_id, &prior_key, prior_value.clone());
+		commit_state_row(&engine, operator_id, &prior_key, prior_value.clone());
 
 		let written_key = make_key("written_by_tick");
 		let written_value = make_value("tick_value");
@@ -958,14 +962,14 @@ pub mod tests {
 				state_budget: OperatorStateBudgetHandle::default(),
 			})
 			.unwrap();
-			txn.state_set(node_id, &written_key, written_value.clone()).unwrap();
+			txn.state_set(operator_id, &written_key, written_value.clone()).unwrap();
 			txn.commit().unwrap();
 		}
 
 		let (_version, lease) = engine.acquire_current_snapshot_lease().unwrap();
 		let query = engine.multi().begin_query_at_version(&lease).unwrap();
-		let prior_encoded = OperatorStateKey::encoded(node_id, prior_key.as_slice());
-		let written_encoded = OperatorStateKey::encoded(node_id, written_key.as_slice());
+		let prior_encoded = OperatorStateKey::encoded(operator_id, prior_key.as_slice());
+		let written_encoded = OperatorStateKey::encoded(operator_id, written_key.as_slice());
 		let found = query.get_many(&[prior_encoded.clone(), written_encoded.clone()]).unwrap();
 		assert_eq!(
 			found.len(),
@@ -982,13 +986,13 @@ pub mod tests {
 		// plus a base_pending overlay. The read must not be bounded to the txn `version`, which is
 		// set below the committed state here and would hide it.
 		let engine = TestEngine::new();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let committed_key = make_key("committed");
 		let committed_value = make_value("committed_value");
 
-		let low_version = commit_state_row(&engine, node_id, &make_key("warmup"), make_value("w"));
-		commit_state_row(&engine, node_id, &make_key("bump"), make_value("bump"));
-		let committed_at = commit_state_row(&engine, node_id, &committed_key, committed_value.clone());
+		let low_version = commit_state_row(&engine, operator_id, &make_key("warmup"), make_value("w"));
+		commit_state_row(&engine, operator_id, &make_key("bump"), make_value("bump"));
+		let committed_at = commit_state_row(&engine, operator_id, &committed_key, committed_value.clone());
 		assert!(
 			committed_at.0 >= low_version.0 + 2,
 			"committed state must land at least two versions above the txn version so a wrongful bound (which resolves to version + 1) would hide it: committed_at={committed_at:?} low_version={low_version:?}"
@@ -997,7 +1001,7 @@ pub mod tests {
 		let base_key = make_key("in_flight");
 		let base_value = make_value("in_flight_value");
 		let mut base_pending = Pending::new();
-		base_pending.insert(OperatorStateKey::encoded(node_id, base_key.as_slice()), base_value.clone());
+		base_pending.insert(OperatorStateKey::encoded(operator_id, base_key.as_slice()), base_value.clone());
 
 		let mut txn = FlowTransaction::transactional(TransactionalParams {
 			version: low_version,
@@ -1014,7 +1018,7 @@ pub mod tests {
 			state_budget: OperatorStateBudgetHandle::default(),
 		});
 
-		let committed = txn.state_get_many(node_id, &[committed_key]).unwrap();
+		let committed = txn.state_get_many(operator_id, &[committed_key]).unwrap();
 		assert_eq!(
 			committed.items.len(),
 			1,
@@ -1022,7 +1026,7 @@ pub mod tests {
 		);
 		assert_eq!(committed.items[0].row, committed_value);
 
-		let base = txn.state_get_many(node_id, &[base_key]).unwrap();
+		let base = txn.state_get_many(operator_id, &[base_key]).unwrap();
 		assert_eq!(base.items.len(), 1);
 		assert_eq!(base.items[0].row, base_value);
 	}
@@ -1032,19 +1036,21 @@ pub mod tests {
 		// The pinned query snapshot cannot see the flow's last commit, so a deferred slice reads its
 		// own prior writes through the base_pending overlay.
 		let engine = TestEngine::new();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 
 		let committed_key = make_key("committed");
 		let committed_value = make_value("committed_value");
-		let low_version = commit_state_row(&engine, node_id, &make_key("warmup"), make_value("w"));
-		commit_state_row(&engine, node_id, &committed_key, committed_value.clone());
+		let low_version = commit_state_row(&engine, operator_id, &make_key("warmup"), make_value("w"));
+		commit_state_row(&engine, operator_id, &committed_key, committed_value.clone());
 
 		let overlaid_key = make_key("overlaid");
 		let overlaid_value = make_value("overlaid_value");
 		let mut base_pending = Pending::new();
-		base_pending
-			.insert(OperatorStateKey::encoded(node_id, overlaid_key.as_slice()), overlaid_value.clone());
-		base_pending.remove(OperatorStateKey::encoded(node_id, committed_key.as_slice()));
+		base_pending.insert(
+			OperatorStateKey::encoded(operator_id, overlaid_key.as_slice()),
+			overlaid_value.clone(),
+		);
+		base_pending.remove(OperatorStateKey::encoded(operator_id, committed_key.as_slice()));
 
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version: low_version,
@@ -1061,28 +1067,28 @@ pub mod tests {
 		});
 
 		assert_eq!(
-			txn.state_get(node_id, &overlaid_key).unwrap(),
+			txn.state_get(operator_id, &overlaid_key).unwrap(),
 			Some(overlaid_value.clone()),
 			"a Set in base_pending must resolve through the overlay"
 		);
 		assert_eq!(
-			txn.state_get(node_id, &committed_key).unwrap(),
+			txn.state_get(operator_id, &committed_key).unwrap(),
 			None,
 			"a Remove in base_pending must shadow the committed row"
 		);
 
-		let batch = txn.state_get_many(node_id, &[overlaid_key.clone(), committed_key.clone()]).unwrap();
+		let batch = txn.state_get_many(operator_id, &[overlaid_key.clone(), committed_key.clone()]).unwrap();
 		assert_eq!(batch.items.len(), 1);
 		assert_eq!(batch.items[0].row, overlaid_value);
 
-		let scan = txn.state_scan_all(node_id).unwrap();
+		let scan = txn.state_scan_all(operator_id).unwrap();
 		let scanned: Vec<_> = scan.items.iter().map(|item| item.row.clone()).collect();
 		assert!(scanned.contains(&overlaid_value), "range merge must surface base_pending Sets");
 		assert!(!scanned.contains(&committed_value), "range merge must shadow base_pending Removes");
 
 		let shadow_value = make_value("shadow");
-		txn.state_set(node_id, &overlaid_key, shadow_value.clone()).unwrap();
-		assert_eq!(txn.state_get(node_id, &overlaid_key).unwrap(), Some(shadow_value));
+		txn.state_set(operator_id, &overlaid_key, shadow_value.clone()).unwrap();
+		assert_eq!(txn.state_get(operator_id, &overlaid_key).unwrap(), Some(shadow_value));
 	}
 
 	#[test]
@@ -1146,12 +1152,12 @@ pub mod tests {
 		// The ephemeral variant has no state_query, so it serves operator-state reads from an
 		// in-memory state map with the pending overlay on top.
 		let engine = TestEngine::new();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let seeded_key = make_key("seeded");
 		let seeded_value = make_value("seeded_value");
 
 		let mut state = HashMap::new();
-		state.insert(OperatorStateKey::encoded(node_id, seeded_key.as_slice()), seeded_value.clone());
+		state.insert(OperatorStateKey::encoded(operator_id, seeded_key.as_slice()), seeded_value.clone());
 
 		let mut txn = FlowTransaction::ephemeral(
 			CommitVersion(1),
@@ -1163,14 +1169,14 @@ pub mod tests {
 			OperatorStateBudgetHandle::default(),
 		);
 
-		let seeded = txn.state_get_many(node_id, &[seeded_key]).unwrap();
+		let seeded = txn.state_get_many(operator_id, &[seeded_key]).unwrap();
 		assert_eq!(seeded.items.len(), 1, "seeded ephemeral state must be readable");
 		assert_eq!(seeded.items[0].row, seeded_value);
 
 		let live_key = make_key("live");
 		let live_value = make_value("live_value");
-		txn.state_set(node_id, &live_key, live_value.clone()).unwrap();
-		let live = txn.state_get_many(node_id, &[live_key]).unwrap();
+		txn.state_set(operator_id, &live_key, live_value.clone()).unwrap();
+		let live = txn.state_get_many(operator_id, &[live_key]).unwrap();
 		assert_eq!(live.items.len(), 1);
 		assert_eq!(live.items[0].row, live_value);
 	}
@@ -1181,9 +1187,9 @@ pub mod tests {
 		// unbounded per-transaction memo growth the point-path cap closed. A rejected entry must
 		// not be counted, must not enter the memo, and must not shrink the batch result.
 		let engine = TestEngine::new();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let key = make_key("k1");
-		commit_state_row(&engine, node_id, &key, make_value("v"));
+		commit_state_row(&engine, operator_id, &key, make_value("v"));
 
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
@@ -1198,14 +1204,14 @@ pub mod tests {
 		// Fill the counter to the cap so the next memoization cannot fit.
 		txn.inner_mut().prefetch_bytes = PREFETCH_MEMO_BYTE_CAP;
 
-		let batch = txn.state_get_many(node_id, &[key.clone()]).unwrap();
+		let batch = txn.state_get_many(operator_id, &[key.clone()]).unwrap();
 		assert_eq!(batch.items.len(), 1, "the cap bounds the memo, not the batch result");
 		assert_eq!(txn.inner().prefetch_rejections, 1, "an over-cap batch memoization must be rejected");
 		assert_eq!(txn.inner().prefetch_bytes, PREFETCH_MEMO_BYTE_CAP, "a rejected entry must not be counted");
 
 		// The rejected entry is not memoized: a re-read reaches the store again.
 		let reads_before = txn.store_reads();
-		let again = txn.state_get_many(node_id, &[key]).unwrap();
+		let again = txn.state_get_many(operator_id, &[key]).unwrap();
 		assert_eq!(again.items.len(), 1);
 		assert_eq!(txn.store_reads(), reads_before + 1, "a rejected entry must not serve later reads");
 	}
@@ -1215,10 +1221,10 @@ pub mod tests {
 		// prefetch_bytes must reflect the memo no matter which path filled it, or the cap is
 		// meaningless for batch-heavy operators.
 		let engine = TestEngine::new();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let hit = make_key("hit");
 		let miss = make_key("miss");
-		commit_state_row(&engine, node_id, &hit, make_value("v"));
+		commit_state_row(&engine, operator_id, &hit, make_value("v"));
 
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
@@ -1230,7 +1236,7 @@ pub mod tests {
 			Interceptors::new(),
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
-		let fetched = batch_txn.state_get_many(node_id, &[hit.clone(), miss.clone()]).unwrap();
+		let fetched = batch_txn.state_get_many(operator_id, &[hit.clone(), miss.clone()]).unwrap();
 		assert_eq!(fetched.items.len(), 1);
 		let batch_bytes = batch_txn.inner().prefetch_bytes;
 		assert!(batch_bytes > 0, "batch memoization must be counted");
@@ -1243,8 +1249,8 @@ pub mod tests {
 			Interceptors::new(),
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
-		assert!(point_txn.state_get(node_id, &hit).unwrap().is_some());
-		assert!(point_txn.state_get(node_id, &miss).unwrap().is_none());
+		assert!(point_txn.state_get(operator_id, &hit).unwrap().is_some());
+		assert!(point_txn.state_get(operator_id, &miss).unwrap().is_none());
 		assert_eq!(
 			point_txn.inner().prefetch_bytes,
 			batch_bytes,

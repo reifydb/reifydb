@@ -53,7 +53,7 @@ fn node_of(dag: &FlowDag, matches: impl Fn(&OperatorDef) -> bool) -> OperatorId 
 	dag.topological_order()
 		.unwrap()
 		.into_iter()
-		.find(|id| matches(&dag.get_node(id).unwrap().ty))
+		.find(|id| matches(&dag.get_operator(id).unwrap().ty))
 		.expect("the dag must contain the node the test is about")
 }
 

@@ -65,7 +65,7 @@ pub struct MappingReclaim {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeReclaim {
-	pub node: OperatorId,
+	pub operator: OperatorId,
 	pub data: Option<PhaseReclaim>,
 	pub identity: Option<PhaseReclaim>,
 	pub keyspaces: Vec<KeyspaceReclaim>,
@@ -73,9 +73,9 @@ pub struct NodeReclaim {
 }
 
 impl NodeReclaim {
-	fn new(node: OperatorId) -> Self {
+	fn new(operator: OperatorId) -> Self {
 		Self {
-			node,
+			operator,
 			data: None,
 			identity: None,
 			keyspaces: Vec::new(),
@@ -95,7 +95,7 @@ pub struct ReclaimReport {
 	pub ungridded_nodes: usize,
 	pub data_floor: Option<(Floor, FloorTerm)>,
 	pub identity_floor: Option<(Floor, FloorTerm)>,
-	pub nodes: Vec<NodeReclaim>,
+	pub operators: Vec<NodeReclaim>,
 }
 
 impl ReclaimReport {
@@ -108,8 +108,8 @@ impl ReclaimReport {
 		self.identity_floor = lowest(self.identity_floor, Some(floor));
 	}
 
-	pub fn node(&self, node: OperatorId) -> Option<&NodeReclaim> {
-		self.nodes.iter().find(|reclaim| reclaim.node == node)
+	pub fn operator(&self, operator: OperatorId) -> Option<&NodeReclaim> {
+		self.operators.iter().find(|reclaim| reclaim.operator == operator)
 	}
 }
 
@@ -151,11 +151,11 @@ impl FlowEngineInner {
 		let identity = identity_cutoff(identity_span, watermark);
 
 		let mut inputs = Vec::new();
-		for node_id in flow.get_node_ids() {
-			let Some(_) = flow.get_node(&node_id) else {
+		for operator_id in flow.get_operator_ids() {
+			let Some(_) = flow.get_operator(&operator_id) else {
 				continue;
 			};
-			let Some(operator) = self.operators.get(&node_id) else {
+			let Some(operator) = self.operators.get(&operator_id) else {
 				continue;
 			};
 			if !operator.capabilities().contains(&OperatorCapability::Reclaim) {
@@ -163,18 +163,18 @@ impl FlowEngineInner {
 				continue;
 			}
 			let reclaimable = operator.reclaimable_through(txn, watermark)?;
-			self.executor.services().node_retention_store.set_frontier(node_id, reclaimable.data);
+			self.executor.services().node_retention_store.set_frontier(operator_id, reclaimable.data);
 			if reclaimable.is_empty() {
 				report.perpetual_nodes += 1;
 				continue;
 			}
-			if self.substrate.group.buckets(node_id).event_grid().is_none() {
+			if self.substrate.group.buckets(operator_id).event_grid().is_none() {
 				report.ungridded_nodes += 1;
 				continue;
 			}
 			report.bind(reclaimable.data.map(Cutoff), checkpoint);
 			inputs.push(SweepInputs {
-				node: node_id,
+				operator: operator_id,
 				data: reclaimable.data.map(Cutoff),
 				identity,
 				keyspaces: reclaimable
@@ -183,7 +183,7 @@ impl FlowEngineInner {
 					.map(|(keyspace, at)| (keyspace, Cutoff(at)))
 					.collect(),
 				mapping: reclaimable.mapping.map(Cutoff),
-				mapping_cursor: self.mapping_cursors.entry(node_id).or_default().clone(),
+				mapping_cursor: self.mapping_cursors.entry(operator_id).or_default().clone(),
 			});
 		}
 
@@ -191,13 +191,13 @@ impl FlowEngineInner {
 		span.record("perpetual_nodes", report.perpetual_nodes);
 		span.record("ungridded_nodes", report.ungridded_nodes);
 
-		let outcome = reclaim_nodes(inputs, txn, &mut remaining, &mut report, &mut |node, groups| {
-			if let Some(operator) = self.operators.get(&node) {
+		let outcome = reclaim_nodes(inputs, txn, &mut remaining, &mut report, &mut |operator, groups| {
+			if let Some(operator) = self.operators.get(&operator) {
 				operator.invalidate_groups(&groups);
 			}
 		})?;
-		for (node, cursor) in outcome.cursors {
-			*self.mapping_cursors.entry(node).or_default() = cursor;
+		for (operator, cursor) in outcome.cursors {
+			*self.mapping_cursors.entry(operator).or_default() = cursor;
 		}
 
 		self.record(&report, remaining);
@@ -228,8 +228,8 @@ impl FlowEngineInner {
 
 	fn flow_watermark(&self, txn: &mut FlowTransaction, flow: &FlowDag) -> Result<DateTime> {
 		let sources: Vec<OperatorId> = flow
-			.get_node_ids()
-			.filter(|id| flow.get_node(id).is_some_and(|node| node.ty.is_source()))
+			.get_operator_ids()
+			.filter(|id| flow.get_operator(id).is_some_and(|operator| operator.ty.is_source()))
 			.collect();
 		txn.source_watermarks().flow_watermark(flow.time_domain(), &sources, txn)
 	}
@@ -240,14 +240,14 @@ impl FlowEngineInner {
 }
 
 fn identity_span(flow: &FlowDag, row_ttl: impl Fn(StorageId) -> Option<Duration>) -> Option<Duration> {
-	flow.get_node_ids()
-		.filter_map(|id| flow.get_node(&id))
-		.find_map(|node| sink_storage(&node.ty))
+	flow.get_operator_ids()
+		.filter_map(|id| flow.get_operator(&id))
+		.find_map(|operator| sink_storage(&operator.ty))
 		.and_then(row_ttl)
 }
 
 pub struct SweepInputs {
-	pub node: OperatorId,
+	pub operator: OperatorId,
 	pub data: Option<Cutoff>,
 	pub identity: Option<Cutoff>,
 
@@ -274,11 +274,11 @@ pub fn reclaim_nodes(
 		if remaining.exhausted() {
 			break;
 		}
-		let node = input.node;
-		let mut reclaimed = NodeReclaim::new(node);
+		let operator = input.operator;
+		let mut reclaimed = NodeReclaim::new(operator);
 
 		if let Some(cutoff) = input.identity {
-			let groups = reclaim_identity(txn, node, cutoff, remaining, report)?;
+			let groups = reclaim_identity(txn, operator, cutoff, remaining, report)?;
 			reclaimed.identity = Some(PhaseReclaim {
 				cutoff,
 				groups,
@@ -289,9 +289,9 @@ pub fn reclaim_nodes(
 			if remaining.exhausted() {
 				break;
 			}
-			let retired = reclaim_keyspace(txn, node, keyspace, cutoff, remaining, report)?;
+			let retired = reclaim_keyspace(txn, operator, keyspace, cutoff, remaining, report)?;
 			if !retired.is_empty() {
-				invalidate(node, GroupSet::new(retired.clone()));
+				invalidate(operator, GroupSet::new(retired.clone()));
 			}
 			reclaimed.keyspaces.push(KeyspaceReclaim {
 				keyspace,
@@ -304,8 +304,13 @@ pub fn reclaim_nodes(
 		if let Some(cutoff) = mapping_cutoff(input.mapping, input.identity)
 			&& !remaining.exhausted()
 		{
-			let removed =
-				txn.evict_row_numbers(node, GroupId::NODE_SCOPE, cutoff, &mut cursor, remaining.rows)?;
+			let removed = txn.evict_row_numbers(
+				operator,
+				GroupId::NODE_SCOPE,
+				cutoff,
+				&mut cursor,
+				remaining.rows,
+			)?;
 			remaining.rows -= removed;
 			report.rows += removed;
 			if cursor.is_some() {
@@ -316,12 +321,12 @@ pub fn reclaim_nodes(
 				rows: removed,
 			});
 		}
-		cursors.push((node, cursor));
+		cursors.push((operator, cursor));
 
 		if let Some(cutoff) = input.data {
-			let released = reclaim_data(txn, node, cutoff, remaining, report)?;
+			let released = reclaim_data(txn, operator, cutoff, remaining, report)?;
 			if !released.is_empty() {
-				invalidate(node, GroupSet::new(released.clone()));
+				invalidate(operator, GroupSet::new(released.clone()));
 			}
 			reclaimed.data = Some(PhaseReclaim {
 				cutoff,
@@ -329,22 +334,22 @@ pub fn reclaim_nodes(
 			});
 		}
 
-		report.nodes.push(reclaimed);
+		report.operators.push(reclaimed);
 	}
 	Ok(SweepOutcome {
 		cursors,
 	})
 }
 
-#[instrument(name = "lifecycle::operator::group::data", level = "debug", skip_all, fields(node = node.0))]
+#[instrument(name = "lifecycle::operator::group::data", level = "debug", skip_all, fields(operator = operator.0))]
 fn reclaim_data(
 	txn: &mut FlowTransaction,
-	node: OperatorId,
+	operator: OperatorId,
 	cutoff: Cutoff,
 	remaining: &mut ReclaimBudget,
 	report: &mut ReclaimReport,
 ) -> Result<Vec<GroupId>> {
-	let due = txn.due_groups(node, cutoff, remaining.groups)?;
+	let due = txn.due_groups(operator, cutoff, remaining.groups)?;
 	let mut released = Vec::new();
 	for group in due {
 		if remaining.exhausted() {
@@ -352,14 +357,14 @@ fn reclaim_data(
 			continue;
 		}
 		remaining.groups -= 1;
-		let outcome = txn.reclaim_group_data(node, group, remaining.rows)?;
+		let outcome = txn.reclaim_group_data(operator, group, remaining.rows)?;
 		remaining.rows -= outcome.removed;
 		report.rows += outcome.removed;
 		if outcome.more {
 			report.backlog += 1;
 			continue;
 		}
-		txn.defer_group(node, group)?;
+		txn.defer_group(operator, group)?;
 		released.push(group);
 		report.data_groups += 1;
 	}
@@ -373,16 +378,16 @@ fn mapping_cutoff(declared: Option<Cutoff>, identity: Option<Cutoff>) -> Option<
 	}
 }
 
-#[instrument(name = "lifecycle::operator::group::keyspace", level = "debug", skip_all, fields(node = node.0, keyspace = keyspace.0))]
+#[instrument(name = "lifecycle::operator::group::keyspace", level = "debug", skip_all, fields(operator = operator.0, keyspace = keyspace.0))]
 fn reclaim_keyspace(
 	txn: &mut FlowTransaction,
-	node: OperatorId,
+	operator: OperatorId,
 	keyspace: Keyspace,
 	cutoff: Cutoff,
 	remaining: &mut ReclaimBudget,
 	report: &mut ReclaimReport,
 ) -> Result<Vec<GroupId>> {
-	let due = txn.due_side_groups(node, keyspace, cutoff, remaining.groups)?;
+	let due = txn.due_side_groups(operator, keyspace, cutoff, remaining.groups)?;
 	let mut retired = Vec::new();
 	for group in due {
 		if remaining.exhausted() {
@@ -390,29 +395,29 @@ fn reclaim_keyspace(
 			continue;
 		}
 		remaining.groups -= 1;
-		let outcome = txn.reclaim_group_keyspace(node, group, keyspace, remaining.rows)?;
+		let outcome = txn.reclaim_group_keyspace(operator, group, keyspace, remaining.rows)?;
 		remaining.rows -= outcome.removed;
 		report.rows += outcome.removed;
 		if outcome.more {
 			report.backlog += 1;
 			continue;
 		}
-		txn.forget_side(node, group, keyspace)?;
+		txn.forget_side(operator, group, keyspace)?;
 		retired.push(group);
 		report.keyspace_groups += 1;
 	}
 	Ok(retired)
 }
 
-#[instrument(name = "lifecycle::operator::group::identity", level = "debug", skip_all, fields(node = node.0))]
+#[instrument(name = "lifecycle::operator::group::identity", level = "debug", skip_all, fields(operator = operator.0))]
 fn reclaim_identity(
 	txn: &mut FlowTransaction,
-	node: OperatorId,
+	operator: OperatorId,
 	cutoff: Cutoff,
 	remaining: &mut ReclaimBudget,
 	report: &mut ReclaimReport,
 ) -> Result<Vec<GroupId>> {
-	let due = txn.due_identity_groups(node, cutoff, remaining.groups)?;
+	let due = txn.due_identity_groups(operator, cutoff, remaining.groups)?;
 	let mut reclaimed = Vec::new();
 	for group in due {
 		if remaining.exhausted() {
@@ -420,7 +425,7 @@ fn reclaim_identity(
 			continue;
 		}
 		remaining.groups -= 1;
-		let outcome = txn.reclaim_group_identity(node, group, remaining.rows)?;
+		let outcome = txn.reclaim_group_identity(operator, group, remaining.rows)?;
 		remaining.rows -= outcome.removed;
 		report.rows += outcome.removed;
 		if outcome.more {
@@ -431,7 +436,7 @@ fn reclaim_identity(
 		report.identity_groups += 1;
 	}
 	if !reclaimed.is_empty() {
-		txn.invalidate_row_number_groups(node, &GroupSet::new(reclaimed.clone()));
+		txn.invalidate_row_number_groups(operator, &GroupSet::new(reclaimed.clone()));
 	}
 	Ok(reclaimed)
 }
@@ -496,7 +501,7 @@ mod tests {
 			Interceptors::new(),
 			Clock::Mock(MockClock::from_millis(0)),
 		);
-		// The width is never set on its own: it is always the one the node's horizon derives, and a
+		// The width is never set on its own: it is always the one the operator's horizon derives, and a
 		// 1600ms seal horizon derives exactly WIDTH. Stamping therefore happens in the event domain.
 		txn.group_interner().set_activity_grid(NODE, Some(ms(1_600)));
 		txn
@@ -507,7 +512,7 @@ mod tests {
 	}
 
 	fn seed(txn: &mut FlowTransaction, name: &str, position_ms: u64) -> GroupId {
-		// Two data rows and a row-number mapping, interned at `position_ms`: the node is
+		// Two data rows and a row-number mapping, interned at `position_ms`: the operator is
 		// event-domain, so the substrate stamps Event(coordinate.at).
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: DateTime::from_millis(position_ms),
@@ -527,7 +532,7 @@ mod tests {
 		txn.state_range(NODE, group_inner_range(id), None).unwrap().items.len()
 	}
 
-	fn node_deferred(engine: &TestEngine, nodes: &[OperatorId]) -> FlowTransaction {
+	fn node_deferred(engine: &TestEngine, operators: &[OperatorId]) -> FlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
 		let txn = FlowTransaction::deferred(
@@ -537,36 +542,36 @@ mod tests {
 			Interceptors::new(),
 			Clock::Mock(MockClock::from_millis(0)),
 		);
-		for node in nodes {
-			txn.group_interner().set_activity_grid(*node, Some(ms(1_600)));
+		for operator in operators {
+			txn.group_interner().set_activity_grid(*operator, Some(ms(1_600)));
 		}
 		txn
 	}
 
-	fn seed_node(txn: &mut FlowTransaction, node: OperatorId, name: &str, position_ms: u64) -> GroupId {
-		// The same shape as `seed`, but for an arbitrary node so a sweep can be given more
+	fn seed_node(txn: &mut FlowTransaction, operator: OperatorId, name: &str, position_ms: u64) -> GroupId {
+		// The same shape as `seed`, but for an arbitrary operator so a sweep can be given more
 		// than one.
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: DateTime::from_millis(position_ms),
 			version: CommitVersion(0),
 		});
-		let (id, _) = txn.intern_group(node, &EncodedKey::new(name.as_bytes())).unwrap();
+		let (id, _) = txn.intern_group(operator, &EncodedKey::new(name.as_bytes())).unwrap();
 		for suffix in [1u8, 2] {
 			let key = OperatorGroupStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);
-			txn.state_set(node, &key, payload()).unwrap();
+			txn.state_set(operator, &key, payload()).unwrap();
 		}
 		id
 	}
 
-	fn node_accumulators(txn: &mut FlowTransaction, node: OperatorId, id: GroupId) -> usize {
+	fn node_accumulators(txn: &mut FlowTransaction, operator: OperatorId, id: GroupId) -> usize {
 		// Not the whole group range: the GROUP_RECORD survives the data phase, so counting the
 		// range would conflate "erased" with "left the record the second phase still needs".
-		txn.state_range(node, keyspace_inner_range(id, Keyspace::ACCUMULATOR), None).unwrap().items.len()
+		txn.state_range(operator, keyspace_inner_range(id, Keyspace::ACCUMULATOR), None).unwrap().items.len()
 	}
 
-	fn data_only(node: OperatorId, cutoff_ms: u64) -> SweepInputs {
+	fn data_only(operator: OperatorId, cutoff_ms: u64) -> SweepInputs {
 		SweepInputs {
-			node,
+			operator,
 			data: Some(Cutoff(DateTime::from_millis(cutoff_ms))),
 			identity: None,
 			keyspaces: Vec::new(),
@@ -577,31 +582,32 @@ mod tests {
 
 	#[test]
 	fn a_node_that_exhausts_the_budget_starves_every_node_after_it() {
-		// One budget shared across nodes in fixed ascending order, so a high-cardinality low-id
-		// node starves its successors and the report cannot tell "nothing was due" from "never
+		// One budget shared across operators in fixed ascending order, so a high-cardinality low-id
+		// operator starves its successors and the report cannot tell "nothing was due" from "never
 		// reached". Pinned so that adding fairness later is a deliberate change.
 		let engine = TestEngine::new();
-		let nodes = [OperatorId(1), OperatorId(2), OperatorId(3)];
-		let mut txn = node_deferred(&engine, &nodes);
-		let seeded: Vec<GroupId> = nodes.iter().map(|node| seed_node(&mut txn, *node, "idle", 50)).collect();
+		let operators = [OperatorId(1), OperatorId(2), OperatorId(3)];
+		let mut txn = node_deferred(&engine, &operators);
+		let seeded: Vec<GroupId> =
+			operators.iter().map(|operator| seed_node(&mut txn, *operator, "idle", 50)).collect();
 
 		let mut remaining = budget(1, 100);
 		let mut report = ReclaimReport::default();
 		let mut invalidated: Vec<OperatorId> = Vec::new();
 		reclaim_nodes(
-			nodes.iter().map(|node| data_only(*node, 1_000)).collect(),
+			operators.iter().map(|operator| data_only(*operator, 1_000)).collect(),
 			&mut txn,
 			&mut remaining,
 			&mut report,
-			&mut |node, _| invalidated.push(node),
+			&mut |operator, _| invalidated.push(operator),
 		)
 		.unwrap();
 
 		assert_eq!(report.data_groups, 1, "a one-group budget reclaims exactly one group");
-		assert_eq!(invalidated, vec![nodes[0]], "and only the first node is ever reached");
-		assert_eq!(node_accumulators(&mut txn, nodes[0], seeded[0]), 0);
-		assert_eq!(node_accumulators(&mut txn, nodes[1], seeded[1]), 2, "node 2 was never scanned");
-		assert_eq!(node_accumulators(&mut txn, nodes[2], seeded[2]), 2, "node 3 likewise");
+		assert_eq!(invalidated, vec![operators[0]], "and only the first operator is ever reached");
+		assert_eq!(node_accumulators(&mut txn, operators[0], seeded[0]), 0);
+		assert_eq!(node_accumulators(&mut txn, operators[1], seeded[1]), 2, "operator 2 was never scanned");
+		assert_eq!(node_accumulators(&mut txn, operators[2], seeded[2]), 2, "operator 3 likewise");
 	}
 
 	#[test]
@@ -617,7 +623,7 @@ mod tests {
 		let mut report = ReclaimReport::default();
 		reclaim_nodes(
 			vec![SweepInputs {
-				node: NODE,
+				operator: NODE,
 				data: None,
 				identity: None,
 				keyspaces: vec![(Keyspace::JOIN_LEFT, Cutoff(DateTime::from_millis(800)))],
@@ -651,7 +657,7 @@ mod tests {
 		let mut report = ReclaimReport::default();
 		reclaim_nodes(
 			vec![SweepInputs {
-				node: NODE,
+				operator: NODE,
 				data: None,
 				identity: None,
 				keyspaces: vec![(Keyspace::JOIN_LEFT, cutoff), (Keyspace::JOIN_RIGHT, cutoff)],
@@ -691,7 +697,7 @@ mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(outcome.cursors.len(), 1, "every swept node reports its cursor, even an unset one");
+		assert_eq!(outcome.cursors.len(), 1, "every swept operator reports its cursor, even an unset one");
 		assert_eq!(outcome.cursors[0].0, NODE);
 	}
 
@@ -706,9 +712,13 @@ mod tests {
 		let mut remaining = budget(10, 1);
 		let mut report = ReclaimReport::default();
 		let mut invalidated: Vec<OperatorId> = Vec::new();
-		reclaim_nodes(vec![data_only(NODE, 1_000)], &mut txn, &mut remaining, &mut report, &mut |node, _| {
-			invalidated.push(node)
-		})
+		reclaim_nodes(
+			vec![data_only(NODE, 1_000)],
+			&mut txn,
+			&mut remaining,
+			&mut report,
+			&mut |operator, _| invalidated.push(operator),
+		)
 		.unwrap();
 
 		assert!(invalidated.is_empty(), "a partially drained group must not be handed back");
@@ -1017,7 +1027,7 @@ mod tests {
 	#[test]
 	fn the_group_budget_bounds_how_many_groups_one_tick_touches() {
 		// Every reclaimed row is a tombstone write on the single write mutex, so a tick that took
-		// every due group at once is a latency incident on the first big node to go idle.
+		// every due group at once is a latency incident on the first big operator to go idle.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		for i in 0..5 {
@@ -1060,7 +1070,7 @@ mod tests {
 	fn both_floors_bind_to_the_owning_flows_checkpoint_and_only_when_data_is_reclaimable() {
 		// A flow parked below the cutoff has input it has not applied, so reclaiming above its
 		// checkpoint erases state those changes still refer to. The floor must NAME the flow, and
-		// a node with no data frontier contributes none or it would look like the blocker.
+		// a operator with no data frontier contributes none or it would look like the blocker.
 		let mut report = ReclaimReport::default();
 		report.bind(Some(Cutoff(DateTime::from_millis(998_400))), CommitVersion(10));
 
@@ -1075,13 +1085,13 @@ mod tests {
 
 		let mut perpetual = ReclaimReport::default();
 		perpetual.bind(None, CommitVersion(10));
-		assert_eq!(perpetual.data_floor, None, "a node with no frontier holds nothing back");
+		assert_eq!(perpetual.data_floor, None, "a operator with no frontier holds nothing back");
 		assert_eq!(perpetual.identity_floor, None);
 	}
 
 	#[test]
 	fn the_reported_floor_is_the_lowest_across_every_node_in_the_flow() {
-		// A class is only as free as its most constrained node; reporting a later node's healthier
+		// A class is only as free as its most constrained operator; reporting a later operator's healthier
 		// floor would hide the one actually holding reclamation back.
 		let data = Some(Cutoff(DateTime::from_millis(998_400)));
 		let mut report = ReclaimReport::default();
@@ -1144,7 +1154,7 @@ mod sink_storage_tests {
 
 	#[test]
 	fn a_node_that_owns_no_storage_resolves_to_nothing() {
-		// Only sinks own storage; resolving one here would attribute a row ttl to a node that
+		// Only sinks own storage; resolving one here would attribute a row ttl to a operator that
 		// never writes rows.
 		assert_eq!(
 			sink_storage(&OperatorDef::SourceTable {
@@ -1174,11 +1184,11 @@ mod identity_span_tests {
 		Duration::from_milliseconds(milliseconds).expect("test duration must be representable")
 	}
 
-	fn dag(nodes: &[(u64, OperatorDef)], edges: &[(u64, u64)]) -> FlowDag {
-		// The edges are wired even though the resolver scans nodes rather than walking them, so
+	fn dag(operators: &[(u64, OperatorDef)], edges: &[(u64, u64)]) -> FlowDag {
+		// The edges are wired even though the resolver scans operators rather than walking them, so
 		// the fixture keeps the shape of a real flow.
 		let mut builder = FlowDag::builder(FlowId(1));
-		for (id, ty) in nodes {
+		for (id, ty) in operators {
 			builder.add_node(FlowNode::new(OperatorId(*id), ty.clone()));
 		}
 		for (index, (source, target)) in edges.iter().enumerate() {

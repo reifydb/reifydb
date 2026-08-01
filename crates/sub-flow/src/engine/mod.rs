@@ -184,28 +184,32 @@ impl FlowEngineInner {
 
 	#[instrument(name = "flow::engine::sample", level = "debug", skip_all)]
 	pub fn sample_operators(&self) {
-		for (node, operator) in &self.operators {
+		for (operator_id, operator) in &self.operators {
 			let sample = operator.sample();
-			if self.state_budget.current_lease(*node).is_some() {
+			if self.state_budget.current_lease(*operator_id).is_some() {
 				match &sample {
 					Some(sample) => {
-						self.state_budget.report_lease(*node, lease_report_from_sample(sample));
+						self.state_budget
+							.report_lease(*operator_id, lease_report_from_sample(sample));
 					}
 					None => {
-						self.state_budget.report_lease_none(*node);
-						debug!(node = node.0, "leased operator reported no state usage");
+						self.state_budget.report_lease_none(*operator_id);
+						debug!(
+							operator = operator_id.0,
+							"leased operator reported no state usage"
+						);
 					}
 				}
 			}
 			if let Some(sample) = sample {
-				self.operator_samples.record(*node, sample);
+				self.operator_samples.record(*operator_id, sample);
 			}
 		}
 	}
 
 	pub fn forget_operator_samples(&self) {
-		for node in self.operators.keys() {
-			self.operator_samples.forget(*node);
+		for operator in self.operators.keys() {
+			self.operator_samples.forget(*operator);
 		}
 	}
 
@@ -217,12 +221,12 @@ impl FlowEngineInner {
 		&self.runtime_context.clock
 	}
 
-	pub fn operator(&self, node_id: OperatorId) -> Option<OperatorCell> {
-		self.operators.get(&node_id).cloned()
+	pub fn operator(&self, operator_id: OperatorId) -> Option<OperatorCell> {
+		self.operators.get(&operator_id).cloned()
 	}
 
-	pub fn insert_operator(&mut self, node_id: OperatorId, operator: OperatorCell) {
-		self.operators.insert(node_id, operator);
+	pub fn insert_operator(&mut self, operator_id: OperatorId, operator: OperatorCell) {
+		self.operators.insert(operator_id, operator);
 	}
 
 	pub fn register_flow_dag(&mut self, flow: FlowDag) {
@@ -243,11 +247,11 @@ impl FlowEngineInner {
 	}
 
 	#[cfg(reifydb_target = "native")]
-	#[instrument(name = "flow::engine::create_ffi_operator", level = "debug", skip(self, config), fields(operator = %operator, node_id = ?node_id))]
+	#[instrument(name = "flow::engine::create_ffi_operator", level = "debug", skip(self, config), fields(operator = %operator, operator_id = ?operator_id))]
 	pub(crate) fn create_ffi_operator(
 		&self,
 		operator: &str,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		config: &BTreeMap<String, Value>,
 	) -> Result<BoxedOperator> {
 		let loader = ffi_operator_loader();
@@ -262,12 +266,12 @@ impl FlowEngineInner {
 			})
 		})?;
 
-		let lease = self.state_budget.grant_lease(node_id, state_lease_default());
-		let created = loader_write.create_operator_by_name(operator, node_id, &config_bytes);
+		let lease = self.state_budget.grant_lease(operator_id, state_lease_default());
+		let created = loader_write.create_operator_by_name(operator, operator_id, &config_bytes);
 		let (descriptor, instance) = match created {
 			Ok(created) => created,
 			Err(e) => {
-				self.state_budget.release_lease(node_id);
+				self.state_budget.release_lease(operator_id);
 				return Err(Error::from(NativeOperatorError::CreateFailed {
 					cause: format!("{:?}", e),
 				}));
@@ -277,7 +281,7 @@ impl FlowEngineInner {
 		Ok(Box::new(FFIOperatorHandle::new(
 			descriptor,
 			instance,
-			node_id,
+			operator_id,
 			self.executor.clone(),
 			self.state_budget.clone(),
 			lease,
@@ -292,20 +296,20 @@ impl FlowEngineInner {
 	}
 
 	#[cfg(reifydb_target = "native")]
-	#[instrument(name = "flow::engine::create_native_operator", level = "debug", skip(self, config), fields(operator = %operator, node_id = ?node_id))]
+	#[instrument(name = "flow::engine::create_native_operator", level = "debug", skip(self, config), fields(operator = %operator, operator_id = ?operator_id))]
 	pub(crate) fn create_native_operator(
 		&self,
 		operator: &str,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		config: &Config,
 	) -> Result<BoxedOperator> {
 		let loader = native_operator_loader();
 		let mut loader_write = loader.write();
-		let _lease = self.state_budget.grant_lease(node_id, state_lease_default());
-		match loader_write.create_operator_by_name(operator, node_id, config) {
+		let _lease = self.state_budget.grant_lease(operator_id, state_lease_default());
+		match loader_write.create_operator_by_name(operator, operator_id, config) {
 			Ok(op) => Ok(op),
 			Err(e) => {
-				self.state_budget.release_lease(node_id);
+				self.state_budget.release_lease(operator_id);
 				Err(e)
 			}
 		}
@@ -327,8 +331,8 @@ impl FlowEngineInner {
 	}
 
 	pub fn clear(&mut self) {
-		for node_id in self.operators.keys() {
-			self.state_budget.release_lease(*node_id);
+		for operator_id in self.operators.keys() {
+			self.state_budget.release_lease(*operator_id);
 		}
 		self.operators.clear();
 		self.flows.clear();
@@ -342,13 +346,13 @@ impl FlowEngineInner {
 
 	pub fn remove_flow(&mut self, flow_id: FlowId) {
 		let node_ids: Vec<OperatorId> =
-			self.flows.get(&flow_id).map(|flow| flow.get_node_ids().collect()).unwrap_or_default();
+			self.flows.get(&flow_id).map(|flow| flow.get_operator_ids().collect()).unwrap_or_default();
 
-		for node_id in node_ids {
-			self.operators.remove(&node_id);
-			self.substrate.row.evict(node_id);
-			self.state_budget.release_lease(node_id);
-			self.executor.services().node_retention_store.remove(node_id);
+		for operator_id in node_ids {
+			self.operators.remove(&operator_id);
+			self.substrate.row.evict(operator_id);
+			self.state_budget.release_lease(operator_id);
+			self.executor.services().node_retention_store.remove(operator_id);
 		}
 
 		for entries in self.sources.values_mut() {

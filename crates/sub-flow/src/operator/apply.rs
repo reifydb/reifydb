@@ -9,7 +9,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_flow::{
-	operator::{Operator, Reclaimable},
+	operator::{BoxedOperator, Operator, Reclaimable},
 	timer::Timer,
 	transaction::FlowTransaction,
 };
@@ -19,20 +19,19 @@ use reifydb_value::{
 };
 
 use crate::operator::{OperatorCell, max_input_time, stamp_output_time};
-use reifydb_flow::operator::BoxedOperator;
 
 pub struct ApplyOperator {
 	parent: OperatorCell,
-	node: OperatorId,
+	operator: OperatorId,
 	inner: BoxedOperator,
 	ttl: Option<Duration>,
 }
 
 impl ApplyOperator {
-	pub fn new(parent: OperatorCell, node: OperatorId, inner: BoxedOperator, ttl: Option<Duration>) -> Self {
+	pub fn new(parent: OperatorCell, operator: OperatorId, inner: BoxedOperator, ttl: Option<Duration>) -> Self {
 		Self {
 			parent,
-			node,
+			operator,
 			inner,
 			ttl,
 		}
@@ -47,7 +46,7 @@ impl ApplyOperator {
 
 impl Operator for ApplyOperator {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -71,9 +70,6 @@ impl Operator for ApplyOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		// The substrate stamps the output with the max input time here rather than trusting the
-		// wrapped operator, so a guest operator can stay oblivious to #time without breaking the
-		// clock (see `substrate_stamping_tests` in `crate::operator`).
 		let inherited = max_input_time(&change);
 		let mut out = self.inner.apply(txn, change)?;
 		stamp_output_time(&mut out, inherited);
@@ -189,7 +185,7 @@ mod tests {
 
 	#[test]
 	fn the_apply_wrapper_reports_its_inner_operators_retention_scale() {
-		// Registration sizes the node's activity grid from this answer, so a wrapper that
+		// Registration sizes the operator's activity grid from this answer, so a wrapper that
 		// swallowed it would register a windowed guest in the version domain while its driver
 		// stamps event-time positions - a domain mismatch in the group interner.
 		let sealing = ApplyOperator::new(
@@ -236,12 +232,12 @@ mod tests {
 			Box::new(RecordingInner::new(None, Arc::new(Mutex::new(Vec::new())))),
 			None,
 		);
-		assert_eq!(neither.retention_scale(), None, "a node declaring nothing anywhere stays perpetual");
+		assert_eq!(neither.retention_scale(), None, "a operator declaring nothing anywhere stays perpetual");
 	}
 
 	#[test]
 	fn an_unusable_guest_span_is_refused_rather_than_becoming_a_scale() {
-		// Refusing an unusable span lets the declared ttl take over, so the node is still aged by
+		// Refusing an unusable span lets the declared ttl take over, so the operator is still aged by
 		// some rule; accepting it would reclaim on a schedule nobody chose.
 		assert_eq!(scale_from_millis(Some(0)), None, "zero is not a retention scale");
 		assert_eq!(scale_from_millis(None), None);

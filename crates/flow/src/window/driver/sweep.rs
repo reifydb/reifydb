@@ -59,7 +59,7 @@ mod tests {
 	#[test]
 	fn a_timer_that_fires_before_its_own_span_has_elapsed_sweeps_nothing() {
 		// A cold-restart wheel can present an instant earlier than the admissible span. Wrapping
-		// through u64 there yields a horizon near u64::MAX and seals every window the node owns in
+		// through u64 there yields a horizon near u64::MAX and seals every window the operator owns in
 		// one tick.
 		let sweep = SealSweep::new(SealPolicy::tumbling(ms(1_000), ms(200)));
 

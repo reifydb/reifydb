@@ -14,7 +14,7 @@ use crate::interface::catalog::flow::OperatorId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperatorStateKey {
-	pub node: OperatorId,
+	pub operator: OperatorId,
 	pub key: Vec<u8>,
 }
 
@@ -23,7 +23,7 @@ impl EncodableKey for OperatorStateKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10 + self.key.len());
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.node.0).extend_raw(&self.key);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.operator.0).extend_raw(&self.key);
 		serializer.to_encoded_key()
 	}
 
@@ -35,53 +35,53 @@ impl EncodableKey for OperatorStateKey {
 			return None;
 		}
 
-		let node_id = de.read_u64().ok()?;
+		let operator_id = de.read_u64().ok()?;
 		let key_bytes = de.read_raw(de.remaining()).ok()?.to_vec();
 
 		Some(Self {
-			node: OperatorId(node_id),
+			operator: OperatorId(operator_id),
 			key: key_bytes,
 		})
 	}
 }
 
 impl OperatorStateKey {
-	pub fn new(node: OperatorId, key: Vec<u8>) -> Self {
+	pub fn new(operator: OperatorId, key: Vec<u8>) -> Self {
 		Self {
-			node,
+			operator,
 			key,
 		}
 	}
 
-	pub fn new_empty(node: OperatorId) -> Self {
+	pub fn new_empty(operator: OperatorId) -> Self {
 		Self {
-			node,
+			operator,
 			key: Vec::new(),
 		}
 	}
 
-	pub fn encoded(node: impl Into<OperatorId>, key: impl AsRef<[u8]>) -> EncodedKey {
+	pub fn encoded(operator: impl Into<OperatorId>, key: impl AsRef<[u8]>) -> EncodedKey {
 		let key = key.as_ref();
 		let mut serializer = KeySerializer::with_capacity(10 + key.len());
-		serializer.extend_u8(Self::KIND as u8).extend_u64(node.into().0).extend_raw(key);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(operator.into().0).extend_raw(key);
 		serializer.to_encoded_key()
 	}
 
-	pub fn node_range(node: OperatorId) -> EncodedKeyRange {
-		let range = OperatorStateKeyRange::new(node);
+	pub fn node_range(operator: OperatorId) -> EncodedKeyRange {
+		let range = OperatorStateKeyRange::new(operator);
 		EncodedKeyRange::start_end(range.start(), range.end())
 	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperatorStateKeyRange {
-	pub node: OperatorId,
+	pub operator: OperatorId,
 }
 
 impl OperatorStateKeyRange {
-	pub fn new(node: OperatorId) -> Self {
+	pub fn new(operator: OperatorId) -> Self {
 		Self {
-			node,
+			operator,
 		}
 	}
 
@@ -93,10 +93,10 @@ impl OperatorStateKeyRange {
 			return None;
 		}
 
-		let node_id = de.read_u64().ok()?;
+		let operator_id = de.read_u64().ok()?;
 
 		Some(Self {
-			node: OperatorId(node_id),
+			operator: OperatorId(operator_id),
 		})
 	}
 }
@@ -106,13 +106,13 @@ impl EncodableKeyRange for OperatorStateKeyRange {
 
 	fn start(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.node.0);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.operator.0);
 		Some(serializer.to_encoded_key())
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.node.0.wrapping_sub(1));
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.operator.0.wrapping_sub(1));
 		Some(serializer.to_encoded_key())
 	}
 
@@ -144,7 +144,7 @@ pub mod tests {
 	#[test]
 	fn test_encode_decode() {
 		let key = OperatorStateKey {
-			node: OperatorId(0xDEADBEEF),
+			operator: OperatorId(0xDEADBEEF),
 			key: vec![1, 2, 3, 4],
 		};
 		let encoded = key.encode();
@@ -152,41 +152,41 @@ pub mod tests {
 		assert_eq!(encoded[0], 0xEC);
 
 		let decoded = OperatorStateKey::decode(&encoded).unwrap();
-		assert_eq!(decoded.node.0, 0xDEADBEEF);
+		assert_eq!(decoded.operator.0, 0xDEADBEEF);
 		assert_eq!(decoded.key, vec![1, 2, 3, 4]);
 	}
 
 	#[test]
 	fn test_encode_decode_empty_key() {
 		let key = OperatorStateKey {
-			node: OperatorId(0xDEADBEEF),
+			operator: OperatorId(0xDEADBEEF),
 			key: vec![],
 		};
 		let encoded = key.encode();
 
 		let decoded = OperatorStateKey::decode(&encoded).unwrap();
-		assert_eq!(decoded.node.0, 0xDEADBEEF);
+		assert_eq!(decoded.operator.0, 0xDEADBEEF);
 		assert_eq!(decoded.key, Vec::<u8>::new());
 	}
 
 	#[test]
 	fn test_new() {
 		let key = OperatorStateKey::new(OperatorId(42), vec![5, 6, 7]);
-		assert_eq!(key.node.0, 42);
+		assert_eq!(key.operator.0, 42);
 		assert_eq!(key.key, vec![5, 6, 7]);
 	}
 
 	#[test]
 	fn test_new_empty() {
 		let key = OperatorStateKey::new_empty(OperatorId(42));
-		assert_eq!(key.node.0, 42);
+		assert_eq!(key.operator.0, 42);
 		assert_eq!(key.key, Vec::<u8>::new());
 	}
 
 	#[test]
 	fn test_roundtrip() {
 		let original = OperatorStateKey {
-			node: OperatorId(999_999_999),
+			operator: OperatorId(999_999_999),
 			key: vec![10, 20, 30, 40, 50],
 		};
 		let encoded = original.encode();
@@ -226,47 +226,47 @@ pub mod tests {
 
 	#[test]
 	fn test_operator_state_key_range() {
-		let node = OperatorId(42);
-		let range = OperatorStateKeyRange::new(node);
+		let operator = OperatorId(42);
+		let range = OperatorStateKeyRange::new(operator);
 
 		let start = range.start().unwrap();
 		let decoded_start = OperatorStateKey::decode(&start).unwrap();
-		assert_eq!(decoded_start.node, node);
+		assert_eq!(decoded_start.operator, operator);
 		assert_eq!(decoded_start.key, Vec::<u8>::new());
 
 		let end = range.end().unwrap();
 		let decoded_end = OperatorStateKey::decode(&end).unwrap();
-		assert_eq!(decoded_end.node.0, 41);
+		assert_eq!(decoded_end.operator.0, 41);
 		assert_eq!(decoded_end.key, Vec::<u8>::new());
 	}
 
 	#[test]
 	fn test_operator_state_key_range_decode() {
-		let node = OperatorId(100);
-		let range = OperatorStateKeyRange::new(node);
+		let operator = OperatorId(100);
+		let range = OperatorStateKeyRange::new(operator);
 
 		let encoded_range = EncodedKeyRange::start_end(range.start(), range.end());
 
 		let (start_decoded, end_decoded) = OperatorStateKeyRange::decode(&encoded_range);
 
 		assert!(start_decoded.is_some());
-		assert_eq!(start_decoded.unwrap().node, node);
+		assert_eq!(start_decoded.unwrap().operator, operator);
 
 		assert!(end_decoded.is_some());
-		assert_eq!(end_decoded.unwrap().node.0, 99);
+		assert_eq!(end_decoded.unwrap().operator.0, 99);
 	}
 
 	#[test]
 	fn test_node_range_method() {
-		let node = OperatorId(555);
-		let range = OperatorStateKey::node_range(node);
+		let operator = OperatorId(555);
+		let range = OperatorStateKey::node_range(operator);
 
 		let (start_range, end_range) = OperatorStateKeyRange::decode(&range);
 
 		assert!(start_range.is_some());
-		assert_eq!(start_range.unwrap().node, node);
+		assert_eq!(start_range.unwrap().operator, operator);
 
 		assert!(end_range.is_some());
-		assert_eq!(end_range.unwrap().node.0, 554);
+		assert_eq!(end_range.unwrap().operator.0, 554);
 	}
 }

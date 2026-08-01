@@ -89,19 +89,19 @@ impl<O: Operator> Harness<O> {
 impl Harness<ApplyOperator> {
 	pub fn guest<C: OperatorLogic + 'static>(
 		logic: C,
-		node: OperatorId,
+		operator: OperatorId,
 		capabilities: &'static [OperatorCapability],
 		ttl: Option<Duration>,
 	) -> Self {
 		Self::new(|_| {
 			let bridged = NativeBridgedOperator::new(
-				Box::new(NativeOperatorAdapter::new(logic, node, capabilities)),
-				node,
+				Box::new(NativeOperatorAdapter::new(logic, operator, capabilities)),
+				operator,
 				capabilities,
 			);
 			ApplyOperator::new(
 				OperatorCell::new(SourceSeriesOperator::new(OperatorId(0))),
-				node,
+				operator,
 				Box::new(bridged),
 				ttl,
 			)
@@ -109,13 +109,13 @@ impl Harness<ApplyOperator> {
 	}
 
 	pub fn guest_from_config<C: OperatorLogic + 'static>(
-		node: OperatorId,
+		operator: OperatorId,
 		capabilities: &'static [OperatorCapability],
 		config: Vec<(&str, Value)>,
 		ttl: Option<Duration>,
 	) -> Result<Self> {
 		let config = Config::new("operator", config.into_iter().map(|(k, v)| (k.to_string(), v)).collect());
-		Ok(Self::guest(C::create(node, &config)?, node, capabilities, ttl))
+		Ok(Self::guest(C::create(operator, &config)?, operator, capabilities, ttl))
 	}
 }
 
@@ -140,9 +140,9 @@ impl<O: Operator> Harness<O> {
 	}
 
 	pub fn footprint(&mut self) -> Result<StateFootprint> {
-		let node = self.operator.id();
+		let operator = self.operator.id();
 		let mut txn = self.begin(DateTime::default());
-		let batch = txn.state_range(node, EncodedKeyRange::all(), None)?;
+		let batch = txn.state_range(operator, EncodedKeyRange::all(), None)?;
 		let mut footprint = StateFootprint::default();
 		for item in &batch.items {
 			let decoded = OperatorStateKey::decode(&item.key)
@@ -203,8 +203,8 @@ impl<O: Operator> Harness<O> {
 	}
 
 	pub fn reclaim(&mut self, at_ms: u64) -> Result<Reclaimed> {
-		let node = self.operator.id();
-		if self.substrate.group.buckets(node).event_grid().is_none() {
+		let operator_id = self.operator.id();
+		if self.substrate.group.buckets(operator_id).event_grid().is_none() {
 			return Ok(Reclaimed::default());
 		}
 		let watermark = DateTime::from_timestamp_millis(at_ms)?;
@@ -213,7 +213,7 @@ impl<O: Operator> Harness<O> {
 		let reclaimable = self.operator.reclaimable_through(&mut txn, watermark)?;
 
 		let inputs = SweepInputs {
-			node,
+			operator: operator_id,
 			data: reclaimable.data.map(Cutoff),
 			identity: self.sink_row_ttl.map(|span| Cutoff(watermark.saturating_sub(span))),
 			keyspaces: reclaimable
@@ -235,12 +235,12 @@ impl<O: Operator> Harness<O> {
 		self.end(txn);
 		self.mapping_cursor = outcome.cursors.into_iter().next().and_then(|(_, cursor)| cursor);
 
-		Ok(reclaimed_from(&report, node))
+		Ok(reclaimed_from(&report, operator_id))
 	}
 }
 
-fn reclaimed_from(report: &ReclaimReport, node: OperatorId) -> Reclaimed {
-	let Some(reclaim) = report.node(node) else {
+fn reclaimed_from(report: &ReclaimReport, operator: OperatorId) -> Reclaimed {
+	let Some(reclaim) = report.operator(operator) else {
 		return Reclaimed {
 			rows: report.rows,
 			backlog: report.backlog,

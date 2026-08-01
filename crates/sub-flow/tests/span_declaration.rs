@@ -253,31 +253,37 @@ fn a_statically_registered_operator_reaches_the_operator_catalog() {
 	let db = setup_with_custom_operators();
 
 	assert_eq!(
-		db.row_count("FROM system::operators FILTER { operator == 'hoarder' }"),
+		db.row_count("FROM system::operator_libraries FILTER { operator == 'hoarder' }"),
 		1,
 		"a statically registered operator must be listed; catalog now: {:?}",
-		db.query("FROM system::operators map { operator }")
+		db.query("FROM system::operator_libraries map { operator }")
 	);
 	assert_eq!(
-		db.row_count("FROM system::operators FILTER { operator == 'sweeper' and cap_reclaim == true }"),
+		db.row_count(
+			"FROM system::operator_libraries FILTER { operator == 'sweeper' and cap_reclaim == true }"
+		),
 		1,
 		"the capability bits must survive the trip, not just the name; catalog now: {:?}",
-		db.query("FROM system::operators")
+		db.query("FROM system::operator_libraries")
 	);
 	assert_eq!(
-		db.row_count("FROM system::operator_inputs FILTER { operator == 'hoarder' and name == 'g' }"),
+		db.row_count("FROM system::operator_library_inputs FILTER { operator == 'hoarder' and name == 'g' }"),
 		1,
 		"the declared columns travel with the operator, not just its name and capabilities; inputs now: {:?}",
-		db.query("FROM system::operator_inputs")
+		db.query("FROM system::operator_library_inputs")
 	);
 	assert_eq!(
-		db.row_count("FROM system::operator_outputs FILTER { operator == 'hoarder' and name == 'total' }"),
+		db.row_count(
+			"FROM system::operator_library_outputs FILTER { operator == 'hoarder' and name == 'total' }"
+		),
 		1,
 		"outputs are published too; outputs now: {:?}",
-		db.query("FROM system::operator_outputs")
+		db.query("FROM system::operator_library_outputs")
 	);
 	assert_eq!(
-		db.row_count("FROM system::operators FILTER { operator == 'hoarder' and cap_reclaim == true }"),
+		db.row_count(
+			"FROM system::operator_libraries FILTER { operator == 'hoarder' and cap_reclaim == true }"
+		),
 		0,
 		"hoarder declares STANDARD, so its Reclaim bit must be false - if both operators reported the \
 		 same capabilities the span check could not tell them apart"

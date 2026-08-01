@@ -47,7 +47,7 @@ use reifydb_value::{
 pub struct NativeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> {
 	engine: TestEngine,
 	operator: NativeBridgedOperator,
-	node_id: OperatorId,
+	operator_id: OperatorId,
 	version: u64,
 	pending: Pending,
 	substrate: FlowSubstrate,
@@ -117,16 +117,16 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 	}
 
 	pub fn state_value<V: OperatorState>(&mut self, key: &GroupStateKey) -> Option<V> {
-		let node = self.node_id;
+		let operator = self.operator_id;
 		if let Some(txn) = self.current.as_mut() {
-			let mut bridge = FlowNativeBridge::new(txn, node);
-			let mut ctx = NativeOperatorContext::new(&mut bridge, node);
+			let mut bridge = FlowNativeBridge::new(txn, operator);
+			let mut ctx = NativeOperatorContext::new(&mut bridge, operator);
 			return ctx.state().get::<V>(key).expect("state get");
 		}
 		let mut txn = self.begin_txn();
 		let value = {
-			let mut bridge = FlowNativeBridge::new(&mut txn, node);
-			let mut ctx = NativeOperatorContext::new(&mut bridge, node);
+			let mut bridge = FlowNativeBridge::new(&mut txn, operator);
+			let mut ctx = NativeOperatorContext::new(&mut bridge, operator);
 			ctx.state().get::<V>(key).expect("state get")
 		};
 		self.end_txn(txn);
@@ -146,11 +146,11 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
 	) -> Vec<(EncodedKey, EncodedRow)> {
-		let node = self.node_id;
+		let operator = self.operator_id;
 		let mut txn = self.begin_txn();
 		let rows = {
-			let mut bridge = FlowNativeBridge::new(&mut txn, node);
-			let mut ctx = NativeOperatorContext::new(&mut bridge, node);
+			let mut bridge = FlowNativeBridge::new(&mut txn, operator);
+			let mut ctx = NativeOperatorContext::new(&mut bridge, operator);
 			ctx.store().range(start, end).expect("store range")
 		};
 		self.end_txn(txn);
@@ -187,8 +187,8 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 		self.history.clear();
 	}
 
-	pub fn node_id(&self) -> OperatorId {
-		self.node_id
+	pub fn operator_id(&self) -> OperatorId {
+		self.operator_id
 	}
 }
 
@@ -202,7 +202,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> Index<usize> for NativeOpera
 
 pub struct NativeOperatorHarnessBuilder<C> {
 	config: HashMap<String, Value>,
-	node_id: OperatorId,
+	operator_id: OperatorId,
 	version: CommitVersion,
 	_phantom: PhantomData<C>,
 }
@@ -217,7 +217,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarnessBuilder
 	pub fn new() -> Self {
 		Self {
 			config: HashMap::new(),
-			node_id: OperatorId(1),
+			operator_id: OperatorId(1),
 			version: CommitVersion(1),
 			_phantom: PhantomData,
 		}
@@ -237,8 +237,8 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarnessBuilder
 		self
 	}
 
-	pub fn with_node_id(mut self, node_id: OperatorId) -> Self {
-		self.node_id = node_id;
+	pub fn with_node_id(mut self, operator_id: OperatorId) -> Self {
+		self.operator_id = operator_id;
 		self
 	}
 
@@ -250,17 +250,17 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarnessBuilder
 	pub fn build(self) -> Result<NativeOperatorHarness<C>> {
 		let engine = TestEngine::new();
 		let core = C::create(
-			self.node_id,
+			self.operator_id,
 			&Config::new(<C as OperatorMetadata>::NAME, self.config.clone().into_iter().collect()),
 		)?;
 		let capabilities = <C as OperatorMetadata>::CAPABILITIES;
-		let adapter = NativeOperatorAdapter::new(core, self.node_id, capabilities);
-		let operator = NativeBridgedOperator::new(Box::new(adapter), self.node_id, capabilities);
+		let adapter = NativeOperatorAdapter::new(core, self.operator_id, capabilities);
+		let operator = NativeBridgedOperator::new(Box::new(adapter), self.operator_id, capabilities);
 
 		Ok(NativeOperatorHarness {
 			engine,
 			operator,
-			node_id: self.node_id,
+			operator_id: self.operator_id,
 			version: self.version.0,
 			pending: Pending::new(),
 			substrate: FlowSubstrate::new(),

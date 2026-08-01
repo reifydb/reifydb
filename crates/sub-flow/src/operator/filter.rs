@@ -29,7 +29,7 @@ use crate::{context::FlowContext, operator::OperatorCell};
 
 pub struct FilterOperator {
 	parent: OperatorCell,
-	node: OperatorId,
+	operator: OperatorId,
 	compiled_conditions: Vec<CompiledExpr>,
 	routines: Routines,
 	runtime_context: RuntimeContext,
@@ -39,7 +39,7 @@ pub struct FilterOperator {
 impl FilterOperator {
 	pub fn new(
 		parent: OperatorCell,
-		node: OperatorId,
+		operator: OperatorId,
 		conditions: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
@@ -55,7 +55,7 @@ impl FilterOperator {
 
 		Self {
 			parent,
-			node,
+			operator,
 			compiled_conditions,
 			routines,
 			runtime_context,
@@ -125,7 +125,7 @@ impl FilterOperator {
 
 impl Operator for FilterOperator {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -153,7 +153,7 @@ impl Operator for FilterOperator {
 			}
 		}
 
-		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
+		Ok(Change::from_flow(self.operator, change.version, result, change.changed_at))
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

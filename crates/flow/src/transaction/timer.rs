@@ -69,26 +69,26 @@ pub struct TimerWheel {
 }
 
 impl TimerWheel {
-	pub fn arm(&self, node: OperatorId, txn: &mut FlowTransaction, timer: &Timer) -> Result<()> {
+	pub fn arm(&self, operator: OperatorId, txn: &mut FlowTransaction, timer: &Timer) -> Result<()> {
 		let now = txn.clock().now();
-		let mut state = self.inner.entry(node).or_default();
+		let mut state = self.inner.entry(operator).or_default();
 		if state.hydrated {
 			let at = timer.at.to_millis();
 			state.earliest = Some(state.earliest.map_or(at, |earliest| earliest.min(at)));
 		}
-		txn.state_set(node, &timer_key(timer.at, timer.kind, &timer.key), encode_payload(&1u64, now)?)?;
+		txn.state_set(operator, &timer_key(timer.at, timer.kind, &timer.key), encode_payload(&1u64, now)?)?;
 		Ok(())
 	}
 
-	pub fn disarm(&self, node: OperatorId, txn: &mut FlowTransaction, timer: &Timer) -> Result<()> {
-		self.inner.entry(node).or_default().hydrated = false;
-		txn.state_remove(node, &timer_key(timer.at, timer.kind, &timer.key))?;
+	pub fn disarm(&self, operator: OperatorId, txn: &mut FlowTransaction, timer: &Timer) -> Result<()> {
+		self.inner.entry(operator).or_default().hydrated = false;
+		txn.state_remove(operator, &timer_key(timer.at, timer.kind, &timer.key))?;
 		Ok(())
 	}
 
 	pub fn take_due(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		txn: &mut FlowTransaction,
 		watermark: DateTime,
 		limit: usize,
@@ -97,8 +97,8 @@ impl TimerWheel {
 			return Ok(Vec::new());
 		}
 		{
-			let mut state = self.inner.entry(node).or_default();
-			Self::hydrate_once(&mut state, node, txn)?;
+			let mut state = self.inner.entry(operator).or_default();
+			Self::hydrate_once(&mut state, operator, txn)?;
 			match state.earliest {
 				None => return Ok(Vec::new()),
 				Some(earliest) if earliest > watermark.to_millis() => return Ok(Vec::new()),
@@ -113,7 +113,7 @@ impl TimerWheel {
 		loop {
 			let want = (limit - due.len()).min(TAKE_CHUNK);
 			let range = EncodedKeyRange::new(start, base.end.clone());
-			let batch = txn.state_range(node, range, Some(want))?;
+			let batch = txn.state_range(operator, range, Some(want))?;
 			let mut last_inner: Option<EncodedKey> = None;
 			for item in &batch.items {
 				let decoded = OperatorStateKey::decode(&item.key)
@@ -133,18 +133,18 @@ impl TimerWheel {
 		}
 
 		for timer in &due {
-			txn.state_remove(node, &timer_key(timer.at, timer.kind, &timer.key))?;
+			txn.state_remove(operator, &timer_key(timer.at, timer.kind, &timer.key))?;
 		}
 		Ok(due)
 	}
 
-	fn hydrate_once(state: &mut WheelState, node: OperatorId, txn: &mut FlowTransaction) -> Result<()> {
+	fn hydrate_once(state: &mut WheelState, operator: OperatorId, txn: &mut FlowTransaction) -> Result<()> {
 		if state.hydrated {
 			return Ok(());
 		}
 		state.hydrated = true;
 		let range = keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::TIMER_WHEEL);
-		let batch = txn.state_range(node, range, Some(1))?;
+		let batch = txn.state_range(operator, range, Some(1))?;
 		state.earliest = batch.items.first().map(|item| {
 			let decoded = OperatorStateKey::decode(&item.key)
 				.expect("state_range must return OperatorState keys");

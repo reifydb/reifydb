@@ -99,7 +99,7 @@ pub struct ChaosHarnessBuilder<T: FFIOperator> {
 	seed: u64,
 	scenario: Scenario,
 	supported_ops: SupportedOps,
-	node_id: OperatorId,
+	operator_id: OperatorId,
 	version: CommitVersion,
 	operator_config: Vec<(String, Value)>,
 	input_shape: Option<RowShape>,
@@ -125,7 +125,7 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 			seed: 0,
 			scenario: Scenario::mixed(DEFAULT_STEPS),
 			supported_ops: SupportedOps::default(),
-			node_id: OperatorId(1),
+			operator_id: OperatorId(1),
 			version: CommitVersion(1),
 			operator_config: Vec::new(),
 			input_shape: None,
@@ -156,8 +156,8 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 		self
 	}
 
-	pub fn with_node_id(mut self, node_id: OperatorId) -> Self {
-		self.node_id = node_id;
+	pub fn with_node_id(mut self, operator_id: OperatorId) -> Self {
+		self.operator_id = operator_id;
 		self
 	}
 
@@ -260,7 +260,7 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 		let context = ChaosContext::new(self.seed);
 
 		let mut builder = FFIOperatorHarness::<T>::builder()
-			.with_node_id(self.node_id)
+			.with_node_id(self.operator_id)
 			.with_version(self.version)
 			.with_clock(context.clock.clone());
 		for (k, v) in self.operator_config {

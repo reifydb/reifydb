@@ -56,7 +56,7 @@ pub(crate) fn hash_from_group_bytes(bytes: &EncodedKey) -> Option<Hash128> {
 }
 
 pub(crate) struct Store {
-	node_id: OperatorId,
+	operator_id: OperatorId,
 	side: JoinSide,
 	shape_cache: RowShapeCacheCell,
 	membership: Arc<JoinMembership>,
@@ -64,9 +64,9 @@ pub(crate) struct Store {
 }
 
 impl Store {
-	pub(crate) fn new(node_id: OperatorId, side: JoinSide, membership: Arc<JoinMembership>) -> Self {
+	pub(crate) fn new(operator_id: OperatorId, side: JoinSide, membership: Arc<JoinMembership>) -> Self {
 		Self {
-			node_id,
+			operator_id,
 			side,
 			shape_cache: RowShapeCacheCell::new(SHAPE_CACHE_CAPACITY),
 			membership,
@@ -80,15 +80,15 @@ impl Store {
 	}
 
 	fn stamp(&self, txn: &mut FlowTransaction, group: GroupId) -> Result<()> {
-		txn.stamp_side(self.node_id, group, self.side.keyspace())?;
+		txn.stamp_side(self.operator_id, group, self.side.keyspace())?;
 		for keyspace in &self.co_stamped {
-			txn.stamp_side(self.node_id, group, *keyspace)?;
+			txn.stamp_side(self.operator_id, group, *keyspace)?;
 		}
 		Ok(())
 	}
 
 	fn ensure_membership_hydrated(&self, txn: &mut FlowTransaction) -> Result<()> {
-		self.membership.hydrate(self.node_id, txn)
+		self.membership.hydrate(self.operator_id, txn)
 	}
 
 	fn probe(&self, hash: &Hash128) -> MembershipAnswer {
@@ -96,11 +96,11 @@ impl Store {
 	}
 
 	fn resolve(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<Option<GroupId>> {
-		txn.lookup_group(self.node_id, &group_bytes(hash))
+		txn.lookup_group(self.operator_id, &group_bytes(hash))
 	}
 
 	fn intern(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<GroupId> {
-		let (group, _) = txn.intern_group(self.node_id, &group_bytes(hash))?;
+		let (group, _) = txn.intern_group(self.operator_id, &group_bytes(hash))?;
 		Ok(group)
 	}
 
@@ -137,7 +137,7 @@ impl Store {
 		let group = self.intern(txn, hash)?;
 		self.stamp(txn, group)?;
 		let key = self.row_key(group, row_number);
-		state_set(self.node_id, txn, &key, encoded.clone())
+		state_set(self.operator_id, txn, &key, encoded.clone())
 	}
 
 	pub(crate) fn group_of(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<Option<GroupId>> {
@@ -162,7 +162,7 @@ impl Store {
 			return Ok(None);
 		};
 		let key = self.row_key(group, row_number);
-		state_get(self.node_id, txn, &key)
+		state_get(self.operator_id, txn, &key)
 	}
 
 	pub(crate) fn update_row(
@@ -180,11 +180,11 @@ impl Store {
 			return Ok(false);
 		};
 		let key = self.row_key(group, row_number);
-		if state_get(self.node_id, txn, &key)?.is_none() {
+		if state_get(self.operator_id, txn, &key)?.is_none() {
 			return Ok(false);
 		}
 		self.stamp(txn, group)?;
-		state_set(self.node_id, txn, &key, encoded.clone())?;
+		state_set(self.operator_id, txn, &key, encoded.clone())?;
 		Ok(true)
 	}
 
@@ -202,9 +202,9 @@ impl Store {
 			return Ok(false);
 		};
 		let key = self.row_key(group, row_number);
-		let existed = state_get(self.node_id, txn, &key)?.is_some();
+		let existed = state_get(self.operator_id, txn, &key)?.is_some();
 		if existed {
-			state_remove(self.node_id, txn, &key)?;
+			state_remove(self.operator_id, txn, &key)?;
 			self.membership.side(self.side).remove(fold_hash128(hash));
 		}
 		Ok(existed)
@@ -233,7 +233,7 @@ impl Store {
 			range.start = Bound::Excluded(self.row_key(group, *after).into_encoded());
 		}
 		let mut out = Vec::new();
-		for entry in state_range(self.node_id, txn, range) {
+		for entry in state_range(self.operator_id, txn, range) {
 			let (full_key, row) = entry?;
 			if let Some(rn) = row_number_from_key(full_key.as_slice()) {
 				out.push((rn, row));
@@ -286,7 +286,7 @@ impl Store {
 			return Ok(false);
 		};
 		let range = self.rows_range(group);
-		let found = state_range(self.node_id, txn, range).next().transpose()?.is_some();
+		let found = state_range(self.operator_id, txn, range).next().transpose()?.is_some();
 		if !found && answer == MembershipAnswer::MaybePresent {
 			self.membership.side(self.side).record_store_miss();
 		}
@@ -302,7 +302,7 @@ impl Store {
 			return Ok(Some(shape));
 		}
 		let key = self.schema_key(fingerprint);
-		match state_get(self.node_id, txn, &key)? {
+		match state_get(self.operator_id, txn, &key)? {
 			Some(row) => {
 				let op = RowShape::operator_state();
 				let blob = op.get_blob(&row, 0);
@@ -329,7 +329,7 @@ impl Store {
 			return Ok(());
 		}
 		let key = self.schema_key(fingerprint);
-		if state_get(self.node_id, txn, &key)?.is_some() {
+		if state_get(self.operator_id, txn, &key)?.is_some() {
 			self.shape_cache.insert(shape.clone());
 			return Ok(());
 		}
@@ -342,7 +342,7 @@ impl Store {
 		let op = RowShape::operator_state();
 		let mut row = op.allocate();
 		op.set_blob(&mut row, 0, &Blob::from(serialized));
-		state_set(self.node_id, txn, &key, row)?;
+		state_set(self.operator_id, txn, &key, row)?;
 		self.shape_cache.insert(shape.clone());
 		Ok(())
 	}
@@ -413,20 +413,21 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
-		let node = OperatorId(51);
-		let left = Store::new(node, JoinSide::Left, membership.clone());
+		let operator = OperatorId(51);
+		let left = Store::new(operator, JoinSide::Left, membership.clone());
 
 		left.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
-		let group = txn.lookup_group(node, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
+		let group =
+			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
 
 		let far_future = Cutoff(DateTime::MAX);
 		assert_eq!(
-			txn.due_side_groups(node, Keyspace::JOIN_LEFT, far_future, 10).unwrap(),
+			txn.due_side_groups(operator, Keyspace::JOIN_LEFT, far_future, 10).unwrap(),
 			vec![group],
 			"the written side must be enrolled in its own sweep"
 		);
 		assert!(
-			txn.due_side_groups(node, Keyspace::JOIN_RIGHT, far_future, 10).unwrap().is_empty(),
+			txn.due_side_groups(operator, Keyspace::JOIN_RIGHT, far_future, 10).unwrap().is_empty(),
 			"a left write must not enrol the right side, which holds no rows to retire"
 		);
 	}
@@ -437,16 +438,17 @@ mod tests {
 		// updates is reclaimed on the strength of its first insert while the join still probes it.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = OperatorId(52);
-		let store = Store::new(node, JoinSide::Left, test_membership());
+		let operator = OperatorId(52);
+		let store = Store::new(operator, JoinSide::Left, test_membership());
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
-		let group = txn.lookup_group(node, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
-		txn.forget_side(node, group, Keyspace::JOIN_LEFT).unwrap();
+		let group =
+			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
+		txn.forget_side(operator, group, Keyspace::JOIN_LEFT).unwrap();
 
 		assert!(store.update_row(&mut txn, &h(0xAAA), rn(1), &row(0x11)).unwrap());
 
 		assert_eq!(
-			txn.due_side_groups(node, Keyspace::JOIN_LEFT, Cutoff(DateTime::MAX), 10).unwrap(),
+			txn.due_side_groups(operator, Keyspace::JOIN_LEFT, Cutoff(DateTime::MAX), 10).unwrap(),
 			vec![group],
 			"the update must have re-stamped the side"
 		);
@@ -458,16 +460,19 @@ mod tests {
 		// later sweep would pay to reclaim an empty keyspace for a key never stored.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = OperatorId(53);
-		let store = Store::new(node, JoinSide::Left, test_membership());
+		let operator = OperatorId(53);
+		let store = Store::new(operator, JoinSide::Left, test_membership());
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
-		let group = txn.lookup_group(node, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
-		txn.forget_side(node, group, Keyspace::JOIN_LEFT).unwrap();
+		let group =
+			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
+		txn.forget_side(operator, group, Keyspace::JOIN_LEFT).unwrap();
 
 		assert!(!store.update_row(&mut txn, &h(0xAAA), rn(99), &row(0x11)).unwrap(), "no such row number");
 
 		assert!(
-			txn.due_side_groups(node, Keyspace::JOIN_LEFT, Cutoff(DateTime::MAX), 10).unwrap().is_empty(),
+			txn.due_side_groups(operator, Keyspace::JOIN_LEFT, Cutoff(DateTime::MAX), 10)
+				.unwrap()
+				.is_empty(),
 			"an update that stored nothing must leave the side index alone"
 		);
 	}
@@ -479,9 +484,9 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
-		let node = OperatorId(50);
-		let left = Store::new(node, JoinSide::Left, membership.clone());
-		let right = Store::new(node, JoinSide::Right, membership);
+		let operator = OperatorId(50);
+		let left = Store::new(operator, JoinSide::Left, membership.clone());
+		let right = Store::new(operator, JoinSide::Right, membership);
 
 		left.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
 		right.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x20), RowPresence::Unknown).unwrap();
@@ -493,12 +498,12 @@ mod tests {
 		assert_eq!(shape.get_blob(&right_row, 0).as_bytes(), &[0x20u8][..]);
 
 		assert_eq!(
-			txn.lookup_group(node, &group_bytes(&h(0xAAA))).unwrap(),
-			txn.lookup_group(node, &group_bytes(&h(0xAAA))).unwrap(),
+			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap(),
+			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap(),
 			"both sides must intern the same key to one group id"
 		);
 		assert!(
-			txn.lookup_group(node, &group_bytes(&h(0xAAA))).unwrap().is_some(),
+			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap().is_some(),
 			"storing a row must intern its join key"
 		);
 	}
@@ -510,9 +515,9 @@ mod tests {
 		// obligation per absent key - turning a degraded filter into unbounded group growth.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = OperatorId(51);
+		let operator = OperatorId(51);
 		let membership = Arc::new(JoinMembership::with_byte_cap(64));
-		let store = Store::new(node, JoinSide::Left, membership.clone());
+		let store = Store::new(operator, JoinSide::Left, membership.clone());
 
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
 		for hash in 0..100_000u64 {
@@ -530,7 +535,7 @@ mod tests {
 		assert!(!store.update_row(&mut txn, &h(0xCCC), rn(1), &row(0x20)).unwrap());
 
 		assert!(
-			txn.lookup_group(node, &group_bytes(&h(0xCCC))).unwrap().is_none(),
+			txn.lookup_group(operator, &group_bytes(&h(0xCCC))).unwrap().is_none(),
 			"a read-through probe must resolve the key, never intern it"
 		);
 	}
@@ -622,32 +627,32 @@ mod tests {
 	fn get_row_shape_loads_from_state_when_cache_is_cold() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = OperatorId(21);
+		let operator = OperatorId(21);
 		let shape = RowShape::testing(&[ValueType::Int4]);
 
-		let writer = Store::new(node, JoinSide::Left, test_membership());
+		let writer = Store::new(operator, JoinSide::Left, test_membership());
 		writer.set_row_shape(&mut txn, &shape).unwrap();
 
-		let reader = Store::new(node, JoinSide::Left, test_membership());
+		let reader = Store::new(operator, JoinSide::Left, test_membership());
 		let got = reader.get_row_shape(&mut txn, shape.fingerprint()).unwrap();
 		assert_eq!(got, Some(shape), "a cold in-memory cache must fall back to the persisted shape");
 	}
 
 	#[test]
 	fn each_side_keeps_its_own_shape_under_one_node_scoped_keyspace() {
-		// Both sides share the node-scoped JOIN_SCHEMA keyspace, separated only by the side tag:
+		// Both sides share the operator-scoped JOIN_SCHEMA keyspace, separated only by the side tag:
 		// without it they collide on identical fingerprints and a side decodes the other's shape.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = OperatorId(52);
+		let operator = OperatorId(52);
 		let membership = test_membership();
-		let left = Store::new(node, JoinSide::Left, membership.clone());
-		let right = Store::new(node, JoinSide::Right, membership);
+		let left = Store::new(operator, JoinSide::Left, membership.clone());
+		let right = Store::new(operator, JoinSide::Right, membership);
 
 		let shape = RowShape::testing(&[ValueType::Int4]);
 		left.set_row_shape(&mut txn, &shape).unwrap();
 
-		let cold_right = Store::new(node, JoinSide::Right, test_membership());
+		let cold_right = Store::new(operator, JoinSide::Right, test_membership());
 		assert_eq!(
 			cold_right.get_row_shape(&mut txn, shape.fingerprint()).unwrap(),
 			None,
@@ -655,7 +660,7 @@ mod tests {
 		);
 
 		right.set_row_shape(&mut txn, &shape).unwrap();
-		let cold_right = Store::new(node, JoinSide::Right, test_membership());
+		let cold_right = Store::new(operator, JoinSide::Right, test_membership());
 		assert_eq!(cold_right.get_row_shape(&mut txn, shape.fingerprint()).unwrap(), Some(shape));
 	}
 
@@ -747,15 +752,15 @@ mod tests {
 		// not only the first.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = OperatorId(24);
+		let operator = OperatorId(24);
 		let narrow = RowShape::testing(&[ValueType::Int4]);
 		let wide = RowShape::testing(&[ValueType::Int4, ValueType::Utf8]);
 
-		let writer = Store::new(node, JoinSide::Right, test_membership());
+		let writer = Store::new(operator, JoinSide::Right, test_membership());
 		writer.set_row_shape(&mut txn, &narrow).unwrap();
 		writer.set_row_shape(&mut txn, &wide).unwrap();
 
-		let reader = Store::new(node, JoinSide::Right, test_membership());
+		let reader = Store::new(operator, JoinSide::Right, test_membership());
 		assert_eq!(
 			reader.get_row_shape(&mut txn, wide.fingerprint()).unwrap(),
 			Some(wide),
@@ -893,12 +898,12 @@ mod tests {
 		// a false absence.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = OperatorId(45);
-		let writer = Store::new(node, JoinSide::Right, test_membership());
+		let operator = OperatorId(45);
+		let writer = Store::new(operator, JoinSide::Right, test_membership());
 		writer.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
 
 		let restarted_membership = test_membership();
-		let restarted = Store::new(node, JoinSide::Right, restarted_membership.clone());
+		let restarted = Store::new(operator, JoinSide::Right, restarted_membership.clone());
 		assert!(
 			restarted.contains_key(&mut txn, &h(0xAAA)).unwrap(),
 			"a persisted key must survive rehydration as present"
@@ -917,17 +922,17 @@ mod tests {
 		// drops matches.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = OperatorId(54);
+		let operator = OperatorId(54);
 		let writer = test_membership();
-		let left = Store::new(node, JoinSide::Left, writer.clone());
-		let right = Store::new(node, JoinSide::Right, writer);
+		let left = Store::new(operator, JoinSide::Left, writer.clone());
+		let right = Store::new(operator, JoinSide::Right, writer);
 		left.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10), RowPresence::Unknown).unwrap();
 		left.put_row(&mut txn, &h(0xAAA), rn(2), &row(0x20), RowPresence::Unknown).unwrap();
 		right.put_row(&mut txn, &h(0xAAA), rn(3), &row(0x30), RowPresence::Unknown).unwrap();
 
 		let restarted = test_membership();
-		let left = Store::new(node, JoinSide::Left, restarted.clone());
-		let right = Store::new(node, JoinSide::Right, restarted);
+		let left = Store::new(operator, JoinSide::Left, restarted.clone());
+		let right = Store::new(operator, JoinSide::Right, restarted);
 
 		assert!(left.remove_row(&mut txn, &h(0xAAA), rn(1)).unwrap());
 		assert!(

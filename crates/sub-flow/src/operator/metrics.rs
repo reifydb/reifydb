@@ -26,18 +26,18 @@ impl OperatorSampleRegistry {
 		}
 	}
 
-	pub fn record(&self, node: OperatorId, sample: OperatorSample) {
-		self.inner.lock().insert(node, sample);
+	pub fn record(&self, operator: OperatorId, sample: OperatorSample) {
+		self.inner.lock().insert(operator, sample);
 	}
 
-	pub fn forget(&self, node: OperatorId) {
-		self.inner.lock().remove(&node);
+	pub fn forget(&self, operator: OperatorId) {
+		self.inner.lock().remove(&operator);
 	}
 
 	pub fn snapshot(&self) -> Vec<(OperatorId, OperatorSample)> {
 		let mut out: Vec<(OperatorId, OperatorSample)> =
-			self.inner.lock().iter().map(|(node, sample)| (*node, *sample)).collect();
-		out.sort_by_key(|(node, _)| *node);
+			self.inner.lock().iter().map(|(operator, sample)| (*operator, *sample)).collect();
+		out.sort_by_key(|(operator, _)| *operator);
 		out
 	}
 }
@@ -60,43 +60,47 @@ impl OperatorSampleCollector {
 	}
 }
 
-pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, node: OperatorId, sample: &OperatorSample) {
+pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, operator: OperatorId, sample: &OperatorSample) {
 	if let Some(memory) = sample.memory {
-		out.push(MetricsSample::count(format!("flow_node::{node}"), "state_entries", memory.entries.as_u64()));
-		out.push(MetricsSample::bytes(format!("flow_node::{node}"), "state_resident_bytes", memory.bytes));
+		out.push(MetricsSample::count(
+			format!("flow_node::{operator}"),
+			"state_entries",
+			memory.entries.as_u64(),
+		));
+		out.push(MetricsSample::bytes(format!("flow_node::{operator}"), "state_resident_bytes", memory.bytes));
 	}
 	if let Some(memory) = sample.dirty_memory {
 		out.push(MetricsSample::count(
-			format!("flow_node::{node}"),
+			format!("flow_node::{operator}"),
 			"state_dirty_entries",
 			memory.entries.as_u64(),
 		));
-		out.push(MetricsSample::bytes(format!("flow_node::{node}"), "state_dirty_bytes", memory.bytes));
+		out.push(MetricsSample::bytes(format!("flow_node::{operator}"), "state_dirty_bytes", memory.bytes));
 	}
 	if let Some(memory) = sample.row_number_cache {
 		out.push(MetricsSample::count(
-			format!("flow_node::{node}"),
+			format!("flow_node::{operator}"),
 			"row_number_cache_entries",
 			memory.entries.as_u64(),
 		));
-		out.push(MetricsSample::heap(format!("flow_node::{node}"), "row_number_cache_bytes", memory.bytes));
+		out.push(MetricsSample::heap(format!("flow_node::{operator}"), "row_number_cache_bytes", memory.bytes));
 	}
 	if let Some(memory) = sample.membership {
 		out.push(MetricsSample::count(
-			format!("flow_node::{node}"),
+			format!("flow_node::{operator}"),
 			"state_membership_entries",
 			memory.entries.as_u64(),
 		));
-		out.push(MetricsSample::heap(format!("flow_node::{node}"), "state_membership_bytes", memory.bytes));
+		out.push(MetricsSample::heap(format!("flow_node::{operator}"), "state_membership_bytes", memory.bytes));
 	}
 	if let Some(completeness) = sample.completeness {
 		out.push(MetricsSample::count(
-			format!("flow_node::{node}"),
+			format!("flow_node::{operator}"),
 			"state_values_complete",
 			completeness.values_complete as u64,
 		));
 		out.push(MetricsSample::count(
-			format!("flow_node::{node}"),
+			format!("flow_node::{operator}"),
 			"state_membership_complete",
 			completeness.membership_complete as u64,
 		));
@@ -106,15 +110,19 @@ pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, node: Operator
 			("state_completeness_revocations", completeness.revocations),
 		] {
 			if count.as_u64() > 0 {
-				out.push(MetricsSample::count(format!("flow_node::{node}"), metric, count.as_u64()));
+				out.push(MetricsSample::count(
+					format!("flow_node::{operator}"),
+					metric,
+					count.as_u64(),
+				));
 			}
 		}
 	}
 	if let Some(pool) = sample.pool {
-		out.push(MetricsSample::bytes(format!("flow_node::{node}"), "state_pool_budget", pool.budget));
+		out.push(MetricsSample::bytes(format!("flow_node::{operator}"), "state_pool_budget", pool.budget));
 		if pool.evictions.as_u64() > 0 {
 			out.push(MetricsSample::count(
-				format!("flow_node::{node}"),
+				format!("flow_node::{operator}"),
 				"state_pool_evictions",
 				pool.evictions.as_u64(),
 			));
@@ -124,8 +132,8 @@ pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, node: Operator
 
 impl MetricsCollector for OperatorSampleCollector {
 	fn collect(&self, out: &mut Vec<MetricsSample>) {
-		for (node, sample) in self.registry.snapshot() {
-			push_operator_samples(out, node, &sample);
+		for (operator, sample) in self.registry.snapshot() {
+			push_operator_samples(out, operator, &sample);
 		}
 	}
 }
@@ -157,7 +165,7 @@ mod tests {
 	#[test]
 	fn group_population_reports_as_heap_with_quiet_zero_counters() {
 		// The interner's dictionary and filter sit outside the operator state budget, so they
-		// must read as heap or their bytes go unattributed - the opposite of per-node state,
+		// must read as heap or their bytes go unattributed - the opposite of per-operator state,
 		// which the budget already counts.
 		let sample = GroupInternerSample {
 			cache: StateMemory::new(Count::new(12), ByteSize::from_bytes(640)),
@@ -180,14 +188,14 @@ mod tests {
 				("group_values_complete", 1.0, None),
 				("group_membership_complete", 1.0, None),
 			],
-			"a healthy node emits both population pairs and both gauges, and no zero counter rows"
+			"a healthy operator emits both population pairs and both gauges, and no zero counter rows"
 		);
-		assert!(out.iter().all(|s| s.scope == "flow_node::4"), "every group metric is scoped to its node");
+		assert!(out.iter().all(|s| s.scope == "flow_node::4"), "every group metric is scoped to its operator");
 	}
 
 	#[test]
 	fn a_node_that_has_interned_nothing_still_reports_its_health() {
-		// An empty dictionary must not emit phantom zero population rows, but a node whose
+		// An empty dictionary must not emit phantom zero population rows, but a operator whose
 		// absence proofs were revoked while holding no groups still has to stay visible.
 		let sample = GroupInternerSample {
 			cache: StateMemory::ZERO,
@@ -250,7 +258,7 @@ mod tests {
 		assert_eq!(
 			registry.snapshot(),
 			vec![(OperatorId(1), memory_sample(3, 300)), (OperatorId(2), memory_sample(7, 700))],
-			"snapshot must be ordered by node so the metric log is stable across runs"
+			"snapshot must be ordered by operator so the metric log is stable across runs"
 		);
 	}
 
@@ -277,7 +285,7 @@ mod tests {
 		assert_eq!(
 			registry.snapshot(),
 			vec![(OperatorId(1), memory_sample(3, 300))],
-			"a forgotten node must vanish so a stopped flow stops reporting stale memory"
+			"a forgotten operator must vanish so a stopped flow stops reporting stale memory"
 		);
 	}
 
@@ -315,7 +323,7 @@ mod tests {
 		assert_eq!(
 			out[1].reading.heap_bytes(),
 			None,
-			"per-node state must not read as heap: the budget collector's operator_state cached_bytes \
+			"per-operator state must not read as heap: the budget collector's operator_state cached_bytes \
 			 is the single heap emitter, and a second one would double-count the same bytes in the \
 			 named-bytes reconciliation"
 		);
@@ -387,7 +395,7 @@ mod tests {
 	#[test]
 	fn collector_emits_membership_and_completeness_with_quiet_zero_counters() {
 		// The membership pair and the two gauges are the health signal and always emit, but a
-		// steady-state healthy node must not add three permanent zero counter rows to every dump.
+		// steady-state healthy operator must not add three permanent zero counter rows to every dump.
 		let registry = OperatorSampleRegistry::new();
 		let healthy = OperatorSample::default()
 			.with_membership(StateMemory::new(Count::new(12), ByteSize::from_bytes(640)))
@@ -475,7 +483,7 @@ mod tests {
 	fn collector_surfaces_the_guest_pool_budget_and_quiet_zero_evictions() {
 		// A guest operator's private pool is invisible to the shared operator_state scope, so its
 		// budget gauge always emits; the eviction counter stays quiet at zero so a healthy pool
-		// adds no permanent row per node.
+		// adds no permanent row per operator.
 		let registry = OperatorSampleRegistry::new();
 		let healthy = OperatorSample::default().with_pool(StatePool {
 			budget: ByteSize::from_bytes(8 * 1024 * 1024),
@@ -533,8 +541,8 @@ impl MetricsCollector for OperatorStateBudgetCollector {
 	}
 }
 
-pub(crate) fn push_group_samples(out: &mut Vec<MetricsSample>, node: OperatorId, sample: &GroupInternerSample) {
-	let scope = format!("flow_node::{node}");
+pub(crate) fn push_group_samples(out: &mut Vec<MetricsSample>, operator: OperatorId, sample: &GroupInternerSample) {
+	let scope = format!("flow_node::{operator}");
 	if sample.cache.entries.as_u64() > 0 || sample.cache.bytes.as_bytes() > 0 {
 		out.push(MetricsSample::count(scope.clone(), "group_cache_entries", sample.cache.entries.as_u64()));
 		out.push(MetricsSample::heap(scope.clone(), "group_cache_bytes", sample.cache.bytes));
@@ -582,8 +590,8 @@ impl GroupInternerMetricsCollector {
 
 impl MetricsCollector for GroupInternerMetricsCollector {
 	fn collect(&self, out: &mut Vec<MetricsSample>) {
-		for (node, sample) in self.interner.samples() {
-			push_group_samples(out, node, &sample);
+		for (operator, sample) in self.interner.samples() {
+			push_group_samples(out, operator, &sample);
 		}
 	}
 }
@@ -602,8 +610,8 @@ impl RowNumberMetricsCollector {
 
 impl MetricsCollector for RowNumberMetricsCollector {
 	fn collect(&self, out: &mut Vec<MetricsSample>) {
-		for (node, sample) in self.provider.samples() {
-			let scope = format!("flow_node::{node}");
+		for (operator, sample) in self.provider.samples() {
+			let scope = format!("flow_node::{operator}");
 			if sample.cache.entries.as_u64() > 0 || sample.cache.bytes.as_bytes() > 0 {
 				out.push(MetricsSample::count(
 					scope.clone(),

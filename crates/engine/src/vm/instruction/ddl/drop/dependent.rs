@@ -41,18 +41,18 @@ pub(crate) fn find_column_dependents(
 pub(crate) fn find_flow_dependents(
 	catalog: &Catalog,
 	txn: &mut AdminTransaction,
-	nodes: &[Operator],
+	operators: &[Operator],
 	flows: &[Flow],
 	check: impl Fn(&OperatorDef) -> bool,
 ) -> Result<Vec<String>> {
 	let mut dependents = Vec::new();
 	let mut seen_flows = HashSet::new();
-	for node in nodes {
-		let node_type: OperatorDef = from_bytes(node.data.as_ref())
-			.map_err(|e| internal_error!("Failed to deserialize flow node type: {}", e))?;
-		if check(&node_type)
-			&& seen_flows.insert(node.flow)
-			&& let Some(flow) = flows.iter().find(|f| f.id == node.flow)
+	for operator in operators {
+		let operator_type: OperatorDef = from_bytes(operator.data.as_ref())
+			.map_err(|e| internal_error!("Failed to deserialize operator type: {}", e))?;
+		if check(&operator_type)
+			&& seen_flows.insert(operator.flow)
+			&& let Some(flow) = flows.iter().find(|f| f.id == operator.flow)
 		{
 			let ns = catalog.find_namespace(&mut Transaction::Admin(txn), flow.namespace)?;
 			let ns_name = ns.map(|n| n.name().to_string()).unwrap_or_else(|| "?".to_string());

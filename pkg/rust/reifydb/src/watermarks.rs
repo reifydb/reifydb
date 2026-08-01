@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{marker::PhantomData, thread, time::Instant as StdInstant};
+use std::{marker::PhantomData, thread};
 
 use reifydb_cdc::consume::watermark::FlowCaughtUpWatermark;
 use reifydb_core::{
@@ -11,6 +11,7 @@ use reifydb_core::{
 		subscription::{SubscriptionWatermarkRow, SubscriptionWatermarkSampler},
 	},
 };
+use reifydb_runtime::context::clock::Clock;
 #[cfg(feature = "sub_replication")]
 use reifydb_sub_replication::replica::watermark::ReplicaWatermark;
 use reifydb_value::{Result, value::duration::Duration};
@@ -37,6 +38,7 @@ impl<'a> Watermarks<'a> {
 	pub fn cdc(&self) -> CdcWatermarks<'a> {
 		CdcWatermarks {
 			db: self.db,
+			clock: Clock::Real,
 		}
 	}
 
@@ -108,6 +110,7 @@ impl TxWatermarks<'_> {
 
 pub struct CdcWatermarks<'a> {
 	db: &'a Database,
+	clock: Clock,
 }
 
 impl CdcWatermarks<'_> {
@@ -150,12 +153,12 @@ impl CdcWatermarks<'_> {
 		if self.consumer() >= version {
 			return true;
 		}
-		let deadline = StdInstant::now() + timeout.to_std();
+		let deadline = self.clock.instant() + timeout.to_std();
 		loop {
 			if self.consumer() >= version {
 				return true;
 			}
-			if StdInstant::now() >= deadline {
+			if self.clock.instant() >= deadline {
 				return self.consumer() >= version;
 			}
 			thread::sleep(Duration::from_milliseconds(2).unwrap().to_std());
@@ -168,12 +171,12 @@ impl CdcWatermarks<'_> {
 		if self.flow_consumer() >= version {
 			return true;
 		}
-		let deadline = StdInstant::now() + timeout.to_std();
+		let deadline = self.clock.instant() + timeout.to_std();
 		loop {
 			if self.flow_consumer() >= version {
 				return true;
 			}
-			if StdInstant::now() >= deadline {
+			if self.clock.instant() >= deadline {
 				return self.flow_consumer() >= version;
 			}
 			thread::sleep(Duration::from_milliseconds(2).unwrap().to_std());

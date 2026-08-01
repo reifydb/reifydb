@@ -23,16 +23,16 @@ use reifydb_value::{
 
 pub struct OperatorStateStore<'a> {
 	txn: &'a mut FlowTransaction,
-	node: OperatorId,
+	operator: OperatorId,
 	now: DateTime,
 }
 
 impl<'a> OperatorStateStore<'a> {
-	pub fn new(txn: &'a mut FlowTransaction, node: OperatorId) -> Self {
+	pub fn new(txn: &'a mut FlowTransaction, operator: OperatorId) -> Self {
 		let now = txn.clock().now();
 		Self {
 			txn,
-			node,
+			operator,
 			now,
 		}
 	}
@@ -41,7 +41,7 @@ impl<'a> OperatorStateStore<'a> {
 impl StateStore for OperatorStateStore<'_> {
 	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.txn.arm_timer(
-			self.node,
+			self.operator,
 			&Timer {
 				at,
 				kind,
@@ -52,7 +52,7 @@ impl StateStore for OperatorStateStore<'_> {
 
 	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.txn.disarm_timer(
-			self.node,
+			self.operator,
 			&Timer {
 				at,
 				kind,
@@ -66,7 +66,7 @@ impl StateStore for OperatorStateStore<'_> {
 	}
 
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<StateBytes>> {
-		match self.txn.state_get(self.node, key)? {
+		match self.txn.state_get(self.operator, key)? {
 			Some(row) => Ok(Some(StateBytes::from_row(row)?)),
 			None => Ok(None),
 		}
@@ -77,7 +77,7 @@ impl StateStore for OperatorStateStore<'_> {
 		keys: &[GroupStateKey],
 		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
-		let batch = self.txn.state_get_many(self.node, keys)?;
+		let batch = self.txn.state_get_many(self.operator, keys)?;
 		for r in batch.items {
 			let Some(decoded) = OperatorStateKey::decode(&r.key) else {
 				continue;
@@ -91,11 +91,11 @@ impl StateStore for OperatorStateStore<'_> {
 	}
 
 	fn state_set(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()> {
-		self.txn.state_set(self.node, key, payload.into_row())
+		self.txn.state_set(self.operator, key, payload.into_row())
 	}
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
-		self.txn.state_remove(self.node, key)
+		self.txn.state_remove(self.operator, key)
 	}
 
 	fn state_range_visit(
@@ -104,7 +104,7 @@ impl StateStore for OperatorStateStore<'_> {
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
-		let batch = self.txn.state_range(self.node, range, limit)?;
+		let batch = self.txn.state_range(self.operator, range, limit)?;
 		for r in batch.items {
 			if let Some(decoded) = OperatorStateKey::decode(&r.key)
 				&& let Some(inner) = GroupStateKey::from_framed(EncodedKey::new(decoded.key))
@@ -116,23 +116,23 @@ impl StateStore for OperatorStateStore<'_> {
 	}
 
 	fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {
-		Ok(self.txn.intern_group(self.node, group)?.0)
+		Ok(self.txn.intern_group(self.operator, group)?.0)
 	}
 
 	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>> {
-		self.txn.lookup_group(self.node, group)
+		self.txn.lookup_group(self.operator, group)
 	}
 
 	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)> {
-		self.txn.get_or_create_row_number(self.node, group, key)
+		self.txn.get_or_create_row_number(self.operator, group, key)
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
-		self.txn.get_or_create_row_numbers(self.node, group, keys)
+		self.txn.get_or_create_row_numbers(self.operator, group, keys)
 	}
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
-		self.txn.remove_row_number(self.node, group, key).map(|_| ())
+		self.txn.remove_row_number(self.operator, group, key).map(|_| ())
 	}
 
 	fn clock_now(&self) -> DateTime {

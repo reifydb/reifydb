@@ -21,7 +21,7 @@ use crate::{
 	framework::harness::Harness,
 	operators::append::{
 		oracle::AppendOracle,
-		workload::{APPEND_NODE, AppendWorkload, input_node},
+		workload::{APPEND_OPERATOR, AppendWorkload, input},
 	},
 };
 
@@ -30,12 +30,10 @@ pub fn build(inputs: usize) -> AppendOperator {
 }
 
 pub fn build_with_ttl(inputs: usize, ttl: Option<Duration>) -> AppendOperator {
-	let nodes: Vec<OperatorId> = (0..inputs).map(input_node).collect();
-	let parents = nodes
-		.iter()
-		.map(|node| OperatorCell::new(SourceSeriesOperator::new(*node)))
-		.collect();
-	AppendOperator::new(APPEND_NODE, parents, nodes, ttl)
+	let operators: Vec<OperatorId> = (0..inputs).map(input).collect();
+	let parents =
+		operators.iter().map(|operator| OperatorCell::new(SourceSeriesOperator::new(*operator))).collect();
+	AppendOperator::new(APPEND_OPERATOR, parents, operators, ttl)
 }
 
 #[derive(Debug, Clone)]

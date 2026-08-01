@@ -43,12 +43,12 @@ fn routines() -> Routines {
 }
 
 pub fn build(spec: &WindowSpec, runtime: RuntimeContext) -> WindowOperator {
-	let node = OperatorId(1);
+	let operator = OperatorId(1);
 	let parent = OperatorCell::new(SourceSeriesOperator::new(OperatorId(0)));
 
 	WindowOperator::new(WindowConfig {
 		parent,
-		node,
+		operator,
 		kind: spec.kind.clone(),
 		group_by: parse_expression(spec.group_by).expect("group_by parses"),
 		aggregations: parse_expression(spec.aggregations).expect("aggregations parse"),

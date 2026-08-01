@@ -163,7 +163,7 @@ impl FlowCompiler {
 	}
 
 	pub(crate) fn add_node(&mut self, txn: &mut Transaction<'_>, node_type: OperatorDef) -> Result<OperatorId> {
-		let node_id = self.next_node_id(txn)?;
+		let operator_id = self.next_node_id(txn)?;
 		let flow_id = self.builder.id();
 
 		if !self.ephemeral {
@@ -171,7 +171,7 @@ impl FlowCompiler {
 				.map_err(|e| Error(Box::new(internal!("Failed to serialize OperatorDef: {}", e))))?;
 
 			let node_def = Operator {
-				id: node_id,
+				id: operator_id,
 				flow: flow_id,
 				node_type: node_type.discriminator(),
 				data: Blob::from(data),
@@ -180,14 +180,14 @@ impl FlowCompiler {
 			self.catalog.create_operator(txn.admin_mut(), &node_def)?;
 		}
 
-		self.builder.add_node(rql_operator::FlowNode::new(node_id, node_type));
-		Ok(node_id)
+		self.builder.add_node(rql_operator::FlowNode::new(operator_id, node_type));
+		Ok(operator_id)
 	}
 
 	pub(crate) fn write_operator_settings(
 		&self,
 		txn: &mut Transaction<'_>,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		ttl: Option<OperatorTtl>,
 	) -> Result<()> {
 		if self.ephemeral {
@@ -196,7 +196,7 @@ impl FlowCompiler {
 		if let Some(ttl) = ttl {
 			create_operator_settings(
 				txn.admin_mut(),
-				node_id,
+				operator_id,
 				&OperatorSettings {
 					ttl: Some(ttl),
 					join: None,
@@ -209,7 +209,7 @@ impl FlowCompiler {
 	pub(crate) fn write_operator_settings_join(
 		&self,
 		txn: &mut Transaction<'_>,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		join: Option<JoinTtl>,
 	) -> Result<()> {
 		if self.ephemeral {
@@ -223,7 +223,7 @@ impl FlowCompiler {
 		}
 		create_operator_settings(
 			txn.admin_mut(),
-			node_id,
+			operator_id,
 			&OperatorSettings {
 				ttl: None,
 				join: Some(join),
@@ -466,10 +466,10 @@ fn child_plans(plan: &QueryPlan) -> Vec<&QueryPlan> {
 }
 
 fn has_real_source(flow: &FlowDag) -> bool {
-	flow.get_node_ids().any(|node_id| {
-		if let Some(node) = flow.get_node(&node_id) {
+	flow.get_operator_ids().any(|operator_id| {
+		if let Some(operator) = flow.get_operator(&operator_id) {
 			matches!(
-				node.ty,
+				operator.ty,
 				OperatorDef::SourceTable { .. }
 					| OperatorDef::SourceView { .. } | OperatorDef::SourceRingBuffer { .. }
 					| OperatorDef::SourceSeries { .. }

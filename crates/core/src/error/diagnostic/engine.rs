@@ -110,7 +110,7 @@ pub fn read_only_rejection(fragment: Fragment) -> Diagnostic {
 		column: None,
 		fragment,
 		label: Some("write rejected".to_string()),
-		help: Some("Send write operations (admin, command, subscription) to the primary node".to_string()),
+		help: Some("Send write operations (admin, command, subscription) to the primary operator".to_string()),
 		notes: vec![],
 		cause: None,
 		operator_chain: None,

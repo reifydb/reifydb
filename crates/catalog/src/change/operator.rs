@@ -21,14 +21,14 @@ pub(super) struct OperatorApplier;
 impl CatalogChangeApplier for OperatorApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
 		txn.set(key, row.clone())?;
-		let node = decode_operator(row);
-		catalog.cache.set_operator(node.id, txn.version(), Some(node));
+		let operator = decode_operator(row);
+		catalog.cache.set_operator(operator.id, txn.version(), Some(operator));
 		Ok(())
 	}
 
 	fn remove(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey) -> Result<()> {
 		txn.remove(key)?;
-		let id = OperatorKey::decode(key).map(|k| k.node).ok_or(CatalogChangeError::KeyDecodeFailed {
+		let id = OperatorKey::decode(key).map(|k| k.operator).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Operator,
 		})?;
 		catalog.cache.set_operator(id, txn.version(), None);

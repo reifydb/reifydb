@@ -4,11 +4,11 @@
 mod authentication;
 mod binding;
 mod dictionary;
-mod operator;
 mod handler;
 mod identity;
 mod identity_attribute;
 mod namespace;
+mod operator;
 mod operator_settings;
 mod policy;
 mod procedure;

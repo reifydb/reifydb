@@ -36,7 +36,7 @@ use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_
 #[test]
 fn an_operator_that_declares_reclaim_reaches_the_host_with_it() {
 	// The descriptor's capability list is the whole truth the host loads: losing the bit there
-	// makes reclaim_flow skip the node while the operator's source still looks correct.
+	// makes reclaim_flow skip the operator while the operator's source still looks correct.
 	assert!(TestVolume::CAPABILITIES.contains(&OperatorCapability::Reclaim));
 
 	let descriptor = create_descriptor::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>();

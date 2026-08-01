@@ -33,7 +33,7 @@ impl FlowEngineInner {
 		let sources: Vec<OperatorId> = topo
 			.iter()
 			.copied()
-			.filter(|id| flow.get_node(id).is_some_and(|node| node.ty.is_source()))
+			.filter(|id| flow.get_operator(id).is_some_and(|operator| operator.ty.is_source()))
 			.collect();
 		if sources.is_empty() {
 			return Ok(0);
@@ -46,13 +46,13 @@ impl FlowEngineInner {
 			let watermark = watermarks.flow_watermark(domain, &sources, txn)?;
 			txn.set_flow_watermark(watermark);
 			let mut due: Vec<(OperatorId, Timer)> = Vec::new();
-			for node_id in topo {
+			for operator_id in topo {
 				if budget == 0 {
 					break;
 				}
-				for timer in wheel.take_due(*node_id, txn, watermark, budget)? {
+				for timer in wheel.take_due(*operator_id, txn, watermark, budget)? {
 					budget -= 1;
-					due.push((*node_id, timer));
+					due.push((*operator_id, timer));
 				}
 			}
 			if due.is_empty() {
@@ -76,12 +76,12 @@ impl FlowEngineInner {
 			});
 
 			let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
-			for (node_id, timer) in due {
+			for (operator_id, timer) in due {
 				fired_total += 1;
-				let Some(node) = flow.get_node(&node_id) else {
+				let Some(graph_node) = flow.get_operator(&operator_id) else {
 					continue;
 				};
-				let Some(operator) = self.operators.get(&node_id).cloned() else {
+				let Some(operator) = self.operators.get(&operator_id).cloned() else {
 					continue;
 				};
 				txn.set_change_coordinate(ChangeCoordinate {
@@ -94,9 +94,9 @@ impl FlowEngineInner {
 				if result.diffs.is_empty() {
 					continue;
 				}
-				let combined = Change::from_flow(node_id, version, result.diffs, result.changed_at);
-				let child_count = node.outputs.len();
-				for (child_idx, child_id) in node.outputs.iter().enumerate() {
+				let combined = Change::from_flow(operator_id, version, result.diffs, result.changed_at);
+				let child_count = graph_node.outputs.len();
+				for (child_idx, child_id) in graph_node.outputs.iter().enumerate() {
 					if child_idx + 1 == child_count {
 						pending.entry(*child_id).or_default().push(combined);
 						break;

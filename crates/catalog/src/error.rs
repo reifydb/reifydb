@@ -1365,7 +1365,7 @@ impl IntoDiagnostic for CatalogChangeError {
 				fragment: Fragment::None,
 				label: Some("key decode failure during replication".to_string()),
 				help: Some(
-					"this indicates a protocol mismatch between primary and replica - ensure both nodes are running the same version".to_string(),
+					"this indicates a protocol mismatch between primary and replica - ensure both operators are running the same version".to_string(),
 				),
 				column: None,
 				notes: vec![],

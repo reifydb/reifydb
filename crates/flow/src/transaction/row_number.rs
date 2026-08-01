@@ -161,7 +161,7 @@ pub struct RowNumberProvider {
 }
 
 struct RowNumberProviderInner {
-	nodes: DashMap<OperatorId, NodeState>,
+	operators: DashMap<OperatorId, NodeState>,
 	budget: ByteSize,
 }
 
@@ -175,17 +175,17 @@ impl RowNumberProvider {
 	pub fn new(budget: ByteSize) -> Self {
 		Self {
 			inner: Arc::new(RowNumberProviderInner {
-				nodes: DashMap::new(),
+				operators: DashMap::new(),
 				budget,
 			}),
 		}
 	}
 
-	pub fn mark_fresh(&self, node: OperatorId, group: GroupId) {
+	pub fn mark_fresh(&self, operator: OperatorId, group: GroupId) {
 		if group.is_node_scope() {
 			return;
 		}
-		let mut state = self.inner.nodes.entry(node).or_default();
+		let mut state = self.inner.operators.entry(operator).or_default();
 		state.groups.insert(
 			group,
 			GroupMeta {
@@ -197,25 +197,25 @@ impl RowNumberProvider {
 
 	pub fn get_or_create_row_number(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		group: GroupId,
 		txn: &mut FlowTransaction,
 		key: &EncodedKey,
 	) -> Result<(RowNumber, bool)> {
-		Ok(self.get_or_create_row_numbers(node, group, txn, from_ref(key))?.into_iter().next().unwrap())
+		Ok(self.get_or_create_row_numbers(operator, group, txn, from_ref(key))?.into_iter().next().unwrap())
 	}
 
 	pub fn get_or_create_row_numbers(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		group: GroupId,
 		txn: &mut FlowTransaction,
 		keys: &[EncodedKey],
 	) -> Result<Vec<(RowNumber, bool)>> {
 		let now = Self::mapping_time(txn);
 		let budget = self.inner.budget;
-		let mut guard = self.inner.nodes.entry(node).or_default();
-		Self::hydrate_group(&mut guard, node, txn, group, budget)?;
+		let mut guard = self.inner.operators.entry(operator).or_default();
+		Self::hydrate_group(&mut guard, operator, txn, group, budget)?;
 		let state = &mut *guard;
 		let complete = state.is_complete(group);
 
@@ -237,7 +237,7 @@ impl RowNumberProvider {
 			state.absences_served += to_resolve.len() as u64;
 			HashMap::new()
 		} else {
-			let batch = txn.state_get_many(node, &map_keys)?;
+			let batch = txn.state_get_many(operator, &map_keys)?;
 			let mut found = HashMap::with_capacity(batch.items.len());
 			for item in batch.items {
 				let decoded = OperatorStateKey::decode(&item.key)
@@ -269,14 +269,14 @@ impl RowNumberProvider {
 		}
 
 		if !distinct_new.is_empty() {
-			let start = Self::mint(state, node, txn, distinct_new.len() as u64)?;
+			let start = Self::mint(state, operator, txn, distinct_new.len() as u64)?;
 			let mut assigned: HashMap<GroupStateKey, RowNumber> =
 				HashMap::with_capacity(distinct_new.len());
 			for (offset, &slot) in distinct_new.iter().enumerate() {
 				let i = to_resolve[slot];
 				let map_key = &map_keys[slot];
 				let row_number = RowNumber(start + offset as u64);
-				txn.state_set(node, map_key, encode_payload(&row_number.0, now)?)?;
+				txn.state_set(operator, map_key, encode_payload(&row_number.0, now)?)?;
 				state.remember(group, &keys[i], row_number);
 				assigned.insert(map_key.clone(), row_number);
 			}
@@ -297,14 +297,14 @@ impl RowNumberProvider {
 
 	pub fn get_row_numbers(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		group: GroupId,
 		txn: &mut FlowTransaction,
 		keys: &[EncodedKey],
 	) -> Result<Vec<Option<RowNumber>>> {
 		let budget = self.inner.budget;
-		let mut guard = self.inner.nodes.entry(node).or_default();
-		Self::hydrate_group(&mut guard, node, txn, group, budget)?;
+		let mut guard = self.inner.operators.entry(operator).or_default();
+		Self::hydrate_group(&mut guard, operator, txn, group, budget)?;
 		let state = &mut *guard;
 		let complete = state.is_complete(group);
 
@@ -325,7 +325,7 @@ impl RowNumberProvider {
 		}
 
 		let map_keys: Vec<GroupStateKey> = to_resolve.iter().map(|i| mapping_key(group, &keys[*i])).collect();
-		let batch = txn.state_get_many(node, &map_keys)?;
+		let batch = txn.state_get_many(operator, &map_keys)?;
 		let mut found: HashMap<EncodedKey, EncodedRow> = HashMap::with_capacity(batch.items.len());
 		for item in batch.items {
 			let decoded = OperatorStateKey::decode(&item.key)
@@ -347,14 +347,14 @@ impl RowNumberProvider {
 
 	pub fn get_row_number(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		group: GroupId,
 		txn: &mut FlowTransaction,
 		key: &EncodedKey,
 	) -> Result<Option<RowNumber>> {
 		let budget = self.inner.budget;
-		let mut guard = self.inner.nodes.entry(node).or_default();
-		Self::hydrate_group(&mut guard, node, txn, group, budget)?;
+		let mut guard = self.inner.operators.entry(operator).or_default();
+		Self::hydrate_group(&mut guard, operator, txn, group, budget)?;
 		let state = &mut *guard;
 		if let Some(row_number) = state.cache.get(&(group, key.clone())) {
 			return Ok(Some(row_number));
@@ -363,7 +363,7 @@ impl RowNumberProvider {
 			state.absences_served += 1;
 			return Ok(None);
 		}
-		match txn.state_get(node, &mapping_key(group, key))? {
+		match txn.state_get(operator, &mapping_key(group, key))? {
 			Some(existing_row) => {
 				let row_number = RowNumber(decode_payload::<u64>(&existing_row)?);
 				state.remember(group, key, row_number);
@@ -376,14 +376,14 @@ impl RowNumberProvider {
 
 	pub fn remove_row_number(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		group: GroupId,
 		txn: &mut FlowTransaction,
 		key: &EncodedKey,
 	) -> Result<bool> {
 		let budget = self.inner.budget;
-		let mut guard = self.inner.nodes.entry(node).or_default();
-		Self::hydrate_group(&mut guard, node, txn, group, budget)?;
+		let mut guard = self.inner.operators.entry(operator).or_default();
+		Self::hydrate_group(&mut guard, operator, txn, group, budget)?;
 		let state = &mut *guard;
 		let cached = state.forget(group, key);
 		let map_key = mapping_key(group, key);
@@ -391,17 +391,17 @@ impl RowNumberProvider {
 			if state.is_complete(group) {
 				return Ok(false);
 			}
-			if txn.state_get(node, &map_key)?.is_none() {
+			if txn.state_get(operator, &map_key)?.is_none() {
 				return Ok(false);
 			}
 		}
-		txn.state_remove(node, &map_key)?;
+		txn.state_remove(operator, &map_key)?;
 		Ok(true)
 	}
 
 	pub fn drop_below(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		group: GroupId,
 		txn: &mut FlowTransaction,
 		upper: &EncodedKey,
@@ -409,9 +409,9 @@ impl RowNumberProvider {
 		let base = mapping_range(group);
 		let boundary = mapping_key(group, upper);
 		let range = EncodedKeyRange::new(Bound::Excluded(boundary.into_encoded()), base.end.clone());
-		let batch = txn.state_range(node, range, None)?;
+		let batch = txn.state_range(operator, range, None)?;
 
-		let mut guard = self.inner.nodes.entry(node).or_default();
+		let mut guard = self.inner.operators.entry(operator).or_default();
 		let state = &mut *guard;
 		let mut dropped = Vec::with_capacity(batch.items.len());
 		for item in batch.items {
@@ -423,7 +423,7 @@ impl RowNumberProvider {
 				.expect("the mapping range must yield structured operator state keys");
 			let original = EncodedKey::new(suffix);
 			let row_number = RowNumber(decode_payload::<u64>(&item.row)?);
-			txn.state_remove(node, &inner)?;
+			txn.state_remove(operator, &inner)?;
 			state.forget(group, &original);
 			dropped.push(row_number);
 		}
@@ -432,7 +432,7 @@ impl RowNumberProvider {
 
 	pub fn remove_by_prefix(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		group: GroupId,
 		txn: &mut FlowTransaction,
 		key_prefix: &[u8],
@@ -440,9 +440,9 @@ impl RowNumberProvider {
 		let inner_prefix =
 			OperatorGroupStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix);
 		let range = EncodedKeyRange::prefix(inner_prefix.as_ref());
-		let batch = txn.state_range(node, range, None)?;
+		let batch = txn.state_range(operator, range, None)?;
 
-		let mut guard = self.inner.nodes.entry(node).or_default();
+		let mut guard = self.inner.operators.entry(operator).or_default();
 		let state = &mut *guard;
 		for item in batch.items {
 			let decoded = OperatorStateKey::decode(&item.key)
@@ -452,7 +452,7 @@ impl RowNumberProvider {
 			let (_, _, suffix) = OperatorGroupStateKey::decode_inner(inner.as_slice())
 				.expect("the mapping range must yield structured operator state keys");
 			let original = EncodedKey::new(suffix);
-			txn.state_remove(node, &inner)?;
+			txn.state_remove(operator, &inner)?;
 			state.forget(group, &original);
 		}
 		Ok(())
@@ -467,7 +467,7 @@ impl RowNumberProvider {
 
 	pub fn evict_expired(
 		&self,
-		node: OperatorId,
+		operator: OperatorId,
 		group: GroupId,
 		txn: &mut FlowTransaction,
 		cutoff: Cutoff,
@@ -480,7 +480,7 @@ impl RowNumberProvider {
 			None => base.start.clone(),
 		};
 		let range = EncodedKeyRange::new(start, base.end.clone());
-		let batch = txn.state_range(node, range, Some(batch_size))?;
+		let batch = txn.state_range(operator, range, Some(batch_size))?;
 		let reached_end = !batch.has_more;
 		let last_key = batch.items.last().map(|item| {
 			EncodedKey::new(
@@ -490,7 +490,7 @@ impl RowNumberProvider {
 			)
 		});
 
-		let mut guard = self.inner.nodes.entry(node).or_default();
+		let mut guard = self.inner.operators.entry(operator).or_default();
 		let state = &mut *guard;
 		let mut removed = 0;
 		for item in batch.items {
@@ -506,7 +506,7 @@ impl RowNumberProvider {
 			let (_, _, suffix) = OperatorGroupStateKey::decode_inner(inner.as_slice())
 				.expect("the mapping range must yield structured operator state keys");
 			let original = EncodedKey::new(suffix);
-			txn.state_remove(node, &inner)?;
+			txn.state_remove(operator, &inner)?;
 			state.forget(group, &original);
 			removed += 1;
 		}
@@ -519,11 +519,11 @@ impl RowNumberProvider {
 		Ok(removed)
 	}
 
-	pub fn invalidate_groups(&self, node: OperatorId, groups: &GroupSet) {
+	pub fn invalidate_groups(&self, operator: OperatorId, groups: &GroupSet) {
 		if groups.is_empty() {
 			return;
 		}
-		let Some(mut guard) = self.inner.nodes.get_mut(&node) else {
+		let Some(mut guard) = self.inner.operators.get_mut(&operator) else {
 			return;
 		};
 		let state = &mut *guard;
@@ -540,12 +540,15 @@ impl RowNumberProvider {
 		}
 	}
 
-	pub fn completeness(&self, node: OperatorId) -> StateCompleteness {
-		self.inner.nodes.get(&node).map_or(StateCompleteness::MERGE_IDENTITY, |state| state.completeness())
+	pub fn completeness(&self, operator: OperatorId) -> StateCompleteness {
+		self.inner
+			.operators
+			.get(&operator)
+			.map_or(StateCompleteness::MERGE_IDENTITY, |state| state.completeness())
 	}
 
-	pub fn memory(&self, node: OperatorId) -> StateMemory {
-		self.inner.nodes.get(&node).map_or(StateMemory::ZERO, |state| state.memory())
+	pub fn memory(&self, operator: OperatorId) -> StateMemory {
+		self.inner.operators.get(&operator).map_or(StateMemory::ZERO, |state| state.memory())
 	}
 
 	pub fn membership_memory(&self, _node: OperatorId) -> StateMemory {
@@ -555,7 +558,7 @@ impl RowNumberProvider {
 	pub fn samples(&self) -> Vec<(OperatorId, RowNumberSample)> {
 		let mut out: Vec<(OperatorId, RowNumberSample)> = self
 			.inner
-			.nodes
+			.operators
 			.iter()
 			.map(|entry| {
 				let state = entry.value();
@@ -569,17 +572,17 @@ impl RowNumberProvider {
 				)
 			})
 			.collect();
-		out.sort_by_key(|(node, _)| *node);
+		out.sort_by_key(|(operator, _)| *operator);
 		out
 	}
 
-	pub fn evict(&self, node: OperatorId) {
-		self.inner.nodes.remove(&node);
+	pub fn evict(&self, operator: OperatorId) {
+		self.inner.operators.remove(&operator);
 	}
 
 	fn hydrate_group(
 		state: &mut NodeState,
-		node: OperatorId,
+		operator: OperatorId,
 		txn: &mut FlowTransaction,
 		group: GroupId,
 		budget: ByteSize,
@@ -598,7 +601,7 @@ impl RowNumberProvider {
 		let mut start = base.start.clone();
 		loop {
 			let range = EncodedKeyRange::new(start, base.end.clone());
-			let batch = txn.state_range(node, range, Some(HYDRATE_CHUNK))?;
+			let batch = txn.state_range(operator, range, Some(HYDRATE_CHUNK))?;
 			let mut last_inner: Option<EncodedKey> = None;
 			for item in &batch.items {
 				let decoded = OperatorStateKey::decode(&item.key)
@@ -633,10 +636,10 @@ impl RowNumberProvider {
 		Ok(())
 	}
 
-	fn mint(state: &mut NodeState, node: OperatorId, txn: &mut FlowTransaction, count: u64) -> Result<u64> {
+	fn mint(state: &mut NodeState, operator: OperatorId, txn: &mut FlowTransaction, count: u64) -> Result<u64> {
 		let seed = match state.next {
 			Some(next) => next,
-			None => match txn.state_get(node, &counter_key())? {
+			None => match txn.state_get(operator, &counter_key())? {
 				Some(row) => decode_payload::<u64>(&row)?,
 				None => 1,
 			},
@@ -644,7 +647,7 @@ impl RowNumberProvider {
 		let high_water = seed + count;
 		state.next = Some(high_water);
 		let now = txn.clock().now();
-		txn.state_set(node, &counter_key(), encode_payload(&high_water, now)?)?;
+		txn.state_set(operator, &counter_key(), encode_payload(&high_water, now)?)?;
 		Ok(seed)
 	}
 }
@@ -652,84 +655,84 @@ impl RowNumberProvider {
 impl FlowTransaction {
 	pub fn get_or_create_row_number(
 		&mut self,
-		node: OperatorId,
+		operator: OperatorId,
 		group: GroupId,
 		key: &EncodedKey,
 	) -> Result<(RowNumber, bool)> {
 		let provider = self.row_numbers();
-		provider.get_or_create_row_number(node, group, self, key)
+		provider.get_or_create_row_number(operator, group, self, key)
 	}
 
 	pub fn get_or_create_row_numbers(
 		&mut self,
-		node: OperatorId,
+		operator: OperatorId,
 		group: GroupId,
 		keys: &[EncodedKey],
 	) -> Result<Vec<(RowNumber, bool)>> {
 		let provider = self.row_numbers();
-		provider.get_or_create_row_numbers(node, group, self, keys)
+		provider.get_or_create_row_numbers(operator, group, self, keys)
 	}
 
 	pub fn get_row_number(
 		&mut self,
-		node: OperatorId,
+		operator: OperatorId,
 		group: GroupId,
 		key: &EncodedKey,
 	) -> Result<Option<RowNumber>> {
 		let provider = self.row_numbers();
-		provider.get_row_number(node, group, self, key)
+		provider.get_row_number(operator, group, self, key)
 	}
 
 	pub fn get_row_numbers(
 		&mut self,
-		node: OperatorId,
+		operator: OperatorId,
 		group: GroupId,
 		keys: &[EncodedKey],
 	) -> Result<Vec<Option<RowNumber>>> {
 		let provider = self.row_numbers();
-		provider.get_row_numbers(node, group, self, keys)
+		provider.get_row_numbers(operator, group, self, keys)
 	}
 
-	pub fn remove_row_number(&mut self, node: OperatorId, group: GroupId, key: &EncodedKey) -> Result<bool> {
+	pub fn remove_row_number(&mut self, operator: OperatorId, group: GroupId, key: &EncodedKey) -> Result<bool> {
 		let provider = self.row_numbers();
-		provider.remove_row_number(node, group, self, key)
+		provider.remove_row_number(operator, group, self, key)
 	}
 
 	pub fn remove_row_numbers_below(
 		&mut self,
-		node: OperatorId,
+		operator: OperatorId,
 		group: GroupId,
 		upper: &EncodedKey,
 	) -> Result<Vec<RowNumber>> {
 		let provider = self.row_numbers();
-		provider.drop_below(node, group, self, upper)
+		provider.drop_below(operator, group, self, upper)
 	}
 
 	pub fn remove_row_numbers_by_prefix(
 		&mut self,
-		node: OperatorId,
+		operator: OperatorId,
 		group: GroupId,
 		key_prefix: &[u8],
 	) -> Result<()> {
 		let provider = self.row_numbers();
-		provider.remove_by_prefix(node, group, self, key_prefix)
+		provider.remove_by_prefix(operator, group, self, key_prefix)
 	}
 
 	pub fn evict_row_numbers(
 		&mut self,
-		node: OperatorId,
+		operator: OperatorId,
 		group: GroupId,
 		cutoff: Cutoff,
 		cursor: &mut Option<EncodedKey>,
 		batch_size: usize,
 	) -> Result<usize> {
 		let provider = self.row_numbers();
-		provider.evict_expired(node, group, self, cutoff, cursor, batch_size)
+		provider.evict_expired(operator, group, self, cutoff, cursor, batch_size)
 	}
 
-	pub fn invalidate_row_number_groups(&mut self, node: OperatorId, groups: &GroupSet) {
+	pub fn invalidate_row_number_groups(&mut self, operator: OperatorId, groups: &GroupSet) {
 		let provider = self.row_numbers();
-		provider.invalidate_groups(node, groups)
+		provider.invalidate_groups(operator, groups)
 	}
 }
 
@@ -1030,7 +1033,7 @@ mod tests {
 
 	#[test]
 	fn the_counter_is_shared_across_a_nodes_groups() {
-		// A downstream consumer tracks a row by its number across every group of the node, so two
+		// A downstream consumer tracks a row by its number across every group of the operator, so two
 		// groups minting from independent sequences would give one number to two different rows.
 		let engine = TestEngine::new();
 		let provider = RowNumberProvider::default();
@@ -1041,7 +1044,7 @@ mod tests {
 
 		assert_ne!(a, b, "the same key in two groups must not collide on one row number");
 		assert_eq!(a.0, 1);
-		assert_eq!(b.0, 2, "the second group's mint continues the node's sequence");
+		assert_eq!(b.0, 2, "the second group's mint continues the operator's sequence");
 
 		let (a_again, is_new) =
 			provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key("shared")).unwrap();
@@ -1112,13 +1115,13 @@ mod tests {
 		let mut txn = deferred(&engine);
 		let (a, _) = provider.get_or_create_row_number(OperatorId(1), GROUP, &mut txn, &key("shared")).unwrap();
 		let (b, _) = provider.get_or_create_row_number(OperatorId(2), GROUP, &mut txn, &key("shared")).unwrap();
-		assert_eq!(a.0, 1, "each node mints from its own sequence");
-		assert_eq!(b.0, 1, "the same key under a different node is an independent mapping");
+		assert_eq!(a.0, 1, "each operator mints from its own sequence");
+		assert_eq!(b.0, 1, "the same key under a different operator is an independent mapping");
 	}
 
 	#[test]
 	fn an_idle_node_merges_as_the_completeness_identity() {
-		// A node that has never resolved anything proves nothing and must merge as the identity,
+		// A operator that has never resolved anything proves nothing and must merge as the identity,
 		// so a healthy operator's completeness is not dragged down by an untouched provider.
 		let provider = RowNumberProvider::default();
 		assert_eq!(provider.completeness(NODE), StateCompleteness::MERGE_IDENTITY);
@@ -1156,7 +1159,7 @@ mod tests {
 		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
 		provider.mark_fresh(NODE, GROUP);
-		// Seed the node counter once so the assertion measures per-key reads, not the one-time
+		// Seed the operator counter once so the assertion measures per-key reads, not the one-time
 		// counter-seed read the first mint on a cold provider always pays.
 		provider.get_or_create_row_number(NODE, GROUP, &mut txn, &key("warmup")).unwrap();
 
@@ -1226,7 +1229,7 @@ mod tests {
 
 	#[test]
 	fn eviction_drops_only_expired_mappings_and_keeps_the_rest_in_memory() {
-		// The reclaim sweep runs evict_expired against every node that declares a mapping span.
+		// The reclaim sweep runs evict_expired against every operator that declares a mapping span.
 		// Clearing the whole cache instead silently downgrades the provider to one store roundtrip
 		// per key for the rest of its life, so the survivor and its completeness must both outlive it.
 		let engine = TestEngine::new();
@@ -1330,7 +1333,7 @@ mod tests {
 
 	#[test]
 	fn the_row_number_counter_never_collides_with_the_interners_group_counter() {
-		// Both node counters live in the node-scope NODE_COUNTER keyspace. Sharing a cell would let
+		// Both operator counters live in the operator-scope NODE_COUNTER keyspace. Sharing a cell would let
 		// a group mint advance the row-number sequence, breaking the contiguity consumers rely on.
 		let group_counter =
 			OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![]);

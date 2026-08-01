@@ -46,8 +46,8 @@ fn load_flow_dag_reads_store_snapshot_not_torn_cache() {
 		store_edges.len(),
 		"load_flow_dag must rebuild every committed edge from the store, not the torn cache"
 	);
-	for id in dag.get_node_ids() {
-		let node = dag.get_node(&id).unwrap();
+	for id in dag.get_operator_ids() {
+		let node = dag.get_operator(&id).unwrap();
 		if node.outputs.is_empty() {
 			assert!(
 				!node.inputs.is_empty(),

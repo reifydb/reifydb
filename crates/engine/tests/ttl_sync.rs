@@ -102,7 +102,7 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	// The operator-TTL GC actor only ever reads the cache-backed list, so a write that reaches
 	// storage without tracking the change leaves the list empty and silently disables GC for
 	// every stateful operator.
-	let node_id = OperatorId(42);
+	let operator_id = OperatorId(42);
 	let settings = OperatorSettings {
 		ttl: Some(OperatorTtl {
 			duration: Duration::from_hours(1).unwrap(),
@@ -111,12 +111,12 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	};
 
 	let mut txn = engine.begin_admin(IdentityId::system()).unwrap();
-	create_operator_settings(&mut txn, node_id, &settings).unwrap();
+	create_operator_settings(&mut txn, operator_id, &settings).unwrap();
 	txn.commit().unwrap();
 
 	let listed = catalog.list_operator_settings();
 	assert_eq!(listed.len(), 1, "operator settings did not sync to the catalog cache");
-	assert_eq!(listed[0].0, node_id);
+	assert_eq!(listed[0].0, operator_id);
 	assert_eq!(listed[0].1.ttl.as_ref().expect("ttl not set").duration, Duration::from_hours(1).unwrap());
 }
 

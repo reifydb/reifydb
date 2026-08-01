@@ -23,8 +23,8 @@ pub(crate) fn load_operators(rx: &mut Transaction<'_>, catalog: &CatalogCache) -
 	for entry in stream {
 		let multi = entry?;
 		let version = multi.version;
-		let node = convert_operator(multi);
-		catalog.set_operator(node.id, version, Some(node));
+		let operator = convert_operator(multi);
+		catalog.set_operator(operator.id, version, Some(operator));
 	}
 
 	Ok(())

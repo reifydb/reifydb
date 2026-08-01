@@ -439,12 +439,12 @@ impl FlowTransaction {
 		self.inner().substrate.timers.clone()
 	}
 
-	pub fn arm_timer(&mut self, node: OperatorId, timer: &Timer) -> Result<()> {
-		self.timer_wheel().arm(node, self, timer)
+	pub fn arm_timer(&mut self, operator: OperatorId, timer: &Timer) -> Result<()> {
+		self.timer_wheel().arm(operator, self, timer)
 	}
 
-	pub fn disarm_timer(&mut self, node: OperatorId, timer: &Timer) -> Result<()> {
-		self.timer_wheel().disarm(node, self, timer)
+	pub fn disarm_timer(&mut self, operator: OperatorId, timer: &Timer) -> Result<()> {
+		self.timer_wheel().disarm(operator, self, timer)
 	}
 
 	pub fn set_change_coordinate(&mut self, coordinate: ChangeCoordinate) {
@@ -611,12 +611,12 @@ impl FlowTransaction {
 		self.inner().state_budget.clone()
 	}
 
-	pub fn operator_state<S, F>(&mut self, node: OperatorId, usage: UsageFn, load: F) -> Result<&mut S>
+	pub fn operator_state<S, F>(&mut self, operator: OperatorId, usage: UsageFn, load: F) -> Result<&mut S>
 	where
 		S: 'static + Send,
 		F: FnOnce(&mut Self) -> Result<(S, PersistFn)>,
 	{
-		if !self.inner().operator_states.contains_key(&node) {
+		if !self.inner().operator_states.contains_key(&operator) {
 			let (state, persist) = load(self)?;
 			let charged = usage(&state);
 			let inner = self.inner_mut();
@@ -628,24 +628,24 @@ impl FlowTransaction {
 				usage,
 				charged,
 			};
-			inner.operator_states.insert(node, slot);
+			inner.operator_states.insert(operator, slot);
 		}
-		let slot = self.inner_mut().operator_states.get_mut(&node).expect("just inserted");
+		let slot = self.inner_mut().operator_states.get_mut(&operator).expect("just inserted");
 		Ok(slot.value.downcast_mut::<S>().expect("operator state type mismatch"))
 	}
 
-	pub fn mark_state_dirty(&mut self, node: OperatorId) {
-		if let Some(slot) = self.inner_mut().operator_states.get_mut(&node) {
+	pub fn mark_state_dirty(&mut self, operator: OperatorId) {
+		if let Some(slot) = self.inner_mut().operator_states.get_mut(&operator) {
 			slot.dirty = true;
 		}
 	}
 
-	pub fn take_operator_state<S, F>(&mut self, node: OperatorId, load: F) -> Result<(S, PersistFn)>
+	pub fn take_operator_state<S, F>(&mut self, operator: OperatorId, load: F) -> Result<(S, PersistFn)>
 	where
 		S: 'static + Send,
 		F: FnOnce(&mut Self) -> Result<(S, PersistFn)>,
 	{
-		if let Some(slot) = self.inner_mut().operator_states.remove(&node) {
+		if let Some(slot) = self.inner_mut().operator_states.remove(&operator) {
 			self.inner().state_budget.release_dirty(slot.charged);
 			let value = slot.value.downcast::<S>().map_err(|_| ()).expect("operator state type mismatch");
 			Ok((*value, slot.persist))
@@ -654,7 +654,7 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn put_operator_state<S>(&mut self, node: OperatorId, state: S, persist: PersistFn, usage: UsageFn)
+	pub fn put_operator_state<S>(&mut self, operator: OperatorId, state: S, persist: PersistFn, usage: UsageFn)
 	where
 		S: 'static + Send,
 	{
@@ -662,7 +662,7 @@ impl FlowTransaction {
 		let inner = self.inner_mut();
 		inner.state_budget.charge_dirty(charged);
 		let replaced = inner.operator_states.insert(
-			node,
+			operator,
 			OperatorStateSlot {
 				value: Box::new(state),
 				dirty: true,
@@ -697,14 +697,14 @@ impl FlowTransaction {
 
 	pub fn install_operator_states(&mut self, states: HashMap<OperatorId, CarriedOperatorState>) {
 		let inner = self.inner_mut();
-		for (node, carried) in states {
-			if inner.operator_states.contains_key(&node) {
+		for (operator, carried) in states {
+			if inner.operator_states.contains_key(&operator) {
 				continue;
 			}
 			let charged = (carried.usage)(&*carried.value);
 			inner.state_budget.charge_dirty(charged);
 			inner.operator_states.insert(
-				node,
+				operator,
 				OperatorStateSlot {
 					value: carried.value,
 					dirty: false,
@@ -720,10 +720,10 @@ impl FlowTransaction {
 		let inner = self.inner_mut();
 		mem::take(&mut inner.operator_states)
 			.into_iter()
-			.map(|(node, slot)| {
+			.map(|(operator, slot)| {
 				inner.state_budget.release_dirty(slot.charged);
 				(
-					node,
+					operator,
 					CarriedOperatorState {
 						value: slot.value,
 						usage: slot.usage,

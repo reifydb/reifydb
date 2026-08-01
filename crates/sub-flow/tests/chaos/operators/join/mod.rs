@@ -32,8 +32,8 @@ use crate::{
 	operators::join::{
 		oracle::{Envelope, HashOracle, LatestOracle, SnapshotOracle},
 		workload::{
-			JOIN_NODE, JoinRow, JoinWorkload, LEFT_COLUMNS, LEFT_NODE, RIGHT_COLUMNS, RIGHT_NODE, Side,
-			schema,
+			JOIN_OPERATOR, JoinRow, JoinWorkload, LEFT_COLUMNS, LEFT_OPERATOR, RIGHT_COLUMNS,
+			RIGHT_OPERATOR, Side, schema,
 		},
 	},
 };
@@ -123,16 +123,16 @@ pub fn build(
 ) -> JoinOperator {
 	JoinOperator::new(
 		JoinSideConfig {
-			node: LEFT_NODE,
+			operator: LEFT_OPERATOR,
 			exprs: parse_expression("k").expect("left key parses"),
 			schema: schema(&LEFT_COLUMNS),
 		},
 		JoinSideConfig {
-			node: RIGHT_NODE,
+			operator: RIGHT_OPERATOR,
 			exprs: parse_expression("k").expect("right key parses"),
 			schema: schema(&RIGHT_COLUMNS),
 		},
-		JOIN_NODE,
+		JOIN_OPERATOR,
 		variant.join_type(),
 		None,
 		engine.executor(),

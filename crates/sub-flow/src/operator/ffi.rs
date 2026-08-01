@@ -471,7 +471,7 @@ mod tests {
 	#[test]
 	fn host_sample_decode_mirrors_the_guest_encoding_including_presence_flags() {
 		// Presence flags gate the optional slots, so a dylib that reported no membership data
-		// must not surface as a degraded node.
+		// must not surface as a degraded operator.
 		let mut usage = StateUsageFFI {
 			state_entries: 3,
 			state_bytes: 128,

@@ -16,31 +16,31 @@ pub fn check_declared_spans(
 ) -> Result<()> {
 	let flow_name = format!("flow {}", flow.id.0);
 
-	for node_id in flow.topological_order()? {
-		let node = flow.get_node(&node_id).unwrap();
+	for operator_id in flow.topological_order()? {
+		let operator = flow.get_operator(&operator_id).unwrap();
 
-		let Some(settings) = catalog.find_operator_settings(txn, node.id)? else {
+		let Some(settings) = catalog.find_operator_settings(txn, operator.id)? else {
 			continue;
 		};
 		if settings.ttl.is_none() && settings.join.is_none() {
 			continue;
 		}
-		if !node.ty.consults_declared_span() {
-			return Err(Error(Box::new(flow_span_on_unageable_node(&flow_name, &node.ty.label()))));
+		if !operator.ty.consults_declared_span() {
+			return Err(Error(Box::new(flow_span_on_unageable_node(&flow_name, &operator.ty.label()))));
 		}
 
 		let OperatorDef::Apply {
-			operator,
+			operator: operator_name,
 			..
-		} = &node.ty
+		} = &operator.ty
 		else {
 			continue;
 		};
 		let reclaims = operators
-			.get(operator)
+			.get(operator_name)
 			.is_some_and(|info| info.capabilities & OperatorCapability::Reclaim.bit() != 0);
 		if !reclaims {
-			return Err(Error(Box::new(flow_span_without_reclaim(&flow_name, &node.ty.label()))));
+			return Err(Error(Box::new(flow_span_without_reclaim(&flow_name, &operator.ty.label()))));
 		}
 	}
 

@@ -119,7 +119,7 @@ mod tests {
 	fn the_frontier_is_the_ledger_and_the_watermark_merged_upward() {
 		// The frontier must never move backwards when one of its two inputs lags. The flow watermark
 		// is a min-merge across sources, so a newly attached source drags it down; taking the max
-		// stops that re-admitting rows into windows this node has already sealed and emitted.
+		// stops that re-admitting rows into windows this operator has already sealed and emitted.
 		let lagging = SealGate::new(policy(), Some(sealed_through(9_000)), Some(at(3_000)));
 		let leading = SealGate::new(policy(), Some(sealed_through(3_000)), Some(at(9_000)));
 
@@ -129,7 +129,7 @@ mod tests {
 
 	#[test]
 	fn an_empty_ledger_and_no_watermark_leave_the_frontier_at_the_epoch() {
-		// A node that has never fired a timer, under a flow with no watermark, must admit
+		// A operator that has never fired a timer, under a flow with no watermark, must admit
 		// everything. The epoch is the only frontier that does, reached through none on both
 		// inputs, which is why neither may default to "now".
 		let gate = SealGate::new(policy(), None, None);

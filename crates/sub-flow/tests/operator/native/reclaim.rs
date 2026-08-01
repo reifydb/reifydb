@@ -24,7 +24,7 @@ use reifydb_value::value::{
 	value_type::ValueType,
 };
 
-const NODE: OperatorId = OperatorId(1);
+const OPERATOR: OperatorId = OperatorId(1);
 const TTL_SECS: i64 = 60;
 const SPAN_MS: u64 = TTL_SECS as u64 * 1_000;
 const ARRIVAL_MS: u64 = 1_000;
@@ -151,8 +151,9 @@ fn a_guest_whose_data_was_reclaimed_still_finds_the_row_number_it_published_unde
 	// With no sink row ttl declared the sweep runs the data phase but never the identity phase, so a
 	// guest wakes with its accumulator gone and the mapping naming its published row still there.
 	// `is_new` false is the only thing between it and a second row published over a live one.
-	let mut harness = Harness::guest(KeyedCounter, NODE, OperatorCapability::STANDARD_WITH_RECLAIM, Some(ttl()))
-		.with_activity_grid();
+	let mut harness =
+		Harness::guest(KeyedCounter, OPERATOR, OperatorCapability::STANDARD_WITH_RECLAIM, Some(ttl()))
+			.with_activity_grid();
 
 	let out = harness.apply(arrival(1, 1, ARRIVAL_MS)).expect("first arrival");
 	assert_eq!(is_new_of(&out), vec![1], "the first sighting of a key mints its row number");
@@ -174,7 +175,7 @@ fn a_guest_that_declares_no_retention_is_never_swept() {
 	// An operator that advertises Reclaim without sealing on anything of its own draws all its
 	// retention from the view's `with { ttl: .. }`. Without one the node is not merely slower to
 	// reclaim - it is skipped outright and counted perpetual while its state grows.
-	let mut harness = Harness::guest(KeyedCounter, NODE, OperatorCapability::STANDARD_WITH_RECLAIM, None)
+	let mut harness = Harness::guest(KeyedCounter, OPERATOR, OperatorCapability::STANDARD_WITH_RECLAIM, None)
 		.with_activity_grid();
 
 	harness.apply(arrival(1, 1, ARRIVAL_MS)).expect("first arrival");

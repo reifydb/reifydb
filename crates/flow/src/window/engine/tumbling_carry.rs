@@ -502,7 +502,7 @@ mod tests {
 		}
 
 		fn drop_group_data_entries(&mut self) -> usize {
-			// Phase-1 reclamation: every data keyspace inside a real group goes, node scope stays,
+			// Phase-1 reclamation: every data keyspace inside a real group goes, operator scope stays,
 			// and the row-number mappings live outside `data` so they survive as they do in
 			// production.
 			let keys: Vec<Vec<u8>> = self

@@ -53,7 +53,7 @@ const CREATED_AT_CACHE_CAPACITY: usize = 16_384;
 pub struct SinkTableViewOperator {
 	#[allow(dead_code)]
 	parent: OperatorCell,
-	node: OperatorId,
+	operator: OperatorId,
 	view: ResolvedView,
 	storage: TableId,
 
@@ -69,7 +69,7 @@ pub struct SinkTableViewOperator {
 impl SinkTableViewOperator {
 	pub fn new(
 		parent: OperatorCell,
-		node: OperatorId,
+		operator: OperatorId,
 		view: ResolvedView,
 		storage: TableId,
 		partition_by: Vec<String>,
@@ -85,7 +85,7 @@ impl SinkTableViewOperator {
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
 		Self {
 			parent,
-			node,
+			operator,
 			view,
 			storage,
 			key_prefix,
@@ -163,7 +163,7 @@ impl SinkTableViewOperator {
 
 impl Operator for SinkTableViewOperator {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -192,7 +192,7 @@ impl Operator for SinkTableViewOperator {
 			}
 		}
 
-		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
+		Ok(Change::from_flow(self.operator, change.version, Vec::new(), change.changed_at))
 	}
 }
 

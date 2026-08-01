@@ -164,8 +164,8 @@ impl FlowGraphAnalyzer {
 	fn get_sources(flow: &FlowDag) -> Vec<ObjectReference> {
 		let mut sources = Vec::new();
 
-		for node_id in flow.get_node_ids() {
-			if let Some(node) = flow.get_node(&node_id) {
+		for node_id in flow.get_operator_ids() {
+			if let Some(node) = flow.get_operator(&node_id) {
 				match &node.ty {
 					OperatorDef::SourceTable {
 						table,
@@ -198,8 +198,8 @@ impl FlowGraphAnalyzer {
 	fn get_sinks(flow: &FlowDag) -> Vec<SinkReference> {
 		let mut sinks = Vec::new();
 
-		for node_id in flow.get_node_ids() {
-			if let Some(node) = flow.get_node(&node_id) {
+		for node_id in flow.get_operator_ids() {
+			if let Some(node) = flow.get_operator(&node_id) {
 				let view = match &node.ty {
 					OperatorDef::SinkTableView {
 						view,

@@ -419,7 +419,7 @@ where
 	MetaKey(group.into_encoded_key())
 }
 
-/// Every node-scoped accumulator, for engines whose windows are not yet interned as groups. A
+/// Every operator-scoped accumulator, for engines whose windows are not yet interned as groups. A
 /// group-scoped engine cannot hydrate through one range; its accumulators sit inside their own group.
 pub(crate) fn accumulator_range() -> EncodedKeyRange {
 	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::ACCUMULATOR)
@@ -433,7 +433,7 @@ pub(crate) fn running_range() -> EncodedKeyRange {
 	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::RUNNING)
 }
 
-/// The due-ordered expiry index, node scoped so a group's entries survive the phase-1 range delete
+/// The due-ordered expiry index, operator scoped so a group's entries survive the phase-1 range delete
 /// and drain on their own.
 pub(crate) fn expiry_range() -> EncodedKeyRange {
 	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::EXPIRY)

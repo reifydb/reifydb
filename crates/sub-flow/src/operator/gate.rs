@@ -140,7 +140,7 @@ impl GateState {
 
 pub struct GateOperator {
 	parent: OperatorCell,
-	node: OperatorId,
+	operator: OperatorId,
 	compiled_conditions: Vec<CompiledExpr>,
 	routines: Routines,
 	runtime_context: RuntimeContext,
@@ -151,7 +151,7 @@ pub struct GateOperator {
 impl GateOperator {
 	pub fn new(
 		parent: OperatorCell,
-		node: OperatorId,
+		operator: OperatorId,
 		conditions: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
@@ -168,7 +168,7 @@ impl GateOperator {
 
 		Self {
 			parent,
-			node,
+			operator,
 			compiled_conditions,
 			routines,
 			runtime_context,
@@ -233,22 +233,22 @@ impl GateOperator {
 		txn: &mut FlowTransaction,
 		f: impl FnOnce(&mut FlowTransaction) -> Result<R>,
 	) -> Result<R> {
-		self.state_slot().hydrate_once(&mut OperatorStateStore::new(txn, self.node))?;
+		self.state_slot().hydrate_once(&mut OperatorStateStore::new(txn, self.operator))?;
 		let out = f(txn)?;
-		self.state_slot().flush(&mut OperatorStateStore::new(txn, self.node))?;
+		self.state_slot().flush(&mut OperatorStateStore::new(txn, self.operator))?;
 		Ok(out)
 	}
 
 	fn is_visible(&self, txn: &mut FlowTransaction, rn: RowNumber) -> Result<bool> {
-		self.state_slot().is_visible(&mut OperatorStateStore::new(txn, self.node), rn)
+		self.state_slot().is_visible(&mut OperatorStateStore::new(txn, self.operator), rn)
 	}
 
 	fn mark_visible(&self, txn: &mut FlowTransaction, rn: RowNumber) -> Result<()> {
-		self.state_slot().mark_visible(&mut OperatorStateStore::new(txn, self.node), rn)
+		self.state_slot().mark_visible(&mut OperatorStateStore::new(txn, self.operator), rn)
 	}
 
 	fn mark_invisible(&self, txn: &mut FlowTransaction, rn: RowNumber) -> Result<()> {
-		self.state_slot().mark_invisible(&mut OperatorStateStore::new(txn, self.node), rn)
+		self.state_slot().mark_invisible(&mut OperatorStateStore::new(txn, self.operator), rn)
 	}
 }
 
@@ -256,7 +256,7 @@ impl RawStatefulOperator for GateOperator {}
 
 impl Operator for GateOperator {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -289,7 +289,7 @@ impl Operator for GateOperator {
 				}
 			}
 
-			Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
+			Ok(Change::from_flow(self.operator, change.version, result, change.changed_at))
 		})
 	}
 

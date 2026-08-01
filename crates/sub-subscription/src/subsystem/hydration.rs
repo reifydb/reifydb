@@ -56,19 +56,19 @@ pub(crate) fn collect_source_descriptors(
 	let mut txn = Transaction::Query(outer);
 
 	let mut out: Vec<(ObjectId, String)> = Vec::new();
-	for node_id in flow.topological_order()? {
-		let node = match flow.get_node(&node_id) {
+	for operator_id in flow.topological_order()? {
+		let operator = match flow.get_operator(&operator_id) {
 			Some(n) => n,
 			None => continue,
 		};
-		match &node.ty {
+		match &operator.ty {
 			OperatorDef::SourceTable {
 				table,
 			} => {
 				let t = catalog.get_table(&mut txn, *table)?;
 				let ns = catalog.get_namespace(&mut txn, t.namespace)?;
 				let mut q = format!("from {}::{}", ns.name(), t.name);
-				append_pushdown(&mut q, walk_for_source_pushdown(flow, &node_id));
+				append_pushdown(&mut q, walk_for_source_pushdown(flow, &operator_id));
 				out.push((ObjectId::Table(*table), q));
 			}
 			OperatorDef::SourceView {
@@ -77,7 +77,7 @@ pub(crate) fn collect_source_descriptors(
 				let v = catalog.get_view(&mut txn, *view)?;
 				let ns = catalog.get_namespace(&mut txn, v.namespace())?;
 				let mut q = format!("from {}::{}", ns.name(), v.name());
-				append_pushdown(&mut q, walk_for_source_pushdown(flow, &node_id));
+				append_pushdown(&mut q, walk_for_source_pushdown(flow, &operator_id));
 				out.push((ObjectId::View(*view), q));
 			}
 			OperatorDef::SourceRingBuffer {
@@ -86,12 +86,12 @@ pub(crate) fn collect_source_descriptors(
 				let r = catalog.get_ringbuffer(&mut txn, *ringbuffer)?;
 				let ns = catalog.get_namespace(&mut txn, r.namespace)?;
 				let mut q = format!("from {}::{}", ns.name(), r.name);
-				append_pushdown(&mut q, walk_for_source_pushdown(flow, &node_id));
+				append_pushdown(&mut q, walk_for_source_pushdown(flow, &operator_id));
 				out.push((ObjectId::RingBuffer(*ringbuffer), q));
 			}
 			_ => {
 				if matches!(
-					&node.ty,
+					&operator.ty,
 					OperatorDef::SourceInlineData { .. } | OperatorDef::SourceSeries { .. }
 				) {
 					return Err(HydrateError::UnsupportedSourceType);

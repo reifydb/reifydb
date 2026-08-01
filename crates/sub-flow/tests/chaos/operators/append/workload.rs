@@ -18,9 +18,9 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType},
 };
 
-pub const APPEND_NODE: OperatorId = OperatorId(20);
+pub const APPEND_OPERATOR: OperatorId = OperatorId(20);
 
-pub fn input_node(index: usize) -> OperatorId {
+pub fn input(index: usize) -> OperatorId {
 	OperatorId(21 + index as u64)
 }
 
@@ -53,15 +53,15 @@ fn columns_of(rows: &[&AppendRow]) -> Columns {
 	Columns::new(columns).with_row_numbers(rows.iter().map(|row| row.source).collect())
 }
 
-fn tagged(mut diff: Diff, input: usize) -> Diff {
+fn tagged(mut diff: Diff, idx: usize) -> Diff {
 	// An untagged diff falls back to the change origin, which is input 0 here, so leaving one untagged
 	// lands its rows on the first input silently rather than failing.
-	diff.set_origin(Some(ChangeOrigin::Flow(input_node(input))));
+	diff.set_origin(Some(ChangeOrigin::Flow(input(idx))));
 	diff
 }
 
 fn change(diffs: Vec<Diff>) -> Change {
-	Change::from_flow(input_node(0), CommitVersion(1), diffs, DateTime::default())
+	Change::from_flow(input(0), CommitVersion(1), diffs, DateTime::default())
 }
 
 pub struct AppendWorkload {

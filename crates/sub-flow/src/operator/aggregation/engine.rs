@@ -60,7 +60,7 @@ pub(crate) fn partition_group_key(partition: Hash128) -> EncodedKey {
 }
 
 pub(crate) fn intern_window_groups(
-	node: OperatorId,
+	operator: OperatorId,
 	txn: &mut FlowTransaction,
 	windows: &[(Hash128, u64)],
 ) -> Result<WindowGroups> {
@@ -68,7 +68,7 @@ pub(crate) fn intern_window_groups(
 		return Ok(WindowGroups::new());
 	}
 	let keys: Vec<EncodedKey> = windows.iter().map(|(p, w)| window_group_key(*p, *w)).collect();
-	let interned = txn.intern_groups(node, &keys)?;
+	let interned = txn.intern_groups(operator, &keys)?;
 	Ok(windows.iter().copied().zip(interned.into_iter().map(|(id, _)| id)).collect())
 }
 
@@ -145,7 +145,7 @@ pub(crate) fn finish_tumbling_engine(
 		Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(engine_config))
 	});
 	let results = {
-		let mut store = OperatorStateStore::new(txn, core.node);
+		let mut store = OperatorStateStore::new(txn, core.operator);
 		let res = engine.apply(
 			&mut store,
 			buckets,
@@ -158,7 +158,7 @@ pub(crate) fn finish_tumbling_engine(
 	};
 
 	{
-		let mut store = OperatorStateStore::new(txn, core.node);
+		let mut store = OperatorStateStore::new(txn, core.operator);
 		for r in &results {
 			let group = group_of(groups, r.group, r.span.start.to_order());
 			let window_start = r.span.start.to_order();

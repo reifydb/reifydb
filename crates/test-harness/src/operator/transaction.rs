@@ -21,7 +21,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, identity::IdentityId},
 };
 
-pub const NODE_ID: OperatorId = OperatorId(1);
+pub const OPERATOR_ID: OperatorId = OperatorId(1);
 
 pub fn make_row(payload: &str, created_at: u64, updated_at: u64) -> EncodedRow {
 	let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];

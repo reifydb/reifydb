@@ -40,13 +40,13 @@ impl FlowEngineInner {
 
 		let topo = flow.topological_order()?;
 		let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
-		for node_id in topo.iter().copied() {
-			let node = match flow.get_node(&node_id) {
+		for operator_id in topo.iter().copied() {
+			let operator = match flow.get_operator(&operator_id) {
 				Some(n) => n.clone(),
 				None => continue,
 			};
 
-			self.dispatch_inbox(txn, &node, node_id, &mut pending)?;
+			self.dispatch_inbox(txn, &operator, operator_id, &mut pending)?;
 		}
 
 		self.dispatch_due_timers(txn, &flow, checkpoint, &topo)?;
@@ -60,16 +60,16 @@ impl FlowEngineInner {
 	fn dispatch_inbox(
 		&self,
 		txn: &mut FlowTransaction,
-		node: &FlowNode,
-		node_id: OperatorId,
+		operator: &FlowNode,
+		operator_id: OperatorId,
 		pending: &mut HashMap<OperatorId, Vec<Change>>,
 	) -> Result<()> {
-		let Some(inbox) = pending.remove(&node_id).filter(|v| !v.is_empty()) else {
+		let Some(inbox) = pending.remove(&operator_id).filter(|v| !v.is_empty()) else {
 			return Ok(());
 		};
-		let combined_output = self.dispatch_node(txn, node, inbox)?;
+		let combined_output = self.dispatch_node(txn, operator, inbox)?;
 		if !combined_output.diffs.is_empty() {
-			for child_id in &node.outputs {
+			for child_id in &operator.outputs {
 				pending.entry(*child_id).or_default().push(combined_output.clone());
 			}
 		}
@@ -81,11 +81,11 @@ impl FlowEngineInner {
 			if !matches!(write, PendingWrite::Remove { .. }) {
 				continue;
 			}
-			let node = OperatorStateKey::decode(key)
-				.map(|k| k.node)
-				.or_else(|| OperatorStateKey::decode(key).map(|k| k.node));
-			if let Some(node) = node {
-				*per_node.entry(node).or_default() += 1;
+			let operator = OperatorStateKey::decode(key)
+				.map(|k| k.operator)
+				.or_else(|| OperatorStateKey::decode(key).map(|k| k.operator));
+			if let Some(operator) = operator {
+				*per_node.entry(operator).or_default() += 1;
 			}
 		}
 

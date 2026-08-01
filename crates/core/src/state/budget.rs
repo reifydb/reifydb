@@ -47,7 +47,7 @@ pub enum LeaseHealth {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OperatorLease {
-	pub node: OperatorId,
+	pub operator: OperatorId,
 	pub grant: LeaseGrant,
 	pub last: LeaseReport,
 	pub health: LeaseHealth,
@@ -201,14 +201,15 @@ impl OperatorStateBudgetHandle {
 		}
 	}
 
-	pub fn grant_lease(&self, node: OperatorId, requested: ByteSize) -> LeaseGrant {
+	pub fn grant_lease(&self, operator: OperatorId, requested: ByteSize) -> LeaseGrant {
 		let mut leases = self.0.leases.lock();
 		let snapshot = self.snapshot();
-		let used = snapshot.total().saturating_sub(leases.get(&node).map_or(ByteSize::ZERO, |l| l.charged()));
+		let used =
+			snapshot.total().saturating_sub(leases.get(&operator).map_or(ByteSize::ZERO, |l| l.charged()));
 		let headroom = snapshot.budget.saturating_sub(used);
 		let granted = requested.min(headroom).max(LEASE_FLOOR);
 		leases.insert(
-			node,
+			operator,
 			LeaseState {
 				grant: granted,
 				reported: Reported::Never,
@@ -218,18 +219,18 @@ impl OperatorStateBudgetHandle {
 		LeaseGrant(granted)
 	}
 
-	pub fn resize_lease(&self, node: OperatorId, grant: ByteSize) {
+	pub fn resize_lease(&self, operator: OperatorId, grant: ByteSize) {
 		let mut leases = self.0.leases.lock();
-		if let Some(lease) = leases.get_mut(&node) {
+		if let Some(lease) = leases.get_mut(&operator) {
 			lease.grant = grant.max(LEASE_FLOOR);
 			Self::recompute_leased(&self.0, &leases);
 		}
 	}
 
-	pub fn resize_lease_to_demand(&self, node: OperatorId, demand: ByteSize) {
+	pub fn resize_lease_to_demand(&self, operator: OperatorId, demand: ByteSize) {
 		let mut leases = self.0.leases.lock();
 		let snapshot = self.snapshot();
-		if let Some(lease) = leases.get_mut(&node) {
+		if let Some(lease) = leases.get_mut(&operator) {
 			let used = snapshot.total().saturating_sub(lease.charged());
 			let headroom = snapshot.budget.saturating_sub(used);
 			lease.grant = demand.min(headroom).max(LEASE_FLOOR);
@@ -237,17 +238,17 @@ impl OperatorStateBudgetHandle {
 		}
 	}
 
-	pub fn report_lease(&self, node: OperatorId, report: LeaseReport) {
+	pub fn report_lease(&self, operator: OperatorId, report: LeaseReport) {
 		let mut leases = self.0.leases.lock();
-		if let Some(lease) = leases.get_mut(&node) {
+		if let Some(lease) = leases.get_mut(&operator) {
 			lease.reported = Reported::Bytes(report.total_bytes());
 			Self::recompute_leased(&self.0, &leases);
 		}
 	}
 
-	pub fn report_lease_none(&self, node: OperatorId) {
+	pub fn report_lease_none(&self, operator: OperatorId) {
 		let mut leases = self.0.leases.lock();
-		if let Some(lease) = leases.get_mut(&node) {
+		if let Some(lease) = leases.get_mut(&operator) {
 			lease.reported = Reported::Cacheless;
 			Self::recompute_leased(&self.0, &leases);
 		}
@@ -258,16 +259,16 @@ impl OperatorStateBudgetHandle {
 		Count::new(leases.values().filter(|lease| !lease.is_reporting()).count() as u64)
 	}
 
-	pub fn release_lease(&self, node: OperatorId) {
+	pub fn release_lease(&self, operator: OperatorId) {
 		let mut leases = self.0.leases.lock();
-		leases.remove(&node);
+		leases.remove(&operator);
 		Self::recompute_leased(&self.0, &leases);
 	}
 
-	pub fn current_lease(&self, node: OperatorId) -> Option<OperatorLease> {
+	pub fn current_lease(&self, operator: OperatorId) -> Option<OperatorLease> {
 		let leases = self.0.leases.lock();
-		leases.get(&node).map(|lease| OperatorLease {
-			node,
+		leases.get(&operator).map(|lease| OperatorLease {
+			operator,
 			grant: LeaseGrant(lease.grant),
 			last: LeaseReport {
 				state: StateMemory::new(Count::new(0), lease.reported_bytes()),
@@ -351,13 +352,13 @@ mod tests {
 		// A lease violator's excess bytes must count into the bound; charging only the grant would
 		// hide real memory from the budget.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let node = OperatorId(7);
-		let grant = pool.grant_lease(node, mb(20));
+		let operator = OperatorId(7);
+		let grant = pool.grant_lease(operator, mb(20));
 		assert_eq!(grant.bytes(), mb(20));
 		assert_eq!(pool.snapshot().leased, mb(20));
 
 		pool.report_lease(
-			node,
+			operator,
 			LeaseReport {
 				state: StateMemory::new(Count::new(10), mb(50)),
 				row_numbers: StateMemory::new(Count::new(1), mb(5)),
@@ -366,7 +367,7 @@ mod tests {
 		assert_eq!(pool.snapshot().leased, mb(55));
 
 		pool.report_lease(
-			node,
+			operator,
 			LeaseReport {
 				state: StateMemory::new(Count::new(10), mb(1)),
 				row_numbers: StateMemory::default(),
@@ -374,7 +375,7 @@ mod tests {
 		);
 		assert_eq!(pool.snapshot().leased, mb(20), "reported below grant charges the grant");
 
-		pool.release_lease(node);
+		pool.release_lease(operator);
 		assert_eq!(pool.snapshot().leased, ByteSize::ZERO);
 	}
 
@@ -397,20 +398,20 @@ mod tests {
 		// A fresh lease reserves its full grant because its footprint is unknown, but a lease that
 		// has reported no cache charges nothing rather than pinning budget it will never use.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let node = OperatorId(3);
-		pool.grant_lease(node, mb(16));
+		let operator = OperatorId(3);
+		pool.grant_lease(operator, mb(16));
 
 		assert_eq!(
-			pool.current_lease(node).unwrap().health,
+			pool.current_lease(operator).unwrap().health,
 			LeaseHealth::Silent,
 			"a lease that has not yet reported is silent"
 		);
 		assert_eq!(pool.snapshot().leased, mb(16), "a fresh lease reserves its cold-start grant");
 
 		for _ in 0..10 {
-			pool.report_lease_none(node);
+			pool.report_lease_none(operator);
 		}
-		assert_eq!(pool.current_lease(node).unwrap().health, LeaseHealth::Silent);
+		assert_eq!(pool.current_lease(operator).unwrap().health, LeaseHealth::Silent);
 		assert_eq!(pool.snapshot().leased, ByteSize::ZERO, "a cacheless operator charges nothing");
 		assert_eq!(pool.silent_leases(), Count::new(1));
 	}
@@ -420,22 +421,22 @@ mod tests {
 		// Health tracks the latest sample only: an operator that reports bytes and then reports no
 		// cache must drop the stale count and reserve nothing, not fall back to its grant.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let node = OperatorId(5);
-		pool.grant_lease(node, mb(16));
+		let operator = OperatorId(5);
+		pool.grant_lease(operator, mb(16));
 
 		pool.report_lease(
-			node,
+			operator,
 			LeaseReport {
 				state: StateMemory::new(Count::new(1), mb(40)),
 				row_numbers: StateMemory::default(),
 			},
 		);
-		assert_eq!(pool.current_lease(node).unwrap().health, LeaseHealth::Reporting);
+		assert_eq!(pool.current_lease(operator).unwrap().health, LeaseHealth::Reporting);
 		assert_eq!(pool.snapshot().leased, mb(40));
 		assert_eq!(pool.silent_leases(), Count::new(0));
 
-		pool.report_lease_none(node);
-		assert_eq!(pool.current_lease(node).unwrap().health, LeaseHealth::Silent);
+		pool.report_lease_none(operator);
+		assert_eq!(pool.current_lease(operator).unwrap().health, LeaseHealth::Silent);
 		assert_eq!(
 			pool.snapshot().leased,
 			ByteSize::ZERO,
@@ -472,10 +473,10 @@ mod tests {
 	#[test]
 	fn test_resize_respects_floor() {
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let node = OperatorId(4);
-		pool.grant_lease(node, mb(64));
-		pool.resize_lease(node, mb(1));
-		assert_eq!(pool.current_lease(node).unwrap().grant.bytes(), LEASE_FLOOR);
+		let operator = OperatorId(4);
+		pool.grant_lease(operator, mb(64));
+		pool.resize_lease(operator, mb(1));
+		assert_eq!(pool.current_lease(operator).unwrap().grant.bytes(), LEASE_FLOOR);
 	}
 
 	#[test]
@@ -483,14 +484,14 @@ mod tests {
 		// A grant must track reported demand so busy guests grow and idle guests shrink, rather than
 		// pinning the creation-time grant forever.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let node = OperatorId(1);
-		pool.grant_lease(node, mb(10));
+		let operator = OperatorId(1);
+		pool.grant_lease(operator, mb(10));
 
-		pool.resize_lease_to_demand(node, mb(25));
-		assert_eq!(pool.current_lease(node).unwrap().grant.bytes(), mb(25));
+		pool.resize_lease_to_demand(operator, mb(25));
+		assert_eq!(pool.current_lease(operator).unwrap().grant.bytes(), mb(25));
 
-		pool.resize_lease_to_demand(node, mb(12));
-		assert_eq!(pool.current_lease(node).unwrap().grant.bytes(), mb(12));
+		pool.resize_lease_to_demand(operator, mb(12));
+		assert_eq!(pool.current_lease(operator).unwrap().grant.bytes(), mb(12));
 	}
 
 	#[test]
@@ -513,12 +514,12 @@ mod tests {
 		// An operator's own charge must not count against its own headroom, or a fully granted pool
 		// could never regrow a lease and demand could only ratchet downward.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let node = OperatorId(1);
-		pool.grant_lease(node, mb(100));
+		let operator = OperatorId(1);
+		pool.grant_lease(operator, mb(100));
 
-		pool.resize_lease_to_demand(node, mb(90));
+		pool.resize_lease_to_demand(operator, mb(90));
 
-		assert_eq!(pool.current_lease(node).unwrap().grant.bytes(), mb(90));
+		assert_eq!(pool.current_lease(operator).unwrap().grant.bytes(), mb(90));
 	}
 
 	#[test]
@@ -526,12 +527,12 @@ mod tests {
 		// An idle operator keeps the lease floor so it can restart its
 		// cache without renegotiating a grant from zero.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let node = OperatorId(1);
-		pool.grant_lease(node, mb(64));
+		let operator = OperatorId(1);
+		pool.grant_lease(operator, mb(64));
 
-		pool.resize_lease_to_demand(node, ByteSize::ZERO);
+		pool.resize_lease_to_demand(operator, ByteSize::ZERO);
 
-		assert_eq!(pool.current_lease(node).unwrap().grant.bytes(), LEASE_FLOOR);
+		assert_eq!(pool.current_lease(operator).unwrap().grant.bytes(), LEASE_FLOOR);
 	}
 
 	#[test]
@@ -539,13 +540,13 @@ mod tests {
 		// Operator teardown races the sampling tick; a demand resize
 		// arriving after release_lease must not resurrect the lease.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let node = OperatorId(9);
-		pool.grant_lease(node, mb(10));
-		pool.release_lease(node);
+		let operator = OperatorId(9);
+		pool.grant_lease(operator, mb(10));
+		pool.release_lease(operator);
 
-		pool.resize_lease_to_demand(node, mb(10));
+		pool.resize_lease_to_demand(operator, mb(10));
 
-		assert!(pool.current_lease(node).is_none());
+		assert!(pool.current_lease(operator).is_none());
 		assert_eq!(pool.snapshot().leased, ByteSize::ZERO);
 	}
 }

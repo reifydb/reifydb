@@ -240,7 +240,7 @@ mod tests {
 	#[test]
 	fn an_undeclared_grid_quantises_by_raw_division() {
 		// The undeclared grid has no unit and divides the raw coordinate directly; changing that
-		// arithmetic would make a node declaring no horizon rewrite its activity index on a
+		// arithmetic would make a operator declaring no horizon rewrite its activity index on a
 		// different schedule.
 		for width in [1u64, 7, 100, 4096] {
 			for position in [0u64, 1, 99, 100, 5_000, i64::MAX as u64] {

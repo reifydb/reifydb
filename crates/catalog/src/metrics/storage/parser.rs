@@ -48,8 +48,8 @@ fn extract_object_id(key: &[u8]) -> Option<ObjectId> {
 fn extract_operator_id(key: &[u8]) -> Option<OperatorId> {
 	let mut de = KeyDeserializer::from_bytes(key);
 	let _ = de.read_u8().ok()?;
-	let node_id = de.read_u64().ok()?;
-	Some(OperatorId(node_id))
+	let operator_id = de.read_u64().ok()?;
+	Some(OperatorId(operator_id))
 }
 
 fn extract_dictionary_id(key: &[u8]) -> Option<u64> {
@@ -79,12 +79,12 @@ pub mod tests {
 
 	#[test]
 	fn test_parse_object_id_operator_state() {
-		let node = OperatorId(456);
-		let state_key = OperatorStateKey::new(node, vec![1, 2, 3]);
+		let operator = OperatorId(456);
+		let state_key = OperatorStateKey::new(operator, vec![1, 2, 3]);
 		let encoded = state_key.encode();
 
 		let id = parse_id(encoded.as_slice());
-		assert_eq!(id, MetricsId::Operator(node));
+		assert_eq!(id, MetricsId::Operator(operator));
 	}
 
 	#[test]

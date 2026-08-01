@@ -630,7 +630,7 @@ pub mod tests {
 	#[test]
 	fn test_operator_state() {
 		let key = Key::OperatorState(OperatorStateKey {
-			node: OperatorId(0xCAFEBABE),
+			operator: OperatorId(0xCAFEBABE),
 			key: vec![1, 2, 3],
 		});
 
@@ -639,7 +639,7 @@ pub mod tests {
 
 		match decoded {
 			Key::OperatorState(decoded_inner) => {
-				assert_eq!(decoded_inner.node, 0xCAFEBABE);
+				assert_eq!(decoded_inner.operator, 0xCAFEBABE);
 				assert_eq!(decoded_inner.key, vec![1, 2, 3]);
 			}
 			_ => unreachable!(),

@@ -197,7 +197,7 @@ mod tests {
 
 	#[test]
 	fn an_undeclared_scale_parks_every_group_in_one_bucket_that_never_retires() {
-		// A node that never reclaims should not pay for the activity index: the widest bucket
+		// A operator that never reclaims should not pay for the activity index: the widest bucket
 		// collapses every reachable position into bucket 0, so a group writes one index entry ever.
 		// Event-time coordinates stay within i64 range, so only u64::MAX reaches a second bucket.
 		let buckets = activity_buckets(None);

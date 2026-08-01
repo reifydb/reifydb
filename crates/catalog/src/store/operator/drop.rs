@@ -21,20 +21,21 @@ use reifydb_transaction::{
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn drop_operator(txn: &mut AdminTransaction, node_id: OperatorId) -> Result<()> {
-		let Some(node_def) = CatalogStore::find_operator(&mut Transaction::Admin(&mut *txn), node_id)? else {
+	pub(crate) fn drop_operator(txn: &mut AdminTransaction, operator_id: OperatorId) -> Result<()> {
+		let Some(node_def) = CatalogStore::find_operator(&mut Transaction::Admin(&mut *txn), operator_id)?
+		else {
 			return Ok(());
 		};
 
-		Self::delete_node_state(txn, node_id)?;
-		Self::unlink_node(txn, node_id, node_def.flow)?;
+		Self::delete_node_state(txn, operator_id)?;
+		Self::unlink_node(txn, operator_id, node_def.flow)?;
 		txn.track_operator_deleted(node_def)?;
 		Ok(())
 	}
 
 	#[inline]
-	fn delete_node_state(txn: &mut AdminTransaction, node_id: OperatorId) -> Result<()> {
-		let state_range = OperatorStateKey::node_range(node_id);
+	fn delete_node_state(txn: &mut AdminTransaction, operator_id: OperatorId) -> Result<()> {
+		let state_range = OperatorStateKey::node_range(operator_id);
 		let mut state_stream = txn.range(state_range, RangeScope::All, 1024)?;
 		let mut state_keys = Vec::new();
 		for entry in state_stream.by_ref() {
@@ -55,9 +56,9 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	fn unlink_node(txn: &mut AdminTransaction, node_id: OperatorId, flow: FlowId) -> Result<()> {
-		txn.remove(&OperatorKey::encoded(node_id))?;
-		txn.remove(&OperatorByFlowKey::encoded(flow, node_id))?;
+	fn unlink_node(txn: &mut AdminTransaction, operator_id: OperatorId, flow: FlowId) -> Result<()> {
+		txn.remove(&OperatorKey::encoded(operator_id))?;
+		txn.remove(&OperatorByFlowKey::encoded(flow, operator_id))?;
 		Ok(())
 	}
 }
@@ -98,13 +99,13 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let operator = create_operator(&mut txn, flow.id, 1, &[0x01]);
 
-		assert!(CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), node.id).unwrap().is_some());
+		assert!(CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), operator.id).unwrap().is_some());
 
-		CatalogStore::drop_operator(&mut txn, node.id).unwrap();
+		CatalogStore::drop_operator(&mut txn, operator.id).unwrap();
 
-		assert!(CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), node.id).unwrap().is_none());
+		assert!(CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), operator.id).unwrap().is_none());
 	}
 
 	#[test]
@@ -113,20 +114,22 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let operator = create_operator(&mut txn, flow.id, 1, &[0x01]);
 
-		let nodes = CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
-		assert_eq!(nodes.len(), 1);
+		let operators =
+			CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
+		assert_eq!(operators.len(), 1);
 
-		CatalogStore::drop_operator(&mut txn, node.id).unwrap();
+		CatalogStore::drop_operator(&mut txn, operator.id).unwrap();
 
-		let nodes = CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
-		assert!(nodes.is_empty());
+		let operators =
+			CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
+		assert!(operators.is_empty());
 	}
 
 	#[test]
 	fn test_drop_nonexistent_node() {
-		// Dropping a node that never existed is a no-op, not an error.
+		// Dropping a operator that never existed is a no-op, not an error.
 		let mut txn = create_test_admin_transaction();
 
 		CatalogStore::drop_operator(&mut txn, OperatorId(999)).unwrap();
@@ -146,9 +149,10 @@ pub mod tests {
 		assert!(CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), node1.id).unwrap().is_none());
 		assert!(CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), node2.id).unwrap().is_some());
 
-		let nodes = CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
-		assert_eq!(nodes.len(), 1);
-		assert_eq!(nodes[0].id, node2.id);
+		let operators =
+			CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
+		assert_eq!(operators.len(), 1);
+		assert_eq!(operators[0].id, node2.id);
 	}
 
 	#[test]
@@ -157,35 +161,35 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let operator = create_operator(&mut txn, flow.id, 1, &[0x01]);
 
 		let dummy_value = EncodedRow(CowVec::new(vec![42u8]));
-		txn.set(&OperatorStateKey::encoded(node.id, vec![1u8]), dummy_value.clone()).unwrap();
-		txn.set(&OperatorStateKey::encoded(node.id, vec![1u8]), dummy_value.clone()).unwrap();
+		txn.set(&OperatorStateKey::encoded(operator.id, vec![1u8]), dummy_value.clone()).unwrap();
+		txn.set(&OperatorStateKey::encoded(operator.id, vec![1u8]), dummy_value.clone()).unwrap();
 
-		assert!(txn.get(&OperatorStateKey::encoded(node.id, vec![1u8])).unwrap().is_some());
-		assert!(txn.get(&OperatorStateKey::encoded(node.id, vec![1u8])).unwrap().is_some());
+		assert!(txn.get(&OperatorStateKey::encoded(operator.id, vec![1u8])).unwrap().is_some());
+		assert!(txn.get(&OperatorStateKey::encoded(operator.id, vec![1u8])).unwrap().is_some());
 
-		CatalogStore::drop_operator(&mut txn, node.id).unwrap();
+		CatalogStore::drop_operator(&mut txn, operator.id).unwrap();
 
-		assert!(txn.get(&OperatorStateKey::encoded(node.id, vec![1u8])).unwrap().is_none());
-		assert!(txn.get(&OperatorStateKey::encoded(node.id, vec![1u8])).unwrap().is_none());
+		assert!(txn.get(&OperatorStateKey::encoded(operator.id, vec![1u8])).unwrap().is_none());
+		assert!(txn.get(&OperatorStateKey::encoded(operator.id, vec![1u8])).unwrap().is_none());
 
-		assert!(CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), node.id).unwrap().is_none());
+		assert!(CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), operator.id).unwrap().is_none());
 	}
 
 	#[test]
 	fn test_drop_operator_preserves_row_number_counter() {
-		// The counter is a monotonic sequence: resetting it on drop lets a re-created node
+		// The counter is a monotonic sequence: resetting it on drop lets a re-created operator
 		// hand out numbers that downstream rows already carry.
 		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let operator = create_operator(&mut txn, flow.id, 1, &[0x01]);
 
-		let counter_key = structured(node.id, GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![]);
-		let other_key = OperatorStateKey::encoded(node.id, vec![0x42, 0xAB]);
+		let counter_key = structured(operator.id, GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![]);
+		let other_key = OperatorStateKey::encoded(operator.id, vec![0x42, 0xAB]);
 
 		let dummy = EncodedRow(CowVec::new(vec![42u8]));
 		txn.set(&counter_key, dummy.clone()).unwrap();
@@ -194,7 +198,7 @@ pub mod tests {
 		assert!(txn.get(&counter_key).unwrap().is_some());
 		assert!(txn.get(&other_key).unwrap().is_some());
 
-		CatalogStore::drop_operator(&mut txn, node.id).unwrap();
+		CatalogStore::drop_operator(&mut txn, operator.id).unwrap();
 
 		assert!(txn.get(&other_key).unwrap().is_none(), "unrelated internal state must be cleared on drop");
 		assert!(
@@ -211,17 +215,21 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let operator = create_operator(&mut txn, flow.id, 1, &[0x01]);
 
-		let mapping_key =
-			structured(node.id, GroupId(3), Keyspace::ROW_NUMBER_MAPPING, b"some_user_key_bytes".to_vec());
+		let mapping_key = structured(
+			operator.id,
+			GroupId(3),
+			Keyspace::ROW_NUMBER_MAPPING,
+			b"some_user_key_bytes".to_vec(),
+		);
 
 		let dummy = EncodedRow(CowVec::new(vec![42u8]));
 		txn.set(&mapping_key, dummy.clone()).unwrap();
 
 		assert!(txn.get(&mapping_key).unwrap().is_some());
 
-		CatalogStore::drop_operator(&mut txn, node.id).unwrap();
+		CatalogStore::drop_operator(&mut txn, operator.id).unwrap();
 
 		assert!(
 			txn.get(&mapping_key).unwrap().is_some(),
@@ -229,9 +237,9 @@ pub mod tests {
 		);
 	}
 
-	fn structured(node: OperatorId, group: GroupId, keyspace: Keyspace, suffix: Vec<u8>) -> EncodedKey {
+	fn structured(operator: OperatorId, group: GroupId, keyspace: Keyspace, suffix: Vec<u8>) -> EncodedKey {
 		OperatorStateKey::encoded(
-			node,
+			operator,
 			OperatorGroupStateKey::inner_encoded(group, keyspace, suffix).as_slice().to_vec(),
 		)
 	}
@@ -244,21 +252,26 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
-		let node = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let operator = create_operator(&mut txn, flow.id, 1, &[0x01]);
 
 		let dummy = EncodedRow(CowVec::new(vec![42u8]));
 		let preserved = [
-			structured(node.id, GroupId(7), Keyspace::ROW_NUMBER_MAPPING, vec![9]),
-			structured(node.id, GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![0]),
-			structured(node.id, GroupId::NODE_SCOPE, Keyspace::WINDOW_META, b"partition".to_vec()),
-			structured(node.id, GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, b"group".to_vec()),
-			structured(node.id, GroupId::NODE_SCOPE, Keyspace::GROUP_RECORD, 7u64.to_be_bytes().to_vec()),
+			structured(operator.id, GroupId(7), Keyspace::ROW_NUMBER_MAPPING, vec![9]),
+			structured(operator.id, GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![0]),
+			structured(operator.id, GroupId::NODE_SCOPE, Keyspace::WINDOW_META, b"partition".to_vec()),
+			structured(operator.id, GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, b"group".to_vec()),
+			structured(
+				operator.id,
+				GroupId::NODE_SCOPE,
+				Keyspace::GROUP_RECORD,
+				7u64.to_be_bytes().to_vec(),
+			),
 		];
 		for key in &preserved {
 			txn.set(key, dummy.clone()).unwrap();
 		}
 
-		CatalogStore::drop_operator(&mut txn, node.id).unwrap();
+		CatalogStore::drop_operator(&mut txn, operator.id).unwrap();
 
 		for key in &preserved {
 			assert!(
@@ -272,22 +285,29 @@ pub mod tests {
 	#[test]
 	fn drop_still_erases_a_groups_data_under_a_structured_key() {
 		// Everything outside the preserved keyspaces must go, or the rule degenerates into
-		// "preserve everything structured" and a dropped node leaks its accumulators forever.
+		// "preserve everything structured" and a dropped operator leaks its accumulators forever.
 		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
-		let node = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let operator = create_operator(&mut txn, flow.id, 1, &[0x01]);
 
 		let dummy = EncodedRow(CowVec::new(vec![42u8]));
-		let accumulator = structured(node.id, GroupId(7), Keyspace::ACCUMULATOR, vec![0, 0, 0, 0, 0, 0, 0, 1]);
-		let engine_meta = structured(node.id, GroupId(7), Keyspace::ENGINE_META, vec![]);
+		let accumulator =
+			structured(operator.id, GroupId(7), Keyspace::ACCUMULATOR, vec![0, 0, 0, 0, 0, 0, 0, 1]);
+		let engine_meta = structured(operator.id, GroupId(7), Keyspace::ENGINE_META, vec![]);
 		txn.set(&accumulator, dummy.clone()).unwrap();
 		txn.set(&engine_meta, dummy).unwrap();
 
-		CatalogStore::drop_operator(&mut txn, node.id).unwrap();
+		CatalogStore::drop_operator(&mut txn, operator.id).unwrap();
 
-		assert!(txn.get(&accumulator).unwrap().is_none(), "a group's accumulator must not outlive its node");
-		assert!(txn.get(&engine_meta).unwrap().is_none(), "a group's window meta must not outlive its node");
+		assert!(
+			txn.get(&accumulator).unwrap().is_none(),
+			"a group's accumulator must not outlive its operator"
+		);
+		assert!(
+			txn.get(&engine_meta).unwrap().is_none(),
+			"a group's window meta must not outlive its operator"
+		);
 	}
 
 	#[test]
@@ -298,17 +318,21 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let operator = create_operator(&mut txn, flow.id, 1, &[0x01]);
 
-		let window_meta_key =
-			structured(node.id, GroupId::NODE_SCOPE, Keyspace::WINDOW_META, b"some_group_encoded".to_vec());
+		let window_meta_key = structured(
+			operator.id,
+			GroupId::NODE_SCOPE,
+			Keyspace::WINDOW_META,
+			b"some_group_encoded".to_vec(),
+		);
 
 		let dummy = EncodedRow(CowVec::new(vec![42u8]));
 		txn.set(&window_meta_key, dummy.clone()).unwrap();
 
 		assert!(txn.get(&window_meta_key).unwrap().is_some());
 
-		CatalogStore::drop_operator(&mut txn, node.id).unwrap();
+		CatalogStore::drop_operator(&mut txn, operator.id).unwrap();
 
 		assert!(
 			txn.get(&window_meta_key).unwrap().is_some(),
@@ -323,21 +347,21 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let operator = create_operator(&mut txn, flow.id, 1, &[0x01]);
 
 		let gate_inner = OperatorGroupStateKey::inner_encoded(
 			GroupId::NODE_SCOPE,
 			Keyspace::GATE_VISIBILITY,
 			42u64.to_be_bytes(),
 		);
-		let gate_key = OperatorStateKey::encoded(node.id, gate_inner.as_slice());
+		let gate_key = OperatorStateKey::encoded(operator.id, gate_inner.as_slice());
 
 		let dummy = EncodedRow(CowVec::new(vec![1u8]));
 		txn.set(&gate_key, dummy.clone()).unwrap();
 
 		assert!(txn.get(&gate_key).unwrap().is_some());
 
-		CatalogStore::drop_operator(&mut txn, node.id).unwrap();
+		CatalogStore::drop_operator(&mut txn, operator.id).unwrap();
 
 		assert!(txn.get(&gate_key).unwrap().is_some(), "drop_operator must preserve gate visibility markers");
 	}

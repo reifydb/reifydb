@@ -15,14 +15,14 @@ use reifydb_value::{Result, fragment::Fragment};
 use crate::operator::sink::decode_dictionary_columns;
 
 pub struct SourceRingBufferOperator {
-	node: OperatorId,
+	operator: OperatorId,
 	ringbuffer: RingBuffer,
 }
 
 impl SourceRingBufferOperator {
-	pub fn new(node: OperatorId, ringbuffer: RingBuffer) -> Self {
+	pub fn new(operator: OperatorId, ringbuffer: RingBuffer) -> Self {
 		Self {
-			node,
+			operator,
 			ringbuffer,
 		}
 	}
@@ -30,7 +30,7 @@ impl SourceRingBufferOperator {
 
 impl Operator for SourceRingBufferOperator {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -70,7 +70,7 @@ impl Operator for SourceRingBufferOperator {
 				}
 			});
 		}
-		Ok(Change::from_flow(self.node, change.version, decoded_diffs, change.changed_at))
+		Ok(Change::from_flow(self.operator, change.version, decoded_diffs, change.changed_at))
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

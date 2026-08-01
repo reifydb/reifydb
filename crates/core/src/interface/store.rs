@@ -38,7 +38,7 @@ pub fn classify_key(key: &EncodedKey) -> EntryKind {
 	match Key::decode(key) {
 		Some(Key::Row(row_key)) => EntryKind::Source(row_key.storage),
 		Some(Key::PartitionedRow(partitioned_key)) => EntryKind::PartitionedSource(partitioned_key.object),
-		Some(Key::OperatorState(state_key)) => EntryKind::Operator(state_key.node),
+		Some(Key::OperatorState(state_key)) => EntryKind::Operator(state_key.operator),
 		_ => EntryKind::Multi,
 	}
 }
@@ -57,7 +57,7 @@ pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
 	}
 
 	if let (Some(start), Some(_end)) = OperatorStateKeyRange::decode(range) {
-		return Some(EntryKind::Operator(start.node));
+		return Some(EntryKind::Operator(start.operator));
 	}
 
 	None

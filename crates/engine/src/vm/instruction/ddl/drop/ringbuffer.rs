@@ -25,12 +25,12 @@ pub(crate) fn drop_ringbuffer(
 
 	let def = services.catalog.get_ringbuffer(&mut Transaction::Admin(txn), ringbuffer_id)?;
 
-	let nodes = services.catalog.list_operators_all(&mut Transaction::Admin(txn))?;
+	let operators = services.catalog.list_operators_all(&mut Transaction::Admin(txn))?;
 	let flows = services.catalog.list_flows_all(&mut Transaction::Admin(txn))?;
 	let dependents = find_flow_dependents(
 		&services.catalog,
 		txn,
-		&nodes,
+		&operators,
 		&flows,
 		|node_type| matches!(node_type, OperatorDef::SourceRingBuffer { ringbuffer } if *ringbuffer == ringbuffer_id),
 	)?;

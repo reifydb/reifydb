@@ -79,12 +79,12 @@ impl FlowEngineInner {
 		let sources: Vec<OperatorId> = topo
 			.iter()
 			.copied()
-			.filter(|id| flow.get_node(id).is_some_and(|node| node.ty.is_source()))
+			.filter(|id| flow.get_operator(id).is_some_and(|operator| operator.ty.is_source()))
 			.collect();
 		let arrivals: Vec<(OperatorId, DateTime)> = pending
 			.iter()
-			.filter_map(|(node_id, changes)| {
-				changes.iter().filter_map(max_input_time).max().map(|at| (*node_id, at))
+			.filter_map(|(operator_id, changes)| {
+				changes.iter().filter_map(max_input_time).max().map(|at| (*operator_id, at))
 			})
 			.collect();
 		freeze_arrival_frontier(txn, flow.time_domain(), &sources, &arrivals)?;
@@ -102,13 +102,13 @@ impl FlowEngineInner {
 		topo: &[OperatorId],
 	) -> Result<u32> {
 		let mut nodes_processed = 0u32;
-		for node_id in topo {
-			let inbox = match pending.remove(node_id) {
+		for operator_id in topo {
+			let inbox = match pending.remove(operator_id) {
 				Some(v) if !v.is_empty() => v,
 				_ => continue,
 			};
 
-			let node = match flow.get_node(node_id) {
+			let operator = match flow.get_operator(operator_id) {
 				Some(n) => n.clone(),
 				None => continue,
 			};
@@ -129,14 +129,14 @@ impl FlowEngineInner {
 				version,
 			});
 
-			let combined_output = self.dispatch_node(txn, &node, inbox)?;
+			let combined_output = self.dispatch_node(txn, &operator, inbox)?;
 			nodes_processed += 1;
 			if combined_output.diffs.is_empty() {
 				continue;
 			}
 
-			let child_count = node.outputs.len();
-			for (child_idx, child_id) in node.outputs.iter().enumerate() {
+			let child_count = operator.outputs.len();
+			for (child_idx, child_id) in operator.outputs.iter().enumerate() {
 				if child_idx + 1 == child_count {
 					pending.entry(*child_id).or_default().push(combined_output);
 					break;
@@ -159,8 +159,8 @@ fn freeze_arrival_frontier(
 		let frontier = watermarks.flow_watermark(domain, sources, txn)?;
 		txn.set_flow_watermark(frontier);
 	}
-	for (node, at) in arrivals {
-		watermarks.advance(*node, txn, *at)?;
+	for (operator, at) in arrivals {
+		watermarks.advance(*operator, txn, *at)?;
 	}
 	Ok(())
 }

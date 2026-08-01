@@ -30,11 +30,11 @@ pub(crate) struct JoinState {
 }
 
 impl JoinState {
-	pub(crate) fn new(node_id: OperatorId, membership: Arc<JoinMembership>, snapshot: bool) -> Self {
+	pub(crate) fn new(operator_id: OperatorId, membership: Arc<JoinMembership>, snapshot: bool) -> Self {
 		Self {
-			left: Store::new(node_id, JoinSide::Left, membership.clone())
+			left: Store::new(operator_id, JoinSide::Left, membership.clone())
 				.also_stamping(snapshot_ledger_keyspaces(snapshot)),
-			right: Store::new(node_id, JoinSide::Right, membership),
+			right: Store::new(operator_id, JoinSide::Right, membership),
 		}
 	}
 }
@@ -98,14 +98,14 @@ impl JoinMembership {
 		self.left.completeness().merge(self.right.completeness())
 	}
 
-	pub(crate) fn hydrate(&self, node: OperatorId, txn: &mut FlowTransaction) -> Result<()> {
+	pub(crate) fn hydrate(&self, operator: OperatorId, txn: &mut FlowTransaction) -> Result<()> {
 		if self.left.is_hydrated() && self.right.is_hydrated() {
 			return Ok(());
 		}
 
 		let mut left_rows: Vec<GroupId> = Vec::new();
 		let mut right_rows: Vec<GroupId> = Vec::new();
-		for entry in state_range(node, txn, EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded)) {
+		for entry in state_range(operator, txn, EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded)) {
 			let (key, _) = entry?;
 			let Some((group, keyspace, _)) = OperatorGroupStateKey::decode_inner(key.as_ref()) else {
 				continue;
@@ -122,7 +122,7 @@ impl JoinMembership {
 			if folded.contains_key(group) {
 				continue;
 			}
-			let Some(bytes) = txn.group_bytes(node, *group)? else {
+			let Some(bytes) = txn.group_bytes(operator, *group)? else {
 				continue;
 			};
 			let Some(hash) = hash_from_group_bytes(&bytes) else {

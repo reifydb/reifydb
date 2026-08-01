@@ -558,7 +558,7 @@ impl<'a> BorrowedColumn<'a> {
 ///
 /// `buf` must be a host-produced descriptor: either empty, or `buf.ptr` valid for `buf.len`
 /// initialized bytes that stay live as long as `buf` itself is borrowed.
-unsafe fn read_buffer<'a>(buf: &'a BufferFFI) -> &'a [u8] {
+unsafe fn read_buffer(buf: &BufferFFI) -> &[u8] {
 	if buf.ptr.is_null() || buf.len == 0 {
 		&[]
 	} else {
@@ -571,9 +571,9 @@ unsafe fn read_buffer<'a>(buf: &'a BufferFFI) -> &'a [u8] {
 /// # Safety
 ///
 /// Same contract as [`read_buffer`].
-unsafe fn read_buffer_str<'a>(buf: &'a BufferFFI) -> &'a str {
+unsafe fn read_buffer_str(buf: &BufferFFI) -> &str {
 	// SAFETY: forwarding this function's own contract, which is `read_buffer`'s.
-	let bytes: &'a [u8] = unsafe { read_buffer(buf) };
+	let bytes: &[u8] = unsafe { read_buffer(buf) };
 	str::from_utf8(bytes).unwrap_or("")
 }
 

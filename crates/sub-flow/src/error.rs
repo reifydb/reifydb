@@ -78,19 +78,19 @@ impl From<FlowStateError> for Error {
 
 #[derive(Debug, thiserror::Error)]
 pub enum FlowGraphError {
-	#[error("flow node kind '{kind}' is not supported in persistent flows")]
+	#[error("flow operator kind '{kind}' is not supported in persistent flows")]
 	UnsupportedNode {
 		kind: &'static str,
 	},
 
-	#[error("flow node '{node}' requires {expected} inputs, but the DAG provided {found}")]
+	#[error("flow operator '{operator}' requires {expected} inputs, but the DAG provided {found}")]
 	NodeInputArity {
-		node: &'static str,
+		operator: &'static str,
 		expected: &'static str,
 		found: usize,
 	},
 
-	#[error("parent operator not found while wiring flow node input: {input}")]
+	#[error("parent operator not found while wiring flow operator input: {input}")]
 	ParentOperatorNotFound {
 		input: String,
 	},
@@ -103,10 +103,10 @@ pub enum FlowGraphError {
 	#[error("FFI operators are not supported on the wasm target")]
 	FfiUnsupportedOnWasm,
 
-	#[error("flow node is missing a required input edge")]
+	#[error("flow operator is missing a required input edge")]
 	MissingInputEdge,
 
-	#[error("{operator} operator received a diff from an unknown node")]
+	#[error("{operator} operator received a diff from an unknown operator")]
 	UnknownDiffOrigin {
 		operator: &'static str,
 		origin: Option<String>,
@@ -118,16 +118,16 @@ pub enum FlowGraphError {
 		view_id: u64,
 	},
 
-	#[error("{node} in flow {flow_id} declares a retention span but cannot reclaim")]
+	#[error("{operator} in flow {flow_id} declares a retention span but cannot reclaim")]
 	SpanWithoutReclaim {
 		flow_id: u64,
-		node: String,
+		operator: String,
 	},
 
-	#[error("{node} in flow {flow_id} declares a retention span but holds no state to age")]
+	#[error("{operator} in flow {flow_id} declares a retention span but holds no state to age")]
 	SpanOnUnageableNode {
 		flow_id: u64,
-		node: String,
+		operator: String,
 	},
 }
 
@@ -138,10 +138,10 @@ impl IntoDiagnostic for FlowGraphError {
 				kind,
 			} => flow_unsupported_operator(kind),
 			FlowGraphError::NodeInputArity {
-				node,
+				operator,
 				expected,
 				found,
-			} => flow_operator_input_arity(node, expected, found),
+			} => flow_operator_input_arity(operator, expected, found),
 			FlowGraphError::ParentOperatorNotFound {
 				input,
 			} => flow_parent_operator_not_found(input),
@@ -156,12 +156,12 @@ impl IntoDiagnostic for FlowGraphError {
 			} => flow_unknown_diff_origin(operator, origin),
 			FlowGraphError::SpanWithoutReclaim {
 				flow_id,
-				node,
-			} => flow_span_without_reclaim(&format!("flow {flow_id}"), node.as_str()),
+				operator,
+			} => flow_span_without_reclaim(&format!("flow {flow_id}"), operator.as_str()),
 			FlowGraphError::SpanOnUnageableNode {
 				flow_id,
-				node,
-			} => flow_span_on_unageable_node(&format!("flow {flow_id}"), node.as_str()),
+				operator,
+			} => flow_span_on_unageable_node(&format!("flow {flow_id}"), operator.as_str()),
 			FlowGraphError::SinkViewNotVisibleAtRegistration {
 				flow_id,
 				view_id,

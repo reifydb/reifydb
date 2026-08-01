@@ -176,31 +176,31 @@ pub fn is_framed_inner(inner: &[u8]) -> bool {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperatorGroupStateKey {
-	pub node: OperatorId,
+	pub operator: OperatorId,
 	pub group: GroupId,
 	pub keyspace: Keyspace,
 	pub suffix: Vec<u8>,
 }
 
 impl OperatorGroupStateKey {
-	pub fn new(node: OperatorId, group: GroupId, keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> Self {
+	pub fn new(operator: OperatorId, group: GroupId, keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> Self {
 		Self {
-			node,
+			operator,
 			group,
 			keyspace,
 			suffix: suffix.into(),
 		}
 	}
 
-	pub fn node_scoped(node: OperatorId, keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> Self {
-		Self::new(node, GroupId::NODE_SCOPE, keyspace, suffix)
+	pub fn node_scoped(operator: OperatorId, keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> Self {
+		Self::new(operator, GroupId::NODE_SCOPE, keyspace, suffix)
 	}
 
 	pub fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(20 + self.suffix.len());
 		serializer
 			.extend_u8(KeyKind::OperatorState as u8)
-			.extend_u64(self.node.0)
+			.extend_u64(self.operator.0)
 			.extend_u64(self.group.0)
 			.extend_u8(self.keyspace.0)
 			.extend_raw(&self.suffix);
@@ -215,25 +215,30 @@ impl OperatorGroupStateKey {
 			return None;
 		}
 
-		let node = de.read_u64().ok()?;
+		let operator = de.read_u64().ok()?;
 		let group = de.read_u64().ok()?;
 		let keyspace = de.read_u8().ok()?;
 		let suffix = de.read_raw(de.remaining()).ok()?.to_vec();
 
 		Some(Self {
-			node: OperatorId(node),
+			operator: OperatorId(operator),
 			group: GroupId(group),
 			keyspace: Keyspace(keyspace),
 			suffix,
 		})
 	}
 
-	pub fn encoded(node: OperatorId, group: GroupId, keyspace: Keyspace, suffix: impl AsRef<[u8]>) -> EncodedKey {
+	pub fn encoded(
+		operator: OperatorId,
+		group: GroupId,
+		keyspace: Keyspace,
+		suffix: impl AsRef<[u8]>,
+	) -> EncodedKey {
 		let suffix = suffix.as_ref();
 		let mut serializer = KeySerializer::with_capacity(20 + suffix.len());
 		serializer
 			.extend_u8(KeyKind::OperatorState as u8)
-			.extend_u64(node.0)
+			.extend_u64(operator.0)
 			.extend_u64(group.0)
 			.extend_u8(keyspace.0)
 			.extend_raw(suffix);
@@ -355,45 +360,45 @@ pub fn group_identity_inner_range(group: GroupId) -> EncodedKeyRange {
 	EncodedKeyRange::new(Bound::Included(EncodedKey::new(prefix)), Bound::Excluded(EncodedKey::new(end)))
 }
 
-fn node_prefix(node: OperatorId) -> Vec<u8> {
+fn node_prefix(operator: OperatorId) -> Vec<u8> {
 	let mut serializer = KeySerializer::with_capacity(12);
-	serializer.extend_u8(KeyKind::OperatorState as u8).extend_u64(node.0);
+	serializer.extend_u8(KeyKind::OperatorState as u8).extend_u64(operator.0);
 	serializer.finish().as_ref().to_vec()
 }
 
-fn group_prefix(node: OperatorId, group: GroupId) -> Vec<u8> {
+fn group_prefix(operator: OperatorId, group: GroupId) -> Vec<u8> {
 	let mut serializer = KeySerializer::with_capacity(20);
-	serializer.extend_u8(KeyKind::OperatorState as u8).extend_u64(node.0).extend_u64(group.0);
+	serializer.extend_u8(KeyKind::OperatorState as u8).extend_u64(operator.0).extend_u64(group.0);
 	serializer.finish().as_ref().to_vec()
 }
 
-fn keyspace_prefix(node: OperatorId, group: GroupId, keyspace: Keyspace) -> Vec<u8> {
-	let mut prefix = group_prefix(node, group);
+fn keyspace_prefix(operator: OperatorId, group: GroupId, keyspace: Keyspace) -> Vec<u8> {
+	let mut prefix = group_prefix(operator, group);
 	prefix.push(encode_u8(keyspace.0));
 	prefix
 }
 
-pub fn node_range(node: OperatorId) -> EncodedKeyRange {
-	EncodedKeyRange::prefix(&node_prefix(node))
+pub fn node_range(operator: OperatorId) -> EncodedKeyRange {
+	EncodedKeyRange::prefix(&node_prefix(operator))
 }
 
-pub fn group_range(node: OperatorId, group: GroupId) -> EncodedKeyRange {
-	EncodedKeyRange::prefix(&group_prefix(node, group))
+pub fn group_range(operator: OperatorId, group: GroupId) -> EncodedKeyRange {
+	EncodedKeyRange::prefix(&group_prefix(operator, group))
 }
 
-pub fn keyspace_range(node: OperatorId, group: GroupId, keyspace: Keyspace) -> EncodedKeyRange {
-	EncodedKeyRange::prefix(&keyspace_prefix(node, group, keyspace))
+pub fn keyspace_range(operator: OperatorId, group: GroupId, keyspace: Keyspace) -> EncodedKeyRange {
+	EncodedKeyRange::prefix(&keyspace_prefix(operator, group, keyspace))
 }
 
-pub fn group_data_range(node: OperatorId, group: GroupId) -> EncodedKeyRange {
-	let prefix = group_prefix(node, group);
+pub fn group_data_range(operator: OperatorId, group: GroupId) -> EncodedKeyRange {
+	let prefix = group_prefix(operator, group);
 	let mut start = prefix.clone();
 	start.push(encode_u8(Keyspace::HIGHEST_DATA));
 	EncodedKeyRange::new(Bound::Included(EncodedKey::new(start)), EncodedKeyRange::prefix(&prefix).end)
 }
 
-pub fn group_identity_range(node: OperatorId, group: GroupId) -> EncodedKeyRange {
-	let prefix = group_prefix(node, group);
+pub fn group_identity_range(operator: OperatorId, group: GroupId) -> EncodedKeyRange {
+	let prefix = group_prefix(operator, group);
 	let mut end = prefix.clone();
 	end.push(encode_u8(Keyspace::HIGHEST_DATA));
 	EncodedKeyRange::new(Bound::Included(EncodedKey::new(prefix)), Bound::Excluded(EncodedKey::new(end)))
@@ -489,7 +494,7 @@ mod tests {
 
 	#[test]
 	fn a_bare_row_number_key_is_indistinguishable_from_another_groups_prefix() {
-		// Row numbers and group ids come from independent node counters, so a singleton addressed by
+		// Row numbers and group ids come from independent operator counters, so a singleton addressed by
 		// a bare row number lands exactly on a live group's prefix and is erased when that group is
 		// reclaimed - the operator reads a cold start, never an error.
 		let mut bare = KeySerializer::with_capacity(4);
@@ -517,9 +522,9 @@ mod tests {
 
 	#[test]
 	fn the_empty_key_is_framing_because_it_sorts_below_every_group() {
-		// Composed, an empty inner key is [kind][node] with nothing after it, so it sorts strictly
-		// BELOW [kind][node][varint(group)] for every group: no reclaim phase can reach it, while a
-		// node drop still prefix-covers it. A key with bytes lands in whatever group its varint spells.
+		// Composed, an empty inner key is [kind][operator] with nothing after it, so it sorts strictly
+		// BELOW [kind][operator][varint(group)] for every group: no reclaim phase can reach it, while a
+		// operator drop still prefix-covers it. A key with bytes lands in whatever group its varint spells.
 		let empty: &[u8] = &[];
 		assert!(is_framed_inner(empty));
 
@@ -567,12 +572,12 @@ mod tests {
 
 	fn population() -> Vec<OperatorGroupStateKey> {
 		let mut keys = Vec::new();
-		for node in NODES {
+		for operator in NODES {
 			for group in GROUPS {
 				for keyspace in DATA_KEYSPACES.iter().chain(IDENTITY_KEYSPACES.iter()) {
 					for coord in [0u64, 1, 999, u64::MAX] {
 						keys.push(OperatorGroupStateKey::new(
-							OperatorId(node),
+							OperatorId(operator),
 							GroupId(group),
 							*keyspace,
 							coord.to_be_bytes().to_vec(),
@@ -581,7 +586,7 @@ mod tests {
 				}
 			}
 			keys.push(OperatorGroupStateKey::node_scoped(
-				OperatorId(node),
+				OperatorId(operator),
 				Keyspace::GROUP_DICTIONARY,
 				b"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU".to_vec(),
 			));
@@ -595,18 +600,18 @@ mod tests {
 		// a registry of keyspaces: a range that swallows a neighbour's keys destroys live state, and
 		// one that misses its own leaks it.
 		let population = population();
-		for node in NODES {
+		for operator in NODES {
 			for group in GROUPS {
-				let range = group_range(OperatorId(node), GroupId(group));
+				let range = group_range(OperatorId(operator), GroupId(group));
 				for key in &population {
 					let encoded = key.encode();
-					let expected = key.node.0 == node && key.group.0 == group;
+					let expected = key.operator.0 == operator && key.group.0 == group;
 					assert_eq!(
 						contains(&range, encoded.as_slice()),
 						expected,
-						"node {node} group {group} range disagreed about a key of node {} \
+						"operator {operator} group {group} range disagreed about a key of operator {} \
 						 group {}",
-						key.node.0,
+						key.operator.0,
 						key.group.0
 					);
 				}
@@ -653,14 +658,14 @@ mod tests {
 		// Two-phase reclamation is one range operation per phase only because the keyspace byte orders
 		// identity before data after inversion. A leak either way takes the row-number mapping with
 		// phase 1 (duplicate rows on the next wake) or leaves live accumulators behind.
-		for node in NODES {
+		for operator in NODES {
 			for group in GROUPS {
-				let data = group_data_range(OperatorId(node), GroupId(group));
-				let identity = group_identity_range(OperatorId(node), GroupId(group));
+				let data = group_data_range(OperatorId(operator), GroupId(group));
+				let identity = group_identity_range(OperatorId(operator), GroupId(group));
 
 				for keyspace in DATA_KEYSPACES {
 					let key = OperatorGroupStateKey::new(
-						OperatorId(node),
+						OperatorId(operator),
 						GroupId(group),
 						keyspace,
 						vec![7, 7],
@@ -678,7 +683,7 @@ mod tests {
 
 				for keyspace in IDENTITY_KEYSPACES {
 					let key = OperatorGroupStateKey::new(
-						OperatorId(node),
+						OperatorId(operator),
 						GroupId(group),
 						keyspace,
 						vec![7, 7],
@@ -742,20 +747,20 @@ mod tests {
 
 	#[test]
 	fn node_scoped_entries_sit_outside_every_group_range() {
-		// Reclaiming a group must not touch the node-scope table that resolves group ids, or the
+		// Reclaiming a group must not touch the operator-scope table that resolves group ids, or the
 		// substrate erases its own address book while other groups still depend on it.
-		for node in NODES {
+		for operator in NODES {
 			let dictionary = OperatorGroupStateKey::node_scoped(
-				OperatorId(node),
+				OperatorId(operator),
 				Keyspace::GROUP_DICTIONARY,
 				b"mint-pubkey".to_vec(),
 			)
 			.encode();
 			for group in GROUPS {
-				let range = group_range(OperatorId(node), GroupId(group));
+				let range = group_range(OperatorId(operator), GroupId(group));
 				assert!(
 					!contains(&range, dictionary.as_slice()),
-					"group {group} range must not contain the node-scope dictionary"
+					"group {group} range must not contain the operator-scope dictionary"
 				);
 			}
 		}
@@ -763,18 +768,18 @@ mod tests {
 
 	#[test]
 	fn a_node_range_contains_exactly_that_nodes_keys() {
-		// drop_operator erases a whole node by range: containing a neighbour's keys destroys a live
+		// drop_operator erases a whole operator by range: containing a neighbour's keys destroys a live
 		// flow's state, and missing its own strands the keyspace.
 		let population = population();
-		for node in NODES {
-			let range = node_range(OperatorId(node));
+		for operator in NODES {
+			let range = node_range(OperatorId(operator));
 			for key in &population {
 				let encoded = key.encode();
 				assert_eq!(
 					contains(&range, encoded.as_slice()),
-					key.node.0 == node,
-					"node {node} range disagreed about a key of node {}",
-					key.node.0
+					key.operator.0 == operator,
+					"operator {operator} range disagreed about a key of operator {}",
+					key.operator.0
 				);
 			}
 		}
@@ -784,19 +789,19 @@ mod tests {
 	fn a_keyspace_range_isolates_one_keyspace_of_one_group() {
 		// Hydration and per-keyspace scans read through this range; bleeding into an adjacent keyspace
 		// feeds one cache another's payloads - a decode failure at best, mixed state at worst.
-		let node = OperatorId(17);
+		let operator = OperatorId(17);
 		let group = GroupId(42);
-		let range = keyspace_range(node, group, Keyspace::BUFFER);
+		let range = keyspace_range(operator, group, Keyspace::BUFFER);
 
-		let inside = OperatorGroupStateKey::new(node, group, Keyspace::BUFFER, vec![1]).encode();
+		let inside = OperatorGroupStateKey::new(operator, group, Keyspace::BUFFER, vec![1]).encode();
 		assert!(contains(&range, inside.as_slice()));
 
 		for other in [Keyspace::ACCUMULATOR, Keyspace::RUNNING, Keyspace::GROUP_RECORD] {
-			let key = OperatorGroupStateKey::new(node, group, other, vec![1]).encode();
+			let key = OperatorGroupStateKey::new(operator, group, other, vec![1]).encode();
 			assert!(!contains(&range, key.as_slice()), "keyspace {other:?} leaked into the buffer range");
 		}
 
-		let other_group = OperatorGroupStateKey::new(node, GroupId(43), Keyspace::BUFFER, vec![1]).encode();
+		let other_group = OperatorGroupStateKey::new(operator, GroupId(43), Keyspace::BUFFER, vec![1]).encode();
 		assert!(!contains(&range, other_group.as_slice()), "another group's buffer leaked into the range");
 	}
 
@@ -822,12 +827,12 @@ mod tests {
 		assert_eq!(classify_key(&key), EntryKind::Operator(OperatorId(9)));
 
 		let legacy = OperatorStateKey::decode(&key).expect("must remain decodable as its key kind");
-		assert_eq!(legacy.node, OperatorId(9));
+		assert_eq!(legacy.operator, OperatorId(9));
 	}
 
 	#[test]
 	fn an_inner_key_composed_with_its_node_prefix_reproduces_the_full_key() {
-		// The state API owns the [kind][node] head and callers supply only the tail. If the two forms
+		// The state API owns the [kind][operator] head and callers supply only the tail. If the two forms
 		// drifted, a key written through the state API would be unreachable from a range built by the
 		// full-key helpers - state stranded where reclamation cannot see it.
 		let key = OperatorGroupStateKey::new(OperatorId(17), GroupId(42), Keyspace::BUFFER, vec![9, 9]);
@@ -835,28 +840,28 @@ mod tests {
 		let mut composed = OperatorStateKey::encoded(OperatorId(17), vec![]).as_slice().to_vec();
 		composed.extend_from_slice(key.inner().as_slice());
 
-		assert_eq!(composed, key.encode().as_slice(), "inner key plus node prefix must equal the full key");
+		assert_eq!(composed, key.encode().as_slice(), "inner key plus operator prefix must equal the full key");
 	}
 
 	#[test]
 	fn the_node_scope_group_range_stays_inside_its_node() {
 		// Group 0 encodes as 0xFF, so its inner prefix is all-ones and has no byte-wise successor:
-		// EncodedKeyRange::prefix yields an unbounded end. Composing the node prefix bounds it to the
-		// rest of this node, which is exactly group 0's keys because it sorts last within the node.
+		// EncodedKeyRange::prefix yields an unbounded end. Composing the operator prefix bounds it to the
+		// rest of this operator, which is exactly group 0's keys because it sorts last within the operator.
 		let range = group_inner_range(GroupId::NODE_SCOPE)
 			.with_prefix(OperatorStateKey::encoded(OperatorId(17), vec![]));
 
 		let own = OperatorGroupStateKey::node_scoped(OperatorId(17), Keyspace::GROUP_DICTIONARY, vec![1])
 			.encode();
-		assert!(contains(&range, own.as_slice()), "the node's own dictionary entry must be in range");
+		assert!(contains(&range, own.as_slice()), "the operator's own dictionary entry must be in range");
 
-		for node in NODES {
-			if node == 17 {
+		for operator in NODES {
+			if operator == 17 {
 				continue;
 			}
 			for keyspace in [Keyspace::GROUP_DICTIONARY, Keyspace::ACCUMULATOR] {
 				let foreign = OperatorGroupStateKey::new(
-					OperatorId(node),
+					OperatorId(operator),
 					GroupId::NODE_SCOPE,
 					keyspace,
 					vec![1],
@@ -864,7 +869,7 @@ mod tests {
 				.encode();
 				assert!(
 					!contains(&range, foreign.as_slice()),
-					"node {node} leaked into node 17's node-scope range"
+					"operator {operator} leaked into operator 17's operator-scope range"
 				);
 			}
 		}
@@ -874,19 +879,21 @@ mod tests {
 	fn inner_ranges_partition_the_group_like_their_full_key_counterparts() {
 		// Reclamation runs through the state API, so the inner forms are the ones that execute; a
 		// split holding only for full keys would still take the row-number mapping with phase 1.
-		let node = OperatorId(17);
-		let prefix = OperatorStateKey::encoded(node, vec![]);
+		let operator = OperatorId(17);
+		let prefix = OperatorStateKey::encoded(operator, vec![]);
 		for group in GROUPS {
 			let data = group_data_inner_range(GroupId(group)).with_prefix(prefix.clone());
 			let identity = group_identity_inner_range(GroupId(group)).with_prefix(prefix.clone());
 
 			for keyspace in DATA_KEYSPACES {
-				let key = OperatorGroupStateKey::new(node, GroupId(group), keyspace, vec![7]).encode();
+				let key = OperatorGroupStateKey::new(operator, GroupId(group), keyspace, vec![7])
+					.encode();
 				assert!(contains(&data, key.as_slice()));
 				assert!(!contains(&identity, key.as_slice()));
 			}
 			for keyspace in IDENTITY_KEYSPACES {
-				let key = OperatorGroupStateKey::new(node, GroupId(group), keyspace, vec![7]).encode();
+				let key = OperatorGroupStateKey::new(operator, GroupId(group), keyspace, vec![7])
+					.encode();
 				assert!(contains(&identity, key.as_slice()));
 				assert!(!contains(&data, key.as_slice()));
 			}
@@ -1002,7 +1009,7 @@ mod tests {
 		assert_eq!(set.len(), 3);
 		assert!(set.contains(GroupId(5)));
 		assert!(!set.contains(GroupId(3)));
-		assert!(!set.contains(GroupId::NODE_SCOPE), "node scope must be filtered out, not merely unsorted");
+		assert!(!set.contains(GroupId::NODE_SCOPE), "operator scope must be filtered out, not merely unsorted");
 	}
 
 	#[test]

@@ -12,7 +12,7 @@ use crate::interface::catalog::flow::{FlowId, OperatorId};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct OperatorKey {
-	pub node: OperatorId,
+	pub operator: OperatorId,
 }
 
 impl EncodableKey for OperatorKey {
@@ -20,7 +20,7 @@ impl EncodableKey for OperatorKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.node);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.operator);
 		serializer.to_encoded_key()
 	}
 
@@ -32,18 +32,18 @@ impl EncodableKey for OperatorKey {
 			return None;
 		}
 
-		let node = de.read_u64().ok()?;
+		let operator = de.read_u64().ok()?;
 
 		Some(Self {
-			node: OperatorId(node),
+			operator: OperatorId(operator),
 		})
 	}
 }
 
 impl OperatorKey {
-	pub fn encoded(node: impl Into<OperatorId>) -> EncodedKey {
+	pub fn encoded(operator: impl Into<OperatorId>) -> EncodedKey {
 		Self {
-			node: node.into(),
+			operator: operator.into(),
 		}
 		.encode()
 	}
@@ -68,7 +68,7 @@ impl OperatorKey {
 #[derive(Debug, Clone, PartialEq)]
 pub struct OperatorByFlowKey {
 	pub flow: FlowId,
-	pub node: OperatorId,
+	pub operator: OperatorId,
 }
 
 impl EncodableKey for OperatorByFlowKey {
@@ -76,7 +76,7 @@ impl EncodableKey for OperatorByFlowKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(17);
-		serializer.extend_u8(Self::KIND as u8).extend_u64(self.flow).extend_u64(self.node);
+		serializer.extend_u8(Self::KIND as u8).extend_u64(self.flow).extend_u64(self.operator);
 		serializer.to_encoded_key()
 	}
 
@@ -89,20 +89,20 @@ impl EncodableKey for OperatorByFlowKey {
 		}
 
 		let flow = de.read_u64().ok()?;
-		let node = de.read_u64().ok()?;
+		let operator = de.read_u64().ok()?;
 
 		Some(Self {
 			flow: FlowId(flow),
-			node: OperatorId(node),
+			operator: OperatorId(operator),
 		})
 	}
 }
 
 impl OperatorByFlowKey {
-	pub fn encoded(flow: impl Into<FlowId>, node: impl Into<OperatorId>) -> EncodedKey {
+	pub fn encoded(flow: impl Into<FlowId>, operator: impl Into<OperatorId>) -> EncodedKey {
 		Self {
 			flow: flow.into(),
-			node: node.into(),
+			operator: operator.into(),
 		}
 		.encode()
 	}
@@ -132,11 +132,11 @@ pub mod tests {
 	#[test]
 	fn test_operator_key_encode_decode() {
 		let key = OperatorKey {
-			node: OperatorId(0x1234),
+			operator: OperatorId(0x1234),
 		};
 		let encoded = key.encode();
 		let decoded = OperatorKey::decode(&encoded).unwrap();
-		assert_eq!(decoded.node, OperatorId(0x1234));
+		assert_eq!(decoded.operator, OperatorId(0x1234));
 		assert_eq!(key, decoded);
 	}
 
@@ -144,12 +144,12 @@ pub mod tests {
 	fn test_operator_by_flow_key_encode_decode() {
 		let key = OperatorByFlowKey {
 			flow: FlowId(0x42),
-			node: OperatorId(0x1234),
+			operator: OperatorId(0x1234),
 		};
 		let encoded = key.encode();
 		let decoded = OperatorByFlowKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.flow, FlowId(0x42));
-		assert_eq!(decoded.node, OperatorId(0x1234));
+		assert_eq!(decoded.operator, OperatorId(0x1234));
 		assert_eq!(key, decoded);
 	}
 }

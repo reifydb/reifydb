@@ -107,7 +107,7 @@ fn decode_expiry_key(bytes: &[u8]) -> Result<(u64, u64)> {
 pub struct SinkRingBufferViewOperator {
 	#[allow(dead_code)]
 	parent: OperatorCell,
-	node: OperatorId,
+	operator: OperatorId,
 	view: ResolvedView,
 	ringbuffer_id: RingBufferId,
 	capacity: u64,
@@ -122,7 +122,7 @@ impl SinkRingBufferViewOperator {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		parent: OperatorCell,
-		node: OperatorId,
+		operator: OperatorId,
 		view: ResolvedView,
 		ringbuffer_id: RingBufferId,
 		capacity: u64,
@@ -133,7 +133,7 @@ impl SinkRingBufferViewOperator {
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
 		Self {
 			parent,
-			node,
+			operator,
 			view,
 			ringbuffer_id,
 			capacity,
@@ -369,7 +369,7 @@ impl RawStatefulOperator for SinkRingBufferViewOperator {}
 
 impl Operator for SinkRingBufferViewOperator {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -445,7 +445,7 @@ impl Operator for SinkRingBufferViewOperator {
 			self.sync_row_ttl_timer(txn, partition_values)?;
 		}
 
-		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
+		Ok(Change::from_flow(self.operator, change.version, Vec::new(), change.changed_at))
 	}
 
 	fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
@@ -473,7 +473,7 @@ impl Operator for SinkRingBufferViewOperator {
 		if let Some(diff) = self.build_evicted_diff(txn, &view, &shape, evicted_rns, evicted_rows)? {
 			emit_view_change(txn, &view, diff);
 			let version = txn.version();
-			return Ok(Some(Change::from_flow(self.node, version, Vec::new(), timer.at)));
+			return Ok(Some(Change::from_flow(self.operator, version, Vec::new(), timer.at)));
 		}
 		Ok(None)
 	}
@@ -568,7 +568,7 @@ impl SinkRingBufferViewOperator {
 		let key = self.timer_key(partition_values);
 		if let Some(at) = armed {
 			txn.disarm_timer(
-				self.node,
+				self.operator,
 				&Timer {
 					at: DateTime::from_millis(at),
 					kind: TimerKind::RowTtl,
@@ -580,7 +580,7 @@ impl SinkRingBufferViewOperator {
 		match earliest {
 			Some(at) => {
 				txn.arm_timer(
-					self.node,
+					self.operator,
 					&Timer {
 						at: DateTime::from_millis(at),
 						kind: TimerKind::RowTtl,

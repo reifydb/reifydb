@@ -31,24 +31,29 @@ impl ReclaimOutcome {
 }
 
 impl FlowTransaction {
-	pub fn reclaim_group_data(&mut self, node: OperatorId, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
+	pub fn reclaim_group_data(
+		&mut self,
+		operator: OperatorId,
+		group: GroupId,
+		limit: usize,
+	) -> Result<ReclaimOutcome> {
 		reifydb_assertions! {
 			assert!(
 				!group.is_node_scope(),
-				"group id 0 addresses node scope, which holds the interning dictionary and the id \
+				"group id 0 addresses operator scope, which holds the interning dictionary and the id \
 				 counter; reclaiming it would erase the table that resolves every other group on \
-				 this node and strand all of their state"
+				 this operator and strand all of their state"
 			);
 		}
 		if group.is_node_scope() {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
-		self.reclaim_range(node, group_data_inner_range(group), limit)
+		self.reclaim_range(operator, group_data_inner_range(group), limit)
 	}
 
 	pub fn reclaim_group_keyspace(
 		&mut self,
-		node: OperatorId,
+		operator: OperatorId,
 		group: GroupId,
 		keyspace: Keyspace,
 		limit: usize,
@@ -56,9 +61,9 @@ impl FlowTransaction {
 		reifydb_assertions! {
 			assert!(
 				!group.is_node_scope(),
-				"group id 0 addresses node scope, whose keyspaces hold the interning dictionary, \
+				"group id 0 addresses operator scope, whose keyspaces hold the interning dictionary, \
 				 the id counter and the indexes; reclaiming one of them through the per-keyspace \
-				 path would erase substrate bookkeeping that every group on this node depends on"
+				 path would erase substrate bookkeeping that every group on this operator depends on"
 			);
 			assert!(
 				keyspace.is_data(),
@@ -70,40 +75,45 @@ impl FlowTransaction {
 		if group.is_node_scope() || !keyspace.is_data() {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
-		self.reclaim_range(node, keyspace_inner_range(group, keyspace), limit)
+		self.reclaim_range(operator, keyspace_inner_range(group, keyspace), limit)
 	}
 
 	pub fn reclaim_group_identity(
 		&mut self,
-		node: OperatorId,
+		operator: OperatorId,
 		group: GroupId,
 		limit: usize,
 	) -> Result<ReclaimOutcome> {
 		reifydb_assertions! {
 			assert!(
 				!group.is_node_scope(),
-				"group id 0 addresses node scope; reclaiming its identity would delete the \
+				"group id 0 addresses operator scope; reclaiming its identity would delete the \
 				 interning dictionary itself"
 			);
 		}
 		if group.is_node_scope() {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
-		let group_bytes = self.group_bytes(node, group)?;
-		let outcome = self.reclaim_range(node, group_identity_inner_range(group), limit)?;
+		let group_bytes = self.group_bytes(operator, group)?;
+		let outcome = self.reclaim_range(operator, group_identity_inner_range(group), limit)?;
 		if !outcome.more
 			&& let Some(bytes) = group_bytes
 		{
-			self.forget_group(node, &bytes)?;
+			self.forget_group(operator, &bytes)?;
 		}
 		Ok(outcome)
 	}
 
-	fn reclaim_range(&mut self, node: OperatorId, range: EncodedKeyRange, limit: usize) -> Result<ReclaimOutcome> {
+	fn reclaim_range(
+		&mut self,
+		operator: OperatorId,
+		range: EncodedKeyRange,
+		limit: usize,
+	) -> Result<ReclaimOutcome> {
 		if limit == 0 {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
-		let batch = self.state_range(node, range, Some(limit))?;
+		let batch = self.state_range(operator, range, Some(limit))?;
 		let keys: Vec<GroupStateKey> = batch
 			.items
 			.iter()
@@ -116,7 +126,7 @@ impl FlowTransaction {
 			.collect();
 		let removed = keys.len();
 		for key in &keys {
-			self.state_remove(node, key)?;
+			self.state_remove(operator, key)?;
 		}
 		Ok(ReclaimOutcome {
 			removed,
@@ -206,7 +216,7 @@ mod tests {
 	}
 
 	fn restarted(engine: &TestEngine) -> FlowTransaction {
-		// Registers the node's horizon so activity is bucketed at the width the scan divides by.
+		// Registers the operator's horizon so activity is bucketed at the width the scan divides by.
 		// Without it a cutoff chosen for one quantisation is compared against another's buckets.
 		let txn = deferred(engine);
 		txn.group_interner().set_activity_grid(NODE, Some(Duration::from_seconds(60).unwrap()));
@@ -379,8 +389,8 @@ mod tests {
 
 	#[test]
 	fn reclaiming_a_group_never_touches_node_scope() {
-		// The interning dictionary and the id counter live at node scope. A group range reaching
-		// them would erase the address book for every live group on the node, and the counter with
+		// The interning dictionary and the id counter live at operator scope. A group range reaching
+		// them would erase the address book for every live group on the operator, and the counter with
 		// it, letting ids be handed out a second time.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
@@ -438,7 +448,7 @@ mod tests {
 	fn a_crash_after_erasing_data_but_before_deferring_leaves_the_group_reclaimable() {
 		// The data erase commits, then the process dies before defer_group marks the record. The
 		// group wakes still in the activity index with a live record, and skipping it there means
-		// it never reaches the identity phase and strands its mapping for the life of the node.
+		// it never reaches the identity phase and strands its mapping for the life of the operator.
 		let engine = TestEngine::new();
 		let mut txn = restarted(&engine);
 		let bytes = EncodedKey::new(b"crashes-mid-phase-one");

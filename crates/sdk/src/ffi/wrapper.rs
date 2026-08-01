@@ -550,7 +550,7 @@ mod tests {
 	#[test]
 	fn guest_usage_carries_membership_and_completeness_behind_presence_flags() {
 		// The flags separate "not reported" from "all zero": a pre-hydration operator ships neither, and
-		// without them the host renders every such node as a degraded values_complete=0 gauge.
+		// without them the host renders every such operator as a degraded values_complete=0 gauge.
 		let bare = usage_from_sample(Some(OperatorSample::with_memory(memory(1, 64))));
 		assert_eq!(bare.has_membership, 0, "an unreported membership slot must not claim presence");
 		assert_eq!(bare.has_completeness, 0);

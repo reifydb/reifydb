@@ -62,9 +62,9 @@ impl Arena {
 
 	fn marshal_origin(origin: &ChangeOrigin) -> OriginFFI {
 		match origin {
-			ChangeOrigin::Flow(node_id) => OriginFFI {
+			ChangeOrigin::Flow(operator_id) => OriginFFI {
 				origin: 0,
-				id: node_id.0,
+				id: operator_id.0,
 			},
 			ChangeOrigin::Object(object_id) => match object_id {
 				ObjectId::Table(id) => OriginFFI {

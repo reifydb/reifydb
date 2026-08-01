@@ -43,24 +43,24 @@ impl BaseVTable for SystemOperators {
 			return Ok(None);
 		}
 
-		let nodes = CatalogStore::list_operators_all(txn)?;
+		let operators = CatalogStore::list_operators_all(txn)?;
 
-		let mut ids = ColumnBuffer::uint8_with_capacity(nodes.len());
-		let mut flow_ids = ColumnBuffer::uint8_with_capacity(nodes.len());
-		let mut node_types = ColumnBuffer::uint1_with_capacity(nodes.len());
-		let mut data_column = ColumnBuffer::blob_with_capacity(nodes.len());
-		let mut stateful = ColumnBuffer::bool_with_capacity(nodes.len());
-		let mut retains_forever = ColumnBuffer::bool_with_capacity(nodes.len());
-		let mut scales = ColumnBuffer::duration_with_capacity(nodes.len());
-		let mut frontiers = ColumnBuffer::datetime_with_capacity(nodes.len());
+		let mut ids = ColumnBuffer::uint8_with_capacity(operators.len());
+		let mut flow_ids = ColumnBuffer::uint8_with_capacity(operators.len());
+		let mut node_types = ColumnBuffer::uint1_with_capacity(operators.len());
+		let mut data_column = ColumnBuffer::blob_with_capacity(operators.len());
+		let mut stateful = ColumnBuffer::bool_with_capacity(operators.len());
+		let mut retains_forever = ColumnBuffer::bool_with_capacity(operators.len());
+		let mut scales = ColumnBuffer::duration_with_capacity(operators.len());
+		let mut frontiers = ColumnBuffer::datetime_with_capacity(operators.len());
 
-		for node in nodes {
-			ids.push(node.id.0);
-			flow_ids.push(node.flow.0);
-			node_types.push(node.node_type);
-			data_column.push(node.data);
+		for operator in operators {
+			ids.push(operator.id.0);
+			flow_ids.push(operator.flow.0);
+			node_types.push(operator.node_type);
+			data_column.push(operator.data);
 
-			match self.retention.get(node.id) {
+			match self.retention.get(operator.id) {
 				None => {
 					stateful.push_none();
 					retains_forever.push_none();

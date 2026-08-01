@@ -86,9 +86,9 @@ impl FlowEngineInner {
 
 		let mut added: Vec<OperatorId> = Vec::new();
 		let ctx = Arc::new(FlowContext::default());
-		for node_id in flow.topological_order()? {
-			let node = flow.get_node(&node_id).unwrap();
-			if let Err(err) = self.add(txn, &flow, node, &ctx) {
+		for operator_id in flow.topological_order()? {
+			let operator = flow.get_operator(&operator_id).unwrap();
+			if let Err(err) = self.add(txn, &flow, operator, &ctx) {
 				for id in &added {
 					self.operators.remove(id);
 					self.executor.services().node_retention_store.remove(*id);
@@ -103,9 +103,9 @@ impl FlowEngineInner {
 				self.sinks.retain(|_, v| !v.is_empty());
 				return Err(err);
 			}
-			self.check_declared_span(&flow, node)?;
-			self.adopt_horizon(node);
-			added.push(node_id);
+			self.check_declared_span(&flow, operator)?;
+			self.adopt_horizon(operator);
+			added.push(operator_id);
 		}
 
 		self.analyzer.add(flow.clone());
@@ -116,94 +116,94 @@ impl FlowEngineInner {
 		Ok(())
 	}
 
-	fn check_declared_span(&self, flow: &FlowDag, node: &FlowNode) -> Result<()> {
-		let Some(settings) = self.catalog.find_operator_settings_latest(node.id) else {
+	fn check_declared_span(&self, flow: &FlowDag, operator: &FlowNode) -> Result<()> {
+		let Some(settings) = self.catalog.find_operator_settings_latest(operator.id) else {
 			return Ok(());
 		};
 		if settings.ttl.is_none() && settings.join.is_none() {
 			return Ok(());
 		}
-		if !node.ty.consults_declared_span() {
+		if !operator.ty.consults_declared_span() {
 			return Err(FlowGraphError::SpanOnUnageableNode {
 				flow_id: flow.id.0,
-				node: node.ty.label(),
+				operator: operator.ty.label(),
 			}
 			.into());
 		}
 		let reclaims = self
 			.operators
-			.get(&node.id)
+			.get(&operator.id)
 			.is_some_and(|operator| operator.capabilities().contains(&OperatorCapability::Reclaim));
 		if !reclaims {
 			return Err(FlowGraphError::SpanWithoutReclaim {
 				flow_id: flow.id.0,
-				node: node.ty.label(),
+				operator: operator.ty.label(),
 			}
 			.into());
 		}
 		Ok(())
 	}
 
-	fn adopt_horizon(&self, node: &FlowNode) {
-		let scale = self.node_retention_scale(node);
-		self.substrate.group.set_activity_grid(node.id, scale);
+	fn adopt_horizon(&self, operator: &FlowNode) {
+		let scale = self.node_retention_scale(operator);
+		self.substrate.group.set_activity_grid(operator.id, scale);
 		self.executor.services().node_retention_store.set(NodeRetentionInfo {
-			node: node.id,
-			stateful: node.ty.holds_state(),
+			operator: operator.id,
+			stateful: operator.ty.holds_state(),
 			scale,
 			frontier: None,
 		});
 	}
 
-	pub(crate) fn node_retention_scale(&self, node: &FlowNode) -> Option<Duration> {
-		self.operators.get(&node.id).and_then(|operator| operator.retention_scale())
+	pub(crate) fn node_retention_scale(&self, operator: &FlowNode) -> Option<Duration> {
+		self.operators.get(&operator.id).and_then(|operator| operator.retention_scale())
 	}
 
-	#[instrument(name = "flow::add", level = "debug", skip(self, txn, flow, ctx), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?mem::discriminant(&node.ty)))]
+	#[instrument(name = "flow::add", level = "debug", skip(self, txn, flow, ctx), fields(flow_id = ?flow.id, operator_id = ?operator.id, node_type = ?mem::discriminant(&operator.ty)))]
 	pub fn add(
 		&mut self,
 		txn: &mut Transaction<'_>,
 		flow: &FlowDag,
-		node: &FlowNode,
+		operator: &FlowNode,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		reifydb_assertions! {
-			assert!(!self.operators.contains_key(&node.id), "Operator already registered");
+			assert!(!self.operators.contains_key(&operator.id), "Operator already registered");
 		}
-		let node = node.clone();
-		let node_id = node.id;
-		let inputs = node.inputs;
+		let operator = operator.clone();
+		let operator_id = operator.id;
+		let inputs = operator.inputs;
 
-		match node.ty {
+		match operator.ty {
 			SourceInlineData {
 				..
 			} => unimplemented!(),
 			SourceTable {
 				table,
-			} => self.add_source_table(txn, flow, node_id, table)?,
+			} => self.add_source_table(txn, flow, operator_id, table)?,
 			SourceView {
 				view,
-			} => self.register_source_view(txn, flow, node_id, view)?,
+			} => self.register_source_view(txn, flow, operator_id, view)?,
 			SourceRingBuffer {
 				ringbuffer,
-			} => self.add_source_ringbuffer(txn, flow, node_id, ringbuffer)?,
+			} => self.add_source_ringbuffer(txn, flow, operator_id, ringbuffer)?,
 			SourceSeries {
 				series,
-			} => self.add_source_series(txn, flow, node_id, series)?,
+			} => self.add_source_series(txn, flow, operator_id, series)?,
 			SinkTableView {
 				view,
 				table,
-			} => self.add_sink_table_view(txn, flow, node_id, &inputs, view, table)?,
+			} => self.add_sink_table_view(txn, flow, operator_id, &inputs, view, table)?,
 			SinkRingBufferView {
 				view,
 				ringbuffer,
 				capacity,
-			} => self.add_sink_ringbuffer_view(txn, flow, node_id, &inputs, view, ringbuffer, capacity)?,
+			} => self.add_sink_ringbuffer_view(txn, flow, operator_id, &inputs, view, ringbuffer, capacity)?,
 			SinkSeriesView {
 				view,
 				series,
 				key,
-			} => self.add_sink_series_view(txn, flow, node_id, &inputs, view, series, key)?,
+			} => self.add_sink_series_view(txn, flow, operator_id, &inputs, view, series, key)?,
 			SinkSubscription {
 				..
 			} => {
@@ -213,22 +213,22 @@ impl FlowEngineInner {
 			}
 			Filter {
 				conditions,
-			} => self.add_filter(node_id, &inputs, conditions, ctx)?,
+			} => self.add_filter(operator_id, &inputs, conditions, ctx)?,
 			Gate {
 				conditions,
-			} => self.add_gate(node_id, &inputs, conditions, ctx)?,
+			} => self.add_gate(operator_id, &inputs, conditions, ctx)?,
 			Map {
 				expressions,
-			} => self.add_map(node_id, &inputs, expressions, ctx)?,
+			} => self.add_map(operator_id, &inputs, expressions, ctx)?,
 			Extend {
 				expressions,
-			} => self.add_extend(node_id, &inputs, expressions, ctx)?,
+			} => self.add_extend(operator_id, &inputs, expressions, ctx)?,
 			Sort {
 				by: _,
-			} => self.add_sort(node_id, &inputs)?,
+			} => self.add_sort(operator_id, &inputs)?,
 			Take {
 				limit,
-			} => self.add_take(node_id, &inputs, limit)?,
+			} => self.add_take(operator_id, &inputs, limit)?,
 			Join {
 				join_type,
 				left,
@@ -238,26 +238,36 @@ impl FlowEngineInner {
 				natural,
 				latest,
 			} => self.add_join(
-				txn, node_id, &inputs, join_type, left, right, alias, snapshot, natural, latest, ctx,
+				txn,
+				operator_id,
+				&inputs,
+				join_type,
+				left,
+				right,
+				alias,
+				snapshot,
+				natural,
+				latest,
+				ctx,
 			)?,
 			Distinct {
 				expressions,
-			} => self.add_distinct(txn, node_id, &inputs, expressions, ctx)?,
-			Append {} => self.add_append(txn, node_id, &inputs)?,
+			} => self.add_distinct(txn, operator_id, &inputs, expressions, ctx)?,
+			Append {} => self.add_append(txn, operator_id, &inputs)?,
 			Apply {
 				operator,
 				expressions,
-			} => self.add_apply(txn, node_id, &inputs, operator, expressions)?,
+			} => self.add_apply(txn, operator_id, &inputs, operator, expressions)?,
 			Aggregate {
 				by,
 				map,
-			} => self.add_aggregate(txn, node_id, &inputs, by, map)?,
+			} => self.add_aggregate(txn, operator_id, &inputs, by, map)?,
 			Window {
 				kind,
 				group_by,
 				aggregations,
 				grace,
-			} => self.add_window(node_id, &inputs, kind, group_by, aggregations, grace, ctx)?,
+			} => self.add_window(operator_id, &inputs, kind, group_by, aggregations, grace, ctx)?,
 		}
 
 		Ok(())
@@ -268,13 +278,13 @@ impl FlowEngineInner {
 		&mut self,
 		txn: &mut Transaction<'_>,
 		flow: &FlowDag,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		table: TableId,
 	) -> Result<()> {
 		let table = self.catalog.get_table(&mut txn.reborrow(), table)?;
 
-		self.add_source(flow.id, node_id, ObjectId::table(table.id));
-		self.operators.insert(node_id, OperatorCell::new(SourceTableOperator::new(node_id, table)));
+		self.add_source(flow.id, operator_id, ObjectId::table(table.id));
+		self.operators.insert(operator_id, OperatorCell::new(SourceTableOperator::new(operator_id, table)));
 		Ok(())
 	}
 
@@ -283,12 +293,12 @@ impl FlowEngineInner {
 		&mut self,
 		txn: &mut Transaction<'_>,
 		flow: &FlowDag,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		ringbuffer: RingBufferId,
 	) -> Result<()> {
 		let rb = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?;
-		self.add_source(flow.id, node_id, ObjectId::ringbuffer(rb.id));
-		self.operators.insert(node_id, OperatorCell::new(SourceRingBufferOperator::new(node_id, rb)));
+		self.add_source(flow.id, operator_id, ObjectId::ringbuffer(rb.id));
+		self.operators.insert(operator_id, OperatorCell::new(SourceRingBufferOperator::new(operator_id, rb)));
 		Ok(())
 	}
 
@@ -297,12 +307,12 @@ impl FlowEngineInner {
 		&mut self,
 		txn: &mut Transaction<'_>,
 		flow: &FlowDag,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		series: SeriesId,
 	) -> Result<()> {
 		let s = self.catalog.get_series(&mut txn.reborrow(), series)?;
-		self.add_source(flow.id, node_id, ObjectId::series(s.id));
-		self.operators.insert(node_id, OperatorCell::new(SourceSeriesOperator::new(node_id)));
+		self.add_source(flow.id, operator_id, ObjectId::series(s.id));
+		self.operators.insert(operator_id, OperatorCell::new(SourceSeriesOperator::new(operator_id)));
 		Ok(())
 	}
 
@@ -311,19 +321,25 @@ impl FlowEngineInner {
 		&mut self,
 		txn: &mut Transaction<'_>,
 		flow: &FlowDag,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		view: ViewId,
 		table: TableId,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
 
-		self.add_sink(flow.id, node_id, ObjectId::view(*view));
+		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		let partition_by = self.catalog.get_table(&mut txn.reborrow(), table)?.partition_by;
 		self.operators.insert(
-			node_id,
-			OperatorCell::new(SinkTableViewOperator::new(parent, node_id, resolved, table, partition_by)),
+			operator_id,
+			OperatorCell::new(SinkTableViewOperator::new(
+				parent,
+				operator_id,
+				resolved,
+				table,
+				partition_by,
+			)),
 		);
 		Ok(())
 	}
@@ -334,14 +350,14 @@ impl FlowEngineInner {
 		&mut self,
 		txn: &mut Transaction<'_>,
 		flow: &FlowDag,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		view: ViewId,
 		ringbuffer: RingBufferId,
 		capacity: u64,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
-		self.add_sink(flow.id, node_id, ObjectId::view(*view));
+		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		let partition_by = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?.partition_by;
 		let ttl = self
@@ -351,10 +367,10 @@ impl FlowEngineInner {
 		let announce_evictions = ttl.as_ref().map(|ttl| ttl.announce).unwrap_or(true);
 		let row_ttl = ttl.as_ref().map(|t| t.duration);
 		self.operators.insert(
-			node_id,
+			operator_id,
 			OperatorCell::new(SinkRingBufferViewOperator::new(
 				parent,
-				node_id,
+				operator_id,
 				resolved,
 				ringbuffer,
 				capacity,
@@ -372,21 +388,21 @@ impl FlowEngineInner {
 		&mut self,
 		txn: &mut Transaction<'_>,
 		flow: &FlowDag,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		view: ViewId,
 		series: SeriesId,
 		key: SeriesKey,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
-		self.add_sink(flow.id, node_id, ObjectId::view(*view));
+		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
 		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
 		let partition_by = self.catalog.get_series(&mut txn.reborrow(), series)?.partition_by;
 		self.operators.insert(
-			node_id,
+			operator_id,
 			OperatorCell::new(SinkSeriesViewOperator::new(
 				parent,
-				node_id,
+				operator_id,
 				resolved,
 				series,
 				key.clone(),
@@ -399,17 +415,17 @@ impl FlowEngineInner {
 	#[inline]
 	fn add_filter(
 		&mut self,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		conditions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
 		self.operators.insert(
-			node_id,
+			operator_id,
 			OperatorCell::new(FilterOperator::new(
 				parent,
-				node_id,
+				operator_id,
 				conditions,
 				self.executor.routines.clone(),
 				self.runtime_context.clone(),
@@ -422,17 +438,17 @@ impl FlowEngineInner {
 	#[inline]
 	fn add_gate(
 		&mut self,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		conditions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
 		self.operators.insert(
-			node_id,
+			operator_id,
 			OperatorCell::new(GateOperator::new(
 				parent,
-				node_id,
+				operator_id,
 				conditions,
 				self.executor.routines.clone(),
 				self.runtime_context.clone(),
@@ -446,17 +462,17 @@ impl FlowEngineInner {
 	#[inline]
 	fn add_map(
 		&mut self,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
 		self.operators.insert(
-			node_id,
+			operator_id,
 			OperatorCell::new(MapOperator::new(
 				parent,
-				node_id,
+				operator_id,
 				expressions,
 				self.executor.routines.clone(),
 				self.runtime_context.clone(),
@@ -469,17 +485,17 @@ impl FlowEngineInner {
 	#[inline]
 	fn add_extend(
 		&mut self,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
 		self.operators.insert(
-			node_id,
+			operator_id,
 			OperatorCell::new(ExtendOperator::new(
 				parent,
-				node_id,
+				operator_id,
 				expressions,
 				self.executor.routines.clone(),
 				self.runtime_context.clone(),
@@ -490,16 +506,17 @@ impl FlowEngineInner {
 	}
 
 	#[inline]
-	fn add_sort(&mut self, node_id: OperatorId, inputs: &[OperatorId]) -> Result<()> {
+	fn add_sort(&mut self, operator_id: OperatorId, inputs: &[OperatorId]) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
-		self.operators.insert(node_id, OperatorCell::new(SortOperator::new(parent, node_id, Vec::new())));
+		self.operators
+			.insert(operator_id, OperatorCell::new(SortOperator::new(parent, operator_id, Vec::new())));
 		Ok(())
 	}
 
 	#[inline]
-	fn add_take(&mut self, node_id: OperatorId, inputs: &[OperatorId], limit: usize) -> Result<()> {
+	fn add_take(&mut self, operator_id: OperatorId, inputs: &[OperatorId], limit: usize) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
-		self.operators.insert(node_id, OperatorCell::new(TakeOperator::new(parent, node_id, limit)));
+		self.operators.insert(operator_id, OperatorCell::new(TakeOperator::new(parent, operator_id, limit)));
 		Ok(())
 	}
 
@@ -508,7 +525,7 @@ impl FlowEngineInner {
 	fn add_join(
 		&mut self,
 		txn: &mut Transaction<'_>,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		join_type: JoinType,
 		left: Vec<Expression>,
@@ -521,7 +538,7 @@ impl FlowEngineInner {
 	) -> Result<()> {
 		if inputs.len() != 2 {
 			return Err(Error::from(FlowGraphError::NodeInputArity {
-				node: "Join",
+				operator: "Join",
 				expected: "exactly 2",
 				found: inputs.len(),
 			}));
@@ -562,26 +579,26 @@ impl FlowEngineInner {
 			(left, right)
 		};
 
-		let join_ttl = self.catalog.find_operator_settings(txn, node_id)?.and_then(|s| s.join);
+		let join_ttl = self.catalog.find_operator_settings(txn, operator_id)?.and_then(|s| s.join);
 		let left = join_ttl.as_ref().and_then(|j| j.left.as_ref());
 		let left_ttl = left.map(|t| t.duration);
 		let right = join_ttl.as_ref().and_then(|j| j.right.as_ref());
 		let right_ttl = right.map(|t| t.duration);
 
 		self.operators.insert(
-			node_id,
+			operator_id,
 			OperatorCell::new(JoinOperator::new(
 				JoinSideConfig {
 					schema: left_schema,
-					node: left_node,
+					operator: left_node,
 					exprs: left_exprs,
 				},
 				JoinSideConfig {
 					schema: right_schema,
-					node: right_node,
+					operator: right_node,
 					exprs: right_exprs,
 				},
-				node_id,
+				operator_id,
 				join_type,
 				alias,
 				self.executor.clone(),
@@ -600,18 +617,18 @@ impl FlowEngineInner {
 	fn add_distinct(
 		&mut self,
 		txn: &mut Transaction<'_>,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent = self.parent(first_input(inputs)?)?;
-		let ttl = self.operator_ttl(txn, node_id)?;
+		let ttl = self.operator_ttl(txn, operator_id)?;
 		self.operators.insert(
-			node_id,
+			operator_id,
 			OperatorCell::new(DistinctOperator::new(
 				parent,
-				node_id,
+				operator_id,
 				expressions,
 				self.executor.routines.clone(),
 				self.runtime_context.clone(),
@@ -623,10 +640,15 @@ impl FlowEngineInner {
 	}
 
 	#[inline]
-	fn add_append(&mut self, txn: &mut Transaction<'_>, node_id: OperatorId, inputs: &[OperatorId]) -> Result<()> {
+	fn add_append(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		operator_id: OperatorId,
+		inputs: &[OperatorId],
+	) -> Result<()> {
 		if inputs.len() < 2 {
 			return Err(Error::from(FlowGraphError::NodeInputArity {
-				node: "Append",
+				operator: "Append",
 				expected: "at least 2",
 				found: inputs.len(),
 			}));
@@ -647,10 +669,10 @@ impl FlowEngineInner {
 			parents.push(parent);
 		}
 
-		let ttl = self.operator_ttl(txn, node_id)?;
+		let ttl = self.operator_ttl(txn, operator_id)?;
 		self.operators.insert(
-			node_id,
-			OperatorCell::new(AppendOperator::new(node_id, parents, inputs.to_vec(), ttl)),
+			operator_id,
+			OperatorCell::new(AppendOperator::new(operator_id, parents, inputs.to_vec(), ttl)),
 		);
 		Ok(())
 	}
@@ -659,7 +681,7 @@ impl FlowEngineInner {
 	fn add_apply(
 		&mut self,
 		txn: &mut Transaction<'_>,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		operator: String,
 		expressions: Vec<Expression>,
@@ -670,28 +692,31 @@ impl FlowEngineInner {
 			&self.runtime_context,
 		)?;
 		let cfg = Config::new(operator.as_str(), config.clone());
-		let ttl = self.operator_ttl(txn, node_id)?;
+		let ttl = self.operator_ttl(txn, operator_id)?;
 
 		if let Some(factory) = self.custom_operators.get(operator.as_str()) {
 			let parent = self.parent(first_input(inputs)?)?;
-			let _lease = self.state_budget.grant_lease(node_id, state_lease_default());
-			let inner = match factory(node_id, &cfg) {
+			let _lease = self.state_budget.grant_lease(operator_id, state_lease_default());
+			let inner = match factory(operator_id, &cfg) {
 				Ok(op) => op,
 				Err(e) => {
-					self.state_budget.release_lease(node_id);
+					self.state_budget.release_lease(operator_id);
 					return Err(e);
 				}
 			};
-			self.operators.insert(node_id, OperatorCell::new(ApplyOperator::new(parent, node_id, inner, ttl)));
+			self.operators.insert(
+				operator_id,
+				OperatorCell::new(ApplyOperator::new(parent, operator_id, inner, ttl)),
+			);
 		} else {
 			#[cfg(reifydb_target = "native")]
 			{
 				let parent = self.parent(first_input(inputs)?)?;
 
 				let inner = if self.is_native_operator(operator.as_str()) {
-					self.create_native_operator(operator.as_str(), node_id, &cfg)?
+					self.create_native_operator(operator.as_str(), operator_id, &cfg)?
 				} else if self.is_ffi_operator(operator.as_str()) {
-					self.create_ffi_operator(operator.as_str(), node_id, &config)?
+					self.create_ffi_operator(operator.as_str(), operator_id, &config)?
 				} else {
 					return Err(Error::from(FlowGraphError::UnknownOperator {
 						operator: operator.to_string(),
@@ -699,8 +724,8 @@ impl FlowEngineInner {
 				};
 
 				self.operators.insert(
-					node_id,
-					OperatorCell::new(ApplyOperator::new(parent, node_id, inner, ttl)),
+					operator_id,
+					OperatorCell::new(ApplyOperator::new(parent, operator_id, inner, ttl)),
 				);
 			}
 			#[cfg(not(reifydb_target = "native"))]
@@ -717,7 +742,7 @@ impl FlowEngineInner {
 	#[allow(clippy::too_many_arguments)]
 	fn add_window(
 		&mut self,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		kind: WindowKind,
 		group_by: Vec<Expression>,
@@ -728,7 +753,7 @@ impl FlowEngineInner {
 		let parent = self.parent(first_input(inputs)?)?;
 		let operator = WindowOperator::new(WindowConfig {
 			parent,
-			node: node_id,
+			operator: operator_id,
 			kind: kind.clone(),
 			group_by: group_by.clone(),
 			aggregations: aggregations.clone(),
@@ -738,7 +763,7 @@ impl FlowEngineInner {
 			state_budget: self.state_budget.clone(),
 			ctx: Arc::clone(ctx),
 		});
-		self.operators.insert(node_id, OperatorCell::new(operator));
+		self.operators.insert(operator_id, OperatorCell::new(operator));
 		Ok(())
 	}
 
@@ -746,7 +771,7 @@ impl FlowEngineInner {
 	fn add_aggregate(
 		&mut self,
 		txn: &mut Transaction<'_>,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		by: Vec<Expression>,
 		map: Vec<Expression>,
@@ -754,19 +779,19 @@ impl FlowEngineInner {
 		let parent = self.parent(first_input(inputs)?)?;
 		let operator = AggregateOperator::new(
 			parent,
-			node_id,
+			operator_id,
 			by,
 			map,
 			self.executor.routines.clone(),
 			self.runtime_context.clone(),
-			self.operator_ttl(txn, node_id)?,
+			self.operator_ttl(txn, operator_id)?,
 		);
-		self.operators.insert(node_id, OperatorCell::new(operator));
+		self.operators.insert(operator_id, OperatorCell::new(operator));
 		Ok(())
 	}
 
-	fn operator_ttl(&self, txn: &mut Transaction<'_>, node_id: OperatorId) -> Result<Option<Duration>> {
-		Ok(self.catalog.find_operator_settings(txn, node_id)?.and_then(|s| s.ttl).map(|ttl| ttl.duration))
+	fn operator_ttl(&self, txn: &mut Transaction<'_>, operator_id: OperatorId) -> Result<Option<Duration>> {
+		Ok(self.catalog.find_operator_settings(txn, operator_id)?.and_then(|s| s.ttl).map(|ttl| ttl.duration))
 	}
 
 	fn parent(&self, input: OperatorId) -> Result<OperatorCell> {
@@ -785,33 +810,33 @@ impl FlowEngineInner {
 		&mut self,
 		txn: &mut Transaction<'_>,
 		flow: &FlowDag,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 		view: ViewId,
 	) -> Result<()> {
 		let view = self.catalog.get_view(&mut txn.reborrow(), view)?;
-		self.add_source(flow.id, node_id, ObjectId::view(view.id()));
+		self.add_source(flow.id, operator_id, ObjectId::view(view.id()));
 
-		self.add_source(flow.id, node_id, view.storage_id().into());
+		self.add_source(flow.id, operator_id, view.storage_id().into());
 
-		self.operators.insert(node_id, OperatorCell::new(SourceViewOperator::new(node_id, view)));
+		self.operators.insert(operator_id, OperatorCell::new(SourceViewOperator::new(operator_id, view)));
 		Ok(())
 	}
 
-	pub fn add_source(&mut self, flow: FlowId, node: OperatorId, object: ObjectId) {
-		let nodes = self.sources.entry(object).or_default();
+	pub fn add_source(&mut self, flow: FlowId, operator: OperatorId, object: ObjectId) {
+		let operators = self.sources.entry(object).or_default();
 
-		let entry = (flow, node);
-		if !nodes.contains(&entry) {
-			nodes.push(entry);
+		let entry = (flow, operator);
+		if !operators.contains(&entry) {
+			operators.push(entry);
 		}
 	}
 
-	pub fn add_sink(&mut self, flow: FlowId, node: OperatorId, sink: ObjectId) {
-		let nodes = self.sinks.entry(sink).or_default();
+	pub fn add_sink(&mut self, flow: FlowId, operator: OperatorId, sink: ObjectId) {
+		let operators = self.sinks.entry(sink).or_default();
 
-		let entry = (flow, node);
-		if !nodes.contains(&entry) {
-			nodes.push(entry);
+		let entry = (flow, operator);
+		if !operators.contains(&entry) {
+			operators.push(entry);
 		}
 	}
 }

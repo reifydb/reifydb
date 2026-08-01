@@ -43,7 +43,7 @@ use crate::operator::OperatorCell;
 pub struct SinkSeriesViewOperator {
 	#[allow(dead_code)]
 	parent: OperatorCell,
-	node: OperatorId,
+	operator: OperatorId,
 	view: ResolvedView,
 	series_id: SeriesId,
 	#[allow(dead_code)]
@@ -55,7 +55,7 @@ pub struct SinkSeriesViewOperator {
 impl SinkSeriesViewOperator {
 	pub fn new(
 		parent: OperatorCell,
-		node: OperatorId,
+		operator: OperatorId,
 		view: ResolvedView,
 		series_id: SeriesId,
 		key: SeriesKey,
@@ -64,7 +64,7 @@ impl SinkSeriesViewOperator {
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
 		Self {
 			parent,
-			node,
+			operator,
 			view,
 			series_id,
 			key,
@@ -88,7 +88,7 @@ impl SinkSeriesViewOperator {
 
 impl Operator for SinkSeriesViewOperator {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -118,7 +118,7 @@ impl Operator for SinkSeriesViewOperator {
 			}
 		}
 
-		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
+		Ok(Change::from_flow(self.operator, change.version, Vec::new(), change.changed_at))
 	}
 }
 

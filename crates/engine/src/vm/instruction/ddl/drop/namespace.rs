@@ -99,10 +99,10 @@ pub(crate) fn drop_namespace(
 		all_ringbuffers.iter().filter(|r| descendant_ids.contains(&r.namespace)).map(|r| r.id).collect();
 
 	if !table_ids.is_empty() || !view_ids.is_empty() || !ringbuffer_ids.is_empty() {
-		let nodes = services.catalog.list_operators_all(&mut Transaction::Admin(txn))?;
+		let operators = services.catalog.list_operators_all(&mut Transaction::Admin(txn))?;
 		let flows = services.catalog.list_flows_all(&mut Transaction::Admin(txn))?;
 
-		let external_nodes: Vec<_> = nodes
+		let external_operators: Vec<_> = operators
 			.iter()
 			.filter(|n| {
 				flows.iter()
@@ -116,7 +116,7 @@ pub(crate) fn drop_namespace(
 		dependents.extend(find_flow_dependents(
 			&services.catalog,
 			txn,
-			&external_nodes,
+			&external_operators,
 			&flows,
 			|node_type| matches!(node_type, OperatorDef::SourceTable { table } if table_ids.contains(table)),
 		)?);
@@ -124,7 +124,7 @@ pub(crate) fn drop_namespace(
 		dependents.extend(find_flow_dependents(
 			&services.catalog,
 			txn,
-			&external_nodes,
+			&external_operators,
 			&flows,
 			|node_type| {
 				matches!(node_type, OperatorDef::SourceView { view } if view_ids.contains(view))
@@ -135,7 +135,7 @@ pub(crate) fn drop_namespace(
 		dependents.extend(find_flow_dependents(
 			&services.catalog,
 			txn,
-			&external_nodes,
+			&external_operators,
 			&flows,
 			|node_type| matches!(node_type, OperatorDef::SourceRingBuffer { ringbuffer } if ringbuffer_ids.contains(ringbuffer)),
 		)?);

@@ -4,14 +4,17 @@
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_group_state::GroupSet};
+#[cfg(reifydb_target = "native")]
+use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_core::key::operator_group_state::GroupSet;
+#[cfg(reifydb_target = "native")]
+use reifydb_flow::operator::Reclaimable;
+use reifydb_flow::transaction::FlowTransaction;
 #[cfg(reifydb_target = "native")]
 use reifydb_flow::window::{ledger::read_sealed_through, policy::SealPolicy};
-use reifydb_flow::{operator::Reclaimable, transaction::FlowTransaction};
-use reifydb_value::{
-	Result,
-	value::{datetime::DateTime, duration::Duration},
-};
+#[cfg(reifydb_target = "native")]
+use reifydb_value::value::duration::Duration;
+use reifydb_value::{Result, value::datetime::DateTime};
 
 #[cfg(reifydb_target = "native")]
 pub(crate) fn scale_from_millis(span: Option<u64>) -> Option<Duration> {
@@ -23,14 +26,14 @@ pub(crate) fn scale_from_millis(span: Option<u64>) -> Option<Duration> {
 #[cfg(reifydb_target = "native")]
 pub(crate) fn sealed_or_idle(
 	txn: &mut FlowTransaction,
-	node: OperatorId,
+	operator: OperatorId,
 	watermark: DateTime,
 	scale: Option<Duration>,
 ) -> Result<Reclaimable> {
 	let Some(scale) = scale else {
 		return Ok(Reclaimable::default());
 	};
-	if let Some(sealed) = read_sealed_through(txn, node)? {
+	if let Some(sealed) = read_sealed_through(txn, operator)? {
 		return Ok(SealPolicy::of(scale).sealed_anchor(sealed.at()).map(Reclaimable::data).unwrap_or_default());
 	}
 	Ok(Reclaimable::data(watermark.saturating_sub(scale)))
@@ -71,7 +74,7 @@ pub struct OperatorCell(Arc<dyn Operator + Send>);
 
 impl OperatorCell {
 	#[allow(clippy::arc_with_non_send_sync)]
-	pub fn new(operator: impl Operator + Send + 'static) -> Self {
+	pub fn new(operator: impl Operator + 'static) -> Self {
 		Self(Arc::new(operator))
 	}
 
@@ -187,7 +190,7 @@ mod substrate_stamping_tests {
 	#[test]
 	fn an_operator_cannot_influence_its_own_output_time() {
 		// An operator that stamped above its inputs would advance the flow watermark and seal
-		// another node's state early; the epoch row is replaced too, or an unstamped row would
+		// another operator's state early; the epoch row is replaced too, or an unstamped row would
 		// read as 1970 and retention would evict it at once.
 		let mut produced = Diffs::new();
 		produced.push(Diff::insert(columns(&[at(999_999), at(0)])));

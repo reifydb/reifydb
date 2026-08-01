@@ -40,7 +40,7 @@ const REMOVE_RECLAIM_LIMIT: usize = 8;
 const DROP_REASON: &str = "mutations whose source row mapping was reclaimed";
 
 pub struct AppendOperator {
-	node: OperatorId,
+	operator: OperatorId,
 
 	parents: Vec<OperatorCell>,
 
@@ -53,7 +53,7 @@ pub struct AppendOperator {
 
 impl AppendOperator {
 	pub fn new(
-		node: OperatorId,
+		operator: OperatorId,
 		parents: Vec<OperatorCell>,
 		input_nodes: Vec<OperatorId>,
 		ttl: Option<Duration>,
@@ -64,21 +64,21 @@ impl AppendOperator {
 		}
 
 		Self {
-			node,
+			operator,
 			parents,
 			input_nodes,
-			dropped: SealedDrops::new(node, DROP_REASON),
+			dropped: SealedDrops::new(operator, DROP_REASON),
 			ttl,
 		}
 	}
 
 	#[cfg(test)]
-	pub(crate) fn new_for_state_tests(node: OperatorId) -> Self {
+	pub(crate) fn new_for_state_tests(operator: OperatorId) -> Self {
 		Self {
-			node,
+			operator,
 			parents: Vec::new(),
 			input_nodes: Vec::new(),
-			dropped: SealedDrops::new(node, DROP_REASON),
+			dropped: SealedDrops::new(operator, DROP_REASON),
 			ttl: None,
 		}
 	}
@@ -114,7 +114,7 @@ impl AppendOperator {
 
 impl Operator for AppendOperator {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -174,7 +174,7 @@ impl Operator for AppendOperator {
 			}
 		}
 
-		Ok(Change::from_flow(self.node, change.version, result_diffs, change.changed_at))
+		Ok(Change::from_flow(self.operator, change.version, result_diffs, change.changed_at))
 	}
 
 	fn output_schema(&self) -> Option<Columns> {
@@ -189,11 +189,11 @@ impl AppendOperator {
 		txn: &mut FlowTransaction,
 		groups: &[EncodedKey],
 	) -> Result<Vec<RowNumber>> {
-		let interned = txn.intern_groups(self.node, groups)?;
+		let interned = txn.intern_groups(self.operator, groups)?;
 		let mut output_row_numbers = Vec::with_capacity(interned.len());
 		for (group, _) in interned {
 			let (output_row_number, _) =
-				txn.get_or_create_row_number(self.node, group, &Self::mapping_key())?;
+				txn.get_or_create_row_number(self.operator, group, &Self::mapping_key())?;
 			output_row_numbers.push(output_row_number);
 		}
 		Ok(output_row_numbers)
@@ -208,10 +208,10 @@ impl AppendOperator {
 		let mut output_row_numbers = Vec::with_capacity(groups.len());
 		let mut ids = Vec::with_capacity(groups.len());
 		for group_bytes in groups {
-			let Some(group) = txn.lookup_group(self.node, group_bytes)? else {
+			let Some(group) = txn.lookup_group(self.operator, group_bytes)? else {
 				return Ok(None);
 			};
-			let Some(row_number) = txn.get_row_number(self.node, group, &Self::mapping_key())? else {
+			let Some(row_number) = txn.get_row_number(self.operator, group, &Self::mapping_key())? else {
 				return Ok(None);
 			};
 			output_row_numbers.push(row_number);
@@ -252,7 +252,7 @@ impl AppendOperator {
 			self.dropped.note(post.row_count() as u64);
 			return Ok(None);
 		};
-		txn.intern_groups(self.node, &groups)?;
+		txn.intern_groups(self.operator, &groups)?;
 		let pre_output = pre.with_row_numbers(output_row_numbers.clone());
 		let post_output = post.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::update(pre_output, post_output)))
@@ -274,9 +274,9 @@ impl AppendOperator {
 			return Ok(None);
 		};
 		for group in &ids {
-			txn.reclaim_group_identity(self.node, *group, REMOVE_RECLAIM_LIMIT)?;
+			txn.reclaim_group_identity(self.operator, *group, REMOVE_RECLAIM_LIMIT)?;
 		}
-		txn.invalidate_row_number_groups(self.node, &GroupSet::new(ids));
+		txn.invalidate_row_number_groups(self.operator, &GroupSet::new(ids));
 		let output = pre.with_row_numbers(output_row_numbers);
 		Ok(Some(Diff::remove(output)))
 	}
@@ -300,15 +300,15 @@ mod tests {
 
 	const BUCKET_WIDTH: u64 = 3_750_000_000;
 
-	fn op(node: u64) -> AppendOperator {
-		AppendOperator::new_for_state_tests(OperatorId(node))
+	fn op(operator: u64) -> AppendOperator {
+		AppendOperator::new_for_state_tests(OperatorId(operator))
 	}
 
-	fn txn_at(engine: &TestEngine, node: OperatorId, coordinate: u64) -> FlowTransaction {
+	fn txn_at(engine: &TestEngine, operator: OperatorId, coordinate: u64) -> FlowTransaction {
 		// Registering the horizon mirrors what register.rs does in production; without it the
-		// node falls back to the interner's default bucket width and stamps in no domain.
+		// operator falls back to the interner's default bucket width and stamps in no domain.
 		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
-		txn.group_interner().set_activity_grid(node, Some(Duration::from_seconds(60).unwrap()));
+		txn.group_interner().set_activity_grid(operator, Some(Duration::from_seconds(60).unwrap()));
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: DateTime::from_nanos(coordinate),
 			version: CommitVersion(coordinate),
@@ -321,21 +321,21 @@ mod tests {
 	}
 
 	fn group_of(txn: &mut FlowTransaction, op: &AppendOperator, parent: u8, source_row: u64) -> Option<GroupId> {
-		txn.lookup_group(op.node, &AppendOperator::group_bytes(parent, RowNumber(source_row))).unwrap()
+		txn.lookup_group(op.operator, &AppendOperator::group_bytes(parent, RowNumber(source_row))).unwrap()
 	}
 
 	fn group_rows(txn: &mut FlowTransaction, op: &AppendOperator, group: GroupId) -> usize {
-		txn.state_range(op.node, group_inner_range(group), None).unwrap().items.len()
+		txn.state_range(op.operator, group_inner_range(group), None).unwrap().items.len()
 	}
 
 	#[test]
 	fn a_source_row_interns_a_group_that_carries_its_output_row_number() {
 		// The mapping lives at the group's own address, which is what puts it inside the range the
 		// identity phase deletes; written anywhere else it would be invisible to reclamation and
-		// leak one row per source row for the life of the node.
+		// leak one row per source row for the life of the operator.
 		let engine = TestEngine::new();
 		let op = op(1);
-		let mut txn = txn_at(&engine, op.node, 100);
+		let mut txn = txn_at(&engine, op.operator, 100);
 
 		let assigned = op.translate_append_insert(&mut txn, 0, rows(&[42])).unwrap().unwrap();
 		let Diff::Insert {
@@ -348,7 +348,7 @@ mod tests {
 
 		let group = group_of(&mut txn, &op, 0, 42).expect("the source row must have interned a group");
 		assert_eq!(
-			txn.get_row_number(op.node, group, &AppendOperator::mapping_key()).unwrap(),
+			txn.get_row_number(op.operator, group, &AppendOperator::mapping_key()).unwrap(),
 			Some(post.row_numbers()[0]),
 			"the output row number must be readable from inside the group that owns it"
 		);
@@ -360,7 +360,7 @@ mod tests {
 		// insert that minted a fresh number would duplicate the sink row rather than replace it.
 		let engine = TestEngine::new();
 		let op = op(2);
-		let mut txn = txn_at(&engine, op.node, 100);
+		let mut txn = txn_at(&engine, op.operator, 100);
 
 		let first =
 			op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[7]))).unwrap();
@@ -377,7 +377,7 @@ mod tests {
 		// output row and let either input's reclamation erase the other's mapping.
 		let engine = TestEngine::new();
 		let op = op(3);
-		let mut txn = txn_at(&engine, op.node, 100);
+		let mut txn = txn_at(&engine, op.operator, 100);
 
 		let left =
 			op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[7]))).unwrap();
@@ -399,7 +399,7 @@ mod tests {
 		// driven entirely by traffic the operator drops on the floor.
 		let engine = TestEngine::new();
 		let op = op(4);
-		let mut txn = txn_at(&engine, op.node, 100);
+		let mut txn = txn_at(&engine, op.operator, 100);
 
 		assert!(op.translate_append_update(&mut txn, 0, rows(&[99]), rows(&[99])).unwrap().is_none());
 		assert!(op.translate_append_remove(&mut txn, 0, rows(&[99])).unwrap().is_none());
@@ -413,7 +413,7 @@ mod tests {
 		// the rows that resolved hands the sink row numbers that no longer line up with the values.
 		let engine = TestEngine::new();
 		let op = op(5);
-		let mut txn = txn_at(&engine, op.node, 100);
+		let mut txn = txn_at(&engine, op.operator, 100);
 		op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[1]))).unwrap();
 
 		assert!(op.translate_append_remove(&mut txn, 0, rows(&[1, 2])).unwrap().is_none());
@@ -430,10 +430,10 @@ mod tests {
 		// no row number, which is the other half of the all-or-nothing rule.
 		let engine = TestEngine::new();
 		let op = op(12);
-		let mut txn = txn_at(&engine, op.node, 100);
+		let mut txn = txn_at(&engine, op.operator, 100);
 		op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[1, 2]))).unwrap();
 		let stripped = group_of(&mut txn, &op, 0, 2).expect("precondition: both rows are interned");
-		assert!(txn.remove_row_number(op.node, stripped, &AppendOperator::mapping_key()).unwrap());
+		assert!(txn.remove_row_number(op.operator, stripped, &AppendOperator::mapping_key()).unwrap());
 
 		assert!(op.translate_append_update(&mut txn, 0, rows(&[1, 2]), rows(&[1, 2])).unwrap().is_none());
 		assert!(op.translate_append_remove(&mut txn, 0, rows(&[1, 2])).unwrap().is_none());
@@ -450,7 +450,7 @@ mod tests {
 		// would under-report the leak by the batch size.
 		let engine = TestEngine::new();
 		let op = op(13);
-		let mut txn = txn_at(&engine, op.node, 100);
+		let mut txn = txn_at(&engine, op.operator, 100);
 		assert_eq!(op.dropped.total(), 0, "nothing has been dropped yet");
 
 		assert!(op.translate_append_remove(&mut txn, 0, rows(&[99])).unwrap().is_none());
@@ -474,7 +474,7 @@ mod tests {
 		// remove path has to run the identity phase.
 		let engine = TestEngine::new();
 		let op = op(6);
-		let mut txn = txn_at(&engine, op.node, 100);
+		let mut txn = txn_at(&engine, op.operator, 100);
 		op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[5]))).unwrap();
 		let group = group_of(&mut txn, &op, 0, 5).expect("precondition: the row is interned");
 		assert!(group_rows(&mut txn, &op, group) > 0);
@@ -492,14 +492,14 @@ mod tests {
 		// mapping naming its sink row; the next update then resolves to nothing.
 		let engine = TestEngine::new();
 		let op = op(7);
-		let mut txn = txn_at(&engine, op.node, 100);
+		let mut txn = txn_at(&engine, op.operator, 100);
 		op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[3]))).unwrap();
 		engine.commit_pending(&mut txn);
 
-		let mut txn = txn_at(&engine, op.node, 5 * BUCKET_WIDTH);
+		let mut txn = txn_at(&engine, op.operator, 5 * BUCKET_WIDTH);
 		let group = group_of(&mut txn, &op, 0, 3).expect("precondition: the row survived the commit");
 		assert_eq!(
-			txn.due_groups(op.node, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap(),
+			txn.due_groups(op.operator, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap(),
 			vec![group],
 			"precondition: stamped in bucket 0, the group is due once the cutoff clears it"
 		);
@@ -509,7 +509,9 @@ mod tests {
 			.expect("a known row translates");
 
 		assert!(
-			txn.due_groups(op.node, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap().is_empty(),
+			txn.due_groups(op.operator, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10)
+				.unwrap()
+				.is_empty(),
 			"the update must have moved the group to the bucket it was active in"
 		);
 	}
@@ -521,15 +523,19 @@ mod tests {
 		// removed source row: the group id is never reissued, and nothing reads or evicts it.
 		let engine = TestEngine::new();
 		let op = op(14);
-		let mut txn = txn_at(&engine, op.node, 100);
+		let mut txn = txn_at(&engine, op.operator, 100);
 		op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[1, 2]))).unwrap();
 		let provider = txn.row_numbers();
-		assert_eq!(provider.memory(op.node).entries, Count::new(2), "precondition: both mappings are cached");
+		assert_eq!(
+			provider.memory(op.operator).entries,
+			Count::new(2),
+			"precondition: both mappings are cached"
+		);
 
 		op.translate_append_remove(&mut txn, 0, rows(&[1])).unwrap().expect("a known row must translate");
 
 		assert_eq!(
-			provider.memory(op.node).entries,
+			provider.memory(op.operator).entries,
 			Count::new(1),
 			"the removed row's mapping must leave the cache with the rows it named"
 		);
@@ -542,30 +548,31 @@ mod tests {
 		// mapping earlier retires the name of a sink row that is still there.
 		let engine = TestEngine::new();
 		let op = op(8);
-		let mut txn = txn_at(&engine, op.node, 100);
+		let mut txn = txn_at(&engine, op.operator, 100);
 		op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[11]))).unwrap();
 		let group = group_of(&mut txn, &op, 0, 11).expect("precondition: the row is interned");
 
 		assert!(
-			txn.due_identity_groups(op.node, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10)
+			txn.due_identity_groups(op.operator, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10)
 				.unwrap()
 				.is_empty(),
 			"a group the data phase has not released is not an identity candidate"
 		);
 
-		let outcome = txn.reclaim_group_data(op.node, group, 100).unwrap();
+		let outcome = txn.reclaim_group_data(op.operator, group, 100).unwrap();
 		assert_eq!(outcome.removed, 0, "append writes no data rows, so the data phase has nothing to erase");
-		txn.defer_group(op.node, group).unwrap();
+		txn.defer_group(op.operator, group).unwrap();
 		assert!(
-			txn.get_row_number(op.node, group, &AppendOperator::mapping_key()).unwrap().is_some(),
+			txn.get_row_number(op.operator, group, &AppendOperator::mapping_key()).unwrap().is_some(),
 			"the mapping must survive the data phase"
 		);
 
 		assert_eq!(
-			txn.due_identity_groups(op.node, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap(),
+			txn.due_identity_groups(op.operator, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10)
+				.unwrap(),
 			vec![group]
 		);
-		txn.reclaim_group_identity(op.node, group, 100).unwrap();
+		txn.reclaim_group_identity(op.operator, group, 100).unwrap();
 
 		assert_eq!(group_rows(&mut txn, &op, group), 0, "the identity phase must empty the group");
 		assert_eq!(group_of(&mut txn, &op, 0, 11), None, "and take the dictionary entry with it");
@@ -573,7 +580,7 @@ mod tests {
 
 	#[test]
 	fn capabilities_declare_reclaim_or_the_substrate_skips_the_node() {
-		// The sweep reads the declaration, not the node type, so a node that omits Reclaim is
+		// The sweep reads the declaration, not the operator type, so a operator that omits Reclaim is
 		// counted perpetual and never scanned - every mapping it holds becomes permanent while
 		// the report calls it healthy.
 		assert!(op(10).capabilities().contains(&OperatorCapability::Reclaim));
@@ -582,7 +589,7 @@ mod tests {
 	#[test]
 	fn append_reports_no_operator_sample() {
 		// Append's mappings live in the shared row-number registry, so a mapping leak here is
-		// attributed through the registry's per-node metrics, not a per-operator sample.
+		// attributed through the registry's per-operator metrics, not a per-operator sample.
 		assert!(op(11).sample().is_none(), "append has no owned operator state to sample");
 	}
 }

@@ -21,12 +21,12 @@ pub(crate) fn drop_table(services: &Services, txn: &mut AdminTransaction, plan: 
 
 	let def = services.catalog.get_table(&mut Transaction::Admin(txn), table_id)?;
 
-	let nodes = services.catalog.list_operators_all(&mut Transaction::Admin(txn))?;
+	let operators = services.catalog.list_operators_all(&mut Transaction::Admin(txn))?;
 	let flows = services.catalog.list_flows_all(&mut Transaction::Admin(txn))?;
 	let dependents = find_flow_dependents(
 		&services.catalog,
 		txn,
-		&nodes,
+		&operators,
 		&flows,
 		|node_type| matches!(node_type, OperatorDef::SourceTable { table } if *table == table_id),
 	)?;

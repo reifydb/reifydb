@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// A stateful node with no declared span is legal but invisible: system::flow_nodes carries the
+// A stateful node with no declared span is legal but invisible: system::operators carries the
 // retention scale and the frontier actually reclaimed through so unbounded growth is one query
 // rather than a profiler. `retains_forever` is a boolean because RQL has no none-predicate.
 
@@ -14,8 +14,8 @@ use reifydb_test_harness::{
 };
 use reifydb_value::value::{Value, datetime::DateTime, duration::Duration};
 
-const PERPETUAL: &str = "FROM system::flow_nodes FILTER { stateful == true and retains_forever == true }";
-const STATEFUL: &str = "FROM system::flow_nodes FILTER { stateful == true }";
+const PERPETUAL: &str = "FROM system::operators FILTER { stateful == true and retains_forever == true }";
+const STATEFUL: &str = "FROM system::operators FILTER { stateful == true }";
 
 fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))
@@ -141,7 +141,7 @@ fn a_stateless_node_is_never_reported_as_stateful() {
 		"source, map and sink nodes hold no reclaimable state and must not be listed"
 	);
 	assert!(
-		db.row_count("FROM system::flow_nodes") >= 3,
+		db.row_count("FROM system::operators") >= 3,
 		"the flow's nodes are still listed - it is the stateful flag that distinguishes them"
 	);
 }

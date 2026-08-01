@@ -14,15 +14,15 @@ use crate::operator::OperatorCell;
 
 pub struct SortOperator {
 	parent: OperatorCell,
-	node: OperatorId,
+	operator: OperatorId,
 	_expressions: Vec<Expression>,
 }
 
 impl SortOperator {
-	pub fn new(parent: OperatorCell, node: OperatorId, _expressions: Vec<Expression>) -> Self {
+	pub fn new(parent: OperatorCell, operator: OperatorId, _expressions: Vec<Expression>) -> Self {
 		Self {
 			parent,
-			node,
+			operator,
 			_expressions,
 		}
 	}
@@ -36,7 +36,7 @@ impl SortOperator {
 
 impl Operator for SortOperator {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -46,7 +46,7 @@ impl Operator for SortOperator {
 	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		// TODO: Implement single-encoded sort processing
 
-		Ok(Change::from_flow(self.node, change.version, change.diffs, change.changed_at))
+		Ok(Change::from_flow(self.operator, change.version, change.diffs, change.changed_at))
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

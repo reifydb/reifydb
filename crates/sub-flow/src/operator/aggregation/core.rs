@@ -62,7 +62,7 @@ fn build_aggregation_shape(names: &[String], types: &[ValueType]) -> RowShape {
 }
 
 pub struct Aggregation {
-	pub node: OperatorId,
+	pub operator: OperatorId,
 	pub parent: OperatorCell,
 	pub compiled_group_by: Vec<CompiledExpr>,
 	pub group_names: Vec<String>,
@@ -86,7 +86,7 @@ pub struct Aggregation {
 impl Aggregation {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
-		node: OperatorId,
+		operator: OperatorId,
 		parent: OperatorCell,
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
@@ -150,7 +150,7 @@ impl Aggregation {
 		let group_names: Vec<String> = group_by.iter().map(|e| display_label(e).text().to_string()).collect();
 
 		Self {
-			node,
+			operator,
 			parent,
 			compiled_group_by,
 			group_names,

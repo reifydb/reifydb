@@ -12,7 +12,7 @@ use reifydb_core::{
 use reifydb_flow::operator::Operator;
 use reifydb_sdk::operator::OperatorMetadata;
 use reifydb_sub_flow::operator::native::{NativeBridgedOperator, NativeOperatorAdapter};
-use reifydb_test_harness::operator::transaction::{FlowTxn, NODE_ID, engine};
+use reifydb_test_harness::operator::transaction::{FlowTxn, OPERATOR_ID, engine};
 use reifydb_value::{byte_size::ByteSize, value::datetime::DateTime};
 
 use crate::common::{LEASE_PROBE_REPORTED_BYTES, LeaseProbe};
@@ -22,17 +22,17 @@ fn flush_resizes_the_lease_to_reported_demand_without_sampling() {
 	let e = engine();
 	let mut txn = e.flow_txn().deferred();
 	let capabilities = <LeaseProbe as OperatorMetadata>::CAPABILITIES;
-	let inner = NativeOperatorAdapter::new(LeaseProbe, NODE_ID, capabilities);
-	let op = NativeBridgedOperator::new(Box::new(inner), NODE_ID, capabilities);
+	let inner = NativeOperatorAdapter::new(LeaseProbe, OPERATOR_ID, capabilities);
+	let op = NativeBridgedOperator::new(Box::new(inner), OPERATOR_ID, capabilities);
 
 	let budget = txn.state_budget();
-	budget.grant_lease(NODE_ID, ByteSize::from_bytes(64 * 1024 * 1024));
+	budget.grant_lease(OPERATOR_ID, ByteSize::from_bytes(64 * 1024 * 1024));
 
-	let change = Change::from_flow(NODE_ID, CommitVersion(1), Diffs::new(), DateTime::from_nanos(0));
+	let change = Change::from_flow(OPERATOR_ID, CommitVersion(1), Diffs::new(), DateTime::from_nanos(0));
 	op.apply(&mut txn, change).unwrap();
 	txn.flush_operator_states().unwrap();
 
-	let lease = budget.current_lease(NODE_ID).unwrap();
+	let lease = budget.current_lease(OPERATOR_ID).unwrap();
 	let expected = LEASE_PROBE_REPORTED_BYTES + LEASE_PROBE_REPORTED_BYTES / 4;
 	assert_eq!(
 		lease.grant.bytes(),

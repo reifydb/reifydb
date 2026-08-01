@@ -48,7 +48,7 @@ fn delivered_state_usage(value: &dyn Any) -> ByteSize {
 pub struct EphemeralSinkSubscriptionOperator {
 	#[allow(dead_code)]
 	parent: OperatorCell,
-	node: OperatorId,
+	operator: OperatorId,
 	subscription_id: SubscriptionId,
 	delivery: Arc<DeliveryBuffer>,
 	shape: RowShape,
@@ -57,13 +57,13 @@ pub struct EphemeralSinkSubscriptionOperator {
 impl EphemeralSinkSubscriptionOperator {
 	pub fn new(
 		parent: OperatorCell,
-		node: OperatorId,
+		operator: OperatorId,
 		subscription_id: SubscriptionId,
 		delivery: Arc<DeliveryBuffer>,
 	) -> Self {
 		Self {
 			parent,
-			node,
+			operator,
 			subscription_id,
 			delivery,
 			shape: RowShape::testing(&[ValueType::Blob]),
@@ -125,7 +125,7 @@ impl SingleStateful for EphemeralSinkSubscriptionOperator {
 
 impl Operator for EphemeralSinkSubscriptionOperator {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -153,19 +153,19 @@ impl Operator for EphemeralSinkSubscriptionOperator {
 			}
 		}
 
-		txn.put_operator_state(self.node, state, persist, delivered_state_usage);
+		txn.put_operator_state(self.operator, state, persist, delivered_state_usage);
 
-		Ok(Change::from_flow(self.node, change.version, Vec::new(), change.changed_at))
+		Ok(Change::from_flow(self.operator, change.version, Vec::new(), change.changed_at))
 	}
 }
 
 impl EphemeralSinkSubscriptionOperator {
 	#[inline]
 	fn take_delivered_state(&self, txn: &mut FlowTransaction) -> Result<(DeliveredState, PersistFn)> {
-		let node_id = self.node;
+		let operator_id = self.operator;
 		let shape_for_persist = self.shape.clone();
 
-		txn.take_operator_state::<DeliveredState, _>(node_id, |txn| {
+		txn.take_operator_state::<DeliveredState, _>(operator_id, |txn| {
 			let s = self.load_delivered_state(txn)?;
 			let shape = shape_for_persist.clone();
 			let persist: PersistFn = Box::new(move |txn, value| {
@@ -175,9 +175,9 @@ impl EphemeralSinkSubscriptionOperator {
 				})?;
 				let blob = Blob::from(serialized);
 				let key = utils::empty_state_key();
-				let mut row = utils::load_or_create_row(node_id, txn, &key, &shape)?;
+				let mut row = utils::load_or_create_row(operator_id, txn, &key, &shape)?;
 				shape.set_blob(&mut row, 0, &blob);
-				utils::save_row(node_id, txn, &key, row)?;
+				utils::save_row(operator_id, txn, &key, row)?;
 				Ok(())
 			});
 			Ok((s, persist))

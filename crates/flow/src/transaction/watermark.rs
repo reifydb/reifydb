@@ -270,7 +270,7 @@ mod tests {
 	fn the_watermark_key_round_trips_beside_the_node_watermark() {
 		// A drifted encoding would make hydration read an absent key and silently restart every
 		// watermark at zero; a tag collision with NODE_WATERMARK would let the two overwrite each
-		// other on node-scope state.
+		// other on operator-scope state.
 		let key = source_watermark_key();
 		let (group, keyspace, suffix) = OperatorGroupStateKey::decode_inner(key.as_slice())
 			.expect("the key must decode as inner state");

@@ -81,8 +81,8 @@ impl SealLedger {
 }
 
 #[cfg(feature = "runtime")]
-pub fn read_sealed_through(txn: &mut FlowTransaction, node: OperatorId) -> Result<Option<SealedThrough>> {
-	let Some(row) = txn.state_get(node, &seal_ledger_key())? else {
+pub fn read_sealed_through(txn: &mut FlowTransaction, operator: OperatorId) -> Result<Option<SealedThrough>> {
+	let Some(row) = txn.state_get(operator, &seal_ledger_key())? else {
 		return Ok(None);
 	};
 	let state: SealLedgerState = decode_state(&StateBytes::from_row(row)?)?;
@@ -144,7 +144,7 @@ mod tests {
 
 	#[test]
 	fn an_empty_ledger_reads_as_none_rather_than_the_epoch() {
-		// none and "sealed through 1970" are different answers to reclaim: none means the node has
+		// none and "sealed through 1970" are different answers to reclaim: none means the operator has
 		// no seal clamp, the epoch would mean everything is sealed and let reclaim erase live state.
 		let mut store = MockStore::default();
 
@@ -168,7 +168,7 @@ mod tests {
 	#[test]
 	fn the_ledger_is_node_scoped_and_carries_no_group_or_suffix() {
 		// Reclaim reads this key without knowing which operator wrote it, so it must be derivable
-		// from the node alone; a group-scoped or suffixed key would need the operator to answer.
+		// from the operator alone; a group-scoped or suffixed key would need the operator to answer.
 		let key = seal_ledger_key();
 		let (group, keyspace, suffix) =
 			OperatorGroupStateKey::decode_inner(key.as_encoded().as_bytes()).expect("structured key");

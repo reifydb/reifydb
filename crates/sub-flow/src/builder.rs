@@ -101,12 +101,12 @@ impl FlowConfigurator {
 		self.custom_operators.insert(
 			O::NAME.to_string(),
 			CustomOperatorEntry {
-				factory: Arc::new(|node, config| {
-					let logic = O::create(node, config)?;
-					let adapter = NativeOperatorAdapter::new(logic, node, O::CAPABILITIES);
+				factory: Arc::new(|operator, config| {
+					let logic = O::create(operator, config)?;
+					let adapter = NativeOperatorAdapter::new(logic, operator, O::CAPABILITIES);
 					let bridged: BoxedOperator = Box::new(NativeBridgedOperator::new(
 						Box::new(adapter),
-						node,
+						operator,
 						O::CAPABILITIES,
 					));
 					Ok(bridged)

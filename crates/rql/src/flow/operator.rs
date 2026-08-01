@@ -544,7 +544,7 @@ mod tests {
 
 		// This list is the assertion's whole reach, so it has to name every node type consults_declared_span
 		// accepts; a type missing from both this list and ticks() cancels out and reclaims nothing forever
-		// while system::flow_nodes still reports it bounded.
+		// while system::operators still reports it bounded.
 		let reclaimable: Vec<(OperatorDef, Option<&OperatorSettings>)> = vec![
 			(join(), Some(&join_ttl)),
 			(
@@ -597,7 +597,7 @@ mod tests {
 
 	#[test]
 	fn every_node_that_can_reclaim_is_also_reported_as_holding_state() {
-		// holds_state drives the system::flow_nodes listing used to find unbounded retention, so a node that
+		// holds_state drives the system::operators listing used to find unbounded retention, so a node that
 		// reclaims but answers false here is absent from that listing in both directions - never reported as
 		// perpetual, never reported when it declares a span.
 		let ttl = OperatorSettings {

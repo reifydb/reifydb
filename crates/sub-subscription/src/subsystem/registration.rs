@@ -27,26 +27,26 @@ pub(crate) fn register_ephemeral_flow(
 		symbols: ctx.symbols.clone(),
 		params: ctx.params.clone(),
 	});
-	for node_id in flow.topological_order()? {
-		let node = flow.get_node(&node_id).unwrap();
-		match &node.ty {
+	for operator_id in flow.topological_order()? {
+		let operator = flow.get_operator(&operator_id).unwrap();
+		match &operator.ty {
 			OperatorDef::SinkSubscription {
 				..
 			} => {
-				let parent = engine.operator(node.inputs[0]).expect("Parent operator not found");
+				let parent = engine.operator(operator.inputs[0]).expect("Parent operator not found");
 				let op = EphemeralSinkSubscriptionOperator::new(
 					parent.clone(),
-					node_id,
+					operator_id,
 					ctx.id,
 					delivery.clone(),
 				);
 				engine.insert_operator(
-					node_id,
-					OperatorCell::new(ApplyOperator::new(parent, node_id, Box::new(op), None)),
+					operator_id,
+					OperatorCell::new(ApplyOperator::new(parent, operator_id, Box::new(op), None)),
 				);
 			}
 			_ => {
-				engine.add(txn, &flow, node, &flow_ctx)?;
+				engine.add(txn, &flow, operator, &flow_ctx)?;
 			}
 		}
 	}

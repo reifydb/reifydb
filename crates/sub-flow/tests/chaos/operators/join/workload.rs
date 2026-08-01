@@ -20,9 +20,9 @@ use reifydb_value::{
 	},
 };
 
-pub const LEFT_NODE: OperatorId = OperatorId(10);
-pub const RIGHT_NODE: OperatorId = OperatorId(11);
-pub const JOIN_NODE: OperatorId = OperatorId(12);
+pub const LEFT_OPERATOR: OperatorId = OperatorId(10);
+pub const RIGHT_OPERATOR: OperatorId = OperatorId(11);
+pub const JOIN_OPERATOR: OperatorId = OperatorId(12);
 
 pub const LEFT_COLUMNS: [(&str, ValueType); 3] =
 	[("lid", ValueType::Int8), ("k", ValueType::Int4), ("lv", ValueType::Int8)];
@@ -37,10 +37,10 @@ pub enum Side {
 }
 
 impl Side {
-	fn node(self) -> OperatorId {
+	fn operator(self) -> OperatorId {
 		match self {
-			Side::Left => LEFT_NODE,
-			Side::Right => RIGHT_NODE,
+			Side::Left => LEFT_OPERATOR,
+			Side::Right => RIGHT_OPERATOR,
 		}
 	}
 
@@ -119,14 +119,14 @@ fn columns_of(rows: &[&JoinRow]) -> Columns {
 fn tagged(mut diff: Diff, side: Side) -> Diff {
 	// The join reads the side off each diff, not off the change, which is what lets one change carry
 	// both inputs the way a real flow batch does.
-	diff.set_origin(Some(ChangeOrigin::Flow(side.node())));
+	diff.set_origin(Some(ChangeOrigin::Flow(side.operator())));
 	diff
 }
 
 fn change(diffs: Vec<Diff>) -> Change {
 	// The parent origin is only ever a fallback here since every diff names its own, but it must not
 	// be the join's own node - the operator short-circuits a change it published itself.
-	Change::from_flow(LEFT_NODE, CommitVersion(1), diffs, DateTime::default())
+	Change::from_flow(LEFT_OPERATOR, CommitVersion(1), diffs, DateTime::default())
 }
 
 pub struct JoinWorkload {

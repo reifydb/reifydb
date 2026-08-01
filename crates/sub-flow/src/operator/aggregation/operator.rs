@@ -54,7 +54,7 @@ pub struct AggregateOperator {
 impl AggregateOperator {
 	pub fn new(
 		parent: OperatorCell,
-		node: OperatorId,
+		operator: OperatorId,
 		by: Vec<Expression>,
 		map: Vec<Expression>,
 		routines: Routines,
@@ -63,7 +63,7 @@ impl AggregateOperator {
 	) -> Self {
 		Self {
 			core: Aggregation::new(
-				node,
+				operator,
 				parent,
 				by,
 				map,
@@ -83,7 +83,7 @@ impl AggregateOperator {
 
 impl Operator for AggregateOperator {
 	fn id(&self) -> OperatorId {
-		self.core.node
+		self.core.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -201,7 +201,7 @@ pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, cha
 	let engine_config = WindowEngineConfig::builder(txn.state_budget()).build();
 
 	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start.to_order())).collect();
-	let groups = intern_window_groups(core.node, txn, &windows)?;
+	let groups = intern_window_groups(core.operator, txn, &windows)?;
 
 	let diffs = finish_tumbling_engine(
 		core,
@@ -217,6 +217,6 @@ pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, cha
 		Duration::default(),
 		ExpiryAnchor::Unindexed,
 	)?;
-	core.engine_meta_flush(&mut OperatorStateStore::new(txn, core.node))?;
-	Ok(Change::from_flow(core.node, change.version, diffs, change.changed_at))
+	core.engine_meta_flush(&mut OperatorStateStore::new(txn, core.operator))?;
+	Ok(Change::from_flow(core.operator, change.version, diffs, change.changed_at))
 }

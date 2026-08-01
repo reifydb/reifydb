@@ -95,8 +95,8 @@ impl TestChangeBuilder {
 		self
 	}
 
-	pub fn changed_by_node(mut self, node: OperatorId) -> Self {
-		self.origin = ChangeOrigin::Flow(node);
+	pub fn changed_by_node(mut self, operator: OperatorId) -> Self {
+		self.origin = ChangeOrigin::Flow(operator);
 		self
 	}
 

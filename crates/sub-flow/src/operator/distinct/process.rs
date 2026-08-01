@@ -172,7 +172,7 @@ impl DistinctOperator {
 		let mut republished: Vec<(usize, RowNumber)> = Vec::new();
 		for &(row_idx, hash) in &new_entries {
 			let (stable_rn, is_new) =
-				txn.get_or_create_row_number(self.node, groups[&hash], &utils::empty_key())?;
+				txn.get_or_create_row_number(self.operator, groups[&hash], &utils::empty_key())?;
 			if is_new {
 				minted.push((row_idx, stable_rn));
 			} else {
@@ -189,7 +189,7 @@ impl DistinctOperator {
 
 		for (old_serialized, new_idx, hash) in swap_pairs {
 			let (stable_rn, _) =
-				txn.get_or_create_row_number(self.node, groups[&hash], &utils::empty_key())?;
+				txn.get_or_create_row_number(self.operator, groups[&hash], &utils::empty_key())?;
 			let pre_cols = Self::with_stable_rn(old_serialized.to_columns(&state.layout), stable_rn);
 			let post_cols = Self::with_stable_rn(columns.extract_by_indices(&[new_idx]), stable_rn);
 			result.push(Diff::update(pre_cols, post_cols));
@@ -240,7 +240,7 @@ impl DistinctOperator {
 				};
 				if visible {
 					let (stable_rn, _) = txn.get_or_create_row_number(
-						self.node,
+						self.operator,
 						groups[&pre_hash],
 						&utils::empty_key(),
 					)?;
@@ -316,12 +316,12 @@ impl DistinctOperator {
 
 			if let Some((pre_is_empty, pre_new_visible_opt)) = pre_mutation {
 				let (stable_rn, _) = txn.get_or_create_row_number(
-					self.node,
+					self.operator,
 					groups[&pre_hash],
 					&utils::empty_key(),
 				)?;
 				if pre_is_empty {
-					txn.remove_row_number(self.node, groups[&pre_hash], &utils::empty_key())?;
+					txn.remove_row_number(self.operator, groups[&pre_hash], &utils::empty_key())?;
 					result.push(Diff::remove(Self::with_stable_rn(
 						pre_columns.extract_by_indices(&[row_idx]),
 						stable_rn,
@@ -340,7 +340,7 @@ impl DistinctOperator {
 			let (post_is_new, post_displaced_opt) = post_mutation;
 			if post_is_new || post_displaced_opt.is_some() {
 				let (stable_rn, minted) = txn.get_or_create_row_number(
-					self.node,
+					self.operator,
 					groups[&post_hash],
 					&utils::empty_key(),
 				)?;
@@ -419,10 +419,10 @@ impl DistinctOperator {
 				continue;
 			};
 			let (stable_rn, _) =
-				txn.get_or_create_row_number(self.node, groups[&hash], &utils::empty_key())?;
+				txn.get_or_create_row_number(self.operator, groups[&hash], &utils::empty_key())?;
 			match new_visible_opt {
 				None => {
-					txn.remove_row_number(self.node, groups[&hash], &utils::empty_key())?;
+					txn.remove_row_number(self.operator, groups[&hash], &utils::empty_key())?;
 					result.push(Diff::remove(Self::with_stable_rn(
 						columns.extract_by_indices(&[row_idx]),
 						stable_rn,

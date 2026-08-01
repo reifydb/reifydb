@@ -167,7 +167,7 @@ fn intern_partitions(
 	touched: &[Hash128],
 ) -> Result<WindowGroups> {
 	let partitions: Vec<(Hash128, u64)> = touched.iter().map(|hash| (*hash, 0)).collect();
-	intern_window_groups(operator.core.node, txn, &partitions)
+	intern_window_groups(operator.core.operator, txn, &partitions)
 }
 
 fn rolling_runnable(operator: &WindowOperator, kinds: &[SlotKind]) -> bool {
@@ -349,7 +349,7 @@ fn apply_rolling<C: RollingDomain>(
 	}
 
 	if buckets.is_empty() {
-		return Ok(Change::from_flow(operator.core.node, change.version, Vec::new(), change.changed_at));
+		return Ok(Change::from_flow(operator.core.operator, change.version, Vec::new(), change.changed_at));
 	}
 
 	let ledger = operator.seal_ledger(txn)?;
@@ -370,7 +370,7 @@ fn apply_rolling<C: RollingDomain>(
 		touched.retain(|hash| admitted.contains(hash));
 		if buckets.is_empty() {
 			return Ok(Change::from_flow(
-				operator.core.node,
+				operator.core.operator,
 				change.version,
 				Vec::new(),
 				change.changed_at,
@@ -383,7 +383,7 @@ fn apply_rolling<C: RollingDomain>(
 
 	let groups = intern_partitions(operator, txn, &touched)?;
 	let results = {
-		let mut store = OperatorStateStore::new(txn, operator.core.node);
+		let mut store = OperatorStateStore::new(txn, operator.core.operator);
 		if runnable {
 			let engine = C::engine(operator, true, lag);
 			let res = engine.apply_running(
@@ -413,7 +413,7 @@ fn apply_rolling<C: RollingDomain>(
 	rearm_rolling_seal::<C>(operator, txn, armed_before, runnable, lag)?;
 
 	let diffs = finish_rolling_results(operator, txn, &change, &results, &group_values, &groups)?;
-	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
+	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
 fn rolling_earliest_expiry<C: RollingDomain>(
@@ -422,7 +422,7 @@ fn rolling_earliest_expiry<C: RollingDomain>(
 	runnable: bool,
 	lag: C::Span,
 ) -> Result<Option<C>> {
-	let mut store = OperatorStateStore::new(txn, operator.core.node);
+	let mut store = OperatorStateStore::new(txn, operator.core.operator);
 	Ok(C::engine(operator, runnable, lag).earliest_expiry(&mut store)?.map(C::from_order))
 }
 
@@ -440,9 +440,9 @@ fn rearm_rolling_seal<C: RollingDomain>(
 	if before == after {
 		return Ok(());
 	}
-	let node = operator.core.node;
+	let operator_id = operator.core.operator;
 	let gate = EvictionGate::new(rolling_span(operator, operator.rolling_lag()));
-	let mut store = OperatorStateStore::new(txn, node);
+	let mut store = OperatorStateStore::new(txn, operator_id);
 	gate.rearm(&mut store, &EncodedKey::new(Vec::new()), before.map(C::to_order), after.map(C::to_order))
 }
 
@@ -457,7 +457,7 @@ fn finish_rolling_results(
 	let ts = change.changed_at;
 	let time = ts;
 	let mut diffs = Vec::new();
-	let mut store = OperatorStateStore::new(txn, operator.core.node);
+	let mut store = OperatorStateStore::new(txn, operator.core.operator);
 	for r in results {
 		let group_id = group_of(groups, r.group, 0);
 		let prior = operator.meta_slot().rolling_meta(&mut store, group_id)?;
@@ -505,7 +505,7 @@ fn finish_rolling_results(
 	Ok(diffs)
 }
 
-#[tracing::instrument(name = "flow::window::seal_rolling", level = "debug", skip_all, fields(node = operator.core.node.0, expired = tracing::field::Empty))]
+#[tracing::instrument(name = "flow::window::seal_rolling", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
 pub fn seal_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction, fired: FiredAt) -> Result<Vec<Diff>> {
 	let Some(size) = operator.size_duration() else {
 		return Ok(Vec::new());
@@ -525,7 +525,7 @@ pub fn seal_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction,
 
 	let expiries = match cutoff {
 		Some(cutoff) => {
-			let mut store = OperatorStateStore::new(txn, operator.core.node);
+			let mut store = OperatorStateStore::new(txn, operator.core.operator);
 			if runnable {
 				let engine = <DateTime as RollingDomain>::engine(operator, true, lag);
 				let res = engine.expire_before_running(&mut store, cutoff)?;
@@ -546,7 +546,7 @@ pub fn seal_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction,
 	rearm_rolling_seal::<DateTime>(operator, txn, armed_before, runnable, lag)?;
 
 	let mut diffs = Vec::new();
-	let mut store = OperatorStateStore::new(txn, operator.core.node);
+	let mut store = OperatorStateStore::new(txn, operator.core.operator);
 	for expiry in expiries {
 		match expiry {
 			RollingExpiry::Update {

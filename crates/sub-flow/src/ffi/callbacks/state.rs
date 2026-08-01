@@ -142,9 +142,9 @@ pub(super) extern "C" fn host_state_clear(operator_id: u64, ctx: *mut ContextFFI
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
-		let node_id = OperatorId(operator_id);
+		let operator_id = OperatorId(operator_id);
 
-		let result = flow_txn.state_clear(node_id);
+		let result = flow_txn.state_clear(operator_id);
 
 		match result {
 			Ok(_) => FFI_OK,
@@ -171,7 +171,7 @@ pub(super) extern "C" fn host_state_prefix(
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
-		let node_id = OperatorId(operator_id);
+		let operator_id = OperatorId(operator_id);
 
 		let prefix_bytes = if prefix_ptr.is_null() {
 			vec![]
@@ -180,10 +180,10 @@ pub(super) extern "C" fn host_state_prefix(
 		};
 
 		let result = if prefix_bytes.is_empty() {
-			flow_txn.state_scan_all(node_id)
+			flow_txn.state_scan_all(operator_id)
 		} else {
 			let range = EncodedKeyRange::prefix(&prefix_bytes);
-			flow_txn.state_range_all(node_id, range)
+			flow_txn.state_range_all(operator_id, range)
 		};
 
 		match result {
@@ -238,7 +238,7 @@ pub(super) extern "C" fn host_state_get_many(
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
-		let node_id = OperatorId(operator_id);
+		let operator_id = OperatorId(operator_id);
 
 		let key_refs = if keys_len == 0 {
 			&[]
@@ -262,7 +262,7 @@ pub(super) extern "C" fn host_state_get_many(
 			encoded_keys.push(framed);
 		}
 
-		match flow_txn.state_get_many(node_id, &encoded_keys) {
+		match flow_txn.state_get_many(operator_id, &encoded_keys) {
 			Ok(batch) => {
 				let handle = state_iterator::create_iterator(batch);
 
@@ -311,7 +311,7 @@ pub(super) extern "C" fn host_state_range(
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
-		let node_id = OperatorId(operator_id);
+		let operator_id = OperatorId(operator_id);
 
 		let start_bound = match start_bound_type {
 			BOUND_UNBOUNDED => Bound::Unbounded,
@@ -352,7 +352,7 @@ pub(super) extern "C" fn host_state_range(
 		};
 
 		let range = EncodedKeyRange::new(start_bound, end_bound);
-		let result = flow_txn.state_range_all(node_id, range);
+		let result = flow_txn.state_range_all(operator_id, range);
 
 		match result {
 			Ok(batch) => {

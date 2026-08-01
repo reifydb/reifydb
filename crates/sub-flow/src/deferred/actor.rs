@@ -1145,7 +1145,7 @@ mod pull_protocol {
 						by { g }
 			}"#,
 		);
-		assert!(h.flow.ticks(), "a flow whose nodes never tick would skip on_tick's body entirely");
+		assert!(h.flow.ticks(), "a flow whose operators never tick would skip on_tick's body entirely");
 		h.te.admin("CREATE TABLE app::unrelated { id: int4 }");
 
 		let v0 = h.engine.current_version().expect("current version");
@@ -1214,7 +1214,7 @@ mod pull_protocol {
 						by { g }
 			}"#,
 		);
-		assert!(h.flow.ticks(), "a flow whose nodes never tick can never commit a tick");
+		assert!(h.flow.ticks(), "a flow whose operators never tick can never commit a tick");
 		h.te.admin("CREATE TABLE app::unrelated { id: int4 }");
 
 		let v0 = h.engine.current_version().expect("current version");

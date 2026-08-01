@@ -56,7 +56,7 @@ struct TakeState {
 
 pub struct TakeOperator {
 	parent: OperatorCell,
-	node: OperatorId,
+	operator: OperatorId,
 	limit: usize,
 	shape: RowShape,
 }
@@ -83,10 +83,10 @@ fn decode_take_row(shape: &RowShape, row_number: RowNumber, encoded: &EncodedRow
 }
 
 impl TakeOperator {
-	pub fn new(parent: OperatorCell, node: OperatorId, limit: usize) -> Self {
+	pub fn new(parent: OperatorCell, operator: OperatorId, limit: usize) -> Self {
 		Self {
 			parent,
-			node,
+			operator,
 			limit,
 			shape: RowShape::operator_state(),
 		}
@@ -120,9 +120,9 @@ impl TakeOperator {
 
 	#[inline]
 	fn acquire_take_state(&self, txn: &mut FlowTransaction) -> Result<(TakeState, PersistFn)> {
-		let node_id = self.node;
+		let operator_id = self.operator;
 		let shape_for_persist = self.shape.clone();
-		txn.take_operator_state::<TakeState, _>(node_id, |txn| {
+		txn.take_operator_state::<TakeState, _>(operator_id, |txn| {
 			let s = self.load_take_state(txn)?;
 			let shape = shape_for_persist.clone();
 			let persist: PersistFn = Box::new(move |txn, value| {
@@ -135,9 +135,9 @@ impl TakeOperator {
 				})?;
 				let blob = Blob::from(serialized);
 				let key = utils::empty_state_key();
-				let mut row = utils::load_or_create_row(node_id, txn, &key, &shape)?;
+				let mut row = utils::load_or_create_row(operator_id, txn, &key, &shape)?;
 				shape.set_blob(&mut row, 0, &blob);
-				utils::save_row(node_id, txn, &key, row)?;
+				utils::save_row(operator_id, txn, &key, row)?;
 				Ok(())
 			});
 			Ok((s, persist))
@@ -322,7 +322,7 @@ impl SingleStateful for TakeOperator {
 
 impl Operator for TakeOperator {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -330,7 +330,7 @@ impl Operator for TakeOperator {
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-		let node_id = self.node;
+		let operator_id = self.operator;
 		let (mut state, persist) = self.acquire_take_state(txn)?;
 
 		let mut output_diffs = Vec::new();
@@ -354,9 +354,9 @@ impl Operator for TakeOperator {
 			}
 		}
 
-		txn.put_operator_state(node_id, state, persist, Self::take_state_usage);
+		txn.put_operator_state(operator_id, state, persist, Self::take_state_usage);
 
-		Ok(Change::from_flow(self.node, version, output_diffs, change.changed_at))
+		Ok(Change::from_flow(self.operator, version, output_diffs, change.changed_at))
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

@@ -54,11 +54,11 @@ impl TransactionalFlowRegistry {
 	}
 
 	fn is_transactional_view_flow(&self, flow: &FlowDag, query: &mut QueryTransaction) -> Result<bool> {
-		for node_id in flow.get_node_ids() {
-			let Some(node) = flow.get_node(&node_id) else {
+		for operator_id in flow.get_operator_ids() {
+			let Some(operator) = flow.get_operator(&operator_id) else {
 				continue;
 			};
-			let view = match &node.ty {
+			let view = match &operator.ty {
 				OperatorDef::SinkTableView {
 					view,
 					..

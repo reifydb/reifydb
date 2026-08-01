@@ -22,10 +22,10 @@ impl CatalogCache {
 		Some(entry.value().iter().filter_map(|id| self.find_operator_at(*id, version)).collect())
 	}
 
-	pub fn set_operator(&self, id: OperatorId, version: CommitVersion, node: Option<Operator>) {
+	pub fn set_operator(&self, id: OperatorId, version: CommitVersion, operator: Option<Operator>) {
 		let _guard = self.write_lock.lock();
 		let multi = self.operators.get_or_insert_with(id, MultiVersionOperator::new);
-		match node {
+		match operator {
 			Some(new) => {
 				let flow = new.flow;
 				multi.value().insert(version, new);
@@ -53,7 +53,7 @@ pub mod tests {
 
 	use super::*;
 
-	fn node(id: u64, flow: u64, node_type: u8) -> Operator {
+	fn operator(id: u64, flow: u64, node_type: u8) -> Operator {
 		Operator {
 			id: OperatorId(id),
 			flow: FlowId(flow),
@@ -65,7 +65,7 @@ pub mod tests {
 	#[test]
 	fn test_set_and_find_operator() {
 		let cache = CatalogCache::new();
-		let n = node(1, 10, 3);
+		let n = operator(1, 10, 3);
 
 		cache.set_operator(OperatorId(1), CommitVersion(1), Some(n.clone()));
 
@@ -77,7 +77,7 @@ pub mod tests {
 	#[test]
 	fn test_operator_deletion_is_version_scoped() {
 		let cache = CatalogCache::new();
-		let n = node(1, 10, 3);
+		let n = operator(1, 10, 3);
 
 		cache.set_operator(OperatorId(1), CommitVersion(1), Some(n.clone()));
 		cache.set_operator(OperatorId(1), CommitVersion(2), None);
@@ -89,8 +89,8 @@ pub mod tests {
 	#[test]
 	fn list_by_flow_returns_full_set_at_create_and_none_when_uncached() {
 		let cache = CatalogCache::new();
-		let n1 = node(1, 10, 1);
-		let n2 = node(2, 10, 2);
+		let n1 = operator(1, 10, 1);
+		let n2 = operator(2, 10, 2);
 
 		assert_eq!(cache.list_operators_by_flow_at(FlowId(10), CommitVersion(1)), None);
 
@@ -105,8 +105,8 @@ pub mod tests {
 	#[test]
 	fn list_by_flow_excludes_nodes_deleted_at_or_before_the_read_version() {
 		let cache = CatalogCache::new();
-		let n1 = node(1, 10, 1);
-		let n2 = node(2, 10, 2);
+		let n1 = operator(1, 10, 1);
+		let n2 = operator(2, 10, 2);
 
 		cache.set_operator(OperatorId(1), CommitVersion(1), Some(n1.clone()));
 		cache.set_operator(OperatorId(2), CommitVersion(1), Some(n2.clone()));
@@ -116,12 +116,12 @@ pub mod tests {
 		let mut at_create =
 			cache.list_operators_by_flow_at(FlowId(10), CommitVersion(1)).expect("flow is cached");
 		at_create.sort_by_key(|n| n.id.0);
-		assert_eq!(at_create, vec![n1, n2], "the full node set must be visible at the create version");
+		assert_eq!(at_create, vec![n1, n2], "the full operator set must be visible at the create version");
 
 		assert_eq!(
 			cache.list_operators_by_flow_at(FlowId(10), CommitVersion(2)),
 			Some(vec![]),
-			"once every node is dropped the set is empty - never a partial set"
+			"once every operator is dropped the set is empty - never a partial set"
 		);
 	}
 }

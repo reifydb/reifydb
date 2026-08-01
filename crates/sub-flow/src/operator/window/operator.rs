@@ -62,7 +62,7 @@ const CAPABILITIES: &[OperatorCapability] = &[
 
 pub struct WindowConfig {
 	pub parent: OperatorCell,
-	pub node: OperatorId,
+	pub operator: OperatorId,
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
 	pub aggregations: Vec<Expression>,
@@ -93,7 +93,7 @@ pub struct WindowOperator {
 impl WindowOperator {
 	pub fn new(config: WindowConfig) -> Self {
 		let core = Aggregation::new(
-			config.node,
+			config.operator,
 			config.parent,
 			config.group_by,
 			config.aggregations,
@@ -108,7 +108,7 @@ impl WindowOperator {
 			grace: config.grace,
 			state_budget: config.state_budget.clone(),
 			layout: RowShape::operator_state(),
-			sealed_drops: SealedDrops::new(config.node, "mutations targeting sealed windows"),
+			sealed_drops: SealedDrops::new(config.operator, "mutations targeting sealed windows"),
 			rolling_engine: UnsafeCell::new(None),
 			meta: UnsafeCell::new(WindowMeta::new(config.state_budget)),
 		}
@@ -126,13 +126,13 @@ impl WindowOperator {
 		txn: &mut FlowTransaction,
 		f: impl FnOnce(&mut FlowTransaction) -> Result<R>,
 	) -> Result<R> {
-		let node = self.core.node;
+		let operator = self.core.operator;
 		let budget = txn.state_budget();
-		self.meta_slot().hydrate_once(&mut OperatorStateStore::new(txn, node))?;
+		self.meta_slot().hydrate_once(&mut OperatorStateStore::new(txn, operator))?;
 		self.core.engine_meta_open(budget);
 		let out = f(txn)?;
-		self.meta_slot().flush(&mut OperatorStateStore::new(txn, node))?;
-		self.core.engine_meta_flush(&mut OperatorStateStore::new(txn, node))?;
+		self.meta_slot().flush(&mut OperatorStateStore::new(txn, operator))?;
+		self.core.engine_meta_flush(&mut OperatorStateStore::new(txn, operator))?;
 		Ok(out)
 	}
 
@@ -226,7 +226,7 @@ impl WindowStateful for WindowOperator {
 
 impl Operator for WindowOperator {
 	fn id(&self) -> OperatorId {
-		self.core.node
+		self.core.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -239,7 +239,7 @@ impl Operator for WindowOperator {
 
 	fn reclaimable_through(&self, txn: &mut FlowTransaction, _watermark: DateTime) -> Result<Reclaimable> {
 		let (Some(sealed), Some(admissible)) =
-			(read_sealed_through(txn, self.core.node)?, self.retention_scale())
+			(read_sealed_through(txn, self.core.operator)?, self.retention_scale())
 		else {
 			return Ok(Reclaimable::default());
 		};
@@ -346,7 +346,7 @@ impl Operator for WindowOperator {
 			if diffs.is_empty() {
 				Ok(None)
 			} else {
-				Ok(Some(Change::from_flow(self.core.node, CommitVersion(0), diffs, timer.at)))
+				Ok(Some(Change::from_flow(self.core.operator, CommitVersion(0), diffs, timer.at)))
 			}
 		})
 	}

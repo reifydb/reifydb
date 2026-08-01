@@ -53,9 +53,9 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node_id = next_operator_id(&mut txn).unwrap();
+		let operator_id = next_operator_id(&mut txn).unwrap();
 		let node_def = Operator {
-			id: node_id,
+			id: operator_id,
 			flow: flow.id,
 			node_type: 1, // SourceTable
 			data: Blob::from([0x01u8, 0x02, 0x03].as_slice()),
@@ -63,8 +63,8 @@ pub mod tests {
 
 		CatalogStore::create_operator(&mut txn, &node_def).unwrap();
 
-		let result = CatalogStore::get_operator(&mut Transaction::Admin(&mut txn), node_id).unwrap();
-		assert_eq!(result.id, node_id);
+		let result = CatalogStore::get_operator(&mut Transaction::Admin(&mut txn), operator_id).unwrap();
+		assert_eq!(result.id, operator_id);
 		assert_eq!(result.flow, flow.id);
 		assert_eq!(result.node_type, 1);
 		assert_eq!(result.data.as_bytes(), &[0x01, 0x02, 0x03]);
@@ -140,9 +140,9 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node_id = next_operator_id(&mut txn).unwrap();
+		let operator_id = next_operator_id(&mut txn).unwrap();
 		let node_def = Operator {
-			id: node_id,
+			id: operator_id,
 			flow: flow.id,
 			node_type: 1,
 			data: Blob::from([0x01u8].as_slice()),
@@ -150,8 +150,9 @@ pub mod tests {
 
 		CatalogStore::create_operator(&mut txn, &node_def).unwrap();
 
-		let nodes = CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
-		assert_eq!(nodes.len(), 1);
-		assert_eq!(nodes[0].id, node_id);
+		let operators =
+			CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
+		assert_eq!(operators.len(), 1);
+		assert_eq!(operators[0].id, operator_id);
 	}
 }

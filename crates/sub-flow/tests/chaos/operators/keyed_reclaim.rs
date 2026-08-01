@@ -30,8 +30,8 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_sub_flow::{
 	context::FlowContext,
 	operator::{
-		OperatorCell, aggregation::operator::AggregateOperator, append::AppendOperator,
-		apply::ApplyOperator, distinct::operator::DistinctOperator, scan::series::SourceSeriesOperator,
+		OperatorCell, aggregation::operator::AggregateOperator, append::AppendOperator, apply::ApplyOperator,
+		distinct::operator::DistinctOperator, scan::series::SourceSeriesOperator,
 	},
 };
 use reifydb_testing_chaos::operator::session::Session;
@@ -59,7 +59,7 @@ const SWEEP_MS: u64 = SPAN_MS + GRID_WIDTH_MS;
 // One millisecond short, for the no-op control.
 const EARLY_SWEEP_MS: u64 = SWEEP_MS - 1;
 
-const NODE: OperatorId = OperatorId(1);
+const OPERATOR: OperatorId = OperatorId(1);
 
 const PARENT: OperatorId = OperatorId(0);
 
@@ -85,7 +85,7 @@ fn routines() -> Routines {
 fn aggregate(runtime: RuntimeContext) -> AggregateOperator {
 	AggregateOperator::new(
 		parent(),
-		NODE,
+		OPERATOR,
 		parse_expression("g").expect("group_by parses"),
 		parse_expression("total: math::sum(v)").expect("aggregations parse"),
 		routines(),
@@ -97,7 +97,7 @@ fn aggregate(runtime: RuntimeContext) -> AggregateOperator {
 fn distinct(runtime: RuntimeContext) -> DistinctOperator {
 	DistinctOperator::new(
 		parent(),
-		NODE,
+		OPERATOR,
 		parse_expression("g").expect("the distinct key parses"),
 		routines(),
 		runtime,
@@ -120,14 +120,14 @@ fn keep(change: Change) -> Change {
 fn append() -> AppendOperator {
 	// Two inputs because append refuses fewer, but the corpus only ever feeds the first: what is
 	// under test is the group's lifecycle, not the fan-in.
-	AppendOperator::new(NODE, vec![parent(), parent()], vec![PARENT, PARENT], Some(ttl()))
+	AppendOperator::new(OPERATOR, vec![parent(), parent()], vec![PARENT, PARENT], Some(ttl()))
 }
 
 /// A guest that keeps one counter per key, the shape every stateful chaindex operator has. It goes
 /// through `ApplyOperator` because the wrapper is what forwards `retention_scale`,
 /// `reclaimable_through` and `invalidate_groups`, each of which silently disables reclamation if lost.
 struct Tally {
-	node: OperatorId,
+	operator: OperatorId,
 }
 
 const TALLY_CAPABILITIES: &[OperatorCapability] = &[
@@ -149,17 +149,17 @@ impl Tally {
 
 		for row in 0..post.row_count() {
 			let key = EncodedKey::new(post.row_numbers()[row].0.to_be_bytes());
-			let (group, _) = txn.intern_groups(self.node, &[key.clone()])?[0];
+			let (group, _) = txn.intern_groups(self.operator, &[key.clone()])?[0];
 			let state = Self::state_key(group);
-			let prior: u64 = match txn.state_get(self.node, &state)? {
+			let prior: u64 = match txn.state_get(self.operator, &state)? {
 				Some(row) => decode_state(&StateBytes::from_row(row)?)?,
 				None => 0,
 			};
 			let bytes = (prior + 1).encode_state(DateTime::default())?;
-			txn.state_set(self.node, &state, bytes.into_row())?;
+			txn.state_set(self.operator, &state, bytes.into_row())?;
 
 			let (number, is_new) =
-				txn.get_or_create_row_number(self.node, group, &EncodedKey::new(vec![]))?;
+				txn.get_or_create_row_number(self.operator, group, &EncodedKey::new(vec![]))?;
 			numbers.push(number);
 			if is_new {
 				minted.push(row);
@@ -183,7 +183,7 @@ impl Tally {
 
 impl Operator for Tally {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -201,16 +201,16 @@ impl Operator for Tally {
 				out.extend(self.tally(txn, post)?);
 			}
 		}
-		Ok(Change::from_flow(self.node, change.version, out, change.changed_at))
+		Ok(Change::from_flow(self.operator, change.version, out, change.changed_at))
 	}
 }
 
 fn guest() -> ApplyOperator {
 	ApplyOperator::new(
 		parent(),
-		NODE,
+		OPERATOR,
 		Box::new(Tally {
-			node: NODE,
+			operator: OPERATOR,
 		}),
 		Some(ttl()),
 	)

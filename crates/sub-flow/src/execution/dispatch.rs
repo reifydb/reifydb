@@ -13,21 +13,21 @@ impl FlowEngineInner {
 	pub(super) fn dispatch_node(
 		&self,
 		txn: &mut FlowTransaction,
-		node: &FlowNode,
+		operator: &FlowNode,
 		inbox: Vec<Change>,
 	) -> Result<Change> {
 		let merged = Change::merge(inbox)?;
 		let version = merged.version;
 		let changed_at = merged.changed_at;
-		let result = self.apply(txn, node, merged)?;
-		let combined = Change::from_flow(node.id, version, result.diffs, changed_at.max(result.changed_at));
+		let result = self.apply(txn, operator, merged)?;
+		let combined = Change::from_flow(operator.id, version, result.diffs, changed_at.max(result.changed_at));
 		Ok(combined)
 	}
 
-	#[instrument(name = "flow::engine::apply", level = "trace", skip(self, txn, change, node), fields(
-		node_id = ?node.id,
-		node_type = node.ty.label(),
-		num_parents = node.inputs.len(),
+	#[instrument(name = "flow::engine::apply", level = "trace", skip(self, txn, change, operator), fields(
+		operator_id = ?operator.id,
+		node_type = operator.ty.label(),
+		num_parents = operator.inputs.len(),
 		input_diffs = change.diffs.len(),
 		input_rows = field::Empty,
 		output_diffs_raw = field::Empty,
@@ -38,9 +38,9 @@ impl FlowEngineInner {
 		coalesce_time_us = field::Empty,
 		store_reads = field::Empty
 	))]
-	fn apply(&self, txn: &mut FlowTransaction, node: &FlowNode, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut FlowTransaction, operator: &FlowNode, change: Change) -> Result<Change> {
 		let lock_start = self.runtime_context.clock.instant();
-		let operator = self.operators.get(&node.id).unwrap().clone();
+		let operator = self.operators.get(&operator.id).unwrap().clone();
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);
 
 		Span::current().record("input_rows", change.row_count());

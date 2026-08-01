@@ -29,9 +29,10 @@ impl CatalogStore {
 		let flow = CatalogStore::find_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 
 		if let Some(flow) = flow {
-			let nodes = CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
-			for node in nodes {
-				CatalogStore::drop_operator(txn, node.id)?;
+			let operators =
+				CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
+			for operator in operators {
+				CatalogStore::drop_operator(txn, operator.id)?;
 			}
 
 			let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;

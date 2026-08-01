@@ -178,8 +178,8 @@ mod tests {
 
 	#[test]
 	fn a_ledger_short_of_one_admissible_span_has_sealed_nothing() {
-		// Early in a node's life the ledger sits below its own span. Wrapping through u64 would put
-		// the anchor near u64::MAX and report every window sealed, reclaiming the node in one sweep.
+		// Early in a operator's life the ledger sits below its own span. Wrapping through u64 would put
+		// the anchor near u64::MAX and report every window sealed, reclaiming the operator in one sweep.
 		let policy = SealPolicy::tumbling(ms(30_000), ms(45_000));
 
 		assert_eq!(policy.sealed_anchor(at(0)), None);

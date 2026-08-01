@@ -75,13 +75,13 @@ struct Pin {
 }
 
 pub(crate) struct SnapshotLedger {
-	node_id: OperatorId,
+	operator_id: OperatorId,
 }
 
 impl SnapshotLedger {
-	pub(crate) fn new(node_id: OperatorId) -> Self {
+	pub(crate) fn new(operator_id: OperatorId) -> Self {
 		Self {
-			node_id,
+			operator_id,
 		}
 	}
 
@@ -124,16 +124,16 @@ impl SnapshotLedger {
 	) -> Result<()> {
 		let version = ContentVersion::of(content);
 		let key = self.published_key(group, left, right);
-		if let Some(existing) = state_get(self.node_id, txn, &key)? {
+		if let Some(existing) = state_get(self.operator_id, txn, &key)? {
 			let previous = decode_version(&existing)?;
 			if previous == version {
 				return Ok(());
 			}
 			self.unpin(txn, group, right, previous)?;
 		}
-		txn.stamp_side(self.node_id, group, Keyspace::JOIN_PUBLISHED)?;
-		txn.stamp_side(self.node_id, group, Keyspace::JOIN_PIN)?;
-		state_set(self.node_id, txn, &key, encode_version(version))?;
+		txn.stamp_side(self.operator_id, group, Keyspace::JOIN_PUBLISHED)?;
+		txn.stamp_side(self.operator_id, group, Keyspace::JOIN_PIN)?;
+		state_set(self.operator_id, txn, &key, encode_version(version))?;
 		self.pin(txn, group, right, version)
 	}
 
@@ -144,7 +144,7 @@ impl SnapshotLedger {
 		left: RowNumber,
 	) -> Result<Vec<(PublishedRight, ContentVersion)>> {
 		let mut out = Vec::new();
-		for entry in state_range(self.node_id, txn, self.published_prefix(group, left)) {
+		for entry in state_range(self.operator_id, txn, self.published_prefix(group, left)) {
 			let (key, row) = entry?;
 			let Some(right) = decode_published(key.as_slice()) else {
 				continue;
@@ -161,12 +161,12 @@ impl SnapshotLedger {
 		left: RowNumber,
 	) -> Result<()> {
 		let key = self.unmatched_key(group, left);
-		if state_get(self.node_id, txn, &key)?.is_some() {
+		if state_get(self.operator_id, txn, &key)?.is_some() {
 			return Ok(());
 		}
-		txn.stamp_side(self.node_id, group, Keyspace::JOIN_PUBLISHED)?;
-		txn.stamp_side(self.node_id, group, Keyspace::JOIN_PIN)?;
-		state_set(self.node_id, txn, &key, encode_version(ContentVersion(0)))
+		txn.stamp_side(self.operator_id, group, Keyspace::JOIN_PUBLISHED)?;
+		txn.stamp_side(self.operator_id, group, Keyspace::JOIN_PIN)?;
+		state_set(self.operator_id, txn, &key, encode_version(ContentVersion(0)))
 	}
 
 	pub(crate) fn release_unmatched(
@@ -175,7 +175,7 @@ impl SnapshotLedger {
 		group: GroupId,
 		left: RowNumber,
 	) -> Result<()> {
-		state_remove(self.node_id, txn, &self.unmatched_key(group, left))
+		state_remove(self.operator_id, txn, &self.unmatched_key(group, left))
 	}
 
 	pub(crate) fn release(
@@ -186,11 +186,11 @@ impl SnapshotLedger {
 		right: RowNumber,
 	) -> Result<Option<EncodedRow>> {
 		let key = self.published_key(group, left, right);
-		let Some(row) = state_get(self.node_id, txn, &key)? else {
+		let Some(row) = state_get(self.operator_id, txn, &key)? else {
 			return Ok(None);
 		};
 		let version = decode_version(&row)?;
-		state_remove(self.node_id, txn, &key)?;
+		state_remove(self.operator_id, txn, &key)?;
 		self.unpin(txn, group, right, version)
 	}
 
@@ -203,7 +203,7 @@ impl SnapshotLedger {
 	) -> Result<()> {
 		let version = ContentVersion::of(content);
 		let key = self.pin_key(group, right, version);
-		let Some(existing) = state_get(self.node_id, txn, &key)? else {
+		let Some(existing) = state_get(self.operator_id, txn, &key)? else {
 			return Ok(());
 		};
 		let mut pin = decode_pin(&existing)?;
@@ -211,7 +211,7 @@ impl SnapshotLedger {
 			return Ok(());
 		}
 		pin.retired = Some(content.0.to_vec());
-		state_set(self.node_id, txn, &key, encode_pin(&pin)?)
+		state_set(self.operator_id, txn, &key, encode_pin(&pin)?)
 	}
 
 	fn pin(
@@ -222,7 +222,7 @@ impl SnapshotLedger {
 		version: ContentVersion,
 	) -> Result<()> {
 		let key = self.pin_key(group, right, version);
-		let mut pin = match state_get(self.node_id, txn, &key)? {
+		let mut pin = match state_get(self.operator_id, txn, &key)? {
 			Some(existing) => decode_pin(&existing)?,
 			None => Pin {
 				refs: 0,
@@ -230,7 +230,7 @@ impl SnapshotLedger {
 			},
 		};
 		pin.refs += 1;
-		state_set(self.node_id, txn, &key, encode_pin(&pin)?)
+		state_set(self.operator_id, txn, &key, encode_pin(&pin)?)
 	}
 
 	fn unpin(
@@ -241,15 +241,15 @@ impl SnapshotLedger {
 		version: ContentVersion,
 	) -> Result<Option<EncodedRow>> {
 		let key = self.pin_key(group, right, version);
-		let Some(existing) = state_get(self.node_id, txn, &key)? else {
+		let Some(existing) = state_get(self.operator_id, txn, &key)? else {
 			return Ok(None);
 		};
 		let mut pin = decode_pin(&existing)?;
 		pin.refs = pin.refs.saturating_sub(1);
 		let content = pin.retired.clone().map(|bytes| EncodedRow(CowVec::new(bytes)));
 		match pin.refs {
-			0 => state_remove(self.node_id, txn, &key)?,
-			_ => state_set(self.node_id, txn, &key, encode_pin(&pin)?)?,
+			0 => state_remove(self.operator_id, txn, &key)?,
+			_ => state_set(self.operator_id, txn, &key, encode_pin(&pin)?)?,
 		}
 		Ok(content)
 	}
@@ -403,7 +403,7 @@ mod tests {
 	#[test]
 	fn a_pin_outlives_every_reference_and_no_longer() {
 		// A record that lingered past its last reference would leave one retired copy per right
-		// row the join ever changed, for the life of the node.
+		// row the join ever changed, for the life of the operator.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();

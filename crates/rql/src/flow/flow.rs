@@ -124,11 +124,11 @@ impl FlowDag {
 		Ok(self.inner.graph.topological_sort())
 	}
 
-	pub fn get_node(&self, node_id: &OperatorId) -> Option<&FlowNode> {
+	pub fn get_operator(&self, node_id: &OperatorId) -> Option<&FlowNode> {
 		self.inner.graph.get_node(node_id)
 	}
 
-	pub fn get_node_ids(&self) -> impl Iterator<Item = OperatorId> + '_ {
+	pub fn get_operator_ids(&self) -> impl Iterator<Item = OperatorId> + '_ {
 		self.inner.graph.nodes().map(|e| *e.0)
 	}
 
@@ -141,12 +141,12 @@ impl FlowDag {
 	}
 
 	pub fn is_subscription(&self) -> bool {
-		self.get_node_ids().any(|id| {
-			self.get_node(&id).is_some_and(|n| matches!(n.ty, OperatorDef::SinkSubscription { .. }))
+		self.get_operator_ids().any(|id| {
+			self.get_operator(&id).is_some_and(|n| matches!(n.ty, OperatorDef::SinkSubscription { .. }))
 		})
 	}
 
 	pub fn ticks(&self) -> bool {
-		self.get_node_ids().any(|id| self.get_node(&id).is_some_and(|n| n.ty.ticks()))
+		self.get_operator_ids().any(|id| self.get_operator(&id).is_some_and(|n| n.ty.ticks()))
 	}
 }

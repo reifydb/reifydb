@@ -351,7 +351,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 			ExpiryAnchor::WindowStart
 		},
 	)?;
-	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
+	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
 fn intern_batch(
@@ -360,7 +360,7 @@ fn intern_batch(
 	arrival: &[(Hash128, WindowSpan<DateTime>)],
 ) -> Result<WindowGroups> {
 	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start.to_order())).collect();
-	intern_window_groups(operator.core.node, txn, &windows)
+	intern_window_groups(operator.core.operator, txn, &windows)
 }
 
 fn sliding_insert_anchors(
@@ -587,7 +587,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 			ExpiryAnchor::WindowStart
 		},
 	)?;
-	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
+	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
 fn session_assign(
@@ -821,10 +821,10 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 
 	let mut disarm: Vec<(Hash128, u64, u64)> = Vec::new();
 	{
-		let node = operator.core.node;
+		let operator_id = operator.core.operator;
 		let mut closing: Vec<(Hash128, u64, GroupId)> = Vec::with_capacity(closes.len());
 		for (hash, session_id) in &closes {
-			if let Some(group) = txn.lookup_group(node, &window_group_key(*hash, *session_id))? {
+			if let Some(group) = txn.lookup_group(operator_id, &window_group_key(*hash, *session_id))? {
 				closing.push((*hash, *session_id, group));
 			}
 		}
@@ -833,7 +833,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 				operator.engine_config(),
 			))
 		});
-		let mut store = OperatorStateStore::new(txn, node);
+		let mut store = OperatorStateStore::new(txn, operator_id);
 		for (hash, session_id, group) in &closing {
 			let accumulator_key = WindowStateKey::new(*group, utils::empty_key()).into_group_state_key();
 			let meta = operator.core.engine_meta().get(&mut store, &EngineMetaKey(*group))?;
@@ -857,15 +857,15 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 	}
 
 	if !operator.is_count_based() {
-		let node = operator.core.node;
+		let operator_id = operator.core.operator;
 		let policy = operator.session_policy();
-		let mut store = OperatorStateStore::new(txn, node);
+		let mut store = OperatorStateStore::new(txn, operator_id);
 		for (hash, session_id, prior_last) in disarm {
 			disarm_seal(&mut store, policy, &window_group_key(hash, session_id), prior_last)?;
 		}
 	}
 
-	Ok(Change::from_flow(operator.core.node, change.version, diffs, change.changed_at))
+	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
 fn gate_and_arm_seals(
@@ -881,16 +881,16 @@ fn gate_and_arm_seals(
 		return Ok(());
 	}
 	let gate = operator.seal_gate(txn, policy)?;
-	let node = operator.core.node;
+	let operator_id = operator.core.operator;
 	let mut known: Vec<Option<GroupId>> = Vec::with_capacity(buckets.len());
 	for (hash, span) in buckets.keys() {
-		known.push(txn.lookup_group(node, &window_group_key(*hash, span.start.to_order()))?);
+		known.push(txn.lookup_group(operator_id, &window_group_key(*hash, span.start.to_order()))?);
 	}
 	let mut sealed: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
 	let mut rearm: Vec<(Hash128, u64, Option<u64>, u64)> = Vec::new();
 	let mut dropped = 0u64;
 	{
-		let mut store = OperatorStateStore::new(txn, node);
+		let mut store = OperatorStateStore::new(txn, operator_id);
 		for ((key, events), group) in buckets.iter().zip(known) {
 			let prior_last = match group {
 				Some(group) => operator
@@ -917,7 +917,7 @@ fn gate_and_arm_seals(
 	}
 
 	{
-		let mut store = OperatorStateStore::new(txn, node);
+		let mut store = OperatorStateStore::new(txn, operator_id);
 		for (hash, window_start, prior_horizon, horizon) in rearm {
 			gate.arm(&mut store, &window_group_key(hash, window_start), prior_horizon, horizon)?;
 		}
@@ -935,7 +935,7 @@ fn gate_and_arm_seals(
 	Ok(())
 }
 
-#[tracing::instrument(name = "flow::window::seal", level = "debug", skip_all, fields(node = operator.core.node.0, expired = tracing::field::Empty))]
+#[tracing::instrument(name = "flow::window::seal", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
 fn seal_due_windows(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
@@ -950,7 +950,7 @@ fn seal_due_windows(
 		return Ok(Vec::new());
 	};
 	let expired = {
-		let mut store = OperatorStateStore::new(txn, operator.core.node);
+		let mut store = OperatorStateStore::new(txn, operator.core.operator);
 		let mut engine = operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
 			Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::group_scoped(
 				operator.engine_config(),

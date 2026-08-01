@@ -36,7 +36,7 @@ use reifydb_core::{
 };
 use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_flow::{
-	operator::{Operator, Reclaimable},
+	operator::{BoxedOperator, Operator, Reclaimable},
 	timer::Timer,
 	transaction::{
 		FlowTransaction,
@@ -64,8 +64,6 @@ use reifydb_value::{
 };
 use tracing::error;
 
-use reifydb_flow::operator::BoxedOperator;
-
 use crate::{
 	engine::{lease_demand, lease_report_from_sample},
 	error::NativeOperatorError,
@@ -75,18 +73,18 @@ use crate::{
 	},
 };
 
-fn run_or_abort<R>(node: OperatorId, stage: &'static str, f: impl FnOnce() -> SdkResult<R>) -> R {
+fn run_or_abort<R>(operator: OperatorId, stage: &'static str, f: impl FnOnce() -> SdkResult<R>) -> R {
 	match catch_unwind(AssertUnwindSafe(f)) {
 		Ok(Ok(value)) => value,
 		Ok(Err(e)) => {
 			error!(
-				operator_id = node.0,
+				operator_id = operator.0,
 				stage, "native operator returned an error; operators must not fail - aborting: {:?}", e
 			);
 			abort();
 		}
 		Err(_) => {
-			error!(operator_id = node.0, stage, "native operator panicked - aborting");
+			error!(operator_id = operator.0, stage, "native operator panicked - aborting");
 			abort();
 		}
 	}
@@ -158,16 +156,16 @@ pub type BoxedBridgedOperator = Box<dyn BridgedOperator>;
 
 pub struct FlowNativeBridge<'a> {
 	txn: &'a mut FlowTransaction,
-	node: OperatorId,
+	operator: OperatorId,
 	now: DateTime,
 }
 
 impl<'a> FlowNativeBridge<'a> {
-	pub fn new(txn: &'a mut FlowTransaction, node: OperatorId) -> Self {
+	pub fn new(txn: &'a mut FlowTransaction, operator: OperatorId) -> Self {
 		let now = txn.clock().now();
 		Self {
 			txn,
-			node,
+			operator,
 			now,
 		}
 	}
@@ -182,47 +180,47 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	}
 	fn state_lease_bytes(&self) -> u64 {
 		self.txn.state_budget()
-			.current_lease(self.node)
+			.current_lease(self.operator)
 			.map(|lease| lease.grant.bytes().as_bytes())
 			.unwrap_or(0)
 	}
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedRow>> {
-		self.txn.state_get(self.node, key)
+		self.txn.state_get(self.operator, key)
 	}
 	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedRow)>> {
 		Ok(self.txn
-			.state_get_many(self.node, keys)?
+			.state_get_many(self.operator, keys)?
 			.items
 			.into_iter()
 			.filter_map(|r| GroupStateKey::from_framed(r.key).map(|k| (k, r.row)))
 			.collect())
 	}
 	fn state_set(&mut self, key: &GroupStateKey, value: EncodedRow) -> Result<()> {
-		self.txn.state_set(self.node, key, value)
+		self.txn.state_set(self.operator, key, value)
 	}
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
-		self.txn.state_remove(self.node, key)
+		self.txn.state_remove(self.operator, key)
 	}
 	fn state_clear(&mut self) -> Result<()> {
-		self.txn.state_clear(self.node)
+		self.txn.state_clear(self.operator)
 	}
 	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedRow)>> {
 		Ok(self.txn
-			.state_range_all(self.node, range)?
+			.state_range_all(self.operator, range)?
 			.items
 			.into_iter()
 			.filter_map(|r| GroupStateKey::from_framed(r.key).map(|k| (k, r.row)))
 			.collect())
 	}
 	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>> {
-		Ok(self.txn.intern_groups(self.node, groups)?.into_iter().map(|(group, _)| group).collect())
+		Ok(self.txn.intern_groups(self.operator, groups)?.into_iter().map(|(group, _)| group).collect())
 	}
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>> {
-		groups.iter().map(|group| self.txn.lookup_group(self.node, group)).collect()
+		groups.iter().map(|group| self.txn.lookup_group(self.operator, group)).collect()
 	}
 	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.txn.arm_timer(
-			self.node,
+			self.operator,
 			&Timer {
 				at,
 				kind,
@@ -232,7 +230,7 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	}
 	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.txn.disarm_timer(
-			self.node,
+			self.operator,
 			&Timer {
 				at,
 				kind,
@@ -245,13 +243,13 @@ impl NativeBridge for FlowNativeBridge<'_> {
 		Ok(self.txn.flow_watermark())
 	}
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
-		self.txn.get_or_create_row_numbers(self.node, group, keys)
+		self.txn.get_or_create_row_numbers(self.operator, group, keys)
 	}
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
-		self.txn.remove_row_number(self.node, group, key).map(|_| ())
+		self.txn.remove_row_number(self.operator, group, key).map(|_| ())
 	}
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
-		self.txn.remove_row_numbers_below(self.node, group, upper)
+		self.txn.remove_row_numbers_below(self.operator, group, upper)
 	}
 	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
 		self.txn.get(key)
@@ -314,7 +312,7 @@ impl NativeBridge for FlowNativeBridge<'_> {
 		keys: &[GroupStateKey],
 		visit: &mut dyn FnMut(&GroupStateKey, &EncodedRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
-		let batch = self.txn.state_get_many(self.node, keys).map_err(|e| SdkError::Other(e.to_string()))?;
+		let batch = self.txn.state_get_many(self.operator, keys).map_err(|e| SdkError::Other(e.to_string()))?;
 		for r in &batch.items {
 			let Some(key) = GroupStateKey::from_framed(r.key.clone()) else {
 				continue;
@@ -328,7 +326,8 @@ impl NativeBridge for FlowNativeBridge<'_> {
 		range: EncodedKeyRange,
 		visit: &mut dyn FnMut(&GroupStateKey, &EncodedRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
-		let batch = self.txn.state_range_all(self.node, range).map_err(|e| SdkError::Other(e.to_string()))?;
+		let batch =
+			self.txn.state_range_all(self.operator, range).map_err(|e| SdkError::Other(e.to_string()))?;
 		for r in &batch.items {
 			let Some(key) = GroupStateKey::from_framed(r.key.clone()) else {
 				continue;
@@ -503,15 +502,15 @@ impl Default for NativeOperatorLoader {
 
 pub struct NativeOperatorAdapter<C> {
 	logic: UnsafeCell<C>,
-	node: OperatorId,
+	operator: OperatorId,
 	capabilities: &'static [OperatorCapability],
 }
 
 impl<C> NativeOperatorAdapter<C> {
-	pub fn new(logic: C, node: OperatorId, capabilities: &'static [OperatorCapability]) -> Self {
+	pub fn new(logic: C, operator: OperatorId, capabilities: &'static [OperatorCapability]) -> Self {
 		Self {
 			logic: UnsafeCell::new(logic),
-			node,
+			operator,
 			capabilities,
 		}
 	}
@@ -521,7 +520,7 @@ unsafe impl<C: Send> Send for NativeOperatorAdapter<C> {}
 
 impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &'static [OperatorCapability] {
@@ -531,16 +530,16 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 	fn apply(&self, bridge: &mut dyn NativeBridge, change: Change) -> Result<Change> {
 		let version = change.version;
 		let changed_at = change.changed_at;
-		let mut ctx = NativeOperatorContext::new(bridge, self.node);
+		let mut ctx = NativeOperatorContext::new(bridge, self.operator);
 		{
 			let view = NativeChangeView::new(&change);
 			// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time, and the
 			// logic only reaches the context, never back into this cell; no other borrow is live.
 			let logic = unsafe { &mut *self.logic.get() };
-			run_or_abort(self.node, "apply", || logic.apply(&mut ctx, view));
+			run_or_abort(self.operator, "apply", || logic.apply(&mut ctx, view));
 		}
 		let diffs = ctx.take_diffs();
-		Ok(Change::from_flow(self.node, version, diffs, changed_at))
+		Ok(Change::from_flow(self.operator, version, diffs, changed_at))
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
@@ -560,12 +559,12 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 	fn on_timer(&self, bridge: &mut dyn NativeBridge, timer: Timer) -> Result<Option<Change>> {
 		let at = timer.at;
 		let version = bridge.version();
-		let mut ctx = NativeOperatorContext::new(bridge, self.node);
+		let mut ctx = NativeOperatorContext::new(bridge, self.operator);
 		{
 			// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time, and the
 			// logic only reaches the context, never back into this cell; no other borrow is live.
 			let logic = unsafe { &mut *self.logic.get() };
-			run_or_abort(self.node, "on_timer", || {
+			run_or_abort(self.operator, "on_timer", || {
 				logic.on_timer(
 					&mut ctx,
 					SdkTimer {
@@ -580,7 +579,7 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 		if diffs.is_empty() {
 			return Ok(None);
 		}
-		Ok(Some(Change::from_flow(self.node, version, diffs, at)))
+		Ok(Some(Change::from_flow(self.operator, version, diffs, at)))
 	}
 
 	fn invalidate_groups(&self, groups: &GroupSet) {
@@ -591,11 +590,11 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 	}
 
 	fn flush_state(&self, bridge: &mut dyn NativeBridge) -> Result<()> {
-		let mut ctx = NativeOperatorContext::new(bridge, self.node);
+		let mut ctx = NativeOperatorContext::new(bridge, self.operator);
 		// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time, and the logic
 		// only reaches the context, never back into this cell; no other borrow is live.
 		let logic = unsafe { &mut *self.logic.get() };
-		run_or_abort(self.node, "flush_state", || logic.flush_state(&mut ctx));
+		run_or_abort(self.operator, "flush_state", || logic.flush_state(&mut ctx));
 		Ok(())
 	}
 }
@@ -606,16 +605,20 @@ unsafe impl Send for SendableBridged {}
 
 pub struct NativeBridgedOperator {
 	inner: BoxedBridgedOperator,
-	node: OperatorId,
+	operator: OperatorId,
 	capabilities: &'static [OperatorCapability],
 	last_registered_txn: Cell<u64>,
 }
 
 impl NativeBridgedOperator {
-	pub fn new(inner: BoxedBridgedOperator, node: OperatorId, capabilities: &'static [OperatorCapability]) -> Self {
+	pub fn new(
+		inner: BoxedBridgedOperator,
+		operator: OperatorId,
+		capabilities: &'static [OperatorCapability],
+	) -> Self {
 		Self {
 			inner,
-			node,
+			operator,
 			capabilities,
 			last_registered_txn: Cell::new(u64::MAX),
 		}
@@ -625,28 +628,28 @@ impl NativeBridgedOperator {
 		let txn_version = txn.version().0;
 		if self.last_registered_txn.get() != txn_version {
 			let captured = SendableBridged(&*self.inner as *const dyn BridgedOperator);
-			let node = self.node;
+			let operator = self.operator;
 			let persist: PersistFn = Box::new(move |txn: &mut FlowTransaction, _value: Box<dyn Any>| {
 				let captured = captured;
 				// SAFETY: captured.0 points at the heap allocation of self.inner, which is stable
 				// across moves of the wrapper and outlives the transaction running this persist
 				// closure, since the actor owning the operator also drives that transaction.
 				let bridged = unsafe { &*captured.0 };
-				let mut bridge = FlowNativeBridge::new(txn, node);
+				let mut bridge = FlowNativeBridge::new(txn, operator);
 				bridged.flush_state(&mut bridge)?;
 				let budget = txn.state_budget();
 				match bridged.sample() {
 					Some(sample) => {
 						let report = lease_report_from_sample(&sample);
-						budget.report_lease(node, report);
-						budget.resize_lease_to_demand(node, lease_demand(&report));
+						budget.report_lease(operator, report);
+						budget.resize_lease_to_demand(operator, lease_demand(&report));
 					}
-					None => budget.report_lease_none(node),
+					None => budget.report_lease_none(operator),
 				}
 				Ok(())
 			});
-			let _ = txn.operator_state::<(), _>(node, zero_usage, move |_txn| Ok(((), persist)))?;
-			txn.mark_state_dirty(node);
+			let _ = txn.operator_state::<(), _>(operator, zero_usage, move |_txn| Ok(((), persist)))?;
+			txn.mark_state_dirty(operator);
 			self.last_registered_txn.set(txn_version);
 		}
 		Ok(())
@@ -657,7 +660,7 @@ unsafe impl Send for NativeBridgedOperator {}
 
 impl Operator for NativeBridgedOperator {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -666,7 +669,7 @@ impl Operator for NativeBridgedOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		self.ensure_flush_slot(txn)?;
-		let mut bridge = FlowNativeBridge::new(txn, self.node);
+		let mut bridge = FlowNativeBridge::new(txn, self.operator);
 		self.inner.apply(&mut bridge, change)
 	}
 
@@ -675,7 +678,7 @@ impl Operator for NativeBridgedOperator {
 	}
 
 	fn reclaimable_through(&self, txn: &mut FlowTransaction, watermark: DateTime) -> Result<Reclaimable> {
-		sealed_or_idle(txn, self.node, watermark, self.retention_scale())
+		sealed_or_idle(txn, self.operator, watermark, self.retention_scale())
 	}
 
 	fn invalidate_groups(&self, groups: &GroupSet) {
@@ -684,7 +687,7 @@ impl Operator for NativeBridgedOperator {
 
 	fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
 		self.ensure_flush_slot(txn)?;
-		let mut bridge = FlowNativeBridge::new(txn, self.node);
+		let mut bridge = FlowNativeBridge::new(txn, self.operator);
 		self.inner.on_timer(&mut bridge, timer)
 	}
 
@@ -766,7 +769,7 @@ mod tests {
 		assert_eq!(
 			txn.node_position(NODE).unwrap(),
 			Position(at),
-			"a node with no declared horizon stamps the same substrate coordinate as one that seals; \
+			"a operator with no declared horizon stamps the same substrate coordinate as one that seals; \
 			 there is no second domain for it to fall back to"
 		);
 

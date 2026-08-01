@@ -25,7 +25,7 @@ use crate::{context::FlowContext, operator::OperatorCell};
 
 pub struct MapOperator {
 	parent: OperatorCell,
-	node: OperatorId,
+	operator: OperatorId,
 	expressions: Vec<Expression>,
 	compiled_expressions: Vec<CompiledExpr>,
 	routines: Routines,
@@ -36,7 +36,7 @@ pub struct MapOperator {
 impl MapOperator {
 	pub fn new(
 		parent: OperatorCell,
-		node: OperatorId,
+		operator: OperatorId,
 		expressions: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
@@ -53,7 +53,7 @@ impl MapOperator {
 
 		Self {
 			parent,
-			node,
+			operator,
 			expressions,
 			compiled_expressions,
 			routines,
@@ -122,7 +122,7 @@ impl MapOperator {
 
 impl Operator for MapOperator {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -173,7 +173,7 @@ impl Operator for MapOperator {
 			}
 		}
 
-		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
+		Ok(Change::from_flow(self.operator, change.version, result, change.changed_at))
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

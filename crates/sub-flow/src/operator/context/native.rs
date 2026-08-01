@@ -130,7 +130,7 @@ fn encode<T: OperatorState>(value: &T, now: DateTime) -> SdkResult<EncodedRow> {
 
 pub struct NativeOperatorContext<'a> {
 	bridge: *mut (dyn NativeBridge + 'a),
-	node: OperatorId,
+	operator: OperatorId,
 	now: DateTime,
 	state_lease_bytes: u64,
 	diffs: Vec<Diff>,
@@ -138,12 +138,12 @@ pub struct NativeOperatorContext<'a> {
 }
 
 impl<'a> NativeOperatorContext<'a> {
-	pub fn new(bridge: &'a mut (dyn NativeBridge + 'a), node: OperatorId) -> Self {
+	pub fn new(bridge: &'a mut (dyn NativeBridge + 'a), operator: OperatorId) -> Self {
 		let now = bridge.clock_now();
 		let state_lease_bytes = bridge.state_lease_bytes();
 		Self {
 			bridge: bridge as *mut (dyn NativeBridge + 'a),
-			node,
+			operator,
 			now,
 			state_lease_bytes,
 			diffs: Vec::new(),
@@ -509,7 +509,7 @@ impl OperatorContext for NativeOperatorContext<'_> {
 		Self: 'a;
 
 	fn operator_id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 	fn clock_now(&self) -> DateTime {
 		self.now

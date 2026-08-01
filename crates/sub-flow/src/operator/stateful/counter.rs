@@ -20,24 +20,24 @@ pub enum CounterDirection {
 }
 
 pub struct Counter {
-	node: OperatorId,
+	operator: OperatorId,
 	key: GroupStateKey,
 	direction: CounterDirection,
 }
 
 impl Counter {
-	pub fn with_prefix(node: OperatorId, prefix: u8, direction: CounterDirection) -> Self {
+	pub fn with_prefix(operator: OperatorId, prefix: u8, direction: CounterDirection) -> Self {
 		let key = GroupStateKey::node_scoped(Keyspace::NODE_COUNTER, vec![prefix]);
 		Self {
-			node,
+			operator,
 			key,
 			direction,
 		}
 	}
 
-	pub fn with_key(node: OperatorId, key: GroupStateKey, direction: CounterDirection) -> Self {
+	pub fn with_key(operator: OperatorId, key: GroupStateKey, direction: CounterDirection) -> Self {
 		Self {
-			node,
+			operator,
 			key,
 			direction,
 		}
@@ -59,7 +59,7 @@ impl Counter {
 	}
 
 	fn load(&self, txn: &mut FlowTransaction) -> Result<u64> {
-		match state_get(self.node, txn, &self.key)? {
+		match state_get(self.operator, txn, &self.key)? {
 			None => Ok(self.default_value()),
 			Some(encoded) => Ok(decode_payload::<u64>(&encoded)?),
 		}
@@ -67,7 +67,7 @@ impl Counter {
 
 	fn save(&self, txn: &mut FlowTransaction, value: u64) -> Result<()> {
 		let now = txn.clock().now();
-		state_set(self.node, txn, &self.key, encode_payload(&value, now)?)?;
+		state_set(self.operator, txn, &self.key, encode_payload(&value, now)?)?;
 		Ok(())
 	}
 
@@ -123,17 +123,17 @@ mod tests {
 	fn test_counter_persistence() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = OperatorId(1);
+		let operator = OperatorId(1);
 
 		{
-			let counter = Counter::with_prefix(node, b'P', CounterDirection::Ascending);
+			let counter = Counter::with_prefix(operator, b'P', CounterDirection::Ascending);
 			counter.next(&mut txn).unwrap();
 			counter.next(&mut txn).unwrap();
 		}
 
-		// A second instance on the same node and prefix resumes the stored sequence.
+		// A second instance on the same operator and prefix resumes the stored sequence.
 		{
-			let counter = Counter::with_prefix(node, b'P', CounterDirection::Ascending);
+			let counter = Counter::with_prefix(operator, b'P', CounterDirection::Ascending);
 			let value = counter.next(&mut txn).unwrap();
 			assert_eq!(value.0, 3);
 		}
@@ -197,10 +197,10 @@ mod tests {
 	fn test_multiple_counters_isolated() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node = OperatorId(1);
+		let operator = OperatorId(1);
 
-		let counter1 = Counter::with_prefix(node, b'A', CounterDirection::Ascending);
-		let counter2 = Counter::with_prefix(node, b'B', CounterDirection::Ascending);
+		let counter1 = Counter::with_prefix(operator, b'A', CounterDirection::Ascending);
+		let counter2 = Counter::with_prefix(operator, b'B', CounterDirection::Ascending);
 
 		let v1a = counter1.next(&mut txn).unwrap();
 		let v2a = counter2.next(&mut txn).unwrap();

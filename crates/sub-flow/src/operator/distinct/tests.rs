@@ -37,8 +37,7 @@ use reifydb_value::{
 use crate::{
 	context::FlowContext,
 	operator::{
-		OperatorCell, distinct::operator::DistinctOperator, scan::view::SourceViewOperator,
-		stateful::utils,
+		OperatorCell, distinct::operator::DistinctOperator, scan::view::SourceViewOperator, stateful::utils,
 	},
 };
 
@@ -56,12 +55,12 @@ fn noop_parent() -> OperatorCell {
 	OperatorCell::new(SourceViewOperator::new(OperatorId(0), view))
 }
 
-fn make_op(node_id: u64, engine: &TestEngine) -> DistinctOperator {
+fn make_op(operator_id: u64, engine: &TestEngine) -> DistinctOperator {
 	let routines = engine.executor().routines.clone();
 	let rc = RuntimeContext::with_clock(engine.clock().clone());
 	DistinctOperator::new(
 		noop_parent(),
-		OperatorId(node_id),
+		OperatorId(operator_id),
 		Vec::new(),
 		routines,
 		rc,

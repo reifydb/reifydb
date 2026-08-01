@@ -81,10 +81,10 @@ impl MetricsObject {
 				}))
 			}
 			(MetricsObject::Flow, MetricsId::Operator(operator_id)) => {
-				let Some(node) = CatalogStore::find_operator(txn, operator_id)? else {
+				let Some(operator) = CatalogStore::find_operator(txn, operator_id)? else {
 					return Ok(None);
 				};
-				let flow_id = node.flow;
+				let flow_id = operator.flow;
 				let namespace_id = CatalogStore::find_flow(txn, flow_id)?.map_or(0, |f| f.namespace.0);
 				Ok(Some(StatsRow {
 					id: flow_id.0,
@@ -92,11 +92,11 @@ impl MetricsObject {
 				}))
 			}
 			(MetricsObject::Operator, MetricsId::Operator(operator_id)) => {
-				let Some(node) = CatalogStore::find_operator(txn, operator_id)? else {
+				let Some(operator) = CatalogStore::find_operator(txn, operator_id)? else {
 					return Ok(None);
 				};
 				let namespace_id =
-					CatalogStore::find_flow(txn, node.flow)?.map_or(0, |f| f.namespace.0);
+					CatalogStore::find_flow(txn, operator.flow)?.map_or(0, |f| f.namespace.0);
 				Ok(Some(StatsRow {
 					id: operator_id.0,
 					namespace_id,

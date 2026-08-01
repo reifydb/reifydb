@@ -514,7 +514,7 @@ mod tests {
 	fn group_scoped_windows_keep_separate_state_under_one_shared_row_key() {
 		// A group-scoped driver addresses every window with the same empty row key and leans on the
 		// group to separate them. If the group fell out of the accumulator key or the row-number
-		// lookup, every window of the node would fold into one accumulator under one row.
+		// lookup, every window of the operator would fold into one accumulator under one row.
 		let mut store = MockStore::default();
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::group_scoped(test_config());
 
@@ -541,7 +541,7 @@ mod tests {
 
 	#[test]
 	fn an_expired_window_names_the_group_its_state_lived_in() {
-		// The expiry index is node scoped and ordered by due time, so the group rides in the key
+		// The expiry index is operator scoped and ordered by due time, so the group rides in the key
 		// tail and in the entry. The driver needs that id to drop the per-window meta and release
 		// the row number; without it it strands both or erases another group's identity.
 		let mut store = MockStore::default();

@@ -39,8 +39,8 @@ pub fn reconcile_time_domain(declared: Option<TimeDomain>, source: TimeDomain) -
 pub fn check_time_domain(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &FlowDag) -> Result<()> {
 	let flow_name = format!("flow {}", flow.id.0);
 
-	for node_id in flow.topological_order()? {
-		let node = flow.get_node(&node_id).unwrap();
+	for operator_id in flow.topological_order()? {
+		let operator = flow.get_operator(&operator_id).unwrap();
 
 		if let OperatorDef::Window {
 			kind: WindowKind::Rolling {
@@ -48,12 +48,12 @@ pub fn check_time_domain(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &Fl
 				..
 			},
 			..
-		} = &node.ty && flow.time != Some(TimeDomain::Event)
+		} = &operator.ty && flow.time != Some(TimeDomain::Event)
 		{
 			return Err(Error(Box::new(flow_rolling_lag_requires_event_time(&flow_name))));
 		}
 
-		let source: (String, TimeDomain, ProcessingConflict) = match &node.ty {
+		let source: (String, TimeDomain, ProcessingConflict) = match &operator.ty {
 			OperatorDef::SourceInlineData {} => {
 				if flow.time == Some(TimeDomain::Event) {
 					return Err(Error(Box::new(flow_event_time_over_inline_data(&flow_name))));

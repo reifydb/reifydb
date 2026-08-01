@@ -15,14 +15,14 @@ use reifydb_value::Result;
 use crate::operator::sink::decode_dictionary_columns;
 
 pub struct SourceViewOperator {
-	node: OperatorId,
+	operator: OperatorId,
 	view: View,
 }
 
 impl SourceViewOperator {
-	pub fn new(node: OperatorId, view: View) -> Self {
+	pub fn new(operator: OperatorId, view: View) -> Self {
 		Self {
-			node,
+			operator,
 			view,
 		}
 	}
@@ -30,7 +30,7 @@ impl SourceViewOperator {
 
 impl Operator for SourceViewOperator {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -70,7 +70,7 @@ impl Operator for SourceViewOperator {
 				}
 			});
 		}
-		Ok(Change::from_flow(self.node, change.version, decoded_diffs, change.changed_at))
+		Ok(Change::from_flow(self.operator, change.version, decoded_diffs, change.changed_at))
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

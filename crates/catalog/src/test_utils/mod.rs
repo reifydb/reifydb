@@ -259,9 +259,9 @@ pub fn ensure_test_flow(txn: &mut AdminTransaction) -> Flow {
 pub fn create_operator(txn: &mut AdminTransaction, flow_id: FlowId, node_type: u8, data: &[u8]) -> Operator {
 	use crate::store::sequence::flow::next_operator_id;
 
-	let node_id = next_operator_id(txn).unwrap();
+	let operator_id = next_operator_id(txn).unwrap();
 	let node_def = Operator {
-		id: node_id,
+		id: operator_id,
 		flow: flow_id,
 		node_type,
 		data: Blob::from(data),

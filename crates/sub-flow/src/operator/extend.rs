@@ -25,7 +25,7 @@ use crate::{context::FlowContext, operator::OperatorCell};
 
 pub struct ExtendOperator {
 	parent: OperatorCell,
-	node: OperatorId,
+	operator: OperatorId,
 	expressions: Vec<Expression>,
 	compiled_expressions: Vec<CompiledExpr>,
 	routines: Routines,
@@ -36,7 +36,7 @@ pub struct ExtendOperator {
 impl ExtendOperator {
 	pub fn new(
 		parent: OperatorCell,
-		node: OperatorId,
+		operator: OperatorId,
 		expressions: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
@@ -53,7 +53,7 @@ impl ExtendOperator {
 
 		Self {
 			parent,
-			node,
+			operator,
 			expressions,
 			compiled_expressions,
 			routines,
@@ -123,7 +123,7 @@ impl ExtendOperator {
 
 impl Operator for ExtendOperator {
 	fn id(&self) -> OperatorId {
-		self.node
+		self.operator
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
@@ -174,7 +174,7 @@ impl Operator for ExtendOperator {
 			}
 		}
 
-		Ok(Change::from_flow(self.node, change.version, result, change.changed_at))
+		Ok(Change::from_flow(self.operator, change.version, result, change.changed_at))
 	}
 
 	fn output_schema(&self) -> Option<Columns> {

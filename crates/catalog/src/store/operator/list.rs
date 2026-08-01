@@ -28,14 +28,14 @@ impl CatalogStore {
 			}
 		}
 
-		let mut nodes = Vec::new();
-		for node_id in node_ids {
-			if let Some(node) = Self::find_operator(rx, node_id)? {
-				nodes.push(node);
+		let mut operators = Vec::new();
+		for operator_id in node_ids {
+			if let Some(operator) = Self::find_operator(rx, operator_id)? {
+				operators.push(operator);
 			}
 		}
 
-		Ok(nodes)
+		Ok(operators)
 	}
 
 	pub(crate) fn list_operators_all(rx: &mut Transaction<'_>) -> Result<Vec<Operator>> {
@@ -46,13 +46,13 @@ impl CatalogStore {
 		for entry in stream {
 			let entry = entry?;
 			if let Some(operator_key) = OperatorKey::decode(&entry.key) {
-				let node_id = operator_key.node;
+				let operator_id = operator_key.operator;
 				let flow_id = FlowId(operator::SHAPE.get::<u64>(&entry.row, operator::FLOW));
 				let node_type = operator::SHAPE.get::<u8>(&entry.row, operator::TYPE);
 				let data = operator::SHAPE.get_blob(&entry.row, operator::DATA).clone();
 
 				let node_def = Operator {
-					id: node_id,
+					id: operator_id,
 					flow: flow_id,
 					node_type,
 					data,
@@ -82,11 +82,12 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let operator = create_operator(&mut txn, flow.id, 1, &[0x01]);
 
-		let nodes = CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
-		assert_eq!(nodes.len(), 1);
-		assert_eq!(nodes[0].id, node.id);
+		let operators =
+			CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
+		assert_eq!(operators.len(), 1);
+		assert_eq!(operators[0].id, operator.id);
 	}
 
 	#[test]
@@ -95,8 +96,9 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let nodes = CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
-		assert!(nodes.is_empty());
+		let operators =
+			CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
+		assert!(operators.is_empty());
 	}
 
 	#[test]
@@ -109,10 +111,11 @@ pub mod tests {
 		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
 		let node3 = create_operator(&mut txn, flow.id, 5, &[0x03]);
 
-		let nodes = CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
-		assert_eq!(nodes.len(), 3);
+		let operators =
+			CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
+		assert_eq!(operators.len(), 3);
 
-		let ids: Vec<_> = nodes.iter().map(|n| n.id).collect();
+		let ids: Vec<_> = operators.iter().map(|n| n.id).collect();
 		assert!(ids.contains(&node1.id));
 		assert!(ids.contains(&node2.id));
 		assert!(ids.contains(&node3.id));
@@ -127,16 +130,16 @@ pub mod tests {
 		create_operator(&mut txn, flow.id, 1, &[0x01]);
 		create_operator(&mut txn, flow.id, 4, &[0x02]);
 
-		let nodes = CatalogStore::list_operators_all(&mut Transaction::Admin(&mut txn)).unwrap();
-		assert_eq!(nodes.len(), 2);
+		let operators = CatalogStore::list_operators_all(&mut Transaction::Admin(&mut txn)).unwrap();
+		assert_eq!(operators.len(), 2);
 	}
 
 	#[test]
 	fn test_list_operators_all_empty() {
 		let mut txn = create_test_admin_transaction();
 
-		let nodes = CatalogStore::list_operators_all(&mut Transaction::Admin(&mut txn)).unwrap();
-		assert!(nodes.is_empty());
+		let operators = CatalogStore::list_operators_all(&mut Transaction::Admin(&mut txn)).unwrap();
+		assert!(operators.is_empty());
 	}
 
 	#[test]

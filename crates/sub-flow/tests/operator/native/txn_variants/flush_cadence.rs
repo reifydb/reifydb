@@ -12,26 +12,26 @@ use reifydb_core::{
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_sdk::operator::OperatorMetadata;
 use reifydb_sub_flow::operator::native::{NativeBridgedOperator, NativeOperatorAdapter};
-use reifydb_test_harness::operator::transaction::{FlowTxn, NODE_ID, engine};
+use reifydb_test_harness::operator::transaction::{FlowTxn, OPERATOR_ID, engine};
 use reifydb_value::value::datetime::DateTime;
 
 use crate::common::{FlushProbe, flush_probe_key};
 
 fn assert_flush_is_deferred(txn: &mut FlowTransaction) {
 	let capabilities = <FlushProbe as OperatorMetadata>::CAPABILITIES;
-	let inner = NativeOperatorAdapter::new(FlushProbe, NODE_ID, capabilities);
-	let op = NativeBridgedOperator::new(Box::new(inner), NODE_ID, capabilities);
-	let change = Change::from_flow(NODE_ID, CommitVersion(1), Diffs::new(), DateTime::from_nanos(0));
+	let inner = NativeOperatorAdapter::new(FlushProbe, OPERATOR_ID, capabilities);
+	let op = NativeBridgedOperator::new(Box::new(inner), OPERATOR_ID, capabilities);
+	let change = Change::from_flow(OPERATOR_ID, CommitVersion(1), Diffs::new(), DateTime::from_nanos(0));
 
 	op.apply(txn, change).unwrap();
 	assert!(
-		txn.state_get(NODE_ID, &flush_probe_key()).unwrap().is_none(),
+		txn.state_get(OPERATOR_ID, &flush_probe_key()).unwrap().is_none(),
 		"native must defer flush_state to commit, but state was persisted during apply"
 	);
 
 	txn.flush_operator_states().unwrap();
 	assert!(
-		txn.state_get(NODE_ID, &flush_probe_key()).unwrap().is_some(),
+		txn.state_get(OPERATOR_ID, &flush_probe_key()).unwrap().is_some(),
 		"flush_operator_states must persist the deferred state"
 	);
 }

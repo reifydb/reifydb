@@ -34,15 +34,15 @@ impl FlowEngineInner {
 		match &change.origin {
 			ChangeOrigin::Object(source) => {
 				if let Some(registrations) = self.sources.get(source) {
-					for (registered_flow_id, node_id) in registrations {
+					for (registered_flow_id, operator_id) in registrations {
 						if *registered_flow_id != flow_id {
 							continue;
 						}
-						if flow.get_node(node_id).is_none() {
+						if flow.get_operator(operator_id).is_none() {
 							continue;
 						}
 						let mut routed = Change {
-							origin: ChangeOrigin::Flow(*node_id),
+							origin: ChangeOrigin::Flow(*operator_id),
 							version: change.version,
 							diffs: change.diffs.clone(),
 							changed_at: change.changed_at,
@@ -50,13 +50,13 @@ impl FlowEngineInner {
 						if flow.time_domain() == TimeDomain::Processing {
 							stamp_arrival_time(&mut routed);
 						}
-						pending.entry(*node_id).or_default().push(routed);
+						pending.entry(*operator_id).or_default().push(routed);
 					}
 				}
 			}
-			ChangeOrigin::Flow(node_id) => {
-				if flow.get_node(node_id).is_some() {
-					pending.entry(*node_id).or_default().push(change);
+			ChangeOrigin::Flow(operator_id) => {
+				if flow.get_operator(operator_id).is_some() {
+					pending.entry(*operator_id).or_default().push(change);
 				}
 			}
 		}

@@ -9,7 +9,7 @@ use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct NodeRetentionInfo {
-	pub node: OperatorId,
+	pub operator: OperatorId,
 	pub stateful: bool,
 	pub scale: Option<Duration>,
 	pub frontier: Option<DateTime>,
@@ -17,7 +17,7 @@ pub struct NodeRetentionInfo {
 
 #[derive(Clone)]
 pub struct NodeRetentionStore {
-	nodes: Arc<RwLock<HashMap<OperatorId, NodeRetentionInfo>>>,
+	operators: Arc<RwLock<HashMap<OperatorId, NodeRetentionInfo>>>,
 }
 
 impl Default for NodeRetentionStore {
@@ -29,29 +29,29 @@ impl Default for NodeRetentionStore {
 impl NodeRetentionStore {
 	pub fn new() -> Self {
 		Self {
-			nodes: Arc::new(RwLock::new(HashMap::new())),
+			operators: Arc::new(RwLock::new(HashMap::new())),
 		}
 	}
 
 	pub fn set(&self, info: NodeRetentionInfo) {
-		self.nodes.write().insert(info.node, info);
+		self.operators.write().insert(info.operator, info);
 	}
 
-	pub fn set_frontier(&self, node: OperatorId, frontier: Option<DateTime>) {
-		if let Some(info) = self.nodes.write().get_mut(&node) {
+	pub fn set_frontier(&self, operator: OperatorId, frontier: Option<DateTime>) {
+		if let Some(info) = self.operators.write().get_mut(&operator) {
 			info.frontier = frontier;
 		}
 	}
 
-	pub fn remove(&self, node: OperatorId) {
-		self.nodes.write().remove(&node);
+	pub fn remove(&self, operator: OperatorId) {
+		self.operators.write().remove(&operator);
 	}
 
-	pub fn get(&self, node: OperatorId) -> Option<NodeRetentionInfo> {
-		self.nodes.read().get(&node).cloned()
+	pub fn get(&self, operator: OperatorId) -> Option<NodeRetentionInfo> {
+		self.operators.read().get(&operator).cloned()
 	}
 
 	pub fn list(&self) -> Vec<NodeRetentionInfo> {
-		self.nodes.read().values().cloned().collect()
+		self.operators.read().values().cloned().collect()
 	}
 }

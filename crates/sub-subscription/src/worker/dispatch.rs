@@ -88,11 +88,11 @@ impl SubscriptionWorkerActor {
 			let Some(flow_entries) = flow_engine.flows_for_source_object(source_shape) else {
 				continue;
 			};
-			for (flow_id, node_id) in flow_entries {
+			for (flow_id, operator_id) in flow_entries {
 				let Some(flow_state) = flows.get_mut(&flow_id) else {
 					continue;
 				};
-				self.evaluate_flow(flow_engine, flow_state, base_query, change, flow_id, node_id);
+				self.evaluate_flow(flow_engine, flow_state, base_query, change, flow_id, operator_id);
 			}
 		}
 	}
@@ -105,7 +105,7 @@ impl SubscriptionWorkerActor {
 		base_query: &MultiReadTransaction,
 		change: &Change,
 		flow_id: FlowId,
-		node_id: OperatorId,
+		operator_id: OperatorId,
 	) {
 		if let Some(gate) = flow_state.gate
 			&& change.version <= gate
@@ -130,7 +130,8 @@ impl SubscriptionWorkerActor {
 		);
 		txn.install_operator_states(operators);
 
-		let flow_change = Change::from_flow(node_id, change.version, change.diffs.clone(), change.changed_at);
+		let flow_change =
+			Change::from_flow(operator_id, change.version, change.diffs.clone(), change.changed_at);
 		match flow_engine.process(&mut txn, flow_change, flow_id) {
 			Ok(()) => txn.merge_state(),
 			Err(e) => {

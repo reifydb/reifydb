@@ -103,8 +103,8 @@ pub mod tests {
 
 	use super::*;
 
-	fn make_state_key(node_id: u64, key: &[u8]) -> EncodedKey {
-		OperatorStateKey::new(OperatorId(node_id), key.to_vec()).encode()
+	fn make_state_key(operator_id: u64, key: &[u8]) -> EncodedKey {
+		OperatorStateKey::new(OperatorId(operator_id), key.to_vec()).encode()
 	}
 
 	fn make_value(data: &[u8]) -> EncodedRow {

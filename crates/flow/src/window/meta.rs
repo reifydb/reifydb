@@ -404,7 +404,7 @@ mod tests {
 
 	#[test]
 	fn partition_scoped_meta_lands_inside_the_group_the_substrate_reclaims() {
-		// This state spans every window of one partition, so it fits in no window group. At node
+		// This state spans every window of one partition, so it fits in no window group. At operator
 		// scope no group range could reach it, one row per partition kept forever; landing it in
 		// the partition group's data range is what makes reclaim_group_data take it.
 		let range = group_data_inner_range(GROUP);
@@ -423,7 +423,7 @@ mod tests {
 
 	#[test]
 	fn the_seal_ledger_stays_out_of_every_group_range() {
-		// The seal ledger is per node, one entry for the whole operator. Under a real group id,
+		// The seal ledger is per operator, one entry for the whole operator. Under a real group id,
 		// reclaiming that group would reset it and every later event would look admissible again.
 		let key = (&SealLedgerKey).into_group_state_key();
 		let (group, _, _) =

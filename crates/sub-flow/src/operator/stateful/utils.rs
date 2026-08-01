@@ -113,13 +113,13 @@ pub mod tests {
 	fn test_state_get_existing() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let key = test_key("get");
 		let value = test_row();
 
-		state_set(node_id, &mut txn, &key, value.clone()).unwrap();
+		state_set(operator_id, &mut txn, &key, value.clone()).unwrap();
 
-		let result = state_get(node_id, &mut txn, &key).unwrap();
+		let result = state_get(operator_id, &mut txn, &key).unwrap();
 		assert!(result.is_some());
 		assert_row_eq(&result.unwrap(), &value);
 	}
@@ -128,10 +128,10 @@ pub mod tests {
 	fn test_state_get_non_existing() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let key = test_key("nonexistent");
 
-		let result = state_get(node_id, &mut txn, &key).unwrap();
+		let result = state_get(operator_id, &mut txn, &key).unwrap();
 		assert!(result.is_none());
 	}
 
@@ -139,17 +139,17 @@ pub mod tests {
 	fn test_state_set_and_update() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let key = test_key("set");
 		let value1 = EncodedRow(CowVec::new(vec![1, 2, 3]));
 		let value2 = EncodedRow(CowVec::new(vec![4, 5, 6]));
 
-		state_set(node_id, &mut txn, &key, value1.clone()).unwrap();
-		let result = state_get(node_id, &mut txn, &key).unwrap().unwrap();
+		state_set(operator_id, &mut txn, &key, value1.clone()).unwrap();
+		let result = state_get(operator_id, &mut txn, &key).unwrap().unwrap();
 		assert_row_eq(&result, &value1);
 
-		state_set(node_id, &mut txn, &key, value2.clone()).unwrap();
-		let result = state_get(node_id, &mut txn, &key).unwrap().unwrap();
+		state_set(operator_id, &mut txn, &key, value2.clone()).unwrap();
+		let result = state_get(operator_id, &mut txn, &key).unwrap().unwrap();
 		assert_row_eq(&result, &value2);
 	}
 
@@ -157,30 +157,30 @@ pub mod tests {
 	fn test_state_remove() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let key = test_key("remove");
 		let value = test_row();
 
-		state_set(node_id, &mut txn, &key, value.clone()).unwrap();
-		assert!(state_get(node_id, &mut txn, &key).unwrap().is_some());
+		state_set(operator_id, &mut txn, &key, value.clone()).unwrap();
+		assert!(state_get(operator_id, &mut txn, &key).unwrap().is_some());
 
-		state_remove(node_id, &mut txn, &key).unwrap();
-		assert!(state_get(node_id, &mut txn, &key).unwrap().is_none());
+		state_remove(operator_id, &mut txn, &key).unwrap();
+		assert!(state_get(operator_id, &mut txn, &key).unwrap().is_none());
 	}
 
 	#[test]
 	fn test_state_scan_all() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 
 		for i in 0..5 {
 			let key = test_key(&format!("scan_{:02}", i)); // padded so the keys sort numerically
 			let value = EncodedRow(CowVec::new(vec![i as u8]));
-			state_set(node_id, &mut txn, &key, value).unwrap();
+			state_set(operator_id, &mut txn, &key, value).unwrap();
 		}
 
-		let entries: Vec<_> = state_scan_all(node_id, &mut txn).unwrap();
+		let entries: Vec<_> = state_scan_all(operator_id, &mut txn).unwrap();
 		assert_eq!(entries.len(), 5);
 
 		for i in 0..5 {
@@ -192,20 +192,20 @@ pub mod tests {
 	fn test_state_range() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 
 		let keys = vec!["a", "b", "c", "d", "e"];
 		for key_suffix in &keys {
 			let key = test_key(key_suffix);
 			let value = test_row();
-			state_set(node_id, &mut txn, &key, value).unwrap();
+			state_set(operator_id, &mut txn, &key, value).unwrap();
 		}
 
 		let range = EncodedKeyRange::new(
 			Included(test_key("b").into_encoded()),
 			Excluded(test_key("d").into_encoded()),
 		);
-		let entries: Vec<_> = state_range(node_id, &mut txn, range).collect::<Result<Vec<_>>>().unwrap();
+		let entries: Vec<_> = state_range(operator_id, &mut txn, range).collect::<Result<Vec<_>>>().unwrap();
 
 		// b and c, but not the excluded end d.
 		assert_eq!(entries.len(), 2);
@@ -215,17 +215,17 @@ pub mod tests {
 	fn test_state_range_open_ended() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 
 		for i in 0..5 {
 			let key = test_key(&format!("range_{}", i));
 			let value = test_row();
-			state_set(node_id, &mut txn, &key, value).unwrap();
+			state_set(operator_id, &mut txn, &key, value).unwrap();
 		}
 
 		let entries = {
 			let range = EncodedKeyRange::new(Unbounded, Excluded(test_key("range_3").into_encoded()));
-			let prefixed_range = range.with_prefix(OperatorStateKey::encoded(node_id, vec![]));
+			let prefixed_range = range.with_prefix(OperatorStateKey::encoded(operator_id, vec![]));
 			let mut stream = txn.range(prefixed_range, RangeScope::All, 1024);
 			let mut entries = Vec::new();
 			while let Some(result) = stream.next() {
@@ -237,7 +237,7 @@ pub mod tests {
 
 		let entries = {
 			let range = EncodedKeyRange::new(Included(test_key("range_3").into_encoded()), Unbounded);
-			let prefixed_range = range.with_prefix(OperatorStateKey::encoded(node_id, vec![]));
+			let prefixed_range = range.with_prefix(OperatorStateKey::encoded(operator_id, vec![]));
 			let mut stream = txn.range(prefixed_range, RangeScope::All, 1024);
 			let mut entries = Vec::new();
 			while let Some(result) = stream.next() {
@@ -252,16 +252,16 @@ pub mod tests {
 	fn test_state_clear() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 
 		for i in 0..3 {
 			let key = test_key(&format!("clear_{}", i));
 			let value = test_row();
-			state_set(node_id, &mut txn, &key, value).unwrap();
+			state_set(operator_id, &mut txn, &key, value).unwrap();
 		}
 
 		let count = {
-			let range = OperatorStateKey::node_range(node_id);
+			let range = OperatorStateKey::node_range(operator_id);
 			let mut stream = txn.range(range, RangeScope::All, 1024);
 			let mut count = 0;
 			while let Some(result) = stream.next() {
@@ -272,10 +272,10 @@ pub mod tests {
 		};
 		assert_eq!(count, 3);
 
-		state_clear(node_id, &mut txn).unwrap();
+		state_clear(operator_id, &mut txn).unwrap();
 
 		let count = {
-			let range = OperatorStateKey::node_range(node_id);
+			let range = OperatorStateKey::node_range(operator_id);
 			let mut stream = txn.range(range, RangeScope::All, 1024);
 			let mut count = 0;
 			while let Some(result) = stream.next() {
@@ -291,14 +291,14 @@ pub mod tests {
 	fn test_load_or_create_row_existing() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let key = test_key("load_existing");
 		let value = test_row();
-		let layout = TestOperator::simple(node_id).layout;
+		let layout = TestOperator::simple(operator_id).layout;
 
-		state_set(node_id, &mut txn, &key, value.clone()).unwrap();
+		state_set(operator_id, &mut txn, &key, value.clone()).unwrap();
 
-		let result = load_or_create_row(node_id, &mut txn, &key, &layout).unwrap();
+		let result = load_or_create_row(operator_id, &mut txn, &key, &layout).unwrap();
 		assert_row_eq(&result, &value);
 	}
 
@@ -306,11 +306,11 @@ pub mod tests {
 	fn test_load_or_create_row_new() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let key = test_key("load_new");
 		let shape = RowShape::testing(&[ValueType::Int4]);
 
-		let result = load_or_create_row(node_id, &mut txn, &key, &shape).unwrap();
+		let result = load_or_create_row(operator_id, &mut txn, &key, &shape).unwrap();
 		assert!(result.len() > 0);
 	}
 
@@ -318,13 +318,13 @@ pub mod tests {
 	fn test_save_row() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let key = test_key("save");
 		let value = test_row();
 
-		save_row(node_id, &mut txn, &key, value.clone()).unwrap();
+		save_row(operator_id, &mut txn, &key, value.clone()).unwrap();
 
-		let result = state_get(node_id, &mut txn, &key).unwrap();
+		let result = state_get(operator_id, &mut txn, &key).unwrap();
 		assert!(result.is_some());
 		assert_row_eq(&result.unwrap(), &value);
 	}
@@ -364,13 +364,13 @@ pub mod tests {
 	fn test_large_values() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let node_id = OperatorId(1);
+		let operator_id = OperatorId(1);
 		let key = test_key("large");
 
 		let large_value = EncodedRow(CowVec::new(vec![0xAB; 10240]));
 
-		state_set(node_id, &mut txn, &key, large_value.clone()).unwrap();
-		let result = state_get(node_id, &mut txn, &key).unwrap().unwrap();
+		state_set(operator_id, &mut txn, &key, large_value.clone()).unwrap();
+		let result = state_get(operator_id, &mut txn, &key).unwrap().unwrap();
 
 		assert_row_eq(&result, &large_value);
 	}

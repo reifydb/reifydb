@@ -70,7 +70,7 @@ pub struct FFIOperatorHarness<T: FFIOperator> {
 	context: Box<TestContext>,
 	ffi_context: Box<ContextFFI>,
 	config: HashMap<String, Value>,
-	node_id: OperatorId,
+	operator_id: OperatorId,
 	clock: Clock,
 	history: Vec<Change>,
 
@@ -115,8 +115,8 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		let emitted = self.builder_registry.drain_diffs();
 		let diffs = into_diffs(emitted);
 		let output = match origin {
-			ChangeOrigin::Flow(node) => Change::from_flow(node, version, diffs, changed_at),
-			ChangeOrigin::Object(_) => Change::from_flow(self.node_id, version, diffs, changed_at),
+			ChangeOrigin::Flow(operator) => Change::from_flow(operator, version, diffs, changed_at),
+			ChangeOrigin::Object(_) => Change::from_flow(self.operator_id, version, diffs, changed_at),
 		};
 		self.history.push(output.clone());
 		Ok(output)
@@ -147,8 +147,8 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		let emitted = self.builder_registry.drain_diffs();
 		let diffs = into_diffs(emitted);
 		let output = match origin {
-			ChangeOrigin::Flow(node) => Change::from_flow(node, version, diffs, changed_at),
-			ChangeOrigin::Object(_) => Change::from_flow(self.node_id, version, diffs, changed_at),
+			ChangeOrigin::Flow(operator) => Change::from_flow(operator, version, diffs, changed_at),
+			ChangeOrigin::Object(_) => Change::from_flow(self.operator_id, version, diffs, changed_at),
 		};
 		self.history.push(output.clone());
 		Ok(output)
@@ -186,7 +186,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		if diffs.is_empty() {
 			return Ok(None);
 		}
-		let output = Change::from_flow(self.node_id, version, diffs, at);
+		let output = Change::from_flow(self.operator_id, version, diffs, at);
 		self.history.push(output.clone());
 		Ok(Some(output))
 	}
@@ -217,7 +217,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 
 	pub fn group_id(&self, group_key: &[u8]) -> Option<GroupId> {
 		let dictionary_key = OperatorStateKey::new(
-			self.node_id,
+			self.operator_id,
 			OperatorGroupStateKey::inner_encoded(
 				GroupId::NODE_SCOPE,
 				Keyspace::GROUP_DICTIONARY,
@@ -264,7 +264,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 			let Some(decoded) = OperatorStateKey::decode(key) else {
 				return true;
 			};
-			if decoded.node != self.node_id {
+			if decoded.operator != self.operator_id {
 				return true;
 			}
 			match OperatorGroupStateKey::decode_inner(&decoded.key) {
@@ -382,7 +382,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		self.history.clear();
 
 		self.operator =
-			T::new(self.node_id, &Config::new("operator", self.config.clone().into_iter().collect()))?;
+			T::new(self.operator_id, &Config::new("operator", self.config.clone().into_iter().collect()))?;
 		Ok(())
 	}
 
@@ -399,8 +399,8 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		&mut self.operator
 	}
 
-	pub fn node_id(&self) -> OperatorId {
-		self.node_id
+	pub fn operator_id(&self) -> OperatorId {
+		self.operator_id
 	}
 }
 
@@ -414,7 +414,7 @@ impl<T: FFIOperator> Index<usize> for FFIOperatorHarness<T> {
 
 pub struct FFIOperatorHarnessBuilder<T: FFIOperator> {
 	config: HashMap<String, Value>,
-	node_id: OperatorId,
+	operator_id: OperatorId,
 	version: CommitVersion,
 	clock: Clock,
 	initial_state: HashMap<EncodedKey, EncodedRow>,
@@ -432,7 +432,7 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 	pub fn new() -> Self {
 		Self {
 			config: HashMap::new(),
-			node_id: OperatorId(1),
+			operator_id: OperatorId(1),
 			version: CommitVersion(1),
 			clock: Clock::Mock(MockClock::new(0)),
 			initial_state: HashMap::new(),
@@ -460,8 +460,8 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 		self
 	}
 
-	pub fn with_node_id(mut self, node_id: OperatorId) -> Self {
-		self.node_id = node_id;
+	pub fn with_node_id(mut self, operator_id: OperatorId) -> Self {
+		self.operator_id = operator_id;
 		self
 	}
 
@@ -503,21 +503,21 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 		let ffi_context = Box::new(ContextFFI {
 			txn_ptr: &*context as *const TestContext as *mut c_void,
 			executor_ptr: null(),
-			operator_id: self.node_id.0,
+			operator_id: self.operator_id.0,
 			clock_now_nanos: self.clock.now().to_nanos(),
 			state_lease_bytes: 64 * 1024 * 1024,
 			callbacks: create_test_callbacks(),
 		});
 
 		let operator =
-			T::new(self.node_id, &Config::new("operator", self.config.clone().into_iter().collect()))?;
+			T::new(self.operator_id, &Config::new("operator", self.config.clone().into_iter().collect()))?;
 
 		Ok(FFIOperatorHarness {
 			operator,
 			context,
 			ffi_context,
 			config: self.config,
-			node_id: self.node_id,
+			operator_id: self.operator_id,
 			clock: self.clock,
 			history: Vec::new(),
 			builder_registry: TestBuilderRegistry::new(),
@@ -782,7 +782,7 @@ pub mod tests {
 		assert!(result.is_ok());
 
 		let harness = result.unwrap();
-		assert_eq!(harness.node_id, 42);
+		assert_eq!(harness.operator_id, 42);
 		assert_eq!(harness.version(), 10);
 	}
 
@@ -1109,11 +1109,11 @@ pub mod tests {
 		state.assert_typed_value::<i64>(probe_row_key(3 * MILLI).as_encoded(), &3i64);
 	}
 
-	fn group_state_key(node: OperatorId, group: GroupId, keyspace: Keyspace) -> OperatorStateKey {
+	fn group_state_key(operator: OperatorId, group: GroupId, keyspace: Keyspace) -> OperatorStateKey {
 		// Must compose the key the way the substrate does, or what these tests seed is not
 		// addressable by the phase ranges the sweep scans.
 		OperatorStateKey::new(
-			node,
+			operator,
 			OperatorGroupStateKey::inner_encoded(group, keyspace, b"k").as_slice().to_vec(),
 		)
 	}
@@ -1165,7 +1165,7 @@ pub mod tests {
 		harness.reclaim_groups(&[GroupId::NODE_SCOPE]);
 
 		let state = harness.snapshot_state();
-		assert!(state.contains_key(&dictionary), "the dictionary survives even a sweep naming node scope");
+		assert!(state.contains_key(&dictionary), "the dictionary survives even a sweep naming operator scope");
 		assert!(state.contains_key(&counter), "so does the id counter");
 	}
 }

@@ -11,8 +11,8 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{CatalogStore, Result, store::operator::shape::operator};
 
 impl CatalogStore {
-	pub(crate) fn find_operator(rx: &mut Transaction<'_>, node_id: OperatorId) -> Result<Option<Operator>> {
-		let Some(multi) = rx.get(&OperatorKey::encoded(node_id))? else {
+	pub(crate) fn find_operator(rx: &mut Transaction<'_>, operator_id: OperatorId) -> Result<Option<Operator>> {
+		let Some(multi) = rx.get(&OperatorKey::encoded(operator_id))? else {
 			return Ok(None);
 		};
 
@@ -48,12 +48,12 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node = create_operator(&mut txn, flow.id, 1, &[0x01, 0x02, 0x03]);
+		let operator = create_operator(&mut txn, flow.id, 1, &[0x01, 0x02, 0x03]);
 
-		let result = CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), node.id).unwrap();
+		let result = CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), operator.id).unwrap();
 		assert!(result.is_some());
 		let found = result.unwrap();
-		assert_eq!(found.id, node.id);
+		assert_eq!(found.id, operator.id);
 		assert_eq!(found.flow, flow.id);
 		assert_eq!(found.node_type, 1);
 	}

@@ -55,7 +55,7 @@ impl WindowOperator {
 		group_hash: Hash128,
 	) -> Result<SessionTracker> {
 		let group = self.partition_group(txn, group_hash)?;
-		let mut store = OperatorStateStore::new(txn, self.core.node);
+		let mut store = OperatorStateStore::new(txn, self.core.operator);
 		self.meta_slot().load_session(&mut store, group)
 	}
 
@@ -66,7 +66,7 @@ impl WindowOperator {
 		tracker: &SessionTracker,
 	) -> Result<()> {
 		let group = self.partition_group(txn, group_hash)?;
-		let mut store = OperatorStateStore::new(txn, self.core.node);
+		let mut store = OperatorStateStore::new(txn, self.core.operator);
 		self.meta_slot().save_session(&mut store, group, tracker)
 	}
 
@@ -114,7 +114,7 @@ impl WindowOperator {
 	}
 
 	pub(super) fn partition_group(&self, txn: &mut FlowTransaction, partition: Hash128) -> Result<GroupId> {
-		let (group, _) = txn.intern_group(self.core.node, &partition_group_key(partition))?;
+		let (group, _) = txn.intern_group(self.core.operator, &partition_group_key(partition))?;
 		Ok(group)
 	}
 
@@ -126,7 +126,7 @@ impl WindowOperator {
 		window_id: u64,
 	) -> Result<()> {
 		let group = self.partition_group(txn, group_hash)?;
-		let mut store = OperatorStateStore::new(txn, self.core.node);
+		let mut store = OperatorStateStore::new(txn, self.core.operator);
 		Mint::new(self.meta_slot()).record_membership(&mut store, group, row_number, window_id)
 	}
 
@@ -137,7 +137,7 @@ impl WindowOperator {
 		row_number: RowNumber,
 	) -> Result<Vec<u64>> {
 		let group = self.partition_group(txn, group_hash)?;
-		let mut store = OperatorStateStore::new(txn, self.core.node);
+		let mut store = OperatorStateStore::new(txn, self.core.operator);
 		Mint::new(self.meta_slot()).membership(&mut store, group, row_number)
 	}
 
@@ -147,17 +147,17 @@ impl WindowOperator {
 		group_hash: Hash128,
 	) -> Result<OrdinalCoord> {
 		let group = self.partition_group(txn, group_hash)?;
-		let mut store = OperatorStateStore::new(txn, self.core.node);
+		let mut store = OperatorStateStore::new(txn, self.core.operator);
 		Mint::new(self.meta_slot()).ordinal(&mut store, group)
 	}
 
 	pub(super) fn seal_ledger(&self, txn: &mut FlowTransaction) -> Result<SealedThrough> {
-		let mut store = OperatorStateStore::new(txn, self.core.node);
+		let mut store = OperatorStateStore::new(txn, self.core.operator);
 		Ok(SealedThrough::from_order(self.meta_slot().seal_ledger(&mut store)?))
 	}
 
 	pub(super) fn advance_seal_ledger(&self, txn: &mut FlowTransaction, fired: FiredAt) -> Result<()> {
-		let mut store = OperatorStateStore::new(txn, self.core.node);
+		let mut store = OperatorStateStore::new(txn, self.core.operator);
 		self.meta_slot().advance_seal_ledger(&mut store, fired.at().to_order())
 	}
 

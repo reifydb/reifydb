@@ -9,15 +9,15 @@ use tracing::warn;
 const WARN_STRIDE: u64 = 1_000;
 
 pub struct SealedDrops {
-	node: OperatorId,
+	operator: OperatorId,
 	reason: &'static str,
 	count: AtomicU64,
 }
 
 impl SealedDrops {
-	pub fn new(node: OperatorId, reason: &'static str) -> Self {
+	pub fn new(operator: OperatorId, reason: &'static str) -> Self {
 		Self {
-			node,
+			operator,
 			reason,
 			count: AtomicU64::new(0),
 		}
@@ -31,7 +31,7 @@ impl SealedDrops {
 		let after = before + dropped;
 		if before == 0 || before / WARN_STRIDE != after / WARN_STRIDE {
 			warn!(
-				node_id = self.node.0,
+				operator_id = self.operator.0,
 				dropped,
 				total = after,
 				reason = self.reason,

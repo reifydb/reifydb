@@ -189,7 +189,7 @@ pub fn flow_ephemeral_id_capacity_exceeded(flow_id: u64) -> Diagnostic {
 		column: None,
 		fragment: Fragment::None,
 		label: None,
-		help: Some("An ephemeral flow is limited to 99 nodes and 99 edges. \
+		help: Some("An ephemeral flow is limited to 99 operators and 99 edges. \
 			Simplify the subscription query to reduce operator count."
 			.to_string()),
 		notes: vec![],
@@ -313,14 +313,14 @@ pub fn flow_missing_input_edge() -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_028",
 		"operator is missing a required input edge; the flow DAG is incomplete".to_string(),
-		"The compiled flow DAG is missing an edge that a node requires. This indicates a flow compiler bug.",
+		"The compiled flow DAG is missing an edge that a operator requires. This indicates a flow compiler bug.",
 	)
 }
 
 pub fn flow_unknown_diff_origin(operator: &str, origin: Option<String>) -> Diagnostic {
 	let message = match origin {
-		Some(o) => format!("{} operator received a diff from an unknown node: {}", operator, o),
-		None => format!("{} operator received a diff from an unknown node", operator),
+		Some(o) => format!("{} operator received a diff from an unknown operator: {}", operator, o),
+		None => format!("{} operator received a diff from an unknown operator", operator),
 	};
 	flow_diagnostic(
 		"FLOW_029",
@@ -512,19 +512,19 @@ pub fn flow_rolling_lag_requires_event_time(flow: &str) -> Diagnostic {
 	}
 }
 
-pub fn flow_span_without_reclaim(flow: &str, node: &str) -> Diagnostic {
+pub fn flow_span_without_reclaim(flow: &str, operator: &str) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_044".to_string(),
 		rql: None,
-		message: format!("{node} in {flow} declares a retention span but cannot reclaim"),
+		message: format!("{operator} in {flow} declares a retention span but cannot reclaim"),
 		column: None,
 		fragment: Fragment::None,
 		label: None,
 		help: Some(format!(
-			"A span only means anything to an operator the substrate can age. {node} declares no \
+			"A span only means anything to an operator the substrate can age. {operator} declares no \
 			 Reclaim capability, so the span would be accepted and then silently ignored, and the \
 			 operator's state would grow without bound. Remove the span, or implement Reclaim on \
-			 {node}."
+			 {operator}."
 		)),
 		notes: vec![],
 		cause: None,
@@ -550,17 +550,17 @@ pub fn flow_catch_up_read_failed(from: u64, up_to: u64, cause: &str) -> Diagnost
 	}
 }
 
-pub fn flow_span_on_unageable_node(flow: &str, node: &str) -> Diagnostic {
+pub fn flow_span_on_unageable_node(flow: &str, operator: &str) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_045".to_string(),
 		rql: None,
-		message: format!("{node} in {flow} declares a retention span but holds no state to age"),
+		message: format!("{operator} in {flow} declares a retention span but holds no state to age"),
 		column: None,
 		fragment: Fragment::None,
 		label: None,
 		help: Some(format!(
 			"Spans are only meaningful on operators that keep keyed state - join, distinct, append, \
-			 apply and aggregate. {node} keeps none, so the span would be accepted and never \
+			 apply and aggregate. {operator} keeps none, so the span would be accepted and never \
 			 consulted. Move the span to the stateful operator downstream, or remove it."
 		)),
 		notes: vec![],
