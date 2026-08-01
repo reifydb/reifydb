@@ -4,7 +4,12 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	event::EventBus, interface::catalog::id::NamespaceId, metrics::registry::MetricsRegistry,
+	event::EventBus,
+	interface::catalog::{
+		config::{ConfigKey, GetConfig},
+		id::NamespaceId,
+	},
+	metrics::registry::MetricsRegistry,
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
@@ -19,14 +24,16 @@ use reifydb_value::Result;
 
 use super::{
 	accumulator::ProfilerAccumulator,
-	actor::ProfilerCollectorActor,
+	actor::{ProfilerCollectorActor, ProfilerMessage},
 	builder::ProfilerConfigurator,
 	instruments::ProfilerInstruments,
 	listener::{ProfilerScopeBatchListener, ProfilerScopeClosedListener},
-	reader::ProfilerReader,
 	sink::EventBusSink,
 	subsystem::ProfilerSubsystem,
-	vtable::ProfilerSpansVTable,
+};
+use crate::framework::{
+	current::{CurrentCache, CurrentVTable},
+	spec::{MetricsDomain, Surface},
 };
 
 type Configurator = Box<dyn FnOnce(ProfilerConfigurator) -> ProfilerConfigurator + Send>;
@@ -72,23 +79,35 @@ impl ProfilerSubsystemFactory {
 		let instruments = Arc::new(ProfilerInstruments::new());
 		let accumulator = Arc::new(RwLock::new(ProfilerAccumulator::new(
 			cfg.accumulator_capacity,
-			cfg.min_calls_for_retention,
-			Arc::clone(&instruments),
+			0,
+			Arc::new(ProfilerInstruments::new()),
 		)));
 		let event_bus = ioc.resolve::<EventBus>()?;
 		let clock = ioc.resolve::<Clock>()?;
 
-		if cfg.enabled {
+		let collector = if cfg.enabled {
 			let spawner = ioc.resolve::<ActorSpawner>()?;
-			let actor = ProfilerCollectorActor::new(Arc::clone(&accumulator), Arc::clone(&interner));
+			let actor = ProfilerCollectorActor::new(
+				Arc::clone(&accumulator),
+				Arc::clone(&interner),
+				Arc::clone(&instruments),
+				cfg.accumulator_capacity,
+				cfg.min_calls_for_retention,
+				clock.clone(),
+			);
 			let handle = spawner.spawn_coordination("profile-collector", actor);
 			let actor_ref = handle.actor_ref().clone();
 
 			event_bus.register::<ProfilerScopeClosedEvent, _>(ProfilerScopeClosedListener::new(
 				actor_ref.clone(),
 			));
-			event_bus.register::<ProfilerScopeBatchEvent, _>(ProfilerScopeBatchListener::new(actor_ref));
-		}
+			event_bus.register::<ProfilerScopeBatchEvent, _>(ProfilerScopeBatchListener::new(
+				actor_ref.clone(),
+			));
+			Some(actor_ref)
+		} else {
+			None
+		};
 
 		let sink: Arc<dyn ProfilerSink> = if cfg.enabled {
 			Arc::new(EventBusSink::new(event_bus, Arc::clone(&instruments)))
@@ -104,6 +123,7 @@ impl ProfilerSubsystemFactory {
 			instruments,
 			sink,
 			clock.clone(),
+			collector,
 		))
 	}
 }
@@ -116,6 +136,11 @@ impl Default for ProfilerSubsystemFactory {
 
 impl SubsystemFactory for ProfilerSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+		let engine = ioc.resolve::<StandardEngine>()?;
+		let spec = MetricsDomain::ProfilerSpans.spec();
+		let current_cache = CurrentCache::new(spec.columns(Surface::Current));
+		let total_cache = CurrentCache::new(spec.columns(Surface::Total));
+
 		let subsystem = match self.subsystem {
 			Some(subsystem) => subsystem,
 			None => Self::build_subsystem(self.configurator, ioc)?,
@@ -126,18 +151,26 @@ impl SubsystemFactory for ProfilerSubsystemFactory {
 			subsystem.instruments().register_into(&registry);
 		}
 
-		let engine = ioc.resolve::<StandardEngine>()?;
-		register_spans_vtable(&engine, &subsystem.reader())?;
+		if let Some(collector) = subsystem.collector() {
+			let interval = engine.catalog().get_config_duration(ConfigKey::MetricsSampleInterval);
+			let _ = collector.send(ProfilerMessage::Wire {
+				current_cache: current_cache.clone(),
+				total_cache: total_cache.clone(),
+				interval,
+			});
+		}
+
+		engine.register_virtual_table(
+			NamespaceId::SYSTEM_METRICS_PROFILER_SPANS,
+			"current",
+			CurrentVTable::new(current_cache),
+		)?;
+		engine.register_virtual_table(
+			NamespaceId::SYSTEM_METRICS_PROFILER_SPANS,
+			"total",
+			CurrentVTable::new(total_cache),
+		)?;
 
 		Ok(Box::new(subsystem))
 	}
-}
-
-fn register_spans_vtable(engine: &StandardEngine, reader: &ProfilerReader) -> Result<()> {
-	engine.register_virtual_table(
-		NamespaceId::SYSTEM_METRICS_PROFILER_SPANS,
-		"current",
-		ProfilerSpansVTable::new(reader.clone()),
-	)?;
-	Ok(())
 }

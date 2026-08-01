@@ -11,11 +11,16 @@ use std::{
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_profiler::{category::CategorySet, intern::DimInterner, layer::ProfilerLayer, sink::ProfilerSink};
-use reifydb_runtime::{context::clock::Clock, shutdown::Shutdown, sync::rwlock::RwLock};
+use reifydb_runtime::{
+	actor::mailbox::ActorRef, context::clock::Clock, shutdown::Shutdown, sync::rwlock::RwLock,
+};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use tracing::{info, instrument};
 
-use super::{accumulator::ProfilerAccumulator, instruments::ProfilerInstruments, reader::ProfilerReader};
+use super::{
+	accumulator::ProfilerAccumulator, actor::ProfilerMessage, instruments::ProfilerInstruments,
+	reader::ProfilerReader,
+};
 
 pub struct ProfilerSubsystem {
 	running: AtomicBool,
@@ -26,9 +31,11 @@ pub struct ProfilerSubsystem {
 	instruments: Arc<ProfilerInstruments>,
 	sink: Arc<dyn ProfilerSink>,
 	clock: Clock,
+	collector: Option<ActorRef<ProfilerMessage>>,
 }
 
 impl ProfilerSubsystem {
+	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		enabled: bool,
 		categories: CategorySet,
@@ -37,6 +44,7 @@ impl ProfilerSubsystem {
 		instruments: Arc<ProfilerInstruments>,
 		sink: Arc<dyn ProfilerSink>,
 		clock: Clock,
+		collector: Option<ActorRef<ProfilerMessage>>,
 	) -> Self {
 		info!("Profiler subsystem started (enabled={}, categories={:?})", enabled, categories);
 		Self {
@@ -48,11 +56,16 @@ impl ProfilerSubsystem {
 			instruments,
 			sink,
 			clock,
+			collector,
 		}
 	}
 
 	pub fn enabled(&self) -> bool {
 		self.enabled
+	}
+
+	pub fn collector(&self) -> Option<&ActorRef<ProfilerMessage>> {
+		self.collector.as_ref()
 	}
 
 	pub fn instruments(&self) -> &Arc<ProfilerInstruments> {

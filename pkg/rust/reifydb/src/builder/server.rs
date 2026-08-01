@@ -406,20 +406,28 @@ impl ServerBuilder {
 			let instruments = Arc::new(ProfilerInstruments::new());
 			let accumulator = Arc::new(RwLock::new(ProfilerAccumulator::new(
 				cfg.accumulator_capacity,
-				cfg.min_calls_for_retention,
-				Arc::clone(&instruments),
+				0,
+				Arc::new(ProfilerInstruments::new()),
 			)));
+			let mut collector = None;
 			let sink: Arc<dyn ProfilerSink> = if cfg.enabled {
-				let actor =
-					ProfilerCollectorActor::new(Arc::clone(&accumulator), Arc::clone(&interner));
+				let actor = ProfilerCollectorActor::new(
+					Arc::clone(&accumulator),
+					Arc::clone(&interner),
+					Arc::clone(&instruments),
+					cfg.accumulator_capacity,
+					cfg.min_calls_for_retention,
+					clock.clone(),
+				);
 				let handle = spawner.spawn_coordination("profile-collector", actor);
 				let actor_ref = handle.actor_ref().clone();
 				eventbus.register::<ProfilerScopeClosedEvent, _>(ProfilerScopeClosedListener::new(
 					actor_ref.clone(),
 				));
 				eventbus.register::<ProfilerScopeBatchEvent, _>(ProfilerScopeBatchListener::new(
-					actor_ref,
+					actor_ref.clone(),
 				));
+				collector = Some(actor_ref);
 				Arc::new(EventBusSink::new(eventbus.clone(), Arc::clone(&instruments)))
 			} else {
 				Arc::new(NoopSink)
@@ -432,6 +440,7 @@ impl ServerBuilder {
 				instruments,
 				sink,
 				clock.clone(),
+				collector,
 			);
 			let layer = subsystem.layer();
 			database_builder = database_builder

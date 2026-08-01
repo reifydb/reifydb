@@ -24,6 +24,7 @@ reifydb-store-single = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-sub-server = { workspace = true, optional = true }
+reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
 dashmap = { workspace = true }
 tracing = { workspace = true }

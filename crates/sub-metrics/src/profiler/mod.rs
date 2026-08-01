@@ -11,7 +11,7 @@ pub mod builder;
 pub mod factory;
 pub mod instruments;
 pub mod listener;
+pub mod publish;
 pub mod reader;
 pub mod sink;
 pub mod subsystem;
-pub mod vtable;

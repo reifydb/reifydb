@@ -46,6 +46,7 @@ fn with_subsystem_returns_provided_and_registers_vtables() {
 		instruments,
 		sink,
 		clock.clone(),
+		None,
 	);
 
 	let ioc = IocContainer::new().register(engine.clone()).register(spawner).register(eventbus.clone());

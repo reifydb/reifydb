@@ -95,30 +95,6 @@ impl VTableRegistry {
 			VIRTUAL_TABLES => Some(SystemCatalog::get_system_virtual_tables_table()),
 			VIRTUAL_TABLE_COLUMNS => Some(SystemCatalog::get_system_virtual_table_columns_table()),
 			TYPES => Some(SystemCatalog::get_system_types_table()),
-			METRICS_STORAGE_TABLE => Some(SystemCatalog::get_system_metrics_storage_table_table()),
-			METRICS_STORAGE_VIEW => Some(SystemCatalog::get_system_metrics_storage_view_table()),
-			METRICS_STORAGE_TABLE_VIRTUAL => {
-				Some(SystemCatalog::get_system_metrics_storage_table_virtual_table())
-			}
-			METRICS_STORAGE_RINGBUFFER => {
-				Some(SystemCatalog::get_system_metrics_storage_ringbuffer_table())
-			}
-			METRICS_STORAGE_DICTIONARY => {
-				Some(SystemCatalog::get_system_metrics_storage_dictionary_table())
-			}
-			METRICS_STORAGE_SERIES => Some(SystemCatalog::get_system_metrics_storage_series_table()),
-			METRICS_STORAGE_FLOW => Some(SystemCatalog::get_system_metrics_storage_flow_table()),
-			METRICS_STORAGE_OPERATOR => Some(SystemCatalog::get_system_metrics_storage_operator_table()),
-			METRICS_STORAGE_SYSTEM => Some(SystemCatalog::get_system_metrics_storage_system_table()),
-			METRICS_CDC_TABLE => Some(SystemCatalog::get_system_metrics_cdc_table_table()),
-			METRICS_CDC_VIEW => Some(SystemCatalog::get_system_metrics_cdc_view_table()),
-			METRICS_CDC_TABLE_VIRTUAL => Some(SystemCatalog::get_system_metrics_cdc_table_virtual_table()),
-			METRICS_CDC_RINGBUFFER => Some(SystemCatalog::get_system_metrics_cdc_ringbuffer_table()),
-			METRICS_CDC_DICTIONARY => Some(SystemCatalog::get_system_metrics_cdc_dictionary_table()),
-			METRICS_CDC_SERIES => Some(SystemCatalog::get_system_metrics_cdc_series_table()),
-			METRICS_CDC_FLOW => Some(SystemCatalog::get_system_metrics_cdc_flow_table()),
-			METRICS_CDC_OPERATOR => Some(SystemCatalog::get_system_metrics_cdc_operator_table()),
-			METRICS_CDC_SYSTEM => Some(SystemCatalog::get_system_metrics_cdc_system_table()),
 			MIGRATIONS => Some(SystemCatalog::get_system_migrations_table()),
 			AUTHENTICATIONS => Some(SystemCatalog::get_system_authentications_table()),
 			CONFIGS => Some(SystemCatalog::get_configs_table()),
@@ -168,24 +144,6 @@ impl VTableRegistry {
 			SystemCatalog::get_system_virtual_tables_table(),
 			SystemCatalog::get_system_virtual_table_columns_table(),
 			SystemCatalog::get_system_types_table(),
-			SystemCatalog::get_system_metrics_storage_table_table(),
-			SystemCatalog::get_system_metrics_storage_view_table(),
-			SystemCatalog::get_system_metrics_storage_table_virtual_table(),
-			SystemCatalog::get_system_metrics_storage_ringbuffer_table(),
-			SystemCatalog::get_system_metrics_storage_dictionary_table(),
-			SystemCatalog::get_system_metrics_storage_series_table(),
-			SystemCatalog::get_system_metrics_storage_flow_table(),
-			SystemCatalog::get_system_metrics_storage_operator_table(),
-			SystemCatalog::get_system_metrics_storage_system_table(),
-			SystemCatalog::get_system_metrics_cdc_table_table(),
-			SystemCatalog::get_system_metrics_cdc_view_table(),
-			SystemCatalog::get_system_metrics_cdc_table_virtual_table(),
-			SystemCatalog::get_system_metrics_cdc_ringbuffer_table(),
-			SystemCatalog::get_system_metrics_cdc_dictionary_table(),
-			SystemCatalog::get_system_metrics_cdc_series_table(),
-			SystemCatalog::get_system_metrics_cdc_flow_table(),
-			SystemCatalog::get_system_metrics_cdc_operator_table(),
-			SystemCatalog::get_system_metrics_cdc_system_table(),
 			SystemCatalog::get_system_migrations_table(),
 			SystemCatalog::get_system_authentications_table(),
 			SystemCatalog::get_configs_table(),

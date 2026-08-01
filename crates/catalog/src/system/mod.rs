@@ -4,13 +4,10 @@
 //! Self-hosted system tables: every catalog object kind ReifyDB stores about itself, declared here
 //! as a virtual table so it can be queried with regular RQL.
 
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use reifydb_core::interface::{
-	catalog::{
-		id::NamespaceId,
-		vtable::{VTable, VTableId},
-	},
+	catalog::vtable::VTable,
 	version::SystemVersion,
 };
 
@@ -33,8 +30,6 @@ pub mod handlers;
 pub mod identities;
 pub mod identity_attribute_values;
 pub mod identity_attributes;
-pub mod metrics_cdc;
-pub mod metrics_storage;
 pub mod migrations;
 pub mod namespaces;
 pub mod operator_libraries;
@@ -84,8 +79,6 @@ use handlers::handlers;
 use identities::identities;
 use identity_attribute_values::identity_attribute_values;
 use identity_attributes::identity_attributes;
-use metrics_cdc::metrics_cdc_vtable;
-use metrics_storage::metrics_storage_vtable;
 use migrations::migrations;
 use namespaces::namespaces;
 use operator_libraries::operator_libraries;
@@ -118,40 +111,6 @@ use views::views;
 use virtual_table_columns::virtual_table_columns;
 
 use crate::system::{queues::queues, ringbuffers::ringbuffers};
-
-const METRIC_PRIMITIVE_SLOTS: usize = 9;
-
-static METRICS_STORAGE_CACHE: [OnceLock<Arc<VTable>>; METRIC_PRIMITIVE_SLOTS] = [
-	OnceLock::new(),
-	OnceLock::new(),
-	OnceLock::new(),
-	OnceLock::new(),
-	OnceLock::new(),
-	OnceLock::new(),
-	OnceLock::new(),
-	OnceLock::new(),
-	OnceLock::new(),
-];
-
-static METRICS_CDC_CACHE: [OnceLock<Arc<VTable>>; METRIC_PRIMITIVE_SLOTS] = [
-	OnceLock::new(),
-	OnceLock::new(),
-	OnceLock::new(),
-	OnceLock::new(),
-	OnceLock::new(),
-	OnceLock::new(),
-	OnceLock::new(),
-	OnceLock::new(),
-	OnceLock::new(),
-];
-
-fn metrics_storage_table_cached(id: VTableId, namespace: NamespaceId, slot: usize) -> Arc<VTable> {
-	METRICS_STORAGE_CACHE[slot].get_or_init(|| metrics_storage_vtable(id, namespace)).clone()
-}
-
-fn metrics_cdc_table_cached(id: VTableId, namespace: NamespaceId, slot: usize) -> Arc<VTable> {
-	METRICS_CDC_CACHE[slot].get_or_init(|| metrics_cdc_vtable(id, namespace)).clone()
-}
 
 pub mod ids {
 	pub mod columns {
@@ -1149,126 +1108,6 @@ impl SystemCatalog {
 
 	pub fn get_system_queues_table() -> Arc<VTable> {
 		queues()
-	}
-
-	pub fn get_system_metrics_storage_table_table() -> Arc<VTable> {
-		metrics_storage_table_cached(
-			ids::vtable::METRICS_STORAGE_TABLE,
-			NamespaceId::SYSTEM_METRICS_STORAGE_TABLE,
-			0,
-		)
-	}
-
-	pub fn get_system_metrics_storage_view_table() -> Arc<VTable> {
-		metrics_storage_table_cached(
-			ids::vtable::METRICS_STORAGE_VIEW,
-			NamespaceId::SYSTEM_METRICS_STORAGE_VIEW,
-			1,
-		)
-	}
-
-	pub fn get_system_metrics_storage_table_virtual_table() -> Arc<VTable> {
-		metrics_storage_table_cached(
-			ids::vtable::METRICS_STORAGE_TABLE_VIRTUAL,
-			NamespaceId::SYSTEM_METRICS_STORAGE_TABLE_VIRTUAL,
-			2,
-		)
-	}
-
-	pub fn get_system_metrics_storage_ringbuffer_table() -> Arc<VTable> {
-		metrics_storage_table_cached(
-			ids::vtable::METRICS_STORAGE_RINGBUFFER,
-			NamespaceId::SYSTEM_METRICS_STORAGE_RINGBUFFER,
-			3,
-		)
-	}
-
-	pub fn get_system_metrics_storage_dictionary_table() -> Arc<VTable> {
-		metrics_storage_table_cached(
-			ids::vtable::METRICS_STORAGE_DICTIONARY,
-			NamespaceId::SYSTEM_METRICS_STORAGE_DICTIONARY,
-			4,
-		)
-	}
-
-	pub fn get_system_metrics_storage_series_table() -> Arc<VTable> {
-		metrics_storage_table_cached(
-			ids::vtable::METRICS_STORAGE_SERIES,
-			NamespaceId::SYSTEM_METRICS_STORAGE_SERIES,
-			5,
-		)
-	}
-
-	pub fn get_system_metrics_storage_flow_table() -> Arc<VTable> {
-		metrics_storage_table_cached(
-			ids::vtable::METRICS_STORAGE_FLOW,
-			NamespaceId::SYSTEM_METRICS_STORAGE_FLOW,
-			6,
-		)
-	}
-
-	pub fn get_system_metrics_storage_operator_table() -> Arc<VTable> {
-		metrics_storage_table_cached(
-			ids::vtable::METRICS_STORAGE_OPERATOR,
-			NamespaceId::SYSTEM_METRICS_STORAGE_OPERATOR,
-			7,
-		)
-	}
-
-	pub fn get_system_metrics_storage_system_table() -> Arc<VTable> {
-		metrics_storage_table_cached(
-			ids::vtable::METRICS_STORAGE_SYSTEM,
-			NamespaceId::SYSTEM_METRICS_STORAGE_SYSTEM,
-			8,
-		)
-	}
-
-	pub fn get_system_metrics_cdc_table_table() -> Arc<VTable> {
-		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_TABLE, NamespaceId::SYSTEM_METRICS_CDC_TABLE, 0)
-	}
-
-	pub fn get_system_metrics_cdc_view_table() -> Arc<VTable> {
-		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_VIEW, NamespaceId::SYSTEM_METRICS_CDC_VIEW, 1)
-	}
-
-	pub fn get_system_metrics_cdc_table_virtual_table() -> Arc<VTable> {
-		metrics_cdc_table_cached(
-			ids::vtable::METRICS_CDC_TABLE_VIRTUAL,
-			NamespaceId::SYSTEM_METRICS_CDC_TABLE_VIRTUAL,
-			2,
-		)
-	}
-
-	pub fn get_system_metrics_cdc_ringbuffer_table() -> Arc<VTable> {
-		metrics_cdc_table_cached(
-			ids::vtable::METRICS_CDC_RINGBUFFER,
-			NamespaceId::SYSTEM_METRICS_CDC_RINGBUFFER,
-			3,
-		)
-	}
-
-	pub fn get_system_metrics_cdc_dictionary_table() -> Arc<VTable> {
-		metrics_cdc_table_cached(
-			ids::vtable::METRICS_CDC_DICTIONARY,
-			NamespaceId::SYSTEM_METRICS_CDC_DICTIONARY,
-			4,
-		)
-	}
-
-	pub fn get_system_metrics_cdc_series_table() -> Arc<VTable> {
-		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_SERIES, NamespaceId::SYSTEM_METRICS_CDC_SERIES, 5)
-	}
-
-	pub fn get_system_metrics_cdc_flow_table() -> Arc<VTable> {
-		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_FLOW, NamespaceId::SYSTEM_METRICS_CDC_FLOW, 6)
-	}
-
-	pub fn get_system_metrics_cdc_operator_table() -> Arc<VTable> {
-		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_OPERATOR, NamespaceId::SYSTEM_METRICS_CDC_OPERATOR, 7)
-	}
-
-	pub fn get_system_metrics_cdc_system_table() -> Arc<VTable> {
-		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_SYSTEM, NamespaceId::SYSTEM_METRICS_CDC_SYSTEM, 8)
 	}
 
 	pub fn get_system_row_shapes_table() -> Arc<VTable> {

@@ -3,7 +3,14 @@
 
 use std::{collections::HashMap, mem, sync::Arc};
 
-use reifydb_catalog::metrics::storage::{cdc::CdcMetricsWriter, multi::StorageMetricsWriter};
+use reifydb_catalog::{
+	metrics::storage::{
+		cdc::{CdcMetrics, CdcMetricsWriter},
+		metrics::MetricsReader,
+		multi::{MultiStorageMetrics, StorageMetricsWriter},
+	},
+	vtable::system::metrics::MetricsObject,
+};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	actors::metrics::MetricsMessage,
@@ -26,26 +33,40 @@ use reifydb_core::{
 		operator_group_state::{Keyspace, OperatorGroupStateKey},
 		operator_state::OperatorStateKey,
 	},
-	metrics::execution::StatementMetrics,
+	metrics::{
+		execution::StatementMetrics,
+		sample::{MetricKind, Reading},
+	},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
 	actor::{
 		context::Context,
+		mailbox::ActorRef,
 		traits::{Actor, Directive},
 	},
 	context::clock::Clock,
 };
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
+use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	byte_size::ByteSize,
+	count::Count,
 	params::Params,
 	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 use tracing::{error, trace};
 
 use crate::{
-	accumulator::StatementMetricsAccumulator, domains::epoch::EpochGauge, statement::StatementMetricsAggregate,
+	accumulator::StatementMetricsAccumulator,
+	domains::epoch::EpochGauge,
+	framework::{
+		accumulator::{Measure, MetricsRow},
+		spec::{MetricsDomain, Surface},
+	},
+	sampler::SamplerMessage,
+	statement::StatementMetricsAggregate,
 };
 
 fn default_flush_interval() -> Duration {
@@ -61,6 +82,7 @@ pub struct MetricsFlushActor {
 	config: Option<Arc<dyn GetConfig>>,
 	flush_interval_override: Option<Duration>,
 	epoch_gauge: Option<Arc<EpochGauge>>,
+	sampler: Option<ActorRef<SamplerMessage>>,
 }
 
 impl MetricsFlushActor {
@@ -79,7 +101,13 @@ impl MetricsFlushActor {
 			config: None,
 			flush_interval_override: None,
 			epoch_gauge: None,
+			sampler: None,
 		}
+	}
+
+	pub fn with_sampler(mut self, sampler: ActorRef<SamplerMessage>) -> Self {
+		self.sampler = Some(sampler);
+		self
 	}
 
 	pub fn with_drain(mut self, engine: StandardEngine, clock: Clock) -> Self {
@@ -288,7 +316,46 @@ impl MetricsFlushActor {
 		let pending = mem::take(&mut state.pending);
 		self.drain_request_history(pending);
 		self.drain_statement_metrics();
+		self.push_object_metrics();
 		emit_stats_processed(&self.event_bus, &mut state.max_version);
+	}
+
+	fn push_object_metrics(&self) {
+		let Some(sampler) = &self.sampler else {
+			return;
+		};
+		let Some((engine, _)) = &self.drain else {
+			return;
+		};
+		let mut query = match engine.begin_query(IdentityId::system()) {
+			Ok(query) => query,
+			Err(e) => {
+				error!("Failed to begin metrics resolution transaction: {}", e);
+				return;
+			}
+		};
+		let mut txn = Transaction::Query(&mut query);
+		let reader = MetricsReader::new(self.single_store.clone());
+		match storage_rows(&reader, &mut txn) {
+			Ok(rows) => {
+				let _ = sampler.send(SamplerMessage::Push {
+					domain: MetricsDomain::Storage,
+					surface: Surface::Current,
+					rows,
+				});
+			}
+			Err(e) => error!("Failed to collect storage metrics rows: {}", e),
+		}
+		match cdc_rows(&reader, &mut txn) {
+			Ok(rows) => {
+				let _ = sampler.send(SamplerMessage::Push {
+					domain: MetricsDomain::Cdc,
+					surface: Surface::Current,
+					rows,
+				});
+			}
+			Err(e) => error!("Failed to collect cdc metrics rows: {}", e),
+		}
 	}
 
 	#[inline]
@@ -422,6 +489,122 @@ fn emit_stats_processed(event_bus: &EventBus, max_version: &mut CommitVersion) {
 	if max_version.0 > 0 {
 		event_bus.emit(MetricsProcessedEvent::new(*max_version));
 		*max_version = CommitVersion(0);
+	}
+}
+
+fn tier_name(tier: Tier) -> &'static str {
+	match tier {
+		Tier::Buffer => "buffer",
+		Tier::Persistent => "persistent",
+	}
+}
+
+fn level_bytes(metric: &'static str, bytes: u64) -> Measure {
+	Measure {
+		metric,
+		reading: Reading::Bytes(ByteSize::from_bytes(bytes)),
+		kind: MetricKind::Level,
+	}
+}
+
+fn level_count(metric: &'static str, count: u64) -> Measure {
+	Measure {
+		metric,
+		reading: Reading::Count(Count::new(count)),
+		kind: MetricKind::Level,
+	}
+}
+
+fn storage_rows(
+	reader: &MetricsReader<SingleStore>,
+	txn: &mut Transaction<'_>,
+) -> reifydb_value::Result<Vec<MetricsRow>> {
+	let mut rows = Vec::new();
+	let mut flows: HashMap<(u64, u64, Tier), MultiStorageMetrics> = HashMap::new();
+	for tier in [Tier::Buffer, Tier::Persistent] {
+		for (metric_id, combined) in reader.scan_tier(tier).unwrap_or_default() {
+			let Some(resolved) = MetricsObject::resolve(txn, metric_id)? else {
+				continue;
+			};
+			rows.push(storage_row(
+				resolved.object.name(),
+				resolved.id,
+				resolved.namespace_id,
+				tier,
+				&combined.storage,
+			));
+			if let Some((flow_id, flow_namespace)) = resolved.flow {
+				let entry = flows.entry((flow_id, flow_namespace, tier)).or_default();
+				*entry += combined.storage;
+			}
+		}
+	}
+	for ((flow_id, namespace_id, tier), storage) in flows {
+		rows.push(storage_row("flow", flow_id, namespace_id, tier, &storage));
+	}
+	Ok(rows)
+}
+
+fn storage_row(
+	object_kind: &'static str,
+	id: u64,
+	namespace_id: u64,
+	tier: Tier,
+	storage: &MultiStorageMetrics,
+) -> MetricsRow {
+	MetricsRow {
+		dimensions: vec![
+			Value::Utf8(object_kind.to_string()),
+			Value::Uint8(id),
+			Value::Uint8(namespace_id),
+			Value::Utf8(tier_name(tier).to_string()),
+		],
+		measures: vec![
+			level_bytes("live_key_bytes", storage.current_key_bytes),
+			level_bytes("live_value_bytes", storage.current_value_bytes),
+			level_bytes("live_bytes", storage.current_bytes()),
+			level_count("live_count", storage.current_count),
+			level_bytes("superseded_key_bytes", storage.historical_key_bytes),
+			level_bytes("superseded_value_bytes", storage.historical_value_bytes),
+			level_bytes("superseded_bytes", storage.historical_bytes()),
+			level_count("superseded_count", storage.historical_count),
+			level_bytes("total_bytes", storage.total_bytes()),
+		],
+	}
+}
+
+fn cdc_rows(reader: &MetricsReader<SingleStore>, txn: &mut Transaction<'_>) -> reifydb_value::Result<Vec<MetricsRow>> {
+	let mut rows = Vec::new();
+	let mut flows: HashMap<(u64, u64), CdcMetrics> = HashMap::new();
+	for (metric_id, metrics) in reader.cdc_reader().scan_all().unwrap_or_default() {
+		let Some(resolved) = MetricsObject::resolve(txn, metric_id)? else {
+			continue;
+		};
+		rows.push(cdc_row(resolved.object.name(), resolved.id, resolved.namespace_id, &metrics));
+		if let Some((flow_id, flow_namespace)) = resolved.flow {
+			let entry = flows.entry((flow_id, flow_namespace)).or_default();
+			*entry += metrics;
+		}
+	}
+	for ((flow_id, namespace_id), metrics) in flows {
+		rows.push(cdc_row("flow", flow_id, namespace_id, &metrics));
+	}
+	Ok(rows)
+}
+
+fn cdc_row(object_kind: &'static str, id: u64, namespace_id: u64, metrics: &CdcMetrics) -> MetricsRow {
+	MetricsRow {
+		dimensions: vec![
+			Value::Utf8(object_kind.to_string()),
+			Value::Uint8(id),
+			Value::Uint8(namespace_id),
+		],
+		measures: vec![
+			level_bytes("key_bytes", metrics.key_bytes.as_bytes()),
+			level_bytes("value_bytes", metrics.value_bytes.as_bytes()),
+			level_bytes("total_bytes", metrics.total_bytes().as_bytes()),
+			level_count("count", metrics.entry_count.as_u64()),
+		],
 	}
 }
 

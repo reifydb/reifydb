@@ -4,7 +4,6 @@
 use std::sync::Arc;
 
 use reifydb_catalog::{
-	system::SystemCatalog,
 	vtable::{
 		VTableContext,
 		system::{
@@ -27,7 +26,6 @@ use reifydb_catalog::{
 			identities::SystemIdentities,
 			identity_attribute_values::SystemIdentityAttributeValues,
 			identity_attributes::SystemIdentityAttributes,
-			metrics::{MetricsObject, cdc::SystemMetricsCdc, storage::SystemMetricsStorage},
 			migrations::SystemMigrations,
 			namespaces::SystemNamespaces,
 			operator_libraries::SystemOperatorLibraries,
@@ -82,10 +80,6 @@ pub(crate) fn compile_virtual_scan(node: TableVirtualScanNode, context: Arc<Quer
 		user_table
 	} else if namespace.id() == NamespaceId::SYSTEM {
 		compile_system_vtable(&table.name, &context)
-	} else if let Some(vtable) = compile_metrics_storage_vtable(namespace.id(), &context) {
-		vtable
-	} else if let Some(vtable) = compile_metrics_cdc_vtable(namespace.id(), &context) {
-		vtable
 	} else if namespace.id() == NamespaceId::SYSTEM_PROCEDURES {
 		compile_procedures_vtable(&table.name, &context)
 	} else if namespace.id() == NamespaceId::SYSTEM_BINDINGS {
@@ -170,58 +164,6 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 		}
 		_ => panic!("Unknown virtual table type: {}", name),
 	}
-}
-
-fn compile_metrics_storage_vtable(namespace: NamespaceId, context: &QueryContext) -> Option<VTables> {
-	let (vtable, object) = if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_TABLE {
-		(SystemCatalog::get_system_metrics_storage_table_table(), MetricsObject::Table)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_VIEW {
-		(SystemCatalog::get_system_metrics_storage_view_table(), MetricsObject::View)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_TABLE_VIRTUAL {
-		(SystemCatalog::get_system_metrics_storage_table_virtual_table(), MetricsObject::TableVirtual)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_RINGBUFFER {
-		(SystemCatalog::get_system_metrics_storage_ringbuffer_table(), MetricsObject::RingBuffer)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_DICTIONARY {
-		(SystemCatalog::get_system_metrics_storage_dictionary_table(), MetricsObject::Dictionary)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_SERIES {
-		(SystemCatalog::get_system_metrics_storage_series_table(), MetricsObject::Series)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_FLOW {
-		(SystemCatalog::get_system_metrics_storage_flow_table(), MetricsObject::Flow)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_OPERATOR {
-		(SystemCatalog::get_system_metrics_storage_operator_table(), MetricsObject::Operator)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_SYSTEM {
-		(SystemCatalog::get_system_metrics_storage_system_table(), MetricsObject::System)
-	} else {
-		return None;
-	};
-	let reader = context.services.metrics_reader.clone();
-	Some(VTables::MetricsStorage(SystemMetricsStorage::new(vtable, object, reader)))
-}
-
-fn compile_metrics_cdc_vtable(namespace: NamespaceId, context: &QueryContext) -> Option<VTables> {
-	let (vtable, object) = if namespace == NamespaceId::SYSTEM_METRICS_CDC_TABLE {
-		(SystemCatalog::get_system_metrics_cdc_table_table(), MetricsObject::Table)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_VIEW {
-		(SystemCatalog::get_system_metrics_cdc_view_table(), MetricsObject::View)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_TABLE_VIRTUAL {
-		(SystemCatalog::get_system_metrics_cdc_table_virtual_table(), MetricsObject::TableVirtual)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_RINGBUFFER {
-		(SystemCatalog::get_system_metrics_cdc_ringbuffer_table(), MetricsObject::RingBuffer)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_DICTIONARY {
-		(SystemCatalog::get_system_metrics_cdc_dictionary_table(), MetricsObject::Dictionary)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_SERIES {
-		(SystemCatalog::get_system_metrics_cdc_series_table(), MetricsObject::Series)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_FLOW {
-		(SystemCatalog::get_system_metrics_cdc_flow_table(), MetricsObject::Flow)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_OPERATOR {
-		(SystemCatalog::get_system_metrics_cdc_operator_table(), MetricsObject::Operator)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_SYSTEM {
-		(SystemCatalog::get_system_metrics_cdc_system_table(), MetricsObject::System)
-	} else {
-		return None;
-	};
-	let reader = context.services.metrics_reader.clone();
-	Some(VTables::MetricsCdc(SystemMetricsCdc::new(vtable, object, reader)))
 }
 
 fn compile_procedures_vtable(name: &str, context: &QueryContext) -> VTables {

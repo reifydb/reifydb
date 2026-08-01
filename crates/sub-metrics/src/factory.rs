@@ -39,7 +39,7 @@ use crate::{
 		CdcEvictedListener, CdcWrittenListener, MultiCommittedListener, MultiSweptListener,
 		RequestMetricsEventListener, VersionEpochSampledListener,
 	},
-	sampler::MetricsSamplerActor,
+	sampler::{MetricsSamplerActor, SamplerMessage},
 	subsystem::MetricsSubsystem,
 };
 
@@ -73,7 +73,7 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 
 		let epoch_gauge = Arc::new(EpochGauge::default());
 
-		Self::wire_sampler(
+		let sampler = Self::wire_sampler(
 			&engine,
 			&spawner,
 			&clock,
@@ -82,7 +82,7 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 			&retention_metrics,
 			epoch_gauge.clone(),
 		)?;
-		Self::wire_accounting(ioc, &engine, &spawner, epoch_gauge)?;
+		Self::wire_accounting(ioc, &engine, &spawner, epoch_gauge, sampler)?;
 
 		Ok(Box::new(MetricsSubsystem::new(SampleReader::new(collectors))))
 	}
@@ -98,7 +98,7 @@ impl MetricsSubsystemFactory {
 		multi_store: &MultiStore,
 		retention_metrics: &RetentionMetrics,
 		epoch_gauge: Arc<EpochGauge>,
-	) -> Result<()> {
+	) -> Result<ActorRef<SamplerMessage>> {
 		let surfaces = Arc::new(MetricsSurfaces::build(MetricsDomain::ALL.map(MetricsDomain::spec)));
 		surfaces.register_all(engine)?;
 		let interval = engine.catalog().get_config_duration(ConfigKey::MetricsSampleInterval);
@@ -111,8 +111,8 @@ impl MetricsSubsystemFactory {
 			clock.clone(),
 			interval,
 		);
-		spawner.spawn_coordination("metrics-sampler", actor);
-		Ok(())
+		let handle = spawner.spawn_coordination("metrics-sampler", actor);
+		Ok(handle.actor_ref().clone())
 	}
 
 	#[inline]
@@ -121,6 +121,7 @@ impl MetricsSubsystemFactory {
 		engine: &StandardEngine,
 		spawner: &ActorSpawner,
 		epoch_gauge: Arc<EpochGauge>,
+		sampler: ActorRef<SamplerMessage>,
 	) -> Result<()> {
 		let accumulator = ioc
 			.try_resolve::<Arc<StatementMetricsAccumulator>>()
@@ -134,7 +135,8 @@ impl MetricsSubsystemFactory {
 		let actor = MetricsFlushActor::new(accumulator, event_bus.clone(), single_store, multi_store)
 			.with_drain(engine.clone(), clock)
 			.with_config(Arc::new(engine.catalog()) as Arc<dyn GetConfig>)
-			.with_epoch_gauge(epoch_gauge);
+			.with_epoch_gauge(epoch_gauge)
+			.with_sampler(sampler);
 
 		let handle = spawner.spawn_coordination("metrics-flush", actor);
 		ioc.register_service(handle.actor_ref().clone());

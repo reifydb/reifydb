@@ -70,6 +70,29 @@ impl ProfilerAccumulator {
 		self.records.values().cloned().collect()
 	}
 
+	pub fn drain(&mut self) -> Vec<(SpanIdent, AggregateRecord)> {
+		let out: Vec<(SpanIdent, AggregateRecord)> = self.records.drain().collect();
+		self.instruments.accumulator_size.set(0.0);
+		out
+	}
+
+	pub fn absorb(&mut self, ident: SpanIdent, record: AggregateRecord) {
+		if let Some(existing) = self.records.get_mut(&ident) {
+			existing.calls = existing.calls.saturating_add(record.calls);
+			existing.total_us = existing.total_us.saturating_add(record.total_us);
+			existing.histogram.merge(&record.histogram);
+			for (sum, add) in existing.extras_sum.iter_mut().zip(record.extras_sum) {
+				*sum = sum.saturating_add(add);
+			}
+			return;
+		}
+		if self.records.len() >= self.capacity {
+			self.evict_lfu();
+		}
+		self.records.insert(ident, record);
+		self.instruments.accumulator_size.set(self.records.len() as f64);
+	}
+
 	pub fn len(&self) -> usize {
 		self.records.len()
 	}

@@ -3,7 +3,6 @@
 
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::test_harness::create_test_admin_transaction;
-use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::params::Params;
 
@@ -27,7 +26,6 @@ use super::{
 	identities::SystemIdentities,
 	identity_attribute_values::SystemIdentityAttributeValues,
 	identity_attributes::SystemIdentityAttributes,
-	metrics::{MetricsObject, cdc::SystemMetricsCdc, storage::SystemMetricsStorage},
 	migrations::SystemMigrations,
 	namespaces::SystemNamespaces,
 	node_retention_store::NodeRetentionStore,
@@ -64,8 +62,6 @@ use super::{
 };
 use crate::{
 	catalog::Catalog,
-	metrics::storage::metrics::MetricsReader,
-	system::SystemCatalog,
 	vtable::{BaseVTable, VTableContext},
 };
 
@@ -73,33 +69,8 @@ fn all_system_vtables() -> Vec<Box<dyn BaseVTable>> {
 	let ioc = IocContainer::new();
 	let catalog = Catalog::testing();
 	let operators = OperatorLibraryStore::new();
-	let metrics = MetricsReader::new(SingleStore::testing_memory());
 
-	let metrics_storage = [
-		(SystemCatalog::get_system_metrics_storage_table_table(), MetricsObject::Table),
-		(SystemCatalog::get_system_metrics_storage_view_table(), MetricsObject::View),
-		(SystemCatalog::get_system_metrics_storage_table_virtual_table(), MetricsObject::TableVirtual),
-		(SystemCatalog::get_system_metrics_storage_ringbuffer_table(), MetricsObject::RingBuffer),
-		(SystemCatalog::get_system_metrics_storage_dictionary_table(), MetricsObject::Dictionary),
-		(SystemCatalog::get_system_metrics_storage_series_table(), MetricsObject::Series),
-		(SystemCatalog::get_system_metrics_storage_flow_table(), MetricsObject::Flow),
-		(SystemCatalog::get_system_metrics_storage_operator_table(), MetricsObject::Operator),
-		(SystemCatalog::get_system_metrics_storage_system_table(), MetricsObject::System),
-	];
-
-	let metrics_cdc = [
-		(SystemCatalog::get_system_metrics_cdc_table_table(), MetricsObject::Table),
-		(SystemCatalog::get_system_metrics_cdc_view_table(), MetricsObject::View),
-		(SystemCatalog::get_system_metrics_cdc_table_virtual_table(), MetricsObject::TableVirtual),
-		(SystemCatalog::get_system_metrics_cdc_ringbuffer_table(), MetricsObject::RingBuffer),
-		(SystemCatalog::get_system_metrics_cdc_dictionary_table(), MetricsObject::Dictionary),
-		(SystemCatalog::get_system_metrics_cdc_series_table(), MetricsObject::Series),
-		(SystemCatalog::get_system_metrics_cdc_flow_table(), MetricsObject::Flow),
-		(SystemCatalog::get_system_metrics_cdc_operator_table(), MetricsObject::Operator),
-		(SystemCatalog::get_system_metrics_cdc_system_table(), MetricsObject::System),
-	];
-
-	let mut result: Vec<Box<dyn BaseVTable>> = vec![
+	let result: Vec<Box<dyn BaseVTable>> = vec![
 		Box::new(SystemSequences::new()),
 		Box::new(SystemNamespaces::new()),
 		Box::new(SystemTables::new()),
@@ -154,14 +125,6 @@ fn all_system_vtables() -> Vec<Box<dyn BaseVTable>> {
 		Box::new(SystemBindingsGrpc::new()),
 		Box::new(SystemBindingsWs::new()),
 	];
-
-	for (vtable, object) in metrics_storage {
-		result.push(Box::new(SystemMetricsStorage::new(vtable, object, metrics.clone())));
-	}
-
-	for (vtable, object) in metrics_cdc {
-		result.push(Box::new(SystemMetricsCdc::new(vtable, object, metrics.clone())));
-	}
 
 	result
 }
