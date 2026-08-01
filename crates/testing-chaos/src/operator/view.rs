@@ -258,7 +258,7 @@ impl Default for MaterializedView {
 mod fold_tests {
 	use reifydb_core::{
 		common::CommitVersion,
-		interface::catalog::flow::FlowNodeId,
+		interface::catalog::flow::OperatorId,
 		value::column::{ColumnWithName, buffer::ColumnBuffer},
 	};
 	use reifydb_value::{
@@ -278,7 +278,7 @@ mod fold_tests {
 	}
 
 	fn change(diffs: Vec<Diff>) -> Change {
-		Change::from_flow(FlowNodeId(1), CommitVersion(1), diffs, DateTime::default())
+		Change::from_flow(OperatorId(1), CommitVersion(1), diffs, DateTime::default())
 	}
 
 	#[test]

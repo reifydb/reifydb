@@ -294,7 +294,7 @@ pub mod tests {
 
 	use reifydb_core::{
 		interface::{
-			catalog::flow::FlowNodeId,
+			catalog::flow::OperatorId,
 			change::{ChangeOrigin, Diff},
 		},
 		value::column::columns::Columns,
@@ -438,7 +438,7 @@ pub mod tests {
 		);
 
 		let relevant_change = Change {
-			origin: ChangeOrigin::Flow(FlowNodeId(1)),
+			origin: ChangeOrigin::Flow(OperatorId(1)),
 			version: CommitVersion(1),
 			diffs: [Diff::Insert {
 				post: Columns::empty(),

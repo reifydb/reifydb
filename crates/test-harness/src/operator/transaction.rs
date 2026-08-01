@@ -8,7 +8,7 @@ use reifydb_codec::encoded::row::{EncodedRow, SHAPE_HEADER_SIZE};
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
-	interface::catalog::flow::FlowNodeId,
+	interface::catalog::flow::OperatorId,
 	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
 	state::budget::OperatorStateBudgetHandle,
 };
@@ -21,7 +21,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, identity::IdentityId},
 };
 
-pub const NODE_ID: FlowNodeId = FlowNodeId(1);
+pub const NODE_ID: OperatorId = OperatorId(1);
 
 pub fn make_row(payload: &str, created_at: u64, updated_at: u64) -> EncodedRow {
 	let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];

@@ -52,7 +52,7 @@ pub fn load(db: &Database) -> Result<Catalog, String> {
 	}
 
 	let mut operators: HashMap<u64, String> = HashMap::new();
-	for r in rows(db, "from system::flow_nodes")? {
+	for r in rows(db, "from system::operators")? {
 		if let Some(id) = u64c(&r, "id") {
 			let flow_id = u64c(&r, "flow_id").unwrap_or(0);
 			let view = flows.get(&flow_id).cloned().unwrap_or_else(|| format!("flow{flow_id}"));

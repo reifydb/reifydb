@@ -3,7 +3,7 @@
 
 use reifydb::{
 	abi::operator::capabilities::OperatorCapability,
-	core::interface::catalog::flow::FlowNodeId,
+	core::interface::catalog::flow::OperatorId,
 	sdk::{
 		config::Config,
 		error::Result as SdkResult,
@@ -16,7 +16,7 @@ use reifydb::{
 	value::value::duration::Duration,
 };
 
-const NODE: FlowNodeId = FlowNodeId(1);
+const NODE: OperatorId = OperatorId(1);
 
 struct Inert;
 
@@ -31,7 +31,7 @@ impl OperatorMetadata for Inert {
 }
 
 impl OperatorLogic for Inert {
-	fn create(_node: FlowNodeId, _config: &Config) -> SdkResult<Self> {
+	fn create(_node: OperatorId, _config: &Config) -> SdkResult<Self> {
 		Ok(Inert)
 	}
 

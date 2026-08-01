@@ -433,7 +433,7 @@ pub mod tests {
 	use super::*;
 	use crate::flow::{
 		flow::FlowDag,
-		node::{FlowNode, OperatorDef},
+		operator::{FlowNode, OperatorDef},
 	};
 
 	fn create_test_flow_with_nodes(id: u64, node_types: Vec<OperatorDef>) -> FlowDag {

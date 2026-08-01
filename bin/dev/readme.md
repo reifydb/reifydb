@@ -93,7 +93,7 @@ The tool joins two independent data sources: sizing from SQLite, names from Reif
 
 - **`catalog.rs` (naming, boots the engine).** Opens the directory through the embedded engine
   and queries `system::namespaces`, `system::tables`, `system::series`, `system::ringbuffers`,
-  `system::views`, `system::flows`, and `system::flow_nodes` as root (bypassing the `system::*`
+  `system::views`, `system::flows`, and `system::operators` as root (bypassing the `system::*`
   policy gate), then always stops the engine. It builds two maps: physical source id -> logical
   name (a deferred view maps via its `underlying_id`, since its materialized rows live in the
   underlying storage shape), and operator flow-node id -> a `view  [stage]{operator}` label. The
