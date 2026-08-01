@@ -75,7 +75,7 @@ impl MetricsCollector for LoaderMetrics {
 		out.push(MetricsSample::cumulative(
 			"flow_loader",
 			"bytes_loaded",
-			Reading::Heap(ByteSize::from_bytes(self.inner.bytes_loaded.load(Ordering::Relaxed))),
+			Reading::Bytes(ByteSize::from_bytes(self.inner.bytes_loaded.load(Ordering::Relaxed))),
 		));
 	}
 }

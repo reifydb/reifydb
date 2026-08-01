@@ -53,13 +53,6 @@ impl MetricsCollector for SqlitePageCacheCollector {
 		out.push(MetricsSample::bytes("sqlite::multi", "page_cache_used_bytes", metrics.used));
 		out.push(MetricsSample::counter("sqlite::multi", "page_cache_hit_count", metrics.hits.as_u64()));
 		out.push(MetricsSample::counter("sqlite::multi", "page_cache_miss_count", metrics.misses.as_u64()));
-		let requests = metrics.hits.as_u64() + metrics.misses.as_u64();
-		let hit_ratio = if requests > 0 {
-			metrics.hits.as_u64() as f64 / requests as f64
-		} else {
-			0.0
-		};
-		out.push(MetricsSample::ratio("sqlite::multi", "page_cache_hit_ratio", hit_ratio));
 		out.push(MetricsSample::count(
 			"sqlite::multi",
 			"page_cache_sampled_connections",

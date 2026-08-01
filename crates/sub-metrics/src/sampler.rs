@@ -90,14 +90,19 @@ impl MetricsSamplerActor {
 			Surface::Current,
 			long_rows(collect_watermarks(&self.collectors)),
 		);
+		let mut operator_samples = collect_operators(&self.collectors);
+		operator_samples.extend(self.collectors.registry.collect_operators());
+		accumulator.push(MetricsDomain::RuntimeOperators, Surface::Current, long_rows(operator_samples));
 		accumulator.push(
-			MetricsDomain::RuntimeOperators,
+			MetricsDomain::Instruments,
 			Surface::Current,
-			long_rows(collect_operators(&self.collectors)),
+			long_rows(self.collectors.registry.read_reporters_windowed()),
 		);
-		let reporters = self.collectors.registry.read_reporters();
-		accumulator.push(MetricsDomain::Instruments, Surface::Current, long_rows(reporters.clone()));
-		accumulator.push(MetricsDomain::Instruments, Surface::Total, long_rows(reporters));
+		accumulator.push(
+			MetricsDomain::Instruments,
+			Surface::Total,
+			long_rows(self.collectors.registry.read_reporters()),
+		);
 		accumulator.push(MetricsDomain::ReadBuffer, Surface::Current, read_buffer_rows(&self.multi_store));
 		accumulator.push(
 			MetricsDomain::Epoch,

@@ -10,6 +10,7 @@ use crate::metrics::{collect::MetricsCollector, report::MetricsReporter, sample:
 #[derive(Clone)]
 pub struct MetricsRegistry {
 	collectors: Arc<Mutex<Vec<Arc<dyn MetricsCollector>>>>,
+	operator_collectors: Arc<Mutex<Vec<Arc<dyn MetricsCollector>>>>,
 	reporters: Arc<Mutex<Vec<Arc<dyn MetricsReporter>>>>,
 }
 
@@ -17,6 +18,7 @@ impl MetricsRegistry {
 	pub fn new() -> Self {
 		Self {
 			collectors: Arc::new(Mutex::new(Vec::new())),
+			operator_collectors: Arc::new(Mutex::new(Vec::new())),
 			reporters: Arc::new(Mutex::new(Vec::new())),
 		}
 	}
@@ -29,12 +31,25 @@ impl MetricsRegistry {
 		self.collectors.lock().extend(collectors);
 	}
 
+	pub fn register_operator_collector(&self, collector: Arc<dyn MetricsCollector>) {
+		self.operator_collectors.lock().push(collector);
+	}
+
 	pub fn register_reporter(&self, reporter: Arc<dyn MetricsReporter>) {
 		self.reporters.lock().push(reporter);
 	}
 
 	pub fn collect(&self) -> Vec<MetricsSample> {
 		let collectors: Vec<Arc<dyn MetricsCollector>> = self.collectors.lock().clone();
+		let mut out = Vec::new();
+		for collector in &collectors {
+			collector.collect(&mut out);
+		}
+		out
+	}
+
+	pub fn collect_operators(&self) -> Vec<MetricsSample> {
+		let collectors: Vec<Arc<dyn MetricsCollector>> = self.operator_collectors.lock().clone();
 		let mut out = Vec::new();
 		for collector in &collectors {
 			collector.collect(&mut out);
@@ -51,8 +66,20 @@ impl MetricsRegistry {
 		out
 	}
 
+	pub fn read_reporters_windowed(&self) -> Vec<MetricsSample> {
+		let reporters: Vec<Arc<dyn MetricsReporter>> = self.reporters.lock().clone();
+		let mut out = Vec::new();
+		for reporter in &reporters {
+			reporter.read_window(&mut out);
+		}
+		out
+	}
+
 	pub fn named_heap_bytes(&self) -> u64 {
-		self.collect().iter().filter_map(|sample| sample.reading.heap_bytes()).sum()
+		let memory: u64 = self.collect().iter().filter_map(|sample| sample.reading.heap_bytes()).sum();
+		let operators: u64 =
+			self.collect_operators().iter().filter_map(|sample| sample.reading.heap_bytes()).sum();
+		memory + operators
 	}
 }
 
@@ -185,6 +212,45 @@ mod tests {
 		let read = registry.read_reporters();
 		assert_eq!(read.len(), 1, "read_reporters() must read instruments only");
 		assert_eq!(read[0].scope, "instrument");
+	}
+
+	#[test]
+	fn operator_collectors_stay_out_of_the_memory_stream() {
+		// collect() feeds runtime::memory and collect_operators() feeds runtime::operators;
+		// blending them recreates the flow_node split across two domains that merge 2 removed.
+		let registry = MetricsRegistry::new();
+		registry.register_collector(Arc::new(Fixed {
+			scope: "memory",
+			bytes: 10,
+		}));
+		registry.register_operator_collector(Arc::new(Fixed {
+			scope: "flow_node::7",
+			bytes: 20,
+		}));
+
+		let memory = registry.collect();
+		assert_eq!(memory.len(), 1, "collect() must not include operator collectors");
+		assert_eq!(memory[0].scope, "memory");
+
+		let operators = registry.collect_operators();
+		assert_eq!(operators.len(), 1, "collect_operators() must serve only the operator bucket");
+		assert_eq!(operators[0].scope, "flow_node::7");
+	}
+
+	#[test]
+	fn named_heap_bytes_sums_heap_from_both_collector_buckets() {
+		// Moving the per-operator collectors out of collect() must not shrink the reconciliation
+		// numerator, or dark_bytes grows by exactly the operator heap and reads as a leak.
+		let registry = MetricsRegistry::new();
+		registry.register_collector(Arc::new(Fixed {
+			scope: "memory",
+			bytes: 100,
+		}));
+		registry.register_operator_collector(Arc::new(Fixed {
+			scope: "flow_node::7",
+			bytes: 900,
+		}));
+		assert_eq!(registry.named_heap_bytes(), 1000, "operator heap must keep counting as named heap");
 	}
 
 	#[test]

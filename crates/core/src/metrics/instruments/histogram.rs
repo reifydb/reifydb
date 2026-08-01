@@ -16,6 +16,7 @@ pub struct Histogram {
 	pub kind: ReadingKind,
 	pub boundaries: &'static [f64],
 	buckets: Vec<AtomicU64>,
+	window_buckets: Vec<AtomicU64>,
 	sum: AtomicU64,
 	count: AtomicU64,
 }
@@ -51,12 +52,14 @@ pub struct Percentiles {
 impl Histogram {
 	pub fn new(name: &'static str, help: &'static str, kind: ReadingKind, boundaries: &'static [f64]) -> Self {
 		let buckets = (0..boundaries.len() + 1).map(|_| AtomicU64::new(0)).collect();
+		let window_buckets = (0..boundaries.len() + 1).map(|_| AtomicU64::new(0)).collect();
 		Self {
 			name,
 			help,
 			kind,
 			boundaries,
 			buckets,
+			window_buckets,
 			sum: AtomicU64::new(0),
 			count: AtomicU64::new(0),
 		}
@@ -75,6 +78,7 @@ impl Histogram {
 			);
 		}
 		self.buckets[idx].fetch_add(1, Ordering::Relaxed);
+		self.window_buckets[idx].fetch_add(1, Ordering::Relaxed);
 
 		let mut current = self.sum.load(Ordering::Relaxed);
 		loop {
@@ -108,11 +112,26 @@ impl Histogram {
 		let bucket_counts: Vec<u64> = self.buckets.iter().map(|b| b.load(Ordering::Relaxed)).collect();
 		compute_percentiles(&bucket_counts, self.count(), self.boundaries)
 	}
+
+	pub fn take_window_percentiles(&self) -> Percentiles {
+		let bucket_counts: Vec<u64> = self.window_buckets.iter().map(|b| b.swap(0, Ordering::Relaxed)).collect();
+		let count = bucket_counts.iter().sum();
+		compute_percentiles(&bucket_counts, count, self.boundaries)
+	}
 }
 
 impl MetricsReporter for Histogram {
 	fn read(&self, out: &mut Vec<MetricsSample>) {
-		let percentiles = self.percentiles();
+		self.push_samples(out, self.percentiles());
+	}
+
+	fn read_window(&self, out: &mut Vec<MetricsSample>) {
+		self.push_samples(out, self.take_window_percentiles());
+	}
+}
+
+impl Histogram {
+	fn push_samples(&self, out: &mut Vec<MetricsSample>, percentiles: Percentiles) {
 		out.push(MetricsSample::counter(self.name, "count", self.count()));
 		out.push(MetricsSample::cumulative(self.name, "sum", self.kind.reading(self.sum())));
 		out.push(MetricsSample::distribution(self.name, "p50", self.kind.reading(percentiles.p50)));
@@ -289,6 +308,23 @@ mod tests {
 		assert_eq!(p.p50, 20.0);
 		assert_eq!(p.p99, 20.0);
 		assert_eq!(p.max, 20.0);
+	}
+
+	#[test]
+	fn window_percentiles_reset_on_take_while_cumulative_survive() {
+		// read_window feeds ::current, so its percentiles must cover only the observations
+		// since the last take; the cumulative buckets keep feeding ::total untouched.
+		let h = Histogram::new("t", "h", ReadingKind::Ratio, SIMPLE_BOUNDS);
+		h.observe(15.0);
+
+		let window = h.take_window_percentiles();
+		assert_eq!(window.p50, 20.0, "the first window must see the observation");
+
+		let empty = h.take_window_percentiles();
+		assert_eq!(empty.p50, 0.0, "a drained window must read empty until new observations arrive");
+
+		assert_eq!(h.percentiles().p50, 20.0, "cumulative percentiles must survive the window drain");
+		assert_eq!(h.count(), 1, "the cumulative count must survive the window drain");
 	}
 
 	#[test]

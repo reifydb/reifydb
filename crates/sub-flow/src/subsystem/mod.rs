@@ -155,11 +155,13 @@ impl FlowSubsystem {
 		let health = FlowHealthRegistry::new();
 		let operator_samples = OperatorSampleRegistry::new();
 		let metrics_registry = ioc.resolve::<MetricsRegistry>().expect("MetricsRegistry must be registered");
-		metrics_registry.register_collector(Arc::new(OperatorSampleCollector::new(operator_samples.clone())));
-		metrics_registry.register_collector(Arc::new(OperatorStateBudgetCollector::new(state_budget.clone())));
-		metrics_registry.register_collector(Arc::new(RowNumberMetricsCollector::new(substrate.row.clone())));
 		metrics_registry
-			.register_collector(Arc::new(GroupInternerMetricsCollector::new(substrate.group.clone())));
+			.register_operator_collector(Arc::new(OperatorSampleCollector::new(operator_samples.clone())));
+		metrics_registry.register_collector(Arc::new(OperatorStateBudgetCollector::new(state_budget.clone())));
+		metrics_registry
+			.register_operator_collector(Arc::new(RowNumberMetricsCollector::new(substrate.row.clone())));
+		metrics_registry
+			.register_operator_collector(Arc::new(GroupInternerMetricsCollector::new(substrate.group.clone())));
 		let transactional_flow_engine = Self::build_transactional_engine(
 			&engine,
 			&clock,

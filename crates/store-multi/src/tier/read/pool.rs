@@ -124,18 +124,6 @@ impl MetricsCollector for MultiReadBufferTier {
 		out.push(MetricsSample::count(READ_BUFFER_SCOPE, "resident_pages", self.resident_pages() as u64));
 		let scope = READ_BUFFER_SCOPE;
 		let shards = &self.inner.shards;
-		let metrics = total_warm_metrics(shards);
-		out.push(MetricsSample::counter(scope, "warms_started", metrics.warms_started as u64));
-		out.push(MetricsSample::counter(scope, "warms_completed", metrics.warms_completed as u64));
-		out.push(MetricsSample::counter(scope, "warms_dirty_aborted", metrics.warms_dirty_aborted as u64));
-		out.push(MetricsSample::counter(scope, "warms_aborted", metrics.warms_aborted as u64));
-		out.push(MetricsSample::counter(scope, "pages_warm_blocked", metrics.pages_warm_blocked as u64));
-		out.push(MetricsSample::counter(scope, "pages_evicted", metrics.pages_evicted as u64));
-		out.push(MetricsSample::counter(
-			scope,
-			"complete_pages_invalidated",
-			metrics.complete_pages_invalidated as u64,
-		));
 		out.push(MetricsSample::bytes(scope, "shard_limit_bytes", shards[0].lock().budget.limit()));
 		for (index, shard) in shards.iter().enumerate() {
 			out.push(MetricsSample::bytes(
@@ -145,21 +133,6 @@ impl MetricsCollector for MultiReadBufferTier {
 			));
 		}
 	}
-}
-
-fn total_warm_metrics(shards: &[Mutex<Shard>]) -> ReadBufferWarmMetrics {
-	let mut total = ReadBufferWarmMetrics::default();
-	for shard in shards {
-		let metrics = shard.lock().warm_metrics;
-		total.warms_started += metrics.warms_started;
-		total.warms_completed += metrics.warms_completed;
-		total.warms_dirty_aborted += metrics.warms_dirty_aborted;
-		total.warms_aborted += metrics.warms_aborted;
-		total.pages_warm_blocked += metrics.pages_warm_blocked;
-		total.pages_evicted += metrics.pages_evicted;
-		total.complete_pages_invalidated += metrics.complete_pages_invalidated;
-	}
-	total
 }
 
 fn total_resident_bytes(shards: &[Mutex<Shard>]) -> ByteSize {

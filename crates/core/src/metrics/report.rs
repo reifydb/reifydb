@@ -5,4 +5,8 @@ use crate::metrics::sample::MetricsSample;
 
 pub trait MetricsReporter: Send + Sync {
 	fn read(&self, out: &mut Vec<MetricsSample>);
+
+	fn read_window(&self, out: &mut Vec<MetricsSample>) {
+		self.read(out)
+	}
 }
