@@ -21,7 +21,7 @@ pub(crate) fn drop_table(services: &Services, txn: &mut AdminTransaction, plan: 
 
 	let def = services.catalog.get_table(&mut Transaction::Admin(txn), table_id)?;
 
-	let nodes = services.catalog.list_flow_nodes_all(&mut Transaction::Admin(txn))?;
+	let nodes = services.catalog.list_operators_all(&mut Transaction::Admin(txn))?;
 	let flows = services.catalog.list_flows_all(&mut Transaction::Admin(txn))?;
 	let dependents = find_flow_dependents(
 		&services.catalog,

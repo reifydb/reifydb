@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_sdk::{
 	config::Config,
 	error::Result,
@@ -37,7 +37,7 @@ impl OperatorMetadata for OpU8 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpU8 {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -83,7 +83,7 @@ impl OperatorMetadata for OpU16 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpU16 {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -129,7 +129,7 @@ impl OperatorMetadata for OpU32 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpU32 {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -175,7 +175,7 @@ impl OperatorMetadata for OpU64 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpU64 {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -221,7 +221,7 @@ impl OperatorMetadata for OpI8 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpI8 {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -267,7 +267,7 @@ impl OperatorMetadata for OpI16 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpI16 {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -313,7 +313,7 @@ impl OperatorMetadata for OpI32 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpI32 {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -359,7 +359,7 @@ impl OperatorMetadata for OpI64 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpI64 {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -405,7 +405,7 @@ impl OperatorMetadata for OpF32 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpF32 {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -451,7 +451,7 @@ impl OperatorMetadata for OpF64 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpF64 {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -497,7 +497,7 @@ impl OperatorMetadata for OpBool {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpBool {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -543,7 +543,7 @@ impl OperatorMetadata for OpUtf8 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpUtf8 {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -583,7 +583,7 @@ impl OperatorMetadata for OpUtf8Growth {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpUtf8Growth {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -630,7 +630,7 @@ impl OperatorMetadata for OpBlob {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpBlob {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -682,7 +682,7 @@ impl OperatorMetadata for OpDecimal {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpDecimal {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -740,7 +740,7 @@ impl OperatorMetadata for OpWide {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpWide {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -784,7 +784,7 @@ impl OperatorMetadata for OpDate {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpDate {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -832,7 +832,7 @@ impl OperatorMetadata for OpDateTime {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpDateTime {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -883,7 +883,7 @@ impl OperatorMetadata for OpTime {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpTime {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -934,7 +934,7 @@ impl OperatorMetadata for OpDuration {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for OpDuration {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {

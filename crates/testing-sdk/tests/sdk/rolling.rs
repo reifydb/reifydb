@@ -8,7 +8,7 @@ use reifydb_codec::{
 	encoded::shape::{RowShape, RowShapeField},
 	key::encoded::EncodedKey,
 };
-use reifydb_core::{interface::catalog::flow::FlowNodeId, metrics::heap::HeapSize, row::Row as CoreRow};
+use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize, row::Row as CoreRow};
 use reifydb_flow::window::accumulator::{WindowAccumulator, invertible::Moments};
 use reifydb_sdk::{
 	config::Config,
@@ -110,7 +110,7 @@ impl RollingRegistration for TestRollingSum {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self {
 			capacity: 3,
 		})
@@ -309,7 +309,7 @@ impl RollingRegistration for SealedRollingSum {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 

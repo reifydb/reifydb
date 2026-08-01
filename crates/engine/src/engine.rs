@@ -34,7 +34,7 @@ use reifydb_core::{
 		WithEventBus,
 		catalog::{
 			column::{Column, ColumnIndex},
-			flow::FlowNodeId,
+			flow::OperatorId,
 			id::{ColumnId, NamespaceId},
 			vtable::{VTable, VTableId},
 		},
@@ -597,7 +597,7 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn operator_disk_payload_bytes(&self) -> Vec<(FlowNodeId, ByteSize)> {
+	pub fn operator_disk_payload_bytes(&self) -> Vec<(OperatorId, ByteSize)> {
 		self.multi.store().operator_disk_payload_bytes()
 	}
 

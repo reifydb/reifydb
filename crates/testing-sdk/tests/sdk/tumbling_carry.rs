@@ -8,7 +8,7 @@ use reifydb_codec::{
 	encoded::shape::{RowShape, RowShapeField},
 	key::encoded::EncodedKey,
 };
-use reifydb_core::{interface::catalog::flow::FlowNodeId, metrics::heap::HeapSize, row::Row as CoreRow};
+use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize, row::Row as CoreRow};
 use reifydb_flow::window::{
 	accumulator::invertible::RetainedAccumulator,
 	span::{WindowCoord, WindowSpan},
@@ -99,7 +99,7 @@ impl TumblingCarryRegistration for TestCarry {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -293,7 +293,7 @@ impl TumblingCarryRegistration for SealedCarry {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 

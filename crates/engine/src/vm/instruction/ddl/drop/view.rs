@@ -21,7 +21,7 @@ pub(crate) fn drop_view(services: &Services, txn: &mut AdminTransaction, plan: D
 
 	let def = services.catalog.get_view(&mut Transaction::Admin(txn), view_id)?;
 
-	let nodes = services.catalog.list_flow_nodes_all(&mut Transaction::Admin(txn))?;
+	let nodes = services.catalog.list_operators_all(&mut Transaction::Admin(txn))?;
 	let flows = services.catalog.list_flows_all(&mut Transaction::Admin(txn))?;
 	let own_flow_id = flows.iter().find(|f| f.namespace == def.namespace() && f.name == def.name()).map(|f| f.id);
 	let external_nodes: Vec<_> = if let Some(own_id) = own_flow_id {

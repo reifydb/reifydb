@@ -17,7 +17,7 @@ use reifydb_codec::{
 	encoded::shape::{RowShape, RowShapeField},
 	key::encoded::EncodedKey,
 };
-use reifydb_core::{interface::catalog::flow::FlowNodeId, metrics::heap::HeapSize};
+use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize};
 use reifydb_flow::window::{
 	accumulator::{
 		WindowAccumulator,
@@ -191,7 +191,7 @@ impl TumblingRegistration for VolumeTumbling {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -280,7 +280,7 @@ impl TumblingRegistration for MinTumbling {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -408,7 +408,7 @@ impl TumblingRegistration for OhlcvSealingTumbling {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -505,7 +505,7 @@ impl RollingRegistration for RollingSum {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(rolling_sum())
 	}
 
@@ -593,7 +593,7 @@ impl MultiRollingRegistration for TopVolumeMultiRolling {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -685,7 +685,7 @@ impl TumblingCarryRegistration for TwapCarry {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, config: &Config) -> Result<Self> {
+	fn from_config(_operator_id: OperatorId, config: &Config) -> Result<Self> {
 		Ok(TwapCarry {
 			retention: config.u64("__retention"),
 		})
@@ -805,7 +805,7 @@ impl RollingRegistration for VelocityIncremental {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(velocity_incremental())
 	}
 

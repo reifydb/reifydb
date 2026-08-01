@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_sdk::{
 	config::Config,
 	error::Result,
@@ -47,7 +47,7 @@ impl OperatorMetadata for EmitOpInsert {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for EmitOpInsert {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -126,7 +126,7 @@ impl OperatorMetadata for EmitOpEmpty {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for EmitOpEmpty {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -152,7 +152,7 @@ impl OperatorMetadata for EmitOpUpdate {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for EmitOpUpdate {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -212,7 +212,7 @@ impl OperatorMetadata for EmitOpRemove {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for EmitOpRemove {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -262,7 +262,7 @@ impl OperatorMetadata for EmitOpBig {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for EmitOpBig {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -315,7 +315,7 @@ impl OperatorMetadata for EmitOpOptU64 {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for EmitOpOptU64 {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -384,7 +384,7 @@ impl OperatorMetadata for EmitOpOptStr {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for EmitOpOptStr {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {
@@ -453,7 +453,7 @@ impl OperatorMetadata for EmitOpOptBlob {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 impl FFIOperator for EmitOpOptBlob {
-	fn new(_: FlowNodeId, _: &Config) -> Result<Self> {
+	fn new(_: OperatorId, _: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut FFIOperatorContext, _: BorrowedChange<'_>) -> Result<()> {

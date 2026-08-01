@@ -20,8 +20,6 @@ use reifydb_catalog::{
 			event_variants::SystemEventVariants,
 			events::SystemEvents,
 			flow_edges::SystemFlowEdges,
-			flow_node_types::SystemFlowNodeTypes,
-			flow_nodes::SystemFlowNodes,
 			flow_watermarks::SystemFlowWatermarks,
 			flows::SystemFlows,
 			granted_roles::SystemGrantedRoles,
@@ -32,9 +30,11 @@ use reifydb_catalog::{
 			metrics::{MetricsObject, cdc::SystemMetricsCdc, storage::SystemMetricsStorage},
 			migrations::SystemMigrations,
 			namespaces::SystemNamespaces,
-			operator_inputs::SystemOperatorLibraryInputs,
-			operator_outputs::SystemOperatorLibraryOutputs,
-			operators::SystemOperatorLibraries,
+			operator_library_inputs::SystemOperatorLibraryInputs,
+			operator_library_outputs::SystemOperatorLibraryOutputs,
+			operator_libraries::SystemOperatorLibraries,
+			operator_types::SystemOperatorTypes,
+			operators::SystemOperators,
 			policies::SystemPolicies,
 			policy_operations::SystemPolicyOperations,
 			primary_key_columns::SystemPrimaryKeyColumns,
@@ -119,7 +119,7 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 		"subscription_watermarks" => {
 			VTables::SubscriptionWatermarks(SystemSubscriptionWatermarks::new(context.services.ioc.clone()))
 		}
-		"flow_nodes" => VTables::FlowNodes(SystemFlowNodes::new(context.services.node_retention_store.clone())),
+		"operators" => VTables::Operators(SystemOperators::new(context.services.node_retention_store.clone())),
 		"flow_edges" => VTables::FlowEdges(SystemFlowEdges::new()),
 		"columns" => VTables::Columns(SystemColumnsTable::new()),
 		"primary_keys" => VTables::PrimaryKeys(SystemPrimaryKeys::new()),
@@ -127,16 +127,18 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 		"column_properties" => VTables::ColumnProperties(SystemColumnProperties::new()),
 		"versions" => VTables::Versions(SystemVersions::new(context.services.ioc.clone())),
 		"cdc_consumers" => VTables::CdcConsumers(SystemCdcConsumers::new()),
-		"operators" => VTables::Operators(SystemOperatorLibraries::new(context.services.operator_store.clone())),
+		"operator_libraries" => {
+			VTables::OperatorLibraries(SystemOperatorLibraries::new(context.services.operator_store.clone()))
+		}
 		"dictionaries" => VTables::Dictionaries(SystemDictionaries::new()),
 		"virtual_tables" => VTables::TablesVirtual(SystemTablesVirtual::new(context.services.catalog.clone())),
 		"types" => VTables::Types(SystemTypes::new()),
-		"flow_node_types" => VTables::FlowNodeTypes(SystemFlowNodeTypes::new()),
-		"operator_inputs" => {
-			VTables::OperatorInputs(SystemOperatorLibraryInputs::new(context.services.operator_store.clone()))
+		"operator_types" => VTables::OperatorTypes(SystemOperatorTypes::new()),
+		"operator_library_inputs" => {
+			VTables::OperatorLibraryInputs(SystemOperatorLibraryInputs::new(context.services.operator_store.clone()))
 		}
-		"operator_outputs" => {
-			VTables::OperatorOutputs(SystemOperatorLibraryOutputs::new(context.services.operator_store.clone()))
+		"operator_library_outputs" => {
+			VTables::OperatorLibraryOutputs(SystemOperatorLibraryOutputs::new(context.services.operator_store.clone()))
 		}
 		"ringbuffers" => VTables::RingBuffers(SystemRingBuffers::new()),
 		"queues" => VTables::Queues(SystemQueues::new()),
@@ -185,8 +187,8 @@ fn compile_metrics_storage_vtable(namespace: NamespaceId, context: &QueryContext
 		(SystemCatalog::get_system_metrics_storage_series_table(), MetricsObject::Series)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_FLOW {
 		(SystemCatalog::get_system_metrics_storage_flow_table(), MetricsObject::Flow)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_FLOW_NODE {
-		(SystemCatalog::get_system_metrics_storage_flow_node_table(), MetricsObject::FlowNode)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_OPERATOR {
+		(SystemCatalog::get_system_metrics_storage_operator_table(), MetricsObject::Operator)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_STORAGE_SYSTEM {
 		(SystemCatalog::get_system_metrics_storage_system_table(), MetricsObject::System)
 	} else {
@@ -211,8 +213,8 @@ fn compile_metrics_cdc_vtable(namespace: NamespaceId, context: &QueryContext) ->
 		(SystemCatalog::get_system_metrics_cdc_series_table(), MetricsObject::Series)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_FLOW {
 		(SystemCatalog::get_system_metrics_cdc_flow_table(), MetricsObject::Flow)
-	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_FLOW_NODE {
-		(SystemCatalog::get_system_metrics_cdc_flow_node_table(), MetricsObject::FlowNode)
+	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_OPERATOR {
+		(SystemCatalog::get_system_metrics_cdc_operator_table(), MetricsObject::Operator)
 	} else if namespace == NamespaceId::SYSTEM_METRICS_CDC_SYSTEM {
 		(SystemCatalog::get_system_metrics_cdc_system_table(), MetricsObject::System)
 	} else {

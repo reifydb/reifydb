@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use postcard::from_bytes;
 use reifydb_catalog::{catalog::Catalog, store::column::list::ColumnInfo};
 use reifydb_core::{
-	interface::catalog::flow::{Flow, FlowNode},
+	interface::catalog::flow::{Flow, Operator},
 	internal_error,
 };
 use reifydb_rql::flow::operator::OperatorDef;
@@ -41,7 +41,7 @@ pub(crate) fn find_column_dependents(
 pub(crate) fn find_flow_dependents(
 	catalog: &Catalog,
 	txn: &mut AdminTransaction,
-	nodes: &[FlowNode],
+	nodes: &[Operator],
 	flows: &[Flow],
 	check: impl Fn(&OperatorDef) -> bool,
 ) -> Result<Vec<String>> {

@@ -5,7 +5,7 @@
 
 use reifydb_abi::{data::column::ColumnTypeCode, flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_sdk::{
 	config::Config,
 	error::Result,
@@ -34,7 +34,7 @@ impl OperatorMetadata for PassthroughOperator {
 }
 
 impl FFIOperator for PassthroughOperator {
-	fn new(_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn new(_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -67,7 +67,7 @@ impl OperatorMetadata for DoubleInsertOperator {
 }
 
 impl FFIOperator for DoubleInsertOperator {
-	fn new(_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn new(_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -102,7 +102,7 @@ impl OperatorMetadata for SwallowsRemoveOperator {
 }
 
 impl FFIOperator for SwallowsRemoveOperator {
-	fn new(_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn new(_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 

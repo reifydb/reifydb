@@ -13,7 +13,7 @@ use reifydb_core::{
 		subscription::subscription_operation_unsupported,
 	},
 	interface::catalog::{
-		flow::{FlowEdge, FlowEdgeId, FlowId, FlowNode, OperatorId},
+		flow::{FlowEdge, FlowEdgeId, FlowId, Operator, OperatorId},
 		id::SubscriptionId,
 		view::View,
 	},
@@ -24,7 +24,7 @@ use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::{
 	flow::{
 		flow::{FlowBuilder, FlowDag},
-		node::{self, OperatorDef},
+		operator::{self as rql_operator, OperatorDef},
 	},
 	query::QueryPlan,
 };
@@ -127,7 +127,7 @@ impl FlowCompiler {
 			self.local_node_counter += 1;
 			Ok(OperatorId(self.local_node_counter))
 		} else {
-			self.catalog.next_flow_node_id(txn.admin_mut())
+			self.catalog.next_operator_id(txn.admin_mut())
 		}
 	}
 
@@ -158,7 +158,7 @@ impl FlowCompiler {
 			self.catalog.create_flow_edge(txn.admin_mut(), &edge_def)?;
 		}
 
-		self.builder.add_edge(operator::FlowEdge::new(edge_id, *from, *to))?;
+		self.builder.add_edge(rql_operator::FlowEdge::new(edge_id, *from, *to))?;
 		Ok(())
 	}
 
@@ -170,17 +170,17 @@ impl FlowCompiler {
 			let data = to_stdvec(&node_type)
 				.map_err(|e| Error(Box::new(internal!("Failed to serialize OperatorDef: {}", e))))?;
 
-			let node_def = FlowNode {
+			let node_def = Operator {
 				id: node_id,
 				flow: flow_id,
 				node_type: node_type.discriminator(),
 				data: Blob::from(data),
 			};
 
-			self.catalog.create_flow_node(txn.admin_mut(), &node_def)?;
+			self.catalog.create_operator(txn.admin_mut(), &node_def)?;
 		}
 
-		self.builder.add_node(operator::FlowNode::new(node_id, node_type));
+		self.builder.add_node(rql_operator::FlowNode::new(node_id, node_type));
 		Ok(node_id)
 	}
 

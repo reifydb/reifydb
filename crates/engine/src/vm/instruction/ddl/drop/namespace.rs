@@ -99,7 +99,7 @@ pub(crate) fn drop_namespace(
 		all_ringbuffers.iter().filter(|r| descendant_ids.contains(&r.namespace)).map(|r| r.id).collect();
 
 	if !table_ids.is_empty() || !view_ids.is_empty() || !ringbuffer_ids.is_empty() {
-		let nodes = services.catalog.list_flow_nodes_all(&mut Transaction::Admin(txn))?;
+		let nodes = services.catalog.list_operators_all(&mut Transaction::Admin(txn))?;
 		let flows = services.catalog.list_flows_all(&mut Transaction::Admin(txn))?;
 
 		let external_nodes: Vec<_> = nodes

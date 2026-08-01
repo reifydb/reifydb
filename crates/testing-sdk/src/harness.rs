@@ -19,7 +19,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin},
 	},
 	key::{
@@ -70,7 +70,7 @@ pub struct FFIOperatorHarness<T: FFIOperator> {
 	context: Box<TestContext>,
 	ffi_context: Box<ContextFFI>,
 	config: HashMap<String, Value>,
-	node_id: FlowNodeId,
+	node_id: OperatorId,
 	clock: Clock,
 	history: Vec<Change>,
 
@@ -395,7 +395,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		&mut self.operator
 	}
 
-	pub fn node_id(&self) -> FlowNodeId {
+	pub fn node_id(&self) -> OperatorId {
 		self.node_id
 	}
 }
@@ -410,7 +410,7 @@ impl<T: FFIOperator> Index<usize> for FFIOperatorHarness<T> {
 
 pub struct FFIOperatorHarnessBuilder<T: FFIOperator> {
 	config: HashMap<String, Value>,
-	node_id: FlowNodeId,
+	node_id: OperatorId,
 	version: CommitVersion,
 	clock: Clock,
 	initial_state: HashMap<EncodedKey, EncodedRow>,
@@ -428,7 +428,7 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 	pub fn new() -> Self {
 		Self {
 			config: HashMap::new(),
-			node_id: FlowNodeId(1),
+			node_id: OperatorId(1),
 			version: CommitVersion(1),
 			clock: Clock::Mock(MockClock::new(0)),
 			initial_state: HashMap::new(),
@@ -456,7 +456,7 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 		self
 	}
 
-	pub fn with_node_id(mut self, node_id: FlowNodeId) -> Self {
+	pub fn with_node_id(mut self, node_id: OperatorId) -> Self {
 		self.node_id = node_id;
 		self
 	}
@@ -533,7 +533,7 @@ pub fn drive_ffi_apply<O: FFIOperator + OperatorMetadata>(input: &Change) -> i32
 		callbacks: create_test_callbacks(),
 	};
 
-	let operator = O::new(FlowNodeId(1), &Config::new("operator", BTreeMap::new())).expect("create operator");
+	let operator = O::new(OperatorId(1), &Config::new("operator", BTreeMap::new())).expect("create operator");
 	let mut wrapper = OperatorWrapper::new(operator);
 
 	let mut arena = Arena::new();
@@ -582,7 +582,7 @@ pub mod tests {
 		callbacks::builder::EmitDiffKind, data::column::ColumnTypeCode, flow::diff::DiffType,
 		operator::capabilities::OperatorCapability,
 	};
-	use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
+	use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId};
 	use reifydb_sdk::{
 		operator::{
 			FFIOperator, OperatorMetadata,
@@ -602,7 +602,7 @@ pub mod tests {
 	use crate::builders::{TestChangeBuilder, TestRowBuilder};
 
 	struct TestOperator {
-		_node_id: FlowNodeId,
+		_node_id: OperatorId,
 		_config: Config,
 	}
 
@@ -617,7 +617,7 @@ pub mod tests {
 	}
 
 	impl FFIOperator for TestOperator {
-		fn new(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
+		fn new(operator_id: OperatorId, config: &Config) -> Result<Self> {
 			Ok(Self {
 				_node_id: operator_id,
 				_config: config.clone(),
@@ -642,7 +642,7 @@ pub mod tests {
 	}
 
 	impl FFIOperator for StatefulTestOperator {
-		fn new(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+		fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 
@@ -770,7 +770,7 @@ pub mod tests {
 	#[test]
 	fn test_harness_builder() {
 		let result = FFIOperatorHarnessBuilder::<TestOperator>::new()
-			.with_node_id(FlowNodeId(42))
+			.with_node_id(OperatorId(42))
 			.with_version(CommitVersion(10))
 			.add_config("key", Value::Utf8("value".into()))
 			.build();
@@ -785,7 +785,7 @@ pub mod tests {
 	#[test]
 	fn test_harness_with_stateful_operator() {
 		let mut harness = FFIOperatorHarnessBuilder::<StatefulTestOperator>::new()
-			.with_node_id(FlowNodeId(1))
+			.with_node_id(OperatorId(1))
 			.build()
 			.expect("Failed to build harness");
 
@@ -804,7 +804,7 @@ pub mod tests {
 	#[test]
 	fn test_harness_history_index() {
 		let mut harness = FFIOperatorHarnessBuilder::<StatefulTestOperator>::new()
-			.with_node_id(FlowNodeId(1))
+			.with_node_id(OperatorId(1))
 			.build()
 			.expect("Failed to build harness");
 
@@ -880,7 +880,7 @@ pub mod tests {
 	}
 
 	impl FFIOperator for TimerTestOperator {
-		fn new(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+		fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 
@@ -932,7 +932,7 @@ pub mod tests {
 	}
 
 	impl FFIOperator for SealEmittingOperator {
-		fn new(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+		fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 
@@ -998,7 +998,7 @@ pub mod tests {
 	}
 
 	impl FFIOperator for RearmingTimerTestOperator {
-		fn new(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+		fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 			Ok(Self {
 				fires: 0,
 			})
@@ -1041,7 +1041,7 @@ pub mod tests {
 		// The timer must fire because the watermark reached it, with no further input arriving;
 		// otherwise a guest test cannot tell "sealed by the clock" from "sealed by the next row".
 		let mut harness = FFIOperatorHarnessBuilder::<TimerTestOperator>::new()
-			.with_node_id(FlowNodeId(1))
+			.with_node_id(OperatorId(1))
 			.build()
 			.unwrap();
 
@@ -1069,7 +1069,7 @@ pub mod tests {
 		// A resurrected timer would make every seal fire once per subsequent advance, silently
 		// inflating retraction counts.
 		let mut harness = FFIOperatorHarnessBuilder::<TimerTestOperator>::new()
-			.with_node_id(FlowNodeId(1))
+			.with_node_id(OperatorId(1))
 			.build()
 			.unwrap();
 
@@ -1088,7 +1088,7 @@ pub mod tests {
 		// Session windows re-arm on every extending event, so arming below an already-passed
 		// watermark is normal and the real wheel picks it up in the same round.
 		let mut harness = FFIOperatorHarnessBuilder::<RearmingTimerTestOperator>::new()
-			.with_node_id(FlowNodeId(1))
+			.with_node_id(OperatorId(1))
 			.build()
 			.unwrap();
 
@@ -1105,7 +1105,7 @@ pub mod tests {
 		state.assert_typed_value::<i64>(probe_row_key(3 * MILLI).as_encoded(), &3i64);
 	}
 
-	fn group_state_key(node: FlowNodeId, group: GroupId, keyspace: Keyspace) -> OperatorStateKey {
+	fn group_state_key(node: OperatorId, group: GroupId, keyspace: Keyspace) -> OperatorStateKey {
 		// Must compose the key the way the substrate does, or what these tests seed is not
 		// addressable by the phase ranges the sweep scans.
 		OperatorStateKey::new(node, OperatorGroupStateKey::inner_encoded(group, keyspace, b"k").as_slice().to_vec())
@@ -1116,7 +1116,7 @@ pub mod tests {
 		// The engine erases a group's data half long before its identity half, and an operator
 		// woken in that window can only answer Update because the mapping is still there. Wiping
 		// both at once would let an operator that answers Insert pass.
-		const NODE: FlowNodeId = FlowNodeId(1);
+		const NODE: OperatorId = OperatorId(1);
 		const GROUP: GroupId = GroupId(7);
 		let accumulator = group_state_key(NODE, GROUP, Keyspace::ACCUMULATOR).encode();
 		let mapping = group_state_key(NODE, GROUP, Keyspace::ROW_NUMBER_MAPPING).encode();
@@ -1142,7 +1142,7 @@ pub mod tests {
 	fn erasing_a_group_never_reaches_the_node_scoped_dictionary_that_resolves_it() {
 		// Node scope holds the interning dictionary and id counter every other group depends on;
 		// erasing it would make the next lookup mint a second id for a key that already had one.
-		const NODE: FlowNodeId = FlowNodeId(1);
+		const NODE: OperatorId = OperatorId(1);
 		let dictionary = group_state_key(NODE, GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY).encode();
 		let counter = group_state_key(NODE, GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER).encode();
 		let mut harness = FFIOperatorHarnessBuilder::<TestOperator>::new()

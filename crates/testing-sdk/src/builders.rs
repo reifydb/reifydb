@@ -5,7 +5,7 @@ use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::{flow::FlowNodeId, id::TableId, object::ObjectId},
+		catalog::{flow::OperatorId, id::TableId, object::ObjectId},
 		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
 	row::Row,
@@ -95,7 +95,7 @@ impl TestChangeBuilder {
 		self
 	}
 
-	pub fn changed_by_node(mut self, node: FlowNodeId) -> Self {
+	pub fn changed_by_node(mut self, node: OperatorId) -> Self {
 		self.origin = ChangeOrigin::Flow(node);
 		self
 	}

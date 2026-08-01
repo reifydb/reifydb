@@ -15,7 +15,7 @@ use std::{
 };
 
 use reifydb_codec::encoded::shape::RowShape;
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId};
+use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId};
 use reifydb_value::value::Value;
 
 pub mod accumulator_oracle;
@@ -99,7 +99,7 @@ pub struct ChaosHarnessBuilder<T: FFIOperator> {
 	seed: u64,
 	scenario: Scenario,
 	supported_ops: SupportedOps,
-	node_id: FlowNodeId,
+	node_id: OperatorId,
 	version: CommitVersion,
 	operator_config: Vec<(String, Value)>,
 	input_shape: Option<RowShape>,
@@ -125,7 +125,7 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 			seed: 0,
 			scenario: Scenario::mixed(DEFAULT_STEPS),
 			supported_ops: SupportedOps::default(),
-			node_id: FlowNodeId(1),
+			node_id: OperatorId(1),
 			version: CommitVersion(1),
 			operator_config: Vec::new(),
 			input_shape: None,
@@ -156,7 +156,7 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 		self
 	}
 
-	pub fn with_node_id(mut self, node_id: FlowNodeId) -> Self {
+	pub fn with_node_id(mut self, node_id: OperatorId) -> Self {
 		self.node_id = node_id;
 		self
 	}
@@ -356,7 +356,7 @@ mod tests {
 	}
 
 	impl FFIOperator for NoOpOperator {
-		fn new(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+		fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 			Ok(Self)
 		}
 

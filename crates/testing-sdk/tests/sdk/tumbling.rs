@@ -9,7 +9,7 @@ use reifydb_codec::{
 	encoded::shape::{RowShape, RowShapeField},
 	key::encoded::EncodedKey,
 };
-use reifydb_core::{interface::catalog::flow::FlowNodeId, metrics::heap::HeapSize, row::Row as CoreRow};
+use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize, row::Row as CoreRow};
 use reifydb_flow::window::{
 	accumulator::{
 		WindowAccumulator,
@@ -126,7 +126,7 @@ impl TumblingRegistration for TestVolume {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD_WITH_RECLAIM;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -182,7 +182,7 @@ impl TumblingRegistration for SealedVolume {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -270,7 +270,7 @@ impl TumblingRegistration for TestMin {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
-	fn from_config(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 

@@ -11,7 +11,7 @@ use reifydb_abi::context::context::ContextFFI;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
 	row::Row as CoreRow,
@@ -172,7 +172,7 @@ fn materialize_outputs<O: Row>(
 		return MaterializedView::empty();
 	}
 	let columns = sink.finish(row_numbers, now).expect("finish sink");
-	let change = Change::from_flow(FlowNodeId(0), CommitVersion(0), vec![Diff::insert(columns)], now);
+	let change = Change::from_flow(OperatorId(0), CommitVersion(0), vec![Diff::insert(columns)], now);
 	materialize_history(&[change], output_key_columns)
 }
 

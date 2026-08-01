@@ -91,7 +91,7 @@ fn test_row_settings_replication_sync() {
 fn test_operator_settings_sync_to_catalog_cache() {
 	use reifydb_catalog::store::operator_settings::create::create_operator_settings;
 	use reifydb_core::{
-		interface::catalog::flow::FlowNodeId,
+		interface::catalog::flow::OperatorId,
 		lifecycle::operator::ListOperatorSettings,
 		row::{OperatorSettings, OperatorTtl},
 	};
@@ -102,7 +102,7 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	// The operator-TTL GC actor only ever reads the cache-backed list, so a write that reaches
 	// storage without tracking the change leaves the list empty and silently disables GC for
 	// every stateful operator.
-	let node_id = FlowNodeId(42);
+	let node_id = OperatorId(42);
 	let settings = OperatorSettings {
 		ttl: Some(OperatorTtl {
 			duration: Duration::from_hours(1).unwrap(),
