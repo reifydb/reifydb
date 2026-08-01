@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_rql::{flow::node::FlowNodeType::SourceTable, nodes::TableScanNode};
+use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_rql::{flow::operator::OperatorDef::SourceTable, nodes::TableScanNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
@@ -21,7 +21,7 @@ impl From<TableScanNode> for TableScanCompiler {
 }
 
 impl CompileOperator for TableScanCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
 		let table_id = self.table_scan.source.def().id;
 		compiler.add_node(
 			txn,

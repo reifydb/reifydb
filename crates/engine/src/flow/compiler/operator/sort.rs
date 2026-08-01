@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::flow::FlowNodeId, sort::SortKey};
-use reifydb_rql::{flow::node::FlowNodeType::Sort, nodes::SortNode, query::QueryPlan};
+use reifydb_core::{interface::catalog::flow::OperatorId, sort::SortKey};
+use reifydb_rql::{flow::operator::OperatorDef::Sort, nodes::SortNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
@@ -23,7 +23,7 @@ impl From<SortNode> for SortCompiler {
 }
 
 impl CompileOperator for SortCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
 		let input_node = compiler.compile_plan(txn, *self.input)?;
 
 		let node_id = compiler.add_node(

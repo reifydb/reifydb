@@ -3,12 +3,12 @@
 
 use reifydb_core::{
 	common::JoinType::{self, Inner, Left},
-	interface::catalog::flow::FlowNodeId,
+	interface::catalog::flow::OperatorId,
 	row::JoinTtl,
 };
 use reifydb_rql::{
 	expression::Expression,
-	flow::node::FlowNodeType,
+	flow::operator::OperatorDef,
 	nodes::{JoinInnerNode, JoinLeftNode, JoinNaturalNode},
 	query::QueryPlan,
 };
@@ -127,7 +127,7 @@ fn extract_join_keys(conditions: &[Expression]) -> (Vec<Expression>, Vec<Express
 }
 
 impl CompileOperator for JoinCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
 		let source_name = extract_source_name(&self.right);
 
 		let left_node = compiler.compile_plan(txn, *self.left)?;
@@ -139,7 +139,7 @@ impl CompileOperator for JoinCompiler {
 
 		let node_id = compiler.add_node(
 			txn,
-			FlowNodeType::Join {
+			OperatorDef::Join {
 				join_type: self.join_type,
 				left: left_keys,
 				right: right_keys,

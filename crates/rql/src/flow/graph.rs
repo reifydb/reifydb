@@ -8,16 +8,16 @@ use std::{
 };
 
 use ops::Range;
-use reifydb_core::interface::catalog::flow::{FlowEdgeId, FlowNodeId};
+use reifydb_core::interface::catalog::flow::{FlowEdgeId, OperatorId};
 
-use super::node::FlowEdge;
+use super::operator::FlowEdge;
 
 #[derive(Debug, Clone)]
 pub struct DirectedGraph<NodeData> {
-	nodes: BTreeMap<FlowNodeId, NodeData>,
+	nodes: BTreeMap<OperatorId, NodeData>,
 	edges: Vec<FlowEdge>,
-	outgoing: BTreeMap<FlowNodeId, Vec<FlowNodeId>>,
-	incoming: BTreeMap<FlowNodeId, Vec<FlowNodeId>>,
+	outgoing: BTreeMap<OperatorId, Vec<OperatorId>>,
+	incoming: BTreeMap<OperatorId, Vec<OperatorId>>,
 }
 
 impl<NodeData> DirectedGraph<NodeData> {
@@ -30,7 +30,7 @@ impl<NodeData> DirectedGraph<NodeData> {
 		}
 	}
 
-	pub fn add_node(&mut self, node_id: FlowNodeId, data: NodeData) -> FlowNodeId {
+	pub fn add_node(&mut self, node_id: OperatorId, data: NodeData) -> OperatorId {
 		self.nodes.insert(node_id, data);
 		self.outgoing.entry(node_id).or_default();
 		self.incoming.entry(node_id).or_default();
@@ -63,11 +63,11 @@ impl<NodeData> DirectedGraph<NodeData> {
 		result
 	}
 
-	pub fn get_node(&self, node_id: &FlowNodeId) -> Option<&NodeData> {
+	pub fn get_node(&self, node_id: &OperatorId) -> Option<&NodeData> {
 		self.nodes.get(node_id)
 	}
 
-	pub fn get_node_mut(&mut self, node_id: &FlowNodeId) -> Option<&mut NodeData> {
+	pub fn get_node_mut(&mut self, node_id: &OperatorId) -> Option<&mut NodeData> {
 		self.nodes.get_mut(node_id)
 	}
 
@@ -79,18 +79,18 @@ impl<NodeData> DirectedGraph<NodeData> {
 		self.edges.len()
 	}
 
-	pub fn neighbors(&self, node_id: &FlowNodeId) -> Vec<FlowNodeId> {
+	pub fn neighbors(&self, node_id: &OperatorId) -> Vec<OperatorId> {
 		self.outgoing.get(node_id).cloned().unwrap_or_default()
 	}
 
-	pub fn predecessors(&self, node_id: &FlowNodeId) -> Vec<FlowNodeId> {
+	pub fn predecessors(&self, node_id: &OperatorId) -> Vec<OperatorId> {
 		self.incoming.get(node_id).cloned().unwrap_or_default()
 	}
 
-	pub fn topological_sort(&self) -> Vec<FlowNodeId> {
+	pub fn topological_sort(&self) -> Vec<OperatorId> {
 		let mut in_degree = BTreeMap::new();
 
-		let mut heap: BinaryHeap<Reverse<FlowNodeId>> = BinaryHeap::new();
+		let mut heap: BinaryHeap<Reverse<OperatorId>> = BinaryHeap::new();
 		let mut result = Vec::new();
 
 		for node_id in self.nodes.keys() {
@@ -128,7 +128,7 @@ impl<NodeData> DirectedGraph<NodeData> {
 		result
 	}
 
-	pub fn dfs_from(&self, start: &FlowNodeId) -> Vec<FlowNodeId> {
+	pub fn dfs_from(&self, start: &OperatorId) -> Vec<OperatorId> {
 		let mut visited = HashSet::new();
 		let mut result = Vec::new();
 		let mut stack = vec![*start];
@@ -150,7 +150,7 @@ impl<NodeData> DirectedGraph<NodeData> {
 		result
 	}
 
-	pub fn bfs_from(&self, start: &FlowNodeId) -> Vec<FlowNodeId> {
+	pub fn bfs_from(&self, start: &OperatorId) -> Vec<OperatorId> {
 		let mut visited = HashSet::new();
 		let mut result = Vec::new();
 		let mut queue = VecDeque::new();
@@ -173,12 +173,12 @@ impl<NodeData> DirectedGraph<NodeData> {
 		result
 	}
 
-	fn creates_cycle(&self, source: &FlowNodeId, target: &FlowNodeId) -> bool {
+	fn creates_cycle(&self, source: &OperatorId, target: &OperatorId) -> bool {
 		let reachable = self.dfs_from(target);
 		reachable.contains(source)
 	}
 
-	pub fn nodes(&self) -> impl Iterator<Item = (&FlowNodeId, &NodeData)> {
+	pub fn nodes(&self) -> impl Iterator<Item = (&OperatorId, &NodeData)> {
 		self.nodes.iter()
 	}
 
@@ -186,7 +186,7 @@ impl<NodeData> DirectedGraph<NodeData> {
 		self.edges.iter()
 	}
 
-	pub fn remove_node(&mut self, node_id: &FlowNodeId) -> Option<NodeData> {
+	pub fn remove_node(&mut self, node_id: &OperatorId) -> Option<NodeData> {
 		if let Some(data) = self.nodes.remove(node_id) {
 			self.edges.retain(|edge| edge.source != *node_id && edge.target != *node_id);
 
@@ -217,7 +217,7 @@ impl<NodeData> DirectedGraph<NodeData> {
 		self.incoming.clear();
 	}
 
-	pub fn edges_directed(&self, node_id: &FlowNodeId, direction: EdgeDirection) -> Vec<&FlowEdge> {
+	pub fn edges_directed(&self, node_id: &OperatorId, direction: EdgeDirection) -> Vec<&FlowEdge> {
 		match direction {
 			EdgeDirection::Incoming => self.edges.iter().filter(|edge| edge.target == *node_id).collect(),
 			EdgeDirection::Outgoing => self.edges.iter().filter(|edge| edge.source == *node_id).collect(),
@@ -228,7 +228,7 @@ impl<NodeData> DirectedGraph<NodeData> {
 		0..self.edges.len()
 	}
 
-	pub fn edge_endpoints(&self, edge_index: usize) -> Option<(&FlowNodeId, &FlowNodeId)> {
+	pub fn edge_endpoints(&self, edge_index: usize) -> Option<(&OperatorId, &OperatorId)> {
 		self.edges.get(edge_index).map(|edge| (&edge.source, &edge.target))
 	}
 }
@@ -253,9 +253,9 @@ pub mod tests {
 	fn test_basic_graph_operations() {
 		let mut graph = DirectedGraph::new();
 
-		let node1 = graph.add_node(FlowNodeId(1), "Node 1");
-		let node2 = graph.add_node(FlowNodeId(2), "Node 2");
-		let node3 = graph.add_node(FlowNodeId(3), "Node 3");
+		let node1 = graph.add_node(OperatorId(1), "Node 1");
+		let node2 = graph.add_node(OperatorId(2), "Node 2");
+		let node3 = graph.add_node(OperatorId(3), "Node 3");
 
 		assert_eq!(graph.node_count(), 3);
 		assert_eq!(graph.edge_count(), 0);
@@ -264,9 +264,9 @@ pub mod tests {
 		graph.add_edge(FlowEdge::new(2, &node2, &node3));
 
 		assert_eq!(graph.edge_count(), 2);
-		assert_eq!(graph.neighbors(&node1), vec![FlowNodeId(2)]);
-		assert_eq!(graph.neighbors(&node2), vec![FlowNodeId(3)]);
-		assert_eq!(graph.predecessors(&node3), vec![FlowNodeId(2)]);
+		assert_eq!(graph.neighbors(&node1), vec![OperatorId(2)]);
+		assert_eq!(graph.neighbors(&node2), vec![OperatorId(3)]);
+		assert_eq!(graph.predecessors(&node3), vec![OperatorId(2)]);
 	}
 
 	#[test]
@@ -274,9 +274,9 @@ pub mod tests {
 	fn test_cycle_detection() {
 		let mut graph = DirectedGraph::new();
 
-		let node1 = graph.add_node(FlowNodeId(1), "Node 1");
-		let node2 = graph.add_node(FlowNodeId(2), "Node 2");
-		let node3 = graph.add_node(FlowNodeId(3), "Node 3");
+		let node1 = graph.add_node(OperatorId(1), "Node 1");
+		let node2 = graph.add_node(OperatorId(2), "Node 2");
+		let node3 = graph.add_node(OperatorId(3), "Node 3");
 
 		graph.add_edge(FlowEdge::new(1, &node1, &node2));
 		graph.add_edge(FlowEdge::new(2, &node2, &node3));
@@ -288,35 +288,35 @@ pub mod tests {
 	fn test_topological_sort() {
 		let mut graph = DirectedGraph::new();
 
-		let node1 = graph.add_node(FlowNodeId(1), "Node 1");
-		let node2 = graph.add_node(FlowNodeId(2), "Node 2");
-		let node3 = graph.add_node(FlowNodeId(3), "Node 3");
+		let node1 = graph.add_node(OperatorId(1), "Node 1");
+		let node2 = graph.add_node(OperatorId(2), "Node 2");
+		let node3 = graph.add_node(OperatorId(3), "Node 3");
 
 		graph.add_edge(FlowEdge::new(1, &node1, &node2));
 		graph.add_edge(FlowEdge::new(2, &node2, &node3));
 
 		let sorted = graph.topological_sort();
-		assert_eq!(sorted, vec![FlowNodeId(1), FlowNodeId(2), FlowNodeId(3)]);
+		assert_eq!(sorted, vec![OperatorId(1), OperatorId(2), OperatorId(3)]);
 	}
 
 	#[test]
 	fn test_dfs_traversal() {
 		let mut graph = DirectedGraph::new();
 
-		let node1 = graph.add_node(FlowNodeId(1), "Node 1");
-		let node2 = graph.add_node(FlowNodeId(2), "Node 2");
-		let node3 = graph.add_node(FlowNodeId(3), "Node 3");
-		let node4 = graph.add_node(FlowNodeId(4), "Node 4");
+		let node1 = graph.add_node(OperatorId(1), "Node 1");
+		let node2 = graph.add_node(OperatorId(2), "Node 2");
+		let node3 = graph.add_node(OperatorId(3), "Node 3");
+		let node4 = graph.add_node(OperatorId(4), "Node 4");
 
 		graph.add_edge(FlowEdge::new(1, &node1, &node2));
 		graph.add_edge(FlowEdge::new(2, &node1, &node3));
 		graph.add_edge(FlowEdge::new(3, &node2, &node4));
 
 		let dfs_result = graph.dfs_from(&node1);
-		assert!(dfs_result.contains(&FlowNodeId(1)));
-		assert!(dfs_result.contains(&FlowNodeId(2)));
-		assert!(dfs_result.contains(&FlowNodeId(3)));
-		assert!(dfs_result.contains(&FlowNodeId(4)));
+		assert!(dfs_result.contains(&OperatorId(1)));
+		assert!(dfs_result.contains(&OperatorId(2)));
+		assert!(dfs_result.contains(&OperatorId(3)));
+		assert!(dfs_result.contains(&OperatorId(4)));
 		assert_eq!(dfs_result.len(), 4);
 	}
 }

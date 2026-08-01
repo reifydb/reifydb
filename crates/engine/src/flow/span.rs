@@ -4,7 +4,7 @@
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_catalog::{catalog::Catalog, vtable::system::operator_store::OperatorLibraryStore};
 use reifydb_core::error::diagnostic::flow::{flow_span_on_unageable_node, flow_span_without_reclaim};
-use reifydb_rql::flow::{flow::FlowDag, node::FlowNodeType};
+use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, error::Error};
 
@@ -29,7 +29,7 @@ pub fn check_declared_spans(
 			return Err(Error(Box::new(flow_span_on_unageable_node(&flow_name, &node.ty.label()))));
 		}
 
-		let FlowNodeType::Apply {
+		let OperatorDef::Apply {
 			operator,
 			..
 		} = &node.ty

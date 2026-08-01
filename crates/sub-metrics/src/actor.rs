@@ -204,7 +204,7 @@ impl MetricsFlushActor {
 #[inline]
 fn is_write_once_row_number_mapping(key: &EncodedKey) -> bool {
 	OperatorStateKey::decode(key).is_some_and(|decoded| {
-		OperatorStateKey::decode_inner(&decoded.key)
+		OperatorGroupStateKey::decode_inner(&decoded.key)
 			.is_some_and(|(_, keyspace, _)| keyspace == Keyspace::ROW_NUMBER_MAPPING)
 	})
 }
@@ -452,7 +452,7 @@ mod tests {
 		let node = FlowNodeId(7);
 		let mapping = OperatorStateKey::new(
 			node,
-			OperatorStateKey::inner_encoded(GroupId::FIRST, Keyspace::ROW_NUMBER_MAPPING, [1, 2, 3])
+			OperatorGroupStateKey::inner_encoded(GroupId::FIRST, Keyspace::ROW_NUMBER_MAPPING, [1, 2, 3])
 				.as_slice()
 				.to_vec(),
 		);
@@ -469,7 +469,7 @@ mod tests {
 		let node = FlowNodeId(7);
 		let accumulator = OperatorStateKey::new(
 			node,
-			OperatorStateKey::inner_encoded(GroupId::FIRST, Keyspace::ACCUMULATOR, [1, 2, 3])
+			OperatorGroupStateKey::inner_encoded(GroupId::FIRST, Keyspace::ACCUMULATOR, [1, 2, 3])
 				.as_slice()
 				.to_vec(),
 		);

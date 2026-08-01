@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_rql::{expression::Expression, flow::node::FlowNodeType::Gate, nodes::GateNode, query::QueryPlan};
+use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_rql::{expression::Expression, flow::operator::OperatorDef::Gate, nodes::GateNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
@@ -23,7 +23,7 @@ impl From<GateNode> for GateCompiler {
 }
 
 impl CompileOperator for GateCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
 		let conditions = self.conditions;
 
 		let input_node = compiler.compile_plan(txn, *self.input)?;

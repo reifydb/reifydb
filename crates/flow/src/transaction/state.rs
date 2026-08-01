@@ -7,7 +7,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 	key::{operator_state::OperatorStateKey, operator_group_state::GroupStateKey},
@@ -24,7 +24,7 @@ impl FlowTransaction {
 		key_len = key.as_slice().len(),
 		found = field::Empty
 	))]
-	pub fn state_get(&mut self, id: FlowNodeId, key: &GroupStateKey) -> Result<Option<EncodedRow>> {
+	pub fn state_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedRow>> {
 		let result = self.scoped_get(id, key)?;
 		Span::current().record("found", result.is_some());
 		Ok(result)
@@ -35,7 +35,7 @@ impl FlowTransaction {
 		key_count = keys.len(),
 		found_count = field::Empty
 	))]
-	pub fn state_get_many(&mut self, id: FlowNodeId, keys: &[GroupStateKey]) -> Result<MultiVersionBatch> {
+	pub fn state_get_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<MultiVersionBatch> {
 		let batch = self.scoped_get_many(id, keys)?;
 		Span::current().record("found_count", batch.items.len());
 		Ok(batch)
@@ -46,7 +46,7 @@ impl FlowTransaction {
 		key_len = key.as_slice().len(),
 		value_len = value.len()
 	))]
-	pub fn state_set(&mut self, id: FlowNodeId, key: &GroupStateKey, value: EncodedRow) -> Result<()> {
+	pub fn state_set(&mut self, id: OperatorId, key: &GroupStateKey, value: EncodedRow) -> Result<()> {
 		self.scoped_set(id, key, value)
 	}
 
@@ -54,7 +54,7 @@ impl FlowTransaction {
 		node_id = id.0,
 		key_len = key.as_slice().len()
 	))]
-	pub fn state_remove(&mut self, id: FlowNodeId, key: &GroupStateKey) -> Result<()> {
+	pub fn state_remove(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<()> {
 		self.scoped_remove(id, key)
 	}
 
@@ -62,7 +62,7 @@ impl FlowTransaction {
 		node_id = id.0,
 		result_count = field::Empty
 	))]
-	pub fn state_scan_all(&mut self, id: FlowNodeId) -> Result<MultiVersionBatch> {
+	pub fn state_scan_all(&mut self, id: OperatorId) -> Result<MultiVersionBatch> {
 		let range = OperatorStateKey::node_range(id);
 		let iter = self.range(range, RangeScope::All, 1024);
 		let mut items = Vec::new();
@@ -79,7 +79,7 @@ impl FlowTransaction {
 	#[instrument(name = "flow::state::range", level = "debug", skip(self, range), fields(
 		node_id = id.0
 	))]
-	pub fn state_range_all(&mut self, id: FlowNodeId, range: EncodedKeyRange) -> Result<MultiVersionBatch> {
+	pub fn state_range_all(&mut self, id: OperatorId, range: EncodedKeyRange) -> Result<MultiVersionBatch> {
 		let prefixed_range = range.with_prefix(OperatorStateKey::encoded(id, vec![]));
 		let iter = self.range(prefixed_range, RangeScope::All, 1024);
 		let mut items = Vec::new();
@@ -97,7 +97,7 @@ impl FlowTransaction {
 	))]
 	pub fn state_range(
 		&mut self,
-		id: FlowNodeId,
+		id: OperatorId,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
 	) -> Result<MultiVersionBatch> {
@@ -123,7 +123,7 @@ impl FlowTransaction {
 		node_id = id.0,
 		keys_removed = field::Empty
 	))]
-	pub fn state_clear(&mut self, id: FlowNodeId) -> Result<()> {
+	pub fn state_clear(&mut self, id: OperatorId) -> Result<()> {
 		let keys_to_remove = self.scan_keys_for_clear(id)?;
 
 		let count = keys_to_remove.len();
@@ -135,7 +135,7 @@ impl FlowTransaction {
 
 	#[inline]
 	#[instrument(name = "flow::state::clear::scan", level = "trace", skip(self), fields(node_id = id.0))]
-	fn scan_keys_for_clear(&mut self, id: FlowNodeId) -> Result<Vec<EncodedKey>> {
+	fn scan_keys_for_clear(&mut self, id: OperatorId) -> Result<Vec<EncodedKey>> {
 		let range = OperatorStateKey::node_range(id);
 		let iter = self.range(range, RangeScope::All, 1024);
 		let mut keys = Vec::new();
@@ -160,7 +160,7 @@ impl FlowTransaction {
 		key_len = key.as_slice().len(),
 		created
 	))]
-	pub fn load_or_create_row(&mut self, id: FlowNodeId, key: &GroupStateKey, shape: &RowShape) -> Result<EncodedRow> {
+	pub fn load_or_create_row(&mut self, id: OperatorId, key: &GroupStateKey, shape: &RowShape) -> Result<EncodedRow> {
 		match self.state_get(id, key)? {
 			Some(row) => {
 				Span::current().record("created", false);
@@ -177,16 +177,16 @@ impl FlowTransaction {
 		node_id = id.0,
 		key_len = key.as_slice().len()
 	))]
-	pub fn save_row(&mut self, id: FlowNodeId, key: &GroupStateKey, row: EncodedRow) -> Result<()> {
+	pub fn save_row(&mut self, id: OperatorId, key: &GroupStateKey, row: EncodedRow) -> Result<()> {
 		self.state_set(id, key, row)
 	}
 
-	fn scoped_get(&mut self, id: FlowNodeId, key: &GroupStateKey) -> Result<Option<EncodedRow>> {
+	fn scoped_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedRow>> {
 		let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
 		self.get(&encoded_key)
 	}
 
-	fn scoped_get_many(&mut self, id: FlowNodeId, keys: &[GroupStateKey]) -> Result<MultiVersionBatch> {
+	fn scoped_get_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<MultiVersionBatch> {
 		let version = self.version();
 		let encoded: Vec<EncodedKey> =
 			keys.iter().map(|key| OperatorStateKey::encoded(id, key.as_slice())).collect();
@@ -277,11 +277,11 @@ impl FlowTransaction {
 		Ok(())
 	}
 
-	fn scoped_set(&mut self, id: FlowNodeId, key: &GroupStateKey, value: EncodedRow) -> Result<()> {
+	fn scoped_set(&mut self, id: OperatorId, key: &GroupStateKey, value: EncodedRow) -> Result<()> {
 		self.set(&OperatorStateKey::encoded(id, key.as_slice()), value)
 	}
 
-	fn scoped_remove(&mut self, id: FlowNodeId, key: &GroupStateKey) -> Result<()> {
+	fn scoped_remove(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<()> {
 		let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
 		self.remove_silent(&encoded_key)
 	}
@@ -305,7 +305,7 @@ pub mod tests {
 	use reifydb_core::{
 		actors::pending::{Pending, PendingLayers},
 		common::CommitVersion,
-		interface::catalog::{flow::FlowNodeId, id::TableId, storage::StorageId},
+		interface::catalog::{flow::OperatorId, id::TableId, storage::StorageId},
 		key::{
 			EncodableKey,
 			operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
@@ -330,7 +330,7 @@ pub mod tests {
 		},
 	};
 
-	fn commit_state_row(engine: &TestEngine, node: FlowNodeId, key: &GroupStateKey, row: EncodedRow) -> CommitVersion {
+	fn commit_state_row(engine: &TestEngine, node: OperatorId, key: &GroupStateKey, row: EncodedRow) -> CommitVersion {
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 		cmd.disable_conflict_tracking().unwrap();
 		cmd.set(&OperatorStateKey::encoded(node, key.as_slice()), row).unwrap();
@@ -340,7 +340,7 @@ pub mod tests {
 	fn make_key(s: &str) -> GroupStateKey {
 		// Framed as an operator composes its keys. A bare byte string encodes as some other group's
 		// prefix, so these tests would assert against keys reclamation could prefix-delete.
-		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, s.as_bytes())
+		OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, s.as_bytes())
 	}
 
 	fn make_value(s: &str) -> EncodedRow {
@@ -366,7 +366,7 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let key = make_key("state_key");
 		let value = make_value("state_value");
 
@@ -387,7 +387,7 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		txn.state_set(node_id, &make_key("a"), make_value("1")).unwrap();
 		txn.state_set(node_id, &make_key("b"), make_value("2")).unwrap();
 
@@ -420,7 +420,7 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let key = make_key("missing");
 
 		let result = txn.state_get(node_id, &key).unwrap();
@@ -438,7 +438,7 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let key = make_key("state_key");
 		let value = make_value("state_value");
 
@@ -460,8 +460,8 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node1 = FlowNodeId(1);
-		let node2 = FlowNodeId(2);
+		let node1 = OperatorId(1);
+		let node2 = OperatorId(2);
 		let key = make_key("same_key");
 
 		txn.state_set(node1, &key, make_value("node1_value")).unwrap();
@@ -482,7 +482,7 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 
 		txn.state_set(node_id, &make_key("key1"), make_value("value1")).unwrap();
 		txn.state_set(node_id, &make_key("key2"), make_value("value2")).unwrap();
@@ -505,8 +505,8 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node1 = FlowNodeId(1);
-		let node2 = FlowNodeId(2);
+		let node1 = OperatorId(1);
+		let node2 = OperatorId(2);
 
 		txn.state_set(node1, &make_key("key1"), make_value("value1")).unwrap();
 		txn.state_set(node1, &make_key("key2"), make_value("value2")).unwrap();
@@ -530,7 +530,7 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 
 		let iter = txn.state_scan_all(node_id).unwrap();
 		assert!(iter.items.into_iter().next().is_none());
@@ -547,7 +547,7 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 
 		txn.state_set(node_id, &make_key("a"), make_value("1")).unwrap();
 		txn.state_set(node_id, &make_key("b"), make_value("2")).unwrap();
@@ -575,7 +575,7 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 
 		txn.state_set(node_id, &make_key("key1"), make_value("value1")).unwrap();
 		txn.state_set(node_id, &make_key("key2"), make_value("value2")).unwrap();
@@ -599,8 +599,8 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node1 = FlowNodeId(1);
-		let node2 = FlowNodeId(2);
+		let node1 = OperatorId(1);
+		let node2 = OperatorId(2);
 
 		txn.state_set(node1, &make_key("key1"), make_value("value1")).unwrap();
 		txn.state_set(node1, &make_key("key2"), make_value("value2")).unwrap();
@@ -623,7 +623,7 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 
 		txn.state_clear(node_id).unwrap();
 	}
@@ -639,7 +639,7 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let key = make_key("key1");
 		let value = make_value("existing");
 		let shape = RowShape::testing(&[ValueType::Int8, ValueType::Float8]);
@@ -661,7 +661,7 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let key = make_key("key1");
 		let shape = RowShape::testing(&[ValueType::Int8, ValueType::Float8]);
 
@@ -681,7 +681,7 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let key = make_key("key1");
 		let row = make_value("row_data");
 
@@ -702,9 +702,9 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		let node1 = FlowNodeId(1);
-		let node2 = FlowNodeId(2);
-		let node3 = FlowNodeId(3);
+		let node1 = OperatorId(1);
+		let node2 = OperatorId(2);
+		let node3 = OperatorId(3);
 
 		txn.state_set(node1, &make_key("a"), make_value("n1_a")).unwrap();
 		txn.state_set(node1, &make_key("b"), make_value("n1_b")).unwrap();
@@ -726,7 +726,7 @@ pub mod tests {
 		// the reads that leave the transaction and never the ones the pending overlay serves, or
 		// the profiler misattributes the read amplification it exists to measure.
 		let engine = TestEngine::new();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let committed_key = make_key("committed");
 		commit_state_row(&engine, node_id, &committed_key, make_value("v"));
 
@@ -770,7 +770,7 @@ pub mod tests {
 		// point or batch) must come from the read-through cache. Without it every operator re-pays
 		// a store roundtrip for state it already loaded in the same slice.
 		let engine = TestEngine::new();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let committed_key = make_key("committed");
 		commit_state_row(&engine, node_id, &committed_key, make_value("v"));
 
@@ -812,7 +812,7 @@ pub mod tests {
 		// wins on every later read. Consulting the cache first would let an operator read back its
 		// own stale pre-write state and fold updates into a dead accumulator.
 		let engine = TestEngine::new();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let key = make_key("k");
 		commit_state_row(&engine, node_id, &key, make_value("old"));
 
@@ -848,7 +848,7 @@ pub mod tests {
 		// op. Reading the prior row back to carry created_at forward costs a store read per written
 		// key per flush, and defeats the caches above once one of them serves the load.
 		let engine = TestEngine::new();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let key = make_key("acc");
 		commit_state_row(&engine, node_id, &key, anchored_row(b"v0", 1_000, 1_000));
 
@@ -882,7 +882,7 @@ pub mod tests {
 		// any input data version. Bounding operator-state reads to the later consume's own object
 		// version would hide the other side of the join and emit an unmatched none result.
 		let engine = TestEngine::new();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let inner_key = make_key("late_right_side");
 		let value = make_value("matched_row");
 
@@ -930,7 +930,7 @@ pub mod tests {
 		// command rather than the in-memory pending and become durable when the flow commits,
 		// alongside state committed by prior transactions.
 		let engine = TestEngine::new();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let prior_key = make_key("prior");
 		let prior_value = make_value("prior_value");
 		commit_state_row(&engine, node_id, &prior_key, prior_value.clone());
@@ -972,7 +972,7 @@ pub mod tests {
 		// plus a base_pending overlay. The read must not be bounded to the txn `version`, which is
 		// set below the committed state here and would hide it.
 		let engine = TestEngine::new();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let committed_key = make_key("committed");
 		let committed_value = make_value("committed_value");
 
@@ -1022,7 +1022,7 @@ pub mod tests {
 		// The pinned query snapshot cannot see the flow's last commit, so a deferred slice reads its
 		// own prior writes through the base_pending overlay.
 		let engine = TestEngine::new();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 
 		let committed_key = make_key("committed");
 		let committed_value = make_value("committed_value");
@@ -1136,7 +1136,7 @@ pub mod tests {
 		// The ephemeral variant has no state_query, so it serves operator-state reads from an
 		// in-memory state map with the pending overlay on top.
 		let engine = TestEngine::new();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let seeded_key = make_key("seeded");
 		let seeded_value = make_value("seeded_value");
 
@@ -1171,7 +1171,7 @@ pub mod tests {
 		// unbounded per-transaction memo growth the point-path cap closed. A rejected entry must
 		// not be counted, must not enter the memo, and must not shrink the batch result.
 		let engine = TestEngine::new();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let key = make_key("k1");
 		commit_state_row(&engine, node_id, &key, make_value("v"));
 
@@ -1205,7 +1205,7 @@ pub mod tests {
 		// prefetch_bytes must reflect the memo no matter which path filled it, or the cap is
 		// meaningless for batch-heavy operators.
 		let engine = TestEngine::new();
-		let node_id = FlowNodeId(1);
+		let node_id = OperatorId(1);
 		let hit = make_key("hit");
 		let miss = make_key("miss");
 		commit_state_row(&engine, node_id, &hit, make_value("v"));

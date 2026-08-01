@@ -232,7 +232,7 @@ pub mod tests {
 	fn structured(node: OperatorId, group: GroupId, keyspace: Keyspace, suffix: Vec<u8>) -> EncodedKey {
 		OperatorStateKey::encoded(
 			node,
-			OperatorStateKey::inner_encoded(group, keyspace, suffix).as_slice().to_vec(),
+			OperatorGroupStateKey::inner_encoded(group, keyspace, suffix).as_slice().to_vec(),
 		)
 	}
 
@@ -325,7 +325,7 @@ pub mod tests {
 
 		let node = create_operator(&mut txn, flow.id, 1, &[0x01]);
 
-		let gate_inner = OperatorStateKey::inner_encoded(
+		let gate_inner = OperatorGroupStateKey::inner_encoded(
 			GroupId::NODE_SCOPE,
 			Keyspace::GATE_VISIBILITY,
 			42u64.to_be_bytes(),

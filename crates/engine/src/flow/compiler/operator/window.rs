@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{common::WindowKind, interface::catalog::flow::FlowNodeId};
-use reifydb_rql::{expression::Expression, flow::node::FlowNodeType::Window, nodes::WindowNode, query::QueryPlan};
+use reifydb_core::{common::WindowKind, interface::catalog::flow::OperatorId};
+use reifydb_rql::{expression::Expression, flow::operator::OperatorDef::Window, nodes::WindowNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, value::duration::Duration};
 
@@ -32,7 +32,7 @@ impl From<WindowNode> for WindowCompiler {
 }
 
 impl CompileOperator for WindowCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
 		validate_flow_aggregations(&compiler.routines, &self.aggregations, AggregateContext::Windowed)?;
 
 		let input_node = if let Some(input) = self.input {

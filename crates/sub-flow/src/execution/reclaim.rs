@@ -8,7 +8,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
 		config::{ConfigKey, GetConfig},
-		flow::{FlowId, FlowNodeId},
+		flow::{FlowId, OperatorId},
 		storage::StorageId,
 	},
 	key::operator_group_state::{GroupId, GroupSet, Keyspace},
@@ -16,7 +16,7 @@ use reifydb_core::{
 	state::horizon::Cutoff,
 };
 use reifydb_flow::transaction::FlowTransaction;
-use reifydb_rql::flow::{flow::FlowDag, node::FlowNodeType};
+use reifydb_rql::flow::{flow::FlowDag, node::OperatorDef};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
@@ -65,7 +65,7 @@ pub struct MappingReclaim {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeReclaim {
-	pub node: FlowNodeId,
+	pub node: OperatorId,
 	pub data: Option<PhaseReclaim>,
 	pub identity: Option<PhaseReclaim>,
 	pub keyspaces: Vec<KeyspaceReclaim>,
@@ -73,7 +73,7 @@ pub struct NodeReclaim {
 }
 
 impl NodeReclaim {
-	fn new(node: FlowNodeId) -> Self {
+	fn new(node: OperatorId) -> Self {
 		Self {
 			node,
 			data: None,
@@ -108,7 +108,7 @@ impl ReclaimReport {
 		self.identity_floor = lowest(self.identity_floor, Some(floor));
 	}
 
-	pub fn node(&self, node: FlowNodeId) -> Option<&NodeReclaim> {
+	pub fn node(&self, node: OperatorId) -> Option<&NodeReclaim> {
 		self.nodes.iter().find(|reclaim| reclaim.node == node)
 	}
 }
@@ -227,7 +227,7 @@ impl FlowEngineInner {
 	}
 
 	fn flow_watermark(&self, txn: &mut FlowTransaction, flow: &FlowDag) -> Result<DateTime> {
-		let sources: Vec<FlowNodeId> = flow
+		let sources: Vec<OperatorId> = flow
 			.get_node_ids()
 			.filter(|id| flow.get_node(id).is_some_and(|node| node.ty.is_source()))
 			.collect();
@@ -247,7 +247,7 @@ fn identity_span(flow: &FlowDag, row_ttl: impl Fn(StorageId) -> Option<Duration>
 }
 
 pub struct SweepInputs {
-	pub node: FlowNodeId,
+	pub node: OperatorId,
 	pub data: Option<Cutoff>,
 	pub identity: Option<Cutoff>,
 
@@ -259,7 +259,7 @@ pub struct SweepInputs {
 }
 
 pub struct SweepOutcome {
-	pub cursors: Vec<(FlowNodeId, Option<EncodedKey>)>,
+	pub cursors: Vec<(OperatorId, Option<EncodedKey>)>,
 }
 
 pub fn reclaim_nodes(
@@ -267,7 +267,7 @@ pub fn reclaim_nodes(
 	txn: &mut FlowTransaction,
 	remaining: &mut ReclaimBudget,
 	report: &mut ReclaimReport,
-	invalidate: &mut dyn FnMut(FlowNodeId, GroupSet),
+	invalidate: &mut dyn FnMut(OperatorId, GroupSet),
 ) -> Result<SweepOutcome> {
 	let mut cursors = Vec::new();
 	for input in inputs {
@@ -339,7 +339,7 @@ pub fn reclaim_nodes(
 #[instrument(name = "lifecycle::operator::group::data", level = "debug", skip_all, fields(node = node.0))]
 fn reclaim_data(
 	txn: &mut FlowTransaction,
-	node: FlowNodeId,
+	node: OperatorId,
 	cutoff: Cutoff,
 	remaining: &mut ReclaimBudget,
 	report: &mut ReclaimReport,
@@ -376,7 +376,7 @@ fn mapping_cutoff(declared: Option<Cutoff>, identity: Option<Cutoff>) -> Option<
 #[instrument(name = "lifecycle::operator::group::keyspace", level = "debug", skip_all, fields(node = node.0, keyspace = keyspace.0))]
 fn reclaim_keyspace(
 	txn: &mut FlowTransaction,
-	node: FlowNodeId,
+	node: OperatorId,
 	keyspace: Keyspace,
 	cutoff: Cutoff,
 	remaining: &mut ReclaimBudget,
@@ -407,7 +407,7 @@ fn reclaim_keyspace(
 #[instrument(name = "lifecycle::operator::group::identity", level = "debug", skip_all, fields(node = node.0))]
 fn reclaim_identity(
 	txn: &mut FlowTransaction,
-	node: FlowNodeId,
+	node: OperatorId,
 	cutoff: Cutoff,
 	remaining: &mut ReclaimBudget,
 	report: &mut ReclaimReport,
@@ -440,17 +440,17 @@ fn identity_cutoff(identity_span: Option<Duration>, watermark: DateTime) -> Opti
 	identity_span.map(|span| Cutoff(watermark.saturating_sub(span)))
 }
 
-fn sink_storage(ty: &FlowNodeType) -> Option<StorageId> {
+fn sink_storage(ty: &OperatorDef) -> Option<StorageId> {
 	match ty {
-		FlowNodeType::SinkTableView {
+		OperatorDef::SinkTableView {
 			table,
 			..
 		} => Some(StorageId::Table(*table)),
-		FlowNodeType::SinkRingBufferView {
+		OperatorDef::SinkRingBufferView {
 			ringbuffer,
 			..
 		} => Some(StorageId::RingBuffer(*ringbuffer)),
-		FlowNodeType::SinkSeriesView {
+		OperatorDef::SinkSeriesView {
 			series,
 			..
 		} => Some(StorageId::Series(*series)),
@@ -471,7 +471,7 @@ mod tests {
 
 	use super::*;
 
-	const NODE: FlowNodeId = FlowNodeId(1);
+	const NODE: OperatorId = OperatorId(1);
 
 	fn ms(milliseconds: i64) -> Duration {
 		Duration::from_milliseconds(milliseconds).expect("test duration must be representable")
@@ -525,7 +525,7 @@ mod tests {
 		txn.state_range(NODE, group_inner_range(id), None).unwrap().items.len()
 	}
 
-	fn node_deferred(engine: &TestEngine, nodes: &[FlowNodeId]) -> FlowTransaction {
+	fn node_deferred(engine: &TestEngine, nodes: &[OperatorId]) -> FlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
 		let txn = FlowTransaction::deferred(
@@ -541,7 +541,7 @@ mod tests {
 		txn
 	}
 
-	fn seed_node(txn: &mut FlowTransaction, node: FlowNodeId, name: &str, position_ms: u64) -> GroupId {
+	fn seed_node(txn: &mut FlowTransaction, node: OperatorId, name: &str, position_ms: u64) -> GroupId {
 		// The same shape as `seed`, but for an arbitrary node so a sweep can be given more
 		// than one.
 		txn.set_change_coordinate(ChangeCoordinate {
@@ -556,13 +556,13 @@ mod tests {
 		id
 	}
 
-	fn node_accumulators(txn: &mut FlowTransaction, node: FlowNodeId, id: GroupId) -> usize {
+	fn node_accumulators(txn: &mut FlowTransaction, node: OperatorId, id: GroupId) -> usize {
 		// Not the whole group range: the GROUP_RECORD survives the data phase, so counting the
 		// range would conflate "erased" with "left the record the second phase still needs".
 		txn.state_range(node, keyspace_inner_range(id, Keyspace::ACCUMULATOR), None).unwrap().items.len()
 	}
 
-	fn data_only(node: FlowNodeId, cutoff_ms: u64) -> SweepInputs {
+	fn data_only(node: OperatorId, cutoff_ms: u64) -> SweepInputs {
 		SweepInputs {
 			node,
 			data: Some(Cutoff(DateTime::from_millis(cutoff_ms))),
@@ -579,13 +579,13 @@ mod tests {
 		// node starves its successors and the report cannot tell "nothing was due" from "never
 		// reached". Pinned so that adding fairness later is a deliberate change.
 		let engine = TestEngine::new();
-		let nodes = [FlowNodeId(1), FlowNodeId(2), FlowNodeId(3)];
+		let nodes = [OperatorId(1), OperatorId(2), OperatorId(3)];
 		let mut txn = node_deferred(&engine, &nodes);
 		let seeded: Vec<GroupId> = nodes.iter().map(|node| seed_node(&mut txn, *node, "idle", 50)).collect();
 
 		let mut remaining = budget(1, 100);
 		let mut report = ReclaimReport::default();
-		let mut invalidated: Vec<FlowNodeId> = Vec::new();
+		let mut invalidated: Vec<OperatorId> = Vec::new();
 		reclaim_nodes(
 			nodes.iter().map(|node| data_only(*node, 1_000)).collect(),
 			&mut txn,
@@ -703,7 +703,7 @@ mod tests {
 
 		let mut remaining = budget(10, 1);
 		let mut report = ReclaimReport::default();
-		let mut invalidated: Vec<FlowNodeId> = Vec::new();
+		let mut invalidated: Vec<OperatorId> = Vec::new();
 		reclaim_nodes(vec![data_only(NODE, 1_000)], &mut txn, &mut remaining, &mut report, &mut |node, _| {
 			invalidated.push(node)
 		})
@@ -1101,7 +1101,7 @@ mod sink_storage_tests {
 		series::{SeriesKey, TimestampPrecision},
 		storage::StorageId,
 	};
-	use reifydb_rql::flow::node::FlowNodeType;
+	use reifydb_rql::flow::operator::OperatorDef;
 
 	use super::sink_storage;
 
@@ -1111,7 +1111,7 @@ mod sink_storage_tests {
 		// well-typed but the lookup misses, the flow reads as perpetual, and its rows are never
 		// reclaimed. The ids are distinct so returning the wrong half cannot pass by accident.
 		assert_eq!(
-			sink_storage(&FlowNodeType::SinkTableView {
+			sink_storage(&OperatorDef::SinkTableView {
 				view: ViewId(1),
 				table: TableId(2),
 			}),
@@ -1119,7 +1119,7 @@ mod sink_storage_tests {
 		);
 
 		assert_eq!(
-			sink_storage(&FlowNodeType::SinkRingBufferView {
+			sink_storage(&OperatorDef::SinkRingBufferView {
 				view: ViewId(3),
 				ringbuffer: RingBufferId(4),
 				capacity: 16,
@@ -1128,7 +1128,7 @@ mod sink_storage_tests {
 		);
 
 		assert_eq!(
-			sink_storage(&FlowNodeType::SinkSeriesView {
+			sink_storage(&OperatorDef::SinkSeriesView {
 				view: ViewId(5),
 				series: SeriesId(6),
 				key: SeriesKey::DateTime {
@@ -1145,7 +1145,7 @@ mod sink_storage_tests {
 		// Only sinks own storage; resolving one here would attribute a row ttl to a node that
 		// never writes rows.
 		assert_eq!(
-			sink_storage(&FlowNodeType::SourceTable {
+			sink_storage(&OperatorDef::SourceTable {
 				table: TableId(9)
 			}),
 			None
@@ -1156,13 +1156,13 @@ mod sink_storage_tests {
 #[cfg(test)]
 mod identity_span_tests {
 	use reifydb_core::interface::catalog::{
-		flow::{FlowId, FlowNodeId},
+		flow::{FlowId, OperatorId},
 		id::{SubscriptionId, TableId, ViewId},
 		storage::StorageId,
 	};
 	use reifydb_rql::flow::{
 		flow::FlowDag,
-		node::{FlowEdge, FlowNode, FlowNodeType},
+		node::{FlowEdge, FlowNode, OperatorDef},
 	};
 	use reifydb_value::value::duration::Duration;
 
@@ -1172,12 +1172,12 @@ mod identity_span_tests {
 		Duration::from_milliseconds(milliseconds).expect("test duration must be representable")
 	}
 
-	fn dag(nodes: &[(u64, FlowNodeType)], edges: &[(u64, u64)]) -> FlowDag {
+	fn dag(nodes: &[(u64, OperatorDef)], edges: &[(u64, u64)]) -> FlowDag {
 		// The edges are wired even though the resolver scans nodes rather than walking them, so
 		// the fixture keeps the shape of a real flow.
 		let mut builder = FlowDag::builder(FlowId(1));
 		for (id, ty) in nodes {
-			builder.add_node(FlowNode::new(FlowNodeId(*id), ty.clone()));
+			builder.add_node(FlowNode::new(OperatorId(*id), ty.clone()));
 		}
 		for (index, (source, target)) in edges.iter().enumerate() {
 			builder.add_edge(FlowEdge::new(index as u64 + 1, *source, *target)).expect("edge");
@@ -1185,14 +1185,14 @@ mod identity_span_tests {
 		builder.build()
 	}
 
-	fn source() -> FlowNodeType {
-		FlowNodeType::SourceTable {
+	fn source() -> OperatorDef {
+		OperatorDef::SourceTable {
 			table: TableId(1),
 		}
 	}
 
-	fn operator() -> FlowNodeType {
-		FlowNodeType::Append {}
+	fn operator() -> OperatorDef {
+		OperatorDef::Append {}
 	}
 
 	#[test]
@@ -1206,7 +1206,7 @@ mod identity_span_tests {
 				(2, operator()),
 				(
 					3,
-					FlowNodeType::SinkTableView {
+					OperatorDef::SinkTableView {
 						view: ViewId(10),
 						table: TableId(20),
 					},
@@ -1232,7 +1232,7 @@ mod identity_span_tests {
 				(1, operator()),
 				(
 					2,
-					FlowNodeType::SinkTableView {
+					OperatorDef::SinkTableView {
 						view: ViewId(10),
 						table: TableId(20),
 					},
@@ -1253,7 +1253,7 @@ mod identity_span_tests {
 				(1, operator()),
 				(
 					2,
-					FlowNodeType::SinkSubscription {
+					OperatorDef::SinkSubscription {
 						subscription: SubscriptionId(7),
 					},
 				),

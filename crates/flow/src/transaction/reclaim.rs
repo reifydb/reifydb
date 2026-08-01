@@ -3,7 +3,7 @@
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
+	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
 		operator_state::OperatorStateKey,
@@ -31,7 +31,7 @@ impl ReclaimOutcome {
 }
 
 impl FlowTransaction {
-	pub fn reclaim_group_data(&mut self, node: FlowNodeId, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
+	pub fn reclaim_group_data(&mut self, node: OperatorId, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
 		reifydb_assertions! {
 			assert!(
 				!group.is_node_scope(),
@@ -48,7 +48,7 @@ impl FlowTransaction {
 
 	pub fn reclaim_group_keyspace(
 		&mut self,
-		node: FlowNodeId,
+		node: OperatorId,
 		group: GroupId,
 		keyspace: Keyspace,
 		limit: usize,
@@ -75,7 +75,7 @@ impl FlowTransaction {
 
 	pub fn reclaim_group_identity(
 		&mut self,
-		node: FlowNodeId,
+		node: OperatorId,
 		group: GroupId,
 		limit: usize,
 	) -> Result<ReclaimOutcome> {
@@ -99,7 +99,7 @@ impl FlowTransaction {
 		Ok(outcome)
 	}
 
-	fn reclaim_range(&mut self, node: FlowNodeId, range: EncodedKeyRange, limit: usize) -> Result<ReclaimOutcome> {
+	fn reclaim_range(&mut self, node: OperatorId, range: EncodedKeyRange, limit: usize) -> Result<ReclaimOutcome> {
 		if limit == 0 {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
@@ -143,7 +143,7 @@ mod tests {
 	use super::*;
 	use crate::transaction::ChangeCoordinate;
 
-	const NODE: FlowNodeId = FlowNodeId(1);
+	const NODE: OperatorId = OperatorId(1);
 	const GROUP: GroupId = GroupId(7);
 	const NEIGHBOUR: GroupId = GroupId(8);
 

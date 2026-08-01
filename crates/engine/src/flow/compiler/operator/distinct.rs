@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		identifier::{ColumnIdentifier, ColumnObject},
 		resolved::{ResolvedColumn, ResolvedObject},
 	},
@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_rql::{
 	expression::{ColumnExpression, Expression},
-	flow::node::FlowNodeType::Distinct,
+	flow::operator::OperatorDef::Distinct,
 	nodes::DistinctNode,
 	query::QueryPlan,
 };
@@ -60,7 +60,7 @@ fn resolved_to_column_identifier(resolved: ResolvedColumn) -> ColumnIdentifier {
 }
 
 impl CompileOperator for DistinctCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
 		let input_node = compiler.compile_plan(txn, *self.input)?;
 
 		let expressions: Vec<Expression> = self

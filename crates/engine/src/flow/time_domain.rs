@@ -12,7 +12,7 @@ use reifydb_core::{
 		flow_time_domain_undeclared,
 	},
 };
-use reifydb_rql::flow::{flow::FlowDag, node::FlowNodeType};
+use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	Result,
@@ -42,7 +42,7 @@ pub fn check_time_domain(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &Fl
 	for node_id in flow.topological_order()? {
 		let node = flow.get_node(&node_id).unwrap();
 
-		if let FlowNodeType::Window {
+		if let OperatorDef::Window {
 			kind: WindowKind::Rolling {
 				lag: Some(_),
 				..
@@ -54,13 +54,13 @@ pub fn check_time_domain(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &Fl
 		}
 
 		let source: (String, TimeDomain, ProcessingConflict) = match &node.ty {
-			FlowNodeType::SourceInlineData {} => {
+			OperatorDef::SourceInlineData {} => {
 				if flow.time == Some(TimeDomain::Event) {
 					return Err(Error(Box::new(flow_event_time_over_inline_data(&flow_name))));
 				}
 				continue;
 			}
-			FlowNodeType::SourceTable {
+			OperatorDef::SourceTable {
 				table,
 			} => {
 				let def = catalog.get_table(&mut txn.reborrow(), *table)?;
@@ -70,7 +70,7 @@ pub fn check_time_domain(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &Fl
 					flow_event_time_over_processing_source,
 				)
 			}
-			FlowNodeType::SourceSeries {
+			OperatorDef::SourceSeries {
 				series,
 			} => {
 				let def = catalog.get_series(&mut txn.reborrow(), *series)?;
@@ -80,7 +80,7 @@ pub fn check_time_domain(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &Fl
 					flow_event_time_over_processing_source,
 				)
 			}
-			FlowNodeType::SourceRingBuffer {
+			OperatorDef::SourceRingBuffer {
 				ringbuffer,
 			} => {
 				let def = catalog.get_ringbuffer(&mut txn.reborrow(), *ringbuffer)?;
@@ -90,7 +90,7 @@ pub fn check_time_domain(catalog: &Catalog, txn: &mut Transaction<'_>, flow: &Fl
 					flow_event_time_over_processing_source,
 				)
 			}
-			FlowNodeType::SourceView {
+			OperatorDef::SourceView {
 				view,
 			} => {
 				let def = catalog.get_view(&mut txn.reborrow(), *view)?;

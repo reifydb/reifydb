@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::catalog::id::ViewId;
 
-use super::node::FlowNodeType;
+use super::operator::OperatorDef;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LocalNodeId(pub u32);
@@ -12,7 +12,7 @@ pub struct LocalNodeId(pub u32);
 pub struct CompiledNode {
 	pub local_id: LocalNodeId,
 
-	pub node_type: FlowNodeType,
+	pub node_type: OperatorDef,
 }
 
 #[derive(Debug, Clone)]

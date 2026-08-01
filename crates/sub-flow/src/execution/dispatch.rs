@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::change::Change;
 use reifydb_flow::transaction::FlowTransaction;
-use reifydb_rql::flow::node::FlowNode;
+use reifydb_rql::flow::operator::FlowNode;
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 

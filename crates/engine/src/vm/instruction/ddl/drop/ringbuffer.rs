@@ -3,7 +3,7 @@
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::value::column::columns::Columns;
-use reifydb_rql::{flow::node::FlowNodeType, nodes::DropRingBufferNode};
+use reifydb_rql::{flow::operator::OperatorDef, nodes::DropRingBufferNode};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
 
@@ -32,7 +32,7 @@ pub(crate) fn drop_ringbuffer(
 		txn,
 		&nodes,
 		&flows,
-		|node_type| matches!(node_type, FlowNodeType::SourceRingBuffer { ringbuffer } if *ringbuffer == ringbuffer_id),
+		|node_type| matches!(node_type, OperatorDef::SourceRingBuffer { ringbuffer } if *ringbuffer == ringbuffer_id),
 	)?;
 	if !dependents.is_empty() {
 		let dependents_str = dependents.join(", ");

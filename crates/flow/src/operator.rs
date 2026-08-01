@@ -3,9 +3,10 @@
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	interface::{catalog::flow::FlowNodeId, change::Change},
+	interface::{catalog::flow::OperatorId, change::Change},
 	key::operator_group_state::{GroupSet, Keyspace},
 	metrics::heap::OperatorSample,
+	value::column::columns::Columns,
 };
 use reifydb_value::{
 	Result,
@@ -34,8 +35,8 @@ impl Reclaimable {
 	}
 }
 
-pub trait Operator: Send {
-	fn id(&self) -> FlowNodeId;
+pub trait FlowOperator: Send {
+	fn id(&self) -> OperatorId;
 
 	fn capabilities(&self) -> &[OperatorCapability];
 
@@ -58,6 +59,10 @@ pub trait Operator: Send {
 	}
 
 	fn invalidate_groups(&self, _groups: &GroupSet) {}
+
+	fn output_schema(&self) -> Option<Columns> {
+		None
+	}
 }
 
-pub type BoxedOperator = Box<dyn Operator + Send>;
+pub type BoxedOperator = Box<dyn FlowOperator + Send>;

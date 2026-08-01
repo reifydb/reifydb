@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::flow::FlowNodeId, row::OperatorTtl};
-use reifydb_rql::{flow::node::FlowNodeType, nodes::AppendQueryNode, query::QueryPlan};
+use reifydb_core::{interface::catalog::flow::OperatorId, row::OperatorTtl};
+use reifydb_rql::{flow::operator::OperatorDef, nodes::AppendQueryNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
@@ -25,11 +25,11 @@ impl From<AppendQueryNode> for AppendCompiler {
 }
 
 impl CompileOperator for AppendCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
 		let left_node = compiler.compile_plan(txn, *self.left)?;
 		let right_node = compiler.compile_plan(txn, *self.right)?;
 
-		let node_id = compiler.add_node(txn, FlowNodeType::Append {})?;
+		let node_id = compiler.add_node(txn, OperatorDef::Append {})?;
 
 		compiler.write_operator_settings(txn, node_id, self.ttl)?;
 

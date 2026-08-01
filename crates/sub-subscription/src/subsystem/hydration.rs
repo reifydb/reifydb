@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::catalog::object::ObjectId, metrics::execution::StatementMetrics, value::column::columns::Columns,
 };
 use reifydb_engine::{engine::StandardEngine, subscription::HydrateError};
-use reifydb_rql::flow::{flow::FlowDag, node::FlowNodeType};
+use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
 use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
 use reifydb_value::params::Params;
 
@@ -62,7 +62,7 @@ pub(crate) fn collect_source_descriptors(
 			None => continue,
 		};
 		match &node.ty {
-			FlowNodeType::SourceTable {
+			OperatorDef::SourceTable {
 				table,
 			} => {
 				let t = catalog.get_table(&mut txn, *table)?;
@@ -71,7 +71,7 @@ pub(crate) fn collect_source_descriptors(
 				append_pushdown(&mut q, walk_for_source_pushdown(flow, &node_id));
 				out.push((ObjectId::Table(*table), q));
 			}
-			FlowNodeType::SourceView {
+			OperatorDef::SourceView {
 				view,
 			} => {
 				let v = catalog.get_view(&mut txn, *view)?;
@@ -80,7 +80,7 @@ pub(crate) fn collect_source_descriptors(
 				append_pushdown(&mut q, walk_for_source_pushdown(flow, &node_id));
 				out.push((ObjectId::View(*view), q));
 			}
-			FlowNodeType::SourceRingBuffer {
+			OperatorDef::SourceRingBuffer {
 				ringbuffer,
 			} => {
 				let r = catalog.get_ringbuffer(&mut txn, *ringbuffer)?;
@@ -92,7 +92,7 @@ pub(crate) fn collect_source_descriptors(
 			_ => {
 				if matches!(
 					&node.ty,
-					FlowNodeType::SourceInlineData { .. } | FlowNodeType::SourceSeries { .. }
+					OperatorDef::SourceInlineData { .. } | OperatorDef::SourceSeries { .. }
 				) {
 					return Err(HydrateError::UnsupportedSourceType);
 				}

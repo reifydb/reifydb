@@ -12,11 +12,11 @@ use reifydb_catalog::{
 	vtable::system::operator_store::{OperatorLibraryInfo, OperatorLibraryStore},
 };
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
+	interface::catalog::flow::OperatorId,
 	row::{OperatorSettings, OperatorTtl},
 };
 use reifydb_engine::{flow::span::check_declared_spans, test_harness::TestEngine};
-use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag, node::FlowNodeType};
+use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag, operator::OperatorDef};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::{duration::Duration, identity::IdentityId};
 
@@ -34,7 +34,7 @@ fn reload_dag(engine: &TestEngine, txn: &mut AdminTransaction, view: &str) -> Fl
 	load_flow_dag(&mut Transaction::Admin(txn), flow.id).unwrap()
 }
 
-fn declare_span(txn: &mut AdminTransaction, node: FlowNodeId) {
+fn declare_span(txn: &mut AdminTransaction, node: OperatorId) {
 	// Writes a span onto a node DDL saw with no settings row at all.
 	create_operator_settings(
 		txn,
@@ -49,7 +49,7 @@ fn declare_span(txn: &mut AdminTransaction, node: FlowNodeId) {
 	.unwrap();
 }
 
-fn node_of(dag: &FlowDag, matches: impl Fn(&FlowNodeType) -> bool) -> FlowNodeId {
+fn node_of(dag: &FlowDag, matches: impl Fn(&OperatorDef) -> bool) -> OperatorId {
 	dag.topological_order()
 		.unwrap()
 		.into_iter()
@@ -94,7 +94,7 @@ fn a_span_that_appears_on_a_stateless_node_after_definition_is_refused() {
 
 	let mut txn = engine.begin_admin(IdentityId::system()).unwrap();
 	let dag = reload_dag(&engine, &mut txn, "v");
-	let map = node_of(&dag, |ty| matches!(ty, FlowNodeType::Map { .. }));
+	let map = node_of(&dag, |ty| matches!(ty, OperatorDef::Map { .. }));
 	declare_span(&mut txn, map);
 
 	assert_eq!(
@@ -116,7 +116,7 @@ fn a_span_survives_the_recheck_when_the_operator_still_declares_reclaim() {
 
 	let mut txn = engine.begin_admin(IdentityId::system()).unwrap();
 	let dag = reload_dag(&engine, &mut txn, "u");
-	let append = node_of(&dag, |ty| matches!(ty, FlowNodeType::Append { .. }));
+	let append = node_of(&dag, |ty| matches!(ty, OperatorDef::Append { .. }));
 	declare_span(&mut txn, append);
 
 	assert_eq!(
@@ -138,7 +138,7 @@ fn a_span_is_refused_when_the_operator_catalog_reports_no_reclaim() {
 
 	let mut txn = engine.begin_admin(IdentityId::system()).unwrap();
 	let dag = reload_dag(&engine, &mut txn, "a");
-	let apply = node_of(&dag, |ty| matches!(ty, FlowNodeType::Apply { .. }));
+	let apply = node_of(&dag, |ty| matches!(ty, OperatorDef::Apply { .. }));
 	declare_span(&mut txn, apply);
 
 	// An operator the catalog has never heard of cannot run at all, so accepting its span would

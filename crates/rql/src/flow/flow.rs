@@ -5,14 +5,14 @@ use std::{ops::Deref, sync::Arc};
 
 use reifydb_core::{
 	common::TimeDomain,
-	interface::catalog::flow::{FlowId, FlowNodeId},
+	interface::catalog::flow::{FlowId, OperatorId},
 	internal,
 };
 use reifydb_value::{Result, error::Error};
 
 use super::{
 	graph::DirectedGraph,
-	node::{FlowEdge, FlowNode, FlowNodeType},
+	operator::{FlowEdge, FlowNode, OperatorDef},
 };
 
 #[derive(Debug, Clone)]
@@ -60,7 +60,7 @@ impl FlowBuilder {
 		self
 	}
 
-	pub fn add_node(&mut self, node: FlowNode) -> FlowNodeId {
+	pub fn add_node(&mut self, node: FlowNode) -> OperatorId {
 		let node_id = node.id;
 		self.graph.add_node(node_id, node);
 		node_id
@@ -120,15 +120,15 @@ impl FlowDag {
 		self.inner.time.unwrap_or(TimeDomain::Processing)
 	}
 
-	pub fn topological_order(&self) -> Result<Vec<FlowNodeId>> {
+	pub fn topological_order(&self) -> Result<Vec<OperatorId>> {
 		Ok(self.inner.graph.topological_sort())
 	}
 
-	pub fn get_node(&self, node_id: &FlowNodeId) -> Option<&FlowNode> {
+	pub fn get_node(&self, node_id: &OperatorId) -> Option<&FlowNode> {
 		self.inner.graph.get_node(node_id)
 	}
 
-	pub fn get_node_ids(&self) -> impl Iterator<Item = FlowNodeId> + '_ {
+	pub fn get_node_ids(&self) -> impl Iterator<Item = OperatorId> + '_ {
 		self.inner.graph.nodes().map(|e| *e.0)
 	}
 
@@ -142,7 +142,7 @@ impl FlowDag {
 
 	pub fn is_subscription(&self) -> bool {
 		self.get_node_ids().any(|id| {
-			self.get_node(&id).is_some_and(|n| matches!(n.ty, FlowNodeType::SinkSubscription { .. }))
+			self.get_node(&id).is_some_and(|n| matches!(n.ty, OperatorDef::SinkSubscription { .. }))
 		})
 	}
 

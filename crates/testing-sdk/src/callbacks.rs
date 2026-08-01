@@ -716,15 +716,15 @@ unsafe extern "C" fn test_rql(
 }
 
 fn test_row_number_map_key(group: GroupId, user_key_bytes: &[u8]) -> Vec<u8> {
-	OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, user_key_bytes).as_slice().to_vec()
+	OperatorGroupStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, user_key_bytes).as_slice().to_vec()
 }
 
 fn test_row_number_map_prefix(group: GroupId) -> Vec<u8> {
-	OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, vec![]).as_slice().to_vec()
+	OperatorGroupStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, vec![]).as_slice().to_vec()
 }
 
 fn test_group_dictionary_key(group_bytes: &[u8]) -> Vec<u8> {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group_bytes)
+	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group_bytes)
 		.as_slice()
 		.to_vec()
 }

@@ -13,7 +13,7 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,
 	interface::{
-		catalog::{flow::FlowNodeId, object::ObjectId},
+		catalog::{flow::OperatorId, object::ObjectId},
 		change::{Change, ChangeOrigin, Diff},
 	},
 	state::budget::OperatorStateBudgetHandle,
@@ -180,7 +180,7 @@ pub struct FlowTransactionInner {
 	pub accumulator: ChangeAccumulator,
 	pub clock: Clock,
 
-	pub operator_states: HashMap<FlowNodeId, OperatorStateSlot>,
+	pub operator_states: HashMap<OperatorId, OperatorStateSlot>,
 
 	pub prefetch: HashMap<EncodedKey, Option<EncodedRow>>,
 	pub prefetch_bytes: u64,
@@ -439,11 +439,11 @@ impl FlowTransaction {
 		self.inner().substrate.timers.clone()
 	}
 
-	pub fn arm_timer(&mut self, node: FlowNodeId, timer: &Timer) -> Result<()> {
+	pub fn arm_timer(&mut self, node: OperatorId, timer: &Timer) -> Result<()> {
 		self.timer_wheel().arm(node, self, timer)
 	}
 
-	pub fn disarm_timer(&mut self, node: FlowNodeId, timer: &Timer) -> Result<()> {
+	pub fn disarm_timer(&mut self, node: OperatorId, timer: &Timer) -> Result<()> {
 		self.timer_wheel().disarm(node, self, timer)
 	}
 
@@ -611,7 +611,7 @@ impl FlowTransaction {
 		self.inner().state_budget.clone()
 	}
 
-	pub fn operator_state<S, F>(&mut self, node: FlowNodeId, usage: UsageFn, load: F) -> Result<&mut S>
+	pub fn operator_state<S, F>(&mut self, node: OperatorId, usage: UsageFn, load: F) -> Result<&mut S>
 	where
 		S: 'static + Send,
 		F: FnOnce(&mut Self) -> Result<(S, PersistFn)>,
@@ -634,13 +634,13 @@ impl FlowTransaction {
 		Ok(slot.value.downcast_mut::<S>().expect("operator state type mismatch"))
 	}
 
-	pub fn mark_state_dirty(&mut self, node: FlowNodeId) {
+	pub fn mark_state_dirty(&mut self, node: OperatorId) {
 		if let Some(slot) = self.inner_mut().operator_states.get_mut(&node) {
 			slot.dirty = true;
 		}
 	}
 
-	pub fn take_operator_state<S, F>(&mut self, node: FlowNodeId, load: F) -> Result<(S, PersistFn)>
+	pub fn take_operator_state<S, F>(&mut self, node: OperatorId, load: F) -> Result<(S, PersistFn)>
 	where
 		S: 'static + Send,
 		F: FnOnce(&mut Self) -> Result<(S, PersistFn)>,
@@ -654,7 +654,7 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn put_operator_state<S>(&mut self, node: FlowNodeId, state: S, persist: PersistFn, usage: UsageFn)
+	pub fn put_operator_state<S>(&mut self, node: OperatorId, state: S, persist: PersistFn, usage: UsageFn)
 	where
 		S: 'static + Send,
 	{
@@ -695,7 +695,7 @@ impl FlowTransaction {
 		Ok(())
 	}
 
-	pub fn install_operator_states(&mut self, states: HashMap<FlowNodeId, CarriedOperatorState>) {
+	pub fn install_operator_states(&mut self, states: HashMap<OperatorId, CarriedOperatorState>) {
 		let inner = self.inner_mut();
 		for (node, carried) in states {
 			if inner.operator_states.contains_key(&node) {
@@ -716,7 +716,7 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn drain_operator_states(&mut self) -> HashMap<FlowNodeId, CarriedOperatorState> {
+	pub fn drain_operator_states(&mut self) -> HashMap<OperatorId, CarriedOperatorState> {
 		let inner = self.inner_mut();
 		mem::take(&mut inner.operator_states)
 			.into_iter()

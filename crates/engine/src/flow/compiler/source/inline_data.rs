@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_rql::{flow::node::FlowNodeType, nodes::InlineDataNode};
+use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_rql::{flow::operator::OperatorDef, nodes::InlineDataNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
@@ -21,7 +21,7 @@ impl From<InlineDataNode> for InlineDataCompiler {
 }
 
 impl CompileOperator for InlineDataCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
-		compiler.add_node(txn, FlowNodeType::SourceInlineData {})
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
+		compiler.add_node(txn, OperatorDef::SourceInlineData {})
 	}
 }

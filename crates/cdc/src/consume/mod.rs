@@ -44,7 +44,7 @@ fn is_relevant_system_change(change: &SystemChange) -> bool {
 				kind,
 				KeyKind::Row
 					| KeyKind::PartitionedRow | KeyKind::Flow
-					| KeyKind::FlowNode | KeyKind::FlowNodeByFlow
+					| KeyKind::Operator | KeyKind::OperatorByFlow
 					| KeyKind::FlowEdge | KeyKind::FlowEdgeByFlow
 					| KeyKind::NamespaceFlow
 			)

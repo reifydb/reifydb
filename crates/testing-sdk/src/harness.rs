@@ -218,7 +218,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 	pub fn group_id(&self, group_key: &[u8]) -> Option<GroupId> {
 		let dictionary_key = OperatorStateKey::new(
 			self.node_id,
-			OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group_key)
+			OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group_key)
 				.as_slice()
 				.to_vec(),
 		)
@@ -263,7 +263,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 			if decoded.node != self.node_id {
 				return true;
 			}
-			match OperatorStateKey::decode_inner(&decoded.key) {
+			match OperatorGroupStateKey::decode_inner(&decoded.key) {
 				Some((group, keyspace, _)) => {
 					group.is_node_scope() || !groups.contains(&group) || !erase(keyspace)
 				}
@@ -1108,7 +1108,7 @@ pub mod tests {
 	fn group_state_key(node: FlowNodeId, group: GroupId, keyspace: Keyspace) -> OperatorStateKey {
 		// Must compose the key the way the substrate does, or what these tests seed is not
 		// addressable by the phase ranges the sweep scans.
-		OperatorStateKey::new(node, OperatorStateKey::inner_encoded(group, keyspace, b"k").as_slice().to_vec())
+		OperatorStateKey::new(node, OperatorGroupStateKey::inner_encoded(group, keyspace, b"k").as_slice().to_vec())
 	}
 
 	#[test]

@@ -38,7 +38,7 @@ pub fn default_native_functions(builder: RoutinesConfigurator) -> RoutinesConfig
 		.register_builtin_function(Arc::new(math::min::Min::new()))
 		.register_builtin_function(Arc::new(math::max::Max::new()))
 		.register_builtin_function(Arc::new(math::abs::Abs::new()))
-		.register_builtin_function(Arc::new(flow::to_json::FlowNodeToJson::new()))
+		.register_builtin_function(Arc::new(flow::to_json::OperatorDefToJson::new()))
 		.register_builtin_function(Arc::new(clock::now::Now::new()))
 		.register_builtin_function(Arc::new(blob::b58::BlobB58::new()))
 		.register_builtin_function(Arc::new(blob::b64::BlobB64::new()))

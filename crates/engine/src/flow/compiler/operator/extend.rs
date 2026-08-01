@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_rql::{expression::Expression, flow::node::FlowNodeType::Extend, nodes::ExtendNode, query::QueryPlan};
+use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_rql::{expression::Expression, flow::operator::OperatorDef::Extend, nodes::ExtendNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
@@ -23,7 +23,7 @@ impl From<ExtendNode> for ExtendCompiler {
 }
 
 impl CompileOperator for ExtendCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
 		let input_node = if let Some(input) = self.input {
 			Some(compiler.compile_plan(txn, *input)?)
 		} else {

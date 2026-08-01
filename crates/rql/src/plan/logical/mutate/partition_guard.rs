@@ -13,7 +13,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::return_error;
 
-use crate::{Result, expression::IdentExpression, flow::node::FlowNodeType};
+use crate::{Result, expression::IdentExpression, flow::operator::OperatorDef};
 
 pub(crate) enum UpdateTarget {
 	Table(TableId),
@@ -22,23 +22,23 @@ pub(crate) enum UpdateTarget {
 }
 
 impl UpdateTarget {
-	fn matches_source(&self, ty: &FlowNodeType) -> bool {
+	fn matches_source(&self, ty: &OperatorDef) -> bool {
 		match (self, ty) {
 			(
 				UpdateTarget::Table(id),
-				FlowNodeType::SourceTable {
+				OperatorDef::SourceTable {
 					table,
 				},
 			) => table == id,
 			(
 				UpdateTarget::RingBuffer(id),
-				FlowNodeType::SourceRingBuffer {
+				OperatorDef::SourceRingBuffer {
 					ringbuffer,
 				},
 			) => ringbuffer == id,
 			(
 				UpdateTarget::Series(id),
-				FlowNodeType::SourceSeries {
+				OperatorDef::SourceSeries {
 					series,
 				},
 			) => series == id,
@@ -92,10 +92,10 @@ fn downstream_view_partition_columns(
 ) -> Result<HashMap<String, ViewId>> {
 	let mut forbidden: HashMap<String, ViewId> = HashMap::new();
 
-	let nodes = catalog.list_flow_nodes_all(tx)?;
+	let nodes = catalog.list_operators_all(tx)?;
 	let mut decoded = Vec::with_capacity(nodes.len());
 	for node in &nodes {
-		let ty: FlowNodeType = from_bytes(node.data.as_ref())
+		let ty: OperatorDef = from_bytes(node.data.as_ref())
 			.map_err(|e| internal_error!("Failed to deserialize flow node type: {}", e))?;
 		decoded.push((node.flow, ty));
 	}
@@ -113,16 +113,16 @@ fn downstream_view_partition_columns(
 					continue;
 				}
 				let (view, partition_by) = match ty {
-					FlowNodeType::SinkTableView {
+					OperatorDef::SinkTableView {
 						view,
 						table,
 					} => (*view, catalog.get_table(tx, *table)?.partition_by),
-					FlowNodeType::SinkRingBufferView {
+					OperatorDef::SinkRingBufferView {
 						view,
 						ringbuffer,
 						..
 					} => (*view, catalog.get_ringbuffer(tx, *ringbuffer)?.partition_by),
-					FlowNodeType::SinkSeriesView {
+					OperatorDef::SinkSeriesView {
 						view,
 						series,
 						..
@@ -148,10 +148,10 @@ enum Anchor {
 }
 
 impl Anchor {
-	fn matches_source(&self, ty: &FlowNodeType) -> bool {
+	fn matches_source(&self, ty: &OperatorDef) -> bool {
 		match self {
 			Anchor::Target(target) => target.matches_source(ty),
-			Anchor::View(id) => matches!(ty, FlowNodeType::SourceView { view } if view == id),
+			Anchor::View(id) => matches!(ty, OperatorDef::SourceView { view } if view == id),
 		}
 	}
 }

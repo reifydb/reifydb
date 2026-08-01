@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::flow::FlowNodeId, row::OperatorTtl};
-use reifydb_rql::{expression::Expression, flow::node::FlowNodeType::Apply, nodes::ApplyNode, query::QueryPlan};
+use reifydb_core::{interface::catalog::flow::OperatorId, row::OperatorTtl};
+use reifydb_rql::{expression::Expression, flow::operator::OperatorDef::Apply, nodes::ApplyNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, fragment::Fragment};
 
@@ -27,7 +27,7 @@ impl From<ApplyNode> for ApplyCompiler {
 }
 
 impl CompileOperator for ApplyCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
 		let input_node = if let Some(input) = self.input {
 			Some(compiler.compile_plan(txn, *input)?)
 		} else {

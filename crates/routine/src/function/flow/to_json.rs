@@ -8,7 +8,7 @@ use reifydb_core::{
 	sort::SortKey,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_rql::{expression::json::JsonExpression, flow::node::FlowNodeType};
+use reifydb_rql::{expression::json::JsonExpression, flow::operator::OperatorDef};
 use reifydb_value::{error::Error, value::value_type::ValueType};
 use serde::Serialize;
 use serde_json::{Value as JsonValue, to_string, to_value};
@@ -17,7 +17,7 @@ use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::Func
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum JsonFlowNodeType {
+pub enum JsonOperatorDef {
 	SourceInlineData {},
 	SourceTable {
 		table: u64,
@@ -80,51 +80,51 @@ pub enum JsonFlowNodeType {
 	},
 }
 
-impl From<&FlowNodeType> for JsonFlowNodeType {
-	fn from(node_type: &FlowNodeType) -> Self {
+impl From<&OperatorDef> for JsonOperatorDef {
+	fn from(node_type: &OperatorDef) -> Self {
 		match node_type {
-			FlowNodeType::SourceInlineData {} => JsonFlowNodeType::SourceInlineData {},
-			FlowNodeType::SourceTable {
+			OperatorDef::SourceInlineData {} => JsonOperatorDef::SourceInlineData {},
+			OperatorDef::SourceTable {
 				table,
-			} => JsonFlowNodeType::SourceTable {
+			} => JsonOperatorDef::SourceTable {
 				table: table.0,
 			},
-			FlowNodeType::SourceView {
+			OperatorDef::SourceView {
 				view,
-			} => JsonFlowNodeType::SourceView {
+			} => JsonOperatorDef::SourceView {
 				view: view.0,
 			},
-			FlowNodeType::SourceRingBuffer {
+			OperatorDef::SourceRingBuffer {
 				ringbuffer,
-			} => JsonFlowNodeType::SourceRingBuffer {
+			} => JsonOperatorDef::SourceRingBuffer {
 				ringbuffer: ringbuffer.0,
 			},
-			FlowNodeType::SourceSeries {
+			OperatorDef::SourceSeries {
 				series,
-			} => JsonFlowNodeType::SourceSeries {
+			} => JsonOperatorDef::SourceSeries {
 				series: series.0,
 			},
-			FlowNodeType::Filter {
+			OperatorDef::Filter {
 				conditions,
-			} => JsonFlowNodeType::Filter {
+			} => JsonOperatorDef::Filter {
 				conditions: conditions.iter().map(|e| e.into()).collect(),
 			},
-			FlowNodeType::Gate {
+			OperatorDef::Gate {
 				conditions,
-			} => JsonFlowNodeType::Gate {
+			} => JsonOperatorDef::Gate {
 				conditions: conditions.iter().map(|e| e.into()).collect(),
 			},
-			FlowNodeType::Map {
+			OperatorDef::Map {
 				expressions,
-			} => JsonFlowNodeType::Map {
+			} => JsonOperatorDef::Map {
 				expressions: expressions.iter().map(|e| e.into()).collect(),
 			},
-			FlowNodeType::Extend {
+			OperatorDef::Extend {
 				expressions,
-			} => JsonFlowNodeType::Extend {
+			} => JsonOperatorDef::Extend {
 				expressions: expressions.iter().map(|e| e.into()).collect(),
 			},
-			FlowNodeType::Join {
+			OperatorDef::Join {
 				join_type,
 				left,
 				right,
@@ -132,69 +132,69 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				snapshot: _,
 				natural: _,
 				latest: _,
-			} => JsonFlowNodeType::Join {
+			} => JsonOperatorDef::Join {
 				join_type: *join_type,
 				left: left.iter().map(|e| e.into()).collect(),
 				right: right.iter().map(|e| e.into()).collect(),
 				alias: alias.clone(),
 			},
-			FlowNodeType::Aggregate {
+			OperatorDef::Aggregate {
 				by,
 				map,
-			} => JsonFlowNodeType::Aggregate {
+			} => JsonOperatorDef::Aggregate {
 				by: by.iter().map(|e| e.into()).collect(),
 				map: map.iter().map(|e| e.into()).collect(),
 			},
-			FlowNodeType::Append {
+			OperatorDef::Append {
 				..
-			} => JsonFlowNodeType::Append,
-			FlowNodeType::Sort {
+			} => JsonOperatorDef::Append,
+			OperatorDef::Sort {
 				by,
-			} => JsonFlowNodeType::Sort {
+			} => JsonOperatorDef::Sort {
 				by: by.clone(),
 			},
-			FlowNodeType::Take {
+			OperatorDef::Take {
 				limit,
-			} => JsonFlowNodeType::Take {
+			} => JsonOperatorDef::Take {
 				limit: *limit,
 			},
-			FlowNodeType::Distinct {
+			OperatorDef::Distinct {
 				expressions,
-			} => JsonFlowNodeType::Distinct {
+			} => JsonOperatorDef::Distinct {
 				expressions: expressions.iter().map(|e| e.into()).collect(),
 			},
-			FlowNodeType::Apply {
+			OperatorDef::Apply {
 				operator,
 				expressions,
-			} => JsonFlowNodeType::Apply {
+			} => JsonOperatorDef::Apply {
 				operator: operator.clone(),
 				expressions: expressions.iter().map(|e| e.into()).collect(),
 			},
-			FlowNodeType::SinkTableView {
+			OperatorDef::SinkTableView {
 				view,
 				..
 			}
-			| FlowNodeType::SinkRingBufferView {
+			| OperatorDef::SinkRingBufferView {
 				view,
 				..
 			}
-			| FlowNodeType::SinkSeriesView {
+			| OperatorDef::SinkSeriesView {
 				view,
 				..
-			} => JsonFlowNodeType::SinkView {
+			} => JsonOperatorDef::SinkView {
 				view: view.0,
 			},
-			FlowNodeType::SinkSubscription {
+			OperatorDef::SinkSubscription {
 				subscription,
-			} => JsonFlowNodeType::SinkSubscription {
+			} => JsonOperatorDef::SinkSubscription {
 				subscription: subscription.0.to_string(),
 			},
-			FlowNodeType::Window {
+			OperatorDef::Window {
 				kind,
 				group_by,
 				aggregations,
 				..
-			} => JsonFlowNodeType::Window {
+			} => JsonOperatorDef::Window {
 				kind: kind.clone(),
 				group_by: group_by.iter().map(|e| e.into()).collect(),
 				aggregations: aggregations.iter().map(|e| e.into()).collect(),
@@ -203,17 +203,17 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 	}
 }
 
-pub struct FlowNodeToJson {
+pub struct OperatorDefToJson {
 	info: RoutineInfo,
 }
 
-impl Default for FlowNodeToJson {
+impl Default for OperatorDefToJson {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl FlowNodeToJson {
+impl OperatorDefToJson {
 	pub fn new() -> Self {
 		Self {
 			info: RoutineInfo::new("flow_node::to_json"),
@@ -221,7 +221,7 @@ impl FlowNodeToJson {
 	}
 }
 
-impl<'a> Routine<FunctionContext<'a>> for FlowNodeToJson {
+impl<'a> Routine<FunctionContext<'a>> for OperatorDefToJson {
 	fn info(&self) -> &RoutineInfo {
 		&self.info
 	}
@@ -264,18 +264,18 @@ impl<'a> Routine<FunctionContext<'a>> for FlowNodeToJson {
 							None => continue,
 						};
 
-						let node_type: FlowNodeType = from_bytes(bytes).map_err(|e| {
+						let node_type: OperatorDef = from_bytes(bytes).map_err(|e| {
 							Error(Box::new(internal!(
-								"Failed to deserialize FlowNodeType: {}",
+								"Failed to deserialize OperatorDef: {}",
 								e
 							)))
 						})?;
 
-						let json_node_type: JsonFlowNodeType = (&node_type).into();
+						let json_node_type: JsonOperatorDef = (&node_type).into();
 
 						let json_value = to_value(&json_node_type).map_err(|e| {
 							Error(Box::new(internal!(
-								"Failed to serialize FlowNodeType to JSON: {}",
+								"Failed to serialize OperatorDef to JSON: {}",
 								e
 							)))
 						})?;
@@ -292,7 +292,7 @@ impl<'a> Routine<FunctionContext<'a>> for FlowNodeToJson {
 
 						let json = to_string(&inner_value).map_err(|e| {
 							Error(Box::new(internal!(
-								"Failed to serialize FlowNodeType to JSON: {}",
+								"Failed to serialize OperatorDef to JSON: {}",
 								e
 							)))
 						})?;
@@ -321,7 +321,7 @@ impl<'a> Routine<FunctionContext<'a>> for FlowNodeToJson {
 	}
 }
 
-impl Function for FlowNodeToJson {
+impl Function for OperatorDefToJson {
 	fn kinds(&self) -> &[FunctionKind] {
 		&[FunctionKind::Scalar]
 	}

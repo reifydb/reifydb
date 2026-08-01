@@ -10,7 +10,7 @@ use reifydb_codec::{
 	state::{OperatorState, StateBytes, decode_state},
 };
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
+	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
 		operator_state::OperatorStateKey,
@@ -39,7 +39,7 @@ fn entry_bytes(key: &EncodedKey) -> u64 {
 }
 
 fn mapping_key(group: GroupId, key: &EncodedKey) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key)
+	OperatorGroupStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key)
 }
 
 fn mapping_range(group: GroupId) -> EncodedKeyRange {
@@ -47,7 +47,7 @@ fn mapping_range(group: GroupId) -> EncodedKeyRange {
 }
 
 fn counter_key() -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, ROW_NUMBER_COUNTER_SUFFIX)
+	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, ROW_NUMBER_COUNTER_SUFFIX)
 }
 
 fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedRow> {
@@ -159,7 +159,7 @@ pub struct RowNumberProvider {
 }
 
 struct RowNumberProviderInner {
-	nodes: DashMap<FlowNodeId, NodeState>,
+	nodes: DashMap<OperatorId, NodeState>,
 	budget: ByteSize,
 }
 
@@ -179,7 +179,7 @@ impl RowNumberProvider {
 		}
 	}
 
-	pub fn mark_fresh(&self, node: FlowNodeId, group: GroupId) {
+	pub fn mark_fresh(&self, node: OperatorId, group: GroupId) {
 		if group.is_node_scope() {
 			return;
 		}
@@ -195,7 +195,7 @@ impl RowNumberProvider {
 
 	pub fn get_or_create_row_number(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		group: GroupId,
 		txn: &mut FlowTransaction,
 		key: &EncodedKey,
@@ -205,7 +205,7 @@ impl RowNumberProvider {
 
 	pub fn get_or_create_row_numbers(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		group: GroupId,
 		txn: &mut FlowTransaction,
 		keys: &[EncodedKey],
@@ -294,7 +294,7 @@ impl RowNumberProvider {
 
 	pub fn get_row_numbers(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		group: GroupId,
 		txn: &mut FlowTransaction,
 		keys: &[EncodedKey],
@@ -344,7 +344,7 @@ impl RowNumberProvider {
 
 	pub fn get_row_number(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		group: GroupId,
 		txn: &mut FlowTransaction,
 		key: &EncodedKey,
@@ -373,7 +373,7 @@ impl RowNumberProvider {
 
 	pub fn remove_row_number(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		group: GroupId,
 		txn: &mut FlowTransaction,
 		key: &EncodedKey,
@@ -398,7 +398,7 @@ impl RowNumberProvider {
 
 	pub fn drop_below(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		group: GroupId,
 		txn: &mut FlowTransaction,
 		upper: &EncodedKey,
@@ -416,7 +416,7 @@ impl RowNumberProvider {
 				.expect("state_range must return OperatorState keys");
 			let inner = GroupStateKey::from_framed(EncodedKey::new(decoded.key))
 				.expect("the mapping range yields framed inner keys");
-			let (_, _, suffix) = OperatorStateKey::decode_inner(inner.as_slice())
+			let (_, _, suffix) = OperatorGroupStateKey::decode_inner(inner.as_slice())
 				.expect("the mapping range must yield structured operator state keys");
 			let original = EncodedKey::new(suffix);
 			let row_number = RowNumber(decode_payload::<u64>(&item.row)?);
@@ -429,12 +429,12 @@ impl RowNumberProvider {
 
 	pub fn remove_by_prefix(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		group: GroupId,
 		txn: &mut FlowTransaction,
 		key_prefix: &[u8],
 	) -> Result<()> {
-		let inner_prefix = OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix);
+		let inner_prefix = OperatorGroupStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix);
 		let range = EncodedKeyRange::prefix(inner_prefix.as_ref());
 		let batch = txn.state_range(node, range, None)?;
 
@@ -445,7 +445,7 @@ impl RowNumberProvider {
 				.expect("state_range must return OperatorState keys");
 			let inner = GroupStateKey::from_framed(EncodedKey::new(decoded.key))
 				.expect("the mapping range yields framed inner keys");
-			let (_, _, suffix) = OperatorStateKey::decode_inner(inner.as_slice())
+			let (_, _, suffix) = OperatorGroupStateKey::decode_inner(inner.as_slice())
 				.expect("the mapping range must yield structured operator state keys");
 			let original = EncodedKey::new(suffix);
 			txn.state_remove(node, &inner)?;
@@ -463,7 +463,7 @@ impl RowNumberProvider {
 
 	pub fn evict_expired(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		group: GroupId,
 		txn: &mut FlowTransaction,
 		cutoff: Cutoff,
@@ -499,7 +499,7 @@ impl RowNumberProvider {
 					.key,
 			))
 			.expect("the mapping range yields framed inner keys");
-			let (_, _, suffix) = OperatorStateKey::decode_inner(inner.as_slice())
+			let (_, _, suffix) = OperatorGroupStateKey::decode_inner(inner.as_slice())
 				.expect("the mapping range must yield structured operator state keys");
 			let original = EncodedKey::new(suffix);
 			txn.state_remove(node, &inner)?;
@@ -515,7 +515,7 @@ impl RowNumberProvider {
 		Ok(removed)
 	}
 
-	pub fn invalidate_groups(&self, node: FlowNodeId, groups: &GroupSet) {
+	pub fn invalidate_groups(&self, node: OperatorId, groups: &GroupSet) {
 		if groups.is_empty() {
 			return;
 		}
@@ -536,20 +536,20 @@ impl RowNumberProvider {
 		}
 	}
 
-	pub fn completeness(&self, node: FlowNodeId) -> StateCompleteness {
+	pub fn completeness(&self, node: OperatorId) -> StateCompleteness {
 		self.inner.nodes.get(&node).map_or(StateCompleteness::MERGE_IDENTITY, |state| state.completeness())
 	}
 
-	pub fn memory(&self, node: FlowNodeId) -> StateMemory {
+	pub fn memory(&self, node: OperatorId) -> StateMemory {
 		self.inner.nodes.get(&node).map_or(StateMemory::ZERO, |state| state.memory())
 	}
 
-	pub fn membership_memory(&self, _node: FlowNodeId) -> StateMemory {
+	pub fn membership_memory(&self, _node: OperatorId) -> StateMemory {
 		StateMemory::ZERO
 	}
 
-	pub fn samples(&self) -> Vec<(FlowNodeId, RowNumberSample)> {
-		let mut out: Vec<(FlowNodeId, RowNumberSample)> = self
+	pub fn samples(&self) -> Vec<(OperatorId, RowNumberSample)> {
+		let mut out: Vec<(OperatorId, RowNumberSample)> = self
 			.inner
 			.nodes
 			.iter()
@@ -569,13 +569,13 @@ impl RowNumberProvider {
 		out
 	}
 
-	pub fn evict(&self, node: FlowNodeId) {
+	pub fn evict(&self, node: OperatorId) {
 		self.inner.nodes.remove(&node);
 	}
 
 	fn hydrate_group(
 		state: &mut NodeState,
-		node: FlowNodeId,
+		node: OperatorId,
 		txn: &mut FlowTransaction,
 		group: GroupId,
 		budget: ByteSize,
@@ -599,7 +599,7 @@ impl RowNumberProvider {
 			for item in &batch.items {
 				let decoded = OperatorStateKey::decode(&item.key)
 					.expect("state_range must return OperatorState keys");
-				let inner = OperatorStateKey::decode_inner(&decoded.key)
+				let inner = OperatorGroupStateKey::decode_inner(&decoded.key)
 					.expect("the mapping range must yield structured operator state keys");
 				reifydb_assertions! {
 					let (found_group, keyspace) = (inner.0, inner.1);
@@ -629,7 +629,7 @@ impl RowNumberProvider {
 		Ok(())
 	}
 
-	fn mint(state: &mut NodeState, node: FlowNodeId, txn: &mut FlowTransaction, count: u64) -> Result<u64> {
+	fn mint(state: &mut NodeState, node: OperatorId, txn: &mut FlowTransaction, count: u64) -> Result<u64> {
 		let seed = match state.next {
 			Some(next) => next,
 			None => match txn.state_get(node, &counter_key())? {
@@ -648,7 +648,7 @@ impl RowNumberProvider {
 impl FlowTransaction {
 	pub fn get_or_create_row_number(
 		&mut self,
-		node: FlowNodeId,
+		node: OperatorId,
 		group: GroupId,
 		key: &EncodedKey,
 	) -> Result<(RowNumber, bool)> {
@@ -658,7 +658,7 @@ impl FlowTransaction {
 
 	pub fn get_or_create_row_numbers(
 		&mut self,
-		node: FlowNodeId,
+		node: OperatorId,
 		group: GroupId,
 		keys: &[EncodedKey],
 	) -> Result<Vec<(RowNumber, bool)>> {
@@ -668,7 +668,7 @@ impl FlowTransaction {
 
 	pub fn get_row_number(
 		&mut self,
-		node: FlowNodeId,
+		node: OperatorId,
 		group: GroupId,
 		key: &EncodedKey,
 	) -> Result<Option<RowNumber>> {
@@ -678,7 +678,7 @@ impl FlowTransaction {
 
 	pub fn get_row_numbers(
 		&mut self,
-		node: FlowNodeId,
+		node: OperatorId,
 		group: GroupId,
 		keys: &[EncodedKey],
 	) -> Result<Vec<Option<RowNumber>>> {
@@ -686,14 +686,14 @@ impl FlowTransaction {
 		provider.get_row_numbers(node, group, self, keys)
 	}
 
-	pub fn remove_row_number(&mut self, node: FlowNodeId, group: GroupId, key: &EncodedKey) -> Result<bool> {
+	pub fn remove_row_number(&mut self, node: OperatorId, group: GroupId, key: &EncodedKey) -> Result<bool> {
 		let provider = self.row_numbers();
 		provider.remove_row_number(node, group, self, key)
 	}
 
 	pub fn remove_row_numbers_below(
 		&mut self,
-		node: FlowNodeId,
+		node: OperatorId,
 		group: GroupId,
 		upper: &EncodedKey,
 	) -> Result<Vec<RowNumber>> {
@@ -703,7 +703,7 @@ impl FlowTransaction {
 
 	pub fn remove_row_numbers_by_prefix(
 		&mut self,
-		node: FlowNodeId,
+		node: OperatorId,
 		group: GroupId,
 		key_prefix: &[u8],
 	) -> Result<()> {
@@ -713,7 +713,7 @@ impl FlowTransaction {
 
 	pub fn evict_row_numbers(
 		&mut self,
-		node: FlowNodeId,
+		node: OperatorId,
 		group: GroupId,
 		cutoff: Cutoff,
 		cursor: &mut Option<EncodedKey>,
@@ -723,7 +723,7 @@ impl FlowTransaction {
 		provider.evict_expired(node, group, self, cutoff, cursor, batch_size)
 	}
 
-	pub fn invalidate_row_number_groups(&mut self, node: FlowNodeId, groups: &GroupSet) {
+	pub fn invalidate_row_number_groups(&mut self, node: OperatorId, groups: &GroupSet) {
 		let provider = self.row_numbers();
 		provider.invalidate_groups(node, groups)
 	}
@@ -741,7 +741,7 @@ mod tests {
 	use super::*;
 	use crate::transaction::ChangeCoordinate;
 
-	const NODE: FlowNodeId = FlowNodeId(1);
+	const NODE: OperatorId = OperatorId(1);
 	const GROUP: GroupId = GroupId(7);
 	const NEIGHBOUR: GroupId = GroupId(8);
 
@@ -1106,8 +1106,8 @@ mod tests {
 		let engine = TestEngine::new();
 		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
-		let (a, _) = provider.get_or_create_row_number(FlowNodeId(1), GROUP, &mut txn, &key("shared")).unwrap();
-		let (b, _) = provider.get_or_create_row_number(FlowNodeId(2), GROUP, &mut txn, &key("shared")).unwrap();
+		let (a, _) = provider.get_or_create_row_number(OperatorId(1), GROUP, &mut txn, &key("shared")).unwrap();
+		let (b, _) = provider.get_or_create_row_number(OperatorId(2), GROUP, &mut txn, &key("shared")).unwrap();
 		assert_eq!(a.0, 1, "each node mints from its own sequence");
 		assert_eq!(b.0, 1, "the same key under a different node is an independent mapping");
 	}
@@ -1329,7 +1329,7 @@ mod tests {
 		// Both node counters live in the node-scope NODE_COUNTER keyspace. Sharing a cell would let
 		// a group mint advance the row-number sequence, breaking the contiguity consumers rely on.
 		let group_counter =
-			OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![]);
+			OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![]);
 		assert_ne!(counter_key(), group_counter, "the row-number counter must not alias the group-id counter");
 		assert_ne!(
 			mapping_key(GROUP, &key("x")),

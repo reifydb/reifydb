@@ -7,13 +7,13 @@ use std::{
 };
 
 use reifydb_core::interface::catalog::{
-	flow::{FlowId, FlowNodeId},
+	flow::{FlowId, OperatorId},
 	id::{RingBufferId, SeriesId, TableId, ViewId},
 	object::ObjectId,
 };
 use serde::{Deserialize, Serialize};
 
-use crate::flow::{flow::FlowDag, node::FlowNodeType};
+use crate::flow::{flow::FlowDag, operator::OperatorDef};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ObjectReference {
@@ -35,7 +35,7 @@ pub struct FlowSummary {
 	pub sinks: Vec<SinkReference>,
 	pub node_count: usize,
 	pub edge_count: usize,
-	pub execution_order: Vec<FlowNodeId>,
+	pub execution_order: Vec<OperatorId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -167,22 +167,22 @@ impl FlowGraphAnalyzer {
 		for node_id in flow.get_node_ids() {
 			if let Some(node) = flow.get_node(&node_id) {
 				match &node.ty {
-					FlowNodeType::SourceTable {
+					OperatorDef::SourceTable {
 						table,
 					} => {
 						sources.push(ObjectReference::Table(*table));
 					}
-					FlowNodeType::SourceView {
+					OperatorDef::SourceView {
 						view,
 					} => {
 						sources.push(ObjectReference::View(*view));
 					}
-					FlowNodeType::SourceRingBuffer {
+					OperatorDef::SourceRingBuffer {
 						ringbuffer,
 					} => {
 						sources.push(ObjectReference::RingBuffer(*ringbuffer));
 					}
-					FlowNodeType::SourceSeries {
+					OperatorDef::SourceSeries {
 						series,
 					} => {
 						sources.push(ObjectReference::Series(*series));
@@ -201,15 +201,15 @@ impl FlowGraphAnalyzer {
 		for node_id in flow.get_node_ids() {
 			if let Some(node) = flow.get_node(&node_id) {
 				let view = match &node.ty {
-					FlowNodeType::SinkTableView {
+					OperatorDef::SinkTableView {
 						view,
 						..
 					}
-					| FlowNodeType::SinkRingBufferView {
+					| OperatorDef::SinkRingBufferView {
 						view,
 						..
 					}
-					| FlowNodeType::SinkSeriesView {
+					| OperatorDef::SinkSeriesView {
 						view,
 						..
 					} => Some(view),
@@ -421,11 +421,11 @@ impl Default for FlowGraphAnalyzer {
 
 #[cfg(test)]
 pub mod tests {
-	use FlowNodeType::{Filter, SinkTableView, SourceTable, SourceView};
+	use OperatorDef::{Filter, SinkTableView, SourceTable, SourceView};
 	use reifydb_core::{
 		common::JoinType,
 		interface::catalog::{
-			flow::{FlowId, FlowNodeId},
+			flow::{FlowId, OperatorId},
 			id::{TableId, ViewId},
 		},
 	};
@@ -433,14 +433,14 @@ pub mod tests {
 	use super::*;
 	use crate::flow::{
 		flow::FlowDag,
-		node::{FlowNode, FlowNodeType},
+		node::{FlowNode, OperatorDef},
 	};
 
-	fn create_test_flow_with_nodes(id: u64, node_types: Vec<FlowNodeType>) -> FlowDag {
+	fn create_test_flow_with_nodes(id: u64, node_types: Vec<OperatorDef>) -> FlowDag {
 		let mut builder = FlowDag::builder(FlowId(id));
 
 		for (i, node_type) in node_types.into_iter().enumerate() {
-			let node = FlowNode::new(FlowNodeId(i as u64 + 1), node_type);
+			let node = FlowNode::new(OperatorId(i as u64 + 1), node_type);
 			builder.add_node(node);
 		}
 
@@ -515,7 +515,7 @@ pub mod tests {
 				SourceView {
 					view: ViewId(600),
 				},
-				FlowNodeType::Join {
+				OperatorDef::Join {
 					join_type: JoinType::Inner,
 					left: vec![],
 					right: vec![],
@@ -557,7 +557,7 @@ pub mod tests {
 				SourceView {
 					view: ViewId(200),
 				},
-				FlowNodeType::SourceInlineData {},
+				OperatorDef::SourceInlineData {},
 				Filter {
 					conditions: vec![],
 				},

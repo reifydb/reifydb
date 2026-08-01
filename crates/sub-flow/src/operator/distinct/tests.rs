@@ -105,7 +105,7 @@ fn persisted_rows(op: &DistinctOperator, txn: &mut FlowTransaction) -> BTreeMap<
 	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None).unwrap();
 	for item in batch.items {
 		let inner = OperatorStateKey::decode(&item.key).expect("internal state key");
-		if let Some((_, keyspace, _)) = OperatorStateKey::decode_inner(&inner.key) {
+		if let Some((_, keyspace, _)) = OperatorGroupStateKey::decode_inner(&inner.key) {
 			if keyspace == Keyspace::DISTINCT_ENTRY {
 				out.insert(inner.key.clone(), item.row.to_vec());
 			}
@@ -126,7 +126,7 @@ fn entry_groups(op: &DistinctOperator, txn: &mut FlowTransaction) -> Vec<GroupId
 	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None).unwrap();
 	for item in batch.items {
 		let inner = OperatorStateKey::decode(&item.key).expect("internal state key");
-		if let Some((group, keyspace, _)) = OperatorStateKey::decode_inner(&inner.key)
+		if let Some((group, keyspace, _)) = OperatorGroupStateKey::decode_inner(&inner.key)
 			&& keyspace == Keyspace::DISTINCT_ENTRY
 		{
 			out.push(group);

@@ -13,7 +13,7 @@ use reifydb_codec::{
 	state::{OperatorState, StateBytes, decode_state},
 };
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
+	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
 		operator_state::OperatorStateKey,
@@ -51,22 +51,22 @@ fn membership_hash(key: &EncodedKey) -> u64 {
 }
 
 fn dictionary_key(group: &EncodedKey) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group)
+	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group)
 }
 
 fn record_key(id: GroupId) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(id, Keyspace::GROUP_RECORD, vec![])
+	OperatorGroupStateKey::inner_encoded(id, Keyspace::GROUP_RECORD, vec![])
 }
 
 fn index_key(keyspace: Keyspace, bucket: u64, id: GroupId) -> GroupStateKey {
 	let mut suffix = Vec::with_capacity(16);
 	suffix.extend_from_slice(&encode_u64_asc(bucket));
 	suffix.extend_from_slice(&encode_u64_asc(id.0));
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, keyspace, suffix)
+	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, keyspace, suffix)
 }
 
 fn index_bound(keyspace: Keyspace, bucket: u64) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, keyspace, encode_u64_asc(bucket))
+	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, keyspace, encode_u64_asc(bucket))
 }
 
 fn side_index_key(side: Keyspace, bucket: u64, id: GroupId) -> GroupStateKey {
@@ -74,18 +74,18 @@ fn side_index_key(side: Keyspace, bucket: u64, id: GroupId) -> GroupStateKey {
 	suffix.push(side.0);
 	suffix.extend_from_slice(&encode_u64_asc(bucket));
 	suffix.extend_from_slice(&encode_u64_asc(id.0));
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SIDE_ACTIVITY_INDEX, suffix)
+	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SIDE_ACTIVITY_INDEX, suffix)
 }
 
 fn side_index_bound(side: Keyspace, bucket: u64) -> GroupStateKey {
 	let mut suffix = Vec::with_capacity(9);
 	suffix.push(side.0);
 	suffix.extend_from_slice(&encode_u64_asc(bucket));
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SIDE_ACTIVITY_INDEX, suffix)
+	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SIDE_ACTIVITY_INDEX, suffix)
 }
 
 fn side_record_key(id: GroupId, side: Keyspace) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(id, Keyspace::SIDE_ACTIVITY_RECORD, vec![side.0])
+	OperatorGroupStateKey::inner_encoded(id, Keyspace::SIDE_ACTIVITY_RECORD, vec![side.0])
 }
 
 fn decode_side_suffix(suffix: &[u8]) -> Option<(Keyspace, u64, GroupId)> {
@@ -99,7 +99,7 @@ fn decode_side_suffix(suffix: &[u8]) -> Option<(Keyspace, u64, GroupId)> {
 }
 
 fn watermark_key() -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_WATERMARK, vec![])
+	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_WATERMARK, vec![])
 }
 
 fn decode_activity_suffix(suffix: &[u8]) -> Option<(u64, GroupId)> {
@@ -112,7 +112,7 @@ fn decode_activity_suffix(suffix: &[u8]) -> Option<(u64, GroupId)> {
 }
 
 fn counter_key() -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![])
+	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![])
 }
 
 pub(super) fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedRow> {
@@ -231,7 +231,7 @@ pub struct GroupInterner {
 }
 
 struct GroupInternerInner {
-	nodes: DashMap<FlowNodeId, NodeState>,
+	nodes: DashMap<OperatorId, NodeState>,
 	budget: ByteSize,
 	buckets: ActivityBuckets,
 }
@@ -253,22 +253,22 @@ impl GroupInterner {
 		}
 	}
 
-	pub fn set_activity_grid(&self, node: FlowNodeId, scale: Option<Duration>) {
+	pub fn set_activity_grid(&self, node: OperatorId, scale: Option<Duration>) {
 		let mut state = self.inner.nodes.entry(node).or_default();
 		state.buckets = Some(activity_buckets(scale));
 	}
 
-	pub fn buckets(&self, node: FlowNodeId) -> ActivityBuckets {
+	pub fn buckets(&self, node: OperatorId) -> ActivityBuckets {
 		self.buckets_of(node)
 	}
 
-	fn buckets_of(&self, node: FlowNodeId) -> ActivityBuckets {
+	fn buckets_of(&self, node: OperatorId) -> ActivityBuckets {
 		self.inner.nodes.get(&node).and_then(|state| state.buckets).unwrap_or(self.inner.buckets)
 	}
 
 	pub fn intern(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		txn: &mut FlowTransaction,
 		group: &EncodedKey,
 	) -> Result<(GroupId, bool)> {
@@ -277,7 +277,7 @@ impl GroupInterner {
 
 	pub fn intern_many(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		txn: &mut FlowTransaction,
 		groups: &[EncodedKey],
 	) -> Result<Vec<(GroupId, bool)>> {
@@ -419,7 +419,7 @@ impl GroupInterner {
 
 	fn stamp(
 		txn: &mut FlowTransaction,
-		node: FlowNodeId,
+		node: OperatorId,
 		id: GroupId,
 		group: &EncodedKey,
 		bucket: u64,
@@ -453,7 +453,7 @@ impl GroupInterner {
 
 	fn advance_position(
 		state: &mut NodeState,
-		node: FlowNodeId,
+		node: OperatorId,
 		txn: &mut FlowTransaction,
 		position: Position,
 		buckets: ActivityBuckets,
@@ -475,14 +475,14 @@ impl GroupInterner {
 		Ok(())
 	}
 
-	pub fn position(&self, node: FlowNodeId, txn: &mut FlowTransaction) -> Result<Position> {
+	pub fn position(&self, node: OperatorId, txn: &mut FlowTransaction) -> Result<Position> {
 		let budget = self.inner.budget;
 		let mut guard = self.inner.nodes.entry(node).or_default();
 		Self::hydrate_once(&mut guard, node, txn, budget)?;
 		Ok(guard.position.unwrap_or(Position::from_raw(0)))
 	}
 
-	pub fn defer(&self, node: FlowNodeId, txn: &mut FlowTransaction, id: GroupId) -> Result<bool> {
+	pub fn defer(&self, node: OperatorId, txn: &mut FlowTransaction, id: GroupId) -> Result<bool> {
 		let budget = self.inner.budget;
 		let now = txn.clock().now();
 		let mut guard = self.inner.nodes.entry(node).or_default();
@@ -507,7 +507,7 @@ impl GroupInterner {
 
 	pub fn lookup(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		txn: &mut FlowTransaction,
 		group: &EncodedKey,
 	) -> Result<Option<GroupId>> {
@@ -540,7 +540,7 @@ impl GroupInterner {
 		Ok(Some(id))
 	}
 
-	pub fn forget(&self, node: FlowNodeId, txn: &mut FlowTransaction, group: &EncodedKey) -> Result<bool> {
+	pub fn forget(&self, node: OperatorId, txn: &mut FlowTransaction, group: &EncodedKey) -> Result<bool> {
 		let budget = self.inner.budget;
 		let mut guard = self.inner.nodes.entry(node).or_default();
 		Self::hydrate_once(&mut guard, node, txn, budget)?;
@@ -561,7 +561,7 @@ impl GroupInterner {
 
 	pub fn due_groups(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		txn: &mut FlowTransaction,
 		cutoff: Cutoff,
 		limit: usize,
@@ -573,7 +573,7 @@ impl GroupInterner {
 
 	pub fn stamp_side(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		txn: &mut FlowTransaction,
 		id: GroupId,
 		side: Keyspace,
@@ -609,7 +609,7 @@ impl GroupInterner {
 
 	pub fn due_side_groups(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		txn: &mut FlowTransaction,
 		side: Keyspace,
 		cutoff: Cutoff,
@@ -630,7 +630,7 @@ impl GroupInterner {
 		for item in &batch.items {
 			let decoded = OperatorStateKey::decode(&item.key)
 				.expect("state_range must return OperatorState keys");
-			let inner = OperatorStateKey::decode_inner(&decoded.key)
+			let inner = OperatorGroupStateKey::decode_inner(&decoded.key)
 				.expect("the index range must yield structured operator state keys");
 			let Some((_found, bucket, id)) = decode_side_suffix(&inner.2) else {
 				continue;
@@ -662,7 +662,7 @@ impl GroupInterner {
 
 	pub fn forget_side(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		txn: &mut FlowTransaction,
 		id: GroupId,
 		side: Keyspace,
@@ -672,7 +672,7 @@ impl GroupInterner {
 
 	pub fn due_identity_groups(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		txn: &mut FlowTransaction,
 		cutoff: Cutoff,
 		limit: usize,
@@ -682,7 +682,7 @@ impl GroupInterner {
 
 	fn due_in(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		txn: &mut FlowTransaction,
 		keyspace: Keyspace,
 		cutoff: Cutoff,
@@ -704,7 +704,7 @@ impl GroupInterner {
 		for item in &batch.items {
 			let decoded = OperatorStateKey::decode(&item.key)
 				.expect("state_range must return OperatorState keys");
-			let inner = OperatorStateKey::decode_inner(&decoded.key)
+			let inner = OperatorGroupStateKey::decode_inner(&decoded.key)
 				.expect("the index range must yield structured operator state keys");
 			reifydb_assertions! {
 				let found = inner.1;
@@ -730,7 +730,7 @@ impl GroupInterner {
 		Ok(due)
 	}
 
-	fn load_record(node: FlowNodeId, txn: &mut FlowTransaction, id: GroupId) -> Result<Option<GroupRecord>> {
+	fn load_record(node: OperatorId, txn: &mut FlowTransaction, id: GroupId) -> Result<Option<GroupRecord>> {
 		let Some(row) = txn.state_get(node, &record_key(id))? else {
 			return Ok(None);
 		};
@@ -739,7 +739,7 @@ impl GroupInterner {
 
 	pub fn group_bytes(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		txn: &mut FlowTransaction,
 		id: GroupId,
 	) -> Result<Option<EncodedKey>> {
@@ -749,8 +749,8 @@ impl GroupInterner {
 		Ok(Some(EncodedKey::new(decode_payload::<GroupRecord>(&row)?.group)))
 	}
 
-	pub fn samples(&self) -> Vec<(FlowNodeId, GroupInternerSample)> {
-		let mut out: Vec<(FlowNodeId, GroupInternerSample)> = self
+	pub fn samples(&self) -> Vec<(OperatorId, GroupInternerSample)> {
+		let mut out: Vec<(OperatorId, GroupInternerSample)> = self
 			.inner
 			.nodes
 			.iter()
@@ -772,7 +772,7 @@ impl GroupInterner {
 
 	fn hydrate_once(
 		state: &mut NodeState,
-		node: FlowNodeId,
+		node: OperatorId,
 		txn: &mut FlowTransaction,
 		budget: ByteSize,
 	) -> Result<()> {
@@ -794,7 +794,7 @@ impl GroupInterner {
 			for item in &batch.items {
 				let decoded = OperatorStateKey::decode(&item.key)
 					.expect("state_range must return OperatorState keys");
-				let inner = OperatorStateKey::decode_inner(&decoded.key)
+				let inner = OperatorGroupStateKey::decode_inner(&decoded.key)
 					.expect("the dictionary range must yield structured operator state keys");
 				reifydb_assertions! {
 					let (group_id, keyspace) = (inner.0, inner.1);
@@ -830,7 +830,7 @@ impl GroupInterner {
 		Ok(())
 	}
 
-	fn mint(state: &mut NodeState, node: FlowNodeId, txn: &mut FlowTransaction, count: u64) -> Result<u64> {
+	fn mint(state: &mut NodeState, node: OperatorId, txn: &mut FlowTransaction, count: u64) -> Result<u64> {
 		let seed = match state.next {
 			Some(next) => next,
 			None => match txn.state_get(node, &counter_key())? {
@@ -866,7 +866,7 @@ mod tests {
 	use super::*;
 	use crate::transaction::ChangeCoordinate;
 
-	const NODE: FlowNodeId = FlowNodeId(1);
+	const NODE: OperatorId = OperatorId(1);
 
 	fn group(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes())
@@ -911,7 +911,7 @@ mod tests {
 
 	fn intern_at(
 		interner: &GroupInterner,
-		node: FlowNodeId,
+		node: OperatorId,
 		txn: &mut FlowTransaction,
 		group: &EncodedKey,
 		position: Position,
@@ -922,7 +922,7 @@ mod tests {
 
 	fn intern_many_at(
 		interner: &GroupInterner,
-		node: FlowNodeId,
+		node: OperatorId,
 		txn: &mut FlowTransaction,
 		groups: &[EncodedKey],
 		position: Position,
@@ -1612,12 +1612,12 @@ mod tests {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 1_000);
 
-		interner.set_activity_grid(FlowNodeId(2), Some(Duration::from_milliseconds(1_600).unwrap()));
+		interner.set_activity_grid(OperatorId(2), Some(Duration::from_milliseconds(1_600).unwrap()));
 		let mut txn = deferred(&engine);
 
 		let (wide, _) = intern_at(
 			&interner,
-			FlowNodeId(1),
+			OperatorId(1),
 			&mut txn,
 			&group("wide"),
 			Position(DateTime::from_nanos(150)),
@@ -1625,37 +1625,37 @@ mod tests {
 		.unwrap();
 		let (narrow, _) = intern_at(
 			&interner,
-			FlowNodeId(2),
+			OperatorId(2),
 			&mut txn,
 			&group("narrow"),
 			Position(DateTime::from_millis(150)),
 		)
 		.unwrap();
 
-		let ActivityBuckets::Undeclared(wide_grid) = interner.buckets(FlowNodeId(1)) else {
+		let ActivityBuckets::Undeclared(wide_grid) = interner.buckets(OperatorId(1)) else {
 			panic!("an unconfigured node declares no domain to bucket in");
 		};
 		assert_eq!(wide_grid.width(), 1_000, "an unconfigured node keeps the default");
 		assert_eq!(
-			interner.buckets(FlowNodeId(2))
+			interner.buckets(OperatorId(2))
 				.event_grid()
 				.expect("a seal horizon buckets in event time")
 				.width(),
 			Duration::from_milliseconds(100).unwrap()
 		);
 		assert!(
-			interner.due_groups(FlowNodeId(1), &mut txn, Cutoff(DateTime::from_nanos(999)), 10)
+			interner.due_groups(OperatorId(1), &mut txn, Cutoff(DateTime::from_nanos(999)), 10)
 				.unwrap()
 				.is_empty(),
 			"the wide node's group is still inside its first bucket"
 		);
 		assert_eq!(
-			interner.due_groups(FlowNodeId(2), &mut txn, Cutoff(DateTime::from_millis(999)), 10).unwrap(),
+			interner.due_groups(OperatorId(2), &mut txn, Cutoff(DateTime::from_millis(999)), 10).unwrap(),
 			vec![narrow],
 			"the narrow node's group has cleared several of its own buckets by the same cutoff"
 		);
 		assert_eq!(
-			interner.due_groups(FlowNodeId(1), &mut txn, Cutoff(DateTime::from_nanos(1_000)), 10).unwrap(),
+			interner.due_groups(OperatorId(1), &mut txn, Cutoff(DateTime::from_nanos(1_000)), 10).unwrap(),
 			vec![wide]
 		);
 	}
@@ -1822,7 +1822,7 @@ mod tests {
 
 		let first = intern_at(
 			&interner,
-			FlowNodeId(1),
+			OperatorId(1),
 			&mut txn,
 			&group("shared"),
 			Position(DateTime::from_nanos(0)),
@@ -1831,7 +1831,7 @@ mod tests {
 		.0;
 		let second = intern_at(
 			&interner,
-			FlowNodeId(2),
+			OperatorId(2),
 			&mut txn,
 			&group("shared"),
 			Position(DateTime::from_nanos(0)),
@@ -1843,7 +1843,7 @@ mod tests {
 
 		let other = intern_at(
 			&interner,
-			FlowNodeId(2),
+			OperatorId(2),
 			&mut txn,
 			&group("only-on-two"),
 			Position(DateTime::from_nanos(0)),
@@ -1852,7 +1852,7 @@ mod tests {
 		.0;
 		let mut txn = deferred(&engine);
 		assert_eq!(
-			interner.lookup(FlowNodeId(1), &mut txn, &group("only-on-two")).unwrap(),
+			interner.lookup(OperatorId(1), &mut txn, &group("only-on-two")).unwrap(),
 			None,
 			"a group interned on one node must not resolve on another"
 		);
@@ -1861,7 +1861,7 @@ mod tests {
 }
 
 impl FlowTransaction {
-	pub fn intern_group(&mut self, node: FlowNodeId, group: &EncodedKey) -> Result<(GroupId, bool)> {
+	pub fn intern_group(&mut self, node: OperatorId, group: &EncodedKey) -> Result<(GroupId, bool)> {
 		let interner = self.group_interner();
 		let (id, is_new) = interner.intern(node, self, group)?;
 		if is_new {
@@ -1870,7 +1870,7 @@ impl FlowTransaction {
 		Ok((id, is_new))
 	}
 
-	pub fn intern_groups(&mut self, node: FlowNodeId, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
+	pub fn intern_groups(&mut self, node: OperatorId, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
 		let interner = self.group_interner();
 		let results = interner.intern_many(node, self, groups)?;
 		let provider = self.row_numbers();
@@ -1882,24 +1882,24 @@ impl FlowTransaction {
 		Ok(results)
 	}
 
-	pub fn due_groups(&mut self, node: FlowNodeId, cutoff: Cutoff, limit: usize) -> Result<Vec<GroupId>> {
+	pub fn due_groups(&mut self, node: OperatorId, cutoff: Cutoff, limit: usize) -> Result<Vec<GroupId>> {
 		let interner = self.group_interner();
 		interner.due_groups(node, self, cutoff, limit)
 	}
 
-	pub fn due_identity_groups(&mut self, node: FlowNodeId, cutoff: Cutoff, limit: usize) -> Result<Vec<GroupId>> {
+	pub fn due_identity_groups(&mut self, node: OperatorId, cutoff: Cutoff, limit: usize) -> Result<Vec<GroupId>> {
 		let interner = self.group_interner();
 		interner.due_identity_groups(node, self, cutoff, limit)
 	}
 
-	pub fn stamp_side(&mut self, node: FlowNodeId, id: GroupId, side: Keyspace) -> Result<()> {
+	pub fn stamp_side(&mut self, node: OperatorId, id: GroupId, side: Keyspace) -> Result<()> {
 		let interner = self.group_interner();
 		interner.stamp_side(node, self, id, side)
 	}
 
 	pub fn due_side_groups(
 		&mut self,
-		node: FlowNodeId,
+		node: OperatorId,
 		side: Keyspace,
 		cutoff: Cutoff,
 		limit: usize,
@@ -1908,32 +1908,32 @@ impl FlowTransaction {
 		interner.due_side_groups(node, self, side, cutoff, limit)
 	}
 
-	pub fn forget_side(&mut self, node: FlowNodeId, id: GroupId, side: Keyspace) -> Result<()> {
+	pub fn forget_side(&mut self, node: OperatorId, id: GroupId, side: Keyspace) -> Result<()> {
 		let interner = self.group_interner();
 		interner.forget_side(node, self, id, side)
 	}
 
-	pub fn node_position(&mut self, node: FlowNodeId) -> Result<Position> {
+	pub fn node_position(&mut self, node: OperatorId) -> Result<Position> {
 		let interner = self.group_interner();
 		interner.position(node, self)
 	}
 
-	pub fn defer_group(&mut self, node: FlowNodeId, id: GroupId) -> Result<bool> {
+	pub fn defer_group(&mut self, node: OperatorId, id: GroupId) -> Result<bool> {
 		let interner = self.group_interner();
 		interner.defer(node, self, id)
 	}
 
-	pub fn lookup_group(&mut self, node: FlowNodeId, group: &EncodedKey) -> Result<Option<GroupId>> {
+	pub fn lookup_group(&mut self, node: OperatorId, group: &EncodedKey) -> Result<Option<GroupId>> {
 		let interner = self.group_interner();
 		interner.lookup(node, self, group)
 	}
 
-	pub fn forget_group(&mut self, node: FlowNodeId, group: &EncodedKey) -> Result<bool> {
+	pub fn forget_group(&mut self, node: OperatorId, group: &EncodedKey) -> Result<bool> {
 		let interner = self.group_interner();
 		interner.forget(node, self, group)
 	}
 
-	pub fn group_bytes(&mut self, node: FlowNodeId, id: GroupId) -> Result<Option<EncodedKey>> {
+	pub fn group_bytes(&mut self, node: OperatorId, id: GroupId) -> Result<Option<EncodedKey>> {
 		let interner = self.group_interner();
 		interner.group_bytes(node, self, id)
 	}

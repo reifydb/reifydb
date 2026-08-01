@@ -11,20 +11,20 @@ use crate::{
 	Result,
 	flow::{
 		flow::FlowDag,
-		node::{FlowEdge, FlowNode, FlowNodeType},
+		operator::{FlowEdge, FlowNode, OperatorDef},
 	},
 };
 
 pub fn load_flow_dag(txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<FlowDag> {
 	let flow_def = CatalogStore::get_flow(txn, flow_id)?;
-	let node_defs = CatalogStore::list_flow_nodes_by_flow(txn, flow_id)?;
+	let node_defs = CatalogStore::list_operators_by_flow(txn, flow_id)?;
 	let edge_defs = CatalogStore::list_flow_edges_by_flow(txn, flow_id)?;
 
 	let mut builder = FlowDag::builder(flow_id).time(flow_def.time);
 
 	for node_def in node_defs {
-		let node_type: FlowNodeType = from_bytes(node_def.data.as_ref())
-			.map_err(|e| Error(Box::new(internal!("Failed to deserialize FlowNodeType: {}", e))))?;
+		let node_type: OperatorDef = from_bytes(node_def.data.as_ref())
+			.map_err(|e| Error(Box::new(internal!("Failed to deserialize OperatorDef: {}", e))))?;
 
 		let node = FlowNode::new(node_def.id, node_type);
 		builder.add_node(node);

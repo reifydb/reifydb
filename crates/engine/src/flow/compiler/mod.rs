@@ -13,7 +13,7 @@ use reifydb_core::{
 		subscription::subscription_operation_unsupported,
 	},
 	interface::catalog::{
-		flow::{FlowEdge, FlowEdgeId, FlowId, FlowNode, FlowNodeId},
+		flow::{FlowEdge, FlowEdgeId, FlowId, FlowNode, OperatorId},
 		id::SubscriptionId,
 		view::View,
 	},
@@ -24,7 +24,7 @@ use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::{
 	flow::{
 		flow::{FlowBuilder, FlowDag},
-		node::{self, FlowNodeType},
+		node::{self, OperatorDef},
 	},
 	query::QueryPlan,
 };
@@ -119,13 +119,13 @@ impl FlowCompiler {
 		}
 	}
 
-	fn next_node_id(&mut self, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
+	fn next_node_id(&mut self, txn: &mut Transaction<'_>) -> Result<OperatorId> {
 		if self.ephemeral {
 			if self.local_node_counter >= self.local_id_limit {
 				return Err(Error(Box::new(flow_ephemeral_id_capacity_exceeded(self.builder.id().0))));
 			}
 			self.local_node_counter += 1;
-			Ok(FlowNodeId(self.local_node_counter))
+			Ok(OperatorId(self.local_node_counter))
 		} else {
 			self.catalog.next_flow_node_id(txn.admin_mut())
 		}
@@ -143,7 +143,7 @@ impl FlowCompiler {
 		}
 	}
 
-	pub(crate) fn add_edge(&mut self, txn: &mut Transaction<'_>, from: &FlowNodeId, to: &FlowNodeId) -> Result<()> {
+	pub(crate) fn add_edge(&mut self, txn: &mut Transaction<'_>, from: &OperatorId, to: &OperatorId) -> Result<()> {
 		let edge_id = self.next_edge_id(txn)?;
 		let flow_id = self.builder.id();
 
@@ -158,17 +158,17 @@ impl FlowCompiler {
 			self.catalog.create_flow_edge(txn.admin_mut(), &edge_def)?;
 		}
 
-		self.builder.add_edge(node::FlowEdge::new(edge_id, *from, *to))?;
+		self.builder.add_edge(operator::FlowEdge::new(edge_id, *from, *to))?;
 		Ok(())
 	}
 
-	pub(crate) fn add_node(&mut self, txn: &mut Transaction<'_>, node_type: FlowNodeType) -> Result<FlowNodeId> {
+	pub(crate) fn add_node(&mut self, txn: &mut Transaction<'_>, node_type: OperatorDef) -> Result<OperatorId> {
 		let node_id = self.next_node_id(txn)?;
 		let flow_id = self.builder.id();
 
 		if !self.ephemeral {
 			let data = to_stdvec(&node_type)
-				.map_err(|e| Error(Box::new(internal!("Failed to serialize FlowNodeType: {}", e))))?;
+				.map_err(|e| Error(Box::new(internal!("Failed to serialize OperatorDef: {}", e))))?;
 
 			let node_def = FlowNode {
 				id: node_id,
@@ -180,14 +180,14 @@ impl FlowCompiler {
 			self.catalog.create_flow_node(txn.admin_mut(), &node_def)?;
 		}
 
-		self.builder.add_node(node::FlowNode::new(node_id, node_type));
+		self.builder.add_node(operator::FlowNode::new(node_id, node_type));
 		Ok(node_id)
 	}
 
 	pub(crate) fn write_operator_settings(
 		&self,
 		txn: &mut Transaction<'_>,
-		node_id: FlowNodeId,
+		node_id: OperatorId,
 		ttl: Option<OperatorTtl>,
 	) -> Result<()> {
 		if self.ephemeral {
@@ -209,7 +209,7 @@ impl FlowCompiler {
 	pub(crate) fn write_operator_settings_join(
 		&self,
 		txn: &mut Transaction<'_>,
-		node_id: FlowNodeId,
+		node_id: OperatorId,
 		join: Option<JoinTtl>,
 	) -> Result<()> {
 		if self.ephemeral {
@@ -254,19 +254,19 @@ impl FlowCompiler {
 		&mut self,
 		txn: &mut Transaction<'_>,
 		sink_view: &View,
-		root_node_id: &FlowNodeId,
+		root_node_id: &OperatorId,
 	) -> Result<()> {
 		let node_type = match sink_view {
-			View::Table(t) => FlowNodeType::SinkTableView {
+			View::Table(t) => OperatorDef::SinkTableView {
 				view: sink_view.id(),
 				table: t.storage,
 			},
-			View::RingBuffer(rb) => FlowNodeType::SinkRingBufferView {
+			View::RingBuffer(rb) => OperatorDef::SinkRingBufferView {
 				view: sink_view.id(),
 				ringbuffer: rb.storage,
 				capacity: rb.capacity,
 			},
-			View::Series(s) => FlowNodeType::SinkSeriesView {
+			View::Series(s) => OperatorDef::SinkSeriesView {
 				view: sink_view.id(),
 				series: s.storage,
 				key: s.key.clone(),
@@ -298,7 +298,7 @@ impl FlowCompiler {
 
 		let result_node = self.add_node(
 			txn,
-			FlowNodeType::SinkSubscription {
+			OperatorDef::SinkSubscription {
 				subscription: subscription_id,
 			},
 		)?;
@@ -314,7 +314,7 @@ impl FlowCompiler {
 		Ok(flow)
 	}
 
-	pub(crate) fn compile_plan(&mut self, txn: &mut Transaction<'_>, plan: QueryPlan) -> Result<FlowNodeId> {
+	pub(crate) fn compile_plan(&mut self, txn: &mut Transaction<'_>, plan: QueryPlan) -> Result<OperatorId> {
 		match plan {
 			QueryPlan::IndexScan(_index_scan) => {
 				// TODO: Implement IndexScanCompiler for flow
@@ -470,9 +470,9 @@ fn has_real_source(flow: &FlowDag) -> bool {
 		if let Some(node) = flow.get_node(&node_id) {
 			matches!(
 				node.ty,
-				FlowNodeType::SourceTable { .. }
-					| FlowNodeType::SourceView { .. } | FlowNodeType::SourceRingBuffer { .. }
-					| FlowNodeType::SourceSeries { .. }
+				OperatorDef::SourceTable { .. }
+					| OperatorDef::SourceView { .. } | OperatorDef::SourceRingBuffer { .. }
+					| OperatorDef::SourceSeries { .. }
 			)
 		} else {
 			false
@@ -481,5 +481,5 @@ fn has_real_source(flow: &FlowDag) -> bool {
 }
 
 pub(crate) trait CompileOperator {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId>;
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId>;
 }

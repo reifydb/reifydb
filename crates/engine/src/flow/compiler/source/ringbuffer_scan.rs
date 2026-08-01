@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::flow::FlowNodeId;
-use reifydb_rql::{flow::node::FlowNodeType::SourceRingBuffer, nodes::RingBufferScanNode};
+use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_rql::{flow::operator::OperatorDef::SourceRingBuffer, nodes::RingBufferScanNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
@@ -21,7 +21,7 @@ impl From<RingBufferScanNode> for RingBufferScanCompiler {
 }
 
 impl CompileOperator for RingBufferScanCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
 		let ringbuffer_id = self.ringbuffer_scan.source.def().id;
 		compiler.add_node(
 			txn,

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::flow::FlowNodeId, row::OperatorTtl};
+use reifydb_core::{interface::catalog::flow::OperatorId, row::OperatorTtl};
 use reifydb_rql::{
-	expression::Expression, flow::node::FlowNodeType::Aggregate, nodes::AggregateNode, query::QueryPlan,
+	expression::Expression, flow::operator::OperatorDef::Aggregate, nodes::AggregateNode, query::QueryPlan,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
@@ -32,7 +32,7 @@ impl From<AggregateNode> for AggregateCompiler {
 }
 
 impl CompileOperator for AggregateCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
 		validate_flow_aggregations(&compiler.routines, &self.map, AggregateContext::Grouped)?;
 
 		let input_node = compiler.compile_plan(txn, *self.input)?;

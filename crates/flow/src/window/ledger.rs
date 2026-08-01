@@ -5,7 +5,7 @@
 use reifydb_codec::state::StateBytes;
 use reifydb_codec::state::{OperatorState, decode_state};
 #[cfg(feature = "runtime")]
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_core::{
 	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
 	metrics::heap::HeapSize,
@@ -81,7 +81,7 @@ impl SealLedger {
 }
 
 #[cfg(feature = "runtime")]
-pub fn read_sealed_through(txn: &mut FlowTransaction, node: FlowNodeId) -> Result<Option<SealedThrough>> {
+pub fn read_sealed_through(txn: &mut FlowTransaction, node: OperatorId) -> Result<Option<SealedThrough>> {
 	let Some(row) = txn.state_get(node, &seal_ledger_key())? else {
 		return Ok(None);
 	};

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use reifydb_core::{
 	common::TimeDomain,
-	interface::catalog::flow::FlowNodeId,
+	interface::catalog::flow::OperatorId,
 	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
 };
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
@@ -30,11 +30,11 @@ struct SourceState {
 
 #[derive(Clone, Default)]
 pub struct SourceWatermarks {
-	inner: Arc<DashMap<FlowNodeId, SourceState>>,
+	inner: Arc<DashMap<OperatorId, SourceState>>,
 }
 
 impl SourceWatermarks {
-	pub fn advance(&self, source: FlowNodeId, txn: &mut FlowTransaction, at: DateTime) -> Result<()> {
+	pub fn advance(&self, source: OperatorId, txn: &mut FlowTransaction, at: DateTime) -> Result<()> {
 		let coordinate = at.to_millis();
 		let now = txn.clock().now();
 		let mut state = self.inner.entry(source).or_default();
@@ -55,14 +55,14 @@ impl SourceWatermarks {
 		Ok(())
 	}
 
-	pub fn source_watermark(&self, source: FlowNodeId, txn: &mut FlowTransaction) -> Result<DateTime> {
+	pub fn source_watermark(&self, source: OperatorId, txn: &mut FlowTransaction) -> Result<DateTime> {
 		Ok(DateTime::from_millis(self.raw(source, txn)?))
 	}
 
 	pub fn flow_watermark(
 		&self,
 		domain: TimeDomain,
-		sources: &[FlowNodeId],
+		sources: &[OperatorId],
 		txn: &mut FlowTransaction,
 	) -> Result<DateTime> {
 		match domain {
@@ -90,13 +90,13 @@ impl SourceWatermarks {
 		}
 	}
 
-	fn raw(&self, source: FlowNodeId, txn: &mut FlowTransaction) -> Result<u64> {
+	fn raw(&self, source: OperatorId, txn: &mut FlowTransaction) -> Result<u64> {
 		let mut state = self.inner.entry(source).or_default();
 		Self::hydrate_once(&mut state, source, txn)?;
 		Ok(state.value.unwrap_or(0))
 	}
 
-	fn hydrate_once(state: &mut SourceState, source: FlowNodeId, txn: &mut FlowTransaction) -> Result<()> {
+	fn hydrate_once(state: &mut SourceState, source: OperatorId, txn: &mut FlowTransaction) -> Result<()> {
 		if state.hydrated {
 			return Ok(());
 		}
@@ -119,8 +119,8 @@ mod tests {
 
 	use super::*;
 
-	const SOURCE_A: FlowNodeId = FlowNodeId(1);
-	const SOURCE_B: FlowNodeId = FlowNodeId(2);
+	const SOURCE_A: OperatorId = OperatorId(1);
+	const SOURCE_B: OperatorId = OperatorId(2);
 
 	fn deferred(engine: &TestEngine, clock: MockClock) -> FlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();

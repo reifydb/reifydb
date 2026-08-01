@@ -66,7 +66,7 @@ fn partition_suffix(partition: Option<Partition>) -> Vec<u8> {
 }
 
 fn row_entry_prefix(partition: Option<Partition>) -> Vec<u8> {
-	let mut prefix = OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_ENTRY, [])
+	let mut prefix = OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_ENTRY, [])
 		.as_slice()
 		.to_vec();
 	prefix.extend_from_slice(&partition_suffix(partition));
@@ -74,7 +74,7 @@ fn row_entry_prefix(partition: Option<Partition>) -> Vec<u8> {
 }
 
 fn expiry_scan_prefix(partition: Option<Partition>) -> Vec<u8> {
-	let mut prefix = OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_EXPIRY, [])
+	let mut prefix = OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_EXPIRY, [])
 		.as_slice()
 		.to_vec();
 	prefix.extend_from_slice(&partition_suffix(partition));
@@ -208,7 +208,7 @@ impl SinkRingBufferViewOperator {
 	}
 
 	fn forward_key(&self, source_rn: RowNumber) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(
+		OperatorGroupStateKey::inner_encoded(
 			GroupId::NODE_SCOPE,
 			Keyspace::RINGBUFFER_FORWARD,
 			encode_u64_asc(source_rn.0),
@@ -241,18 +241,18 @@ impl SinkRingBufferViewOperator {
 			suffix.extend_from_slice(&encode_u128_asc(partition.0));
 		}
 		suffix.extend_from_slice(&encode_u64_asc(storage_rn.0));
-		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_ENTRY, suffix)
+		OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_ENTRY, suffix)
 	}
 
 	fn expiry_key(&self, partition: Option<Partition>, expires_at: u64, storage_rn: RowNumber) -> GroupStateKey {
 		let mut suffix = partition_suffix(partition);
 		suffix.extend_from_slice(&encode_u64_asc(expires_at));
 		suffix.extend_from_slice(&encode_u64_asc(storage_rn.0));
-		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_EXPIRY, suffix)
+		OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_EXPIRY, suffix)
 	}
 
 	fn arm_key(&self, partition: Option<Partition>) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(
+		OperatorGroupStateKey::inner_encoded(
 			GroupId::NODE_SCOPE,
 			Keyspace::RINGBUFFER_TTL_ARM,
 			partition_suffix(partition),
@@ -1160,7 +1160,7 @@ mod tests {
 			(op.row_entry_key(Some(partition), RowNumber(42)), Keyspace::RINGBUFFER_ENTRY),
 			(op.row_entry_key(None, RowNumber(42)), Keyspace::RINGBUFFER_ENTRY),
 		] {
-			let (group, keyspace, _) = OperatorStateKey::decode_inner(key.as_bytes())
+			let (group, keyspace, _) = OperatorGroupStateKey::decode_inner(key.as_bytes())
 				.expect("a ringbuffer state key must decode as a structured operator-state key");
 			assert_eq!(
 				group,
@@ -1179,7 +1179,7 @@ mod tests {
 
 	fn forward_count(engine: &TestEngine, op: &SinkRingBufferViewOperator) -> usize {
 		let mut txn = deferred_txn(engine);
-		let prefix = OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_FORWARD, vec![]);
+		let prefix = OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_FORWARD, vec![]);
 		op.state_range(&mut txn, EncodedKeyRange::prefix(prefix.as_ref()))
 			.collect::<Result<Vec<_>>>()
 			.unwrap()

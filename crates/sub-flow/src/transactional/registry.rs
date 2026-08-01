@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::catalog::{flow::FlowId, view::ViewKind},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag, node::FlowNodeType};
+use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag, operator::OperatorDef};
 use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
 use reifydb_value::{Result, error::Error, value::identity::IdentityId};
 
@@ -59,15 +59,15 @@ impl TransactionalFlowRegistry {
 				continue;
 			};
 			let view = match &node.ty {
-				FlowNodeType::SinkTableView {
+				OperatorDef::SinkTableView {
 					view,
 					..
 				}
-				| FlowNodeType::SinkRingBufferView {
+				| OperatorDef::SinkRingBufferView {
 					view,
 					..
 				}
-				| FlowNodeType::SinkSeriesView {
+				| OperatorDef::SinkSeriesView {
 					view,
 					..
 				} => view,

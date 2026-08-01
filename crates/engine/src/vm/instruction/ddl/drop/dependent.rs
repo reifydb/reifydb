@@ -9,7 +9,7 @@ use reifydb_core::{
 	interface::catalog::flow::{Flow, FlowNode},
 	internal_error,
 };
-use reifydb_rql::flow::node::FlowNodeType;
+use reifydb_rql::flow::operator::OperatorDef;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
 use crate::Result;
@@ -43,12 +43,12 @@ pub(crate) fn find_flow_dependents(
 	txn: &mut AdminTransaction,
 	nodes: &[FlowNode],
 	flows: &[Flow],
-	check: impl Fn(&FlowNodeType) -> bool,
+	check: impl Fn(&OperatorDef) -> bool,
 ) -> Result<Vec<String>> {
 	let mut dependents = Vec::new();
 	let mut seen_flows = HashSet::new();
 	for node in nodes {
-		let node_type: FlowNodeType = from_bytes(node.data.as_ref())
+		let node_type: OperatorDef = from_bytes(node.data.as_ref())
 			.map_err(|e| internal_error!("Failed to deserialize flow node type: {}", e))?;
 		if check(&node_type)
 			&& seen_flows.insert(node.flow)

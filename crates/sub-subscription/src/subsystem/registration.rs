@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_engine::subscription::SubscriptionContext;
-use reifydb_rql::flow::{flow::FlowDag, node::FlowNodeType};
+use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
 use reifydb_sub_flow::{
 	context::FlowContext,
 	engine::FlowEngineInner,
@@ -30,7 +30,7 @@ pub(crate) fn register_ephemeral_flow(
 	for node_id in flow.topological_order()? {
 		let node = flow.get_node(&node_id).unwrap();
 		match &node.ty {
-			FlowNodeType::SinkSubscription {
+			OperatorDef::SinkSubscription {
 				..
 			} => {
 				let parent = engine.operator(node.inputs[0]).expect("Parent operator not found");

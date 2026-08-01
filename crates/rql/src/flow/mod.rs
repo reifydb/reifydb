@@ -9,6 +9,6 @@ pub mod analyzer;
 pub mod flow;
 pub mod graph;
 pub mod loader;
-pub mod node;
+pub mod operator;
 pub mod persist;
 pub mod plan;

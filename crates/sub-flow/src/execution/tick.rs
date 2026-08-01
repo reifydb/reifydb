@@ -8,13 +8,13 @@ use reifydb_core::{
 	common::CommitVersion,
 	event::row::OperatorRowsExpiredEvent,
 	interface::{
-		catalog::flow::{FlowId, FlowNodeId},
+		catalog::flow::{FlowId, OperatorId},
 		change::Change,
 	},
 	key::{EncodableKey, operator_state::OperatorStateKey},
 };
 use reifydb_flow::transaction::FlowTransaction;
-use reifydb_rql::flow::node::FlowNode;
+use reifydb_rql::flow::operator::FlowNode;
 use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
 
@@ -39,7 +39,7 @@ impl FlowEngineInner {
 		};
 
 		let topo = flow.topological_order()?;
-		let mut pending: HashMap<FlowNodeId, Vec<Change>> = HashMap::new();
+		let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
 		for node_id in topo.iter().copied() {
 			let node = match flow.get_node(&node_id) {
 				Some(n) => n.clone(),
@@ -61,8 +61,8 @@ impl FlowEngineInner {
 		&self,
 		txn: &mut FlowTransaction,
 		node: &FlowNode,
-		node_id: FlowNodeId,
-		pending: &mut HashMap<FlowNodeId, Vec<Change>>,
+		node_id: OperatorId,
+		pending: &mut HashMap<OperatorId, Vec<Change>>,
 	) -> Result<()> {
 		let Some(inbox) = pending.remove(&node_id).filter(|v| !v.is_empty()) else {
 			return Ok(());
@@ -76,7 +76,7 @@ impl FlowEngineInner {
 		Ok(())
 	}
 	fn emit_operator_expiry_metrics(&self, txn: &FlowTransaction) {
-		let mut per_node: HashMap<FlowNodeId, u64> = HashMap::new();
+		let mut per_node: HashMap<OperatorId, u64> = HashMap::new();
 		for (key, write) in txn.pending().iter_sorted() {
 			if !matches!(write, PendingWrite::Remove { .. }) {
 				continue;

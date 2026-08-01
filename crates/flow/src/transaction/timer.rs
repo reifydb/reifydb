@@ -10,7 +10,7 @@ use reifydb_codec::key::{
 	encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
+	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
 		operator_state::OperatorStateKey,
@@ -33,7 +33,7 @@ fn timer_suffix(at: DateTime, kind: TimerKind, key: &EncodedKey) -> Vec<u8> {
 }
 
 fn timer_key(at: DateTime, kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::TIMER_WHEEL, timer_suffix(at, kind, key))
+	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::TIMER_WHEEL, timer_suffix(at, kind, key))
 }
 
 fn decode_timer(suffix: &[u8]) -> Timer {
@@ -49,7 +49,7 @@ fn decode_timer(suffix: &[u8]) -> Timer {
 
 fn due_range(watermark: DateTime) -> EncodedKeyRange {
 	let base = keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::TIMER_WHEEL);
-	let bound = OperatorStateKey::inner_encoded(
+	let bound = OperatorGroupStateKey::inner_encoded(
 		GroupId::NODE_SCOPE,
 		Keyspace::TIMER_WHEEL,
 		encode_u64_asc(watermark.to_millis() + 1),
@@ -65,11 +65,11 @@ struct WheelState {
 
 #[derive(Clone, Default)]
 pub struct TimerWheel {
-	inner: Arc<DashMap<FlowNodeId, WheelState>>,
+	inner: Arc<DashMap<OperatorId, WheelState>>,
 }
 
 impl TimerWheel {
-	pub fn arm(&self, node: FlowNodeId, txn: &mut FlowTransaction, timer: &Timer) -> Result<()> {
+	pub fn arm(&self, node: OperatorId, txn: &mut FlowTransaction, timer: &Timer) -> Result<()> {
 		let now = txn.clock().now();
 		let mut state = self.inner.entry(node).or_default();
 		if state.hydrated {
@@ -80,7 +80,7 @@ impl TimerWheel {
 		Ok(())
 	}
 
-	pub fn disarm(&self, node: FlowNodeId, txn: &mut FlowTransaction, timer: &Timer) -> Result<()> {
+	pub fn disarm(&self, node: OperatorId, txn: &mut FlowTransaction, timer: &Timer) -> Result<()> {
 		self.inner.entry(node).or_default().hydrated = false;
 		txn.state_remove(node, &timer_key(timer.at, timer.kind, &timer.key))?;
 		Ok(())
@@ -88,7 +88,7 @@ impl TimerWheel {
 
 	pub fn take_due(
 		&self,
-		node: FlowNodeId,
+		node: OperatorId,
 		txn: &mut FlowTransaction,
 		watermark: DateTime,
 		limit: usize,
@@ -118,7 +118,7 @@ impl TimerWheel {
 			for item in &batch.items {
 				let decoded = OperatorStateKey::decode(&item.key)
 					.expect("state_range must return OperatorState keys");
-				let inner = OperatorStateKey::decode_inner(&decoded.key)
+				let inner = OperatorGroupStateKey::decode_inner(&decoded.key)
 					.expect("the timer wheel range must yield structured operator state keys");
 				due.push(decode_timer(&inner.2));
 				last_inner = Some(EncodedKey::new(decoded.key.clone()));
@@ -138,7 +138,7 @@ impl TimerWheel {
 		Ok(due)
 	}
 
-	fn hydrate_once(state: &mut WheelState, node: FlowNodeId, txn: &mut FlowTransaction) -> Result<()> {
+	fn hydrate_once(state: &mut WheelState, node: OperatorId, txn: &mut FlowTransaction) -> Result<()> {
 		if state.hydrated {
 			return Ok(());
 		}
@@ -148,7 +148,7 @@ impl TimerWheel {
 		state.earliest = batch.items.first().map(|item| {
 			let decoded = OperatorStateKey::decode(&item.key)
 				.expect("state_range must return OperatorState keys");
-			let inner = OperatorStateKey::decode_inner(&decoded.key)
+			let inner = OperatorGroupStateKey::decode_inner(&decoded.key)
 				.expect("the timer wheel range must yield structured operator state keys");
 			decode_timer(&inner.2).at.to_millis()
 		});
@@ -167,7 +167,7 @@ mod tests {
 
 	use super::*;
 
-	const NODE: FlowNodeId = FlowNodeId(1);
+	const NODE: OperatorId = OperatorId(1);
 	const NO_LIMIT: usize = usize::MAX;
 
 	fn deferred(engine: &TestEngine) -> FlowTransaction {

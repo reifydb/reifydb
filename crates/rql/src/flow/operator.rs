@@ -4,7 +4,7 @@
 use reifydb_core::{
 	common::{JoinType, WindowKind},
 	interface::catalog::{
-		flow::{FlowEdgeId, FlowNodeId},
+		flow::{FlowEdgeId, OperatorId},
 		id::{RingBufferId, SeriesId, SubscriptionId, TableId, ViewId},
 		object::ObjectId,
 		series::SeriesKey,
@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::expression::Expression;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum FlowNodeType {
+pub enum OperatorDef {
 	SourceInlineData {},
 	SourceTable {
 		table: TableId,
@@ -98,115 +98,115 @@ pub enum FlowNodeType {
 	},
 }
 
-impl FlowNodeType {
+impl OperatorDef {
 	pub fn is_source(&self) -> bool {
 		matches!(
 			self,
-			FlowNodeType::SourceInlineData {}
-				| FlowNodeType::SourceTable { .. }
-				| FlowNodeType::SourceView { .. }
-				| FlowNodeType::SourceRingBuffer { .. }
-				| FlowNodeType::SourceSeries { .. }
+			OperatorDef::SourceInlineData {}
+				| OperatorDef::SourceTable { .. }
+				| OperatorDef::SourceView { .. }
+				| OperatorDef::SourceRingBuffer { .. }
+				| OperatorDef::SourceSeries { .. }
 		)
 	}
 
 	pub fn ticks(&self) -> bool {
 		matches!(
 			self,
-			FlowNodeType::Append { .. }
-				| FlowNodeType::Distinct { .. }
-				| FlowNodeType::Window { .. }
-				| FlowNodeType::Apply { .. } | FlowNodeType::Join { .. }
-				| FlowNodeType::Aggregate { .. }
-				| FlowNodeType::SinkRingBufferView { .. }
+			OperatorDef::Append { .. }
+				| OperatorDef::Distinct { .. }
+				| OperatorDef::Window { .. }
+				| OperatorDef::Apply { .. } | OperatorDef::Join { .. }
+				| OperatorDef::Aggregate { .. }
+				| OperatorDef::SinkRingBufferView { .. }
 		)
 	}
 
 	pub fn holds_state(&self) -> bool {
 		matches!(
 			self,
-			FlowNodeType::Join { .. }
-				| FlowNodeType::Distinct { .. }
-				| FlowNodeType::Append { .. }
-				| FlowNodeType::Apply { .. } | FlowNodeType::Aggregate { .. }
-				| FlowNodeType::Window { .. }
+			OperatorDef::Join { .. }
+				| OperatorDef::Distinct { .. }
+				| OperatorDef::Append { .. }
+				| OperatorDef::Apply { .. } | OperatorDef::Aggregate { .. }
+				| OperatorDef::Window { .. }
 		)
 	}
 
 	pub fn consults_declared_span(&self) -> bool {
 		matches!(
 			self,
-			FlowNodeType::Join { .. }
-				| FlowNodeType::Distinct { .. }
-				| FlowNodeType::Append { .. }
-				| FlowNodeType::Apply { .. } | FlowNodeType::Aggregate { .. }
+			OperatorDef::Join { .. }
+				| OperatorDef::Distinct { .. }
+				| OperatorDef::Append { .. }
+				| OperatorDef::Apply { .. } | OperatorDef::Aggregate { .. }
 		)
 	}
 
 	pub fn label(&self) -> String {
 		match self {
-			FlowNodeType::SourceInlineData {
+			OperatorDef::SourceInlineData {
 				..
 			} => "SourceInlineData".into(),
-			FlowNodeType::SourceTable {
+			OperatorDef::SourceTable {
 				..
 			} => "SourceTable".into(),
-			FlowNodeType::SourceView {
+			OperatorDef::SourceView {
 				..
 			} => "SourceView".into(),
-			FlowNodeType::SourceRingBuffer {
+			OperatorDef::SourceRingBuffer {
 				..
 			} => "SourceRingBuffer".into(),
-			FlowNodeType::SourceSeries {
+			OperatorDef::SourceSeries {
 				..
 			} => "SourceSeries".into(),
-			FlowNodeType::Filter {
+			OperatorDef::Filter {
 				..
 			} => "Filter".into(),
-			FlowNodeType::Gate {
+			OperatorDef::Gate {
 				..
 			} => "Gate".into(),
-			FlowNodeType::Map {
+			OperatorDef::Map {
 				..
 			} => "Map".into(),
-			FlowNodeType::Extend {
+			OperatorDef::Extend {
 				..
 			} => "Extend".into(),
-			FlowNodeType::Join {
+			OperatorDef::Join {
 				..
 			} => "Join".into(),
-			FlowNodeType::Aggregate {
+			OperatorDef::Aggregate {
 				..
 			} => "Aggregate".into(),
-			FlowNodeType::Append {
+			OperatorDef::Append {
 				..
 			} => "Append".into(),
-			FlowNodeType::Sort {
+			OperatorDef::Sort {
 				..
 			} => "Sort".into(),
-			FlowNodeType::Take {
+			OperatorDef::Take {
 				..
 			} => "Take".into(),
-			FlowNodeType::Distinct {
+			OperatorDef::Distinct {
 				..
 			} => "Distinct".into(),
-			FlowNodeType::Apply {
+			OperatorDef::Apply {
 				operator,
 				..
 			} => format!("Apply({})", operator),
-			FlowNodeType::SinkTableView {
+			OperatorDef::SinkTableView {
 				..
 			} => "SinkTableView".into(),
-			FlowNodeType::SinkRingBufferView {
+			OperatorDef::SinkRingBufferView {
 				..
 			} => "SinkRingBufferView".into(),
-			FlowNodeType::SinkSeriesView {
+			OperatorDef::SinkSeriesView {
 				..
 			} => "SinkSeriesView".into(),
-			FlowNodeType::SinkSubscription {
+			OperatorDef::SinkSubscription {
 				..
 			} => "SinkSubscription".into(),
-			FlowNodeType::Window {
+			OperatorDef::Window {
 				..
 			} => "Window".into(),
 		}
@@ -214,67 +214,67 @@ impl FlowNodeType {
 
 	pub fn discriminator(&self) -> u8 {
 		match self {
-			FlowNodeType::SourceInlineData {
+			OperatorDef::SourceInlineData {
 				..
 			} => 0,
-			FlowNodeType::SourceTable {
+			OperatorDef::SourceTable {
 				..
 			} => 1,
-			FlowNodeType::SourceView {
+			OperatorDef::SourceView {
 				..
 			} => 2,
-			FlowNodeType::Filter {
+			OperatorDef::Filter {
 				..
 			} => 4,
-			FlowNodeType::Map {
+			OperatorDef::Map {
 				..
 			} => 5,
-			FlowNodeType::Extend {
+			OperatorDef::Extend {
 				..
 			} => 6,
-			FlowNodeType::Join {
+			OperatorDef::Join {
 				..
 			} => 7,
-			FlowNodeType::Aggregate {
+			OperatorDef::Aggregate {
 				..
 			} => 8,
-			FlowNodeType::Append {
+			OperatorDef::Append {
 				..
 			} => 9,
-			FlowNodeType::Sort {
+			OperatorDef::Sort {
 				..
 			} => 10,
-			FlowNodeType::Take {
+			OperatorDef::Take {
 				..
 			} => 11,
-			FlowNodeType::Distinct {
+			OperatorDef::Distinct {
 				..
 			} => 12,
-			FlowNodeType::Apply {
+			OperatorDef::Apply {
 				..
 			} => 13,
-			FlowNodeType::SinkSubscription {
+			OperatorDef::SinkSubscription {
 				..
 			} => 14,
-			FlowNodeType::Window {
+			OperatorDef::Window {
 				..
 			} => 15,
-			FlowNodeType::SourceRingBuffer {
+			OperatorDef::SourceRingBuffer {
 				..
 			} => 16,
-			FlowNodeType::SourceSeries {
+			OperatorDef::SourceSeries {
 				..
 			} => 17,
-			FlowNodeType::Gate {
+			OperatorDef::Gate {
 				..
 			} => 18,
-			FlowNodeType::SinkTableView {
+			OperatorDef::SinkTableView {
 				..
 			} => 19,
-			FlowNodeType::SinkRingBufferView {
+			OperatorDef::SinkRingBufferView {
 				..
 			} => 20,
-			FlowNodeType::SinkSeriesView {
+			OperatorDef::SinkSeriesView {
 				..
 			} => 21,
 		}
@@ -282,67 +282,67 @@ impl FlowNodeType {
 
 	pub fn source_object_id(&self) -> Option<ObjectId> {
 		match self {
-			FlowNodeType::SourceTable {
+			OperatorDef::SourceTable {
 				table,
 			} => Some(ObjectId::table(*table)),
-			FlowNodeType::SourceRingBuffer {
+			OperatorDef::SourceRingBuffer {
 				ringbuffer,
 			} => Some(ObjectId::ringbuffer(*ringbuffer)),
-			FlowNodeType::SourceSeries {
+			OperatorDef::SourceSeries {
 				series,
 			} => Some(ObjectId::series(*series)),
-			FlowNodeType::SourceInlineData {
+			OperatorDef::SourceInlineData {
 				..
 			}
-			| FlowNodeType::SourceView {
+			| OperatorDef::SourceView {
 				..
 			}
-			| FlowNodeType::Filter {
+			| OperatorDef::Filter {
 				..
 			}
-			| FlowNodeType::Gate {
+			| OperatorDef::Gate {
 				..
 			}
-			| FlowNodeType::Map {
+			| OperatorDef::Map {
 				..
 			}
-			| FlowNodeType::Extend {
+			| OperatorDef::Extend {
 				..
 			}
-			| FlowNodeType::Join {
+			| OperatorDef::Join {
 				..
 			}
-			| FlowNodeType::Aggregate {
+			| OperatorDef::Aggregate {
 				..
 			}
-			| FlowNodeType::Append {
+			| OperatorDef::Append {
 				..
 			}
-			| FlowNodeType::Sort {
+			| OperatorDef::Sort {
 				..
 			}
-			| FlowNodeType::Take {
+			| OperatorDef::Take {
 				..
 			}
-			| FlowNodeType::Distinct {
+			| OperatorDef::Distinct {
 				..
 			}
-			| FlowNodeType::Apply {
+			| OperatorDef::Apply {
 				..
 			}
-			| FlowNodeType::SinkTableView {
+			| OperatorDef::SinkTableView {
 				..
 			}
-			| FlowNodeType::SinkRingBufferView {
+			| OperatorDef::SinkRingBufferView {
 				..
 			}
-			| FlowNodeType::SinkSeriesView {
+			| OperatorDef::SinkSeriesView {
 				..
 			}
-			| FlowNodeType::SinkSubscription {
+			| OperatorDef::SinkSubscription {
 				..
 			}
-			| FlowNodeType::Window {
+			| OperatorDef::Window {
 				..
 			} => None,
 		}
@@ -351,14 +351,14 @@ impl FlowNodeType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowNode {
-	pub id: FlowNodeId,
-	pub ty: FlowNodeType,
-	pub inputs: Vec<FlowNodeId>,
-	pub outputs: Vec<FlowNodeId>,
+	pub id: OperatorId,
+	pub ty: OperatorDef,
+	pub inputs: Vec<OperatorId>,
+	pub outputs: Vec<OperatorId>,
 }
 
 impl FlowNode {
-	pub fn new(id: impl Into<FlowNodeId>, ty: FlowNodeType) -> Self {
+	pub fn new(id: impl Into<OperatorId>, ty: OperatorDef) -> Self {
 		Self {
 			id: id.into(),
 			ty,
@@ -371,12 +371,12 @@ impl FlowNode {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FlowEdge {
 	pub id: FlowEdgeId,
-	pub source: FlowNodeId,
-	pub target: FlowNodeId,
+	pub source: OperatorId,
+	pub target: OperatorId,
 }
 
 impl FlowEdge {
-	pub fn new(id: impl Into<FlowEdgeId>, source: impl Into<FlowNodeId>, target: impl Into<FlowNodeId>) -> Self {
+	pub fn new(id: impl Into<FlowEdgeId>, source: impl Into<OperatorId>, target: impl Into<OperatorId>) -> Self {
 		Self {
 			id: id.into(),
 			source: source.into(),
@@ -394,14 +394,14 @@ mod tests {
 	};
 	use reifydb_value::value::duration::Duration;
 
-	use super::FlowNodeType;
+	use super::OperatorDef;
 
 	fn ms(milliseconds: i64) -> Duration {
 		Duration::from_milliseconds(milliseconds).expect("test duration must be representable")
 	}
 
-	fn window(kind: WindowKind, grace: Duration) -> FlowNodeType {
-		FlowNodeType::Window {
+	fn window(kind: WindowKind, grace: Duration) -> OperatorDef {
+		OperatorDef::Window {
 			kind,
 			group_by: vec![],
 			aggregations: vec![],
@@ -409,8 +409,8 @@ mod tests {
 		}
 	}
 
-	fn apply() -> FlowNodeType {
-		FlowNodeType::Apply {
+	fn apply() -> OperatorDef {
+		OperatorDef::Apply {
 			operator: "custom".into(),
 			expressions: vec![],
 		}
@@ -439,14 +439,14 @@ mod tests {
 		for node in [
 			apply(),
 			join(),
-			FlowNodeType::Aggregate {
+			OperatorDef::Aggregate {
 				by: vec![],
 				map: vec![],
 			},
-			FlowNodeType::Distinct {
+			OperatorDef::Distinct {
 				expressions: vec![],
 			},
-			FlowNodeType::Append {},
+			OperatorDef::Append {},
 		] {
 			assert!(node.consults_declared_span(), "{node:?} keeps keyed state and must accept a span");
 		}
@@ -454,10 +454,10 @@ mod tests {
 		// Filter and map hold nothing per group, so accepting a span here takes a declaration the substrate
 		// then silently ignores.
 		for node in [
-			FlowNodeType::Filter {
+			OperatorDef::Filter {
 				conditions: vec![],
 			},
-			FlowNodeType::Map {
+			OperatorDef::Map {
 				expressions: vec![],
 			},
 		] {
@@ -465,8 +465,8 @@ mod tests {
 		}
 	}
 
-	fn join() -> FlowNodeType {
-		FlowNodeType::Join {
+	fn join() -> OperatorDef {
+		OperatorDef::Join {
 			join_type: JoinType::Inner,
 			left: vec![],
 			right: vec![],
@@ -488,7 +488,7 @@ mod tests {
 	fn apply_always_requests_ticks() {
 		// The graph-level gate cannot see the runtime operator, so it must register unconditionally and let
 		// the operator decide; without that a tick-capable custom operator could never be ticked at all.
-		let apply = FlowNodeType::Apply {
+		let apply = OperatorDef::Apply {
 			operator: "compute_swap_volumes".to_string(),
 			expressions: vec![],
 		};
@@ -499,8 +499,8 @@ mod tests {
 	fn append_and_distinct_always_request_ticks() {
 		// Their TTL lives in OperatorSettings rather than the node, where the graph-level gate cannot see it,
 		// so they have to request ticks unconditionally and let the runtime operator decide.
-		assert!(FlowNodeType::Append {}.ticks());
-		assert!(FlowNodeType::Distinct {
+		assert!(OperatorDef::Append {}.ticks());
+		assert!(OperatorDef::Distinct {
 			expressions: vec![]
 		}
 		.ticks());
@@ -510,7 +510,7 @@ mod tests {
 	fn sink_ringbuffer_view_always_requests_ticks() {
 		// The row TTL lives in row settings, not the node, so the graph-level gate cannot see it. Without an
 		// unconditional request the flow is never scheduled to tick and quiet partitions leak forever.
-		assert!(FlowNodeType::SinkRingBufferView {
+		assert!(OperatorDef::SinkRingBufferView {
 			view: ViewId(1),
 			ringbuffer: RingBufferId(1),
 			capacity: 1,
@@ -546,18 +546,18 @@ mod tests {
 		// This list is the assertion's whole reach, so it has to name every node type consults_declared_span
 		// accepts; a type missing from both this list and ticks() cancels out and reclaims nothing forever
 		// while system::flow_nodes still reports it bounded.
-		let reclaimable: Vec<(FlowNodeType, Option<&OperatorSettings>)> = vec![
+		let reclaimable: Vec<(OperatorDef, Option<&OperatorSettings>)> = vec![
 			(join(), Some(&join_ttl)),
 			(
-				FlowNodeType::Distinct {
+				OperatorDef::Distinct {
 					expressions: vec![],
 				},
 				Some(&ttl),
 			),
-			(FlowNodeType::Append {}, Some(&ttl)),
+			(OperatorDef::Append {}, Some(&ttl)),
 			(apply(), Some(&ttl)),
 			(
-				FlowNodeType::Aggregate {
+				OperatorDef::Aggregate {
 					by: vec![],
 					map: vec![],
 				},
@@ -586,11 +586,11 @@ mod tests {
 
 	#[test]
 	fn stateless_nodes_do_not_request_ticks() {
-		assert!(!FlowNodeType::Map {
+		assert!(!OperatorDef::Map {
 			expressions: vec![]
 		}
 		.ticks());
-		assert!(!FlowNodeType::Filter {
+		assert!(!OperatorDef::Filter {
 			conditions: vec![]
 		}
 		.ticks());
@@ -619,18 +619,18 @@ mod tests {
 			}),
 		};
 
-		let reclaimable: Vec<(FlowNodeType, Option<&OperatorSettings>)> = vec![
+		let reclaimable: Vec<(OperatorDef, Option<&OperatorSettings>)> = vec![
 			(join(), Some(&join_ttl)),
 			(
-				FlowNodeType::Distinct {
+				OperatorDef::Distinct {
 					expressions: vec![],
 				},
 				Some(&ttl),
 			),
-			(FlowNodeType::Append {}, Some(&ttl)),
+			(OperatorDef::Append {}, Some(&ttl)),
 			(apply(), Some(&ttl)),
 			(
-				FlowNodeType::Aggregate {
+				OperatorDef::Aggregate {
 					by: vec![],
 					map: vec![],
 				},
@@ -660,7 +660,7 @@ mod tests {
 		);
 
 		assert!(
-			!FlowNodeType::Map {
+			!OperatorDef::Map {
 				expressions: vec![],
 			}
 			.holds_state(),

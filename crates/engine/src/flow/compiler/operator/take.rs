@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_rql::{
-	flow::node::FlowNodeType::Take,
+	flow::operator::OperatorDef::Take,
 	nodes::{TakeLimit, TakeNode},
 	query::QueryPlan,
 };
@@ -31,7 +31,7 @@ impl From<TakeNode> for TakeCompiler {
 }
 
 impl CompileOperator for TakeCompiler {
-	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
 		let input_node = compiler.compile_plan(txn, *self.input)?;
 
 		let node_id = compiler.add_node(

@@ -19,7 +19,7 @@ use reifydb_abi::{
 	},
 };
 use reifydb_codec::constraint::type_constraint_from_ffi;
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::error::{Result as FFIResult, SdkError};
 use reifydb_value::value::constraint::TypeConstraint;
@@ -138,7 +138,7 @@ impl FFIOperatorLoader {
 		&mut self,
 		path: &Path,
 		config: &[u8],
-		operator_id: FlowNodeId,
+		operator_id: OperatorId,
 	) -> FFIResult<Option<(OperatorDescriptorFFI, *mut c_void)>> {
 		if !self.load_operator_library(path)? {
 			return Ok(None);
@@ -168,7 +168,7 @@ impl FFIOperatorLoader {
 	pub fn create_operator_by_name(
 		&mut self,
 		operator: &str,
-		operator_id: FlowNodeId,
+		operator_id: OperatorId,
 		config: &[u8],
 	) -> FFIResult<(OperatorDescriptorFFI, *mut c_void)> {
 		let path = self

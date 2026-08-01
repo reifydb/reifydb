@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_rql::{
 	expression::{ColumnExpression, ConstantExpression, Expression},
-	flow::{flow::FlowDag, node::FlowNodeType},
+	flow::{flow::FlowDag, operator::OperatorDef},
 };
 
 pub(super) struct SourcePushdown {
@@ -18,7 +18,7 @@ pub(super) fn append_pushdown(q: &mut String, pd: SourcePushdown) {
 	}
 }
 
-pub(super) fn walk_for_source_pushdown(flow: &FlowDag, source_id: &FlowNodeId) -> SourcePushdown {
+pub(super) fn walk_for_source_pushdown(flow: &FlowDag, source_id: &OperatorId) -> SourcePushdown {
 	let mut parts: Vec<String> = Vec::new();
 	let mut current = *source_id;
 	while let Some(node) = flow.get_node(&current) {
@@ -31,7 +31,7 @@ pub(super) fn walk_for_source_pushdown(flow: &FlowDag, source_id: &FlowNodeId) -
 			None => break,
 		};
 		match &next.ty {
-			FlowNodeType::Filter {
+			OperatorDef::Filter {
 				conditions,
 			} => match render_filter_clause(conditions) {
 				Some(clause) => parts.push(clause),
@@ -41,7 +41,7 @@ pub(super) fn walk_for_source_pushdown(flow: &FlowDag, source_id: &FlowNodeId) -
 					};
 				}
 			},
-			FlowNodeType::Take {
+			OperatorDef::Take {
 				limit,
 			} => {
 				parts.push(format!("take {}", limit));

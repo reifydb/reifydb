@@ -46,18 +46,18 @@ mod tests {
 	use std::collections::BTreeSet;
 
 	use reifydb_core::interface::catalog::{
-		flow::{FlowId, FlowNodeId},
+		flow::{FlowId, OperatorId},
 		id::{TableId, ViewId},
 		object::ObjectId,
 	};
-	use reifydb_rql::flow::node::{FlowNode, FlowNodeType};
+	use reifydb_rql::flow::operator::{FlowNode, OperatorDef};
 
 	use super::*;
 
-	fn flow(id: u64, node_types: Vec<FlowNodeType>) -> FlowDag {
+	fn flow(id: u64, node_types: Vec<OperatorDef>) -> FlowDag {
 		let mut builder = FlowDag::builder(FlowId(id));
 		for (i, ty) in node_types.into_iter().enumerate() {
-			builder.add_node(FlowNode::new(FlowNodeId(i as u64 + 1), ty));
+			builder.add_node(FlowNode::new(OperatorId(i as u64 + 1), ty));
 		}
 		builder.build()
 	}
@@ -72,10 +72,10 @@ mod tests {
 		tracker.add(flow(
 			1,
 			vec![
-				FlowNodeType::SourceTable {
+				OperatorDef::SourceTable {
 					table: TableId(100),
 				},
-				FlowNodeType::SinkTableView {
+				OperatorDef::SinkTableView {
 					view: ViewId(200),
 					table: TableId(0),
 				},
@@ -84,10 +84,10 @@ mod tests {
 		tracker.add(flow(
 			2,
 			vec![
-				FlowNodeType::SourceView {
+				OperatorDef::SourceView {
 					view: ViewId(200),
 				},
-				FlowNodeType::SinkTableView {
+				OperatorDef::SinkTableView {
 					view: ViewId(300),
 					table: TableId(0),
 				},
@@ -109,10 +109,10 @@ mod tests {
 		let dag = flow(
 			1,
 			vec![
-				FlowNodeType::SourceTable {
+				OperatorDef::SourceTable {
 					table: TableId(100),
 				},
-				FlowNodeType::SinkTableView {
+				OperatorDef::SinkTableView {
 					view: ViewId(200),
 					table: TableId(0),
 				},
@@ -132,10 +132,10 @@ mod tests {
 		tracker.add(flow(
 			1,
 			vec![
-				FlowNodeType::SourceTable {
+				OperatorDef::SourceTable {
 					table: TableId(100),
 				},
-				FlowNodeType::SinkTableView {
+				OperatorDef::SinkTableView {
 					view: ViewId(200),
 					table: TableId(0),
 				},
@@ -147,10 +147,10 @@ mod tests {
 		tracker.add(flow(
 			2,
 			vec![
-				FlowNodeType::SourceTable {
+				OperatorDef::SourceTable {
 					table: TableId(100),
 				},
-				FlowNodeType::SinkTableView {
+				OperatorDef::SinkTableView {
 					view: ViewId(201),
 					table: TableId(0),
 				},
