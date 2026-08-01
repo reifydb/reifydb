@@ -122,9 +122,11 @@ impl MetricsSamplerActor {
 			Surface::Current,
 			long_rows(collect_watermarks(&self.collectors)),
 		);
-		let mut operator_samples = collect_operators(&self.collectors);
-		operator_samples.extend(self.collectors.registry.collect_operators());
-		accumulator.push(MetricsDomain::RuntimeOperators, Surface::Current, long_rows(operator_samples));
+		accumulator.push(
+			MetricsDomain::RuntimeOperators,
+			Surface::Current,
+			long_rows(collect_operators(&self.collectors)),
+		);
 		accumulator.push(
 			MetricsDomain::Instruments,
 			Surface::Current,

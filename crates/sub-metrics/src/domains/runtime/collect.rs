@@ -181,6 +181,7 @@ pub fn collect_operators(c: &Collectors) -> Vec<MetricsSample> {
 	for (node, bytes) in disk {
 		out.push(MetricsSample::bytes(format!("flow_node::{node}"), "disk_payload_bytes", bytes));
 	}
+	out.extend(c.registry.collect_operators());
 	out
 }
 
