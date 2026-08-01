@@ -146,6 +146,7 @@ pub struct ServerBuilder {
 	#[cfg(feature = "sub_replication")]
 	is_replica: bool,
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
+	fast_shutdown: bool,
 }
 
 impl ServerBuilder {
@@ -180,11 +181,17 @@ impl ServerBuilder {
 			otel_tracing_config: None,
 			auth_configurator: None,
 			bootstrap_configs: Vec::new(),
+			fast_shutdown: false,
 		}
 	}
 
 	pub fn with_runtime_config(mut self, config: RuntimeConfig) -> Self {
 		self.runtime_config = Some(config);
+		self
+	}
+
+	pub fn with_fast_shutdown(mut self) -> Self {
+		self.fast_shutdown = true;
 		self
 	}
 
@@ -352,6 +359,10 @@ impl ServerBuilder {
 				.with_interceptor_builder(self.interceptors)
 				.with_stores(multi_store, single_store)
 				.with_cdc_backend(cdc_backend);
+
+		if self.fast_shutdown {
+			database_builder = database_builder.with_fast_shutdown();
+		}
 
 		#[cfg(feature = "sub_replication")]
 		if self.is_replica {

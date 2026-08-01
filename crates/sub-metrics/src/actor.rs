@@ -278,7 +278,7 @@ pub struct MetricsFlushActorState {
 
 impl MetricsFlushActor {
 	#[inline]
-	fn handle_tick(&self, state: &mut MetricsFlushActorState, ctx: &Context<MetricsMessage>) {
+	fn flush(&self, state: &mut MetricsFlushActorState) {
 		if let Err(e) = state.storage_writer.flush() {
 			error!("Failed to flush storage stats: {}", e);
 		}
@@ -289,6 +289,11 @@ impl MetricsFlushActor {
 		self.drain_request_history(pending);
 		self.drain_statement_metrics();
 		emit_stats_processed(&self.event_bus, &mut state.max_version);
+	}
+
+	#[inline]
+	fn handle_tick(&self, state: &mut MetricsFlushActorState, ctx: &Context<MetricsMessage>) {
+		self.flush(state);
 		ctx.schedule_once(self.effective_interval(), || MetricsMessage::Tick(DateTime::from_nanos(0)));
 	}
 }
@@ -311,6 +316,7 @@ impl Actor for MetricsFlushActor {
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		match msg {
 			MetricsMessage::Tick(_) => self.handle_tick(state, ctx),
+			MetricsMessage::Flush => self.flush(state),
 			MetricsMessage::RequestExecuted(event) => state.pending.push(event),
 			MetricsMessage::MultiCommitted(event) => self.process_multi_committed(state, event),
 			MetricsMessage::MultiSwept(event) => self.process_multi_swept(state, event),

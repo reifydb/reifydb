@@ -278,9 +278,11 @@ impl Database {
 			return;
 		}
 
+		use std::time::Instant as StdInstant;
+
 		const PLATEAU_ROUNDS: u32 = 6;
 
-		let deadline = self.clock.instant() + timeout.to_std();
+		let deadline = StdInstant::now() + timeout.to_std();
 		let mut last_producer = u64::MAX;
 		let mut last_consumer = u64::MAX;
 		let mut caught_up = 0u32;
@@ -310,7 +312,7 @@ impl Database {
 			last_producer = producer;
 			last_consumer = consumer;
 
-			if self.clock.instant() >= deadline {
+			if StdInstant::now() >= deadline {
 				warn!(
 					producer,
 					consumer, "shutdown drain timed out; flushing already-committed data anyway"

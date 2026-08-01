@@ -11,6 +11,7 @@ use crate::event::{
 #[derive(Clone, Debug)]
 pub enum MetricsMessage {
 	Tick(DateTime),
+	Flush,
 	RequestExecuted(RequestExecutedEvent),
 	MultiCommitted(MultiCommittedEvent),
 	MultiSwept(MultiSweptEvent),

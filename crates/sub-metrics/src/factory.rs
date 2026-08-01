@@ -177,6 +177,7 @@ impl MetricsSubsystemFactory {
 			.with_epoch_gauge(epoch_gauge);
 
 		let handle = spawner.spawn_coordination("metrics-flush", actor);
+		ioc.register_service(handle.actor_ref().clone());
 		Self::register_listeners(&event_bus, handle.actor_ref().clone());
 
 		Ok(())

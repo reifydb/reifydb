@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{marker::PhantomData, thread};
+use std::{marker::PhantomData, thread, time::Instant as StdInstant};
 
 use reifydb_cdc::consume::watermark::FlowCaughtUpWatermark;
 use reifydb_core::{
@@ -140,34 +140,40 @@ impl CdcWatermarks<'_> {
 			.unwrap_or(CommitVersion(0))
 	}
 
+	/// Waits for the CDC consumer to reach `version`, returning whether it got there.
+	///
+	/// `timeout` is wall-clock, deliberately not the database clock: a caller that builds with
+	/// `RuntimeConfig::seeded(..)` gets a frozen `MockClock`, and a deadline derived from it can
+	/// never be reached, turning a watermark that never arrives into a permanent hang instead of
+	/// a bounded `false`.
 	pub fn wait_for_consumer(&self, version: CommitVersion, timeout: Duration) -> bool {
 		if self.consumer() >= version {
 			return true;
 		}
-		let clock = self.db.clock().clone();
-		let deadline = clock.instant() + timeout.to_std();
+		let deadline = StdInstant::now() + timeout.to_std();
 		loop {
 			if self.consumer() >= version {
 				return true;
 			}
-			if clock.instant() >= deadline {
+			if StdInstant::now() >= deadline {
 				return self.consumer() >= version;
 			}
 			thread::sleep(Duration::from_milliseconds(2).unwrap().to_std());
 		}
 	}
 
+	/// Waits for every deferred flow to have materialized output covering `version`, returning
+	/// whether they got there. Wall-clock `timeout`, for the reason given on [`Self::wait_for_consumer`].
 	pub fn wait_for_flow_consumer(&self, version: CommitVersion, timeout: Duration) -> bool {
 		if self.flow_consumer() >= version {
 			return true;
 		}
-		let clock = self.db.clock().clone();
-		let deadline = clock.instant() + timeout.to_std();
+		let deadline = StdInstant::now() + timeout.to_std();
 		loop {
 			if self.flow_consumer() >= version {
 				return true;
 			}
-			if clock.instant() >= deadline {
+			if StdInstant::now() >= deadline {
 				return self.flow_consumer() >= version;
 			}
 			thread::sleep(Duration::from_milliseconds(2).unwrap().to_std());
