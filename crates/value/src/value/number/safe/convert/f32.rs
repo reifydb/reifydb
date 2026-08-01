@@ -608,10 +608,9 @@ pub mod tests {
 			let y: Option<Decimal> = x.checked_convert();
 			assert!(y.is_some());
 			let decimal = y.unwrap();
-			// f32 has limited precision, so the value might not be
-			// exact
+			// The f32 carries binary rounding noise past the printed digits, so the
+			// assertion is on the prefix rather than the whole rendering.
 			assert!(decimal.to_string().starts_with("-123.45"));
-			// Precision includes all significant digits
 		}
 
 		#[test]
@@ -648,7 +647,6 @@ pub mod tests {
 		fn test_saturating_convert() {
 			let x: f32 = 999.99;
 			let y: Decimal = x.saturating_convert();
-			// f32 precision affects the exact value
 			assert!(y.to_string().starts_with("999.9"));
 		}
 

@@ -110,10 +110,8 @@ mod tests {
 
 	use super::{CacheFootprint, SyncLru};
 
-	// The footprint fn used by measured caches in these tests: heap = the
-	// String's buffer, payload = key bytes + string bytes. Mirrors how a
-	// real consumer derives it from HeapSize.
 	fn footprint(_key: &u64, value: &String) -> CacheFootprint {
+		// Mirrors how a real consumer derives a footprint from HeapSize.
 		CacheFootprint {
 			heap: value.capacity(),
 			payload: size_of::<u64>() + value.len(),
@@ -154,9 +152,11 @@ mod tests {
 		cache.put(1, "a");
 		cache.put(2, "b");
 		cache.run_pending_tasks();
-		cache.get(&1); // Access 1, making it more recent than 2
+		// moka applies recency lazily, so each step needs its pending tasks drained before
+		// the next one observes it.
+		cache.get(&1);
 		cache.run_pending_tasks();
-		cache.put(3, "c"); // Should evict 2 (least recently used)
+		cache.put(3, "c");
 		cache.run_pending_tasks();
 
 		assert_eq!(cache.get(&1), Some("a"));
@@ -235,9 +235,8 @@ mod tests {
 		let usage = cache.memory_usage().expect("measured cache must report usage");
 		assert_eq!(usage.entries, Count::new(2));
 		assert_eq!(usage.payload, ByteSize::from_bytes(payload as u64));
-		// Resident must cover the tracked heap plus a nonzero per-entry
-		// structural overhead; equality with heap alone would mean the
-		// cache's own bookkeeping is unaccounted.
+		// Equality with heap alone would mean the cache's own per-entry bookkeeping is
+		// unaccounted for.
 		assert!(usage.resident.as_bytes() > heap as u64);
 	}
 

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 //
-// Same DAG-consistency contract as the transactional case, for a deferred view:
-// the catalog read path must hand flow registration a sink that is connected by
-// an edge, never an orphaned sink with an empty input set.
+// The same DAG-consistency contract as the transactional case: the read path must hand flow
+// registration a connected sink, never an orphaned one with an empty input set.
 
 use std::collections::HashSet;
 

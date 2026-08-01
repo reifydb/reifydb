@@ -118,7 +118,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
-		// Create first ring buffer
 		let buffer1 = RingBufferToCreate {
 			namespace: namespace.id(),
 			name: Fragment::internal("buffer1"),
@@ -130,7 +129,6 @@ pub mod tests {
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer1).unwrap();
 
-		// Create second ring buffer
 		let buffer2 = RingBufferToCreate {
 			namespace: namespace.id(),
 			name: Fragment::internal("buffer2"),
@@ -154,7 +152,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let namespace1 = ensure_test_namespace(&mut txn);
 
-		// Create second namespace
 		let namespace2 = CatalogStore::create_namespace(
 			&mut txn,
 			NamespaceToCreate {
@@ -168,7 +165,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Create buffer in namespace1
 		let buffer1 = RingBufferToCreate {
 			namespace: namespace1.id(),
 			name: Fragment::internal("buffer1"),
@@ -180,7 +176,6 @@ pub mod tests {
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer1).unwrap();
 
-		// Create buffer in namespace2
 		let buffer2 = RingBufferToCreate {
 			namespace: namespace2.id(),
 			name: Fragment::internal("buffer2"),
@@ -192,15 +187,12 @@ pub mod tests {
 		};
 		CatalogStore::create_ringbuffer(&mut txn, buffer2).unwrap();
 
-		// List all buffers
 		let all_buffers = CatalogStore::list_ringbuffers_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(all_buffers.len(), 2);
 
-		// Check that buffer1 is in namespace1
 		let buffer1_entry = all_buffers.iter().find(|b| b.name == "buffer1").expect("buffer1 should exist");
 		assert_eq!(buffer1_entry.namespace, namespace1.id());
 
-		// Check that buffer2 is in namespace2
 		let buffer2_entry = all_buffers.iter().find(|b| b.name == "buffer2").expect("buffer2 should exist");
 		assert_eq!(buffer2_entry.namespace, namespace2.id());
 	}

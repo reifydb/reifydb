@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-//
-// Combined create+drop within a single txn; asserts via all find methods:
-// `find_test_by_name`, `find_test` (by id).
-//
-// All scenarios are ignored until `DROP TEST` lands in the RQL grammar.
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;

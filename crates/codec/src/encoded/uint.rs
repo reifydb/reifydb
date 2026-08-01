@@ -41,9 +41,8 @@ impl RowShape {
 			self.remove_dynamic_data(row, index);
 
 			let packed = MODE_INLINE | (u128_val & INLINE_VALUE_MASK);
-			// SAFETY: the assertion above pins row.len() >= total_static_size(), so the 16-byte
-			// slot at field.offset lies inside the row; make_mut() gives unique ownership of it
-			// and write_unaligned imposes no alignment requirement.
+			// SAFETY: row.len() >= total_static_size() puts the 16-byte slot at field.offset inside the
+			// uniquely-owned buffer, and write_unaligned needs no alignment.
 			unsafe {
 				ptr::write_unaligned(
 					row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u128,
@@ -70,9 +69,8 @@ impl RowShape {
 			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uint);
 		}
 
-		// SAFETY: the assertion above pins row.len() >= total_static_size(), so the 16-byte slot
-		// at field.offset lies inside the row, and read_unaligned imposes no alignment
-		// requirement; u128 has no invalid bit patterns.
+		// SAFETY: row.len() >= total_static_size() puts the 16-byte slot at field.offset inside the row,
+		// read_unaligned needs no alignment, and u128 has no invalid bit patterns.
 		let packed = unsafe { (row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);
 

@@ -270,8 +270,8 @@ pub mod tests {
                     fn saturating_div_unhappy() {
                         let x: $t = 10;
                         let y: $t = 0;
+                        // Division by zero has no saturation bound to pick, so it yields 0.
                         let result = SafeDiv::saturating_div(&x, &y);
-                        // Should saturate to 0 for division by zero
                         assert_eq!(result, 0);
                     }
 
@@ -279,8 +279,8 @@ pub mod tests {
                     fn saturating_div_negative() {
                         let x: $t = -10;
                         let y: $t = 0;
+                        // Division by zero has no saturation bound to pick, so it yields 0.
                         let result = SafeDiv::saturating_div(&x, &y);
-                        // Should saturate to 0 for division by zero
                         assert_eq!(result, 0);
                     }
 
@@ -295,9 +295,8 @@ pub mod tests {
                     fn wrapping_div_unhappy() {
                         let x: $t = <$t>::MIN;
                         let y: $t = -1;
-                        // For signed types, MIN / -1 would overflow, so it wraps
+                        // MIN / -1 is the one signed division that overflows; wrapping lands on MIN.
                         let result = SafeDiv::wrapping_div(&x, &y);
-                        // The exact wrapped value depends on the type, but should wrap to MIN
                         assert_eq!(result, <$t>::MIN);
                     }
 
@@ -346,8 +345,8 @@ pub mod tests {
                     fn saturating_div_unhappy() {
                         let x: $t = 10;
                         let y: $t = 0;
+                        // Division by zero has no saturation bound to pick, so it yields 0.
                         let result = SafeDiv::saturating_div(&x, &y);
-                        // Should saturate to 0 for division by zero
                         assert_eq!(result, 0);
                     }
 

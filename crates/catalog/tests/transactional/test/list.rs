@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-//
-// Combined create+drop within a single txn; currently ignored because
-// `DROP TEST` is not in the RQL grammar. When it lands, scenario A is
-// the canonical reproducer for the `.retain()` omission in
-// `list_all_tests` / `list_tests_in_namespace` at
-// `crates/catalog/src/catalog/test.rs:140-214`.
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;

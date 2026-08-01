@@ -89,6 +89,7 @@ pub mod tests {
 
 	#[test]
 	fn test_drop_nonexistent_flow() {
+		// Dropping a flow that never existed is a no-op, not an error.
 		let mut txn = create_test_admin_transaction();
 
 		CatalogStore::drop_flow(&mut txn, FlowId(999)).unwrap();
@@ -100,15 +101,12 @@ pub mod tests {
 		let ns = create_namespace(&mut txn, "test_namespace");
 		let _flow = create_flow(&mut txn, "test_namespace", "named_flow");
 
-		// Verify flow exists
 		assert!(CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "named_flow")
 			.unwrap()
 			.is_some());
 
-		// Drop by name
 		CatalogStore::drop_flow_by_name(&mut txn, ns.id(), "named_flow").unwrap();
 
-		// Verify flow is gone
 		assert!(CatalogStore::find_flow_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "named_flow")
 			.unwrap()
 			.is_none());

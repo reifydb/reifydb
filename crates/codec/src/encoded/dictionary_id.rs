@@ -23,6 +23,8 @@ impl RowShape {
 			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::DictionaryId);
 		}
 		row.set_valid(index, true);
+		// SAFETY: row.len() >= total_static_size() puts the slot at field.offset inside the uniquely-owned
+		// buffer and it is at least as wide as the widest arm; write_unaligned needs no alignment.
 		unsafe {
 			let ptr = row.make_mut().as_mut_ptr().add(field.offset as usize);
 			match entry {
@@ -50,6 +52,8 @@ impl RowShape {
 			Some(Constraint::Dictionary(_, id_type)) => id_type.clone(),
 			_ => ValueType::Uint4,
 		};
+		// SAFETY: row.len() >= total_static_size() puts the slot at field.offset inside the row and it is at
+		// least as wide as the id type read; the unsigned targets have no invalid bit patterns.
 		unsafe {
 			let ptr = row.as_ptr().add(field.offset as usize);
 			let raw: u128 = match id_type {

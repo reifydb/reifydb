@@ -85,7 +85,6 @@ pub mod tests {
 	fn test_ipv6_addresses() {
 		let shape = RowShape::testing(&[ValueType::Uint16]);
 
-		// Test values representing IPv6 addresses as u128
 		let ipv6_values = [
 			0u128,                                       // ::0
 			1u128,                                       // ::1 (loopback)
@@ -104,7 +103,6 @@ pub mod tests {
 	fn test_uuid_values() {
 		let shape = RowShape::testing(&[ValueType::Uint16]);
 
-		// Test values that could represent UUIDs as u128
 		let uuid_values = [
 			123456789012345678901234567890123456789u128,
 			123456789012345678901234567890123456789u128,

@@ -19,9 +19,14 @@ extern "C" fn test_alloc(size: usize) -> *mut u8 {
 		Err(_) => return ptr::null_mut(),
 	};
 
+	// SAFETY: size is non-zero and from_size_align accepted the layout, so it is valid.
 	unsafe { alloc(layout) }
 }
 
+/// # Safety
+///
+/// `ptr` must come from `test_alloc`/`test_realloc` and `size` must be the size it was
+/// allocated with, since the layout is reconstructed from `size` rather than recorded.
 #[unsafe(no_mangle)]
 unsafe extern "C" fn test_free(ptr: *mut u8, size: usize) {
 	if ptr.is_null() || size == 0 {
@@ -33,9 +38,14 @@ unsafe extern "C" fn test_free(ptr: *mut u8, size: usize) {
 		Err(_) => return,
 	};
 
+	// SAFETY: the caller guarantees ptr came from this allocator with exactly this size.
 	unsafe { dealloc(ptr, layout) }
 }
 
+/// # Safety
+///
+/// `ptr` must come from this allocator and `old_size` must be the size it was allocated with;
+/// the returned pointer replaces it and the old one must not be used again.
 #[unsafe(no_mangle)]
 unsafe extern "C" fn test_realloc(ptr: *mut u8, old_size: usize, new_size: usize) -> *mut u8 {
 	if ptr.is_null() {
@@ -43,6 +53,7 @@ unsafe extern "C" fn test_realloc(ptr: *mut u8, old_size: usize, new_size: usize
 	}
 
 	if new_size == 0 {
+		// SAFETY: ptr and old_size are forwarded unchanged from this function's own contract.
 		unsafe { test_free(ptr, old_size) };
 		return ptr::null_mut();
 	}
@@ -57,10 +68,16 @@ unsafe extern "C" fn test_realloc(ptr: *mut u8, old_size: usize, new_size: usize
 		Err(_) => return ptr::null_mut(),
 	};
 
+	// SAFETY: ptr is non-null, was allocated with old_layout per contract, and new_size is non-zero.
 	unsafe { system_realloc(ptr, old_layout, new_layout.size()) }
 }
 
+/// # Safety
+///
+/// `ctx` must be non-null and its `txn_ptr` must point at a live `TestContext` that outlives
+/// the returned reference; the `'static` lifetime is forged and is not checked.
 unsafe fn get_test_context(ctx: *mut ContextFFI) -> &'static TestContext {
+	// SAFETY: the caller guarantees ctx is valid and its txn_ptr is a live TestContext.
 	unsafe {
 		let txn_ptr = (*ctx).txn_ptr;
 		&*(txn_ptr as *const TestContext)
@@ -83,6 +100,7 @@ extern "C" fn test_state_get(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: pointers null-checked above; caller owns (key_ptr, key_len); value_ptr checked too.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 
@@ -122,6 +140,7 @@ extern "C" fn test_state_set(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: pointers null-checked above; caller owns both (key_ptr, key_len) and (value_ptr, value_len).
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 
@@ -142,6 +161,7 @@ extern "C" fn test_state_remove(_operator_id: u64, ctx: *mut ContextFFI, key_ptr
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: both pointers null-checked above; caller owns (key_ptr, key_len) as a readable region.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 
@@ -160,6 +180,7 @@ extern "C" fn test_state_clear(_operator_id: u64, ctx: *mut ContextFFI) -> i32 {
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: ctx is null-checked above and points at a live ContextFFI for this call.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		test_ctx.clear_state();
@@ -189,6 +210,7 @@ extern "C" fn test_state_get_many(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: ctx and iterator_out checked; keys checked when keys_len > 0; each KeyRefFFI when its len > 0.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 
@@ -234,6 +256,7 @@ extern "C" fn test_state_prefix(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: ctx and iterator_out null-checked; prefix_ptr read only when non-null with a non-zero len.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 
@@ -282,6 +305,7 @@ extern "C" fn test_state_iterator_next(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: all three pointers null-checked; iterator is one this module minted; writes stay under cap.
 	unsafe {
 		let iter = &mut *(iterator as *mut TestStateIterator);
 
@@ -316,6 +340,7 @@ extern "C" fn test_state_iterator_free(iterator: *mut StateIteratorFFI) {
 		return;
 	}
 
+	// SAFETY: iterator null-checked, was minted by this module, and per contract is freed exactly once.
 	unsafe {
 		let _ = Box::from_raw(iterator as *mut TestStateIterator);
 	}
@@ -341,6 +366,7 @@ extern "C" fn test_state_range(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: ctx and iterator_out null-checked; a bound pointer is read only when bounded and non-null.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 
@@ -396,6 +422,10 @@ extern "C" fn test_state_range(
 	}
 }
 
+/// # Safety
+///
+/// Unimplemented stub: it panics before touching any argument, so no pointer contract applies
+/// yet. Reinstate one here before giving it a body.
 #[unsafe(no_mangle)]
 unsafe extern "C" fn test_log_message(_operator_id: u64, _level: u32, _message: *const u8, _message_len: usize) {
 	unimplemented!()
@@ -411,6 +441,7 @@ extern "C" fn test_store_get(ctx: *mut ContextFFI, key: *const u8, key_len: usiz
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: pointers null-checked above; caller owns (key, key_len); value_ptr checked before the copy.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		let encoded = EncodedKey::new(from_raw_parts(key, key_len));
@@ -437,6 +468,7 @@ extern "C" fn test_store_contains_key(ctx: *mut ContextFFI, key: *const u8, key_
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: pointers null-checked above; caller owns (key, key_len) to read and result to write.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		let encoded = EncodedKey::new(from_raw_parts(key, key_len));
@@ -455,6 +487,7 @@ extern "C" fn test_store_prefix(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: ctx and iterator_out null-checked; prefix read only when non-null with a non-zero len.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		let prefix_bytes = if prefix_len == 0 || prefix.is_null() {
@@ -492,6 +525,7 @@ extern "C" fn test_store_range(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: ctx and iterator_out null-checked; a bound pointer is read only when bounded and non-null.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 
@@ -532,6 +566,7 @@ extern "C" fn test_store_iterator_next(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: all three pointers null-checked; iterator is one this module minted; copies are checked.
 	unsafe {
 		let iter = &mut *(iterator as *mut TestStoreIterator);
 		if iter.position >= iter.items.len() {
@@ -568,6 +603,7 @@ extern "C" fn test_store_iterator_free(iterator: *mut StoreIteratorFFI) {
 	if iterator.is_null() {
 		return;
 	}
+	// SAFETY: iterator null-checked, was minted by this module, and per contract is freed exactly once.
 	unsafe {
 		drop(Box::from_raw(iterator as *mut TestStoreIterator));
 	}
@@ -664,6 +700,10 @@ extern "C" fn test_catalog_free_table(_table: *mut TableFFI) {}
 
 extern "C" fn test_catalog_free_row_shape(_row_shape: *mut RowShapeFFI) {}
 
+/// # Safety
+///
+/// Unconditional stub: it returns an error without reading any argument, so no pointer
+/// contract applies yet. Reinstate one here before giving it a body.
 unsafe extern "C" fn test_rql(
 	_ctx: *mut ContextFFI,
 	_rql_ptr: *const u8,
@@ -703,6 +743,7 @@ extern "C" fn test_intern_groups(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: ctx checked; groups and ids_out checked when groups_len > 0; writes stay under groups_len.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		let counter_key = test_state_envelope(operator_id, b"__group_alloc__");
@@ -756,6 +797,7 @@ extern "C" fn test_arm_timer(
 		return FFI_ERROR_INTERNAL;
 	};
 
+	// SAFETY: ctx null-checked and key null-checked when key_len > 0, so the region is readable.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		let key = if key_len == 0 {
@@ -791,6 +833,7 @@ extern "C" fn test_disarm_timer(
 		return FFI_ERROR_INTERNAL;
 	};
 
+	// SAFETY: ctx null-checked and key null-checked when key_len > 0, so the region is readable.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		let key = if key_len == 0 {
@@ -818,8 +861,7 @@ extern "C" fn test_flow_watermark(
 		return FFI_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: all three pointers are null-checked above; ctx outlives this call and the out-params
-
+	// SAFETY: all three pointers null-checked; both out-params are caller-owned cells, written not read.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		match test_ctx.flow_watermark() {
@@ -851,6 +893,7 @@ extern "C" fn test_lookup_groups(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: ctx checked; groups and ids_out checked when groups_len > 0; writes stay under groups_len.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		let group_refs = if groups_len == 0 {
@@ -890,6 +933,7 @@ extern "C" fn test_get_or_create_row_numbers(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: ctx checked; keys and both out arrays checked when keys_len > 0; writes stay under it.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		let counter_key = test_state_envelope(operator_id, b"__row_number_alloc__");
@@ -938,6 +982,8 @@ extern "C" fn test_remove_row_number(
 	if ctx.is_null() || (key_len > 0 && key_ptr.is_null()) {
 		return FFI_ERROR_NULL_PTR;
 	}
+	// SAFETY: ctx is null-checked above and key_ptr is null-checked whenever key_len is non-zero,
+	// so (key_ptr, key_len) is a readable region the caller owns for the duration of the call.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		let key_bytes = if key_len == 0 {
@@ -962,6 +1008,9 @@ extern "C" fn test_remove_row_numbers_below(
 	if ctx.is_null() || output.is_null() || (upper_len > 0 && upper_ptr.is_null()) {
 		return FFI_ERROR_NULL_PTR;
 	}
+	// SAFETY: ctx and output are null-checked above and upper_ptr is null-checked whenever
+	// upper_len is non-zero. The buffer written into output is allocated here and its pointer is
+	// null-checked before the copy.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		let upper_bytes = if upper_len == 0 {
@@ -1026,6 +1075,8 @@ extern "C" fn test_dictionary_id_by_name(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: every pointer is null-checked above; the caller owns (name_ptr, name_len) as a
+	// readable region, and out_id and found as single writable cells that are written, never read.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		let name = match from_utf8(from_raw_parts(name_ptr, name_len)) {
@@ -1056,6 +1107,8 @@ extern "C" fn test_dictionary_find(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: every pointer is null-checked above; the caller owns (value_ptr, value_len) as a
+	// readable region, and out_id, out_id_type and found as single writable cells.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		let value_bytes = from_raw_parts(value_ptr, value_len);
@@ -1076,6 +1129,8 @@ extern "C" fn test_dictionary_get(ctx: *mut ContextFFI, dictionary_id: u64, id: 
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: ctx and output are null-checked above, and the freshly allocated value_ptr is
+	// null-checked before the copy that fills output; source and destination cannot alias.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		match test_ctx.dictionary_get(dictionary_id, id) {

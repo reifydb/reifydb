@@ -69,14 +69,12 @@ impl Runner for CatalogRunner {
 			"replicate" => {
 				command.consume_args().reject_rest()?;
 
-				// 1. Capture deltas from primary pending writes
+				// Deltas must be captured before the commit consumes the pending writes.
 				let changes = deltas_to_system_changes(self.primary_txn());
 
-				// 2. Commit primary
 				let mut txn = self.primary_txn.take().expect("no active primary transaction");
 				let version = txn.commit()?;
 
-				// 3. Apply to replica via ReplicaTransaction + apply_system_change
 				let replica_catalog = self.replica.catalog();
 				let mut replica_txn = ReplicaTransaction::new(self.replica.multi_owned(), version)?;
 				for change in &changes {
@@ -90,7 +88,6 @@ impl Runner for CatalogRunner {
 
 				writeln!(output, "version: {}", version.0)?;
 
-				// 4. Start a new primary transaction
 				self.begin_primary_txn();
 			}
 
@@ -113,9 +110,8 @@ impl Runner for CatalogRunner {
 }
 
 fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {
-	// Clone and consume in insertion order - this preserves the order the primary
-	// wrote entries, which matters because e.g. column entries must exist before
-	// table appliers try to list them.
+	// Insertion order is load-bearing: column entries must reach the replica before a table
+	// applier tries to list them.
 	txn.pending_writes()
 		.clone()
 		.into_iter_insertion_order()

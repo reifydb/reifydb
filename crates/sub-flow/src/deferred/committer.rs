@@ -520,8 +520,7 @@ mod group_commit_integration {
 			);
 		}
 
-		// CDC production is async (event bus -> producer actor); poll until the
-		// record for the shared version lands.
+		// CDC production is async, so the record for the shared version has to be polled for.
 		let cdc_store = engine.cdc_store();
 		let mut record = None;
 		for _ in 0..400 {

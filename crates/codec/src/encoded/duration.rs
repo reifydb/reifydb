@@ -84,7 +84,7 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Duration]);
 		let mut row = shape.allocate();
 
-		// Create a duration with all components
+		// All three components non-zero, so a wrong field offset shows up as a swap.
 		let complex_duration = Duration::new(
 			6,         // 6 months
 			15,        // 15 days
@@ -139,7 +139,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Duration]);
 		let mut row = shape.allocate();
 
-		// Test with large values
 		let large_duration = Duration::new(
 			120,             // 10 years in months
 			3650,            // ~10 years in days
@@ -155,7 +154,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Duration]);
 		let mut row = shape.allocate();
 
-		// Test that all components are preserved exactly
 		let precise_duration = Duration::new(
 			5,         // 5 months
 			20,        // 20 days
@@ -182,7 +180,6 @@ pub mod tests {
 	fn test_common_durations() {
 		let shape = RowShape::testing(&[ValueType::Duration]);
 
-		// Test common durations used in applications
 		let common_durations = [
 			Duration::from_seconds(1).unwrap(),  // 1 second
 			Duration::from_seconds(30).unwrap(), // 30 seconds
@@ -206,7 +203,7 @@ pub mod tests {
 	fn test_boundary_values() {
 		let shape = RowShape::testing(&[ValueType::Duration]);
 
-		// Test boundary values for each component
+		// The extremes of each component's own width, which is where a narrowed field truncates.
 		let boundary_durations = [
 			Duration::new(i32::MAX, 0, 0).unwrap(), // Max months
 			Duration::new(i32::MIN, 0, 0).unwrap(), // Min months

@@ -117,7 +117,8 @@ impl<M> fmt::Debug for ActorRef<M> {
 	}
 }
 
-// SAFETY: Single-threaded targets (WASM/WASI) don't have real concurrency
+// SAFETY: under reifydb_single_threaded there is no second thread, so an ActorRef can never be reached
+// from another one. These impls only satisfy Send + Sync bounds and never back a real transfer.
 #[cfg(reifydb_single_threaded)]
 unsafe impl<M> Send for ActorRef<M> {}
 

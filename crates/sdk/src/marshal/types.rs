@@ -38,6 +38,8 @@ impl Arena {
 			return BoolContainer::new(vec![false; row_count]);
 		}
 
+		// SAFETY: the `is_empty` guard above rules out a null pointer and a zero length; the producer
+		// owns `data.len` initialised bytes at `data.ptr` for the duration of the call.
 		unsafe {
 			let bytes = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let mut values = Vec::with_capacity(row_count);
@@ -64,6 +66,9 @@ impl Arena {
 			return NumberContainer::new(vec![T::default(); row_count]);
 		}
 
+		// SAFETY: the `is_empty` guard rules out a null pointer, and the marshal arm selected by the same
+		// `type_code` set `data.ptr` from a live `&[T]`, so it is aligned for `T`; `len` is floored to
+		// whole elements of the `data.len` initialised bytes.
 		unsafe {
 			let ptr = ffi.data.ptr as *const T;
 			let len = ffi.data.len / size_of::<T>();
@@ -78,6 +83,8 @@ impl Arena {
 			return Utf8Container::new(vec![String::new(); row_count]);
 		}
 
+		// SAFETY: the `is_empty` guard above rules out a null pointer and a zero length; the producer
+		// owns `data.len` initialised bytes at `data.ptr` for the duration of the call.
 		unsafe {
 			let data = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let offsets = self.read_offsets(&ffi.offsets);
@@ -100,6 +107,9 @@ impl Arena {
 			return TemporalContainer::new(vec![Date::default(); row_count]);
 		}
 
+		// SAFETY: the `is_empty` guard rules out a null pointer, and the Date marshal arm set `data.ptr`
+		// from a live `&[Date]` (repr(transparent) i32), so it is aligned for `i32`; `len` is floored to
+		// whole elements of the `data.len` initialised bytes.
 		unsafe {
 			let ptr = ffi.data.ptr as *const i32;
 			let len = ffi.data.len / size_of::<i32>();
@@ -118,6 +128,9 @@ impl Arena {
 			return TemporalContainer::new(vec![DateTime::default(); row_count]);
 		}
 
+		// SAFETY: the `is_empty` guard rules out a null pointer, and the DateTime marshal arm set
+		// `data.ptr` from a live `&[DateTime]` (repr(transparent) u64), so it is aligned for `u64`; `len`
+		// is floored to whole elements of the `data.len` initialised bytes.
 		unsafe {
 			let ptr = ffi.data.ptr as *const u64;
 			let len = ffi.data.len / size_of::<u64>();
@@ -133,6 +146,9 @@ impl Arena {
 			return TemporalContainer::new(vec![Time::default(); row_count]);
 		}
 
+		// SAFETY: the `is_empty` guard rules out a null pointer, and the Time marshal arm set `data.ptr`
+		// from a live `&[Time]` (repr(transparent) u64), so it is aligned for `u64`; `len` is floored to
+		// whole elements of the `data.len` initialised bytes.
 		unsafe {
 			let ptr = ffi.data.ptr as *const u64;
 			let len = ffi.data.len / size_of::<u64>();
@@ -151,6 +167,9 @@ impl Arena {
 			return TemporalContainer::new(vec![Duration::default(); row_count]);
 		}
 
+		// SAFETY: the `is_empty` guard rules out a null pointer, and the Duration marshal arm set
+		// `data.ptr` from a live `&[Duration]`, so it is aligned for `Duration`; `len` is floored to
+		// whole elements of the `data.len` initialised bytes.
 		unsafe {
 			let ptr = ffi.data.ptr as *const Duration;
 			let len = ffi.data.len / size_of::<Duration>();
@@ -165,6 +184,8 @@ impl Arena {
 			return IdentityIdContainer::new(vec![IdentityId::default(); row_count]);
 		}
 
+		// SAFETY: the `is_empty` guard above rules out a null pointer and a zero length; the producer
+		// owns `data.len` initialised bytes at `data.ptr` for the duration of the call.
 		unsafe {
 			let bytes = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let ids: Vec<IdentityId> = bytes
@@ -186,6 +207,8 @@ impl Arena {
 			return UuidContainer::new(vec![Uuid4::default(); row_count]);
 		}
 
+		// SAFETY: the `is_empty` guard above rules out a null pointer and a zero length; the producer
+		// owns `data.len` initialised bytes at `data.ptr` for the duration of the call.
 		unsafe {
 			let bytes = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let uuids: Vec<Uuid4> = bytes
@@ -206,6 +229,8 @@ impl Arena {
 			return UuidContainer::new(vec![Uuid7::default(); row_count]);
 		}
 
+		// SAFETY: the `is_empty` guard above rules out a null pointer and a zero length; the producer
+		// owns `data.len` initialised bytes at `data.ptr` for the duration of the call.
 		unsafe {
 			let bytes = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let uuids: Vec<Uuid7> = bytes
@@ -226,6 +251,8 @@ impl Arena {
 			return BlobContainer::new(vec![Blob::empty(); row_count]);
 		}
 
+		// SAFETY: the `is_empty` guard above rules out a null pointer and a zero length; the producer
+		// owns `data.len` initialised bytes at `data.ptr` for the duration of the call.
 		unsafe {
 			let data = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let offsets = self.read_offsets(&ffi.offsets);
@@ -263,6 +290,8 @@ impl Arena {
 			return NumberContainer::new(vec![T::default(); row_count]);
 		}
 
+		// SAFETY: the `is_empty` guard above rules out a null pointer and a zero length; the producer
+		// owns `data.len` initialised bytes at `data.ptr` for the duration of the call.
 		unsafe {
 			let data = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let offsets = self.read_offsets(&ffi.offsets);
@@ -284,6 +313,8 @@ impl Arena {
 			return AnyContainer::new(vec![Box::new(Value::none()); row_count]);
 		}
 
+		// SAFETY: the `is_empty` guard above rules out a null pointer and a zero length; the producer
+		// owns `data.len` initialised bytes at `data.ptr` for the duration of the call.
 		unsafe {
 			let data = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let offsets = self.read_offsets(&ffi.offsets);
@@ -306,6 +337,8 @@ impl Arena {
 			return DictionaryContainer::new(vec![DictionaryEntryId::U16(0); row_count]);
 		}
 
+		// SAFETY: the `is_empty` guard above rules out a null pointer and a zero length; the producer
+		// owns `data.len` initialised bytes at `data.ptr` for the duration of the call.
 		unsafe {
 			let data = from_raw_parts(ffi.data.ptr, ffi.data.len);
 			let offsets = self.read_offsets(&ffi.offsets);
@@ -327,6 +360,9 @@ impl Arena {
 		if ffi.is_empty() {
 			return Vec::new();
 		}
+		// SAFETY: `is_empty` above ruled out a null pointer; every producer sets this buffer from a live
+		// `&[u64]` (an 8-aligned arena block or a container's offsets), so it is aligned for `u64`; `len`
+		// is floored to whole elements of the `ffi.len` initialised bytes.
 		unsafe {
 			let ptr = ffi.ptr as *const u64;
 			let len = ffi.len / size_of::<u64>();

@@ -209,6 +209,8 @@ pub struct NativeState<'a> {
 
 impl StateApi for NativeState<'_> {
 	fn get<T: OperatorState>(&self, key: &StateKey) -> SdkResult<Option<T>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		match unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)? {
 			Some(row) => Ok(Some(decode(&row)?)),
 			None => Ok(None),
@@ -216,27 +218,41 @@ impl StateApi for NativeState<'_> {
 	}
 	fn set<T: OperatorState>(&mut self, key: &StateKey, value: &T) -> SdkResult<()> {
 		let now = self.now;
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).state_set(key, encode(value, now)?) }.map_err(to_sdk_err)
 	}
 	fn remove(&mut self, key: &StateKey) -> SdkResult<()> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).state_remove(key) }.map_err(to_sdk_err)
 	}
 	fn contains(&self, key: &StateKey) -> SdkResult<bool> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		Ok(unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)?.is_some())
 	}
 	fn clear(&mut self) -> SdkResult<()> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).state_clear() }.map_err(to_sdk_err)
 	}
 	fn scan_prefix<T: OperatorState>(&self, prefix: &StateKey) -> SdkResult<Vec<(StateKey, T)>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		let rows = unsafe { (*self.bridge).state_range(EncodedKeyRange::prefix(prefix.as_slice())) }
 			.map_err(to_sdk_err)?;
 		rows.into_iter().map(|(k, r)| Ok((k, decode(&r)?))).collect()
 	}
 	fn get_many<T: OperatorState>(&self, keys: &[StateKey]) -> SdkResult<Vec<(StateKey, T)>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		let rows = unsafe { (*self.bridge).state_get_many(keys) }.map_err(to_sdk_err)?;
 		rows.into_iter().map(|(k, r)| Ok((k, decode(&r)?))).collect()
 	}
 	fn keys_with_prefix(&self, prefix: &StateKey) -> SdkResult<Vec<StateKey>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		let rows = unsafe { (*self.bridge).state_range(EncodedKeyRange::prefix(prefix.as_slice())) }
 			.map_err(to_sdk_err)?;
 		Ok(rows.into_iter().map(|(k, _)| k).collect())
@@ -250,6 +266,8 @@ impl StateApi for NativeState<'_> {
 			start.map(|k| k.as_encoded().clone()),
 			end.map(|k| k.as_encoded().clone()),
 		);
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		let rows = unsafe { (*self.bridge).state_range(range) }.map_err(to_sdk_err)?;
 		rows.into_iter().map(|(k, r)| Ok((k, decode(&r)?))).collect()
 	}
@@ -258,6 +276,9 @@ impl StateApi for NativeState<'_> {
 		keys: &[StateKey],
 		visit: &mut dyn FnMut(StateKey, T) -> SdkResult<()>,
 	) -> SdkResult<()> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
+		// cannot reach the context, so it cannot re-enter the bridge while this borrow is live.
 		unsafe {
 			(*self.bridge).state_get_many_visit(keys, &mut |k, row| {
 				let value = decode::<T>(row)?;
@@ -275,6 +296,9 @@ impl StateApi for NativeState<'_> {
 			start.map(|k| k.as_encoded().clone()),
 			end.map(|k| k.as_encoded().clone()),
 		);
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
+		// cannot reach the context, so it cannot re-enter the bridge while this borrow is live.
 		unsafe {
 			(*self.bridge).state_range_visit(range, &mut |k, row| {
 				let value = decode::<T>(row)?;
@@ -287,6 +311,9 @@ impl StateApi for NativeState<'_> {
 		prefix: &StateKey,
 		visit: &mut dyn FnMut(StateKey, T) -> SdkResult<()>,
 	) -> SdkResult<()> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
+		// cannot reach the context, so it cannot re-enter the bridge while this borrow is live.
 		unsafe {
 			(*self.bridge).state_range_visit(EncodedKeyRange::prefix(prefix.as_slice()), &mut |k, row| {
 				let value = decode::<T>(row)?;
@@ -296,6 +323,8 @@ impl StateApi for NativeState<'_> {
 	}
 
 	fn get_bytes(&self, key: &StateKey) -> SdkResult<Option<StateBytes>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		match unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)? {
 			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(ValueError::from)?)),
 			None => Ok(None),
@@ -303,6 +332,8 @@ impl StateApi for NativeState<'_> {
 	}
 
 	fn set_bytes(&mut self, key: &StateKey, payload: StateBytes) -> SdkResult<()> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).state_set(key, payload.into_row()) }.map_err(to_sdk_err)
 	}
 
@@ -311,6 +342,9 @@ impl StateApi for NativeState<'_> {
 		keys: &[StateKey],
 		visit: &mut dyn FnMut(StateKey, StateBytes) -> SdkResult<()>,
 	) -> SdkResult<()> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
+		// cannot reach the context, so it cannot re-enter the bridge while this borrow is live.
 		unsafe {
 			(*self.bridge).state_get_many_visit(keys, &mut |k, row| {
 				let bytes = StateBytes::from_row(row.clone()).map_err(ValueError::from)?;
@@ -329,6 +363,8 @@ impl StateApi for NativeState<'_> {
 			start.map(|k| k.as_encoded().clone()),
 			end.map(|k| k.as_encoded().clone()),
 		);
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		let rows = unsafe { (*self.bridge).state_range(range) }.map_err(to_sdk_err)?;
 		for (k, row) in rows {
 			let bytes = StateBytes::from_row(row).map_err(ValueError::from)?;
@@ -349,12 +385,18 @@ pub struct NativeStore<'a> {
 
 impl StoreApi for NativeStore<'_> {
 	fn get(&self, key: &EncodedKey) -> SdkResult<Option<EncodedRow>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).store_get(key) }.map_err(to_sdk_err)
 	}
 	fn contains(&self, key: &EncodedKey) -> SdkResult<bool> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).store_contains(key) }.map_err(to_sdk_err)
 	}
 	fn prefix(&self, prefix: &EncodedKey) -> SdkResult<Vec<(EncodedKey, EncodedRow)>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).store_prefix(prefix) }.map_err(to_sdk_err)
 	}
 	fn range(
@@ -363,6 +405,8 @@ impl StoreApi for NativeStore<'_> {
 		end: Bound<&EncodedKey>,
 	) -> SdkResult<Vec<(EncodedKey, EncodedRow)>> {
 		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).store_range(range) }.map_err(to_sdk_err)
 	}
 	fn range_visit(
@@ -372,6 +416,9 @@ impl StoreApi for NativeStore<'_> {
 		visit: &mut dyn FnMut(EncodedKey, EncodedRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
+		// cannot reach the context, so it cannot re-enter the bridge while this borrow is live.
 		unsafe { (*self.bridge).store_range_visit(range, &mut |k, row| visit(k.clone(), row.clone())) }
 	}
 	fn prefix_visit(
@@ -379,6 +426,9 @@ impl StoreApi for NativeStore<'_> {
 		prefix: &EncodedKey,
 		visit: &mut dyn FnMut(EncodedKey, EncodedRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
+		// cannot reach the context, so it cannot re-enter the bridge while this borrow is live.
 		unsafe { (*self.bridge).store_prefix_visit(prefix, &mut |k, row| visit(k.clone(), row.clone())) }
 	}
 }
@@ -390,12 +440,18 @@ pub struct NativeCatalog<'a> {
 
 impl CatalogApi for NativeCatalog<'_> {
 	fn find_namespace(&self, namespace: NamespaceId, version: CommitVersion) -> SdkResult<Option<Namespace>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).catalog_find_namespace(namespace, version) }.map_err(to_sdk_err)
 	}
 	fn find_namespace_by_name(&self, namespace: &str, version: CommitVersion) -> SdkResult<Option<Namespace>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).catalog_find_namespace_by_name(namespace, version) }.map_err(to_sdk_err)
 	}
 	fn find_table(&self, table: TableId, version: CommitVersion) -> SdkResult<Option<Table>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).catalog_find_table(table, version) }.map_err(to_sdk_err)
 	}
 	fn find_table_by_name(
@@ -404,9 +460,13 @@ impl CatalogApi for NativeCatalog<'_> {
 		name: &str,
 		version: CommitVersion,
 	) -> SdkResult<Option<Table>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).catalog_find_table_by_name(namespace, name, version) }.map_err(to_sdk_err)
 	}
 	fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> SdkResult<Option<RowShape>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).catalog_find_row_shape(fingerprint) }.map_err(to_sdk_err)
 	}
 }
@@ -418,12 +478,18 @@ pub struct NativeDictionary<'a> {
 
 impl DictionaryApi for NativeDictionary<'_> {
 	fn id_by_name(&mut self, name: &str) -> SdkResult<Option<DictionaryId>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).dictionary_id_by_name(name) }.map_err(to_sdk_err)
 	}
 	fn find(&mut self, dictionary: DictionaryId, value: &Value) -> SdkResult<Option<DictionaryEntryId>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).dictionary_find(dictionary, value) }.map_err(to_sdk_err)
 	}
 	fn get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> SdkResult<Option<Value>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).dictionary_get(dictionary, id) }.map_err(to_sdk_err)
 	}
 }
@@ -477,22 +543,34 @@ impl OperatorContext for NativeOperatorContext<'_> {
 		}
 	}
 	fn intern_groups(&mut self, groups: &[EncodedKey]) -> SdkResult<Vec<GroupId>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.bridge).intern_groups(groups) }.map_err(to_sdk_err)
 	}
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> SdkResult<Vec<Option<GroupId>>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.bridge).lookup_groups(groups) }.map_err(to_sdk_err)
 	}
 	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.bridge).arm_timer(at, kind, key) }.map_err(to_sdk_err)
 	}
 	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.bridge).disarm_timer(at, kind, key) }.map_err(to_sdk_err)
 	}
 
 	fn flow_watermark(&mut self) -> SdkResult<Option<DateTime>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.bridge).flow_watermark() }.map_err(to_sdk_err)
 	}
 	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> SdkResult<(RowNumber, bool)> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
 		Ok(unsafe { (*self.bridge).get_or_create_row_numbers(group, from_ref(key)) }
 			.map_err(to_sdk_err)?
 			.into_iter()
@@ -504,12 +582,18 @@ impl OperatorContext for NativeOperatorContext<'_> {
 		group: GroupId,
 		keys: &[EncodedKey],
 	) -> SdkResult<Vec<(RowNumber, bool)>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.bridge).get_or_create_row_numbers(group, keys) }.map_err(to_sdk_err)
 	}
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> SdkResult<()> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.bridge).remove_row_number(group, key) }.map_err(to_sdk_err)
 	}
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> SdkResult<Vec<RowNumber>> {
+		// SAFETY: bridge is the &'a mut dyn NativeBridge this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.bridge).remove_row_numbers_below(group, upper) }.map_err(to_sdk_err)
 	}
 	fn shape_for_row(&mut self, row: &EncodedRow) -> SdkResult<RowShape> {

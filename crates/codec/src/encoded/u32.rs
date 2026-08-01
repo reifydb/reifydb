@@ -70,7 +70,6 @@ pub mod tests {
 	fn test_timestamp_values() {
 		let shape = RowShape::testing(&[ValueType::Uint4]);
 
-		// Test Unix timestamp values that fit in u32
 		let timestamps = [
 			0u32,          // Unix epoch
 			946684800u32,  // 2000-01-01 00:00:00 SVTC

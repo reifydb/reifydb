@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-//
-// Asserts via `list_authentications_by_method`. Like `find_*`, the current
-// implementation delegates straight to storage and does not consult
-// transactional changes; several scenarios here are expected to fail until
-// that is fixed.
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;

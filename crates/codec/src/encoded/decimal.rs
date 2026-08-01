@@ -53,6 +53,8 @@ impl RowShape {
 			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Decimal);
 		}
 
+		// SAFETY: row.len() >= total_static_size() puts the 16-byte slot at field.offset inside the row,
+		// read_unaligned needs no alignment, and u128 has no invalid bit patterns.
 		let packed = unsafe { (row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);
 

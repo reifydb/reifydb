@@ -14,7 +14,7 @@ format: strip-comments format-rust
 # Strip comments
 strip-comments:
 	@echo "🧹 Stripping comments..."
-	@./scripts/strip-comments.sh
+	@./scripts/comments.sh strip
 
 # Format all Rust code
 format-rust: ensure-rustfmt format-workspace
@@ -23,7 +23,7 @@ format-rust: ensure-rustfmt format-workspace
 # Format and fail if files changed (for CI/make all)
 format-check: ensure-rustfmt
 	@echo "🎨 Formatting code..."
-	@./scripts/strip-comments.sh
+	@./scripts/comments.sh strip
 	@cargo +nightly fmt --all
 	@if ! git diff --quiet; then \
 		echo ""; \

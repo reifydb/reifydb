@@ -51,7 +51,6 @@ use reifydb_transaction::{
 };
 use reifydb_value::{util::cowvec::CowVec, value::Value};
 
-/// A handle to either a read, write, or replica transaction for test tracking
 enum TransactionHandle {
 	Read(MultiReadTransaction),
 	Write(MultiWriteTransaction),
@@ -106,18 +105,16 @@ impl MvccRunner {
 		}
 	}
 
-	/// Fetches the named transaction from a command prefix.
 	fn get_transaction(&mut self, prefix: &Option<String>) -> Result<&'_ mut TransactionHandle, Box<dyn StdError>> {
 		let name = Self::tx_name(prefix)?;
 		self.transactions.get_mut(name).ok_or(format!("unknown transaction {name}").into())
 	}
 
-	/// Fetches the tx name from a command prefix, or errors.
 	fn tx_name(prefix: &Option<String>) -> Result<&str, Box<dyn StdError>> {
 		prefix.as_deref().ok_or("no tx name".into())
 	}
 
-	/// Errors if a tx prefix is given.
+	/// Rejects a `name: command` prefix on commands that are not scoped to a transaction.
 	fn no_tx(command: &Command) -> Result<(), Box<dyn StdError>> {
 		if let Some(name) = &command.prefix {
 			return Err(format!("can't run {} with tx {name}", command.name).into());

@@ -124,7 +124,7 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Blob]);
 		let mut row = shape.allocate();
 
-		// Test with various binary data patterns
+		// Blobs are stored raw, so no byte value is special and none needs escaping.
 		let binary_data = vec![
 			0x00, 0xFF, 0xAA, 0x55, 0xCC, 0x33, 0x00, 0xFF, 0x10, 0x20, 0x30, 0x40, 0x50, 0x60, 0x70, 0x80,
 		];
@@ -138,7 +138,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Blob]);
 		let mut row = shape.allocate();
 
-		// Create a large blob (1KB)
 		let large_data: Vec<u8> = (0..1024).map(|i| (i % 256) as u8).collect();
 		let large_blob = Blob::from_slice(&large_data);
 		shape.set_blob(&mut row, 0, &large_blob);
@@ -210,7 +209,7 @@ pub mod tests {
 		let blob2 = Blob::from_slice(&[60]);
 		let blob3 = Blob::from_slice(&[70, 80, 90, 100]);
 
-		// Set in reverse order
+		// Written out of field order, so the dynamic offsets cannot just be appended in order.
 		shape.set_blob(&mut row, 3, &blob3);
 		shape.set_blob(&mut row, 1, &blob1);
 		shape.set_blob(&mut row, 0, &blob0);
@@ -229,7 +228,6 @@ pub mod tests {
 
 		let blob = Blob::from_slice(&[1, 2, 3, 4]);
 
-		// Set only some fields
 		shape.set_blob(&mut row, 0, &blob);
 		shape.set_blob(&mut row, 2, &blob);
 
@@ -237,7 +235,7 @@ pub mod tests {
 		assert_eq!(shape.try_get_blob(&row, 1), None);
 		assert_eq!(shape.try_get_blob(&row, 2), Some(blob.clone()));
 
-		// Set field as undefined
+		// Clearing one field must not disturb another sharing the dynamic section.
 		shape.set_none(&mut row, 0);
 		assert_eq!(shape.try_get_blob(&row, 0), None);
 		assert_eq!(shape.try_get_blob(&row, 2), Some(blob));
@@ -248,7 +246,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Blob]);
 		let mut row = shape.allocate();
 
-		// Create blob with all possible byte values (0-255)
 		let all_bytes: Vec<u8> = (0..=255).collect();
 		let full_range_blob = Blob::from_slice(&all_bytes);
 		shape.set_blob(&mut row, 0, &full_range_blob);
@@ -274,18 +271,17 @@ pub mod tests {
 		shape.set_blob(&mut row, 0, &blob1);
 		assert_eq!(shape.get_blob(&row, 0), blob1);
 
-		// Overwrite with larger blob
+		// Growing and shrinking must both resize the dynamic section, so the row length ends up
+		// exactly the payload size rather than a high-water mark.
 		let blob2 = Blob::from_slice(&[4, 5, 6, 7, 8]);
 		shape.set_blob(&mut row, 0, &blob2);
 		assert_eq!(shape.get_blob(&row, 0), blob2);
 
-		// Overwrite with smaller blob
 		let blob3 = Blob::from_slice(&[9]);
 		shape.set_blob(&mut row, 0, &blob3);
 		assert_eq!(shape.get_blob(&row, 0), blob3);
 		assert_eq!(row.len(), shape.total_static_size() + 1);
 
-		// Overwrite with empty blob
 		let empty = Blob::from_slice(&[]);
 		shape.set_blob(&mut row, 0, &empty);
 		assert_eq!(shape.get_blob(&row, 0), empty);
@@ -301,7 +297,7 @@ pub mod tests {
 		shape.set_utf8(&mut row, 1, "hello");
 		shape.set_blob(&mut row, 2, &Blob::from_slice(&[4, 5]));
 
-		// Update first blob
+		// Growing the first dynamic field must shift the later fields' offsets, not corrupt them.
 		shape.set_blob(&mut row, 0, &Blob::from_slice(&[10, 20, 30, 40, 50]));
 
 		assert_eq!(shape.get_blob(&row, 0), Blob::from_slice(&[10, 20, 30, 40, 50]));

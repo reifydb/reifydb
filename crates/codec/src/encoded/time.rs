@@ -44,7 +44,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Time]);
 		let mut row = shape.allocate();
 
-		// Test with high precision nanoseconds
 		let precise_time = Time::new(15, 30, 45, 123456789).unwrap();
 		shape.set::<Time>(&mut row, 0, precise_time.clone());
 		assert_eq!(shape.get::<Time>(&row, 0), precise_time);
@@ -127,7 +126,7 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Time]);
 		let mut row = shape.allocate();
 
-		// Test that nanosecond precision is preserved
+		// The slot holds nanos since midnight, so no sub-second digit may be rounded away.
 		let high_precision = Time::new(12, 34, 56, 987654321).unwrap();
 		shape.set::<Time>(&mut row, 0, high_precision.clone());
 
@@ -141,7 +140,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Time]);
 		let mut row = shape.allocate();
 
-		// Test microsecond precision (common in databases)
 		let microsecond_precision = Time::new(14, 25, 30, 123456000).unwrap();
 		shape.set::<Time>(&mut row, 0, microsecond_precision.clone());
 		assert_eq!(shape.get::<Time>(&row, 0), microsecond_precision);
@@ -152,7 +150,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Time]);
 		let mut row = shape.allocate();
 
-		// Test millisecond precision
 		let millisecond_precision = Time::new(8, 15, 42, 123000000).unwrap();
 		shape.set::<Time>(&mut row, 0, millisecond_precision.clone());
 		assert_eq!(shape.get::<Time>(&row, 0), millisecond_precision);
@@ -162,7 +159,6 @@ pub mod tests {
 	fn test_time_common_times() {
 		let shape = RowShape::testing(&[ValueType::Time]);
 
-		// Test common business/system times
 		let common_times = [
 			Time::new(9, 0, 0, 0).unwrap(),   // 9 AM start of work
 			Time::new(12, 0, 0, 0).unwrap(),  // Noon

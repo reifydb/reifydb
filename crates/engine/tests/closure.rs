@@ -4,7 +4,6 @@
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_value::value::{Value, frame::frame::Frame, identity::IdentityId};
 
-/// Run an RQL script and return the result frames.
 fn run_script(rql: &str) -> Vec<Frame> {
 	let t = TestEngine::new();
 	let r = t.query_as(IdentityId::system(), rql, Default::default());
@@ -14,8 +13,9 @@ fn run_script(rql: &str) -> Vec<Frame> {
 	r.frames
 }
 
-/// Extract a single i64 scalar from the first frame's first column.
 fn scalar_i64(frames: &[Frame]) -> i64 {
+	// Widens whatever integer width the expression happened to produce, so tests can assert on
+	// the value without pinning the result type.
 	let frame = &frames[0];
 	let val = frame.columns[0].data.get_value(0);
 	match val {

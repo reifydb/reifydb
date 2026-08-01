@@ -22,7 +22,7 @@ fn datetime_one_nanosecond() {
 
 #[test]
 fn datetime_far_future() {
-	// Year 2200ish.
+	// Roughly year 2200: far enough out that a 32-bit or seconds-based intermediate would overflow.
 	let input = ColumnBuffer::datetime([DateTime::from_nanos(7_257_600_000_000_000_000u64)]);
 	let output = round_trip_column("dt", input.clone());
 	assert_column_eq("datetime_far_future", &input, &output);

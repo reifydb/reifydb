@@ -6,7 +6,6 @@ use reifydb_value::value::duration::Duration;
 
 use super::helpers::*;
 
-/// Run a fixed scenario and return the processing trace (actor_ids in order).
 fn run_scenario(seed: u64) -> Vec<usize> {
 	let system = test_system_with_seed(seed);
 	let log = new_log();
@@ -44,8 +43,9 @@ fn same_seed_same_trace() {
 	let trace1 = run_scenario(42);
 	let trace2 = run_scenario(42);
 
+	// Pinned as well as compared: two runs of a broken scheduler could agree with each other.
 	assert_eq!(trace1, trace2);
-	assert_eq!(trace1, vec![0, 1, 2, 0, 1]); // a=0, b=1, c=2
+	assert_eq!(trace1, vec![0, 1, 2, 0, 1]);
 }
 
 #[test]
@@ -88,7 +88,6 @@ fn different_seed_different_clock() {
 	assert_eq!(s2.clock().now().to_millis(), 200);
 }
 
-/// Run a scenario with timers and return the log contents.
 fn run_timer_scenario(seed: u64) -> Vec<String> {
 	let system = test_system_with_seed(seed);
 	let log = new_log();
@@ -104,7 +103,7 @@ fn run_timer_scenario(seed: u64) -> Vec<String> {
 	ctx.schedule_once(Duration::from_milliseconds(100).unwrap(), || "t100".to_string());
 	ctx.schedule_once(Duration::from_milliseconds(200).unwrap(), || "t200".to_string());
 
-	// Also send a direct message.
+	// Mixing a direct send with the timers so the ordering covers both sources, not timers alone.
 	handle.actor_ref.send("direct".into()).unwrap();
 
 	system.advance_time(Duration::from_milliseconds(300).unwrap());
@@ -118,8 +117,8 @@ fn deterministic_timer_ordering() {
 	let result1 = run_timer_scenario(0);
 	let result2 = run_timer_scenario(0);
 
+	// Pinned as well as compared: two runs of a broken scheduler could agree with each other.
 	assert_eq!(result1, result2);
-	// Direct message (ts=0) comes first, then timers in deadline order.
 	assert_eq!(result1, vec!["direct", "t100", "t200", "t300"]);
 }
 

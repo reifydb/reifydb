@@ -83,7 +83,6 @@ fn test_rql_select_through_all_transaction_types() {
 	}
 	assert_eq!(extract_rows(&r), expected);
 	drop(txn);
-
 }
 
 #[test]

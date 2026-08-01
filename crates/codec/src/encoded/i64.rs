@@ -68,7 +68,6 @@ pub mod tests {
 	fn test_timestamp_values() {
 		let shape = RowShape::testing(&[ValueType::Int8]);
 
-		// Test typical Unix timestamp values
 		let timestamps = [
 			0i64,           // Unix epoch
 			1640995200i64,  // 2022-01-01 00:00:00 SVTC

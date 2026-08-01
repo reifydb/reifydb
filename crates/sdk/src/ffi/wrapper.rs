@@ -59,12 +59,21 @@ fn origin_type_name(origin_type: u8) -> &'static str {
 	}
 }
 
+/// # Safety
+///
+/// `input` must be null or valid for reads of one initialised, aligned
+/// `ChangeFFI`, whose `diffs` must in turn be null or valid for reads of
+/// `diff_count` initialised, aligned `DiffFFI`. Both must outlive the call.
 unsafe fn describe_change_input(input: *const ChangeFFI) -> String {
 	if input.is_null() {
 		return "<null>".to_string();
 	}
+	// SAFETY: input was checked non-null above and this fn's contract makes it one initialised, aligned ChangeFFI
+	// that outlives the call.
 	let ffi = unsafe { &*input };
 	let types = if !ffi.diffs.is_null() && ffi.diff_count > 0 {
+		// SAFETY: this fn's contract makes diffs cover diff_count initialised, aligned DiffFFI; non-null and a
+		// non-zero count are checked in this branch's condition.
 		let diffs: &[DiffFFI] = unsafe { slice::from_raw_parts(ffi.diffs, ffi.diff_count) };
 		let names: Vec<&'static str> = diffs
 			.iter()
@@ -177,6 +186,8 @@ pub unsafe extern "C" fn ffi_apply<O: FFIOperator>(
 			return -3;
 		}
 		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
+		// SAFETY: discharges BorrowedChange::from_raw; input was checked non-null above and ffi_apply's
+		// contract keeps the ChangeFFI and its buffers live for the borrow, which ends with this closure.
 		let borrowed = unsafe { BorrowedChange::from_raw(input) };
 		let mut op_ctx = FFIOperatorContext::new(ctx);
 		match wrapper.operator.apply(&mut op_ctx, borrowed) {
@@ -201,6 +212,8 @@ pub unsafe extern "C" fn ffi_apply<O: FFIOperator>(
 
 	if code < 0 {
 		let detail = take_fatal_detail().unwrap_or_default();
+		// SAFETY: discharges describe_change_input; ffi_apply's contract holds for input and its diffs array
+		// for the whole call, and null is handled inside.
 		let input_desc = unsafe { describe_change_input(input) };
 		print_ffi_fatal(
 			"ffi_apply",
@@ -243,6 +256,8 @@ pub unsafe extern "C" fn ffi_on_timer<O: FFIOperator>(
 			key: if key.is_null() || key_len == 0 {
 				&[]
 			} else {
+				// SAFETY: null and zero-length are handled by the other arm; otherwise the host
+				// caller keeps key readable for key_len bytes for the duration of this call.
 				unsafe { slice::from_raw_parts(key, key_len) }
 			},
 		};
@@ -314,6 +329,8 @@ pub unsafe extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
 		return;
 	}
 
+	// SAFETY: instance was checked non-null above and ffi_destroy's contract makes it a Box::new-allocated
+	// OperatorWrapper<O>; the host calls destroy once, so ownership is taken exactly once.
 	let result = catch_unwind(AssertUnwindSafe(|| unsafe {
 		let _wrapper = Box::from_raw(instance as *mut OperatorWrapper<O>);
 	}));
@@ -327,7 +344,7 @@ pub unsafe extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
 	}
 }
 
-/// FFI entry point for `flush_state`. Called once per txn at commit time.
+/// Called once per transaction at commit time, so this is the only point at which guest state reaches the host.
 ///
 /// # Safety
 ///
@@ -343,6 +360,8 @@ pub unsafe extern "C" fn ffi_flush_state<O: FFIOperator>(
 	}
 
 	let result = catch_unwind(AssertUnwindSafe(|| {
+		// SAFETY: instance was checked non-null above and ffi_flush_state's contract makes it a live,
+		// aligned OperatorWrapper<O>; this is the only borrow of it taken in this call.
 		let wrapper = unsafe { &mut *(instance as *mut OperatorWrapper<O>) };
 		let mut op_ctx = FFIOperatorContext::new(ctx);
 		let outcome = wrapper.operator.flush_state(&mut op_ctx);

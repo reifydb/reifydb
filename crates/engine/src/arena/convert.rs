@@ -320,11 +320,9 @@ mod tests {
 		let original = ColumnBuffer::int4(vec![10, 20, 30]);
 		let bump_alloc = BumpAlloc::new();
 
-		// Cow -> Bump
 		let bump_data = column_data_to_bump::<Cow>(&original, &bump_alloc);
 		assert_eq!(bump_data.len(), 3);
 
-		// Bump -> Cow
 		let cow_data = column_data_to_cow::<Bump>(&bump_data);
 		assert_eq!(cow_data, original);
 	}

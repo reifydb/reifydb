@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 //
-// `CREATE HANDLER ns::name ON ns::event::Variant { body }` stores a Procedure
-// with `RqlTrigger::Event { variant }`. The bug lives in
-// `list_procedures_for_variant` at `crates/catalog/src/catalog/procedure.rs:273-325`:
-// uncommitted creates are added but uncommitted deletions are not removed.
-// Only the CREATE side is exercised here; the DROP side is in `drop.rs` and
-// currently ignored pending RQL `DROP HANDLER`.
+// `CREATE HANDLER ns::name ON ns::event::Variant { body }` stores a Procedure with
+// `RqlTrigger::Event { variant }`, so a handler is only reachable through the
+// procedure-for-variant index. The DROP side lives in `drop.rs`.
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;

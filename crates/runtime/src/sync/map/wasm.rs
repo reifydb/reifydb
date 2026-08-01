@@ -15,8 +15,7 @@ where
 	inner: Arc<RwLock<HashMap<K, V>>>,
 }
 
-// SAFETY: The inner Arc<RwLock<HashMap>> is Sync, and we need to explicitly mark this
-
+// SAFETY: this target is single-threaded, so the inner map is never reached from a second thread.
 unsafe impl<K, V> Sync for MapInner<K, V>
 where
 	K: Eq + Hash + Send,

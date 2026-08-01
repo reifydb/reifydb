@@ -87,7 +87,6 @@ pub mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
-		// First creation should succeed
 		let r = instance.admin(
 			&mut txn,
 			Admin {
@@ -104,8 +103,7 @@ pub mod tests {
 		assert_eq!(frame[1].get_value(0), Value::Utf8("my_shape".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Boolean(true));
 
-		// Creating the same namespace again with `IF NOT EXISTS`
-		// should not error and return the same id
+		// IF NOT EXISTS must return the existing id with created=false, not mint a new one.
 		let r = instance.admin(
 			&mut txn,
 			Admin {
@@ -121,8 +119,7 @@ pub mod tests {
 		assert_eq!(frame[1].get_value(0), Value::Utf8("my_shape".to_string()));
 		assert_eq!(frame[2].get_value(0), Value::Boolean(false));
 
-		// Creating the same namespace again without `IF NOT EXISTS`
-		// should return error
+		// Without the guard the same statement must fault, or IF NOT EXISTS would mean nothing.
 		let r = instance.admin(
 			&mut txn,
 			Admin {

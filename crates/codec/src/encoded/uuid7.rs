@@ -47,7 +47,6 @@ pub mod tests {
 		let (mock, clock, rng) = test_clock_and_rng();
 		let shape = RowShape::testing(&[ValueType::Uuid7]);
 
-		// Generate multiple UUIDs and ensure they're different
 		let mut uuids = Vec::new();
 		for _ in 0..10 {
 			let mut row = shape.allocate();
@@ -59,7 +58,6 @@ pub mod tests {
 			mock.advance_millis(1);
 		}
 
-		// Ensure all generated UUIDs are unique
 		for i in 0..uuids.len() {
 			for j in (i + 1)..uuids.len() {
 				assert_ne!(uuids[i], uuids[j], "UUIDs should be unique");
@@ -77,7 +75,7 @@ pub mod tests {
 		shape.set::<Uuid7>(&mut row, 0, uuid.clone());
 		let retrieved = shape.get::<Uuid7>(&row, 0);
 
-		// Verify it's a version 7 UUID
+		// The version nibble must survive the row slot, since ordering depends on UUID7 layout.
 		assert_eq!(retrieved.get_version_num(), 7);
 	}
 
@@ -86,8 +84,8 @@ pub mod tests {
 		let (mock, clock, rng) = test_clock_and_rng();
 		let shape = RowShape::testing(&[ValueType::Uuid7]);
 
-		// Generate UUIDs in sequence - they should be ordered by
-		// timestamp
+		// UUID7 puts the timestamp in the leading bytes, so byte order has to match generation
+		// order for these to be usable as sortable keys.
 		let mut uuids = Vec::new();
 		for _ in 0..5 {
 			let mut row = shape.allocate();
@@ -97,11 +95,9 @@ pub mod tests {
 			assert_eq!(retrieved, uuid);
 			uuids.push(uuid);
 
-			// Advance clock to ensure different timestamps
 			mock.advance_millis(1);
 		}
 
-		// Verify that UUIDs are ordered (timestamp-based)
 		for i in 1..uuids.len() {
 			assert!(uuids[i].as_bytes() >= uuids[i - 1].as_bytes(), "UUID7s should be timestamp-ordered");
 		}
@@ -174,7 +170,6 @@ pub mod tests {
 		let retrieved_uuid = shape.get::<Uuid7>(&row, 0);
 		assert_eq!(retrieved_uuid, original_uuid);
 
-		// Verify that the byte representation is identical
 		assert_eq!(retrieved_uuid.as_bytes(), original_uuid.as_bytes());
 	}
 
@@ -198,7 +193,6 @@ pub mod tests {
 		assert_eq!(shape.get::<Uuid7>(&row, 1), uuid2);
 		assert_eq!(shape.get::<Uuid7>(&row, 2), uuid3);
 
-		// Ensure all UUIDs are different
 		assert_ne!(uuid1, uuid2);
 		assert_ne!(uuid1, uuid3);
 		assert_ne!(uuid2, uuid3);
@@ -219,7 +213,7 @@ pub mod tests {
 
 		assert_eq!(original_string, retrieved_string);
 
-		// Verify UUID string format (8-4-4-4-12)
+		// 36 chars with 4 hyphens is the 8-4-4-4-12 UUID rendering.
 		assert_eq!(original_string.len(), 36);
 		assert_eq!(original_string.matches('-').count(), 4);
 	}
@@ -239,7 +233,6 @@ pub mod tests {
 
 		assert_eq!(original_bytes, retrieved_bytes);
 
-		// Verify that it's exactly 16 bytes
 		assert_eq!(original_bytes.len(), 16);
 		assert_eq!(retrieved_bytes.len(), 16);
 	}
@@ -249,7 +242,6 @@ pub mod tests {
 		let (mock, clock, rng) = test_clock_and_rng();
 		let shape = RowShape::testing(&[ValueType::Uuid7]);
 
-		// Generate UUIDs at different times
 		let uuid1 = Uuid7::generate(&clock, &rng);
 		mock.advance_millis(2);
 		let uuid2 = Uuid7::generate(&clock, &rng);
@@ -263,7 +255,7 @@ pub mod tests {
 		let retrieved1 = shape.get::<Uuid7>(&row1, 0);
 		let retrieved2 = shape.get::<Uuid7>(&row2, 0);
 
-		// The second UUID should be "greater" due to timestamp ordering
+		// The later uuid must compare greater by raw bytes, which is what makes it index-ordered.
 		assert!(retrieved2.as_bytes() > retrieved1.as_bytes());
 	}
 

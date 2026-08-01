@@ -94,19 +94,17 @@ pub mod tests {
 
 	#[test]
 	fn test_encode_hello() {
-		// "Hello" -> "9Ajdvzr"
 		assert_eq!(encode(b"Hello"), "9Ajdvzr");
 	}
 
 	#[test]
 	fn test_encode_hello_world() {
-		// "Hello, World!" -> "72k1xXWG59fYdzSNoA"
 		assert_eq!(encode(b"Hello, World!"), "72k1xXWG59fYdzSNoA");
 	}
 
 	#[test]
 	fn test_encode_leading_zeros() {
-		// Leading zero bytes become leading '1's
+		// Base58 is positional, so leading zero bytes carry no value and are re-emitted as '1'.
 		assert_eq!(encode(&[0, 0, 1]), "112");
 		assert_eq!(encode(&[0, 0, 0]), "111");
 	}
@@ -150,7 +148,8 @@ pub mod tests {
 
 	#[test]
 	fn test_invalid_character() {
-		// '0', 'O', 'I', 'l' are not in base58 alphabet
+		// The alphabet omits 0/O/I/l precisely because they are visually ambiguous, so they must
+		// be rejected rather than folded onto their lookalikes.
 		assert!(decode("0").is_err());
 		assert!(decode("O").is_err());
 		assert!(decode("I").is_err());

@@ -14,9 +14,8 @@ use reifydb_test_harness::{
 fn password_identity_authenticates_through_the_service() {
 	let db = TestDb::memory();
 
-	// An identity provisioned by the builder must be authenticable through a service the
-	// builder also wires: proof that the harness's provisioning matches what the auth
-	// stack expects end to end.
+	// Provisioning and authentication go through separate paths, so only driving both proves
+	// the harness writes what the auth stack reads.
 	let alice = identity("alice").password("secret").create(&db);
 
 	let service = auth_service(&db).build();

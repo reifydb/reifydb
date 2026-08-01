@@ -33,7 +33,8 @@ mod tests {
 	fn test_real_clock() {
 		let clock = Clock::Real;
 		let t1 = clock.now().to_millis();
-		// Small busy loop to ensure time passes
+		// Busy work rather than a sleep; the assertion only requires the clock not to go
+		// backwards, so it holds whether or not a millisecond actually elapsed.
 		let mut sum = 0;
 		for i in 0..10000 {
 			sum += i;

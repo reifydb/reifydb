@@ -38,6 +38,10 @@ pub unsafe extern "C" fn host_rql(
 			return FFI_ERROR_INTERNAL;
 		}
 
+		// SAFETY: discharges this function's own contract; `ctx`, `rql_ptr` and `result_out` are
+		// null-checked above, `params_ptr` is only read when non-null and `params_len` is non-zero,
+		// and `ctx.executor_ptr` must still be the live Executor new_ffi_context stored. Any buffer
+		// written into `result_out` is a host_alloc block whose ownership passes to the guest.
 		unsafe {
 			let rql_bytes = slice::from_raw_parts(rql_ptr, rql_len);
 			let rql_str = match str::from_utf8(rql_bytes) {

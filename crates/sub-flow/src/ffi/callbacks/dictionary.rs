@@ -32,6 +32,9 @@ pub(super) extern "C" fn host_dictionary_id_by_name(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: all four pointers are null-checked above; the guest must pass back the ContextFFI the
+	// host handed it for this call (discharging get_transaction_mut), a `name_ptr` valid for reads of
+	// `name_len` bytes, and `out_id`/`found` valid and aligned for one u64 and one u8 write.
 	unsafe {
 		let name = match from_utf8(from_raw_parts(name_ptr, name_len)) {
 			Ok(name) => name,
@@ -64,6 +67,9 @@ pub(super) extern "C" fn host_dictionary_find(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: all five pointers are null-checked above; the guest must pass back the ContextFFI the
+	// host handed it for this call, a `value_ptr` valid for reads of `value_len` bytes, and
+	// `out_id`/`out_id_type`/`found` valid and aligned for one u128, u8 and u8 write.
 	unsafe {
 		let value: Value = match decode_value(from_raw_parts(value_ptr, value_len)) {
 			Ok(value) => value,
@@ -103,6 +109,9 @@ pub(super) extern "C" fn host_dictionary_get(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx` and `output` are null-checked above; the guest must pass back the ContextFFI the
+	// host handed it for this call (discharging get_transaction_mut) and an `output` valid and aligned
+	// for one BufferFFI write whose buffer it then releases via memory.free.
 	unsafe {
 		let flow_txn = get_transaction_mut(&mut *ctx);
 		let Some(dictionary) = flow_txn.find_dictionary(DictionaryId(dictionary_id)) else {

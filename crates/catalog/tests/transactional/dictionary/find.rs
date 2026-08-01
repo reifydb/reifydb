@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-//
-// Combined create+drop within a single txn; asserts via all find methods:
-// `find_dictionary_by_name`, `find_dictionary` (by id).
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;

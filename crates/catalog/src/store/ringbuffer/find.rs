@@ -254,7 +254,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
-		// Create a ring buffer with specific name
 		let to_create = RingBufferToCreate {
 			namespace: namespace.id(),
 			name: Fragment::internal("trades_buffer"),
@@ -274,7 +273,6 @@ pub mod tests {
 
 		let created = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
 
-		// Find by name
 		let found = CatalogStore::find_ringbuffer_by_name(
 			&mut Transaction::Admin(&mut txn),
 			namespace.id(),
@@ -309,7 +307,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let namespace1 = ensure_test_namespace(&mut txn);
 
-		// Create namespace2
 		let namespace2 = CatalogStore::create_namespace(
 			&mut txn,
 			NamespaceToCreate {
@@ -323,7 +320,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Create ring buffer in namespace1
 		let to_create = RingBufferToCreate {
 			namespace: namespace1.id(),
 			name: Fragment::internal("shared_name"),
@@ -336,7 +332,6 @@ pub mod tests {
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
 
-		// Try to find in namespace2 - should not exist
 		let result = CatalogStore::find_ringbuffer_by_name(
 			&mut Transaction::Admin(&mut txn),
 			namespace2.id(),
@@ -346,7 +341,6 @@ pub mod tests {
 
 		assert!(result.is_none());
 
-		// Find in namespace1 - should exist
 		let found = CatalogStore::find_ringbuffer_by_name(
 			&mut Transaction::Admin(&mut txn),
 			namespace1.id(),
@@ -362,7 +356,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
-		// Create ring buffer with columns
 		let to_create = RingBufferToCreate {
 			namespace: namespace.id(),
 			name: Fragment::internal("pk_buffer"),
@@ -392,7 +385,6 @@ pub mod tests {
 
 		let created = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
 
-		// Add primary key
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		let pk_id = CatalogStore::create_primary_key(
 			&mut txn,
@@ -403,7 +395,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Find and verify
 		let found = CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut txn), created.id)
 			.unwrap()
 			.expect("Ring buffer should exist");

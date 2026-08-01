@@ -198,21 +198,17 @@ pub mod tests {
 
 	#[test]
 	fn test_invalid_padding() {
-		// Too many padding characters
+		// Padding is checked, not tolerated: the count must match the input length exactly and
+		// may only appear at the end, or a mangled blob would decode to plausible bytes.
 		assert!(Engine::STANDARD.decode("SGVsbG8===").is_err());
 		assert!(Engine::STANDARD.decode("SGVsbG8====").is_err());
 
-		// Padding in the middle
 		assert!(Engine::STANDARD.decode("SGVs=bG8=").is_err());
 
-		// Invalid length with padding (not divisible by 4)
 		assert!(Engine::STANDARD.decode("SGVsbG8=X").is_err());
 
-		// Invalid: "SGVsbG8=" is 8 chars, needs 1 padding char, but has
-		// 2
 		assert!(Engine::STANDARD.decode("SGVsbG8==").is_err());
 
-		// Valid padding should work
 		assert!(Engine::STANDARD.decode("SGVsbG8=").is_ok()); // "Hello" - needs 1 padding
 		assert!(Engine::STANDARD.decode("SGVsbA==").is_ok()); // "Hell" - needs 2 padding  
 		assert!(Engine::STANDARD.decode("SGVs").is_ok()); // "Hel" - no padding needed

@@ -259,13 +259,10 @@ mod time_declaration_tests {
 	}
 
 	#[test]
-	// Intent: a series' populator must reach its own catalog row. A series already has a KEY column
-	// with its own temporal precision, which is a different concept from the #time populator - the
-	// key orders the series, the populator says when the event happened. Storing one must not be
-	// mistaken for storing the other.
-	// Mutation: delete the write_time_source call from store_series, or point decode at the wrong
-	// field index, and the populator comes back as none.
 	fn a_series_round_trips_its_populator_independently_of_its_key() {
+		// A series already has a KEY column with its own temporal precision; the key orders
+		// the series while the populator says when the event happened, and storing one must
+		// not be mistaken for storing the other.
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
@@ -301,9 +298,8 @@ mod time_declaration_tests {
 	}
 
 	#[test]
-	// Intent: silence stays silence, and a keyed series is still processing-time unless it declares
-	// otherwise. Having a temporal key must not be read as an implicit event-time declaration.
 	fn a_bare_series_round_trips_as_processing_despite_a_temporal_key() {
+		// A temporal key must not be read as an implicit event-time declaration.
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 

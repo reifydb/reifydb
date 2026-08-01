@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Key encoding for the container values: List, Record and Tuple.
-//!
-//! These share the codec's variable-length convention with `encode_bytes`: elements are written back to back and the
-//! sequence is closed with a terminator that cannot collide with an element's leading `ValueKind` tag, so a shorter
-//! sequence sorts after a longer one that extends it, exactly as a shorter string does.
+//! Key encoding for the container values: List, Record and Tuple. Elements are written back to back
+//! and closed with `CONTAINER_END`, which cannot collide with an element's leading `ValueKind` tag,
+//! so a sequence that is a prefix of another sorts after it, exactly as a shorter string does.
 
 use reifydb_codec::key::{deserializer::KeyDeserializer, serializer::KeySerializer};
 use reifydb_value::value::{Value, blob::Blob};
@@ -31,8 +29,6 @@ fn roundtrip(value: Value) {
 fn utf8(s: &str) -> Value {
 	Value::Utf8(s.to_string())
 }
-
-/// Round trips.
 
 #[test]
 fn empty_containers_roundtrip() {
@@ -68,11 +64,10 @@ fn nested_containers_roundtrip() {
 	)]));
 }
 
-// The terminator is a single 0xff, and encode_u8 inverts, so Uint1(0) encodes its payload as exactly 0xff. If the
-// decoder scanned for a raw 0xff instead of stepping element by element, this list would truncate after the first
-// element and silently decode as a shorter list.
 #[test]
 fn element_payload_containing_the_terminator_byte_roundtrips() {
+	// encode_u8 inverts, so Uint1(0) writes a literal 0xff, the same byte as CONTAINER_END. A
+	// decoder that scanned for that byte instead of stepping element by element would truncate.
 	assert!(encode(&Value::Uint1(0)).contains(&0xff), "Uint1(0) must encode a literal 0xff or this proves nothing");
 
 	roundtrip(Value::List(vec![Value::Uint1(0), Value::Uint1(1), Value::Uint1(0)]));
@@ -80,16 +75,14 @@ fn element_payload_containing_the_terminator_byte_roundtrips() {
 	roundtrip(Value::Tuple(vec![Value::Int1(-1), Value::Int4(-1)]));
 }
 
-// Strings and blobs escape 0xff as [0xff, 0x00] and close with [0xff, 0xff]; nesting them in a container must not let
-// either sequence be read as the container terminator.
 #[test]
 fn byte_payloads_with_escapes_roundtrip_inside_containers() {
+	// Strings and blobs escape 0xff as [0xff, 0x00] and close with [0xff, 0xff]; nested in a
+	// container, neither sequence may be read as the container terminator.
 	roundtrip(Value::List(vec![Value::Blob(Blob::from(vec![0xff, 0x00, 0xff, 0xff])), Value::Int4(1)]));
 	roundtrip(Value::List(vec![utf8("a\u{00ff}b"), utf8("")]));
 	roundtrip(Value::Record(vec![("\u{00ff}".to_string(), Value::Blob(Blob::from(vec![0xff])))]));
 }
-
-/// Framing.
 
 #[test]
 fn a_container_is_distinguishable_from_its_single_element() {
@@ -121,11 +114,10 @@ fn a_container_key_composes_with_following_components() {
 	assert_eq!(de.remaining(), 0);
 }
 
-/// Ordering. The codec's contract is that encoded bytes sort consistently with the logical values; containers follow
-/// the same prefix convention as `encode_bytes`, where a sequence that is a prefix of another sorts after it.
-
 #[test]
 fn a_prefix_list_sorts_after_the_list_that_extends_it() {
+	// Containers follow the prefix convention of encode_bytes: the terminator sorts above any
+	// element tag, so a sequence that is a prefix of another sorts after it.
 	let short = encode(&Value::List(vec![Value::Int4(1), Value::Int4(2)]));
 	let long = encode(&Value::List(vec![Value::Int4(1), Value::Int4(2), Value::Int4(3)]));
 	assert!(short > long, "[1,2] must sort after [1,2,3], matching how \"ab\" sorts after \"abc\"");
@@ -179,10 +171,10 @@ fn equal_containers_encode_identically() {
 	assert_eq!(encode(&a), encode(&b), "equal values must encode to equal bytes or group-by keys break");
 }
 
-// Record equality is field-order sensitive: the encoding preserves the order given, it does not canonicalise. Two
-// records with the same fields in a different order are different values and must encode differently.
 #[test]
 fn record_field_order_is_significant() {
+	// The encoding preserves the field order given rather than canonicalising it, so two records
+	// differing only in order are different values and must encode differently.
 	let a = Value::Record(vec![("a".to_string(), Value::Int4(1)), ("b".to_string(), Value::Int4(2))]);
 	let b = Value::Record(vec![("b".to_string(), Value::Int4(2)), ("a".to_string(), Value::Int4(1))]);
 	assert_ne!(a, b, "the values themselves differ by field order");

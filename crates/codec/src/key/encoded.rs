@@ -980,10 +980,10 @@ pub mod tests {
 
 		#[test]
 		fn test_binary_encoded_row() {
+			// decode_binary is not a hex parse: ASCII passes through as its own UTF-8 bytes,
+			// and only chars in 0x80..=0xff are taken as raw byte values.
 			let r = EncodedKeyRange::parse("0101..=0aff");
-			// decode_binary("0101") = [0x01, 0x01]
 			assert_eq!(r.start, included(b"0101"));
-			// decode_binary("0aff") = [0x0a, 0xff]
 			assert_eq!(r.end, included(b"0aff"));
 		}
 	}

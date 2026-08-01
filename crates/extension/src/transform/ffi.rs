@@ -68,8 +68,8 @@ impl NativeTransformFFI {
 	}
 }
 
-// SAFETY: nothing here is synchronised; sound only because the flow engine never runs `apply` for one node
-// concurrently.
+// SAFETY: `instance` and `cached_ctx` are unsynchronised; sound only because the flow engine never runs
+// `apply` for one node concurrently.
 unsafe impl Send for NativeTransformFFI {}
 unsafe impl Sync for NativeTransformFFI {}
 

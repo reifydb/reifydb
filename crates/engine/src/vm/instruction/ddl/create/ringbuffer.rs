@@ -81,7 +81,6 @@ pub mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
-		// Create namespace first
 		let r = instance.admin(
 			&mut txn,
 			Admin {
@@ -93,7 +92,6 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 
-		// First creation should succeed
 		let r = instance.admin(
 			&mut txn,
 			Admin {
@@ -110,7 +108,7 @@ pub mod tests {
 		assert_eq!(frame[2].get_value(0), Value::Utf8("test_ringbuffer".to_string()));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
-		// Creating the same ring buffer again should return error
+		// A duplicate name in the same namespace must fault rather than silently replace.
 		let r = instance.admin(
 			&mut txn,
 			Admin {
@@ -127,7 +125,6 @@ pub mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
-		// Create both namespaces
 		let r = instance.admin(
 			&mut txn,
 			Admin {
@@ -149,7 +146,6 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 
-		// Create ringbuffer in first namespace
 		let r = instance.admin(
 			&mut txn,
 			Admin {
@@ -166,7 +162,7 @@ pub mod tests {
 		assert_eq!(frame[2].get_value(0), Value::Utf8("test_ringbuffer".to_string()));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
-		// Create ringbuffer with same name in different namespace
+		// Uniqueness is per namespace, so the same name elsewhere must be accepted.
 		let r = instance.admin(
 			&mut txn,
 			Admin {

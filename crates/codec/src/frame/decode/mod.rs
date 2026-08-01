@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Decoder side of RBCF. Reverses what `encode/` does: parses the frame header, walks the per-column headers,
-//! reads the encoding tag and dispatches to the matching reader, and reconstructs a typed `Frame`. Decoding is
-//! defensive - malformed payloads return a typed `DecodeError` rather than panicking, since payloads can come from
-//! untrusted peers.
+//! Decoder side of RBCF, reversing `encode/` header by header. Payloads can arrive from untrusted
+//! peers, so every malformed input returns a typed `DecodeError` rather than panicking.
 
 mod any;
 mod fixed;

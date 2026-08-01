@@ -76,6 +76,8 @@ pub mod tests {
 		let ptr = arena.copy_bytes(&data);
 		assert!(!ptr.is_null());
 
+		// SAFETY: copy_bytes returned a non-null arena block holding all 5 bytes of data, and the arena
+		// outlives these reads.
 		unsafe {
 			for i in 0..5 {
 				assert_eq!(*ptr.add(i), data[i]);

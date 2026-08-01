@@ -131,7 +131,7 @@ pub mod tests {
 		};
 
 		let result = CatalogStore::create_subscription(&mut txn, to_create).unwrap();
-		// UUID v7 IDs are generated, so we just verify the subscription was created
+		// Ids are generated UUID v7, so only the derived fields can be asserted.
 		assert_eq!(result.acknowledged_version.0, 0);
 		assert!(result.columns.is_empty());
 	}
@@ -156,7 +156,7 @@ pub mod tests {
 		let result = CatalogStore::create_subscription(&mut txn, to_create).unwrap();
 		assert_eq!(result.columns.len(), 2);
 
-		// Column IDs are indices
+		// A subscription column id is its positional index, not a catalog ColumnId.
 		assert_eq!(result.columns[0].id, SubscriptionColumnId(0));
 		assert_eq!(result.columns[0].name, "id");
 		assert_eq!(result.columns[0].ty, ValueType::Int8);
@@ -186,7 +186,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Multiple subscriptions allowed with unique UUID v7 IDs
 		assert_ne!(sub1.id, sub2.id);
 	}
 }

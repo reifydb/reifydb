@@ -112,7 +112,6 @@ pub mod tests {
 		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(nodes.len(), 3);
 
-		// Verify all nodes are present
 		let ids: Vec<_> = nodes.iter().map(|n| n.id).collect();
 		assert!(ids.contains(&node1.id));
 		assert!(ids.contains(&node2.id));
@@ -155,7 +154,6 @@ pub mod tests {
 		let all_nodes = CatalogStore::list_flow_nodes_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(all_nodes.len(), 3);
 
-		// Verify nodes are from correct flows
 		let flow1_nodes: Vec<_> = all_nodes.iter().filter(|n| n.flow == flow1.id).collect();
 		let flow2_nodes: Vec<_> = all_nodes.iter().filter(|n| n.flow == flow2.id).collect();
 

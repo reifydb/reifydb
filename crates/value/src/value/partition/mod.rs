@@ -13,9 +13,9 @@ use crate::util::hash::xxh3_128;
 pub struct Partition(pub u128);
 
 impl Partition {
-	/// Deterministic, cluster-stable hash of a partition's column values. Uses seedless `xxh3_128`
-	/// over the postcard encoding of each value, matching how the streaming window/join operators
-	/// hash group keys. The values' postcard wire shape is documented as stable.
+	/// Seedless `xxh3_128` over the concatenated postcard encodings, so the partition of a row is
+	/// identical on every node and across restarts. Values are appended without a separator, which
+	/// only stays unambiguous because postcard is self-delimiting.
 	pub fn of(values: &[Value]) -> Self {
 		let mut buf: Vec<u8> = Vec::new();
 		for value in values {

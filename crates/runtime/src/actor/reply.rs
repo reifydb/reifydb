@@ -22,8 +22,7 @@ cfg_if! {
 
 		pub struct ReplyReceiver<T>(Rc<RefCell<Option<T>>>);
 
-// SAFETY: DST and WASM are single-threaded. These types never cross thread
-
+// SAFETY: DST and WASM are single-threaded, so the Rc/RefCell slot never crosses a thread boundary.
 		unsafe impl<T> Send for Reply<T> {}
 		unsafe impl<T> Sync for Reply<T> {}
 		unsafe impl<T> Send for ReplyReceiver<T> {}

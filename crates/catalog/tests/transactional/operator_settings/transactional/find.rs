@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 //
-// A transactional view whose flow carries an operator TTL (append / join) must
-// persist that TTL as operator settings, findable via `find_operator_settings`
-// at the registering transaction's version. This is the read path flow
-// registration relies on to build TTL-aware operators; a miss here silently
-// disables eviction.
+// Flow registration builds TTL-aware operators from `find_operator_settings` at the
+// registering transaction's version, so a miss here silently disables eviction.
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;

@@ -32,23 +32,20 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let created = ensure_test_sumtype(&mut txn);
 
-		// Verify it exists
 		let found = CatalogStore::find_sumtype(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		assert!(found.is_some());
 
-		// Drop it
 		CatalogStore::drop_sumtype(&mut txn, created.id).unwrap();
 
-		// Verify it's gone
 		let found = CatalogStore::find_sumtype(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		assert!(found.is_none());
 	}
 
 	#[test]
 	fn test_drop_nonexistent_sumtype() {
+		// Dropping a sumtype that never existed is a no-op, not an error.
 		let mut txn = create_test_admin_transaction();
 
-		// Dropping a non-existent sumtype should not error
 		let non_existent = SumTypeId(999999);
 		let result = CatalogStore::drop_sumtype(&mut txn, non_existent);
 		assert!(result.is_ok());

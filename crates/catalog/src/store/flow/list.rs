@@ -57,13 +57,11 @@ pub mod tests {
 		let result = CatalogStore::list_flows_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(result.len(), 3);
 
-		// Verify all flows are present (order may vary)
 		let flow_names: Vec<_> = result.iter().map(|f| f.name.as_str()).collect();
 		assert!(flow_names.contains(&"flow_one"));
 		assert!(flow_names.contains(&"flow_two"));
 		assert!(flow_names.contains(&"flow_three"));
 
-		// Verify namespaces and status for each flow
 		for flow in &result {
 			match flow.name.as_str() {
 				"flow_one" => {
@@ -94,10 +92,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		create_namespace(&mut txn, "test_namespace");
 
-		// Create flows with different statuses
 		create_flow(&mut txn, "test_namespace", "active_flow");
-
-		// Create a paused flow by directly using CatalogStore
 
 		let namespace =
 			CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut txn), "test_namespace")
@@ -117,7 +112,6 @@ pub mod tests {
 		let result = CatalogStore::list_flows_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(result.len(), 2);
 
-		// Verify both flows are present with correct statuses (order may vary)
 		for flow in &result {
 			match flow.name.as_str() {
 				"active_flow" => assert_eq!(flow.status, FlowStatus::Active),

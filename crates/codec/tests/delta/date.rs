@@ -12,7 +12,7 @@ crate::delta_tests! {
 	descending: (0..200).rev().map(|i| Date::from_days_since_epoch(18000 + i).unwrap()).collect::<Vec<_>>(),
 	unsorted: {
 		let mut v: Vec<i32> = (0..200).collect::<Vec<_>>();
-		// Simple deterministic shuffle
+		// A closed-form permutation rather than an RNG, so the fixture stays reproducible.
 		for i in 0..200 {
 			let j = (i * 7 + 13) % 200;
 			v.swap(i as usize, j as usize);

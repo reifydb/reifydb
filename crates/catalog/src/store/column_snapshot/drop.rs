@@ -64,17 +64,14 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Sanity: link row exists pre-drop.
 		let link_pre = txn.get(&TableColumnSnapshotKey::encoded(TableId(101), created.id)).unwrap();
 		assert!(link_pre.is_some(), "table link row should exist before drop");
 
 		CatalogStore::drop_column_snapshot(&mut txn, created.id).unwrap();
 
-		// Primary row gone.
 		let found = CatalogStore::find_column_snapshot(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		assert!(found.is_none(), "primary row should be removed");
 
-		// Link row gone.
 		let link_post = txn.get(&TableColumnSnapshotKey::encoded(TableId(101), created.id)).unwrap();
 		assert!(link_post.is_none(), "table link row should be removed");
 	}
@@ -113,7 +110,6 @@ pub mod tests {
 	#[test]
 	fn test_drop_nonexistent_column_snapshot_succeeds() {
 		let mut txn = create_test_admin_transaction();
-		// Drop on an absent ID is a no-op like other catalog drops.
 		let result = CatalogStore::drop_column_snapshot(&mut txn, ColumnSnapshotId(999_999));
 		assert!(result.is_ok(), "drop of non-existent snapshot must not error: {:?}", result.err());
 	}

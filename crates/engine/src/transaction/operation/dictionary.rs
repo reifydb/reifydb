@@ -223,8 +223,9 @@ pub mod tests {
 		let dict = test_dictionary();
 		let value = Value::Utf8("hello".to_string());
 
+		// Ids start at 1, so 0 stays available as a sentinel.
 		let id = txn.insert_into_dictionary(&dict, &value).unwrap();
-		assert_eq!(id, DictionaryEntryId::U8(1)); // First entry gets ID 1
+		assert_eq!(id, DictionaryEntryId::U8(1));
 	}
 
 	#[test]
@@ -236,7 +237,7 @@ pub mod tests {
 		let id1 = txn.insert_into_dictionary(&dict, &value).unwrap();
 		let id2 = txn.insert_into_dictionary(&dict, &value).unwrap();
 
-		// Same value should return same ID
+		// Interning is the point: a repeat must reuse the id, not allocate a second one.
 		assert_eq!(id1, id2);
 		assert_eq!(id1, DictionaryEntryId::U8(1));
 	}
@@ -250,7 +251,6 @@ pub mod tests {
 		let id2 = txn.insert_into_dictionary(&dict, &Value::Utf8("world".to_string())).unwrap();
 		let id3 = txn.insert_into_dictionary(&dict, &Value::Utf8("foo".to_string())).unwrap();
 
-		// Different values get sequential IDs
 		assert_eq!(id1, DictionaryEntryId::U8(1));
 		assert_eq!(id2, DictionaryEntryId::U8(2));
 		assert_eq!(id3, DictionaryEntryId::U8(3));
@@ -273,7 +273,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let dict = test_dictionary();
 
-		// Try to get an ID that doesn't exist
+		// An unknown id must be none, not an error or a garbage entry.
 		let retrieved = txn.get_from_dictionary(&dict, DictionaryEntryId::U8(999)).unwrap();
 		assert_eq!(retrieved, None);
 	}
@@ -284,10 +284,9 @@ pub mod tests {
 		let dict = test_dictionary();
 		let value = Value::Utf8("hello".to_string());
 
-		// First insert a value
 		let id = txn.insert_into_dictionary(&dict, &value).unwrap();
 
-		// Then find should locate it
+		// The reverse index must see an uncommitted insert from the same transaction.
 		let found = txn.find_in_dictionary(&dict, &value).unwrap();
 		assert_eq!(found, Some(id));
 	}
@@ -298,7 +297,7 @@ pub mod tests {
 		let dict = test_dictionary();
 		let value = Value::Utf8("not_inserted".to_string());
 
-		// Find without inserting should return None
+		// A lookup miss must not intern the value as a side effect.
 		let found = txn.find_in_dictionary(&dict, &value).unwrap();
 		assert_eq!(found, None);
 	}

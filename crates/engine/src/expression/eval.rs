@@ -238,8 +238,7 @@ pub mod tests {
 
 		assert!(result.is_err());
 
-		// Check that the error is the expected CAST_004
-		// (invalid_boolean) error
+		// The cast code must carry the underlying reason as its cause, not flatten to one code.
 		let err = result.unwrap_err();
 		let diagnostic = err.0;
 		assert_eq!(diagnostic.code, "CAST_004");
@@ -267,8 +266,7 @@ pub mod tests {
 
 		assert!(result.is_err());
 
-		// Check that the error is the expected CAST_001
-		// (unsupported_cast) error
+		// An impossible cast pair is unsupported (CAST_001), not a value-level failure.
 		let err = result.unwrap_err();
 		let diagnostic = err.0;
 		assert_eq!(diagnostic.code, "CAST_001");

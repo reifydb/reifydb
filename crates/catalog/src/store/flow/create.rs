@@ -143,14 +143,12 @@ pub mod tests {
 			time: Some(TimeDomain::Processing),
 		};
 
-		// First creation should succeed
 		let result = CatalogStore::create_flow(&mut txn, to_create.clone()).unwrap();
 		assert_eq!(result.id, FlowId(1));
 		assert_eq!(result.namespace, NamespaceId(16385));
 		assert_eq!(result.name, "test_flow");
 		assert_eq!(result.status, FlowStatus::Active);
 
-		// Second creation should fail with duplicate error
 		let err = CatalogStore::create_flow(&mut txn, to_create).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_030");
 	}
@@ -160,7 +158,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
-		// Create two flows
 		let to_create = FlowToCreate {
 			name: Fragment::internal("flow_one"),
 			namespace: test_namespace.id(),
@@ -177,7 +174,6 @@ pub mod tests {
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
 
-		// Verify both are linked to namespace
 		let links: Vec<_> = txn
 			.range(NamespaceFlowKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
 			.unwrap()
@@ -185,7 +181,6 @@ pub mod tests {
 			.unwrap();
 		assert_eq!(links.len(), 2);
 
-		// Verify link metadata (order may vary)
 		let mut found_flow_one = false;
 		let mut found_flow_two = false;
 
@@ -217,7 +212,6 @@ pub mod tests {
 		let namespace_one = create_namespace(&mut txn, "namespace_one");
 		let namespace_two = create_namespace(&mut txn, "namespace_two");
 
-		// Create flow in first namespace
 		let to_create = FlowToCreate {
 			name: Fragment::internal("shared_name"),
 			namespace: namespace_one.id(),
@@ -226,7 +220,6 @@ pub mod tests {
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
 
-		// Should be able to create flow with same name in different namespace
 		let to_create = FlowToCreate {
 			name: Fragment::internal("shared_name"),
 			namespace: namespace_two.id(),

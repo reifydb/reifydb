@@ -26,22 +26,17 @@ pub trait Invariant: std::fmt::Debug {
 	fn check(&self, trace: &ExecutionTrace) -> Result<(), InvariantViolation>;
 }
 
-/// Verifies that no transaction reads a value written by another uncommitted transaction.
-///
-/// Under snapshot isolation, reads see the snapshot at begin time plus own writes.
-/// A dirty read would be seeing an uncommitted write from another transaction.
-/// Tracks `Remove` ops as pending writes (tombstones) so that a read after another
-/// transaction's uncommitted remove is also caught.
+/// Every read must resolve to the begin-time snapshot merged with own writes, never another
+/// transaction's pending write. `Remove` counts as a pending write, so an uncommitted tombstone
+/// read is caught as a dirty read too.
 #[derive(Debug)]
 pub struct NoDirtyReads;
 
 impl Invariant for NoDirtyReads {
 	fn check(&self, trace: &ExecutionTrace) -> Result<(), InvariantViolation> {
-		// committed_state[key] = encoded value bytes. Absent = key doesn't exist.
+		// An absent key means it does not exist; in pending_writes a None value is a tombstone.
 		let mut committed_state: HashMap<String, Vec<u8>> = HashMap::new();
-		// Snapshot of committed state at each tx's begin
 		let mut tx_snapshots: HashMap<TxId, HashMap<String, Vec<u8>>> = HashMap::new();
-		// DeltaEntry writes per tx: key -> Some(encoded_value) for Set, None for Remove (tombstone)
 		let mut pending_writes: HashMap<TxId, HashMap<String, Option<Vec<u8>>>> = HashMap::new();
 
 		for result in &trace.results {
@@ -147,11 +142,8 @@ impl Invariant for NoDirtyReads {
 	}
 }
 
-/// Verifies that if two *concurrent* transactions write the same key, at least one must abort.
-///
-/// Two transactions are concurrent if their lifetimes overlap: tx_a began before tx_b
-/// committed AND tx_b began before tx_a committed. Sequential (non-overlapping) transactions
-/// writing the same key is perfectly valid.
+/// Two transactions whose lifetimes overlap may not both commit a write to the same key. Sequential
+/// writers of one key are fine, so overlap is judged by begin/commit steps, not by key alone.
 #[derive(Debug)]
 pub struct NoLostUpdates;
 
@@ -245,10 +237,8 @@ impl Invariant for FinalStateConsistency {
 	}
 }
 
-/// Verifies that within a single transaction, reads reflect own prior writes.
-///
-/// A `Get` after a `Set` on the same key must return the set value.
-/// A `Get` after a `Remove` on the same key must return `None`.
+/// A read must reflect the transaction's own prior write to that key, including a `Remove`, which
+/// must read back as none rather than falling through to the snapshot.
 #[derive(Debug)]
 pub struct ReadYourOwnWrites;
 
@@ -338,21 +328,16 @@ impl Invariant for ReadYourOwnWrites {
 	}
 }
 
-/// Verifies that `Scan` results match the expected snapshot plus own writes.
-///
-/// Maintains committed state and per-transaction pending writes. On each `Scan`,
-/// computes the expected visible key set (snapshot merged with own writes) and
-/// compares it against the actual scan result.
+/// A `Scan` must yield exactly the begin-time snapshot merged with the transaction's own writes,
+/// which is what makes a concurrently committed key a phantom rather than a legitimate result.
 #[derive(Debug)]
 pub struct SnapshotConsistency;
 
 impl Invariant for SnapshotConsistency {
 	fn check(&self, trace: &ExecutionTrace) -> Result<(), InvariantViolation> {
-		// committed_state[key] = value_string. Absent = key doesn't exist.
+		// An absent key means it does not exist; in pending_writes a None value is a tombstone.
 		let mut committed_state: BTreeMap<String, String> = BTreeMap::new();
-		// Snapshot at each tx's begin
 		let mut tx_snapshots: HashMap<TxId, BTreeMap<String, String>> = HashMap::new();
-		// DeltaEntry writes per tx: key -> Some(value_string) for Set, None for Remove
 		let mut pending_writes: HashMap<TxId, HashMap<String, Option<String>>> = HashMap::new();
 
 		for result in &trace.results {
@@ -384,7 +369,6 @@ impl Invariant for SnapshotConsistency {
 				}
 				Op::Scan => {
 					if let OpResult::ScanResult(pairs) = &result.result {
-						// Compute expected: snapshot + pending writes
 						let mut expected =
 							tx_snapshots.get(&tx_id).cloned().unwrap_or_default();
 						if let Some(writes) = pending_writes.get(&tx_id) {
@@ -400,7 +384,6 @@ impl Invariant for SnapshotConsistency {
 							}
 						}
 
-						// Decode actual scan result
 						let mut actual: BTreeMap<String, String> = BTreeMap::new();
 						for (k_bytes, v_bytes) in pairs {
 							let key = keycode::deserialize::<String>(k_bytes)

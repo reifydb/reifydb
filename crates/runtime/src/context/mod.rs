@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Sources of non-determinism the workspace consumes: the wall clock and the random number generator. Both have
-//! mockable variants so a deterministic-simulation run replaces them with seeded equivalents and reproduces the
-//! same trace bit-for-bit. Anything in the workspace that needs the time of day or a random value reaches for
-//! these handles instead of pulling from `std`.
+//! The workspace's two sources of non-determinism, the wall clock and the RNG, behind mockable handles so a
+//! seeded run reproduces the same trace. Reaching into `std` for either instead defeats DST replay.
 
 pub mod clock;
 pub mod rng;

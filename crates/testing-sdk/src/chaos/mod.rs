@@ -207,7 +207,7 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 	}
 
 	/// Samplers come from [`samplers`], or hand-roll an
-	/// `Arc<dyn Fn(&mut StdRng) -> Value>`.
+	/// `Arc<dyn Fn(&mut StdRng) -> Value + Send + Sync>`.
 	pub fn with_column(mut self, name: impl Into<String>, sampler: ColumnSampler) -> Self {
 		self.registry.register(name, sampler);
 		self

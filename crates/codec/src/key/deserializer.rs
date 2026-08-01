@@ -635,7 +635,7 @@ pub mod tests {
 
 	#[test]
 	fn test_keycode_duration_ordering_preserved() {
-		// Keycode encoding is descending: larger Duration → smaller bytes
+		// Keycode is descending: a larger Duration encodes to smaller bytes.
 		let durations = vec![
 			Duration::new(0, 0, 0).unwrap(),
 			Duration::new(0, 0, 1_000_000_000).unwrap(),

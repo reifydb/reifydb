@@ -628,7 +628,7 @@ pub mod tests {
 	fn test_days() {
 		let fragment = Fragment::testing("P1D");
 		let duration = parse_duration(fragment).unwrap();
-		// 1 day = 1 day, 0 nanos
+		// A date-part day lands in the days field, not folded into nanos.
 		assert_eq!(duration.get_days(), 1);
 		assert_eq!(duration.get_nanos(), 0);
 	}
@@ -637,8 +637,7 @@ pub mod tests {
 	fn test_time_hours_minutes() {
 		let fragment = Fragment::testing("PT2H30M");
 		let duration = parse_duration(fragment).unwrap();
-		// 2 hours 30 minutes = (2 * 60 * 60 + 30 * 60) * 1_000_000_000
-		// nanos
+		// Time-part components all accumulate into nanos.
 		assert_eq!(duration.get_nanos(), (2 * 60 * 60 + 30 * 60) * 1_000_000_000);
 	}
 
@@ -646,7 +645,7 @@ pub mod tests {
 	fn test_comptokenize() {
 		let fragment = Fragment::testing("P1DT2H30M");
 		let duration = parse_duration(fragment).unwrap();
-		// 1 day + 2 hours + 30 minutes
+		// Date and time parts stay in separate fields rather than collapsing together.
 		let expected_nanos = (2 * 60 * 60 + 30 * 60) * 1_000_000_000;
 		assert_eq!(duration.get_days(), 1);
 		assert_eq!(duration.get_nanos(), expected_nanos);

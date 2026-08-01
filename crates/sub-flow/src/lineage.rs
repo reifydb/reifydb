@@ -67,9 +67,8 @@ mod tests {
 		let handle = ViewLineage::default();
 		let tracker = FlowLineageTracker::new(handle.clone());
 
-		// table 100 -> view 200 (would be deferred) -> view 300 (would be
-		// transactional): the tracker holds both flows, so the closure
-		// walks straight through the boundary.
+		// The tracker holds a deferred and a transactional flow, so the closure has to walk
+		// straight through the boundary between them.
 		tracker.add(flow(
 			1,
 			vec![

@@ -68,10 +68,9 @@ mod tests {
 	use super::*;
 
 	#[test]
-	// Intent: the fragment must survive a transformation of the value. A map that rebuilt the
-	// value but dropped the span would silently turn a locatable declaration into an unlocatable
-	// one, which is the exact regression this type exists to prevent.
 	fn mapping_the_value_keeps_the_span() {
+		// A map that rebuilt the value but dropped the fragment would turn a locatable
+		// declaration into an unlocatable one, which is what this type exists to prevent.
 		let declared = Declared::new(30u64, Fragment::statement("30s", 4, 9));
 
 		let mapped = declared.map(|seconds| seconds * 1_000);
@@ -83,9 +82,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: an absent declaration yields no value AND no span, so a caller cannot accidentally
-	// point a diagnostic at a key the author never wrote.
 	fn an_absent_declaration_has_neither_value_nor_span() {
+		// No fragment for an absent declaration, so a diagnostic cannot be pointed at a key
+		// the author never wrote.
 		let absent: Option<Declared<u64>> = None;
 
 		assert_eq!(absent.declared_value(), None);
@@ -93,9 +92,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: a present declaration hands back both halves independently, so a caller that only
-	// needs the value does not have to reach past the span and lose it by habit.
 	fn a_present_declaration_exposes_value_and_span_separately() {
+		// The two halves come back independently so a caller wanting only the value does not
+		// have to unwrap past the fragment and drop it by habit.
 		let present = Some(Declared::new(5u64, Fragment::internal("5")));
 
 		assert_eq!(present.declared_value(), Some(5));

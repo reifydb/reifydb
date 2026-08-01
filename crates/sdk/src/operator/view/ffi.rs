@@ -264,6 +264,9 @@ pub(crate) fn is_defined_at(col: &BorrowedColumn<'_>, index: usize) -> bool {
 }
 
 pub(crate) fn fixed_at<T: Copy>(col: &BorrowedColumn<'_>, index: usize) -> Option<T> {
+	// SAFETY: discharges BorrowedColumn::as_slice - every caller checks `col.type_code()` first and
+	// instantiates `T` as that code's element type, and the host marshals fixed-width columns
+	// zero-copy from a live `&[T]`, so the bytes are an initialised array of `T` aligned for it.
 	let slice = unsafe { col.as_slice::<T>()? };
 	slice.get(index).copied()
 }

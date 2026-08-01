@@ -124,8 +124,8 @@ impl FFIOperator {
 		if self.last_registered_txn.get() != txn_version {
 			ensure_flush_slot(txn, self.operator_id, self.vtable, self.instance, self.executor.clone())?;
 			self.last_registered_txn.set(txn_version);
-			// SAFETY: single-threaded actor; no aliasing with guest (vtable not
-
+			// SAFETY: one actor drives this operator and no guest call is in flight here, so
+			// the context cell is not aliased while this &mut exists.
 			let ctx = unsafe { &mut *self.cached_ctx.get() };
 			ctx.txn_ptr = txn as *mut _ as *mut c_void;
 			ctx.executor_ptr = &self.executor as *const _ as *const c_void;
@@ -166,6 +166,9 @@ fn call_vtable(
 	ffi_input: &ChangeFFI,
 	operator_id: FlowNodeId,
 ) -> i32 {
+	// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
+	// FFIOperator::drop calls destroy; ffi_ctx_ptr and ffi_input point at caller-owned values that outlive
+	// the call, and the host holds no Rust borrow of either while the guest runs.
 	let result = catch_unwind(AssertUnwindSafe(|| unsafe { (vtable.apply)(instance, ffi_ctx_ptr, ffi_input) }));
 
 	match result {
@@ -202,6 +205,9 @@ fn ensure_flush_slot(
 			let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
 			let inst = captured_instance;
 			let mut usage = StateUsageFFI::default();
+			// SAFETY: captured_vtable and inst.0 come from the loaded operator's descriptor and the
+			// operator outlives the transaction running this persist closure; ffi_ctx and usage are
+			// locals that stay alive for the call with no Rust borrow of them live during it.
 			let result = catch_unwind(AssertUnwindSafe(|| unsafe {
 				(captured_vtable.flush_state)(inst.0, ffi_ctx_ptr, &mut usage)
 			}));
@@ -245,6 +251,8 @@ impl Operator for FFIOperator {
 	}
 
 	fn retention_scale(&self) -> Option<Duration> {
+		// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
+		// Drop calls destroy; the call passes no host pointers.
 		scale_from_millis(Some(unsafe { (self.vtable.seal_after_ms)(self.instance) }))
 	}
 
@@ -260,8 +268,8 @@ impl Operator for FFIOperator {
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		self.ensure_txn_setup(txn)?;
 
-		// SAFETY: single-threaded per operator; no live pointers from a prior
-
+		// SAFETY: the arena is thread-local and the previous apply's guest call has returned, so
+		// no pointer into it is still live when it is cleared and re-borrowed.
 		FFI_MARSHAL_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
 		let ffi_input = FFI_MARSHAL_ARENA.with(|cell| marshal_input(unsafe { &mut *cell.get() }, &change));
 
@@ -299,6 +307,9 @@ impl Operator for FFIOperator {
 		let key = timer.key.as_ref();
 		let ffi_ctx_ptr = self.cached_ctx.get();
 
+		// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
+		// Drop calls destroy; ffi_ctx_ptr is this operator's cached ContextFFI with no Rust borrow of it
+		// live during the call, and key's ptr/len describe a slice of `timer`, which outlives the call.
 		let result_code = self.invoke_under_panic_guard("on_timer", || unsafe {
 			(self.vtable.on_timer)(
 				self.instance,
@@ -332,6 +343,9 @@ impl Operator for FFIOperator {
 			return;
 		}
 		let (ptr, len) = groups.as_raw_parts();
+		// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
+		// Drop calls destroy; ptr/len are the raw parts of `groups`, borrowed for the whole call, so that
+		// range stays readable throughout.
 		let code = self.invoke_under_panic_guard("invalidate_groups", || unsafe {
 			(self.vtable.invalidate_groups)(self.instance, ptr, len)
 		});
@@ -345,6 +359,8 @@ impl Operator for FFIOperator {
 
 	fn sample(&self) -> Option<OperatorSample> {
 		let mut usage = StateUsageFFI::default();
+		// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
+		// Drop calls destroy; `usage` is an initialised local, exclusively borrowed for the call.
 		match unsafe { (self.vtable.sample)(self.instance, &mut usage) } {
 			FFI_OK => Some(sample_from_usage(&usage)),
 			FFI_SAMPLE_NO_DATA => None,
@@ -454,9 +470,8 @@ mod tests {
 
 	#[test]
 	fn host_sample_decode_mirrors_the_guest_encoding_including_presence_flags() {
-		// The decode must be the exact inverse of the guest's usage_from_sample: the
-		// presence flags gate the optional slots, so a dylib that reported no
-		// membership data must not surface as a degraded (values_complete=0) node.
+		// Presence flags gate the optional slots, so a dylib that reported no membership data
+		// must not surface as a degraded node.
 		let mut usage = StateUsageFFI {
 			state_entries: 3,
 			state_bytes: 128,
@@ -492,10 +507,8 @@ mod tests {
 
 	#[test]
 	fn host_sample_decode_surfaces_the_guest_pool_behind_its_presence_flag() {
-		// The guest's private pool is invisible to the host by construction; this
-		// decode is what lets the [memory] log show which budget a dylib operator
-		// actually ran under and whether it evicted (the values_complete
-		// revocations seen in production had no attributable pool before this).
+		// A guest's private pool is invisible to the host, so without this decode a dylib
+		// operator's revocations have no attributable budget in the memory log.
 		let mut usage = StateUsageFFI {
 			state_entries: 3,
 			state_bytes: 128,

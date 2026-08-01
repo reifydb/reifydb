@@ -435,10 +435,8 @@ mod tests {
 
 	#[test]
 	fn serde_wire_compat_with_vec_of_strings() {
-		// `Vec<&[u8]>` postcard form == `Vec<String>` postcard form when
-		// the bytes are valid UTF-8: both are length-prefixed sequences
-		// of length-prefixed bytes. Verify by encoding a Vec<String> and
-		// decoding into VarlenContainer.
+		// Postcard encodes `Vec<String>` and `Vec<&[u8]>` identically (both are length-prefixed
+		// sequences of length-prefixed bytes), so the two are wire-compatible.
 		let strings = vec!["a".to_string(), "bc".to_string(), "def".to_string()];
 		let encoded: Vec<u8> = postcard_to_allocvec(&strings).unwrap();
 		let decoded: VarlenContainer<Cow> = postcard_from_bytes(&encoded).unwrap();

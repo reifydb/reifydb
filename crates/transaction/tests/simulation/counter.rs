@@ -27,7 +27,6 @@ fn test_random_counter_increments() {
 fn counter_increment(seed: u64, num_transactions: usize) -> (Schedule, Vec<Box<dyn Invariant>>) {
 	let mut rng = StdRng::seed_from_u64(seed);
 
-	// Setup: initialize counter to "0"
 	let mut steps = Vec::new();
 	steps.push(Step {
 		tx_id: TxId(0),
@@ -45,7 +44,6 @@ fn counter_increment(seed: u64, num_transactions: usize) -> (Schedule, Vec<Box<d
 		op: Op::Commit,
 	});
 
-	// Each transaction: read counter, write its own id
 	let mut tx_ops: Vec<Vec<Op>> = Vec::new();
 	for i in 0..num_transactions {
 		let mut ops = Vec::new();
@@ -61,7 +59,6 @@ fn counter_increment(seed: u64, num_transactions: usize) -> (Schedule, Vec<Box<d
 		tx_ops.push(ops);
 	}
 
-	// Interleave
 	let mut cursors: Vec<usize> = vec![0; num_transactions];
 	let mut active: Vec<usize> = (0..num_transactions).collect();
 
@@ -93,7 +90,6 @@ fn counter_increment(seed: u64, num_transactions: usize) -> (Schedule, Vec<Box<d
 			predicate: Box::new(move |state, trace| {
 				let counter_val = state.get("counter").ok_or("counter key not found in final state")?;
 
-				// Find the last committed increment tx (highest commit version)
 				let last_writer: Option<TxId> = trace.committed.iter()
 					.filter(|(tx_id, _)| tx_id.0 > 0) // skip setup tx
 					.max_by_key(|(_, version)| *version)

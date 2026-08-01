@@ -46,11 +46,9 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
-		// Set primary key
 		let pk_id = PrimaryKeyId(100);
 		CatalogStore::set_ringbuffer_primary_key(&mut txn, ringbuffer.id, pk_id).unwrap();
 
-		// Verify it was set
 		let retrieved_pk =
 			CatalogStore::get_ringbuffer_pk_id(&mut Transaction::Admin(&mut txn), ringbuffer.id).unwrap();
 		assert_eq!(retrieved_pk, Some(pk_id));
@@ -73,15 +71,12 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
-		// Set first primary key
 		let pk_id1 = PrimaryKeyId(100);
 		CatalogStore::set_ringbuffer_primary_key(&mut txn, ringbuffer.id, pk_id1).unwrap();
 
-		// Set second primary key (should overwrite)
 		let pk_id2 = PrimaryKeyId(200);
 		CatalogStore::set_ringbuffer_primary_key(&mut txn, ringbuffer.id, pk_id2).unwrap();
 
-		// Verify second one is set
 		let retrieved_pk =
 			CatalogStore::get_ringbuffer_pk_id(&mut Transaction::Admin(&mut txn), ringbuffer.id).unwrap();
 		assert_eq!(retrieved_pk, Some(pk_id2));

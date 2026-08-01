@@ -274,7 +274,7 @@ pub mod tests {
 		assert_eq!(frame[2].get_value(0), Value::Utf8("test_view".to_string()));
 		assert_eq!(frame[3].get_value(0), Value::Boolean(true));
 
-		// Creating the same view again should return error
+		// A duplicate view name must fault rather than silently redefine the flow behind it.
 		let r = instance.admin(
 			&mut txn,
 			Admin {

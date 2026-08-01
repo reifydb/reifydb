@@ -382,9 +382,10 @@ mod tests {
 		Value::Decimal(Decimal::from(v))
 	}
 
-	// Decision 1: add/sub/mul of two integers promote to the widest fixed type.
 	#[test]
 	fn add_int_pair_promotes_to_int16() {
+		// Integer add/sub/mul promote to the widest fixed type so the operation cannot overflow
+		// the operand width, whatever the declared widths were.
 		assert_eq!(int2(3).checked_add(&int4(4)), Some(Value::Int16(7)));
 		assert_eq!(int4(3).checked_add(&int4(4)), Some(Value::Int16(7)));
 	}
@@ -411,12 +412,11 @@ mod tests {
 		assert_eq!(int4(3).checked_add(&dec(4)), Some(Value::Decimal(Decimal::from(7i64))));
 	}
 
-	// Decision 3: integer division promotes to Decimal (exact, e.g. 3/2 = 1.5).
 	#[test]
 	fn int_div_is_decimal_exact() {
+		// Integer division promotes to Decimal so 3/2 is 1.5, not a truncated 1.
 		let got = int4(3).checked_div(&int4(2)).unwrap();
 		assert_eq!(got, Value::Decimal(Decimal::from(3i64).checked_div(&Decimal::from(2i64)).unwrap()));
-		// And it is 1.5, not the truncated 1.
 		assert_ne!(got, Value::Decimal(Decimal::from(1i64)));
 	}
 
@@ -427,10 +427,10 @@ mod tests {
 		assert_eq!(three.checked_div(&two), Some(Value::Float8(OrderedF64::try_from(1.5).unwrap())));
 	}
 
-	// none propagation produces a DEFINED none (Some(None-value)), distinct from
-	// the overflow None of the Option, and carries the promoted result type.
 	#[test]
 	fn none_propagates_with_promoted_inner() {
+		// A none operand yields Some(Value::None), which is a defined result distinct from the
+		// Option::None used for overflow, and it carries the promoted type.
 		let got = Value::none_of(ValueType::Int4).checked_add(&int4(5));
 		assert_eq!(
 			got,
@@ -439,18 +439,17 @@ mod tests {
 			})
 		);
 		assert!(matches!(got, Some(Value::None { .. })));
-		// rhs none
 		assert!(matches!(int4(5).checked_add(&Value::none_of(ValueType::Int4)), Some(Value::None { .. })));
-		// both none
 		assert!(matches!(
 			Value::none_of(ValueType::Int4).checked_add(&Value::none_of(ValueType::Int8)),
 			Some(Value::None { .. })
 		));
 	}
 
-	// Overflow: i128-promoted result overflows only at the i128 limit.
 	#[test]
 	fn overflow_checked_saturating_wrapping() {
+		// Promotion moves the overflow point out to the i128 limit; past it the three
+		// strategies must differ, or a caller cannot choose its failure mode.
 		let max = Value::Int16(i128::MAX);
 		let one = Value::Int16(1);
 		assert_eq!(max.checked_add(&one), None);
@@ -483,11 +482,10 @@ mod tests {
 		assert_eq!(Value::Utf8("x".into()).checked_add(&int4(3)), None);
 	}
 
-	// Retraction invariant (Rule 9): for non-float pairs, add then sub of the same
-	// operand exactly restores the original. This is the property the window/aggregate
-	// accumulator relies on; it must fail if checked_sub stops inverting checked_add.
 	#[test]
 	fn retraction_invariant_exact_for_integers() {
+		// Window and aggregate accumulators retract by subtracting what they added, so for
+		// non-float operands checked_sub must invert checked_add exactly.
 		let cases = [
 			(int4(100), int4(7)),
 			(int2(30), int4(9)),
@@ -498,18 +496,17 @@ mod tests {
 		for (r, x) in cases {
 			let added = r.checked_add(&x).unwrap();
 			let restored = added.checked_sub(&x).unwrap();
-			// Compare numerically: r and restored may differ in declared width
-			// (Int4 vs Int16) but must be equal in value, so re-add and re-sub
-			// must be idempotent at the wide type.
+			// Promotion changes the declared width, so the comparison is made after a
+			// second add rather than against the original value.
 			let twice = restored.checked_add(&x).unwrap();
 			assert_eq!(added, twice, "add/sub must invert for {r:?} - {x:?}");
 		}
 	}
 
-	// Float retraction is inherently lossy (IEEE); documented, tolerance-based so
-	// this is not a false negative.
 	#[test]
 	fn retraction_float_within_tolerance() {
+		// IEEE addition is not exactly invertible, so float retraction is bounded by a
+		// tolerance instead of the exact equality the integer case gets.
 		let r = Value::Float8(OrderedF64::try_from(0.1).unwrap());
 		let x = Value::Float8(OrderedF64::try_from(0.2).unwrap());
 		let restored = r.checked_add(&x).unwrap().checked_sub(&x).unwrap();
@@ -520,11 +517,11 @@ mod tests {
 		}
 	}
 
-	// NaN result becomes a defined none{Float8} via ToValue (pin the silent-none path).
 	#[test]
 	fn nan_result_is_none_float8() {
+		// f64::MAX squared overflows to infinity, which checked_mul reports as None rather
+		// than storing a non-finite float.
 		let inf = Value::Float8(OrderedF64::try_from(f64::MAX).unwrap());
-		// MAX * MAX overflows to +inf -> checked None; saturating clamps.
 		assert_eq!(inf.checked_mul(&inf), None);
 	}
 }

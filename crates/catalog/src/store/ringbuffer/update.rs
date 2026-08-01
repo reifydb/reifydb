@@ -92,7 +92,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
-		// Get initial metadata
 		let mut metadata =
 			CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), ringbuffer.id)
 				.unwrap()
@@ -102,14 +101,12 @@ pub mod tests {
 		assert_eq!(metadata.head, 1);
 		assert_eq!(metadata.tail, 1);
 
-		// Update metadata
 		metadata.count = 5;
 		metadata.head = 2;
 		metadata.tail = 7;
 
 		CatalogStore::update_ringbuffer_metadata_admin(&mut txn, metadata.clone()).unwrap();
 
-		// Verify update
 		let updated = CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), ringbuffer.id)
 			.unwrap()
 			.expect("Metadata should exist");
@@ -122,6 +119,7 @@ pub mod tests {
 
 	#[test]
 	fn test_update_ringbuffer_metadata_wrap_around() {
+		// A full buffer has head behind tail; the codec must survive that ordering.
 		let mut txn = create_test_admin_transaction();
 		let ringbuffer = ensure_test_ringbuffer(&mut txn);
 
@@ -130,7 +128,6 @@ pub mod tests {
 				.unwrap()
 				.expect("Metadata should exist");
 
-		// Simulate wrap-around scenario
 		metadata.count = metadata.capacity;
 		metadata.head = metadata.capacity - 1;
 		metadata.tail = 0;

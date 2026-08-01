@@ -30,6 +30,8 @@ impl IndexShape {
 			assert_eq!(field.value, ValueType::Boolean);
 		}
 
+		// SAFETY: `key` is laid out by this shape, so `field.offset < total_size == key.len()`;
+		// reading a single `u8` needs alignment 1.
 		let byte = unsafe { *key.as_ptr().add(field.offset) };
 
 		match field.direction {
@@ -45,6 +47,8 @@ impl IndexShape {
 		}
 
 		let mut bytes = [0u8; 4];
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 4 <= total_size == key.len()`;
+		// the copy is byte-wise through `*const u8`, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 4);
 		}
@@ -73,6 +77,8 @@ impl IndexShape {
 		}
 
 		let mut bytes = [0u8; 8];
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 8 <= total_size == key.len()`;
+		// the copy is byte-wise through `*const u8`, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
 		}
@@ -100,6 +106,8 @@ impl IndexShape {
 			assert_eq!(field.value, ValueType::Int1);
 		}
 
+		// SAFETY: `key` is laid out by this shape, so `field.offset < total_size == key.len()`;
+		// reading a single `u8` needs alignment 1.
 		let mut byte = unsafe { *key.as_ptr().add(field.offset) };
 
 		match field.direction {
@@ -122,6 +130,8 @@ impl IndexShape {
 		}
 
 		let mut bytes = [0u8; 2];
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 2 <= total_size == key.len()`;
+		// the copy is byte-wise through `*const u8`, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 2);
 		}
@@ -148,6 +158,8 @@ impl IndexShape {
 		}
 
 		let mut bytes = [0u8; 4];
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 4 <= total_size == key.len()`;
+		// the copy is byte-wise through `*const u8`, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 4);
 		}
@@ -174,6 +186,8 @@ impl IndexShape {
 		}
 
 		let mut bytes = [0u8; 8];
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 8 <= total_size == key.len()`;
+		// the copy is byte-wise through `*const u8`, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
 		}
@@ -200,6 +214,8 @@ impl IndexShape {
 		}
 
 		let mut bytes = [0u8; 16];
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 16 <= total_size == key.len()`;
+		// the copy is byte-wise through `*const u8`, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 16);
 		}
@@ -225,6 +241,8 @@ impl IndexShape {
 			assert_eq!(field.value, ValueType::Uint1);
 		}
 
+		// SAFETY: `key` is laid out by this shape, so `field.offset < total_size == key.len()`;
+		// reading a single `u8` needs alignment 1.
 		let byte = unsafe { *key.as_ptr().add(field.offset) };
 
 		match field.direction {
@@ -240,6 +258,8 @@ impl IndexShape {
 		}
 
 		let mut bytes = [0u8; 2];
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 2 <= total_size == key.len()`;
+		// the copy is byte-wise through `*const u8`, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 2);
 		}
@@ -257,6 +277,8 @@ impl IndexShape {
 		}
 
 		let mut bytes = [0u8; 4];
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 4 <= total_size == key.len()`;
+		// the copy is byte-wise through `*const u8`, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 4);
 		}
@@ -274,6 +296,8 @@ impl IndexShape {
 		}
 
 		let mut bytes = [0u8; 8];
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 8 <= total_size == key.len()`;
+		// the copy is byte-wise through `*const u8`, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
 		}
@@ -291,6 +315,8 @@ impl IndexShape {
 		}
 
 		let mut bytes = [0u8; 16];
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 16 <= total_size == key.len()`;
+		// the copy is byte-wise through `*const u8`, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 16);
 		}
@@ -308,6 +334,8 @@ impl IndexShape {
 		}
 
 		let mut bytes = [0u8; 8];
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 8 <= total_size == key.len()`;
+		// the copy is byte-wise through `*const u8`, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
 		}
@@ -325,6 +353,8 @@ impl IndexShape {
 		}
 
 		let mut bytes = [0u8; 4];
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 4 <= total_size == key.len()`;
+		// the copy is byte-wise through `*const u8`, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 4);
 		}
@@ -353,6 +383,8 @@ impl IndexShape {
 
 		let mut bytes = [0u8; 8];
 
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 8 <= total_size == key.len()`;
+		// the copy is byte-wise through `*const u8`, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
 		}
@@ -372,6 +404,8 @@ impl IndexShape {
 		}
 
 		let mut bytes = [0u8; 8];
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 8 <= total_size == key.len()`;
+		// the copy is byte-wise through `*const u8`, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 8);
 		}
@@ -394,6 +428,8 @@ impl IndexShape {
 		let mut days_bytes = [0u8; 4];
 		let mut nanos_bytes = [0u8; 8];
 
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 16 <= total_size == key.len()`
+		// covers all three copies; the copies are byte-wise, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), months_bytes.as_mut_ptr(), 4);
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset + 4), days_bytes.as_mut_ptr(), 4);
@@ -435,6 +471,8 @@ impl IndexShape {
 		}
 
 		let mut bytes = [0u8; 16];
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 16 <= total_size == key.len()`;
+		// the copy is byte-wise through `*const u8`, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 16);
 		}
@@ -456,6 +494,8 @@ impl IndexShape {
 		}
 
 		let mut bytes = [0u8; 16];
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 16 <= total_size == key.len()`;
+		// the copy is byte-wise through `*const u8`, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 16);
 		}
@@ -477,6 +517,8 @@ impl IndexShape {
 		}
 
 		let mut bytes = [0u8; 16];
+		// SAFETY: `key` is laid out by this shape, so `field.offset + 16 <= total_size == key.len()`;
+		// the copy is byte-wise through `*const u8`, so alignment 1 suffices.
 		unsafe {
 			ptr::copy_nonoverlapping(key.as_ptr().add(field.offset), bytes.as_mut_ptr(), 16);
 		}

@@ -105,7 +105,6 @@ pub mod tests {
 		let result = CatalogStore::list_subscriptions_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(result.len(), 3);
 
-		// Verify all have unique IDs (order may vary due to key encoding)
 		let ids: Vec<SubscriptionId> = result.iter().map(|s| s.id).collect();
 		assert!(ids.contains(&sub1.id));
 		assert!(ids.contains(&sub2.id));

@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-//
-// Combined create+drop within a single txn; asserts via
-// `find_authentication_by_identity_and_method`. The authentication catalog API
-// currently skips transactional-changes checks, so several of these scenarios
-// are expected to fail until that is fixed.
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;

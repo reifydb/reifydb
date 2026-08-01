@@ -28,6 +28,9 @@ pub struct CommittedColumn {
 
 impl<'a> ColumnBuilder<'a> {
 	pub fn data_ptr(&self) -> *mut u8 {
+		// SAFETY: `self.ctx` is the non-null ContextFFI borrowed for `'a`, so its builder callback
+		// table is live; `self.handle` is the handle `acquire` returned and is released only once,
+		// in `Drop`.
 		unsafe {
 			let cb = (*self.ctx).callbacks.builder;
 			(cb.data_ptr)(self.handle)
@@ -35,6 +38,9 @@ impl<'a> ColumnBuilder<'a> {
 	}
 
 	pub fn offsets_ptr(&self) -> *mut u64 {
+		// SAFETY: `self.ctx` is the non-null ContextFFI borrowed for `'a`, so its builder callback
+		// table is live; `self.handle` is the handle `acquire` returned and is released only once,
+		// in `Drop`.
 		unsafe {
 			let cb = (*self.ctx).callbacks.builder;
 			(cb.offsets_ptr)(self.handle)
@@ -42,6 +48,9 @@ impl<'a> ColumnBuilder<'a> {
 	}
 
 	pub fn bitvec_ptr(&self) -> *mut u8 {
+		// SAFETY: `self.ctx` is the non-null ContextFFI borrowed for `'a`, so its builder callback
+		// table is live; `self.handle` is the handle `acquire` returned and is released only once,
+		// in `Drop`.
 		unsafe {
 			let cb = (*self.ctx).callbacks.builder;
 			(cb.bitvec_ptr)(self.handle)
@@ -49,6 +58,9 @@ impl<'a> ColumnBuilder<'a> {
 	}
 
 	pub fn grow(&self, additional: usize) -> Result<(), SdkError> {
+		// SAFETY: `self.ctx` is the non-null ContextFFI borrowed for `'a`, so its builder callback
+		// table is live; `self.handle` is the handle `acquire` returned and is released only once,
+		// in `Drop`.
 		let code = unsafe {
 			let cb = (*self.ctx).callbacks.builder;
 			(cb.grow)(self.handle, additional)
@@ -60,6 +72,9 @@ impl<'a> ColumnBuilder<'a> {
 	}
 
 	pub fn commit(mut self, written_count: usize) -> Result<CommittedColumn, SdkError> {
+		// SAFETY: `self.ctx` is the non-null ContextFFI borrowed for `'a`, so its builder callback
+		// table is live; `self.handle` is the handle `acquire` returned, still uncommitted because
+		// `commit` consumes the builder.
 		let code = unsafe {
 			let cb = (*self.ctx).callbacks.builder;
 			(cb.commit)(self.handle, written_count)
@@ -92,6 +107,9 @@ impl<'a> ColumnBuilder<'a> {
 			}
 		}
 		if !packed.is_empty() {
+			// SAFETY: `data_ptr` is the base of this builder's host buffer and `packed` is a
+			// separate live allocation; a Bool element is one byte, so the copy stays inside the
+			// buffer as long as the caller acquired capacity for at least `values.len()` elements.
 			unsafe {
 				core::ptr::copy_nonoverlapping(packed.as_ptr(), self.data_ptr(), packed.len());
 			}
@@ -103,6 +121,9 @@ impl<'a> ColumnBuilder<'a> {
 		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Float4);
 		}
+		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
+		// ColumnTypeCode this method requires, and the caller must have acquired the builder with
+		// capacity for at least `values.len()` elements.
 		unsafe { write_scalar(self, values) }
 	}
 
@@ -110,6 +131,9 @@ impl<'a> ColumnBuilder<'a> {
 		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Float8);
 		}
+		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
+		// ColumnTypeCode this method requires, and the caller must have acquired the builder with
+		// capacity for at least `values.len()` elements.
 		unsafe { write_scalar(self, values) }
 	}
 
@@ -117,6 +141,9 @@ impl<'a> ColumnBuilder<'a> {
 		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Int1);
 		}
+		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
+		// ColumnTypeCode this method requires, and the caller must have acquired the builder with
+		// capacity for at least `values.len()` elements.
 		unsafe { write_scalar(self, values) }
 	}
 
@@ -124,6 +151,9 @@ impl<'a> ColumnBuilder<'a> {
 		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Int2);
 		}
+		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
+		// ColumnTypeCode this method requires, and the caller must have acquired the builder with
+		// capacity for at least `values.len()` elements.
 		unsafe { write_scalar(self, values) }
 	}
 
@@ -131,6 +161,9 @@ impl<'a> ColumnBuilder<'a> {
 		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Int4);
 		}
+		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
+		// ColumnTypeCode this method requires, and the caller must have acquired the builder with
+		// capacity for at least `values.len()` elements.
 		unsafe { write_scalar(self, values) }
 	}
 
@@ -138,6 +171,9 @@ impl<'a> ColumnBuilder<'a> {
 		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Int8);
 		}
+		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
+		// ColumnTypeCode this method requires, and the caller must have acquired the builder with
+		// capacity for at least `values.len()` elements.
 		unsafe { write_scalar(self, values) }
 	}
 
@@ -145,6 +181,9 @@ impl<'a> ColumnBuilder<'a> {
 		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Int16);
 		}
+		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
+		// ColumnTypeCode this method requires, and the caller must have acquired the builder with
+		// capacity for at least `values.len()` elements.
 		unsafe { write_scalar(self, values) }
 	}
 
@@ -152,6 +191,9 @@ impl<'a> ColumnBuilder<'a> {
 		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Uint1);
 		}
+		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
+		// ColumnTypeCode this method requires, and the caller must have acquired the builder with
+		// capacity for at least `values.len()` elements.
 		unsafe { write_scalar(self, values) }
 	}
 
@@ -159,6 +201,9 @@ impl<'a> ColumnBuilder<'a> {
 		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Uint2);
 		}
+		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
+		// ColumnTypeCode this method requires, and the caller must have acquired the builder with
+		// capacity for at least `values.len()` elements.
 		unsafe { write_scalar(self, values) }
 	}
 
@@ -166,6 +211,9 @@ impl<'a> ColumnBuilder<'a> {
 		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Uint4);
 		}
+		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
+		// ColumnTypeCode this method requires, and the caller must have acquired the builder with
+		// capacity for at least `values.len()` elements.
 		unsafe { write_scalar(self, values) }
 	}
 
@@ -173,6 +221,9 @@ impl<'a> ColumnBuilder<'a> {
 		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Uint8);
 		}
+		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
+		// ColumnTypeCode this method requires, and the caller must have acquired the builder with
+		// capacity for at least `values.len()` elements.
 		unsafe { write_scalar(self, values) }
 	}
 
@@ -180,6 +231,9 @@ impl<'a> ColumnBuilder<'a> {
 		reifydb_assertions! {
 			assert_eq!(self.type_code, ColumnTypeCode::Uint16);
 		}
+		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
+		// ColumnTypeCode this method requires, and the caller must have acquired the builder with
+		// capacity for at least `values.len()` elements.
 		unsafe { write_scalar(self, values) }
 	}
 
@@ -208,15 +262,27 @@ impl<'a> ColumnBuilder<'a> {
 				packed[i / 8] |= 1 << (i % 8);
 			}
 		}
+		// SAFETY: `bitvec_ptr` returns a host bitvec sized from the acquired element capacity, so the
+		// `defined.len().div_ceil(8)` bytes copied out of the separate `packed` allocation fit as long
+		// as the caller acquired capacity for at least `defined.len()` elements.
 		unsafe {
 			core::ptr::copy_nonoverlapping(packed.as_ptr(), self.bitvec_ptr(), bytes);
 		}
 	}
 }
 
+/// # Safety
+///
+/// `col` must have been acquired with a capacity of at least
+/// `size_of_val(values)` bytes, since this writes without growing, and `T` must
+/// be the Rust type whose in-memory representation is the element encoding of
+/// `col.type_code`.
 unsafe fn write_scalar<T: Copy>(col: ColumnBuilder<'_>, values: &[T]) -> Result<CommittedColumn, SdkError> {
 	let bytes = core::mem::size_of_val(values);
 	if bytes > 0 {
+		// SAFETY: this fn's contract puts a capacity of at least `bytes` on the caller; `data_ptr` is
+		// the base of that host buffer and `values` is a distinct live slice, and both sides are
+		// copied as untyped bytes so neither needs alignment for `T`.
 		unsafe {
 			core::ptr::copy_nonoverlapping(values.as_ptr() as *const u8, col.data_ptr(), bytes);
 		}
@@ -235,6 +301,9 @@ where
 		col.grow(needed)?;
 	}
 	let mut cursor = 0usize;
+	// SAFETY: `col` is a var-len builder, so `offsets_ptr` is non-null and starts out with room for
+	// one entry; `grow(needed)` above reserved `total` further data bytes and `items.len()` further
+	// offset slots, so every write through `data` and `offsets` here is inside those reservations.
 	unsafe {
 		let data = col.data_ptr();
 		let offsets = col.offsets_ptr();
@@ -253,6 +322,8 @@ where
 impl<'a> Drop for ColumnBuilder<'a> {
 	fn drop(&mut self) {
 		if !self.committed {
+			// SAFETY: `self.ctx` is the non-null ContextFFI borrowed for `'a`, so its builder callback
+			// table is live; the `committed` check makes this the only release of `self.handle`.
 			unsafe {
 				let cb = (*self.ctx).callbacks.builder;
 				(cb.release)(self.handle);
@@ -282,6 +353,9 @@ impl<'a> ColumnsBuilder<'a> {
 	}
 
 	pub fn acquire(&mut self, type_code: ColumnTypeCode, capacity: usize) -> Result<ColumnBuilder<'_>, SdkError> {
+		// SAFETY: `self.ctx` is the non-null ContextFFI borrowed for `'a`, so its builder callback
+		// table is live; `acquire` accepts any type_code and capacity and signals failure by
+		// returning null, which is checked below.
 		let handle = unsafe {
 			let cb = (*self.ctx).callbacks.builder;
 			(cb.acquire)(self.ctx, type_code, capacity)
@@ -376,6 +450,9 @@ impl<'a> ColumnsBuilder<'a> {
 		let post_name_lens: Vec<usize> = post_names.iter().map(|n| n.len()).collect();
 		let post_row_nums: Vec<u64> = post_row_numbers.iter().map(|r| r.0).collect();
 
+		// SAFETY: `self.ctx` is the non-null ContextFFI borrowed for `'a`, so its builder callback
+		// table is live; every array argument is either the base of one of the local `Vec`s above,
+		// passed with that `Vec`'s own length, or null when the `Vec` is empty.
 		let code = unsafe {
 			let cb = (*self.ctx).callbacks.builder;
 			(cb.emit_diff)(

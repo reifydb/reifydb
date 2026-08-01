@@ -112,6 +112,8 @@ fn byte_clone_columns(
 		active.grow(data_bytes.len().max(row_count))?;
 		let dst = active.data_ptr();
 		if !dst.is_null() && !data_bytes.is_empty() {
+			// SAFETY: dst is non-null and the preceding grow() sized the data region to at least
+			// data_bytes.len(); source and destination are distinct allocations.
 			unsafe {
 				core::ptr::copy_nonoverlapping(data_bytes.as_ptr(), dst, data_bytes.len());
 			}
@@ -126,6 +128,8 @@ fn byte_clone_columns(
 			let off = col.offsets();
 			let dst_off = active.offsets_ptr();
 			if !dst_off.is_null() && !off.is_empty() {
+				// SAFETY: dst_off is non-null and the builder sized the offsets region from the
+				// same row count off was read at; the buffers do not alias.
 				unsafe {
 					core::ptr::copy_nonoverlapping(off.as_ptr(), dst_off, off.len());
 				}
@@ -135,6 +139,8 @@ fn byte_clone_columns(
 		if !bitvec.is_empty() {
 			let dst_bv = active.bitvec_ptr();
 			if !dst_bv.is_null() {
+				// SAFETY: dst_bv is non-null and the builder allocates the bitvec at
+				// row_count.div_ceil(8) bytes, which is bitvec.len(); the buffers do not alias.
 				unsafe {
 					core::ptr::copy_nonoverlapping(bitvec.as_ptr(), dst_bv, bitvec.len());
 				}

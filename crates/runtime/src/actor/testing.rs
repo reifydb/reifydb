@@ -248,14 +248,15 @@ mod tests {
 
 		harness.send(CounterMessage::Inc);
 		harness.send(CounterMessage::Stop);
-		harness.send(CounterMessage::Inc); // Should not be processed
+		// Queued behind the stop, so it must be left unprocessed rather than drained.
+		harness.send(CounterMessage::Inc);
 
 		let flows = harness.process_all();
 
 		assert_eq!(flows.len(), 2);
 		assert_eq!(flows[1], Directive::Stop);
 		assert_eq!(*harness.state(), 1);
-		assert_eq!(harness.mailbox_len(), 1); // One message left
+		assert_eq!(harness.mailbox_len(), 1);
 	}
 
 	#[test]

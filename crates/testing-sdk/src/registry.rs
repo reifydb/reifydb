@@ -128,8 +128,9 @@ thread_local! {
 }
 
 pub fn with_registry<R>(registry: &TestBuilderRegistry, f: impl FnOnce() -> R) -> R {
-	// SAFETY: we only hold the pointer for the duration of `f`. The
-
+	// SAFETY: the forged 'static is confined to this frame. It is reachable only through the
+	// thread-local, which is installed before `f` runs and restored to its previous value before
+	// this returns, so it never outlives the borrow of `registry`.
 	let extended: &'static TestBuilderRegistry = unsafe { mem::transmute(registry) };
 	let prev = REGISTRY.with(|cell| cell.replace(Some(extended)));
 	let r = f();
@@ -175,6 +176,10 @@ fn is_var_len(type_code: ColumnTypeCode) -> bool {
 	)
 }
 
+/// # Safety
+///
+/// The returned handle is a packed id, never a real pointer; it must only be passed back to
+/// the other `test_*` buffer callbacks on the same thread that acquired it.
 pub(crate) unsafe extern "C" fn test_acquire(
 	_ctx: *mut ContextFFI,
 	type_code: ColumnTypeCode,
@@ -209,6 +214,10 @@ pub(crate) unsafe extern "C" fn test_acquire(
 	.encode()
 }
 
+/// # Safety
+///
+/// The returned pointer borrows the slot's Vec, so it dangles as soon as the buffer is grown,
+/// committed or released; the caller may write at most the capacity it acquired.
 pub(crate) unsafe extern "C" fn test_data_ptr(handle: *mut ColumnBufferHandle) -> *mut u8 {
 	let Some(registry) = current() else {
 		return ptr::null_mut();
@@ -221,6 +230,10 @@ pub(crate) unsafe extern "C" fn test_data_ptr(handle: *mut ColumnBufferHandle) -
 	}
 }
 
+/// # Safety
+///
+/// The returned pointer borrows the slot's offsets Vec, so it dangles as soon as the buffer is
+/// grown, committed or released; null is returned for fixed-width columns.
 pub(crate) unsafe extern "C" fn test_offsets_ptr(handle: *mut ColumnBufferHandle) -> *mut u64 {
 	let Some(registry) = current() else {
 		return ptr::null_mut();
@@ -236,6 +249,10 @@ pub(crate) unsafe extern "C" fn test_offsets_ptr(handle: *mut ColumnBufferHandle
 	}
 }
 
+/// # Safety
+///
+/// The returned pointer borrows the slot's bitvec, allocated lazily on first call; it dangles
+/// as soon as the buffer is grown, committed or released.
 pub(crate) unsafe extern "C" fn test_bitvec_ptr(handle: *mut ColumnBufferHandle) -> *mut u8 {
 	let Some(registry) = current() else {
 		return ptr::null_mut();
@@ -254,6 +271,10 @@ pub(crate) unsafe extern "C" fn test_bitvec_ptr(handle: *mut ColumnBufferHandle)
 	}
 }
 
+/// # Safety
+///
+/// Reallocation invalidates every pointer previously handed out for this handle, so the caller
+/// must re-fetch data, offsets and bitvec pointers afterwards.
 pub(crate) unsafe extern "C" fn test_grow(handle: *mut ColumnBufferHandle, additional: usize) -> i32 {
 	let Some(registry) = current() else {
 		return -1;
@@ -266,6 +287,9 @@ pub(crate) unsafe extern "C" fn test_grow(handle: *mut ColumnBufferHandle, addit
 			let extra_bytes = additional.saturating_mul(elem);
 			let old_cap = a.data.capacity();
 
+			// SAFETY: len is raised to old_cap only so reserve() grows from the current
+			// capacity rather than from zero, then dropped straight back to 0. The
+			// elements are u8, so no uninitialized value is observed and nothing is dropped.
 			unsafe { a.data.set_len(old_cap) };
 			a.data.reserve(extra_bytes);
 			unsafe { a.data.set_len(0) };
@@ -275,6 +299,10 @@ pub(crate) unsafe extern "C" fn test_grow(handle: *mut ColumnBufferHandle, addit
 	}
 }
 
+/// # Safety
+///
+/// `written_count` is taken as the number of elements the caller actually initialized through
+/// the raw pointers; over-reporting publishes uninitialized memory as column data.
 pub(crate) unsafe extern "C" fn test_commit(handle: *mut ColumnBufferHandle, written_count: usize) -> i32 {
 	let Some(registry) = current() else {
 		return -1;
@@ -300,6 +328,9 @@ pub(crate) unsafe extern "C" fn test_commit(handle: *mut ColumnBufferHandle, wri
 		if offsets_len > offsets.capacity() {
 			return -1;
 		}
+		// SAFETY: offsets_len was just bounds-checked against the capacity, and the guest wrote
+		// those entries through the raw pointer this Vec owns. The element type is a plain
+		// integer, so every bit pattern in range is a valid value.
 		unsafe {
 			offsets.set_len(offsets_len);
 		}
@@ -315,6 +346,9 @@ pub(crate) unsafe extern "C" fn test_commit(handle: *mut ColumnBufferHandle, wri
 	if data_byte_len > active.data.capacity() {
 		return -1;
 	}
+	// SAFETY: data_byte_len was just bounds-checked against the capacity, and the guest wrote
+	// those bytes through the raw pointer this Vec owns; the elements are u8, so every byte is
+	// a valid value.
 	unsafe {
 		active.data.set_len(data_byte_len);
 	}
@@ -323,6 +357,8 @@ pub(crate) unsafe extern "C" fn test_commit(handle: *mut ColumnBufferHandle, wri
 		if needed > bitvec.capacity() {
 			return -1;
 		}
+		// SAFETY: needed was just bounds-checked against the capacity, and the elements are u8,
+		// which the lazy allocation in test_bitvec_ptr already zero-initialized.
 		unsafe {
 			bitvec.set_len(needed);
 		}
@@ -343,6 +379,9 @@ pub(crate) unsafe extern "C" fn test_commit(handle: *mut ColumnBufferHandle, wri
 	0
 }
 
+/// # Safety
+///
+/// Drops the slot, so every pointer previously handed out for this handle dangles afterwards.
 pub(crate) unsafe extern "C" fn test_release(handle: *mut ColumnBufferHandle) {
 	let Some(registry) = current() else {
 		return;
@@ -352,6 +391,11 @@ pub(crate) unsafe extern "C" fn test_release(handle: *mut ColumnBufferHandle) {
 	inner.slots.remove(&h.id);
 }
 
+/// # Safety
+///
+/// For each side, the handle, name-pointer and name-length arrays must all hold `count`
+/// entries, and the row-number array must hold `row_count`. The handles are consumed: each
+/// must name a committed buffer and must not be used again after this returns.
 pub(crate) unsafe extern "C" fn test_emit_diff(
 	_ctx: *mut ContextFFI,
 	kind: EmitDiffKind,
@@ -438,6 +482,8 @@ fn assemble(
 		return Err(-1);
 	}
 	let count = ptrs.count;
+	// SAFETY: all three pointers are null-checked above and the guest declares `count` as the
+	// shared length of the three parallel arrays it owns for the duration of the call.
 	let handles = unsafe { slice::from_raw_parts(ptrs.handles, count) };
 	let names = unsafe { slice::from_raw_parts(ptrs.names, count) };
 	let lens = unsafe { slice::from_raw_parts(ptrs.name_lens, count) };
@@ -456,6 +502,8 @@ fn assemble(
 		let name = if names[i].is_null() || lens[i] == 0 {
 			""
 		} else {
+			// SAFETY: this arm runs only when names[i] is non-null and lens[i] is
+			// non-zero, and the guest owns that many bytes at names[i].
 			let s = unsafe { slice::from_raw_parts(names[i], lens[i]) };
 			str::from_utf8(s).unwrap_or("")
 		};
@@ -464,6 +512,8 @@ fn assemble(
 	let row_numbers: Vec<RowNumber> = if row_count == 0 {
 		Vec::new()
 	} else {
+		// SAFETY: row_count is non-zero here, so row_numbers_ptr was null-checked above, and
+		// row_numbers_len was checked equal to row_count.
 		let raw = unsafe { slice::from_raw_parts(row_numbers_ptr, row_count) };
 		raw.iter().copied().map(RowNumber).collect()
 	};
@@ -631,6 +681,10 @@ fn bytes_to_vec<T: Copy>(data: &[u8], count: usize) -> Option<Vec<T>> {
 		return None;
 	}
 	let mut v: Vec<T> = Vec::with_capacity(count);
+	// SAFETY: data holds at least count * size_of::<T>() bytes (checked above) and v was reserved
+	// for count elements, so both ranges are in bounds and cannot alias. T is Copy, so nothing is
+	// dropped; this also relies on every bit pattern being a valid T, which holds for the numeric
+	// and fixed-width temporal types the call sites instantiate.
 	unsafe {
 		ptr::copy_nonoverlapping(data.as_ptr() as *const T, v.as_mut_ptr(), count);
 		v.set_len(count);

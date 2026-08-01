@@ -230,7 +230,6 @@ pub mod tests {
 			time: TimeSource::Processing,
 		};
 
-		// First creation should succeed
 		let result = CatalogStore::create_table(&mut txn, to_create.clone()).unwrap();
 		assert_eq!(result.id, TableId(16385));
 		assert_eq!(result.namespace, NamespaceId(16385));
@@ -297,13 +296,9 @@ mod time_declaration_tests {
 	use crate::{CatalogStore, test_utils::ensure_test_namespace};
 
 	#[test]
-	// Intent: a source object's time declaration must survive the store/load round trip, because
-	// it is what the write boundary reads to populate #time on every row. A declaration that is
-	// accepted at DDL and then lost in the catalog would silently downgrade an event-time table to
-	// processing time - the exact silent-trap class this design exists to remove.
-	// Mutation: stop writing table::TS in store_table, or stop reading it in decode_table_time,
-	// and the populator comes back as none.
 	fn an_event_time_declaration_round_trips_through_the_catalog() {
+		// The write boundary reads this declaration to populate #time on every row, so losing
+		// it in the catalog silently downgrades an event-time table to processing time.
 		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
@@ -336,10 +331,9 @@ mod time_declaration_tests {
 		);
 	}
 	#[test]
-	// Intent: the domain is DERIVED from the populator's presence and never stored beside it, so
-	// there is no way to persist an object that claims event time while naming no column. Storing
-	// the two independently is what lets them drift apart.
 	fn a_processing_table_round_trips_with_no_populator() {
+		// The domain is derived from the populator's presence and never stored beside it, so
+		// no persisted object can claim event time while naming no column.
 		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 

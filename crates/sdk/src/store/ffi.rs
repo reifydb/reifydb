@@ -25,6 +25,9 @@ pub(super) fn raw_store_get(ctx: &FFIOperatorContext, key: &EncodedKey) -> Resul
 		cap: 0,
 	};
 
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; key_bytes outlives the callback, which only reads it. On FFI_OK the host writes a buffer of
+	// output.len initialised bytes, copied out before memory.free releases it with the length it was allocated at.
 	unsafe {
 		let result =
 			((*ctx.ctx).callbacks.store.get)(ctx.ctx, key_bytes.as_ptr(), key_bytes.len(), &mut output);
@@ -53,6 +56,8 @@ pub(super) fn raw_store_contains_key(ctx: &FFIOperatorContext, key: &EncodedKey)
 	let key_bytes = key.as_bytes();
 	let mut result_byte: u8 = 0;
 
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; key_bytes outlives the callback, and result_byte is a live local slot the host writes.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.store.contains_key)(
 			ctx.ctx,
@@ -76,6 +81,9 @@ pub(super) fn raw_store_prefix(ctx: &FFIOperatorContext, prefix: &EncodedKey) ->
 	let prefix_bytes = prefix.as_bytes();
 	let mut iterator: *mut StoreIteratorFFI = null_mut();
 
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; prefix_bytes outlives the callback. The handle the host opens is passed once to
+	// collect_iterator_results, discharging its precondition that the handle is fresh and freed exactly there.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.store.prefix)(
 			ctx.ctx,
@@ -104,6 +112,9 @@ pub(super) fn raw_store_range(
 ) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 	let mut iterator: *mut StoreIteratorFFI = null_mut();
 
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; each bound pointer is null with length 0 or borrows a key that outlives the callback. The
+	// handle the host opens is passed once to collect_iterator_results, which owns and frees it.
 	unsafe {
 		let (start_ptr, start_len, start_bound_type) = match start {
 			Bound::Unbounded => (ptr::null(), 0, BOUND_UNBOUNDED),
@@ -136,6 +147,13 @@ pub(super) fn raw_store_range(
 	}
 }
 
+/// # Safety
+///
+/// `ctx.ctx` must point to a live `ContextFFI` whose store and memory callbacks
+/// are valid, and `iterator` must be null or an open handle from that context's
+/// store scan/range callback that has not yet been freed. This takes ownership
+/// of the handle and frees it before returning, so the caller must not free it
+/// again.
 #[instrument(
 	name = "flow::operator::store::collect_iterator",
 	level = "debug",
@@ -165,12 +183,16 @@ pub(super) unsafe fn collect_iterator_results(
 			cap: 0,
 		};
 
+		// SAFETY: iterator was checked non-null above and is still the open handle this call owns; key_buf and
+		// value_buf are live local slots the host overwrites with buffers it allocated.
 		let next_result =
 			unsafe { ((*ctx.ctx).callbacks.store.iterator_next)(iterator, &mut key_buf, &mut value_buf) };
 
 		if next_result == FFI_END_OF_ITERATION {
 			break;
 		} else if next_result != FFI_OK {
+			// SAFETY: iterator is the open handle this call owns and has not been freed yet; the return
+			// immediately after means it is freed exactly once.
 			unsafe { ((*ctx.ctx).callbacks.store.iterator_free)(iterator) };
 			return Err(SdkError::Other(format!(
 				"host_store_iterator_next failed with code {}",
@@ -179,18 +201,25 @@ pub(super) unsafe fn collect_iterator_results(
 		}
 
 		if !key_buf.ptr.is_null() && key_buf.len > 0 {
+			// SAFETY: the ptr/len the host just wrote describe key_buf.len initialised bytes it allocated,
+			// checked non-null and non-empty above and not freed until after this copy.
 			let key_bytes = unsafe { from_raw_parts(key_buf.ptr, key_buf.len) }.to_vec();
 			let key = EncodedKey::new(key_bytes);
 
 			let value = if !value_buf.ptr.is_null() && value_buf.len > 0 {
+				// SAFETY: same host-allocated buffer contract as the key slice, with ptr and len
+				// checked in this branch's condition.
 				let value_bytes = unsafe { from_raw_parts(value_buf.ptr, value_buf.len) }.to_vec();
 				EncodedRow(CowVec::new(value_bytes))
 			} else {
 				EncodedRow(CowVec::new(Vec::new()))
 			};
 
+			// SAFETY: key_buf was allocated by the host with cap == len, so len is the size the free
+			// callback expects; the bytes were copied above and the pointer is not used again.
 			unsafe { ((*ctx.ctx).callbacks.memory.free)(key_buf.ptr as *mut u8, key_buf.len) };
 			if !value_buf.ptr.is_null() && value_buf.len > 0 {
+				// SAFETY: same host-allocated, cap == len contract as the key buffer.
 				unsafe { ((*ctx.ctx).callbacks.memory.free)(value_buf.ptr as *mut u8, value_buf.len) };
 			}
 
@@ -198,6 +227,8 @@ pub(super) unsafe fn collect_iterator_results(
 		}
 	}
 
+	// SAFETY: iterator is the open handle this call owns; the loop only breaks on the path that has not freed it,
+	// so this frees it exactly once.
 	unsafe { ((*ctx.ctx).callbacks.store.iterator_free)(iterator) };
 	Span::current().record("result_count", results.len());
 	Ok(results)

@@ -58,21 +58,19 @@ mod tests {
 
 	use crate::test_harness::TestEngine;
 
-	// The historical-GC cutoff is bounded by held leases only, never by a long-lived consumer
-	// watermark: an in-flight subscription batch protects its reads through its lease, and a
-	// lagging consumer with no lease must NOT lower the cutoff (that unbounded pin is exactly the
-	// slow-consumer stall the consumer-class split removed). Releasing the lease releases the pin.
 	#[test]
 	fn effective_gc_cutoff_is_lowered_by_a_held_lease_and_nothing_else() {
+		// Only a held lease may pin the cutoff. A lagging consumer without one pinning it is
+		// an unbounded stall, so the pin has to end when the lease is dropped.
 		let t = TestEngine::new();
 
-		// Lease the pre-advance head first: acquiring after the watermark moved past it would be
-		// rejected as evicted (TXN_012), which is the overtaken signal, not the pin under test.
+		// Leased before the advance; acquiring after would be rejected as evicted, which is the
+		// overtaken signal rather than the pin under test.
 		let lagging = CommitVersion(50);
 		let lease = t.multi().acquire_version_lease(lagging).expect("leasing at the current head must succeed");
 
-		// Advance the query watermark to a known positive baseline. A bare engine sits at version 0,
-		// so without this the cutoff would be 0 and there would be nothing to lower below.
+		// A bare engine sits at version 0, so without a positive baseline there is nothing the
+		// lease could lower the cutoff below.
 		t.multi().advance_version_to(CommitVersion(100));
 
 		assert_eq!(
@@ -81,9 +79,6 @@ mod tests {
 			"a held lease must lower the historical-GC cutoff to the leased version"
 		);
 
-		// Releasing the lease releases the pin: the cutoff returns to the query watermark. If a
-		// consumer-watermark term still existed, a lagging consumer position would keep the cutoff
-		// down here and history would be pinned without bound.
 		drop(lease);
 		assert!(
 			t.effective_gc_cutoff().0 >= 100,

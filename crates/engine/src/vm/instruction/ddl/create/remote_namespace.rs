@@ -112,7 +112,6 @@ pub mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
-		// First creation
 		let r = instance.admin(
 			&mut txn,
 			Admin {
@@ -124,7 +123,7 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 
-		// Second creation with IF NOT EXISTS should not error
+		// IF NOT EXISTS must report created=false rather than fault or re-register the endpoint.
 		let r = instance.admin(
 			&mut txn,
 			Admin {
@@ -146,7 +145,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let identity = IdentityId::root();
 
-		// Create a remote namespace
 		let r = instance.admin(
 			&mut txn,
 			Admin {
@@ -159,7 +157,7 @@ pub mod tests {
 		}
 		txn.commit().unwrap();
 
-		// Query compiles to RemoteScan; without a RemoteRegistry it returns empty frames
+		// A missing registry must degrade to empty rather than panic or dial the endpoint.
 		let mut qt =
 			QueryTransaction::new(txn.multi.clone().begin_query().unwrap(), txn.single.clone(), identity);
 		let r = instance.query(
@@ -173,7 +171,6 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 
-		// Without a remote registry, the RemoteFetchNode produces no data
 		assert!(r.is_empty() || r.iter().all(|f| f.columns.is_empty()));
 	}
 

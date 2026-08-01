@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-//
-// Combined create+drop within a single txn; asserts via all find methods:
-// `find_namespace_by_name`, `find_namespace` (by id), `find_namespace_by_path`,
-// `find_namespace_by_segments`.
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_value::{params::Params, value::{identity::IdentityId}};

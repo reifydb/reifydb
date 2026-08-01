@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Inner execution primitives the VM dispatch loop calls into. Arithmetic, comparison, logic, control flow,
-//! masking, broadcasting, looping, and the call-into-routine dispatcher: each is the lowest-level operation a
-//! handler in `instruction/` ultimately delegates to. Splitting these out keeps individual instruction handlers
-//! short and lets the same primitive be reused across many opcodes.
+//! The lowest-level operations a handler in `instruction/` delegates to, kept separate so one primitive can be
+//! reused across many opcodes rather than reimplemented per handler.
 
 pub(crate) mod arithmetic;
 pub(crate) mod broadcast;

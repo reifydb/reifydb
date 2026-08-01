@@ -86,7 +86,8 @@ pub unsafe extern "C" fn create_operator_instance<O: FFIOperator + OperatorMetad
 	let config = if config_ptr.is_null() || config_len == 0 {
 		HashMap::new()
 	} else {
-		// SAFETY: caller guarantees config_ptr is valid for config_len bytes
+		// SAFETY: the null and zero-length cases are handled above, and the caller guarantees config_ptr is
+		// valid for config_len initialised bytes for the duration of this call.
 		let config_bytes = unsafe { slice::from_raw_parts(config_ptr, config_len) };
 
 		match decode_params(config_bytes) {

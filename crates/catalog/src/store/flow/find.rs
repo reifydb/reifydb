@@ -122,7 +122,6 @@ pub mod tests {
 
 		create_flow(&mut txn, "namespace_one", "my_flow");
 
-		// Flow exists in namespace_one but not in namespace_two
 		let result = CatalogStore::find_flow_by_name(
 			&mut Transaction::Admin(&mut txn),
 			namespace_two.id(),
@@ -139,7 +138,6 @@ pub mod tests {
 
 		create_flow(&mut txn, "test_namespace", "MyFlow");
 
-		// Flow names are case-sensitive
 		let result = CatalogStore::find_flow_by_name(
 			&mut Transaction::Admin(&mut txn),
 			test_namespace.id(),

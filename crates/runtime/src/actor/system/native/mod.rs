@@ -67,15 +67,9 @@ impl ActorSystem {
 		}
 	}
 
-	/// A system for test fixtures, carrying `clock` but sharing one process-wide set of worker
-	/// threads and one timer scheduler with every other testing system.
-	///
-	/// The returned system is a scope: it gets its own cancellation token, actors and keepalives,
-	/// and the shared root holds it alive for the rest of the process, so callers can drop it
-	/// while the spawners they handed out keep working. Building a system per fixture instead
-	/// spawns a pool per fixture that nothing ever joins - a few hundred fixtures in one test
-	/// binary is enough to hit the OS per-process thread limit, after which every remaining test
-	/// dies on a failed thread spawn.
+	/// A scope over one process-wide set of worker threads and timer scheduler, held alive by the shared
+	/// root so callers may drop it while the spawners they handed out keep working. A pool per fixture
+	/// would spawn threads nothing joins and hit the OS per-process thread limit within one test binary.
 	pub fn testing(clock: Clock) -> Self {
 		TESTING_ROOT.get_or_init(|| Self::new(Pools::new(PoolConfig::default()), Clock::Real)).scope_with(clock)
 	}
@@ -392,12 +386,11 @@ mod tests {
 	fn test_shutdown_join() {
 		let system = test_system();
 
-		// Spawn several actors
 		for i in 0..5 {
 			system.spawn_coordination(&format!("counter-{i}"), CounterActor);
 		}
 
-		// Shutdown cancels all actors; join waits for them to finish
+		// join() must not return before every actor has finished, or shutdown races teardown.
 		system.shutdown();
 		system.join().unwrap();
 	}

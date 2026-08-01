@@ -14,11 +14,10 @@ fn namespace_id(t: &TestEngine, name: &str) -> NamespaceId {
 	id
 }
 
-/// find_queue by id must see the same overlay as find_queue_by_name; if only the
-/// name path consulted the overlay, an id captured earlier in the transaction
-/// would resolve to nothing.
 #[test]
 fn uncommitted_create_is_findable_by_id_and_by_name() {
+	// If only the name path consulted the overlay, an id captured earlier in the
+	// transaction would resolve to nothing.
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE qns_find_a");
@@ -34,10 +33,9 @@ fn uncommitted_create_is_findable_by_id_and_by_name() {
 	assert_eq!(by_id.name, "jobs");
 }
 
-/// A queue dropped in this transaction must read as absent by id too, not just
-/// by name - a stale id lookup would otherwise resurrect it.
 #[test]
 fn uncommitted_drop_hides_the_queue_by_id() {
+	// A stale id lookup would otherwise resurrect a queue dropped in this transaction.
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE qns_find_b");
@@ -62,9 +60,9 @@ fn uncommitted_drop_hides_the_queue_by_id() {
 	assert!(catalog.find_queue_by_name(&mut Transaction::Admin(&mut txn), ns_id, "jobs").unwrap().is_none());
 }
 
-/// Name lookups must stay namespace-scoped through the overlay as well.
 #[test]
 fn uncommitted_create_does_not_leak_into_another_namespace() {
+	// Name lookups stay namespace-scoped through the overlay as well.
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE qns_find_c");

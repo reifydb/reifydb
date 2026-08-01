@@ -181,18 +181,15 @@ fn test_empty_files() {
 	let test_dir = std::env::temp_dir().join(format!("goldenfile_empty_{}", std::process::id()));
 	fs::create_dir_all(&test_dir).unwrap();
 
-	// Create an empty golden file
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Update);
 		let _file = mint.new_goldenfile("empty.txt").unwrap();
-		// Don't write anything
 	}
 
-	// Verify against empty content
+	// An empty goldenfile must compare equal to empty output rather than read as missing.
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Compare);
 		let _file = mint.new_goldenfile("empty.txt").unwrap();
-		// Don't write anything - should pass
 	}
 
 	let _ = fs::remove_dir_all(&test_dir);
@@ -204,14 +201,11 @@ fn test_empty_vs_content() {
 	let test_dir = std::env::temp_dir().join(format!("goldenfile_empty_vs_content_{}", std::process::id()));
 	fs::create_dir_all(&test_dir).unwrap();
 
-	// Create an empty golden file
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Update);
 		let _file = mint.new_goldenfile("empty2.txt").unwrap();
-		// Don't write anything
 	}
 
-	// Try to verify with content - should fail
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Compare);
 		let mut file = mint.new_goldenfile("empty2.txt").unwrap();
@@ -226,7 +220,7 @@ fn test_multiple_files_same_mint() {
 	let test_dir = std::env::temp_dir().join(format!("goldenfile_multi_{}", std::process::id()));
 	fs::create_dir_all(&test_dir).unwrap();
 
-	// Create multiple files with the same Mint instance
+	// One Mint must serve several files, including one under a subdirectory.
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Update);
 
@@ -240,7 +234,6 @@ fn test_multiple_files_same_mint() {
 		writeln!(file3, "File 3 content").unwrap();
 	}
 
-	// Verify all files were created
 	assert!(test_dir.join("file1.txt").exists());
 	assert!(test_dir.join("file2.txt").exists());
 	assert!(test_dir.join("subdir/file3.txt").exists());
@@ -252,16 +245,15 @@ fn test_long_lines_truncation() {
 	let test_dir = std::env::temp_dir().join(format!("goldenfile_long_{}", std::process::id()));
 	fs::create_dir_all(&test_dir).unwrap();
 
-	let long_line = "x".repeat(150); // Create a line longer than 100 chars
+	// Past the 100-char point where the diff renderer starts truncating.
+	let long_line = "x".repeat(150);
 
-	// Create golden file with long line
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Update);
 		let mut file = mint.new_goldenfile("long.txt").unwrap();
 		writeln!(file, "{}", long_line).unwrap();
 	}
 
-	// Verify with same content - should pass
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Compare);
 		let mut file = mint.new_goldenfile("long.txt").unwrap();
@@ -281,12 +273,9 @@ fn test_concurrent_update_never_empties_file() {
 		thread,
 	};
 
-	// Regression for the UPDATE_TESTFILES race: the same golden file is rewritten in update
-	// mode by multiple test entry points (e.g. memory + sqlite backends) running in parallel.
-	// The pre-fix code truncated the golden file in place at open time, so a concurrent reader
-	// could observe it momentarily empty. With the atomic temp+rename write, the golden path is
-	// only ever replaced atomically, so any successful read must yield the complete content -
-	// never empty, never partial. A non-zero violation count means a truncated file leaked.
+	// Several test entry points rewrite one goldenfile in update mode in parallel. Truncating
+	// in place would let a concurrent reader see it empty, so the write has to go through a
+	// temp file and a rename: any successful read must yield complete content.
 	let test_dir = std::env::temp_dir().join(format!("goldenfile_race_{}", std::process::id()));
 	fs::create_dir_all(&test_dir).unwrap();
 	let path = test_dir.join("race.txt");
@@ -348,22 +337,21 @@ fn test_binary_safety() {
 	let test_dir = std::env::temp_dir().join(format!("goldenfile_binary_{}", std::process::id()));
 	fs::create_dir_all(&test_dir).unwrap();
 
-	// Test with non-UTF8 sequences (but valid as bytes)
+	// Written as raw bytes rather than str, so a multi-byte sequence has to survive the write
+	// and compare paths without being re-encoded.
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Update);
 		let mut file = mint.new_goldenfile("binary.txt").unwrap();
-		// Write some bytes that form valid UTF-8
 		file.write_all(b"Hello\nWorld\n").unwrap();
-		file.write_all(&[0xE2, 0x98, 0x83]).unwrap(); // ☃ (snowman)
+		file.write_all(&[0xE2, 0x98, 0x83]).unwrap(); // U+2603 snowman
 		file.write_all(b"\n").unwrap();
 	}
 
-	// Verify with same content
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Compare);
 		let mut file = mint.new_goldenfile("binary.txt").unwrap();
 		file.write_all(b"Hello\nWorld\n").unwrap();
-		file.write_all(&[0xE2, 0x98, 0x83]).unwrap(); // ☃ (snowman)
+		file.write_all(&[0xE2, 0x98, 0x83]).unwrap(); // U+2603 snowman
 		file.write_all(b"\n").unwrap();
 	}
 

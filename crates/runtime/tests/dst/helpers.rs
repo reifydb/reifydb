@@ -274,7 +274,6 @@ impl Actor for PostStopPanicActor {
 	}
 }
 
-/// Run steps until idle, collecting all step results as actor_ids.
 pub fn collect_step_trace(system: &ActorSystem) -> Vec<usize> {
 	let mut trace = Vec::new();
 	loop {

@@ -74,8 +74,14 @@ impl<'a> Catalog<'a> {
 	}
 }
 
+/// # Safety
+///
+/// `ffi_col.name.ptr` must be null or valid for reads of `ffi_col.name.len`
+/// initialised bytes for the duration of the call.
 pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnFFI) -> Result<Column, SdkError> {
 	let name_bytes = if !ffi_col.name.ptr.is_null() && ffi_col.name.len > 0 {
+		// SAFETY: discharges this function's own contract; the branch above established that
+		// `name.ptr` is non-null and `name.len` is non-zero.
 		unsafe { from_raw_parts(ffi_col.name.ptr, ffi_col.name.len) }
 	} else {
 		&[]
@@ -103,8 +109,14 @@ pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnFFI) -> Result<Column, Sdk
 	})
 }
 
+/// # Safety
+///
+/// `ffi_pk.column_ids` must be null or valid for reads of `ffi_pk.column_count`
+/// initialised, aligned `u64` for the duration of the call.
 pub(crate) unsafe fn unmarshal_primary_key(ffi_pk: &PrimaryKeyFFI) -> Result<PrimaryKey, SdkError> {
 	let column_ids = if !ffi_pk.column_ids.is_null() && ffi_pk.column_count > 0 {
+		// SAFETY: discharges this function's own contract; the branch above established that
+		// `column_ids` is non-null and `column_count` is non-zero.
 		unsafe { from_raw_parts(ffi_pk.column_ids, ffi_pk.column_count).to_vec() }
 	} else {
 		Vec::new()

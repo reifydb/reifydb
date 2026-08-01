@@ -29,8 +29,8 @@ fn bigint_i128_max_min() {
 
 #[test]
 fn bigint_outside_i128_range() {
-	// 2 * i128::MAX exceeds any fixed-width integer; the BigInt
-	// representation must round-trip through the postcard-fallback path.
+	// Doubling i128::MAX leaves every fixed-width integer behind, forcing the postcard fallback rather than
+	// the zero-copy path the other widths take.
 	let mut big: Int = Int::from_i128(i128::MAX);
 	big.0 += Int::from_i128(i128::MAX).0;
 	let mut neg_big: Int = Int::from_i128(i128::MIN);

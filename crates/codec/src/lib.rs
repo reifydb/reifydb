@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Unified encoding and decoding for ReifyDB. Every byte layout that crosses a boundary lives here:
-//! the single type-tag namespace, the canonical self-describing value codec, the RBCF columnar frame
-//! format, the row storage codec, the order-preserving key codec, and the FFI cell codecs.
-//!
-//! Invariant: encode and decode halves are colocated in this crate and share one tag scheme. A tag,
-//! layout, or width change is a coordinated workspace change; no consumer may hand-roll these bytes.
+//! Every byte layout that crosses a ReifyDB boundary: the type-tag namespace, the self-describing
+//! value codec, the RBCF columnar frame format, the row storage codec, the key codec and the FFI
+//! cells. Both halves live here and share one tag scheme, so no consumer hand-rolls these bytes.
 
 pub mod constraint;
 pub mod encoded;

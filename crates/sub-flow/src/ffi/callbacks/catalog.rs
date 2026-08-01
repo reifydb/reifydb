@@ -45,6 +45,9 @@ pub(super) extern "C" fn host_catalog_find_namespace(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx` and `output` are null-checked above; the guest must pass back the ContextFFI the
+	// host handed it for this call (discharging get_transaction_mut) and an `output` valid and
+	// aligned for one NamespaceFFI write.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -73,6 +76,9 @@ pub(super) extern "C" fn host_catalog_find_namespace_by_name(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx`, `name_ptr` and `output` are null-checked above; the guest must pass back the
+	// ContextFFI the host handed it for this call, a `name_ptr` valid for reads of `name_len` bytes,
+	// and an `output` valid and aligned for one NamespaceFFI write.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -106,6 +112,9 @@ pub(super) extern "C" fn host_catalog_find_table(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx` and `output` are null-checked above; the guest must pass back the ContextFFI the
+	// host handed it for this call (discharging get_transaction_mut) and an `output` valid and
+	// aligned for one TableFFI write.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -138,6 +147,9 @@ pub(super) extern "C" fn host_catalog_find_table_by_name(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx`, `name_ptr` and `output` are null-checked above; the guest must pass back the
+	// ContextFFI the host handed it for this call, a `name_ptr` valid for reads of `name_len` bytes,
+	// and an `output` valid and aligned for one TableFFI write.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -173,6 +185,9 @@ pub(super) extern "C" fn host_catalog_find_row_shape(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx` and `output` are null-checked above; the guest must pass back the ContextFFI the
+	// host handed it for this call (discharging get_transaction_mut) and an `output` valid and
+	// aligned for one RowShapeFFI write.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -199,6 +214,9 @@ pub(super) extern "C" fn host_catalog_free_namespace(namespace: *mut NamespaceFF
 		return;
 	}
 
+	// SAFETY: `namespace` is null-checked above and must point to a readable, not-yet-freed
+	// NamespaceFFI that marshal_namespace produced and the guest left unmodified, so `name.ptr` and
+	// `name.len` are exactly the host_alloc block and its size (discharges host_free).
 	unsafe {
 		let ns = &*namespace;
 
@@ -214,6 +232,10 @@ pub(super) extern "C" fn host_catalog_free_table(table: *mut TableFFI) {
 		return;
 	}
 
+	// SAFETY: `table` is null-checked above and must point to a readable, not-yet-freed TableFFI that
+	// marshal_table produced and the guest left unmodified, so `columns` holds `column_count`
+	// initialised ColumnFFI and every pointer/size pair below is exactly the host_alloc block and its
+	// size (discharges host_free).
 	unsafe {
 		let tbl = &*table;
 
@@ -250,6 +272,10 @@ pub(super) extern "C" fn host_catalog_free_row_shape(row_shape: *mut RowShapeFFI
 		return;
 	}
 
+	// SAFETY: `row_shape` is null-checked above and must point to a readable, not-yet-freed
+	// RowShapeFFI that marshal_row_shape produced and the guest left unmodified, so `fields` holds
+	// `field_count` initialised RowShapeFieldFFI and every pointer/size pair below is exactly the
+	// host_alloc block and its size (discharges host_free).
 	unsafe {
 		let shape = &*row_shape;
 
@@ -277,18 +303,28 @@ fn marshal_row_shape(shape: &RowShape) -> Result<RowShapeFFI, &'static str> {
 
 		for (i, field) in shape.fields().iter().enumerate() {
 			match marshal_row_shape_field(field) {
+				// SAFETY: `ptr` is the non-null host_alloc block of `size` bytes above, so it holds
+				// `field_count` slots at align 8 >= align_of::<RowShapeFieldFFI>(), and `i` is below
+				// that count; RowShapeFieldFFI is Copy, so the write drops nothing uninitialised.
 				Ok(field_ffi) => unsafe {
 					*ptr.add(i) = field_ffi;
 				},
 				Err(e) => {
 					for j in 0..i {
+						// SAFETY: `j < i` means slot `j` was written by an earlier iteration,
+						// so it is an initialised Copy value inside the same block.
 						let earlier = unsafe { *ptr.add(j) };
 						if !earlier.name.ptr.is_null() && earlier.name.len > 0 {
+							// SAFETY: discharges host_free; the name is the host_alloc
+							// block of exactly `earlier.name.len` bytes that
+							// marshal_row_shape_field made and nothing has freed yet.
 							unsafe {
 								host_free(earlier.name.ptr as *mut u8, earlier.name.len)
 							};
 						}
 					}
+					// SAFETY: discharges host_free; `ptr`/`size` are exactly the host_alloc block
+					// and size above, freed once on this path.
 					unsafe { host_free(ptr as *mut u8, size) };
 					return Err(e);
 				}
@@ -314,6 +350,9 @@ fn marshal_row_shape_field(field: &RowShapeField) -> Result<RowShapeFieldFFI, &'
 		return Err("Failed to allocate row shape field name");
 	}
 	if !name_bytes.is_empty() {
+		// SAFETY: `name_bytes` is non-empty here, so the null return was rejected above and
+		// `name_ptr` is a fresh host_alloc block of `name_bytes.len()` bytes that cannot overlap the
+		// borrowed source.
 		unsafe {
 			ptr::copy_nonoverlapping(name_bytes.as_ptr(), name_ptr, name_bytes.len());
 		}
@@ -341,6 +380,8 @@ fn marshal_namespace(namespace: &Namespace) -> NamespaceFFI {
 	let name_bytes = namespace.name().as_bytes();
 	let name_ptr = host_alloc(name_bytes.len());
 	if !name_ptr.is_null() {
+		// SAFETY: a non-null return means host_alloc(name_bytes.len()) succeeded, so `name_ptr` is a
+		// fresh block of that many bytes and cannot overlap the borrowed source.
 		unsafe {
 			ptr::copy_nonoverlapping(name_bytes.as_ptr(), name_ptr, name_bytes.len());
 		}
@@ -363,6 +404,8 @@ fn marshal_table(table: &Table) -> Result<TableFFI, &'static str> {
 	if name_ptr.is_null() {
 		return Err("Failed to allocate table name");
 	}
+	// SAFETY: `name_ptr` is non-null (checked above), so it is a fresh host_alloc block of
+	// `name_bytes.len()` bytes and cannot overlap the borrowed source.
 	unsafe {
 		ptr::copy_nonoverlapping(name_bytes.as_ptr(), name_ptr, name_bytes.len());
 	}
@@ -372,11 +415,16 @@ fn marshal_table(table: &Table) -> Result<TableFFI, &'static str> {
 		let size = columns_count * mem::size_of::<ColumnFFI>();
 		let ptr = host_alloc(size) as *mut ColumnFFI;
 		if ptr.is_null() {
+			// SAFETY: discharges host_free; `name_ptr`/`name_bytes.len()` are the host_alloc block
+			// and size from above, still unfreed on this path.
 			unsafe { host_free(name_ptr, name_bytes.len()) };
 			return Err("Failed to allocate columns array");
 		}
 
 		for (i, col) in table.columns.iter().enumerate() {
+			// SAFETY: `ptr` is the non-null host_alloc block of `size` bytes above, so it holds
+			// `columns_count` slots at align 8 >= align_of::<ColumnFFI>(), and `i` is below that
+			// count; ColumnFFI is Copy, so the write drops nothing uninitialised.
 			unsafe {
 				*ptr.add(i) = marshal_column(col)?;
 			}
@@ -390,8 +438,12 @@ fn marshal_table(table: &Table) -> Result<TableFFI, &'static str> {
 	let (has_pk, pk_ptr) = if let Some(pk) = &table.primary_key {
 		let pk_ptr = host_alloc(mem::size_of::<PrimaryKeyFFI>()) as *mut PrimaryKeyFFI;
 		if pk_ptr.is_null() {
+			// SAFETY: discharges host_free; `name_ptr`/`name_bytes.len()` are the host_alloc block
+			// and size from above, still unfreed on this path.
 			unsafe { host_free(name_ptr, name_bytes.len()) };
 			if !columns_ptr.is_null() {
+				// SAFETY: discharges host_free; a non-null `columns_ptr` is the host_alloc block
+				// of exactly `columns_count * size_of::<ColumnFFI>()` bytes from above.
 				unsafe {
 					host_free(columns_ptr as *mut u8, columns_count * mem::size_of::<ColumnFFI>())
 				};
@@ -399,6 +451,9 @@ fn marshal_table(table: &Table) -> Result<TableFFI, &'static str> {
 			return Err("Failed to allocate primary key");
 		}
 
+		// SAFETY: `pk_ptr` is non-null (checked above), so it is a host_alloc block of
+		// `size_of::<PrimaryKeyFFI>()` bytes at align 8 >= align_of::<PrimaryKeyFFI>();
+		// PrimaryKeyFFI is Copy, so the write drops nothing uninitialised.
 		unsafe {
 			*pk_ptr = marshal_primary_key(pk)?;
 		}
@@ -429,6 +484,8 @@ fn marshal_column(column: &Column) -> Result<ColumnFFI, &'static str> {
 	if name_ptr.is_null() {
 		return Err("Failed to allocate column name");
 	}
+	// SAFETY: `name_ptr` is non-null (checked above), so it is a fresh host_alloc block of
+	// `name_bytes.len()` bytes and cannot overlap the borrowed source.
 	unsafe {
 		ptr::copy_nonoverlapping(name_bytes.as_ptr(), name_ptr, name_bytes.len());
 	}
@@ -465,6 +522,8 @@ fn marshal_primary_key(pk: &PrimaryKey) -> Result<PrimaryKeyFFI, &'static str> {
 		}
 
 		for (i, col) in pk.columns.iter().enumerate() {
+			// SAFETY: `ptr` is the non-null host_alloc block of `size` bytes above, so it holds
+			// `column_count` u64 slots at align 8 = align_of::<u64>(), and `i` is below that count.
 			unsafe {
 				*ptr.add(i) = col.id.0;
 			}
@@ -506,9 +565,9 @@ mod tests {
 
 	#[test]
 	fn marshal_row_shape_emits_fingerprint_field_count_and_per_field_layout() {
-		// This is the wire format the SDK reads back. If marshal ever stops setting fingerprint, or
-		// reorders the (offset, size, align) triple, every downstream FFI operator silently decodes
-		// into the wrong slots - exactly the panic class this feature exists to prevent.
+		// The wire format the SDK reads back: dropping the fingerprint or reordering the
+		// (offset, size, align) triple makes every downstream FFI operator decode into the
+		// wrong slots, silently.
 		let shape = RowShape::new(vec![
 			RowShapeField::new("id", TypeConstraint::unconstrained(ValueType::Uint8)),
 			RowShapeField::new("mint", TypeConstraint::unconstrained(ValueType::Utf8)),
@@ -524,10 +583,14 @@ mod tests {
 		);
 		assert_eq!(ffi.field_count, 3);
 
+		// SAFETY: marshal_row_shape returned Ok, so `fields` is a host allocation of exactly
+		// `field_count` initialised entries and stays alive until the free call below.
 		let fields_slice = unsafe { from_raw_parts(ffi.fields, ffi.field_count) };
 		let names: Vec<&str> = fields_slice
 			.iter()
 			.map(|f| {
+				// SAFETY: each marshalled name is a host allocation of `len` bytes owned by
+				// the same still-live RowShapeFFI.
 				let bytes = unsafe { from_raw_parts(f.name.ptr, f.name.len) };
 				from_utf8(bytes).expect("marshalled names must be valid UTF-8")
 			})
@@ -544,8 +607,8 @@ mod tests {
 			assert_eq!(ffi_field.base_type, type_tag_byte(&shape_field.constraint.get_type()));
 		}
 
-		// Reclaim the host-allocated buffers; if free ever crashes on a well-formed marshal output we
-		// want the test to surface it rather than leak silently into other tests' allocations.
+		// Freeing here surfaces a crash on well-formed marshal output rather than leaking into
+		// other tests' allocations.
 		let mut ffi_mut = ffi;
 		host_catalog_free_row_shape(&mut ffi_mut as *mut RowShapeFFI);
 	}

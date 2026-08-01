@@ -52,7 +52,7 @@ fn test_table_delete_returning() {
 	assert_eq!(rows[0].get::<i32>("id").unwrap().unwrap(), 1);
 	assert_eq!(rows[0].get::<String>("name").unwrap().unwrap(), "Alice");
 
-	// Verify row is actually deleted
+	// RETURNING must describe a delete that really happened, not just echo the matched row.
 	let frames = t.query("FROM test::t");
 	let rows: Vec<_> = frames[0].rows().collect();
 	assert_eq!(rows.len(), 1);

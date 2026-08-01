@@ -70,7 +70,6 @@ pub mod tests {
 	fn test_memory_sizes() {
 		let shape = RowShape::testing(&[ValueType::Uint8]);
 
-		// Test values representing memory sizes in bytes
 		let memory_sizes = [
 			1024u64,                // 1 KB
 			1048576u64,             // 1 MB
@@ -91,7 +90,6 @@ pub mod tests {
 	fn test_nanosecond_timestamps() {
 		let shape = RowShape::testing(&[ValueType::Uint8]);
 
-		// Test nanosecond precision timestamps
 		let ns_timestamps = [
 			0u64,                   // Unix epoch in ns
 			946684800000000000u64,  // 2000-01-01 in ns

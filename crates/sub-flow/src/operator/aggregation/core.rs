@@ -171,14 +171,14 @@ impl Aggregation {
 	pub(crate) fn tumbling_engine_slot(
 		&self,
 	) -> &mut Option<Box<TumblingEngine<Hash128, DateTime, RowAccumulator>>> {
-		// SAFETY: each flow operator is owned by exactly one actor and its
-
+		// SAFETY: one actor owns this operator and apply/tick never re-enter, so no other borrow
+		// of the UnsafeCell is live while this &mut exists.
 		unsafe { &mut *self.tumbling_engine.get() }
 	}
 
 	pub(crate) fn engine_meta_open(&self, budget: OperatorStateBudgetHandle) {
-		// SAFETY: each flow operator is owned by exactly one actor; apply/tick run single-threaded
-
+		// SAFETY: one actor owns this operator and apply/tick run single-threaded, so no other
+		// borrow of the UnsafeCell is live while this &mut exists.
 		let slot = unsafe { &mut *self.engine_meta.get() };
 		if slot.is_none() {
 			*slot = Some(StateCache::new(budget));
@@ -187,8 +187,8 @@ impl Aggregation {
 
 	#[allow(clippy::mut_from_ref)]
 	pub(crate) fn engine_meta(&self) -> &mut StateCache<EngineMetaKey, EngineMeta> {
-		// SAFETY: single-threaded per actor; engine_meta_open runs at the apply/tick entry
-
+		// SAFETY: single-threaded per actor, so no other borrow of the UnsafeCell is live; the
+		// slot is non-none because engine_meta_open runs at the apply/tick entry.
 		unsafe { (*self.engine_meta.get()).as_mut().expect("engine_meta opened at apply/tick entry") }
 	}
 
@@ -203,8 +203,8 @@ impl Aggregation {
 	pub(crate) fn engine_meta_sample_parts(
 		&self,
 	) -> Option<(StateMemory, StateMemory, StateMemory, StateCompleteness)> {
-		// SAFETY: single-threaded per actor; sample runs sequentially with apply/tick, no aliasing borrow is
-
+		// SAFETY: single-threaded per actor and sample runs sequentially with apply/tick, so no
+		// aliasing borrow of the UnsafeCell is live.
 		let cache = unsafe { (*self.engine_meta.get()).as_ref() }?;
 		Some((
 			cache.approximate_memory(),
@@ -223,16 +223,16 @@ impl Aggregation {
 	}
 
 	pub(crate) fn engine_meta_invalidate(&self, groups: &GroupSet) {
-		// SAFETY: single-threaded per actor; reclamation runs on the tick path, sequential with apply
-
+		// SAFETY: reclamation runs on the tick path, sequential with apply on the same actor, so
+		// no other borrow of the UnsafeCell is live while this &mut exists.
 		if let Some(cache) = unsafe { &mut *self.engine_meta.get() } {
 			cache.invalidate_group_data(groups);
 		}
 	}
 
 	pub(crate) fn tumbling_engine_invalidate(&self, groups: &GroupSet) {
-		// SAFETY: single-threaded per actor; reclamation runs on the tick path, sequential with apply
-
+		// SAFETY: reclamation runs on the tick path, sequential with apply on the same actor, so
+		// no other borrow of the UnsafeCell is live while this &mut exists.
 		if let Some(engine) = unsafe { (*self.tumbling_engine.get()).as_mut() } {
 			engine.invalidate_groups(groups);
 		}

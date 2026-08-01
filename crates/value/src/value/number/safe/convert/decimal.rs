@@ -270,8 +270,7 @@ pub mod tests {
 
 		#[test]
 		fn checked_convert_f32_max_exact_literal_roundtrips() {
-			// The canonical f64 decimal of f32::MAX parses to exactly f32::MAX as f64,
-			// which is within range and must round-trip cleanly.
+			// The exact decimal expansion of f32::MAX must convert back to it unchanged.
 			let bd = BigDecimal::from_str("3.4028234663852886e38").unwrap();
 			let dec = Decimal::new(bd);
 			let out: Option<f32> = dec.checked_convert();
@@ -288,13 +287,9 @@ pub mod tests {
 
 		#[test]
 		fn checked_convert_rounds_value_just_above_f32_max_to_max() {
-			// 3.4028235e38 is the shortest decimal that rounds to f32::MAX; as
-			// an exact decimal it is slightly larger than f32::MAX, but IEEE
-			// round-to-nearest maps it back to f32::MAX. The printed form of
-			// f32::MAX must round-trip, so checked conversion accepts anything
-			// that rounds into range and rejects only true overflow (see
-			// checked_convert_rejects_value_above_f32_max). Same contract as
-			// parsing the equivalent string and the f64 -> f32 demote.
+			// This is the shortest decimal that prints f32::MAX, and as an exact value it is
+			// slightly above it. Conversion accepts anything that rounds into range and
+			// rejects only true overflow, so printing f32::MAX and reading it back works.
 			let bd = BigDecimal::from_str("3.4028235e38").unwrap();
 			let dec = Decimal::new(bd);
 			let out: Option<f32> = dec.checked_convert();
@@ -303,7 +298,6 @@ pub mod tests {
 
 		#[test]
 		fn checked_convert_rejects_value_above_f32_max() {
-			// 1e40 is well above f32::MAX; must be rejected.
 			let bd = BigDecimal::from_str("1e40").unwrap();
 			let dec = Decimal::new(bd);
 			let out: Option<f32> = dec.checked_convert();
@@ -360,10 +354,8 @@ pub mod tests {
 
 		#[test]
 		fn checked_convert_f64_max_literal_roundtrips() {
-			// Regression: bigdecimal-0.4.10's to_f64 returns infinity for this
-			// representation (int=17976931348623157, scale=-292) via its lossy
-			// "simple integer" branch (int.to_f64() * powi(10, 292)). The string-based
-			// conversion must round-trip exactly to f64::MAX.
+			// bigdecimal 0.4.10's to_f64 returns infinity for this representation through its
+			// lossy "simple integer" branch, so the conversion has to go via the string form.
 			let bd = BigDecimal::from_str("1.7976931348623157e308").unwrap();
 			let dec = Decimal::new(bd);
 			let out: Option<f64> = dec.checked_convert();
@@ -380,7 +372,7 @@ pub mod tests {
 
 		#[test]
 		fn checked_convert_rejects_value_above_f64_max() {
-			// 1e400 exceeds f64::MAX (~1.8e308) so must parse as infinity and be rejected.
+			// Past f64::MAX the parse yields infinity, which must be rejected, not stored.
 			let bd = BigDecimal::from_str("1e400").unwrap();
 			let dec = Decimal::new(bd);
 			let out: Option<f64> = dec.checked_convert();

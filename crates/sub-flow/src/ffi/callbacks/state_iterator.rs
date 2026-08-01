@@ -130,18 +130,18 @@ pub mod tests {
 		let freed = free_iterator(handle);
 		assert!(freed);
 
-		// Freeing again should return false
 		let freed_again = free_iterator(handle);
 		assert!(!freed_again);
 	}
 
-	// Test-only convenience over the batched FFI protocol: pulls exactly one entry,
-	// copying it out of the registry-owned slice before any further registry call.
 	fn next_one(handle: StateIteratorHandle) -> Option<(Vec<u8>, Vec<u8>)> {
+		// Pulls one entry and copies it out before any further registry call can invalidate it.
 		let (ptr, len) = next_iterator_batch(handle, 1)?;
 		if len == 0 {
 			return None;
 		}
+		// SAFETY: len > 0 means the registry entry `ptr` points at is still alive and no
+		// intervening registry call has been made, so the reference is valid for this read.
 		let (key, value) = unsafe { &*ptr };
 		Some((key.clone(), value.clone()))
 	}
@@ -168,17 +168,14 @@ pub mod tests {
 
 		let handle = create_iterator(batch);
 
-		// Read first item
 		let (key1, val1) = next_one(handle).unwrap();
 		assert_eq!(key1, b"key1");
 		assert_eq!(val1, b"value1");
 
-		// Read second item
 		let (key2, val2) = next_one(handle).unwrap();
 		assert_eq!(key2, b"key2");
 		assert_eq!(val2, b"value2");
 
-		// Iterator exhausted
 		assert!(next_one(handle).is_none());
 
 		free_iterator(handle);

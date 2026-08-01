@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 //
-// A deferred view created with a row TTL persists row settings in the same
-// create-view commit; they must be findable via `find_row_settings` just like
-// the transactional case.
+// A deferred view persists its row TTL in the same create-view commit, so the read contract
+// must hold there too.
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;

@@ -254,10 +254,10 @@ pub mod tests {
 		}
 	}
 
-	/// Every declared option must survive the def-row codec; a queue that loses
-	/// its partition count or retry budget on write silently changes behaviour.
 	#[test]
 	fn test_create_queue_round_trips_every_option() {
+		// A queue that loses its partition count or retry budget in the def-row codec
+		// silently changes behaviour.
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
@@ -278,10 +278,10 @@ pub mod tests {
 		assert_eq!(created.columns[0].name, "payload");
 	}
 
-	/// An absent ordered_by and an absent retention must read back as none, not
-	/// as an empty-string column name or a zero duration.
 	#[test]
 	fn test_create_queue_without_optional_options() {
+		// An absent ordered_by and an absent retention must read back as none, not as an
+		// empty-string column name or a zero duration.
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
@@ -311,10 +311,9 @@ pub mod tests {
 		assert_eq!(created.retry.backoff, Queue::DEFAULT_RETRY_BACKOFF);
 	}
 
-	/// Two queues of the same name in one namespace would make name resolution
-	/// ambiguous, so the second create must be rejected as a queue collision.
 	#[test]
 	fn test_create_queue_duplicate_name_rejected() {
+		// Two queues of one name in a namespace would make name resolution ambiguous.
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
@@ -383,12 +382,9 @@ mod time_declaration_tests {
 	}
 
 	#[test]
-	// Intent: a queue's populator must reach its own catalog row. The queue shape is the widest of
-	// the four source objects and its ts field sits after eleven others, so this is where an
-	// off-by-one field index would surface.
-	// Mutation: delete the write_time_source call from store_queue, or point decode at any other
-	// field index, and the populator comes back as none or as another column's text.
 	fn a_queue_round_trips_its_populator() {
+		// The queue shape is the widest of the source objects and its ts field sits last, so
+		// an off-by-one field index surfaces here first.
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
@@ -419,8 +415,8 @@ mod time_declaration_tests {
 	}
 
 	#[test]
-	// Intent: silence stays silence through the round trip.
 	fn a_bare_queue_round_trips_as_processing() {
+		// An undeclared populator must stay absent through the round trip.
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 

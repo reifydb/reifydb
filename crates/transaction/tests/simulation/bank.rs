@@ -30,7 +30,6 @@ fn bank_transfer(seed: u64, num_accounts: usize, num_transfers: usize) -> (Sched
 	let mut rng = StdRng::seed_from_u64(seed);
 	let initial_balance: i64 = 100;
 
-	// Setup: one transaction to initialize all accounts
 	let mut steps = Vec::new();
 	steps.push(Step {
 		tx_id: TxId(0),
@@ -50,8 +49,7 @@ fn bank_transfer(seed: u64, num_accounts: usize, num_transfers: usize) -> (Sched
 		op: Op::Commit,
 	});
 
-	// Generate transfer transactions (tx_ids 1..=num_transfers)
-	// transfer_writes[i] = (from_key, to_key, from_value, to_value) for TxId(i+1)
+	// transfer_writes[i] belongs to TxId(i+1); TxId(0) is the setup transaction.
 	let mut transfer_writes: Vec<(String, String, String, String)> = Vec::new();
 	let mut tx_ops: Vec<Vec<Op>> = Vec::new();
 	for _ in 0..num_transfers {
@@ -69,7 +67,6 @@ fn bank_transfer(seed: u64, num_accounts: usize, num_transfers: usize) -> (Sched
 
 		transfer_writes.push((from_key.clone(), to_key.clone(), from_value.clone(), to_value.clone()));
 
-		// Read-modify-write pattern: read both, write both
 		let mut ops = Vec::new();
 		ops.push(Op::BeginCommand);
 		ops.push(Op::Get {
@@ -91,7 +88,6 @@ fn bank_transfer(seed: u64, num_accounts: usize, num_transfers: usize) -> (Sched
 		tx_ops.push(ops);
 	}
 
-	// Interleave the transfer transactions
 	let mut cursors: Vec<usize> = vec![0; num_transfers];
 	let mut active: Vec<usize> = (0..num_transfers).collect();
 
@@ -120,13 +116,12 @@ fn bank_transfer(seed: u64, num_accounts: usize, num_transfers: usize) -> (Sched
 	let invariants: Vec<Box<dyn Invariant>> = vec![Box::new(FinalStateConsistency {
 		name: "bank_replay_final_state".into(),
 		predicate: Box::new(move |state, trace| {
-			// Build expected state by replaying committed transfers in commit order
 			let mut expected: BTreeMap<String, String> = BTreeMap::new();
 			for i in 0..num_accounts {
 				expected.insert(format!("account_{}", i), format!("{}", initial_balance));
 			}
 
-			// Sort committed transfers by commit version
+			// Commit order, not schedule order, is what the final state must reflect.
 			let mut committed: Vec<_> = transfer_writes
 				.iter()
 				.enumerate()

@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Row-shape descriptor: the schema-of-bytes that explains how to interpret an `EncodedRow`.
-//!
-//! A `RowShape` lists every field (name, type constraint, byte offset, byte size, alignment) so storage backends,
-//! replication, and CDC can address fields without consulting the catalog. Submodules cover shape consolidation across
-//! rows of the same logical schema, schema evolution rules for adding and removing fields, structural fingerprinting
-//! used by plan caches and migration tooling, and conversion routines from typed schemas.
-//!
-//! Invariant: the `SHAPE_HEADER_SIZE` constant and the packed-mode bit layout (mode bit, length mask, offset mask) are
-//! part of the wire format. Reordering or resizing any of these regions silently breaks every row written under the
-//! previous layout.
+//! Row-shape descriptor: the schema-of-bytes that lets storage, replication and CDC address an
+//! `EncodedRow`'s fields without consulting the catalog. `SHAPE_HEADER_SIZE` and the packed-mode bit
+//! layout are part of the wire format; resizing either breaks every row written under the old one.
 
 pub mod cache;
 pub mod consolidate;
@@ -247,6 +240,9 @@ impl RowShape {
 				Some((offset, length))
 			}
 			ValueType::Int | ValueType::Uint | ValueType::Decimal => {
+				// SAFETY: these three types occupy a 16-byte static slot, and the shape
+				// guarantees field.offset + 16 lies inside the row's static section;
+				// read_unaligned needs no alignment and u128 has no invalid patterns.
 				let packed = unsafe {
 					(row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned()
 				};
@@ -275,6 +271,9 @@ impl RowShape {
 				let offset_part = (offset as u128) & PACKED_OFFSET_MASK;
 				let length_part = ((length as u128) << 64) & PACKED_LENGTH_MASK;
 				let packed = PACKED_MODE_DYNAMIC | offset_part | length_part;
+				// SAFETY: these three types occupy a 16-byte static slot, and the shape
+				// guarantees field.offset + 16 lies inside the row's static section;
+				// make_mut() gives unique ownership and write_unaligned needs no alignment.
 				unsafe {
 					ptr::write_unaligned(
 						row.0.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u128,

@@ -32,7 +32,6 @@ fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 #[test]
 fn test_mixed_type_stress() {
 	let (_, clock, rng) = test_clock_and_rng();
-	// Comprehensive test with all types interacting
 	let shape = RowShape::testing(&[
 		ValueType::Boolean,
 		ValueType::Int1,
@@ -63,7 +62,6 @@ fn test_mixed_type_stress() {
 
 	let mut row = shape.allocate();
 
-	// Set all fields
 	shape.set::<bool>(&mut row, 0, true);
 	shape.set::<i8>(&mut row, 1, -128i8);
 	shape.set::<i16>(&mut row, 2, -32768i16);
@@ -90,7 +88,6 @@ fn test_mixed_type_stress() {
 	shape.set_uint(&mut row, 23, &Uint::from(u128::MAX));
 	shape.set_decimal(&mut row, 24, &Decimal::from_str("123.45").unwrap());
 
-	// Verify all fields
 	assert_eq!(shape.get::<bool>(&row, 0), true);
 	assert_eq!(shape.get::<i8>(&row, 1), -128);
 	assert_eq!(shape.get::<i16>(&row, 2), -32768);
@@ -110,7 +107,7 @@ fn test_mixed_type_stress() {
 	assert_eq!(shape.get::<DateTime>(&row, 16), DateTime::from_timestamp(0).unwrap());
 	assert_eq!(shape.get::<Time>(&row, 17), Time::from_hms(23, 59, 59).unwrap());
 	assert_eq!(shape.get::<Duration>(&row, 18), Duration::from_days(365).unwrap());
-	// UUIDs are generated, so just check they exist
+	// The uuid values are generated, so only their presence can be asserted.
 	assert!(row.is_defined(19));
 	assert!(row.is_defined(20));
 	assert!(row.is_defined(21));

@@ -47,6 +47,8 @@ pub unsafe extern "C" fn ffi_procedure_call<T: FFIProcedure>(
 		let params: Params = if params_ptr.is_null() || params_len == 0 {
 			Params::None
 		} else {
+			// SAFETY: null and zero-length are handled by the other branch; otherwise the host caller
+			// keeps params_ptr readable for params_len bytes for the duration of this call.
 			let bytes = unsafe { slice::from_raw_parts(params_ptr, params_len) };
 			match decode_params(bytes) {
 				Ok(p) => p,
@@ -87,6 +89,8 @@ pub unsafe extern "C" fn ffi_procedure_destroy<T: FFIProcedure>(instance: *mut c
 		return;
 	}
 
+	// SAFETY: instance was checked non-null above and ffi_procedure_destroy's contract makes it a Box::new
+	// allocated ProcedureWrapper<T>; the host calls destroy once, so ownership is taken exactly once.
 	let result = catch_unwind(AssertUnwindSafe(|| unsafe {
 		let _wrapper = Box::from_raw(instance as *mut ProcedureWrapper<T>);
 	}));

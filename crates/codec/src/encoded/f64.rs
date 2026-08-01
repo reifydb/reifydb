@@ -34,26 +34,21 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Float8]);
 		let mut row = shape.allocate();
 
-		// Test zero
 		shape.set::<f64>(&mut row, 0, 0.0f64);
 		assert_eq!(shape.get::<f64>(&row, 0), 0.0f64);
 
-		// Test negative zero
 		let mut row2 = shape.allocate();
 		shape.set::<f64>(&mut row2, 0, -0.0f64);
 		assert_eq!(shape.get::<f64>(&row2, 0), -0.0f64);
 
-		// Test infinity
 		let mut row3 = shape.allocate();
 		shape.set::<f64>(&mut row3, 0, f64::INFINITY);
 		assert_eq!(shape.get::<f64>(&row3, 0), f64::INFINITY);
 
-		// Test negative infinity
 		let mut row4 = shape.allocate();
 		shape.set::<f64>(&mut row4, 0, f64::NEG_INFINITY);
 		assert_eq!(shape.get::<f64>(&row4, 0), f64::NEG_INFINITY);
 
-		// Test NaN
 		let mut row5 = shape.allocate();
 		shape.set::<f64>(&mut row5, 0, f64::NAN);
 		assert!(shape.get::<f64>(&row5, 0).is_nan());

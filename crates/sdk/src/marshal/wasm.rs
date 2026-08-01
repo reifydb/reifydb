@@ -377,6 +377,8 @@ fn marshal_numeric_to_buf<T: Copy>(buf: &mut Vec<u8>, slice: &[T]) -> (u32, u32,
 	}
 	let offset = buf.len() as u32;
 	let src = slice.as_ptr() as *const u8;
+	// SAFETY: `src`/`byte_len` describe exactly `slice`'s own live allocation reinterpreted as bytes,
+	// and every `T` reaching here is a padding-free primitive, so all `byte_len` bytes are initialised.
 	buf.extend_from_slice(unsafe { slice::from_raw_parts(src, byte_len) });
 	(offset, byte_len as u32, 0, 0)
 }
@@ -435,6 +437,8 @@ fn marshal_data_with_offsets_to_buf(buf: &mut Vec<u8>, data: &[u8], offsets: &[u
 	let offsets_offset = buf.len() as u32;
 	let offsets_byte_len = mem::size_of_val(offsets);
 	let src = offsets.as_ptr() as *const u8;
+	// SAFETY: `src`/`offsets_byte_len` describe exactly the `&[u64]`'s own live allocation reinterpreted
+	// as bytes; u64 has no padding, so every one of those bytes is initialised.
 	buf.extend_from_slice(unsafe { slice::from_raw_parts(src, offsets_byte_len) });
 	let offsets_len = offsets_byte_len as u32;
 
@@ -559,6 +563,9 @@ fn unmarshal_numeric<T: Copy + Default + IsNumber>(data: &[u8], row_count: usize
 	}
 	let count = data.len() / size_of::<T>();
 	let mut values = vec![T::default(); count];
+	// SAFETY: `count` is floored from `data.len()`, so the source holds `count * size_of::<T>()` readable
+	// bytes and the freshly allocated `values` holds that many writable bytes at alignment 1; the two
+	// allocations are disjoint, and every `T` reaching here is a primitive with no invalid bit patterns.
 	unsafe {
 		ptr::copy_nonoverlapping(data.as_ptr(), values.as_mut_ptr() as *mut u8, count * size_of::<T>());
 	}
@@ -586,6 +593,9 @@ fn unmarshal_date(data: &[u8], row_count: usize) -> TemporalContainer<Date> {
 	}
 	let count = data.len() / size_of::<i32>();
 	let mut raw = vec![0i32; count];
+	// SAFETY: `count` is floored from `data.len()`, so the source holds `count * size_of::<i32>()`
+	// readable bytes and the freshly allocated `raw` holds that many writable bytes at alignment 1; the
+	// two allocations are disjoint, and every bit pattern is a valid `i32`.
 	unsafe {
 		ptr::copy_nonoverlapping(data.as_ptr(), raw.as_mut_ptr() as *mut u8, count * size_of::<i32>());
 	}
@@ -599,6 +609,9 @@ fn unmarshal_datetime(data: &[u8], row_count: usize) -> TemporalContainer<DateTi
 	}
 	let count = data.len() / size_of::<i64>();
 	let mut raw = vec![0i64; count];
+	// SAFETY: `count` is floored from `data.len()`, so the source holds `count * size_of::<i64>()`
+	// readable bytes and the freshly allocated `raw` holds that many writable bytes at alignment 1; the
+	// two allocations are disjoint, and every bit pattern is a valid `i64`.
 	unsafe {
 		ptr::copy_nonoverlapping(data.as_ptr(), raw.as_mut_ptr() as *mut u8, count * size_of::<i64>());
 	}
@@ -612,6 +625,9 @@ fn unmarshal_time(data: &[u8], row_count: usize) -> TemporalContainer<Time> {
 	}
 	let count = data.len() / size_of::<u64>();
 	let mut raw = vec![0u64; count];
+	// SAFETY: `count` is floored from `data.len()`, so the source holds `count * size_of::<u64>()`
+	// readable bytes and the freshly allocated `raw` holds that many writable bytes at alignment 1; the
+	// two allocations are disjoint, and every bit pattern is a valid `u64`.
 	unsafe {
 		ptr::copy_nonoverlapping(data.as_ptr(), raw.as_mut_ptr() as *mut u8, count * size_of::<u64>());
 	}

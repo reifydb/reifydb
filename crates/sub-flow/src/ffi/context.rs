@@ -27,6 +27,13 @@ pub(crate) fn new_ffi_context(
 	}
 }
 
+/// # Safety
+///
+/// `ctx.txn_ptr` must be the pointer stored by [`new_ffi_context`] from a live
+/// `&mut FlowTransaction` that is still borrowed exclusively, so the returned
+/// reference is the only one aliasing it for its lifetime.
 pub(crate) unsafe fn get_transaction_mut(ctx: &mut ContextFFI) -> &mut FlowTransaction {
+	// SAFETY: discharges this function's own contract; `ctx.txn_ptr` is then a live, aligned
+	// FlowTransaction that nothing else aliases for the returned lifetime.
 	unsafe { &mut *(ctx.txn_ptr as *mut FlowTransaction) }
 }

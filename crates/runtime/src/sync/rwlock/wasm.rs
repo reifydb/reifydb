@@ -116,8 +116,7 @@ impl<T: 'static> ArcRwLockInner<T> {
 		let arc = self.inner.clone();
 		let guard = arc.borrow();
 
-		// SAFETY: reifydb_single_threaded targets have no real concurrency, so no data race is
-
+		// SAFETY: `arc` is stored beside the guard and outlives it, so the 'static borrow never dangles.
 		let guard = unsafe { mem::transmute::<Ref<'_, T>, Ref<'static, T>>(guard) };
 
 		OwnedRwLockReadGuardInner {
@@ -130,8 +129,7 @@ impl<T: 'static> ArcRwLockInner<T> {
 		let arc = self.inner.clone();
 		let guard = arc.borrow_mut();
 
-		// SAFETY: reifydb_single_threaded targets have no real concurrency, so no data race is
-
+		// SAFETY: `arc` is stored beside the guard and outlives it, so the 'static borrow never dangles.
 		let guard = unsafe { mem::transmute::<RefMut<'_, T>, RefMut<'static, T>>(guard) };
 
 		OwnedRwLockWriteGuardInner {

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Bumpalo-backed arena allocator used by the engine for per-request scratch storage. Plans, intermediate column
-//! buffers, and the bit-vectors that drive selection live in an arena tied to the request lifetime so the engine
-//! can release everything in one bump-reset rather than tracking individual allocations.
+//! Bumpalo-backed arena for per-request scratch storage. Plans, intermediate column buffers and the selection
+//! bit-vectors are tied to the request lifetime so everything is released in one bump-reset rather than tracked
+//! allocation by allocation.
 
 use std::{
 	fmt::{self, Debug},
@@ -600,8 +600,8 @@ mod tests {
 			assert_eq!(container.len(), 3);
 			assert_eq!(container.get(0), Some(true));
 			assert_eq!(container.get(1), Some(false));
-			// push_default on a bare container pushes false;
-			// nullability is tracked by the Option wrapper at the ColumnBuffer level.
+			// A bare container carries no none mask - that lives on the ColumnBuffer's
+			// Option wrapper - so push_default is false, not none.
 			assert_eq!(container.get(2), Some(false));
 		}
 
@@ -614,7 +614,7 @@ mod tests {
 			v.push(2);
 			assert_eq!(DataVec::len(&v), 2);
 
-			// After reset, the arena memory is reclaimed
+			// The vec must be dropped before reset; reset reclaims the memory it borrows.
 			drop(v);
 			arena.reset();
 

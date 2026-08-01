@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Source and sink connector registry. Connectors that authoring code defines through `reifydb-sdk` are registered
-//! here at boot, and the runtime instantiates them at flow start using the typed factory closures. Source factories
-//! produce inputs; sink factories accept outputs; both share the same registration and configuration shape.
+//! Source and sink connector registry. Connectors defined through `reifydb-sdk` register here at
+//! boot and are instantiated at flow start through their typed factory closures.
 
 use std::{collections::HashMap, sync::Arc};
 

@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Regression test for the system/user catalog ID split.
-//!
-//! Bootstrap-created system series (profiler + runtime `snapshots`) must take hardcoded IDs from the reserved
-//! `< 16385` block instead of drawing from the shared dynamic `SOURCE_KEY`/`COLUMN_KEY` counters. Otherwise every
-//! added system series shifts user source/column IDs upward - the bug this guards against. The invariant we assert
-//! is that, after a full bootstrap, the first user-created table and column still land on the reserved boundary
-//! (16385), independent of how many system series exist.
+//! Bootstrap-created system series must take hardcoded IDs from the reserved `< 16385` block rather than draw
+//! from the shared `SOURCE_KEY`/`COLUMN_KEY` counters; otherwise adding a system series shifts every user
+//! source and column ID upward.
 
 use reifydb_catalog::{
 	bootstrap::bootstrap_system_objects,

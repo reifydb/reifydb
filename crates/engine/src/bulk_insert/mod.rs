@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Fast path for inserting many rows at once. Skips the per-row VM dispatch loop, coerces and validates the input
-//! batch up front, and writes directly through the storage commit path so a load of a million rows pays a small
-//! constant overhead rather than a million instruction-dispatch costs.
-//!
-//! Used by ingestion endpoints, replication, and the bulk-load admin tool. Validation here matches the constraints
-//! the per-row INSERT path applies; if the two diverge, bulk-insert can accept rows that single-row INSERT would
-//! reject (or vice versa), which silently produces inconsistent state.
+//! Fast path for inserting many rows at once: validates the batch up front and writes through the storage commit
+//! path instead of the per-row VM dispatch loop. Validation here must match what the per-row INSERT path applies;
+//! any divergence lets one path accept rows the other rejects and silently produces inconsistent state.
 
 pub mod builder;
 pub mod coerce;

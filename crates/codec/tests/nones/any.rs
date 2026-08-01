@@ -21,14 +21,10 @@ crate::nones_tests! {
 	inner_type: ValueType::Any,
 }
 
-// The tests above cover column-level absence (the outer FrameColumnData::Option bitvec says a row
-// isn't present). This covers the different case of an Any cell that IS present but whose payload
-// is itself a None sentinel for some concrete type, e.g. an optional config value stored through
-// the Any escape hatch. That value flows through encode_any_value/decode_any_value directly,
-// bypassing the outer bitvec entirely.
-
 #[test]
 fn any_cell_holding_none_of_duration_round_trips() {
+	// Distinct from column-level absence: the cell is present and its payload is itself a none,
+	// so it bypasses the outer bitvec and rides the Any value codec.
 	crate::utils::round_trip_column(
 		"c",
 		FrameColumnData::Any(AnyContainer::new(vec![
@@ -59,8 +55,7 @@ fn any_cell_holding_none_of_triple_nested_option_round_trips() {
 
 #[test]
 fn any_cell_holding_bare_none_round_trips() {
-	// Value::none() defaults to inner: Any, distinct from Value::none_of(ValueType::Any) only in
-	// how it is constructed, not in the encoded bytes.
+	// Value::none() defaults its inner type to Any, so it encodes identically to none_of(Any).
 	crate::utils::round_trip_column("c", FrameColumnData::Any(AnyContainer::new(vec![Box::new(Value::none())])));
 }
 

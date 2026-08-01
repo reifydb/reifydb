@@ -17,7 +17,6 @@ use reifydb_value::util::cowvec::CowVec;
 
 use super::schedule::{Op, Schedule, Step, TxId};
 
-/// The result of executing a single operation.
 #[derive(Debug)]
 pub enum OpResult {
 	Ok,
@@ -27,7 +26,6 @@ pub enum OpResult {
 	Error(String),
 }
 
-/// Records the result of a single step execution.
 #[derive(Debug)]
 pub struct StepResult {
 	pub step_index: usize,
@@ -36,7 +34,6 @@ pub struct StepResult {
 	pub result: OpResult,
 }
 
-/// The full trace of a schedule execution.
 #[derive(Debug)]
 pub struct ExecutionTrace {
 	pub results: Vec<StepResult>,
@@ -45,7 +42,8 @@ pub struct ExecutionTrace {
 }
 
 impl ExecutionTrace {
-	/// Returns the result of a Get operation for a specific step, if it was a Value result.
+	/// None when the step at `step_index` was not a Get, which is a test-authoring error rather
+	/// than a missing value; a Get that read nothing is `Some(None)`.
 	pub fn get_value(&self, step_index: usize) -> Option<&Option<Vec<u8>>> {
 		match &self.results[step_index].result {
 			OpResult::Value(v) => Some(v),
@@ -251,10 +249,10 @@ impl Executor {
 			});
 		}
 
-		// Drop remaining handles (uncommitted transactions are implicitly rolled back)
+		// Dropping rolls back whatever the schedule left uncommitted, so the final state below
+		// reflects only committed work.
 		drop(handles);
 
-		// Read final state via a fresh read transaction
 		let final_state = self.read_final_state();
 
 		ExecutionTrace {

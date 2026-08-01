@@ -277,7 +277,6 @@ pub mod tests {
 		assert_eq!(container.get(1), Some(&2.2));
 		assert_eq!(container.get(2), Some(&3.3));
 
-		// All should be defined
 		for i in 0..3 {
 			assert!(container.is_defined(i));
 		}
@@ -371,7 +370,8 @@ pub mod tests {
 	fn test_push_with_convert() {
 		let mut container: NumberContainer<i32> = NumberContainer::with_capacity(3);
 
-		// Successful conversion
+		// A failed conversion still pushes, keeping the row count aligned with the other
+		// columns; it lands on the default rather than being skipped.
 		container.push_with_convert(42u32, |x| {
 			if x <= i32::MAX as u32 {
 				Some(x as i32)
@@ -380,7 +380,6 @@ pub mod tests {
 			}
 		});
 
-		// Failed conversion
 		container.push_with_convert(u32::MAX, |x| {
 			if x <= i32::MAX as u32 {
 				Some(x as i32)
@@ -401,10 +400,9 @@ pub mod tests {
 	fn test_data_access() {
 		let mut container = NumberContainer::from_vec(vec![1i32, 2, 3]);
 
-		// Test immutable access
 		assert_eq!(container.data().len(), 3);
 
-		// Test mutable access
+		// Pushing through data_mut must keep len() in step, since it bypasses push().
 		container.data_mut().push(4);
 
 		assert_eq!(container.len(), 4);

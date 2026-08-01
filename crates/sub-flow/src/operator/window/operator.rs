@@ -116,8 +116,8 @@ impl WindowOperator {
 
 	#[allow(clippy::mut_from_ref)]
 	pub(super) fn meta_slot(&self) -> &mut WindowMeta {
-		// SAFETY: apply and tick run single-threaded and never re-enter, so meta_slot borrows are
-
+		// SAFETY: apply and tick run single-threaded on one actor and never re-enter, so no other
+		// borrow of the UnsafeCell is live while this &mut exists.
 		unsafe { &mut *self.meta.get() }
 	}
 
@@ -138,6 +138,8 @@ impl WindowOperator {
 
 	#[allow(clippy::mut_from_ref)]
 	pub(crate) fn rolling_engine_slot(&self) -> &mut Option<RollingEngineSlot> {
+		// SAFETY: apply and tick run single-threaded on one actor and never re-enter, and every caller
+		// drops its engine borrow before taking the next, so no other borrow of the cell is live.
 		unsafe { &mut *self.rolling_engine.get() }
 	}
 

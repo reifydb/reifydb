@@ -219,7 +219,6 @@ pub mod tests {
 		let frame = make_test_frame();
 		let row = frame.rows().next().unwrap();
 
-		// i64 coerced to f64
 		let id: Option<f64> = row.get_coerce("id").unwrap();
 		assert_eq!(id, Some(1.0f64));
 	}

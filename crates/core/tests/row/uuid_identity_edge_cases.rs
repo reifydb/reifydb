@@ -26,7 +26,6 @@ fn test_uuid_uniqueness() {
 	let (mock, clock, rng) = test_clock_and_rng();
 	let shape = RowShape::testing(&[ValueType::Uuid4, ValueType::Uuid7, ValueType::IdentityId]);
 
-	// Generate many UUIDs and verify uniqueness
 	let mut uuid4_set = HashSet::new();
 	let mut uuid7_set = HashSet::new();
 	let mut identity_set = HashSet::new();
@@ -42,12 +41,10 @@ fn test_uuid_uniqueness() {
 		shape.set::<Uuid7>(&mut row, 1, uuid7);
 		shape.set::<IdentityId>(&mut row, 2, identity);
 
-		// Verify storage and retrieval
 		assert_eq!(shape.get::<Uuid4>(&row, 0), uuid4);
 		assert_eq!(shape.get::<Uuid7>(&row, 1), uuid7);
 		assert_eq!(shape.get::<IdentityId>(&row, 2), identity);
 
-		// Check uniqueness
 		assert!(uuid4_set.insert(uuid4), "UUID4 collision detected");
 		assert!(uuid7_set.insert(uuid7), "UUID7 collision detected");
 		assert!(identity_set.insert(identity), "IdentityId collision detected");
@@ -67,11 +64,10 @@ fn test_uuid7_timestamp_ordering() {
 		shape.set::<Uuid7>(&mut row, 0, uuid);
 		uuids.push(shape.get::<Uuid7>(&row, 0));
 
-		// Advance clock to ensure timestamp progression
+		// Advance the clock so each id gets a distinct timestamp.
 		mock.advance_millis(1);
 	}
 
-	// UUID7s should be timestamp-ordered
 	for i in 1..uuids.len() {
 		assert!(uuids[i] > uuids[i - 1], "UUID7 not in timestamp order");
 	}

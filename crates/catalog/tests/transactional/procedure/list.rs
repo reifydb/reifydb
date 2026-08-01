@@ -1,15 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 //
-// Combined create+drop within a single txn; asserts via
-// `list_procedures_for_variant`.  Scenario A is the canonical reproducer for
-// the `.retain()` omission at
-// `crates/catalog/src/catalog/procedure.rs:273-325`: uncommitted deletions are
-// not subtracted from the result, so `keep` still appears after being dropped
-// within the same transaction.
-//
-// Mutations use `CREATE HANDLER` (creates an event-bound procedure) and
-// `DROP PROCEDURE` (the generic drop that works for any persistent procedure).
+// Mutations use `CREATE HANDLER` (creates an event-bound procedure) and `DROP PROCEDURE`
+// (the generic drop that works for any persistent procedure).
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;

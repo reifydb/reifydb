@@ -39,6 +39,9 @@ impl<'a, T: Copy> ScalarWriter<'a, T> {
 		reifydb_assertions! {
 			assert!(self.cursor < self.capacity, "ScalarWriter::push past capacity");
 		}
+		// SAFETY: `data_ptr` is the base of the buffer `ColumnsBuilder::*_writer` acquired for
+		// `self.capacity` elements of `T`, so the store at `self.cursor` is in bounds while callers
+		// keep the cursor below that capacity; `write_unaligned` needs no alignment for `T`.
 		unsafe {
 			let data = self.inner.data_ptr() as *mut T;
 			core::ptr::write_unaligned(data.add(self.cursor), v);
@@ -57,6 +60,9 @@ impl<'a, T: Copy> ScalarWriter<'a, T> {
 		reifydb_assertions! {
 			assert!(self.cursor < self.capacity, "ScalarWriter::push_none past capacity");
 		}
+		// SAFETY: `data_ptr` is the base of the buffer `ColumnsBuilder::*_writer` acquired for
+		// `self.capacity` elements of `T`, so the store at `self.cursor` is in bounds while callers
+		// keep the cursor below that capacity; `write_unaligned` needs no alignment for `T`.
 		unsafe {
 			let data = self.inner.data_ptr() as *mut T;
 			core::ptr::write_unaligned(data.add(self.cursor), T::default());
@@ -160,6 +166,8 @@ impl<'a> VarLenWriter<'a> {
 		if initial > 0 {
 			inner.grow(initial)?;
 		}
+		// SAFETY: Utf8, Blob and Decimal are all var-len type codes, so `offsets_ptr` is non-null and
+		// the acquire reserved `capacity + 1` aligned `u64` slots; this writes slot 0.
 		unsafe {
 			core::ptr::write(inner.offsets_ptr(), 0u64);
 		}
@@ -191,6 +199,9 @@ impl<'a> VarLenWriter<'a> {
 			assert!(self.item_cursor < self.capacity, "VarLenWriter::push past capacity");
 		}
 		self.ensure_capacity(bytes.len())?;
+		// SAFETY: `ensure_capacity` kept `byte_cursor + bytes.len()` within the data bytes `grow`
+		// reserved, so the copy is in bounds and `bytes` is a distinct live slice; the offsets slot
+		// at `item_cursor + 1` is in bounds while callers keep `item_cursor` below `self.capacity`.
 		unsafe {
 			let data = self.inner.data_ptr();
 			let offsets = self.inner.offsets_ptr();
@@ -225,6 +236,9 @@ impl<'a> VarLenWriter<'a> {
 		reifydb_assertions! {
 			assert!(self.item_cursor < self.capacity, "VarLenWriter::push_none past capacity");
 		}
+		// SAFETY: `offsets_ptr` is non-null for this var-len builder, and the slot at
+		// `item_cursor + 1` is inside the slots the acquire and `grow` reserved while callers keep
+		// `item_cursor` below `self.capacity`.
 		unsafe {
 			let offsets = self.inner.offsets_ptr();
 			core::ptr::write(offsets.add(self.item_cursor + 1), self.byte_cursor as u64);

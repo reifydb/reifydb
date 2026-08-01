@@ -9,8 +9,7 @@ use super::simulator::{
 
 #[test]
 fn test_dirty_read_prevented() {
-	// T1 writes a key, T2 reads the same key before T1 commits.
-	// T2 should NOT see T1's uncommitted write.
+	// T2 reads before T1 commits, so it must not observe T1's pending write.
 	let schedule = Schedule::builder()
 		.begin(1)
 		.begin(2)
@@ -23,7 +22,6 @@ fn test_dirty_read_prevented() {
 	let mut executor = Executor::new();
 	let trace = executor.run(&schedule);
 
-	// T2's read should return None (key didn't exist before T1 committed)
 	let read_result = trace.get_value(3).expect("step 3 should be a Get");
 	assert!(read_result.is_none(), "T2 should not see T1's uncommitted write");
 
@@ -32,13 +30,11 @@ fn test_dirty_read_prevented() {
 
 #[test]
 fn test_dirty_read_prevented_with_prior_value() {
-	// Setup: write initial value, then T1 overwrites, T2 reads before T1 commits.
+	// With a prior committed value present, T2 must fall back to it rather than to none.
 	let schedule = Schedule::builder()
-		// Setup: write initial value
 		.begin(0)
 		.set(0, "x", "initial")
 		.commit(0)
-		// T1 overwrites
 		.begin(1)
 		.begin(2)
 		.set(1, "x", "updated")
@@ -50,7 +46,6 @@ fn test_dirty_read_prevented_with_prior_value() {
 	let mut executor = Executor::new();
 	let trace = executor.run(&schedule);
 
-	// T2's read should return "initial" (T1 hasn't committed yet)
 	let read_result = trace.get_value(6).expect("step 6 should be a Get");
 	assert!(read_result.is_some(), "T2 should see the initial value");
 
@@ -59,13 +54,11 @@ fn test_dirty_read_prevented_with_prior_value() {
 
 #[test]
 fn test_lost_update_prevented() {
-	// T1 and T2 both read-modify-write the same key. At least one must abort.
+	// Two concurrent read-modify-writes on one key: letting both commit loses one of them.
 	let schedule = Schedule::builder()
-		// Setup
 		.begin(0)
 		.set(0, "x", "0")
 		.commit(0)
-		// T1 and T2 both read then write x
 		.begin(1)
 		.begin(2)
 		.get(1, "x")
@@ -81,7 +74,6 @@ fn test_lost_update_prevented() {
 
 	NoLostUpdates.check(&trace).expect("NoLostUpdates invariant should hold");
 
-	// At least one must have aborted or conflicted
 	let t1_committed = trace.committed.contains_key(&TxId(1));
 	let t2_committed = trace.committed.contains_key(&TxId(2));
 	assert!(
@@ -94,15 +86,13 @@ fn test_lost_update_prevented() {
 
 #[test]
 fn test_write_skew_detected() {
-	// Classic write skew: T1 reads X writes Y, T2 reads Y writes X.
-	// Under snapshot isolation with conflict detection on reads, at least one aborts.
+	// Write skew: T1 reads x writes y, T2 reads y writes x. The write sets are disjoint, so only
+	// read-write conflict detection can catch this one.
 	let schedule = Schedule::builder()
-		// Setup
 		.begin(0)
 		.set(0, "x", "1")
 		.set(0, "y", "1")
 		.commit(0)
-		// T1: read x, write y
 		.begin(1)
 		.begin(2)
 		.get(1, "x")
@@ -119,9 +109,6 @@ fn test_write_skew_detected() {
 	let t1_committed = trace.committed.contains_key(&TxId(1));
 	let t2_committed = trace.committed.contains_key(&TxId(2));
 
-	// Under serializable snapshot isolation with read tracking, at least one should conflict.
-	// Note: some MVCC implementations allow write skew under snapshot isolation.
-	// This test documents the engine's actual behavior.
 	assert!(
 		!(t1_committed && t2_committed),
 		"both T1 and T2 committed - write skew allowed. T1={}, T2={}",
@@ -132,7 +119,6 @@ fn test_write_skew_detected() {
 
 #[test]
 fn test_rollback_no_effect() {
-	// A rolled-back transaction should not affect the final state.
 	let schedule = Schedule::builder()
 		.begin(0)
 		.set(0, "x", "initial")
@@ -154,7 +140,7 @@ fn test_rollback_no_effect() {
 
 #[test]
 fn test_sequential_commits() {
-	// Sequential non-overlapping transactions should all succeed.
+	// Non-overlapping lifetimes on distinct keys must never be reported as conflicting.
 	let schedule = Schedule::builder()
 		.begin(1)
 		.set(1, "a", "1")
@@ -180,7 +166,7 @@ fn test_sequential_commits() {
 
 #[test]
 fn test_scan_sees_snapshot() {
-	// T2's scan should see the snapshot at T2's begin time.
+	// A scan resolves against the begin-time snapshot, so a concurrent insert stays invisible.
 	let schedule = Schedule::builder()
 		.begin(0)
 		.set(0, "a", "1")
@@ -197,7 +183,6 @@ fn test_scan_sees_snapshot() {
 	let mut executor = Executor::new();
 	let trace = executor.run(&schedule);
 
-	// Check scan results at step 7
 	match &trace.results[7].result {
 		OpResult::ScanResult(pairs) => {
 			assert_eq!(pairs.len(), 2, "scan should see exactly 2 keys (a, b)");
@@ -210,7 +195,6 @@ fn test_scan_sees_snapshot() {
 
 #[test]
 fn test_read_your_own_writes() {
-	// A transaction that sets a key should read it back.
 	let schedule = Schedule::builder()
 		.begin(1)
 		.set(1, "x", "hello")
@@ -229,7 +213,7 @@ fn test_read_your_own_writes() {
 
 #[test]
 fn test_read_your_own_writes_after_remove() {
-	// A transaction that removes a key should read None for it.
+	// An own tombstone must mask the committed value, not fall through to it.
 	let schedule = Schedule::builder()
 		.begin(0)
 		.set(0, "x", "initial")
@@ -251,7 +235,6 @@ fn test_read_your_own_writes_after_remove() {
 
 #[test]
 fn test_read_your_own_writes_overwrite() {
-	// A transaction that writes a key twice should read the latest value.
 	let schedule = Schedule::builder()
 		.begin(1)
 		.set(1, "x", "first")
@@ -268,7 +251,7 @@ fn test_read_your_own_writes_overwrite() {
 
 #[test]
 fn test_snapshot_consistency_scan_with_own_writes() {
-	// Scan should include own writes merged with snapshot.
+	// A scan merges pending writes over the snapshot; dropping them would hide the tx's own insert.
 	let schedule = Schedule::builder()
 		.begin(0)
 		.set(0, "a", "1")
@@ -295,7 +278,7 @@ fn test_snapshot_consistency_scan_with_own_writes() {
 
 #[test]
 fn test_snapshot_consistency_scan_after_remove() {
-	// Scan should exclude keys removed by own transaction.
+	// The merge must honour own tombstones, not just own sets.
 	let schedule = Schedule::builder()
 		.begin(0)
 		.set(0, "a", "1")
@@ -323,7 +306,7 @@ fn test_snapshot_consistency_scan_after_remove() {
 
 #[test]
 fn test_no_dirty_reads_after_remove() {
-	// T1 removes a key, T2 should still see the original value (not the remove).
+	// An uncommitted tombstone is a dirty read just as much as an uncommitted set.
 	let schedule = Schedule::builder()
 		.begin(0)
 		.set(0, "x", "exists")
@@ -347,7 +330,6 @@ fn test_no_dirty_reads_after_remove() {
 
 #[test]
 fn test_query_sees_committed_data() {
-	// T0 writes key, commits. T1 begins query, reads key, sees committed value.
 	let schedule = Schedule::builder()
 		.begin(0)
 		.set(0, "x", "hello")
@@ -368,7 +350,6 @@ fn test_query_sees_committed_data() {
 
 #[test]
 fn test_query_cannot_write() {
-	// T0 begins query, attempts Set → expects error.
 	let schedule = Schedule::builder()
 		.begin_query(0)
 		.set(0, "x", "nope") // step 1: should error
@@ -387,7 +368,6 @@ fn test_query_cannot_write() {
 
 #[test]
 fn test_query_cannot_commit() {
-	// T0 begins query, attempts Commit → expects error.
 	let schedule = Schedule::builder()
 		.begin_query(0)
 		.commit(0) // step 1: should error
@@ -406,9 +386,8 @@ fn test_query_cannot_commit() {
 
 #[test]
 fn test_query_snapshot_isolation() {
-	// T0 writes k1, commits. T1 begins query, reads k1.
-	// T2 begins command, writes k1 new value, commits.
-	// T1 reads k1 again → still sees original snapshot value.
+	// A query re-reading the same key must return the same value even though a command committed
+	// over it in between; a moving read version would break repeatable reads.
 	let schedule = Schedule::builder()
 		.begin(0)
 		.set(0, "k1", "original")
@@ -436,8 +415,7 @@ fn test_query_snapshot_isolation() {
 
 #[test]
 fn test_query_scan_snapshot() {
-	// T0 sets up keys, commits. T1 begins query. T2 begins command, writes new key, commits.
-	// T1 scans → sees only snapshot at T1's begin time.
+	// A key committed after the query began must not appear in its scan (no phantom).
 	let schedule = Schedule::builder()
 		.begin(0)
 		.set(0, "a", "1")
@@ -469,37 +447,29 @@ fn test_query_scan_snapshot() {
 
 #[test]
 fn test_interleaved_query_and_command() {
-	// Multiple command txns interleaved with a query txn.
-	// Query reads remain consistent with its snapshot while command txns commit changes.
+	// One long-lived query spanning several commits: every read and the final scan must still
+	// resolve against its begin-time snapshot.
 	let schedule = Schedule::builder()
-		// Setup
 		.begin(0)
 		.set(0, "x", "v0")
 		.set(0, "y", "v0")
 		.commit(0)
-		// Query starts
 		.begin_query(1)
 		.get(1, "x")  // step 5: sees "v0"
-		// Command T2 updates x
 		.begin(2)
 		.set(2, "x", "v1")
 		.commit(2)
-		// Query still sees old x
 		.get(1, "x")  // step 9: still "v0"
-		// Command T3 updates y
 		.begin(3)
 		.set(3, "y", "v1")
 		.commit(3)
-		// Query still sees old y
 		.get(1, "y")  // step 13: still "v0"
-		// Query scan sees original snapshot
 		.scan(1)  // step 14: sees x=v0, y=v0
 		.build();
 
 	let mut executor = Executor::new();
 	let trace = executor.run(&schedule);
 
-	// All query reads should see the original values
 	let read_x_1 = trace.get_value(5).expect("step 5 should be a Get");
 	let read_x_2 = trace.get_value(9).expect("step 9 should be a Get");
 	let read_y = trace.get_value(13).expect("step 13 should be a Get");

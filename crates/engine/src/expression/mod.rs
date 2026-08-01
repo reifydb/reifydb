@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Runtime expression evaluator. Compiles RQL expressions into a small typed tree that the VM can apply over
-//! columns - access, arithmetic, comparison, logical, casts, conversions, lookups, function and routine calls.
-//! Evaluation operates on column buffers wherever possible so a per-row interpreter cost is paid only when an
-//! expression cannot be vectorised.
-//!
-//! This module is the engine-side counterpart to RQL's `expression/` planner module: that crate produces the
-//! expression representation, this one runs it.
+//! Runtime expression evaluator, the engine-side counterpart to RQL's `expression/` planner module: that crate
+//! produces the representation, this one runs it. Evaluation works on column buffers wherever possible, so the
+//! per-row interpreter cost is paid only when an expression cannot be vectorised.
 
 pub mod access;
 pub mod arith;

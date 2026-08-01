@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Execution domains organized by workload shape. Long-lived actors run on the actor pool (two worker groups:
-//! `coordination` for tiny high-frequency handlers, `flow` for heavy flow execution) with per-worker run queues and
-//! pinned dispatch. Short-lived work (per-request actors, one-shot jobs) runs on the task pool. Data-parallel work
-//! runs on the compute pool (rayon behind an install-only API). Async I/O runs on the embedded tokio runtime.
-//! Native targets get the real pools; single-threaded and DST targets get the inline stub variant. The `Pools` type
-//! both impls hand back is what `SharedRuntime` carries around.
+//! Execution domains split by workload shape so one kind of work cannot starve another: long-lived actors on the
+//! actor pool (`coordination` for tiny high-frequency handlers, `flow` for heavy flow execution), short-lived work
+//! on the task pool, data-parallel work on the compute pool, async I/O on the embedded tokio runtime.
 
 #[cfg(all(not(reifydb_single_threaded), not(reifydb_target = "dst")))]
 pub(crate) mod actor_pool;

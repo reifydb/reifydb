@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-//
-// Combined create+drop within a single txn; currently ignored because
-// `DROP HANDLER` is not in the RQL grammar. When it lands, scenario A is the
-// canonical reproducer for the `.retain()` omission in
-// `list_procedures_for_variant` at
-// `crates/catalog/src/catalog/procedure.rs:273-325`.
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;

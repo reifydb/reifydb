@@ -26,9 +26,8 @@ fn table_builder_creates_a_working_table() {
 fn view_builder_creates_a_view_in_an_auto_ensured_namespace() {
 	let db = TestDb::memory();
 
-	// A deferred view is not queryable until a flow materializes it, so the fixture's
-	// contract is that the catalog object is created with the requested name in the
-	// auto-ensured namespace.
+	// A deferred view is not queryable until a flow materializes it, so the fixture can only
+	// promise the catalog object exists under the requested name.
 	let view = view("analytics::totals").column("total", ValueType::Float8).create(&db);
 	assert_eq!(view.name(), "totals");
 }
@@ -37,9 +36,8 @@ fn view_builder_creates_a_view_in_an_auto_ensured_namespace() {
 fn identity_builder_writes_lookup_and_display_attributes() {
 	let db = TestDb::memory();
 
-	// A github identity provisioned by the builder must be byte-for-byte what the auth
-	// service would write: the immutable github_user_id lookup attribute plus any extra
-	// display attributes, and it must be resolvable by that lookup attribute.
+	// The builder must write what the auth service would: a github_user_id lookup attribute
+	// the identity is resolvable by, alongside any display attributes.
 	let alice = identity("alice")
 		.attribute("nickname", Value::Utf8("ally".to_string()))
 		.github_user(42, "octocat")

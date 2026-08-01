@@ -33,7 +33,6 @@ pub mod tests {
 	fn test_multiple_generations() {
 		let shape = RowShape::testing(&[ValueType::Uuid4]);
 
-		// Generate multiple UUIDs and ensure they're different
 		let mut uuids = Vec::new();
 		for _ in 0..10 {
 			let mut row = shape.allocate();
@@ -44,7 +43,6 @@ pub mod tests {
 			uuids.push(uuid);
 		}
 
-		// Ensure all generated UUIDs are unique
 		for i in 0..uuids.len() {
 			for j in (i + 1)..uuids.len() {
 				assert_ne!(uuids[i], uuids[j], "UUIDs should be unique");
@@ -61,7 +59,7 @@ pub mod tests {
 		shape.set::<Uuid4>(&mut row, 0, uuid.clone());
 		let retrieved = shape.get::<Uuid4>(&row, 0);
 
-		// Verify it's a version 4 UUID
+		// The version nibble must survive the row slot.
 		assert_eq!(retrieved.get_version_num(), 4);
 	}
 
@@ -127,7 +125,6 @@ pub mod tests {
 		let retrieved_uuid = shape.get::<Uuid4>(&row, 0);
 		assert_eq!(retrieved_uuid, original_uuid);
 
-		// Verify that the byte representation is identical
 		assert_eq!(retrieved_uuid.as_bytes(), original_uuid.as_bytes());
 	}
 
@@ -148,7 +145,6 @@ pub mod tests {
 		assert_eq!(shape.get::<Uuid4>(&row, 1), uuid2);
 		assert_eq!(shape.get::<Uuid4>(&row, 2), uuid3);
 
-		// Ensure all UUIDs are different
 		assert_ne!(uuid1, uuid2);
 		assert_ne!(uuid1, uuid3);
 		assert_ne!(uuid2, uuid3);
@@ -168,7 +164,7 @@ pub mod tests {
 
 		assert_eq!(original_string, retrieved_string);
 
-		// Verify UUID string format (8-4-4-4-12)
+		// 36 chars with 4 hyphens is the 8-4-4-4-12 UUID rendering.
 		assert_eq!(original_string.len(), 36);
 		assert_eq!(original_string.matches('-').count(), 4);
 	}
@@ -187,7 +183,6 @@ pub mod tests {
 
 		assert_eq!(original_bytes, retrieved_bytes);
 
-		// Verify that it's exactly 16 bytes
 		assert_eq!(original_bytes.len(), 16);
 		assert_eq!(retrieved_bytes.len(), 16);
 	}

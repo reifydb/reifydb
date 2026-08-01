@@ -217,7 +217,7 @@ pub mod tests {
 
 	#[test]
 	fn test_uint_negative_input() {
-		// Test that negative inputs are converted to zero
+		// Uint wraps a signed BigInt, so a negative input clamps to zero instead of wrapping.
 		let negative_i32 = Uint::from(-42i32);
 		let negative_i64 = Uint::from(-999i64);
 		let negative_i128 = Uint::from(-12345i128);
@@ -228,7 +228,6 @@ pub mod tests {
 		assert_eq!(negative_i128, Uint::zero());
 		assert_eq!(negative_bigint, Uint::zero());
 
-		// Test that positive inputs remain unchanged
 		let positive_i32 = Uint::from(42i32);
 		let positive_i64 = Uint::from(999i64);
 		assert_eq!(format!("{}", positive_i32), "42");

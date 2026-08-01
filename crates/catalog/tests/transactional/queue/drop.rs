@@ -31,10 +31,9 @@ fn uncommitted_drop_is_reflected_within_txn() {
 	assert!(!all.iter().any(|x| x.namespace == ns_id && x.name() == "jobs"));
 }
 
-/// A rolled-back drop must leave the definition fully intact; a half-applied
-/// drop would leave the queue unreachable by name while still holding its id.
 #[test]
 fn rolled_back_drop_leaves_queue_intact() {
+	// A half-applied drop leaves the queue unreachable by name while still holding its id.
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE qns_drop_b");
@@ -69,11 +68,9 @@ fn committed_drop_is_gone_in_new_txn() {
 	assert!(catalog.find_queue_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "jobs").unwrap().is_none());
 }
 
-/// Dropping then recreating the same name inside one transaction must end with
-/// the new definition visible: the delete overlay must not shadow the create
-/// that follows it.
 #[test]
 fn drop_then_recreate_in_same_txn_ends_with_the_new_definition() {
+	// The delete overlay must not shadow the create that follows it.
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE qns_drop_d");

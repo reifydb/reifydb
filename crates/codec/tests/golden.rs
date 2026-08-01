@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Golden byte-stability pins. Every case encodes a fixed input and compares against the checked-in
-//! fixture under crates/codec/golden/. A mismatch means the wire format changed: that is a
-//! coordinated workspace break (TypeScript port, persisted data), never a test to regenerate
-//! casually. Regenerate intentionally with REIFYDB_GOLDEN_WRITE=1 after user sign-off.
+//! Golden byte-stability pins against the fixtures in crates/codec/golden/. A mismatch means the
+//! wire format changed, which breaks the TypeScript port and every persisted byte sequence, so it
+//! is never a test to regenerate casually. REIFYDB_GOLDEN_WRITE=1 rewrites them deliberately.
 
 use std::{fs, path::PathBuf, str::FromStr};
 

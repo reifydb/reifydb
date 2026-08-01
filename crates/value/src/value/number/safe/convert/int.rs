@@ -343,7 +343,7 @@ pub mod tests {
 
 		#[test]
 		fn test_checked_convert_large() {
-			// Test with a very large number
+			// Decimal is arbitrary precision, so even i128::MAX converts exactly.
 			let x = Int::from(i128::MAX);
 			let y: Option<Decimal> = x.checked_convert();
 			assert!(y.is_some());

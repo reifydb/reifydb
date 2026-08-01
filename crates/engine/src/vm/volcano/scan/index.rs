@@ -59,8 +59,6 @@ impl QueryNode for IndexScanNode {
 			assert!(self.context.is_some(), "IndexScanNode::next() called before initialize()");
 		}
 		unimplemented!()
-
-		// 	// TODO: Update IndexScanNode to use ResolvedTable instead of Table
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {

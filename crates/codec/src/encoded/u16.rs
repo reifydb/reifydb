@@ -60,7 +60,6 @@ pub mod tests {
 	fn test_port_numbers() {
 		let shape = RowShape::testing(&[ValueType::Uint2]);
 
-		// Test common port numbers
 		let ports = [80u16, 443u16, 8080u16, 3000u16, 5432u16, 27017u16];
 
 		for port in ports {

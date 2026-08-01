@@ -38,6 +38,9 @@ pub(super) extern "C" fn host_store_get(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx`, `key_ptr` and `output` are null-checked above; the guest must pass back the
+	// ContextFFI the host handed it for this call, a `key_ptr` valid for `key_len` reads (discharging
+	// encoded_key), and an `output` valid for one BufferFFI write that it frees via memory.free.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -63,6 +66,9 @@ pub(super) extern "C" fn host_store_contains_key(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx`, `key_ptr` and `result` are null-checked above; the guest must pass back the
+	// ContextFFI the host handed it for this call, a `key_ptr` valid for `key_len` reads (discharging
+	// encoded_key), and a `result` valid for one u8 write.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -94,6 +100,9 @@ pub(super) extern "C" fn host_store_prefix(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx` and `iterator_out` are null-checked above; the guest must pass back the ContextFFI
+	// the host handed it for this call, a `prefix_ptr` that is null or valid for `prefix_len` reads,
+	// and an `iterator_out` valid for one pointer write; the handle is freed via store.iterator_free.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -151,6 +160,10 @@ pub(super) extern "C" fn host_store_range(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx` and `iterator_out` are null-checked above, and each bound pointer is null-checked
+	// on the arm that reads it; the guest must pass back the ContextFFI the host handed it for this
+	// call, bound pointers valid for their stated lengths, and an `iterator_out` valid for one pointer
+	// write; the handle is freed via store.iterator_free.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -242,6 +255,10 @@ pub(super) extern "C" fn host_store_iterator_next(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: all three pointers are null-checked above; `iterator` must be an unfreed handle this
+	// host handed out, so it is a live StoreIteratorInternal-shaped block at align 8, and `key_out`
+	// and `value_out` must be valid and aligned for one BufferFFI write each. On FFI_OK the guest owns
+	// both buffers and must release them via memory.free with the reported lengths.
 	unsafe {
 		let iter_internal = iterator as *mut StoreIteratorInternal;
 		let iter_handle = (*iter_internal).handle;
@@ -280,6 +297,9 @@ pub(super) extern "C" fn host_store_iterator_free(iterator: *mut StoreIteratorFF
 		return;
 	}
 
+	// SAFETY: `iterator` is null-checked above and must be an unfreed handle this host handed out, so
+	// it is a host_alloc block of exactly `size_of::<StoreIteratorInternal>()` bytes at align 8 >=
+	// align_of::<StoreIteratorInternal>(), holding an initialised handle (discharges host_free).
 	unsafe {
 		let iter_internal = iterator as *mut StoreIteratorInternal;
 

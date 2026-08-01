@@ -139,7 +139,8 @@ fn column_decode_error_includes_name() {
 	}]);
 	let encoded = encode_frames(&[frame], &EncodeOptions::default()).expect("encode failed");
 
-	// data_len is at offset 16 (msg header) + 12 (frame header) + 12 (offset in col descriptor) = 40
+	// Byte 40 is the column descriptor's nones_len: msg header 16 + frame header 12 + descriptor
+	// offset 12. An impossible length there must be reported against the column, not swallowed.
 	let mut corrupted = encoded.clone();
 	corrupted[40..44].copy_from_slice(&9999u32.to_le_bytes());
 
@@ -158,7 +159,7 @@ fn column_decode_error_includes_name() {
 #[test]
 fn unsupported_version() {
 	let mut data = encode_frames(&[Frame::new(vec![])], &EncodeOptions::default()).expect("encode failed");
-	// version is at offset 4
+	// The version is the u16 at bytes 4..6, right after the magic.
 	data[4] = 0xFE;
 	data[5] = 0xCA;
 	let result = decode_frames(&data);
@@ -176,7 +177,8 @@ fn unexpected_eof_msg_header() {
 
 #[test]
 fn metadata_combinations() {
-	// Only row numbers
+	// Each metadata array is independently present, so the flag byte has to be read per array
+	// rather than as all-or-nothing.
 	let frame1 = Frame {
 		system: SystemColumns::new(vec![RowNumber::new(1)], Vec::new(), Vec::new(), Vec::new(), Vec::new()),
 		columns: vec![FrameColumn {
@@ -186,7 +188,6 @@ fn metadata_combinations() {
 	};
 	round_trip(frame1);
 
-	// Only timestamps
 	let frame2 = Frame {
 		system: SystemColumns::new(
 			Vec::new(),
@@ -248,15 +249,15 @@ fn mixed_types_frame() {
 
 #[test]
 fn heuristics_threshold_small_columns() {
-	// < 4 rows should always be Plain
+	// Below MIN_ROWS the heuristic refuses every compressed encoding, since the per-encoding
+	// overhead would exceed the saving.
 	let values: Vec<i32> = (1..=3).collect();
 	let frame = Frame::new(vec![FrameColumn {
 		name: "small".to_string(),
 		data: FrameColumnData::Int4(NumberContainer::new(values)),
 	}]);
 	let encoded = encode_frames(&[frame], &EncodeOptions::default()).expect("encode failed");
-	// offset 29 is encoding byte for first column
-	// msg(16) + frame(12) + type(1) = 29
+	// Byte 29 is the first column's encoding byte: msg header 16 + frame header 12 + type code 1.
 	assert_eq!(encoded[29], Encoding::Plain as u8);
 }
 
@@ -268,7 +269,8 @@ fn compression_none_forces_plain() {
 		data: FrameColumnData::Int4(NumberContainer::new(values)),
 	}]);
 	let encoded = encode_frames(&[frame.clone()], &EncodeOptions::none()).expect("encode failed");
-	// With CompressionLevel::None, data should be plain: 500 * 4 = 2000 bytes of data + overhead
+	// A sequence this regular would delta-encode to a fraction of its size, so exceeding the raw
+	// 500 * 4 bytes proves compression really was disabled.
 	assert!(encoded.len() > 2000, "expected plain (no compression), got {} bytes", encoded.len());
 	let decoded = decode_frames(&encoded).expect("decode failed");
 	assert_eq!(decoded.len(), 1);

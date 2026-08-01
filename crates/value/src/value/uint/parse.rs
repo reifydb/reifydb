@@ -202,8 +202,7 @@ pub mod tests {
 
 	#[test]
 	fn test_parse_uint_negative_zero_float() {
-		// This should be handled gracefully - negative zero should
-		// become positive zero
+		// "-0" has no negative magnitude to reject, so it parses as zero rather than erroring.
 		let result = parse_uint(Fragment::testing("-0.0")).unwrap();
 		assert_eq!(format!("{}", result), "0");
 	}

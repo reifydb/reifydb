@@ -407,6 +407,9 @@ impl NativeOperatorLoader {
 			})
 		})?;
 
+		// SAFETY: load_library accepted this path only after the native-operator magic symbol matched, so
+		// the object was built against this crate and declares the descriptor symbol with this signature;
+		// Symbol borrows library, which stays loaded for the call.
 		let descriptor = unsafe {
 			let get_descriptor: Symbol<fn() -> NativeOperatorDescriptor> =
 				library.get(b"reifydb_native_operator_descriptor\0").map_err(|e| {
@@ -471,6 +474,9 @@ impl NativeOperatorLoader {
 		self.descriptor(&path)?;
 
 		let library = self.cache.get(&path).unwrap();
+		// SAFETY: load_library and descriptor accepted this path, so the object was built against this
+		// crate and declares the create symbol with this signature; the copied-out pointer is called
+		// before this method returns, while &mut self still holds the cache entry that keeps it mapped.
 		let create: NativeOperatorCreateFn = unsafe {
 			let create_symbol: Symbol<NativeOperatorCreateFn> =
 				library.get(b"reifydb_native_operator_create\0").map_err(|e| {
@@ -527,6 +533,8 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 		let mut ctx = NativeOperatorContext::new(bridge, self.node);
 		{
 			let view = NativeChangeView::new(&change);
+			// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time, and the
+			// logic only reaches the context, never back into this cell; no other borrow is live.
 			let logic = unsafe { &mut *self.logic.get() };
 			run_or_abort(self.node, "apply", || logic.apply(&mut ctx, view));
 		}
@@ -535,11 +543,15 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
+		// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time and no apply or
+		// timer call is in flight here; no other borrow of the cell is live.
 		let logic = unsafe { &*self.logic.get() };
 		logic.sample()
 	}
 
 	fn seal_after_ms(&self) -> Option<u64> {
+		// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time and no apply or
+		// timer call is in flight here; no other borrow of the cell is live.
 		let logic = unsafe { &*self.logic.get() };
 		logic.seal_after_ms()
 	}
@@ -549,6 +561,8 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 		let version = bridge.version();
 		let mut ctx = NativeOperatorContext::new(bridge, self.node);
 		{
+			// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time, and the
+			// logic only reaches the context, never back into this cell; no other borrow is live.
 			let logic = unsafe { &mut *self.logic.get() };
 			run_or_abort(self.node, "on_timer", || {
 				logic.on_timer(
@@ -569,12 +583,16 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 	}
 
 	fn invalidate_groups(&self, groups: &GroupSet) {
+		// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time and no apply or
+		// timer call is in flight here; no other borrow of the cell is live.
 		let logic = unsafe { &mut *self.logic.get() };
 		logic.invalidate_groups(groups);
 	}
 
 	fn flush_state(&self, bridge: &mut dyn NativeBridge) -> Result<()> {
 		let mut ctx = NativeOperatorContext::new(bridge, self.node);
+		// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time, and the logic
+		// only reaches the context, never back into this cell; no other borrow is live.
 		let logic = unsafe { &mut *self.logic.get() };
 		run_or_abort(self.node, "flush_state", || logic.flush_state(&mut ctx));
 		Ok(())
@@ -609,6 +627,9 @@ impl NativeBridgedOperator {
 			let node = self.node;
 			let persist: PersistFn = Box::new(move |txn: &mut FlowTransaction, _value: Box<dyn Any>| {
 				let captured = captured;
+				// SAFETY: captured.0 points at the heap allocation of self.inner, which is stable
+				// across moves of the wrapper and outlives the transaction running this persist
+				// closure, since the actor owning the operator also drives that transaction.
 				let bridged = unsafe { &*captured.0 };
 				let mut bridge = FlowNativeBridge::new(txn, node);
 				bridged.flush_state(&mut bridge)?;

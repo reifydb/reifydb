@@ -62,6 +62,9 @@ pub(crate) fn raw_procedure_query(ctx: &FFIProcedureContext, query: &str, params
 
 	let mut output = BufferFFI::empty();
 
+	// SAFETY: FFIProcedureContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole procedure call; query and params_bytes outlive the callback. Discharges BufferFFI::as_slice: the host
+	// leaves output either empty or pointing at a live host allocation of output.len bytes that nothing here frees.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.rql.rql)(
 			ctx.ctx,

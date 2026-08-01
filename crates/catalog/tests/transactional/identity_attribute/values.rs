@@ -629,8 +629,8 @@ fn call_set_unknown_user_is_rejected() {
 	assert_eq!(diagnostic.cause.as_ref().expect("wrapped catalog cause").code, "CA_043");
 }
 
-// DDL body values are evaluated expressions since round 3: statement params bind and
-// non-utf8 results fail loud instead of storing raw token text (finding #2).
+// DDL body values are evaluated expressions, not raw token text: statement params bind, and a
+// non-utf8 result fails loud rather than being stored verbatim.
 
 #[test]
 fn create_user_with_param_value() {
@@ -677,10 +677,9 @@ fn alter_user_with_param_value() {
 	);
 }
 
-// Body values are cast to the attribute's declared catalog type with the same house rules
-// as INSERT: castable literals convert, uncastable ones raise the cast diagnostic.
 #[test]
 fn int_body_value_casts_to_declared_utf8_type() {
+	// Body values follow the same cast rules as INSERT against the declared catalog type.
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE USER ATTRIBUTE iav_org_ak: utf8");

@@ -136,6 +136,8 @@ impl<'a> State<'a> {
 
 	#[inline]
 	pub fn now(&self) -> DateTime {
+		// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null, and the host keeps the ContextFFI alive
+		// and aligned for at least the lifetime of the borrow this State was created from.
 		DateTime::from_nanos(unsafe { (*self.ctx.ctx).clock_now_nanos })
 	}
 }

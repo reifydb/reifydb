@@ -100,6 +100,9 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 
 		let result: Result<()> = with_registry(&self.builder_registry, || {
 			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
+			// SAFETY: ffi_change lives on this stack frame and the arena backing its
+			// buffers is neither cleared nor dropped until after the closure returns, so
+			// the borrow cannot outlive its data.
 			let borrowed = unsafe { BorrowedChange::from_raw(&ffi_change as *const _) };
 			self.operator.apply(&mut op_ctx, borrowed)?;
 
@@ -131,6 +134,9 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 
 		let result: Result<()> = with_registry(&self.builder_registry, || {
 			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
+			// SAFETY: ffi_change lives on this stack frame and the arena backing its
+			// buffers is neither cleared nor dropped until after the closure returns, so
+			// the borrow cannot outlive its data.
 			let borrowed = unsafe { BorrowedChange::from_raw(&ffi_change as *const _) };
 			self.operator.apply(&mut op_ctx, borrowed)
 		});
@@ -534,6 +540,9 @@ pub fn drive_ffi_apply<O: FFIOperator + OperatorMetadata>(input: &Change) -> i32
 	let ffi_change = arena.marshal_change(input);
 
 	let registry = TestBuilderRegistry::new();
+	// SAFETY: the wrapper, context and change all outlive the call, and the arena backing the
+	// change's buffers is still alive, so every pointer crossing the boundary is valid for its
+	// whole duration.
 	with_registry(&registry, || unsafe {
 		ffi_apply::<O>(wrapper.as_ptr(), &mut ffi_context as *mut ContextFFI, &ffi_change as *const _)
 	})
@@ -648,6 +657,9 @@ pub mod tests {
 					let first_int8 = columns
 						.columns()
 						.next()
+						// SAFETY: the fixtures that drive this operator only ever
+						// build a leading Int8 column, so the requested element
+						// type matches the buffer's.
 						.and_then(|c| unsafe { c.as_slice::<i64>() })
 						.and_then(|s| s.first().copied());
 					if let (Some(&rn), Some(v)) = (row_numbers.first(), first_int8) {
@@ -669,7 +681,7 @@ pub mod tests {
 					let post_names: Vec<&str> = names.iter().map(|s| s.as_str()).collect();
 					let row_numbers: Vec<RowNumber> =
 						diff.post().row_numbers().iter().copied().map(RowNumber).collect();
-					let _ = post; // satisfy borrow checker if unused
+					let _ = post;
 					builder.emit_insert(&post, &post_names, &row_numbers)?;
 				}
 				DiffType::Update => {
@@ -722,6 +734,9 @@ pub mod tests {
 			active.grow(bytes.len().max(row_count))?;
 			let dst = active.data_ptr();
 			if !dst.is_null() && !bytes.is_empty() {
+				// SAFETY: dst is non-null and the preceding grow() sized it to at
+				// least bytes.len(); source and destination are distinct
+				// allocations.
 				unsafe {
 					core::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
 				}
@@ -730,6 +745,9 @@ pub mod tests {
 				let off = col.offsets();
 				let dst_off = active.offsets_ptr();
 				if !dst_off.is_null() && !off.is_empty() {
+					// SAFETY: dst_off is non-null and the builder sizes the
+					// offsets region from the same row count off was read at;
+					// the buffers do not alias.
 					unsafe {
 						core::ptr::copy_nonoverlapping(off.as_ptr(), dst_off, off.len());
 					}

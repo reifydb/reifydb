@@ -119,8 +119,8 @@ mod tests {
 	#[test]
 	fn test_xxh3_64() {
 		let data = b"hello world";
+		// Seedless and unsalted, so the digest is stable across processes and cluster nodes.
 		let hash = xxh3_64(data);
-		// xxh3_64 should be deterministic
 		assert_eq!(hash, xxh3_64(data));
 		assert_ne!(hash, xxh3_64(b"different data"));
 	}
@@ -129,7 +129,6 @@ mod tests {
 	fn test_xxh3_128() {
 		let data = b"hello world";
 		let hash = xxh3_128(data);
-		// xxh3_128 should be deterministic
 		assert_eq!(hash, xxh3_128(data));
 		assert_ne!(hash, xxh3_128(b"different data"));
 	}

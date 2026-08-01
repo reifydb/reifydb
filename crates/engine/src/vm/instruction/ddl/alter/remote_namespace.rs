@@ -36,7 +36,6 @@ pub mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_admin_transaction();
 
-		// First create a remote namespace
 		let r = instance.admin(
 			&mut txn,
 			Admin {
@@ -48,7 +47,7 @@ pub mod tests {
 			panic!("{e:?}");
 		}
 
-		// Alter the grpc address
+		// ALTER must overwrite the endpoint in place, not register a second one.
 		let r = instance.admin(
 			&mut txn,
 			Admin {

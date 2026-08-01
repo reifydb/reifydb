@@ -64,23 +64,20 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let created = ensure_test_ringbuffer(&mut txn);
 
-		// Verify it exists
 		let found = CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		assert!(found.is_some());
 
-		// Drop it
 		CatalogStore::drop_ringbuffer(&mut txn, created.id).unwrap();
 
-		// Verify it's gone
 		let found = CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		assert!(found.is_none());
 	}
 
 	#[test]
 	fn test_drop_nonexistent_ringbuffer() {
+		// Dropping a ring buffer that never existed is a no-op, not an error.
 		let mut txn = create_test_admin_transaction();
 
-		// Dropping a non-existent ringbuffer should not error
 		let non_existent = RingBufferId(999999);
 		let result = CatalogStore::drop_ringbuffer(&mut txn, non_existent);
 		assert!(result.is_ok());
@@ -91,7 +88,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		ensure_test_namespace(&mut txn);
 
-		// Create a ringbuffer with columns
 		let rb = create_ringbuffer(
 			&mut txn,
 			"test_namespace",
@@ -117,18 +113,14 @@ pub mod tests {
 			],
 		);
 
-		// Verify columns exist before drop
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), rb.id).unwrap();
 		assert_eq!(columns.len(), 2);
 
-		// Drop the ringbuffer
 		CatalogStore::drop_ringbuffer(&mut txn, rb.id).unwrap();
 
-		// Verify columns are cleaned up
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), rb.id).unwrap();
 		assert!(columns.is_empty());
 
-		// Verify ringbuffer itself is gone
 		let found = CatalogStore::find_ringbuffer(&mut Transaction::Admin(&mut txn), rb.id).unwrap();
 		assert!(found.is_none());
 	}
@@ -159,7 +151,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Simulate two distinct partitions having received rows.
 		for region in ["us", "eu"] {
 			let partition_key = vec![Value::Utf8(region.to_string())];
 			let metadata = RingBufferMetadata {

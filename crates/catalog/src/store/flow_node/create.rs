@@ -63,7 +63,6 @@ pub mod tests {
 
 		CatalogStore::create_flow_node(&mut txn, &node_def).unwrap();
 
-		// Verify node was created
 		let result = CatalogStore::get_flow_node(&mut Transaction::Admin(&mut txn), node_id).unwrap();
 		assert_eq!(result.id, node_id);
 		assert_eq!(result.flow, flow.id);
@@ -77,7 +76,6 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		// Create first node
 		let node1_id = next_flow_node_id(&mut txn).unwrap();
 		let node1 = FlowNode {
 			id: node1_id,
@@ -87,7 +85,6 @@ pub mod tests {
 		};
 		CatalogStore::create_flow_node(&mut txn, &node1).unwrap();
 
-		// Create second node
 		let node2_id = next_flow_node_id(&mut txn).unwrap();
 		let node2 = FlowNode {
 			id: node2_id,
@@ -97,7 +94,6 @@ pub mod tests {
 		};
 		CatalogStore::create_flow_node(&mut txn, &node2).unwrap();
 
-		// Verify both nodes exist
 		let result1 = CatalogStore::get_flow_node(&mut Transaction::Admin(&mut txn), node1_id).unwrap();
 		let result2 = CatalogStore::get_flow_node(&mut Transaction::Admin(&mut txn), node2_id).unwrap();
 
@@ -110,11 +106,9 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 
-		// Create two flows
 		let flow1 = create_flow(&mut txn, "test_namespace", "flow_one");
 		let flow2 = create_flow(&mut txn, "test_namespace", "flow_two");
 
-		// Create node in first flow
 		let node1_id = next_flow_node_id(&mut txn).unwrap();
 		let node1 = FlowNode {
 			id: node1_id,
@@ -124,7 +118,6 @@ pub mod tests {
 		};
 		CatalogStore::create_flow_node(&mut txn, &node1).unwrap();
 
-		// Create node in second flow
 		let node2_id = next_flow_node_id(&mut txn).unwrap();
 		let node2 = FlowNode {
 			id: node2_id,
@@ -134,7 +127,6 @@ pub mod tests {
 		};
 		CatalogStore::create_flow_node(&mut txn, &node2).unwrap();
 
-		// Verify nodes are in correct flows
 		let result1 = CatalogStore::get_flow_node(&mut Transaction::Admin(&mut txn), node1_id).unwrap();
 		let result2 = CatalogStore::get_flow_node(&mut Transaction::Admin(&mut txn), node2_id).unwrap();
 
@@ -158,7 +150,6 @@ pub mod tests {
 
 		CatalogStore::create_flow_node(&mut txn, &node_def).unwrap();
 
-		// Verify node appears in flow index by listing nodes for flow
 		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(nodes.len(), 1);
 		assert_eq!(nodes[0].id, node_id);

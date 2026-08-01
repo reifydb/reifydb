@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 //
-// Policies are named globally (not namespace-scoped). Only `find_policy_by_name`
-// exists on the Catalog for transactional uncommitted-read visibility;
-// `list_all_policies` bypasses the admin-transaction change log.
+// Policies are named globally, not namespace-scoped. `list_all_policies` bypasses the
+// admin-transaction change log, so only `find_policy_by_name` sees uncommitted state.
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;

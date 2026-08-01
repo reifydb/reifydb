@@ -266,29 +266,24 @@ pub mod tests {
 
 		#[test]
 		fn wrapping_mul_unhappy() {
+			// Floats have no natural wrap, so overflow is defined as MAX/2 with the sign of
+			// the product; the result must stay finite.
 			let x: f32 = f32::MAX;
 			let y: f32 = 2.0;
 			let result = SafeMul::wrapping_mul(&x, &y);
-			// Should wrap around instead of being infinite
 			assert!(result.is_finite());
-			// Should be positive since f32::MAX * 2.0 is positive
 			assert!(result > 0.0);
-			// With our simple wrapping, overflow results in
-			// f32::MAX / 2.0
 			assert_eq!(result, f32::MAX / 2.0);
 		}
 
 		#[test]
 		fn wrapping_mul_negative() {
+			// The wrap keeps the sign the true product would have had.
 			let x: f32 = f32::MAX;
 			let y: f32 = -2.0;
 			let result = SafeMul::wrapping_mul(&x, &y);
-			// Should wrap around instead of being infinite
 			assert!(result.is_finite());
-			// Should be negative since f32::MAX * -2.0 is negative
 			assert!(result < 0.0);
-			// With our simple wrapping, overflow results in
-			// -(f32::MAX / 2.0)
 			assert_eq!(result, -(f32::MAX / 2.0));
 		}
 	}
@@ -333,29 +328,24 @@ pub mod tests {
 
 		#[test]
 		fn wrapping_mul_unhappy() {
+			// Floats have no natural wrap, so overflow is defined as MAX/2 with the sign of
+			// the product; the result must stay finite.
 			let x: f64 = f64::MAX;
 			let y: f64 = 2.0;
 			let result = SafeMul::wrapping_mul(&x, &y);
-			// Should wrap around instead of being infinite
 			assert!(result.is_finite());
-			// Should be positive since f64::MAX * 2.0 is positive
 			assert!(result > 0.0);
-			// With our simple wrapping, overflow results in
-			// f64::MAX / 2.0
 			assert_eq!(result, f64::MAX / 2.0);
 		}
 
 		#[test]
 		fn wrapping_mul_negative() {
+			// The wrap keeps the sign the true product would have had.
 			let x: f64 = f64::MAX;
 			let y: f64 = -2.0;
 			let result = SafeMul::wrapping_mul(&x, &y);
-			// Should wrap around instead of being infinite
 			assert!(result.is_finite());
-			// Should be negative since f64::MAX * -2.0 is negative
 			assert!(result < 0.0);
-			// With our simple wrapping, overflow results in
-			// -(f64::MAX / 2.0)
 			assert_eq!(result, -(f64::MAX / 2.0));
 		}
 	}

@@ -266,9 +266,8 @@ mod tests {
 
 	#[test]
 	fn an_exhausted_range_advances_to_the_requested_bound() {
-		// When the store has nothing above the last read entry, the flow must still advance its
-		// cursor all the way to the bound it asked for, or versions with no CDC would be
-		// re-requested forever.
+		// With nothing above the last read entry the cursor must still reach the requested bound,
+		// or versions carrying no CDC are re-requested forever.
 		let store = store_with([2, 3]);
 		let (handle, _system) = spawn(&store);
 		let (items, advance_to) = fetch(&handle, 1, 9, ByteSize::from_mib(1)).expect("chunk");
@@ -292,10 +291,9 @@ mod tests {
 
 	#[test]
 	fn identical_requests_are_served_from_the_memo_without_a_second_read() {
-		// The restart cohort case: N flows resume from the same checkpoint and issue the same
-		// fetch. The disk read and decode must happen once; the rest are refcount clones. The
-		// probe is destructive rather than counting: wipe the storage after the first fetch,
-		// so an identical second fetch can only succeed if it never touches storage again.
+		// A restart cohort resumes from one checkpoint and issues the same fetch, which must read
+		// and decode once. Wiping storage after the first fetch is a destructive probe: the
+		// second can only succeed if it never touches storage.
 		let storage = MemoryCdcStorage::new();
 		for v in 1..=5 {
 			storage.write(&cdc(v, 100)).unwrap();

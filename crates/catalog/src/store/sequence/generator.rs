@@ -236,11 +236,11 @@ macro_rules! impl_generator {
 				fn test_batched_ok() {
 					let mut txn = create_test_admin_transaction();
 
-					// Determine appropriate batch size and iteration count based on type range
+					// Batch sizes are scaled to the type's range so narrow types are not
+					// exhausted before the iteration count is reached.
 					let type_range = ($max as u128).saturating_sub($start as u128);
 					let (batch_size_1, iterations_1, batch_size_2, iterations_2) =
 						if type_range < 200_000 {
-							// For small types (u8, i8, u16, i16), use smaller batches
 							let bs1 = (5u32.min(type_range as u32 / 40)) as $prim;
 							let bs2 = (10u32.min(type_range as u32 / 20)) as $prim;
 							(
@@ -250,13 +250,11 @@ macro_rules! impl_generator {
 								10u32.min((type_range / (bs2 as u128)) as u32),
 							)
 						} else {
-							// For larger types, use the original batch sizes
 							let bs1 = 5000u32 as $prim;
 							let bs2 = 10000u32 as $prim;
 							(bs1, 20, bs2, 10)
 						};
 
-					// Test batch allocation by batch_size_1
 					for i in 0..iterations_1 {
 						let expected = ($start as u128)
 							.saturating_add((batch_size_1 as u128) * ((i as u128) + 1))
@@ -279,7 +277,6 @@ macro_rules! impl_generator {
 						.saturating_sub(1) as $prim;
 					assert_eq!(SHAPE.get::<$prim>(&single.row, 0), final_val);
 
-					// Test batch allocation by batch_size_2
 					for i in 0..iterations_2 {
 						let expected = ($start as u128)
 							.saturating_add((batch_size_2 as u128) * ((i as u128) + 1))
@@ -300,7 +297,6 @@ macro_rules! impl_generator {
 					let mut txn = create_test_admin_transaction();
 
 					let mut row = SHAPE.allocate();
-					// Choose batch size and initial value that will cause saturation to MAX
 					let batch_size_val =
 						5000u32.min((($max as u128).saturating_sub($start as u128) / 2) as u32);
 					let batch_size = batch_size_val as $prim;
@@ -311,8 +307,6 @@ macro_rules! impl_generator {
 					let key = EncodedKey::new("sequence");
 					txn.with_single_command([&key], |tx| tx.set(&key, row)).unwrap();
 
-					// This should succeed (initial + batch_size saturates to something less than
-					// MAX)
 					let result = $generator::next_batched(
 						&mut txn,
 						&EncodedKey::new("sequence"),
@@ -320,10 +314,9 @@ macro_rules! impl_generator {
 						batch_size,
 					)
 					.unwrap();
-					// For some types this might not reach MAX yet, so we just check it increased
+					// Narrow types may not reach MAX in one batch, so only monotonicity holds here.
 					assert!(result > initial_val);
 
-					// Keep incrementing until we hit MAX
 					loop {
 						match $generator::next_batched(
 							&mut txn,
@@ -340,7 +333,6 @@ macro_rules! impl_generator {
 						}
 					}
 
-					// Now we should be at MAX, next call should fail
 					let err = $generator::next_batched(
 						&mut txn,
 						&EncodedKey::new("sequence"),

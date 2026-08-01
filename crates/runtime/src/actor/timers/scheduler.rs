@@ -383,12 +383,11 @@ mod tests {
 
 		let handle = scheduler.schedule_repeat(Duration::from_millis(10), move || {
 			counter_clone.fetch_add(1, Ordering::SeqCst);
-			true // Continue
+			true
 		});
 
-		// Wait until the repeating timer has fired several times, with a timeout
-		// so a "never repeats" regression still fails loud rather than racing a
-		// fixed sleep window.
+		// Polled to a deadline rather than slept for a fixed window, so a "never repeats"
+		// regression fails loud instead of racing the sleep.
 		let deadline = Instant::now() + Duration::from_secs(5);
 		while counter.load(Ordering::SeqCst) < 3 && Instant::now() < deadline {
 			thread::sleep(Duration::from_millis(10));
@@ -410,13 +409,13 @@ mod tests {
 
 		scheduler.schedule_repeat(Duration::from_millis(10), move || {
 			let count = counter_clone.fetch_add(1, Ordering::SeqCst);
-			count < 3 // Stop after 3 iterations
+			// Returning false must stop the rearm; the sleep below is long enough for
+			// many more iterations if it does not.
+			count < 3
 		});
 
-		// Wait enough time for many iterations
 		thread::sleep(Duration::from_millis(100));
 
-		// Should have stopped at 3
 		let count = counter.load(Ordering::SeqCst);
 		assert!(count <= 4, "Expected at most 4 iterations, got {}", count);
 
@@ -432,10 +431,9 @@ mod tests {
 			tx.send(()).unwrap();
 		});
 
-		// Cancel immediately
 		handle.cancel();
 
-		// Should not receive anything
+		// The timeout outlasts the 50ms deadline, so a cancel that did not take would deliver.
 		assert!(rx.recv_timeout(Duration::from_millis(100)).is_err());
 
 		scheduler.shutdown();
@@ -449,7 +447,8 @@ mod tests {
 
 		for i in 0..5 {
 			let results_clone = results.clone();
-			let delay = Duration::from_millis((5 - i) * 10); // Reverse order
+			// Scheduled in reverse deadline order, so firing in schedule order is visible.
+			let delay = Duration::from_millis((5 - i) * 10);
 			scheduler.schedule_once(delay, move || {
 				results_clone.lock().push(i);
 			});
@@ -458,7 +457,6 @@ mod tests {
 		thread::sleep(Duration::from_millis(100));
 
 		let results = results.lock();
-		// Timers should fire in deadline order (4, 3, 2, 1, 0)
 		assert_eq!(*results, vec![4, 3, 2, 1, 0]);
 
 		scheduler.shutdown();

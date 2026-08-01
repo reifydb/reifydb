@@ -122,6 +122,8 @@ impl FFIOperatorContext {
 	}
 
 	pub fn operator_id(&self) -> FlowNodeId {
+		// SAFETY: FFIOperatorContext::new asserts self.ctx is non-null, and the host keeps the ContextFFI
+		// alive and aligned for at least the lifetime of &self.
 		unsafe { FlowNodeId((*self.ctx).operator_id) }
 	}
 
@@ -327,11 +329,13 @@ impl OperatorContext for FFIOperatorContext {
 		FFIOperatorContext::operator_id(self)
 	}
 	fn clock_now(&self) -> DateTime {
+		// SAFETY: FFIOperatorContext::new asserts self.ctx is non-null, and the host keeps the ContextFFI
+		// alive and aligned for at least the lifetime of &self.
 		DateTime::from_nanos(unsafe { (*self.ctx).clock_now_nanos })
 	}
 	fn state_lease_bytes(&self) -> u64 {
-		// SAFETY: self.ctx points to the host-owned ContextFFI, valid and
-
+		// SAFETY: FFIOperatorContext::new asserts self.ctx is non-null, and the host keeps the ContextFFI
+		// alive and aligned for at least the lifetime of &self.
 		unsafe { (*self.ctx).state_lease_bytes }
 	}
 	fn state(&mut self) -> impl StateApi + '_ {

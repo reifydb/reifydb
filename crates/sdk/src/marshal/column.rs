@@ -72,6 +72,9 @@ impl Arena {
 		let columns_ptr = self.alloc(columns_size) as *mut ColumnFFI;
 
 		if !columns_ptr.is_null() {
+			// SAFETY: `columns_ptr` is non-null here and the arena reserved
+			// `column_count * size_of::<ColumnFFI>()` bytes at alignment 8, so every `add(i)` with
+			// `i < column_count` is in bounds; ColumnFFI is Copy, so the stores drop nothing.
 			unsafe {
 				for (i, col) in columns.iter().enumerate() {
 					let col_ffi = self.marshal_column_ref(col.name(), col.data());
@@ -97,6 +100,9 @@ impl Arena {
 		}
 
 		let row_numbers: Vec<RowNumber> = if !ffi.row_numbers.is_null() && ffi.row_count > 0 {
+			// SAFETY: guarded non-null with `row_count > 0`; `marshal_columns` sets this field from a
+			// live `&[RowNumber]` (repr(transparent) u64), so it is aligned and covers `row_count`
+			// initialised elements.
 			unsafe {
 				let slice = slice::from_raw_parts(ffi.row_numbers, ffi.row_count);
 				slice.iter().map(|&n| RowNumber(n)).collect()
@@ -106,6 +112,9 @@ impl Arena {
 		};
 
 		let created_at: Vec<DateTime> = if !ffi.created_at.is_null() && ffi.row_count > 0 {
+			// SAFETY: guarded non-null with `row_count > 0`; `marshal_columns` sets this field from a
+			// live `&[DateTime]` (repr(transparent) u64), so it is aligned and covers `row_count`
+			// initialised elements.
 			unsafe {
 				let slice = slice::from_raw_parts(ffi.created_at, ffi.row_count);
 				slice.iter().map(|&n| DateTime::from_nanos(n)).collect()
@@ -115,6 +124,9 @@ impl Arena {
 		};
 
 		let updated_at: Vec<DateTime> = if !ffi.updated_at.is_null() && ffi.row_count > 0 {
+			// SAFETY: guarded non-null with `row_count > 0`; `marshal_columns` sets this field from a
+			// live `&[DateTime]` (repr(transparent) u64), so it is aligned and covers `row_count`
+			// initialised elements.
 			unsafe {
 				let slice = slice::from_raw_parts(ffi.updated_at, ffi.row_count);
 				slice.iter().map(|&n| DateTime::from_nanos(n)).collect()
@@ -124,6 +136,9 @@ impl Arena {
 		};
 
 		let time: Vec<DateTime> = if !ffi.time.is_null() && ffi.row_count > 0 {
+			// SAFETY: guarded non-null with `row_count > 0`; `marshal_columns` sets this field from a
+			// live `&[DateTime]` (repr(transparent) u64), so it is aligned and covers `row_count`
+			// initialised elements.
 			unsafe {
 				let slice = slice::from_raw_parts(ffi.time, ffi.row_count);
 				slice.iter().map(|&n| DateTime::from_nanos(n)).collect()
@@ -133,6 +148,8 @@ impl Arena {
 		};
 
 		let mut columns: Vec<ColumnWithName> = Vec::with_capacity(ffi.column_count);
+		// SAFETY: `ffi.columns` was checked non-null above; `marshal_columns` points it at an 8-aligned
+		// arena array of exactly `column_count` initialised `ColumnFFI`.
 		unsafe {
 			let cols_slice = slice::from_raw_parts(ffi.columns, ffi.column_count);
 			for col_ffi in cols_slice {
@@ -203,6 +220,8 @@ impl Arena {
 
 	pub(super) fn unmarshal_column(&self, ffi: &ColumnFFI, row_count: usize) -> ColumnWithName {
 		let name = if !ffi.name.ptr.is_null() && ffi.name.len > 0 {
+			// SAFETY: the branch above rules out a null or zero-length name buffer; the producer owns
+			// those `name.len` initialised bytes for the duration of the call.
 			unsafe {
 				let bytes = slice::from_raw_parts(ffi.name.ptr, ffi.name.len);
 				let s = str::from_utf8(bytes).unwrap_or("");
@@ -566,6 +585,8 @@ impl Arena {
 		let offsets_byte_len = mem::size_of_val(offsets);
 		let offsets_ptr = self.alloc(offsets_byte_len) as *mut u64;
 		if !offsets_ptr.is_null() {
+			// SAFETY: the arena returned a non-null 8-aligned block of `size_of_val(offsets)` bytes,
+			// exactly `offsets.len()` u64, which cannot overlap the caller's slice.
 			unsafe {
 				ptr::copy_nonoverlapping(offsets.as_ptr(), offsets_ptr, offsets.len());
 			}
@@ -590,11 +611,14 @@ impl Arena {
 		let byte_count = len.div_ceil(8);
 		let ptr = self.alloc(byte_count);
 		if !ptr.is_null() {
+			// SAFETY: the arena returned a non-null block of `byte_count` writable bytes.
 			unsafe {
 				ptr::write_bytes(ptr, 0, byte_count);
 			}
 			for i in 0..len {
 				if bitvec.get(i) {
+					// SAFETY: `i < len` implies `i / 8 < len.div_ceil(8) == byte_count`, and
+					// the write_bytes above initialised every one of those bytes.
 					unsafe {
 						*ptr.add(i / 8) |= 1 << (i % 8);
 					}
@@ -612,6 +636,8 @@ impl Arena {
 		if ffi.is_empty() {
 			return BitVec::empty();
 		}
+		// SAFETY: `is_empty` above ruled out a null pointer and a zero length; the producer owns
+		// `ffi.len` initialised bytes at `ffi.ptr` for the duration of the call.
 		unsafe {
 			let bytes = slice::from_raw_parts(ffi.ptr, ffi.len);
 			BitVec::from_raw(bytes.to_vec(), row_count)

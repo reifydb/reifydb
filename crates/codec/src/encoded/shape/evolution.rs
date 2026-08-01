@@ -144,7 +144,7 @@ mod tests {
 		let source = RowShape::new(source_fields);
 		let target = RowShape::new(target_fields);
 
-		// Should return None due to incompatible types
+		// A field whose type changed cannot be reinterpreted, so no resolver is built at all.
 		assert!(RowShapeResolver::new(source, target).is_none());
 	}
 }

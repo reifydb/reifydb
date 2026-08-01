@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-/// Identifies a transaction within a schedule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TxId(pub u32);
 
-/// An operation that can be executed within a transaction.
 #[derive(Debug, Clone)]
 pub enum Op {
 	BeginCommand,
@@ -25,14 +23,13 @@ pub enum Op {
 	Rollback,
 }
 
-/// A single step in a schedule: one operation on one transaction.
 #[derive(Debug, Clone)]
 pub struct Step {
 	pub tx_id: TxId,
 	pub op: Op,
 }
 
-/// An ordered sequence of steps to execute deterministically.
+/// Step order is the interleaving under test, so it is executed exactly as written.
 #[derive(Debug, Clone)]
 pub struct Schedule {
 	pub steps: Vec<Step>,

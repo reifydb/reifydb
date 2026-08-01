@@ -6,7 +6,6 @@ use reifydb_value::value::{blob::Blob, date::Date, int::Int, uuid::Uuid4, value_
 
 #[test]
 fn test_large_row() {
-	// Test performance with many fields
 	let field_counts = [10, 50, 100, 200, 500];
 
 	for count in field_counts {
@@ -28,7 +27,6 @@ fn test_large_row() {
 		let shape = RowShape::testing(&types);
 		let mut row = shape.allocate();
 
-		// Set all fields
 		for i in 0..count {
 			match i % 10 {
 				0 => shape.set::<bool>(&mut row, i, true),
@@ -44,7 +42,6 @@ fn test_large_row() {
 			}
 		}
 
-		// Read all fields
 		for i in 0..count {
 			match i % 10 {
 				0 => {
@@ -88,8 +85,7 @@ fn test_dynamic_field_reallocation() {
 
 	let iterations = 1000;
 
-	// Test performance of setting dynamic fields across many rows
-	// (since dynamic fields can only be set once per encoded)
+	// A dynamic field can only be set once per row, so the churn is spread across many rows.
 	let mut rows = Vec::with_capacity(iterations);
 
 	for i in 0..iterations {
@@ -103,14 +99,12 @@ fn test_dynamic_field_reallocation() {
 		shape.set_blob(&mut row, 1, &Blob::from(bytes));
 		shape.set_int(&mut row, 2, &int);
 
-		// Verify values
 		assert_eq!(shape.get_utf8(&row, 0).len(), size);
 		assert_eq!(shape.get_blob(&row, 1).len(), size);
 
 		rows.push(row);
 	}
 
-	// Verify a sample of rows to ensure data integrity
 	for (i, row) in rows.iter().enumerate().step_by(100) {
 		let expected_size = (i % 100) + 1;
 		assert_eq!(shape.get_utf8(row, 0).len(), expected_size);
@@ -121,9 +115,6 @@ fn test_dynamic_field_reallocation() {
 
 #[test]
 fn test_memory_efficiency() {
-	// Test that memory usage is reasonable
-
-	// Static types should have predictable size
 	let shape = RowShape::testing(&[
 		ValueType::Boolean, // 1 bit validity + 1 byte
 		ValueType::Int4,    // 1 bit validity + 4 bytes
@@ -131,13 +122,10 @@ fn test_memory_efficiency() {
 	]);
 	let row = shape.allocate();
 
-	// Expected: shape header + validity bits (rounded up) + data
-	// 32 byte header, 3 validity bits = 1 byte, data = 1 + 4 + 8 = 13 bytes
-	// Plus any alignment padding
+	// 32-byte header + 3 validity bits rounded to 1 byte + 13 bytes of data, plus alignment padding.
 	assert!(row.len() < 56, "Static row too large: {} bytes", row.len());
 
-	// Dynamic types should grow as needed - test with separate rows since
-	// dynamic fields can only be set once
+	// A dynamic field can only be set once, so each size gets its own row.
 	let shape = RowShape::testing(&[ValueType::Utf8]);
 
 	let initial_size = shape.allocate().len();
@@ -154,7 +142,6 @@ fn test_memory_efficiency() {
 	assert!(large_size > small_size, "Dynamic field didn't grow for larger data");
 	assert!(large_size < 1200, "Dynamic field used too much memory");
 
-	// Test that different sized dynamic fields use appropriate memory
 	let sizes = [10, 100, 500, 1000];
 	let mut row_sizes = Vec::new();
 
@@ -164,7 +151,6 @@ fn test_memory_efficiency() {
 		row_sizes.push(row.len());
 	}
 
-	// Row sizes should generally increase with content size
 	for i in 1..row_sizes.len() {
 		assert!(row_sizes[i] >= row_sizes[i - 1], "Row size should increase with content size");
 	}

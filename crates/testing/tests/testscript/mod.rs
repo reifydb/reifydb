@@ -31,9 +31,7 @@ fn test_generate([in_path, out_path]: [&std::path::Path; 2]) {
 	f.write_all(output.as_bytes()).expect("failed to write output");
 }
 
-// Generate error tests for each pair of *.in and *.error files in
-// tests/errors/. The input scripts are expected to error or panic with the
-// stored output.
+// These input scripts are expected to error or panic; the stored output is the message.
 test_each_path! { for ["in", "error"] in "crates/testing/tests/testscript/errors" as errors => test_error }
 
 fn test_error([in_path, out_path]: [&std::path::Path; 2]) {
@@ -56,23 +54,14 @@ fn test_error([in_path, out_path]: [&std::path::Path; 2]) {
 	f.write_all(message.as_bytes()).expect("failed to write goldenfile");
 }
 
-/// A testscript runner that debug-prints the parsed command. It
-/// understands the following special commands:
+/// Debug-prints the parsed command. A script author needs the special commands it recognises:
 ///
-/// _echo: prints back the arguments, space-separated
-/// _error: errors with the given string
-/// _panic: panics with the given string
-/// _set: sets various options
+/// - `_echo <args..>`: prints the arguments back, space-separated
+/// - `_error <msg>` / `_panic <msg>`: fails with the given string
+/// - `_set k=v`: sets `prefix`, `suffix`, `start_block`, `end_block`, `start_command` or `end_command`, each printed at
+///   the position its name gives
 ///
-///   - prefix=<string>: printed immediately before the command output
-///   - suffix=<string>: printed immediately after the command output
-///   - start_block=<string>: printed at the start of a block
-///   - start_command=<string>: printed at the start of a command
-///   - end_block=<string>: printed at the end of a block
-///   - end_command=<string>: printed at the end of a command
-///
-/// If a command is expected to fail via !, the parsed command string is
-/// returned as an error.
+/// A command marked `!` is returned as an error carrying its own parsed form.
 #[derive(Default)]
 struct DebugRunner {
 	prefix: String,
@@ -91,7 +80,6 @@ impl DebugRunner {
 
 impl Runner for DebugRunner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
-		// Process commands.
 		let output = match command.name.as_str() {
 			"_echo" => {
 				for arg in &command.args {

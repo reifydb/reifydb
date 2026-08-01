@@ -345,12 +345,11 @@ fn test_intersecting_data() {
 	assert_eq!(330, val);
 }
 
-// https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 #[test]
 fn test_intersecting_data2() {
+	// https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 	let engine = test_multi();
 
-	// Setup
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!("a1"), as_values!(10u64)).unwrap();
 	txn.set(&as_key!("b1"), as_values!(100u64)).unwrap();
@@ -405,12 +404,11 @@ fn test_intersecting_data2() {
 	assert_eq!(310, val);
 }
 
-// https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 #[test]
 fn test_intersecting_data3() {
+	// https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 	let engine = test_multi();
 
-	// // Setup
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!("b1"), as_values!(100u64)).unwrap();
 	txn.set(&as_key!("b2"), as_values!(200u64)).unwrap();

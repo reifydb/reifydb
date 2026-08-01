@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! DDL instruction handlers. CREATE, ALTER, DROP, GRANT, REVOKE, and MIGRATE operate against the catalog tier
-//! through admin transactions and emit catalog change events that the materialised view picks up. Each operation
-//! validates against the existing catalog state before applying so a CREATE that conflicts with an existing
-//! object fails before the transaction commits.
+//! DDL instruction handlers. Each operates on the catalog through an admin transaction and validates against
+//! existing catalog state first, so a conflicting statement fails before the transaction commits.
 
 pub mod alter;
 pub mod create;

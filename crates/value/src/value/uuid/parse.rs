@@ -98,7 +98,7 @@ pub mod tests {
 
 		#[test]
 		fn test_invalid_uuid4_wrong_version() {
-			// This is a UUID v1, should fail validation for v4
+			// Well-formed but v1: parsing must check the version nibble, not just the shape.
 			let uuid_str = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
 			let result = parse_uuid4(Fragment::testing(uuid_str));
 			assert!(result.is_err());
@@ -161,7 +161,7 @@ pub mod tests {
 
 		#[test]
 		fn test_invalid_uuid7_wrong_version() {
-			// This is a UUID v4, should fail validation for v7
+			// Well-formed but v4, which has no timestamp and so cannot be a Uuid7.
 			let uuid_str = "550e8400-e29b-41d4-a716-446655440000";
 			let result = parse_uuid7(Fragment::testing(uuid_str));
 			assert!(result.is_err());
@@ -208,7 +208,7 @@ pub mod tests {
 
 		#[test]
 		fn test_invalid_identity_id_wrong_version() {
-			// UUID v4 should fail - IdentityId requires v7
+			// IdentityId is backed by Uuid7, so a v4 must be rejected here too.
 			let uuid_str = "550e8400-e29b-41d4-a716-446655440000";
 			let result = parse_identity_id(Fragment::testing(uuid_str));
 			assert!(result.is_err());

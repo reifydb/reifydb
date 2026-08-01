@@ -102,11 +102,13 @@ impl<'bump> Parser<'bump> {
 			return false;
 		}
 
+		// SAFETY: `self.position < tokens_len` was checked immediately above.
 		if !unsafe { self.tokens.get_unchecked(self.position) }.is_identifier() {
 			return false;
 		}
 
 		if self.position + 1 < tokens_len
+			// SAFETY: the short-circuiting left operand established `self.position + 1 < tokens_len`.
 			&& unsafe { self.tokens.get_unchecked(self.position + 1) }.is_operator(Operator::OpenParen)
 		{
 			return true;
@@ -114,17 +116,22 @@ impl<'bump> Parser<'bump> {
 
 		let mut pos = self.position + 1;
 		while pos + 2 < tokens_len {
+			// SAFETY: the loop condition `pos + 2 < tokens_len` implies `pos < tokens_len`.
 			if !unsafe { self.tokens.get_unchecked(pos) }.is_operator(Operator::DoubleColon) {
 				return false;
 			}
 			pos += 1;
 
+			// SAFETY: the loop head established `pos + 2 < tokens_len`; after one increment
+			// `pos + 1 < tokens_len`, so `pos` is in bounds.
 			let token = unsafe { self.tokens.get_unchecked(pos) };
 			if !token.is_identifier() && !token.is_keyword_as_ident() {
 				return false;
 			}
 			pos += 1;
 
+			// SAFETY: the loop head established `pos + 2 < tokens_len`; after two increments
+			// `pos < tokens_len` still holds.
 			if unsafe { self.tokens.get_unchecked(pos) }.is_operator(Operator::OpenParen) {
 				return true;
 			}

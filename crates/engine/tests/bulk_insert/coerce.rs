@@ -59,11 +59,7 @@ fn test_missing_column_uses_undefined() {
 	t.admin("CREATE TABLE test::partial { a: int4, b: Option(int4) }");
 
 	let mut builder = t.bulk_insert(identity);
-	builder
-		.table("test::partial")
-		.row(params! { a: 1 })
-		.row(params! { a: 2 })
-		.done();
+	builder.table("test::partial").row(params! { a: 1 }).row(params! { a: 2 }).done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables[0].inserted, 2);
@@ -89,12 +85,7 @@ fn test_mixed_some_none_values() {
 	t.admin("CREATE TABLE test::mixed { a: Option(int4), b: Option(int4) }");
 
 	let mut builder = t.bulk_insert(identity);
-	builder
-		.table("test::mixed")
-		.row(params! { a: 1, b: 10 })
-		.row(params! { a: 2 })
-		.row(params! { b: 30 })
-		.done();
+	builder.table("test::mixed").row(params! { a: 1, b: 10 }).row(params! { a: 2 }).row(params! { b: 30 }).done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables[0].inserted, 3);

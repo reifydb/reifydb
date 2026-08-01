@@ -145,9 +145,8 @@ impl<S: Storage> Utf8Container<S> {
 
 	pub fn get(&self, index: usize) -> Option<&str> {
 		let bytes = self.inner.get_bytes(index)?;
-		// SAFETY: every constructor and push path takes `String`/`&str`, so the backing buffer
-		// only ever receives valid UTF-8, and offsets always fall on element boundaries. The one
-		// raw entry point, from_bytes_offsets, asserts validity.
+		// SAFETY: every constructor and push path takes `String`/`&str` and from_bytes_offsets asserts
+		// validity, so the buffer holds UTF-8 and offsets fall on element boundaries.
 		Some(unsafe { str::from_utf8_unchecked(bytes) })
 	}
 

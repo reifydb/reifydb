@@ -306,28 +306,21 @@ mod tests {
 
 	#[test]
 	fn mixed_integer_widths_regression() {
-		// The exact mixed-width integer shape produced by the scalar VM across rows
-		// in the per-row UDF fallback path at
-		// `crates/engine/src/vm/exec/call.rs::run_function_body_per_row`.
-		// Regression guard: if this returns anything narrower than Int16, the
-		// accumulator column assembly will re-hit the `push_value` unimplemented
-		// panic at `crates/core/src/value/column/push/value.rs`.
+		// The per-row UDF path builds a column from mixed integer widths; anything narrower
+		// than the widest input cannot hold every row and panics during column assembly.
 		let input = [Int16, Int16, Int16, Int8, Int1];
 		assert_eq!(ValueType::super_type_of(input), Int16);
 	}
 
 	#[test]
 	fn any_is_absorbing() {
-		// Any is the top of the type lattice: whenever it appears in
-		// the input, the result is Any - regardless of position or
-		// what else it's paired with, including types that otherwise
-		// dominate (Utf8, Boolean, Float*) or short-circuit (Option).
+		// Any is the top of the lattice, so it wins from any position and against types that
+		// otherwise dominate or short-circuit the fold.
 		let others = [Int4, Uint8, Utf8, Boolean, Float4, Float8, Date, Uuid4, Blob, opt(Int4)];
 		for ty in &others {
 			assert_eq!(ValueType::super_type_of([Any, ty.clone()]), Any, "[Any, {:?}]", ty);
 			assert_eq!(ValueType::super_type_of([ty.clone(), Any]), Any, "[{:?}, Any]", ty);
 		}
-		// Any in the middle and at the tail still wins; multiple Anys stay Any.
 		assert_eq!(ValueType::super_type_of([Int4, Any, Int2]), Any);
 		assert_eq!(ValueType::super_type_of([Int1, Int2, Any]), Any);
 		assert_eq!(ValueType::super_type_of([Any, Any, Int4]), Any);
@@ -335,7 +328,7 @@ mod tests {
 
 	#[test]
 	fn large_input_stable() {
-		// Saturates to Int16 after 5 fold steps; remaining 995 steps stay at Int16.
+		// The fold must saturate rather than keep widening, so a long input is stable.
 		let input: Vec<ValueType> = iter::repeat(Int1).take(1000).collect();
 		assert_eq!(ValueType::super_type_of(input), Int16);
 	}

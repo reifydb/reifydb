@@ -314,8 +314,6 @@ pub mod test {
 		let mut txn = create_test_admin_transaction();
 		ensure_test_table(&mut txn);
 
-		// Try to create a text column with auto_increment
-
 		let err = CatalogStore::create_column(
 			&mut txn,
 			TableId(1),
@@ -337,7 +335,6 @@ pub mod test {
 		assert_eq!(diagnostic.code, "CA_006");
 		assert!(diagnostic.message.contains("auto increment is not supported for type"));
 
-		// Try with bool type
 		let err = CatalogStore::create_column(
 			&mut txn,
 			TableId(1),
@@ -357,7 +354,6 @@ pub mod test {
 
 		assert_eq!(err.diagnostic().code, "CA_006");
 
-		// Try with float type
 		let err = CatalogStore::create_column(
 			&mut txn,
 			TableId(1),
@@ -400,7 +396,6 @@ pub mod test {
 		)
 		.unwrap();
 
-		// Tries to create a column with the same name again
 		let err = CatalogStore::create_column(
 			&mut txn,
 			TableId(1),

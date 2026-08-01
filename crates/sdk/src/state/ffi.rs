@@ -39,6 +39,9 @@ pub(crate) fn get(ctx: &FFIOperatorContext, key: &EncodedKey) -> Result<Option<E
 		cap: 0,
 	};
 
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; key_bytes outlives the callback, which only reads it. On FFI_OK the host writes a buffer of
+	// output.len initialised bytes, copied out before memory.free releases it with the length it was allocated at.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.get)(
 			(*ctx.ctx).operator_id,
@@ -77,6 +80,9 @@ pub(crate) fn set(ctx: &mut FFIOperatorContext, key: &EncodedKey, value: &Encode
 	let key_bytes = key.as_bytes();
 	let value_bytes = value.as_ref();
 
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; key_bytes and value_bytes borrow guest allocations that outlive the callback, which only
+	// reads them.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.set)(
 			(*ctx.ctx).operator_id,
@@ -102,6 +108,8 @@ pub(crate) fn set(ctx: &mut FFIOperatorContext, key: &EncodedKey, value: &Encode
 pub(crate) fn remove(ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<()> {
 	let key_bytes = key.as_bytes();
 
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; key_bytes outlives the callback, which only reads it.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.remove)(
 			(*ctx.ctx).operator_id,
@@ -142,6 +150,9 @@ pub(crate) fn get_many(ctx: &FFIOperatorContext, keys: &[EncodedKey]) -> Result<
 
 	let mut iterator: *mut StateIteratorFFI = null_mut();
 
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; key_refs borrows keys that outlive the callback. The handle the host opens is passed once
+	// to collect_iterator_results, discharging its precondition that the handle is fresh and freed exactly there.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.get_many)(
 			(*ctx.ctx).operator_id,
@@ -168,6 +179,9 @@ pub(crate) fn prefix(ctx: &FFIOperatorContext, prefix: &EncodedKey) -> Result<Ve
 	let prefix_bytes = prefix.as_bytes();
 	let mut iterator: *mut StateIteratorFFI = null_mut();
 
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; prefix_bytes outlives the callback. The handle the host opens is passed once to
+	// collect_iterator_results, discharging its precondition that the handle is fresh and freed exactly there.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.prefix)(
 			(*ctx.ctx).operator_id,
@@ -200,6 +214,9 @@ pub(crate) fn range(
 ) -> Result<Vec<(EncodedKey, EncodedRow)>> {
 	let mut iterator: *mut StateIteratorFFI = null_mut();
 
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; each bound pointer is null with length 0 or borrows a key that outlives the callback. The
+	// handle the host opens is passed once to collect_iterator_results, which owns and frees it.
 	unsafe {
 		let (start_ptr, start_len, start_bound_type) = match start {
 			Bound::Unbounded => (ptr::null(), 0, BOUND_UNBOUNDED),
@@ -233,6 +250,12 @@ pub(crate) fn range(
 	}
 }
 
+/// # Safety
+///
+/// `ctx.ctx` must point to a live `ContextFFI` whose state callbacks are valid,
+/// and `iterator` must be null or an open handle from that context's state
+/// scan/range callback that has not yet been freed. This takes ownership of the
+/// handle and frees it before returning, so the caller must not free it again.
 unsafe fn collect_iterator_results(
 	ctx: &FFIOperatorContext,
 	iterator: *mut StateIteratorFFI,
@@ -255,6 +278,9 @@ unsafe fn collect_iterator_results(
 
 	loop {
 		let mut out_len = 0usize;
+		// SAFETY: iterator was checked non-null above and is still the open handle this call owns; batch is a
+		// live array of ITERATOR_BATCH_CAP entries and out_len a local slot, so the host writes at most
+		// ITERATOR_BATCH_CAP entries in bounds.
 		let next_result = unsafe {
 			((*ctx.ctx).callbacks.state.iterator_next)(
 				iterator,
@@ -265,6 +291,8 @@ unsafe fn collect_iterator_results(
 		};
 
 		if next_result != FFI_OK && next_result != FFI_END_OF_ITERATION {
+			// SAFETY: iterator is the open handle this call owns and has not been freed yet; the return
+			// immediately after means it is freed exactly once.
 			unsafe { ((*ctx.ctx).callbacks.state.iterator_free)(iterator) };
 			return Err(SdkError::Other(format!(
 				"host_state_iterator_next failed with code {}",
@@ -276,8 +304,9 @@ unsafe fn collect_iterator_results(
 			if entry.key.ptr.is_null() || entry.key.len == 0 {
 				continue;
 			}
-			// SAFETY: the host guarantees every returned slice points to memory
-
+			// SAFETY: the host fills out_len entries whose key ptr/len describe initialised bytes owned
+			// by the iterator and valid until the next iterator_next or iterator_free, both of which
+			// happen after this copy. Null and zero-length keys are skipped above.
 			let key_bytes = unsafe { from_raw_parts(entry.key.ptr, entry.key.len) }.to_vec();
 			let value = if !entry.value.ptr.is_null() && entry.value.len > 0 {
 				// SAFETY: same iterator-owned lifetime contract as the key slice.
@@ -294,6 +323,8 @@ unsafe fn collect_iterator_results(
 		}
 	}
 
+	// SAFETY: iterator is the open handle this call owns; the loop only breaks on the path that has not freed it,
+	// so this frees it exactly once.
 	unsafe { ((*ctx.ctx).callbacks.state.iterator_free)(iterator) };
 	Span::current().record("result_count", results.len());
 	Ok(results)
@@ -303,6 +334,8 @@ unsafe fn collect_iterator_results(
 	operator_id = ctx.operator_id().0
 ))]
 pub(crate) fn clear(ctx: &mut FFIOperatorContext) -> Result<()> {
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; no guest pointer crosses the boundary here.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.clear)((*ctx.ctx).operator_id, ctx.ctx);
 
@@ -333,6 +366,9 @@ pub(crate) fn intern_groups(ctx: &mut FFIOperatorContext, groups: &[EncodedKey])
 	let refs = key_refs(groups);
 	let mut ids = vec![0u64; groups.len()];
 
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; refs borrows groups for the duration of the call, and ids is a live, initialised array of
+	// exactly groups.len() u64 slots for the host to fill.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.intern_groups)(
 			(*ctx.ctx).operator_id,
@@ -352,6 +388,8 @@ pub(crate) fn intern_groups(ctx: &mut FFIOperatorContext, groups: &[EncodedKey])
 pub(crate) fn arm_timer(ctx: &mut FFIOperatorContext, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 	let bytes = key.as_bytes();
 
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; bytes outlives the callback, which only reads it.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.arm_timer)(
 			(*ctx.ctx).operator_id,
@@ -373,8 +411,8 @@ pub(crate) fn flow_watermark(ctx: &mut FFIOperatorContext) -> Result<Option<Date
 	let mut millis = 0u64;
 	let mut present = 0u8;
 
-	// SAFETY: ctx.ctx is the host-provided context pointer, valid for the duration of the guest
-
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null, and the host keeps the ContextFFI alive and
+	// aligned for the whole guest call; millis and present are local stack slots.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.flow_watermark)(
 			(*ctx.ctx).operator_id,
@@ -398,6 +436,8 @@ pub(crate) fn disarm_timer(
 ) -> Result<()> {
 	let bytes = key.as_bytes();
 
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; bytes outlives the callback, which only reads it.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.disarm_timer)(
 			(*ctx.ctx).operator_id,
@@ -422,6 +462,9 @@ pub(crate) fn lookup_groups(ctx: &mut FFIOperatorContext, groups: &[EncodedKey])
 	let refs = key_refs(groups);
 	let mut ids = vec![0u64; groups.len()];
 
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; refs borrows groups for the duration of the call, and ids is a live, initialised array of
+	// exactly groups.len() u64 slots for the host to fill.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.lookup_groups)(
 			(*ctx.ctx).operator_id,
@@ -450,6 +493,9 @@ pub(crate) fn get_or_create_row_numbers(
 	let mut row_numbers = vec![0u64; keys.len()];
 	let mut is_new = vec![0u8; keys.len()];
 
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; key_refs borrows keys for the duration of the call, and row_numbers and is_new are live,
+	// initialised arrays of exactly keys.len() slots each for the host to fill.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.get_or_create_row_numbers)(
 			(*ctx.ctx).operator_id,
@@ -473,6 +519,8 @@ pub(crate) fn get_or_create_row_numbers(
 
 pub(crate) fn remove_row_number(ctx: &mut FFIOperatorContext, group: GroupId, key: &EncodedKey) -> Result<()> {
 	let key_bytes = key.as_bytes();
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; key_bytes outlives the callback, which only reads it.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.remove_row_number)(
 			(*ctx.ctx).operator_id,
@@ -500,6 +548,9 @@ pub(crate) fn remove_row_numbers_below(
 		len: 0,
 		cap: 0,
 	};
+	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
+	// whole guest call; upper_bytes outlives the callback. On FFI_OK the host writes a buffer of output.len
+	// initialised bytes, read before memory.free releases it with the length it was allocated with.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.remove_row_numbers_below)(
 			(*ctx.ctx).operator_id,

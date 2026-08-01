@@ -194,22 +194,20 @@ pub mod tests {
 
 	#[test]
 	fn test_four_digit_year() {
-		// Test 2-digit year
+		// The year field is fixed at four digits, so anything shorter or longer is rejected
+		// rather than padded or truncated; leading zeros are how a small year is written.
 		let fragment = Fragment::testing("24-03-15");
 		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_005");
 
-		// Test 3-digit year
 		let fragment = Fragment::testing("024-03-15");
 		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_005");
 
-		// Test 5-digit year
 		let fragment = Fragment::testing("20240-03-15");
 		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_005");
 
-		// Test year with leading zeros (still 4 digits, should work)
 		let fragment = Fragment::testing("0024-03-15");
 		let date = parse_date(fragment).unwrap();
 		assert_eq!(date.to_string(), "0024-03-15");
@@ -217,27 +215,24 @@ pub mod tests {
 
 	#[test]
 	fn test_two_digit_month() {
-		// Test 1-digit month
+		// The month field is fixed at two digits, and the width check runs on characters, so a
+		// space or letter is a width error rather than a value error.
 		let fragment = Fragment::testing("2024-3-15");
 		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_006");
 
-		// Test 3-digit month
 		let fragment = Fragment::testing("2024-003-15");
 		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_006");
 
-		// Test month with leading zeros (still 2 digits, should work)
 		let fragment = Fragment::testing("2024-03-15");
 		let date = parse_date(fragment).unwrap();
 		assert_eq!(date.to_string(), "2024-03-15");
 
-		// Test month with non-digits
 		let fragment = Fragment::testing("2024-0a-15");
 		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_006");
 
-		// Test month with spaces
 		let fragment = Fragment::testing("2024- 3-15");
 		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_006");
@@ -245,27 +240,23 @@ pub mod tests {
 
 	#[test]
 	fn test_two_digit_day() {
-		// Test 1-digit day
+		// The day field is fixed at two digits on the same rules as the month.
 		let fragment = Fragment::testing("2024-03-5");
 		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_007");
 
-		// Test 3-digit day
 		let fragment = Fragment::testing("2024-03-015");
 		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_007");
 
-		// Test day with leading zeros (still 2 digits, should work)
 		let fragment = Fragment::testing("2024-03-05");
 		let date = parse_date(fragment).unwrap();
 		assert_eq!(date.to_string(), "2024-03-05");
 
-		// Test day with non-digits
 		let fragment = Fragment::testing("2024-03-1a");
 		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_007");
 
-		// Test day with spaces
 		let fragment = Fragment::testing("2024-03- 5");
 		let err = parse_date(fragment).unwrap_err();
 		assert_eq!(err.0.code, "TEMPORAL_007");

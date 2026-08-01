@@ -182,7 +182,7 @@ pub mod tests {
 			other => panic!("expected SeriesBucket source, got {other:?}"),
 		}
 
-		// Round-trip: a re-find returns the updated values.
+		// The update must reach storage, not just the returned value.
 		let reread = CatalogStore::find_column_snapshot(&mut Transaction::Admin(&mut txn), created.id)
 			.unwrap()
 			.expect("snapshot still present");

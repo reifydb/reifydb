@@ -3,8 +3,9 @@
 
 //! Foundational types, traits, on-disk encodings, and runtime primitives shared across the entire ReifyDB workspace.
 //!
-//! Every other crate in the workspace depends on `core`, and `core` depends on no other ReifyDB crate (apart from
-//! `reifydb-value` and `reifydb-runtime`). Its purpose is to break what would otherwise be a forest of circular
+//! Every other crate in the workspace depends on `core`, and `core` depends only on the foundational crates
+//! (`reifydb-abi`, `reifydb-codec`, `reifydb-macro`, `reifydb-runtime`, `reifydb-value`). Its purpose is to break what
+//! would otherwise be a forest of circular
 //! dependencies between the storage tier, query engine, catalog, transaction manager, policy enforcer, and
 //! subscription/flow runtime: each of those crates implements traits defined here and consumes data shapes defined
 //! here. Nothing in this crate knows about a specific storage backend, query engine, or catalog implementation - it is
@@ -34,9 +35,9 @@
 //! intentionally kept independent so it can be used anywhere. Capture types for the test harness are exposed
 //! separately.
 //!
-//! Invariant: `core` does not depend on any other ReifyDB crate beyond `reifydb-value` and `reifydb-runtime`. Adding
-//! such a dependency would re-introduce the cycles this crate exists to break; new shared functionality belongs here,
-//! not in a downstream crate that `core` would then have to import back.
+//! Invariant: `core` does not depend on any ReifyDB crate outside the foundational set listed above. Adding such a
+//! dependency would re-introduce the cycles this crate exists to break; new shared functionality belongs here, not in
+//! a downstream crate that `core` would then have to import back.
 
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]

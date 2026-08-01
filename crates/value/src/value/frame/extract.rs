@@ -205,15 +205,13 @@ pub mod tests {
 	fn test_get_value() {
 		let frame = make_test_frame();
 
-		// Get strict-typed value
 		let id: Option<i64> = frame.get("id", 0).unwrap();
 		assert_eq!(id, Some(1i64));
 
-		// Get string value
 		let name: Option<String> = frame.get("name", 0).unwrap();
 		assert_eq!(name, Some("Alice".to_string()));
 
-		// All values are defined (no bitvec), empty string at index 2
+		// The column has no bitvec, so an empty string must read as present, not as a none.
 		let name_at_2: Option<String> = frame.get("name", 2).unwrap();
 		assert_eq!(name_at_2, Some(String::new()));
 	}
@@ -222,11 +220,10 @@ pub mod tests {
 	fn test_get_coerce() {
 		let frame = make_test_frame();
 
-		// Int4 coerced to i64
+		// get_coerce widens across the stored type, which the strict get in test_errors rejects.
 		let score: Option<i64> = frame.get_coerce("score", 0).unwrap();
 		assert_eq!(score, Some(100i64));
 
-		// Int4 coerced to f64
 		let score_f64: Option<f64> = frame.get_coerce("score", 1).unwrap();
 		assert_eq!(score_f64, Some(85.0f64));
 	}
@@ -246,7 +243,6 @@ pub mod tests {
 	fn test_column_values_coerce() {
 		let frame = make_test_frame();
 
-		// Int4 coerced to Vec<Option<i64>>
 		let scores: Vec<Option<i64>> = frame.column_values_coerce("score").unwrap();
 		assert_eq!(scores, vec![Some(100), Some(85), Some(92)]);
 	}
@@ -255,15 +251,14 @@ pub mod tests {
 	fn test_errors() {
 		let frame = make_test_frame();
 
-		// Column not found
+		// Each failure keeps its own variant, so a caller can tell a typo from a bad index from
+		// a type mismatch; the last one is why strict get exists alongside get_coerce.
 		let err = frame.get::<i64>("nonexistent", 0).unwrap_err();
 		assert!(matches!(err, FrameError::ColumnNotFound { .. }));
 
-		// Row out of bounds
 		let err = frame.get::<i64>("id", 100).unwrap_err();
 		assert!(matches!(err, FrameError::RowOutOfBounds { .. }));
 
-		// ValueType mismatch (strict)
 		let err = frame.get::<i32>("id", 0).unwrap_err();
 		assert!(matches!(err, FrameError::ValueError { .. }));
 	}

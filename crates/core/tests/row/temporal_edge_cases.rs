@@ -28,13 +28,12 @@ fn test_datetime_precision_limits() {
 	let shape = RowShape::testing(&[ValueType::DateTime]);
 	let mut row = shape.allocate();
 
-	// Test nanosecond precision preservation
+	// A DateTime carries nanoseconds, so the sub-second field must survive the round trip.
 	let dt = DateTime::new(2024, 12, 25, 12, 34, 56, 123456789).unwrap();
 	shape.set::<DateTime>(&mut row, 0, dt);
 	let retrieved = shape.get::<DateTime>(&row, 0);
 	assert_eq!(retrieved, dt);
 
-	// Verify nanosecond precision
 	assert_eq!(dt.to_nanos(), retrieved.to_nanos());
 }
 

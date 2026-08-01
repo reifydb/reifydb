@@ -270,7 +270,6 @@ pub mod tests {
 		assert_eq!(container.get(1), Some(false));
 		assert_eq!(container.get(2), Some(true));
 
-		// All should be defined
 		for i in 0..3 {
 			assert!(container.is_defined(i));
 		}

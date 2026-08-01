@@ -221,8 +221,8 @@ impl GateOperator {
 
 	#[allow(clippy::mut_from_ref)]
 	fn state_slot(&self) -> &mut GateState {
-		// SAFETY: apply runs single-threaded per operator and never re-enters, so state_slot
-
+		// SAFETY: one actor drives this operator and apply never re-enters, so no other borrow
+		// of the UnsafeCell is live while this &mut exists.
 		unsafe { &mut *self.state.get() }
 	}
 
@@ -399,11 +399,9 @@ mod tests {
 
 	#[test]
 	fn a_visibility_key_is_node_scoped_in_its_own_keyspace() {
-		// This marker used to be hand-rolled as [b'G'|row_number]. A raw leading byte is
-		// indistinguishable from a group-id varint, and b'G' (0x47) decodes into the two-byte
-		// varint tier, so the key sat inside the range of group 14591 - a reachable id, unlike
-		// ringbuffer's 2^42. Nothing prevented a gate node from interning that many groups; it
-		// was safe only because gate happens not to intern at all.
+		// A hand-rolled leading byte is indistinguishable from a group-id varint, and b'G' (0x47)
+		// decodes into the two-byte tier, putting the key inside the range of a reachable group
+		// id. Node scope is what keeps a reclaim of that group from range-deleting gate state.
 		let key = (&VisibilityKey(RowNumber(42))).into_state_key();
 
 		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())
@@ -415,10 +413,9 @@ mod tests {
 
 	#[test]
 	fn a_visibility_key_sits_outside_the_group_range_that_used_to_alias_it() {
-		// 14591 is the group whose inner prefix was exactly [0x47, 0x00] - the prefix of every
-		// b'G'-tagged marker carrying a row number below 2^56. Reclaiming that group would have
-		// range-deleted the gate's state. The tier boundaries either side are checked too, so a
-		// future change to the group encoding cannot quietly re-create the overlap.
+		// Group 14591's inner prefix is exactly [0x47, 0x00], which every b'G'-tagged marker
+		// below 2^56 shares. The tier boundaries either side are checked too, so a change to the
+		// group encoding cannot quietly re-create the overlap.
 		let key = (&VisibilityKey(RowNumber(42))).into_state_key();
 
 		for group in [1u64, 127, 128, 14_336, 14_591, 16_383, 16_384] {

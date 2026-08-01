@@ -48,7 +48,7 @@ impl IndexShape {
 			}
 		};
 
-		// SAFETY: the key is allocated from this shape, so field.offset lies inside total_size.
+		// SAFETY: IndexShapeInner::new puts field.offset inside total_size, so the 1-byte write is in bounds.
 		unsafe { ptr::write_unaligned(key.make_mut().as_mut_ptr().add(field.offset), byte_value) }
 	}
 
@@ -76,8 +76,7 @@ impl IndexShape {
 			}
 		}
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+4 lies inside total_size;
-
+		// SAFETY: IndexShapeInner::new puts field.offset + 4 inside total_size, so the copy stays in bounds.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 4);
 		}
@@ -107,8 +106,7 @@ impl IndexShape {
 			}
 		}
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+8 lies inside total_size;
-
+		// SAFETY: IndexShapeInner::new puts field.offset + 8 inside total_size, so the copy stays in bounds.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 		}
@@ -135,7 +133,7 @@ impl IndexShape {
 			}
 		}
 
-		// SAFETY: the key is allocated from this shape, so field.offset lies inside total_size.
+		// SAFETY: IndexShapeInner::new puts field.offset inside total_size, so the 1-byte write is in bounds.
 		unsafe { ptr::write_unaligned(key.make_mut().as_mut_ptr().add(field.offset), bytes[0]) }
 	}
 
@@ -160,8 +158,7 @@ impl IndexShape {
 			}
 		}
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+2 lies inside total_size;
-
+		// SAFETY: IndexShapeInner::new puts field.offset + 2 inside total_size, so the copy stays in bounds.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 2);
 		}
@@ -188,8 +185,7 @@ impl IndexShape {
 			}
 		}
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+4 lies inside total_size;
-
+		// SAFETY: IndexShapeInner::new puts field.offset + 4 inside total_size, so the copy stays in bounds.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 4);
 		}
@@ -216,8 +212,7 @@ impl IndexShape {
 			}
 		}
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+8 lies inside total_size;
-
+		// SAFETY: IndexShapeInner::new puts field.offset + 8 inside total_size, so the copy stays in bounds.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 		}
@@ -244,8 +239,7 @@ impl IndexShape {
 			}
 		}
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+16 lies inside total_size;
-		// bytes is a local array and cannot alias the key buffer.
+		// SAFETY: IndexShapeInner::new puts field.offset + 16 inside total_size, so the copy stays in bounds.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 16);
 		}
@@ -263,7 +257,7 @@ impl IndexShape {
 			SortDirection::Desc => !value.into(),
 		};
 
-		// SAFETY: the key is allocated from this shape, so field.offset lies inside total_size.
+		// SAFETY: IndexShapeInner::new puts field.offset inside total_size, so the 1-byte write is in bounds.
 		unsafe { ptr::write_unaligned(key.make_mut().as_mut_ptr().add(field.offset), byte) }
 	}
 
@@ -279,8 +273,7 @@ impl IndexShape {
 			SortDirection::Desc => (!value.into()).to_be_bytes(),
 		};
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+2 lies inside total_size;
-		// bytes is a local array and cannot alias the key buffer.
+		// SAFETY: IndexShapeInner::new puts field.offset + 2 inside total_size, so the copy stays in bounds.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 2);
 		}
@@ -298,8 +291,7 @@ impl IndexShape {
 			SortDirection::Desc => (!value.into()).to_be_bytes(),
 		};
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+4 lies inside total_size;
-		// bytes is a local array and cannot alias the key buffer.
+		// SAFETY: IndexShapeInner::new puts field.offset + 4 inside total_size, so the copy stays in bounds.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 4);
 		}
@@ -317,8 +309,7 @@ impl IndexShape {
 			SortDirection::Desc => (!value.into()).to_be_bytes(),
 		};
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+8 lies inside total_size;
-		// bytes is a local array and cannot alias the key buffer.
+		// SAFETY: IndexShapeInner::new puts field.offset + 8 inside total_size, so the copy stays in bounds.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 		}
@@ -336,8 +327,7 @@ impl IndexShape {
 			SortDirection::Desc => (!value.into()).to_be_bytes(),
 		};
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+16 lies inside total_size;
-		// bytes is a local array and cannot alias the key buffer.
+		// SAFETY: IndexShapeInner::new puts field.offset + 16 inside total_size, so the copy stays in bounds.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 16);
 		}
@@ -355,8 +345,7 @@ impl IndexShape {
 			SortDirection::Desc => (!value.into()).to_be_bytes(),
 		};
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+8 lies inside total_size;
-		// bytes is a local array and cannot alias the key buffer.
+		// SAFETY: IndexShapeInner::new puts field.offset + 8 inside total_size, so the copy stays in bounds.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 		}
@@ -384,8 +373,7 @@ impl IndexShape {
 			}
 		}
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+4 lies inside total_size;
-		// bytes is a local array and cannot alias the key buffer.
+		// SAFETY: IndexShapeInner::new puts field.offset + 4 inside total_size, so the copy stays in bounds.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 4);
 		}
@@ -404,8 +392,7 @@ impl IndexShape {
 			SortDirection::Desc => (!nanos).to_be_bytes(),
 		};
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+8 lies inside total_size;
-		// bytes is a local array and cannot alias the key buffer.
+		// SAFETY: IndexShapeInner::new puts field.offset + 8 inside total_size, so the copy stays in bounds.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 		}
@@ -424,8 +411,7 @@ impl IndexShape {
 			SortDirection::Desc => (!nanos).to_be_bytes(),
 		};
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+8 lies inside total_size;
-		// bytes is a local array and cannot alias the key buffer.
+		// SAFETY: IndexShapeInner::new puts field.offset + 8 inside total_size, so the copy stays in bounds.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 		}
@@ -464,8 +450,7 @@ impl IndexShape {
 			}
 		}
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+16 lies inside total_size;
-		// the three byte arrays are locals and cannot alias the key buffer.
+		// SAFETY: IndexShapeInner::new puts field.offset + 16 inside total_size, so all three copies fit.
 		unsafe {
 			ptr::copy_nonoverlapping(
 				months_bytes.as_ptr(),
@@ -503,8 +488,7 @@ impl IndexShape {
 			}
 		}
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+16 lies inside total_size;
-		// bytes is a local array and cannot alias the key buffer.
+		// SAFETY: IndexShapeInner::new puts field.offset + 16 inside total_size, so the copy stays in bounds.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 16);
 		}
@@ -528,8 +512,7 @@ impl IndexShape {
 			}
 		}
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+16 lies inside total_size;
-		// bytes is a local array and cannot alias the key buffer.
+		// SAFETY: IndexShapeInner::new puts field.offset + 16 inside total_size, so the copy stays in bounds.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 16);
 		}
@@ -553,8 +536,7 @@ impl IndexShape {
 			}
 		}
 
-		// SAFETY: the key is allocated from this shape, so field.offset..+16 lies inside total_size;
-		// bytes is a local array and cannot alias the key buffer.
+		// SAFETY: IndexShapeInner::new puts field.offset + 16 inside total_size, so the copy stays in bounds.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 16);
 		}

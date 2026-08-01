@@ -100,10 +100,11 @@ fn cast_float_to_int<T: 'static>(f: f64) -> T {
 }
 
 fn cast<T: 'static, U: 'static>(v: U) -> T {
-	// SAFETY: caller guarantees that T and U are the same type
 	assert_eq!(TypeId::of::<T>(), TypeId::of::<U>());
 
 	let v = mem::ManuallyDrop::new(v);
+	// SAFETY: the TypeId assertion proves T and U are the same type, so the read sees a valid, aligned T, and
+	// ManuallyDrop stops the source being dropped as well.
 	unsafe { ptr::read(&*v as *const U as *const T) }
 }
 

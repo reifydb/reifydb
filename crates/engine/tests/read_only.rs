@@ -37,7 +37,7 @@ fn test_read_only_allows_query() {
 
 	t.inner().set_read_only();
 
-	// Query should still work
+	// Read-only gates writes only; blocking reads would make the mode useless.
 	let frames = t.query("FROM test::items");
 	assert_eq!(TestEngine::row_count(&frames), 1);
 }

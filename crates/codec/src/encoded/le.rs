@@ -60,16 +60,9 @@ mod tests {
 
 	#[test]
 	fn one_generic_path_writes_every_width_into_its_own_slot() {
-		// Intent: all fixed-width accessors now funnel through set_le, so a single wrong bound or a
-		// dropped offset would corrupt every type at once. This pins both halves for four different
-		// widths (bool 1, Date 4, DateTime 8, Duration 16) at non-zero field indices: the bytes in
-		// each slot are exactly that type's own LeBytes form, and every byte of the row outside the
-		// four slots and the bitvec is byte-identical to what it was before the writes. Non-zero
-		// indices matter - a slot written at the start of the data section still round-trips when it
-		// is field 0, so only a later field can see the offset.
-		// Mutation: slice the slot with a hard-coded width instead of T::ENCODED_SIZE, or write at
-		// the data section start instead of field.offset, and either the per-slot byte assertion or
-		// the untouched-neighbour sweep fires.
+		// Every fixed-width accessor funnels through set_le, so one wrong bound corrupts all of
+		// them at once. The four widths sit at non-zero field indices because a slot written at
+		// the data section start still round-trips as field 0, hiding a dropped offset.
 		let shape = RowShape::testing(&[
 			ValueType::Uint8,
 			ValueType::Boolean,

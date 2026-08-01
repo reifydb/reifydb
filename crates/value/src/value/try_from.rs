@@ -543,84 +543,78 @@ pub mod tests {
 
 	#[test]
 	fn test_try_from_value_primitives() {
-		// Test boolean
+		// try_from_value is exact: the variant must match the target type, with no widening.
 		assert_eq!(bool::try_from_value(&Value::Boolean(true)), Ok(true));
 		assert_eq!(bool::try_from_value(&Value::Boolean(false)), Ok(false));
 		assert!(bool::try_from_value(&Value::Int4(42)).is_err());
 
-		// Test integers
 		assert_eq!(i8::try_from_value(&Value::Int1(42)), Ok(42i8));
 		assert_eq!(i16::try_from_value(&Value::Int2(1234)), Ok(1234i16));
 		assert_eq!(i32::try_from_value(&Value::Int4(123456)), Ok(123456i32));
 		assert_eq!(i64::try_from_value(&Value::Int8(1234567890)), Ok(1234567890i64));
 
-		// Test unsigned integers
 		assert_eq!(u8::try_from_value(&Value::Uint1(42)), Ok(42u8));
 		assert_eq!(u16::try_from_value(&Value::Uint2(1234)), Ok(1234u16));
 		assert_eq!(u32::try_from_value(&Value::Uint4(123456)), Ok(123456u32));
 		assert_eq!(u64::try_from_value(&Value::Uint8(1234567890)), Ok(1234567890u64));
 
-		// Test string
 		assert_eq!(String::try_from_value(&Value::Utf8("hello".to_string())), Ok("hello".to_string()));
 	}
 
 	#[test]
 	fn test_from_value_undefined() {
-		// from_value should return None for Undefined
+		// from_value collapses both a none and a type mismatch to None, so a caller cannot tell
+		// "absent" from "wrong type" without try_from_value.
 		assert_eq!(bool::from_value(&Value::none()), None);
 		assert_eq!(i32::from_value(&Value::none()), None);
 		assert_eq!(String::from_value(&Value::none()), None);
 
-		// from_value should return None for type mismatch
 		assert_eq!(bool::from_value(&Value::Int4(42)), None);
 		assert_eq!(i32::from_value(&Value::Boolean(true)), None);
 	}
 
 	#[test]
 	fn test_try_from_value_coerce_i64() {
-		// Accepts every integer width whose value fits in i64, regardless of signedness
+		// Coercion is range-checked, not truncating: any integer width is accepted while the
+		// value fits, and a value that does not is an error rather than a wrapped number.
 		assert_eq!(i64::try_from_value_coerce(&Value::Int1(42)), Ok(42i64));
 		assert_eq!(i64::try_from_value_coerce(&Value::Int2(1234)), Ok(1234i64));
 		assert_eq!(i64::try_from_value_coerce(&Value::Int4(123456)), Ok(123456i64));
 		assert_eq!(i64::try_from_value_coerce(&Value::Int8(1234567890)), Ok(1234567890i64));
 		assert_eq!(i64::try_from_value_coerce(&Value::Uint4(42)), Ok(42i64));
 
-		// Rejects values that overflow i64 (range-checked) and non-integer types
 		assert!(i64::try_from_value_coerce(&Value::Uint8(u64::MAX)).is_err());
 		assert!(i64::try_from_value_coerce(&Value::Boolean(true)).is_err());
 	}
 
 	#[test]
 	fn test_try_from_value_coerce_u64() {
-		// Should accept all unsigned integer types
+		// A signed source is accepted only while it is non-negative; a negative must error
+		// rather than reinterpret as a huge unsigned value.
 		assert_eq!(u64::try_from_value_coerce(&Value::Uint1(42)), Ok(42u64));
 		assert_eq!(u64::try_from_value_coerce(&Value::Uint2(1234)), Ok(1234u64));
 		assert_eq!(u64::try_from_value_coerce(&Value::Uint4(123456)), Ok(123456u64));
 		assert_eq!(u64::try_from_value_coerce(&Value::Uint8(1234567890)), Ok(1234567890u64));
 
-		// Should accept non-negative signed integers
 		assert_eq!(u64::try_from_value_coerce(&Value::Int4(42)), Ok(42u64));
 
-		// Should reject negative signed integers
 		assert!(u64::try_from_value_coerce(&Value::Int4(-42)).is_err());
 	}
 
 	#[test]
 	fn test_try_from_value_coerce_f64() {
-		// Should accept float types
 		let f4 = OrderedF32::try_from(3.14f32).unwrap();
 		let f8 = OrderedF64::try_from(3.14159f64).unwrap();
 		assert!((f64::try_from_value_coerce(&Value::Float4(f4)).unwrap() - 3.14).abs() < 0.01);
 		assert!((f64::try_from_value_coerce(&Value::Float8(f8)).unwrap() - 3.14159).abs() < 0.00001);
 
-		// Should accept integer types
 		assert_eq!(f64::try_from_value_coerce(&Value::Int4(42)), Ok(42.0f64));
 		assert_eq!(f64::try_from_value_coerce(&Value::Uint4(42)), Ok(42.0f64));
 	}
 
 	#[test]
 	fn test_from_value_coerce_undefined() {
-		// from_value_coerce should return None for Undefined
+		// A none never coerces to a zero-like default.
 		assert_eq!(i64::from_value_coerce(&Value::none()), None);
 		assert_eq!(u64::from_value_coerce(&Value::none()), None);
 		assert_eq!(f64::from_value_coerce(&Value::none()), None);
@@ -628,7 +622,8 @@ pub mod tests {
 
 	#[test]
 	fn test_try_from_value_coerce_temporal_parses_strings() {
-		// A duration literal string coerces; sub-minute must survive intact.
+		// Config arrives as text, so temporal literals must coerce from strings, both the
+		// unit-suffixed and the ISO-8601 spellings.
 		assert_eq!(
 			Duration::try_from_value_coerce(&Value::Utf8("1s".to_string())),
 			Ok(Duration::from_seconds(1).unwrap())
@@ -642,11 +637,9 @@ pub mod tests {
 			Ok(Duration::from_minutes(1).unwrap())
 		);
 
-		// The native variant passes straight through.
 		let d = Duration::from_seconds(60).unwrap();
 		assert_eq!(Duration::try_from_value_coerce(&Value::Duration(d)), Ok(d));
 
-		// Date / DateTime / Time literals coerce as well.
 		assert_eq!(
 			Date::try_from_value_coerce(&Value::Utf8("2024-01-15".to_string())),
 			Ok(Date::new(2024, 1, 15).unwrap())
@@ -663,11 +656,10 @@ pub mod tests {
 
 	#[test]
 	fn test_try_from_value_coerce_temporal_rejects_non_literals() {
-		// A bare integer must NOT be silently treated as a duration (no implied unit).
+		// A bare integer carries no unit, so coercing it would have to invent one.
 		assert!(Duration::try_from_value_coerce(&Value::Uint8(60)).is_err());
 		assert!(Duration::try_from_value_coerce(&Value::Int4(1)).is_err());
 
-		// An unparseable string and a foreign temporal variant are rejected.
 		assert!(Duration::try_from_value_coerce(&Value::Utf8("notaduration".to_string())).is_err());
 		assert!(Duration::try_from_value_coerce(&Value::Time(Time::new(1, 0, 0, 0).unwrap())).is_err());
 	}

@@ -62,6 +62,7 @@ impl<'a> ColumnView<'a> {
 		if self.type_code() != ColumnTypeCode::Uint1 {
 			return None;
 		}
+		// SAFETY: the Uint1 check above means the buffer is a marshalled &[u8]: aligned, initialized.
 		unsafe { self.inner.as_slice::<u8>() }
 	}
 
@@ -69,6 +70,7 @@ impl<'a> ColumnView<'a> {
 		if self.type_code() != ColumnTypeCode::Uint2 {
 			return None;
 		}
+		// SAFETY: the Uint2 check above means the buffer is a marshalled &[u16]: aligned, initialized.
 		unsafe { self.inner.as_slice::<u16>() }
 	}
 
@@ -76,6 +78,7 @@ impl<'a> ColumnView<'a> {
 		if self.type_code() != ColumnTypeCode::Uint4 {
 			return None;
 		}
+		// SAFETY: the Uint4 check above means the buffer is a marshalled &[u32]: aligned, initialized.
 		unsafe { self.inner.as_slice::<u32>() }
 	}
 
@@ -83,6 +86,7 @@ impl<'a> ColumnView<'a> {
 		if self.type_code() != ColumnTypeCode::Uint8 {
 			return None;
 		}
+		// SAFETY: the Uint8 check above means the buffer is a marshalled &[u64]: aligned, initialized.
 		unsafe { self.inner.as_slice::<u64>() }
 	}
 
@@ -90,6 +94,8 @@ impl<'a> ColumnView<'a> {
 		if self.type_code() != ColumnTypeCode::Uint16 {
 			return None;
 		}
+		// SAFETY: the Uint16 check above means the buffer is a marshalled &[u128], so it carries u128's
+		// 16-byte alignment and is initialized.
 		unsafe { self.inner.as_slice::<u128>() }
 	}
 
@@ -97,6 +103,7 @@ impl<'a> ColumnView<'a> {
 		if self.type_code() != ColumnTypeCode::Int1 {
 			return None;
 		}
+		// SAFETY: the Int1 check above means the buffer is a marshalled &[i8]: aligned, initialized.
 		unsafe { self.inner.as_slice::<i8>() }
 	}
 
@@ -104,6 +111,7 @@ impl<'a> ColumnView<'a> {
 		if self.type_code() != ColumnTypeCode::Int2 {
 			return None;
 		}
+		// SAFETY: the Int2 check above means the buffer is a marshalled &[i16]: aligned, initialized.
 		unsafe { self.inner.as_slice::<i16>() }
 	}
 
@@ -111,6 +119,7 @@ impl<'a> ColumnView<'a> {
 		if self.type_code() != ColumnTypeCode::Int4 {
 			return None;
 		}
+		// SAFETY: the Int4 check above means the buffer is a marshalled &[i32]: aligned, initialized.
 		unsafe { self.inner.as_slice::<i32>() }
 	}
 
@@ -118,6 +127,7 @@ impl<'a> ColumnView<'a> {
 		if self.type_code() != ColumnTypeCode::Int8 {
 			return None;
 		}
+		// SAFETY: the Int8 check above means the buffer is a marshalled &[i64]: aligned, initialized.
 		unsafe { self.inner.as_slice::<i64>() }
 	}
 
@@ -125,6 +135,8 @@ impl<'a> ColumnView<'a> {
 		if self.type_code() != ColumnTypeCode::Int16 {
 			return None;
 		}
+		// SAFETY: the Int16 check above means the buffer is a marshalled &[i128], so it carries i128's
+		// 16-byte alignment and is initialized.
 		unsafe { self.inner.as_slice::<i128>() }
 	}
 
@@ -132,6 +144,7 @@ impl<'a> ColumnView<'a> {
 		if self.type_code() != ColumnTypeCode::Float4 {
 			return None;
 		}
+		// SAFETY: the Float4 check above means the buffer is a marshalled &[f32]: aligned, initialized.
 		unsafe { self.inner.as_slice::<f32>() }
 	}
 
@@ -139,6 +152,7 @@ impl<'a> ColumnView<'a> {
 		if self.type_code() != ColumnTypeCode::Float8 {
 			return None;
 		}
+		// SAFETY: the Float8 check above means the buffer is a marshalled &[f64]: aligned, initialized.
 		unsafe { self.inner.as_slice::<f64>() }
 	}
 

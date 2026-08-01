@@ -100,9 +100,9 @@ pub mod tests {
 
 	#[test]
 	fn test_combining_marks() {
-		// e with combining acute accent
+		// A combining mark is a separate char that renders into the preceding one, so it must
+		// add no width or table output drifts by a column per accent.
 		assert_eq!("e\u{0301}".width(), 1);
-		// a with combining tilde
 		assert_eq!("a\u{0303}".width(), 1);
 	}
 

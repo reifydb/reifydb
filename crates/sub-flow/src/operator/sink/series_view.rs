@@ -80,6 +80,8 @@ impl SinkSeriesViewOperator {
 
 	#[allow(clippy::mut_from_ref)]
 	fn verified_partitions(&self) -> &mut HashMap<Partition, Vec<Value>> {
+		// SAFETY: an operator is reachable from one thread at a time and each apply helper takes this
+		// borrow once, calling nothing that reaches the cell again, so no other borrow is live.
 		unsafe { &mut *self.verified_partitions.get() }
 	}
 }

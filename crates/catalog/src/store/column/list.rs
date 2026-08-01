@@ -112,7 +112,7 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		ensure_test_table(&mut txn);
 
-		// Create columns out of order
+		// Created out of index order, so listing must sort rather than echo insertion order.
 		CatalogStore::create_column(
 			&mut txn,
 			TableId(1),

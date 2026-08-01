@@ -50,10 +50,10 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	assert!(!all.iter().any(|x| x.namespace == ns_id && x.name() == "fresh"));
 }
 
-/// list_queues filters by namespace; the filter must survive the overlay so a
-/// per-namespace listing never shows a sibling namespace's uncommitted queue.
 #[test]
 fn list_by_namespace_excludes_other_namespaces() {
+	// The namespace filter must survive the overlay, or a listing shows a sibling
+	// namespace's uncommitted queue.
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE qns_list_c");

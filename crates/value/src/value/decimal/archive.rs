@@ -67,9 +67,8 @@ mod tests {
 	}
 
 	fn round_trip(int: BigInt, dec: BigDecimal) {
-		// Round-trip through archived bytes must be lossless for
-		// sign, magnitude, and scale; a mismatch here silently
-		// corrupts every persisted bignum Value.
+		// Sign, magnitude and scale are stored separately, so any one of them can be lost
+		// without the others noticing.
 		let value = Holder {
 			int,
 			dec,
@@ -93,8 +92,7 @@ mod tests {
 
 	#[test]
 	fn test_corrupted_bytes_rejected() {
-		// bytecheck must reject a truncated buffer as an error, not
-		// panic or hand back garbage.
+		// This is the disk-corruption trust boundary: bytecheck must error, not panic.
 		let value = Holder {
 			int: BigInt::from(42),
 			dec: BigDecimal::from(7),

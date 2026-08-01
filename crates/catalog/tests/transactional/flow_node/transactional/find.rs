@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 //
-// A transactional view's flow must be loadable as an internally consistent DAG
-// from the catalog read path that flow registration uses: every edge endpoint
-// resolves to a loaded node, and every sink (a node that is no edge's source)
-// has an incoming edge. A torn read that yields a sink with an empty edge set is
-// exactly what makes `add_sink_table_view` panic on `inputs[0]` during the
-// create-then-drop race.
+// The read path flow registration uses must yield an internally consistent DAG: every edge
+// endpoint resolves to a loaded node and every sink has an incoming edge. A torn read that
+// yields a sink with an empty edge set panics registration on its first input.
 
 use std::collections::HashSet;
 

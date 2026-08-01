@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Operator state: the single byte-bounded cache that owns every operator's resident state
-//! ([`cache`]), the budget and lease accounting that bounds it ([`budget`]), the persisted
-//! map representation shared by the window engines ([`map`]), and the compact live-key index
-//! that keeps absence proofs alive when values are evicted ([`membership`]). This is not
-//! window-specific - ffi, native, distinct and take all route their state through the same cache.
+//! Operator state: the byte-bounded [`cache`] that owns every operator's resident state, the [`budget`] and lease
+//! accounting that bounds it, the [`membership`] index that keeps absence proofs alive across eviction, the
+//! [`store`] contract behind it, and the group/horizon/keyspace vocabulary reclamation works in. Not window-specific:
+//! ffi, native, distinct and take all route their state through the same cache.
 
 pub mod budget;
 pub mod cache;

@@ -105,9 +105,9 @@ fn panic_does_not_kill_system() {
 
 	system.run_until_idle();
 
-	// Logger should still have processed its message.
+	// One actor's panic must not take the system or its siblings down with it.
 	assert_eq!(log_contents(&log), vec!["still_alive"]);
-	assert_eq!(system.alive_count(), 1); // only logger alive
+	assert_eq!(system.alive_count(), 1);
 }
 
 #[test]
@@ -133,10 +133,10 @@ fn panic_payload_is_captured() {
 fn panic_during_init_must_be_captured() {
 	let system = test_system();
 
-	// spawn() executes init(). If it panics, it MUST be captured.
+	// init() runs inside spawn(), so a panic there has no step frame to surface on until the
+	// first step; losing it would leave a silently dead actor.
 	let _handle = system.spawn_coordination("init_panicker", InitPanicActor);
 
-	// step() MUST report the init panic.
 	match system.step() {
 		StepResult::Panicked {
 			actor_id: 0,
@@ -158,7 +158,6 @@ fn panic_during_post_stop_must_be_captured() {
 
 	handle.actor_ref.send(()).unwrap();
 
-	// Step 1: Process handle message -> Directive::Stop -> Trigger stop process.
 	let res1 = system.step();
 	assert!(matches!(
 		res1,
@@ -167,7 +166,8 @@ fn panic_during_post_stop_must_be_captured() {
 		}
 	));
 
-	// The system MUST catch the panic from post_stop and report it through StepResult.
+	// post_stop runs after the actor is already stopped, so its panic has no handler frame and
+	// would be lost unless the system reports it as a step result.
 	match system.step() {
 		StepResult::Panicked {
 			actor_id: 0,
@@ -228,7 +228,7 @@ fn spawn_during_handling() {
 
 	system.run_until_idle();
 
-	// The child should have been spawned and received its message.
+	// An actor spawned from inside a handler must join the same step loop, not a detached one.
 	assert_eq!(log_contents(&log), vec!["child_msg"]);
 }
 
@@ -236,11 +236,10 @@ fn spawn_during_handling() {
 fn spawn_during_shutdown_must_fail() {
 	let system = test_system();
 
-	// Shutdown the system.
 	system.shutdown();
 	assert!(system.is_cancelled());
 
-	// Attempt to spawn a new actor.
+	// A late spawn must hand back a dead ref rather than a live actor nothing will ever step.
 	let handle = system.spawn_coordination("late_comer", CounterActor);
 
 	assert!(

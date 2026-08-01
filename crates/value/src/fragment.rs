@@ -727,9 +727,8 @@ mod tests {
 
 	#[test]
 	fn deserialize_internal_shares_storage_with_construction() {
-		// Deserialize is the actual 1.8M/s hotspot; a deserialized Internal text
-		// must land on the same shared Arc as a constructed one, proving no fresh
-		// per-diff allocation.
+		// Deserialize is the hot path, so it must reuse the intern table rather than allocate
+		// fresh text per decoded diff.
 		let constructed = Fragment::internal("vwap_share_test");
 		let bytes = to_allocvec(&constructed).unwrap();
 		let decoded: Fragment = from_bytes(&bytes).unwrap();

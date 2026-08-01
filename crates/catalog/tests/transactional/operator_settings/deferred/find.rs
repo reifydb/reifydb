@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 //
-// Deferred views write their operator TTL into the same create-view commit as
-// transactional views; the settings must be findable via `find_operator_settings`
-// just the same. The deferred registration path is the one that flaked in
-// production, so this mirrors the transactional coverage for the deferred DDL.
+// Deferred views write their operator TTL into the same create-view commit as transactional
+// views, but register through a separate path, so the read contract is covered twice.
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;

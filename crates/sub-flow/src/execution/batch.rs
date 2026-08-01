@@ -195,14 +195,9 @@ mod tests {
 
 	#[test]
 	fn a_versions_own_rows_do_not_move_the_frontier_the_operators_gate_against() {
-		// THE ordering that makes a transaction a unit of simultaneous arrival. The frontier
-		// operators admit against is snapshotted BEFORE the version's own rows advance the source
-		// watermarks, so no row can be judged late against a sibling committed alongside it. Swap the
-		// two halves of freeze_arrival_frontier and a single transaction carrying an hour of history
-		// into a 1s window keeps only its newest bucket, because the frontier jumps to the newest row
-		// before any of the older ones are gated.
-		// The two calls are two commit versions: the first leaves the source at 5s, the second
-		// carries a row at 20s. What the second version's operators must see is 5s.
+		// The admit frontier is snapshotted BEFORE the version's own rows advance the source
+		// watermarks, so no row is judged late against a sibling committed alongside it. Reversed,
+		// one transaction carrying an hour of history into a 1s window keeps only its last bucket.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 

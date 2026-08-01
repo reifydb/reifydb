@@ -41,6 +41,8 @@ impl RowShape {
 		let string_start = dynamic_start + offset;
 		let string_slice = &row.as_slice()[string_start..string_start + length];
 
+		// SAFETY: set_utf8 is the only writer of a Utf8 field and stores `&str` bytes verbatim, so the slice
+		// delimited by this field's dynamic offset and length is valid UTF-8.
 		unsafe { str::from_utf8_unchecked(string_slice) }
 	}
 

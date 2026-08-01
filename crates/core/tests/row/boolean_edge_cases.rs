@@ -9,21 +9,20 @@ fn test_boolean_bit_patterns() {
 	let shape = RowShape::testing(&[ValueType::Boolean]);
 	let mut row = shape.allocate();
 
-	// Test transaction values
 	shape.set::<bool>(&mut row, 0, true);
 	assert_eq!(shape.get::<bool>(&row, 0), true);
 
 	shape.set::<bool>(&mut row, 0, false);
 	assert_eq!(shape.get::<bool>(&row, 0), false);
 
-	// Test that undefined is different from false
+	// none must be distinguishable from false, not collapse onto it.
 	shape.set_none(&mut row, 0);
 	assert!(shape.try_get::<bool>(&row, 0).is_none());
 }
 
 #[test]
 fn test_boolean_field_independence() {
-	// Test that boolean fields don't interfere with each other
+	// Booleans pack into shared bytes, so a write to one field must not disturb its neighbours.
 	let shape = RowShape::testing(&[
 		ValueType::Boolean,
 		ValueType::Boolean,
@@ -36,21 +35,17 @@ fn test_boolean_field_independence() {
 	]);
 	let mut row = shape.allocate();
 
-	// Set alternating pattern
 	for i in 0..8 {
 		shape.set::<bool>(&mut row, i, i % 2 == 0);
 	}
 
-	// Verify pattern
 	for i in 0..8 {
 		assert_eq!(shape.get::<bool>(&row, i), i % 2 == 0);
 	}
 
-	// Change some values
 	shape.set::<bool>(&mut row, 2, true);
 	shape.set::<bool>(&mut row, 5, false);
 
-	// Verify only targeted fields changed
 	assert_eq!(shape.get::<bool>(&row, 0), true);
 	assert_eq!(shape.get::<bool>(&row, 1), false);
 	assert_eq!(shape.get::<bool>(&row, 2), true); // Changed

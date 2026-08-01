@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Guards the FFI ABI against tag drift: reifydb-abi must stay dependency-free, so its
-//! ColumnTypeCode enum carries its own discriminants. This test pins every discriminant to the
-//! unified ValueKind byte. If it fails, the two tables diverged and every FFI plugin would decode
-//! garbage silently; renumber ColumnTypeCode, never work around it.
+//! reifydb-abi stays dependency-free, so its ColumnTypeCode duplicates the ValueKind discriminants
+//! rather than importing them. These pin the two tables together: if they diverge, every FFI plugin
+//! silently decodes garbage, so the fix is to renumber ColumnTypeCode, never to relax the test.
 
 use reifydb_abi::data::column::ColumnTypeCode;
 use reifydb_codec::tag::ValueKind;

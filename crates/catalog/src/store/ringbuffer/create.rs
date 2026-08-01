@@ -329,13 +329,11 @@ pub mod tests {
 			time: TimeSource::Processing,
 		};
 
-		// First creation should succeed
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create.clone()).unwrap();
 		assert!(result.id.0 > 0);
 		assert_eq!(result.namespace, test_namespace.id());
 		assert_eq!(result.name, "test_ringbuffer");
 
-		// Second creation should fail with duplicate error
 		let err = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_005");
 	}
@@ -369,7 +367,6 @@ pub mod tests {
 
 		CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
 
-		// Check namespace links
 		let links: Vec<_> = txn
 			.range(NamespaceRingBufferKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
 			.unwrap()
@@ -377,14 +374,13 @@ pub mod tests {
 			.unwrap();
 		assert_eq!(links.len(), 2);
 
-		// Check first link (descending order, so buffer2 comes first)
+		// Keys are descending, so the later ring buffer comes first.
 		let link = &links[0];
 		let row = &link.row;
 		let id2 = ringbuffer_namespace::SHAPE.get::<u64>(row, ringbuffer_namespace::ID);
 		assert!(id2 > 0);
 		assert_eq!(ringbuffer_namespace::SHAPE.get_utf8(row, ringbuffer_namespace::NAME), "buffer2");
 
-		// Check second link (buffer1 comes second)
 		let link = &links[1];
 		let row = &link.row;
 		let id1 = ringbuffer_namespace::SHAPE.get::<u64>(row, ringbuffer_namespace::ID);
@@ -409,7 +405,6 @@ pub mod tests {
 
 		let result = CatalogStore::create_ringbuffer(&mut txn, to_create).unwrap();
 
-		// Check that metadata was created
 		let metadata = CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), result.id)
 			.unwrap()
 			.expect("Metadata should exist");
@@ -426,7 +421,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
-		// Create small buffer
 		let small = RingBufferToCreate {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("small_buffer"),
@@ -439,7 +433,6 @@ pub mod tests {
 		let small_result = CatalogStore::create_ringbuffer(&mut txn, small).unwrap();
 		assert_eq!(small_result.capacity, 10);
 
-		// Create medium buffer
 		let medium = RingBufferToCreate {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("medium_buffer"),
@@ -452,7 +445,6 @@ pub mod tests {
 		let medium_result = CatalogStore::create_ringbuffer(&mut txn, medium).unwrap();
 		assert_eq!(medium_result.capacity, 1000);
 
-		// Create large buffer
 		let large = RingBufferToCreate {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("large_buffer"),
@@ -465,7 +457,6 @@ pub mod tests {
 		let large_result = CatalogStore::create_ringbuffer(&mut txn, large).unwrap();
 		assert_eq!(large_result.capacity, 1000000);
 
-		// Verify they have different IDs
 		assert_ne!(small_result.id, medium_result.id);
 		assert_ne!(medium_result.id, large_result.id);
 		assert_ne!(small_result.id, large_result.id);
@@ -536,12 +527,9 @@ mod time_declaration_tests {
 	use crate::{CatalogStore, test_utils::ensure_test_namespace};
 
 	#[test]
-	// Intent: a ringbuffer's populator must reach its own catalog row. Every source object kind has
-	// its own shape, its own field index and its own create path, so a declaration wired for one
-	// kind proves nothing about the others - this is where per-object drift would show up.
-	// Mutation: delete the write_time_source call from store_ringbuffer, or point decode at the
-	// wrong field index, and the populator comes back as none.
 	fn a_ringbuffer_round_trips_its_populator() {
+		// Every source object kind has its own shape, field index and create path, so a
+		// declaration wired for one kind proves nothing about the others.
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
@@ -575,8 +563,8 @@ mod time_declaration_tests {
 	}
 
 	#[test]
-	// Intent: silence stays silence through the round trip, and the derived domain agrees.
 	fn a_bare_ringbuffer_round_trips_as_processing() {
+		// An undeclared populator must stay absent, and the derived domain must agree.
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 

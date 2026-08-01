@@ -18,6 +18,9 @@ pub(super) fn raw_catalog_find_row_shape(
 	ctx: &FFIOperatorContext,
 	fingerprint: RowShapeFingerprint,
 ) -> Result<Option<RowShape>, SdkError> {
+	// SAFETY: `FFIOperatorContext::new` asserts `ctx.ctx` is non-null and the host keeps the ContextFFI
+	// alive for the call; on FFI_OK the host has written a fully initialised RowShapeFFI into `output`
+	// whose field array stays live until `free_row_shape`, discharging `unmarshal_row_shape`.
 	unsafe {
 		let callback = (*ctx.ctx).callbacks.catalog.find_row_shape;
 
@@ -41,11 +44,20 @@ pub(super) fn raw_catalog_find_row_shape(
 	}
 }
 
+/// # Safety
+///
+/// `ffi_shape.fields` must be null or valid for reads of `ffi_shape.field_count`
+/// initialised, aligned `RowShapeFieldFFI` for the duration of the call, each of
+/// which must satisfy the contract of [`unmarshal_row_shape_field`].
 unsafe fn unmarshal_row_shape(ffi_shape: &RowShapeFFI) -> Result<RowShape, SdkError> {
 	let fields = if !ffi_shape.fields.is_null() && ffi_shape.field_count > 0 {
+		// SAFETY: discharges this function's own contract; the branch above established that `fields`
+		// is non-null and `field_count` is non-zero.
 		let slice = unsafe { from_raw_parts(ffi_shape.fields, ffi_shape.field_count) };
 		let mut out = Vec::with_capacity(slice.len());
 		for ffi_field in slice {
+			// SAFETY: this function's contract requires every element of `fields` to satisfy
+			// `unmarshal_row_shape_field`.
 			out.push(unsafe { unmarshal_row_shape_field(ffi_field)? });
 		}
 		out
@@ -56,8 +68,14 @@ unsafe fn unmarshal_row_shape(ffi_shape: &RowShapeFFI) -> Result<RowShape, SdkEr
 	Ok(RowShape::from_parts(RowShapeFingerprint::new(ffi_shape.fingerprint), fields))
 }
 
+/// # Safety
+///
+/// `ffi_field.name.ptr` must be null or valid for reads of `ffi_field.name.len`
+/// initialised bytes for the duration of the call.
 unsafe fn unmarshal_row_shape_field(ffi_field: &RowShapeFieldFFI) -> Result<RowShapeField, SdkError> {
 	let name_bytes = if !ffi_field.name.ptr.is_null() && ffi_field.name.len > 0 {
+		// SAFETY: discharges this function's own contract; the branch above established that
+		// `name.ptr` is non-null and `name.len` is non-zero.
 		unsafe { from_raw_parts(ffi_field.name.ptr, ffi_field.name.len) }
 	} else {
 		&[]
@@ -141,6 +159,7 @@ mod tests {
 			field_count: fields.len(),
 		};
 
+		// SAFETY: `fields` and every name buffer borrow locals that stay alive past this call.
 		let decoded = unsafe { unmarshal_row_shape(&ffi).expect("unmarshal must succeed for valid FFI") };
 
 		assert_eq!(
@@ -172,6 +191,7 @@ mod tests {
 			field_count: 0,
 		};
 
+		// SAFETY: `fields` is null with `field_count` 0, which the contract admits.
 		let decoded = unsafe { unmarshal_row_shape(&ffi).expect("empty shape must unmarshal cleanly") };
 		assert!(decoded.fields().is_empty());
 		assert_eq!(decoded.fingerprint().as_u64(), 0);

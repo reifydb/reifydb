@@ -44,7 +44,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::DateTime]);
 		let mut row = shape.allocate();
 
-		// Test with high precision nanoseconds
 		let precise_datetime = DateTime::new(2024, 12, 25, 15, 30, 45, 123456789).unwrap();
 		shape.set::<DateTime>(&mut row, 0, precise_datetime.clone());
 		assert_eq!(shape.get::<DateTime>(&row, 0), precise_datetime);
@@ -112,7 +111,7 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::DateTime]);
 		let mut row = shape.allocate();
 
-		// Test that nanosecond precision is preserved
+		// The slot holds u64 nanos, so no sub-second digit may be rounded away.
 		let high_precision = DateTime::new(2024, 1, 1, 0, 0, 0, 999999999).unwrap();
 		shape.set::<DateTime>(&mut row, 0, high_precision.clone());
 
@@ -129,7 +128,7 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::DateTime]);
 		let mut row = shape.allocate();
 
-		// Test the Y2038 boundary (beyond 32-bit timestamp limits)
+		// Past i32 seconds since the epoch, which is where a 32-bit timestamp would wrap.
 		let post_2038 = DateTime::from_timestamp(2147483648).unwrap(); // 2038-01-19
 		shape.set::<DateTime>(&mut row, 0, post_2038.clone());
 		assert_eq!(shape.get::<DateTime>(&row, 0), post_2038);
@@ -140,7 +139,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::DateTime]);
 		let mut row = shape.allocate();
 
-		// Test a far future date
 		let far_future = DateTime::from_timestamp(4102444800).unwrap(); // 2100-01-01
 		shape.set::<DateTime>(&mut row, 0, far_future.clone());
 		assert_eq!(shape.get::<DateTime>(&row, 0), far_future);
@@ -151,7 +149,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::DateTime]);
 		let mut row = shape.allocate();
 
-		// Test microsecond precision (common in databases)
 		let microsecond_precision = DateTime::new(2024, 6, 15, 14, 30, 25, 123456000).unwrap();
 		shape.set::<DateTime>(&mut row, 0, microsecond_precision.clone());
 		assert_eq!(shape.get::<DateTime>(&row, 0), microsecond_precision);

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 //
-// A transactional view created with a row TTL must persist row settings against
-// its underlying shape, findable via `find_row_settings` at the transaction's
-// version. Same read-path contract as operator settings.
+// A row TTL persists against the view's underlying shape, so it must be findable via
+// `find_row_settings` at the transaction's version, like operator settings.
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;

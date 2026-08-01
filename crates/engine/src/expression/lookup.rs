@@ -171,7 +171,6 @@ pub mod tests {
 
 	#[test]
 	fn test_column_not_found_returns_correct_row_count() {
-		// Create context with 5 rows
 		let columns = Columns::new(vec![ColumnWithName::new(
 			"existing_col".to_string(),
 			ColumnBuffer::int4([1, 2, 3, 4, 5]),
@@ -194,7 +193,8 @@ pub mod tests {
 		};
 		let ctx = base.with_eval(columns, 5);
 
-		// Try to access a column that doesn't exist
+		// A missing column resolves to all-none, and its length must match the other columns
+		// or every downstream zip would misalign.
 		let result = column_lookup(
 			&ctx,
 			&ColumnExpression(ColumnIdentifier {
@@ -204,7 +204,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// The column should have 5 rows (matching row_count), not 0
 		assert_eq!(
 			result.data().len(),
 			5,

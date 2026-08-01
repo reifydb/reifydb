@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Host-side FFI for flow operators. Provides the callback functions guest extensions invoke (catalog reads, value
-//! marshalling, error reporting) and the per-call context that wraps the engine services available to a guest
-//! operator. The shape of these symbols is fixed by `reifydb-abi`; the implementation lives here.
+//! Host-side FFI for flow operators: the callbacks a guest extension invokes and the per-call
+//! context wrapping the engine services it may reach. Symbol shape is fixed by `reifydb-abi`.
 
 pub mod callbacks;
 pub mod context;

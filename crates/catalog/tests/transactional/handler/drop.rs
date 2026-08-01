@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-//
-// All tests here are ignored until RQL gains `DROP HANDLER ns::name`. When it
-// lands, scenario A is the canonical reproducer for the missing `.retain()` in
-// `list_procedures_for_variant` at
-// `crates/catalog/src/catalog/procedure.rs:273-325`.
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;

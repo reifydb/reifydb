@@ -33,6 +33,8 @@ impl<'a> BorrowedChange<'a> {
 			assert!(!ptr.is_null(), "BorrowedChange::from_raw: null pointer");
 		}
 		Self {
+			// SAFETY: the `from_raw` contract above makes `ptr` non-null and a live, initialized
+			// `ChangeFFI` that outlives `'a`.
 			ffi: unsafe { &*ptr },
 		}
 	}
@@ -57,6 +59,8 @@ impl<'a> BorrowedChange<'a> {
 		let count = self.ffi.diff_count;
 		let base = self.ffi.diffs;
 		(0..count).map(move |i| {
+			// SAFETY: `base` is the `diff_count`-element `DiffFFI` array `marshal_change` wrote and
+			// fully initialized; `i < count` keeps the offset inside it.
 			let diff_ffi: &'a DiffFFI = unsafe { &*base.add(i) };
 			BorrowedDiff {
 				ffi: diff_ffi,
@@ -94,8 +98,6 @@ pub struct BorrowedColumns<'a> {
 }
 
 impl<'a> BorrowedColumns<'a> {
-	/// Wrap a raw `*const ColumnsFFI` for the duration of the FFI call.
-	///
 	/// # Safety
 	/// - `ptr` must be non-null and point at a `ColumnsFFI` whose buffer pointers are valid for at least `'a`.
 	pub unsafe fn from_ffi(ptr: *const ColumnsFFI) -> Self {
@@ -103,6 +105,8 @@ impl<'a> BorrowedColumns<'a> {
 			assert!(!ptr.is_null(), "BorrowedColumns::from_ffi: null pointer");
 		}
 		Self {
+			// SAFETY: the `from_ffi` contract above makes `ptr` non-null and a live, initialized
+			// `ColumnsFFI` that outlives `'a`.
 			ffi: unsafe { &*ptr },
 		}
 	}
@@ -123,6 +127,9 @@ impl<'a> BorrowedColumns<'a> {
 		if self.ffi.row_numbers.is_null() || self.ffi.row_count == 0 {
 			&[]
 		} else {
+			// SAFETY: `row_numbers` is non-null here and a non-empty system sidecar holds exactly
+			// `row_count` entries (`Columns::with_system` asserts it); `RowNumber` is
+			// `repr(transparent)` over `u64`.
 			unsafe { slice::from_raw_parts(self.ffi.row_numbers, self.ffi.row_count) }
 		}
 	}
@@ -131,6 +138,9 @@ impl<'a> BorrowedColumns<'a> {
 		if self.ffi.created_at.is_null() || self.ffi.row_count == 0 {
 			&[]
 		} else {
+			// SAFETY: `created_at` is non-null here and a non-empty system sidecar holds exactly
+			// `row_count` entries (`Columns::with_system` asserts it); `DateTime` is
+			// `repr(transparent)` over `u64`.
 			unsafe { slice::from_raw_parts(self.ffi.created_at, self.ffi.row_count) }
 		}
 	}
@@ -139,6 +149,9 @@ impl<'a> BorrowedColumns<'a> {
 		if self.ffi.updated_at.is_null() || self.ffi.row_count == 0 {
 			&[]
 		} else {
+			// SAFETY: `updated_at` is non-null here and a non-empty system sidecar holds exactly
+			// `row_count` entries (`Columns::with_system` asserts it); `DateTime` is
+			// `repr(transparent)` over `u64`.
 			unsafe { slice::from_raw_parts(self.ffi.updated_at, self.ffi.row_count) }
 		}
 	}
@@ -147,6 +160,9 @@ impl<'a> BorrowedColumns<'a> {
 		if self.ffi.time.is_null() || self.ffi.row_count == 0 {
 			&[]
 		} else {
+			// SAFETY: `time` is non-null here and a non-empty system sidecar holds exactly `row_count`
+			// entries (`Columns::with_system` asserts it); `DateTime` is `repr(transparent)` over
+			// `u64`.
 			unsafe { slice::from_raw_parts(self.ffi.time, self.ffi.row_count) }
 		}
 	}
@@ -155,6 +171,8 @@ impl<'a> BorrowedColumns<'a> {
 		let count = self.ffi.column_count;
 		let base = self.ffi.columns;
 		(0..count).map(move |i| {
+			// SAFETY: `base` is the `column_count`-element `ColumnFFI` array `marshal_columns` wrote
+			// and fully initialized; `i < count` keeps the offset inside it.
 			let col_ffi: &'a ColumnFFI = unsafe { &*base.add(i) };
 			BorrowedColumn {
 				ffi: col_ffi,
@@ -170,6 +188,8 @@ impl<'a> BorrowedColumns<'a> {
 		if idx >= self.ffi.column_count {
 			return None;
 		}
+		// SAFETY: `idx < column_count` was checked above, so the offset stays inside the initialized
+		// `ColumnFFI` array.
 		let col_ffi: &'a ColumnFFI = unsafe { &*self.ffi.columns.add(idx) };
 		Some(BorrowedColumn {
 			ffi: col_ffi,
@@ -188,7 +208,9 @@ pub struct BorrowedColumn<'a> {
 
 impl<'a> BorrowedColumn<'a> {
 	pub fn name(&self) -> &'a str {
-		read_buffer_str(&self.ffi.name)
+		// SAFETY: `self.ffi` came from a `BorrowedChange::from_raw` / `BorrowedColumns::from_ffi`
+		// caller, whose contract keeps every buffer this `ColumnFFI` describes live for `'a`.
+		unsafe { read_buffer_str(&self.ffi.name) }
 	}
 
 	pub fn type_code(&self) -> ColumnTypeCode {
@@ -200,7 +222,9 @@ impl<'a> BorrowedColumn<'a> {
 	}
 
 	pub fn data_bytes(&self) -> &'a [u8] {
-		read_buffer(&self.ffi.data.data)
+		// SAFETY: `self.ffi` came from a `BorrowedChange::from_raw` / `BorrowedColumns::from_ffi`
+		// caller, whose contract keeps every buffer this `ColumnFFI` describes live for `'a`.
+		unsafe { read_buffer(&self.ffi.data.data) }
 	}
 
 	pub fn offsets(&self) -> &'a [u64] {
@@ -209,12 +233,17 @@ impl<'a> BorrowedColumn<'a> {
 			&[]
 		} else {
 			let count = buf.len / core::mem::size_of::<u64>();
+			// SAFETY: `buf.ptr` is non-null here and every offsets buffer is either a marshalled
+			// `&[u64]` or an 8-aligned arena block; `count` floors `buf.len / 8`, so that many
+			// initialized `u64` fit.
 			unsafe { slice::from_raw_parts(buf.ptr as *const u64, count) }
 		}
 	}
 
 	pub fn defined_bitvec(&self) -> &'a [u8] {
-		read_buffer(&self.ffi.data.defined_bitvec)
+		// SAFETY: `self.ffi` came from a `BorrowedChange::from_raw` / `BorrowedColumns::from_ffi`
+		// caller, whose contract keeps every buffer this `ColumnFFI` describes live for `'a`.
+		unsafe { read_buffer(&self.ffi.data.defined_bitvec) }
 	}
 
 	/// # Safety
@@ -228,6 +257,8 @@ impl<'a> BorrowedColumn<'a> {
 		if elem == 0 || count.checked_mul(elem)? != bytes.len() {
 			return None;
 		}
+		// SAFETY: `count * size_of::<T>() == bytes.len()` was checked above, and the caller's contract
+		// makes those bytes an aligned, initialized `T` array.
 		Some(unsafe { slice::from_raw_parts(bytes.as_ptr() as *const T, count) })
 	}
 
@@ -331,9 +362,13 @@ impl<'a> BorrowedColumn<'a> {
 			return None;
 		}
 		match self.type_code() {
+			// SAFETY: type_code Uint8 means the buffer is a marshalled &[u64]: aligned, initialized.
 			ColumnTypeCode::Uint8 => unsafe { self.as_slice::<u64>()?.get(index).copied() },
+			// SAFETY: type_code Uint4 means the buffer is a marshalled &[u32]: aligned, initialized.
 			ColumnTypeCode::Uint4 => unsafe { self.as_slice::<u32>()?.get(index).copied().map(u64::from) },
+			// SAFETY: type_code Uint2 means the buffer is a marshalled &[u16]: aligned, initialized.
 			ColumnTypeCode::Uint2 => unsafe { self.as_slice::<u16>()?.get(index).copied().map(u64::from) },
+			// SAFETY: type_code Uint1 means the buffer is a marshalled &[u8]: aligned, initialized.
 			ColumnTypeCode::Uint1 => unsafe { self.as_slice::<u8>()?.get(index).copied().map(u64::from) },
 			_ => None,
 		}
@@ -345,8 +380,11 @@ impl<'a> BorrowedColumn<'a> {
 			return None;
 		}
 		match self.type_code() {
+			// SAFETY: type_code Uint4 means the buffer is a marshalled &[u32]: aligned, initialized.
 			ColumnTypeCode::Uint4 => unsafe { self.as_slice::<u32>()?.get(index).copied() },
+			// SAFETY: type_code Uint2 means the buffer is a marshalled &[u16]: aligned, initialized.
 			ColumnTypeCode::Uint2 => unsafe { self.as_slice::<u16>()?.get(index).copied().map(u32::from) },
+			// SAFETY: type_code Uint1 means the buffer is a marshalled &[u8]: aligned, initialized.
 			ColumnTypeCode::Uint1 => unsafe { self.as_slice::<u8>()?.get(index).copied().map(u32::from) },
 			_ => None,
 		}
@@ -358,7 +396,9 @@ impl<'a> BorrowedColumn<'a> {
 			return None;
 		}
 		match self.type_code() {
+			// SAFETY: type_code Uint2 means the buffer is a marshalled &[u16]: aligned, initialized.
 			ColumnTypeCode::Uint2 => unsafe { self.as_slice::<u16>()?.get(index).copied() },
+			// SAFETY: type_code Uint1 means the buffer is a marshalled &[u8]: aligned, initialized.
 			ColumnTypeCode::Uint1 => unsafe { self.as_slice::<u8>()?.get(index).copied().map(u16::from) },
 			_ => None,
 		}
@@ -369,6 +409,7 @@ impl<'a> BorrowedColumn<'a> {
 		if self.type_code() != ColumnTypeCode::Uint1 || !self.is_defined_at(index) {
 			return None;
 		}
+		// SAFETY: the Uint1 check above means the buffer is a marshalled &[u8]: aligned, initialized.
 		unsafe { self.as_slice::<u8>()?.get(index).copied() }
 	}
 
@@ -378,9 +419,13 @@ impl<'a> BorrowedColumn<'a> {
 			return None;
 		}
 		match self.type_code() {
+			// SAFETY: type_code Int8 means the buffer is a marshalled &[i64]: aligned, initialized.
 			ColumnTypeCode::Int8 => unsafe { self.as_slice::<i64>()?.get(index).copied() },
+			// SAFETY: type_code Int4 means the buffer is a marshalled &[i32]: aligned, initialized.
 			ColumnTypeCode::Int4 => unsafe { self.as_slice::<i32>()?.get(index).copied().map(i64::from) },
+			// SAFETY: type_code Int2 means the buffer is a marshalled &[i16]: aligned, initialized.
 			ColumnTypeCode::Int2 => unsafe { self.as_slice::<i16>()?.get(index).copied().map(i64::from) },
+			// SAFETY: type_code Int1 means the buffer is a marshalled &[i8]: aligned, initialized.
 			ColumnTypeCode::Int1 => unsafe { self.as_slice::<i8>()?.get(index).copied().map(i64::from) },
 			_ => None,
 		}
@@ -392,8 +437,11 @@ impl<'a> BorrowedColumn<'a> {
 			return None;
 		}
 		match self.type_code() {
+			// SAFETY: type_code Int4 means the buffer is a marshalled &[i32]: aligned, initialized.
 			ColumnTypeCode::Int4 => unsafe { self.as_slice::<i32>()?.get(index).copied() },
+			// SAFETY: type_code Int2 means the buffer is a marshalled &[i16]: aligned, initialized.
 			ColumnTypeCode::Int2 => unsafe { self.as_slice::<i16>()?.get(index).copied().map(i32::from) },
+			// SAFETY: type_code Int1 means the buffer is a marshalled &[i8]: aligned, initialized.
 			ColumnTypeCode::Int1 => unsafe { self.as_slice::<i8>()?.get(index).copied().map(i32::from) },
 			_ => None,
 		}
@@ -405,7 +453,9 @@ impl<'a> BorrowedColumn<'a> {
 			return None;
 		}
 		match self.type_code() {
+			// SAFETY: type_code Int2 means the buffer is a marshalled &[i16]: aligned, initialized.
 			ColumnTypeCode::Int2 => unsafe { self.as_slice::<i16>()?.get(index).copied() },
+			// SAFETY: type_code Int1 means the buffer is a marshalled &[i8]: aligned, initialized.
 			ColumnTypeCode::Int1 => unsafe { self.as_slice::<i8>()?.get(index).copied().map(i16::from) },
 			_ => None,
 		}
@@ -416,6 +466,7 @@ impl<'a> BorrowedColumn<'a> {
 		if self.type_code() != ColumnTypeCode::Int1 || !self.is_defined_at(index) {
 			return None;
 		}
+		// SAFETY: the Int1 check above means the buffer is a marshalled &[i8]: aligned, initialized.
 		unsafe { self.as_slice::<i8>()?.get(index).copied() }
 	}
 
@@ -424,6 +475,8 @@ impl<'a> BorrowedColumn<'a> {
 		if self.type_code() != ColumnTypeCode::Uint16 || !self.is_defined_at(index) {
 			return None;
 		}
+		// SAFETY: the Uint16 check above means the buffer is a marshalled &[u128], so it carries u128's
+		// 16-byte alignment and is initialized.
 		unsafe { self.as_slice::<u128>()?.get(index).copied() }
 	}
 
@@ -432,6 +485,8 @@ impl<'a> BorrowedColumn<'a> {
 		if self.type_code() != ColumnTypeCode::Int16 || !self.is_defined_at(index) {
 			return None;
 		}
+		// SAFETY: the Int16 check above means the buffer is a marshalled &[i128], so it carries i128's
+		// 16-byte alignment and is initialized.
 		unsafe { self.as_slice::<i128>()?.get(index).copied() }
 	}
 
@@ -441,7 +496,9 @@ impl<'a> BorrowedColumn<'a> {
 			return None;
 		}
 		match self.type_code() {
+			// SAFETY: type_code Float8 means the buffer is a marshalled &[f64]: aligned, initialized.
 			ColumnTypeCode::Float8 => unsafe { self.as_slice::<f64>()?.get(index).copied() },
+			// SAFETY: type_code Float4 means the buffer is a marshalled &[f32]: aligned, initialized.
 			ColumnTypeCode::Float4 => unsafe { self.as_slice::<f32>()?.get(index).copied().map(f64::from) },
 			_ => None,
 		}
@@ -452,6 +509,7 @@ impl<'a> BorrowedColumn<'a> {
 		if self.type_code() != ColumnTypeCode::Float4 || !self.is_defined_at(index) {
 			return None;
 		}
+		// SAFETY: the Float4 check above means the buffer is a marshalled &[f32]: aligned, initialized.
 		unsafe { self.as_slice::<f32>()?.get(index).copied() }
 	}
 
@@ -460,6 +518,8 @@ impl<'a> BorrowedColumn<'a> {
 		if self.type_code() != ColumnTypeCode::Date || !self.is_defined_at(index) {
 			return None;
 		}
+		// SAFETY: the Date check above means the buffer is a marshalled &[Date]; `Date` is
+		// `repr(transparent)` over `i32`, so it is aligned and every bit pattern is a valid value.
 		unsafe { self.as_slice::<Date>()?.get(index).copied() }
 	}
 
@@ -468,6 +528,8 @@ impl<'a> BorrowedColumn<'a> {
 		if self.type_code() != ColumnTypeCode::DateTime || !self.is_defined_at(index) {
 			return None;
 		}
+		// SAFETY: the DateTime check above means the buffer is a marshalled &[DateTime]; `DateTime` is
+		// `repr(transparent)` over `u64`, so it is aligned and every bit pattern is a valid value.
 		unsafe { self.as_slice::<DateTime>()?.get(index).copied() }
 	}
 
@@ -476,6 +538,8 @@ impl<'a> BorrowedColumn<'a> {
 		if self.type_code() != ColumnTypeCode::Time || !self.is_defined_at(index) {
 			return None;
 		}
+		// SAFETY: the Time check above means the buffer is a marshalled &[Time]; `Time` is
+		// `repr(transparent)` over `u64`, so it is aligned and every bit pattern is a valid value.
 		unsafe { self.as_slice::<Time>()?.get(index).copied() }
 	}
 
@@ -484,20 +548,32 @@ impl<'a> BorrowedColumn<'a> {
 		if self.type_code() != ColumnTypeCode::Duration || !self.is_defined_at(index) {
 			return None;
 		}
+		// SAFETY: the Duration check above means the buffer is a marshalled &[Duration]; `Duration` is
+		// `repr(C)` over `i32`/`i32`/`i64`, so it is aligned and every bit pattern is a valid value.
 		unsafe { self.as_slice::<Duration>()?.get(index).copied() }
 	}
 }
 
-fn read_buffer<'a>(buf: &BufferFFI) -> &'a [u8] {
+/// # Safety
+///
+/// `buf` must be a host-produced descriptor: either empty, or `buf.ptr` valid for `buf.len`
+/// initialized bytes that stay live as long as `buf` itself is borrowed.
+unsafe fn read_buffer<'a>(buf: &'a BufferFFI) -> &'a [u8] {
 	if buf.ptr.is_null() || buf.len == 0 {
 		&[]
 	} else {
+		// SAFETY: the branch above rules out a null pointer and a zero length; the caller's contract
+		// makes the remaining `buf.len` bytes initialized and live for `'a`.
 		unsafe { slice::from_raw_parts(buf.ptr, buf.len) }
 	}
 }
 
-fn read_buffer_str<'a>(buf: &BufferFFI) -> &'a str {
-	let bytes: &'a [u8] = read_buffer(buf);
+/// # Safety
+///
+/// Same contract as [`read_buffer`].
+unsafe fn read_buffer_str<'a>(buf: &'a BufferFFI) -> &'a str {
+	// SAFETY: forwarding this function's own contract, which is `read_buffer`'s.
+	let bytes: &'a [u8] = unsafe { read_buffer(buf) };
 	str::from_utf8(bytes).unwrap_or("")
 }
 

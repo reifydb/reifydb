@@ -48,6 +48,9 @@ pub(super) extern "C" fn host_state_get(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx`, `key_ptr` and `output` are null-checked above; the guest must pass back the
+	// ContextFFI the host handed it for this call (discharging get_transaction_mut and state_key), and
+	// an `output` valid and aligned for one BufferFFI write that it then frees via memory.free.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -79,6 +82,9 @@ pub(super) extern "C" fn host_state_set(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx`, `key_ptr` and `value_ptr` are null-checked above; the guest must pass back the
+	// ContextFFI the host handed it for this call, a `key_ptr` valid for `key_len` reads (discharging
+	// state_key) and a `value_ptr` valid for `value_len` reads (discharging encoded_row).
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -107,6 +113,9 @@ pub(super) extern "C" fn host_state_remove(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx` and `key_ptr` are null-checked above; the guest must pass back the ContextFFI the
+	// host handed it for this call (discharging get_transaction_mut) and a `key_ptr` valid for reads
+	// of `key_len` bytes (discharging state_key).
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -128,6 +137,8 @@ pub(super) extern "C" fn host_state_clear(operator_id: u64, ctx: *mut ContextFFI
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx` is null-checked above and the guest must pass back the ContextFFI the host handed
+	// it for this call, which discharges get_transaction_mut.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -154,6 +165,9 @@ pub(super) extern "C" fn host_state_prefix(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx` and `iterator_out` are null-checked above; the guest must pass back the ContextFFI
+	// the host handed it for this call, a `prefix_ptr` that is null or valid for `prefix_len` reads,
+	// and an `iterator_out` valid for one pointer write; the handle is freed via state.iterator_free.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -217,6 +231,10 @@ pub(super) extern "C" fn host_state_get_many(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx`, `iterator_out` and (for a non-zero `keys_len`) `keys` are null-checked above; the
+	// guest must pass back the ContextFFI the host handed it for this call, `keys` valid for reads of
+	// `keys_len` KeyRefFFI whose non-empty entries are valid for their own `len`, and an
+	// `iterator_out` valid for one pointer write; the handle is freed via state.iterator_free.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -286,6 +304,10 @@ pub(super) extern "C" fn host_state_range(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx` and `iterator_out` are null-checked above, and each bound pointer is null-checked
+	// on the arm that reads it; the guest must pass back the ContextFFI the host handed it for this
+	// call, bound pointers valid for their stated lengths, and an `iterator_out` valid for one pointer
+	// write; the handle is freed via state.iterator_free.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -369,8 +391,8 @@ pub(super) extern "C" fn host_state_iterator_next(
 		return FFI_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: iterator was handed out by host_state_* as a StateIteratorInternal and
-
+	// SAFETY: null-checked above, and the caller must pass an iterator this host handed out as a
+	// live StateIteratorInternal, so the cast target is valid and correctly aligned.
 	unsafe {
 		let iter_internal = iterator as *mut StateIteratorInternal;
 		let iter_handle = (*iter_internal).handle;
@@ -408,6 +430,9 @@ pub(super) extern "C" fn host_state_iterator_free(iterator: *mut StateIteratorFF
 		return;
 	}
 
+	// SAFETY: `iterator` is null-checked above and must be an unfreed handle this host handed out, so
+	// it is a host_alloc block of exactly `size_of::<StateIteratorInternal>()` bytes at align 8 >=
+	// align_of::<StateIteratorInternal>(), holding an initialised handle (discharges host_free).
 	unsafe {
 		let iter_internal = iterator as *mut StateIteratorInternal;
 
@@ -434,6 +459,10 @@ pub(super) extern "C" fn host_get_or_create_row_numbers(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx` is null-checked above, and for a non-zero `keys_len` so are `keys`,
+	// `row_numbers_out` and `is_new_out`; the guest must pass back the ContextFFI the host handed it
+	// for this call, `keys` satisfying encoded_keys, and both out arrays valid and aligned for
+	// `keys_len` writes - get_or_create_row_numbers returns exactly one result per key.
 	unsafe {
 		let flow_txn = get_transaction_mut(&mut *ctx);
 		let Some(encoded_keys) = encoded_keys(keys, keys_len) else {
@@ -525,6 +554,9 @@ pub(super) extern "C" fn host_arm_timer(
 		return FFI_ERROR_INTERNAL;
 	};
 
+	// SAFETY: `ctx` is null-checked above, as is `key` whenever `key_len` is non-zero; the guest must
+	// pass back the ContextFFI the host handed it for this call (discharging get_transaction_mut) and
+	// a `key` valid for reads of `key_len` bytes, which the zero-length arm never touches.
 	unsafe {
 		let flow_txn = get_transaction_mut(&mut *ctx);
 		let key = if key_len == 0 {
@@ -554,8 +586,8 @@ pub(super) extern "C" fn host_flow_watermark(
 		return FFI_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: the three pointers are null-checked above; ctx is the context the host handed to
-
+	// SAFETY: null-checked above; `ctx` must be the context this host handed to the guest for the
+	// duration of the call, and the out pointers must be valid for writes.
 	unsafe {
 		let flow_txn = get_transaction_mut(&mut *ctx);
 		match flow_txn.flow_watermark() {
@@ -590,6 +622,9 @@ pub(super) extern "C" fn host_disarm_timer(
 		return FFI_ERROR_INTERNAL;
 	};
 
+	// SAFETY: `ctx` is null-checked above, as is `key` whenever `key_len` is non-zero; the guest must
+	// pass back the ContextFFI the host handed it for this call (discharging get_transaction_mut) and
+	// a `key` valid for reads of `key_len` bytes, which the zero-length arm never touches.
 	unsafe {
 		let flow_txn = get_transaction_mut(&mut *ctx);
 		let key = if key_len == 0 {
@@ -623,6 +658,10 @@ pub(super) extern "C" fn host_intern_groups(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx` is null-checked above, and for a non-zero `groups_len` so are `groups` and
+	// `ids_out`; the guest must pass back the ContextFFI the host handed it for this call, `groups`
+	// satisfying encoded_keys, and an `ids_out` valid and aligned for `groups_len` u64 writes -
+	// intern_groups returns exactly one id per group.
 	unsafe {
 		let flow_txn = get_transaction_mut(&mut *ctx);
 		let Some(keys) = encoded_keys(groups, groups_len) else {
@@ -654,6 +693,10 @@ pub(super) extern "C" fn host_lookup_groups(
 		return FFI_ERROR_NULL_PTR;
 	}
 
+	// SAFETY: `ctx` is null-checked above, and for a non-zero `groups_len` so are `groups` and
+	// `ids_out`; the guest must pass back the ContextFFI the host handed it for this call, `groups`
+	// satisfying encoded_keys, and an `ids_out` valid and aligned for `groups_len` u64 writes - the
+	// loop below indexes `keys`, which encoded_keys builds one entry per group.
 	unsafe {
 		let flow_txn = get_transaction_mut(&mut *ctx);
 		let Some(keys) = encoded_keys(groups, groups_len) else {

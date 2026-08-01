@@ -46,7 +46,7 @@ pub mod tests {
 
 	#[test]
 	fn test_from_b58_invalid() {
-		// '0', 'O', 'I', 'l' are not in base58 alphabet
+		// The alphabet omits the visually ambiguous 0/O/I/l, so they must be rejected.
 		let result = Blob::from_b58(Fragment::testing("0invalid"));
 		assert!(result.is_err());
 
@@ -89,7 +89,7 @@ pub mod tests {
 
 	#[test]
 	fn test_b58_leading_zeros() {
-		// Leading zero bytes become leading '1's
+		// Base58 is positional, so leading zero bytes carry no value and are re-emitted as '1'.
 		let data = vec![0, 0, 1];
 		let blob = Blob::new(data.clone());
 		let b58_str = blob.to_b58();

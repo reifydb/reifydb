@@ -48,13 +48,10 @@ pub mod tests {
 
 	#[test]
 	fn test_error_macro() {
-		// Test that error! macro creates correct Error type
 		let err = error!(TypeError::NanNotAllowed.into_diagnostic());
 
-		// Verify it creates the correct Error type
 		assert!(matches!(err, Error(_)));
 
-		// Test that the diagnostic is properly wrapped
 		let diagnostic = err.diagnostic();
 		assert!(diagnostic.message.contains("NaN"));
 	}
@@ -76,7 +73,6 @@ pub mod tests {
 
 	#[test]
 	fn test_err_macro() {
-		// Test that err! macro creates correct Result type with Err
 		let result: Result<(), Error> = err!(TypeError::NanNotAllowed.into_diagnostic());
 
 		assert!(result.is_err());
@@ -89,21 +85,18 @@ pub mod tests {
 
 	#[test]
 	fn test_error_macro_with_fragment() {
-		// Create a test fragment
+		// The fragment is what anchors a diagnostic to a source position, so the macro must
+		// attach it rather than drop it.
 		let fragment = Fragment::Statement {
 			line: StatementLine(42),
 			column: StatementColumn(10),
 			text: Arc::from("test fragment"),
 		};
 
-		// Test that error! macro with fragment creates correct Error
-		// type
 		let err = error!(TypeError::NanNotAllowed.into_diagnostic(), fragment.clone());
 
-		// Verify it creates the correct Error type
 		assert!(matches!(err, Error(_)));
 
-		// Test that the diagnostic has the origin set (via fragment)
 		let diagnostic = err.diagnostic();
 		let fragment = diagnostic.fragment();
 		assert!(fragment.is_some());
@@ -156,8 +149,6 @@ pub mod tests {
 			text: Arc::from("err fragment test"),
 		};
 
-		// Test that err! macro with fragment creates correct Result
-		// type with Err
 		let result: Result<(), Error> = err!(TypeError::NanNotAllowed.into_diagnostic(), fragment);
 
 		assert!(result.is_err());
@@ -180,8 +171,8 @@ pub mod tests {
 
 	#[test]
 	fn test_macros_with_closure_fragment() {
-		// Test with closure that returns Fragment (implements
-		// Into<Fragment>)
+		// The fragment argument is taken as `impl Into<Fragment>`, so a call expression must
+		// work in place of a value and be evaluated exactly once.
 		let get_fragment = || Fragment::Statement {
 			line: StatementLine(300),
 			column: StatementColumn(75),

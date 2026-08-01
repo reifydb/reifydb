@@ -84,16 +84,16 @@ mod tests {
 
 	#[test]
 	fn test_format_f64_15_sig_digits() {
-		// e (Euler's number) - this is the problematic cross-platform case
+		// Digits 16 and 17 of a f64 are where platform formatters disagree, so the rendering is
+		// capped at 15 to keep output identical everywhere.
 		let e = f64::consts::E;
 		let s = format_f64(e);
-		// Should have at most 15 significant digits
 		assert!(count_significant_digits(&s) <= 15, "got: {}", s);
 	}
 
 	#[test]
 	fn test_format_f64_preserves_short_values() {
-		// Values with <= 15 significant digits should be unchanged
+		// The cap must not perturb values already inside it.
 		assert_eq!(format_f64(1.5), "1.5");
 		assert_eq!(format_f64(100.0), "100");
 		assert_eq!(format_f64(0.001), "0.001");
@@ -102,9 +102,8 @@ mod tests {
 
 	#[test]
 	fn test_format_f64_large_values() {
-		// Exact integer representations pass through unchanged
+		// An exact integer keeps all its digits; only fractional values hit the 15-digit cap.
 		assert_eq!(format_f64(1e15), "1000000000000000");
-		// Non-integer large values get truncated to 15 sig digits
 		let v = 1.234567890123456e10;
 		let s = format_f64(v);
 		assert!(count_significant_digits(&s) <= 15, "got: {}", s);
@@ -162,7 +161,7 @@ mod tests {
 
 	#[test]
 	fn test_format_f64_cross_platform_equivalence() {
-		// These values are known to differ between platforms in digits 16-17
+		// Irrational constants are exactly where platform formatters diverge past digit 15.
 		let values = [
 			f64::consts::E,
 			f64::consts::PI,
@@ -185,7 +184,7 @@ mod tests {
 
 	#[test]
 	fn test_no_trailing_zeros() {
-		// Ensure we don't produce trailing zeros after trimming
+		// Truncating to 15 digits must trim the padding it exposes, or output stops being stable.
 		let v = 1.2f64;
 		let s = format_f64(v);
 		assert!(!s.ends_with('0') || s == "0", "got: {}", s);

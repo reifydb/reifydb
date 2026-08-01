@@ -44,6 +44,8 @@ pub unsafe extern "C" fn ffi_transform<T: FFITransform>(
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		let wrapper = TransformWrapper::<T>::from_ptr(instance);
 
+		// SAFETY: discharges BorrowedColumns::from_ffi; ffi_transform's contract makes input a valid
+		// ColumnsFFI whose buffer pointers stay live for the borrow, which ends with this closure.
 		let borrowed_input = unsafe { BorrowedColumns::from_ffi(input) };
 		let mut tctx = FFITransformContext::new(ctx);
 
@@ -75,6 +77,8 @@ pub unsafe extern "C" fn ffi_transform_destroy<T: FFITransform>(instance: *mut c
 		return;
 	}
 
+	// SAFETY: instance was checked non-null above and ffi_transform_destroy's contract makes it a Box::new
+	// allocated TransformWrapper<T>; the host calls destroy once, so ownership is taken exactly once.
 	let result = catch_unwind(AssertUnwindSafe(|| unsafe {
 		let _wrapper = Box::from_raw(instance as *mut TransformWrapper<T>);
 	}));

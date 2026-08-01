@@ -654,10 +654,9 @@ pub mod tests {
 			let y: Option<Decimal> = x.checked_convert();
 			assert!(y.is_some());
 			let decimal = y.unwrap();
-			// f64 may add precision artifacts
+			// The f64 carries binary rounding noise past the printed digits, so the
+			// assertion is on the prefix rather than the whole rendering.
 			assert!(decimal.to_string().starts_with("123.456789"));
-			// Precision and scale will be larger due to f64
-			// representation
 		}
 
 		#[test]
@@ -675,10 +674,7 @@ pub mod tests {
 			let y: Option<Decimal> = x.checked_convert();
 			assert!(y.is_some());
 			let decimal = y.unwrap();
-			// f64 may have precision artifacts
 			assert!(decimal.to_string().starts_with("0.0000125"));
-			// Precision includes all digits including leading zeros
-			// after decimal
 		}
 
 		#[test]
@@ -687,7 +683,6 @@ pub mod tests {
 			let y: Option<Decimal> = x.checked_convert();
 			assert!(y.is_some());
 			let decimal = y.unwrap();
-			// f64 may have precision artifacts
 			assert!(decimal.to_string().starts_with("-9876.5432"));
 		}
 
@@ -735,11 +730,10 @@ pub mod tests {
 		fn test_saturating_convert() {
 			let x: f64 = 999999.999999;
 			let y: Decimal = x.saturating_convert();
-			// f64 may have precision artifacts, check the integer
-			// part
+			// The literal is not exactly representable, so either neighbouring rounding is
+			// acceptable here.
 			let str_repr = y.to_string();
 			assert!(str_repr.starts_with("999999") || str_repr.starts_with("1000000"));
-			// Due to f64 rounding, value may be 1000000.0
 		}
 
 		#[test]
@@ -767,9 +761,7 @@ pub mod tests {
 		fn test_wrapping_convert_with_decimal() {
 			let x: f64 = 3.14159;
 			let y: Decimal = x.wrapping_convert();
-			// f64 may have precision artifacts
 			let str_repr = y.to_string();
-			// f64 representation of 3.14159 may not be exact
 			assert!(str_repr.starts_with("3.141"), "actual: {}", str_repr);
 		}
 	}

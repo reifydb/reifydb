@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 //
-// Policies are named globally (not namespace-scoped). Only `find_policy_by_name`
-// exists on the Catalog; there's no `list_policies_all`. So these tests only
-// cross-check via `find_policy_by_name`.
+// Policies are named globally, not namespace-scoped. `list_all_policies` bypasses the
+// admin-transaction change log, so uncommitted state is cross-checked through
+// `find_policy_by_name` instead.
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_transaction::transaction::Transaction;

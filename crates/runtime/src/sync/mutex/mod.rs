@@ -35,7 +35,8 @@ impl<T: Debug> Debug for Mutex<T> {
 	}
 }
 
-// SAFETY: Single-threaded targets (WASM/WASI) don't have real concurrency
+// SAFETY: under reifydb_single_threaded there is no second thread, so the RefCell-backed inner can never
+// be reached concurrently. The impl only satisfies Sync bounds and never backs a real cross-thread share.
 #[cfg(reifydb_single_threaded)]
 unsafe impl<T> Sync for Mutex<T> {}
 

@@ -57,10 +57,8 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let flow = ensure_test_flow(&mut txn);
 
-		// Update the name
 		CatalogStore::update_flow_name(&mut txn, flow.id, "new_flow_name".to_string()).unwrap();
 
-		// Verify update
 		let updated = CatalogStore::get_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(updated.name, "new_flow_name");
 		assert_eq!(updated.namespace, flow.namespace);
@@ -72,20 +70,16 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let flow = ensure_test_flow(&mut txn);
 
-		// Initial status should be Active
 		assert_eq!(flow.status, FlowStatus::Active);
 
-		// Update to Paused
 		CatalogStore::update_flow_status(&mut txn, flow.id, FlowStatus::Paused).unwrap();
 		let updated = CatalogStore::get_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(updated.status, FlowStatus::Paused);
 
-		// Update to Failed
 		CatalogStore::update_flow_status(&mut txn, flow.id, FlowStatus::Failed).unwrap();
 		let updated = CatalogStore::get_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(updated.status, FlowStatus::Failed);
 
-		// Update back to Active
 		CatalogStore::update_flow_status(&mut txn, flow.id, FlowStatus::Active).unwrap();
 		let updated = CatalogStore::get_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(updated.status, FlowStatus::Active);

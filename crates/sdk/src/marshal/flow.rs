@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	ptr,
-	slice::{from_raw_parts, from_raw_parts_mut},
-};
+use std::{ptr, slice::from_raw_parts};
 
 use reifydb_abi::{
 	data::column::ColumnsFFI,
@@ -37,10 +34,15 @@ impl Arena {
 		let diffs_ptr = if diffs_count > 0 {
 			let diffs_array = self.alloc(diffs_count * size_of::<DiffFFI>()) as *mut DiffFFI;
 
+			// SAFETY: `diffs_count > 0` makes the arena block non-null, and it reserved
+			// `diffs_count * size_of::<DiffFFI>()` bytes at alignment 8, so every `add(i)` with
+			// `i < diffs_count` is in bounds; DiffFFI is Copy, so the stores drop nothing. The
+			// writes go through the raw pointer because a reference to the block would be invalid
+			// until every `diff_type` discriminant is written.
 			unsafe {
-				let diffs_slice = from_raw_parts_mut(diffs_array, diffs_count);
 				for (i, diff) in change.diffs.iter().enumerate() {
-					diffs_slice[i] = self.marshal_diff(diff);
+					let diff_ffi = self.marshal_diff(diff);
+					*diffs_array.add(i) = diff_ffi;
 				}
 			}
 
@@ -132,6 +134,8 @@ impl Arena {
 		let mut diffs: Diffs = Diffs::with_capacity(ffi.diff_count);
 
 		if !ffi.diffs.is_null() && ffi.diff_count > 0 {
+			// SAFETY: the branch above rules out a null pointer and a zero count; `marshal_change`
+			// points `diffs` at an 8-aligned arena array of exactly `diff_count` initialised `DiffFFI`.
 			unsafe {
 				let diffs_slice = from_raw_parts(ffi.diffs, ffi.diff_count);
 

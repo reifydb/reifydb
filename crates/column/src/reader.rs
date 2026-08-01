@@ -332,7 +332,8 @@ mod tests {
 
 	#[test]
 	fn reader_batch_spans_chunk_boundary() {
-		// Batch size 4 lands on no chunk boundary, so every batch has to stitch across chunks.
+		// Batch size 4 lands on no chunk boundary, so the first two batches each have to stitch two chunks
+		// together and the third is a short tail.
 		let snap = mk_chunked_block(&[&[10, 20, 30], &[40, 50], &[60, 70, 80, 90]]);
 		let mut reader = SnapshotReader::new(snap, 4);
 

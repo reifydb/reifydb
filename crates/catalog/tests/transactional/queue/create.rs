@@ -14,11 +14,10 @@ fn namespace_id(t: &TestEngine, name: &str) -> NamespaceId {
 	id
 }
 
-/// A queue created earlier in the same admin transaction must be visible to the
-/// rest of that transaction; without the change-tracking overlay a follow-up
-/// statement in the same DDL script could not see what it just created.
 #[test]
 fn uncommitted_create_is_visible_within_txn() {
+	// Without the change-tracking overlay a follow-up statement in the same DDL script
+	// could not see what it just created.
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE qns_create_a");
@@ -33,10 +32,10 @@ fn uncommitted_create_is_visible_within_txn() {
 	assert!(all.iter().any(|x| x.namespace == ns_id && x.name() == "jobs"));
 }
 
-/// Change tracking is abort-coupled: a rolled-back CREATE must leave no trace,
-/// otherwise the cache would serve a queue that does not exist on disk.
 #[test]
 fn rolled_back_create_is_not_visible() {
+	// Change tracking is abort-coupled; a surviving trace would make the cache serve a
+	// queue that does not exist on disk.
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE qns_create_b");
@@ -67,10 +66,9 @@ fn committed_create_is_visible_in_new_txn() {
 	assert!(catalog.find_queue_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "jobs").unwrap().is_some());
 }
 
-/// The overlay must be private to its own transaction: a concurrent reader must
-/// not see an uncommitted definition.
 #[test]
 fn uncommitted_create_is_isolated_from_concurrent_txn() {
+	// The overlay is private to its own transaction.
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE qns_create_d");
@@ -90,10 +88,9 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	assert!(catalog.find_queue_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "jobs").unwrap().is_some());
 }
 
-/// The declared options must survive the commit, not just the name: a queue that
-/// loses its partition count on commit would be silently mis-scheduled later.
 #[test]
 fn committed_create_preserves_every_option() {
+	// A queue that loses its partition count on commit is silently mis-scheduled later.
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE qns_create_e");

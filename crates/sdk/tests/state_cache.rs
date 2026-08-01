@@ -168,7 +168,7 @@ fn test_cache_get_or_default_creates_default() {
 	let mut ctx = harness.create_operator_context();
 	let result = cache.get_or_default(&mut OperatorContextStore(&mut ctx), &key).expect("get_or_default failed");
 
-	assert_eq!(result.count, 0); // V::default()
+	assert_eq!(result.count, 0);
 }
 
 #[test]
@@ -462,11 +462,8 @@ fn test_cache_lru_access_updates_order() {
 		cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
 	}
 
-	// key_0 should still be cached (was accessed recently)
 	assert!(cache.is_cached(&TestKey::new("key_0")), "key_0 should be cached (recently accessed)");
-	// key_1 should be evicted (was LRU)
 	assert!(!cache.is_cached(&TestKey::new("key_1")), "key_1 should be evicted (LRU)");
-	// key_2 and key_3 should be cached
 	assert!(cache.is_cached(&TestKey::new("key_2")));
 	assert!(cache.is_cached(&TestKey::new("key_3")));
 }
@@ -581,8 +578,7 @@ fn test_cache_miss_then_hit() {
 		count: 123,
 	};
 
-	// Set + flush so the value lands in FFI storage (the test then
-	// invalidates the cache to force a reload from FFI).
+	// Flushing first is what makes the later invalidate a genuine miss-then-reload rather than a lost write.
 	{
 		let mut ctx = harness.create_operator_context();
 		cache.set(&mut OperatorContextStore(&mut ctx), &key, &value).expect("Set failed");
@@ -612,10 +608,9 @@ fn test_cache_with_operator_apply() {
 	let mut harness =
 		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
-	// Create cache outside the operator (since StateCache is !Send+!Sync)
+	// StateCache is !Send + !Sync, so it has to live outside the operator rather than in its state.
 	let mut cache: StateCache<TestKey, CounterState> = StateCache::new(test_pool());
 
-	// Simulate what an operator would do: process input, update state via cache
 	let input = TestChangeBuilder::new()
 		.insert_row(1, vec![Value::Int8(10i64)])
 		.insert_row(2, vec![Value::Int8(20i64)])

@@ -47,7 +47,6 @@ pub mod tests {
 		let (mock, clock, rng) = test_clock_and_rng();
 		let shape = RowShape::testing(&[ValueType::IdentityId]);
 
-		// Generate multiple Identity IDs and ensure they're different
 		let mut ids = Vec::new();
 		for _ in 0..10 {
 			let mut row = shape.allocate();
@@ -59,7 +58,6 @@ pub mod tests {
 			mock.advance_millis(1);
 		}
 
-		// Ensure all generated Identity IDs are unique
 		for i in 0..ids.len() {
 			for j in (i + 1)..ids.len() {
 				assert_ne!(ids[i], ids[j], "Identity IDs should be unique");
@@ -77,7 +75,7 @@ pub mod tests {
 		shape.set::<IdentityId>(&mut row, 0, id.clone());
 		let retrieved = shape.get::<IdentityId>(&row, 0);
 
-		// Verify it's backed by a version 7 UUID
+		// The version nibble must survive the row slot, since ordering depends on UUID7 layout.
 		assert_eq!(retrieved.get_version_num(), 7);
 		assert_eq!(id.get_version_num(), 7);
 	}
@@ -87,8 +85,8 @@ pub mod tests {
 		let (mock, clock, rng) = test_clock_and_rng();
 		let shape = RowShape::testing(&[ValueType::IdentityId]);
 
-		// Generate Identity IDs in sequence - they should be ordered by
-		// timestamp
+		// UUID7 puts the timestamp in the leading bytes, so byte order has to match generation
+		// order for these ids to be usable as sortable keys.
 		let mut ids = Vec::new();
 		for _ in 0..5 {
 			let mut row = shape.allocate();
@@ -98,11 +96,9 @@ pub mod tests {
 			assert_eq!(retrieved, id);
 			ids.push(id);
 
-			// Advance clock to ensure different timestamps
 			mock.advance_millis(1);
 		}
 
-		// Verify that Identity IDs are ordered (timestamp-based)
 		for i in 1..ids.len() {
 			assert!(ids[i].as_bytes() >= ids[i - 1].as_bytes(), "Identity IDs should be timestamp-ordered");
 		}
@@ -179,8 +175,6 @@ pub mod tests {
 		let retrieved_id = shape.get::<IdentityId>(&row, 0);
 		assert_eq!(retrieved_id, original_id);
 
-		// Verify that the underlying UUID7 byte representation is
-		// identical
 		assert_eq!(retrieved_id.as_bytes(), original_id.as_bytes());
 	}
 
@@ -204,7 +198,6 @@ pub mod tests {
 		assert_eq!(shape.get::<IdentityId>(&row, 1), id2);
 		assert_eq!(shape.get::<IdentityId>(&row, 2), id3);
 
-		// Ensure all Identity IDs are different
 		assert_ne!(id1, id2);
 		assert_ne!(id1, id3);
 		assert_ne!(id2, id3);
@@ -225,8 +218,7 @@ pub mod tests {
 
 		assert_eq!(original_string, retrieved_string);
 
-		// Verify UUID string format (8-4-4-4-12) since IdentityId is
-		// based on UUID7
+		// 36 chars with 4 hyphens is the 8-4-4-4-12 UUID rendering.
 		assert_eq!(original_string.len(), 36);
 		assert_eq!(original_string.matches('-').count(), 4);
 	}
@@ -246,7 +238,6 @@ pub mod tests {
 
 		assert_eq!(original_bytes, retrieved_bytes);
 
-		// Verify that it's exactly 16 bytes
 		assert_eq!(original_bytes.len(), 16);
 		assert_eq!(retrieved_bytes.len(), 16);
 	}
@@ -256,7 +247,6 @@ pub mod tests {
 		let (mock, clock, rng) = test_clock_and_rng();
 		let shape = RowShape::testing(&[ValueType::IdentityId]);
 
-		// Generate Identity IDs at different times
 		let id1 = IdentityId::generate(&clock, &rng);
 		mock.advance_millis(2);
 		let id2 = IdentityId::generate(&clock, &rng);
@@ -270,8 +260,7 @@ pub mod tests {
 		let retrieved1 = shape.get::<IdentityId>(&row1, 0);
 		let retrieved2 = shape.get::<IdentityId>(&row2, 0);
 
-		// The second Identity ID should be "greater" due to timestamp
-		// ordering
+		// The later id must compare greater by raw bytes, which is what makes it index-ordered.
 		assert!(retrieved2.as_bytes() > retrieved1.as_bytes());
 	}
 
@@ -285,7 +274,6 @@ pub mod tests {
 		]);
 		let mut row = shape.allocate();
 
-		// Simulate a database record with Identity ID as primary key
 		let primary_key = IdentityId::generate(&clock, &rng);
 		shape.set::<IdentityId>(&mut row, 0, primary_key.clone());
 		shape.set_utf8(&mut row, 1, "John Doe");
@@ -295,7 +283,6 @@ pub mod tests {
 		assert_eq!(shape.get_utf8(&row, 1), "John Doe");
 		assert_eq!(shape.get::<i32>(&row, 2), 30);
 
-		// Verify that the primary key is suitable for ordering/indexing
 		assert_eq!(primary_key.get_version_num(), 7);
 	}
 

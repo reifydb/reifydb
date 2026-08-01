@@ -303,7 +303,7 @@ pub mod tests {
 
 		#[test]
 		fn test_checked_convert_large() {
-			// Test with a very large unsigned number
+			// Decimal is arbitrary precision, so even u128::MAX converts exactly.
 			let x = Uint::from(u128::MAX);
 			let y: Option<Decimal> = x.checked_convert();
 			assert!(y.is_some());

@@ -105,7 +105,7 @@ pub unsafe extern "C" fn host_realloc(ptr: *mut u8, old_size: usize, new_size: u
 				Err(_) => return ptr::null_mut(),
 			};
 			// SAFETY: reached only with no arena installed, so ptr must be a global-allocator
-			// block matching old_layout.
+			// block matching old_layout; new_size is non-zero (checked above).
 			unsafe { system_realloc(ptr, old_layout, new_layout.size()) }
 		}
 	})
