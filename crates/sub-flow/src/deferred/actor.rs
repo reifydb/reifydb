@@ -1058,6 +1058,8 @@ mod pull_protocol {
 		// actor must fetch the missing range from durable CDC through the loader - once -
 		// then rejoin the backlog. Nothing may be lost to the eviction and nothing applied
 		// twice across the loader chunk and the backlog pulls that follow it.
+		// The position is a floor, not an equality: the catch-up's own commit is a version above
+		// the bound, and the drain after it skips onto that version.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(v0);
@@ -1076,10 +1078,10 @@ mod pull_protocol {
 
 		let rows = h.await_view_rows(total, StdDuration::from_secs(15));
 		assert_eq!(rows, total, "the loader path must recover every version evicted from the backlog");
-		assert_eq!(
-			h.await_position(target, StdDuration::from_secs(10)),
-			Some(target),
-			"the catch-up must advance the flow position to the safe bound"
+		assert!(
+			h.await_position_at_least(target, seconds(10)).is_some(),
+			"the catch-up must advance the flow position to at least the safe bound it \
+			 recovered through"
 		);
 
 		sleep(StdDuration::from_millis(200));

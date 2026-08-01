@@ -56,6 +56,7 @@ pub type FlowSupervisorHandle = ActorHandle<FlowSupervisorMessage>;
 pub enum FlowSupervisorMessage {
 	Bootstrap {
 		flows: Vec<(FlowId, bool)>,
+		scan_from: Option<CommitVersion>,
 	},
 
 	Wake,

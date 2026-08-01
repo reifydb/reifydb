@@ -268,16 +268,6 @@ fn the_same_span_on_an_operator_that_can_reclaim_is_accepted() {
 
 #[test]
 fn a_statically_registered_operator_reaches_the_operator_catalog() {
-	// This lives here because it guards the input the two tests above depend on. The capability bit
-	// the DDL check reads comes from the operator catalog, and that catalog used to be fed by exactly
-	// one thing: a scan of operators_dir for .so/.dylib files. Statically registered operators - the
-	// register_operator::<O>() path, which is how all 68 chaindex operators are linked - emitted
-	// nothing and were invisible, so the check above would have read "no such operator" for every
-	// operator that actually runs in production.
-	// Mutation: drop the publish_custom_operators call from FlowSubsystem::new and this fails while
-	// a_span_on_an_operator_that_cannot_reclaim_is_refused keeps passing - it would still refuse,
-	// but for the wrong reason (unknown operator rather than a known operator without Reclaim),
-	// and the_same_span_on_an_operator_that_can_reclaim_is_accepted would start refusing valid RQL.
 	let db = setup_with_custom_operators();
 
 	assert_eq!(

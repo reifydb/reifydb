@@ -154,7 +154,12 @@ impl FlowSupervisor {
 		}
 	}
 
-	fn handle_bootstrap(&self, state: &mut SupervisorState, flows: Vec<(FlowId, bool)>) {
+	fn handle_bootstrap(
+		&self,
+		state: &mut SupervisorState,
+		flows: Vec<(FlowId, bool)>,
+		scan_from: Option<CommitVersion>,
+	) {
 		let migration_base = self.fetch_ddl_cursor().unwrap_or(CommitVersion(0));
 
 		let mut query = match self.engine.begin_query(IdentityId::system()) {
@@ -190,7 +195,7 @@ impl FlowSupervisor {
 		}
 		drop(query);
 
-		let scan_cursor = self.engine.current_version().unwrap_or(migration_base);
+		let scan_cursor = scan_from.unwrap_or(migration_base);
 		state.scan_cursor = scan_cursor;
 		state.last_control_commit_at = self.clock.now();
 		self.control.store(scan_cursor);
@@ -299,6 +304,9 @@ impl FlowSupervisor {
 		for (flow_id, version) in extract_new_flows(items) {
 			if deleted.contains(&flow_id) {
 				self.flow_catalog.remove(flow_id);
+				continue;
+			}
+			if state.flows.contains_key(&flow_id) {
 				continue;
 			}
 			let Some((flow, is_new)) = self.load_flow_at(flow_id, version) else {
@@ -505,7 +513,8 @@ impl Actor for FlowSupervisor {
 		catch_unwind(AssertUnwindSafe(|| match msg {
 			FlowSupervisorMessage::Bootstrap {
 				flows,
-			} => self.handle_bootstrap(state, flows),
+				scan_from,
+			} => self.handle_bootstrap(state, flows, scan_from),
 			FlowSupervisorMessage::Wake => self.handle_wake(state, ctx),
 		}))
 		.unwrap_or_else(|_| {

@@ -254,9 +254,11 @@ impl FlowSubsystem {
 
 		ioc.register_service::<Arc<dyn ConsumerPositions>>(Arc::new(flow_tracker.clone()));
 
+		let scan_from = engine.current_version().ok();
 		let bootstrap_flows = Self::bootstrap_flows(&engine, &flow_catalog, &registrar);
 		let _ = supervisor_handle.actor_ref().send(FlowSupervisorMessage::Bootstrap {
 			flows: bootstrap_flows,
+			scan_from,
 		});
 
 		let supervisor_ref = supervisor_handle.actor_ref().clone();
