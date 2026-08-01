@@ -6,7 +6,7 @@
 # =============================================================================
 
 # Benchmark targets
-.PHONY: bench bench-all bench-store bench-transaction
+.PHONY: bench bench-all bench-watermark bench-txn
 
 bench: bench-all
 
@@ -14,31 +14,21 @@ bench-all:
 	@echo "🏃‍♂️ Running all ReifyDB benchmarks..."
 	cargo bench -p reifydb-benches $(CARGO_OFFLINE)
 
-bench-store:
-	@echo "🏃‍♂️ Running store benchmarks..."
-	cargo bench -p reifydb-benches --bench store $(CARGO_OFFLINE)
+bench-watermark:
+	@echo "🏃‍♂️ Running watermark benchmarks..."
+	cargo bench -p reifydb-benches --bench watermark $(CARGO_OFFLINE)
 
-bench-transaction:
+bench-txn:
 	@echo "🏃‍♂️ Running transaction benchmarks..."
-	cargo bench -p reifydb-benches --bench transaction $(CARGO_OFFLINE)
+	cargo bench -p reifydb-benches --bench txn $(CARGO_OFFLINE)
 
 # Benchmark utilities
-.PHONY: bench-baseline bench-compare bench-report
-
-bench-baseline:
-	@echo "💾 Saving benchmark baseline..."
-	cargo bench -p reifydb-benches $(CARGO_OFFLINE) -- --save-baseline main
-
-bench-compare:
-	@echo "📊 Comparing benchmarks to baseline..."
-	cargo bench -p reifydb-benches $(CARGO_OFFLINE) -- --baseline main
+.PHONY: bench-report
 
 bench-report:
-	@echo "📈 Opening benchmark reports..."
-	@if [ -d "target/criterion" ]; then \
-		xdg-open target/criterion/report/index.html 2>/dev/null || \
-		open target/criterion/report/index.html 2>/dev/null || \
-		echo "Reports available at: target/criterion/report/index.html"; \
+	@echo "📈 Benchmark results:"
+	@if [ -d "$(CARGO_TARGET_DIR)/bench-results" ]; then \
+		ls -t "$(CARGO_TARGET_DIR)/bench-results" | head -20; \
 	else \
-		echo "No benchmark reports found. Run 'make bench' first."; \
+		echo "No benchmark results found. Run 'make bench' first."; \
 	fi

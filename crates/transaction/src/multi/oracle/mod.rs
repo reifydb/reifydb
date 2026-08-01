@@ -128,8 +128,8 @@ where
 				time_windows: BTreeMap::new(),
 				evicted_up_through: CommitVersion(0),
 			}),
-			query: WaterMark::new("txn-mark-query".into()),
-			command: WaterMark::new("txn-mark-cmd".into()),
+			query: WaterMark::with_advancer("txn-mark-query".into(), &spawner),
+			command: WaterMark::with_advancer("txn-mark-cmd".into(), &spawner),
 			leases: VersionLeases::new(),
 			shutdown_signal,
 			spawner,
@@ -339,6 +339,8 @@ where
 			let mut shutdown = self.shutdown_signal.write();
 			*shutdown = true;
 		}
+		self.query.drain();
+		self.command.drain();
 		{
 			let mut inner = self.inner.write();
 			inner.time_windows.clear();

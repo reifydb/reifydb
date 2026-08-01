@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 ReifyDB
+
+[package]
+name = "reifydb-benches"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Hand-rolled performance benchmarks for ReifyDB"
+publish = false
+
+[dependencies]
+hdrhistogram = { workspace = true }
+
+[dev-dependencies]
+reifydb-codec = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-store-multi = { workspace = true }
+reifydb-store-single = { workspace = true }
+reifydb-transaction = { workspace = true }
+reifydb-value = { workspace = true }
+
+[[bench]]
+name = "watermark"
+harness = false
+
+[[bench]]
+name = "txn"
+harness = false

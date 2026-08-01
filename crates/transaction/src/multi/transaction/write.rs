@@ -27,7 +27,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	util::{cowvec::CowVec, hex::display as hex_display},
 };
-use tracing::instrument;
+use tracing::{instrument, warn};
 
 use super::{MultiTransaction, version::StandardVersionProvider};
 use crate::{
@@ -92,7 +92,21 @@ impl MultiWriteTransaction {
 		let oracle = engine.tm.oracle().clone();
 		let version = oracle.query.register_in_flight_with(|| oracle.version())?;
 
-		oracle.command.wait_for_mark(version.0);
+		let applied = oracle.command.wait_for_mark(version.0);
+		if !applied {
+			warn!(
+				version = version.0,
+				"command transaction opened before the commit watermark reached its snapshot; reads at this version may miss commits that are still being applied"
+			);
+		}
+		reifydb_assertions! {
+			assert!(
+				applied,
+				"waiting for the commit watermark to reach snapshot {} timed out; opening the \
+				 transaction anyway reads a snapshot whose commits are not yet all applied",
+				version.0
+			);
+		}
 
 		let id = TransactionId::generate(oracle.metrics_clock(), oracle.rng());
 		Ok(Self {

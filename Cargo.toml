@@ -40,6 +40,7 @@ members = [
     "crates/transaction",
     "crates/value",
     "crates/wasm",
+    "crates/benches",
     # Subsystem crates
     "crates/sub-api",
     "crates/sub-lifecycle",

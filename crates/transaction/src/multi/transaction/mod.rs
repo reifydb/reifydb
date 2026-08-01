@@ -34,11 +34,11 @@ use reifydb_store_multi::MultiStore;
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::driver::Raft;
 use reifydb_value::{
-	Result,
+	Result, reifydb_assertions,
 	util::hex,
 	value::{Value, duration::Duration},
 };
-use tracing::instrument;
+use tracing::{instrument, warn};
 use version::{StandardVersionProvider, VersionProvider};
 
 pub(crate) use crate::multi::oracle::Oracle;
@@ -146,7 +146,21 @@ where
 			)
 		} else {
 			let safe_version = self.inner.query.register_in_flight_with(|| self.inner.version())?;
-			self.inner.command.wait_for_mark(safe_version.0);
+			let applied = self.inner.command.wait_for_mark(safe_version.0);
+			if !applied {
+				warn!(
+					version = safe_version.0,
+					"query opened before the commit watermark reached its snapshot; reads at this version may miss commits that are still being applied"
+				);
+			}
+			reifydb_assertions! {
+				assert!(
+					applied,
+					"waiting for the commit watermark to reach snapshot {} timed out; opening \
+					 the query anyway reads a snapshot whose commits are not yet all applied",
+					safe_version.0
+				);
+			}
 			TransactionManagerQuery::new_current(
 				TransactionId::generate(self.inner.metrics_clock(), self.inner.rng()),
 				self.clone(),
