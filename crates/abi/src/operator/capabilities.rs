@@ -7,8 +7,7 @@ pub enum OperatorCapability {
 	Insert = 1 << 0,
 	Update = 1 << 1,
 	Delete = 1 << 2,
-	Drop = 1 << 4,
-	Reclaim = 1 << 6,
+	Reclaim = 1 << 4,
 }
 
 impl OperatorCapability {
@@ -26,7 +25,6 @@ impl OperatorCapability {
 		OperatorCapability::Insert,
 		OperatorCapability::Update,
 		OperatorCapability::Delete,
-		OperatorCapability::Drop,
 		OperatorCapability::Reclaim,
 	];
 
@@ -73,14 +71,12 @@ mod tests {
 			OperatorCapability::Insert,
 			OperatorCapability::Update,
 			OperatorCapability::Delete,
-			OperatorCapability::Drop,
 			OperatorCapability::Reclaim,
 		] {
 			match capability {
 				OperatorCapability::Insert
 				| OperatorCapability::Update
 				| OperatorCapability::Delete
-				| OperatorCapability::Drop
 				| OperatorCapability::Reclaim => {}
 			}
 			assert!(
@@ -102,7 +98,7 @@ mod tests {
 		assert!(restored.contains(&OperatorCapability::Insert));
 		assert!(restored.contains(&OperatorCapability::Update));
 		assert!(restored.contains(&OperatorCapability::Delete));
-		assert!(!restored.contains(&OperatorCapability::Drop), "STANDARD must not imply Drop");
+		assert!(!restored.contains(&OperatorCapability::Reclaim), "STANDARD must not imply Reclaim");
 
 		// An operator whose state is group scoped declares Reclaim itself. Losing the bit on the
 		// way to the host would make reclaim_flow skip the node and count it perpetual while its
@@ -112,6 +108,5 @@ mod tests {
 		assert!(restored.contains(&OperatorCapability::Insert));
 		assert!(restored.contains(&OperatorCapability::Update));
 		assert!(restored.contains(&OperatorCapability::Delete));
-		assert!(!restored.contains(&OperatorCapability::Drop), "STANDARD_WITH_RECLAIM must not imply Drop");
 	}
 }

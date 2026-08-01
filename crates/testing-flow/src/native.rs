@@ -14,26 +14,18 @@ use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, state::O
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers},
 	common::CommitVersion,
-	interface::{
-		WithEventBus,
-		catalog::flow::{FlowId, FlowNodeId},
-		change::Change,
-	},
+	interface::{catalog::flow::FlowNodeId, change::Change},
 	key::operator_state::StateKey,
 	row::Row,
 	state::budget::OperatorStateBudgetHandle,
 	value::column::columns::Columns,
 };
-use reifydb_engine::{engine::StandardEngine, test_harness::TestEngine};
+use reifydb_engine::test_harness::TestEngine;
 use reifydb_flow::{
 	operator::Operator,
 	transaction::{ChangeCoordinate, DeferredParams, FlowTransaction, substrate::FlowSubstrate},
 };
-use reifydb_rql::flow::{flow::FlowDag, node::FlowNode};
-use reifydb_runtime::context::{
-	RuntimeContext,
-	clock::{Clock, MockClock},
-};
+use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::{
 	config::Config,
 	operator::{
@@ -41,22 +33,15 @@ use reifydb_sdk::{
 		context::{OperatorContext, StateApi, StoreApi},
 	},
 };
+use reifydb_sub_flow::operator::{
+	context::native::NativeOperatorContext,
+	native::{FlowNativeBridge, NativeBridgedOperator, NativeOperatorAdapter},
+};
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::FFIOperatorHarness};
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
 	Result,
 	value::{Value, datetime::DateTime, row_number::RowNumber},
-};
-
-use crate::{
-	builder::CustomOperators,
-	engine::FlowEngineInner,
-	operator::{
-		OperatorCell,
-		context::native::NativeOperatorContext,
-		metrics::OperatorSampleRegistry,
-		native::{FlowNativeBridge, NativeBridgedOperator, NativeOperatorAdapter},
-	},
 };
 
 pub struct NativeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> {
@@ -303,7 +288,7 @@ struct DiffRender {
 fn render_columns(cols: &Columns) -> ColumnsRender {
 	ColumnsRender {
 		names: (0..cols.len()).map(|i| cols.name_at(i).text().to_string()).collect(),
-		row_numbers: cols.row_numbers().iter().copied().collect(),
+		row_numbers: cols.row_numbers().to_vec(),
 		rows: (0..cols.row_count()).map(|r| cols.row(r)).collect(),
 	}
 }
@@ -364,46 +349,5 @@ where
 				"scenario '{name}' apply #{i}: ffi vs native emitted-output mismatch"
 			);
 		}
-	}
-}
-
-pub struct FlowEngineTestBuilder {
-	flow_id: FlowId,
-	nodes: Vec<(FlowNode, OperatorCell)>,
-}
-
-impl FlowEngineTestBuilder {
-	pub fn new(flow_id: impl Into<FlowId>) -> Self {
-		Self {
-			flow_id: flow_id.into(),
-			nodes: Vec::new(),
-		}
-	}
-
-	pub fn with_node(mut self, node: FlowNode, operator: OperatorCell) -> Self {
-		self.nodes.push((node, operator));
-		self
-	}
-
-	pub fn build(self, engine: &StandardEngine) -> FlowEngineInner {
-		let flow_id = self.flow_id;
-		let mut inner = FlowEngineInner::new(
-			engine.catalog(),
-			engine.executor(),
-			engine.event_bus().clone(),
-			RuntimeContext::with_clock(engine.clock().clone()),
-			CustomOperators::new(HashMap::new()),
-			FlowSubstrate::with_dictionary(engine.dictionary_allocators()),
-			OperatorSampleRegistry::new(),
-			OperatorStateBudgetHandle::default(),
-		);
-		let mut builder = FlowDag::builder(flow_id);
-		for (node, operator) in self.nodes {
-			let node_id = node.id;
-			builder.add_node(node);
-			inner.operators.insert(node_id, operator);
-		}
-		inner.flows.insert(flow_id, builder.build());
-		inner
 	}
 }

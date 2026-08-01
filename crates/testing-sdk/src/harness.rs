@@ -224,15 +224,30 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 	}
 
 	pub fn reclaim_groups(&mut self, groups: &[GroupId]) -> ReclaimedGroups {
-		let removed = self.erase_group_state(groups);
+		let removed = self.erase_group_state(groups, |_| true);
 		self.operator.invalidate_groups(&GroupSet::new(groups.iter().copied()));
+		Self::reclaimed(groups, removed)
+	}
+
+	pub fn reclaim_group_data(&mut self, groups: &[GroupId]) -> ReclaimedGroups {
+		let removed = self.erase_group_state(groups, |keyspace| keyspace.is_data());
+		self.operator.invalidate_groups(&GroupSet::new(groups.iter().copied()));
+		Self::reclaimed(groups, removed)
+	}
+
+	pub fn reclaim_group_identity(&mut self, groups: &[GroupId]) -> ReclaimedGroups {
+		let removed = self.erase_group_state(groups, |keyspace| keyspace.is_identity());
+		Self::reclaimed(groups, removed)
+	}
+
+	fn reclaimed(groups: &[GroupId], removed: usize) -> ReclaimedGroups {
 		ReclaimedGroups {
 			groups: Count::new(groups.len() as u64),
 			keys: Count::new(removed as u64),
 		}
 	}
 
-	fn erase_group_state(&mut self, groups: &[GroupId]) -> usize {
+	fn erase_group_state(&mut self, groups: &[GroupId], erase: impl Fn(Keyspace) -> bool) -> usize {
 		let mut state = self.context.state_store().lock();
 		let before = state.len();
 		state.retain(|key, _| {
@@ -244,7 +259,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 			}
 			match OperatorStateKey::decode_inner(&decoded.key) {
 				Some((group, keyspace, _)) => {
-					keyspace == Keyspace::GROUP_DICTIONARY || !groups.contains(&group)
+					group.is_node_scope() || !groups.contains(&group) || !erase(keyspace)
 				}
 				None => true,
 			}
@@ -1113,6 +1128,69 @@ pub mod tests {
 		state.assert_typed_value::<i64>(probe_row_key(MILLI).as_encoded(), &1i64);
 		state.assert_typed_value::<i64>(probe_row_key(2 * MILLI).as_encoded(), &2i64);
 		state.assert_typed_value::<i64>(probe_row_key(3 * MILLI).as_encoded(), &3i64);
+	}
+
+	fn group_state_key(node: FlowNodeId, group: GroupId, keyspace: Keyspace) -> FlowNodeStateKey {
+		// Composes the key the way the substrate does - a node prefix over the inner
+		// [group][keyspace][suffix] - so what these tests seed is addressable by the same phase
+		// ranges the sweep scans.
+		FlowNodeStateKey::new(node, OperatorStateKey::inner_encoded(group, keyspace, b"k").as_slice().to_vec())
+	}
+
+	#[test]
+	fn the_data_phase_leaves_behind_the_mapping_that_names_the_published_row() {
+		// The engine erases a group's data half long before - and usually instead of - its identity
+		// half: reclaim_nodes runs the data phase last and the identity phase only when the sink
+		// declares a row ttl. An operator woken in that window has to answer Update against the row
+		// it already published, and the only reason it can know that is the mapping still being
+		// there. A harness that wiped both halves at once would let an operator that answers Insert
+		// pass, publishing a second row over one the sink is still holding.
+		const NODE: FlowNodeId = FlowNodeId(1);
+		const GROUP: GroupId = GroupId(7);
+		let accumulator = group_state_key(NODE, GROUP, Keyspace::ACCUMULATOR).encode();
+		let mapping = group_state_key(NODE, GROUP, Keyspace::ROW_NUMBER_MAPPING).encode();
+		let mut harness = FFIOperatorHarnessBuilder::<TestOperator>::new()
+			.with_node_id(NODE)
+			.with_initial_state(group_state_key(NODE, GROUP, Keyspace::ACCUMULATOR), vec![1])
+			.with_initial_state(group_state_key(NODE, GROUP, Keyspace::ROW_NUMBER_MAPPING), vec![2])
+			.build()
+			.unwrap();
+
+		let reclaimed = harness.reclaim_group_data(&[GROUP]);
+		assert_eq!(reclaimed.keys, Count::new(1), "the data phase takes the accumulator and only that");
+		let state = harness.snapshot_state();
+		assert!(!state.contains_key(&accumulator), "the accumulator is what the data phase is for");
+		assert!(state.contains_key(&mapping), "the mapping has to outlive it - identity trails data");
+
+		let reclaimed = harness.reclaim_group_identity(&[GROUP]);
+		assert_eq!(reclaimed.keys, Count::new(1), "the identity phase then takes the mapping");
+		assert!(!harness.snapshot_state().contains_key(&mapping));
+	}
+
+	#[test]
+	fn erasing_a_group_never_reaches_the_node_scoped_dictionary_that_resolves_it() {
+		// Node scope holds the interning dictionary and the id counter, which every other group
+		// depends on. The group-major reaper refuses it structurally; a harness that erased it
+		// while reclaiming an unrelated group would destroy the substrate's own address book and
+		// the next lookup would mint a second id for a key that already had one.
+		const NODE: FlowNodeId = FlowNodeId(1);
+		let dictionary = group_state_key(NODE, GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY).encode();
+		let counter = group_state_key(NODE, GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER).encode();
+		let mut harness = FFIOperatorHarnessBuilder::<TestOperator>::new()
+			.with_node_id(NODE)
+			.with_initial_state(
+				group_state_key(NODE, GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY),
+				vec![1],
+			)
+			.with_initial_state(group_state_key(NODE, GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER), vec![2])
+			.build()
+			.unwrap();
+
+		harness.reclaim_groups(&[GroupId::NODE_SCOPE]);
+
+		let state = harness.snapshot_state();
+		assert!(state.contains_key(&dictionary), "the dictionary survives even a sweep naming node scope");
+		assert!(state.contains_key(&counter), "so does the id counter");
 	}
 }
 

@@ -33,6 +33,7 @@ members = [
     "crates/store-single",
     "crates/testing",
     "crates/testing-chaos",
+    "crates/testing-flow",
     "crates/testing-sdk",
     "crates/testing-macro",
     "crates/test-harness",
@@ -111,6 +112,7 @@ default-members = [
     "crates/store-single",
     "crates/testing",
     "crates/testing-chaos",
+    "crates/testing-flow",
     "crates/testing-sdk",
     "crates/testing-macro",
     "crates/test-harness",
@@ -226,6 +228,7 @@ reifydb-store-single = { version = "0.8.1", path = "crates/store-single" }
 reifydb-sub-raft = { version = "0.8.1", path = "crates/sub-raft" }
 reifydb-testing = { version = "0.8.1", path = "crates/testing" }
 reifydb-testing-chaos = { version = "0.8.1", path = "crates/testing-chaos" }
+reifydb-testing-flow = { version = "0.8.1", path = "crates/testing-flow" }
 reifydb-testing-sdk = { version = "0.8.1", path = "crates/testing-sdk" }
 reifydb-testing-macro = { version = "0.8.1", path = "crates/testing-macro" }
 reifydb-test-harness = { version = "0.8.1", path = "crates/test-harness" }

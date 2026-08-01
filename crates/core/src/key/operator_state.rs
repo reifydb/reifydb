@@ -421,48 +421,73 @@ mod tests {
 		[Keyspace::ACCUMULATOR, Keyspace::BUFFER, Keyspace::RUNNING, Keyspace::FIRST_CUSTOM];
 	const IDENTITY_KEYSPACES: [Keyspace; 2] = [Keyspace::GROUP_RECORD, Keyspace::ROW_NUMBER_MAPPING];
 
-	/// Every keyspace this substrate declares, by name, so the census below is over the real set
-	/// rather than the handful the partition test samples. A constant added to `Keyspace` and not
-	/// added here is the one thing the census cannot see, which is why it is listed by name: the
-	/// omission shows up as a byte the census never reaches, and the count assertion names it.
-	const CENSUS: [(&str, Keyspace); 36] = [
-		("ROW_NUMBER_MAPPING", Keyspace::ROW_NUMBER_MAPPING),
-		("GROUP_DICTIONARY", Keyspace::GROUP_DICTIONARY),
-		("NODE_COUNTER", Keyspace::NODE_COUNTER),
-		("GROUP_RECORD", Keyspace::GROUP_RECORD),
-		("ACTIVITY_INDEX", Keyspace::ACTIVITY_INDEX),
-		("IDENTITY_INDEX", Keyspace::IDENTITY_INDEX),
-		("NODE_WATERMARK", Keyspace::NODE_WATERMARK),
-		("SOURCE_WATERMARK", Keyspace::SOURCE_WATERMARK),
-		("TIMER_WHEEL", Keyspace::TIMER_WHEEL),
-		("SIDE_ACTIVITY_INDEX", Keyspace::SIDE_ACTIVITY_INDEX),
-		("SIDE_ACTIVITY_RECORD", Keyspace::SIDE_ACTIVITY_RECORD),
-		("ACCUMULATOR", Keyspace::ACCUMULATOR),
-		("BUFFER", Keyspace::BUFFER),
-		("RUNNING", Keyspace::RUNNING),
-		("EMIT", Keyspace::EMIT),
-		("EXPIRY", Keyspace::EXPIRY),
-		("COUNT", Keyspace::COUNT),
-		("ROW_INDEX", Keyspace::ROW_INDEX),
-		("SESSION", Keyspace::SESSION),
-		("ROLLING_META", Keyspace::ROLLING_META),
-		("ENGINE_META", Keyspace::ENGINE_META),
-		("DISTINCT_ENTRY", Keyspace::DISTINCT_ENTRY),
-		("WINDOW_META", Keyspace::WINDOW_META),
-		("JOIN_LEFT", Keyspace::JOIN_LEFT),
-		("JOIN_RIGHT", Keyspace::JOIN_RIGHT),
-		("JOIN_SCHEMA", Keyspace::JOIN_SCHEMA),
-		("RINGBUFFER_FORWARD", Keyspace::RINGBUFFER_FORWARD),
-		("RINGBUFFER_ENTRY", Keyspace::RINGBUFFER_ENTRY),
-		("GATE_VISIBILITY", Keyspace::GATE_VISIBILITY),
-		("DISTINCT_LAYOUT", Keyspace::DISTINCT_LAYOUT),
-		("RINGBUFFER_EXPIRY", Keyspace::RINGBUFFER_EXPIRY),
-		("RINGBUFFER_TTL_ARM", Keyspace::RINGBUFFER_TTL_ARM),
-		("SEAL_LEDGER", Keyspace::SEAL_LEDGER),
-		("JOIN_PUBLISHED", Keyspace::JOIN_PUBLISHED),
-		("JOIN_PIN", Keyspace::JOIN_PIN),
-		("FIRST_CUSTOM", Keyspace::FIRST_CUSTOM),
+	#[derive(Clone, Copy, PartialEq, Debug)]
+	enum Phase {
+		Data,
+		Identity,
+	}
+
+	/// Every keyspace this substrate declares, by name and by the phase that is allowed to erase it,
+	/// so the census below is over the real set rather than the handful the partition test samples.
+	/// The phase is written down rather than read back from `is_data`, or the census would agree with
+	/// whatever `HIGHEST_DATA` happens to say and a keyspace changing sides would pass unremarked.
+	const CENSUS: [(&str, Keyspace, Phase); 36] = [
+		("ROW_NUMBER_MAPPING", Keyspace::ROW_NUMBER_MAPPING, Phase::Identity),
+		("GROUP_DICTIONARY", Keyspace::GROUP_DICTIONARY, Phase::Identity),
+		("NODE_COUNTER", Keyspace::NODE_COUNTER, Phase::Identity),
+		("GROUP_RECORD", Keyspace::GROUP_RECORD, Phase::Identity),
+		("ACTIVITY_INDEX", Keyspace::ACTIVITY_INDEX, Phase::Identity),
+		("IDENTITY_INDEX", Keyspace::IDENTITY_INDEX, Phase::Identity),
+		("NODE_WATERMARK", Keyspace::NODE_WATERMARK, Phase::Identity),
+		("SOURCE_WATERMARK", Keyspace::SOURCE_WATERMARK, Phase::Identity),
+		("TIMER_WHEEL", Keyspace::TIMER_WHEEL, Phase::Identity),
+		("SIDE_ACTIVITY_INDEX", Keyspace::SIDE_ACTIVITY_INDEX, Phase::Identity),
+		("SIDE_ACTIVITY_RECORD", Keyspace::SIDE_ACTIVITY_RECORD, Phase::Identity),
+		("ACCUMULATOR", Keyspace::ACCUMULATOR, Phase::Data),
+		("BUFFER", Keyspace::BUFFER, Phase::Data),
+		("RUNNING", Keyspace::RUNNING, Phase::Data),
+		("EMIT", Keyspace::EMIT, Phase::Data),
+		("EXPIRY", Keyspace::EXPIRY, Phase::Data),
+		("COUNT", Keyspace::COUNT, Phase::Data),
+		("ROW_INDEX", Keyspace::ROW_INDEX, Phase::Data),
+		("SESSION", Keyspace::SESSION, Phase::Data),
+		("ROLLING_META", Keyspace::ROLLING_META, Phase::Data),
+		("ENGINE_META", Keyspace::ENGINE_META, Phase::Data),
+		("DISTINCT_ENTRY", Keyspace::DISTINCT_ENTRY, Phase::Data),
+		("WINDOW_META", Keyspace::WINDOW_META, Phase::Data),
+		("JOIN_LEFT", Keyspace::JOIN_LEFT, Phase::Data),
+		("JOIN_RIGHT", Keyspace::JOIN_RIGHT, Phase::Data),
+		("JOIN_SCHEMA", Keyspace::JOIN_SCHEMA, Phase::Data),
+		("RINGBUFFER_FORWARD", Keyspace::RINGBUFFER_FORWARD, Phase::Data),
+		("RINGBUFFER_ENTRY", Keyspace::RINGBUFFER_ENTRY, Phase::Data),
+		("GATE_VISIBILITY", Keyspace::GATE_VISIBILITY, Phase::Data),
+		("DISTINCT_LAYOUT", Keyspace::DISTINCT_LAYOUT, Phase::Data),
+		("RINGBUFFER_EXPIRY", Keyspace::RINGBUFFER_EXPIRY, Phase::Data),
+		("RINGBUFFER_TTL_ARM", Keyspace::RINGBUFFER_TTL_ARM, Phase::Data),
+		("SEAL_LEDGER", Keyspace::SEAL_LEDGER, Phase::Data),
+		("JOIN_PUBLISHED", Keyspace::JOIN_PUBLISHED, Phase::Data),
+		("JOIN_PIN", Keyspace::JOIN_PIN, Phase::Data),
+		("FIRST_CUSTOM", Keyspace::FIRST_CUSTOM, Phase::Data),
 	];
+
+	/// The number of `Keyspace` constants the source actually declares, counted from the text of the
+	/// `impl` block. There is no reflection over associated constants, so this is the only way the
+	/// census can notice a keyspace that was declared and never listed - the case where every
+	/// assertion below is skipped for the one byte nobody thought about.
+	fn declared_keyspaces() -> usize {
+		let source = include_str!("operator_state.rs");
+		let body = source
+			.split("impl Keyspace {")
+			.nth(1)
+			.expect("the Keyspace impl block is where the constants are declared");
+		let body = body.split("\n}\n").next().expect("the impl block is closed");
+		body.lines()
+			.filter(|line| {
+				let line = line.trim_start();
+				line.starts_with("pub const") && line.contains("Self(")
+			})
+			.count()
+	}
 
 	#[test]
 	fn a_bare_row_number_key_is_indistinguishable_from_another_groups_prefix() {
@@ -679,15 +704,27 @@ mod tests {
 
 	#[test]
 	fn every_declared_keyspace_is_distinct_framing_and_swept_by_exactly_one_phase() {
-		// The census the partition test above cannot be: it samples six keyspaces of thirty-five, so
-		// a new one declared on the wrong side of HIGHEST_DATA, or given a byte another keyspace
+		// The census the partition test above cannot be: it samples six keyspaces of thirty-six, so a
+		// new one declared on the wrong side of HIGHEST_DATA, or given a byte another keyspace
 		// already holds, is invisible to it. Both failures are silent and both are severe. A
 		// duplicate byte puts two operators' state at one address, so one erases the other's rows on
 		// every write. A keyspace above HIGHEST_DATA that is missing from `is_known` makes
 		// `is_framed_inner` reject its own rows, and the sweep's `from_framed(..).expect(..)` turns
 		// the first row it scans there into a panic on the reclamation path.
+		//
+		// Each keyspace is checked against the phase written down beside it rather than against
+		// `is_data`, so moving HIGHEST_DATA fails here and names the keyspaces it moved: were the
+		// expectation derived, both sides would move together and a join keyspace quietly promoted to
+		// identity - never reclaimed, unbounded - would leave this green.
+		assert_eq!(
+			CENSUS.len(),
+			declared_keyspaces(),
+			"a keyspace was added to Keyspace without being added to the census, so nothing below \
+			 ever looks at its byte"
+		);
+
 		let mut seen: Vec<(&str, u8)> = Vec::new();
-		for (name, keyspace) in CENSUS {
+		for (name, keyspace, phase) in CENSUS {
 			if let Some((other, _)) = seen.iter().find(|(_, byte)| *byte == keyspace.0) {
 				panic!("{name} and {other} both claim keyspace byte {:#04x}", keyspace.0);
 			}
@@ -705,13 +742,16 @@ mod tests {
 			assert!(data != identity, "{name} must fall in exactly one phase, not {data} and {identity}");
 			assert_eq!(
 				data,
+				phase == Phase::Data,
+				"{name} is declared {phase:?} but the phase-1 range says data={data}"
+			);
+			assert_eq!(
 				keyspace.is_data(),
-				"{name} classifies as data={} but the phase-1 range disagrees",
+				phase == Phase::Data,
+				"{name} is declared {phase:?} but is_data says {}",
 				keyspace.is_data()
 			);
 		}
-
-		assert_eq!(seen.len(), 36, "a keyspace was added to Keyspace without being added to the census");
 	}
 
 	#[test]

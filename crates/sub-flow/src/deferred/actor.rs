@@ -1002,10 +1002,10 @@ mod pull_protocol {
 			"a wake received during a commit must schedule a follow-up pull; nothing else \
 			 wakes this actor, so losing it strands the second row"
 		);
-		assert_eq!(
-			h.await_position(target, StdDuration::from_secs(5)),
-			Some(target),
-			"the follow-up pull must advance the flow position to the safe bound"
+		assert!(
+			h.await_position_at_least(target, seconds(5)).is_some(),
+			"the follow-up pull must advance the flow position to at least the safe bound at \
+			 the time of the wake"
 		);
 		drop(actor);
 	}

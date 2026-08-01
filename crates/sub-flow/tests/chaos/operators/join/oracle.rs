@@ -81,17 +81,14 @@ fn empty_view() -> MaterializedView {
 
 /// What a reclaiming run reached, measured at the end of it.
 ///
-/// `reached` is cumulative over the whole run and `unconstrained`/`pinned` describe the view as it
-/// finally stands, so the three are not interchangeable: a run can reach dozens of keys over sixty
-/// steps and still end with a small view, and comparing the running total against the final snapshot
-/// would fail a perfectly good run.
+/// `reached` is cumulative over the whole run and `pinned` describes the view as it finally stands,
+/// so the two are not interchangeable: a run can reach dozens of keys over sixty steps and still end
+/// with a small view, and comparing the running total against the final snapshot would fail a
+/// perfectly good run.
 #[derive(Debug, Clone, Copy)]
 pub struct Envelope {
 	/// Output keys the sweep put beyond the claim at any point in the run.
 	pub reached: usize,
-
-	/// Of the view as it stands, how many keys the claim no longer constrains.
-	pub unconstrained: usize,
 
 	/// Of the view as it stands, how many keys the claim still pins exactly.
 	pub pinned: usize,
@@ -170,11 +167,9 @@ impl HashOracle {
 	/// and the run proves nothing about reclamation; nothing pinned means the claim has stopped
 	/// saying anything and the run proves nothing about the join.
 	pub fn envelope(&self) -> Envelope {
-		let (unconstrained, pinned) = self.pairs().into_iter().partition::<Vec<_>, _>(|(_, _, gone)| *gone);
 		Envelope {
 			reached: self.unconstrained.len(),
-			unconstrained: unconstrained.len(),
-			pinned: pinned.len(),
+			pinned: self.pairs().into_iter().filter(|(_, _, gone)| !*gone).count(),
 		}
 	}
 

@@ -132,9 +132,16 @@ pub mod testing {
 	//! [`sdk`] is `reifydb-testing-sdk`, a crate separate from `reifydb-sdk` so the harness is not a
 	//! dependency of every production build. Reach it through here rather than through the production
 	//! `reifydb::sdk` path, which carries no test-only surface.
+	//!
+	//! [`flow`] is `reifydb-testing-flow`, behind the `flow_testing` feature, and it is the only
+	//! harness that runs the sweep that ships: it drives production's own `reclaim_nodes` against a
+	//! real engine, so an operator's reclamation contract is tested rather than modelled. [`sdk`]'s
+	//! harness erases group state a test names; this one makes the engine decide.
 
 	pub use reifydb_testing::*;
 	pub use reifydb_testing_chaos as chaos;
+	#[cfg(feature = "flow_testing")]
+	pub use reifydb_testing_flow as flow;
 	pub use reifydb_testing_sdk as sdk;
 }
 pub use reifydb_transaction as transaction;

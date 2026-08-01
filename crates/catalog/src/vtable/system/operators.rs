@@ -54,7 +54,6 @@ impl BaseVTable for SystemOperators {
 		let mut cap_inserts = ColumnBuffer::bool_with_capacity(capacity);
 		let mut cap_updates = ColumnBuffer::bool_with_capacity(capacity);
 		let mut cap_deletes = ColumnBuffer::bool_with_capacity(capacity);
-		let mut cap_drops = ColumnBuffer::bool_with_capacity(capacity);
 		let mut cap_reclaims = ColumnBuffer::bool_with_capacity(capacity);
 
 		for info in infos {
@@ -65,7 +64,6 @@ impl BaseVTable for SystemOperators {
 			cap_inserts.push(info.capabilities & OperatorCapability::Insert.bit() != 0);
 			cap_updates.push(info.capabilities & OperatorCapability::Update.bit() != 0);
 			cap_deletes.push(info.capabilities & OperatorCapability::Delete.bit() != 0);
-			cap_drops.push(info.capabilities & OperatorCapability::Drop.bit() != 0);
 			cap_reclaims.push(info.capabilities & OperatorCapability::Reclaim.bit() != 0);
 		}
 
@@ -76,7 +74,6 @@ impl BaseVTable for SystemOperators {
 			ColumnWithName::new(Fragment::internal("cap_insert"), cap_inserts),
 			ColumnWithName::new(Fragment::internal("cap_update"), cap_updates),
 			ColumnWithName::new(Fragment::internal("cap_delete"), cap_deletes),
-			ColumnWithName::new(Fragment::internal("cap_drop"), cap_drops),
 			ColumnWithName::new(Fragment::internal("cap_reclaim"), cap_reclaims),
 		];
 

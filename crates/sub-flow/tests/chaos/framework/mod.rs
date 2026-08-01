@@ -2,6 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod fuzz;
-pub mod generator;
-pub mod harness;
 pub mod workload;
+
+pub use reifydb_testing_flow::{generator, harness};

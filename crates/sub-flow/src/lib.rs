@@ -31,7 +31,4 @@ pub(crate) mod ffi;
 pub(crate) mod lineage;
 pub mod operator;
 pub mod subsystem;
-#[cfg(any(test, feature = "testing"))]
-pub mod testing;
-
 pub(crate) mod transactional;

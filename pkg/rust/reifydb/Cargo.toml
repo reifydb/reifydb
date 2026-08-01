@@ -56,6 +56,7 @@ reifydb-sub-server-ws = { workspace = true, optional = true }
 reifydb-sub-replication = { workspace = true, optional = true }
 reifydb-testing = { workspace = true, optional = true }
 reifydb-testing-chaos = { workspace = true, optional = true, features = ["operator"] }
+reifydb-testing-flow = { workspace = true, optional = true }
 reifydb-testing-sdk = { workspace = true, optional = true }
 
 rayon = { workspace = true }
@@ -85,7 +86,7 @@ alloc-jemalloc = ["reifydb-allocator/alloc-jemalloc"]
 # Subsystem features
 column = ["reifydb-sub-store/column"]
 sub_flow = ["dep:reifydb-flow", "dep:reifydb-sub-flow", "dep:reifydb-sub-subscription"]
-flow_testing = ["sub_flow", "reifydb-sub-flow/testing"]
+flow_testing = ["testing", "sub_flow", "dep:reifydb-testing-flow"]
 sub_tracing = ["dep:reifydb-sub-tracing"]
 sub_metric_profiler = ["dep:tracing-subscriber"]
 sub_server = ["dep:reifydb-sub-server", "reifydb-sub-metrics/server"]
@@ -97,3 +98,8 @@ sub_raft = ["dep:reifydb-sub-raft"]
 sub_server_ws = ["dep:reifydb-sub-server-ws", "sub_server"]
 sub_replication = ["dep:reifydb-sub-replication"]
 testing = ["dep:reifydb-testing", "dep:reifydb-testing-chaos", "dep:reifydb-testing-sdk"]
+
+[[test]]
+name = "testing_surface"
+path = "tests/testing_surface.rs"
+required-features = ["flow_testing"]

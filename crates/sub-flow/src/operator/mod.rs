@@ -8,23 +8,22 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId, key::operator_state::GroupSet, metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
-use reifydb_flow::{
-	operator::Reclaimable,
-	timer::Timer,
-	transaction::FlowTransaction,
-	window::{ledger::read_sealed_through, policy::SealPolicy},
-};
+#[cfg(reifydb_target = "native")]
+use reifydb_flow::window::{ledger::read_sealed_through, policy::SealPolicy};
+use reifydb_flow::{operator::Reclaimable, timer::Timer, transaction::FlowTransaction};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
 };
 
+#[cfg(reifydb_target = "native")]
 pub(crate) fn scale_from_millis(span: Option<u64>) -> Option<Duration> {
 	span.filter(|millis| *millis > 0)
 		.and_then(|millis| i64::try_from(millis).ok())
 		.and_then(|millis| Duration::from_milliseconds(millis).ok())
 }
 
+#[cfg(reifydb_target = "native")]
 pub(crate) fn sealed_or_idle(
 	txn: &mut FlowTransaction,
 	node: FlowNodeId,

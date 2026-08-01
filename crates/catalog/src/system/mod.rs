@@ -619,19 +619,10 @@ pub mod ids {
 			pub const CAP_INSERT: ColumnId = ColumnId(4);
 			pub const CAP_UPDATE: ColumnId = ColumnId(5);
 			pub const CAP_DELETE: ColumnId = ColumnId(6);
-			pub const CAP_DROP: ColumnId = ColumnId(7);
-			pub const CAP_RECLAIM: ColumnId = ColumnId(8);
+			pub const CAP_RECLAIM: ColumnId = ColumnId(7);
 
-			pub const ALL: [ColumnId; 8] = [
-				OPERATOR,
-				LIBRARY_PATH,
-				API,
-				CAP_INSERT,
-				CAP_UPDATE,
-				CAP_DELETE,
-				CAP_DROP,
-				CAP_RECLAIM,
-			];
+			pub const ALL: [ColumnId; 7] =
+				[OPERATOR, LIBRARY_PATH, API, CAP_INSERT, CAP_UPDATE, CAP_DELETE, CAP_RECLAIM];
 		}
 
 		pub mod operator_inputs {

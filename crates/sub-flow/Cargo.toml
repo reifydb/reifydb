@@ -9,7 +9,6 @@ description = "Flow subsystem for stream processing and data flows"
 
 [features]
 default = []
-testing = ["dep:reifydb-testing-sdk"]
 chaos = []
 
 [build-dependencies]
@@ -28,7 +27,6 @@ reifydb-routine = { workspace = true }
 reifydb-abi = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sdk = { workspace = true }
-reifydb-testing-sdk = { workspace = true, optional = true }
 reifydb-rql = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-transaction = { workspace = true }
@@ -58,6 +56,7 @@ reifydb-rql = { workspace = true }
 reifydb = { workspace = true }
 reifydb-test-harness = { workspace = true, features = ["database", "operator"] }
 reifydb-testing-chaos = { workspace = true, features = ["operator"] }
+reifydb-testing-flow = { workspace = true }
 reifydb-testing-macro = { workspace = true }
 rand = { workspace = true }
 tracing-subscriber = { workspace = true }
