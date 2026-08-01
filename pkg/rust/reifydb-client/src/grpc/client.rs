@@ -306,6 +306,7 @@ impl GrpcClient {
 			token: self.token.clone(),
 			rql: built,
 			reconnect: self.reconnect.clone(),
+			attempt: 0,
 		})
 	}
 
@@ -344,6 +345,7 @@ impl GrpcClient {
 			token: self.token.clone(),
 			queries,
 			reconnect: self.reconnect.clone(),
+			attempt: 0,
 		})
 	}
 
@@ -424,6 +426,7 @@ pub struct GrpcSubscription {
 	token: Option<String>,
 	rql: String,
 	reconnect: ReconnectOptions,
+	attempt: u32,
 }
 
 /// Member information returned from a successful `batch_subscribe` - pairs the
@@ -444,6 +447,7 @@ pub struct BatchGrpcSubscription {
 	token: Option<String>,
 	queries: Vec<String>,
 	reconnect: ReconnectOptions,
+	attempt: u32,
 }
 
 /// One envelope delivered by a batch subscription: a map from member
@@ -485,6 +489,7 @@ impl BatchGrpcSubscription {
 		loop {
 			match self.stream.message().await {
 				Ok(Some(msg)) => {
+					self.attempt = 0;
 					match msg.event {
 						Some(batch_subscription_event::Event::Change(change)) => {
 							let mut entries: HashMap<String, GrpcChange> = HashMap::new();
@@ -546,39 +551,34 @@ impl BatchGrpcSubscription {
 		}
 	}
 
-	async fn reconnect_stream(&mut self) -> bool {
-		let mut attempt = 0u32;
-		while attempt < self.reconnect.max_reconnect_attempts {
-			attempt += 1;
-			sleep(millis_to_std(backoff_millis(self.reconnect.reconnect_delay_ms, attempt))).await;
+	/// Re-establish the batch under a fresh channel. `connect_timeout_ms` bounds the whole attempt
+	/// - dial, `batch_subscribe` and the subscribed ack - because a peer that completes a TCP
+	/// handshake and then answers nothing passes the dial stage but never the rest.
+	async fn open_stream(&self) -> Option<(Streaming<BatchSubscriptionEvent>, Vec<BatchMemberHandle>)> {
+		let channel = open_channel(&self.url).await.ok()?;
+		let mut client = ReifyDbClient::new(channel);
+		let mut req = Request::new(ProtoBatchSubscribeRequest {
+			rql: self.queries.clone(),
+		});
+		attach_token(&mut req, &self.token);
+		let mut stream = client.batch_subscribe(req).await.ok()?.into_inner();
+		let (_, members) = consume_batch_subscribed(&mut stream).await.ok()?;
+		Some((stream, members))
+	}
 
-			let channel = match timeout(
-				millis_to_std(self.reconnect.connect_timeout_ms),
-				open_channel(&self.url),
-			)
-			.await
-			{
-				Ok(Ok(channel)) => channel,
-				_ => continue,
-			};
-			let mut client = ReifyDbClient::new(channel);
-			let mut req = Request::new(ProtoBatchSubscribeRequest {
-				rql: self.queries.clone(),
-			});
-			attach_token(&mut req, &self.token);
-			let response = match client.batch_subscribe(req).await {
-				Ok(response) => response,
-				Err(_) => continue,
-			};
-			let mut stream = response.into_inner();
-			let (_, members) = match consume_batch_subscribed(&mut stream).await {
-				Ok(result) => result,
-				Err(_) => continue,
-			};
-			self.members = members;
-			self.stream = stream;
-			fire(&self.reconnect.on_reconnect);
-			return true;
+	async fn reconnect_stream(&mut self) -> bool {
+		while self.attempt < self.reconnect.max_reconnect_attempts {
+			self.attempt += 1;
+			sleep(millis_to_std(backoff_millis(self.reconnect.reconnect_delay_ms, self.attempt))).await;
+
+			let opened =
+				timeout(millis_to_std(self.reconnect.connect_timeout_ms), self.open_stream()).await;
+			if let Ok(Some((stream, members))) = opened {
+				self.members = members;
+				self.stream = stream;
+				fire(&self.reconnect.on_reconnect);
+				return true;
+			}
 		}
 		false
 	}
@@ -596,18 +596,21 @@ impl GrpcSubscription {
 	pub async fn recv(&mut self) -> Option<GrpcChange> {
 		loop {
 			match self.stream.message().await {
-				Ok(Some(msg)) => match msg.event {
-					Some(subscription_event::Event::Change(change)) => {
-						let frames = if change.rbcf.is_empty() {
-							Vec::new()
-						} else {
-							decode_frames(&change.rbcf).unwrap_or_default()
-						};
-						return Some(to_grpc_change(frames));
+				Ok(Some(msg)) => {
+					self.attempt = 0;
+					match msg.event {
+						Some(subscription_event::Event::Change(change)) => {
+							let frames = if change.rbcf.is_empty() {
+								Vec::new()
+							} else {
+								decode_frames(&change.rbcf).unwrap_or_default()
+							};
+							return Some(to_grpc_change(frames));
+						}
+						Some(subscription_event::Event::Subscribed(_)) => continue,
+						None => continue,
 					}
-					Some(subscription_event::Event::Subscribed(_)) => continue,
-					None => continue,
-				},
+				}
 				Ok(None) | Err(_) => {
 					fire(&self.reconnect.on_disconnect);
 					if self.reconnect_stream().await {
@@ -641,37 +644,33 @@ impl GrpcSubscription {
 		}
 	}
 
-	async fn reconnect_stream(&mut self) -> bool {
-		let mut attempt = 0u32;
-		while attempt < self.reconnect.max_reconnect_attempts {
-			attempt += 1;
-			sleep(millis_to_std(backoff_millis(self.reconnect.reconnect_delay_ms, attempt))).await;
+	/// Re-establish the subscription under a fresh channel. `connect_timeout_ms` bounds the whole
+	/// attempt - dial, `subscribe` and the subscribed ack - because a peer that completes a TCP
+	/// handshake and then answers nothing passes the dial stage but never the rest.
+	async fn open_stream(&self) -> Option<Streaming<SubscriptionEvent>> {
+		let channel = open_channel(&self.url).await.ok()?;
+		let mut client = ReifyDbClient::new(channel);
+		let mut req = Request::new(ProtoSubscribeRequest {
+			rql: self.rql.clone(),
+		});
+		attach_token(&mut req, &self.token);
+		let mut stream = client.subscribe(req).await.ok()?.into_inner();
+		consume_subscribed(&mut stream).await.ok()?;
+		Some(stream)
+	}
 
-			let channel = match timeout(
-				millis_to_std(self.reconnect.connect_timeout_ms),
-				open_channel(&self.url),
-			)
-			.await
-			{
-				Ok(Ok(channel)) => channel,
-				_ => continue,
-			};
-			let mut client = ReifyDbClient::new(channel);
-			let mut req = Request::new(ProtoSubscribeRequest {
-				rql: self.rql.clone(),
-			});
-			attach_token(&mut req, &self.token);
-			let response = match client.subscribe(req).await {
-				Ok(response) => response,
-				Err(_) => continue,
-			};
-			let mut stream = response.into_inner();
-			if consume_subscribed(&mut stream).await.is_err() {
-				continue;
+	async fn reconnect_stream(&mut self) -> bool {
+		while self.attempt < self.reconnect.max_reconnect_attempts {
+			self.attempt += 1;
+			sleep(millis_to_std(backoff_millis(self.reconnect.reconnect_delay_ms, self.attempt))).await;
+
+			let opened =
+				timeout(millis_to_std(self.reconnect.connect_timeout_ms), self.open_stream()).await;
+			if let Ok(Some(stream)) = opened {
+				self.stream = stream;
+				fire(&self.reconnect.on_reconnect);
+				return true;
 			}
-			self.stream = stream;
-			fire(&self.reconnect.on_reconnect);
-			return true;
 		}
 		false
 	}

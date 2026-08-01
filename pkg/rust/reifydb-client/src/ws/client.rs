@@ -116,7 +116,9 @@ enum Flow {
 
 enum PumpOutcome {
 	Shutdown,
-	Lost,
+	Lost {
+		received: bool,
+	},
 }
 
 /// Async WebSocket client for ReifyDB
@@ -220,6 +222,7 @@ impl WsClient {
 		token: Arc<Mutex<Option<String>>>,
 		change_tx: mpsc::UnboundedSender<ChangePayload>,
 	) {
+		let mut attempt = 0u32;
 		loop {
 			match Self::pump(&mut write, &mut read, &mut request_rx, &mut shutdown_rx, &shared, &change_tx)
 				.await
@@ -228,7 +231,12 @@ impl WsClient {
 					let _ = write.send(Message::Close(None)).await;
 					break;
 				}
-				PumpOutcome::Lost => {
+				PumpOutcome::Lost {
+					received,
+				} => {
+					if received {
+						attempt = 0;
+					}
 					Self::reject_pending(&shared).await;
 					fire(&options.on_disconnect);
 					match Self::reconnect(
@@ -239,6 +247,7 @@ impl WsClient {
 						&mut request_rx,
 						&mut shutdown_rx,
 						&change_tx,
+						&mut attempt,
 					)
 					.await
 					{
@@ -265,18 +274,18 @@ impl WsClient {
 		shared: &Shared,
 		change_tx: &mpsc::UnboundedSender<ChangePayload>,
 	) -> PumpOutcome {
+		let mut received = false;
 		loop {
 			select! {
 				msg = read.next() => {
 					match msg {
 						Some(m) => {
-							if let Flow::Closed =
-								Self::dispatch_message(m, write, shared, change_tx).await
-							{
-								return PumpOutcome::Lost;
+							match Self::dispatch_message(m, write, shared, change_tx).await {
+								Flow::Closed => return PumpOutcome::Lost { received },
+								Flow::Continue => received = true,
 							}
 						}
-						None => return PumpOutcome::Lost,
+						None => return PumpOutcome::Lost { received },
 					}
 				}
 				Some((request, response_tx)) = request_rx.recv() => {
@@ -284,7 +293,7 @@ impl WsClient {
 					shared.pending.lock().await.insert(id, response_tx);
 					if let Ok(json) = to_string(&request)
 						&& write.send(Message::Text(json.into())).await.is_err() {
-							return PumpOutcome::Lost;
+							return PumpOutcome::Lost { received };
 						}
 				}
 				_ = shutdown_rx.recv() => {
@@ -493,6 +502,7 @@ impl WsClient {
 	/// Reconnect with exponential backoff. On success re-authenticates and replays every active
 	/// subscription against the same handles. Returns `None` when attempts are exhausted or a
 	/// shutdown is requested; while waiting, new requests are rejected so callers never block.
+	#[allow(clippy::too_many_arguments)]
 	async fn reconnect(
 		url: &str,
 		options: &ReconnectOptions,
@@ -501,34 +511,48 @@ impl WsClient {
 		request_rx: &mut mpsc::Receiver<(Request, oneshot::Sender<ClientResponse>)>,
 		shutdown_rx: &mut mpsc::Receiver<()>,
 		change_tx: &mpsc::UnboundedSender<ChangePayload>,
+		attempt: &mut u32,
 	) -> Option<(WsWrite, WsRead)> {
-		let mut attempt = 0u32;
-		while attempt < options.max_reconnect_attempts {
-			attempt += 1;
-			let backoff_ms = backoff_millis(options.reconnect_delay_ms, attempt);
+		while *attempt < options.max_reconnect_attempts {
+			*attempt += 1;
+			let backoff_ms = backoff_millis(options.reconnect_delay_ms, *attempt);
 			if !Self::wait_backoff(backoff_ms, request_rx, shutdown_rx).await {
 				return None;
 			}
 
-			let connect_fut = connect_async_with_config(url, None, true);
-			let connect_timeout = millis_to_std(options.connect_timeout_ms);
-			let stream = match timeout(connect_timeout, connect_fut).await {
-				Ok(Ok((stream, _))) => stream,
-				_ => continue,
-			};
-			let (mut write, mut read) = stream.split();
-
-			let token_value = token.lock().await.clone();
-			if let Some(t) = token_value
-				&& !Self::reauth(&mut write, &mut read, shared, &t, change_tx).await
-			{
-				continue;
+			let opened = timeout(
+				millis_to_std(options.connect_timeout_ms),
+				Self::open_socket(url, shared, token, change_tx),
+			)
+			.await;
+			if let Ok(Some(pair)) = opened {
+				return Some(pair);
 			}
-
-			Self::resubscribe_all(&mut write, shared).await;
-			return Some((write, read));
 		}
 		None
+	}
+
+	/// Dial, re-authenticate and replay the active subscriptions. Run under a single deadline by
+	/// [`Self::reconnect`], because a peer that completes the upgrade and then answers nothing
+	/// leaves the re-auth response outstanding forever.
+	async fn open_socket(
+		url: &str,
+		shared: &Shared,
+		token: &Arc<Mutex<Option<String>>>,
+		change_tx: &mpsc::UnboundedSender<ChangePayload>,
+	) -> Option<(WsWrite, WsRead)> {
+		let (stream, _) = connect_async_with_config(url, None, true).await.ok()?;
+		let (mut write, mut read) = stream.split();
+
+		let token_value = token.lock().await.clone();
+		if let Some(t) = token_value
+			&& !Self::reauth(&mut write, &mut read, shared, &t, change_tx).await
+		{
+			return None;
+		}
+
+		Self::resubscribe_all(&mut write, shared).await;
+		Some((write, read))
 	}
 
 	/// Sleep for `backoff_ms`, rejecting any requests that arrive and aborting on shutdown.
