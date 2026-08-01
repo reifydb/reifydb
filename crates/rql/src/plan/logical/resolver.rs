@@ -103,30 +103,7 @@ fn probe_object_in_namespace(
 		))));
 	}
 
-	if matches!(
-		ns_def.id(),
-		NamespaceId::SYSTEM
-			| NamespaceId::SYSTEM_METRICS_STORAGE_TABLE
-			| NamespaceId::SYSTEM_METRICS_STORAGE_VIEW
-			| NamespaceId::SYSTEM_METRICS_STORAGE_TABLE_VIRTUAL
-			| NamespaceId::SYSTEM_METRICS_STORAGE_RINGBUFFER
-			| NamespaceId::SYSTEM_METRICS_STORAGE_DICTIONARY
-			| NamespaceId::SYSTEM_METRICS_STORAGE_SERIES
-			| NamespaceId::SYSTEM_METRICS_STORAGE_FLOW
-			| NamespaceId::SYSTEM_METRICS_STORAGE_OPERATOR
-			| NamespaceId::SYSTEM_METRICS_STORAGE_SYSTEM
-			| NamespaceId::SYSTEM_METRICS_CDC_TABLE
-			| NamespaceId::SYSTEM_METRICS_CDC_VIEW
-			| NamespaceId::SYSTEM_METRICS_CDC_TABLE_VIRTUAL
-			| NamespaceId::SYSTEM_METRICS_CDC_RINGBUFFER
-			| NamespaceId::SYSTEM_METRICS_CDC_DICTIONARY
-			| NamespaceId::SYSTEM_METRICS_CDC_SERIES
-			| NamespaceId::SYSTEM_METRICS_CDC_FLOW
-			| NamespaceId::SYSTEM_METRICS_CDC_OPERATOR
-			| NamespaceId::SYSTEM_METRICS_CDC_SYSTEM
-			| NamespaceId::SYSTEM_PROCEDURES
-			| NamespaceId::SYSTEM_BINDINGS
-	) {
+	if matches!(ns_def.id(), NamespaceId::SYSTEM | NamespaceId::SYSTEM_PROCEDURES | NamespaceId::SYSTEM_BINDINGS) {
 		let def = VTable {
 			id: VTableId(0),
 			namespace: ns_def.id(),

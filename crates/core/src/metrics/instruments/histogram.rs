@@ -114,7 +114,8 @@ impl Histogram {
 	}
 
 	pub fn take_window_percentiles(&self) -> Percentiles {
-		let bucket_counts: Vec<u64> = self.window_buckets.iter().map(|b| b.swap(0, Ordering::Relaxed)).collect();
+		let bucket_counts: Vec<u64> =
+			self.window_buckets.iter().map(|b| b.swap(0, Ordering::Relaxed)).collect();
 		let count = bucket_counts.iter().sum();
 		compute_percentiles(&bucket_counts, count, self.boundaries)
 	}
