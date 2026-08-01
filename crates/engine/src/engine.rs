@@ -39,6 +39,8 @@ use reifydb_core::{
 			vtable::{VTable, VTableId},
 		},
 	},
+	internal,
+	metrics::sample::MetricKind,
 	util::ioc::IocContainer,
 };
 use reifydb_runtime::{
@@ -58,6 +60,7 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	byte_size::ByteSize,
+	error,
 	error::Error,
 	fragment::Fragment,
 	params::Params,
@@ -370,6 +373,16 @@ impl StandardEngine {
 		let table_id = self.executor.virtual_table_registry.allocate_id();
 
 		let table_columns = table.vtable();
+		if name == "current" {
+			if let Some(column) = table_columns.iter().find(|column| column.kind == MetricKind::Counter) {
+				return Err(error!(internal!(
+					"virtual table '{}' in namespace {:?} declares column '{}' with kind Counter; a table named 'current' may only publish levels, deltas and distributions",
+					name,
+					namespace_id,
+					column.name
+				)));
+			}
+		}
 		let columns = convert_vtable_user_columns_to_columns(&table_columns);
 
 		let def = Arc::new(VTable {

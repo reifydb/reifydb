@@ -105,7 +105,13 @@ impl DomainSpec {
 			columns.push(column);
 		}
 		for measure in self.surface_measures(surface) {
-			let mut column = UserVTableColumn::new(measure.name, measure.data_type.clone());
+			let column_kind = if surface == Surface::Current && measure.kind == MetricKind::Counter {
+				MetricKind::Delta
+			} else {
+				measure.kind
+			};
+			let mut column =
+				UserVTableColumn::measure(measure.name, measure.data_type.clone(), column_kind);
 			column.undefined = measure.optional;
 			columns.push(column);
 		}
@@ -118,7 +124,7 @@ fn long_columns() -> Vec<UserVTableColumn> {
 		UserVTableColumn::new("ts", ValueType::DateTime),
 		UserVTableColumn::new("scope", ValueType::Utf8),
 		UserVTableColumn::new("metric", ValueType::Utf8),
-		UserVTableColumn::new("value", ValueType::Float8),
+		UserVTableColumn::measure("value", ValueType::Float8, MetricKind::Level),
 		UserVTableColumn::new("unit", ValueType::Utf8),
 		UserVTableColumn::new("kind", ValueType::Utf8),
 	]
@@ -184,6 +190,45 @@ fn long_spec(domain: MetricsDomain, namespace: NamespaceId, has_total: bool) -> 
 		dimensions: Vec::new(),
 		measures: Vec::new(),
 		has_total,
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::metrics::sample::MetricKind;
+
+	use super::{MetricsDomain, Surface};
+
+	#[test]
+	fn no_current_surface_declares_a_counter_column() {
+		// The enforced rule of the redesign: ::current holds levels, deltas and distributions
+		// only; a Counter column there is the summed-up-in-current disease coming back.
+		for domain in MetricsDomain::ALL {
+			let spec = domain.spec();
+			for column in spec.columns(Surface::Current) {
+				assert!(
+					column.kind != MetricKind::Counter,
+					"{:?} declares Counter column '{}' in its ::current surface",
+					domain,
+					column.name
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn counter_measures_publish_as_delta_in_current_and_counter_in_total() {
+		// The same measure name serves both surfaces; only the kind differs, which is what
+		// makes the boot-time column check enforceable.
+		let spec = MetricsDomain::ReadBuffer.spec();
+		let current = spec.columns(Surface::Current);
+		let in_current = current.iter().find(|c| c.name == "warms_started").expect("column");
+		assert_eq!(in_current.kind, MetricKind::Delta);
+
+		let total = spec.columns(Surface::Total);
+		let in_total = total.iter().find(|c| c.name == "warms_started").expect("column");
+		assert_eq!(in_total.kind, MetricKind::Counter);
+		assert!(!total.iter().any(|c| c.name == "used"), "levels must not appear in a ::total surface");
 	}
 }
 

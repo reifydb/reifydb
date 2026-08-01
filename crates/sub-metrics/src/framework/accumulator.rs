@@ -289,6 +289,15 @@ fn build_long(state: &DomainState, now: DateTime, surface: Surface) -> Columns {
 				) => None,
 			};
 			if let Some((reading, published_kind)) = published {
+				reifydb_assertions! {
+					assert!(
+						!(surface == Surface::Current
+							&& published_kind == MetricKind::Counter),
+						"a long-format ::current publish must never contain a Counter row (scope {}, metric {})",
+						row_scope,
+						name
+					);
+				}
 				ts.push(now);
 				scope.push(row_scope.as_str());
 				metric.push(*name);

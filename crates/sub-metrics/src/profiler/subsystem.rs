@@ -11,9 +11,7 @@ use std::{
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_profiler::{category::CategorySet, intern::DimInterner, layer::ProfilerLayer, sink::ProfilerSink};
-use reifydb_runtime::{
-	actor::mailbox::ActorRef, context::clock::Clock, shutdown::Shutdown, sync::rwlock::RwLock,
-};
+use reifydb_runtime::{actor::mailbox::ActorRef, context::clock::Clock, shutdown::Shutdown, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use tracing::{info, instrument};
 

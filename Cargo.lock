@@ -3431,6 +3431,7 @@ dependencies = [
  "reifydb-sub-server",
  "reifydb-test-harness",
  "reifydb-testing",
+ "reifydb-transaction",
  "reifydb-value",
  "test_each_file",
  "tracing",

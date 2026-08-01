@@ -61,8 +61,9 @@ pub fn spans_columns(records: &mut Vec<AggregateRecord>, now: DateTime) -> Colum
 		let extras = record.extras();
 		input_rows.push(extras[0]);
 		output_rows.push(extras[1]);
-		lock_wait.push(Duration::from_microseconds(extras[2].min(9_000_000_000_000_000) as i64)
-			.unwrap_or_default());
+		lock_wait
+			.push(Duration::from_microseconds(extras[2].min(9_000_000_000_000_000) as i64)
+				.unwrap_or_default());
 		store_reads.push(extras[3]);
 	}
 

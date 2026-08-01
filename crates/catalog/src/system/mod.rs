@@ -6,10 +6,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{
-	catalog::vtable::VTable,
-	version::SystemVersion,
-};
+use reifydb_core::interface::{catalog::vtable::VTable, version::SystemVersion};
 
 pub mod authentications;
 pub mod bindings;

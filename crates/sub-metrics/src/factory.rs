@@ -13,6 +13,7 @@ use reifydb_core::{
 		},
 	},
 	interface::catalog::config::{ConfigKey, GetConfig},
+	internal,
 	lifecycle::metrics::RetentionMetrics,
 	metrics::registry::MetricsRegistry,
 	util::ioc::IocContainer,
@@ -25,7 +26,6 @@ use reifydb_runtime::{
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
-use reifydb_core::internal;
 use reifydb_value::{Result, error};
 
 use crate::{

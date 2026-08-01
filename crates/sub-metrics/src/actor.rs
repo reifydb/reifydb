@@ -594,11 +594,7 @@ fn cdc_rows(reader: &MetricsReader<SingleStore>, txn: &mut Transaction<'_>) -> r
 
 fn cdc_row(object_kind: &'static str, id: u64, namespace_id: u64, metrics: &CdcMetrics) -> MetricsRow {
 	MetricsRow {
-		dimensions: vec![
-			Value::Utf8(object_kind.to_string()),
-			Value::Uint8(id),
-			Value::Uint8(namespace_id),
-		],
+		dimensions: vec![Value::Utf8(object_kind.to_string()), Value::Uint8(id), Value::Uint8(namespace_id)],
 		measures: vec![
 			level_bytes("key_bytes", metrics.key_bytes.as_bytes()),
 			level_bytes("value_bytes", metrics.value_bytes.as_bytes()),

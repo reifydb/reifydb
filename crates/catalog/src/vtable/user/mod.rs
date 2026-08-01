@@ -4,7 +4,7 @@
 pub mod builder;
 pub mod registry;
 
-use reifydb_core::value::column::columns::Columns;
+use reifydb_core::{metrics::sample::MetricKind, value::column::columns::Columns};
 use reifydb_value::value::{Value, value_type::ValueType};
 
 use crate::Result;
@@ -16,6 +16,8 @@ pub struct UserVTableColumn {
 	pub data_type: ValueType,
 
 	pub undefined: bool,
+
+	pub kind: MetricKind,
 }
 
 impl UserVTableColumn {
@@ -24,6 +26,16 @@ impl UserVTableColumn {
 			name: name.into(),
 			data_type,
 			undefined: false,
+			kind: MetricKind::Dimension,
+		}
+	}
+
+	pub fn measure(name: impl Into<String>, data_type: ValueType, kind: MetricKind) -> Self {
+		Self {
+			name: name.into(),
+			data_type,
+			undefined: false,
+			kind,
 		}
 	}
 }
