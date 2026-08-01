@@ -19,7 +19,7 @@ use reifydb_abi::{
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	key::operator_state::{GroupId, StateKey},
+	key::operator_group_state::{GroupId, GroupStateKey},
 };
 use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
 use reifydb_flow::timer::Timer;
@@ -246,7 +246,7 @@ pub(super) extern "C" fn host_state_get_many(
 			from_raw_parts(keys, keys_len)
 		};
 
-		let mut encoded_keys: Vec<StateKey> = Vec::with_capacity(key_refs.len());
+		let mut encoded_keys: Vec<GroupStateKey> = Vec::with_capacity(key_refs.len());
 		for key_ref in key_refs {
 			if key_ref.len > 0 && key_ref.ptr.is_null() {
 				return FFI_ERROR_NULL_PTR;
@@ -256,7 +256,7 @@ pub(super) extern "C" fn host_state_get_many(
 			} else {
 				from_raw_parts(key_ref.ptr, key_ref.len).to_vec()
 			};
-			let Some(framed) = StateKey::from_framed(EncodedKey::new(bytes)) else {
+			let Some(framed) = GroupStateKey::from_framed(EncodedKey::new(bytes)) else {
 				return FFI_ERROR_INTERNAL;
 			};
 			encoded_keys.push(framed);

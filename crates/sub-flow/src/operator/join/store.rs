@@ -18,7 +18,7 @@ use reifydb_codec::{
 use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey, keyspace_inner_range},
+	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey, keyspace_inner_range},
 	state::{keyspace::fold_hash128, membership::MembershipAnswer},
 };
 use reifydb_flow::transaction::FlowTransaction;
@@ -104,15 +104,15 @@ impl Store {
 		Ok(group)
 	}
 
-	fn schema_key(&self, fingerprint: RowShapeFingerprint) -> StateKey {
+	fn schema_key(&self, fingerprint: RowShapeFingerprint) -> GroupStateKey {
 		let mut suffix = Vec::with_capacity(1 + 8);
 		suffix.push(self.side.tag());
 		suffix.extend_from_slice(&fingerprint.to_le_bytes());
-		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::JOIN_SCHEMA, suffix)
+		OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::JOIN_SCHEMA, suffix)
 	}
 
-	fn row_key(&self, group: GroupId, row_number: RowNumber) -> StateKey {
-		OperatorStateKey::inner_encoded(group, self.side.keyspace(), encode_u64_asc(row_number.0))
+	fn row_key(&self, group: GroupId, row_number: RowNumber) -> GroupStateKey {
+		OperatorGroupStateKey::inner_encoded(group, self.side.keyspace(), encode_u64_asc(row_number.0))
 	}
 
 	fn rows_range(&self, group: GroupId) -> EncodedKeyRange {

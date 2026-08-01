@@ -10,7 +10,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::metrics::sample::MetricsSample;
 use reifydb_core::{
-	common::CommitVersion, event::EventBus, interface::catalog::flow::FlowNodeId,
+	common::CommitVersion, event::EventBus, interface::catalog::flow::OperatorId,
 	lifecycle::watermark::EvictionWatermark, metrics::collect::MetricsCollector,
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, shutdown::Shutdown, sync::rwlock::RwLock};
@@ -83,7 +83,7 @@ pub struct StandardMultiStoreInner {
 	pub(crate) row_settings_provider: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 	#[allow(dead_code)]
 	pub(crate) eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
-	pub(crate) operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>>,
+	pub(crate) operator_disk_payload: Arc<RwLock<Vec<(OperatorId, ByteSize)>>>,
 
 	pub(crate) event_bus: EventBus,
 }
@@ -99,7 +99,7 @@ impl StandardMultiStore {
 
 		let eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
 
-		let operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>> = Arc::new(RwLock::new(Vec::new()));
+		let operator_disk_payload: Arc<RwLock<Vec<(OperatorId, ByteSize)>>> = Arc::new(RwLock::new(Vec::new()));
 
 		let read = config.persistent.is_some().then(|| MultiReadBufferTier::new(ReadBufferConfig::default()));
 
@@ -248,7 +248,7 @@ impl StandardMultiStore {
 		self.read.as_ref().map(|read| read.shard_metrics()).unwrap_or_default()
 	}
 
-	pub fn operator_disk_payload_bytes(&self) -> Vec<(FlowNodeId, ByteSize)> {
+	pub fn operator_disk_payload_bytes(&self) -> Vec<(OperatorId, ByteSize)> {
 		self.operator_disk_payload.read().clone()
 	}
 

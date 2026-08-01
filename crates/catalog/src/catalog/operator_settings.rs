@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::catalog::{config::GetConfig, flow::FlowNodeId},
+	interface::catalog::{config::GetConfig, flow::OperatorId},
 	lifecycle::operator::ListOperatorSettings,
 	row::OperatorSettings,
 };
@@ -17,7 +17,7 @@ impl Catalog {
 	pub fn find_operator_settings(
 		&self,
 		txn: &mut Transaction<'_>,
-		operator: FlowNodeId,
+		operator: OperatorId,
 	) -> Result<Option<OperatorSettings>> {
 		if let Some(settings) = self.cache.find_operator_settings_at(operator, txn.version()) {
 			return Ok(Some(settings));
@@ -29,13 +29,13 @@ impl Catalog {
 		Ok(None)
 	}
 
-	pub fn find_operator_settings_latest(&self, operator: FlowNodeId) -> Option<OperatorSettings> {
+	pub fn find_operator_settings_latest(&self, operator: OperatorId) -> Option<OperatorSettings> {
 		self.cache.find_operator_settings(operator)
 	}
 }
 
 impl ListOperatorSettings for Catalog {
-	fn list_operator_settings(&self) -> Vec<(FlowNodeId, OperatorSettings)> {
+	fn list_operator_settings(&self) -> Vec<(OperatorId, OperatorSettings)> {
 		self.cache
 			.operator_settings
 			.iter()

@@ -33,7 +33,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		test_utils::{create_flow_edge, create_flow_node, create_namespace, ensure_test_flow},
+		test_utils::{create_flow_edge, create_operator, create_namespace, ensure_test_flow},
 	};
 
 	#[test]
@@ -42,8 +42,8 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
+		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
 		assert!(CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap().is_some());
@@ -59,8 +59,8 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
+		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
 		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
@@ -86,9 +86,9 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
-		let node3 = create_flow_node(&mut txn, flow.id, 5, &[0x03]);
+		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
+		let node3 = create_operator(&mut txn, flow.id, 5, &[0x03]);
 
 		let edge1 = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 		let edge2 = create_flow_edge(&mut txn, flow.id, node2.id, node3.id);

@@ -16,8 +16,8 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::{
 		EncodableKey,
-		flow_node_state::FlowNodeStateKey,
-		operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey, keyspace_inner_range},
+		operator_state::OperatorStateKey,
+		operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey, keyspace_inner_range},
 	},
 	metrics::heap::{StateCompleteness, StateMemory},
 	state::{
@@ -50,26 +50,26 @@ fn membership_hash(key: &EncodedKey) -> u64 {
 	xxh3_64(key.as_ref()).0
 }
 
-fn dictionary_key(group: &EncodedKey) -> StateKey {
+fn dictionary_key(group: &EncodedKey) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group)
 }
 
-fn record_key(id: GroupId) -> StateKey {
+fn record_key(id: GroupId) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(id, Keyspace::GROUP_RECORD, vec![])
 }
 
-fn index_key(keyspace: Keyspace, bucket: u64, id: GroupId) -> StateKey {
+fn index_key(keyspace: Keyspace, bucket: u64, id: GroupId) -> GroupStateKey {
 	let mut suffix = Vec::with_capacity(16);
 	suffix.extend_from_slice(&encode_u64_asc(bucket));
 	suffix.extend_from_slice(&encode_u64_asc(id.0));
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, keyspace, suffix)
 }
 
-fn index_bound(keyspace: Keyspace, bucket: u64) -> StateKey {
+fn index_bound(keyspace: Keyspace, bucket: u64) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, keyspace, encode_u64_asc(bucket))
 }
 
-fn side_index_key(side: Keyspace, bucket: u64, id: GroupId) -> StateKey {
+fn side_index_key(side: Keyspace, bucket: u64, id: GroupId) -> GroupStateKey {
 	let mut suffix = Vec::with_capacity(17);
 	suffix.push(side.0);
 	suffix.extend_from_slice(&encode_u64_asc(bucket));
@@ -77,14 +77,14 @@ fn side_index_key(side: Keyspace, bucket: u64, id: GroupId) -> StateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SIDE_ACTIVITY_INDEX, suffix)
 }
 
-fn side_index_bound(side: Keyspace, bucket: u64) -> StateKey {
+fn side_index_bound(side: Keyspace, bucket: u64) -> GroupStateKey {
 	let mut suffix = Vec::with_capacity(9);
 	suffix.push(side.0);
 	suffix.extend_from_slice(&encode_u64_asc(bucket));
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SIDE_ACTIVITY_INDEX, suffix)
 }
 
-fn side_record_key(id: GroupId, side: Keyspace) -> StateKey {
+fn side_record_key(id: GroupId, side: Keyspace) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(id, Keyspace::SIDE_ACTIVITY_RECORD, vec![side.0])
 }
 
@@ -98,7 +98,7 @@ fn decode_side_suffix(suffix: &[u8]) -> Option<(Keyspace, u64, GroupId)> {
 	Some((side, bucket, GroupId(id)))
 }
 
-fn watermark_key() -> StateKey {
+fn watermark_key() -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_WATERMARK, vec![])
 }
 
@@ -111,7 +111,7 @@ fn decode_activity_suffix(suffix: &[u8]) -> Option<(u64, GroupId)> {
 	Some((bucket, GroupId(id)))
 }
 
-fn counter_key() -> StateKey {
+fn counter_key() -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![])
 }
 
@@ -316,13 +316,13 @@ impl GroupInterner {
 			return Ok(results.into_iter().map(|r| r.expect("every position filled")).collect());
 		}
 
-		let dictionary_keys: Vec<StateKey> = to_resolve.iter().map(|i| dictionary_key(&groups[*i])).collect();
+		let dictionary_keys: Vec<GroupStateKey> = to_resolve.iter().map(|i| dictionary_key(&groups[*i])).collect();
 
 		let mut consulted_store: Vec<bool> = Vec::new();
 		let found: HashMap<Vec<u8>, EncodedRow> = if state.complete {
 			HashMap::new()
 		} else {
-			let mut lookup: Vec<StateKey> = Vec::new();
+			let mut lookup: Vec<GroupStateKey> = Vec::new();
 			for (slot, i) in to_resolve.iter().enumerate() {
 				let maybe = state.membership.contains(membership_hash(&groups[*i])).unwrap_or(true);
 				consulted_store.push(maybe);
@@ -338,8 +338,8 @@ impl GroupInterner {
 				let batch = txn.state_get_many(node, &lookup)?;
 				let mut found = HashMap::with_capacity(batch.items.len());
 				for item in batch.items {
-					let decoded = FlowNodeStateKey::decode(&item.key)
-						.expect("state_get_many must return FlowNodeState keys");
+					let decoded = OperatorStateKey::decode(&item.key)
+						.expect("state_get_many must return OperatorState keys");
 					found.insert(decoded.key, item.row);
 				}
 				found
@@ -626,10 +626,10 @@ impl GroupInterner {
 		let batch = txn.state_range(node, range, Some(limit))?;
 
 		let mut due = Vec::new();
-		let mut stale: Vec<StateKey> = Vec::new();
+		let mut stale: Vec<GroupStateKey> = Vec::new();
 		for item in &batch.items {
-			let decoded = FlowNodeStateKey::decode(&item.key)
-				.expect("state_range must return FlowNodeState keys");
+			let decoded = OperatorStateKey::decode(&item.key)
+				.expect("state_range must return OperatorState keys");
 			let inner = OperatorStateKey::decode_inner(&decoded.key)
 				.expect("the index range must yield structured operator state keys");
 			let Some((_found, bucket, id)) = decode_side_suffix(&inner.2) else {
@@ -650,7 +650,7 @@ impl GroupInterner {
 			};
 			match current {
 				Some(current) if current == bucket => due.push(id),
-				_ => stale.push(StateKey::from_framed(EncodedKey::new(decoded.key.clone()))
+				_ => stale.push(GroupStateKey::from_framed(EncodedKey::new(decoded.key.clone()))
 					.expect("the index range yields framed inner keys")),
 			}
 		}
@@ -700,10 +700,10 @@ impl GroupInterner {
 		let batch = txn.state_range(node, range, Some(limit))?;
 
 		let mut due = Vec::new();
-		let mut stale: Vec<StateKey> = Vec::new();
+		let mut stale: Vec<GroupStateKey> = Vec::new();
 		for item in &batch.items {
-			let decoded = FlowNodeStateKey::decode(&item.key)
-				.expect("state_range must return FlowNodeState keys");
+			let decoded = OperatorStateKey::decode(&item.key)
+				.expect("state_range must return OperatorState keys");
 			let inner = OperatorStateKey::decode_inner(&decoded.key)
 				.expect("the index range must yield structured operator state keys");
 			reifydb_assertions! {
@@ -720,7 +720,7 @@ impl GroupInterner {
 			};
 			match Self::load_record(node, txn, id)? {
 				Some(record) if live(&record, bucket) => due.push(id),
-				_ => stale.push(StateKey::from_framed(EncodedKey::new(decoded.key.clone()))
+				_ => stale.push(GroupStateKey::from_framed(EncodedKey::new(decoded.key.clone()))
 					.expect("the index range yields framed inner keys")),
 			}
 		}
@@ -792,8 +792,8 @@ impl GroupInterner {
 			let batch = txn.state_range(node, range, Some(HYDRATE_CHUNK))?;
 			let mut last_inner: Option<EncodedKey> = None;
 			for item in &batch.items {
-				let decoded = FlowNodeStateKey::decode(&item.key)
-					.expect("state_range must return FlowNodeState keys");
+				let decoded = OperatorStateKey::decode(&item.key)
+					.expect("state_range must return OperatorState keys");
 				let inner = OperatorStateKey::decode_inner(&decoded.key)
 					.expect("the dictionary range must yield structured operator state keys");
 				reifydb_assertions! {

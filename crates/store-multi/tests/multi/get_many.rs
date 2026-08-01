@@ -5,14 +5,14 @@ use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	interface::{catalog::flow::FlowNodeId, store::MultiVersionCommit},
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+	interface::{catalog::flow::OperatorId, store::MultiVersionCommit},
+	key::{EncodableKey, operator_state::OperatorStateKey},
 };
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::util::cowvec::CowVec;
 
 fn fns(node: u64, payload: &[u8]) -> EncodedKey {
-	FlowNodeStateKey::new(FlowNodeId(node), payload.to_vec()).encode()
+	OperatorStateKey::new(OperatorId(node), payload.to_vec()).encode()
 }
 
 fn row(bytes: &[u8]) -> EncodedRow {

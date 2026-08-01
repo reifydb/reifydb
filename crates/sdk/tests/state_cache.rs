@@ -3,8 +3,8 @@
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
-	key::operator_state::{IntoStateKey, Keyspace, StateKey},
+	interface::catalog::flow::OperatorId,
+	key::operator_group_state::{IntoGroupStateKey, Keyspace, GroupStateKey},
 	metrics::heap::HeapSize,
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache},
 };
@@ -25,7 +25,7 @@ fn test_pool() -> OperatorStateBudgetHandle {
 	OperatorStateBudgetHandle::new(ByteSize::from_bytes(64 * 1024 * 1024))
 }
 
-/// A bare `String` cannot be a cache key: `IntoStateKey` exists to force every key through the operator-state
+/// A bare `String` cannot be a cache key: `IntoGroupStateKey` exists to force every key through the operator-state
 /// framing, so this wrapper frames the test's keys exactly as an operator would.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct TestKey(String);
@@ -52,19 +52,19 @@ impl HeapSize for TestPair {
 	}
 }
 
-impl IntoStateKey for &TestPair {
-	fn into_state_key(self) -> StateKey {
+impl IntoGroupStateKey for &TestPair {
+	fn into_group_state_key(self) -> GroupStateKey {
 		let mut suffix = Vec::with_capacity(self.0.0.len() + self.1.0.len() + 1);
 		suffix.extend_from_slice(self.0.0.as_bytes());
 		suffix.push(0xFF);
 		suffix.extend_from_slice(self.1.0.as_bytes());
-		StateKey::node_scoped(Keyspace::FIRST_CUSTOM, suffix)
+		GroupStateKey::node_scoped(Keyspace::FIRST_CUSTOM, suffix)
 	}
 }
 
-impl IntoStateKey for &TestKey {
-	fn into_state_key(self) -> StateKey {
-		StateKey::node_scoped(Keyspace::FIRST_CUSTOM, self.0.as_bytes())
+impl IntoGroupStateKey for &TestKey {
+	fn into_group_state_key(self) -> GroupStateKey {
+		GroupStateKey::node_scoped(Keyspace::FIRST_CUSTOM, self.0.as_bytes())
 	}
 }
 
@@ -106,7 +106,7 @@ impl OperatorMetadata for PassthroughOperator {
 }
 
 impl FFIOperator for PassthroughOperator {
-	fn new(_operator_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 

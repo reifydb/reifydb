@@ -21,7 +21,7 @@ use column::operator::OperatorColumn;
 use context::{OperatorContext, ffi::FFIOperatorContext};
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId, key::operator_state::GroupSet, metrics::heap::OperatorSample,
+	interface::catalog::flow::OperatorId, key::operator_group_state::GroupSet, metrics::heap::OperatorSample,
 };
 use timer::Timer;
 use view::ChangeView;
@@ -29,7 +29,7 @@ use view::ChangeView;
 use crate::error::Result;
 
 pub trait FFIOperator: 'static {
-	fn new(operator_id: FlowNodeId, config: &Config) -> Result<Self>
+	fn new(operator_id: OperatorId, config: &Config) -> Result<Self>
 	where
 		Self: Sized;
 
@@ -65,7 +65,7 @@ pub trait OperatorMetadata {
 }
 
 pub trait OperatorLogic: Send + Sync {
-	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self>
+	fn create(operator_id: OperatorId, config: &Config) -> Result<Self>
 	where
 		Self: Sized;
 
@@ -105,7 +105,7 @@ impl<C: OperatorMetadata> OperatorMetadata for FFIOperatorAdapter<C> {
 }
 
 impl<C: OperatorLogic + OperatorMetadata + 'static> FFIOperator for FFIOperatorAdapter<C> {
-	fn new(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
+	fn new(operator_id: OperatorId, config: &Config) -> Result<Self> {
 		Ok(Self {
 			core: C::create(operator_id, config)?,
 		})

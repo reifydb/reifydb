@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::{change::CatalogTrackFlowNodeChangeOperations, flow::FlowNode};
+use reifydb_core::interface::catalog::{change::CatalogTrackOperatorChangeOperations, flow::Operator};
 use reifydb_value::Result;
 
 use crate::{
@@ -12,24 +12,24 @@ use crate::{
 	transaction::admin::AdminTransaction,
 };
 
-impl CatalogTrackFlowNodeChangeOperations for AdminTransaction {
-	fn track_flow_node_created(&mut self, node: FlowNode) -> Result<()> {
+impl CatalogTrackOperatorChangeOperations for AdminTransaction {
+	fn track_operator_created(&mut self, node: Operator) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(node),
 			op: Create,
 		};
-		self.changes.add_flow_node_change(change);
+		self.changes.add_operator_change(change);
 		Ok(())
 	}
 
-	fn track_flow_node_deleted(&mut self, node: FlowNode) -> Result<()> {
+	fn track_operator_deleted(&mut self, node: Operator) -> Result<()> {
 		let change = Change {
 			pre: Some(node),
 			post: None,
 			op: Delete,
 		};
-		self.changes.add_flow_node_change(change);
+		self.changes.add_operator_change(change);
 		Ok(())
 	}
 }

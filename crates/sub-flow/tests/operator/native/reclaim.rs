@@ -5,7 +5,7 @@ use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapabili
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	key::operator_state::{Keyspace, OperatorStateKey},
+	key::operator_group_state::{Keyspace, OperatorGroupStateKey},
 };
 use reifydb_sdk::{
 	config::Config,
@@ -97,7 +97,7 @@ impl OperatorLogic for KeyedCounter {
 				};
 				let group = ctx.intern_group(&EncodedKey::new(group_value.to_be_bytes().to_vec()))?;
 
-				let state = OperatorStateKey::inner_encoded(group, Keyspace::FIRST_CUSTOM, b"count");
+				let state = OperatorGroupStateKey::inner_encoded(group, Keyspace::FIRST_CUSTOM, b"count");
 				let count = ctx.state().get::<i64>(&state)?.unwrap_or(0) + 1;
 				ctx.state().set::<i64>(&state, &count)?;
 

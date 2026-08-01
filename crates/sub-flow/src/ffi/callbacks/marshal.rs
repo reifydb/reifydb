@@ -8,7 +8,7 @@ use reifydb_abi::{
 	data::{buffer::BufferFFI, key_ref::KeyRefFFI},
 };
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
-use reifydb_core::key::operator_state::StateKey;
+use reifydb_core::key::operator_group_state::GroupStateKey;
 use reifydb_extension::procedure::ffi_callbacks::memory::host_alloc;
 use reifydb_value::util::cowvec::CowVec;
 
@@ -22,9 +22,9 @@ pub(super) unsafe fn encoded_key(ptr: *const u8, len: usize) -> EncodedKey {
 ///
 /// # Safety
 /// Same contract as [`encoded_key`]: `ptr` must be valid for reads of `len` bytes.
-pub(super) unsafe fn state_key(ptr: *const u8, len: usize) -> Option<StateKey> {
+pub(super) unsafe fn state_key(ptr: *const u8, len: usize) -> Option<GroupStateKey> {
 	// SAFETY: forwards this function's own contract to encoded_key unchanged.
-	StateKey::from_framed(unsafe { encoded_key(ptr, len) })
+	GroupStateKey::from_framed(unsafe { encoded_key(ptr, len) })
 }
 
 // SAFETY: `keys` must be valid for reads of `len` KeyRefFFI entries, and every entry with a

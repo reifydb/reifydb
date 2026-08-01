@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{change::CatalogTrackOperatorSettingsChangeOperations, flow::FlowNodeId},
+	interface::catalog::{change::CatalogTrackOperatorSettingsChangeOperations, flow::OperatorId},
 	key::operator_settings::OperatorSettingsKey,
 	row::OperatorSettings,
 };
@@ -13,7 +13,7 @@ use crate::Result;
 
 pub fn create_operator_settings(
 	txn: &mut AdminTransaction,
-	operator: FlowNodeId,
+	operator: OperatorId,
 	settings: &OperatorSettings,
 ) -> Result<()> {
 	let value = encode_operator_settings(settings);

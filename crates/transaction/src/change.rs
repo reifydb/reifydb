@@ -10,7 +10,7 @@ use reifydb_core::{
 		column_snapshot::ColumnSnapshot,
 		config::{Config, ConfigKey},
 		dictionary::Dictionary,
-		flow::{Flow, FlowEdge, FlowEdgeId, FlowId, FlowNode, FlowNodeId},
+		flow::{Flow, FlowEdge, FlowEdgeId, FlowId, Operator, OperatorId},
 		handler::Handler,
 		id::{
 			BindingId, ColumnSnapshotId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
@@ -93,9 +93,9 @@ pub trait TransactionalRowSettingsChanges {
 }
 
 pub trait TransactionalOperatorSettingsChanges {
-	fn find_operator_settings(&self, operator: FlowNodeId) -> Option<&OperatorSettings>;
+	fn find_operator_settings(&self, operator: OperatorId) -> Option<&OperatorSettings>;
 
-	fn is_operator_settings_deleted(&self, operator: FlowNodeId) -> bool;
+	fn is_operator_settings_deleted(&self, operator: OperatorId) -> bool;
 }
 
 pub trait TransactionalConfigChanges {
@@ -351,7 +351,7 @@ pub struct TransactionalCatalogChanges {
 
 	pub flow: Vec<Change<Flow>>,
 
-	pub flow_node: Vec<Change<FlowNode>>,
+	pub operator: Vec<Change<Operator>>,
 
 	pub flow_edge: Vec<Change<FlowEdge>>,
 
@@ -397,7 +397,7 @@ pub struct TransactionalCatalogChanges {
 
 	pub row_settings: Vec<Change<(StorageId, RowSettings)>>,
 
-	pub operator_settings: Vec<Change<(FlowNodeId, OperatorSettings)>>,
+	pub operator_settings: Vec<Change<(OperatorId, OperatorSettings)>>,
 
 	pub primary_key: Vec<Change<(ObjectId, PrimaryKey)>>,
 
@@ -410,7 +410,7 @@ pub struct CatalogChangesSavepoint {
 	config_len: usize,
 	dictionary_len: usize,
 	flow_len: usize,
-	flow_node_len: usize,
+	operator_len: usize,
 	flow_edge_len: usize,
 	handler_len: usize,
 	migration_len: usize,
@@ -447,7 +447,7 @@ impl TransactionalCatalogChanges {
 			config_len: self.config.len(),
 			dictionary_len: self.dictionary.len(),
 			flow_len: self.flow.len(),
-			flow_node_len: self.flow_node.len(),
+			operator_len: self.operator.len(),
 			flow_edge_len: self.flow_edge.len(),
 			handler_len: self.handler.len(),
 			migration_len: self.migration.len(),
@@ -483,7 +483,7 @@ impl TransactionalCatalogChanges {
 		self.config.truncate(sp.config_len);
 		self.dictionary.truncate(sp.dictionary_len);
 		self.flow.truncate(sp.flow_len);
-		self.flow_node.truncate(sp.flow_node_len);
+		self.operator.truncate(sp.operator_len);
 		self.flow_edge.truncate(sp.flow_edge_len);
 		self.handler.truncate(sp.handler_len);
 		self.migration.truncate(sp.migration_len);
@@ -587,7 +587,7 @@ impl TransactionalCatalogChanges {
 		});
 	}
 
-	pub fn add_flow_node_change(&mut self, change: Change<FlowNode>) {
+	pub fn add_operator_change(&mut self, change: Change<Operator>) {
 		let id = change
 			.post
 			.as_ref()
@@ -595,8 +595,8 @@ impl TransactionalCatalogChanges {
 			.map(|n| n.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.flow_node.push(change);
-		self.log.push(Operation::FlowNode {
+		self.operator.push(change);
+		self.log.push(Operation::Operator {
 			id,
 			op,
 		});
@@ -976,7 +976,7 @@ impl TransactionalCatalogChanges {
 		});
 	}
 
-	pub fn add_operator_settings_change(&mut self, change: Change<(FlowNodeId, OperatorSettings)>) {
+	pub fn add_operator_settings_change(&mut self, change: Change<(OperatorId, OperatorSettings)>) {
 		let operator = change
 			.post
 			.as_ref()
@@ -1030,8 +1030,8 @@ pub enum Operation {
 		id: FlowId,
 		op: OperationType,
 	},
-	FlowNode {
-		id: FlowNodeId,
+	Operator {
+		id: OperatorId,
 		op: OperationType,
 	},
 	FlowEdge {
@@ -1129,7 +1129,7 @@ pub enum Operation {
 		op: OperationType,
 	},
 	OperatorTtl {
-		operator: FlowNodeId,
+		operator: OperatorId,
 		op: OperationType,
 	},
 	PrimaryKey {
@@ -1147,7 +1147,7 @@ impl TransactionalCatalogChanges {
 			config: Vec::new(),
 			dictionary: Vec::new(),
 			flow: Vec::new(),
-			flow_node: Vec::new(),
+			operator: Vec::new(),
 			flow_edge: Vec::new(),
 			handler: Vec::new(),
 			migration: Vec::new(),
@@ -1230,7 +1230,7 @@ impl TransactionalCatalogChanges {
 		None
 	}
 
-	pub fn get_operator_settings(&self, operator: FlowNodeId) -> Option<&OperatorSettings> {
+	pub fn get_operator_settings(&self, operator: OperatorId) -> Option<&OperatorSettings> {
 		for change in self.operator_settings.iter().rev() {
 			if let Some((o, settings)) = &change.post {
 				if *o == operator {

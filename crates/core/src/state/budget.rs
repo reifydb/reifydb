@@ -12,7 +12,7 @@ use std::{
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{byte_size::ByteSize, count::Count, reifydb_assertions};
 
-use crate::{interface::catalog::flow::FlowNodeId, metrics::heap::StateMemory};
+use crate::{interface::catalog::flow::OperatorId, metrics::heap::StateMemory};
 
 pub const DEFAULT_OPERATOR_STATE_BUDGET: ByteSize = ByteSize::from_bytes(2 * 1024 * 1024 * 1024);
 
@@ -47,7 +47,7 @@ pub enum LeaseHealth {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OperatorLease {
-	pub node: FlowNodeId,
+	pub node: OperatorId,
 	pub grant: LeaseGrant,
 	pub last: LeaseReport,
 	pub health: LeaseHealth,
@@ -125,7 +125,7 @@ pub struct OperatorStateBudget {
 	in_flight: AtomicU64,
 	leased: AtomicU64,
 	evictions: AtomicU64,
-	leases: Mutex<HashMap<FlowNodeId, LeaseState>>,
+	leases: Mutex<HashMap<OperatorId, LeaseState>>,
 }
 
 #[derive(Clone)]
@@ -201,7 +201,7 @@ impl OperatorStateBudgetHandle {
 		}
 	}
 
-	pub fn grant_lease(&self, node: FlowNodeId, requested: ByteSize) -> LeaseGrant {
+	pub fn grant_lease(&self, node: OperatorId, requested: ByteSize) -> LeaseGrant {
 		let mut leases = self.0.leases.lock();
 		let snapshot = self.snapshot();
 		let used = snapshot.total().saturating_sub(leases.get(&node).map_or(ByteSize::ZERO, |l| l.charged()));
@@ -218,7 +218,7 @@ impl OperatorStateBudgetHandle {
 		LeaseGrant(granted)
 	}
 
-	pub fn resize_lease(&self, node: FlowNodeId, grant: ByteSize) {
+	pub fn resize_lease(&self, node: OperatorId, grant: ByteSize) {
 		let mut leases = self.0.leases.lock();
 		if let Some(lease) = leases.get_mut(&node) {
 			lease.grant = grant.max(LEASE_FLOOR);
@@ -226,7 +226,7 @@ impl OperatorStateBudgetHandle {
 		}
 	}
 
-	pub fn resize_lease_to_demand(&self, node: FlowNodeId, demand: ByteSize) {
+	pub fn resize_lease_to_demand(&self, node: OperatorId, demand: ByteSize) {
 		let mut leases = self.0.leases.lock();
 		let snapshot = self.snapshot();
 		if let Some(lease) = leases.get_mut(&node) {
@@ -237,7 +237,7 @@ impl OperatorStateBudgetHandle {
 		}
 	}
 
-	pub fn report_lease(&self, node: FlowNodeId, report: LeaseReport) {
+	pub fn report_lease(&self, node: OperatorId, report: LeaseReport) {
 		let mut leases = self.0.leases.lock();
 		if let Some(lease) = leases.get_mut(&node) {
 			lease.reported = Reported::Bytes(report.total_bytes());
@@ -245,7 +245,7 @@ impl OperatorStateBudgetHandle {
 		}
 	}
 
-	pub fn report_lease_none(&self, node: FlowNodeId) {
+	pub fn report_lease_none(&self, node: OperatorId) {
 		let mut leases = self.0.leases.lock();
 		if let Some(lease) = leases.get_mut(&node) {
 			lease.reported = Reported::Cacheless;
@@ -258,13 +258,13 @@ impl OperatorStateBudgetHandle {
 		Count::new(leases.values().filter(|lease| !lease.is_reporting()).count() as u64)
 	}
 
-	pub fn release_lease(&self, node: FlowNodeId) {
+	pub fn release_lease(&self, node: OperatorId) {
 		let mut leases = self.0.leases.lock();
 		leases.remove(&node);
 		Self::recompute_leased(&self.0, &leases);
 	}
 
-	pub fn current_lease(&self, node: FlowNodeId) -> Option<OperatorLease> {
+	pub fn current_lease(&self, node: OperatorId) -> Option<OperatorLease> {
 		let leases = self.0.leases.lock();
 		leases.get(&node).map(|lease| OperatorLease {
 			node,
@@ -277,7 +277,7 @@ impl OperatorStateBudgetHandle {
 		})
 	}
 
-	fn recompute_leased(budget: &OperatorStateBudget, leases: &HashMap<FlowNodeId, LeaseState>) {
+	fn recompute_leased(budget: &OperatorStateBudget, leases: &HashMap<OperatorId, LeaseState>) {
 		let total = leases.values().fold(ByteSize::ZERO, |acc, lease| acc.saturating_add(lease.charged()));
 		budget.leased.store(total.as_bytes(), Ordering::Relaxed);
 	}
@@ -307,7 +307,7 @@ mod tests {
 	use reifydb_value::{byte_size::ByteSize, count::Count};
 
 	use super::{LEASE_FLOOR, LeaseHealth, LeaseReport, OperatorStateBudgetHandle};
-	use crate::{interface::catalog::flow::FlowNodeId, metrics::heap::StateMemory};
+	use crate::{interface::catalog::flow::OperatorId, metrics::heap::StateMemory};
 
 	fn mb(n: u64) -> ByteSize {
 		ByteSize::from_bytes(n * 1024 * 1024)
@@ -351,7 +351,7 @@ mod tests {
 		// A lease violator's excess bytes must count into the bound; charging only the grant would
 		// hide real memory from the budget.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let node = FlowNodeId(7);
+		let node = OperatorId(7);
 		let grant = pool.grant_lease(node, mb(20));
 		assert_eq!(grant.bytes(), mb(20));
 		assert_eq!(pool.snapshot().leased, mb(20));
@@ -382,12 +382,12 @@ mod tests {
 	fn test_grant_clamps_to_headroom_but_never_below_floor() {
 		let pool = OperatorStateBudgetHandle::new(mb(100));
 		pool.charge_clean(mb(95));
-		let grant = pool.grant_lease(FlowNodeId(1), mb(64));
+		let grant = pool.grant_lease(OperatorId(1), mb(64));
 		assert_eq!(grant.bytes(), LEASE_FLOOR, "5 MiB headroom is below the floor, so the floor wins");
 
 		let pool = OperatorStateBudgetHandle::new(mb(100));
 		pool.charge_clean(mb(50));
-		let grant = pool.grant_lease(FlowNodeId(2), mb(64));
+		let grant = pool.grant_lease(OperatorId(2), mb(64));
 		assert_eq!(grant.bytes(), mb(50), "grant clamps to available headroom");
 	}
 
@@ -397,7 +397,7 @@ mod tests {
 		// A fresh lease reserves its full grant because its footprint is unknown, but a lease that
 		// has reported no cache charges nothing rather than pinning budget it will never use.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let node = FlowNodeId(3);
+		let node = OperatorId(3);
 		pool.grant_lease(node, mb(16));
 
 		assert_eq!(
@@ -420,7 +420,7 @@ mod tests {
 		// Health tracks the latest sample only: an operator that reports bytes and then reports no
 		// cache must drop the stale count and reserve nothing, not fall back to its grant.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let node = FlowNodeId(5);
+		let node = OperatorId(5);
 		pool.grant_lease(node, mb(16));
 
 		pool.report_lease(
@@ -449,8 +449,8 @@ mod tests {
 		// release its share of the pool. A lease that has not yet spoken still reserves its
 		// cold-start grant, since whether it will fill a cache is not yet known.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let fresh = FlowNodeId(1);
-		let cacheless = FlowNodeId(2);
+		let fresh = OperatorId(1);
+		let cacheless = OperatorId(2);
 
 		pool.grant_lease(fresh, mb(16));
 		pool.grant_lease(cacheless, mb(16));
@@ -472,7 +472,7 @@ mod tests {
 	#[test]
 	fn test_resize_respects_floor() {
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let node = FlowNodeId(4);
+		let node = OperatorId(4);
 		pool.grant_lease(node, mb(64));
 		pool.resize_lease(node, mb(1));
 		assert_eq!(pool.current_lease(node).unwrap().grant.bytes(), LEASE_FLOOR);
@@ -483,7 +483,7 @@ mod tests {
 		// A grant must track reported demand so busy guests grow and idle guests shrink, rather than
 		// pinning the creation-time grant forever.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let node = FlowNodeId(1);
+		let node = OperatorId(1);
 		pool.grant_lease(node, mb(10));
 
 		pool.resize_lease_to_demand(node, mb(25));
@@ -498,8 +498,8 @@ mod tests {
 		// A demand resize may only grow into budget that is actually free; granting past headroom
 		// pushes the shared pool over budget on behalf of one operator.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let first = FlowNodeId(1);
-		let second = FlowNodeId(2);
+		let first = OperatorId(1);
+		let second = OperatorId(2);
 		pool.grant_lease(first, mb(80));
 		pool.grant_lease(second, mb(10));
 
@@ -513,7 +513,7 @@ mod tests {
 		// An operator's own charge must not count against its own headroom, or a fully granted pool
 		// could never regrow a lease and demand could only ratchet downward.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let node = FlowNodeId(1);
+		let node = OperatorId(1);
 		pool.grant_lease(node, mb(100));
 
 		pool.resize_lease_to_demand(node, mb(90));
@@ -526,7 +526,7 @@ mod tests {
 		// An idle operator keeps the lease floor so it can restart its
 		// cache without renegotiating a grant from zero.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let node = FlowNodeId(1);
+		let node = OperatorId(1);
 		pool.grant_lease(node, mb(64));
 
 		pool.resize_lease_to_demand(node, ByteSize::ZERO);
@@ -539,7 +539,7 @@ mod tests {
 		// Operator teardown races the sampling tick; a demand resize
 		// arriving after release_lease must not resurrect the lease.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let node = FlowNodeId(9);
+		let node = OperatorId(9);
 		pool.grant_lease(node, mb(10));
 		pool.release_lease(node);
 

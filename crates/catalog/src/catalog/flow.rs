@@ -5,7 +5,7 @@ use reifydb_core::{
 	common::TimeDomain,
 	interface::catalog::{
 		change::CatalogTrackFlowChangeOperations,
-		flow::{Flow, FlowEdgeId, FlowId, FlowNodeId, FlowStatus},
+		flow::{Flow, FlowEdgeId, FlowId, OperatorId, FlowStatus},
 		id::NamespaceId,
 	},
 	internal,
@@ -295,8 +295,8 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::flow::next_node_id", level = "trace", skip(self, txn))]
-	pub fn next_flow_node_id(&self, txn: &mut AdminTransaction) -> Result<FlowNodeId> {
-		flow_sequence::next_flow_node_id(txn)
+	pub fn next_operator_id(&self, txn: &mut AdminTransaction) -> Result<OperatorId> {
+		flow_sequence::next_operator_id(txn)
 	}
 
 	#[instrument(name = "catalog::flow::next_edge_id", level = "trace", skip(self, txn))]

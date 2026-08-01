@@ -17,7 +17,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
-	key::operator_state::{Keyspace, OperatorStateKey, StateKey},
+	key::operator_group_state::{Keyspace, OperatorGroupStateKey, GroupStateKey},
 	value::column::columns::Columns,
 };
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
@@ -138,8 +138,8 @@ const TALLY_CAPABILITIES: &[OperatorCapability] = &[
 ];
 
 impl Tally {
-	fn state_key(group: reifydb_core::key::operator_state::GroupId) -> StateKey {
-		OperatorStateKey::inner_encoded(group, Keyspace::FIRST_CUSTOM, vec![])
+	fn state_key(group: reifydb_core::key::operator_group_state::GroupId) -> GroupStateKey {
+		OperatorGroupStateKey::inner_encoded(group, Keyspace::FIRST_CUSTOM, vec![])
 	}
 
 	fn tally(&self, txn: &mut FlowTransaction, post: &Columns) -> Result<Vec<Diff>> {

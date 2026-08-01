@@ -13,7 +13,7 @@ pub mod config;
 pub mod dictionary;
 pub mod flow;
 pub mod flow_edge;
-pub mod flow_node;
+pub mod operator;
 pub mod handler;
 pub mod identity;
 pub mod identity_attribute;

@@ -10,8 +10,8 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::{
 		EncodableKey,
-		flow_node_state::FlowNodeStateKey,
-		operator_state::{GroupId, StateKey},
+		operator_state::OperatorStateKey,
+		operator_group_state::{GroupId, GroupStateKey},
 	},
 	state::store::StateStore,
 };
@@ -65,7 +65,7 @@ impl StateStore for OperatorStateStore<'_> {
 		Ok(self.txn.flow_watermark())
 	}
 
-	fn state_get(&mut self, key: &StateKey) -> Result<Option<StateBytes>> {
+	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<StateBytes>> {
 		match self.txn.state_get(self.node, key)? {
 			Some(row) => Ok(Some(StateBytes::from_row(row)?)),
 			None => Ok(None),
@@ -74,15 +74,15 @@ impl StateStore for OperatorStateStore<'_> {
 
 	fn state_get_many_visit(
 		&mut self,
-		keys: &[StateKey],
-		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
+		keys: &[GroupStateKey],
+		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
 		let batch = self.txn.state_get_many(self.node, keys)?;
 		for r in batch.items {
-			let Some(decoded) = FlowNodeStateKey::decode(&r.key) else {
+			let Some(decoded) = OperatorStateKey::decode(&r.key) else {
 				continue;
 			};
-			let Some(inner) = StateKey::from_framed(EncodedKey::new(decoded.key)) else {
+			let Some(inner) = GroupStateKey::from_framed(EncodedKey::new(decoded.key)) else {
 				continue;
 			};
 			visit(inner, StateBytes::from_row(r.row)?)?;
@@ -90,11 +90,11 @@ impl StateStore for OperatorStateStore<'_> {
 		Ok(())
 	}
 
-	fn state_set(&mut self, key: &StateKey, payload: StateBytes) -> Result<()> {
+	fn state_set(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()> {
 		self.txn.state_set(self.node, key, payload.into_row())
 	}
 
-	fn state_remove(&mut self, key: &StateKey) -> Result<()> {
+	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
 		self.txn.state_remove(self.node, key)
 	}
 
@@ -102,12 +102,12 @@ impl StateStore for OperatorStateStore<'_> {
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
 		let batch = self.txn.state_range(self.node, range, limit)?;
 		for r in batch.items {
-			if let Some(decoded) = FlowNodeStateKey::decode(&r.key)
-				&& let Some(inner) = StateKey::from_framed(EncodedKey::new(decoded.key))
+			if let Some(decoded) = OperatorStateKey::decode(&r.key)
+				&& let Some(inner) = GroupStateKey::from_framed(EncodedKey::new(decoded.key))
 			{
 				visit(inner, StateBytes::from_row(r.row)?)?;
 			}

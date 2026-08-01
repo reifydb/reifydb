@@ -5,7 +5,7 @@ use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	key::serializer::KeySerializer,
 };
-use reifydb_core::key::operator_state::{Keyspace, StateKey};
+use reifydb_core::key::operator_group_state::{Keyspace, GroupStateKey};
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
 	Result,
@@ -20,14 +20,14 @@ pub trait KeyedStateful: RawStatefulOperator {
 
 	fn key_types(&self) -> &[ValueType];
 
-	fn encode_state_key(&self, key_values: &[Value]) -> StateKey {
+	fn encode_state_key(&self, key_values: &[Value]) -> GroupStateKey {
 		let mut serializer = KeySerializer::new();
 
 		for value in key_values.iter() {
 			serializer.extend_value(value);
 		}
 
-		StateKey::node_scoped(Keyspace::FIRST_CUSTOM, serializer.finish().as_ref())
+		GroupStateKey::node_scoped(Keyspace::FIRST_CUSTOM, serializer.finish().as_ref())
 	}
 
 	fn create_state(&self) -> EncodedRow {

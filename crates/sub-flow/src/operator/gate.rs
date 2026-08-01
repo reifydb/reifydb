@@ -13,7 +13,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
-	key::operator_state::{GroupId, IntoStateKey, Keyspace, OperatorStateKey, StateKey, keyspace_inner_range},
+	key::operator_group_state::{GroupId, IntoGroupStateKey, Keyspace, OperatorGroupStateKey, GroupStateKey, keyspace_inner_range},
 	metrics::heap::{HeapSize, OperatorSample},
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
 	value::column::columns::Columns,
@@ -58,9 +58,9 @@ impl HeapSize for VisibilityKey {
 	}
 }
 
-impl IntoStateKey for &VisibilityKey {
-	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(
+impl IntoGroupStateKey for &VisibilityKey {
+	fn into_group_state_key(self) -> GroupStateKey {
+		OperatorGroupStateKey::inner_encoded(
 			GroupId::NODE_SCOPE,
 			Keyspace::GATE_VISIBILITY,
 			encode_u64_asc(self.0.0),
@@ -69,7 +69,7 @@ impl IntoStateKey for &VisibilityKey {
 }
 
 fn decode_visibility_key(key: &EncodedKey) -> Option<VisibilityKey> {
-	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
+	let (group, keyspace, suffix) = OperatorGroupStateKey::decode_inner(key.as_bytes())?;
 	if group != GroupId::NODE_SCOPE || keyspace != Keyspace::GATE_VISIBILITY {
 		return None;
 	}
@@ -392,7 +392,7 @@ impl GateOperator {
 mod tests {
 	use std::ops::Bound;
 
-	use reifydb_core::key::operator_state::{GroupId, IntoStateKey, Keyspace, OperatorStateKey, group_inner_range};
+	use reifydb_core::key::operator_group_state::{GroupId, IntoGroupStateKey, Keyspace, OperatorGroupStateKey, group_inner_range};
 	use reifydb_value::value::row_number::RowNumber;
 
 	use super::{VisibilityKey, decode_visibility_key, visibility_range};
@@ -402,9 +402,9 @@ mod tests {
 		// A hand-rolled leading byte is indistinguishable from a group-id varint, and b'G' (0x47)
 		// decodes into the two-byte tier, putting the key inside the range of a reachable group
 		// id. Node scope is what keeps a reclaim of that group from range-deleting gate state.
-		let key = (&VisibilityKey(RowNumber(42))).into_state_key();
+		let key = (&VisibilityKey(RowNumber(42))).into_group_state_key();
 
-		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())
+		let (group, keyspace, suffix) = OperatorGroupStateKey::decode_inner(key.as_bytes())
 			.expect("a visibility marker must decode as a structured operator-state key");
 		assert_eq!(group, GroupId::NODE_SCOPE, "gate visibility must not live inside a reclaimable group");
 		assert_eq!(keyspace, Keyspace::GATE_VISIBILITY);
@@ -416,7 +416,7 @@ mod tests {
 		// Group 14591's inner prefix is exactly [0x47, 0x00], which every b'G'-tagged marker
 		// below 2^56 shares. The tier boundaries either side are checked too, so a change to the
 		// group encoding cannot quietly re-create the overlap.
-		let key = (&VisibilityKey(RowNumber(42))).into_state_key();
+		let key = (&VisibilityKey(RowNumber(42))).into_group_state_key();
 
 		for group in [1u64, 127, 128, 14_336, 14_591, 16_383, 16_384] {
 			let range = group_inner_range(GroupId(group));
@@ -436,7 +436,7 @@ mod tests {
 
 	#[test]
 	fn the_visibility_range_round_trips_its_own_keys_and_admits_nothing_else() {
-		let key = (&VisibilityKey(RowNumber(7))).into_state_key();
+		let key = (&VisibilityKey(RowNumber(7))).into_group_state_key();
 		assert_eq!(decode_visibility_key(key.as_encoded()).map(|k| k.0), Some(RowNumber(7)));
 
 		let range = visibility_range();
@@ -453,7 +453,7 @@ mod tests {
 		assert!(start && end, "hydration scans this range, so it must contain the keys the operator writes");
 
 		let foreign =
-			OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::ACCUMULATOR, 7u64.to_be_bytes());
+			OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::ACCUMULATOR, 7u64.to_be_bytes());
 		assert!(
 			decode_visibility_key(foreign.as_encoded()).is_none(),
 			"a neighbouring keyspace must not decode as visibility"

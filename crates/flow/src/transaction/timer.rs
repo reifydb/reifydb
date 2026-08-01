@@ -13,8 +13,8 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::{
 		EncodableKey,
-		flow_node_state::FlowNodeStateKey,
-		operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey, keyspace_inner_range},
+		operator_state::OperatorStateKey,
+		operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey, keyspace_inner_range},
 	},
 };
 use reifydb_value::{Result, value::datetime::DateTime};
@@ -32,7 +32,7 @@ fn timer_suffix(at: DateTime, kind: TimerKind, key: &EncodedKey) -> Vec<u8> {
 	suffix
 }
 
-fn timer_key(at: DateTime, kind: TimerKind, key: &EncodedKey) -> StateKey {
+fn timer_key(at: DateTime, kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::TIMER_WHEEL, timer_suffix(at, kind, key))
 }
 
@@ -116,8 +116,8 @@ impl TimerWheel {
 			let batch = txn.state_range(node, range, Some(want))?;
 			let mut last_inner: Option<EncodedKey> = None;
 			for item in &batch.items {
-				let decoded = FlowNodeStateKey::decode(&item.key)
-					.expect("state_range must return FlowNodeState keys");
+				let decoded = OperatorStateKey::decode(&item.key)
+					.expect("state_range must return OperatorState keys");
 				let inner = OperatorStateKey::decode_inner(&decoded.key)
 					.expect("the timer wheel range must yield structured operator state keys");
 				due.push(decode_timer(&inner.2));
@@ -146,8 +146,8 @@ impl TimerWheel {
 		let range = keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::TIMER_WHEEL);
 		let batch = txn.state_range(node, range, Some(1))?;
 		state.earliest = batch.items.first().map(|item| {
-			let decoded = FlowNodeStateKey::decode(&item.key)
-				.expect("state_range must return FlowNodeState keys");
+			let decoded = OperatorStateKey::decode(&item.key)
+				.expect("state_range must return OperatorState keys");
 			let inner = OperatorStateKey::decode_inner(&decoded.key)
 				.expect("the timer wheel range must yield structured operator state keys");
 			decode_timer(&inner.2).at.to_millis()

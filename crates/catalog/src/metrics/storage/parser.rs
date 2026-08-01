@@ -3,7 +3,7 @@
 
 use reifydb_codec::key::deserializer::KeyDeserializer;
 use reifydb_core::{
-	interface::catalog::{flow::FlowNodeId, metrics::MetricsId, object::ObjectId},
+	interface::catalog::{flow::OperatorId, metrics::MetricsId, object::ObjectId},
 	key::{Key, catalog::KeyDeserializerCatalogExt, kind::KeyKind},
 };
 use reifydb_value::value::dictionary::DictionaryId;
@@ -31,8 +31,8 @@ fn extract_metrics_id(key: &[u8], kind: KeyKind) -> MetricsId {
 			.map(|id| MetricsId::Object(ObjectId::Dictionary(DictionaryId(id))))
 			.unwrap_or(MetricsId::System),
 
-		KeyKind::FlowNodeState => {
-			extract_flow_node_id(key).map(MetricsId::FlowNode).unwrap_or(MetricsId::System)
+		KeyKind::OperatorState => {
+			extract_operator_id(key).map(MetricsId::Operator).unwrap_or(MetricsId::System)
 		}
 
 		_ => MetricsId::System,
@@ -45,11 +45,11 @@ fn extract_object_id(key: &[u8]) -> Option<ObjectId> {
 	de.read_object_id().ok()
 }
 
-fn extract_flow_node_id(key: &[u8]) -> Option<FlowNodeId> {
+fn extract_operator_id(key: &[u8]) -> Option<OperatorId> {
 	let mut de = KeyDeserializer::from_bytes(key);
 	let _ = de.read_u8().ok()?;
 	let node_id = de.read_u64().ok()?;
-	Some(FlowNodeId(node_id))
+	Some(OperatorId(node_id))
 }
 
 fn extract_dictionary_id(key: &[u8]) -> Option<u64> {
@@ -61,8 +61,8 @@ fn extract_dictionary_id(key: &[u8]) -> Option<u64> {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		interface::catalog::{flow::FlowNodeId, object::ObjectId, storage::StorageId},
-		key::{EncodableKey, dictionary::DictionaryEntryKey, flow_node_state::FlowNodeStateKey, row::RowKey},
+		interface::catalog::{flow::OperatorId, object::ObjectId, storage::StorageId},
+		key::{EncodableKey, dictionary::DictionaryEntryKey, operator_state::OperatorStateKey, row::RowKey},
 	};
 	use reifydb_value::value::{dictionary::DictionaryId, row_number::RowNumber};
 
@@ -78,13 +78,13 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_parse_object_id_flow_node_state() {
-		let node = FlowNodeId(456);
-		let state_key = FlowNodeStateKey::new(node, vec![1, 2, 3]);
+	fn test_parse_object_id_operator_state() {
+		let node = OperatorId(456);
+		let state_key = OperatorStateKey::new(node, vec![1, 2, 3]);
 		let encoded = state_key.encode();
 
 		let id = parse_id(encoded.as_slice());
-		assert_eq!(id, MetricsId::FlowNode(node));
+		assert_eq!(id, MetricsId::Operator(node));
 	}
 
 	#[test]

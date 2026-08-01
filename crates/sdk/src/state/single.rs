@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::state::OperatorState;
-use reifydb_core::key::operator_state::StateKey;
+use reifydb_core::key::operator_group_state::GroupStateKey;
 
 use super::{RawStatefulOperator, utils};
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
 pub trait SingleStateful: RawStatefulOperator {
 	type State: OperatorState;
 
-	fn key(&self) -> StateKey {
+	fn key(&self) -> GroupStateKey {
 		utils::empty_state_key()
 	}
 

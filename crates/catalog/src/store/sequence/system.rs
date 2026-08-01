@@ -24,7 +24,7 @@ use crate::{
 	Result,
 	store::sequence::generator::u64::GeneratorU64,
 	system::ids::sequences::{
-		AUTHENTICATION, BINDING, COLUMN, COLUMN_PROPERTY, COLUMN_SNAPSHOT, FLOW, FLOW_EDGE, FLOW_NODE, HANDLER,
+		AUTHENTICATION, BINDING, COLUMN, COLUMN_PROPERTY, COLUMN_SNAPSHOT, FLOW, FLOW_EDGE, OPERATOR, HANDLER,
 		IDENTITY_ATTRIBUTE, MIGRATION, MIGRATION_EVENT, NAMESPACE, POLICY, PRIMARY_KEY, PROCEDURE, ROLE,
 		SOURCE, TEST, TOKEN,
 	},
@@ -40,7 +40,7 @@ static COLUMN_PROPERTY_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::e
 
 pub(crate) static FLOW_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(FLOW));
 
-pub(crate) static FLOW_NODE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(FLOW_NODE));
+pub(crate) static FLOW_NODE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(OPERATOR));
 
 pub(crate) static FLOW_EDGE_KEY: Lazy<EncodedKey> = Lazy::new(|| SystemSequenceKey::encoded(FLOW_EDGE));
 

@@ -23,7 +23,7 @@ use reifydb_codec::{
 	state::OperatorState,
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, IntoStateKey, Keyspace, OperatorStateKey, StateKey, keyspace_inner_range},
+	key::operator_group_state::{GroupId, IntoGroupStateKey, Keyspace, OperatorGroupStateKey, GroupStateKey, keyspace_inner_range},
 	metrics::heap::HeapSize,
 	state::{
 		cache::{StateCache, StateView},
@@ -295,9 +295,9 @@ impl HeapSize for RunningKey {
 	}
 }
 
-impl IntoStateKey for &RunningKey {
-	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(self.group, Keyspace::RUNNING, self.slot.as_bytes())
+impl IntoGroupStateKey for &RunningKey {
+	fn into_group_state_key(self) -> GroupStateKey {
+		OperatorGroupStateKey::inner_encoded(self.group, Keyspace::RUNNING, self.slot.as_bytes())
 	}
 }
 
@@ -335,9 +335,9 @@ impl HeapSize for WindowStateKey {
 	}
 }
 
-impl IntoStateKey for &WindowStateKey {
-	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(self.group, Keyspace::ACCUMULATOR, self.slot.as_bytes())
+impl IntoGroupStateKey for &WindowStateKey {
+	fn into_group_state_key(self) -> GroupStateKey {
+		OperatorGroupStateKey::inner_encoded(self.group, Keyspace::ACCUMULATOR, self.slot.as_bytes())
 	}
 }
 
@@ -371,9 +371,9 @@ impl HeapSize for BufferKey {
 	}
 }
 
-impl IntoStateKey for &BufferKey {
-	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(self.group, Keyspace::BUFFER, self.slot.as_bytes())
+impl IntoGroupStateKey for &BufferKey {
+	fn into_group_state_key(self) -> GroupStateKey {
+		OperatorGroupStateKey::inner_encoded(self.group, Keyspace::BUFFER, self.slot.as_bytes())
 	}
 }
 
@@ -398,15 +398,15 @@ impl HeapSize for EmitKey {
 	}
 }
 
-impl IntoStateKey for &EmitKey {
-	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(self.group, Keyspace::EMIT, encode_u64_asc(self.row.0))
+impl IntoGroupStateKey for &EmitKey {
+	fn into_group_state_key(self) -> GroupStateKey {
+		OperatorGroupStateKey::inner_encoded(self.group, Keyspace::EMIT, encode_u64_asc(self.row.0))
 	}
 }
 
-impl IntoStateKey for &MetaKey {
-	fn into_state_key(self) -> StateKey {
-		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::WINDOW_META, &self.0)
+impl IntoGroupStateKey for &MetaKey {
+	fn into_group_state_key(self) -> GroupStateKey {
+		OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::WINDOW_META, &self.0)
 	}
 }
 
@@ -463,7 +463,7 @@ impl ExpiryAnchor {
 	}
 }
 
-pub fn expiry_key<G>(expiry: u64, group: &G, suffix: &[u8]) -> StateKey
+pub fn expiry_key<G>(expiry: u64, group: &G, suffix: &[u8]) -> GroupStateKey
 where
 	for<'a> &'a G: IntoEncodedKey,
 {
@@ -473,11 +473,11 @@ where
 	tail.extend_from_slice(&encode_u64(expiry));
 	tail.extend_from_slice(group);
 	tail.extend_from_slice(suffix);
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::EXPIRY, tail)
+	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::EXPIRY, tail)
 }
 
 fn decode_group_slot_key(keyspace: Keyspace, key: &EncodedKey) -> Option<(GroupId, EncodedKey)> {
-	let (group, found, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
+	let (group, found, suffix) = OperatorGroupStateKey::decode_inner(key.as_bytes())?;
 	if found != keyspace {
 		return None;
 	}
@@ -493,7 +493,7 @@ pub(crate) fn decode_running_key(key: &EncodedKey) -> Option<RunningKey> {
 }
 
 pub(crate) fn decode_window_state_key(key: &EncodedKey) -> Option<WindowStateKey> {
-	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
+	let (group, keyspace, suffix) = OperatorGroupStateKey::decode_inner(key.as_bytes())?;
 	if keyspace != Keyspace::ACCUMULATOR {
 		return None;
 	}
@@ -501,7 +501,7 @@ pub(crate) fn decode_window_state_key(key: &EncodedKey) -> Option<WindowStateKey
 }
 
 pub(crate) fn decode_meta_key(key: &EncodedKey) -> Option<MetaKey> {
-	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
+	let (group, keyspace, suffix) = OperatorGroupStateKey::decode_inner(key.as_bytes())?;
 	(group == GroupId::NODE_SCOPE && keyspace == Keyspace::WINDOW_META).then(|| MetaKey(EncodedKey::new(suffix)))
 }
 
@@ -514,7 +514,7 @@ pub(crate) mod test_support {
 		state::{StateBytes, decode_state},
 	};
 	use reifydb_core::{
-		key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
+		key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
 		metrics::heap::HeapSize,
 		state::{map::PersistedMap, store::StateStore},
 	};
@@ -591,11 +591,11 @@ pub(crate) mod test_support {
 			self.accumulator_reads
 		}
 
-		fn note_reads(&mut self, keys: &[StateKey]) {
+		fn note_reads(&mut self, keys: &[GroupStateKey]) {
 			self.accumulator_reads += keys
 				.iter()
 				.filter(|key| {
-					OperatorStateKey::decode_inner(key.as_slice())
+					OperatorGroupStateKey::decode_inner(key.as_slice())
 						.is_some_and(|(_, found, _)| found == Keyspace::ACCUMULATOR)
 				})
 				.count();
@@ -605,7 +605,7 @@ pub(crate) mod test_support {
 			self.data
 				.keys()
 				.filter(|k| {
-					OperatorStateKey::decode_inner(k).is_some_and(|(_, found, _)| found == keyspace)
+					OperatorGroupStateKey::decode_inner(k).is_some_and(|(_, found, _)| found == keyspace)
 				})
 				.count()
 		}
@@ -622,7 +622,7 @@ pub(crate) mod test_support {
 			self.data
 				.iter()
 				.filter(|(k, _)| {
-					OperatorStateKey::decode_inner(k)
+					OperatorGroupStateKey::decode_inner(k)
 						.is_some_and(|(_, found, _)| found == Keyspace::BUFFER)
 				})
 				.map(|(_, bytes)| {
@@ -648,7 +648,7 @@ pub(crate) mod test_support {
 				.data
 				.keys()
 				.filter(|k| {
-					OperatorStateKey::decode_inner(k)
+					OperatorGroupStateKey::decode_inner(k)
 						.is_some_and(|(_, found, _)| found == Keyspace::ACCUMULATOR)
 				})
 				.cloned()
@@ -667,7 +667,7 @@ pub(crate) mod test_support {
 				.data
 				.keys()
 				.filter(|k| {
-					OperatorStateKey::decode_inner(k).is_some_and(|(group, found, _)| {
+					OperatorGroupStateKey::decode_inner(k).is_some_and(|(group, found, _)| {
 						!group.is_node_scope() && found.is_data()
 					})
 				})
@@ -685,7 +685,7 @@ pub(crate) mod test_support {
 
 		pub(crate) fn seed_mapping_key(&mut self, suffix: u8) {
 			self.data.insert(
-				OperatorStateKey::inner_encoded(
+				OperatorGroupStateKey::inner_encoded(
 					GroupId::NODE_SCOPE,
 					Keyspace::ROW_NUMBER_MAPPING,
 					vec![suffix],
@@ -725,13 +725,13 @@ pub(crate) mod test_support {
 			Ok(self.groups.get(group.as_bytes()).copied())
 		}
 
-		fn state_get(&mut self, key: &StateKey) -> Result<Option<StateBytes>> {
+		fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<StateBytes>> {
 			Ok(self.data.get(key.as_slice()).cloned())
 		}
 		fn state_get_many_visit(
 			&mut self,
-			keys: &[StateKey],
-			visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
+			keys: &[GroupStateKey],
+			visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			self.note_reads(keys);
 			for key in keys {
@@ -741,11 +741,11 @@ pub(crate) mod test_support {
 			}
 			Ok(())
 		}
-		fn state_set(&mut self, key: &StateKey, payload: StateBytes) -> Result<()> {
+		fn state_set(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()> {
 			self.data.insert(key.as_slice().to_vec(), payload);
 			Ok(())
 		}
-		fn state_remove(&mut self, key: &StateKey) -> Result<()> {
+		fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
 			self.data.remove(key.as_slice());
 			Ok(())
 		}
@@ -753,7 +753,7 @@ pub(crate) mod test_support {
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
+			visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
@@ -776,7 +776,7 @@ pub(crate) mod test_support {
 				matched.truncate(limit);
 			}
 			for (k, b) in matched {
-				let Some(k) = StateKey::from_framed(EncodedKey::new(k)) else {
+				let Some(k) = GroupStateKey::from_framed(EncodedKey::new(k)) else {
 					continue;
 				};
 				visit(k, b)?;

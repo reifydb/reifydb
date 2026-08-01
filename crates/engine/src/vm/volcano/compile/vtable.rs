@@ -32,9 +32,9 @@ use reifydb_catalog::{
 			metrics::{MetricsObject, cdc::SystemMetricsCdc, storage::SystemMetricsStorage},
 			migrations::SystemMigrations,
 			namespaces::SystemNamespaces,
-			operator_inputs::SystemOperatorInputs,
-			operator_outputs::SystemOperatorOutputs,
-			operators::SystemOperators,
+			operator_inputs::SystemOperatorLibraryInputs,
+			operator_outputs::SystemOperatorLibraryOutputs,
+			operators::SystemOperatorLibraries,
 			policies::SystemPolicies,
 			policy_operations::SystemPolicyOperations,
 			primary_key_columns::SystemPrimaryKeyColumns,
@@ -127,16 +127,16 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 		"column_properties" => VTables::ColumnProperties(SystemColumnProperties::new()),
 		"versions" => VTables::Versions(SystemVersions::new(context.services.ioc.clone())),
 		"cdc_consumers" => VTables::CdcConsumers(SystemCdcConsumers::new()),
-		"operators" => VTables::Operators(SystemOperators::new(context.services.operator_store.clone())),
+		"operators" => VTables::Operators(SystemOperatorLibraries::new(context.services.operator_store.clone())),
 		"dictionaries" => VTables::Dictionaries(SystemDictionaries::new()),
 		"virtual_tables" => VTables::TablesVirtual(SystemTablesVirtual::new(context.services.catalog.clone())),
 		"types" => VTables::Types(SystemTypes::new()),
 		"flow_node_types" => VTables::FlowNodeTypes(SystemFlowNodeTypes::new()),
 		"operator_inputs" => {
-			VTables::OperatorInputs(SystemOperatorInputs::new(context.services.operator_store.clone()))
+			VTables::OperatorInputs(SystemOperatorLibraryInputs::new(context.services.operator_store.clone()))
 		}
 		"operator_outputs" => {
-			VTables::OperatorOutputs(SystemOperatorOutputs::new(context.services.operator_store.clone()))
+			VTables::OperatorOutputs(SystemOperatorLibraryOutputs::new(context.services.operator_store.clone()))
 		}
 		"ringbuffers" => VTables::RingBuffers(SystemRingBuffers::new()),
 		"queues" => VTables::Queues(SystemQueues::new()),

@@ -11,7 +11,7 @@ use reifydb_core::{
 		catalog::flow::{FlowId, FlowNodeId},
 		change::Change,
 	},
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+	key::{EncodableKey, operator_state::OperatorStateKey},
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_rql::flow::node::FlowNode;
@@ -81,9 +81,9 @@ impl FlowEngineInner {
 			if !matches!(write, PendingWrite::Remove { .. }) {
 				continue;
 			}
-			let node = FlowNodeStateKey::decode(key)
+			let node = OperatorStateKey::decode(key)
 				.map(|k| k.node)
-				.or_else(|| FlowNodeStateKey::decode(key).map(|k| k.node));
+				.or_else(|| OperatorStateKey::decode(key).map(|k| k.node));
 			if let Some(node) = node {
 				*per_node.entry(node).or_default() += 1;
 			}

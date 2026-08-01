@@ -9,15 +9,15 @@ use reifydb_codec::key::{
 use serde::{Deserialize, Serialize};
 
 use super::{EncodableKey, KeyKind};
-use crate::interface::catalog::flow::FlowNodeId;
+use crate::interface::catalog::flow::OperatorId;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OperatorSettingsKey {
-	pub operator: FlowNodeId,
+	pub operator: OperatorId,
 }
 
 impl OperatorSettingsKey {
-	pub fn encoded(operator: impl Into<FlowNodeId>) -> EncodedKey {
+	pub fn encoded(operator: impl Into<OperatorId>) -> EncodedKey {
 		Self {
 			operator: operator.into(),
 		}
@@ -43,7 +43,7 @@ impl EncodableKey for OperatorSettingsKey {
 		}
 
 		Some(Self {
-			operator: FlowNodeId(de.read_u64().ok()?),
+			operator: OperatorId(de.read_u64().ok()?),
 		})
 	}
 }
@@ -79,7 +79,7 @@ pub mod tests {
 	#[test]
 	fn test_operator_settings_key_roundtrip() {
 		let key = OperatorSettingsKey {
-			operator: FlowNodeId(12345),
+			operator: OperatorId(12345),
 		};
 
 		let encoded = key.encode();

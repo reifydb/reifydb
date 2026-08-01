@@ -85,7 +85,7 @@ unsafe fn get_test_context(ctx: *mut ContextFFI) -> &'static TestContext {
 }
 
 fn test_state_envelope(operator_id: u64, user_key_bytes: &[u8]) -> EncodedKey {
-	FlowNodeStateKey::new(FlowNodeId(operator_id), user_key_bytes.to_vec()).encode()
+	OperatorStateKey::new(FlowNodeId(operator_id), user_key_bytes.to_vec()).encode()
 }
 
 #[unsafe(no_mangle)]
@@ -637,8 +637,8 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::{
 		EncodableKey,
-		flow_node_state::FlowNodeStateKey,
-		operator_state::{GroupId, Keyspace, OperatorStateKey},
+		operator_state::OperatorStateKey,
+		operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
 	},
 };
 use reifydb_value::value::datetime::DateTime;

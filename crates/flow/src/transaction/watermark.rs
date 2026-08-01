@@ -7,7 +7,7 @@ use dashmap::DashMap;
 use reifydb_core::{
 	common::TimeDomain,
 	interface::catalog::flow::FlowNodeId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
+	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
 };
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 
@@ -18,8 +18,8 @@ use super::{
 
 const PERSIST_BUCKET_MS: u64 = 1_000;
 
-fn source_watermark_key() -> StateKey {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SOURCE_WATERMARK, vec![])
+fn source_watermark_key() -> GroupStateKey {
+	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SOURCE_WATERMARK, vec![])
 }
 
 #[derive(Default)]
@@ -273,7 +273,7 @@ mod tests {
 		// other on node-scope state.
 		let key = source_watermark_key();
 		let (group, keyspace, suffix) =
-			OperatorStateKey::decode_inner(key.as_slice()).expect("the key must decode as inner state");
+			OperatorGroupStateKey::decode_inner(key.as_slice()).expect("the key must decode as inner state");
 
 		assert_eq!(group, GroupId::NODE_SCOPE);
 		assert_eq!(keyspace, Keyspace::SOURCE_WATERMARK);

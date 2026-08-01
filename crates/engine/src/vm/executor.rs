@@ -5,7 +5,7 @@ use std::{ops::Deref, result::Result as StdResult, sync::Arc};
 
 use bumpalo::Bump;
 use reifydb_catalog::{
-	catalog::Catalog, metrics::storage::metrics::MetricsReader, vtable::system::operator_store::OperatorStore,
+	catalog::Catalog, metrics::storage::metrics::MetricsReader, vtable::system::operator_store::OperatorLibraryStore,
 };
 use reifydb_core::{
 	error::diagnostic::subscription,
@@ -68,7 +68,7 @@ impl Executor {
 	pub fn new(
 		catalog: Catalog,
 		config: EngineConfig,
-		operator_store: OperatorStore,
+		operator_store: OperatorLibraryStore,
 		metrics_reader: MetricsReader<SingleStore>,
 	) -> Self {
 		Self(Arc::new(Services::new(catalog, config, operator_store, metrics_reader)))

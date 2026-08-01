@@ -1325,10 +1325,10 @@ mod cache_tests {
 		common::CommitVersion,
 		delta::Delta,
 		interface::{
-			catalog::{flow::FlowNodeId, id::TableId, storage::StorageId},
+			catalog::{flow::OperatorId, id::TableId, storage::StorageId},
 			store::{EntryKind, MultiVersionCommit, MultiVersionGet},
 		},
-		key::{EncodableKey, flow_node_state::FlowNodeStateKey, row::RowKey},
+		key::{EncodableKey, operator_state::OperatorStateKey, row::RowKey},
 	};
 	use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
@@ -1393,10 +1393,10 @@ mod cache_tests {
 	#[test]
 	fn operator_removal_writes_a_tombstone_for_every_state_key() {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-		let node = FlowNodeId(7);
+		let node = OperatorId(7);
 		let table = EntryKind::Operator(node);
-		let data_key = FlowNodeStateKey::encoded(node, vec![1u8]);
-		let internal_key = FlowNodeStateKey::encoded(node, vec![2u8]);
+		let data_key = OperatorStateKey::encoded(node, vec![1u8]);
+		let internal_key = OperatorStateKey::encoded(node, vec![2u8]);
 
 		for v in [1u64, 2] {
 			MultiVersionCommit::commit(
@@ -1454,9 +1454,9 @@ mod cache_tests {
 	#[test]
 	fn operator_remove_leaves_a_tombstone_in_commit_tier() {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-		let node = FlowNodeId(8);
+		let node = OperatorId(8);
 		let table = EntryKind::Operator(node);
-		let key = FlowNodeStateKey::encoded(node, vec![9u8]);
+		let key = OperatorStateKey::encoded(node, vec![9u8]);
 
 		MultiVersionCommit::commit(
 			&store,
@@ -1483,9 +1483,9 @@ mod cache_tests {
 		const ROUNDS: u64 = 200;
 
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-		let node = FlowNodeId(21);
+		let node = OperatorId(21);
 		let table = EntryKind::Operator(node);
-		let key_at = |round: u64| FlowNodeStateKey::encoded(node, round.to_be_bytes().to_vec());
+		let key_at = |round: u64| OperatorStateKey::encoded(node, round.to_be_bytes().to_vec());
 
 		let mut version = 0u64;
 		for round in 0..ROUNDS {
@@ -1575,7 +1575,7 @@ mod cache_tests {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 		let read = store.read.clone().expect("read tier configured");
 
-		let opkey = FlowNodeStateKey::new(FlowNodeId(7), vec![1, 2, 3]).encode();
+		let opkey = OperatorStateKey::new(OperatorId(7), vec![1, 2, 3]).encode();
 		MultiVersionCommit::commit(
 			&store,
 			cow_vec![Delta::Set {

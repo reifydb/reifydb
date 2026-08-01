@@ -8,7 +8,7 @@ use reifydb_codec::{
 	state::{OperatorState, decode_state},
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
+	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
 	metrics::heap::StateMemory,
 	state::store::StateStore,
 };
@@ -20,12 +20,12 @@ fn expiry_all_range() -> EncodedKeyRange {
 	expiry_range()
 }
 
-fn due_start(threshold: u64) -> StateKey {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::EXPIRY, encode_u64(threshold))
+fn due_start(threshold: u64) -> GroupStateKey {
+	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::EXPIRY, encode_u64(threshold))
 }
 
 pub(crate) struct ExpiryIndex<E> {
-	entries: Option<BTreeMap<StateKey, E>>,
+	entries: Option<BTreeMap<GroupStateKey, E>>,
 	bytes: u64,
 }
 
@@ -37,7 +37,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 		}
 	}
 
-	fn hydrate(&mut self, store: &mut impl StateStore) -> Result<&mut BTreeMap<StateKey, E>> {
+	fn hydrate(&mut self, store: &mut impl StateStore) -> Result<&mut BTreeMap<GroupStateKey, E>> {
 		if self.entries.is_none() {
 			let mut map = BTreeMap::new();
 			let mut bytes = 0u64;
@@ -52,7 +52,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 		Ok(self.entries.as_mut().expect("hydrated above"))
 	}
 
-	pub(crate) fn set(&mut self, store: &mut impl StateStore, key: StateKey, entry: E) -> Result<()> {
+	pub(crate) fn set(&mut self, store: &mut impl StateStore, key: GroupStateKey, entry: E) -> Result<()> {
 		store.state_set(&key, entry.encode_state(store.clock_now())?)?;
 		if let Some(map) = self.entries.as_mut() {
 			let added = entry_bytes::<E>(&key);
@@ -63,7 +63,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 		Ok(())
 	}
 
-	pub(crate) fn drop_key(&mut self, store: &mut impl StateStore, key: &StateKey) -> Result<()> {
+	pub(crate) fn drop_key(&mut self, store: &mut impl StateStore, key: &GroupStateKey) -> Result<()> {
 		store.state_remove(key)?;
 		if let Some(map) = self.entries.as_mut()
 			&& map.remove(key).is_some()
@@ -78,7 +78,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 		store: &mut impl StateStore,
 		threshold: u64,
 		limit: usize,
-	) -> Result<Vec<(StateKey, E)>> {
+	) -> Result<Vec<(GroupStateKey, E)>> {
 		let map = self.hydrate(store)?;
 		Ok(map.range(due_start(threshold)..).take(limit).map(|(k, e)| (k.clone(), e.clone())).collect())
 	}
@@ -86,7 +86,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 	pub(crate) fn earliest(&mut self, store: &mut impl StateStore) -> Result<Option<u64>> {
 		let map = self.hydrate(store)?;
 		Ok(map.last_key_value().and_then(|(key, _)| {
-			let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
+			let (_, _, suffix) = OperatorGroupStateKey::decode_inner(key.as_bytes())?;
 			suffix.get(..8).map(|bytes| decode_u64(bytes.try_into().expect("eight expiry bytes")))
 		}))
 	}
@@ -97,13 +97,13 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 	}
 }
 
-fn entry_bytes<E>(key: &StateKey) -> u64 {
+fn entry_bytes<E>(key: &GroupStateKey) -> u64 {
 	(key.as_slice().len() + size_of::<E>()) as u64
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::key::operator_state::StateKey;
+	use reifydb_core::key::operator_group_state::GroupStateKey;
 	use reifydb_macro::operator_state;
 
 	use super::ExpiryIndex;
@@ -115,7 +115,7 @@ mod tests {
 		row: u64,
 	}
 
-	fn key(expiry: u64, group: u32) -> StateKey {
+	fn key(expiry: u64, group: u32) -> GroupStateKey {
 		expiry_key(expiry, &group, &[])
 	}
 

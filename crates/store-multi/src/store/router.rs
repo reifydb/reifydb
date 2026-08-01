@@ -9,8 +9,8 @@ use reifydb_core::interface::store::{EntryKind, classify_key, is_single_version_
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		interface::catalog::flow::FlowNodeId,
-		key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+		interface::catalog::flow::OperatorId,
+		key::{EncodableKey, operator_state::OperatorStateKey},
 	};
 
 	use super::*;
@@ -23,14 +23,14 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_classify_key_flow_node_state() {
-		let key = FlowNodeStateKey::new(FlowNodeId(42), vec![1, 2, 3]).encode();
-		assert!(matches!(classify_key(&key), EntryKind::Operator(FlowNodeId(42))));
+	fn test_classify_key_operator_state() {
+		let key = OperatorStateKey::new(OperatorId(42), vec![1, 2, 3]).encode();
+		assert!(matches!(classify_key(&key), EntryKind::Operator(OperatorId(42))));
 	}
 
 	#[test]
-	fn test_is_single_version_semantics_key_flow_node_state() {
-		let key = FlowNodeStateKey::new(FlowNodeId(1), vec![]).encode();
+	fn test_is_single_version_semantics_key_operator_state() {
+		let key = OperatorStateKey::new(OperatorId(1), vec![]).encode();
 		assert!(is_single_version_semantics_key(&key));
 	}
 

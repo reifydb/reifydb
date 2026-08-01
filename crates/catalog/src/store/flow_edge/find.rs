@@ -3,7 +3,7 @@
 
 use flow_edge::SHAPE;
 use reifydb_core::{
-	interface::catalog::flow::{FlowEdge, FlowEdgeId, FlowId, FlowNodeId},
+	interface::catalog::flow::{FlowEdge, FlowEdgeId, FlowId, OperatorId},
 	key::flow_edge::FlowEdgeKey,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -19,8 +19,8 @@ impl CatalogStore {
 		let row = multi.row;
 		let id = FlowEdgeId(SHAPE.get::<u64>(&row, flow_edge::ID));
 		let flow = FlowId(SHAPE.get::<u64>(&row, flow_edge::FLOW));
-		let source = FlowNodeId(SHAPE.get::<u64>(&row, flow_edge::SOURCE));
-		let target = FlowNodeId(SHAPE.get::<u64>(&row, flow_edge::TARGET));
+		let source = OperatorId(SHAPE.get::<u64>(&row, flow_edge::SOURCE));
+		let target = OperatorId(SHAPE.get::<u64>(&row, flow_edge::TARGET));
 
 		Ok(Some(FlowEdge {
 			id,
@@ -39,7 +39,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		test_utils::{create_flow_edge, create_flow_node, create_namespace, ensure_test_flow},
+		test_utils::{create_flow_edge, create_operator, create_namespace, ensure_test_flow},
 	};
 
 	#[test]
@@ -48,8 +48,8 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
+		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
 		let result = CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap();

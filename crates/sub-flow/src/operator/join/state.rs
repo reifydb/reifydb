@@ -6,7 +6,7 @@ use std::{collections::HashMap, ops::Bound, sync::Arc};
 use reifydb_codec::key::encoded::EncodedKeyRange;
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
+	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
 	metrics::heap::{StateCompleteness, StateMemory},
 	state::{
 		keyspace::{KeyspaceMembership, fold_hash128},
@@ -107,7 +107,7 @@ impl JoinMembership {
 		let mut right_rows: Vec<GroupId> = Vec::new();
 		for entry in state_range(node, txn, EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded)) {
 			let (key, _) = entry?;
-			let Some((group, keyspace, _)) = OperatorStateKey::decode_inner(key.as_ref()) else {
+			let Some((group, keyspace, _)) = OperatorGroupStateKey::decode_inner(key.as_ref()) else {
 				continue;
 			};
 			if keyspace == Keyspace::JOIN_LEFT {

@@ -10,12 +10,12 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
 	key::{
-		flow_node_state::FlowNodeStateKey,
-		operator_state::{GroupId, Keyspace, OperatorStateKey},
+		operator_state::OperatorStateKey,
+		operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
 	},
 };
 use reifydb_runtime::{
@@ -51,12 +51,12 @@ fn memory_store() -> StandardMultiStore {
 }
 
 fn coord_key(node: u64, suffix: &[u8]) -> EncodedKey {
-	let inner = OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::BUFFER, suffix);
-	FlowNodeStateKey::encoded(FlowNodeId(node), inner.as_slice())
+	let inner = OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::BUFFER, suffix);
+	OperatorStateKey::encoded(OperatorId(node), inner.as_slice())
 }
 
 fn node_range(node: u64) -> reifydb_codec::key::encoded::EncodedKeyRange {
-	FlowNodeStateKey::node_range(FlowNodeId(node))
+	OperatorStateKey::node_range(OperatorId(node))
 }
 
 fn row(bytes: &[u8]) -> EncodedRow {

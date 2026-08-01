@@ -17,7 +17,7 @@ use std::{collections::HashMap, hash::Hash};
 use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	key::operator_state::GroupId,
+	key::operator_group_state::GroupId,
 	metrics::heap::StatePool,
 	state::{budget::OperatorStateBudgetHandle, store::StateStore},
 };
@@ -127,7 +127,7 @@ impl WindowedBudget {
 mod tests {
 	use std::collections::BTreeMap;
 
-	use reifydb_core::key::operator_state::group_data_of_inner;
+	use reifydb_core::key::operator_group_state::group_data_of_inner;
 	use reifydb_value::{byte_size::ByteSize, value::Value};
 
 	use crate::{

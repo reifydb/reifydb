@@ -52,7 +52,7 @@ impl CatalogCache {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::flow::FlowNodeId;
+	use reifydb_core::interface::catalog::flow::OperatorId;
 
 	use super::*;
 
@@ -60,8 +60,8 @@ pub mod tests {
 		FlowEdge {
 			id: FlowEdgeId(id),
 			flow: FlowId(flow),
-			source: FlowNodeId(source),
-			target: FlowNodeId(target),
+			source: OperatorId(source),
+			target: OperatorId(target),
 		}
 	}
 

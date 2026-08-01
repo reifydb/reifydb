@@ -5,7 +5,7 @@ use std::{ops::Deref, sync::Arc};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId, key::operator_state::GroupSet, metrics::heap::OperatorSample,
+	interface::catalog::flow::FlowNodeId, key::operator_group_state::GroupSet, metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
 #[cfg(reifydb_target = "native")]

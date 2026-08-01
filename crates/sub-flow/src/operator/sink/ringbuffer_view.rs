@@ -26,7 +26,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
+		operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		ringbuffer::RingBufferMetadataKey,
 		row::RowKey,
@@ -207,7 +207,7 @@ impl SinkRingBufferViewOperator {
 		txn.remove(&key)
 	}
 
-	fn forward_key(&self, source_rn: RowNumber) -> StateKey {
+	fn forward_key(&self, source_rn: RowNumber) -> GroupStateKey {
 		OperatorStateKey::inner_encoded(
 			GroupId::NODE_SCOPE,
 			Keyspace::RINGBUFFER_FORWARD,
@@ -235,7 +235,7 @@ impl SinkRingBufferViewOperator {
 		self.state_remove(txn, &key)
 	}
 
-	fn row_entry_key(&self, partition: Option<Partition>, storage_rn: RowNumber) -> StateKey {
+	fn row_entry_key(&self, partition: Option<Partition>, storage_rn: RowNumber) -> GroupStateKey {
 		let mut suffix = Vec::with_capacity(24);
 		if let Some(partition) = partition {
 			suffix.extend_from_slice(&encode_u128_asc(partition.0));
@@ -244,14 +244,14 @@ impl SinkRingBufferViewOperator {
 		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_ENTRY, suffix)
 	}
 
-	fn expiry_key(&self, partition: Option<Partition>, expires_at: u64, storage_rn: RowNumber) -> StateKey {
+	fn expiry_key(&self, partition: Option<Partition>, expires_at: u64, storage_rn: RowNumber) -> GroupStateKey {
 		let mut suffix = partition_suffix(partition);
 		suffix.extend_from_slice(&encode_u64_asc(expires_at));
 		suffix.extend_from_slice(&encode_u64_asc(storage_rn.0));
 		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_EXPIRY, suffix)
 	}
 
-	fn arm_key(&self, partition: Option<Partition>) -> StateKey {
+	fn arm_key(&self, partition: Option<Partition>) -> GroupStateKey {
 		OperatorStateKey::inner_encoded(
 			GroupId::NODE_SCOPE,
 			Keyspace::RINGBUFFER_TTL_ARM,

@@ -20,7 +20,7 @@ use reifydb_value::{
 use rkyv::seal::Seal;
 
 use crate::{
-	key::operator_state::{GroupSet, IntoStateKey, StateKey, group_data_of_inner},
+	key::operator_group_state::{GroupSet, IntoGroupStateKey, GroupStateKey, group_data_of_inner},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		budget::OperatorStateBudgetHandle,
@@ -135,7 +135,7 @@ fn key_charge<K: HeapSize>(key: &K) -> u64 {
 impl<K, V> StateCache<K, V>
 where
 	K: Hash + Eq + Clone + HeapSize,
-	for<'a> &'a K: IntoStateKey,
+	for<'a> &'a K: IntoGroupStateKey,
 	V: Clone + OperatorState + HeapSize,
 {
 	pub fn new(pool: OperatorStateBudgetHandle) -> Self {
@@ -201,7 +201,7 @@ where
 		if self.membership.contains(membership_hash(key)) == Some(false) {
 			return Ok(false);
 		}
-		let encoded_key = key.into_state_key();
+		let encoded_key = key.into_group_state_key();
 		let loaded = store.state_get(&encoded_key)?;
 		Ok(loaded.is_some())
 	}
@@ -250,7 +250,7 @@ where
 			return Ok(None);
 		}
 
-		let encoded_key = key.into_state_key();
+		let encoded_key = key.into_group_state_key();
 		let loaded = store.state_get(&encoded_key)?;
 		match loaded {
 			Some(bytes) => {
@@ -399,7 +399,7 @@ where
 			return Ok(None);
 		}
 
-		let encoded_key = key.into_state_key();
+		let encoded_key = key.into_group_state_key();
 		let loaded = store.state_get(&encoded_key)?;
 		let Some(bytes) = loaded else {
 			self.record_store_miss();
@@ -446,7 +446,7 @@ where
 			return Ok(None);
 		}
 
-		let encoded_key = key.into_state_key();
+		let encoded_key = key.into_group_state_key();
 		let loaded = store.state_get(&encoded_key)?;
 		match loaded {
 			Some(bytes) => Ok(Some(decode_state::<V>(&bytes)?)),
@@ -478,15 +478,15 @@ where
 		}
 
 		let mut by_encoded: HashMap<Vec<u8>, K> = HashMap::with_capacity(to_load.len());
-		let mut encoded_keys: Vec<StateKey> = Vec::with_capacity(to_load.len());
+		let mut encoded_keys: Vec<GroupStateKey> = Vec::with_capacity(to_load.len());
 		for key in &to_load {
-			let encoded = key.into_state_key();
+			let encoded = key.into_group_state_key();
 			by_encoded.insert(encoded.as_slice().to_vec(), key.clone());
 			encoded_keys.push(encoded);
 		}
 
 		let mut loaded: Vec<(K, StateBytes)> = Vec::new();
-		let mut visit = |encoded: StateKey, bytes: StateBytes| -> Result<()> {
+		let mut visit = |encoded: GroupStateKey, bytes: StateBytes| -> Result<()> {
 			if let Some(key) = by_encoded.get(encoded.as_slice()) {
 				V::archived(&bytes)?;
 				loaded.push((key.clone(), bytes));
@@ -672,7 +672,7 @@ where
 			return self.insert_native_modified(store, key, V::default(), native_f, Presence::New);
 		}
 
-		let encoded_key = key.into_state_key();
+		let encoded_key = key.into_group_state_key();
 		let loaded = store.state_get(&encoded_key)?;
 		match loaded {
 			Some(mut bytes) => {
@@ -718,7 +718,7 @@ where
 			let Some(mut slot) = self.dirty.remove(key) else {
 				continue;
 			};
-			let encoded_key = key.into_state_key();
+			let encoded_key = key.into_group_state_key();
 			match Self::write_dirty_slot(store, &encoded_key, &mut slot, now) {
 				Ok(()) => {
 					self.release_flushed(key);
@@ -754,7 +754,7 @@ where
 
 	fn write_dirty_slot(
 		store: &mut impl StateStore,
-		encoded_key: &StateKey,
+		encoded_key: &GroupStateKey,
 		slot: &mut DirtyEntry<V>,
 		now: DateTime,
 	) -> Result<()> {
@@ -799,7 +799,7 @@ where
 		}
 
 		let selects = |key: &K| {
-			group_data_of_inner(key.into_state_key().as_slice()).is_some_and(|group| groups.contains(group))
+			group_data_of_inner(key.into_group_state_key().as_slice()).is_some_and(|group| groups.contains(group))
 		};
 		let clean: Vec<K> = self.clean.keys().filter(|key| selects(key)).cloned().collect();
 		let dirty: HashSet<K> =
@@ -899,7 +899,7 @@ where
 impl<K, V> StateCache<K, V>
 where
 	K: Hash + Eq + Clone + HeapSize,
-	for<'a> &'a K: IntoStateKey,
+	for<'a> &'a K: IntoGroupStateKey,
 	V: Clone + Default + OperatorState + HeapSize,
 {
 	pub fn get_or_default(&mut self, store: &mut impl StateStore, key: &K) -> Result<V> {
@@ -946,7 +946,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		error::diagnostic::flow::flow_error,
-		key::operator_state::{GroupId, IntoStateKey, Keyspace, OperatorStateKey, StateKey},
+		key::operator_group_state::{GroupId, IntoGroupStateKey, Keyspace, OperatorGroupStateKey, GroupStateKey},
 	};
 
 	/// A bare `String` would read as some other group's prefix; this frames the tests' string keys
@@ -966,9 +966,9 @@ mod tests {
 		}
 	}
 
-	impl IntoStateKey for &Key {
-		fn into_state_key(self) -> StateKey {
-			StateKey::node_scoped(Keyspace::FIRST_CUSTOM, self.0.as_bytes())
+	impl IntoGroupStateKey for &Key {
+		fn into_group_state_key(self) -> GroupStateKey {
+			GroupStateKey::node_scoped(Keyspace::FIRST_CUSTOM, self.0.as_bytes())
 		}
 	}
 
@@ -1039,14 +1039,14 @@ mod tests {
 			Ok(self.groups.get(group.as_bytes()).copied())
 		}
 
-		fn state_get(&mut self, key: &StateKey) -> Result<Option<StateBytes>> {
+		fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<StateBytes>> {
 			self.gets += 1;
 			Ok(self.data.get(key.as_slice()).cloned())
 		}
 		fn state_get_many_visit(
 			&mut self,
-			keys: &[StateKey],
-			visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
+			keys: &[GroupStateKey],
+			visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			for key in keys {
 				if let Some(b) = self.data.get(key.as_slice()) {
@@ -1055,7 +1055,7 @@ mod tests {
 			}
 			Ok(())
 		}
-		fn state_set(&mut self, key: &StateKey, payload: StateBytes) -> Result<()> {
+		fn state_set(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()> {
 			self.sets += 1;
 			self.set_attempts.push(key.as_slice().to_vec());
 			if self.fail_state_set_at == Some(self.sets) {
@@ -1064,7 +1064,7 @@ mod tests {
 			self.data.insert(key.as_slice().to_vec(), payload);
 			Ok(())
 		}
-		fn state_remove(&mut self, key: &StateKey) -> Result<()> {
+		fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
 			self.removes += 1;
 			self.data.remove(key.as_slice());
 			Ok(())
@@ -1073,7 +1073,7 @@ mod tests {
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
+			visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
@@ -1096,7 +1096,7 @@ mod tests {
 				matched.truncate(limit);
 			}
 			for (k, b) in matched {
-				let Some(k) = StateKey::from_framed(EncodedKey::new(k)) else {
+				let Some(k) = GroupStateKey::from_framed(EncodedKey::new(k)) else {
 					continue;
 				};
 				visit(k, b)?;
@@ -2116,7 +2116,7 @@ mod tests {
 		move |encoded| {
 			candidates
 				.iter()
-				.find(|c| Key::new(c.to_string()).into_state_key().as_slice() == encoded.as_slice())
+				.find(|c| Key::new(c.to_string()).into_group_state_key().as_slice() == encoded.as_slice())
 				.map(|c| Key::new(c.to_string()))
 		}
 	}
@@ -2360,9 +2360,9 @@ mod tests {
 		}
 	}
 
-	impl IntoStateKey for &CollidingKey {
-		fn into_state_key(self) -> StateKey {
-			StateKey::node_scoped(Keyspace::FIRST_CUSTOM, self.id.as_bytes())
+	impl IntoGroupStateKey for &CollidingKey {
+		fn into_group_state_key(self) -> GroupStateKey {
+			GroupStateKey::node_scoped(Keyspace::FIRST_CUSTOM, self.id.as_bytes())
 		}
 	}
 
@@ -2386,7 +2386,7 @@ mod tests {
 		let mut cache: StateCache<CollidingKey, Cell> = StateCache::new(big_pool());
 		let candidates = [key1.clone(), key2.clone()];
 		cache.hydrate(&mut store, full_range(), move |encoded| {
-			candidates.iter().find(|c| (*c).into_state_key().as_slice() == encoded.as_bytes()).cloned()
+			candidates.iter().find(|c| (*c).into_group_state_key().as_slice() == encoded.as_bytes()).cloned()
 		})
 		.unwrap();
 		cache.pool.set_budget(ByteSize::from_bytes(1));
@@ -2425,9 +2425,9 @@ mod tests {
 		}
 	}
 
-	impl IntoStateKey for &GroupKey {
-		fn into_state_key(self) -> StateKey {
-			OperatorStateKey::inner_encoded(self.0, self.1, vec![self.2])
+	impl IntoGroupStateKey for &GroupKey {
+		fn into_group_state_key(self) -> GroupStateKey {
+			OperatorGroupStateKey::inner_encoded(self.0, self.1, vec![self.2])
 		}
 	}
 
@@ -2489,7 +2489,7 @@ mod tests {
 		cache.hydrate(&mut store, full_range(), |encoded| {
 			[acc(G1, 1), acc(G1, 2), acc(G2, 1), acc(G2, 2), GroupKey(G1, Keyspace::ROW_NUMBER_MAPPING, 1)]
 				.into_iter()
-				.find(|candidate| (&candidate).into_state_key().as_slice() == encoded.as_bytes())
+				.find(|candidate| (&candidate).into_group_state_key().as_slice() == encoded.as_bytes())
 		})
 		.unwrap();
 		assert!(cache.completeness().values_complete, "precondition: hydration establishes completeness");

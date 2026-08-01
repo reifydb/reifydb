@@ -7,7 +7,7 @@ use reifydb_abi::{data::column::ColumnTypeCode, flow::diff::DiffType, operator::
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -44,7 +44,7 @@ impl OperatorMetadata for PassthroughOperator {
 }
 
 impl FFIOperator for PassthroughOperator {
-	fn new(_id: FlowNodeId, _config: &Config) -> Result<Self> {
+	fn new(_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
@@ -166,10 +166,10 @@ pub fn round_trip_column(name: &str, input: ColumnBuffer) -> ColumnBuffer {
 
 	let mut diffs: Diffs = Diffs::new();
 	diffs.push(Diff::insert(columns));
-	let change = Change::from_flow(FlowNodeId(1), CommitVersion(1), diffs, now);
+	let change = Change::from_flow(OperatorId(1), CommitVersion(1), diffs, now);
 
 	let mut harness = FFIOperatorHarnessBuilder::<PassthroughOperator>::new()
-		.with_node_id(FlowNodeId(1))
+		.with_node_id(OperatorId(1))
 		.build()
 		.expect("build harness");
 	let output = harness.apply(change).expect("apply");

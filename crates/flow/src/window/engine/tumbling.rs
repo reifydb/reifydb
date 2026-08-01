@@ -16,7 +16,7 @@ use reifydb_codec::{
 	state::OperatorState,
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupSet},
+	key::operator_group_state::{GroupId, GroupSet},
 	metrics::heap::{StateCompleteness, StateMemory},
 	state::{cache::StateCache, store::StateStore},
 };
@@ -390,7 +390,7 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
-		key::operator_state::GroupId,
+		key::operator_group_state::GroupId,
 		metrics::heap::HeapSize,
 		state::{budget::OperatorStateBudgetHandle, cache::StateView},
 	};

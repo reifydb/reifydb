@@ -5,7 +5,7 @@ use reifydb_codec::{
 	key::{encoded::EncodedKey, serializer::KeySerializer},
 	state::OperatorState,
 };
-use reifydb_core::key::operator_state::{Keyspace, OperatorStateKey, StateKey};
+use reifydb_core::key::operator_group_state::{Keyspace, OperatorGroupStateKey, GroupStateKey};
 use reifydb_value::value::{Value, value_type::ValueType};
 
 use super::RawStatefulOperator;
@@ -19,13 +19,13 @@ pub trait KeyedStateful: RawStatefulOperator {
 
 	fn key_types(&self) -> &[ValueType];
 
-	fn encode_state_key(&self, ctx: &mut impl OperatorContext, key_values: &[Value]) -> Result<StateKey> {
+	fn encode_state_key(&self, ctx: &mut impl OperatorContext, key_values: &[Value]) -> Result<GroupStateKey> {
 		let mut serializer = KeySerializer::new();
 		for value in key_values.iter() {
 			serializer.extend_value(value);
 		}
 		let group = ctx.intern_group(&EncodedKey::new(serializer.finish().as_ref()))?;
-		Ok(OperatorStateKey::inner_encoded(group, Keyspace::FIRST_CUSTOM, []))
+		Ok(OperatorGroupStateKey::inner_encoded(group, Keyspace::FIRST_CUSTOM, []))
 	}
 
 	fn load_state(&self, ctx: &mut impl OperatorContext, key_values: &[Value]) -> Result<Option<Self::State>> {

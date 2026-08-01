@@ -861,7 +861,7 @@ mod integration {
 					overlay.promote(commit_version, pending);
 
 					// The restart window asserted directly rather than by inference, and
-					// it reaches FlowNodeState as well as Row.
+					// it reaches OperatorState as well as Row.
 					let mut empty_overlay = FlowTransaction::deferred_from_parts(DeferredParams {
 						version: advance_to,
 						pending: Pending::new(),
@@ -905,7 +905,7 @@ mod integration {
 		// Without both classes present the routing assertion below would pass vacuously; an
 		// aggregate is used because it writes operator state as well as view rows.
 		assert!(
-			committed_kinds.contains(&Some(KeyKind::FlowNodeState)),
+			committed_kinds.contains(&Some(KeyKind::OperatorState)),
 			"expected the aggregate to commit operator state, saw only {committed_kinds:?}"
 		);
 		assert!(

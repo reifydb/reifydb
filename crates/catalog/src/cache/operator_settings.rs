@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowNodeId, row::OperatorSettings};
+use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId, row::OperatorSettings};
 
 use crate::cache::{CatalogCache, MultiVersionOperatorSettings};
 
 impl CatalogCache {
 	pub fn find_operator_settings_at(
 		&self,
-		operator: FlowNodeId,
+		operator: OperatorId,
 		version: CommitVersion,
 	) -> Option<OperatorSettings> {
 		self.operator_settings.get(&operator).and_then(|entry| {
@@ -17,7 +17,7 @@ impl CatalogCache {
 		})
 	}
 
-	pub fn find_operator_settings(&self, operator: FlowNodeId) -> Option<OperatorSettings> {
+	pub fn find_operator_settings(&self, operator: OperatorId) -> Option<OperatorSettings> {
 		self.operator_settings.get(&operator).and_then(|entry| {
 			let multi = entry.value();
 			multi.get_latest()
@@ -26,7 +26,7 @@ impl CatalogCache {
 
 	pub fn set_operator_settings(
 		&self,
-		operator: FlowNodeId,
+		operator: OperatorId,
 		version: CommitVersion,
 		settings: Option<OperatorSettings>,
 	) {
@@ -60,7 +60,7 @@ pub mod tests {
 	#[test]
 	fn test_set_and_find_operator_settings() {
 		let catalog = CatalogCache::new();
-		let operator = FlowNodeId(1);
+		let operator = OperatorId(1);
 		let config = settings(Duration::from_minutes(5).unwrap());
 
 		catalog.set_operator_settings(operator, CommitVersion(1), Some(config.clone()));
@@ -73,7 +73,7 @@ pub mod tests {
 	#[test]
 	fn test_operator_settings_versioning_and_deletion() {
 		let catalog = CatalogCache::new();
-		let operator = FlowNodeId(42);
+		let operator = OperatorId(42);
 
 		let v1 = settings(Duration::from_minutes(5).unwrap());
 		let v2 = settings(Duration::from_minutes(10).unwrap());
@@ -94,7 +94,7 @@ pub mod tests {
 		// A version-pinned read then returns none and the operator's tick-eviction never runs,
 		// leaking per-row maps, so registration must use the latest read.
 		let catalog = CatalogCache::new();
-		let operator = FlowNodeId(7);
+		let operator = OperatorId(7);
 		let cfg = settings(Duration::from_seconds(10).unwrap());
 
 		catalog.set_operator_settings(operator, CommitVersion(5), Some(cfg.clone()));

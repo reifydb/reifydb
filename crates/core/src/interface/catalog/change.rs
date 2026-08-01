@@ -10,7 +10,7 @@ use crate::{
 		column_snapshot::ColumnSnapshot,
 		config::Config,
 		dictionary::Dictionary,
-		flow::{Flow, FlowEdge, FlowNode, FlowNodeId},
+		flow::{Flow, FlowEdge, Operator, OperatorId},
 		handler::Handler,
 		identity::{GrantedRole, Identity, IdentityAttribute, IdentityAttributeValue, Role},
 		key::PrimaryKey,
@@ -67,10 +67,10 @@ pub trait CatalogTrackPrimaryKeyChangeOperations {
 	fn track_primary_key_deleted(&mut self, object: ObjectId, primary_key: PrimaryKey) -> Result<()>;
 }
 
-pub trait CatalogTrackFlowNodeChangeOperations {
-	fn track_flow_node_created(&mut self, node: FlowNode) -> Result<()>;
+pub trait CatalogTrackOperatorChangeOperations {
+	fn track_operator_created(&mut self, operator: Operator) -> Result<()>;
 
-	fn track_flow_node_deleted(&mut self, node: FlowNode) -> Result<()>;
+	fn track_operator_deleted(&mut self, operator: Operator) -> Result<()>;
 }
 
 pub trait CatalogTrackFlowEdgeChangeOperations {
@@ -241,16 +241,16 @@ pub trait CatalogTrackRowSettingsChangeOperations {
 }
 
 pub trait CatalogTrackOperatorSettingsChangeOperations {
-	fn track_operator_settings_created(&mut self, operator: FlowNodeId, settings: OperatorSettings) -> Result<()>;
+	fn track_operator_settings_created(&mut self, operator: OperatorId, settings: OperatorSettings) -> Result<()>;
 
 	fn track_operator_settings_updated(
 		&mut self,
-		operator: FlowNodeId,
+		operator: OperatorId,
 		pre: OperatorSettings,
 		post: OperatorSettings,
 	) -> Result<()>;
 
-	fn track_operator_settings_deleted(&mut self, operator: FlowNodeId, settings: OperatorSettings) -> Result<()>;
+	fn track_operator_settings_deleted(&mut self, operator: OperatorId, settings: OperatorSettings) -> Result<()>;
 }
 
 pub trait CatalogTrackChangeOperations:
@@ -259,7 +259,7 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackDictionaryChangeOperations
 	+ CatalogTrackFlowChangeOperations
 	+ CatalogTrackPrimaryKeyChangeOperations
-	+ CatalogTrackFlowNodeChangeOperations
+	+ CatalogTrackOperatorChangeOperations
 	+ CatalogTrackFlowEdgeChangeOperations
 	+ CatalogTrackHandlerChangeOperations
 	+ CatalogTrackMigrationChangeOperations

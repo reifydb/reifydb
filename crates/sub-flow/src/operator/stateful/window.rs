@@ -4,7 +4,7 @@ use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
-use reifydb_core::key::{EncodableKey, flow_node_state::FlowNodeStateKey, operator_state::StateKey};
+use reifydb_core::key::{EncodableKey, operator_state::OperatorStateKey, operator_group_state::GroupStateKey};
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
@@ -20,16 +20,16 @@ pub trait WindowStateful: RawStatefulOperator {
 		layout.allocate()
 	}
 
-	fn load_state(&self, txn: &mut FlowTransaction, window_key: &StateKey) -> Result<EncodedRow> {
+	fn load_state(&self, txn: &mut FlowTransaction, window_key: &GroupStateKey) -> Result<EncodedRow> {
 		utils::load_or_create_row(self.id(), txn, window_key, &self.layout())
 	}
 
-	fn save_state(&self, txn: &mut FlowTransaction, window_key: &StateKey, row: EncodedRow) -> Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, window_key: &GroupStateKey, row: EncodedRow) -> Result<()> {
 		utils::save_row(self.id(), txn, window_key, row)
 	}
 
 	fn scan_keys_in_range(&self, txn: &mut FlowTransaction, range: &EncodedKeyRange) -> Result<Vec<EncodedKey>> {
-		let prefixed_range = range.clone().with_prefix(FlowNodeStateKey::new(self.id(), vec![]).encode());
+		let prefixed_range = range.clone().with_prefix(OperatorStateKey::new(self.id(), vec![]).encode());
 		let stream = txn.range(prefixed_range, RangeScope::All, 1024);
 		let mut keys = Vec::new();
 		for result in stream {
@@ -40,7 +40,7 @@ pub trait WindowStateful: RawStatefulOperator {
 	}
 
 	fn expire_range(&self, txn: &mut FlowTransaction, range: EncodedKeyRange) -> Result<u32> {
-		let prefixed_range = range.with_prefix(FlowNodeStateKey::new(self.id(), vec![]).encode());
+		let prefixed_range = range.with_prefix(OperatorStateKey::new(self.id(), vec![]).encode());
 
 		let keys_to_remove = {
 			let stream = txn.range(prefixed_range, RangeScope::All, 1024);
@@ -67,19 +67,19 @@ pub mod tests {
 	use std::ops::Bound::{Excluded, Unbounded};
 
 	use reifydb_codec::key::serializer::KeySerializer;
-	use reifydb_core::{interface::catalog::flow::FlowNodeId, key::operator_state::Keyspace};
+	use reifydb_core::{interface::catalog::flow::FlowNodeId, key::operator_group_state::Keyspace};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::*;
 
-	fn test_window_key(window_id: u64) -> StateKey {
+	fn test_window_key(window_id: u64) -> GroupStateKey {
 		// Inverted encoding: a smaller window id produces a larger key.
 		let mut serializer = KeySerializer::with_capacity(16);
 		serializer.extend_bytes(b"w:");
 		serializer.extend_u64(window_id);
-		StateKey::node_scoped(Keyspace::FIRST_CUSTOM, serializer.finish().as_ref().to_vec())
+		GroupStateKey::node_scoped(Keyspace::FIRST_CUSTOM, serializer.finish().as_ref().to_vec())
 	}
 
 	impl WindowStateful for TestOperator {

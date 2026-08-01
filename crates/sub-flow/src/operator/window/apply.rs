@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use reifydb_core::{
 	interface::change::{Change, Diff},
-	key::operator_state::{GroupId, IntoStateKey},
+	key::operator_group_state::{GroupId, IntoGroupStateKey},
 	state::store::StateStore,
 	value::column::columns::Columns,
 };
@@ -835,7 +835,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 		});
 		let mut store = OperatorStateStore::new(txn, node);
 		for (hash, session_id, group) in &closing {
-			let accumulator_key = WindowStateKey::new(*group, utils::empty_key()).into_state_key();
+			let accumulator_key = WindowStateKey::new(*group, utils::empty_key()).into_group_state_key();
 			let meta = operator.core.engine_meta().get(&mut store, &EngineMetaKey(*group))?;
 			let prior_last = meta.as_ref().map(|m| m.last_event_time).unwrap_or(0);
 			if prior_last > 0 {

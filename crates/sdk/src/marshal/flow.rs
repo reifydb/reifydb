@@ -14,7 +14,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::{
-			flow::FlowNodeId,
+			flow::OperatorId,
 			id::{QueueId, RingBufferId, SeriesId, TableId, ViewId},
 			object::ObjectId,
 			vtable::VTableId,
@@ -155,7 +155,7 @@ impl Arena {
 
 	fn unmarshal_origin(ffi: &OriginFFI) -> Result<ChangeOrigin, String> {
 		match ffi.origin {
-			0 => Ok(ChangeOrigin::Flow(FlowNodeId(ffi.id))),
+			0 => Ok(ChangeOrigin::Flow(OperatorId(ffi.id))),
 			1 => Ok(ChangeOrigin::Object(ObjectId::Table(TableId(ffi.id)))),
 			2 => Ok(ChangeOrigin::Object(ObjectId::View(ViewId(ffi.id)))),
 			3 => Ok(ChangeOrigin::Object(ObjectId::TableVirtual(VTableId(ffi.id)))),

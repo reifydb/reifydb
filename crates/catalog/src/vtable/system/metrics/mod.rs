@@ -22,7 +22,7 @@ pub enum MetricsObject {
 	Dictionary,
 	Series,
 	Flow,
-	FlowNode,
+	Operator,
 	System,
 }
 
@@ -80,8 +80,8 @@ impl MetricsObject {
 					namespace_id,
 				}))
 			}
-			(MetricsObject::Flow, MetricsId::FlowNode(flow_node_id)) => {
-				let Some(node) = CatalogStore::find_flow_node(txn, flow_node_id)? else {
+			(MetricsObject::Flow, MetricsId::Operator(operator_id)) => {
+				let Some(node) = CatalogStore::find_operator(txn, operator_id)? else {
 					return Ok(None);
 				};
 				let flow_id = node.flow;
@@ -91,14 +91,14 @@ impl MetricsObject {
 					namespace_id,
 				}))
 			}
-			(MetricsObject::FlowNode, MetricsId::FlowNode(flow_node_id)) => {
-				let Some(node) = CatalogStore::find_flow_node(txn, flow_node_id)? else {
+			(MetricsObject::Operator, MetricsId::Operator(operator_id)) => {
+				let Some(node) = CatalogStore::find_operator(txn, operator_id)? else {
 					return Ok(None);
 				};
 				let namespace_id =
 					CatalogStore::find_flow(txn, node.flow)?.map_or(0, |f| f.namespace.0);
 				Ok(Some(StatsRow {
-					id: flow_node_id.0,
+					id: operator_id.0,
 					namespace_id,
 				}))
 			}

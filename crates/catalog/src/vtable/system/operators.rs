@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::catalog::vtable::VTable,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -11,25 +10,24 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 
-use super::operator_store::OperatorStore;
 use crate::{
-	Result,
+	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{BaseVTable, Batch, VTableContext},
+	vtable::{BaseVTable, Batch, VTableContext, system::node_retention_store::NodeRetentionStore},
 };
 
 pub struct SystemOperators {
 	pub(crate) vtable: Arc<VTable>,
+	retention: NodeRetentionStore,
 	exhausted: bool,
-	operator_store: OperatorStore,
 }
 
 impl SystemOperators {
-	pub fn new(operator_store: OperatorStore) -> Self {
+	pub fn new(retention: NodeRetentionStore) -> Self {
 		Self {
 			vtable: SystemCatalog::get_system_operators_table().clone(),
+			retention,
 			exhausted: false,
-			operator_store,
 		}
 	}
 }
@@ -40,41 +38,59 @@ impl BaseVTable for SystemOperators {
 		Ok(())
 	}
 
-	fn next(&mut self, _txn: &mut Transaction<'_>) -> Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut Transaction<'_>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
 
-		let infos = self.operator_store.list();
+		let nodes = CatalogStore::list_operators_all(txn)?;
 
-		let capacity = infos.len();
-		let mut operators = ColumnBuffer::utf8_with_capacity(capacity);
-		let mut library_paths = ColumnBuffer::utf8_with_capacity(capacity);
-		let mut apis = ColumnBuffer::uint4_with_capacity(capacity);
-		let mut cap_inserts = ColumnBuffer::bool_with_capacity(capacity);
-		let mut cap_updates = ColumnBuffer::bool_with_capacity(capacity);
-		let mut cap_deletes = ColumnBuffer::bool_with_capacity(capacity);
-		let mut cap_reclaims = ColumnBuffer::bool_with_capacity(capacity);
+		let mut ids = ColumnBuffer::uint8_with_capacity(nodes.len());
+		let mut flow_ids = ColumnBuffer::uint8_with_capacity(nodes.len());
+		let mut node_types = ColumnBuffer::uint1_with_capacity(nodes.len());
+		let mut data_column = ColumnBuffer::blob_with_capacity(nodes.len());
+		let mut stateful = ColumnBuffer::bool_with_capacity(nodes.len());
+		let mut retains_forever = ColumnBuffer::bool_with_capacity(nodes.len());
+		let mut scales = ColumnBuffer::duration_with_capacity(nodes.len());
+		let mut frontiers = ColumnBuffer::datetime_with_capacity(nodes.len());
 
-		for info in infos {
-			operators.push(info.operator.as_str());
-			library_paths.push(info.library_path.to_str().unwrap_or("<invalid path>"));
-			apis.push(info.api);
+		for node in nodes {
+			ids.push(node.id.0);
+			flow_ids.push(node.flow.0);
+			node_types.push(node.node_type);
+			data_column.push(node.data);
 
-			cap_inserts.push(info.capabilities & OperatorCapability::Insert.bit() != 0);
-			cap_updates.push(info.capabilities & OperatorCapability::Update.bit() != 0);
-			cap_deletes.push(info.capabilities & OperatorCapability::Delete.bit() != 0);
-			cap_reclaims.push(info.capabilities & OperatorCapability::Reclaim.bit() != 0);
+			match self.retention.get(node.id) {
+				None => {
+					stateful.push_none();
+					retains_forever.push_none();
+					scales.push_none();
+					frontiers.push_none();
+				}
+				Some(info) => {
+					stateful.push(info.stateful);
+					retains_forever.push(info.scale.is_none());
+					match info.scale {
+						None => scales.push_none(),
+						Some(scale) => scales.push(scale),
+					}
+					match info.frontier {
+						None => frontiers.push_none(),
+						Some(frontier) => frontiers.push(frontier),
+					}
+				}
+			}
 		}
 
 		let columns = vec![
-			ColumnWithName::new(Fragment::internal("operator"), operators),
-			ColumnWithName::new(Fragment::internal("library_path"), library_paths),
-			ColumnWithName::new(Fragment::internal("api"), apis),
-			ColumnWithName::new(Fragment::internal("cap_insert"), cap_inserts),
-			ColumnWithName::new(Fragment::internal("cap_update"), cap_updates),
-			ColumnWithName::new(Fragment::internal("cap_delete"), cap_deletes),
-			ColumnWithName::new(Fragment::internal("cap_reclaim"), cap_reclaims),
+			ColumnWithName::new(Fragment::internal("id"), ids),
+			ColumnWithName::new(Fragment::internal("flow_id"), flow_ids),
+			ColumnWithName::new(Fragment::internal("node_type"), node_types),
+			ColumnWithName::new(Fragment::internal("data"), data_column),
+			ColumnWithName::new(Fragment::internal("stateful"), stateful),
+			ColumnWithName::new(Fragment::internal("retains_forever"), retains_forever),
+			ColumnWithName::new(Fragment::internal("retention_scale"), scales),
+			ColumnWithName::new(Fragment::internal("frontier"), frontiers),
 		];
 
 		self.exhausted = true;

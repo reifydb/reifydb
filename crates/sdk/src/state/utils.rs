@@ -2,14 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::key::operator_state::StateKey;
+use reifydb_core::key::operator_group_state::GroupStateKey;
 
 pub fn empty_key() -> EncodedKey {
 	EncodedKey::new(Vec::new())
 }
 
-pub fn empty_state_key() -> StateKey {
-	StateKey::from_framed(empty_key()).expect("the empty key is framing-valid")
+pub fn empty_state_key() -> GroupStateKey {
+	GroupStateKey::from_framed(empty_key()).expect("the empty key is framing-valid")
 }
 
 #[cfg(test)]

@@ -26,8 +26,6 @@ pub mod enums;
 pub mod event_variants;
 pub mod events;
 pub mod flow_edges;
-pub mod flow_node_types;
-pub mod flow_nodes;
 pub mod flow_watermarks;
 pub mod flows;
 pub mod granted_roles;
@@ -39,8 +37,10 @@ pub mod metrics_cdc;
 pub mod metrics_storage;
 pub mod migrations;
 pub mod namespaces;
-pub mod operator_inputs;
-pub mod operator_outputs;
+pub mod operator_library_inputs;
+pub mod operator_library_outputs;
+pub mod operator_libraries;
+pub mod operator_types;
 pub mod operators;
 pub mod policies;
 pub mod policy_operations;
@@ -77,8 +77,6 @@ use enums::enums;
 use event_variants::event_variants;
 use events::events;
 use flow_edges::flow_edges;
-use flow_node_types::flow_node_types;
-use flow_nodes::flow_nodes;
 use flow_watermarks::flow_watermarks;
 use flows::flows;
 use granted_roles::granted_roles;
@@ -90,8 +88,10 @@ use metrics_cdc::metrics_cdc_vtable;
 use metrics_storage::metrics_storage_vtable;
 use migrations::migrations;
 use namespaces::namespaces;
-use operator_inputs::operator_inputs;
-use operator_outputs::operator_outputs;
+use operator_library_inputs::operator_library_inputs;
+use operator_library_outputs::operator_library_outputs;
+use operator_libraries::operator_libraries;
+use operator_types::operator_types;
 use operators::operators;
 use policies::policies;
 use policy_operations::policy_operations;
@@ -225,7 +225,7 @@ pub mod ids {
 			pub const ALL: [ColumnId; 6] = [ID, NAMESPACE_ID, NAME, STATUS, TIME, TS];
 		}
 
-		pub mod flow_nodes {
+		pub mod operators {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
@@ -608,7 +608,7 @@ pub mod ids {
 			pub const ALL: [ColumnId; 5] = [KEY, VALUE, DEFAULT_VALUE, DESCRIPTION, REQUIRES_RESTART];
 		}
 
-		pub mod operators {
+		pub mod operator_libraries {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const OPERATOR: ColumnId = ColumnId(1);
@@ -623,7 +623,7 @@ pub mod ids {
 				[OPERATOR, LIBRARY_PATH, API, CAP_INSERT, CAP_UPDATE, CAP_DELETE, CAP_RECLAIM];
 		}
 
-		pub mod operator_inputs {
+		pub mod operator_library_inputs {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const OPERATOR: ColumnId = ColumnId(1);
@@ -635,7 +635,7 @@ pub mod ids {
 			pub const ALL: [ColumnId; 5] = [OPERATOR, POSITION, NAME, TYPE, DESCRIPTION];
 		}
 
-		pub mod operator_outputs {
+		pub mod operator_library_outputs {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const OPERATOR: ColumnId = ColumnId(1);
@@ -829,7 +829,7 @@ pub mod ids {
 		pub const COLUMN: SequenceId = SequenceId(3);
 		pub const COLUMN_PROPERTY: SequenceId = SequenceId(4);
 		pub const FLOW: SequenceId = SequenceId(5);
-		pub const FLOW_NODE: SequenceId = SequenceId(6);
+		pub const OPERATOR: SequenceId = SequenceId(6);
 		pub const FLOW_EDGE: SequenceId = SequenceId(7);
 		pub const PRIMARY_KEY: SequenceId = SequenceId(8);
 		pub const PROCEDURE: SequenceId = SequenceId(9);
@@ -854,7 +854,7 @@ pub mod ids {
 			(COLUMN, "column"),
 			(COLUMN_PROPERTY, "column_property"),
 			(FLOW, "flow"),
-			(FLOW_NODE, "flow_node"),
+			(OPERATOR, "operator"),
 			(FLOW_EDGE, "flow_edge"),
 			(PRIMARY_KEY, "primary_key"),
 			(PROCEDURE, "procedure"),
@@ -889,15 +889,15 @@ pub mod ids {
 		pub const PRIMARY_KEY_COLUMNS: VTableId = VTableId(8);
 		pub const VERSIONS: VTableId = VTableId(9);
 		pub const CDC_CONSUMERS: VTableId = VTableId(10);
-		pub const OPERATORS: VTableId = VTableId(12);
-		pub const FLOW_NODES: VTableId = VTableId(13);
+		pub const OPERATOR_LIBRARIES: VTableId = VTableId(12);
+		pub const OPERATORS: VTableId = VTableId(13);
 		pub const FLOW_EDGES: VTableId = VTableId(14);
 		pub const DICTIONARIES: VTableId = VTableId(15);
 		pub const VIRTUAL_TABLES: VTableId = VTableId(16);
 		pub const TYPES: VTableId = VTableId(17);
-		pub const FLOW_NODE_TYPES: VTableId = VTableId(18);
-		pub const OPERATOR_INPUTS: VTableId = VTableId(19);
-		pub const OPERATOR_OUTPUTS: VTableId = VTableId(20);
+		pub const OPERATOR_TYPES: VTableId = VTableId(18);
+		pub const OPERATOR_LIBRARY_INPUTS: VTableId = VTableId(19);
+		pub const OPERATOR_LIBRARY_OUTPUTS: VTableId = VTableId(20);
 		pub const RINGBUFFERS: VTableId = VTableId(21);
 		pub const FLOW_WATERMARKS: VTableId = VTableId(29);
 		pub const SHAPES: VTableId = VTableId(30);
@@ -942,7 +942,7 @@ pub mod ids {
 		pub const METRICS_STORAGE_DICTIONARY: VTableId = VTableId(1028);
 		pub const METRICS_STORAGE_SERIES: VTableId = VTableId(1029);
 		pub const METRICS_STORAGE_FLOW: VTableId = VTableId(1030);
-		pub const METRICS_STORAGE_FLOW_NODE: VTableId = VTableId(1031);
+		pub const METRICS_STORAGE_OPERATOR: VTableId = VTableId(1031);
 		pub const METRICS_STORAGE_SYSTEM: VTableId = VTableId(1032);
 
 		pub const METRICS_CDC_TABLE: VTableId = VTableId(1033);
@@ -952,7 +952,7 @@ pub mod ids {
 		pub const METRICS_CDC_DICTIONARY: VTableId = VTableId(1037);
 		pub const METRICS_CDC_SERIES: VTableId = VTableId(1038);
 		pub const METRICS_CDC_FLOW: VTableId = VTableId(1039);
-		pub const METRICS_CDC_FLOW_NODE: VTableId = VTableId(1040);
+		pub const METRICS_CDC_OPERATOR: VTableId = VTableId(1040);
 		pub const METRICS_CDC_SYSTEM: VTableId = VTableId(1041);
 
 		pub const ALL: [VTableId; 72] = [
@@ -968,15 +968,15 @@ pub mod ids {
 			PRIMARY_KEY_COLUMNS,
 			VERSIONS,
 			CDC_CONSUMERS,
+			OPERATOR_LIBRARIES,
 			OPERATORS,
-			FLOW_NODES,
 			FLOW_EDGES,
 			DICTIONARIES,
 			VIRTUAL_TABLES,
 			TYPES,
-			FLOW_NODE_TYPES,
-			OPERATOR_INPUTS,
-			OPERATOR_OUTPUTS,
+			OPERATOR_TYPES,
+			OPERATOR_LIBRARY_INPUTS,
+			OPERATOR_LIBRARY_OUTPUTS,
 			RINGBUFFERS,
 			QUEUES,
 			FLOW_WATERMARKS,
@@ -1017,7 +1017,7 @@ pub mod ids {
 			METRICS_STORAGE_DICTIONARY,
 			METRICS_STORAGE_SERIES,
 			METRICS_STORAGE_FLOW,
-			METRICS_STORAGE_FLOW_NODE,
+			METRICS_STORAGE_OPERATOR,
 			METRICS_STORAGE_SYSTEM,
 			METRICS_CDC_TABLE,
 			METRICS_CDC_VIEW,
@@ -1026,7 +1026,7 @@ pub mod ids {
 			METRICS_CDC_DICTIONARY,
 			METRICS_CDC_SERIES,
 			METRICS_CDC_FLOW,
-			METRICS_CDC_FLOW_NODE,
+			METRICS_CDC_OPERATOR,
 			METRICS_CDC_SYSTEM,
 		];
 	}
@@ -1107,12 +1107,12 @@ impl SystemCatalog {
 		cdc_consumers()
 	}
 
-	pub fn get_system_operators_table() -> Arc<VTable> {
-		operators()
+	pub fn get_system_operator_libraries_table() -> Arc<VTable> {
+		operator_libraries()
 	}
 
-	pub fn get_system_flow_nodes_table() -> Arc<VTable> {
-		flow_nodes()
+	pub fn get_system_operators_table() -> Arc<VTable> {
+		operators()
 	}
 
 	pub fn get_system_flow_edges_table() -> Arc<VTable> {
@@ -1131,16 +1131,16 @@ impl SystemCatalog {
 		types()
 	}
 
-	pub fn get_system_flow_node_types_table() -> Arc<VTable> {
-		flow_node_types()
+	pub fn get_system_operator_types_table() -> Arc<VTable> {
+		operator_types()
 	}
 
-	pub fn get_system_operator_inputs_table() -> Arc<VTable> {
-		operator_inputs()
+	pub fn get_system_operator_library_inputs_table() -> Arc<VTable> {
+		operator_library_inputs()
 	}
 
-	pub fn get_system_operator_outputs_table() -> Arc<VTable> {
-		operator_outputs()
+	pub fn get_system_operator_library_outputs_table() -> Arc<VTable> {
+		operator_library_outputs()
 	}
 
 	pub fn get_system_ringbuffers_table() -> Arc<VTable> {
@@ -1207,10 +1207,10 @@ impl SystemCatalog {
 		)
 	}
 
-	pub fn get_system_metrics_storage_flow_node_table() -> Arc<VTable> {
+	pub fn get_system_metrics_storage_operator_table() -> Arc<VTable> {
 		metrics_storage_table_cached(
-			ids::vtable::METRICS_STORAGE_FLOW_NODE,
-			NamespaceId::SYSTEM_METRICS_STORAGE_FLOW_NODE,
+			ids::vtable::METRICS_STORAGE_OPERATOR,
+			NamespaceId::SYSTEM_METRICS_STORAGE_OPERATOR,
 			7,
 		)
 	}
@@ -1263,10 +1263,10 @@ impl SystemCatalog {
 		metrics_cdc_table_cached(ids::vtable::METRICS_CDC_FLOW, NamespaceId::SYSTEM_METRICS_CDC_FLOW, 6)
 	}
 
-	pub fn get_system_metrics_cdc_flow_node_table() -> Arc<VTable> {
+	pub fn get_system_metrics_cdc_operator_table() -> Arc<VTable> {
 		metrics_cdc_table_cached(
-			ids::vtable::METRICS_CDC_FLOW_NODE,
-			NamespaceId::SYSTEM_METRICS_CDC_FLOW_NODE,
+			ids::vtable::METRICS_CDC_OPERATOR,
+			NamespaceId::SYSTEM_METRICS_CDC_OPERATOR,
 			7,
 		)
 	}

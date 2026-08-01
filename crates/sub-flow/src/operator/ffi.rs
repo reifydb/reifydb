@@ -28,7 +28,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff, Diffs},
 	},
-	key::operator_state::GroupSet,
+	key::operator_group_state::GroupSet,
 	metrics::heap::{OperatorSample, StateCompleteness, StateMemory, StatePool},
 	state::budget::{LeaseGrant, LeaseReport, OperatorStateBudgetHandle},
 	value::column::columns::Columns,

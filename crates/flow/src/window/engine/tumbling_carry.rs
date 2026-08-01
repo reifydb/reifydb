@@ -13,7 +13,7 @@ use reifydb_codec::{
 	state::OperatorState,
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupSet},
+	key::operator_group_state::{GroupId, GroupSet},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		cache::{StateCache, StateView},
@@ -457,7 +457,7 @@ mod tests {
 	use reifydb_abi::operator::timer::TimerKind;
 	use reifydb_codec::{key::encoded::EncodedKeyRange, state::StateBytes};
 	use reifydb_core::{
-		key::operator_state::{Keyspace, OperatorStateKey, StateKey},
+		key::operator_group_state::{Keyspace, OperatorGroupStateKey, GroupStateKey},
 		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
@@ -480,7 +480,7 @@ mod tests {
 			self.data
 				.keys()
 				.filter(|k| {
-					OperatorStateKey::decode_inner(k).is_some_and(|(_, found, _)| found == keyspace)
+					OperatorGroupStateKey::decode_inner(k).is_some_and(|(_, found, _)| found == keyspace)
 				})
 				.count()
 		}
@@ -508,7 +508,7 @@ mod tests {
 				.data
 				.keys()
 				.filter(|k| {
-					OperatorStateKey::decode_inner(k).is_some_and(|(group, found, _)| {
+					OperatorGroupStateKey::decode_inner(k).is_some_and(|(group, found, _)| {
 						!group.is_node_scope() && found.is_data()
 					})
 				})
@@ -543,13 +543,13 @@ mod tests {
 			Ok(self.groups.get(group.as_bytes()).copied())
 		}
 
-		fn state_get(&mut self, key: &StateKey) -> Result<Option<StateBytes>> {
+		fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<StateBytes>> {
 			Ok(self.data.get(key.as_slice()).cloned())
 		}
 		fn state_get_many_visit(
 			&mut self,
-			keys: &[StateKey],
-			visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
+			keys: &[GroupStateKey],
+			visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			for key in keys {
 				if let Some(b) = self.data.get(key.as_slice()) {
@@ -558,11 +558,11 @@ mod tests {
 			}
 			Ok(())
 		}
-		fn state_set(&mut self, key: &StateKey, payload: StateBytes) -> Result<()> {
+		fn state_set(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()> {
 			self.data.insert(key.as_slice().to_vec(), payload);
 			Ok(())
 		}
-		fn state_remove(&mut self, key: &StateKey) -> Result<()> {
+		fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
 			self.data.remove(key.as_slice());
 			Ok(())
 		}
@@ -570,7 +570,7 @@ mod tests {
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
+			visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 		) -> Result<()> {
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
@@ -593,7 +593,7 @@ mod tests {
 				matched.truncate(limit);
 			}
 			for (k, b) in matched {
-				let Some(k) = StateKey::from_framed(EncodedKey::new(k)) else {
+				let Some(k) = GroupStateKey::from_framed(EncodedKey::new(k)) else {
 					continue;
 				};
 				visit(k, b)?;

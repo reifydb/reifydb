@@ -10,7 +10,7 @@ use std::{collections::HashMap, ops::Bound};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{catalog::flow::FlowNodeId, store::EntryKind},
+	interface::{catalog::flow::OperatorId, store::EntryKind},
 };
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -145,7 +145,7 @@ impl MultiPersistentTier {
 		}
 	}
 
-	pub fn operator_disk_payload_bytes(&self) -> Result<Vec<(FlowNodeId, ByteSize)>> {
+	pub fn operator_disk_payload_bytes(&self) -> Result<Vec<(OperatorId, ByteSize)>> {
 		match self {
 			Self::Sqlite(s) => s.operator_disk_payload_bytes(),
 		}
@@ -154,7 +154,7 @@ impl MultiPersistentTier {
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 impl MultiPersistentTier {
-	pub fn operator_disk_payload_bytes(&self) -> Result<Vec<(FlowNodeId, ByteSize)>> {
+	pub fn operator_disk_payload_bytes(&self) -> Result<Vec<(OperatorId, ByteSize)>> {
 		match *self {}
 	}
 

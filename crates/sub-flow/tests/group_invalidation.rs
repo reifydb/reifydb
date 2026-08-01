@@ -18,7 +18,7 @@ use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapabili
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	key::operator_state::{GroupId, GroupSet, Keyspace, OperatorStateKey},
+	key::operator_group_state::{GroupId, GroupSet, Keyspace, OperatorGroupStateKey},
 };
 use reifydb_sdk::{
 	config::Config,
@@ -132,7 +132,7 @@ impl OperatorLogic for Watcher {
 
 				let key = group_key(g);
 				let group = ctx.intern_group(&key)?;
-				let state_key = OperatorStateKey::inner_encoded(group, WATCHER_STATE, []);
+				let state_key = OperatorGroupStateKey::inner_encoded(group, WATCHER_STATE, []);
 
 				let prior: i64 = self.state_get(ctx, &state_key)?.unwrap_or(0);
 				let total = prior + 1;

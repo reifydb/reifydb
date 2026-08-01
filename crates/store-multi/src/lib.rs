@@ -30,7 +30,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		store::{
 			MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious,
 			MultiVersionRow, MultiVersionStore,
@@ -133,7 +133,7 @@ impl MultiStore {
 		}
 	}
 
-	pub fn operator_disk_payload_bytes(&self) -> Vec<(FlowNodeId, ByteSize)> {
+	pub fn operator_disk_payload_bytes(&self) -> Vec<(OperatorId, ByteSize)> {
 		match self {
 			MultiStore::Standard(store) => store.operator_disk_payload_bytes(),
 		}

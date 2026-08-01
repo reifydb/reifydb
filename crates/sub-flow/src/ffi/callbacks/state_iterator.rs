@@ -5,7 +5,7 @@ use std::{cell::RefCell, collections::HashMap};
 
 use reifydb_core::{
 	interface::store::MultiVersionBatch,
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+	key::{EncodableKey, operator_state::OperatorStateKey},
 };
 
 pub type StateIteratorHandle = u64;
@@ -26,7 +26,7 @@ impl BatchIterator {
 			.items
 			.into_iter()
 			.filter_map(|multi| {
-				let state_key = FlowNodeStateKey::decode(&multi.key)?;
+				let state_key = OperatorStateKey::decode(&multi.key)?;
 				Some((state_key.key, multi.row.to_vec()))
 			})
 			.collect();
@@ -97,14 +97,14 @@ pub mod tests {
 			catalog::flow::FlowNodeId,
 			store::{MultiVersionBatch, MultiVersionRow},
 		},
-		key::{EncodableKey, flow_node_state::FlowNodeStateKey},
+		key::{EncodableKey, operator_state::OperatorStateKey},
 	};
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
 
 	fn make_state_key(node_id: u64, key: &[u8]) -> EncodedKey {
-		FlowNodeStateKey::new(FlowNodeId(node_id), key.to_vec()).encode()
+		OperatorStateKey::new(FlowNodeId(node_id), key.to_vec()).encode()
 	}
 
 	fn make_value(data: &[u8]) -> EncodedRow {

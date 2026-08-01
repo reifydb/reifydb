@@ -9,7 +9,7 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	interface::catalog::flow::FlowNodeId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
+	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::test_harness::TestEngine;
@@ -31,8 +31,8 @@ pub fn make_row(payload: &str, created_at: u64, updated_at: u64) -> EncodedRow {
 	EncodedRow(CowVec::new(buf))
 }
 
-pub fn key(s: &str) -> StateKey {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, s.as_bytes())
+pub fn key(s: &str) -> GroupStateKey {
+	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, s.as_bytes())
 }
 
 pub fn engine() -> TestEngine {

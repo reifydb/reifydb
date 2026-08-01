@@ -13,11 +13,11 @@ use reifydb_core::{
 	event::EventBus,
 	interface::catalog::{
 		config::{ConfigKey, GetConfig},
-		flow::FlowNodeId,
+		flow::OperatorId,
 	},
 	key::{
-		flow_node_state::FlowNodeStateKey,
-		operator_state::{GroupId, Keyspace, OperatorStateKey},
+		operator_state::OperatorStateKey,
+		operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
 	},
 };
 use reifydb_runtime::{
@@ -71,13 +71,13 @@ fn test_engine() -> MultiTransaction {
 }
 
 fn coord_key(node: u64, suffix: &[u8]) -> EncodedKey {
-	let inner = OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::BUFFER, suffix);
-	FlowNodeStateKey::encoded(FlowNodeId(node), inner.as_slice())
+	let inner = OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::BUFFER, suffix);
+	OperatorStateKey::encoded(OperatorId(node), inner.as_slice())
 }
 
 fn range_keys(engine: &MultiTransaction, node: u64) -> Vec<EncodedKey> {
 	let query = MultiReadTransaction::new(engine.clone(), None).unwrap();
-	query.range(FlowNodeStateKey::node_range(FlowNodeId(node)), RangeScope::All, 1024)
+	query.range(OperatorStateKey::node_range(OperatorId(node)), RangeScope::All, 1024)
 		.map(|r| r.unwrap().key)
 		.collect()
 }

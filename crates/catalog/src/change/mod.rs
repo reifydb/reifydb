@@ -20,7 +20,7 @@ mod config;
 mod dictionary;
 mod flow;
 mod flow_edge;
-mod flow_node;
+mod operator;
 mod granted_role;
 mod handler;
 mod identity;
@@ -53,7 +53,7 @@ use config::ConfigApplier;
 use dictionary::DictionaryApplier;
 use flow::FlowApplier;
 use flow_edge::FlowEdgeApplier;
-use flow_node::FlowNodeApplier;
+use operator::OperatorApplier;
 use granted_role::GrantedRoleApplier;
 use handler::HandlerApplier;
 use identity::IdentityApplier;
@@ -103,7 +103,7 @@ pub fn apply_system_change(catalog: &Catalog, txn: &mut Transaction<'_>, change:
 		KeyKind::View => dispatch::<ViewApplier>(catalog, txn, change),
 		KeyKind::PrimaryKey => dispatch::<PrimaryKeyApplier>(catalog, txn, change),
 		KeyKind::Flow => dispatch::<FlowApplier>(catalog, txn, change),
-		KeyKind::FlowNode => dispatch::<FlowNodeApplier>(catalog, txn, change),
+		KeyKind::Operator => dispatch::<OperatorApplier>(catalog, txn, change),
 		KeyKind::FlowEdge => dispatch::<FlowEdgeApplier>(catalog, txn, change),
 		KeyKind::Handler => dispatch::<HandlerApplier>(catalog, txn, change),
 		KeyKind::Dictionary => dispatch::<DictionaryApplier>(catalog, txn, change),

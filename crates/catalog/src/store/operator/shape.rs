@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub(crate) mod flow_node {
+pub(crate) mod operator {
 	use once_cell::sync::Lazy;
 	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
@@ -21,7 +21,7 @@ pub(crate) mod flow_node {
 	});
 }
 
-pub(crate) mod flow_node_by_flow {
+pub(crate) mod operator_by_flow {
 	use once_cell::sync::Lazy;
 	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;

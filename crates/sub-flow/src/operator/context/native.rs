@@ -23,7 +23,7 @@ use reifydb_core::{
 		},
 		change::Diff,
 	},
-	key::operator_state::{GroupId, StateKey},
+	key::operator_group_state::{GroupId, GroupStateKey},
 };
 use reifydb_flow::window::event::Polarity;
 use reifydb_sdk::{
@@ -50,12 +50,12 @@ pub trait NativeBridge {
 	fn version(&self) -> CommitVersion;
 	fn state_lease_bytes(&self) -> u64;
 
-	fn state_get(&mut self, key: &StateKey) -> Result<Option<EncodedRow>>;
-	fn state_get_many(&mut self, keys: &[StateKey]) -> Result<Vec<(StateKey, EncodedRow)>>;
-	fn state_set(&mut self, key: &StateKey, value: EncodedRow) -> Result<()>;
-	fn state_remove(&mut self, key: &StateKey) -> Result<()>;
+	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedRow>>;
+	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedRow)>>;
+	fn state_set(&mut self, key: &GroupStateKey, value: EncodedRow) -> Result<()>;
+	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()>;
 	fn state_clear(&mut self) -> Result<()>;
-	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(StateKey, EncodedRow)>>;
+	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedRow)>>;
 
 	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>>;
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>>;
@@ -96,13 +96,13 @@ pub trait NativeBridge {
 
 	fn state_get_many_visit(
 		&mut self,
-		keys: &[StateKey],
-		visit: &mut dyn FnMut(&StateKey, &EncodedRow) -> SdkResult<()>,
+		keys: &[GroupStateKey],
+		visit: &mut dyn FnMut(&GroupStateKey, &EncodedRow) -> SdkResult<()>,
 	) -> SdkResult<()>;
 	fn state_range_visit(
 		&mut self,
 		range: EncodedKeyRange,
-		visit: &mut dyn FnMut(&StateKey, &EncodedRow) -> SdkResult<()>,
+		visit: &mut dyn FnMut(&GroupStateKey, &EncodedRow) -> SdkResult<()>,
 	) -> SdkResult<()>;
 	fn store_range_visit(
 		&mut self,
@@ -208,7 +208,7 @@ pub struct NativeState<'a> {
 }
 
 impl StateApi for NativeState<'_> {
-	fn get<T: OperatorState>(&self, key: &StateKey) -> SdkResult<Option<T>> {
+	fn get<T: OperatorState>(&self, key: &GroupStateKey) -> SdkResult<Option<T>> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		match unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)? {
@@ -216,18 +216,18 @@ impl StateApi for NativeState<'_> {
 			None => Ok(None),
 		}
 	}
-	fn set<T: OperatorState>(&mut self, key: &StateKey, value: &T) -> SdkResult<()> {
+	fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> SdkResult<()> {
 		let now = self.now;
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).state_set(key, encode(value, now)?) }.map_err(to_sdk_err)
 	}
-	fn remove(&mut self, key: &StateKey) -> SdkResult<()> {
+	fn remove(&mut self, key: &GroupStateKey) -> SdkResult<()> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).state_remove(key) }.map_err(to_sdk_err)
 	}
-	fn contains(&self, key: &StateKey) -> SdkResult<bool> {
+	fn contains(&self, key: &GroupStateKey) -> SdkResult<bool> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		Ok(unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)?.is_some())
@@ -237,20 +237,20 @@ impl StateApi for NativeState<'_> {
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).state_clear() }.map_err(to_sdk_err)
 	}
-	fn scan_prefix<T: OperatorState>(&self, prefix: &StateKey) -> SdkResult<Vec<(StateKey, T)>> {
+	fn scan_prefix<T: OperatorState>(&self, prefix: &GroupStateKey) -> SdkResult<Vec<(GroupStateKey, T)>> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		let rows = unsafe { (*self.bridge).state_range(EncodedKeyRange::prefix(prefix.as_slice())) }
 			.map_err(to_sdk_err)?;
 		rows.into_iter().map(|(k, r)| Ok((k, decode(&r)?))).collect()
 	}
-	fn get_many<T: OperatorState>(&self, keys: &[StateKey]) -> SdkResult<Vec<(StateKey, T)>> {
+	fn get_many<T: OperatorState>(&self, keys: &[GroupStateKey]) -> SdkResult<Vec<(GroupStateKey, T)>> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		let rows = unsafe { (*self.bridge).state_get_many(keys) }.map_err(to_sdk_err)?;
 		rows.into_iter().map(|(k, r)| Ok((k, decode(&r)?))).collect()
 	}
-	fn keys_with_prefix(&self, prefix: &StateKey) -> SdkResult<Vec<StateKey>> {
+	fn keys_with_prefix(&self, prefix: &GroupStateKey) -> SdkResult<Vec<GroupStateKey>> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		let rows = unsafe { (*self.bridge).state_range(EncodedKeyRange::prefix(prefix.as_slice())) }
@@ -259,9 +259,9 @@ impl StateApi for NativeState<'_> {
 	}
 	fn range<T: OperatorState>(
 		&self,
-		start: Bound<&StateKey>,
-		end: Bound<&StateKey>,
-	) -> SdkResult<Vec<(StateKey, T)>> {
+		start: Bound<&GroupStateKey>,
+		end: Bound<&GroupStateKey>,
+	) -> SdkResult<Vec<(GroupStateKey, T)>> {
 		let range = EncodedKeyRange::new(
 			start.map(|k| k.as_encoded().clone()),
 			end.map(|k| k.as_encoded().clone()),
@@ -273,8 +273,8 @@ impl StateApi for NativeState<'_> {
 	}
 	fn get_many_visit<T: OperatorState>(
 		&self,
-		keys: &[StateKey],
-		visit: &mut dyn FnMut(StateKey, T) -> SdkResult<()>,
+		keys: &[GroupStateKey],
+		visit: &mut dyn FnMut(GroupStateKey, T) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
@@ -288,9 +288,9 @@ impl StateApi for NativeState<'_> {
 	}
 	fn range_visit<T: OperatorState>(
 		&self,
-		start: Bound<&StateKey>,
-		end: Bound<&StateKey>,
-		visit: &mut dyn FnMut(StateKey, T) -> SdkResult<()>,
+		start: Bound<&GroupStateKey>,
+		end: Bound<&GroupStateKey>,
+		visit: &mut dyn FnMut(GroupStateKey, T) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		let range = EncodedKeyRange::new(
 			start.map(|k| k.as_encoded().clone()),
@@ -308,8 +308,8 @@ impl StateApi for NativeState<'_> {
 	}
 	fn scan_prefix_visit<T: OperatorState>(
 		&self,
-		prefix: &StateKey,
-		visit: &mut dyn FnMut(StateKey, T) -> SdkResult<()>,
+		prefix: &GroupStateKey,
+		visit: &mut dyn FnMut(GroupStateKey, T) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
@@ -322,7 +322,7 @@ impl StateApi for NativeState<'_> {
 		}
 	}
 
-	fn get_bytes(&self, key: &StateKey) -> SdkResult<Option<StateBytes>> {
+	fn get_bytes(&self, key: &GroupStateKey) -> SdkResult<Option<StateBytes>> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		match unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)? {
@@ -331,7 +331,7 @@ impl StateApi for NativeState<'_> {
 		}
 	}
 
-	fn set_bytes(&mut self, key: &StateKey, payload: StateBytes) -> SdkResult<()> {
+	fn set_bytes(&mut self, key: &GroupStateKey, payload: StateBytes) -> SdkResult<()> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).state_set(key, payload.into_row()) }.map_err(to_sdk_err)
@@ -339,8 +339,8 @@ impl StateApi for NativeState<'_> {
 
 	fn get_many_bytes_visit(
 		&self,
-		keys: &[StateKey],
-		visit: &mut dyn FnMut(StateKey, StateBytes) -> SdkResult<()>,
+		keys: &[GroupStateKey],
+		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
@@ -355,9 +355,9 @@ impl StateApi for NativeState<'_> {
 
 	fn range_bytes_visit(
 		&self,
-		start: Bound<&StateKey>,
-		end: Bound<&StateKey>,
-		visit: &mut dyn FnMut(StateKey, StateBytes) -> SdkResult<()>,
+		start: Bound<&GroupStateKey>,
+		end: Bound<&GroupStateKey>,
+		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		let range = EncodedKeyRange::new(
 			start.map(|k| k.as_encoded().clone()),

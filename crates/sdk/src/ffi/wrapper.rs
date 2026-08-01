@@ -23,7 +23,7 @@ use reifydb_abi::{
 	operator::{timer::TimerKind, vtable::OperatorVTableFFI},
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupSet},
+	key::operator_group_state::{GroupId, GroupSet},
 	metrics::heap::OperatorSample,
 };
 use reifydb_value::value::datetime::DateTime;

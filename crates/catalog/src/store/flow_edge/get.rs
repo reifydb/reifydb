@@ -29,7 +29,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		test_utils::{create_flow_edge, create_flow_node, create_namespace, ensure_test_flow},
+		test_utils::{create_flow_edge, create_operator, create_namespace, ensure_test_flow},
 	};
 
 	#[test]
@@ -38,8 +38,8 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
+		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
 		let result = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap();

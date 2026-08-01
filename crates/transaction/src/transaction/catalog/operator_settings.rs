@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{change::CatalogTrackOperatorSettingsChangeOperations, flow::FlowNodeId},
+	interface::catalog::{change::CatalogTrackOperatorSettingsChangeOperations, flow::OperatorId},
 	row::OperatorSettings,
 };
 use reifydb_value::Result;
@@ -17,7 +17,7 @@ use crate::{
 };
 
 impl CatalogTrackOperatorSettingsChangeOperations for AdminTransaction {
-	fn track_operator_settings_created(&mut self, operator: FlowNodeId, settings: OperatorSettings) -> Result<()> {
+	fn track_operator_settings_created(&mut self, operator: OperatorId, settings: OperatorSettings) -> Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some((operator, settings)),
@@ -29,7 +29,7 @@ impl CatalogTrackOperatorSettingsChangeOperations for AdminTransaction {
 
 	fn track_operator_settings_updated(
 		&mut self,
-		operator: FlowNodeId,
+		operator: OperatorId,
 		pre: OperatorSettings,
 		post: OperatorSettings,
 	) -> Result<()> {
@@ -42,7 +42,7 @@ impl CatalogTrackOperatorSettingsChangeOperations for AdminTransaction {
 		Ok(())
 	}
 
-	fn track_operator_settings_deleted(&mut self, operator: FlowNodeId, settings: OperatorSettings) -> Result<()> {
+	fn track_operator_settings_deleted(&mut self, operator: OperatorId, settings: OperatorSettings) -> Result<()> {
 		let change = Change {
 			pre: Some((operator, settings)),
 			post: None,
@@ -54,7 +54,7 @@ impl CatalogTrackOperatorSettingsChangeOperations for AdminTransaction {
 }
 
 impl TransactionalOperatorSettingsChanges for AdminTransaction {
-	fn find_operator_settings(&self, operator: FlowNodeId) -> Option<&OperatorSettings> {
+	fn find_operator_settings(&self, operator: OperatorId) -> Option<&OperatorSettings> {
 		for change in self.changes.operator_settings.iter().rev() {
 			if let Some((o, settings)) = &change.post {
 				if *o == operator {
@@ -69,7 +69,7 @@ impl TransactionalOperatorSettingsChanges for AdminTransaction {
 		None
 	}
 
-	fn is_operator_settings_deleted(&self, operator: FlowNodeId) -> bool {
+	fn is_operator_settings_deleted(&self, operator: OperatorId) -> bool {
 		self.changes.operator_settings.iter().rev().any(|change| {
 			change.op == Delete && change.pre.as_ref().map(|(o, _)| *o == operator).unwrap_or(false)
 		})

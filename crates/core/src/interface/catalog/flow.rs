@@ -83,15 +83,15 @@ impl<'de> Deserialize<'de> for FlowId {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct FlowNodeId(pub u64);
+pub struct OperatorId(pub u64);
 
-impl Display for FlowNodeId {
+impl Display for OperatorId {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		Display::fmt(&self.0, f)
 	}
 }
 
-impl Deref for FlowNodeId {
+impl Deref for OperatorId {
 	type Target = u64;
 
 	fn deref(&self) -> &Self::Target {
@@ -99,38 +99,38 @@ impl Deref for FlowNodeId {
 	}
 }
 
-impl PartialEq<u64> for FlowNodeId {
+impl PartialEq<u64> for OperatorId {
 	fn eq(&self, other: &u64) -> bool {
 		self.0.eq(other)
 	}
 }
 
-impl From<FlowNodeId> for u64 {
-	fn from(value: FlowNodeId) -> Self {
+impl From<OperatorId> for u64 {
+	fn from(value: OperatorId) -> Self {
 		value.0
 	}
 }
 
-impl FlowNodeId {
+impl OperatorId {
 	#[inline]
 	pub fn to_u64(self) -> u64 {
 		self.0
 	}
 }
 
-impl From<&FlowNodeId> for FlowNodeId {
-	fn from(value: &FlowNodeId) -> Self {
+impl From<&OperatorId> for OperatorId {
+	fn from(value: &OperatorId) -> Self {
 		*value
 	}
 }
 
-impl From<u64> for FlowNodeId {
+impl From<u64> for OperatorId {
 	fn from(value: u64) -> Self {
 		Self(value)
 	}
 }
 
-impl Serialize for FlowNodeId {
+impl Serialize for OperatorId {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
@@ -139,22 +139,22 @@ impl Serialize for FlowNodeId {
 	}
 }
 
-impl<'de> Deserialize<'de> for FlowNodeId {
-	fn deserialize<D>(deserializer: D) -> Result<FlowNodeId, D::Error>
+impl<'de> Deserialize<'de> for OperatorId {
+	fn deserialize<D>(deserializer: D) -> Result<OperatorId, D::Error>
 	where
 		D: Deserializer<'de>,
 	{
 		struct U64Visitor;
 
 		impl Visitor<'_> for U64Visitor {
-			type Value = FlowNodeId;
+			type Value = OperatorId;
 
 			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
 			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
-				Ok(FlowNodeId(value))
+				Ok(OperatorId(value))
 			}
 		}
 
@@ -260,8 +260,8 @@ pub struct Flow {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FlowNode {
-	pub id: FlowNodeId,
+pub struct Operator {
+	pub id: OperatorId,
 	pub flow: FlowId,
 	pub node_type: u8,
 	pub data: Blob,
@@ -271,6 +271,6 @@ pub struct FlowNode {
 pub struct FlowEdge {
 	pub id: FlowEdgeId,
 	pub flow: FlowId,
-	pub source: FlowNodeId,
-	pub target: FlowNodeId,
+	pub source: OperatorId,
+	pub target: OperatorId,
 }

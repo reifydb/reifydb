@@ -14,7 +14,7 @@ use reifydb_abi::{
 	operator::timer::TimerKind,
 };
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
-use reifydb_core::key::operator_state::GroupId;
+use reifydb_core::key::operator_group_state::GroupId;
 use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{datetime::DateTime, row_number::RowNumber},

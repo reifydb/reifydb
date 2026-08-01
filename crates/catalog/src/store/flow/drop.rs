@@ -29,9 +29,9 @@ impl CatalogStore {
 		let flow = CatalogStore::find_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 
 		if let Some(flow) = flow {
-			let nodes = CatalogStore::list_flow_nodes_by_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
+			let nodes = CatalogStore::list_operators_by_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 			for node in nodes {
-				CatalogStore::drop_flow_node(txn, node.id)?;
+				CatalogStore::drop_operator(txn, node.id)?;
 			}
 
 			let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
@@ -59,7 +59,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		test_utils::{create_flow, create_flow_edge, create_flow_node, create_namespace},
+		test_utils::{create_flow, create_flow_edge, create_operator, create_namespace},
 	};
 
 	#[test]
@@ -68,21 +68,21 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = create_flow(&mut txn, "test_namespace", "drop_test_flow");
 
-		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
+		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
 		assert!(CatalogStore::find_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap().is_some());
-		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node1.id).unwrap().is_some());
-		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node2.id).unwrap().is_some());
+		assert!(CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), node1.id).unwrap().is_some());
+		assert!(CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), node2.id).unwrap().is_some());
 		assert!(CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap().is_some());
 
 		CatalogStore::drop_flow(&mut txn, flow.id).unwrap();
 
 		assert!(CatalogStore::find_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap().is_none());
 
-		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node1.id).unwrap().is_none());
-		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node2.id).unwrap().is_none());
+		assert!(CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), node1.id).unwrap().is_none());
+		assert!(CatalogStore::find_operator(&mut Transaction::Admin(&mut txn), node2.id).unwrap().is_none());
 
 		assert!(CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap().is_none());
 	}

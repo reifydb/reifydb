@@ -3,7 +3,7 @@
 
 use reifydb_catalog::{
 	catalog::{Catalog, flow::FlowToCreate, view::ViewColumnToCreate},
-	vtable::system::operator_store::OperatorStore,
+	vtable::system::operator_store::OperatorLibraryStore,
 };
 use reifydb_core::{
 	common::TimeDomain,
@@ -85,7 +85,7 @@ pub mod transactional;
 pub(crate) fn create_deferred_view_flow(
 	catalog: &Catalog,
 	routines: &Routines,
-	operators: &OperatorStore,
+	operators: &OperatorLibraryStore,
 	txn: &mut AdminTransaction,
 	view: &View,
 	plan: QueryPlan,

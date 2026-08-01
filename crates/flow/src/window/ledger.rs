@@ -7,7 +7,7 @@ use reifydb_codec::state::{OperatorState, decode_state};
 #[cfg(feature = "runtime")]
 use reifydb_core::interface::catalog::flow::FlowNodeId;
 use reifydb_core::{
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
+	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
 	metrics::heap::HeapSize,
 	state::store::StateStore,
 };
@@ -33,8 +33,8 @@ impl HeapSize for SealLedgerState {
 	}
 }
 
-pub fn seal_ledger_key() -> StateKey {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SEAL_LEDGER, vec![])
+pub fn seal_ledger_key() -> GroupStateKey {
+	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SEAL_LEDGER, vec![])
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -171,7 +171,7 @@ mod tests {
 		// from the node alone; a group-scoped or suffixed key would need the operator to answer.
 		let key = seal_ledger_key();
 		let (group, keyspace, suffix) =
-			OperatorStateKey::decode_inner(key.as_encoded().as_bytes()).expect("structured key");
+			OperatorGroupStateKey::decode_inner(key.as_encoded().as_bytes()).expect("structured key");
 
 		assert_eq!(group, GroupId::NODE_SCOPE);
 		assert_eq!(keyspace, Keyspace::SEAL_LEDGER);

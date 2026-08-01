@@ -20,7 +20,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, Diff},
 	},
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
+	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
 	metrics::heap::HeapSize,
 	value::column::columns::Columns,
 };
@@ -138,12 +138,12 @@ impl DistinctOperator {
 		EncodedKey::new(hash.0.to_be_bytes())
 	}
 
-	pub(super) fn entry_key(group: GroupId) -> StateKey {
-		OperatorStateKey::inner_encoded(group, Keyspace::DISTINCT_ENTRY, vec![])
+	pub(super) fn entry_key(group: GroupId) -> GroupStateKey {
+		OperatorGroupStateKey::inner_encoded(group, Keyspace::DISTINCT_ENTRY, vec![])
 	}
 
-	pub(super) fn layout_storage_key() -> StateKey {
-		StateKey::node_scoped(Keyspace::DISTINCT_LAYOUT, vec![LAYOUT_KEY_PREFIX])
+	pub(super) fn layout_storage_key() -> GroupStateKey {
+		GroupStateKey::node_scoped(Keyspace::DISTINCT_LAYOUT, vec![LAYOUT_KEY_PREFIX])
 	}
 
 	pub(super) fn state_bytes(row: EncodedRow, state: &'static str) -> Result<StateBytes> {
@@ -247,7 +247,7 @@ impl Operator for DistinctOperator {
 		let node_id = self.node;
 		let touched = self.batch_hashes(&change.diffs)?;
 
-		let (mut working, persist) = txn.take_operator_state::<DistinctWorkingSet, _>(node_id, |txn| {
+		let (mut working, persist) = txn.take_operator_group_state::<DistinctWorkingSet, _>(node_id, |txn| {
 			let layout = self.load_layout(txn)?;
 			let working = DistinctWorkingSet {
 				state: DistinctState {

@@ -15,7 +15,7 @@ use reifydb_catalog::{
 	interceptor::CatalogCacheInterceptor,
 	metrics::storage::metrics::MetricsReader,
 	vtable::{
-		system::operator_store::{OperatorEventListener, OperatorStore},
+		system::operator_store::{OperatorLibraryEventListener, OperatorLibraryStore},
 		tables::UserVTableDataFunction,
 		user::{UserVTable, UserVTableColumn, registry::UserVTableEntry},
 	},
@@ -447,7 +447,7 @@ pub struct Inner {
 	executor: Executor,
 	interceptors: Arc<InterceptorFactory>,
 	catalog: Catalog,
-	operator_store: OperatorStore,
+	operator_store: OperatorLibraryStore,
 	dictionary_allocators: DictionaryAllocatorRegistry,
 	read_only: AtomicBool,
 	shutting_down: AtomicBool,
@@ -462,8 +462,8 @@ impl StandardEngine {
 		catalog: Catalog,
 		config: EngineConfig,
 	) -> Self {
-		let operator_store = OperatorStore::new();
-		let listener = OperatorEventListener::new(operator_store.clone());
+		let operator_store = OperatorLibraryStore::new();
+		let listener = OperatorLibraryEventListener::new(operator_store.clone());
 		event_bus.register(listener);
 
 		let metrics_store = config
@@ -572,7 +572,7 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn operator_store(&self) -> &OperatorStore {
+	pub fn operator_store(&self) -> &OperatorLibraryStore {
 		&self.operator_store
 	}
 

@@ -8,7 +8,7 @@ use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	common::{CommitVersion, WindowKind, WindowSize},
 	interface::{catalog::flow::FlowNodeId, change::Change},
-	key::operator_state::GroupSet,
+	key::operator_group_state::GroupSet,
 	metrics::heap::OperatorSample,
 	state::{budget::OperatorStateBudgetHandle, horizon::window_retention_scale},
 	value::column::columns::Columns,

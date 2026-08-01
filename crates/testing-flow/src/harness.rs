@@ -10,7 +10,7 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingLayers},
 	common::CommitVersion,
 	interface::{catalog::flow::FlowNodeId, change::Change},
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey, operator_state::OperatorStateKey},
+	key::{EncodableKey, operator_state::OperatorStateKey, operator_state::OperatorStateKey},
 	state::{budget::OperatorStateBudgetHandle, group::ActivityBuckets, horizon::Cutoff},
 };
 use reifydb_engine::test_harness::TestEngine;
@@ -145,7 +145,7 @@ impl<O: Operator> Harness<O> {
 		let batch = txn.state_range(node, EncodedKeyRange::all(), None)?;
 		let mut footprint = StateFootprint::default();
 		for item in &batch.items {
-			let decoded = FlowNodeStateKey::decode(&item.key)
+			let decoded = OperatorStateKey::decode(&item.key)
 				.and_then(|state| OperatorStateKey::decode_inner(&state.key));
 			match decoded {
 				Some((group, keyspace, _)) if keyspace.is_identity() => footprint.identity_rows += 1,

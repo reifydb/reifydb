@@ -11,7 +11,7 @@ use reifydb_core::{
 		flow::{FlowId, FlowNodeId},
 		storage::StorageId,
 	},
-	key::operator_state::{GroupId, GroupSet, Keyspace},
+	key::operator_group_state::{GroupId, GroupSet, Keyspace},
 	lifecycle::class::{Floor, FloorTerm, RetentionClass},
 	state::horizon::Cutoff,
 };
@@ -462,7 +462,7 @@ fn sink_storage(ty: &FlowNodeType) -> Option<StorageId> {
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, state::OperatorState};
-	use reifydb_core::key::operator_state::{Keyspace, OperatorStateKey, group_inner_range, keyspace_inner_range};
+	use reifydb_core::key::operator_group_state::{Keyspace, OperatorGroupStateKey, group_inner_range, keyspace_inner_range};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::ChangeCoordinate;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -513,10 +513,10 @@ mod tests {
 		});
 		let (id, _) = txn.intern_group(NODE, &EncodedKey::new(name.as_bytes())).unwrap();
 		for suffix in [1u8, 2] {
-			let key = OperatorStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);
+			let key = OperatorGroupStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);
 			txn.state_set(NODE, &key, payload()).unwrap();
 		}
-		let mapping = OperatorStateKey::inner_encoded(id, Keyspace::ROW_NUMBER_MAPPING, vec![1]);
+		let mapping = OperatorGroupStateKey::inner_encoded(id, Keyspace::ROW_NUMBER_MAPPING, vec![1]);
 		txn.state_set(NODE, &mapping, payload()).unwrap();
 		id
 	}
@@ -550,7 +550,7 @@ mod tests {
 		});
 		let (id, _) = txn.intern_group(node, &EncodedKey::new(name.as_bytes())).unwrap();
 		for suffix in [1u8, 2] {
-			let key = OperatorStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);
+			let key = OperatorGroupStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);
 			txn.state_set(node, &key, payload()).unwrap();
 		}
 		id
@@ -746,7 +746,7 @@ mod tests {
 				version: CommitVersion(0),
 			});
 			for suffix in [1u8, 2] {
-				let key = OperatorStateKey::inner_encoded(id, keyspace, vec![suffix]);
+				let key = OperatorGroupStateKey::inner_encoded(id, keyspace, vec![suffix]);
 				txn.state_set(NODE, &key, payload()).unwrap();
 			}
 			txn.stamp_side(NODE, id, keyspace).unwrap();
@@ -944,7 +944,7 @@ mod tests {
 		let key = EncodedKey::new(b"sink");
 		txn.get_or_create_row_number(NODE, id, &key).unwrap();
 		for suffix in [1u8, 2] {
-			let data = OperatorStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);
+			let data = OperatorGroupStateKey::inner_encoded(id, Keyspace::ACCUMULATOR, vec![suffix]);
 			txn.state_set(NODE, &data, payload()).unwrap();
 		}
 		let mut remaining = budget(10, 100);

@@ -14,7 +14,7 @@ pub(crate) mod config;
 pub(crate) mod dictionary;
 pub(crate) mod flow;
 pub(crate) mod flow_edge;
-pub(crate) mod flow_node;
+pub(crate) mod operator;
 pub(crate) mod granted_role;
 pub(crate) mod handler;
 pub(crate) mod identity;

@@ -31,7 +31,7 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_STORAGE_DICTIONARY: NamespaceId = NamespaceId(20);
 	pub const SYSTEM_METRICS_STORAGE_SERIES: NamespaceId = NamespaceId(21);
 	pub const SYSTEM_METRICS_STORAGE_FLOW: NamespaceId = NamespaceId(22);
-	pub const SYSTEM_METRICS_STORAGE_FLOW_NODE: NamespaceId = NamespaceId(23);
+	pub const SYSTEM_METRICS_STORAGE_OPERATOR: NamespaceId = NamespaceId(23);
 	pub const SYSTEM_METRICS_STORAGE_SYSTEM: NamespaceId = NamespaceId(24);
 	pub const SYSTEM_METRICS_CDC_TABLE: NamespaceId = NamespaceId(25);
 	pub const SYSTEM_METRICS_CDC_VIEW: NamespaceId = NamespaceId(26);
@@ -40,7 +40,7 @@ impl NamespaceId {
 	pub const SYSTEM_METRICS_CDC_DICTIONARY: NamespaceId = NamespaceId(29);
 	pub const SYSTEM_METRICS_CDC_SERIES: NamespaceId = NamespaceId(30);
 	pub const SYSTEM_METRICS_CDC_FLOW: NamespaceId = NamespaceId(31);
-	pub const SYSTEM_METRICS_CDC_FLOW_NODE: NamespaceId = NamespaceId(32);
+	pub const SYSTEM_METRICS_CDC_OPERATOR: NamespaceId = NamespaceId(32);
 	pub const SYSTEM_METRICS_CDC_SYSTEM: NamespaceId = NamespaceId(33);
 	pub const SYSTEM_METRICS_READ_BUFFER: NamespaceId = NamespaceId(34);
 	pub const SYSTEM_METRICS_READ_BUFFER_SHARDS: NamespaceId = NamespaceId(35);

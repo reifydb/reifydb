@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use crate::interface::catalog::{flow::FlowNodeId, object::ObjectId};
+use crate::interface::catalog::{flow::OperatorId, object::ObjectId};
 
 define_event! {
 
@@ -24,7 +24,7 @@ define_event! {
 		pub operators_skipped: u64,
 		pub rows_expired: u64,
 		pub versions_dropped: u64,
-		pub bytes_discovered: HashMap<FlowNodeId, u64>,
-		pub bytes_reclaimed: HashMap<FlowNodeId, u64>,
+		pub bytes_discovered: HashMap<OperatorId, u64>,
+		pub bytes_reclaimed: HashMap<OperatorId, u64>,
 	}
 }

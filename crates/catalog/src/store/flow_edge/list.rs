@@ -3,7 +3,7 @@
 
 use flow_edge_by_flow::SHAPE;
 use reifydb_core::{
-	interface::catalog::flow::{FlowEdge, FlowEdgeId, FlowId, FlowNodeId},
+	interface::catalog::flow::{FlowEdge, FlowEdgeId, FlowId, OperatorId},
 	key::{
 		EncodableKey,
 		flow_edge::{FlowEdgeByFlowKey, FlowEdgeKey},
@@ -49,8 +49,8 @@ impl CatalogStore {
 			if let Some(flow_edge_key) = FlowEdgeKey::decode(&entry.key) {
 				let edge_id = flow_edge_key.edge;
 				let flow_id = FlowId(flow_edge::SHAPE.get::<u64>(&entry.row, flow_edge::FLOW));
-				let source = FlowNodeId(flow_edge::SHAPE.get::<u64>(&entry.row, flow_edge::SOURCE));
-				let target = FlowNodeId(flow_edge::SHAPE.get::<u64>(&entry.row, flow_edge::TARGET));
+				let source = OperatorId(flow_edge::SHAPE.get::<u64>(&entry.row, flow_edge::SOURCE));
+				let target = OperatorId(flow_edge::SHAPE.get::<u64>(&entry.row, flow_edge::TARGET));
 
 				let edge_def = FlowEdge {
 					id: edge_id,
@@ -74,7 +74,7 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		test_utils::{create_flow, create_flow_edge, create_flow_node, create_namespace, ensure_test_flow},
+		test_utils::{create_flow, create_flow_edge, create_operator, create_namespace, ensure_test_flow},
 	};
 
 	#[test]
@@ -83,8 +83,8 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
+		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
 		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
@@ -108,9 +108,9 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
-		let node3 = create_flow_node(&mut txn, flow.id, 5, &[0x03]);
+		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
+		let node3 = create_operator(&mut txn, flow.id, 5, &[0x03]);
 
 		let edge1 = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 		let edge2 = create_flow_edge(&mut txn, flow.id, node2.id, node3.id);
@@ -129,8 +129,8 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
-		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
-		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
+		let node1 = create_operator(&mut txn, flow.id, 1, &[0x01]);
+		let node2 = create_operator(&mut txn, flow.id, 4, &[0x02]);
 
 		create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
@@ -154,10 +154,10 @@ pub mod tests {
 		let flow1 = create_flow(&mut txn, "test_namespace", "flow_one");
 		let flow2 = create_flow(&mut txn, "test_namespace", "flow_two");
 
-		let node1a = create_flow_node(&mut txn, flow1.id, 1, &[0x01]);
-		let node1b = create_flow_node(&mut txn, flow1.id, 4, &[0x02]);
-		let node2a = create_flow_node(&mut txn, flow2.id, 1, &[0x03]);
-		let node2b = create_flow_node(&mut txn, flow2.id, 4, &[0x04]);
+		let node1a = create_operator(&mut txn, flow1.id, 1, &[0x01]);
+		let node1b = create_operator(&mut txn, flow1.id, 4, &[0x02]);
+		let node2a = create_operator(&mut txn, flow2.id, 1, &[0x03]);
+		let node2b = create_operator(&mut txn, flow2.id, 4, &[0x04]);
 
 		create_flow_edge(&mut txn, flow1.id, node1a.id, node1b.id);
 		create_flow_edge(&mut txn, flow2.id, node2a.id, node2b.id);

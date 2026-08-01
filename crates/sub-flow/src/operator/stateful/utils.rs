@@ -7,7 +7,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	key::{EncodableKey, flow_node_state::FlowNodeStateKey, operator_state::StateKey},
+	key::{EncodableKey, operator_state::OperatorStateKey, operator_state::GroupStateKey},
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_transaction::multi::RangeScope;
@@ -15,8 +15,8 @@ use reifydb_value::Result;
 
 use super::StateIterator;
 
-pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &StateKey) -> Result<Option<EncodedRow>> {
-	let encoded_key = FlowNodeStateKey::encoded(id, key.as_slice());
+pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<Option<EncodedRow>> {
+	let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
 
 	match txn.get(&encoded_key)? {
 		Some(multi) => Ok(Some(multi)),
@@ -24,25 +24,25 @@ pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &StateKey) -> R
 	}
 }
 
-pub fn state_set(id: FlowNodeId, txn: &mut FlowTransaction, key: &StateKey, value: EncodedRow) -> Result<()> {
-	let encoded_key = FlowNodeStateKey::encoded(id, key.as_slice());
+pub fn state_set(id: FlowNodeId, txn: &mut FlowTransaction, key: &GroupStateKey, value: EncodedRow) -> Result<()> {
+	let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
 	txn.set(&encoded_key, value)?;
 	Ok(())
 }
 
-pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &StateKey) -> Result<()> {
-	let encoded_key = FlowNodeStateKey::encoded(id, key.as_slice());
+pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<()> {
+	let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
 	txn.remove_silent(&encoded_key)?;
 	Ok(())
 }
 
 pub fn state_scan_all(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<Vec<(EncodedKey, EncodedRow)>> {
-	let range = FlowNodeStateKey::node_range(id);
+	let range = OperatorStateKey::node_range(id);
 	let stream = txn.range(range, RangeScope::All, 1024);
 	let mut items = Vec::new();
 	for result in stream {
 		let multi = result?;
-		if let Some(state_key) = FlowNodeStateKey::decode(&multi.key) {
+		if let Some(state_key) = OperatorStateKey::decode(&multi.key) {
 			items.push((EncodedKey::new(state_key.key), multi.row));
 		} else {
 			items.push((multi.key, multi.row));
@@ -52,12 +52,12 @@ pub fn state_scan_all(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<Vec<(
 }
 
 pub fn state_range<'a>(id: FlowNodeId, txn: &'a mut FlowTransaction, range: EncodedKeyRange) -> StateIterator<'a> {
-	let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
+	let prefixed_range = range.with_prefix(OperatorStateKey::encoded(id, vec![]));
 	StateIterator::new(txn.range(prefixed_range, RangeScope::All, 1024))
 }
 
 pub fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<()> {
-	let range = FlowNodeStateKey::node_range(id);
+	let range = OperatorStateKey::node_range(id);
 	let keys_to_remove = {
 		let stream = txn.range(range, RangeScope::All, 1024);
 		let mut keys = Vec::new();
@@ -77,7 +77,7 @@ pub fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> Result<()> {
 pub fn load_or_create_row(
 	id: FlowNodeId,
 	txn: &mut FlowTransaction,
-	key: &StateKey,
+	key: &GroupStateKey,
 	shape: &RowShape,
 ) -> Result<EncodedRow> {
 	match state_get(id, txn, key)? {
@@ -86,12 +86,12 @@ pub fn load_or_create_row(
 	}
 }
 
-pub fn save_row(id: FlowNodeId, txn: &mut FlowTransaction, key: &StateKey, row: EncodedRow) -> Result<()> {
+pub fn save_row(id: FlowNodeId, txn: &mut FlowTransaction, key: &GroupStateKey, row: EncodedRow) -> Result<()> {
 	state_set(id, txn, key, row)
 }
 
-pub fn empty_state_key() -> StateKey {
-	StateKey::from_framed(empty_key()).expect("the empty key is framing-valid")
+pub fn empty_state_key() -> GroupStateKey {
+	GroupStateKey::from_framed(empty_key()).expect("the empty key is framing-valid")
 }
 
 pub fn empty_key() -> EncodedKey {
@@ -225,7 +225,7 @@ pub mod tests {
 
 		let entries = {
 			let range = EncodedKeyRange::new(Unbounded, Excluded(test_key("range_3").into_encoded()));
-			let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(node_id, vec![]));
+			let prefixed_range = range.with_prefix(OperatorStateKey::encoded(node_id, vec![]));
 			let mut stream = txn.range(prefixed_range, RangeScope::All, 1024);
 			let mut entries = Vec::new();
 			while let Some(result) = stream.next() {
@@ -237,7 +237,7 @@ pub mod tests {
 
 		let entries = {
 			let range = EncodedKeyRange::new(Included(test_key("range_3").into_encoded()), Unbounded);
-			let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(node_id, vec![]));
+			let prefixed_range = range.with_prefix(OperatorStateKey::encoded(node_id, vec![]));
 			let mut stream = txn.range(prefixed_range, RangeScope::All, 1024);
 			let mut entries = Vec::new();
 			while let Some(result) = stream.next() {
@@ -261,7 +261,7 @@ pub mod tests {
 		}
 
 		let count = {
-			let range = FlowNodeStateKey::node_range(node_id);
+			let range = OperatorStateKey::node_range(node_id);
 			let mut stream = txn.range(range, RangeScope::All, 1024);
 			let mut count = 0;
 			while let Some(result) = stream.next() {
@@ -275,7 +275,7 @@ pub mod tests {
 		state_clear(node_id, &mut txn).unwrap();
 
 		let count = {
-			let range = FlowNodeStateKey::node_range(node_id);
+			let range = OperatorStateKey::node_range(node_id);
 			let mut stream = txn.range(range, RangeScope::All, 1024);
 			let mut count = 0;
 			while let Some(result) = stream.next() {

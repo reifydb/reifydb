@@ -11,30 +11,30 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 
-use super::operator_store::OperatorStore;
+use super::operator_store::OperatorLibraryStore;
 use crate::{
 	Result,
 	system::SystemCatalog,
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemOperatorOutputs {
+pub struct SystemOperatorLibraryOutputs {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
-	operator_store: OperatorStore,
+	operator_store: OperatorLibraryStore,
 }
 
-impl SystemOperatorOutputs {
-	pub fn new(operator_store: OperatorStore) -> Self {
+impl SystemOperatorLibraryOutputs {
+	pub fn new(operator_store: OperatorLibraryStore) -> Self {
 		Self {
-			vtable: SystemCatalog::get_system_operator_outputs_table().clone(),
+			vtable: SystemCatalog::get_system_operator_library_outputs_table().clone(),
 			exhausted: false,
 			operator_store,
 		}
 	}
 }
 
-impl BaseVTable for SystemOperatorOutputs {
+impl BaseVTable for SystemOperatorLibraryOutputs {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())

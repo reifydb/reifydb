@@ -358,7 +358,7 @@ impl ConfigKey {
 			}
 			Self::FlowSampleInterval => {
 				"How often each flow actor samples its operators' approximate memory into the \
-				 system::metrics::runtime::memory samples (scope flow_node::N). Runs on the operator's \
+				 system::metrics::runtime::memory samples (scope operator::N). Runs on the operator's \
 				 own thread, off the apply path. When none, operator sampling is disabled entirely; when \
 				 set, must be > 0."
 			}

@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::key::encoded::{EncodedKey, IntoEncodedKey};
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
-	key::operator_state::GroupSet,
+	interface::catalog::flow::OperatorId,
+	key::operator_group_state::GroupSet,
 	metrics::heap::{HeapSize, OperatorSample},
 };
 use reifydb_flow::{
@@ -135,7 +135,7 @@ where
 			.with_pool(self.budget.stat()))
 	}
 
-	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
+	fn create(operator_id: OperatorId, config: &Config) -> Result<Self> {
 		let aggregator = A::from_config(operator_id, config)?;
 		let engine_config = window_engine_config(config);
 		let budget = WindowedBudget::new(config, &engine_config);

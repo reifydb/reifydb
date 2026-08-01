@@ -10,7 +10,7 @@ use smallvec::SmallVec;
 
 use crate::{
 	common::CommitVersion,
-	interface::catalog::{flow::FlowNodeId, object::ObjectId},
+	interface::catalog::{flow::OperatorId, object::ObjectId},
 	value::column::columns::Columns,
 };
 
@@ -19,7 +19,7 @@ pub type Diffs = SmallVec<[Diff; 4]>;
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ChangeOrigin {
 	Object(ObjectId),
-	Flow(FlowNodeId),
+	Flow(OperatorId),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -210,7 +210,7 @@ impl Change {
 	}
 
 	pub fn from_flow(
-		from: FlowNodeId,
+		from: OperatorId,
 		version: CommitVersion,
 		diffs: impl Into<Diffs>,
 		changed_at: DateTime,

@@ -10,7 +10,7 @@ use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapabili
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
+	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
 	metrics::heap::{OperatorSample, StateMemory},
 };
 use reifydb_sdk::{
@@ -108,7 +108,7 @@ impl OperatorLogic for ParityWindow {
 					continue;
 				};
 				let window_bucket = (timestamp / WINDOW_SIZE) * WINDOW_SIZE;
-				let key = OperatorStateKey::inner_encoded(
+				let key = OperatorGroupStateKey::inner_encoded(
 					GroupId::NODE_SCOPE,
 					Keyspace::FIRST_CUSTOM,
 					window_bucket.to_be_bytes(),
@@ -219,8 +219,8 @@ impl OperatorLogic for FlushProbe {
 
 pub const FLUSH_PROBE_VALUE: i64 = 42;
 
-pub fn flush_probe_key() -> StateKey {
-	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, b"flush-probe")
+pub fn flush_probe_key() -> GroupStateKey {
+	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, b"flush-probe")
 }
 
 /// Reports a fixed 16 MiB of state usage from `sample()`, so the flush-driven lease control loop is

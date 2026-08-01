@@ -266,19 +266,19 @@ pub fn flow_state_decode_failed(state: &str, cause: String) -> Diagnostic {
 	)
 }
 
-pub fn flow_unsupported_node(kind: &str) -> Diagnostic {
+pub fn flow_unsupported_operator(kind: &str) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_023",
-		format!("flow node kind '{}' is not supported in persistent flows", kind),
-		"This node kind cannot appear in a persistent view flow. Rewrite the view without it.",
+		format!("operator kind '{}' is not supported in persistent flows", kind),
+		"This operator kind cannot appear in a persistent view flow. Rewrite the view without it.",
 	)
 }
 
-pub fn flow_node_input_arity(node: &str, expected: &str, found: usize) -> Diagnostic {
+pub fn flow_operator_input_arity(operator: &str, expected: &str, found: usize) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_024",
-		format!("flow node '{}' requires {} inputs, but the DAG provided {}", node, expected, found),
-		"The compiled flow DAG has the wrong number of input edges for this node. This indicates a flow \
+		format!("operator '{}' requires {} inputs, but the DAG provided {}", operator, expected, found),
+		"The compiled flow DAG has the wrong number of input edges for this operator. This indicates a flow \
 		 compiler or catalog inconsistency.",
 	)
 }
@@ -286,9 +286,9 @@ pub fn flow_node_input_arity(node: &str, expected: &str, found: usize) -> Diagno
 pub fn flow_parent_operator_not_found(input: String) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_025",
-		format!("parent operator not found while wiring flow node input: {}", input),
-		"A flow node references a parent operator that has not been registered. The flow DAG is incomplete \
-		 or nodes were registered out of order.",
+		format!("parent operator not found while wiring operator input: {}", input),
+		"An operator references a parent operator that has not been registered. The flow DAG is incomplete \
+		 or operators were registered out of order.",
 	)
 }
 
@@ -312,7 +312,7 @@ pub fn flow_ffi_unsupported_on_wasm() -> Diagnostic {
 pub fn flow_missing_input_edge() -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_028",
-		"flow node is missing a required input edge; the flow DAG is incomplete".to_string(),
+		"operator is missing a required input edge; the flow DAG is incomplete".to_string(),
 		"The compiled flow DAG is missing an edge that a node requires. This indicates a flow compiler bug.",
 	)
 }

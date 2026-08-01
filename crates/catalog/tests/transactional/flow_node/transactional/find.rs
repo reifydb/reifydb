@@ -26,7 +26,7 @@ fn transactional_view_flow_loads_with_a_connected_sink() {
 		.unwrap()
 		.expect("a flow must back the transactional view");
 
-	let nodes = catalog.list_flow_nodes_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
+	let nodes = catalog.list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 	let edges = catalog.list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 
 	assert!(nodes.len() >= 2, "`from src` must produce at least a source and a sink node, got {}", nodes.len());

@@ -9,7 +9,7 @@ use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapabili
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	key::operator_state::{Keyspace, OperatorStateKey},
+	key::operator_group_state::{Keyspace, OperatorGroupStateKey},
 };
 use reifydb_sdk::{
 	config::Config,
@@ -111,7 +111,7 @@ fn tally_apply(
 
 			let key = EncodedKey::new(g.to_be_bytes());
 			let group = ctx.intern_group(&key)?;
-			let state_key = OperatorStateKey::inner_encoded(group, HOARDER_STATE, []);
+			let state_key = OperatorGroupStateKey::inner_encoded(group, HOARDER_STATE, []);
 
 			let total: i64 = operator.state_get(ctx, &state_key)?.unwrap_or(0) + 1;
 			operator.state_set(ctx, &state_key, &total)?;

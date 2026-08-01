@@ -10,7 +10,7 @@ use column_snapshot::{ColumnSnapshotKey, SeriesColumnSnapshotKey, TableColumnSna
 use columns::ColumnsKey;
 use dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey};
 use flow::FlowKey;
-use flow_node_state::FlowNodeStateKey;
+use operator_state::OperatorStateKey;
 use granted_role::GrantedRoleKey;
 use handler::HandlerKey;
 use identity::IdentityKey;
@@ -76,8 +76,6 @@ pub mod config;
 pub mod dictionary;
 pub mod flow;
 pub mod flow_edge;
-pub mod flow_node;
-pub mod flow_node_state;
 pub mod flow_version;
 pub mod granted_role;
 pub mod handler;
@@ -103,6 +101,8 @@ pub mod namespace_source;
 pub mod namespace_sumtype;
 pub mod namespace_table;
 pub mod namespace_view;
+pub mod operator;
+pub mod operator_group_state;
 pub mod operator_settings;
 pub mod operator_state;
 pub mod partition;
@@ -148,7 +148,7 @@ pub enum Key {
 	Columns(ColumnsKey),
 	Index(IndexKey),
 	IndexEntry(IndexEntryKey),
-	FlowNodeState(FlowNodeStateKey),
+	OperatorState(OperatorStateKey),
 	PrimaryKey(PrimaryKeyKey),
 	Row(RowKey),
 	PartitionedRow(PartitionedRowKey),
@@ -215,7 +215,7 @@ impl Key {
 			Key::TableColumnProperty(key) => key.encode(),
 			Key::Index(key) => key.encode(),
 			Key::IndexEntry(key) => key.encode(),
-			Key::FlowNodeState(key) => key.encode(),
+			Key::OperatorState(key) => key.encode(),
 			Key::PrimaryKey(key) => key.encode(),
 			Key::Row(key) => key.encode(),
 			Key::PartitionedRow(key) => key.encode(),
@@ -320,7 +320,7 @@ impl Key {
 			KeyKind::Column => ColumnKey::decode(key).map(Self::Column),
 			KeyKind::Index => IndexKey::decode(key).map(Self::Index),
 			KeyKind::IndexEntry => IndexEntryKey::decode(key).map(Self::IndexEntry),
-			KeyKind::FlowNodeState => FlowNodeStateKey::decode(key).map(Self::FlowNodeState),
+			KeyKind::OperatorState => OperatorStateKey::decode(key).map(Self::OperatorState),
 			KeyKind::Row => RowKey::decode(key).map(Self::Row),
 			KeyKind::PartitionedRow => PartitionedRowKey::decode(key).map(Self::PartitionedRow),
 			KeyKind::Partition => PartitionKey::decode(key).map(Self::Partition),
@@ -340,8 +340,8 @@ impl Key {
 			KeyKind::NamespaceRingBuffer => {
 				NamespaceRingBufferKey::decode(key).map(Self::NamespaceRingBuffer)
 			}
-			KeyKind::FlowNode
-			| KeyKind::FlowNodeByFlow
+			KeyKind::Operator
+			| KeyKind::OperatorByFlow
 			| KeyKind::FlowEdge
 			| KeyKind::FlowEdgeByFlow
 			| KeyKind::FlowVersion => None,
@@ -406,14 +406,14 @@ pub mod tests {
 
 	use crate::{
 		interface::catalog::{
-			flow::FlowNodeId,
+			flow::OperatorId,
 			id::{ColumnId, ColumnPropertyId, IndexId, NamespaceId, SequenceId, TableId},
 			object::ObjectId,
 			storage::StorageId,
 		},
 		key::{
 			Key, column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey,
-			flow_node_state::FlowNodeStateKey, index::IndexKey, namespace::NamespaceKey,
+			operator_state::OperatorStateKey, index::IndexKey, namespace::NamespaceKey,
 			namespace_sumtype::NamespaceSumTypeKey, namespace_table::NamespaceTableKey,
 			property::ColumnPropertyKey, row::RowKey, row_sequence::RowSequenceKey, sumtype::SumTypeKey,
 			system_sequence::SystemSequenceKey, table::TableKey,
@@ -629,8 +629,8 @@ pub mod tests {
 
 	#[test]
 	fn test_operator_state() {
-		let key = Key::FlowNodeState(FlowNodeStateKey {
-			node: FlowNodeId(0xCAFEBABE),
+		let key = Key::OperatorState(OperatorStateKey {
+			node: OperatorId(0xCAFEBABE),
 			key: vec![1, 2, 3],
 		});
 
@@ -638,7 +638,7 @@ pub mod tests {
 		let decoded = Key::decode(&encoded).expect("Failed to decode key");
 
 		match decoded {
-			Key::FlowNodeState(decoded_inner) => {
+			Key::OperatorState(decoded_inner) => {
 				assert_eq!(decoded_inner.node, 0xCAFEBABE);
 				assert_eq!(decoded_inner.key, vec![1, 2, 3]);
 			}

@@ -620,7 +620,7 @@ mod tests {
 		state::StateBytes,
 	};
 	use reifydb_core::{
-		key::operator_state::{GroupId, StateKey},
+		key::operator_group_state::{GroupId, GroupStateKey},
 		state::{budget::OperatorStateBudgetHandle, store::StateStore},
 	};
 	use reifydb_flow::window::{engine::config::WindowEngineConfig, policy::EvictionPolicy, span::WindowCoord};
@@ -717,13 +717,13 @@ mod tests {
 			Ok(self.groups.get(group.as_bytes()).copied())
 		}
 
-		fn state_get(&mut self, key: &StateKey) -> ValueResult<Option<StateBytes>> {
+		fn state_get(&mut self, key: &GroupStateKey) -> ValueResult<Option<StateBytes>> {
 			Ok(self.state.get(key.as_slice()).cloned())
 		}
 		fn state_get_many_visit(
 			&mut self,
-			keys: &[StateKey],
-			visit: &mut dyn FnMut(StateKey, StateBytes) -> ValueResult<()>,
+			keys: &[GroupStateKey],
+			visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> ValueResult<()>,
 		) -> ValueResult<()> {
 			for key in keys {
 				if let Some(b) = self.state.get(key.as_slice()) {
@@ -732,11 +732,11 @@ mod tests {
 			}
 			Ok(())
 		}
-		fn state_set(&mut self, key: &StateKey, payload: StateBytes) -> ValueResult<()> {
+		fn state_set(&mut self, key: &GroupStateKey, payload: StateBytes) -> ValueResult<()> {
 			self.state.insert(key.as_slice().to_vec(), payload);
 			Ok(())
 		}
-		fn state_remove(&mut self, key: &StateKey) -> ValueResult<()> {
+		fn state_remove(&mut self, key: &GroupStateKey) -> ValueResult<()> {
 			self.state.remove(key.as_slice());
 			Ok(())
 		}
@@ -744,7 +744,7 @@ mod tests {
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(StateKey, StateBytes) -> ValueResult<()>,
+			visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> ValueResult<()>,
 		) -> ValueResult<()> {
 			let mut seen = 0usize;
 			let entries: Vec<(Vec<u8>, StateBytes)> = self
@@ -772,7 +772,7 @@ mod tests {
 				{
 					break;
 				}
-				let Some(k) = StateKey::from_framed(EncodedKey::new(k)) else {
+				let Some(k) = GroupStateKey::from_framed(EncodedKey::new(k)) else {
 					continue;
 				};
 				visit(k, v)?;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{key::operator_state::GroupId, state::store::StateStore};
+use reifydb_core::{key::operator_group_state::GroupId, state::store::StateStore};
 use reifydb_value::{Result, value::row_number::RowNumber};
 
 use crate::window::{

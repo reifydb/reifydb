@@ -14,7 +14,7 @@ use reifydb_core::{
 			column_snapshot::ColumnSnapshot,
 			config::{Config, ConfigKey},
 			dictionary::Dictionary,
-			flow::{Flow, FlowId, FlowNodeId},
+			flow::{Flow, FlowId, OperatorId},
 			handler::Handler,
 			id::{
 				BindingId, ColumnSnapshotId, HandlerId, MigrationId, NamespaceId, ProcedureId, QueueId,
@@ -620,11 +620,11 @@ impl TransactionalRowSettingsChanges for QueryTransaction {
 }
 
 impl TransactionalOperatorSettingsChanges for QueryTransaction {
-	fn find_operator_settings(&self, _operator: FlowNodeId) -> Option<&OperatorSettings> {
+	fn find_operator_settings(&self, _operator: OperatorId) -> Option<&OperatorSettings> {
 		None
 	}
 
-	fn is_operator_settings_deleted(&self, _operator: FlowNodeId) -> bool {
+	fn is_operator_settings_deleted(&self, _operator: OperatorId) -> bool {
 		false
 	}
 }

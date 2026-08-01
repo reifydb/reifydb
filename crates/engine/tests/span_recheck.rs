@@ -9,7 +9,7 @@ use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_catalog::{
 	catalog::Catalog,
 	store::operator_settings::create::create_operator_settings,
-	vtable::system::operator_store::{OperatorInfo, OperatorStore},
+	vtable::system::operator_store::{OperatorLibraryInfo, OperatorLibraryStore},
 };
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
@@ -57,9 +57,9 @@ fn node_of(dag: &FlowDag, matches: impl Fn(&FlowNodeType) -> bool) -> FlowNodeId
 		.expect("the dag must contain the node the test is about")
 }
 
-fn store_with(operator: &str, capabilities: u32) -> OperatorStore {
-	let store = OperatorStore::new();
-	store.add(OperatorInfo {
+fn store_with(operator: &str, capabilities: u32) -> OperatorLibraryStore {
+	let store = OperatorLibraryStore::new();
+	store.add(OperatorLibraryInfo {
 		operator: operator.to_string(),
 		library_path: Default::default(),
 		api: 1,
@@ -72,7 +72,7 @@ fn store_with(operator: &str, capabilities: u32) -> OperatorStore {
 
 fn recheck(
 	engine: &TestEngine,
-	operators: &OperatorStore,
+	operators: &OperatorLibraryStore,
 	txn: &mut AdminTransaction,
 	dag: &FlowDag,
 ) -> Option<String> {
@@ -98,7 +98,7 @@ fn a_span_that_appears_on_a_stateless_node_after_definition_is_refused() {
 	declare_span(&mut txn, map);
 
 	assert_eq!(
-		recheck(&engine, &OperatorStore::new(), &mut txn, &dag).as_deref(),
+		recheck(&engine, &OperatorLibraryStore::new(), &mut txn, &dag).as_deref(),
 		Some("FLOW_045"),
 		"a span on a node that holds no state must be refused when the flow is resolved again"
 	);
@@ -120,7 +120,7 @@ fn a_span_survives_the_recheck_when_the_operator_still_declares_reclaim() {
 	declare_span(&mut txn, append);
 
 	assert_eq!(
-		recheck(&engine, &OperatorStore::new(), &mut txn, &dag),
+		recheck(&engine, &OperatorLibraryStore::new(), &mut txn, &dag),
 		None,
 		"append keeps keyed state and reclaims, so its span must still be honoured on a re-check"
 	);
@@ -144,7 +144,7 @@ fn a_span_is_refused_when_the_operator_catalog_reports_no_reclaim() {
 	// An operator the catalog has never heard of cannot run at all, so accepting its span would
 	// be strictly worse than refusing it.
 	assert_eq!(
-		recheck(&engine, &OperatorStore::new(), &mut txn, &dag).as_deref(),
+		recheck(&engine, &OperatorLibraryStore::new(), &mut txn, &dag).as_deref(),
 		Some("FLOW_044"),
 		"an operator absent from the catalog must not have its span accepted"
 	);

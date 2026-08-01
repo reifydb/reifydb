@@ -24,8 +24,8 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		flow_node_state::FlowNodeStateKey,
-		operator_state::{GroupId, GroupSet, Keyspace, OperatorStateKey, StateKey},
+		operator_state::OperatorStateKey,
+		operator_group_state::{GroupId, GroupSet, Keyspace, OperatorGroupStateKey, GroupStateKey},
 	},
 	row::Row,
 };
@@ -216,7 +216,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 	}
 
 	pub fn group_id(&self, group_key: &[u8]) -> Option<GroupId> {
-		let dictionary_key = FlowNodeStateKey::new(
+		let dictionary_key = OperatorStateKey::new(
 			self.node_id,
 			OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group_key)
 				.as_slice()
@@ -257,7 +257,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		let mut state = self.context.state_store().lock();
 		let before = state.len();
 		state.retain(|key, _| {
-			let Some(decoded) = FlowNodeStateKey::decode(key) else {
+			let Some(decoded) = OperatorStateKey::decode(key) else {
 				return true;
 			};
 			if decoded.node != self.node_id {
@@ -273,7 +273,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		before - state.len()
 	}
 
-	pub fn state_value<V: OperatorState>(&mut self, key: &StateKey) -> Option<V> {
+	pub fn state_value<V: OperatorState>(&mut self, key: &GroupStateKey) -> Option<V> {
 		let mut ctx = self.create_operator_context();
 		ctx.state().get::<V>(key).expect("state get")
 	}
@@ -1105,10 +1105,10 @@ pub mod tests {
 		state.assert_typed_value::<i64>(probe_row_key(3 * MILLI).as_encoded(), &3i64);
 	}
 
-	fn group_state_key(node: FlowNodeId, group: GroupId, keyspace: Keyspace) -> FlowNodeStateKey {
+	fn group_state_key(node: FlowNodeId, group: GroupId, keyspace: Keyspace) -> OperatorStateKey {
 		// Must compose the key the way the substrate does, or what these tests seed is not
 		// addressable by the phase ranges the sweep scans.
-		FlowNodeStateKey::new(node, OperatorStateKey::inner_encoded(group, keyspace, b"k").as_slice().to_vec())
+		OperatorStateKey::new(node, OperatorStateKey::inner_encoded(group, keyspace, b"k").as_slice().to_vec())
 	}
 
 	#[test]

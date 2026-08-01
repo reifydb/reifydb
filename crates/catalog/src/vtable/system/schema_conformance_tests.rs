@@ -20,8 +20,8 @@ use super::{
 	event_variants::SystemEventVariants,
 	events::SystemEvents,
 	flow_edges::SystemFlowEdges,
-	flow_node_types::SystemFlowNodeTypes,
-	flow_nodes::SystemFlowNodes,
+	operator_types::SystemOperatorTypes,
+	operators::SystemOperators,
 	flow_watermarks::SystemFlowWatermarks,
 	flows::SystemFlows,
 	granted_roles::SystemGrantedRoles,
@@ -33,10 +33,10 @@ use super::{
 	migrations::SystemMigrations,
 	namespaces::SystemNamespaces,
 	node_retention_store::NodeRetentionStore,
-	operator_inputs::SystemOperatorInputs,
-	operator_outputs::SystemOperatorOutputs,
-	operator_store::OperatorStore,
-	operators::SystemOperators,
+	operator_inputs::SystemOperatorLibraryInputs,
+	operator_outputs::SystemOperatorLibraryOutputs,
+	operator_store::OperatorLibraryStore,
+	operators::SystemOperatorLibraries,
 	policies::SystemPolicies,
 	policy_operations::SystemPolicyOperations,
 	primary_key_columns::SystemPrimaryKeyColumns,
@@ -72,7 +72,7 @@ use crate::{
 fn all_system_vtables() -> Vec<Box<dyn BaseVTable>> {
 	let ioc = IocContainer::new();
 	let catalog = Catalog::testing();
-	let operators = OperatorStore::new();
+	let operators = OperatorLibraryStore::new();
 	let metrics = MetricsReader::new(SingleStore::testing_memory());
 
 	let metrics_storage = [
@@ -83,7 +83,7 @@ fn all_system_vtables() -> Vec<Box<dyn BaseVTable>> {
 		(SystemCatalog::get_system_metrics_storage_dictionary_table(), MetricsObject::Dictionary),
 		(SystemCatalog::get_system_metrics_storage_series_table(), MetricsObject::Series),
 		(SystemCatalog::get_system_metrics_storage_flow_table(), MetricsObject::Flow),
-		(SystemCatalog::get_system_metrics_storage_flow_node_table(), MetricsObject::FlowNode),
+		(SystemCatalog::get_system_metrics_storage_operator_table(), MetricsObject::Operator),
 		(SystemCatalog::get_system_metrics_storage_system_table(), MetricsObject::System),
 	];
 
@@ -95,7 +95,7 @@ fn all_system_vtables() -> Vec<Box<dyn BaseVTable>> {
 		(SystemCatalog::get_system_metrics_cdc_dictionary_table(), MetricsObject::Dictionary),
 		(SystemCatalog::get_system_metrics_cdc_series_table(), MetricsObject::Series),
 		(SystemCatalog::get_system_metrics_cdc_flow_table(), MetricsObject::Flow),
-		(SystemCatalog::get_system_metrics_cdc_flow_node_table(), MetricsObject::FlowNode),
+		(SystemCatalog::get_system_metrics_cdc_operator_table(), MetricsObject::Operator),
 		(SystemCatalog::get_system_metrics_cdc_system_table(), MetricsObject::System),
 	];
 
@@ -107,7 +107,7 @@ fn all_system_vtables() -> Vec<Box<dyn BaseVTable>> {
 		Box::new(SystemFlows::new()),
 		Box::new(SystemFlowWatermarks::new(ioc.clone())),
 		Box::new(SystemSubscriptionWatermarks::new(ioc.clone())),
-		Box::new(SystemFlowNodes::new(NodeRetentionStore::new())),
+		Box::new(SystemOperators::new(NodeRetentionStore::new())),
 		Box::new(SystemFlowEdges::new()),
 		Box::new(SystemColumnsTable::new()),
 		Box::new(SystemPrimaryKeys::new()),
@@ -115,13 +115,13 @@ fn all_system_vtables() -> Vec<Box<dyn BaseVTable>> {
 		Box::new(SystemColumnProperties::new()),
 		Box::new(SystemVersions::new(ioc.clone())),
 		Box::new(SystemCdcConsumers::new()),
-		Box::new(SystemOperators::new(operators.clone())),
-		Box::new(SystemOperatorInputs::new(operators.clone())),
-		Box::new(SystemOperatorOutputs::new(operators.clone())),
+		Box::new(SystemOperatorLibraries::new(operators.clone())),
+		Box::new(SystemOperatorLibraryInputs::new(operators.clone())),
+		Box::new(SystemOperatorLibraryOutputs::new(operators.clone())),
 		Box::new(SystemDictionaries::new()),
 		Box::new(SystemTablesVirtual::new(catalog.clone())),
 		Box::new(SystemTypes::new()),
-		Box::new(SystemFlowNodeTypes::new()),
+		Box::new(SystemOperatorTypes::new()),
 		Box::new(SystemRingBuffers::new()),
 		Box::new(SystemRowShapes::new(catalog.clone())),
 		Box::new(SystemRowShapeFields::new(catalog.clone())),

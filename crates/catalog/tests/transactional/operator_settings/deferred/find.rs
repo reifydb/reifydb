@@ -25,7 +25,7 @@ fn deferred_append_view_persists_operator_ttl() {
 		.unwrap()
 		.expect("a flow must back the deferred view");
 	let node_ids: Vec<_> = catalog
-		.list_flow_nodes_by_flow(&mut Transaction::Admin(&mut txn), flow.id)
+		.list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id)
 		.unwrap()
 		.into_iter()
 		.map(|n| n.id)
@@ -62,7 +62,7 @@ fn deferred_join_view_persists_join_ttl() {
 		.unwrap()
 		.expect("a flow must back the deferred view");
 	let node_ids: Vec<_> = catalog
-		.list_flow_nodes_by_flow(&mut Transaction::Admin(&mut txn), flow.id)
+		.list_operators_by_flow(&mut Transaction::Admin(&mut txn), flow.id)
 		.unwrap()
 		.into_iter()
 		.map(|n| n.id)

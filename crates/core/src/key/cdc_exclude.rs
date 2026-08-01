@@ -6,7 +6,7 @@ use super::KeyKind;
 pub fn should_exclude_from_cdc(kind: KeyKind) -> bool {
 	matches!(
 		kind,
-		KeyKind::FlowNodeState
+		KeyKind::OperatorState
 			| KeyKind::CdcConsumer
 			| KeyKind::Metric | KeyKind::SystemSequence
 			| KeyKind::RowSequence
@@ -53,14 +53,14 @@ pub mod tests {
 			KeyKind::View => {}
 			KeyKind::NamespaceView => {}
 			KeyKind::PrimaryKey => {}
-			KeyKind::FlowNodeState => {}
+			KeyKind::OperatorState => {}
 			KeyKind::RingBuffer => {}
 			KeyKind::NamespaceRingBuffer => {}
 			KeyKind::RingBufferMetadata => {}
 			KeyKind::Flow => {}
 			KeyKind::NamespaceFlow => {}
-			KeyKind::FlowNode => {}
-			KeyKind::FlowNodeByFlow => {}
+			KeyKind::Operator => {}
+			KeyKind::OperatorByFlow => {}
 			KeyKind::FlowEdge => {}
 			KeyKind::FlowEdgeByFlow => {}
 			KeyKind::Dictionary => {}
@@ -119,8 +119,8 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_exclude_flow_node_state() {
-		assert!(should_exclude_from_cdc(KeyKind::FlowNodeState));
+	fn test_exclude_operator_state() {
+		assert!(should_exclude_from_cdc(KeyKind::OperatorState));
 	}
 
 	#[test]
@@ -289,13 +289,13 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_include_flow_node() {
-		assert!(!should_exclude_from_cdc(KeyKind::FlowNode));
+	fn test_include_operator() {
+		assert!(!should_exclude_from_cdc(KeyKind::Operator));
 	}
 
 	#[test]
-	fn test_include_flow_node_by_flow() {
-		assert!(!should_exclude_from_cdc(KeyKind::FlowNodeByFlow));
+	fn test_include_operator_by_flow() {
+		assert!(!should_exclude_from_cdc(KeyKind::OperatorByFlow));
 	}
 
 	#[test]

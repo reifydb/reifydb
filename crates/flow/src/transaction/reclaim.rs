@@ -6,9 +6,9 @@ use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
 	key::{
 		EncodableKey,
-		flow_node_state::FlowNodeStateKey,
-		operator_state::{
-			GroupId, Keyspace, StateKey, group_data_inner_range, group_identity_inner_range,
+		operator_state::OperatorStateKey,
+		operator_group_state::{
+			GroupId, Keyspace, GroupStateKey, group_data_inner_range, group_identity_inner_range,
 			keyspace_inner_range,
 		},
 	},
@@ -104,13 +104,13 @@ impl FlowTransaction {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
 		let batch = self.state_range(node, range, Some(limit))?;
-		let keys: Vec<StateKey> = batch
+		let keys: Vec<GroupStateKey> = batch
 			.items
 			.iter()
 			.map(|item| {
-				let decoded = FlowNodeStateKey::decode(&item.key)
-					.expect("state_range must return FlowNodeState keys");
-				StateKey::from_framed(EncodedKey::new(decoded.key))
+				let decoded = OperatorStateKey::decode(&item.key)
+					.expect("state_range must return OperatorState keys");
+				GroupStateKey::from_framed(EncodedKey::new(decoded.key))
 					.expect("operator state rows carry a framed inner key")
 			})
 			.collect();
@@ -132,7 +132,7 @@ mod tests {
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		common::CommitVersion,
-		key::operator_state::{Keyspace, OperatorStateKey, group_inner_range, keyspace_inner_range},
+		key::operator_group_state::{Keyspace, OperatorGroupStateKey, group_inner_range, keyspace_inner_range},
 		state::horizon::Cutoff,
 	};
 	use reifydb_engine::test_harness::TestEngine;
@@ -177,7 +177,7 @@ mod tests {
 	}
 
 	fn write(txn: &mut FlowTransaction, group: GroupId, keyspace: Keyspace, suffix: u8) {
-		let key = OperatorStateKey::inner_encoded(group, keyspace, vec![suffix]);
+		let key = OperatorGroupStateKey::inner_encoded(group, keyspace, vec![suffix]);
 		txn.state_set(NODE, &key, payload()).unwrap();
 	}
 

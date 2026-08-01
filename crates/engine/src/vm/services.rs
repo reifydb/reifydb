@@ -8,7 +8,7 @@ use reifydb_catalog::{
 	catalog::Catalog,
 	metrics::storage::metrics::MetricsReader,
 	vtable::{
-		system::{node_retention_store::NodeRetentionStore, operator_store::OperatorStore},
+		system::{node_retention_store::NodeRetentionStore, operator_store::OperatorLibraryStore},
 		user::registry::UserVTableRegistry,
 	},
 };
@@ -45,7 +45,7 @@ pub struct Services {
 	pub compiler: Compiler,
 	pub routines: Routines,
 	pub transforms: Transforms,
-	pub operator_store: OperatorStore,
+	pub operator_store: OperatorLibraryStore,
 	pub node_retention_store: NodeRetentionStore,
 	pub virtual_table_registry: UserVTableRegistry,
 	pub metrics_reader: MetricsReader<SingleStore>,
@@ -60,7 +60,7 @@ impl Services {
 	pub fn new(
 		catalog: Catalog,
 		config: EngineConfig,
-		operator_store: OperatorStore,
+		operator_store: OperatorLibraryStore,
 		metrics_reader: MetricsReader<SingleStore>,
 	) -> Self {
 		let auth_registry = AuthenticationRegistry::new(config.runtime_context.clock.clone());
@@ -110,7 +110,7 @@ impl Services {
 				#[cfg(not(reifydb_single_threaded))]
 				remote_registry: None,
 			},
-			OperatorStore::new(),
+			OperatorLibraryStore::new(),
 			MetricsReader::new(store),
 		);
 		services.auth_registry = AuthenticationRegistry::default();

@@ -10,7 +10,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	key::{flow_node_state::FlowNodeStateKey, operator_state::StateKey},
+	key::{operator_state::OperatorStateKey, operator_group_state::GroupStateKey},
 };
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
@@ -24,7 +24,7 @@ impl FlowTransaction {
 		key_len = key.as_slice().len(),
 		found = field::Empty
 	))]
-	pub fn state_get(&mut self, id: FlowNodeId, key: &StateKey) -> Result<Option<EncodedRow>> {
+	pub fn state_get(&mut self, id: FlowNodeId, key: &GroupStateKey) -> Result<Option<EncodedRow>> {
 		let result = self.scoped_get(id, key)?;
 		Span::current().record("found", result.is_some());
 		Ok(result)
@@ -35,7 +35,7 @@ impl FlowTransaction {
 		key_count = keys.len(),
 		found_count = field::Empty
 	))]
-	pub fn state_get_many(&mut self, id: FlowNodeId, keys: &[StateKey]) -> Result<MultiVersionBatch> {
+	pub fn state_get_many(&mut self, id: FlowNodeId, keys: &[GroupStateKey]) -> Result<MultiVersionBatch> {
 		let batch = self.scoped_get_many(id, keys)?;
 		Span::current().record("found_count", batch.items.len());
 		Ok(batch)
@@ -46,7 +46,7 @@ impl FlowTransaction {
 		key_len = key.as_slice().len(),
 		value_len = value.len()
 	))]
-	pub fn state_set(&mut self, id: FlowNodeId, key: &StateKey, value: EncodedRow) -> Result<()> {
+	pub fn state_set(&mut self, id: FlowNodeId, key: &GroupStateKey, value: EncodedRow) -> Result<()> {
 		self.scoped_set(id, key, value)
 	}
 
@@ -54,7 +54,7 @@ impl FlowTransaction {
 		node_id = id.0,
 		key_len = key.as_slice().len()
 	))]
-	pub fn state_remove(&mut self, id: FlowNodeId, key: &StateKey) -> Result<()> {
+	pub fn state_remove(&mut self, id: FlowNodeId, key: &GroupStateKey) -> Result<()> {
 		self.scoped_remove(id, key)
 	}
 
@@ -63,7 +63,7 @@ impl FlowTransaction {
 		result_count = field::Empty
 	))]
 	pub fn state_scan_all(&mut self, id: FlowNodeId) -> Result<MultiVersionBatch> {
-		let range = FlowNodeStateKey::node_range(id);
+		let range = OperatorStateKey::node_range(id);
 		let iter = self.range(range, RangeScope::All, 1024);
 		let mut items = Vec::new();
 		for result in iter {
@@ -80,7 +80,7 @@ impl FlowTransaction {
 		node_id = id.0
 	))]
 	pub fn state_range_all(&mut self, id: FlowNodeId, range: EncodedKeyRange) -> Result<MultiVersionBatch> {
-		let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
+		let prefixed_range = range.with_prefix(OperatorStateKey::encoded(id, vec![]));
 		let iter = self.range(prefixed_range, RangeScope::All, 1024);
 		let mut items = Vec::new();
 		for result in iter {
@@ -101,7 +101,7 @@ impl FlowTransaction {
 		range: EncodedKeyRange,
 		limit: Option<usize>,
 	) -> Result<MultiVersionBatch> {
-		let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
+		let prefixed_range = range.with_prefix(OperatorStateKey::encoded(id, vec![]));
 		let iter = self.range(prefixed_range, RangeScope::All, 1024);
 		let mut items = Vec::new();
 		for result in iter {
@@ -136,7 +136,7 @@ impl FlowTransaction {
 	#[inline]
 	#[instrument(name = "flow::state::clear::scan", level = "trace", skip(self), fields(node_id = id.0))]
 	fn scan_keys_for_clear(&mut self, id: FlowNodeId) -> Result<Vec<EncodedKey>> {
-		let range = FlowNodeStateKey::node_range(id);
+		let range = OperatorStateKey::node_range(id);
 		let iter = self.range(range, RangeScope::All, 1024);
 		let mut keys = Vec::new();
 		for result in iter {
@@ -160,7 +160,7 @@ impl FlowTransaction {
 		key_len = key.as_slice().len(),
 		created
 	))]
-	pub fn load_or_create_row(&mut self, id: FlowNodeId, key: &StateKey, shape: &RowShape) -> Result<EncodedRow> {
+	pub fn load_or_create_row(&mut self, id: FlowNodeId, key: &GroupStateKey, shape: &RowShape) -> Result<EncodedRow> {
 		match self.state_get(id, key)? {
 			Some(row) => {
 				Span::current().record("created", false);
@@ -177,19 +177,19 @@ impl FlowTransaction {
 		node_id = id.0,
 		key_len = key.as_slice().len()
 	))]
-	pub fn save_row(&mut self, id: FlowNodeId, key: &StateKey, row: EncodedRow) -> Result<()> {
+	pub fn save_row(&mut self, id: FlowNodeId, key: &GroupStateKey, row: EncodedRow) -> Result<()> {
 		self.state_set(id, key, row)
 	}
 
-	fn scoped_get(&mut self, id: FlowNodeId, key: &StateKey) -> Result<Option<EncodedRow>> {
-		let encoded_key = FlowNodeStateKey::encoded(id, key.as_slice());
+	fn scoped_get(&mut self, id: FlowNodeId, key: &GroupStateKey) -> Result<Option<EncodedRow>> {
+		let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
 		self.get(&encoded_key)
 	}
 
-	fn scoped_get_many(&mut self, id: FlowNodeId, keys: &[StateKey]) -> Result<MultiVersionBatch> {
+	fn scoped_get_many(&mut self, id: FlowNodeId, keys: &[GroupStateKey]) -> Result<MultiVersionBatch> {
 		let version = self.version();
 		let encoded: Vec<EncodedKey> =
-			keys.iter().map(|key| FlowNodeStateKey::encoded(id, key.as_slice())).collect();
+			keys.iter().map(|key| OperatorStateKey::encoded(id, key.as_slice())).collect();
 
 		let mut items: Vec<MultiVersionRow> = Vec::new();
 		let mut to_batch: Vec<EncodedKey> = Vec::new();
@@ -277,12 +277,12 @@ impl FlowTransaction {
 		Ok(())
 	}
 
-	fn scoped_set(&mut self, id: FlowNodeId, key: &StateKey, value: EncodedRow) -> Result<()> {
-		self.set(&FlowNodeStateKey::encoded(id, key.as_slice()), value)
+	fn scoped_set(&mut self, id: FlowNodeId, key: &GroupStateKey, value: EncodedRow) -> Result<()> {
+		self.set(&OperatorStateKey::encoded(id, key.as_slice()), value)
 	}
 
-	fn scoped_remove(&mut self, id: FlowNodeId, key: &StateKey) -> Result<()> {
-		let encoded_key = FlowNodeStateKey::encoded(id, key.as_slice());
+	fn scoped_remove(&mut self, id: FlowNodeId, key: &GroupStateKey) -> Result<()> {
+		let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
 		self.remove_silent(&encoded_key)
 	}
 }
@@ -308,7 +308,7 @@ pub mod tests {
 		interface::catalog::{flow::FlowNodeId, id::TableId, storage::StorageId},
 		key::{
 			EncodableKey,
-			operator_state::{GroupId, Keyspace, OperatorStateKey},
+			operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
 			row::RowKey,
 		},
 		state::budget::OperatorStateBudgetHandle,
@@ -330,14 +330,14 @@ pub mod tests {
 		},
 	};
 
-	fn commit_state_row(engine: &TestEngine, node: FlowNodeId, key: &StateKey, row: EncodedRow) -> CommitVersion {
+	fn commit_state_row(engine: &TestEngine, node: FlowNodeId, key: &GroupStateKey, row: EncodedRow) -> CommitVersion {
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 		cmd.disable_conflict_tracking().unwrap();
-		cmd.set(&FlowNodeStateKey::encoded(node, key.as_slice()), row).unwrap();
+		cmd.set(&OperatorStateKey::encoded(node, key.as_slice()), row).unwrap();
 		cmd.commit_unchecked().unwrap()
 	}
 
-	fn make_key(s: &str) -> StateKey {
+	fn make_key(s: &str) -> GroupStateKey {
 		// Framed as an operator composes its keys. A bare byte string encodes as some other group's
 		// prefix, so these tests would assert against keys reclamation could prefix-delete.
 		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, s.as_bytes())
@@ -402,7 +402,7 @@ pub mod tests {
 		let mut decoded: Vec<(Vec<u8>, EncodedRow)> = batch
 			.items
 			.iter()
-			.map(|item| (FlowNodeStateKey::decode(&item.key).unwrap().key, item.row.clone()))
+			.map(|item| (OperatorStateKey::decode(&item.key).unwrap().key, item.row.clone()))
 			.collect();
 		decoded.sort_by(|a, b| a.0.cmp(&b.0));
 		assert_eq!(decoded[0], (make_key("a").as_slice().to_vec(), make_value("data")));
@@ -954,8 +954,8 @@ pub mod tests {
 
 		let (_version, lease) = engine.acquire_current_snapshot_lease().unwrap();
 		let query = engine.multi().begin_query_at_version(&lease).unwrap();
-		let prior_encoded = FlowNodeStateKey::encoded(node_id, prior_key.as_slice());
-		let written_encoded = FlowNodeStateKey::encoded(node_id, written_key.as_slice());
+		let prior_encoded = OperatorStateKey::encoded(node_id, prior_key.as_slice());
+		let written_encoded = OperatorStateKey::encoded(node_id, written_key.as_slice());
 		let found = query.get_many(&[prior_encoded.clone(), written_encoded.clone()]).unwrap();
 		assert_eq!(
 			found.len(),
@@ -987,7 +987,7 @@ pub mod tests {
 		let base_key = make_key("in_flight");
 		let base_value = make_value("in_flight_value");
 		let mut base_pending = Pending::new();
-		base_pending.insert(FlowNodeStateKey::encoded(node_id, base_key.as_slice()), base_value.clone());
+		base_pending.insert(OperatorStateKey::encoded(node_id, base_key.as_slice()), base_value.clone());
 
 		let mut txn = FlowTransaction::transactional(TransactionalParams {
 			version: low_version,
@@ -1033,8 +1033,8 @@ pub mod tests {
 		let overlaid_value = make_value("overlaid_value");
 		let mut base_pending = Pending::new();
 		base_pending
-			.insert(FlowNodeStateKey::encoded(node_id, overlaid_key.as_slice()), overlaid_value.clone());
-		base_pending.remove(FlowNodeStateKey::encoded(node_id, committed_key.as_slice()));
+			.insert(OperatorStateKey::encoded(node_id, overlaid_key.as_slice()), overlaid_value.clone());
+		base_pending.remove(OperatorStateKey::encoded(node_id, committed_key.as_slice()));
 
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version: low_version,
@@ -1141,7 +1141,7 @@ pub mod tests {
 		let seeded_value = make_value("seeded_value");
 
 		let mut state = HashMap::new();
-		state.insert(FlowNodeStateKey::encoded(node_id, seeded_key.as_slice()), seeded_value.clone());
+		state.insert(OperatorStateKey::encoded(node_id, seeded_key.as_slice()), seeded_value.clone());
 
 		let mut txn = FlowTransaction::ephemeral(
 			CommitVersion(1),

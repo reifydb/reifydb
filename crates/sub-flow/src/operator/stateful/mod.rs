@@ -13,7 +13,7 @@ pub mod test_utils;
 pub mod utils;
 pub mod window;
 
-use reifydb_core::key::{EncodableKey, flow_node_state::FlowNodeStateKey};
+use reifydb_core::key::{EncodableKey, operator_state::OperatorStateKey};
 
 pub struct StateIterator<'a> {
 	inner: Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'a>,
@@ -33,9 +33,9 @@ impl Iterator for StateIterator<'_> {
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.inner.next()? {
 			Ok(multi) => {
-				let pair = if let Some(state_key) = FlowNodeStateKey::decode(&multi.key) {
+				let pair = if let Some(state_key) = OperatorStateKey::decode(&multi.key) {
 					(EncodedKey::new(state_key.key), multi.row)
-				} else if let Some(internal_key) = FlowNodeStateKey::decode(&multi.key) {
+				} else if let Some(internal_key) = OperatorStateKey::decode(&multi.key) {
 					(EncodedKey::new(internal_key.key), multi.row)
 				} else {
 					(multi.key, multi.row)

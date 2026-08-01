@@ -17,12 +17,12 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
-		flow::FlowNodeId,
+		flow::OperatorId,
 		id::{NamespaceId, TableId},
 		namespace::Namespace,
 		table::Table,
 	},
-	key::operator_state::{GroupId, StateKey},
+	key::operator_group_state::{GroupId, GroupStateKey},
 };
 use reifydb_value::value::{
 	Value,
@@ -50,20 +50,20 @@ pub trait UpdateEmit {
 }
 
 pub trait StateApi {
-	fn get<T: OperatorState>(&self, key: &StateKey) -> Result<Option<T>>;
-	fn set<T: OperatorState>(&mut self, key: &StateKey, value: &T) -> Result<()>;
-	fn remove(&mut self, key: &StateKey) -> Result<()>;
-	fn contains(&self, key: &StateKey) -> Result<bool>;
+	fn get<T: OperatorState>(&self, key: &GroupStateKey) -> Result<Option<T>>;
+	fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> Result<()>;
+	fn remove(&mut self, key: &GroupStateKey) -> Result<()>;
+	fn contains(&self, key: &GroupStateKey) -> Result<bool>;
 	fn clear(&mut self) -> Result<()>;
-	fn scan_prefix<T: OperatorState>(&self, prefix: &StateKey) -> Result<Vec<(StateKey, T)>>;
-	fn get_many<T: OperatorState>(&self, keys: &[StateKey]) -> Result<Vec<(StateKey, T)>>;
-	fn keys_with_prefix(&self, prefix: &StateKey) -> Result<Vec<StateKey>>;
-	fn range<T: OperatorState>(&self, start: Bound<&StateKey>, end: Bound<&StateKey>)
-	-> Result<Vec<(StateKey, T)>>;
+	fn scan_prefix<T: OperatorState>(&self, prefix: &GroupStateKey) -> Result<Vec<(GroupStateKey, T)>>;
+	fn get_many<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, T)>>;
+	fn keys_with_prefix(&self, prefix: &GroupStateKey) -> Result<Vec<GroupStateKey>>;
+	fn range<T: OperatorState>(&self, start: Bound<&GroupStateKey>, end: Bound<&GroupStateKey>)
+	-> Result<Vec<(GroupStateKey, T)>>;
 	fn get_many_visit<T: OperatorState>(
 		&self,
-		keys: &[StateKey],
-		visit: &mut dyn FnMut(StateKey, T) -> Result<()>,
+		keys: &[GroupStateKey],
+		visit: &mut dyn FnMut(GroupStateKey, T) -> Result<()>,
 	) -> Result<()> {
 		for (k, v) in self.get_many::<T>(keys)? {
 			visit(k, v)?;
@@ -73,9 +73,9 @@ pub trait StateApi {
 
 	fn range_visit<T: OperatorState>(
 		&self,
-		start: Bound<&StateKey>,
-		end: Bound<&StateKey>,
-		visit: &mut dyn FnMut(StateKey, T) -> Result<()>,
+		start: Bound<&GroupStateKey>,
+		end: Bound<&GroupStateKey>,
+		visit: &mut dyn FnMut(GroupStateKey, T) -> Result<()>,
 	) -> Result<()> {
 		for (k, v) in self.range::<T>(start, end)? {
 			visit(k, v)?;
@@ -85,8 +85,8 @@ pub trait StateApi {
 
 	fn scan_prefix_visit<T: OperatorState>(
 		&self,
-		prefix: &StateKey,
-		visit: &mut dyn FnMut(StateKey, T) -> Result<()>,
+		prefix: &GroupStateKey,
+		visit: &mut dyn FnMut(GroupStateKey, T) -> Result<()>,
 	) -> Result<()> {
 		for (k, v) in self.scan_prefix::<T>(prefix)? {
 			visit(k, v)?;
@@ -94,28 +94,28 @@ pub trait StateApi {
 		Ok(())
 	}
 
-	fn get_bytes(&self, key: &StateKey) -> Result<Option<StateBytes>>;
+	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<StateBytes>>;
 
-	fn set_bytes(&mut self, key: &StateKey, payload: StateBytes) -> Result<()>;
+	fn set_bytes(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()>;
 
 	fn get_many_bytes_visit(
 		&self,
-		keys: &[StateKey],
-		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
+		keys: &[GroupStateKey],
+		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 	) -> Result<()>;
 
 	fn range_bytes_visit(
 		&self,
-		start: Bound<&StateKey>,
-		end: Bound<&StateKey>,
-		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
+		start: Bound<&GroupStateKey>,
+		end: Bound<&GroupStateKey>,
+		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 	) -> Result<()>;
 
 	fn now(&self) -> DateTime;
 }
 
 /// Reads the data store - table and view rows addressed by `RowKey`. That is a different keyspace
-/// from operator state, so these keys are plain `EncodedKey` and never `StateKey`.
+/// from operator state, so these keys are plain `EncodedKey` and never `GroupStateKey`.
 pub trait StoreApi {
 	fn get(&self, key: &EncodedKey) -> Result<Option<EncodedRow>>;
 	fn contains(&self, key: &EncodedKey) -> Result<bool>;
@@ -176,7 +176,7 @@ pub trait OperatorContext {
 	where
 		Self: 'a;
 
-	fn operator_id(&self) -> FlowNodeId;
+	fn operator_id(&self) -> OperatorId;
 	fn clock_now(&self) -> DateTime;
 	fn state_lease_bytes(&self) -> u64 {
 		0

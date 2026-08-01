@@ -15,12 +15,12 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
-		flow::FlowNodeId,
+		flow::OperatorId,
 		id::{NamespaceId, TableId},
 		namespace::Namespace,
 		table::Table,
 	},
-	key::operator_state::{GroupId, StateKey},
+	key::operator_group_state::{GroupId, GroupStateKey},
 };
 use reifydb_flow::window::event::Polarity;
 use reifydb_value::{
@@ -121,10 +121,10 @@ impl FFIOperatorContext {
 		}
 	}
 
-	pub fn operator_id(&self) -> FlowNodeId {
+	pub fn operator_id(&self) -> OperatorId {
 		// SAFETY: FFIOperatorContext::new asserts self.ctx is non-null, and the host keeps the ContextFFI
 		// alive and aligned for at least the lifetime of &self.
-		unsafe { FlowNodeId((*self.ctx).operator_id) }
+		unsafe { OperatorId((*self.ctx).operator_id) }
 	}
 
 	pub fn state(&mut self) -> State<'_> {
@@ -208,43 +208,43 @@ impl FFIOperatorContext {
 }
 
 impl StateApi for State<'_> {
-	fn get<T: OperatorState>(&self, key: &StateKey) -> Result<Option<T>> {
+	fn get<T: OperatorState>(&self, key: &GroupStateKey) -> Result<Option<T>> {
 		State::get(self, key)
 	}
-	fn set<T: OperatorState>(&mut self, key: &StateKey, value: &T) -> Result<()> {
+	fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> Result<()> {
 		State::set(self, key, value)
 	}
-	fn remove(&mut self, key: &StateKey) -> Result<()> {
+	fn remove(&mut self, key: &GroupStateKey) -> Result<()> {
 		State::remove(self, key)
 	}
-	fn contains(&self, key: &StateKey) -> Result<bool> {
+	fn contains(&self, key: &GroupStateKey) -> Result<bool> {
 		State::contains(self, key)
 	}
 	fn clear(&mut self) -> Result<()> {
 		State::clear(self)
 	}
-	fn scan_prefix<T: OperatorState>(&self, prefix: &StateKey) -> Result<Vec<(StateKey, T)>> {
+	fn scan_prefix<T: OperatorState>(&self, prefix: &GroupStateKey) -> Result<Vec<(GroupStateKey, T)>> {
 		State::scan_prefix(self, prefix)
 	}
-	fn get_many<T: OperatorState>(&self, keys: &[StateKey]) -> Result<Vec<(StateKey, T)>> {
+	fn get_many<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, T)>> {
 		State::get_many(self, keys)
 	}
-	fn keys_with_prefix(&self, prefix: &StateKey) -> Result<Vec<StateKey>> {
+	fn keys_with_prefix(&self, prefix: &GroupStateKey) -> Result<Vec<GroupStateKey>> {
 		State::keys_with_prefix(self, prefix)
 	}
 	fn range<T: OperatorState>(
 		&self,
-		start: Bound<&StateKey>,
-		end: Bound<&StateKey>,
-	) -> Result<Vec<(StateKey, T)>> {
+		start: Bound<&GroupStateKey>,
+		end: Bound<&GroupStateKey>,
+	) -> Result<Vec<(GroupStateKey, T)>> {
 		State::range(self, start, end)
 	}
 
-	fn get_bytes(&self, key: &StateKey) -> Result<Option<StateBytes>> {
+	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<StateBytes>> {
 		State::get_bytes(self, key)
 	}
 
-	fn set_bytes(&mut self, key: &StateKey, payload: StateBytes) -> Result<()> {
+	fn set_bytes(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()> {
 		State::set_bytes(self, key, payload)
 	}
 
@@ -254,17 +254,17 @@ impl StateApi for State<'_> {
 
 	fn get_many_bytes_visit(
 		&self,
-		keys: &[StateKey],
-		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
+		keys: &[GroupStateKey],
+		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
 		State::get_many_bytes_visit(self, keys, visit)
 	}
 
 	fn range_bytes_visit(
 		&self,
-		start: Bound<&StateKey>,
-		end: Bound<&StateKey>,
-		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
+		start: Bound<&GroupStateKey>,
+		end: Bound<&GroupStateKey>,
+		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
 		State::range_bytes_visit(self, start, end, visit)
 	}
@@ -325,7 +325,7 @@ impl OperatorContext for FFIOperatorContext {
 	type UpdateEmit<'a> = FFIUpdateEmit<'a>;
 	type RemoveEmit<'a> = FFIRowEmit<'a>;
 
-	fn operator_id(&self) -> FlowNodeId {
+	fn operator_id(&self) -> OperatorId {
 		FFIOperatorContext::operator_id(self)
 	}
 	fn clock_now(&self) -> DateTime {

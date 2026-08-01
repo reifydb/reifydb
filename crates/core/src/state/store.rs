@@ -11,26 +11,26 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::key::operator_state::{GroupId, StateKey};
+use crate::key::operator_group_state::{GroupId, GroupStateKey};
 
 pub trait StateStore {
-	fn state_get(&mut self, key: &StateKey) -> Result<Option<StateBytes>>;
+	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<StateBytes>>;
 
 	fn state_get_many_visit(
 		&mut self,
-		keys: &[StateKey],
-		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
+		keys: &[GroupStateKey],
+		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 	) -> Result<()>;
 
-	fn state_set(&mut self, key: &StateKey, payload: StateBytes) -> Result<()>;
+	fn state_set(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()>;
 
-	fn state_remove(&mut self, key: &StateKey) -> Result<()>;
+	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()>;
 
 	fn state_range_visit(
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 	) -> Result<()>;
 
 	fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId>;

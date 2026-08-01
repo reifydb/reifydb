@@ -14,7 +14,7 @@ use reifydb_abi::{
 	},
 };
 use reifydb_codec::{constraint::type_constraint_to_ffi, value::decode_params};
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_value::params::Params;
 
 use crate::{
@@ -109,7 +109,7 @@ pub unsafe extern "C" fn create_operator_instance<O: FFIOperator + OperatorMetad
 	};
 
 	let config = Config::new(O::NAME, config.into_iter().collect());
-	let operator = match O::new(FlowNodeId(operator_id), &config) {
+	let operator = match O::new(OperatorId(operator_id), &config) {
 		Ok(op) => op,
 		Err(e) => {
 			eprintln!("Failed to create operator: {}", e);

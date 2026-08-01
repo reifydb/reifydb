@@ -15,7 +15,7 @@ use reifydb_core::{
 		catalog::flow::FlowNodeId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::operator_state::{GroupId, GroupSet, Keyspace},
+	key::operator_group_state::{GroupId, GroupSet, Keyspace},
 	metrics::heap::OperatorSample,
 	value::column::{ColumnWithName, columns::Columns},
 };

@@ -10,7 +10,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{
-		catalog::{flow::FlowNodeId, metrics::MetricsId},
+		catalog::{flow::OperatorId, metrics::MetricsId},
 		store::Tier,
 	},
 	key::{
@@ -28,7 +28,7 @@ const SUBKEY_BY_OBJECT: u8 = 0x02;
 const SUBKEY_CDC: u8 = 0x03;
 
 const ID_OBJECT: u8 = 0x00;
-const ID_FLOW_NODE: u8 = 0x01;
+const ID_OPERATOR: u8 = 0x01;
 const ID_SYSTEM: u8 = 0x02;
 
 pub fn encode_storage_stats_key(tier: Tier, id: MetricsId) -> EncodedKey {
@@ -145,7 +145,7 @@ fn byte_to_tier(b: u8) -> Option<Tier> {
 fn extend_object_id(builder: EncodedKeyBuilder, id: MetricsId) -> EncodedKeyBuilder {
 	match id {
 		MetricsId::Object(object_id) => builder.u8(ID_OBJECT).object_id(object_id),
-		MetricsId::FlowNode(flow_node_id) => builder.u8(ID_FLOW_NODE).u64(flow_node_id.0),
+		MetricsId::Operator(operator_id) => builder.u8(ID_OPERATOR).u64(operator_id.0),
 		MetricsId::System => builder.u8(ID_SYSTEM),
 	}
 }
@@ -153,7 +153,7 @@ fn extend_object_id(builder: EncodedKeyBuilder, id: MetricsId) -> EncodedKeyBuil
 fn decode_object_id(de: &mut KeyDeserializer) -> Option<MetricsId> {
 	match de.read_u8().ok()? {
 		ID_OBJECT => Some(MetricsId::Object(de.read_object_id().ok()?)),
-		ID_FLOW_NODE => Some(MetricsId::FlowNode(FlowNodeId(de.read_u64().ok()?))),
+		ID_OPERATOR => Some(MetricsId::Operator(OperatorId(de.read_u64().ok()?))),
 		ID_SYSTEM => Some(MetricsId::System),
 		_ => None,
 	}
@@ -162,7 +162,7 @@ fn decode_object_id(de: &mut KeyDeserializer) -> Option<MetricsId> {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::{
-		flow::FlowNodeId,
+		flow::OperatorId,
 		id::{RingBufferId, SeriesId, TableId},
 		object::ObjectId,
 	};
@@ -183,9 +183,9 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_storage_stats_key_flow_node_roundtrip() {
+	fn test_storage_stats_key_operator_roundtrip() {
 		let tier = Tier::Persistent;
-		let id = MetricsId::FlowNode(FlowNodeId(999));
+		let id = MetricsId::Operator(OperatorId(999));
 
 		let key = encode_storage_stats_key(tier, id);
 		let decoded = decode_storage_stats_key(&key).unwrap();

@@ -3,7 +3,7 @@
 
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
-	interface::catalog::flow::{FlowEdge, FlowEdgeId, FlowId, FlowNodeId},
+	interface::catalog::flow::{FlowEdge, FlowEdgeId, FlowId, OperatorId},
 	key::{EncodableKey, flow_edge::FlowEdgeKey, kind::KeyKind},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -39,8 +39,8 @@ impl CatalogChangeApplier for FlowEdgeApplier {
 fn decode_flow_edge(row: &EncodedRow) -> FlowEdge {
 	let id = FlowEdgeId(flow_edge::SHAPE.get::<u64>(row, ID));
 	let flow = FlowId(flow_edge::SHAPE.get::<u64>(row, FLOW));
-	let source = FlowNodeId(flow_edge::SHAPE.get::<u64>(row, SOURCE));
-	let target = FlowNodeId(flow_edge::SHAPE.get::<u64>(row, TARGET));
+	let source = OperatorId(flow_edge::SHAPE.get::<u64>(row, SOURCE));
+	let target = OperatorId(flow_edge::SHAPE.get::<u64>(row, TARGET));
 
 	FlowEdge {
 		id,

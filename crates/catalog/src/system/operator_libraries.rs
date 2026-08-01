@@ -10,57 +10,59 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
-use super::ids::{columns::flow_nodes::*, vtable::FLOW_NODES};
+use super::ids::{
+	columns::operator_libraries::{API, CAP_DELETE, CAP_INSERT, CAP_RECLAIM, CAP_UPDATE, LIBRARY_PATH, OPERATOR},
+	vtable::OPERATOR_LIBRARIES,
+};
 
-pub fn flow_nodes() -> Arc<VTable> {
+pub fn operator_libraries() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
-			id: FLOW_NODES,
+			id: OPERATOR_LIBRARIES,
 			namespace: NamespaceId::SYSTEM,
-			name: "flow_nodes".to_string(),
+			name: "operator_libraries".to_string(),
 			columns: vec![
 				Column {
-					id: ID,
-					name: "id".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
+					id: OPERATOR,
+					name: "operator".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
 					dictionary_id: None,
 				},
 				Column {
-					id: FLOW_ID,
-					name: "flow_id".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
+					id: LIBRARY_PATH,
+					name: "library_path".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
 					properties: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
 					dictionary_id: None,
 				},
 				Column {
-					id: NODE_TYPE,
-					name: "node_type".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint1),
-
+					id: API,
+					name: "api".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint4),
 					properties: vec![],
 					index: ColumnIndex(2),
 					auto_increment: false,
 					dictionary_id: None,
 				},
 				Column {
-					id: DATA,
-					name: "data".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Blob),
+					id: CAP_INSERT,
+					name: "cap_insert".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 					properties: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,
 					dictionary_id: None,
 				},
 				Column {
-					id: STATEFUL,
-					name: "stateful".to_string(),
+					id: CAP_UPDATE,
+					name: "cap_update".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 					properties: vec![],
 					index: ColumnIndex(4),
@@ -68,8 +70,8 @@ pub fn flow_nodes() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: RETAINS_FOREVER,
-					name: "retains_forever".to_string(),
+					id: CAP_DELETE,
+					name: "cap_delete".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 					properties: vec![],
 					index: ColumnIndex(5),
@@ -77,20 +79,11 @@ pub fn flow_nodes() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: RETENTION_SCALE,
-					name: "retention_scale".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Duration),
+					id: CAP_RECLAIM,
+					name: "cap_reclaim".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Boolean),
 					properties: vec![],
 					index: ColumnIndex(6),
-					auto_increment: false,
-					dictionary_id: None,
-				},
-				Column {
-					id: FRONTIER,
-					name: "frontier".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::DateTime),
-					properties: vec![],
-					index: ColumnIndex(7),
 					auto_increment: false,
 					dictionary_id: None,
 				},

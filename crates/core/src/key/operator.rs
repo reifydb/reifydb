@@ -8,15 +8,15 @@ use reifydb_codec::key::{
 };
 
 use super::{EncodableKey, KeyKind};
-use crate::interface::catalog::flow::{FlowId, FlowNodeId};
+use crate::interface::catalog::flow::{FlowId, OperatorId};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FlowNodeKey {
-	pub node: FlowNodeId,
+pub struct OperatorKey {
+	pub node: OperatorId,
 }
 
-impl EncodableKey for FlowNodeKey {
-	const KIND: KeyKind = KeyKind::FlowNode;
+impl EncodableKey for OperatorKey {
+	const KIND: KeyKind = KeyKind::Operator;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(9);
@@ -35,13 +35,13 @@ impl EncodableKey for FlowNodeKey {
 		let node = de.read_u64().ok()?;
 
 		Some(Self {
-			node: FlowNodeId(node),
+			node: OperatorId(node),
 		})
 	}
 }
 
-impl FlowNodeKey {
-	pub fn encoded(node: impl Into<FlowNodeId>) -> EncodedKey {
+impl OperatorKey {
+	pub fn encoded(node: impl Into<OperatorId>) -> EncodedKey {
 		Self {
 			node: node.into(),
 		}
@@ -66,13 +66,13 @@ impl FlowNodeKey {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FlowNodeByFlowKey {
+pub struct OperatorByFlowKey {
 	pub flow: FlowId,
-	pub node: FlowNodeId,
+	pub node: OperatorId,
 }
 
-impl EncodableKey for FlowNodeByFlowKey {
-	const KIND: KeyKind = KeyKind::FlowNodeByFlow;
+impl EncodableKey for OperatorByFlowKey {
+	const KIND: KeyKind = KeyKind::OperatorByFlow;
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(17);
@@ -93,13 +93,13 @@ impl EncodableKey for FlowNodeByFlowKey {
 
 		Some(Self {
 			flow: FlowId(flow),
-			node: FlowNodeId(node),
+			node: OperatorId(node),
 		})
 	}
 }
 
-impl FlowNodeByFlowKey {
-	pub fn encoded(flow: impl Into<FlowId>, node: impl Into<FlowNodeId>) -> EncodedKey {
+impl OperatorByFlowKey {
+	pub fn encoded(flow: impl Into<FlowId>, node: impl Into<OperatorId>) -> EncodedKey {
 		Self {
 			flow: flow.into(),
 			node: node.into(),
@@ -126,30 +126,30 @@ impl FlowNodeByFlowKey {
 
 #[cfg(test)]
 pub mod tests {
-	use super::{EncodableKey, FlowNodeByFlowKey, FlowNodeKey};
-	use crate::interface::catalog::flow::{FlowId, FlowNodeId};
+	use super::{EncodableKey, OperatorByFlowKey, OperatorKey};
+	use crate::interface::catalog::flow::{FlowId, OperatorId};
 
 	#[test]
-	fn test_flow_node_key_encode_decode() {
-		let key = FlowNodeKey {
-			node: FlowNodeId(0x1234),
+	fn test_operator_key_encode_decode() {
+		let key = OperatorKey {
+			node: OperatorId(0x1234),
 		};
 		let encoded = key.encode();
-		let decoded = FlowNodeKey::decode(&encoded).unwrap();
-		assert_eq!(decoded.node, FlowNodeId(0x1234));
+		let decoded = OperatorKey::decode(&encoded).unwrap();
+		assert_eq!(decoded.node, OperatorId(0x1234));
 		assert_eq!(key, decoded);
 	}
 
 	#[test]
-	fn test_flow_node_by_flow_key_encode_decode() {
-		let key = FlowNodeByFlowKey {
+	fn test_operator_by_flow_key_encode_decode() {
+		let key = OperatorByFlowKey {
 			flow: FlowId(0x42),
-			node: FlowNodeId(0x1234),
+			node: OperatorId(0x1234),
 		};
 		let encoded = key.encode();
-		let decoded = FlowNodeByFlowKey::decode(&encoded).unwrap();
+		let decoded = OperatorByFlowKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.flow, FlowId(0x42));
-		assert_eq!(decoded.node, FlowNodeId(0x1234));
+		assert_eq!(decoded.node, OperatorId(0x1234));
 		assert_eq!(key, decoded);
 	}
 }

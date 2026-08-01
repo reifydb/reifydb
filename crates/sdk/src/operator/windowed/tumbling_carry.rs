@@ -9,8 +9,8 @@ use reifydb_codec::{
 	state::ArchiveState,
 };
 use reifydb_core::{
-	interface::catalog::flow::FlowNodeId,
-	key::operator_state::GroupSet,
+	interface::catalog::flow::OperatorId,
+	key::operator_group_state::GroupSet,
 	metrics::heap::{HeapSize, OperatorSample},
 };
 use reifydb_flow::{
@@ -124,7 +124,7 @@ where
 	const OUTPUT_COLUMNS: &'static [OperatorColumn];
 	const CAPABILITIES: &'static [OperatorCapability];
 
-	fn from_config(operator_id: FlowNodeId, config: &Config) -> Result<Self>;
+	fn from_config(operator_id: OperatorId, config: &Config) -> Result<Self>;
 
 	fn encode_row_key(&self, group: &Self::GroupKey, window_start: SlotCoord<Self::WindowSlot>) -> EncodedKey;
 }
@@ -293,7 +293,7 @@ where
 			.with_pool(self.budget.stat()))
 	}
 
-	fn create(operator_id: FlowNodeId, config: &Config) -> Result<Self> {
+	fn create(operator_id: OperatorId, config: &Config) -> Result<Self> {
 		let aggregator = A::from_config(operator_id, config)?;
 		let retention = aggregator.retention();
 		let engine_config = window_engine_config(config);

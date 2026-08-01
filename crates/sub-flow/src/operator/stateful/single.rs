@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
-use reifydb_core::key::operator_state::StateKey;
+use reifydb_core::key::operator_group_state::GroupStateKey;
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::Result;
 
@@ -11,7 +11,7 @@ use crate::operator::stateful::raw::RawStatefulOperator;
 pub trait SingleStateful: RawStatefulOperator {
 	fn layout(&self) -> RowShape;
 
-	fn key(&self) -> StateKey {
+	fn key(&self) -> GroupStateKey {
 		utils::empty_state_key()
 	}
 

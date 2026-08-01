@@ -14,7 +14,7 @@ use reifydb_codec::{
 	state::OperatorState,
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, GroupSet},
+	key::operator_group_state::{GroupId, GroupSet},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		cache::{StateCache, StateView},
@@ -1046,7 +1046,7 @@ mod tests {
 	use std::collections::{BTreeMap, BTreeSet};
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::{key::operator_state::GroupId, state::budget::OperatorStateBudgetHandle};
+	use reifydb_core::{key::operator_group_state::GroupId, state::budget::OperatorStateBudgetHandle};
 
 	use crate::window::engine::{
 		AccumulatorEvent, EmitKind,

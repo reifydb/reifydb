@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	key::operator_state::{Keyspace, StateKey},
+	key::operator_group_state::{Keyspace, GroupStateKey},
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_sdk::state::{decode_payload, encode_payload};
@@ -21,13 +21,13 @@ pub enum CounterDirection {
 
 pub struct Counter {
 	node: FlowNodeId,
-	key: StateKey,
+	key: GroupStateKey,
 	direction: CounterDirection,
 }
 
 impl Counter {
 	pub fn with_prefix(node: FlowNodeId, prefix: u8, direction: CounterDirection) -> Self {
-		let key = StateKey::node_scoped(Keyspace::NODE_COUNTER, vec![prefix]);
+		let key = GroupStateKey::node_scoped(Keyspace::NODE_COUNTER, vec![prefix]);
 		Self {
 			node,
 			key,
@@ -35,7 +35,7 @@ impl Counter {
 		}
 	}
 
-	pub fn with_key(node: FlowNodeId, key: StateKey, direction: CounterDirection) -> Self {
+	pub fn with_key(node: FlowNodeId, key: GroupStateKey, direction: CounterDirection) -> Self {
 		Self {
 			node,
 			key,
@@ -181,7 +181,7 @@ mod tests {
 		let custom_key = {
 			let mut serializer = KeySerializer::new();
 			serializer.extend_bytes(b"subscription-id-123");
-			StateKey::node_scoped(Keyspace::NODE_COUNTER, serializer.finish().as_ref().to_vec())
+			GroupStateKey::node_scoped(Keyspace::NODE_COUNTER, serializer.finish().as_ref().to_vec())
 		};
 
 		let counter = Counter::with_key(FlowNodeId(1), custom_key, CounterDirection::Ascending);

@@ -3,13 +3,13 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_core::interface::catalog::flow::FlowNodeId;
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct NodeRetentionInfo {
-	pub node: FlowNodeId,
+	pub node: OperatorId,
 	pub stateful: bool,
 	pub scale: Option<Duration>,
 	pub frontier: Option<DateTime>,
@@ -17,7 +17,7 @@ pub struct NodeRetentionInfo {
 
 #[derive(Clone)]
 pub struct NodeRetentionStore {
-	nodes: Arc<RwLock<HashMap<FlowNodeId, NodeRetentionInfo>>>,
+	nodes: Arc<RwLock<HashMap<OperatorId, NodeRetentionInfo>>>,
 }
 
 impl Default for NodeRetentionStore {
@@ -37,17 +37,17 @@ impl NodeRetentionStore {
 		self.nodes.write().insert(info.node, info);
 	}
 
-	pub fn set_frontier(&self, node: FlowNodeId, frontier: Option<DateTime>) {
+	pub fn set_frontier(&self, node: OperatorId, frontier: Option<DateTime>) {
 		if let Some(info) = self.nodes.write().get_mut(&node) {
 			info.frontier = frontier;
 		}
 	}
 
-	pub fn remove(&self, node: FlowNodeId) {
+	pub fn remove(&self, node: OperatorId) {
 		self.nodes.write().remove(&node);
 	}
 
-	pub fn get(&self, node: FlowNodeId) -> Option<NodeRetentionInfo> {
+	pub fn get(&self, node: OperatorId) -> Option<NodeRetentionInfo> {
 		self.nodes.read().get(&node).cloned()
 	}
 

@@ -15,7 +15,7 @@ use reifydb_core::interface::catalog::storage::StorageId;
 use reifydb_core::lifecycle::progress::Progress;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
-use reifydb_core::{event::EventBus, interface::catalog::flow::FlowNodeId, lifecycle::watermark::EvictionWatermark};
+use reifydb_core::{event::EventBus, interface::catalog::flow::OperatorId, lifecycle::watermark::EvictionWatermark};
 use reifydb_runtime::{
 	context::clock::Clock,
 	sync::{mutex::Mutex, rwlock::RwLock},
@@ -59,7 +59,7 @@ pub struct FlushEngine {
 	persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 	eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 	read: Option<MultiReadBufferTier>,
-	operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>>,
+	operator_disk_payload: Arc<RwLock<Vec<(OperatorId, ByteSize)>>>,
 	clock: Clock,
 	event_bus: EventBus,
 	sweep_lock: Mutex<FlushEngineState>,
@@ -89,7 +89,7 @@ impl FlushEngine {
 		persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 		eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 		read: Option<MultiReadBufferTier>,
-		operator_disk_payload: Arc<RwLock<Vec<(FlowNodeId, ByteSize)>>>,
+		operator_disk_payload: Arc<RwLock<Vec<(OperatorId, ByteSize)>>>,
 		clock: Clock,
 		event_bus: EventBus,
 	) -> Self {
@@ -1083,7 +1083,7 @@ mod tests {
 	#[test]
 	fn measure_operator_disk_publishes_sizes_into_the_shared_cache() {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
-		write(&actor.commit, EntryKind::Operator(FlowNodeId(7)), &ek("s"), 1, "state");
+		write(&actor.commit, EntryKind::Operator(OperatorId(7)), &ek("s"), 1, "state");
 
 		actor.sweep(CommitVersion(2));
 		assert!(
@@ -1094,7 +1094,7 @@ mod tests {
 		actor.measure_operator_disk();
 		let cache = actor.operator_disk_payload.read().clone();
 		assert_eq!(cache.len(), 1, "exactly the one flushed operator must be measured");
-		assert_eq!(cache[0].0, FlowNodeId(7));
+		assert_eq!(cache[0].0, OperatorId(7));
 		assert!(cache[0].1.as_bytes() > 0, "the flushed state row must have a non-zero disk footprint");
 	}
 
@@ -1103,13 +1103,13 @@ mod tests {
 		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
 		let mut state = FlushEngineState::default();
 
-		write(&actor.commit, EntryKind::Operator(FlowNodeId(7)), &ek("s"), 1, "state");
+		write(&actor.commit, EntryKind::Operator(OperatorId(7)), &ek("s"), 1, "state");
 		actor.sweep(CommitVersion(2));
 
 		actor.maybe_measure_operator_disk(&mut state, DateTime::from_nanos(0));
 		assert_eq!(actor.operator_disk_payload.read().len(), 1, "the very first tick must measure immediately");
 
-		write(&actor.commit, EntryKind::Operator(FlowNodeId(9)), &ek("t"), 2, "state");
+		write(&actor.commit, EntryKind::Operator(OperatorId(9)), &ek("t"), 2, "state");
 		actor.sweep(CommitVersion(2));
 
 		actor.maybe_measure_operator_disk(&mut state, DateTime::from_nanos(1_000_000_000));

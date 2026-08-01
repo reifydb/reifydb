@@ -9,7 +9,7 @@ use reifydb_codec::{
 	state::StateBytes,
 };
 use reifydb_core::{
-	key::operator_state::{GroupId, StateKey},
+	key::operator_group_state::{GroupId, GroupStateKey},
 	state::store::StateStore,
 };
 use reifydb_value::{
@@ -36,25 +36,25 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 		Ok(self.0.flow_watermark()?)
 	}
 
-	fn state_get(&mut self, key: &StateKey) -> Result<Option<StateBytes>> {
+	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<StateBytes>> {
 		Ok(self.0.state().get_bytes(key)?)
 	}
 
 	fn state_get_many_visit(
 		&mut self,
-		keys: &[StateKey],
-		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
+		keys: &[GroupStateKey],
+		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
 		self.0.state().get_many_bytes_visit(keys, &mut |k, v| visit(k, v).map_err(Into::into))?;
 		Ok(())
 	}
 
-	fn state_set(&mut self, key: &StateKey, payload: StateBytes) -> Result<()> {
+	fn state_set(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()> {
 		self.0.state().set_bytes(key, payload)?;
 		Ok(())
 	}
 
-	fn state_remove(&mut self, key: &StateKey) -> Result<()> {
+	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
 		self.0.state().remove(key)?;
 		Ok(())
 	}
@@ -63,11 +63,11 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(StateKey, StateBytes) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
 		let bound = |b: &Bound<EncodedKey>| match b {
-			Bound::Included(k) => StateKey::from_framed(k.clone()).map(Bound::Included),
-			Bound::Excluded(k) => StateKey::from_framed(k.clone()).map(Bound::Excluded),
+			Bound::Included(k) => GroupStateKey::from_framed(k.clone()).map(Bound::Included),
+			Bound::Excluded(k) => GroupStateKey::from_framed(k.clone()).map(Bound::Excluded),
 			Bound::Unbounded => Some(Bound::Unbounded),
 		};
 		let (Some(start), Some(end)) = (bound(&range.start), bound(&range.end)) else {

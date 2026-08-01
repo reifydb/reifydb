@@ -5,7 +5,7 @@ use reifydb_core::{
 	common::{TimeDomain, TimeSource},
 	interface::catalog::{
 		column::ColumnIndex,
-		flow::{Flow, FlowEdge, FlowId, FlowNode, FlowNodeId, FlowStatus},
+		flow::{Flow, FlowEdge, FlowId, Operator, OperatorId, FlowStatus},
 		handler::Handler,
 		id::{RingBufferId, TableId},
 		namespace::Namespace,
@@ -256,26 +256,26 @@ pub fn ensure_test_flow(txn: &mut AdminTransaction) -> Flow {
 	create_flow(txn, "test_namespace", "test_flow")
 }
 
-pub fn create_flow_node(txn: &mut AdminTransaction, flow_id: FlowId, node_type: u8, data: &[u8]) -> FlowNode {
-	use crate::store::sequence::flow::next_flow_node_id;
+pub fn create_operator(txn: &mut AdminTransaction, flow_id: FlowId, node_type: u8, data: &[u8]) -> Operator {
+	use crate::store::sequence::flow::next_operator_id;
 
-	let node_id = next_flow_node_id(txn).unwrap();
-	let node_def = FlowNode {
+	let node_id = next_operator_id(txn).unwrap();
+	let node_def = Operator {
 		id: node_id,
 		flow: flow_id,
 		node_type,
 		data: Blob::from(data),
 	};
 
-	CatalogStore::create_flow_node(txn, &node_def).unwrap();
+	CatalogStore::create_operator(txn, &node_def).unwrap();
 	node_def
 }
 
 pub fn create_flow_edge(
 	txn: &mut AdminTransaction,
 	flow_id: FlowId,
-	source: FlowNodeId,
-	target: FlowNodeId,
+	source: OperatorId,
+	target: OperatorId,
 ) -> FlowEdge {
 	use crate::store::sequence::flow::next_flow_edge_id;
 

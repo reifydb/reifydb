@@ -8,7 +8,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Diff},
-	key::operator_state::{GroupId, Keyspace, OperatorStateKey, StateKey},
+	key::operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey, GroupStateKey},
 	value::column::columns::Columns,
 };
 use reifydb_flow::transaction::FlowTransaction;
@@ -85,32 +85,32 @@ impl SnapshotLedger {
 		}
 	}
 
-	fn published_key(&self, group: GroupId, left: RowNumber, right: RowNumber) -> StateKey {
+	fn published_key(&self, group: GroupId, left: RowNumber, right: RowNumber) -> GroupStateKey {
 		self.tagged_key(group, left, TAG_JOINED, right)
 	}
 
-	fn unmatched_key(&self, group: GroupId, left: RowNumber) -> StateKey {
+	fn unmatched_key(&self, group: GroupId, left: RowNumber) -> GroupStateKey {
 		self.tagged_key(group, left, TAG_UNMATCHED, RowNumber(0))
 	}
 
-	fn tagged_key(&self, group: GroupId, left: RowNumber, tag: u8, right: RowNumber) -> StateKey {
+	fn tagged_key(&self, group: GroupId, left: RowNumber, tag: u8, right: RowNumber) -> GroupStateKey {
 		let mut suffix = Vec::with_capacity(2 * ROW_NUMBER_BYTES + TAG_BYTES);
 		suffix.extend_from_slice(&encode_u64_asc(left.0));
 		suffix.push(tag);
 		suffix.extend_from_slice(&encode_u64_asc(right.0));
-		OperatorStateKey::inner_encoded(group, Keyspace::JOIN_PUBLISHED, suffix)
+		OperatorGroupStateKey::inner_encoded(group, Keyspace::JOIN_PUBLISHED, suffix)
 	}
 
 	fn published_prefix(&self, group: GroupId, left: RowNumber) -> EncodedKeyRange {
-		let prefix = OperatorStateKey::inner_encoded(group, Keyspace::JOIN_PUBLISHED, encode_u64_asc(left.0));
+		let prefix = OperatorGroupStateKey::inner_encoded(group, Keyspace::JOIN_PUBLISHED, encode_u64_asc(left.0));
 		EncodedKeyRange::prefix(prefix.as_ref())
 	}
 
-	fn pin_key(&self, group: GroupId, right: RowNumber, version: ContentVersion) -> StateKey {
+	fn pin_key(&self, group: GroupId, right: RowNumber, version: ContentVersion) -> GroupStateKey {
 		let mut suffix = Vec::with_capacity(2 * ROW_NUMBER_BYTES);
 		suffix.extend_from_slice(&encode_u64_asc(right.0));
 		suffix.extend_from_slice(&encode_u64_asc(version.0));
-		OperatorStateKey::inner_encoded(group, Keyspace::JOIN_PIN, suffix)
+		OperatorGroupStateKey::inner_encoded(group, Keyspace::JOIN_PIN, suffix)
 	}
 
 	pub(crate) fn publish(

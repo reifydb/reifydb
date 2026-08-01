@@ -4,7 +4,7 @@
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::{catalog::flow::FlowNodeId, change::Change},
-	key::operator_state::GroupSet,
+	key::operator_group_state::GroupSet,
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
@@ -96,7 +96,7 @@ mod tests {
 			},
 			change::Change,
 		},
-		key::operator_state::{GroupId, GroupSet},
+		key::operator_group_state::{GroupId, GroupSet},
 	};
 	use reifydb_flow::{
 		operator::{Operator, Reclaimable},

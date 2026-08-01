@@ -5,22 +5,22 @@ use reifydb_codec::{
 	encoded::row::EncodedRow,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
-use reifydb_core::key::operator_state::StateKey;
+use reifydb_core::key::operator_group_state::GroupStateKey;
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_value::Result;
 
 use super::{StateIterator, utils};
 
 pub trait RawStatefulOperator: Operator {
-	fn state_get(&self, txn: &mut FlowTransaction, key: &StateKey) -> Result<Option<EncodedRow>> {
+	fn state_get(&self, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<Option<EncodedRow>> {
 		utils::state_get(self.id(), txn, key)
 	}
 
-	fn state_set(&self, txn: &mut FlowTransaction, key: &StateKey, value: EncodedRow) -> Result<()> {
+	fn state_set(&self, txn: &mut FlowTransaction, key: &GroupStateKey, value: EncodedRow) -> Result<()> {
 		utils::state_set(self.id(), txn, key, value)
 	}
 
-	fn state_remove(&self, txn: &mut FlowTransaction, key: &StateKey) -> Result<()> {
+	fn state_remove(&self, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<()> {
 		utils::state_remove(self.id(), txn, key)
 	}
 

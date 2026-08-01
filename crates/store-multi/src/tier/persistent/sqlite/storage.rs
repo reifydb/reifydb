@@ -15,7 +15,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	error::diagnostic::internal::internal,
-	interface::{catalog::flow::FlowNodeId, store::EntryKind},
+	interface::{catalog::flow::OperatorId, store::EntryKind},
 };
 use reifydb_runtime::{
 	shutdown::Shutdown,
@@ -251,7 +251,7 @@ impl SqlitePersistentStorage {
 		}
 	}
 
-	pub fn operator_disk_payload_bytes(&self) -> Result<Vec<(FlowNodeId, ByteSize)>> {
+	pub fn operator_disk_payload_bytes(&self) -> Result<Vec<(OperatorId, ByteSize)>> {
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(Vec::new());
@@ -270,7 +270,7 @@ impl SqlitePersistentStorage {
 				.map_err(|e| error!(internal(format!("Failed to read operator table name: {}", e))))?
 		};
 
-		let mut bytes_by_node: HashMap<FlowNodeId, u64> = HashMap::new();
+		let mut bytes_by_node: HashMap<OperatorId, u64> = HashMap::new();
 		for name in names {
 			let Some(node) = operator_node_of_table_name(&name) else {
 				continue;
@@ -292,7 +292,7 @@ impl SqlitePersistentStorage {
 			};
 			*bytes_by_node.entry(node).or_insert(0) += bytes as u64;
 		}
-		let mut out: Vec<(FlowNodeId, ByteSize)> =
+		let mut out: Vec<(OperatorId, ByteSize)> =
 			bytes_by_node.into_iter().map(|(node, bytes)| (node, ByteSize::from_bytes(bytes))).collect();
 		out.sort_by_key(|(node, _)| *node);
 		Ok(out)
@@ -1275,10 +1275,10 @@ mod tests {
 			CommitVersion(1),
 			HashMap::from([
 				(
-					EntryKind::Operator(FlowNodeId(7)),
+					EntryKind::Operator(OperatorId(7)),
 					vec![(key(1), Some(row(b"aaaa"))), (key(2), None), (key(3), Some(row(b"ii")))],
 				),
-				(EntryKind::Operator(FlowNodeId(9)), vec![(key(4), Some(row(b"c")))]),
+				(EntryKind::Operator(OperatorId(9)), vec![(key(4), Some(row(b"c")))]),
 				(table(), vec![(key(5), Some(row(b"source-row")))]),
 			]),
 		)

@@ -16,27 +16,27 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemFlowNodeTypes {
+pub struct SystemOperatorTypes {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl Default for SystemFlowNodeTypes {
+impl Default for SystemOperatorTypes {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl SystemFlowNodeTypes {
+impl SystemOperatorTypes {
 	pub fn new() -> Self {
 		Self {
-			vtable: SystemCatalog::get_system_flow_node_types_table().clone(),
+			vtable: SystemCatalog::get_system_operator_types_table().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-const FLOW_NODE_TYPE_NAMES: [&str; 22] = [
+const OPERATOR_TYPE_NAMES: [&str; 22] = [
 	"source_inline_data",
 	"source_table",
 	"source_view",
@@ -61,7 +61,7 @@ const FLOW_NODE_TYPE_NAMES: [&str; 22] = [
 	"sink_series_view",
 ];
 
-impl BaseVTable for SystemFlowNodeTypes {
+impl BaseVTable for SystemOperatorTypes {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -72,10 +72,10 @@ impl BaseVTable for SystemFlowNodeTypes {
 			return Ok(None);
 		}
 
-		let mut ids = ColumnBuffer::uint1_with_capacity(FLOW_NODE_TYPE_NAMES.len());
-		let mut names = ColumnBuffer::utf8_with_capacity(FLOW_NODE_TYPE_NAMES.len());
+		let mut ids = ColumnBuffer::uint1_with_capacity(OPERATOR_TYPE_NAMES.len());
+		let mut names = ColumnBuffer::utf8_with_capacity(OPERATOR_TYPE_NAMES.len());
 
-		for (i, name) in FLOW_NODE_TYPE_NAMES.iter().enumerate() {
+		for (i, name) in OPERATOR_TYPE_NAMES.iter().enumerate() {
 			ids.push(i as u8);
 			names.push(*name);
 		}

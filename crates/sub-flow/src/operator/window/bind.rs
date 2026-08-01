@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
-	key::operator_state::GroupId,
+	key::operator_group_state::GroupId,
 };
 use reifydb_flow::{
 	transaction::FlowTransaction,

@@ -4,7 +4,7 @@
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::flow::FlowNodeId,
+		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
 	},
 	row::Row,
@@ -13,14 +13,14 @@ use reifydb_core::{
 use reifydb_value::value::{datetime::DateTime, system_columns::SystemColumns};
 
 pub struct ChangeBuilder {
-	operator_id: FlowNodeId,
+	operator_id: OperatorId,
 	version: CommitVersion,
 	diffs: Diffs,
 	changed_at: DateTime,
 }
 
 impl ChangeBuilder {
-	pub fn new(operator_id: FlowNodeId, version: CommitVersion) -> Self {
+	pub fn new(operator_id: OperatorId, version: CommitVersion) -> Self {
 		Self {
 			operator_id,
 			version,

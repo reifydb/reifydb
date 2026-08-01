@@ -20,7 +20,7 @@ use reifydb_core::{
 		},
 		store::{EntryKind, MultiVersionCommit},
 	},
-	key::flow_node_state::FlowNodeStateKey,
+	key::operator_state::OperatorStateKey,
 	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
 };
 use reifydb_runtime::version_epoch::VersionEpoch;
@@ -83,7 +83,7 @@ impl GetConfig for StubConfig {
 }
 
 fn opkey(n: u64) -> reifydb_codec::key::encoded::EncodedKey {
-	FlowNodeStateKey::encoded(NODE, n.to_be_bytes().to_vec())
+	OperatorStateKey::encoded(NODE, n.to_be_bytes().to_vec())
 }
 
 /// Leaves 500 rows' worth of pages on the freelist; auto_vacuum=INCREMENTAL does not reclaim them until

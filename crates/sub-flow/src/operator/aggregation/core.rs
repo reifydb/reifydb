@@ -10,7 +10,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::FlowNodeId,
-	key::operator_state::GroupSet,
+	key::operator_group_state::GroupSet,
 	metrics::heap::{StateCompleteness, StateMemory},
 	row::Row,
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
