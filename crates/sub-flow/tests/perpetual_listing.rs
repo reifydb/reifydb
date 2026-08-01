@@ -76,7 +76,7 @@ fn a_node_that_has_swept_reports_the_frontier_it_reclaimed_through() {
 	let db = TestDb::from(
 		embedded::memory()
 			.with_flow(|f| f)
-			.with_config(ConfigKey::MetricsLifecycleRefreshInterval, Value::duration_milliseconds(20))
+			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
 			.build()
 			.expect("build memory db with flow"),
 	);

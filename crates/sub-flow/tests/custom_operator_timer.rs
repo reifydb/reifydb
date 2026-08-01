@@ -155,8 +155,8 @@ fn setup() -> TestDb {
 		embedded::memory()
 			.with_flow(|f| f.register_operator::<Alarm>())
 			// The retention ledger is the only surface that reports what the reclaim pass
-			// actually erased; without a refresh cadence it stays empty (none means off).
-			.with_config(ConfigKey::MetricsLifecycleRefreshInterval, Value::duration_milliseconds(20))
+			// actually erased; a short sample cadence keeps the polls inside their timeouts.
+			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
 			.build()
 			.expect("build memory db with flow"),
 	)

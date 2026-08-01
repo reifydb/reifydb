@@ -17,8 +17,8 @@ fn setup() -> TestDb {
 		embedded::memory()
 			.with_flow(|f| f)
 			// The retention ledger is the only surface that reports what the tick pass actually
-			// reclaimed; without a refresh cadence it stays empty (none means off).
-			.with_config(ConfigKey::MetricsLifecycleRefreshInterval, Value::duration_milliseconds(20))
+			// reclaimed; a short sample cadence keeps the polls inside their timeouts.
+			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
 			.build()
 			.expect("build memory db with flow"),
 	)

@@ -149,7 +149,7 @@ fn setup() -> TestDb {
 	TestDb::from(
 		embedded::memory()
 			.with_flow(|f| f.register_operator::<Counter>())
-			.with_config(ConfigKey::MetricsLifecycleRefreshInterval, Value::duration_milliseconds(20))
+			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
 			.build()
 			.expect("build memory db with flow"),
 	)

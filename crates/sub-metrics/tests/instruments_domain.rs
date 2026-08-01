@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 //! Every registered reporter must be readable with RQL through `system::metrics::instruments::current` in the
-//! uniform ts/scope/metric/value/unit shape, histograms flattened to six scalar rows. Driven end to end so the
-//! registration, the refresh actor and the cache-backed `::current` are all exercised on the real path.
+//! uniform ts/scope/metric/value/unit/kind shape, histograms flattened to six scalar rows. Driven end to end so
+//! the registration, the sampler and the cache-backed `::current` are all exercised on the real path.
 
 use std::time::Duration;
 
@@ -18,7 +18,7 @@ fn instruments_current_serves_every_registered_reporter() {
 	let db = TestDb::from(
 		db_embedded::memory()
 			.with_profiler(|c| c)
-			.with_config(ConfigKey::MetricsInstrumentsRefreshInterval, Value::duration_milliseconds(10))
+			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(10))
 			.build()
 			.expect("build"),
 	);

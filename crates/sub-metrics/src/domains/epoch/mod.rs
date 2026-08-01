@@ -36,7 +36,7 @@ impl EpochGauge {
 		self.pruned.store(pruned.as_u64(), Ordering::Relaxed);
 	}
 
-	fn read(&self) -> (u64, u64) {
+	pub fn read(&self) -> (u64, u64) {
 		(self.durable_samples.load(Ordering::Relaxed), self.pruned.load(Ordering::Relaxed))
 	}
 }

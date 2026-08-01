@@ -17,7 +17,7 @@ fn epoch_current_reports_the_durable_sample_count_over_the_event_bus() {
 	let db = TestDb::from(
 		db_embedded::memory()
 			.with_config(ConfigKey::EpochBucketInterval, Value::duration_seconds(1))
-			.with_config(ConfigKey::MetricsEpochRefreshInterval, Value::duration_milliseconds(20))
+			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
 			.build()
 			.expect("build"),
 	);
@@ -42,7 +42,7 @@ fn epoch_current_reports_coverage_the_epoch_can_actually_resolve() {
 	// than arriving over the bus, so it needs its own assertion.
 	let db = TestDb::from(
 		db_embedded::memory()
-			.with_config(ConfigKey::MetricsEpochRefreshInterval, Value::duration_milliseconds(20))
+			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
 			.build()
 			.expect("build"),
 	);

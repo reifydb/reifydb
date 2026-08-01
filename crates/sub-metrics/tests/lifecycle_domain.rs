@@ -5,7 +5,7 @@
 //!
 //! Without it the ledger is in-process only, so an operator cannot tell a class that is keeping up from one that
 //! has never run - both read as "no complaints". Driven end to end because an unregistered vtable, an unresolved
-//! IoC handle and a refresh actor that never spawns all leave the surface empty.
+//! IoC handle and a sampler that never spawns all leave the surface empty.
 
 use std::time::Duration;
 
@@ -19,8 +19,8 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 fn db_with_refresh() -> TestDb {
 	TestDb::from(
 		db_embedded::memory()
-			// The default is none (domain off). A short cadence keeps the assertions well inside TIMEOUT.
-			.with_config(ConfigKey::MetricsLifecycleRefreshInterval, Value::duration_milliseconds(20))
+			// The default cadence is 10s. A short one keeps the assertions well inside TIMEOUT.
+			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
 			.build()
 			.expect("build"),
 	)
@@ -57,17 +57,20 @@ fn lifecycle_current_names_each_class_so_a_row_can_be_attributed() {
 }
 
 #[test]
-fn lifecycle_current_stays_empty_when_the_refresh_interval_is_none() {
-	// A none interval means the domain is never refreshed; populating regardless of config would make the setting
-	// a lie and run a collector nobody asked for on every tick.
-	let db = TestDb::from(db_embedded::memory().build().expect("build"));
-
-	assert_eq!(
-		db.row_count("from system::metrics::lifecycle::current"),
-		0,
-		"with the refresh interval unset the vtable must exist but stay empty; a populated row means the \
-		 none-is-off contract is not honoured"
+fn lifecycle_current_populates_without_per_domain_opt_in() {
+	// Sampling is always on: the old none-is-off contract let a domain go silently unsampled,
+	// which is the failure the sampler redesign removed. Only the cadence is configured here,
+	// to keep the poll inside TIMEOUT; there is no per-domain switch left to forget.
+	let db = TestDb::from(
+		db_embedded::memory()
+			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
+			.build()
+			.expect("build"),
 	);
+
+	let want = RetentionClass::all().len();
+	let rows = db.await_row_count("from system::metrics::lifecycle::current", want, TIMEOUT);
+	assert_eq!(rows, want, "the sampler must publish the lifecycle ledger without any per-domain opt-in");
 }
 
 #[test]
@@ -107,10 +110,7 @@ fn lifecycle_current_reports_the_freelist_gauge_once_the_vacuum_class_has_measur
 	temp_dir(|dir| {
 		let db = TestDb::from(
 			db_embedded::sqlite(SqliteConfig::new(dir.join("metrics.db")))
-				.with_config(
-					ConfigKey::MetricsLifecycleRefreshInterval,
-					Value::duration_milliseconds(20),
-				)
+				.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
 				.with_config(ConfigKey::VacuumInterval, Value::duration_milliseconds(20))
 				.build()
 				.expect("build"),

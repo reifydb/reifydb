@@ -12,7 +12,7 @@ use reifydb_core::{
 			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, MultiSweptEvent, RequestExecutedEvent,
 		},
 	},
-	interface::catalog::config::GetConfig,
+	interface::catalog::config::{ConfigKey, GetConfig},
 	lifecycle::metrics::RetentionMetrics,
 	metrics::registry::MetricsRegistry,
 	util::ioc::IocContainer,
@@ -31,21 +31,15 @@ use crate::{
 	accumulator::StatementMetricsAccumulator,
 	actor::MetricsFlushActor,
 	domains::{
-		epoch::{EpochGauge, epoch_sources},
-		instruments::InstrumentsSource,
-		lifecycle::lifecycle_sources,
-		read_buffer::read_buffer_sources,
-		runtime::{Domain, SampleReader, collect::Collectors, runtime_source},
+		epoch::EpochGauge,
+		runtime::{SampleReader, collect::Collectors},
 	},
-	framework::{
-		current::{CurrentCache, CurrentVTable},
-		source::MetricsSource,
-	},
+	framework::{spec::MetricsDomain, surfaces::MetricsSurfaces},
 	listener::{
 		CdcEvictedListener, CdcWrittenListener, MultiCommittedListener, MultiSweptListener,
 		RequestMetricsEventListener, VersionEpochSampledListener,
 	},
-	refresh::{RefreshActor, RefreshDomain},
+	sampler::MetricsSamplerActor,
 	subsystem::MetricsSubsystem,
 };
 
@@ -79,7 +73,7 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 
 		let epoch_gauge = Arc::new(EpochGauge::default());
 
-		Self::wire_refresh(
+		Self::wire_sampler(
 			&engine,
 			&spawner,
 			&clock,
@@ -96,7 +90,7 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 
 impl MetricsSubsystemFactory {
 	#[inline]
-	fn wire_refresh(
+	fn wire_sampler(
 		engine: &StandardEngine,
 		spawner: &ActorSpawner,
 		clock: &Clock,
@@ -105,54 +99,20 @@ impl MetricsSubsystemFactory {
 		retention_metrics: &RetentionMetrics,
 		epoch_gauge: Arc<EpochGauge>,
 	) -> Result<()> {
-		let config = engine.catalog();
-		for domain in RefreshDomain::ALL {
-			let sources = Self::sources_for(
-				domain,
-				collectors,
-				multi_store,
-				retention_metrics,
-				epoch_gauge.clone(),
-			);
-			let mut targets = Vec::with_capacity(sources.len());
-			for source in sources {
-				let cache = CurrentCache::new(source.columns());
-				engine.register_virtual_table(
-					source.namespace(),
-					"current",
-					CurrentVTable::new(cache.clone()),
-				)?;
-				targets.push((source, cache));
-			}
-
-			if let Some(interval) = config.get_config_duration_opt(domain.config_key()) {
-				let actor = RefreshActor::new(targets, clock.clone(), interval);
-				spawner.spawn_coordination(domain.actor_name(), actor);
-			}
-		}
+		let surfaces = Arc::new(MetricsSurfaces::build(MetricsDomain::ALL.map(MetricsDomain::spec)));
+		surfaces.register_all(engine)?;
+		let interval = engine.catalog().get_config_duration(ConfigKey::MetricsSampleInterval);
+		let actor = MetricsSamplerActor::new(
+			collectors.clone(),
+			multi_store.clone(),
+			retention_metrics.clone(),
+			epoch_gauge,
+			surfaces,
+			clock.clone(),
+			interval,
+		);
+		spawner.spawn_coordination("metrics-sampler", actor);
 		Ok(())
-	}
-
-	#[inline]
-	fn sources_for(
-		domain: RefreshDomain,
-		collectors: &Collectors,
-		multi_store: &MultiStore,
-		retention_metrics: &RetentionMetrics,
-		epoch_gauge: Arc<EpochGauge>,
-	) -> Vec<Arc<dyn MetricsSource>> {
-		match domain {
-			RefreshDomain::RuntimeMemory => vec![runtime_source(Domain::Memory, collectors)],
-			RefreshDomain::RuntimeWatermarks => vec![runtime_source(Domain::Watermarks, collectors)],
-			RefreshDomain::RuntimeOperators => vec![runtime_source(Domain::Operators, collectors)],
-			RefreshDomain::ReadBuffer => read_buffer_sources(multi_store),
-			RefreshDomain::Instruments => {
-				vec![Arc::new(InstrumentsSource::new(collectors.registry.clone()))
-					as Arc<dyn MetricsSource>]
-			}
-			RefreshDomain::Epoch => epoch_sources(&collectors.engine, epoch_gauge),
-			RefreshDomain::Lifecycle => lifecycle_sources(retention_metrics),
-		}
 	}
 
 	#[inline]

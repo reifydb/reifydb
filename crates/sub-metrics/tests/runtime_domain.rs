@@ -4,7 +4,7 @@
 //! Runtime metrics domain split, driven end to end through the wired subsystem.
 //!
 //! Pins the per-domain partitioning on the real path: watermark metrics land under `watermarks`, never `memory`,
-//! and an engine with no flow state exposes an empty `operators::current`. `::current` stays empty until a refresh
+//! and an engine with no flow state exposes an empty `operators::current`. `::current` stays empty until a sampler
 //! tick runs, so the positive assertions poll; the absence assertions hold regardless of timing.
 
 use std::time::Duration;
@@ -17,15 +17,7 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 fn db_with_runtime_refresh() -> TestDb {
 	TestDb::from(
 		db_embedded::memory()
-			.with_config(ConfigKey::MetricsRuntimeMemoryRefreshInterval, Value::duration_milliseconds(10))
-			.with_config(
-				ConfigKey::MetricsRuntimeWatermarksRefreshInterval,
-				Value::duration_milliseconds(10),
-			)
-			.with_config(
-				ConfigKey::MetricsRuntimeOperatorsRefreshInterval,
-				Value::duration_milliseconds(10),
-			)
+			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(10))
 			.build()
 			.expect("build"),
 	)
