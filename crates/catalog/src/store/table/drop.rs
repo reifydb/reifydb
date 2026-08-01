@@ -50,7 +50,6 @@ pub mod tests {
 	fn test_drop_table() {
 		let mut txn = create_test_admin_transaction();
 
-		// Create a namespace first
 		let namespace = CatalogStore::create_namespace(
 			&mut txn,
 			NamespaceToCreate {
@@ -64,7 +63,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Create a table
 		let created = CatalogStore::create_table(
 			&mut txn,
 			TableToCreate {
@@ -78,7 +76,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Verify it exists
 		let found = CatalogStore::find_table_by_name(
 			&mut Transaction::Admin(&mut txn),
 			namespace.id(),
@@ -87,10 +84,8 @@ pub mod tests {
 		.unwrap();
 		assert!(found.is_some());
 
-		// Delete it
 		CatalogStore::drop_table(&mut txn, created.id).unwrap();
 
-		// Verify it's gone
 		let found = CatalogStore::find_table_by_name(
 			&mut Transaction::Admin(&mut txn),
 			namespace.id(),
@@ -102,9 +97,9 @@ pub mod tests {
 
 	#[test]
 	fn test_drop_nonexistent_table() {
+		// Dropping a table that never existed is a no-op, not an error.
 		let mut txn = create_test_admin_transaction();
 
-		// Deleting a non-existent table should not error
 		let non_existent = TableId(999999);
 		let result = CatalogStore::drop_table(&mut txn, non_existent);
 		assert!(result.is_ok());
@@ -115,7 +110,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let ns = ensure_test_namespace(&mut txn);
 
-		// Create a table with 2 columns
 		let table = create_table(
 			&mut txn,
 			"test_namespace",
@@ -140,18 +134,14 @@ pub mod tests {
 			],
 		);
 
-		// Verify columns exist before drop
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 		assert_eq!(columns.len(), 2);
 
-		// Drop the table
 		CatalogStore::drop_table(&mut txn, table.id).unwrap();
 
-		// Verify columns are cleaned up
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 		assert!(columns.is_empty());
 
-		// Verify table itself is gone
 		let found = CatalogStore::find_table_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "meta_table")
 			.unwrap();
 		assert!(found.is_none());

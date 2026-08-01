@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Multi-object isolation chaos.
-//!
-//! Drives commit / flush / row-TTL / physical-delete across SEVERAL tables (ObjectIds) at once and asserts
-//! that an operation scoped to one object never touches another: a TTL sweep or delete on object A must
-//! leave object B byte-for-byte intact, and a full-scan of an object must return exactly that object's rows.
-//! This guards the object-scoping of `delete_below_version`, `delete_keys`, buffer drops, and range
-//! bounds - a scoping bug there would bleed rows across tables, which the per-object oracle and cross-config
-//! checks both catch. Reads are taken at the current version (TTL/delete remove by version, like `lifecycle`).
+//! Multi-object isolation chaos: commit / flush / row-TTL / physical-delete across several tables at
+//! once. An operation scoped to one object must leave the others byte-for-byte intact, which is what
+//! guards the object scoping of delete, buffer drops and range bounds. Reads are at the current version.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -76,10 +71,8 @@ impl MsOracle {
 	}
 }
 
-/// Object-scoped version-anchored TTL sweep (the gc/row buffer scanner is retired; the driver knows the
-/// expired rows): drop the expired keys' versions at or below the cutoff from the commit buffer, then
-/// persistent delete_below_version -> clear_read on a hit. Scoped to a single object so the test can
-/// assert isolation.
+/// Object-scoped version-anchored TTL sweep: buffer drop first, then persistent delete and a read-cache
+/// clear on a hit. Scoping it to a single object is what lets the test assert isolation.
 fn ttl_sweep_storage(store: &StandardMultiStore, storage_id: StorageId, rows: &[u64], cutoff_version: CommitVersion) {
 	let kind = EntryKind::Source(storage_id);
 	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(storage_id, r)).collect();
@@ -269,8 +262,8 @@ pub fn drive(seed: u64, p: Params) {
 				}
 			}
 		} else if roll < ttl_hi {
-			// Version-anchored TTL scoped to object `s`: evict that object's rows whose current version is
-			// at or below a random cutoff version. Rows of the other objects must be untouched (isolation).
+			// The sweep is scoped to object `s`, so rows of every other object must come through
+			// untouched.
 			let cutoff_version = rng.random_range(1..=version);
 			let expired: Vec<u64> = oracle
 				.current
@@ -302,8 +295,7 @@ pub fn drive(seed: u64, p: Params) {
 		}
 	}
 
-	// Final sweep: after the whole run, every object must still match the oracle exactly in every config -
-	// the strongest isolation check, since any cross-object bleed accumulated over the run shows up here.
+	// Any cross-object bleed that accumulated over the run surfaces in this final per-object comparison.
 	for (s, _) in STORAGES.iter().enumerate() {
 		check_range_ms(&configs, &oracle, s, version, 16, steps);
 	}

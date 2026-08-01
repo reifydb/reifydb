@@ -73,7 +73,6 @@ pub mod tests {
 	#[cfg(test)]
 	use crate::operator::stateful::test_utils::test::*;
 
-	// Extend TestOperator to implement KeyedStateful
 	impl KeyedStateful for TestOperator {
 		fn layout(&self) -> RowShape {
 			self.layout.clone()
@@ -88,17 +87,14 @@ pub mod tests {
 	fn test_encode_key() {
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
 
-		// Test encoding with different key values
 		let key1 = vec![Value::Int4(42), Value::Utf8("test".to_string())];
 		let encoded1 = operator.encode_state_key(&key1);
 
 		let key2 = vec![Value::Int4(42), Value::Utf8("test2".to_string())];
 		let encoded2 = operator.encode_state_key(&key2);
 
-		// Different keys should produce different encodings
 		assert_ne!(encoded1.as_slice(), encoded2.as_slice());
 
-		// Same key should produce same encoding
 		let encoded1_again = operator.encode_state_key(&key1);
 		assert_eq!(encoded1.as_slice(), encoded1_again.as_slice());
 	}
@@ -108,7 +104,6 @@ pub mod tests {
 		let operator = TestOperator::new(FlowNodeId(1));
 		let state = operator.create_state();
 
-		// State should have the correct size for layout
 		assert!(state.len() > 0);
 	}
 
@@ -119,16 +114,14 @@ pub mod tests {
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
 		let key = vec![Value::Int4(100), Value::Utf8("key1".to_string())];
 
-		// Initially should create new state
 		let state1 = operator.load_state(&mut txn, &key).unwrap();
 
-		// Modify and save - with_key_types uses [ValueType::Blob, ValueType::Int4]
+		// with_key_types lays state out as [Blob, Int4], so field 1 is the Int4.
 		let mut modified = state1.clone();
 		let layout = operator.layout();
-		layout.set::<i32>(&mut modified, 1, 0x42); // Modify second field (Int4)
+		layout.set::<i32>(&mut modified, 1, 0x42);
 		operator.save_state(&mut txn, &key, modified.clone()).unwrap();
 
-		// Load should return modified state
 		let state2 = operator.load_state(&mut txn, &key).unwrap();
 		assert_eq!(layout.get::<i32>(&state2, 1), 0x42);
 	}
@@ -140,10 +133,8 @@ pub mod tests {
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
 		let key = vec![Value::Int4(200), Value::Utf8("update_key".to_string())];
 
-		// Update with a function
 		let result = operator
 			.update_state(&mut txn, &key, |shape, row| {
-				// Set second field (Int4) to a specific value
 				shape.set::<i32>(row, 1, 0x55);
 				Ok(())
 			})
@@ -152,7 +143,6 @@ pub mod tests {
 		let layout = operator.layout();
 		assert_eq!(layout.get::<i32>(&result, 1), 0x55);
 
-		// Verify it was persisted
 		let loaded = operator.load_state(&mut txn, &key).unwrap();
 		assert_eq!(layout.get::<i32>(&loaded, 1), 0x55);
 	}
@@ -164,17 +154,15 @@ pub mod tests {
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
 		let key = vec![Value::Int4(300), Value::Utf8("remove_key".to_string())];
 
-		// Create and save state
 		let state = operator.create_state();
 		operator.save_state(&mut txn, &key, state).unwrap();
 
-		// Remove state
 		operator.remove_state(&mut txn, &key).unwrap();
 
-		// Loading should create new state (not find existing)
+		// A load after removal creates fresh, default-initialized state.
 		let new_state = operator.load_state(&mut txn, &key).unwrap();
 		let layout = operator.layout();
-		assert_eq!(layout.get::<i32>(&new_state, 1), 0); // Should be default initialized
+		assert_eq!(layout.get::<i32>(&new_state, 1), 0);
 	}
 
 	#[test]
@@ -183,7 +171,6 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
 
-		// Create multiple keys with different states
 		for i in 0..5 {
 			let key = vec![Value::Int4(i), Value::Utf8(format!("key_{}", i))];
 			operator.update_state(&mut txn, &key, |shape, row| {
@@ -193,7 +180,6 @@ pub mod tests {
 			.unwrap();
 		}
 
-		// Verify each key has its own state
 		let layout = operator.layout();
 		for i in 0..5 {
 			let key = vec![Value::Int4(i), Value::Utf8(format!("key_{}", i))];
@@ -206,7 +192,6 @@ pub mod tests {
 	fn test_key_ordering() {
 		let operator = TestOperator::with_key_types(FlowNodeId(1), vec![ValueType::Int4, ValueType::Utf8]);
 
-		// Test that keys maintain order
 		let key1 = vec![Value::Int4(1), Value::Utf8("a".to_string())];
 		let key2 = vec![Value::Int4(1), Value::Utf8("b".to_string())];
 		let key3 = vec![Value::Int4(2), Value::Utf8("a".to_string())];
@@ -215,9 +200,8 @@ pub mod tests {
 		let encoded2 = operator.encode_state_key(&key2);
 		let encoded3 = operator.encode_state_key(&key3);
 
-		// Due to inverted encoding for integers, smaller values produce larger encoded values
-		// But strings should maintain normal ordering
-		assert!(encoded1 < encoded2); // Same int, "a" < "b"
-		assert!(encoded3 < encoded1); // 2 > 1 in inverted encoding
+		// Integers encode inverted, so a smaller value sorts later; strings keep normal order.
+		assert!(encoded1 < encoded2);
+		assert!(encoded3 < encoded1);
 	}
 }

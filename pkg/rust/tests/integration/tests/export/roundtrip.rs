@@ -98,21 +98,11 @@ CREATE ENUM rt::status { Active, Inactive, Pending };
 	assert!(dump.contains("CREATE ENUM rt::status { active, inactive, pending }"), "dump:\n{dump}");
 }
 
-// Regression for an export-fidelity bug with enum-typed table COLUMNS (distinct from the standalone
-// CREATE ENUM covered above). The engine physically expands `state: rt::status` into a hidden tag
-// column `state_tag` of type Uint1 (see crates/engine/src/vm/instruction/ddl/create/table.rs,
-// `expand_sumtype_columns`). Export currently dumps that physical column verbatim - producing
-// `CREATE TABLE rt::items { id: int4, state_tag: rt::status }` and `INSERT ... { state_tag: 0 }` -
-// instead of reconstructing the logical `state` column and `rt::status::Active` values. On re-import
-// the dumped `state_tag: rt::status` expands AGAIN into `state_tag_tag`, which the `state_tag: 0`
-// insert never populates, so the import fails with CONSTRAINT_007.
-//
-// This test pins the INTENDED behavior: an enum column's logical name and its values must survive an
-// export -> import round-trip. It is EXPECTED TO FAIL until export reconstructs enum columns from
-// their physical tag/value columns. Do not weaken or #[ignore] it to make the suite green - fix the
-// export instead.
 #[test]
 fn enum_column_roundtrip() {
+	// An enum column's logical name and its values must survive export -> import. Expected to
+	// fail until export reconstructs enum columns from their physical tag columns; do not weaken
+	// or #[ignore] it to make the suite green.
 	let setup = r#"
 CREATE NAMESPACE rt;
 CREATE ENUM rt::status { Active, Inactive };
@@ -127,25 +117,21 @@ INSERT rt::items [
 	a.admin(setup);
 	let dump = a.export(&ExportOptions::all()).expect("export failed");
 
-	// The export must render the logical enum column `state`, not the physical `state_tag` tag column.
 	assert!(
 		dump.contains("state: rt::status"),
 		"export rendered the physical tag column instead of the logical enum column;\ndump:\n{dump}"
 	);
 
-	// The dump must re-import cleanly into a fresh database.
 	let b = TestDb::memory();
 	b.import(&dump).unwrap_or_else(|e| panic!("import of the enum-column dump failed: {e}\ndump:\n{dump}"));
 
-	// The enum values must round-trip unchanged.
 	assert_same_rows(&a.query("from rt::items"), &b.query("from rt::items"));
 }
 
-// The structured-variant counterpart: an enum column whose variants carry fields expands to a tag
-// column plus per-field columns (`shape_circle_radius`, ...). Export must reconstruct the logical
-// column AND the full `ns::enum::variant { field: value }` constructor for each row.
 #[test]
 fn enum_structured_column_roundtrip() {
+	// A variant carrying fields must round-trip the logical column name and the full
+	// `ns::enum::variant { field: value }` constructor for each row, not just the tag.
 	let setup = r#"
 CREATE NAMESPACE rt;
 CREATE ENUM rt::shape { Circle { radius: float8 }, Rectangle { width: float8, height: float8 } };

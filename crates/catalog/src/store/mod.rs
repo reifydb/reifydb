@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Storage-facing implementation of catalog persistence. Each object kind has a sibling module here that owns the
-//! `EncodedKey` layout and the (de)serialisation between the typed catalog object and its on-disk bytes. The
-//! higher-level catalog operations in `catalog/` go through this layer rather than reaching into a backend
-//! directly, so adding a new store backend means re-implementing this trait surface, not the entire catalog.
+//! Storage-facing catalog persistence: one sibling module per object kind, owning its `EncodedKey`
+//! layout and its (de)serialisation. `catalog/` goes through this layer instead of a backend
+//! directly, so a new backend re-implements this surface rather than the entire catalog.
 
 pub(crate) mod authentication;
 pub(crate) mod binding;

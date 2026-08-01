@@ -253,7 +253,6 @@ pub mod tests {
 			sort: vec![],
 		};
 
-		// First creation should succeed
 		let result = CatalogStore::create_deferred_view(&mut txn, to_create.clone()).unwrap();
 		assert_eq!(result.id(), ViewId(16385));
 		assert_eq!(result.namespace(), NamespaceId(16385));

@@ -27,6 +27,7 @@ pub struct SinkDescriptorFFI {
 	pub vtable: SinkVTableFFI,
 }
 
+// SAFETY: every pointer in the descriptor addresses immutable module-static data (strings, symbols).
 unsafe impl Send for SinkDescriptorFFI {}
 unsafe impl Sync for SinkDescriptorFFI {}
 

@@ -14,10 +14,9 @@ fn wait_for_metrics_processing() {
 fn new_db_with_metrics() -> TestDb {
 	let accumulator = Arc::new(StatementMetricsAccumulator::new());
 
-	// The metric subsystem is wired unconditionally by DatabaseBuilder; it activates its
-	// accounting path by resolving the accumulator from the IoC container, so inject it
-	// rather than constructing a second MetricsSubsystemFactory (which would double-register
-	// the runtime vtables).
+	// The metric subsystem is already wired by DatabaseBuilder and activates by resolving the
+	// accumulator from IoC, so inject it rather than adding a second MetricsSubsystemFactory,
+	// which would double-register the runtime vtables.
 	TestDb::from(
 		db_embedded::memory()
 			.with_runtime_config(RuntimeConfig::default().seeded(0))

@@ -88,23 +88,20 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Verify it exists
 		let found = CatalogStore::find_dictionary(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		assert!(found.is_some());
 
-		// Drop it
 		CatalogStore::drop_dictionary(&mut txn, created.id).unwrap();
 
-		// Verify it's gone
 		let found = CatalogStore::find_dictionary(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		assert!(found.is_none());
 	}
 
 	#[test]
 	fn test_drop_nonexistent_dictionary() {
+		// Dropping a dictionary that never existed is a no-op, not an error.
 		let mut txn = create_test_admin_transaction();
 
-		// Dropping a non-existent dictionary should not error
 		let non_existent = DictionaryId(999999);
 		let result = CatalogStore::drop_dictionary(&mut txn, non_existent);
 		assert!(result.is_ok());
@@ -126,7 +123,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Seed entry and index rows directly in the single store, where interned entries live
+		// Interned entries live in the single store, not the multi store the definition uses.
 		let dummy_hash: [u8; 16] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 		let dummy_value = vec![42u8, 43u8];
 		let next_id: u128 = 1;
@@ -142,22 +139,18 @@ pub mod tests {
 			})
 			.unwrap();
 
-		// Verify entries exist in the single store before drop
 		let found = txn.single.with_query([&entry_key], |tx| tx.get(&entry_key)).unwrap();
 		assert!(found.is_some());
 		let found = txn.single.with_query([&index_key], |tx| tx.get(&index_key)).unwrap();
 		assert!(found.is_some());
 
-		// Drop the dictionary
 		CatalogStore::drop_dictionary(&mut txn, dict_def.id).unwrap();
 
-		// Verify entries are cleaned up from the single store
 		let found = txn.single.with_query([&entry_key], |tx| tx.get(&entry_key)).unwrap();
 		assert!(found.is_none());
 		let found = txn.single.with_query([&index_key], |tx| tx.get(&index_key)).unwrap();
 		assert!(found.is_none());
 
-		// Verify dictionary itself is gone
 		let found = CatalogStore::find_dictionary(&mut Transaction::Admin(&mut txn), dict_def.id).unwrap();
 		assert!(found.is_none());
 	}

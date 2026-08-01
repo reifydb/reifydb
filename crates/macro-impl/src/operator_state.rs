@@ -84,10 +84,7 @@ pub fn operator_state_impl(attr: TokenStream, item: TokenStream, crate_path: &st
 			}
 
 			unsafe fn archived_trusted(bytes: &#root::state::StateBytes) -> &Self::Archived {
-				// SAFETY: the caller upholds OperatorState::archived_trusted's
-
-
-
+				// SAFETY: forwarded contract; see OperatorState::archived_trusted.
 				unsafe { #root::state::access_archive_trusted::<Self>(bytes) }
 			}
 

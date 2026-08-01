@@ -211,10 +211,9 @@ mod tests {
 		assert!(outcome.is_ok(), "a fully successful batch must ack Ok so the checkpoint advances");
 	}
 
-	// A dispatch failure on any worker (e.g. a residual TXN_012 on a retention-bound breach) must
-	// surface as Err so the poll actor reschedules and retries, rather than silently acking the batch
-	// and dropping the changes from the subscription. The failing worker here is not the last to
-	// complete, so the error must be remembered until the final worker finishes.
+	// A dispatch failure on any worker must surface as Err so the poll actor reschedules, rather than acking
+	// the batch and dropping its changes. The failing worker is not the last to complete, so the error must
+	// be remembered until the final one finishes.
 	#[test]
 	fn barrier_surfaces_err_when_a_worker_fails() {
 		let (reply, slot) = capture();

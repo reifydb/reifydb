@@ -422,7 +422,6 @@ mod tests {
 	use super::*;
 	use crate::multi::transaction::version::VersionProvider;
 
-	// Mock version provider for testing
 	#[derive(Debug, Clone)]
 	struct MockVersionProvider {
 		current: Arc<AtomicU64>,
@@ -484,21 +483,18 @@ mod tests {
 	fn test_window_creation_and_indexing() {
 		let oracle = create_test_oracle(0);
 
-		// Create a conflict manager with some keys
 		let mut conflicts = ConflictManager::new();
 		let key1 = create_test_key("key1");
 		let key2 = create_test_key("key2");
 		conflicts.mark_write(&key1);
 		conflicts.mark_write(&key2);
 
-		// Simulate committing a transaction
 		let result = oracle.new_commit(CommitVersion(1), conflicts).unwrap();
 
 		match result {
 			CreateCommitResult::Success(version) => {
-				assert!(version.0 >= 1); // Should get a new version
+				assert!(version.0 >= 1);
 
-				// Check that the keys ended up in the window's modified_keys index
 				let inner = oracle.inner.read();
 				assert!(inner.time_windows.len() > 0);
 				let any_window_has_key1 =
@@ -520,8 +516,6 @@ mod tests {
 		let key1 = create_test_key("key1");
 		let key2 = create_test_key("key2");
 
-		// Add transactions to different windows by using different
-		// version ranges
 		for i in 0..3 {
 			let mut conflicts = ConflictManager::new();
 			if i % 2 == 0 {
@@ -535,8 +529,6 @@ mod tests {
 			assert!(matches!(result, CreateCommitResult::Success(_)));
 		}
 
-		// Check key indexing across multiple windows via the per-window
-		// `modified_keys` set (the source of truth).
 		let inner = oracle.inner.read();
 
 		let key1_window_count = inner.time_windows.values().filter(|w| w.modified_keys.contains(&key1)).count();
@@ -548,46 +540,36 @@ mod tests {
 
 	#[test]
 	fn test_range_operations_fallback() {
+		// A range read cannot be bloom-indexed by key, so it must fall back to scanning every window.
 		let oracle = create_test_oracle(1);
 
 		let key1 = create_test_key("key1");
 
-		// First transaction: writes to a specific key
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_write(&key1);
 
 		let result1 = oracle.new_commit(CommitVersion(1), conflicts1).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
-		// Second transaction: does a range operation (which can't be
-		// indexed by specific keys)
 		let mut conflicts2 = ConflictManager::new();
-		// Simulate a range read that doesn't return specific keys
 		let range = EncodedKeyRange::parse("a..z");
 		conflicts2.mark_range(range);
 		conflicts2.mark_write(&create_test_key("other_key"));
 
-		// This should use the fallback mechanism to check all windows
 		let result2 = oracle.new_commit(CommitVersion(1), conflicts2).unwrap();
 
-		// Should detect conflict due to the range overlap with key1
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
 
-	/// Regression: range-only reads must scan windows whose `window_start`
-	/// is less than `read_version` but whose contents include transactions
-	/// with `commit_version > read_version`. The `!has_keys` branch in
-	/// `new_commit` (oracle/mod.rs:225-228) limits its scan to
-	/// `time_windows.range(version..).take(5)`, which skips such windows.
 	#[test]
 	fn test_range_only_read_finds_conflict_in_older_window() {
-		// Default OracleWindowSize = 500. Start clock at 749 so T1 commits at 750
-		// and lands in the window keyed by window_start = 500.
+		// A range-only read must still conflict with a write committed after its read version,
+		// even when that write lives in a window whose start is below the read version.
+		// OracleWindowSize defaults to 500, so a clock at 749 puts T1's commit (750) in window 500.
 		let oracle = create_test_oracle(749);
 
 		let key_k = create_test_key("k");
 
-		// T1: write to "k". Read version irrelevant; commit version will be 750.
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_write(&key_k);
 		let r1 = oracle.new_commit(CommitVersion(1), conflicts1).unwrap();
@@ -597,9 +579,7 @@ mod tests {
 		};
 		assert_eq!(commit_v1, CommitVersion(750));
 
-		// Sanity: T1 lives in the window keyed at 500, so any read_version in
-		// (500, 750) exercises the bug. If defaults change, this assertion
-		// fires before the silent-pass below masks a real regression.
+		// If the window-size default changes, this fires before the conflict assert can pass vacuously.
 		{
 			let inner = oracle.inner.read();
 			assert!(
@@ -609,10 +589,7 @@ mod tests {
 			);
 		}
 
-		// T2: range-only read covering "k". No read_keys, no write_keys, so
-		// has_keys = false. read_version = 510 is inside window [500, 1000)
-		// but greater than the window's start. T1's commit version (750) is
-		// greater than T2's read version, so T2 must see the conflict.
+		// Read version 510 sits inside T1's window but before T1's commit, so the conflict is real.
 		let mut conflicts2 = ConflictManager::new();
 		conflicts2.mark_range(EncodedKeyRange::parse("a..z"));
 		let r2 = oracle.new_commit(CommitVersion(510), conflicts2).unwrap();
@@ -625,21 +602,16 @@ mod tests {
 		);
 	}
 
-	/// Regression: a transaction that has both specific keys AND a range op
-	/// must scan every retained window, not just the windows the bloom filter
-	/// matched on its specific keys. Otherwise a range conflict in a window
-	/// whose bloom does not contain any of our specific keys is silently missed.
 	#[test]
 	fn test_range_op_with_keys_scans_all_windows_not_just_bloom_matches() {
-		// Default OracleWindowSize = 500. Place T_b at v=50 (window @ 0)
-		// and T_a at v=750 (window @ 500) so the two are in different windows.
+		// A range op must scan every retained window: a bloom match on the transaction's own keys
+		// would skip the window where the range conflict actually lives.
+		// OracleWindowSize defaults to 500, so v=50 and v=750 land in different windows.
 		let oracle = create_test_oracle(49);
 
 		let key_alpha = create_test_key("alpha");
 		let key_beta = create_test_key("beta");
 
-		// T_b: writes "beta". Lands in window @ 0. Bloom for window 0
-		// contains "beta" but not "alpha".
 		let mut conflicts_b = ConflictManager::new();
 		conflicts_b.mark_write(&key_beta);
 		let r_b = oracle.new_commit(CommitVersion(1), conflicts_b).unwrap();
@@ -649,11 +621,9 @@ mod tests {
 		};
 		assert_eq!(commit_v_b, CommitVersion(50));
 
-		// Skip the clock forward so T_a lands in window @ 500.
+		// Skip the clock forward so T_a lands in window @ 500 with a bloom disjoint from window @ 0.
 		oracle.advance_version_for_replica(CommitVersion(749));
 
-		// T_a: writes "alpha". Lands in window @ 500. Bloom for window 500
-		// contains "alpha" but not "beta".
 		let mut conflicts_a = ConflictManager::new();
 		conflicts_a.mark_write(&key_alpha);
 		let r_a = oracle.new_commit(CommitVersion(1), conflicts_a).unwrap();
@@ -663,8 +633,7 @@ mod tests {
 		};
 		assert_eq!(commit_v_a, CommitVersion(750));
 
-		// Sanity: both windows exist as expected. If OracleWindowSize defaults
-		// change, this fires before the conflict assertion silently masks a regression.
+		// If the window-size default changes, this fires before the conflict assert can pass vacuously.
 		{
 			let inner = oracle.inner.read();
 			assert!(
@@ -679,15 +648,7 @@ mod tests {
 			);
 		}
 
-		// T3: writes "beta" (so has_keys=true; bloom-only path matches window @ 0
-		// only) AND reads range "a..z" (which overlaps "alpha" in window @ 500).
-		// read_version=100 sits between T_b (v=50) and T_a (v=750), so:
-		//   - In window @ 0, max_version=50 <= 100, the early-skip fires before the per-txn loop.
-		//   - Window @ 500 is the only place where the conflict is visible (T_a's "alpha" is in T3's range and
-		//     v=750 > 100).
-		// New code: has_range_operations() => scan all windows => finds conflict.
-		// Old code: bloom-only relevant_windows=[0] when has_keys=true => never visits
-		// window @ 500 => silently misses the range conflict.
+		// Reading at 100 makes window @ 0 skippable, so only the unmatched window @ 500 holds the conflict.
 		let mut conflicts_3 = ConflictManager::new();
 		conflicts_3.mark_write(&key_beta);
 		conflicts_3.mark_range(EncodedKeyRange::parse("a..z"));
@@ -705,13 +666,10 @@ mod tests {
 	fn test_empty_conflict_manager() {
 		let oracle = create_test_oracle(0);
 
-		// Transaction with no conflicts (read-only)
-		let conflicts = ConflictManager::new(); // Empty conflict manager
+		let conflicts = ConflictManager::new();
 
 		let result = oracle.new_commit(CommitVersion(1), conflicts).unwrap();
 
-		// Should succeed; no write keys means the window's modified_keys
-		// stays empty.
 		match result {
 			CreateCommitResult::Success(_) => {
 				let inner = oracle.inner.read();
@@ -732,22 +690,17 @@ mod tests {
 
 		let shared_key = create_test_key("shared_key");
 
-		// First transaction: writes to shared_key (no read)
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_write(&shared_key);
 
 		let result1 = oracle.new_commit(CommitVersion(1), conflicts1).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
-		// Second transaction: also writes to shared_key (write-write
-		// conflict)
 		let mut conflicts2 = ConflictManager::new();
 		conflicts2.mark_write(&shared_key);
 
 		let result2 = oracle.new_commit(CommitVersion(1), conflicts2).unwrap();
 
-		// Should detect conflict because both transactions write to the
-		// same key
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
 
@@ -757,43 +710,34 @@ mod tests {
 
 		let shared_key = create_test_key("shared_key");
 
-		// First transaction: writes to shared_key
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_write(&shared_key);
 
 		let result1 = oracle.new_commit(CommitVersion(1), conflicts1).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
-		// Second transaction: reads from shared_key (read-write
-		// conflict)
 		let mut conflicts2 = ConflictManager::new();
 		conflicts2.mark_read(&shared_key);
 
 		let result2 = oracle.new_commit(CommitVersion(1), conflicts2).unwrap();
 
-		// Should detect conflict because txn2 read from key that txn1
-		// wrote to
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
 
-	/// Regression test for watermark ordering race condition.
-	///
-	/// This test verifies that concurrent commits don't cause the watermark
-	/// to skip versions. The fix ensures `begin(version)` is called inside
-	/// the version_lock, guaranteeing versions are registered in order.
 	#[test]
 	fn test_concurrent_commits_dont_skip_watermark_versions() {
+		// Versions must be registered on the watermark under the allocation lock; register out of
+		// order and done_until stalls one short, reporting a commit as unapplied forever.
 		const NUM_CONCURRENT: usize = 100;
 		const ITERATIONS: usize = 10;
 
 		for iteration in 0..ITERATIONS {
-			// Create fresh oracle for each iteration to avoid conflicts
 			let oracle = Arc::new(create_test_oracle(0));
 			let mut handles = vec![];
 
 			for i in 0..NUM_CONCURRENT {
 				let oracle_clone = oracle.clone();
-				// Use unique keys per iteration to avoid conflicts
+				// Unique keys per iteration so no commit can fail on conflict.
 				let key = create_test_key(&format!("key_{}_{}", iteration, i));
 
 				let handle = thread::spawn(move || {
@@ -804,13 +748,12 @@ mod tests {
 
 					match result {
 						CreateCommitResult::Success(version) => {
-							// Simulate storage write with variable delay
+							// Uneven delay so commits finish out of allocation order.
 							if i % 3 == 0 {
 								sleep(Duration::from_microseconds(100)
 									.unwrap()
 									.to_std());
 							}
-							// Mark commit as done
 							oracle_clone.done_commit(version);
 							Some(version)
 						}
@@ -821,7 +764,6 @@ mod tests {
 				handles.push(handle);
 			}
 
-			// Wait for all commits
 			let mut max_version = CommitVersion(0);
 			let mut success_count = 0;
 			for handle in handles {
@@ -831,23 +773,17 @@ mod tests {
 				}
 			}
 
-			// All should succeed since keys are unique
 			assert_eq!(
 				success_count, NUM_CONCURRENT,
 				"Expected {} successful commits, got {}",
 				NUM_CONCURRENT, success_count
 			);
 
-			// Wait for the watermark to catch up to max_version. Waiting on the
-			// event keeps this deterministic under load; a skipped version would
-			// stall the advance and time out here rather than passing by luck.
+			// Wait on the event, not a sleep: a skipped version stalls the advance and times out.
 			let reached =
 				oracle.command.wait_for_mark_timeout(max_version, Duration::from_seconds(5).unwrap());
 			assert!(reached, "watermark did not reach {} within timeout", max_version.0);
 
-			// KEY ASSERTION: The watermark should have advanced to max_version
-			// If any version was skipped due to the race condition, done_until
-			// would be less than max_version (stuck at the skipped version - 1)
 			let done_until = oracle.command.done_until();
 			assert_eq!(
 				done_until, max_version,
@@ -858,22 +794,20 @@ mod tests {
 		}
 	}
 
-	/// Test that verifies versions are registered with watermark in order
 	#[test]
 	fn test_version_begin_ordering() {
+		// A barrier releases every commit at once; allocated versions must still come out contiguous.
 		let oracle = Arc::new(create_test_oracle(0));
 		let barrier = Arc::new(Barrier::new(10));
 
 		let mut handles = vec![];
 
-		// Spawn 10 concurrent commits that all start at the same time
 		for i in 0..10 {
 			let oracle_clone = oracle.clone();
 			let barrier_clone = barrier.clone();
 			let key = create_test_key(&format!("order_key_{}", i));
 
 			let handle = thread::spawn(move || {
-				// Wait for all tasks to be ready
 				barrier_clone.wait();
 
 				let mut conflicts = ConflictManager::new();
@@ -899,7 +833,6 @@ mod tests {
 			}
 		}
 
-		// All versions should be contiguous (no gaps)
 		versions.sort();
 		for i in 1..versions.len() {
 			assert_eq!(
@@ -911,31 +844,25 @@ mod tests {
 			);
 		}
 
-		// Wait for the watermark to reach the highest version. Waiting on the
-		// event (rather than a fixed sleep) keeps the test deterministic under
-		// load: a real stall or dropped version would time out here and fail.
+		// Wait on the event, not a sleep: a dropped version stalls the advance and times out.
 		let expected = *versions.last().unwrap_or(&0);
 		let reached = oracle
 			.command
 			.wait_for_mark_timeout(CommitVersion(expected), Duration::from_seconds(5).unwrap());
 		assert!(reached, "watermark did not reach {} within timeout", expected);
 
-		// Watermark should be at the highest version
 		let done_until = oracle.command.done_until();
 		assert_eq!(done_until.0, expected, "Watermark should be at highest committed version");
 	}
 
 	#[test]
 	fn test_disabled_then_new_commit_skips_conflict_registration() {
-		// Start the clock at 1 so T1's commit version is 2; T2 then reads
-		// at version 1 (strictly before T1) and the per-window check
-		// `committed_txn.version <= read_version` will not short-circuit.
+		// rollback() after set_disabled() must restore tracking, or the following mark_write is
+		// silently dropped and the oracle registers an empty window for T1.
+		// A clock at 1 puts T1's commit at 2, so T2's read at 1 is strictly before it.
 		let oracle = create_test_oracle(1);
 		let key = create_test_key("shared");
 
-		// T1: set_disabled() + rollback() must restore a usable manager.
-		// Subsequent mark_write must be recorded (the fix), not silently
-		// dropped (the bug).
 		let mut cm1 = ConflictManager::new();
 		cm1.set_disabled();
 		cm1.rollback();
@@ -953,10 +880,7 @@ mod tests {
 		};
 		assert!(v1.0 >= 2, "T1's commit version should be at least 2, got {}", v1.0);
 
-		// T2: reads at v=1 (strictly before T1's commit) and writes the same
-		// key. SSI must report a conflict against T1's write of `shared`.
-		// With the bug, T1's window had empty modified_keys and T2 would
-		// have been silently allowed through.
+		// An empty window for T1 would let this read+write of the same key through unnoticed.
 		let mut cm2 = ConflictManager::new();
 		cm2.mark_read(&key);
 		cm2.mark_write(&key);

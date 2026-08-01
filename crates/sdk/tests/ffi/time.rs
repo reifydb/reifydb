@@ -22,7 +22,7 @@ fn time_one_nanosecond_past_midnight() {
 
 #[test]
 fn time_one_second_before_midnight() {
-	// 23:59:59 = 24*3600 - 1 seconds = 86399 seconds = 86_399_000_000_000 ns
+	// The last representable instant of the day, 86_399_999_999_999 ns, one nanosecond short of the u64 wrap.
 	let input = ColumnBuffer::time([Time::from_hms_nano(23, 59, 59, 999_999_999).expect("valid")]);
 	let output = round_trip_column("t", input.clone());
 	assert_column_eq("time_one_second_before_midnight", &input, &output);

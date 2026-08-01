@@ -29,9 +29,7 @@ use crate::{
 	},
 };
 
-// The suite does not get to pick this: `resolve_horizon` lets an operator's own seal span override
-// whatever a harness declares, so a hand-chosen span would describe a node the engine cannot
-// register. It is shared with the sweep constants below so the two cannot drift apart.
+// Not free to pick: an operator's own seal span overrides whatever the harness declares.
 const WINDOW_SECS: i64 = 60;
 
 fn tumbling_sum() -> WindowSpec {
@@ -50,19 +48,15 @@ const SPAN_MS: u64 = WINDOW_SECS as u64 * 1_000;
 // Sixteen buckets per horizon, so a 60s span grids at 3.75s.
 const GRID_WIDTH_MS: u64 = SPAN_MS / 16;
 
-// The instant to fire a seal at, which is what bounds the data phase. A seal fired at T only proves
-// windows anchored at or before `T - span - 1` are closed, so the ledger has to clear a whole grid
-// bucket past a group's own before its data comes due. Rows here land at the epoch, in bucket zero,
-// so the anchor must reach one full grid width.
+// A seal at T only proves windows anchored at or before `T - span - 1` are closed, so a group in
+// bucket zero comes due only once the anchor clears a full grid width.
 const SEAL_MS: u64 = SPAN_MS + GRID_WIDTH_MS + 1;
 
-// One millisecond short, for the no-op control: the anchor lands at the top of bucket zero, and a
-// group is due only once its bucket falls STRICTLY below the cutoff's.
+// One millisecond short: a group is due only once its bucket falls strictly below the cutoff's.
 const EARLY_SEAL_MS: u64 = SEAL_MS - 1;
 
-// The watermark a sweep is called at. It bounds the identity phase only - the data phase is bounded
-// by the operator's seal ledger - so it has to sit past the horizon without being what makes a
-// group due.
+// Bounds the identity phase only - the data phase is bounded by the seal ledger - so it must sit
+// past the horizon without being what makes a group due.
 const SWEEP_MS: u64 = SPAN_MS + GRID_WIDTH_MS;
 
 #[test]
@@ -120,22 +114,9 @@ chaos_test!(window_tumbling_grace_chaos, |seed| {
 });
 
 chaos_test!(window_tumbling_reclaim_chaos, |seed| {
-	// The same shape as window_tumbling_grace_chaos above, with the sweep running underneath it.
-	// Grace wider than the size is the interesting region: a window stays open long past its own
-	// span, so the watermark can carry a group past the data cutoff while events are still arriving
-	// for it - which is where a sweep and a live window actually meet.
-	// Vacuity is NOT asserted per seed here, and that is a measured decision rather than a lax one.
-	// For a window the seal is the primary reclaimer: the data cutoff is clamped to the seal ledger,
-	// so the sweep can only reach state at or below the frontier the seal has already passed, and a
-	// seal that cleaned up after itself leaves nothing behind. Roughly one corpus in twenty therefore
-	// gives the sweep nothing to do, correctly. Failing on those would make this suite flaky for a
-	// reason that is not a defect.
-	//
-	// The guarantee that the sweep path works at all lives in
-	// `operators::window::tumbling::reclaim::a_generated_corpus_stays_foldable_while_the_sweep_runs_underneath_it`,
-	// which pins a seed that does reclaim and asserts it. What this sweep contributes is breadth:
-	// whatever the sweep does reach, across many corpora, must leave the operator consistent with its
-	// oracle.
+	// Grace wider than the size keeps a window open past its own span, which is where a sweep and a
+	// live window actually meet. Vacuity is not asserted per seed: the seal is the primary reclaimer,
+	// so roughly one corpus in twenty correctly leaves the sweep nothing to do.
 	operators::window::tumbling::drive_reclaiming(
 		seed,
 		operators::window::tumbling::Params {
@@ -159,9 +140,8 @@ chaos_test!(window_tumbling_reclaim_random_chaos, |seed| {
 });
 
 chaos_test!(window_sliding_reclaim_chaos, |seed| {
-	// The exact shape a divergence was observed at before the driver's roll space was corrected and
-	// the sequence moved out from under it. Same size, slide, grace and mix; only the seed varies, so
-	// this searches the neighbourhood of the lost reproduction rather than one point in it.
+	// Only the seed varies, so this searches the neighbourhood of a shape that once diverged rather
+	// than one point in it.
 	operators::window::sliding::drive_reclaiming(
 		seed,
 		operators::window::sliding::Params {
@@ -255,16 +235,9 @@ chaos_test!(window_sliding_grace_chaos, |seed| {
 	);
 });
 
-// The sweeps above pin specific configurations and never move, so they stay comparable across
-// commits. The three below draw their configuration from the seed as well, which is what actually
-// found the grace-wider-than-interval band the rolling operator was mishandling. A failure here
-// reports the RESOLVED parameters, and those are what a regression pins - never the master seed,
-// which stops meaning the same thing the moment framework::fuzz changes.
-// The mutation primitives that were only ever applied to guest operators, now applied to a host window.
-// A duplicate update must net to no change in the aggregate, an update split into remove-then-insert
-// must land the same total as the update would have, and a small live-row cap keeps both landing on
-// rows the window has already published.
 chaos_test!(window_tumbling_flow_shaped_chaos, |seed| {
+	// A duplicate update must net to no change in the aggregate, and an update split into
+	// remove-then-insert must land the same total the update would have.
 	operators::window::tumbling::drive_flow_shaped(
 		seed,
 		operators::window::tumbling::Params {
@@ -295,17 +268,9 @@ chaos_test!(window_rolling_random_chaos, |seed| {
 
 #[test]
 fn the_random_sweeps_reach_the_configurations_that_found_defects() {
-	// Intent: a parameter generator can degenerate silently. Narrow a range, drop a ratio, and
-	// every sweep still passes - it is just no longer testing the region that mattered. This
-	// pins the regions by name so that shrinking one fails here rather than going quiet.
-	//
-	// grace > size is the band where a rolling coordinate is new enough to admit but already too
-	// old to contribute, which is where the operator was withdrawing live groups. grace == 0 is
-	// the opposite boundary, where a window closes the instant it ends. A slide that does not
-	// divide its size gives non-uniform window coverage, which a slide of exactly size/2 never
-	// exercises.
-	// Mutation: collapse GRACE_RATIOS to [(0, 1)] and the grace assertions fail; clamp the slide
-	// draw to size / 2 and the non-dividing assertion fails.
+	// A parameter generator can degenerate silently: narrow a range and every sweep still passes
+	// while no longer covering the region that mattered. Pinning the regions by name makes
+	// shrinking one fail here rather than go quiet.
 	const SEEDS: u64 = 512;
 
 	let mut zero_grace = 0;
@@ -351,11 +316,8 @@ fn the_random_sweeps_reach_the_configurations_that_found_defects() {
 	assert!(divides > 0, "no slide dividing its size in {SEEDS} seeds");
 	assert!(leaves_remainder > 0, "no slide leaving a remainder in {SEEDS} seeds; coverage is uniform-only");
 
-	// The count sweeps bucket on a per-group ordinal rather than a coordinate, so the regions
-	// worth pinning are different ones. A size of 1 puts every row in its own window, which is
-	// where an off-by-one in the ordinal division shows up first; a rolling capacity of 1 makes
-	// almost every retraction target a row the buffer has already pushed out, which is the case a
-	// capacity model is most likely to get wrong.
+	// Count sweeps bucket on a per-group ordinal rather than a coordinate, so the regions worth
+	// pinning are different ones.
 	let mut tumbling_counts = std::collections::BTreeSet::new();
 	let mut rolling_capacities = std::collections::BTreeSet::new();
 	for seed in 0..SEEDS {
@@ -432,13 +394,8 @@ fn the_random_sweeps_reach_the_configurations_that_found_defects() {
 
 #[test]
 fn a_fuzzed_sweep_failure_is_re_raised_after_reporting() {
-	// Intent: run_reported wraps every fuzzed sweep in catch_unwind so it can print the resolved
-	// parameters before the panic escapes. If it ever swallowed the panic instead of re-raising
-	// it, all three random sweeps would report green forever and nothing would say otherwise -
-	// the worst failure mode this suite can have, because it is silent.
-	// The report itself goes to stderr; run with --no-capture to eyeball that it stays
-	// paste-ready.
-	// Mutation: drop the resume_unwind in fuzz::run_reported and this fails.
+	// If run_reported swallowed the panic instead of re-raising it, all three random sweeps would
+	// report green forever and nothing would say otherwise.
 	let params = operators::window::tumbling::random_params(0).1;
 
 	// nextest gives each test its own process, so swapping the hook cannot disturb anything else.
@@ -512,10 +469,8 @@ chaos_test!(window_rolling_count_random_chaos, |seed| {
 
 #[test]
 fn a_join_operator_can_be_built_and_driven() {
-	// Intent: the two inputs reach the operator as two inputs. A join reads the side off each diff's
-	// origin, and a diff it cannot place is an error rather than a default - so if the corpus stopped
-	// tagging origins, or tagged both sides the same, every sweep below would still run and would
-	// simply never join anything. That failure is silent, and this is what makes it loud.
+	// If the corpus stopped tagging diff origins, or tagged both sides the same, every join sweep
+	// below would still run and would simply never join anything.
 	let workload = JoinWorkload {
 		keys: 1,
 		right_pct: 0,
@@ -552,19 +507,16 @@ fn a_join_operator_can_be_built_and_driven() {
 
 #[test]
 fn a_harness_without_a_registered_grid_can_never_reclaim() {
-	// Intent: the reclaim driver skips a node whose activity buckets carry no event grid, and that
-	// skip is silent - it increments no counter and logs nothing. A harness that never registers a
-	// grid therefore does not sweep imprecisely, it does not sweep at all, and a suite built on one
-	// would report green while asserting nothing about reclamation.
-	// Mutation: drop the set_activity_grid call from with_activity_grid and the second half fails.
+	// The reclaim driver skips a node with no event grid silently, so a suite built on an ungridded
+	// harness would report green while asserting nothing about reclamation.
 	let plain = Harness::new(|_| operators::append::build(2));
 	assert!(
 		plain.activity_grid().event_grid().is_none(),
 		"the default is the undeclared grid, which is exactly what the driver refuses to sweep"
 	);
 
-	// The grid comes from the operator, so the fixture has to declare a ttl for one to exist - an
-	// operator that declares nothing is perpetual and correctly stays ungridded.
+	// The grid comes from the operator, so a fixture declaring no ttl is perpetual and stays
+	// ungridded.
 	let span = Duration::from_seconds(16).expect("16s is representable");
 	let declared = Harness::new(|_| operators::append::build_with_ttl(2, Some(span))).with_activity_grid();
 	let grid = declared.activity_grid().event_grid().expect("a declared scale must grid in event time");
@@ -577,20 +529,9 @@ fn a_harness_without_a_registered_grid_can_never_reclaim() {
 
 #[test]
 fn the_harness_sweep_retires_a_group_only_once_its_seal_ledger_clears_its_horizon() {
-	// Intent: the harness drives production's own `reclaim_nodes`, and it drives it correctly - the
-	// cutoff it derives has to put a group on the right side of the horizon. Both halves matter. A
-	// sweep that retired nothing whatever the operator had sealed would be indistinguishable from
-	// working code in every suite built on it, and a sweep that retired everything immediately would
-	// make every later assertion about what survives vacuous.
-	//
-	// The frontier is the operator's SEAL LEDGER, not the instant the sweep is called at: nothing an
-	// operator has not sealed is reclaimable, so the boundary under test is the seal, and the
-	// watermark passed to reclaim only has to sit at or past it. The numbers come from the operator,
-	// not from the suite. This window's retention scale is its own 60s size plus zero grace, so the
-	// grid is 60s/16 = 3.75s, and a seal at T only proves windows anchored at or before T - span - 1
-	// are closed. A group stamped at t=0 sits in bucket 0 and needs a seal one millisecond past
-	// 63.75s to come due. A suite that picked its own span would sweep a node configuration the
-	// engine cannot register.
+	// The frontier is the operator's seal ledger, not the instant the sweep is called at: nothing
+	// unsealed is reclaimable. A sweep that retired nothing, or everything immediately, would be
+	// indistinguishable from working code in every suite built on it.
 	let mut harness =
 		Harness::new(|runtime| operators::window::build(&tumbling_sum(), runtime)).with_activity_grid();
 
@@ -618,8 +559,7 @@ fn the_harness_sweep_retires_a_group_only_once_its_seal_ledger_clears_its_horizo
 #[test]
 fn a_truncated_budget_leaves_the_rest_of_the_due_groups_for_the_next_sweep() {
 	// The production budget is 256 groups per tick, which no chaos run approaches, so partial
-	// reclamation would never occur by accident - and partial reclamation is where the invariants
-	// with the most history live. Driving it has to be a scenario knob rather than a hope.
+	// reclamation has to be a scenario knob rather than a hope.
 	let mut harness = Harness::new(|runtime| operators::window::build(&tumbling_sum(), runtime))
 		.with_activity_grid()
 		.with_reclaim_budget(ReclaimBudget {
@@ -634,9 +574,8 @@ fn a_truncated_budget_leaves_the_rest_of_the_due_groups_for_the_next_sweep() {
 	]))
 	.expect("apply must succeed");
 
-	// Both groups are only due once the operator has sealed past their bucket; the sweep watermark
-	// cannot stand in for that, so without this tick every sweep below retires nothing and the
-	// budget assertions pass vacuously at zero.
+	// Both groups are due only once the operator has sealed past their bucket, so without this tick
+	// the budget assertions below pass vacuously at zero.
 	harness.tick(SEAL_MS).expect("seal must succeed");
 
 	let first = harness.reclaim(SWEEP_MS).expect("sweep must succeed");
@@ -651,10 +590,8 @@ fn a_truncated_budget_leaves_the_rest_of_the_due_groups_for_the_next_sweep() {
 
 #[test]
 fn a_harness_without_a_declared_horizon_sweeps_nothing() {
-	// The default has to be inert, or every existing suite would start reclaiming underneath itself
-	// the moment the sweep was wired in. No declared horizon means no grid, and no grid is the exact
-	// condition the production driver skips a node on - so reporting an empty sweep here is the same
-	// answer production gives, not a harness shortcut.
+	// The default has to be inert, or every existing suite would start reclaiming underneath itself.
+	// No declared horizon means no grid, which is the exact condition production skips a node on.
 	let mut harness = Harness::new(|runtime| operators::window::build(&tumbling_sum(), runtime));
 	let at = |ms: u64| DateTime::from_timestamp_millis(ms).unwrap();
 	harness.apply(generator::insert(vec![generator::row(RowNumber(1), 1, 10, at(0))])).expect("apply must succeed");
@@ -664,9 +601,8 @@ fn a_harness_without_a_declared_horizon_sweeps_nothing() {
 
 #[test]
 fn an_append_operator_can_be_built_and_driven() {
-	// Intent: same guard on the other multi-input operator. Append refuses a diff whose origin it
-	// cannot resolve to one of its inputs, so a mistagged corpus fails here rather than quietly
-	// driving nothing.
+	// Append refuses a diff whose origin it cannot resolve to one of its inputs, so a mistagged
+	// corpus fails here rather than quietly driving nothing.
 	let workload = AppendWorkload {
 		inputs: 2,
 		row_space: 4,
@@ -711,9 +647,8 @@ chaos_test!(join_latest_left_chaos, |seed| {
 });
 
 chaos_test!(join_left_keys_1_chaos, |seed| {
-	// A single key puts every row on both sides into one bucket: the widest cartesian product a hash
-	// join can be asked for, and the slot a latest join rewrites on every right arrival. The sweeps
-	// above spread over three keys and rarely land there.
+	// A single key is the widest cartesian product a hash join can be asked for and the slot a
+	// latest join rewrites on every right arrival; the sweeps above rarely land there.
 	operators::join::drive(
 		seed,
 		operators::join::Params {
@@ -762,17 +697,9 @@ chaos_test!(append_random_chaos, |seed| {
 
 #[test]
 fn the_join_and_append_sweeps_reach_the_shapes_their_operators_are_built_around() {
-	// Intent: same failure mode the window sweeps guard against - a generator can narrow silently and
-	// every sweep still passes while no longer covering what it was written for. These pin the regions
-	// by name.
-	//
-	// A join that never sees both sides of a key cannot join; one that never sees several rows under
-	// one key never reaches the cartesian paths; one that never draws an undefined key never reaches
-	// the handlers that route it. For append, two inputs colliding on one source row number is the
-	// whole reason the input index is in the group key.
-	// Mutation: drop 1 from KEYS and the shared-bucket assertion fails; clamp right_pct to 0 and the
-	// both-sides assertion fails; clamp append's row_space floor above 1 and the collision assertion
-	// weakens.
+	// Same failure mode the window sweeps guard against: a generator can narrow silently while every
+	// sweep still passes. A join that never sees both sides of a key cannot join, and for append two
+	// inputs colliding on one source row number is the whole reason the input index is in the group key.
 	const SEEDS: u64 = 512;
 
 	let mut variants = std::collections::BTreeSet::new();
@@ -809,8 +736,8 @@ fn the_join_and_append_sweeps_reach_the_shapes_their_operators_are_built_around(
 	for seed in 0..SEEDS {
 		let (_, params) = operators::append::random_params(seed);
 		input_counts.insert(params.inputs);
-		// With `inputs` inputs drawing from `row_space` numbers each, a collision across inputs is
-		// near-certain over a run once the space is smaller than the rows drawn into it.
+		// A collision across inputs is near-certain once the row space is smaller than the rows
+		// drawn into it.
 		if params.row_space <= params.max_live as u64 {
 			collides += 1;
 		}
@@ -826,10 +753,9 @@ fn the_join_and_append_sweeps_reach_the_shapes_their_operators_are_built_around(
 }
 
 chaos_test!(join_inner_none_pct_30_chaos, |seed| {
-	// The control for join_matrix_definedness_flip_chaos: identical parameters, definedness held
-	// fixed. A row's key may still be undefined from birth and may still move between defined keys -
-	// only the crossing between the two is withheld. Green here while the flip sweep is red is what
-	// pins a failure to that crossing rather than to the heavier undefined-key mix both of them carry.
+	// The control for join_matrix_definedness_flip_chaos: identical parameters with only the crossing
+	// between defined and undefined withheld, so green here while the flip sweep is red pins a
+	// failure to that crossing rather than to the undefined-key mix both carry.
 	operators::join::drive(
 		seed,
 		operators::join::Params {
@@ -893,14 +819,9 @@ chaos_test!(join_matrix_definedness_flip_chaos, |seed| {
 
 #[test]
 fn the_join_oracles_are_not_interchangeable() {
-	// Intent: every join sweep above is green, and green on its own is not evidence of anything. An
-	// oracle that described no rows, a claim that was never compared, a corpus that never reached the
-	// operator - all three look exactly like a passing suite. This drives each strategy against the
-	// other three strategies' oracles and requires every one of those to come back divergent, which
-	// is only possible if the claims genuinely describe four different tables and are genuinely
-	// checked against what the operator published.
-	// Mutation: make HashOracle ignore `left_outer`, or have any `claim()` return an empty view, and
-	// the pairs that stop being distinguishable fail here.
+	// An oracle that described no rows, a claim never compared, a corpus that never reached the
+	// operator - all three look exactly like a passing suite. Requiring every cross pair to diverge
+	// only holds if the four claims describe four different tables and are genuinely checked.
 	let variants =
 		[Variant::inner(), Variant::left(), Variant::inner().with_latest(), Variant::left().with_latest()];
 
@@ -943,13 +864,9 @@ fn the_join_oracles_are_not_interchangeable() {
 
 #[test]
 fn the_four_strategy_sweeps_drive_one_shared_corpus() {
-	// Intent: the four fixed strategy sweeps are meant to be read against each other - the same rows
-	// arriving in the same order, four different answers. That only holds while they execute the
-	// identical operation sequence, and nothing about the corpus is visible in a green run, so this
-	// is what holds them together. The fingerprint mixes every value the driver drew, so any
-	// parameter drifting apart moves it, and a model that perturbed the driver by refusing a row
-	// would move it too.
-	// Mutation: change one field in one of the four sweeps and this fails; nothing else would notice.
+	// The four fixed strategy sweeps are only comparable while they execute the identical operation
+	// sequence, and nothing about the corpus is visible in a green run. The fingerprint mixes every
+	// value the driver drew, so any parameter drifting apart moves it.
 	const SEED: u64 = 20_260_730;
 
 	let fingerprints: Vec<(Variant, u64)> =
@@ -974,9 +891,8 @@ fn the_four_strategy_sweeps_drive_one_shared_corpus() {
 
 chaos_test!(join_matrix_static_right_12_chaos, |seed| {
 	// The eight-cell matrix: {inner, left} x {hash, latest} x {snapshot off, on}, every cell driven
-	// against twelve right rows loaded up front and then frozen. That shape is what makes the
-	// snapshot cells answerable at all - see drive_static_right - and it costs the non-snapshot cells
-	// nothing, so all eight run the same corpus and stay comparable.
+	// against a frozen right side - the only shape that makes the snapshot cells answerable, and it
+	// costs the other cells nothing, so all eight stay comparable.
 	let diverged: Vec<String> = operators::join::MATRIX
 		.into_iter()
 		.filter_map(|variant| {
@@ -991,14 +907,9 @@ chaos_test!(join_matrix_static_right_12_chaos, |seed| {
 
 #[test]
 fn snapshot_changes_when_work_happens_not_what_the_answer_is() {
-	// Intent: this is the whole promise of the flag. `snapshot` suppresses right-side emissions - it
-	// is a statement about which changes are worth republishing, not about what the join contains. So
-	// while the right side is static, turning it on must leave the published table byte-identical to
-	// leaving it off. Any divergence means the flag is losing rows rather than losing work, and the
-	// per-cell sweep above could not see it: both cells would simply be checked against their own
-	// oracle and agree with it separately.
-	// Mutation: make a snapshot right-side insert skip `add_to_state_entry_batch` as well as the
-	// emission, and the pairs stop matching here.
+	// `snapshot` is a statement about which changes are worth republishing, not about what the join
+	// contains, so over a static right side it must leave the published table identical. Any
+	// divergence means the flag is losing rows rather than losing work.
 	const SEED: u64 = 20_260_731;
 
 	for base in [
@@ -1028,13 +939,9 @@ fn snapshot_changes_when_work_happens_not_what_the_answer_is() {
 
 #[test]
 fn a_snapshot_join_stays_coherent_when_its_right_side_keeps_changing() {
-	// Intent: the matrix above freezes the right side, which is the only shape a snapshot join has a
-	// defined answer for - so it never actually reaches the suppression. This asks the other question:
-	// when the right side DOES keep changing under a snapshot join, is the diff stream at least
-	// something a sink can apply? The oracle cannot judge the contents here (suppressed emissions mean
-	// the view is deliberately behind), but coherence is not a matter of interpretation: a remove of a
-	// row that was never published, or an update to one that is absent, is wrong under any reading of
-	// what snapshot promises.
+	// The oracle cannot judge contents under a changing right side (suppressed emissions leave the
+	// view deliberately behind), but coherence can be: a remove of a row never published, or an
+	// update to an absent one, is wrong under any reading of what snapshot promises.
 	const SEED: u64 = 20_260_732;
 
 	for base in [
@@ -1055,11 +962,9 @@ fn a_snapshot_join_stays_coherent_when_its_right_side_keeps_changing() {
 }
 
 chaos_test!(join_matrix_snapshot_right_pct_50_chaos, |seed| {
-	// The four snapshot cells with both sides interleaved, which the static-right matrix cannot reach.
-	// A snapshot join takes the right side as it stands when a left row is touched and never revisits
-	// that row afterwards, so the published table is a record of what each left row saw rather than a
-	// function of the live sets - which is what SnapshotOracle tracks and what only a changing right
-	// side can put under strain.
+	// The four snapshot cells with both sides interleaved, which the static-right matrix cannot reach:
+	// the published table is a record of what each left row saw rather than a function of the live
+	// sets, and only a changing right side puts that under strain.
 	let diverged: Vec<String> =
 		[Variant::inner(), Variant::left(), Variant::inner().with_latest(), Variant::left().with_latest()]
 			.into_iter()

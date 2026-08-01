@@ -353,9 +353,8 @@ mod tests {
 
 	use super::{MIN_BUCKETS, MembershipIndex, filter_bytes};
 
-	// Deterministic 64-bit key-hash stream (splitmix64) standing in for xxh3 output;
-	// the index only ever sees hashes, so the tests drive it the same way.
 	fn hash_of(i: u64) -> u64 {
+		// Deterministic splitmix64 stream standing in for xxh3; the index only ever sees hashes.
 		let mut z = i.wrapping_add(0x9E37_79B9_7F4A_7C15);
 		z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
 		z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
@@ -368,10 +367,8 @@ mod tests {
 
 	#[test]
 	fn a_live_key_is_never_reported_absent() {
-		// The exact-negative guarantee is the whole contract: a false negative here
-		// would make StateCache treat live persisted state as nonexistent and silently
-		// restart a group's aggregation from scratch. Insert 50k, remove every other
-		// one, and verify every survivor is still reported present.
+		// A false negative would make StateCache treat live persisted state as nonexistent and
+		// silently restart a group's aggregation from scratch.
 		let mut index = unbounded();
 		for i in 0..50_000u64 {
 			assert!(index.insert(hash_of(i)), "unbounded index must accept every insert");
@@ -387,10 +384,9 @@ mod tests {
 
 	#[test]
 	fn false_positive_rate_stays_probabilistic_noise() {
-		// FPs only cost a wasted point read, but the rate must stay noise, not signal:
-		// with 16-bit fingerprints and 8 candidate slots the expected rate is ~0.012%,
-		// so 1% over 100k disjoint probes is a loose, deterministic bound that still
-		// fails on any systematic defect (e.g. fingerprints colliding to a constant).
+		// A false positive costs only a wasted point read, but the rate must stay noise. With 16-bit
+		// fingerprints and 8 candidate slots the expected rate is ~0.012%, so 1% over 100k probes is
+		// a loose bound that still fails on a systematic defect such as a constant fingerprint.
 		let mut index = unbounded();
 		for i in 0..50_000u64 {
 			index.insert(hash_of(i));
@@ -401,10 +397,8 @@ mod tests {
 
 	#[test]
 	fn duplicate_hashes_are_a_multiset() {
-		// Two distinct live keys can share a 64-bit hash slot pair (and always share it
-		// when they collide on the full hash). Removing one of them must not erase the
-		// other's evidence - that is the exact over-removal bug that would turn a hash
-		// collision into silent state loss.
+		// Two live keys can share a hash slot pair; removing one must not erase the other's evidence,
+		// or a hash collision becomes silent state loss.
 		let mut index = unbounded();
 		let hash = hash_of(7);
 		assert!(index.insert(hash));
@@ -418,16 +412,9 @@ mod tests {
 
 	#[test]
 	fn a_hot_hash_overflows_to_an_exact_count_instead_of_chaining_toward_the_cap() {
-		// Join sides insert one instance per stored row, so a hot join key repeats
-		// the same hash hundreds of times. A cuckoo bucket pair holds at most 8
-		// copies of a fingerprint and kicks cannot separate identical fingerprints
-		// (a duplicate ping-pongs between its own home and alt buckets), so before
-		// the overflow map each extra copy doubled the chain until the byte cap
-		// discarded the whole index - every hash-join node in the 2026-07-21
-		// production profile showed revocations=1 from exactly this. Hot copies
-		// must land in the exact side count instead: bounded memory, index alive,
-		// len still exact (StateCache promotes values_complete on len equality, so
-		// an approximate len would risk a false promotion = silent state loss).
+		// Kicks cannot separate identical fingerprints, so without the overflow map each extra copy of
+		// a hot join key doubled the chain until the byte cap discarded the index. len must stay
+		// exact: StateCache promotes values_complete on len equality, so an approximate len loses state.
 		let mut index = MembershipIndex::with_capacity(64, 16 * 1024 * 1024);
 		let baseline = index.bytes();
 		let hot = hash_of(1);
@@ -454,10 +441,8 @@ mod tests {
 
 	#[test]
 	fn overflow_still_respects_the_byte_cap() {
-		// The overflow map must not become an unbounded escape hatch around the
-		// byte cap: when even a side-count entry cannot fit, the insert must
-		// surface rejection so the caller discards the index into read-through
-		// mode, preserving the hard memory bound the cap promises.
+		// The overflow map must not become an escape hatch around the byte cap: when a side-count
+		// entry cannot fit, the insert must surface rejection so the caller drops to read-through.
 		let cap = filter_bytes(MIN_BUCKETS) + size_of_index();
 		let mut index = MembershipIndex::new(cap);
 		let hot = hash_of(1);
@@ -488,10 +473,8 @@ mod tests {
 
 	#[test]
 	fn a_rejected_insert_leaves_every_tracked_key_intact() {
-		// When the byte cap blocks growth the failed insert must roll its kick chain
-		// back: the caller discards the index on rejection, but only AFTER seeing the
-		// rejection - a partially shuffled filter that lost some earlier key would be
-		// serving false negatives in the window before the rejection surfaces.
+		// A failed insert must roll its kick chain back: the caller only discards the index after
+		// seeing the rejection, so a partially shuffled filter serves false negatives until then.
 		let cap = filter_bytes(MIN_BUCKETS) + size_of_index();
 		let mut index = MembershipIndex::new(cap);
 		let mut accepted = Vec::new();
@@ -517,9 +500,8 @@ mod tests {
 
 	#[test]
 	fn identical_operation_sequences_produce_identical_indexes() {
-		// Kick selection must be deterministic (seeded xorshift, no thread randomness):
-		// DST replay depends on two runs over the same inputs making identical
-		// decisions. Behavioural equality over a probe set is the observable contract.
+		// Kick selection must be deterministic; DST replay depends on two runs over the same inputs
+		// making identical decisions.
 		let build = || {
 			let mut index = MembershipIndex::with_capacity(128, u64::MAX);
 			for i in 0..5_000u64 {
@@ -541,9 +523,8 @@ mod tests {
 
 	#[test]
 	fn with_capacity_presizes_to_avoid_chaining() {
-		// Hydration knows the population up front; sizing for it must make the common
-		// case a single filter so contains() stays two bucket probes, and the sizing
-		// hint must leave enough slack (85% target load) that the full population fits.
+		// Hydration knows the population up front, so the common case must stay a single filter
+		// (contains() is then two bucket probes) with enough slack that the full population fits.
 		let mut index = MembershipIndex::with_capacity(10_000, u64::MAX);
 		let presized = index.bytes();
 		for i in 0..10_000u64 {

@@ -834,7 +834,6 @@ pub mod tests {
 		let key = EncodedKey::new(b"key1");
 		let version = CommitVersion(1);
 
-		// Put and get
 		storage.set(
 			version,
 			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"value1".to_vec())))])]),
@@ -844,12 +843,10 @@ pub mod tests {
 		let value = storage.get(EntryKind::Multi, &key, version).unwrap().value();
 		assert_eq!(value.as_deref(), Some(b"value1".as_slice()));
 
-		// Contains
 		assert!(storage.contains(EntryKind::Multi, &key, version).unwrap());
 
 		assert!(!storage.contains(EntryKind::Multi, b"nonexistent", version).unwrap());
 
-		// Delete (tombstone)
 		let version2 = CommitVersion(2);
 		storage.set(version2, HashMap::from([(EntryKind::Multi, vec![(key.clone(), None)])])).unwrap();
 		assert!(!storage.contains(EntryKind::Multi, &key, version2).unwrap());
@@ -898,40 +895,34 @@ pub mod tests {
 
 		let key = EncodedKey::new(b"key1");
 
-		// Insert version 1
 		storage.set(
 			CommitVersion(1),
 			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v1".to_vec())))])]),
 		)
 		.unwrap();
 
-		// Insert version 2 (v1 should be promoted to historical)
 		storage.set(
 			CommitVersion(2),
 			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v2".to_vec())))])]),
 		)
 		.unwrap();
 
-		// Insert version 3 (v2 should be promoted to historical)
 		storage.set(
 			CommitVersion(3),
 			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v3".to_vec())))])]),
 		)
 		.unwrap();
 
-		// Get at version 3 should return v3 (from current)
 		assert_eq!(
 			storage.get(EntryKind::Multi, &key, CommitVersion(3)).unwrap().value().as_deref(),
 			Some(b"v3".as_slice())
 		);
 
-		// Get at version 2 should return v2 (from historical)
 		assert_eq!(
 			storage.get(EntryKind::Multi, &key, CommitVersion(2)).unwrap().value().as_deref(),
 			Some(b"v2".as_slice())
 		);
 
-		// Get at version 1 should return v1 (from historical)
 		assert_eq!(
 			storage.get(EntryKind::Multi, &key, CommitVersion(1)).unwrap().value().as_deref(),
 			Some(b"v1".as_slice())
@@ -940,37 +931,34 @@ pub mod tests {
 
 	#[test]
 	fn test_insert_older_version() {
+		// An out-of-order older commit must stay resolvable: a read takes the largest version <= the
+		// snapshot, so the v2 snapshot resolves to v1.
 		let storage = MemoryRowStorage::new();
 
 		let key = EncodedKey::new(b"key1");
 
-		// Insert version 3 first
 		storage.set(
 			CommitVersion(3),
 			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v3".to_vec())))])]),
 		)
 		.unwrap();
 
-		// Insert version 1 (older - should go directly to historical)
 		storage.set(
 			CommitVersion(1),
 			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v1".to_vec())))])]),
 		)
 		.unwrap();
 
-		// Get at version 3 should return v3 (current)
 		assert_eq!(
 			storage.get(EntryKind::Multi, &key, CommitVersion(3)).unwrap().value().as_deref(),
 			Some(b"v3".as_slice())
 		);
 
-		// Get at version 1 should return v1 (historical)
 		assert_eq!(
 			storage.get(EntryKind::Multi, &key, CommitVersion(1)).unwrap().value().as_deref(),
 			Some(b"v1".as_slice())
 		);
 
-		// Get at version 2 should return v1 (largest version <= 2)
 		assert_eq!(
 			storage.get(EntryKind::Multi, &key, CommitVersion(2)).unwrap().value().as_deref(),
 			Some(b"v1".as_slice())
@@ -1013,7 +1001,6 @@ pub mod tests {
 		assert!(!batch.has_more);
 		assert!(cursor.exhausted);
 
-		// Verify order
 		assert_eq!(&*batch.entries[0].key, b"a");
 		assert_eq!(&*batch.entries[1].key, b"b");
 		assert_eq!(&*batch.entries[2].key, b"c");
@@ -1055,7 +1042,6 @@ pub mod tests {
 		assert!(!batch.has_more);
 		assert!(cursor.exhausted);
 
-		// Verify reverse order
 		assert_eq!(&*batch.entries[0].key, b"c");
 		assert_eq!(&*batch.entries[1].key, b"b");
 		assert_eq!(&*batch.entries[2].key, b"a");
@@ -1067,15 +1053,12 @@ pub mod tests {
 
 		let version = CommitVersion(1);
 
-		// Insert 10 entries
 		let entries: Vec<_> =
 			(0..10u8).map(|i| (EncodedKey::new(vec![i]), Some(CowVec::new(vec![i * 10])))).collect();
 		storage.set(version, HashMap::from([(EntryKind::Multi, entries)])).unwrap();
 
-		// Use a single cursor to stream through all entries
 		let mut cursor = RangeCursor::new();
 
-		// First batch of 3
 		let batch1 = storage
 			.range_next(
 				EntryKind::Multi,
@@ -1095,7 +1078,6 @@ pub mod tests {
 		assert_eq!(&*batch1.entries[0].key, &[0]);
 		assert_eq!(&*batch1.entries[2].key, &[2]);
 
-		// Second batch of 3
 		let batch2 = storage
 			.range_next(
 				EntryKind::Multi,
@@ -1115,7 +1097,6 @@ pub mod tests {
 		assert_eq!(&*batch2.entries[0].key, &[3]);
 		assert_eq!(&*batch2.entries[2].key, &[5]);
 
-		// Third batch of 3
 		let batch3 = storage
 			.range_next(
 				EntryKind::Multi,
@@ -1135,7 +1116,6 @@ pub mod tests {
 		assert_eq!(&*batch3.entries[0].key, &[6]);
 		assert_eq!(&*batch3.entries[2].key, &[8]);
 
-		// Fourth batch - only 1 entry remaining
 		let batch4 = storage
 			.range_next(
 				EntryKind::Multi,
@@ -1154,7 +1134,6 @@ pub mod tests {
 
 		assert_eq!(&*batch4.entries[0].key, &[9]);
 
-		// Fifth call - exhausted
 		let batch5 = storage
 			.range_next(
 				EntryKind::Multi,
@@ -1176,15 +1155,12 @@ pub mod tests {
 
 		let version = CommitVersion(1);
 
-		// Insert 10 entries
 		let entries: Vec<_> =
 			(0..10u8).map(|i| (EncodedKey::new(vec![i]), Some(CowVec::new(vec![i * 10])))).collect();
 		storage.set(version, HashMap::from([(EntryKind::Multi, entries)])).unwrap();
 
-		// Use a single cursor to stream in reverse
 		let mut cursor = RangeCursor::new();
 
-		// First batch of 3 (reverse)
 		let batch1 = storage
 			.range_rev_next(
 				EntryKind::Multi,
@@ -1204,7 +1180,6 @@ pub mod tests {
 		assert_eq!(&*batch1.entries[0].key, &[9]);
 		assert_eq!(&*batch1.entries[2].key, &[7]);
 
-		// Second batch
 		let batch2 = storage
 			.range_rev_next(
 				EntryKind::Multi,
@@ -1231,7 +1206,6 @@ pub mod tests {
 
 		let key = EncodedKey::new(b"key1");
 
-		// Insert versions 1, 2, 3
 		for v in 1..=3u64 {
 			storage.set(
 				CommitVersion(v),
@@ -1243,14 +1217,10 @@ pub mod tests {
 			.unwrap();
 		}
 
-		// Version 3 is in current, versions 1 and 2 are in historical
-		// Drop version 1 (from historical)
 		storage.compact(HashMap::from([(EntryKind::Multi, vec![(key.clone(), CommitVersion(1))])])).unwrap();
 
-		// Version 1 should no longer be accessible
 		assert!(storage.get(EntryKind::Multi, &key, CommitVersion(1)).unwrap().value().is_none());
 
-		// Versions 2 and 3 should still work
 		assert_eq!(
 			storage.get(EntryKind::Multi, &key, CommitVersion(2)).unwrap().value().as_deref(),
 			Some(b"v2".as_slice())
@@ -1262,10 +1232,8 @@ pub mod tests {
 	}
 	#[test]
 	fn compact_returns_each_removed_historical_version_flagged_as_not_current() {
-		// The storage metric only ever decrements from what compact reports back, so a version that is
-		// physically removed but missing from the return value inflates historical_count forever. This
-		// pins the exact removals, their tier flag and their value bytes: deleting the push, flipping
-		// `current`, or reporting entry_bytes instead of the value length each fail here.
+		// The storage metric only ever decrements from what compact reports back, so a version removed
+		// physically but omitted from the return value inflates historical_count forever.
 		let storage = MemoryRowStorage::new();
 
 		let key = EncodedKey::new(b"key1");
@@ -1297,11 +1265,9 @@ pub mod tests {
 
 	#[test]
 	fn compact_reports_the_live_version_and_leaves_surviving_history_in_place() {
-		// Dropping the live version while older ones survive used to promote the newest survivor into
-		// current. It no longer does, so this removal is only ever visible to the metric through the
-		// returned record: omitting it is exactly the drift the historical GC path had. The survivors
-		// must stay in historical, unreported and still readable, which is what makes dropping the
-		// promotion safe in the first place.
+		// Dropping the live version does not promote the newest survivor, so the removal is only visible
+		// to the metric through the returned record; the survivors must stay in historical, unreported
+		// and still readable, which is what makes skipping the promotion safe.
 		let storage = MemoryRowStorage::new();
 
 		let key = EncodedKey::new(b"key1");
@@ -1335,10 +1301,9 @@ pub mod tests {
 
 	#[test]
 	fn compact_reports_the_live_entry_when_every_version_of_a_key_is_removed() {
-		// A fully covered key takes the branch that clears current and historical together. Both tiers
-		// have to be reported and the live entry has to carry current: true, because the metric routes a
-		// current removal to the current counters and a historical one to the historical counters, so
-		// mislabelling moves rows between the two columns instead of clearing them.
+		// The metric routes a current removal to the current counters and a historical one to the
+		// historical counters, so mislabelling the live entry moves rows between the two columns
+		// instead of clearing them.
 		let storage = MemoryRowStorage::new();
 
 		let key = EncodedKey::new(b"key1");
@@ -1383,21 +1348,17 @@ pub mod tests {
 
 		let key = EncodedKey::new(b"key1");
 
-		// Insert version 1 with value
 		storage.set(
 			CommitVersion(1),
 			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"value".to_vec())))])]),
 		)
 		.unwrap();
 
-		// Insert version 2 with tombstone
 		storage.set(CommitVersion(2), HashMap::from([(EntryKind::Multi, vec![(key.clone(), None)])])).unwrap();
 
-		// Get at version 2 should return None (tombstone)
 		assert!(storage.get(EntryKind::Multi, &key, CommitVersion(2)).unwrap().value().is_none());
 		assert!(!storage.contains(EntryKind::Multi, &key, CommitVersion(2)).unwrap());
 
-		// Get at version 1 should return value
 		assert_eq!(
 			storage.get(EntryKind::Multi, &key, CommitVersion(1)).unwrap().value().as_deref(),
 			Some(b"value".as_slice())
@@ -1419,8 +1380,7 @@ pub mod tests {
 			.unwrap();
 		}
 
-		// cutoff = 2: the latest version <= 2 is v2 (what a reader in [2, 3) resolves to, so it
-		// must be persisted); both v1 and v2 are dropped; v3 (> cutoff) stays resident.
+		// v2 is what a reader in [2, 3) resolves to, so it is the value that must be persisted.
 		let (to_persist, to_drop, _more) =
 			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(2), usize::MAX);
 		assert_eq!(to_persist.len(), 1);
@@ -1430,8 +1390,6 @@ pub mod tests {
 		let dropped: HashSet<CommitVersion> = to_drop.iter().map(|e| e.version).collect();
 		assert_eq!(dropped, HashSet::from([CommitVersion(1), CommitVersion(2)]));
 
-		// After dropping the <= cutoff versions from the buffer (in the real pass v2 is persisted
-		// to sqlite first), v3 stays readable while v1/v2 are gone from the buffer.
 		storage.compact(HashMap::from([(
 			EntryKind::Multi,
 			to_drop.into_iter().map(|e| (e.key, e.version)).collect(),
@@ -1462,10 +1420,8 @@ pub mod tests {
 
 	#[test]
 	fn test_collect_evictable_below_persists_exactly_one_value_per_key() {
-		// With several historical versions <= cutoff, only the LATEST-<=cutoff value may be persisted: that
-		// is the single value a reader at the cutoff snapshot resolves to. Persisting an older one (or more
-		// than one) would either corrupt the resolved value or bloat the persistent tier. This guards the
-		// inner "best >= v" tie-break in collect_evictable_below.
+		// Only the latest-<=cutoff value may be persisted: it is the single value a reader at the cutoff
+		// snapshot resolves to, so persisting an older one corrupts that resolution.
 		let storage = MemoryRowStorage::new();
 		let key = EncodedKey::new(b"k");
 		for v in 1..=5u64 {
@@ -1479,14 +1435,12 @@ pub mod tests {
 			.unwrap();
 		}
 
-		// cutoff = 4: v1..=v4 are all evictable, but the persisted value must be exactly v4.
 		let (to_persist, to_drop, _more) =
 			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(4), usize::MAX);
 		assert_eq!(to_persist.len(), 1, "exactly one value persisted per key");
 		assert_eq!(to_persist[0].1, CommitVersion(4), "the latest version <= cutoff");
 		assert_eq!(to_persist[0].2.as_deref(), Some(b"v4".as_slice()));
 
-		// All four <= cutoff versions are scheduled to drop; v5 (> cutoff) is not.
 		let dropped: HashSet<CommitVersion> = to_drop.iter().map(|e| e.version).collect();
 		assert_eq!(
 			dropped,
@@ -1496,9 +1450,8 @@ pub mod tests {
 
 	#[test]
 	fn test_collect_evictable_below_persists_tombstone_when_it_is_the_latest() {
-		// If the latest-<=cutoff version is a tombstone, the eviction must carry the tombstone (None) to the
-		// persistent tier - otherwise a later read would resurrect the pre-delete value. This guards against
-		// the sweep silently dropping deletes.
+		// A tombstone that is the latest-<=cutoff version must be carried to the persistent tier; dropping
+		// it lets a later read resurrect the pre-delete value.
 		let storage = MemoryRowStorage::new();
 		let key = EncodedKey::new(b"k");
 		storage.set(
@@ -1518,9 +1471,8 @@ pub mod tests {
 
 	#[test]
 	fn test_collect_evictable_below_only_drops_historical_when_current_is_above_cutoff() {
-		// Current is v5 (> cutoff) but a historical v2 (<= cutoff) exists. Only the historical version may be
-		// evicted; the current version stays resident and must NOT be persisted (it is still hot). This is the
-		// path where a key is actively written but old snapshots are aging out.
+		// A key that is actively written while old snapshots age out: only the historical version may be
+		// evicted, the current one is still hot and must not be persisted.
 		let storage = MemoryRowStorage::new();
 		let key = EncodedKey::new(b"k");
 		storage.set(
@@ -1542,7 +1494,6 @@ pub mod tests {
 		let dropped: HashSet<CommitVersion> = to_drop.iter().map(|e| e.version).collect();
 		assert_eq!(dropped, HashSet::from([CommitVersion(2)]), "v5 (current, > cutoff) is never dropped");
 
-		// After dropping v2, v5 still reads and v3 falls through (no resident historical anymore).
 		storage.compact(HashMap::from([(
 			EntryKind::Multi,
 			to_drop.into_iter().map(|e| (e.key, e.version)).collect(),
@@ -1560,9 +1511,8 @@ pub mod tests {
 
 	#[test]
 	fn test_collect_evictable_below_handles_multiple_keys_independently() {
-		// The cutoff applies per version, not per key. A key whose only version is above the cutoff must be
-		// left fully resident even while a sibling key is evicted. This guards a regression where a shared
-		// scan could over-collect across keys.
+		// The cutoff applies per version, not per key: a key whose only version is above it must stay
+		// fully resident even while a sibling key is evicted.
 		let storage = MemoryRowStorage::new();
 		let cold = EncodedKey::new(b"cold");
 		let hot = EncodedKey::new(b"hot");
@@ -1586,9 +1536,8 @@ pub mod tests {
 
 	#[test]
 	fn test_collect_evictable_below_bounds_to_budget_and_drains_across_calls() {
-		// A budget caps how many whole keys one call collects and reports more_remaining, so a bounded
-		// flush slice never persists the entire evictable set in one transaction. Looping bounded calls
-		// (dropping between them) must drain exactly the below-cutoff set, no more, no less.
+		// The budget bounds a flush slice so one transaction never persists the whole evictable set;
+		// looping bounded calls must still drain exactly the below-cutoff set, no more, no less.
 		let storage = MemoryRowStorage::new();
 		for i in 0..5u64 {
 			let key = EncodedKey::new(format!("k{i}").into_bytes());
@@ -1599,14 +1548,12 @@ pub mod tests {
 			.unwrap();
 		}
 
-		// Budget 2 of 5 evictable keys: two collected, more_remaining set.
 		let (to_persist, to_drop, more) =
 			storage.collect_evictable_below(EntryKind::Multi, CommitVersion(1), 2);
 		assert_eq!(to_persist.len(), 2, "budget caps the collected key count");
 		assert_eq!(to_drop.len(), 2);
 		assert!(more, "three keys remain below the cutoff");
 
-		// Drain in bounded slices, dropping what each returns, until exhausted.
 		let mut drained = to_persist.len();
 		let mut compaction_batch: HashMap<EntryKind, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
 		compaction_batch.insert(EntryKind::Multi, to_drop.into_iter().map(|e| (e.key, e.version)).collect());
@@ -1640,8 +1587,8 @@ pub mod tests {
 		let historical = entry.historical.read();
 		let oldest = entry.oldest.read();
 
-		// Every key resident in either map must be indexed at exactly its smallest stored version, or
-		// eviction can never select it (its old versions leak in the buffer forever).
+		// A key indexed anywhere but its smallest stored version can never be selected, so its old
+		// versions leak in the buffer forever.
 		let mut resident: HashSet<EncodedKey> = HashSet::new();
 		resident.extend(current.keys().cloned());
 		resident.extend(historical.keys().cloned());
@@ -1654,8 +1601,7 @@ pub mod tests {
 			);
 		}
 
-		// The index must hold no key absent from both maps; a stale entry would be re-selected on every
-		// sweep and never clear, wasting work and pinning the key clone.
+		// A stale index entry (key in neither map) would be re-selected on every sweep and never clear.
 		for (bucket, keys) in oldest.iter() {
 			for key in keys {
 				assert!(
@@ -1673,10 +1619,9 @@ pub mod tests {
 
 	#[test]
 	fn index_stays_consistent_across_new_monotonic_out_of_order_and_drops() {
-		// The eviction index is what makes collect_evictable_below O(evictable) instead of O(table); if it
-		// drifts from the maps, eviction either strands a key forever (memory leak) or churns a ghost. Drive
-		// every maintenance path - fresh insert, monotonic supersede, out-of-order landing, oldest-version
-		// drop, and full removal - then cross-check the index against a full walk of both maps at each step.
+		// The eviction index is what keeps collect_evictable_below O(evictable) instead of O(table);
+		// drift from the maps either strands a key forever or churns a ghost, so every maintenance path
+		// is cross-checked against a full walk of both maps.
 		let storage = MemoryRowStorage::new();
 		let kind = EntryKind::Multi;
 		let a = EncodedKey::new(b"a");
@@ -1725,10 +1670,8 @@ pub mod tests {
 
 	#[test]
 	fn out_of_order_landing_is_selected_for_eviction() {
-		// A version that lands below a key's current version (a late or replayed commit) becomes the key's
-		// oldest and must be evictable at a cutoff at or above it. If the index only tracked first-seen
-		// versions, this aged snapshot would be stranded in the buffer forever - this pins that collect finds
-		// it.
+		// A late or replayed commit landing below the current version becomes the key's oldest; an index
+		// that tracked only first-seen versions would strand it in the buffer forever.
 		let storage = MemoryRowStorage::new();
 		let key = EncodedKey::new(b"k");
 		storage.set(
@@ -1756,10 +1699,8 @@ pub mod tests {
 
 	#[test]
 	fn byte_tally_matches_a_full_walk_across_mixed_mutations() {
-		// The tally feeds the [memory] dump; any drift from the true map contents means memory
-		// is misreported forever after. Exercise every mutation shape (fresh insert, supersede,
-		// older-version insert, tombstone, historical drop, live-version drop) and then compare
-		// the incremental tally against an exhaustive walk of both maps.
+		// The tally is incremental, so any drift from the true map contents misreports memory forever
+		// after; every mutation shape is exercised then compared against an exhaustive walk.
 		let storage = MemoryRowStorage::new();
 		let k1 = EncodedKey::new(b"key-one");
 		let k2 = EncodedKey::new(b"key-two");
@@ -1816,10 +1757,8 @@ pub mod tests {
 
 	#[test]
 	fn byte_tally_nets_to_zero_when_the_buffer_is_fully_drained() {
-		// Parity with the read tier's releasing_every_entry_returns_used_to_zero: eviction
-		// continuously drains the buffer, so a leak in any release path would accumulate into
-		// a permanently inflated memory report. Drop the current version while its history
-		// survives so the live-version drop path is part of the drained sequence.
+		// Eviction drains the buffer continuously, so a leak in any release path accumulates into a
+		// permanently inflated memory report; the live-version drop is included in the sequence.
 		let storage = MemoryRowStorage::new();
 		let key = EncodedKey::new(b"k");
 		for v in 1..=4u64 {

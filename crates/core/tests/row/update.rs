@@ -209,8 +209,8 @@ fn test_update_first_of_three_dynamic_fields() {
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[1, 2, 3, 4, 5]));
 	shape.set_utf8(&mut row, 2, "ccc");
 
-	// Update first with larger data - should shift blob and third utf8
-	shape.set_utf8(&mut row, 0, "aaaaaaaaaa"); // 3 → 10
+	// Growing the first field must shift the blob and the third utf8.
+	shape.set_utf8(&mut row, 0, "aaaaaaaaaa"); // 3 -> 10
 
 	assert_eq!(shape.get_utf8(&row, 0), "aaaaaaaaaa");
 	assert_eq!(shape.get_blob(&row, 1), Blob::from_slice(&[1, 2, 3, 4, 5]));
@@ -234,7 +234,6 @@ fn test_update_middle_of_four_dynamic_fields() {
 	shape.set_utf8(&mut row, 2, "third");
 	shape.set_blob(&mut row, 3, &Blob::from_slice(&[40, 50]));
 
-	// Update middle field (index 1) with smaller data
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[99]));
 
 	assert_eq!(shape.get_utf8(&row, 0), "first");
@@ -261,28 +260,24 @@ fn test_update_mixed_dynamic_types_each_in_turn() {
 	shape.set_decimal(&mut row, 2, &Decimal::from_str("1.5").unwrap());
 	shape.set_any(&mut row, 3, &Value::Int4(42));
 
-	// Update utf8
 	shape.set_utf8(&mut row, 0, "longer text value");
 	assert_eq!(shape.get_utf8(&row, 0), "longer text value");
 	assert_eq!(shape.get_blob(&row, 1), Blob::from_slice(&[1, 2, 3]));
 	assert_eq!(shape.get_decimal(&row, 2).to_string(), "1.5");
 	assert_eq!(shape.get_any(&row, 3), Value::Int4(42));
 
-	// Update blob
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[10]));
 	assert_eq!(shape.get_utf8(&row, 0), "longer text value");
 	assert_eq!(shape.get_blob(&row, 1), Blob::from_slice(&[10]));
 	assert_eq!(shape.get_decimal(&row, 2).to_string(), "1.5");
 	assert_eq!(shape.get_any(&row, 3), Value::Int4(42));
 
-	// Update decimal
 	shape.set_decimal(&mut row, 2, &Decimal::from_str("99999.12345").unwrap());
 	assert_eq!(shape.get_utf8(&row, 0), "longer text value");
 	assert_eq!(shape.get_blob(&row, 1), Blob::from_slice(&[10]));
 	assert_eq!(shape.get_decimal(&row, 2).to_string(), "99999.12345");
 	assert_eq!(shape.get_any(&row, 3), Value::Int4(42));
 
-	// Update any
 	shape.set_any(&mut row, 3, &Value::Utf8("now a string".to_string()));
 	assert_eq!(shape.get_utf8(&row, 0), "longer text value");
 	assert_eq!(shape.get_blob(&row, 1), Blob::from_slice(&[10]));
@@ -356,7 +351,6 @@ fn test_update_fields_interleaved_order() {
 	shape.set_utf8(&mut row, 1, "bbb");
 	shape.set_utf8(&mut row, 2, "ccc");
 
-	// Update in order: 1, 0, 2
 	shape.set_utf8(&mut row, 1, "BB");
 	shape.set_utf8(&mut row, 0, "AAAAAAA");
 	shape.set_utf8(&mut row, 2, "CCCCC");
@@ -395,17 +389,17 @@ fn test_int_multiple_transitions() {
 	assert_eq!(shape.get_int(&row, 0), Int::from(1));
 	assert_eq!(row.len(), shape.total_static_size());
 
-	// inline → dynamic
+	// inline -> dynamic
 	shape.set_int(&mut row, 0, &huge_int());
 	assert_eq!(shape.get_int(&row, 0), huge_int());
 	assert!(row.len() > shape.total_static_size());
 
-	// dynamic → inline
+	// dynamic -> inline
 	shape.set_int(&mut row, 0, &Int::from(42));
 	assert_eq!(shape.get_int(&row, 0), Int::from(42));
 	assert_eq!(row.len(), shape.total_static_size());
 
-	// inline → dynamic again
+	// inline -> dynamic again
 	shape.set_int(&mut row, 0, &huge_int2());
 	assert_eq!(shape.get_int(&row, 0), huge_int2());
 	assert!(row.len() > shape.total_static_size());
@@ -425,12 +419,12 @@ fn test_uint_multiple_transitions() {
 	assert_eq!(shape.get_uint(&row, 0), Uint::from(1u64));
 	assert_eq!(row.len(), shape.total_static_size());
 
-	// inline → dynamic
+	// inline -> dynamic
 	shape.set_uint(&mut row, 0, &huge_uint());
 	assert_eq!(shape.get_uint(&row, 0), huge_uint());
 	assert!(row.len() > shape.total_static_size());
 
-	// dynamic → inline
+	// dynamic -> inline
 	shape.set_uint(&mut row, 0, &Uint::from(99u64));
 	assert_eq!(shape.get_uint(&row, 0), Uint::from(99u64));
 	assert_eq!(row.len(), shape.total_static_size());
@@ -449,18 +443,17 @@ fn test_int_transition_with_other_dynamic_fields() {
 	shape.set_int(&mut row, 1, &huge_int());
 	shape.set_blob(&mut row, 2, &Blob::from_slice(&[1, 2, 3]));
 
-	// Verify initial state
 	assert_eq!(shape.get_utf8(&row, 0), "hello");
 	assert_eq!(shape.get_int(&row, 1), huge_int());
 	assert_eq!(shape.get_blob(&row, 2), Blob::from_slice(&[1, 2, 3]));
 
-	// dynamic → inline: removes dynamic int data, adjusts blob offset
+	// dynamic -> inline: removes the dynamic int data and shifts the blob offset.
 	shape.set_int(&mut row, 1, &Int::from(7));
 	assert_eq!(shape.get_utf8(&row, 0), "hello");
 	assert_eq!(shape.get_int(&row, 1), Int::from(7));
 	assert_eq!(shape.get_blob(&row, 2), Blob::from_slice(&[1, 2, 3]));
 
-	// inline → dynamic again
+	// inline -> dynamic again
 	shape.set_int(&mut row, 1, &huge_int());
 	assert_eq!(shape.get_utf8(&row, 0), "hello");
 	assert_eq!(shape.get_int(&row, 1), huge_int());
@@ -494,15 +487,12 @@ fn test_decimal_update_different_sizes() {
 	let shape = RowShape::testing(&[ValueType::Decimal]);
 	let mut row = shape.allocate();
 
-	// Small decimal
 	shape.set_decimal(&mut row, 0, &Decimal::from_str("1.5").unwrap());
 	assert_eq!(shape.get_decimal(&row, 0).to_string(), "1.5");
 
-	// Much larger decimal (bigger mantissa)
 	shape.set_decimal(&mut row, 0, &Decimal::from_str("99999999999999999999999999999.123456789").unwrap());
 	assert_eq!(shape.get_decimal(&row, 0).to_string(), "99999999999999999999999999999.123456789");
 
-	// Back to small
 	shape.set_decimal(&mut row, 0, &Decimal::from_str("0.01").unwrap());
 	assert_eq!(shape.get_decimal(&row, 0).to_string(), "0.01");
 
@@ -537,7 +527,6 @@ fn test_decimal_update_with_other_dynamic_fields() {
 	shape.set_decimal(&mut row, 1, &Decimal::from_str("19.99").unwrap());
 	shape.set_blob(&mut row, 2, &Blob::from_slice(&[0xFF; 10]));
 
-	// Update decimal (changes size of dynamic data)
 	shape.set_decimal(&mut row, 1, &Decimal::from_str("123456789.987654321").unwrap());
 
 	assert_eq!(shape.get_utf8(&row, 0), "price");
@@ -582,7 +571,6 @@ fn test_any_cycle_all_types() {
 		Value::Blob(Blob::from_slice(&[0xDE, 0xAD, 0xBE, 0xEF])),
 	];
 
-	// Set each value, overwriting the previous, and verify
 	for val in &values {
 		shape.set_any(&mut row, 0, val);
 		assert_eq!(shape.get_any(&row, 0), *val);
@@ -664,14 +652,12 @@ fn test_any_update_with_other_dynamic_fields() {
 	shape.set_any(&mut row, 1, &Value::Int4(1));
 	shape.set_blob(&mut row, 2, &Blob::from_slice(&[1, 2, 3]));
 
-	// Update any with much larger encoding
 	shape.set_any(&mut row, 1, &Value::Utf8("a much longer value stored in any".to_string()));
 
 	assert_eq!(shape.get_utf8(&row, 0), "prefix");
 	assert_eq!(shape.get_any(&row, 1), Value::Utf8("a much longer value stored in any".to_string()));
 	assert_eq!(shape.get_blob(&row, 2), Blob::from_slice(&[1, 2, 3]));
 
-	// Update any with smaller encoding again
 	shape.set_any(&mut row, 1, &Value::Boolean(true));
 	assert_eq!(shape.get_utf8(&row, 0), "prefix");
 	assert_eq!(shape.get_any(&row, 1), Value::Boolean(true));
@@ -701,7 +687,6 @@ fn test_update_dynamic_preserves_static() {
 	shape.set::<f64>(&mut row, 3, 3.14f64);
 	shape.set_blob(&mut row, 4, &Blob::from_slice(&[1, 2, 3]));
 
-	// Update dynamic fields multiple times
 	for i in 0..10 {
 		shape.set_utf8(&mut row, 2, &format!("iteration_{}", i));
 		shape.set_blob(&mut row, 4, &Blob::from_slice(&vec![i as u8; i + 1]));
@@ -738,7 +723,6 @@ fn test_all_dynamic_types_in_one_row() {
 	]);
 	let mut row = shape.allocate();
 
-	// Initial set
 	shape.set_utf8(&mut row, 0, "text");
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[1, 2, 3]));
 	shape.set_decimal(&mut row, 2, &Decimal::from_str("1.5").unwrap());
@@ -748,7 +732,6 @@ fn test_all_dynamic_types_in_one_row() {
 	shape.set::<bool>(&mut row, 6, true);
 	shape.set::<i32>(&mut row, 7, 999i32);
 
-	// Update all dynamic fields
 	shape.set_utf8(&mut row, 0, "updated text that is longer");
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[10, 20]));
 	shape.set_decimal(&mut row, 2, &Decimal::from_str("99999.99").unwrap());
@@ -756,7 +739,6 @@ fn test_all_dynamic_types_in_one_row() {
 	shape.set_uint(&mut row, 4, &huge_uint());
 	shape.set_any(&mut row, 5, &Value::Utf8("now a string".to_string()));
 
-	// Verify all
 	assert_eq!(shape.get_utf8(&row, 0), "updated text that is longer");
 	assert_eq!(shape.get_blob(&row, 1), Blob::from_slice(&[10, 20]));
 	assert_eq!(shape.get_decimal(&row, 2).to_string(), "99999.99");
@@ -786,7 +768,6 @@ fn test_set_value_update_utf8() {
 	shape.set_value(&mut row, 0, &Value::Utf8("first".to_string()));
 	shape.set_value(&mut row, 1, &Value::Int4(10));
 
-	// Update via set_value
 	shape.set_value(&mut row, 0, &Value::Utf8("updated".to_string()));
 
 	assert_eq!(shape.get_value(&row, 0), Value::Utf8("updated".to_string()));
@@ -811,7 +792,6 @@ fn test_set_values_overwrite_entire_row() {
 	assert_eq!(shape.get_value(&row, 1), Value::Int4(10));
 	assert_eq!(shape.get_value(&row, 2), Value::Blob(Blob::from_slice(&[1, 2, 3])));
 
-	// Overwrite all values
 	let values2 = vec![
 		Value::Utf8("second, much longer".to_string()),
 		Value::Int4(20),
@@ -859,7 +839,6 @@ fn test_set_none_then_set_different_dynamic_field() {
 	shape.set_utf8(&mut row, 0, "hello");
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[1, 2, 3]));
 
-	// Clear first, set second to new value
 	shape.set_none(&mut row, 0);
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[4, 5, 6, 7, 8]));
 
@@ -880,7 +859,6 @@ fn test_interleaved_none_and_set() {
 	shape.set_utf8(&mut row, 1, "bbb");
 	shape.set_utf8(&mut row, 2, "ccc");
 
-	// None on 1, update 0
 	shape.set_none(&mut row, 1);
 	shape.set_utf8(&mut row, 0, "AAAA");
 
@@ -888,7 +866,6 @@ fn test_interleaved_none_and_set() {
 	assert!(!row.is_defined(1));
 	assert_eq!(shape.get_utf8(&row, 2), "ccc");
 
-	// Re-set 1
 	shape.set_utf8(&mut row, 1, "BBBB");
 	assert_eq!(shape.get_utf8(&row, 0), "AAAA");
 	assert_eq!(shape.get_utf8(&row, 1), "BBBB");
@@ -910,15 +887,12 @@ fn test_clone_update_clone_original_unchanged() {
 
 	let mut cloned = row.clone();
 
-	// Update clone
 	shape.set_utf8(&mut cloned, 0, "modified in clone");
 	shape.set_blob(&mut cloned, 1, &Blob::from_slice(&[4, 5, 6, 7, 8]));
 
-	// Original unchanged
 	assert_eq!(shape.get_utf8(&row, 0), "original");
 	assert_eq!(shape.get_blob(&row, 1), Blob::from_slice(&[1, 2, 3]));
 
-	// Clone has new values
 	assert_eq!(shape.get_utf8(&cloned, 0), "modified in clone");
 	assert_eq!(shape.get_blob(&cloned, 1), Blob::from_slice(&[4, 5, 6, 7, 8]));
 
@@ -941,10 +915,8 @@ fn test_clone_update_original_clone_unchanged() {
 
 	let cloned = row.clone();
 
-	// Update original
 	shape.set_utf8(&mut row, 0, "modified in original");
 
-	// Clone unchanged
 	assert_eq!(shape.get_utf8(&cloned, 0), "original");
 	assert_eq!(shape.get_utf8(&row, 0), "modified in original");
 
@@ -968,7 +940,7 @@ fn test_no_orphan_data_after_many_updates() {
 		shape.set_utf8(&mut row, 0, &s);
 		shape.set_blob(&mut row, 1, &b);
 
-		// Verify no orphan: total = static + current utf8 len + current blob len
+		// No orphan bytes: total = static + current utf8 len + current blob len.
 		let expected = shape.total_static_size() + s.len() + (i % 20) + 1;
 		assert_eq!(
 			row.len(),
@@ -996,7 +968,6 @@ fn test_no_orphan_data_three_dynamic_fields() {
 	shape.set_utf8(&mut row, 2, "cccccc");
 	assert_eq!(row.len(), shape.total_static_size() + 4 + 2 + 6);
 
-	// Update each field with different sizes
 	shape.set_utf8(&mut row, 0, "a");
 	assert_eq!(row.len(), shape.total_static_size() + 1 + 2 + 6);
 
@@ -1025,7 +996,6 @@ fn test_no_orphan_data_mixed_types() {
 	let expected = shape.total_static_size() + 5 + 3 + 5;
 	assert_eq!(row.len(), expected);
 
-	// Update each with different sizes
 	shape.set_utf8(&mut row, 0, "hi"); // 2 bytes
 	let expected = shape.total_static_size() + 2 + 3 + 5;
 	assert_eq!(row.len(), expected);
@@ -1170,7 +1140,6 @@ fn test_set_unset_all_fields_then_reset() {
 	]);
 	let mut row = shape.allocate();
 
-	// Set all
 	shape.set_utf8(&mut row, 0, "first");
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[1, 2, 3]));
 	shape.set_any(&mut row, 2, &Value::Utf8("any_first".to_string()));
@@ -1178,7 +1147,6 @@ fn test_set_unset_all_fields_then_reset() {
 	shape.set_decimal(&mut row, 4, &Decimal::from_str("123.456").unwrap());
 	assert!(row.len() > shape.total_static_size());
 
-	// Unset all
 	for i in 0..5 {
 		shape.set_none(&mut row, i);
 	}
@@ -1187,7 +1155,6 @@ fn test_set_unset_all_fields_then_reset() {
 		assert!(!row.is_defined(i));
 	}
 
-	// Re-set with different values
 	shape.set_utf8(&mut row, 0, "second, much longer text");
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[10, 20]));
 	shape.set_any(&mut row, 2, &Value::Boolean(true));

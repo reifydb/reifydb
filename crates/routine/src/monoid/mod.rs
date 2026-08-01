@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Built-in monoids: associative, commutative combine operations with an identity element,
-//! registered alongside functions and procedures. Monoids power segment-tree summary nodes -
-//! range aggregates are computed by folding `MonoidState` across storage order, range
-//! decomposition pieces, and partitions, with no guaranteed global fold order. New aggregation
-//! functions over new types can register their own monoid without touching this module.
+//! Built-in monoids, registered alongside functions and procedures, backing segment-tree summary nodes.
+//!
+//! Range aggregates fold `MonoidState` across storage order, range decomposition pieces and partitions, with no
+//! guaranteed global fold order.
 
 pub mod math;
 
@@ -19,12 +18,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::routine::{RoutineInfo, error::RoutineError, registry::RoutinesConfigurator};
 
-/// Folded state of a monoid over zero or more lifted values.
-///
-/// `count` distinguishes "no rows folded in" (the identity, count 0) from "rows folded in that
-/// happen to combine to a zero-like value" - required for correct invert-to-empty and none
-/// semantics. `compensation` is the running Neumaier compensation term; it is only meaningful
-/// for `math::sum` over `Float8` and stays `0.0` (untouched) for every other monoid/type.
+/// `count` separates "no rows folded in" (the identity) from "rows that combine to a zero-like value", which
+/// invert-to-empty and none semantics depend on. `compensation` is the Neumaier term, meaningful only for
+/// `math::sum` over `Float8` and left at `0.0` everywhere else.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MonoidState {
 	pub value: Value,
@@ -46,15 +42,9 @@ impl MonoidState {
 	}
 }
 
-/// An associative, commutative combine operation with an identity element.
-///
-/// `combine` must be associative AND commutative, with `MonoidState::identity()` as the unit:
-/// callers fold states in storage order (descending keys), across range decomposition pieces,
-/// and across partitions in registry order - there is no global fold order.
-///
-/// `invert(total, part)` is the inverse of `combine` where cheaply possible; returning `None`
-/// tells the caller to recompute from children instead (e.g. min/max when the removed value
-/// equals the current extreme, or sum on arithmetic failure).
+/// `combine` must be associative AND commutative with `MonoidState::identity()` as the unit, because callers fold
+/// in storage order, across range decomposition pieces and across partitions with no global order.
+/// `invert` returning `None` tells the caller to recompute from children instead.
 pub trait Monoid: Send + Sync {
 	fn info(&self) -> &RoutineInfo;
 

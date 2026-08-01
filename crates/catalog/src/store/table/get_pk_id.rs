@@ -44,7 +44,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
-		// Create a column
 		let col = CatalogStore::create_column(
 			&mut txn,
 			table.id,
@@ -62,7 +61,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Create primary key
 		let pk_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
@@ -72,7 +70,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Get the primary key ID
 		let retrieved_pk_id = CatalogStore::get_table_pk_id(&mut Transaction::Admin(&mut txn), table.id)
 			.unwrap()
 			.expect("Primary key ID should exist");
@@ -85,7 +82,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
-		// Get the primary key ID - should be None
 		let pk_id = CatalogStore::get_table_pk_id(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 
 		assert!(pk_id.is_none());
@@ -95,8 +91,6 @@ pub mod tests {
 	fn test_get_table_pk_id_nonexistent_table() {
 		let mut txn = create_test_admin_transaction();
 
-		// Get the primary key ID for non-existent table - should be
-		// None
 		let pk_id = CatalogStore::get_table_pk_id(&mut Transaction::Admin(&mut txn), TableId(999)).unwrap();
 
 		assert!(pk_id.is_none());

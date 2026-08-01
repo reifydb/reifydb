@@ -37,8 +37,6 @@ pub fn create_procedure_descriptor<T: FFIProcedureWithMetadata>() -> ProcedureDe
 	}
 }
 
-/// Create a procedure instance from FFI parameters
-///
 /// # Safety
 /// - config_ptr must be valid for config_len bytes or null
 /// - The returned pointer must be freed by calling the destroy function
@@ -49,6 +47,8 @@ pub unsafe extern "C" fn create_procedure_instance<T: FFIProcedureWithMetadata>(
 	let config = if config_ptr.is_null() || config_len == 0 {
 		HashMap::new()
 	} else {
+		// SAFETY: the null and zero-length cases are handled above, and the caller guarantees config_ptr is
+		// valid for config_len initialised bytes for the duration of this call.
 		let config_bytes = unsafe { slice::from_raw_parts(config_ptr, config_len) };
 
 		match decode_params(config_bytes) {

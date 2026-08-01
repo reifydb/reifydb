@@ -140,7 +140,7 @@ pub mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse().unwrap();
 
-		// Should parse as one statement with two nodes: DISTINCT (bare, 0 columns) then FROM users
+		// A bare DISTINCT must not swallow the following FROM as its column list.
 		let statement = &result[0];
 		assert!(statement.nodes.len() >= 2);
 		if let Ast::Distinct(distinct) = &statement.nodes[0] {

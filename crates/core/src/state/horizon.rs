@@ -107,21 +107,17 @@ mod tests {
 
 	#[test]
 	fn a_windowed_group_is_reclaimable_only_after_span_and_grace_have_both_elapsed() {
-		// The retention scale is the whole reason windowed reclamation is safe: an event admitted at
-		// the watermark may still land in a window that started `span` ago and may arrive `grace` out
-		// of order. Dropping either term would reclaim an accumulator a still-admissible event is
-		// about to update, silently corrupting the emitted aggregate rather than merely losing state.
-		// These are the same two terms SealPolicy admits on, which is the point: one boundary, one
-		// number.
+		// An event admitted at the watermark may land in a window that started `span` ago and may
+		// arrive `grace` out of order. Dropping either term reclaims an accumulator a still-admissible
+		// event is about to update, corrupting the emitted aggregate rather than merely losing state.
 		assert_eq!(window_retention_scale(&tumbling(ms(60_000)), ms(5_000)), Some(ms(65_000)));
 	}
 
 	#[test]
 	fn a_rolling_window_retains_its_lag_as_well_as_its_span() {
 		// A rolling window's lookback starts `lag` behind the coordinate, so its oldest reachable
-		// contribution is span + lag old, not span. Omitting lag would reclaim exactly the tail the
-		// next admissible event reads back over, and the operator would emit an aggregate over a
-		// truncated window without any error.
+		// contribution is span + lag old. Omitting lag reclaims the tail the next admissible event
+		// reads back over, and the operator emits over a truncated window without any error.
 		let with_lag = window_retention_scale(
 			&WindowKind::Rolling {
 				size: WindowSize::Duration(ms(60_000)),
@@ -143,9 +139,8 @@ mod tests {
 
 	#[test]
 	fn a_session_window_measures_its_scale_from_the_gap() {
-		// A session has no fixed span - it stays open until `gap` of silence closes it. The gap is
-		// therefore the longest a group's state can sit untouched and still be extended by the next
-		// event, which makes it the correct span term for sealing.
+		// A session stays open until `gap` of silence closes it, so the gap is the longest a group's
+		// state can sit untouched and still be extended by the next event.
 		assert_eq!(
 			window_retention_scale(
 				&WindowKind::Session {
@@ -159,10 +154,9 @@ mod tests {
 
 	#[test]
 	fn a_count_based_window_has_no_time_span_and_is_therefore_perpetual() {
-		// A count window seals after N contributions, an event that no clock can predict: there is no
-		// elapsed time after which a further contribution becomes inadmissible. Deriving any finite
-		// time scale here would reclaim a window still waiting for its Nth row, so the only correct
-		// answer is to retain and let the report name it.
+		// A count window seals after N contributions, which no clock can predict, so no elapsed time
+		// makes a further contribution inadmissible. Any finite scale would reclaim a window still
+		// waiting for its Nth row.
 		assert_eq!(
 			window_retention_scale(
 				&WindowKind::Tumbling {
@@ -176,9 +170,8 @@ mod tests {
 
 	#[test]
 	fn a_negative_scale_retains_rather_than_reclaiming_from_the_future() {
-		// Durations are signed, so a misdeclared negative ttl reaches this arithmetic. Converted
-		// naively it would produce a cutoff ABOVE the watermark and reclaim groups that are still
-		// being written. The conversion refuses it and the group stays.
+		// Durations are signed, so a misdeclared negative ttl reaches this arithmetic; converted
+		// naively it produces a cutoff ABOVE the watermark and reclaims groups still being written.
 		assert_eq!(usable_scale(Some(ms(-1))), None);
 		assert_eq!(usable_scale(Some(ms(1))), Some(ms(1)));
 		assert_eq!(usable_scale(None), None);
@@ -186,10 +179,8 @@ mod tests {
 
 	#[test]
 	fn the_bucket_width_keeps_reclamation_lag_within_a_fraction_of_the_scale() {
-		// Buckets trade index churn for reclamation latency, and coarse buckets only ever delay. What
-		// must hold is that the delay stays proportional to the scale: a wide bucket on a short
-		// scale would hold state for many multiples of its declared lifetime, which is the leak the
-		// whole plane exists to close.
+		// Buckets trade index churn for reclamation latency, so the delay must stay proportional to
+		// the scale: a wide bucket on a short scale holds state for many multiples of its lifetime.
 		for span in [1_000i64, 60_000, 3_600_000] {
 			let buckets = activity_buckets(Some(ms(span)));
 			let width = buckets.event_grid().expect("a declared scale buckets in event time").width();
@@ -206,11 +197,9 @@ mod tests {
 
 	#[test]
 	fn an_undeclared_scale_parks_every_group_in_one_bucket_that_never_retires() {
-		// A node that never reclaims should not pay for the activity index at all. The widest
-		// possible bucket collapses every reachable position into bucket 0, so each group writes one
-		// index entry ever instead of rewriting it on every bucket transition. Positions are either
-		// event-time coordinates, which stay within i64 range; only the
-		// arithmetically unreachable u64::MAX itself lands in a second bucket.
+		// A node that never reclaims should not pay for the activity index: the widest bucket
+		// collapses every reachable position into bucket 0, so a group writes one index entry ever.
+		// Event-time coordinates stay within i64 range, so only u64::MAX reaches a second bucket.
 		let buckets = activity_buckets(None);
 
 		assert!(buckets.event_grid().is_none(), "an undeclared scale has no event grid to bucket in");

@@ -141,10 +141,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: a source object names the column #time is populated from, so `time: event` without
-	// one describes nothing the engine can act on. It must fail at the `time` key, which is the
-	// incomplete half of the declaration.
 	fn a_source_declaring_event_without_ts_is_rejected_at_the_time_key() {
+		// `time: event` with no populator column describes nothing the engine can act on, and the incomplete
+		// half of the declaration is the `time` key the author has to edit.
 		let err = resolve_source_time(&TimeDeclaration {
 			time: Some(Fragment::statement("event", 3, 11)),
 			ts: None,
@@ -157,10 +156,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: a populator the engine would discard is the silent-trap class this whole redesign
-	// exists to kill - the author believes they declared event time and got processing. The span
-	// must point at the stray `ts`, the key to remove, not at `time`.
 	fn a_source_declaring_processing_with_ts_is_rejected_at_the_ts_key() {
+		// A populator the engine would discard reads to the author as event time and runs as processing, so
+		// the span has to name the stray `ts` rather than `time`.
 		let err = resolve_source_time(&TimeDeclaration {
 			time: Some(Fragment::statement("processing", 3, 11)),
 			ts: Some(Fragment::statement("block_time", 4, 7)),
@@ -173,19 +171,16 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: silence on a source object is a legitimate default and means processing time.
 	fn a_bare_source_is_processing() {
+		// Silence on a source is a legitimate declaration, not an omission to fault.
 		assert_eq!(resolve_source_time(&declaration(None, None)).unwrap(), TimeSource::Processing);
 	}
 
 	#[test]
-	// Intent: THE divergence between the two levels. A flow declares which domain it operates in
-	// and never names a populator - that lives on the source, because a flow's rows may come from
-	// several sources with different stamp names, and after a projection or an aggregate no input
-	// column survives to be named. Accepting-and-ignoring a flow-level `ts` is exactly the silent
-	// trap the split exists to prevent. Mutation: drop this guard and return the domain anyway;
-	// this fails while every source-level test still passes, which is the divergence being caught.
 	fn a_flow_may_never_name_a_ts_column() {
+		// A flow's rows can come from several sources with different stamp names, and none survives a
+		// projection or aggregate, so a populator only ever names a column on the source. Accepting a
+		// flow-level `ts` and ignoring it is the silent trap the two levels exist to keep apart.
 		let err = resolve_flow_time(&TimeDeclaration {
 			time: Some(Fragment::statement("event", 3, 11)),
 			ts: Some(Fragment::statement("block_time", 4, 7)),
@@ -201,9 +196,8 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: an unrecognized time value is rejected at both levels rather than silently
-	// defaulted, and points at the value the author typed.
 	fn an_unknown_time_value_is_rejected_at_both_levels() {
+		// An unrecognised value must fault at the text the author typed rather than fall back to a default.
 		let unknown = TimeDeclaration {
 			time: Some(Fragment::statement("wallclock", 9, 2)),
 			ts: None,
@@ -218,10 +212,8 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: the declaration is matched case-insensitively, and identically at both levels, so
-	// `time: Event` cannot be legal in one declaration form and a hard error in the other for no
-	// reason the author can see.
 	fn the_time_value_is_matched_case_insensitively_at_both_levels() {
+		// `time: Event` must not be legal in one declaration form and a hard error in the other.
 		assert_eq!(resolve_source_time(&declaration(Some("EVENT"), Some("at"))).unwrap(), event("at"));
 		assert_eq!(
 			resolve_source_time(&declaration(Some("Processing"), None)).unwrap(),
@@ -235,12 +227,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: pin the whole input space for BOTH wrappers side by side. The two levels answer
-	// different questions and therefore have different legal cells - the ts column is required
-	// for an event source and forbidden on every flow - and writing them as one table is what
-	// makes an accidental convergence visible. A single shared matrix would hide exactly the
-	// drift this split was introduced to create.
 	fn the_full_declaration_matrix_is_pinned_for_both_levels() {
+		// The two levels have different legal cells - ts is required for an event source and forbidden on
+		// every flow - so writing them as two tables side by side is what makes a convergence visible.
 		let source: [((Option<&str>, Option<&str>), Option<TimeSource>); 8] = [
 			((None, None), Some(TimeSource::Processing)),
 			((None, Some("at")), Some(event("at"))),
@@ -267,10 +256,8 @@ mod tests {
 			}
 		}
 
-		// The inner Option is what the flow DECLARED; the outer is whether it is accepted at all.
-		// An undeclared flow resolves to Ok(None), which is distinct from a flow that explicitly
-		// declared processing - registration rejects the former over an event-time source and
-		// accepts the latter, so collapsing the two would lose the whole point of F3.
+		// The inner Option is what the flow declared, the outer whether it is accepted at all. Registration
+		// rejects an undeclared flow over an event-time source and accepts an explicitly processing one.
 		let flow: [((Option<&str>, Option<&str>), Option<Option<TimeDomain>>); 8] = [
 			((None, None), Some(None)),
 			((None, Some("at")), None),

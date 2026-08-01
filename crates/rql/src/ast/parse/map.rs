@@ -151,7 +151,7 @@ pub mod tests {
 			right,
 			..
 		} = map.nodes[0].as_infix();
-		// Colon syntax is converted to AS operator internally: expr AS alias
+		// Colon syntax lowers to the AS operator, so the projection is an infix.
 		let left = left.as_literal_number();
 		assert_eq!(left.value(), "1");
 

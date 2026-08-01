@@ -26,10 +26,9 @@ mod tests {
 
 	#[test]
 	fn an_update_decomposes_into_an_inverted_pair() {
-		// An Update is a Remove of the pre image plus an Insert of the post, and the
-		// accumulators are invertible on exactly that basis. A driver that carries no real
-		// pre skips the Remove half, and the accumulator then drifts by one row per update,
-		// forever.
+		// An Update is a Remove of the pre plus an Insert of the post, which is the basis for the
+		// accumulators being invertible. A driver that skips the Remove half drifts by one row per
+		// update, forever.
 		assert_eq!(Polarity::Insert.inverted(), Polarity::Remove);
 		assert_eq!(Polarity::Remove.inverted(), Polarity::Insert);
 		assert_eq!(Polarity::Insert.inverted().inverted(), Polarity::Insert);

@@ -10,8 +10,6 @@
 use proc_macro::TokenStream;
 use reifydb_macro_impl::derive_from_frame_with_crate;
 
-/// Derives `FromFrame` for a struct, enabling deserialization from a Frame.
-///
 /// Generated code references types from the `reifydb_client` crate.
 ///
 /// # Attributes

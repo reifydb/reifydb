@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// TODO(index-metrics): per-index storage/cdc stats require `KeyKind::Index` /
-// `KeyKind::IndexEntry` to carry `IndexId` in their key layout. Add
-// `system::metrics::storage::index::current` and `system::metrics::cdc::index::current`
-// when that lands.
+// TODO(index-metrics): `system::metrics::storage::index::current` and
+// `system::metrics::cdc::index::current` are not exposed yet, though `IndexKey` and
+// `IndexEntryKey` already carry `IndexId`.
 
 pub mod cdc;
 pub mod storage;

@@ -83,8 +83,6 @@ fn test_batch_udf_logic_or_xor() {
 			UDF xor_check ($x: int) { RETURN ($x > 2) XOR ($x > 5) };
 			FROM test::nums MAP { id, r: xor_check(v) } SORT { id: ASC }
 		"#);
-	// v=[0,3,5,7,10]: (x>2) XOR (x>5)
-	// 0: F XOR F = F;  3: T XOR F = T;  5: T XOR F = T;  7: T XOR T = F;  10: T XOR T = F
 	assert_eq!(bools(&frames), vec![Some(false), Some(true), Some(true), Some(false), Some(false)]);
 }
 
@@ -117,8 +115,8 @@ fn test_batch_udf_in_list() {
 #[test]
 fn test_batch_udf_cast() {
 	let t = setup();
-	// CAST to utf8 - every integer round-trips unambiguously, unlike CAST-to-boolean
-	// which in ReifyDB only accepts literal 0 or 1.
+	// utf8 is the only target every integer round-trips through; CAST to boolean accepts
+	// literal 0 or 1 only.
 	let frames = t.query(r#"
 			UDF as_utf8 ($x: int) { RETURN CAST($x, utf8) };
 			FROM test::nums MAP { id, r: as_utf8(v) } SORT { id: ASC }
@@ -129,23 +127,21 @@ fn test_batch_udf_cast() {
 #[test]
 fn test_batch_udf_calls_vectorizable_udf() {
 	let t = setup();
-	// Outer UDF calls helper UDF. Inner body is vectorizable (arithmetic only), so
-	// the outer's batch path dispatches Call into the columnar user-function path.
+	// The inner body is arithmetic only, so the outer's batch path must dispatch Call into the
+	// columnar user-function path rather than falling back.
 	let frames = t.query(r#"
 			UDF helper ($y: int) { RETURN $y * 2 };
 			UDF outer ($x: int) { RETURN helper($x) + 1 };
 			FROM test::nums MAP { id, r: outer(v) } SORT { id: ASC }
 		"#);
-	// v = [0, 3, 5, 7, 10] → outer = v*2 + 1 = [1, 7, 11, 15, 21]
 	assert_eq!(ints(&frames), vec![1, 7, 11, 15, 21]);
 }
 
 #[test]
 fn test_batch_udf_calls_non_vectorizable_udf() {
 	let t = setup();
-	// Inner body uses BREAK inside WHILE; BREAK isn't in the vectorizability
-	// whitelist, so the columnar Call path must fall back to per-row scalar
-	// execution.
+	// BREAK is not vectorizable, so the columnar Call path must fall back to per-row scalar
+	// execution instead of producing a wrong batch answer.
 	let frames = t.query(r#"
 			UDF helper ($x: int) : int2 {
 				LET $i = 0;
@@ -158,8 +154,6 @@ fn test_batch_udf_calls_non_vectorizable_udf() {
 			UDF outer ($x: int) : int2 { RETURN helper($x) };
 			FROM test::nums MAP { id, r: outer(v) } SORT { id: ASC }
 		"#);
-	// helper($x) counts $i from 0 until $i >= $x, then returns $i.
-	// v = [0, 3, 5, 7, 10] → r = [0, 3, 5, 7, 10]
 	assert_eq!(ints(&frames), vec![0, 3, 5, 7, 10]);
 }
 
@@ -195,7 +189,6 @@ fn test_batch_udf_if_else_if_else_chain() {
 			};
 			FROM test::nums MAP { id, r: classify(v) } SORT { id: ASC }
 		"#);
-	// v = [0, 3, 5, 7, 10]
 	assert_eq!(ints(&frames), vec![1, 2, 2, 2, 3]);
 }
 
@@ -212,7 +205,7 @@ fn test_batch_udf_match_returns_without_else() {
 			};
 			FROM test::nums MAP { id, r: classify(v) } SORT { id: ASC }
 		"#);
-	// v = [0, 3, 5, 7, 10]; rows matching no arm fall through to RETURN 3
+	// A row matching no arm must fall through to the trailing RETURN, not fault.
 	assert_eq!(ints(&frames), vec![1, 2, 2, 2, 3]);
 }
 
@@ -228,7 +221,7 @@ fn test_batch_udf_match_value_without_else_is_none() {
 			};
 			FROM test::nums MAP { id, r: flag(v) } SORT { id: ASC }
 		"#);
-	// v = [0, 3, 5, 7, 10]; 10 matches no arm, so the MATCH yields None
+	// A MATCH expression with no matching arm yields none, not a fault or a default.
 	assert_eq!(bools(&frames), vec![Some(true), Some(false), Some(false), Some(false), None]);
 }
 
@@ -254,7 +247,6 @@ fn test_batch_udf_nested_if_returns() {
 			};
 			FROM test::nums MAP { id, r: classify(v) } SORT { id: ASC }
 		"#);
-	// v = [0, 3, 5, 7, 10]
 	assert_eq!(ints(&frames), vec![1, 2, 50, 2, 3]);
 }
 
@@ -276,7 +268,7 @@ fn test_batch_udf_return_inside_while() {
 			};
 			FROM test::nums MAP { id, r: first_at_least(v) } SORT { id: ASC }
 		"#);
-	// v = [0, 3, 5, 7, 10]; 10 never reaches $i >= $x within the loop
+	// 10 never satisfies the guard inside the bounded loop, so it must reach the fallthrough.
 	assert_eq!(ints(&frames), vec![0, 3, 5, 7, -1]);
 }
 

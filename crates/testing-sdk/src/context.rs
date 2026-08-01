@@ -261,12 +261,10 @@ pub mod tests {
 		let key = encode_key("test_key");
 		let value = vec![1, 2, 3];
 
-		// Test set and get
 		ctx.set_state(key.clone(), value.clone());
 		assert_eq!(ctx.get_state(&key), Some(value.clone()));
 		assert!(ctx.has_state(&key));
 
-		// Test remove
 		let removed = ctx.remove_state(&key);
 		assert_eq!(removed, Some(value));
 		assert!(!ctx.has_state(&key));
@@ -277,7 +275,7 @@ pub mod tests {
 	fn test_context_logs() {
 		let ctx = TestContext::default();
 
-		// Simulate logging (would be done through callbacks in real usage)
+		// Production pushes these through the FFI callbacks; here we write the sink directly.
 		ctx.logs.lock().push("Log 1".to_string());
 		ctx.logs.lock().push("Log 2".to_string());
 

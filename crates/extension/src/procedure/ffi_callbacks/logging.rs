@@ -5,13 +5,8 @@ use std::slice;
 
 use tracing::{debug, error, info, trace, warn};
 
-/// Log a message from an FFI operator
-///
-/// # Parameters
-/// - `operator_id`: The operator ID for identifying the source
-/// - `level`: Log level (0=trace, 1=debug, 2=info, 3=warn, 4=error)
-/// - `message`: Message bytes (not null-terminated)
-/// - `message_len`: Length of message in bytes
+/// `level` maps 0=trace, 1=debug, 2=info, 3=warn, 4=error; anything else falls back to info.
+/// `message` is not null-terminated and invalid UTF-8 is replaced rather than rejected.
 ///
 /// # Safety
 ///
@@ -22,6 +17,7 @@ pub unsafe extern "C" fn host_log_message(operator_id: u64, level: u32, message:
 		return;
 	}
 
+	// SAFETY: message is non-null here and the caller guarantees message_len readable bytes.
 	let msg_str = unsafe {
 		let bytes = slice::from_raw_parts(message, message_len);
 		String::from_utf8_lossy(bytes)

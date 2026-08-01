@@ -181,10 +181,9 @@ mod tests {
 
 	#[test]
 	fn render_filter_clause_round_trips_through_rql_parser() {
-		// The whole point of the renderer is that the result parses again as RQL.
+		// The renderer exists so its output parses again as RQL.
 		let expr = parse_one("base_mint == 'So11111111111111111111111111111111111111112'");
 		let rendered = render_filter_clause(slice::from_ref(&expr)).expect("renders");
-		// Strip the leading "filter { " and trailing " }" to get just the conditions.
 		let inner = rendered.strip_prefix("filter { ").and_then(|s| s.strip_suffix(" }")).expect("structure");
 		parse_expression(inner).expect("rendered RQL must reparse");
 	}

@@ -853,8 +853,8 @@ pub mod tests {
 
 	#[tokio::test]
 	async fn test_single_subscription_honors_linger() {
-		// A standalone (non-batch) subscription used to ignore linger and deliver
-		// immediately; it must now hold the change for the linger window.
+		// A standalone (non-batch) subscription must hold the change for the linger window rather
+		// than deliver immediately.
 		let (mock, clock, rng) = test_clock_and_rng();
 		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);
@@ -887,8 +887,8 @@ pub mod tests {
 
 	#[tokio::test]
 	async fn test_batch_member_honors_throttle() {
-		// A batch member used to ignore throttle; it must now rate-limit, holding a
-		// second change that lands inside the throttle interval.
+		// A batch member must rate-limit too, holding a second change that lands inside the throttle
+		// interval.
 		let (mock, clock, rng) = test_clock_and_rng();
 		let registry: SubscriptionRegistry = SubscriptionRegistry::new(clock.clone());
 		let connection_id = Uuid7::generate(&clock, &rng);

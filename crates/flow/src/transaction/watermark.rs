@@ -128,9 +128,8 @@ mod tests {
 		FlowTransaction::deferred(&parent, version, Catalog::testing(), Interceptors::new(), Clock::Mock(clock))
 	}
 
-	// Persist a deferred transaction's pending writes so a cold instance resolves them the way a
-	// restarted process would.
 	fn commit_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
+		// Persists the pending writes so a cold instance resolves them as a restarted process would.
 		let pending = txn.take_pending();
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 		cmd.disable_conflict_tracking().unwrap();
@@ -154,10 +153,9 @@ mod tests {
 
 	#[test]
 	fn the_source_watermark_never_moves_backwards() {
-		// The per-source watermark is a running MAX over #time. Late rows arrive with older
-		// stamps as a matter of course; if one dragged the watermark backwards, cutoffs derived from
-		// it would move backwards and re-open horizons that already sealed, breaking monotonic
-		// retention decisions.
+		// The per-source watermark is a running max over #time. Late rows arrive with older stamps
+		// routinely; dragging it backwards would move derived cutoffs back and re-open horizons
+		// that have already sealed.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine, MockClock::from_millis(0));
 		let watermarks = SourceWatermarks::default();
@@ -170,9 +168,8 @@ mod tests {
 
 	#[test]
 	fn the_flow_watermark_tracks_the_slowest_source() {
-		// The flow watermark is the MIN across sources so a fast source can never seal a
-		// slow source's state. This is the invariant that protects a lagging
-		// feed's windows from a sibling that is racing ahead.
+		// The flow watermark is the min across sources so a fast source can never seal a slow
+		// source's state.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine, MockClock::from_millis(0));
 		let watermarks = SourceWatermarks::default();
@@ -195,10 +192,9 @@ mod tests {
 
 	#[test]
 	fn a_restart_resumes_from_the_bucketed_persisted_watermark() {
-		// A restart resumes from the persisted watermark, and persistence is bucketed at 1s
-		// (PERSIST_BUCKET_MS) to bound write amplification: an advance inside the same second stays
-		// in RAM. Hydrating up to one bucket stale is conservative - retention seals LATER than the
-		// live value, never earlier. Both halves of that contract are pinned here.
+		// Persistence is bucketed at 1s to bound write amplification, so an advance inside the same
+		// second stays in RAM. Hydrating up to one bucket stale is conservative: retention seals
+		// later than the live value, never earlier.
 		let engine = TestEngine::new();
 		let warm = SourceWatermarks::default();
 
@@ -230,9 +226,9 @@ mod tests {
 
 	#[test]
 	fn an_empty_source_hydrates_to_zero_not_to_now() {
-		// A source that has never produced a row hydrates to ZERO, never to the clock.
-		// Hydrating to now would compute cutoffs over the whole backlog on restart and seal state
-		// before the first row is processed.
+		// A source that has never produced a row hydrates to zero, never to the clock. Hydrating to
+		// now would compute cutoffs over the whole backlog on restart and seal state before the
+		// first row is processed.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine, MockClock::from_millis(500_000));
 		let watermarks = SourceWatermarks::default();
@@ -243,10 +239,9 @@ mod tests {
 
 	#[test]
 	fn event_silence_holds_while_processing_silence_advances() {
-		// Both halves of the silence contract in one suite so neither can be satisfied by
-		// breaking the other. An event flow's watermark is data-driven and
-		// HOLDS while no data arrives; a processing flow's "now" is the wall clock, so an idle
-		// processing flow keeps draining.
+		// Both halves in one test so neither can be satisfied by breaking the other: an event
+		// watermark is data-driven and holds while no data arrives, a processing watermark is the
+		// wall clock so an idle flow keeps draining.
 		let engine = TestEngine::new();
 		let clock = MockClock::from_millis(100_000);
 		let mut txn = deferred(&engine, clock.clone());
@@ -273,11 +268,9 @@ mod tests {
 
 	#[test]
 	fn the_watermark_key_round_trips_beside_the_node_watermark() {
-		// The watermark key lives beside NODE_WATERMARK with the identical inner-key
-		// encoding (extend_u8 INVERTS the tag byte on the wire; decode_inner un-inverts it, which is
-		// the convention this key deliberately picks). A drifted encoding would make hydration read
-		// an absent key and silently restart every watermark at zero; a tag collision with
-		// NODE_WATERMARK would let the two overwrite each other on node-scope state.
+		// A drifted encoding would make hydration read an absent key and silently restart every
+		// watermark at zero; a tag collision with NODE_WATERMARK would let the two overwrite each
+		// other on node-scope state.
 		let key = source_watermark_key();
 		let (group, keyspace, suffix) =
 			OperatorStateKey::decode_inner(key.as_slice()).expect("the key must decode as inner state");

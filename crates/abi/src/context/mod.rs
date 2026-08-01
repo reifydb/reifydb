@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Per-call context carried across the FFI boundary. The host fills in fields the extension may read (clock
-//! reference, transaction handle, identity, request-scoped scratch); the iterators submodule defines the
-//! sequential cursors the host hands an extension to walk over input rows.
+//! Per-call context the host fills in for an extension to read, plus the sequential cursors an extension walks
+//! input rows with. Valid only for the duration of the call it was handed to.
 
 #[allow(clippy::module_inception)]
 pub mod context;

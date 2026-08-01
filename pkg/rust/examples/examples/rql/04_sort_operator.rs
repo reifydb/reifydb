@@ -43,7 +43,7 @@ fn main() {
 	)
 	.unwrap();
 
-	// Example 1: Sort by single column (ascending - default)
+	// Example 1: Sort by single column with no direction, which means DESCENDING in RQL.
 	info!("Example 1: Sort by price (ascending - default)");
 	log_query(
 		r#"from store::products
@@ -62,7 +62,7 @@ sort {price}"#,
 		info!("{}", frame);
 	}
 
-	// Example 2: Sort by single column (ascending - explicit)
+	// Example 2: Sort by single column, ascending, which must be stated explicitly.
 	info!("\nExample 2: Sort by name (ascending - explicit)");
 	log_query(
 		r#"from store::products
@@ -190,7 +190,7 @@ sort {rating:desc}"#,
 		info!("{}", frame);
 	}
 
-	// Example 8: Comptokenize sort with mixed directions
+	// Example 8: Complex sort with mixed directions
 	info!("\nExample 8: Sort by category ascending, then rating descending");
 	log_query(
 		r#"from store::products

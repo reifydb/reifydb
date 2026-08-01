@@ -18,7 +18,6 @@ use crate::{
 	grpc::subscription::{create_test_table, recv_with_timeout, unique_table_name},
 };
 
-/// Test creating many subscriptions from a single client
 #[test]
 fn test_many_subscriptions_single_client() {
 	let runtime = Arc::new(Runtime::new().unwrap());
@@ -31,7 +30,6 @@ fn test_many_subscriptions_single_client() {
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
-		// Create 50 tables and subscriptions
 		const NUM_SUBS: usize = 50;
 		let mut subs = Vec::new();
 		let mut tables = Vec::new();
@@ -47,12 +45,11 @@ fn test_many_subscriptions_single_client() {
 			tables.push(table);
 		}
 
-		// Insert into all tables
 		for table in &tables {
 			client.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
 		}
 
-		// Receive all notifications (each subscription gets its own stream)
+		// Each gRPC subscription is its own stream, so each is drained separately.
 		let mut received = 0;
 		for sub in &mut subs {
 			let frames = recv_with_timeout(sub, 30000).await;
@@ -62,14 +59,12 @@ fn test_many_subscriptions_single_client() {
 		}
 		assert_eq!(received, NUM_SUBS, "Should receive {} notifications, got {}", NUM_SUBS, received);
 
-		// Cleanup: drop all subscriptions
 		drop(subs);
 	});
 
 	cleanup_server(Some(server));
 }
 
-/// Test many clients connecting concurrently
 #[test]
 fn test_many_concurrent_clients() {
 	let runtime = Arc::new(Runtime::new().unwrap());
@@ -80,7 +75,6 @@ fn test_many_concurrent_clients() {
 	runtime.block_on(async {
 		const NUM_CLIENTS: usize = 20;
 
-		// First, create one client to set up the shared table
 		let mut setup_client =
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		setup_client.authenticate("mysecrettoken");
@@ -89,10 +83,8 @@ fn test_many_concurrent_clients() {
 		create_test_table(&setup_client, &shared_table, &[("id", "int4")]).await.unwrap();
 		drop(setup_client);
 
-		// Track how many clients received their notification
 		let received_count = Arc::new(AtomicUsize::new(0));
 
-		// Spawn all clients concurrently
 		let mut handles = Vec::new();
 		for client_idx in 0..NUM_CLIENTS {
 			let table = shared_table.clone();
@@ -108,7 +100,6 @@ fn test_many_concurrent_clients() {
 					.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
 					.await?;
 
-				// Wait for notification with timeout
 				let frames = recv_with_timeout(&mut sub, 10000).await;
 				if frames.is_some() {
 					counter.fetch_add(1, Ordering::SeqCst);
@@ -120,17 +111,14 @@ fn test_many_concurrent_clients() {
 			handles.push((client_idx, handle));
 		}
 
-		// Give clients time to connect and subscribe
 		sleep(Duration::from_milliseconds(500).unwrap().to_std()).await;
 
-		// Create a new client to trigger the insert
 		let mut trigger_client =
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		trigger_client.authenticate("mysecrettoken");
 		trigger_client.command(&format!("INSERT test::{} [{{ id: 999 }}]", shared_table), None).await.unwrap();
 		drop(trigger_client);
 
-		// Wait for all clients to complete
 		for (idx, handle) in handles {
 			match handle.await {
 				Ok(Ok(())) => {}
@@ -150,7 +138,6 @@ fn test_many_concurrent_clients() {
 	cleanup_server(Some(server));
 }
 
-/// Test rapid subscribe/drop cycles
 #[test]
 fn test_rapid_subscribe_unsubscribe() {
 	let runtime = Arc::new(Runtime::new().unwrap());
@@ -166,7 +153,6 @@ fn test_rapid_subscribe_unsubscribe() {
 		let table = unique_table_name("stress_rapid");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		// Rapid subscribe/drop cycles - 100 times
 		const NUM_CYCLES: usize = 100;
 		for i in 0..NUM_CYCLES {
 			let sub = client
@@ -175,13 +161,11 @@ fn test_rapid_subscribe_unsubscribe() {
 				.unwrap();
 			drop(sub);
 
-			// Log progress every 25 cycles
 			if (i + 1) % 25 == 0 {
 				eprintln!("Completed {} rapid cycles", i + 1);
 			}
 		}
 
-		// Verify system still works after rapid cycles
 		let mut sub = client
 			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
 			.await
@@ -199,7 +183,6 @@ fn test_rapid_subscribe_unsubscribe() {
 	cleanup_server(Some(server));
 }
 
-/// Test that server handles clients disconnecting without explicit cleanup
 #[test]
 fn test_client_disconnect_without_unsubscribe() {
 	let runtime = Arc::new(Runtime::new().unwrap());
@@ -210,7 +193,6 @@ fn test_client_disconnect_without_unsubscribe() {
 	runtime.block_on(async {
 		const NUM_CLIENTS: usize = 10;
 
-		// Create shared table first
 		let mut setup_client =
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		setup_client.authenticate("mysecrettoken");
@@ -219,7 +201,6 @@ fn test_client_disconnect_without_unsubscribe() {
 		create_test_table(&setup_client, &shared_table, &[("id", "int4")]).await.unwrap();
 		drop(setup_client);
 
-		// Connect multiple clients and subscribe, then disconnect abruptly (drop without cleanup)
 		for i in 0..NUM_CLIENTS {
 			let mut client =
 				GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
@@ -229,8 +210,7 @@ fn test_client_disconnect_without_unsubscribe() {
 				.await
 				.unwrap();
 
-			// Drop the client and subscription without explicit cleanup
-			// This simulates an abrupt disconnect
+			// Dropping without explicit cleanup simulates an abrupt disconnect.
 			drop(_sub);
 			drop(client);
 
@@ -242,7 +222,6 @@ fn test_client_disconnect_without_unsubscribe() {
 		// Give server time to clean up disconnected clients
 		sleep(Duration::from_milliseconds(500).unwrap().to_std()).await;
 
-		// Server should still be healthy - new clients should be able to connect and subscribe
 		let mut new_client =
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		new_client.authenticate("mysecrettoken");
@@ -256,7 +235,6 @@ fn test_client_disconnect_without_unsubscribe() {
 			"New client should be able to subscribe after abrupt disconnects"
 		);
 
-		// Insert and verify new client receives notification
 		new_client.command(&format!("INSERT test::{} [{{ id: 1 }}]", shared_table), None).await.unwrap();
 
 		let frames = recv_with_timeout(&mut sub, 5000).await;
@@ -268,7 +246,6 @@ fn test_client_disconnect_without_unsubscribe() {
 	cleanup_server(Some(server));
 }
 
-/// Test concurrent connect/disconnect cycles
 #[test]
 fn test_concurrent_connect_disconnect() {
 	let runtime = Arc::new(Runtime::new().unwrap());
@@ -293,10 +270,8 @@ fn test_concurrent_connect_disconnect() {
 		}
 		drop(setup_client);
 
-		// Track successful operations
 		let success_count = Arc::new(AtomicUsize::new(0));
 
-		// Spawn tasks that continuously connect/disconnect
 		let mut handles = Vec::new();
 		for task_idx in 0..NUM_TASKS {
 			let table = tables[task_idx].clone();
@@ -324,7 +299,6 @@ fn test_concurrent_connect_disconnect() {
 							.await
 						{
 							Ok(sub) => {
-								// Small delay to simulate some work
 								sleep(Duration::from_milliseconds(10)
 									.unwrap()
 									.to_std())
@@ -338,7 +312,6 @@ fn test_concurrent_connect_disconnect() {
 							Err(e) if retries < MAX_RETRIES
 								&& e.to_string().contains("TXN_001") =>
 							{
-								// Transaction conflict, retry after small delay
 								retries += 1;
 								sleep(Duration::from_milliseconds(10 * retries as i64)
 									.unwrap()
@@ -364,7 +337,6 @@ fn test_concurrent_connect_disconnect() {
 			handles.push((task_idx, handle));
 		}
 
-		// Wait for all tasks to complete
 		for (idx, handle) in handles {
 			match handle.await {
 				Ok(Ok(())) => {}
@@ -377,7 +349,6 @@ fn test_concurrent_connect_disconnect() {
 		let expected = NUM_TASKS * ITERATIONS_PER_TASK;
 		assert_eq!(count, expected, "All {} connect/disconnect cycles should succeed, got {}", expected, count);
 
-		// Verify server is still healthy after all the concurrent activity
 		let mut final_client =
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		final_client.authenticate("mysecrettoken");

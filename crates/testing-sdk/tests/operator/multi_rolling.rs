@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Differential chaos for the multi-rolling V2 driver
-//! (`TopVolumeMultiRolling`): a rolling buffer that emits multiple rows per
-//! group keyed by rank, with Insert/Update/**Remove** diffing as the top-K set
-//! churns. A small trader space and wide window space make ranks appear,
-//! change, and vanish across batches, exercising the per-secondary-key
-//! emission and the high-water-driven Remove path.
+//! Differential chaos for the multi-rolling driver. A small trader space against a wide
+//! window space makes ranks appear, change and vanish across batches, which is what reaches
+//! the per-secondary-key emission and the high-water-driven Remove path.
 
 use reifydb_sdk::operator::{FFIOperatorAdapter, windowed::multi_rolling::MultiRollingDriver};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
@@ -77,8 +74,7 @@ fn top_volume_handles_none_inputs() {
 
 #[test]
 fn top_volume_emits_multiple_ranks() {
-	// Two ranks must materialize at least once; otherwise the secondary-key
-	// emission path is not being exercised.
+	// A single rank would mean the secondary-key emission path never ran.
 	let outcome = run(false, common::baseline(200, SupportedOps::insert_only()), 99);
 	outcome.assert_matches();
 	let ranks = outcome.oracle_table.rows.keys().count();

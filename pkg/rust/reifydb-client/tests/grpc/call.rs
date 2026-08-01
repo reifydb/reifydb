@@ -111,9 +111,8 @@ fn call_with_meta_populates_meta() {
 #[test]
 fn call_missing_required_param_errors() {
 	run(|client, fx| async move {
-		// A required-but-omitted param must be rejected server-side, not silently defaulted.
-		// The gRPC server now sends the structured Diagnostic (parity with WS), so the client
-		// recovers the INVALID_PARAMS code rather than a generic TRANSPORT error.
+		// A required-but-omitted param must be rejected server-side, not silently defaulted, and
+		// reach the client as a structured code rather than a generic transport error.
 		let err = client.call(&fx.echo, None).await.unwrap_err();
 		assert_eq!(err.code, "INVALID_PARAMS");
 		assert!(err.message.contains("missing required parameter"), "message was: {}", err.message);

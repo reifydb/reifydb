@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Self-tests for the chaos substrate, run as an integration target so `chaos_test!` is expanded in a separate
-//! compilation unit and has to resolve `::reifydb_testing_chaos::seed::run_iteration` through the real external crate
-//! path, exactly as a consumer does. An in-crate unit test would resolve it through `extern crate self`, which cannot
-//! catch a wrong path in the generated code.
+//! Self-tests for the chaos substrate. They live in an integration target so `chaos_test!`
+//! resolves through the real external crate path; an in-crate unit test would resolve it via
+//! `extern crate self` and could not catch a wrong path in the generated code.
 
 use reifydb_testing_chaos::{
 	corpus::{Corpus, mix},
@@ -13,26 +12,23 @@ use reifydb_testing_chaos::{
 use reifydb_testing_macro::chaos_test;
 
 chaos_test!(the_macro_expands_and_threads_its_seed, 3, |seed| {
-	// The expansion must produce real `#[test] fn`s that run this body with the iteration seed. If the generated
-	// path were wrong this fails to compile; the arithmetic proves the seed reached the body.
+	// A wrong generated path fails to compile; the arithmetic proves the seed reached the body.
 	assert_eq!(seed.wrapping_mul(2), seed.wrapping_add(seed));
 });
 
 #[test]
 #[ignore = "spawned as a subprocess by the_seed_environment_variable_is_still_named_seed"]
 fn seed_probe_that_always_fails() {
-	// Not a real test. It exists so the probe below can drive run_iteration's actual failure path
+	// Not a real test: it exists so the probe below can drive run_iteration's real failure path
 	// in a child process and read back the seed it resolved.
 	reifydb_testing_chaos::seed::run_iteration("probe", 0, |_| panic!("probe"));
 }
 
 #[test]
 fn the_seed_environment_variable_is_still_named_seed() {
-	// Nothing else asserts the NAME of the environment variable run_iteration reads. Rename or
-	// typo it and every chaos test in the workspace still passes, while `make test-chaos SEED=..`
-	// silently stops pinning anything - a failure would print a fresh random seed and the printed
-	// replay command would not reproduce it. That is the silent-coverage-loss this suite exists to
-	// catch, so drive the real path rather than asserting on a constant.
+	// Nothing else asserts the NAME of the environment variable run_iteration reads: typo it and
+	// every chaos test still passes while SEED silently stops pinning anything. Driving the real
+	// path through a child process is the only way to observe the name.
 	let exe = std::env::current_exe().expect("the running test binary has a path");
 	let output = std::process::Command::new(exe)
 		.args(["--exact", "seed_probe_that_always_fails", "--ignored", "--nocapture"])
@@ -53,8 +49,8 @@ fn the_seed_environment_variable_is_still_named_seed() {
 
 #[test]
 fn a_corpus_accepts_its_own_fingerprint_and_rejects_any_other() {
-	// assert_pinned is the mechanism that turns a silently re-pointed regression into a loud failure, so it must
-	// be exact: the recorded value passes, and a value one bit away does not.
+	// assert_pinned turns a silently re-pointed regression into a loud failure, so it has to be
+	// exact: the recorded value passes and a value one bit away does not.
 	let corpus = Corpus::new(0xDEAD_BEEF, 12);
 	corpus.assert_pinned(0xDEAD_BEEF);
 
@@ -64,9 +60,8 @@ fn a_corpus_accepts_its_own_fingerprint_and_rejects_any_other() {
 
 #[test]
 fn mixing_is_order_sensitive_and_stable() {
-	// The window regressions pin literal fingerprints, so this arithmetic is a compatibility surface: if it ever
-	// changes, five pinned defect reproductions silently stop covering what they name. Order sensitivity is what
-	// makes the fingerprint describe a sequence rather than a multiset of operations.
+	// Pinned fingerprints make this arithmetic a compatibility surface. Order sensitivity is what
+	// makes a fingerprint describe a sequence rather than a multiset of operations.
 	assert_eq!(mix(0, 1), mix(0, 1), "mixing must be deterministic");
 	assert_ne!(mix(mix(0, 1), 2), mix(mix(0, 2), 1), "swapping two operations must change the fingerprint");
 	assert_ne!(mix(0, 1), mix(1, 0), "state and value must not be interchangeable");
@@ -74,9 +69,8 @@ fn mixing_is_order_sensitive_and_stable() {
 
 #[test]
 fn splitting_decorrelates_the_parameter_stream_from_the_corpus_stream() {
-	// Parameters decide WHAT is under test and the sequence seed decides the corpus. If they shared a stream,
-	// widening a parameter range would silently reshuffle every corpus and no result could be compared across a
-	// generator change. Different master seeds must move both independently.
+	// Parameters decide what is under test and the sequence seed decides the corpus. Sharing a
+	// stream would let a widened parameter range reshuffle every corpus.
 	let (mut params_a, sequence_a) = split(7);
 	let (mut params_b, sequence_b) = split(8);
 	assert_ne!(sequence_a, sequence_b, "different master seeds must give different corpora");
@@ -93,10 +87,9 @@ fn splitting_decorrelates_the_parameter_stream_from_the_corpus_stream() {
 
 #[test]
 fn tolerant_containment_accepts_float_drift_and_still_rejects_a_wrong_value() {
-	// The host compares integer aggregates exactly; the guest compares float aggregates reached by a
-	// different summation order, so it needs latitude per column. One comparator has to serve both or
-	// the two sides cannot share a driver. Exact mode must stay exact: a tolerance of None on a column
-	// means bit equality, not "close enough".
+	// One comparator serves both sides: the host compares integers exactly, the guest needs
+	// per-column latitude for a different summation order. A tolerance of None must stay bit
+	// equality, not "close enough".
 	use reifydb_testing_chaos::operator::compare::contains_all;
 	use reifydb_value::value::Value;
 

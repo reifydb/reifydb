@@ -1,17 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// The flow caught-up watermark must be a materialization barrier for chains of ANY depth, not just
-// one hop. A flow's cursor passing version V does not mean it has seen the effects of V: in a
-// multi-hop chain those effects only exist as a LATER commit, produced by the upstream flow. A
-// downstream flow that finds nothing for its own sources at V skips straight past it and publishes
-// its cursor as V before that later commit even exists, so a watermark defined as "the min cursor
-// across live flows" reports caught-up while the tail of the chain is still one commit behind.
-//
-// These tests drive a chain repeatedly and assert the tail is complete the instant the barrier
-// returns. They must be run with a short flow tick: the downstream flow has to be draining actively
-// for its cursor to run ahead, which is exactly what makes this race show up under parallel load
-// and vanish when a single test has the machine to itself.
+// The flow caught-up watermark must be a materialization barrier for chains of any depth. A cursor
+// passing version V does not mean the effects of V are visible: in a multi-hop chain those effects
+// exist only as a later commit, so a plain min-of-cursors reports caught-up one commit early.
 
 use std::time::{Duration as StdDuration, Instant};
 
@@ -25,10 +17,9 @@ const ROUNDS: usize = 40;
 // consumable, so one insert rarely lands in it; the round count is what makes the guard reliable.
 const OUTSTANDING_ROUNDS: usize = 300;
 
-// Spins rather than delegating to `await_all_flows`: the defect is a watermark that crosses too
-// EARLY, so the tail must be observed at the first instant it reports caught-up. Polling on a sleep
-// interval hands the chain enough time to finish and hides the bug entirely.
 fn await_caught_up(db: &TestDb) {
+	// Spins rather than delegating to `await_all_flows`: the defect is a watermark that crosses too
+	// early, so a sleep interval hands the chain enough time to finish and hides it.
 	let target = db.watermarks().tx().current().expect("current commit version");
 	let deadline = Instant::now() + BARRIER_TIMEOUT;
 	while db.watermarks().cdc().flow_consumer() < target {
@@ -52,10 +43,9 @@ fn setup() -> TestDb {
 	)
 }
 
-// Lets the periodic tick drain every flow up to the current version, so each hop is primed to
-// skip-advance the moment the next insert lands. Without this the chain is quiet at the start of
-// the run and the first rounds cannot expose the race.
 fn prime_flows(db: &TestDb) {
+	// Primes every hop to skip-advance the moment the next insert lands; a chain that is still
+	// quiet cannot expose the race in the first rounds.
 	assert!(db.await_all_flows(BARRIER_TIMEOUT), "flows never caught up on an idle chain");
 	std::thread::sleep(StdDuration::from_millis(100));
 }
@@ -88,14 +78,11 @@ fn drive(db: &TestDb, tail: &str, depth: usize) {
 	}
 }
 
-// `system::flow::watermarks` carries two different signals per row and they must not be confused.
-// `lag` is per-object and derived from writes the flow supervisor has OBSERVED on the CDC stream, so
-// it legitimately reads zero in the window between a commit and its observation. `outstanding` is
-// per-flow and measured against everything consumable, so zero there - on every row - is the real
-// quiescence signal. Computing `outstanding` from the observed tracker instead would reproduce the
-// false zero: this asserts it is measured against the consumable frontier.
 #[test]
 fn zero_outstanding_means_the_whole_chain_is_materialized() {
+	// `lag` is per-object and derived from writes the supervisor has observed, so it legitimately
+	// reads zero between a commit and its observation. `outstanding` is per-flow against everything
+	// consumable, so zero on every row is the real quiescence signal.
 	let db = setup();
 	create_table(&db);
 	create_hop(&db, "v1", "t");
@@ -137,11 +124,10 @@ fn caught_up_is_a_barrier_for_a_two_hop_chain() {
 	drive(&db, "v2", 2);
 }
 
-// Depth independence: the gate is a single predicate over the whole flow set, not a one-hop
-// lookahead, so a third hop must not reintroduce the lag. This fails by exactly one commit per
-// extra hop if the watermark ever regresses to a plain min-of-cursors.
 #[test]
 fn caught_up_is_a_barrier_for_a_three_hop_chain() {
+	// The gate is one predicate over the whole flow set, not a one-hop lookahead, so a third hop
+	// must not reintroduce lag; a plain min-of-cursors falls one commit behind per extra hop.
 	let db = setup();
 	create_table(&db);
 	create_hop(&db, "v1", "t");

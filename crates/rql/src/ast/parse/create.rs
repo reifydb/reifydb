@@ -3971,8 +3971,6 @@ pub mod tests {
 				assert!(as_clause.is_some());
 
 				if let Some(as_statement) = as_clause {
-					// The AS clause should have the query
-					// nodes
 					assert!(as_statement.len() > 0);
 				}
 			}
@@ -4321,11 +4319,8 @@ pub mod tests {
 				let as_clause = as_clause.as_ref().unwrap();
 				assert_eq!(as_clause.nodes.len(), 1, "Should have one FROM node");
 
-				// Validate that the node is a FROM node
 				match &as_clause.nodes[0] {
-					Ast::From(_) => {
-						// Expected: FROM node
-					}
+					Ast::From(_) => {}
 					_ => panic!("Expected FROM node in AS clause"),
 				}
 			}
@@ -4370,7 +4365,6 @@ pub mod tests {
 	#[test]
 	fn test_create_subscription_without_as_clause() {
 		let bump = Bump::new();
-		// Ensure subscriptions without AS clause still work (backwards compatibility)
 		let source = "CREATE SUBSCRIPTION { value: Float8 }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
@@ -4394,7 +4388,6 @@ pub mod tests {
 	#[test]
 	fn test_create_subscription_shapeless() {
 		let bump = Bump::new();
-		// Test shape-less subscription: CREATE SUBSCRIPTION AS { FROM demo::events }
 		let source = "CREATE SUBSCRIPTION AS { FROM demo::events }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
@@ -4417,9 +4410,7 @@ pub mod tests {
 				assert_eq!(as_clause.nodes.len(), 1, "Should have one FROM node");
 
 				match &as_clause.nodes[0] {
-					Ast::From(_) => {
-						// Expected: FROM node
-					}
+					Ast::From(_) => {}
 					_ => panic!("Expected FROM node in AS clause"),
 				}
 			}
@@ -4464,20 +4455,17 @@ pub mod tests {
 	#[test]
 	fn test_create_subscription_shapeless_missing_as_fails() {
 		let bump = Bump::new();
-		// Test that shape-less subscription without AS clause fails
 		let source = "CREATE SUBSCRIPTION";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse();
 
-		// Should fail with an error
 		assert!(result.is_err(), "Object-less subscription without AS should fail");
 	}
 
 	#[test]
 	fn test_create_subscription_backward_compat_with_columns() {
 		let bump = Bump::new();
-		// Test backward compatibility: subscriptions with columns and AS still work
 		let source = "CREATE SUBSCRIPTION { id: Int4 } AS { FROM demo::events }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
@@ -4708,10 +4696,9 @@ pub mod tests {
 		format!("{:?}", err)
 	}
 
-	/// Every WITH option must survive parsing; a silently dropped option would
-	/// create a queue with default partitioning/retry and no way to notice.
 	#[test]
 	fn test_create_queue_with_all_options() {
+		// A silently dropped option leaves a queue on default partitioning and retry with no way to notice.
 		let rendered = parse_queue_ast(
 			r#"CREATE QUEUE ns::jobs { order_id: uuid7, kind: utf8 } WITH {
 				fifo: { partitions: 32, ordered_by: order_id },
@@ -4726,11 +4713,10 @@ pub mod tests {
 		);
 	}
 
-	/// A bare dispatch block declares the discipline without tuning it - every
-	/// option must still report as absent, because the defaults are applied
-	/// later at logical compile rather than invented by the parser.
 	#[test]
 	fn test_create_queue_with_only_the_dispatch_block() {
+		// Defaults are applied at logical compile, so the parser must report every untuned option as absent
+		// rather than invent one.
 		let rendered = parse_queue_ast("CREATE QUEUE ns::jobs { order_id: uuid7 } WITH { fifo: {} }");
 
 		assert_eq!(
@@ -4739,11 +4725,10 @@ pub mod tests {
 		);
 	}
 
-	/// The dispatch block is mandatory: a queue whose discipline was never
-	/// stated must not silently default to FIFO, or adding a second discipline
-	/// later would retroactively change what every existing queue meant.
 	#[test]
 	fn test_create_queue_without_a_dispatch_block_is_rejected() {
+		// If an unstated discipline defaulted to FIFO, adding a second discipline later would retroactively
+		// change what every existing queue meant.
 		let bare = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 }");
 		assert!(bare.contains("dispatch block"), "got: {}", bare);
 
@@ -4753,20 +4738,18 @@ pub mod tests {
 		assert!(other_options.contains("dispatch block"), "got: {}", other_options);
 	}
 
-	/// Dispatch disciplines are mutually exclusive, and the surrounding option
-	/// parser is last-wins, so a second block has to fault rather than quietly
-	/// override the first.
 	#[test]
 	fn test_create_queue_with_two_dispatch_blocks_is_rejected() {
+		// The surrounding option parser is last-wins, so without an explicit fault a second block would
+		// quietly override the first.
 		let err = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, fifo: {} }");
 		assert!(err.contains("exactly one dispatch block"), "got: {}", err);
 	}
 
-	/// partitions and ordered_by belong to the discipline that gives them
-	/// meaning; left at the top level they would have to be re-validated
-	/// against every future discipline.
 	#[test]
 	fn test_create_queue_rejects_dispatch_options_at_the_top_level() {
+		// partitions and ordered_by only mean anything inside a discipline; at the top level they would need
+		// re-validating against every discipline added later.
 		let err = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { partitions: 8 }");
 		assert!(err.contains("partitions"), "got: {}", err);
 	}
@@ -4797,20 +4780,18 @@ pub mod tests {
 		assert!(rendered.contains("retry=None"), "got: {}", rendered);
 	}
 
-	/// A retry block may set either key alone; the missing one falls back to the
-	/// default at logical compile rather than being rejected here.
 	#[test]
 	fn test_create_queue_with_partial_retry() {
+		// Either key may stand alone; the missing one falls back at logical compile rather than faulting here.
 		let rendered =
 			parse_queue_ast("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, retry: { attempts: 2 } }");
 
 		assert!(rendered.contains(r#"retry=Some((Some("2"), None))"#), "got: {}", rendered);
 	}
 
-	/// A misspelled option must not be swallowed: silently ignoring it would
-	/// produce a queue whose declared behaviour differs from the statement.
 	#[test]
 	fn test_create_queue_unknown_option_rejected() {
+		// Swallowing a misspelled option produces a queue whose behaviour differs from its statement.
 		let msg = parse_queue_must_fail("CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, partition: 4 }");
 
 		assert!(msg.contains("'fifo'"), "error should name the valid options, got: {}", msg);
@@ -4834,10 +4815,10 @@ pub mod tests {
 		assert!(msg.contains("attempts"), "error should name the valid retry keys, got: {}", msg);
 	}
 
-	/// Durations are quoted text ("10s"); a bare number would silently mean a
-	/// different unit, so it must not parse.
 	#[test]
 	fn test_create_queue_non_text_backoff_rejected() {
+		// Durations are quoted text ("10s"), so a bare number would silently carry whatever unit the reader
+		// assumes.
 		let msg = parse_queue_must_fail(
 			"CREATE QUEUE ns::jobs { id: int4 } WITH { fifo: {}, retry: { backoff: 10 } }",
 		);
@@ -4896,14 +4877,9 @@ mod time_declaration_tests {
 	}
 
 	#[test]
-	// Intent: `event` is a RESERVED KEYWORD in this dialect, so a `time:` value cannot be consumed
-	// as a plain identifier. Every resolver test in this workspace builds its declaration by hand
-	// and so proves nothing about the grammar - which is how `time: event` shipped unparseable.
-	// This is the regression test for that: it is the only assertion that fails if the `time` key
-	// stops accepting the keyword form.
-	// Mutation: swap consume_name() back to consume(TokenKind::Identifier) on the `time` key and
-	// this fails at the parse with "expected `identifier`, found `event`".
 	fn the_event_keyword_is_accepted_as_a_time_value() {
+		// `event` is a reserved keyword in RQL, so the `time:` value cannot be consumed as a plain
+		// identifier. Every resolver test builds its declaration by hand and proves nothing about the grammar.
 		assert_eq!(
 			declared(r#"create table ns::trades { a: int4 } with { time: event, ts: block_time }"#),
 			(Some("event".to_string()), Some("block_time".to_string()))
@@ -4911,10 +4887,9 @@ mod time_declaration_tests {
 	}
 
 	#[test]
-	// Intent: `processing` is not reserved today, but it travels through the same key as `event`.
-	// Pinning both spellings means a future reservation of `processing` cannot silently break one
-	// half of the declaration surface while the other keeps working.
 	fn the_processing_value_parses_through_the_same_key() {
+		// `processing` is not reserved today; pinning it means a future reservation cannot break one half of
+		// the declaration surface while the other keeps working.
 		assert_eq!(
 			declared(r#"create table ns::audit { a: int4 } with { time: processing }"#),
 			(Some("processing".to_string()), None)
@@ -4922,10 +4897,9 @@ mod time_declaration_tests {
 	}
 
 	#[test]
-	// Intent: a populator column may itself be named with a reserved word. `ts` takes a COLUMN
-	// name, so it has the same keyword hazard as `time` and must use the same identifier-or-keyword
-	// consumption. Mutation: consume `ts` as a bare identifier and this fails.
 	fn a_populator_column_may_be_named_with_a_keyword() {
+		// `ts` takes a column name, which may itself be a reserved word, so it has the same keyword hazard as
+		// `time`.
 		assert_eq!(
 			declared(r#"create table ns::t { a: int4 } with { time: event, ts: event }"#),
 			(Some("event".to_string()), Some("event".to_string()))
@@ -4933,9 +4907,9 @@ mod time_declaration_tests {
 	}
 
 	#[test]
-	// Intent: silence is a legitimate declaration and must parse to an empty one rather than a
-	// parse error, because an undeclared source object is processing-time by definition.
 	fn a_source_object_may_omit_the_declaration_entirely() {
+		// An undeclared source object is processing time by definition, so silence has to parse to an empty
+		// declaration rather than a parse error.
 		assert_eq!(declared(r#"create table ns::t { a: int4 }"#), (None, None));
 		assert_eq!(
 			declared(r#"create table ns::t { a: int4 } with { partition: { by: { a } } }"#),
@@ -4945,12 +4919,9 @@ mod time_declaration_tests {
 	}
 
 	#[test]
-	// Intent: EVERY source object gets the identical treatment - table, series, ringbuffer and
-	// queue. The four have four separate WITH loops in this file, so a key added to one is not
-	// added to the others; only naming all four keeps them from drifting apart.
-	// Mutation: delete the "time"/"ts" arms from any single one of the four loops and exactly that
-	// object's case here fails while the other three stay green.
 	fn every_source_object_accepts_the_declaration() {
+		// Table, series, ringbuffer and queue each have their own WITH loop, so a key added to one is not
+		// added to the others; naming all four is what keeps them from drifting apart.
 		assert_eq!(
 			declared(r#"create table ns::t { a: int4 } with { time: event, ts: at }"#),
 			(Some("event".to_string()), Some("at".to_string())),
@@ -4974,11 +4945,9 @@ mod time_declaration_tests {
 	}
 
 	#[test]
-	// Intent: a FLOW declares a domain and never a populator, but the grammar still has to ACCEPT
-	// `ts` so that resolve_flow_time can reject it with a span pointing at the key to delete. A
-	// parse-level rejection would produce "unexpected key 'ts'", which does not tell the author
-	// that the key belongs on the source object instead.
 	fn a_flow_parses_both_keys_so_the_resolver_can_reject_ts_with_a_span() {
+		// The grammar has to accept `ts` so the resolver can reject it with a span; a parse-level "unexpected
+		// key" never tells the author the key belongs on the source object.
 		assert_eq!(
 			declared(r#"create deferred view ns::v { a: int4 } with { time: event } as { from ns::t }"#),
 			(Some("event".to_string()), None),
@@ -4994,14 +4963,9 @@ mod time_declaration_tests {
 	}
 
 	#[test]
-	// Intent: a view backed by ringbuffer or series storage parses its WITH block in a SEPARATE
-	// function from every other view, and that function had its own copy of the `time`/`ts` arms.
-	// Those two copies consumed a bare Identifier, so `time: event` died at the parser for exactly
-	// these four spellings while the plain-view spelling worked - the same keyword hazard as
-	// the_event_keyword_is_accepted_as_a_time_value, hiding in the one place that test did not look.
-	// Mutation: restore consume(TokenKind::Identifier) on either arm of either storage branch and
-	// the matching case here fails with "expected `identifier`, found `event`".
 	fn a_storage_backed_view_accepts_the_event_keyword() {
+		// Ringbuffer- and series-backed views parse their WITH block in a separate function with its own copy
+		// of the `time`/`ts` arms, so the keyword hazard can be fixed for plain views and still live here.
 		assert_eq!(
 			declared(
 				r#"create deferred ringbuffer view ns::v { a: int4 } with { capacity: 10, time: event } as { from ns::t }"#
@@ -5033,10 +4997,8 @@ mod time_declaration_tests {
 	}
 
 	#[test]
-	// Intent: `ts` on a storage-backed view has the same keyword hazard as `time`, and must reach
-	// the resolver rather than dying at the parser, so the author gets "declare ts on the source"
-	// instead of "expected identifier".
 	fn a_storage_backed_view_carries_a_keyword_named_ts_to_the_resolver() {
+		// Reaching the resolver is what turns "expected identifier" into "declare ts on the source".
 		assert_eq!(
 			declared(
 				r#"create deferred ringbuffer view ns::v { a: int4 } with { capacity: 10, time: event, ts: event } as { from ns::t }"#
@@ -5046,9 +5008,8 @@ mod time_declaration_tests {
 	}
 
 	#[test]
-	// Intent: an unknown key in the WITH block is still rejected, and the diagnostic names the
-	// keys that ARE accepted so the author can see `time`/`ts` are options.
 	fn an_unknown_with_key_is_still_rejected_and_lists_the_time_keys() {
+		// The diagnostic has to name the accepted keys, or the author never learns `time`/`ts` are options.
 		let bump = Bump::new();
 		let err = declared_in(&bump, r#"create table ns::t { a: int4 } with { bogus: 1 }"#).unwrap_err();
 		let message = format!("{:?}", err.diagnostic());

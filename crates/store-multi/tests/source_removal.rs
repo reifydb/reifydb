@@ -1,15 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Removal semantics for SOURCE keys after the deletion unification.
-//!
-//! These tests replace the former `source_drop.rs`, which pinned the retired `Delta::Drop` model:
-//! all versions left the commit buffer inside the commit, a RAM-resident pending-drop mask hid the
-//! stale persisted row, and a background actor purged SQLite later. None of that exists now. A
-//! removal is a tombstone written through the ordinary commit path, so the contract inverts in one
-//! important place: a drop erased the key for EVERY reader, whereas a tombstone only hides it from
-//! readers at or above the tombstone's version. Snapshot isolation below that version is preserved,
-//! and these tests exist to keep it that way.
+//! Removal semantics for SOURCE keys. A removal is a tombstone written through the ordinary commit path,
+//! so it hides the key only from readers at or above the tombstone's version; snapshot isolation below
+//! that version is preserved, and these tests exist to keep it that way.
 
 use std::collections::HashMap;
 
@@ -44,9 +38,9 @@ fn partitioned_row_key(table: u64, partition: Partition, row: u64) -> EncodedKey
 	PartitionedRowKey::encoded(ObjectId::Table(TableId(table)), partition, RowLocator::Row(RowNumber(row)))
 }
 
-/// Seeds the persistent tier directly, bypassing the commit buffer, so a test can set up a row that
-/// exists only on disk and then observe how a later in-buffer tombstone interacts with it.
 fn persistent_only_set(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str) {
+	// Seeding persistence directly leaves a row that exists only on disk, so a later in-buffer tombstone
+	// has something to interact with.
 	let persistent = store.persistent().expect("persistent tier configured");
 	let table = classify_key(k);
 	let mut batches: HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>> = HashMap::new();
@@ -83,11 +77,8 @@ fn range_keys(store: &StandardMultiStore, range: EncodedKeyRange, read: u64) -> 
 
 #[test]
 fn source_removal_hides_the_key_at_or_above_its_version_only() {
-	// The core inversion. Under the retired drop model the row was erased for every reader and the
-	// assertion here was `get(v5) == None`. A tombstone is version-scoped: the reader pinned at v5
-	// committed before the removal existed and must still see what it saw. If this ever starts
-	// returning None, removals have stopped respecting snapshot isolation and every long-running
-	// query pinned below a removal silently loses rows.
+	// A tombstone is version-scoped: a reader pinned below it committed before the removal existed and
+	// must still see what it saw, or every long-running query below a removal silently loses rows.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let storage = StorageId::Table(TableId(1));
 	let k1 = table_row_key(1, 1);
@@ -113,10 +104,8 @@ fn source_removal_hides_the_key_at_or_above_its_version_only() {
 
 #[test]
 fn source_removal_leaves_the_persisted_row_for_the_reaper_not_the_commit() {
-	// The commit path writes a tombstone and stops. It does not reach into SQLite, and nothing
-	// purges synchronously. The prior row legitimately stays on disk as history below the tombstone;
-	// collecting it is the tombstone reaper's job, on its own schedule and behind its own floor.
-	// This pins that the commit is cheap, which is the reason the eviction path can keep up at all.
+	// The commit writes a tombstone and stops; collecting the prior on-disk row is the reaper's job. A
+	// cheap commit is the reason the eviction path can keep up at all.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let k = table_row_key(1, 1);
 	persistent_only_set(&store, &k, 5, "v5-a");
@@ -133,10 +122,8 @@ fn source_removal_leaves_the_persisted_row_for_the_reaper_not_the_commit() {
 
 #[test]
 fn source_removal_then_reinsert_resolves_per_read_version() {
-	// A key removed at v8 and written again at v10 has three distinct answers depending on where the
-	// reader is pinned. The retired model could not express the v5 case at all, because the drop had
-	// erased the row outright. Getting any one of these three wrong is a correctness break that a
-	// single-version assertion would not catch.
+	// A key removed at v8 and written again at v10 has three distinct answers by reader version; a
+	// single-version assertion would not catch getting any one of them wrong.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let k = table_row_key(1, 1);
 	persistent_only_set(&store, &k, 5, "old");
@@ -159,9 +146,8 @@ fn source_removal_then_reinsert_resolves_per_read_version() {
 
 #[test]
 fn partitioned_source_removal_hides_only_the_removed_partition_row() {
-	// Same contract on the PartitionedSource keyspace, which reaches readers through partition range
-	// scans rather than full scans. The sibling partition is the control: a removal must never widen
-	// past the key it names.
+	// The same contract on the PartitionedSource keyspace, which reaches readers through partition
+	// range scans; the sibling partition is the control that a removal never widens past its own key.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let object = ObjectId::Table(TableId(2));
 	let us = Partition::of(&[Value::Utf8("us".to_string())]);
@@ -190,10 +176,9 @@ fn partitioned_source_removal_hides_only_the_removed_partition_row() {
 
 #[test]
 fn memory_only_source_removal_keeps_every_version_below_the_tombstone() {
-	// Buffer-only store, no persistence in play, so this isolates the commit buffer's own version
-	// resolution. The retired test asserted that v1 and v2 were physically gone after the drop; under
-	// unification they are retained as history and only become invisible from v5 upward. Reclaiming
-	// them is the reaper's business, not the commit's.
+	// A buffer-only store isolates the commit buffer's own version resolution: versions below the
+	// tombstone stay as history and only become invisible from v5 upward. Reclaiming them is the
+	// reaper's business, not the commit's.
 	let store = StandardMultiStore::testing_memory();
 	let storage = StorageId::Table(TableId(3));
 	let k = table_row_key(3, 1);
@@ -227,9 +212,8 @@ fn memory_only_source_removal_keeps_every_version_below_the_tombstone() {
 
 #[test]
 fn repeated_removal_of_an_already_removed_key_is_accepted_and_stays_removed() {
-	// The evictor is not exactly-once: a key can be handed to it again before the reaper has
-	// collected the first tombstone. Removing an already-removed key must be a well-formed write
-	// rather than an error or a resurrection, because the retry path depends on it.
+	// The evictor is not exactly-once, so removing an already-removed key must be a well-formed write
+	// rather than an error or a resurrection - the retry path depends on it.
 	let store = StandardMultiStore::testing_memory();
 	let k = table_row_key(4, 1);
 

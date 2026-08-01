@@ -411,9 +411,8 @@ mod tests {
 
 	#[test]
 	fn picks_up_a_memory_limit_change() {
-		// A SET CONFIG on the pool ceiling must reach the live pool through
-		// the commit path; the interceptor pulls the new budget straight from
-		// the committed change so nothing depends on the sampling loop running.
+		// The budget is pulled straight from the committed change, so resizing the live pool
+		// does not depend on the sampling loop running.
 		let changes = vec![config_change(ConfigKey::OperatorStateMemoryLimit, Value::Uint8(512 * 1024 * 1024))];
 		assert_eq!(budget_from_config_changes(&changes), Some(ByteSize::from_bytes(512 * 1024 * 1024)));
 	}

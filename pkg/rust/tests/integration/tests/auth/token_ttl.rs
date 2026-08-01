@@ -39,7 +39,6 @@ fn test_token_valid_before_ttl() {
 
 	let token = setup_user_and_login(&db);
 
-	// Advance to just before TTL expires (59 seconds)
 	mock.advance_secs(59);
 
 	assert!(db.auth_service().validate_token(&token).is_some(), "Token should still be valid before TTL");
@@ -55,7 +54,6 @@ fn test_token_expires_after_ttl() {
 
 	let token = setup_user_and_login(&db);
 
-	// Advance past TTL (61 seconds)
 	mock.advance_secs(61);
 
 	assert!(db.auth_service().validate_token(&token).is_none(), "Token should be expired after TTL");
@@ -75,7 +73,6 @@ fn test_token_no_ttl_never_expires() {
 
 	let token = setup_user_and_login(&db);
 
-	// Advance by 10 years
 	mock.advance_secs(10 * 365 * 24 * 60 * 60);
 
 	assert!(db.auth_service().validate_token(&token).is_some(), "Token with no TTL should never expire");
@@ -91,16 +88,12 @@ fn test_cleanup_removes_expired_tokens() {
 
 	let token = setup_user_and_login(&db);
 
-	// Token valid before expiry
 	assert!(db.auth_service().validate_token(&token).is_some());
 
-	// Advance past TTL
 	mock.advance_secs(61);
 
-	// Cleanup expired tokens
 	db.auth_service().cleanup_expired();
 
-	// Token should be gone from the database entirely
 	assert!(db.auth_service().validate_token(&token).is_none(), "Expired token should be cleaned up");
 
 	db.stop();

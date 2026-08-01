@@ -196,13 +196,10 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: Frame is the shape every query result takes on its way back out, and hydration feeds those results
-	// straight back into a flow. A Frame that dropped #time produced Columns whose other three system vectors were
-	// full-length while time was empty, which is unrepresentable - the substrate owns #time and every row has one.
-	// The crash was a background thread aborting the process mid-hydration, which is why it must round trip rather
-	// than be defaulted at the far end.
-	// Mutation: set `time: Vec::new()` in either direction of the conversion and this fails.
 	fn a_frame_round_trips_the_time_vector() {
+		// Hydration feeds query results straight back into a flow, so a Frame that drops #time
+		// yields Columns whose other system vectors are full-length while time is empty - a shape
+		// the substrate cannot represent, since every row owns a #time.
 		let before = columns([1_700_000_000, 1_700_000_001]);
 
 		let after: Columns = Frame::from(before.clone()).into();
@@ -215,10 +212,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: the failure mode was not a wrong value but a LENGTH mismatch, and it only surfaced downstream where
-	// something happened to check. Pin the invariant directly: whatever else a round trip does, every system vector
-	// leaves as long as the data it describes.
 	fn a_round_tripped_frame_keeps_every_system_vector_the_same_length() {
+		// The failure mode is a length mismatch, not a wrong value, and it only surfaces far
+		// downstream; pin the invariant here instead.
 		let after: Columns = Frame::from(columns([5, 6])).into();
 
 		let rows = after.row_count();

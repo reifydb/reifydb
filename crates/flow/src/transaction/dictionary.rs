@@ -103,11 +103,9 @@ mod tests {
 
 	#[test]
 	fn resolves_a_mint_a_concurrent_flow_interned_after_this_flows_snapshot() {
-		// A concurrent flow interns a first-seen mint after the snapshot a downstream flow is reading at.
-		// The downstream flow, with a cold cache, must still resolve the mint: dictionary entries live in
-		// the single-version store, so registry reads always see the latest committed entry regardless of
-		// the flow's pinned MVCC snapshot. A mint nobody interned still resolves to None, proving the hit
-		// is real and not a false positive.
+		// Dictionary entries live in the single-version store, so registry reads see the latest
+		// committed entry regardless of the flow's pinned MVCC snapshot. The never-interned mint
+		// proves the hit is real rather than a default.
 		let engine = TestEngine::new();
 		let dictionary = mints();
 
@@ -131,10 +129,8 @@ mod tests {
 
 	#[test]
 	fn an_interned_mint_is_durable_so_a_restart_still_resolves_it() {
-		// Restart. The id an intern hands out already has a durable entry, so a brand-new registry with an
-		// empty cache - which is all a restarted process has - resolves it from the store. The old design
-		// had to co-write the entry into whichever transaction happened to reference the id; here there is
-		// nothing to co-write, because the entry was never not durable.
+		// The id an intern hands out already has a durable entry, so a cold registry - all a
+		// restarted process has - resolves it from the store with nothing to co-write.
 		let engine = TestEngine::new();
 		let dictionary = mints();
 
@@ -157,11 +153,9 @@ mod tests {
 
 	#[test]
 	fn a_rolled_back_slice_leaves_its_mint_durable_and_the_retry_reuses_that_id() {
-		// The rolled-back slice, inverted. A slice interns a first-seen mint twice - two trades on one mint
-		// in one block - and then fails. Under the old design the retry could be told the mint was already
-		// durable when nothing had been written, and it committed a view row referencing an unresolvable
-		// id. Now the entry is committed by the intern itself, so the rollback leaks a durable entry that
-		// nobody references (harmless, exactly a sequence's gap) and the retry resolves the very same id.
+		// A slice interns a first-seen mint twice and then fails. The entry is committed by the
+		// intern itself, so the rollback leaks a durable entry nobody references (harmless, exactly
+		// a sequence gap) and the retry resolves the very same id.
 		let engine = TestEngine::new();
 		let dictionary = mints();
 

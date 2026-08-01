@@ -9,17 +9,9 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 //
-// Ported from badger's txn_test.go: TestConflict (both the TxnGet and ItrSeek variants),
-// TestTxnReadAfterWrite and TestTxnCommitAsync. These exercise the oracle with genuinely
-// concurrent committers, which neither the testscript runner nor the deterministic simulator
-// can express: both drive one commit to completion before starting the next, so a defect that
-// lives inside the commit critical section is invisible to them.
-//
-// One semantic difference from badger is deliberate. badger detects only read-write conflicts,
-// so two blind writes to the same key both commit and the last writer wins. ReifyDB also treats
-// an overlapping write set as a conflict (ConflictManager::has_conflict, multi/conflict.rs), so
-// a losing writer here aborts with TXN_001 rather than silently overwriting. Ports that relied
-// on badger's "writes never conflict" assumption therefore retry instead of asserting success.
+// Unlike badger, ReifyDB treats an overlapping write set as a conflict, not only a read-write
+// overlap, so a losing blind writer aborts with TXN_001 instead of silently winning. Ports that
+// assumed "writes never conflict" therefore retry rather than assert success.
 
 use std::sync::{
 	Arc, Barrier,

@@ -101,10 +101,6 @@ use crate::{
 	MigrationStatement, Result, boot::Bootloader, database::Database, health::HealthMonitor, subsystem::Subsystems,
 };
 
-/// Backend selection for the CDC store.
-///
-/// Defaults to `Memory`. Use `Sqlite(config)` for on-disk, restart-safe CDC
-/// (non-wasm32 targets only).
 #[derive(Default)]
 pub enum CdcBackend {
 	#[default]
@@ -193,7 +189,6 @@ impl DatabaseBuilder {
 		}
 	}
 
-	/// Select the CDC storage backend. Defaults to `CdcBackend::Memory`.
 	pub fn with_cdc_backend(mut self, backend: CdcBackend) -> Self {
 		self.cdc_backend = backend;
 		self
@@ -204,7 +199,6 @@ impl DatabaseBuilder {
 		self
 	}
 
-	/// Store the underlying MultiStore and SingleStore for metrics worker
 	pub fn with_stores(mut self, multi: MultiStore, single: SingleStore) -> Self {
 		self.multi_store = Some(multi);
 		self.single_store = Some(single);
@@ -310,12 +304,8 @@ impl DatabaseBuilder {
 		self
 	}
 
-	/// Provide the owned process runtime.
-	///
-	/// The builder derives the narrow handles (clock, rng, actor spawner, tokio
-	/// handle) from it, registers those in the IoC container, then hands the
-	/// owned runtime to the `Database`, which shuts it down immediately after
-	/// every subsystem has stopped and before the stores are torn down.
+	/// Ownership passes to the `Database`, which shuts the runtime down only after every
+	/// subsystem has stopped and before the stores are torn down.
 	pub fn with_runtime(mut self, runtime: Runtime) -> Self {
 		self.runtime = Some(runtime);
 		self
@@ -334,16 +324,13 @@ impl DatabaseBuilder {
 		self
 	}
 
-	/// Set a system configuration value to apply during bootstrap.
-	///
-	/// Applied on every `build()` after catalog load and system-object bootstrap,
-	/// overwriting any previously persisted override for this key. Skipped on replicas.
+	/// Overwrites any previously persisted override for this key on every `build()`.
+	/// Skipped on replicas.
 	pub fn with_config(mut self, key: ConfigKey, value: Value) -> Self {
 		self.bootstrap_configs.push((key, value));
 		self
 	}
 
-	/// Set multiple system configuration values to apply during bootstrap.
 	pub fn with_configs(mut self, configs: impl IntoIterator<Item = (ConfigKey, Value)>) -> Self {
 		self.bootstrap_configs.extend(configs);
 		self
@@ -362,9 +349,6 @@ impl DatabaseBuilder {
 		#[cfg(reifydb_assertions)]
 		self.ioc.resolve::<CatalogCache>()?
 			.mark_pending_config_overrides(self.bootstrap_configs.iter().map(|(key, _)| *key));
-
-		// Collect interceptors from all factories
-		// Note: We process logging and flow factories separately before adding to self.factories
 
 		#[cfg(feature = "sub_tracing")]
 		if let Some(ref factory) = self.tracing_factory {
@@ -405,8 +389,6 @@ impl DatabaseBuilder {
 			catalog.clear_pending_config_overrides();
 		}
 
-		// Bootstrap complete - clear conflict window so bootstrap entries
-		// don't participate in conflict detection.
 		multi.bootstrapping_completed();
 
 		let runtime = self.runtime.take().expect("Runtime must be set via with_runtime()");
@@ -427,7 +409,6 @@ impl DatabaseBuilder {
 			self.ioc = self.ioc.register(tokio_handle.clone());
 		}
 
-		// Create and register CdcStore for CDC storage.
 		let cdc_store = match self.cdc_backend {
 			CdcBackend::Memory => CdcStore::memory(),
 			#[cfg(not(target_arch = "wasm32"))]
@@ -464,9 +445,6 @@ impl DatabaseBuilder {
 		));
 		self.ioc = self.ioc.register(flow_backlog.clone());
 
-		// Spawn the CDC compaction actor (sqlite only). Settings come from
-		// system config (CDC_COMPACT_INTERVAL etc.) so they can be tuned at
-		// runtime via SET CONFIG.
 		#[cfg(not(target_arch = "wasm32"))]
 		if let CdcStore::Sqlite(ref sqlite_store) = cdc_store {
 			let provider = multi.config();
@@ -475,7 +453,6 @@ impl DatabaseBuilder {
 			self.ioc = self.ioc.register(cdc_compact_handle.actor_ref().clone());
 		}
 
-		// Get the underlying stores for workers
 		let multi_store = self.multi_store.clone().expect("MultiStore must be set via with_stores()");
 		let single_store = self.single_store.clone().expect("SingleStore must be set via with_stores()");
 
@@ -519,7 +496,6 @@ impl DatabaseBuilder {
 			routines_builder.configure()
 		};
 
-		// Create RemoteRegistry for forwarding queries to remote namespaces
 		#[cfg(not(reifydb_single_threaded))]
 		let remote_registry = RemoteRegistry::new(tokio_handle.clone());
 
@@ -547,7 +523,6 @@ impl DatabaseBuilder {
 
 		self.ioc = self.ioc.register(engine.clone());
 
-		// Create AuthService for token validation
 		let auth_service = AuthService::new(
 			Arc::new(engine.clone()),
 			Arc::new(AuthenticationRegistry::new(clock.clone())),
@@ -609,7 +584,6 @@ impl DatabaseBuilder {
 		};
 		self.ioc = self.ioc.register(group_commit);
 
-		// Collect all versions
 		let mut all_versions = vec![
 			SystemVersion {
 				name: "reifydb".to_string(),
@@ -628,9 +602,9 @@ impl DatabaseBuilder {
 			CdcVersion.version(),
 		];
 
-		// Create subsystems from factories and collect their versions
-		// IMPORTANT: Order matters for shutdown! Subsystems are stopped in REVERSE order.
-		// Add logging FIRST so it's stopped LAST and can log shutdown messages from other subsystems.
+		// IMPORTANT: order matters for shutdown - subsystems are stopped in REVERSE order.
+		// Metrics and tracing are added first so they are stopped last and can still record the
+		// shutdown of every other subsystem.
 		let health_monitor = Arc::new(HealthMonitor::new(clock.clone()));
 		let mut subsystems = Subsystems::new(Arc::clone(&health_monitor));
 

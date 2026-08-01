@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! End-to-end demonstration that the harness catches a buggy operator and
-//! reports the seed in the panic message. `SwallowsRemoveOperator` drops
-//! every Remove diff, which under chaos with `SupportedOps::all()` produces
-//! a deterministic divergence: rows the oracle removed remain in the
-//! operator's materialized table.
-//!
-//! The `#[should_panic(expected = "...")]` annotation does the assertion -
-//! if the harness fails to panic at all, the test fails. If it panics
-//! without the seed in the message, the test fails. That is the contract
-//! the chaindex chaos tests will rely on when they reproduce the OHLCV bug.
+//! End-to-end proof that the harness catches a buggy operator and names the seed in its
+//! panic. The `#[should_panic(expected = "...")]` annotations are the assertion: no panic,
+//! or a panic without the seed, fails the test.
 
 use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_testing_macro::chaos_test;
@@ -41,16 +34,14 @@ fn swallows_remove_operator_panics_with_seed() {
 		.build()
 		.expect("build")
 		.run();
-	// This must panic - the operator drops Removes, the oracle does not.
 	outcome.assert_matches();
 }
 
 #[test]
 #[should_panic(expected = "chaos divergence")]
 fn swallows_remove_operator_panic_message_mentions_divergence() {
-	// Same scenario, different seed, different assertion: confirm the
-	// panic message also contains the literal "chaos divergence" header.
-	// Authors will grep for this when triaging.
+	// Authors grep for the literal "chaos divergence" header when triaging, so it has to stay
+	// in the panic message.
 	let outcome = ChaosHarness::<SwallowsRemoveOperator>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
@@ -75,10 +66,8 @@ fn swallows_remove_operator_panic_message_mentions_divergence() {
 }
 
 chaos_test!(swallows_remove_operator_does_not_diverge_under_no_remove, |seed| {
-	// Sanity: under SupportedOps::no_remove(), no Remove ops are generated,
-	// so the operator's bug is unreachable. assert_matches must succeed for
-	// every seed. This guards against false positives - the divergence
-	// reporting must only fire when actual Removes happen.
+	// With the buggy path unreachable the run must stay green, or divergence reporting is
+	// firing on runs that never exercised the defect.
 	let outcome = ChaosHarness::<SwallowsRemoveOperator>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
@@ -105,11 +94,8 @@ chaos_test!(swallows_remove_operator_does_not_diverge_under_no_remove, |seed| {
 #[test]
 #[should_panic(expected = "unfoldable diff stream")]
 fn a_row_published_twice_is_caught_even_though_every_value_matches() {
-	// The defect class the value comparison structurally cannot see. DoubleInsertOperator emits each
-	// Insert twice under the same row number; because both copies are identical and the table keys on
-	// output columns, the materialized comparison agrees with the identity oracle exactly. A consumer
-	// folding the real diff stream would see a row inserted over itself.
-	// Mutation: drop the View fold from RunnableChaos::run and this stops panicking.
+	// Two identical inserts under one row number leave the materialized table indistinguishable
+	// from the oracle's, so only the coherence fold can see the row inserted over itself.
 	let outcome = ChaosHarness::<DoubleInsertOperator>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())

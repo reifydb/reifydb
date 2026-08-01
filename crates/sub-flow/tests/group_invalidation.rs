@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Reclaiming a group erases its PERSISTED state, but a guest operator is free to hold a RAM-side
-//! mirror of that state - a cache, an accumulator, an interned reference table - which the engine
-//! cannot see and cannot erase. invalidate_groups is the only signal that tells the operator its
-//! mirror is now lying. Without it the persisted side restarts empty while the operator keeps
-//! answering from a cache of a group the substrate has already forgotten, so the operator emits an
-//! Update against state that no longer exists anywhere else.
-//!
-//! custom_operator_reclaim.rs proves the engine erases the persisted side. This file proves the
-//! other half: that the operator is TOLD, with the group ids that went. Every chaindex operator
-//! that keeps a RAM mirror depends on this callback firing, and nothing exercised it.
+//! Reclaiming a group erases its persisted state, but a guest may hold a RAM mirror the engine
+//! cannot see or erase. invalidate_groups is the only signal that the mirror is now lying; without
+//! it the operator answers from a cache of a group the substrate has already forgotten.
 
 use std::{
 	sync::{
@@ -46,10 +39,9 @@ const TIMEOUT: StdDuration = StdDuration::from_secs(20);
 const SEAL_AFTER_MS: u64 = 1_000;
 const WATCHER_STATE: Keyspace = Keyspace::FIRST_CUSTOM;
 
-// The operator instance lives inside the flow engine, so the test cannot hold a reference to it.
-// These record what the callback saw. A Mutex rather than a channel because the assertion is about
-// the accumulated set, not about ordering.
 fn invalidated() -> &'static Mutex<Vec<GroupId>> {
+	// The operator instance lives inside the flow engine, so the test cannot hold a reference to
+	// it. A Mutex rather than a channel because the assertion is about the set, not the ordering.
 	static INVALIDATED: OnceLock<Mutex<Vec<GroupId>>> = OnceLock::new();
 	INVALIDATED.get_or_init(|| Mutex::new(Vec::new()))
 }
@@ -177,15 +169,9 @@ const RECLAIMED_A_GROUP: &str =
 
 #[test]
 fn reclaiming_a_sealed_group_tells_the_operator_which_group_went() {
-	// This is the callback the normalized-block seal semantics rest on: the engine decides a slot is
-	// finalized, erases its persisted accumulator and row-number mapping, and the operator learns of
-	// it here. An operator holding a RAM mirror keyed by group - which is what a slot-keyed reference
-	// table is - has no other way to know, and would keep serving a group whose persisted state is
-	// gone. The engine restarting that group fresh while the operator answers from cache is a silent
-	// divergence between the view and the operator's own arithmetic.
-	// Mutation: drop the invalidate_groups call from reclaim_data's caller in execution/reclaim.rs and
-	// this fails while every assertion in custom_operator_reclaim.rs still passes, because the
-	// persisted side is erased either way.
+	// An operator holding a RAM mirror keyed by group has no other way to learn its persisted
+	// accumulator and row-number mapping were erased. The engine restarting the group fresh while
+	// the operator answers from cache diverges the view from the operator's own arithmetic.
 	invalidated().lock().expect("invalidation log").clear();
 	INVALIDATE_CALLS.store(0, Ordering::SeqCst);
 
@@ -211,8 +197,8 @@ fn reclaiming_a_sealed_group_tells_the_operator_which_group_went() {
 		INVALIDATE_CALLS.load(Ordering::SeqCst)
 	);
 
-	// The callback must name the group, not merely fire. A blanket "something was reclaimed" signal
-	// would force every operator to drop its whole cache on any reclamation.
+	// Node scope is the operator's own identity space, so reporting it would amount to a blanket
+	// "something was reclaimed" that forces every operator to drop its whole cache.
 	assert!(
 		seen.iter().all(|group| !group.is_node_scope()),
 		"node scope is the operator's own identity space and must never be reported reclaimed: {seen:?}"
@@ -221,10 +207,9 @@ fn reclaiming_a_sealed_group_tells_the_operator_which_group_went() {
 
 #[test]
 fn a_group_that_is_still_live_is_never_reported_invalidated() {
-	// Without this, invalidate_groups could name every group it has ever seen and the test above
-	// would pass. An operator told a live group was reclaimed drops a cache entry it still needs,
-	// turning a correct Update into a spurious Insert - the same corruption as the missing callback,
-	// in the opposite direction.
+	// Without this the callback could name every group it has ever seen and the test above would
+	// still pass. An operator told a live group went drops a cache entry it still needs, turning a
+	// correct Update into a spurious Insert.
 	invalidated().lock().expect("invalidation log").clear();
 	INVALIDATE_CALLS.store(0, Ordering::SeqCst);
 

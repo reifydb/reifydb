@@ -551,13 +551,9 @@ mod tests {
 
 	#[test]
 	fn update_preserves_created_at_from_the_operator_cache_and_falls_back_after_rebuild() {
-		// A view row's created_at is fixed at first insert; every update rewrites the full row, so
-		// the sink must recover the original created_at from somewhere. Before the operator-level
-		// cache that was a committed-store point get per updated output row (the source-tier read
-		// bucket, 38% of which fell through to sqlite in production). The steady state (same
-		// operator instance) must preserve created_at with ZERO store reads; a rebuilt operator
-		// (restart / retry rebuild) has a cold cache and must fall back to the store read and still
-		// preserve it. A wrong created_at here means the cache served a stale or foreign row.
+		// created_at is fixed at first insert but every update rewrites the whole row, so a warm
+		// operator must recover it with zero store reads and a rebuilt one must still fall back
+		// to the store. A wrong value means the cache served a stale or foreign row.
 		let engine = TestEngine::new();
 		let sink = test_sink();
 
@@ -630,15 +626,9 @@ mod tests {
 
 	#[test]
 	fn a_cold_registry_seeds_past_every_durable_id_and_never_clobbers() {
-		// Interning allocates from an in-memory counter seeded, once, from the maximum DURABLE index id.
-		// A registry that seeds from anything short of the latest committed state computes a colliding id
-		// and overwrites an existing index entry, so several distinct strings decode to one (the production
-		// symptom: 3 view rows all reading "wsol").
-		//
-		// A cold registry is not hypothetical: FlowActor::retry_or_poison rebuilds the flow engine, and a
-		// restarted process starts with an empty cache. Each intern here runs through a registry that has
-		// never seen the others. Because no id is handed out without a committed entry, the reseed observes
-		// every earlier id and must allocate past them.
+		// Each intern runs through a registry that has never seen the others, which is what a
+		// restart or an engine rebuild produces. Seeding from anything short of the maximum
+		// durable id yields a collision and several distinct strings then decode to one.
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE test");
 		t.admin("CREATE DICTIONARY test::syms FOR utf8 AS uint2");

@@ -31,41 +31,31 @@ fn run_and_assert(seed: u64, schedule: Schedule, invariants: Vec<Box<dyn Invaria
 	}
 }
 
-// Bank-transfer workload on the shared chaos runner: replays committed transfers in commit order
-// and asserts the final balances match, catching lost updates or out-of-order applies.
 chaos_test!(bank_transfers_chaos, |seed| {
+	// Replaying committed transfers in commit order catches a lost update or an out-of-order apply.
 	let (schedule, invariants) = bank_transfer(seed, 4, 4);
 	run_and_assert(seed, schedule, invariants);
 });
 
-// Counter workload on the shared chaos runner: asserts last-writer-wins plus NoLostUpdates, catching
-// a missed write-write conflict between concurrent increments.
 chaos_test!(counter_increments_chaos, |seed| {
+	// A missed write-write conflict between concurrent increments shows up as a lost update.
 	let (schedule, invariants) = counter_increment(seed, 5);
 	run_and_assert(seed, schedule, invariants);
 });
 
-// Free-form fuzzer: random interleavings of a random number of command/query transactions over a
-// small key space (so they collide), with mixed get/set/remove/scan ops and random commit/rollback
-// terminals. Asserts the four invariants that hold for ANY schedule under snapshot isolation:
-//   - NoDirtyReads:        no read observes another transaction's uncommitted write.
-//   - ReadYourOwnWrites:   a transaction reads back its own pending writes.
-//   - SnapshotConsistency: scans match the begin-time snapshot merged with own writes.
-//   - NoLostUpdates:       two concurrent committed transactions never both write the same key.
 chaos_test!(random_mixed_workload_chaos, |seed| {
+	// The key space is deliberately small so transactions collide; the four invariants hold under
+	// snapshot isolation for any schedule at all, so any seed that breaks one is a real defect.
 	let (schedule, invariants) = random_mixed(seed, 6, 8);
 	run_and_assert(seed, schedule, invariants);
 });
 
 const KEY_SPACE: u32 = 8;
 
-/// The transaction shape a sweep runs at.
+/// How many transactions interleave and how many operations each holds.
 ///
-/// The three sweeps above pin their shapes so they stay comparable across commits. The three below
-/// draw the shape from the seed as well: until now every count was a hardcoded call-site argument, so
-/// the shape dimension - how many transactions interleave, and how many operations each holds - was
-/// never explored at all. More transactions over the same eight-key space means more conflicts, which
-/// is where the write-write detection either holds or does not.
+/// Sweeps that pin a shape stay comparable across commits; sweeps that draw it from the seed explore
+/// the dimension instead, and more transactions over the same eight keys means more conflicts.
 #[derive(Clone, Debug)]
 struct Shape {
 	txs: u32,
@@ -170,15 +160,12 @@ fn random_mixed(seed: u64, max_txs: u32, max_ops: u32) -> (Schedule, Vec<Box<dyn
 	(schedule, invariants)
 }
 
-/// Builds a randomized bank-transfer schedule from `seed`: `num_accounts` accounts each seeded with
-/// a fixed balance, then `num_transfers` read-both/write-both transfer transactions interleaved
-/// randomly. The returned invariant replays the committed transfers in commit order and asserts the
-/// final state matches - so a lost update or an out-of-order apply is caught.
+/// Read-both/write-both transfers interleaved at random; the returned invariant replays the commits
+/// in order, so a lost update or an out-of-order apply fails it.
 fn bank_transfer(seed: u64, num_accounts: usize, num_transfers: usize) -> (Schedule, Vec<Box<dyn Invariant>>) {
 	let mut rng = StdRng::seed_from_u64(seed);
 	let initial_balance: i64 = 100;
 
-	// Setup: one transaction to initialize all accounts
 	let mut steps = Vec::new();
 	steps.push(Step {
 		tx_id: TxId(0),
@@ -198,8 +185,7 @@ fn bank_transfer(seed: u64, num_accounts: usize, num_transfers: usize) -> (Sched
 		op: Op::Commit,
 	});
 
-	// Generate transfer transactions (tx_ids 1..=num_transfers)
-	// transfer_writes[i] = (from_key, to_key, from_value, to_value) for TxId(i+1)
+	// transfer_writes[i] belongs to TxId(i+1); TxId(0) is the setup transaction.
 	let mut transfer_writes: Vec<(String, String, String, String)> = Vec::new();
 	let mut tx_ops: Vec<Vec<Op>> = Vec::new();
 	for _ in 0..num_transfers {
@@ -217,7 +203,6 @@ fn bank_transfer(seed: u64, num_accounts: usize, num_transfers: usize) -> (Sched
 
 		transfer_writes.push((from_key.clone(), to_key.clone(), from_value.clone(), to_value.clone()));
 
-		// Read-modify-write pattern: read both, write both
 		let mut ops = Vec::new();
 		ops.push(Op::BeginCommand);
 		ops.push(Op::Get {
@@ -239,7 +224,6 @@ fn bank_transfer(seed: u64, num_accounts: usize, num_transfers: usize) -> (Sched
 		tx_ops.push(ops);
 	}
 
-	// Interleave the transfer transactions
 	let mut cursors: Vec<usize> = vec![0; num_transfers];
 	let mut active: Vec<usize> = (0..num_transfers).collect();
 
@@ -268,13 +252,12 @@ fn bank_transfer(seed: u64, num_accounts: usize, num_transfers: usize) -> (Sched
 	let invariants: Vec<Box<dyn Invariant>> = vec![Box::new(FinalStateConsistency {
 		name: "bank_replay_final_state".into(),
 		predicate: Box::new(move |state, trace| {
-			// Build expected state by replaying committed transfers in commit order
 			let mut expected: BTreeMap<String, String> = BTreeMap::new();
 			for i in 0..num_accounts {
 				expected.insert(format!("account_{}", i), format!("{}", initial_balance));
 			}
 
-			// Sort committed transfers by commit version
+			// Commit order, not schedule order, is what the final state must reflect.
 			let mut committed: Vec<_> = transfer_writes
 				.iter()
 				.enumerate()
@@ -303,14 +286,11 @@ fn bank_transfer(seed: u64, num_accounts: usize, num_transfers: usize) -> (Sched
 	(schedule, invariants)
 }
 
-/// Builds a randomized counter schedule from `seed`: a counter initialized to "0", then
-/// `num_transactions` read-then-overwrite transactions (each writing its own id) interleaved
-/// randomly. The invariants assert last-writer-wins (final value = highest-version committer) and
-/// `NoLostUpdates`, so a missed conflict on concurrent writers is caught.
+/// Read-then-overwrite transactions, each writing its own id, interleaved at random; the invariants
+/// pin last-writer-wins to the highest-version committer, so a missed conflict fails them.
 fn counter_increment(seed: u64, num_transactions: usize) -> (Schedule, Vec<Box<dyn Invariant>>) {
 	let mut rng = StdRng::seed_from_u64(seed);
 
-	// Setup: initialize counter to "0"
 	let mut steps = Vec::new();
 	steps.push(Step {
 		tx_id: TxId(0),
@@ -328,7 +308,6 @@ fn counter_increment(seed: u64, num_transactions: usize) -> (Schedule, Vec<Box<d
 		op: Op::Commit,
 	});
 
-	// Each transaction: read counter, write its own id
 	let mut tx_ops: Vec<Vec<Op>> = Vec::new();
 	for i in 0..num_transactions {
 		let mut ops = Vec::new();
@@ -344,7 +323,6 @@ fn counter_increment(seed: u64, num_transactions: usize) -> (Schedule, Vec<Box<d
 		tx_ops.push(ops);
 	}
 
-	// Interleave
 	let mut cursors: Vec<usize> = vec![0; num_transactions];
 	let mut active: Vec<usize> = (0..num_transactions).collect();
 
@@ -376,7 +354,6 @@ fn counter_increment(seed: u64, num_transactions: usize) -> (Schedule, Vec<Box<d
 			predicate: Box::new(move |state, trace| {
 				let counter_val = state.get("counter").ok_or("counter key not found in final state")?;
 
-				// Find the last committed increment tx (highest commit version)
 				let last_writer: Option<TxId> = trace.committed.iter()
 					.filter(|(tx_id, _)| tx_id.0 > 0) // skip setup tx
 					.max_by_key(|(_, version)| *version)

@@ -59,10 +59,8 @@ pub mod tests {
 		let key = test_key("simple_test");
 		let value = test_row();
 
-		// Initially should be None
 		assert!(operator.state_get(&mut txn, &key).unwrap().is_none());
 
-		// Set and verify
 		operator.state_set(&mut txn, &key, value.clone()).unwrap();
 		let result = operator.state_get(&mut txn, &key).unwrap();
 		assert!(result.is_some());
@@ -77,7 +75,6 @@ pub mod tests {
 		let key = test_key("remove_test");
 		let value = test_row();
 
-		// Set, verify, remove, verify
 		operator.state_set(&mut txn, &key, value).unwrap();
 		assert!(operator.state_get(&mut txn, &key).unwrap().is_some());
 
@@ -91,7 +88,6 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(FlowNodeId(1));
 
-		// Add multiple entries
 		let entries = vec![("key_a", vec![1, 2]), ("key_b", vec![3, 4]), ("key_c", vec![5, 6])];
 		for (key_suffix, data) in &entries {
 			let key = test_key(key_suffix);
@@ -99,7 +95,6 @@ pub mod tests {
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 
-		// Scan and verify count
 		let scanned: Vec<_> = operator.state_scan_all(&mut txn).unwrap();
 		assert_eq!(scanned.len(), 3);
 	}
@@ -110,9 +105,8 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(FlowNodeId(2));
 
-		// Add ordered entries
 		for i in 0..10 {
-			let key = test_key(&format!("{:02}", i)); // Ensures lexical ordering
+			let key = test_key(&format!("{:02}", i)); // padded so the keys sort numerically
 			let value = EncodedRow(CowVec::new(vec![i as u8]));
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
@@ -123,7 +117,7 @@ pub mod tests {
 		);
 		let range_result: Vec<_> = operator.state_range(&mut txn, range).collect::<Result<Vec<_>>>().unwrap();
 
-		// Should get keys 02, 03, 04 (not 05 as end is exclusive)
+		// 02, 03, 04 - the end bound is exclusive.
 		assert_eq!(range_result.len(), 3);
 		assert_eq!(range_result[0].1.as_slice()[0], 2);
 		assert_eq!(range_result[1].1.as_slice()[0], 3);
@@ -136,21 +130,17 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(FlowNodeId(3));
 
-		// Add multiple entries
 		for i in 0..5 {
 			let key = test_key(&format!("clear_{}", i));
 			let value = EncodedRow(CowVec::new(vec![i as u8]));
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 
-		// Verify entries exist
 		let count = operator.state_scan_all(&mut txn).unwrap().len();
 		assert_eq!(count, 5);
 
-		// Clear all
 		operator.state_clear(&mut txn).unwrap();
 
-		// Verify all cleared
 		let count = operator.state_scan_all(&mut txn).unwrap().len();
 		assert_eq!(count, 0);
 	}
@@ -166,11 +156,9 @@ pub mod tests {
 		let value1 = EncodedRow(CowVec::new(vec![1]));
 		let value2 = EncodedRow(CowVec::new(vec![2]));
 
-		// Set different values for same key in different operators
 		operator1.state_set(&mut txn, &shared_key, value1.clone()).unwrap();
 		operator2.state_set(&mut txn, &shared_key, value2.clone()).unwrap();
 
-		// Each operator should have its own value
 		let result1 = operator1.state_get(&mut txn, &shared_key).unwrap().unwrap();
 		let result2 = operator2.state_get(&mut txn, &shared_key).unwrap().unwrap();
 
@@ -184,14 +172,13 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(FlowNodeId(4));
 
-		// Add some entries
 		for i in 0..5 {
 			let key = test_key(&format!("item_{}", i));
 			let value = test_row();
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 
-		// Query range that doesn't exist (after all "item_*" entries)
+		// A range that sorts entirely after the stored keys.
 		let range = EncodedKeyRange::new(
 			Included(test_key("z_aaa").into_encoded()),
 			Excluded(test_key("z_zzz").into_encoded()),
@@ -211,13 +198,9 @@ pub mod tests {
 		let value1 = EncodedRow(CowVec::new(vec![1, 1, 1]));
 		let value2 = EncodedRow(CowVec::new(vec![2, 2, 2]));
 
-		// Set initial value
 		operator.state_set(&mut txn, &key, value1).unwrap();
-
-		// Overwrite with new value
 		operator.state_set(&mut txn, &key, value2.clone()).unwrap();
 
-		// Should have the new value
 		let result = operator.state_get(&mut txn, &key).unwrap().unwrap();
 		assert_row_eq(&result, &value2);
 	}
@@ -229,10 +212,8 @@ pub mod tests {
 		let operator = TestOperator::simple(FlowNodeId(6));
 		let key = test_key("non_existent");
 
-		// Remove non-existent key should not error
 		operator.state_remove(&mut txn, &key).unwrap();
 
-		// Should still be None
 		assert!(operator.state_get(&mut txn, &key).unwrap().is_none());
 	}
 
@@ -242,18 +223,16 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(FlowNodeId(7));
 
-		// Add 5 entries
 		for i in 0..5 {
 			let key = test_key(&format!("partial_{}", i));
 			let value = EncodedRow(CowVec::new(vec![i as u8]));
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 
-		// Remove some entries
 		operator.state_remove(&mut txn, &test_key("partial_1")).unwrap();
 		operator.state_remove(&mut txn, &test_key("partial_3")).unwrap();
 
-		// Should have 3 entries left (0, 2, 4)
+		// 0, 2 and 4 survive.
 		let remaining: Vec<_> = operator.state_scan_all(&mut txn).unwrap();
 		assert_eq!(remaining.len(), 3);
 	}

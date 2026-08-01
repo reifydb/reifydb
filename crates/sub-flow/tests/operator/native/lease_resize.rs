@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// The lease control loop must ride the mandatory flush choreography, never the
-// sampling loop: sampling is a development/debugging observability tool and may
-// never run in production. After a commit-time flush the operator's grant must
-// already be resized to its reported demand plus 25% headroom.
+// The lease control loop rides the mandatory flush choreography, never the sampling loop, which is
+// a debugging tool that may never run in production. A commit-time flush must therefore already
+// have resized the operator's grant to its reported demand plus 25% headroom.
 
 use reifydb_core::{
 	common::CommitVersion,

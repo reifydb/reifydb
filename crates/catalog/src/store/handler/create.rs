@@ -170,7 +170,7 @@ pub mod tests {
 			.unwrap();
 		assert_eq!(links.len(), 2);
 
-		// Descending order: HandlerId(16386) encodes to smaller bytes → appears first
+		// Keys are descending, so the higher id sorts first.
 		let link = &links[0];
 		let row = &link.row;
 		assert_eq!(handler_namespace::SHAPE.get::<u64>(row, handler_namespace::ID), 16386);

@@ -236,10 +236,9 @@ mod tests {
 
 	#[test]
 	fn a_partition_group_can_never_collide_with_a_window_group() {
-		// The two kinds share one dictionary. Without the leading discriminator they would be
-		// separated only by length, which holds solely because the window coordinate happens to
-		// be fixed width - a collision would alias a partition's session tracker onto some
-		// window's accumulators and reclaiming either would erase the other.
+		// Both kinds share one dictionary, and without the leading discriminator only the
+		// (incidentally fixed) coordinate width separates them: a collision would alias a
+		// partition's session tracker onto a window's accumulators.
 		let partition = partition_group_key(PARTITION);
 		for window_id in [0u64, 1, u64::MAX] {
 			let window = window_group_key(PARTITION, window_id);
@@ -258,12 +257,9 @@ mod bucket_start_tests {
 	use super::*;
 
 	#[test]
-	// THE replay-stability property. A bucketed window stamps #time with the bucket start,
-	// which is a pure function of the bucket and therefore independent of which rows arrived, in
-	// what order, or how many. Max-contributor would vary with arrival, so two replays of the same
-	// corpus would produce different stamps and therefore different retention decisions - which is
-	// exactly what decision 4 forbids.
 	fn a_bucket_stamps_the_same_time_regardless_of_what_arrived_in_it() {
+		// The stamp is a pure function of the bucket, so two replays of one corpus agree. A
+		// max-contributor stamp would vary with arrival and change retention decisions.
 		let bucket = 1_700_000_000_000u64;
 
 		assert_eq!(
@@ -278,10 +274,9 @@ mod bucket_start_tests {
 	}
 
 	#[test]
-	// Distinct buckets must get distinct stamps, or a chained rollup (1s -> 1m) would
-	// collapse every source bucket onto one instant and the downstream window could not separate
-	// them.
 	fn adjacent_buckets_get_distinct_stamps_in_bucket_order() {
+		// A chained rollup (1s -> 1m) collapses onto one instant unless distinct buckets get
+		// distinct stamps.
 		let first = <DateTime as WindowCoord>::from_order(1_700_000_000_000);
 		let second = <DateTime as WindowCoord>::from_order(1_700_000_001_000);
 
@@ -290,20 +285,17 @@ mod bucket_start_tests {
 	}
 
 	#[test]
-	// A far-future bucket must not wrap into a tiny stamp that would look ancient and be
-	// evicted immediately. The millisecond -> instant conversion is now fallible rather than a
-	// saturating multiply, so the guard is that an unrepresentable bucket still orders above a real
-	// one instead of collapsing below it.
 	fn a_far_future_bucket_saturates_rather_than_wrapping() {
+		// An unrepresentable bucket must still order above a real one; wrapping would make it
+		// look ancient and be evicted at once.
 		assert_eq!(<DateTime as WindowCoord>::from_order(u64::MAX), DateTime::MAX);
 		assert!(<DateTime as WindowCoord>::from_order(u64::MAX)
 			> <DateTime as WindowCoord>::from_order(1_700_000_000_000));
 	}
 
 	#[test]
-	// The epoch bucket maps to the epoch instant, so an unset window_start cannot be
-	// mistaken for a real time far from zero.
 	fn the_zero_bucket_maps_to_the_epoch() {
+		// An unset window_start must not be mistakeable for a real time far from zero.
 		assert_eq!(<DateTime as WindowCoord>::from_order(0), DateTime::EPOCH);
 	}
 }

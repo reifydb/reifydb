@@ -147,11 +147,9 @@ mod tests {
 
 	#[test]
 	fn a_seal_instant_is_one_past_the_admissible_span() {
-		// The wheel fires INCLUSIVELY (`at <= watermark`), but the gate the seal
-		// implements is STRICT - a window closes once the watermark has passed its whole
-		// admissible span, not on reaching it. The +1 is what converts one into the
-		// other, and it is the single arithmetic fact the host's five scattered cutoff
-		// sites all encoded by hand.
+		// The wheel fires inclusively (`at <= watermark`) but the seal gate is strict - a window
+		// closes once the watermark has passed its whole admissible span, not on reaching it. The +1
+		// is what converts one into the other.
 		let policy = SealPolicy::tumbling(ms(1_000), ms(200));
 
 		assert_eq!(policy.admissible().millis(), 1_200);
@@ -160,13 +158,9 @@ mod tests {
 
 	#[test]
 	fn the_sealed_anchor_trails_the_ledger_by_the_whole_admissible_span() {
-		// The seal ledger holds the instant a seal TIMER fired, which is a whole admissible span
-		// ahead of the newest window that timer actually sealed. Treating the ledger itself as the
-		// immutable frontier - which reclamation briefly did - erases the accumulator of a window
-		// that is still open and still taking rows, and the operator then publishes against state
-		// that is gone. That is the exact failure the seal clamp was introduced to prevent, so the
-		// gap between the two instants has to be a fact this file owns rather than a subtraction
-		// each caller repeats.
+		// The ledger holds the instant a seal timer fired, a whole admissible span ahead of the
+		// newest window that timer actually sealed. Treating the ledger itself as the immutable
+		// frontier erases the accumulator of a window that is still open and still taking rows.
 		let policy = SealPolicy::tumbling(ms(30_000), ms(45_000));
 		let ledger = at(358_262);
 
@@ -184,9 +178,8 @@ mod tests {
 
 	#[test]
 	fn a_ledger_short_of_one_admissible_span_has_sealed_nothing() {
-		// Early in a node's life the ledger sits below its own span. Wrapping through u64 there
-		// would put the anchor near u64::MAX and report every window sealed, which reclaims the
-		// whole node in one sweep. None means "nothing has sealed yet", and nothing is reclaimable.
+		// Early in a node's life the ledger sits below its own span. Wrapping through u64 would put
+		// the anchor near u64::MAX and report every window sealed, reclaiming the node in one sweep.
 		let policy = SealPolicy::tumbling(ms(30_000), ms(45_000));
 
 		assert_eq!(policy.sealed_anchor(at(0)), None);
@@ -196,11 +189,9 @@ mod tests {
 
 	#[test]
 	fn rolling_admission_carries_grace_and_rolling_eviction_does_not() {
-		// The one asymmetry in the host's arithmetic, and the reason SealInstant
-		// and EvictionInstant are separate types. Rolling ADMITS a late event inside the
-		// grace, but EVICTS on the bare span - an eviction that also waited out the grace
-		// would keep every rolling window one grace-period too wide, silently inflating
-		// every aggregate it publishes.
+		// Rolling admits a late event inside the grace but evicts on the bare span, which is why
+		// SealInstant and EvictionInstant are separate types. An eviction that also waited out the
+		// grace keeps every rolling window one grace-period too wide, inflating every aggregate.
 		let admission = SealPolicy::rolling(ms(1_000), ms(200));
 		let eviction = EvictionPolicy::rolling(ms(1_000));
 
@@ -210,9 +201,8 @@ mod tests {
 
 	#[test]
 	fn an_eviction_instant_never_carries_the_strict_gate_plus_one() {
-		// The +1 belongs to the seal gate alone. Eviction is a retention boundary, not a
-		// gate, so carrying the +1 there would retain one millisecond too much on every
-		// rolling window - invisible per window, unbounded across a long-running flow.
+		// The +1 belongs to the seal gate alone. Eviction is a retention boundary, not a gate, so
+		// carrying the +1 there retains one millisecond too much on every rolling window, forever.
 		let eviction = EvictionPolicy::rolling(ms(0));
 
 		assert_eq!(eviction.eviction_instant(at(7_000)).at(), at(7_000));
@@ -230,13 +220,9 @@ mod tests {
 
 	#[test]
 	fn no_grace_can_make_the_admissible_span_shorter_than_the_window() {
-		// The invariant the host's `try_add(grace).unwrap_or(base)` exists to hold.
-		// An admissible span BELOW the window size seals live windows on arrival, which is
-		// silent data loss and looks like nothing at runtime. Two ways to break it, both
-		// tested here: the sum failing and falling back to something smaller than the
-		// base, and `span_millis` answering none for a Duration carrying months or days
-		// and collapsing to 0 through `unwrap_or(0)`. A grace of i64::MAX nanoseconds
-		// normalises into ~106751 DAYS, so it exercises the second path specifically.
+		// An admissible span below the window size seals live windows on arrival - silent data loss.
+		// Two ways to break it: the sum failing back to something smaller than the base, and
+		// span_millis answering none for a months/days Duration, which i64::MAX nanoseconds becomes.
 		let enormous = Duration::from_nanoseconds_const(i64::MAX);
 
 		for grace in [ms(0), ms(1), enormous] {

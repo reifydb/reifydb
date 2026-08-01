@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Backend-agnostic support shared by the ffi/ and native/ operator-test twins:
-// operator fixtures, input/output row builders, and emitted-output extractors.
-// No assertions live here - each twin file holds the absolute expectations and
-// differs from its counterpart only by the `Harness` backend type.
+// Backend-agnostic support shared by the ffi/ and native/ operator-test twins. No assertions live
+// here - each twin holds the expectations and differs only by its `Harness` backend type.
 
 #![allow(dead_code)]
 
@@ -64,9 +62,8 @@ const WINDOW_OUTPUT_COLUMNS: &[OperatorColumn] = &[
 	},
 ];
 
-/// Buckets `timestamp` into fixed windows and keeps a per-window count, always
-/// emitting an Insert with `(window_start, count)`. Exercises keyed window state
-/// accumulation across applies.
+/// Buckets `timestamp` into fixed windows and keeps a per-window count, always emitting an Insert.
+/// Exercises keyed window state accumulating across applies.
 pub struct ParityWindow;
 
 impl RawStatefulOperator for ParityWindow {}
@@ -159,9 +156,8 @@ const PROBE_OUTPUT_COLUMNS: &[OperatorColumn] = &[
 	},
 ];
 
-/// Allocates a row number for one fixed key per apply and emits
-/// `(row_number, is_new)`. Exercises the operator row-number registry's
-/// persistence across applies.
+/// Allocates a row number for one fixed key per apply and emits `(row_number, is_new)`. Exercises
+/// the operator row-number registry persisting across applies.
 pub struct RowNumberProbe;
 
 impl OperatorMetadata for RowNumberProbe {
@@ -193,9 +189,8 @@ impl OperatorLogic for RowNumberProbe {
 	}
 }
 
-/// Writes its state ONLY in `flush_state`, never in `apply`. Lets a test observe
-/// the flush cadence: the value must be invisible after apply and visible only
-/// after the explicit flush.
+/// Writes its state only in `flush_state`, never in `apply`, so the flush cadence is observable:
+/// the value must be invisible after apply and appear only after the explicit flush.
 pub struct FlushProbe;
 
 impl OperatorMetadata for FlushProbe {
@@ -228,10 +223,8 @@ pub fn flush_probe_key() -> StateKey {
 	OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, b"flush-probe")
 }
 
-/// Reports a fixed 16 MiB of state usage from `sample()`. Lets a test observe
-/// the flush-driven lease control loop: after a commit-time flush the host must
-/// have resized the operator's grant from this report, with no sampling loop
-/// involved.
+/// Reports a fixed 16 MiB of state usage from `sample()`, so the flush-driven lease control loop is
+/// observable: a commit-time flush must resize the grant from this report, with no sampling loop.
 pub struct LeaseProbe;
 
 pub const LEASE_PROBE_REPORTED_BYTES: u64 = 16 * 1024 * 1024;
@@ -263,8 +256,7 @@ impl OperatorLogic for LeaseProbe {
 	}
 }
 
-/// Never touches state; only exists so a harness can be built to exercise the
-/// store-facing range API.
+/// Never touches state; exists only so a harness can be built to exercise the store-facing range API.
 pub struct NoopOperator;
 
 impl OperatorMetadata for NoopOperator {
@@ -287,8 +279,7 @@ impl OperatorLogic for NoopOperator {
 	}
 }
 
-/// Always fails in apply, so the backend's failure handling is the only thing
-/// under test.
+/// Always fails in apply, so the backend's failure handling is the only thing under test.
 pub struct ErroringOperator;
 
 impl OperatorMetadata for ErroringOperator {

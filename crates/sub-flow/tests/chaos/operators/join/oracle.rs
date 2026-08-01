@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! What each join strategy owes its consumer, described as the table the consumer sees.
-//!
-//! Both oracles below claim the whole view exactly, with no gap between the bounds the driver
-//! checks. A join publishes everything it owes inside the `apply` that caused it - there is no tick,
-//! no horizon and nothing in flight - so a view that merely lags is already a divergence.
+//! What each join strategy owes its consumer, described as the table the consumer sees. A join
+//! publishes everything it owes inside the `apply` that caused it, so the claims below are exact with
+//! no gap between the bounds the driver checks - a view that merely lags is already a divergence.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -21,13 +19,9 @@ use reifydb_value::value::{Value, value_type::ValueType};
 
 use crate::operators::join::workload::{JoinRow, LEFT_COLUMNS, RIGHT_COLUMNS, Side};
 
-/// The `Value::None` the join fills an unmatched right column with.
-///
-/// Which `None` variant that is depends on how a buffer of the column's type represents absence, so
-/// this builds it the way the operator does - `ColumnBuffer::with_capacity` of the right schema's
-/// type, then `push_value(Value::none())` - rather than naming a variant and hoping it matches.
-/// Naming the wrong one would make every unmatched row read as divergent for a reason that has
-/// nothing to do with the join.
+/// The `Value::None` the join fills an unmatched right column with. Which variant that is depends on
+/// how a buffer of the column's type represents absence, so this builds it the way the operator does
+/// rather than naming a variant - naming the wrong one makes every unmatched row read as divergent.
 fn absent(ty: ValueType) -> Value {
 	let mut buffer = ColumnBuffer::with_capacity(ty, 1);
 	buffer.push_value(Value::none());
@@ -79,12 +73,9 @@ fn empty_view() -> MaterializedView {
 	view
 }
 
-/// What a reclaiming run reached, measured at the end of it.
-///
-/// `reached` is cumulative over the whole run and `pinned` describes the view as it finally stands,
-/// so the two are not interchangeable: a run can reach dozens of keys over sixty steps and still end
-/// with a small view, and comparing the running total against the final snapshot would fail a
-/// perfectly good run.
+/// What a reclaiming run reached, measured at the end of it. `reached` is cumulative over the run and
+/// `pinned` describes the view as it finally stands, so comparing the two would fail a perfectly good
+/// run that reached many keys and ended small.
 #[derive(Debug, Clone, Copy)]
 pub struct Envelope {
 	/// Output keys the sweep put beyond the claim at any point in the run.
@@ -102,41 +93,24 @@ pub struct HashOracle {
 	left: BTreeMap<u64, JoinRow>,
 	right: BTreeMap<u64, JoinRow>,
 
-	/// Row numbers whose stored side state a sweep may already have erased.
-	///
-	/// Monotone: a later write does not clear it, because the only path that writes an existing row
-	/// number again is an update, and an update to a row the sweep erased updates nothing - the store
-	/// has no row under that number to update - so the state stays gone.
+	/// Row numbers whose stored side state a sweep may already have erased. Monotone: the only path
+	/// that writes an existing row number again is an update, and an update to an erased row updates
+	/// nothing, so the state stays gone.
 	exposed: BTreeSet<u64>,
 
-	/// The newest event position ever written to each (join key, side), live or since removed.
-	///
-	/// The sweep's unit is the interned group, and a join interns one group per join key - but each
-	/// SIDE of that group carries its own activity stamp and ages on its own declared ttl, so one
-	/// side can be retired while the other stays live. Folding the two into one number per key
-	/// leaves a quiet right row constrained because busy left traffic kept the key looking fresh,
-	/// and the claim then requires a pair whose right state is already gone.
-	///
-	/// Exposing per ROW would be wrong in the other direction: a key is retired whole, so a freshly
-	/// written row is erased along with the older ones it shares a side with. Removals count too - a
-	/// remove writes to the group and stamps it.
+	/// The newest event position ever written to each (join key, side), live or since removed. Each
+	/// side of an interned group ages on its own ttl, so one number per key would leave a quiet right
+	/// row constrained by busy left traffic - and per-row would be wrong the other way, keys retire whole.
 	key_high: BTreeMap<(i32, Side), u64>,
 
-	/// The furthest back the mapping phase has reported reaching.
-	///
-	/// A pair's row-number mapping is what a withdrawal is published under, and the operator resolves
-	/// it rather than minting a replacement - so once the mapping is gone the pair can no longer be
-	/// retracted and whatever it published stays. That makes the mapping phase a second, independent
-	/// source of stranding, on its own cutoff.
+	/// The furthest back the mapping phase has reported reaching. A withdrawal resolves the pair's
+	/// row-number mapping rather than minting a replacement, so once the mapping is gone whatever the
+	/// pair published stays - a second, independent source of stranding on its own cutoff.
 	mapping_cutoff: u64,
 
-	/// Output keys the claim has stopped constraining, because at some point in the run one of the
-	/// two rows behind them was exposed.
-	///
-	/// Monotone, and that is not conservatism for its own sake. A left row whose state is gone can
-	/// never withdraw what it published: the operator withdraws by reading its own stored row, so a
-	/// pair stranded once is stranded for the rest of the run even if the left row is later written
-	/// back. A set that forgot would start requiring rows the operator has no way to produce.
+	/// Output keys the claim has stopped constraining because one of the two rows behind them was
+	/// exposed. Monotone: the operator withdraws by reading its own stored row, so a pair stranded once
+	/// stays stranded even if the left row is written back, and forgetting would require impossible rows.
 	unconstrained: BTreeSet<OutputKey>,
 }
 
@@ -160,12 +134,9 @@ impl HashOracle {
 		}
 	}
 
-	/// How much of the view the sweep has put beyond the claim's reach, against how much it still
-	/// pins exactly.
-	///
-	/// A reclaim suite needs both ends. Nothing reached means the sweep never touched a published row
-	/// and the run proves nothing about reclamation; nothing pinned means the claim has stopped
-	/// saying anything and the run proves nothing about the join.
+	/// How much of the view the sweep has put beyond the claim's reach, against how much it still pins
+	/// exactly. A reclaim suite needs both ends: nothing reached proves nothing about reclamation,
+	/// nothing pinned proves nothing about the join.
 	pub fn envelope(&self) -> Envelope {
 		Envelope {
 			reached: self.unconstrained.len(),
@@ -173,18 +144,9 @@ impl HashOracle {
 		}
 	}
 
-	/// Every output row the operator owes, each flagged with whether the sweep has put it beyond the
-	/// claim's reach.
-	///
-	/// Two independent reasons a pair leaves the claim, and they are not the same cutoff. Either side
-	/// having lost its stored row means the pair can no longer be computed at all; the pair having
-	/// lost its row-number mapping means it can no longer be WITHDRAWN, because a retraction resolves
-	/// the mapping rather than minting a replacement.
-	///
-	/// The mapping test is on the LOWER of the two positions. A mapping is stamped at the change
-	/// coordinate of the batch that published the pair, which is at least the arriving row's own
-	/// position - and the arriving row is whichever of the two came second, so its position is at
-	/// least the minimum. If the minimum is past the cutoff the mapping cannot have been reached.
+	/// Every output row the operator owes, flagged with whether the sweep put it beyond the claim's
+	/// reach. Two independent cutoffs strand a pair: either side losing its stored row, or the pair
+	/// losing its mapping. The mapping test uses the lower position, which bounds when it was stamped.
 	fn pairs(&self) -> Vec<(OutputKey, MaterializedRow, bool)> {
 		let mut out = Vec::new();
 		for left in self.left.values() {
@@ -228,9 +190,8 @@ impl HashOracle {
 		for (key, row, _) in self.pairs() {
 			view.insert(key, row);
 		}
-		// A hash join mints one output row per (left, right) pair, and an unmatched left row is the
-		// pair (left, nothing). Keying on those two columns is what lets the claim be compared
-		// without predicting the row numbers the operator mints for them.
+		// Keying on the (left, right) pair is what lets the claim be compared without predicting the
+		// row numbers the operator mints; an unmatched left row is the pair (left, nothing).
 		ViewClaim::new(view, vec!["lid".to_string(), "other_rid".to_string()], Tolerances::new())
 			.with_unconstrained(self.unconstrained.clone())
 	}
@@ -262,9 +223,8 @@ impl Model<JoinRow> for HashOracle {
 		if let Some(mapping) = swept.cutoffs.mapping {
 			self.mapping_cutoff = self.mapping_cutoff.max(mapping);
 		}
-		// The keyspace phase is what ages a join: each side's rows live in their own keyspace and
-		// retire on that side's declared ttl. The data phase is folded in through `state_cutoff_ms`
-		// because a join declares one when either ttl is set, and it reaches the same group range.
+		// Each side's rows live in their own keyspace and retire on that side's ttl; the data phase
+		// folds in through `state_cutoff_ms` because it reaches the same group range.
 		let Some(cutoff) = swept.state_cutoff_ms() else {
 			return;
 		};
@@ -278,11 +238,9 @@ impl Model<JoinRow> for HashOracle {
 	}
 
 	fn step_complete(&mut self) {
-		// Folded here rather than inside `reclaimed` for two reasons, and both are needed. A key can be
-		// formed AFTER the sweep that stranded one of its rows - a right row arriving to match a left
-		// row whose state is already gone. And a key must be recorded BEFORE the row that carries it is
-		// removed, because that removal is exactly when the stranding becomes visible and the pair
-		// leaves the model's own claim.
+		// Folded here rather than in `reclaimed`: a key can form after the sweep that stranded one of
+		// its rows, and a key must be recorded before the row carrying it is removed, since that
+		// removal is when the stranding becomes visible.
 		if self.exposed.is_empty() && self.mapping_cutoff == 0 {
 			return;
 		}
@@ -290,11 +248,9 @@ impl Model<JoinRow> for HashOracle {
 			self.pairs().into_iter().filter(|(_, _, gone)| *gone).map(|(key, _, _)| key).collect();
 		self.unconstrained.extend(reached);
 
-		// An exposed left row owns a second output key the pair list cannot show: its UNMATCHED form.
-		// A left join publishes `(lid, none)` while a key has no right rows and `(lid, rid)` once it
-		// does, so reclaiming either side moves a row between the two. Marking only the form the row
-		// happens to be in right now leaves the other one constrained, and the claim then requires a
-		// row whose supporting state is already gone.
+		// An exposed left row owns a second output key the pair list cannot show: its unmatched form.
+		// A left join moves a row between `(lid, none)` and `(lid, rid)`, so marking only its current
+		// form leaves the other one constrained.
 		let stranded: Vec<OutputKey> = self
 			.left
 			.values()
@@ -318,11 +274,8 @@ impl Model<JoinRow> for HashOracle {
 }
 
 /// The two latest strategies: the right side is one slot per key holding whichever right row was
-/// written to it last, and every live left row reads that slot.
-///
-/// Unlike the hash oracle this is not a function of the live sets. A right removal clears the slot
-/// for its key even when the row occupying the slot is a different one that is still live, so the
-/// slot is history and has to be tracked as the driver replays it.
+/// written last. Unlike the hash oracle this is not a function of the live sets - a right removal
+/// clears the slot even when a different, still-live row occupies it - so the slot is history.
 pub struct LatestOracle {
 	left_outer: bool,
 	left: BTreeMap<u64, JoinRow>,
@@ -402,12 +355,8 @@ impl Model<JoinRow> for LatestOracle {
 }
 
 /// A snapshot join: a left row is joined against the right side as it stands when that left row is
-/// touched, and is never revisited when the right side later moves on.
-///
-/// Unlike the other two this tracks the published table directly rather than deriving it, because
-/// under snapshot the table is not a function of any current state - it is a function of what the
-/// right side happened to hold at each left row's last touch. Two runs with identical live sets can
-/// legitimately hold different tables.
+/// touched, and never revisited. This tracks the published table directly rather than deriving it,
+/// because two runs with identical live sets can legitimately hold different tables.
 pub struct SnapshotOracle {
 	left_outer: bool,
 	latest: bool,
@@ -509,9 +458,8 @@ impl Model<JoinRow> for SnapshotOracle {
 				}
 				(true, None) => {}
 			},
-			// A left row takes exactly what it published with it, whatever the right side has done
-			// since. Recomputing the withdrawal from the current right side is what leaves rows
-			// stranded in the view.
+			// A left row takes exactly what it published with it; recomputing the withdrawal from
+			// the current right side is what strands rows in the view.
 			Side::Left => self.withdraw(row),
 		}
 	}

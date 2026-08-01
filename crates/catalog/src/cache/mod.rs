@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! In-memory materialised view of the catalog: every catalog object the running engine has seen, indexed for fast
-//! lookup by id and qualified name. The materialised view is loaded at boot, kept in sync with catalog mutations
-//! through change events, and is what the engine, planner, and policy evaluator query when they need catalog state
-//! on the hot path.
-//!
-//! Because reads here are ubiquitous, the materialised view never blocks on the storage tier - it is built from
-//! storage at boot and updated incrementally afterwards. A miss here means the catalog is genuinely missing the
-//! object, not that we need to fall back to storage.
+//! In-memory materialised view of the catalog, indexed by id and by qualified name. Built from
+//! storage at boot and updated incrementally through change events, so reads never block on the
+//! storage tier and a miss means the object is genuinely absent, not that a fallback is needed.
 
 pub mod authentication;
 pub mod binding;
@@ -277,22 +272,15 @@ pub struct CatalogCacheInner {
 	pub(crate) vtable_user_by_name: SkipMap<(NamespaceId, String), VTableId>,
 
 	pub(crate) row_shapes: SkipMap<RowShapeFingerprint, RowShape>,
-	/// MultiVersion column snapshot rows indexed by snapshot ID
 	pub(crate) column_snapshots: SkipMap<ColumnSnapshotId, MultiVersionColumnSnapshot>,
-	/// Per-series index of `(bucket_start, snapshot_id)` pairs. The
-	/// `BTreeSet` keeps the ordering by `bucket_start` ascending so the
-	/// merge planner can iterate in key order.
+	/// `BTreeSet` so the merge planner can iterate in `bucket_start` order.
 	pub(crate) column_snapshots_for_series: SkipMap<SeriesId, BTreeSet<(u64, ColumnSnapshotId)>>,
-	/// Per-table index of `commit_version -> snapshot_id`. Ordering is by
-	/// commit version so callers can pick the latest by reading the max
-	/// key.
+	/// Ordered by commit version so callers can pick the latest by reading the max key.
 	pub(crate) column_snapshots_for_table: SkipMap<TableId, BTreeMap<CommitVersion, ColumnSnapshotId>>,
 
-	/// Serialises the `set_*` mutators. Several of them update a secondary index by cloning the
-	/// container out of a `SkipMap`, mutating the clone and writing the whole thing back;
-	/// `crossbeam::SkipMap` has no atomic read-modify-write, so without this two concurrent writers
-	/// each erase the other's entry. They run from the post-commit interceptor, which the oracle does
-	/// not serialise. Guards a handful of DDL applications, never the OLTP path.
+	/// Serialises the `set_*` mutators: `crossbeam::SkipMap` has no atomic read-modify-write, so two
+	/// concurrent secondary-index updates each erase the other's entry. They run from the post-commit
+	/// interceptor, which the oracle does not serialise. DDL only, never the OLTP path.
 	pub(crate) write_lock: Mutex<()>,
 }
 
@@ -559,10 +547,8 @@ mod pending_override_tripwire_tests {
 	#[test]
 	#[should_panic(expected = "bootstrap override is still pending")]
 	fn reading_a_key_with_a_pending_override_panics() {
-		// The tripwire exists so a component constructed before seed_bootstrap_configs cannot
-		// silently consume the default/persisted value while a builder override is pending -
-		// the exact failure mode that once shipped the CDC recent-cache capacity at its
-		// default instead of the builder override.
+		// A component constructed before seed_bootstrap_configs would otherwise silently
+		// consume the default value while a builder override is still pending.
 		let cache = CatalogCache::new();
 		cache.mark_pending_config_overrides([ConfigKey::MultiReadBufferPages]);
 		let _ = cache.get_config(ConfigKey::MultiReadBufferPages);
@@ -587,8 +573,8 @@ mod pending_override_tripwire_tests {
 
 	#[test]
 	fn clearing_reopens_reads() {
-		// seed_bootstrap_configs clears the marks after inserting the override values, at which
-		// point every read observes the override and is safe again.
+		// seed_bootstrap_configs clears the marks after inserting the override values, from
+		// which point every read observes the override.
 		let cache = CatalogCache::new();
 		cache.mark_pending_config_overrides([ConfigKey::MultiReadBufferPages]);
 		cache.clear_pending_config_overrides();
@@ -613,7 +599,7 @@ mod config_validation_tests {
 		assert!(msg.contains("CDC_TTL_DURATION"), "expected key in error: {msg}");
 		assert!(msg.contains("greater than zero"), "expected reason in error: {msg}");
 
-		// Default (typed-null) is preserved when set fails.
+		// A rejected set leaves the typed-none default in place.
 		assert!(matches!(
 			catalog.get_config(ConfigKey::CdcTtlDuration),
 			Value::None {
@@ -644,7 +630,7 @@ mod config_validation_tests {
 
 	#[test]
 	fn test_set_cdc_ttl_to_typed_null_is_accepted() {
-		// Operators can "unset" the TTL by writing Value::None - restoring forever-retention.
+		// Operators unset the TTL by writing none, restoring forever-retention.
 		let catalog = CatalogCache::new();
 		catalog.set_config(
 			ConfigKey::CdcTtlDuration,
@@ -675,9 +661,9 @@ mod config_validation_tests {
 		assert_eq!(err.code, "CA_052", "expected ConfigTypeMismatch (CA_052)");
 	}
 
-	// Sanity: keys without bespoke validation still accept zero-Duration values.
 	#[test]
 	fn test_retention_evict_interval_accepts_zero() {
+		// Keys without bespoke validation still accept zero-Duration values.
 		let catalog = CatalogCache::new();
 		let zero = Value::Duration(TypeDuration::from_seconds(0).unwrap());
 		assert!(catalog.set_config(ConfigKey::RetentionEvictInterval, CommitVersion(1), zero).is_ok());

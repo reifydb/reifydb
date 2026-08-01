@@ -109,7 +109,6 @@ impl testscript::runner::Runner for WsRunner {
 	}
 
 	fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
-		// Close the client connections
 		if let Some(client) = self.client.take() {
 			let _ = self.runtime.block_on(client.close());
 		}
@@ -117,7 +116,6 @@ impl testscript::runner::Runner for WsRunner {
 			let _ = self.runtime.block_on(client.close());
 		}
 
-		// Stop the server
 		if let Some(mut server) = self.instance.take() {
 			let _ = server.stop();
 			drop(server);

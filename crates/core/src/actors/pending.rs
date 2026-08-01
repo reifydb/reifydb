@@ -280,14 +280,12 @@ pub mod tests {
 	fn test_iter_sorted_order() {
 		let mut pending = Pending::new();
 
-		// Insert in non-sorted order
 		pending.insert(make_key("zebra"), make_value("z"));
 		pending.insert(make_key("apple"), make_value("a"));
 		pending.insert(make_key("mango"), make_value("m"));
 
 		let keys: Vec<_> = pending.iter_sorted().map(|(k, _)| k.clone()).collect();
 
-		// BTreeMap should return in sorted order
 		assert_eq!(keys, vec![make_key("apple"), make_key("mango"), make_key("zebra")]);
 	}
 
@@ -430,7 +428,6 @@ pub mod tests {
 		let items: Vec<_> = pending.iter_sorted().collect();
 		assert_eq!(items.len(), 3);
 
-		// Check order
 		assert_eq!(items[0].0, &make_key("a"));
 		assert!(matches!(items[0].1, PendingWrite::Remove { .. }));
 

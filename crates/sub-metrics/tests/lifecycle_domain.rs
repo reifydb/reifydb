@@ -3,11 +3,9 @@
 //
 //! `system::metrics::lifecycle::current` exposes the retention plane's per-class ledger.
 //!
-//! Until this domain existed the ledger was in-process only: `RetentionPlane::snapshot` was reachable from
-//! sub-lifecycle's own tests and nowhere else, so an operator could not tell a class that was keeping up from one that
-//! had never run. Both read as "no complaints". Driven end to end because every link is one nobody would notice
-//! failing - an unregistered vtable, an unresolved IoC handle, or a refresh actor that never spawns all leave the
-//! surface empty, which is indistinguishable from an idle system.
+//! Without it the ledger is in-process only, so an operator cannot tell a class that is keeping up from one that
+//! has never run - both read as "no complaints". Driven end to end because an unregistered vtable, an unresolved
+//! IoC handle and a refresh actor that never spawns all leave the surface empty.
 
 use std::time::Duration;
 
@@ -30,9 +28,8 @@ fn db_with_refresh() -> TestDb {
 
 #[test]
 fn lifecycle_current_reports_every_retention_class_before_any_of_them_has_run() {
-	// The defect family this whole plan targets is maintenance that is silently absent. A class that only appears
-	// once it has done work is invisible exactly when it matters, because "never registered" and "nothing to do"
-	// produce the same empty surface. Every class must have a row from the first refresh, zeros and all.
+	// A class that only appears once it has done work is invisible exactly when it matters, because "never
+	// registered" and "nothing to do" produce the same empty surface.
 	let db = db_with_refresh();
 	let want = RetentionClass::all().len();
 
@@ -61,9 +58,8 @@ fn lifecycle_current_names_each_class_so_a_row_can_be_attributed() {
 
 #[test]
 fn lifecycle_current_stays_empty_when_the_refresh_interval_is_none() {
-	// The single-optional-Duration contract: none means the domain is never refreshed. This is the half that is
-	// easy to get wrong in the other direction - a domain that populates regardless of config would make the
-	// setting a lie, and would run a collector nobody asked for on every tick.
+	// A none interval means the domain is never refreshed; populating regardless of config would make the setting
+	// a lie and run a collector nobody asked for on every tick.
 	let db = TestDb::from(db_embedded::memory().build().expect("build"));
 
 	assert_eq!(
@@ -76,9 +72,8 @@ fn lifecycle_current_stays_empty_when_the_refresh_interval_is_none() {
 
 #[test]
 fn lifecycle_current_reports_liveness_so_a_lane_that_stopped_ticking_is_visible() {
-	// slices is the heartbeat: it increments once per slice regardless of whether the slice found work. A class
-	// pinned at zero slices while the process is up has stopped being scheduled, which is the failure the ledger
-	// exists to make visible and which work_done alone cannot distinguish from an idle class.
+	// slices is the heartbeat, incrementing once per slice whether or not it found work; a class pinned at zero
+	// while the process is up has stopped being scheduled, which work_done alone cannot distinguish from idle.
 	let db = db_with_refresh();
 
 	let rows = db.await_row_count("from system::metrics::lifecycle::current filter { slices > 0 }", 1, TIMEOUT);
@@ -91,9 +86,8 @@ fn lifecycle_current_reports_liveness_so_a_lane_that_stopped_ticking_is_visible(
 
 #[test]
 fn lifecycle_current_leaves_the_freelist_gauge_none_for_classes_that_never_observe_it() {
-	// freelist_pages and page_count are properties of the persistent tier, populated only by the vacuum class. On a
-	// memory-only database nothing observes them, and they must read as none rather than zero: zero is a legitimate
-	// freelist reading and would claim an observation that never happened.
+	// freelist_pages and page_count belong to the persistent tier, so on a memory-only database they must read as
+	// none: zero is a legitimate freelist reading and would claim an observation that never happened.
 	let db = db_with_refresh();
 	let want = RetentionClass::all().len();
 	db.await_row_count("from system::metrics::lifecycle::current", want, TIMEOUT);
@@ -107,10 +101,9 @@ fn lifecycle_current_leaves_the_freelist_gauge_none_for_classes_that_never_obser
 
 #[test]
 fn lifecycle_current_reports_the_freelist_gauge_once_the_vacuum_class_has_measured_it() {
-	// The positive control for the test above. Without it, a filter that silently matched nothing - or a gauge that
-	// was never recorded at all - would let the none-case assertion pass vacuously. vacuum.rs reads the freelist on
-	// every slice, including the common one where the ratio is under threshold and it does no work, so the reading
-	// must reach the surface even when work_done stays zero.
+	// The positive control: without it a filter matching nothing, or a gauge never recorded, would let the
+	// none-case assertion above pass vacuously. The freelist is read on every slice, including the ones that
+	// find no work, so the reading must surface even while work_done stays zero.
 	temp_dir(|dir| {
 		let db = TestDb::from(
 			db_embedded::sqlite(SqliteConfig::new(dir.join("metrics.db")))

@@ -283,10 +283,8 @@ mod fold_tests {
 
 	#[test]
 	fn an_update_whose_post_lands_on_an_unrelated_live_row_is_incoherent() {
-		// The insert branch already reports writing over a live row; the update branch did not, so
-		// the same collision arriving as an update silently destroyed the row it landed on and the
-		// view read as if nothing had happened. A sink cannot apply that stream either way, so the
-		// two branches have to agree about what they refuse.
+		// A sink cannot apply an update that lands on another live row any more than an insert
+		// that does, so both branches have to refuse the same collision.
 		let mut view = MaterializedView::empty();
 		view.fold(&change(vec![Diff::insert(columns(&[1, 2]))]));
 		assert!(view.incoherent.is_empty(), "precondition: two distinct rows fold cleanly");
@@ -314,10 +312,8 @@ mod fold_tests {
 
 	#[test]
 	fn a_batched_update_that_permutes_its_own_keys_is_not_a_collision() {
-		// A single update diff carrying 1->2 and 2->1 removes both pre keys before inserting either
-		// post key, so neither insert lands on a live row. Checking per row as it was inserted -
-		// rather than after the whole pre set is retracted - would report this shape as two
-		// collisions, and a swap is a legal thing for an operator to publish.
+		// A swap is legal to publish: both pre keys are retracted before either post key lands,
+		// so checking per row as it is inserted would wrongly report two collisions.
 		let mut view = MaterializedView::empty();
 		view.fold(&change(vec![Diff::insert(columns(&[1, 2]))]));
 
@@ -338,12 +334,9 @@ mod projection_tests {
 
 	#[test]
 	fn projecting_resolves_positions_through_the_recorded_column_order() {
-		// Rows are keyed by column NAME so a tolerance can be looked up by name, but a family that keys
-		// on row numbers projects by POSITION and has no reason to know the names. The recorded emission
-		// order is what bridges the two. If it were dropped and positions resolved against the row's own
-		// name ordering instead, `&[0, 1]` would silently mean alphabetical rather than emitted order -
-		// here that would swap the two columns and every comparison would still "work", against the
-		// wrong values.
+		// Rows are keyed by column name, but positional projections index into the recorded
+		// emission order. Resolving positions against the row's own name ordering instead would
+		// make `&[0, 1]` mean alphabetical, swapping these two columns while still comparing.
 		let mut view = MaterializedView::empty();
 		view.columns = vec!["total".to_string(), "g".to_string()];
 		view.insert(
@@ -365,10 +358,8 @@ mod projection_tests {
 
 	#[test]
 	fn projecting_keeps_duplicates_rather_than_collapsing_them() {
-		// A window projection deliberately drops the window start, so one group contributes several rows
-		// that are indistinguishable by value. Those duplicates carry meaning: two windows each totalling
-		// 5 is a different state from one window totalling 5. Collapsing them would make the comparison
-		// unable to tell those apart.
+		// A window projection drops the window start, so duplicates carry meaning: two windows
+		// each totalling 5 is a different state from one window totalling 5.
 		let mut view = MaterializedView::empty();
 		view.columns = vec!["g".to_string(), "total".to_string()];
 		for number in 1..=2u64 {
@@ -387,12 +378,9 @@ mod projection_tests {
 
 	#[test]
 	fn rekeying_reports_two_rows_that_share_a_key_rather_than_collapsing_them() {
-		// The keyed comparison strategy is the one the append and join suites use, and it can only
-		// describe one row per key. An operator that publishes a second output row number for a key
-		// that already has one - which is what a group reborn after reclamation does - would have the
-		// duplicate silently absorbed here and the view would read as if it had published once.
-		// Mutation: restore the bare `out.insert(key, row)` and this fails while every other keyed
-		// suite stays green, which is exactly how the defect hid.
+		// The collapse to one row per key is unavoidable, so it has to be reported: a group reborn
+		// after reclamation publishes a second row number for a key that already has one, and an
+		// unreported collapse reads exactly like a single publish.
 		let mut view = MaterializedView::empty();
 		view.columns = vec!["lid".to_string(), "v".to_string()];
 		for number in 1..=2u64 {

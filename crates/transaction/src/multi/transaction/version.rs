@@ -145,7 +145,6 @@ pub mod tests {
 		let single = SingleTransaction::testing();
 		let provider = StandardVersionProvider::new(single).unwrap();
 
-		// Should start at version 0
 		assert_eq!(provider.current().unwrap(), 0);
 	}
 
@@ -168,7 +167,6 @@ pub mod tests {
 	fn test_version_persistence() {
 		let single = SingleTransaction::testing();
 
-		// Create first provider and get some versions
 		{
 			let provider = StandardVersionProvider::new(single.clone()).unwrap();
 			assert_eq!(provider.next().unwrap(), 1);
@@ -176,8 +174,8 @@ pub mod tests {
 			assert_eq!(provider.next().unwrap(), 3);
 		}
 
-		// Create new provider with same storage - should continue from
-		// persisted version
+		// A restart resumes at the persisted block boundary, never reissuing versions from the
+		// block the first provider had already claimed.
 		let provider2 = StandardVersionProvider::new(single.clone()).unwrap();
 		assert_eq!(provider2.next().unwrap(), BLOCK_SIZE + 1);
 		assert_eq!(provider2.current().unwrap(), BLOCK_SIZE + 1);
@@ -188,17 +186,15 @@ pub mod tests {
 		let single = SingleTransaction::testing();
 		let provider = StandardVersionProvider::new(single).unwrap();
 
-		// Exhaust the first block
 		for _ in 0..BLOCK_SIZE {
 			provider.next().unwrap();
 		}
 
-		// Next version should trigger new block allocation
+		// Crossing a block boundary must stay contiguous; a gap here would strand versions.
 		assert_eq!(provider.current().unwrap(), BLOCK_SIZE);
 		assert_eq!(provider.next().unwrap(), BLOCK_SIZE + 1);
 		assert_eq!(provider.current().unwrap(), BLOCK_SIZE + 1);
 
-		// Continue with next block
 		assert_eq!(provider.next().unwrap(), BLOCK_SIZE + 2);
 		assert_eq!(provider.current().unwrap(), BLOCK_SIZE + 2);
 	}
@@ -210,7 +206,6 @@ pub mod tests {
 
 		let mut handles = vec![];
 
-		// Spawn multiple tasks to request versions concurrently
 		for _ in 0..10 {
 			let provider_clone = Arc::clone(&provider);
 			let handle = thread::spawn(move || {
@@ -223,17 +218,15 @@ pub mod tests {
 			handles.push(handle);
 		}
 
-		// Collect all versions from all tasks
 		let mut all_versions = vec![];
 		for handle in handles {
 			let mut versions = handle.join().unwrap();
 			all_versions.append(&mut versions);
 		}
 
-		// Sort versions to check for uniqueness
 		all_versions.sort();
 
-		// Check that all versions are unique (no duplicates)
+		// A duplicate version would make two transactions share one commit point.
 		for i in 1..all_versions.len() {
 			assert_ne!(
 				all_versions[i - 1],
@@ -243,11 +236,9 @@ pub mod tests {
 			);
 		}
 
-		// Should have exactly 1000 unique versions (10 tasks * 100
-		// versions each)
+		// 10 threads times 100 versions, with no gaps across the block boundaries they crossed.
 		assert_eq!(all_versions.len(), 1000);
 
-		// First version should be 1, last should be 1000
 		assert_eq!(all_versions[0], 1);
 		assert_eq!(all_versions[999], 1000);
 	}
@@ -256,7 +247,6 @@ pub mod tests {
 	fn test_version_block_initialization() {
 		let block = VersionBlock::new(100);
 
-		// Should have correct start and end
 		assert_eq!(block.current, 100);
 		assert_eq!(block.last, 100 + BLOCK_SIZE);
 	}
@@ -265,7 +255,6 @@ pub mod tests {
 	fn test_load_existing_version() {
 		let single = SingleTransaction::testing();
 
-		// Manually set a version in storage
 		let shape = RowShape::testing(&[ValueType::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 		let mut row = shape.allocate();
@@ -275,9 +264,8 @@ pub mod tests {
 			let mut tx = single.begin_command([&key]).unwrap();
 			tx.set(&key, row).unwrap();
 			tx.commit().unwrap();
-		} // tx is dropped here, releasing the key lock
+		} // dropped here, releasing the key lock the provider needs
 
-		// Create provider - should start from the existing version
 		let provider = StandardVersionProvider::new(single.clone()).unwrap();
 		assert_eq!(provider.current().unwrap(), 500);
 		assert_eq!(provider.next().unwrap(), 501);

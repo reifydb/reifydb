@@ -94,9 +94,8 @@ mod tests {
 	use super::*;
 
 	fn make_name_buffer(s: &str) -> (BufferFFI, Box<[u8]>) {
-		// We verify the unmarshaller correctly copies name bytes out of the FFI struct rather than
-		// retaining the host pointer. Owning the backing slice in the test prevents accidental reads
-		// from freed memory if the impl ever changes.
+		// The caller keeps the returned slice alive, so if the unmarshaller ever retained the host pointer
+		// instead of copying the name bytes the test would still read live memory rather than crash.
 		let bytes: Box<[u8]> = s.as_bytes().into();
 		let buffer = BufferFFI {
 			ptr: bytes.as_ptr(),
@@ -108,9 +107,8 @@ mod tests {
 
 	#[test]
 	fn unmarshal_round_trips_a_three_field_shape() {
-		// Models exactly what the host marshal layer produces: a fingerprint plus N flattened
-		// RowShapeFieldFFI entries. If unmarshal misinterprets type constraints or offsets, downstream
-		// operators silently read the wrong bytes - the bug class this whole feature exists to prevent.
+		// Misreading a type constraint or offset here has downstream operators silently reading the wrong
+		// bytes, which is the failure mode the shape exists to prevent.
 		let original = RowShape::new(vec![
 			RowShapeField::new("id", TypeConstraint::unconstrained(ValueType::Uint8)),
 			RowShapeField::new("mint", TypeConstraint::unconstrained(ValueType::Utf8)),
@@ -166,8 +164,8 @@ mod tests {
 
 	#[test]
 	fn unmarshal_empty_shape_returns_empty_fields() {
-		// Defensive: a future caller might marshal a metadata-only shape. The current callsite never
-		// does, but the unmarshaller must not deref a null fields pointer when field_count == 0.
+		// No callsite marshals a metadata-only shape today, but the unmarshaller must not deref a null
+		// fields pointer when field_count is 0.
 		let ffi = RowShapeFFI {
 			fingerprint: 0,
 			fields: ptr::null(),

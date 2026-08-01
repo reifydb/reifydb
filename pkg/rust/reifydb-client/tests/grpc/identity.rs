@@ -18,10 +18,10 @@ fn column_value(frames: &[Frame], column: &str) -> Value {
 	col.data.get_value(0)
 }
 
-// Proves the caller identity that authenticated over the gRPC transport is the identity the called
-// procedure observes: alice's call must see alice's id, bob's must see bob's, and the two differ.
 #[test]
 fn call_observes_the_authenticated_caller_identity() {
+	// A regression that drops the identity that authenticated over gRPC (defaulting to
+	// root/anonymous) would make alice's and bob's observed ids equal or wrong.
 	let runtime = Arc::new(Runtime::new().unwrap());
 	let _guard = runtime.enter();
 	let mut server = create_server_instance(&runtime);

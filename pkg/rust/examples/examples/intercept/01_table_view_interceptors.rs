@@ -15,7 +15,6 @@ fn main() {
 	registry().with(fmt::layer().with_span_events(FmtSpan::CLOSE)).with(EnvFilter::from_default_env()).init();
 
 	// Step 1: Create database with interceptors configured
-	// The fluent API allows chaining interceptor registrations
 	info!("Creating database with interceptors...");
 
 	let db = embedded::memory()

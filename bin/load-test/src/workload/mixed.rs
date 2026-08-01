@@ -10,15 +10,12 @@ use crate::{
 	workload::{SetupQuery, Workload},
 };
 
-/// Mixed workload - configurable read/write ratio
-///
-/// Pre-populates a table with data and performs a mix of reads and writes.
+/// Pre-populates a table, then mixes point lookups with inserts at a configurable ratio.
 pub struct MixedWorkload {
 	table_size: u64,
 	read_percent: u8,
 	#[allow(dead_code)]
 	write_percent: u8,
-	/// Counter for new write IDs
 	write_counter: AtomicU64,
 }
 
@@ -44,7 +41,6 @@ impl Workload for MixedWorkload {
 			SetupQuery::command("create table bench.users { id: int8, name: utf8, email: utf8 }"),
 		];
 
-		// Insert initial data in batches of 1000
 		let batch_size = 1000u64;
 		for batch_start in (0..self.table_size).step_by(batch_size as usize) {
 			let batch_end = (batch_start + batch_size).min(self.table_size);
@@ -67,11 +63,9 @@ impl Workload for MixedWorkload {
 		let roll: u8 = rng.random_range(0..100);
 
 		if roll < self.read_percent {
-			// Read operation - random point lookup
 			let id = rng.random_range(0..self.table_size);
 			Operation::Query(format!("from bench.users filter id == {}", id))
 		} else {
-			// Write operation - insert new row
 			let new_id = self.write_counter.fetch_add(1, Ordering::Relaxed);
 			Operation::Command(format!(
 				"INSERT bench.users [{{ id: {}, name: \"user_{}\", email: \"user_{}@bench.test\" }}]",

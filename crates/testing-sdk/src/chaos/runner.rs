@@ -138,7 +138,7 @@ mod tests {
 			corpus: Corpus::new(0, 0),
 		};
 		assert!(outcome.is_match());
-		outcome.assert_matches(); // should not panic
+		outcome.assert_matches();
 	}
 
 	#[test]

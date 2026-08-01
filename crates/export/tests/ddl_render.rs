@@ -362,10 +362,9 @@ fn queue(retention: QueueRetention, retry: QueueRetry, partitions: u16, ordered_
 	}
 }
 
-/// Every non-default option must survive the round trip to RQL, and durations
-/// must come back quoted so the emitted statement re-parses.
 #[test]
 fn queue_with_all_options() {
+	// Durations must come back quoted, or the emitted statement will not re-parse.
 	let q = queue(
 		QueueRetention {
 			done: Some(Duration::from_days(7).unwrap()),
@@ -384,12 +383,10 @@ fn queue_with_all_options() {
 	);
 }
 
-/// The dispatch block is mandatory, so a queue that declares nothing beyond its
-/// columns still renders `fifo: {}` - the export has to parse back. The inner
-/// defaults stay omitted; emitting them would freeze today's values into every
-/// exported schema.
 #[test]
 fn queue_with_only_defaults_still_renders_the_dispatch_block() {
+	// The dispatch block is mandatory for the export to re-parse, but emitting the inner defaults
+	// would freeze today's values into every exported schema.
 	let q = queue(QueueRetention::default(), QueueRetry::default(), Queue::DEFAULT_PARTITIONS, None);
 
 	assert_eq!(

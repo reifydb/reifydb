@@ -54,7 +54,6 @@ pub use reifydb_engine as engine;
 pub use reifydb_export as export;
 pub use reifydb_export::options::{ExportOptions, ObjectKind};
 pub use reifydb_extension as extension;
-// subsystems
 #[cfg(feature = "sub_flow")]
 pub use reifydb_flow::window;
 #[cfg(feature = "sub_flow")]
@@ -123,20 +122,9 @@ pub use reifydb_sub_tracing as sub_tracing;
 pub use reifydb_subscription as subscription;
 #[cfg(feature = "testing")]
 pub mod testing {
-	//! Test-only surface for downstream consumers, behind the `testing` feature.
-	//!
-	//! One root for everything a consumer needs to test an operator: the shared chaos framework at
-	//! [`chaos`], the guest-operator harness and builders built on it at [`sdk`], and the goldenfile,
-	//! testscript, tempdir and network helpers glob-imported from `reifydb-testing`.
-	//!
-	//! [`sdk`] is `reifydb-testing-sdk`, a crate separate from `reifydb-sdk` so the harness is not a
-	//! dependency of every production build. Reach it through here rather than through the production
-	//! `reifydb::sdk` path, which carries no test-only surface.
-	//!
-	//! [`flow`] is `reifydb-testing-flow`, behind the `flow_testing` feature, and it is the only
-	//! harness that runs the sweep that ships: it drives production's own `reclaim_nodes` against a
-	//! real engine, so an operator's reclamation contract is tested rather than modelled. [`sdk`]'s
-	//! harness erases group state a test names; this one makes the engine decide.
+	//! Test-only surface behind the `testing` feature. [`sdk`] here is `reifydb-testing-sdk`, a
+	//! crate kept separate from the production `reifydb::sdk` so the harness is not a dependency
+	//! of every production build.
 
 	pub use reifydb_testing::*;
 	pub use reifydb_testing_chaos as chaos;

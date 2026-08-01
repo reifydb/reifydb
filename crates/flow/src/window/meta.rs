@@ -389,11 +389,9 @@ mod tests {
 
 	#[test]
 	fn the_seal_ledger_key_round_trips() {
-		// The seal ledger is the one meta cache that still hydrates through a keyspace range and
-		// rebuilds its key with a decoder, so a key that does not survive the round trip is
-		// silently dropped from the cache and the ledger is re-derived from nothing - which
-		// reads as "nothing has been sealed" and readmits every late row the gate exists to
-		// drop.
+		// The seal ledger is the one meta cache that hydrates through a keyspace range and rebuilds
+		// its key with a decoder. A key that does not survive is dropped from the cache, the ledger
+		// re-derives to "nothing has been sealed", and every late row the gate exists to drop gets in.
 		assert!(
 			decode_seal_ledger_key((&SealLedgerKey).into_state_key().as_encoded()) == Some(SealLedgerKey),
 			"seal ledger key did not survive the round trip"
@@ -402,10 +400,9 @@ mod tests {
 
 	#[test]
 	fn partition_scoped_meta_lands_inside_the_group_the_substrate_reclaims() {
-		// The whole point of the partition group: this state spans every window of one
-		// partition, so it fits in no window group and used to sit at node scope where no
-		// group range could reach it - one row per partition, kept forever. Landing it in the
-		// partition group's DATA range is what makes reclaim_group_data take it.
+		// This state spans every window of one partition, so it fits in no window group. At node
+		// scope no group range could reach it, one row per partition kept forever; landing it in
+		// the partition group's data range is what makes reclaim_group_data take it.
 		let range = group_data_inner_range(GROUP);
 		for key in [
 			(&CountKey(GROUP)).into_state_key(),
@@ -422,9 +419,8 @@ mod tests {
 
 	#[test]
 	fn the_seal_ledger_stays_out_of_every_group_range() {
-		// The seal ledger is per NODE, not per partition - one entry for the whole operator. If
-		// it landed under a real group id, reclaiming that one group would reset the node's
-		// seal ledger and every later event would look admissible again.
+		// The seal ledger is per node, one entry for the whole operator. Under a real group id,
+		// reclaiming that group would reset it and every later event would look admissible again.
 		let key = (&SealLedgerKey).into_state_key();
 		let (group, _, _) = OperatorStateKey::decode_inner(key.as_bytes()).expect("meta keys are structured");
 		assert_eq!(group, GroupId::NODE_SCOPE);
@@ -433,9 +429,9 @@ mod tests {
 
 	#[test]
 	fn count_and_session_share_a_group_and_are_told_apart_only_by_the_keyspace() {
-		// Both are now a bare partition group with an EMPTY suffix, so the keyspace byte is the
-		// only thing separating them. Reading one as the other would deserialize happily - two
-		// u64 payloads - and corrupt session assignment with an event ordinal.
+		// Both are a bare partition group with an empty suffix, so the keyspace byte is all that
+		// separates them. Reading one as the other deserializes happily - two u64 payloads - and
+		// corrupts session assignment with an event ordinal.
 		let count = (&CountKey(GROUP)).into_state_key();
 		let session = (&SessionKey(GROUP)).into_state_key();
 		assert_ne!(count, session, "count and session must not share a key");
@@ -450,10 +446,9 @@ mod tests {
 
 	#[test]
 	fn reclaiming_a_partition_group_drops_its_meta_state_from_ram() {
-		// Moving the keys into the group only makes the STORE rows reclaimable. The substrate
-		// deletes them behind the operator's back and reports the group id, so anything still
-		// sitting in the clean tier would keep answering from RAM for a partition whose rows are
-		// gone - a session tracker that outlives its own state, resurrecting a closed session.
+		// Moving the keys into the group only makes the store rows reclaimable. The substrate
+		// deletes them behind the operator's back, so anything left in the clean tier keeps
+		// answering from RAM - a session tracker that outlives its state and reopens a closed one.
 		let mut meta = WindowMeta::new(OperatorStateBudgetHandle::default());
 		let mut store = MockStore::default();
 
@@ -471,11 +466,9 @@ mod tests {
 
 	#[test]
 	fn a_session_persisted_at_the_epoch_reloads_as_open_rather_than_as_a_fresh_tracker() {
-		// A SessionState row exists only once a group has opened a session, so row presence IS
-		// the openness bit. Reading it with get_or_default erased that: a session whose start,
-		// last and id are all zero - which is what a session opened at the Unix epoch looks like
-		// - came back indistinguishable from a group that had never been seen, and the operator
-		// reopened session 0 for every subsequent row instead of rotating.
+		// A SessionState row exists only once a group has opened a session, so row presence IS the
+		// openness bit and load_session must read it as an Option. Defaulting an absent row would
+		// make an all-zero session, which is one opened at the epoch, read as never-seen.
 		let mut meta = WindowMeta::new(OperatorStateBudgetHandle::default());
 		let mut store = MockStore::default();
 
@@ -493,13 +486,9 @@ mod tests {
 
 	#[test]
 	fn the_seal_ledger_reaches_the_store_only_on_flush() {
-		// Reclaim reads the ledger raw rather than asking the operator, but the ledger is
-		// written into a StateCache, so the raw read is correct only for as long as something
-		// flushes that cache before reclaim runs. WindowOperator::with_meta flushes at the end
-		// of every call, so the invariant is per-call rather than an ordering coincidence
-		// between reclaim and run_topology.
-		// This test states both halves so the hazard cannot be reintroduced silently: a raw
-		// read BEFORE the flush sees nothing, and a raw read after it sees the fired instant.
+		// Reclaim reads the ledger raw, but the ledger is written into a StateCache, so the raw read
+		// is correct only while something flushes that cache first. WindowOperator::with_meta
+		// flushes at the end of every call, making it a per-call invariant rather than a coincidence.
 		let mut meta = WindowMeta::new(OperatorStateBudgetHandle::default());
 		let mut store = MockStore::default();
 

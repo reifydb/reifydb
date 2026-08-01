@@ -249,12 +249,9 @@ mod tests {
 
 	#[test]
 	fn every_row_field_declares_the_value_type_its_own_bytes_fill() {
-		// Intent: RowField is what lets `set::<T>` choose the slot type without the caller naming
-		// it, so a T mapped to the wrong ValueType writes T's bytes into a slot sized for
-		// something else. That corruption is silent in release, because the slot-type check only
-		// runs under reifydb_assertions - which makes pinning the two against each other here the
-		// only thing standing between a one-character mapping typo and a wrong-width row write.
-		// Mutation: map u32 to Uint8, or Date to DateTime, and the widths stop agreeing.
+		// `set::<T>` picks the slot from RowField, so a T mapped to the wrong ValueType writes
+		// into a wrongly sized slot. The slot-type check only runs under reifydb_assertions, so
+		// in release that corruption is silent and this is the only guard against it.
 		fn agree<T: RowField>() {
 			assert_eq!(
 				T::VALUE_TYPE.size(),
@@ -290,11 +287,8 @@ mod tests {
 
 	#[test]
 	fn every_width_is_the_size_of_its_own_byte_array() {
-		// Intent: ENCODED_SIZE is derived, not declared, so the width and the bytes cannot drift
-		// apart. This is what makes widening a type a one-line change: every layout that reads
-		// ENCODED_SIZE follows the array.
-		// Mutation: give the trait a hand-written ENCODED_SIZE per impl and one of them can
-		// disagree with its own Bytes without failing to compile.
+		// ENCODED_SIZE is derived from the byte array rather than declared per impl, so widening
+		// a type is one change and no layout can be left reading the old width.
 		assert_eq!(<u8 as LeBytes>::ENCODED_SIZE, 1);
 		assert_eq!(<bool as LeBytes>::ENCODED_SIZE, 1);
 		assert_eq!(<Date as LeBytes>::ENCODED_SIZE, 4);
@@ -311,15 +305,9 @@ mod tests {
 
 	#[test]
 	fn byte_order_is_little_endian_regardless_of_host() {
-		// Intent: THE property this trait exists for. A native-endian store reads back correctly
-		// on the machine that wrote it and wrong everywhere else, and nothing in a round-trip test
-		// can see that - both directions would use the same wrong order. Only a pinned byte
-		// pattern catches it, so these assert the bytes rather than the value.
-		// Mutation: swap any impl to to_be_bytes, or narrow a slot, and this fails.
-		// Limit worth naming: on a little-endian host to_ne_bytes IS to_le_bytes, so that
-		// substitution cannot be caught by any runtime assertion here. It surfaces only when
-		// built for a big-endian target - which is precisely where the bug would bite, so do not
-		// read a green run as proof that no impl reaches for native order.
+		// A native-endian store reads back fine on the writing host and wrong everywhere else,
+		// which no round trip can see, so these pin the bytes. Caveat: on a little-endian host
+		// to_ne_bytes IS to_le_bytes, so a green run is not proof no impl reaches for native.
 		assert_eq!(0x0102_0304_0506_0708u64.to_le_bytes(), [8, 7, 6, 5, 4, 3, 2, 1]);
 		assert_eq!(
 			LeBytes::to_le_bytes(&DateTime::from_nanos(0x0102_0304_0506_0708)),
@@ -331,8 +319,8 @@ mod tests {
 
 	#[test]
 	fn every_implementor_round_trips_through_its_bytes() {
-		// Mutation: read one field of Duration at the wrong offset and only that component
-		// survives the round trip.
+		// Multi-field types like Duration only round-trip if every component sits at the offset
+		// the reader expects.
 		assert_eq!(bool::from_le_bytes(LeBytes::to_le_bytes(&true)), true);
 		assert_eq!(bool::from_le_bytes(LeBytes::to_le_bytes(&false)), false);
 
@@ -354,9 +342,8 @@ mod tests {
 
 	#[test]
 	fn the_slice_helpers_agree_with_the_array_form() {
-		// Intent: write_le/read_le are what the codec calls against a slot at an offset; they must
-		// be the same bytes as the array form or the two paths diverge silently.
-		// Mutation: have write_le skip the ENCODED_SIZE bound and it writes past its slot.
+		// The codec calls write_le/read_le against a slot at an offset, so they must produce the
+		// same bytes as the array form and must not reach outside the slot.
 		let mut buf = [0u8; 32];
 		let dt = DateTime::from_nanos(1_700_000_123_456_789);
 

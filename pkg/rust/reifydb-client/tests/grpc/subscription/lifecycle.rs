@@ -31,13 +31,10 @@ fn test_no_changes_after_drop_subscription() {
 			.await
 			.unwrap();
 
-		// Drop subscription
 		drop(sub);
 
-		// Insert data after dropping subscription
 		client.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
 
-		// Re-subscribe and verify only new data arrives
 		let mut sub2 = client
 			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
 			.await
@@ -74,7 +71,6 @@ fn test_drop_cleans_up_subscriptions() {
 			.await
 			.unwrap();
 
-		// Drop without explicit cleanup - should not panic
 		drop(_sub);
 	});
 
@@ -96,7 +92,6 @@ fn test_rapid_subscribe_drop() {
 		let table = unique_table_name("sub_rapid");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		// Rapid subscribe/drop cycles
 		for _ in 0..10 {
 			let sub = client
 				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
@@ -105,7 +100,6 @@ fn test_rapid_subscribe_drop() {
 			drop(sub);
 		}
 
-		// Should still work after rapid cycles
 		let mut sub = client
 			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
 			.await

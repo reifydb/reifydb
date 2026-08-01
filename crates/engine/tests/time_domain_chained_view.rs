@@ -1,15 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// The time-domain rules applied one link down the chain: a view reading another view.
-//
-// A source view declares no `ts` column of its own - it inherits its domain from the flow that
-// maintains it - so reconciling a chained view means resolving that upstream flow's declaration. The
-// failure mode this file exists for is the domain walk simply skipping view sources: every rule below
-// would then hold for a view over a table and silently lapse for a view over a view, which is where a
-// long pipeline spends most of its nodes. Each test therefore pairs the chained case with the
-// equivalent direct-over-table case, so a regression that re-skips views shows up as a divergence
-// between two assertions that must agree.
+// Each test pairs a view-over-view against the equivalent view-over-table, so a domain walk that
+// skips view sources shows up as a divergence between two assertions that must agree.
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -37,13 +30,9 @@ fn code(t: &TestEngine, rql: &str) -> Option<String> {
 }
 
 #[test]
-// Intent: the FLOW_041 trap, one link down. An author who declares nothing over an event-time VIEW has
-// made exactly the mistake the rule exists for - they believe the domain follows what they are reading
-// - and the view being a view rather than a table changes nothing about how wrong the resulting flow
-// is. Both halves are asserted together because a walk that skips view sources passes the table half
-// and silently accepts the view half.
-// Mutation: drop the SourceView arm from check_time_domain and only the chained assertion fails.
 fn an_undeclared_flow_over_an_event_time_view_is_rejected_like_one_over_a_table() {
+	// Both halves are asserted together because a walk that skips view sources passes the table
+	// half and silently accepts the view half.
 	let t = event_source_chain();
 
 	assert_eq!(
@@ -60,13 +49,9 @@ fn an_undeclared_flow_over_an_event_time_view_is_rejected_like_one_over_a_table(
 }
 
 #[test]
-// Intent: the FLOW_040 trap, one link down. A flow cannot demand event time from an upstream view that
-// supplies none - there is no #time to inherit, so every row would fall back to arrival while the flow
-// claims to bucket by event time. The upstream here is undeclared, which is the common shape: nobody
-// wrote `processing` anywhere, and the domain has to be read off the absence.
-// Mutation: default an undeclared upstream flow to Event rather than Processing and the chained
-// assertion starts passing, which is the silent-acceptance this test exists to prevent.
 fn an_event_time_flow_over_a_processing_view_is_rejected_like_one_over_a_table() {
+	// With no #time to inherit, every row falls back to arrival while the flow claims to bucket
+	// by event time. The upstream is undeclared, so the domain has to be read off the absence.
 	let t = processing_source_chain();
 
 	assert_eq!(
@@ -90,11 +75,9 @@ fn an_event_time_flow_over_a_processing_view_is_rejected_like_one_over_a_table()
 }
 
 #[test]
-// Intent: an upstream that declared event time propagates it, so a downstream that declares the same
-// domain is accepted and the chain can be arbitrarily long. Without this the two rejection tests above
-// would be satisfied by a walk that rejects every chained view outright, which would make views
-// unusable as sources rather than correctly reconciled.
 fn a_matching_declaration_down_the_chain_is_accepted() {
+	// Without this, the rejection tests would also be satisfied by a walk that rejects every
+	// chained view outright, making views unusable as sources.
 	let t = event_source_chain();
 
 	assert_eq!(
@@ -116,11 +99,9 @@ fn a_matching_declaration_down_the_chain_is_accepted() {
 }
 
 #[test]
-// Intent: the explicit processing override works over a view exactly as it does over a table - this is
-// the cell that separates "reconcile the chain" from "ban mixing domains in a chain". The author said
-// processing on purpose, and the only difference from the rejected undeclared case above is that they
-// said it at all.
 fn an_explicit_processing_override_over_an_event_time_view_is_accepted() {
+	// Separates reconciling a chain from banning mixed domains: the only difference from the
+	// rejected undeclared case is that the author said processing at all.
 	let t = event_source_chain();
 
 	assert_eq!(
@@ -134,13 +115,9 @@ fn an_explicit_processing_override_over_an_event_time_view_is_accepted() {
 }
 
 #[test]
-// Intent: an undeclared view over an undeclared view is the ordinary case and must stay silent. An
-// upstream flow that declared nothing runs as processing - that is what FlowDag::time_domain does at
-// runtime - and the walk has to read it the same way, or every processing-time pipeline more than one
-// view deep would fail to create.
-// Mutation: treat an undeclared upstream as an unknown domain and reject it, and every plain chained
-// view in existence stops being creatable.
 fn an_undeclared_chain_over_processing_sources_stays_silent() {
+	// An upstream that declared nothing runs as processing; reading it any other way makes every
+	// processing-time pipeline more than one view deep uncreatable.
 	let t = processing_source_chain();
 
 	assert_eq!(
@@ -151,11 +128,8 @@ fn an_undeclared_chain_over_processing_sources_stays_silent() {
 }
 
 #[test]
-// Intent: a transactional view is reconciled like a deferred one. Both kinds route through the same
-// flow creation, so a domain honoured for one and dropped for the other is exactly the divergence the
-// shared path exists to prevent - and the two are declared with different keywords, which is the kind
-// of split where a skipped arm hides.
 fn a_transactional_view_is_reconciled_like_a_deferred_one() {
+	// The two kinds are declared with different keywords, which is where a skipped arm hides.
 	let t = event_source_chain();
 
 	assert_eq!(

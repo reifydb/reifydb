@@ -48,6 +48,7 @@ impl IndexShape {
 			}
 		};
 
+		// SAFETY: the key is allocated from this shape, so field.offset lies inside total_size.
 		unsafe { ptr::write_unaligned(key.make_mut().as_mut_ptr().add(field.offset), byte_value) }
 	}
 
@@ -74,6 +75,8 @@ impl IndexShape {
 				*b = !*b;
 			}
 		}
+
+		// SAFETY: the key is allocated from this shape, so field.offset..+4 lies inside total_size;
 
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 4);
@@ -104,6 +107,8 @@ impl IndexShape {
 			}
 		}
 
+		// SAFETY: the key is allocated from this shape, so field.offset..+8 lies inside total_size;
+
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 		}
@@ -130,6 +135,7 @@ impl IndexShape {
 			}
 		}
 
+		// SAFETY: the key is allocated from this shape, so field.offset lies inside total_size.
 		unsafe { ptr::write_unaligned(key.make_mut().as_mut_ptr().add(field.offset), bytes[0]) }
 	}
 
@@ -153,6 +159,8 @@ impl IndexShape {
 				}
 			}
 		}
+
+		// SAFETY: the key is allocated from this shape, so field.offset..+2 lies inside total_size;
 
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 2);
@@ -180,6 +188,8 @@ impl IndexShape {
 			}
 		}
 
+		// SAFETY: the key is allocated from this shape, so field.offset..+4 lies inside total_size;
+
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 4);
 		}
@@ -205,6 +215,8 @@ impl IndexShape {
 				}
 			}
 		}
+
+		// SAFETY: the key is allocated from this shape, so field.offset..+8 lies inside total_size;
 
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
@@ -232,6 +244,8 @@ impl IndexShape {
 			}
 		}
 
+		// SAFETY: the key is allocated from this shape, so field.offset..+16 lies inside total_size;
+		// bytes is a local array and cannot alias the key buffer.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 16);
 		}
@@ -249,6 +263,7 @@ impl IndexShape {
 			SortDirection::Desc => !value.into(),
 		};
 
+		// SAFETY: the key is allocated from this shape, so field.offset lies inside total_size.
 		unsafe { ptr::write_unaligned(key.make_mut().as_mut_ptr().add(field.offset), byte) }
 	}
 
@@ -264,6 +279,8 @@ impl IndexShape {
 			SortDirection::Desc => (!value.into()).to_be_bytes(),
 		};
 
+		// SAFETY: the key is allocated from this shape, so field.offset..+2 lies inside total_size;
+		// bytes is a local array and cannot alias the key buffer.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 2);
 		}
@@ -281,6 +298,8 @@ impl IndexShape {
 			SortDirection::Desc => (!value.into()).to_be_bytes(),
 		};
 
+		// SAFETY: the key is allocated from this shape, so field.offset..+4 lies inside total_size;
+		// bytes is a local array and cannot alias the key buffer.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 4);
 		}
@@ -298,6 +317,8 @@ impl IndexShape {
 			SortDirection::Desc => (!value.into()).to_be_bytes(),
 		};
 
+		// SAFETY: the key is allocated from this shape, so field.offset..+8 lies inside total_size;
+		// bytes is a local array and cannot alias the key buffer.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 		}
@@ -315,6 +336,8 @@ impl IndexShape {
 			SortDirection::Desc => (!value.into()).to_be_bytes(),
 		};
 
+		// SAFETY: the key is allocated from this shape, so field.offset..+16 lies inside total_size;
+		// bytes is a local array and cannot alias the key buffer.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 16);
 		}
@@ -332,6 +355,8 @@ impl IndexShape {
 			SortDirection::Desc => (!value.into()).to_be_bytes(),
 		};
 
+		// SAFETY: the key is allocated from this shape, so field.offset..+8 lies inside total_size;
+		// bytes is a local array and cannot alias the key buffer.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 		}
@@ -359,6 +384,8 @@ impl IndexShape {
 			}
 		}
 
+		// SAFETY: the key is allocated from this shape, so field.offset..+4 lies inside total_size;
+		// bytes is a local array and cannot alias the key buffer.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 4);
 		}
@@ -377,6 +404,8 @@ impl IndexShape {
 			SortDirection::Desc => (!nanos).to_be_bytes(),
 		};
 
+		// SAFETY: the key is allocated from this shape, so field.offset..+8 lies inside total_size;
+		// bytes is a local array and cannot alias the key buffer.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 		}
@@ -395,6 +424,8 @@ impl IndexShape {
 			SortDirection::Desc => (!nanos).to_be_bytes(),
 		};
 
+		// SAFETY: the key is allocated from this shape, so field.offset..+8 lies inside total_size;
+		// bytes is a local array and cannot alias the key buffer.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 		}
@@ -433,6 +464,8 @@ impl IndexShape {
 			}
 		}
 
+		// SAFETY: the key is allocated from this shape, so field.offset..+16 lies inside total_size;
+		// the three byte arrays are locals and cannot alias the key buffer.
 		unsafe {
 			ptr::copy_nonoverlapping(
 				months_bytes.as_ptr(),
@@ -470,6 +503,8 @@ impl IndexShape {
 			}
 		}
 
+		// SAFETY: the key is allocated from this shape, so field.offset..+16 lies inside total_size;
+		// bytes is a local array and cannot alias the key buffer.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 16);
 		}
@@ -493,6 +528,8 @@ impl IndexShape {
 			}
 		}
 
+		// SAFETY: the key is allocated from this shape, so field.offset..+16 lies inside total_size;
+		// bytes is a local array and cannot alias the key buffer.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 16);
 		}
@@ -516,6 +553,8 @@ impl IndexShape {
 			}
 		}
 
+		// SAFETY: the key is allocated from this shape, so field.offset..+16 lies inside total_size;
+		// bytes is a local array and cannot alias the key buffer.
 		unsafe {
 			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 16);
 		}
@@ -550,16 +589,13 @@ pub mod tests {
 			layout.set_bool(&mut key_false, 0, false);
 			layout.set_bool(&mut key_true, 0, true);
 
-			// Check bitvec shows field is set
 			assert_eq!(key_false[0] & 0x01, 0x01);
 			assert_eq!(key_true[0] & 0x01, 0x01);
 
-			// Check values at field offset (after bitvec)
 			let offset = layout.fields[0].offset;
 			assert_eq!(key_false[offset], 0);
 			assert_eq!(key_true[offset], 1);
 
-			// Verify ordering
 			assert!(key_false.as_slice() < key_true.as_slice());
 		}
 
@@ -572,12 +608,10 @@ pub mod tests {
 			layout.set_bool(&mut key_false, 0, false);
 			layout.set_bool(&mut key_true, 0, true);
 
-			// Check values at field offset (inverted for DESC)
 			let offset = layout.fields[0].offset;
 			assert_eq!(key_false[offset], 1); // false becomes 1 in DESC
 			assert_eq!(key_true[offset], 0); // true becomes 0 in DESC
 
-			// Verify ordering (reversed)
 			assert!(key_false.as_slice() > key_true.as_slice());
 		}
 	}
@@ -606,7 +640,6 @@ pub mod tests {
 			// 127 with sign bit flipped: 0x7F -> 0xFF
 			assert_eq!(key_pos[offset], 0xFF);
 
-			// Verify ordering
 			assert!(key_neg.as_slice() < key_zero.as_slice());
 			assert!(key_zero.as_slice() < key_pos.as_slice());
 		}
@@ -630,7 +663,6 @@ pub mod tests {
 			// 127: 0x7F -> flip sign: 0xFF -> invert: 0x00
 			assert_eq!(key_pos[offset], 0x00);
 
-			// Verify ordering (reversed)
 			assert!(key_neg.as_slice() > key_zero.as_slice());
 			assert!(key_zero.as_slice() > key_pos.as_slice());
 		}
@@ -660,7 +692,6 @@ pub mod tests {
 			// i32::MAX with sign bit flipped
 			assert_eq!(&key_pos[offset..offset + 4], &[0xFF, 0xFF, 0xFF, 0xFF]);
 
-			// Verify ordering
 			assert!(key_neg.as_slice() < key_zero.as_slice());
 			assert!(key_zero.as_slice() < key_pos.as_slice());
 		}
@@ -684,7 +715,6 @@ pub mod tests {
 			// i32::MAX: flip sign then invert all
 			assert_eq!(&key_pos[offset..offset + 4], &[0x00, 0x00, 0x00, 0x00]);
 
-			// Verify ordering (reversed)
 			assert!(key_neg.as_slice() > key_zero.as_slice());
 			assert!(key_zero.as_slice() > key_pos.as_slice());
 		}
@@ -703,8 +733,7 @@ pub mod tests {
 			layout.set_i64(&mut key, 0, -1i64);
 
 			let offset = layout.fields[0].offset;
-			// -1 in two's complement is all 1s, with sign bit
-			// flipped becomes 0x7F...
+			// -1 is all 1s in two's complement; the flipped sign bit gives 0x7F...
 			assert_eq!(&key[offset..offset + 8], &[0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
 		}
 
@@ -742,7 +771,6 @@ pub mod tests {
 			assert_eq!(key_mid[offset], 0x80);
 			assert_eq!(key_max[offset], 0xFF);
 
-			// Verify ordering
 			assert!(key_min.as_slice() < key_mid.as_slice());
 			assert!(key_mid.as_slice() < key_max.as_slice());
 		}
@@ -764,7 +792,6 @@ pub mod tests {
 			assert_eq!(key_mid[offset], 0x7F);
 			assert_eq!(key_max[offset], 0x00);
 
-			// Verify ordering (reversed)
 			assert!(key_min.as_slice() > key_mid.as_slice());
 			assert!(key_mid.as_slice() > key_max.as_slice());
 		}
@@ -853,7 +880,6 @@ pub mod tests {
 			// 1.0f32: 0x3F800000 -> flip sign: 0xBF800000
 			assert_eq!(&key_pos[offset..offset + 4], &[0xBF, 0x80, 0x00, 0x00]);
 
-			// Verify ordering
 			assert!(key_neg.as_slice() < key_zero.as_slice());
 			assert!(key_zero.as_slice() < key_pos.as_slice());
 		}
@@ -874,7 +900,6 @@ pub mod tests {
 			// 1.0f32: ASC encoding then invert for DESC
 			assert_eq!(&key_pos[offset..offset + 4], &[0x40, 0x7F, 0xFF, 0xFF]);
 
-			// Verify ordering (reversed)
 			assert!(key_neg.as_slice() > key_pos.as_slice());
 		}
 	}
@@ -954,11 +979,9 @@ pub mod tests {
 			layout.set_date(&mut key, 0, date);
 
 			let offset = layout.fields[0].offset;
-			// Date is stored as i32 days since epoch with sign bit
-			// flipped
+			// Date is stored as i32 days since epoch with the sign bit flipped.
 			let bytes = &key[offset..offset + 4];
 
-			// Verify it's properly encoded
 			let mut expected = date.to_days_since_epoch().to_be_bytes();
 			expected[0] ^= 0x80;
 			assert_eq!(bytes, expected);
@@ -1002,7 +1025,6 @@ pub mod tests {
 			layout.set_i32(&mut key, 0, 100i32);
 			layout.set_u64(&mut key, 1, 200u64);
 
-			// Check first field (i32 DESC)
 			let offset1 = layout.fields[0].offset;
 			let mut expected_i32 = 100i32.to_be_bytes();
 			expected_i32[0] ^= 0x80;
@@ -1011,7 +1033,6 @@ pub mod tests {
 			}
 			assert_eq!(&key[offset1..offset1 + 4], expected_i32);
 
-			// Check second field (u64 ASC)
 			let offset2 = layout.fields[1].offset;
 			let expected_u64 = 200u64.to_be_bytes();
 			assert_eq!(&key[offset2..offset2 + 8], expected_u64);
@@ -1035,11 +1056,9 @@ pub mod tests {
 			layout.set_uuid4(&mut key1, 0, uuid1.clone());
 			layout.set_uuid4(&mut key2, 0, uuid2.clone());
 
-			// Check bitvec shows field is set
 			assert!(key1.is_defined(0));
 			assert!(key2.is_defined(0));
 
-			// Check values are stored correctly (16 bytes)
 			let offset = layout.fields[0].offset;
 			let uuid1_bytes: Vec<u8> = uuid1.as_bytes().to_vec();
 			let uuid2_bytes: Vec<u8> = uuid2.as_bytes().to_vec();
@@ -1056,7 +1075,6 @@ pub mod tests {
 			let uuid = Uuid4::generate();
 			layout.set_uuid4(&mut key, 0, uuid.clone());
 
-			// Check value is inverted for DESC
 			let offset = layout.fields[0].offset;
 			let mut expected_bytes = uuid.as_bytes().to_vec();
 			for b in expected_bytes.iter_mut() {
@@ -1091,18 +1109,16 @@ pub mod tests {
 			let mut key2 = layout.allocate_key();
 
 			let uuid1 = Uuid7::generate(&clock, &rng);
-			// Advance clock to ensure different timestamps
+			// Advance the clock so the two ids get different timestamps.
 			mock.advance_millis(10);
 			let uuid2 = Uuid7::generate(&clock, &rng);
 
 			layout.set_uuid7(&mut key1, 0, uuid1.clone());
 			layout.set_uuid7(&mut key2, 0, uuid2.clone());
 
-			// Check bitvec shows field is set
 			assert!(key1.is_defined(0));
 			assert!(key2.is_defined(0));
 
-			// Check values are stored correctly (16 bytes)
 			let offset = layout.fields[0].offset;
 			let uuid1_bytes: Vec<u8> = uuid1.as_bytes().to_vec();
 			let uuid2_bytes: Vec<u8> = uuid2.as_bytes().to_vec();
@@ -1110,8 +1126,7 @@ pub mod tests {
 			assert_eq!(&key1[offset..offset + 16], &uuid1_bytes[..]);
 			assert_eq!(&key2[offset..offset + 16], &uuid2_bytes[..]);
 
-			// UUID7 has timestamp prefix, so later should be
-			// greater
+			// Uuid7 leads with a timestamp, so the later one must sort greater.
 			assert!(key1.as_slice() < key2.as_slice());
 		}
 
@@ -1123,14 +1138,13 @@ pub mod tests {
 			let mut key2 = layout.allocate_key();
 
 			let uuid1 = Uuid7::generate(&clock, &rng);
-			// Advance clock to ensure different timestamps
+			// Advance the clock so the two ids get different timestamps.
 			mock.advance_millis(10);
 			let uuid2 = Uuid7::generate(&clock, &rng);
 
 			layout.set_uuid7(&mut key1, 0, uuid1.clone());
 			layout.set_uuid7(&mut key2, 0, uuid2.clone());
 
-			// Check values are inverted for DESC
 			let offset = layout.fields[0].offset;
 			let mut expected_bytes1 = uuid1.as_bytes().to_vec();
 			let mut expected_bytes2 = uuid2.as_bytes().to_vec();
@@ -1144,7 +1158,6 @@ pub mod tests {
 			assert_eq!(&key1[offset..offset + 16], &expected_bytes1[..]);
 			assert_eq!(&key2[offset..offset + 16], &expected_bytes2[..]);
 
-			// Verify ordering (reversed due to DESC)
 			assert!(key1.as_slice() > key2.as_slice());
 		}
 	}
@@ -1173,19 +1186,16 @@ pub mod tests {
 			let mut key2 = layout.allocate_key();
 
 			let id1 = IdentityId::generate(&clock, &rng);
-			// Advance clock to ensure different timestamps
-			// (IdentityId wraps Uuid7)
+			// Advance the clock so the two ids get different timestamps.
 			mock.advance_millis(10);
 			let id2 = IdentityId::generate(&clock, &rng);
 
 			layout.set_identity_id(&mut key1, 0, id1.clone());
 			layout.set_identity_id(&mut key2, 0, id2.clone());
 
-			// Check bitvec shows field is set
 			assert!(key1.is_defined(0));
 			assert!(key2.is_defined(0));
 
-			// Check values are stored correctly (16 bytes)
 			let offset = layout.fields[0].offset;
 			let uuid7_1: Uuid7 = id1.into();
 			let uuid7_2: Uuid7 = id2.into();
@@ -1195,8 +1205,7 @@ pub mod tests {
 			assert_eq!(&key1[offset..offset + 16], &id1_bytes[..]);
 			assert_eq!(&key2[offset..offset + 16], &id2_bytes[..]);
 
-			// IdentityId wraps Uuid7 which has timestamp prefix, so
-			// later should be greater
+			// IdentityId wraps Uuid7, which leads with a timestamp, so the later one sorts greater.
 			assert!(key1.as_slice() < key2.as_slice());
 		}
 
@@ -1208,14 +1217,13 @@ pub mod tests {
 			let mut key2 = layout.allocate_key();
 
 			let id1 = IdentityId::generate(&clock, &rng);
-			// Advance clock to ensure different timestamps
+			// Advance the clock so the two ids get different timestamps.
 			mock.advance_millis(10);
 			let id2 = IdentityId::generate(&clock, &rng);
 
 			layout.set_identity_id(&mut key1, 0, id1.clone());
 			layout.set_identity_id(&mut key2, 0, id2.clone());
 
-			// Check values are inverted for DESC
 			let offset = layout.fields[0].offset;
 			let uuid7_1: Uuid7 = id1.into();
 			let uuid7_2: Uuid7 = id2.into();
@@ -1231,7 +1239,6 @@ pub mod tests {
 			assert_eq!(&key1[offset..offset + 16], &expected_bytes1[..]);
 			assert_eq!(&key2[offset..offset + 16], &expected_bytes2[..]);
 
-			// Verify ordering (reversed due to DESC)
 			assert!(key1.as_slice() > key2.as_slice());
 		}
 	}
@@ -1246,15 +1253,12 @@ pub mod tests {
 			let layout = IndexShape::new(&[ValueType::Int4], &[SortDirection::Asc]).unwrap();
 			let mut key = layout.allocate_key();
 
-			// Set a value first
 			layout.set_i32(&mut key, 0, 42i32);
 			assert!(key.is_defined(0));
 
-			// Now set it to undefined
 			layout.set_none(&mut key, 0);
 			assert!(!key.is_defined(0));
 
-			// Check that the data is zeroed
 			let offset = layout.fields[0].offset;
 			assert_eq!(&key[offset..offset + 4], &[0, 0, 0, 0]);
 		}

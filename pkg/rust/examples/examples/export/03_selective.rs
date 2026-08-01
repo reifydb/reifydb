@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Scenario: narrowing what gets exported.
-// Selection has three axes - by namespace, by object, or by kind. They are
-// printed here with `.schema_only()` so the output shows exactly which objects
-// are included. Two behaviors worth seeing:
-//   - dependency closure: a selected object always drags in the dictionaries / enums its columns reference, so the
-//     script stays self-contained.
-//   - axes do NOT combine: calling a second selection axis REPLACES the first (last-axis-wins), so
-//     `.namespace(..).kind(..)` is just `.kind(..)`.
+// Scenario: narrowing what gets exported. Selection has three axes - namespace, object, kind - and
+// they do NOT combine: a second axis REPLACES the first, so `.namespace(..).kind(..)` is just
+// `.kind(..)`. Shown with `.schema_only()` so the output names exactly what is included.
 
 use reifydb::{ExportOptions, ObjectKind, embedded};
 use reifydb_examples::seed_demo;
@@ -41,9 +36,8 @@ fn main() {
 	assert!(by_kind.contains("CREATE ENUM shop::status"));
 	assert!(!by_kind.contains("CREATE TABLE"), "kind selection must exclude tables");
 
-	// Gotcha: `.kind()` overwrites the earlier `.namespace()`. Despite asking
-	// for the `metrics` namespace, this exports every TABLE (shop::products),
-	// because the last selection axis wins.
+	// Gotcha: `.kind()` overwrites the earlier `.namespace()`, so this exports every TABLE
+	// (shop::products) despite asking for the `metrics` namespace.
 	let overwritten =
 		db.export(&ExportOptions::all().namespace("metrics").kind(ObjectKind::Table).schema_only()).unwrap();
 	println!("=== namespace(\"metrics\").kind(Table) -> kind wins ===\n{overwritten}");

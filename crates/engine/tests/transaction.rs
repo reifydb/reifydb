@@ -29,7 +29,6 @@ fn test_identity_propagates_to_all_transaction_types() {
 
 	let identity = IdentityId::system();
 
-	// Admin
 	let txn = t.begin_admin(identity).unwrap();
 	assert_eq!(txn.identity, identity);
 	let mut txn = txn;
@@ -37,7 +36,6 @@ fn test_identity_propagates_to_all_transaction_types() {
 	assert_eq!(tx.identity(), identity);
 	drop(txn);
 
-	// Command
 	let txn = t.begin_command(identity).unwrap();
 	assert_eq!(txn.identity, identity);
 	let mut txn = txn;
@@ -45,7 +43,6 @@ fn test_identity_propagates_to_all_transaction_types() {
 	assert_eq!(tx.identity(), identity);
 	drop(txn);
 
-	// Query
 	let txn = t.begin_query(identity).unwrap();
 	assert_eq!(txn.identity, identity);
 	let mut txn = txn;
@@ -63,7 +60,6 @@ fn test_rql_select_through_all_transaction_types() {
 
 	let expected = vec![(1i64, "alice".to_string())];
 
-	// Admin
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	let r = txn.rql("FROM ns::t", Params::None);
 	if let Some(e) = r.error {
@@ -72,7 +68,6 @@ fn test_rql_select_through_all_transaction_types() {
 	assert_eq!(extract_rows(&r), expected);
 	drop(txn);
 
-	// Command
 	let mut txn = t.begin_command(IdentityId::system()).unwrap();
 	let r = txn.rql("FROM ns::t", Params::None);
 	if let Some(e) = r.error {
@@ -81,7 +76,6 @@ fn test_rql_select_through_all_transaction_types() {
 	assert_eq!(extract_rows(&r), expected);
 	drop(txn);
 
-	// Query
 	let mut txn = t.begin_query(IdentityId::system()).unwrap();
 	let r = txn.rql("FROM ns::t", Params::None);
 	if let Some(e) = r.error {
@@ -90,12 +84,10 @@ fn test_rql_select_through_all_transaction_types() {
 	assert_eq!(extract_rows(&r), expected);
 	drop(txn);
 
-	// (Subscription testing covered by admin above)
 }
 
 #[test]
 fn test_rql_insert_and_commit() {
-	// Admin
 	{
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
@@ -109,7 +101,6 @@ fn test_rql_insert_and_commit() {
 		assert_eq!(extract_rows(&t.query("FROM ns::t")), vec![(1, "alice".to_string())]);
 	}
 
-	// Command
 	{
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
@@ -123,7 +114,6 @@ fn test_rql_insert_and_commit() {
 		assert_eq!(extract_rows(&t.query("FROM ns::t")), vec![(2, "bob".to_string())]);
 	}
 
-	// Admin (Subscription removed)
 	{
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
@@ -189,7 +179,6 @@ fn test_rql_error_poisons_transaction() {
 
 #[test]
 fn test_drop_without_commit_rolls_back() {
-	// Admin
 	{
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
@@ -203,7 +192,6 @@ fn test_drop_without_commit_rolls_back() {
 		assert_eq!(extract_rows(&t.query("FROM ns::t")), vec![]);
 	}
 
-	// Command
 	{
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
@@ -217,7 +205,6 @@ fn test_drop_without_commit_rolls_back() {
 		assert_eq!(extract_rows(&t.query("FROM ns::t")), vec![]);
 	}
 
-	// Admin (Subscription removed)
 	{
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
@@ -234,7 +221,6 @@ fn test_drop_without_commit_rolls_back() {
 
 #[test]
 fn test_rql_after_commit_errors() {
-	// Admin
 	{
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
@@ -244,7 +230,6 @@ fn test_rql_after_commit_errors() {
 		assert!(txn.rql("FROM ns::t", Params::None).is_err());
 	}
 
-	// Command
 	{
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
@@ -254,7 +239,6 @@ fn test_rql_after_commit_errors() {
 		assert!(txn.rql("FROM ns::t", Params::None).is_err());
 	}
 
-	// Admin (Subscription removed)
 	{
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
@@ -267,7 +251,6 @@ fn test_rql_after_commit_errors() {
 
 #[test]
 fn test_rql_after_rollback_errors() {
-	// Admin
 	{
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
@@ -277,7 +260,6 @@ fn test_rql_after_rollback_errors() {
 		assert!(txn.rql("FROM ns::t", Params::None).is_err());
 	}
 
-	// Command
 	{
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
@@ -287,7 +269,6 @@ fn test_rql_after_rollback_errors() {
 		assert!(txn.rql("FROM ns::t", Params::None).is_err());
 	}
 
-	// Admin (Subscription removed)
 	{
 		let t = TestEngine::new();
 		t.admin("CREATE NAMESPACE ns");
@@ -304,22 +285,18 @@ fn test_rql_syntax_error_returns_err() {
 	t.admin("CREATE NAMESPACE ns");
 	t.admin("CREATE TABLE ns::t { id: int8, name: utf8 }");
 
-	// Admin
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(txn.rql("INVALID GIBBERISH", Params::None).is_err());
 	drop(txn);
 
-	// Command
 	let mut txn = t.begin_command(IdentityId::system()).unwrap();
 	assert!(txn.rql("INVALID GIBBERISH", Params::None).is_err());
 	drop(txn);
 
-	// Query
 	let mut txn = t.begin_query(IdentityId::system()).unwrap();
 	assert!(txn.rql("INVALID GIBBERISH", Params::None).is_err());
 	drop(txn);
 
-	// Admin (Subscription removed)
 	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
 	assert!(txn.rql("INVALID GIBBERISH", Params::None).is_err());
 	drop(txn);

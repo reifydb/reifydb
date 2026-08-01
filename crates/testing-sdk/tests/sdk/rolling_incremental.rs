@@ -34,10 +34,8 @@ use reifydb_testing_sdk::{
 };
 use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
 
-// Velocity-style operator: per-window value held last-write-wins; the
-// cross-window Running accumulator is Moments over ALL window values, and
-// the baseline is (Running minus the newest window) so the score
-// (newest / baseline_mean) is computed in O(1) from the running moments.
+// Velocity-style operator. The baseline is the running moments minus the newest window, which
+// is what makes the score O(1) instead of a fold over the buffer.
 
 #[derive(Clone, Debug, PartialEq)]
 struct TestOut {
@@ -75,8 +73,8 @@ impl RollingOperator for TestVelocity {
 		Some((group, window_start, value))
 	}
 
-	// Reference combine over the buffer: baseline = mean of all-but-newest.
 	fn combine(&self, group: &String, buffer: &BTreeMap<u64, LastValue<f64>>) -> Option<TestOut> {
+		// The reference fold the incremental path below has to reproduce exactly.
 		let (_, newest) = buffer.iter().next_back()?;
 		let newest = (*newest.get()?) as f64;
 		let mut sum = 0.0_f64;
@@ -119,7 +117,6 @@ impl RollingIncrementalOperator for TestVelocity {
 		newest_value: &f64,
 		_newest_coord: u64,
 	) -> Option<TestOut> {
-		// baseline = (running over ALL windows) minus the newest window.
 		let total_count = running.count();
 		let baseline_count = total_count.saturating_sub(1);
 		let baseline = if baseline_count > 0 {
@@ -175,8 +172,7 @@ fn baseline_excludes_newest_window() {
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
 		.build()
 		.expect("harness");
-	// Windows 0=10, 60=20, 120=60. Newest=120 (recent 60); baseline =
-	// mean(10, 20) = 15. Running moments maintained incrementally.
+	// The newest window must be excluded from its own baseline: mean(10, 20) = 15, not 30.
 	let out = h
 		.apply(TestChangeBuilder::new()
 			.insert(input_row(1, "BTC", 0, 10.0))
@@ -192,10 +188,8 @@ fn baseline_excludes_newest_window() {
 
 #[test]
 fn remove_clears_buffer_emits_remove() {
-	// Removing the only window empties the rolling buffer; the driver must
-	// withdraw the previously emitted output row (terminal Remove carrying the
-	// prior value) rather than leak a ghost row - required for reorg-retraction
-	// correctness of incremental rolling views.
+	// Emptying the buffer has to withdraw the previously emitted row; leaking a ghost row is
+	// what breaks reorg retraction.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
 		.build()
 		.expect("harness");
@@ -218,10 +212,8 @@ fn update_window_value_keeps_running_consistent() {
 			.insert(input_row(2, "BTC", 60, 20.0))
 			.build())
 		.expect("apply");
-	// Update the NEWEST window (60) from 20 to 40. (Updating a buried
-	// window like 0 would be dropped late, per the rolling contract.)
-	// Running must reflect old->new: windows {10, 40}, newest=40,
-	// baseline = mean(10) = 10.
+	// The update targets the newest window because a buried one would be dropped as late; the
+	// running moments must swap old for new rather than accumulate both.
 	let out = h
 		.apply(TestChangeBuilder::new()
 			.update(input_row(2, "BTC", 60, 20.0), input_row(2, "BTC", 60, 40.0))
@@ -237,8 +229,8 @@ fn eviction_drops_oldest_from_running() {
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
 		.build()
 		.expect("harness");
-	// Capacity 3; insert 4 windows. Window 0 (value 1) is evicted, so the
-	// running moments must drop it: baseline = mean(2, 3) = 2.5, recent=4.
+	// A fourth window evicts window 0, and the running moments have to drop it too or the
+	// baseline keeps counting a value no longer in the buffer.
 	let out = h
 		.apply(TestChangeBuilder::new()
 			.insert(input_row(1, "BTC", 0, 1.0))
@@ -257,7 +249,6 @@ fn millis(value: u64) -> Duration {
 	Duration::from_milliseconds_const(value as i64)
 }
 
-// TestVelocity with sealing enabled, over a DateTime coordinate.
 struct SealedVelocity;
 
 impl RollingOperator for SealedVelocity {
@@ -332,10 +323,8 @@ impl RollingRegistration for SealedVelocity {
 
 #[test]
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
-	// This driver had no seal gate at all, so an operator declaring seal_after got
-	// silence. A group that stops reporting must still have its state reclaimed, or
-	// a high-cardinality group key grows without bound. Nothing arrives after the
-	// initial batch here; the only thing that moves is the watermark.
+	// A group that stops reporting must still be reclaimed, or a high-cardinality group key
+	// grows without bound; nothing moves here after the initial batch except the watermark.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingIncrementalDriver<SealedVelocity>>>::new()
 		.build()
 		.expect("harness");
@@ -360,8 +349,8 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 
 #[test]
 fn a_sealed_incremental_window_drops_a_mutation_for_a_sealed_coordinate() {
-	// The gate has to refuse late mutations, not merely reclaim state: accepting one
-	// would reopen a coordinate whose value has already been published as final.
+	// The gate has to refuse late mutations, not merely reclaim state: accepting one would
+	// reopen a coordinate whose value was already published as final.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingIncrementalDriver<SealedVelocity>>>::new()
 		.build()
 		.expect("harness");
@@ -375,8 +364,7 @@ fn a_sealed_incremental_window_drops_a_mutation_for_a_sealed_coordinate() {
 
 #[test]
 fn an_ungated_incremental_operator_arms_no_seal_timer() {
-	// seal_after defaults to None. An operator that never opted into
-	// sealing must not acquire a retention policy it did not ask for.
+	// An operator that never opted into sealing must not acquire a retention policy.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingIncrementalDriver<TestVelocity>>>::new()
 		.build()
 		.expect("harness");

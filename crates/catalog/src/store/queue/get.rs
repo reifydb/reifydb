@@ -29,10 +29,10 @@ pub mod tests {
 
 	use crate::CatalogStore;
 
-	/// get_queue is the infallible-by-contract accessor: a missing id means the
-	/// catalog is inconsistent, and that must surface loudly, not as none.
 	#[test]
 	fn test_get_queue_missing_is_an_internal_error() {
+		// A missing id means the catalog is inconsistent, so get must raise rather than
+		// degrade to none the way find does.
 		let mut txn = create_test_admin_transaction();
 
 		let result = CatalogStore::get_queue(&mut Transaction::Admin(&mut txn), QueueId(999));

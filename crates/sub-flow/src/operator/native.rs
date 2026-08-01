@@ -705,10 +705,9 @@ mod tests {
 
 	#[test]
 	fn a_dylib_read_resolves_a_group_without_creating_one() {
-		// Reads cross this bridge on eviction and diagnostic paths, which walk groups that may
-		// already be reclaimed. If a read interned, every such walk would resurrect the groups it
-		// visited and the dictionary could never shrink - the append lesson, now on the dylib seam
-		// where the driver, not the host, decides which keys get touched.
+		// Eviction and diagnostic paths walk groups that may already be reclaimed, so a read that
+		// interned would resurrect them and the dictionary could never shrink - and on this seam
+		// it is the driver, not the host, that decides which keys get touched.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().at(CommitVersion(7)).deferred();
 		txn.set_change_coordinate(ChangeCoordinate {
@@ -729,16 +728,9 @@ mod tests {
 
 	#[test]
 	fn the_substrate_stamps_what_a_driver_can_no_longer_supply() {
-		// A driver has no access to the transaction and, since positions were removed from the
-		// intern surface, no way to pass one at all. The substrate stamps every intern from the
-		// change coordinate set for the dispatch: an undeclared or version-domain node takes the
-		// change version, an event-domain node takes the change's event time. A bridge that let
-		// a driver value through - or stamped a clock reading - would run the bucket arithmetic
-		// against a number from a different scale and the group would either never come due or
-		// come due instantly, silently in release.
-		// The coordinate's version deliberately differs from the transaction's own so the stamp
-		// source is pinned: a batch spans several change versions inside one transaction, and the
-		// stamp must follow the CHANGE being dispatched, not the transaction snapshot.
+		// A stamp from a driver value or a clock reading would run the bucket arithmetic against
+		// a different scale, so a group would come due instantly or never. The coordinate version
+		// differs from the transaction's on purpose: the stamp follows the change, not the txn.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().at(CommitVersion(42)).deferred();
 		let at = DateTime::from_millis(1_700_000_000_123);
@@ -765,8 +757,8 @@ mod tests {
 
 	#[test]
 	fn native_abi_tag_accepts_match_rejects_mismatch() {
-		// A plugin whose abi_tag does not match the host's must be refused, so an
-		// operator built against a different reifydb/toolchain is never loaded.
+		// A mismatched tag must be refused, or an operator built against a different toolchain
+		// gets loaded.
 		assert!(check_native_abi_tag(NATIVE_ABI_TAG).is_ok());
 		assert!(check_native_abi_tag(NATIVE_ABI_TAG ^ 0x1).is_err());
 		assert!(check_native_abi_tag(0).is_err());
@@ -781,8 +773,7 @@ mod tests {
 
 	#[test]
 	fn native_and_ffi_tags_do_not_accept_each_other() {
-		// The two tags must be distinct and must reject each other, so a native
-		// `.so` can never validate against the ffi check or vice versa.
+		// The two tags must reject each other, or a native `.so` validates against the ffi check.
 		assert_ne!(NATIVE_ABI_TAG, OPERATOR_ABI_TAG);
 		assert!(check_native_abi_tag(OPERATOR_ABI_TAG).is_err());
 		assert!(check_operator_abi_tag(NATIVE_ABI_TAG).is_err());
@@ -816,12 +807,9 @@ mod tests {
 
 	#[test]
 	fn the_host_wrapper_forwards_seal_span_and_reclaimed_groups_to_the_dylib() {
-		// NativeBridgedOperator is the host-side Operator over a dylib's BridgedOperator.
-		// Its Operator impl forwarded the seal span but silently dropped invalidate_groups
-		// (trait default no-op), so the reclaim driver could erase a native operator's
-		// group state on disk while the dylib kept serving it from RAM. Both must cross
-		// this seam. The dylib still answers in milliseconds; the host turns that into the
-		// retention scale that sizes the node's grid.
+		// A wrapper that drops invalidate_groups lets the reclaim driver erase a native
+		// operator's group state on disk while the dylib keeps serving it from RAM. Both the
+		// span and the invalidation have to cross this seam.
 		let invalidated = Arc::new(Mutex::new(Vec::new()));
 		let wrapper = NativeBridgedOperator::new(
 			Box::new(RecordingBridged {

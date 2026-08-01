@@ -57,7 +57,6 @@ fn with_subsystem_returns_provided_and_registers_vtables() {
 	assert!(downcast.is_some(), "returned subsystem must be ProfilerSubsystem");
 	assert!(downcast.unwrap().is_running());
 
-	// Verify the unified spans aggregates vtable was registered under system::metrics::profiler::spans.
 	let frames = test_engine.query("from system::metrics::profiler::spans::current");
 	assert!(!frames.is_empty(), "vtable system::metrics::profiler::spans::current should be queryable");
 }

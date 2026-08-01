@@ -3,13 +3,9 @@
 
 //! A raw-TCP relay used to inject connection failures between a client and a live server.
 //!
-//! The server binds an ephemeral port, so restarting it to force a disconnect would change
-//! the port and defeat reconnection (which dials the same URL). Instead the client connects
-//! to this proxy, which forwards to the real server and can:
-//! - `kill()` - drop every live connection, so the client observes a close and reconnects;
-//! - `pause()` - refuse new connections, to exercise backoff and attempt-exhaustion.
-//!
-//! Raw TCP means one helper serves both the WebSocket and gRPC transports.
+//! The server binds an ephemeral port, so restarting it to force a disconnect would change the
+//! port and defeat reconnection, which dials the same URL. Raw TCP means one helper serves both
+//! the WebSocket and gRPC transports.
 
 use std::sync::{
 	Arc,
@@ -64,7 +60,6 @@ impl TcpProxy {
 		&self.addr
 	}
 
-	/// WebSocket URL pointing at the proxy.
 	pub fn ws_url(&self) -> String {
 		format!("ws://{}", self.addr)
 	}

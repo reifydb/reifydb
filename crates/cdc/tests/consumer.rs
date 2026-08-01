@@ -99,7 +99,6 @@ fn test_event_processing() {
 	let transactions = consumer_clone.get_transactions();
 	assert_eq!(transactions.len(), 5, "Should have 5 transactions");
 
-	// Each transaction should have one change
 	for (i, cdc) in transactions.iter().enumerate() {
 		assert_eq!(cdc.system_changes.len(), 1, "Each transaction should have 1 change");
 		if let SystemChange::Insert {
@@ -189,13 +188,11 @@ fn test_checkpoint_persistence() {
 
 const ABORT_CHILD_ENV: &str = "REIFYDB_CDC_ABORT_CHILD";
 
-// A consumer that replies with an error is a fatal condition: the poll actor calls
-// process::abort() rather than trying to recover, because a checkpoint must never advance
-// past events the consumer could not durably process. process::abort() is terminal and cannot
-// be observed in-process, so the failure is driven inside a re-exec'd child of this same test
-// binary and the parent asserts the child died from SIGABRT.
 #[test]
 fn test_consumer_error_aborts_process() {
+	// A checkpoint must never advance past events the consumer could not durably process, so a
+	// consumer error aborts instead of recovering. An abort cannot be observed in-process, so the
+	// failure runs in a re-exec'd child and the parent checks for SIGABRT.
 	if env::var(ABORT_CHILD_ENV).is_ok() {
 		run_abort_child();
 		return;
@@ -233,16 +230,14 @@ fn run_abort_child() {
 
 	test_instance.start().expect("Failed to start consumer");
 
-	// The first dispatch to the failing consumer must abort this child. If the abort path
-	// regresses, control returns here and the child exits 0, failing the parent's assertion.
+	// If the abort path regresses, control returns here and the child exits 0, failing the parent.
 	sleep(poll_timeout().to_std());
 }
 
 #[test]
 fn test_recovers_when_consume_reply_is_lost() {
-	// A dropped consume reply must not wedge the poll loop forever: the CdcConsumeWaitTimeout
-	// backstop re-dispatches the batch. Without the timeout the actor stays in WaitingForConsume
-	// and never polls again, so neither the re-dispatch nor the post-recovery processing happen.
+	// Without the consume-wait backstop the actor stays in WaitingForConsume forever, so a single
+	// dropped reply wedges the poll loop and nothing after it is ever consumed.
 	let t = TestEngine::new();
 	t.inner()
 		.catalog()
@@ -271,7 +266,7 @@ fn test_recovers_when_consume_reply_is_lost() {
 	test_instance.start().expect("Failed to start consumer");
 	await_until("processes initial 3", || consumer_clone.get_total_changes() >= 3);
 
-	// Start dropping replies, then publish new work. The consumer dispatches but never hears back.
+	// New work arrives while replies are dropped: the consumer dispatches but never hears back.
 	consumer_clone.set_drop_reply(true);
 	let calls_before_drop = consumer_clone.get_call_count();
 	insert_test_events(&t, 2);
@@ -449,7 +444,7 @@ fn test_non_table_events_filtered() {
 	await_until("processes 2", || consumer_clone.get_total_changes() >= 2);
 	test_instance.stop().expect("Failed to stop consumer");
 
-	// The transaction contains both changes, but it was included because it has at least one table encoded
+	// One encoded table change is enough to include the whole transaction, non-table changes and all.
 	let changes = consumer_clone.get_total_changes();
 	assert_eq!(changes, 2, "Should have processed 2 changes (both in same transaction)");
 
@@ -457,7 +452,6 @@ fn test_non_table_events_filtered() {
 	assert_eq!(transactions.len(), 1, "Should have 1 transaction");
 	assert_eq!(transactions[0].system_changes.len(), 2, "Transaction should have 2 changes");
 
-	// Find the table change (could be in any order)
 	let table_change = transactions[0]
 		.system_changes
 		.iter()
@@ -524,10 +518,8 @@ fn test_batch_size_limits_processing() {
 	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let runtime = actor_system.spawner();
 
-	// Insert 25 events
 	insert_test_events(&t, 25);
 
-	// Set batch size to 10
 	let config = PollConsumerConfig::new(
 		consumer_id,
 		"cdc-poll-test",
@@ -560,10 +552,8 @@ fn test_batch_size_one_processes_sequentially() {
 	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let runtime = actor_system.spawner();
 
-	// Insert 5 events
 	insert_test_events(&t, 5);
 
-	// Set batch size to 1
 	let config = PollConsumerConfig::new(
 		consumer_id,
 		"cdc-poll-test",
@@ -596,11 +586,9 @@ fn test_batch_size_none_processes_all_at_once() {
 	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let runtime = actor_system.spawner();
 
-	// Insert 20 events
 	insert_test_events(&t, 20);
 	t.await_cdc();
 
-	// Set batch size to None (unbounded)
 	let config =
 		PollConsumerConfig::new(consumer_id, "cdc-poll-test", Duration::from_milliseconds(50).unwrap(), None);
 	let mut test_instance = PollConsumer::new(config, t.inner().clone(), consumer, cdc_store, runtime);
@@ -629,11 +617,9 @@ fn test_batch_size_larger_than_events() {
 	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let runtime = actor_system.spawner();
 
-	// Insert 5 events
 	insert_test_events(&t, 5);
 	t.await_cdc();
 
-	// Set batch size to 100 (much larger than number of events)
 	let config = PollConsumerConfig::new(
 		consumer_id,
 		"cdc-poll-test",
@@ -666,10 +652,8 @@ fn test_batch_size_with_checkpoint_resume() {
 	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let runtime = actor_system.spawner();
 
-	// Insert 15 events
 	insert_test_events(&t, 15);
 
-	// Set batch size to 5
 	let config = PollConsumerConfig::new(
 		consumer_id.clone(),
 		"cdc-poll-test",
@@ -681,18 +665,17 @@ fn test_batch_size_with_checkpoint_resume() {
 
 	test_instance.start().expect("Failed to start consumer");
 
-	// Wait for at least one batch, then a real stop() drains the actor so the durable
-	// checkpoint cannot run ahead of what this run actually recorded.
+	// A real stop() drains the actor, so the durable checkpoint cannot run ahead of what this run
+	// actually recorded.
 	await_until("first run processes a batch", || consumer_clone.get_total_changes() >= 5);
 	test_instance.stop().expect("Failed to stop consumer");
 
 	let changes_first_run = consumer_clone.get_total_changes();
 	assert!(changes_first_run >= 5, "Should have processed at least one batch of 5");
 
-	// Insert more events
 	insert_test_events(&t, 3);
 
-	// Start a new consumer with same ID and batch size
+	// Same consumer id, so the new instance must resume from the persisted checkpoint.
 	let consumer2 = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer2_clone = consumer2.clone();
 	let config2 = PollConsumerConfig::new(
@@ -727,11 +710,9 @@ fn test_batch_size_exact_match() {
 	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let runtime = actor_system.spawner();
 
-	// Insert exactly 10 events
 	insert_test_events(&t, 10);
 	t.await_cdc();
 
-	// Set batch size to 10 (exact match)
 	let config = PollConsumerConfig::new(
 		consumer_id,
 		"cdc-poll-test",
@@ -769,11 +750,9 @@ fn test_multiple_consumers_different_batch_sizes() {
 	let consumer2 = TestConsumer::new(t.inner().clone(), consumer_id2.clone());
 	let consumer2_clone = consumer2.clone();
 
-	// Insert 10 events
 	insert_test_events(&t, 10);
 	t.await_cdc();
 
-	// Consumer 1 with batch size 3
 	let config1 = PollConsumerConfig::new(
 		consumer_id1.clone(),
 		"cdc-poll-test-1",
@@ -783,7 +762,6 @@ fn test_multiple_consumers_different_batch_sizes() {
 	let mut test_instance1 =
 		PollConsumer::new(config1, t.inner().clone(), consumer1, cdc_store.clone(), runtime.clone());
 
-	// Consumer 2 with no batch limit (None)
 	let config2 = PollConsumerConfig::new(
 		consumer_id2.clone(),
 		"cdc-poll-test-2",
@@ -802,11 +780,9 @@ fn test_multiple_consumers_different_batch_sizes() {
 	let changes1 = consumer1_clone.get_total_changes();
 	let changes2 = consumer2_clone.get_total_changes();
 
-	// Both should process all events
 	assert_eq!(changes1, 10, "Consumer 1 should have processed all 10 changes");
 	assert_eq!(changes2, 10, "Consumer 2 should have processed all 10 changes");
 
-	// Consumer 1 should have more process calls due to smaller batch size
 	let process_count1 = consumer1_clone.get_process_count();
 	let process_count2 = consumer2_clone.get_process_count();
 
@@ -909,7 +885,7 @@ impl CdcConsume for TestConsumer {
 			return;
 		}
 
-		// Persist consumer checkpoint (so PollActor sees progress)
+		// The poll actor only sees progress through the persisted checkpoint.
 		let latest_version = transactions.last().map(|c| c.version);
 		if let Some(version) = latest_version {
 			match self.host.begin_command(IdentityId::system()) {
@@ -1025,12 +1001,9 @@ impl CdcConsume for ResyncConsumer {
 
 #[test]
 fn an_overtaken_consumer_resyncs_through_its_hook_and_resumes_past_the_gap() {
-	// The overtaken protocol replaces the silent gap: before the truncation floor existed, a
-	// consumer whose cursor fell below truncated history would just read whatever remained and
-	// skip the rest without any signal. This asserts the three observable pieces: the hook fires
-	// with the stale cursor and the floor, the durable row is flipped to Invalidated
-	// (state-on-row), and consumption resumes at the version the consumer chose, never
-	// re-delivering anything from before the resync point.
+	// A cursor below truncated history must be signalled, not silently skipped over: the hook gets
+	// the stale cursor and the floor, the durable row flips to Invalidated, and consumption resumes
+	// at the version the consumer chose without re-delivering anything earlier.
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
 	let consumer_id = CdcConsumerId::new("resync-consumer");
@@ -1109,8 +1082,8 @@ impl Clone for EvictedBatchConsumer {
 impl CdcConsume for EvictedBatchConsumer {
 	fn consume(&self, transactions: Vec<Cdc>, reply: Box<dyn FnOnce(reifydb_value::Result<()>) + Send>) {
 		if self.fail_once.swap(false, Ordering::SeqCst) {
-			// The typed variant the dispatch path emits when its protective lease acquire finds
-			// the batch's history already reclaimed (mapped from SnapshotVersionEvicted).
+			// What the dispatch path emits when its lease acquire finds the batch's history
+			// already reclaimed.
 			(reply)(Err(TransactionError::ConsumerOvertaken {
 				version: CommitVersion(9),
 				cutoff: CommitVersion(40),
@@ -1133,11 +1106,9 @@ impl CdcConsume for EvictedBatchConsumer {
 
 #[test]
 fn a_batch_that_lost_its_mvcc_history_resyncs_instead_of_aborting() {
-	// The MVCC-side overtaken signal: a subscription worker whose lease acquire fails because the
-	// version history was reclaimed surfaces TXN_012 through the consume reply. Before this
-	// protocol, ANY consume error aborted the whole process; TXN_012 is an expected consequence
-	// of ephemeral lag and must route into the resync protocol instead, keeping the process (and
-	// with it the flow hot path) alive.
+	// A lease acquire that fails because the version history was reclaimed is an expected
+	// consequence of ephemeral lag, so it must route into the resync protocol rather than abort the
+	// process along with the flow hot path.
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
 	let consumer_id = CdcConsumerId::new("evicted-batch-consumer");
@@ -1170,9 +1141,8 @@ fn a_batch_that_lost_its_mvcc_history_resyncs_instead_of_aborting() {
 
 #[test]
 fn an_invalidated_checkpoint_row_triggers_resync_at_startup() {
-	// State-on-row is only worth persisting if a RESTARTED consumer honors it: the invalidation
-	// happened in a previous process life, and resuming the stale cursor as if the row were
-	// valid would silently skip the gap the invalidation recorded.
+	// The invalidation happened in a previous process life; resuming the stale cursor as if the row
+	// were valid would silently skip the gap that invalidation recorded.
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
 	let consumer_id = CdcConsumerId::new("restarted-consumer");

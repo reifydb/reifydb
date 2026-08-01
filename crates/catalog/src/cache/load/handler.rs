@@ -43,6 +43,9 @@ mod tests {
 
 	#[test]
 	fn handlers_in_the_store_are_rebuilt_into_a_fresh_cache() {
+		// set_handler is the only writer of the handler indexes, so a boot loader that skips
+		// handlers leaves them gone for the life of the process. Driving load_all rather than
+		// load_handlers is the point: the wiring is what must be covered.
 		let mut txn = create_test_admin_transaction();
 		ensure_test_namespace(&mut txn);
 		create_namespace(&mut txn, "namespace_one");
@@ -53,11 +56,6 @@ mod tests {
 		};
 		let created = create_handler(&mut txn, "namespace_one", "on_order_placed", variant, "");
 
-		// A fresh process: the cache starts empty and everything it serves must come back from the
-		// store. Nothing else populates the handler indexes - set_handler is the only writer - so if
-		// the loader does not run, the handler is simply gone and its events stop firing.
-		// Go through load_all, not load_handlers: the bug was that the boot loader ran 29 loaders and
-		// none of them was the handler loader, so wiring is the thing under test.
 		let catalog = CatalogCache::new();
 		CatalogCacheLoader::load_all(&mut Transaction::Admin(&mut txn), &catalog).unwrap();
 

@@ -226,7 +226,6 @@ pub mod tests {
 	fn test_iterator_compatibility() {
 		let mut pw = PendingWrites::new();
 
-		// Test that iterators work with transaction system expectations
 		for i in 0..5 {
 			let key = create_test_key(&format!("key{}", i));
 			let pending =
@@ -234,18 +233,16 @@ pub mod tests {
 			pw.insert(key, pending);
 		}
 
-		// Test that iter() returns the expected BTreeMap iterator type
 		let iter = pw.iter();
 		let items: Vec<_> = iter.collect();
 		assert_eq!(items.len(), 5);
 
-		// Test that the iterator is ordered (important for BTreeMap)
+		// iter() must yield key order, not insertion order; the merge with storage relies on it.
 		let keys: Vec<_> = items.iter().map(|(k, _)| k).collect();
 		let mut expected_keys = keys.clone();
 		expected_keys.sort();
 		assert_eq!(keys, expected_keys);
 
-		// Test range queries
 		let start = create_test_key("key1");
 		let end = create_test_key("key4");
 		let range_items: Vec<_> = pw.range(start..end).collect();
@@ -256,8 +253,6 @@ pub mod tests {
 	fn test_performance_operations() {
 		let mut pw = PendingWrites::new();
 
-		// Test with larger dataset to verify performance
-		// characteristics
 		for i in 0..1000 {
 			let key = create_test_key(&format!("key{:06}", i));
 			let pending =
@@ -267,12 +262,10 @@ pub mod tests {
 
 		assert_eq!(pw.len(), 1000);
 
-		// Test fast lookups
 		let lookup_key = create_test_key("key000500");
 		assert!(pw.contains_key(&lookup_key));
 		assert!(pw.get(&lookup_key).is_some());
 
-		// Test removal
 		let removed = pw.remove_entry(&lookup_key);
 		assert!(removed.is_some());
 		assert_eq!(pw.len(), 999);
@@ -306,11 +299,10 @@ pub mod tests {
 			.collect()
 	}
 
-	// A removal must not disturb where any other key sits. The previous swap-remove moved the tail key into the
-	// vacated slot, so removing B silently transposed C and D. Downstream commit ordering is derived from this
-	// sequence, so a transposition here reorders the deltas a commit publishes.
 	#[test]
 	fn removing_a_middle_key_leaves_every_other_position_untouched() {
+		// Commit ordering is derived from this sequence, so a removal that transposes the tail
+		// into the vacated slot reorders the deltas the commit publishes.
 		let mut pw = PendingWrites::new();
 		for name in ["a", "b", "c", "d"] {
 			pw.insert(create_test_key(name), create_test_pending(CommitVersion(1), name, "v"));
@@ -325,11 +317,10 @@ pub mod tests {
 		);
 	}
 
-	// A re-write updates a key in place rather than moving it to the end. This is what optimize_deltas already
-	// produces for the primary path, which sorts surviving deltas by first-appearance index; a pending-writes
-	// order of last-write-wins would disagree with the deltas the primary commits for the same transaction.
 	#[test]
 	fn rewriting_a_key_keeps_its_first_insertion_position() {
+		// The primary path sorts surviving deltas by first appearance, so a last-write-wins order
+		// here would disagree with the deltas that path commits for the same transaction.
 		let mut pw = PendingWrites::new();
 		for name in ["a", "b", "c"] {
 			pw.insert(create_test_key(name), create_test_pending(CommitVersion(1), name, "v1"));

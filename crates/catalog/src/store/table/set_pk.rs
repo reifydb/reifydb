@@ -45,20 +45,13 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
-		// Set primary key
 		CatalogStore::set_table_primary_key(&mut txn, table.id, PrimaryKeyId(42)).unwrap();
-
-		// The test succeeds if no error is thrown.
-		// In real usage, create_primary_key would create both the
-		// PrimaryKey record and update the table, and
-		// find_primary_key would find it.
 	}
 
 	#[test]
 	fn test_set_table_primary_key_nonexistent() {
 		let mut txn = create_test_admin_transaction();
 
-		// Try to set primary key on non-existent table
 		let result = CatalogStore::set_table_primary_key(&mut txn, TableId(999), PrimaryKeyId(1));
 
 		assert!(result.is_err());

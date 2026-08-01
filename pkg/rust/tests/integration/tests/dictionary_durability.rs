@@ -23,15 +23,11 @@ fn usdc_and_wsol() -> Vec<Value> {
 	vec![Value::Utf8("usdc".into()), Value::Utf8("wsol".into())]
 }
 
-// A dictionary id embedded in a durable row is worthless if the entry that decodes it is not durable
-// too. Interning writes the entry through the single store; if it never reaches the persistent tier,
-// every id in every surviving row is a dangling reference, and the first read after a restart cannot
-// resolve any of them.
-//
-// The whole suite around interning runs on a memory store, which cannot observe this: the entry is
-// "durable" for as long as the process lives. Only a real sqlite store, stopped and reopened, does.
 #[test]
 fn dictionary_entries_survive_a_reopen() {
+	// A dictionary id in a durable row is worthless if the entry that decodes it is not durable
+	// too. A memory store cannot observe that, since the entry lives as long as the process; only
+	// a real sqlite store, stopped and reopened, can.
 	let path = TempDbPath::new("dict_reopen");
 
 	{
@@ -60,13 +56,11 @@ fn dictionary_entries_survive_a_reopen() {
 	db.stop();
 }
 
-// The same durability question for the path raptor actually uses: the value is interned by a DEFERRED
-// VIEW's sink, not by a table insert. The source table carries no dictionary, so the only interner is
-// the flow sink, running on a flow worker inside a slice. If that intern's entry does not reach the
-// persistent tier, the view rows survive a restart holding ids that nothing can decode - and an
-// operator that resolves a value to its id on replay finds nothing.
 #[test]
 fn dictionary_entries_interned_by_a_deferred_flow_sink_survive_a_reopen() {
+	// Here the only interner is a deferred view's sink on a flow worker, not a table insert. If
+	// that entry misses the persistent tier, the view rows survive a restart holding ids nothing
+	// can decode.
 	let path = TempDbPath::new("dict_flow_reopen");
 
 	{
@@ -104,13 +98,11 @@ fn dictionary_entries_interned_by_a_deferred_flow_sink_survive_a_reopen() {
 	db.stop();
 }
 
-// Durability WITHOUT a graceful stop. A crash, an abort, or a SIGKILL after docker's grace period
-// expires all skip stop(), so the only thing that can have persisted a dictionary entry is the
-// single store's periodic flush. Dictionary entries live in the single store (like sequences); this
-// pins that the flush actor moves them to the persistent tier without a shutdown, and that they no
-// longer land in the multi store at all.
 #[test]
 fn dictionary_entries_reach_disk_without_a_graceful_stop() {
+	// A crash or SIGKILL skips stop(), so only the single store's periodic flush can have
+	// persisted the entry. Pins that the flush actor reaches the persistent tier without a
+	// shutdown, and that entries no longer land in the multi store at all.
 	let path = TempDbPath::new("dict_nostop");
 
 	let db = TestDb::sqlite_at(&path);

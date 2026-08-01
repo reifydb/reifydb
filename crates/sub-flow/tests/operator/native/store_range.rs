@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// The operator-facing store range must return every row in range, even past the
-// 1024 storage pagination batch_size. A backend that capped the scan (e.g.
-// `.take(1024)`) would return fewer than the seeded rows and fail.
+// The operator-facing store range must return every row in range, past the 1024 storage pagination
+// batch_size; a backend that capped the scan returns fewer than the seeded rows.
 
 use reifydb_core::{interface::catalog::storage::StorageId, key::row::RowKeyRange};
 use reifydb_test_harness::operator::change::{STORE_ROW_COUNT, STORE_TABLE, store_seed};

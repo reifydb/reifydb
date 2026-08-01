@@ -3,13 +3,9 @@
 
 //! Registration matrix for the lifecycle subsystem.
 //!
-//! The defect this subsystem exists to eliminate is maintenance that silently is not running: an evictor skipped
-//! under one store configuration, a settings sweep that only engages on a fresh database, a truncation pass nobody
-//! notices never fired. Those bugs are invisible precisely because nothing asserts the class should have been there.
-//!
-//! So these tests assert the registered SET, by name, exhaustively - not merely that registration did not panic. A
-//! class silently dropping out of the plane fails here, and a new class added without a deliberate decision about
-//! whether it is always-on also fails here, which is the point: the matrix is the reviewed contract.
+//! Maintenance that silently is not running stays invisible unless something asserts the class should have been
+//! there, so these tests assert the registered set by name, exhaustively. A class dropping out of the plane fails
+//! here, and so does a new class added without a deliberate decision about whether it is always-on.
 
 use std::sync::Arc;
 
@@ -30,19 +26,10 @@ use reifydb_value::value::duration::Duration;
 const ALWAYS_ON: [&str; 5] =
 	["retention-evict-silent", "retention-evict-announced", "compaction-reclaim", "historical-gc", "epoch-log"];
 
-/// Classes this subsystem does not register a LIFECYCLE TASK for. Adding to this list is a reviewed decision: it
-/// exempts the class from the coverage assertion below. Two reasons appear here, and they are not equivalent.
-///
-/// The first four register only when the store provides the tier they reclaim, and each has its own test pinning
-/// that condition.
-///
-/// The two operator-group classes are executed by the FLOW tick rather than by this lane (the group reclaim driver
-/// runs inside FlowTransaction), so no lifecycle task will ever cover them. That is a statement about THIS lane, not
-/// about whether they are reclaimed: in a real database `FlowSubsystem::new` claims both in the shared
-/// `RetentionCoverage` registry as "flow-tick-reclaim", and the boot report names that owner instead of erroring.
-/// The tests here build a lifecycle-only IoC with no flow subsystem, so nothing claims them and the "no registered
-/// executor" line is correct for this fixture alone. `sub-flow/tests/lifecycle_coverage.rs` pins the real-database
-/// side; if that ever regresses, the ERROR returns everywhere and stops meaning anything.
+/// Classes this subsystem registers no lifecycle task for on this fixture; adding one is a reviewed decision that
+/// exempts it from the coverage assertion below. Three need a persistent tier the memory store lacks and
+/// cdc-truncate needs a CdcStore in the IoC; the two operator-group classes ride the flow tick instead, pinned by
+/// `sub-flow/tests/lifecycle_coverage.rs`.
 const CONDITIONAL: [RetentionClass; 6] = [
 	RetentionClass::PersistentFlush,
 	RetentionClass::CdcTruncate,
@@ -98,10 +85,8 @@ fn registers_every_always_on_class_plus_cdc_truncation_when_a_cdc_store_exists()
 
 #[test]
 fn the_epoch_log_registers_even_though_nothing_visibly_depends_on_it() {
-	// epoch-log is the one class whose absence is completely silent: it deletes nothing itself, it just keeps the
-	// time-to-version map answerable. Without it every OTHER class resolves a none cutoff and reclaims nothing
-	// while still reporting success - which is exactly how TTLs came to be declared-but-never-enforced. It has to
-	// be unconditional for the same reason it is easy to forget.
+	// epoch-log deletes no user data; it is the only writer keeping the time-to-version map answerable and
+	// bounded, so nothing else fails visibly when it is absent.
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
 	let ioc = engine
@@ -122,9 +107,8 @@ fn the_epoch_log_registers_even_though_nothing_visibly_depends_on_it() {
 
 #[test]
 fn omits_cdc_truncation_when_no_cdc_store_is_present_without_dropping_any_always_on_class() {
-	// The always-on set must not be coupled to optional components. An earlier shape of this wiring built the
-	// whole task list inside one `if let Some(cdc_store)`-style block, which is how a conditional dependency
-	// silently takes unrelated classes down with it.
+	// The always-on set must not be coupled to an optional component: building the whole task list inside one
+	// `if let Some(cdc_store)` block is how a conditional dependency takes unrelated classes down with it.
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
 	let spawner = engine.ioc().resolve::<ActorSpawner>().expect("test engine registers a spawner");
@@ -153,9 +137,8 @@ fn omits_cdc_truncation_when_no_cdc_store_is_present_without_dropping_any_always
 
 #[test]
 fn omits_persistent_flush_when_the_store_has_no_persistent_tier() {
-	// PersistentFlushTask drives the commit-buffer -> sqlite sweep. With no persistent tier there is nothing to
-	// flush to, so registering it would schedule a task that can only no-op. This pins the conditional in the
-	// direction we can construct here; the positive case rides the store-multi flush tests.
+	// With no persistent tier there is nothing to flush to, so registering the task would only schedule a no-op.
+	// The positive direction rides the store-multi flush tests.
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
 	let ioc = engine
@@ -175,10 +158,8 @@ fn omits_persistent_flush_when_the_store_has_no_persistent_tier() {
 
 #[test]
 fn omits_tombstone_reap_when_the_store_has_no_persistent_tier() {
-	// TombstoneReapTask physically deletes flushed delete-mode tombstones from the persistent tables. With no
-	// persistent tier there are no such tables, so registering it would schedule a task that can only no-op. This
-	// pins the conditional in the direction we can construct here; the positive case rides the store-multi and
-	// executor tests that build a sqlite-backed store.
+	// With no persistent tier there are no tables holding flushed tombstones, so registering the task would only
+	// schedule a no-op. The positive direction rides the sqlite-backed store tests.
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
 	let ioc = engine
@@ -198,9 +179,8 @@ fn omits_tombstone_reap_when_the_store_has_no_persistent_tier() {
 
 #[test]
 fn omits_vacuum_budget_when_the_store_has_no_persistent_tier() {
-	// VacuumBudgetTask runs incremental_vacuum on the persistent sqlite file. With no persistent tier there is no
-	// file to compact, so registering it would schedule a task that can only no-op. This pins the conditional in
-	// the direction we can construct here; the positive case rides the store-multi and executor tests.
+	// With no persistent tier there is no file to compact, so registering the task would only schedule a no-op.
+	// The positive direction rides the sqlite-backed store tests.
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
 	let ioc = engine
@@ -247,9 +227,8 @@ fn drains_the_registry_so_the_subsystem_is_the_sole_owner_of_every_task() {
 
 #[test]
 fn tasks_registered_by_other_crates_are_adopted_by_the_plane() {
-	// The registry is the extension point that lets other subsystems put work on this lane instead of spawning
-	// their own timer. If the factory ignored pre-registered tasks, every such crate would quietly go back to
-	// running maintenance out-of-band, which is the fragmentation this subsystem replaces.
+	// The registry lets other subsystems put work on this lane instead of spawning their own timer; ignoring
+	// pre-registered tasks sends every such crate back to running maintenance out-of-band.
 	use reifydb_core::lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask};
 	use reifydb_value::value::duration::Duration;
 
@@ -295,9 +274,8 @@ fn tasks_registered_by_other_crates_are_adopted_by_the_plane() {
 
 #[test]
 fn every_registered_class_has_a_distinct_name() {
-	// Names are how a class is identified in the boot report, in metrics, and in a stuck-horizon alarm. Two
-	// classes sharing a name makes one of them invisible in exactly the situation where you are trying to find
-	// out which one stopped making progress.
+	// Names identify a class in the boot report, in metrics and in a stuck-horizon alarm, so a duplicate makes
+	// one class invisible exactly when you are trying to find which one stopped.
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
 	let ioc = engine
@@ -316,9 +294,8 @@ fn every_registered_class_has_a_distinct_name() {
 
 #[test]
 fn no_retention_class_is_left_without_an_executor_by_accident() {
-	// A class in the matrix with nothing registered to execute it reclaims nothing while the subsystem reports
-	// healthy. Only the two classes whose registration is conditional on a store tier may be uncovered, and each
-	// of those has its own test pinning the condition; anything else is a class nobody wired up.
+	// A class with nothing registered to execute it reclaims nothing while the subsystem reports healthy, so
+	// only the classes named in CONDITIONAL above may be uncovered here.
 	let test_engine = TestEngine::new();
 	let engine: StandardEngine = test_engine.inner().clone();
 	let ioc = engine

@@ -1,24 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Flush+evict (RAM-bounding) behaviour exercised through the full StandardMultiStore.
-//!
-//! The eviction sweep is the fix that bounds the commit tier's RAM: on a watermark W it persists the
-//! latest-<=W value per key of every PERSISTENT object to the persistent tier, then drops ALL <=W versions from
-//! the commit tier (persistent or not), keeping only versions > W resident. These tests pin that the store still
-//! returns correct values after eviction (served from persistent for evicted versions, from the commit tier for
-//! resident ones), that `persistent:false` objects are evicted WITHOUT being persisted, and that the post-eviction
-//! MVCC view matches an identical never-evicted store.
-//!
-//! The periodic sweep runs on the maintenance lane (PersistentFlushTask), but the same engine sweep is driven
-//! synchronously from an integration test via `store.flush_pending_blocking()`. `sweep_through_store` below
-//! replicates the sweep's composition through the public store API (`collect_evictable_below` -> persist -> drop)
-//! and reproduces its read-tier effect: ephemeral keys are invalidated, persistent keys are left resident in the
-//! read tier (the engine seeds them on eviction; here a post-drop read-through warms the same entry) so the
-//! store-level read-through can be asserted deterministically. Two tests drive the genuine engine sweep via
-//! `flush_pending_blocking`: `real_flush_actor_sweep_bounds_ram_end_to_end` proves the wiring persists and drops,
-//! and `real_flush_actor_seeds_read_tier_on_eviction` proves the sweep seeds the read tier with the persisted
-//! value so a post-eviction read skips the persistent tier.
+//! Flush+evict (RAM-bounding) behaviour through the full StandardMultiStore: at watermark W the sweep
+//! persists the latest-<=W value of persistent objects and drops all <=W versions from the commit tier,
+//! so snapshots older than W are deliberately not preserved.
 
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
@@ -54,8 +39,8 @@ fn store_with_persistent() -> (StandardMultiStore, impl Drop) {
 	StandardMultiStore::testing_memory_with_persistent_sqlite()
 }
 
-/// Build a store with the flush engine wired; a set eviction watermark + flush_pending_blocking drives the real sweep.
 fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
+	// The flush engine is wired so a set watermark plus flush_pending_blocking drives the genuine sweep.
 	let pools = Pools::new(PoolConfig::default());
 	let clock = Clock::Real;
 	let actor_system = ActorSystem::new(pools, clock.clone());
@@ -113,13 +98,10 @@ fn scan_keys(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)
 	.collect()
 }
 
-/// Deterministic stand-in for FlushActor::sweep: collects evictable-below-W per entry kind, persists the
-/// latest-<=W value of persistent objects, then drops all <=W versions from the commit tier. It reproduces the
-/// actor's post-sweep read-tier state: ephemeral (`persistent:false`) keys are invalidated, while persistent keys
-/// are left resident in the read tier (the actor seeds them on eviction; here a post-drop read-through warms the
-/// same entry). `persistent` decides whether the (single) object is treated as persistent, mirroring the actor's
-/// `is_persistent_object` gate.
 fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persistent_object: bool) {
+	// Deterministic stand-in for the flush sweep. It reproduces the sweep's read-tier effect (ephemeral
+	// keys invalidated, persistent keys left resident) so store-level read-through can be asserted
+	// without racing the actor.
 	let commit = store.commit();
 	let kinds = commit.list_all_entry_kinds().unwrap();
 	for kind in kinds {
@@ -168,9 +150,7 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 
 #[test]
 fn eviction_persists_latest_below_w_and_drops_them_from_commit_tier() {
-	// Test 1 (a,b,c,d): commit v1<v2<v3 for one persistent key, evict <= 2. The latest-<=2 value (v2) must
-	// be persisted; the commit tier must no longer hold v1/v2 (counts drop) while v3 stays resident; and both
-	// point reads and range scans must still return the correct values across the tier boundary.
+	// Reads must stay correct across the tier boundary the sweep introduces.
 	let (store, _guard) = store_with_persistent();
 	let kind = EntryKind::Source(STORAGE.into());
 	let k = row_key(1);
@@ -187,14 +167,12 @@ fn eviction_persists_latest_below_w_and_drops_them_from_commit_tier() {
 
 	sweep_through_store(&store, CommitVersion(2), true);
 
-	// (a) the latest-<=W value (v2) is now in the persistent tier.
 	let persistent = store.persistent().unwrap();
 	assert!(
 		matches!(persistent.get(kind, k.as_ref(), CommitVersion(2)).unwrap(), VersionedGetResult::Value { .. }),
 		"v2 must be persisted"
 	);
 
-	// (b) the commit tier no longer holds <= W versions: only v3 remains, nothing historical.
 	assert_eq!(commit_tier.count_current(kind).unwrap(), 1, "v3 still current");
 	assert_eq!(commit_tier.count_historical(kind).unwrap(), 0, "v1/v2 dropped from the commit tier's history");
 	assert!(
@@ -202,27 +180,22 @@ fn eviction_persists_latest_below_w_and_drops_them_from_commit_tier() {
 		"the commit tier must not answer for an evicted version"
 	);
 
-	// (c) versions > W remain resident in the commit tier.
 	assert_eq!(
 		commit_tier.get(kind, k.as_ref(), CommitVersion(3)).unwrap().value().as_deref(),
 		Some(b"v3".as_slice()),
 		"v3 (> W) stays in the commit tier"
 	);
 
-	// (d) point reads still correct across the boundary: v3 from commit, v2 from persistent.
 	assert_eq!(get(&store, &k, 3).as_deref(), Some(b"v3".as_slice()));
 	assert_eq!(get(&store, &k, 2).as_deref(), Some(b"v2".as_slice()), "served from persistent after eviction");
-	// Range scan at the latest snapshot still surfaces the live row.
 	let scanned = scan_keys(&store, 3);
 	assert!(scanned.iter().any(|(kk, vv)| kk == k.as_ref() && vv == b"v3"), "scan must still see the live row");
 }
 
 #[test]
 fn persistent_false_object_is_dropped_without_persisting() {
-	// Test 2: a persistent:false object must still be EVICTED below W (the RAM-bounding fix), but its value must
-	// NOT be written to the persistent tier. A read after eviction returns NotFound - it was RAM-only ephemeral.
-	// This guards the bug where persistent:false objects were never evicted (unbounded RAM) or were wrongly
-	// flushed to disk.
+	// A persistent:false object is RAM-only: skipping its eviction would leave RAM unbounded, and
+	// persisting it would write data that was never meant to be durable.
 	let (store, _guard) = store_with_persistent();
 	let kind = EntryKind::Source(STORAGE.into());
 	let k = row_key(1);
@@ -244,15 +217,12 @@ fn persistent_false_object_is_dropped_without_persisting() {
 		"a persistent:false object must NOT be written to the persistent tier"
 	);
 
-	// A read after eviction returns nothing: the value was ephemeral and is gone everywhere.
 	assert_eq!(get(&store, &k, 2), None, "an evicted persistent:false value must read as NotFound");
 }
 
 #[test]
 fn mvcc_view_after_eviction_matches_a_never_evicted_store() {
-	// Test 3: versions v1<v2<v3; evict <= v2 in one store, leave an identical store untouched. Every snapshot
-	// read (including a between-version snapshot) must resolve identically. This is the parity check that the
-	// tier boundary introduced by eviction is invisible to MVCC semantics.
+	// The tier boundary eviction introduces must be invisible to MVCC semantics at and above W.
 	let (evicted, _evicted_guard) = store_with_persistent();
 	let (intact, _intact_guard) = store_with_persistent();
 	let k = row_key(1);
@@ -265,11 +235,8 @@ fn mvcc_view_after_eviction_matches_a_never_evicted_store() {
 
 	sweep_through_store(&evicted, CommitVersion(2), true);
 
-	// The sweep persists only the LATEST-<=W value per key (v2) and drops every <=W version (v1 and v2) from
-	// the commit tier. So at and above the persisted floor (W=2) the evicted store must resolve identically to
-	// the intact store; below the floor (snapshot 1) the evicted store correctly returns NotFound, because v1
-	// was discarded - it is no longer reachable at any snapshot. This is the documented RAM-bounding trade:
-	// snapshots older than the eviction watermark are not preserved.
+	// Only the latest-<=W value survives, so parity holds at and above W; snapshot 1 is unreachable by
+	// design - that is the RAM-bounding trade.
 	for snapshot in [2u64, 3, 4] {
 		assert_eq!(
 			get(&evicted, &k, snapshot),
@@ -295,8 +262,7 @@ fn mvcc_view_after_eviction_matches_a_never_evicted_store() {
 
 #[test]
 fn versions_above_w_are_left_entirely_resident() {
-	// Guards the converse of eviction: with W below all committed versions, nothing is persisted and nothing is
-	// dropped. A regression that evicted too eagerly would surface here.
+	// With W below every committed version, an over-eager sweep would surface here.
 	let (store, _guard) = store_with_persistent();
 	let kind = EntryKind::Source(STORAGE.into());
 	let k = row_key(1);
@@ -333,18 +299,9 @@ impl ObjectPersistence for AllPersistent {
 
 #[test]
 fn real_flush_actor_sweep_bounds_ram_end_to_end() {
-	// End-to-end: drive the GENUINE engine sweep via a set eviction watermark and flush_pending_blocking. This
-	// proves the production wiring (watermark -> tick -> sweep -> persist + drop) actually fires and bounds the
-	// commit tier's RAM, not just the hand-rolled stand-in above. Polls for the observable effect with a
-	// bounded timeout so a never-firing sweep fails loudly rather than hanging.
-	//
-	// This is the exact gap the "flush == evict-safe" redesign closed. Flush is now SOLELY the watermark sweep;
-	// there is no eager drain racing it. The persistent tier is CURRENT-ONLY with a version-guarded upsert
-	// (WHERE excluded.version >= stored.version), so the sweep must persist the latest-<=W value (v2) - not the
-	// current v3. Under the old eager-drain model the drain wrote v3 to persistent out-of-band, and the sweep's
-	// correct v2 was then rejected as a lower version, leaving a read at the W snapshot returning NotFound. With
-	// the drain gone, persistent holds v2: a read at W (v2) resolves to v2 from persistent, a read at v3 resolves
-	// to v3 from the commit tier, and the <= W history is gone from the commit tier (RAM bounded).
+	// Drives the genuine engine sweep rather than the stand-in. The persistent tier is current-only with a
+	// version-guarded upsert, so the sweep must persist the latest-<=W value (v2); anything writing the
+	// current v3 out-of-band makes a read at the W snapshot return NotFound.
 	let (store, _guard) = store_with_fast_flush();
 	let kind = EntryKind::Source(STORAGE.into());
 	let k = row_key(1);
@@ -360,8 +317,6 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	let commit_tier = store.commit();
 	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
 	loop {
-		// The sweep drops the <= W history from the commit tier: historical falls to 0 and a commit-tier read
-		// at the watermark snapshot no longer resolves (only the current v3 > W remains resident).
 		let historical = commit_tier.count_historical(kind).unwrap();
 		let evicted_gone = matches!(
 			commit_tier.get(kind, k.as_ref(), CommitVersion(2)).unwrap(),
@@ -378,7 +333,6 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 		std::thread::yield_now();
 	}
 
-	// v3 (> W) is still resident in the commit tier; the live snapshot reads correctly.
 	assert_eq!(
 		commit_tier.get(kind, k.as_ref(), CommitVersion(3)).unwrap().value().as_deref(),
 		Some(b"v3".as_slice()),
@@ -386,8 +340,6 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 	);
 	assert_eq!(get(&store, &k, 3).as_deref(), Some(b"v3".as_slice()), "the live snapshot reads correctly");
 
-	// The sweep persists the latest-<=W value (v2), not the current v3. The version guard would have rejected a
-	// stale v3-over-v2 write, but there is no eager drain to write v3 out-of-band any more.
 	let persistent = store.persistent().unwrap();
 	assert_eq!(
 		persistent.get(kind, k.as_ref(), CommitVersion(2)).unwrap().value().as_deref(),
@@ -395,8 +347,6 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 		"the latest-<=W value (v2) is durable in the persistent tier"
 	);
 
-	// The regression: a read at the eviction-watermark snapshot (W = v2) must return v2 from persistent, NOT
-	// NotFound. This is exactly what failed when the eager drain overwrote persistent with v3.
 	assert_eq!(
 		get(&store, &k, 2).as_deref(),
 		Some(b"v2".as_slice()),
@@ -406,10 +356,8 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 
 #[test]
 fn real_flush_actor_seeds_read_tier_on_eviction() {
-	// Seed-on-evict: when the genuine sweep evicts a persistent key, it must SEED the read tier with the value it
-	// just persisted, not invalidate it. Proven deterministically by deleting the key from the persistent tier
-	// AFTER eviction - a read can then only still return the value if it is resident in the read tier. Under the
-	// old invalidate-on-evict behaviour this read returned NotFound (cache punched, SQLite row gone).
+	// Deleting the persistent row after eviction isolates the read tier as the only possible source, so a
+	// successful read proves the sweep seeded rather than invalidated.
 	let (store, _guard) = store_with_fast_flush();
 	let kind = EntryKind::Source(STORAGE.into());
 	let k = row_key(1);
@@ -437,7 +385,6 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 		std::thread::yield_now();
 	}
 
-	// SQLite no longer has the key; the read tier is the only place its value can survive.
 	let persistent = store.persistent().unwrap();
 	let deleted = persistent.delete_keys(kind, std::slice::from_ref(&k)).unwrap();
 	assert_eq!(deleted, 1, "the evicted key must have been durable in the persistent tier before the delete");
@@ -452,9 +399,8 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 
 #[test]
 fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
-	// A seeded (older) read-tier entry must never shadow a newer version still resident in the commit tier. The
-	// sweep seeds v2 (<= W) while v5 (> W) stays in the commit tier. Deleting the persistent row isolates the read
-	// tier as the only source of v2, so the version resolution is exercised purely against the seed.
+	// A seeded (older) read-tier entry must never shadow a newer version still resident in the commit tier;
+	// deleting the persistent row isolates the seed as the only source of v2.
 	let (store, _guard) = store_with_fast_flush();
 	let kind = EntryKind::Source(STORAGE.into());
 	let k = row_key(1);
@@ -486,20 +432,15 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 	let persistent = store.persistent().unwrap();
 	persistent.delete_keys(kind, std::slice::from_ref(&k)).unwrap();
 
-	// The newer resident version wins (served from the commit tier).
 	assert_eq!(get(&store, &k, 5).as_deref(), Some(b"v5".as_slice()), "a reader at v5 must see the resident v5");
-	// An older snapshot is served the seeded v2 from the read tier (persistent row deleted).
 	assert_eq!(
 		get(&store, &k, 2).as_deref(),
 		Some(b"v2".as_slice()),
 		"an older snapshot must be served the seeded v2 from the read tier"
 	);
-	// A between snapshot resolves to the latest <= it, which is the seeded v2 (v5 is not yet visible).
 	assert_eq!(get(&store, &k, 4).as_deref(), Some(b"v2".as_slice()), "v4 resolves to the latest <= 4 (seeded v2)");
 }
 
-/// Entries resident in the read buffer, summed across every shard and domain. Asserts the
-/// tier is configured so a zero count cannot pass vacuously.
 fn read_tier_entries(store: &StandardMultiStore) -> usize {
 	let shards = store.read_buffer_shard_metrics();
 	assert!(
@@ -512,12 +453,8 @@ fn read_tier_entries(store: &StandardMultiStore) -> usize {
 
 #[test]
 fn real_flush_actor_sweep_does_not_seed_operator_keys_into_read_tier() {
-	// Operator-state residency lives solely in the core StateCache; the read tier serves
-	// NotFound for operator kinds by design, so any operator entry the sweep seeds there is
-	// dead weight: unservable, never invalidated by operator commits, and charged to the
-	// read buffer's budget instead of OperatorStateBudget. The genuine FlushActor sweep
-	// must therefore persist evicted operator rows WITHOUT inserting them into the read
-	// tier, unlike Source keys (pinned by real_flush_actor_seeds_read_tier_on_eviction).
+	// The read tier serves NotFound for operator kinds by design (residency lives in the core StateCache),
+	// so anything the sweep seeds there is unservable dead weight charged to the read buffer's budget.
 	let (store, _guard) = store_with_fast_flush();
 	let k = FlowNodeStateKey::encoded(7, b"a".to_vec());
 	let kind = classify_key(&k);
@@ -547,8 +484,7 @@ fn real_flush_actor_sweep_does_not_seed_operator_keys_into_read_tier() {
 		std::thread::yield_now();
 	}
 
-	// The sweep runs refresh_read_tier before dropping from the commit tier, so once the
-	// eviction is observable the read-tier decision for this kind has already been made.
+	// Eviction only becomes observable after the read-tier decision, so this cannot race the sweep.
 	assert_eq!(
 		read_tier_entries(&store),
 		0,
@@ -556,7 +492,6 @@ fn real_flush_actor_sweep_does_not_seed_operator_keys_into_read_tier() {
 		 leaked into the read buffer as unservable dead weight"
 	);
 
-	// The sweep still persisted the evicted value: the store of record answers the read.
 	assert_eq!(
 		get(&store, &k, 2).as_deref(),
 		Some(b"v2".as_slice()),
@@ -567,16 +502,15 @@ fn real_flush_actor_sweep_does_not_seed_operator_keys_into_read_tier() {
 
 #[test]
 fn real_flush_actor_sweep_purges_preexisting_operator_read_tier_entries() {
-	// Residue purge: stores that ran the pre-fix sweep may still hold dead operator entries
-	// in the read tier. The fixed sweep must invalidate (not skip) the operator keys it
-	// processes, so any such residue is removed the next time the key is swept.
+	// Sweeping an operator key must invalidate (not merely skip) it, so a stale read-tier entry for that
+	// key is purged rather than left as unservable residue.
 	let (store, _guard) = store_with_fast_flush();
 	let k = FlowNodeStateKey::encoded(7, b"a".to_vec());
 	let kind = classify_key(&k);
 
 	store.set_row_settings_provider(Arc::new(AllPersistent));
 
-	// Simulate pre-fix residue via the tier's raw insert (no ingress path does this any more).
+	// No ingress path puts operator keys in the read tier any more, so the residue needs a raw insert.
 	store.insert_read_key(k.clone(), CommitVersion(1), Some(CowVec::new(b"stale".to_vec())));
 	assert_eq!(read_tier_entries(&store), 1, "the simulated residue must be resident before the sweep");
 
@@ -610,30 +544,26 @@ fn real_flush_actor_sweep_purges_preexisting_operator_read_tier_entries() {
 	);
 }
 
-/// Build a row value. TTL eviction now keys off the per-key commit version, not any header
-/// timestamp, so the value is just the payload bytes.
 fn versioned_row(payload: &[u8]) -> CowVec<u8> {
+	// TTL eviction keys off the per-key commit version, not a header timestamp, so no header is needed.
 	CowVec::new(payload.to_vec())
 }
 
 #[test]
 fn row_ttl_deletes_from_persistent_and_invalidated_read_tier_does_not_serve_it() {
-	// Test 6: an expired row deleted from the persistent tier (the row-TTL GC's persistent path) must not be
-	// returned by a subsequent read, AND a stale read-tier entry for that key must not resurrect it. The row
-	// GC actor invalidates the read tier (clear_read / invalidate_read_key) precisely so this can't happen;
-	// this pins that the invalidation is load-bearing for correctness, not just a cache-freshness nicety.
+	// Read-tier invalidation after a persistent TTL delete is load-bearing for correctness, not a
+	// cache-freshness nicety: without it a stale entry resurrects the deleted row.
 	let (store, _guard) = store_with_persistent();
 	let kind = EntryKind::Source(STORAGE.into());
 	let k = row_key(1);
 
-	// Land an expired row (created long ago) directly in the persistent tier.
 	let persistent = store.persistent().unwrap();
 	let table = classify_key(&k);
 	persistent
 		.set(CommitVersion(1), HashMap::from([(table, vec![(k.clone(), Some(versioned_row(b"old")))])]))
 		.unwrap();
 
-	// A point read populates the read tier with the (soon-to-be-stale) value.
+	// This read warms the read tier with the soon-to-be-stale value.
 	let expected = versioned_row(b"old").to_vec();
 	assert_eq!(
 		get(&store, &k, 1),
@@ -641,13 +571,10 @@ fn row_ttl_deletes_from_persistent_and_invalidated_read_tier_does_not_serve_it()
 		"the persistent row is readable before TTL deletion (and now cached)"
 	);
 
-	// Row-TTL GC's persistent step: delete everything whose commit version is at or below the cutoff.
 	let deleted = persistent.delete_below_version(kind, CommitVersion(1), None, None, usize::MAX).unwrap().0;
 	assert_eq!(deleted.len(), 1, "the expired row must be physically deleted from the persistent tier");
 
-	// Without invalidation the read tier would still serve "old" - prove the cache is indeed stale right now.
-	// (We do NOT assert it here to avoid pinning an implementation detail; instead we run the GC's invalidation
-	// step and assert the post-invalidation read is correct.)
+	// The staleness itself is deliberately not asserted; only the post-invalidation read is pinned.
 	store.invalidate_read_key(&k);
 
 	assert_eq!(
@@ -656,8 +583,6 @@ fn row_ttl_deletes_from_persistent_and_invalidated_read_tier_does_not_serve_it()
 		"after TTL deletion + read-tier invalidation, the expired row must read as NotFound"
 	);
 
-	// clear_read (the broader invalidation the actor uses when any persistent rows were deleted) must also
-	// leave the deleted row unreadable.
 	store.clear_read();
 	assert_eq!(get(&store, &k, 1), None, "clear_read must not resurrect the deleted row either");
 }

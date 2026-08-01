@@ -125,18 +125,16 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let node = FlowNodeId(1);
 
-		// First counter instance
 		{
 			let counter = Counter::with_prefix(node, b'P', CounterDirection::Ascending);
 			counter.next(&mut txn).unwrap();
 			counter.next(&mut txn).unwrap();
 		}
 
-		// Second counter instance with same node and prefix
+		// A second instance on the same node and prefix resumes the stored sequence.
 		{
 			let counter = Counter::with_prefix(node, b'P', CounterDirection::Ascending);
 			let value = counter.next(&mut txn).unwrap();
-			// Should continue from where we left off
 			assert_eq!(value.0, 3);
 		}
 	}
@@ -147,16 +145,14 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Ascending);
 
-		// First call returns default (1)
 		let current = counter.current(&mut txn).unwrap();
 		assert_eq!(current, 1);
 
-		// After next(), current should reflect the saved value
 		counter.next(&mut txn).unwrap();
 		let current = counter.current(&mut txn).unwrap();
 		assert_eq!(current, 2);
 
-		// current() should not modify the counter
+		// A read must not advance the counter.
 		let current_again = counter.current(&mut txn).unwrap();
 		assert_eq!(current_again, 2);
 	}
@@ -167,10 +163,9 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let counter = Counter::with_prefix(FlowNodeId(1), b'T', CounterDirection::Ascending);
 
-		// Set to a specific value
 		counter.set(&mut txn, 100).unwrap();
 
-		// Next should return 100 and advance to 101
+		// next() hands back the current value and then advances.
 		let value = counter.next(&mut txn).unwrap();
 		assert_eq!(value.0, 100);
 
@@ -183,7 +178,6 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 
-		// Create a custom key
 		let custom_key = {
 			let mut serializer = KeySerializer::new();
 			serializer.extend_bytes(b"subscription-id-123");
@@ -205,7 +199,6 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let node = FlowNodeId(1);
 
-		// Different prefixes should be isolated
 		let counter1 = Counter::with_prefix(node, b'A', CounterDirection::Ascending);
 		let counter2 = Counter::with_prefix(node, b'B', CounterDirection::Ascending);
 
@@ -214,7 +207,6 @@ mod tests {
 		let v1b = counter1.next(&mut txn).unwrap();
 		let v2b = counter2.next(&mut txn).unwrap();
 
-		// Each counter should maintain its own sequence
 		assert_eq!(v1a.0, 1);
 		assert_eq!(v2a.0, 1);
 		assert_eq!(v1b.0, 2);
@@ -226,14 +218,12 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 
-		// Same prefix, different nodes should be isolated
 		let counter1 = Counter::with_prefix(FlowNodeId(1), b'X', CounterDirection::Ascending);
 		let counter2 = Counter::with_prefix(FlowNodeId(2), b'X', CounterDirection::Ascending);
 
 		let v1 = counter1.next(&mut txn).unwrap();
 		let v2 = counter2.next(&mut txn).unwrap();
 
-		// Each node should have its own counter
 		assert_eq!(v1.0, 1);
 		assert_eq!(v2.0, 1);
 	}
@@ -243,19 +233,19 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 
-		// Test wrapping from MAX to 0
+		// Exhausting the range wraps rather than panicking on overflow.
 		let counter = Counter::with_prefix(FlowNodeId(1), b'W', CounterDirection::Ascending);
 		counter.set(&mut txn, u64::MAX).unwrap();
 		let v1 = counter.next(&mut txn).unwrap();
 		let v2 = counter.next(&mut txn).unwrap();
 		assert_eq!(v1.0, u64::MAX);
-		assert_eq!(v2.0, 0); // Wraps to 0
+		assert_eq!(v2.0, 0);
 	}
 
 	#[test]
 	fn test_encoded_keys_sort_descending() {
-		// Verify that when counter values are encoded as keys,
-		// they sort in descending order
+		// Row numbers are handed out ascending but the key encoding inverts them, so newer rows
+		// sort first.
 		let mut serializer1 = KeySerializer::new();
 		serializer1.extend_u64(1u64);
 		let key1 = serializer1.finish();
@@ -264,8 +254,6 @@ mod tests {
 		serializer2.extend_u64(2u64);
 		let key2 = serializer2.finish();
 
-		// Key from value 1 should be > key from value 2
-		// (descending order in key space)
 		assert!(key1 > key2, "encode(1) > encode(2) for descending order");
 	}
 
@@ -300,13 +288,13 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let counter = Counter::with_prefix(FlowNodeId(1), b'W', CounterDirection::Descending);
 
-		// Set to 1, next should give 1, then wrap to 0, then MAX
+		// Descending underflow wraps rather than panicking.
 		counter.set(&mut txn, 1).unwrap();
 		let v1 = counter.next(&mut txn).unwrap();
 		let v2 = counter.next(&mut txn).unwrap();
 		assert_eq!(v1.0, 1);
 		assert_eq!(v2.0, 0);
 		let v3 = counter.next(&mut txn).unwrap();
-		assert_eq!(v3.0, u64::MAX); // Wraps from 0 to MAX
+		assert_eq!(v3.0, u64::MAX);
 	}
 }

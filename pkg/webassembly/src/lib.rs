@@ -81,7 +81,6 @@ use reifydb_codec::{
 use reifydb_extension::transform::registry::Transforms;
 use reifydb_runtime::context::RuntimeContext;
 
-/// Encode JSON frames to RBCF binary with an optional forced encoding.
 #[wasm_bindgen(js_name = encode_rbcf)]
 pub fn encode_rbcf(frames_json: &str, forced_encoding: Option<String>) -> Result<Vec<u8>, JsValue> {
 	let frames = frames_from_json(frames_json).map_err(|e| JsError::from_error(&e))?;
@@ -101,7 +100,6 @@ pub fn encode_rbcf(frames_json: &str, forced_encoding: Option<String>) -> Result
 	Ok(bytes)
 }
 
-/// Decode RBCF binary to JSON frames.
 #[wasm_bindgen(js_name = decode_rbcf)]
 pub fn decode_rbcf(bytes: &[u8]) -> Result<String, JsValue> {
 	let frames = decode_frames(bytes).map_err(|e| JsError::from_error(&e))?;
@@ -109,7 +107,6 @@ pub fn decode_rbcf(bytes: &[u8]) -> Result<String, JsValue> {
 	Ok(json)
 }
 
-/// Result of a successful login, returned to JavaScript.
 #[wasm_bindgen]
 pub struct LoginResult {
 	token: String,
@@ -129,15 +126,10 @@ impl LoginResult {
 	}
 }
 
-// Debug helper to log to browser console
 fn console_log(msg: &str) {
 	console::log_1(&msg.into());
 }
 
-/// WebAssembly ReifyDB Engine
-///
-/// Provides an in-memory query engine that runs entirely in the browser.
-/// All data is stored in memory and lost when the page is closed.
 struct WasmSession {
 	token: RefCell<Option<String>>,
 	identity: Cell<Option<IdentityId>>,
@@ -170,6 +162,7 @@ impl WasmSession {
 	}
 }
 
+/// Runs entirely in the browser; all data lives in memory and is lost when the page closes.
 #[wasm_bindgen]
 pub struct WasmDB {
 	inner: StandardEngine,
@@ -181,20 +174,8 @@ pub struct WasmDB {
 
 #[wasm_bindgen]
 impl WasmDB {
-	/// Create a new in-memory ReifyDB engine
-	///
-	/// # Example
-	///
-	/// ```javascript
-	/// import init, { WasmDB } from './pkg/reifydb_engine_wasm.js';
-	///
-	/// await init();
-	/// const db = new WasmDB();
-	/// ```
 	#[wasm_bindgen(constructor)]
 	pub fn new() -> Result<WasmDB, JsValue> {
-		// Set panic hook for better error messages in browser console
-
 		#[cfg(feature = "console_error_panic_hook")]
 		set_panic_hook();
 
@@ -214,7 +195,6 @@ impl WasmDB {
 		let clock = runtime.clock().clone();
 		let rng = runtime.rng().clone();
 
-		// Create event bus and stores
 		let eventbus = EventBus::new(&spawner);
 		let multi_store = MultiStore::standard(MultiStoreConfig {
 			commit: CommitBufferConfig {
@@ -229,7 +209,6 @@ impl WasmDB {
 		});
 		let single_store = SingleStore::testing_memory();
 
-		// Create transactions
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 		let catalog_cache = CatalogCache::new();
 		let version_epoch = VersionEpoch::new();
@@ -245,7 +224,6 @@ impl WasmDB {
 		)
 		.map_err(|e| JsError::from_error(&e))?;
 
-		// Setup IoC container
 		let mut ioc = IocContainer::new();
 
 		ioc = ioc.register(catalog_cache.clone());
@@ -254,7 +232,6 @@ impl WasmDB {
 
 		ioc = ioc.register(MetricsRegistry::new());
 
-		// Register metrics store for engine
 		ioc = ioc.register(single_store.clone());
 
 		// Register CdcStore (required by sub-flow)
@@ -276,7 +253,6 @@ impl WasmDB {
 		// Clone ioc for FlowSubsystem (engine consumes ioc)
 		let ioc_ref = ioc.clone();
 
-		// Run shared bootstrap: load catalog, config defaults, system procedures, shapes
 		load_catalog_cache(&multi, &single, &catalog_cache).map_err(|e| JsError::from_error(&e))?;
 		bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus)
 			.map_err(|e| JsError::from_error(&e))?;
@@ -293,7 +269,6 @@ impl WasmDB {
 			default_native_procedures(b).configure()
 		};
 
-		// Build engine with bootstrap-initialized catalog
 		let eventbus_clone = eventbus.clone();
 		let inner = StandardEngine::new(
 			multi,
@@ -311,7 +286,6 @@ impl WasmDB {
 			},
 		);
 
-		// Spawn CDC producer actor on the shared runtime, passing engine as CdcHost
 		console_log("[WASM] Spawning CDC producer actor...");
 		let cdc_producer_handle = spawn_cdc_producer(
 			&spawner,
@@ -323,13 +297,11 @@ impl WasmDB {
 			flow_backlog,
 		);
 
-		// Register event listener to forward PostCommitEvent to CDC producer
 		let cdc_listener =
 			CdcProducerEventListener::new(cdc_producer_handle.actor_ref().clone(), clock.clone());
 		eventbus_clone.register::<PostCommitEvent, _>(cdc_listener);
 		console_log("[WASM] CDC producer actor registered!");
 
-		// Create and start FlowSubsystem
 		let flow_config = FlowConfig {
 			operators_dir: None, // No FFI operators in WASM
 			custom_operators: Default::default(),
@@ -341,7 +313,6 @@ impl WasmDB {
 			.map_err(|e| JsError::from_error(&e))?;
 		console_log("[WASM] FlowSubsystem started successfully!");
 
-		// Collect all versions and register SystemCatalog
 		let all_versions = vec![
 			SystemVersion {
 				name: "reifydb-webassembly".to_string(),
@@ -380,44 +351,18 @@ impl WasmDB {
 		})
 	}
 
-	/// Execute a query and return results as JavaScript objects
-	///
-	/// # Example
-	///
-	/// ```javascript
-	/// const results = await db.query(`
-	///   FROM [{ name: "Alice", age: 30 }]
-	///   FILTER age > 25
-	/// `);
-	/// console.log(results); // [{ name: "Alice", age: 30 }]
-	/// ```
+	/// Read-only; results come back as an array of plain JavaScript objects.
 	#[wasm_bindgen]
 	pub fn query(&self, rql: &str) -> Result<JsValue, JsValue> {
 		let identity = self.session.current_identity();
 		let params = Params::None;
 
-		// Execute query
 		let result = self.inner.query_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
 
-		// Convert frames to JavaScript array of objects
 		utils::frames_to_js(&result)
 	}
 
-	/// Execute an admin operation (DDL + DML + Query) and return results
-	///
-	/// Admin operations include CREATE, ALTER, INSERT, UPDATE, DELETE, etc.
-	///
-	/// # Example
-	///
-	/// ```javascript
-	/// await db.admin("CREATE NAMESPACE demo");
-	/// await db.admin(`
-	///   CREATE TABLE demo.users {
-	///     id: int4,
-	///     name: utf8
-	///   }
-	/// `);
-	/// ```
+	/// The only entry point that accepts DDL; also handles DML and queries.
 	#[wasm_bindgen]
 	pub fn admin(&self, rql: &str) -> Result<JsValue, JsValue> {
 		let identity = self.session.current_identity();
@@ -428,10 +373,7 @@ impl WasmDB {
 		utils::frames_to_js(&result)
 	}
 
-	/// Execute a command (DML) and return results
-	///
-	/// Commands include INSERT, UPDATE, DELETE, etc.
-	/// For DDL operations (CREATE, ALTER), use `admin()` instead.
+	/// DML only; DDL must go through `admin()`.
 	#[wasm_bindgen]
 	pub fn command(&self, rql: &str) -> Result<JsValue, JsValue> {
 		let identity = self.session.current_identity();
@@ -443,21 +385,10 @@ impl WasmDB {
 		utils::frames_to_js(&result)
 	}
 
-	/// Execute query with JSON parameters
-	///
-	/// # Example
-	///
-	/// ```javascript
-	/// const results = await db.queryWithParams(
-	///   "FROM users FILTER age > $min_age",
-	///   { min_age: 25 }
-	/// );
-	/// ```
 	#[wasm_bindgen(js_name = queryWithParams)]
 	pub fn query_with_params(&self, rql: &str, params_js: JsValue) -> Result<JsValue, JsValue> {
 		let identity = self.session.current_identity();
 
-		// Parse JavaScript params to Rust Params
 		let params = utils::parse_params(params_js)?;
 
 		let result = self.inner.query_as(identity, rql, params).check().map_err(|e| JsError::from_error(&e))?;
@@ -465,7 +396,6 @@ impl WasmDB {
 		utils::frames_to_js(&result)
 	}
 
-	/// Execute admin with JSON parameters
 	#[wasm_bindgen(js_name = adminWithParams)]
 	pub fn admin_with_params(&self, rql: &str, params_js: JsValue) -> Result<JsValue, JsValue> {
 		let identity = self.session.current_identity();
@@ -477,7 +407,6 @@ impl WasmDB {
 		utils::frames_to_js(&result)
 	}
 
-	/// Execute command with JSON parameters
 	#[wasm_bindgen(js_name = commandWithParams)]
 	pub fn command_with_params(&self, rql: &str, params_js: JsValue) -> Result<JsValue, JsValue> {
 		let identity = self.session.current_identity();
@@ -490,7 +419,7 @@ impl WasmDB {
 		utils::frames_to_js(&result)
 	}
 
-	/// Execute a command and return Display-formatted text output
+	/// Returns the Display-rendered frames rather than JavaScript objects.
 	#[wasm_bindgen(js_name = commandText)]
 	pub fn command_text(&self, rql: &str) -> Result<String, JsValue> {
 		let result = self
@@ -505,7 +434,7 @@ impl WasmDB {
 		Ok(output)
 	}
 
-	/// Execute an admin operation and return Display-formatted text output
+	/// Returns the Display-rendered frames rather than JavaScript objects.
 	#[wasm_bindgen(js_name = adminText)]
 	pub fn admin_text(&self, rql: &str) -> Result<String, JsValue> {
 		let result = self
@@ -520,7 +449,7 @@ impl WasmDB {
 		Ok(output)
 	}
 
-	/// Execute a query and return Display-formatted text output
+	/// Returns the Display-rendered frames rather than JavaScript objects.
 	#[wasm_bindgen(js_name = queryText)]
 	pub fn query_text(&self, rql: &str) -> Result<String, JsValue> {
 		let result = self
@@ -535,7 +464,6 @@ impl WasmDB {
 		Ok(output)
 	}
 
-	/// Authenticate with a password and return a session token.
 	#[wasm_bindgen(js_name = loginWithPassword)]
 	pub fn login_with_password(&self, identifier: &str, password: &str) -> Result<LoginResult, JsValue> {
 		let mut credentials = HashMap::new();
@@ -548,7 +476,6 @@ impl WasmDB {
 		self.handle_auth_response(response)
 	}
 
-	/// Authenticate with a token credential and return a session token.
 	#[wasm_bindgen(js_name = loginWithToken)]
 	pub fn login_with_token(&self, token: &str) -> Result<LoginResult, JsValue> {
 		let mut credentials = HashMap::new();
@@ -560,7 +487,7 @@ impl WasmDB {
 		self.handle_auth_response(response)
 	}
 
-	/// Logout and revoke the current session token.
+	/// Also revokes the session token server-side, not just locally.
 	#[wasm_bindgen]
 	pub fn logout(&self) -> Result<(), JsValue> {
 		let token = self.session.take_token();

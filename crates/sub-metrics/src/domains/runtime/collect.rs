@@ -268,8 +268,8 @@ struct AllocMem {
 
 #[cfg(all(target_os = "linux", target_env = "gnu"))]
 fn collect_allocator() -> Option<AllocMem> {
-	// SAFETY: mallinfo2 is a libc global-allocator statistics call with no
-
+	// SAFETY: mallinfo2 takes no arguments, reads only libc's own allocator statistics and returns the struct by
+	// value, so the call carries no pointer, lifetime or aliasing obligation for the caller to uphold.
 	let mi = unsafe { mallinfo2() };
 	Some(AllocMem {
 		heap_live: mi.uordblks as u64,

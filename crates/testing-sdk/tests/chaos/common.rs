@@ -21,9 +21,6 @@ use reifydb_testing_chaos::operator::{event::ChaosBatch, view::MaterializedView}
 use reifydb_testing_sdk::chaos::{context::ChaosContext, materialize::materialize_batches};
 use reifydb_value::value::{row_number::RowNumber, value_type::ValueType};
 
-/// Operator that echoes every input diff back unchanged through
-/// `ctx.builder()`. Modeled on `tests/ffi/common.rs:39-106`. Used by every
-/// must-match scenario in the chaos integration suite.
 pub struct PassthroughOperator;
 
 impl OperatorMetadata for PassthroughOperator {
@@ -54,13 +51,9 @@ impl FFIOperator for PassthroughOperator {
 	}
 }
 
-/// Operator that echoes every Insert TWICE under the same row numbers.
-///
-/// The point of this one is what it does NOT break. Both copies carry identical values, and the
-/// materialized comparison keys on the operator's output columns, so the second insert simply
-/// overwrites the first and the table still equals the identity oracle exactly. Only the fold over
-/// row numbers can see that a row was published twice - which is why the coherence check exists
-/// alongside the value comparison rather than inside it.
+/// The point is what this does NOT break: both copies carry identical values, so the
+/// materialized table still equals the identity oracle exactly. Only the fold over row
+/// numbers can see the row was published twice.
 pub struct DoubleInsertOperator;
 
 impl OperatorMetadata for DoubleInsertOperator {
@@ -94,10 +87,8 @@ impl FFIOperator for DoubleInsertOperator {
 	}
 }
 
-/// Operator that echoes Insert and Update but silently drops Remove. Used by
-/// the divergence suite to demonstrate the harness catching a real-bug-class
-/// in the operator (forgetting to handle a diff kind). Identity oracle vs
-/// this operator must diverge whenever the chaos sequence emits a Remove.
+/// Known-bad operator for the divergence suite: it must diverge from the identity oracle
+/// whenever the chaos sequence emits a Remove.
 pub struct SwallowsRemoveOperator;
 
 impl OperatorMetadata for SwallowsRemoveOperator {
@@ -164,9 +155,6 @@ fn emit_remove(builder: &mut ColumnsBuilder<'_>, pre: &BorrowedColumns<'_>) -> R
 	Ok(())
 }
 
-/// Acquire matching builders for each input column, byte-copy the data,
-/// offsets, and defined-bitvec across, commit, and return the committed
-/// handles + column names. Verbatim from `tests/ffi/common.rs:108-159`.
 fn byte_clone_columns(
 	builder: &mut ColumnsBuilder<'_>,
 	cols: &BorrowedColumns<'_>,
@@ -181,6 +169,8 @@ fn byte_clone_columns(
 		active.grow(data_bytes.len().max(row_count))?;
 		let dst = active.data_ptr();
 		if !dst.is_null() && !data_bytes.is_empty() {
+			// SAFETY: dst is non-null and the preceding grow() sized it to at least
+			// data_bytes.len(); source and destination are distinct allocations.
 			unsafe {
 				core::ptr::copy_nonoverlapping(data_bytes.as_ptr(), dst, data_bytes.len());
 			}
@@ -195,6 +185,8 @@ fn byte_clone_columns(
 			let off = col.offsets();
 			let dst_off = active.offsets_ptr();
 			if !dst_off.is_null() && !off.is_empty() {
+				// SAFETY: dst_off is non-null and the builder sizes the offsets region
+				// from the same row count off was read at; the buffers do not alias.
 				unsafe {
 					core::ptr::copy_nonoverlapping(off.as_ptr(), dst_off, off.len());
 				}
@@ -204,6 +196,8 @@ fn byte_clone_columns(
 		if !bitvec.is_empty() {
 			let dst_bv = active.bitvec_ptr();
 			if !dst_bv.is_null() {
+				// SAFETY: dst_bv is non-null and the builder sizes the bitvec from the
+				// same row count bitvec was read at; the buffers do not alias.
 				unsafe {
 					core::ptr::copy_nonoverlapping(bitvec.as_ptr(), dst_bv, bitvec.len());
 				}
@@ -216,8 +210,6 @@ fn byte_clone_columns(
 	Ok((committed, names))
 }
 
-/// `(k: Uint8, v: Float8)` shape used as input + output for most scenarios.
-/// Output key projects on `k`.
 pub fn simple_kv_shape() -> RowShape {
 	RowShape::new(vec![
 		RowShapeField::unconstrained("k", ValueType::Uint8),
@@ -225,8 +217,6 @@ pub fn simple_kv_shape() -> RowShape {
 	])
 }
 
-/// `(base, quote, slot, vol, price)` shape for multi-column key strategies
-/// and tolerance scenarios. Output key projects on `(base, quote, slot)`.
 pub fn wide_shape() -> RowShape {
 	RowShape::new(vec![
 		RowShapeField::unconstrained("base", ValueType::Utf8),
@@ -237,11 +227,7 @@ pub fn wide_shape() -> RowShape {
 	])
 }
 
-/// Identity oracle: whatever events came in, that is the materialized state.
-/// Used by every passthrough scenario.
-///
-/// Returns a `Fn` closure rather than capturing by reference so the result
-/// satisfies `Send + Sync + 'static` (the bound on `ChaosHarnessBuilder::with_oracle`).
+/// Identity oracle: the materialized state is exactly the events that came in.
 pub fn passthrough_oracle(
 	output_key_columns: Vec<String>,
 ) -> impl Fn(&ChaosContext, &[ChaosBatch]) -> MaterializedView + Send + Sync + 'static {

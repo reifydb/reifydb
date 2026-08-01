@@ -1,21 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Mid-scan snapshot stability chaos.
-//!
-//! A paginated range scan created at `AsOf{V}` must return exactly the atomic snapshot of live keys as-of V
-//! at creation time, even when commits (which get versions > V) and bounded flushes (cutoff <= V) are
-//! interleaved between batch pulls. The range iterator re-reads live tier state on every batch
-//! (`entry.current.read()` / `historical.read()` fresh per `range_next`), so this exercises the
-//! merge/cursor/horizon logic under tier migration mid-scan - the live-mutation cousin of the cold-merge
-//! horizon defect.
-//!
-//! Why the interleaved ops are snapshot-preserving (so a divergence is a real bug, not an over-strong
-//! assertion): versions are monotonic and `V` is fixed at iterator creation, so every interleaved commit
-//! gets a version > V and is invisible to `scope.contains`; a flush with `cutoff <= V` only relocates the
-//! same visible value commit->persistent without writing a > V version over the current-only persistent
-//! row. Snapshot-changing ops (physical delete, TTL, historical GC, flush cutoff > V) are deliberately NOT
-//! interleaved here - they are the lifecycle test's job.
+//! Mid-scan snapshot stability chaos: a paginated `AsOf{V}` scan must hold its creation-time snapshot
+//! while commits and bounded flushes land between batch pulls. Only snapshot-preserving ops are
+//! interleaved (commits get versions > V, flushes use cutoff <= V), so any divergence is a real bug.
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_codec::encoded::row::EncodedRow;
@@ -167,8 +155,8 @@ pub fn drive(seed: u64, p: Params) {
 		let deltas = gen_deltas(&mut rng, version, count, p.keyspace, p.remove_pct);
 		commit_rows(&configs, &mut oracle, version, &deltas);
 	}
-	// Partial flush so the snapshot spans both tiers (some keys' latest <= cutoff land in persistent, the
-	// rest stay in the commit buffer) - the merge case the iterator must hold stable mid-scan.
+	// A partial flush makes the snapshot span both tiers, which is the merge case the iterator has to
+	// hold stable mid-scan.
 	let seed_cutoff = (version / 2).max(1);
 	for (_, store) in &configs {
 		if store.persistent().is_some() {
@@ -197,8 +185,7 @@ pub fn drive(seed: u64, p: Params) {
 		}
 	}
 
-	// The store must be uncorrupted after all the mid-scan churn: a fresh scan at the now-current version
-	// must equal the oracle's full view there (every interleaved commit now visible).
+	// A fresh scan at the now-current version proves the mid-scan churn left the store uncorrupted.
 	let current = version;
 	let expected_fwd = oracle.scan(
 		Scope::AsOf {

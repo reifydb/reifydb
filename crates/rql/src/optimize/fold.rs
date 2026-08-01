@@ -660,13 +660,13 @@ mod tests {
 
 	#[test]
 	fn does_not_fold_through_call() {
+		// A call's arguments fold, but the call itself has a body the folder cannot evaluate.
 		let mut e = Expression::Call(CallExpression {
 			func: IdentExpression(frag("len")),
 			args: vec![num("1"), num("2")],
 			fragment: frag("len()"),
 		});
 		fold(&mut e);
-		// Children fold, but Call itself is not foldable.
 		assert!(matches!(e, Expression::Call(_)));
 	}
 

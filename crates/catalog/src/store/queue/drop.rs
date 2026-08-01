@@ -81,10 +81,9 @@ pub mod tests {
 		assert!(CatalogStore::drop_queue(&mut txn, QueueId(999999)).is_ok());
 	}
 
-	/// Column metadata must die with the queue; orphaned columns would attach
-	/// themselves to whatever object later reuses the id.
 	#[test]
 	fn test_drop_queue_cleans_up_columns() {
+		// Orphaned column metadata would attach itself to whatever object later reuses the id.
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
@@ -121,10 +120,10 @@ pub mod tests {
 		assert!(CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), created.id).unwrap().is_empty());
 	}
 
-	/// The name link must be removed too, otherwise the name stays taken and the
-	/// queue can never be recreated.
 	#[test]
 	fn test_dropped_queue_name_is_reusable() {
+		// If the name link outlives the drop the name stays taken and the queue can never
+		// be recreated.
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 

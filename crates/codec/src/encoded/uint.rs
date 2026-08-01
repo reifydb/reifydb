@@ -41,6 +41,9 @@ impl RowShape {
 			self.remove_dynamic_data(row, index);
 
 			let packed = MODE_INLINE | (u128_val & INLINE_VALUE_MASK);
+			// SAFETY: the assertion above pins row.len() >= total_static_size(), so the 16-byte
+			// slot at field.offset lies inside the row; make_mut() gives unique ownership of it
+			// and write_unaligned imposes no alignment requirement.
 			unsafe {
 				ptr::write_unaligned(
 					row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u128,
@@ -67,6 +70,9 @@ impl RowShape {
 			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Uint);
 		}
 
+		// SAFETY: the assertion above pins row.len() >= total_static_size(), so the 16-byte slot
+		// at field.offset lies inside the row, and read_unaligned imposes no alignment
+		// requirement; u128 has no invalid bit patterns.
 		let packed = unsafe { (row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);
 
@@ -111,7 +117,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Uint]);
 		let mut row = shape.allocate();
 
-		// Test simple unsigned value
 		let small = Uint::from(42u64);
 		shape.set_uint(&mut row, 0, &small);
 		assert!(row.is_defined(0));
@@ -119,7 +124,6 @@ pub mod tests {
 		let retrieved = shape.get_uint(&row, 0);
 		assert_eq!(retrieved, small);
 
-		// Test larger unsigned value
 		let mut row2 = shape.allocate();
 		let large = Uint::from(999999999999u64);
 		shape.set_uint(&mut row2, 0, &large);
@@ -131,7 +135,8 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Uint]);
 		let mut row = shape.allocate();
 
-		// Value that needs u128 storage
+		// The top bit of the slot is the mode flag, so 2^127 - 1 is the largest value that can
+		// still be stored inline.
 		let large = Uint::from(u64::MAX);
 		shape.set_uint(&mut row, 0, &large);
 		assert!(row.is_defined(0));
@@ -139,7 +144,6 @@ pub mod tests {
 		let retrieved = shape.get_uint(&row, 0);
 		assert_eq!(retrieved, large);
 
-		// Test max u128 that fits in 127 bits
 		let mut row2 = shape.allocate();
 		let max_u127 = Uint::from(u128::MAX >> 1); // 127 bits
 		shape.set_uint(&mut row2, 0, &max_u127);
@@ -151,8 +155,8 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Uint]);
 		let mut row = shape.allocate();
 
-		// Create a value that requires dynamic storage (>127 bits)
-		// Using string representation for very large numbers
+		// Past 2^127, so the value is stored as little-endian magnitude bytes in the dynamic
+		// section instead of the fixed slot.
 		let huge = Uint::from(
 			BigInt::parse_bytes(b"123456789012345678901234567890123456789012345678901234567890", 10)
 				.unwrap(),
@@ -183,10 +187,8 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Uint]);
 		let mut row = shape.allocate();
 
-		// Undefined initially
 		assert_eq!(shape.try_get_uint(&row, 0), None);
 
-		// Set value
 		let value = Uint::from(12345u64);
 		shape.set_uint(&mut row, 0, &value);
 		assert_eq!(shape.try_get_uint(&row, 0), Some(value));
@@ -241,13 +243,12 @@ pub mod tests {
 	fn test_negative_input_handling() {
 		let shape = RowShape::testing(&[ValueType::Uint]);
 
-		// Test how negative values are handled (should be converted to
-		// 0 or error)
+		// Uint wraps a signed BigInt, so a negative can be constructed; the encoder converts it
+		// to zero rather than failing or storing a wrapped magnitude.
 		let mut row1 = shape.allocate();
-		let negative = Uint::from(-42); // This creates a negative BigInt
+		let negative = Uint::from(-42);
 		shape.set_uint(&mut row1, 0, &negative);
 
-		// Should store as 0 since Uint can't handle negative values
 		let retrieved = shape.get_uint(&row1, 0);
 		assert_eq!(retrieved, Uint::from(0));
 	}
@@ -314,7 +315,7 @@ pub mod tests {
 		shape.set_uint(&mut row, 0, &huge);
 		shape.set_utf8(&mut row, 1, "hello");
 
-		// Update uint to inline, verify utf8 still works
+		// Dropping the first field's dynamic bytes must rewrite the utf8 field's offset.
 		shape.set_uint(&mut row, 0, &Uint::from(1u64));
 		assert_eq!(shape.get_uint(&row, 0), Uint::from(1u64));
 		assert_eq!(shape.get_utf8(&row, 1), "hello");

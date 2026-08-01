@@ -215,8 +215,8 @@ mod tests {
 
 	#[test]
 	fn a_slice_that_reclaims_nothing_on_a_frozen_floor_counts_as_stuck() {
-		// The signature of the failure this whole plan targets: the class keeps ticking, reports success, and
-		// reclaims nothing because its floor never moves. It has to be counted, or it reads as idle.
+		// A class that keeps ticking and reports success while its floor never moves reclaims nothing;
+		// it has to be counted, or it reads as idle.
 		let metrics = RetentionMetrics::new();
 		let class = RetentionClass::RowTtlSilent;
 
@@ -388,8 +388,8 @@ mod tests {
 
 	#[test]
 	fn classes_account_independently() {
-		// Per-class accounting is the point of decision B3: one wedged class must be visible as one wedged
-		// class, not smeared across the others.
+		// Accounting is per class so one wedged class is visible as one wedged class, not smeared
+		// across the others.
 		let metrics = RetentionMetrics::new();
 
 		metrics.record_reclamation(RetentionClass::CdcTruncate, None, 0, 0);

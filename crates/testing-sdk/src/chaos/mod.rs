@@ -1,19 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Chaos testing harness for FFI operators.
-//!
-//! Generates seeded, reproducible sequences of `Insert`/`Update`/`Remove`
-//! diffs against an operator-under-test, runs the same logical event log
-//! through a test-author-provided naive oracle, and asserts that the two
-//! materialized output tables agree.
-//!
-//! Designed to catch the bug class where an operator silently miscounts
-//! under streaming diff types that production hits but unit tests don't
-//! (e.g., the OHLCV tumbling double-count bug, where Updates re-emitted by
-//! a LEFT JOIN re-fire add to the running volume sum on every fire).
-//!
-//! Author-facing entrypoint: [`ChaosHarness::builder`].
+//! Drives seeded Insert/Update/Remove diffs through an FFI operator and an
+//! author-supplied naive oracle, then asserts the two materialized tables
+//! agree. Entrypoint: [`ChaosHarness::builder`].
 
 use std::{
 	error::Error,
@@ -51,26 +41,19 @@ use strategy::{ColumnRegistry, ColumnSampler, RowContent, samplers};
 
 use crate::harness::FFIOperatorHarness;
 
-/// Errors surfaced from the chaos harness builder.
 #[derive(Debug)]
 pub enum ChaosError {
-	/// `SupportedOps` configuration is unreachable: `Update` or `Remove`
-	/// is enabled but `Insert` is not, so the driver can never populate
-	/// any live rows.
+	/// Update or Remove without Insert: the driver can never populate live rows.
 	UnreachableSupportedOps,
 
-	/// The builder is missing a required setting.
 	MissingField(&'static str),
 
-	/// `output_key` references a column that does not exist in
-	/// `output_shape`.
+	/// `output_key` names a column absent from `output_shape`.
 	OutputKeyColumnMissing(String),
 
-	/// One or more input shape columns lack a registered sampler.
 	InputColumnsMissingSampler(Vec<String>),
 
-	/// Wrapping the underlying FFI operator harness failed (config
-	/// rejection, FFI initialization, etc.).
+	/// The inner FFI operator harness rejected the config or failed to initialize.
 	HarnessBuild(String),
 }
 
@@ -99,9 +82,7 @@ pub type ChaosResult<T> = Result<T, ChaosError>;
 
 const DEFAULT_STEPS: u32 = 200;
 
-/// Entry point. Author calls `ChaosHarness::<T>::builder()` to start
-/// configuring a run. The struct itself is just a namespace at this point;
-/// the active object is the [`RunnableChaos`] returned from `build()`.
+/// Namespace only; the active object is the [`RunnableChaos`] that `build()` returns.
 pub struct ChaosHarness<T: FFIOperator> {
 	_phantom: PhantomData<T>,
 }
@@ -112,9 +93,8 @@ impl<T: FFIOperator> ChaosHarness<T> {
 	}
 }
 
-/// Fluent builder. Required: input/output shape, key strategy, output key,
-/// per-column samplers (one per input column), and an oracle. Optional:
-/// row constraints, tolerances, chaos config, supported ops, seed.
+/// Required: input/output shape, key strategy, output key, one sampler per input
+/// column, and an oracle. Everything else has a default.
 pub struct ChaosHarnessBuilder<T: FFIOperator> {
 	seed: u64,
 	scenario: Scenario,
@@ -186,7 +166,7 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 		self
 	}
 
-	/// Per-knob config to be passed to `T::new`. Mirrors
+	/// Config handed to `T::new`; mirrors
 	/// [`crate::harness::FFIOperatorHarnessBuilder::with_config`].
 	pub fn with_config<I, K>(mut self, config: I) -> Self
 	where
@@ -226,16 +206,14 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 		self
 	}
 
-	/// Register a column sampler. Authors typically call one of
-	/// [`samplers::select`], [`samplers::u64_range`], etc., or hand-roll
-	/// an `Arc<dyn Fn(&mut StdRng) -> Value>`.
+	/// Samplers come from [`samplers`], or hand-roll an
+	/// `Arc<dyn Fn(&mut StdRng) -> Value>`.
 	pub fn with_column(mut self, name: impl Into<String>, sampler: ColumnSampler) -> Self {
 		self.registry.register(name, sampler);
 		self
 	}
 
-	/// Run after per-column sampling. Lets the author derive or
-	/// override columns based on already-sampled values.
+	/// Runs after per-column sampling, so it can derive or override sampled values.
 	pub fn with_row_constraints(mut self, f: impl Fn(&mut RowContent) + Send + Sync + 'static) -> Self {
 		self.registry.set_constraint(Arc::new(f));
 		self
@@ -246,11 +224,8 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 		self
 	}
 
-	/// Required. The oracle receives the per-batch event log (one
-	/// `ChaosBatch` per `Change` the operator's `apply()` saw) and
-	/// produces the expected materialized output table. Oracles for
-	/// windowed operators that snapshot at end-of-batch iterate
-	/// `batches` and snapshot at the end of each batch's inner loop.
+	/// Required. The oracle sees one `ChaosBatch` per `Change` the operator's
+	/// `apply()` saw; windowed oracles snapshot at the end of each batch.
 	pub fn with_oracle<F>(mut self, f: F) -> Self
 	where
 		F: Fn(&ChaosContext, &[ChaosBatch]) -> MaterializedView + Send + Sync + 'static,
@@ -259,13 +234,8 @@ impl<T: FFIOperator> ChaosHarnessBuilder<T> {
 		self
 	}
 
-	/// Validate, build the inner `FFIOperatorHarness`, and bundle every
-	/// piece into a `RunnableChaos` ready to `.run()`.
-	///
-	/// Validation is delegated to [`ChaosSchema::validate`] and
-	/// [`ColumnRegistry::validate`]. Those methods are the single source
-	/// of truth for validation rules; `build()` only translates their
-	/// `Result` shapes into `ChaosError` variants.
+	/// Validation rules live in [`ChaosSchema::validate`] and
+	/// [`ColumnRegistry::validate`]; this only maps their errors onto `ChaosError`.
 	pub fn build(self) -> ChaosResult<RunnableChaos<T>> {
 		validate_supported_ops(&self.supported_ops)?;
 		let input_shape = self.input_shape.ok_or(ChaosError::MissingField("input_shape"))?;
@@ -318,7 +288,6 @@ fn validate_supported_ops(ops: &SupportedOps) -> ChaosResult<()> {
 	}
 }
 
-/// Convenience wrappers for proptest-style range-to-sampler shorthand.
 /// Lets authors write `.with_column("k", 1u64..1000)` instead of
 /// `.with_column("k", samplers::u64_range(1..1000))`.
 pub trait IntoColumnSampler {
@@ -372,10 +341,8 @@ mod tests {
 
 	use super::*;
 
-	/// Minimal no-op operator used to monomorphize the chaos builder for
-	/// tests that exercise validation (which runs *before* the harness is
-	/// built or the operator is invoked). Its `apply` is never called by
-	/// these tests; if it ever is, the test framework will panic loudly.
+	/// Monomorphizes the chaos builder for validation tests, which run before
+	/// the operator is ever invoked.
 	struct NoOpOperator;
 
 	impl OperatorMetadata for NoOpOperator {
@@ -423,8 +390,8 @@ mod tests {
 
 	#[test]
 	fn the_builder_default_is_the_mixed_corpus_it_replaced() {
-		// Every suite that never calls with_scenario runs this scenario, so a drift here silently
-		// re-points all of them at a different corpus while every one of them still passes.
+		// Every suite that skips with_scenario runs this corpus; drift here re-points all of
+		// them while they all still pass.
 		let builder = ChaosHarness::<NoOpOperator>::builder();
 		assert_eq!(builder.scenario.steps, 200);
 		assert_eq!(builder.scenario.max_live, Some(50));
@@ -442,9 +409,8 @@ mod tests {
 
 	#[test]
 	fn supported_ops_reshapes_the_scenario_mix_in_place() {
-		// with_supported_ops is a preset over the scenario's mix, not a second description carried
-		// alongside it. If it stopped writing through, a suite asking to isolate inserts would still
-		// generate removes and its isolation would be a fiction.
+		// If the preset stopped writing through to the mix, a suite asking to isolate inserts
+		// would still generate removes.
 		let builder = ChaosHarness::<NoOpOperator>::builder().with_supported_ops(SupportedOps::insert_only());
 		assert_eq!(builder.scenario.remove_pct, 0);
 		assert_eq!(builder.scenario.update_pct, 0);
@@ -477,8 +443,7 @@ mod tests {
 
 	#[test]
 	fn empty_supported_ops_is_unreachable() {
-		// All-disabled passes the validator (it's just useless, not
-		// unreachable). Caller is responsible for setting num_ops > 0.
+		// All-disabled is useless but not unreachable; the caller owns num_ops > 0.
 		let none = SupportedOps {
 			insert: false,
 			update: false,
@@ -487,10 +452,8 @@ mod tests {
 		assert!(validate_supported_ops(&none).is_ok());
 	}
 
-	/// Build a builder pre-populated with the minimum settings needed to
-	/// reach validation. Tests then mutate one specific field to exercise
-	/// the validation path of interest.
 	fn well_formed_builder() -> ChaosHarnessBuilder<NoOpOperator> {
+		// The minimum settings that reach validation; each test then breaks one field.
 		ChaosHarness::<NoOpOperator>::builder()
 			.with_input_shape(shape(&[("k", ValueType::Uint8), ("v", ValueType::Float8)]))
 			.with_output_shape(shape(&[("k", ValueType::Uint8), ("v", ValueType::Float8)]))
@@ -503,15 +466,11 @@ mod tests {
 
 	#[test]
 	fn build_accepts_well_formed_builder() {
-		// Sanity: the well-formed builder builds without errors.
 		assert!(well_formed_builder().build().is_ok(), "expected well-formed builder to succeed");
 	}
 
-	/// Helper: extract the `Err` variant from `build()` without requiring
-	/// the `Ok` side to be `Debug`. `RunnableChaos` doesn't impl Debug
-	/// (its inner harness is FFI-heavy), so `Result::expect_err` is
-	/// unavailable.
 	fn expect_build_err(result: ChaosResult<RunnableChaos<NoOpOperator>>, label: &str) -> ChaosError {
+		// RunnableChaos is not Debug, so Result::expect_err is unavailable.
 		match result {
 			Ok(_) => panic!("expected error from build(): {label}"),
 			Err(e) => e,
@@ -520,11 +479,8 @@ mod tests {
 
 	#[test]
 	fn build_rejects_typoed_output_key() {
-		// Wires `ChaosSchema::validate` into the build pipeline. If this
-		// test fails because validation is bypassed in build(), the same
-		// duplication that triggered the dead_code warning has crept
-		// back in - the schema-level test would still pass while the
-		// build path silently accepts typos.
+		// If build() bypassed schema validation, the schema-level test would still pass while
+		// typos slipped through here.
 		let err =
 			expect_build_err(well_formed_builder().with_output_key(["typo"]).build(), "typo'd output_key");
 		match err {
@@ -535,9 +491,7 @@ mod tests {
 
 	#[test]
 	fn build_rejects_input_columns_without_samplers() {
-		// Same wiring assertion for `ColumnRegistry::validate`. Build
-		// with an input shape that has a column not registered in the
-		// sampler registry.
+		// The same wiring assertion for the sampler registry.
 		let result = ChaosHarness::<NoOpOperator>::builder()
 			.with_input_shape(shape(&[("k", ValueType::Uint8), ("v", ValueType::Float8), ("missing", ValueType::Int8)]))
 			.with_output_shape(shape(&[("k", ValueType::Uint8)]))
@@ -558,11 +512,9 @@ mod tests {
 
 	#[test]
 	fn build_rejects_missing_required_fields() {
-		// No input_shape -> MissingField("input_shape").
 		let err = expect_build_err(ChaosHarness::<NoOpOperator>::builder().build(), "no input_shape");
 		assert!(matches!(err, ChaosError::MissingField("input_shape")), "{err:?}");
 
-		// input_shape only -> MissingField("output_shape").
 		let err = expect_build_err(
 			ChaosHarness::<NoOpOperator>::builder()
 				.with_input_shape(shape(&[("k", ValueType::Uint8)]))
@@ -571,7 +523,6 @@ mod tests {
 		);
 		assert!(matches!(err, ChaosError::MissingField("output_shape")), "{err:?}");
 
-		// shapes only -> MissingField("key_strategy").
 		let err = expect_build_err(
 			ChaosHarness::<NoOpOperator>::builder()
 				.with_input_shape(shape(&[("k", ValueType::Uint8)]))
@@ -581,7 +532,6 @@ mod tests {
 		);
 		assert!(matches!(err, ChaosError::MissingField("key_strategy")), "{err:?}");
 
-		// key but no output_key -> MissingField("output_key").
 		let err = expect_build_err(
 			ChaosHarness::<NoOpOperator>::builder()
 				.with_input_shape(shape(&[("k", ValueType::Uint8)]))
@@ -592,10 +542,7 @@ mod tests {
 		);
 		assert!(matches!(err, ChaosError::MissingField("output_key")), "{err:?}");
 
-		// no oracle -> MissingField("oracle"). We need every other
-		// required field present and a sampler for every input column,
-		// otherwise the missing-oracle error gets shadowed by an
-		// earlier check.
+		// Every other required field must be present or an earlier check shadows the oracle error.
 		let err = expect_build_err(
 			ChaosHarness::<NoOpOperator>::builder()
 				.with_input_shape(shape(&[("k", ValueType::Uint8)]))

@@ -1,19 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Calibration test for the measured SyncLru: proves that the reported
-//! `resident` value tracks what the process allocator actually allocates,
-//! within a tight tolerance. MOKA_LRU_ENTRY_OVERHEAD in native.rs was
-//! derived from this measurement (moka 0.12.15, LRU policy, no TTL); if a
-//! moka upgrade changes its internal per-entry structures, this test is the
-//! tripwire that says the constant needs re-deriving.
-//!
-//! The file holds exactly one test so the live-bytes counter is not
-//! polluted by concurrent test threads.
-//!
-//! Calibration only holds for the moka-backed SyncLru; under
-//! reifydb_single_threaded (wasm/DST) the backend and its per-entry
-//! accounting differ, so the whole file compiles out there.
+//! MOKA_LRU_ENTRY_OVERHEAD in native.rs was derived from this measurement (moka 0.12.15, LRU, no
+//! TTL), so this is the tripwire when a moka upgrade changes its per-entry structures. The file
+//! holds exactly one test, or concurrent test threads pollute the live-bytes counter.
 #![cfg(not(reifydb_single_threaded))]
 
 use std::{
@@ -31,26 +21,26 @@ struct CountingAllocator;
 
 static LIVE: AtomicUsize = AtomicUsize::new(0);
 
+// SAFETY: every method forwards its caller's layout and pointer contract unchanged to the system
+// allocator, so allocation validity, alignment and ownership are exactly System's; the counter is
+// an atomic side effect that touches no allocated memory.
 unsafe impl GlobalAlloc for CountingAllocator {
 	unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
 		LIVE.fetch_add(layout.size(), Ordering::Relaxed);
-		// SAFETY: forwards the caller's layout contract directly to the
-		// system allocator.
+		// SAFETY: layout comes from the caller and is forwarded unchanged.
 		unsafe { System.alloc(layout) }
 	}
 
 	unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
 		LIVE.fetch_sub(layout.size(), Ordering::Relaxed);
-		// SAFETY: forwards the caller's layout contract directly to the
-		// system allocator.
+		// SAFETY: ptr was allocated by System with this layout and is not used again.
 		unsafe { System.dealloc(ptr, layout) }
 	}
 
 	unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
 		LIVE.fetch_add(new_size, Ordering::Relaxed);
 		LIVE.fetch_sub(layout.size(), Ordering::Relaxed);
-		// SAFETY: forwards the caller's layout contract directly to the
-		// system allocator.
+		// SAFETY: ptr was allocated by System with this layout and new_size is the caller's.
 		unsafe { System.realloc(ptr, layout, new_size) }
 	}
 }
@@ -58,10 +48,8 @@ unsafe impl GlobalAlloc for CountingAllocator {
 #[global_allocator]
 static ALLOC: CountingAllocator = CountingAllocator;
 
-// Mirrors the pubkey-cache shape (the largest SyncLru user): 32-byte keys,
-// base58 strings behind Arc<str>. heap = Arc header + string bytes; payload
-// = key bytes + string bytes.
 fn pubkey_footprint(_key: &[u8; 32], value: &Arc<str>) -> CacheFootprint {
+	// Mirrors the pubkey cache, the largest SyncLru user, so the calibration matches real use.
 	CacheFootprint {
 		heap: 2 * size_of::<usize>() + value.len(),
 		payload: 32 + value.len(),

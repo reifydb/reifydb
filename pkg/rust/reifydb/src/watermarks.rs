@@ -17,7 +17,6 @@ use reifydb_value::{Result, value::duration::Duration};
 
 use crate::Database;
 
-/// Borrowed accessor returned by `Database::watermarks()`.
 pub struct Watermarks<'a> {
 	db: &'a Database,
 }
@@ -66,7 +65,7 @@ impl<'a> Watermarks<'a> {
 		})
 	}
 
-	/// Read every watermark in one call. Errors propagate from `tx().current()`.
+	/// The only fallible read is `tx().current()`.
 	pub fn snapshot(&self) -> Result<WatermarkSnapshot> {
 		let tx = self.tx();
 		let cdc = self.cdc();
@@ -119,10 +118,9 @@ impl CdcWatermarks<'_> {
 		self.db.engine().cdc_producer_watermark()
 	}
 
-	/// Largest version that has a row in the CDC store. Permanently lags by
-	/// the number of commits whose deltas were entirely excluded from CDC
-	/// (e.g. `ConfigStorage`-only commits); use `producer()` to ask "is the
-	/// producer caught up?".
+	/// Largest version that has a row in the CDC store. Permanently lags by the commits whose
+	/// deltas were entirely excluded from CDC (e.g. `ConfigStorage`-only ones); use `producer()`
+	/// to ask whether the producer is caught up.
 	pub fn max(&self) -> CommitVersion {
 		self.db.engine().cdc_store().max_version().ok().flatten().unwrap_or(CommitVersion(0))
 	}

@@ -116,18 +116,14 @@ pub mod tests {
 		let namespace_id = NamespaceId::SYSTEM;
 		let ringbuffer = create_test_ringbuffer(rb_id, namespace_id, "test_rb");
 
-		// Set ringbuffer at version 1
 		catalog.set_ringbuffer(rb_id, CommitVersion(1), Some(ringbuffer.clone()));
 
-		// Find ringbuffer at version 1
 		let found = catalog.find_ringbuffer_at(rb_id, CommitVersion(1));
 		assert_eq!(found, Some(ringbuffer.clone()));
 
-		// Find ringbuffer at later version (should return same ringbuffer)
 		let found = catalog.find_ringbuffer_at(rb_id, CommitVersion(5));
 		assert_eq!(found, Some(ringbuffer));
 
-		// RingBuffer shouldn't exist at version 0
 		let found = catalog.find_ringbuffer_at(rb_id, CommitVersion(0));
 		assert_eq!(found, None);
 	}
@@ -139,18 +135,14 @@ pub mod tests {
 		let namespace_id = NamespaceId::SYSTEM;
 		let ringbuffer = create_test_ringbuffer(rb_id, namespace_id, "named_rb");
 
-		// Set ringbuffer
 		catalog.set_ringbuffer(rb_id, CommitVersion(1), Some(ringbuffer.clone()));
 
-		// Find by name
 		let found = catalog.find_ringbuffer_by_name_at(namespace_id, "named_rb", CommitVersion(1));
 		assert_eq!(found, Some(ringbuffer));
 
-		// Shouldn't find with wrong name
 		let found = catalog.find_ringbuffer_by_name_at(namespace_id, "wrong_name", CommitVersion(1));
 		assert_eq!(found, None);
 
-		// Shouldn't find in wrong namespace
 		let found = catalog.find_ringbuffer_by_name_at(NamespaceId::DEFAULT, "named_rb", CommitVersion(1));
 		assert_eq!(found, None);
 	}
@@ -161,32 +153,25 @@ pub mod tests {
 		let rb_id = RingBufferId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
-		// Create and set initial ringbuffer
 		let rb_v1 = create_test_ringbuffer(rb_id, namespace_id, "old_name");
 		catalog.set_ringbuffer(rb_id, CommitVersion(1), Some(rb_v1.clone()));
 
-		// Verify initial state
 		assert!(catalog.find_ringbuffer_by_name_at(namespace_id, "old_name", CommitVersion(1)).is_some());
 		assert!(catalog.find_ringbuffer_by_name_at(namespace_id, "new_name", CommitVersion(1)).is_none());
 
-		// Rename the ringbuffer
 		let mut rb_v2 = rb_v1.clone();
 		rb_v2.name = "new_name".to_string();
 		catalog.set_ringbuffer(rb_id, CommitVersion(2), Some(rb_v2.clone()));
 
-		// Old name should be gone
 		assert!(catalog.find_ringbuffer_by_name_at(namespace_id, "old_name", CommitVersion(2)).is_none());
 
-		// New name can be found
 		assert_eq!(
 			catalog.find_ringbuffer_by_name_at(namespace_id, "new_name", CommitVersion(2)),
 			Some(rb_v2.clone())
 		);
 
-		// Historical query at version 1 should still show old name
 		assert_eq!(catalog.find_ringbuffer_at(rb_id, CommitVersion(1)), Some(rb_v1));
 
-		// Current version should show new name
 		assert_eq!(catalog.find_ringbuffer_at(rb_id, CommitVersion(2)), Some(rb_v2));
 	}
 
@@ -196,22 +181,17 @@ pub mod tests {
 		let rb_id = RingBufferId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
-		// Create and set ringbuffer
 		let ringbuffer = create_test_ringbuffer(rb_id, namespace_id, "deletable_rb");
 		catalog.set_ringbuffer(rb_id, CommitVersion(1), Some(ringbuffer.clone()));
 
-		// Verify it exists
 		assert_eq!(catalog.find_ringbuffer_at(rb_id, CommitVersion(1)), Some(ringbuffer.clone()));
 		assert!(catalog.find_ringbuffer_by_name_at(namespace_id, "deletable_rb", CommitVersion(1)).is_some());
 
-		// Delete the ringbuffer
 		catalog.set_ringbuffer(rb_id, CommitVersion(2), None);
 
-		// Should not exist at version 2
 		assert_eq!(catalog.find_ringbuffer_at(rb_id, CommitVersion(2)), None);
 		assert!(catalog.find_ringbuffer_by_name_at(namespace_id, "deletable_rb", CommitVersion(2)).is_none());
 
-		// Should still exist at version 1 (historical)
 		assert_eq!(catalog.find_ringbuffer_at(rb_id, CommitVersion(1)), Some(ringbuffer));
 	}
 
@@ -221,10 +201,8 @@ pub mod tests {
 		let rb_id = RingBufferId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
-		// Empty catalog should return None
 		assert_eq!(catalog.find_ringbuffer(rb_id), None);
 
-		// Create multiple versions
 		let rb_v1 = create_test_ringbuffer(rb_id, namespace_id, "rb_v1");
 		let mut rb_v2 = rb_v1.clone();
 		rb_v2.name = "rb_v2".to_string();
@@ -232,7 +210,6 @@ pub mod tests {
 		catalog.set_ringbuffer(rb_id, CommitVersion(10), Some(rb_v1));
 		catalog.set_ringbuffer(rb_id, CommitVersion(20), Some(rb_v2.clone()));
 
-		// Should return latest (v2)
 		assert_eq!(catalog.find_ringbuffer(rb_id), Some(rb_v2));
 	}
 
@@ -242,10 +219,8 @@ pub mod tests {
 		let namespace_id = NamespaceId::SYSTEM;
 		let rb_id = RingBufferId(1);
 
-		// Empty catalog should return None
 		assert_eq!(catalog.find_ringbuffer_by_name(namespace_id, "test_rb"), None);
 
-		// Create ringbuffer
 		let rb_v1 = create_test_ringbuffer(rb_id, namespace_id, "test_rb");
 		let mut rb_v2 = rb_v1.clone();
 		rb_v2.name = "renamed_rb".to_string();
@@ -253,10 +228,8 @@ pub mod tests {
 		catalog.set_ringbuffer(rb_id, CommitVersion(10), Some(rb_v1));
 		catalog.set_ringbuffer(rb_id, CommitVersion(20), Some(rb_v2.clone()));
 
-		// Old name should not be found
 		assert_eq!(catalog.find_ringbuffer_by_name(namespace_id, "test_rb"), None);
 
-		// New name should be found with latest version
 		assert_eq!(catalog.find_ringbuffer_by_name(namespace_id, "renamed_rb"), Some(rb_v2));
 	}
 }

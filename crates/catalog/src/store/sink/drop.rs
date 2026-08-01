@@ -40,21 +40,16 @@ pub mod tests {
 		let ns = create_namespace(&mut txn, "test_namespace");
 		let sink = create_sink(&mut txn, "test_namespace", "drop_test_sink", "kafka");
 
-		// Verify sink exists by ID
 		assert!(CatalogStore::find_sink(&mut Transaction::Admin(&mut txn), sink.id).unwrap().is_some());
 
-		// Verify sink exists by name
 		assert!(CatalogStore::find_sink_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "drop_test_sink")
 			.unwrap()
 			.is_some());
 
-		// Drop the sink
 		CatalogStore::drop_sink(&mut txn, sink.id).unwrap();
 
-		// Verify sink is gone by ID
 		assert!(CatalogStore::find_sink(&mut Transaction::Admin(&mut txn), sink.id).unwrap().is_none());
 
-		// Verify sink is gone by name
 		assert!(CatalogStore::find_sink_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "drop_test_sink")
 			.unwrap()
 			.is_none());
@@ -62,9 +57,9 @@ pub mod tests {
 
 	#[test]
 	fn test_drop_nonexistent_sink() {
+		// Dropping a sink that never existed is a no-op, not an error.
 		let mut txn = create_test_admin_transaction();
 
-		// Dropping a non-existent sink should succeed silently
 		CatalogStore::drop_sink(&mut txn, SinkId(999)).unwrap();
 	}
 }

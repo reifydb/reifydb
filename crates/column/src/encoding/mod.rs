@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Per-column encoding implementations. Canonical is the dense unencoded layout; the compressed family covers
-//! all-none, bit-packed, constant, delta, delta-RLE, dictionary, frame-of-reference, run-length, and sparse forms.
-//! Each encoding produces and consumes the same encoded-bytes contract so compute kernels can be written once and
-//! work across encodings.
-//!
-//! Picking an encoding for a write batch is a heuristic decision driven by the column's statistics; choosing
-//! poorly does not change correctness, only space and read-time cost.
+//! Per-column encodings. Every encoding produces and consumes the same encoded-bytes contract, so compute kernels
+//! are written once and work across all of them. Picking an encoding for a write batch is a statistics-driven
+//! heuristic that affects space and read cost only, never correctness.
 
 pub mod canonical;
 pub mod compressed;

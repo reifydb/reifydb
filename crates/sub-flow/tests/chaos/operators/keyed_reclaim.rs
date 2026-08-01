@@ -1,18 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The foldable-forever contract for the keyed operators, which had no reclaim coverage at all.
-//!
-//! Window was the only operator a sweep was ever driven against, and it is the least representative:
-//! it seals on a timer, so its frontier comes from a ledger and its emit kind is decided inside a
-//! window engine. Aggregate, Distinct, Append and a guest Apply all take their frontier straight from
-//! `watermark - ttl` and decide Insert-versus-Update in their own code, so nothing proven about
-//! window says anything about them.
-//!
-//! The shared hazard is the one the two-phase split exists for. The data phase erases a group's state
-//! while the row-number mapping outlives it - deliberately, and for good: the sink is still holding
-//! the row that mapping names. An operator that treats "I have no state for this key" as "this key is
-//! new" then publishes an Insert over a live row, which is a diff no sink can fold.
+//! The foldable-forever contract for the keyed operators. The data phase erases a group's state while
+//! its row-number mapping deliberately outlives it, so an operator reading "no state" as "new key"
+//! publishes an Insert over a row the sink is still holding - a diff no sink can fold.
 
 use std::sync::Arc;
 
@@ -132,12 +123,9 @@ fn append() -> AppendOperator {
 	AppendOperator::new(NODE, vec![parent(), parent()], vec![PARENT, PARENT], Some(ttl()))
 }
 
-/// A guest that keeps one counter per key, which is the shape every stateful chaindex operator has.
-///
-/// It goes through `ApplyOperator` rather than being driven directly, because the wrapper is what
-/// forwards `retention_scale`, `reclaimable_through` and `invalidate_groups` to a guest - three
-/// mandatory forwarders, each of which silently disables reclamation for every guest in the database
-/// if it is dropped.
+/// A guest that keeps one counter per key, the shape every stateful chaindex operator has. It goes
+/// through `ApplyOperator` because the wrapper is what forwards `retention_scale`,
+/// `reclaimable_through` and `invalidate_groups`, each of which silently disables reclamation if lost.
 struct Tally {
 	node: FlowNodeId,
 }
@@ -229,22 +217,17 @@ fn guest() -> ApplyOperator {
 }
 
 /// Builds from the harness's own runtime context rather than a fresh one, so the operator reads the
-/// same mock clock the sweep is driven against. Aggregate and Distinct both stamp their state from
-/// that clock, and a second one would put their notion of now in a different domain than the
-/// coordinates the substrate ages them on.
+/// same mock clock the sweep is driven against; a second clock would put its notion of now in a
+/// different domain than the coordinates the substrate ages it on.
 fn harness<O: Operator>(build: impl FnOnce(RuntimeContext) -> O) -> Harness<O> {
-	// The sink ttl is what bounds the identity phase. Without it `identity_span` is none and phase
-	// two never runs, so every "the identity half survived" assertion here would hold because the
-	// phase was skipped rather than because the split works.
+	// The sink ttl bounds the identity phase; without it the phase never runs and every "the identity
+	// half survived" assertion would hold because it was skipped.
 	Harness::new(build).with_activity_grid().with_sink_row_ttl(ttl())
 }
 
-/// Drives one key through a sweep and back, and reports what the operator broke.
-///
-/// A key arrives, its group ages past the ttl and its data is swept, and then the key is written
-/// again while the mapping the sweep deliberately left behind still names a live row in the view.
-/// `Session` folds every diff the operator publishes, so an Insert against that row is reported
-/// rather than silently overwriting it.
+/// Drives one key through a sweep and back, and reports what the operator broke. The key is written
+/// again while the mapping the sweep deliberately left behind still names a live row, so an Insert
+/// against that row is reported rather than silently overwriting it.
 fn wakes_cleanly<O: Operator>(subject: &mut Harness<O>) -> Vec<String> {
 	let mut broken = Vec::new();
 	let mut session = Session::new(subject);
@@ -295,11 +278,9 @@ fn a_guest_key_that_wakes_after_reclamation_does_not_double_publish() {
 
 #[test]
 fn an_append_mapping_survives_the_data_phase_and_falls_only_to_the_sweep_after_it() {
-	// Append is the one shape whose group holds no data at all - only the mapping - so its entire
-	// exposure to reclamation is the identity phase, and the ordering is the whole contract. A
-	// mapping taken on the same sweep that released the group would retire the name of a row the
-	// sink is still holding; every later mutation of that source row then resolves to nothing and is
-	// dropped on the floor, which is a leak the view cannot see.
+	// Append's group holds only the mapping, so its whole exposure is the identity phase and the
+	// ordering is the contract: a mapping taken on the sweep that released the group retires the name
+	// of a row the sink still holds, and every later mutation of it is dropped on the floor.
 	let mut subject = harness(|_| append());
 	let mut session = Session::new(&mut subject);
 
@@ -374,8 +355,7 @@ fn a_retraction_against_reclaimed_state_stays_foldable_for_every_keyed_operator(
 fn a_sweep_publishes_nothing_into_the_view_for_every_keyed_operator() {
 	// `Session` folds whatever a subject hands back, so a sweep that emitted even one diff would
 	// silently enter the view and every bound above would be checked against a table no model
-	// describes. It is also what lets reclamation be modelled as invisible rather than as an event
-	// the oracle has to predict.
+	// describes.
 	let mut broken: Vec<String> = Vec::new();
 
 	macro_rules! check {
@@ -407,10 +387,9 @@ fn a_sweep_publishes_nothing_into_the_view_for_every_keyed_operator() {
 
 #[test]
 fn sweeping_bounds_every_keyed_operator_while_leaving_the_identity_that_addresses_it() {
-	// The anti-vacuity guard for everything above: all of it holds trivially against a sweep that
-	// deleted nothing. Append is measured on its identity half rather than its data half because it
-	// holds no data at all - stating that here rather than exempting it keeps the distinction between
-	// "bounded" and "never had anything to bound" visible.
+	// The anti-vacuity guard for everything above, all of which holds trivially against a sweep that
+	// deleted nothing. Append is left out because it holds no data at all, which keeps "bounded"
+	// distinct from "never had anything to bound".
 	let mut broken: Vec<String> = Vec::new();
 
 	macro_rules! check {
@@ -451,10 +430,9 @@ fn sweeping_bounds_every_keyed_operator_while_leaving_the_identity_that_addresse
 
 #[test]
 fn a_sweep_one_millisecond_before_the_cutoff_clears_the_bucket_is_a_no_op() {
-	// The control that gives every test above its meaning. Same corpus, same calls, a watermark one
-	// millisecond short of clearing the group's bucket: nothing retired, nothing shrunk. If this
-	// diverged from the reclaiming case for any reason other than the cutoff, none of the assertions
-	// above would be evidence about reclamation.
+	// The control that gives every test above its meaning: same corpus and calls with a watermark one
+	// millisecond short of clearing the bucket. If this diverged for any reason other than the cutoff,
+	// none of the assertions above would be evidence about reclamation.
 	let mut broken: Vec<String> = Vec::new();
 
 	macro_rules! check {

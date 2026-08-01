@@ -28,12 +28,9 @@ use reifydb_testing_sdk::{
 };
 use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
 
-// A TWAP-shaped fixture exercising the carry-forward rotation in
-// isolation. Each window retains its observations (RetainedAccumulator keyed by
-// timestamp); the value summed is incidental. `carry_in` echoes the
-// prior window's closing observation so assertions can prove the carry
-// rotated across the window boundary, not whether the integral math is
-// right (that lives in the operator's own tests).
+// A TWAP-shaped fixture that isolates the carry rotation. `carry_in` echoes the prior
+// window's closing observation, so assertions here are about the rotation and not the
+// integral math, which the operator's own tests cover.
 
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, PartialEq, HeapSize)]
@@ -146,10 +143,8 @@ fn first_window_has_no_carry() {
 
 #[test]
 fn remove_empties_window_emits_remove() {
-	// Removing the only observation empties the window's accumulator, so the
-	// carry driver must withdraw the previously emitted row (terminal Remove
-	// carrying the prior output) rather than leak a ghost row - required for
-	// reorg-retraction correctness of the carry/EMA-family views.
+	// Emptying a window has to withdraw the previously emitted row; leaking a ghost row is
+	// what breaks reorg retraction.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
 		.build()
 		.expect("harness");
@@ -167,14 +162,13 @@ fn second_window_carries_in_prior_window_close() {
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
 		.build()
 		.expect("harness");
-	// Window [0,60): closing observation (largest ts) is price 20.
+	// The window closes on the largest ts, so 20 is what the next window must carry.
 	let _ = h
 		.apply(TestChangeBuilder::new()
 			.insert(input_row(1, "BTC", 0, 10.0))
 			.insert(input_row(2, "BTC", 30, 20.0))
 			.build())
 		.expect("apply");
-	// Window [60,120) opens: its carry_in must be the prior close, 20.
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(3, "BTC", 70, 5.0)).build()).expect("apply");
 	let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
 	assert_eq!(r.u64("window_start"), Some(60));
@@ -185,8 +179,7 @@ fn second_window_carries_in_prior_window_close() {
 
 #[test]
 fn carry_rotates_across_three_windows_in_one_batch() {
-	// Windows in a single batch must rotate the carry in window order:
-	// w0 closes at 10 -> w60 carries 10 (closes at 20) -> w120 carries 20.
+	// Windows opened in one batch must still rotate the carry in window order, not batch order.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
 		.build()
 		.expect("harness");
@@ -212,20 +205,17 @@ fn carry_rotates_across_three_windows_in_one_batch() {
 
 #[test]
 fn update_in_current_window_recomputes_carry() {
-	// The carry is derived from the (delta-correct) window value, so an
-	// Update that changes the closing observation must change what the
-	// next window carries in.
+	// The carry is derived from the window value, so an update to the closing observation must
+	// change what the next window carries in.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
-	// Update the still-open window's observation 10 -> 50.
 	let _ = h
 		.apply(TestChangeBuilder::new()
 			.update(input_row(1, "BTC", 0, 10.0), input_row(1, "BTC", 0, 50.0))
 			.build())
 		.expect("apply");
-	// New window carries in the updated close, 50 - not the original 10.
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 60, 1.0)).build()).expect("apply");
 	let r = out.diffs[0].post().expect("post").row_ref(0).expect("r0");
 	assert_eq!(r.u64("window_start"), Some(60));
@@ -234,11 +224,8 @@ fn update_in_current_window_recomputes_carry() {
 
 #[test]
 fn late_event_accepted_without_sealing() {
-	// The carry driver carries no seal envelope in this fixture, so under
-	// grace semantics there is no gate: a late event for the earlier window
-	// [0,60) is accepted and (re)opens that window. Bounding mutability is
-	// the seal gate's job (opt-in via seal_after / sealed_up_to), not an
-	// implicit high-water drop.
+	// Without a seal envelope there is no gate, so a late event reopens its earlier window;
+	// bounding mutability is the opt-in seal gate's job, not an implicit high-water drop.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
 		.build()
 		.expect("harness");
@@ -251,7 +238,6 @@ fn millis(value: u64) -> Duration {
 	Duration::from_milliseconds_const(value as i64)
 }
 
-// TestCarry with sealing enabled, over a DateTime coordinate.
 struct SealedCarry;
 
 impl TumblingCarryOperator for SealedCarry {
@@ -318,9 +304,8 @@ impl TumblingCarryRegistration for SealedCarry {
 
 #[test]
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
-	// Carry windows prune relative to the newest window a group has SEEN, so a group
-	// that stops reporting freezes at whatever it last held. Reclaiming it has to be
-	// driven by the watermark instead. Nothing arrives after the initial batch here.
+	// Carry windows prune relative to the newest window a group has seen, so a group that
+	// stops reporting freezes; only the watermark can drive its reclamation.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<SealedCarry>>>::new()
 		.build()
 		.expect("harness");
@@ -345,8 +330,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 
 #[test]
 fn an_ungated_carry_operator_arms_no_seal_timer() {
-	// seal_after defaults to None. An operator that never opted into
-	// sealing must not acquire a retention policy it did not ask for.
+	// An operator that never opted into sealing must not acquire a retention policy.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<TestCarry>>>::new()
 		.build()
 		.expect("harness");

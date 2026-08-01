@@ -58,7 +58,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
-		// Get object by TableId
 		let object = CatalogStore::get_object(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 
 		match object {
@@ -69,7 +68,6 @@ pub mod tests {
 			_ => panic!("Expected table"),
 		}
 
-		// Get object by ObjectId::Table
 		let object =
 			CatalogStore::get_object(&mut Transaction::Admin(&mut txn), ObjectId::Table(table.id)).unwrap();
 
@@ -103,7 +101,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Get object by ViewId
 		let object = CatalogStore::get_object(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
 
 		match object {
@@ -114,7 +111,6 @@ pub mod tests {
 			_ => panic!("Expected view"),
 		}
 
-		// Get object by ObjectId::View
 		let object =
 			CatalogStore::get_object(&mut Transaction::Admin(&mut txn), ObjectId::View(view.id())).unwrap();
 
@@ -130,7 +126,6 @@ pub mod tests {
 	fn test_get_object_not_found_table() {
 		let mut txn = create_test_admin_transaction();
 
-		// Non-existent table should error
 		let result = CatalogStore::get_object(&mut Transaction::Admin(&mut txn), TableId(999));
 		assert!(result.is_err());
 
@@ -143,7 +138,6 @@ pub mod tests {
 	fn test_get_object_not_found_view() {
 		let mut txn = create_test_admin_transaction();
 
-		// Non-existent view should error
 		let result = CatalogStore::get_object(&mut Transaction::Admin(&mut txn), ViewId(999));
 		assert!(result.is_err());
 

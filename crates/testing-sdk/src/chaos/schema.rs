@@ -232,8 +232,7 @@ mod tests {
 
 	#[test]
 	fn hash_of_never_yields_zero() {
-		// Probe a few values; we mostly care that the zero-mapping
-		// branch in derive() works.
+		// RowNumber(0) is not a usable row identity, so no input may hash onto it.
 		let s = KeyStrategy::hash_of(["x"]);
 		for i in 0..256u64 {
 			let c = content(&[("x", Value::uint8(i))]);

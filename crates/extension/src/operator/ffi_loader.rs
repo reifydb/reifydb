@@ -67,6 +67,7 @@ impl FFIOperatorLoader {
 			.cache
 			.get(path)
 			.ok_or_else(|| SdkError::Other(format!("Library not loaded: {}", path.display())))?;
+		// SAFETY: the operator ABI declares this symbol; the descriptor is module-static data.
 		unsafe {
 			let get_descriptor: Symbol<extern "C" fn() -> *const OperatorDescriptorFFI> =
 				library.get(b"ffi_operator_get_descriptor\0").map_err(|e| {
@@ -101,6 +102,7 @@ impl FFIOperatorLoader {
 
 		check_operator_abi_tag(descriptor.abi_tag)?;
 
+		// SAFETY: the buffer points into the loaded image's static data, which outlives this read.
 		let operator = unsafe { buffer_to_string(&descriptor.operator) };
 		self.operator_paths.insert(operator.clone(), path.to_path_buf());
 
@@ -115,6 +117,7 @@ impl FFIOperatorLoader {
 		let descriptor = self.get_descriptor(path)?;
 		let (operator, api) = self.validate_and_register(&descriptor, path)?;
 
+		// SAFETY: the descriptor's buffers and column arrays are module-static data.
 		let info = unsafe {
 			LoadedOperatorInfo {
 				operator,
@@ -145,6 +148,7 @@ impl FFIOperatorLoader {
 		self.validate_and_register(&descriptor, path)?;
 
 		let library = self.cache.get(path).unwrap();
+		// SAFETY: the ABI declares this symbol as OperatorCreateFnFFI and the cache keeps it loaded.
 		let create_fn: OperatorCreateFnFFI = unsafe {
 			let create_symbol: Symbol<OperatorCreateFnFFI> = library
 				.get(b"ffi_operator_create\0")
@@ -186,6 +190,7 @@ impl FFIOperatorLoader {
 
 		for path in self.operator_paths.values() {
 			if let Ok(descriptor) = self.get_descriptor(path) {
+				// SAFETY: the descriptor's buffers and arrays are module-static data.
 				unsafe {
 					operators.push(LoadedOperatorInfo {
 						operator: buffer_to_string(&descriptor.operator),
@@ -224,6 +229,9 @@ pub struct ColumnInfo {
 	pub description: String,
 }
 
+/// # Safety
+/// `columns` must address `column_count` initialized `OperatorColumnFFI`, each with buffers valid for the
+/// duration of the call.
 unsafe fn extract_column_defs(column_defs: &OperatorColumnsFFI) -> Vec<ColumnInfo> {
 	if column_defs.columns.is_null() || column_defs.column_count == 0 {
 		return Vec::new();
@@ -231,6 +239,7 @@ unsafe fn extract_column_defs(column_defs: &OperatorColumnsFFI) -> Vec<ColumnInf
 
 	let mut columns = Vec::with_capacity(column_defs.column_count);
 	for i in 0..column_defs.column_count {
+		// SAFETY: i < column_count and the pointer is non-null, so this stays inside the array.
 		let col = unsafe { &*column_defs.columns.add(i) };
 
 		let field_type = type_constraint_from_ffi(&FFITypeConstraint {
@@ -241,6 +250,7 @@ unsafe fn extract_column_defs(column_defs: &OperatorColumnsFFI) -> Vec<ColumnInf
 		})
 		.expect("invalid persisted type constraint tag");
 
+		// SAFETY: both buffers belong to `col`, whose validity the caller guarantees.
 		columns.push(ColumnInfo {
 			name: unsafe { buffer_to_string(&col.name) },
 			field_type,

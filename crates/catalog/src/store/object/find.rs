@@ -36,18 +36,15 @@ impl CatalogStore {
 				}
 			}
 			ObjectId::RingBuffer(_ringbuffer_id) => {
-				// TODO: Implement find_ringbuffer when ring
-
+				// TODO: `Object` has no RingBuffer variant to return.
 				Ok(None)
 			}
 			ObjectId::Dictionary(_dictionary_id) => {
-				// TODO: Implement find_dictionary when dictionary
-
+				// TODO: `Object` has no Dictionary variant to return.
 				Ok(None)
 			}
 			ObjectId::Series(_series_id) => {
-				// TODO: Implement find_series when series
-
+				// TODO: `Object` has no Series variant to return.
 				Ok(None)
 			}
 			ObjectId::Queue(_queue_id) => Ok(None),
@@ -81,7 +78,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
-		// Find object by TableId
 		let object = CatalogStore::find_object(&mut Transaction::Admin(&mut txn), table.id)
 			.unwrap()
 			.expect("Object should exist");
@@ -94,7 +90,6 @@ pub mod tests {
 			_ => panic!("Expected table"),
 		}
 
-		// Find object by ObjectId::Table
 		let object = CatalogStore::find_object(&mut Transaction::Admin(&mut txn), ObjectId::Table(table.id))
 			.unwrap()
 			.expect("Object should exist");
@@ -129,7 +124,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Find object by ViewId
 		let object = CatalogStore::find_object(&mut Transaction::Admin(&mut txn), view.id())
 			.unwrap()
 			.expect("Object should exist");
@@ -142,7 +136,6 @@ pub mod tests {
 			_ => panic!("Expected view"),
 		}
 
-		// Find object by ObjectId::View
 		let object = CatalogStore::find_object(&mut Transaction::Admin(&mut txn), ObjectId::View(view.id()))
 			.unwrap()
 			.expect("Object should exist");
@@ -159,15 +152,12 @@ pub mod tests {
 	fn test_find_object_not_found() {
 		let mut txn = create_test_admin_transaction();
 
-		// Non-existent table
 		let result = CatalogStore::find_object(&mut Transaction::Admin(&mut txn), TableId(999)).unwrap();
 		assert!(result.is_none());
 
-		// Non-existent view
 		let result = CatalogStore::find_object(&mut Transaction::Admin(&mut txn), ViewId(999)).unwrap();
 		assert!(result.is_none());
 
-		// Non-existent virtual table
 		let result = CatalogStore::find_object(&mut Transaction::Admin(&mut txn), VTableId(999)).unwrap();
 		assert!(result.is_none());
 	}
@@ -176,7 +166,6 @@ pub mod tests {
 	fn test_find_object_vtable() {
 		let mut txn = create_test_admin_transaction();
 
-		// Find the sequences virtual table
 		let sequences_id = SEQUENCES;
 		let object = CatalogStore::find_object(&mut Transaction::Admin(&mut txn), sequences_id)
 			.unwrap()
@@ -190,7 +179,6 @@ pub mod tests {
 			_ => panic!("Expected virtual table"),
 		}
 
-		// Find object by ObjectId::TableVirtual
 		let object = CatalogStore::find_object(
 			&mut Transaction::Admin(&mut txn),
 			ObjectId::TableVirtual(sequences_id),

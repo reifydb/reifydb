@@ -1237,7 +1237,6 @@ mod tests {
 
 	#[test]
 	fn test_other_keys_accept_in_type_values() {
-		// Keys without bespoke validation should accept any in-type value.
 		assert!(ConfigKey::OracleWindowSize.accept(Value::Uint8(0)).is_ok());
 	}
 
@@ -1264,10 +1263,8 @@ mod tests {
 
 	#[test]
 	fn test_operator_state_keys_default_and_round_trip() {
-		// The pool budget and lease default must survive the full
-		// ConfigKey surface: defaults, types, Display/FromStr, and
-		// zero rejection - a miss in any arm silently disables the
-		// operator state bound.
+		// The pool budget and lease default must be present in every ConfigKey arm; a miss in any
+		// one of them silently disables the operator state bound.
 		assert_eq!(ConfigKey::OperatorStateMemoryLimit.default_value(), Value::Uint8(2 * 1024 * 1024 * 1024));
 		assert_eq!(ConfigKey::OperatorStateLeaseDefault.default_value(), Value::Uint8(64 * 1024 * 1024));
 		assert_eq!(ConfigKey::OperatorStateMemoryLimit.expected_types(), &[ValueType::Uint8]);
@@ -1451,7 +1448,7 @@ mod tests {
 
 	#[test]
 	fn test_metrics_flush_interval_metadata() {
-		// Always-on (non-optional) Duration knob defaulting to the historical 10s flush cadence.
+		// A non-optional Duration knob: there is no "off" value, only a cadence.
 		assert_eq!(ConfigKey::MetricsFlushInterval.default_value(), Value::duration_seconds(10));
 		assert_eq!(ConfigKey::MetricsFlushInterval.expected_types(), &[ValueType::Duration]);
 		assert!(!ConfigKey::MetricsFlushInterval.is_optional());
@@ -1750,7 +1747,8 @@ mod tests {
 
 	#[test]
 	fn test_accept_rejects_negative_int_for_uint8_key() {
-		// to_usize() returns None for negatives -> all coercion arms fail -> TypeMismatch.
+		// accept is strict on type, so an Int4 is refused before its value is ever inspected; the
+		// sign is incidental.
 		assert!(matches!(
 			ConfigKey::CdcCompactBlockSize.accept(Value::Int4(-1)),
 			Err(AcceptError::TypeMismatch { .. })
@@ -1810,9 +1808,8 @@ mod tests {
 
 	#[test]
 	fn test_commit_group_linger_default_is_none() {
-		// Group commit is opt-in: leaving this key untouched must keep every unchecked commit
-		// on its own transaction/version, byte-identical to the pre-feature behavior. A
-		// deployment enables grouping by setting an explicit positive linger.
+		// Group commit is opt-in: leaving this key untouched must keep every unchecked commit on
+		// its own transaction and version. Grouping is enabled by setting a positive linger.
 		assert_eq!(
 			ConfigKey::CommitGroupLinger.default_value(),
 			Value::None {
@@ -1833,9 +1830,8 @@ mod tests {
 
 	#[test]
 	fn test_commit_group_linger_rejects_zero_and_negative() {
-		// A zero linger would arm a fire-immediately timer for every submission (busy churn for
-		// no grouping) and a negative one cannot schedule at all; "disabled" is expressed by
-		// absence, so zero must be rejected instead of silently meaning something.
+		// A zero linger arms a fire-immediately timer for every submission and a negative one
+		// cannot schedule at all; "disabled" is expressed by absence, so zero must be rejected.
 		match ConfigKey::CommitGroupLinger.accept(Value::duration_seconds(0)).unwrap_err() {
 			AcceptError::InvalidValue(reason) => {
 				assert!(reason.contains("greater than zero"), "unexpected reason: {reason}");

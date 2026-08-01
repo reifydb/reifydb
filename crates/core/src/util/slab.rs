@@ -76,9 +76,8 @@ mod tests {
 		assert_eq!(slab.len(), 1);
 
 		let b = slab.acquire();
-		// Same allocation reused (capacity preserved). The pool keeps
-		// the data as-is - callers are expected to overwrite via
-		// Arc::make_mut on the next use.
+		// The slab returns the allocation with its contents intact; callers overwrite through
+		// Arc::make_mut rather than relying on it being cleared.
 		assert_eq!(b.bytes.as_ptr(), ptr_before);
 		assert_eq!(slab.len(), 0);
 	}
@@ -91,7 +90,6 @@ mod tests {
 		slab.release(a);
 		assert_eq!(slab.len(), 1);
 
-		// acquire skips the shared slab and allocates fresh.
 		let b = slab.acquire();
 		assert_eq!(Arc::strong_count(&b), 1);
 		assert!(slab.is_empty());
@@ -106,7 +104,6 @@ mod tests {
 		slab.release(a);
 		slab.release(b);
 		assert_eq!(slab.len(), 2);
-		// Third release exceeds cap; slab is dropped.
 		slab.release(c);
 		assert_eq!(slab.len(), 2);
 	}
@@ -124,7 +121,7 @@ mod tests {
 
 		let c = slab.acquire();
 		assert_eq!(Arc::strong_count(&c), 1);
-		// Pool drained as the iterator skipped shared entries.
+		// Skipped shared entries are dropped rather than put back, so the pool drains.
 		assert!(slab.is_empty());
 	}
 }

@@ -852,7 +852,6 @@ pub mod tests {
 	fn test_calculate_execution_levels_wide_fan_out() {
 		let mut analyzer = FlowGraphAnalyzer::new();
 
-		// Flow 1: table -> view 200
 		let flow1 = create_test_flow_with_nodes(
 			1,
 			vec![
@@ -866,7 +865,6 @@ pub mod tests {
 			],
 		);
 
-		// Flows 2,3,4: all read from view 200 (independent of each other)
 		let flow2 = create_test_flow_with_nodes(
 			2,
 			vec![
@@ -1014,12 +1012,10 @@ pub mod tests {
 
 		let schedule = analyzer.calculate_schedule(dependency_graph);
 
-		// only the head of the chain has no producer to wait on
 		assert_eq!(schedule.roots, vec![FlowId(1)]);
 		assert_eq!(schedule.in_degree[&FlowId(1)], 0);
 		assert_eq!(schedule.in_degree[&FlowId(2)], 1);
 		assert_eq!(schedule.in_degree[&FlowId(3)], 1);
-		// each link unblocks the next flow, the tail unblocks nothing
 		assert_eq!(schedule.consumers[&FlowId(1)], vec![FlowId(2)]);
 		assert_eq!(schedule.consumers[&FlowId(2)], vec![FlowId(3)]);
 		assert!(schedule.consumers[&FlowId(3)].is_empty());
@@ -1089,7 +1085,6 @@ pub mod tests {
 
 		let schedule = analyzer.calculate_schedule(dependency_graph);
 
-		// the single producer is the only root; each consumer waits on exactly it
 		assert_eq!(schedule.roots, vec![FlowId(1)]);
 		assert_eq!(schedule.in_degree[&FlowId(2)], 1);
 		assert_eq!(schedule.in_degree[&FlowId(3)], 1);
@@ -1135,7 +1130,6 @@ pub mod tests {
 
 		let schedule = analyzer.calculate_schedule(dependency_graph);
 
-		// disconnected flows are both roots and unblock nothing
 		let mut roots = schedule.roots.clone();
 		roots.sort();
 		assert_eq!(roots, vec![FlowId(1), FlowId(2)]);
@@ -1147,7 +1141,6 @@ pub mod tests {
 
 	#[test]
 	fn test_upstream_closure_chain() {
-		// table 100 -> view 200 -> view 300
 		let mut analyzer = FlowGraphAnalyzer::new();
 		analyzer.add(create_test_flow_with_nodes(
 			1,
@@ -1190,7 +1183,7 @@ pub mod tests {
 
 	#[test]
 	fn test_upstream_closure_diamond() {
-		// table 100 -> view 200 -> views 201/202 -> view 203
+		// The diamond reconverges, so the closure must visit the shared upstream once, not twice.
 		let mut analyzer = FlowGraphAnalyzer::new();
 		analyzer.add(create_test_flow_with_nodes(
 			1,
@@ -1260,9 +1253,8 @@ pub mod tests {
 
 	#[test]
 	fn test_upstream_closure_stops_at_unregistered_producer() {
-		// view 900 has no producing flow in this graph (e.g. a deferred
-		// view): the walk records it as a leaf and must NOT reach the
-		// objects behind it.
+		// A view with no producing flow in this graph is an async boundary: the walk records it as a leaf and
+		// must not reach the objects behind it.
 		let mut analyzer = FlowGraphAnalyzer::new();
 		analyzer.add(create_test_flow_with_nodes(
 			1,
@@ -1289,8 +1281,7 @@ pub mod tests {
 
 	#[test]
 	fn test_upstream_closure_cycle_terminates() {
-		// view 200 -> view 300 and view 300 -> view 200: the visited set
-		// must terminate the walk instead of looping.
+		// The two flows produce each other's source, so only the visited set stops the walk looping.
 		let mut analyzer = FlowGraphAnalyzer::new();
 		analyzer.add(create_test_flow_with_nodes(
 			1,
@@ -1331,6 +1322,7 @@ pub mod tests {
 
 	#[test]
 	fn test_calculate_schedule_diamond() {
+		// The reconverging flow must wait on both producers, which a per-level barrier would not enforce.
 		let mut analyzer = FlowGraphAnalyzer::new();
 
 		let flow_a = create_test_flow_with_nodes(
@@ -1396,7 +1388,6 @@ pub mod tests {
 
 		let schedule = analyzer.calculate_schedule(dependency_graph);
 
-		// D joins two branches, so it must wait for BOTH producers, not just one level barrier
 		assert_eq!(schedule.roots, vec![FlowId(1)]);
 		assert_eq!(schedule.in_degree[&FlowId(1)], 0);
 		assert_eq!(schedule.in_degree[&FlowId(2)], 1);

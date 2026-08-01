@@ -88,11 +88,9 @@ mod tests {
 
 	#[test]
 	fn an_event_coordinate_can_only_come_from_the_row_time() {
-		// `of` is the only constructor, so a coordinate cannot be built from a data
-		// column, a config value or a clock read. The row carries a second, more
-		// "interesting" DateTime an operator would be tempted to bucket by; the window
-		// would then key on something the substrate can neither see nor seal against.
-		// The absence of an `at_instant(DateTime)` constructor is the thing under test.
+		// `of` is the only constructor, so a coordinate cannot come from a data column, a config
+		// value or a clock read. The row's second DateTime is what an operator would be tempted to
+		// bucket by, keying the window on something the substrate can neither see nor seal against.
 		let row = Row {
 			time: DateTime::from_millis(5_000),
 			other_column: DateTime::from_millis(9_999),
@@ -114,10 +112,8 @@ mod tests {
 
 	#[test]
 	fn both_ordinal_sources_produce_the_same_domain() {
-		// Count-based windows mint ordinals two different ways - a per-group
-		// arrival counter for tumbling/sliding, the RowNumber for rolling - and the shell
-		// must not care which. If these produced different types, every count kind would
-		// need its own driver, which is the duplication this plan exists to delete.
+		// An ordinal can be minted from a per-group arrival counter or from a RowNumber, and both
+		// must land in one domain type or each count kind would need its own driver.
 		let minted = OrdinalCoord::from_arrival_counter(7);
 		let from_row = OrdinalCoord::from_row_number(RowNumber(7));
 
@@ -127,9 +123,8 @@ mod tests {
 
 	#[test]
 	fn only_the_event_time_domain_seals_on_a_timer() {
-		// This constant is what stops the shell arming a timer for a count-based
-		// window. A count window has no instant to arm against - its coordinate is an
-		// arrival ordinal - so it seals on arrival and answers none from the ledger.
+		// A count window's coordinate is an arrival ordinal with no instant to arm a timer against,
+		// so the two domains must declare opposite answers for any shell that routes on this.
 		assert!(EventTime::SEALS_ON_TIMER);
 		assert!(!Ordinal::SEALS_ON_TIMER);
 	}

@@ -1,18 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Delete / physical-removal / row-TTL lifecycle chaos.
-//!
-//! Interleaves commits (each row carries the commit version it was written at), tombstones, flushes,
-//! row-TTL sweeps, and direct physical deletes across the three configs, asserting no ghost / no premature
-//! loss / cross-config agreement against an exact oracle.
-//!
-//! Reads are taken at the CURRENT version only. Row TTL removes rows by commit version (`version <=
-//! cutoff_version`), which can drop a historical version a `read < current` would need; at the current
-//! version a key is present iff its current version survives (no tombstone, not TTL'd, not physically
-//! deleted), which
-//! the oracle models exactly. (Version-gated historical reads live in the base `workload` harness, where
-//! reclamation is version-based.)
+//! Delete / physical-removal / row-TTL lifecycle chaos across the three configs, checked against an exact
+//! oracle. Reads are taken at the CURRENT version only: row TTL removes by commit version and can drop a
+//! historical version a lower read would need, so only the current version is exactly modelled.
 
 use std::collections::HashMap;
 
@@ -52,12 +43,9 @@ pub struct Params {
 	pub max_batch: u64,
 }
 
-/// Deterministic stand-in for version-anchored TTL eviction (the engine-side retention evictor; the
-/// old gc/row buffer scanner is retired). The driver knows exactly which rows are expired, so the
-/// buffer half drops every version at or below the cutoff for those keys directly, then the persistent
-/// half removes expired rows via `delete_below_version` and clears the read cache - the same
-/// buffer-then-persistent, mutate-then-invalidate ordering the actor used.
 fn ttl_sweep(store: &StandardMultiStore, rows: &[u64], cutoff_version: CommitVersion) {
+	// Deterministic stand-in for version-anchored TTL eviction, in the same buffer-then-persistent,
+	// mutate-then-invalidate order the actor uses.
 	let kind = EntryKind::Source(STORAGE);
 	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(STORAGE, r)).collect();
 	{
@@ -85,10 +73,8 @@ fn ttl_sweep(store: &StandardMultiStore, rows: &[u64], cutoff_version: CommitVer
 	}
 }
 
-/// Physically remove keys from every tier (the drop path): delete from persistent, drop all versions
-/// from the commit buffer, and invalidate the read cache - the delete-then-invalidate order that stops a
-/// stale complete page from resurrecting the row.
 fn physical_delete(store: &StandardMultiStore, rows: &[u64]) {
+	// Delete-then-invalidate is the order that stops a stale complete page from resurrecting the row.
 	let kind = EntryKind::Source(STORAGE);
 	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(STORAGE, r)).collect();
 	if let Some(persistent) = store.persistent() {
@@ -111,10 +97,8 @@ fn physical_delete(store: &StandardMultiStore, rows: &[u64]) {
 	}
 }
 
-/// Deterministic historical-version GC (the `tests/gc_historical.rs` loop): drop every superseded version
-/// below `cutoff` from the commit buffer, keeping the current version. Buffer-only; current-version reads
-/// are unaffected, which is exactly what this asserts (GC must not touch the current version).
 fn historical_gc(store: &StandardMultiStore, cutoff: CommitVersion) {
+	// Buffer-only: superseded versions below the cutoff go, the current version must survive untouched.
 	let buffer = store.commit();
 	let kind = EntryKind::Source(STORAGE);
 	let mut cursor = HistoricalCursor::new();
@@ -140,9 +124,8 @@ pub fn drive(seed: u64, p: Params) {
 	let memory = StandardMultiStore::testing_memory();
 	let (persistent, _g1) = sync_persistent_store();
 	let (tiny, _g2) = sync_persistent_store();
-	// Page sizes large enough that a flushed page exceeds WARM_THRESHOLD (128) and becomes range_complete,
-	// with few resident pages so a multi-page keyspace also churns eviction - this is what exercises the
-	// complete-page serve path that delete/TTL must not let resurrect a row.
+	// Pages large enough that a flushed page exceeds WARM_THRESHOLD (128) and becomes range_complete,
+	// with few resident pages so a multi-page keyspace also churns eviction.
 	let pages = pick(&mut rng, &[1usize, 2, 3]);
 	let page_rows = pick(&mut rng, &[256u64, 512]);
 	tiny.configure_read_buffer(pages, page_rows);
@@ -197,9 +180,8 @@ pub fn drive(seed: u64, p: Params) {
 				}
 			}
 		} else if roll < ttl_hi {
-			// Version-anchored TTL: evict every key whose last-write version is at or below a cutoff
-			// version (the time -> cutoff_version mapping is the epoch's job, unit-tested separately).
-			// A random cutoff fuzzes the full range of eviction depths.
+			// Evict every key whose last-write version is at or below the cutoff; drawing the cutoff
+			// at random fuzzes the full range of eviction depths.
 			let cutoff_version = rng.random_range(1..=version);
 			let expired: Vec<u64> = row_version
 				.iter()

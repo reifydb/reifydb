@@ -57,7 +57,6 @@ fn one_row(value: Value) -> ColumnBuffer {
 	ColumnBuffer::any([Box::new(value)])
 }
 
-// None.
 #[test]
 fn any_none() {
 	let input = ColumnBuffer::any([Box::new(Value::none())]);
@@ -72,7 +71,6 @@ fn any_none_of_int8() {
 	assert_column_eq("any_none_of_int8", &input, &output);
 }
 
-// Boolean.
 #[test]
 fn any_boolean_true() {
 	let input = one_row(Value::Boolean(true));
@@ -87,7 +85,6 @@ fn any_boolean_false() {
 	assert_column_eq("any_boolean_false", &input, &output);
 }
 
-// Float4.
 #[test]
 fn any_float4_zero() {
 	let input = one_row(float4(0.0));
@@ -109,7 +106,6 @@ fn any_float4_infinities() {
 	assert_column_eq("any_float4_infinities", &input, &output);
 }
 
-// Float8.
 #[test]
 fn any_float8_zero() {
 	let input = one_row(float8(0.0));
@@ -138,7 +134,6 @@ fn any_float8_subnormal() {
 	assert_column_eq("any_float8_subnormal", &input, &output);
 }
 
-// Signed integers.
 #[test]
 fn any_int1_extremes() {
 	let input = ColumnBuffer::any([
@@ -197,7 +192,6 @@ fn any_int16_extremes() {
 	assert_column_eq("any_int16", &input, &output);
 }
 
-// Unsigned integers.
 #[test]
 fn any_uint1_extremes() {
 	let input = ColumnBuffer::any([Box::new(Value::Uint1(0)), Box::new(Value::Uint1(u8::MAX))]);
@@ -233,7 +227,6 @@ fn any_uint16_extremes() {
 	assert_column_eq("any_uint16", &input, &output);
 }
 
-// Utf8.
 #[test]
 fn any_utf8_empty() {
 	let input = one_row(Value::Utf8(String::new()));
@@ -263,7 +256,6 @@ fn any_utf8_long_4kib() {
 	assert_column_eq("any_utf8_long_4kib", &input, &output);
 }
 
-// Blob.
 #[test]
 fn any_blob_empty() {
 	let input = one_row(blob(&[]));
@@ -286,7 +278,6 @@ fn any_blob_embedded_zeros() {
 	assert_column_eq("any_blob_embedded_zeros", &input, &output);
 }
 
-// Date.
 #[test]
 fn any_date_epoch() {
 	let input = one_row(date_days(0));
@@ -315,7 +306,6 @@ fn any_date_far_future() {
 	assert_column_eq("any_date_far_future", &input, &output);
 }
 
-// DateTime.
 #[test]
 fn any_datetime_epoch() {
 	let input = one_row(datetime_nanos(0));
@@ -337,7 +327,6 @@ fn any_datetime_max_u64() {
 	assert_column_eq("any_datetime_max", &input, &output);
 }
 
-// Time.
 #[test]
 fn any_time_midnight() {
 	let input = one_row(time_nanos(0));
@@ -359,7 +348,6 @@ fn any_time_just_before_midnight() {
 	assert_column_eq("any_time_just_before_midnight", &input, &output);
 }
 
-// Duration.
 #[test]
 fn any_duration_zero() {
 	let input = one_row(duration(0, 0, 0));
@@ -385,7 +373,6 @@ fn any_duration_negative() {
 	assert_column_eq("any_duration_negative", &input, &output);
 }
 
-// IdentityId.
 #[test]
 fn any_identity_id_anonymous() {
 	let input = one_row(Value::IdentityId(IdentityId::anonymous()));
@@ -408,7 +395,6 @@ fn any_identity_id_specific() {
 	assert_column_eq("any_identity_specific", &input, &output);
 }
 
-// Uuid4.
 #[test]
 fn any_uuid4_nil() {
 	let input = one_row(Value::Uuid4(Uuid4(Uuid::nil())));
@@ -425,7 +411,6 @@ fn any_uuid4_specific() {
 	assert_column_eq("any_uuid4_specific", &input, &output);
 }
 
-// Uuid7.
 #[test]
 fn any_uuid7_nil() {
 	let input = one_row(Value::Uuid7(Uuid7(Uuid::nil())));
@@ -442,7 +427,6 @@ fn any_uuid7_specific() {
 	assert_column_eq("any_uuid7_specific", &input, &output);
 }
 
-// Int (BigInt).
 #[test]
 fn any_int_zero() {
 	let input = one_row(Value::Int(Int::zero()));
@@ -482,7 +466,6 @@ fn any_int_outside_i128_range() {
 	assert_column_eq("any_int_outside_i128", &input, &output);
 }
 
-// Uint (BigInt).
 #[test]
 fn any_uint_zero() {
 	let input = one_row(Value::Uint(Uint::zero()));
@@ -506,7 +489,6 @@ fn any_uint_outside_u128_range() {
 	assert_column_eq("any_uint_outside_u128", &input, &output);
 }
 
-// Decimal.
 #[test]
 fn any_decimal_zero() {
 	let input = one_row(Value::Decimal(Decimal::zero()));
@@ -536,7 +518,6 @@ fn any_decimal_high_precision() {
 	assert_column_eq("any_decimal_high_precision", &input, &output);
 }
 
-// Any (recursive).
 #[test]
 fn any_recursive_one_level() {
 	let input = one_row(Value::Any(Box::new(Value::Int8(42))));
@@ -551,7 +532,6 @@ fn any_recursive_two_levels() {
 	assert_column_eq("any_recursive_two_levels", &input, &output);
 }
 
-// DictionaryId.
 #[test]
 fn any_dictionary_id_each_variant() {
 	let input = ColumnBuffer::any([
@@ -565,7 +545,6 @@ fn any_dictionary_id_each_variant() {
 	assert_column_eq("any_dict_id_each_variant", &input, &output);
 }
 
-// ValueType (meta).
 #[test]
 fn any_type_simple() {
 	let input = ColumnBuffer::any([Box::new(Value::Type(ValueType::Int8)), Box::new(Value::Type(ValueType::Utf8))]);
@@ -590,7 +569,6 @@ fn any_type_recursive_record() {
 	assert_column_eq("any_type_record", &input, &output);
 }
 
-// List.
 #[test]
 fn any_list_empty() {
 	let input = one_row(Value::List(Vec::new()));
@@ -625,7 +603,6 @@ fn any_list_nested() {
 	assert_column_eq("any_list_nested", &input, &output);
 }
 
-// Record.
 #[test]
 fn any_record_empty() {
 	let input = one_row(Value::Record(Vec::new()));
@@ -652,7 +629,6 @@ fn any_record_multi_field_mixed() {
 	assert_column_eq("any_record_mixed", &input, &output);
 }
 
-// Tuple.
 #[test]
 fn any_tuple_empty() {
 	let input = one_row(Value::Tuple(Vec::new()));
@@ -674,7 +650,6 @@ fn any_tuple_triple_mixed() {
 	assert_column_eq("any_tuple_triple", &input, &output);
 }
 
-// Original cases.
 #[test]
 fn any_single_int() {
 	let input = ColumnBuffer::any([Box::new(Value::Int8(42i64))]);
@@ -721,9 +696,9 @@ fn any_with_undefined() {
 	assert_column_eq("any_with_undefined", &input, &output);
 }
 
-// Big mixed column - if any single variant breaks the round trip, this fires.
 #[test]
 fn any_one_per_variant_in_one_column() {
+	// One row per variant in a single column, so a tag mix-up anywhere in the Any encoding shows up here.
 	let input = ColumnBuffer::any([
 		Box::new(Value::none()),
 		Box::new(Value::Boolean(true)),

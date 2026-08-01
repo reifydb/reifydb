@@ -1,17 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Flow execution substrate, in two tiers.
-//!
-//! The default tier is lean: types a guest operator compiled to a cdylib can name without linking
-//! the host. The `runtime` feature adds the `FlowTransaction` accumulator and its operator-state
-//! layer plus the `Operator` contract every flow operator implements, and is what the
-//! `reifydb-sub-flow` subsystem builds its operator library on. Other subsystems that only need to
-//! drive a flow transaction (subscription hydration, test harnesses) enable `runtime` too.
-//!
-//! The lean tier is the default so that forgetting the feature breaks a host build loudly on a
-//! missing `flow::transaction`, rather than silently linking the catalog, the transaction layer and
-//! the store into a guest cdylib.
+//! Flow execution substrate in two tiers: the lean default carries only what a guest cdylib can name without
+//! linking the host, and `runtime` adds `FlowTransaction` plus the `Operator` contract. Lean is the default so a
+//! forgotten feature fails the host build loudly rather than linking the catalog, transactions and store into a guest.
 
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]

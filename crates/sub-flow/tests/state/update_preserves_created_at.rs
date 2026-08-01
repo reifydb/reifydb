@@ -1,18 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Scenario: a follow-up `state_set` on a key that already has a row keeps the
-// anchors the caller stamped. Operator state rows are engine-internal - nothing
-// reads their header anchors - so the host must not read the prior row back to
-// carry its `created_at` forward: that read cost one store roundtrip per written
-// key on every accumulator flush, and it defeats the operator-resident caches
-// above it, whose whole purpose is to keep a warm key out of the transaction.
-
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_test_harness::operator::transaction::{FlowTxn, NODE_ID, engine, key, make_row, payload};
 use reifydb_value::value::datetime::DateTime;
 
 fn assert_update_uses_caller_anchors(txn: &mut FlowTransaction) {
+	// Nothing reads an operator state row's header anchors, so the host must not read the prior row
+	// back to carry `created_at` forward: that costs a store roundtrip per written key on every
+	// flush and defeats the caches above it, whose purpose is keeping a warm key out of the txn.
 	let k = key("update-key");
 
 	txn.state_set(NODE_ID, &k, make_row("v1", 1_000, 1_000)).unwrap();
@@ -25,7 +21,7 @@ fn assert_update_uses_caller_anchors(txn: &mut FlowTransaction) {
 		"the write's own created_at stands, unread and unmodified"
 	);
 	assert_eq!(stored.updated_at(), DateTime::from_nanos(5_000), "updated_at is whatever the writer stamped");
-	// Sanity: the second write replaced the row wholesale, payload included.
+	// The second write replaced the row wholesale, payload included.
 	assert_eq!(payload(&stored), b"v2");
 }
 

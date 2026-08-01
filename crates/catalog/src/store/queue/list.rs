@@ -85,10 +85,9 @@ pub mod tests {
 		assert_eq!(queues.len(), 0);
 	}
 
-	/// Listing per namespace must not leak queues from a sibling namespace, or
-	/// system::queues would show foreign definitions.
 	#[test]
 	fn test_list_queues_filters_by_namespace() {
+		// Leaking a sibling namespace's queue would show foreign definitions in system::queues.
 		let mut txn = create_test_admin_transaction();
 		let first = ensure_test_namespace(&mut txn);
 		let second = CatalogStore::create_namespace(

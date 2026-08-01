@@ -314,7 +314,7 @@ mod tests {
 
 		assert_eq!(row_a.number, row_b.number);
 		assert_eq!(row_a.shape, row_b.shape);
-		// EncodedRow doesn't impl PartialEq directly; compare bytes.
+		// EncodedRow has no PartialEq, so the comparison has to go through bytes.
 		assert_eq!(row_a.encoded.as_slice(), row_b.encoded.as_slice());
 	}
 
@@ -323,8 +323,7 @@ mod tests {
 		let schema = schema_basic();
 		let registry = registry_basic();
 
-		// Two different seeds should produce different rows. Run many
-		// pairs to ensure we don't get unlucky on a single one.
+		// Many pairs rather than one, so an unlucky collision cannot decide the outcome.
 		let mut diverged = 0;
 		for s in 0..20u64 {
 			let mut rng_a = StdRng::seed_from_u64(s);
@@ -340,14 +339,12 @@ mod tests {
 
 	#[test]
 	fn hash_of_collides_on_same_key_columns() {
-		// Two rows whose `base`/`quote`/`slot` happen to match must share
-		// a RowNumber regardless of `price`.
+		// Rows whose key columns match must share a RowNumber regardless of the non-key columns.
 		let schema = schema_basic();
 		let mut reg = ColumnRegistry::new();
 		reg.register("base", samplers::constant(Value::utf8("A")));
 		reg.register("quote", samplers::constant(Value::utf8("SOL")));
 		reg.register("slot", samplers::constant(Value::uint8(42u64)));
-		// Price varies wildly; should not affect RowNumber.
 		reg.register("price", samplers::f64_range(0.0..1000.0));
 
 		let mut rng = StdRng::seed_from_u64(1);
@@ -375,8 +372,7 @@ mod tests {
 		let mut reg = ColumnRegistry::new();
 		reg.register("base_volume", samplers::constant(Value::float8(2.0_f64)));
 		reg.register("price", samplers::constant(Value::float8(3.0_f64)));
-		// Pre-constraint sampled value will be overwritten by the
-		// constraint closure.
+		// Sampled to 0.0 so a constraint that never ran would show up as 0.0, not as 6.0.
 		reg.register("quote_volume", samplers::constant(Value::float8(0.0_f64)));
 		reg.set_constraint(Arc::new(|content| {
 			let bv = content.f64("base_volume").unwrap();
@@ -387,10 +383,9 @@ mod tests {
 		let mut rng = StdRng::seed_from_u64(0);
 		let (row, content) = sample_row(&schema, &reg, &mut rng, 1);
 
-		// Constraint result available in content directly.
 		assert!((content.f64("quote_volume").unwrap() - 6.0).abs() < 1e-12);
 
-		// Constraint result also reflected in encoded row. Field index = 2.
+		// The constraint must reach the encoded row too, not only the content map.
 		let quote_volume_field = row.shape.find_field("quote_volume").expect("field");
 		let buf = &row.encoded.as_slice()[quote_volume_field.offset as usize
 			..(quote_volume_field.offset as usize + quote_volume_field.size as usize)];
@@ -414,9 +409,8 @@ mod tests {
 	fn registry_validate_reports_all_missing_columns() {
 		let s = shape(&[("a", ValueType::Int8), ("b", ValueType::Int8), ("c", ValueType::Int8)]);
 		let reg = ColumnRegistry::new();
-		// Nothing registered.
 		let missing = reg.validate(&s).expect_err("should reject");
-		// Order follows shape field order.
+		// The report must follow shape field order, not registration or hash order.
 		assert_eq!(missing, vec!["a".to_string(), "b".to_string(), "c".to_string()]);
 	}
 
@@ -436,7 +430,6 @@ mod tests {
 		for _ in 0..100 {
 			seen.insert(format!("{:?}", s(&mut rng)));
 		}
-		// With 100 samples from 3 values, all 3 should appear.
 		assert_eq!(seen.len(), 3, "expected all 3 values eventually; saw {seen:?}");
 	}
 

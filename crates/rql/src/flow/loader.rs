@@ -55,22 +55,16 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: the loader rebuilds a flow from its persisted nodes and edges, and the declared time domain has to
-	// come back with them. It did not: the domain was written to the flow row and never read, so every flow the
-	// engine registered ran as processing no matter what its author declared. That is silent - an event-time flow
-	// keeps producing rows, just bucketed by the wall clock - and it outlives a restart, so a flow accepted at
-	// definition would be rejected or mis-bucketed on every subsequent boot.
-	// Mutation: drop `.time(flow_def.time)` from the builder and this fails with None.
 	fn the_loader_restores_a_declared_event_domain() {
+		// A domain persisted but not read back leaves every flow bucketing by the wall clock, silently and
+		// across every restart.
 		assert_eq!(loaded(Some(TimeDomain::Event)).time, Some(TimeDomain::Event));
 	}
 
 	#[test]
-	// Intent: `None` and `Some(Processing)` are different declarations - silence is what lets the engine reject a
-	// flow that reads an event-time source without saying so, while an explicit processing declaration is a
-	// deliberate override of exactly that check. A loader that collapsed either one into the other would turn that
-	// rejection into a silent domain switch, so both spellings have to survive the round trip distinctly.
 	fn the_loader_keeps_silence_and_explicit_processing_apart() {
+		// Silence is what lets registration reject an event-time source; explicit processing overrides that
+		// check. Collapsing either into the other turns a rejection into a silent domain switch.
 		assert_eq!(loaded(Some(TimeDomain::Processing)).time, Some(TimeDomain::Processing));
 		assert_eq!(loaded(None).time, None);
 	}

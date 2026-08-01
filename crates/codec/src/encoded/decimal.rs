@@ -99,7 +99,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Decimal]);
 		let mut row = shape.allocate();
 
-		// Test simple decimal
 		let decimal = Decimal::from_str("123.45").unwrap();
 		shape.set_decimal(&mut row, 0, &decimal);
 		assert!(row.is_defined(0));
@@ -107,7 +106,6 @@ pub mod tests {
 		let retrieved = shape.get_decimal(&row, 0);
 		assert_eq!(retrieved.to_string(), "123.45");
 
-		// Test negative decimal
 		let mut row2 = shape.allocate();
 		let negative = Decimal::from_str("-999.99").unwrap();
 		shape.set_decimal(&mut row2, 0, &negative);
@@ -116,7 +114,8 @@ pub mod tests {
 
 	#[test]
 	fn test_compact_boundaries() {
-		// Test high precision decimal
+		// Scale and mantissa are stored separately, so a high scale and a scale-0 integer of
+		// the same digit count encode to the same length.
 		let shape1 = RowShape::testing(&[ValueType::Decimal]);
 		let mut row1 = shape1.allocate();
 		let high_precision = Decimal::from_str("1.0000000000000000000000000000001").unwrap();
@@ -124,7 +123,6 @@ pub mod tests {
 		let retrieved = shape1.get_decimal(&row1, 0);
 		assert_eq!(retrieved.to_string(), "1.0000000000000000000000000000001");
 
-		// Test large integer (scale 0)
 		let shape2 = RowShape::testing(&[ValueType::Decimal]);
 		let mut row2 = shape2.allocate();
 		let large_int = Decimal::from_str("100000000000000000000000000000000").unwrap();
@@ -137,7 +135,7 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Decimal]);
 		let mut row = shape.allocate();
 
-		// Value that needs i128 mantissa
+		// The mantissa is written as length-prefixed signed bytes, so it is not capped at i128.
 		let large = Decimal::from_str("999999999999999999999.123456789").unwrap();
 		shape.set_decimal(&mut row, 0, &large);
 		assert!(row.is_defined(0));
@@ -148,13 +146,11 @@ pub mod tests {
 
 	#[test]
 	fn test_dynamic_storage() {
-		// Use a smaller test that will still trigger dynamic storage
-		// due to large mantissa
+		// Every decimal lives in the dynamic section regardless of magnitude; a mantissa past
+		// i128 only makes the stored slice longer.
 		let shape = RowShape::testing(&[ValueType::Decimal]);
 		let mut row = shape.allocate();
 
-		// Create a value with large precision that will exceed i128
-		// when scaled
 		let huge = Decimal::from_str("99999999999999999999999999999.123456789").unwrap();
 
 		shape.set_decimal(&mut row, 0, &huge);
@@ -181,19 +177,16 @@ pub mod tests {
 	fn test_currency_values() {
 		let shape = RowShape::testing(&[ValueType::Decimal]);
 
-		// Test typical currency value (2 decimal places)
 		let mut row1 = shape.allocate();
 		let price = Decimal::from_str("19.99").unwrap();
 		shape.set_decimal(&mut row1, 0, &price);
 		assert_eq!(shape.get_decimal(&row1, 0).to_string(), "19.99");
 
-		// Test large currency value
 		let mut row2 = shape.allocate();
 		let large_price = Decimal::from_str("999999999.99").unwrap();
 		shape.set_decimal(&mut row2, 0, &large_price);
 		assert_eq!(shape.get_decimal(&row2, 0).to_string(), "999999999.99");
 
-		// Test small fraction
 		let mut row3 = shape.allocate();
 		let fraction = Decimal::from_str("0.00000001").unwrap();
 		shape.set_decimal(&mut row3, 0, &fraction);
@@ -217,10 +210,8 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Decimal]);
 		let mut row = shape.allocate();
 
-		// Undefined initially
 		assert_eq!(shape.try_get_decimal(&row, 0), None);
 
-		// Set value
 		let value = Decimal::from_str("42.42").unwrap();
 		shape.set_decimal(&mut row, 0, &value);
 
@@ -276,7 +267,8 @@ pub mod tests {
 
 	#[test]
 	fn test_negative_values() {
-		// Small negative (compact inline) - needs scale 2
+		// The mantissa is stored as signed little-endian bytes, so the sign has to survive at
+		// every mantissa width.
 		let shape1 = RowShape::testing(&[ValueType::Decimal]);
 
 		let mut row1 = shape1.allocate();
@@ -284,14 +276,12 @@ pub mod tests {
 		shape1.set_decimal(&mut row1, 0, &small_neg);
 		assert_eq!(shape1.get_decimal(&row1, 0).to_string(), "-0.01");
 
-		// Large negative (extended i128) - needs scale 3
 		let shape2 = RowShape::testing(&[ValueType::Decimal]);
 		let mut row2 = shape2.allocate();
 		let large_neg = Decimal::from_str("-999999999999999999.999").unwrap();
 		shape2.set_decimal(&mut row2, 0, &large_neg);
 		assert_eq!(shape2.get_decimal(&row2, 0).to_string(), "-999999999999999999.999");
 
-		// Huge negative (dynamic) - needs scale 9
 		let shape3 = RowShape::testing(&[ValueType::Decimal]);
 		let mut row3 = shape3.allocate();
 		let huge_neg = Decimal::from_str("-99999999999999999999999999999.999999999").unwrap();
@@ -318,12 +308,12 @@ pub mod tests {
 		shape.set_decimal(&mut row, 0, &d1);
 		assert_eq!(shape.get_decimal(&row, 0).to_string(), "123.45");
 
-		// Overwrite with a different value
 		let d2 = Decimal::from_str("999.99").unwrap();
 		shape.set_decimal(&mut row, 0, &d2);
 		assert_eq!(shape.get_decimal(&row, 0).to_string(), "999.99");
 
-		// Overwrite with a larger precision value
+		// A longer mantissa needs more dynamic bytes, so the overwrite must resize the slice
+		// rather than truncate into the old one.
 		let d3 = Decimal::from_str("99999999999999999999999999999.123456789").unwrap();
 		shape.set_decimal(&mut row, 0, &d3);
 		assert_eq!(shape.get_decimal(&row, 0).to_string(), "99999999999999999999999999999.123456789");
@@ -338,7 +328,7 @@ pub mod tests {
 		shape.set_utf8(&mut row, 1, "test");
 		shape.set_decimal(&mut row, 2, &Decimal::from_str("2.0").unwrap());
 
-		// Update first decimal
+		// Growing the first dynamic field must not disturb the ones stored after it.
 		shape.set_decimal(&mut row, 0, &Decimal::from_str("99999.12345").unwrap());
 
 		assert_eq!(shape.get_decimal(&row, 0).to_string(), "99999.12345");

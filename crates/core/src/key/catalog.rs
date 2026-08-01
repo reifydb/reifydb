@@ -334,13 +334,12 @@ mod moved_catalog_key_tests {
 		assert_eq!(result.len(), 5);
 		assert_eq!(result[0], 0x01); // Primary variant prefix
 
-		// Verify it's using bitwise NOT (smaller values produce larger encoded values)
+		// Ids are stored bitwise-inverted, so the smaller id encodes to the larger bytes; the
+		// comparison skips byte 0 because that is the variant prefix.
 		let mut serializer2 = KeySerializer::new();
 		serializer2.extend_index_id(IndexId::Primary(PrimaryKeyId(1)));
 		let result2 = serializer2.finish();
 
-		// result2 (for IndexId(1)) should be > result (for IndexId(123456789))
-		// Compare from byte 1 onwards (after the variant prefix)
 		assert!(result2[1..] > result[1..]);
 	}
 
@@ -354,13 +353,11 @@ mod moved_catalog_key_tests {
 		assert_eq!(result.len(), 6);
 		assert_eq!(result[0], 0x01); // Table variant prefix
 
-		// Verify ordering
+		// Inverted encoding: the larger id sorts below the smaller one; byte 0 is the variant prefix.
 		let mut serializer2 = KeySerializer::new();
 		serializer2.extend_object_id(ObjectId::Table(TableId(987654322)));
 		let result2 = serializer2.finish();
 
-		// result2 (for larger ObjectId) should be < result (inverted ordering)
-		// Compare from byte 1 onwards (after the variant prefix)
 		assert!(result2[1..] < result[1..]);
 	}
 

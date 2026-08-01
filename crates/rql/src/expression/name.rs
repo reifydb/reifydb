@@ -582,7 +582,6 @@ mod tests {
 
 	#[test]
 	fn canonical_and_lowercase_spaced() {
-		// Regression: was "aandb" with no spaces.
 		assert_eq!(canonical_name(&and_e(col("a"), col("b"))).text(), "a and b");
 	}
 
@@ -680,7 +679,6 @@ mod tests {
 
 	#[test]
 	fn canonical_cast_preserves_type() {
-		// Regression: was dropping the cast and returning just the inner name.
 		let e = Expression::Cast(CastExpression {
 			fragment: frag("cast"),
 			expression: Box::new(col("y")),
@@ -704,7 +702,6 @@ mod tests {
 
 	#[test]
 	fn canonical_map_not_hardcoded() {
-		// Regression: was hardcoded "map", losing inner expression detail.
 		let e = Expression::Map(MapExpression {
 			expressions: vec![col("a"), col("b")],
 			fragment: frag("{}"),
@@ -741,7 +738,6 @@ mod tests {
 
 	#[test]
 	fn canonical_parameter_positional() {
-		// Regression: was hardcoded "parameter".
 		let e = Expression::Parameter(ParameterExpression::Positional {
 			fragment: frag("$1"),
 		});
@@ -758,7 +754,6 @@ mod tests {
 
 	#[test]
 	fn canonical_variable_dollar() {
-		// Regression: was "var_x".
 		let e = Expression::Variable(VariableExpression {
 			fragment: frag("$x"),
 		});
@@ -815,8 +810,7 @@ mod tests {
 
 	#[test]
 	fn canonical_alias_transparent() {
-		// Aliasing does NOT change canonical_name - the alias is purely
-		// for display.
+		// An alias is display-only, so the canonical name must stay the underlying expression's.
 		let inner = add(col("a"), col("b"));
 		let aliased = Expression::Alias(AliasExpression {
 			alias: IdentExpression(frag("sum")),
@@ -835,7 +829,6 @@ mod tests {
 				name: frag("col"),
 			},
 		});
-		// Flat - underscore separator, no dot.
 		assert_eq!(canonical_name(&e).text(), "u_col");
 	}
 
@@ -855,8 +848,7 @@ mod tests {
 
 	#[test]
 	fn canonical_field_access_keeps_dot() {
-		// FieldAccess (struct field) is syntactically dotted - this is
-		// distinct from AccessSource (which is flat in column names).
+		// A struct field keeps its dot, unlike AccessSource, which flattens to an underscore.
 		let e = Expression::FieldAccess(FieldAccessExpression {
 			object: Box::new(col("record")),
 			field: frag("name"),
@@ -905,7 +897,7 @@ mod tests {
 
 	#[test]
 	fn display_alias_visible() {
-		// Aliasing DOES change display_label.
+		// The mirror of canonical_alias_transparent: display_label is where the alias does show.
 		let e = Expression::Alias(AliasExpression {
 			alias: IdentExpression(frag("sum")),
 			expression: Box::new(add(col("a"), col("b"))),
@@ -931,11 +923,10 @@ mod tests {
 
 	#[test]
 	fn display_compound_falls_back_to_canonical() {
-		// Display does NOT merge child fragments. For compound exprs it
-		// returns canonical (deterministic) instead.
+		// Merging child fragments would give the source-order "Hello +World"; a compound label falls back to
+		// the canonical form so it stays deterministic.
 		let e = add(text("Hello "), text("World"));
 		assert_eq!(display_label(&e).text(), "\"Hello \" + \"World\"");
-		// Notably NOT "Hello +World" which is what full_fragment_owned() produces.
 	}
 
 	#[test]

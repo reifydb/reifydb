@@ -104,9 +104,8 @@ mod tests {
 
 	#[test]
 	fn server_variant_passes_the_diagnostic_through_unchanged() {
-		// A server-relayed diagnostic carries fields (help, notes, ...) the category variants
-		// never set; wrapping and unwrapping must preserve the original untouched, not rebuild
-		// a fresh Diagnostic from only code + message.
+		// A server-relayed diagnostic carries fields (help, notes) the category variants never
+		// set; the round trip must preserve them, not just code + message.
 		let original = Diagnostic {
 			code: "SOME_SERVER_CODE".to_string(),
 			message: "server said no".to_string(),

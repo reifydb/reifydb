@@ -477,12 +477,9 @@ mod tests {
 
 	#[test]
 	fn group_state_survives_restart() {
-		// multi_rolling bundles a group's rolling buffer and its last emitted ranking into one
-		// persisted GroupState. When the group empties under retraction, the vanishing ranked key is
-		// withdrawn using the persisted `last_emit`. Dropping the engine between the publish and the
-		// retraction (a restart) forces the GroupState to be reloaded from the store. It would fail if
-		// the GroupState (buffer + last_emit) failed to round-trip - a serialization break, or
-		// last_emit not being persisted.
+		// A group emptying under retraction withdraws the vanishing ranked key using the persisted
+		// `last_emit`, so dropping the engine between publish and retraction forces the GroupState
+		// back through the store. It fails on a serialization break or an unpersisted last_emit.
 		let mut store = MockStore::default();
 
 		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
@@ -502,7 +499,7 @@ mod tests {
 			_ => panic!("expected an Insert for the newly published group"),
 		};
 
-		// Restart: a brand new engine with empty caches, forced to reload the persisted GroupState.
+		// A brand new engine with empty caches, forced to reload the persisted GroupState.
 		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
@@ -530,10 +527,9 @@ mod tests {
 
 	#[test]
 	fn a_group_whose_state_was_reclaimed_updates_its_ranked_row_rather_than_inserting_a_second() {
-		// multi_rolling bundles the buffer and the last emitted ranking into one GroupState, so the
-		// data phase takes both and the group comes back with no memory of what it ranked. The ranked
-		// row's mapping survives, and it is the only thing left that knows the sink is still holding
-		// that row. Publishing an Insert against it would rank the same key twice.
+		// The data phase takes the buffer and the last emitted ranking together, so the group comes
+		// back with no memory of what it ranked. The ranked row's mapping is the only thing left
+		// that knows the sink still holds that row; an Insert against it ranks the key twice.
 		let mut store = MockStore::default();
 		let ranked_key = row_key(&1, &0);
 
@@ -577,13 +573,12 @@ mod tests {
 
 	#[test]
 	fn withdrawn_ranking_reclaims_its_row_number_mapping() {
-		// Every ranked (group, secondary) mints a row-number mapping ('M') via get_or_create_row_number.
-		// When the ranking is withdrawn (its secondary drops out of the emit) that mapping must be
-		// reclaimed, or 'M' grows per distinct ranked key ever seen - a leak the emitted Remove alone
-		// does not close, since Remove only withdraws the view row, not the internal mapping.
+		// Every ranked (group, secondary) mints a row-number mapping, which must be reclaimed when
+		// the ranking is withdrawn or the mapping keyspace grows per ranked key ever seen. The
+		// emitted Remove does not close it: Remove withdraws the view row, not the mapping.
 		let mut store = MockStore::default();
-		// `combine` publishes the group's ranking under secondary key 0 (see the helper below), so the
-		// ranked row's mapping is row_key(group=1, sk=0) - distinct from the rolling coord (10).
+		// `combine` publishes the ranking under secondary key 0, so the ranked row's mapping is
+		// row_key(group=1, sk=0), distinct from the rolling coord (10).
 		let ranked_key = row_key(&1, &0);
 
 		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
@@ -591,10 +586,9 @@ mod tests {
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
 		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
-		// The mapping is scoped to the group the engine interned for this key, not to NODE_SCOPE:
-		// reclamation deletes by group prefix, so a lookup under the wrong group would report an
-		// absent mapping and this test would pass while 'M' leaked. Read the group back rather than
-		// assuming the allocator's numbering.
+		// The mapping is scoped to the interned group, not NODE_SCOPE, and reclamation deletes by
+		// group prefix - a lookup under the wrong group would report absence and pass while the
+		// mapping leaked. The group is read back rather than assumed from the allocator.
 		let group = store.lookup_group(&state_key(&1)).unwrap().expect("applying the group interns it");
 		assert!(store.contains_row_mapping(group, &ranked_key), "publishing the ranking mints its mapping");
 
@@ -610,10 +604,8 @@ mod tests {
 
 	#[test]
 	fn group_state_survives_lru_eviction() {
-		// The other way the GroupState is read back is LRU eviction, no restart needed: the group cache
-		// holds only 8 groups, so tracking more evicts the oldest and the next access re-reads it from
-		// the store. We publish 11 groups so group 1 is evicted, flush, then retract group 1 and assert
-		// its GroupState reloads and the vanishing ranked key is withdrawn with the persisted value.
+		// The other way the GroupState is read back is LRU eviction, with no restart: the cache
+		// holds 8 groups, so tracking more evicts the oldest and the next access re-reads it.
 		let mut store = MockStore::default();
 		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
 
@@ -639,8 +631,8 @@ mod tests {
 		engine.flush(&mut store).unwrap();
 		let published_row_1 = published_row_1.expect("group 1 published an Insert");
 
-		// Group 1 was published first and pushed out of the 8-slot group cache by the later groups, so
-		// the same engine must re-read its GroupState from the store to apply this retraction.
+		// Group 1 was pushed out of the 8-slot cache by the later groups, so the same engine must
+		// re-read its GroupState from the store to apply this retraction.
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(1)]);
 		let withdrawn = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
@@ -663,14 +655,9 @@ mod tests {
 	}
 	#[test]
 	fn per_coord_churn_matches_a_recomputed_ranking_oracle() {
-		// After the storage split the buffer lives as per-coord entries and the
-		// ranking as a separate last_emit entry. The engine must still emit exactly
-		// what a from-scratch recombine would across a seeded workload of adds,
-		// retractions, and capacity eviction. A single ranked key (SK 0 = sum over
-		// the live buffer) makes the visible state one value we compare against an
-		// independent live-buffer oracle after every batch. Storing blobs, dropping
-		// or keeping the wrong coords on eviction, or mis-persisting last_emit would
-		// surface as a divergence at the exact round.
+		// The buffer lives as per-coord entries and the ranking as a separate last_emit entry, but
+		// the engine must still emit what a from-scratch recombine would. A single ranked key
+		// reduces the visible state to one value, checked against a live-buffer oracle each batch.
 		const CAP: usize = 4;
 		let mut store = MockStore::default();
 		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());

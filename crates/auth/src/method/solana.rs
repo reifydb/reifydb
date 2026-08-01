@@ -213,7 +213,7 @@ mod tests {
 	#[test]
 	fn test_create_rejects_wrong_length_key() {
 		let provider = test_provider();
-		// Only 16 bytes
+		// 16 bytes decodes fine as base58; only the length check can reject it.
 		let short_key = bs58_encode(&[0u8; 16]).into_string();
 		let config = HashMap::from([("public_key".to_string(), short_key)]);
 		assert!(provider.create(&Rng::default(), &config).is_err());
@@ -225,7 +225,6 @@ mod tests {
 		let (signing_key, public_key_b58) = test_keypair();
 		let stored = HashMap::from([("public_key".to_string(), public_key_b58)]);
 
-		// Step 1: Get challenge
 		let step1 = provider.authenticate(&stored, &HashMap::new()).unwrap();
 		let challenge_data = match step1 {
 			AuthStep::Challenge {
@@ -242,7 +241,6 @@ mod tests {
 		assert!(message.contains("Nonce:"));
 		assert!(message.contains("Issued At: 1700000000"));
 
-		// Step 2: Sign the message and verify
 		let signature = signing_key.sign(message.as_bytes());
 		let signature_b58 = bs58_encode(signature.to_bytes()).into_string();
 
@@ -261,7 +259,6 @@ mod tests {
 		let (_, public_key_b58) = test_keypair();
 		let stored = HashMap::from([("public_key".to_string(), public_key_b58)]);
 
-		// Use a different key to sign
 		let wrong_key = SigningKey::from_bytes(&[99u8; 32]);
 		let signature = wrong_key.sign(b"some message");
 		let signature_b58 = bs58_encode(signature.to_bytes()).into_string();

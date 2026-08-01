@@ -36,10 +36,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: the populator survives the byte round trip, because it is what the write boundary reads to stamp
-	// #time on every row. A declaration accepted at DDL and then lost here would silently downgrade an event-time
-	// object to processing time.
 	fn an_event_source_round_trips_its_populator() {
+		// The write boundary reads the populator to stamp #time on every row, so losing it
+		// between DDL and storage silently downgrades an event-time object to processing time.
 		let shape = shape();
 		let mut row = shape.allocate();
 
@@ -61,10 +60,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: processing time writes no populator and reads back as processing. Mutation: write an empty string
-	// instead of none and the read comes back as Event{ts: ""} - a populator naming no column, which is exactly
-	// the state this encoding exists to make unrepresentable.
 	fn a_processing_source_round_trips_with_no_populator() {
+		// Writing an empty string instead of none reads back as Event{ts: ""} - a populator
+		// naming no column, the state this encoding exists to make unrepresentable.
 		let shape = shape();
 		let mut row = shape.allocate();
 
@@ -77,10 +75,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: the domain is DERIVED on read, never stored, so no stored byte pattern can produce an event-time
-	// object that names no column. This walks the only two states the field can hold and asserts the derivation
-	// agrees with the populator in both.
 	fn the_domain_always_agrees_with_the_populator() {
+		// The domain is derived on read, never stored, so no byte pattern can produce an
+		// event-time object that names no column.
 		let shape = shape();
 
 		for time in [
@@ -103,9 +100,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: writing the field must not disturb its neighbours. The ts field is appended after every existing
-	// field of each object's shape, so an encoding that overran would corrupt the column immediately before it.
 	fn writing_the_populator_leaves_other_fields_intact() {
+		// The ts field is appended after every existing field of each object's shape, so an
+		// encoding that overran would corrupt the column immediately before it.
 		let shape = shape();
 		let mut row = shape.allocate();
 		shape.set_utf8(&mut row, 0, "trades");

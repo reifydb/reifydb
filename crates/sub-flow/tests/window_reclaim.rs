@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The window operator interns every (partition, window) pair as a substrate group, so a window that
-//! goes idle past its seal horizon can be erased by the flow tick's reclamation pass rather than being
-//! retained forever. Every link in that chain is one nobody would notice failing: an operator that does
-//! not declare `Reclaim` is skipped and counted perpetual, a group stamped in the wrong position domain
-//! either never comes due or comes due instantly, and a node whose state stayed at node scope has
-//! nothing inside any group range to reclaim. All three leave the same signature - a healthy-looking
-//! report over state that grows without bound - which is why this is driven end to end through a real
-//! flow rather than against the driver.
+//! The window operator interns every (partition, window) pair as a substrate group, so an idle
+//! window can be erased by the flow tick rather than retained forever. Every link in that chain
+//! fails the same way - a healthy report over state that grows - hence driving it end to end.
 
 use std::time::Duration as StdDuration;
 
@@ -39,22 +34,16 @@ fn a_deferred_flow_drains_a_window_group_left_behind_by_retraction() {
 
 #[test]
 fn a_transactional_flow_drains_a_window_group_left_behind_by_retraction() {
-	// The two tick paths reach reclamation through different call sites and hand it different
-	// checkpoints (the engine's flow watermark versus the deferred actor's durable cursor), so a
-	// wiring that only landed on one of them would leave half the flows retaining forever while the
-	// other half looked healthy.
+	// The two tick paths reach reclamation from different call sites with different checkpoints, so
+	// wiring that landed on only one leaves half the flows retaining forever and looking healthy.
 	drains_a_stranded_window_group("TRANSACTIONAL");
 }
 
 #[test]
 fn a_rolling_partition_that_wakes_after_reclamation_publishes_one_row_not_two() {
-	// A rolling group is coord-less: the group IS the partition, so it can go idle, be
-	// reclaimed, and then receive events again under the same key. A tumbling window never
-	// does that - its coordinate is in the past forever - which is why the two-phase split
-	// is only load-bearing here. If a woken group came back with its data erased while its
-	// old row number still resolved, it would publish under a row the sink already holds;
-	// if it came back with a fresh row number while the old sink row survived, the view
-	// would carry two rows for one partition. Either way the count below is wrong.
+	// A rolling group is coord-less - the group IS the partition - so it can go idle, be reclaimed,
+	// and receive events again under the same key, which a tumbling window never does. A woken
+	// group that mints a fresh row number while the old sink row survives duplicates the partition.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
@@ -76,10 +65,8 @@ fn a_rolling_partition_that_wakes_after_reclamation_publishes_one_row_not_two() 
 	// Partition 1 wakes under the same key.
 	db.command(r#"INSERT app::t [{ id: 3, g: 1, v: 9, ts: "2026-01-01T00:05:01Z" }]"#);
 
-	// The flow has to have applied that insert before a count means anything. Awaiting a count of 1
-	// instead - which this did - returns on the very first poll, because the view already holds one
-	// row for g == 1 from the first insert. The duplicate this test is named for appears as a second
-	// row, so the assertion was being evaluated before the event that could produce it was processed.
+	// The flow must have applied that insert before a count means anything: awaiting a count of 1
+	// returns on the first poll, since g == 1 already holds a row from the first insert.
 	assert!(db.await_all_flows(TIMEOUT), "the flow must settle before the row count is evidence");
 
 	assert_eq!(
@@ -91,11 +78,9 @@ fn a_rolling_partition_that_wakes_after_reclamation_publishes_one_row_not_two() 
 }
 
 fn drains_a_stranded_window_group(view_kind: &str) {
-	// A window emptied by retraction publishes its terminal Remove and drops its expiry index entry,
-	// but the accumulator row it was holding is written back empty and then nothing in the operator
-	// ever looks at it again: the expire sweep only walks the due index it just left. That row is the
-	// leak this step exists to close, and reclamation is the only mechanism that can reach it - which
-	// makes it the sharpest available probe that a due group really is drained through process_tick.
+	// A window emptied by retraction drops its expiry index entry, so nothing in the operator ever
+	// revisits the empty accumulator row it left behind. Reclamation is the only mechanism that
+	// can reach that row, which makes it the sharpest probe that a due group really is drained.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
@@ -114,11 +99,9 @@ fn drains_a_stranded_window_group(view_kind: &str) {
 	db.command("DELETE app::t FILTER { id == 1 }");
 	db.await_exact_row_count("FROM app::w", 0, TIMEOUT);
 
-	// A second window, emptied like the first. Its only job is to arm a seal timer one window later
-	// than the stranded group's own. Reclamation is bounded by the seal ledger, and a timer firing at
-	// T only proves windows anchored at or before T - interval - grace - 1 have closed - so the first
-	// window's timer alone leaves the frontier inside the very bucket the stranded group sits in, and
-	// nothing is reclaimable. This carries the ledger one window further so the frontier clears it.
+	// A second window, emptied like the first, to arm a seal timer one window later than the
+	// stranded group's own. Reclamation is bounded by the seal ledger, and the first timer alone
+	// leaves the frontier inside the stranded group's own bucket, so nothing would be reclaimable.
 	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 5, ts: "2026-01-01T00:00:01Z" }]"#);
 	db.await_row_count("FROM app::w", 1, TIMEOUT);
 	db.command("DELETE app::t FILTER { id == 2 }");

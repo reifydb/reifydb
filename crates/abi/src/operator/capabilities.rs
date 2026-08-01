@@ -63,10 +63,8 @@ mod tests {
 	#[test]
 	fn every_declared_capability_is_reachable_through_all() {
 		// from_bitmask filters over ALL, so a variant missing from ALL is dropped on every
-		// descriptor round trip and the operator loses that capability with no error anywhere. For
-		// Reclaim that means the driver skips the node and counts it perpetual while its state
-		// grows. The match is exhaustive so a new variant fails to compile here rather than
-		// disappearing silently at runtime.
+		// descriptor round trip and the operator loses that capability with no error anywhere. The
+		// match is exhaustive so a new variant fails to compile here rather than vanishing at runtime.
 		for capability in [
 			OperatorCapability::Insert,
 			OperatorCapability::Update,
@@ -92,17 +90,14 @@ mod tests {
 
 	#[test]
 	fn presets_survive_a_bitmask_round_trip() {
-		// from_bitmask filters over ALL, so a capability missing from ALL would be
-		// dropped on the way back and the plugin would lose the method silently.
+		// Losing the Reclaim bit in transit makes reclaim_flow skip the node and count it perpetual
+		// while its state grows, with the boot report calling it healthy.
 		let restored = from_bitmask(to_bitmask(OperatorCapability::STANDARD));
 		assert!(restored.contains(&OperatorCapability::Insert));
 		assert!(restored.contains(&OperatorCapability::Update));
 		assert!(restored.contains(&OperatorCapability::Delete));
 		assert!(!restored.contains(&OperatorCapability::Reclaim), "STANDARD must not imply Reclaim");
 
-		// An operator whose state is group scoped declares Reclaim itself. Losing the bit on the
-		// way to the host would make reclaim_flow skip the node and count it perpetual while its
-		// state grew, with the boot report calling it healthy.
 		let restored = from_bitmask(to_bitmask(OperatorCapability::STANDARD_WITH_RECLAIM));
 		assert!(restored.contains(&OperatorCapability::Reclaim));
 		assert!(restored.contains(&OperatorCapability::Insert));

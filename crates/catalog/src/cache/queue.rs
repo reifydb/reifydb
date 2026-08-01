@@ -90,10 +90,10 @@ pub mod tests {
 		}
 	}
 
-	/// The cache is version-addressed: a queue must be invisible to readers whose
-	/// snapshot predates its creation, or a DDL would leak into older readers.
 	#[test]
 	fn test_set_and_find_queue_at_version() {
+		// A queue must be invisible to readers whose snapshot predates its creation,
+		// or a DDL leaks into older readers.
 		let cache = CatalogCache::new();
 		let id = QueueId(1);
 		let created = queue(id, NamespaceId::SYSTEM, "jobs");
@@ -118,10 +118,9 @@ pub mod tests {
 		assert_eq!(cache.find_queue_by_name_at(NamespaceId::DEFAULT, "jobs", CommitVersion(1)), None);
 	}
 
-	/// After a drop the name index must release the name, otherwise recreating
-	/// the queue would resolve to the dead definition.
 	#[test]
 	fn test_deleted_queue_releases_its_name() {
+		// If the name index keeps the name, recreating the queue resolves to the dead definition.
 		let cache = CatalogCache::new();
 		let id = QueueId(1);
 		let created = queue(id, NamespaceId::SYSTEM, "jobs");

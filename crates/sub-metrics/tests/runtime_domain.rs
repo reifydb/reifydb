@@ -3,11 +3,9 @@
 
 //! Runtime metrics domain split, driven end to end through the wired subsystem.
 //!
-//! With each runtime domain's refresh interval configured, the subsystem spawns one RefreshActor per domain that
-//! populates that domain's cache-backed `::current`. This pins the per-domain partitioning on the real path:
-//! watermark metrics land under `watermarks`, never `memory`, and an engine with no flow state exposes an empty
-//! `operators::current`. `::current` stays empty until a refresh tick runs, so the positive assertions poll until
-//! the first tick lands; the absence assertions hold regardless of timing.
+//! Pins the per-domain partitioning on the real path: watermark metrics land under `watermarks`, never `memory`,
+//! and an engine with no flow state exposes an empty `operators::current`. `::current` stays empty until a refresh
+//! tick runs, so the positive assertions poll; the absence assertions hold regardless of timing.
 
 use std::time::Duration;
 

@@ -128,11 +128,9 @@ mod tests {
 	use super::*;
 
 	#[test]
-	// Intent: a flow cannot demand event time from a source that supplies none. There is no column to populate
-	// #time from, so every row would silently fall back to arrival and every windowed rollup over the flow would
-	// bucket by wall clock while claiming to bucket by event time.
-	// Mutation: return Ok for this pair and the flow registers, then quietly behaves as processing time.
 	fn a_flow_demanding_event_time_over_a_processing_source_is_rejected() {
+		// With no column to populate #time from, rows fall back to arrival and every windowed
+		// rollup buckets by wall clock while claiming to bucket by event time.
 		assert_eq!(
 			reconcile_time_domain(Some(TimeDomain::Event), TimeDomain::Processing),
 			Err(TimeDomainConflict::EventOverProcessingSource)
@@ -140,11 +138,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: silence must not pick a domain when the sources imply one. An undeclared flow over an event-time
-	// source is the trap this rule exists for - the author declared a populator on the table, so they believe the
-	// view follows it, while the engine would default the flow to processing time.
-	// Mutation: treat None as processing and this pair silently succeeds.
 	fn an_undeclared_flow_over_an_event_time_source_is_rejected() {
+		// The author declared a populator on the source and believes the view follows it, while
+		// silence would default the flow to processing time.
 		assert_eq!(
 			reconcile_time_domain(None, TimeDomain::Event),
 			Err(TimeDomainConflict::UndeclaredOverEventSource)
@@ -152,19 +148,16 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: declaring processing over an event-time source is an EXPLICIT override and must be accepted. This is
-	// the pair that distinguishes the rule above from a blanket ban: the author said processing on purpose, and the
-	// only difference from the rejected case is that they said it at all.
-	// Mutation: reject this pair too and there is no way to opt out of a source's event time.
 	fn an_explicit_processing_override_over_an_event_source_is_accepted() {
+		// Rejecting this too would leave no way to opt out of a source's event time; the only
+		// difference from the rejected case is that the author said it at all.
 		assert_eq!(reconcile_time_domain(Some(TimeDomain::Processing), TimeDomain::Event), Ok(()));
 	}
 
 	#[test]
-	// Intent: pin the whole 3x2 matrix. The two rejected cells sit diagonally opposite the two that look identical
-	// at runtime (declared-processing and undeclared behave the same once running), so only the full table shows
-	// that declaredness is load-bearing at definition time and irrelevant afterwards.
 	fn the_full_reconciliation_matrix_is_pinned() {
+		// Declared-processing and undeclared behave identically once running, so only the full
+		// table shows that declaredness is load-bearing at definition time and not after.
 		let expected = [
 			((None, TimeDomain::Processing), Ok(())),
 			((None, TimeDomain::Event), Err(TimeDomainConflict::UndeclaredOverEventSource)),

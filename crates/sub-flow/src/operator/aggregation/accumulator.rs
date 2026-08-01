@@ -702,11 +702,8 @@ mod tests {
 
 	#[test]
 	fn window_slot_key_archived_order_key_matches_the_owned_one() {
-		// WindowSlotKey is the Slot the flow window operators actually run on,
-		// so this is the projection sweep_stale_meta uses in production. Its
-		// order key deliberately ignores seq: two slots in the same millisecond
-		// share an order key, and the archived read must agree or the meta
-		// sweep would reclaim on a different ordering than the owned path.
+		// The order key deliberately ignores seq, and the archived read must agree with the owned
+		// one or the meta sweep reclaims on a different ordering than the path that wrote it.
 		let key = WindowSlotKey {
 			timestamp: DateTime::from_nanos(1_700_000_000_123_456_789),
 			seq: 7,
@@ -735,16 +732,9 @@ mod tests {
 
 	#[test]
 	fn two_events_in_one_window_share_an_anchor_whatever_their_seq() {
-		// This is the defect the anchor/slot split exists to prevent, and it was live for a long time.
-		// WindowSlotKey carries a seq to tie-break events inside a millisecond. When Slot itself owned
-		// the bucketing arithmetic, `start = key - (key % duration)` ran through a Sub impl that floored
-		// the timestamp but COPIED the seq through untouched. Every distinct seq therefore produced a
-		// distinct window start, so one logical window shattered into one window per event: each got its
-		// own accumulator, its own row key, and emitted its own row. Every operator worked around it by
-		// hand-writing window_for to rebuild the key with seq: 0, and the workaround was invisible - miss
-		// it in a new operator and the window silently fragments rather than failing.
-		// Bucketing now runs on the coordinate, which has no seq to carry, so the anchor cannot depend on
-		// it. Assert the consequence directly: same window, different seq, same span.
+		// A seq that survives the bucketing arithmetic gives every event its own window start, so
+		// one logical window shatters into one window per event - each with its own accumulator
+		// and its own emitted row, silently rather than as a failure.
 		let duration = Duration::from_seconds(60).expect("representable span");
 		let base = 1_700_000_040_000u64;
 
@@ -777,11 +767,8 @@ mod tests {
 
 	#[test]
 	fn test_row_accumulator_archived_round_trip() {
-		// RowAccumulator is the memory-dominant persisted state type;
-		// the archived encoding must reproduce a materialized value
-		// whose finalize() output matches the original exactly,
-		// covering Count/Sum/Min/First slots (Multiset and Sealing*
-		// internals, Value keys through the AsVec map wrappers).
+		// RowAccumulator is the memory-dominant persisted state type, so a round trip has to
+		// reproduce finalize() exactly, not merely decode.
 		let mut acc = accumulator(&[
 			SlotKind::Count {
 				count_star: false,
@@ -859,7 +846,6 @@ mod tests {
 		assert_eq!(a.finalize(), Some(vec![Value::Int16(5)]));
 		add(&mut a, 1, vec![i4(3)]);
 		assert_eq!(a.finalize(), Some(vec![Value::Int16(8)]));
-		// retraction inverts exactly
 		remove(&mut a, 1, vec![i4(3)]);
 		assert_eq!(a.finalize(), Some(vec![Value::Int16(5)]));
 	}
@@ -893,7 +879,6 @@ mod tests {
 			add(&mut a, seq as u64, vec![i4(v), i4(v)]);
 		}
 		assert_eq!(a.finalize(), Some(vec![Value::Int4(5), Value::Int4(8)]));
-		// remove the current min (5) -> min becomes 6, max stays 8
 		remove(&mut a, 0, vec![i4(5), i4(5)]);
 		assert_eq!(a.finalize(), Some(vec![Value::Int4(6), Value::Int4(8)]));
 	}
@@ -926,13 +911,12 @@ mod tests {
 			SlotKind::Min,
 			SlotKind::Max,
 		];
-		// One accumulator holding every contribution directly.
 		let mut whole = accumulator(&kinds);
 		let rows = [(10, 10, 10), (40, 40, 40), (7, 7, 7), (99, 99, 99)];
 		for (seq, (s, mn, mx)) in rows.into_iter().enumerate() {
 			add(&mut whole, seq as u64, vec![None, i4(s), i4(s), i4(mn), i4(mx)]);
 		}
-		// Two partial accumulators (disjoint slots, as a rolling buffer would hold) merged.
+		// Two partials over disjoint slots, as a rolling buffer would hold them.
 		let mut left = accumulator(&kinds);
 		for (seq, (s, mn, mx)) in rows[..2].iter().enumerate() {
 			add(&mut left, seq as u64, vec![None, i4(*s), i4(*s), i4(*mn), i4(*mx)]);
@@ -982,10 +966,8 @@ mod tests {
 
 	#[test]
 	fn lateness_seals_aged_min_max_and_drops_late_retraction() {
-		// With grace = 5s, an entry whose coordinate is more than 5s behind the
-		// high-water mark is folded into the sealed scalar. The max stays correct, but a
-		// retraction of that aged entry is a no-op (it is no longer in the live tail) -
-		// this is the documented memory-vs-exactness trade, identical to chaindex.
+		// An entry more than one grace behind the high-water mark is folded into the sealed
+		// scalar, so retracting it is a no-op: the deliberate memory-vs-exactness trade.
 		let grace = Duration::from_seconds(5).unwrap();
 		let mut a = RowAccumulator::new(&[SlotKind::Max], grace);
 		a.add(&(coord(0), vec![i4(100)])); // becomes sealed once high-water passes 5s
@@ -1040,11 +1022,8 @@ mod tests {
 
 	#[test]
 	fn finalize_clamps_negative_dust_to_exact_zero_for_nonnegative_data() {
-		// Compensation bounds drift to ~1 ulp but cannot make it zero, so a
-		// nonnegative sum can still land at -1e-13 after enough churn. The clamp
-		// is the structural guarantee that volume-like data never publishes a
-		// negative: any negative float result with no negative contribution ever
-		// seen must finalize as exactly 0.0.
+		// Compensation bounds drift to ~1 ulp but cannot make it zero, so a nonnegative sum can
+		// still land at -1e-13; the clamp is what stops volume-like data publishing a negative.
 		assert_eq!(
 			finalize_compensated(&Value::float8(-1e-13f64), 0.0, false),
 			Value::float8(0.0f64),
@@ -1064,10 +1043,8 @@ mod tests {
 
 	#[test]
 	fn nonnegative_churn_never_finalizes_negative() {
-		// End-to-end form of the clamp guarantee: a long deterministic
-		// add/remove sequence of nonnegative dollar amounts must never observe a
-		// negative finalized sum at any point, regardless of how the rounding
-		// dust falls.
+		// End-to-end form of the clamp guarantee: no intermediate finalize may go negative,
+		// however the rounding dust falls.
 		let mut a = accumulator(&[SlotKind::Sum]);
 		let mut pending: Vec<(u64, f64)> = Vec::new();
 		let mut state = 0x9E37_79B9_7F4A_7C15u64;
@@ -1095,9 +1072,8 @@ mod tests {
 
 	#[test]
 	fn seen_negative_disables_the_zero_clamp() {
-		// A legitimately negative sum (negative contributions were seen) must
-		// pass through unclamped - the clamp is domain knowledge for
-		// all-nonnegative data only, not a general floor.
+		// The clamp is domain knowledge for all-nonnegative data, not a general floor, so a
+		// genuinely negative sum must pass through.
 		let mut a = accumulator(&[SlotKind::Sum]);
 		add(&mut a, 0, vec![Some(Value::float8(3.0f64))]);
 		add(&mut a, 1, vec![Some(Value::float8(-5.0f64))]);
@@ -1107,10 +1083,8 @@ mod tests {
 
 	#[test]
 	fn kahan_compensation_preserves_small_terms_across_cancellation() {
-		// The classic cancellation case the running accumulator hits when a huge
-		// trade expires: naive f64 loses 3.14 when it is added to 1e16 (the low
-		// bits round away), so after the 1e16 expires a naive sum returns 4.0 or
-		// 0.0. The Neumaier compensation must carry the small term exactly.
+		// The cancellation the running accumulator hits when a huge trade expires: naive f64
+		// rounds 3.14 away against 1e16, so retracting the 1e16 leaves 4.0 or 0.0.
 		let mut a = accumulator(&[SlotKind::Sum]);
 		add(&mut a, 0, vec![Some(Value::float8(1e16f64))]);
 		add(&mut a, 1, vec![Some(Value::float8(3.14f64))]);
@@ -1121,9 +1095,8 @@ mod tests {
 
 	#[test]
 	fn sum_returns_none_after_float_churn_empties_it() {
-		// n is an exact integer, so when every contribution is retracted the sum
-		// must report the missing-value none regardless of accumulated float
-		// dust (the n == 0 reset also clears the compensation term).
+		// The contribution count is an exact integer, so a fully retracted sum must report none
+		// regardless of accumulated float dust.
 		let mut a = accumulator(&[SlotKind::Sum]);
 		add(&mut a, 0, vec![Some(Value::float8(1e16f64))]);
 		add(&mut a, 1, vec![Some(Value::float8(3.14f64))]);
@@ -1135,11 +1108,8 @@ mod tests {
 
 	#[test]
 	fn kahan_sum_tracks_an_exact_cents_oracle_through_mixed_magnitude_churn() {
-		// Rolling volume sums add and retract dollar amounts of wildly different
-		// magnitudes for hours; the accepted-drift design relies on compensated
-		// arithmetic keeping the error near one ulp instead of a growing random
-		// walk. Drive a long deterministic add/remove sequence and compare
-		// against an exact integer-cents oracle.
+		// Rolling volume sums churn mixed magnitudes for hours, and the accepted-drift design
+		// relies on the error staying near one ulp rather than becoming a random walk.
 		let mut a = accumulator(&[SlotKind::Sum]);
 		let mut oracle_cents: i128 = 0;
 		let mut seq = 0u64;
@@ -1177,10 +1147,9 @@ mod tests {
 
 	#[test]
 	fn unmerge_inverts_merge_for_all_invertible_slot_kinds() {
-		// The runnable rolling engine maintains its per-group running
-		// accumulator via merge(new coord state) / unmerge(expired coord state);
-		// unmerge must be merge's exact inverse for every invertible kind or the
-		// running output silently diverges from the buffer recombine.
+		// The rolling engine maintains its running accumulator by merging new coords and
+		// unmerging expired ones, so any kind where unmerge is not merge's exact inverse
+		// silently diverges from the buffer recombine.
 		let kinds = [
 			SlotKind::Count {
 				count_star: true,
@@ -1217,8 +1186,8 @@ mod tests {
 
 	#[test]
 	fn unmerge_to_empty_resets_sum_exactly() {
-		// When the last coord of a group expires, unmerge drives n to zero; the
-		// slot must reset to the exact none/zero state, not retain float dust.
+		// When the last coord of a group expires the slot must reset to exactly none, not retain
+		// float dust.
 		let kinds = [SlotKind::Sum];
 		let mut running = accumulator(&kinds);
 		let mut coord_state = accumulator(&kinds);
@@ -1232,9 +1201,8 @@ mod tests {
 
 	#[test]
 	fn invertible_gate_matches_slot_capabilities() {
-		// The sub-flow wiring uses this predicate to decide runnable vs legacy
-		// engine; a wrong answer either loses the optimization or runs unmerge
-		// on kinds that cannot support it.
+		// This predicate picks the engine, so a wrong answer either loses the optimization or
+		// runs unmerge on kinds that cannot support it.
 		let count = SlotKind::Count {
 			count_star: true,
 		};

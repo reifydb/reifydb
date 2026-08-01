@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Range serving through the page-resident read cache, exercised end-to-end through StandardMultiStore.
-//!
-//! The cache fronts the persistent tier's contribution to a range scan: once a Source bucket has been read
-//! through often enough it is loaded whole (range_complete) and subsequent scans serve it from RAM. These tests
-//! pin the load-bearing invariant - a cache-served scan is byte-for-byte identical to the cache-cold read-through
-//! and to the data actually written - across warming, both scopes, commit/flush, reverse + pagination, physical
-//! deletion, non-Source ranges, and mid-scan cache drops.
+//! Range serving through the page-resident read cache, end-to-end through StandardMultiStore. Every test
+//! turns on one invariant: a cache-served scan is byte-for-byte identical to the cache-cold read-through
+//! and to the data actually written.
 
 use std::collections::HashMap;
 
@@ -38,8 +34,7 @@ const STORAGE: StorageId = StorageId::Table(TableId(1));
 const BUCKET_ROWS: u64 = 200;
 
 /// Below WARM_THRESHOLD (4 * TIER_SCAN_CHUNK_SIZE = 128) so the read cache never warms: the cold-merge
-/// regressions are a pure persistent read-through, isolating the commit<->persistent horizon defect from
-/// the page cache.
+/// tests must be a pure persistent read-through, isolated from the page cache.
 const COLD_ROWS: u64 = 100;
 
 fn store() -> (StandardMultiStore, impl Drop) {
@@ -58,10 +53,9 @@ fn commit(store: &StandardMultiStore, n: u64, version: u64, value: &str) {
 	.unwrap();
 }
 
-/// Deterministic stand-in for the FlushActor sweep: persist the latest-<=cutoff value of every key to the
-/// persistent tier, invalidate those keys in the read tier (clearing bucket completeness), then drop them from
-/// the commit tier - the same persist -> invalidate-read -> drop ordering the actor runs.
 fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
+	// Deterministic stand-in for the flush sweep, in the same persist -> invalidate-read -> drop order
+	// the actor runs; the invalidate step is what clears bucket completeness.
 	let commit = store.commit();
 	for kind in commit.list_all_entry_kinds().unwrap() {
 		let (to_persist, to_compact, _) = match commit {
@@ -120,9 +114,8 @@ fn keys_only(rows: &[(Vec<u8>, Vec<u8>, CommitVersion)]) -> Vec<Vec<u8>> {
 
 #[test]
 fn warm_then_serve_matches_cold_readthrough_and_truth() {
-	// The equivalence gate: a first (cold, mostly read-through) scan warms the bucket; a second scan serves it
-	// from the range_complete page. Both must be byte-for-byte identical to each other AND to the data written,
-	// in the same ascending-encoded key order a SQLite scan produces.
+	// The equivalence gate: a warm, page-served scan must be byte-for-byte identical to the cold
+	// read-through and to what was written, in the same ascending-encoded order a SQLite scan produces.
 	let (store, _g) = store();
 	for n in 1..=BUCKET_ROWS {
 		commit(&store, n, 1, &format!("v{n}"));
@@ -217,9 +210,8 @@ fn asof_and_between_match_after_warm() {
 
 #[test]
 fn commit_after_warm_serves_newer_value_and_keeps_others() {
-	// After a bucket is warm, a fresh commit lands in the commit buffer and invalidates that key (clearing
-	// completeness). The always-scanned commit buffer must win on version, so the new value shows up and the
-	// cache can never mask it - even though the page is re-warmed from the (older) persistent state mid-scan.
+	// A fresh commit after warming invalidates the key and clears completeness; the always-scanned commit
+	// buffer wins on version, so a warm page can never mask the newer value.
 	let (store, _g) = store();
 	for n in 1..=BUCKET_ROWS {
 		commit(&store, n, 1, &format!("v{n}"));
@@ -229,9 +221,8 @@ fn commit_after_warm_serves_newer_value_and_keeps_others() {
 
 	commit(&store, 5, 5, "updated");
 
-	// Single batch (>= the row count) so the whole scan resolves in one range_next call: this isolates the
-	// cache invariant (a warm complete page must never mask a newer commit) from an unrelated pre-existing
-	// cold-merge horizon defect that drops a sparse commit's contribution across batch boundaries.
+	// One batch large enough for the whole scan keeps this on the cache invariant alone, away from the
+	// multi-batch cold-merge horizon behaviour that has its own tests below.
 	let rows = scan_fwd(&store, 1000, (BUCKET_ROWS as usize) + 64);
 	let by_key: HashMap<Vec<u8>, (Vec<u8>, CommitVersion)> =
 		rows.iter().map(|(k, v, ver)| (k.clone(), (v.clone(), *ver))).collect();
@@ -251,8 +242,8 @@ fn commit_after_warm_serves_newer_value_and_keeps_others() {
 
 #[test]
 fn flush_after_commit_returns_persisted_state() {
-	// A value committed then flushed must be served as the persisted state; the flush sweep clears the bucket's
-	// completeness so the next scan re-reads the new persisted version.
+	// The flush sweep clears the bucket's completeness, so the next scan re-reads the newly persisted
+	// version instead of serving the warm page.
 	let (store, _g) = store();
 	for n in 1..=BUCKET_ROWS {
 		commit(&store, n, 1, &format!("v{n}"));
@@ -310,9 +301,8 @@ fn reverse_and_small_batch_match_forward() {
 
 #[test]
 fn physical_delete_then_range_omits_row_no_ghost() {
-	// A row physically removed from the persistent tier must never be resurrected by a stale complete page.
-	// Delete-then-invalidate (the ordering the drop/TTL paths use) clears completeness so the scan reads
-	// through and omits the row.
+	// Delete-then-invalidate (the ordering the drop and TTL paths use) clears completeness, so a stale
+	// complete page can never resurrect a physically removed row.
 	let (store, _g) = store();
 	for n in 1..=BUCKET_ROWS {
 		commit(&store, n, 1, &format!("v{n}"));
@@ -334,9 +324,8 @@ fn physical_delete_then_range_omits_row_no_ghost() {
 
 #[test]
 fn non_source_range_reads_through_with_warm_cache() {
-	// The cache only ever serves Source buckets (the EntryKind::Source guard in step_persistent_cached). Keys
-	// committed under a non-RowKey (Multi) classification live in a separate persistent table; the unbounded
-	// range classifies as Multi and must return exactly those, untouched by a warm Source cache.
+	// The cache only ever serves Source buckets, so an unbounded range (classified Multi) must return
+	// exactly its own rows, untouched by a warm Source cache.
 	let (store, _g) = store();
 	for n in 1..=BUCKET_ROWS {
 		commit(&store, n, 1, &format!("v{n}"));
@@ -416,14 +405,9 @@ fn cache_cleared_mid_scan_reads_through_without_corruption() {
 
 #[test]
 fn multi_batch_cold_merge_keeps_sparse_commit_over_dense_persistent() {
-	// After a flush drains the buffer, a single LOW-row-number update is the only entry in the commit buffer
-	// over a dense persistent tier. Rows encode descending, so row 5 sorts LATE in the forward
-	// (ascending-encoded) scan. A scan that paginates past the row-5 boundary used to drop the committed v5:
-	// batch 1's forward horizon trims row5@v5 out of `collected` (its key is above the persistent cursor's
-	// last_key) and the rewind skips the already-exhausted commit cursor, so v5 is never re-produced and the
-	// later persistent read returns the stale v1. A single-batch scan masks this (no horizon trim), so the
-	// batch (16) MUST be small enough to page past row 5. COLD_ROWS (100) stays below WARM_THRESHOLD (128) so
-	// the read cache never warms - a pure cold read-through, with the defect isolated from the page cache.
+	// Rows encode descending, so row 5 sorts LATE in the forward (ascending-encoded) scan; the batch (16)
+	// must be small enough to paginate past it, which is where the forward horizon can trim a sparse
+	// commit out and leave the stale persisted value behind. A single-batch scan masks this entirely.
 	let (store, _g) = store();
 	for n in 1..=COLD_ROWS {
 		commit(&store, n, 1, &format!("v{n}"));
@@ -451,11 +435,8 @@ fn multi_batch_cold_merge_keeps_sparse_commit_over_dense_persistent() {
 
 #[test]
 fn multi_batch_cold_merge_keeps_sparse_commit_reverse() {
-	// Reverse twin of multi_batch_cold_merge_keeps_sparse_commit_over_dense_persistent, exercising
-	// reverse_horizon / rewind_over_advanced_reverse. A reverse scan walks ascending row number, so a HIGH row
-	// number (95) sorts late: batch 1's reverse horizon trims row95@v5 (its key is below the persistent
-	// cursor's last_key) and the exhausted commit cursor is skipped on rewind, so the later persistent read
-	// returns the stale v1.
+	// Reverse twin of the forward cold-merge case: a reverse scan walks ascending row number, so a HIGH
+	// row (95) sorts late and is the one the reverse horizon can trim out across a batch boundary.
 	let (store, _g) = store();
 	for n in 1..=COLD_ROWS {
 		commit(&store, n, 1, &format!("v{n}"));

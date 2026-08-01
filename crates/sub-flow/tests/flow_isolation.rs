@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// The core claim of the per-flow deferred architecture: a slow flow/view must NOT stall a fast one.
-// Each deferred flow has its own actor pulling+computing+committing independently, so a flow whose
-// operator is artificially slow only holds back its own view, while an independent fast view over
-// the same source keeps materializing.
-//
-// Setup: table t feeds two independent deferred views - `fast` (a plain MAP, materializes promptly)
-// and `slow` (a custom operator that sleeps several seconds inside apply). We assert that `fast`
-// materializes ALL rows while `slow` is still empty (its actor is blocked in compute), then that
-// `slow` eventually catches up. In the OLD lock-step model the slow operator would hold the shared
-// barrier and stall `fast` too; here it cannot.
+// The core claim of the per-flow deferred architecture: a slow flow must not stall a fast one. Each
+// deferred flow pulls, computes and commits on its own actor, so an operator blocked in compute
+// holds back only its own view. A shared barrier would stall the fast view alongside it.
 
 use std::{thread, time::Duration as StdDuration};
 
@@ -34,8 +27,8 @@ use reifydb_value::value::{constraint::TypeConstraint, row_number::RowNumber, va
 
 const SLOW_APPLY: StdDuration = StdDuration::from_secs(5);
 
-// A stateful operator that sleeps SLOW_APPLY inside apply, then tallies the rows it has seen into a
-// single count row. The sleep blocks only THIS flow's actor; the fast view's actor runs elsewhere.
+// Sleeps SLOW_APPLY inside apply, then tallies the rows it has seen. The sleep blocks only this
+// flow's actor; the fast view's actor runs elsewhere.
 struct SlowCounter;
 
 impl RawStatefulOperator for SlowCounter {}
@@ -122,8 +115,8 @@ fn slow_flow_does_not_stall_fast_flow() {
 		 the isolation the per-flow architecture is supposed to guarantee is broken)"
 	);
 
-	// At this point the slow flow's actor is still asleep inside apply, so its view is empty. This is
-	// the decisive check: fast is done while slow has not committed anything yet.
+	// The decisive check: the slow actor is still asleep inside apply, so fast is complete while
+	// slow has committed nothing.
 	let slow_now = db.row_count("FROM app::slow");
 	assert_eq!(
 		slow_now, 0,

@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! A committed silent removal of operator state must be invisible to BOTH gets
-//! and ranges from the very next commit onward, without waiting for any
-//! reclamation. The window engines delete range-scanned bookkeeping (rolling
-//! coord entries, expiry index entries) and re-read it on the next apply; a
-//! resurrected entry double-unmerges a running accumulator and corrupts the
-//! aggregate (observed as transactional rolling views going empty).
+//! A committed silent removal of operator state must be invisible to both gets and ranges from the very
+//! next commit onward, with no reclamation in between: window engines delete range-scanned bookkeeping
+//! and re-read it on the next apply, and a resurrected entry double-unmerges a running accumulator.
 
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{

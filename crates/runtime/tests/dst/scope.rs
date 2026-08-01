@@ -13,7 +13,6 @@ fn scope_shares_clock() {
 
 	parent.advance_time(Duration::from_milliseconds(500).unwrap());
 
-	// Both should see the same mock clock value.
 	assert_eq!(parent.clock().now().to_millis(), 500);
 	assert_eq!(child.clock().now().to_millis(), 500);
 }
@@ -38,7 +37,7 @@ fn scope_has_own_cancel() {
 	let _pa = parent.spawn_coordination("pa", CounterActor);
 	let _ca = child.spawn_coordination("ca", CounterActor);
 
-	// Shut down child scope only.
+	// A child scope owns its own cancellation, so shutting it must not reach the parent.
 	child.shutdown();
 
 	assert!(child.is_cancelled());
@@ -55,7 +54,6 @@ fn parent_shutdown_cancels_child_scope() {
 	let _pa = parent.spawn_coordination("pa", CounterActor);
 	let ch = child.spawn_coordination("ca", CounterActor);
 
-	// Shut down parent - should propagate to child.
 	parent.shutdown();
 
 	assert!(parent.is_cancelled());
@@ -63,7 +61,7 @@ fn parent_shutdown_cancels_child_scope() {
 	assert_eq!(parent.alive_count(), 0);
 	assert_eq!(child.alive_count(), 0);
 
-	// Child actor should be dead.
+	// Cancelling must stop delivery too, not only flip the cancelled flag.
 	assert!(ch.actor_ref.send(CounterMessage::Inc).is_err());
 }
 
@@ -80,14 +78,13 @@ fn scope_shares_timer_heap() {
 		},
 	);
 
-	// Schedule timer via parent's context but targeting child's actor.
+	// Scheduled through the parent but targeting a child actor, so a per-scope timer heap
+	// would strand the message.
 	let ctx = Context::new(handle.actor_ref.clone(), parent.clone(), parent.cancellation_token());
 	ctx.schedule_once(Duration::from_milliseconds(100).unwrap(), || "from_parent_timer".to_string());
 
-	// Advance time on parent - timers are shared.
 	parent.advance_time(Duration::from_milliseconds(100).unwrap());
 
-	// Process on child - the message should be there.
 	child.run_until_idle();
 
 	assert_eq!(log_contents(&log), vec!["from_parent_timer"]);
@@ -106,7 +103,6 @@ fn cross_scope_messaging() {
 		},
 	);
 
-	// Send from outside the child scope to child's actor.
 	child_actor.actor_ref.send("cross_scope".into()).unwrap();
 
 	child.run_until_idle();
@@ -128,10 +124,9 @@ fn nested_scope_must_shutdown_recursively() {
 	assert_eq!(level1.alive_count(), 1);
 	assert_eq!(level2.alive_count(), 1);
 
-	// Shut down level1.
+	// Cancellation must reach a grandchild scope, and stop at the parent.
 	level1.shutdown();
 
-	// level1 and level2 MUST be dead. root should be alive.
 	assert!(level1.is_cancelled());
 	assert!(level2.is_cancelled(), "Child scope level2 should have been cancelled by level1 shutdown");
 	assert!(!root.is_cancelled());
@@ -146,16 +141,14 @@ fn clock_advancement_is_asymmetric() {
 	let parent = test_system();
 	let child = parent.scope();
 
-	// 1. Advance child clock - parent MUST NOT be affected.
+	// Time flows down, never up: a child advancing must not move the parent.
 	child.advance_time(Duration::from_milliseconds(100).unwrap());
 	assert_eq!(child.clock().now().to_millis(), 100);
 	assert_eq!(parent.clock().now().to_millis(), 0, "Child clock advancement leaked to parent!");
 
-	// 2. Advance parent clock - child MUST be affected.
 	parent.advance_time(Duration::from_milliseconds(200).unwrap());
 	assert_eq!(parent.clock().now().to_millis(), 200);
-	// Child clock was at 100, we advanced parent by 200. Does child become 300 or 200?
-	// If it's a "shared" mock clock, it might be 200. If child has an offset, it might be 300.
-	// But it certainly should be at least 200.
+	// A child owns its own clock and is advanced by the parent's delta, so it keeps the 100ms
+	// it advanced alone and lands at 300; the assertion only bounds it from below.
 	assert!(child.clock().now().to_millis() >= 200, "Child clock failed to advance with parent!");
 }

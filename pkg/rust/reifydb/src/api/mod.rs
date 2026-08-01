@@ -30,15 +30,9 @@ mod export;
 pub mod migration;
 pub mod server;
 
-/// Storage factory enum for deferred storage creation.
-///
-/// This allows the builder to create storage during the `build()` phase,
-/// rather than requiring users to provide it upfront.
 #[derive(Clone)]
 pub enum StorageFactory {
-	/// In-memory storage (non-persistent)
 	Memory,
-	/// SQLite-based persistent storage
 	Sqlite(SqliteConfig),
 }
 
@@ -143,7 +137,6 @@ fn create_sqlite_store_with(
 	(multi_store, single_store, transaction_single, eventbus)
 }
 
-/// Convenience function to create a transaction layer
 pub(crate) fn transaction(
 	input: (MultiStore, SingleStore, SingleTransaction, EventBus),
 	spawner: ActorSpawner,

@@ -8,12 +8,9 @@ use reifydb_value::value::{Value, row_number::RowNumber};
 
 use crate::framework::workload::WindowRow;
 
-/// Which fixed-grid windows a coordinate belongs to.
-///
-/// This is the ONLY thing that differs between tumbling and sliding: both anchor their seal
-/// horizon on the window start, both close at `start + size + grace`, and both accumulate the
-/// same way. Tumbling returns exactly one window per coordinate, sliding returns every window
-/// whose span covers it.
+/// Which fixed-grid windows a coordinate belongs to. This is the only thing that differs between
+/// tumbling and sliding: both anchor their seal horizon on the window start, both close at
+/// `start + size + grace`, and both accumulate the same way.
 pub trait Grid {
 	fn windows_of(&self, coord_ms: u64) -> Vec<u64>;
 }
@@ -56,16 +53,9 @@ impl<G: Grid> GridOracle<G> {
 	}
 }
 
-/// What makes two published rows the same row for a fixed-grid window.
-///
-/// The group-by column plus the window start. Every window spec in this tree groups by `g`, and the
-/// operator carries the window start in the row's event position rather than as a named column -
-/// `build_engine_row` publishes only the group and aggregate columns, and stamps `span.start` as the
-/// row's time.
-///
-/// Not the row number, which is what the view folds on by default. A key whose mapping the sweep
-/// retired mints a brand new row number, so the duplicate it publishes beside its live row collides
-/// with nothing and folds in looking legitimate.
+/// What makes two published rows the same row for a fixed-grid window: the group-by column plus the
+/// window start, which the operator carries as the row's event position. Not the row number - a key
+/// whose mapping the sweep retired mints a new one, so a duplicate would collide with nothing.
 fn window_row_key() -> RowKey {
 	RowKey::columns(["g"]).with_time()
 }
@@ -129,10 +119,8 @@ impl<G: Grid> Model<WindowRow> for GridOracle<G> {
 	}
 
 	fn live(&self) -> KeyedMultiset {
-		// Closing a fixed-grid window stops it admitting events and lets the operator reclaim
-		// its accumulator, but the aggregate it already published stays in the view. Nothing
-		// evicts a grid window, so every window the oracle ever opened is required, not merely
-		// permitted - if the operator withdraws a closed window's row, this bound catches it.
+		// Nothing evicts a grid window: closing one stops it admitting events but the aggregate it
+		// published stays, so every window the oracle opened is required rather than merely permitted.
 		self.all()
 	}
 

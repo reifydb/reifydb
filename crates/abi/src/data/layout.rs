@@ -45,13 +45,11 @@ impl LayoutFFI {
 		}
 	}
 
-	/// Get a field by index
-	///
 	/// # Safety
-	/// Caller must ensure the fields pointer is valid and the index is within bounds.
+	/// `fields` must point to `field_count` initialized, aligned `FieldFFI` that outlive the borrow.
 	pub unsafe fn get_field(&self, index: usize) -> Option<&FieldFFI> {
 		if index < self.field_count && !self.fields.is_null() {
-			// SAFETY: Caller must ensure fields pointer is valid and index is in bounds
+			// SAFETY: index < field_count and fields is non-null, so this stays inside the array.
 			unsafe { Some(&*self.fields.add(index)) }
 		} else {
 			None
@@ -71,6 +69,7 @@ impl LayoutFFI {
 		}
 
 		let bitvec_ptr = encoded.ptr;
+		// SAFETY: byte_index < bitvec_size; the caller must pass an `encoded` at least that long.
 		let byte = unsafe { *bitvec_ptr.add(byte_index) };
 		(byte & (1 << bit_index)) != 0
 	}

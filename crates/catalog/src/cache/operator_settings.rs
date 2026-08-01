@@ -90,11 +90,9 @@ pub mod tests {
 
 	#[test]
 	fn latest_read_finds_settings_written_after_reader_version() {
-		// Regression for the operator-registration TTL race: the operator reads its TTL at
-		// the registration transaction's version. If the settings were committed at a LATER
-		// version than that snapshot, a version-pinned read returns None and the operator's
-		// own tick-eviction (of its GC-immune internal state) silently never runs, leaking
-		// per-row maps. The latest read (now used at registration) must still find them.
+		// Settings can commit at a later version than the registering transaction's snapshot.
+		// A version-pinned read then returns none and the operator's tick-eviction never runs,
+		// leaking per-row maps, so registration must use the latest read.
 		let catalog = CatalogCache::new();
 		let operator = FlowNodeId(7);
 		let cfg = settings(Duration::from_seconds(10).unwrap());

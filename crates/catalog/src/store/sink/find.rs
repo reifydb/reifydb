@@ -146,7 +146,6 @@ pub mod tests {
 
 		create_sink(&mut txn, "namespace_one", "my_sink", "kafka");
 
-		// Sink exists in namespace_one but not in namespace_two
 		let result = CatalogStore::find_sink_by_name(
 			&mut Transaction::Admin(&mut txn),
 			namespace_two.id(),
@@ -163,7 +162,6 @@ pub mod tests {
 
 		create_sink(&mut txn, "test_namespace", "MySink", "kafka");
 
-		// Sink names are case-sensitive
 		let result = CatalogStore::find_sink_by_name(
 			&mut Transaction::Admin(&mut txn),
 			test_namespace.id(),

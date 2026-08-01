@@ -407,11 +407,9 @@ mod tests {
 
 	#[test]
 	fn writing_a_row_stamps_its_own_side_and_only_its_own_side() {
-		// The per-side sweep can only retire a side it was told about. Because both sides of a key
-		// share one group, a stamp that landed on the wrong side - or on both - would let a busy
-		// left side hold the right side's rows past the right ttl, which is the exact conflation
-		// the side index exists to break. Reading through due_side_groups at a cutoff far past
-		// everything asserts what the sweep will actually see.
+		// Both sides of a key share one group, so a stamp that landed on the wrong side would let
+		// a busy left side hold the right side's rows past the right ttl - the exact conflation
+		// the side index exists to break.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
@@ -435,9 +433,8 @@ mod tests {
 
 	#[test]
 	fn updating_a_row_renews_its_side() {
-		// An update is activity: the row is current again, so the ttl clock restarts. If only
-		// put_row stamped, a key kept alive purely by updates would be reclaimed on the strength of
-		// its first insert while the join is still probing it.
+		// An update is activity, so the ttl clock restarts: otherwise a key kept alive purely by
+		// updates is reclaimed on the strength of its first insert while the join still probes it.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let node = FlowNodeId(52);
@@ -457,9 +454,8 @@ mod tests {
 
 	#[test]
 	fn a_rejected_update_stamps_nothing() {
-		// update_row returns false when the row is not there. Stamping before that check would
-		// enrol a side that holds no rows, and every later sweep would pay to reclaim an empty
-		// keyspace for a key the join has never stored.
+		// Stamping before the row-exists check would enrol a side that holds no rows, and every
+		// later sweep would pay to reclaim an empty keyspace for a key never stored.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let node = FlowNodeId(53);
@@ -478,11 +474,8 @@ mod tests {
 
 	#[test]
 	fn both_sides_of_one_join_key_share_a_group_without_sharing_rows() {
-		// Decision 1 of the group migration: the group IS the join key hash, with both
-		// sides inside it. That is only safe because the keyspace byte separates them -
-		// if it did not, a left row and a right row stored under the same key hash and
-		// the same row number would collide on one key and one side would silently
-		// overwrite the other.
+		// The group IS the join key hash, with both sides inside it; only the keyspace byte keeps
+		// a left and a right row at the same hash and row number from overwriting each other.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
@@ -512,13 +505,9 @@ mod tests {
 
 	#[test]
 	fn reads_never_intern_a_key_even_once_the_filter_has_been_revoked() {
-		// While the filter is complete an absent key is answered from RAM and never
-		// reaches group resolution at all. The path that matters is the one after a
-		// revocation (byte cap exceeded, as in the 2026-07-21 profile): every probe then
-		// reads through, so if resolution interned instead of looking up, every absent
-		// probe in a hash join would mint a dictionary entry, an activity-index row and
-		// a reclaim obligation for a key that holds nothing - turning a degraded filter
-		// into unbounded group growth.
+		// After a revocation every probe reads through, so a resolution that interned instead of
+		// looking up would mint a dictionary entry, an activity-index row and a reclaim
+		// obligation per absent key - turning a degraded filter into unbounded group growth.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let node = FlowNodeId(51);
@@ -548,9 +537,8 @@ mod tests {
 
 	#[test]
 	fn get_row_point_reads_exact_row_number_for_hash() {
-		// The latest-join probe reads its single right slot by exact (hash, RowNumber::MAX) rather than
-		// a prefix scan. get_row must return the row at that exact key, None for an absent row number,
-		// and must not return a sibling row stored under the same hash but a different number.
+		// The latest-join probe reads its single right slot by exact (hash, RowNumber::MAX), so a
+		// point read must never fall back to a sibling row under the same hash.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(FlowNodeId(5), JoinSide::Right, test_membership());
@@ -647,11 +635,8 @@ mod tests {
 
 	#[test]
 	fn each_side_keeps_its_own_shape_under_one_node_scoped_keyspace() {
-		// Schemas are per side, not per join key, so both sides share the node-scoped
-		// JOIN_SCHEMA keyspace and are separated only by the side tag in the suffix.
-		// Without that tag the two sides would collide on identical fingerprints and a
-		// side would decode the other side's shape - the exact mis-shaped read the
-		// per-side schema prefix used to prevent.
+		// Both sides share the node-scoped JOIN_SCHEMA keyspace, separated only by the side tag:
+		// without it they collide on identical fingerprints and a side decodes the other's shape.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let node = FlowNodeId(52);
@@ -693,8 +678,7 @@ mod tests {
 		let page2 = store.rows_for_key_block(&mut txn, &h(0xAAA), Some(&after), 2).unwrap();
 		assert_eq!(page2.iter().map(|(rn, _)| *rn).collect::<Vec<_>>(), vec![rn(3), rn(4)]);
 
-		// Resuming past the last row of an exact-multiple key must terminate, not wrap or
-		// pull a neighbouring key's rows.
+		// Resuming past the last row of an exact-multiple key must terminate, not wrap.
 		let after = page2.last().unwrap().0;
 		let page3 = store.rows_for_key_block(&mut txn, &h(0xAAA), Some(&after), 2).unwrap();
 		assert!(page3.is_empty(), "scan must end exactly at the key's last row");
@@ -706,8 +690,8 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(FlowNodeId(31), JoinSide::Right, test_membership());
 
-		// One full block plus a partial block: the wrapper must walk both, in order, with
-		// no dropped or duplicated rows - the exact failure mode a blocked probe risks.
+		// One full block plus a partial one: a blocked probe risks dropping or duplicating rows
+		// at the boundary.
 		let block_size = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize);
 		let total = block_size + 3;
 		for i in 1..=total {
@@ -732,11 +716,9 @@ mod tests {
 
 	#[test]
 	fn set_row_shape_persists_a_second_distinct_shape_on_the_same_instance() {
-		// A join side is not guaranteed to see a uniform row shape for its whole
-		// lifetime (e.g. a value that is entirely undefined in one batch and
-		// resolved to a concrete type in a later one yields a different
-		// fingerprint). The store must retain every distinct shape it is asked
-		// to persist, not silently drop every shape after the first.
+		// A side's row shape is not uniform for its whole lifetime: a column that is all none in
+		// one batch and typed in the next yields a different fingerprint, so every distinct shape
+		// has to be retained rather than only the first.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(FlowNodeId(23), JoinSide::Right, test_membership());
@@ -761,10 +743,8 @@ mod tests {
 
 	#[test]
 	fn set_row_shape_second_distinct_shape_survives_a_cold_instance() {
-		// Reproduces the production crash directly: a fresh Store (e.g. after an
-		// actor restart, cold in-memory cache) must still resolve a shape that
-		// was persisted as the *second* distinct shape ever written on that
-		// side, not only the very first one.
+		// A cold cache after a restart must resolve the second distinct shape a side ever wrote,
+		// not only the first.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let node = FlowNodeId(24);
@@ -785,11 +765,8 @@ mod tests {
 
 	#[test]
 	fn a_hydrated_side_answers_key_absence_from_membership() {
-		// The absent-key probe is the join hot path this filter exists for: a left
-		// row whose key has no right-side rows must not pay a store range scan on
-		// every block. DefinitelyAbsent short-circuits before any store access -
-		// before the group is even resolved - so the absences_served counter plus
-		// the zero-read point probes pin that the answer came from RAM.
+		// The absent-key probe is the hot path this filter exists for: a left row whose key has
+		// no right-side rows must not pay a store range scan on every block.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
@@ -813,12 +790,9 @@ mod tests {
 
 	#[test]
 	fn hundreds_of_rows_under_one_join_key_keep_the_side_its_absence_proofs() {
-		// Production regression pin (2026-07-21 profile): a hot join key inserts
-		// one filter instance per stored row, which chained the cuckoo filter to
-		// its byte cap and discarded the whole side - revocations=1 on every
-		// hash-join node, and absent-key probes paid store reads for the rest of
-		// the run. A key with hundreds of rows must leave the side's membership
-		// intact so unrelated absent keys keep their RAM answer.
+		// One filter instance per stored row means a hot key can chain the filter to its byte cap
+		// and discard the whole side, after which every absent-key probe pays a store read for
+		// the rest of the run.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
@@ -842,10 +816,8 @@ mod tests {
 
 	#[test]
 	fn removing_the_last_row_turns_the_key_into_a_ram_absence() {
-		// Multiset accounting: two rows under one hash are two filter instances.
-		// The emptiness re-check after each removal (remove_from_state_entry) is a
-		// range scan today; once the last instance is gone it must become a RAM
-		// answer, and after the FIRST removal the key must still read as present.
+		// Two rows under one hash are two filter instances, so the key must still read present
+		// after the first removal and become a RAM absence only once the last instance goes.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
@@ -869,11 +841,9 @@ mod tests {
 
 	#[test]
 	fn latest_slot_overwrites_with_known_presence_do_not_inflate_membership() {
-		// A latest join overwrites its (hash, MAX) slot on every right-side tick.
-		// Blind inserts there would grow the filter one instance per tick until the
-		// byte cap discards it weeks into a run. The overwrite path knows the slot
-		// was occupied (read_right_slot precedes it), passes Live, and the instance
-		// count stays exact: one remove after N overwrites must flip to absent.
+		// A latest join overwrites its (hash, MAX) slot on every right-side tick, so blind inserts
+		// would grow the filter one instance per tick until the byte cap discards it weeks into a
+		// run. One remove after N overwrites must flip the key to absent.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
@@ -897,10 +867,9 @@ mod tests {
 
 	#[test]
 	fn a_blind_overcount_degrades_to_a_false_positive_never_a_false_absence() {
-		// put_row with Unknown presence inserts blindly; overwriting an existing
-		// row leaves a stale instance. The failure direction must be a wasted
-		// verify scan (counted as a false positive), NEVER an absent answer for a
-		// key that still has rows - that would emit wrong join output silently.
+		// A blind insert over an existing row leaves a stale instance. The failure direction must
+		// be a wasted verify scan, NEVER an absence for a key that still has rows - that would
+		// emit wrong join output silently.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let membership = test_membership();
@@ -919,12 +888,9 @@ mod tests {
 
 	#[test]
 	fn a_restarted_store_hydrates_membership_from_the_persisted_side() {
-		// After a restart the filter is rebuilt by scanning persisted state. A key
-		// persisted before the restart must read maybe-present (no false absence),
-		// and an unknown key must be a RAM absence again. The hash is no longer in
-		// the row key, so hydration has to resolve each group id back to its bytes -
-		// if that resolution were dropped the side would install nothing and every
-		// persisted key would read as a false absence.
+		// The hash is no longer in the row key, so hydration has to resolve each group id back to
+		// its bytes: dropping that resolution installs nothing and turns every persisted key into
+		// a false absence.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let node = FlowNodeId(45);
@@ -946,10 +912,9 @@ mod tests {
 
 	#[test]
 	fn hydration_rebuilds_one_instance_per_persisted_row_on_both_sides() {
-		// Hydration is one scan feeding both sides, and the filter is a multiset: a key
-		// with two persisted rows must come back with two instances, or the first
-		// removal after a restart would flip a key that still has a row to absent and
-		// the join would drop live matches.
+		// The filter is a multiset, so a key with two persisted rows must rehydrate with two
+		// instances, or the first removal after a restart flips a live key to absent and the join
+		// drops matches.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let node = FlowNodeId(54);

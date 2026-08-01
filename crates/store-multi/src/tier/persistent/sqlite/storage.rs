@@ -1155,11 +1155,8 @@ mod tests {
 
 	#[test]
 	fn page_cache_metrics_accumulates_hits_and_misses_across_sweeps() {
-		// Each sweep drains the per-connection counters (take-and-reset) into
-		// store-level totals, so the reported hit/miss counts must be monotone
-		// across sweeps; a regression back to raw per-connection reads would
-		// make the periodic memory log report a sawtooth instead of a
-		// cumulative hit rate.
+		// A sweep drains the per-connection counters take-and-reset into store totals, so the reported
+		// counts must be monotone; raw per-connection reads would report a sawtooth, not a hit rate.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"a")))])])).unwrap();
 		assert!(visible(&s, &key(1)));
@@ -1215,9 +1212,8 @@ mod tests {
 
 	#[test]
 	fn create_table_indexes_the_version_column() {
-		// Phase 2b: after the created_nanos/updated_nanos indices were dropped, the version-anchored TTL
-		// delete (DELETE WHERE version <= cutoff) needs an index on `version`, or GC full-scans the live
-		// set on every tick. The two timestamp indices must stay gone.
+		// The version-anchored TTL delete needs an index on `version` or GC full-scans the live set on
+		// every tick; the retired timestamp indices must stay gone.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"a")))])])).unwrap();
 
@@ -1261,7 +1257,6 @@ mod tests {
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), Some(row(b"v5")))])])).unwrap();
 
-		// Cutoff exactly equal to the row's version: the row IS deleted (version <= cutoff).
 		let (deleted, _) = s.delete_below_version(table(), CommitVersion(5), None, None, usize::MAX).unwrap();
 		assert_eq!(
 			deleted.len(),
@@ -1273,10 +1268,8 @@ mod tests {
 
 	#[test]
 	fn operator_disk_payload_bytes_sums_key_version_value_lengths_per_node() {
-		// The disk_payload_bytes metric in system::metrics::runtime::operators is measured directly from the
-		// per-operator sqlite tables. Every row must contribute key + 8-byte version + value lengths,
-		// tombstones (value = none) must still count their key/version bytes, internal state must fold
-		// into the same node as regular state, and non-operator tables must never leak in.
+		// This sum is the source of the per-operator disk_payload_bytes metric, so a miscount here is
+		// reported straight to operators.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(
 			CommitVersion(1),
@@ -1337,7 +1330,6 @@ mod tests {
 	#[test]
 	fn delete_below_version_with_prefix_only_touches_matching_keys() {
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		// Two "sides" distinguished by a leading prefix byte, both written at v1.
 		let left = EncodedKey::new(vec![0x01, 0xAA]);
 		let right = EncodedKey::new(vec![0x02, 0xBB]);
 		s.set(
@@ -1359,14 +1351,13 @@ mod tests {
 
 	#[test]
 	fn delete_below_version_returns_exactly_the_deleted_keys() {
+		// GC invalidates the read cache per-key from this return value, so a wrong or empty key set
+		// silently leaves stale entries or over-clears the cache.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"a")))])])).unwrap();
 		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(2), Some(row(b"b")))])])).unwrap();
 		s.set(CommitVersion(3), HashMap::from([(table(), vec![(key(3), Some(row(b"c")))])])).unwrap();
 
-		// The surgical GC invalidation depends on delete_below_version returning the exact keys it deleted,
-		// so the read cache is invalidated per-key instead of cleared wholesale. A wrong/empty key set
-		// would silently leave stale entries (or over-clear) and this assertion would catch it.
 		let mut got: Vec<Vec<u8>> = s
 			.delete_below_version(table(), CommitVersion(2), None, None, usize::MAX)
 			.unwrap()
@@ -1386,9 +1377,8 @@ mod tests {
 
 	#[test]
 	fn delete_below_version_caps_one_call_and_reports_a_resume_cursor() {
-		// The whole point of the bound: one call must delete at most `limit` rows and, when it hits
-		// that cap, hand back a cursor so the next slice resumes instead of the sole write connection
-		// being held for an unbounded delete (landmine L10).
+		// One call deletes at most `limit` rows and hands back a cursor, so the sole write connection is
+		// never held for an unbounded delete.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		for n in 1..=5u64 {
 			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), Some(row(b"x")))])])).unwrap();
@@ -1411,9 +1401,8 @@ mod tests {
 
 	#[test]
 	fn delete_below_version_resumes_from_cursor_and_drains_without_gaps() {
-		// Repeated calls threading the returned cursor must walk the whole eligible set exactly once,
-		// in key order, and stop (cursor None) as soon as fewer than `limit` rows remain - never
-		// skipping an eligible key between batches.
+		// Threading the returned cursor must walk the eligible set exactly once in key order, never
+		// skipping a key between batches.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		for n in 1..=5u64 {
 			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), Some(row(b"x")))])])).unwrap();
@@ -1443,9 +1432,8 @@ mod tests {
 
 	#[test]
 	fn reap_then_flush_of_newer_versions_records_no_resurrection() {
-		// The tripwire must stay silent in correct operation: after a reap at cutoff C, every later flush
-		// carries a version above C (TombstoneReap floors on the flush watermark), including a re-insert of
-		// the reaped key itself - a fresh write after removal is legitimate, not a resurrection.
+		// A reap floors on the flush watermark, so every later flush carries a higher version; a
+		// re-insert of the reaped key is a legitimate fresh write and must not trip the tripwire.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
 		let table_name = s.table_sql(table()).table_name.clone();
@@ -1470,10 +1458,8 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "resurrection")]
 	fn flush_below_the_reap_high_water_of_an_absent_key_trips_the_resurrection_assertion() {
-		// Positive control: without it, the silence of the test above could mean the tripwire is wired to
-		// nothing. Simulate the floor violation directly - reap at cutoff 5, then flush an INSERT at
-		// version 4 for the reaped key. That is exactly what a reap outrunning the flush watermark
-		// produces, and it must trip the assertion instead of silently rematerializing the removal.
+		// Positive control: silence in the test above could otherwise mean the tripwire is wired to
+		// nothing. Flushing below the reap high-water is what a reap outrunning the flush watermark does.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
 		let table_name = s.table_sql(table()).table_name.clone();
@@ -1486,8 +1472,8 @@ mod tests {
 	#[test]
 	#[should_panic(expected = "resurrection")]
 	fn sweep_below_the_reap_high_water_of_an_absent_key_trips_the_resurrection_assertion() {
-		// The sweep flush duplicates the upsert loop of set_collecting_accepted, so the tripwire must exist
-		// there independently - a sweep-only resurrection would otherwise pass silently.
+		// The sweep flush has its own upsert loop, so the tripwire must exist there independently or a
+		// sweep-only resurrection passes silently.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
 		let table_name = s.table_sql(table()).table_name.clone();
@@ -1502,9 +1488,8 @@ mod tests {
 
 	#[test]
 	fn reap_tombstones_removes_null_valued_rows_and_leaves_live_rows() {
-		// A tombstone is a NULL-valued row (a removed key flushed with value = none); a live row carries a
-		// value. The reaper must physically delete only the tombstones, never a live row, even one below the
-		// cutoff.
+		// A tombstone is a row stored with no value; the reaper must physically delete only those, never
+		// a live row, even one below the cutoff.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"live")))])])).unwrap();
 		s.set(CommitVersion(2), HashMap::from([(table(), vec![(key(2), None)])])).unwrap();
@@ -1523,9 +1508,8 @@ mod tests {
 
 	#[test]
 	fn reap_tombstones_respects_the_cutoff() {
-		// The flush-watermark cutoff prevents reaping a tombstone whose superseding write may not have flushed:
-		// a tombstone above the cutoff must survive, and the same tombstone becomes reapable once the cutoff
-		// reaches its version.
+		// The flush-watermark cutoff exists to stop a tombstone being reaped while its superseding write
+		// may still be unflushed.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		s.set(CommitVersion(5), HashMap::from([(table(), vec![(key(1), None)])])).unwrap();
 		let table_name = s.table_sql(table()).table_name.clone();
@@ -1561,10 +1545,9 @@ mod tests {
 
 	#[test]
 	fn tombstone_discovery_uses_the_partial_index() {
-		// The plain version index does not serve the reap query once most rows are below the cutoff: it would
-		// scan the whole live set filtering on value IS NULL. The partial index over NULL-valued rows keeps
-		// discovery proportional to the garbage. With many live rows and few tombstones the planner must pick
-		// the partial index; assert via the query plan naming it, never by timing.
+		// The plain version index would scan the whole live set once most rows are below the cutoff; the
+		// partial index over valueless rows keeps discovery proportional to the garbage. Asserted through
+		// the query plan, never by timing.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		for n in 1..=200u64 {
 			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), Some(row(b"live")))])]))
@@ -1599,10 +1582,9 @@ mod tests {
 
 	#[test]
 	fn incremental_vacuum_reduces_the_freelist_under_the_page_bound() {
-		// auto_vacuum = INCREMENTAL keeps freed pages on the freelist until incremental_vacuum runs, so
-		// deleting a large table must leave a non-empty freelist that a bounded vacuum then shrinks by
-		// exactly the pages it reclaimed - never more than the per-slice bound. File truncation is a
-		// post-checkpoint concern, so this asserts freelist_count, never file size.
+		// auto_vacuum = INCREMENTAL parks freed pages on the freelist until incremental_vacuum runs, and
+		// one call may reclaim at most the per-slice bound. File truncation is a post-checkpoint concern,
+		// so this asserts freelist_count, never file size.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
 		for n in 1..=500u64 {
 			s.set(CommitVersion(n), HashMap::from([(table(), vec![(key(n), Some(row(&vec![0u8; 200])))])]))

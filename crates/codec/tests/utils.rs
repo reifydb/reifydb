@@ -33,12 +33,10 @@ pub fn assert_frame_eq(a: &Frame, b: &Frame) {
 	}
 }
 
-/// Encode and decode a single column, asserting round-trip equality.
 pub fn round_trip_column(name: &str, data: FrameColumnData) {
 	round_trip_column_with(name, data, &EncodeOptions::default());
 }
 
-/// Encode and decode a single column with specific options, asserting round-trip equality.
 pub fn round_trip_column_with(name: &str, data: FrameColumnData, options: &EncodeOptions) {
 	let frame = Frame::new(vec![FrameColumn {
 		name: name.to_string(),
@@ -66,16 +64,11 @@ pub fn assert_compresses_well(name: &str, data: FrameColumnData) {
 	);
 }
 
-// Test generation macros
-//
-// All macros use fully-qualified paths to avoid import conflicts with
-// the type-specific imports in each test file.
+// The generation macros below use fully-qualified paths throughout, so they cannot collide with
+// the type-specific imports in each test file that expands them.
 
-/// Generate standard plain-encoding tests for a type.
-///
-/// The calling module must define:
-/// - `fn make(Vec<T>) -> FrameColumnData`
-/// - `use reifydb_value::value::frame::data::FrameColumnData;`
+/// The calling module must define `fn make(Vec<T>) -> FrameColumnData` and have
+/// `FrameColumnData` in scope.
 #[macro_export]
 macro_rules! plain_tests {
 	(typical: $typical:expr, boundary: $boundary:expr, single: $single:expr $(,)?) => {
@@ -152,7 +145,6 @@ macro_rules! plain_tests {
 	};
 }
 
-/// Generate standard dictionary-encoding tests.
 #[macro_export]
 macro_rules! dict_tests {
 	(low_cardinality: $low:expr, high_cardinality: $high:expr $(,)?) => {
@@ -200,7 +192,6 @@ macro_rules! dict_tests {
 	};
 }
 
-/// Generate standard RLE-encoding tests.
 #[macro_export]
 macro_rules! rle_tests {
 	(repeated: $repeated:expr, unique: $unique:expr $(,)?) => {
@@ -243,7 +234,6 @@ macro_rules! rle_tests {
 	};
 }
 
-/// Generate standard delta-encoding tests.
 #[macro_export]
 macro_rules! delta_tests {
 	(ascending: $asc:expr, descending: $desc:expr, unsorted: $unsorted:expr $(,)?) => {
@@ -288,14 +278,8 @@ macro_rules! delta_tests {
 	};
 }
 
-/// Round-trip an Option-wrapped column and assert the decoded side matches expectations.
-///
-/// Asserts:
-/// - The decoded column type is `ValueType::Option(expected_inner_type)`.
-/// - The decoded length matches `expected_defined.len()`.
-/// - For each row, `is_defined(i)` matches `expected_defined[i]`.
-/// - Defined rows round-trip to the same `Value` as the original.
-/// - Undefined rows decode to `Value::None { inner: expected_inner_type }`.
+/// Checks that undefined rows survive the round trip as `none` still carrying their inner type,
+/// not as a bare `none` or a defaulted value.
 pub fn assert_option_round_trip(col: FrameColumnData, expected_inner_type: ValueType, expected_defined: &[bool]) {
 	let frame = Frame::new(vec![FrameColumn {
 		name: "test".to_string(),
@@ -340,15 +324,11 @@ pub fn assert_option_round_trip(col: FrameColumnData, expected_inner_type: Value
 	}
 }
 
-/// Generate extensive option/none round-trip tests for a type.
-///
-/// The calling module must define:
-/// - `fn make(Vec<T>) -> FrameColumnData`
-/// - have `reifydb_value::value::value_type::ValueType` in scope via the `inner_type` argument
+/// The calling module must define `fn make(Vec<T>) -> FrameColumnData`; the inner `ValueType`
+/// arrives through the `inner_type` argument.
 #[macro_export]
 macro_rules! nones_tests {
 	(values: $values:expr, inner_type: $inner_type:expr $(,)?) => {
-		// Wraps `make($values)` in `FrameColumnData::Option` with the given bitvec.
 		macro_rules! __opt_col {
 			($defined:expr) => {
 				reifydb_value::value::frame::data::FrameColumnData::Option {
@@ -406,7 +386,6 @@ macro_rules! nones_tests {
 
 		#[test]
 		fn single_defined() {
-			// Build a 1-element column by truncating the base values via make().
 			let defined = vec![true];
 			let col = {
 				let mut v = $values;
@@ -457,7 +436,6 @@ macro_rules! nones_tests {
 	};
 }
 
-/// Generate standard delta-RLE-encoding tests.
 #[macro_export]
 macro_rules! delta_rle_tests {
 	(constant_stride: $cs:expr, descending_stride: $ds:expr $(,)?) => {

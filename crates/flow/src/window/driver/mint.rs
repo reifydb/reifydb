@@ -65,10 +65,9 @@ mod tests {
 
 	#[test]
 	fn the_arrival_counter_starts_at_zero_and_never_repeats_within_a_group() {
-		// The ordinal IS the coordinate for a count window, so a repeat aliases two
-		// rows onto one slot and a skip leaves a hole the sweep never reaches. The counter is
-		// read-then-increment, so the FIRST row must mint 0 - starting at 1 shifts every
-		// window boundary by one row for the life of the operator.
+		// The ordinal IS the coordinate for a count window, so a repeat aliases two rows onto one
+		// slot and a skip leaves a hole the sweep never reaches. The counter is read-then-increment,
+		// so starting at 1 would shift every window boundary by one row.
 		let mut meta = meta();
 		let mut mint = Mint::new(&mut meta);
 		let mut store = MockStore::default();
@@ -81,9 +80,8 @@ mod tests {
 
 	#[test]
 	fn each_group_counts_independently() {
-		// A count window holds the last N rows PER GROUP. One shared counter would make
-		// a group's window boundary depend on traffic in every other group, so a busy group
-		// would shove a quiet group's rows across a boundary they never crossed.
+		// A count window holds the last N rows per group. One shared counter would let a busy group
+		// shove a quiet group's rows across a boundary they never crossed.
 		let mut meta = meta();
 		let mut mint = Mint::new(&mut meta);
 		let mut store = MockStore::default();
@@ -97,9 +95,8 @@ mod tests {
 
 	#[test]
 	fn an_event_coordinate_is_minted_from_the_row_and_never_from_the_counter() {
-		// A time window's coordinate comes from the row's own instant, never from the
-		// arrival counter that sits one call away. The signatures enforce it: `event`
-		// cannot see the store and `ordinal` cannot see a row.
+		// A time window's coordinate comes from the row's own instant, never the arrival counter one
+		// call away. The signatures enforce it: `event` cannot see the store, `ordinal` cannot see a row.
 		let row = DateTime::from_millis(5_000);
 
 		assert_eq!(Mint::event(&row).at(), DateTime::from_millis(5_000));
@@ -107,10 +104,8 @@ mod tests {
 
 	#[test]
 	fn a_row_records_every_window_it_joined_and_never_the_same_one_twice() {
-		// Sliding windows overlap, so one row contributes to several windows and the
-		// retraction path has to find all of them. A duplicated id makes the retraction subtract
-		// the row's contribution twice from one window, which silently corrupts the aggregate
-		// in a direction no assertion downstream would attribute back to here.
+		// Sliding windows overlap, so one row joins several and retraction must find all of them. A
+		// duplicated id subtracts the row's contribution twice from one window.
 		let mut meta = meta();
 		let mut mint = Mint::new(&mut meta);
 		let mut store = MockStore::default();
@@ -124,9 +119,8 @@ mod tests {
 
 	#[test]
 	fn a_row_that_joined_no_window_reports_an_empty_membership() {
-		// Retraction runs for every removed row, including rows the gate refused. An unknown row
-		// must answer "no windows" rather than defaulting to some window, or a refused row would
-		// retract a contribution it never made.
+		// Retraction runs for every removed row, including rows the gate refused. Defaulting to some
+		// window would retract a contribution the row never made.
 		let mut meta = meta();
 		let mut mint = Mint::new(&mut meta);
 		let mut store = MockStore::default();
@@ -137,8 +131,7 @@ mod tests {
 	#[test]
 	fn membership_is_scoped_to_its_group() {
 		// Row numbers are unique per source, not per group, so two groups routinely see the same
-		// RowNumber. Sharing one membership list would retract a row from windows in a group it
-		// never entered.
+		// RowNumber. One shared list would retract a row from a group it never entered.
 		let mut meta = meta();
 		let mut mint = Mint::new(&mut meta);
 		let mut store = MockStore::default();

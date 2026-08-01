@@ -6,7 +6,6 @@ use std::{sync::Arc, time::Duration as StdDuration};
 
 use reifydb_value::value::duration::Duration;
 
-/// Invoke a reconnection lifecycle hook if one is configured.
 pub(crate) fn fire(callback: &Option<Arc<dyn Fn() + Send + Sync>>) {
 	if let Some(callback) = callback {
 		callback();

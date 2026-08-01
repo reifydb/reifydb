@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Test to demonstrate colored diff output and ensure goldenfile behavior
 use std::{fs, io::Write};
 
 use reifydb_testing::goldenfile::{self, Mode};
@@ -12,7 +11,6 @@ fn test_colored_diff_output() {
 	let test_dir = std::env::temp_dir().join(format!("goldenfile_test_{}", std::process::id()));
 	fs::create_dir_all(&test_dir).unwrap();
 
-	// First, create a golden file
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Update);
 		let mut file = mint.new_goldenfile("test.txt").unwrap();
@@ -23,7 +21,7 @@ fn test_colored_diff_output() {
 		writeln!(file, "Line 5: The end").unwrap();
 	}
 
-	// Now test with different content to trigger the diff
+	// Changed first, middle, last and an added line, so the diff has to report every shape.
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Compare);
 		let mut file = mint.new_goldenfile("test.txt").unwrap();
@@ -35,7 +33,6 @@ fn test_colored_diff_output() {
 		writeln!(file, "Line 6: Added a new line").unwrap();
 	}
 
-	// Clean up
 	let _ = fs::remove_dir_all(&test_dir);
 }
 
@@ -44,7 +41,6 @@ fn test_goldenfile_success() {
 	let test_dir = std::env::temp_dir().join(format!("goldenfile_success_{}", std::process::id()));
 	fs::create_dir_all(&test_dir).unwrap();
 
-	// Create and verify identical content
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Update);
 		let mut file = mint.new_goldenfile("success.txt").unwrap();
@@ -57,7 +53,6 @@ fn test_goldenfile_success() {
 		writeln!(file, "Matching content").unwrap();
 	}
 
-	// Clean up
 	let _ = fs::remove_dir_all(&test_dir);
 }
 
@@ -66,24 +61,21 @@ fn test_update_testfiles_env_var() {
 	let test_dir = std::env::temp_dir().join(format!("goldenfile_env_{}", std::process::id()));
 	fs::create_dir_all(&test_dir).unwrap();
 
-	// Test explicit update mode
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Update);
 		let mut file = mint.new_goldenfile("env_test.txt").unwrap();
 		writeln!(file, "Initial content").unwrap();
 	}
 
-	// Verify the file was created
 	assert!(test_dir.join("env_test.txt").exists());
 
-	// Now update with different content
+	// Update mode must overwrite an existing goldenfile, not append to it.
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Update);
 		let mut file = mint.new_goldenfile("env_test.txt").unwrap();
 		writeln!(file, "Updated content").unwrap();
 	}
 
-	// Verify the file was updated
 	let content = fs::read_to_string(test_dir.join("env_test.txt")).unwrap();
 	assert_eq!(content, "Updated content\n");
 	let _ = fs::remove_dir_all(&test_dir);
@@ -94,14 +86,12 @@ fn test_update_goldenfiles_env_var() {
 	let test_dir = std::env::temp_dir().join(format!("goldenfile_env2_{}", std::process::id()));
 	fs::create_dir_all(&test_dir).unwrap();
 
-	// Test explicit update mode (alternative test)
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Update);
 		let mut file = mint.new_goldenfile("env_test2.txt").unwrap();
 		writeln!(file, "Content via explicit mode").unwrap();
 	}
 
-	// Verify the file was created
 	assert!(test_dir.join("env_test2.txt").exists());
 	let content = fs::read_to_string(test_dir.join("env_test2.txt")).unwrap();
 	assert_eq!(content, "Content via explicit mode\n");
@@ -114,14 +104,12 @@ fn test_missing_golden_file() {
 	let test_dir = std::env::temp_dir().join(format!("goldenfile_missing_{}", std::process::id()));
 	fs::create_dir_all(&test_dir).unwrap();
 
-	// Try to verify against a non-existent golden file
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Compare);
 		let mut file = mint.new_goldenfile("missing.txt").unwrap();
 		writeln!(file, "This will fail").unwrap();
 	}
 
-	// Clean up
 	let _ = fs::remove_dir_all(&test_dir);
 }
 
@@ -130,16 +118,14 @@ fn test_new_goldenfile_alias() {
 	let test_dir = std::env::temp_dir().join(format!("goldenfile_alias_{}", std::process::id()));
 	fs::create_dir_all(&test_dir).unwrap();
 
-	// Test that new_golden_file is an alias for new_goldenfile
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Update);
 
-		// Use the alias method
+		// new_golden_file must stay a true alias of new_goldenfile, not a second code path.
 		let mut file = mint.new_golden_file("alias_test.txt").unwrap();
 		writeln!(file, "Testing alias").unwrap();
 	}
 
-	// Verify the file was created
 	assert!(test_dir.join("alias_test.txt").exists());
 	let _ = fs::remove_dir_all(&test_dir);
 }
@@ -148,14 +134,13 @@ fn test_new_goldenfile_alias() {
 fn test_nested_directories() {
 	let test_dir = std::env::temp_dir().join(format!("goldenfile_nested_{}", std::process::id()));
 
-	// Test creating golden files in nested directories
+	// The mint has to create intermediate directories; test_dir itself is never created here.
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Update);
 		let mut file = mint.new_goldenfile("deeply/nested/dir/file.txt").unwrap();
 		writeln!(file, "Nested file content").unwrap();
 	}
 
-	// Verify the nested file was created
 	assert!(test_dir.join("deeply/nested/dir/file.txt").exists());
 	let _ = fs::remove_dir_all(&test_dir);
 }
@@ -166,7 +151,8 @@ fn test_diff_shows_line_numbers() {
 	let test_dir = std::env::temp_dir().join(format!("goldenfile_linenum_{}", std::process::id()));
 	fs::create_dir_all(&test_dir).unwrap();
 
-	// Create a file with many lines
+	// Forty lines with a single change deep in the file, so the diff has to report a real line
+	// number rather than an offset into the changed hunk.
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Update);
 		let mut file = mint.new_goldenfile("lines.txt").unwrap();
@@ -175,7 +161,6 @@ fn test_diff_shows_line_numbers() {
 		}
 	}
 
-	// Change line 35
 	{
 		let mint = goldenfile::Mint::new_with_mode(&test_dir, Mode::Compare);
 		let mut file = mint.new_goldenfile("lines.txt").unwrap();
@@ -188,7 +173,6 @@ fn test_diff_shows_line_numbers() {
 		}
 	}
 
-	// Clean up
 	let _ = fs::remove_dir_all(&test_dir);
 }
 
@@ -211,7 +195,6 @@ fn test_empty_files() {
 		// Don't write anything - should pass
 	}
 
-	// Clean up
 	let _ = fs::remove_dir_all(&test_dir);
 }
 
@@ -235,7 +218,6 @@ fn test_empty_vs_content() {
 		writeln!(file, "Some content").unwrap();
 	}
 
-	// Clean up
 	let _ = fs::remove_dir_all(&test_dir);
 }
 
@@ -286,7 +268,6 @@ fn test_long_lines_truncation() {
 		writeln!(file, "{}", long_line).unwrap();
 	}
 
-	// Clean up
 	let _ = fs::remove_dir_all(&test_dir);
 }
 
@@ -386,6 +367,5 @@ fn test_binary_safety() {
 		file.write_all(b"\n").unwrap();
 	}
 
-	// Clean up
 	let _ = fs::remove_dir_all(&test_dir);
 }

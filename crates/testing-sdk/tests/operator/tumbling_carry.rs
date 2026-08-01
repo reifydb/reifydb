@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Differential chaos for the tumbling carry-forward driver (`TwapCarry`).
-//! The window output depends on the prior window's carried-forward close, so
-//! correctness hinges on the carry rotating exactly once per window-boundary
-//! crossing and surviving Updates/Removes inside the current window. The ts
-//! range spans several windows so the carry chains across boundaries.
+//! Differential chaos for the tumbling carry-forward driver. Output depends on the prior
+//! window's carried close, so the carry must rotate exactly once per boundary crossing and
+//! survive Updates and Removes inside the current window.
 
 use reifydb_sdk::operator::{FFIOperatorAdapter, windowed::tumbling_carry::TumblingCarryDriver};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
@@ -94,8 +92,8 @@ fn carry_handles_none_inputs() {
 
 #[test]
 fn carry_chains_across_windows() {
-	// With many timestamps spanning several windows and inserts only, at
-	// least one emitted window must carry a prior close (has_carry = true).
+	// A run where nothing ever carries would match the oracle trivially without proving the
+	// chain works.
 	let outcome = run(false, common::baseline(250, SupportedOps::insert_only()), 42, None);
 	outcome.assert_matches();
 	let carried = outcome

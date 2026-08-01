@@ -198,7 +198,8 @@ where
 	T: Archive,
 	T::Archived: Portable,
 {
-	// SAFETY: forwarded contract; see the function-level Safety section.
+	// SAFETY: the caller guarantees `bytes` holds a validated archive of exactly `T`, so the
+	// body is a well-formed `T::Archived` with valid relative pointers.
 	unsafe { access_unchecked::<T::Archived>(bytes.body()) }
 }
 
@@ -211,7 +212,8 @@ where
 	T: Archive,
 	T::Archived: Portable,
 {
-	// SAFETY: forwarded contract; see the function-level Safety section.
+	// SAFETY: the caller guarantees `bytes` holds a validated archive of exactly `T`, and the
+	// exclusive borrow makes the sealed mutable access non-aliasing.
 	unsafe { access_unchecked_mut::<T::Archived>(bytes.body_mut()) }
 }
 
@@ -270,12 +272,14 @@ macro_rules! leaf_operator_state {
 			}
 
 			unsafe fn archived_trusted(bytes: &StateBytes) -> &Self::Archived {
-				// SAFETY: forwarded contract; see OperatorState::archived_trusted.
+				// SAFETY: the caller of archived_trusted guarantees `bytes` holds a
+				// validated archive of exactly `Self`, which is what the callee needs.
 				unsafe { access_archive_trusted::<Self>(bytes) }
 			}
 
 			unsafe fn archived_seal_trusted(bytes: &mut StateBytes) -> Seal<'_, Self::Archived> {
-				// SAFETY: forwarded contract; see OperatorState::archived_seal_trusted.
+				// SAFETY: the caller of archived_seal_trusted guarantees `bytes` holds a
+				// validated archive of exactly `Self`, which is what the callee needs.
 				unsafe { access_archive_seal_trusted::<Self>(bytes) }
 			}
 
@@ -309,12 +313,14 @@ where
 	}
 
 	unsafe fn archived_trusted(bytes: &StateBytes) -> &Self::Archived {
-		// SAFETY: forwarded contract; see OperatorState::archived_trusted.
+		// SAFETY: the caller of archived_trusted guarantees `bytes` holds a validated archive
+		// of exactly `Self`, which is what the callee needs.
 		unsafe { access_archive_trusted::<Self>(bytes) }
 	}
 
 	unsafe fn archived_seal_trusted(bytes: &mut StateBytes) -> Seal<'_, Self::Archived> {
-		// SAFETY: forwarded contract; see OperatorState::archived_seal_trusted.
+		// SAFETY: the caller of archived_seal_trusted guarantees `bytes` holds a validated
+		// archive of exactly `Self`, which is what the callee needs.
 		unsafe { access_archive_seal_trusted::<Self>(bytes) }
 	}
 
@@ -363,9 +369,8 @@ mod tests {
 
 	#[test]
 	fn test_encode_access_materialize_round_trip() {
-		// The full path a state value takes: encode at flush, validate
-		// once at the trust boundary, read archived without decode,
-		// materialize on promotion. Every step must be lossless.
+		// Encode, validate once at the trust boundary, read archived, materialize; every step
+		// must be lossless.
 		let value = probe();
 		let bytes = encode_archive(&value, at(7)).unwrap();
 
@@ -386,10 +391,8 @@ mod tests {
 
 	#[test]
 	fn test_refresh_updated_at_preserves_created_at_and_body() {
-		// The seal-flush path stamps a fresh updated_at on bytes it writes
-		// verbatim. set_timestamps writes BOTH header timestamps, so
-		// refresh_updated_at must re-read created_at first; clobbering it
-		// would corrupt TTL semantics for sealed entries.
+		// set_timestamps writes both header timestamps, so refresh must re-read created_at;
+		// clobbering it would corrupt TTL semantics for sealed entries.
 		let value = probe();
 		let mut bytes = encode_archive(&value, at(7)).unwrap();
 		assert_eq!(bytes.row().created_at(), at(7));
@@ -403,9 +406,8 @@ mod tests {
 
 	#[test]
 	fn test_body_mut_windows_the_same_bytes_as_body() {
-		// body_mut is the seal path's write window; it must expose exactly
-		// the blob body (offset and length) that body() reads, or sealed
-		// writes would land outside the archive.
+		// body_mut is the seal path's write window; if its offset or length differed from
+		// body(), sealed writes would land outside the archive.
 		let value = probe();
 		let mut bytes = encode_archive(&value, DateTime::EPOCH).unwrap();
 		let body = bytes.body().to_vec();
@@ -415,13 +417,9 @@ mod tests {
 
 	#[test]
 	fn test_archived_access_is_alignment_free() {
-		// The archive body sits at an arbitrary byte offset inside plain
-		// Vec<u8> row buffers on every tier (read buffer, persistent store,
-		// FFI copies), so the soundness of archived access rests entirely on
-		// rkyv's "unaligned" feature. The const asserts fail to compile if a
-		// future rkyv bump drops the feature (archived primitives would regain
-		// alignment > 1); the loop pins that validated access and
-		// materialization round-trip from every misaligned offset.
+		// The archive body sits at an arbitrary byte offset inside plain Vec<u8> row buffers,
+		// so soundness rests entirely on rkyv's "unaligned" feature. The const asserts stop
+		// compiling if an rkyv bump drops it and archived primitives regain alignment > 1.
 		const _: () = assert!(align_of::<ArchivedU64>() == 1);
 		const _: () = assert!(align_of::<ArchivedI64>() == 1);
 		const _: () = assert!(align_of::<ArchivedF64>() == 1);
@@ -444,9 +442,8 @@ mod tests {
 
 	#[test]
 	fn test_row_round_trip_preserves_timestamps() {
-		// StateBytes must survive the into_row/from_row boundary it
-		// crosses on every store write and read, keeping the row
-		// header timestamps that TTL semantics depend on.
+		// The into_row/from_row boundary is crossed on every store write and read, and TTL
+		// semantics depend on the row header timestamps surviving it.
 		let bytes = encode_archive(&probe(), at(1234)).unwrap();
 		let row = bytes.clone().into_row();
 		assert_eq!(row.created_at(), at(1234));
@@ -459,8 +456,7 @@ mod tests {
 
 	#[test]
 	fn test_from_row_rejects_foreign_shape() {
-		// A row written under any other shape must be rejected with
-		// the fingerprint diagnostic, not misread as state bytes.
+		// A foreign shape must be rejected by fingerprint, not misread as state bytes.
 		let foreign = RowShape::testing(&[ValueType::Int8]).allocate();
 		let err = StateBytes::from_row(foreign).unwrap_err();
 		assert!(matches!(err, StateError::UnexpectedObject { .. }));
@@ -468,8 +464,8 @@ mod tests {
 
 	#[test]
 	fn test_from_row_rejects_unknown_format() {
-		// A zeroed format byte (how a legacy postcard writer would
-		// leave it) and a future format byte must both fail loudly.
+		// A zeroed format byte (what a legacy writer leaves) and a future one must both fail
+		// loudly rather than be read as the current format.
 		let shape = operator_state_shape();
 		let row = shape.allocate();
 		let err = StateBytes::from_row(row).unwrap_err();
@@ -483,8 +479,7 @@ mod tests {
 
 	#[test]
 	fn test_truncated_body_fails_validation() {
-		// bytecheck must reject a corrupted body as an error rather
-		// than panic; this is the disk-corruption trust boundary.
+		// This is the disk-corruption trust boundary: bytecheck must error, not panic.
 		let bytes = encode_archive(&probe(), DateTime::EPOCH).unwrap();
 		let body = bytes.body();
 		let truncated = StateBytes::from_archive(&body[..body.len() / 2], DateTime::EPOCH);

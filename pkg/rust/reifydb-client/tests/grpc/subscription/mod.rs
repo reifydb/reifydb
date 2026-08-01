@@ -73,11 +73,9 @@ pub fn find_column<'a>(frame: &'a Frame, name: &str) -> Option<&'a FrameColumn> 
 	frame.columns.iter().find(|c| c.name == name)
 }
 
-/// Test harness for subscription tests that abstracts away boilerplate
 pub struct SubscriptionTestHarness;
 
 impl SubscriptionTestHarness {
-	/// Run a subscription test with automatic setup and cleanup
 	pub fn run<F, Fut>(test_fn: F)
 	where
 		F: Fn(TestContext) -> Fut + Send + Sync,
@@ -101,7 +99,6 @@ impl SubscriptionTestHarness {
 	}
 }
 
-/// Context provided to each test with convenience methods
 pub struct TestContext {
 	pub client: GrpcClient,
 	table_prefix: String,
@@ -115,14 +112,12 @@ impl TestContext {
 		}
 	}
 
-	/// Execute raw RQL command
 	pub async fn rql(&self, query: &str) -> Result<(), Box<dyn Error>> {
 		self.client.command(query, None).await?;
 		Ok(())
 	}
 
-	/// Create a table with given columns using RQL directly
-	/// Returns the full table name (with prefix for uniqueness)
+	/// Returns the prefixed table name, which is what the other helpers expect.
 	pub async fn create_table(&self, name: &str, columns: &str) -> Result<String, Box<dyn Error>> {
 		let full_name = format!("{}_{}", self.table_prefix, name);
 		let _ = self.client.admin("create namespace test", None).await;
@@ -130,7 +125,6 @@ impl TestContext {
 		Ok(full_name)
 	}
 
-	/// Subscribe to a table, returns a GrpcSubscription
 	pub async fn subscribe(
 		&self,
 		table: &str,

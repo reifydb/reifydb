@@ -1,36 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Operator state read semantics through the multi store.
-//!
-//! History, because this file used to assert the exact opposite and the reversal was
-//! deliberate. Production flow workloads probe operator state keys that do not exist yet
-//! (new window buckets, missing join partners) on nearly every apply. Absence was once
-//! provable only by the persistent SQLite tier, which put ~1,000 synchronous SQLite reads
-//! per second on the serialized flow actor (jupiter incident, 2026-07-04). The fix at the
-//! time was in this layer: the first persistent fall-through for an operator node bulk
-//! loaded the node's whole page into the read buffer and marked it range-complete, giving
-//! the read buffer absence authority for that node.
-//!
-//! That fix is gone. It cached decoded-adjacent bytes a second time (the operator state
-//! cache above it held the same data), it bounded itself by a hard-coded page cap rather
-//! than by a real byte budget, and its bytes were invisible to the memory accounting this
-//! redesign exists to make total. Operator state residency now lives in exactly one place:
-//! the byte-bounded authority cache in `reifydb_core::state::cache::StateCache`, owned by
-//! sub-flow and charged against `OperatorStateBudget`. The store is no longer a cache for
-//! operator state; it is the store of record beneath that cache.
-//!
-//! So the jupiter property (steady-state operator applies do not hit SQLite) has not been
-//! abandoned, it has moved up a layer and is tested there. What this file pins now is the
-//! contract the layer below must honour for that to be safe:
-//!
-//!   1. operator reads never populate the read tier (no second copy, no unaccounted bytes)
-//!   2. the store never claims absence from memory, so a cold read is always truthful
-//!   3. MVCC, tombstone, and drop/purge semantics for operator keys are unchanged
-//!
-//! Several tests write or delete rows in the SQLite tier directly, bypassing the store, to
-//! prove which tier answered a read. That bypass violates the tier mirror on purpose; each
-//! such test states what it proves.
+//! Operator state read semantics through the multi store. Residency lives solely in the byte-bounded
+//! authority cache above this layer, so the store must never populate the read tier with operator bytes
+//! and never claim absence from memory. Some tests write SQLite directly to prove which tier answered.
 
 use std::collections::HashMap;
 
@@ -88,10 +61,8 @@ fn range_keys(store: &StandardMultiStore, range: EncodedKeyRange, read: u64) -> 
 	.collect()
 }
 
-/// Entries resident in the read buffer, summed across every shard and domain. These tests
-/// touch operator keys only, so any nonzero count means operator bytes leaked into the
-/// read tier.
 fn read_tier_entries(store: &StandardMultiStore) -> usize {
+	// These tests touch operator keys only, so any nonzero count means operator bytes leaked in here.
 	let shards = store.read_buffer_shard_metrics();
 	assert!(
 		!shards.is_empty(),
@@ -103,11 +74,8 @@ fn read_tier_entries(store: &StandardMultiStore) -> usize {
 
 #[test]
 fn operator_reads_never_populate_the_read_tier() {
-	// The double-cache this redesign removes. Every path that could back-populate the read
-	// buffer is exercised (point read through to persistent, commit write-through, batched
-	// get_many, range scan) and the read tier must stay empty of operator entries
-	// throughout. If any of these regains a back-populate, operator bytes get cached twice
-	// and the second copy is invisible to OperatorStateBudget.
+	// Every path that could back-populate the read buffer is exercised; a regression here caches
+	// operator bytes twice, and the second copy is invisible to OperatorStateBudget.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let k1 = state_key(7, "a");
 	let k2 = state_key(7, "b");
@@ -143,10 +111,8 @@ fn operator_reads_never_populate_the_read_tier() {
 
 #[test]
 fn source_reads_still_populate_the_read_tier() {
-	// Negative control for the test above. Without this, a read tier that had been broken
-	// outright (or a metric that never moves) would let every zero-entry assertion pass
-	// vacuously. Source rows must still be cached on a persistent fall-through: the
-	// excision was surgical to the operator domain, not a removal of read caching.
+	// Negative control: without a path that still populates the read tier, a broken tier or a dead
+	// entry metric would let every zero-entry assertion above pass vacuously.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let storage = StorageId::Table(TableId(1));
 	let row = RowKey::encoded(storage, 1);
@@ -167,10 +133,8 @@ fn source_reads_still_populate_the_read_tier() {
 
 #[test]
 fn operator_absence_is_never_claimed_from_memory() {
-	// The inverse of the deleted completeness contract. The store must have no absence
-	// authority for operator state: a row smuggled into SQLite behind its back must become
-	// visible on the very next read. This is what makes it safe for the authority cache
-	// above to treat a store miss as truth rather than as a possibly stale cache answer.
+	// The store holds no absence authority for operator state, which is what makes it safe for the
+	// authority cache above to treat a store miss as truth rather than a possibly stale answer.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let k1 = state_key(7, "a");
 	persistent_only_set(&store, &k1, 5, "v5-a");
@@ -190,8 +154,7 @@ fn operator_absence_is_never_claimed_from_memory() {
 
 #[test]
 fn operator_range_scan_reads_through_to_persistence() {
-	// The inverse of the deleted serve-from-the-complete-page contract. Bypass-deleting a
-	// row from SQLite must make it disappear from the scan, proving the scan consults
+	// Bypass-deleting a row from SQLite must make it vanish from the scan, proving the scan consults
 	// persistence every time rather than replaying a memory-resident page.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let ka = internal_key(9, "exp-a");
@@ -254,11 +217,8 @@ fn commit_tombstone_shadows_only_readers_above_it() {
 
 #[test]
 fn reader_pinned_between_versions_sees_the_older_row() {
-	// The production interleaving: a deferred dispatch pinned at v10 reads a key the tick
-	// just rewrote at v20. The read must resolve the v5 row that was visible at v10, not
-	// the newer commit and not nothing. Previously the read buffer's previous-version slot
-	// answered this; now it is the commit tier missing on version and the persistent tier
-	// answering, which must produce the identical result.
+	// A deferred dispatch pinned at v10 reads a key the tick just rewrote at v20; it must resolve the
+	// row visible at v10, not the newer commit and not nothing.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let k = state_key(7, "hot");
 	persistent_only_set(&store, &k, 5, "old");
@@ -284,9 +244,7 @@ fn reader_pinned_between_versions_sees_the_older_row() {
 
 #[test]
 fn range_scan_pinned_below_a_fresh_commit_yields_the_older_visible_row() {
-	// The scan counterpart of the point read above. A scan pinned below a fresh commit
-	// must still yield the key, resolved at the older visible version. Dropping the key
-	// from the scan because only a newer version is in hand would silently shrink join
+	// Dropping a key from a scan because only a newer version is in hand would silently shrink join
 	// probe and window expiry scans.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let ka = internal_key(9, "exp-a");
@@ -319,11 +277,9 @@ fn persistent_row(store: &StandardMultiStore, k: &EncodedKey) -> Option<(u64, Ve
 
 #[test]
 fn operator_removal_leaves_the_persisted_row_for_the_reaper_not_the_commit() {
-	// The commit writes a tombstone and stops; it does not reach into SQLite. The prior version
-	// legitimately stays on disk as history below the tombstone, and collecting it is the tombstone
-	// reaper's job. This matters most on operator state, which is the highest-churn removal path in
-	// the system (join left TTL, window expiry): if the commit ever started deleting synchronously,
-	// eviction throughput would collapse into the write connection.
+	// The commit writes a tombstone and stops; collecting the prior on-disk version is the reaper's
+	// job. A synchronous delete here would collapse operator eviction throughput into the write
+	// connection, and operator state is the highest-churn removal path in the system.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let k = state_key(7, "reaped");
 	persistent_only_set(&store, &k, 5, "v5");
@@ -340,11 +296,8 @@ fn operator_removal_leaves_the_persisted_row_for_the_reaper_not_the_commit() {
 
 #[test]
 fn operator_removal_then_recreate_resolves_per_read_version() {
-	// The production interleaving the retired purge-race test was guarding, minus the purge: a key
-	// removed at v8 and rewritten at v10 must give a reader pinned between the two the deletion, and
-	// a reader above the recreate the new value. The retired version could only assert this while a
-	// RAM mask and a deferred purge were both in flight; now it is plain MVCC resolution and the
-	// recreate is in no danger from a background sweep bounded by the wrong version.
+	// A key removed at v8 and rewritten at v10 must give a reader pinned between the two the deletion
+	// and a reader above the recreate the new value - plain MVCC resolution, no purge involved.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let k = state_key(7, "recreated");
 	persistent_only_set(&store, &k, 5, "old");

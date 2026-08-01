@@ -8,10 +8,7 @@ use crate::{
 	workload::{SetupQuery, Workload},
 };
 
-/// Ping workload - baseline latency test
-///
-/// Executes a minimal query that returns a single row.
-/// This measures the minimum latency for a round-trip.
+/// Minimal single-row query, so the measurement is round-trip latency and nothing else.
 pub struct PingWorkload;
 
 impl PingWorkload {

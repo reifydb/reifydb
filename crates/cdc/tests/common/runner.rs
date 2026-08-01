@@ -20,16 +20,11 @@ use reifydb_value::{
 	value::{duration::Duration, identity::IdentityId},
 };
 
-/// Runs commands from `tests/scripts/cdc/*` against a `StandardEngine` +
-/// `CdcStore`. Buffers row mutations into a transaction and commits on the
-/// `commit` command. Reads from the CDC store after a short bounded poll.
+/// Runs `tests/scripts/cdc/*` against a `StandardEngine` and `CdcStore`.
 ///
-/// Version translation: scripts use 1-based version annotations starting
-/// from the script writer's chosen baseline (e.g. 1 or 5). The engine
-/// assigns its own sequential commit versions (starting from 2; version 1
-/// is consumed by bootstrap and produces no CDC). The runner observes the
-/// first commit and records `version_offset = script_v - engine_v` so all
-/// subsequent queries translate consistently.
+/// Scripts annotate versions from their own baseline while the engine assigns its own (starting at 2;
+/// version 1 is bootstrap and produces no CDC), so the first commit fixes a `version_offset` that
+/// every later query translates through.
 pub struct Runner {
 	engine: StandardEngine,
 	cdc_store: CdcStore,
@@ -85,7 +80,6 @@ impl Runner {
 
 	fn to_engine_version(&self, script_v: u64) -> CommitVersion {
 		let off = self.version_offset.unwrap_or(0);
-		// engine = script - offset
 		let engine = (script_v as i64) - off;
 		CommitVersion(engine.max(0) as u64)
 	}
@@ -148,7 +142,6 @@ impl TsRunner for Runner {
 					None => txn.remove(&key)?,
 				}
 			}
-			// commit
 			"commit" => {
 				let txn = self.active_txn.take().ok_or("no active transaction")?;
 				let mut txn = txn;
@@ -271,7 +264,6 @@ impl TsRunner for Runner {
 			"cdc_range_unbounded" => {
 				self.write_range(&mut output, Bound::Unbounded, Bound::Unbounded)?;
 			}
-			// cdc_scan
 			"cdc_scan" => {
 				self.write_range(&mut output, Bound::Unbounded, Bound::Unbounded)?;
 			}

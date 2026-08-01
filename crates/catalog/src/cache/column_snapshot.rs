@@ -269,8 +269,7 @@ mod tests {
 
 	#[test]
 	fn historical_query_sees_pre_delete_value() {
-		// MultiVersionContainer keeps prior versions readable. Inserting at v=1
-		// then deleting at v=2 means a query at v=1 should still see the row.
+		// A delete is version-scoped: readers pinned before it must still see the row.
 		let cat = CatalogCache::new();
 		cat.set_column_snapshot(ColumnSnapshotId(1), CommitVersion(1), Some(series_snap(1, 7, 100, 1)));
 		cat.set_column_snapshot(ColumnSnapshotId(1), CommitVersion(2), None);
@@ -284,10 +283,8 @@ mod tests {
 		let cat = CatalogCache::new();
 		cat.set_column_snapshot(ColumnSnapshotId(1), CommitVersion(10), Some(series_snap(1, 7, 0, 1)));
 
-		// Snapshot was inserted at v=10; querying at v=5 must return None.
 		assert!(cat.find_column_snapshot_at(ColumnSnapshotId(1), CommitVersion(5)).is_none());
 		assert!(cat.find_column_snapshot_at(ColumnSnapshotId(1), CommitVersion(10)).is_some());
-		// And later versions inherit the v=10 value.
 		assert!(cat.find_column_snapshot_at(ColumnSnapshotId(1), CommitVersion(20)).is_some());
 	}
 
@@ -318,11 +315,9 @@ mod tests {
 
 	#[test]
 	fn find_returns_latest_matching_version() {
-		// `find_column_snapshot` (no `_at`) should return the latest stored
-		// representation regardless of version.
+		// The unversioned accessor must resolve to the newest version, not the first.
 		let cat = CatalogCache::new();
 		let mut v1 = series_snap(1, 7, 100, 1);
-		// Mutate row_count between versions to prove latest wins.
 		v1.row_count = 10;
 		let mut v2 = series_snap(1, 7, 100, 1);
 		v2.row_count = 99;

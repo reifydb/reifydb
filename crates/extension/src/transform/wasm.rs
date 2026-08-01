@@ -26,8 +26,7 @@ impl WasmTransform {
 	}
 }
 
-// SAFETY: WasmTransform only holds inert data (name + bytes).
-
+// SAFETY: holds only a name and module bytes; each call instantiates the module fresh, sharing nothing.
 unsafe impl Send for WasmTransform {}
 unsafe impl Sync for WasmTransform {}
 

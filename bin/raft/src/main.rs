@@ -1,14 +1,10 @@
 // Copyright (c) 2026 ReifyDB
 // SPDX-License-Identifier: Apache-2.0
 
-//! Per-node Raft REPL with a full ReifyDB engine.
+//! Per-node Raft REPL with a full ReifyDB engine. One process per node, so a 3-node cluster is 3 terminals;
+//! RQL run on the leader replicates to every follower.
 //!
-//! Each process is one node. Run 3 terminals for a 3-node cluster.
-//! SQL/RQL on the leader replicates to all followers via Raft.
-//!
-//! Usage:
-//!   cargo run -p raft -- --node-id 1 --bind 127.0.0.1:9100 \
-//!     --peer 2=127.0.0.1:9200 --peer 3=127.0.0.1:9300
+//!   cargo run -p raft -- --node-id 1 --bind 127.0.0.1:9100 --peer 2=127.0.0.1:9200 --peer 3=127.0.0.1:9300
 
 use std::{
 	env,

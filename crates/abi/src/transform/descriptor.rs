@@ -17,7 +17,6 @@ pub struct TransformDescriptorFFI {
 	pub vtable: TransformVTableFFI,
 }
 
-// SAFETY: TransformDescriptorFFI contains pointers to static strings and functions
-
+// SAFETY: every pointer in the descriptor addresses immutable module-static data (strings, symbols).
 unsafe impl Send for TransformDescriptorFFI {}
 unsafe impl Sync for TransformDescriptorFFI {}

@@ -239,7 +239,6 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		// Should be parsed as identifier, not function call
 		assert!(result[0].first_unchecked().as_identifier().text() == "identifier");
 	}
 
@@ -265,7 +264,6 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		// Should be parsed as infix expression, not function call
 		let infix = result[0].first_unchecked().as_infix();
 		assert_eq!(infix.left.as_identifier().text(), "namespace");
 		assert_eq!(infix.right.as_identifier().text(), "identifier");

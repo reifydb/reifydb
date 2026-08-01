@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Flow execution engine. Registers compiled flow definitions, evaluates each flow's operator graph against
-//! incoming change deltas, and writes the resulting outputs back through the catalog. Process drives the per-tick
-//! work; eval is where individual operators run; register is the wiring step that turns a flow definition into
-//! an executable graph.
+//! Flow execution engine: registers compiled flow definitions and evaluates each flow's operator
+//! graph against incoming change deltas, writing the outputs back through the catalog.
 
 pub mod cache;
 pub mod eval;
@@ -444,11 +442,8 @@ mod tests {
 
 	#[test]
 	fn lease_charge_does_not_add_the_dirty_subset_on_top_of_the_total() {
-		// Producers fill both fields from one cache: memory comes from
-		// approximate_memory (clean + dirty) and dirty_memory is the dirty
-		// subset of that same number. Adding them charged clean + 2 * dirty,
-		// which inflates leased_bytes and can trip a spurious overage exactly
-		// when a batch of pending writes is largest.
+		// dirty_memory is a subset of memory, not an addition to it, so summing the two charges
+		// clean + 2 * dirty and trips a spurious overage exactly when pending writes peak.
 		let sample = OperatorSample::with_memory(memory(10, 4096)).with_dirty_memory(memory(4, 1024));
 
 		let report = lease_report_from_sample(&sample);
@@ -466,8 +461,7 @@ mod tests {
 
 	#[test]
 	fn lease_charge_keeps_row_number_cache_separate_from_state() {
-		// The two are distinct budget lines; folding one into the other would
-		// hide which of them is actually growing.
+		// Distinct budget lines: folding one into the other hides which is actually growing.
 		let sample = OperatorSample::with_memory(memory(10, 4096)).with_row_number_cache(memory(2, 512));
 
 		let report = lease_report_from_sample(&sample);
@@ -478,9 +472,8 @@ mod tests {
 
 	#[test]
 	fn lease_demand_adds_a_quarter_headroom_over_reported_usage() {
-		// The grant tracks demand with 25% headroom so a
-		// steadily growing operator is not clamped by its own lease and
-		// forced into a resize on every single sampling tick.
+		// Headroom keeps a steadily growing operator from being clamped by its own lease and
+		// forced into a resize on every sampling tick.
 		let report = lease_report_from_sample(&OperatorSample::with_memory(memory(10, 4096)));
 
 		assert_eq!(lease_demand(&report), ByteSize::from_bytes(5120));
@@ -488,9 +481,8 @@ mod tests {
 
 	#[test]
 	fn lease_demand_counts_row_numbers_alongside_state() {
-		// Both budget lines are guest memory; sizing the grant from
-		// state alone would under-lease exactly the operators with
-		// large row-number caches.
+		// Both lines are guest memory, so sizing the grant from state alone under-leases exactly
+		// the operators with large row-number caches.
 		let report = lease_report_from_sample(
 			&OperatorSample::with_memory(memory(10, 4096)).with_row_number_cache(memory(2, 4096)),
 		);

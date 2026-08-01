@@ -121,9 +121,8 @@ mod tests {
 
 	#[test]
 	fn due_serves_only_entries_at_or_below_the_threshold_newest_first() {
-		// The index key encodes the expiry inverted (encode_u64 = !v big-endian), so
-		// byte order is descending by expiry: due(threshold) must yield exactly the
-		// entries with expiry <= threshold, newest first - the order the engines'
+		// The index key encodes the expiry inverted, so byte order is descending by expiry. due()
+		// must yield the entries with expiry <= threshold newest first, which is the order the
 		// expire_batch cap relies on to defer the oldest backlog.
 		let mut store = MockStore::default();
 		let mut index = ExpiryIndex::<Entry>::new();
@@ -146,9 +145,8 @@ mod tests {
 
 	#[test]
 	fn hydration_rebuilds_the_mirror_from_persisted_entries() {
-		// A restarted engine starts with an empty mirror; the first due() must see
-		// entries persisted by the previous incarnation, or windows would silently
-		// never expire after a restart.
+		// A restarted engine starts with an empty mirror; the first due() must see entries the
+		// previous incarnation persisted, or windows silently never expire after a restart.
 		let mut store = MockStore::default();
 		let mut first = ExpiryIndex::<Entry>::new();
 		first.set(
@@ -173,9 +171,8 @@ mod tests {
 
 	#[test]
 	fn mutations_before_hydration_reach_the_store_and_survive_hydration() {
-		// set/remove before the first due() write through to the store without a
-		// mirror; hydration must then observe the net result, not a stale or doubled
-		// view.
+		// set/remove before the first due() write through to the store without a mirror; hydration
+		// must then observe the net result, not a stale or doubled view.
 		let mut store = MockStore::default();
 		let mut index = ExpiryIndex::<Entry>::new();
 		index.set(

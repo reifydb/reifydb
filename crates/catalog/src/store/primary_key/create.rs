@@ -163,7 +163,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
-		// Create columns for the table
 		let col1 = CatalogStore::create_column(
 			&mut txn,
 			table.id,
@@ -198,7 +197,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Create primary key
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
@@ -208,10 +206,8 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Verify the primary key was created
 		assert_eq!(primary_key_id, PrimaryKeyId(16385));
 
-		// Find and verify the primary key
 		let found_pk = CatalogStore::find_primary_key(&mut Transaction::Admin(&mut txn), table.id)
 			.unwrap()
 			.expect("Primary key should exist");
@@ -229,7 +225,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
-		// Create a view
 		let view = CatalogStore::create_deferred_view(
 			&mut txn,
 			ViewToCreate {
@@ -255,11 +250,9 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Get column IDs for the view
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
 		assert_eq!(columns.len(), 2);
 
-		// Create primary key on first column only
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
@@ -269,10 +262,8 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Verify the primary key was created
 		assert_eq!(primary_key_id, PrimaryKeyId(16385));
 
-		// Find and verify the primary key
 		let found_pk = CatalogStore::find_primary_key(&mut Transaction::Admin(&mut txn), view.id())
 			.unwrap()
 			.expect("Primary key should exist");
@@ -288,7 +279,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
-		// Create multiple columns
 		let mut column_ids = Vec::new();
 		for i in 0..3 {
 			let col = CatalogStore::create_column(
@@ -310,7 +300,6 @@ pub mod tests {
 			column_ids.push(col.id);
 		}
 
-		// Create composite primary key
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
@@ -320,7 +309,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Find and verify the primary key
 		let found_pk = CatalogStore::find_primary_key(&mut Transaction::Admin(&mut txn), table.id)
 			.unwrap()
 			.expect("Primary key should exist");
@@ -338,11 +326,9 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
-		// Initially, table does not have primary key
 		let initial_pk = CatalogStore::find_primary_key(&mut Transaction::Admin(&mut txn), table.id).unwrap();
 		assert!(initial_pk.is_none());
 
-		// Create a column
 		let col = CatalogStore::create_column(
 			&mut txn,
 			table.id,
@@ -360,7 +346,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Create primary key
 		let primary_key_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
@@ -370,7 +355,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Now table should have the primary key
 		let updated_pk = CatalogStore::find_primary_key(&mut Transaction::Admin(&mut txn), table.id)
 			.unwrap()
 			.expect("Primary key should exist");
@@ -380,11 +364,10 @@ pub mod tests {
 
 	#[test]
 	fn test_create_primary_key_on_nonexistent_table() {
+		// A missing table lists no columns, so this fails column validation (CA_021)
+		// rather than reporting the missing table.
 		let mut txn = create_test_admin_transaction();
 
-		// Try to create primary key on non-existent table
-		// list_table_columns will return empty list for non-existent
-		// table, so the column validation will fail
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
@@ -395,18 +378,15 @@ pub mod tests {
 
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		// Fails with CA_021 because column 1 won't be in the empty
-		// column list
 		assert_eq!(err.code, "CA_021");
 	}
 
 	#[test]
 	fn test_create_primary_key_on_nonexistent_view() {
+		// A missing view lists no columns, so this fails column validation (CA_021)
+		// rather than reporting the missing view.
 		let mut txn = create_test_admin_transaction();
 
-		// Try to create primary key on non-existent view
-		// list_table_columns will return empty list for non-existent
-		// view, so the column validation will fail
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
@@ -417,8 +397,6 @@ pub mod tests {
 
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		// Fails with CA_021 because column 1 won't be in the empty
-		// column list
 		assert_eq!(err.code, "CA_021");
 	}
 
@@ -427,7 +405,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
-		// Try to create primary key with no columns - should fail
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
@@ -446,7 +423,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let table = ensure_test_table(&mut txn);
 
-		// Try to create primary key with non-existent column ID
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
@@ -462,10 +438,11 @@ pub mod tests {
 
 	#[test]
 	fn test_create_primary_key_with_column_from_different_table() {
+		// Column ids are globally unique, so membership in the target object must be
+		// checked or a primary key could name a column of some other table.
 		let mut txn = create_test_admin_transaction();
 		let table1 = ensure_test_table(&mut txn);
 
-		// Create a column for table1
 		let _col1 = CatalogStore::create_column(
 			&mut txn,
 			table1.id,
@@ -483,7 +460,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Create another table
 		let namespace =
 			CatalogStore::get_namespace(&mut Transaction::Admin(&mut txn), table1.namespace).unwrap();
 		let table2 = CatalogStore::create_table(
@@ -499,7 +475,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Create a column for table2
 		let col2 = CatalogStore::create_column(
 			&mut txn,
 			table2.id,
@@ -517,9 +492,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Try to create primary key for table1 using column from table2
-		// This must fail because we validate columns belong to the
-		// specific table
 		let result = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
@@ -528,7 +500,6 @@ pub mod tests {
 			},
 		);
 
-		// Should fail with CA_021 because col2 doesn't belong to table1
 		assert!(result.is_err());
 		let err = result.unwrap_err();
 		assert_eq!(err.code, "CA_021");

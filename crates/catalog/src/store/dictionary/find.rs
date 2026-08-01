@@ -169,7 +169,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let namespace1 = ensure_test_namespace(&mut txn);
 
-		// Create namespace2
 		let namespace2 = CatalogStore::create_namespace(
 			&mut txn,
 			NamespaceToCreate {
@@ -183,7 +182,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Create dictionary in namespace1
 		let to_create = DictionaryToCreate {
 			namespace: namespace1.id(),
 			name: Fragment::internal("shared_name"),
@@ -193,7 +191,6 @@ pub mod tests {
 
 		CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 
-		// Try to find in namespace2 - should not exist
 		let result = CatalogStore::find_dictionary_by_name(
 			&mut Transaction::Admin(&mut txn),
 			namespace2.id(),
@@ -203,7 +200,6 @@ pub mod tests {
 
 		assert!(result.is_none());
 
-		// Find in namespace1 - should exist
 		let found = CatalogStore::find_dictionary_by_name(
 			&mut Transaction::Admin(&mut txn),
 			namespace1.id(),

@@ -39,6 +39,8 @@ impl Arena {
 		}
 		let ptr = self.alloc(bytes.len());
 		if !ptr.is_null() {
+			// SAFETY: alloc returned a non-null region of exactly bytes.len() writable bytes owned by
+			// this arena, which cannot overlap the caller's slice.
 			unsafe {
 				copy_nonoverlapping(bytes.as_ptr(), ptr, bytes.len());
 			}
@@ -89,7 +91,6 @@ pub mod tests {
 		arena.alloc(200);
 
 		arena.clear();
-		// After clear, we can allocate again
 		let ptr = arena.alloc(50);
 		assert!(!ptr.is_null());
 	}

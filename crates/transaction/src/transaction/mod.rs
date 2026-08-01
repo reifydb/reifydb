@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Public `Transaction` handle. Wraps either a single-version or multi-version transaction body in a uniform
-//! shape so callers in the engine, planner, and policy layers do not branch on backend. Exposes the get/set/range
-//! primitives, delta accumulation, commit, the object-resolution helpers, and the admin-only mutations the catalog
-//! tier needs.
+//! Public `Transaction` handle: wraps a single-version or multi-version transaction body in one shape so the
+//! engine, planner, and policy layers never branch on backend.
 
 use std::sync::Arc;
 
@@ -331,12 +329,9 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// True when this transaction has accumulated object changes that the
-	/// transactional flow engine has not yet processed (processing happens
-	/// in the pre-commit interceptor). Query and Replica transactions never
-	/// accumulate. Test transactions are deliberately exempt: views are
-	/// maintained inline via the testing pre-commit capture, and the shared
-	/// admin accumulator legitimately holds entries mid-test.
+	/// True when accumulated object changes have not yet reached the pre-commit interceptor that
+	/// processes them. Query and Replica never accumulate; Test is exempt because its views are
+	/// maintained inline and the shared admin accumulator legitimately holds entries mid-test.
 	pub fn has_unprocessed_flow_changes(&self) -> bool {
 		match self {
 			Self::Command(txn) => !txn.accumulator.is_empty(),

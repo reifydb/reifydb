@@ -693,13 +693,9 @@ mod pull_protocol {
 		source_objects: Arc<BTreeSet<ObjectId>>,
 	}
 
-	// One deferred view over app::t, a real committer actor behind a 100ms group-commit linger
-	// (the linger is the window that keeps the flow actor in `committing` while wakes arrive),
-	// and FLOW_TICK set to 1h so only wakes this test sends can advance the actor under test.
-	// The backlog is the engine's own: the CDC producer feeds it, exactly as in production; the
-	// only production piece missing is the supervisor, so the tests play its part by sending
-	// Wake and by managing the control frontier by hand.
 	fn harness() -> Harness {
+		// FLOW_TICK is an hour out and there is no supervisor, so only wakes these tests
+		// send can advance the actor.
 		harness_with(
 			"CREATE TABLE app::t { id: int4 }",
 			"CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }",
@@ -799,15 +795,9 @@ mod pull_protocol {
 	}
 
 	impl Harness {
-		// `init` enqueues a Drain that runs lazily on a pool worker, so the caller cannot know
-		// when it lands. That Drain is not a no-op: it pulls (cursor, safe] from the backlog,
-		// finds nothing relevant, and skips the cursor to the safe watermark - silently
-		// swallowing every later version at or below it. So spawn one version short of
-		// `cursor` and block until that Drain has skipped us up to it: the published position
-		// is proof the Drain was consumed while the safe watermark was still pinned at
-		// `cursor` (nothing has been written yet), so the actor settles exactly where the
-		// caller asked. Only Wakes and ticks can move it from here.
 		fn spawn_actor(&self, cursor: CommitVersion) -> FlowActorHandle {
+			// `init`'s lazy Drain skips the cursor to the safe watermark, so the actor must
+			// be settled at `cursor` before the test writes anything a wake will deliver.
 			self.control.store(CommitVersion(u64::MAX));
 			self.spawn_actor_with_bounded_control(cursor)
 		}
@@ -861,9 +851,9 @@ mod pull_protocol {
 			self.te.query("FROM app::v").first().map(|f| f.row_count()).unwrap_or(0)
 		}
 
-		// One commit carrying view changes is one slice: this flow's slices never overlap, so
-		// group commit cannot merge two of them into a single version.
 		fn view_bearing_records(&self, up_to: CommitVersion) -> usize {
+			// This flow's slices never overlap, so one view-bearing commit is exactly one
+			// slice.
 			self.engine
 				.cdc_store()
 				.read_range(Bound::Unbounded, Bound::Unbounded, 10_000)
@@ -890,10 +880,9 @@ mod pull_protocol {
 			}
 		}
 
-		// The same bound the actor's drain pulls up to. Covering `want` before the actor is
-		// spawned is what makes its init Drain skip to exactly `want`: below it that Drain
-		// finds a lower bound, publishes a lower position, and the spawn would wait forever.
 		fn await_safe_watermark(&self, want: CommitVersion) {
+			// The spawn waits for the init Drain to land on exactly `want`, which only
+			// happens once the safe watermark already covers it.
 			let deadline = Instant::now() + StdDuration::from_secs(10);
 			loop {
 				let safe = self.engine.cdc_producer_watermark().min(self.engine.done_until());
@@ -916,13 +905,9 @@ mod pull_protocol {
 			}
 		}
 
-		// Deadlines come off Clock::testing(), which is the real clock on a native build and a
-		// simulator-driven mock under DST, so these waits stay deterministic there instead of
-		// pinning the test to wall time. It must NOT be the engine's clock: that one is a mock
-		// frozen at 1s which the tick tests advance by hand to fire a seal timer, so an elapsed
-		// check against it would never move and a regression would hang rather than fail.
-		// Returns None on timeout so the caller asserts on the timeout rather than a stale read.
 		fn poll_until<T>(&self, timeout: Duration, mut probe: impl FnMut() -> Option<T>) -> Option<T> {
+			// Not the engine clock: that one is a frozen mock the tick tests advance by
+			// hand, so an elapsed check against it would hang rather than fail.
 			let started = Clock::testing().instant();
 			let timeout = timeout.to_std();
 			loop {
@@ -936,10 +921,9 @@ mod pull_protocol {
 			}
 		}
 
-		// A drain that skips lands on whatever is safe at that instant, which is at least the
-		// caller's floor but not exactly it, so the tick tests cannot compare for equality the
-		// way the others do.
 		fn await_position_at_least(&self, floor: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
+			// A drain that skips lands wherever is safe at that instant, at or above the
+			// floor but never exactly on it.
 			self.poll_until(timeout, || {
 				self.tracker.all().get(&self.flow_id).copied().filter(|got| *got >= floor)
 			})
@@ -949,11 +933,9 @@ mod pull_protocol {
 			self.poll_until(timeout, || self.engine.current_version().ok().filter(|got| *got > floor))
 		}
 
-		// The DURABLE position, not the in-memory one the other waiters read. Only what
-		// survives a restart gates CDC log compaction, and only a commit that actually carried
-		// a checkpoint leaves any, so this is the one observable that can tell a real
-		// checkpoint from a claimed one.
 		fn persisted_checkpoint(&self) -> Option<CommitVersion> {
+			// The durable position, not the in-memory one: only what survives a restart can
+			// tell a real checkpoint from a claimed one.
 			let mut txn = self.engine.begin_query(IdentityId::system()).expect("query");
 			CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut txn), &self.flow_id)
 				.expect("fetch checkpoint")
@@ -974,14 +956,8 @@ mod pull_protocol {
 
 	#[test]
 	fn a_wake_that_lands_during_a_commit_is_not_lost() {
-		// A wake that arrives while the actor is committing cannot start a pull immediately;
-		// it must leave a marker the commit completion honors. The 100ms group linger keeps
-		// the actor in `committing` while the second row's wake arrives; after that wake this
-		// test sends nothing, and the tick is an hour out, so if the marker is dropped the
-		// second row never materializes.
-		//
-		// Mutation: drop `state.drain_after_commit = true` from the Wake arm. The second wake
-		// lands in the linger window, is ignored, and the view sticks at one row.
+		// A wake that lands mid-commit must leave a marker the commit completion honors:
+		// nothing else wakes this actor, so dropping it strands the second row for good.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(v0);
@@ -1012,20 +988,9 @@ mod pull_protocol {
 
 	#[test]
 	fn a_burst_of_commits_coalesces_into_few_slices() {
-		// Rows that accumulate while a commit is in flight must be pulled as ONE slice, not
-		// one slice each. A slice is not free: it pays a transaction, a DAG walk, a state
-		// flush and a commit, and at ~30 versions/s fanned out over ~100 flows that per-slice
-		// envelope is the bulk of the flow CPU bill. The pull model makes this structural:
-		// however many versions landed since the last pull ride out in one byte-budgeted
-		// batch, so the busier the ingest, the more versions ride on one slice.
-		//
-		// The count is exact but the timing is not: this flow's slices are strictly sequential
-		// (the committing flag gates the next pull on the commit reply), so group commit can
-		// never merge them and one view-bearing CDC record is exactly one slice. Nine rows
-		// woken with no coalescing are nine slices; coalesced they are two (the first row,
-		// then the eight that accumulated behind its commit). The bound is loose enough to
-		// tolerate a wake that races in after a commit and starts its own slice, and still
-		// fails loudly if coalescing is gone.
+		// Rows that accumulate behind an in-flight commit must ride out as one slice: the
+		// per-slice envelope (transaction, DAG walk, state flush, commit) is the bulk of the
+		// flow CPU bill. Nine uncoalesced wakes are nine slices; coalesced they are two.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(v0);
@@ -1054,12 +1019,8 @@ mod pull_protocol {
 
 	#[test]
 	fn a_flow_behind_the_backlog_recovers_through_the_loader() {
-		// When the backlog has evicted past a flow's cursor, the pull reports Behind and the
-		// actor must fetch the missing range from durable CDC through the loader - once -
-		// then rejoin the backlog. Nothing may be lost to the eviction and nothing applied
-		// twice across the loader chunk and the backlog pulls that follow it.
-		// The position is a floor, not an equality: the catch-up's own commit is a version above
-		// the bound, and the drain after it skips onto that version.
+		// A cursor the backlog has evicted past can only be recovered through durable CDC:
+		// nothing may be lost to the eviction and nothing applied twice on rejoin.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(v0);
@@ -1071,8 +1032,7 @@ mod pull_protocol {
 		let target = h.engine.current_version().expect("current version");
 		h.await_safe_watermark(target);
 
-		// Evict everything the flow has not consumed yet: its next pull can only be Behind,
-		// so the loader is the only path by which these rows can reach the view.
+		// With everything unconsumed evicted, the loader is the only path to the view.
 		h.backlog.evict_below(target);
 		h.wake(&actor);
 
@@ -1095,13 +1055,8 @@ mod pull_protocol {
 
 	#[test]
 	fn the_control_frontier_bounds_how_far_a_flow_may_pull() {
-		// Flows must never advance past what the supervisor has scanned for flow DDL: a flow
-		// that outruns the control frontier could consume versions carrying its own deletion
-		// or a sibling's creation before the supervisor processed them. The frontier is a hard
-		// bound on the pull, not advice.
-		//
-		// Mutation: drop `.min(self.control.get())` from safe_bound. The first assertion
-		// fails because the position sails past the frontier to the safe watermark.
+		// A flow that outruns the control frontier could consume versions carrying its own
+		// deletion or a sibling's creation before the supervisor had scanned them.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		h.control.store(v0);
@@ -1134,15 +1089,9 @@ mod pull_protocol {
 
 	#[test]
 	fn a_producer_watermark_overshoot_does_not_stall_or_overrun_the_pull() {
-		// The CDC producer advances its watermark on its own thread after commit, so it can
-		// transiently sit ahead of the command done_until. The pull bound must clamp to
-		// min(producer, done_until): reading past done_until would consume versions whose
-		// effects are not yet visible, and treating the overshoot as a stall would strand the
-		// row until the (1h) tick.
-		//
-		// Mutation: drop `.min(self.engine.done_until())` from safe_bound. The row still
-		// materializes, but the position overruns done_until to the overshot watermark and
-		// the final assertion fails.
+		// The producer watermark can transiently sit ahead of done_until. Reading past
+		// done_until consumes versions whose effects are not yet visible; treating the
+		// overshoot as a stall strands the row until the (1h) tick.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(v0);
@@ -1151,10 +1100,8 @@ mod pull_protocol {
 		let target = h.engine.current_version().expect("current version");
 		h.await_safe_watermark(target);
 
-		// Overshoot by well more than the commits this test will cause: the flow's own slice
-		// commit consumes one version, and an overshoot of one would be swallowed by it,
-		// leaving an unclamped pull indistinguishable from a clamped one. Each advance is
-		// contiguous with the published watermark, so all ten land.
+		// An overshoot of one would be swallowed by the flow's own slice commit, leaving an
+		// unclamped pull indistinguishable from a clamped one.
 		let producer = h.engine.ioc().resolve::<CdcProducerWatermark>().expect("producer watermark");
 		for _ in 0..10 {
 			producer.advance(CommitVersion(producer.get().0 + 1));
@@ -1186,28 +1133,9 @@ mod pull_protocol {
 
 	#[test]
 	fn a_tick_that_commits_must_still_drain_afterwards() {
-		// A tick that produces output sets `committing`, which suppresses on_tick's own
-		// trailing Drain. The commit acknowledgement carries nothing that would re-drain on
-		// its own, so without the tick marking drain_after_commit nothing pulls afterwards.
-		// Generations are pruned only while pulling, so such a tick left the generation it
-		// had just promoted in the overlay with nothing to remove it: one leaked generation
-		// per tick, on precisely the flows that tick most - the quiet, settled ones.
-		//
-		// Overlay depth is private to the actor, so the observable stand-in is the cursor. A
-		// pull over versions carrying no relevant CDC skips the cursor to the safe watermark
-		// and publishes it, whereas a tick commit publishes nothing. A position that moves
-		// past the pre-tick gap is therefore proof a pull ran, and one that stays put is
-		// proof none did.
-		//
-		// The tumbling window is what lets the tick commit at all: only Window/Aggregate/...
-		// nodes report `ticks()`, and over a plain MAP view on_tick skips its whole body. The
-		// engine clock is a mock frozen at 1s, so the woken row arms a seal timer that stays
-		// not-due until the test advances the clock by hand - no wall-clock sleep decides
-		// anything.
-		//
-		// Mutation: drop `state.drain_after_commit = true` from dispatch_tick_commit. The
-		// tick still commits, so the precondition below still holds, but the position stays
-		// where the wake left it and the final assertion fails.
+		// A tick that commits must still drain afterwards, or the generation it promoted is
+		// never pruned - a leak on precisely the quietest flows. Only a pull moves the cursor
+		// past the gap, so a cursor that stays put is proof none ran.
 		let h = harness_with(
 			"CREATE TABLE app::t { id: int4, g: int4, v: int4 }",
 			r#"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } AS {
@@ -1239,9 +1167,8 @@ mod pull_protocol {
 			 tick's doing and nothing else's"
 		);
 
-		// Versions the actor is never woken for. Nothing wakes it and the scheduled tick is
-		// an hour out, so only the tick commit's own follow-up pull can carry the cursor over
-		// them.
+		// Versions the actor is never woken for: only the tick commit's follow-up pull can
+		// carry the cursor over them.
 		h.te.command("INSERT app::unrelated [{ id: 1 }]");
 		let gap = h.engine.current_version().expect("current version");
 		h.await_safe_watermark(gap);
@@ -1275,26 +1202,9 @@ mod pull_protocol {
 
 	#[test]
 	fn a_tick_commit_must_not_pass_itself_off_as_a_checkpoint() {
-		// A tick commit persists no checkpoint, so it must never be counted as one. A flow
-		// that mistakes its own tick for a checkpoint believes it is more durable than it is,
-		// and stops checkpointing because it sees nothing left to record.
-		//
-		// The resulting silence is unbounded rather than merely late: ticks come round faster
-		// than the staleness bound they would be resetting, so the bound can never expire, and
-		// the fallback that checkpoints after enough version drift measures that drift against
-		// the same overstated position. A ticking flow would therefore never checkpoint again
-		// after its last input-driven one. Flow checkpoints are part of the minimum that gates
-		// CDC log compaction, so the log would grow forever.
-		//
-		// Nothing here depends on wall time: the clock is a mock, and one 6s advance both ages
-		// the flow past its staleness bound and seals the 1s window that gives the tick
-		// something to commit. A checkpoint is due the moment the flow next goes idle - unless
-		// the tick reset the bound.
-		//
-		// Mutation: let a tick commit advance the durable position and reset the staleness
-		// bound the way a slice commit does. Every assertion up to and including the
-		// tick-committed precondition still passes; the final one times out with the
-		// checkpoint still sitting at the wake's version.
+		// A tick commit persists no checkpoint. Crediting it with one makes the flow believe
+		// it is more durable than it is and stop checkpointing for good; flow checkpoints
+		// gate CDC log compaction, so the log would then grow without bound.
 		let h = harness_with(
 			"CREATE TABLE app::t { id: int4, g: int4, v: int4 }",
 			r#"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } AS {
@@ -1331,10 +1241,8 @@ mod pull_protocol {
 			 durable position starts where the cursor does and any later gap is a real stall"
 		);
 
-		// Versions the actor is never woken for. Nothing wakes it and the scheduled tick is an
-		// hour out, so the only thing that can carry the cursor over them is the flow going
-		// idle after the tick commits - which is also the only moment it decides whether to
-		// checkpoint.
+		// Versions the actor is never woken for: only going idle after the tick commits can
+		// carry the cursor over them, which is also when it decides whether to checkpoint.
 		h.te.command("INSERT app::unrelated [{ id: 1 }]");
 		let gap = h.engine.current_version().expect("current version");
 		h.await_safe_watermark(gap);

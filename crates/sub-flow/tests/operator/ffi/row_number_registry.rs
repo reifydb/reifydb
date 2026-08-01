@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// The operator row-number registry must map the SAME logical key to the SAME
-// RowNumber on every apply, reporting is_new=false on reuse. If it did not
-// survive across applies, windowed operators would re-emit each window as a
-// fresh Insert with a new row number (the FFI vs native divergence the parity
-// work surfaced).
+// The operator row-number registry must map the same logical key to the same RowNumber on every
+// apply, reporting is_new=false on reuse. Without that a windowed operator re-emits each window as
+// a fresh Insert under a new row number.
 
 use reifydb_test_harness::operator::change::{row_ints, trigger};
 

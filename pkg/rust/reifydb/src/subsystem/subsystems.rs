@@ -32,8 +32,7 @@ impl Subsystems {
 		}
 	}
 
-	/// Add a born-running subsystem to be managed. Subsystems are shut down in
-	/// reverse insertion order, so callers control teardown order by add order.
+	/// Subsystems are shut down in reverse insertion order, so add order controls teardown order.
 	pub fn add_subsystem(&mut self, subsystem: Box<dyn Subsystem>) {
 		self.health_monitor.update_component_health(
 			subsystem.name().to_string(),

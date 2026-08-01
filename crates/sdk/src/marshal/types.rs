@@ -346,9 +346,8 @@ mod tests {
 
 	#[test]
 	fn datetime_column_marshal_unmarshal_roundtrip() {
-		// Regression: DateTime columns marshal zero-copy as raw u64 nanos; unmarshal
-		// must read them back the same way (not via from_timestamp, which treats the
-		// value as epoch seconds).
+		// The marshal is zero-copy raw u64 nanos, so an unmarshal going through a seconds-based constructor
+		// would silently rescale every value by a billion.
 		let mut arena = Arena::new();
 		let values = vec![
 			DateTime::from_nanos(0),
@@ -368,8 +367,7 @@ mod tests {
 
 	#[test]
 	fn date_column_marshal_unmarshal_roundtrip() {
-		// Regression: Date columns marshal zero-copy as raw i32 days-since-epoch;
-		// unmarshal must read them back the same way.
+		// The marshal is zero-copy raw i32 days-since-epoch, so unmarshal has to read the same units.
 		let mut arena = Arena::new();
 		let values = vec![Date::default(), Date::new(2024, 3, 15).unwrap(), Date::new(1970, 1, 1).unwrap()];
 		let buf = ColumnBuffer::Date(TemporalContainer::new(values.clone()));
@@ -385,8 +383,7 @@ mod tests {
 
 	#[test]
 	fn time_column_marshal_unmarshal_roundtrip() {
-		// Regression: Time columns marshal zero-copy as raw u64 nanos-since-midnight;
-		// unmarshal must read them back the same way.
+		// The marshal is zero-copy raw u64 nanos-since-midnight, so unmarshal has to read the same units.
 		let mut arena = Arena::new();
 		let values = vec![
 			Time::default(),
@@ -406,9 +403,8 @@ mod tests {
 
 	#[test]
 	fn duration_column_marshal_unmarshal_roundtrip() {
-		// Regression: Duration columns marshal zero-copy as raw 16-byte structs;
-		// unmarshal must read them back the same way (not via postcard + offsets,
-		// which the zero-copy marshal does not produce).
+		// The marshal is zero-copy 16-byte structs, so an unmarshal expecting postcard plus offsets would
+		// read data the marshal never wrote.
 		let mut arena = Arena::new();
 		let values = vec![
 			Duration::default(),

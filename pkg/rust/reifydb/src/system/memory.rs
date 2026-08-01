@@ -33,7 +33,6 @@ pub struct MemoryWatchdog {
 	kill_threshold_percent: f32,
 }
 
-/// Current memory statistics.
 #[derive(Debug, Clone)]
 pub struct MemoryStats {
 	pub current_bytes: u64,
@@ -48,9 +47,7 @@ impl MemoryWatchdog {
 		}
 	}
 
-	/// Get current process memory usage (RSS) in bytes on Linux.
-	///
-	/// Reads RSS (field 1) from `/proc/self/statm` and converts pages to bytes.
+	/// Field 1 of `/proc/self/statm` is RSS, counted in pages.
 	#[cfg(target_os = "linux")]
 	pub fn get_current_memory() -> Result<u64, String> {
 		let statm = fs::read_to_string("/proc/self/statm")
@@ -61,15 +58,15 @@ impl MemoryWatchdog {
 			.ok_or("Invalid /proc/self/statm format")?
 			.parse()
 			.map_err(|e| format!("Failed to parse RSS: {}", e))?;
+		// SAFETY: `sysconf` takes an integer name and touches no caller memory.
 		let page_size = unsafe { sysconf(_SC_PAGESIZE) } as u64;
 		Ok(rss_pages * page_size)
 	}
 
-	/// Get current process memory usage (RSS) in bytes on macOS.
-	///
-	/// Uses `task_info()` with `MACH_TASK_BASIC_INFO` to get `resident_size`.
 	#[cfg(target_os = "macos")]
 	pub fn get_current_memory() -> Result<u64, String> {
+		// SAFETY: `info` is a zeroed `mach_task_basic_info` and `count` is its matching element
+		// count, so `task_info` writes only within the allocation it is handed.
 		unsafe {
 			let mut info: mach_task_basic_info = mem::zeroed();
 			let mut count = MACH_TASK_BASIC_INFO_COUNT;
@@ -83,19 +80,15 @@ impl MemoryWatchdog {
 		}
 	}
 
-	/// Get current process memory usage (RSS) in bytes.
-	///
-	/// This is not supported on non-Linux/macOS platforms.
 	#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 	pub fn get_current_memory() -> Result<u64, String> {
 		panic!("Memory monitoring is only supported on Linux and macOS".to_string())
 	}
 
-	/// Get maximum available system memory in bytes on Linux.
-	///
-	/// Uses `libc::sysinfo()` to get total physical memory.
 	#[cfg(target_os = "linux")]
 	pub fn get_max_available_memory() -> Result<u64, String> {
+		// SAFETY: `info` is a zeroed, correctly sized `sysinfo` struct owned by this frame, and
+		// is the only memory `sysinfo` writes to.
 		unsafe {
 			let mut info: sysinfo = mem::zeroed();
 			let ret = sysinfo(&mut info);
@@ -106,11 +99,10 @@ impl MemoryWatchdog {
 		}
 	}
 
-	/// Get maximum available system memory in bytes on macOS.
-	///
-	/// Uses `sysctl()` with `CTL_HW` + `HW_MEMSIZE` to get total physical memory.
 	#[cfg(target_os = "macos")]
 	pub fn get_max_available_memory() -> Result<u64, String> {
+		// SAFETY: `mib` holds exactly the 2 elements declared, and `len` is the true size of the
+		// `u64` destination, so `sysctl` cannot write past either buffer.
 		unsafe {
 			let mut mib = [CTL_HW, HW_MEMSIZE];
 			let mut memsize: u64 = 0;
@@ -130,9 +122,6 @@ impl MemoryWatchdog {
 		}
 	}
 
-	/// Get maximum available system memory in bytes.
-	///
-	/// This is not supported on non-Linux/macOS platforms.
 	#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 	pub fn get_max_available_memory() -> Result<u64, String> {
 		panic!("Memory monitoring is only supported on Linux and macOS".to_string())
@@ -179,7 +168,6 @@ pub fn create_memory_watchdog_task() -> ScheduledTask {
 				total / 1024 / 1024
 			);
 
-			// Check threshold and kill if exceeded
 			monitor.check_and_kill_if_exceeded(&stats);
 
 			Ok(())
@@ -212,8 +200,8 @@ mod tests {
 	#[test]
 	fn test_memory_stats_calculation() {
 		let stats = MemoryStats {
-			current_bytes: 500 * 1024 * 1024, // 500 MB
-			total_bytes: 1000 * 1024 * 1024,  // 1000 MB (1 GB)
+			current_bytes: 500 * 1024 * 1024,
+			total_bytes: 1000 * 1024 * 1024,
 			percent_used: 50.0,
 		};
 
@@ -222,15 +210,14 @@ mod tests {
 
 	#[test]
 	fn test_kill_threshold_not_exceeded() {
+		// Usage below the threshold must not reach exit(1); returning is the assertion.
 		let monitor = MemoryWatchdog::new(50.0);
 		let stats = MemoryStats {
-			current_bytes: 400 * 1024 * 1024, // 400 MB
-			total_bytes: 1000 * 1024 * 1024,  // 1000 MB
+			current_bytes: 400 * 1024 * 1024,
+			total_bytes: 1000 * 1024 * 1024,
 			percent_used: 40.0,
 		};
 
-		// This should not kill
 		monitor.check_and_kill_if_exceeded(&stats);
-		// If we get here, the test passed
 	}
 }

@@ -145,10 +145,9 @@ mod tests {
 
 	#[test]
 	fn the_reclaimed_marker_is_out_of_reach_of_every_live_position() {
-		// Phase 1 parks the record at a bucket no activity can produce, and that is what forces the
-		// group's next event to re-stamp instead of reusing the bucket it already cached. If a real
-		// position could reach the marker, a live group would read as data-reclaimed and phase 2 would
-		// take the row-number mapping out from under a sink row that still names it.
+		// The marker parks the record at a bucket no activity can produce, forcing the group's next
+		// event to re-stamp. If a real position could reach it, a live group would read as
+		// data-reclaimed and phase 2 would take the row-number mapping from under a live sink row.
 		for width in [1u64, 7, 100, 4096] {
 			let buckets = ActivityBuckets::undeclared(width);
 			for position in [0u64, 1, 1_000, i64::MAX as u64] {
@@ -163,9 +162,8 @@ mod tests {
 
 	#[test]
 	fn a_reclaimed_record_still_names_the_group_it_came_from() {
-		// Phase 2 resolves the id back to its bytes to clear the dictionary entry, and it runs long
-		// after phase 1 marked the record. Dropping the bytes at marking time would strand that entry:
-		// one leaked row per reclaimed group, in the very table the scan walks.
+		// Phase 2 resolves the id back to its bytes to clear the dictionary entry, long after the
+		// record was marked; dropping the bytes at marking time leaks one row per reclaimed group.
 		let marked = GroupRecord::reclaimed(b"a-group".to_vec());
 
 		assert!(marked.is_data_reclaimed());
@@ -175,10 +173,9 @@ mod tests {
 
 	#[test]
 	fn a_bucket_is_only_due_once_the_cutoff_has_passed_its_whole_span() {
-		// The index records which bucket a group was last active in, not the exact position. A group
-		// stamped at the very end of bucket b was active until (b + 1) * width - 1, so a cutoff that
-		// merely reaches into bucket b must NOT make it due - that would reclaim state the operator
-		// is still using. Coarse buckets may only ever delay reclamation, never advance it.
+		// The index records a bucket, not an exact position, so a group stamped at the end of bucket
+		// b was active until (b + 1) * width - 1. A cutoff reaching into bucket b must not make it
+		// due: coarse buckets may only delay reclamation, never advance it.
 		let buckets = ActivityBuckets::undeclared(100);
 
 		assert_eq!(buckets.of(Position(DateTime::from_nanos(0))), 0);
@@ -209,10 +206,8 @@ mod tests {
 
 	#[test]
 	fn bucket_width_changes_timing_but_never_correctness() {
-		// Width is a churn/latency knob: wider buckets mean fewer index rewrites and later
-		// reclamation. What must hold for every width is that a group stamped at `position` is never
-		// reported due while the cutoff is at or below that position, or activity would be discarded
-		// as idleness.
+		// Width trades index rewrites for reclamation latency, but for every width a group stamped at
+		// `position` must never be reported due at a cutoff at or below it, or activity reads as idle.
 		for width in [1u64, 7, 100, 4096] {
 			let buckets = ActivityBuckets::undeclared(width);
 			for position in [0u64, 1, 63, 99, 100, 5000] {
@@ -228,9 +223,8 @@ mod tests {
 
 	#[test]
 	fn a_zero_width_grid_is_clamped_rather_than_dividing_by_zero() {
-		// Width arrives from configuration, so zero must degrade to exact per-position stamping
-		// instead of panicking the flow actor on its first batch. Both the raw grid and the event
-		// grid take their width from a declaration, so both have to survive a zero.
+		// Width arrives from a declaration, so zero must degrade to exact per-position stamping
+		// rather than panicking the flow actor on its first batch.
 		let ActivityBuckets::Undeclared(raw) = ActivityBuckets::undeclared(0) else {
 			panic!("undeclared buckets carry a raw grid");
 		};
@@ -245,11 +239,9 @@ mod tests {
 
 	#[test]
 	fn an_undeclared_grid_quantises_by_raw_division() {
-		// The undeclared grid is what a perpetual node buckets in: it has no unit, so it divides the
-		// raw coordinate directly. Its arithmetic must stay byte-for-byte what it was, or a node that
-		// declares no horizon would start rewriting its activity index on a different schedule.
-		// This is what survives of the version-domain quantisation test: the version domain is gone,
-		// but the unit-less division it shared with the undeclared grid is still load-bearing.
+		// The undeclared grid has no unit and divides the raw coordinate directly; changing that
+		// arithmetic would make a node declaring no horizon rewrite its activity index on a
+		// different schedule.
 		for width in [1u64, 7, 100, 4096] {
 			for position in [0u64, 1, 99, 100, 5_000, i64::MAX as u64] {
 				assert_eq!(
@@ -262,14 +254,9 @@ mod tests {
 
 	#[test]
 	fn an_event_grid_expressed_in_millis_lands_on_the_bucket_the_millis_arithmetic_did() {
-		// THE test for this stage's unit change. Event buckets moved from millisecond integers to
-		// nanosecond instants, which scales BOTH the width and the position by 1_000_000. Division
-		// is invariant under that, so every bucket index a millis-era grid produced must still be
-		// produced - the change buys resolution below a millisecond without moving any boundary that
-		// existed before. A grid or a position scaled by a different factor than the other would
-		// silently move every group's bucket, and only comparing against the old arithmetic sees it.
-		// Mutation: build the grid from millis but the position from nanos (or vice versa) and the
-		// quotients diverge by a factor of a million.
+		// Nanosecond instants scale both the width and the position by 1_000_000, and division is
+		// invariant under that. Scaling one side by a different factor than the other would silently
+		// move every group's bucket, and only comparing against the millis arithmetic catches it.
 		for width_ms in [1i64, 7, 100, 4_096] {
 			let grid = ActivityBuckets::event(ms(width_ms)).event_grid().expect("event grid");
 			for position_ms in [0u64, 1, 99, 100, 5_000, 1_700_000_000_123] {
@@ -284,9 +271,8 @@ mod tests {
 
 	#[test]
 	fn an_event_grid_resolves_below_the_millisecond_the_old_arithmetic_rounded_away() {
-		// The point of carrying nanoseconds rather than milliseconds: a sub-millisecond span used to
-		// truncate to a zero width and collapse every group into one bucket. It now quantises for
-		// real, which is what lets a short seal horizon reclaim on its own schedule.
+		// A sub-millisecond span truncates to a zero width in millis and collapses every group into
+		// one bucket; nanoseconds are what let a short seal horizon reclaim on its own schedule.
 		let grid = ActivityBuckets::event(Duration::from_nanoseconds(250).unwrap())
 			.event_grid()
 			.expect("event grid");

@@ -988,17 +988,9 @@ mod tests {
 
 	#[test]
 	fn the_armed_seal_instant_reproduces_the_pre_timer_boundary() {
-		// One predicate now decides sealing: a bucket is sealed exactly when the instant it
-		// armed its Seal timer at has been covered by the seal ledger. That instant and the
-		// gate's test must be the same expression, or a bucket is dropped before its timer
-		// fires (silent loss) or accepted after it fired (a window rebuilt from a late row
-		// alone, emitting a wrong value over the correct one).
-		// The boundary itself must not move from the pre-timer implementation, whose gate was
-		// strict (watermark - last > cutoff). The wheel fires at watermark >= at, so
-		// reproducing a strict boundary needs the +1 that seal_instant carries.
-		// Sealing is activity-based, keyed on the last event in the window rather than on the
-		// span end: sliding and session spans carry synthetic ids, so span bounds are not a
-		// legitimate input here.
+		// The armed instant and the sealing gate must be the same expression, or a bucket is
+		// dropped before its timer fires or rebuilt from a late row after it did. The wheel fires
+		// at watermark >= at, so reproducing the strict gate needs the +1 seal_instant carries.
 		let cutoff_ms = 19u64;
 		let cutoff = Duration::from_milliseconds(cutoff_ms as i64).expect("representable span");
 		let policy = SealPolicy::tumbling(cutoff, Duration::from_milliseconds_const(0));

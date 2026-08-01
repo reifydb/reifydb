@@ -268,8 +268,6 @@ pub mod tests {
 				assert_eq!(columns.len(), 1);
 				assert_eq!(columns[0].column.name.text(), "email");
 				assert_eq!(filters.len(), 1);
-				// Verify filter contains a comparison
-				// expression
 				assert!(filters[0].is_infix());
 			}
 			_ => unreachable!(),
@@ -297,7 +295,6 @@ pub mod tests {
 				assert_eq!(columns.len(), 1);
 				assert_eq!(columns[0].column.name.text(), "email");
 				assert_eq!(filters.len(), 3);
-				// Verify each filter is an infix expression
 				assert!(filters[0].is_infix());
 				assert!(filters[1].is_infix());
 				assert!(filters[2].is_infix());

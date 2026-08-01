@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Common machinery shared by both functions and procedures: the routine registry the engine consults at
-//! invocation time, the per-call context that exposes engine services to a routine body, and the typed errors a
-//! routine can return. The split between function and procedure semantics happens above this module; everything
-//! here is name resolution, argument binding, and result shaping that both kinds need.
+//! Name resolution, argument binding and result shaping shared by functions and procedures. The split between the
+//! two semantics happens above this module.
 
 pub mod context;
 pub mod error;

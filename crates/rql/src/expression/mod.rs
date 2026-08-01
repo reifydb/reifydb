@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Planner-side expression representation. Mirrors the AST's expression shapes but in a form that has been
-//! type-checked, name-resolved, and stripped of source-only details. The engine consumes these expressions to
-//! evaluate filters, projections, and join conditions; routine call resolution and JSON-path navigation are part
-//! of this representation rather than the runtime.
+//! Planner-side expression representation: the AST's expression shapes after type-checking and name resolution.
+//! Routine call resolution and JSON-path navigation are settled here rather than at runtime.
 
 pub mod fragment;
 pub mod join;
@@ -1824,38 +1822,32 @@ impl ExpressionCompiler {
 				}))
 			}
 
-			InfixOperator::Assign(token) => {
-				// Assignment operator (=) is not valid in expression context
-				// Use == for equality comparison
-				Err(AstError::UnsupportedToken {
-					fragment: token.fragment.to_owned(),
-				}
-				.into())
+			InfixOperator::Assign(token) => Err(AstError::UnsupportedToken {
+				fragment: token.fragment.to_owned(),
 			}
+			.into()),
 
-			InfixOperator::TypeAscription(token) => {
-				match BumpBox::into_inner(ast.left) {
-					Ast::Identifier(alias) => {
-						let right = Self::compile(BumpBox::into_inner(ast.right))?;
+			InfixOperator::TypeAscription(token) => match BumpBox::into_inner(ast.left) {
+				Ast::Identifier(alias) => {
+					let right = Self::compile(BumpBox::into_inner(ast.right))?;
 
-						Ok(Expression::Alias(AliasExpression {
-							alias: IdentExpression(alias.token.fragment.to_owned()),
-							expression: Box::new(right),
-							fragment: token.fragment.to_owned(),
-						}))
-					}
-					Ast::Literal(AstLiteral::Text(text)) => {
-						// Handle string literals as alias names (common in MAP syntax)
-						let right = Self::compile(BumpBox::into_inner(ast.right))?;
+					Ok(Expression::Alias(AliasExpression {
+						alias: IdentExpression(alias.token.fragment.to_owned()),
+						expression: Box::new(right),
+						fragment: token.fragment.to_owned(),
+					}))
+				}
+				Ast::Literal(AstLiteral::Text(text)) => {
+					let right = Self::compile(BumpBox::into_inner(ast.right))?;
 
-						Ok(Expression::Alias(AliasExpression {
-							alias: IdentExpression(text.0.fragment.to_owned()),
-							expression: Box::new(right),
-							fragment: token.fragment.to_owned(),
-						}))
-					}
-					_ => {
-						err!(Diagnostic {
+					Ok(Expression::Alias(AliasExpression {
+						alias: IdentExpression(text.0.fragment.to_owned()),
+						expression: Box::new(right),
+						fragment: token.fragment.to_owned(),
+					}))
+				}
+				_ => {
+					err!(Diagnostic {
 							code: "EXPR_001".to_string(),
 							rql: None,
 							message: "Invalid alias expression".to_string(),
@@ -1867,21 +1859,15 @@ impl ExpressionCompiler {
 							cause: None,
 							operator_chain: None,
 						})
-					}
 				}
-			}
+			},
 			InfixOperator::AccessNamespace(_token) => {
-				// Handle namespace access: `ns::func(args)` → CallExpression with namespaced name
-				// Extract namespace name from left side (always an identifier)
 				let left = Self::compile(BumpBox::into_inner(ast.left))?;
 				let namespace = match &left {
 					Expression::Column(ColumnExpression(col)) => col.name.text().to_string(),
 					other => unimplemented!("unsupported namespace expression: {other:?}"),
 				};
 
-				// The right side may contain keywords (e.g. `undefined`) that should be
-				// treated as identifiers in a namespace context. Extract the name from the
-				// raw AST token before compiling, so keywords are treated as identifier_or_keyword.
 				let right_ast = BumpBox::into_inner(ast.right);
 				Self::compile_namespace_right(&namespace, right_ast)
 			}
@@ -1900,20 +1886,14 @@ impl ExpressionCompiler {
 		}
 	}
 
-	/// Compile the right-hand side of a namespace access (`ns::...`).
-	///
-	/// Keywords like `undefined` or `true` are treated as identifiers in this
-	/// context so that `is::none(x)` resolves to a function call rather
-	/// than parsing `undefined` as the literal keyword.
+	/// In namespace position a keyword such as `undefined` or `true` is taken as an identifier, so `is::none(x)`
+	/// resolves to a call instead of parsing its right side as a literal.
 	fn compile_namespace_right(namespace: &str, right_ast: Ast<'_>) -> Result<Expression> {
-		// Helper: extract a token's text from any AST node that should be treated
-		// as an identifier_or_keyword in namespace position.
 		fn identifier_or_keyword_name(ast: &Ast<'_>) -> Option<String> {
 			Some(ast.token().fragment.text().to_string())
 		}
 
 		match right_ast {
-			// ns::func(args)  where func is parsed as Infix(left, Call, right)
 			Ast::Infix(infix) if matches!(infix.operator, InfixOperator::Call(_)) => {
 				let func_name = identifier_or_keyword_name(&infix.left)
 					.expect("namespace function name must be extractable");
@@ -1973,7 +1953,6 @@ impl ExpressionCompiler {
 					fragment: call.token.fragment.to_owned(),
 				}))
 			}
-			// ns::name  (bare namespaced reference, no call)
 			other => {
 				if let Some(name) = identifier_or_keyword_name(&other) {
 					let full_name = format!("{}::{}", namespace, name);
@@ -2058,7 +2037,6 @@ impl Display for FieldAccessExpression {
 	}
 }
 
-/// Recursively extract all variable names referenced in an expression tree.
 pub fn extract_variable_names(expr: &Expression) -> Vec<String> {
 	let mut names = Vec::new();
 	collect_variable_names(expr, &mut names);
@@ -2188,7 +2166,6 @@ fn collect_variable_names(expr: &Expression, names: &mut Vec<String>) {
 		}
 		Expression::IsVariant(e) => collect_variable_names(&e.expression, names),
 		Expression::FieldAccess(e) => collect_variable_names(&e.object, names),
-		// Leaf nodes with no sub-expressions
 		Expression::Constant(_)
 		| Expression::Column(_)
 		| Expression::AccessSource(_)

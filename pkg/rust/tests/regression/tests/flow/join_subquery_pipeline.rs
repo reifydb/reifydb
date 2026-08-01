@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Regression: compile_join_subquery in crates/rql/src/plan/logical/query/join.rs
-// previously called nodes.first() and discarded all pipeline operators after the
-// from clause. The right side of a streaming join is the reference (populated
-// first); the left side is the driver (triggers the join).
-
 use reifydb::{WithSubsystem, embedded};
 use reifydb_test_harness::db::TestDb;
 
@@ -18,12 +13,10 @@ fn row_count(db: &TestDb, rql: &str) -> usize {
 	frames.first().map(|f| f.row_count()).unwrap_or(0)
 }
 
-// Insert 3 price rows for the same mint, then 1 swap. Without the fix the
-// pipeline operators (sort, map, distinct) are silently dropped, so the join
-// fans out against all 3 price rows and emits 3 rows. With the fix, distinct
-// collapses them to 1 and the join emits exactly 1 row.
 #[test]
 fn distinct_in_join_subquery_deduplicates() {
+	// Drop the subquery's pipeline operators and the join fans out over all 3 price rows;
+	// distinct has to collapse them so exactly 1 row is emitted.
 	let mut db = setup();
 	db.admin("create namespace test");
 	db.admin("create table test::prices { mint: utf8, slot: uint8, price: float8 }");
@@ -35,7 +28,7 @@ fn distinct_in_join_subquery_deduplicates() {
              using (quote_mint, p.mint) \
          }");
 
-	// Right side first: 3 price rows for the same mint at different slots.
+	// The right side is the reference and must land first; the left side drives the join.
 	db.command(
 		r#"INSERT test::prices [
             { mint: "USDC", slot: 2, price: 1.0 },
@@ -55,10 +48,9 @@ fn distinct_in_join_subquery_deduplicates() {
 	db.stop();
 }
 
-// Verify that a map operator inside the join subquery is compiled and runs.
-// The join still produces 1 output row, confirming the pipeline executed.
 #[test]
 fn map_in_join_subquery_executes() {
+	// A map inside the join subquery must be compiled and run, not dropped.
 	let mut db = setup();
 	db.admin("create namespace test2");
 	db.admin("create table test2::prices { mint: utf8, slot: uint8, price: float8 }");
@@ -84,10 +76,9 @@ fn map_in_join_subquery_executes() {
 	db.stop();
 }
 
-// Ensure a plain single-node subquery (no pipeline) still works after the
-// refactor. Guards against regressions in the simple case.
 #[test]
 fn plain_join_subquery_without_pipeline_unchanged() {
+	// The pipeline-free subquery form must keep working alongside the pipelined one.
 	let mut db = setup();
 	db.admin("create namespace test3");
 	db.admin("create table test3::a { id: uint8, val: utf8 }");

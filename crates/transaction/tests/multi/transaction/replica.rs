@@ -8,7 +8,6 @@ use reifydb_transaction::{multi::RangeScope, transaction::replica::ReplicaTransa
 use super::test_multi;
 use crate::{as_key, as_values, from_row, multi::transaction::FromRow};
 
-/// Mirrors write.rs::test_write - basic replica write + query read.
 #[test]
 fn test_replica_write() {
 	let engine = test_multi();
@@ -28,7 +27,6 @@ fn test_replica_write() {
 	}
 }
 
-/// Mirrors write.rs::test_multiple_write - multiple keys in one replica commit.
 #[test]
 fn test_replica_multiple_write() {
 	let engine = test_multi();
@@ -38,7 +36,6 @@ fn test_replica_multiple_write() {
 			tx.set(&as_key!(i), as_values!(i)).unwrap();
 		}
 
-		// Read-your-writes within the transaction
 		let sv = tx.get(&as_key!(8)).unwrap().unwrap();
 		assert_eq!(from_row!(i32, *sv.row()), 8);
 		drop(sv);
@@ -53,7 +50,6 @@ fn test_replica_multiple_write() {
 	assert_eq!(from_row!(i32, *sv.row()), 8);
 }
 
-/// Mirrors get.rs::test_read_after_write - sequential replica commits, query after each.
 #[test]
 fn test_replica_read_after_write() {
 	let engine = test_multi();
@@ -73,13 +69,13 @@ fn test_replica_read_after_write() {
 	}
 }
 
-/// Mirrors version.rs::test_versions - version tracking and time-travel reads.
 #[test]
 fn test_replica_versions() {
+	// A replica commit adopts the primary's version verbatim, so time travel must land on those
+	// exact primary versions rather than any locally assigned sequence.
 	let engine = test_multi();
 	let k0 = as_key!(0);
 
-	// Commit 9 versions at primary versions 100, 200, ..., 900
 	for i in 1i32..10 {
 		let version = CommitVersion(i as u64 * 100);
 		let mut tx = engine.begin_replica(version).unwrap();
@@ -88,7 +84,6 @@ fn test_replica_versions() {
 		assert_eq!(engine.version().unwrap(), version);
 	}
 
-	// Time-travel reads at each historical version
 	for idx in 1i32..10 {
 		let read_version = CommitVersion(idx as u64 * 100 + 1); // exclusive: read at version+1 sees version
 		let mut txn = engine.begin_command().unwrap();
@@ -98,13 +93,11 @@ fn test_replica_versions() {
 		assert_eq!(idx, from_row!(i32, tv.row()));
 	}
 
-	// Latest read sees version 900's value
 	let rx = engine.begin_query().unwrap();
 	let sv = rx.get(&k0).unwrap().unwrap();
 	assert_eq!(9, from_row!(i32, sv.row()));
 }
 
-/// Mirrors range.rs::test_range - forward and reverse range after replica commit.
 #[test]
 fn test_replica_range() {
 	let engine = test_multi();
@@ -135,12 +128,10 @@ fn test_replica_range() {
 	}
 }
 
-/// Mirrors range.rs::test_range2 - two replica commits, range sees merged data.
 #[test]
 fn test_replica_range_multiple_commits() {
 	let engine = test_multi();
 
-	// First commit at version 100
 	{
 		let mut tx = engine.begin_replica(CommitVersion(100)).unwrap();
 		tx.set(&as_key!(1), as_values!(1)).unwrap();
@@ -149,7 +140,6 @@ fn test_replica_range_multiple_commits() {
 		tx.commit_at_version().unwrap();
 	}
 
-	// Second commit at version 200
 	{
 		let mut tx = engine.begin_replica(CommitVersion(200)).unwrap();
 		tx.set(&as_key!(4), as_values!(4)).unwrap();
@@ -169,7 +159,6 @@ fn test_replica_range_multiple_commits() {
 	}
 }
 
-/// Mirrors rollback.rs::test_rollback_same_tx - rollback within replica transaction.
 #[test]
 fn test_replica_rollback_same_tx() {
 	let engine = test_multi();
@@ -179,7 +168,6 @@ fn test_replica_rollback_same_tx() {
 	assert!(tx.get(&as_key!(1)).unwrap().is_none());
 }
 
-/// Mirrors rollback.rs::test_rollback_different_tx - rollback not visible to queries.
 #[test]
 fn test_replica_rollback_different_tx() {
 	let engine = test_multi();
@@ -191,7 +179,6 @@ fn test_replica_rollback_different_tx() {
 	assert!(rx.get(&as_key!(1)).unwrap().is_none());
 }
 
-/// Empty replica commit (no writes) should not error.
 #[test]
 fn test_replica_empty_commit() {
 	let engine = test_multi();
@@ -199,22 +186,20 @@ fn test_replica_empty_commit() {
 	tx.commit_at_version().unwrap();
 }
 
-/// advance_version_for_replica - version gaps for data-only commits.
 #[test]
 fn test_advance_version_for_replica() {
+	// The primary can commit versions this replica never materializes, so the version clock has to
+	// skip forward without a commit and still accept the next replicated version.
 	let engine = test_multi();
 
-	// Replica commit at version 100
 	{
 		let mut tx = engine.begin_replica(CommitVersion(100)).unwrap();
 		tx.set(&as_key!("a"), as_values!("v1".to_string())).unwrap();
 		tx.commit_at_version().unwrap();
 	}
 
-	// Skip version 200 (data-only commit on primary, no catalog changes)
 	engine.advance_version_for_replica(CommitVersion(200));
 
-	// Replica commit at version 300
 	{
 		let mut tx = engine.begin_replica(CommitVersion(300)).unwrap();
 		tx.set(&as_key!("b"), as_values!("v2".to_string())).unwrap();
@@ -230,19 +215,16 @@ fn test_advance_version_for_replica() {
 	assert_eq!(b, "v2");
 }
 
-/// Read-your-writes within a replica transaction.
 #[test]
 fn test_replica_read_your_writes() {
 	let engine = test_multi();
 	let mut tx = engine.begin_replica(CommitVersion(100)).unwrap();
 
-	// Write key A, then read it back
 	tx.set(&as_key!("a"), as_values!("val_a".to_string())).unwrap();
 	let sv = tx.get(&as_key!("a")).unwrap().unwrap();
 	assert_eq!(from_row!(String, *sv.row()), "val_a");
 	drop(sv);
 
-	// Write key B, then read both
 	tx.set(&as_key!("b"), as_values!("val_b".to_string())).unwrap();
 	assert!(tx.contains_key(&as_key!("a")).unwrap());
 	assert!(tx.contains_key(&as_key!("b")).unwrap());
@@ -250,7 +232,6 @@ fn test_replica_read_your_writes() {
 	tx.commit_at_version().unwrap();
 }
 
-/// Verify query version matches the latest replica version.
 #[test]
 fn test_replica_version_visible_to_queries() {
 	let engine = test_multi();
@@ -264,7 +245,6 @@ fn test_replica_version_visible_to_queries() {
 	assert_eq!(rx.version(), CommitVersion(500));
 }
 
-/// Multiple sequential replica commits updating the same key.
 #[test]
 fn test_replica_sequential_commits() {
 	let engine = test_multi();
@@ -277,17 +257,15 @@ fn test_replica_sequential_commits() {
 		tx.commit_at_version().unwrap();
 	}
 
-	// Latest query sees version 30's value
 	let rx = engine.begin_query().unwrap();
 	assert_eq!(from_row!(i32, rx.get(&k).unwrap().unwrap().row()), 3);
 
-	// Time-travel to version 20 sees value 2
+	// Exclusive read at 21 must land on the version-20 write, not the later one.
 	let mut txn = engine.begin_command().unwrap();
 	txn.read_as_of_version_exclusive(CommitVersion(21));
 	assert_eq!(from_row!(i32, txn.get(&k).unwrap().unwrap().row()), 2);
 }
 
-/// Replica overwrite - same key at different primary versions.
 #[test]
 fn test_replica_overwrite() {
 	let engine = test_multi();
@@ -304,48 +282,41 @@ fn test_replica_overwrite() {
 		tx.commit_at_version().unwrap();
 	}
 
-	// Latest sees v2
 	let rx = engine.begin_query().unwrap();
 	assert_eq!(from_row!(String, rx.get(&k).unwrap().unwrap().row()), "v2");
 
-	// Time-travel to version 100 sees v1
 	let mut txn = engine.begin_command().unwrap();
 	txn.read_as_of_version_exclusive(CommitVersion(101));
 	assert_eq!(from_row!(String, txn.get(&k).unwrap().unwrap().row()), "v1");
 }
 
-/// Replica remove - commit key then remove it at a later version.
 #[test]
 fn test_replica_remove() {
+	// The tombstone must not erase history: a read before the removal version still sees the row.
 	let engine = test_multi();
 	let k = as_key!(42);
 
-	// Insert at version 100
 	{
 		let mut tx = engine.begin_replica(CommitVersion(100)).unwrap();
 		tx.set(&k, as_values!(42)).unwrap();
 		tx.commit_at_version().unwrap();
 	}
 
-	// Remove at version 200
 	{
 		let mut tx = engine.begin_replica(CommitVersion(200)).unwrap();
 		tx.remove(&k).unwrap();
 		tx.commit_at_version().unwrap();
 	}
 
-	// Latest: key not found
 	let rx = engine.begin_query().unwrap();
 	assert!(rx.get(&k).unwrap().is_none());
 
-	// Time-travel to version 100: key found
 	let mut txn = engine.begin_command().unwrap();
 	txn.read_as_of_version_exclusive(CommitVersion(101));
 	let sv = txn.get(&k).unwrap().unwrap();
 	assert_eq!(from_row!(i32, sv.row()), 42);
 }
 
-/// ReplicaTransaction basic write + commit + query.
 #[test]
 fn test_replica_transaction_write() {
 	let engine = test_multi();
@@ -361,7 +332,6 @@ fn test_replica_transaction_write() {
 	assert_eq!(v, "y");
 }
 
-/// Double commit returns AlreadyCommitted.
 #[test]
 fn test_replica_transaction_double_commit() {
 	let engine = test_multi();
@@ -373,7 +343,6 @@ fn test_replica_transaction_double_commit() {
 	assert!(err.to_string().contains("committed"), "expected AlreadyCommitted, got: {err}");
 }
 
-/// Double rollback returns AlreadyRolledBack.
 #[test]
 fn test_replica_transaction_double_rollback() {
 	let engine = test_multi();
@@ -385,7 +354,6 @@ fn test_replica_transaction_double_rollback() {
 	assert!(err.to_string().contains("rolled back"), "expected AlreadyRolledBack, got: {err}");
 }
 
-/// Operations after commit return AlreadyCommitted.
 #[test]
 fn test_replica_transaction_set_after_commit() {
 	let engine = test_multi();
@@ -396,7 +364,6 @@ fn test_replica_transaction_set_after_commit() {
 	assert!(err.to_string().contains("committed"), "expected AlreadyCommitted, got: {err}");
 }
 
-/// Operations after rollback return AlreadyRolledBack.
 #[test]
 fn test_replica_transaction_set_after_rollback() {
 	let engine = test_multi();
@@ -407,7 +374,6 @@ fn test_replica_transaction_set_after_rollback() {
 	assert!(err.to_string().contains("rolled back"), "expected AlreadyRolledBack, got: {err}");
 }
 
-/// get() after commit returns AlreadyCommitted.
 #[test]
 fn test_replica_transaction_get_after_commit() {
 	let engine = test_multi();
@@ -419,58 +385,52 @@ fn test_replica_transaction_get_after_commit() {
 	assert!(err.to_string().contains("committed"), "expected AlreadyCommitted, got: {err}");
 }
 
-/// Auto-rollback on drop - uncommitted writes not visible.
 #[test]
 fn test_replica_transaction_drop_auto_rollback() {
 	let engine = test_multi();
 	{
 		let mut tx = ReplicaTransaction::new(engine.clone(), CommitVersion(100)).unwrap();
 		tx.set(&as_key!(1), as_values!(1)).unwrap();
-		// dropped without commit or rollback
+		// Dropped without commit or rollback.
 	}
 
 	let rx = engine.begin_query().unwrap();
 	assert!(rx.get(&as_key!(1)).unwrap().is_none());
 }
 
-/// Replica unset - delete with tombstone preservation.
 #[test]
 fn test_replica_unset() {
+	// An announced removal carries a pre-image, but must still leave the pre-removal version readable.
 	let engine = test_multi();
 
-	// Insert at version 100
 	{
 		let mut tx = engine.begin_replica(CommitVersion(100)).unwrap();
 		tx.set(&as_key!(1), as_values!(42)).unwrap();
 		tx.commit_at_version().unwrap();
 	}
 
-	// Unset at version 200
 	{
 		let mut tx = engine.begin_replica(CommitVersion(200)).unwrap();
 		tx.remove_with_pre(&as_key!(1), as_values!(42)).unwrap();
 		tx.commit_at_version().unwrap();
 	}
 
-	// Latest: key not found
 	let rx = engine.begin_query().unwrap();
 	assert!(rx.get(&as_key!(1)).unwrap().is_none());
 
-	// Time-travel to version 100: key exists
 	let mut txn = engine.begin_command().unwrap();
 	txn.read_as_of_version_exclusive(CommitVersion(101));
 	let sv = txn.get(&as_key!(1)).unwrap().unwrap();
 	assert_eq!(from_row!(i32, sv.row()), 42);
 }
 
-/// Replica prefix and prefix_rev queries.
 #[test]
 fn test_replica_prefix() {
 	use reifydb_codec::key::encoded::EncodedKey;
 
 	let engine = test_multi();
 
-	// Use raw byte keys with a shared prefix so prefix queries work correctly.
+	// Raw byte keys, because the as_key! encoding does not share a leading byte prefix.
 	let k_aa = EncodedKey::new(vec![0x01, 0x01]);
 	let k_ab = EncodedKey::new(vec![0x01, 0x02]);
 	let k_ac = EncodedKey::new(vec![0x01, 0x03]);
@@ -488,20 +448,19 @@ fn test_replica_prefix() {
 
 	let rx = engine.begin_query().unwrap();
 
-	// Prefix 0x01 should return k_aa, k_ab, k_ac (3 items)
+	// k_ba shares no prefix byte, so it must be excluded from both directions.
 	let batch = rx.prefix(&prefix_01).unwrap();
 	assert_eq!(batch.items.len(), 3);
 
-	// Prefix_rev 0x01 should return same 3 items in reverse (descending)
 	let batch_rev = rx.prefix_rev(&prefix_01).unwrap();
 	assert_eq!(batch_rev.items.len(), 3);
 	assert_eq!(batch_rev.items[0].key, k_ac);
 	assert_eq!(batch_rev.items[2].key, k_aa);
 }
 
-/// Verify the version on rows returned by get() matches the primary version.
 #[test]
 fn test_replica_get_version_field() {
+	// Rows must carry the primary's version, not a locally assigned one, or replicas disagree.
 	let engine = test_multi();
 	{
 		let mut tx = engine.begin_replica(CommitVersion(100)).unwrap();

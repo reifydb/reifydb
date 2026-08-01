@@ -63,12 +63,9 @@ pub struct JoinRow {
 
 	pub value: i64,
 
-	/// The row's event position, which is what the sweep ages this row's side group on.
-	///
-	/// Without it every row stamps at `DateTime::default()`, so a join's whole corpus lands in one
-	/// activity bucket and any cutoff is all-or-nothing: either nothing is ever due, or the first
-	/// sweep past the epoch takes the entire node. Either way a keyspace or mapping assertion holds
-	/// for a reason that has nothing to do with the phase it names.
+	/// The row's event position, which is what the sweep ages this row's side group on. Without it the
+	/// whole corpus lands in one activity bucket and any cutoff is all-or-nothing, so a keyspace or
+	/// mapping assertion would hold for a reason unrelated to the phase it names.
 	pub coord_ms: u64,
 }
 
@@ -112,9 +109,8 @@ fn columns_of(rows: &[&JoinRow]) -> Columns {
 		.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer))
 		.collect();
 
-	// `with_row_numbers` would fill every system stamp with `DateTime::default()`, which is the epoch
-	// and not a position any of these rows carries. The times have to be written alongside the row
-	// numbers or the harness reads the whole batch as arriving at time zero.
+	// `with_row_numbers` would stamp every system time at the epoch, so the times have to be written
+	// alongside the numbers or the harness reads the whole batch as arriving at time zero.
 	let numbers: Vec<RowNumber> = rows.iter().map(|row| row.number).collect();
 	let times: Vec<DateTime> = rows.iter().map(|row| row.at()).collect();
 	Columns::with_system(columns, SystemColumns::new(numbers, Vec::new(), times.clone(), times.clone(), times))
@@ -139,14 +135,13 @@ pub struct JoinWorkload {
 	pub none_pct: u32,
 	pub rekey_pct: u32,
 
-	/// The span rows draw their event position from. A join has no window, so this is not a shape
-	/// parameter - it only decides how widely the corpus spreads across the activity grid, which is
-	/// what decides whether a sweep can retire one side group while another stays live.
+	/// The span rows draw their event position from. A join has no window, so this only decides how
+	/// widely the corpus spreads across the activity grid, which is what lets one side group retire
+	/// while another stays live.
 	pub coord_span_ms: u64,
 
 	/// Whether an update may move a key between defined and undefined. Off everywhere but the sweep
-	/// written for that transition, because it is routed to a handler that leaves the operator's own
-	/// state behind and would otherwise fail every sweep for the same single reason.
+	/// written for that transition, which would otherwise fail every sweep for the same single reason.
 	pub flip_definedness: bool,
 }
 
@@ -201,11 +196,9 @@ impl Workload for JoinWorkload {
 	}
 
 	fn lanes(&self, row: &JoinRow) -> Lanes {
-		// The coord lane is what the driver folds into its arrival frontier, and the watermark it
-		// sweeps at is clamped to that frontier. This lane used to carry the side, which pinned every
-		// join corpus to an arrival of 1ms and made any reclaiming scenario unable to advance past the
-		// epoch. The side is not lost from the fingerprint: it is drawn once per row alongside the
-		// number, so it is a function of the number within a run.
+		// The coord lane is what the driver folds into its arrival frontier and the sweep watermark
+		// is clamped to that frontier, so carrying anything else here pins the corpus to the epoch.
+		// The side stays in the fingerprint: it is drawn once per row alongside the number.
 		Lanes {
 			number: row.number.0,
 			group: row.key.map(|key| key as u64).unwrap_or(u64::MAX),
@@ -235,14 +228,9 @@ impl Workload for JoinWorkload {
 	}
 }
 
-/// Packs a run of operations into diffs the way an upstream flow would: consecutive operations of
-/// the same kind on the same input become one multi-row diff.
-///
-/// Coalescing only across a RUN rather than over the whole batch is what keeps the relative order of
-/// the two inputs intact. Latest mode is order-sensitive - a right arrival overwrites a per-key slot
-/// - so reordering the inputs against each other would make the oracle describe a sequence the
-/// operator never saw. Within a run there is nothing to reorder, and the multi-row diff is what
-/// reaches the batched paths: keyed grouping, batched unmatched-left, multi-index cartesian.
+/// Packs a run of operations into diffs the way an upstream flow would. Coalescing across a run rather
+/// than the whole batch keeps the two inputs in relative order, which latest mode depends on; the
+/// multi-row diff is what reaches the batched keyed, unmatched-left and cartesian paths.
 fn coalesce(ops: &[Op<JoinRow>]) -> Vec<Diff> {
 	let mut diffs = Vec::new();
 	let mut start = 0;
@@ -265,10 +253,8 @@ fn continues_run(run: &[Op<JoinRow>], next: &Op<JoinRow>) -> bool {
 				| (Op::Remove(_), Op::Remove(_))
 				| (Op::Update(..), Op::Update(..))
 		);
-	// One diff never names the same row twice. A source that writes a row twice in a batch folds
-	// those into a single operation before it emits anything, so a diff carrying both would be a
-	// shape no operator is built for - here both copies would key the same (left, right) mapping and
-	// the pair would be published twice under one output row.
+	// One diff never names the same row twice: both copies would key the same (left, right) mapping
+	// and the pair would be published twice under one output row.
 	same_shape && !run.iter().any(|op| identity_of(op) == identity_of(next))
 }
 

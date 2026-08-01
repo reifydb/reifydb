@@ -6,7 +6,7 @@ use reifydb_examples::log_query;
 use tracing::info;
 
 fn main() {
-	// Create and start an in-memory database with logging
+	// Create an in-memory database
 	let db = embedded::memory().build().unwrap();
 
 	// Create a namespace to organize our tables

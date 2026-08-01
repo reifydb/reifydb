@@ -22,9 +22,8 @@ use reifydb_store_multi::{
 };
 use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
 
-/// commit buffer + SQLite persistent + read cache, built with sync_only pools so the timer-driven
-/// flush/compaction actors never fire on their own (the large flush_interval is extra insurance on top). The
-/// SQLite temp-path guard is returned as `impl Drop` so the test never has to name the guard type.
+/// Commit buffer + SQLite persistent + read cache on sync_only pools, so the timer-driven flush and
+/// compaction actors never fire on their own and the run stays a pure function of the seed.
 pub fn sync_persistent_store() -> (StandardMultiStore, impl Drop) {
 	let pools = Pools::new(PoolConfig::sync_only());
 	let clock = Clock::testing();
@@ -38,17 +37,14 @@ pub fn sync_persistent_store() -> (StandardMultiStore, impl Drop) {
 	(store, guard)
 }
 
-/// Deterministic stand-in for the FlushActor sweep, mirroring its persist -> refresh-read -> evict
-/// ordering: move the latest-<=cutoff value of every key into the persistent tier, insert those
-/// flushed `(key, version, value)` entries into the read cache exactly like
-/// `FlushActor::refresh_read_tier` does (the flush echo that clears two-version previous slots),
-/// then evict the flushed versions from the commit buffer.
+/// Deterministic stand-in for the flush sweep, in its persist -> refresh-read -> evict order. The
+/// read-cache insert is the flush echo that clears two-version previous slots, so omitting it would
+/// leave the stand-in behaving differently from the actor it models.
 pub fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 	let commit = store.commit();
 	for kind in commit.list_all_entry_kinds().unwrap() {
-		// Unbounded budget: this stand-in must move every key below the cutoff in one pass, so the
-		// oracle can assume a complete flush. A budgeted call would leave a tail behind and the
-		// differential check would see a partially-flushed store rather than the state it models.
+		// The oracle assumes a complete flush, so a budgeted call would leave a tail and the
+		// differential check would compare against a state the model never reaches.
 		let (to_persist, to_compact, more) = match commit {
 			MultiCommitBufferTier::Memory(s) => s.collect_evictable_below(kind, cutoff, usize::MAX),
 		};
@@ -83,9 +79,8 @@ pub fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 	}
 }
 
-/// Build a row carrying `payload`. TTL eviction is version-anchored now (it keys off each row's commit
-/// version, read from the store, not any header timestamp), so the test controls a key's age purely by
-/// the version it commits at - the row body is opaque to eviction.
+/// TTL eviction is version-anchored, so a key's age is controlled purely by the version it commits at
+/// and the row body is opaque to eviction.
 pub fn build_row(payload: &[u8]) -> EncodedRow {
 	let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
 	buf[SHAPE_HEADER_SIZE..].copy_from_slice(payload);

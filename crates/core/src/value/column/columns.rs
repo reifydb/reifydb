@@ -748,11 +748,8 @@ pub mod tests {
 		Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian_time(a, b)))
 	}
 
-	/// Builds a one-column `Columns` from `buffer`, extracts `indices`, and asserts the extracted
-	/// column reports the right row count, keeps its value type, and reproduces the source value at
-	/// every requested index in order. This is the type-agnostic core check: it compares
-	/// `get_value` of the extraction against `get_value` of the source so it works for every
-	/// `ColumnBuffer` variant without hand-constructing each `Value`.
+	/// Compares `get_value` of the extraction against the source, so it covers every `ColumnBuffer`
+	/// variant without hand-constructing each `Value`.
 	fn assert_extract_preserves_values(buffer: ColumnBuffer, indices: &[usize]) {
 		let original = Columns::new(vec![ColumnWithName::new("c", buffer)]);
 		let extracted = original.extract_by_indices(indices);
@@ -997,9 +994,8 @@ pub mod tests {
 
 	#[test]
 	fn heap_size_counts_utf8_payload_not_just_row_count() {
-		// Two columns with the SAME row count but very different string payloads must not
-		// report the same footprint: a byte budget that ignored varlen content (the audit's
-		// root cause) would rate these equal and let a wide-string result blow past the cap.
+		// Two columns with the same row count but different string payloads must not report the same
+		// footprint; a budget ignoring varlen content lets a wide-string result blow past the cap.
 		let short = Columns::new(vec![ColumnWithName::new("c", ColumnBuffer::utf8(["a", "b", "c"]))]);
 		let long_value = "x".repeat(4096);
 		let long = Columns::new(vec![ColumnWithName::new(
@@ -1292,13 +1288,10 @@ pub mod tests {
 		assert_eq!(columns.column("none_col").unwrap().data().get_value(0), Value::none());
 	}
 
-	// value_to_buffer must respect the actual `inner` type carried by a `Value::None`, not force
-	// every None into a single hardcoded column type. `Value::PartialEq` now compares `inner`
-	// (previously all `Value::None` compared equal regardless of type), so a wrong inner type here
-	// would silently mistype every "all None" column.
-
 	#[test]
 	fn test_single_row_none_of_int4_is_int4_typed() {
+		// value_to_buffer must keep the `inner` type a `Value::None` carries; forcing one hardcoded
+		// column type would silently mistype every all-none column.
 		let columns = Columns::single_row([("n", Value::none_of(ValueType::Int4))]);
 		match columns.column("n").unwrap().data().get_value(0) {
 			Value::None {
@@ -1332,9 +1325,8 @@ pub mod tests {
 
 	#[test]
 	fn test_single_row_none_of_nested_option_collapses_to_base_type() {
-		// ColumnBuffer::none_typed already unwraps a nested Option(inner) type to its base type
-		// (there is no separate column representation for Option<Option<T>>), so a value that is
-		// itself Option<Option<Duration>>::None ends up as a Duration-typed None column.
+		// none_typed unwraps a nested Option(inner) to its base type, so an Option<Option<Duration>>
+		// none lands in a Duration-typed column.
 		let inner_ty = ValueType::Option(Box::new(ValueType::Duration));
 		let columns = Columns::single_row([("n", Value::none_of(inner_ty))]);
 		match columns.column("n").unwrap().data().get_value(0) {
@@ -1347,8 +1339,8 @@ pub mod tests {
 
 	#[test]
 	fn test_single_row_none_of_boolean_is_boolean_typed() {
-		// Boolean is also value_to_buffer's old hardcoded default, so this case alone would not
-		// have caught the bug; kept for symmetry with the other inner types above.
+		// Boolean is value_to_buffer's fallback type, so this case alone proves nothing; it is kept
+		// for symmetry with the other inner types above.
 		let columns = Columns::single_row([("n", Value::none_of(ValueType::Boolean))]);
 		match columns.column("n").unwrap().data().get_value(0) {
 			Value::None {

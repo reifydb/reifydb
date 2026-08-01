@@ -7,13 +7,10 @@ use tokio::time::timeout;
 
 use super::{SubscriptionTestHarness, find_column};
 
-// Exercises the batch subscription path end to end: a change on a member is delivered
-// as a per-frame `changes` list on that member's entry, with the op derived per frame
-// and the implicit `_op` column stripped. This is the first batch-subscription test in
-// the Rust suite; per-frame op derivation across concatenated frames is covered
-// deterministically by the `frames_to_changes` unit test in `src/changes.rs`.
 #[test]
 fn test_batch_member_entry_reports_per_frame_changes() {
+	// The batch path must derive the op per frame and strip `_op` before handing the entry to
+	// the caller, exactly as the single-subscription path does.
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("batch", "id: int4, name: utf8").await?;
 

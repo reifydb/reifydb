@@ -151,11 +151,8 @@ mod tests {
 
 	#[test]
 	fn time_round_trips_independently_of_created_at_and_updated_at() {
-		// Intent: #time occupies its own header slot. The three stamps answer three different
-		// questions (when the DB learned this / last touched it / when it happened), so a write
-		// to one must never be observable in another.
-		// Mutation: point TIME_OFFSET at UPDATED_AT_OFFSET so the slots overlap, and the reads
-		// below start returning each other's values.
+		// The three stamps answer different questions (when the DB learned a row, last touched
+		// it, when the event happened), so overlapping slots would make one readable as another.
 		let mut row = shape(1).allocate();
 
 		row.set_timestamps(at(11), at(22));
@@ -176,12 +173,8 @@ mod tests {
 
 	#[test]
 	fn time_survives_a_verbatim_rewrite_that_refreshes_updated_at() {
-		// Intent: #time has a created_at-like lifecycle, not an updated_at-like one.
-		// set_timestamps is the verbatim-rewrite path used by the seal flush; it refreshes
-		// updated_at on bytes it copies through. #time describes when the event happened, so a
-		// local rewrite must leave it alone or every downstream retention decision drifts to
-		// wall clock.
-		// Mutation: widen set_timestamps to also stamp the #time slot and this fails.
+		// set_timestamps is the seal flush's verbatim-rewrite path. #time describes when the
+		// event happened, so re-stamping it locally would drift retention to wall clock.
 		let mut row = shape(1).allocate();
 		row.set_timestamps(at(7), at(7));
 		row.set_time(at(1_000));
@@ -196,16 +189,9 @@ mod tests {
 
 	#[test]
 	fn the_header_slots_end_before_the_bitvec_begins() {
-		// Intent: the four header slots must fit inside SHAPE_HEADER_SIZE, so that no header
-		// write reaches the bitvec or the static section. A round-trip alone cannot prove this:
-		// the accessors and the layout both derive from the same constants, so they move
-		// together and stay self-consistent even when the arithmetic is wrong. What actually
-		// breaks is the boundary, and only a test that walks both sides of it can see that.
-		// This is written so it survives DateTime widening: it asserts the slots tile the header
-		// without gap or overlap, then proves behaviourally that stamping all three leaves every
-		// user field and every definedness bit intact.
-		// Mutation: drop a DateTime::ENCODED_SIZE term from any offset and either the tiling
-		// assertions or the field readback fails.
+		// Accessors and layout derive from the same constants, so a round trip stays
+		// self-consistent even when the arithmetic is wrong. Only the boundary breaks: the
+		// slots must tile SHAPE_HEADER_SIZE exactly, leaving the bitvec and fields untouched.
 		assert_eq!(CREATED_AT_OFFSET, FINGERPRINT_SIZE, "the first stamp starts where the fingerprint ends");
 		assert_eq!(UPDATED_AT_OFFSET, CREATED_AT_OFFSET + DateTime::ENCODED_SIZE);
 		assert_eq!(TIME_OFFSET, UPDATED_AT_OFFSET + DateTime::ENCODED_SIZE);
@@ -235,11 +221,8 @@ mod tests {
 
 	#[test]
 	fn time_consumes_no_definedness_bit() {
-		// Intent: #time lives outside user field space, so it costs no definedness bit and does
-		// not shift user field indices. A row is always timed (D1), which is exactly why it must
-		// not be representable as an absent field.
-		// Mutation: allocate #time as field 0 of the shape and the bit-to-field mapping below
-		// slides by one.
+		// Every row is timed, so #time must not be representable as an absent field: it lives
+		// outside user field space, costing no definedness bit and shifting no field index.
 		let shape = shape(9);
 		let mut row = shape.allocate();
 		row.set_time(DateTime::MAX);
@@ -261,12 +244,8 @@ mod tests {
 
 	#[test]
 	fn a_stamp_slot_holds_exactly_one_datetime_encoding() {
-		// Intent: the header stores stamps through DateTime's own byte form rather than a local
-		// u64 cast, so widening DateTime moves the header with it instead of silently truncating
-		// into a slot sized for the old type. This pins the two facts together: the slot width
-		// is DateTime::ENCODED_SIZE, and what lands in it is what DateTime::to_le_bytes produced.
-		// Mutation: encode the stamp with to_nanos().to_le_bytes() at a fixed width of 8 and
-		// this stops tracking DateTime once ENCODED_SIZE changes.
+		// Stamps go through DateTime's own byte form, not a local u64 cast, so widening
+		// DateTime moves the header with it instead of truncating into an old-width slot.
 		let mut row = shape(1).allocate();
 		let stamp = at(0x0102_0304_0506_0708);
 		row.set_time(stamp);

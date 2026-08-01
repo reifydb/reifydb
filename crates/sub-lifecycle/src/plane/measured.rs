@@ -115,7 +115,8 @@ mod tests {
 
 	#[test]
 	fn a_slice_records_liveness_for_every_class_the_task_owns() {
-		// The evictor owns both row-ttl modes; recording only the first leaves the rest looking dead.
+		// A task may declare more than one class, and recording only the first leaves the rest reading
+		// as dead in the retention report.
 		let plane = plane();
 		let runs = Arc::new(AtomicU64::new(0));
 		let mut task = Measured::new(

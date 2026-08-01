@@ -746,21 +746,11 @@ mod tests {
 		EncodedRow(CowVec::new(serialize(&s.to_string())))
 	}
 
-	/// Regression test for the self-lease race in `finalize_commit`.
-	///
-	/// `commit_version` is allocated in `Oracle::allocate_commit_version` and, before the fix,
-	/// registered only on the `command` watermark - nothing protects it on the `query` watermark
-	/// until `finalize_commit` runs. A concurrent transaction finishing at a higher, registered
-	/// query version can then race `query.done_until()` past our own commit_version before we get
-	/// there, tripping the `reifydb_assertions!` in `finalize_commit`.
-	///
-	/// This test does not rely on real thread timing. It calls the private `commit_pending()`
-	/// directly to obtain `commit_version` exactly as `commit()` would, then sends a racing
-	/// transaction's begin+finish through the *real* async watermark mechanism
-	/// (`register_in_flight`/`mark_finished`) and uses a bounded `wait_for_mark_timeout` to
-	/// deterministically observe whether the query watermark could advance past `commit_version`.
 	#[test]
 	fn commit_version_stays_protected_from_query_watermark_race_until_finalized() {
+		// An allocated but unfinalized commit version must hold the query watermark down. If a
+		// racing higher version can advance done_until past it, the historical-GC cutoff crosses
+		// a commit version whose own post-commit hooks have not run.
 		let engine = MultiTransaction::testing();
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(&test_key("race-key"), test_row("race-value")).unwrap();
@@ -769,19 +759,13 @@ mod tests {
 		let (commit_version, entries) = txn.commit_pending().unwrap();
 		assert_ne!(commit_version, CommitVersion(0));
 
-		// Simulate an unrelated, concurrent transaction finishing at a HIGHER version - the
-		// real-world trigger for the flake (any other thread's begin_command()/commit() or
-		// begin_query() completing while ours is still mid-flight).
+		// An unrelated transaction finishing at a higher version is the real-world trigger.
 		let racer = CommitVersion(commit_version.0 + 1);
 		txn.oracle.query.register_in_flight(racer);
 		txn.oracle.query.mark_finished(racer);
 
-		// Bounded, deterministic check: before the fix, commit_version was never registered on
-		// the query watermark, so nothing blocks the racer's Done from advancing done_until past
-		// it - this resolves almost immediately (well under the bound). After the fix,
-		// commit_version is registered-but-unfinished on the query watermark, so done_until can
-		// never reach `racer` while it's open - this reliably times out. Either outcome is
-		// reached deterministically within the bound; it is not a best-effort sleep.
+		// Bounded wait, not a sleep: while commit_version is open done_until can never reach the
+		// racer, so both outcomes resolve deterministically inside the bound.
 		let racer_observed =
 			txn.oracle.query.wait_for_mark_timeout(racer, Duration::from_milliseconds(300).unwrap());
 		assert!(

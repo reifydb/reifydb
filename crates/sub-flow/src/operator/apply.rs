@@ -173,12 +173,9 @@ mod tests {
 
 	#[test]
 	fn the_apply_wrapper_reports_its_inner_operators_retention_scale() {
-		// Registration sizes a node's activity grid from Operators::Apply(..).retention_scale().
-		// When the wrapper swallowed it (trait default None), every windowed FFI/native
-		// operator mounted under an apply node registered in the version domain (from its
-		// declared ttl) while its driver stamped event-time positions - the domain-mismatch
-		// panic in flow's group interner. The wrapper must hand through the inner answer,
-		// both Some and None.
+		// Registration sizes the node's activity grid from this answer, so a wrapper that
+		// swallowed it would register a windowed guest in the version domain while its driver
+		// stamps event-time positions - a domain mismatch in the group interner.
 		let sealing = ApplyOperator::new(
 			noop_parent(),
 			FlowNodeId(7),
@@ -198,11 +195,9 @@ mod tests {
 
 	#[test]
 	fn an_operators_own_scale_outranks_the_declared_ttl_and_silence_defers_to_it() {
-		// The operator's own scale is arithmetic it can do and a view author cannot: a 60s window
-		// with 5s grace provably needs nothing older than 65s. A declared ttl is a guess at the same
-		// number, so it must never win - a shorter one would silently truncate live windows.
-		// Getting the precedence backwards truncates live state, or retains forever when silence
-		// wins over a real ttl.
+		// An operator derives its scale exactly (a 60s window with 5s grace needs nothing older
+		// than 65s) while a declared ttl only guesses at it, so a shorter declaration must never
+		// win and truncate live windows.
 		let derived = ApplyOperator::new(
 			noop_parent(),
 			FlowNodeId(7),
@@ -230,9 +225,8 @@ mod tests {
 
 	#[test]
 	fn an_unusable_guest_span_is_refused_rather_than_becoming_a_scale() {
-		// A zero or unrepresentable span cannot bound anything. Refusing it lets the declared ttl
-		// take over, which keeps the node aged by SOME rule; accepting it would reclaim on a
-		// schedule nobody chose. Every uncertain conversion here degrades toward retaining.
+		// Refusing an unusable span lets the declared ttl take over, so the node is still aged by
+		// some rule; accepting it would reclaim on a schedule nobody chose.
 		assert_eq!(scale_from_millis(Some(0)), None, "zero is not a retention scale");
 		assert_eq!(scale_from_millis(None), None);
 		assert_eq!(
@@ -245,10 +239,8 @@ mod tests {
 
 	#[test]
 	fn reclaimed_groups_reach_the_operator_behind_the_apply_wrapper() {
-		// The reclaim driver erases group state on disk and then calls invalidate_groups so
-		// the operator drops its RAM copies. When the wrapper swallowed the call (trait
-		// default no-op), native operators kept serving ghost rows for groups whose durable
-		// state was already gone.
+		// The reclaim driver erases group state on disk and then invalidates, so a wrapper that
+		// swallowed the call leaves the inner operator serving ghost rows from RAM.
 		let invalidated = Arc::new(Mutex::new(Vec::new()));
 		let apply = ApplyOperator::new(
 			noop_parent(),

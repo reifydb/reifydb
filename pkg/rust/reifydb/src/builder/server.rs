@@ -183,9 +183,6 @@ impl ServerBuilder {
 		}
 	}
 
-	/// Configure the shared runtime.
-	///
-	/// If not set, a default configuration will be used.
 	pub fn with_runtime_config(mut self, config: RuntimeConfig) -> Self {
 		self.runtime_config = Some(config);
 		self
@@ -204,15 +201,12 @@ impl ServerBuilder {
 		self
 	}
 
-	/// Set a system configuration value applied during bootstrap.
-	///
-	/// Applied on every `build()`, overwriting any previously persisted value.
+	/// Overwrites any previously persisted value for this key on every `build()`.
 	pub fn with_config(mut self, key: ConfigKey, value: Value) -> Self {
 		self.bootstrap_configs.push((key, value));
 		self
 	}
 
-	/// Set multiple system configuration values applied during bootstrap.
 	pub fn with_configs(mut self, configs: impl IntoIterator<Item = (ConfigKey, Value)>) -> Self {
 		self.bootstrap_configs.extend(configs);
 		self
@@ -240,7 +234,6 @@ impl ServerBuilder {
 		self
 	}
 
-	/// Configure and add a gRPC subsystem.
 	#[cfg(all(feature = "sub_server_grpc", not(reifydb_single_threaded)))]
 	pub fn with_grpc<F>(mut self, configurator: F) -> Self
 	where
@@ -251,7 +244,6 @@ impl ServerBuilder {
 		self
 	}
 
-	/// Configure and add an HTTP subsystem.
 	#[cfg(all(feature = "sub_server_http", not(reifydb_single_threaded)))]
 	pub fn with_http<F>(mut self, configurator: F) -> Self
 	where
@@ -262,7 +254,6 @@ impl ServerBuilder {
 		self
 	}
 
-	/// Configure and add a WebSocket subsystem.
 	#[cfg(all(feature = "sub_server_ws", not(reifydb_single_threaded)))]
 	pub fn with_ws<F>(mut self, configurator: F) -> Self
 	where
@@ -273,7 +264,6 @@ impl ServerBuilder {
 		self
 	}
 
-	/// Configure and add an OpenTelemetry subsystem.
 	#[cfg(all(feature = "sub_server_otel", not(reifydb_single_threaded)))]
 	pub fn with_otel<F>(mut self, configurator: F) -> Self
 	where
@@ -284,44 +274,20 @@ impl ServerBuilder {
 		self
 	}
 
-	/// Configure tracing with OpenTelemetry integration.
-	///
-	/// This method coordinates the initialization of both the tracing subsystem
-	/// and OpenTelemetry subsystem, ensuring the OpenTelemetry tracer is available
-	/// before the tracing subscriber is initialized.
-	///
-	/// # Arguments
-	///
-	/// * `otel_config` - OpenTelemetry configuration
-	/// * `tracing_configurator` - Function to configure the TracingConfigurator
-	///
-	/// # Example
-	///
-	/// ```ignore
-	/// let db = server::memory()
-	///     .with_tracing_otel(
-	///         OtelConfig::new()
-	///             .service_name("my-service")
-	///             .endpoint("http://localhost:4317"),
-	///         |t| t.with_filter("info")
-	///     )
-	///     .build()?;
-	/// ```
+	/// Pairs the two subsystems so the OpenTelemetry tracer exists before the tracing
+	/// subscriber is initialized; configuring them separately cannot guarantee that order.
 	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel", not(reifydb_single_threaded)))]
 	pub fn with_tracing_otel<O, F>(mut self, otel_configurator: O, tracing_configurator: F) -> Self
 	where
 		O: FnOnce(OtelConfigurator) -> OtelConfigurator + Send + 'static,
 		F: FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static,
 	{
-		// Store the configurators to be initialized later in build()
 		self.otel_tracing_config = Some((Box::new(otel_configurator), Box::new(tracing_configurator)));
 		self
 	}
 
-	/// Register a request-level interceptor.
-	///
-	/// Interceptors are called in registration order for `pre_execute`,
-	/// and in reverse order for `post_execute`.
+	/// Interceptors run in registration order for `pre_execute` and in reverse order
+	/// for `post_execute`.
 	#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 	pub fn with_request_interceptor<I: RequestInterceptor>(mut self, interceptor: I) -> Self {
 		self.request_interceptors.push(Arc::new(interceptor));

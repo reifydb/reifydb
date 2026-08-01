@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Integration tests for the historical-version GC primitive (`scan_historical_below`).
-//!
-//! These exercise the storage-tier piece of the GC actor without spinning up
-//! the actor itself - we verify that the scan-then-drop loop correctly removes
-//! versions strictly below a given cutoff, leaves versions at or above the
-//! cutoff intact, and never touches `__current`.
+//! Historical-version GC (`scan_historical_below`) at the storage tier, without the GC actor: the
+//! scan-then-drop loop must remove versions strictly below the cutoff, keep those at or above it, and
+//! never touch the current version.
 
 use std::collections::HashMap;
 
@@ -33,9 +30,8 @@ fn val(s: &str) -> CowVec<u8> {
 	CowVec::new(s.as_bytes().to_vec())
 }
 
-/// Write `n` versions of the same key to the same object. Each successive write
-/// supersedes the prior current and demotes it to historical.
 fn write_n_versions(storage: &MultiCommitBufferTier, k: &EncodedKey, n: u64) {
+	// Each successive write supersedes the prior current and demotes it to historical.
 	let kind = object();
 	for v in 1..=n {
 		storage.set(CommitVersion(v), HashMap::from([(kind, vec![(k.clone(), Some(val(&format!("v{v}"))))])]))
@@ -43,9 +39,8 @@ fn write_n_versions(storage: &MultiCommitBufferTier, k: &EncodedKey, n: u64) {
 	}
 }
 
-/// Drain `scan_historical_below` into `drop` until the cursor is exhausted.
-/// Returns the total number of versions deleted across all batches.
 fn sweep(storage: &MultiCommitBufferTier, kind: EntryKind, cutoff: CommitVersion, batch_size: usize) -> u64 {
+	// Returns the total versions deleted across every batch, not just the last one.
 	let mut cursor = HistoricalCursor::default();
 	let mut total = 0u64;
 	loop {
@@ -70,30 +65,24 @@ fn memory_sweep_drops_only_versions_below_cutoff() {
 	let k = key("k");
 	write_n_versions(&storage, &k, 100);
 
-	// __current = v100. __historical = v1..v99.
 	assert_eq!(storage.count_current(object()).unwrap(), 1);
 	assert_eq!(storage.count_historical(object()).unwrap(), 99);
 
 	let dropped = sweep(&storage, object(), CommitVersion(50), 32);
-	// Versions 1..=49 are below cutoff (49 versions).
+	// Versions 1..=49 are below the cutoff.
 	assert_eq!(dropped, 49);
 
-	// Current untouched.
 	assert_eq!(storage.count_current(object()).unwrap(), 1);
 	assert_eq!(storage.count_historical(object()).unwrap(), 50);
 
-	// Reading at the latest snapshot still returns v100.
 	let cur = storage.get(object(), &k, CommitVersion(100)).unwrap().value();
 	assert_eq!(cur.as_deref(), Some(b"v100".as_slice()));
 
-	// Reading at v60 still resolves to v60 (above cutoff, retained).
 	let mid = storage.get(object(), &k, CommitVersion(60)).unwrap().value();
 	assert_eq!(mid.as_deref(), Some(b"v60".as_slice()));
 
-	// Reading at v40 returns None: v40 was pruned and standard MVCC `get`
-	// resolves to the largest version <= requested, of which none survive.
-	// In production this query never happens - the watermark contract says
-	// no reader is below cutoff.
+	// MVCC resolves to the largest surviving version <= requested and none survive below 50. The
+	// watermark contract means no production reader is ever pinned below the cutoff.
 	let pruned = storage.get(object(), &k, CommitVersion(40)).unwrap().value();
 	assert!(pruned.is_none());
 }
@@ -141,7 +130,7 @@ fn sweep_with_cutoff_above_max_drops_all_historical() {
 	write_n_versions(&storage, &k, 10);
 
 	let dropped = sweep(&storage, object(), CommitVersion(1_000_000), 32);
-	// All 9 historical versions (v1..v9) are below cutoff. Current v10 stays.
+	// v1..v9 are historical and below the cutoff; the current v10 stays.
 	assert_eq!(dropped, 9);
 	assert_eq!(storage.count_historical(object()).unwrap(), 0);
 	assert_eq!(storage.count_current(object()).unwrap(), 1);
@@ -169,17 +158,13 @@ fn sweep_paginates_across_many_keys() {
 
 #[test]
 fn sweep_does_not_touch_current_even_below_cutoff() {
-	// Edge: if writes were out of order so current.version < cutoff but a
-	// newer historical exists, we still must not delete from current. The
-	// scan is purely over the __historical table.
+	// Out-of-order writes can leave the current version below the cutoff while newer historical rows
+	// exist; the scan covers the historical side only, so current must survive regardless.
 	let storage = MultiCommitBufferTier::memory();
 	let k = key("k");
 
-	// Write v10 first (lands in current).
 	storage.set(CommitVersion(10), HashMap::from([(object(), vec![(k.clone(), Some(val("v10")))])])).unwrap();
-	// Write v5 second (out-of-order; lands in historical).
 	storage.set(CommitVersion(5), HashMap::from([(object(), vec![(k.clone(), Some(val("v5")))])])).unwrap();
-	// Write v3 (also historical).
 	storage.set(CommitVersion(3), HashMap::from([(object(), vec![(k.clone(), Some(val("v3")))])])).unwrap();
 
 	assert_eq!(storage.count_current(object()).unwrap(), 1);
@@ -205,8 +190,6 @@ fn list_all_entry_kinds_returns_known_objects() {
 	storage.set(CommitVersion(2), HashMap::from([(s2, vec![(key("b"), Some(val("2")))])])).unwrap();
 
 	let kinds = storage.list_all_entry_kinds().unwrap();
-	// Each insert touches both `__current` and `__historical` of that object.
-	// We expect both source IDs to be enumerated.
 	assert!(kinds.contains(&s1), "expected to find object 100, got {:?}", kinds);
 	assert!(kinds.contains(&s2), "expected to find object 200, got {:?}", kinds);
 }

@@ -29,13 +29,10 @@ pub mod tests {
 
 	#[test]
 	fn test_all_key_kinds_have_explicit_cdc_decision() {
-		// This test ensures all KeyKind variants are explicitly considered for CDC exclusion.
-		// When you add a new KeyKind variant:
-		// 1. Add it to the match below (compiler will force you)
-		// 2. Add a test: test_exclude_<name>() or test_include_<name>()
-		// 3. If excluding, add to should_exclude_from_cdc()
+		// The exhaustive match forces every new KeyKind to make a CDC-exclusion decision instead of
+		// silently defaulting into the log.
 
-		let test_variant = KeyKind::Row; // Use any variant to test the match
+		let test_variant = KeyKind::Row;
 
 		match test_variant {
 			KeyKind::Namespace => {}
@@ -117,34 +114,25 @@ pub mod tests {
 			KeyKind::Queue => {}
 			KeyKind::NamespaceQueue => {}
 			KeyKind::QueueDeduplication => {}
-			KeyKind::VersionEpoch => {} /* When adding a new variant, add it here.
-			                             * The compiler will error if you forget.
-			                             * Then add a test and update should_exclude_from_cdc() if
-			                             * needed. */
+			KeyKind::VersionEpoch => {}
 		}
 	}
 
-	// Tests for excluded KeyKinds (should return true)
-
-	// Flow operator state
 	#[test]
 	fn test_exclude_flow_node_state() {
 		assert!(should_exclude_from_cdc(KeyKind::FlowNodeState));
 	}
 
-	// CDC infrastructure
 	#[test]
 	fn test_exclude_cdc_consumer() {
 		assert!(should_exclude_from_cdc(KeyKind::CdcConsumer));
 	}
 
-	// Internal tracking and statistics
 	#[test]
 	fn test_exclude_storage_tracker() {
 		assert!(should_exclude_from_cdc(KeyKind::Metric));
 	}
 
-	// Sequence generators
 	#[test]
 	fn test_exclude_system_sequence() {
 		assert!(should_exclude_from_cdc(KeyKind::SystemSequence));
@@ -160,7 +148,6 @@ pub mod tests {
 		assert!(should_exclude_from_cdc(KeyKind::ColumnSequence));
 	}
 
-	// Version tracking
 	#[test]
 	fn test_exclude_system_version() {
 		assert!(should_exclude_from_cdc(KeyKind::SystemVersion));
@@ -171,19 +158,16 @@ pub mod tests {
 		assert!(should_exclude_from_cdc(KeyKind::TransactionVersion));
 	}
 
-	// Ring buffer internal bookkeeping
 	#[test]
 	fn test_exclude_ring_buffer_metadata() {
 		assert!(should_exclude_from_cdc(KeyKind::RingBufferMetadata));
 	}
 
-	// Index metadata
 	#[test]
 	fn test_exclude_index() {
 		assert!(should_exclude_from_cdc(KeyKind::Index));
 	}
 
-	// Subscriptions (runtime only)
 	#[test]
 	fn test_exclude_subscription() {
 		assert!(should_exclude_from_cdc(KeyKind::Subscription));
@@ -199,7 +183,6 @@ pub mod tests {
 		assert!(should_exclude_from_cdc(KeyKind::SubscriptionRow));
 	}
 
-	// Tests for KeyKinds that should generate CDC (should return false)
 	#[test]
 	fn test_include_namespace() {
 		assert!(!should_exclude_from_cdc(KeyKind::Namespace));
@@ -445,19 +428,16 @@ pub mod tests {
 		assert!(!should_exclude_from_cdc(KeyKind::MigrationEvent));
 	}
 
-	// Version tracking (excluded)
 	#[test]
 	fn test_exclude_flow_version() {
 		assert!(should_exclude_from_cdc(KeyKind::FlowVersion));
 	}
 
-	// Config overrides (excluded)
 	#[test]
 	fn test_exclude_config() {
 		assert!(should_exclude_from_cdc(KeyKind::ConfigStorage));
 	}
 
-	// Version-epoch TTL checkpoint is internal bookkeeping (excluded)
 	#[test]
 	fn test_exclude_version_epoch() {
 		assert!(should_exclude_from_cdc(KeyKind::VersionEpoch));

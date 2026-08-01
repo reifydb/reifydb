@@ -20,7 +20,6 @@ use crate::{
 	session::{parse_admin_response, parse_command_response, parse_query_response},
 };
 
-/// HTTP-specific response format (server returns `{ "frames": [...] }`)
 #[derive(Debug, Deserialize)]
 struct HttpFrameResponse {
 	frames: Vec<ResponseFrame>,
@@ -61,7 +60,6 @@ fn extract_meta(headers: &HeaderMap) -> Option<ResponseMeta> {
 	})
 }
 
-/// HTTP-specific error response matching the server's format
 #[derive(Debug, Deserialize)]
 struct HttpErrorResponse {
 	code: String,
@@ -79,7 +77,6 @@ struct HttpAuthenticateResponse {
 	reason: Option<String>,
 }
 
-/// Async HTTP client for ReifyDB
 #[derive(Clone)]
 pub struct HttpClient {
 	inner: ReqwestClient,
@@ -89,16 +86,10 @@ pub struct HttpClient {
 }
 
 impl HttpClient {
-	/// Create a new HTTP client connected to the given URL.
-	///
-	/// # Arguments
-	/// * `url` - Base URL of the ReifyDB server (e.g., "http://localhost:8080")
-	/// * `format` - Wire format for responses
 	pub async fn connect(url: &str, format: WireFormat) -> Result<Self, Error> {
 		let inner =
 			ReqwestClient::builder().timeout(Duration::from_seconds(30).unwrap().to_std()).build().unwrap(); // FIXME better error handling
 
-		// Normalize URL (remove trailing slash)
 		let base_url = url.trim_end_matches('/').to_string();
 
 		Ok(Self {
@@ -109,12 +100,7 @@ impl HttpClient {
 		})
 	}
 
-	/// Create a new HTTP client using an existing reqwest Client for connection pooling.
-	///
-	/// # Arguments
-	/// * `client` - Shared reqwest Client instance
-	/// * `url` - Base URL of the ReifyDB server
-	/// * `format` - Wire format for responses
+	/// Shares an existing reqwest Client so connections are pooled across clients.
 	pub fn with_client(client: ReqwestClient, url: &str, format: WireFormat) -> Result<Self, Error> {
 		let base_url = url.trim_end_matches('/').to_string();
 		Ok(Self {
@@ -125,10 +111,6 @@ impl HttpClient {
 		})
 	}
 
-	/// Set the authentication token for subsequent requests.
-	///
-	/// # Arguments
-	/// * `token` - Bearer token for authentication
 	pub fn authenticate(&mut self, token: &str) {
 		self.token = Some(token.to_string());
 	}
@@ -176,7 +158,6 @@ impl HttpClient {
 		}
 	}
 
-	/// Logout from the server, revoking the current session token.
 	pub async fn logout(&mut self) -> Result<(), Error> {
 		let token = match self.token.as_ref() {
 			Some(t) => t.clone(),
@@ -201,7 +182,6 @@ impl HttpClient {
 		Ok(self.admin_with_meta(rql, params).await?.frames)
 	}
 
-	/// Execute an admin statement and return frames together with server-reported metadata.
 	pub async fn admin_with_meta(&self, rql: &str, params: Option<Params>) -> Result<AdminResult, Error> {
 		let request = AdminRequest {
 			rql: rql.to_string(),
@@ -230,7 +210,6 @@ impl HttpClient {
 		Ok(self.command_with_meta(rql, params).await?.frames)
 	}
 
-	/// Execute a command statement and return frames together with server-reported metadata.
 	pub async fn command_with_meta(&self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
 		let request = CommandRequest {
 			rql: rql.to_string(),
@@ -259,7 +238,6 @@ impl HttpClient {
 		Ok(self.query_with_meta(rql, params).await?.frames)
 	}
 
-	/// Execute a query statement and return frames together with server-reported metadata.
 	pub async fn query_with_meta(&self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
 		let request = QueryRequest {
 			rql: rql.to_string(),
@@ -283,7 +261,6 @@ impl HttpClient {
 		parse_query_response(ws_response)
 	}
 
-	/// Send an admin request to the server.
 	async fn send_admin(&self, request: &AdminRequest) -> Result<AdminResponse, Error> {
 		let url = format!("{}/v1/admin?format=frames", self.base_url);
 		let (response_body, meta) = self.send_request(&url, request).await?;
@@ -294,7 +271,6 @@ impl HttpClient {
 		}
 	}
 
-	/// Send a command request to the server.
 	async fn send_command(&self, request: &CommandRequest) -> Result<CommandResponse, Error> {
 		let url = format!("{}/v1/command?format=frames", self.base_url);
 		let (response_body, meta) = self.send_request(&url, request).await?;
@@ -305,7 +281,6 @@ impl HttpClient {
 		}
 	}
 
-	/// Send a query request to the server.
 	async fn send_query(&self, request: &QueryRequest) -> Result<QueryResponse, Error> {
 		let url = format!("{}/v1/query?format=frames", self.base_url);
 		let (response_body, meta) = self.send_request(&url, request).await?;
@@ -316,7 +291,6 @@ impl HttpClient {
 		}
 	}
 
-	/// Send an RBCF request: append ?format=rbcf, decode binary response.
 	async fn send_rbcf<T: Serialize>(
 		&self,
 		path: &str,
@@ -329,7 +303,6 @@ impl HttpClient {
 		Ok((frames, meta))
 	}
 
-	/// Send an HTTP POST request and return the response body as text plus extracted meta.
 	async fn send_request<T: Serialize>(
 		&self,
 		url: &str,
@@ -346,7 +319,6 @@ impl HttpClient {
 		Ok((response.text().await.unwrap(), meta)) // FIXME better error handling
 	}
 
-	/// Send an HTTP POST request and return the response body as bytes plus extracted meta.
 	async fn send_request_bytes<T: Serialize>(
 		&self,
 		url: &str,
@@ -369,9 +341,7 @@ impl HttpClient {
 		Ok((response.bytes().await.unwrap().to_vec(), meta)) // FIXME better error handling
 	}
 
-	/// Parse an error response body into an Error.
 	fn parse_error_response(&self, body: &str) -> Error {
-		// Try parsing as HTTP error response format
 		if let Ok(http_err) = from_str::<HttpErrorResponse>(body) {
 			let diag = http_err.diagnostic.unwrap_or_else(|| Diagnostic {
 				code: http_err.code,
@@ -381,12 +351,10 @@ impl HttpClient {
 			return Error(Box::new(diag));
 		}
 
-		// Try parsing as diagnostic error response
 		if let Ok(err_response) = from_str::<ErrResponse>(body) {
 			return Error(Box::new(err_response.diagnostic));
 		}
 
-		// Fallback: return raw response as error
 		panic!("Failed to parse response: {}", body) // FIXME better error handling
 	}
 }

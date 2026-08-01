@@ -148,13 +148,9 @@ fn test_range3() {
 	}
 }
 
-/// a2, a3, b4 (del), b3, c2, c1
-/// Read at ts=4 -> a3, c2
-/// Read at ts=3 -> a3, b3, c2
-/// Read at ts=2 -> a2, c2
-/// Read at ts=1 -> c1
 #[test]
 fn test_range_edge() {
+	// Version layout the reads below are checked against: a2, a3, b4 (del), b3, c2, c1.
 	let engine = test_multi();
 
 	// c1
@@ -279,27 +275,12 @@ fn test_range_edge() {
 	check_rev_iter(items, &[31]);
 }
 
-/// Regression test for MVCC flickering bug.
-///
-/// When a key has many versions and batch_size is smaller than the number
-/// of versions, the query must still return the newest version.
-///
-/// Bug scenario (before fix):
-/// - Key "foo" has versions 1, 2, 3, ..., 50
-/// - Query with batch_size=5 using ASC order
-/// - Storage returns oldest versions first
-/// - Query returns old value instead of newest
-///
-/// Fixed behavior:
-/// - Query with batch_size=5 using DESC order
-/// - Storage returns versions newest-first
-/// - Query correctly returns newest version
 #[test]
 fn test_range_stream_returns_newest_version() {
+	// A batch smaller than the key's version count must still yield the newest version; scanning
+	// oldest-first would fill the batch with superseded versions and return a stale value.
 	let engine = test_multi();
 
-	// Create many versions of the SAME key
-	// Each commit creates a new version
 	const NUM_VERSIONS: u64 = 50;
 
 	for i in 1..=NUM_VERSIONS {
@@ -308,9 +289,6 @@ fn test_range_stream_returns_newest_version() {
 		txn.commit(vec![]).unwrap();
 	}
 
-	// Query with small batch_size
-	// Before fix: would return an older version
-	// After fix: returns newest version
 	let txn = engine.begin_query().unwrap();
 	let items: Vec<_> =
 		txn.range(EncodedKeyRange::all(), RangeScope::All, 5).collect::<Result<Vec<_>, _>>().unwrap();
@@ -318,11 +296,9 @@ fn test_range_stream_returns_newest_version() {
 	assert_eq!(items.len(), 1);
 	let item = &items[0];
 	assert_eq!(item.key, as_key!(1));
-	// Must be the NEWEST version's value
 	assert_eq!(from_row!(u64, &item.row), NUM_VERSIONS);
 }
 
-/// Test that streaming works correctly across multiple keys, each with many versions.
 #[test]
 fn test_range_stream_multiple_keys_many_versions() {
 	let engine = test_multi();

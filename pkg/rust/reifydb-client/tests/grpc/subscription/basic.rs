@@ -58,7 +58,6 @@ fn test_drop_subscription_cleans_up() {
 			.await
 			.unwrap();
 
-		// Drop subscription should succeed without error
 		drop(sub);
 	});
 
@@ -77,7 +76,6 @@ fn test_subscribe_invalid_query() {
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
-		// Invalid RQL should return an error
 		let result = client.subscribe("INVALID RQL SYNTAX HERE", SubscriptionConfig::default()).await;
 		assert!(result.is_err(), "Invalid query should return error");
 	});
@@ -97,7 +95,6 @@ fn test_subscribe_nonexistent_table() {
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
-		// Non-existent table should return an error
 		let result = client.subscribe("from nonexistent_table_xyz_12345", SubscriptionConfig::default()).await;
 		assert!(result.is_err(), "Non-existent table should return error");
 	});
@@ -125,7 +122,6 @@ fn test_recv_with_timeout_returns_none_when_empty() {
 			.await
 			.unwrap();
 
-		// recv_with_timeout should return None when no changes
 		let result = recv_with_timeout(&mut sub, 500).await;
 		assert!(result.is_none(), "recv should return None when no changes pending");
 

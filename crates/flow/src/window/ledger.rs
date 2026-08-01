@@ -107,10 +107,8 @@ mod tests {
 
 	#[test]
 	fn a_ledger_can_only_be_advanced_from_a_fired_timer() {
-		// `advance` takes a FiredAt, whose only constructor takes a &Timer. Arriving
-		// data carries no Timer, so sealing on arrival is unrepresentable rather than
-		// merely avoided. The absence of an `at_instant(DateTime)` constructor is the
-		// thing under test.
+		// `advance` takes a FiredAt, whose only constructor takes a &Timer, so sealing on arriving
+		// data is unrepresentable rather than merely avoided.
 		let mut store = MockStore::default();
 
 		let sealed = SealLedger::advance(&mut store, FiredAt::of(&timer(5_000))).unwrap();
@@ -120,13 +118,9 @@ mod tests {
 
 	#[test]
 	fn two_timers_at_one_instant_seal_identically_whatever_key_they_carry() {
-		// Every seal entry point takes a FiredAt, never a &Timer, so the timer's KEY
-		// cannot reach the sealing decision. That is deliberate and load-bearing: the chaos
-		// framework arms its seals with an EMPTY key, and rolling arms with an empty key in
-		// production too, so a sweep that consulted timer.key would seal nothing for either and
-		// the 488 chaos sweeps would fail in a way that looks like an accumulator bug.
-		// FiredAt collapsing to the instant is what makes the property structural rather than a
-		// convention - there is no key left to read by the time a seal path is called.
+		// Seal entry points take a FiredAt, never a &Timer, so the timer's key cannot reach the
+		// sealing decision. Both chaos and rolling arm seals with an empty key, so a sweep that
+		// consulted timer.key would seal nothing for either.
 		let keyed = Timer {
 			at: DateTime::from_millis(5_000),
 			kind: TimerKind::Seal,
@@ -150,9 +144,8 @@ mod tests {
 
 	#[test]
 	fn an_empty_ledger_reads_as_none_rather_than_the_epoch() {
-		// None and "sealed through 1970" are different answers and reclaim treats
-		// them differently - none means "this node has no seal clamp", the epoch would
-		// mean "everything is sealed", which would let reclaim erase live state.
+		// none and "sealed through 1970" are different answers to reclaim: none means the node has
+		// no seal clamp, the epoch would mean everything is sealed and let reclaim erase live state.
 		let mut store = MockStore::default();
 
 		assert!(SealLedger::read(&mut store).unwrap().is_none());
@@ -160,10 +153,9 @@ mod tests {
 
 	#[test]
 	fn the_ledger_only_moves_forward() {
-		// Timers fire in (at, kind, key) order within one round, but a restart
-		// re-reads a cold wheel and a late round can present an EARLIER instant. Letting
-		// that rewind the ledger would unclamp reclaim and expose already-sealed windows
-		// to a second seal.
+		// Timers fire in (at, kind, key) order within a round, but a restart re-reads a cold wheel
+		// and a late round can present an earlier instant. Rewinding the ledger would unclamp
+		// reclaim and expose already-sealed windows to a second seal.
 		let mut store = MockStore::default();
 
 		SealLedger::advance(&mut store, FiredAt::of(&timer(9_000))).unwrap();
@@ -175,9 +167,8 @@ mod tests {
 
 	#[test]
 	fn the_ledger_is_node_scoped_and_carries_no_group_or_suffix() {
-		// Reclaim reads this key without knowing which operator wrote it, so the
-		// key must be derivable from the node alone. A group-scoped or suffixed key would
-		// make the read impossible without asking the operator.
+		// Reclaim reads this key without knowing which operator wrote it, so it must be derivable
+		// from the node alone; a group-scoped or suffixed key would need the operator to answer.
 		let key = seal_ledger_key();
 		let (group, keyspace, suffix) =
 			OperatorStateKey::decode_inner(key.as_encoded().as_bytes()).expect("structured key");

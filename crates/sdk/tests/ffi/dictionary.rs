@@ -113,8 +113,7 @@ fn dictionary_id_u16_extremes() {
 
 #[test]
 fn dictionary_id_mixed_variants() {
-	// All five variants in one column - the round trip MUST preserve each
-	// element's variant tag, not collapse to a uniform width.
+	// Every width in one column, so a round trip that normalised to a uniform width would be caught here.
 	let input = ColumnBuffer::dictionary_id([
 		DictionaryEntryId::U1(7),
 		DictionaryEntryId::U2(1234),

@@ -23,7 +23,7 @@ fn two_actors_interleaved() {
 		},
 	);
 
-	// Interleave: A, B, A, B
+	// Delivery order is global by enqueue, so a per-actor queue would reorder these.
 	a.actor_ref.send("a1".into()).unwrap();
 	b.actor_ref.send("b1".into()).unwrap();
 	a.actor_ref.send("a2".into()).unwrap();
@@ -68,8 +68,7 @@ fn fan_out_ordering() {
 	fan.actor_ref.send("msg".into()).unwrap();
 	system.run_until_idle();
 
-	// Fan-out sends to t0, t1, t2 in order during handle().
-	// Those sends get consecutive logical timestamps, so processing order is t0, t1, t2.
+	// Sends made inside a single handle() keep their emission order.
 	assert_eq!(log_contents(&log), vec!["msg->t0", "msg->t1", "msg->t2"]);
 }
 
@@ -85,7 +84,6 @@ fn fan_in_ordering() {
 		},
 	);
 
-	// Multiple senders all targeting the same receiver.
 	receiver.actor_ref.send("from_external_0".into()).unwrap();
 	receiver.actor_ref.send("from_external_1".into()).unwrap();
 	receiver.actor_ref.send("from_external_2".into()).unwrap();
@@ -100,21 +98,18 @@ fn deep_message_chain() {
 	let system = test_system();
 	let log = new_log();
 
-	// C is the final receiver (LogActor).
 	let c = system.spawn_coordination(
 		"c",
 		LogActor {
 			log: log.clone(),
 		},
 	);
-	// B forwards to C.
 	let b = system.spawn_coordination(
 		"b",
 		ForwardActor {
 			target: c.actor_ref.clone(),
 		},
 	);
-	// A forwards to B.
 	let a = system.spawn_coordination(
 		"a",
 		ForwardActor {
@@ -125,9 +120,7 @@ fn deep_message_chain() {
 	a.actor_ref.send("chain".into()).unwrap();
 	system.run_until_idle();
 
-	// A processes "chain" -> sends "fwd:chain" to B (new ts)
-	// B processes "fwd:chain" -> sends "fwd:fwd:chain" to C (newer ts)
-	// C processes "fwd:fwd:chain"
+	// run_until_idle must drain messages that only exist once an earlier one is handled.
 	assert_eq!(log_contents(&log), vec!["fwd:fwd:chain"]);
 }
 
@@ -149,15 +142,13 @@ fn deep_chain_interleaved_with_direct() {
 		},
 	);
 
-	// Send chain message through B, then send direct to C.
 	b.actor_ref.send("via_b".into()).unwrap();
 	c.actor_ref.send("direct".into()).unwrap();
 
 	system.run_until_idle();
 
-	// "via_b" to B has ts=0, "direct" to C has ts=1.
-	// B processes "via_b" (ts=0), sends "fwd:via_b" to C (ts=2).
-	// C processes "direct" (ts=1) before "fwd:via_b" (ts=2).
+	// A forwarded message is enqueued when it is emitted, so it lands behind the direct send
+	// that was already waiting rather than inheriting the originating message's position.
 	assert_eq!(log_contents(&log), vec!["direct", "fwd:via_b"]);
 }
 
@@ -196,7 +187,6 @@ fn send_during_init() {
 		},
 	);
 
-	// InitSenderActor sends "from_init" to receiver during init().
 	let _sender = system.spawn_coordination(
 		"sender",
 		InitSenderActor {
@@ -205,14 +195,12 @@ fn send_during_init() {
 		},
 	);
 
-	// Now send an external message to receiver.
 	receiver.actor_ref.send("external".into()).unwrap();
 
 	system.run_until_idle();
 
 	let contents = log_contents(&log);
-	// "from_init" was sent during init (gets a logical timestamp),
-	// "external" was sent after (gets a later logical timestamp).
+	// A send made during init() takes its place in the queue there, not when spawn returns.
 	assert_eq!(contents, vec!["from_init", "external"]);
 }
 
@@ -240,7 +228,6 @@ fn three_actors_round_robin() {
 		},
 	);
 
-	// Round-robin sends.
 	for i in 0..9 {
 		let target = match i % 3 {
 			0 => &a,
@@ -270,14 +257,9 @@ fn timer_vs_direct_message_ordering() {
 		},
 	);
 
-	// Logical order:
-	// 1. send "direct" -> gets logical timestamp T
-	// 2. advance time 10ms -> schedules timer at T+1 (approx)
-	// Even if time is advanced, "direct" was sent FIRST.
-
+	// Advancing the clock must not let a timer overtake a message already queued ahead of it.
 	handle.actor_ref.send("direct".into()).unwrap();
 
-	// Schedule a timer BEFORE advancing time.
 	let ctx = reifydb_runtime::actor::context::Context::new(
 		handle.actor_ref.clone(),
 		system.clone(),
@@ -285,12 +267,10 @@ fn timer_vs_direct_message_ordering() {
 	);
 	ctx.schedule_once(Duration::from_milliseconds(10).unwrap(), || "timer".to_string());
 
-	// Now advance time to trigger the timer.
 	system.advance_time(Duration::from_milliseconds(10).unwrap());
 
 	system.run_until_idle();
 
-	// "direct" should still be first.
 	assert_eq!(log_contents(&log), vec!["direct", "timer"]);
 }
 
@@ -298,11 +278,6 @@ fn timer_vs_direct_message_ordering() {
 fn message_never_arrives_before_init_completes() {
 	let system = test_system();
 	let log = new_log();
-
-	// Sequence:
-	// 1. spawn Actor B.
-	// 2. immediately send B a message.
-	// 3. ensure B's init() runs before the message task.
 
 	let _a = system.spawn_coordination(
 		"a",
@@ -320,15 +295,7 @@ fn message_never_arrives_before_init_completes() {
 		},
 	);
 
-	// The system.spawn of "b" should enqueue its init.
-	// The InitSenderActor "a" sends its message during its own init().
-	// So both "b-init" and "msg-to-b" are likely in the system's task queue.
-	// DST rules: actor init MUST happen before its own messages.
-
+	// b's init cannot be observed without a logging hook in the helpers, so this asserts
+	// nothing and only exercises the spawn-then-send-during-init path.
 	system.run_until_idle();
-
-	// We don't have a way for b's init to log yet easily without changing helpers.
-	// Let's assume InitSenderActor.init() happens first.
-	// If it sends "from_init" to "b", then "b"'s init MUST have already been established
-	// or at least be guaranteed to run before processing that message.
 }

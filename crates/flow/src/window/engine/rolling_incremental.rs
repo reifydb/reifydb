@@ -385,16 +385,9 @@ mod tests {
 
 	#[test]
 	fn buffer_survives_restart_without_running_collision() {
-		// rolling_incremental keeps two Data-backend caches - the rolling `buffers` and the `running`
-		// accumulator - and both must live in distinct store keyspaces. They are keyed by the same
-		// RowNumber, so if their keyspaces are not separated, `running` (flushed last) clobbers the
-		// buffer's store slot and a later buffer read decodes running's bytes. Within one live engine
-		// this is hidden because reads are served from each cache's in-memory map; a restart is one of
-		// the two ways a read actually reaches the store. This test publishes a window, drops the
-		// engine (a restart / panic-recovery), then retracts the only contribution with a fresh engine
-		// whose caches are empty, and asserts the buffer is read back intact - the terminal Remove
-		// still carries the originally published value. It fails if `buffers` and `running` share a
-		// store key.
+		// `buffers` and `running` are keyed by the same RowNumber, so sharing a keyspace lets
+		// `running` (flushed last) clobber the buffer's store slot. A live engine hides it by
+		// serving both from memory; a restart is one of the two ways a read reaches the store.
 		let mut store = MockStore::default();
 
 		let mut engine =
@@ -408,8 +401,8 @@ mod tests {
 		assert!(matches!(published[0].kind, EmitKind::Insert));
 		assert_eq!(published[0].value, 5);
 
-		// Restart: a brand new engine with empty caches, forced to read the persisted buffer and
-		// running accumulator back from the store.
+		// A brand new engine with empty caches, forced to read the persisted buffer and running
+		// accumulator back from the store.
 		let mut engine =
 			RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
@@ -435,11 +428,9 @@ mod tests {
 
 	#[test]
 	fn a_group_whose_state_was_reclaimed_updates_its_row_rather_than_inserting_a_second() {
-		// rolling_incremental keeps no ACCUMULATOR, so its share of the data phase is the buffer and
-		// the running total. Erasing both leaves the row it published still addressable through the
-		// node-scoped mapping, and the next event has to reach that row rather than mint a second one
-		// beside it. The engine decides Insert from whether the mapping was minted, so this is the
-		// assertion that keeps that decision tied to identity rather than to state a sweep can delete.
+		// The row-number mapping sits in an identity keyspace, so erasing the buffer and the running
+		// total leaves the published row addressable and the next event must reach it rather than
+		// mint a second one. Insert is decided from the mapping, not from state a data sweep takes.
 		let mut store = MockStore::default();
 		let mut engine =
 			RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new(test_config());
@@ -480,12 +471,9 @@ mod tests {
 
 	#[test]
 	fn buffer_survives_lru_eviction_without_running_collision() {
-		// The second way a read reaches the store is LRU eviction - no restart needed. The state cache
-		// holds only 8 groups, so an engine tracking more than 8 groups evicts the oldest ones; the
-		// next access re-reads them from the store. This exercises the same buffers/running keyspace
-		// collision as the restart test, but within a single long-lived engine. We publish 11 groups so
-		// the earliest (group 1) is evicted, flush, then retract group 1 and assert its buffer is read
-		// back intact. It fails if `buffers` and `running` share a store key.
+		// The second way a read reaches the store is LRU eviction, with no restart: the cache holds
+		// 8 groups, so tracking more evicts the oldest and the next access re-reads it. Same
+		// buffers/running keyspace collision as the restart test, inside one long-lived engine.
 		let mut store = MockStore::default();
 		let mut engine =
 			RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new(test_config());
@@ -505,8 +493,8 @@ mod tests {
 		assert!(matches!(published_group_1[0].kind, EmitKind::Insert));
 		assert_eq!(published_group_1[0].value, 1);
 
-		// Group 1 was published first and pushed out of the 8-slot cache by the later groups, so the
-		// same engine must re-read its buffer from the store to apply this retraction.
+		// Group 1 was pushed out of the 8-slot cache by the later groups, so the same engine must
+		// re-read its buffer from the store to apply this retraction.
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(1)]);
 		let withdrawn: Vec<RollingResult<u32, i64>> =

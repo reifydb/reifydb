@@ -279,7 +279,7 @@ mod tests {
 
 	#[test]
 	fn evaluate_eq_over_multi_chunk_column() {
-		// id chunks: [1, 2, 3] | [2, 4, 2] | [5, 2]. Looking for id == 2.
+		// Matches fall in all three chunks, so the mask must be indexed by block row, not chunk row.
 		let t = mkblock_chunked(&[&[1, 2, 3], &[2, 4, 2], &[5, 2]]);
 		let p = Predicate::Eq(ColRef::from("id"), Value::Int4(2));
 		let Selection::Mask(m) = evaluate(&t, &p).unwrap() else {
@@ -295,7 +295,7 @@ mod tests {
 
 	#[test]
 	fn evaluate_and_or_across_multi_chunk_columns() {
-		// Both columns are 2 chunks of length 3. AND/OR must align across chunk boundaries.
+		// Both columns are chunked identically; the combinator must align them by block row, not chunk index.
 		let id_col = int4_chunked(&[&[1, 2, 3], &[4, 5, 6]]);
 		let other_col = int4_chunked(&[&[10, 20, 10], &[20, 10, 20]]);
 		let schema = Arc::new(vec![
@@ -311,7 +311,6 @@ mod tests {
 		let Selection::Mask(m) = evaluate(&t, &p).unwrap() else {
 			panic!("expected Mask selection");
 		};
-		// id > 2 → rows 2,3,4,5; other == 20 → rows 1,3,5. Intersection: rows 3, 5.
 		assert_eq!(m.len(), 6);
 		assert_eq!(m.popcount(), 2);
 		assert!(m.get(3));
@@ -320,7 +319,7 @@ mod tests {
 
 	#[test]
 	fn evaluate_is_none_across_multi_chunk_nullable() {
-		// Two nullable chunks; nones at row 1 of each chunk → block rows 1 and 4.
+		// A none at row 1 of each chunk has to resolve to block rows 1 and 4, not chunk-local 1 twice.
 		let mut a = ColumnBuffer::int4_with_capacity(3);
 		a.push::<i32>(10);
 		a.push_none();

@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Backend-agnostic: `enforce_apply_capabilities` runs in `Operators::apply` (the
-// dispatch wrapper), the same code regardless of FFI vs native adapter, so there
-// is nothing backend-specific to twin. An operator that receives a diff kind it
-// did not declare must abort. Forked because abort kills the process.
+// An operator that receives a diff kind it did not declare must abort. Not twinned per backend
+// because the check runs in the shared dispatch wrapper; forked because abort kills the process.
 
 use std::{env, process::Command};
 

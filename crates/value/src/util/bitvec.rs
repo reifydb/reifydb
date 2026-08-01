@@ -767,12 +767,10 @@ pub mod tests {
 		fn test_empty_operations() {
 			let mut bv = BitVec::empty();
 
-			// Push operations should work
 			bv.push(true);
 			assert_eq!(bv.len(), 1);
 			assert!(bv.get(0));
 
-			// Extend should work
 			let other = BitVec::from([false, true]);
 			bv.extend(&other);
 			assert_eq!(bv.len(), 3);
@@ -1293,7 +1291,7 @@ pub mod tests {
 
 		#[test]
 		fn test_partial_byte() {
-			// 5 bits: exercises the final-byte masking logic
+			// The final partial byte must be masked, or not() sets bits past len.
 			let bv = BitVec::from_slice(&[true, false, true, false, true]);
 			let result = bv.not();
 			assert_eq!(result.len(), 5);
@@ -1306,7 +1304,6 @@ pub mod tests {
 
 		#[test]
 		fn test_exact_byte_boundary() {
-			// Exactly 8 bits: no partial byte
 			let bv = BitVec::from_slice(&[true, true, true, true, false, false, false, false]);
 			let result = bv.not();
 			assert_eq!(result.len(), 8);
@@ -1320,7 +1317,6 @@ pub mod tests {
 
 		#[test]
 		fn test_multi_byte_partial() {
-			// 13 bits: crosses byte boundary with partial final byte
 			let bv = BitVec::from_fn(13, |i| i < 8);
 			let result = bv.not();
 			assert_eq!(result.len(), 13);
@@ -1334,7 +1330,7 @@ pub mod tests {
 
 		#[test]
 		fn test_large_64bit_chunks() {
-			// 100 bits: exercises the 64-bit chunking path
+			// Over 64 bits, so the word-at-a-time path runs rather than only the byte tail.
 			let bv = BitVec::from_fn(100, |i| i % 3 == 0);
 			let result = bv.not();
 			assert_eq!(result.len(), 100);
@@ -1352,7 +1348,6 @@ pub mod tests {
 
 		#[test]
 		fn test_not_and_or_demorgan() {
-			// De Morgan: NOT(a AND b) == (NOT a) OR (NOT b)
 			let a = BitVec::from_fn(20, |i| i % 2 == 0);
 			let b = BitVec::from_fn(20, |i| i % 3 == 0);
 
@@ -1528,7 +1523,7 @@ pub mod tests {
 		fn test_reorder_cow() {
 			let mut owned = BitVec::from_fn(4, |i| i % 2 == 0);
 
-			// reorder always creates new bits array even if owned
+			// reorder allocates a fresh bits array even when the buffer is uniquely owned.
 			owned.reorder(&[1, 0, 3, 2]);
 
 			let mut shared = owned.clone();
@@ -1551,18 +1546,15 @@ pub mod tests {
 			let size = 10000;
 			let mut bv = BitVec::empty();
 
-			// Test large push operations
 			for i in 0..size {
 				bv.push(i % 17 == 0);
 			}
 			assert_eq!(bv.len(), size);
 
-			// Verify all values
 			for i in 0..size {
 				assert_eq!(bv.get(i), i % 17 == 0, "mismatch at bit {}", i);
 			}
 
-			// Test count_ones on large bitvec
 			let expected_ones = (0..size).filter(|&i| i % 17 == 0).count();
 			assert_eq!(bv.count_ones(), expected_ones);
 		}
@@ -1576,12 +1568,10 @@ pub mod tests {
 			bv1.extend(&bv2);
 			assert_eq!(bv1.len(), size * 2);
 
-			// Verify first half
 			for i in 0..size {
 				assert_eq!(bv1.get(i), i % 13 == 0, "first half mismatch at bit {}", i);
 			}
 
-			// Verify second half
 			for i in size..(size * 2) {
 				assert_eq!(bv1.get(i), (i - size) % 19 == 0, "second half mismatch at bit {}", i);
 			}
@@ -1589,7 +1579,7 @@ pub mod tests {
 
 		#[test]
 		fn test_many_byte_boundaries() {
-			// Test various sizes around byte boundaries
+			// Sizes straddle every byte and word boundary, where the tail masking goes wrong.
 			for size in [7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129] {
 				let bv = BitVec::from_fn(size, |i| i % 3 == 0);
 				assert_eq!(bv.len(), size);
@@ -1625,14 +1615,12 @@ pub mod tests {
 			let size = 100;
 			let mut bv = BitVec::from_fn(size, |i| i % 7 == 0);
 
-			// Create a comptokenize reordering pattern
 			let mut indices: Vec<usize> = (0..size).collect();
 			indices.reverse();
 
 			let original_values: Vec<bool> = bv.to_vec();
 			bv.reorder(&indices);
 
-			// Verify reordering worked correctly
 			for i in 0..size {
 				let original_index = indices[i];
 				assert_eq!(
@@ -1650,7 +1638,6 @@ pub mod tests {
 
 		#[test]
 		fn test_roundtrip_conversions() {
-			// Test various patterns
 			let patterns = [
 				vec![],
 				vec![true],
@@ -1663,12 +1650,10 @@ pub mod tests {
 			];
 
 			for pattern in patterns {
-				// Test Vec<bool> -> BitVec -> Vec<bool>
 				let bv = BitVec::from(pattern.clone());
 				let result = bv.to_vec();
 				assert_eq!(pattern, result, "roundtrip failed for pattern length {}", pattern.len());
 
-				// Test slice -> BitVec -> Vec<bool>
 				let bv2 = BitVec::from_slice(&pattern);
 				let result2 = bv2.to_vec();
 				assert_eq!(
@@ -1679,8 +1664,6 @@ pub mod tests {
 				);
 
 				if pattern.len() <= 32 {
-					// Test array -> BitVec for small
-					// patterns
 					let bv3 = BitVec::from_slice(&pattern);
 					assert_eq!(bv3.len(), pattern.len());
 					for (i, &expected) in pattern.iter().enumerate() {
@@ -1703,15 +1686,12 @@ pub mod tests {
 			for pattern in patterns {
 				let bv = BitVec::from(pattern.clone());
 
-				// Length invariant
 				assert_eq!(bv.len(), pattern.len());
 
-				// count_ones + count_zeros = len
 				let count_ones = bv.count_ones();
 				let count_zeros = pattern.iter().filter(|&&b| !b).count();
 				assert_eq!(count_ones + count_zeros, pattern.len());
 
-				// any() and none() consistency
 				if count_ones > 0 {
 					assert!(bv.any());
 					assert!(!bv.none());
@@ -1720,7 +1700,6 @@ pub mod tests {
 					assert!(bv.none());
 				}
 
-				// get() consistency
 				for (i, &expected) in pattern.iter().enumerate() {
 					assert_eq!(bv.get(i), expected, "get() inconsistency at bit {}", i);
 				}
@@ -1735,13 +1714,11 @@ pub mod tests {
 			let mut extended = original.clone();
 			extended.extend(&extension);
 
-			// Original should be unchanged
 			assert_eq!(original.len(), 3);
 			assert!(original.get(0));
 			assert!(!original.get(1));
 			assert!(original.get(2));
 
-			// Extended should have both parts
 			assert_eq!(extended.len(), 5);
 			assert!(extended.get(0));
 			assert!(!extended.get(1));
@@ -1757,16 +1734,12 @@ pub mod tests {
 
 			let result = a.and(&b);
 
-			// AND result should never have more ones than either
-			// input
 			assert!(result.count_ones() <= a.count_ones());
 			assert!(result.count_ones() <= b.count_ones());
 
-			// AND is commutative
 			let result2 = b.and(&a);
 			assert_eq!(result.to_vec(), result2.to_vec());
 
-			// AND with self equals self
 			let self_and = a.and(&a);
 			assert_eq!(a.to_vec(), self_and.to_vec());
 		}

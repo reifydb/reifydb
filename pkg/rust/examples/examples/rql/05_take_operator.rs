@@ -154,7 +154,7 @@ take 4"#,
 		info!("{}", frame);
 	}
 
-	// Example 6: Comptokenize pipeline with take
+	// Example 6: Complex pipeline with take
 	info!("\nExample 6: Comptokenize pipeline - filter high severity, sort, take top 3");
 	log_query(
 		r#"from demo::events
@@ -179,7 +179,7 @@ take 3"#,
 		info!("{}", frame);
 	}
 
-	// Example 7: Take 1 (getting single encoded)
+	// Example 7: Take 1 (getting a single row)
 	info!("\nExample 7: Take single encoded (take 1)");
 	log_query(
 		r#"from demo::events

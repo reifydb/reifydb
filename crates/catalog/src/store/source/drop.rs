@@ -40,10 +40,8 @@ pub mod tests {
 		let ns = create_namespace(&mut txn, "test_namespace");
 		let source = create_source(&mut txn, "test_namespace", "drop_test_source", "kafka");
 
-		// Verify source exists by ID
 		assert!(CatalogStore::find_source(&mut Transaction::Admin(&mut txn), source.id).unwrap().is_some());
 
-		// Verify source exists by name
 		assert!(CatalogStore::find_source_by_name(
 			&mut Transaction::Admin(&mut txn),
 			ns.id(),
@@ -52,13 +50,10 @@ pub mod tests {
 		.unwrap()
 		.is_some());
 
-		// Drop the source
 		CatalogStore::drop_source(&mut txn, source.id).unwrap();
 
-		// Verify source is gone by ID
 		assert!(CatalogStore::find_source(&mut Transaction::Admin(&mut txn), source.id).unwrap().is_none());
 
-		// Verify source is gone by name
 		assert!(CatalogStore::find_source_by_name(
 			&mut Transaction::Admin(&mut txn),
 			ns.id(),
@@ -70,9 +65,9 @@ pub mod tests {
 
 	#[test]
 	fn test_drop_nonexistent_source() {
+		// Dropping a source that never existed is a no-op, not an error.
 		let mut txn = create_test_admin_transaction();
 
-		// Dropping a non-existent source should succeed silently
 		CatalogStore::drop_source(&mut txn, SourceId(999)).unwrap();
 	}
 }

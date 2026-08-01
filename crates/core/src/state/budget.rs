@@ -315,9 +315,8 @@ mod tests {
 
 	#[test]
 	fn test_charge_release_symmetry() {
-		// The pool is the single accounting authority: every charge
-		// must be exactly reversible, and totals must decompose into
-		// the class counters with nothing lost.
+		// The pool is the single accounting authority: every charge must be exactly reversible and
+		// the total must decompose into the class counters with nothing lost.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
 		pool.charge_clean(mb(10));
 		pool.charge_dirty(mb(5));
@@ -349,9 +348,8 @@ mod tests {
 
 	#[test]
 	fn test_lease_charges_max_of_grant_and_reported() {
-		// A lease violator's excess bytes must count into the bound;
-		// charging only the grant would hide real memory exactly the
-		// way dark_bytes hides it today.
+		// A lease violator's excess bytes must count into the bound; charging only the grant would
+		// hide real memory from the budget.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
 		let node = FlowNodeId(7);
 		let grant = pool.grant_lease(node, mb(20));
@@ -395,11 +393,9 @@ mod tests {
 
 	#[test]
 	fn test_silence_is_a_state_not_a_fault() {
-		// An operator that declines to sample is legitimate, not broken: it
-		// stays Silent forever without escalating. A fresh lease reserves its
-		// full grant (cold start, before we know its footprint), but once the
-		// operator reports it holds no cache, it charges nothing: a cacheless
-		// operator must not pin pool budget it will never use.
+		// An operator that declines to sample is legitimate, so it stays Silent without escalating.
+		// A fresh lease reserves its full grant because its footprint is unknown, but a lease that
+		// has reported no cache charges nothing rather than pinning budget it will never use.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
 		let node = FlowNodeId(3);
 		pool.grant_lease(node, mb(16));
@@ -421,10 +417,8 @@ mod tests {
 
 	#[test]
 	fn test_silence_and_reporting_are_reversible() {
-		// Health tracks the latest sample only. An operator that reports once
-		// and then reports it holds no cache must fall back to Silent and
-		// release its charge: the stale byte count is dropped, and a cacheless
-		// report reserves nothing rather than falling back to the grant.
+		// Health tracks the latest sample only: an operator that reports bytes and then reports no
+		// cache must drop the stale count and reserve nothing, not fall back to its grant.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
 		let node = FlowNodeId(5);
 		pool.grant_lease(node, mb(16));
@@ -451,13 +445,9 @@ mod tests {
 
 	#[test]
 	fn test_cacheless_report_frees_the_grant_while_fresh_lease_holds_it() {
-		// The flat-operator waste fix. A KeyedStateful/SingleStateful operator
-		// runs no state cache, so at every flush it reports no usage. That
-		// report must release its share of the pool. A freshly granted lease
-		// that has not yet spoken is different: it still reserves its cold-start
-		// grant, because we do not yet know whether it will fill a cache. Without
-		// distinguishing the two, every cacheless operator would pin its grant
-		// forever for memory it never holds.
+		// An operator running no state cache reports no usage at every flush, and that report must
+		// release its share of the pool. A lease that has not yet spoken still reserves its
+		// cold-start grant, since whether it will fill a cache is not yet known.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
 		let fresh = FlowNodeId(1);
 		let cacheless = FlowNodeId(2);
@@ -490,10 +480,8 @@ mod tests {
 
 	#[test]
 	fn test_resize_lease_to_demand_follows_demand_within_headroom() {
-		// Demand-driven leases (decision D1): a grant must track the
-		// operator's reported demand so busy guests grow and idle
-		// guests shrink, instead of pinning the creation-time grant
-		// forever.
+		// A grant must track reported demand so busy guests grow and idle guests shrink, rather than
+		// pinning the creation-time grant forever.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
 		let node = FlowNodeId(1);
 		pool.grant_lease(node, mb(10));
@@ -507,10 +495,8 @@ mod tests {
 
 	#[test]
 	fn test_resize_lease_to_demand_clamps_to_available_headroom() {
-		// FCFS headroom (decision D4): a demand resize may only grow
-		// into budget that is actually free; granting past headroom
-		// would push the shared pool over budget on behalf of a single
-		// operator.
+		// A demand resize may only grow into budget that is actually free; granting past headroom
+		// pushes the shared pool over budget on behalf of one operator.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
 		let first = FlowNodeId(1);
 		let second = FlowNodeId(2);
@@ -524,9 +510,8 @@ mod tests {
 
 	#[test]
 	fn test_resize_lease_to_demand_excludes_own_charge_from_headroom() {
-		// The operator's own current charge must not count against its
-		// own headroom, otherwise a fully granted pool could never
-		// regrow any lease and demand could only ratchet downward.
+		// An operator's own charge must not count against its own headroom, or a fully granted pool
+		// could never regrow a lease and demand could only ratchet downward.
 		let pool = OperatorStateBudgetHandle::new(mb(100));
 		let node = FlowNodeId(1);
 		pool.grant_lease(node, mb(100));

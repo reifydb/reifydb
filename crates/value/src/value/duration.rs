@@ -655,21 +655,19 @@ pub mod tests {
 	mod max {
 		use super::*;
 
-		/// `MAX` backs the `forever` literal, which a queue uses to say a deduplication record
-		/// never expires. Adding it to an instant happens on every enqueue of such a queue, so
-		/// it must saturate rather than panic: an overflow here would take down the insert path
-		/// for exactly the queues that asked for the strongest guarantee.
 		#[test]
 		fn adding_max_to_a_duration_saturates_instead_of_panicking() {
+			// MAX backs the `forever` literal, added to an instant on every enqueue of a
+			// never-expiring record; panicking here would take down the insert path.
 			let saturated = Duration::from_hours_const(1).saturating_add(Duration::MAX);
 			assert_eq!(saturated.months, i32::MAX);
 			assert_eq!(saturated.days, i32::MAX);
 		}
 
-		/// Two `forever` records must compare equal, and `forever` must outrank every window a
-		/// user can spell, or an expiry check would treat it as already elapsed.
 		#[test]
 		fn max_outranks_every_ordinary_window() {
+			// `forever` must outrank every window a user can spell, or an expiry check reads
+			// it as already elapsed.
 			assert_eq!(Duration::MAX, Duration::MAX);
 			for window in [
 				Duration::from_seconds_const(1),
@@ -680,11 +678,10 @@ pub mod tests {
 			}
 		}
 
-		/// The nanos component must stay inside a single day, the invariant every other
-		/// constructor upholds. A denormalised constant would compare wrongly against durations
-		/// built the normal way.
 		#[test]
 		fn max_is_normalised() {
+			// A denormalised constant would compare wrongly against durations built through
+			// the constructors, which all keep nanos inside a single day.
 			assert!(Duration::MAX.nanos < NANOS_PER_DAY);
 			assert!(Duration::MAX.nanos >= 0);
 		}
@@ -705,11 +702,10 @@ pub mod tests {
 			hasher.finish()
 		}
 
-		// A month is thirty days everywhere else in this type: as_nanos, seconds and to_std all
-		// convert through DAYS_PER_MONTH. Comparing field by field instead makes any duration
-		// carrying months sort above every duration that does not, however short it actually is.
 		#[test]
 		fn a_month_sorts_below_a_longer_span_expressed_in_days() {
+			// A month is thirty days everywhere else in this type, so ordering must convert
+			// rather than compare field by field.
 			let month = Duration::from_months(1).unwrap();
 			let thirty_one_days = Duration::from_days(31).unwrap();
 
@@ -721,10 +717,10 @@ pub mod tests {
 			assert!(month < thirty_one_days, "the comparison operators must agree with cmp");
 		}
 
-		// The inverse direction: a span in days that is genuinely shorter than a month must not
-		// sort above it just because its months field is zero.
 		#[test]
 		fn days_shorter_than_a_month_sort_below_it() {
+			// The inverse direction: a zero months field must not push a shorter span above a
+			// month.
 			let month = Duration::from_months(1).unwrap();
 			let twenty_nine_days = Duration::from_days(29).unwrap();
 
@@ -735,11 +731,10 @@ pub mod tests {
 			);
 		}
 
-		// Ord's contract requires cmp to report Equal exactly when the values are equal. If the
-		// two disagree, a BTreeMap keyed on Duration treats these as one key while == treats them
-		// as two, and which one wins depends on the container.
 		#[test]
 		fn equal_spans_in_different_units_are_equal_and_hash_alike() {
+			// If cmp and == disagree, a BTreeMap keyed on Duration treats these as one key
+			// while a HashMap treats them as two.
 			let month = Duration::from_months(1).unwrap();
 			let thirty_days = Duration::from_days(30).unwrap();
 
@@ -756,10 +751,10 @@ pub mod tests {
 			);
 		}
 
-		// The property the fix is really about: sorting orders by elapsed time. Field-wise
-		// comparison puts the single month last because its months field dominates.
 		#[test]
 		fn sorting_orders_mixed_units_by_elapsed_time() {
+			// Field-wise comparison would sort the single month last because its months field
+			// dominates.
 			let mut durations = vec![
 				Duration::from_months(1).unwrap(),
 				Duration::from_hours(1).unwrap(),
@@ -775,12 +770,10 @@ pub mod tests {
 			assert_eq!(ordered, expected, "sorting must place durations in elapsed-time order");
 		}
 
-		// Guards the caller that motivated this: compile_ttl rejects a TTL below MIN_TTL with a
-		// plain `<`. Under field-wise comparison a sub-second duration carrying months or days
-		// could never be reached, but a month-valued TTL would compare above any nanos-only bound
-		// regardless of length, so the bound has to be measured in elapsed time.
 		#[test]
 		fn a_bound_expressed_in_seconds_rejects_shorter_spans_in_any_unit() {
+			// TTL validation compares against a nanos-only bound with a plain `<`, so the
+			// bound only holds if ordering measures elapsed time across units.
 			let one_second = Duration::from_seconds(1).unwrap();
 
 			assert!(
@@ -1209,11 +1202,10 @@ pub mod tests {
 		assert!(d1 > d2);
 	}
 
-	// Months may differ in sign from days/nanos (months are variable-length).
-	// Days and nanos must share the same sign (they are commensurable).
-
 	#[test]
 	fn test_mixed_sign_months_days_allowed() {
+		// Months are variable-length so they may disagree in sign with days and nanos, which
+		// are commensurable with each other and may not.
 		let d = Duration::new(1, -15, 0).unwrap();
 		assert_eq!(d.get_months(), 1);
 		assert_eq!(d.get_days(), -15);
@@ -1329,7 +1321,7 @@ pub mod tests {
 
 	#[test]
 	fn test_nanos_normalization_causes_days_nanos_mixed_sign_err() {
-		// 2 days of nanos + 1 extra, with days=-3 → after normalization days=-1, nanos=1
+		// Normalization itself can produce the mixed sign, not just the raw input.
 		assert_mixed_sign(Duration::new(0, -3, 2 * 86_400_000_000_000 + 1), -1, 1);
 	}
 
@@ -1431,9 +1423,9 @@ pub mod tests {
 
 	#[test]
 	fn test_try_sub_days_nanos_mixed_sign_err() {
+		// Subtraction can borrow across the day boundary into a days/nanos sign mismatch.
 		let a = Duration::new(0, 1, 0).unwrap();
 		let b = Duration::new(0, 0, 1).unwrap();
-		// 1 day - 1 nano = days=1, nanos=-1 → mixed days/nanos sign error
 		assert_mixed_sign(a.try_sub(b), 1, -1);
 	}
 
@@ -1492,9 +1484,8 @@ pub mod tests {
 
 	#[test]
 	fn test_total_seconds_roundtrips_across_day_boundary() {
-		// from_seconds(90_000) normalizes to days=1 + 3600s; .seconds() must report
-		// the full 90_000, not just the sub-day remainder. This is the core bug:
-		// before the fix the days field was ignored and this returned 3600.
+		// Construction normalizes whole days out of the nanos field, so a unit total that
+		// ignores the days field reports only the sub-day remainder.
 		let d = Duration::from_seconds(90_000).unwrap();
 		assert_eq!(d.get_days(), 1);
 		assert_eq!(d.seconds().unwrap(), 90_000);
@@ -1524,7 +1515,6 @@ pub mod tests {
 
 	#[test]
 	fn test_total_from_minutes_crossing_day() {
-		// 1500 minutes = 90_000 s = 1 day + 3600 s; the day must be counted.
 		let d = Duration::from_minutes(1_500).unwrap();
 		assert_eq!(d.get_days(), 1);
 		assert_eq!(d.seconds().unwrap(), 90_000);
@@ -1532,8 +1522,6 @@ pub mod tests {
 
 	#[test]
 	fn test_total_from_hours_crossing_day() {
-		// from_hours(25) was the motivating example: it normalizes to days=1 and
-		// must report 90_000 s, not 3600.
 		let d = Duration::from_hours(25).unwrap();
 		assert_eq!(d.get_days(), 1);
 		assert_eq!(d.seconds().unwrap(), 90_000);
@@ -1563,9 +1551,8 @@ pub mod tests {
 
 	#[test]
 	fn test_total_from_years_uses_three_six_five_quarter_days() {
-		// Whole years count as 365.25 days each (Postgres EXTRACT(EPOCH) convention),
-		// stored as 12 months. A bare-days duration of 365 days is intentionally
-		// different from one year, so the two must NOT be equal.
+		// Whole years count as 365.25 days each (the Postgres EXTRACT(EPOCH) convention), so
+		// one year is deliberately not equal to 365 days.
 		let one_year = Duration::from_years(1).unwrap();
 		assert_eq!(one_year.get_months(), 12);
 		assert_eq!(one_year.seconds().unwrap(), 31_557_600);
@@ -1579,24 +1566,21 @@ pub mod tests {
 
 	#[test]
 	fn test_total_months_split_into_years_and_residual() {
-		// 13 months = 1 whole year (365.25d) + 1 residual month (30d).
+		// Whole years convert at 365.25 days, residual months at 30.
 		let d = Duration::from_months(13).unwrap();
 		assert_eq!(d.seconds().unwrap(), 31_557_600 + 30 * 86_400);
 	}
 
 	#[test]
 	fn test_total_new_combined_mixed_sign() {
-		// months and days may carry opposite signs (months are variable-length and
-		// are not commensurable with days/nanos). The total must accumulate them with
-		// their signs: +1 month (30d) minus 5 days.
+		// Months and days may carry opposite signs, so the total must accumulate them signed
+		// rather than take a magnitude.
 		let d = Duration::new(1, -5, 0).unwrap();
 		assert_eq!(d.seconds().unwrap(), 30 * 86_400 - 5 * 86_400);
 	}
 
 	#[test]
 	fn test_total_from_micros_infallible_roundtrips() {
-		// from_micros_infallible distributes whole days into the days field; the
-		// microsecond total must reconstruct the original input.
 		let micros: u64 = 90_000_000_000;
 		let d = Duration::from_micros_infallible(micros);
 		assert_eq!(d.get_days(), 1);
@@ -1605,9 +1589,8 @@ pub mod tests {
 
 	#[test]
 	fn test_total_from_nanos_infallible_roundtrips() {
-		// Nanosecond spans arrive from monotonic counters where a fallible constructor would force an
-		// expect() on a path that must not panic. Whole days move into the days field; the nanosecond
-		// total must reconstruct the input.
+		// Spans arrive from monotonic counters on paths that must not panic, so the infallible
+		// constructor has to round-trip rather than reject.
 		let nanos: u64 = 7 * 86_400_000_000_000 + 1_500_000_000;
 		let d = Duration::from_nanos_infallible(nanos);
 		assert_eq!(d.get_days(), 7);
@@ -1616,8 +1599,7 @@ pub mod tests {
 
 	#[test]
 	fn test_from_nanos_infallible_clamps_instead_of_wrapping() {
-		// Beyond the representable day count it must clamp. Wrapping would produce a negative span, which
-		// reads as a duration in the past - a coverage figure that looks fine while meaning the opposite.
+		// Wrapping would produce a negative span, which reads as a duration in the past.
 		let d = Duration::from_nanos_infallible(u64::MAX);
 		assert!(d.get_days() > 0, "an unrepresentable span must clamp to a positive duration");
 	}
@@ -1634,9 +1616,8 @@ pub mod tests {
 
 	#[test]
 	fn test_total_overflow_fails_loud_per_unit() {
-		// A huge day count overflows i64 nanoseconds but not i64 seconds. Overflow
-		// must surface as an error rather than wrapping silently, and each unit is
-		// checked independently so seconds stays valid where nanoseconds cannot.
+		// A day count that overflows i64 nanoseconds still fits i64 seconds, so each unit is
+		// checked independently and overflow surfaces as an error rather than wrapping.
 		let d = Duration::new(0, i32::MAX, 0).unwrap();
 		assert_eq!(d.seconds().unwrap(), i32::MAX as i64 * 86_400);
 		assert_total_overflow(d.nanoseconds());
@@ -1645,8 +1626,7 @@ pub mod tests {
 
 	#[test]
 	fn saturating_add_matches_try_add_in_range() {
-		// In range, saturating arithmetic must agree exactly with the checked
-		// (try_*) path; saturation only kicks in at the i32/i64 boundaries.
+		// Saturation must only engage at the i32/i64 boundaries, never in range.
 		let a = Duration::new(1, 2, 3_000_000_000).unwrap();
 		let b = Duration::new(0, 1, 1_000_000_000).unwrap();
 		assert_eq!(a.saturating_add(b), a.try_add(b).unwrap());
@@ -1655,23 +1635,20 @@ pub mod tests {
 
 	#[test]
 	fn saturating_add_clamps_months_overflow() {
-		// months past i32::MAX clamp to i32::MAX instead of panicking/erroring.
 		let d = Duration::new(i32::MAX, 0, 0).unwrap().saturating_add(Duration::new(1000, 0, 0).unwrap());
 		assert_eq!(d.get_months(), i32::MAX);
 	}
 
 	#[test]
 	fn saturating_add_clamps_days_overflow() {
-		// days past i32::MAX clamp to i32::MAX.
 		let d = Duration::new(0, i32::MAX, 0).unwrap().saturating_add(Duration::new(0, 1000, 0).unwrap());
 		assert_eq!(d.get_days(), i32::MAX);
 	}
 
 	#[test]
 	fn saturating_sub_carries_mixed_sign() {
-		// 1 day minus 1 nanosecond = 23:59:59.999999999. This is exactly the
-		// mixed days/nanos sign case that try_sub REJECTS (days=1, nanos=-1);
-		// saturating arithmetic carries it into a single same-sign value instead.
+		// try_sub rejects this borrow as a mixed days/nanos sign; the saturating form must
+		// instead carry it into one same-sign value.
 		let d = Duration::new(0, 1, 0).unwrap().saturating_sub(Duration::new(0, 0, 1).unwrap());
 		assert_eq!(d.get_days(), 0);
 		assert_eq!(d.get_nanos(), 86_399_999_999_999);
@@ -1679,9 +1656,7 @@ pub mod tests {
 
 	#[test]
 	fn saturating_mul_scales_and_clamps() {
-		// In range, scaling matches the equivalent constructed duration.
 		assert_eq!(Duration::from_seconds(1).unwrap().saturating_mul(60), Duration::from_seconds(60).unwrap());
-		// Out of range, the day product clamps to i32::MAX.
 		assert_eq!(Duration::new(0, i32::MAX, 0).unwrap().saturating_mul(2).get_days(), i32::MAX);
 	}
 }
@@ -1694,7 +1669,7 @@ mod conversion_tests {
 
 	#[test]
 	fn from_str_parses_human_units() {
-		// The migration's whole point: a config value is written "10ms", not a bare integer.
+		// Config values carry their unit in the literal, so the unit can never be misread.
 		assert_eq!(Duration::from_str("10ms").unwrap().to_std(), StdDuration::from_millis(10));
 		assert_eq!("5s".parse::<Duration>().unwrap().to_std(), StdDuration::from_secs(5));
 		assert_eq!("2m".parse::<Duration>().unwrap().to_std(), StdDuration::from_secs(120));

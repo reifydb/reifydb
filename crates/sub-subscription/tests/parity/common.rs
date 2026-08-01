@@ -1,21 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Hydration-parity test harness shared across operators.
-//
-// Hypothesis under test: subscribing with hydration enabled (the default) replays existing
-// source rows in bulk at a pinned MVCC version V. Doing so should produce sink output
-// equivalent to incrementally replaying the same rows as a series of single-row commits
-// (the path subscribers using WITH { hydration: { enabled: false } } get via CDC catch-up).
-//
-// Comparison granularity: SINK OUTPUT only. Operator-state byte comparison would require a
-// trait-level accessor on SubscriptionService and is left as a follow-up.
-//
-// Randomization: workspace `rand` (proptest is not vendored). 16 cases per operator. No shrinking;
-// failure messages include the seed and rows for repro.
-//
-// Failure policy: surface, do not fix. Per standing instruction, operator code is never modified
-// in response to a parity failure - failures get documented as regression reproducers.
+// Hydration-parity harness. Subscribing with hydration enabled replays existing source rows in bulk at a pinned
+// version, which must produce the same sink output as replaying the same rows incrementally over CDC. The
+// comparison is on sink output only; failure messages carry the seed and rows for repro.
 
 #![allow(dead_code)]
 
@@ -105,10 +93,9 @@ pub fn drain_after_consumer_caught_up(db: &TestDb, sub_id: SubscriptionId) -> Ve
 	drain_sub(db, sub_id)
 }
 
-// Use when the subscription preserves the source schema (id, qty, ts_ms).
-// Reduces the diff sequence (Insert/Update/Remove batches) to the final sink state by
-// replaying each row's `_op` (Insert=1, Update=2, Remove=3) against a RowNumber-keyed map.
 pub fn normalize(batches: Vec<Columns>) -> Vec<(i32, i32, i64)> {
+	// For subscriptions that preserve the source schema: replays each row's `_op` (Insert=1, Update=2,
+	// Remove=3) against a RowNumber-keyed map to reduce the diff sequence to the final sink state.
 	let mut state: BTreeMap<RowNumber, (i32, i32, i64)> = BTreeMap::new();
 	for cols in batches {
 		let id_col = cols.iter().find(|c| c.name().text() == "id");
@@ -159,10 +146,9 @@ pub fn normalize(batches: Vec<Columns>) -> Vec<(i32, i32, i64)> {
 	out
 }
 
-// Use when the subscription's output schema isn't (id, qty, ts_ms) - e.g. aggregations,
-// projections, windows. Captures every column as (name, debug-formatted value) so the test
-// works regardless of the operator's emitted shape.
 pub fn normalize_aggregated(batches: Vec<Columns>) -> Vec<Vec<(String, String)>> {
+	// For output schemas that are not (id, qty, ts_ms): captures every column as (name, debug value) so the
+	// comparison works whatever shape the operator emits.
 	let mut out: Vec<Vec<(String, String)>> = Vec::new();
 	for cols in batches {
 		let mut row_records: Vec<Vec<(String, String)>> = vec![Vec::new(); cols.row_count()];
@@ -182,8 +168,8 @@ pub fn normalize_aggregated(batches: Vec<Columns>) -> Vec<Vec<(String, String)>>
 	out
 }
 
-// Path A: bulk-insert all rows in one commit, then create subscription, then call hydrate.
 pub fn run_path_snapshot(rql: &str, rows: &[Row]) -> Vec<Columns> {
+	// Path A: bulk-insert in one commit, then subscribe, then hydrate.
 	let db = make_db();
 	insert_all_at_once(&db, rows);
 
@@ -203,8 +189,8 @@ pub fn run_path_snapshot(rql: &str, rows: &[Row]) -> Vec<Columns> {
 	all
 }
 
-// Path B: create subscription on empty table, insert rows one at a time, let CDC catch up.
 pub fn run_path_incremental(rql: &str, rows: &[Row]) -> Vec<Columns> {
+	// Path B: subscribe on an empty table, insert one row at a time, let CDC catch up.
 	let db = make_db();
 
 	let create_stmt = format!("CREATE SUBSCRIPTION AS {{ {} }}", rql);
@@ -216,10 +202,8 @@ pub fn run_path_incremental(rql: &str, rows: &[Row]) -> Vec<Columns> {
 	drain_after_consumer_caught_up(&db, sub_id)
 }
 
-// Attempt to create a subscription with an operator the compiler should reject, returning the
-// resulting diagnostic. Used by the negative tests for operators outside the subscription allowlist
-// (filter, gate, map, extend, take, distinct).
 pub fn create_subscription_error(rql: &str) -> reifydb_value::error::Diagnostic {
+	// Negative path: the operator is expected to fall outside the subscription allowlist.
 	let db = make_db();
 	let create_stmt = format!("CREATE SUBSCRIPTION AS {{ {} }}", rql);
 	db.try_admin(&create_stmt)

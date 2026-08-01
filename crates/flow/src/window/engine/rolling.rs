@@ -1079,9 +1079,9 @@ mod tests {
 
 	#[test]
 	fn meta_reclaimed_when_group_stale_past_threshold() {
-		// Invariant: a group whose high water has fallen below the staleness threshold has gone
-		// quiet; its per-group GroupMeta ('W') must be reclaimed. `persist_meta` never removes it,
-		// so without the sweep a quiet group leaks one internal-state key forever.
+		// A group whose high water falls below the staleness threshold has gone quiet and its
+		// GroupMeta must be reclaimed; `persist_meta` never removes it, so without the sweep a
+		// quiet group leaks one internal-state key forever.
 		let mut store = MockStore::default();
 		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
@@ -1106,8 +1106,7 @@ mod tests {
 
 	#[test]
 	fn meta_survives_while_group_high_water_at_or_after_threshold() {
-		// Safety boundary: a group whose high water is at or beyond the threshold is still live and
-		// must keep its meta.
+		// A group whose high water is at or beyond the threshold is still live and keeps its meta.
 		let mut store = MockStore::default();
 		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
@@ -1131,13 +1130,9 @@ mod tests {
 
 	#[test]
 	fn nothing_to_evict_retains_the_coordinate_at_zero_and_still_indexes_the_group() {
-		// Eviction is inclusive, so Before(0) drops a coordinate AT zero. A rolling window whose
-		// span has not yet elapsed has no cutoff at all, and clamping that to Before(0) meant a row
-		// coordinated at the Unix epoch could never be retained, at any ledger or size.
-		//
-		// Nothing must still index the group. The index is what the seal path scans to find groups
-		// due for eviction, so a window that skipped indexing while its span had not elapsed would
-		// be invisible to the very tick that first has something to evict.
+		// Eviction is inclusive, so clamping a not-yet-elapsed span to Before(0) would make an epoch
+		// coordinate unretainable. The group must still be indexed, or the tick that first has
+		// something to evict cannot see it.
 		let mut store = MockStore::default();
 		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
@@ -1162,10 +1157,8 @@ mod tests {
 
 	#[test]
 	fn evicting_before_zero_still_drops_the_coordinate_at_zero() {
-		// The counterpart to the test above, pinning that the fix did not turn the inclusive
-		// boundary into an exclusive one. Before(0) is a REAL cutoff - the span has elapsed and
-		// zero is outside the window - so the coordinate at zero must go. Only the absence of a
-		// cutoff retains it.
+		// The counterpart: a real Before(0) means the span has elapsed and zero is outside the
+		// window, so the coordinate at zero must go. Only the absence of a cutoff retains it.
 		let mut store = MockStore::default();
 		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
@@ -1282,11 +1275,9 @@ mod tests {
 
 	#[test]
 	fn expire_before_processes_at_most_expire_batch_then_resumes_next_tick() {
-		// Same guard rail as the tumbling engine: a due-group burst must not be drained in a
-		// single tick, because all node ticks run serialized in the flow actor and one bloated
-		// operator would stall every other flow. Capped groups stay in the due index and drain
-		// on later ticks. The due index sorts by inverted coord (encode_u64), so the scan
-		// yields the newest-due groups first and the oldest backlog defers.
+		// Node ticks run serialized, so draining a due-group burst in one tick lets one bloated
+		// operator stall every other flow. Capped groups stay in the due index, which sorts by
+		// inverted coord so the oldest backlog defers.
 		let mut store = MockStore::default();
 		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
@@ -1325,15 +1316,9 @@ mod tests {
 
 	#[test]
 	fn withdrawn_value_is_reconstructed_after_restart() {
-		// The terminal Remove emitted when a rolling group empties must carry the value that was
-		// last published for that group. `prior_output` is never persisted; it is recomputed as
-		// `combine(buffer)` from the persisted buffer at the start of the batch. This test drops the
-		// engine between the publish and the retraction (a restart / panic-recovery) and asserts the
-		// withdrawn value still equals the originally published value. That proves the reconstruction
-		// is exact and depends on no in-memory state - it holds only because `combine` is a pure
-		// function of the persisted buffer. If a future combine read non-persisted state, or the
-		// reconstruction were sourced from an ephemeral cache instead of the buffer, the second engine
-		// would withdraw a wrong or empty value and this test would fail.
+		// `prior_output` is never persisted, so the terminal Remove's value is recomputed as
+		// `combine(buffer)` from the persisted buffer. That reconstruction is exact only because
+		// `combine` is a pure function of the buffer; a combine reading non-persisted state breaks it.
 		let mut store = MockStore::default();
 
 		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
@@ -1346,7 +1331,7 @@ mod tests {
 		assert!(matches!(published[0].kind, EmitKind::Insert));
 		assert_eq!(published[0].value, 5);
 
-		// Restart: a brand new engine with no in-memory GroupSlot / prior_output, reading only the
+		// A brand new engine with no in-memory GroupSlot or prior_output, reading only the
 		// persisted buffer left behind by the first engine.
 		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
@@ -1372,13 +1357,9 @@ mod tests {
 
 	#[test]
 	fn buffer_survives_lru_eviction() {
-		// The other way a read reaches the store is LRU eviction, no restart needed: the state cache
-		// holds only 8 groups, so tracking more evicts the oldest and the next access re-reads it from
-		// the store. This exercises the same persist/reload path as the restart test within a single
-		// long-lived engine. We publish 11 groups so group 1 is evicted, flush, then retract group 1
-		// and assert its buffer is read back intact - the terminal Remove carries the originally
-		// published value. It would fail if the buffer failed to round-trip through the store (a
-		// serialization break, or a second Data cache colliding on the same key).
+		// The other way a read reaches the store is LRU eviction, with no restart: the cache holds
+		// 8 groups, so tracking more evicts the oldest and the next access re-reads it. Same
+		// persist/reload path as the restart test, inside one long-lived engine.
 		let mut store = MockStore::default();
 		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 
@@ -1397,8 +1378,8 @@ mod tests {
 		assert!(matches!(published_group_1[0].kind, EmitKind::Insert));
 		assert_eq!(published_group_1[0].value, 1);
 
-		// Group 1 was published first and pushed out of the 8-slot cache by the later groups, so the
-		// same engine must re-read its buffer from the store to apply this retraction.
+		// Group 1 was pushed out of the 8-slot cache by the later groups, so the same engine must
+		// re-read its buffer from the store to apply this retraction.
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(1)]);
 		let withdrawn: Vec<RollingResult<u32, i64>> =
@@ -1442,13 +1423,9 @@ mod tests {
 
 	#[test]
 	fn runnable_engine_matches_recombine_across_seeded_churn() {
-		// The runnable engine replaces the O(buffer) recombine with a running
-		// accumulator maintained by merge/unmerge. Its observable behavior -
-		// emitted kinds, values, expiry updates, terminal removes, and the
-		// expiry-index bookkeeping - must be indistinguishable from the recombine
-		// engine on an identical seeded add/remove/expire workload; integer sums
-		// make the comparison exact. A divergence means the running maintenance
-		// missed a mutation path.
+		// The runnable engine replaces the O(buffer) recombine with a running accumulator kept by
+		// merge/unmerge, so its observable behavior must be indistinguishable from the recombine
+		// engine on an identical workload. A divergence means the maintenance missed a mutation path.
 		let mut recombine_store = MockStore::default();
 		let mut runnable_store = MockStore::default();
 		let mut recombine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
@@ -1552,10 +1529,9 @@ mod tests {
 
 	#[test]
 	fn runnable_engine_bootstraps_running_from_recombine_coords() {
-		// The recombine and running paths share per-coord storage: coords
-		// written by the recombine path (apply_evicting) must be folded into
-		// the running accumulator the first time the runnable path touches the
-		// group, both on the apply path and on the expiry path.
+		// The two paths share per-coord storage, so coords written by apply_evicting must fold into
+		// the running accumulator the first time the runnable path touches the group, on both the
+		// apply and the expiry path.
 		let mut store = MockStore::default();
 		let mut recombine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
@@ -1599,8 +1575,8 @@ mod tests {
 		);
 		runnable.flush(&mut store).unwrap();
 
-		// A fresh runnable engine over the flushed state reads the persisted
-		// running entry back (no bootstrap) and drains to a terminal remove.
+		// A fresh runnable engine over the flushed state reads the persisted running entry back
+		// without bootstrapping, and drains to a terminal remove.
 		let mut reopened = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config());
 		let drained = reopened.expire_before_running(&mut store, u64::MAX - 1).unwrap();
 		assert_eq!(
@@ -1612,12 +1588,9 @@ mod tests {
 
 	#[test]
 	fn per_coord_storage_leaves_nothing_behind_after_terminal_drain() {
-		// Per-coord persistence must clean up completely: after every group
-		// expires, no coord entries, running entries, or expiry-index entries
-		// may remain. The recombine (apply_evicting) and running (apply_running)
-		// paths share the same per-coord storage, so coords written by one are
-		// picked up by the other. Leaked entries are exactly the kind of
-		// unbounded state growth this engine exists to prevent.
+		// After every group expires no coord, running or expiry-index entry may remain. The two
+		// apply paths share per-coord storage, so a leak on either is the unbounded state growth
+		// this engine exists to prevent.
 		let mut store = MockStore::default();
 		let mut recombine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
@@ -1668,18 +1641,9 @@ mod tests {
 
 	#[test]
 	fn lagged_runnable_engine_matches_a_semantic_oracle_across_seeded_churn() {
-		// The lagged fast path maintains a running accumulator plus a merge
-		// frontier at high_water - lag instead of recombining the buffer on
-		// every touch. This drives a seeded add/retract/evict/expire workload
-		// and checks emissions against an independently computed oracle: a
-		// coord contributes exactly when it sits at or below the group's
-		// monotone high water minus lag, coords survive until an eviction or
-		// expiry cutoff passes them, and pending coords survive expiry even
-		// while the group's visible row is withdrawn (the deliberate fix over
-		// the blob recombine, which destroyed them). Emissions fold into a
-		// visible-row map that must equal the oracle after every round, so an
-		// early merge, a missed crossing, a double count, or a missed emission
-		// surfaces as a state mismatch at the exact round.
+		// The lagged fast path keeps a running accumulator plus a merge frontier at high_water - lag
+		// rather than recombining. Emissions fold into a visible-row map checked against an
+		// independent oracle each round, so an early merge, missed crossing or double count shows up.
 		const LAG: u64 = 5;
 		let mut store = MockStore::default();
 		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config()).with_lag(LAG);
@@ -1864,13 +1828,9 @@ mod tests {
 
 	#[test]
 	fn lagged_running_holds_back_coords_within_the_lag_horizon() {
-		// With lag 10, a coord contributes only once the group's high water
-		// has moved at least lag past it. This pins the full pending
-		// lifecycle: a first event emits nothing (the lagged window is still
-		// empty), later events pull older coords across the frontier one
-		// batch at a time, a retraction of a still-pending coord never
-		// touches the published aggregate, and evicting every merged coord
-		// while only pending ones remain withdraws the row.
+		// A coord contributes only once the group's high water has moved at least lag past it, so a
+		// first event emits nothing, later events pull older coords across the frontier, a
+		// retraction of a pending coord is invisible, and only-pending eviction withdraws the row.
 		let mut store = MockStore::default();
 		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config()).with_lag(10);
 
@@ -1938,12 +1898,9 @@ mod tests {
 
 	#[test]
 	fn lagged_expiry_retains_pending_coords() {
-		// Deliberate divergence from the blob recombine, which destroys the
-		// whole buffer when a due group has no coord older than newest - lag,
-		// silently losing pending coords that would have slid into the lagged
-		// window later. The fast path must withdraw the visible row but keep
-		// the pending coords, and a later event that advances the frontier
-		// must surface their contribution.
+		// The blob recombine destroys the whole buffer when a due group has no coord older than
+		// newest - lag, losing pending coords that would have slid into the window later. The fast
+		// path withdraws the visible row but keeps them for a later event to surface.
 		let mut store = MockStore::default();
 		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config()).with_lag(10);
 

@@ -403,12 +403,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: a rejected window config must point at the key the author has to change. Every
-	// diagnostic here used to carry Fragment::None, which renders as "found ``" with an empty
-	// value and gives the author a message with no location in a `with { }` block that may hold a
-	// dozen keys. Retaining the fragment alongside the parsed value is the only thing keeping the
-	// span alive from the token to the diagnostic, so this asserts the span, not just the failure.
 	fn a_rejected_key_points_at_that_key() {
+		// A `with { }` block may hold a dozen keys, so a failure without a span leaves the author nothing to
+		// act on. This asserts the span, not just the rejection.
 		let parsed = parse_window_config(r#"window tumbling { count(*) } with { interval: "5m", lag: "30s" }"#)
 			.unwrap();
 
@@ -417,11 +414,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: an error about something ABSENT has no key to point at, so it must fall back to the
-	// window itself rather than to nothing. Fragment::None here would leave the author with a
-	// message about a missing interval and no indication of which window in the statement lacks
-	// it.
 	fn a_missing_measure_points_at_the_window() {
+		// An error about something absent has no key to point at, so it has to fall back to the window token;
+		// otherwise the author cannot tell which window in the statement lacks the measure.
 		let parsed = parse_window_config(r#"window tumbling { count(*) } with { grace: "1s" }"#).unwrap();
 
 		let err = Compiler::<'static>::build_window_kind(AstWindowKind::Tumbling, &parsed).unwrap_err();
@@ -430,13 +425,9 @@ mod tests {
 
 	#[test]
 	fn a_slide_at_least_as_large_as_the_window_is_rejected() {
-		// Intent: "sliding" means overlapping. A slide equal to the size IS a tumbling window and a
-		// slide larger than the size leaves coordinates covered by no window at all - the operator
-		// has no defined answer for a row landing in one of those gaps, and until this check
-		// existed it silently assigned such a row to the preceding window. WINDOW_003 and its help
-		// text were written for exactly this case but were never raised by anything.
-		// Mutation: drop the reject_slide_not_smaller_than_size call and both configs compile,
-		// putting gap rows into windows that do not contain them.
+		// A slide equal to the size is a tumbling window, and a larger slide leaves coordinates covered by no
+		// window at all - the operator has no defined answer for a row in one of those gaps and silently
+		// assigns it to the preceding window.
 		for source in [
 			r#"window sliding { count(*) } with { interval: "1m", slide: "5m" }"#,
 			r#"window sliding { count(*) } with { interval: "1m", slide: "1m" }"#,
@@ -452,14 +443,9 @@ mod tests {
 
 	#[test]
 	fn a_zero_slide_is_rejected_before_it_can_divide_by_zero() {
-		// Intent: every sliding anchor computation divides by the slide - the host does it twice
-		// per row (`instant / slide` for the high bound, `(instant - size + 1) / slide` for the
-		// low one). A zero slide therefore panics inside the operator, which takes the whole flow
-		// down, and it is reachable from an ordinary user query: the only guard is
-		// reject_slide_not_smaller_than_size, whose test is `slide >= size`, and `0 >= size` is
-		// false for every window with a real size. Both domains divide, so both must be refused.
-		// Mutation: drop the zero check and these two configs compile, then panic on the first
-		// row that reaches the window.
+		// Every sliding anchor computation divides by the slide, so a zero slide panics inside the operator
+		// and takes the flow down. The `slide >= size` guard does not catch it, since `0 >= size` is false for
+		// every real size, and both domains divide.
 		for source in [
 			r#"window sliding { count(*) } with { interval: "5m", slide: "0s" }"#,
 			r#"window sliding { count(*) } with { count: 10, slide: 0 }"#,
@@ -473,12 +459,9 @@ mod tests {
 
 	#[test]
 	fn a_zero_slide_is_not_reported_as_a_slide_that_is_too_large() {
-		// Intent: WINDOW_003 renders as "Slide interval (0s) must be smaller than window interval
-		// (5m)". That sentence is TRUE of a zero slide, so an author reading it has been told to
-		// do the thing they already did. The two faults need different fixes - shrink the slide
-		// versus make it positive - so they need different diagnostics.
-		// Mutation: fold the zero case into reject_slide_not_smaller_than_size and this fails
-		// while the test above still passes, which is why both exist.
+		// "must be smaller than the window interval" is true of a zero slide, so it tells the author to do
+		// what they already did. Shrink-the-slide and make-it-positive are different fixes and need different
+		// diagnostics.
 		let parsed = parse_window_config(r#"window sliding { count(*) } with { interval: "5m", slide: "0s" }"#)
 			.unwrap();
 
@@ -488,15 +471,9 @@ mod tests {
 
 	#[test]
 	fn a_slide_measured_in_a_different_unit_than_the_window_is_rejected() {
-		// Intent: `interval` and `count` are different domains - one buckets by event time, the
-		// other by arrival ordinal - and a window cannot be sized in one and advanced in the
-		// other. reject_slide_not_smaller_than_size compares the two only when they MATCH and
-		// answers `_ => false` for the mixed pairs, so these compiled cleanly and then missed
-		// both arms of the anchor mapping, which fell through to `vec![0]`. Every row in the flow
-		// then landed in window 0 - one window, never sealed, growing without bound, with no
-		// error anywhere. WINDOW_004 and its help text were written for exactly this case but,
-		// like WINDOW_003 before it, were never raised by anything.
-		// Mutation: restore the `_ => false` arm and both configs compile again.
+		// `interval` buckets by event time and `count` by arrival ordinal, so a window cannot be sized in one
+		// and advanced in the other. A mixed pair misses both arms of the anchor mapping and puts every row
+		// of the flow in window 0 - one window, never sealed, unbounded, with no error anywhere.
 		for source in [
 			r#"window sliding { count(*) } with { interval: "5m", slide: 3 }"#,
 			r#"window sliding { count(*) } with { count: 100, slide: "1m" }"#,
@@ -510,9 +487,8 @@ mod tests {
 
 	#[test]
 	fn a_mismatched_slide_points_at_the_slide_the_author_declared() {
-		// The author has to change the slide to match the window's unit, so the span must land on
-		// the slide value rather than on the window token - the same rule the too-large case
-		// already follows.
+		// The author has to change the slide to match the window's unit, so the span must land on the slide
+		// value rather than the window token.
 		let parsed = parse_window_config(r#"window sliding { count(*) } with { interval: "5m", slide: 3 }"#)
 			.unwrap();
 
@@ -522,9 +498,8 @@ mod tests {
 
 	#[test]
 	fn a_rejected_slide_points_at_the_slide_value() {
-		// Intent: the author has to change the slide, not the interval, so the span must land on
-		// the slide value. Pointing at the window token instead would leave them guessing which of
-		// the two durations in the block is at fault.
+		// Two durations sit in the block and only the slide is at fault, so pointing anywhere else leaves the
+		// author guessing which one to change.
 		let parsed = parse_window_config(r#"window sliding { count(*) } with { interval: "1m", slide: "5m" }"#)
 			.unwrap();
 
@@ -534,9 +509,8 @@ mod tests {
 
 	#[test]
 	fn an_overlapping_slide_is_still_accepted() {
-		// Intent: the control for the two tests above. A slide strictly smaller than the size is
-		// the entire purpose of a sliding window, so the new check must not swallow it.
-		// Without this, a validation that rejected everything would look correct.
+		// The control for the rejection tests above: a validation that refused everything would look correct
+		// without it, and a slide smaller than the size is what sliding exists for.
 		let parsed = parse_window_config(r#"window sliding { count(*) } with { interval: "5m", slide: "1m" }"#)
 			.unwrap();
 
@@ -546,10 +520,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: `with { }` accepts only the keys the engine actually reads. The two cache-size knobs
-	// were removed once the operator state cache moved to a global byte budget, so they must now be
-	// rejected like any other unknown key rather than silently accepted and ignored.
 	fn unknown_with_key_still_rejected() {
+		// `with { }` accepts only keys the engine reads; a removed knob that is still accepted is a
+		// declaration the author believes is in force.
 		assert!(parse_window_config(r#"window tumbling { count(*) } with { bogus: 1 }"#).is_err());
 		assert!(
 			parse_window_config(
@@ -565,10 +538,8 @@ mod tests {
 			.is_err(),
 			"internal_state_cache_size was removed and must not be silently accepted"
 		);
-		// lateness named a second boundary that only ever reached the reclaim horizon, while the
-		// seal cutoff stayed at size + grace. One admissible span cannot be described by two
-		// numbers, so the key is gone and grace is the whole allowance. Accepting it again would
-		// mean a user could widen a horizon the gate does not honour.
+		// One admissible span cannot be two numbers: grace is the whole allowance, so accepting lateness
+		// again lets a user widen a horizon the seal gate does not honour.
 		assert!(
 			parse_window_config(r#"window tumbling { count(*) } with { interval: "5m", lateness: "30s" }"#)
 				.is_err(),

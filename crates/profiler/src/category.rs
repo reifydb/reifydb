@@ -314,8 +314,7 @@ mod tests {
 
 	#[test]
 	fn catalog_split_out_of_plan() {
-		// catalog:: was moved out of Plan into its own Catalog category so Plan reflects
-		// real query planning (rql::) rather than being dominated by metadata lookups.
+		// Plan must reflect real query planning (rql::) rather than metadata lookups.
 		assert_eq!(
 			ProfilerCategory::from_span_name("catalog::column::find_by_name"),
 			Some(ProfilerCategory::Catalog)
@@ -325,11 +324,10 @@ mod tests {
 
 	#[test]
 	fn from_span_name_new_subsystem_prefixes() {
-		// cache::, shape_store::/row_shape_registry::, api::, actor:: were previously unmapped and
-		// their spans silently dropped; each now buckets into its own selectable category.
+		// An unmapped prefix has its spans silently dropped, so each must bucket somewhere.
 		assert_eq!(ProfilerCategory::from_span_name("cache::row_shape::load"), Some(ProfilerCategory::Cache));
 		assert_eq!(ProfilerCategory::from_span_name("shape_store::create"), Some(ProfilerCategory::RowShape));
-		// row_shape_registry:: is the same row-shape subsystem as shape_store::, so it shares Object.
+		// row_shape_registry:: is the same subsystem as shape_store::, so it shares RowShape.
 		assert_eq!(
 			ProfilerCategory::from_span_name("row_shape_registry::load"),
 			Some(ProfilerCategory::RowShape)
@@ -340,8 +338,8 @@ mod tests {
 
 	#[test]
 	fn from_span_name_flow_covers_non_engine_prefixes() {
-		// Flow was widened from `flow::engine::` to `flow::` so the already-instrumented
-		// coordinator/pool/worker spans are captured, not just the engine internals.
+		// Flow must match on `flow::`, not `flow::engine::`, or the instrumented
+		// coordinator/pool/worker spans go uncaptured.
 		assert_eq!(
 			ProfilerCategory::from_span_name("flow::coordinator::consume"),
 			Some(ProfilerCategory::Flow)

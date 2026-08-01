@@ -56,7 +56,6 @@ pub mod tests {
 	use super::*;
 	use crate::operator::stateful::test_utils::test::*;
 
-	// Extend TestOperator to implement SingleStateful
 	impl SingleStateful for TestOperator {
 		fn layout(&self) -> RowShape {
 			self.layout.clone()
@@ -68,7 +67,6 @@ pub mod tests {
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let key = operator.key();
 
-		// Default key should be empty
 		assert_eq!(key.as_slice().len(), 0);
 	}
 
@@ -77,7 +75,6 @@ pub mod tests {
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let state = operator.create_state();
 
-		// State should be allocated based on layout
 		assert!(state.len() > 0);
 	}
 
@@ -87,16 +84,13 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(FlowNodeId(1));
 
-		// Initially should create new state
 		let state1 = operator.load_state(&mut txn).unwrap();
 
-		// Modify and save
 		let mut modified = state1.clone();
 		let layout = operator.layout();
 		layout.set::<i64>(&mut modified, 0, 0x33);
 		operator.save_state(&mut txn, modified.clone()).unwrap();
 
-		// Load should return modified state
 		let state2 = operator.load_state(&mut txn).unwrap();
 		assert_eq!(layout.get::<i64>(&state2, 0), 0x33);
 	}
@@ -107,7 +101,6 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(FlowNodeId(1));
 
-		// Update state with a function
 		let result = operator
 			.update_state(&mut txn, |shape, row| {
 				shape.set::<i64>(row, 0, 0x77);
@@ -118,7 +111,6 @@ pub mod tests {
 		let layout = operator.layout();
 		assert_eq!(layout.get::<i64>(&result, 0), 0x77);
 
-		// Verify persistence
 		let loaded = operator.load_state(&mut txn).unwrap();
 		assert_eq!(layout.get::<i64>(&loaded, 0), 0x77);
 	}
@@ -129,20 +121,18 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(FlowNodeId(1));
 
-		// Create and modify state
 		operator.update_state(&mut txn, |shape, row| {
 			shape.set::<i64>(row, 0, 0x99);
 			Ok(())
 		})
 		.unwrap();
 
-		// Clear state
 		operator.clear_state(&mut txn).unwrap();
 
-		// Loading should create new default state
+		// A load after clearing creates fresh, default-initialized state.
 		let new_state = operator.load_state(&mut txn).unwrap();
 		let layout = operator.layout();
-		assert_eq!(layout.get::<i64>(&new_state, 0), 0); // Should be default initialized
+		assert_eq!(layout.get::<i64>(&new_state, 0), 0);
 	}
 
 	#[test]
@@ -152,7 +142,6 @@ pub mod tests {
 		let operator1 = TestOperator::simple(FlowNodeId(1));
 		let operator2 = TestOperator::simple(FlowNodeId(2));
 
-		// Set different states for each operator
 		operator1
 			.update_state(&mut txn, |shape, row| {
 				shape.set::<i64>(row, 0, 0x11);
@@ -167,7 +156,6 @@ pub mod tests {
 			})
 			.unwrap();
 
-		// Verify each operator has its own state
 		let state1 = operator1.load_state(&mut txn).unwrap();
 		let state2 = operator2.load_state(&mut txn).unwrap();
 
@@ -183,10 +171,9 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::new(FlowNodeId(1));
 
-		// Simulate a counter incrementing
+		// TestOperator::new lays state out as [Int8, Float8, Utf8], so field 0 is the counter.
 		for i in 1..=5 {
 			operator.update_state(&mut txn, |shape, row| {
-				// Assuming first field is an int8 counter
 				let current = shape.get::<i64>(row, 0);
 				shape.set::<i64>(row, 0, current + 1);
 				Ok(())

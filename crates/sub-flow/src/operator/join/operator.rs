@@ -92,9 +92,8 @@ mod group_by_key_tests {
 
 	#[test]
 	fn groups_duplicate_keys_and_preserves_first_occurrence_order() {
-		// Latest-mode dispatch iterates `order` to issue one strategy call per key. The order must be
-		// first-occurrence so that, combined with latest's left-row-number reuse, output identity is
-		// stable; and every input index must land in exactly one group with none dropped or duplicated.
+		// Latest reuses the left row's number, so a first-occurrence order is what keeps output
+		// identity stable; every input index must land in exactly one group.
 		let keys = vec![Some(h(0xA)), Some(h(0xB)), Some(h(0xA)), Some(h(0xC)), Some(h(0xB))];
 		let (order, groups, undefined) = group_by_key(&keys);
 
@@ -877,10 +876,9 @@ mod span_tests {
 	use super::*;
 	use crate::operator::join::store::{RowPresence, Store, group_bytes};
 
-	// The spans below are read off the frontier the operator reports, so every expectation is an
-	// instant behind a fixed watermark rather than a bare duration. Anchoring the watermark here
-	// keeps `WATERMARK - ttl` readable at each call site.
 	fn watermark() -> DateTime {
+		// Frontiers are instants, not durations, so pinning the watermark keeps `WATERMARK - ttl`
+		// readable at every call site.
 		DateTime::from_millis(10_000_000)
 	}
 
@@ -895,12 +893,8 @@ mod span_tests {
 
 	#[test]
 	fn each_declared_side_ttl_becomes_a_span_on_that_sides_keyspace_when_not_snapshotting() {
-		// This is the whole contract the join hands the reclaim sweep: which keyspace ages, and how
-		// far behind the flow watermark it retires. Naming the wrong keyspace here silently reclaims
-		// the other side's rows, and a side declared but omitted never ages at all.
-		//
-		// Snapshot is off so this stays about the two sides; the ledger keyspaces a snapshot join
-		// adds on top have their own test.
+		// Naming the wrong keyspace here silently reclaims the other side's rows, and a side
+		// declared but omitted never ages at all.
 		let engine = TestEngine::new();
 		let left = Duration::from_seconds(60).unwrap();
 		let right = Duration::from_seconds(3_600).unwrap();
@@ -940,13 +934,9 @@ mod span_tests {
 
 	#[test]
 	fn a_join_naming_only_one_side_still_reports_a_scale_but_no_data_frontier() {
-		// Two properties that must not be conflated. The GROUP data range cannot be erased while
-		// the undeclared side is still probeable, so there is no data frontier - erasing it would
-		// drop rows the other side can still match. But the declared side does age on its own
-		// keyspace, and that sweep buckets activity on a grid sized from the node's scale. Reporting
-		// no scale would stamp every side entry into one bucket, so the sweep could neither locate
-		// them nor bound them - which is how a left-only ttl silently never evicted and a stale left
-		// row kept rejoining fresh right rows.
+		// Erasing the shared group range would drop rows the undeclared side can still match, so
+		// there is no data frontier. The declared side still needs a scale: without one the sweep
+		// stamps every entry into a single bucket and can neither locate nor bound them.
 		let engine = TestEngine::new();
 		let left = ttl(1_000);
 
@@ -959,10 +949,9 @@ mod span_tests {
 
 	#[test]
 	fn a_frontier_saturates_while_the_watermark_is_younger_than_the_ttl() {
-		// Early in a node's life the watermark is below the declared ttl. Wrapping would put the
-		// frontier near u64::MAX and make every group due on the first tick, wiping state before a
-		// single row aged out. Every operator subtracts its span from the watermark this way, so the
-		// saturation has to hold at the subtraction, not at the sweep.
+		// Early in a node's life the watermark is below the declared ttl, and wrapping would put
+		// the frontier near u64::MAX and make every group due on the first tick. The saturation
+		// has to hold at the subtraction, not at the sweep.
 		let engine = TestEngine::new();
 		let mut op = make_op(94, Some(ttl(60_000)), Some(ttl(60_000)), &engine);
 		op.snapshot = false;
@@ -979,10 +968,9 @@ mod span_tests {
 
 	#[test]
 	fn the_scale_takes_the_longer_side_so_slack_is_never_understated() {
-		// Slack is one bucket width and a width is scale/16, so a grid derived from the SHORTER side
-		// would understate the longer side's slack and retire a group mid-bucket, while a coarser
-		// grid can only ever delay. The scale therefore takes the max, never the min and never an
-		// average, whichever order the sides are declared in.
+		// Slack is one bucket width (scale/16), so a grid derived from the SHORTER side would
+		// understate the longer side's slack and retire a group mid-bucket, while a coarser grid
+		// can only delay. The max, never the min, whichever order the sides are declared in.
 		let engine = TestEngine::new();
 
 		assert_eq!(
@@ -1002,11 +990,9 @@ mod span_tests {
 
 	#[test]
 	fn the_node_scope_mapping_ages_on_the_left_ttl_and_not_at_all_without_one() {
-		// The mapping is minted per (left,right) output pair and keyed by the left row, so the left
-		// ttl is the only span that bounds it - this is the declaration that replaces the join's own
-		// evict_rownumbers. Declaring the right ttl here would drop mappings whose left row is still
-		// live and the join would re-mint a second row number for a row that already exists;
-		// declaring nothing reinstates the unbounded growth the sweep exists to stop.
+		// The mapping is keyed by the left row, so the left ttl is the only span that bounds it.
+		// The right ttl would drop mappings whose left row is still live and the join would mint a
+		// second row number over it; nothing at all reinstates unbounded growth.
 		let engine = TestEngine::new();
 		let left = ttl(50);
 
@@ -1023,9 +1009,8 @@ mod span_tests {
 
 	#[test]
 	fn a_latest_join_never_ages_its_mapping() {
-		// Latest reuses the left row's number for the emitted row rather than minting a composite,
-		// so there is no per-pair mapping to age; sweeping here would evict the identity of rows the
-		// join is still emitting under.
+		// Latest reuses the left row's number rather than minting a composite, so there is no
+		// per-pair mapping to age; sweeping would evict the identity rows are emitted under.
 		let engine = TestEngine::new();
 		let mut op = make_op(76, Some(ttl(50)), None, &engine);
 		op.latest = true;
@@ -1035,10 +1020,9 @@ mod span_tests {
 
 	#[test]
 	fn a_latest_join_never_ages_its_right_side_when_not_snapshotting() {
-		// In latest mode the right side is a one-row-per-key slot the join reads on every left
-		// arrival, so it is state the operator depends on rather than a window of history. Ageing it
-		// would make a left row silently stop matching a right row that is still current - the same
-		// carve-out the eviction path it replaces made for `latest`.
+		// In latest mode the right side is a one-row-per-key slot read on every left arrival, so
+		// it is live state rather than a window of history: ageing it would make a left row
+		// silently stop matching a right row that is still current.
 		let engine = TestEngine::new();
 		let mut op = make_op(
 			73,
@@ -1058,14 +1042,9 @@ mod span_tests {
 
 	#[test]
 	fn a_snapshot_join_ages_its_ledger_on_the_left_span_and_declares_it_after_the_left_side() {
-		// The ledger records what each left row published, so it is only meaningful for as long as
-		// the left row it describes - hence the left ttl, not a span of its own.
-		//
-		// The order matters just as much. The sweep walks these under one shared budget and stops
-		// where the budget runs out, so JOIN_LEFT going first means a cut-off sweep leaves published
-		// records whose left rows are already gone, and the next sweep clears them. Declared the
-		// other way round, a cut-off sweep strips live left rows of the record of what they
-		// published, and the joined rows they own can never be withdrawn again.
+		// The ledger is only meaningful as long as the left row it describes, hence the left ttl.
+		// Order matters as much: with JOIN_LEFT last, a budget-truncated sweep strips live left
+		// rows of what they published and their joined rows can never be withdrawn again.
 		let engine = TestEngine::new();
 		let left = ttl(50);
 
@@ -1085,15 +1064,9 @@ mod span_tests {
 
 	#[test]
 	fn storing_a_left_row_stamps_the_snapshot_ledger_even_when_it_publishes_nothing() {
-		// Equal spans only bound the ledger if the two clocks also start together. Publishing is the
-		// obvious place to stamp the ledger, but a left row whose key matches no right row publishes
-		// nothing at all, while its own keyspace is stamped regardless. That gap is enough to break
-		// it: a group whose last publish is older than its last left write has its ledger fall due
-		// first, and the sweep deletes the published records of left rows that are still live. Those
-		// rows then withdraw nothing when they are removed and their joined rows are stranded in the
-		// view forever - the exact defect the ledger exists to prevent.
-		//
-		// So the stamp rides the left write, not the publish. No right row is stored here at all.
+		// Equal spans only bound the ledger if the two clocks start together. Stamping on publish
+		// instead lets a left row that matches nothing age its ledger ahead of itself, so the
+		// sweep deletes the records of live left rows and their joined rows strand in the view.
 		let engine = TestEngine::new();
 		let op = make_op(78, Some(ttl(50)), None, &engine);
 		let mut txn = engine.flow_txn().deferred();
@@ -1146,9 +1119,9 @@ mod span_tests {
 		Duration::from_milliseconds_const(millis)
 	}
 
-	// Mappings are stamped from the transaction's change coordinate, not the clock, so these tests
-	// place a write in event time by setting it rather than by advancing a mock clock.
 	fn at(txn: &mut FlowTransaction, millis: u64) {
+		// Mappings are stamped from the change coordinate, not the clock, so a write is placed in
+		// event time by setting it rather than by advancing a mock clock.
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: DateTime::from_millis(millis),
 			version: CommitVersion(0),
@@ -1161,9 +1134,8 @@ mod span_tests {
 		right_ttl: Option<Duration>,
 		engine: &TestEngine,
 	) -> JoinOperator {
-		// No version epoch is seeded any more: nothing the join ages resolves a cutoff through it.
-		// Spans are declared against the flow watermark and the sweep applies them, so these tests
-		// place writes in event time via `at` rather than by seeding an epoch and advancing a clock.
+		// No version epoch is seeded: spans are declared against the flow watermark, so these
+		// tests place writes in event time via `at` instead.
 		let routines = engine.executor().routines.clone();
 		let rc = RuntimeContext::with_clock(engine.clock().clone());
 		JoinOperator::new_for_state_tests(FlowNodeId(node), left_ttl, right_ttl, routines, rc)
@@ -1178,12 +1150,9 @@ mod span_tests {
 
 	#[test]
 	fn the_mapping_sweep_evicts_rownumbers_past_the_left_ttl() {
-		// A join mints one row-number mapping per (left,right) output pair. If those mappings are
-		// never evicted once the left row ages past the left TTL, the join's internal state grows
-		// without bound (observed: 430M mapping rows / 66GB on a live ingestor). The sweep now runs
-		// off the flow watermark rather than a tick, so the mapping's own #time decides - which is
-		// what makes the bound hold during a replay too, where the version-anchored sweep aged
-		// mappings by how recently they were INGESTED and so never fired.
+		// One mapping is minted per (left,right) output pair, so without eviction past the left
+		// ttl the join's state grows without bound (430M rows / 66GB on a live ingestor). The
+		// mapping's own event time decides, so the bound holds during a replay too.
 		let engine = TestEngine::new();
 		let op = make_op(30, Some(ttl(50)), None, &engine);
 		let mut txn = engine.flow_txn().deferred();
@@ -1219,12 +1188,9 @@ mod span_tests {
 
 	#[test]
 	fn group_reclamation_drops_every_instance_the_substrate_deleted() {
-		// The substrate deletes a reclaimed group's rows itself and hands the operator only
-		// the group id - no transaction, and no count of how many rows went. remove()
-		// decrements a single instance, so a key that held two rows would strand one of
-		// them and read maybe-present on every probe for the rest of the run, decaying the
-		// side into the permanent read-through the filter exists to prevent. Invalidating
-		// and re-scanning is the only correction available at that callback.
+		// The callback carries only the group id, not how many rows went, so decrementing a
+		// single instance would strand the second row of a two-row key as maybe-present for the
+		// rest of the run and decay the side into permanent read-through.
 		let engine = TestEngine::new();
 		let op = make_op(60, None, None, &engine);
 		let mut txn = engine.flow_txn().deferred();
@@ -1253,10 +1219,8 @@ mod span_tests {
 
 	#[test]
 	fn the_mapping_sweep_preserves_the_row_number_counter() {
-		// Evicting every mapping must NOT reset the monotonic counter; a fresh mapping after a
-		// full eviction must get a strictly larger number, or a recycled id would corrupt any
-		// downstream consumer that tracks rows by number. The counter lives in its own node-scope
-		// keyspace precisely so a mapping sweep cannot reach it.
+		// A recycled row number would corrupt any downstream consumer that tracks rows by
+		// number, so a mapping minted after a full eviction must still be strictly larger.
 		let engine = TestEngine::new();
 		let op = make_op(30, Some(ttl(50)), None, &engine);
 		let mut txn = engine.flow_txn().deferred();

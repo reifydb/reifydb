@@ -141,10 +141,9 @@ pub mod tests {
 		assert!(found.is_none());
 	}
 
-	/// Name lookup is namespace-scoped: a queue must not be findable from a
-	/// namespace that does not contain it.
 	#[test]
 	fn test_find_queue_by_name_is_namespace_scoped() {
+		// A queue must not be findable from a namespace that does not contain it.
 		let mut txn = create_test_admin_transaction();
 		let id = create(&mut txn, "jobs");
 		let namespace = ensure_test_namespace(&mut txn);

@@ -230,7 +230,7 @@ pub mod tests {
 	fn test_undefined_bool() {
 		let mut col = ColumnBuffer::bool(vec![true]);
 		col.push_value(Value::none());
-		// push_value(None) promotes to Option-wrapped; check via ColumnBuffer API
+		// Pushing none promotes the bare column to Option-wrapped.
 		assert_eq!(col.len(), 2);
 		assert!(col.is_defined(0));
 		assert!(!col.is_defined(1));

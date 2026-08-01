@@ -295,11 +295,9 @@ pub mod tests {
 
 		let diagnostic2 = internal_with_context("error 2", "file2.rs", 20, 10, "func2", "mod2");
 
-		// Extract error IDs from messages
 		let id1 = diagnostic1.message.split('[').nth(1).unwrap().split(']').nth(0).unwrap();
 		let id2 = diagnostic2.message.split('[').nth(1).unwrap().split(']').nth(0).unwrap();
 
-		// Error IDs should be unique
 		assert_ne!(id1, id2);
 		assert!(id1.starts_with("ERR-"));
 		assert!(id2.starts_with("ERR-"));

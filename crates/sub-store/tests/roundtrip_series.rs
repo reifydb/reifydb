@@ -14,18 +14,14 @@ use reifydb_sub_store::{
 use reifydb_test_harness::db::{TestDb, poll_until};
 use reifydb_value::value::{Value, duration::Duration};
 
-// Exercises the series actor's bucket enumeration + `is_closed` path with
-// integer keys. For integer-keyed series, a bucket is considered closed once
-// `metadata.newest_key >= bucket.end`, so inserting keys past a bucket
-// boundary closes prior buckets on the next tick.
 #[test]
 fn series_materialization_populates_block_store() {
+	// An integer-keyed bucket closes once newest_key reaches its end, so writing past a boundary is
+	// what makes prior buckets materialize on the next tick.
 	let fast_config = StorageConfig {
 		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
-		// Small integer bucket width - with keys 0..=11 and width 5,
-		// buckets are [0,5), [5,10), [10,15). newest_key=11 closes the
-		// first two buckets.
+		// Width 5 over keys 0..=11 gives [0,5), [5,10), [10,15); newest_key 11 closes the first two.
 		series_bucket_width: 5,
 		series_grace: Duration::from_milliseconds(0).unwrap(),
 	};

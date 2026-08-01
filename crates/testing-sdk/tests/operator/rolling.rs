@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Differential chaos for the rolling V2 driver (`RollingSum`): a sliding
-//! buffer of the last `ROLLING_CAPACITY` windows per group. The window_start
-//! range is deliberately wider than the capacity so eviction is exercised on
-//! most seeds, and events share window coordinates so within-window
-//! accumulation and partial removal are hit.
+//! Differential chaos for the rolling driver. The window_start range is deliberately wider
+//! than the buffer capacity so eviction is reached on most seeds, and events share window
+//! coordinates so within-window accumulation and partial removal are reached too.
 
 use reifydb_sdk::operator::{FFIOperatorAdapter, windowed::rolling::RollingDriver};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
@@ -38,7 +36,7 @@ fn run(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 		.with_key_strategy(KeyStrategy::Sequential)
 		.with_output_key(["group"])
 		.with_column("group", samplers::utf8_choices(&["BTC", "ETH", "SOL"]))
-		// More distinct window coordinates than capacity -> eviction.
+		// More distinct window coordinates than capacity, so eviction is reachable.
 		.with_column("window_start", samplers::u64_range(0..10))
 		.with_column("value", value_sampler(none_values))
 		.with_scenario(scenario)
@@ -75,9 +73,8 @@ fn rolling_sum_handles_none_inputs() {
 
 #[test]
 fn rolling_sum_evicts_beyond_capacity() {
-	// With 10 distinct window coordinates and capacity 3, an inserts-only
-	// run must leave each live group reporting exactly `ROLLING_CAPACITY`
-	// windows once it has seen enough.
+	// Guards against a trivially-matching run: with far more coordinates than capacity, an
+	// inserts-only stream must still produce output.
 	let outcome = run(false, common::baseline(300, SupportedOps::insert_only()), 7);
 	outcome.assert_matches();
 	assert!(!outcome.oracle_table.is_empty(), "expected rolling output rows");

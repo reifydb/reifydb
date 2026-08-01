@@ -127,7 +127,7 @@ pub mod tests {
 
 		let projection = &aggregate.map[0].as_infix();
 
-		// Colon syntax is converted to AS operator internally: expr AS alias
+		// Colon syntax lowers to the AS operator, so the projection is an infix with the call on the left.
 		let min_call = projection.left.as_call_function();
 		assert_eq!(min_call.function.name.text(), "min");
 		assert!(min_call.function.namespaces.is_empty());
@@ -259,10 +259,8 @@ pub mod tests {
 
 	#[test]
 	fn an_aggregate_carries_a_ttl_declared_after_its_by_clause() {
-		// This clause is the only way to bound an aggregate's groups: it interns one per `by` key and
-		// nothing upstream ever retracts them, so an undeclared aggregate accumulates a group per key
-		// for the life of the flow. Parsing it after `by` (not after the projection) is what lets the
-		// group key still read as part of the aggregate rather than terminating it.
+		// The clause is the only bound on an aggregate's groups, and it has to parse after `by` rather than
+		// after the projection, or the group key would terminate the aggregate instead of belonging to it.
 		let bump = Bump::new();
 		let source = "AGGREGATE { count(value) } BY { slot } WITH { ttl: { duration: '1m' } }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
@@ -281,9 +279,8 @@ pub mod tests {
 
 	#[test]
 	fn an_aggregate_without_a_with_clause_declares_no_ttl() {
-		// The absence has to stay distinguishable from a zero: no clause means the author made no
-		// claim, which resolves to a perpetual horizon and a named entry in the retention report,
-		// never to a default span that silently reclaims accumulators.
+		// Absence has to stay distinguishable from a zero: no claim resolves to a perpetual horizon and a
+		// named entry in the retention report, never to a default span that silently reclaims accumulators.
 		let bump = Bump::new();
 		let source = "AGGREGATE { count(value) } BY { slot }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();

@@ -6,10 +6,8 @@ use crate::{as_key, as_values};
 
 #[test]
 fn wide_rows_trip_too_large_via_modify() {
-	// PendingWrites::estimate_size measures real row bytes (not a constant), so a
-	// handful of multi-MiB rows trips the 1 GiB byte cap in ~512 entries, far below
-	// the 1M-entry count cap - see pending.rs's own
-	// wide_rows_reach_the_byte_cap_before_the_entry_cap test for the same math.
+	// Size is measured from real row bytes, so 2 MiB rows hit the 1 GiB byte cap around 512 entries,
+	// far short of the 1M-entry cap; a constant per-entry estimate would never trip it here.
 	let engine = test_multi();
 	let mut txn = engine.begin_command().unwrap();
 

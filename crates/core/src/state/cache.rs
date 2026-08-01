@@ -273,8 +273,7 @@ where
 		match entry {
 			CleanEntry::Native(arc) => Ok(arc),
 			CleanEntry::Archived(bytes) => {
-				// SAFETY: every Archived entry was validated by V::archived exactly
-
+				// SAFETY: every clean Archived entry was validated by V::archived at insertion.
 				let archived = unsafe { V::archived_trusted(&bytes) };
 				let value = V::materialize(archived)?;
 				let arc = Arc::new(value);
@@ -389,8 +388,7 @@ where
 			return Ok(Some(match &entry {
 				CleanEntry::Native(arc) => f(StateView::Native(arc.as_ref())),
 				CleanEntry::Archived(bytes) => {
-					// SAFETY: every Archived entry was validated by V::archived
-
+					// SAFETY: every clean Archived entry was validated by V::archived at insertion.
 					let archived = unsafe { V::archived_trusted(bytes) };
 					f(StateView::Archived(archived))
 				}
@@ -437,8 +435,7 @@ where
 			return Ok(Some(match entry {
 				CleanEntry::Native(arc) => Arc::try_unwrap(arc).unwrap_or_else(|arc| (*arc).clone()),
 				CleanEntry::Archived(bytes) => {
-					// SAFETY: every Archived entry was validated by V::archived
-
+					// SAFETY: every clean Archived entry was validated by V::archived at insertion.
 					let archived = unsafe { V::archived_trusted(&bytes) };
 					V::materialize(archived)?
 				}
@@ -952,9 +949,8 @@ mod tests {
 		key::operator_state::{GroupId, IntoStateKey, Keyspace, OperatorStateKey, StateKey},
 	};
 
-	/// The cache is generic over keys that carry the operator-state frame, so a bare `String` is not a
-	/// usable key - a raw string would read as some other group's prefix. This frames the tests' string
-	/// keys the way an operator does.
+	/// A bare `String` would read as some other group's prefix; this frames the tests' string keys
+	/// the way an operator does.
 	#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 	struct Key(String);
 
@@ -1002,7 +998,6 @@ mod tests {
 		pool_of(64 * 1024 * 1024)
 	}
 
-	// The once-per-tier key charge for the keys these tests use.
 	fn skey(key: &Key) -> u64 {
 		key_charge(key)
 	}
@@ -1012,15 +1007,13 @@ mod tests {
 		data: HashMap<Vec<u8>, StateBytes>,
 		groups: HashMap<Vec<u8>, GroupId>,
 		removes: usize,
-		// Failure injection for the error-safe-flush tests: the Nth state_set attempt
-		// (1-based) errors instead of writing; set_attempts records every attempted key
-		// in order so write ordering across a failed and retried flush can be asserted.
+		// The Nth state_set attempt (1-based) errors instead of writing; set_attempts
+		// records every attempted key so retry ordering can be asserted.
 		sets: usize,
 		fail_state_set_at: Option<usize>,
 		set_attempts: Vec<Vec<u8>>,
 		gets: usize,
-		// Settable flush clock (default epoch) so timestamp-refresh behavior is
-		// observable; existing tests are unaffected.
+		// Settable flush clock (default epoch) so timestamp refresh is observable.
 		now: DateTime,
 	}
 
@@ -1137,16 +1130,13 @@ mod tests {
 		let mut store = MockStore::default();
 		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 
-		// A set is buffered (dirty) and visible via get before flush.
 		cache.set(&mut store, &Key::new("a"), &cell(7)).unwrap();
 		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(7)));
-		// Nothing reached the backing store yet.
 		assert!(store.data.is_empty());
 
 		cache.flush(&mut store).unwrap();
 		assert!(!store.data.is_empty(), "flush must write dirty entries to the store");
 
-		// After dropping the in-memory cache, the value must load from the store.
 		cache.clear_cache();
 		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(7)));
 	}
@@ -1191,10 +1181,8 @@ mod tests {
 
 	#[test]
 	fn take_returns_value_and_evicts_it_from_cache() {
-		// take() is the load side of the window engines' load-mutate-persist
-		// cycle: it must hand the caller an owned value AND remove it from the
-		// clean cache, so that after the caller mutates its copy and persists
-		// it, no stale cached copy survives to shadow the write.
+		// take() is the load half of load-mutate-persist: a clean copy left behind
+		// would shadow the caller's write.
 		let mut store = MockStore::default();
 		{
 			let mut seed: StateCache<Key, Cell> = StateCache::new(big_pool());
@@ -1210,7 +1198,6 @@ mod tests {
 		assert_eq!(taken, Some(cell(42)), "take must return the stored value");
 		assert!(!cache.is_cached(&Key::new("a")), "take must evict the entry from the cache");
 
-		// The backing store is untouched by take, so a fresh get reloads it.
 		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(42)));
 	}
 
@@ -1223,10 +1210,8 @@ mod tests {
 
 	#[test]
 	fn take_then_persist_round_trips_a_mutation() {
-		// The full engine cycle in miniature: take the current value out, mutate
-		// it, persist via put, flush. The mutation must be the value that lands
-		// in the store - proving take+put is a faithful replacement for the old
-		// get(clone)+set(clone) pair.
+		// take + put must be a faithful read-modify-write: the mutation, not the
+		// pre-image, is what lands in the store.
 		let mut store = MockStore::default();
 		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.set(&mut store, &Key::new("a"), &cell(1)).unwrap();
@@ -1243,10 +1228,8 @@ mod tests {
 
 	#[test]
 	fn warm_inserts_archived_entries_without_decode_and_promotes_on_access() {
-		// The zero-copy win the redesign exists for: warm must insert
-		// Archived entries (exact byte charge, no materialization);
-		// the first typed access promotes exactly once, switching the
-		// charge from exact to approximate.
+		// warm must insert archived entries at their exact byte charge; the first
+		// typed access promotes exactly once, switching the charge to approximate.
 		let mut store = MockStore::default();
 		{
 			let mut seed: StateCache<Key, Cell> = StateCache::new(big_pool());
@@ -1274,9 +1257,8 @@ mod tests {
 
 	#[test]
 	fn ledger_clean_plus_dirty_matches_pool_after_interleaved_ops() {
-		// The ledger is the accounting the metrics pipeline reads; if
-		// it ever drifts from the pool the bound is fiction. Interleave
-		// every mutation kind and check the identity at each step.
+		// The ledger is what the metrics pipeline reads; if it drifts from the pool
+		// the memory bound is fiction.
 		let mut store = MockStore::default();
 		let pool = big_pool();
 		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
@@ -1321,9 +1303,8 @@ mod tests {
 
 	#[test]
 	fn dirty_entries_are_never_evicted_and_cap_violation_is_visible() {
-		// Soft overage pinned: an all-dirty cache over budget must not
-		// spin, must not error, must not lose a write, and must report
-		// the overage instead of hiding it.
+		// An all-dirty cache over budget must not spin, error, or lose a write; the
+		// overage is reported rather than hidden.
 		let mut store = MockStore::default();
 		let pool = pool_of(1);
 		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
@@ -1342,11 +1323,8 @@ mod tests {
 
 	#[test]
 	fn approximate_memory_already_includes_the_dirty_tier() {
-		// The total/subset relationship between these two readings is the
-		// contract every consumer depends on: approximate_memory is the
-		// whole footprint and dirty_memory is a subset of it, not a second
-		// bucket sitting beside it. A consumer that adds dirty_memory on
-		// top of approximate_memory charges the dirty bytes twice.
+		// dirty_memory is a subset of approximate_memory, not a second bucket beside
+		// it: adding the two charges the dirty bytes twice.
 		let mut store = MockStore::default();
 		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 
@@ -1381,9 +1359,8 @@ mod tests {
 
 	#[test]
 	fn flush_makes_entries_clean_and_evictable_restoring_the_bound() {
-		// After flush the entries are clean; the eviction pass at the
-		// end of flush must bring the pool back under a tiny budget by
-		// dropping clean entries (their bytes live in the store now).
+		// Flushed entries are clean, so the eviction pass can restore the bound -
+		// their bytes are in the store now.
 		let mut store = MockStore::default();
 		let pool = pool_of(1);
 		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
@@ -1395,7 +1372,6 @@ mod tests {
 		assert!(!pool.over_budget(), "flush + eviction must restore the bound once nothing is pinned");
 		assert!(pool.snapshot().resident.as_bytes() <= 1);
 
-		// Nothing was lost: evicted entries reload from the store.
 		for i in 0..8 {
 			assert_eq!(cache.get(&mut store, &Key::new(format!("k{}", i))).unwrap(), Some(cell(i)));
 		}
@@ -1403,8 +1379,8 @@ mod tests {
 
 	#[test]
 	fn eviction_issues_no_storage_operation() {
-		// Eviction is memory-only: no drop, no remove may reach the
-		// store, and the evicted key must reload to its original value.
+		// Eviction is memory-only: nothing may reach the store, and the evicted key
+		// must reload to its original value.
 		let mut store = MockStore::default();
 		let pool = big_pool();
 		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
@@ -1490,9 +1466,8 @@ mod tests {
 
 	#[test]
 	fn read_on_archived_entry_does_not_promote() {
-		// The point of read(): a pure read must serve the archived form without
-		// materializing, keeping the exact-byte archived charge. get() destroys
-		// archived residency by design (promote); read() must not.
+		// A pure read must serve the archived form at its exact byte charge; get()
+		// promotes by design, read() must not.
 		let mut store = MockStore::default();
 		{
 			let mut seed: StateCache<Key, Cell> = StateCache::new(big_pool());
@@ -1514,7 +1489,6 @@ mod tests {
 			"read() must keep the entry archived at its exact byte charge, not promote it"
 		);
 
-		// A typed access afterwards still promotes normally.
 		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(7)));
 		assert_eq!(
 			pool.snapshot().resident.as_bytes(),
@@ -1525,9 +1499,8 @@ mod tests {
 
 	#[test]
 	fn read_miss_inserts_archived() {
-		// Unlike the get() miss path (eager decode, archived bytes discarded), a
-		// read() miss must create archived residency: validated once, charged at
-		// the exact row size, and serving later reads without a store roundtrip.
+		// A read() miss must leave archived residency, so the second read costs no
+		// store roundtrip.
 		let mut store = MockStore::default();
 		{
 			let mut seed: StateCache<Key, Cell> = StateCache::new(big_pool());
@@ -1559,8 +1532,7 @@ mod tests {
 
 	#[test]
 	fn read_sees_dirty_and_dropped() {
-		// read() sits behind the same overlay order as get(): pending writes win
-		// over clean state and a pending remove reads as absent.
+		// read() honours the same overlay order as get(): pending writes and removes win.
 		let mut store = MockStore::default();
 		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 
@@ -1575,11 +1547,8 @@ mod tests {
 
 	#[test]
 	fn flush_error_retains_unflushed_dirty_entries() {
-		// A mid-flush store error must not lose pending writes: entries not yet
-		// written stay dirty (charges intact, order preserved) and a later flush
-		// against a healed store drains them. The old flush mem::take'd the dirty
-		// maps up front, so an error dropped the remainder from the cache and
-		// leaked their pool charges forever.
+		// A mid-flush store error must not lose pending writes: unwritten entries stay
+		// dirty with their charges and order intact, and a later flush drains them.
 		let mut store = MockStore::default();
 		let pool = big_pool();
 		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
@@ -1591,7 +1560,6 @@ mod tests {
 		store.fail_state_set_at = Some(2);
 		assert!(cache.flush(&mut store).is_err(), "the injected store failure must surface");
 
-		// "a" was written and became clean; "b" and "c" must still be dirty.
 		assert_eq!(store.data.len(), 1, "only the write before the failure reached the store");
 		assert_eq!(cache.dirty_memory().entries, Count::new(2), "unflushed entries must stay dirty");
 		assert_eq!(
@@ -1608,8 +1576,7 @@ mod tests {
 		assert_eq!(store.data.len(), 3, "the healed flush must drain the retained entries");
 		assert_eq!(cache.dirty_memory(), StateMemory::ZERO);
 
-		// Attempt log: a, b (failed), b (retried first), c - the failed key leads
-		// the retry and the relative order of the remainder is preserved.
+		// Attempt log: a, b (failed), b (retried first), c.
 		assert_eq!(store.set_attempts.len(), 4);
 		assert_eq!(store.set_attempts[1], store.set_attempts[2], "the failed key must be retried first");
 		assert_ne!(store.set_attempts[0], store.set_attempts[1]);
@@ -1618,9 +1585,8 @@ mod tests {
 
 	#[test]
 	fn flush_error_then_success_releases_exactly_once() {
-		// Charge conservation across a failed and retried flush: after the healed
-		// flush the pool must hold exactly the three clean native charges - no
-		// leaked dirty bytes, no double release.
+		// Charge conservation across a failed and retried flush: no leaked dirty
+		// bytes, no double release.
 		let mut store = MockStore::default();
 		let pool = big_pool();
 		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
@@ -1648,14 +1614,9 @@ mod tests {
 
 	#[test]
 	fn take_and_put_do_not_clone_resident_value() {
-		// Ported from the deleted modify() wrapper: the take -> mutate -> put
-		// cycle is the read-modify-write primitive. get_arc always leaves a
-		// second Arc holder in the tier, so a make_mut-based path would
-		// deep-clone the whole value on every call for any existing key.
-		// take_owned removes the clean entry first so the Arc is uniquely
-		// held: the clean-resident path must perform ZERO clones. The
-		// dirty-hit clone is the accepted cost (a mem-replace trick would
-		// corrupt state if the mutation errored) and is pinned at exactly one.
+		// take_owned drops the clean entry first so the Arc is uniquely held: the
+		// clean-resident path must clone zero times. The dirty-hit clone is the
+		// accepted cost and is pinned at exactly one.
 		let mut store = MockStore::default();
 		let mut cache: StateCache<Key, CountingCell> = StateCache::new(big_pool());
 
@@ -1679,7 +1640,6 @@ mod tests {
 			"taking and re-putting a clean-resident value must not clone it"
 		);
 
-		// The value is now dirty; a second cycle pays exactly the one accepted clone.
 		COUNTING_CELL_CLONES.store(0, Ordering::Relaxed);
 		let mut value = cache.take(&mut store, &Key::new("a")).unwrap().unwrap();
 		value.value += 1;
@@ -1703,9 +1663,8 @@ mod tests {
 
 	#[test]
 	fn take_and_put_of_clean_key_transfers_charge_exactly_once() {
-		// Charge symmetry across the take_owned rewrite: the take -> put cycle
-		// on a clean key must release the clean charge and hold exactly one
-		// dirty charge, with ledger and pool in agreement throughout.
+		// take -> put on a clean key must release the clean charge and hold exactly
+		// one dirty charge, with ledger and pool in agreement.
 		let mut store = MockStore::default();
 		let pool = big_pool();
 		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
@@ -1732,10 +1691,8 @@ mod tests {
 
 	#[test]
 	fn drop_releases_all_pool_charges() {
-		// The pool is process-wide while caches die with their engines (clear,
-		// remove_flow, the flow actor's retry rebuild). Dropping a cache must
-		// return every archived, native, and dirty charge to the pool, or each
-		// engine rebuild ratchets the pool toward artificial exhaustion.
+		// The pool outlives the caches, so a drop that keeps its charges ratchets the
+		// pool toward artificial exhaustion on every engine rebuild.
 		let mut store = MockStore::default();
 		{
 			let mut seed: StateCache<Key, Cell> = StateCache::new(big_pool());
@@ -1764,10 +1721,8 @@ mod tests {
 
 	#[test]
 	fn drop_after_failed_flush_releases_dirty_charges() {
-		// The flow actor rebuilds its engines exactly when a slice errored,
-		// possibly mid-flush - the compounding case for the old leak: the failed
-		// flush retains dirty entries, then the rebuild drops the cache. The
-		// retained charges must come back with the drop.
+		// A failed flush retains dirty entries and the engine rebuild then drops the
+		// cache; the retained charges must come back with it.
 		let mut store = MockStore::default();
 		let pool = big_pool();
 		{
@@ -1792,11 +1747,8 @@ mod tests {
 
 	#[test]
 	fn key_bytes_are_charged_per_tier() {
-		// Keys were the uncharged blind spot (up to four copies per dirty
-		// key; high-cardinality group keys are exactly the raptor profiling
-		// pain). The pool must now cover them once per tier: an entry under a
-		// longer key holds a proportionally larger charge dirty and clean,
-		// and every key charge returns to baseline on removal.
+		// Key bytes are charged once per tier: a longer key holds a proportionally
+		// larger charge in both tiers and returns to baseline on removal.
 		let mut store = MockStore::default();
 		let pool = big_pool();
 		let mut cache: StateCache<Key, Cell> = StateCache::new(pool.clone());
@@ -1826,8 +1778,6 @@ mod tests {
 		assert_eq!(pool.snapshot().total(), ByteSize::ZERO, "removal returns the key charges to baseline");
 	}
 
-	// Fixture for the seal path: a SealMutableState whose single fixed-size
-	// field can be written through the archived form.
 	#[operator_state(seal)]
 	#[derive(Debug, Clone, Default, PartialEq)]
 	struct SealCell {
@@ -1845,13 +1795,12 @@ mod tests {
 		*slot = ArchivedU64::from_native(value);
 	}
 
-	// Persist one SealCell under "a", drop all residency, then warm it back so
-	// the cache holds a clean Archived entry (validated bytes, exact charge).
 	fn warmed_seal_cache(
 		store: &mut MockStore,
 		pool: OperatorStateBudgetHandle,
 		value: u64,
 	) -> StateCache<Key, SealCell> {
+		// Leaves the cache holding one clean Archived entry: validated bytes, exact charge.
 		let mut cache: StateCache<Key, SealCell> = StateCache::new(pool);
 		cache.put(
 			store,
@@ -1869,11 +1818,8 @@ mod tests {
 
 	#[test]
 	fn modify_in_place_seals_archived_entry_without_materializing() {
-		// The whole point of the seal path: an archived-resident entry is
-		// mutated through its bytes and becomes a dirty LiveArchived slot at
-		// the exact archived charge. The native closure must never run, no
-		// native residency may appear, and every read path serves the sealed
-		// value before any flush.
+		// An archived-resident entry must be mutated through its bytes: no native
+		// residency may appear, and every read path serves the sealed value pre-flush.
 		let mut store = MockStore::default();
 		let pool = big_pool();
 		let mut cache = warmed_seal_cache(&mut store, pool.clone(), 1);
@@ -1917,11 +1863,9 @@ mod tests {
 
 	#[test]
 	fn seal_flush_writes_bytes_verbatim_with_refreshed_updated_at() {
-		// Flushing a LiveArchived slot must skip the encoder entirely: the
-		// stored body is byte-identical to an independent encode of the sealed
-		// value, updated_at carries the flush clock, and created_at survives
-		// (set_timestamps writes both, so a clobber here breaks TTL). The
-		// entry stays archived-resident afterwards.
+		// A LiveArchived flush skips the encoder: the stored body is byte-identical to
+		// an encode of the sealed value, updated_at carries the flush clock, and
+		// created_at survives (clobbering it would break TTL).
 		let mut store = MockStore::default();
 		let pool = big_pool();
 		let mut cache = warmed_seal_cache(&mut store, pool.clone(), 1);
@@ -1970,10 +1914,8 @@ mod tests {
 
 	#[test]
 	fn seal_cow_is_paid_once_per_shared_buffer() {
-		// The store fixture keeps an Arc of the same row the cache warmed, so
-		// the first seal must copy-on-write; the cache's buffer is then unique
-		// and further seals mutate in place. seal_copies is the measurement
-		// gate for extending sealing beyond the pilot.
+		// The store holds an Arc of the same row, so the first seal must copy-on-write;
+		// the buffer is unique afterwards and further seals mutate in place.
 		let mut store = MockStore::default();
 		let mut cache = warmed_seal_cache(&mut store, big_pool(), 1);
 		assert_eq!(cache.seal_copies, 0);
@@ -2011,10 +1953,8 @@ mod tests {
 
 	#[test]
 	fn modify_in_place_falls_back_to_native_when_seal_declines() {
-		// A seal closure returning None (a mutation the archive cannot
-		// express, e.g. none -> Some) must fall back to the native path: the
-		// declined-seal contract requires seal_f to be side-effect-free on
-		// None, and the slot lands as a native dirty Live.
+		// A declined seal (a mutation the archive cannot express) must fall back to the
+		// native path; seal_f is required to be side-effect-free on None.
 		let mut store = MockStore::default();
 		let mut cache = warmed_seal_cache(&mut store, big_pool(), 1);
 
@@ -2038,9 +1978,8 @@ mod tests {
 
 	#[test]
 	fn modify_in_place_miss_paths() {
-		// Absent key: no archive exists, so the native closure runs on the
-		// default. Store-resident key: the bytes are validated once, sealed,
-		// and land as LiveArchived without ever materializing.
+		// An absent key has no archive to seal, so the native closure runs on the
+		// default; a store-resident key is sealed without materializing.
 		let mut store = MockStore::default();
 		let mut cache: StateCache<Key, SealCell> = StateCache::new(big_pool());
 
@@ -2091,9 +2030,8 @@ mod tests {
 
 	#[test]
 	fn take_on_live_archived_leaves_the_pending_write() {
-		// take() on a dirty slot is a read-out, never a removal: the pending
-		// sealed write must survive the take and persist at the next flush
-		// (marking Dropped here would turn a read into a store delete).
+		// take() on a dirty slot is a read-out, not a removal: marking it Dropped would
+		// turn a read into a store delete.
 		let mut store = MockStore::default();
 		let mut cache = warmed_seal_cache(&mut store, big_pool(), 1);
 		cache.modify_in_place(
@@ -2132,8 +2070,7 @@ mod tests {
 
 	#[test]
 	fn seal_flush_error_retains_live_archived() {
-		// The A3 error contract extends to sealed slots: a failed verbatim
-		// write keeps the LiveArchived entry, its charge, and its order; the
+		// A failed verbatim write keeps the sealed slot, its charge, and its order; the
 		// healed reflush drains it without re-encoding.
 		let mut store = MockStore::default();
 		let pool = big_pool();
@@ -2174,10 +2111,8 @@ mod tests {
 		EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded)
 	}
 
-	// hydrate() takes the engine's key decoder; these tests know their key set, so
-	// decode by matching against the candidates' encodings instead of reversing the
-	// string codec.
 	fn string_key_decoder(candidates: &'static [&'static str]) -> impl Fn(&EncodedKey) -> Option<Key> {
+		// Matches candidate encodings rather than reversing the string codec.
 		move |encoded| {
 			candidates
 				.iter()
@@ -2198,10 +2133,8 @@ mod tests {
 
 	#[test]
 	fn hydrated_cache_proves_absence_without_store_reads() {
-		// Completeness exists to kill the per-new-key store lookup: after hydration,
-		// a miss IS an absence proof. If a miss ever read through again, every fresh
-		// window/group key would pay a persistent-tier roundtrip just to learn the
-		// key is new - the exact hot-path cost hydration was added to remove.
+		// After hydration a miss IS an absence proof; reading through again would make
+		// every fresh group key pay a persistent-tier roundtrip.
 		let mut store = seeded_internal_store(&[("a", 1)]);
 		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a", "missing"])).unwrap();
@@ -2215,10 +2148,8 @@ mod tests {
 
 	#[test]
 	fn eviction_revokes_absence_proofs_instead_of_losing_state() {
-		// The dangerous failure is silent state loss: if eviction kept the complete
-		// flag, a get for the evicted key would answer None while the store still
-		// holds the value, and the engine would restart that group's state from
-		// scratch. Eviction must downgrade the cache to read-through instead.
+		// Keeping the complete flag through an eviction would answer None for a key
+		// the store still holds - silent state loss.
 		let mut store = seeded_internal_store(&[("a", 1)]);
 		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a"])).unwrap();
@@ -2236,9 +2167,8 @@ mod tests {
 
 	#[test]
 	fn hydrate_does_not_resurrect_a_pending_drop() {
-		// A drop buffered before hydration is not yet in the store; hydration
-		// scanning the store copy must not shadow the pending Removed slot, or the
-		// deleted state would come back for exactly one flush interval.
+		// A drop buffered before hydration is not yet in the store; if the scan
+		// shadowed it, the deleted state would come back for one flush interval.
 		let mut store = seeded_internal_store(&[("a", 1)]);
 		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.remove(&mut store, &Key::new("a")).unwrap();
@@ -2253,9 +2183,8 @@ mod tests {
 
 	#[test]
 	fn take_revokes_absence_proofs_for_the_taken_key() {
-		// take() hands out the value and removes the clean entry while the store
-		// still holds it. Keeping the complete flag would make the next get claim
-		// the key is absent - the same silent-state-loss failure as eviction.
+		// take() drops the clean entry while the store still holds the value; keeping
+		// the complete flag would make the next get claim absence.
 		let mut store = seeded_internal_store(&[("a", 1)]);
 		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a"])).unwrap();
@@ -2270,10 +2199,8 @@ mod tests {
 
 	#[test]
 	fn eviction_keeps_absence_proofs_through_membership() {
-		// The pre-membership design lost ALL absence knowledge when a single value was
-		// evicted: every new-key probe paid a store read for the rest of the process
-		// lifetime. Membership survives eviction, so absence stays a RAM answer and
-		// only the evicted value itself costs a point read.
+		// Membership survives eviction, so absence stays a RAM answer and only the
+		// evicted value itself costs a point read.
 		let mut store = seeded_internal_store(&[("a", 1), ("b", 2)]);
 		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a", "b", "missing"])).unwrap();
@@ -2300,8 +2227,7 @@ mod tests {
 	#[test]
 	fn drop_of_a_nonresident_key_updates_membership_exactly() {
 		// Dropping a key whose value was evicted must still remove its membership
-		// evidence (resolved via one store existence read), or the key would read as
-		// maybe-present forever and every probe would pay a pointless store read.
+		// evidence, or every later probe pays a pointless store read.
 		let mut store = seeded_internal_store(&[("a", 1), ("b", 2)]);
 		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a", "b"])).unwrap();
@@ -2320,14 +2246,9 @@ mod tests {
 
 	#[test]
 	fn values_completeness_is_restored_once_every_live_key_is_resident_again() {
-		// Before promotion existed, revocation was permanent: one eviction demoted
-		// the keyspace to read-through for the rest of the process lifetime even
-		// after every value had been re-read into the cache. Membership tracks the
-		// exact live-key count and the cache only ever holds live keys, so
-		// resident-count == membership-count proves the resident set IS the live
-		// set and the fast path can switch back on. While any live key is still
-		// non-resident, promotion must NOT fire: a premature complete flag would
-		// answer None for that key (silent state loss).
+		// The cache only ever holds live keys, so resident-count == membership-count
+		// proves the resident set IS the live set. Promoting before that would answer
+		// None for a still non-resident live key - silent state loss.
 		let mut store = seeded_internal_store(&[("a", 1), ("b", 2)]);
 		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a", "b", "missing"])).unwrap();
@@ -2359,10 +2280,8 @@ mod tests {
 
 	#[test]
 	fn dropping_the_last_nonresident_key_restores_completeness_at_flush() {
-		// The resident/live gap can also close from the live side: dropping a
-		// never-refilled key shrinks the live set. While the tombstone is pending,
-		// the dirty tier makes the resident count ambiguous, so promotion must
-		// wait for flush to drain it before switching the fast path back on.
+		// The gap can also close from the live side, but a pending tombstone makes the
+		// resident count ambiguous, so promotion must wait for the flush.
 		let mut store = seeded_internal_store(&[("a", 1), ("b", 2)]);
 		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a", "b"])).unwrap();
@@ -2384,9 +2303,8 @@ mod tests {
 
 	#[test]
 	fn a_new_key_written_after_hydration_is_tracked_by_membership() {
-		// Keys born after hydration must join membership at write time; otherwise an
-		// eviction would make freshly written state read as absent (silent state loss)
-		// once values-completeness is gone.
+		// Keys born after hydration must join membership at write time, or an eviction
+		// would make freshly written state read as absent.
 		let mut store = seeded_internal_store(&[]);
 		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["fresh", "missing"])).unwrap();
@@ -2410,8 +2328,8 @@ mod tests {
 
 	#[test]
 	fn clear_cache_and_take_keep_membership_alive() {
-		// clear_cache and take drop VALUES; neither changes what exists. Absence
-		// proofs must survive both, and the surviving store copies stay reachable.
+		// clear_cache and take drop values, not existence, so absence proofs must
+		// survive both.
 		let mut store = seeded_internal_store(&[("a", 1)]);
 		let mut cache: StateCache<Key, Cell> = StateCache::new(big_pool());
 		cache.hydrate(&mut store, full_range(), string_key_decoder(&["a", "missing"])).unwrap();
@@ -2425,9 +2343,6 @@ mod tests {
 		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(1)));
 	}
 
-	// Two keys with distinct encodings but an identical 64-bit membership hash: the
-	// engineered worst case for the multiset - a full-hash collision between a live and
-	// an absent key.
 	#[derive(Clone, PartialEq, Eq)]
 	struct CollidingKey {
 		id: &'static str,
@@ -2453,9 +2368,8 @@ mod tests {
 
 	#[test]
 	fn a_full_hash_collision_costs_a_false_positive_but_never_a_false_negative() {
-		// key1 is live, key2 absent, both share one membership hash. Probing key2 must
-		// fall through to the store (counted as a false positive) and answer None -
-		// while key1 must never read absent, before or after key2's probes.
+		// key1 live, key2 absent, one shared membership hash: the collision must cost a
+		// counted false positive and never make the live key read absent.
 		let mut store = MockStore::default();
 		let key1 = CollidingKey {
 			id: "one",
@@ -2534,9 +2448,8 @@ mod tests {
 
 	#[test]
 	fn invalidating_a_group_drops_its_rows_and_leaves_every_other_group_whole() {
-		// The substrate deletes the group's disk rows by range; this is the RAM half of the same
-		// operation. A neighbouring group losing entries here would be silent state loss, since the
-		// operator would restart that group's aggregation from scratch on its next event.
+		// A neighbouring group losing entries here is silent state loss - the operator
+		// would restart its aggregation from scratch.
 		let mut store = MockStore::default();
 		let mut cache: StateCache<GroupKey, Cell> = StateCache::new(big_pool());
 		seed_groups(&mut store, &mut cache);
@@ -2552,9 +2465,8 @@ mod tests {
 
 	#[test]
 	fn invalidation_never_drops_an_identity_row() {
-		// Phase 1 deletes only the data keyspaces on disk; the row-number mapping deliberately
-		// outlives them. Dropping the cached mapping would clear its membership bit while the row is
-		// still stored, so a later probe would answer DefinitelyAbsent for a live key.
+		// The row-number mapping outlives the data keyspaces on disk; dropping the cached
+		// mapping would answer DefinitelyAbsent for a row that is still stored.
 		let mut store = MockStore::default();
 		let mut cache: StateCache<GroupKey, Cell> = StateCache::new(big_pool());
 		seed_groups(&mut store, &mut cache);
@@ -2569,10 +2481,8 @@ mod tests {
 
 	#[test]
 	fn invalidation_keeps_completeness_and_answers_the_dropped_key_from_ram() {
-		// Unlike clear_cache, this is not a memory-pressure eviction: the disk rows are being deleted
-		// in the same transaction, so the cache still holds every live key and the completeness claim
-		// still holds. If it were revoked here, reclamation would knock every operator off the fast
-		// path and back into read-through - the opposite of the goal.
+		// The disk rows go in the same transaction, so the cache still holds every live
+		// key; revoking here would knock every operator back into read-through.
 		let mut store = MockStore::default();
 		let mut cache: StateCache<GroupKey, Cell> = StateCache::new(big_pool());
 		seed_groups(&mut store, &mut cache);
@@ -2594,9 +2504,8 @@ mod tests {
 
 	#[test]
 	fn invalidation_releases_the_bytes_it_dropped() {
-		// The entire point is bounding RSS. Dropping entries without releasing their charge would
-		// leave the pool believing the memory is still held, so the budget would evict live entries
-		// to make room for space that is already free.
+		// Dropping entries without releasing their charge makes the budget evict live
+		// entries to free space that is already free.
 		let pool = big_pool();
 		let mut store = MockStore::default();
 		let mut cache: StateCache<GroupKey, Cell> = StateCache::new(pool.clone());
@@ -2612,10 +2521,8 @@ mod tests {
 
 	#[test]
 	fn a_pending_tombstone_is_not_removed_from_membership_twice() {
-		// The tombstone's own note_write already removed the key's membership evidence. Removing it a
-		// second time here would delete a matching fingerprint that now belongs to a DIFFERENT key,
-		// making that key read DefinitelyAbsent while it is still stored - an under-count, which is
-		// the one direction of membership error that loses data.
+		// The tombstone already removed the key's membership evidence; removing it twice
+		// would delete a fingerprint belonging to a different, still-stored key.
 		let mut store = MockStore::default();
 		let mut cache: StateCache<GroupKey, Cell> = StateCache::new(big_pool());
 		seed_groups(&mut store, &mut cache);

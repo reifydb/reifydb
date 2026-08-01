@@ -9,16 +9,10 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-//! Order-preserving codec used to turn typed keys into the bytes that go on disk.
-//!
-//! Encoded byte sequences sort lexicographically in the same order as the logical keys they represent, so range scans
-//! over the storage tier produce results in natural key order without any decode pass. Submodules cover the
-//! catalog-specific key encodings, the generic `Serializer` and `Deserializer` pair, and per-type encoders for
-//! booleans, floats, and signed and unsigned integers.
-//!
-//! Invariant: the codec is order-preserving. For any two values `a < b` in their natural ordering, their encoded bytes
-//! must satisfy `encode(a) < encode(b)` lexicographically. Storage range queries, CDC, and replication all rely on this
-//! property; breaking it silently corrupts every range-scan-based operation in the workspace.
+//! Order-determining codec turning typed keys into the bytes that go on disk: a range scan reads
+//! order straight off the bytes with no decode pass. Booleans, numbers and temporals are
+//! bit-inverted and so sort descending; utf8, blobs and uuids are stored plain and sort ascending.
+//! `encode_*_asc` are the uninverted integer forms for keyspaces that need a forward scan.
 
 use serde::{Deserialize, Serialize};
 
@@ -641,83 +635,64 @@ pub mod tests {
 	value_uint8: Value::Uint8(18446744073709551615) => "0d000000000000000000",
 	value_uint16: Value::Uint16(340282366920938463463374607431768211455u128) => "0e00000000000000000000000000000000",
 
-	// Option<bool>
 	option_none_bool: None::<bool> => "00",
 	option_some_true: Some(true) => "0100",
 	option_some_false: Some(false) => "0101",
 
-	// Option<f32>
 	option_none_f32: None::<f32> => "00",
 	option_some_f32: Some(PI_F32) => "013fb6f024",
 
-	// Option<f64>
 	option_none_f64: None::<f64> => "00",
 	option_some_f64: Some(PI_F64) => "013ff6de04abbbd2e7",
 
-	// Option<i8>
 	option_none_i8: None::<i8> => "00",
 	option_some_i8: Some(0i8) => "017f",
 
-	// Option<i16>
 	option_none_i16: None::<i16> => "00",
 	option_some_i16: Some(0i16) => "017fff",
 
-	// Option<i32>
 	option_none_i32: None::<i32> => "00",
 	option_some_i32: Some(0i32) => "017fffffff",
 
-	// Option<i64>
 	option_none_i64: None::<i64> => "00",
 	option_some_i64: Some(0i64) => "017f",
 
-	// Option<i128>
 	option_none_i128: None::<i128> => "00",
 	option_some_i128: Some(0i128) => "017fffffffffffffffffffffffffffffff",
 
-	// Option<u8>
 	option_none_u8: None::<u8> => "00",
 	option_some_u8: Some(0u8) => "01ff",
 
-	// Option<u16>
 	option_none_u16: None::<u16> => "00",
 	option_some_u16: Some(0u16) => "01ffff",
 
-	// Option<u32>
 	option_none_u32: None::<u32> => "00",
 	option_some_u32: Some(0u32) => "01ff",
 
-	// Option<u64>
 	option_none_u64: None::<u64> => "00",
 	option_some_u64: Some(0u64) => "01ff",
 
-	// Option<u128>
 	option_none_u128: None::<u128> => "00",
 	option_some_u128: Some(0u128) => "01ffffffffffffffffffffffffffffffff",
 
-	// Option<String>
 	option_none_string: None::<String> => "00",
 	option_some_string: Some("foo".to_string()) => "01666f6fffff",
 	option_some_empty_string: Some("".to_string()) => "01ffff",
 
-	// Option<ByteBuf>
 	option_none_bytes: None::<ByteBuf> => "00",
 	option_some_bytes: Some(ByteBuf::from(vec![0x01, 0xff])) => "0101ff00ffff",
 
-	// Nested Option<Option<bool>>
 	option_nested_none: None::<Option<bool>> => "00",
 	option_nested_some_none: Some(None::<bool>) => "0100",
 	option_nested_some_some_true: Some(Some(true)) => "010100",
 	option_nested_some_some_false: Some(Some(false)) => "010101",
 
-	// Nested Option<Option<i32>>
 	option_nested_none_i32: None::<Option<i32>> => "00",
 	option_nested_some_none_i32: Some(None::<i32>) => "0100",
 	option_nested_some_some_i32: Some(Some(0i32)) => "01017fffffff",
 
-	// Nested Option<Option<String>>
 	option_nested_some_some_string: Some(Some("foo".to_string())) => "0101666f6fffff",
 
-	// Triple nested Option<Option<Option<bool>>>
 	option_triple_none: None::<Option<Option<bool>>> => "00",
 	option_triple_some_none: Some(None::<Option<bool>>) => "0100",
 	option_triple_some_some_none: Some(Some(None::<bool>)) => "010100",
@@ -749,7 +724,6 @@ pub mod tests {
 
 	#[test]
 	fn test_key_serializer() {
-		// Test bool
 		let mut s = KeySerializer::new();
 		s.extend_bool(true);
 		assert_eq!(s.finish(), vec![0x00]);
@@ -758,52 +732,38 @@ pub mod tests {
 		s.extend_bool(false);
 		assert_eq!(s.finish(), vec![0x01]);
 
-		// Test u64
 		let mut s = KeySerializer::new();
 		s.extend_u64(0u64);
 		assert_eq!(s.finish(), vec![0xff]);
 
-		// Test i64
 		let mut s = KeySerializer::new();
 		s.extend_i64(0i64);
 		assert_eq!(s.finish(), vec![0x7f]);
 
-		// Test f32
 		let mut s = KeySerializer::new();
 		s.extend_f32(0.0f32);
 		assert_eq!(s.finish(), vec![0x7f, 0xff, 0xff, 0xff]);
 
-		// Test f64
 		let mut s = KeySerializer::new();
 		s.extend_f64(0.0f64);
 		assert_eq!(s.finish(), vec![0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 
-		// Test bytes
 		let mut s = KeySerializer::new();
 		s.extend_bytes(b"foo");
 		assert_eq!(s.finish(), vec![0x66, 0x6f, 0x6f, 0xff, 0xff]);
 
-		// Test chaining
 		let mut s = KeySerializer::with_capacity(32);
 		s.extend_bool(true).extend_u32(1u32).extend_i16(-1i16).extend_bytes(b"test");
 		let result = s.finish();
 		assert!(!result.is_empty());
-		assert!(result.len() >= 10); // Should have all the encoded values
+		assert!(result.len() >= 10);
 	}
 
 	#[test]
 	fn the_two_u64_key_encodings_sort_in_opposite_directions() {
-		// Intent: THE reason both encodings exist. A fixed-width key prefix is only useful if
-		// byte order equals the intended numeric order, because every range scan and every
-		// "return in order" guarantee is a consequence of that and nothing else. encode_u64 is
-		// inverted for the descending-by-default row keycode; encode_u64_asc is plain so the
-		// timer wheel can scan "everything due at or before T" from the start of its keyspace
-		// and get results already in firing order.
-		// The boundary values matter: a little-endian encoding would sort 0x0100 below 0x00FF,
-		// which is exactly the pair asserted here.
-		// Mutation: make either encoder little-endian and its ordering assert fails on the
-		// 255/256 pair while the round trip below still passes - which is why order is asserted
-		// separately from round-tripping.
+		// encode_u64 is inverted for the descending-by-default row keycode; encode_u64_asc is
+		// plain so the timer wheel scans "due at or before T" in firing order. The 255/256 pair
+		// is what a little-endian encoding would get wrong while still round-tripping.
 		let ordered = [0u64, 1, 255, 256, 65_535, 65_536, u64::MAX - 1, u64::MAX];
 
 		for pair in ordered.windows(2) {
@@ -818,11 +778,8 @@ pub mod tests {
 
 	#[test]
 	fn every_fixed_width_key_encoding_round_trips() {
-		// Intent: an encoder without its exact inverse is what makes callers hand-roll the
-		// decode, and a hand-rolled inverse that forgets the inversion reads a wildly wrong
-		// value rather than failing loudly. u64::MAX and 0 are the pair that catches a missing
-		// or doubled inversion.
-		// Mutation: drop the ! from decode_u64 and 0 decodes as u64::MAX.
+		// A decoder that misses or doubles the inversion reads a wildly wrong value rather than
+		// failing loudly; 0 and u64::MAX are the pair that catches it.
 		for value in [0u64, 1, 255, 256, 1_700_000_000_000, u64::MAX - 1, u64::MAX] {
 			assert_eq!(decode_u64(encode_u64(value)), value, "inverted u64 round trip");
 			assert_eq!(decode_u64_asc(encode_u64_asc(value)), value, "ascending u64 round trip");

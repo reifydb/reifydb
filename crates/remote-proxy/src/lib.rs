@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Bridge that lets a local engine subscribe to a remote ReifyDB instance and forward incoming change payloads into
-//! a local channel or sink. Wraps the gRPC client, handles authentication, and proxies raw RBCF payloads through a
-//! conversion callback so the caller controls how remote events are typed.
+//! Subscribes a local engine to a remote ReifyDB instance, proxying raw RBCF payloads through a caller-supplied
+//! conversion callback.
 //!
-//! This is the only place in the workspace where external wire-format payloads are turned into events the local
-//! engine consumes; doing the conversion anywhere else would couple unrelated subsystems to the gRPC client and
-//! `wire-format` decoders.
+//! The only place external wire-format payloads become local engine events; converting elsewhere would couple
+//! unrelated subsystems to the gRPC client and the wire-format decoders.
 
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]

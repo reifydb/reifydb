@@ -49,7 +49,6 @@ pub mod tests {
 	use super::*;
 	use crate::tier::commit::buffer::MultiCommitBufferTier;
 
-	/// Create versioned test entries for a key
 	fn setup_versioned_entries(storage: &MultiCommitBufferTier, table: EntryKind, key: &[u8], versions: &[u64]) {
 		for v in versions {
 			let entries = vec![(EncodedKey::new(key), Some(CowVec::new(vec![*v as u8])))];
@@ -57,7 +56,6 @@ pub mod tests {
 		}
 	}
 
-	/// Extract version numbers from the drop entries
 	fn extract_dropped_versions(versions: &[CommitVersion]) -> Vec<u64> {
 		versions.iter().map(|version| version.0).collect()
 	}
@@ -68,10 +66,9 @@ pub mod tests {
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
-		// Versions: 1, 5, 10, 20, 100
 		setup_versioned_entries(&storage, table, key, &[1, 5, 10, 20, 100]);
 
-		// Should drop all except 100
+		// Only the newest version survives; everything it supersedes is droppable.
 		let to_drop = find_superseded_versions(&storage, table, key, None).unwrap();
 
 		assert_eq!(to_drop.len(), 4);
@@ -89,10 +86,9 @@ pub mod tests {
 		let table = EntryKind::Multi;
 		let key = b"test_key";
 
-		// Existing: 1, 5, 10. Pending: 20.
 		setup_versioned_entries(&storage, table, key, &[1, 5, 10]);
 
-		// Should keep 20 (pending) and drop 1, 5, 10
+		// A pending version supersedes the stored ones, so it must not itself be scheduled for drop.
 		let to_drop = find_superseded_versions(&storage, table, key, Some(CommitVersion(20))).unwrap();
 
 		assert_eq!(to_drop.len(), 3);
@@ -111,7 +107,6 @@ pub mod tests {
 
 		setup_versioned_entries(&storage, table, key, &[42]);
 
-		// Only one version exists, should drop nothing
 		let to_drop = find_superseded_versions(&storage, table, key, None).unwrap();
 		assert!(to_drop.is_empty());
 	}

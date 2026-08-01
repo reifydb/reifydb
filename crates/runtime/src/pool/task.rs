@@ -11,10 +11,9 @@ use std::{
 		atomic::{AtomicBool, Ordering},
 	},
 	thread,
-	time::Duration,
 };
 
-use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, TryRecvError, unbounded};
+use crossbeam_channel::{Receiver, Sender, TryRecvError, select, unbounded};
 use tracing::error;
 
 use crate::{pool::actor_pool::Runnable, sync::mutex::Mutex};
@@ -27,6 +26,7 @@ pub(crate) enum TaskItem {
 pub(crate) struct TaskPool {
 	tx: Sender<TaskItem>,
 	shutdown: Arc<AtomicBool>,
+	shutdown_tx: Mutex<Option<Sender<()>>>,
 	joins: Mutex<Vec<thread::JoinHandle<()>>>,
 	threads: usize,
 }
@@ -34,15 +34,17 @@ pub(crate) struct TaskPool {
 impl TaskPool {
 	pub(crate) fn new(threads: usize, name_prefix: &'static str) -> Self {
 		let (tx, rx) = unbounded::<TaskItem>();
+		let (shutdown_tx, shutdown_rx) = unbounded::<()>();
 		let shutdown = Arc::new(AtomicBool::new(false));
 
 		let joins = (0..threads)
 			.map(|i| {
 				let rx = rx.clone();
+				let shutdown_rx = shutdown_rx.clone();
 				let shutdown = Arc::clone(&shutdown);
 				thread::Builder::new()
 					.name(format!("{name_prefix}-{i}"))
-					.spawn(move || task_loop(rx, shutdown))
+					.spawn(move || task_loop(rx, shutdown_rx, shutdown))
 					.unwrap_or_else(|_| panic!("failed to spawn {name_prefix} worker thread"))
 			})
 			.collect();
@@ -50,6 +52,7 @@ impl TaskPool {
 		Self {
 			tx,
 			shutdown,
+			shutdown_tx: Mutex::new(Some(shutdown_tx)),
 			joins: Mutex::new(joins),
 			threads,
 		}
@@ -71,6 +74,7 @@ impl TaskPool {
 		if self.shutdown.swap(true, Ordering::AcqRel) {
 			return;
 		}
+		drop(self.shutdown_tx.lock().take());
 		let joins = mem::take(&mut *self.joins.lock());
 		let current = thread::current().id();
 		for handle in joins {
@@ -81,7 +85,7 @@ impl TaskPool {
 	}
 }
 
-fn task_loop(rx: Receiver<TaskItem>, shutdown: Arc<AtomicBool>) {
+fn task_loop(rx: Receiver<TaskItem>, shutdown_rx: Receiver<()>, shutdown: Arc<AtomicBool>) {
 	loop {
 		match rx.try_recv() {
 			Ok(item) => run_guarded(item),
@@ -89,10 +93,12 @@ fn task_loop(rx: Receiver<TaskItem>, shutdown: Arc<AtomicBool>) {
 				if shutdown.load(Ordering::Acquire) {
 					return;
 				}
-				match rx.recv_timeout(Duration::from_millis(100)) {
-					Ok(item) => run_guarded(item),
-					Err(RecvTimeoutError::Timeout) => {}
-					Err(RecvTimeoutError::Disconnected) => return,
+				select! {
+					recv(rx) -> item => match item {
+						Ok(item) => run_guarded(item),
+						Err(_) => return,
+					},
+					recv(shutdown_rx) -> _ => return,
 				}
 			}
 			Err(TryRecvError::Disconnected) => return,

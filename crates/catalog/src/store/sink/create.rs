@@ -151,10 +151,8 @@ pub mod tests {
 			config: vec![("key".to_string(), "value".to_string())],
 		};
 
-		// First creation should succeed
 		CatalogStore::create_sink(&mut txn, to_create.clone()).unwrap();
 
-		// Second creation should fail with duplicate error
 		let err = CatalogStore::create_sink(&mut txn, to_create).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_061");
 	}
@@ -184,7 +182,6 @@ pub mod tests {
 		};
 		CatalogStore::create_sink(&mut txn, to_create).unwrap();
 
-		// Verify both are linked to namespace
 		let links: Vec<_> = txn
 			.range(NamespaceSinkKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
 			.unwrap()
@@ -192,7 +189,6 @@ pub mod tests {
 			.unwrap();
 		assert_eq!(links.len(), 2);
 
-		// Verify link metadata
 		let mut found_sink_one = false;
 		let mut found_sink_two = false;
 
@@ -224,7 +220,6 @@ pub mod tests {
 		let namespace_one = create_namespace(&mut txn, "namespace_one");
 		let namespace_two = create_namespace(&mut txn, "namespace_two");
 
-		// Create sink in first namespace
 		let to_create = SinkToCreate {
 			name: Fragment::internal("shared_name"),
 			namespace: namespace_one.id(),
@@ -235,7 +230,6 @@ pub mod tests {
 		};
 		CatalogStore::create_sink(&mut txn, to_create).unwrap();
 
-		// Should be able to create sink with same name in different namespace
 		let to_create = SinkToCreate {
 			name: Fragment::internal("shared_name"),
 			namespace: namespace_two.id(),

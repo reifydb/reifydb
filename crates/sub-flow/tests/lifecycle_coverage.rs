@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The lifecycle boot report is the only place that answers "is anything reclaiming this class?",
-//! and criterion 7 of the acceptance plan requires it to be trustworthy. Its covered-set used to be
-//! derived purely from the lifecycle subsystem's own tasks, so the two classes reclaimed by the FLOW
-//! tick were reported at ERROR as having no executor on every single boot of every ingestor - while
-//! the reclaim pass was in fact running thousands of times a minute. An alarm that is always wrong
-//! is worse than no alarm: it is indistinguishable from the real thing, so the real thing gets
-//! ignored. Coverage is now declared by whoever executes it, wherever that lives.
+//! The lifecycle boot report is the only place that answers "is anything reclaiming this class?".
+//! Coverage is declared by whoever executes it, wherever that lives: a covered-set derived only
+//! from the lifecycle subsystem's own tasks reports the flow-tick classes at ERROR on every boot.
 
 use reifydb::{WithSubsystem, embedded};
 use reifydb_core::lifecycle::{class::RetentionClass, coverage::RetentionCoverage};
@@ -44,20 +40,17 @@ fn a_lifecycle_task_still_owns_the_classes_it_registered() {
 	assert_eq!(coverage.owner(RetentionClass::CompactionReclaim), Some("compaction-reclaim"));
 }
 
-/// Executors that exist only when the store has the tier they operate on: the flush lane needs a
-/// flush engine, and reaping and vacuuming need a persistent tier. On a memory store the factory
-/// skips registering them, so their classes have no owner and the boot report names them - which is
-/// accurate, not a defect. Every OTHER class must be claimed on any store.
+/// Executors that exist only when the store has the tier they operate on. On a memory store the
+/// factory skips them, so their classes have no owner and the boot report names them - accurate,
+/// not a defect. Every other class must be claimed on any store.
 const STORAGE_CONDITIONAL: &[RetentionClass] =
 	&[RetentionClass::PersistentFlush, RetentionClass::TombstoneReap, RetentionClass::VacuumBudget];
 
 #[test]
 fn every_retention_class_a_memory_database_can_reclaim_has_an_owner() {
-	// This is the assertion the boot report's ERROR branch exists to make: with flow on, anything
-	// left unclaimed is either a genuinely unreclaimed class or a lane that forgot to declare
-	// itself, and both need a human. Scoping it to what a memory store can actually reclaim keeps
-	// that signal - a newly added or newly forgotten lane still fails here - without asserting the
-	// storage-conditional lanes into existence on a store that has no tier for them to work on.
+	// The report's ERROR branch exists to make this claim: with flow on, anything unclaimed is
+	// either genuinely unreclaimed or a lane that forgot to declare itself. Scoping to what a
+	// memory store can reclaim keeps that signal without asserting absent tiers into existence.
 	let coverage = coverage_of_a_flow_enabled_database();
 
 	let unclaimed: Vec<&str> = RetentionClass::all()
@@ -72,10 +65,9 @@ fn every_retention_class_a_memory_database_can_reclaim_has_an_owner() {
 
 #[test]
 fn the_storage_conditional_lanes_are_unclaimed_here_because_the_tier_is_absent() {
-	// Pins WHY the exclusion above is legitimate, so it cannot quietly become a blanket exemption.
-	// If any of these ever gets claimed on a memory store, either the factory started registering
-	// an executor with nothing to operate on, or the class stopped being storage-conditional - and
-	// then the exclusion is hiding a lane that should be asserted like every other.
+	// Pins why the exclusion above is legitimate so it cannot become a blanket exemption: if one of
+	// these is ever claimed on a memory store, the class stopped being storage-conditional and the
+	// exclusion is hiding a lane that should be asserted like every other.
 	let coverage = coverage_of_a_flow_enabled_database();
 
 	for class in STORAGE_CONDITIONAL {

@@ -37,19 +37,17 @@ fn test_savepoint_restore_drops_post_savepoint_writes() {
 	let engine = test_multi();
 	let mut txn = engine.begin_command().unwrap();
 
-	// Write key 1 BEFORE the savepoint - should survive restore + commit.
+	// Key 1 is written before the savepoint and must survive the restore.
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	let sp = txn.savepoint();
 
-	// Write key 2 AFTER the savepoint - must NOT survive restore + commit.
+	// Key 2 is written after it, so the restore must drop it from the commit.
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.restore_savepoint(sp);
 
-	// Commit the restored transaction.
 	let v = txn.commit(vec![]).unwrap();
 	assert!(v.0 > 0, "commit should produce a non-zero version");
 
-	// Verify what landed in storage.
 	let rx = engine.begin_query().unwrap();
 	assert!(rx.get(&as_key!(1)).unwrap().is_some(), "key 1 was written before the savepoint and must be committed");
 	assert!(

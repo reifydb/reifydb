@@ -65,9 +65,8 @@ fn main() {
 		info!("{}", frame);
 	}
 
-	// The replica connects to the primary's replication endpoint.
-	// Schema and data replicate automatically - no need to create
-	// tables on the replica.
+	// The replica connects to the primary's replication endpoint; schema and data replicate
+	// automatically, so no tables are created on the replica.
 	info!("Starting replica instance...");
 	let replica = server::memory()
 		.with_replication(move |c| c.replica().primary_addr(format!("http://127.0.0.1:{}", repl_port)))

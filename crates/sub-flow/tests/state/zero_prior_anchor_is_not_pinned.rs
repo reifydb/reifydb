@@ -1,17 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Scenario: a prior row with a zero `created_at` (uninitialised header, legacy
-// state, or a row written with both timestamps cleared) must not leak its zero
-// anchor into the next write. Writes carry the anchors their caller stamped and
-// never inherit anything from the row they replace, so a legacy row heals on its
-// next write instead of pinning the anchor at zero forever.
-
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_test_harness::operator::transaction::{FlowTxn, NODE_ID, engine, key, make_row};
 use reifydb_value::value::datetime::DateTime;
 
 fn assert_zero_prior_anchor_is_not_pinned(txn: &mut FlowTransaction) {
+	// Writes carry the anchors their caller stamped and never inherit from the row they replace, so
+	// a row with a zero `created_at` heals on its next write instead of pinning the anchor forever.
 	let k = key("legacy-key");
 	txn.state_set(NODE_ID, &k, make_row("v0", 0, 0)).unwrap();
 	txn.state_set(NODE_ID, &k, make_row("v1", 7_000, 7_000)).unwrap();

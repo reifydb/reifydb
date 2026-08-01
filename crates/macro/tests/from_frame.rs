@@ -184,7 +184,6 @@ fn test_partial_column_rename() {
 //     second: i64,
 // }
 
-// Test raw identifier: field name `r#type` maps to column "type"
 #[derive(FromFrame, Debug, PartialEq, Clone)]
 struct RawIdentifier {
 	id: i64,

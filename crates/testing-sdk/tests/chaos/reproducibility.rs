@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Determinism guarantees. The harness's primary contract for failure
-//! triage is "give me the seed and I can reproduce". These tests pin
-//! that contract:
-//!
-//!   1. Same seed across runs -> same materialized-table output.
-//!   2. Different seeds -> different event sequences (probabilistically).
-//!
-//! If (1) breaks, the harness has non-determinism somewhere - typically a
-//! HashMap iteration order leak. If (2) breaks, the seed isn't actually
-//! threading through to the RNG stream.
+//! The harness's triage contract is "give me the seed and I can reproduce". A same-seed
+//! mismatch means non-determinism somewhere, typically a HashMap iteration-order leak; a
+//! different-seed match means the seed is not reaching the RNG stream.
 
 use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{ChaosHarness, runner::ChaosOutcome, schema::KeyStrategy, strategy::samplers};
@@ -60,10 +53,7 @@ fn different_seeds_diverge_in_event_log() {
 	let b = build_and_run(43);
 	a.assert_matches();
 	b.assert_matches();
-	// Event content (RowNumbers + values) should differ for different
-	// seeds. We don't compare the full Vec<ChaosEvent> because ChaosEvent
-	// doesn't impl PartialEq directly (it carries Row); compare the
-	// per-event RowNumber sequence instead, which is cheap and stable.
+	// ChaosEvent has no PartialEq, so the RowNumber sequence stands in for the event log.
 	let rns_a: Vec<_> = a.events().map(|e| e.row_number()).collect();
 	let rns_b: Vec<_> = b.events().map(|e| e.row_number()).collect();
 	assert_ne!(rns_a, rns_b, "different seeds must produce different event sequences");
@@ -71,8 +61,6 @@ fn different_seeds_diverge_in_event_log() {
 
 #[test]
 fn same_seed_produces_identical_operator_history_lengths() {
-	// Indirect determinism check: the number of Changes the harness drove
-	// through FFIOperatorHarness::apply must match across runs.
 	let a = build_and_run(7);
 	let b = build_and_run(7);
 	a.assert_matches();
@@ -86,11 +74,9 @@ fn same_seed_produces_identical_operator_history_lengths() {
 
 #[test]
 fn the_corpus_fingerprint_identifies_the_sequence_a_seed_produced() {
-	// Guest suites pin hardcoded seeds to demonstrate a defect class. A seed only means something in
-	// terms of the generator that consumes it: widen a sampler range or add a mutation branch and every
-	// pin silently points at a different sequence, one that may no longer contain the defect it names,
-	// while staying green. The fingerprint is what turns that into a loud failure - so it has to be
-	// stable for a seed and different across seeds, or it cannot detect either.
+	// A pinned seed only means something relative to the generator that consumes it: widen a
+	// sampler and the pin silently points at a different sequence while staying green. The
+	// fingerprint only catches that if it is stable per seed and distinct across seeds.
 	let first = build_and_run(1234);
 	let again = build_and_run(1234);
 	let other = build_and_run(5678);

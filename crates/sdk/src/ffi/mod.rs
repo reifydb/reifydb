@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Guest-side FFI: the symbols a built-as-cdylib extension exports so the host can find and call into it. The
-//! arena owns memory the extension hands back across the boundary; the exports module declares the C-callable
-//! entry points; the wrappers turn the resulting C ABI into the typed Rust surface the rest of `sdk/` exposes.
-//!
-//! Layout invariants here mirror `reifydb-abi` exactly. Anything that adds, removes, or resizes an exported
-//! symbol must be matched by a coordinated change on the host loader side.
+//! Guest-side FFI: the symbols a cdylib extension exports so the host can call into it, and the arena that owns
+//! any memory handed back across the boundary. Layout here mirrors `reifydb-abi` exactly, so adding, removing or
+//! resizing an exported symbol requires a matching change on the host loader side.
 
 pub mod arena;
 pub mod exports;

@@ -168,8 +168,7 @@ mod tests {
 			Interceptors::new(),
 			Clock::Mock(MockClock::from_millis(0)),
 		);
-		// Every intern in this suite once stamped Position(DateTime::from_nanos(0)); the substrate now
-		// derives that from the transaction's change coordinate, set once here.
+		// The substrate derives an intern's position from the change coordinate, so it is set here.
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: DateTime::from_millis(0),
 			version: CommitVersion(0),
@@ -186,10 +185,9 @@ mod tests {
 		txn.state_range(NODE, range, None).unwrap().items.len()
 	}
 
-	// Persist a deferred transaction's pending writes, then resolve through a COLD interner the way a
-	// restarted process would. This is how a crash point is expressed: everything committed before the
-	// kill survives, everything after it never happened, and nothing in RAM carries over.
 	fn commit_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
+		// Expresses a crash point: what committed before it survives, what came after never
+		// happened, and nothing in RAM carries over into the cold interner that follows.
 		let pending = txn.take_pending();
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 		cmd.disable_conflict_tracking().unwrap();
@@ -207,10 +205,9 @@ mod tests {
 		cmd.commit_unchecked().unwrap();
 	}
 
-	// Registers the node's horizon the way register.rs does, so activity is bucketed at the width the
-	// scan will later divide by. Without it the interner falls back to its own default width and a
-	// cutoff chosen for one quantisation is compared against buckets stamped in another.
 	fn restarted(engine: &TestEngine) -> FlowTransaction {
+		// Registers the node's horizon so activity is bucketed at the width the scan divides by.
+		// Without it a cutoff chosen for one quantisation is compared against another's buckets.
 		let txn = deferred(engine);
 		txn.group_interner().set_activity_grid(NODE, Some(Duration::from_seconds(60).unwrap()));
 		txn
@@ -231,11 +228,9 @@ mod tests {
 
 	#[test]
 	fn phase_one_erases_every_data_keyspace_including_one_the_substrate_has_never_heard_of() {
-		// This is the property the whole group-major codec was chosen for. A custom operator can
-		// invent any keyspace it likes; because the key is built by the substrate the row still lands
-		// inside the group's range, so reclamation takes it without knowing it exists. The previous
-		// design needed each driver to enumerate its own keyspaces, and a forgotten one leaked
-		// forever.
+		// A custom operator can invent any keyspace, but the substrate builds the key so the row
+		// still lands inside the group's range and reclamation takes it without knowing it exists.
+		// A design where each driver enumerates its own keyspaces leaks a forgotten one forever.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		seed(&mut txn, GROUP);
@@ -256,10 +251,9 @@ mod tests {
 
 	#[test]
 	fn reclaiming_one_keyspace_spares_every_other_keyspace_of_the_same_group() {
-		// A join key's left and right rows share one group, so ageing them at different ttls means
-		// reclaiming a single keyspace inside a group that must otherwise stay whole. The bound has
-		// to stop at the keyspace edge: bleeding past it takes the other side's rows, which is a
-		// silent wrong-answer bug (the join keeps probing and finds nothing), not a crash.
+		// A join key's left and right rows share one group, so different ttls mean reclaiming one
+		// keyspace inside a group that must stay whole. Bleeding past the keyspace edge takes the
+		// other side's rows: the join keeps probing and finds nothing, with no crash to show for it.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		write(&mut txn, GROUP, Keyspace::JOIN_LEFT, 1);
@@ -311,9 +305,9 @@ mod tests {
 
 	#[test]
 	fn a_per_keyspace_reclaim_reports_more_work_and_resumes_where_it_stopped() {
-		// The sweep budgets rows per pass, so a side holding more rows than the budget must drain
-		// across passes rather than stall. `more` is what tells the caller to come back; reporting
-		// false with rows left would strand them until the group's own horizon.
+		// The sweep budgets rows per pass, so a side holding more than the budget must drain across
+		// passes. `more` is what tells the caller to come back; reporting false with rows left
+		// strands them until the group's own horizon.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		for suffix in 0..5u8 {
@@ -332,9 +326,9 @@ mod tests {
 
 	#[test]
 	fn phase_one_leaves_identity_intact() {
-		// Identity outliving data is the entire point of the two-phase split: a sink row can still
-		// name the mapping after the accumulators are gone. Taking the mapping here would mint a
-		// duplicate row on the group's next wake.
+		// Identity outliving data is the point of the two-phase split: a sink row can still name the
+		// mapping after the accumulators are gone. Taking the mapping here mints a duplicate row on
+		// the group's next wake.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		seed(&mut txn, GROUP);
@@ -347,9 +341,8 @@ mod tests {
 
 	#[test]
 	fn phase_two_erases_identity_and_stops_the_group_resolving() {
-		// After phase 2 nothing of the group may remain anywhere: not its identity rows, and not the
-		// dictionary entry that resolves its bytes to an id. A surviving dictionary entry is a
-		// per-group leak that no later pass would ever revisit.
+		// After phase 2 nothing of the group may remain, including the dictionary entry that
+		// resolves its bytes to an id - a surviving entry is a per-group leak no later pass revisits.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let group_bytes = EncodedKey::new(b"a-group");
@@ -370,9 +363,8 @@ mod tests {
 
 	#[test]
 	fn reclaiming_one_group_leaves_its_neighbour_untouched() {
-		// Ranges are the mechanism, so an off-by-one in the bounds destroys a live group's state
-		// silently. The neighbour is the adjacent id precisely because that is where a bad upper
-		// bound would bleed.
+		// An off-by-one in the range bounds silently destroys a live group's state. The neighbour is
+		// the adjacent id precisely because that is where a bad upper bound would bleed.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		seed(&mut txn, GROUP);
@@ -387,9 +379,9 @@ mod tests {
 
 	#[test]
 	fn reclaiming_a_group_never_touches_node_scope() {
-		// The interning dictionary and the id counter live at node scope. If a group range reached
-		// them, reclaiming one dead group would erase the address book for every live group on the
-		// node - and the counter, letting ids be handed out a second time.
+		// The interning dictionary and the id counter live at node scope. A group range reaching
+		// them would erase the address book for every live group on the node, and the counter with
+		// it, letting ids be handed out a second time.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let other = EncodedKey::new(b"still-alive");
@@ -410,9 +402,8 @@ mod tests {
 
 	#[test]
 	fn reclamation_is_bounded_by_its_limit_and_reports_the_remainder() {
-		// Every bulk delete rides the single write mutex, so an unbounded range delete
-		// is a latency incident waiting for a high-cardinality group. The caller must be able to take
-		// a slice and be told there is more to do.
+		// Every bulk delete rides the single write mutex, so an unbounded range delete is a latency
+		// incident waiting for a high-cardinality group.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		seed(&mut txn, GROUP);
@@ -446,9 +437,8 @@ mod tests {
 	#[test]
 	fn a_crash_after_erasing_data_but_before_deferring_leaves_the_group_reclaimable() {
 		// The data erase commits, then the process dies before defer_group marks the record. The
-		// group therefore wakes still sitting in the activity index with a live record, and the next
-		// scan must offer it again rather than skip it - if it did not, the group would never reach
-		// the identity phase and its mapping would be stranded for the life of the node.
+		// group wakes still in the activity index with a live record, and skipping it there means
+		// it never reaches the identity phase and strands its mapping for the life of the node.
 		let engine = TestEngine::new();
 		let mut txn = restarted(&engine);
 		let bytes = EncodedKey::new(b"crashes-mid-phase-one");
@@ -476,10 +466,9 @@ mod tests {
 
 	#[test]
 	fn a_crash_between_the_phases_keeps_the_mapping_until_the_identity_phase_runs() {
-		// The gap between the phases is a long horizon, so a restart inside it is the common case
-		// rather than a rare one. The reclaimed marker lives in the durable record precisely so the
-		// woken process still knows the data is gone and the identity is not - losing that would
-		// either re-run phase 1 forever or take the mapping early.
+		// The gap between the phases is a long horizon, so a restart inside it is the common case.
+		// The reclaimed marker lives in the durable record so the woken process still knows the data
+		// is gone and the identity is not; losing it re-runs phase 1 forever or takes the mapping early.
 		let engine = TestEngine::new();
 		let mut txn = restarted(&engine);
 		let bytes = EncodedKey::new(b"crashes-between-phases");
@@ -506,9 +495,9 @@ mod tests {
 
 	#[test]
 	fn a_half_drained_group_resumes_where_it_stopped_after_a_crash() {
-		// A budget-bounded erase can be interrupted at any point. The group must not be marked
-		// reclaimed while rows remain: the data scan would stop offering it and the identity phase
-		// would delete the record that addresses the survivors, leaking them with no way back.
+		// A budget-bounded erase can be interrupted at any point. Marking the group reclaimed while
+		// rows remain stops the data scan offering it, and the identity phase then deletes the
+		// record that addresses the survivors, leaking them with no way back.
 		let engine = TestEngine::new();
 		let mut txn = restarted(&engine);
 		let bytes = EncodedKey::new(b"crashes-mid-drain");
@@ -540,10 +529,9 @@ mod tests {
 
 	#[test]
 	fn the_identity_phase_never_leaves_a_dictionary_entry_behind_its_rows() {
-		// reclaim_group_identity erases the identity range and clears the dictionary in ONE
-		// transaction, so no crash can commit the first without the second. If it could, the group
-		// would resolve to an id whose record and mapping were gone: the next write would address a
-		// group with no reverse record, and phase 2 could never find it again to finish the job.
+		// The identity range and the dictionary clear in one transaction, so no crash can commit the
+		// first without the second. Otherwise the group resolves to an id whose record and mapping
+		// are gone, and phase 2 can never find it again to finish the job.
 		let engine = TestEngine::new();
 		let mut txn = restarted(&engine);
 		let bytes = EncodedKey::new(b"atomic-identity");

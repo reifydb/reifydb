@@ -77,9 +77,8 @@ mod tests {
 
 	#[test]
 	fn with_no_live_flows_the_poll_frontier_is_the_watermark() {
-		// With no deferred flow there is nothing that can lag, so discovery alone decides. Gating on an
-		// empty flow set instead would pin a flow-less database's watermark at zero forever, and every
-		// caller that waits on it would hang rather than return immediately.
+		// With no deferred flow nothing can lag, so gating on the empty set would pin a
+		// flow-less database's watermark at zero and hang every caller waiting on it.
 		let (poll, _flows, materialization) = parts();
 		poll.store(CommitVersion(7));
 
@@ -88,8 +87,8 @@ mod tests {
 
 	#[test]
 	fn the_slowest_flow_bounds_the_watermark() {
-		// Discovery running ahead of processing is the normal state under load; the answer is what the
-		// slowest flow has actually reached, never what the poll consumer has merely seen.
+		// Discovery running ahead of processing is normal under load, so the answer is what the
+		// slowest flow reached, never what the poll consumer merely saw.
 		let (poll, flows, materialization) = parts();
 		poll.store(CommitVersion(20));
 		flows.update(FlowId(1), CommitVersion(12));
@@ -104,9 +103,9 @@ mod tests {
 
 	#[test]
 	fn a_cursor_past_the_input_does_not_count_while_flow_output_is_unconsumed() {
-		// The defect this type exists to prevent. Every cursor is past version 9, but a flow committed
-		// output at 14 that nobody has consumed yet - in a chain that output IS the effect of 9. Any
-		// answer at or above 9 claims the chain is materialized while its tail is still behind.
+		// Every cursor is past 9, but a flow committed output at 14 that nobody has consumed, and
+		// in a chain that output IS the effect of 9: any answer at or above 9 claims the chain is
+		// materialized while its tail is still behind.
 		let (poll, flows, materialization) = parts();
 		poll.store(CommitVersion(14));
 		flows.update(FlowId(1), CommitVersion(9));
@@ -122,8 +121,8 @@ mod tests {
 
 	#[test]
 	fn the_watermark_advances_once_every_flow_passes_the_output_frontier() {
-		// ... and it must release the moment every flow has consumed that output, or the watermark
-		// would deadlock on its own gate and never advance again.
+		// The output gate must release once every flow has consumed it, or the watermark
+		// deadlocks on its own gate and never advances again.
 		let (poll, flows, materialization) = parts();
 		poll.store(CommitVersion(14));
 		flows.update(FlowId(1), CommitVersion(9));
@@ -139,8 +138,8 @@ mod tests {
 
 	#[test]
 	fn the_watermark_never_regresses_when_new_output_lands() {
-		// A caller that already observed 14 must never be shown 9 again: a watermark that regresses
-		// reads as the chain having gone backwards, and any floor derived from it would be unsound.
+		// A regressing watermark reads as the chain having gone backwards, and any floor derived
+		// from it would be unsound.
 		let (poll, flows, materialization) = parts();
 		poll.store(CommitVersion(14));
 		flows.update(FlowId(1), CommitVersion(14));

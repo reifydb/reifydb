@@ -300,12 +300,9 @@ mod tests {
 		AppendOperator::new_for_state_tests(FlowNodeId(node))
 	}
 
-	// Mirrors register.rs, which registers each node's horizon with the interner. Without it the
-	// node falls back to the interner's default bucket width and stamps in no particular domain.
-	// The interner takes its position from the substrate change coordinate rather than from the
-	// commit version, so the tests seed the coordinate they mean. The numeric coordinates and every
-	// bucket expectation are unchanged.
 	fn txn_at(engine: &TestEngine, node: FlowNodeId, coordinate: u64) -> FlowTransaction {
+		// Registering the horizon mirrors what register.rs does in production; without it the
+		// node falls back to the interner's default bucket width and stamps in no domain.
 		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
 		txn.group_interner().set_activity_grid(node, Some(Duration::from_seconds(60).unwrap()));
 		txn.set_change_coordinate(ChangeCoordinate {
@@ -329,10 +326,9 @@ mod tests {
 
 	#[test]
 	fn a_source_row_interns_a_group_that_carries_its_output_row_number() {
-		// The mapping is the whole reason append holds state, and after the migration it lives at
-		// the group's own address rather than at node scope. That is what puts it inside the range
-		// phase 2 deletes: a mapping written outside the group would be invisible to reclamation and
-		// would leak one row per source row for the life of the node.
+		// The mapping lives at the group's own address, which is what puts it inside the range the
+		// identity phase deletes; written anywhere else it would be invisible to reclamation and
+		// leak one row per source row for the life of the node.
 		let engine = TestEngine::new();
 		let op = op(1);
 		let mut txn = txn_at(&engine, op.node, 100);
@@ -356,9 +352,8 @@ mod tests {
 
 	#[test]
 	fn the_same_source_row_always_translates_to_the_same_output_row() {
-		// Append's entire contract: a source row keeps one identity downstream for as long as the
-		// mapping lives. A second insert that minted a fresh number would duplicate the row in the
-		// sink rather than replace it.
+		// A source row keeps one identity downstream for as long as the mapping lives; a second
+		// insert that minted a fresh number would duplicate the sink row rather than replace it.
 		let engine = TestEngine::new();
 		let op = op(2);
 		let mut txn = txn_at(&engine, op.node, 100);
@@ -373,10 +368,9 @@ mod tests {
 
 	#[test]
 	fn each_input_numbers_its_own_source_rows_independently() {
-		// The inputs of a union number their rows independently, so row 7 arrives from both. The
-		// parent index is in the group bytes precisely so those two are different groups; sharing one
-		// would collapse two unrelated source rows onto a single output row and let either input's
-		// reclamation erase the other's mapping.
+		// A union's inputs number their rows independently, so the parent index has to be in the
+		// group bytes: sharing one group would collapse two unrelated source rows onto a single
+		// output row and let either input's reclamation erase the other's mapping.
 		let engine = TestEngine::new();
 		let op = op(3);
 		let mut txn = txn_at(&engine, op.node, 100);
@@ -396,10 +390,9 @@ mod tests {
 
 	#[test]
 	fn a_source_row_that_was_never_seen_is_looked_up_never_interned() {
-		// An update or remove for a row append holds nothing for must not mint anything. If lookup
-		// interned, every unmatched diff would leave behind a dictionary entry, a group record and an
-		// activity-index row addressing a mapping that does not exist - unbounded growth driven
-		// entirely by traffic the operator drops on the floor.
+		// If lookup interned, every unmatched diff would leave a dictionary entry, a group record
+		// and an activity-index row addressing a mapping that does not exist - unbounded growth
+		// driven entirely by traffic the operator drops on the floor.
 		let engine = TestEngine::new();
 		let op = op(4);
 		let mut txn = txn_at(&engine, op.node, 100);
@@ -412,9 +405,8 @@ mod tests {
 
 	#[test]
 	fn a_partly_known_batch_translates_to_nothing_at_all() {
-		// The diff carries one Columns for the whole batch, so it is all-or-nothing: emitting the rows
-		// that did resolve would hand the sink a Columns whose row numbers no longer line up with the
-		// values beside them.
+		// The diff carries one Columns for the whole batch, so it is all-or-nothing: emitting only
+		// the rows that resolved hands the sink row numbers that no longer line up with the values.
 		let engine = TestEngine::new();
 		let op = op(5);
 		let mut txn = txn_at(&engine, op.node, 100);
@@ -429,11 +421,9 @@ mod tests {
 
 	#[test]
 	fn a_group_that_outlived_its_mapping_translates_to_nothing() {
-		// The identity phase is row-budgeted, so it can take a group's mapping and run out before it
-		// clears the dictionary entry - it reports `more` and leaves the group resolvable. A diff
-		// arriving in that window resolves the group and finds no row number, which is the other half
-		// of the all-or-nothing rule above: translating only the rows that did resolve would hand the
-		// sink a Columns whose row numbers no longer line up with the values beside them.
+		// The identity phase is row-budgeted, so it can take the mapping and run out before it
+		// clears the dictionary entry. A diff arriving in that window resolves the group and finds
+		// no row number, which is the other half of the all-or-nothing rule.
 		let engine = TestEngine::new();
 		let op = op(12);
 		let mut txn = txn_at(&engine, op.node, 100);
@@ -451,13 +441,9 @@ mod tests {
 
 	#[test]
 	fn every_untranslatable_mutation_is_counted_rather_than_swallowed() {
-		// Ok(None) here is not an error - the mapping is genuinely gone - but it leaves the
-		// sink holding a row that will never be updated or withdrawn again. The counter is the only
-		// evidence that happened, so it must move by the number of rows actually discarded rather
-		// than once per call: a batch of four that cannot translate loses four rows downstream, and
-		// a per-call counter would under-report the leak by a factor of the batch size.
-		// The last assertion is the one that stops the counter from being a call counter: a
-		// mutation that DID translate must leave it alone, or the signal is noise.
+		// A dropped mutation leaves the sink holding a row that is never updated or withdrawn
+		// again, and this counter is the only evidence. Counting per call rather than per row
+		// would under-report the leak by the batch size.
 		let engine = TestEngine::new();
 		let op = op(13);
 		let mut txn = txn_at(&engine, op.node, 100);
@@ -479,11 +465,9 @@ mod tests {
 
 	#[test]
 	fn removing_a_source_row_takes_its_whole_group_with_it() {
-		// Forgetting the group alone would clear the dictionary entry and the activity index but leave
-		// the group record behind, and nothing can ever reach it again: the record is addressed by id,
-		// the only path from bytes to id is gone, and neither reclamation index still names it. That is
-		// one permanently orphaned row per removed source row, so the remove path has to run the
-		// identity phase rather than just forget.
+		// Forgetting the group alone leaves the group record behind with no path from bytes to id
+		// and no index naming it - one permanently orphaned row per removed source row - so the
+		// remove path has to run the identity phase.
 		let engine = TestEngine::new();
 		let op = op(6);
 		let mut txn = txn_at(&engine, op.node, 100);
@@ -499,10 +483,9 @@ mod tests {
 
 	#[test]
 	fn an_update_restamps_activity_so_a_live_row_is_not_retired() {
-		// Idleness is measured from the last stamped bucket, and an update is activity. Without the
-		// restamp a row that is written every day but never re-inserted would keep the bucket of its
-		// first sighting, come due while it is still being updated, and lose the mapping that names
-		// its sink row - after which the next update resolves to nothing and is silently dropped.
+		// Idleness is measured from the last stamped bucket, so without a restamp a row updated
+		// daily but never re-inserted comes due on the bucket of its first sighting and loses the
+		// mapping naming its sink row; the next update then resolves to nothing.
 		let engine = TestEngine::new();
 		let op = op(7);
 		let mut txn = txn_at(&engine, op.node, 100);
@@ -529,11 +512,9 @@ mod tests {
 
 	#[test]
 	fn removing_a_source_row_also_takes_its_mapping_out_of_the_row_number_cache() {
-		// Append reclaims identity itself rather than waiting for the sweep, and the sweep is where the
-		// provider is told. Erasing the rows underneath a cache that still answers for them leaves one
-		// permanently unreachable entry per removed source row - the group id is never reissued, so
-		// nothing ever reads or evicts it. On a union fed by a high-churn source that is the whole row
-		// history retained in RAM, and the provider's own memory metric is what would have to show it.
+		// Append reclaims identity itself rather than waiting for the sweep that would tell the
+		// provider, so erasing the rows under a live cache leaves one unreachable entry per
+		// removed source row: the group id is never reissued, and nothing reads or evicts it.
 		let engine = TestEngine::new();
 		let op = op(14);
 		let mut txn = txn_at(&engine, op.node, 100);
@@ -552,10 +533,9 @@ mod tests {
 
 	#[test]
 	fn an_idle_row_loses_its_mapping_only_after_the_data_phase_released_the_group() {
-		// Append holds no data at all, so its group arrives at the identity phase with an empty data
-		// range. The two phases still have to run in order: the identity cutoff trails the sink row
-		// ttl, and taking the mapping before that would retire the name of a sink row that is still
-		// there - the update-dropping bug the operator's own ttl sweep used to cause.
+		// Append holds no data, so its group reaches the identity phase with an empty data range.
+		// The order still matters: the identity cutoff trails the sink row ttl, and taking the
+		// mapping earlier retires the name of a sink row that is still there.
 		let engine = TestEngine::new();
 		let op = op(8);
 		let mut txn = txn_at(&engine, op.node, 100);
@@ -589,19 +569,16 @@ mod tests {
 
 	#[test]
 	fn capabilities_declare_reclaim_or_the_substrate_skips_the_node() {
-		// reclaim_flow reads the declaration, not the node type: a node that does not declare Reclaim
-		// is counted perpetual and never scanned. Since append no longer evicts anything itself, losing
-		// this bit turns every mapping it holds into a permanent one while the report calls it healthy.
+		// The sweep reads the declaration, not the node type, so a node that omits Reclaim is
+		// counted perpetual and never scanned - every mapping it holds becomes permanent while
+		// the report calls it healthy.
 		assert!(op(10).capabilities().contains(&OperatorCapability::Reclaim));
 	}
 
 	#[test]
 	fn append_reports_no_operator_sample() {
-		// Append owns no windowed operator state; its row-number mappings now live in the
-		// shared row-number registry, whose telemetry is emitted by RowNumberMetricsCollector
-		// (see crate::operator::metrics), not by the operator sample. So append's own sample
-		// is empty - a mapping leak on an append node is attributed via the registry's
-		// row_number_* metrics keyed by this node, not through a per-operator sample here.
+		// Append's mappings live in the shared row-number registry, so a mapping leak here is
+		// attributed through the registry's per-node metrics, not a per-operator sample.
 		assert!(op(11).sample().is_none(), "append has no owned operator state to sample");
 	}
 }

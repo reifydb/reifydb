@@ -37,8 +37,8 @@ fn utf8_multibyte_unicode() {
 
 #[test]
 fn utf8_embedded_null() {
-	// Embedded nulls must not truncate; valid UTF-8 includes any
-	// byte < 0x80.
+	// A NUL byte is valid UTF-8, so an offsets-based round trip must carry all five bytes rather than treat
+	// the payload as a C string and truncate at the first 0x00.
 	let input = ColumnBuffer::utf8(["a\0b\0c"]);
 	let output = round_trip_column("s", input.clone());
 	assert_column_eq("utf8_embedded_null", &input, &output);

@@ -43,8 +43,7 @@ fn duration_negative_components() {
 
 #[test]
 fn duration_extremes() {
-	// Duration::new() rejects values that overflow during normalization,
-	// so use the largest representable values.
+	// Halved i64 bounds because Duration::new normalises components and rejects anything that overflows.
 	let input = ColumnBuffer::duration([
 		Duration::new(-1_000_000, -1_000_000, i64::MIN / 2).expect("valid"),
 		Duration::new(1_000_000, 1_000_000, i64::MAX / 2).expect("valid"),

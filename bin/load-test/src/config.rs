@@ -59,7 +59,6 @@ pub struct Config {
 }
 
 impl Config {
-	/// Get the effective port based on protocol defaults
 	pub fn effective_port(&self) -> u16 {
 		self.port.unwrap_or(match self.protocol {
 			Protocol::Http => 8091,
@@ -67,7 +66,6 @@ impl Config {
 		})
 	}
 
-	/// Get the connection URL
 	pub fn url(&self) -> String {
 		let scheme = match self.protocol {
 			Protocol::Http => "http",
@@ -107,7 +105,6 @@ fn parse_duration(s: &str) -> Result<Duration, String> {
 		return Err("duration cannot be empty".to_string());
 	}
 
-	// Find where the number ends and unit begins
 	let (num_str, unit) = if let Some(n) = s.strip_suffix("ms") {
 		(n, "ms")
 	} else if let Some(n) = s.strip_suffix('s') {
@@ -117,7 +114,6 @@ fn parse_duration(s: &str) -> Result<Duration, String> {
 	} else if let Some(n) = s.strip_suffix('h') {
 		(n, "h")
 	} else {
-		// Default to seconds if no unit
 		(s, "s")
 	};
 

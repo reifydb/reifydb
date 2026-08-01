@@ -2,10 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 //! Every registered reporter must be readable with RQL through `system::metrics::instruments::current` in the
-//! uniform ts/scope/metric/value/unit shape, histograms flattened to six scalar rows. Driven end to end: the
-//! profiler subsystem registers the ProfilerInstruments into the shared registry, and with the instruments refresh
-//! interval configured the metrics subsystem's RefreshActor reads them into the cache-backed `::current`, so a query
-//! sees every instrument the registry holds.
+//! uniform ts/scope/metric/value/unit shape, histograms flattened to six scalar rows. Driven end to end so the
+//! registration, the refresh actor and the cache-backed `::current` are all exercised on the real path.
 
 use std::time::Duration;
 

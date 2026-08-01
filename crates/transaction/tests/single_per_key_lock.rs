@@ -17,26 +17,12 @@ fn u64_shape() -> RowShape {
 	RowShape::testing(&[ValueType::Uint8])
 }
 
-// The single-version per-key write lock is the ONLY thing that serializes concurrent
-// read-modify-write on one key: the single-version path has no conflict detector (its module
-// doc states "last-writer-wins semantics between concurrent writers"). The row-number /
-// sequence generator depends on exactly this serialization - it reads the counter, adds the
-// batch size, and writes it back while holding the key's write lock, so two concurrent
-// allocators can never hand out the same id.
-//
-// The bug this guards: the per-key lock is created lazily, and `get_or_create_lock` did a
-// non-atomic get-then-insert. For a freshly-created key (a just-created table's sequence),
-// concurrent first-callers each created and kept a DIFFERENT lock instance, so their write
-// guards did not exclude each other. Their read-modify-write ran in parallel and lost
-// updates - in the real system that meant two rows getting the same RowNumber (the same
-// encoded key), so one committed table row was silently overwritten and vanished from reads.
-//
-// Each round uses a brand-new key and releases N threads through a barrier so they all reach
-// that key's first lock acquisition at once. If the lock serializes them the counter is
-// exactly N; any lost update (two threads reading the same value) makes it less than N. Many
-// rounds make the otherwise-flaky first-access race reliably observable.
 #[test]
 fn concurrent_read_modify_write_on_a_fresh_key_is_serialized() {
+	// The single-version path has no conflict detector, so this lock is the only thing keeping the
+	// row-number generator from handing two rows the same id and silently overwriting one.
+	// Every round uses a fresh key and a barrier so all threads race its very first lock creation,
+	// which is where a non-atomic get-then-insert hands each of them a different lock.
 	let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 	let spawner = actor_system.spawner();
 	let bus = EventBus::new(&spawner);

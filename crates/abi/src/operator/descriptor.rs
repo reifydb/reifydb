@@ -25,7 +25,6 @@ pub struct OperatorDescriptorFFI {
 	pub vtable: OperatorVTableFFI,
 }
 
-// SAFETY: OperatorDescriptorFFI contains pointers to static strings and functions
-
+// SAFETY: every pointer in the descriptor addresses immutable module-static data (strings, symbols).
 unsafe impl Send for OperatorDescriptorFFI {}
 unsafe impl Sync for OperatorDescriptorFFI {}

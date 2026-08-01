@@ -160,10 +160,9 @@ mod tests {
 		assert_eq!(identity.entries[1].key.text(), "tier");
 	}
 
-	// ALTER USER assigns declared attribute values to an existing user; the body is
-	// mandatory because an ALTER USER without assignments would be a silent no-op.
 	#[test]
 	fn test_alter_user_with_attribute_body() {
+		// The body is mandatory: an ALTER USER without assignments would be a silent no-op.
 		let bump = Bump::new();
 		let source = "ALTER USER alice { org_id: 'acme' }";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
@@ -345,10 +344,10 @@ mod tests {
 		assert!(attribute.if_exists);
 	}
 
-	// Regression: CREATE USER / DROP USER without ATTRIBUTE must still
-	// dispatch to identity parsing (guards the two-keyword dispatch order).
 	#[test]
 	fn test_create_user_still_parses_as_identity() {
+		// Without ATTRIBUTE the dispatch has only two keywords to go on, so USER must still reach identity
+		// parsing.
 		let bump = Bump::new();
 		let source = "CREATE USER alice";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();

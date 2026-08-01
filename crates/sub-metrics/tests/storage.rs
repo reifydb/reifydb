@@ -277,7 +277,6 @@ impl TestRunner for Runner {
 				)?
 			}
 
-			// remove_silent KEY [version=VERSION]
 			"remove_silent" => {
 				let mut args = command.consume_args();
 				let key =
@@ -300,11 +299,9 @@ impl TestRunner for Runner {
 					version,
 				)?;
 
-				// Single-version-semantics keys enqueue a compaction request on commit; in
-				// production the compaction-reclaim maintenance task drains that queue, but this
-				// harness registers no such task. Drive the drain synchronously so the removal's
-				// MultiCommittedEvent is emitted (and the flush actor advances past this version)
-				// before the next stats command waits on it.
+				// The commit enqueues a compaction request that no task drains in this harness,
+				// so drain it here or the removal's MultiCommittedEvent never fires and the next
+				// stats command waits on a version the flush actor has not reached.
 				self.multi_store.drain_compaction();
 			}
 

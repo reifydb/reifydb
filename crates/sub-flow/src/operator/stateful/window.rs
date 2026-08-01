@@ -74,16 +74,14 @@ pub mod tests {
 	use super::*;
 	use crate::operator::stateful::test_utils::test::*;
 
-	/// Helper to create window keys from u64 for testing
-	/// Uses inverted encoding for proper ordering (smaller IDs produce larger keys)
 	fn test_window_key(window_id: u64) -> StateKey {
+		// Inverted encoding: a smaller window id produces a larger key.
 		let mut serializer = KeySerializer::with_capacity(16);
 		serializer.extend_bytes(b"w:");
 		serializer.extend_u64(window_id);
 		StateKey::node_scoped(Keyspace::FIRST_CUSTOM, serializer.finish().as_ref().to_vec())
 	}
 
-	// Extend TestOperator to implement WindowStateful
 	impl WindowStateful for TestOperator {
 		fn layout(&self) -> RowShape {
 			self.layout.clone()
@@ -92,16 +90,14 @@ pub mod tests {
 
 	#[test]
 	fn test_window_key_encoding() {
-		// Test different window IDs
 		let key1 = test_window_key(1);
 		let key2 = test_window_key(2);
 		let key100 = test_window_key(100);
 
-		// Keys should be different
 		assert_ne!(key1.as_slice(), key2.as_slice());
 		assert_ne!(key1.as_slice(), key100.as_slice());
 
-		// Due to inverted encoding, smaller window IDs produce larger keys
+		// Inverted encoding, so a smaller window id sorts later.
 		assert!(key1 > key2);
 		assert!(key2 > key100);
 	}
@@ -111,7 +107,6 @@ pub mod tests {
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let state = operator.create_state();
 
-		// State should be allocated based on layout
 		assert!(state.len() > 0);
 	}
 
@@ -122,16 +117,13 @@ pub mod tests {
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let window_key = test_window_key(42);
 
-		// Initially should create new state
 		let state1 = operator.load_state(&mut txn, &window_key).unwrap();
 
-		// Modify and save
 		let mut modified = state1.clone();
 		let layout = operator.layout();
 		layout.set::<i64>(&mut modified, 0, 0xAB);
 		operator.save_state(&mut txn, &window_key, modified.clone()).unwrap();
 
-		// Load should return modified state
 		let state2 = operator.load_state(&mut txn, &window_key).unwrap();
 		assert_eq!(layout.get::<i64>(&state2, 0), 0xAB);
 	}
@@ -142,7 +134,6 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(FlowNodeId(1));
 
-		// Create states for multiple windows
 		let window_keys: Vec<_> = (0..5).map(|i| test_window_key(i)).collect();
 		let layout = operator.layout();
 		for (i, window_key) in window_keys.iter().enumerate() {
@@ -151,7 +142,6 @@ pub mod tests {
 			operator.save_state(&mut txn, window_key, state).unwrap();
 		}
 
-		// Verify each window has its own state
 		for (i, window_key) in window_keys.iter().enumerate() {
 			let state = operator.load_state(&mut txn, window_key).unwrap();
 			assert_eq!(layout.get::<i64>(&state, 0), i as i64);
@@ -164,7 +154,6 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(FlowNodeId(1));
 
-		// Create windows 0 through 9
 		let window_keys: Vec<_> = (0..10).map(|i| test_window_key(i)).collect();
 		let layout = operator.layout();
 		for (i, window_key) in window_keys.iter().enumerate() {
@@ -173,21 +162,17 @@ pub mod tests {
 			operator.save_state(&mut txn, window_key, state).unwrap();
 		}
 
-		// Expire windows before 5 (should remove 0-4)
-		// Due to inverted encoding, windows with smaller IDs have larger keys
-		// So to expire windows < 5, we need range from key(5) to end
+		// Inverted encoding, so expiring windows below 5 means the range above key(5).
 		let before_key = test_window_key(5);
 		let range = EncodedKeyRange::new(Excluded(before_key.into_encoded()), Unbounded);
 		let expired = operator.expire_range(&mut txn, range).unwrap();
 		assert_eq!(expired, 5);
 
-		// Verify windows 0-4 are gone
 		for i in 0..5 {
 			let state = operator.load_state(&mut txn, &window_keys[i]).unwrap();
 			assert_eq!(layout.get::<i64>(&state, 0), 0); // Should be newly created (default)
 		}
 
-		// Verify windows 5-9 still exist
 		for i in 5..10 {
 			let state = operator.load_state(&mut txn, &window_keys[i]).unwrap();
 			assert_eq!(layout.get::<i64>(&state, 0), i as i64);
@@ -200,7 +185,6 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(FlowNodeId(1));
 
-		// Create windows 5 through 9
 		let window_keys: Vec<_> = (5..10).map(|i| test_window_key(i)).collect();
 		let layout = operator.layout();
 		for (idx, window_key) in window_keys.iter().enumerate() {
@@ -209,13 +193,12 @@ pub mod tests {
 			operator.save_state(&mut txn, window_key, state).unwrap();
 		}
 
-		// Expire before 3 (should remove nothing since all windows are >= 5)
+		// Every window is at or above 5, so a cutoff of 3 must find nothing.
 		let before_key = test_window_key(3);
 		let range = EncodedKeyRange::new(Excluded(before_key.into_encoded()), Unbounded);
 		let expired = operator.expire_range(&mut txn, range).unwrap();
 		assert_eq!(expired, 0);
 
-		// All windows should still exist
 		for (idx, window_key) in window_keys.iter().enumerate() {
 			let state = operator.load_state(&mut txn, window_key).unwrap();
 			assert_eq!(layout.get::<i64>(&state, 0), (idx + 5) as i64);
@@ -228,7 +211,6 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(FlowNodeId(1));
 
-		// Create windows 0 through 4
 		let window_keys: Vec<_> = (0..5).map(|i| test_window_key(i)).collect();
 		let layout = operator.layout();
 		for (i, window_key) in window_keys.iter().enumerate() {
@@ -237,13 +219,11 @@ pub mod tests {
 			operator.save_state(&mut txn, window_key, state).unwrap();
 		}
 
-		// Expire before 100 (should remove all)
 		let before_key = test_window_key(100);
 		let range = EncodedKeyRange::new(Excluded(before_key.into_encoded()), Unbounded);
 		let expired = operator.expire_range(&mut txn, range).unwrap();
 		assert_eq!(expired, 5);
 
-		// All windows should be gone
 		for window_key in &window_keys {
 			let state = operator.load_state(&mut txn, window_key).unwrap();
 			assert_eq!(layout.get::<i64>(&state, 0), 0); // Should be newly created (default)
@@ -256,20 +236,18 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::new(FlowNodeId(1));
 
-		// Simulate a sliding window maintaining last 3 windows
+		// A sliding window that keeps only the last three.
 		let window_size = 3;
 		let mut all_window_keys = Vec::new();
 		let layout = operator.layout();
 
 		for current_window in 0..10 {
-			// Add data to current window
 			let window_key = test_window_key(current_window);
 			all_window_keys.push(window_key.clone());
 			let mut state = operator.create_state();
 			layout.set::<i64>(&mut state, 0, current_window as i64);
 			operator.save_state(&mut txn, &window_key, state).unwrap();
 
-			// Expire old windows
 			if current_window >= window_size {
 				let expire_before = current_window - window_size + 1;
 				let before_key = test_window_key(expire_before);
@@ -278,7 +256,6 @@ pub mod tests {
 			}
 		}
 
-		// Only windows 7, 8, 9 should exist
 		for i in 0..7 {
 			let state = operator.load_state(&mut txn, &all_window_keys[i]).unwrap();
 			assert_eq!(layout.get::<i64>(&state, 0), 0); // Should be default (expired)

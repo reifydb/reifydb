@@ -6,7 +6,6 @@ use reifydb_value::{err, error::Error};
 
 use crate::{AdminResult, CommandResult, QueryResult, Response, ResponsePayload};
 
-// Helper functions for parsing responses - made public for ws module
 pub fn parse_admin_response(response: Response) -> Result<AdminResult, Error> {
 	match response.payload {
 		ResponsePayload::Admin(admin_response) => Ok(AdminResult {
@@ -63,7 +62,6 @@ pub fn parse_query_response(response: Response) -> Result<QueryResult, Error> {
 	}
 }
 
-/// Parse the text-path Call response envelope into `CommandResult`.
 pub fn parse_call_response(response: Response) -> Result<CommandResult, Error> {
 	match response.payload {
 		ResponsePayload::Call(call_response) => Ok(CommandResult {

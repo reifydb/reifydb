@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The join is the only operator that declares keyspace spans and a node-scope mapping span, so it
-//! is the only route to sweep phases three and four. Everything below drives those two phases.
+//! The join is the only operator that declares keyspace spans, so it is the only route to the keyspace
+//! sweep phase. The mapping phase is deliberately out of reach here - see `sink_row_ttl` below.
 
 use reifydb_value::value::duration::Duration;
 
@@ -28,21 +28,17 @@ pub fn params(variant: Variant) -> Params {
 		left_ttl: ttl(30),
 		right_ttl: ttl(30),
 		tick_pct: 20,
-		// Deliberately none, and it is what makes the mapping phase unreachable here. This harness's
-		// view never expires a row, so it models a sink with no retention whatever is declared; a sink
-		// ttl would let the sweep drop a mapping while the modelled row stays published forever, and
-		// the duplicate that follows would be the fixture's doing rather than the operator's.
+		// Deliberately none, which leaves both the identity and mapping phases unreachable: the mapping
+		// cutoff is clamped to the identity cutoff, and that is derived from this ttl. This harness's
+		// view never expires a row, so a sink ttl would strand mappings by the fixture's doing.
 		sink_row_ttl: None,
 		static_right: 0,
 	}
 }
 
-/// Refuses a run that proves nothing from either end.
-///
-/// Both directions matter and they fail for opposite reasons. A sweep that reached no published row
-/// leaves every claim below holding because reclamation never happened; a claim that gave up on the
-/// whole view holds because it stopped asserting. The interesting runs are the ones in between, and
-/// only a two-sided check keeps the suite inside them.
+/// Refuses a run that proves nothing from either end: a sweep that reached no published row leaves
+/// every claim holding for want of reclamation, and a claim that gave up on the whole view holds
+/// because it stopped asserting.
 #[track_caller]
 pub fn assert_bites(run: &JoinReclaim, label: &str) {
 	assert!(
@@ -86,10 +82,9 @@ fn a_left_join_stays_foldable_while_both_its_sides_age() {
 
 #[test]
 fn the_same_corpus_with_the_sweep_switched_off_diverges_nowhere() {
-	// The control that decides what a failure above means. Identical seed, identical parameters,
-	// identical ttls - only the sweep share is zero. Red here would mean the corpus found an ordinary
-	// join defect and reclamation is a bystander; green here is what pins a failure above to the
-	// sweep.
+	// The control that decides what a failure above means: identical seed, parameters and ttls with
+	// only the sweep share zero. Red here would mean an ordinary join defect with reclamation a
+	// bystander.
 	let run = drive_reclaiming(9_182_733_645_512_009_117, params(Variant::inner()), 0);
 	run.assert_clean();
 	assert!(
@@ -101,10 +96,9 @@ fn the_same_corpus_with_the_sweep_switched_off_diverges_nowhere() {
 
 #[test]
 fn a_join_with_no_ttl_on_either_side_is_never_swept() {
-	// The control that makes the two above mean something. Same corpus, same sweep share, no ttl:
-	// `retention_scale` is none, the node grids undeclared, and the reclaim driver skips it in
-	// silence. If this reported reclamation the suite would be sweeping on a horizon nobody
-	// declared, and the two runs above would be measuring that instead of the ttls they set.
+	// The control that makes the two above mean something: same corpus and sweep share, no ttl, so the
+	// node grids undeclared and the driver skips it. Reclamation here would mean the suite sweeps on a
+	// horizon nobody declared.
 	let run = drive_reclaiming(
 		9_182_733_645_512_009_117,
 		Params {

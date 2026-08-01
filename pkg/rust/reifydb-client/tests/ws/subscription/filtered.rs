@@ -25,13 +25,11 @@ fn test_filtered_subscription() {
 		let table = unique_table_name("sub_filter");
 		create_test_table(&client, &table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 
-		// Subscribe with filter: only id > 10
 		let sub_id = client
 			.subscribe(&format!("from test::{} filter {{ id > 10 }}", table), SubscriptionConfig::default())
 			.await
 			.unwrap();
 
-		// Insert matching data
 		client.command(&format!("INSERT test::{} [{{ id: 15, value: 150 }}]", table), None).await.unwrap();
 
 		let change = recv_with_timeout(&mut client, 5000).await;
@@ -62,7 +60,6 @@ fn test_no_callback_for_non_matching() {
 		let table = unique_table_name("sub_no_match");
 		create_test_table(&client, &table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 
-		// Subscribe with filter: only id > 100
 		let sub_id = client
 			.subscribe(
 				&format!("from test::{} filter {{ id > 100 }}", table),
@@ -71,10 +68,8 @@ fn test_no_callback_for_non_matching() {
 			.await
 			.unwrap();
 
-		// Insert non-matching data (id = 5, which is < 100)
 		client.command(&format!("INSERT test::{} [{{ id: 5, value: 50 }}]", table), None).await.unwrap();
 
-		// Should NOT receive any change (use short timeout)
 		let change = recv_with_timeout(&mut client, 500).await;
 		assert!(change.is_none(), "Should NOT receive notification for non-matching insert");
 

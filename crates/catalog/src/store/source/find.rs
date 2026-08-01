@@ -147,7 +147,6 @@ pub mod tests {
 
 		create_source(&mut txn, "namespace_one", "my_source", "kafka");
 
-		// Source exists in namespace_one but not in namespace_two
 		let result = CatalogStore::find_source_by_name(
 			&mut Transaction::Admin(&mut txn),
 			namespace_two.id(),
@@ -164,7 +163,6 @@ pub mod tests {
 
 		create_source(&mut txn, "test_namespace", "MySource", "kafka");
 
-		// Source names are case-sensitive
 		let result = CatalogStore::find_source_by_name(
 			&mut Transaction::Admin(&mut txn),
 			test_namespace.id(),

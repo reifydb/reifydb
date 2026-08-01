@@ -203,8 +203,8 @@ mod tests {
 
 	#[test]
 	fn test_create_policy_allows_empty_operations() {
-		// A policy with no operations is meaningless but not malformed - leave that
-		// judgment to a separate validator. This test pins the current behaviour.
+		// A policy with no operations is meaningless but not malformed; that judgment
+		// belongs to a separate validator.
 		let mut txn = create_test_admin_transaction();
 		let (def, ops) = CatalogStore::create_policy(
 			&mut txn,

@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Differential chaos for the tumbling V2 driver. Each randomized
-//! Insert/Update/Remove stream is replayed through the real operator and
-//! through `tumbling_accumulator_oracle`; the materialized output tables must
-//! agree. Covers an invertible sum (`VolumeTumbling`), a removal-safe multiset
-//! min (`MinTumbling`), and the bounded-lateness sealing OHLCV
-//! (`OhlcvSealingTumbling`).
+//! Differential chaos for the tumbling driver: every randomized stream is replayed through
+//! the real operator and through `tumbling_accumulator_oracle`, and the materialized tables
+//! must agree. Covers an invertible sum, a removal-safe multiset min, and sealing OHLCV.
 
 use reifydb_sdk::operator::{FFIOperatorAdapter, windowed::tumbling::TumblingDriver};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
@@ -83,8 +80,8 @@ fn run_ohlcv(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 		.with_key_strategy(KeyStrategy::Sequential)
 		.with_output_key(["group", "window_start"])
 		.with_column("group", samplers::utf8_choices(&["BTC", "ETH"]))
-		// Slots span > WINDOW so multiple events land per window and some
-		// age past OHLCV_GRACE, exercising the sealing path.
+		// Slots span more than WINDOW so some events age past OHLCV_GRACE and reach the
+		// sealing path.
 		.with_column("slot", samplers::u64_range(0..180))
 		.with_column("price", price)
 		.with_scenario(scenario)
@@ -165,9 +162,7 @@ fn ohlcv_sealing_matches_across_configs_and_seeds() {
 
 #[test]
 fn ohlcv_sealing_produces_nonempty_output() {
-	// Guards against a fixture that trivially matches because nothing ever
-	// emits: with inserts only and many slots per window, the operator must
-	// materialize at least one OHLCV row.
+	// A fixture that emits nothing matches the oracle trivially, so emptiness has to fail.
 	let outcome = run_ohlcv(false, common::baseline(200, SupportedOps::insert_only()), 42);
 	outcome.assert_matches();
 	assert!(

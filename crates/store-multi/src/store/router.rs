@@ -15,9 +15,9 @@ pub mod tests {
 
 	use super::*;
 
-	// Basic smoke test - actual key encoding tests belong elsewhere
 	#[test]
 	fn test_classify_key_unknown() {
+		// An unrecognised prefix must fall back to the catch-all Multi table, never to a typed kind.
 		let key = EncodedKey::new(vec![0u8; 10]);
 		assert!(matches!(classify_key(&key), EntryKind::Multi));
 	}

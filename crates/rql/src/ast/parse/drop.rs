@@ -567,10 +567,9 @@ pub mod tests {
 		assert!(!drop.cascade);
 	}
 
-	/// IF EXISTS and CASCADE must round-trip separately from the identifier:
-	/// dropping the flags would turn a guarded drop into a hard failure.
 	#[test]
 	fn test_drop_queue_if_exists_qualified_cascade() {
+		// Losing either flag while keeping the identifier turns a guarded drop into a hard failure.
 		let bump = Bump::new();
 		let source = "DROP QUEUE IF EXISTS ns::my_queue CASCADE";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();

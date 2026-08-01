@@ -3,27 +3,9 @@
 
 #![cfg(feature = "chaos")]
 
-//! Model-based chaos test for store-multi.
-//!
-//! A seeded operation sequence (commit / flush / get / get_many / range / range_rev) is applied both to
-//! an in-memory full-history oracle ([`oracle`]) and to three `StandardMultiStore` configurations
-//! ([`fixtures`]), and the [`workload`] runner differentially checks every read against the oracle. The
-//! configurations:
-//!   - `memory`     - commit buffer only (no persistent tier, no read cache).
-//!   - `persistent` - commit buffer + SQLite persistent + read cache at the default page size.
-//!   - `tiny_cache` - same, with a deliberately small read cache (seed-chosen) so a keyspace that spans many pages
-//!     forces warming and mid-scan eviction.
-//!
-//! Determinism / replay: all stores use sync_only pools, so the timer-driven flush/compaction actors never
-//! fire on their own; every commit-to-persistent movement runs through the synchronous flush stand-in.
-//! A run is therefore a pure function of the seed and any failure replays via `SEED` (the shared
-//! chaos runner prints `reproduce: make test-chaos SEED=.. N=..`).
-//!
-//! Soundness: flush collapses MVCC history below its cutoff (the SQLite persistent tier is current-only),
-//! so the oracle is only queried at versions >= the high watermark `W` = max flush cutoff so far. For any
-//! `read >= W` the latest-version-<=read is always retained - either still in the commit buffer (versions
-//! > W are never flushed) or as the persisted base (latest-<=W) - so the full-history oracle stays exact.
-//! This mirrors the real contract that a reader never reads below the eviction watermark.
+//! Model-based chaos for store-multi: a seeded op sequence runs against a full-history oracle and three
+//! store configurations, and every read is differentially checked. Flush collapses MVCC history below its
+//! cutoff, so the oracle is only queried at versions >= the high watermark W (the max flush cutoff so far).
 
 #[path = "chaos/concurrency.rs"]
 mod concurrency;
@@ -47,9 +29,8 @@ use crate::workload::{Params, drive};
 
 pub const STORAGE: StorageId = StorageId::Table(TableId(1));
 
-// Broad mixed workload: commits dominate, partial flushes, and reads spread across get/get_many/range
-// (forward + reverse, AsOf + Between) over a keyspace that spans many cache pages.
 chaos_test!(multi_store_chaos, |seed| {
+	// The keyspace is wide enough to span many cache pages, so reads exercise warming and eviction.
 	drive(
 		seed,
 		Params {
@@ -65,10 +46,9 @@ chaos_test!(multi_store_chaos, |seed| {
 	);
 });
 
-// Flush-heavy variant: frequent partial flushes over a smaller keyspace push the commit buffer into the
-// sparse-over-dense-persistent object across batch boundaries - the family the cold-merge-horizon defect
-// lived in.
 chaos_test!(multi_store_flush_heavy_chaos, |seed| {
+	// Frequent partial flushes over a small keyspace leave a sparse commit buffer over a dense
+	// persistent tier across batch boundaries, which is where the cold-merge horizon bites.
 	drive(
 		seed,
 		Params {
@@ -84,10 +64,9 @@ chaos_test!(multi_store_flush_heavy_chaos, |seed| {
 	);
 });
 
-// Delete / physical-removal / row-TTL / historical-GC lifecycle: interleaves tombstones, flushes, TTL
-// sweeps (header-timestamp driven), direct physical deletes, and historical-version GC; asserts no ghost
-// / no premature loss / cross-config agreement at the current version.
 chaos_test!(multi_store_lifecycle_chaos, |seed| {
+	// Tombstones, flushes, TTL sweeps, physical deletes and historical GC interleaved: no ghost, no
+	// premature loss, and cross-config agreement at the current version.
 	lifecycle::drive(
 		seed,
 		lifecycle::Params {
@@ -106,10 +85,9 @@ chaos_test!(multi_store_lifecycle_chaos, |seed| {
 	);
 });
 
-// Multi-object isolation: commit / flush / row-TTL / physical-delete spread across several tables; a sweep
-// or delete scoped to one object must leave the others byte-for-byte intact, and an object's full-scan must
-// return exactly that object's rows. Catches cross-table bleed in object-scoped scan/delete/TTL bounds.
 chaos_test!(multi_object_isolation_chaos, |seed| {
+	// A sweep or delete scoped to one object must leave the others byte-for-byte intact; catches
+	// cross-table bleed in object-scoped scan, delete and TTL bounds.
 	multiobject::drive(
 		seed,
 		multiobject::Params {
@@ -127,10 +105,9 @@ chaos_test!(multi_object_isolation_chaos, |seed| {
 	);
 });
 
-// Mid-scan snapshot stability: a paginated AsOf{V} scan, drained one item at a time, must return the exact
-// snapshot as-of V even when commits (version > V) and bounded flushes (cutoff <= V) are interleaved between
-// batch pulls. Targets the merge/cursor/horizon under live tier migration mid-scan.
 chaos_test!(multi_store_snapshot_chaos, |seed| {
+	// A paginated AsOf{V} scan drained one item at a time must hold the exact snapshot even while
+	// commits above V and flushes at or below V land between batch pulls.
 	snapshot::drive(
 		seed,
 		snapshot::Params {
@@ -144,11 +121,10 @@ chaos_test!(multi_store_snapshot_chaos, |seed| {
 	);
 });
 
-// The five sweeps above pin specific configurations so they stay comparable across commits. This one
-// draws its configuration from the seed too, which is what actually explores the parameter space; a
-// failure reports the RESOLVED parameters, and those are what a regression would pin - never the
-// master seed, which stops meaning the same thing the moment the parameter generator changes.
 chaos_test!(multi_store_random_chaos, |seed| {
+	// The sweeps above pin fixed configurations; this one draws its parameters from the seed. A failure
+	// reports the RESOLVED parameters, which are what a regression pins - the master seed stops meaning
+	// the same thing the moment the parameter generator changes.
 	workload::drive_random(seed);
 });
 

@@ -1,16 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Read buffer tier of the multi-version store. Serves cold keys that the commit buffer has already evicted below
-//! the eviction watermark, so a repeated point read does not have to fall through to the persistent tier every
-//! time. Each entry caches the latest committed `(version, value)` plus, while that version is still unflushed,
-//! the immediately superseded one; a hit is served from the newest slot at or below the requested snapshot
-//! version, otherwise the caller reads through to the persistent tier which honors the full version bound. The
-//! previous slot is only ever filled by an in-place supersede (never by a warm merge), so it is guaranteed to be
-//! version-adjacent to the current slot. Range scans consult this tier only for buckets marked `range_complete`: a
-//! whole page loaded in one consistent read of the persistent tier, which therefore mirrors every persisted row for
-//! its contiguous key interval and can serve the persistent contribution of a range scan. Any incomplete bucket
-//! reads through to the persistent tier, and the always-scanned commit buffer still wins on version, so the cache
+//! Read buffer tier of the multi-version store, caching keys the commit buffer has evicted so a repeated
+//! point read need not fall through to persistent every time. The previous slot is only ever filled by an
+//! in-place supersede, so it stays version-adjacent to the current slot. Range scans consult this tier only
+//! for `range_complete` buckets, and the always-scanned commit buffer still wins on version, so the cache
 //! can never mask a newer value nor resurrect a deleted one.
 
 mod point;

@@ -137,14 +137,9 @@ fn test_iter3() {
 	}
 }
 
-/// a3, a2, b4 (del), b3, c2, c1
-/// Read at ts=4 -> a3, c2
-/// Read at ts=4(Uncommitted) -> a3, b4
-/// Read at ts=3 -> a3, b3, c2
-/// Read at ts=2 -> a2, c2
-/// Read at ts=1 -> c1
 #[test]
 fn test_iter_edge_case() {
+	// Version layout the reads below are checked against: a3, a2, b4 (del), b3, c2, c1.
 	let engine = test_multi();
 
 	// c1
@@ -245,13 +240,9 @@ fn test_iter_edge_case() {
 	check_rev_iter(items, &[31]);
 }
 
-/// a2, a3, b4 (del), b3, c2, c1
-/// Read at ts=4 -> a3, c2
-/// Read at ts=3 -> a3, b3, c2
-/// Read at ts=2 -> a2, c2
-/// Read at ts=1 -> c1
 #[test]
 fn test_iter_edge_case2() {
+	// Version layout the reads below are checked against: a2, a3, b4 (del), b3, c2, c1.
 	let engine = test_multi();
 
 	// c1

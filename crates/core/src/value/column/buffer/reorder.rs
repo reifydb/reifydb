@@ -62,7 +62,6 @@ pub mod tests {
 		col.reorder(&[2, 0, 1]);
 
 		assert_eq!(col.len(), 3);
-		// Check data after reordering
 		match col.get_value(0) {
 			Value::Float4(v) => assert_eq!(v.value(), 3.0),
 			_ => panic!("Expected Float4"),

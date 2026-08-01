@@ -1022,7 +1022,6 @@ pub mod tests {
 		assert!(object.supports_indexes());
 		assert!(object.supports_mutations());
 		assert_eq!(object.kind_name(), "table");
-		// effective_name removed - use identifier().text() instead
 		assert_eq!(object.fully_qualified_name(), Some("public::users".to_string()));
 		assert!(object.as_table().is_some());
 		assert!(object.as_view().is_none());

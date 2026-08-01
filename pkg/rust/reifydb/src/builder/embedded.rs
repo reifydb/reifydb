@@ -133,9 +133,6 @@ impl EmbeddedBuilder {
 		self
 	}
 
-	/// Configure the process runtime (clock + rng).
-	///
-	/// If not set, a default configuration will be used.
 	pub fn with_runtime_config(mut self, config: RuntimeConfig) -> Self {
 		self.runtime_config = Some(config);
 		self
@@ -176,10 +173,6 @@ impl EmbeddedBuilder {
 		self
 	}
 
-	/// Register migrations to be applied during `Database::start()`.
-	///
-	/// Migrations are stored in the database on first encounter and
-	/// applied in name order. Already-applied migrations are skipped.
 	pub fn with_auth<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static,
@@ -188,20 +181,19 @@ impl EmbeddedBuilder {
 		self
 	}
 
+	/// Migrations are recorded in the database on first encounter and applied in registration
+	/// order, not name order; already-applied ones are skipped.
 	pub fn with_migrations(mut self, source: impl Into<MigrationSource>) -> Self {
 		self.migrations = Some(source.into());
 		self
 	}
 
-	/// Set a system configuration value applied during bootstrap.
-	///
-	/// Applied on every `build()`, overwriting any previously persisted value.
+	/// Overwrites any previously persisted value for this key on every `build()`.
 	pub fn with_config(mut self, key: ConfigKey, value: Value) -> Self {
 		self.bootstrap_configs.push((key, value));
 		self
 	}
 
-	/// Set multiple system configuration values applied during bootstrap.
 	pub fn with_configs(mut self, configs: impl IntoIterator<Item = (ConfigKey, Value)>) -> Self {
 		self.bootstrap_configs.extend(configs);
 		self

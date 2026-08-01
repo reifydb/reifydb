@@ -1,23 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Windowed-aggregation authoring surface.
-//!
-//! An operator implements one of the windowed authoring traits over a
-//! `reifydb_flow::window::accumulator::WindowAccumulator`:
-//! - [`tumbling::TumblingOperator`] - non-overlapping windows.
-//! - [`tumbling_carry::TumblingCarryOperator`] - tumbling windows that carry a value forward into the next window
-//!   (EMA-family, prev-close, Heikin-Ashi).
-//! - [`rolling::RollingOperator`] / [`rolling_incremental::RollingIncrementalOperator`]
-//!   - overlapping rolling buffers of the last N windows.
-//! - [`multi_rolling::MultiRollingOperator`] - rolling windows that emit multiple rows per group (top-K).
-//!
-//! The matching driver handles diff routing uniformly (`Insert -> add`,
-//! `Update -> remove(pre) + add(post)`, `Remove -> remove(pre)`), window
-//! boundary math, late-event drop, and state persistence in one place, so the
-//! operator only describes its accumulator and how to build an output row.
-//! Coordinate machinery lives in `reifydb_flow::window::span`; the reusable
-//! accumulator primitives in `reifydb_flow::window::accumulator`.
+//! Windowed-aggregation authoring surface, one trait per window shape over a `WindowAccumulator`. Each trait's
+//! driver owns diff routing, boundary math, late-event drop and state persistence in one place, so an operator
+//! only describes its accumulator and how to build an output row.
 
 pub mod bridge;
 pub mod multi_rolling;
@@ -152,10 +138,8 @@ mod tests {
 
 	#[test]
 	fn state_a_driver_addresses_without_a_group_can_never_be_reclaimed() {
-		// SingleStateful holds one row for the whole node (a global map, a counter), which no group
-		// owns and reclamation must never touch. It addresses that row with an empty key, so the
-		// guarantee is structural: an empty key carries no group id, and the predicate phase 1 uses
-		// to decide what to drop refuses it outright.
+		// Node-scope state belongs to no group and reclamation must never touch it. The guarantee is
+		// structural: its key is empty, carries no group id, and the drop predicate refuses it outright.
 		let key = empty_key();
 
 		assert!(key.as_bytes().is_empty());
@@ -168,10 +152,8 @@ mod tests {
 
 	#[test]
 	fn lease_governs_the_budget_when_config_has_no_override() {
-		// Without an explicit state_budget_bytes the
-		// guest budget must follow the host lease, otherwise every
-		// guest self-governs on a private 2 GiB pool and the shared
-		// pool bounds nothing.
+		// Without an override the guest budget must follow the host lease, or every guest self-governs on a
+		// private 2 GiB pool and the shared pool bounds nothing.
 		let config = Config::new("test", BTreeMap::new());
 		let engine_config = window_engine_config(&config);
 		let budget = WindowedBudget::new(&config, &engine_config);
@@ -183,9 +165,8 @@ mod tests {
 
 	#[test]
 	fn missing_lease_keeps_the_default_budget() {
-		// Lease 0 means no lease arrived (standalone or
-		// harness hosts); collapsing the budget to zero would evict
-		// everything on every apply.
+		// Lease 0 means no lease arrived at all (standalone or harness hosts), and collapsing the budget to
+		// zero would evict everything on every apply.
 		let config = Config::new("test", BTreeMap::new());
 		let engine_config = window_engine_config(&config);
 		let default_budget = engine_config.budget().snapshot().budget;
@@ -198,9 +179,7 @@ mod tests {
 
 	#[test]
 	fn explicit_config_override_wins_over_the_lease() {
-		// state_budget_bytes in the apply config is the
-		// operator author's escape hatch; the lease must never
-		// overwrite it.
+		// The apply config is the operator author's escape hatch, so the lease must never overwrite it.
 		let mut values = BTreeMap::new();
 		values.insert("state_budget_bytes".to_string(), Value::Uint8(512 * 1024));
 		let config = Config::new("test", values);

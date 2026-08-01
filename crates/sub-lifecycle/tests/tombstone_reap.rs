@@ -3,10 +3,9 @@
 
 //! TombstoneReap task: the single physical deleter for delete-mode tombstones across every persistent table.
 //!
-//! `store-multi`'s own tests cover `reap_tombstones`, the tier primitive. What is only testable here is the task
-//! wrapped around it: that it resolves its cutoff from the flush watermark (so a tombstone whose superseding write
-//! may be unflushed survives), and that a backlog larger than one batch drains across slices under the three-way
-//! pacing rule instead of one unbounded delete.
+//! `store-multi` covers the tier primitive, so what is testable here is the task around it: the cutoff comes from
+//! the flush watermark, so a tombstone whose superseding write may be unflushed survives, and a backlog larger than
+//! one batch drains across slices instead of in one unbounded delete.
 
 use std::sync::{
 	Arc,

@@ -54,10 +54,8 @@ fn persistence_across_reopen() {
 
 #[test]
 fn the_truncation_floor_survives_a_reopen() {
-	// The floor is what overtaken detection compares consumer cursors against. If it reset to 0 on
-	// restart, a consumer whose durable checkpoint sits below truncated history would resume its
-	// cursor and silently skip the gap instead of resyncing: exactly the silent data loss the
-	// marker exists to prevent.
+	// Overtaken detection compares consumer cursors against this floor, so a floor that reset to 0
+	// on restart would let a consumer below truncated history resume and skip the gap.
 	temp_dir(|path| {
 		let cfg = SqliteConfig::new(path.join("cdc.reifydb"));
 

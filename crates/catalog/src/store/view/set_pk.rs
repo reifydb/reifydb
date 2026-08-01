@@ -70,20 +70,13 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Set primary key
 		CatalogStore::set_view_primary_key(&mut txn, view.id(), PrimaryKeyId(42)).unwrap();
-
-		// The test succeeds if no error is thrown.
-		// In real usage, create_primary_key would create both the
-		// PrimaryKey record and update the view, and find_primary_key
-		// would find it.
 	}
 
 	#[test]
 	fn test_set_view_primary_key_nonexistent() {
 		let mut txn = create_test_admin_transaction();
 
-		// Try to set primary key on non-existent view
 		let result = CatalogStore::set_view_primary_key(&mut txn, ViewId(999), PrimaryKeyId(1));
 
 		assert!(result.is_err());

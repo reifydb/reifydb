@@ -443,10 +443,8 @@ mod tests {
 		engine.apply(store, buckets, &order, slot_key, CountingAcc::default)
 	}
 
-	// The faces reindex through their long-lived engine; these tests seed windows with
-	// throwaway engines, so reindex through a fresh one - the write-through store copy
-	// is what the expiring engine's mirror later hydrates from, which is exactly the
-	// restart path under test.
+	// Faces reindex through a long-lived engine, but these tests seed with throwaway ones, so the
+	// write-through store copy is what the expiring engine's mirror hydrates from - the restart path.
 	fn reindex_window(
 		store: &mut MockStore,
 		group: &u32,
@@ -486,10 +484,9 @@ mod tests {
 		engine.flush(store).expect("flush");
 	}
 
-	// The group-scoped shape a sub-flow window driver installs: every window interns as
-	// its own (partition, coord) group and they all share one empty row key, so the group
-	// is the only thing separating them.
 	fn group_slot(group: &u32, window_start: u64) -> (GroupId, EncodedKey) {
+		// The shape a sub-flow window driver installs: every window interns as its own
+		// (partition, coord) group sharing one empty row key, so the group alone separates them.
 		(GroupId(u64::from(*group) * 1_000_000 + window_start), EncodedKey::new(Vec::new()))
 	}
 
@@ -515,10 +512,9 @@ mod tests {
 
 	#[test]
 	fn group_scoped_windows_keep_separate_state_under_one_shared_row_key() {
-		// A group-scoped driver addresses every window with the SAME (empty) row key and
-		// leans entirely on the group to separate them. Were the group to fall out of the
-		// accumulator key or the row-number lookup, every window of the node would fold into
-		// one accumulator and publish under one row - partitions silently summed together.
+		// A group-scoped driver addresses every window with the same empty row key and leans on the
+		// group to separate them. If the group fell out of the accumulator key or the row-number
+		// lookup, every window of the node would fold into one accumulator under one row.
 		let mut store = MockStore::default();
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::group_scoped(test_config());
 
@@ -545,10 +541,9 @@ mod tests {
 
 	#[test]
 	fn an_expired_window_names_the_group_its_state_lived_in() {
-		// The expiry index is due-ordered and node scoped, so nothing about its key says
-		// which group the window belonged to. The driver needs that id to drop the window's
-		// per-window meta and release its row number; if the entry stopped carrying it, the
-		// driver would either strand both or erase another group's identity.
+		// The expiry index is node scoped and ordered by due time, so the group rides in the key
+		// tail and in the entry. The driver needs that id to drop the per-window meta and release
+		// the row number; without it it strands both or erases another group's identity.
 		let mut store = MockStore::default();
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::group_scoped(test_config());
 		let results = apply_group_scoped(&mut engine, &mut store, one_bucket(3, 40, 5));
@@ -575,13 +570,9 @@ mod tests {
 
 	#[test]
 	fn a_brand_new_group_scoped_window_costs_one_batched_probe_and_no_point_read() {
-		// Group-major keys leave no contiguous accumulator range, so the group-scoped engine does not
-		// hydrate and cannot answer "absent" from a membership filter. It once got that answer free
-		// from a freshly minted row number, but identity is now minted only when a window publishes,
-		// so a new window has to be looked for. What must stay bounded is how often: the batched warm
-		// probes each new window once, and its miss has to be remembered. Re-reading the same key
-		// point-wise afterwards would double the cost of a boundary that opens thousands of windows,
-		// which is the failure the old proof existed to prevent.
+		// Group-major keys leave no contiguous accumulator range, so a group-scoped engine cannot
+		// answer "absent" without looking. The batched warm probes each new window once and must
+		// remember the miss, or a boundary opening thousands of windows pays for each of them twice.
 		let mut store = MockStore::default();
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::group_scoped(test_config());
 
@@ -622,9 +613,8 @@ mod tests {
 		assert_eq!(expired[0].window_start, 0);
 		assert_eq!(store.index_entry_count(), 1, "the due window's index entry is gone, the other remains");
 
-		// The surviving window is reported once the threshold reaches it. Expiry is the seal's own
-		// index and nothing else: the accumulators behind both windows are still on disk here, and
-		// the reaper is what collects them at or below the ledger.
+		// Expiry is the seal's own index and nothing else: the accumulators behind both windows are
+		// still on disk here, and the reaper is what collects them at or below the ledger.
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let later = engine.expire(&mut store, 1000).unwrap();
 		assert_eq!(later.len(), 1);
@@ -634,11 +624,9 @@ mod tests {
 
 	#[test]
 	fn an_expiry_entry_whose_state_was_reclaimed_still_drains() {
-		// The expiry index is ordered by due time, so a group's entries sit OUTSIDE its key range and
-		// survive reclamation of that group's data; they are left to drain on their own. Draining has
-		// to be unconditional. An entry that refused to drop itself because the state behind it was
-		// already gone would sit in the index forever, which is unbounded growth on exactly the
-		// groups the reaper has already collected.
+		// The expiry index is ordered by due time, so a group's entries sit outside its key range
+		// and survive reclamation of its data, left to drain on their own. An entry that refused to
+		// drop because the state behind it was gone would sit in the index forever.
 		let mut store = MockStore::default();
 		let w = seed_window(&mut store, 0, 5);
 		reindex_window(&mut store, &w.group, w.span.start, None, Some(10)).unwrap();
@@ -655,10 +643,9 @@ mod tests {
 
 	#[test]
 	fn a_window_whose_accumulator_was_reclaimed_updates_its_row_rather_than_inserting_a_second() {
-		// Phase-1 reclamation erases the accumulator and deliberately keeps the row-number mapping, so
-		// the row this window published is still addressable and a later batch must update it in place.
-		// Emitting a second insert mints a duplicate row over a live one, and a sink folding that
-		// stream has nowhere to put it.
+		// Phase-1 reclamation erases the accumulator and keeps the row-number mapping, so the
+		// published row stays addressable and a later batch must update it in place. A second
+		// insert lays a duplicate row over a live one, which a sink folding the stream cannot place.
 		let mut store = MockStore::default();
 		let published = seed_window(&mut store, 0, 5);
 		assert_eq!(store.drop_accumulator_entries(), 1, "precondition: reclaim erased the accumulator");
@@ -681,10 +668,9 @@ mod tests {
 
 	#[test]
 	fn a_window_that_publishes_nothing_mints_no_identity() {
-		// Minting a row number before the publish decision leaves a mapping addressing a row the view
-		// never held. The window then looks published to every later batch, so the next value it does
-		// produce goes out as an update whose pre-image is absent - unfoldable for the same reason the
-		// duplicate insert above is.
+		// Minting a row number before the publish decision leaves a mapping addressing a row the
+		// view never held. The window then looks published, so its next value goes out as an update
+		// whose pre-image is absent.
 		let mut store = MockStore::default();
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 
@@ -707,11 +693,9 @@ mod tests {
 
 	#[test]
 	fn an_emptied_window_seals_without_releasing_anything() {
-		// An accumulator drained to zero by retractions still EXISTS and still owns its row-number
-		// mapping, but finalizes to none - indistinguishable, on value alone, from a group the reaper
-		// already erased. Sealing used to have to tell those apart to decide whether to release the
-		// identity, and getting it wrong stranded one mapping per emptied window forever. It no
-		// longer decides: sealing releases nothing, so the distinction cannot be got wrong.
+		// An accumulator drained to zero still exists and still owns its mapping, but finalizes to
+		// none - indistinguishable by value from a group the reaper erased. Sealing releases no
+		// identity at all, so the distinction it used to depend on cannot be got wrong.
 		let mut store = MockStore::default();
 		let w = seed_window(&mut store, 0, 5);
 		apply_event(&mut store, 0, AccumulatorEvent::Remove(5));
@@ -731,10 +715,9 @@ mod tests {
 
 	#[test]
 	fn meta_reclaimed_when_group_stale_past_threshold() {
-		// Invariant: a group whose high water has fallen below the staleness threshold has stopped
-		// advancing and its per-group GroupMeta ('W') must be reclaimed. `persist_meta` writes one
-		// meta per group and never removes it, so without the sweep one internal-state key leaks per
-		// distinct group (mint pair) forever - the unbounded tail behind the jupiter memory growth.
+		// A group whose high water falls below the staleness threshold has stopped advancing and its
+		// GroupMeta must be reclaimed. `persist_meta` writes one meta per group and never removes
+		// it, so without the sweep one internal-state key leaks per distinct group forever.
 		let mut store = MockStore::default();
 		seed_window(&mut store, 0, 5);
 		assert_eq!(store.meta_entry_count(), 1, "applying a window persisted the group's meta");
@@ -747,8 +730,8 @@ mod tests {
 
 	#[test]
 	fn meta_survives_while_group_high_water_at_or_after_threshold() {
-		// Safety boundary: a group whose high water is at or beyond the threshold is still live
-		// (its late-event horizon has not passed) and must keep its meta.
+		// A group whose high water is at or beyond the threshold is still live, its late-event
+		// horizon not yet passed, and must keep its meta.
 		let mut store = MockStore::default();
 		seed_window(&mut store, 100, 7);
 		assert_eq!(store.meta_entry_count(), 1);
@@ -761,9 +744,8 @@ mod tests {
 
 	#[test]
 	fn meta_sweep_leaves_row_number_mappings_intact() {
-		// Scoping guard: the sweep targets only meta keys ('W'). It must not touch the write-once
-		// row-number mappings ('M') that share the OperatorInternal tier - deleting those would
-		// corrupt the operator.
+		// The sweep targets only meta keys and must not touch the write-once row-number mappings
+		// that share the same tier; deleting those corrupts the operator.
 		let mut store = MockStore::default();
 		seed_window(&mut store, 0, 5);
 		store.seed_mapping_key(0x01);
@@ -777,9 +759,9 @@ mod tests {
 
 	#[test]
 	fn meta_sweep_skips_then_reclaims_as_threshold_advances() {
-		// The low-water guard must skip the scan while the smallest high water is at or above the
-		// threshold, yet still reclaim the group once the threshold advances past it - the guard is
-		// an optimization to avoid scanning every apply, never a correctness hole.
+		// The low-water guard skips the scan while the smallest high water is at or above the
+		// threshold, but must still reclaim once the threshold advances past it: it is an
+		// optimization to avoid scanning every apply, never a correctness hole.
 		let mut store = MockStore::default();
 		seed_window(&mut store, 100, 7);
 
@@ -814,12 +796,9 @@ mod tests {
 
 	#[test]
 	fn expire_processes_at_most_expire_batch_then_resumes_next_tick() {
-		// Guard rail from the jupiter/pump incident: expire used to drain every due window in
-		// one tick, so a due-window burst on one bloated operator stalled the whole flow actor
-		// pass (all node ticks run serialized; tick p99 exceeded 100ms). The batch cap bounds
-		// one tick's work; the remainder stays in the due index and drains on later ticks, so
-		// nothing is lost, only deferred. The due index sorts by inverted expiry (encode_u64),
-		// so the scan yields the newest-due windows first and the oldest backlog defers.
+		// Node ticks run serialized, so draining every due window in one tick lets a burst on one
+		// bloated operator stall the whole actor pass. The cap bounds one tick and the remainder
+		// stays in the due index, which sorts by inverted expiry so the oldest backlog defers.
 		let mut store = MockStore::default();
 		for (start, due) in [(0u64, 10u64), (100, 20), (200, 30)] {
 			let w = seed_window(&mut store, start, 1);
@@ -862,12 +841,9 @@ mod tests {
 
 	#[test]
 	fn accumulator_survives_restart() {
-		// When a tumbling window empties under retraction it emits a terminal Remove carrying the value
-		// it last published; that value is the window accumulator's pre-batch finalize, read back from
-		// the store. Dropping the engine between the publish and the retraction (a restart) forces the
-		// accumulator to be reloaded from the store rather than served from the in-memory cache. It
-		// would fail if the accumulator failed to round-trip through the store (a serialization break,
-		// or a second Data cache colliding on the same RowNumber).
+		// A window emptying under retraction emits a terminal Remove carrying the accumulator's
+		// pre-batch finalize, read back from the store. Dropping the engine between publish and
+		// retraction forces that read rather than serving it from the in-memory cache.
 		let mut store = MockStore::default();
 
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
@@ -879,7 +855,7 @@ mod tests {
 		assert!(matches!(published[0].kind, EmitKind::Insert));
 		assert_eq!(published[0].value, 5);
 
-		// Restart: a brand new engine with empty caches, forced to read the persisted accumulator back.
+		// A brand new engine with empty caches, forced to read the persisted accumulator back.
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, WindowSpan::new(0, 1)), vec![AccumulatorEvent::Remove(5)]);
@@ -900,10 +876,8 @@ mod tests {
 
 	#[test]
 	fn accumulator_survives_lru_eviction() {
-		// The other way a read reaches the store is LRU eviction, no restart needed: the accumulator
-		// cache holds only 8 windows, so more than that evicts the oldest and the next access re-reads
-		// it from the store. We publish 11 single-window groups so group 1 is evicted, flush, then
-		// retract group 1 and assert its accumulator is read back intact.
+		// The other way a read reaches the store is LRU eviction, with no restart: the accumulator
+		// cache holds 8 windows, so more than that evicts the oldest and the next access re-reads it.
 		let mut store = MockStore::default();
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 
@@ -922,8 +896,8 @@ mod tests {
 		assert!(matches!(published_group_1[0].kind, EmitKind::Insert));
 		assert_eq!(published_group_1[0].value, 1);
 
-		// Group 1's window was published first and pushed out of the 8-slot cache by the later groups,
-		// so the same engine must re-read its accumulator from the store to apply this retraction.
+		// Group 1's window was pushed out of the 8-slot cache by the later groups, so the same
+		// engine must re-read its accumulator from the store to apply this retraction.
 		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, WindowSpan::new(0, 1)), vec![AccumulatorEvent::Remove(1)]);
 		let withdrawn: Vec<WindowResult<u32, u64, i64>> = apply_sums(&mut engine, &mut store, buckets).unwrap();
@@ -941,8 +915,8 @@ mod tests {
 		);
 	}
 
-	// SumAccumulator twin whose Clone increments a counter, so a test can prove
-	// expire() finalizes from the cache-resident view instead of deep-cloning.
+	// Counts clones of the probe accumulator, so a test can prove expire() finalizes from the
+	// cache-resident view instead of deep-cloning.
 	static COUNTING_ACC_CLONES: AtomicUsize = AtomicUsize::new(0);
 
 	#[operator_state]
@@ -998,11 +972,9 @@ mod tests {
 
 	#[test]
 	fn expire_touches_no_accumulator_on_either_residency_path() {
-		// expire() is the seal's index scan and nothing more. It used to finalize each due window
-		// through the cache view - deep-cloning the accumulator on the old get()-based path - and then
-		// throw the value away, because the seal published nothing. Now it reads no accumulator at
-		// all, on either the same-engine (Native-resident) path or the store-loaded archived one, so
-		// the clone counter must stay at zero for both.
+		// expire() is the seal's index scan and nothing more: the seal publishes nothing, so it must
+		// read no accumulator on either the same-engine Native path or the store-loaded archived
+		// one, and the clone counter must stay at zero for both.
 		let mut store = MockStore::default();
 		let mut engine = TumblingEngine::<u32, u64, CountingAcc>::new(test_config());
 		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
@@ -1057,12 +1029,8 @@ mod tests {
 
 	#[test]
 	fn warmed_meta_high_water_advances_through_the_sealed_path() {
-		// A store-warmed GroupMeta must never materialize while batches only
-		// advance its high water: the load is a read() snapshot and the
-		// persist a sealed in-place write. Pinned three ways: the pending
-		// bump is held as archived bytes (StateView::Archived on the dirty
-		// slot), the seal paid exactly the one CoW for the store-shared row,
-		// and the bumped value round-trips to a third engine.
+		// A store-warmed GroupMeta must never materialize while batches only advance its high
+		// water: the load is a read() snapshot and the persist a sealed in-place write.
 		let mut store = MockStore::default();
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		let mut buckets: TumblingBuckets<u32, u64, i64> = BTreeMap::new();
@@ -1101,10 +1069,9 @@ mod tests {
 
 	#[test]
 	fn persisted_none_meta_takes_the_native_fallback() {
-		// Legacy rows: the old unconditional persist wrote GroupMeta with a
-		// none high water for retraction-only groups. ArchivedOption cannot
-		// express none -> Some through a Seal, so the sealed persist must
-		// decline and the native fallback must still land the bump.
+		// Legacy rows carry a none high water for retraction-only groups, and ArchivedOption cannot
+		// express none -> Some through a Seal, so the sealed persist must decline and the native
+		// fallback must still land the bump.
 		let mut store = MockStore::default();
 		let mut engine = TumblingEngine::<u32, u64, SumAccumulator>::new(test_config());
 		engine.meta

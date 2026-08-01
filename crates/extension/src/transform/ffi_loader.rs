@@ -52,6 +52,7 @@ impl TransformLoader {
 			.cache
 			.get(path)
 			.ok_or_else(|| SdkError::Other(format!("Library not loaded: {}", path.display())))?;
+		// SAFETY: the transform ABI declares this symbol; the descriptor is module-static data.
 		unsafe {
 			let get_descriptor: Symbol<extern "C" fn() -> *const TransformDescriptorFFI> =
 				library.get(b"ffi_transform_get_descriptor\0").map_err(|e| {
@@ -80,6 +81,7 @@ impl TransformLoader {
 	) -> FFIResult<(String, u32)> {
 		validate_api_version(descriptor.api).map_err(|e| SdkError::Other(e.to_string()))?;
 
+		// SAFETY: the buffer points into the loaded image's static data, which outlives this read.
 		let name = unsafe { buffer_to_string(&descriptor.name) };
 		self.transform_paths.insert(name.clone(), path.to_path_buf());
 
@@ -94,6 +96,7 @@ impl TransformLoader {
 		let descriptor = self.get_descriptor(path)?;
 		let (name, api) = self.validate_and_register(&descriptor, path)?;
 
+		// SAFETY: the descriptor's buffers are module-static data.
 		let info = unsafe {
 			LoadedTransformInfo {
 				name,
@@ -116,6 +119,7 @@ impl TransformLoader {
 		self.validate_and_register(&descriptor, path)?;
 
 		let library = self.cache.get(path).unwrap();
+		// SAFETY: the ABI declares this symbol as TransformCreateFnFFI and the cache keeps it loaded.
 		let create_fn: TransformCreateFnFFI = unsafe {
 			let create_symbol: Symbol<TransformCreateFnFFI> = library
 				.get(b"ffi_transform_create\0")

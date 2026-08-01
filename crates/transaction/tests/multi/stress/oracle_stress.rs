@@ -6,40 +6,29 @@ use std::sync::Arc;
 use super::test_multi;
 use crate::{as_key, as_values};
 
-/// Test that Oracle properly cleans up committed transactions when limit is
-/// exceeded
 #[test]
 fn test_oracle_committed_txns_cleanup() {
+	// Well past the internal cleanup threshold, on unique keys so nothing conflicts: the oracle
+	// must keep retiring committed windows instead of growing without bound.
 	let engine = test_multi();
 
-	// Number of transactions to create (exceeds internal cleanup threshold)
 	const NUM_TXNS: usize = 20_000;
 
-	// Create many transactions with conflicts to ensure they're tracked
 	for i in 0..NUM_TXNS {
 		let mut tx = engine.begin_command().unwrap();
 
-		// Each transaction writes to a unique key to avoid actual
-		// conflicts
 		let key = as_key!(format!("key_{}", i));
 		let value = as_values!(format!("value_{}", i));
 
 		tx.set(&key, value).unwrap();
 
-		// Commit the transaction - this adds to Oracle's committed list
 		tx.commit(vec![]).unwrap();
 
-		// Every 1000 transactions, verify memory is being managed
 		if i > 0 && i % 1000 == 0 {
-			// The Oracle should automatically clean up when
-			// exceeding limits We can't directly check the
-			// internal state, but the fact that we can continue
-			// creating transactions shows cleanup is working
 			assert!(i < NUM_TXNS, "Should be able to create {} transactions", NUM_TXNS);
 		}
 	}
 
-	// Create one more transaction to verify system is still functional
 	let mut final_tx = engine.begin_command().unwrap();
 	let final_key = as_key!("final");
 	let final_value = as_values!("test".to_string());
@@ -47,9 +36,9 @@ fn test_oracle_committed_txns_cleanup() {
 	final_tx.commit(vec![]).unwrap();
 }
 
-/// Test high concurrency with many simultaneous transactions
 #[test]
 fn test_oracle_high_concurrency() {
+	// Disjoint keys across every thread, so any commit error is a false conflict, not a real one.
 	let engine = Arc::new(test_multi());
 
 	const NUM_THREADS: usize = 100;
@@ -88,12 +77,11 @@ fn test_oracle_high_concurrency() {
 	final_tx.commit(vec![]).unwrap();
 }
 
-/// Test that Oracle handles version overflow gracefully
 #[test]
 fn test_oracle_version_boundaries() {
+	// A sweep across enough versions to cross several block allocations; any panic is the failure.
 	let engine = test_multi();
 
-	// Create transactions to test version boundaries
 	for i in 0..10_000 {
 		let mut tx = engine.begin_command().unwrap();
 		let key = as_key!(format!("boundary_{}", i));
@@ -101,6 +89,4 @@ fn test_oracle_version_boundaries() {
 		tx.set(&key, value).unwrap();
 		tx.commit(vec![]).unwrap();
 	}
-
-	// System should handle version numbers without panic
 }

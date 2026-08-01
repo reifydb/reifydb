@@ -3,10 +3,9 @@
 
 //! VacuumBudget task: bounded incremental_vacuum that keeps the persistent file from ratcheting.
 //!
-//! `store-multi`'s own tests cover `freelist_page_count` and `incremental_vacuum`, the tier primitives. What is only
-//! testable here is the task wrapped around them: that it leaves the freelist alone below the configured threshold,
-//! and that above it a freelist larger than the per-slice page bound drains across slices under the three-way pacing
-//! rule rather than one unbounded vacuum.
+//! `store-multi` covers the tier primitives, so what is testable here is the task around them: it leaves the
+//! freelist alone below the configured threshold, and above it drains across slices rather than in one unbounded
+//! vacuum.
 
 use std::sync::Arc;
 
@@ -87,8 +86,8 @@ fn opkey(n: u64) -> reifydb_codec::key::encoded::EncodedKey {
 	FlowNodeStateKey::encoded(NODE, n.to_be_bytes().to_vec())
 }
 
-/// Writes and flushes 500 fat rows, then deletes them from the persistent tier so their pages land on the freelist
-/// (auto_vacuum=INCREMENTAL does not reclaim them until incremental_vacuum runs). Returns (freelist, page_count).
+/// Leaves 500 rows' worth of pages on the freelist; auto_vacuum=INCREMENTAL does not reclaim them until
+/// incremental_vacuum runs. Returns (freelist, page_count).
 fn seed_freelist(store: &StandardMultiStore) -> (u64, u64) {
 	for n in 1..=500u64 {
 		MultiVersionCommit::commit(
@@ -128,9 +127,8 @@ fn drains_the_freelist_across_slices_with_yield() {
 		}),
 	);
 
-	// The first slice must not vacuum the whole freelist at once: it reclaims at most the per-slice bound and
-	// yields so the catch-up tick drains the rest. (incremental_vacuum may reclaim fewer than requested when free
-	// pages have not yet migrated to the file end, so the count is bounded above, not fixed.)
+	// The first slice reclaims at most the per-slice bound and yields. incremental_vacuum may reclaim fewer than
+	// requested when free pages have not migrated to the file end, so the count is bounded above, not fixed.
 	let first = task.run_slice();
 	assert_eq!(
 		first,

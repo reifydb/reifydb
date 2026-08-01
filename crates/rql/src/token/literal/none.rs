@@ -59,12 +59,10 @@ pub mod tests {
 	fn test_none_with_trailing() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "none123").unwrap();
-		// Should parse as identifier, not none
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].fragment.text(), "none123");
 
 		let tokens = tokenize(&bump, "none_value").unwrap();
-		// Should parse as identifier, not none
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].fragment.text(), "none_value");
 	}

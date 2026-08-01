@@ -40,15 +40,12 @@ fn test_multiple_subscriptions_different_tables() {
 
 		assert_ne!(sub_id1, sub_id2, "Subscription IDs should be different");
 
-		// Insert into both tables
 		client.command(&format!("INSERT test::{} [{{ id: 1, name: 'alice' }}]", table1), None).await.unwrap();
 		client.command(&format!("INSERT test::{} [{{ id: 2, value: 200 }}]", table2), None).await.unwrap();
 
-		// Receive both changes
 		let changes = recv_multiple_with_timeout(&mut client, 2, 5000).await;
 		assert_eq!(changes.len(), 2, "Should receive 2 changes");
 
-		// Verify changes have different subscription IDs
 		let subs: Vec<_> = changes.iter().map(|c| c.subscription_id.as_str()).collect();
 		assert!(subs.contains(&sub_id1.as_str()));
 		assert!(subs.contains(&sub_id2.as_str()));
@@ -75,7 +72,6 @@ fn test_multiple_subscriptions_same_table() {
 		let table = unique_table_name("sub_same_table");
 		create_test_table(&client, &table, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 
-		// Subscribe twice to the same table
 		let sub_id1 = client
 			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
 			.await
@@ -87,10 +83,8 @@ fn test_multiple_subscriptions_same_table() {
 
 		assert_ne!(sub_id1, sub_id2, "Different subscriptions should have different IDs");
 
-		// Insert data
 		client.command(&format!("INSERT test::{} [{{ id: 1, name: 'test' }}]", table), None).await.unwrap();
 
-		// Should receive change for both subscriptions
 		let changes = recv_multiple_with_timeout(&mut client, 2, 5000).await;
 		assert_eq!(changes.len(), 2, "Should receive 2 changes (one per subscription)");
 
@@ -127,17 +121,14 @@ fn test_changes_routed_to_correct_subscription() {
 			.await
 			.unwrap();
 
-		// Insert only into table1
 		client.command(&format!("INSERT test::{} [{{ id: 100 }}]", table1), None).await.unwrap();
 
 		let change = recv_with_timeout(&mut client, 5000).await;
 		assert!(change.is_some());
 
 		let change = change.unwrap();
-		// Change should be for sub_id1 only
 		assert_eq!(change.subscription_id, sub_id1, "Change should be routed to correct subscription");
 
-		// Verify the data
 		let id_col = find_column(&change.body, "id").unwrap();
 		assert_eq!(id_col.payload[0], "100");
 

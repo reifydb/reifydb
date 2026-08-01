@@ -118,7 +118,6 @@ pub mod tests {
 		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(edges.len(), 2);
 
-		// Verify all edges are present
 		let ids: Vec<_> = edges.iter().map(|e| e.id).collect();
 		assert!(ids.contains(&edge1.id));
 		assert!(ids.contains(&edge2.id));
@@ -166,7 +165,6 @@ pub mod tests {
 		let all_edges = CatalogStore::list_flow_edges_all(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(all_edges.len(), 2);
 
-		// Verify edges are from correct flows
 		let flow1_edges: Vec<_> = all_edges.iter().filter(|e| e.flow == flow1.id).collect();
 		let flow2_edges: Vec<_> = all_edges.iter().filter(|e| e.flow == flow2.id).collect();
 

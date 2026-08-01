@@ -578,13 +578,12 @@ pub mod tests {
 	#[test]
 	fn test_from_table_with_hyphens() {
 		let bump = Bump::new();
-		// Test: FROM hyphenated-table
+		// A hyphen inside a source name must stay part of the identifier, not lex as a minus.
 		let source = "FROM my-table";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_from().unwrap();
 
-		// Should parse as single table identifier "my-table"
 		if let AstFrom::Source {
 			source,
 			..
@@ -600,13 +599,11 @@ pub mod tests {
 	#[test]
 	fn test_from_namespace_table_with_hyphens() {
 		let bump = Bump::new();
-		// Test: FROM namespace::hyphenated-table
 		let source = "FROM test::even-numbers";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_from().unwrap();
 
-		// Should parse namespace="test", table="even-numbers"
 		if let AstFrom::Source {
 			source,
 			..
@@ -622,13 +619,12 @@ pub mod tests {
 	#[test]
 	fn test_from_hyphenated_with_alias() {
 		let bump = Bump::new();
-		// Test: FROM my-table AS t
+		// The alias must not be absorbed into the hyphenated name.
 		let source = "FROM my-table t";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let result = parser.parse_from().unwrap();
 
-		// Should parse table="my-table", alias="t"
 		if let AstFrom::Source {
 			source,
 			..
@@ -644,7 +640,6 @@ pub mod tests {
 	#[test]
 	fn test_from_namespace_hyphens_with_alias() {
 		let bump = Bump::new();
-		// Test: FROM test::even-numbers nums
 		let source = "FROM test::even-numbers nums";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);

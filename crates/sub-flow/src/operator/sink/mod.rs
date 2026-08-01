@@ -285,12 +285,9 @@ mod tests {
 
 	#[test]
 	fn a_sink_row_carries_the_time_of_the_row_it_was_built_from() {
-		// This is the last step before a flow's output becomes a stored row, and it is
-		// the only place a sink writes the header. Every operator upstream carries #time
-		// correctly, so dropping it here would silently land every materialised view row at
-		// nanos 0 - and a downstream flow reading that view would inherit 1970 rather than the
-		// instant the event happened. The three stamps are seeded with different values because
-		// copying the wrong one is as wrong as copying none.
+		// The only place a sink writes the row header, so dropping #time here lands every
+		// materialised row at nanos 0 and a downstream flow inherits 1970. The three stamps are
+		// seeded differently because copying the wrong one is as wrong as copying none.
 		let shape = single_field_shape();
 		let columns = columns_with_stamps(100, 200, 300);
 		let field_columns = shape_field_columns(&columns, &shape);
@@ -308,9 +305,8 @@ mod tests {
 
 	#[test]
 	fn a_sink_row_without_a_time_sidecar_is_rejected() {
-		// #time is required on every row (a row without one is unrepresentable), so a
-		// sink input that lost the sidecar is a broken pipeline, not a row to write with a
-		// default. It is reported the same way a missing created_at already is.
+		// A row without #time is unrepresentable, so a sink input that lost the sidecar is a
+		// broken pipeline rather than a row to write with a default.
 		let shape = single_field_shape();
 		let mut columns = columns_with_stamps(100, 200, 300);
 		columns.system.set_time(Vec::new());
@@ -323,12 +319,9 @@ mod tests {
 
 	#[test]
 	fn dictionary_decode_is_served_from_the_cache_across_transactions() {
-		// Decoding a dictionary id column runs per output row on every sink/scan apply; before the
-		// committed-value cache each decode was one committed-store point get (the dominant share of
-		// the multi-tier read bucket in production). The first decode after a restart may read the
-		// store, but a repeat decode of the same id in a LATER transaction must be served from the
-		// shared registry cache: zero store reads, identical value. A wrong value here would mean the
-		// cache aliased ids across dictionaries or served stale bytes.
+		// Dictionary decode runs per output row on every sink apply, so only the first decode of
+		// an id may read the store; a repeat in a LATER transaction must come from the shared
+		// cache. A wrong value means the cache aliased ids or served stale bytes.
 		let engine = TestEngine::new();
 		engine.admin("CREATE NAMESPACE test");
 		engine.admin("CREATE DICTIONARY test::syms FOR utf8 AS uint2");

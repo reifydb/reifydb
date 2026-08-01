@@ -9,7 +9,6 @@ fn test_error_namespace_not_found() {
 	let t = TestEngine::new();
 	let identity = TestEngine::identity();
 
-	// Try to insert into a table in a non-existent namespace
 	let mut builder = t.bulk_insert(identity);
 	builder.table("nonexistent::mytable").row(params! { id: 1 }).done();
 	let result = builder.execute();
@@ -27,7 +26,6 @@ fn test_error_table_not_found() {
 
 	t.admin("CREATE NAMESPACE test");
 
-	// Try to insert into a non-existent table
 	let mut builder = t.bulk_insert(identity);
 	builder.table("test::nonexistent").row(params! { id: 1 }).done();
 	let result = builder.execute();
@@ -45,7 +43,6 @@ fn test_error_ringbuffer_not_found() {
 
 	t.admin("CREATE NAMESPACE test");
 
-	// Try to insert into a non-existent ringbuffer
 	let mut builder = t.bulk_insert(identity);
 	builder.ringbuffer("test::nonexistent").row(params! { id: 1 }).done();
 	let result = builder.execute();
@@ -68,7 +65,7 @@ fn test_error_column_not_found() {
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE TABLE test::users { id: int4, name: utf8 }");
 
-	// Try to insert with an unknown column name
+	// An unknown column must fault; silently dropping it would lose the caller's data.
 	let mut builder = t.bulk_insert(identity);
 	builder.table("test::users").row(params! { id: 1, name: "Alice", unknown_column: "value" }).done();
 	let result = builder.execute();
@@ -87,9 +84,9 @@ fn test_error_too_many_values() {
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE TABLE test::small { a: int4, b: int4 }");
 
-	// Try to insert with more positional values than columns
+	// Five positional values against two columns must fault rather than be truncated.
 	let mut builder = t.bulk_insert(identity);
-	builder.table("test::small").row(params![1, 2, 3, 4, 5]).done(); // 5 values for 2 columns
+	builder.table("test::small").row(params![1, 2, 3, 4, 5]).done();
 	let result = builder.execute();
 
 	assert!(result.is_err());
@@ -110,7 +107,6 @@ fn test_error_coercion_failure() {
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE TABLE test::typed { num: int4 }");
 
-	// Try to insert a string that cannot be coerced to int4
 	let mut builder = t.bulk_insert(identity);
 	builder.table("test::typed").row(params! { num: "not_a_number" }).done();
 	let result = builder.execute();
@@ -118,7 +114,6 @@ fn test_error_coercion_failure() {
 	assert!(result.is_err());
 	let err = result.unwrap_err();
 	let msg = format!("{}", err);
-	// The error should indicate a type/coercion issue
 	assert!(
 		msg.contains("type") || msg.contains("coerce") || msg.contains("convert") || msg.contains("cast"),
 		"Expected coercion error, got: {}",
@@ -131,7 +126,6 @@ fn test_error_ringbuffer_namespace_not_found() {
 	let t = TestEngine::new();
 	let identity = TestEngine::identity();
 
-	// Try to insert into a ringbuffer in a non-existent namespace
 	let mut builder = t.bulk_insert(identity);
 	builder.ringbuffer("nonexistent::events").row(params! { id: 1 }).done();
 	let result = builder.execute();

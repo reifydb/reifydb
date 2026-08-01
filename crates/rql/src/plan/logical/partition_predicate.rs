@@ -154,13 +154,9 @@ mod tests {
 		AndExpression, CastExpression, EqExpression, GreaterThanExpression, OrExpression, TypeExpression,
 	};
 
-	// The writer hashes the column's declared-type Value (crates/engine/src/partition.rs and
-	// crates/sub-flow/src/operator/sink/partition.rs). Partition::of postcards each Value, so
-	// Value::Int4(1) and Value::Int8(1) hash differently. Every prune must therefore reproduce the
-	// writer's exact Value variant; a mismatch silently drops rows from a pruned scan. Each
-	// `prunes_*` test below is that round-trip invariant, and each `declines_*` test pins a case
-	// where equality and postcard encoding disagree (or no literal exists), where pruning would be
-	// unsound rather than merely absent.
+	// The writer hashes postcard bytes of the column's declared-type Value, so Int4(1) and Int8(1) land in
+	// different partitions. `prunes_*` pins that round trip; `declines_*` pins the cases where equality and
+	// postcard encoding disagree, so pruning would be unsound rather than merely absent.
 
 	fn col(name: &str, ty: ValueType) -> Column {
 		Column {

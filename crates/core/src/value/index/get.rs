@@ -983,16 +983,14 @@ pub mod tests {
 			let mut key2 = layout.allocate_key();
 
 			let id1 = IdentityId::generate(&clock, &rng);
-			// Advance clock to ensure different timestamps
+			// Advance the clock so the two ids get different timestamps.
 			mock.advance_millis(10);
 			let id2 = IdentityId::generate(&clock, &rng);
 
 			layout.set_identity_id(&mut key1, 0, id1.clone());
 			layout.set_identity_id(&mut key2, 0, id2.clone());
 
-			// Should be ordered by timestamp
 			assert!(key1.as_slice() < key2.as_slice());
-			// Should decode back to original values
 			assert_eq!(layout.get_identity_id(&key1, 0), id1);
 			assert_eq!(layout.get_identity_id(&key2, 0), id2);
 		}
@@ -1005,16 +1003,14 @@ pub mod tests {
 			let mut key2 = layout.allocate_key();
 
 			let id1 = IdentityId::generate(&clock, &rng);
-			// Advance clock to ensure different timestamps
+			// Advance the clock so the two ids get different timestamps.
 			mock.advance_millis(10);
 			let id2 = IdentityId::generate(&clock, &rng);
 
 			layout.set_identity_id(&mut key1, 0, id1.clone());
 			layout.set_identity_id(&mut key2, 0, id2.clone());
 
-			// Should be reverse ordered for DESC
 			assert!(key1.as_slice() > key2.as_slice());
-			// Should decode back to original values
 			assert_eq!(layout.get_identity_id(&key1, 0), id1);
 			assert_eq!(layout.get_identity_id(&key2, 0), id2);
 		}
@@ -1027,7 +1023,6 @@ pub mod tests {
 			let id = IdentityId::generate(&clock, &rng);
 			let mut key = layout.allocate_key();
 
-			// Set and get should preserve the value
 			layout.set_identity_id(&mut key, 0, id.clone());
 			let retrieved = layout.get_identity_id(&key, 0);
 			assert_eq!(retrieved, id);
@@ -1068,14 +1063,11 @@ pub mod tests {
 			layout.set_u64(&mut key4, 1, 1u64);
 			layout.set_row_number(&mut key4, 2, 2u64);
 
-			// key1 (100, 1, 1) vs key2 (100, 2, 1): same first
-			// field, second field ascending
+			// (100,1,1) vs (100,2,1): tie on the first field, second field ascending.
 			assert!(key1.as_slice() < key2.as_slice());
-			// key1 (100, 1, 1) vs key3 (50, 1, 1): first field is
-			// DESC, so 100 < 50 in byte order
+			// (100,1,1) vs (50,1,1): the first field is DESC, so 100 sorts below 50 in byte order.
 			assert!(key1.as_slice() < key3.as_slice());
-			// key3 (50, 1, 1) vs key4 (50, 1, 2): same first two
-			// fields, third field ascending
+			// (50,1,1) vs (50,1,2): tie on the first two fields, third field ascending.
 			assert!(key3.as_slice() < key4.as_slice());
 		}
 	}

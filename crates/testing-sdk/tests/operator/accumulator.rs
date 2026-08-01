@@ -1,12 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Primitive-level gap tests for the public accumulators. The in-crate
-//! `#[cfg(test)]` suite already covers the common contracts (invertibility,
-//! order-independence, sealing/lateness, keyed routing, most archive
-//! roundtrips); these add the cases that suite does not exercise. Each test
-//! pins a contractual invariant, not just observed output, so it fails if the
-//! implementation regresses.
+//! Primitive-level gap tests for the public accumulators: the cases the in-crate
+//! `#[cfg(test)]` suite does not already cover.
 
 use reifydb_codec::state::{OperatorState, decode_state};
 use reifydb_flow::window::accumulator::{
@@ -47,9 +43,8 @@ fn last_value_roundtrip() {
 
 #[test]
 fn sealing_min_default_is_fully_invertible() {
-	// Symmetric to the in-crate SealingMax default-invertibility test: with
-	// no lateness bound nothing seals, so add/remove is a pure inverse even
-	// when the probe is a new minimum.
+	// With no lateness bound nothing seals, so add/remove stays a pure inverse even when the
+	// probe is a new minimum.
 	assert_add_remove_is_inverse::<SealingMin<u64, i64>>(&[(1u64, 10i64), (2, 20), (3, 30)], (4u64, -5i64));
 
 	let mut accumulator: SealingMin<u64, i64> = SealingMin::default();
@@ -61,9 +56,8 @@ fn sealing_min_default_is_fully_invertible() {
 
 #[test]
 fn sealing_endpoint_late_earlier_arrival_updates_open() {
-	// An observation that arrives after a seal but is *earlier* than the
-	// sealed open must become the new open: open is the earliest
-	// observation overall, not merely the first to seal.
+	// open is the earliest observation overall, not the first one to seal, so a late but
+	// earlier arrival has to reclaim it.
 	let mut accumulator: SealingEndpoint<u64, i64> = SealingEndpoint::with_grace(10);
 	accumulator.add(&(5, 50));
 	accumulator.add(&(20, 200)); // hw=20; coord 5 ages (20-5=15>10) -> sealed_open=(5,50)
@@ -76,8 +70,7 @@ fn sealing_endpoint_late_earlier_arrival_updates_open() {
 
 #[test]
 fn sealing_endpoint_late_middle_arrival_keeps_open() {
-	// Counterpart to the above: a late arrival whose coord is later than the
-	// sealed open must NOT move open.
+	// A late arrival later than the sealed open must not move it.
 	let mut accumulator: SealingEndpoint<u64, i64> = SealingEndpoint::with_grace(10);
 	accumulator.add(&(2, 999));
 	accumulator.add(&(20, 200)); // hw=20; coord 2 ages -> sealed_open=(2,999)
@@ -99,9 +92,8 @@ fn moments_single_element_has_zero_variance() {
 
 #[test]
 fn moments_variance_is_never_negative_under_cancellation() {
-	// Identical large values produce a true variance of 0; floating-point
-	// cancellation can push the raw sum_sq/n - mean^2 slightly negative, so
-	// the accumulator must clamp. The invariant: variance is never negative.
+	// Cancellation in sum_sq/n - mean^2 can go slightly negative on identical large values, so
+	// the accumulator has to clamp.
 	let mut m = Moments::default();
 	for _ in 0..5 {
 		m.add(1.0e8);
@@ -134,9 +126,8 @@ fn multiset_empty_accessors_are_none() {
 
 #[test]
 fn keyed_invertible_is_order_independent_for_exact_sums() {
-	// Per-key Moments over small integer-valued contributions: the sums are
-	// exact in f64, so reordering must not change finalize(). Uses distinct
-	// and colliding keys to cover the per-key routing.
+	// The contributions are exact in f64, so any reordering difference would be routing, not
+	// rounding; the key set mixes distinct and colliding keys.
 	assert_order_independent::<KeyedInvertibleAccumulator<u64, Moments>>(&[
 		(1u64, 10.0f64),
 		(2, 20.0),
@@ -148,9 +139,8 @@ fn keyed_invertible_is_order_independent_for_exact_sums() {
 
 #[test]
 fn ordf64_total_order_separates_signed_zero_and_infinities() {
-	// total_cmp orders -0.0 strictly below +0.0 and they are distinct keys
-	// (bitwise), which is what lets a Multiset<OrdF64> treat them as two
-	// values rather than collapsing them.
+	// Bitwise-distinct signed zeros are what let a Multiset<OrdF64> hold them as two values
+	// rather than collapsing them into one.
 	let neg_zero = of(-0.0);
 	let pos_zero = of(0.0);
 	assert!(neg_zero < pos_zero, "-0.0 must sort below +0.0 under total order");

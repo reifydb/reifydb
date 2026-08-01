@@ -173,14 +173,11 @@ fn test_series_row_pre_update_mutates_row() {
 	assert_eq!(row.get::<i64>("val").unwrap().unwrap(), MUTATED_VALUE);
 }
 
-// A pre-update interceptor gets unrestricted `&mut [EncodedRow]` access to the row, invoked after the
-// UPDATE statement's own partition-column check already validated the (pre-mutation) partition and the
-// storage key was computed from it. Without a post-interceptor re-check, an interceptor could flip a
-// partition column here and the row would still be written under the now-stale key, desyncing storage
-// from the row's actual partition. These pin the re-validation added to guard against that.
-
 #[test]
 fn test_table_row_pre_update_partition_change_rejected() {
+	// A pre-update interceptor runs after the statement's own partition check and after the
+	// storage key was computed, so flipping a partition column here would write the row under
+	// a stale key unless the partition is re-validated afterwards.
 	let t = TestEngine::new();
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
@@ -195,7 +192,7 @@ fn test_table_row_pre_update_partition_change_rejected() {
 	t.admin("CREATE TABLE test::t { id: int8, region: utf8, n: int8 } WITH { partition: { by: { region } } }");
 	t.command(r#"INSERT test::t [{ id: 1, region: "us", n: 1 }]"#);
 
-	// Only `n` is assigned; the interceptor is the one flipping `region` (the partition column).
+	// The statement assigns only `n`, so the statement-level check cannot catch this.
 	let err = t.command_err("UPDATE test::t { n: 2 } FILTER { id == 1 }");
 	assert!(err.contains("PART_002"), "expected PART_002 (ImmutablePartitionColumn), got: {err}");
 }
@@ -222,11 +219,9 @@ fn test_ringbuffer_row_pre_update_partition_change_rejected() {
 	assert!(err.contains("PART_002"), "expected PART_002 (ImmutablePartitionColumn), got: {err}");
 }
 
-// Storage layout for series rows is [key_column, ...data_columns] (see get_or_create_series_shape),
-// not series.columns' declared order. Declaring the key column (`ts`) after the partition column
-// (`region`) means a naive "index within series.columns" lookup (0) would land on the wrong storage
-// field (the key, at index 0) instead of `region` (actually at index 1) - this schema exercises that.
 fn partitioned_series_shape() -> RowShape {
+	// Series storage is [key, ...data], not the declared column order, so a lookup by index
+	// within the declared columns would land on the key instead of the partition column.
 	RowShape::new(vec![
 		RowShapeField::new("ts", TypeConstraint::unconstrained(ValueType::Int8)),
 		RowShapeField::new("region", TypeConstraint::unconstrained(ValueType::Utf8)),

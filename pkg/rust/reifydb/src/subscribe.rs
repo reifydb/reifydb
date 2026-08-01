@@ -8,14 +8,9 @@ use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sub_subscription::store::SubscriptionStore;
 use reifydb_value::value::frame::frame::Frame;
 
-/// Handle to a created subscription. Owns a reference to the delivery store, so it can drain
-/// delivered batches without going back through the `Database`. A handle obtained before a
-/// `Database::stop()` is stale afterwards; re-attach to the same subscription id with
-/// `Database::subscription`.
-///
-/// When the subscription is created with hydration enabled, the initial-snapshot batches are
-/// captured into `prelude` and drained ahead of any forward CDC the store buffers, so a subscriber
-/// observes the current state before subsequent changes.
+/// A handle obtained before `Database::stop()` is stale afterwards; re-attach to the same id with
+/// `Database::subscription`. Hydration-snapshot batches drain ahead of any forward CDC the store
+/// buffers, so a subscriber observes the current state before subsequent changes.
 pub struct Subscription {
 	id: SubscriptionId,
 	store: Arc<SubscriptionStore>,
@@ -46,10 +41,9 @@ impl Subscription {
 		&self.column_names
 	}
 
-	/// Drain up to `max` delivered batches as `Frame`s. Each row carries an `_op` column
-	/// (Insert=1, Update=2, Remove=3). Returns the batches in delivery order and removes them
-	/// from the buffer. Hydration-snapshot batches (if any) are returned before forward-CDC
-	/// batches.
+	/// Each row carries an `_op` column (Insert=1, Update=2, Remove=3). Batches come back in
+	/// delivery order and are removed from the buffer, hydration-snapshot ones ahead of
+	/// forward-CDC ones.
 	pub fn drain(&self, max: usize) -> Vec<Frame> {
 		let mut out: Vec<Frame> = Vec::new();
 		{

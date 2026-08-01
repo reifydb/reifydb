@@ -18,7 +18,6 @@ fn test_row_settings_sync_to_catalog_cache() {
 	let engine = TestEngine::new();
 	let catalog = engine.catalog();
 
-	// 1. Create a namespace and table with TTL
 	engine.admin("CREATE NAMESPACE test");
 	engine.admin(r#"
 		CREATE TABLE test::users { id: int4 } WITH {
@@ -26,7 +25,7 @@ fn test_row_settings_sync_to_catalog_cache() {
 		};
 	"#);
 
-	// 2. Check if TTL is in CatalogCache immediately
+	// The TTL must be in the cache immediately after DDL, not only after a reload.
 	let mut txn = engine.begin_admin(IdentityId::system()).unwrap();
 	let ns_id = NamespaceId(16385); // 'test' namespace
 	let table = catalog
@@ -48,10 +47,8 @@ fn test_row_settings_replication_sync() {
 	let replica = TestEngine::new();
 	let replica_catalog = replica.catalog();
 
-	// 1. Start transaction on primary
 	let mut txn = primary.begin_admin(IdentityId::system()).unwrap();
 
-	// 2. Create table with TTL
 	let r = txn.rql("CREATE NAMESPACE test", Default::default());
 	if let Some(e) = r.error {
 		panic!("{e:?}");
@@ -64,21 +61,18 @@ fn test_row_settings_replication_sync() {
 		panic!("{e:?}");
 	}
 
-	// 3. Capture changes
+	// The TTL must ride the replicated system changes; a replica that misses it never expires
+	// rows the primary does.
 	let changes = deltas_to_system_changes(&txn);
 
-	// 4. Commit primary
 	let version = txn.commit().unwrap();
 
-	// 5. Apply to replica
 	let mut replica_txn = ReplicaTransaction::new(replica.multi_owned(), version).unwrap();
 	for change in &changes {
 		apply_system_change(&replica_catalog, &mut Transaction::Replica(&mut replica_txn), change).unwrap();
 	}
 	replica_txn.commit_at_version().unwrap();
 
-	// 6. Verify replica materialized catalog has the TTL
-	// Namespace ID should be 16385
 	let mut q_txn = replica.begin_admin(IdentityId::system()).unwrap();
 	let table = replica_catalog
 		.find_table_by_name(&mut Transaction::Admin(&mut q_txn), NamespaceId(16385), "users")
@@ -105,12 +99,9 @@ fn test_operator_settings_sync_to_catalog_cache() {
 	let engine = TestEngine::new();
 	let catalog = engine.catalog();
 
-	// An operator's TTL is persisted by the flow compiler via create_operator_settings.
-	// The operator-TTL GC actor only ever sees these via the cache-backed list below, so
-	// the write must reach the cache through the post-commit interceptor. Before the fix
-	// create_operator_settings only wrote storage without tracking the change, so the
-	// interceptor never learned about it and this list stayed empty - silently disabling
-	// operator-state GC for every stateful operator.
+	// The operator-TTL GC actor only ever reads the cache-backed list, so a write that reaches
+	// storage without tracking the change leaves the list empty and silently disables GC for
+	// every stateful operator.
 	let node_id = FlowNodeId(42);
 	let settings = OperatorSettings {
 		ttl: Some(OperatorTtl {

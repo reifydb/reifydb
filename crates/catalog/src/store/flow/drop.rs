@@ -68,28 +68,22 @@ pub mod tests {
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = create_flow(&mut txn, "test_namespace", "drop_test_flow");
 
-		// Create nodes and edges
 		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
-		// Verify flow, nodes, and edges exist
 		assert!(CatalogStore::find_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap().is_some());
 		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node1.id).unwrap().is_some());
 		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node2.id).unwrap().is_some());
 		assert!(CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap().is_some());
 
-		// Drop the flow
 		CatalogStore::drop_flow(&mut txn, flow.id).unwrap();
 
-		// Verify flow is gone
 		assert!(CatalogStore::find_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap().is_none());
 
-		// Verify all nodes are gone
 		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node1.id).unwrap().is_none());
 		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node2.id).unwrap().is_none());
 
-		// Verify all edges are gone
 		assert!(CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap().is_none());
 	}
 
@@ -97,7 +91,6 @@ pub mod tests {
 	fn test_drop_nonexistent_flow() {
 		let mut txn = create_test_admin_transaction();
 
-		// Dropping a non-existent flow should succeed silently
 		CatalogStore::drop_flow(&mut txn, FlowId(999)).unwrap();
 	}
 

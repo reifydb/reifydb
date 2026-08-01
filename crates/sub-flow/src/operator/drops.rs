@@ -51,11 +51,9 @@ mod tests {
 
 	#[test]
 	fn a_noted_drop_accumulates_and_a_zero_drop_does_not() {
-		// The counter is the durable half of the loud-drop contract - the warn is rate
-		// limited and therefore lossy, so the total is what an operator or a test can actually
-		// assert on. A zero note must be a no-op rather than an entry, because every operator calls
-		// note() unconditionally at the end of a batch and the overwhelmingly common case is that
-		// nothing was dropped.
+		// The warn is rate limited and therefore lossy, so the counter is the only thing that can
+		// be asserted on. Every operator notes unconditionally at the end of a batch, so a zero
+		// note has to be a no-op.
 		let drops = SealedDrops::new(FlowNodeId(7), "test");
 		assert_eq!(drops.total(), 0, "a fresh counter has dropped nothing");
 
@@ -69,12 +67,9 @@ mod tests {
 
 	#[test]
 	fn the_warn_stride_is_crossed_exactly_once_per_thousand_however_the_drops_arrive() {
-		// The rate limit is computed from the counter, not from a call count, so a node
-		// dropping one diff at a time and a node dropping a whole batch at once must warn the same
-		// number of times. This is what makes the warn safe on a hot path: a flow replaying a
-		// backlog cannot turn it into a per-diff log storm.
-		// The assertion below reproduces the stride arithmetic rather than counting log lines,
-		// because the counter transition IS the rate limiter - `before / STRIDE != after / STRIDE`.
+		// The rate limit reads the counter, not a call count, so one diff at a time and a whole
+		// batch at once must warn equally often - which is what stops a flow replaying a backlog
+		// from turning the warn into a per-diff log storm.
 		fn warns(notes: &[u64]) -> usize {
 			let drops = SealedDrops::new(FlowNodeId(1), "test");
 			let mut warned = 0;

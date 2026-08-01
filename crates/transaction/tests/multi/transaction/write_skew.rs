@@ -20,13 +20,13 @@ use crate::{
 
 #[test]
 fn test_write_skew() {
-	// accounts
+	// Two transactions read both balances and each zeroes a different one; committing both would
+	// drop the total below the constraint every reader believed it was upholding.
 	let a999: EncodedKey = as_key!(999);
 	let a888: EncodedKey = as_key!(888);
 
 	let engine = test_multi();
 
-	// Set balance to $100 in each account.
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&a999, as_values!(100u64)).unwrap();
 	txn.set(&a888, as_values!(100u64)).unwrap();
@@ -39,36 +39,31 @@ fn test_write_skew() {
 		from_row!(u64, val)
 	}
 
-	// Start two transactions, each would read both accounts and deduct from
-	// one account.
 	let mut txn1 = engine.begin_command().unwrap();
 
 	let mut sum = get_bal(&mut txn1, &a999);
 	sum += get_bal(&mut txn1, &a888);
 	assert_eq!(200, sum);
-	txn1.set(&a999, as_values!(0u64)).unwrap(); // Deduct 100 from a999
+	txn1.set(&a999, as_values!(0u64)).unwrap(); // deducts 100 from a999
 
-	// Let's read this back.
 	let mut sum = get_bal(&mut txn1, &a999);
 	assert_eq!(0, sum);
 	sum += get_bal(&mut txn1, &a888);
 	assert_eq!(100, sum);
-	// Don't commit yet.
 
+	// txn1 stays uncommitted so txn2 begins on the same snapshot.
 	let mut txn2 = engine.begin_command().unwrap();
 
 	let mut sum = get_bal(&mut txn2, &a999);
 	sum += get_bal(&mut txn2, &a888);
 	assert_eq!(200, sum);
-	txn2.set(&a888, as_values!(0u64)).unwrap(); // Deduct 100 from a888
+	txn2.set(&a888, as_values!(0u64)).unwrap(); // deducts 100 from a888
 
-	// Let's read this back.
 	let mut sum = get_bal(&mut txn2, &a999);
 	assert_eq!(100, sum);
 	sum += get_bal(&mut txn2, &a888);
 	assert_eq!(100, sum);
 
-	// Commit both now.
 	txn1.commit(vec![]).unwrap();
 	let err = txn2.commit(vec![]).unwrap_err();
 	assert!(err.to_string().contains("conflict"));
@@ -76,12 +71,11 @@ fn test_write_skew() {
 	assert_eq!(3, engine.version().unwrap());
 }
 
-// https://wiki.postgresql.org/wiki/SSI#Black_and_White
 #[test]
 fn test_black_white() {
+	// https://wiki.postgresql.org/wiki/SSI#Black_and_White
 	let engine = test_multi();
 
-	// Setup
 	let mut txn = engine.begin_command().unwrap();
 	for i in 1..=10 {
 		if i % 2 == 1 {
@@ -144,24 +138,21 @@ fn test_black_white() {
 	})
 }
 
-// https://wiki.postgresql.org/wiki/SSI#Overdraft_Protection
 #[test]
 fn test_overdraft_protection() {
+	// https://wiki.postgresql.org/wiki/SSI#Overdraft_Protection
 	let engine = test_multi();
 
 	let key = as_key!("karen");
 
-	// Setup
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&key, as_values!(1000)).unwrap();
 	txn.commit(vec![]).unwrap();
 
-	// txn1
 	let mut txn1 = engine.begin_command().unwrap();
 	let money = from_row!(i32, *txn1.get(&key).unwrap().unwrap().row());
 	txn1.set(&key, as_values!(money - 500)).unwrap();
 
-	// txn2
 	let mut txn2 = engine.begin_command().unwrap();
 	let money = from_row!(i32, *txn2.get(&key).unwrap().unwrap().row());
 	txn2.set(&key, as_values!(money - 500)).unwrap();
@@ -175,12 +166,11 @@ fn test_overdraft_protection() {
 	assert_eq!(money, 500);
 }
 
-// https://wiki.postgresql.org/wiki/SSI#Primary_Colors
 #[test]
 fn test_primary_colors() {
+	// https://wiki.postgresql.org/wiki/SSI#Primary_Colors
 	let engine = test_multi();
 
-	// Setup
 	let mut txn = engine.begin_command().unwrap();
 	for i in 1..=9000 {
 		if i % 3 == 1 {
@@ -278,12 +268,11 @@ fn test_primary_colors() {
 	assert_eq!(yellow_count, 0);
 }
 
-// https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 #[test]
 fn test_intersecting_data() {
+	// https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 	let engine = test_multi();
 
-	// Setup
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!("a1"), as_values!(10u64)).unwrap();
 	txn.set(&as_key!("a2"), as_values!(20u64)).unwrap();

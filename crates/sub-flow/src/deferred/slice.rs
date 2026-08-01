@@ -357,10 +357,6 @@ mod integration {
 		te.query(rql).first().map(|f| f.row_count()).unwrap_or(0)
 	}
 
-	// The actor's drain path in miniature: bound by min(producer watermark, done_until), pull
-	// whatever the store has in (cursor, safe], and hand it to compute_pulled the way a backlog
-	// Hit or a loader chunk would. None stands in for the actor's "safe <= cursor, nothing to
-	// do" early return.
 	#[allow(clippy::too_many_arguments)]
 	fn pull_step(
 		engine: &StandardEngine,
@@ -370,6 +366,7 @@ mod integration {
 		config: &SliceConfig,
 		overlay: &mut FlowWriteOverlay,
 	) -> Option<SliceStep> {
+		// The actor's drain path in miniature; None stands in for its "nothing to do" return.
 		let safe = engine.cdc_producer_watermark().min(engine.done_until());
 		if safe <= cursor.cursor {
 			return None;
@@ -405,11 +402,9 @@ mod integration {
 
 	#[test]
 	fn skip_or_checkpoint_persists_only_beyond_checkpoint_lag() {
-		// Every flow now consumes every pushed batch, and batches with nothing relevant land here.
-		// The threshold below is load-bearing twice over: staying in memory at or below the lag keeps
-		// an idle flow from committing on every batch, and persisting beyond the lag keeps its
-		// durable checkpoint moving - CDC log compaction is gated on the minimum durable checkpoint
-		// across all flows, so a flow that never persisted would pin the CDC log forever.
+		// The threshold is load-bearing twice over: at or below the lag an idle flow must not
+		// commit on every batch, and beyond it its durable checkpoint must move, because CDC
+		// compaction is gated on the minimum durable checkpoint across flows.
 		let te = TestEngine::builder().with_cdc().build();
 		let computer = SliceComputer::new(te.inner().clone());
 		let config = SliceConfig {
@@ -448,15 +443,9 @@ mod integration {
 
 	#[test]
 	fn a_step_with_nothing_to_do_still_drains_generations_at_or_below_the_cursor() {
-		// The only prune in the compute path sits at the top of compute_pulled, above the early
-		// return that fires when a batch carries no relevant changes. A generation at or below
-		// the cursor is already served by the store at any version a later compute can pin, so
-		// a step that decides to do nothing must still drop it. Without that, an idle flow
-		// keeps every write set it has ever committed - the idle-settle overlay leak.
-		//
-		// Mutation: move the prune_through call below the changes.is_empty() early return in
-		// compute_pulled. The irrelevant batch takes that exit before pruning and the final
-		// assertion sees the generation survive.
+		// A generation at or below the cursor is already served by the store at any version a
+		// later compute can pin, so a step that decides to do nothing must still drop it -
+		// otherwise an idle flow keeps every write set it has ever committed.
 		let te = TestEngine::builder().with_cdc().build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
@@ -465,8 +454,8 @@ mod integration {
 		let engine = te.inner().clone();
 		let mut flow_engine = build_flow_engine(&engine);
 
-		// An empty source set makes every CDC record irrelevant to this flow, which is the steady
-		// state being reproduced: caught up, with nothing it cares about being written.
+		// An empty source set makes every CDC record irrelevant, reproducing a caught-up flow
+		// with nothing it cares about being written.
 		let source_objects: BTreeSet<ObjectId> = BTreeSet::new();
 		let computer = SliceComputer::new(engine.clone());
 		let config = SliceConfig {
@@ -506,8 +495,8 @@ mod integration {
 			panic!("the drive loop never settled");
 		};
 
-		// Settle first, then promote a write set AT the settled cursor: this is a caught-up
-		// flow whose own commit has just been promoted, the steady state the leak lived in.
+		// Promoting AT the settled cursor is the steady state that leaks: a caught-up flow whose
+		// own commit has just been promoted.
 		let mut cursor = CommitVersion(0);
 		drive(&mut cursor, &mut overlay);
 		let mut pending = Pending::new();
@@ -515,9 +504,8 @@ mod integration {
 		overlay.promote(cursor, pending);
 		assert_eq!(overlay.generations_len(), 1, "precondition: one unpruned write set");
 
-		// A new commit this flow does not care about: the step it triggers takes the
-		// nothing-relevant exit, and that exact step must be the one that drops the
-		// generation.
+		// A commit this flow does not care about: the step it triggers takes the
+		// nothing-relevant exit, and that exact step must be the one that prunes.
 		te.command("INSERT app::t [{id: 2, val: 20}]");
 		te.await_cdc();
 		let before = cursor;
@@ -544,7 +532,6 @@ mod integration {
 		let engine = te.inner().clone();
 		let flow_catalog = FlowCatalog::new(engine.catalog());
 
-		// Discover the single deferred flow and register it into a fresh per-flow engine.
 		let mut query = engine.begin_query(IdentityId::system()).expect("query");
 		let flows = engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)).expect("list flows");
 		let flow_id = flows.first().expect("one flow").id;
@@ -587,8 +574,7 @@ mod integration {
 		let mut committed_any = false;
 		let mut overlay = FlowWriteOverlay::new();
 
-		// CDC production is async; spin the drain, letting the producer catch up, until the
-		// view materializes or we exhaust the budget.
+		// CDC production is async, so the drain has to spin until the producer catches up.
 		for _ in 0..400 {
 			match pull_step(
 				&engine,
@@ -641,11 +627,9 @@ mod integration {
 
 	#[test]
 	fn pinned_slice_reads_prior_commit_across_restart_window() {
-		// The deferred read-skew scenario, deterministically: a slice's output rows commit at a
-		// version above the chunk_end that pins the next slice's query snapshot. Owned-row keys
-		// route through state_query (the lease), so a later slice must see them even with an
-		// EMPTY overlay - this is exactly the post-restart window, where the in-memory overlay
-		// is gone. The overlay-merged case must agree.
+		// A slice's output rows commit above the chunk_end pinning the next slice's snapshot, so
+		// a later slice must still see them with an EMPTY overlay - the post-restart window,
+		// where the in-memory overlay is gone.
 		let te = TestEngine::builder().with_cdc().build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
@@ -714,10 +698,9 @@ mod integration {
 					advance_to,
 					..
 				}) => {
-					// The production interleaving: an upstream commit grabs a version
-					// after the chunk was computed but before the flow output commits,
-					// so the flow's own rows land above the version window the next
-					// slice's query is pinned to.
+					// An upstream commit grabs a version after the chunk was computed
+					// but before the flow output commits, so the flow's own rows land
+					// above the window the next slice is pinned to.
 					te.command("INSERT app::t [{id: 3, val: 30}]");
 					let (commit_version, pending) =
 						committer.commit_slice(&engine, slice).expect("commit slice");
@@ -784,12 +767,9 @@ mod integration {
 
 	#[test]
 	fn a_flow_never_commits_a_key_it_would_later_read_through_the_pinned_query() {
-		// This is what decides whether FlowWriteOverlay can exist at all. `compute` clamps `query` to
-		// state_version but leaves `state_query` at the lease, so StateQuery- and OwnedRow-routed keys
-		// already see a prior slice's writes with an empty overlay - the restart-window test above
-		// proves it for Row keys. A Query-routed write is the only class that could read stale below
-		// its own commit version, and therefore the only class the overlay can be load-bearing for.
-		// Walk what a flow actually commits and assert nothing lands in it.
+		// A Query-routed write is the only class that could read stale below its own commit
+		// version, so it is the only class the overlay could be load-bearing for. If a flow never
+		// commits one, the overlay is not needed at all.
 		let te = TestEngine::builder().with_cdc().build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
@@ -880,10 +860,8 @@ mod integration {
 					}
 					overlay.promote(commit_version, pending);
 
-					// The routing argument above says an empty overlay must resolve every one of
-					// these keys anyway. Assert it directly rather than by inference: this is
-					// the restart window, and it covers FlowNodeState as well as Row, which
-					// the sibling test does not reach.
+					// The restart window asserted directly rather than by inference, and
+					// it reaches FlowNodeState as well as Row.
 					let mut empty_overlay = FlowTransaction::deferred_from_parts(DeferredParams {
 						version: advance_to,
 						pending: Pending::new(),
@@ -924,8 +902,8 @@ mod integration {
 		}
 
 		assert_eq!(view_row_count(&te, "FROM app::v"), 2, "the aggregate never materialized its two groups");
-		// Without both classes present the routing assertion below would pass vacuously: an aggregate
-		// is chosen precisely because it writes operator state as well as view rows.
+		// Without both classes present the routing assertion below would pass vacuously; an
+		// aggregate is used because it writes operator state as well as view rows.
 		assert!(
 			committed_kinds.contains(&Some(KeyKind::FlowNodeState)),
 			"expected the aggregate to commit operator state, saw only {committed_kinds:?}"

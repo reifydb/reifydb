@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Built-in functions: pure, side-effect-free transformations the engine evaluates as part of expression
-//! evaluation. Grouped by domain - blob, temporal, json, math, identity introspection, RQL meta-queries, type
-//! predicates - each with a stable qualified name like `json::array` or `math::abs` that becomes part of the
-//! query language surface.
+//! Built-in functions: pure transformations evaluated as part of expression evaluation, grouped by domain.
 //!
-//! New functions register here at boot. The qualified name is what users type; renaming or re-grouping an existing
+//! The qualified name (`json::array`, `math::abs`) is what users type, so renaming or re-grouping an existing
 //! function silently breaks queries that already reference it.
 
 pub mod blob;

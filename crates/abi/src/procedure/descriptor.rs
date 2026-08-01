@@ -17,7 +17,6 @@ pub struct ProcedureDescriptorFFI {
 	pub vtable: ProcedureVTableFFI,
 }
 
-// SAFETY: ProcedureDescriptorFFI contains pointers to static strings and functions
-
+// SAFETY: every pointer in the descriptor addresses immutable module-static data (strings, symbols).
 unsafe impl Send for ProcedureDescriptorFFI {}
 unsafe impl Sync for ProcedureDescriptorFFI {}

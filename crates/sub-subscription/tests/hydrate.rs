@@ -147,15 +147,9 @@ fn hydrate_pushes_filter_into_source_query() {
 	let (engine, sub_id, lease, sub_service) =
 		create_and_setup(&db, "from app::events | filter { kind == 'b' } | take 5");
 
-	// The fix: filter must be pushed into the source query, so the 5-row TAKE selects
-	// 5 'b' rows (matching the filter) rather than 5 'a' rows (the first by primary key,
-	// which the in-flow filter would then discard, leaving the snapshot empty).
-	//
-	// Cap at 5 - exactly the take limit. Without filter pushdown the source returns 5 'a'
-	// rows; with filter pushdown it returns 5 'b' rows. Both fit under the cap, so this
-	// test does not rely on cap-exceeded errors. It instead checks that every snapshot
-	// row matches the filter, which is impossible if the filter is dropped from the
-	// source query and only enforced by the downstream flow operator.
+	// The filter must reach the source query, or the 5-row take selects 5 'a' rows that the in-flow filter
+	// then discards, leaving the snapshot empty. The cap is the take limit, so both variants fit under it
+	// and the assertion rests on the rows matching the filter, not on a cap-exceeded error.
 	let outcome = sub_service
 		.hydrate(sub_id, &engine, IdentityId::root(), lease, 5)
 		.expect("hydrate succeeds at cap=5 (matches TAKE 5)");

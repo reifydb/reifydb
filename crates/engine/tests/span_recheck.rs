@@ -1,15 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// The second line of defence for declared retention spans, and the one nothing has ever exercised.
-// FLOW_045's existing test passes because the GRAMMAR refuses `with { ttl }` on a stateless node, so
-// the span walk itself is never reached; FLOW_044 has no grammar equivalent at all, because the
-// grammar cannot see whether a guest operator declares Reclaim.
-//
-// Both diagnostics have to survive the route the grammar cannot see: a flow reloaded from the catalog
-// whose settings no longer match what DDL saw. This file builds that state directly - the flow's own
-// DAG comes back from the catalog and only the operator settings differ - and pins that the walk
-// catches it. It is the same shape, and the same reason, as time_domain_recheck.rs.
+// The grammar refuses `with { ttl }` on a stateless node and cannot see whether a guest operator
+// declares Reclaim, so neither diagnostic is reachable through RQL. Each test reloads the flow's own
+// DAG and alters only the operator settings, which is the route the grammar cannot cover.
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_catalog::{
@@ -40,9 +34,8 @@ fn reload_dag(engine: &TestEngine, txn: &mut AdminTransaction, view: &str) -> Fl
 	load_flow_dag(&mut Transaction::Admin(txn), flow.id).unwrap()
 }
 
-// Writes a span onto a node the author never put one on. This is the drift the re-check exists for:
-// DDL saw a node with no settings row, and the catalog it is resolved against has since moved.
 fn declare_span(txn: &mut AdminTransaction, node: FlowNodeId) {
+	// Writes a span onto a node DDL saw with no settings row at all.
 	create_operator_settings(
 		txn,
 		node,
@@ -92,14 +85,8 @@ fn recheck(
 
 #[test]
 fn a_span_that_appears_on_a_stateless_node_after_definition_is_refused() {
-	// Intent: FLOW_045 by the only route that can actually produce it. A map node cannot be given a
-	// span through RQL - the grammar stops it - so the reachable failure is a settings row that
-	// arrives some other way and comes back on restart. Left unchecked the catalog would claim the
-	// node ages while the engine resolves its horizon to Perpetual and never consults the span.
-	// Mutation: drop the consults_declared_span arm from check_declared_spans and this returns None,
-	// while every grammar-level span test keeps passing. Widening that predicate to holds_state has the
-	// same effect one node type over: a window would start accepting a drifted ttl it never reads,
-	// because a window's horizon comes from its operator's seal span and nothing else.
+	// Left unchecked the catalog claims the node ages while the engine resolves its horizon to
+	// Perpetual and never consults the span.
 	let engine = TestEngine::new();
 	engine.admin("CREATE NAMESPACE sp");
 	engine.admin("CREATE TABLE sp::t { id: int4, v: int4 }");
@@ -119,8 +106,8 @@ fn a_span_that_appears_on_a_stateless_node_after_definition_is_refused() {
 
 #[test]
 fn a_span_survives_the_recheck_when_the_operator_still_declares_reclaim() {
-	// The control. Same drift, same span, on a node that can honour it - so a rule that refused every
-	// re-checked span, or every span it could not attribute, fails here instead of passing both.
+	// Same drift and span on a node that can honour it, so a rule refusing every re-checked span
+	// fails here instead of passing both.
 	let engine = TestEngine::new();
 	engine.admin("CREATE NAMESPACE sp");
 	engine.admin("CREATE TABLE sp::a { id: int4, v: int4 }");
@@ -141,14 +128,9 @@ fn a_span_survives_the_recheck_when_the_operator_still_declares_reclaim() {
 
 #[test]
 fn a_span_is_refused_when_the_operator_catalog_reports_no_reclaim() {
-	// Intent: FLOW_044 by the reload route, and the reason the operator catalog has to be complete.
-	// An apply node is the only place a view author can declare a span the operator has no code to
-	// honour, because every built-in stateful operator declares Reclaim in its own impl. The
-	// capability is read by NAME from the operator catalog, which is why a statically registered
-	// operator that never reaches that catalog is not a cosmetic gap: it reads as "cannot reclaim".
-	// Mutation: make the lookup default to reclaiming when the operator is absent and the first
-	// assertion below flips to None, leaving state to grow unbounded behind a span the catalog
-	// advertises as honoured.
+	// Apply is the only node where an author can declare a span the operator has no code to
+	// honour; the capability is read by name, so an operator missing from the catalog reads as
+	// "cannot reclaim" rather than as a cosmetic gap.
 	let engine = TestEngine::new();
 	engine.admin("CREATE NAMESPACE sp");
 	engine.admin("CREATE TABLE sp::t { id: int4, v: int4 }");
@@ -159,22 +141,21 @@ fn a_span_is_refused_when_the_operator_catalog_reports_no_reclaim() {
 	let apply = node_of(&dag, |ty| matches!(ty, FlowNodeType::Apply { .. }));
 	declare_span(&mut txn, apply);
 
-	// Fail closed. An operator the catalog has never heard of cannot run at all, so accepting its
-	// span would be strictly worse than refusing it.
+	// An operator the catalog has never heard of cannot run at all, so accepting its span would
+	// be strictly worse than refusing it.
 	assert_eq!(
 		recheck(&engine, &OperatorStore::new(), &mut txn, &dag).as_deref(),
 		Some("FLOW_044"),
 		"an operator absent from the catalog must not have its span accepted"
 	);
 
-	// Registered, and honest about not reclaiming.
 	assert_eq!(
 		recheck(&engine, &store_with("tally", 0), &mut txn, &dag).as_deref(),
 		Some("FLOW_044"),
 		"an operator that declares no Reclaim must have its span refused"
 	);
 
-	// The control: the same span, the same node, one capability bit different.
+	// Same span and node, one capability bit different.
 	assert_eq!(
 		recheck(&engine, &store_with("tally", reclaim_bit()), &mut txn, &dag),
 		None,

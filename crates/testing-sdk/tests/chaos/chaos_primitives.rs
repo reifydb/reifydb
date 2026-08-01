@@ -1,17 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! `duplicate_update_burst` and `update_as_remove_insert` at extreme
-//! probabilities. A correct operator (passthrough) must remain consistent
-//! with the identity oracle because both rewrites are equivalent at the
-//! materialized-table level. If any test in this file fails, the operator
-//! is responding to chaos primitives in a way that produces a different
-//! visible state - a real bug class the harness exists to expose.
+//! `duplicate_update_burst` and `update_as_remove_insert` at extreme probabilities. Both
+//! rewrites are equivalent at the materialized-table level, so a passthrough operator must
+//! stay consistent with the identity oracle.
 //!
-//! Each `chaos_test!` expands to N separate `#[test]` cases (`make test-chaos
-//! N=`, default 32), one per index; each draws a fresh random seed per run
-//! unless `SEED` pins it. A failure reports its seed for replay (`make
-//! test-chaos SEED=... FILTER=...`).
+//! A failure reports its seed; replay with `make test-chaos SEED=... FILTER=...`.
 
 use reifydb_testing_chaos::operator::{
 	event::ChaosEvent,
@@ -32,8 +26,8 @@ fn cfg(duplicate_update_burst: f64, update_as_remove_insert: f64) -> Scenario {
 }
 
 chaos_test!(no_chaos_primitives_passthrough_matches, |seed| {
-	// Baseline: both probabilities at 0.0. If this fails, base passthrough
-	// is broken and every other test is meaningless.
+	// Baseline with both primitives off; if this fails every other test in the file is
+	// meaningless.
 	let outcome = ChaosHarness::<PassthroughOperator>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
@@ -51,9 +45,8 @@ chaos_test!(no_chaos_primitives_passthrough_matches, |seed| {
 });
 
 chaos_test!(duplicate_burst_at_one_passthrough_matches, |seed| {
-	// Every Update spawns one identical no-op Update (pre = post).
-	// Passthrough handles correctly because re-applying the same post
-	// to the same row is idempotent at the materialized-table level.
+	// Re-applying the same post to the same row is idempotent at the materialized-table level,
+	// so a no-op duplicate per Update must not move the output.
 	let outcome = ChaosHarness::<PassthroughOperator>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
@@ -68,10 +61,8 @@ chaos_test!(duplicate_burst_at_one_passthrough_matches, |seed| {
 		.expect("build")
 		.run();
 	outcome.assert_matches();
-	// Sanity: at p=1.0 the generator spawns exactly one no-op duplicate
-	// (pre == post) for every real Update, so the two counts must be equal.
-	// A magnitude threshold here is flaky - the number of Update decisions in a
-	// 200-op stream is seed-dependent and its tail can dip to any value.
+	// Equality rather than a magnitude threshold: the number of Update decisions in a 200-op
+	// stream is seed-dependent and its tail can dip to any value.
 	let (noop, real) = outcome.events().fold((0usize, 0usize), |(noop, real), e| match e {
 		ChaosEvent::Update {
 			pre,
@@ -90,10 +81,8 @@ chaos_test!(duplicate_burst_at_one_passthrough_matches, |seed| {
 });
 
 chaos_test!(rewrite_at_one_passthrough_matches, |seed| {
-	// Every Update is rewritten to Remove(pre) + Insert(post). Passthrough
-	// must agree with the identity oracle because removing-then-inserting
-	// the same key with the new value lands in the same materialized state
-	// as one Update.
+	// Removing then re-inserting the same key with the new value lands in the same materialized
+	// state as one Update, so the rewrite must be invisible to the oracle.
 	let outcome = ChaosHarness::<PassthroughOperator>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
@@ -108,16 +97,13 @@ chaos_test!(rewrite_at_one_passthrough_matches, |seed| {
 		.expect("build")
 		.run();
 	outcome.assert_matches();
-	// Sanity: at rewrite p=1.0, no Updates should appear in the output stream.
 	let updates: usize = outcome.events().filter(|e| e.is_update()).count();
 	assert_eq!(updates, 0, "rewrite at p=1.0 must eliminate all Updates");
 });
 
 chaos_test!(both_chaos_primitives_at_one_passthrough_matches, |seed| {
-	// Rewrite takes precedence over duplicate-burst (per generator's
-	// documented rule). With rewrite at 1.0 every Update becomes
-	// Remove+Insert; duplicate-burst never fires because there is no
-	// surviving Update to duplicate. Passthrough still matches.
+	// Rewrite takes precedence, so duplicate-burst never fires: there is no surviving Update
+	// left to duplicate.
 	let outcome = ChaosHarness::<PassthroughOperator>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())

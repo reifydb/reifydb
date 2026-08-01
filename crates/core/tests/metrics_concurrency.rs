@@ -72,7 +72,7 @@ fn gauge_concurrent_inc_dec() {
 	for h in handles {
 		h.join().unwrap();
 	}
-	// Equal threads inc and dec → net zero
+	// Equal numbers of incrementing and decrementing threads must net to zero.
 	assert_eq!(g.get(), 0.0);
 }
 

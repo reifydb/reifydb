@@ -110,8 +110,8 @@ mod tests {
 	fn release_then_acquire_reuses_same_allocation() {
 		let pool = ColumnBufferPool::new();
 		let mut buf = ColumnBuffer::with_capacity(ValueType::Int8, 16);
-		// Push then clear to mark the buffer non-empty before release
-		// (so the capacity assertion below checks reuse, not freshness).
+		// The buffer must be non-empty at release, or the capacity assertion below would pass on a
+		// freshly allocated buffer instead of proving reuse.
 		for i in 0..8i64 {
 			buf.push_value(Value::Int8(i));
 		}
@@ -135,9 +135,8 @@ mod tests {
 		pool.release(ColumnBuffer::with_capacity(ValueType::Int8, 64));
 		assert_eq!(pool.len(), 4);
 
-		// Need >= 10. The smallest qualifying buffer in the pool
-		// is the 16-capacity one. Aligned-capacity quirks may round
-		// up a bit but it should pick the buffer closest to 10.
+		// The 16-capacity buffer is the smallest that satisfies a request for 10; capacity alignment
+		// may round it up, so the upper bound is the next pooled size rather than an exact value.
 		let pick = pool.acquire(&ValueType::Int8, 10);
 		assert!(pick.capacity() >= 10);
 		assert!(pick.capacity() < 32);
@@ -179,7 +178,6 @@ mod tests {
 		pool.release(opt_buf);
 		assert!(pool.is_empty(), "Option-wrapped buffers must not enter the pool");
 
-		// Subsequent acquire allocates fresh; the pool stays empty.
 		let acquired = pool.acquire(&opt_ty, 4);
 		assert!(acquired.capacity() >= 4);
 		assert!(pool.is_empty());

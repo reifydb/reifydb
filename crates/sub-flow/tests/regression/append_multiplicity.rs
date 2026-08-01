@@ -1,26 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Reproducer: a mixed transactional/deferred graph of nested APPEND (union) views does not hold the
-// same multiset as the equivalent all-transactional graph. APPEND is a bag union, so `n2 APPEND n2`
-// must contain every row of `n2` twice; with `n2 = base APPEND n0` (and `n0` mirroring `base`), the
-// four-fold union `n3` must be 4x base on BOTH paths. It is not: the mixed graph under-counts.
-//
-// WHY this matters: a transactional view and a deferred view built on the same definition, fed the
-// same DML, must converge to the same multiset. Here they do not, so APPEND multiplicity is not
-// preserved across the flow paths.
-//
-// Surfaced by the testbed `graph_chaos` scenario (memory config, seed 4043421078586853437):
-//   n0=MAP(base)[D]; n2=APPEND(base,n0)[T]; n3=APPEND(n2,n2)[D]
-// This pins the minimal, insert-only shape of that case: it must FAIL until the bug is fixed, then pass.
-//
-// Two narrowing observations baked into the tests below:
-//   * The defect needs the DEFERRED upstream `n0` feeding the transactional APPEND `n2`. Making the whole `n0`/`n2`
-//     chain transactional (only `n3` deferred) makes the divergence vanish - so it is the
-//     deferred-feeds-transactional-APPEND interaction, not the deferred self-union by itself.
-//   * A single-level deferred self-union (`m APPEND m`, m = MAP(base)) does NOT diverge - the control test stays green
-//     - which isolates the defect to the nested case with a deferred upstream.
-// Root-causing the exact mechanism is the follow-up fix, not this change.
+// APPEND is a bag union, so a transactional view and a deferred view built on the same definition
+// and fed the same DML must hold the same multiset. The divergence needs a deferred upstream
+// feeding a transactional APPEND; an all-transactional chain or a single-level union does not.
 
 use std::time::Duration as StdDuration;
 

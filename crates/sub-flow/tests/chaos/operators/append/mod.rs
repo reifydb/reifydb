@@ -63,8 +63,7 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 
 	driver::drive(
 		seed,
-		// Append has no clock and nothing in flight: everything it owes for a change is published
-		// inside that change, so there is no tick share and no drain horizon to reach.
+		// Append has no clock and nothing in flight, so there is no tick share and no drain horizon.
 		Scenario::mixed(params.steps)
 			.with_batch(BatchSize::Geometric {
 				p: 0.45,
@@ -96,8 +95,7 @@ pub fn random_params(seed: u64) -> (u64, Params) {
 }
 
 /// Deliberately reaches 1: every input writing the same single row number is the sharpest form of
-/// the collision the group key exists to separate, and it is the draw where a mapping that ignored
-/// the input index would collapse every input onto one output row.
+/// the collision the group key exists to separate.
 fn row_space(rng: &mut StdRng) -> u64 {
 	rng.random_range(1..=24u64)
 }

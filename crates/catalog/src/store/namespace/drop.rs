@@ -184,23 +184,20 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Verify it exists
 		let found = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut txn), "test_ns").unwrap();
 		assert!(found.is_some());
 
-		// Delete it
 		CatalogStore::drop_namespace(&mut txn, created.id()).unwrap();
 
-		// Verify it's gone
 		let found = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut txn), "test_ns").unwrap();
 		assert!(found.is_none());
 	}
 
 	#[test]
 	fn test_drop_nonexistent_namespace() {
+		// Dropping a namespace that never existed is a no-op, not an error.
 		let mut txn = create_test_admin_transaction();
 
-		// Deleting a non-existent namespace should not error
 		let non_existent = NamespaceId(999999);
 		let result = CatalogStore::drop_namespace(&mut txn, non_existent);
 		assert!(result.is_ok());
@@ -210,7 +207,6 @@ pub mod tests {
 	fn test_drop_namespace_cascades_to_children() {
 		let mut txn = create_test_admin_transaction();
 
-		// Create namespace with child objects
 		let ns = create_namespace(&mut txn, "cascade_ns");
 
 		create_table(&mut txn, "cascade_ns", "child_table", &[]);
@@ -228,7 +224,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Verify all children exist before drop
 		assert!(CatalogStore::find_table_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "child_table")
 			.unwrap()
 			.is_some());
@@ -247,15 +242,12 @@ pub mod tests {
 		.is_some());
 		assert!(CatalogStore::find_dictionary(&mut Transaction::Admin(&mut txn), dict.id).unwrap().is_some());
 
-		// Drop the namespace
 		CatalogStore::drop_namespace(&mut txn, ns.id()).unwrap();
 
-		// Verify namespace is gone
 		assert!(CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut txn), "cascade_ns")
 			.unwrap()
 			.is_none());
 
-		// Verify all children are gone
 		assert!(CatalogStore::find_table_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "child_table")
 			.unwrap()
 			.is_none());

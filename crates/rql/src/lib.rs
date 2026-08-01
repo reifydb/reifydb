@@ -1,17 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! ReifyDB Query Language: lexer, parser, AST, logical and physical planning, optimisation, and the instruction stream
-//! consumed by the engine VM. This is the full pipeline that turns a source string into something executable.
+//! RQL: the whole pipeline from source string to the instruction stream the engine VM executes.
 //!
-//! The crate exposes the AST shape so external tooling (formatters, linters, the explain renderer) can inspect queries
-//! without re-parsing, and exposes a stable fingerprint over compiled plans that the engine uses for plan caching.
-//! Diagnostics produced here carry source-fragment context so user-visible failures can point at the offending span.
-//!
-//! Invariant: planner output is decoupled from any specific storage backend. The physical plan is expressed in terms
-//! of `core::interface/` traits; concrete backend selection happens later, in the engine. Reaching into a specific
-//! backend from inside the planner couples this crate to the storage tier and breaks the layering that lets `core`
-//! avoid cycles.
+//! Planner output stays decoupled from any storage backend - the physical plan speaks only `core::interface/` traits
+//! and the engine picks the backend later. Reaching into one from the planner recouples this crate to the storage
+//! tier and reintroduces the cycles `core` exists to avoid.
 
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]

@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Direct-execute tests for identity::set_attribute / identity::remove_attribute: the full
-// argument contract (arity, per-position types, none), the admin/privileged gate, resolution
-// by name and by IdentityId, catalog error propagation, and the result column shape. These
-// call Routine::execute directly so RoutineError variants can be asserted precisely, which
-// the rql/CALL integration layer wraps and hides.
-
 use reifydb_core::value::column::columns::Columns;
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_routine::{
@@ -191,11 +185,9 @@ fn set_with_non_utf8_attribute_arg_is_type_error() {
 	}
 }
 
-// Values are cast to the attribute's declared catalog type with the same house rules as
-// INSERT: castable values convert (bool -> utf8 stores "true"), uncastable ones raise the
-// cast diagnostic, and none is rejected before casting.
 #[test]
 fn set_bool_value_into_utf8_attribute_casts() {
+	// Values must cast to the attribute's declared type under the same house rules as INSERT.
 	let t = TestEngine::new();
 	t.admin("CREATE USER ATTRIBUTE rp_org_o: utf8");
 	t.admin("CREATE USER rp_alice_o");

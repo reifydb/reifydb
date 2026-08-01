@@ -32,10 +32,9 @@ fn rows() -> Vec<Row> {
 	]
 }
 
-// Drain the handle (prelude + forward CDC) until it goes quiet, then reduce to final sink state.
-// The handle - not the raw store - is drained on purpose: the hydration snapshot lives in the
-// handle's prelude, and going through the store would bypass it.
 fn drain_collect(sub: &Subscription) -> Vec<Columns> {
+	// The handle is drained rather than the raw store because the hydration snapshot lives in the handle's
+	// prelude, which a store drain would bypass.
 	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
 	let mut acc: Vec<Frame> = Vec::new();
 	let mut empty = 0u32;
@@ -64,13 +63,10 @@ fn wait_caught_up(db: &TestDb) {
 	);
 }
 
-// A subscription created over an already-populated source with hydration enabled must deliver the
-// pre-existing rows, not just forward changes. This is the embedded analogue of the WS hydrate
-// path and the direct regression for the subscription_chaos reconnect failures: before the fix the
-// embedded subscribe_as path never hydrated, so re-subscribing after a restart against a populated
-// base silently dropped every row that was not subsequently modified.
 #[test]
 fn embedded_subscribe_with_hydration_delivers_existing_rows() {
+	// An embedded subscription over a populated source must replay the pre-existing rows; without that,
+	// re-subscribing after a restart silently drops every row not subsequently modified.
 	let db = make_db();
 	let expected = rows();
 	insert_all_at_once(&db, &expected);
@@ -83,12 +79,10 @@ fn embedded_subscribe_with_hydration_delivers_existing_rows() {
 	assert_eq!(got, want, "hydration-enabled subscription must replay the existing snapshot");
 }
 
-// With hydration disabled the subscription must NOT replay the pre-existing snapshot; it observes
-// only forward changes committed after it is created. Waiting for the consumer to pass the seed
-// inserts before subscribing makes "forward only" deterministic. This pins the parameter's
-// behavior so the default cannot silently flip without a failing test.
 #[test]
 fn embedded_subscribe_without_hydration_skips_existing_rows() {
+	// With hydration disabled only forward changes may arrive; waiting for the consumer to pass the seed
+	// inserts first is what makes "forward only" deterministic.
 	let db = make_db();
 	insert_all_at_once(&db, &rows());
 	wait_caught_up(&db);

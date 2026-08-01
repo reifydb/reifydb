@@ -18,10 +18,8 @@ use tracing::error;
 
 use super::memory::host_alloc;
 
-/// Host RQL callback for FFI procedures.
-///
-/// Reconstructs the Transaction and Executor from the ContextFFI pointers,
-/// executes the RQL statement, and serializes the result frames into the output buffer.
+/// Runs an RQL statement on the caller's transaction and writes host-allocated encoded frames, or the error
+/// message on failure, into `result_out`.
 ///
 /// # Safety
 ///
@@ -42,6 +40,7 @@ pub unsafe extern "C" fn host_rql(
 			return FFI_ERROR_INTERNAL;
 		}
 
+		// SAFETY: the three pointers are non-null here and txn_ptr addresses a live Transaction.
 		unsafe {
 			let rql_bytes = slice::from_raw_parts(rql_ptr, rql_len);
 			let rql_str = match str::from_utf8(rql_bytes) {

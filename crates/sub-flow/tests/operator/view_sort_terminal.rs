@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// `sort` is only valid as the terminal (outermost) operator of a view pipeline. A sort whose output
-// is consumed by a downstream operator cannot be maintained incrementally, so the flow compiler must
-// reject it at CREATE VIEW time with FLOW_012. This applies to both deferred and transactional views.
-// A terminal sort (nothing consumes its output) is allowed.
+// A sort whose output is consumed by a downstream operator cannot be maintained incrementally, so
+// it is refused at CREATE VIEW time; a terminal sort, with nothing consuming it, is allowed.
 
 use reifydb::{WithSubsystem, embedded};
 use reifydb_test_harness::db::TestDb;

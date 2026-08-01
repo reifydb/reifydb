@@ -156,11 +156,9 @@ mod tests {
 
 	#[test]
 	fn group_population_reports_as_heap_with_quiet_zero_counters() {
-		// The interner's dictionary and its membership filter are owned heap held outside the
-		// operator state budget, so the budget collector's operator_state cached_bytes never
-		// sees them. They must read as heap or those bytes stay unattributed in the named-bytes
-		// reconciliation - the opposite hazard from per-node state, which must NOT read as heap
-		// because the budget already counts it.
+		// The interner's dictionary and filter sit outside the operator state budget, so they
+		// must read as heap or their bytes go unattributed - the opposite of per-node state,
+		// which the budget already counts.
 		let sample = GroupInternerSample {
 			cache: StateMemory::new(Count::new(12), ByteSize::from_bytes(640)),
 			membership: StateMemory::new(Count::new(12), ByteSize::from_bytes(64)),
@@ -189,9 +187,8 @@ mod tests {
 
 	#[test]
 	fn a_node_that_has_interned_nothing_still_reports_its_health() {
-		// An empty dictionary must not emit phantom zero population rows, but the two
-		// completeness gauges have to keep reporting: a node whose absence proofs were revoked
-		// while it happened to hold no groups is exactly the case that must stay visible.
+		// An empty dictionary must not emit phantom zero population rows, but a node whose
+		// absence proofs were revoked while holding no groups still has to stay visible.
 		let sample = GroupInternerSample {
 			cache: StateMemory::ZERO,
 			membership: StateMemory::ZERO,
@@ -207,10 +204,9 @@ mod tests {
 
 	#[test]
 	fn a_demoted_interner_surfaces_every_nonzero_degradation_counter() {
-		// values_complete=false means the dictionary was evicted down to its budget and can no
-		// longer prove a group absent without a store read. Each nonzero counter must reach the
-		// log alongside the flipped gauge, or the demotion stays invisible until it resurfaces
-		// as a reborn group paying for a fresh id.
+		// A demoted dictionary can no longer prove a group absent without a store read, so every
+		// nonzero counter has to reach the log alongside the flipped gauge or the demotion is
+		// invisible until it resurfaces as a reborn group.
 		let sample = GroupInternerSample {
 			cache: StateMemory::new(Count::new(1), ByteSize::from_bytes(48)),
 			membership: StateMemory::ZERO,
@@ -327,9 +323,8 @@ mod tests {
 
 	#[test]
 	fn collector_emits_dirty_state_separately_from_resident() {
-		// Dirty bytes are uncommitted operator state held in transaction slots. They are charged
-		// to the budget on top of resident bytes, so folding them into state_resident_bytes would
-		// hide soft overage, which is the one condition this metric pair exists to make visible.
+		// Dirty bytes are charged to the budget on top of resident bytes, so folding them into
+		// state_resident_bytes would hide the soft overage this pair exists to make visible.
 		let registry = OperatorSampleRegistry::new();
 		let sample = OperatorSample::with_memory(StateMemory::new(Count::new(4), ByteSize::from_bytes(4096)))
 			.with_dirty_memory(StateMemory::new(Count::new(1), ByteSize::from_bytes(512)));
@@ -366,9 +361,8 @@ mod tests {
 
 	#[test]
 	fn collector_emits_row_number_cache_after_window_state() {
-		// A windowed aggregate carries both window state and an in-process row-number
-		// cache. The cache duplicates persisted state and must surface as its own metric
-		// pair rather than being folded into window_state or left unaccounted.
+		// The row-number cache duplicates persisted state, so it needs its own pair rather than
+		// being folded into window_state or left unaccounted.
 		let registry = OperatorSampleRegistry::new();
 		let sample = OperatorSample::with_memory(StateMemory::new(Count::new(4), ByteSize::from_bytes(4096)))
 			.with_row_number_cache(StateMemory::new(Count::new(9), ByteSize::from_bytes(900)));
@@ -392,10 +386,8 @@ mod tests {
 
 	#[test]
 	fn collector_emits_membership_and_completeness_with_quiet_zero_counters() {
-		// The membership pair and the two completeness gauges always emit (they are the
-		// health signal this whole tier exists for), but the three cumulative counters
-		// only emit when nonzero - a steady-state healthy node must not add three
-		// permanent zero rows to every [memory] dump.
+		// The membership pair and the two gauges are the health signal and always emit, but a
+		// steady-state healthy node must not add three permanent zero counter rows to every dump.
 		let registry = OperatorSampleRegistry::new();
 		let healthy = OperatorSample::default()
 			.with_membership(StateMemory::new(Count::new(12), ByteSize::from_bytes(640)))
@@ -429,9 +421,8 @@ mod tests {
 
 	#[test]
 	fn collector_surfaces_degradation_counters_when_nonzero() {
-		// A demoted cache (values_complete=0) with observed false positives is exactly
-		// the state the operator needs to see in the log; every nonzero counter must
-		// surface alongside the flipped gauge.
+		// A demoted cache with observed false positives is the state the log has to show, so
+		// every nonzero counter must surface alongside the flipped gauge.
 		let registry = OperatorSampleRegistry::new();
 		let degraded = OperatorSample::default().with_completeness(StateCompleteness {
 			values_complete: false,
@@ -462,8 +453,8 @@ mod tests {
 
 	#[test]
 	fn collector_emits_row_number_cache_without_window_state() {
-		// Join and distinct have no window state but do carry a row-number cache; it must
-		// report even when memory is None, or their in-process footprint stays dark.
+		// Join and distinct carry a row-number cache but no window state, so the pair must emit
+		// with memory None or their in-process footprint stays dark.
 		let registry = OperatorSampleRegistry::new();
 		let sample = OperatorSample::default()
 			.with_row_number_cache(StateMemory::new(Count::new(2), ByteSize::from_bytes(64)));
@@ -482,11 +473,9 @@ mod tests {
 
 	#[test]
 	fn collector_surfaces_the_guest_pool_budget_and_quiet_zero_evictions() {
-		// Guest (dylib) operators enforce a private lease-sized pool the shared
-		// operator_state scope cannot see. The budget gauge must always emit so a
-		// floor-sized lease is visible next to the node's resident bytes, but the
-		// eviction counter follows the quiet-zero convention: a healthy pool must
-		// not add a permanent zero row per node.
+		// A guest operator's private pool is invisible to the shared operator_state scope, so its
+		// budget gauge always emits; the eviction counter stays quiet at zero so a healthy pool
+		// adds no permanent row per node.
 		let registry = OperatorSampleRegistry::new();
 		let healthy = OperatorSample::default().with_pool(StatePool {
 			budget: ByteSize::from_bytes(8 * 1024 * 1024),

@@ -439,11 +439,10 @@ mod tests {
 
 	#[test]
 	fn a_row_number_mapping_is_recognised_as_write_once() {
-		// Mappings never have a prior version, so this predicate is what keeps the flush
-		// actor from issuing a point read per mapping per commit against the previous
-		// version. It answers over the STRUCTURED key: a first-byte tag test silently
-		// stopped matching when mappings moved into the group keyspace, and a predicate
-		// that can never fire looks identical to one that is simply never needed.
+		// Mappings never have a prior version, so this predicate spares the flush actor a point
+		// read per mapping per commit. It must answer over the structured key - a first-byte tag
+		// test stopped matching once mappings moved into the group keyspace, and a predicate that
+		// can never fire looks identical to one that is never needed.
 		let node = FlowNodeId(7);
 		let mapping = FlowNodeStateKey::new(
 			node,

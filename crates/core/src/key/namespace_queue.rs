@@ -78,21 +78,20 @@ mod tests {
 
 	use super::*;
 
-	/// The namespace link row is what makes a queue findable by name; losing
-	/// either component in the codec makes DROP NAMESPACE miss its queues.
 	#[test]
 	fn test_encode_decode_roundtrip() {
+		// The link row is what makes a queue findable by name; losing either component makes DROP
+		// NAMESPACE miss its queues.
 		let encoded = NamespaceQueueKey::encoded(NamespaceId(3), QueueId(42));
 		let decoded = NamespaceQueueKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.namespace, NamespaceId(3));
 		assert_eq!(decoded.queue, QueueId(42));
 	}
 
-	/// The per-namespace scan must contain exactly that namespace's links: keys
-	/// are stored bitwise-inverted, so a bound derived with the wrong sign would
-	/// make DROP NAMESPACE either miss its queues or reach into a sibling.
 	#[test]
 	fn test_full_scan_contains_only_the_target_namespace() {
+		// Keys are stored bitwise-inverted, so a bound derived with the wrong sign would make DROP
+		// NAMESPACE either miss its queues or reach into a sibling.
 		let range = NamespaceQueueKey::full_scan(NamespaceId(3));
 		let Bound::Included(start) = &range.start else {
 			panic!("expected an included start bound")

@@ -1316,7 +1316,7 @@ pub mod tests {
 
 		#[test]
 		fn test_promote_none_maps_to_undefined() {
-			// 42 mapped to None
+			// The test ctx converts 42 to none.
 			let data = [42i8];
 			let ctx = TestCtx::new();
 
@@ -1335,9 +1335,8 @@ pub mod tests {
 
 		#[test]
 		fn test_promote_valid_input_is_defined() {
-			// With the Option-based nullability model, containers without an
-			// Option wrapper are fully defined.  Value 1 converts successfully,
-			// so the result must be defined.
+			// A container with no Option wrapper is fully defined, so a value that converts
+			// successfully must stay defined.
 			let data = [1i8];
 			let ctx = TestCtx::new();
 
@@ -1358,8 +1357,7 @@ pub mod tests {
 
 		#[test]
 		fn test_promote_conversion_failure_is_undefined() {
-			// Only value 42 triggers a conversion failure (ctx returns None).
-			// Value 3 is fully defined in the input and converts successfully.
+			// Only 42 fails to convert; every other value must survive as defined.
 			let data = [1i8, 42i8, 3i8, 4i8];
 			let ctx = TestCtx::new();
 
@@ -1390,20 +1388,23 @@ pub mod tests {
 		}
 
 		impl Convert for &TestCtx {
-			/// Can only used with i8
+			/// Simulates a conversion failure for one- and two-byte integer sources only.
 			fn convert<From, To>(&self, val: From, _fragment: impl Into<Fragment>) -> Result<Option<To>>
 			where
 				From: SafeConvert<To> + GetType,
 				To: GetType,
 			{
-				// Only simulate conversion failure for i8 == 42
-				// or i16 == 42
+				// Only 42 is made to fail, at either width.
 				if mem::size_of::<From>() == 1 {
+					// SAFETY: the size check above pins From to a one-byte integer, so it is
+					// layout-compatible with i8 and the copy reads only initialized bytes.
 					let raw: i8 = unsafe { mem::transmute_copy(&val) };
 					if raw == 42 {
 						return Ok(None);
 					}
 				} else if mem::size_of::<From>() == 2 {
+					// SAFETY: the size check above pins From to a two-byte integer, so it is
+					// layout-compatible with i16 and the copy reads only initialized bytes.
 					let raw: i16 = unsafe { mem::transmute_copy(&val) };
 					if raw == 42 {
 						return Ok(None);
@@ -1454,9 +1455,8 @@ pub mod tests {
 
 		#[test]
 		fn test_demote_valid_input_is_defined() {
-			// With the Option-based nullability model, containers without an
-			// Option wrapper are fully defined.  Value 1 converts successfully,
-			// so the result must be defined.
+			// A container with no Option wrapper is fully defined, so a value that converts
+			// successfully must stay defined.
 			let data = [1i16];
 			let ctx = TestCtx::new();
 
@@ -1477,8 +1477,7 @@ pub mod tests {
 
 		#[test]
 		fn test_demote_conversion_failure_is_undefined() {
-			// Only value 42 triggers a conversion failure (ctx returns None).
-			// Value 3 is fully defined in the input and converts successfully.
+			// Only 42 fails to convert; every other value must survive as defined.
 			let data = [1i16, 42i16, 3i16, 4i16];
 			let ctx = TestCtx::new();
 

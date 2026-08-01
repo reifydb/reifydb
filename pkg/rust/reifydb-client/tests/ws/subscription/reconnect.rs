@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Reconnection behaviour: a dropped socket is transparently re-established (with re-auth and
-//! resubscribe) against the same handles, in-flight requests are rejected while disconnected,
-//! backoff is exponential, and an exhausted or explicitly-disconnected client stops for good.
-//!
 //! A `TcpProxy` sits between the client and the server so a disconnect can be injected while the
-//! client keeps dialing the same (proxy) URL - the server's ephemeral port never changes.
+//! client keeps dialing the same URL - restarting the server would move its ephemeral port and
+//! defeat reconnection instead of testing it.
 
 use std::{future::Future, sync::Arc};
 

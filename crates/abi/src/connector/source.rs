@@ -29,6 +29,7 @@ pub struct SourceDescriptorFFI {
 	pub vtable: SourceVTableFFI,
 }
 
+// SAFETY: every pointer in the descriptor addresses immutable module-static data (strings, symbols).
 unsafe impl Send for SourceDescriptorFFI {}
 unsafe impl Sync for SourceDescriptorFFI {}
 

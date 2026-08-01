@@ -75,8 +75,6 @@ pub fn create_descriptor<O: FFIOperator + OperatorMetadata>() -> OperatorDescrip
 	}
 }
 
-/// Create an operator instance from FFI parameters
-///
 /// # Safety
 /// - config_ptr must be valid for config_len bytes or null
 /// - The returned pointer must be freed by calling the destroy function

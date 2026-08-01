@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Scenario: two-phase migration (schema first, then data).
-// `.schema_only()` emits just the CREATE statements; `.data_only()` emits just
-// the INSERT statements (and assumes the schema already exists in the target).
-// Splitting the two lets you stand up (and optionally tweak) the structure
-// before loading any rows.
+// Scenario: two-phase migration. `.schema_only()` emits only CREATE statements, `.data_only()` only
+// INSERTs (assuming the schema already exists in the target). Splitting the two lets you stand up
+// and tweak the structure before loading any rows.
 
 use reifydb::{ExportOptions, Params, embedded};
 use reifydb_examples::seed_demo;

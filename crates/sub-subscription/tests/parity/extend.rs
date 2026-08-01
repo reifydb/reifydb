@@ -33,8 +33,8 @@ fn as_i64(value: Value) -> i64 {
 	}
 }
 
-// Pull (qty, qty_x2) for every delivered row, independent of batch and row ordering.
 fn qty_and_doubled(batches: Vec<Columns>) -> Vec<(i64, i64)> {
+	// Pulls (qty, qty_x2) per row so the assertion is independent of batch and row ordering.
 	let mut out = Vec::new();
 	for cols in batches {
 		let qty_col = cols
@@ -52,12 +52,10 @@ fn qty_and_doubled(batches: Vec<Columns>) -> Vec<(i64, i64)> {
 	out
 }
 
-// EXTEND must actually compute and append qty_x2 = qty * 2 while keeping the source columns, not
-// pass rows through unchanged. The parity test alone cannot catch a pass-through stub: it only
-// compares the snapshot and incremental paths to each other, so both would be equally wrong and
-// still match. This pins both the presence of the extended column and its computed value.
 #[test]
 fn extend_appends_doubled_qty() {
+	// The parity tests only compare the two paths to each other, so a pass-through stub would satisfy both
+	// equally; this pins the extended column's presence and its computed value.
 	let rql = "from app::t | extend { qty_x2: qty * 2 }";
 	let rows = vec![
 		Row {

@@ -32,15 +32,13 @@ impl BufferFFI {
 		self.len == 0 || self.ptr.is_null()
 	}
 
-	/// Get the buffer as a slice (unsafe - caller must ensure pointer validity)
-	///
 	/// # Safety
-	/// Caller must ensure the pointer is valid and the buffer has not been freed.
+	/// `ptr` must be valid for reads of `len` bytes, not freed, and unaliased mutably for the returned lifetime.
 	pub unsafe fn as_slice(&self) -> &[u8] {
 		if self.is_empty() {
 			&[]
 		} else {
-			// SAFETY: Caller must ensure pointer validity and lifetime
+			// SAFETY: ptr is non-null here and the caller guarantees len readable bytes.
 			unsafe { core::slice::from_raw_parts(self.ptr, self.len) }
 		}
 	}

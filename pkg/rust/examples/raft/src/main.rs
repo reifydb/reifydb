@@ -3,9 +3,7 @@
 
 //! Starts a single Raft cluster node with gRPC transport.
 //!
-//! Usage:
-//!   raft-cluster --node-id 1 --bind 127.0.0.1:9100 \
-//!     --peer 2=127.0.0.1:9200 --peer 3=127.0.0.1:9300
+//! Usage: raft-cluster --node-id 1 --bind 127.0.0.1:9100 --peer 2=127.0.0.1:9200 --peer 3=ADDR
 
 use std::{collections::HashSet, env, net::SocketAddr};
 
@@ -71,7 +69,6 @@ async fn main() {
 	eprintln!("node {node_id}: driver running");
 	let driver_handle = spawn(driver.run());
 
-	// Periodically print status.
 	let status_handle = handle.clone();
 	spawn(async move {
 		loop {
@@ -80,6 +77,5 @@ async fn main() {
 		}
 	});
 
-	// Run until the driver exits.
 	let _ = driver_handle.await;
 }

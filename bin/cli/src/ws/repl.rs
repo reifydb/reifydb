@@ -11,8 +11,8 @@ type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 #[derive(Clone, Copy)]
 enum DisplayMode {
-	Truncate, // Auto-truncate to fit terminal width
-	Full,     // Show full width, allow overflow
+	Truncate,
+	Full,
 }
 
 enum DotCommandResult {
@@ -26,13 +26,12 @@ pub async fn start_repl(host: &str, port: u16, token: Option<String>) -> Result<
 		.await
 		.map_err(|e| format!("Failed to connect to WebSocket server: {}", e))?;
 
-	// Authenticate if token provided
 	if let Some(ref token) = token {
 		client.authenticate(token).await.map_err(|e| format!("Failed to authenticate: {}", e))?;
 	}
 
 	let mut current_token = token;
-	let mut display_mode = DisplayMode::Truncate; // Default to truncate
+	let mut display_mode = DisplayMode::Truncate;
 
 	println!("Connected to ws://{}:{}", host, port);
 	println!("ValueType .help for help, .quit to exit\n");
@@ -50,10 +49,8 @@ pub async fn start_repl(host: &str, port: u16, token: Option<String>) -> Result<
 
 		match rl.readline(prompt) {
 			Ok(line) => {
-				// Add line to history
 				let _ = rl.add_history_entry(&line);
 
-				// Handle dot-commands
 				if buffer.is_empty() && line.trim().starts_with('.') {
 					match handle_dot_command(line.trim(), &mut current_token, &mut display_mode) {
 						DotCommandResult::Exit => break,
@@ -76,13 +73,10 @@ pub async fn start_repl(host: &str, port: u16, token: Option<String>) -> Result<
 					continue;
 				}
 
-				// Accumulate input
 				buffer.push_str(&line);
 				buffer.push(' ');
 
-				// Check for semicolon termination
 				if line.trim().ends_with(';') {
-					// Execute the buffered statement
 					let statement = buffer.trim().to_string();
 					buffer.clear();
 
@@ -92,12 +86,10 @@ pub async fn start_repl(host: &str, port: u16, token: Option<String>) -> Result<
 				}
 			}
 			Err(ReadlineError::Interrupted) => {
-				// Ctrl+C - clear buffer
 				println!("^C");
 				buffer.clear();
 			}
 			Err(ReadlineError::Eof) => {
-				// Ctrl+D - exit
 				println!("Goodbye!");
 				break;
 			}
@@ -108,7 +100,6 @@ pub async fn start_repl(host: &str, port: u16, token: Option<String>) -> Result<
 		}
 	}
 
-	// Close the connection
 	let _ = client.close().await;
 
 	Ok(())
@@ -119,7 +110,6 @@ fn handle_dot_command(
 	current_token: &mut Option<String>,
 	display_mode: &mut DisplayMode,
 ) -> DotCommandResult {
-	// Parse command and arguments
 	let parts: Vec<&str> = cmd.split_whitespace().collect();
 	let command = parts[0];
 
@@ -138,7 +128,6 @@ fn handle_dot_command(
 			DotCommandResult::Continue
 		}
 		".clear" => {
-			// Clear screen using ANSI escape codes
 			// \x1B[2J - Clear entire screen
 			// \x1B[3J - Clear scrollback buffer
 			// \x1B[H - Move cursor to home position (1,1)
@@ -148,14 +137,12 @@ fn handle_dot_command(
 		}
 		".mode" => {
 			if parts.len() == 1 {
-				// Show current mode
 				let mode_str = match display_mode {
 					DisplayMode::Truncate => "truncate",
 					DisplayMode::Full => "full",
 				};
 				println!("Current display mode: {}", mode_str);
 			} else {
-				// Set new mode
 				match parts[1] {
 					"truncate" => {
 						*display_mode = DisplayMode::Truncate;
@@ -174,14 +161,12 @@ fn handle_dot_command(
 		}
 		".token" => {
 			if parts.len() == 1 {
-				// Show current token
 				match current_token {
 					Some(token) => println!("Current token: {}", token),
 					None => println!("No token set (unauthenticated)"),
 				}
 				DotCommandResult::Continue
 			} else {
-				// Set new token - return it for async authentication
 				let new_token = parts[1..].join(" ");
 				DotCommandResult::Reauthenticate(new_token)
 			}
@@ -212,7 +197,6 @@ fn print_query_result(frames: &[Frame], display_mode: DisplayMode) {
 		return;
 	}
 
-	// Get terminal width if in truncate mode
 	let max_width = match display_mode {
 		DisplayMode::Truncate => terminal_size().map(|(Width(w), _)| w as usize),
 		DisplayMode::Full => None,
@@ -223,7 +207,6 @@ fn print_query_result(frames: &[Frame], display_mode: DisplayMode) {
 			println!("--- Frame {} ---", i + 1);
 		}
 
-		// Use custom formatting if width specified
 		if let Some(width) = max_width {
 			print_frame_truncated(frame, width);
 		} else {
@@ -239,24 +222,20 @@ fn print_frame_truncated(frame: &Frame, max_width: usize) {
 	let row_count = frame.first().map_or(0, |c| c.data.len());
 	let has_row_numbers = !frame.row_numbers().is_empty();
 
-	// Calculate natural column widths (without padding)
 	let mut natural_widths: Vec<usize> = Vec::new();
 
-	// Row number column
 	if has_row_numbers {
 		let header_width = "rownum".width();
 		let max_val_width = frame.row_numbers().iter().map(|rn| rn.to_string().width()).max().unwrap_or(0);
 		natural_widths.push(header_width.max(max_val_width));
 	}
 
-	// Regular columns
 	for col in &frame.columns {
 		let header_width = col.name.width();
 		let max_val_width = (0..col.data.len()).map(|i| col.data.as_string(i).width()).max().unwrap_or(0);
 		natural_widths.push(header_width.max(max_val_width));
 	}
 
-	// Determine how many columns fit
 	// Format: "| col1 | col2 | col3 |"
 	// Each column: " content " (2 padding) + "|" separator
 	let mut num_cols_to_show = 0;
@@ -272,19 +251,16 @@ fn print_frame_truncated(frame: &Frame, max_width: usize) {
 		}
 	}
 
-	// If all columns fit, use normal display
 	if num_cols_to_show == natural_widths.len() {
 		println!("{}", frame);
 		return;
 	}
 
-	// If no columns fit, fall back to full display
 	if num_cols_to_show == 0 {
 		println!("{}", frame);
 		return;
 	}
 
-	// Build separator for visible columns
 	let sep: String = natural_widths
 		.iter()
 		.take(num_cols_to_show)
@@ -294,7 +270,6 @@ fn print_frame_truncated(frame: &Frame, max_width: usize) {
 
 	println!("{}", sep);
 
-	// Build header
 	let mut header_parts = Vec::new();
 	let mut col_idx = 0;
 
@@ -324,7 +299,6 @@ fn print_frame_truncated(frame: &Frame, max_width: usize) {
 	println!("|{}|", header_parts.join("|"));
 	println!("{}", sep);
 
-	// Build rows
 	for row_idx in 0..row_count {
 		let mut row_parts = Vec::new();
 		let mut col_idx = 0;

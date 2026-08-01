@@ -817,7 +817,6 @@ pub fn from_json(json: &str) -> Result<Expression> {
 pub mod tests {
 	use super::*;
 
-	// Helper functions to create test expressions
 	fn column_expr(name: &str) -> Expression {
 		Expression::Column(ColumnExpression(ColumnIdentifier {
 			object: ColumnObject::Qualified {
@@ -1509,7 +1508,8 @@ pub mod tests {
 
 	#[test]
 	fn test_complex_nested_expression() {
-		// Build: (age > 18 AND status = 'active') OR (role = 'admin')
+		// The tree is `(age > 18 and status == "active") or role == "admin"`; nesting is what the round trip
+		// has to preserve.
 		let expr = Expression::Or(OrExpression {
 			left: Box::new(Expression::And(AndExpression {
 				left: Box::new(Expression::GreaterThan(GreaterThanExpression {
@@ -1536,7 +1536,6 @@ pub mod tests {
 		let recovered = from_json(&json).unwrap();
 		assert_eq!(to_json(&recovered), json);
 
-		// Verify pretty print works
 		let pretty = to_json_pretty(&expr);
 		assert!(pretty.contains('\n'));
 		assert!(pretty.contains("greater_than"));

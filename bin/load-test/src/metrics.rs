@@ -10,26 +10,19 @@ use std::{
 use hdrhistogram::Histogram;
 use reifydb::runtime::sync::mutex::Mutex;
 
-/// Metrics collector for benchmark results
 pub struct Metrics {
-	// Atomic counters for fast path
 	pub total_requests: AtomicU64,
 	pub successful_requests: AtomicU64,
 	pub failed_requests: AtomicU64,
 
-	// Latency histogram (protected by mutex)
-	// Range: 1 microsecond to 60 seconds, 3 significant figures
 	latency_histogram: Mutex<Histogram<u64>>,
 
-	// Start time for throughput calculation
 	start_time: Mutex<Option<Instant>>,
 
-	// Error categorization
 	error_counts: Mutex<HashMap<String, u64>>,
 }
 
 impl Metrics {
-	/// Create a new metrics collector
 	pub fn new() -> Self {
 		Self {
 			total_requests: AtomicU64::new(0),
@@ -44,29 +37,25 @@ impl Metrics {
 		}
 	}
 
-	/// Start the benchmark timer
 	pub fn start(&self) {
 		let mut start = self.start_time.lock();
 		*start = Some(Instant::now());
 	}
 
-	/// Record only the success count (no latency) - for use with per-worker histograms
+	/// Latency is recorded in the caller's per-worker histogram, avoiding mutex contention.
 	pub fn record_success_count_only(&self) {
 		self.successful_requests.fetch_add(1, Ordering::Relaxed);
 		self.total_requests.fetch_add(1, Ordering::Relaxed);
 	}
 
-	/// Merge a worker's histogram into the global histogram
 	pub fn merge_histogram(&self, other: &Histogram<u64>) {
 		self.latency_histogram.lock().add(other).ok();
 	}
 
-	/// Record a failed request
 	pub fn record_error(&self, error: &str) {
 		self.failed_requests.fetch_add(1, Ordering::Relaxed);
 		self.total_requests.fetch_add(1, Ordering::Relaxed);
 
-		// Categorize error (truncate long messages)
 		let error_key = if error.len() > 100 {
 			format!("{}...", &error[..97])
 		} else {
@@ -76,7 +65,6 @@ impl Metrics {
 		*self.error_counts.lock().entry(error_key).or_insert(0) += 1;
 	}
 
-	/// Reset metrics for a new run (e.g., after warmup)
 	pub fn reset(&self) {
 		self.total_requests.store(0, Ordering::Relaxed);
 		self.successful_requests.store(0, Ordering::Relaxed);
@@ -86,12 +74,10 @@ impl Metrics {
 		*self.start_time.lock() = Some(Instant::now());
 	}
 
-	/// Get the current request count
 	pub fn current_count(&self) -> u64 {
 		self.total_requests.load(Ordering::Relaxed)
 	}
 
-	/// Generate a summary of the metrics
 	pub fn summary(&self) -> MetricsSummary {
 		let histogram = self.latency_histogram.lock();
 		let start = self.start_time.lock();
@@ -125,7 +111,6 @@ impl Metrics {
 		}
 	}
 
-	/// Get the top N errors by count
 	fn top_errors(&self, n: usize) -> Vec<(String, u64)> {
 		let errors = self.error_counts.lock();
 		let mut sorted: Vec<_> = errors.iter().map(|(k, v)| (k.clone(), *v)).collect();
@@ -141,7 +126,6 @@ impl Default for Metrics {
 	}
 }
 
-/// Summary of benchmark metrics
 #[derive(Debug)]
 pub struct MetricsSummary {
 	pub total_requests: u64,
@@ -161,7 +145,6 @@ pub struct MetricsSummary {
 }
 
 impl MetricsSummary {
-	/// Get the error rate as a percentage
 	pub fn error_rate(&self) -> f64 {
 		if self.total_requests > 0 {
 			(self.failed_requests as f64 / self.total_requests as f64) * 100.0

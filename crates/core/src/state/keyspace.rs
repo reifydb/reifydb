@@ -88,10 +88,9 @@ mod tests {
 
 	#[test]
 	fn probes_are_untracked_until_hydration_installs_an_index() {
-		// A pre-hydration filter must never answer: an Untracked probe forces the
-		// caller to read the store, which is the only safe default before the
-		// keyspace has been scanned. DefinitelyAbsent here would be silent state
-		// loss for every key written before this process started.
+		// Before the keyspace is scanned the only safe answer is Untracked, which forces a store
+		// read; DefinitelyAbsent would be silent state loss for every key written before this
+		// process started.
 		let membership = KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP);
 		assert_eq!(membership.probe(42), MembershipAnswer::Untracked);
 		assert!(!membership.is_hydrated());
@@ -105,9 +104,8 @@ mod tests {
 
 	#[test]
 	fn multiset_semantics_keep_presence_until_the_last_instance_is_removed() {
-		// Join sides store many rows per key hash: one filter instance per row.
-		// Removing one row of two must NOT flip the key to absent - that would
-		// make contains_key deny a key that still has matches (wrong join output).
+		// Join sides store one filter instance per row, so removing one row of two must not flip the
+		// key to absent - contains_key would then deny a key that still has matches.
 		let membership = KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP);
 		membership.install(&[]);
 		membership.insert(7);
@@ -122,12 +120,9 @@ mod tests {
 
 	#[test]
 	fn invalidation_forces_a_rebuild_that_drops_instances_the_substrate_deleted() {
-		// Group reclamation deletes every row of a key behind the operator's back and
-		// reports only the group id - with no transaction, and no count of how many rows
-		// went. remove() decrements one instance, so a key that held N rows would strand
-		// N-1 of them and read maybe-present forever. Invalidation is the only exact
-		// correction available: the next install rebuilds from what the store actually
-		// holds instead of decrementing from a count that can no longer be trusted.
+		// Group reclamation deletes every row of a key and reports only the group id, with no row
+		// count. remove() decrements one instance, so a key that held N rows would strand N-1 and
+		// read maybe-present forever; only a rebuild from the store is an exact correction.
 		let membership = KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP);
 		membership.install(&[]);
 		for _ in 0..3 {
@@ -148,10 +143,8 @@ mod tests {
 
 	#[test]
 	fn safe_overcount_degrades_to_a_false_positive_never_a_false_absence() {
-		// Blind inserts (put_row with unknown prior presence) may over-count. The
-		// stale instance must surface as a counted false positive on the verify
-		// read, never as a false absence: the caller sees MaybePresent, reads the
-		// store, finds nothing, and records the miss.
+		// A blind insert with unknown prior presence may over-count; the stale instance must surface
+		// as a counted false positive on the verify read, never as a false absence.
 		let membership = KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP);
 		membership.install(&[]);
 		membership.insert(9);
@@ -167,13 +160,9 @@ mod tests {
 
 	#[test]
 	fn a_hot_key_no_longer_costs_the_keyspace_its_index() {
-		// Regression pin for the production discard: every hash-join node in the
-		// 2026-07-21 profile showed revocations=1 because one hot join key (one
-		// filter instance per stored row) chained the cuckoo filter to its byte
-		// cap, and the next insert discarded the whole side into permanent
-		// read-through. Hundreds of instances of one hash must leave the index
-		// alive, other keys' absence proofs intact, and count no revocation -
-		// and the drained hot key must still flip back to an exact RAM absence.
+		// One hot join key holds one filter instance per stored row; chaining those to the byte cap
+		// used to discard the whole side into permanent read-through. Hundreds of instances of one
+		// hash must leave the index alive, other keys' absence proofs intact, and count no revocation.
 		let membership = KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP);
 		membership.install(&[]);
 		for _ in 0..500 {
@@ -201,10 +190,8 @@ mod tests {
 
 	#[test]
 	fn exceeding_the_byte_cap_discards_the_index_and_counts_a_revocation() {
-		// A filter that cannot grow must degrade to read-through (Untracked), not
-		// drop instances: a partial filter would produce false absences. The
-		// discard surfaces through the revocations counter so the [memory] log
-		// shows why a node lost membership_complete mid-run.
+		// A filter that cannot grow must degrade to Untracked rather than drop instances, since a
+		// partial filter produces false absences; the revocations counter records why.
 		let membership = KeyspaceMembership::new(64);
 		membership.install(&[]);
 		for hash in 0..100_000u64 {
@@ -218,9 +205,8 @@ mod tests {
 
 	#[test]
 	fn install_over_cap_leaves_the_keyspace_untracked() {
-		// Hydrating a keyspace larger than the cap must land in the same safe
-		// Untracked mode as a mid-run overflow; a truncated install would deny
-		// every key the scan could not fit.
+		// Hydrating a keyspace larger than the cap must land in the same Untracked mode as a mid-run
+		// overflow; a truncated install would deny every key the scan could not fit.
 		let membership = KeyspaceMembership::new(64);
 		let hashes: Vec<u64> = (0..100_000).collect();
 		membership.install(&hashes);
@@ -230,8 +216,8 @@ mod tests {
 
 	#[test]
 	fn record_store_miss_without_an_index_counts_nothing() {
-		// Untracked mode reads through by design; those misses are not filter
-		// false positives and counting them would drown the real FP signal.
+		// Untracked mode reads through by design, so those misses are not filter false positives and
+		// counting them would drown the real signal.
 		let membership = KeyspaceMembership::new(MEMBERSHIP_BYTE_CAP);
 		membership.record_store_miss();
 		assert_eq!(membership.completeness().false_positives.as_u64(), 0);

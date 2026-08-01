@@ -1,30 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Multi-threaded concurrency stress for StandardMultiStore.
-//!
-//! NON-DETERMINISTIC by construction (real threads + the background flush/compaction actors under default
-//! threaded pools), so it deliberately steps outside the project's seed-replay rule and is `#[ignore]`d -
-//! it runs only on demand (`--ignored` or `make test-chaos-concurrency`), never in the deterministic
-//! suite. It exists to confirm or refute the concurrency windows a single-threaded test cannot reach
-//! (read-cache populate-vs-invalidate, flush-actor vs commit, concurrent reads during cache churn).
-//!
-//! Checkable despite non-determinism via disjoint key ownership: writer `t` owns exactly the rows where
-//! `row % writers == t`, so no two threads ever write the same key and each key's final value is
-//! deterministic (its owner's last op), regardless of global interleaving. Readers run concurrently and
-//! assert only invariants that hold under ANY interleaving:
-//!   - every value returned decodes to `t:row:seq` with `t == row % writers` (a torn read, cross-key cache bleed, or
-//!     garbage value breaks this);
-//!   - a range result has no duplicate keys and is correctly ordered.
-//! After all threads join (and a final blocking flush), each partition's scan must equal its writer's
-//! recorded last-written map - the exact, deterministic end check.
-//!
-//! Scope: writers do Set / Remove (tombstone) / blocking-flush on source rows, plus Set / Drop on a
-//! parallel operator-state keyspace under the same disjoint ownership, while a pump thread settles
-//! compaction runs concurrently. Physical delete and TTL are covered deterministically by the
-//! lifecycle/multiobject entries; here the point is the actor-vs-commit-vs-read and purge-vs-warm
-//! races, so the final per-key state stays cleanly determined by the owner's last op (a key whose
-//! last op was Drop must be absent after the final flush and pump).
+//! Multi-threaded concurrency stress for StandardMultiStore. Non-deterministic by construction (real
+//! threads plus the background actors), so it steps outside the seed-replay rule and is `#[ignore]`d.
+//! Writer `t` owns exactly the rows where `row % writers == t`, which is what keeps each key's final
+//! value deterministic - its owner's last op - under any interleaving, so the run stays checkable.
 
 use std::{
 	collections::BTreeMap,
@@ -306,8 +286,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 			}));
 		}
 
-		// Watchdog: a worker hang (e.g. the suspected populate-vs-invalidate lock cycle) shows up as the
-		// stop counter never reaching `writers` within the timeout.
+		// A worker hang surfaces as the stop counter never reaching `writers` within the timeout.
 		while stop.load(Ordering::SeqCst) < cfg.writers {
 			assert!(
 				start.elapsed() < cfg.timeout.to_std(),

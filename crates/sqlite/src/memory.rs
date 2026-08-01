@@ -13,8 +13,7 @@ use rusqlite::{
 };
 
 pub fn global_memory_used() -> ByteSize {
-	// SAFETY: sqlite3_memory_used takes no arguments and dereferences no caller-supplied pointers; the
-
+	// SAFETY: takes no arguments and dereferences nothing; SQLite guards the counter internally.
 	let used = unsafe { sqlite3_memory_used() };
 	ByteSize::from_bytes(used.max(0) as u64)
 }
@@ -37,8 +36,7 @@ pub fn sweep_connection_cache(conn: &Connection) -> ConnectionCacheSweep {
 fn db_status(conn: &Connection, op: c_int, reset: bool) -> u64 {
 	let mut current: c_int = 0;
 	let mut highwater: c_int = 0;
-	// SAFETY: the handle is a live sqlite3* for the duration of the borrow of `conn`, and
-
+	// SAFETY: the handle is a live sqlite3* for the borrow of `conn`, and both out-params are owned locals.
 	let rc = unsafe { sqlite3_db_status(conn.handle(), op, &mut current, &mut highwater, reset as c_int) };
 	if rc == SQLITE_OK {
 		current.max(0) as u64
@@ -55,9 +53,8 @@ mod tests {
 
 	#[test]
 	fn sweep_resets_hit_and_miss_counters_but_not_used() {
-		// The sweep is take-and-reset so that partial sweeps across a pool stay
-		// additive: every hit/miss is handed out exactly once. `used` is the
-		// instantaneous page-cache size and must survive the sweep.
+		// The sweep is take-and-reset so partial sweeps across a pool stay additive: every hit and
+		// miss is handed out exactly once. `used` is instantaneous and must survive the sweep.
 		let conn = Connection::open_in_memory().expect("open in-memory db");
 		conn.execute_batch(
 			"CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT); \

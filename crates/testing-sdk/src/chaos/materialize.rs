@@ -229,9 +229,8 @@ mod tests {
 
 	#[test]
 	fn many_inserts_with_collisions_keep_latest() {
-		// Same output key appears in multiple Inserts (legal at the
-		// materialization layer because the operator may have remapped
-		// RowNumbers). The last one wins.
+		// Colliding output keys are legal here because the operator may have remapped row
+		// numbers, so the last write has to win.
 		let history = vec![change(vec![
 			Diff::insert(Columns::from_row(&build_row(1, 5, 10.0))),
 			Diff::insert(Columns::from_row(&build_row(2, 5, 20.0))),
@@ -276,7 +275,6 @@ mod tests {
 
 	#[test]
 	fn materialize_batches_inserts_updates_removes() {
-		// Smoke test the batch-side fold against a constructed log.
 		let s = shape();
 		let row1 = build_row(1, 7, 1.0);
 		let row2 = build_row(1, 7, 2.5);
@@ -297,7 +295,6 @@ mod tests {
 		let row = table.get(&OutputKey::new(vec![Value::uint8(7u64)])).unwrap();
 		assert_eq!(row.get("v"), Some(&Value::float8(2.5_f64)));
 
-		// Now remove it.
 		let mut events_with_remove = events;
 		events_with_remove.push(ChaosEvent::Remove {
 			row_number: RowNumber(1),
@@ -313,11 +310,8 @@ mod tests {
 
 	#[test]
 	fn datetime_and_duration_columns_survive_materialization() {
-		// A DateTime/Duration column must round-trip through
-		// row_to_materialized intact. Before DateTime/Duration cases
-		// existed they fell through to Value::none_of, nulling the
-		// operator's emitted window_start and breaking output-key
-		// comparison.
+		// A temporal column that falls through to Value::none_of turns the operator's emitted
+		// window_start into none, and output-key comparison then misses the row entirely.
 		let s = RowShape::new(vec![
 			RowShapeField::unconstrained("window_start", ValueType::DateTime),
 			RowShapeField::unconstrained("window_duration", ValueType::Duration),
@@ -338,7 +332,7 @@ mod tests {
 			row,
 		}];
 		let batches = vec![ChaosBatch::new(events)];
-		// Key on the DateTime column - this is the path that regressed.
+		// Keying on the DateTime column is what forces the round-trip to be exact.
 		let table = materialize_batches(&batches, &["window_start".to_string()]);
 		assert_eq!(table.len(), 1);
 		let stored = table
@@ -351,9 +345,8 @@ mod tests {
 
 	#[test]
 	fn date_and_time_columns_survive_materialization() {
-		// A Date/Time column must round-trip through row_to_materialized intact.
-		// Before Date/Time cases existed they fell through to Value::none_of,
-		// nulling emitted columns and breaking output-key comparison.
+		// Same round-trip requirement for Date and Time: falling through to Value::none_of
+		// erases the emitted column and output-key comparison misses the row.
 		let s = RowShape::new(vec![
 			RowShapeField::unconstrained("window_date", ValueType::Date),
 			RowShapeField::unconstrained("window_time", ValueType::Time),

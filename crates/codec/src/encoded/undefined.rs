@@ -37,12 +37,10 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean]);
 		let mut row = shape.allocate();
 
-		// Set a value
 		shape.set::<bool>(&mut row, 0, true);
 		assert!(row.is_defined(0));
 		assert_eq!(shape.try_get::<bool>(&row, 0), Some(true));
 
-		// Set as undefined
 		shape.set_none(&mut row, 0);
 		assert!(!row.is_defined(0));
 		assert_eq!(shape.try_get::<bool>(&row, 0), None);
@@ -53,12 +51,10 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Int4]);
 		let mut row = shape.allocate();
 
-		// Set a value
 		shape.set::<i32>(&mut row, 0, 12345i32);
 		assert!(row.is_defined(0));
 		assert_eq!(shape.try_get::<i32>(&row, 0), Some(12345));
 
-		// Set as undefined
 		shape.set_none(&mut row, 0);
 		assert!(!row.is_defined(0));
 		assert_eq!(shape.try_get::<i32>(&row, 0), None);
@@ -69,12 +65,10 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Utf8]);
 		let mut row = shape.allocate();
 
-		// Set a string value
 		shape.set_utf8(&mut row, 0, "hello world");
 		assert!(row.is_defined(0));
 		assert_eq!(shape.try_get_utf8(&row, 0), Some("hello world"));
 
-		// Set as undefined
 		shape.set_none(&mut row, 0);
 		assert!(!row.is_defined(0));
 		assert_eq!(shape.try_get_utf8(&row, 0), None);
@@ -85,7 +79,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Int4, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
-		// Set all fields
 		shape.set::<bool>(&mut row, 0, true);
 		shape.set::<i32>(&mut row, 1, 42i32);
 		shape.set_utf8(&mut row, 2, "test");
@@ -94,7 +87,6 @@ pub mod tests {
 		assert!(row.is_defined(1));
 		assert!(row.is_defined(2));
 
-		// Set middle field as undefined
 		shape.set_none(&mut row, 1);
 
 		assert!(row.is_defined(0));
@@ -111,7 +103,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Int4, ValueType::Float8]);
 		let mut row = shape.allocate();
 
-		// Set all fields
 		shape.set::<bool>(&mut row, 0, false);
 		shape.set::<i32>(&mut row, 1, -999i32);
 		shape.set::<f64>(&mut row, 2, 3.14159f64);
@@ -120,7 +111,6 @@ pub mod tests {
 		assert!(row.is_defined(1));
 		assert!(row.is_defined(2));
 
-		// Set all as undefined
 		shape.set_none(&mut row, 0);
 		shape.set_none(&mut row, 1);
 		shape.set_none(&mut row, 2);
@@ -136,7 +126,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Int8]);
 		let mut row = shape.allocate();
 
-		// Set, unset, then set again
 		shape.set::<i64>(&mut row, 0, 100i64);
 		assert_eq!(shape.try_get::<i64>(&row, 0), Some(100));
 
@@ -157,7 +146,6 @@ pub mod tests {
 		]);
 		let mut row = shape.allocate();
 
-		// Set temporal values
 		let date = Date::new(2025, 1, 15).unwrap();
 		let datetime = DateTime::from_timestamp(1642694400).unwrap();
 		let time = Time::from_hms(14, 30, 45).unwrap();
@@ -168,17 +156,14 @@ pub mod tests {
 		shape.set::<Time>(&mut row, 2, time.clone());
 		shape.set::<Duration>(&mut row, 3, duration.clone());
 
-		// Verify all are defined
 		assert!(row.is_defined(0));
 		assert!(row.is_defined(1));
 		assert!(row.is_defined(2));
 		assert!(row.is_defined(3));
 
-		// Set some as undefined
 		shape.set_none(&mut row, 0);
 		shape.set_none(&mut row, 2);
 
-		// Check results
 		assert!(!row.is_defined(0));
 		assert!(row.is_defined(1));
 		assert!(!row.is_defined(2));
@@ -196,7 +181,6 @@ pub mod tests {
 		let mut row = shape.allocate();
 		let (_mock, clock, rng) = test_clock_and_rng();
 
-		// Set UUID values
 		let uuid4 = Uuid4::generate();
 		let uuid7 = Uuid7::generate(&clock, &rng);
 		let identity_id = IdentityId::generate(&clock, &rng);
@@ -205,15 +189,12 @@ pub mod tests {
 		shape.set::<Uuid7>(&mut row, 1, uuid7.clone());
 		shape.set::<IdentityId>(&mut row, 2, identity_id.clone());
 
-		// All should be defined
 		assert!(row.is_defined(0));
 		assert!(row.is_defined(1));
 		assert!(row.is_defined(2));
 
-		// Set UUID7 as undefined
 		shape.set_none(&mut row, 1);
 
-		// Check results
 		assert!(row.is_defined(0));
 		assert!(!row.is_defined(1));
 		assert!(row.is_defined(2));
@@ -228,7 +209,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Decimal, ValueType::Int, ValueType::Uint]);
 		let mut row = shape.allocate();
 
-		// Set values
 		let decimal = Decimal::from_str("123.45").unwrap();
 		let int = Int::from(i64::MAX);
 		let uint = Uint::from(u64::MAX);
@@ -237,16 +217,13 @@ pub mod tests {
 		shape.set_int(&mut row, 1, &int);
 		shape.set_uint(&mut row, 2, &uint);
 
-		// All should be defined
 		assert!(row.is_defined(0));
 		assert!(row.is_defined(1));
 		assert!(row.is_defined(2));
 
-		// Set some as undefined
 		shape.set_none(&mut row, 0);
 		shape.set_none(&mut row, 2);
 
-		// Check results
 		assert!(!row.is_defined(0));
 		assert!(row.is_defined(1));
 		assert!(!row.is_defined(2));
@@ -261,18 +238,15 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Blob]);
 		let mut row = shape.allocate();
 
-		// Set a blob value
 		let blob = Blob::from_slice(&[1, 2, 3, 4, 5]);
 		shape.set_blob(&mut row, 0, &blob);
 		assert!(row.is_defined(0));
 		assert_eq!(shape.try_get_blob(&row, 0), Some(blob.clone()));
 
-		// Set as undefined
 		shape.set_none(&mut row, 0);
 		assert!(!row.is_defined(0));
 		assert_eq!(shape.try_get_blob(&row, 0), None);
 
-		// Set again with different value
 		let blob2 = Blob::from_slice(&[10, 20, 30]);
 		shape.set_blob(&mut row, 0, &blob2);
 		assert!(row.is_defined(0));
@@ -290,18 +264,14 @@ pub mod tests {
 		]);
 		let mut row = shape.allocate();
 
-		// Set all as true
 		for i in 0..5 {
 			shape.set::<bool>(&mut row, i, true);
 		}
 
-		// Set every other field as undefined
 		for i in (0..5).step_by(2) {
 			shape.set_none(&mut row, i);
 		}
 
-		// Check pattern: undefined, defined, undefined, defined,
-		// undefined
 		assert!(!row.is_defined(0));
 		assert!(row.is_defined(1));
 		assert!(!row.is_defined(2));

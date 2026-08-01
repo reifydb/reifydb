@@ -1,20 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Window-flavoured parameter draws. The seed-splitting, option-picking and failure-reporting
-//! primitives these build on are shared workspace-wide in `reifydb_testing_chaos::fuzz`; what stays
-//! here is the part that only means something for a windowing operator.
+//! Window-flavoured parameter draws. The shared seed-splitting, option-picking and reporting
+//! primitives live in `reifydb_testing_chaos::fuzz`.
 
 use rand::{RngExt, rngs::StdRng};
 use reifydb_testing_chaos::fuzz::pick;
 
-/// Grace expressed as a RATIO of the window size, not as an absolute.
-///
-/// The ratio is what changes behaviour: at 0 a window closes the instant it ends, at 1 the seal
-/// horizon is twice the window, and above 1 a coordinate can be new enough to admit while already
-/// being too old to contribute. That last band is where the rolling operator was withdrawing live
-/// groups, and no absolute range would reliably land in it across sizes spanning two orders of
-/// magnitude.
+/// Grace as a ratio of the window size, not an absolute: only the ratio changes behaviour, and above
+/// 1 a coordinate can be new enough to admit while already too old to contribute. No absolute range
+/// lands in that band across sizes spanning two orders of magnitude.
 const GRACE_RATIOS: [(u64, u64); 5] = [(0, 1), (1, 2), (1, 1), (2, 1), (3, 1)];
 
 pub fn grace_secs(rng: &mut StdRng, size_secs: u64) -> u64 {
@@ -38,10 +33,9 @@ pub struct Mix {
 	pub seal_pct: u32,
 }
 
-/// Total row work is capped so one unlucky draw cannot dominate the suite's runtime, and the three
-/// mutation shares are drawn against a shrinking remainder rather than independently. Drawn
-/// independently they can sum past 100, and a sweep that seals and retracts more often than it
-/// inserts spends its steps against an operator that is mostly empty.
+/// Total row work is capped so one unlucky draw cannot dominate runtime, and the three mutation
+/// shares are drawn against a shrinking remainder: drawn independently they can sum past 100, and a
+/// sweep that seals and retracts more often than it inserts runs against a mostly empty operator.
 pub fn mix(rng: &mut StdRng) -> Mix {
 	const INSERT_FLOOR_PCT: u32 = 15;
 	const MAX_ROWS: u32 = 240;

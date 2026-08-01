@@ -240,7 +240,7 @@ pub mod tests {
 
 	#[test]
 	fn test_invalid_range_returns_none() {
-		// start > end should return None
+		// An inverted range has no rows, so it must decline rather than produce an empty-but-valid predicate.
 		let between = BetweenExpression {
 			value: Box::new(make_rownum_column()),
 			lower: Box::new(make_constant(100)),

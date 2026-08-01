@@ -1,17 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Multi-frame round-trip regression tests for RBCF.
-//!
-//! Reproduces the bug where multi-statement RQL responses containing a
-//! `sort | take {N}` frame become undecodable: the decoder reads garbage
-//! at byte 1 of a column descriptor (observed encoding tags 64, 212, 125
-//! across runs - classic byte-misalignment signature). Single-statement
-//! sort+take and multi-statement-without-sort both decode cleanly.
-//!
-//! These tests focus on multi-frame buffers where one or more frames
-//! carry populated `row_numbers` / `created_at` / `updated_at` metadata
-//! arrays - the shape an operator like `sort | take` produces.
+//! Multi-frame RBCF round trips where only some frames carry populated system columns. A frame
+//! whose metadata arrays are present shifts the byte offsets of everything after it, so a decoder
+//! that mistakes their length reads the next column descriptor misaligned.
 
 use reifydb_codec::frame::{decode::decode_frames, encode::encode_frames, options::EncodeOptions};
 use reifydb_value::value::{
@@ -98,34 +90,26 @@ fn frame_with_metadata(name: &str, values: Vec<i32>) -> Frame {
 
 #[test]
 fn two_frames_no_metadata() {
-	// Sanity: matches the existing `multi_frame` test in metadata.rs.
 	round_trip_multi(vec![frame_int4("a", vec![1, 2]), frame_int4("b", vec![10, 20])]);
 }
 
 #[test]
 fn two_frames_both_with_metadata() {
-	// Both frames have populated row_numbers + created_at + updated_at,
-	// length matching their single column. This is the shape produced by
-	// two `sort | take {N}` statements in a multi-statement RQL.
 	round_trip_multi(vec![frame_with_metadata("a", vec![1, 2, 3]), frame_with_metadata("b", vec![10, 20, 30])]);
 }
 
 #[test]
 fn metadata_then_no_metadata() {
-	// First frame is `sort+take`-shaped, second is `aggregate`-shaped.
 	round_trip_multi(vec![frame_with_metadata("a", vec![1, 2, 3]), frame_int4("b", vec![10, 20, 30])]);
 }
 
 #[test]
 fn no_metadata_then_metadata() {
-	// First frame is `aggregate`-shaped, second is `sort+take`-shaped.
 	round_trip_multi(vec![frame_int4("a", vec![1, 2, 3]), frame_with_metadata("b", vec![10, 20, 30])]);
 }
 
 #[test]
 fn three_frames_alternating_metadata() {
-	// Mimics the token_overview handler shape: a sort+take frame, then
-	// an aggregate frame, then another sort+take frame.
 	round_trip_multi(vec![
 		frame_with_metadata("a", vec![1]),
 		frame_int4("b", vec![100, 200]),
@@ -185,10 +169,8 @@ fn two_frames_only_created_at() {
 
 #[test]
 fn frame_with_only_metadata_take_one_then_aggregate() {
-	// The minimal reproducer of the observed birdeye bug: the first
-	// frame has exactly one row plus row_numbers/created_at/updated_at
-	// populated to length 1 (the `sort | take {1}` shape), the second
-	// is the markets-count aggregate (no metadata, multi-row).
+	// The narrowest case: a single-row frame whose metadata arrays are length 1, followed by a
+	// multi-row frame with none, so a decoder that reuses the first frame's lengths misaligns.
 	let sort_take_frame = Frame {
 		system: SystemColumns::new(
 			vec![RowNumber::new(42)],

@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// flush_state must be deferred to the explicit flush, not run inside apply. The
-// probe writes its state only in flush_state, so the value must be invisible
-// after apply and visible only after flush. A backend that flushed per-apply
-// would make the value visible too early and fail this.
+// flush_state must be deferred to the explicit flush, not run inside apply. The probe writes its
+// state only in flush_state, so a backend that flushed per-apply reveals the value too early.
 
 use reifydb_test_harness::operator::change::trigger;
 

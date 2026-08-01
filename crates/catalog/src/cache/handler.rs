@@ -100,6 +100,8 @@ mod tests {
 
 	#[test]
 	fn concurrently_registered_handlers_on_one_variant_are_all_indexed() {
+		// Two CREATE HANDLER transactions on one variant have disjoint read/write sets, so the
+		// oracle lets both commit and the post-commit interceptor updates the cache unserialised.
 		const ROUNDS: usize = 1000;
 
 		let variant = VariantRef {
@@ -111,10 +113,6 @@ mod tests {
 			let cache = CatalogCache::new();
 			let barrier = Arc::new(Barrier::new(2));
 
-			// Two CREATE HANDLER transactions on the same event variant, in different namespaces.
-			// Their read and write sets are disjoint, so the oracle does not make them conflict and
-			// both commit; the cache is then updated from the post-commit interceptor, which nothing
-			// serialises.
 			let threads: Vec<_> = [1u64, 2u64]
 				.into_iter()
 				.map(|id| {

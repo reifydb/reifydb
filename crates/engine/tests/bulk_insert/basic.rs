@@ -154,13 +154,11 @@ fn test_mixed_table_and_ringbuffer() {
 	assert_eq!(result.ringbuffers.len(), 1);
 	assert_eq!(result.ringbuffers[0].inserted, 3);
 
-	// Verify table values (order-independent)
 	let table_frames = t.query("FROM test::logs");
 	let mut table_ids: Vec<_> = table_frames[0].rows().map(|r| r.get::<i32>("id").unwrap().unwrap()).collect();
 	table_ids.sort();
 	assert_eq!(table_ids, vec![1, 2]);
 
-	// Verify ringbuffer values (order-independent)
 	let rb_frames = t.query("FROM test::stream");
 	let mut rb_seqs: Vec<_> = rb_frames[0].rows().map(|r| r.get::<i32>("seq").unwrap().unwrap()).collect();
 	rb_seqs.sort();
@@ -187,12 +185,10 @@ fn test_multiple_tables() {
 	assert_eq!(result.tables[1].table, "table_b");
 	assert_eq!(result.tables[1].inserted, 2);
 
-	// Verify table_a values
 	let frames_a = t.query("FROM test::table_a");
 	let values_a: Vec<_> = frames_a[0].rows().map(|r| r.get::<i32>("a").unwrap().unwrap()).collect();
 	assert_eq!(values_a, vec![1]);
 
-	// Verify table_b values (order-independent)
 	let frames_b = t.query("FROM test::table_b");
 	let mut values_b: Vec<_> = frames_b[0].rows().map(|r| r.get::<i32>("b").unwrap().unwrap()).collect();
 	values_b.sort();
@@ -224,7 +220,8 @@ fn test_qualified_name_default_namespace() {
 	t.admin("CREATE TABLE default::simple { x: int4 }");
 
 	let mut builder = t.bulk_insert(identity);
-	builder.table("simple").row(params! { x: 1 }).done(); // No namespace prefix, should use "default"
+	// An unqualified name must resolve to the default namespace, not fault.
+	builder.table("simple").row(params! { x: 1 }).done();
 	let result = builder.execute().unwrap();
 
 	assert_eq!(result.tables[0].namespace, "default");
@@ -265,7 +262,6 @@ fn test_single_row_insert() {
 
 	assert_eq!(result.tables[0].inserted, 1);
 
-	// Verify actual values
 	let frames = t.query("FROM test::single");
 	let rows: Vec<_> = frames[0].rows().collect();
 	assert_eq!(rows[0].get::<i32>("id").unwrap(), Some(1));
@@ -289,7 +285,7 @@ fn test_result_structure() {
 	builder.ringbuffer("ns1::rb1").row(params! { c: 4 }).row(params! { c: 5 }).row(params! { c: 6 }).done();
 	let result = builder.execute().unwrap();
 
-	// Verify tables result
+	// Results stay in declaration order and keep tables and ringbuffers in separate lists.
 	assert_eq!(result.tables.len(), 2);
 
 	assert_eq!(result.tables[0].namespace, "ns1");
@@ -300,7 +296,6 @@ fn test_result_structure() {
 	assert_eq!(result.tables[1].table, "t2");
 	assert_eq!(result.tables[1].inserted, 1);
 
-	// Verify ringbuffers result
 	assert_eq!(result.ringbuffers.len(), 1);
 	assert_eq!(result.ringbuffers[0].namespace, "ns1");
 	assert_eq!(result.ringbuffers[0].ringbuffer, "rb1");

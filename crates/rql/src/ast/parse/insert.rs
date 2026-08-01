@@ -154,7 +154,6 @@ pub mod tests {
 	#[test]
 	fn test_insert_with_inline_array() {
 		let bump = Bump::new();
-		// New syntax: no FROM keyword for inline arrays
 		let source = r#"
         INSERT users [{ id: 1, name: "Alice" }]
     "#;
@@ -166,18 +165,15 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let insert = result.first_unchecked().as_insert();
 
-		// Check target
 		assert!(insert.target.namespace.is_empty());
 		assert_eq!(insert.target.name.text(), "users");
 
-		// Check source is FROM with inline data
 		assert!(matches!(*insert.source, Ast::From(AstFrom::Inline { .. })));
 	}
 
 	#[test]
 	fn test_insert_with_namespace() {
 		let bump = Bump::new();
-		// New syntax: no FROM keyword for inline arrays
 		let source = r#"
         INSERT test::users [{ id: 1, name: "Bob" }]
     "#;
@@ -189,7 +185,6 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let insert = result.first_unchecked().as_insert();
 
-		// Check target with namespace
 		assert_eq!(insert.target.namespace[0].text(), "test");
 		assert_eq!(insert.target.name.text(), "users");
 	}
@@ -197,7 +192,6 @@ pub mod tests {
 	#[test]
 	fn test_insert_from_source_table() {
 		let bump = Bump::new();
-		// Table sources still use FROM keyword
 		let source = r#"
         INSERT target_table FROM source_table
     "#;
@@ -209,11 +203,9 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let insert = result.first_unchecked().as_insert();
 
-		// Check target
 		assert!(insert.target.namespace.is_empty());
 		assert_eq!(insert.target.name.text(), "target_table");
 
-		// Check source is FROM with table source
 		if let Ast::From(AstFrom::Source {
 			source,
 			..
@@ -228,7 +220,6 @@ pub mod tests {
 	#[test]
 	fn test_insert_variable() {
 		let bump = Bump::new();
-		// New syntax: no FROM keyword for variables
 		let source = r#"
         INSERT users $data
     "#;
@@ -240,11 +231,9 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let insert = result.first_unchecked().as_insert();
 
-		// Check target
 		assert!(insert.target.namespace.is_empty());
 		assert_eq!(insert.target.name.text(), "users");
 
-		// Check source is FROM with variable
 		assert!(matches!(*insert.source, Ast::From(AstFrom::Variable { .. })));
 	}
 
@@ -275,7 +264,6 @@ pub mod tests {
 	#[test]
 	fn test_insert_multiple_rows() {
 		let bump = Bump::new();
-		// New syntax: no FROM keyword for inline arrays
 		let source = r#"
         INSERT users [
           { id: 1, name: "Alice" },
@@ -291,7 +279,6 @@ pub mod tests {
 		let result = result.pop().unwrap();
 		let insert = result.first_unchecked().as_insert();
 
-		// Check source has 3 rows
 		if let Ast::From(AstFrom::Inline {
 			list,
 			..
@@ -402,10 +389,9 @@ pub mod tests {
 		format!("{:?}", parser.parse().unwrap_err())
 	}
 
-	/// Both options must reach the plan. Dropping one silently would remove either
-	/// the dedup guarantee or the delay the caller asked for.
 	#[test]
 	fn test_insert_with_parses_both_options() {
+		// Dropping either option silently removes a guarantee the caller asked for: the dedup key or the delay.
 		let bump = Bump::new();
 		let statement = parse_one_statement(
 			&bump,
@@ -418,9 +404,9 @@ pub mod tests {
 		assert!(with_options.not_before.is_some());
 	}
 
-	/// Each option stands alone, so a caller may ask for dedup without a delay.
 	#[test]
 	fn test_insert_with_parses_a_single_option() {
+		// Each option stands alone, so a caller may ask for dedup without a delay.
 		let bump = Bump::new();
 		let statement =
 			parse_one_statement(&bump, r#"INSERT test::jobs [{ id: 1 }] WITH { deduplication_key: "k" }"#);
@@ -431,10 +417,10 @@ pub mod tests {
 		assert!(with_options.not_before.is_none(), "an absent option must stay absent");
 	}
 
-	/// An INSERT with no WITH must not fabricate one, or every plain insert would
-	/// take the desugar path and grow hidden columns it never asked for.
 	#[test]
 	fn test_insert_without_with_has_no_options() {
+		// A fabricated WITH would put every plain insert on the desugar path, growing hidden columns it never
+		// asked for.
 		let bump = Bump::new();
 		let statement = parse_one_statement(&bump, "INSERT test::jobs [{ id: 1 }]");
 		let insert = statement.first_unchecked().as_insert();
@@ -442,10 +428,10 @@ pub mod tests {
 		assert!(insert.with_options.is_none());
 	}
 
-	/// WITH sits between the source and RETURNING. If the pipeline parser ever
-	/// consumed the trailing WITH greedily, this ordering would stop parsing.
 	#[test]
 	fn test_insert_with_precedes_returning() {
+		// WITH sits between the source and RETURNING, so a pipeline parser that consumed it greedily would
+		// stop this ordering from parsing at all.
 		let bump = Bump::new();
 		let statement = parse_one_statement(
 			&bump,
@@ -457,17 +443,16 @@ pub mod tests {
 		assert!(insert.returning.is_some(), "RETURNING must survive a preceding WITH");
 	}
 
-	/// A misspelled option is a silently lost guarantee unless the parser rejects it.
 	#[test]
 	fn test_insert_with_rejects_an_unknown_option() {
+		// A misspelled option is a silently lost guarantee unless the parser rejects it.
 		let error = parse_insert_error(r#"INSERT test::jobs [{ id: 1 }] WITH { nope: 1 }"#);
 		assert!(error.contains("nope"), "the error must name the offending option, got: {error}");
 	}
 
-	/// A repeated option is ambiguous, so last-one-wins would apply a guarantee the
-	/// caller did not intend.
 	#[test]
 	fn test_insert_with_rejects_a_repeated_option() {
+		// A repeated option is ambiguous, so last-one-wins would apply a guarantee the caller did not intend.
 		let error =
 			parse_insert_error(r#"INSERT test::jobs [{ id: 1 }] WITH { not_before: a, not_before: b }"#);
 		assert!(error.contains("not_before"), "the error must name the repeated option, got: {error}");

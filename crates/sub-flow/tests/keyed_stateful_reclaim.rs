@@ -2,17 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 //
 //! `KeyedStateful` is the ergonomic way an SDK operator keeps per-key state, and it is what the
-//! chaindex operators are written against. It used to address that state under `GroupId::NODE_SCOPE`,
-//! which no reclaim path can reach: `reclaim_group_data`, `reclaim_group_keyspace` and
-//! `reclaim_group_identity` all return `NOTHING` for node scope. A guest built this way therefore
-//! kept one row per key for the life of the flow, whatever retention it declared, and no declaration
-//! surface could have changed that - the state simply was not addressable by a sweep.
-//!
-//! `custom_operator_reclaim.rs` covers the other shape: an operator that interns its groups by hand.
-//! It passes precisely because it does not use `KeyedStateful`, so it could never have caught this.
-//! This drives the ergonomic path instead, and asserts on the state rows themselves rather than only
-//! on a metrics row, because the failure being guarded is state that survives a sweep the report
-//! already called successful.
+//! chaindex operators are written against. State addressed under node scope is unreachable by every
+//! reclaim path, so these assert on the state rows themselves rather than only on a metrics row.
 
 use std::time::Duration as StdDuration;
 
@@ -74,9 +65,8 @@ const COUNTER_COLUMNS: &[OperatorColumn] = &[
 	},
 ];
 
-// Deliberately written the way a chaindex operator is: `type State` plus `key_types`, taking the
-// default `encode_state_key`. Nothing here mentions groups, which is the point - whether this
-// operator's state can ever be reclaimed is decided entirely by that default.
+// Written the way a chaindex operator is: `type State` plus `key_types`, taking the default
+// `encode_state_key`. Nothing here mentions groups; that default alone decides reclaimability.
 struct Counter;
 
 impl RawStatefulOperator for Counter {}
@@ -131,8 +121,9 @@ impl OperatorLogic for Counter {
 				let total = self.load_state(ctx, &keys)?.unwrap_or(0) + 1;
 				self.save_state(ctx, &keys, &total)?;
 
-				// The same group KeyedStateful interned for this key, resolved again so the
-				// output row number lives under it rather than under node scope.
+				// Interned from the raw key bytes rather than the serialized key values
+				// KeyedStateful uses, so this is its own group; the point is only that the
+				// output row number is group-scoped rather than node-scoped.
 				let group = ctx.intern_group(&group_key(g))?;
 				let (row_number, _is_new) = ctx.get_or_create_row_number(group, &group_key(g))?;
 				row_numbers.push(row_number);
@@ -169,9 +160,8 @@ const RECLAIMED_A_GROUP: &str =
 
 #[test]
 fn a_keyed_stateful_guests_idle_group_is_reclaimed() {
-	// Intent: the ergonomic guest state path is reachable by a sweep at all. With encode_state_key
-	// addressing node scope this could never pass, because the group phases refuse group 0 outright
-	// - and it would fail silently, with the node reported as bounded and its state growing.
+	// The ergonomic guest state path must be reachable by a sweep at all. Addressed at node scope
+	// it never is, and it fails silently: the node is reported bounded while its state grows.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
@@ -194,15 +184,9 @@ fn a_keyed_stateful_guests_idle_group_is_reclaimed() {
 
 #[test]
 fn a_woken_keys_state_restarted_because_the_sweep_actually_erased_it() {
-	// This is the assertion that discriminates, and the metrics row above is not. The operator
-	// interns a group for its output row number regardless of where its state lives, so a group
-	// exists either way and the data phase reports work_done > 0 either way - it just finds an empty
-	// range to erase when the state is at node scope.
-	//
-	// The counter's own value is the honest witness. Key 1 counts to 1, goes idle past its horizon,
-	// then wakes: if the sweep really erased its state the reload misses and it restarts at 1; if
-	// the state survived out of the sweep's reach it continues to 2. Only the second is possible
-	// with node-scoped keys, so this fails on the old encoding and passes on the new one.
+	// The metrics row above does not discriminate: a group exists whatever the state addressing,
+	// so the data phase reports work_done > 0 even when it erases an empty range. The counter's
+	// own value is the honest witness - erased state restarts at 1, surviving state reaches 2.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
@@ -218,10 +202,8 @@ fn a_woken_keys_state_restarted_because_the_sweep_actually_erased_it() {
 
 	db.command(r#"INSERT app::t [{ id: 3, g: 1, ts: "1970-01-01T00:10:00.001Z" }]"#);
 
-	// Settling the flow, not polling for the value being asserted. `await_total(&db, 1, 1)` returned
-	// the instant the total read 1 - which it already did from the first event - so the assertion
-	// below could be evaluated against the pre-insert state and pass whether or not the sweep had
-	// really erased anything.
+	// Settling the flow, not polling for the value asserted: the total already read 1 from the
+	// first event, so a poll would return before the third insert had been applied.
 	assert!(db.await_all_flows(TIMEOUT), "the flow must settle before the total is evidence");
 
 	assert_eq!(

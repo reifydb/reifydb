@@ -86,9 +86,8 @@ pub struct DropBeforeResult {
 	pub more_remaining: bool,
 }
 
-/// Rolls system changes up into one eviction entry per source (`MetricsId`), summing key bytes,
-/// value bytes and count. This is the exact per-source aggregate the metrics gauge subtracts on
-/// eviction; storing it lets eviction avoid decoding payloads.
+/// One entry per source, matching exactly what the metrics gauge subtracts on eviction; storing the
+/// aggregate lets eviction skip decoding payloads.
 pub(crate) fn aggregate_evictions<'a, I>(system_changes: I) -> Vec<CdcEviction>
 where
 	I: IntoIterator<Item = &'a SystemChange>,
@@ -110,7 +109,6 @@ where
 	by_source.into_values().collect()
 }
 
-/// Total number of CDC entries represented by a set of per-source eviction aggregates.
 pub(crate) fn total_evicted_count(evictions: &[CdcEviction]) -> Count {
 	evictions.iter().fold(Count::ZERO, |acc, e| acc.saturating_add(e.count))
 }

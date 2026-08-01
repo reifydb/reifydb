@@ -356,20 +356,17 @@ mod tests {
 	fn test_range_merging_overlapping() {
 		let mut cm = ConflictManager::new();
 
-		// Add overlapping ranges: [a,c) and [b,d) should merge to [a,d)
 		cm.mark_range(EncodedKeyRange::parse("a..c"));
 		cm.mark_range(EncodedKeyRange::parse("b..d"));
 
-		// Should have only 1 merged range
 		assert_eq!(cm.read_ranges.len(), 1);
 
-		// Merged range should cover both
 		let mut cm2 = ConflictManager::new();
-		cm2.mark_write(&create_key("a")); // In original first range
+		cm2.mark_write(&create_key("a")); // only in the first input range
 		assert!(cm.has_conflict(&cm2));
 
 		let mut cm3 = ConflictManager::new();
-		cm3.mark_write(&create_key("c")); // In original second range only
+		cm3.mark_write(&create_key("c")); // only in the second input range
 		assert!(cm.has_conflict(&cm3));
 	}
 
@@ -377,11 +374,9 @@ mod tests {
 	fn test_range_merging_adjacent() {
 		let mut cm = ConflictManager::new();
 
-		// Add adjacent ranges: [a,b] and [b,c] should merge to [a,c]
 		cm.mark_range(EncodedKeyRange::parse("a..=b"));
 		cm.mark_range(EncodedKeyRange::parse("b..=c"));
 
-		// Should have only 1 merged range
 		assert_eq!(cm.read_ranges.len(), 1);
 	}
 
@@ -389,11 +384,9 @@ mod tests {
 	fn test_range_merging_non_overlapping() {
 		let mut cm = ConflictManager::new();
 
-		// Add non-overlapping ranges: [a,b) and [c,d) should stay separate
 		cm.mark_range(EncodedKeyRange::parse("a..b"));
 		cm.mark_range(EncodedKeyRange::parse("c..d"));
 
-		// Should have 2 separate ranges
 		assert_eq!(cm.read_ranges.len(), 2);
 	}
 
@@ -401,12 +394,10 @@ mod tests {
 	fn test_range_merging_multiple() {
 		let mut cm = ConflictManager::new();
 
-		// Add three overlapping ranges that should all merge
 		cm.mark_range(EncodedKeyRange::parse("a..c"));
 		cm.mark_range(EncodedKeyRange::parse("e..g"));
-		cm.mark_range(EncodedKeyRange::parse("b..f")); // Overlaps with both
+		cm.mark_range(EncodedKeyRange::parse("b..f")); // bridges the two disjoint ranges
 
-		// All should merge into one range [a,g)
 		assert_eq!(cm.read_ranges.len(), 1);
 	}
 
@@ -414,7 +405,6 @@ mod tests {
 	fn test_escalation_to_read_all() {
 		let mut cm = ConflictManager::new();
 
-		// Add more than MAX_RANGES_BEFORE_ESCALATION non-overlapping ranges
 		for i in 0..=MAX_RANGES_BEFORE_ESCALATION {
 			let start = format!("{:04}", i * 2);
 			let end = format!("{:04}", i * 2 + 1);
@@ -422,7 +412,6 @@ mod tests {
 			cm.mark_range(range);
 		}
 
-		// Should have escalated to read_all
 		assert!(cm.read_all);
 		assert!(cm.read_ranges.is_empty());
 	}
@@ -431,10 +420,9 @@ mod tests {
 	fn test_read_all_skips_further_ranges() {
 		let mut cm = ConflictManager::new();
 
-		cm.mark_iter(); // Full scan sets read_all
+		cm.mark_iter(); // a full scan escalates straight to read_all
 		assert!(cm.read_all);
 
-		// Adding more ranges should be a no-op
 		cm.mark_range(EncodedKeyRange::parse("a..z"));
 		assert!(cm.read_ranges.is_empty());
 	}
@@ -443,15 +431,13 @@ mod tests {
 	fn test_ranges_sorted_after_insertion() {
 		let mut cm = ConflictManager::new();
 
-		// Add ranges out of order
+		// Merging relies on start-bound order, so insertion order must not survive.
 		cm.mark_range(EncodedKeyRange::parse("m..n"));
 		cm.mark_range(EncodedKeyRange::parse("a..b"));
 		cm.mark_range(EncodedKeyRange::parse("z..zz"));
 
-		// Ranges should be sorted by start bound
 		assert_eq!(cm.read_ranges.len(), 3);
 
-		// Verify order by checking first range starts with 'a'
 		if let (Bound::Included(start), _) = &cm.read_ranges[0] {
 			assert_eq!(start.as_ref(), b"a");
 		} else {

@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// What an UPDATE does to a row's `#time`, end to end, on both domains and on every object kind that
-// supports updates.
-//
-// The unit tests in `vm::instruction::dml::time` pin the resolver's two arms. What they cannot see is
-// the wiring: every update caller has to hand the resolver the row's PREVIOUS `#time`, not the arrival
-// clock it is already holding to move `updated_at` with. Reaching for the wrong one of those two
-// locals is invisible at the resolver and re-dates every updated row to now, so it is pinned here
-// instead - against a clock that has demonstrably moved between the insert and the update.
+// Every update caller must hand the resolver the row's previous `#time`, not the arrival clock it
+// already holds for `updated_at`. Reaching for the wrong local is invisible to the resolver's own
+// tests and re-dates every updated row to now, so it is pinned here against a clock that moves.
 
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_value::value::datetime::DateTime;
@@ -45,13 +40,9 @@ fn only_updated_at(t: &TestEngine, rql: &str) -> DateTime {
 }
 
 #[test]
-// Intent: THE wiring test. On a processing-time table an update must carry the original #time forward
-// while updated_at moves to now. The clock is advanced by a year between the insert and the update so
-// the two stamps cannot coincide, which is what makes "the caller passed the arrival clock" visible:
-// #time would land on the update's now instead of the insert's.
-// Mutation: pass now_nanos rather than the old row's time_nanos at the update call site and #time
-// follows updated_at here, while every resolver unit test still passes.
 fn a_processing_time_update_keeps_the_arrival_time_while_updated_at_moves() {
+	// The clock advances a year between insert and update so the two stamps cannot coincide;
+	// that is what makes a caller passing the arrival clock visible.
 	let t = engine();
 	t.admin("CREATE TABLE test::audit { id: int4, note: utf8 }");
 	t.command(r#"INSERT test::audit [{ id: 1, note: "before" }]"#);
@@ -70,12 +61,9 @@ fn a_processing_time_update_keeps_the_arrival_time_while_updated_at_moves() {
 }
 
 #[test]
-// Intent: the event-time path end to end. #time follows the populator the author edited, and lands on
-// the corrected instant even though the correction points BACKWARDS - which neither the arrival clock
-// nor the previous #time can produce, so nothing but a genuine re-read of the row can satisfy this.
-// Mutation: give the event arm the processing arm's passthrough and #time stays at the original
-// instant; stamp the arrival clock instead and it lands on the advanced now. Both fail here.
 fn an_event_time_update_re_reads_the_populator_rather_than_the_clock() {
+	// The correction points backwards, an instant neither the arrival clock nor the previous
+	// #time can produce, so only a genuine re-read of the row satisfies this.
 	let t = engine();
 	t.admin("CREATE TABLE test::trades { id: int4, at: datetime } WITH { time: event, ts: at }");
 	t.command(&format!(r#"INSERT test::trades [{{ id: 1, at: {BLOCK_TIME} }}]"#));
@@ -93,11 +81,9 @@ fn an_event_time_update_re_reads_the_populator_rather_than_the_clock() {
 }
 
 #[test]
-// Intent: an event-time update that edits some OTHER column leaves #time where it was. This is the
-// case a careless "re-stamp on every update" would break without any test that edits the populator
-// ever noticing, because there the populator and the new #time agree by construction.
-// Mutation: stamp the arrival clock on an event-time update and this lands on the advanced now.
 fn an_event_time_update_of_an_unrelated_column_leaves_time_alone() {
+	// A re-stamp on every update breaks only here: where the populator is edited, the populator
+	// and the new #time agree by construction and hide it.
 	let t = engine();
 	t.admin("CREATE TABLE test::trades { id: int4, qty: int4, at: datetime } WITH { time: event, ts: at }");
 	t.command(&format!(r#"INSERT test::trades [{{ id: 1, qty: 10, at: {BLOCK_TIME} }}]"#));
@@ -113,12 +99,9 @@ fn an_event_time_update_of_an_unrelated_column_leaves_time_alone() {
 }
 
 #[test]
-// Intent: a ringbuffer update routes through the same resolver, and is wired to it separately, so the
-// domain's update semantics can be honoured for tables and dropped for ringbuffers. Both domains are
-// checked because the two arms are reached by different code and fail independently.
-// Mutation: hand the ringbuffer caller the arrival clock and the processing half fails while every
-// table test above still passes.
 fn a_ringbuffer_update_follows_the_same_lifecycle_as_a_table() {
+	// The ringbuffer is wired to the resolver separately, so the semantics can be honoured for
+	// tables and dropped here. Both domains are checked because the two arms fail independently.
 	let t = engine();
 	t.admin("CREATE RINGBUFFER test::recent { id: int4, note: utf8 } WITH { capacity: 8 }");
 	t.command(r#"INSERT test::recent [{ id: 1, note: "before" }]"#);
@@ -138,13 +121,9 @@ fn a_ringbuffer_update_follows_the_same_lifecycle_as_a_table() {
 }
 
 #[test]
-// Intent: a series update is the third and last wiring of the same resolver. A series already carries a
-// temporal key of its own, which is precisely why its #time is worth pinning separately - the key and
-// the #time populator are different declarations, and an update must move #time with the populator
-// while leaving the processing-time case anchored to arrival.
-// Mutation: hand the series caller the arrival clock and the processing half fails; give its event arm
-// the passthrough and the event half fails.
 fn a_series_update_follows_the_same_lifecycle_as_a_table() {
+	// A series carries a temporal key of its own, a different declaration from the #time
+	// populator, so an update must move #time with the populator and not with the key.
 	let t = engine();
 	t.admin("CREATE SERIES test::metrics { ts: int8, note: utf8 } WITH { key: ts }");
 	t.command(r#"INSERT test::metrics [{ ts: 1000, note: "before" }]"#);

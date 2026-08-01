@@ -144,11 +144,9 @@ impl Clone for ActorSystem {
 	}
 }
 
-// SAFETY: on the dst target the executor is single-threaded - no thread pool is compiled in (the
-// real-thread `pool` module is native-only) and actors run inline via step(), so the Rc/RefCell-backed
-// inner is only ever accessed from the one thread that drives the system. These impls exist solely to
-// satisfy Send + Sync bounds on Actor and container types (Database, EventBus, Subsystems) and are
-// never used to perform a real cross-thread transfer.
+// SAFETY: the dst executor is single-threaded - no thread pool is compiled in and actors run inline
+// via step() - so the Rc/RefCell-backed inner is only ever accessed from the one thread driving the
+// system. These impls satisfy Send + Sync bounds and never back a real cross-thread transfer.
 unsafe impl Send for ActorSystem {}
 unsafe impl Sync for ActorSystem {}
 
@@ -176,10 +174,8 @@ impl ActorSystem {
 		}
 	}
 
-	/// A system for test fixtures. Actors run inline on the simulation thread here, so unlike the
-	/// native build there are no worker threads to share, and each fixture keeps its own ready
-	/// queue and logical clock so simulations stay independent. The retained clone only ensures
-	/// the system outlives the spawners it hands out.
+	/// A system for test fixtures: each keeps its own ready queue and logical clock so simulations
+	/// stay independent. The retained clone only ensures the system outlives the spawners it hands out.
 	pub fn testing(clock: Clock) -> Self {
 		let system = Self::new(Pools::default(), clock);
 		mem::forget(system.clone());
@@ -463,12 +459,9 @@ pub struct ActorSpawner {
 	clock: Clock,
 }
 
-// SAFETY: on the dst target the executor is single-threaded - no thread pool is compiled in (the
-// real-thread `pool` module is native-only) and actors run inline via ActorSystem::step(), so the
-// Rc/RefCell-backed Weak<DstActorSystemInner> is only ever accessed from the one thread that drives
-// the system. These impls exist solely to satisfy Send + Sync bounds on container types (Database,
-// EventBus, Subsystems) and are never used to perform a real cross-thread transfer. This mirrors the
-// unsafe Send/Sync on ActorSystem above.
+// SAFETY: the dst executor is single-threaded - no thread pool is compiled in and actors run inline
+// via ActorSystem::step() - so the Weak<DstActorSystemInner> is only ever accessed from the one thread
+// driving the system. These impls satisfy Send + Sync bounds and never back a real cross-thread transfer.
 unsafe impl Send for ActorSpawner {}
 unsafe impl Sync for ActorSpawner {}
 
@@ -608,7 +601,6 @@ mod tests {
 		}
 	}
 
-	/// Actor that records the order in which it receives messages.
 	struct OrderActor;
 
 	#[derive(Debug, Clone)]
@@ -633,7 +625,6 @@ mod tests {
 		}
 	}
 
-	/// Actor that panics on a specific message.
 	struct PanicActor;
 
 	#[derive(Debug)]
@@ -666,14 +657,12 @@ mod tests {
 		}
 	}
 
-	/// Actor that forwards received messages to a shared log.
-	///
-	/// Uses `Arc<Mutex<..>>` to satisfy `Send + Sync` bounds on `Actor`.
+	/// `Arc<Mutex<..>>` only satisfies the `Send + Sync` bounds on `Actor`; DST is
+	/// single-threaded, so the lock is never contended.
 	struct LogActor {
 		log: Arc<Mutex<Vec<String>>>,
 	}
 
-	// SAFETY: DST is single-threaded. The Mutex is never contended.
 	impl Actor for LogActor {
 		type State = ();
 		type Message = String;
@@ -691,7 +680,6 @@ mod tests {
 		}
 	}
 
-	/// Actor that sends to another actor when it receives a message.
 	struct ForwardActor {
 		target: ActorRef<String>,
 	}
@@ -727,7 +715,6 @@ mod tests {
 		handle.actor_ref.send(CounterMessage::Inc).unwrap();
 		handle.actor_ref.send(CounterMessage::Inc).unwrap();
 
-		// Step three times.
 		for _ in 0..3 {
 			match system.step() {
 				StepResult::Processed {
@@ -737,7 +724,6 @@ mod tests {
 			}
 		}
 
-		// Should be idle now.
 		assert!(matches!(system.step(), StepResult::Idle));
 	}
 
@@ -760,14 +746,13 @@ mod tests {
 			},
 		);
 
-		// Send in interleaved order: a gets msg1 and msg2, b gets msg3.
 		a.actor_ref.send("msg1".into()).unwrap();
 		a.actor_ref.send("msg2".into()).unwrap();
 		b.actor_ref.send("msg3".into()).unwrap();
 
 		system.run_until_idle();
 
-		// Strict global FIFO: msg1 (ts=0), msg2 (ts=1), msg3 (ts=2).
+		// Delivery order is global by enqueue, not per actor.
 		assert_eq!(*log.lock(), vec!["msg1", "msg2", "msg3"]);
 	}
 
@@ -776,17 +761,14 @@ mod tests {
 		let system = test_system();
 		let handle = system.spawn_coordination("order", OrderActor);
 
-		// Schedule a timer for 100ms.
 		let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
 		ctx.schedule_once(Duration::from_milliseconds(100).unwrap(), || OrderMessage(42));
 
-		// No messages yet.
+		// A timer must not fire before the clock reaches its deadline.
 		assert!(matches!(system.step(), StepResult::Idle));
 
-		// Advance time past the deadline.
 		system.advance_time(Duration::from_milliseconds(100).unwrap());
 
-		// Now the timer-fired message should be processable.
 		match system.step() {
 			StepResult::Processed {
 				actor_id: 0,
@@ -809,16 +791,14 @@ mod tests {
 
 		let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
 
-		// Schedule timers in reverse deadline order.
+		// Scheduled in reverse deadline order, so firing in schedule order would be visible here.
 		ctx.schedule_once(Duration::from_milliseconds(300).unwrap(), || "t300".into());
 		ctx.schedule_once(Duration::from_milliseconds(100).unwrap(), || "t100".into());
 		ctx.schedule_once(Duration::from_milliseconds(200).unwrap(), || "t200".into());
 
-		// Advance past all deadlines.
 		system.advance_time(Duration::from_milliseconds(300).unwrap());
 		system.run_until_idle();
 
-		// Timers should have fired in deadline order.
 		assert_eq!(*log.lock(), vec!["t100", "t200", "t300"]);
 	}
 
@@ -836,7 +816,7 @@ mod tests {
 		let ctx = Context::new(handle.actor_ref.clone(), system.clone(), system.cancellation_token());
 		ctx.schedule_repeat(Duration::from_milliseconds(100).unwrap(), "tick".to_string());
 
-		// Advance 350ms - should fire at 100, 200, 300.
+		// A 350ms jump must yield the three deadlines it crossed, not one catch-up tick.
 		system.advance_time(Duration::from_milliseconds(350).unwrap());
 		system.run_until_idle();
 
@@ -874,7 +854,6 @@ mod tests {
 		handle.actor_ref.send(PanicMessage::Ok).unwrap();
 		handle.actor_ref.send(PanicMessage::Boom).unwrap();
 
-		// First message succeeds.
 		assert!(matches!(
 			system.step(),
 			StepResult::Processed {
@@ -882,7 +861,6 @@ mod tests {
 			}
 		));
 
-		// Second message panics.
 		match system.step() {
 			StepResult::Panicked {
 				actor_id: 0,
@@ -891,7 +869,7 @@ mod tests {
 			other => panic!("expected Panicked, got {other:?}"),
 		}
 
-		// Actor is dead, further sends should fail.
+		// A panic must kill the actor rather than leave it accepting messages nobody handles.
 		assert!(handle.actor_ref.send(PanicMessage::Ok).is_err());
 		assert_eq!(system.alive_count(), 0);
 	}
@@ -918,10 +896,9 @@ mod tests {
 			}
 		));
 
-		// Third message's ReadyEntry is still in the queue, but step() should skip it.
+		// A message queued before the stop must not be delivered after it.
 		assert!(matches!(system.step(), StepResult::Idle));
 
-		// Further sends fail.
 		assert!(handle.actor_ref.send(CounterMessage::Inc).is_err());
 		assert_eq!(system.alive_count(), 0);
 	}
@@ -950,7 +927,7 @@ mod tests {
 			},
 		);
 
-		// Interleave sends across three actors.
+		// Interleaved across three actors, so a per-actor queue would reorder the log.
 		a.actor_ref.send("a1".into()).unwrap();
 		b.actor_ref.send("b1".into()).unwrap();
 		c.actor_ref.send("c1".into()).unwrap();
@@ -964,11 +941,8 @@ mod tests {
 
 	#[test]
 	fn test_spawner_tracks_system_liveness() {
-		// A spawner is a Weak handle: while the ActorSystem is alive it reports alive and hands out
-		// a cancellation token; once the system is dropped the Weak must observe it. No actor is
-		// spawned here, so no ctx cycle keeps the inner Rc alive - this isolates the Weak/strong_count
-		// contract, which the compiler cannot check (a spawner that accidentally held a strong Rc
-		// would still build but would report alive forever).
+		// No actor is spawned, so no ctx cycle keeps the inner Rc alive: a spawner that held a
+		// strong Rc instead of a Weak would still build but report alive forever.
 		let system = test_system();
 		let spawner = system.spawner();
 		assert!(spawner.is_alive());
@@ -982,8 +956,7 @@ mod tests {
 
 	#[test]
 	fn test_spawner_spawns_onto_the_same_system() {
-		// Spawning through the spawner must upgrade to the originating system, so the actor is driven
-		// by that system's step loop and counts toward its alive_count.
+		// The spawner must upgrade to the originating system, or the actor is never stepped.
 		let system = test_system();
 		let spawner = system.spawner();
 
@@ -995,7 +968,6 @@ mod tests {
 		assert_eq!(system.alive_count(), 1);
 	}
 
-	// Allow debug formatting for StepResult in test assertions.
 	impl fmt::Debug for StepResult {
 		fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 			match self {

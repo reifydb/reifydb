@@ -8,11 +8,8 @@ use reifydb_value::value::{Value, row_number::RowNumber};
 
 use crate::{framework::workload::WindowRow, operators::window::grid::render};
 
-/// Which windows the n-th admitted row of a group belongs to.
-///
-/// The ordinal is 0-based and assigned by the MODEL, mirroring the operator's per-group
-/// `get_and_increment_global_count`. That is the whole difference from the time-based kinds: the
-/// bucketing coordinate is not carried by the row, it is handed out on arrival.
+/// Which windows the n-th admitted row of a group belongs to. The ordinal is 0-based and handed out
+/// on arrival rather than carried by the row, which is the whole difference from the time-based kinds.
 pub trait Ordinals {
 	fn windows_of(&self, ordinal: u64) -> Vec<u64>;
 }
@@ -62,10 +59,9 @@ impl<O: Ordinals> Model<WindowRow> for CountOracle<O> {
 			value,
 		} = *event;
 		let _ = coord_ms;
-		// An UPDATE reaches the model as retract-then-admit on the same row. The operator does not
-		// consume a new ordinal for one - it looks the row up in its row index and reuses whatever
-		// windows it already sits in - so neither may the model, or every update would shift the
-		// group's remaining rows one window along.
+		// An update reaches the model as retract-then-admit on the same row, and the operator reuses
+		// the windows the row already sits in rather than consuming a new ordinal - so neither may
+		// the model, or every update would shift the group's remaining rows one window along.
 		let windows = match self.assigned.get(&row) {
 			Some(windows) => windows.clone(),
 			None => {

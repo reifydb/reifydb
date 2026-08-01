@@ -29,10 +29,8 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
 };
 
-/// Operator that echoes every input diff back unchanged through
-/// `ctx.builder()`. This drives both the input borrow path (BorrowedChange
-/// reads from native column storage) and the output builder path (acquire,
-/// data_ptr, offsets_ptr, commit, emit_*) in one apply call.
+/// Echoing every diff back drives both the input borrow path and the output builder path in a single apply, which
+/// is what makes a round trip through this operator a test of the whole FFI column ABI.
 pub struct PassthroughOperator;
 
 impl OperatorMetadata for PassthroughOperator {
@@ -98,10 +96,8 @@ impl FFIOperator for PassthroughOperator {
 	}
 }
 
-/// Acquire matching builders for each input column, byte-copy the data /
-/// offsets / defined-bitvec across, commit, and return the committed handles
-/// plus the column names. This is the same shape as the SDK's internal
-/// passthrough but accessible to integration tests.
+/// Copies at the byte level rather than value level, so a defect in the marshal encoding survives the copy and is
+/// visible in the round-tripped output instead of being normalised away.
 fn byte_clone_columns(
 	builder: &mut ColumnsBuilder<'_>,
 	cols: &BorrowedColumns<'_>,
@@ -151,8 +147,6 @@ fn byte_clone_columns(
 	Ok((committed, names))
 }
 
-/// Single-column round trip: returns the output `ColumnBuffer` after the
-/// passthrough operator has echoed the input through the FFI ABI.
 pub fn round_trip_column(name: &str, input: ColumnBuffer) -> ColumnBuffer {
 	let n = input.len();
 	let row_numbers: Vec<RowNumber> = (1..=(n as u64).max(1)).map(RowNumber).take(n).collect();
@@ -193,8 +187,6 @@ pub fn round_trip_column(name: &str, input: ColumnBuffer) -> ColumnBuffer {
 	out_columns.columns[0].clone()
 }
 
-/// Element-wise comparison of two column buffers. Panics on the first
-/// mismatch with row index + expected vs actual. NaN-aware for floats.
 pub fn assert_column_eq(label: &str, expected: &ColumnBuffer, actual: &ColumnBuffer) {
 	assert_eq!(
 		expected.get_type(),
@@ -222,8 +214,8 @@ pub fn assert_column_eq(label: &str, expected: &ColumnBuffer, actual: &ColumnBuf
 	}
 }
 
-/// NaN-aware value comparison. For f32/f64, two NaNs compare equal; otherwise
-/// uses bit equality so -0.0 vs +0.0 and sub-normals are distinguished.
+/// Bit equality rather than `==` for floats, so a round trip that turns -0.0 into +0.0 or flattens a sub-normal
+/// is caught; NaN is the one case compared by classification instead.
 fn values_match(a: &Value, b: &Value) -> bool {
 	use Value::*;
 	match (a, b) {

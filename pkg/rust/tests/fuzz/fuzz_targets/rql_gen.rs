@@ -5,8 +5,6 @@ use arbitrary::{Arbitrary, Unstructured};
 use std::cell::Cell;
 use std::fmt;
 
-// --- Depth-limited Arbitrary infrastructure ---
-
 thread_local! {
     static ARBITRARY_DEPTH: Cell<usize> = const { Cell::new(0) };
 }

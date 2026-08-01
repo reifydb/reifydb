@@ -16,11 +16,9 @@ fn test_recv_insert_notification() {
 		let change = ctx.recv().await.expect("Should receive insert notification");
 		assert_eq!(change.subscription_id, sub_id);
 
-		// Verify _op column indicates INSERT (1)
 		let op = get_op_value(&change.body, 0);
 		assert_eq!(op, Some(1), "_op should be 1 for INSERT");
 
-		// Verify data columns
 		let id_col = find_column(&change.body, "id").expect("id column should exist");
 		assert_eq!(id_col.payload[0], "1");
 
@@ -37,26 +35,20 @@ fn test_recv_update_notification() {
 		let table = ctx.create_table("update", "id: int4, name: utf8").await?;
 		let sub_id = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Insert initial data (will receive INSERT notification)
 		ctx.insert(&table, "{ id: 1, name: 'alice' }").await?;
 
-		// Receive INSERT notification first
 		let insert_change = ctx.recv().await.expect("Should receive insert notification");
 		let insert_op = get_op_value(&insert_change.body, 0);
 		assert_eq!(insert_op, Some(1), "_op should be 1 for INSERT");
 
-		// Update data
 		ctx.update(&table, "id == 1", "id: id, name: 'alice_updated'").await?;
 
-		// Receive UPDATE notification
 		let update_change = ctx.recv().await.expect("Should receive update notification");
 		assert_eq!(update_change.subscription_id, sub_id);
 
-		// Verify _op column indicates UPDATE (2)
 		let op = get_op_value(&update_change.body, 0);
 		assert_eq!(op, Some(2), "_op should be 2 for UPDATE");
 
-		// Verify updated name
 		let name_col = find_column(&update_change.body, "name").expect("name column should exist");
 		assert_eq!(name_col.payload[0], "alice_updated");
 
@@ -70,22 +62,17 @@ fn test_recv_delete_notification() {
 		let table = ctx.create_table("delete", "id: int4, name: utf8").await?;
 		let sub_id = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Insert initial data (will receive INSERT notification)
 		ctx.insert(&table, "{ id: 1, name: 'alice' }").await?;
 
-		// Receive INSERT notification first
 		let insert_change = ctx.recv().await.expect("Should receive insert notification");
 		let insert_op = get_op_value(&insert_change.body, 0);
 		assert_eq!(insert_op, Some(1), "_op should be 1 for INSERT");
 
-		// Delete data
 		ctx.delete(&table, "id == 1").await?;
 
-		// Receive DELETE notification
 		let delete_change = ctx.recv().await.expect("Should receive delete notification");
 		assert_eq!(delete_change.subscription_id, sub_id);
 
-		// Verify _op column indicates DELETE (3)
 		let op = get_op_value(&delete_change.body, 0);
 		assert_eq!(op, Some(3), "_op should be 3 for DELETE");
 
@@ -99,14 +86,11 @@ fn test_recv_multiple_rows() {
 		let table = ctx.create_table("multi_rows", "id: int4, name: utf8").await?;
 		let sub_id = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Insert multiple rows at once
 		ctx.insert(&table, "{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }, { id: 3, name: 'charlie' }")
 			.await?;
 
-		// Receive change
 		let change = ctx.recv().await.expect("Should receive batch notification");
 
-		// Verify all 3 rows are in the change
 		let id_col = find_column(&change.body, "id").expect("id column should exist");
 		assert_eq!(id_col.payload.len(), 3, "Should have 3 rows");
 
@@ -124,7 +108,6 @@ fn test_recv_preserves_data_types() {
 
 		let change = ctx.recv().await.expect("Should receive notification");
 
-		// Verify types are preserved
 		let id_col = find_column(&change.body, "id").unwrap();
 		assert_eq!(id_col.payload[0], "42");
 		assert_eq!(id_col.r#type, "Int4", "id should be Int4");

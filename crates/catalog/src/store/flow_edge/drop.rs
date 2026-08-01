@@ -46,13 +46,10 @@ pub mod tests {
 		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
-		// Edge should exist
 		assert!(CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap().is_some());
 
-		// Delete edge
 		CatalogStore::drop_flow_edge(&mut txn, edge.id).unwrap();
 
-		// Edge should no longer exist
 		assert!(CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap().is_none());
 	}
 
@@ -66,23 +63,20 @@ pub mod tests {
 		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
-		// Edge should be in flow index
 		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(edges.len(), 1);
 
-		// Delete edge
 		CatalogStore::drop_flow_edge(&mut txn, edge.id).unwrap();
 
-		// Edge should be removed from flow index
 		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert!(edges.is_empty());
 	}
 
 	#[test]
 	fn test_drop_nonexistent_edge() {
+		// Dropping an edge that never existed is a no-op, not an error.
 		let mut txn = create_test_admin_transaction();
 
-		// Deleting a non-existent edge should succeed silently
 		CatalogStore::drop_flow_edge(&mut txn, FlowEdgeId(999)).unwrap();
 	}
 
@@ -99,14 +93,11 @@ pub mod tests {
 		let edge1 = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 		let edge2 = create_flow_edge(&mut txn, flow.id, node2.id, node3.id);
 
-		// Delete first edge
 		CatalogStore::drop_flow_edge(&mut txn, edge1.id).unwrap();
 
-		// First edge should be gone, second should remain
 		assert!(CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge1.id).unwrap().is_none());
 		assert!(CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut txn), edge2.id).unwrap().is_some());
 
-		// List should only have second edge
 		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(edges.len(), 1);
 		assert_eq!(edges[0].id, edge2.id);

@@ -46,9 +46,8 @@ fn pinning_watermark(t: &TestEngine) -> Option<CommitVersion> {
 
 #[test]
 fn no_pinning_consumers_means_no_floor() {
-	// None means "nothing pins retention", which callers turn into an unbounded cutoff. Reporting
-	// version 0 or 1 instead would read as a consumer parked at the very beginning and would block
-	// truncation on a database that has no pinning consumers at all.
+	// None means "nothing pins retention"; reporting version 0 instead reads as a consumer parked at
+	// the beginning and blocks truncation on a database with no pinning consumers at all.
 	let t = TestEngine::new();
 	assert_eq!(pinning_watermark(&t), None, "no consumers => None");
 }
@@ -74,10 +73,8 @@ fn the_floor_is_the_minimum_across_pinning_consumers() {
 
 #[test]
 fn an_ephemeral_consumer_is_invisible_to_the_pinning_floor() {
-	// The core of the consumer-class split: a wedged subscription or external consumer must never
-	// stall retention. Before the split this scenario pinned the shared watermark at 3 and froze
-	// cdc truncation system-wide; the ephemeral class keeps the checkpoint for observability and
-	// overtaken detection without granting it any pinning power.
+	// A wedged subscription must never stall retention system-wide. Its checkpoint is still kept,
+	// for observability and overtaken detection, but carries no pinning power.
 	let t = TestEngine::new();
 	persist(&t, "flow_like", 900, ConsumerClass::Pinning);
 	persist(&t, "wedged_subscription", 3, ConsumerClass::Ephemeral);
@@ -91,8 +88,8 @@ fn an_ephemeral_consumer_is_invisible_to_the_pinning_floor() {
 
 #[test]
 fn only_ephemeral_consumers_present_means_no_floor() {
-	// A database serving only subscriptions must truncate as if it had no consumers: the TTL alone
-	// governs. If ephemeral rows leaked into the fold as a default, the class split would be a no-op.
+	// A database serving only subscriptions must truncate as if it had no consumers, with the TTL
+	// alone governing; an ephemeral row leaking into the fold would make the class split a no-op.
 	let t = TestEngine::new();
 	persist(&t, "sub_a", 7, ConsumerClass::Ephemeral);
 	persist(&t, "sub_b", 9000, ConsumerClass::Ephemeral);
@@ -102,11 +99,9 @@ fn only_ephemeral_consumers_present_means_no_floor() {
 
 #[test]
 fn a_per_flow_checkpoint_row_pins_the_floor() {
-	// The landmine that killed the string-matching approach: per-flow checkpoints persist under
-	// "flow:{id}", which the old is_flow() exact match on the coordinator id did NOT cover. Had the
-	// retention floors been flipped to that match, cdc would truncate under a lagging flow: data
-	// loss for a materialized view. The class is stored on the row, so per-flow rows pin by
-	// construction, exactly like the coordinator row.
+	// Per-flow checkpoints persist under their own id, not the coordinator's. Deriving the class by
+	// matching consumer ids would miss them and truncate under a lagging flow, losing view data;
+	// storing the class on the row makes per-flow rows pin by construction.
 	let t = TestEngine::new();
 
 	let mut txn = t.begin_command(IdentityId::system()).unwrap();
@@ -138,8 +133,8 @@ fn the_floor_advances_as_the_slowest_pinning_consumer_catches_up() {
 
 #[test]
 fn a_slow_pinning_consumer_prevents_cdc_cleanup_until_caught_up() {
-	// The guarantee the Pinning class exists for: cdc below the slowest pinning checkpoint must
-	// survive truncation, because that consumer (a flow) will still read it after a restart.
+	// CDC below the slowest pinning checkpoint must survive truncation: that consumer will still
+	// read it after a restart.
 	let storage = MemoryCdcStorage::new();
 	let t = TestEngine::new();
 
@@ -172,9 +167,8 @@ fn a_slow_pinning_consumer_prevents_cdc_cleanup_until_caught_up() {
 
 #[test]
 fn an_ephemeral_laggard_does_not_prevent_cdc_cleanup() {
-	// The mirror image of the pinning test above, and the failure mode that motivated the split: a
-	// subscription parked at version 10 must not keep versions 10..=40 alive. Cleanup runs as if it
-	// were not there; the consumer discovers the truncation through the overtaken protocol instead.
+	// A subscription parked at version 10 must not keep 10..=40 alive; cleanup runs as if it were
+	// absent and the consumer learns of the truncation through the overtaken protocol.
 	let storage = MemoryCdcStorage::new();
 	let t = TestEngine::new();
 
@@ -207,9 +201,8 @@ fn a_new_lagging_pinning_consumer_pulls_the_floor_down() {
 
 #[test]
 fn reclassifying_a_consumer_repersists_its_pinning_power() {
-	// The class lives on the row and every persist rewrites it, so the latest registration wins.
-	// A consumer downgraded to Ephemeral releases the floor it used to hold; nothing else has to
-	// be cleaned up for retention to move again.
+	// Every persist rewrites the class, so a downgrade to Ephemeral releases the floor immediately
+	// with no separate cleanup step.
 	let t = TestEngine::new();
 	persist(&t, "flow_like", 200, ConsumerClass::Pinning);
 	persist(&t, "migrating", 20, ConsumerClass::Pinning);

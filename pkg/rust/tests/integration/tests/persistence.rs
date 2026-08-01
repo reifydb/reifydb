@@ -32,7 +32,6 @@ fn persistent_false_rows_are_not_durable_after_reopen() {
 	{
 		let mut db = TestDb::sqlite_at(&path);
 
-		// persistent table rows survive reopen
 		db.query("from demo::keep").assert().row_count(2);
 		// persistent: false rows were never written to sqlite, so they are gone after reopen
 		db.query("from demo::transient").assert().is_empty();

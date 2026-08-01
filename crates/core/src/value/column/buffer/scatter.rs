@@ -372,7 +372,7 @@ mod tests {
 	fn scatter_merge_unmapped_promotes_to_option() {
 		let a = ColumnBuffer::int4([10, 20, 30]);
 		let b = ColumnBuffer::int4([90, 80, 70]);
-		// Row 1 is in neither mask - should yield None.
+		// Row 1 is in neither mask, so it must come out as none.
 		let then_mask = BitVec::from_slice(&[true, false, true]);
 		let else_mask = BitVec::from_slice(&[false, false, false]);
 

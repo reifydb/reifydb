@@ -58,16 +58,13 @@ fn main() {
 async fn async_main() -> Result<()> {
 	let config = Config::parse();
 
-	// Create workload and metrics
 	let workload = create_workload(config.workload, &config);
 	let metrics = Arc::new(Metrics::new());
 
-	// Print header
 	if !config.quiet {
 		print_header(&config, workload.description());
 	}
 
-	// Setup phase - run setup queries using a single connection
 	if !config.quiet {
 		println!("Setting up workload...");
 	}
@@ -84,7 +81,6 @@ async fn async_main() -> Result<()> {
 			};
 
 			if let Err(e) = setup_client.execute(&operation).await {
-				// Ignore "already exists" errors during setup
 				let err_str = e.to_string();
 				if !err_str.contains("already exists") && !err_str.contains("ALREADY_EXISTS") {
 					eprintln!("Setup error: {}", e);
@@ -95,12 +91,10 @@ async fn async_main() -> Result<()> {
 		setup_client.close().await?;
 	}
 
-	// Create worker connections
 	if !config.quiet {
 		println!("Creating {} connections...", config.connections);
 	}
 
-	// Create shared HTTP client for connection pooling (HTTP only)
 	let shared_http_client = if matches!(config.protocol, Protocol::Http) {
 		Some(ReqwestClient::builder()
 			.pool_max_idle_per_host(config.connections)
@@ -125,7 +119,6 @@ async fn async_main() -> Result<()> {
 		workers.push(Worker::new(i, client, Arc::clone(&workload), Arc::clone(&metrics), seed));
 	}
 
-	// Warmup phase
 	if config.warmup > 0 {
 		if !config.quiet {
 			println!("Warming up ({} requests)...", config.warmup);
@@ -145,23 +138,19 @@ async fn async_main() -> Result<()> {
 			workers.push(result?);
 		}
 
-		// Reset metrics after warmup
 		metrics.reset();
 	}
 
-	// Benchmark phase
 	if !config.quiet {
 		println!("Running benchmark...");
 		println!();
 	}
 
-	// Start metrics timer
 	metrics.start();
 
 	let stop_signal = Arc::new(AtomicBool::new(false));
 	let mut benchmark_tasks = JoinSet::new();
 
-	// Spawn progress reporter if not quiet
 	let progress_handle = if !config.quiet {
 		let progress_metrics = Arc::clone(&metrics);
 		let progress_stop = Arc::clone(&stop_signal);
@@ -186,9 +175,7 @@ async fn async_main() -> Result<()> {
 		None
 	};
 
-	// Start benchmark
 	if let Some(duration) = config.duration {
-		// Duration-based run
 		for mut worker in workers.drain(..) {
 			let stop = Arc::clone(&stop_signal);
 			benchmark_tasks.spawn(async move {
@@ -197,7 +184,6 @@ async fn async_main() -> Result<()> {
 			});
 		}
 	} else {
-		// Request-count-based run
 		let requests_per_worker = config.requests / config.connections as u64;
 		let extra = config.requests % config.connections as u64;
 
@@ -215,17 +201,14 @@ async fn async_main() -> Result<()> {
 		}
 	}
 
-	// Wait for all workers to complete
 	while let Some(result) = benchmark_tasks.join_next().await {
 		workers.push(result?);
 	}
 
-	// Merge all worker histograms into global metrics
 	for worker in &workers {
 		metrics.merge_histogram(worker.histogram());
 	}
 
-	// Signal stop and wait for progress reporter
 	stop_signal.store(true, Ordering::Relaxed);
 
 	if let Some(handle) = progress_handle {
@@ -238,11 +221,9 @@ async fn async_main() -> Result<()> {
 		clear_progress();
 	}
 
-	// Print results
 	let summary = metrics.summary();
 	print_summary(&summary, workload.description());
 
-	// Teardown phase
 	let teardown_queries = workload.teardown_queries();
 	if !teardown_queries.is_empty() {
 		if !config.quiet {
@@ -253,14 +234,12 @@ async fn async_main() -> Result<()> {
 		let teardown_client = Client::connect(config.protocol, &config.url(), config.token.as_deref()).await?;
 
 		for rql in teardown_queries {
-			// Ignore teardown errors
 			let _ = teardown_client.execute(&Operation::Command(rql)).await;
 		}
 
 		teardown_client.close().await?;
 	}
 
-	// Close worker connections
 	for worker in workers {
 		let _ = worker.into_client().close().await;
 	}

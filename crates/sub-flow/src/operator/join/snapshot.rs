@@ -345,9 +345,8 @@ mod tests {
 
 	#[test]
 	fn a_released_pair_reads_back_the_version_it_was_published_against() {
-		// The whole point of the ledger. The right row moves on after the left row read it, and the
-		// withdrawal still has to carry what was actually published - not what the right side holds
-		// now, and not nothing.
+		// The right row moves on after the left row read it, and the withdrawal still has to carry
+		// what was actually published - not what the right side holds now, and not nothing.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
@@ -379,9 +378,8 @@ mod tests {
 
 	#[test]
 	fn one_retired_version_serves_every_left_row_that_published_against_it() {
-		// This is why the pin is keyed on the version rather than on the pair: a right row matched by
-		// many left rows is stored once. Keyed per pair it would be stored once per match, which is
-		// the cost this design exists to avoid.
+		// The pin is keyed on the version rather than the pair so a right row matched by many
+		// left rows is stored once, not once per match.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
@@ -403,9 +401,8 @@ mod tests {
 
 	#[test]
 	fn a_pin_outlives_every_reference_and_no_longer() {
-		// Releasing the last reference has to erase the record. If it lingered, a snapshot join would
-		// accumulate one retired copy per right row it ever changed, for the life of the node - the
-		// unbounded growth the refcount exists to prevent.
+		// A record that lingered past its last reference would leave one retired copy per right
+		// row the join ever changed, for the life of the node.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
@@ -432,9 +429,9 @@ mod tests {
 
 	#[test]
 	fn two_versions_of_one_right_row_are_pinned_apart() {
-		// A right row can change twice while different left rows hold different versions of it. One
-		// slot per row would make the second retirement overwrite the first, and a left row would
-		// withdraw content it never published.
+		// Different left rows can hold different versions of one right row, so a single slot per
+		// row would let the second retirement overwrite the first and a left row would withdraw
+		// content it never published.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
@@ -452,9 +449,8 @@ mod tests {
 
 	#[test]
 	fn republishing_a_left_row_moves_its_reference_to_the_new_version() {
-		// A left row that is touched again reads the right side afresh. Its old reference has to go,
-		// or the version it used to hold would be pinned for the life of the left row and the count
-		// would never reach zero.
+		// A left row touched again reads the right side afresh, so its old reference has to go or
+		// the version it used to hold is pinned for the left row's whole life.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
@@ -504,8 +500,8 @@ mod tests {
 
 	#[test]
 	fn releasing_a_pair_that_was_never_published_changes_nothing() {
-		// The withdrawal path runs for left rows that may have published nothing at all - an inner
-		// join whose key had no matches. It must be a no-op rather than an error or a phantom diff.
+		// Withdrawal also runs for left rows that published nothing (an inner join whose key had
+		// no matches), so it must be a no-op rather than an error or a phantom diff.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
@@ -516,9 +512,8 @@ mod tests {
 
 	#[test]
 	fn retiring_a_version_nothing_published_against_stores_nothing() {
-		// The common case on a busy right side: rows change before any left row reads them. Copying
-		// there would make the ledger cost proportional to right-side churn instead of to what was
-		// actually published.
+		// On a busy right side rows change before any left row reads them; copying there would
+		// make the ledger cost track right-side churn instead of what was published.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();

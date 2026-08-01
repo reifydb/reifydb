@@ -16,14 +16,14 @@ pub fn scan_text<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 	let start_line = cursor.line();
 	let start_column = cursor.column();
 
-	cursor.consume(); // consume opening quote
+	cursor.consume();
 
 	let text_start = cursor.pos();
 
 	while let Some(ch) = cursor.peek() {
 		if ch == quote {
 			let text_end = cursor.pos();
-			cursor.consume(); // consume closing quote
+			cursor.consume();
 
 			return Some(Token {
 				kind: TokenKind::Literal(Text),
@@ -41,7 +41,7 @@ pub fn scan_text<'b>(cursor: &mut Cursor<'b>) -> Option<Token<'b>> {
 		cursor.consume();
 	}
 
-	None // Unterminated string
+	None
 }
 
 #[cfg(test)]

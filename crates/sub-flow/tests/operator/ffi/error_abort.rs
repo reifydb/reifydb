@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Regression #9: operators are not meant to fail. An `Err` from an operator's
-// apply must ABORT the process. On the FFI backend the abort lives in the
-// `ffi_apply` EXPORT (the `.so` boundary), not in `FFIOperatorAdapter::apply`,
-// so this drives the operator through `drive_ffi_apply` rather than the
-// in-process harness. Forked because abort kills the process. The native
-// counterpart aborts in `run_or_abort` - see native/error_abort.rs.
+// An `Err` from an operator's apply must abort the process. On the FFI backend that abort lives in
+// the `ffi_apply` export at the `.so` boundary, so this drives the operator through
+// `drive_ffi_apply` rather than the in-process harness. Forked because abort kills the process.
 
 use std::{env, process::Command};
 

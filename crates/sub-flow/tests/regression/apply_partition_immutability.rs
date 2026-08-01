@@ -1,17 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// check_partition_immutability (PART_004) only inspects the literal AST column list of an UPDATE
-// statement, and the direct-UPDATE VM instructions (PART_002) only guard a base table/ringbuffer/series
-// against changing ITS OWN partition column. Neither has any visibility into a `FlowNodeType::Apply`
-// node: an arbitrary, embedder/plugin-supplied operator sitting between a source and a partitioned
-// Sink*View can synthesize a `Diff::Update` whose post partition-by values differ from pre, entirely
-// independent of which column the driving UPDATE statement touched. Before the fix, the Sink*View
-// operators silently "relocated" such a row (delete the old partition key, insert under the new one)
-// instead of rejecting it, quietly breaking the "partition columns are immutable" invariant that PART_002
-// / PART_004 otherwise advertise. This proves the runtime backstop added to the Sink*View operators
-// (`ensure_partition_unchanged` in crates/sub-flow/src/operator/sink/partition.rs) catches this case
-// regardless of which upstream node produced the diff.
+// PART_004 inspects only the literal AST columns of an UPDATE and PART_002 only guards a base object
+// against changing its own partition column, so neither can see an APPLY operator synthesizing an
+// update whose partition values differ from pre. The sink's runtime check is the only backstop.
 
 use reifydb::{WithSubsystem, embedded};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
@@ -31,8 +23,8 @@ use reifydb_sdk::{
 use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
-// `ts` only matters for the series-backed test (SERIES VIEW requires a sequence `key` column); the
-// table- and ringbuffer-backed tests carry it along unused so all three share one operator/row shape.
+// `ts` only matters for the series-backed test, which needs a sequence key; the other two carry it
+// unused so all three share one operator and row shape.
 struct FlipRow {
 	id: i32,
 	ts: i64,
@@ -70,9 +62,8 @@ const FLIP_COLUMNS: &[OperatorColumn] = &[
 	},
 ];
 
-// Passthrough operator that rewrites the `region` column on every UPDATE diff it forwards, regardless of
-// what the driving UPDATE statement actually assigned. Stands in for any Apply-node operator that can
-// synthesize a partition-changing diff outside check_partition_immutability's literal-AST-column view.
+// Rewrites `region` on every update diff it forwards, whatever the driving statement assigned.
+// Stands in for any apply-node operator that can synthesize a partition-changing diff.
 struct RegionFlip;
 
 impl RawStatefulOperator for RegionFlip {}
@@ -160,10 +151,9 @@ impl OperatorLogic for RegionFlip {
 	}
 }
 
-// Drives one instance of the reproduction against a `CREATE VIEW ...` clause supplied by the caller (one
-// of Table/RingBuffer/Series-backed storage), asserting the APPLY-operator-driven partition-column change
-// is rejected the same way a direct partition-column UPDATE would be.
 fn assert_apply_partition_change_rejected(create_view_rql: &str) {
+	// The caller supplies the storage backing, so the same reproduction runs against table, ring
+	// buffer and series sinks, each of which has its own relocate path.
 	let db = TestDb::from(
 		embedded::memory()
 			.with_flow(|f| f.register_operator::<RegionFlip>())
@@ -176,8 +166,8 @@ fn assert_apply_partition_change_rejected(create_view_rql: &str) {
 
 	db.command("INSERT app::t [{ id: 1, ts: 1, region: \"us\", qty: 10 }]");
 
-	// Only `qty` is assigned here; PART_004's literal-AST check has nothing to flag even though
-	// region_flip will rewrite `region` (the view's partition column) on this row's forwarded diff.
+	// Only `qty` is assigned, so the literal-AST check has nothing to flag even though region_flip
+	// rewrites the view's partition column on the forwarded diff.
 	let err = db.try_command("UPDATE app::t { qty: 999 } FILTER id == 1").expect_err(
 		"an APPLY operator changing a downstream view's partition column must be rejected, not \
 		 silently relocate the row",
@@ -192,8 +182,6 @@ fn assert_apply_partition_change_rejected(create_view_rql: &str) {
 	);
 }
 
-// A table-backed downstream view's partition-by column must stay immutable even when the value change is
-// introduced by an APPLY operator rather than a literal `UPDATE ... SET <partition column>`.
 #[test]
 fn apply_operator_cannot_bypass_partition_column_immutability_table_backed() {
 	assert_apply_partition_change_rejected(
@@ -202,8 +190,6 @@ fn apply_operator_cannot_bypass_partition_column_immutability_table_backed() {
 	);
 }
 
-// Same reproduction against a ring-buffer-backed downstream view: SinkRingBufferViewOperator's
-// partition_changed relocate path is the one this repro was originally filed against.
 #[test]
 fn apply_operator_cannot_bypass_partition_column_immutability_ringbuffer_backed() {
 	assert_apply_partition_change_rejected(
@@ -212,7 +198,6 @@ fn apply_operator_cannot_bypass_partition_column_immutability_ringbuffer_backed(
 	);
 }
 
-// Same reproduction against a series-backed downstream view.
 #[test]
 fn apply_operator_cannot_bypass_partition_column_immutability_series_backed() {
 	assert_apply_partition_change_rejected(

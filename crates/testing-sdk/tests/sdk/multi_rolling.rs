@@ -31,11 +31,8 @@ use reifydb_testing_sdk::{
 };
 use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
 
-// Rolling top-2 traders by summed volume over the last 3 windows. Each
-// window cell is a KeyedInvertibleAccumulator<trader, Moments> so a trade's
-// volume accumulates per trader and an Update/Remove subtracts it
-// (invertible). combine merges all buffered windows' per-trader sums,
-// ranks by total volume, and emits the top 2 keyed by rank.
+// Rolling top-2 traders by summed volume. Each window cell is keyed and invertible so an
+// Update or Remove subtracts a trade's volume rather than dropping the whole window.
 
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, PartialEq, HeapSize)]
@@ -153,8 +150,7 @@ fn same_window_volume_accumulates_per_trader() {
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
 		.build()
 		.expect("harness");
-	// Two trades for trader 100 in one window must SUM (5+3=8), unlike
-	// the old last-write-wins fold. Trader 200 has 9.
+	// Two trades for the same trader in one window must sum, not overwrite each other.
 	let out = h
 		.apply(TestChangeBuilder::new()
 			.insert(input_row(1, "BTC", 0, 100, 5.0))
@@ -184,8 +180,7 @@ fn update_subtracts_old_volume_no_double_count() {
 			.insert(input_row(2, "BTC", 0, 200, 9.0))
 			.build())
 		.expect("apply");
-	// Update trader 100's trade 5 -> 20. The driver routes remove(5)+add(20)
-	// so trader 100's total is 20, NOT 5+20=25. It overtakes trader 200.
+	// The update must route remove(5)+add(20), so trader 100 lands on 20 and not 25.
 	let out = h
 		.apply(TestChangeBuilder::new()
 			.update(input_row(1, "BTC", 0, 100, 5.0), input_row(1, "BTC", 0, 100, 20.0))
@@ -238,9 +233,8 @@ fn vanishing_rank_emits_remove_at_high_water() {
 			.insert(input_row(2, "BTC", 60, 200, 9.0))
 			.build())
 		.expect("apply");
-	// Remove the newest window (wk=60 == high_water, not late). Trader
-	// 200's only trade leaves -> its window empties and is dropped from
-	// the buffer; rank-1 changes to trader 100, rank-2 vanishes -> Remove.
+	// Emptying the newest window drops it from the buffer, which shifts rank 1 and leaves
+	// rank 2 with nothing to name - that vacancy has to surface as a Remove.
 	let out = h.apply(TestChangeBuilder::new().remove(input_row(2, "BTC", 60, 200, 9.0)).build()).expect("apply");
 	let kinds: Vec<DiffType> = out.diffs.iter().map(|d| d.kind()).collect();
 	assert!(kinds.contains(&DiffType::Update), "rank-1 changed identity, expect Update");
@@ -252,7 +246,7 @@ fn capacity_eviction_drops_oldest_window() {
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
 		.build()
 		.expect("harness");
-	// Capacity 3; 4 windows. Window 0 (trader 100, vol 1) is evicted.
+	// A fourth window exceeds the capacity of 3, so window 0 and trader 100 with it must go.
 	let out = h
 		.apply(TestChangeBuilder::new()
 			.insert(input_row(1, "BTC", 0, 100, 1.0))
@@ -274,9 +268,8 @@ fn capacity_eviction_drops_oldest_window() {
 
 #[test]
 fn buried_window_insert_accepted_without_sealing() {
-	// Same contract as the other ungated drivers under grace semantics:
-	// without a seal envelope there is no implicit high-water drop, so an
-	// insert into an older coord merges and updates the output.
+	// Without a seal envelope there is no implicit high-water drop, so an insert into an older
+	// coordinate merges rather than being discarded.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
 		.build()
 		.expect("harness");
@@ -289,7 +282,6 @@ fn millis(value: u64) -> Duration {
 	Duration::from_milliseconds_const(value as i64)
 }
 
-// TestTopVolume with sealing enabled, over a DateTime coordinate.
 struct SealedTopVolume;
 
 impl MultiRollingOperator for SealedTopVolume {
@@ -350,10 +342,8 @@ impl MultiRollingRegistration for SealedTopVolume {
 
 #[test]
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
-	// A group that stops reporting must still have its state reclaimed, or
-	// a high-cardinality group key grows without bound. Nothing arrives
-	// after the initial batch here; the only thing that moves is the
-	// watermark.
+	// A group that stops reporting must still be reclaimed, or a high-cardinality group key
+	// grows without bound; nothing moves here after the initial batch except the watermark.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<SealedTopVolume>>>::new()
 		.build()
 		.expect("harness");
@@ -378,8 +368,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 
 #[test]
 fn an_ungated_multi_rolling_operator_arms_no_seal_timer() {
-	// seal_after defaults to None. An operator that never opted into
-	// sealing must not acquire a retention policy it did not ask for.
+	// An operator that never opted into sealing must not acquire a retention policy.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
 		.build()
 		.expect("harness");

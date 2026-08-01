@@ -234,9 +234,8 @@ mod tests {
 
 	#[test]
 	fn a_uniform_batch_draws_exactly_what_the_windowed_mix_used_to() {
-		// The window regressions pin a fingerprint of their operation sequence, and the batch size is
-		// one of its draws. If this stopped matching `random_range(1..=max)` every one of those pins
-		// would point at a different corpus while still passing.
+		// The window regressions pin a fingerprint whose draws include the batch size, so a change
+		// here re-points every one of those pins at a different corpus while they still pass.
 		let mut a = rng(99);
 		let mut b = rng(99);
 		let drawn: Vec<u32> = (0..32)
@@ -254,9 +253,8 @@ mod tests {
 
 	#[test]
 	fn a_uniform_batch_never_draws_below_its_floor() {
-		// A floor above one is how a suite forces batches that span a boundary. If it were ignored the
-		// draw would collapse to 1..=max, and every such suite would silently spend most of its steps on
-		// the single-row path it was written to avoid.
+		// A floor above one is how a suite forces batches that span a boundary; ignoring it would
+		// collapse the draw to 1..=max and spend most steps on the single-row path.
 		let mut stream = rng(2024);
 		let drawn: Vec<u32> = (0..400)
 			.map(|_| {
@@ -334,7 +332,8 @@ mod tests {
 
 	#[test]
 	fn primitives_are_off_by_default_so_a_windowed_scenario_draws_nothing_extra() {
-		// This is the property that keeps the five pinned window regressions valid across the merge.
+		// Any primitive on by default would consume randomness and re-point every pinned window
+		// regression at a different corpus.
 		let scenario = Scenario::windowed(10, 6, 1_000, 2_000);
 		assert!(!Scenario::rolls(scenario.duplicate_update_burst));
 		assert!(!Scenario::rolls(scenario.update_as_remove_insert));
@@ -377,9 +376,8 @@ mod tests {
 
 	#[test]
 	fn enabling_a_mutation_without_insert_is_unreachable() {
-		// Nothing can be updated or removed before something is inserted, so this combination describes a
-		// run that can never do anything. Catching it at configuration time is the difference between a
-		// clear rejection and a suite that silently exercises an empty corpus.
+		// Nothing can be updated or removed before something is inserted, so catching this at
+		// configuration time is what stops a suite from silently exercising an empty corpus.
 		assert!(!SupportedOps {
 			insert: false,
 			update: true,

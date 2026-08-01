@@ -129,11 +129,10 @@ pub mod tests {
 		});
 	}
 
-	/// Operator state is structurally excluded from CDC, so an operator TTL has no announce axis to
-	/// carry. The persisted shape must therefore hold durations only; a mode column reappearing here
-	/// would mean the unrepresentable-illegal-state guarantee had leaked back in through storage.
 	#[test]
 	fn operator_settings_shape_carries_no_announce_axis() {
+		// Operator state is structurally excluded from CDC, so an operator TTL has no announce
+		// axis; a mode column reappearing in the shape would mean it leaked back in.
 		let names: Vec<&str> = operator_settings::SHAPE.fields().iter().map(|f| f.name.as_str()).collect();
 		assert_eq!(names, vec!["is_join", "duration", "left_duration", "right_duration"]);
 	}

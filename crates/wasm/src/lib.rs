@@ -1,17 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Sandboxed WebAssembly host for running user-supplied operators, procedures, and transforms inside the engine
-//! without giving them direct access to the process. The host is wasmtime-backed on native targets and shells out
-//! to a stub on `wasm32` (since you cannot host wasmtime from inside wasmtime). Resource limits - memory pages,
-//! fuel, call depth - are enforced by the host so a misbehaving guest cannot exhaust the process.
+//! Sandboxed WebAssembly host for user-supplied operators, procedures and transforms. wasmtime-backed on native
+//! targets, a stub on `wasm32` (wasmtime cannot host itself); memory pages, fuel and call depth are capped by the
+//! host so a misbehaving guest cannot exhaust the process.
 //!
-//! Loading happens through the `SpawnBinary<source::binary::Bytes>` impl; once spawned, an engine instance can be
-//! invoked by export name with typed values that round-trip through the WASM ABI.
-//!
-//! Invariant: every external entry point - invoke, write_memory, read_memory - validates argument shape and bounds
-//! against the loaded module before executing. Skipping a check trusts guest-provided indices, which is exactly the
-//! attack surface the sandbox exists to neutralise.
+//! Invariant: invoke, write_memory and read_memory each validate argument shape and bounds against the loaded
+//! module first. Skipping a check trusts guest-provided indices, the exact attack surface the sandbox exists for.
 
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]

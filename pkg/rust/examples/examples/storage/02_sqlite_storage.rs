@@ -150,7 +150,7 @@ fn main() {
 		info!("\n✓ Database operations complete");
 	}
 
-	// Check database file
+	// Check the database directory - a sqlite database is a directory of several .db files
 	if let Ok(metadata) = fs::metadata(db_path) {
 		println!("\n=== Database File Info ===");
 		println!("Path: {}", db_path);

@@ -325,11 +325,9 @@ mod tests {
 
 	#[test]
 	fn a_group_falls_due_one_grid_width_after_its_span_elapses() {
-		// The arithmetic every reclaim suite's coverage rests on, worked end to end so the numbers are
-		// checked rather than assumed. Two unit systems meet here and neither is visible at the call
-		// site: a horizon is declared as a Duration, the grid divides nanoseconds, and the chaos driver
-		// speaks milliseconds. A suite that guessed wrong would simply never make a group due, and would
-		// pass while asserting nothing.
+		// Three unit systems meet here and none is visible at the call site: horizons are declared
+		// as Durations, the grid divides nanoseconds, the chaos driver speaks milliseconds. A suite
+		// that guessed wrong would never make a group due and would pass asserting nothing.
 		let span = Duration::from_seconds(16).expect("16s is representable");
 		let grid = activity_buckets(Some(span)).event_grid().expect("a declared span buckets in event time");
 

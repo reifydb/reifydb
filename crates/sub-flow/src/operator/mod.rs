@@ -106,11 +106,9 @@ impl Deref for OperatorCell {
 	}
 }
 
-// SAFETY: a flow and all of its operators are only ever accessed by a single thread at any one
-// time. Flows that execute in parallel on the rayon commit pool own disjoint operator sets
-// (operators are keyed by FlowNodeId and never shared between flows), so no Operators value is ever
-// reachable from two threads simultaneously. The inner Arc is only cloned and dereferenced from the
-// owning thread, so asserting Send and Sync over the !Sync Operators it holds is sound.
+// SAFETY: operators are keyed by FlowNodeId and never shared between flows, so an Operators value
+// is reachable from exactly one thread at a time and the inner Arc is only cloned or dereferenced
+// from that owning thread. No aliasing of the !Sync interior can occur.
 unsafe impl Send for OperatorCell {}
 unsafe impl Sync for OperatorCell {}
 
@@ -417,11 +415,9 @@ mod substrate_stamping_tests {
 	}
 
 	#[test]
-	// A custom operator's output carries the MAX #time of what it consumed. The operator
-	// itself is never consulted - the substrate computes this from the input and overwrites whatever
-	// the operator produced. That is what lets chaindex's operator population stay oblivious to
-	// #time and still not break the clock.
 	fn the_substrate_stamps_output_with_the_max_input_time() {
+		// The substrate derives the stamp from the input, never from the operator, which is what
+		// lets a guest operator stay oblivious to #time without breaking the clock.
 		let mut diffs = Diffs::new();
 		diffs.push(Diff::insert(columns(&[at(1_000), at(9_000), at(5_000)])));
 
@@ -429,13 +425,10 @@ mod substrate_stamping_tests {
 	}
 
 	#[test]
-	// THE protection. An operator able to stamp ABOVE its inputs would advance the flow
-	// watermark and seal another node's state early, invisibly. That half is absolute and is what
-	// this test pins: at(999_999) is replaced. The second row is at(0), the epoch, which is what an
-	// unstamped row carries - also replaced, because the substrate must not leave a row reading as
-	// 1970 for retention to evict at once. Only a row the operator deliberately stamped at or below
-	// its inputs survives, which is the one-sided relaxation windowing needs.
 	fn an_operator_cannot_influence_its_own_output_time() {
+		// An operator that stamped above its inputs would advance the flow watermark and seal
+		// another node's state early; the epoch row is replaced too, or an unstamped row would
+		// read as 1970 and retention would evict it at once.
 		let mut produced = Diffs::new();
 		produced.push(Diff::insert(columns(&[at(999_999), at(0)])));
 		let mut out = change(produced);
@@ -451,12 +444,9 @@ mod substrate_stamping_tests {
 	}
 
 	#[test]
-	// The stamp covers BOTH sides of an update. A pre image left above the inherited instant
-	// would let an operator advance the watermark through the pre side alone, and would make a
-	// downstream retention decision see two different times for one row.
-	// Both sides sit ABOVE the inherited instant, which is the direction the clamp still enforces
-	// absolutely; feeding values below it would prove nothing about the pre side being visited.
 	fn both_sides_of_an_update_are_stamped() {
+		// A pre image left above the inherited instant would advance the watermark through the
+		// pre side alone and make a retention decision see two times for one row.
 		let mut produced = Diffs::new();
 		produced.push(Diff::update(columns(&[at(9_000)]), columns(&[at(10_000)])));
 		let mut out = change(produced);
@@ -468,11 +458,9 @@ mod substrate_stamping_tests {
 	}
 
 	#[test]
-	// An operator that emits MORE rows than it consumed still has every row visited, so a
-	// fan-out operator cannot leak a row stamped above its inputs into the flow. Every row is above
-	// the inherited instant so the assertion holds for all five regardless of position - a clamp
-	// that only visited the first row would still pass if the others were left below.
 	fn a_fan_out_operator_has_every_emitted_row_stamped() {
+		// Every row sits above the inherited instant, so a clamp that visited only the first
+		// would still pass if the rest were left alone.
 		let mut produced = Diffs::new();
 		produced.push(Diff::insert(columns(&[at(9_000), at(10_000), at(11_000), at(12_000), at(13_000)])));
 		let mut out = change(produced);
@@ -483,9 +471,9 @@ mod substrate_stamping_tests {
 	}
 
 	#[test]
-	// With no input rows there is nothing to inherit, so the substrate must leave the output
-	// alone rather than stamping an epoch time that would read as 1970 and be evicted at once.
 	fn an_empty_input_leaves_the_output_untouched() {
+		// With nothing to inherit, stamping anyway would write an epoch time that reads as 1970
+		// and is evicted on sight.
 		let empty = change(Diffs::new());
 		assert_eq!(max_input_time(&empty), None);
 
@@ -499,10 +487,9 @@ mod substrate_stamping_tests {
 	}
 
 	#[test]
-	// The surviving half of the invariant, isolated. Stamping above inputs is what advances
-	// the flow watermark and seals another node's state early, and no relaxation of the clamp may
-	// ever reach it. One nanosecond above is enough - the comparison is strict.
 	fn an_operator_stamping_above_its_inputs_is_still_overwritten() {
+		// No relaxation of the clamp may reach the above-inputs direction, and the comparison is
+		// strict: one nanosecond over is enough.
 		let inherited = at(5_000);
 		let one_nano_above = DateTime::from_nanos(inherited.to_nanos() + 1);
 
@@ -516,12 +503,10 @@ mod substrate_stamping_tests {
 	}
 
 	#[test]
-	// The relaxed half, and the whole reason the clamp exists. A window stamps its output
-	// with the bucket START, which is by construction at or below every event it consumed. Before
-	// the clamp the apply wrapper overwrote it, so a guest window could not be replay-stable and
-	// anything reading its #time saw the batch's max instead. Equality must survive too - a bucket
-	// start can coincide exactly with its only event.
 	fn an_operator_stamping_at_or_below_its_inputs_keeps_its_stamp() {
+		// A window stamps the bucket START, at or below every event it consumed; overwriting it
+		// costs replay stability. Equality must survive - a bucket start can coincide with its
+		// only event.
 		let inherited = at(5_000);
 
 		let mut produced = Diffs::new();
@@ -538,12 +523,10 @@ mod substrate_stamping_tests {
 	}
 
 	#[test]
-	// An unstamped row is not a row stamped at 1970. At this layer #time has no none: a
-	// freshly built Columns carries DateTime::default(), the epoch. A clamp that only compared
-	// against the inherited instant would find epoch below it and KEEP it, and every operator that
-	// never touches #time would emit rows that retention evicts on sight. The epoch branch is what
-	// distinguishes "deliberately stamped early" from "never stamped".
 	fn a_row_with_no_time_is_stamped_from_the_inherited_instant() {
+		// #time has no none at this layer, so an unstamped row carries the epoch. Comparing only
+		// against the inherited instant would keep it as "deliberately stamped early", and every
+		// operator that never touches #time would emit rows retention evicts on sight.
 		let mut produced = Diffs::new();
 		produced.push(Diff::insert(columns(&[DateTime::default()])));
 		let mut out = change(produced);
@@ -554,13 +537,10 @@ mod substrate_stamping_tests {
 	}
 
 	#[test]
-	// The clamp works on BOTH paths a guest window emits from, with no special case. On the
-	// apply path `inherited` is max_input_time, and a bucket start is at or below every event in the
-	// bucket. On the timer path `inherited` is timer.at, and a Seal timer fires at bucket end plus
-	// grace plus one, strictly after the start. So the same rule carries the bucket start through
-	// both. This is what lets the chaindex trending-* operators read #time instead of a window_start
-	// data column.
 	fn a_window_row_carries_its_window_start_through_the_apply_wrapper() {
+		// Both paths a guest window emits from inherit an instant at or after the bucket start,
+		// so one rule carries the start through without a special case - which is what lets a
+		// consumer read #time instead of a window_start data column.
 		let window_start = at(60_000);
 		let newest_event_in_bucket = at(119_000);
 		let seal_fires_at = at(120_001);
@@ -583,9 +563,9 @@ mod substrate_stamping_tests {
 	}
 
 	#[test]
-	// The max is taken across ALL diffs in the batch, not just the first. An operator fed a
-	// batch of several diffs must inherit the latest instant anywhere in it.
 	fn the_max_spans_every_diff_in_the_batch() {
+		// An operator fed several diffs must inherit the latest instant anywhere in the batch,
+		// not the first diff's.
 		let mut diffs = Diffs::new();
 		diffs.push(Diff::insert(columns(&[at(1_000)])));
 		diffs.push(Diff::insert(columns(&[at(12_000)])));

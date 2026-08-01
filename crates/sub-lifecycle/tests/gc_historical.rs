@@ -3,16 +3,9 @@
 
 //! Historical GC task: reclaiming superseded versions without ever passing the reader floor.
 //!
-//! Two ways this class can be wrong, and they fail in opposite directions:
-//!
-//! - Reclaim too much - drop a version at or above `effective_gc_cutoff` - and a live reader's snapshot loses a row
-//!   mid-query. That is silent data loss, not a stall.
-//! - Reclaim too little - treat a zero or absent watermark as "sweep everything", or bail before the backlog is drained
-//!   - and superseded versions accumulate forever, which is the unbounded-memory failure.
-//!
-//! `store-multi`'s own tests cover `scan_historical_below`, the tier primitive. What is only testable here is the
-//! task wrapped around it: that it honours the floor it is handed, that a zero floor means do nothing rather than
-//! everything, and that it keeps its own cursor across slices.
+//! Dropping a version at or above `effective_gc_cutoff` loses a row from a live reader's snapshot; treating a zero
+//! watermark as "sweep everything" leaks in the other direction. `store-multi` covers the tier primitive, so what
+//! is testable here is the task around it: the floor it honours, the zero case, and its cursor across slices.
 
 use std::{
 	collections::HashMap,
@@ -219,9 +212,8 @@ fn reports_exhausted_so_the_lane_does_not_spin_on_a_drained_store() {
 
 #[test]
 fn a_second_slice_after_the_floor_advances_reclaims_the_newly_released_versions() {
-	// Cursors persist across slices. If a cursor were left exhausted and never reset, the next sweep would skip
-	// the shape entirely and versions released later would never be collected - a leak that only appears after
-	// the first successful sweep, which is exactly the kind that survives a short test.
+	// A cursor left exhausted and never reset makes the next sweep skip the shape entirely, so versions released
+	// later are never collected - a leak that only appears after the first successful sweep.
 	let store = store();
 	write_versions(&store, "k", 6);
 	let floor = Arc::new(AtomicU64::new(2));

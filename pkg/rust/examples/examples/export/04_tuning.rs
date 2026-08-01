@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Scenario: tuning the output.
-//   - `batch_size` controls how many records go into each INSERT statement: size 1 yields one statement per row
-//     (diff-friendly golden files), a large size yields fewer, fatter statements (faster bulk import).
-//   - `if_not_exists(true)` makes the DDL re-appliable: a CREATE ... IF NOT EXISTS schema can be imported repeatedly
-//     without erroring. (Only namespace / table / dictionary / enum support it, so this demo selects the `shop`
-//     namespace, which has no series or ring buffer.)
+// Scenario: tuning the output. `batch_size` trades statement count against statement width - 1 per
+// row is diff-friendly, a large size imports faster. `if_not_exists(true)` makes the DDL
+// re-appliable, and only namespace / table / dictionary / enum support it, hence the `shop` scope.
 
 use reifydb::{ExportOptions, embedded};
 use reifydb_examples::seed_demo;

@@ -56,15 +56,10 @@ pub mod tests {
 	#[test]
 	fn test_serialize_deserialize_column_ids() {
 		let test_cases = vec![
-			// Empty list
 			vec![],
-			// Single column
 			vec![ColumnId(1)],
-			// Multiple columns
 			vec![ColumnId(1), ColumnId(2), ColumnId(3)],
-			// Large IDs
 			vec![ColumnId(u64::MAX), ColumnId(u64::MAX - 1)],
-			// Many columns
 			vec![
 				ColumnId(10),
 				ColumnId(20),
@@ -77,9 +72,7 @@ pub mod tests {
 				ColumnId(90),
 				ColumnId(100),
 			],
-			// Sequential IDs
 			(0..20).map(ColumnId).collect::<Vec<_>>(),
-			// Non-sequential IDs
 			vec![ColumnId(100), ColumnId(1), ColumnId(50), ColumnId(25)],
 		];
 
@@ -89,7 +82,6 @@ pub mod tests {
 
 			assert_eq!(original, deserialized, "Failed to round-trip column IDs: {:?}", original);
 
-			// Verify blob format: first 8 bytes should be the count
 			let bytes = blob.as_bytes();
 			if !original.is_empty() || bytes.len() >= 8 {
 				let count = u64::from_le_bytes(bytes[0..8].try_into().unwrap());
@@ -100,7 +92,6 @@ pub mod tests {
 					original
 				);
 
-				// Verify total size
 				assert_eq!(
 					bytes.len(),
 					8 + original.len() * 8,
@@ -113,18 +104,16 @@ pub mod tests {
 
 	#[test]
 	fn test_serialize_format() {
-		// Test specific format details
+		// The blob is a little-endian u64 count followed by the ids, also little-endian;
+		// this is persisted layout, so the byte order is pinned here rather than round-tripped.
 		let column_ids = vec![ColumnId(0x0123456789ABCDEF), ColumnId(0xFEDCBA9876543210)];
 		let blob = serialize_column_ids(&column_ids);
 		let bytes = blob.as_bytes();
 
-		// Check count (2 in little-endian)
 		assert_eq!(&bytes[0..8], &[2, 0, 0, 0, 0, 0, 0, 0]);
 
-		// Check first ID (0x0123456789ABCDEF in little-endian)
 		assert_eq!(&bytes[8..16], &[0xEF, 0xCD, 0xAB, 0x89, 0x67, 0x45, 0x23, 0x01]);
 
-		// Check second ID (0xFEDCBA9876543210 in little-endian)
 		assert_eq!(&bytes[16..24], &[0x10, 0x32, 0x54, 0x76, 0x98, 0xBA, 0xDC, 0xFE]);
 	}
 }

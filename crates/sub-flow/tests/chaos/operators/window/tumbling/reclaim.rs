@@ -5,16 +5,9 @@ use crate::operators::window::tumbling::{Params, drive_reclaiming};
 
 #[test]
 fn a_generated_corpus_stays_foldable_while_the_sweep_runs_underneath_it() {
-	// The gap this closes: every reclaim assertion in the tree drove one or two hand-placed rows.
-	// A generated corpus interleaves inserts, removes, updates, seals and now sweeps in an order
-	// nobody chose, which is where the sweep meets states a hand-written case does not think to
-	// build - a group swept between a seal and the update that follows it, a row removed after the
-	// state that would retract it is gone.
-	//
-	// The bounds relax on purpose once reclamation is on: a stranded row is permitted, because the
-	// state that would have retracted it was erased and the operator publishes nothing on a sweep.
-	// What stays strict is that the stream remains foldable and that no row appears which was never
-	// admitted.
+	// A generated corpus interleaves inserts, removes, updates, seals and sweeps in an order nobody
+	// chose, reaching states a hand-written case does not think to build. The bounds relax once
+	// reclamation is on: a stranded row is permitted, a stream that stops folding is not.
 	let outcome = drive_reclaiming(
 		12_758_060_916_095_492_152,
 		Params {
@@ -32,8 +25,7 @@ fn a_generated_corpus_stays_foldable_while_the_sweep_runs_underneath_it() {
 		true,
 	);
 
-	// Without this the test passes just as well against a sweep that never reached a single group,
-	// which is the state the whole tree was in before: green, and evidence of nothing.
+	// Without this the test passes just as well against a sweep that never reached a single group.
 	assert!(
 		!outcome.reclaimed.reclaimed_nothing(),
 		"the sweep must actually have reclaimed something, or every assertion above is vacuous: {:?}",

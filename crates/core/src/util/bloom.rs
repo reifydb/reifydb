@@ -134,23 +134,19 @@ pub mod tests {
 	fn test_bloom_filter_basic() {
 		let mut bloom = BloomFilter::new(100);
 
-		// Test empty filter
 		assert!(bloom.is_empty());
 
-		// Add some items
 		bloom.add(&"hello");
 		bloom.add(&"world");
 		bloom.add(&42);
 
-		// Check membership
 		assert!(bloom.might_contain(&"hello"));
 		assert!(bloom.might_contain(&"world"));
 		assert!(bloom.might_contain(&42));
 
-		// Should not contain items not added (with high probability)
+		// An absent key may collide, so only one of the two is required to answer absent.
 		assert!(!bloom.might_contain(&"foo") || !bloom.might_contain(&"bar"));
 
-		// Clear and test
 		bloom.clear();
 		assert!(bloom.is_empty());
 		assert!(!bloom.might_contain(&"hello"));
@@ -162,17 +158,14 @@ pub mod tests {
 			.false_positive_rate(0.001) // 0.1%
 			.build();
 
-		// Add 1000 items
 		for i in 0..1000 {
 			bloom.add(&i);
 		}
 
-		// Check all added items are found
 		for i in 0..1000 {
 			assert!(bloom.might_contain(&i));
 		}
 
-		// Count false positives in next 10000 items
 		let mut false_positives = 0;
 		for i in 1000..11000 {
 			if bloom.might_contain(&i) {
@@ -180,8 +173,7 @@ pub mod tests {
 			}
 		}
 
-		// Should be roughly around 0.1% (10 out of 10000)
-		// Allow some variance
+		// The 0.1% target is ~10 of 10000; 30 is a loose bound that still fails on a systematic defect.
 		assert!(false_positives < 30, "Too many false positives: {}", false_positives);
 	}
 
@@ -198,7 +190,6 @@ pub mod tests {
 		let ratio = bloom.fill_ratio();
 		assert!(ratio > 0.0 && ratio < 1.0);
 
-		// Add many more items to saturate
 		for i in 5..100 {
 			bloom.add(&i);
 		}

@@ -1,16 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Scenario: on the very first `state_set` for a key there is no prior row,
-// so `created_at` and `updated_at` from the caller must round-trip unchanged.
-// This guards against a fix that "always" overwrites the anchor and would
-// otherwise zero out fresh inserts.
-
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_test_harness::operator::transaction::{FlowTxn, NODE_ID, engine, key, make_row};
 use reifydb_value::value::datetime::DateTime;
 
 fn assert_first_insert_uses_caller_created_at(txn: &mut FlowTransaction) {
+	// With no prior row the caller's anchors must round-trip unchanged, so an implementation that
+	// always overwrites the anchor cannot zero out fresh inserts.
 	let k = key("fresh-key");
 	txn.state_set(NODE_ID, &k, make_row("v1", 4_242, 4_242)).unwrap();
 

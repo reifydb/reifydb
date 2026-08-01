@@ -224,11 +224,12 @@ mod tests {
 
 	#[test]
 	fn view_range_spanning_chunks_preserves_total_length() {
+		// The range starts and ends mid-chunk, so both partial end chunks still have to be carried into the
+		// view.
 		let block = block_with_columns(&[("a", &[&[10, 20, 30], &[40, 50], &[60, 70, 80, 90]])]);
 		let view = block.view_range(2, 7).unwrap();
 		assert_eq!(view.len(), 5);
 		assert_eq!(view.schema.len(), 1);
-		// Three chunks contribute: chunk0[2..3] + chunk1[0..2] + chunk2[0..2].
 		assert_eq!(view.columns[0].chunks.len(), 3);
 		let vals: Vec<String> =
 			(0..view.columns[0].len()).map(|i| view.columns[0].chunks_value_at(i).to_string()).collect();

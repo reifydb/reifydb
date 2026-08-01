@@ -149,10 +149,8 @@ pub mod tests {
 			target_name: "target_table".to_string(),
 		};
 
-		// First creation should succeed
 		CatalogStore::create_source(&mut txn, to_create.clone()).unwrap();
 
-		// Second creation should fail with duplicate error
 		let err = CatalogStore::create_source(&mut txn, to_create).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_060");
 	}
@@ -182,7 +180,6 @@ pub mod tests {
 		};
 		CatalogStore::create_source(&mut txn, to_create).unwrap();
 
-		// Verify both are linked to namespace
 		let links: Vec<_> = txn
 			.range(NamespaceSourceKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
 			.unwrap()
@@ -190,7 +187,6 @@ pub mod tests {
 			.unwrap();
 		assert_eq!(links.len(), 2);
 
-		// Verify link metadata
 		let mut found_source_one = false;
 		let mut found_source_two = false;
 
@@ -222,7 +218,6 @@ pub mod tests {
 		let namespace_one = create_namespace(&mut txn, "namespace_one");
 		let namespace_two = create_namespace(&mut txn, "namespace_two");
 
-		// Create source in first namespace
 		let to_create = SourceToCreate {
 			name: Fragment::internal("shared_name"),
 			namespace: namespace_one.id(),
@@ -233,7 +228,6 @@ pub mod tests {
 		};
 		CatalogStore::create_source(&mut txn, to_create).unwrap();
 
-		// Should be able to create source with same name in different namespace
 		let to_create = SourceToCreate {
 			name: Fragment::internal("shared_name"),
 			namespace: namespace_two.id(),

@@ -1,21 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// The supervisor decodes each CDC batch once and pushes the shared, already-decoded batch
-// (`FlowActorMessage::Ingest`, an Arc) to EVERY live flow. A flow whose sources the batch does not
-// touch consumes it as a pure cursor advance (`step_pushed` -> skip): no store read, no compute,
-// and a durable checkpoint every `checkpoint_lag` versions. This matters twice over: an idle flow
-// that is never advanced pins the global caught-up watermark (a min across all live flows), and
-// its durable checkpoint is part of the minimum that gates CDC log compaction - a parked flow
-// would make the CDC log grow without bound. The per-flow store re-scan this used to imply is
-// gone: the push carries the decoded batch, so advancing all flows costs one mailbox send each.
-//
-// The advance is only observable indirectly, through the caught-up watermark. FLOW_TICK is set to
-// one hour so the per-flow tick (which would otherwise drain every flow once a second regardless
-// of routing) cannot fire within the test - leaving the push as the only thing that can advance a
-// flow. If the supervisor went back to skipping unaffected flows, the idle view would stay parked
-// at its last relevant version, the watermark would never reach the committed target, and the
-// first test below would time out.
+// The supervisor pushes each decoded CDC batch to every live flow; a flow the batch does not touch
+// consumes it as a pure cursor advance. An idle flow that is never advanced pins the caught-up
+// watermark and, through its durable checkpoint, the floor that gates CDC log compaction.
 
 use std::{
 	thread,
@@ -28,9 +16,8 @@ use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::Value;
 
 fn setup() -> TestDb {
-	// FLOW_TICK = 1h: the per-flow tick will not fire during the test, so only a routed wake can
-	// advance a flow. `with_config` seeds the value before the flow subsystem starts, so every flow
-	// actor spawns already reading the long tick.
+	// FLOW_TICK = 1h so the per-flow tick cannot fire during the test, leaving a routed push as the
+	// only thing that can advance a flow. `with_config` seeds it before any flow actor spawns.
 	TestDb::from(
 		embedded::memory()
 			.with_config(ConfigKey::FlowTick, Value::duration_seconds(3600))
@@ -65,12 +52,9 @@ fn unrelated_write_advances_idle_flow_without_tick() {
 	let va = db.await_row_count("FROM app::va", 2, StdDuration::from_secs(5));
 	assert_eq!(va, 2, "the affected view must materialize from its push; got {va}");
 
-	// The write to `a` does not touch vb's source (table b), and vb cannot tick for an hour, so
-	// only the pushed batch can advance it. The supervisor pushes every batch to every flow; vb
-	// consumes the irrelevant batch as a cursor skip (no store read) and advances to `target`.
-	// The caught-up watermark is the min across all live flows, so it reaching `target` proves
-	// the idle flow advanced. If idle flows were skipped again, vb would pin the watermark below
-	// `target` (stalling waiters and, via its parked durable checkpoint, CDC log compaction).
+	// The write to `a` does not touch vb's source and vb cannot tick for an hour, so only the
+	// pushed batch can advance it. The caught-up watermark is the min across live flows, so it
+	// reaching `target` is the only observable proof that the idle flow advanced.
 	let deadline = Instant::now() + StdDuration::from_secs(5);
 	loop {
 		let caught_up = db.watermarks().cdc().flow_consumer();
@@ -91,13 +75,9 @@ fn unrelated_write_advances_idle_flow_without_tick() {
 
 #[test]
 fn sequential_writes_materialize_exactly_via_push() {
-	// The supervisor pushes each already-decoded CDC batch to the affected flow (FlowActorMessage::
-	// Ingest) instead of making it re-read cdc_store, and the actor applies only the versions past its
-	// cursor (covers_from <= cursor < up_to). Each insert below is committed on its own, so each is a
-	// separate batch/push with an advancing covers_from; we wait for each row to materialize before
-	// the next insert so the flow stays exactly caught up and every batch takes the aligned push path.
-	// FLOW_TICK is one hour, so the per-flow tick cannot mask a bug: if the push dropped or duplicated
-	// the boundary version, the running count would be wrong.
+	// Each insert commits on its own, so each is a separate push with an advancing covers_from, and
+	// waiting for each row keeps the flow exactly caught up on the aligned path. Under a 1h tick
+	// nothing else can advance it, so a dropped or duplicated boundary version surfaces here.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4 }");

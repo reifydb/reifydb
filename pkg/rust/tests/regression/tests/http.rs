@@ -109,11 +109,9 @@ impl testscript::runner::Runner for HttpRunner {
 	}
 
 	fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
-		// Drop the clients
 		self.client = None;
 		self.admin_client = None;
 
-		// Stop the server
 		if let Some(mut server) = self.instance.take() {
 			let _ = server.stop();
 			drop(server);
@@ -126,11 +124,9 @@ impl testscript::runner::Runner for HttpRunner {
 test_each_path! { in "pkg/rust/tests/regression/tests/scripts" as http => test_http }
 
 fn test_http(path: &Path) {
-	// The uptime workspace member turns on reqwest's `rustls-no-provider` feature, which Cargo
-	// unifies across the whole workspace. That leaves reqwest expecting a process-wide rustls
-	// crypto provider that only uptime's own `main` installs, so HttpClient panics at build time
-	// in this test binary. Install the ring provider (the workspace's chosen backend) once; the
-	// error on subsequent calls means it is already installed.
+	// Cargo unifies reqwest's `rustls-no-provider` feature from the uptime workspace member, so
+	// reqwest here expects a process-wide crypto provider that only uptime's `main` installs.
+	// Install ring once; the error on later calls only means it is already installed.
 	let _ = rustls::crypto::ring::default_provider().install_default();
 	retry(3, || {
 		let runtime = Arc::new(Runtime::new().unwrap());

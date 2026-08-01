@@ -119,18 +119,14 @@ pub mod tests {
 		let namespace_id = NamespaceId::SYSTEM;
 		let table = create_test_table(table_id, namespace_id, "test_table");
 
-		// Set table at version 1
 		catalog.set_table(table_id, CommitVersion(1), Some(table.clone()));
 
-		// Find table at version 1
 		let found = catalog.find_table_at(table_id, CommitVersion(1));
 		assert_eq!(found, Some(table.clone()));
 
-		// Find table at later version (should return same table)
 		let found = catalog.find_table_at(table_id, CommitVersion(5));
 		assert_eq!(found, Some(table));
 
-		// Table shouldn't exist at version 0
 		let found = catalog.find_table_at(table_id, CommitVersion(0));
 		assert_eq!(found, None);
 	}
@@ -142,18 +138,14 @@ pub mod tests {
 		let namespace_id = NamespaceId::SYSTEM;
 		let table = create_test_table(table_id, namespace_id, "named_table");
 
-		// Set table
 		catalog.set_table(table_id, CommitVersion(1), Some(table.clone()));
 
-		// Find by name
 		let found = catalog.find_table_by_name_at(namespace_id, "named_table", CommitVersion(1));
 		assert_eq!(found, Some(table));
 
-		// Shouldn't find with wrong name
 		let found = catalog.find_table_by_name_at(namespace_id, "wrong_name", CommitVersion(1));
 		assert_eq!(found, None);
 
-		// Shouldn't find in wrong namespace
 		let found = catalog.find_table_by_name_at(NamespaceId::DEFAULT, "named_table", CommitVersion(1));
 		assert_eq!(found, None);
 	}
@@ -164,32 +156,25 @@ pub mod tests {
 		let table_id = TableId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
-		// Create and set initial table
 		let table_v1 = create_test_table(table_id, namespace_id, "old_name");
 		catalog.set_table(table_id, CommitVersion(1), Some(table_v1.clone()));
 
-		// Verify initial state
 		assert!(catalog.find_table_by_name_at(namespace_id, "old_name", CommitVersion(1)).is_some());
 		assert!(catalog.find_table_by_name_at(namespace_id, "new_name", CommitVersion(1)).is_none());
 
-		// Rename the table
 		let mut table_v2 = table_v1.clone();
 		table_v2.name = "new_name".to_string();
 		catalog.set_table(table_id, CommitVersion(2), Some(table_v2.clone()));
 
-		// Old name should be gone
 		assert!(catalog.find_table_by_name_at(namespace_id, "old_name", CommitVersion(2)).is_none());
 
-		// New name can be found
 		assert_eq!(
 			catalog.find_table_by_name_at(namespace_id, "new_name", CommitVersion(2)),
 			Some(table_v2.clone())
 		);
 
-		// Historical query at version 1 should still show old name
 		assert_eq!(catalog.find_table_at(table_id, CommitVersion(1)), Some(table_v1));
 
-		// Current version should show new name
 		assert_eq!(catalog.find_table_at(table_id, CommitVersion(2)), Some(table_v2));
 	}
 
@@ -200,23 +185,18 @@ pub mod tests {
 		let namespace1 = NamespaceId::SYSTEM;
 		let namespace2 = NamespaceId::DEFAULT;
 
-		// Create table in namespace1
 		let table_v1 = create_test_table(table_id, namespace1, "movable_table");
 		catalog.set_table(table_id, CommitVersion(1), Some(table_v1.clone()));
 
-		// Verify it's in namespace1
 		assert!(catalog.find_table_by_name_at(namespace1, "movable_table", CommitVersion(1)).is_some());
 		assert!(catalog.find_table_by_name_at(namespace2, "movable_table", CommitVersion(1)).is_none());
 
-		// Move to namespace2
 		let mut table_v2 = table_v1.clone();
 		table_v2.namespace = namespace2;
 		catalog.set_table(table_id, CommitVersion(2), Some(table_v2.clone()));
 
-		// Should no longer be in namespace1
 		assert!(catalog.find_table_by_name_at(namespace1, "movable_table", CommitVersion(2)).is_none());
 
-		// Should now be in namespace2
 		assert!(catalog.find_table_by_name_at(namespace2, "movable_table", CommitVersion(2)).is_some());
 	}
 
@@ -226,22 +206,17 @@ pub mod tests {
 		let table_id = TableId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
-		// Create and set table
 		let table = create_test_table(table_id, namespace_id, "deletable_table");
 		catalog.set_table(table_id, CommitVersion(1), Some(table.clone()));
 
-		// Verify it exists
 		assert_eq!(catalog.find_table_at(table_id, CommitVersion(1)), Some(table.clone()));
 		assert!(catalog.find_table_by_name_at(namespace_id, "deletable_table", CommitVersion(1)).is_some());
 
-		// Delete the table
 		catalog.set_table(table_id, CommitVersion(2), None);
 
-		// Should not exist at version 2
 		assert_eq!(catalog.find_table_at(table_id, CommitVersion(2)), None);
 		assert!(catalog.find_table_by_name_at(namespace_id, "deletable_table", CommitVersion(2)).is_none());
 
-		// Should still exist at version 1 (historical)
 		assert_eq!(catalog.find_table_at(table_id, CommitVersion(1)), Some(table));
 	}
 
@@ -254,12 +229,10 @@ pub mod tests {
 		let table2 = create_test_table(TableId(2), namespace_id, "table2");
 		let table3 = create_test_table(TableId(3), namespace_id, "table3");
 
-		// Set multiple tables
 		catalog.set_table(TableId(1), CommitVersion(1), Some(table1.clone()));
 		catalog.set_table(TableId(2), CommitVersion(1), Some(table2.clone()));
 		catalog.set_table(TableId(3), CommitVersion(1), Some(table3.clone()));
 
-		// All should be findable
 		assert_eq!(catalog.find_table_by_name_at(namespace_id, "table1", CommitVersion(1)), Some(table1));
 		assert_eq!(catalog.find_table_by_name_at(namespace_id, "table2", CommitVersion(1)), Some(table2));
 		assert_eq!(catalog.find_table_by_name_at(namespace_id, "table3", CommitVersion(1)), Some(table3));
@@ -271,19 +244,16 @@ pub mod tests {
 		let table_id = TableId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
-		// Create multiple versions
 		let table_v1 = create_test_table(table_id, namespace_id, "table_v1");
 		let mut table_v2 = table_v1.clone();
 		table_v2.name = "table_v2".to_string();
 		let mut table_v3 = table_v2.clone();
 		table_v3.name = "table_v3".to_string();
 
-		// Set at different versions
 		catalog.set_table(table_id, CommitVersion(10), Some(table_v1.clone()));
 		catalog.set_table(table_id, CommitVersion(20), Some(table_v2.clone()));
 		catalog.set_table(table_id, CommitVersion(30), Some(table_v3.clone()));
 
-		// Query at different versions
 		assert_eq!(catalog.find_table_at(table_id, CommitVersion(5)), None);
 		assert_eq!(catalog.find_table_at(table_id, CommitVersion(10)), Some(table_v1.clone()));
 		assert_eq!(catalog.find_table_at(table_id, CommitVersion(15)), Some(table_v1));
@@ -299,10 +269,8 @@ pub mod tests {
 		let table_id = TableId(1);
 		let namespace_id = NamespaceId::SYSTEM;
 
-		// Empty catalog should return None
 		assert_eq!(catalog.find_table(table_id), None);
 
-		// Create multiple versions
 		let table_v1 = create_test_table(table_id, namespace_id, "table_v1");
 		let mut table_v2 = table_v1.clone();
 		table_v2.name = "table_v2".to_string();
@@ -310,7 +278,6 @@ pub mod tests {
 		catalog.set_table(table_id, CommitVersion(10), Some(table_v1));
 		catalog.set_table(table_id, CommitVersion(20), Some(table_v2.clone()));
 
-		// Should return latest (v2)
 		assert_eq!(catalog.find_table(table_id), Some(table_v2));
 	}
 
@@ -323,10 +290,8 @@ pub mod tests {
 		let table = create_test_table(table_id, namespace_id, "test_table");
 		catalog.set_table(table_id, CommitVersion(10), Some(table));
 
-		// Delete at latest version
 		catalog.set_table(table_id, CommitVersion(20), None);
 
-		// Should return None (deleted at latest)
 		assert_eq!(catalog.find_table(table_id), None);
 	}
 
@@ -336,10 +301,8 @@ pub mod tests {
 		let namespace_id = NamespaceId::SYSTEM;
 		let table_id = TableId(1);
 
-		// Empty catalog should return None
 		assert_eq!(catalog.find_table_by_name(namespace_id, "test_table"), None);
 
-		// Create table
 		let table_v1 = create_test_table(table_id, namespace_id, "test_table");
 		let mut table_v2 = table_v1.clone();
 		table_v2.name = "renamed_table".to_string();
@@ -347,10 +310,8 @@ pub mod tests {
 		catalog.set_table(table_id, CommitVersion(10), Some(table_v1));
 		catalog.set_table(table_id, CommitVersion(20), Some(table_v2.clone()));
 
-		// Old name should not be found
 		assert_eq!(catalog.find_table_by_name(namespace_id, "test_table"), None);
 
-		// New name should be found with latest version
 		assert_eq!(catalog.find_table_by_name(namespace_id, "renamed_table"), Some(table_v2));
 	}
 }

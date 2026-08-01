@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Implementation crate for ReifyDB derive macros. Holds the parsing, validation, and codegen for `FromFrame` (and
-//! the family of related derives) so the public proc-macro crates - `reifydb-macro`, `reifydb-derive`, the future
-//! `reifydb-client-derive` - can re-export a single shared expansion. Application code never depends on this crate
-//! directly; depending on it creates a proc-macro dependency that the public crates already satisfy.
+//! Parsing, validation and codegen for the derive macros, so every public proc-macro crate re-exports one shared
+//! expansion. Application code depends on those crates, never on this one.
 
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]

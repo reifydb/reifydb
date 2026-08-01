@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Two-stage planner. `compile_logical` resolves names, type-checks, and produces a logical plan in terms of
-//! `core::interface/` primitives; `compile_physical` lowers that into the executable shape the engine VM consumes.
-//! `plan_with_policy` is the variant that interleaves a policy-injection pass between the two stages so read
-//! filters land before the physical lowering.
-//!
-//! The split lets policy and optimisation operate on a backend-neutral representation; nothing in the logical layer
-//! knows whether the table it reads from is a single-version or multi-version store.
+//! Two-stage planner: logical compilation resolves and type-checks, physical lowering produces what the engine VM
+//! runs. The split exists so policy injection and optimisation operate on a backend-neutral representation - nothing
+//! in the logical layer knows whether its source is a single-version or multi-version store.
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_transaction::transaction::Transaction;

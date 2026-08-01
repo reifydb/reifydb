@@ -634,17 +634,9 @@ mod tests {
 
 	#[test]
 	fn a_count_window_never_seals_and_never_arms_a_timer() {
-		// This is the defect the domain split closes, and it was silent. rearm_rolling_seal took the
-		// oldest coordinate from the expiry index and armed a seal timer at seal_instant(oldest, span).
-		// For a time window that oldest coordinate is an instant and the arithmetic is sound. For a
-		// count window it is a ROW NUMBER, so the timer landed a few milliseconds after the epoch,
-		// fired immediately, and rearmed forever - burning the wheel on a window that has nothing to
-		// seal. Nothing errored, because a row number is a perfectly good u64 to hand DateTime::from_millis.
-		//
-		// A count window holds the last N rows and always has a current value, so it has no notion of
-		// "closed": it evicts on capacity when a row arrives, and no passage of time can make a further
-		// row inadmissible. Both halves of that are asserted here, because it is the pair that keeps a
-		// duration away from a row-numbered coordinate.
+		// A count window's coordinate is a row number, not an instant, and nothing errors if one
+		// is fed to duration arithmetic: the timer lands just past the epoch, fires at once and
+		// rearms forever. A count window evicts on capacity and has no notion of closed.
 		assert!(!<u64 as RollingDomain>::seals_on_timer(), "a row number is not an instant to arm a timer at");
 		assert!(<DateTime as RollingDomain>::seals_on_timer(), "an event-time window does seal on the wheel");
 
@@ -656,14 +648,9 @@ mod tests {
 
 	#[test]
 	fn the_coordinate_one_span_behind_the_watermark_is_due_to_evict_at_that_watermark() {
-		// A rolling window holds (watermark - span, watermark]. Eviction is INCLUSIVE at the low end:
-		// seal_rolling_engine expires buffer.range(..=timer.at - span). So the coordinate sitting
-		// exactly one span behind the watermark must already be gone, which means its timer has to be
-		// armed at exactly coord + span - the wheel fires at `at <= watermark`.
-		// Rolling used to borrow tumbling's seal_instant, whose +1 implements a STRICT gate
-		// (watermark - last > cutoff) for bucketed windows. That armed at coord + span + 1, one tick
-		// past the watermark that justifies the eviction, so the oldest entry on the boundary never
-		// expired: interval 5s over ts 1000..10000 summed 45 instead of 40, forever.
+		// A rolling window holds (watermark - span, watermark] and evicts inclusively at the low
+		// end, so the coordinate exactly one span behind must arm at coord + span. Tumbling's
+		// strict +1 gate arms one tick late and the boundary entry then never expires.
 		let span = Duration::from_seconds(5).expect("representable span");
 		let watermark = 10_000u64;
 
@@ -685,12 +672,9 @@ mod tests {
 
 	#[test]
 	fn a_count_window_reports_no_lag_even_when_one_is_declared() {
-		// lag is declared as a duration. In the time domain it shifts the aggregate cutoff back from the
-		// newest instant; in the count domain the coordinate is a row number, and subtracting
-		// milliseconds from it would silently drop rows in proportion to the lag in MILLIseconds - a
-		// 30s lag would demand 30000 rows of headroom before anything aggregated.
-		// grace() already guarded this way; rolling_lag did not, which is why the guard now lives in the
-		// domain rather than in whoever remembers to check is_count_based first.
+		// lag is a duration, and in the count domain the coordinate is a row number: subtracting
+		// milliseconds from it would demand 30000 rows of headroom for a 30s lag. The guard lives
+		// in the domain rather than in whoever remembers to check the count case first.
 		let declared = Duration::from_seconds(30).expect("representable span");
 
 		assert_eq!(<u64 as RollingDomain>::lag(declared), 0, "a row count has no millisecond lag");
@@ -701,8 +685,8 @@ mod tests {
 		);
 	}
 
-	// Minimal in-memory StateStore so the differential runs the real engine
-	// paths (buffers, running entries, expiry index) without a FlowTransaction.
+	/// Minimal in-memory StateStore so the differential runs the real engine paths without a
+	/// FlowTransaction.
 	#[derive(Default)]
 	struct MockStore {
 		state: TestHashMap<Vec<u8>, StateBytes>,
@@ -857,12 +841,8 @@ mod tests {
 
 	#[test]
 	fn runnable_row_accumulator_matches_legacy_combine_on_float_churn() {
-		// The production wiring switches jupiter's pure-sum rolling views onto the
-		// running-accumulator engine. This drives the real RowAccumulator (Float8,
-		// compensated arithmetic) through both engines on an identical seeded
-		// add/retract/expire workload and requires the emitted rows to agree within
-		// float tolerance, kinds and cardinality exactly. A divergence means the
-		// runnable fast path changes what the views publish.
+		// Pure-sum rolling views run on the running-accumulator engine, so any divergence from
+		// the recombining engine on the same workload changes what those views publish.
 		let config = || WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).build();
 		let mut legacy_store = MockStore::default();
 		let mut runnable_store = MockStore::default();
@@ -988,8 +968,8 @@ mod tests {
 			coord_base += roll(10) + 1;
 		}
 
-		// Drain both to empty: every group must terminally remove in both
-		// engines, leaving no buffers, running entries, or index entries behind.
+		// Draining to empty must terminally remove every group in both engines, leaving no
+		// buffers, running entries or index entries behind.
 		let sk = slot_kinds.clone();
 		let legacy_final = legacy
 			.expire_before(&mut legacy_store, u64::MAX - 1, |_g, buffer| {

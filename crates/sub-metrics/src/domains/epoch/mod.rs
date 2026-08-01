@@ -22,9 +22,8 @@ use crate::framework::source::MetricsSource;
 
 /// What only the durable epoch log can see about itself.
 ///
-/// Fed from the event bus rather than read here: the log belongs to the lifecycle subsystem, and a metrics domain
-/// reaching into it would couple two subsystems that otherwise share nothing but core. Every other figure on this
-/// row is read live from the in-memory epoch.
+/// Fed from the event bus: the log belongs to the lifecycle subsystem, and reaching into it from a metrics domain
+/// would couple two subsystems that otherwise share nothing but core.
 #[derive(Default)]
 pub struct EpochGauge {
 	durable_samples: AtomicU64,

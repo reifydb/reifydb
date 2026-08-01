@@ -118,11 +118,10 @@ mod tests {
 		}
 	}
 
-	// The id an intern hands back has a committed entry in the single store. A registry with a cold
-	// cache (a rebuilt flow engine, a restarted process before eviction) must resolve that entry
-	// through the store instead of minting a second id for the same value.
 	#[test]
 	fn a_cold_registry_resolves_an_interned_value_through_the_single_store() {
+		// A registry with an empty cache must find the committed entry in the single store rather
+		// than mint a second id for the same value.
 		let single = SingleTransaction::testing();
 		let dictionary = mints();
 		let value = Value::Utf8("GvUCjmWSXA5hrTh9smmNA1AU55YCtP9mDLQcrKA1pump".to_string());

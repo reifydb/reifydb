@@ -68,14 +68,15 @@ impl NativeTransformFFI {
 	}
 }
 
-// SAFETY: NativeTransformFFI is only accessed from a single context at a time.
-
+// SAFETY: nothing here is synchronised; sound only because the flow engine never runs `apply` for one node
+// concurrently.
 unsafe impl Send for NativeTransformFFI {}
 unsafe impl Sync for NativeTransformFFI {}
 
 impl Drop for NativeTransformFFI {
 	fn drop(&mut self) {
 		if !self.instance.is_null() {
+			// SAFETY: instance came from this descriptor's create; Drop runs at most once.
 			unsafe { (self.vtable.destroy)(self.instance) };
 		}
 	}
@@ -84,17 +85,18 @@ impl Drop for NativeTransformFFI {
 impl Transform for NativeTransformFFI {
 	#[instrument(name = "transform::ffi::apply", level = "trace", skip_all)]
 	fn apply(&self, ctx: &TransformContext, input: Columns) -> Result<Columns> {
-		// SAFETY: single-threaded per call; no live pointers from a prior
-
+		// SAFETY: the arena is thread-local and nothing marshalled into it outlives a call.
 		FFI_TRANSFORM_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
 		let ffi_input = FFI_TRANSFORM_ARENA.with(|cell| unsafe { (*cell.get()).marshal_columns(&input) });
 
 		let ffi_ctx_ptr = self.cached_ctx.get();
+		// SAFETY: cached_ctx owns the ContextFFI for the life of self and apply is not re-entrant.
 		unsafe {
 			(*ffi_ctx_ptr).clock_now_nanos = ctx.runtime_context.clock.now().to_nanos();
 		}
 
 		let result_code = with_registry(&self.builder_registry, || {
+			// SAFETY: instance, ctx and the arena-held input all stay valid across the call.
 			call_with_abort_on_panic("transform::apply", || unsafe {
 				(self.vtable.transform)(self.instance, ffi_ctx_ptr, &ffi_input)
 			})
@@ -396,6 +398,8 @@ pub(crate) mod stubs {
 		}
 	}
 
+	/// # Safety
+	/// Dereferences nothing; `unsafe` is only present to match the `RqlCallbacks` signature.
 	unsafe extern "C" fn rql_unsupported(
 		_: *mut ContextFFI,
 		_: *const u8,

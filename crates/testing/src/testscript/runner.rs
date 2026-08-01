@@ -272,8 +272,6 @@ fn ensure_eol(mut s: String, eol: &str) -> String {
 pub mod tests {
 	use super::*;
 
-	/// A runner which simply counts the number of times its hooks are
-	/// called.
 	#[derive(Default)]
 	struct HookRunner {
 		start_script_count: usize,
@@ -320,9 +318,9 @@ pub mod tests {
 		}
 	}
 
-	/// Tests that runner hooks are called as expected.
 	#[test]
 	fn hooks() {
+		// Two blocks with three commands total, so each hook's arity is pinned separately.
 		let mut runner = HookRunner::default();
 		generate(
 			&mut runner,

@@ -123,11 +123,8 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: an event-time object stamps #time from the column the author declared, not from the clock. This is
-	// the property the whole redesign rests on - it is what makes a replay of an old corpus reproduce production's
-	// retention decisions instead of re-dating every row to now.
-	// Mutation: return arrival_nanos unconditionally and this fails with the wall clock.
 	fn an_event_time_object_stamps_time_from_the_declared_populator() {
+		// Stamping from the clock would make a replay of an old corpus re-date every row to now.
 		let shape = shape();
 
 		let stamped = unwrapped("trades", &columns(), &event(), &shape, &row(&shape, BLOCK_TIME), ARRIVAL);
@@ -136,9 +133,8 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: an object that declares nothing is processing-time, and its #time is arrival. Silence is a
-	// legitimate declaration and must not leave #time unset - a row without a time is unrepresentable.
 	fn a_processing_time_object_stamps_time_from_arrival() {
+		// Declaring nothing is a legitimate declaration; a row without a #time is unrepresentable.
 		let shape = shape();
 
 		let stamped = unwrapped(
@@ -154,12 +150,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: the replay property in miniature. When the populator value is OLDER than the write, #time and the
-	// wall stamps must diverge - #time says when the event happened, created_at says when this database learned
-	// about it. A backfill of week-old data must land at its own event time, or every windowed rollup over it
-	// buckets into today.
-	// Mutation: populate #time from the wall clock and the two collapse onto each other here.
 	fn time_diverges_from_arrival_when_the_event_predates_the_write() {
+		// A backfill of week-old data must land at its own event time, or every windowed
+		// rollup over it buckets into today.
 		let shape = shape();
 
 		let stamped = unwrapped("trades", &columns(), &event(), &shape, &row(&shape, BLOCK_TIME), ARRIVAL);
@@ -169,10 +162,8 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: the populator is resolved by NAME against the object's own columns, so it keeps working when the
-	// declared column is not the last one and when other columns share its type.
-	// Mutation: hardcode the last column index and this returns the wrong column's value.
 	fn the_populator_is_resolved_by_name_not_by_position() {
+		// Resolving by position would pick the wrong column once another shares its type.
 		let shape = RowShape::new(vec![
 			RowShapeField::unconstrained("block_time", ValueType::DateTime),
 			RowShapeField::unconstrained("recorded_at", ValueType::DateTime),
@@ -190,11 +181,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: the resolver is object-agnostic on purpose. Table, series, ringbuffer and queue all route through
-	// this one function precisely so a declaration cannot be honoured for one object kind and dropped for another,
-	// which is what four hand-rolled copies would eventually produce. Nothing in the signature can name an object
-	// kind, so this asserts the same inputs give the same answer whatever the object is called.
 	fn the_resolution_does_not_depend_on_the_object_kind() {
+		// Table, series, ringbuffer and queue share this resolver so a declaration cannot be
+		// honoured for one object kind and dropped for another.
 		let shape = shape();
 		let r = row(&shape, BLOCK_TIME);
 
@@ -208,12 +197,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: a populator naming a column the object does not have must FAIL the write, not quietly fall back to
-	// the arrival clock. The fallback is the dangerous outcome: rows would keep being written, every one of them
-	// stamped with now, and a windowed rollup over them would look plausible while being wrong. Definition-time
-	// validation already rejects this, so an error here is the second line of defence, not the first.
-	// Mutation: return arrival_nanos instead of the error and this fails, because ARRIVAL comes back as an Ok.
 	fn an_absent_populator_column_fails_the_write_instead_of_falling_back() {
+		// Falling back to the arrival clock keeps writing rows stamped with now, and a windowed
+		// rollup over them looks plausible while being wrong.
 		let shape = shape();
 		let time = TimeSource::Event {
 			ts: "no_such_column".to_string(),
@@ -226,11 +212,8 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: same second line of defence for a populator that exists but does not hold a DateTime on this row -
-	// including the none case, which is what a nullable populator column would produce. Falling back would date the
-	// row to now while the object claims to be event-time.
-	// Mutation: return arrival_nanos for the non-DateTime arm and this fails.
 	fn a_populator_that_is_not_a_datetime_fails_the_write() {
+		// Falling back would date the row to now while the object claims to be event-time.
 		let shape = shape();
 		let time = TimeSource::Event {
 			ts: "signature".to_string(),
@@ -243,10 +226,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: a none in the populator is the realistic version of the previous case - the column is declared and of
-	// the right type, but this row left it empty. It must be refused for the same reason, and it is worth pinning
-	// separately because none travels a different path through get_value than a wrong-typed value does.
 	fn a_none_populator_fails_the_write() {
+		// Pinned separately because none travels a different path through get_value than a
+		// wrong-typed value does.
 		let shape = shape();
 		let mut r = shape.allocate();
 		shape.set_value(&mut r, 0, &Value::Utf8("sig".to_string()));
@@ -274,15 +256,10 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: THE update-lifecycle divergence between the two domains, written as one table so it cannot drift. On
-	// processing time an update carries the ORIGINAL #time forward - the row is still a record of the same arrival,
-	// and re-stamping it would silently re-date it, moving it into a later window every time anything about it is
-	// edited. On event time the same update re-reads the populator, because the author edited what the row claims
-	// happened. Both arms are handed the same previous instant and the same row, so the domain is the only thing
-	// that differs, and the row deliberately carries a populator value that is not the previous instant -
-	// otherwise the two columns of this table would agree by accident.
-	// Mutation: route event through the processing passthrough and a corrected event timestamp never reaches #time.
 	fn the_two_domains_diverge_on_what_an_update_does_to_time() {
+		// Re-stamping on processing time would re-date a row into a later window on any edit;
+		// on event time the update must re-read what the author just changed. The row carries a
+		// populator value unequal to the previous instant so the two arms cannot agree by accident.
 		let shape = shape();
 		let corrected = row(&shape, CORRECTED_TIME);
 
@@ -299,11 +276,8 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: an update is the only path on which #time can move backwards, and it must be allowed to. Correcting a
-	// mis-entered event timestamp to an EARLIER instant is the whole reason the event arm re-reads rather than
-	// keeps - a row wrongly dated to next year has to be draggable back into the window it belongs to.
-	// Mutation: clamp to max(previous, resolved) and this fails while the forward correction above still passes.
 	fn an_event_time_update_may_move_time_backwards() {
+		// A row wrongly dated to next year has to be draggable back into the window it belongs to.
 		let shape = shape();
 		let earlier = row(&shape, BLOCK_TIME);
 
@@ -316,13 +290,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: an update that leaves the populator alone leaves #time alone. Re-reading is not re-stamping: an edit
-	// to some other column must not disturb the instant, or a routine field update would walk a row across window
-	// boundaries. Processing time reaches this by keeping, event time by re-reading a value that did not change;
-	// both have to land on the same answer, which is what makes an unrelated edit safe in either domain. This is
-	// the converse of the divergence table above - the two domains must part ways only when the populator itself
-	// moved.
 	fn an_update_that_leaves_the_populator_alone_leaves_time_alone() {
+		// A routine edit to an unrelated column must not walk a row across window boundaries;
+		// the two domains may part ways only when the populator itself moved.
 		let shape = shape();
 		let untouched = row(&shape, BLOCK_TIME);
 
@@ -336,13 +306,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: the second line of defence holds on the update path too. previous_time_nanos is handed to the event
-	// arm in the slot the insert path uses for the arrival clock, so a populator that stops resolving could
-	// plausibly be answered with the old #time instead of an error. It must not be: a row whose populator no
-	// longer resolves is a row whose catalog and contents disagree, and keeping the stale instant would hide that
-	// while the object still claims to be event-time.
-	// Mutation: make the event arm fall back to previous_time_nanos and both cases here return BLOCK_TIME as an Ok.
 	fn an_unusable_populator_fails_the_update_instead_of_keeping_the_previous_time() {
+		// A populator that no longer resolves means catalog and contents disagree; keeping the
+		// stale instant would hide that while the object still claims to be event-time.
 		let shape = shape();
 
 		let absent = TimeSource::Event {
@@ -368,10 +334,9 @@ mod tests {
 	}
 
 	#[test]
-	// Intent: the update resolver is object-agnostic for the same reason the insert one is - table, series and
-	// ringbuffer all route their updates through it so a domain's update semantics cannot be honoured for one
-	// object kind and dropped for another.
 	fn the_update_resolution_does_not_depend_on_the_object_kind() {
+		// Table, series and ringbuffer share the update resolver, so a domain's update semantics
+		// cannot be honoured for one object kind and dropped for another.
 		let shape = shape();
 		let r = row(&shape, CORRECTED_TIME);
 

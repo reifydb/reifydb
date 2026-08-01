@@ -9,7 +9,7 @@ fn main() {
 	// Create and start an in-memory database
 	let db = embedded::memory().build().unwrap();
 
-	// Example 1: FROM with inline data (single encoded)
+	// Example 1: FROM with inline data (a single row)
 	info!("Example 1: FROM with single inline encoded");
 	log_query(r#"from [{ name: "Alice", age: 30 }]"#);
 	for frame in db.query_as_root(r#"from [{ name: "Alice", age: 30 }]"#, Params::None).unwrap() {

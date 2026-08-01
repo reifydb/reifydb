@@ -77,12 +77,10 @@ pub mod tests {
 	fn test_boolean_with_trailing() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "true123").unwrap();
-		// Should parse as identifier, not boolean
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].fragment.text(), "true123");
 
 		let tokens = tokenize(&bump, "false_value").unwrap();
-		// Should parse as identifier, not boolean
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].fragment.text(), "false_value");
 	}

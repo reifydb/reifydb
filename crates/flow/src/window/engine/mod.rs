@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Schema-agnostic windowing state-machine engines.
-//!
-//! Each engine owns the per-(group,window) accumulator state, high-water late
-//! rejection, eviction, and diff routing (`Insert -> add`,
-//! `Update -> remove(pre) + add(post)`, `Remove -> remove(pre)`). The caller
-//! (the "face") owns extraction (`row -> (group, coord, contribution)`) and
-//! output construction; it hands the engine pre-bucketed events and receives
-//! [`WindowResult`]s to translate into diffs.
+//! Schema-agnostic windowing state-machine engines. An engine owns accumulator state, late
+//! rejection, eviction and diff routing; the caller (the "face") owns extraction and output
+//! construction, handing over pre-bucketed events and translating [`WindowResult`]s into diffs.
 
 pub mod config;
 pub(crate) mod expiry;
@@ -48,14 +43,10 @@ pub enum AccumulatorEvent<C> {
 	Remove(C),
 }
 
-/// The seal horizon: window anchors (window start for bucketed engines, the
-/// coordinate for rolling ledgers) strictly below this value are sealed -
-/// immutable and eligible for state reclamation.
+/// Anchors strictly below the returned horizon are sealed: immutable and eligible for reclamation.
 ///
-/// `seal_after` is the coordinate's OWN span type, so a time window can only be handed a
-/// `Duration` and a count window only a row count. That is what stops a millisecond span being
-/// subtracted from a nanosecond instant, which is how this silently sealed every window but the
-/// newest across 33 operators.
+/// `seal_after` is the coordinate's own span type, which is what stops a millisecond span being
+/// subtracted from a nanosecond instant.
 pub fn seal_horizon<C: WindowCoord>(watermark: C, seal_after: C::Span) -> C {
 	watermark.saturating_sub_span(seal_after)
 }
@@ -86,16 +77,13 @@ pub struct WindowResult<G, Coord, Output> {
 	pub group: G,
 	pub span: WindowSpan<Coord>,
 	pub value: Output,
-	/// The finalized value before this batch's events, when the window was
-	/// non-empty (used by faces that emit a real pre on Update/Remove). `None`
-	/// for a brand-new window. Faces that don't need it (the sdk drivers)
-	/// ignore it.
+	/// The finalized value before this batch's events, for faces that emit a real pre on
+	/// Update/Remove. `None` for a brand-new window.
 	pub prior: Option<Output>,
 	pub kind: EmitKind,
 }
 
-/// Per-group metadata: the highest window start seen, used to drop late events
-/// for already-closed windows.
+/// The highest window start seen for a group, used to drop late events for already-closed windows.
 #[operator_state(seal)]
 #[derive(Debug, Clone)]
 pub struct GroupMeta<K> {
@@ -116,12 +104,9 @@ impl<K> HeapSize for GroupMeta<K> {
 	}
 }
 
-/// Read the group's high-water anchor as a comparable order key, shared by every
-/// engine's per-group meta so the meta sweep is uniform. A group whose high water
-/// has fallen below the sweep threshold has stopped advancing (no recent events)
-/// and its meta is safe to reclaim: the meta only drives late-event rejection, and
-/// by the time the threshold (>= the operator's retention) passes it, any late event
-/// for the group is already past its horizon.
+/// The group's high-water anchor as a comparable order key, so the meta sweep is uniform across
+/// engines. Callers sweep at the seal horizon, so a group below it has seen nothing since its own
+/// windows sealed and the late-event rejection this meta drives has nothing left to reject.
 pub(crate) trait MetaHighWater: OperatorState {
 	fn archived_high_water_order(archived: &Self::Archived) -> Option<u64>;
 }
@@ -140,10 +125,8 @@ impl<C: Slot> GroupMeta<C> {
 	}
 }
 
-/// Per-batch high-water tracking for one group: `initial` is the persisted
-/// value snapshotted at load (served archived, no materialize), `bumped` the
-/// batch-local monotonic advance. Only groups with a bump persist, via a
-/// sealed in-place write when the archive carries a payload.
+/// `initial` is the persisted value snapshotted at load, served archived without materializing;
+/// `bumped` is the batch-local monotonic advance. Only groups with a bump persist.
 pub(crate) struct BatchMeta<C> {
 	pub(crate) initial: Option<C>,
 	pub(crate) bumped: Option<C>,
@@ -222,28 +205,17 @@ where
 	Ok(())
 }
 
-/// The internal-key range covering every per-group meta, used by the sweep.
-///
-/// Node scoped: the meta is keyed by partition while a window group is
-/// (partition, window), so it cannot live inside either group's range.
+/// The internal-key range covering every per-group meta. Node scoped because the meta is keyed by
+/// partition while a window group is (partition, window), so it fits inside neither group's range.
 pub(crate) fn meta_range() -> EncodedKeyRange {
 	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::WINDOW_META)
 }
 
 /// Reclaim every group meta whose high water is strictly below `threshold`.
 ///
-/// `low_water` is the smallest high water among the groups that survived the previous sweep - a lower
-/// bound on the current minimum, since a group's high water only advances and a newly-seen group starts
-/// at an unsealed window (>= the caller's seal horizon >= `threshold`, so it can never be the stale
-/// minimum). When the bound is already at/above the threshold nothing can be stale and the whole scan is
-/// skipped - the steady-state case, so most apply-time sweeps are O(1). The full scan runs only when the
-/// threshold has crossed that minimum (the oldest group has genuinely gone stale); it then drops every
-/// stale meta in one pass and recomputes the bound to the smallest surviving high water.
-///
-/// Staleness is a value, not a key prefix, so the scan must cover the whole meta keyspace (a key-bounded
-/// scan would only ever see the lowest-keyed groups). It flushes the meta cache first so the scan sees
-/// the latest high water, drops stale keys through the cache (never bypassing it), and flushes the drops.
-/// Scoped to the meta keyspace, so row-number mappings and accumulators are untouched.
+/// `low_water` is a lower bound on the current minimum high water, so a bound already at or above
+/// the threshold skips the scan entirely and keeps the steady-state sweep O(1). Staleness is a
+/// value, not a key prefix, so the scan itself must cover the whole meta keyspace.
 pub(crate) fn sweep_stale_meta<S, M>(
 	store: &mut S,
 	meta: &mut StateCache<MetaKey, M>,
@@ -282,8 +254,8 @@ where
 	Ok(count)
 }
 
-/// State-cache key for a group's [`GroupMeta`], tagged so it lives in a
-/// distinct keyspace from the per-window accumulators.
+/// State-cache key for a group's [`GroupMeta`], tagged into a keyspace distinct from the
+/// per-window accumulators.
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct MetaKey(pub EncodedKey);
 
@@ -445,9 +417,8 @@ where
 	MetaKey(group.into_encoded_key())
 }
 
-/// Every node-scoped accumulator, for engines whose windows are not yet interned
-/// as groups. A group-scoped engine cannot hydrate through one range: its
-/// accumulators sit inside their own group, not in a shared keyspace.
+/// Every node-scoped accumulator, for engines whose windows are not yet interned as groups. A
+/// group-scoped engine cannot hydrate through one range; its accumulators sit inside their own group.
 pub(crate) fn accumulator_range() -> EncodedKeyRange {
 	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::ACCUMULATOR)
 }
@@ -460,31 +431,29 @@ pub(crate) fn running_range() -> EncodedKeyRange {
 	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::RUNNING)
 }
 
-/// The due-ordered expiry index, node scoped so a group's entries survive the
-/// phase-1 range delete and drain on their own.
+/// The due-ordered expiry index, node scoped so a group's entries survive the phase-1 range delete
+/// and drain on their own.
 pub(crate) fn expiry_range() -> EncodedKeyRange {
 	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::EXPIRY)
 }
 
-/// Which coordinate a window's entry in the expiry index is ordered by, and so
-/// which coordinate its seal horizon is measured from.
+/// Which coordinate a window's expiry-index entry is ordered by, and so which coordinate its seal
+/// horizon is measured from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExpiryAnchor {
-	/// The window never enters the index and is never swept; count-based and
-	/// plain aggregation windows have no time coordinate to expire against.
+	/// Never indexed, never swept: count-based and plain aggregation windows have no time
+	/// coordinate to expire against.
 	Unindexed,
-	/// A fixed-grid window: the horizon is a property of the window itself, so
-	/// a late event can neither extend it nor, once swept, resurrect the window.
+	/// Fixed grid, so a late event can neither extend the horizon nor resurrect a swept window.
 	WindowStart,
-	/// A session: the horizon rides the newest event, because that is what
-	/// keeps the session open.
+	/// A session, whose horizon rides the newest event because that is what keeps it open.
 	LastEvent,
 }
 
 impl ExpiryAnchor {
 	/// `last_event` is `None` only when no event time is known, never zero-as-absent: an event at
-	/// the epoch is a legitimate coordinate, and treating its zero as "no information" let a
-	/// window that had long since sealed keep admitting rows.
+	/// the epoch is a legitimate coordinate, and reading its zero as "no information" lets a
+	/// long-sealed window keep admitting rows.
 	pub fn of(&self, window_start: u64, last_event: Option<u64>) -> Option<u64> {
 		match self {
 			ExpiryAnchor::Unindexed => None,
@@ -557,9 +526,8 @@ pub(crate) mod test_support {
 
 	use crate::{timer::Timer, window::accumulator::WindowAccumulator};
 
-	/// One wheel mutation a shell issued, in the order it issued it. Arm and disarm are
-	/// distinct variants rather than a flag because the pair is order-sensitive: a disarm
-	/// that lands after the arm it was meant to precede cancels a live timer.
+	/// One wheel mutation a shell issued, in issue order. Arm and disarm are distinct variants
+	/// because the pair is order-sensitive: a disarm landing after its arm cancels a live timer.
 	#[derive(Debug, Clone, PartialEq, Eq)]
 	pub(crate) enum RecordedTimer {
 		Armed(Timer),
@@ -617,9 +585,8 @@ pub(crate) mod test_support {
 			Ok(())
 		}
 
-		/// Point and batch lookups that reached the accumulator keyspace. Range scans
-		/// (hydration) are deliberately not counted: the question these serve is how
-		/// many futile round trips a batch pays, not how it warms.
+		/// Batched lookups that reached the accumulator keyspace. Point reads and range scans are
+		/// not counted: the question this serves is how many futile round trips a batch pays.
 		pub(crate) fn accumulator_reads(&self) -> usize {
 			self.accumulator_reads
 		}
@@ -692,9 +659,9 @@ pub(crate) mod test_support {
 			keys.len()
 		}
 
-		/// The same phase, widened to every data keyspace a group can hold - the shape engines
-		/// that keep no ACCUMULATOR see. Node scope is excluded because the group-major reaper
-		/// structurally refuses it, which is what leaves the row-number mapping addressable.
+		/// The same phase, widened to every data keyspace a group can hold - the shape engines that
+		/// keep no ACCUMULATOR see. Node scope is spared, and the row-number mapping survives on top
+		/// of that because it is an identity keyspace rather than a data one.
 		pub(crate) fn drop_group_data_entries(&mut self) -> usize {
 			let keys: Vec<Vec<u8>> = self
 				.data
@@ -893,8 +860,8 @@ mod archived_projection_tests {
 
 	use super::*;
 
-	/// Project the high water the way `sweep_stale_meta` does: encode, then
-	/// read the archive without ever materializing the value.
+	/// Projects the high water the way `sweep_stale_meta` does: encode, then read the archive
+	/// without ever materializing the value.
 	fn via_archive<M: MetaHighWater>(meta: &M) -> Option<u64> {
 		let bytes = meta.encode_state(DateTime::EPOCH).unwrap();
 		M::archived_high_water_order(M::archived(&bytes).unwrap())
@@ -902,13 +869,9 @@ mod archived_projection_tests {
 
 	#[test]
 	fn archived_high_water_yields_the_slot_order_key() {
-		// sweep_stale_meta reclaims purely on this projection, so a wrong order
-		// key here silently drops the meta of a live group (breaking late-event
-		// rejection) or keeps dead meta forever. The expected values are spelled
-		// out rather than derived, so the archive is checked against the meaning
-		// of the order key and not against another implementation of it. Slots
-		// whose order key is not the identity matter most: that conversion is
-		// where a wrong archived read hides.
+		// sweep_stale_meta reclaims purely on this projection, so a wrong order key silently drops
+		// a live group's meta or keeps dead meta forever. The expected values are spelled out
+		// rather than derived, so the archive is checked against meaning, not another implementation.
 		let u64_meta = GroupMeta {
 			high_water: Some(4242u64),
 		};
@@ -924,9 +887,9 @@ mod archived_projection_tests {
 			"DateTime orders by milliseconds, not by archived layout"
 		);
 
-		// Sub-millisecond detail is below the coordinate resolution, so it must not reach the
-		// order key through either path. If the archived read kept nanoseconds it would compare
-		// against a millisecond cutoff and sweep every live group on the first tick.
+		// Sub-millisecond detail is below the coordinate resolution and must not reach the order
+		// key. An archived read that kept nanoseconds would compare against a millisecond cutoff
+		// and sweep every live group on the first tick.
 		let sub_milli = GroupMeta {
 			high_water: Some(DateTime::from_nanos(millis * 1_000_000 + 999_999)),
 		};
@@ -935,9 +898,8 @@ mod archived_projection_tests {
 
 	#[test]
 	fn a_group_that_never_advanced_projects_to_none_through_the_archive() {
-		// None must survive the archive as None. An accidental Some(0) here
-		// would compare below every threshold and make the sweep reclaim meta
-		// for groups that simply have not seen an event yet.
+		// none must survive the archive as none. An accidental Some(0) compares below every
+		// threshold and makes the sweep reclaim meta for groups that simply have not seen an event.
 		let empty: GroupMeta<u64> = GroupMeta {
 			high_water: None,
 		};

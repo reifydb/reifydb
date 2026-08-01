@@ -8,13 +8,11 @@ use reifydb_value::value::{blob::Blob, decimal::Decimal, int::Int, value_type::V
 
 #[test]
 fn test_massive_field_count() {
-	// Test with an extreme number of fields
 	let field_count = 10000;
 	let types: Vec<ValueType> = vec![ValueType::Int4; field_count];
 	let shape = RowShape::testing(&types);
 	let mut row = shape.allocate();
 
-	// Set and verify a sampling of fields
 	for i in (0..field_count).step_by(100) {
 		shape.set::<i32>(&mut row, i, i as i32);
 	}
@@ -26,7 +24,6 @@ fn test_massive_field_count() {
 
 #[test]
 fn test_mixed_static_dynamic_stress() {
-	// Stress test with alternating static and dynamic fields
 	let types: Vec<ValueType> = (0..100)
 		.map(|i| {
 			if i % 2 == 0 {
@@ -39,25 +36,20 @@ fn test_mixed_static_dynamic_stress() {
 
 	let shape = RowShape::testing(&types);
 
-	// Create a encoded and set all dynamic fields once, then repeatedly update
-	// static fields
 	let mut row = shape.allocate();
 
-	// First, set all dynamic fields once
+	// A dynamic field can only be set once, so the odd (Utf8) indices are written up front and the
+	// loop below only rewrites the even (Int8) static ones.
 	for i in (1..100).step_by(2) {
-		// odd indices are Utf8 (dynamic)
 		let text = format!("field_{}", i);
 		shape.set_utf8(&mut row, i, &text);
 	}
 
-	// Now repeatedly update static fields (even indices are Int8)
 	for iteration in 0..100 {
 		for i in (0..100).step_by(2) {
-			// even indices are Int8 (static)
 			shape.set::<i64>(&mut row, i, iteration as i64 * 100 + i as i64);
 		}
 
-		// Verify static field updates and dynamic field persistence
 		if iteration % 10 == 0 {
 			for i in (0..100).step_by(7) {
 				if i % 2 == 0 {
@@ -70,17 +62,14 @@ fn test_mixed_static_dynamic_stress() {
 		}
 	}
 
-	// Test creating multiple rows with different dynamic content
 	let mut test_rows = Vec::new();
 	for row_idx in 0..10 {
 		let mut test_row = shape.allocate();
 
-		// Set static fields
 		for i in (0..100).step_by(2) {
 			shape.set::<i64>(&mut test_row, i, row_idx as i64);
 		}
 
-		// Set dynamic fields with encoded-specific content
 		for i in (1..100).step_by(2) {
 			let text = format!("row_{}_field_{}", row_idx, i);
 			shape.set_utf8(&mut test_row, i, &text);

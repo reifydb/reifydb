@@ -17,10 +17,8 @@ pub trait WindowAccumulator: Clone + Debug + Default + OperatorState + ArchiveSt
 
 	fn remove(&mut self, contribution: &Self::Contribution);
 
-	/// Remove a contribution that may or may not be present, treating an absent
-	/// contribution as a no-op. Used only on the late-retraction path, where a
-	/// Remove can legitimately target a window whose matching Add was dropped as
-	/// late; the strict `remove` still guards the in-order path.
+	/// Opt-in hook for a Remove whose matching Add was dropped as late. The default is the strict
+	/// `remove`; an accumulator that must tolerate the absence overrides this.
 	fn remove_if_present(&mut self, contribution: &Self::Contribution) {
 		self.remove(contribution);
 	}

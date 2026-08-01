@@ -25,8 +25,6 @@ use crate::{MigrationStatement, Result};
 
 const CURRENT_STORAGE_VERSION: u8 = 0x01;
 
-/// Ensures the storage version key exists and matches the expected version.
-/// On first boot, creates the version entry.
 pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> Result<()> {
 	let shape = RowShape::testing(&[ValueType::Uint1]);
 	let key = SystemVersionKey {
@@ -53,8 +51,8 @@ pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> Result<()> {
 	Ok(())
 }
 
-/// Applies store tuning that must be in effect before migrations run. Lifecycle actors are owned by the
-/// lifecycle subsystem, not by this bootload phase.
+/// This tuning must be in effect before migrations run. Lifecycle actors belong to the lifecycle
+/// subsystem, not to this phase.
 pub(crate) fn configure_store(engine: &StandardEngine) -> Result<()> {
 	let store = match engine.multi_owned().store() {
 		MultiStore::Standard(s) => s.clone(),
@@ -76,12 +74,8 @@ pub(crate) fn configure_store(engine: &StandardEngine) -> Result<()> {
 	Ok(())
 }
 
-/// Registers migrations via idempotent `CREATE MIGRATION` and then runs `MIGRATE;`
-/// to apply any pending ones.
-///
-/// Each `CREATE MIGRATION` is a no-op when a migration with the same name and
-/// identical content hash is already registered, and returns `MigrationHashMismatch`
-/// when the content has changed since registration.
+/// Registration is a no-op for an already-registered name whose content hash is unchanged, and
+/// fails with `MigrationHashMismatch` when the content has changed since registration.
 pub(crate) fn apply_migrations(engine: &StandardEngine, migrations: &[MigrationStatement]) -> Result<()> {
 	if migrations.is_empty() {
 		return Ok(());

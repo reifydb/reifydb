@@ -40,7 +40,6 @@ fn main() {
 
 	let db = server::memory().build().unwrap();
 
-	// ── Object ──────────────────────────────────────────────
 	admin(&db, "Create namespace", "CREATE NAMESPACE demo");
 	admin(&db, "Create table", "CREATE TABLE demo::users { id: Int4, name: Text, active: Boolean }");
 	admin(
@@ -53,7 +52,6 @@ fn main() {
 		]"#,
 	);
 
-	// ── First-class tests ───────────────────────────────────
 	admin(
 		&db,
 		"CREATE TEST - checks Alice is present",
@@ -78,14 +76,12 @@ fn main() {
 		}"#,
 	);
 
-	// ── Run tests ───────────────────────────────────────────
 	admin(&db, "RUN TESTS demo (all in namespace)", "RUN TESTS demo");
 
 	admin(&db, "RUN TEST (single passing)", "RUN TEST demo::alice_exists");
 
 	admin(&db, "RUN TEST (single failing)", "RUN TEST demo::charlie_is_active");
 
-	// ── Tests with mutations ────────────────────────────────
 	admin(
 		&db,
 		"CREATE TEST - inserts inside test body",
@@ -99,6 +95,5 @@ fn main() {
 
 	query(&db, "Verify Ghost row exists (no per-test rollback yet)", "FROM demo::users | FILTER id == 99");
 
-	// ── Run all tests ───────────────────────────────────────
 	admin(&db, "RUN TESTS (all tests in database)", "RUN TESTS");
 }

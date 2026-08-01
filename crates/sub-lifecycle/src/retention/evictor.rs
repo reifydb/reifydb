@@ -706,11 +706,9 @@ mod tests {
 
 	const HOUR_NANOS: i64 = 3_600 * 1_000_000_000;
 
-	// Expiry is time-anchored: a row is expired iff its own `updated_at` is at or below
-	// `now - ttl`. Rows are stamped from the clock when they are written, so `age_past_ttl`
-	// pushes everything written before it out of the ttl window and leaves everything written
-	// after it inside. `tick_now` then evicts at the clock's current instant.
 	fn age_past_ttl(test: &TestEngine) {
+		// Rows are stamped from the clock at write time, so advancing past the ttl expires
+		// everything written before this call and nothing written after it.
 		test.mock_clock().advance_secs(HOUR.seconds() + 1);
 	}
 
@@ -814,13 +812,8 @@ mod tests {
 
 	#[test]
 	fn two_rows_a_millisecond_apart_expire_independently() {
-		// The point of anchoring expiry to the row's own updated_at rather than to a version epoch
-		// sample. The epoch quantised time to whole-second samples, so any two rows landing in the
-		// same sample shared a fate no matter how far apart the ttl boundary actually fell between
-		// them - which is why the ttl floor had to be a whole second. Here the cutoff lands between
-		// two rows written 1ms apart, and exactly one of them dies.
-		//
-		// Mutation: round the cutoff or the stamp to seconds and both rows go, or neither.
+		// Expiry anchors on each row's own updated_at, not a quantised epoch sample, so a cutoff
+		// falling between two writes 1ms apart must kill exactly one of them.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -832,9 +825,8 @@ mod tests {
 		test.mock_clock().advance_millis(1);
 		test.command("INSERT test::t [{ v: 2 }]");
 
-		// Ticking exactly one ttl after the first write puts the cutoff on that write's own
-		// instant. Expiry is inclusive, so v=1 is at the boundary and dies; v=2, one millisecond
-		// younger, is past it and lives.
+		// The cutoff lands on the first write's own instant and expiry is inclusive, so v=1 dies
+		// at the boundary and v=2 lives.
 		let mut state = EvictorState::default();
 		Evictor::new((*test).clone()).run_tick(
 			&mut state,
@@ -856,9 +848,8 @@ mod tests {
 
 	#[test]
 	fn table_delete_mode_evicts_expired_rows_transactionally() {
-		// An announced TTL must run through the engine operation helpers, so the eviction is a
-		// real commit: rows disappear for readers and the commit produces a CDC record
-		// (unlike the retired gc/row path, which bypassed the pipeline entirely).
+		// An announced ttl evicts through a real commit, so the removed rows must also surface
+		// downstream as CDC changes.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -885,9 +876,8 @@ mod tests {
 
 	#[test]
 	fn table_drop_mode_evicts_rows_silently_without_cdc() {
-		// A silent TTL is the quiet variant: rows vanish but the eviction commit must not
-		// produce any CDC record. This is the semantic difference the announce flag
-		// exists for; if this fails, a silent eviction leaks deletes downstream.
+		// A silent ttl must commit without emitting CDC; the announce flag exists to draw exactly
+		// this line, and failing it leaks deletes downstream.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -916,10 +906,8 @@ mod tests {
 
 	#[test]
 	fn partitioned_ringbuffer_delete_mode_maintains_partition_metadata() {
-		// The whole point of transactional eviction: partition metadata is maintained in
-		// the same commit as the row removals. A fully expired partition loses its
-		// metadata key entirely (the Part 2 leak fix); a partially expired partition gets
-		// count decremented and head advanced to the surviving row.
+		// Partition metadata must move in the same commit as the row removals: a fully expired
+		// partition loses its metadata key, a partial one has count decremented and head advanced.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -952,8 +940,8 @@ mod tests {
 
 	#[test]
 	fn plain_ringbuffer_delete_mode_evicts_and_removes_empty_metadata() {
-		// Non-partitioned ring buffers travel the empty-partition-values path: the same
-		// metadata maintenance must apply to the whole-buffer metadata entry.
+		// A non-partitioned ring buffer must get the same metadata maintenance on its
+		// whole-buffer entry as a partitioned one gets per partition.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -983,9 +971,8 @@ mod tests {
 
 	#[test]
 	fn plain_ringbuffer_drop_mode_evicts_and_maintains_metadata() {
-		// A silent TTL must still maintain ring buffer bookkeeping in the same commit even
-		// though the row removal itself is silent; otherwise count/head desync and later
-		// inserts/evictions misbehave (the original gc/row defect).
+		// Silence applies to CDC, not to bookkeeping: count and head must still move in the same
+		// commit or later inserts and evictions desync.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -1007,9 +994,8 @@ mod tests {
 
 	#[test]
 	fn budget_bounds_the_tick_and_cursor_resumes_on_the_next() {
-		// One tick may evict at most batch_size x max_batches rows; the backlog must not
-		// be lost but resume from the persisted cursor on the next tick. Without this the
-		// evictor could stall a busy system in a single unbounded tick.
+		// A tick is capped at batch_size x max_batches rows; the leftover must resume from the
+		// cursor rather than be lost or drained in one unbounded tick.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -1034,15 +1020,8 @@ mod tests {
 
 	#[test]
 	fn a_cutoff_the_clock_cannot_place_evicts_nothing() {
-		// Expiry resolves to the instant `now - ttl`. When the clock sits closer to the start of
-		// the representable range than the ttl is long, that subtraction underflows and there is
-		// no cutoff to apply. The evictor must delete nothing rather than guess: a permissive
-		// fallback (say, treating "unknown" as now) would delete rows whose age it cannot
-		// establish, which is every row in the table.
-		//
-		// This replaces the old cold-epoch version of this test. A time cutoff needs no epoch
-		// samples, so "the epoch holds nothing below the cutoff" is no longer reachable for row
-		// ttl; underflow is the one remaining way the floor fails to resolve.
+		// When `now - ttl` underflows there is no cutoff to apply, and the evictor must delete
+		// nothing: a permissive fallback would expire every row whose age it cannot establish.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -1064,9 +1043,8 @@ mod tests {
 
 	#[test]
 	fn series_delete_mode_evicts_rows_and_decrements_row_count() {
-		// Series parity: rows are evicted through the shared remove_series_row helper and
-		// SeriesMetadata.row_count is decremented in the same commit, so the metadata can
-		// never observe a state where rows are gone but the count still includes them.
+		// row_count must be decremented in the same commit as the removals, so no reader can
+		// observe rows gone but still counted.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -1092,10 +1070,8 @@ mod tests {
 
 	#[test]
 	fn dml_delete_and_evictor_produce_identical_ringbuffer_metadata() {
-		// Pin for the Part 2 extraction: DML DELETE and the evictor share
-		// apply_ringbuffer_partition_metadata_after_delete, so removing the same logical
-		// rows from the same starting state must land on identical metadata. If this
-		// diverges, the shared helper has forked.
+		// DML DELETE and the evictor share one metadata helper, so the same removals from the
+		// same starting state must land on identical metadata; divergence means it forked.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -1138,19 +1114,14 @@ mod tests {
 
 	#[test]
 	fn underlying_ring_buffers_are_skipped_they_are_owned_by_the_sink_operator() {
-		// A ring buffer backing a deferred ringbuffer view (`underlying: true`) is written AND
-		// evicted by its SinkRingBufferView operator, which owns both capacity and row-TTL eviction
-		// on the flow tick. The retention evictor must NOT also reap it: doing so would strand the
-		// operator's per-partition state (forward map, row entries, metadata) and bypass the
-		// operator's downstream eviction propagation. So the evictor lists no partitions for an
-		// underlying ring buffer even when the catalog holds partition metadata for it - while a
-		// standalone `CREATE RINGBUFFER` (`underlying: false`, DML-written, no operator) stays
-		// evictor-owned and is listed for eviction normally.
+		// A view-backed ring buffer is evicted by its sink operator, which owns the per-partition
+		// state; a second reaper would strand that state and bypass the operator's downstream
+		// eviction propagation. A standalone ring buffer stays evictor-owned.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin("create table test::src { base: utf8, n: int4 }");
-		// The engine harness runs no flow subsystem, but the DDL still creates the view's backing
-		// ring buffer with `underlying: true` and registers its row TTL settings.
+		// No flow subsystem runs here, but the DDL still creates the backing ring buffer and
+		// registers its row ttl.
 		test.admin(
 			"create deferred ringbuffer view test::rb { base: utf8, n: int4 } WITH { capacity: 100, row: { ttl: { duration: \"1h\", announce: false } }, partition: { by: { base } } } as { from test::src }",
 		);
@@ -1162,25 +1133,21 @@ mod tests {
 		let underlying = underlying_ringbuffer(&test);
 		let standalone = ringbuffer_by_name(&test, "standalone");
 
-		// No flow populated the view's ring buffer, so seed one partition's metadata directly. This
-		// makes the skip observable: without it, list_ringbuffer_partitions would be vacuously empty.
+		// Seed a partition by hand; without it the skip below would hold vacuously.
 		let us = vec![Value::Utf8("us".to_string())];
 		seed_partition(&test, underlying.id, us.clone());
 
-		// The catalog itself holds the seeded partition for the underlying ring buffer ...
 		assert_eq!(
 			catalog_partition_values(&test, &underlying),
 			vec![us.clone()],
 			"the catalog must hold the seeded partition metadata (guards against a vacuous skip test)"
 		);
 
-		// ... yet the evictor lists nothing for it, because it is owned by the sink operator.
 		assert!(
 			evictor_partition_values(&test, underlying.id).is_empty(),
 			"the retention evictor must skip underlying (view-backed) ring buffers"
 		);
 
-		// The standalone ring buffer is still evictor-owned, so its partition is listed.
 		assert_eq!(
 			evictor_partition_values(&test, standalone.id),
 			vec![us],
@@ -1190,11 +1157,8 @@ mod tests {
 
 	#[test]
 	fn budget_exhausted_with_a_live_cursor_yields_for_catchup() {
-		// Pacing rule, Yielded direction. When a tick spends its whole batch budget and
-		// expired rows remain behind a live cursor, the slice must report Yielded so the
-		// lane's 5ms catch-up tick drains the backlog in milliseconds instead of waiting a
-		// full eviction interval. Reporting Exhausted here is exactly the pacing defect the
-		// task split exists to kill.
+		// A budget spent with rows still behind a live cursor must report Yielded, or the backlog
+		// waits a full eviction interval instead of the lane's catch-up tick.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -1226,11 +1190,8 @@ mod tests {
 
 	#[test]
 	fn budget_exhausted_at_an_object_boundary_yields_on_unvisited_work() {
-		// The backlog hint must also count objects the budget never reached, not only objects
-		// left mid-scan. Two announced tables with a budget of exactly one batch: the
-		// first table drains cleanly (its cursor is removed), then the budget is spent and
-		// the second table is never visited. If backlog counted only live cursors this tick
-		// would wrongly report Exhausted and the untouched table would wait a full interval.
+		// Backlog must count objects the budget never reached, not only ones left mid-scan: the
+		// first table drains its cursor cleanly and the second is never visited at all.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -1262,15 +1223,9 @@ mod tests {
 
 	#[test]
 	fn a_pass_over_objects_with_nothing_to_evict_reports_exhausted() {
-		// Idle cost rule. Re-confirming that an object has nothing expired must not consume
-		// budget, or a tree with more objects than the budget can never finish a pass: the tick
-		// reports Yielded, the lane respins at the 5ms catch-up cadence, and the maintenance
-		// thread burns a core forever while reclaiming nothing. Four tables against a two-batch
-		// budget is past that cliff - a table walks two keyspaces, so a charged pass needs eight.
-		//
-		// The epoch is recorded BEFORE the inserts so the cutoff resolves while every row sits
-		// above it: the objects are eligible and are visited, they simply have nothing expired.
-		// Recording after the inserts would expire them and this would assert nothing.
+		// Re-confirming an object has nothing expired must not charge budget, or a tree larger
+		// than the budget never finishes a pass and the lane respins forever reclaiming nothing.
+		// The clock advances before the inserts so every row sits above the cutoff.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		for name in ["t1", "t2", "t3", "t4"] {
@@ -1305,15 +1260,9 @@ mod tests {
 
 	#[test]
 	fn every_object_is_visited_across_ticks_when_backlog_exceeds_the_budget() {
-		// Fairness rule. A tick must resume where the previous one stopped rather than
-		// restarting at the head of the object list. Without a resume cursor the budget is spent
-		// on the same leading objects every tick and everything behind them starves
-		// indefinitely - rows expire and are never reclaimed, which presents as an unbounded
-		// memory leak rather than as a retention bug.
-		//
-		// Four tables each hold six expired rows against a budget of two batches of two, so no
-		// single tick can reach past the first table. After four ticks a rotating evictor has
-		// touched all four; a restarting one has touched only the first.
+		// A tick must resume where the previous one stopped, or the budget is spent on the same
+		// leading objects every time and everything behind them starves - expired rows never
+		// reclaimed, which presents as an unbounded memory leak rather than a retention bug.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		for name in ["t1", "t2", "t3", "t4"] {
@@ -1345,9 +1294,8 @@ mod tests {
 
 	#[test]
 	fn unresolvable_floor_returns_exhausted_not_yielded() {
-		// Pacing rule, Exhausted direction. When the cutoff cannot be resolved the class has no
-		// eligible work and must report Exhausted. Yielding on a stuck floor would spin the lane
-		// at the 5ms catch-up cadence and starve the other classes (landmine L7).
+		// An unresolvable cutoff means the class has no eligible work: yielding would spin the
+		// lane at the catch-up cadence and starve the other classes.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -1370,10 +1318,8 @@ mod tests {
 
 	#[test]
 	fn a_slice_evicts_only_its_target_class() {
-		// The task split gives each row-ttl class its own slice and budget. A silent slice
-		// must leave announced tables untouched and vice versa, so a hot silent class can
-		// never drag the announced class into re-ticking (and flooding the flow graph) with
-		// it, which is the whole reason the classes are paced apart.
+		// Each row-ttl class owns its own slice and budget, so a hot silent class can never drag
+		// the announced class into re-ticking (and flooding the flow graph) with it.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
@@ -1427,12 +1373,9 @@ mod tests {
 
 	#[test]
 	fn a_deferred_view_registers_its_row_ttl_whether_or_not_it_declares_persistence() {
-		// The evictor's entire work list is `list_row_settings`, which reads the catalog cache with
-		// no storage fallback: an object missing from it is not evicted late, it is never considered
-		// again, and unlike `find_row_settings` nothing warns. In a production run only the views
-		// declaring `persistent: false` were ever scanned, so presence has to be proven independent
-		// of that flag. A view declaring only `row: { ttl }` keeps its rows forever if it is absent
-		// here, behind a TTL its own DDL advertises.
+		// The work list reads the catalog cache with no storage fallback and no warning, so an
+		// object missing from it keeps its rows forever behind a ttl its own DDL advertises.
+		// Presence must hold independent of the `persistent` flag, which once gated it.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin("create table test::src { base: utf8, n: int4 }");
@@ -1457,10 +1400,9 @@ mod tests {
 
 	#[test]
 	fn a_cold_catalog_cache_recovers_a_declared_row_ttl_from_storage() {
-		// On restart the evictor's work list comes entirely from `load_all`. A row-settings entry
-		// that reaches storage but not the rehydrated cache leaves that object silently perpetual for
-		// the life of the process, with no storage fallback and no warning to reveal it. Loading a
-		// fresh cache from the same store is that restart, minus the disk.
+		// A row-settings entry that reaches storage but not the rehydrated cache leaves the object
+		// silently perpetual for the life of the process. A fresh cache over the same store is
+		// that restart, minus the disk.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin("create table test::src { base: utf8, n: int4 }");

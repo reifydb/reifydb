@@ -1,15 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// A stateful node with no declared span is legal - perpetual retention is a deliberate choice, not an
-// error - but it was invisible. Nothing in the catalog distinguished a node that ages from one that
-// keeps every key it has ever seen, so the only way to find unbounded growth was to attach a profiler
-// and read the resident set. system::flow_nodes now carries the node's retention scale and the
-// frontier it has actually reclaimed through, which turns that investigation into one query.
-//
-// `retains_forever` is a boolean rather than the absence of a scale because RQL has no none-predicate:
-// `retention_scale == none` is inexpressible, so the listing this file exists for would be unwritable
-// without it.
+// A stateful node with no declared span is legal but invisible: system::flow_nodes carries the
+// retention scale and the frontier actually reclaimed through so unbounded growth is one query
+// rather than a profiler. `retains_forever` is a boolean because RQL has no none-predicate.
 
 use std::time::Duration as StdDuration;
 
@@ -27,20 +21,17 @@ fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))
 }
 
-// The horizon is published when the flow engine registers the node, which happens off the DDL
-// transaction, so every assertion here has to settle rather than read once.
 fn settled_count(db: &TestDb, rql: &str, want: usize) -> usize {
+	// The horizon is published when the flow engine registers the node, off the DDL transaction,
+	// so every assertion here has to settle rather than read once.
 	db.await_exact_row_count(rql, want, StdDuration::from_secs(5))
 }
 
 #[test]
 fn a_stateful_node_without_a_declared_span_is_listed_as_perpetual() {
-	// Intent: this is the row the probe was missing. An append node with no ttl retains every key
-	// forever - legitimate, but the operator has to be able to find it before the process runs out
-	// of memory, not after. The node holds state AND has no span, and both halves are needed: a
-	// listing keyed on span alone would sweep in every stateless map node and be useless.
-	// Mutation: make adopt_horizon publish stateful: false and this returns 0 - the leak is legal
-	// again and once more invisible.
+	// An append node with no ttl retains every key forever - legitimate, but findable before the
+	// process runs out of memory. Both halves matter: a listing keyed on the missing span alone
+	// would sweep in every stateless map node and be useless.
 	let db = setup();
 	db.admin("CREATE NAMESPACE sp");
 	db.admin("CREATE TABLE sp::a { id: int4, v: int4 }");
@@ -72,20 +63,16 @@ fn a_declared_span_takes_the_node_off_the_perpetual_listing() {
 		0,
 		"a node that declares a span it can honour must not be reported as perpetual"
 	);
-	// The declared duration itself has to survive, not merely the fact that one exists: a listing
-	// that reported every span as present would hide a node whose ttl is far longer than its author
-	// believes it to be.
+	// The declared duration itself has to survive, not merely the fact that one exists, or a node
+	// whose ttl is far longer than its author believes stays hidden.
 	db.query(STATEFUL).assert().column("retention_scale", &[Value::Duration(Duration::from_seconds(1).unwrap())]);
 }
 
 #[test]
 fn a_node_that_has_swept_reports_the_frontier_it_reclaimed_through() {
-	// The scale says how far back the node is willing to keep; only the frontier says how far it has
-	// actually got. They come apart whenever a node is registered but never swept - the flow is not
-	// scheduled, the watermark never advances, the operator seals nothing - and every one of those
-	// reads as a healthy bounded node on the scale alone. This is the column that tells them apart,
-	// and it must carry the instant rather than a flag, or a node whose frontier has stalled hours
-	// behind its watermark is indistinguishable from one that is keeping up.
+	// The scale says how far back the node is willing to keep; only the frontier says how far it
+	// actually got. A node registered but never swept reads as healthy on the scale alone, and the
+	// frontier must carry the instant rather than a flag or a stalled node looks like a live one.
 	let db = TestDb::from(
 		embedded::memory()
 			.with_flow(|f| f)
@@ -115,12 +102,9 @@ fn a_node_that_has_swept_reports_the_frontier_it_reclaimed_through() {
 
 #[test]
 fn a_window_reports_the_seal_its_operator_derives_rather_than_perpetual() {
-	// A window declares no ttl, so its DECLARED horizon is Perpetual - but it seals on its own
-	// schedule and its state is bounded. Reporting the declared horizon here would put every
-	// windowed node on the perpetual listing, which is the fastest way to make the listing useless:
-	// the nodes that genuinely retain forever would be buried under the ones that do not.
-	// Mutation: publish node.ty.declared_horizon(..) instead of node_horizon(..) and this window
-	// joins the perpetual list with span none, while the two tests above still pass.
+	// A window declares no ttl, so its declared horizon is perpetual, but it seals on its own
+	// schedule and its state is bounded. Publishing the declared horizon would bury the nodes that
+	// genuinely retain forever under every windowed node.
 	let db = setup();
 	db.admin("CREATE NAMESPACE sp");
 	db.admin("CREATE TABLE sp::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");

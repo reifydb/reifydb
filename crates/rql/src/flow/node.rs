@@ -418,12 +418,9 @@ mod tests {
 
 	#[test]
 	fn a_window_node_consults_no_declared_span_because_its_operator_owns_that_answer() {
-		// A window's retention is intrinsic (span + grace), and the OPERATOR computes it - see
-		// WindowOperator::retention_scale. The node must not answer too, in any backend: two sources
-		// for one fact is how a node ends up stamping activity in one domain while the substrate ages
-		// it in another, which is silent in release and reclaims live state. A window has no
-		// `with { ttl }` slot in the grammar precisely because of this, and FLOW_045 is what refuses
-		// one that reaches the node another way.
+		// A window's retention is intrinsic (span + grace) and the operator computes it. Two sources for one
+		// fact is how a node stamps activity in one domain while the substrate ages it in another, which is
+		// silent in release and reclaims live state.
 		let node = window(
 			WindowKind::Tumbling {
 				size: WindowSize::Duration(ms(60_000)),
@@ -436,16 +433,9 @@ mod tests {
 
 	#[test]
 	fn the_node_types_that_accept_a_declared_span_are_exactly_those_that_keep_keyed_state() {
-		// The substrate cannot know what an extension operator's state means or how it ages, so it
-		// must never invent a scale for one - the ttl clause is the author saying it, and the
-		// operator carries it from registration. This classification is what decides whether the
-		// declaration is even legal: FLOW_045 refuses a span on anything answering false here.
-		//
-		// An aggregate is the case worth naming. It interns one group per `by` key, so its groups
-		// are reclaimable, but unlike a window it has no intrinsic span: any future row with the same
-		// key must fold into the existing accumulator, so nothing can derive when a key is done.
-		// Dropping it from this list is what left an ingestion view accumulating a group per slot
-		// forever.
+		// The substrate cannot know what keyed state means or how it ages, so the ttl clause is the only
+		// source. An aggregate is the case worth naming: its groups are reclaimable, but any future row with
+		// the same key folds into the accumulator, so nothing can derive when a key is done.
 		for node in [
 			apply(),
 			join(),
@@ -461,8 +451,8 @@ mod tests {
 			assert!(node.consults_declared_span(), "{node:?} keeps keyed state and must accept a span");
 		}
 
-		// Filter and map hold nothing per group, so there is nothing for a sweep to scan. Accepting a
-		// span here would take a declaration the substrate then silently ignores.
+		// Filter and map hold nothing per group, so accepting a span here takes a declaration the substrate
+		// then silently ignores.
 		for node in [
 			FlowNodeType::Filter {
 				conditions: vec![],
@@ -489,18 +479,15 @@ mod tests {
 
 	#[test]
 	fn join_always_requests_ticks() {
-		// Join state TTL is reclaimed by the background operator GC actor (per-side, via
-		// OperatorSettings), not on the flow tick path - so a Join node never requests ticks.
+		// A join's per-side TTL lives in OperatorSettings, where the graph-level gate cannot see it, so the
+		// node requests ticks unconditionally and the runtime operator decides.
 		assert!(join().ticks());
 	}
 
 	#[test]
 	fn apply_always_requests_ticks() {
-		// Apply nodes always register for flow ticks, regardless of the underlying operator's
-		// tick capability. The graph-level gate cannot see the runtime operator, so it
-		// registers unconditionally; the runtime operator then decides whether tick() actually
-		// runs (an FFI operator without CAPABILITY_TICK reports no interval and is skipped).
-		// Registering here is what lets a tick-capable custom operator be ticked at all.
+		// The graph-level gate cannot see the runtime operator, so it must register unconditionally and let
+		// the operator decide; without that a tick-capable custom operator could never be ticked at all.
 		let apply = FlowNodeType::Apply {
 			operator: "compute_swap_volumes".to_string(),
 			expressions: vec![],
@@ -510,9 +497,8 @@ mod tests {
 
 	#[test]
 	fn append_and_distinct_always_request_ticks() {
-		// Their TTL now lives in OperatorSettings (not the node) and is reclaimed on tick when
-		// configured; the graph-level gate cannot see it, so they request ticks unconditionally and
-		// the runtime operator decides whether tick() actually runs.
+		// Their TTL lives in OperatorSettings rather than the node, where the graph-level gate cannot see it,
+		// so they have to request ticks unconditionally and let the runtime operator decide.
 		assert!(FlowNodeType::Append {}.ticks());
 		assert!(FlowNodeType::Distinct {
 			expressions: vec![]
@@ -522,11 +508,8 @@ mod tests {
 
 	#[test]
 	fn sink_ringbuffer_view_always_requests_ticks() {
-		// A ring buffer view sink owns its per-partition operator-state TTL eviction on the flow
-		// tick. The graph-level gate cannot see the row TTL (it lives in row settings, not the
-		// node), so the sink requests ticks unconditionally; the runtime operator reports no tick
-		// interval when no TTL is configured and is then skipped. Without this the flow would never
-		// be scheduled to tick and quiet partitions' state would leak forever.
+		// The row TTL lives in row settings, not the node, so the graph-level gate cannot see it. Without an
+		// unconditional request the flow is never scheduled to tick and quiet partitions leak forever.
 		assert!(FlowNodeType::SinkRingBufferView {
 			view: ViewId(1),
 			ringbuffer: RingBufferId(1),
@@ -537,21 +520,17 @@ mod tests {
 
 	#[test]
 	fn every_node_that_can_reclaim_also_requests_ticks() {
-		// Group reclamation runs only on the flow tick path, and a flow is scheduled to tick only if
-		// at least one of its nodes requests ticks. A node type that derives a reclaiming horizon
-		// while answering false to ticks() would therefore accumulate group state that nothing ever
-		// scans, and the retention report would call it healthy because the driver never ran for it.
-		// These two functions must be kept in step; this is the assertion that notices when they are
-		// not.
+		// Reclamation runs only on the tick path, and a flow ticks only if some node asks for it. A node that
+		// derives a horizon but answers false to ticks() accumulates state nothing ever scans, and the
+		// retention report calls it healthy because the driver never ran for it.
 		let ttl = OperatorSettings {
 			ttl: Some(OperatorTtl {
 				duration: ms(60_000),
 			}),
 			join: None,
 		};
-		// Both sides must be declared: a join whose other side retains forever is perpetual as a
-		// whole, because reclaiming one side's rows while the other still holds the group would
-		// silently change the join's output rather than just free memory.
+		// Both sides must be declared: reclaiming one side while the other still holds the group changes the
+		// join's output rather than just freeing memory.
 		let join_ttl = OperatorSettings {
 			ttl: None,
 			join: Some(JoinTtl {
@@ -564,10 +543,9 @@ mod tests {
 			}),
 		};
 
-		// This list is the assertion's whole reach, so it has to name every node type that
-		// consults_declared_span accepts. Aggregate was absent from it while also being absent from
-		// ticks(), so the two omissions cancelled and a TTL on an aggregate silently reclaimed
-		// nothing, forever, while system::flow_nodes reported the node as bounded.
+		// This list is the assertion's whole reach, so it has to name every node type consults_declared_span
+		// accepts; a type missing from both this list and ticks() cancels out and reclaims nothing forever
+		// while system::flow_nodes still reports it bounded.
 		let reclaimable: Vec<(FlowNodeType, Option<&OperatorSettings>)> = vec![
 			(join(), Some(&join_ttl)),
 			(
@@ -595,8 +573,8 @@ mod tests {
 			assert!(node.ticks(), "a reclaimable node that never ticks is never reclaimed: {node:?}");
 		}
 
-		// A window reclaims through its operator's seal span rather than a declared one, so the same
-		// pairing has to hold for it without going through declared_horizon.
+		// A window reclaims through its operator's seal span rather than a declared one, so the pairing has to
+		// hold for it without going through declared_horizon.
 		let window_node = window(
 			WindowKind::Tumbling {
 				size: WindowSize::Duration(ms(60_000)),
@@ -620,12 +598,9 @@ mod tests {
 
 	#[test]
 	fn every_node_that_can_reclaim_is_also_reported_as_holding_state() {
-		// holds_state drives the system::flow_nodes listing an operator queries to find unbounded
-		// retention. A node type that derives a reclaiming horizon but answers false here would be
-		// absent from that listing in both directions: it would never be reported as perpetual when
-		// it retains forever, and it would never be reported at all when it declares a span. The two
-		// functions match today only because they were written together, so this is the assertion
-		// that notices when a new keyed node type is added to one and not the other.
+		// holds_state drives the system::flow_nodes listing used to find unbounded retention, so a node that
+		// reclaims but answers false here is absent from that listing in both directions - never reported as
+		// perpetual, never reported when it declares a span.
 		let ttl = OperatorSettings {
 			ttl: Some(OperatorTtl {
 				duration: ms(60_000),
@@ -671,8 +646,8 @@ mod tests {
 			assert!(node.holds_state(), "a node that can reclaim must be listed as stateful: {node:?}");
 		}
 
-		// A window derives its horizon from its operator's seal rather than a declared span, so it
-		// never reaches the loop above - but it holds group state and has to be listed all the same.
+		// A window derives its horizon from its operator's seal, so it never reaches the loop above, but it
+		// holds group state and has to be listed all the same.
 		assert!(
 			window(
 				WindowKind::Tumbling {

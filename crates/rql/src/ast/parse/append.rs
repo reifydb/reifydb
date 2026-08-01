@@ -157,10 +157,8 @@ pub mod tests {
 		let statement = &result[0];
 		assert_eq!(statement.nodes.len(), 2);
 
-		// First should be FROM
 		assert!(statement.nodes[0].is_from());
 
-		// Second should be APPEND Query
 		if let Ast::Append(AstAppend::Query {
 			with,
 			..

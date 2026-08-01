@@ -64,7 +64,7 @@ fn validate_bearer_token(auth_service: &AuthService, token: &str) -> AuthResult<
 }
 
 fn validate_basic_auth(_auth_service: &AuthService, _credentials: &str) -> AuthResult<IdentityId> {
-	// TODO: Implement Basic auth (Base64 decode → username:password → auth_service.authenticate)
+	// TODO: Implement Basic auth (Base64 decode -> username:password -> auth_service.authenticate)
 	Err(AuthError::InvalidToken)
 }
 

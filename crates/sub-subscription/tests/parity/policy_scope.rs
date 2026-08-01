@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Verifies that table `from` policies scope subscription LIVE DIFFS per subscriber identity.
-// Regression guard: subscription flow compilation previously skipped inject_from_policies and
-// evaluated flow filters with an empty symbol table as root, so any authenticated subscriber
-// received every tenant's change events even though hydration was correctly scoped.
-//
-// Also covers subscription parameters: $name references in the subscription body must resolve
-// at change time from the params captured when the subscription was created.
+// Table `from` policies must scope subscription live diffs per subscriber identity, not only hydration; a flow
+// filter evaluated with an empty symbol table hands every authenticated subscriber every tenant's changes. Also
+// covers $name references, which must resolve at change time from the params the subscription was created with.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -64,11 +60,10 @@ fn contents(batches: &[Columns]) -> Vec<String> {
 	out
 }
 
-// The core regression: alice subscribes to the raw table WITHOUT any filter of her own; the
-// injected from-policy must keep bob's rows out of her live diffs. Before the fix this test
-// would observe both 'alice-doc' and 'bob-doc'.
 #[test]
 fn from_policy_scopes_live_diffs_per_subscriber() {
+	// Alice subscribes to the raw table with no filter of her own, so only the injected from-policy can keep
+	// bob's rows out of her live diffs.
 	let (db, alice, bob) = setup();
 
 	let result = db.engine().subscribe_as(alice, "create subscription as { from app::docs }", Params::None);
@@ -85,10 +80,9 @@ fn from_policy_scopes_live_diffs_per_subscriber() {
 	);
 }
 
-// Root bypasses policies entirely; a root subscription over the same policed table must keep
-// seeing every tenant's diffs. Guards against the fix over-applying default-deny to root.
 #[test]
 fn root_subscription_bypasses_policies() {
+	// Root bypasses policies, so scoping subscriber diffs must not slide into applying default-deny to root.
 	let (db, alice, bob) = setup();
 
 	let result =
@@ -106,10 +100,9 @@ fn root_subscription_bypasses_policies() {
 	);
 }
 
-// A table with policies but a subscriber whose rows never match must receive ZERO diffs while
-// other tenants' changes stream. This is the leak scenario observed in production spikes.
 #[test]
 fn non_matching_subscriber_receives_no_diffs() {
+	// A subscriber whose rows never match must receive nothing while other tenants' changes stream past.
 	let (db, alice, bob) = setup();
 
 	let result = db.engine().subscribe_as(bob, "create subscription as { from app::docs }", Params::None);
@@ -122,11 +115,10 @@ fn non_matching_subscriber_receives_no_diffs() {
 	assert_eq!(contents(&batches), Vec::<String>::new(), "bob must not receive alice's diffs");
 }
 
-// Subscription params: a $name reference in the body resolves from the params the subscription
-// was created with, at change time. Uses root so policy injection stays out of the picture and
-// the assertion isolates parameter resolution in the flow operators.
 #[test]
 fn subscription_params_resolve_in_flow_filters() {
+	// A $name in the body must resolve at change time from the creation params. Root keeps policy injection
+	// out of the picture so the assertion isolates parameter resolution.
 	let (db, alice, bob) = setup();
 
 	let mut named = HashMap::new();

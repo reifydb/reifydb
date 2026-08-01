@@ -106,11 +106,8 @@ mod tests {
 
 	#[test]
 	fn a_config_shares_the_pool_it_was_given_instead_of_detaching_a_copy() {
-		// Every cache the engine owns charges through config.budget(). If that
-		// returned a fresh pool rather than the caller's, the operator would
-		// enforce a private ceiling and its bytes would never reach the host
-		// accounting, which is exactly the failure the required budget argument
-		// exists to prevent.
+		// Every cache the engine owns charges through config.budget(). A fresh pool rather than the
+		// caller's would enforce a private ceiling and keep those bytes out of the host accounting.
 		let pool = OperatorStateBudgetHandle::new(ByteSize::from_bytes(4096));
 		let config = WindowEngineConfig::builder(pool.clone()).build();
 

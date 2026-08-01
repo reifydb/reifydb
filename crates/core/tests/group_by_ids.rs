@@ -64,10 +64,10 @@ fn group_ids_are_dense_and_follow_first_appearance() {
 	assert_eq!(dict.values(GroupId(2)), Some(&vec![Value::Utf8("x".to_string())]));
 }
 
-// The dict is what makes the ids stable across batches. Feeding a second batch must reuse the id already assigned to a
-// key rather than mint a new one, otherwise an accumulator keyed by id would split one group into two.
 #[test]
 fn a_second_batch_reuses_the_ids_of_groups_already_interned() {
+	// Minting a fresh id for a key already interned would split one group into two for any
+	// accumulator keyed by id.
 	let mut dict = GroupKeyDict::new();
 
 	let first = frame(vec![("name", utf8_column(&["a", "b"]))]);
@@ -102,10 +102,10 @@ fn a_composite_key_groups_on_every_column() {
 	);
 }
 
-// Two different keys must never collide onto one id. A composite key is encoded by concatenating its columns, so an
-// encoding that did not frame each column would make ("ab","c") and ("a","bc") identical.
 #[test]
 fn adjacent_key_columns_stay_framed_apart() {
+	// A composite key concatenates its columns, so an encoding that did not frame each column would
+	// make ("ab","c") and ("a","bc") collide onto one id.
 	let columns = frame(vec![("left", utf8_column(&["ab", "a"])), ("right", utf8_column(&["c", "bc"]))]);
 	let mut dict = GroupKeyDict::new();
 
@@ -151,10 +151,10 @@ fn an_unknown_key_column_is_an_error_not_a_panic() {
 	assert!(columns.group_by_ids(&["missing"], &mut dict).is_err());
 }
 
-// Full attribution over an interleaved composite key: every row lands in the group its values say it should, the
-// groups come back in first-appearance order, and the dict hands back the exact key values for output projection.
 #[test]
 fn every_row_is_attributed_to_the_group_its_values_name() {
+	// Groups come back in first-appearance order and the dict hands back the exact key values, which
+	// is what output projection reads.
 	let columns = frame(vec![
 		("region", utf8_column(&["eu", "us", "eu", "ap", "us"])),
 		("tier", int4_column(&[1, 1, 2, 1, 1])),

@@ -206,10 +206,8 @@ mod tests {
 
 	#[test]
 	fn a_group_class_resolves_to_a_cutoff_instead_of_declining_to_answer() {
-		// OwningFlowCheckpoint used to resolve to None, and cutoff_with_binding propagates a None term
-		// to the whole class. Any class naming the term therefore reclaimed NOTHING, forever, while
-		// reporting healthy. Both group phases name it, so this is the difference between the plane
-		// working and the plane being decorative.
+		// A none term propagates to the whole class, so any class naming OwningFlowCheckpoint would
+		// reclaim nothing forever while reporting healthy. Both group phases name it.
 		for class in [RetentionClass::OperatorGroupData, RetentionClass::OperatorGroupIdentity] {
 			let cutoff = ledger(u64::MAX).cutoff(class, now(), Some(one_hour()));
 
@@ -219,9 +217,9 @@ mod tests {
 
 	#[test]
 	fn a_flow_that_has_not_processed_its_input_holds_the_group_cutoff_down() {
-		// The floor is a min over terms, so the lagging term must win. A flow parked at version 10 has
-		// input it has not yet applied; reclaiming group state above that point discards state its own
-		// unprocessed changes still refer to. The expiry term alone would have allowed version 1000.
+		// OperatorGroupData names OwningFlowCheckpoint and nothing else, so a flow parked at version 10
+		// pins the cutoff there: reclaiming above it discards state that flow's own unapplied input
+		// still writes to.
 		let (cutoff, binding) = ledger(10)
 			.cutoff_with_binding(RetentionClass::OperatorGroupData, now(), Some(one_hour()))
 			.expect("both terms resolve");

@@ -141,7 +141,6 @@ impl Oracle {
 		rows
 	}
 
-	/// The full ordered scan result (no sub-range filter).
 	pub fn scan(&self, scope: Scope, reverse: bool) -> Vec<(Vec<u8>, Vec<u8>, u64)> {
 		self.scan_range(scope, reverse, None)
 	}

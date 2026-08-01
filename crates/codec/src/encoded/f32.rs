@@ -34,26 +34,21 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Float4]);
 		let mut row = shape.allocate();
 
-		// Test zero
 		shape.set::<f32>(&mut row, 0, 0.0f32);
 		assert_eq!(shape.get::<f32>(&row, 0), 0.0f32);
 
-		// Test negative zero
 		let mut row2 = shape.allocate();
 		shape.set::<f32>(&mut row2, 0, -0.0f32);
 		assert_eq!(shape.get::<f32>(&row2, 0), -0.0f32);
 
-		// Test infinity
 		let mut row3 = shape.allocate();
 		shape.set::<f32>(&mut row3, 0, f32::INFINITY);
 		assert_eq!(shape.get::<f32>(&row3, 0), f32::INFINITY);
 
-		// Test negative infinity
 		let mut row4 = shape.allocate();
 		shape.set::<f32>(&mut row4, 0, f32::NEG_INFINITY);
 		assert_eq!(shape.get::<f32>(&row4, 0), f32::NEG_INFINITY);
 
-		// Test NaN
 		let mut row5 = shape.allocate();
 		shape.set::<f32>(&mut row5, 0, f32::NAN);
 		assert!(shape.get::<f32>(&row5, 0).is_nan());
@@ -119,17 +114,15 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Float4]);
 		let mut row = shape.allocate();
 
-		// Test smallest positive subnormal
+		// Bit comparison, not value comparison: subnormals must survive the slot bit-exact.
 		let min_subnormal = f32::from_bits(0x00000001);
 		shape.set::<f32>(&mut row, 0, min_subnormal);
 		assert_eq!(shape.get::<f32>(&row, 0).to_bits(), min_subnormal.to_bits());
 
-		// Test largest subnormal (just below MIN_POSITIVE)
 		let max_subnormal = f32::from_bits(0x007fffff);
 		shape.set::<f32>(&mut row, 0, max_subnormal);
 		assert_eq!(shape.get::<f32>(&row, 0).to_bits(), max_subnormal.to_bits());
 
-		// Test negative subnormals
 		let neg_subnormal = f32::from_bits(0x80000001);
 		shape.set::<f32>(&mut row, 0, neg_subnormal);
 		assert_eq!(shape.get::<f32>(&row, 0).to_bits(), neg_subnormal.to_bits());
@@ -140,17 +133,15 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Float4]);
 		let mut row = shape.allocate();
 
-		// Test different NaN representations
+		// The slot stores raw bits, so the NaN payload and sign must come back unchanged.
 		let quiet_nan = f32::NAN;
 		shape.set::<f32>(&mut row, 0, quiet_nan);
 		assert!(shape.get::<f32>(&row, 0).is_nan());
 
-		// Test NaN with specific payload
 		let nan_with_payload = f32::from_bits(0x7fc00001);
 		shape.set::<f32>(&mut row, 0, nan_with_payload);
 		assert_eq!(shape.get::<f32>(&row, 0).to_bits(), nan_with_payload.to_bits());
 
-		// Test negative NaN
 		let neg_nan = f32::from_bits(0xffc00000);
 		shape.set::<f32>(&mut row, 0, neg_nan);
 		assert_eq!(shape.get::<f32>(&row, 0).to_bits(), neg_nan.to_bits());
@@ -162,14 +153,13 @@ pub mod tests {
 		let mut row = shape.allocate();
 		let initial_len = row.len();
 
-		// Set same field many times with different values
 		for i in 0..1000 {
 			let value = (i as f32) * 0.1;
 			shape.set::<f32>(&mut row, 0, value);
 			assert_eq!(shape.get::<f32>(&row, 0), value);
 		}
 
-		// Size shouldn't grow for static type
+		// A static-width field is overwritten in place, so repeated writes must not grow the row.
 		assert_eq!(row.len(), initial_len);
 	}
 
@@ -178,15 +168,12 @@ pub mod tests {
 		let shape = create_unaligned_layout(ValueType::Float4);
 		let mut row = shape.allocate();
 
-		// Test at odd offset (index 1)
 		shape.set::<f32>(&mut row, 1, PI);
 		assert_eq!(shape.get::<f32>(&row, 1), PI);
 
-		// Test at another odd offset (index 3)
 		shape.set::<f32>(&mut row, 3, E);
 		assert_eq!(shape.get::<f32>(&row, 3), E);
 
-		// Verify both values are preserved
 		assert_eq!(shape.get::<f32>(&row, 1), PI);
 		assert_eq!(shape.get::<f32>(&row, 3), E);
 	}
@@ -196,7 +183,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Float4]);
 		let mut row = shape.allocate();
 
-		// Test transition from normal to subnormal
 		let values = [
 			f32::MIN_POSITIVE,       // Smallest normal
 			f32::MIN_POSITIVE / 2.0, // Becomes subnormal
@@ -210,16 +196,13 @@ pub mod tests {
 			if value == 0.0 {
 				assert_eq!(retrieved, 0.0);
 			} else {
-				// For subnormals, compare bits to ensure exact
-				// preservation
 				assert_eq!(retrieved.to_bits(), value.to_bits());
 			}
 		}
 	}
 
-	/// Creates a layout with odd alignment to test unaligned access
+	/// Interleaves 1-byte fields so the target type never lands on its natural alignment.
 	pub fn create_unaligned_layout(target_type: ValueType) -> RowShape {
-		// Use Int1 (1 byte) to create odd alignment
 		RowShape::testing(&[
 			ValueType::Int1,     // 1 byte offset
 			target_type.clone(), // Now at odd offset

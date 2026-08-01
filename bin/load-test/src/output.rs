@@ -6,7 +6,6 @@ use crate::{
 	metrics::MetricsSummary,
 };
 
-/// Print the benchmark header
 pub fn print_header(config: &Config, description: &str) {
 	println!();
 	println!("====== {} ======", description);
@@ -28,7 +27,7 @@ pub fn print_header(config: &Config, description: &str) {
 	println!();
 }
 
-/// Print the benchmark summary in redis-benchmark style
+/// Laid out to match redis-benchmark output.
 pub fn print_summary(summary: &MetricsSummary, description: &str) {
 	println!();
 	println!("====== {} ======", description);
@@ -58,7 +57,6 @@ pub fn print_summary(summary: &MetricsSummary, description: &str) {
 	);
 	println!("Errors: {} ({:.2}%)", format_number(summary.failed_requests), summary.error_rate());
 
-	// Print top errors if any
 	if !summary.top_errors.is_empty() {
 		println!();
 		println!("Top errors:");
@@ -68,7 +66,7 @@ pub fn print_summary(summary: &MetricsSummary, description: &str) {
 	}
 }
 
-/// Format a number with thousands separators
+/// Groups digits with commas.
 fn format_number(n: u64) -> String {
 	let s = n.to_string();
 	let mut result = String::new();
@@ -84,31 +82,25 @@ fn format_number(n: u64) -> String {
 	result.chars().rev().collect()
 }
 
-/// Format latency in microseconds to a human-readable string
 fn format_latency(us: u64) -> String {
 	format_latency_f64(us as f64)
 }
 
-/// Format latency from f64 microseconds
+/// Picks the unit that keeps the value readable: microseconds, milliseconds, then seconds.
 fn format_latency_f64(us: f64) -> String {
 	if us < 1000.0 {
-		// Sub-millisecond: show microseconds
 		format!("{:.0} µs", us)
 	} else if us < 1_000_000.0 {
-		// Sub-second: show milliseconds
 		format!("{:.2} ms", us / 1000.0)
 	} else {
-		// >= 1 second: show seconds
 		format!("{:.2} s", us / 1_000_000.0)
 	}
 }
 
-/// Print progress update (for non-quiet mode)
 pub fn print_progress(current: u64, rate: u64) {
 	eprint!("\r{} requests completed ({}/s)    ", format_number(current), format_number(rate));
 }
 
-/// Clear the progress line
 pub fn clear_progress() {
 	eprintln!();
 }

@@ -29,7 +29,6 @@ enum Protocol {
 	Ws(WsCommand),
 	/// Local (embedded) database operations
 	Local(LocalCommand),
-	// Future: Http(HttpCommand), Grpc(GrpcCommand)
 }
 
 #[derive(Parser)]

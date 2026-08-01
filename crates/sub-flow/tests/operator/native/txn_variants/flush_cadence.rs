@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Regression guard for review #4 (flush_state cadence), re-asserted across all
-// three FlowTransaction variants. The native backend must DEFER flush_state to
-// commit (flush_operator_states), not flush inside apply. FlushProbe writes its
-// state only in flush_state, so after apply the state must NOT be visible and only
-// after flush_operator_states must it be persisted - in every variant.
+// The flush_state cadence re-asserted across all three FlowTransaction variants: the native backend
+// defers flush_state to commit, so the probe's state must be invisible after apply and persisted
+// only by the explicit flush, in every variant.
 
 use reifydb_core::{
 	common::CommitVersion,

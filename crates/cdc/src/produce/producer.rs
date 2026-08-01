@@ -349,7 +349,6 @@ pub mod tests {
 			})
 			.unwrap();
 
-		// Give actor time to process
 		sleep(Duration::from_milliseconds(50).unwrap().to_std());
 
 		let cdc = storage.read(CommitVersion(1)).unwrap();
@@ -408,16 +407,15 @@ pub mod tests {
 		sleep(Duration::from_milliseconds(50).unwrap().to_std());
 
 		let cdc = storage.read(CommitVersion(2)).unwrap().unwrap();
-		// Only the Set should produce CDC, not the Drop
+		// A silent removal must not reach CDC; only the Set does.
 		assert_eq!(cdc.system_changes.len(), 1);
 	}
 
 	#[test]
 	fn produce_feeds_the_flow_backlog_and_wakes_it() {
-		// The backlog is the flow hot path's only transport: a produced commit must land in it
-		// (decoded, Arc-shared) and fire the registered waker, without any consumer touching
-		// the storage read path. A commit whose changes are all flow-irrelevant must extend
-		// coverage (an empty Hit, not Behind) while leaving no entry behind.
+		// The backlog is the flow hot path's only transport, so a produced commit must land there
+		// and wake it without any consumer touching storage. A flow-irrelevant commit must still
+		// extend coverage, or the next pull goes Behind for nothing.
 		let storage = MemoryCdcStorage::new();
 		let store = MultiStore::testing_memory();
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);

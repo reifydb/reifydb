@@ -44,7 +44,6 @@ fn test_basic_unsubscribe_success() {
 
 		assert!(!sub_id.is_empty(), "Subscription ID should be defined");
 
-		// Unsubscribe should succeed
 		ctx.client.unsubscribe(&sub_id).await?;
 		ctx.client.close().await?;
 		Ok(())
@@ -57,12 +56,10 @@ fn test_basic_receive_insert_notifications() {
 		let table = ctx.create_table("sub_insert", "id: int4, name: utf8, value: int4").await?;
 		let sub_id = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Insert data after subscription is established
 		ctx.insert(&table, "{ id: 1, name: 'test', value: 100 }").await?;
 
 		let change = ctx.recv().await.expect("Should receive insert notification");
 
-		// Verify the data
 		let id_col = find_column(&change.body, "id").expect("id column should exist");
 		assert_eq!(id_col.payload[0], "1");
 
@@ -87,11 +84,9 @@ fn test_op_insert_callback() {
 		let change = ctx.recv().await.expect("Should receive insert notification");
 		assert_eq!(change.subscription_id, sub_id);
 
-		// Verify _op column indicates INSERT (1)
 		let op = get_op_value(&change.body, 0);
 		assert_eq!(op, Some(1), "_op should be 1 for INSERT");
 
-		// Verify both rows
 		let id_col = find_column(&change.body, "id").expect("id column should exist");
 		assert_eq!(id_col.payload.len(), 2, "Should have 2 rows");
 
@@ -109,23 +104,19 @@ fn test_op_update_callback() {
 		let table = ctx.create_table("sub_op_update", "id: int4, name: utf8").await?;
 		let sub_id = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Insert initial data
 		ctx.insert(&table, "{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }").await?;
 		let insert_change = ctx.recv().await.expect("Should receive insert notification");
 		let insert_op = get_op_value(&insert_change.body, 0);
 		assert_eq!(insert_op, Some(1), "_op should be 1 for INSERT");
 
-		// Update data
 		ctx.update(&table, "id == 1", "id: id, name: 'alice_updated'").await?;
 
 		let update_change = ctx.recv().await.expect("Should receive update notification");
 		assert_eq!(update_change.subscription_id, sub_id);
 
-		// Verify _op column indicates UPDATE (2)
 		let op = get_op_value(&update_change.body, 0);
 		assert_eq!(op, Some(2), "_op should be 2 for UPDATE");
 
-		// Verify updated name
 		let name_col = find_column(&update_change.body, "name").expect("name column should exist");
 		assert_eq!(name_col.payload[0], "alice_updated");
 
@@ -139,19 +130,16 @@ fn test_op_remove_callback() {
 		let table = ctx.create_table("sub_op_remove", "id: int4, name: utf8").await?;
 		let sub_id = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Insert initial data
 		ctx.insert(&table, "{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }").await?;
 		let insert_change = ctx.recv().await.expect("Should receive insert notification");
 		let insert_op = get_op_value(&insert_change.body, 0);
 		assert_eq!(insert_op, Some(1), "_op should be 1 for INSERT");
 
-		// Delete data
 		ctx.delete(&table, "id == 1").await?;
 
 		let delete_change = ctx.recv().await.expect("Should receive delete notification");
 		assert_eq!(delete_change.subscription_id, sub_id);
 
-		// Verify _op column indicates DELETE (3)
 		let op = get_op_value(&delete_change.body, 0);
 		assert_eq!(op, Some(3), "_op should be 3 for DELETE");
 
@@ -165,17 +153,14 @@ fn test_op_multiple_types_in_sequence() {
 		let table = ctx.create_table("sub_op_multi", "id: int4, name: utf8").await?;
 		let sub_id = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Insert
 		ctx.insert(&table, "{ id: 1, name: 'alice' }").await?;
 		let insert_change = ctx.recv().await.expect("Should receive insert");
 		assert_eq!(get_op_value(&insert_change.body, 0), Some(1));
 
-		// Update
 		ctx.update(&table, "id == 1", "id: id, name: 'alice_updated'").await?;
 		let update_change = ctx.recv().await.expect("Should receive update");
 		assert_eq!(get_op_value(&update_change.body, 0), Some(2));
 
-		// Remove
 		ctx.delete(&table, "id == 1").await?;
 		let delete_change = ctx.recv().await.expect("Should receive delete");
 		assert_eq!(get_op_value(&delete_change.body, 0), Some(3));
@@ -190,17 +175,15 @@ fn test_op_batch_consecutive_rows() {
 		let table = ctx.create_table("sub_op_batch", "id: int4, name: utf8").await?;
 		let sub_id = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Insert 10 rows at once
 		let rows: Vec<String> = (1..=10).map(|i| format!("{{ id: {}, name: 'user{}' }}", i, i)).collect();
 		ctx.insert(&table, &rows.join(", ")).await?;
 
+		// One command must arrive as one notification carrying all ten rows, not ten pushes.
 		let change = ctx.recv().await.expect("Should receive batch notification");
 
-		// Should be batched into one notification with all 10 rows
 		let id_col = find_column(&change.body, "id").expect("id column should exist");
 		assert_eq!(id_col.payload.len(), 10, "Should have 10 rows");
 
-		// Verify all 10 user rows
 		let name_col = find_column(&change.body, "name").expect("name column should exist");
 		for i in 1..=10 {
 			assert!(name_col.payload.contains(&format!("user{}", i)), "Should contain user{}", i);
@@ -236,13 +219,11 @@ fn test_concurrent_multiple_subscriptions() {
 			.await
 			.unwrap();
 
-		// Insert into table 1
 		client.command(&format!("INSERT test::{} [{{ id: 1, name: 'alice' }}]", table1), None).await.unwrap();
 
 		let change1 = recv_with_timeout(&mut client, 5000).await.expect("Should receive change from table1");
 		assert_eq!(change1.subscription_id, sub1);
 
-		// Insert into table 2
 		client.command(&format!("INSERT test::{} [{{ id: 2, value: 200 }}]", table2), None).await.unwrap();
 
 		let change2 = recv_with_timeout(&mut client, 5000).await.expect("Should receive change from table2");
@@ -271,7 +252,6 @@ fn test_concurrent_5_plus_subscriptions() {
 		let mut tables = Vec::new();
 		let mut sub_ids = Vec::new();
 
-		// Create all tables and subscribe
 		for i in 0..NUM_TABLES {
 			let table = unique_table_name(&format!("sub_conc_{}", i));
 			create_test_table(&client, &table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
@@ -283,24 +263,20 @@ fn test_concurrent_5_plus_subscriptions() {
 			sub_ids.push(sub_id);
 		}
 
-		// Insert into all tables
 		for (i, table) in tables.iter().enumerate() {
 			client.command(&format!("INSERT test::{} [{{ id: {}, value: {} }}]", table, i, i * 100), None)
 				.await
 				.unwrap();
 		}
 
-		// Wait for all callbacks
 		let changes = recv_multiple_with_timeout(&mut client, NUM_TABLES, 15000).await;
 		assert_eq!(changes.len(), NUM_TABLES, "Should receive {} notifications", NUM_TABLES);
 
-		// Verify all subscription IDs are represented
 		let received_sub_ids: HashSet<_> = changes.iter().map(|c| c.subscription_id.as_str()).collect();
 		for sub_id in &sub_ids {
 			assert!(received_sub_ids.contains(sub_id.as_str()), "Missing notification for {}", sub_id);
 		}
 
-		// Cleanup subscriptions
 		for sub_id in &sub_ids {
 			client.unsubscribe(sub_id).await.unwrap();
 		}
@@ -330,20 +306,16 @@ fn test_reconnection_resubscribe_after_disconnect() {
 			.unwrap();
 		assert!(!sub_id.is_empty(), "Subscription ID should be defined");
 
-		// Close and reconnect
 		client.close().await.unwrap();
 
-		// Reconnect
 		let mut client2 = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		client2.authenticate("mysecrettoken").await.unwrap();
 
-		// Resubscribe
 		let sub_id2 = client2
 			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
 			.await
 			.unwrap();
 
-		// Insert new data
 		client2.command(&format!("INSERT test::{} [{{ id: 1, name: 'after_reconnect' }}]", table), None)
 			.await
 			.unwrap();
@@ -380,7 +352,6 @@ fn test_reconnection_multiple_subscriptions() {
 			create_test_table(&client, table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 		}
 
-		// Subscribe to all tables
 		let mut sub_ids = Vec::new();
 		for table in &tables {
 			let sub_id = client
@@ -390,13 +361,11 @@ fn test_reconnection_multiple_subscriptions() {
 			sub_ids.push(sub_id);
 		}
 
-		// Close and reconnect
 		client.close().await.unwrap();
 
 		let mut client2 = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		client2.authenticate("mysecrettoken").await.unwrap();
 
-		// Resubscribe to all tables
 		let mut sub_ids2 = Vec::new();
 		for table in &tables {
 			let sub_id = client2
@@ -406,7 +375,6 @@ fn test_reconnection_multiple_subscriptions() {
 			sub_ids2.push(sub_id);
 		}
 
-		// Insert into all tables
 		for (i, table) in tables.iter().enumerate() {
 			client2.command(&format!("INSERT test::{} [{{ id: {}, value: {} }}]", table, i, i * 100), None)
 				.await
@@ -416,7 +384,6 @@ fn test_reconnection_multiple_subscriptions() {
 		let changes = recv_multiple_with_timeout(&mut client2, 3, 10000).await;
 		assert_eq!(changes.len(), 3, "Should receive 3 notifications");
 
-		// Verify all subscription IDs are represented
 		let received_sub_ids: HashSet<_> = changes.iter().map(|c| c.subscription_id.as_str()).collect();
 		for sub_id in &sub_ids2 {
 			assert!(received_sub_ids.contains(sub_id.as_str()));
@@ -493,8 +460,7 @@ fn test_error_invalid_subscription_id() {
 			SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis()
 		);
 
-		// May or may not throw depending on server implementation
-		// Just verify it doesn't panic
+		// An unknown id may or may not error server-side; this only pins that it never panics.
 		let _ = client.unsubscribe(&fake_id).await;
 
 		client.close().await.unwrap();
@@ -522,7 +488,6 @@ fn test_lifecycle_cleanup_on_disconnect() {
 			.await
 			.unwrap();
 
-		// Close without explicit unsubscribe - should not panic
 		client.close().await.unwrap();
 	});
 
@@ -535,16 +500,12 @@ fn test_lifecycle_no_callbacks_after_unsubscribe() {
 		let table = ctx.create_table("sub_no_cb", "id: int4, value: int4").await?;
 		let sub_id = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Unsubscribe immediately
 		ctx.client.unsubscribe(&sub_id).await?;
 
-		// Insert data
 		ctx.insert(&table, "{ id: 1, value: 100 }").await?;
 
-		// Small wait to verify no callback fires
 		sleep(Duration::from_milliseconds(100).unwrap().to_std()).await;
 
-		// Should NOT receive any change
 		let change = recv_with_timeout(&mut ctx.client, 500).await;
 		assert!(change.is_none(), "Should NOT receive callbacks after unsubscribe");
 
@@ -558,7 +519,6 @@ fn test_edge_empty_result_sets() {
 	SubscriptionTestHarness::run(|mut ctx| async move {
 		let table = ctx.create_table("sub_empty", "id: int4, value: int4").await?;
 
-		// Subscribe with filter that won't match
 		let sub_id = ctx
 			.client
 			.subscribe(
@@ -567,21 +527,17 @@ fn test_edge_empty_result_sets() {
 			)
 			.await?;
 
-		// Insert data that doesn't match filter
 		ctx.insert(&table, "{ id: 1, value: 100 }").await?;
 
-		// Small wait to verify no callback fires for non-matching data
 		sleep(Duration::from_milliseconds(100).unwrap().to_std()).await;
 
 		let change = recv_with_timeout(&mut ctx.client, 500).await;
 		assert!(change.is_none(), "Should not trigger callback for non-matching data");
 
-		// Insert data that matches filter
 		ctx.insert(&table, "{ id: 1001, value: 200 }").await?;
 
 		let change = recv_with_timeout(&mut ctx.client, 5000).await.expect("Should receive matching data");
 
-		// Verify matching row data
 		let id_col = find_column(&change.body, "id").expect("id column should exist");
 		assert_eq!(id_col.payload[0], "1001");
 
@@ -600,17 +556,14 @@ fn test_edge_large_batch_of_changes() {
 		let table = ctx.create_table("sub_large", "id: int4, value: int4").await?;
 		let sub_id = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Insert 100 rows
 		let rows: Vec<String> = (0..100).map(|i| format!("{{ id: {}, value: {} }}", i, i * 10)).collect();
 		ctx.insert(&table, &rows.join(", ")).await?;
 
 		let change = ctx.recv().await.expect("Should receive batch notification");
 
-		// Should have received all 100 rows
 		let id_col = find_column(&change.body, "id").expect("id column should exist");
 		assert_eq!(id_col.payload.len(), 100, "Should have 100 rows");
 
-		// Verify sample rows
 		assert!(id_col.payload.contains(&"0".to_string()));
 		assert!(id_col.payload.contains(&"49".to_string()));
 		assert!(id_col.payload.contains(&"99".to_string()));
@@ -639,17 +592,15 @@ fn test_edge_rapid_successive_changes() {
 			.await
 			.unwrap();
 
-		// Fire 10 insert commands rapidly
 		for i in 0..10 {
 			client.command(&format!("INSERT test::{} [{{ id: {}, value: {} }}]", table, i, i * 10), None)
 				.await
 				.unwrap();
 		}
 
-		// Collect all changes with timeout
 		let changes = recv_multiple_with_timeout(&mut client, 10, 15000).await;
 
-		// Count total rows received
+		// Rapid inserts may coalesce, so the invariant is total rows, not notification count.
 		let total_rows: usize = changes
 			.iter()
 			.map(|c| find_column(&c.body, "id").map(|col| col.payload.len()).unwrap_or(0))
@@ -679,7 +630,6 @@ fn test_stress_many_subscriptions_single_client() {
 		let mut sub_ids = Vec::new();
 		let mut tables = Vec::new();
 
-		// Create 50 tables and subscriptions
 		for i in 0..NUM_SUBS {
 			let table = unique_table_name(&format!("stress_{}", i));
 			create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
@@ -691,22 +641,18 @@ fn test_stress_many_subscriptions_single_client() {
 			tables.push(table);
 		}
 
-		// Insert into all tables
 		for table in &tables {
 			client.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
 		}
 
-		// Receive all notifications
 		let changes = recv_multiple_with_timeout(&mut client, NUM_SUBS, 30000).await;
 		assert_eq!(changes.len(), NUM_SUBS, "Should receive {} notifications", NUM_SUBS);
 
-		// Verify all subscription IDs are represented
 		let received_sub_ids: HashSet<_> = changes.iter().map(|c| c.subscription_id.as_str()).collect();
 		for sub_id in &sub_ids {
 			assert!(received_sub_ids.contains(sub_id.as_str()), "Missing notification for {}", sub_id);
 		}
 
-		// Cleanup
 		for sub_id in &sub_ids {
 			client.unsubscribe(sub_id).await.unwrap();
 		}
@@ -726,7 +672,6 @@ fn test_stress_many_concurrent_clients() {
 	runtime.block_on(async {
 		const NUM_CLIENTS: usize = 20;
 
-		// Setup shared table
 		let mut setup_client =
 			WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		setup_client.authenticate("mysecrettoken").await.unwrap();
@@ -737,7 +682,6 @@ fn test_stress_many_concurrent_clients() {
 
 		let received_count = Arc::new(AtomicUsize::new(0));
 
-		// Spawn all clients concurrently
 		let mut handles = Vec::new();
 		for client_idx in 0..NUM_CLIENTS {
 			let port = port;
@@ -764,17 +708,14 @@ fn test_stress_many_concurrent_clients() {
 			handles.push((client_idx, handle));
 		}
 
-		// Give clients time to connect and subscribe
 		sleep(Duration::from_milliseconds(500).unwrap().to_std()).await;
 
-		// Trigger insert
 		let mut trigger_client =
 			WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		trigger_client.authenticate("mysecrettoken").await.unwrap();
 		trigger_client.command(&format!("INSERT test::{} [{{ id: 999 }}]", shared_table), None).await.unwrap();
 		trigger_client.close().await.unwrap();
 
-		// Wait for all clients
 		for (idx, handle) in handles {
 			match handle.await {
 				Ok(Ok(())) => {}
@@ -821,7 +762,6 @@ fn test_stress_rapid_subscribe_unsubscribe() {
 			}
 		}
 
-		// Verify system still works
 		let sub_id = client
 			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
 			.await
@@ -850,7 +790,6 @@ fn test_stress_client_disconnect_without_unsubscribe() {
 	runtime.block_on(async {
 		const NUM_CLIENTS: usize = 10;
 
-		// Setup shared table
 		let mut setup_client =
 			WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		setup_client.authenticate("mysecrettoken").await.unwrap();
@@ -859,7 +798,6 @@ fn test_stress_client_disconnect_without_unsubscribe() {
 		create_test_table(&setup_client, &shared_table, &[("id", "int4")]).await.unwrap();
 		setup_client.close().await.unwrap();
 
-		// Connect multiple clients and disconnect without unsubscribing
 		for i in 0..NUM_CLIENTS {
 			let mut client =
 				WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
@@ -869,7 +807,7 @@ fn test_stress_client_disconnect_without_unsubscribe() {
 				.await
 				.unwrap();
 
-			// Drop without unsubscribe - simulates abrupt disconnect
+			// Dropping without unsubscribe simulates an abrupt disconnect.
 			drop(client);
 
 			if (i + 1) % 5 == 0 {
@@ -880,7 +818,6 @@ fn test_stress_client_disconnect_without_unsubscribe() {
 		// Give server time to clean up
 		sleep(Duration::from_milliseconds(500).unwrap().to_std()).await;
 
-		// Server should still be healthy
 		let mut new_client =
 			WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		new_client.authenticate("mysecrettoken").await.unwrap();
@@ -914,7 +851,6 @@ fn test_stress_concurrent_connect_disconnect() {
 		const NUM_TASKS: usize = 10;
 		const ITERATIONS_PER_TASK: usize = 5;
 
-		// Setup tables
 		let mut setup_client =
 			WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		setup_client.authenticate("mysecrettoken").await.unwrap();
@@ -929,7 +865,6 @@ fn test_stress_concurrent_connect_disconnect() {
 
 		let success_count = Arc::new(AtomicUsize::new(0));
 
-		// Spawn concurrent tasks
 		let mut handles = Vec::new();
 		for task_idx in 0..NUM_TASKS {
 			let port = port;
@@ -996,7 +931,6 @@ fn test_stress_concurrent_connect_disconnect() {
 			handles.push((task_idx, handle));
 		}
 
-		// Wait for all tasks
 		for (idx, handle) in handles {
 			match handle.await {
 				Ok(Ok(())) => {}
@@ -1009,7 +943,6 @@ fn test_stress_concurrent_connect_disconnect() {
 		let expected = NUM_TASKS * ITERATIONS_PER_TASK;
 		assert_eq!(count, expected, "All {} connect/disconnect cycles should succeed, got {}", expected, count);
 
-		// Verify server is still healthy
 		let mut final_client =
 			WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		final_client.authenticate("mysecrettoken").await.unwrap();
@@ -1081,7 +1014,6 @@ fn test_stress_connection_churn() {
 	runtime.block_on(async {
 		const NUM_CONNECTIONS: usize = 50;
 
-		// Rapidly connect and disconnect without doing any operations
 		for i in 0..NUM_CONNECTIONS {
 			let mut client =
 				WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
@@ -1093,12 +1025,10 @@ fn test_stress_connection_churn() {
 			}
 		}
 
-		// Verify server is still healthy
 		let mut final_client =
 			WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		final_client.authenticate("mysecrettoken").await.unwrap();
 
-		// Simple query to verify server is responsive
 		let _ = final_client.command("create namespace stress_test_ns", None).await;
 
 		final_client.close().await.unwrap();
@@ -1122,7 +1052,6 @@ fn test_stress_connect_query_disconnect_cycles() {
 				WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 			client.authenticate("mysecrettoken").await.unwrap();
 
-			// Simple operation to verify connection works
 			let _ = client.command("create namespace stress_test_ns", None).await;
 
 			client.close().await.unwrap();

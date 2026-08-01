@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! A custom operator - the shape every chaindex operator has - interns its keys as substrate
-//! groups and the host derives the node's horizon by ASKING THE OPERATOR (seal_after_ms) rather
-//! than reading the RQL node or a capability flag. The operator no longer stamps activity at all:
-//! the substrate stamps every intern from the change coordinate, which on an event-time source is
-//! the row's #time. The source table therefore declares its populator (ts: datetime) so the stamp
-//! the substrate takes is the same event time the operator used to pass explicitly. This drives
-//! the whole chain through a real flow, because the failure mode it guards is quiet: state that
-//! grows while the report calls the node healthy.
+//! A custom operator interns its keys as substrate groups, and the host derives the node's horizon
+//! by asking the operator (seal_after_ms) rather than reading the RQL node or a capability flag.
+//! Driven through a real flow because the failure is quiet: state grows while the report says fine.
 
 use std::time::Duration as StdDuration;
 
@@ -72,10 +67,8 @@ const TALLY_COLUMNS: &[OperatorColumn] = &[
 	},
 ];
 
-// Keeps one running total per `g`, addressed by the group the substrate interned for that key. This
-// is deliberately the same shape as pumpfun-curve (state per mint) and the windowed chaindex
-// drivers (state per window): per-key state inside a group range, plus a seal span the operator
-// computes rather than a ttl a view author typed.
+// One running total per `g`, addressed by the group the substrate interned for that key: per-key
+// state inside a group range, plus a seal span the operator computes rather than a declared ttl.
 struct Tally;
 
 impl RawStatefulOperator for Tally {}
@@ -99,9 +92,9 @@ impl OperatorLogic for Tally {
 		Ok(Tally)
 	}
 
-	// The operator answers the retention question itself. The host reads this to derive the node's
-	// horizon, and `apply` stamps in the domain it implies, so the two cannot disagree.
 	fn seal_after_ms(&self) -> Option<u64> {
+		// The host derives the node's horizon from this and `apply` stamps in the domain it
+		// implies, so the two cannot disagree.
 		Some(SEAL_AFTER_MS)
 	}
 
@@ -125,8 +118,7 @@ impl OperatorLogic for Tally {
 				let ts = row.datetime("ts").expect("ts").to_millis() as i64;
 
 				// The substrate stamps this intern from the change coordinate - the row's
-				// #time, populated from the declared ts column - and that stamp is what it
-				// later compares against the seal cutoff derived from seal_after_ms.
+				// #time - and later compares that stamp against the seal cutoff.
 				let key = group_key(g);
 				let group = ctx.intern_group(&key)?;
 				let state_key = OperatorStateKey::inner_encoded(group, TALLY_STATE, []);
@@ -168,11 +160,9 @@ const RECLAIMED_A_GROUP: &str =
 
 #[test]
 fn a_custom_operators_idle_group_is_reclaimed_through_the_flow_tick() {
-	// The chain under test: the operator declares a seal span -> the host derives an event-domain
-	// horizon for the APPLY node from it (not from any ttl clause, and not gated on a capability)
-	// -> the operator stamps event-time positions when it interns -> the tick pass finds the group
-	// due and erases it. A break anywhere in that chain leaves the group retained with the ledger
-	// reporting nothing, which is why the assertion is on work_done rather than on a row count.
+	// The operator declares a seal span, the host derives an event-domain horizon from it, the
+	// intern stamps an event-time position, and the tick pass erases the idle group. A break
+	// anywhere leaves the group retained with the ledger silent, hence asserting on work_done.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
@@ -185,9 +175,8 @@ fn a_custom_operators_idle_group_is_reclaimed_through_the_flow_tick() {
 	// goes idle without being touched itself - the same shape as a quiet mint while others trade.
 	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "1970-01-01T00:10:00Z" }]"#);
 
-	// Asserted, not merely awaited. `await_row_count` returns its last observation on timeout rather
-	// than panicking, so discarding it makes this test pass against a chain that reclaims nothing at
-	// all - it just takes the full timeout to do it.
+	// Asserted, not merely awaited: `await_row_count` returns its last observation on timeout, so
+	// discarding it would pass against a chain that reclaims nothing.
 	assert_eq!(
 		db.await_row_count(RECLAIMED_A_GROUP, 1, TIMEOUT),
 		1,
@@ -197,10 +186,9 @@ fn a_custom_operators_idle_group_is_reclaimed_through_the_flow_tick() {
 
 #[test]
 fn a_group_that_wakes_after_reclamation_publishes_under_its_original_row() {
-	// The two-phase split exists for exactly this: a custom operator's group is coord-less, so a
-	// reclaimed key can receive events again. Its data is gone (fresh start, by design) but its
-	// identity must survive until the sink row it names does, or the woken group mints a second row
-	// number and the view carries two rows for one key - landmine L2, and invisible in any metric.
+	// A custom operator's group is coord-less, so a reclaimed key can receive events again. Its
+	// data is gone by design, but its identity must outlive the sink row it names, or the woken
+	// group mints a second row number and the view carries two rows for one key.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
@@ -215,10 +203,8 @@ fn a_group_that_wakes_after_reclamation_publishes_under_its_original_row() {
 	// Group 1 wakes under the same key.
 	db.command(r#"INSERT app::t [{ id: 3, g: 1, ts: "1970-01-01T00:10:00.001Z" }]"#);
 
-	// The flow has to have applied that insert before a count means anything. Awaiting a count of 1
-	// instead - which this did - returns on the very first poll, because the view already holds one
-	// row for g == 1 from the first insert. The duplicate this test is named for appears as a second
-	// row, so the assertion was being evaluated before the event that could produce it was processed.
+	// The flow must have applied that insert before a count means anything: awaiting a count of 1
+	// returns on the first poll, since g == 1 already holds a row from the first insert.
 	assert!(db.await_all_flows(TIMEOUT), "the flow must settle before the row count is evidence");
 
 	assert_eq!(

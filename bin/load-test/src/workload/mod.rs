@@ -23,16 +23,13 @@ use crate::{
 	config::{Config, WorkloadPreset},
 };
 
-/// A query to run during setup or teardown
 pub struct SetupQuery {
-	/// The RQL statement
 	pub rql: String,
-	/// True for commands (DDL/DML), false for queries
+	/// True routes the statement through the command path (DDL/DML), false through the query path.
 	pub is_command: bool,
 }
 
 impl SetupQuery {
-	/// Create a new command setup query
 	pub fn command(rql: impl Into<String>) -> Self {
 		Self {
 			rql: rql.into(),
@@ -40,7 +37,6 @@ impl SetupQuery {
 		}
 	}
 
-	/// Create a new query setup query
 	#[allow(dead_code)]
 	pub fn query(rql: impl Into<String>) -> Self {
 		Self {
@@ -50,22 +46,18 @@ impl SetupQuery {
 	}
 }
 
-/// Trait for workload implementations
 pub trait Workload: Send + Sync {
-	/// Human-readable description of the workload
 	fn description(&self) -> &str;
 
-	/// Setup queries to run before the benchmark
+	/// Run once before the benchmark, on a single connection.
 	fn setup_queries(&self) -> Vec<SetupQuery>;
 
-	/// Generate the next operation for a worker
 	fn next_operation(&self, rng: &mut StdRng, worker_id: usize) -> Operation;
 
-	/// Teardown queries to run after the benchmark
+	/// Run once after the benchmark; failures are ignored.
 	fn teardown_queries(&self) -> Vec<String>;
 }
 
-/// Create a workload from the given preset and configuration
 pub fn create_workload(preset: WorkloadPreset, config: &Config) -> Arc<dyn Workload> {
 	match preset {
 		WorkloadPreset::Ping => Arc::new(PingWorkload::new()),

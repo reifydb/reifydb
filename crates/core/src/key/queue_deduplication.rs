@@ -78,22 +78,20 @@ mod tests {
 
 	use super::*;
 
-	/// The record is the whole dedup mechanism: a lossy codec would either resurrect a key that
-	/// was already claimed or fail to recognise one that was, and in both cases a duplicate
-	/// enqueue silently becomes a second work item.
 	#[test]
 	fn test_encode_decode_roundtrip() {
+		// A lossy codec either resurrects a claimed key or fails to recognise one, and both turn a
+		// duplicate enqueue into a second work item.
 		let encoded = QueueDeduplicationKey::encoded(QueueId(3), b"invoice-42".to_vec());
 		let decoded = QueueDeduplicationKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.queue, QueueId(3));
 		assert_eq!(decoded.key, b"invoice-42".to_vec());
 	}
 
-	/// The tail is user-supplied text, so it must survive bytes that the key codec treats as
-	/// structural (its terminator and escape) as well as embedded nul and multi-byte utf8.
-	/// A key mangled here dedups against the wrong record.
 	#[test]
 	fn test_arbitrary_bytes_survive_the_tail_encoding() {
+		// The tail is user-supplied, so it must survive the bytes the key codec treats as structural
+		// as well as embedded nul and multi-byte utf8; a mangled key dedups against the wrong record.
 		for key in [
 			vec![],
 			vec![0x00],
@@ -107,21 +105,19 @@ mod tests {
 		}
 	}
 
-	/// Two queues may legitimately use the same deduplication key, so the queue id has to
-	/// discriminate. Without it, enqueueing "invoice-1" on one queue would suppress the same
-	/// logical key on every other queue.
 	#[test]
 	fn test_the_same_key_in_two_queues_encodes_differently() {
+		// Two queues may legitimately use the same dedup key, so without the queue id discriminating,
+		// enqueueing "invoice-1" on one queue would suppress it on every other queue.
 		let a = QueueDeduplicationKey::encoded(QueueId(1), b"same".to_vec());
 		let b = QueueDeduplicationKey::encoded(QueueId(2), b"same".to_vec());
 		assert_ne!(a, b);
 	}
 
-	/// Retention sweeps a queue's records by prefix range. Keys are stored bitwise-inverted, so a
-	/// bound derived with the wrong sign would make the sweep either miss its own records or
-	/// delete a neighbouring queue's, which would let that queue's duplicates through.
 	#[test]
 	fn test_full_scan_contains_only_the_target_queue() {
+		// Keys are stored bitwise-inverted, so a bound derived with the wrong sign makes the retention
+		// sweep either miss its own records or delete a neighbouring queue's.
 		let range = QueueDeduplicationKey::full_scan(QueueId(3));
 		let Bound::Included(start) = &range.start else {
 			panic!("expected an included start bound")
@@ -149,10 +145,9 @@ mod tests {
 		}
 	}
 
-	/// A truncated or mistyped key must fail to decode rather than yield a partial record: a
-	/// silent `None` tail would collapse every key in the queue onto one dedup slot.
 	#[test]
 	fn test_a_foreign_or_truncated_key_does_not_decode() {
+		// A partial record would collapse every key in the queue onto one dedup slot.
 		let encoded = QueueDeduplicationKey::encoded(QueueId(3), b"invoice-42".to_vec());
 
 		let mut wrong_kind = encoded.as_slice().to_vec();

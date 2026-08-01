@@ -332,8 +332,7 @@ mod tests {
 
 	#[test]
 	fn reader_batch_spans_chunk_boundary() {
-		// Chunks [0..3), [3..5), [5..9). Batch size 4 emits batches:
-		//   [0..4) crosses chunk0->chunk1, [4..8) crosses chunk1->chunk2, [8..9) tail.
+		// Batch size 4 lands on no chunk boundary, so every batch has to stitch across chunks.
 		let snap = mk_chunked_block(&[&[10, 20, 30], &[40, 50], &[60, 70, 80, 90]]);
 		let mut reader = SnapshotReader::new(snap, 4);
 
@@ -357,7 +356,7 @@ mod tests {
 
 	#[test]
 	fn reader_batch_starts_mid_chunk() {
-		// One chunk of length 10, batch size 3 means batches start mid-chunk.
+		// Batch size 3 over a single 10-row chunk makes every batch after the first start mid-chunk.
 		let snap = mk_chunked_block(&[&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]]);
 		let mut reader = SnapshotReader::new(snap, 3);
 
@@ -376,7 +375,6 @@ mod tests {
 
 	#[test]
 	fn pushdown_eq_predicate_keeps_only_matching_rows() {
-		// Single chunk: id values 0..5; predicate id == 3 keeps row 3 only.
 		let snap = mk_block(5);
 		let p = Predicate::Eq(ColRef::from("a"), Value::Int4(3));
 		let mut reader = SnapshotReader::new(snap, 100).with_predicate(p);
@@ -391,9 +389,7 @@ mod tests {
 
 	#[test]
 	fn pushdown_filters_across_chunk_boundary() {
-		// 3 chunks: [10,20,30] | [40,50] | [60,70,80,90]. Predicate keeps anything
-		// equal to 30 (chunk 0) or 80 (chunk 2). Reader processes the whole snapshot
-		// in one batch (batch_size=100) so the filter spans every chunk.
+		// The whole snapshot arrives as one batch, so the filter has to select across chunk boundaries.
 		let snap = mk_chunked_block(&[&[10, 20, 30], &[40, 50], &[60, 70, 80, 90]]);
 		let p = Predicate::In(ColRef::from("a"), vec![Value::Int4(30), Value::Int4(80)]);
 		let mut reader = SnapshotReader::new(snap, 100).with_predicate(p);
@@ -410,9 +406,8 @@ mod tests {
 
 	#[test]
 	fn pushdown_skips_empty_batches() {
-		// 6 rows, batch size 2 → batches [0..2), [2..4), [4..6). Predicate id==4 only
-		// matches in batch [4..6); the first two batches return Selection::None_ and
-		// must be skipped by the iterator (consumer never sees them).
+		// The first two batches select nothing; the iterator must skip them rather than hand back empty
+		// batches.
 		let snap = mk_block(6);
 		let p = Predicate::Eq(ColRef::from("a"), Value::Int4(4));
 		let mut reader = SnapshotReader::new(snap, 2).with_predicate(p);
@@ -426,8 +421,8 @@ mod tests {
 
 	#[test]
 	fn pushdown_selection_all_passes_batch_through() {
-		// Predicate matches every row in the batch → Selection::All path. Output
-		// must equal the no-predicate batch.
+		// A predicate matching every row takes the Selection::All path, which must pass the batch through
+		// intact.
 		let snap = mk_block(5);
 		let p = Predicate::GtEq(ColRef::from("a"), Value::Int4(0));
 		let mut reader = SnapshotReader::new(snap, 100).with_predicate(p);
@@ -443,7 +438,7 @@ mod tests {
 
 	#[test]
 	fn pushdown_is_none_over_multi_chunk_nullable() {
-		// Two nullable chunks; nones at position 1 of each chunk → block rows 1, 4.
+		// A none at position 1 of each chunk has to resolve to block rows 1 and 4, not chunk-local 1 twice.
 		let mut a = ColumnBuffer::int4_with_capacity(3);
 		a.push::<i32>(10);
 		a.push_none();

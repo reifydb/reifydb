@@ -2,9 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 //! `system::metrics::epoch::current` must report the durable log's own size, which no metrics code can read: the
-//! keyspace belongs to the lifecycle subsystem, so the figure crosses on the event bus. Driven end to end, because
-//! every link is one nobody would notice failing - a missing emit, an unregistered listener, or an unwired gauge all
-//! leave the column reading zero, which is indistinguishable from an empty log.
+//! keyspace belongs to the lifecycle subsystem, so the figure crosses on the event bus. Driven end to end because a
+//! missing emit, an unregistered listener and an unwired gauge all leave the column reading zero.
 
 use std::time::Duration;
 
@@ -39,9 +38,8 @@ fn epoch_current_reports_the_durable_sample_count_over_the_event_bus() {
 
 #[test]
 fn epoch_current_reports_coverage_the_epoch_can_actually_resolve() {
-	// guaranteed_coverage is what a declared ttl is validated against, so a row that reports it as zero would
-	// make every ttl look unenforceable. It is read live rather than over the bus, which is why it is asserted
-	// separately from the durable count.
+	// guaranteed_coverage is how far back the map promises to resolve. It is read live from the epoch rather
+	// than arriving over the bus, so it needs its own assertion.
 	let db = TestDb::from(
 		db_embedded::memory()
 			.with_config(ConfigKey::MetricsEpochRefreshInterval, Value::duration_milliseconds(20))

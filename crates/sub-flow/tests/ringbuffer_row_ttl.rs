@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// A ring buffer's row TTL is a RowTtl timer armed at the head row's own #time plus the ttl, fired by
-// the flow watermark rather than by a clock. That makes the ttl mean the same thing during a replay
-// of last month's data as it does live, which the version-anchored eviction it replaces could not:
-// that one mapped a wall-clock instant onto a commit version, so a replay aged rows by how recently
-// they were INGESTED. These tests pin both directions of the resulting contract.
+// A ring buffer's row TTL is a timer armed at the head row's own #time plus the ttl and fired by
+// the flow watermark, not a clock, so the ttl means the same thing replaying last month's data as
+// it does live. A version-anchored eviction instead ages rows by how recently they were ingested.
 
 use std::{thread::sleep, time::Duration as StdDuration};
 
@@ -34,14 +32,9 @@ fn insert(db: &TestDb, id: i32, v: i32, ts: &str) {
 
 #[test]
 fn a_row_expires_during_replay_once_the_event_watermark_passes_its_ttl() {
-	// Intent: the whole point of moving row TTL onto the flow watermark. Replaying a day of
-	// history in a second must expire rows at the same event-time boundaries the live feed would,
-	// so the ring buffer holds one ttl-window of DATA rather than one ttl-window of INGESTION.
-	// Nothing here waits on wall time: the second insert carries an event time two hours past the
-	// first, which is what advances the watermark past row 1's expiry and fires its RowTtl timer.
-	// Mutation: arm the timer at the row's #time instead of #time + ttl and row 2 is evicted the
-	// moment it lands, leaving the view empty. Compare the timer instant against the wall clock
-	// rather than the watermark and neither row expires inside the test's lifetime.
+	// Replaying a day of history in a second must expire rows at the same event-time boundaries
+	// the live feed would, so the buffer holds one ttl-window of data rather than of ingestion.
+	// Nothing waits on wall time: the second insert is what carries the watermark past row 1.
 	let db = setup();
 	event_ring(&db, "1h");
 
@@ -66,16 +59,9 @@ fn a_row_expires_during_replay_once_the_event_watermark_passes_its_ttl() {
 
 #[test]
 fn a_frozen_event_watermark_keeps_a_row_far_past_its_ttl_in_wall_time() {
-	// Intent: the mirror of the test above, and the one that actually catches a clock read. The
-	// ttl here is one second and the sleep below is three, so wall time blows past it while the
-	// event watermark does not move at all, because no further row arrives to move it. An event
-	// flow with a stopped feed must HOLD - dropping the row would mean the ring buffer silently
-	// empties itself whenever ingestion pauses, which is exactly the failure a wall-clock ttl has.
-	// The sleep is deliberate and is not a race: the assertion is that nothing happens, so a
-	// longer sleep can only make the test stricter. There is no event to await on instead, since
-	// the correct behaviour is the absence of one.
-	// Mutation: substitute the wall clock for the watermark anywhere on the RowTtl path and the
-	// row is gone before this assertion runs.
+	// The mirror of the test above, and the one that catches a clock read: wall time blows past a
+	// 1s ttl while the event watermark stays put, and a stopped feed must hold rather than empty
+	// itself. The sleep is not a race - the assertion is absence, so a longer one is only stricter.
 	let db = setup();
 	event_ring(&db, "1s");
 
@@ -94,13 +80,9 @@ fn a_frozen_event_watermark_keeps_a_row_far_past_its_ttl_in_wall_time() {
 
 #[test]
 fn an_idle_processing_ring_buffer_drains_while_an_idle_event_ring_holds() {
-	// Intent: C2 stated as one assertion pair. A processing-domain flow's watermark IS the wall
-	// clock, so it keeps advancing with no input and an idle ring buffer must drain; an event
-	// flow's watermark only moves when rows move it, so an idle ring buffer must hold. Both rings
-	// are fed from the same table in the same command, which rules out the two halves diverging
-	// for any reason other than the domain they declare.
-	// Mutation: resolve both domains to the wall clock and the event ring empties too; resolve
-	// both to the event watermark and the processing ring keeps a row it promised to drop.
+	// A processing watermark is the wall clock and advances with no input, so an idle ring drains;
+	// an event watermark moves only on rows, so an idle ring holds. Both rings are fed from the
+	// same table in the same command, so nothing but the declared domain can separate them.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::events { id: int4, v: int4, ts: datetime } with { ts: ts }");

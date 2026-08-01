@@ -206,9 +206,8 @@ pub mod tests {
 
 	#[test]
 	fn test_storage_stats_key_object_roundtrip_for_every_object_kind() {
-		// Regression test: encode_object_id/decode_object_id used to disagree on the discriminant
-		// byte for every object kind but Table/View/TableVirtual, silently corrupting RingBuffer,
-		// Dictionary and Series metric ids. Now backed by the shared, tested ObjectId codec.
+		// Table/View/TableVirtual were the only kinds covered before; a discriminant-byte
+		// disagreement between encode and decode silently corrupts every other kind's metric id.
 		let objects = [
 			ObjectId::RingBuffer(RingBufferId(7)),
 			ObjectId::Dictionary(DictionaryId(11)),
@@ -278,15 +277,12 @@ pub mod tests {
 		let storage_prefix = storage_stats_key_prefix();
 		let cdc_prefix = cdc_stats_key_prefix();
 
-		// Storage stats key should start with storage prefix
 		let storage_key = encode_storage_stats_key(Tier::Buffer, MetricsId::System);
 		assert!(storage_key.starts_with(&storage_prefix));
 
-		// CDC stats key should start with cdc prefix
 		let cdc_key = encode_cdc_stats_key(MetricsId::System);
 		assert!(cdc_key.starts_with(&cdc_prefix));
 
-		// The prefixes must differ
 		assert_ne!(storage_prefix, cdc_prefix);
 	}
 }

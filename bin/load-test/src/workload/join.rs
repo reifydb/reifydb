@@ -8,9 +8,7 @@ use crate::{
 	workload::{SetupQuery, Workload},
 };
 
-/// Join workload - join queries across two tables
-///
-/// Creates orders and customers tables, performs join queries.
+/// Seeds customers and orders, then joins across the two.
 pub struct JoinWorkload {
 	table_size: u64,
 }
@@ -35,7 +33,6 @@ impl Workload for JoinWorkload {
 			SetupQuery::command("create table bench.orders { id: int8, customer_id: int8, amount: int4 }"),
 		];
 
-		// Insert customers in batches
 		let batch_size = 1000u64;
 		for batch_start in (0..self.table_size).step_by(batch_size as usize) {
 			let batch_end = (batch_start + batch_size).min(self.table_size);
@@ -46,7 +43,7 @@ impl Workload for JoinWorkload {
 			queries.push(SetupQuery::command(format!("INSERT bench.customers [{}]", rows.join(", "))));
 		}
 
-		// Insert orders in batches (3 orders per customer on average)
+		// Three orders per customer, so the join fans out rather than matching one to one.
 		let order_count = self.table_size * 3;
 		for batch_start in (0..order_count).step_by(batch_size as usize) {
 			let batch_end = (batch_start + batch_size).min(order_count);

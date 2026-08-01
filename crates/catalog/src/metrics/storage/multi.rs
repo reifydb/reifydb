@@ -340,12 +340,10 @@ pub mod tests {
 		stats.record_insert(10, 100);
 		stats.record_update(10, 150, 10, 100);
 
-		// Current should have new value
 		assert_eq!(stats.current_key_bytes, 10);
 		assert_eq!(stats.current_value_bytes, 150);
 		assert_eq!(stats.current_count, 1);
 
-		// Historical should have old value
 		assert_eq!(stats.historical_key_bytes, 10);
 		assert_eq!(stats.historical_value_bytes, 100);
 		assert_eq!(stats.historical_count, 1);
@@ -355,12 +353,9 @@ pub mod tests {
 
 	#[test]
 	fn a_delete_leaves_the_tombstone_on_the_current_side_where_the_store_puts_it() {
-		// A Delta::Remove reaches the store as a set with a None value (store/multi.rs classify_deltas),
-		// and MemoryRowStorage::set inserts that None into `current` exactly like any other write, moving
-		// only the pre-image across to `historical`. A deleted key therefore leaves ONE current entry -
-		// the tombstone, carrying its key and no value - and ONE historical entry. Charging the tombstone
-		// to the historical side instead invents an entry that nothing in the store corresponds to, so no
-		// removal can ever cancel it, while under-counting current by one.
+		// The store writes a delete as a none-valued current entry, moving only the pre-image to
+		// historical. Charging the tombstone to historical instead invents an entry the store
+		// never held, so no removal can cancel it, while under-counting current by one.
 		let mut stats = MultiStorageMetrics::new();
 		stats.record_insert(10, 100);
 		stats.record_delete(10, 10, 100);
@@ -376,11 +371,9 @@ pub mod tests {
 
 	#[test]
 	fn sweeping_a_deleted_key_returns_both_counters_to_zero() {
-		// This is the production symptom in miniature. Eviction can only report what the store actually
-		// removed, so a counter inflated at write time by an entry the store never held can never come
-		// back down: system::metrics::storage reported over a million buffer-tier historical rows while
-		// the buffer itself held 208 bytes of them. Sweeping everything the store holds for this key must
-		// zero both sides.
+		// Eviction can only report what the store actually removed, so a counter inflated at
+		// write time by an entry the store never held can never come back down. Sweeping
+		// everything the store holds for a key must zero both sides.
 		let mut stats = MultiStorageMetrics::new();
 		stats.record_insert(10, 100);
 		stats.record_delete(10, 10, 100);
@@ -395,16 +388,9 @@ pub mod tests {
 
 	#[test]
 	fn an_eviction_returns_the_bytes_the_write_that_created_them_charged() {
-		// Every counter on this struct is one-way unless something subtracts. record_insert,
-		// record_update and record_delete only ever add to the historical side; before eviction
-		// accounting existed the ONLY subtractor was record_compaction, driven by an event the
-		// flush sweep never emitted. A buffer could therefore be swept empty while
-		// system::metrics::storage reported it still holding every version it had ever seen, which
-		// is worse than reporting nothing: it is the number an operator would use to decide the
-		// leak is real.
-		// Mutation: drop the `current` arm and route everything through record_compaction; the
-		// current counters below stay at 1/10/100 forever and the historical ones go negative-
-		// clamped to 0, so the tier reports live rows that were evicted.
+		// Every counter here is one-way unless something subtracts, and record_compaction is
+		// driven by an event the flush sweep never emits. Without an eviction subtractor a
+		// buffer swept empty still reports every version it ever held.
 		let mut stats = MultiStorageMetrics::new();
 		stats.record_insert(10, 100);
 		stats.record_update(10, 150, 10, 100);
@@ -427,9 +413,8 @@ pub mod tests {
 
 	#[test]
 	fn evicting_more_than_was_recorded_clamps_instead_of_wrapping() {
-		// These are u64 counters. A double-delivered sweep event, or a sweep of entries written
-		// before the writer's stats were loaded, would underflow to ~1.8e19 and render every
-		// storage metric meaningless rather than merely slightly wrong.
+		// These are u64 counters: a double-delivered sweep event would underflow to ~1.8e19 and
+		// render every storage metric meaningless rather than merely slightly wrong.
 		let mut stats = MultiStorageMetrics::new();
 		stats.record_insert(10, 100);
 

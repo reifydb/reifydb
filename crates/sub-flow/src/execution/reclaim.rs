@@ -504,9 +504,9 @@ mod tests {
 		1u64.encode_state(DateTime::EPOCH).unwrap().into_row()
 	}
 
-	// A group with two data rows and a row-number mapping, interned at `position_ms`. The node is
-	// event-domain (seal horizon above), so the substrate stamps Event(coordinate.at).
 	fn seed(txn: &mut FlowTransaction, name: &str, position_ms: u64) -> GroupId {
+		// Two data rows and a row-number mapping, interned at `position_ms`: the node is
+		// event-domain, so the substrate stamps Event(coordinate.at).
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: DateTime::from_millis(position_ms),
 			version: CommitVersion(0),
@@ -541,8 +541,9 @@ mod tests {
 		txn
 	}
 
-	// The same shape as `seed`, but for an arbitrary node so a sweep can be given more than one.
 	fn seed_node(txn: &mut FlowTransaction, node: FlowNodeId, name: &str, position_ms: u64) -> GroupId {
+		// The same shape as `seed`, but for an arbitrary node so a sweep can be given more
+		// than one.
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: DateTime::from_millis(position_ms),
 			version: CommitVersion(0),
@@ -555,10 +556,9 @@ mod tests {
 		id
 	}
 
-	// Only the accumulators, not the whole group range: the GROUP_RECORD lives in that range too and
-	// deliberately survives the data phase, so counting the range would conflate "erased" with "left
-	// exactly the record the second phase still needs".
 	fn node_accumulators(txn: &mut FlowTransaction, node: FlowNodeId, id: GroupId) -> usize {
+		// Not the whole group range: the GROUP_RECORD survives the data phase, so counting the
+		// range would conflate "erased" with "left the record the second phase still needs".
 		txn.state_range(node, keyspace_inner_range(id, Keyspace::ACCUMULATOR), None).unwrap().items.len()
 	}
 
@@ -575,11 +575,9 @@ mod tests {
 
 	#[test]
 	fn a_node_that_exhausts_the_budget_starves_every_node_after_it() {
-		// The loop shares one budget across nodes and stops dead when it runs out, and node order is
-		// fixed ascending by id, so a high-cardinality low-id node can starve its successors forever.
-		// Nothing in the report distinguishes "nothing was due" from "never reached", which is what
-		// makes the starvation silent. This is the behaviour as it stands, pinned so that adding
-		// fairness later is a deliberate change rather than an accident.
+		// One budget shared across nodes in fixed ascending order, so a high-cardinality low-id
+		// node starves its successors and the report cannot tell "nothing was due" from "never
+		// reached". Pinned so that adding fairness later is a deliberate change.
 		let engine = TestEngine::new();
 		let nodes = [FlowNodeId(1), FlowNodeId(2), FlowNodeId(3)];
 		let mut txn = node_deferred(&engine, &nodes);
@@ -606,10 +604,9 @@ mod tests {
 
 	#[test]
 	fn a_node_with_no_data_cutoff_still_sweeps_its_keyspaces() {
-		// The phases are independently gated, and this is the ordinary shape of a join declaring a ttl
-		// on one side only: `later_of` returns perpetual unless BOTH sides declare a span, so the group
-		// horizon is absent while the per-side spans are present. Gating the keyspace phase on the data
-		// cutoff would leave exactly that configuration retaining forever while reporting a ttl.
+		// `later_of` is perpetual unless BOTH sides declare a span, so a join with a ttl on one
+		// side only has no group horizon. Gating the keyspace phase on the data cutoff would
+		// leave exactly that shape retaining forever while reporting a ttl.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let id = seed_sides(&mut txn, "keyed", 500, 900);
@@ -639,10 +636,9 @@ mod tests {
 
 	#[test]
 	fn the_keyspace_order_decides_what_a_truncated_budget_reaches() {
-		// The keyspace list is walked under the shared budget with an early break, so a keyspace listed
-		// second is only swept if the budget survives the first. That is why a join declares JOIN_LEFT
-		// before the ledger keyspaces describing what those left rows published: under truncation the
-		// left rows go first and the record of them outlives the sweep, never the reverse.
+		// The keyspace list is walked under one budget with an early break, so declaration order
+		// decides what a truncated sweep reaches: a join names JOIN_LEFT before its ledger
+		// keyspaces so the left rows go first and the record of them outlives the sweep.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let id = seed_sides(&mut txn, "keyed", 500, 500);
@@ -677,8 +673,7 @@ mod tests {
 
 	#[test]
 	fn the_mapping_cursor_is_carried_in_and_handed_back() {
-		// The sweep keeps no state between ticks: a half-finished node-mapping scan hands its position
-		// back to the caller, who feeds it in again next tick. Holding it inside the sweep would make
+		// The sweep keeps no state between ticks: holding the scan position inside it would make
 		// the function unusable outside the one engine that owns the map.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
@@ -700,9 +695,8 @@ mod tests {
 
 	#[test]
 	fn a_group_is_handed_to_invalidation_only_once_it_is_fully_drained() {
-		// Invalidation revokes RAM caches that mirror the store, so handing back a half-drained group
-		// would drop a filter that is still correct for the rows it has left. The row budget here can
-		// only take one of the group's two rows.
+		// Invalidation revokes RAM caches that mirror the store, so handing back a half-drained
+		// group would drop a filter that is still correct for the rows it has left.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		seed(&mut txn, "big", 50);
@@ -721,9 +715,9 @@ mod tests {
 
 	#[test]
 	fn the_data_phase_erases_state_and_leaves_identity_for_the_second_phase() {
-		// The whole point of splitting the phases: a sink row can still name the row-number mapping long
-		// after the accumulators behind it are worthless. Taking both at once means the next
-		// event on that group mints a second row number for a row that already exists.
+		// A sink row can still name the row-number mapping long after the accumulators behind it
+		// are worthless. Taking both at once means the next event on that group mints a second
+		// row number for a row that already exists.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let id = seed(&mut txn, "idle", 50);
@@ -766,11 +760,9 @@ mod tests {
 
 	#[test]
 	fn the_keyspace_phase_retires_one_side_of_a_group_and_spares_the_other() {
-		// The join's reason for existing in this sweep. Both sides share a group, so the group-level
-		// phases can only offer them one horizon; a join declaring a 60s left ttl against an hour-long
-		// right ttl needs the left rows gone while the right rows are still being probed. Here the left
-		// side was last active 500ms in and the right 900ms in, and a cutoff between them must take
-		// exactly one.
+		// Both sides share a group, so the group-level phases can only offer them one horizon; a
+		// join with a 60s left ttl against an hour-long right ttl needs the left rows gone while
+		// the right rows are still being probed.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let id = seed_sides(&mut txn, "keyed", 500, 900);
@@ -799,11 +791,9 @@ mod tests {
 
 	#[test]
 	fn a_retired_side_hands_its_groups_back_so_ram_state_can_drop_them() {
-		// The group-level phase returns released ids so the operator can invalidate the RAM state
-		// that mirrors them; the side phase has to do the same or the join's membership filter keeps
-		// claiming keys whose rows the sweep just deleted, and every probe of them pays a store read
-		// that can only ever miss. A half-drained side must NOT be handed back - its rows are still
-		// there and invalidating early would drop a filter that is still correct.
+		// Without the released ids the join's membership filter keeps claiming keys whose rows
+		// the sweep deleted, and every probe pays a store read that can only miss. A half-drained
+		// side must NOT be handed back - invalidating early drops a filter that is still correct.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let id = seed_sides(&mut txn, "keyed", 500, 900);
@@ -827,8 +817,8 @@ mod tests {
 
 	#[test]
 	fn a_retired_side_is_not_offered_again() {
-		// forget_side is what stops the sweep re-reclaiming an empty keyspace on every pass. Without
-		// it the side stays due forever and burns the group budget that live groups need.
+		// A side that stayed due after being drained would burn on every pass the group budget
+		// that live groups need.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		seed_sides(&mut txn, "keyed", 500, 900);
@@ -846,10 +836,9 @@ mod tests {
 
 	#[test]
 	fn retiring_a_side_leaves_the_groups_identity_alone() {
-		// The side sweep deliberately does not defer the group: identity keeps ageing on the per-group
-		// index at the later of the two ttls, because a sink row can still name the row-number mapping
-		// after one side of the join is gone. Deferring here would drop that mapping early and the next
-		// event on the key would mint a duplicate row.
+		// Identity keeps ageing on the per-group index at the later of the two ttls: a sink row
+		// can still name the row-number mapping after one side of the join is gone, and dropping
+		// it early would let the next event on the key mint a duplicate row.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let name = EncodedKey::new(b"keyed");
@@ -885,10 +874,9 @@ mod tests {
 
 	#[test]
 	fn a_side_the_row_budget_cannot_drain_stays_due_until_it_is_finished() {
-		// On the per-side path a high-cardinality side must not be dropped in one
-		// unbounded delete. The half-drained side has to remain due, or the rows it still holds are
-		// stranded until the group's own horizon - which for a short left side against a long right
-		// ttl could be hours.
+		// A high-cardinality side must not be dropped in one unbounded delete, and a half-drained
+		// side has to stay due, or its remaining rows are stranded until the group's own horizon
+		// - hours, for a short left side against a long right ttl.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let id = seed_sides(&mut txn, "keyed", 500, 900);
@@ -913,9 +901,9 @@ mod tests {
 
 	#[test]
 	fn the_identity_phase_only_takes_groups_the_data_phase_already_finished() {
-		// The identity scan reads a different index precisely so it can never reach a live group. If it
-		// could, a group merely idle enough for its data horizon would lose its mapping at the same
-		// moment - collapsing the two horizons into one.
+		// The identity scan reads a different index so it can never reach a live group: otherwise
+		// a group merely idle enough for its data horizon would lose its mapping at the same
+		// moment, collapsing the two horizons into one.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let id = seed(&mut txn, "idle", 50);
@@ -943,10 +931,9 @@ mod tests {
 
 	#[test]
 	fn the_identity_phase_drops_the_row_number_cache_so_no_ghost_survives() {
-		// Phase 2 deletes a group's mapping rows from the store, but the row-number provider still
-		// holds (id, key) -> row number in memory. A reborn group is handed a fresh id so the entry is
-		// never queried again, yet it must be dropped or the provider cache grows without bound as
-		// groups reclaim - and a query on the reclaimed id must never serve the stale number.
+		// The store rows go, but the row-number provider still holds (id, key) -> row number in
+		// memory. A reborn group gets a fresh id, so the entry is never queried again, yet
+		// leaving it grows the cache without bound and can still serve a stale number.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		txn.set_change_coordinate(ChangeCoordinate {
@@ -979,8 +966,7 @@ mod tests {
 	#[test]
 	fn a_reclaimed_group_is_not_offered_to_the_data_phase_again() {
 		// Between the two horizons a group has nothing left to erase but is still due by the data
-		// cutoff. If it kept coming back, every tick would spend its group budget rediscovering
-		// leftovers and the groups that still hold state would starve behind them.
+		// cutoff; if it kept coming back, every tick would starve live groups behind it.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		seed(&mut txn, "idle", 50);
@@ -1000,9 +986,8 @@ mod tests {
 
 	#[test]
 	fn a_group_the_row_budget_cannot_drain_stays_live_until_it_is_finished() {
-		// Marking a half-erased group as reclaimed would strand its remaining rows: the data scan would
-		// never offer it again, and the identity phase would delete the record that addresses them. A
-		// partial group must stay exactly where it is and be reported as backlog.
+		// Marking a half-erased group reclaimed strands its remaining rows: the data scan never
+		// offers it again, and the identity phase deletes the record that addresses them.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		let id = seed(&mut txn, "big", 50);
@@ -1029,9 +1014,8 @@ mod tests {
 
 	#[test]
 	fn the_group_budget_bounds_how_many_groups_one_tick_touches() {
-		// Every reclaimed row is a tombstone write on the single write mutex, so a tick
-		// that took every due group at once would be a latency incident on the first high-cardinality
-		// node to go idle.
+		// Every reclaimed row is a tombstone write on the single write mutex, so a tick that took
+		// every due group at once is a latency incident on the first big node to go idle.
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 		for i in 0..5 {
@@ -1051,11 +1035,9 @@ mod tests {
 
 	#[test]
 	fn the_sink_row_ttl_bounds_identity_from_the_same_watermark_the_operator_answered_against() {
-		// The identity phase is the one cutoff the engine still derives, because it belongs to the
-		// SINK, not to the operator: a mapping has to outlive the published row naming it, and that
-		// row lives exactly the sink's row ttl. Measuring it from a different clock than the
-		// operator's own frontier would order the two phases by comparing milliseconds against commit
-		// versions, and they could then fire in either order.
+		// Identity belongs to the SINK, not the operator: a mapping must outlive the published row
+		// naming it, and that row lives exactly the sink's row ttl. Measuring it off a different
+		// clock would order the two phases by comparing milliseconds against commit versions.
 		let watermark = DateTime::from_millis(1_000_000);
 
 		assert_eq!(
@@ -1067,21 +1049,16 @@ mod tests {
 
 	#[test]
 	fn a_forever_sink_keeps_identity_entirely() {
-		// A sink row with no ttl lives forever, so the mapping it names has to as well. This is the
-		// honest perpetual case: the data phase still bounds the accumulators from the operator's own
-		// frontier, and the identity residue is what the report is for.
+		// A sink row with no ttl lives forever, so the mapping it names has to as well; the data
+		// phase still bounds the accumulators from the operator's own frontier.
 		assert_eq!(identity_cutoff(None, DateTime::from_millis(1_000_000)), None);
 	}
 
 	#[test]
 	fn both_floors_bind_to_the_owning_flows_checkpoint_and_only_when_data_is_reclaimable() {
-		// A flow parked below the cutoff has input it has not applied yet, and reclaiming above its
-		// checkpoint would erase state its own unprocessed changes still refer to. The floor
-		// therefore binds to the flow's checkpoint, and the binding has to NAME the flow or a stalled
-		// node is indistinguishable from an idle one in the report.
-		// The cutoff itself is event-domain and is never clamped by the checkpoint, so the checkpoint
-		// shows up exclusively as the reported floor. A node reporting no data frontier contributes
-		// no floor at all, or a perpetual node would look like the one holding reclamation back.
+		// A flow parked below the cutoff has input it has not applied, so reclaiming above its
+		// checkpoint erases state those changes still refer to. The floor must NAME the flow, and
+		// a node with no data frontier contributes none or it would look like the blocker.
 		let mut report = ReclaimReport::default();
 		report.bind(Some(Cutoff(DateTime::from_millis(998_400))), CommitVersion(10));
 
@@ -1102,9 +1079,8 @@ mod tests {
 
 	#[test]
 	fn the_reported_floor_is_the_lowest_across_every_node_in_the_flow() {
-		// The plane reports one floor per class, and a class is only as free as its most constrained
-		// node. Reporting a later node's healthier floor would hide the one node actually holding
-		// reclamation back.
+		// A class is only as free as its most constrained node; reporting a later node's healthier
+		// floor would hide the one actually holding reclamation back.
 		let data = Some(Cutoff(DateTime::from_millis(998_400)));
 		let mut report = ReclaimReport::default();
 		report.bind(data, CommitVersion(9_000));
@@ -1129,12 +1105,11 @@ mod sink_storage_tests {
 
 	use super::sink_storage;
 
-	/// A sink node carries BOTH the view id and the id of the storage it materialises into, and row
-	/// settings are only ever recorded against the storage. Returning the view here is well-typed but
-	/// wrong: the lookup misses, the flow reads as perpetual, and its rows are never reclaimed. The
-	/// ids are deliberately distinct so returning the wrong half cannot accidentally pass.
 	#[test]
 	fn a_sink_resolves_to_the_storage_it_writes_not_the_view_it_presents() {
+		// Row settings are recorded against the storage, never the view: returning the view is
+		// well-typed but the lookup misses, the flow reads as perpetual, and its rows are never
+		// reclaimed. The ids are distinct so returning the wrong half cannot pass by accident.
 		assert_eq!(
 			sink_storage(&FlowNodeType::SinkTableView {
 				view: ViewId(1),
@@ -1165,10 +1140,10 @@ mod sink_storage_tests {
 		);
 	}
 
-	/// Only sinks own storage. A source or operator node must not resolve to one, otherwise retention
-	/// would attribute a row TTL to a node that never writes rows.
 	#[test]
 	fn a_node_that_owns_no_storage_resolves_to_nothing() {
+		// Only sinks own storage; resolving one here would attribute a row ttl to a node that
+		// never writes rows.
 		assert_eq!(
 			sink_storage(&FlowNodeType::SourceTable {
 				table: TableId(9)
@@ -1197,9 +1172,9 @@ mod identity_span_tests {
 		Duration::from_milliseconds(milliseconds).expect("test duration must be representable")
 	}
 
-	/// A view compiles to one source, one operator and one sink. The edges are wired even though the
-	/// resolver scans nodes rather than walking them, so the fixture stays the shape of a real flow.
 	fn dag(nodes: &[(u64, FlowNodeType)], edges: &[(u64, u64)]) -> FlowDag {
+		// The edges are wired even though the resolver scans nodes rather than walking them, so
+		// the fixture keeps the shape of a real flow.
 		let mut builder = FlowDag::builder(FlowId(1));
 		for (id, ty) in nodes {
 			builder.add_node(FlowNode::new(FlowNodeId(*id), ty.clone()));
@@ -1222,9 +1197,9 @@ mod identity_span_tests {
 
 	#[test]
 	fn a_flows_identity_is_bounded_by_its_sinks_row_ttl() {
-		// The sink's row ttl is the only thing that can bound identity: the mapping has to outlive the
-		// row naming it, and the row lives exactly that long. Resolving to anything shorter retires the
-		// mapping under a live row, and the next event on that key mints a second row over it.
+		// The mapping has to outlive the row naming it, and the row lives exactly the sink's row
+		// ttl. Anything shorter retires the mapping under a live row, and the next event on that
+		// key mints a second row over it.
 		let flow = dag(
 			&[
 				(1, source()),
@@ -1250,9 +1225,8 @@ mod identity_span_tests {
 
 	#[test]
 	fn a_sink_that_never_expires_its_rows_leaves_identity_perpetual() {
-		// A sink with no declared row ttl keeps its rows forever, so no mapping one of those rows names
-		// may ever be reclaimed. None is the safe answer here and the only safe answer: any duration
-		// would eventually retire a mapping while the row still points at it.
+		// A sink with no declared row ttl keeps its rows forever, so any duration here would
+		// eventually retire a mapping while the row still points at it.
 		let flow = dag(
 			&[
 				(1, operator()),
@@ -1272,9 +1246,8 @@ mod identity_span_tests {
 
 	#[test]
 	fn a_subscription_flow_bounds_nothing() {
-		// Subscription flows do reach the sweep, and a subscription owns no storage, so there are no
-		// row settings to consult and its rows are not ours to age. The resolver must find no sink at
-		// all rather than mistaking the subscription for one, and identity stays perpetual.
+		// Subscription flows do reach the sweep, and a subscription owns no storage, so its rows
+		// are not ours to age: the resolver must find no sink rather than mistake it for one.
 		let flow = dag(
 			&[
 				(1, operator()),

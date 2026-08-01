@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Always-on profiler primitives. Builds on `tracing` to capture per-scope span records without allocating on the hot
-//! path. `ProfilerLayer` is a `tracing_subscriber::Layer` that intercepts spans matching a curated set of
-//! `ProfilerCategory` prefixes, extracts numeric fields through reusable thread-local visitors, and appends a
-//! fixed-size `MinimalSpanRecord` to scope-local state. `ProfilerScope::start` opens a scope; `ScopeHandle::finish`
-//! drains the accumulated records, builds a `ProfilerSummary` for the caller, and hands the batch to a `ProfilerSink`
-//! for downstream delivery (in production this is `sub-metric`'s profiler EventBus bridge).
+//! Always-on profiler primitives over `tracing`: `ProfilerLayer` appends a fixed-size `MinimalSpanRecord` per
+//! matching span without allocating on the hot path, and `ScopeHandle::finish` drains them to a `ProfilerSink`.
 //!
-//! This crate stays free of any metric or IoC dependency so the layer can be embedded in tests with a `NoopSink` and
-//! so the rest of the workspace can use the data model without pulling in the subsystem.
+//! Deliberately free of metric and IoC dependencies, so tests can embed the layer with a `NoopSink` and the data
+//! model is usable without pulling in the subsystem.
 
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]

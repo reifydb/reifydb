@@ -47,12 +47,9 @@ impl Grid for TumblingGrid {
 	}
 }
 
-/// The same corpus and the same oracle, with the sweep wired into the step loop.
-///
-/// Separate from `drive` rather than a flag on it because every corpus here is pinned by
-/// fingerprint, and a run that reclaims takes a different path through the step loop. Returning the
-/// whole outcome rather than just the corpus is what lets a caller refuse a run that swept nothing:
-/// a reclamation suite's characteristic failure is vacuity, not a wrong answer.
+/// The same corpus and oracle as `drive`, with the sweep wired into the step loop. Separate rather
+/// than a flag because a reclaiming run takes a different path through the loop, and it returns the
+/// whole outcome so a caller can refuse a run that swept nothing.
 pub fn drive_reclaiming(seed: u64, params: Params, reclaim_pct: u32, sink_row_ttl: bool) -> DriveOutcome {
 	let size_ms = params.size_secs * 1_000;
 	let grace_ms = params.grace_secs * 1_000;
@@ -67,8 +64,7 @@ pub fn drive_reclaiming(seed: u64, params: Params, reclaim_pct: u32, sink_row_tt
 	};
 
 	// A window seals on its own timer, so `resolve_horizon` overrides whatever is declared here with
-	// size + grace. Declaring that same value keeps the call site honest rather than relying on the
-	// override.
+	// size + grace; declaring the same value keeps the call site honest.
 	let span = Duration::from_milliseconds((size_ms + grace_ms) as i64).expect("span is representable");
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime)).with_activity_grid();
@@ -180,16 +176,9 @@ pub fn drive_random(seed: u64) {
 	});
 }
 
-/// A reclaiming run over a configuration drawn from the seed.
-///
-/// The fixed-parameter sweeps below it pick a shape somebody thought to try. This one does not, which
-/// is the point: the interaction between a sweep and a window is governed by the ratio between the
-/// horizon, the grid width and the corpus span, and no hand-picked triple covers that space.
-///
-/// Vacuity is reported rather than asserted here. A drawn configuration can legitimately leave the
-/// watermark short of any group's horizon - too few ticks, too wide a span - and failing on that
-/// would make the suite flaky for a reason unrelated to what it tests. The fixed-parameter sweep is
-/// where the sweep is guaranteed to reach something and vacuity is a hard failure.
+/// A reclaiming run over a configuration drawn from the seed: the sweep/window interaction is governed
+/// by the ratio between horizon, grid width and corpus span, which no hand-picked triple covers.
+/// Vacuity is reported rather than asserted, since a drawn configuration may legitimately reach nothing.
 pub fn drive_reclaiming_random(seed: u64) {
 	let (sequence_seed, params) = random_params(seed);
 	let run = params.clone();
@@ -282,13 +271,9 @@ pub fn drive_count_random(seed: u64) {
 	});
 }
 
-/// The guest-side mutation primitives, applied to a host window operator.
-///
-/// These were unreachable from this side until the two corpus generators merged: a window operator was
-/// only ever sent a clean insert/update/remove mix, while a guest operator was additionally sent the
-/// shapes an upstream flow produces - an identical update resent, an update split into a remove and an
-/// insert, and mutations concentrated onto a handful of rows. A windowed aggregate has to survive all
-/// three, and nothing here tested that.
+/// The guest-side mutation primitives applied to a host window: an identical update resent, an update
+/// split into a remove and an insert, and mutations concentrated onto a handful of rows. A windowed
+/// aggregate has to survive all three.
 pub fn drive_flow_shaped(seed: u64, params: Params) -> Corpus {
 	let size_ms = params.size_secs * 1_000;
 	let grace_ms = params.grace_secs * 1_000;

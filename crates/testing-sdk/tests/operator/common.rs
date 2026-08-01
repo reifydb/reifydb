@@ -1,16 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Shared fixtures, shapes, samplers and config matrices for the windowed
-//! V2 operator differential-chaos suite.
+//! Shared fixtures, shapes, samplers and config matrices for the windowed operator
+//! differential-chaos suite.
 //!
-//! Each fixture implements both the public operator trait (so the matching
-//! accumulator oracle can simulate it) and the registration trait (so the
-//! generic driver can be wrapped in `FFIOperatorAdapter` and run through the
-//! `ChaosHarness`). The fixtures intentionally mirror the in-crate unit-test
-//! fixtures so the chaos suite exercises the same code paths the unit tests
-//! pin down, but across thousands of randomized Insert/Update/Remove
-//! sequences instead of a handful of hand-built scenarios.
+//! Each fixture implements both the operator trait (so its accumulator oracle can simulate
+//! it) and the registration trait (so the driver can run it through the `ChaosHarness`), and
+//! mirrors the in-crate unit-test fixtures so both suites exercise the same code paths.
 
 #![allow(dead_code)]
 
@@ -51,19 +47,15 @@ use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOp
 use reifydb_testing_sdk::chaos::strategy::{ColumnSampler, samplers};
 use reifydb_value::value::{Value, value_type::ValueType};
 
-/// Window duration shared by every tumbling-grid fixture.
 pub const WINDOW: u64 = 60;
-/// Lateness bound for the sealing OHLCV fixture (< WINDOW so aging is reachable
-/// within a single window).
+/// Held below WINDOW so aging is reachable inside a single window.
 pub const OHLCV_GRACE: u64 = 20;
-/// Rolling-buffer capacity shared by the rolling/incremental fixtures.
 pub const ROLLING_CAPACITY: usize = 3;
 
-/// Seeds replayed for every config so a failure names a reproducible run.
+/// Replayed for every config so a failure names a reproducible run.
 pub const SEEDS: [u64; 6] = [1, 7, 42, 99, 12_345, 2_024];
 
-/// One event per Change. Forces the operator to snapshot per single diff;
-/// the cleanest setting for boundary/high-water reasoning.
+/// One event per Change, so the operator snapshots per single diff.
 pub fn baseline(steps: u32, ops: SupportedOps) -> Scenario {
 	Scenario::mixed(steps)
 		.with_ops(ops)
@@ -73,9 +65,8 @@ pub fn baseline(steps: u32, ops: SupportedOps) -> Scenario {
 		.with_update_as_remove_insert(0.0)
 }
 
-/// Multi-event batches plus the two adversarial primitives: 60% of Updates
-/// spawn a no-op duplicate Update, 40% are rewritten as Remove+Insert. This
-/// is the configuration that reproduces the double-count-on-Update bug class.
+/// Multi-event batches plus both adversarial primitives; this is the configuration that
+/// reaches the double-count-on-Update bug class.
 pub fn full_chaos(steps: u32) -> Scenario {
 	Scenario::mixed(steps)
 		.with_ops(SupportedOps::all())
@@ -88,9 +79,8 @@ pub fn full_chaos(steps: u32) -> Scenario {
 		.with_update_as_remove_insert(0.4)
 }
 
-/// A Float8 sampler that returns `none` ~1/4 of the time. Rows whose measured
-/// column is `none` must be skipped identically by operator and oracle (their
-/// shared `extract` returns `None`).
+/// Draws `none` roughly a quarter of the time, so operator and oracle have to agree on
+/// skipping rows whose measured column is missing.
 pub fn maybe_none_f64(lo: f64, hi: f64) -> ColumnSampler {
 	samplers::select(&[
 		Value::float8(lo),
@@ -100,8 +90,7 @@ pub fn maybe_none_f64(lo: f64, hi: f64) -> ColumnSampler {
 	])
 }
 
-/// Applying a contribution then removing it must leave `finalize()` exactly
-/// where it started. The probe's identity must be absent from `initial`.
+/// The probe's identity must be absent from `initial`, or the round-trip proves nothing.
 pub fn assert_add_remove_is_inverse<A: WindowAccumulator>(initial: &[A::Contribution], probe: A::Contribution) {
 	let mut accumulator = A::default();
 	for c in initial {
@@ -113,8 +102,7 @@ pub fn assert_add_remove_is_inverse<A: WindowAccumulator>(initial: &[A::Contribu
 	assert_eq!(accumulator.finalize(), before, "add then remove must restore finalize()");
 }
 
-/// For commutative families the multiset of contributions, not their order,
-/// determines `finalize()`.
+/// Only valid for commutative families: the multiset, not the order, decides `finalize()`.
 pub fn assert_order_independent<A: WindowAccumulator>(contributions: &[A::Contribution]) {
 	let mut forward = A::default();
 	for c in contributions {
@@ -301,10 +289,8 @@ impl TumblingRegistration for MinTumbling {
 	}
 }
 
-/// Open/high/low/close over a bounded-lateness window. `high`/`low` use the
-/// sealing extrema; `open`/`close` use the sealing endpoint. The within-window
-/// coordinate (the slot) drives aging, so events more than `OHLCV_GRACE`
-/// behind the window high-water seal into the O(1) scalar.
+/// Open/high/low/close over a bounded-lateness window. The slot drives aging, so events more
+/// than `OHLCV_GRACE` behind the window high-water seal into the O(1) scalar.
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, HeapSize)]
 pub struct OhlcvAcc {
@@ -828,7 +814,6 @@ impl RollingRegistration for VelocityIncremental {
 	}
 }
 
-/// `(group: Utf8, slot: Uint8, size: Float8)` - the tumbling volume/min input.
 pub fn tumbling_shape() -> RowShape {
 	RowShape::new(vec![
 		RowShapeField::unconstrained("group", ValueType::Utf8),
@@ -837,7 +822,6 @@ pub fn tumbling_shape() -> RowShape {
 	])
 }
 
-/// `(group: Utf8, slot: Uint8, price: Float8)` - the sealing OHLCV input.
 pub fn ohlcv_shape() -> RowShape {
 	RowShape::new(vec![
 		RowShapeField::unconstrained("group", ValueType::Utf8),
@@ -846,7 +830,6 @@ pub fn ohlcv_shape() -> RowShape {
 	])
 }
 
-/// `(group: Utf8, window_start: Uint8, value: Float8)` - rolling/incremental input.
 pub fn rolling_shape() -> RowShape {
 	RowShape::new(vec![
 		RowShapeField::unconstrained("group", ValueType::Utf8),
@@ -855,7 +838,6 @@ pub fn rolling_shape() -> RowShape {
 	])
 }
 
-/// `(group: Utf8, window_start: Uint8, trader: Uint8, volume: Float8)` - top-K input.
 pub fn multi_rolling_shape() -> RowShape {
 	RowShape::new(vec![
 		RowShapeField::unconstrained("group", ValueType::Utf8),
@@ -865,7 +847,6 @@ pub fn multi_rolling_shape() -> RowShape {
 	])
 }
 
-/// `(group: Utf8, ts: Uint8, price: Float8)` - carry-forward input.
 pub fn carry_shape() -> RowShape {
 	RowShape::new(vec![
 		RowShapeField::unconstrained("group", ValueType::Utf8),
@@ -878,9 +859,8 @@ fn field(name: &str, ty: ValueType) -> RowShapeField {
 	RowShapeField::unconstrained(name, ty)
 }
 
-/// Output shapes only need to name-carry the `output_key` columns; the harness
-/// materializes the operator's real emitted columns. They are spelled out in
-/// full here for documentation.
+/// Output shapes only need to carry the `output_key` columns; the harness materializes the
+/// operator's real emitted columns. The rest is spelled out here for the reader.
 pub fn volume_out_shape() -> RowShape {
 	RowShape::new(vec![
 		field("group", ValueType::Utf8),

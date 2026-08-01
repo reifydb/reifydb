@@ -23,9 +23,8 @@ fn cdc_at(version: u64) -> Cdc {
 
 #[test]
 fn drop_before_advances_the_truncation_floor() {
-	// The floor is max(deleted version) + 1: a consumer at or past it missed nothing. A later
-	// no-op drop at a LOWER cutoff must not move it backwards, or a consumer sitting in the
-	// already-truncated range would pass the overtaken check and silently skip the gap.
+	// The floor is max(deleted version) + 1, and a later drop at a lower cutoff must not move it
+	// back: a consumer inside the truncated range would then pass the overtaken check and skip the gap.
 	let storage = MemoryCdcStorage::new();
 	for v in 1..=5u64 {
 		storage.write(&cdc_at(v)).unwrap();
@@ -41,9 +40,8 @@ fn drop_before_advances_the_truncation_floor() {
 
 #[test]
 fn a_limited_drop_only_claims_what_it_actually_removed() {
-	// With a batch limit the drop stops early. The floor may only advance past what was DELETED,
-	// not to the requested cutoff: claiming the full cutoff while rows below it still exist
-	// would resync consumers that could in fact still read everything they need.
+	// A limited drop stops early, so the floor may only advance past what was deleted; claiming the
+	// full cutoff while rows below it survive would resync consumers that could still read them.
 	let storage = MemoryCdcStorage::new();
 	for v in 1..=5u64 {
 		storage.write(&cdc_at(v)).unwrap();
@@ -60,12 +58,9 @@ fn a_limited_drop_only_claims_what_it_actually_removed() {
 
 #[test]
 fn a_drop_that_deletes_nothing_never_advances_the_floor() {
-	// The root cause of the subscription parity SIGABRTs: the TTL task routinely calls
-	// drop_before with a cutoff at or below the oldest stored version (nothing expired yet),
-	// and cdc versions are sparse, so "absent below the cutoff" does NOT mean "deleted". If a
-	// no-op drop advanced the floor, a fresh consumer whose cursor sits at the default seed
-	// would be declared overtaken over versions that never existed and be resynced or
-	// terminated for no reason.
+	// The TTL task routinely drops at a cutoff below the oldest stored version, and CDC versions are
+	// sparse, so "absent below the cutoff" does not mean "deleted". Advancing the floor here would
+	// declare a fresh consumer overtaken over versions that never existed.
 	let storage = MemoryCdcStorage::new();
 	for v in 5..=8u64 {
 		storage.write(&cdc_at(v)).unwrap();

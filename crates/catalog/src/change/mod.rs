@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Catalog change handlers. When a CDC record describes a catalog mutation, the right handler here decodes the
-//! change, applies it to the materialised catalog view, and surfaces it through the catalog change events the
-//! rest of the workspace listens for. Each catalog object kind has a handler that knows the layout of its rows
-//! and how to fold an insert/update/delete into the materialised state.
+//! Catalog change handlers: one per object kind, decoding a CDC record describing a catalog
+//! mutation, folding it into the materialised catalog view, and emitting the catalog change event
+//! the rest of the workspace listens for.
 
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{

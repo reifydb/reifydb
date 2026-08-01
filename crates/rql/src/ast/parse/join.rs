@@ -213,10 +213,8 @@ pub mod tests {
 			panic!("Expected LeftJoin");
 		};
 
-		// Check alias
 		assert_eq!(alias.text(), "orders");
 
-		// Check that the subquery contains "from namespace.orders"
 		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
 		if let Ast::From(AstFrom::Source {
 			source,
@@ -229,14 +227,11 @@ pub mod tests {
 			panic!("Expected From node in subquery");
 		}
 
-		// Check using clause has one pair
 		assert_eq!(using_clause.pairs.len(), 1);
 
-		// Check first expression: id (unqualified - refers to current dataframe)
 		let first = &using_clause.pairs[0].first;
 		assert_eq!(first.as_identifier().text(), "id");
 
-		// Check second expression: orders.user_id (qualified with join alias)
 		let second = using_clause.pairs[0].second.as_infix();
 		assert_eq!(second.left.as_identifier().text(), "orders");
 		assert!(matches!(second.operator, InfixOperator::AccessTable(_)));
@@ -264,10 +259,8 @@ pub mod tests {
 			panic!("Expected LeftJoin");
 		};
 
-		// Check alias
 		assert_eq!(alias.text(), "c");
 
-		// Check joined table
 		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
 		if let Ast::From(AstFrom::Source {
 			source,
@@ -280,14 +273,11 @@ pub mod tests {
 			panic!("Expected From node in subquery");
 		}
 
-		// Check using clause
 		assert_eq!(using_clause.pairs.len(), 1);
 
-		// First expression: id (unqualified - refers to current dataframe)
 		let first = &using_clause.pairs[0].first;
 		assert_eq!(first.as_identifier().text(), "id");
 
-		// Second expression: c.customer_id (qualified with join alias)
 		let second = using_clause.pairs[0].second.as_infix();
 		assert_eq!(second.left.as_identifier().text(), "c");
 		assert_eq!(second.right.as_identifier().text(), "customer_id");
@@ -296,7 +286,6 @@ pub mod tests {
 	#[test]
 	fn test_complex_query_with_aliases() {
 		let bump = Bump::new();
-		// Test the full example query with aliases
 		let source = "from test::orders left join { from test::customers } as c using (customer_id, c.id)";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
@@ -304,9 +293,8 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let statement = &result[0];
-		assert_eq!(statement.nodes.len(), 2); // FROM and LEFT JOIN nodes
+		assert_eq!(statement.nodes.len(), 2);
 
-		// Check FROM clause
 		let from = statement.nodes[0].as_from();
 		match from {
 			AstFrom::Source {
@@ -319,7 +307,6 @@ pub mod tests {
 			_ => panic!("Expected Source"),
 		}
 
-		// Check LEFT JOIN with alias
 		let join = statement.nodes[1].as_join();
 		let AstJoin::LeftJoin {
 			with,
@@ -331,10 +318,8 @@ pub mod tests {
 			panic!("Expected LeftJoin");
 		};
 
-		// Check alias
 		assert_eq!(alias.text(), "c");
 
-		// Check that the subquery contains "from test::customers"
 		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
 		if let Ast::From(AstFrom::Source {
 			source,
@@ -347,14 +332,11 @@ pub mod tests {
 			panic!("Expected From node in subquery");
 		}
 
-		// Check using clause
 		assert_eq!(using_clause.pairs.len(), 1);
 
-		// First expression: customer_id (unqualified - refers to current dataframe)
 		let first = &using_clause.pairs[0].first;
 		assert_eq!(first.as_identifier().text(), "customer_id");
 
-		// Second expression: c.id (qualified with join alias)
 		let second = using_clause.pairs[0].second.as_infix();
 		assert_eq!(second.left.as_identifier().text(), "c");
 		assert_eq!(second.right.as_identifier().text(), "id");
@@ -382,10 +364,8 @@ pub mod tests {
 			panic!("Expected LeftJoin");
 		};
 
-		// Check alias
 		assert_eq!(alias.text(), "o");
 
-		// Check that the subquery contains "from orders"
 		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
 		if let Ast::From(AstFrom::Source {
 			source,
@@ -397,10 +377,8 @@ pub mod tests {
 			panic!("Expected From node in subquery");
 		}
 
-		// Check using clause has two pairs
 		assert_eq!(using_clause.pairs.len(), 2);
 
-		// First pair: id (unqualified), o.user_id (qualified with alias)
 		let pair1_first = &using_clause.pairs[0].first;
 		assert_eq!(pair1_first.as_identifier().text(), "id");
 
@@ -408,7 +386,6 @@ pub mod tests {
 		assert_eq!(pair1_second.left.as_identifier().text(), "o");
 		assert_eq!(pair1_second.right.as_identifier().text(), "user_id");
 
-		// Second pair: tenant (unqualified), o.tenant (qualified with alias)
 		let pair2_first = &using_clause.pairs[1].first;
 		assert_eq!(pair2_first.as_identifier().text(), "tenant");
 
@@ -437,7 +414,6 @@ pub mod tests {
 			panic!("Expected LeftJoin");
 		};
 
-		// Check using clause has two pairs (connected with 'or')
 		assert_eq!(using_clause.pairs.len(), 2);
 	}
 
@@ -462,14 +438,12 @@ pub mod tests {
 
 		assert_eq!(using_clause.pairs.len(), 2);
 
-		// First pair: id (unqualified), o.type (qualified with alias)
 		let first = &using_clause.pairs[0].first;
 		assert_eq!(first.as_identifier().text(), "id");
 		let second = using_clause.pairs[0].second.as_infix();
 		assert_eq!(second.left.as_identifier().text(), "o");
 		assert_eq!(second.right.as_identifier().text(), "type");
 
-		// Second pair: category (unqualified), literal 123
 		let pair2_first = &using_clause.pairs[1].first;
 		assert_eq!(pair2_first.as_identifier().text(), "category");
 		let pair2_second = &using_clause.pairs[1].second;
@@ -607,10 +581,8 @@ pub mod tests {
 			panic!("Expected InnerJoin");
 		};
 
-		// Check alias
 		assert_eq!(alias.text(), "o");
 
-		// Check that the subquery contains "from orders"
 		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
 		if let Ast::From(AstFrom::Source {
 			source,

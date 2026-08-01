@@ -141,7 +141,6 @@ pub mod tests {
 
 		txn.set(&key, value.clone()).unwrap();
 
-		// Value should be in pending buffer
 		assert_eq!(txn.pending().get(&key), Some(&value));
 	}
 
@@ -180,7 +179,6 @@ pub mod tests {
 		txn.set(&key, make_value("value1")).unwrap();
 		txn.set(&key, make_value("value2")).unwrap();
 
-		// Should have only one entry with latest value
 		assert_eq!(txn.pending().get(&key), Some(&make_value("value2")));
 	}
 
@@ -198,7 +196,6 @@ pub mod tests {
 		let key = make_key("key1");
 		txn.remove(&key).unwrap();
 
-		// Key should be marked for removal in pending buffer
 		assert!(txn.pending().is_removed(&key));
 	}
 
@@ -276,10 +273,8 @@ pub mod tests {
 		let key = make_key("key1");
 		let value = make_value("value1");
 
-		// Set in FlowTransaction
 		txn.set(&key, value.clone()).unwrap();
 
-		// Parent should not see the write
 		assert_eq!(get_row(&mut parent, &key), None);
 	}
 
@@ -287,13 +282,11 @@ pub mod tests {
 	fn test_removes_not_visible_to_parent() {
 		let mut parent = create_test_transaction();
 
-		// Set a value in parent
 		let key = make_key("key1");
 		let value = make_value("value1");
 		parent.set(&key, value.clone()).unwrap();
 		assert_eq!(get_row(&mut parent, &key), Some(value.clone()));
 
-		// Create FlowTransaction and remove the key
 		let parent_version = parent.version();
 		let mut txn = FlowTransaction::deferred(
 			&parent,
@@ -304,7 +297,6 @@ pub mod tests {
 		);
 		txn.remove(&key).unwrap();
 
-		// Parent should still see the value
 		assert_eq!(get_row(&mut parent, &key), Some(value));
 	}
 

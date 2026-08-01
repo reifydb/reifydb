@@ -8,9 +8,7 @@ use crate::{
 	workload::{SetupQuery, Workload},
 };
 
-/// Read workload - point lookups by primary key
-///
-/// Pre-populates a table with data and performs random point lookups.
+/// Pre-populates a table, then performs random point lookups by primary key.
 pub struct ReadWorkload {
 	table_size: u64,
 }
@@ -34,7 +32,6 @@ impl Workload for ReadWorkload {
 			SetupQuery::command("create table bench.users { id: int8, name: utf8, email: utf8 }"),
 		];
 
-		// Insert data in batches of 1000
 		let batch_size = 1000u64;
 		for batch_start in (0..self.table_size).step_by(batch_size as usize) {
 			let batch_end = (batch_start + batch_size).min(self.table_size);

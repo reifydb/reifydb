@@ -52,11 +52,9 @@ mod tests {
 
 	#[test]
 	fn a_class_reclaimed_outside_the_lifecycle_subsystem_still_counts_as_covered() {
-		// operator-group-data and -identity are reclaimed by sub-flow on the flow tick, not by a
-		// LifecycleTask, so a covered-set derived only from the subsystem's own tasks reports them as
-		// unreclaimed on every single boot. That ERROR is indistinguishable from a genuinely dead
-		// lane, which is exactly how a real one gets ignored. Coverage is therefore declared by
-		// whoever executes it, wherever that lives.
+		// The group classes are reclaimed on the flow tick, not by a LifecycleTask, so a covered set
+		// derived only from this subsystem's tasks reports them unreclaimed on every boot - an error
+		// indistinguishable from a genuinely dead lane. Coverage is declared by whoever executes it.
 		let coverage = RetentionCoverage::new();
 		coverage.cover(RetentionClass::TombstoneReap, "tombstone-reap");
 		coverage.cover(RetentionClass::OperatorGroupData, "flow-tick-reclaim");
@@ -71,9 +69,8 @@ mod tests {
 
 	#[test]
 	fn the_first_owner_of_a_class_keeps_it() {
-		// Registration order across subsystems is a builder detail, and two registrants for one class
-		// means the report has to pick one. Keeping the first makes the reported owner independent of
-		// that order, so the boot report does not change identity when subsystems are reordered.
+		// Registration order across subsystems is a builder detail; keeping the first registrant makes
+		// the reported owner stable when subsystems are reordered.
 		let coverage = RetentionCoverage::new();
 		coverage.cover(RetentionClass::VacuumBudget, "vacuum-budget");
 		coverage.cover(RetentionClass::VacuumBudget, "someone-else");

@@ -482,22 +482,18 @@ pub mod tests {
 
 	fn check_no_keyword(repr: &str) {
 		let bump = Bump::new();
-		// Test that keywords with additional characters are not parsed
-		// as keywords For example, "map123" should be an identifier,
-		// not the MAP keyword
+		// A keyword must only match a whole word, or `map123` would lex as MAP followed by a number.
 		let test_cases = vec![
-			format!("{repr}_something_else"), // e.g., "map_something_else"
-			format!("{repr}SomethingElse"),   // e.g., "mapSomethingElse"
-			format!("{repr}123"),             // e.g., "map123"
-			format!("_{repr}"),               // e.g., "_map"
+			format!("{repr}_something_else"),
+			format!("{repr}SomethingElse"),
+			format!("{repr}123"),
+			format!("_{repr}"),
 		];
 
 		for input_str in test_cases {
 			let input = format!("{input_str} rest");
 			let tokens = tokenize(&bump, &input).unwrap();
 			assert!(tokens.len() >= 1);
-			// The first token should be an identifier, not a
-			// keyword
 			assert_eq!(
 				tokens[0].kind,
 				TokenKind::Identifier,
@@ -507,13 +503,10 @@ pub mod tests {
 			assert_eq!(tokens[0].fragment.text(), &input_str);
 		}
 
-		// Also test that the bare lowercase word IS parsed as a keyword
-		// (since keywords are case-insensitive)
+		// Keywords are case-insensitive, so the bare lowercase word still has to lex as one.
 		let input = format!("{repr} rest");
 		let tokens = tokenize(&bump, &input).unwrap();
 		assert!(tokens.len() >= 2);
-		// In a case-insensitive system, "map" should be parsed as the
-		// MAP keyword
 		assert!(
 			matches!(tokens[0].kind, TokenKind::Keyword(_)),
 			"Input '{}' should be parsed as a keyword in case-insensitive mode",

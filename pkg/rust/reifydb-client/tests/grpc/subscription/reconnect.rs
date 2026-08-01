@@ -1,14 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! gRPC reconnection: each subscription is its own server-streaming RPC that self-heals when
-//! its stream drops - re-dialing the same (proxy) URL, re-authenticating and resubscribing
-//! under the same stable client id - while a request over a dead, unrecoverable connection
-//! surfaces `CONNECTION_LOST`.
-//!
-//! Reconnection is driven by `recv()`: the replayed rows a hydrated resubscribe produces are
-//! what a post-drop `recv()` returns, so the assertions lean on hydration rather than racing an
-//! insert against the reconnect window.
+//! Reconnection here is driven by `recv()`, so the assertions lean on the rows a hydrated
+//! resubscribe replays rather than racing an insert against the reconnect window.
 
 use std::{future::Future, sync::Arc};
 

@@ -138,7 +138,7 @@ filter not in_stock"#,
 		info!("{}", frame);
 	}
 
-	// Example 5: Comptokenize logical expression with parentheses
+	// Example 5: Complex logical expression with parentheses
 	info!("\nExample 5: Comptokenize expression - (Electronics OR Toys) AND on_sale");
 	log_query(
 		r#"from inventory::products
@@ -266,7 +266,7 @@ map {
 		info!("{}", frame);
 	}
 
-	// Example 10: Comptokenize nested logical expressions
+	// Example 10: Complex nested logical expressions
 	info!("\nExample 10: Comptokenize nested logical expression");
 	log_query(
 		r#"from inventory::products

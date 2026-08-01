@@ -6,8 +6,8 @@ use reifydb_value::value::{blob::Blob, int::Int, value_type::ValueType};
 
 #[test]
 fn test_unaligned_access_all_types() {
-	// Tests that all types handle unaligned memory access correctly
-	// Critical for ARM and other strict-alignment architectures
+	// Unaligned access faults on ARM and other strict-alignment targets, so every type must tolerate
+	// an odd offset.
 
 	let types_to_test = vec![
 		ValueType::Boolean,
@@ -38,8 +38,7 @@ fn test_unaligned_access_all_types() {
 	];
 
 	for target_type in types_to_test {
-		// Create unaligned layout: Int1 (1 byte) followed by target
-		// type
+		// A leading Int1 pushes the target type to an odd offset.
 		let shape = RowShape::testing(&[
 			ValueType::Int1,     // 1 byte - creates odd alignment
 			target_type.clone(), // At offset 1 (odd)
@@ -49,7 +48,6 @@ fn test_unaligned_access_all_types() {
 
 		let mut row = shape.allocate();
 
-		// Set values at odd offsets - this should not crash
 		match target_type {
 			ValueType::Boolean => {
 				shape.set::<bool>(&mut row, 1, true);
@@ -95,9 +93,8 @@ fn test_unaligned_access_all_types() {
 
 #[test]
 fn test_repeated_overwrites_no_memory_leak() {
-	// Verifies that repeated sets don't cause memory growth for static
-	// types For dynamic types, test that memory usage is reasonable across
-	// multiple rows
+	// Overwriting a static field must not grow the row; dynamic fields grow once and then stay
+	// stable across rows holding the same content.
 
 	let shape = RowShape::testing(&[
 		ValueType::Int4,   // Static
@@ -110,16 +107,13 @@ fn test_repeated_overwrites_no_memory_leak() {
 	let mut row = shape.allocate();
 	let initial_size = row.len();
 
-	// Repeatedly overwrite static fields - this should work fine
 	for i in 0..10000 {
 		shape.set::<i32>(&mut row, 0, i);
 		shape.set::<f64>(&mut row, 1, i as f64);
 	}
 
-	// Size should not have grown for static fields
 	assert_eq!(row.len(), initial_size, "Static fields caused memory growth");
 
-	// Set dynamic fields once
 	shape.set_utf8(&mut row, 2, "constant");
 	shape.set_blob(&mut row, 3, &Blob::from(&b"fixed"[..]));
 	shape.set_int(&mut row, 4, &Int::from(123i64));
@@ -128,7 +122,6 @@ fn test_repeated_overwrites_no_memory_leak() {
 	assert!(size_after_dynamic > initial_size, "Dynamic fields should increase size");
 	assert!(size_after_dynamic < initial_size * 3, "Dynamic fields shouldn't triple size");
 
-	// Test that many rows with same dynamic content are memory efficient
 	let rows: Vec<_> = (0..100)
 		.map(|_| {
 			let mut r = shape.allocate();
@@ -141,7 +134,6 @@ fn test_repeated_overwrites_no_memory_leak() {
 		})
 		.collect();
 
-	// All rows should have similar size
 	for r in &rows {
 		assert_eq!(r.len(), size_after_dynamic, "Row sizes should be consistent");
 	}
@@ -149,7 +141,6 @@ fn test_repeated_overwrites_no_memory_leak() {
 
 #[test]
 fn test_minimal_row_handling() {
-	// Test edge case of encoded with minimal fields
 	let shape = RowShape::testing(&[ValueType::Boolean]);
 	let row = shape.allocate();
 	assert!(row.len() > 0, "Row should have validity bits and data");
@@ -157,7 +148,6 @@ fn test_minimal_row_handling() {
 
 #[test]
 fn test_maximum_field_count() {
-	// Test with a large number of fields
 	let types: Vec<ValueType> = (0..256)
 		.map(|i| match i % 5 {
 			0 => ValueType::Boolean,
@@ -171,7 +161,6 @@ fn test_maximum_field_count() {
 	let shape = RowShape::testing(&types);
 	let mut row = shape.allocate();
 
-	// Set and verify some fields
 	shape.set::<bool>(&mut row, 0, true);
 	assert_eq!(shape.get::<bool>(&row, 0), true);
 

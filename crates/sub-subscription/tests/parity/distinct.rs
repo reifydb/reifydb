@@ -3,12 +3,10 @@
 
 use crate::common::{Row, normalize, random_rows, run_path_incremental, run_path_snapshot};
 
-// `distinct {key}` emits exactly one row per distinct key value: the most recent row to arrive
-// for that key (largest RowNumber). When a new row with an existing key arrives, the previously
-// emitted row is replaced. Bulk-hydrate (snapshot) and incremental (CDC) ingest paths must
-// converge on the same final sink state.
 #[test]
 fn distinct_emits_most_recent_row_per_key() {
+	// `distinct {key}` emits one row per key, the latest arrival to carry it, replacing the previous one.
+	// The bulk-hydrate and incremental paths must converge on the same final sink state.
 	let rql = "from app::t | distinct {id}";
 	let rows = vec![
 		Row {

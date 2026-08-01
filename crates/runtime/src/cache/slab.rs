@@ -219,8 +219,7 @@ mod tests {
 
 		cache.put(1, "a");
 		cache.put(2, "b");
-		// Inserting a third key past capacity evicts the LRU entry (key 1).
-		// New-key insertion returns None, matching ArcLru.
+		// A new-key insertion returns None even when it evicts, matching ArcLru.
 		let evicted = cache.put(3, "c");
 
 		assert_eq!(evicted, None);
@@ -279,7 +278,7 @@ mod tests {
 
 		assert_eq!(cache.len(), 0);
 		assert!(cache.is_empty());
-		// The cache must remain usable after clear (slab/free-list reset).
+		// clear() must reset the free list too, or the slab is unusable afterwards.
 		assert_eq!(cache.put(5, "e"), None);
 		assert_eq!(cache.get(&5), Some("e"));
 	}
@@ -290,8 +289,7 @@ mod tests {
 
 		cache.put(1, "a");
 		cache.put(2, "b");
-		// contains_key is a pure lookup: it must NOT bump recency, so 1
-		// stays the LRU victim and is the one evicted next.
+		// A pure lookup must not bump recency, so 1 stays the next victim.
 		assert!(cache.contains_key(&1));
 		cache.put(3, "c");
 
@@ -301,9 +299,8 @@ mod tests {
 
 	#[test]
 	fn test_keys_yields_every_resident_key() {
-		// keys() backs prefix-eviction in the row-number provider: it must yield
-		// every resident key (order-independent) and nothing for evicted slots, or
-		// a prefix sweep would leak mappings it believes it removed.
+		// keys() backs prefix eviction; a key left behind for an evicted slot would leak
+		// mappings the sweep believes it removed.
 		let mut cache = SlabLru::new(2);
 		cache.put(1, "a");
 		cache.put(2, "b");
@@ -322,10 +319,8 @@ mod tests {
 
 	#[test]
 	fn test_pop_tail_removes_lru_first() {
-		// pop_tail drives the byte-budget eviction loop in StateCache:
-		// it must hand back entries strictly in LRU order and fully
-		// unlink them (map + slab slot), or eviction would double-count
-		// released bytes on a later remove of the same key.
+		// pop_tail must fully unlink the entry from map and slab, or a later remove of the
+		// same key double-counts the bytes the byte-budget loop already released.
 		let mut cache = SlabLru::unbounded();
 		cache.put(1, "a");
 		cache.put(2, "b");
@@ -340,16 +335,15 @@ mod tests {
 		assert_eq!(cache.pop_tail(), None);
 		assert!(cache.is_empty());
 
-		// Slots must be recycled: reinsertion after draining works.
+		// A fully drained cache must still accept inserts, so slots have to be recycled.
 		cache.put(9, "z");
 		assert_eq!(cache.get(&9), Some("z"));
 	}
 
 	#[test]
 	fn test_unbounded_never_evicts_on_put() {
-		// The byte bound replaced the entry bound; an unbounded slab
-		// must retain every key so eviction decisions belong solely to
-		// the pool-driven pop_tail loop.
+		// An unbounded slab must retain every key so eviction stays solely the pop_tail
+		// loop's decision, not the map's.
 		let mut cache = SlabLru::unbounded();
 		for k in 0..10_000i32 {
 			cache.put(k, k);
@@ -360,10 +354,8 @@ mod tests {
 
 	#[test]
 	fn test_slab_recycles_slots_no_unbounded_growth() {
-		// The point of the fix: streaming far more distinct keys than
-		// capacity must recycle evicted slots, never grow the backing node
-		// Vec, and never exceed capacity. This is what makes steady-state
-		// put/evict allocation-free (vs the old per-put DashMap scan).
+		// Streaming far more distinct keys than capacity must recycle evicted slots rather
+		// than grow the node Vec, which is what keeps steady-state put/evict allocation-free.
 		let cap = 8usize;
 		let mut cache = SlabLru::new(cap);
 		for k in 0..1000i32 {
@@ -372,11 +364,10 @@ mod tests {
 		}
 
 		assert_eq!(cache.len(), cap);
-		// Backing slab stays bounded at capacity - no growth over 1000 inserts.
 		assert_eq!(cache.nodes.len(), cap);
 		assert!(cache.free.is_empty());
 
-		// Exact-LRU: only the most-recent `cap` keys survive.
+		// Eviction stays exact-LRU under churn: only the most recent `cap` keys survive.
 		for k in (1000 - cap as i32)..1000 {
 			assert_eq!(cache.get(&k), Some(k * 10));
 		}

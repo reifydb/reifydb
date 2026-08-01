@@ -245,11 +245,11 @@ pub mod tests {
 		shape.set_any(&mut row, 0, &Value::Int4(42));
 		assert_eq!(shape.get_any(&row, 0), Value::Int4(42));
 
-		// Overwrite with a different type
+		// An Any field is dynamic, so overwriting it with a different type must resize the
+		// stored slice rather than reinterpret the old bytes.
 		shape.set_any(&mut row, 0, &Value::Utf8("hello".to_string()));
 		assert_eq!(shape.get_any(&row, 0), Value::Utf8("hello".to_string()));
 
-		// Overwrite again with boolean
 		shape.set_any(&mut row, 0, &Value::Boolean(true));
 		assert_eq!(shape.get_any(&row, 0), Value::Boolean(true));
 	}
@@ -263,7 +263,7 @@ pub mod tests {
 		shape.set_utf8(&mut row, 1, "middle");
 		shape.set_any(&mut row, 2, &Value::Boolean(false));
 
-		// Update first any with a larger value
+		// Growing the first dynamic field must shift the later ones' offsets, not corrupt them.
 		shape.set_any(&mut row, 0, &Value::Utf8("a long string value".to_string()));
 
 		assert_eq!(shape.get_any(&row, 0), Value::Utf8("a long string value".to_string()));
@@ -271,16 +271,10 @@ pub mod tests {
 		assert_eq!(shape.get_any(&row, 2), Value::Boolean(false));
 	}
 
-	// `Value::PartialEq` treats every `Value::None { .. }` as equal regardless of `inner`
-	// (see crates/value/src/value/mod.rs), so these tests destructure and compare `inner`
-	// directly instead of using `assert_eq!(decoded, Value::none_of(ty))`, which would pass
-	// vacuously even if the inner type were lost or wrong.
-
 	#[test]
 	fn test_encode_decode_none_various_inner_types() {
-		// Config defaults such as METRICS_PROFILER_SNAPSHOT_INTERVAL use
-		// Value::None { inner: Duration } to mean "disabled". The Any encoding must round-trip
-		// that sentinel for any inner type, not just concrete values.
+		// A none is a stored value carrying its inner type, so the Any tag must round-trip that
+		// type as well as the absence itself.
 		let cases: &[ValueType] = &[
 			ValueType::Boolean,
 			ValueType::Int4,
@@ -307,8 +301,7 @@ pub mod tests {
 
 	#[test]
 	fn test_encode_decode_none_nested_option_duration() {
-		// Option<Option<Duration>>::None must round-trip distinctly from Option<Duration>::None:
-		// the inner type carries the full nesting, not just the base scalar.
+		// The inner type must carry the full nesting, not collapse to the base scalar.
 		let inner_ty = ValueType::Option(Box::new(ValueType::Duration));
 
 		let encoded = encode_value(&Value::none_of(inner_ty.clone()));
@@ -322,8 +315,8 @@ pub mod tests {
 
 	#[test]
 	fn test_encode_decode_none_triple_nested_option() {
-		// Nesting depth must generalize past 2 levels, not just the one depth that happens to
-		// survive the current "high bit means Option" type-tag scheme.
+		// Depth 3 is MAX_OPTION_DEPTH, the deepest nesting the two depth bits of the type tag
+		// can hold before it has to fall back to the extended tag.
 		let inner_ty = ValueType::Option(Box::new(ValueType::Option(Box::new(ValueType::Option(Box::new(
 			ValueType::Duration,
 		))))));

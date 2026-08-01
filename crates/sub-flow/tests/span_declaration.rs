@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// A retention span that the substrate cannot honor used to be accepted in silence: the node kept
-// every row it ever saw while the catalog claimed it had a ttl. Registration now refuses both shapes
-// that produce that outcome.
+// A retention span the substrate cannot honor is refused at registration: accepted in silence, the
+// node keeps every row it ever saw while the catalog claims it has a ttl.
 
 use reifydb::{WithSubsystem, embedded};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
@@ -56,10 +55,8 @@ const HOARDER_COLUMNS: &[OperatorColumn] = &[
 	},
 ];
 
-// Keeps per-group state exactly the way Tally in custom_operator_reclaim does, and differs from it in
-// one respect only: it declares STANDARD instead of STANDARD_WITH_RECLAIM. That single difference is
-// what the test below is about, so the state-keeping has to be real - an operator that touched no
-// state would be refused by FLOW_045 first and the FLOW_044 route would never be reached.
+// Declares STANDARD where Sweeper declares STANDARD_WITH_RECLAIM. Only that capability bit decides
+// the FLOW_044 refusal; the per-group state below just makes the pair a realistic operator.
 struct Hoarder;
 
 impl RawStatefulOperator for Hoarder {}
@@ -74,9 +71,8 @@ impl OperatorMetadata for Hoarder {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-// Identical state-keeping, identical column shape, one bit different: it declares Reclaim. It is the
-// control for the FLOW_044 test - without it that test would pass just as well against a rule that
-// refused every span on an apply node, which would be a worse defect than the one being guarded.
+// Identical to Hoarder but for declaring Reclaim. Without this control, the FLOW_044 test would
+// pass equally against a rule that refused every span on an apply node.
 struct Sweeper;
 
 impl RawStatefulOperator for Sweeper {}
@@ -172,15 +168,9 @@ fn rejection(db: &TestDb, rql: &str) -> Option<String> {
 
 #[test]
 fn a_span_on_a_node_that_keeps_no_state_is_refused() {
-	// Intent: spans only mean something on operators that hold keyed state. Declared on a map the
-	// engine resolves the horizon to Perpetual and never consults the span again, so the author is
-	// told their data ages when nothing does.
-	// The grammar is the first line of defence and refuses this shape outright, which is what this
-	// test pins - a grammar change that started accepting it would land here first. Registration
-	// carries its own guard (FLOW_045) for the route the grammar cannot see: a DAG reloaded from
-	// the catalog on restart, which is the same reason check_time_domain re-runs at registration.
-	// Mutation: let the grammar accept `with { ttl }` on a map and this assertion fails, at which
-	// point the registration guard is what stops the span being silently dropped.
+	// A span is consulted only on join, distinct, append, apply and aggregate nodes; on a map it
+	// would be accepted and never read, telling the author their data ages when nothing does. The
+	// grammar refuses it here, and registration guards the route the grammar cannot see.
 	let db = setup();
 	db.admin("CREATE NAMESPACE sp");
 	db.admin("CREATE TABLE sp::t { id: int4, v: int4 }");
@@ -199,9 +189,9 @@ fn a_span_on_a_node_that_keeps_no_state_is_refused() {
 
 #[test]
 fn a_span_on_a_stateful_node_that_can_age_is_accepted() {
-	// The control. Append holds keyed state and declares Reclaim, so the same span is legitimate
-	// there - without this the test above would pass equally well against a rule that refused
-	// every span, which would be a far worse defect than the one it fixes.
+	// The control. Append consults a declared span and the capability arm gates apply nodes only,
+	// so the same span is legitimate here; otherwise the test above would pass against a rule that
+	// refused every span.
 	let db = setup();
 	db.admin("CREATE NAMESPACE sp");
 	db.admin("CREATE TABLE sp::a { id: int4, v: int4 }");
@@ -220,16 +210,9 @@ fn a_span_on_a_stateful_node_that_can_age_is_accepted() {
 
 #[test]
 fn a_span_on_an_operator_that_cannot_reclaim_is_refused() {
-	// FLOW_044. The node type is stateful and its declared horizon is a Span, so FLOW_045 passes it
-	// through; the refusal has to come from the instantiated operator's capability set instead. An
-	// apply node is the only route to that check, because every built-in stateful operator declares
-	// Reclaim - the reachable failure is a guest operator whose author declared a ttl the operator
-	// has no code to honor.
-	// Intent: a span the substrate cannot act on is worse than no span. Accepted and ignored, the
-	// catalog reports a ttl on a node whose state grows forever, so the one surface an operator
-	// would consult to notice the leak actively denies it.
-	// Mutation: drop the capability arm of check_declared_span and this returns None - registration
-	// succeeds, the view is created, and nothing downstream ever reports the span as unhonored.
+	// The node type is stateful and its horizon is a span, so the refusal has to come from the
+	// instantiated operator's capability set. An apply node is the only route there, since every
+	// built-in stateful operator declares Reclaim; the reachable failure is a guest that does not.
 	let db = setup_with_custom_operators();
 	db.admin("CREATE NAMESPACE sp");
 	db.admin("CREATE TABLE sp::t { id: int4, g: int4 }");
@@ -248,9 +231,8 @@ fn a_span_on_an_operator_that_cannot_reclaim_is_refused() {
 
 #[test]
 fn the_same_span_on_an_operator_that_can_reclaim_is_accepted() {
-	// The control for the test above. Sweeper differs from Hoarder only by declaring Reclaim, and
-	// the RQL is otherwise identical, so a rule that refused spans on apply nodes wholesale - or one
-	// that refused every custom operator - fails here instead of passing both.
+	// Sweeper differs from Hoarder only by declaring Reclaim and the RQL is identical, so a rule
+	// refusing spans on apply nodes wholesale fails here instead of passing both.
 	let db = setup_with_custom_operators();
 	db.admin("CREATE NAMESPACE sp");
 	db.admin("CREATE TABLE sp::t { id: int4, g: int4 }");

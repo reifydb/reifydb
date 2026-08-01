@@ -69,7 +69,7 @@ pub mod tests {
 	#[test]
 	fn test_numeric_variables() {
 		let bump = Bump::new();
-		// $1, $2 are now variables too (no more parameters)
+		// A numeric name lexes as a variable; there is no separate parameter token kind.
 		let tokens = tokenize(&bump, "$1").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Variable);
 		assert_eq!(tokens[0].fragment.text(), "$1");

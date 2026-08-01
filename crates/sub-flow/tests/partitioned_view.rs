@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// A view can declare `partition by <cols>` so its materialized rows are physically partitioned in the
-// underlying storage (table / ring buffer / series), reusing the base-storage partition
-// stack (PartitionedRowKey + Partition::of + partition pruning). These tests drive the deferred flow
-// engine end to end: they only observe the view through queries, so a broken write path (rows landing
-// under the wrong keyspace) or a broken read path (scan not reading the partitioned keyspace) surfaces
-// as a wrong row count - a non-partitioned scan of a partitioned view returns zero rows.
+// A view can declare `partition by <cols>` so its materialized rows are physically partitioned in
+// the underlying storage. These tests observe the view only through queries, so a broken write or
+// read path surfaces as a wrong count: a non-partitioned scan of a partitioned view returns zero.
 
 use std::time::Duration as StdDuration;
 
@@ -17,10 +14,9 @@ fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|c| c).build().expect("build memory db with flow"))
 }
 
-// Runs a command expected to fail at compile time (before any row is touched) and returns its
-// diagnostic code, so callers can assert on PART_002 (own-partition-column, runtime, value-based)
-// vs PART_004 (downstream-view partition-column, compile-time, column-identity-based) precisely.
 fn err_code(db: &TestDb, rql: &str) -> String {
+	// Callers need the exact code to tell PART_002 (own partition column, runtime, value-based)
+	// from PART_004 (downstream view's partition column, compile time, column-identity-based).
 	match db.try_command(rql) {
 		Ok(_) => panic!("expected command to fail, but it succeeded\nrql: {rql}"),
 		Err(e) => e.diagnostic().code.clone(),
@@ -46,12 +42,10 @@ fn seed_events(db: &TestDb) {
 	);
 }
 
-// The materialized rows must be stored under the underlying table's PartitionedRow keyspace and read
-// back through it. If the sink wrote plain Row keys (or the scan read the Row keyspace) the full scan
-// would see zero rows; if partition pruning hashed inconsistently with the write, the FILTER subset
-// would be wrong.
 #[test]
 fn table_backed_partitioned_view_stores_and_prunes() {
+	// A sink writing plain Row keys, or a scan reading the Row keyspace, sees zero rows; pruning
+	// that hashes inconsistently with the write returns the wrong FILTER subset.
 	let db = setup();
 	seed_events(&db);
 	db.admin("CREATE DEFERRED VIEW test::by_region { region: utf8, n: int4 } \
@@ -76,13 +70,11 @@ fn is_monotonic(v: &[i32]) -> bool {
 	v.windows(2).all(|w| w[0] <= w[1]) || v.windows(2).all(|w| w[0] >= w[1])
 }
 
-// A partitioned view that is ALSO clustered-sorted (terminal SORT) stores rows as
-// [PartitionedRow][object][partition][sort-values][row]. Partitioning must not disturb the clustered
-// sort order: each partition's rows must come back in the SAME order as an equivalent non-partitioned
-// sorted view (the control), every row must survive the full partitioned scan, and the order must be
-// an actual sort (monotonic), not insertion order.
 #[test]
 fn partitioned_view_with_terminal_sort() {
+	// Partitioning must not disturb a terminal SORT: each partition comes back in the same order
+	// as the non-partitioned control, every row survives the scan, and the order is an actual
+	// sort rather than insertion order.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
@@ -111,19 +103,16 @@ fn partitioned_view_with_terminal_sort() {
 	assert_eq!(present, vec![1, 2, 3], "every us row must survive the partitioned scan");
 }
 
-// Ring-buffer-backed partitioned view: rows are partitioned AND capacity-bounded PER PARTITION. Eviction
-// must rebuild the evicted row's PartitionedRow key from the persisted partition map; a wrong key would
-// delete the wrong row (leaving stale rows) or fail to delete (over-capacity).
 #[test]
 fn ringbuffer_backed_partitioned_view_evicts() {
+	// Eviction resolves the row to evict through the per-partition row-entry index; a wrong key
+	// deletes the wrong row or fails to delete at all.
 	let db = setup();
 	seed_events(&db);
 	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
 		 WITH { capacity: 2, partition: { by: { region } } } AS { FROM test::events }");
 
-	// capacity 2 per partition, three rows inserted (n=1 us, n=2 eu, n=3 us): us never exceeds
-	// capacity (only 2 us rows total) and eu never exceeds capacity (only 1 eu row), so nothing is
-	// evicted and all three rows survive.
+	// Capacity 2 per partition and neither partition exceeds it (2 us, 1 eu), so nothing evicts.
 	db.await_row_count("FROM test::rb", 3, StdDuration::from_secs(5));
 	let mut all = collect_n(&db, "FROM test::rb");
 	all.sort();
@@ -134,12 +123,10 @@ fn ringbuffer_backed_partitioned_view_evicts() {
 	assert_eq!(collect_n(&db, "FROM test::rb FILTER region == \"eu\""), vec![2], "eu partition keeps its row");
 }
 
-// Capacity must be tracked independently per partition value: a partition that receives more rows than
-// `capacity` must evict only its OWN oldest rows, and must never evict or be starved by another
-// partition's activity. Before the per-partition fix, capacity was a single counter shared across all
-// partitions, so a busy partition could evict a quiet partition's rows entirely.
 #[test]
 fn ringbuffer_backed_partitioned_view_evicts_independently_per_partition() {
+	// Capacity is tracked per partition value: a busy partition evicts only its own oldest rows
+	// and must never starve a quiet one, which a single shared counter would.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
@@ -163,10 +150,10 @@ fn ringbuffer_backed_partitioned_view_evicts_independently_per_partition() {
 	);
 }
 
-// A ring buffer without `partition: { by: ... }` uses the single global capacity counter, not the
-// per-partition marker/metadata index. Eviction must still work correctly on that path.
 #[test]
 fn ringbuffer_backed_non_partitioned_view_evicts() {
+	// Without `partition: { by: ... }` eviction runs off the single global ring-buffer metadata
+	// rather than the per-partition metadata, which is a separate path.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::events { n: int4 }");
@@ -179,12 +166,11 @@ fn ringbuffer_backed_non_partitioned_view_evicts() {
 	assert_eq!(all, vec![3, 4], "non-partitioned ring buffer must evict down to the newest `capacity` rows");
 }
 
-// A partitioned ring buffer assigns storage row numbers from a PER-PARTITION counter, independent of
-// the upstream source table's row numbering - so a row's storage row number commonly differs from its
-// source row number. An update on such a row must correctly resolve through the forward/row-entry
-// remap, not just the (much rarer) case where they happen to coincide.
 #[test]
 fn ringbuffer_backed_view_update_remaps_row_number() {
+	// A partitioned ring buffer numbers storage rows from a per-partition counter, so a row's
+	// storage row number commonly differs from its source row number and the update has to
+	// resolve through the remap rather than only in the rarer coinciding case.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
@@ -211,10 +197,10 @@ fn ringbuffer_backed_view_update_remaps_row_number() {
 	);
 }
 
-// Partition columns are immutable: updating a downstream view's partition-by column on its source
-// must be rejected outright at compile time (PART_004), not silently relocate the row.
 #[test]
 fn ringbuffer_backed_partitioned_view_update_of_partition_column_rejected() {
+	// Partition columns are immutable, so this is refused at compile time rather than silently
+	// relocating the row.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
@@ -238,11 +224,10 @@ fn ringbuffer_backed_partitioned_view_update_of_partition_column_rejected() {
 	assert!(collect_n(&db, "FROM test::rb FILTER region == \"eu\"").is_empty(), "row must not have moved");
 }
 
-// A partition-changing UPDATE that would ALSO require evicting the destination partition's oldest
-// row must be rejected just like any other partition-column update - not attempt the move-and-evict
-// dance. Rejection must be atomic: neither partition is touched.
 #[test]
 fn ringbuffer_backed_partitioned_view_update_into_full_partition_rejected() {
+	// A move that would also evict the destination partition's oldest row must be refused like any
+	// other partition-column update, and atomically: neither partition is touched.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
@@ -269,10 +254,10 @@ fn ringbuffer_backed_partitioned_view_update_into_full_partition_rejected() {
 	assert_eq!(us, vec![1, 2], "us partition must be untouched by the rejected update");
 }
 
-// An explicit remove (not self-eviction) must free the vacated row's marker/count so a subsequent
-// eviction in that partition targets a real, still-present row.
 #[test]
 fn ringbuffer_backed_partitioned_view_explicit_remove_then_evicts_correctly() {
+	// An explicit remove, unlike self-eviction, must free the vacated row's entry so the next
+	// eviction in that partition targets a real, still-present row.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
@@ -282,8 +267,8 @@ fn ringbuffer_backed_partitioned_view_explicit_remove_then_evicts_correctly() {
 	db.await_row_count("FROM test::rb", 2, StdDuration::from_secs(5));
 
 	db.command("DELETE test::events FILTER { n == 1 }");
-	// exact wait: `await_row_count`'s `>= want` returns instantly on a stale higher count, so a wait
-	// for a DECREASE (after a delete) must match the count exactly
+	// `await_row_count`'s `>= want` returns instantly on a stale higher count, so waiting for a
+	// decrease has to match exactly.
 	db.await_exact_row_count("FROM test::rb", 1, StdDuration::from_secs(5));
 	assert_eq!(
 		collect_n(&db, "FROM test::rb"),
@@ -303,11 +288,10 @@ fn ringbuffer_backed_partitioned_view_explicit_remove_then_evicts_correctly() {
 	);
 }
 
-// Once a partition's row count drops to zero (all rows removed/evicted), its metadata must be cleaned
-// up so state does not accumulate forever for partitions that go quiet (e.g. a token that stops
-// trading). A fresh insert into that partition value again must behave like a brand-new partition.
 #[test]
 fn ringbuffer_backed_partitioned_view_resets_after_partition_empties() {
+	// A partition that empties must drop its metadata, or state accumulates forever for partition
+	// values that go quiet; inserting into that value again must behave like a fresh partition.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::events { region: utf8, n: int4 }");
@@ -317,7 +301,7 @@ fn ringbuffer_backed_partitioned_view_resets_after_partition_empties() {
 	db.await_row_count("FROM test::rb", 2, StdDuration::from_secs(5));
 
 	db.command("DELETE test::events FILTER { region == \"us\" }");
-	// exact wait: the count must DECREASE to 0, which `await_row_count`'s `>= want` cannot observe
+	// The count must decrease to 0, which `await_row_count`'s `>= want` cannot observe.
 	db.await_exact_row_count("FROM test::rb", 0, StdDuration::from_secs(5));
 
 	db.command(
@@ -335,11 +319,10 @@ fn ringbuffer_backed_partitioned_view_resets_after_partition_empties() {
 	);
 }
 
-// Series-backed partitioned view: rows are stored under PartitionedRow with a Series locator
-// (sequence = row number). Exercises the series write path and the ViewScanNode Series-locator decode
-// branch that the table/ring-buffer backends do not.
 #[test]
 fn series_backed_partitioned_view_stores_and_prunes() {
+	// A series stores under a Series locator, so this reaches the write path and the scan's
+	// Series-locator decode branch that neither the table nor the ring-buffer backend does.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::ticks { ts: int8, region: utf8, n: int4 }");
@@ -361,10 +344,10 @@ fn series_backed_partitioned_view_stores_and_prunes() {
 	assert_eq!(us, vec![1, 3], "series partition pruning must return exactly the us rows");
 }
 
-// The partition columns must reference the view's declared output columns; an unknown column is a
-// planning error, not a silent no-op.
 #[test]
 fn partition_column_must_exist() {
+	// Partition columns reference the view's declared output columns, so an unknown one is a
+	// planning error rather than a silent no-op.
 	let db = setup();
 	seed_events(&db);
 	let err = db
@@ -383,15 +366,11 @@ fn partition_column_must_exist() {
 	);
 }
 
-// Two independent guards make partition columns immutable via UPDATE:
-//  - PART_002 (engine, runtime, value-based): an UPDATE that would change the row's OWN computed partition on the
-//    object being updated directly. Same-value reassignment is fine, since the computed partition doesn't actually
-//    change.
-//  - PART_004 (rql, compile time, column-identity-based): an UPDATE that assigns a column which feeds a downstream
-//    (possibly multi-hop) partitioned view's partition key. This has no row values to compare at compile time, so it
-//    rejects by column name alone, regardless of whether the value would actually change.
 #[test]
 fn table_own_partition_column_update_rejected() {
+	// Two guards make partition columns immutable: PART_002 compares the row's own computed
+	// partition at runtime, so same-value reassignment passes; PART_004 rejects by column name at
+	// compile time, because a downstream view's partition key has no row values to compare.
 	let db = setup();
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::t { region: utf8, n: int4 } WITH { partition: { by: { region } } }");
@@ -581,10 +560,10 @@ fn ringbuffer_source_feeds_table_view_partition_column_update_rejected() {
 	);
 }
 
-// The dependency scan must be transitive: a plain, unpartitioned intermediate view sits between the
-// table and the partitioned view, so a one-hop-only scan would miss this.
 #[test]
 fn nested_view_chain_partition_column_update_rejected_transitively() {
+	// An unpartitioned intermediate view sits between the table and the partitioned one, so a
+	// one-hop dependency scan would miss it.
 	let db = setup();
 	seed_events(&db);
 	db.admin("CREATE DEFERRED VIEW test::v1 { region: utf8, n: int4 } AS { FROM test::events }");
@@ -682,11 +661,10 @@ fn downstream_view_update_mixed_columns_rejected_when_any_is_partition_key() {
 	);
 }
 
-// Unlike Part A's value-based own-column guard, Part B has no row values to compare at compile
-// time: it is column-identity-based, so even reassigning a downstream view's partition column to
-// its current value is rejected.
 #[test]
 fn downstream_view_same_value_reassignment_still_rejected() {
+	// The downstream guard is column-identity-based with no row values to compare at compile time,
+	// so even reassigning the partition column to its current value is rejected.
 	let db = setup();
 	seed_events(&db);
 	db.admin("CREATE DEFERRED VIEW test::v { region: utf8, n: int4 } WITH { partition: { by: { region } } } \

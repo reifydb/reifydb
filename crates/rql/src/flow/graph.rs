@@ -281,7 +281,6 @@ pub mod tests {
 		graph.add_edge(FlowEdge::new(1, &node1, &node2));
 		graph.add_edge(FlowEdge::new(2, &node2, &node3));
 
-		// This should create a cycle and panic
 		graph.add_edge(FlowEdge::new(3, &node3, &node1));
 	}
 

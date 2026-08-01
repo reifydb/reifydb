@@ -4,7 +4,6 @@
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-/// Wire format for client-server communication.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 #[cfg_attr(any(feature = "http", feature = "ws"), derive(Serialize, Deserialize))]
 #[cfg_attr(any(feature = "http", feature = "ws"), serde(rename_all = "lowercase"))]
@@ -37,7 +36,6 @@ mod utils;
 #[cfg(feature = "ws")]
 pub mod ws;
 
-// Re-export client types
 #[cfg(any(feature = "http", feature = "ws"))]
 use std::collections::HashMap;
 #[cfg(any(feature = "http", feature = "ws", feature = "grpc"))]
@@ -54,7 +52,6 @@ pub use grpc::{
 };
 #[cfg(feature = "http")]
 pub use http::HttpClient;
-// Re-export derive macro
 pub use reifydb_client_derive::FromFrame;
 pub use reifydb_value as value;
 #[cfg(any(feature = "ws", feature = "grpc"))]
@@ -86,7 +83,6 @@ pub use subscription::{BatchItem, HydrationConfig, SubscriptionConfig, build_sub
 #[cfg(feature = "ws")]
 pub use ws::{WsBatchSubscription, WsClient, WsClientOptions};
 
-/// Server-reported metadata about a single executed request.
 #[cfg_attr(any(feature = "http", feature = "ws"), derive(Serialize, Deserialize))]
 #[derive(Debug, Clone)]
 pub struct ResponseMeta {
@@ -94,38 +90,30 @@ pub struct ResponseMeta {
 	pub duration: String,
 }
 
-/// Result type for admin operations
 #[derive(Debug)]
 pub struct AdminResult {
 	pub frames: Vec<Frame>,
 	pub meta: Option<ResponseMeta>,
 }
 
-/// Result type for command operations
 #[derive(Debug)]
 pub struct CommandResult {
 	pub frames: Vec<Frame>,
 	pub meta: Option<ResponseMeta>,
 }
 
-/// Result type for query operations
 #[derive(Debug)]
 pub struct QueryResult {
 	pub frames: Vec<Frame>,
 	pub meta: Option<ResponseMeta>,
 }
 
-/// Result type for authentication login operations
 #[derive(Debug, Clone)]
 pub struct LoginResult {
-	/// Session token for subsequent requests
 	pub token: String,
-	/// Identity UUID of the authenticated user
 	pub identity: String,
 }
 
-/// Build the error surfaced to callers when the connection is lost (pending requests
-/// rejected on disconnect; transient transport failures remapped to this).
 #[cfg(any(feature = "ws", feature = "grpc"))]
 pub fn connection_lost_error() -> Error {
 	ClientError::ConnectionLost.into()
@@ -133,11 +121,8 @@ pub fn connection_lost_error() -> Error {
 
 /// Automatic-reconnection settings shared by the WebSocket and gRPC clients.
 ///
-/// On an established connection dropping, the client rejects in-flight requests with
-/// [`connection_lost_error`], fires `on_disconnect`, then retries with exponential backoff
-/// (`reconnect_delay_ms * 2^(attempt-1)`) up to `max_reconnect_attempts`. On success it
-/// re-authenticates, re-establishes every active subscription against the same handles,
-/// and fires `on_reconnect`.
+/// Backoff is `reconnect_delay_ms * 2^(attempt-1)`, capped at 30s; a successful reconnect
+/// restores the session token and re-establishes active subscriptions against the same handles.
 #[cfg(any(feature = "ws", feature = "grpc"))]
 #[derive(Clone)]
 pub struct ReconnectOptions {
@@ -171,11 +156,7 @@ pub struct WireValue {
 }
 
 #[cfg(any(feature = "http", feature = "ws"))]
-/// Wire format for query parameters.
-///
-/// Either positional or named:
-/// - Positional: `[{"type":"Int2","value":"1234"}, ...]`
-/// - Named: `{"key": {"type":"Int2","value":"1234"}, ...}`
+/// Untagged: positional serializes as a JSON array, named as a JSON object.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum WireParams {
@@ -499,21 +480,14 @@ pub enum ChangeKind {
 	Remove,
 }
 
-/// A single frame together with its operation kind. The server stages one uniform
-/// `_op` per frame, so each `FrameChange` carries exactly one kind; the `_op` column
-/// has already been stripped from `frame`.
+/// The server stages one uniform `_op` per frame, so a change carries exactly one kind;
+/// the `_op` column is already stripped from `frame`.
 #[derive(Debug, Clone)]
 pub struct FrameChange {
 	pub kind: ChangeKind,
 	pub frame: Frame,
 }
 
-/// A change notification for a single subscription.
-///
-/// `changes` holds one [`FrameChange`] per frame in the push. A single-subscription
-/// push is always exactly one frame, so `changes` has length 1 in practice; the field
-/// stays a `Vec` for a uniform shape with the batch path and to stay correct should the
-/// server ever coalesce single-subscription frames.
 #[cfg_attr(any(feature = "http", feature = "ws"), derive(Serialize, Deserialize))]
 #[derive(Debug, Clone)]
 pub struct ChangePayload {

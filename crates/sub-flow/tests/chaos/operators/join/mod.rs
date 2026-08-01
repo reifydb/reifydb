@@ -38,20 +38,16 @@ use crate::{
 	},
 };
 
-/// One cell of the join matrix: which join type, and the two independent modifiers.
-///
-/// Three axes rather than one enum of named strategies, because that is how the operator reads them.
-/// `JoinStrategy::from(join_type, latest)` picks the strategy and `snapshot` is then checked inside
-/// whichever one it picked, so the modifiers multiply rather than enumerate. A flat list of names
-/// hides which combinations exist and makes it easy to leave one out.
+/// One cell of the join matrix: which join type, and the two independent modifiers. Three axes rather
+/// than a flat list of named strategies, because the modifiers multiply rather than enumerate and a
+/// flat list makes it easy to leave a combination out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Variant {
 	pub outer: bool,
 	pub latest: bool,
 
-	/// Right-side arrivals update the operator's state but publish nothing, so only the left side
-	/// drives the view. See `drive_static_right` for why that has to be tested against a right side
-	/// that stops changing.
+	/// Right-side arrivals update state but publish nothing, so only the left side drives the view.
+	/// See `drive_static_right` for why that must be tested against a right side that stops changing.
 	pub snapshot: bool,
 }
 
@@ -173,14 +169,12 @@ pub struct Params {
 	pub remove_pct: u32,
 	pub update_pct: u32,
 
-	/// The span rows draw their event position from. Only the reclaiming entry points care: a join
-	/// has no window, so this changes nothing about what the operator publishes, it decides how far
-	/// apart on the activity grid the corpus lands.
+	/// The span rows draw their event position from. Only the reclaiming entry points care: a join has
+	/// no window, so this decides how far apart on the activity grid the corpus lands and nothing else.
 	pub coord_span_ms: u64,
 
-	/// What makes a join reclaimable at all. `retention_scale` is the longer of the two and sizes
-	/// the activity grid; each side's keyspace then ages on its own. None on both is a join that
-	/// retains forever, which is every sweep that is not about reclamation.
+	/// What makes a join reclaimable at all: the longer of the two sizes the activity grid, and each
+	/// side's keyspace then ages on its own. None on both retains forever.
 	pub left_ttl: Option<Duration>,
 	pub right_ttl: Option<Duration>,
 
@@ -197,14 +191,9 @@ pub struct Params {
 	pub static_right: u32,
 }
 
-/// The one configuration every fixed strategy sweep runs, differing only in which strategy it drives.
-///
-/// The corpus a run executes is drawn from the seed and these parameters, and nothing about the
-/// strategy feeds back into the draw. So the four sweeps built from this are not four similar runs -
-/// they are the SAME operation sequence put to four strategies, which is what makes a failure in one
-/// directly comparable with what the other three did at the same step. Four hand-copied parameter
-/// blocks would read the same today and drift apart on the first edit, and the property would be
-/// gone with nothing to say so.
+/// The one configuration every fixed strategy sweep runs. Nothing about the strategy feeds back into
+/// the draw, so the four sweeps built from this are the same operation sequence put to four
+/// strategies; four hand-copied blocks would drift apart on the first edit with nothing to say so.
 pub fn matched_params(variant: Variant) -> Params {
 	Params {
 		variant,
@@ -238,9 +227,8 @@ pub fn static_right_params(variant: Variant) -> Params {
 }
 
 fn scenario(params: &Params) -> Scenario {
-	// A join has no clock: no timer to fire, no horizon to cross, nothing in flight between steps.
-	// `mixed` is the shape that carries no tick share and packs a step's operations into one change,
-	// which is what an upstream flow hands it.
+	// A join has no clock: no timer to fire, nothing in flight between steps. `mixed` carries no tick
+	// share and packs a step's operations into one change, which is what an upstream flow hands it.
 	Scenario::mixed(params.steps)
 		.with_batch(BatchSize::Geometric {
 			p: 0.45,
@@ -271,22 +259,13 @@ impl JoinReclaim {
 	}
 }
 
-/// Drives a join whose two sides age, with a sweep interleaved into the corpus.
-///
-/// This is the only route to sweep phases three and four. Join is the one operator that declares
-/// keyspace spans - one per side - and a node-scope mapping span, and until its corpus carried event
-/// time every group of it interned into a single activity bucket, so a cutoff either took the whole
-/// node or nothing and neither answer exercised the phase.
-///
-/// A tick share is what advances the watermark here, not a timer the join owns. A join has no clock:
-/// production sweeps it on the flow watermark, and the tick branch is the only lever this driver has
-/// on that number. The `on_timer` it fires alongside is a no-op the operator ignores.
+/// Drives a join whose two sides age, with a sweep interleaved into the corpus. Join is the only
+/// operator declaring per-side keyspace spans, so this is the only route to the keyspace phase; the
+/// tick share advances the watermark because a join has no clock.
 pub fn drive_reclaiming(seed: u64, params: Params, reclaim_pct: u32) -> JoinReclaim {
 	let variant = params.variant;
-	// The sink row ttl is not decoration here. A mapping is the identity of a published row, so the
-	// sweep refuses to drop one while the row it names could still be alive - and with no sink ttl
-	// those rows live forever, which correctly disables the mapping phase outright. A join harness
-	// without a sink can therefore reach the keyspace phase and nothing else.
+	// The mapping cutoff is clamped to the identity cutoff, which this ttl is what derives, so with no
+	// sink ttl both phases are disabled and only the keyspace phase is reachable.
 	let mut harness = Harness::with_engine(|engine, _| build(engine, variant, params.left_ttl, params.right_ttl))
 		.with_activity_grid();
 	if let Some(ttl) = params.sink_row_ttl {
@@ -319,35 +298,24 @@ pub fn drive_reclaiming(seed: u64, params: Params, reclaim_pct: u32) -> JoinRecl
 	}
 }
 
-/// Drives one variant's operator against a DIFFERENT variant's oracle and hands back the divergence
-/// that must follow.
-///
-/// This tests the suite, not the operator. Every sweep here is green, and green on its own is not
-/// evidence: an oracle that described nothing, or a claim that was never compared, would look
-/// exactly the same. Checking a corpus against the wrong strategy is the cheapest thing that has to
-/// come back red, and it stays red without anyone having to break the tree to find out.
+/// Drives one variant's operator against a different variant's oracle and hands back the divergence
+/// that must follow. This tests the suite, not the operator: an oracle that described nothing, or a
+/// claim that was never compared, would look exactly like a green sweep.
 pub fn divergence_checked_as(seed: u64, params: Params, oracle: Variant) -> Option<String> {
 	drive_with(seed, params, false, oracle).divergence
 }
 
-/// Both sides interleaved freely, handing back the outcome without asserting the oracle.
-///
-/// For a snapshot cell the oracle cannot judge the contents - suppressed right-side emissions mean
-/// the view is behind on purpose - but the outcome still carries the coherence record, which is
-/// judgeable under any reading.
+/// Both sides interleaved freely, handing back the outcome without asserting the oracle. For a
+/// snapshot cell the oracle cannot judge contents - suppressed right-side emissions leave the view
+/// behind on purpose - but the outcome still carries the coherence record.
 pub fn drive_interleaved(seed: u64, params: Params) -> DriveOutcome {
 	let oracle = params.variant;
 	drive_with(seed, params, false, oracle)
 }
 
-/// The same corpus, but updates are allowed to move a key between defined and undefined.
-///
-/// `apply_join_update` routes an update to its undefined handler when EITHER the old or the new key
-/// is undefined, and for the hash strategies that handler emits nothing and leaves the operator's
-/// own state untouched. So a key that goes defined -> undefined leaves the joined rows it produced
-/// still published, and one that goes undefined -> defined leaves the row unstored while the driver
-/// counts it live. This sweep is the only one that generates those two transitions, kept apart from
-/// the others so a failure here names that path rather than reading as a general join failure.
+/// The same corpus, but updates may move a key between defined and undefined. That crossing is the
+/// only one routed to the undefined handler on both ends, and it is kept apart from the other sweeps
+/// so a failure names that path rather than reading as a general join failure.
 pub fn divergence_with_definedness_flips(seed: u64, params: Params) -> Option<String> {
 	let oracle = params.variant;
 	drive_with(seed, params, true, oracle).divergence
@@ -391,18 +359,9 @@ fn drive_with(seed: u64, params: Params, flip_definedness: bool, oracle: Variant
 	}
 }
 
-/// Loads a fixed right side, then drives left-side traffic against it.
-///
-/// This is the shape `snapshot` is defined for. A snapshot join publishes nothing when a right row
-/// arrives, but it keeps no record of what it already published, so a later left removal is computed
-/// against whatever the right store holds AT THAT MOMENT. While the right side stops changing the
-/// two agree and the mode is exactly "do the same work, skip the right-side emissions"; once it keeps
-/// changing there is no longer a single table the operator could be describing. Freezing the right
-/// side is what makes the cell testable rather than a guess at intent.
-///
-/// The load itself is asserted silent. That is not decoration: an inner join with no left rows yet
-/// would emit nothing whether or not `snapshot` is set, so it is the one place a right-side emission
-/// would be visible without also depending on the left side.
+/// Loads a fixed right side, then drives left-side traffic against it - the shape `snapshot` is
+/// defined for, since under a changing right side there is no single table the operator could be
+/// describing. The load is asserted silent: it is the one place a right-side emission is visible alone.
 pub fn drive_static_right(seed: u64, params: Params) -> DriveOutcome {
 	let variant = params.variant;
 	let mut harness = Harness::with_engine(|engine, _| build(engine, variant, params.left_ttl, params.right_ttl));
@@ -456,10 +415,8 @@ fn right_side(seed: u64, params: &Params) -> Vec<JoinRow> {
 			side: Side::Right,
 			number: RowNumber(1_000_000 + index as u64),
 			key: Some(rng.random_range(1..=params.keys)),
-			// The frozen side is loaded before the run and never touched again, so it has to arrive
-			// at the newest position the corpus can reach. Drawing it from the same span as the
-			// driver's rows would leave half of it below the first cutoff, and a right side that
-			// evaporates under the sweep is not the fixed table this entry point is defined against.
+			// Loaded before the run and never touched again, so it has to sit at the newest
+			// position the corpus can reach or the sweep would evaporate half of it.
 			coord_ms: params.coord_span_ms,
 			value: rng.random_range(1..100i64),
 		})

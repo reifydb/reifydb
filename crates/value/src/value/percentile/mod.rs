@@ -1,20 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Owned t-digest state.
-//!
-//! The representation mirrors the `tdigest` crate (Apache-2.0) so a [`Percentiles`] can be
-//! converted to and from `tdigest::TDigest` losslessly at an operator boundary while the
-//! estimation algorithms are still borrowed from that crate. Unlike `TDigest`, the centroids
-//! are readable ([`Percentiles::centroids`]), which is what lets this type be persisted
-//! structurally instead of as an opaque serialized blob.
-//!
-//! Two deliberate departures from `TDigest`:
-//!
-//! - `min`/`max` are `Option` rather than `NaN`-on-empty. [`OrderedF64`] rejects `NaN`, and an explicit absent value
-//!   states "no observations yet" instead of encoding it in a float.
-//! - `sum`/`count` are [`OrderedF64`], so the whole type is `Eq`/`Ord` and can be compared and hashed without float
-//!   caveats.
+//! Owned t-digest state, mirroring the `tdigest` crate (Apache-2.0) so it converts to and from
+//! `tdigest::TDigest` losslessly while exposing its centroids, which is what lets it be persisted
+//! structurally rather than as an opaque blob. `min`/`max` are `Option` instead of `NaN`-on-empty
+//! and `sum`/`count` are [`OrderedF64`], so the whole type stays `Eq`/`Ord` and free of `NaN`.
 
 use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};

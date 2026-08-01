@@ -188,10 +188,9 @@ mod tests {
 
 		let task = CdcTtlTask::new(storage.clone(), host, event_bus, clock);
 
-		// TTL alone would evict everything (cutoff = 11). The Pinning watermark caps the cutoff at
-		// 5 (= 4 + 1), so versions 5..=10 - not yet processed by all flows - are never dropped.
-		// If the Ephemeral checkpoint were folded in, the cutoff would be 3: asserting 5 proves
-		// ephemeral lag cannot stall cdc truncation.
+		// The ttl alone would evict everything (cutoff = 11); the Pinning watermark caps it at 5 so
+		// versions no flow has processed survive. Folding in the Ephemeral checkpoint would give 3,
+		// so asserting 5 proves ephemeral lag cannot stall cdc truncation.
 		assert_eq!(
 			task.find_eviction_target().unwrap(),
 			Some(CommitVersion(5)),

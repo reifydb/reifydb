@@ -9,12 +9,8 @@ use reifydb_value::{params::Params, value::Value};
 use crate::WithSubsystem;
 use crate::embedded;
 
-/// Run a `.test.rql` file as plain RQL against a fresh in-memory database.
-///
-/// The file content is executed as-is via `admin_as_root`. Any RQL is valid,
-/// including `CREATE TEST` / `RUN TESTS`, `ASSERT`, DDL, DML, etc.
-/// If any statement errors (including `RUN TESTS` with failures), the call
-/// returns an error.
+/// Runs the file content as-is via `admin_as_root` against a fresh in-memory database; a statement
+/// error, or `RUN TESTS` reporting failures, comes back as `Err`.
 pub fn run_test_file(path: impl AsRef<Path>) -> Result<(), String> {
 	let content = read_to_string(path.as_ref()).map_err(|e| format!("failed to read file: {}", e))?;
 	run_test_str(&content)
@@ -33,7 +29,6 @@ pub fn run_test_str(content: &str) -> Result<(), String> {
 
 	match result {
 		Ok(frames) => {
-			// Check the last frame for test failures (RUN TESTS output)
 			if let Some(frame) = frames.last() {
 				let outcome_idx = frame.columns.iter().position(|c| c.name == "outcome");
 				let name_idx = frame.columns.iter().position(|c| c.name == "name");

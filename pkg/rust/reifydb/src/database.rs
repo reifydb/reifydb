@@ -122,9 +122,6 @@ impl Database {
 		self.subsystem::<WsSubsystem>()
 	}
 
-	/// Get a handle to the task scheduler subsystem
-	///
-	/// Returns None if the task subsystem is not registered or not running
 	#[cfg(not(reifydb_single_threaded))]
 	pub fn task_handle(&self) -> Option<TaskHandle> {
 		self.subsystem::<TaskSubsystem>().and_then(|subsystem| subsystem.handle())
@@ -170,15 +167,11 @@ impl Database {
 		self.engine.catalog()
 	}
 
-	/// Borrowed view over the database's progress watermarks. Use to ask
-	/// "is the CDC producer caught up?", "what's the last applied replica
-	/// version?", etc. via the chained accessors.
 	pub fn watermarks(&self) -> Watermarks<'_> {
 		Watermarks::new(self)
 	}
 
-	/// Resolve an actor handle by message type. Returns `None` if no actor
-	/// for `M` was registered during engine construction.
+	/// `None` unless an actor for `M` was registered during engine construction.
 	pub fn actor<M: 'static>(&self) -> Option<ActorRef<M>>
 	where
 		ActorRef<M>: Send + Sync,
@@ -342,10 +335,8 @@ impl Database {
 	}
 
 	pub fn update_health_monitoring(&mut self) {
-		// Update subsystem health
 		self.subsystems.update_health_monitoring();
 
-		// Update system health
 		let system_health = if self.running {
 			self.health_monitor.get_system_health()
 		} else {
@@ -363,7 +354,7 @@ impl Database {
 		self.subsystems.get::<S>()
 	}
 
-	/// Execute an admin (DDL + DML + Query) operation as root user.
+	/// Admits DDL, DML and queries.
 	pub fn admin_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
 		let r = self.engine.admin_as(IdentityId::root(), rql, params.into());
 		match r.error {
@@ -372,7 +363,7 @@ impl Database {
 		}
 	}
 
-	/// Execute a transactional command (DML + Query) as root user.
+	/// Admits DML and queries, not DDL.
 	pub fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
 		let r = self.engine.command_as(IdentityId::root(), rql, params.into());
 		match r.error {
@@ -381,7 +372,7 @@ impl Database {
 		}
 	}
 
-	/// Execute a read-only query as root user.
+	/// Read-only; rejects DDL and DML.
 	pub fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
 		let r = self.engine.query_as(IdentityId::root(), rql, params.into());
 		match r.error {
@@ -390,7 +381,7 @@ impl Database {
 		}
 	}
 
-	/// Execute an admin (DDL + DML + Query) operation as a specific identity.
+	/// Admits DDL, DML and queries.
 	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
 		let r = self.engine.admin_as(identity, rql, params.into());
 		match r.error {
@@ -399,7 +390,7 @@ impl Database {
 		}
 	}
 
-	/// Execute a transactional command (DML + Query) as a specific identity.
+	/// Admits DML and queries, not DDL.
 	pub fn command_as(&self, identity: IdentityId, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
 		let r = self.engine.command_as(identity, rql, params.into());
 		match r.error {
@@ -408,7 +399,7 @@ impl Database {
 		}
 	}
 
-	/// Execute a read-only query as a specific identity.
+	/// Read-only; rejects DDL and DML.
 	pub fn query_as(&self, identity: IdentityId, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
 		let r = self.engine.query_as(identity, rql, params.into());
 		match r.error {
@@ -417,10 +408,9 @@ impl Database {
 		}
 	}
 
-	/// Create a subscription over `query` as root user and return a handle to drain its deliveries.
-	/// `query` is the subscription body, e.g. `from ns::t | map { id, score }`. `hydration` controls
-	/// whether the current snapshot is delivered before forward changes (mirrors the WebSocket
-	/// subscription's `WITH { hydration: ... }`); pass `HydrationConfig::default()` to hydrate.
+	/// `query` is the subscription body only, e.g. `from ns::t | map { id, score }`; it is wrapped
+	/// in `CREATE SUBSCRIPTION AS { .. }`. `HydrationConfig::default()` delivers the current
+	/// snapshot before forward changes.
 	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
 	pub fn subscribe_as_root(
 		&self,
@@ -431,11 +421,9 @@ impl Database {
 		self.subscribe_as(IdentityId::root(), query, params, hydration)
 	}
 
-	/// Create a subscription over `query` as a specific identity and return a handle to drain its
-	/// deliveries. `query` is the subscription body, e.g. `from ns::t | map { id, score }`. When
-	/// `hydration.enabled`, the base snapshot at subscribe time is read and delivered first (so a
-	/// subscription created against a non-empty source still observes the existing rows), then
-	/// forward CDC changes follow; when disabled, only forward changes are delivered.
+	/// `query` is the subscription body only, e.g. `from ns::t | map { id, score }`. With hydration
+	/// enabled the snapshot at subscribe time is delivered before forward CDC changes, so a
+	/// subscription created over a non-empty source still observes the existing rows.
 	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
 	pub fn subscribe_as(
 		&self,
@@ -502,10 +490,8 @@ impl Database {
 		Ok(outcome.batches.into_iter().map(Frame::from).collect())
 	}
 
-	/// Re-attach a handle to an already-created subscription `id` on the current delivery store.
-	/// Returns `None` if the subscription subsystem is not running. Use this after `stop()` +
-	/// reopen to keep draining the same persisted subscription (a handle from `subscribe_as` holds
-	/// a reference to the pre-restart store and is stale afterwards).
+	/// Use after `stop()` + reopen: a handle from `subscribe_as` holds the pre-restart store and
+	/// is stale afterwards. `None` if the subscription subsystem is not running.
 	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
 	pub fn subscription(&self, id: SubscriptionId) -> Option<Subscription> {
 		let subsystem = self.subsystem::<SubscriptionSubsystem>()?;
@@ -526,12 +512,14 @@ impl Database {
 		static SIGNAL_RECEIVED: AtomicBool = AtomicBool::new(false);
 
 		extern "C" fn handle_signal(_sig: c_int) {
-			// SAFETY: Only async-signal-safe operations are allowed here.
-			// We only use atomic operations, which are signal-safe.
+			// SAFETY: runs in signal context, where only async-signal-safe operations are
+			// permitted; atomic stores qualify.
 			RUNNING.store(false, Ordering::SeqCst);
 			SIGNAL_RECEIVED.store(true, Ordering::SeqCst);
 		}
 
+		// SAFETY: `handle_signal` is an `extern "C" fn(c_int)` matching `sighandler_t` with
+		// 'static lifetime, and touches only static atomics, so it is valid in signal context.
 		unsafe {
 			signal(SIGINT, handle_signal as sighandler_t);
 			signal(SIGTERM, handle_signal as sighandler_t);
@@ -588,12 +576,10 @@ impl Drop for Database {
 }
 
 impl Database {
-	/// Create a session for the given identity.
 	pub fn session(&self, identity: IdentityId) -> Session {
 		Session::trusted(self.engine.clone(), identity)
 	}
 
-	/// Create a session as the root user.
 	pub fn root_session(&self) -> Session {
 		Session::trusted(self.engine.clone(), IdentityId::root())
 	}

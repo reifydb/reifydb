@@ -100,13 +100,10 @@ pub mod tests {
 
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
-		// Node should exist
 		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node.id).unwrap().is_some());
 
-		// Delete node
 		CatalogStore::drop_flow_node(&mut txn, node.id).unwrap();
 
-		// Node should no longer exist
 		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node.id).unwrap().is_none());
 	}
 
@@ -118,23 +115,20 @@ pub mod tests {
 
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
-		// Node should be in flow index
 		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(nodes.len(), 1);
 
-		// Delete node
 		CatalogStore::drop_flow_node(&mut txn, node.id).unwrap();
 
-		// Node should be removed from flow index
 		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert!(nodes.is_empty());
 	}
 
 	#[test]
 	fn test_drop_nonexistent_node() {
+		// Dropping a node that never existed is a no-op, not an error.
 		let mut txn = create_test_admin_transaction();
 
-		// Deleting a non-existent node should succeed silently
 		CatalogStore::drop_flow_node(&mut txn, FlowNodeId(999)).unwrap();
 	}
 
@@ -147,14 +141,11 @@ pub mod tests {
 		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
 
-		// Delete first node
 		CatalogStore::drop_flow_node(&mut txn, node1.id).unwrap();
 
-		// First node should be gone, second should remain
 		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node1.id).unwrap().is_none());
 		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node2.id).unwrap().is_some());
 
-		// List should only have second node
 		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(nodes.len(), 1);
 		assert_eq!(nodes[0].id, node2.id);
@@ -168,28 +159,25 @@ pub mod tests {
 
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
-		// Write state entries
 		let dummy_value = EncodedRow(CowVec::new(vec![42u8]));
 		txn.set(&FlowNodeStateKey::encoded(node.id, vec![1u8]), dummy_value.clone()).unwrap();
 		txn.set(&FlowNodeStateKey::encoded(node.id, vec![1u8]), dummy_value.clone()).unwrap();
 
-		// Verify state exists before drop
 		assert!(txn.get(&FlowNodeStateKey::encoded(node.id, vec![1u8])).unwrap().is_some());
 		assert!(txn.get(&FlowNodeStateKey::encoded(node.id, vec![1u8])).unwrap().is_some());
 
-		// Drop the node
 		CatalogStore::drop_flow_node(&mut txn, node.id).unwrap();
 
-		// Verify state is cleaned up
 		assert!(txn.get(&FlowNodeStateKey::encoded(node.id, vec![1u8])).unwrap().is_none());
 		assert!(txn.get(&FlowNodeStateKey::encoded(node.id, vec![1u8])).unwrap().is_none());
 
-		// Verify node itself is gone
 		assert!(CatalogStore::find_flow_node(&mut Transaction::Admin(&mut txn), node.id).unwrap().is_none());
 	}
 
 	#[test]
 	fn test_drop_flow_node_preserves_row_number_counter() {
+		// The counter is a monotonic sequence: resetting it on drop lets a re-created node
+		// hand out numbers that downstream rows already carry.
 		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
@@ -197,8 +185,6 @@ pub mod tests {
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
 		let counter_key = structured(node.id, GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![]);
-		// An unrelated FlowNodeState entry (not counter, not mapping)
-		// to confirm normal cleanup still happens.
 		let other_key = FlowNodeStateKey::encoded(node.id, vec![0x42, 0xAB]);
 
 		let dummy = EncodedRow(CowVec::new(vec![42u8]));
@@ -210,10 +196,7 @@ pub mod tests {
 
 		CatalogStore::drop_flow_node(&mut txn, node.id).unwrap();
 
-		// Unrelated entry is cleared (existing contract).
 		assert!(txn.get(&other_key).unwrap().is_none(), "unrelated internal state must be cleared on drop");
-		// The counter survives - this is the new contract. Row-number
-		// state is a monotonic sequence and must never be cleaned.
 		assert!(
 			txn.get(&counter_key).unwrap().is_some(),
 			"drop_flow_node must preserve the RowNumberProvider counter"
@@ -222,15 +205,14 @@ pub mod tests {
 
 	#[test]
 	fn test_drop_flow_node_preserves_row_number_mapping() {
+		// Re-allocating the same encoded key to a different row number after a drop
+		// corrupts any downstream that still holds the old number.
 		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
-		// A per-key mapping, addressed inside its group. Re-allocating the same
-		// encoded_key to a different row_number after a drop would corrupt
-		// any downstream that still holds the old number.
 		let mapping_key =
 			structured(node.id, GroupId(3), Keyspace::ROW_NUMBER_MAPPING, b"some_user_key_bytes".to_vec());
 
@@ -256,22 +238,14 @@ pub mod tests {
 
 	#[test]
 	fn drop_preserves_identity_addressed_through_a_structured_key() {
-		// The preservation rule was written when identity lived under raw tag bytes ('M', 'C', 'W').
-		// Group-scoped operators address the same rows through structured keys that begin with a varint
-		// group id instead, so a first-byte tag test no longer recognises them: the mapping a downstream
-		// row still names would be deleted with the node, and re-creating that node would hand the same
-		// key a different row number. Each of these is a keyspace the drop path must leave alone.
+		// Group-scoped operators address identity through structured keys, not raw tag bytes, so a
+		// first-byte test misses them. The dictionary and record go with the mapping: erase them and
+		// the same logical key re-interns to a fresh group id, renumbering it anyway.
 		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
-		// The dictionary and the record are preserved for the same reason as the mapping, one
-		// indirection further out: a mapping is addressed BY group id, and a group id is minted by
-		// interning the group's bytes through the dictionary. Erase the dictionary and the same
-		// logical key re-interns to a fresh id after the node is re-created, so every preserved
-		// mapping is orphaned under an id nothing resolves to and the key is renumbered anyway -
-		// the exact corruption preserving the mapping exists to prevent, plus a permanent leak.
 		let dummy = EncodedRow(CowVec::new(vec![42u8]));
 		let preserved = [
 			structured(node.id, GroupId(7), Keyspace::ROW_NUMBER_MAPPING, vec![9]),
@@ -297,9 +271,8 @@ pub mod tests {
 
 	#[test]
 	fn drop_still_erases_a_groups_data_under_a_structured_key() {
-		// The other half of the same rule: everything that is not identity must go, or dropping a node
-		// would leave its accumulators behind forever. This is the assertion that keeps the fix above
-		// from degenerating into "preserve everything structured".
+		// Everything outside the preserved keyspaces must go, or the rule degenerates into
+		// "preserve everything structured" and a dropped node leaks its accumulators forever.
 		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
@@ -319,14 +292,14 @@ pub mod tests {
 
 	#[test]
 	fn test_drop_flow_node_preserves_window_meta() {
+		// Losing per-partition meta lets late events for closed windows be re-processed,
+		// contaminating fresh window slot maps.
 		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
-		// A windowed-driver per-partition meta entry. Loss would let late events
-		// for closed windows be re-processed, contaminating fresh window slot maps.
 		let window_meta_key =
 			structured(node.id, GroupId::NODE_SCOPE, Keyspace::WINDOW_META, b"some_group_encoded".to_vec());
 
@@ -345,14 +318,13 @@ pub mod tests {
 
 	#[test]
 	fn test_drop_flow_node_preserves_gate_visibility() {
+		// Losing the marker lets a previously-suppressed row pass the gate again.
 		let mut txn = create_test_admin_transaction();
 		let _namespace = create_namespace(&mut txn, "test_namespace");
 		let flow = ensure_test_flow(&mut txn);
 
 		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
 
-		// A gate-operator visibility marker, node scoped in its own keyspace.
-		// Loss would let a previously-suppressed row pass the gate again.
 		let gate_inner = OperatorStateKey::inner_encoded(
 			GroupId::NODE_SCOPE,
 			Keyspace::GATE_VISIBILITY,

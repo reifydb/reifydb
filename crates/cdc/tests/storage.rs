@@ -213,10 +213,8 @@ fn assert_drop_before_limited<S: CdcStorage>(storage: S) {
 	}
 	let cutoff = CommitVersion(11);
 
-	// A bounded pass deletes at most `limit` below-cutoff versions and reports more remain.
-	// A regression to an unbounded delete would blow past 4 and drain everything at once.
-	// All versions share one key/source, so the four evicted versions roll up into a single
-	// per-source entry with count 4.
+	// A bounded pass deletes at most `limit` below-cutoff versions and reports that more remain;
+	// an unbounded delete would blow past 4 and drain everything at once.
 	let first = storage.drop_before(cutoff, 4).unwrap();
 	assert_eq!(first.count, Count::new(4));
 	assert!(first.more_remaining);
@@ -382,10 +380,8 @@ storage_trait_tests!(sqlite, || {
 
 #[test]
 fn sqlite_block_eviction_aggregates_from_stored_rollup() {
-	// Eviction of compaction blocks must reconstruct the exact per-source byte/count aggregate
-	// from the stored rollup WITHOUT decoding the block payloads. Compaction is responsible for
-	// writing that rollup; if it were missing or wrong, the aggregate below would be wrong.
-	// cdc_minimal has a 3-byte key and a 3-byte value and all rows share one source.
+	// Block eviction must reconstruct the per-source aggregate from the rollup compaction stored,
+	// without decoding block payloads; cdc_minimal has a 3-byte key and a 3-byte value.
 	let (config, _guard) = SqliteConfig::test();
 	let storage = SqliteCdcStorage::new(config);
 

@@ -93,12 +93,11 @@ mod tests {
 		Transaction::Admin(txn).get(&key).unwrap().unwrap().row
 	}
 
-	/// The replica applier decodes the def row independently of the primary's
-	/// reader, so a drift between the two decoders would replicate a queue with
-	/// the wrong retry budget or a silently dropped retention window. Neither
-	/// field is visible through system::queues, so only this test can catch it.
 	#[test]
 	fn test_applier_decodes_every_field_the_store_wrote() {
+		// The replica applier decodes the def row independently of the primary's reader, and
+		// neither retry nor retention is visible through system::queues, so drift between the
+		// two decoders would replicate a wrong retry budget with nothing else to catch it.
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
@@ -144,11 +143,11 @@ mod tests {
 		assert!(decoded.underlying);
 	}
 
-	/// The two none states use different encodings - ordered_by an empty string,
-	/// retention.done a validity bit - so both must decode back to None rather
-	/// than to an empty column name or a zero duration.
 	#[test]
 	fn test_applier_decodes_the_absent_options_as_none() {
+		// The two none states use different encodings - ordered_by an empty string,
+		// retention.done a validity bit - and both must decode back to none, not to an
+		// empty column name or a zero duration.
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
@@ -177,10 +176,9 @@ mod tests {
 		assert!(!decoded.underlying);
 	}
 
-	/// NamespaceId(0) is a legitimate id, so it must survive the decoder rather
-	/// than being confused with an unset field.
 	#[test]
 	fn test_applier_preserves_the_queue_id_from_the_row() {
+		// NamespaceId(0) is a legitimate id and must not be confused with an unset field.
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 

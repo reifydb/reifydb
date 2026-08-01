@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Shared SQLite configuration and connection plumbing used by ReifyDB storage subsystems. Owns the typed
-//! representation of paths (file, tmpfs, in-memory), open flags, journal/sync/temp-store modes, and pragma settings,
-//! and exposes the connection wrapper that the buffer and persistent tiers wrap their storage on top of.
+//! Shared SQLite paths, flags, pragma settings and connection plumbing for the storage subsystems.
 //!
-//! The crate is configuration-only: it does not implement any `core::interface::store` trait. Storage backends
-//! (`store-multi`, `store-single`) consume `SqliteConfig` to spin up their persistent tier; nothing here knows about
-//! deltas, versions, or the encoded-key layout.
+//! Configuration only: no `core::interface::store` trait is implemented here, and nothing knows about deltas,
+//! versions or the encoded-key layout.
 
 #[cfg(not(target_os = "linux"))]
 use std::env;
@@ -37,15 +34,9 @@ pub enum DbPath {
 	Memory(PathBuf),
 }
 
-/// RAII guard returned by `SqliteConfig::test()` / `SqliteConfig::in_memory()` that removes
-/// the on-disk artifacts created under a temp / shared-memory directory when dropped.
-///
-/// Two artifact families are cleaned up:
-/// - the file at the base path itself (used by the CDC backend), and
-/// - the directory at `base.with_extension("")` (where the embedded API factory drops `multi.db` / `single.db` and
-///   their `-wal` / `-shm` companions, see `pkg/rust/reifydb/src/api/mod.rs`).
-///
-/// `DbPath::File` paths are left alone; the caller owns those.
+/// Removes both the base-path file and the sibling directory at `base.with_extension("")`, where the embedded
+/// API factory drops `multi.db` / `single.db` and their `-wal` / `-shm` companions.
+/// `DbPath::File` is left alone; the caller owns those.
 #[derive(Debug)]
 pub struct SqliteTempPathGuard {
 	base_path: Option<PathBuf>,
@@ -62,8 +53,7 @@ impl SqliteTempPathGuard {
 		}
 	}
 
-	/// Disarm the guard so Drop becomes a no-op. Use when the underlying database
-	/// has been intentionally moved elsewhere and you do not want the files removed.
+	/// Makes Drop a no-op, for when the database has been moved elsewhere on purpose.
 	pub fn disarm(&mut self) {
 		self.base_path = None;
 	}
@@ -449,10 +439,8 @@ mod tests {
 	#[test]
 	fn no_constructor_ships_an_unset_pragma() {
 		// Optional fields exist so a caller can opt out deliberately. A constructor that quietly
-		// shipped None would hand SQLite's own defaults to everyone who never asked - a rollback
-		// journal on a fresh database, temp files on disk, 2 MB of page cache per connection - which
-		// is the silent behaviour change this design was chosen to avoid. Pinning every field of
-		// every profile forces a future simplification that drops one to say so out loud.
+		// shipped None would hand everyone SQLite's own defaults - a rollback journal on a fresh
+		// database, temp files on disk, 2 MB of page cache per connection.
 		let (in_memory_config, _in_memory_guard) = SqliteConfig::in_memory();
 		let (test_config, _test_guard) = SqliteConfig::test();
 		let profiles = [

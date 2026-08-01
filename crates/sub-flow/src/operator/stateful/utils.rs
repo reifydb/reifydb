@@ -117,10 +117,8 @@ pub mod tests {
 		let key = test_key("get");
 		let value = test_row();
 
-		// Set a value first
 		state_set(node_id, &mut txn, &key, value.clone()).unwrap();
 
-		// Get should return the value
 		let result = state_get(node_id, &mut txn, &key).unwrap();
 		assert!(result.is_some());
 		assert_row_eq(&result.unwrap(), &value);
@@ -146,12 +144,10 @@ pub mod tests {
 		let value1 = EncodedRow(CowVec::new(vec![1, 2, 3]));
 		let value2 = EncodedRow(CowVec::new(vec![4, 5, 6]));
 
-		// Set initial value
 		state_set(node_id, &mut txn, &key, value1.clone()).unwrap();
 		let result = state_get(node_id, &mut txn, &key).unwrap().unwrap();
 		assert_row_eq(&result, &value1);
 
-		// Update value
 		state_set(node_id, &mut txn, &key, value2.clone()).unwrap();
 		let result = state_get(node_id, &mut txn, &key).unwrap().unwrap();
 		assert_row_eq(&result, &value2);
@@ -165,11 +161,9 @@ pub mod tests {
 		let key = test_key("remove");
 		let value = test_row();
 
-		// Set and verify
 		state_set(node_id, &mut txn, &key, value.clone()).unwrap();
 		assert!(state_get(node_id, &mut txn, &key).unwrap().is_some());
 
-		// Remove and verify
 		state_remove(node_id, &mut txn, &key).unwrap();
 		assert!(state_get(node_id, &mut txn, &key).unwrap().is_none());
 	}
@@ -180,18 +174,15 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let node_id = FlowNodeId(1);
 
-		// Add multiple entries
 		for i in 0..5 {
-			let key = test_key(&format!("scan_{:02}", i)); // Use padding for proper ordering
+			let key = test_key(&format!("scan_{:02}", i)); // padded so the keys sort numerically
 			let value = EncodedRow(CowVec::new(vec![i as u8]));
 			state_set(node_id, &mut txn, &key, value).unwrap();
 		}
 
-		// Scan all entries
 		let entries: Vec<_> = state_scan_all(node_id, &mut txn).unwrap();
 		assert_eq!(entries.len(), 5);
 
-		// Verify we got all the expected values
 		for i in 0..5 {
 			assert_eq!(entries[i].1.as_slice()[0], i as u8);
 		}
@@ -203,7 +194,6 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let node_id = FlowNodeId(1);
 
-		// Add entries with different keys
 		let keys = vec!["a", "b", "c", "d", "e"];
 		for key_suffix in &keys {
 			let key = test_key(key_suffix);
@@ -211,14 +201,13 @@ pub mod tests {
 			state_set(node_id, &mut txn, &key, value).unwrap();
 		}
 
-		// Test range query from b to d (exclusive end)
 		let range = EncodedKeyRange::new(
 			Included(test_key("b").into_encoded()),
 			Excluded(test_key("d").into_encoded()),
 		);
 		let entries: Vec<_> = state_range(node_id, &mut txn, range).collect::<Result<Vec<_>>>().unwrap();
 
-		// Should include b and c, but not d (exclusive end)
+		// b and c, but not the excluded end d.
 		assert_eq!(entries.len(), 2);
 	}
 
@@ -228,7 +217,6 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let node_id = FlowNodeId(1);
 
-		// Add some entries
 		for i in 0..5 {
 			let key = test_key(&format!("range_{}", i));
 			let value = test_row();
@@ -247,7 +235,6 @@ pub mod tests {
 		};
 		assert_eq!(entries.len(), 3); // range_0, range_1, range_2
 
-		// Test with no end (to end)
 		let entries = {
 			let range = EncodedKeyRange::new(Included(test_key("range_3").into_encoded()), Unbounded);
 			let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(node_id, vec![]));
@@ -267,14 +254,12 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let node_id = FlowNodeId(1);
 
-		// Add multiple entries
 		for i in 0..3 {
 			let key = test_key(&format!("clear_{}", i));
 			let value = test_row();
 			state_set(node_id, &mut txn, &key, value).unwrap();
 		}
 
-		// Verify entries exist
 		let count = {
 			let range = FlowNodeStateKey::node_range(node_id);
 			let mut stream = txn.range(range, RangeScope::All, 1024);
@@ -287,10 +272,8 @@ pub mod tests {
 		};
 		assert_eq!(count, 3);
 
-		// Clear all state
 		state_clear(node_id, &mut txn).unwrap();
 
-		// Verify all entries are removed
 		let count = {
 			let range = FlowNodeStateKey::node_range(node_id);
 			let mut stream = txn.range(range, RangeScope::All, 1024);
@@ -313,10 +296,8 @@ pub mod tests {
 		let value = test_row();
 		let layout = TestOperator::simple(node_id).layout;
 
-		// Set existing value
 		state_set(node_id, &mut txn, &key, value.clone()).unwrap();
 
-		// Load should return existing
 		let result = load_or_create_row(node_id, &mut txn, &key, &layout).unwrap();
 		assert_row_eq(&result, &value);
 	}
@@ -329,9 +310,7 @@ pub mod tests {
 		let key = test_key("load_new");
 		let shape = RowShape::testing(&[ValueType::Int4]);
 
-		// Load non-existing should create new
 		let result = load_or_create_row(node_id, &mut txn, &key, &shape).unwrap();
-		// Should create a encoded with the expected layout
 		assert!(result.len() > 0);
 	}
 
@@ -343,10 +322,8 @@ pub mod tests {
 		let key = test_key("save");
 		let value = test_row();
 
-		// Save encoded
 		save_row(node_id, &mut txn, &key, value.clone()).unwrap();
 
-		// Verify saved
 		let result = state_get(node_id, &mut txn, &key).unwrap();
 		assert!(result.is_some());
 		assert_row_eq(&result.unwrap(), &value);
@@ -369,18 +346,15 @@ pub mod tests {
 		let value1 = EncodedRow(CowVec::new(vec![1]));
 		let value2 = EncodedRow(CowVec::new(vec![2]));
 
-		// Set different values for same key in different nodes
 		state_set(node1, &mut txn, &key, value1.clone()).unwrap();
 		state_set(node2, &mut txn, &key, value2.clone()).unwrap();
 
-		// Each operator should have its own value
 		let result1 = state_get(node1, &mut txn, &key).unwrap().unwrap();
 		let result2 = state_get(node2, &mut txn, &key).unwrap().unwrap();
 
 		assert_row_eq(&result1, &value1);
 		assert_row_eq(&result2, &value2);
 
-		// Clearing one operator shouldn't affect the other
 		state_clear(node1, &mut txn).unwrap();
 		assert!(state_get(node1, &mut txn, &key).unwrap().is_none());
 		assert!(state_get(node2, &mut txn, &key).unwrap().is_some());
@@ -393,10 +367,8 @@ pub mod tests {
 		let node_id = FlowNodeId(1);
 		let key = test_key("large");
 
-		// Create a large value (10KB)
 		let large_value = EncodedRow(CowVec::new(vec![0xAB; 10240]));
 
-		// Store and retrieve
 		state_set(node_id, &mut txn, &key, large_value.clone()).unwrap();
 		let result = state_get(node_id, &mut txn, &key).unwrap().unwrap();
 

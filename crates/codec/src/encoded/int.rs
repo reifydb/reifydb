@@ -39,6 +39,9 @@ impl RowShape {
 			self.remove_dynamic_data(row, index);
 
 			let packed = MODE_INLINE | ((i128_val as u128) & INLINE_VALUE_MASK);
+			// SAFETY: the assertion above pins row.len() >= total_static_size(), so the 16-byte
+			// slot at field.offset lies inside the row; make_mut() gives unique ownership of it
+			// and write_unaligned imposes no alignment requirement.
 			unsafe {
 				ptr::write_unaligned(
 					row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u128,
@@ -65,6 +68,9 @@ impl RowShape {
 			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Int);
 		}
 
+		// SAFETY: the assertion above pins row.len() >= total_static_size(), so the 16-byte slot
+		// at field.offset lies inside the row, and read_unaligned imposes no alignment
+		// requirement; u128 has no invalid bit patterns.
 		let packed = unsafe { (row.as_ptr().add(field.offset as usize) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);
 
@@ -110,7 +116,8 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Int]);
 		let mut row = shape.allocate();
 
-		// Test small positive value
+		// Both signs must survive the inline packing, which reuses the top bit as a mode flag
+		// and sign-extends from bit 126 on the way back out.
 		let small = Int::from(42i64);
 		shape.set_int(&mut row, 0, &small);
 		assert!(row.is_defined(0));
@@ -118,7 +125,6 @@ pub mod tests {
 		let retrieved = shape.get_int(&row, 0);
 		assert_eq!(retrieved, small);
 
-		// Test small negative value
 		let mut row2 = shape.allocate();
 		let negative = Int::from(-999999i64);
 		shape.set_int(&mut row2, 0, &negative);
@@ -130,7 +136,8 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Int]);
 		let mut row = shape.allocate();
 
-		// Value that doesn't fit in 62 bits but fits in i128
+		// Inline holds magnitudes below 2^126; i64::MAX stays inline while i128::MAX and MIN
+		// exceed it and must spill to the dynamic section without losing their sign.
 		let large = Int::from(i64::MAX);
 		shape.set_int(&mut row, 0, &large);
 		assert!(row.is_defined(0));
@@ -138,13 +145,11 @@ pub mod tests {
 		let retrieved = shape.get_int(&row, 0);
 		assert_eq!(retrieved, large);
 
-		// Test i128::MAX
 		let mut row2 = shape.allocate();
 		let max_i128 = Int::from(i128::MAX);
 		shape.set_int(&mut row2, 0, &max_i128);
 		assert_eq!(shape.get_int(&row2, 0), max_i128);
 
-		// Test i128::MIN
 		let mut row3 = shape.allocate();
 		let min_i128 = Int::from(i128::MIN);
 		shape.set_int(&mut row3, 0, &min_i128);
@@ -156,7 +161,8 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Int]);
 		let mut row = shape.allocate();
 
-		// Create a value larger than i128 can hold
+		// Far past i128, so the value is stored as signed little-endian bytes in the dynamic
+		// section instead of the fixed slot.
 		let huge_str = "999999999999999999999999999999999999999999999999";
 		let huge = Int::from(BigInt::parse_bytes(huge_str.as_bytes(), 10).unwrap());
 
@@ -186,10 +192,8 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Int]);
 		let mut row = shape.allocate();
 
-		// Undefined initially
 		assert_eq!(shape.try_get_int(&row, 0), None);
 
-		// Set value
 		let value = Int::from(12345);
 		shape.set_int(&mut row, 0, &value);
 		assert_eq!(shape.try_get_int(&row, 0), Some(value));
@@ -235,19 +239,18 @@ pub mod tests {
 	fn test_negative_values() {
 		let shape = RowShape::testing(&[ValueType::Int]);
 
-		// Small negative (i64 inline)
+		// The sign must survive on both sides of the inline/dynamic split: -42 and i64::MIN
+		// stay inline, the last value is far past 2^126 and spills.
 		let mut row1 = shape.allocate();
 		let small_neg = Int::from(-42);
 		shape.set_int(&mut row1, 0, &small_neg);
 		assert_eq!(shape.get_int(&row1, 0), small_neg);
 
-		// Large negative (i128 overflow)
 		let mut row2 = shape.allocate();
 		let large_neg = Int::from(i64::MIN);
 		shape.set_int(&mut row2, 0, &large_neg);
 		assert_eq!(shape.get_int(&row2, 0), large_neg);
 
-		// Huge negative (dynamic)
 		let mut row3 = shape.allocate();
 		let huge_neg_str = "-999999999999999999999999999999999999999999999999";
 		let huge_neg =
@@ -304,10 +307,10 @@ pub mod tests {
 		shape.set_int(&mut row, 0, &huge);
 		assert_eq!(shape.get_int(&row, 0), huge);
 
-		// Transition back to inline
+		// Falling back to inline must release the dynamic bytes, or the row grows on every
+		// write that crosses the boundary.
 		shape.set_int(&mut row, 0, &Int::from(42));
 		assert_eq!(shape.get_int(&row, 0), Int::from(42));
-		// Dynamic data should be cleaned up
 		assert_eq!(row.len(), shape.total_static_size());
 	}
 
@@ -344,7 +347,7 @@ pub mod tests {
 		);
 		shape.set_int(&mut row, 2, &huge2);
 
-		// Update first int to inline (removes dynamic data, adjusts other refs)
+		// Dropping the first field's dynamic bytes must rewrite the later fields' offsets.
 		shape.set_int(&mut row, 0, &Int::from(42));
 
 		assert_eq!(shape.get_int(&row, 0), Int::from(42));

@@ -190,9 +190,9 @@ mod tests {
 
 	#[test]
 	fn a_gated_task_does_no_work_while_the_gate_is_closed() {
-		// Landmine L6: a durable epoch un-blinds every TTL consumer at boot, so the first slice after a long
-		// downtime would otherwise try to reclaim the entire backlog at once. The gate must stop the work
-		// itself, not merely record that it happened.
+		// A durable epoch un-blinds every TTL consumer at boot, so the first slice after a long downtime
+		// would try to reclaim the whole backlog at once. The gate must stop the work itself, not
+		// merely record that it happened.
 		let (clock, _mock) = mock();
 		let gate = RetentionStartupGate::arm(clock, Duration::from_seconds(300).unwrap());
 		let slices = Arc::new(AtomicU64::new(0));

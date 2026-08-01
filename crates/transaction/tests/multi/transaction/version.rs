@@ -39,7 +39,7 @@ fn test_versions() {
 			assert_eq!(v, from_row!(i32, tv.row()));
 		}
 
-		// Try retrieving the latest version forward and reverse.
+		// A range at this read version must collapse to one row, not every historical version.
 		let items: Vec<_> = txn
 			.range(EncodedKeyRange::all(), RangeScope::All, 1024)
 			.collect::<Result<Vec<_>, _>>()
@@ -74,9 +74,8 @@ fn test_versions() {
 
 #[test]
 fn test_as_of_version_bounds() {
-	// Pins the as-of contract: inclusive(v) sees writes committed at exactly v,
-	// exclusive(v) does not. The first commit lands at version 2 (version 1 is
-	// the empty genesis snapshot), so the boundary is observable directly.
+	// inclusive(v) sees writes committed at exactly v and exclusive(v) does not; the first commit
+	// lands at version 2 (version 1 is the empty genesis snapshot), so the boundary is observable.
 	let engine = test_multi();
 	let k0 = as_key!(0);
 

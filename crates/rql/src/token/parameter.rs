@@ -94,19 +94,18 @@ pub mod tests {
 
 	#[test]
 	fn test_invalid_parameters() {
+		// Positional numbering starts at 1 and stops at the first non-digit, so $0 and a bare $ are not
+		// parameters while $123name splits into one.
 		let bump = Bump::new();
-		// $0 is not valid - should be parsed as $ and 0
 		let result = tokenize(&bump, "$0");
 		assert!(result.is_err()
 			|| result.as_ref().unwrap()[0].kind != TokenKind::Parameter(ParameterKind::Positional(0)));
 
-		// $ alone is not valid
 		let result = tokenize(&bump, "$");
 		assert!(result.is_err()
 			|| (result.is_ok()
 				&& result.unwrap().iter().all(|t| !matches!(t.kind, TokenKind::Parameter(_)))));
 
-		// $123name is parsed as $123 followed by name
 		let tokens = tokenize(&bump, "$123name").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Parameter(ParameterKind::Positional(123)));
 		assert_eq!(tokens[0].fragment.text(), "$123");

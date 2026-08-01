@@ -174,7 +174,6 @@ pub mod tests {
 	fn test_quoted_identifier_unterminated() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "`unclosed");
-		// Should fail or return no identifier token
 		assert!(tokens.is_err() || tokens.unwrap().iter().all(|t| !matches!(t.kind, TokenKind::Identifier)));
 	}
 
@@ -244,7 +243,8 @@ pub mod tests {
 	#[test]
 	fn test_float_with_trailing_identifier() {
 		let bump = Bump::new();
-		// 3.14px should be Number("3.14") + Identifier("px"), not an infinite loop
+		// The digit-starting-identifier backtrack must fall back to the number, not retry the same position
+		// forever.
 		let tokens = tokenize(&bump, "3.14px").unwrap();
 		assert_eq!(tokens.len(), 2);
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Literal::Number));

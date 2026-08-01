@@ -43,10 +43,8 @@ struct SlidingGrid {
 
 impl Grid for SlidingGrid {
 	fn windows_of(&self, coord_ms: u64) -> Vec<u64> {
-		// Windows start on multiples of the slide, so the candidates are bounded by the first
-		// slide that could still reach coord_ms and the last one that has started by it. The
-		// containment filter is the authority - the bounds are only there to keep the range
-		// finite, deliberately loose so a wrong bound cannot silently drop a window.
+		// The containment filter is the authority; the bounds only keep the range finite and are
+		// deliberately loose so a wrong bound cannot silently drop a window.
 		let lowest = coord_ms.saturating_sub(self.size_ms.saturating_sub(1)) / self.slide_ms;
 		let highest = coord_ms / self.slide_ms;
 		(lowest..=highest)
@@ -56,16 +54,9 @@ impl Grid for SlidingGrid {
 	}
 }
 
-/// The same corpus and the same oracle, with the sweep wired into the step loop.
-///
-/// Sliding is the second driver on `GridOracle`, and the more searching of the two for this: its
-/// windows overlap, so one coordinate lands in several of them and a group carries many more live
-/// rows at once. That is also why the duplicate key matters more here - with more permitted totals
-/// per group, a stray second row has more values it can coincide with and slip past the multiset.
-///
-/// The declared span is size + grace and never the slide: `window_span` maps both Tumbling and
-/// Sliding to the size alone, so this is exactly what `resolve_horizon` produces from the operator's
-/// own seal span.
+/// The same corpus and oracle as `drive`, with the sweep wired into the step loop. Sliding is the more
+/// searching of the two `GridOracle` drivers: overlapping windows put one coordinate in several, so a
+/// group carries many live rows and a stray duplicate has more values to hide behind.
 pub fn drive_reclaiming(seed: u64, params: Params, reclaim_pct: u32, sink_row_ttl: bool) -> DriveOutcome {
 	let size_ms = params.size_secs * 1_000;
 	let slide_ms = params.slide_secs * 1_000;
@@ -82,6 +73,8 @@ pub fn drive_reclaiming(seed: u64, params: Params, reclaim_pct: u32, sink_row_tt
 		grace: Duration::from_seconds(params.grace_secs as i64).unwrap(),
 	};
 
+	// The declared span is size + grace and never the slide, which is what `resolve_horizon` produces
+	// from the operator's own seal span.
 	let span = Duration::from_milliseconds((size_ms + grace_ms) as i64).expect("span is representable");
 
 	let mut harness = Harness::new(|runtime| build(&spec, runtime)).with_activity_grid();
@@ -165,17 +158,16 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 	.corpus
 }
 
-/// Every size here is divisible by 2, 3, 4 and 6, so the slide draw below lands on both divisors
-/// of the size and values that leave a remainder - window coverage is not uniform when
+/// Each size has several divisors inside the slide range drawn below, so the draw lands on both
+/// divisors and values that leave a remainder - window coverage is not uniform when
 /// `size % slide != 0`, and only the second kind exercises that.
 const SIZE_SECS: [u64; 4] = [12, 30, 60, 120];
 
 pub fn random_params(seed: u64) -> (u64, Params) {
 	let (mut rng, sequence_seed) = split(seed);
 	let size_secs = pick(&mut rng, &SIZE_SECS);
-	// Bounded below so a coordinate never lands in more than about eight windows at once; an
-	// unbounded slide of one second against a two minute size puts every row in 120 of them and
-	// the sweep spends all its time in the accumulator.
+	// Bounded below so a coordinate never lands in more than about eight windows at once; a slide of
+	// one second against a two minute size puts every row in 120 of them.
 	let slide_secs = rng.random_range((size_secs / 8).max(1)..size_secs);
 	let grace_secs = fuzz::grace_secs(&mut rng, size_secs);
 	let coord_span_ms = fuzz::coord_span_ms(&mut rng, size_secs);
@@ -203,15 +195,8 @@ pub fn drive_random(seed: u64) {
 	});
 }
 
-/// A reclaiming run over a configuration drawn from the seed.
-///
-/// Sliding is where a divergence was seen once and then lost when the driver's roll space was
-/// corrected: model 27 against operator 51, with 51 being the pre-image and post-image of one update
-/// both counted. A sweep-off control passed and disabling the identity phase reproduced it
-/// identically, so the evidence was sound; only the sequence that produced it is gone.
-///
-/// One hand-picked seed cannot find that again. This exists to search the configuration space for
-/// it, and its value is entirely in the seeds it draws that nobody chose.
+/// A reclaiming run over a configuration drawn from the seed. One hand-picked seed cannot reach the
+/// band that matters here; the value of this is entirely in the seeds it draws that nobody chose.
 pub fn drive_reclaiming_random(seed: u64) {
 	let (sequence_seed, params) = random_params(seed);
 	let run = params.clone();
@@ -239,10 +224,8 @@ struct SlidingOrdinals {
 
 impl Ordinals for SlidingOrdinals {
 	fn windows_of(&self, ordinal: u64) -> Vec<u64> {
-		// Window w starts at ordinal w * slide and spans `size` rows, so the n-th row of a group
-		// belongs to every w whose span covers n. Stated from the definition rather than copied
-		// from the operator's own index arithmetic - an oracle that reproduces the implementation
-		// cannot disagree with it.
+		// Stated from the definition rather than copied from the operator's own index arithmetic -
+		// an oracle that reproduces the implementation cannot disagree with it.
 		let lowest = ordinal.saturating_sub(self.size_count.saturating_sub(1)) / self.slide_count;
 		let highest = ordinal / self.slide_count;
 		(lowest..=highest)

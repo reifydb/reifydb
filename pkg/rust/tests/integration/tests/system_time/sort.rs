@@ -1,18 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! `#time` is a substrate-owned per-row stamp carried beside the rows rather than inside them, so
-//! every node that permutes or truncates rows has to move it in lockstep with the other three system
-//! vectors. Nothing in the type system ties them together: a node that reorders `row_numbers`,
-//! `created_at` and `updated_at` and forgets `time` still compiles and still returns the right
-//! values for every ordinary column, which is why this went unnoticed. The two ways it breaks have
-//! very different signatures - a length that no longer matches the row count, and a length that
-//! matches while every entry belongs to a different row - and only the first is loud, so both are
-//! pinned here.
-//!
-//! An event-time table is what makes the silent case observable at all: with `ts` declared, `#time`
-//! is populated from a column that is itself queryable, so the stamp can be checked against the row
-//! it is supposed to belong to instead of merely being counted.
+//! `#time` is a per-row stamp carried beside the rows, so every node that permutes or truncates
+//! rows must move it in lockstep, and nothing in the type system enforces that. It breaks two ways:
+//! a length that no longer matches the row count (loud), and a right length with shuffled entries.
 
 use reifydb::{RuntimeConfig, embedded as db_embedded};
 use reifydb_test_harness::db::TestDb;
@@ -62,21 +53,19 @@ fn assert_time_tracks_its_row(db: &TestDb, rql: &str, expected_rows: usize) {
 }
 
 #[test]
-// Intent: a sort with no limit permutes in place. Mutation: drop the `time` reorder in
-// SortNode::apply and #time keeps input order while every column moves, so row 0 reports the
-// stamp of whichever row happened to be scanned first.
 fn a_sort_carries_time_with_its_row() {
+	// A sort with no limit permutes in place; leave #time in input order and every column moves
+	// under it, so row 0 reports the stamp of whichever row was scanned first.
 	let db = seeded_db();
 	assert_time_tracks_its_row(&db, "FROM st::t | SORT { at: DESC }", 5);
 	assert_time_tracks_its_row(&db, "FROM st::t | SORT { id: ASC }", 5);
 }
 
 #[test]
-// Intent: sort followed by take is the top-k path, which selects a subset by heap and then permutes
-// it - so it both trims and reorders. Mutation: drop the `time` reorder there and the vector keeps
-// all five stamps for a three row frame, which is the length mismatch the multi-frame codec test
-// surfaces as a decode failure rather than as anything legible.
 fn a_sorted_take_trims_and_permutes_time_with_its_rows() {
+	// Sort followed by take both trims and reorders; an untrimmed #time keeps all five stamps for
+	// a three row frame, which surfaces downstream as a codec decode failure rather than as
+	// anything legible.
 	let db = seeded_db();
 	assert_time_tracks_its_row(&db, "FROM st::t | SORT { at: DESC } | TAKE 3", 3);
 	assert_time_tracks_its_row(&db, "FROM st::t | SORT { id: ASC } | TAKE 2", 2);

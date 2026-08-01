@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Proc-macro backing `chaos_test!`, whose generated cases call into `reifydb_testing_chaos::seed`. Expands one chaos
-//! workload into N separate `#[test]` functions
-//! (`name_0 .. name_{N-1}`), one per iteration index, so they run and report independently under the test runner. N is
-//! resolved at compile time: an explicit count argument pins the workload, otherwise the `ITERATIONS` environment
-//! variable applies (falling back to 32). The expansion emits an `option_env!` reference so changing `ITERATIONS`
-//! recompiles the dependent crate and this macro re-reads the new value. Codegen uses only the built-in `proc_macro`
-//! crate (no external dependencies), matching the workspace's hand-rolled proc-macro style.
+//! Expands one chaos workload into N independent `#[test]` functions, one per iteration index.
+//! N comes from an explicit count argument, else `ITERATIONS` (default 32); the emitted
+//! `option_env!` reference is what forces a recompile when `ITERATIONS` changes.
 
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]

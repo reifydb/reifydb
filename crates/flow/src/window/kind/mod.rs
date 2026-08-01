@@ -23,11 +23,9 @@ mod tests {
 
 	#[test]
 	fn an_ordinal_span_is_exactly_one_unit_wide_and_never_empty() {
-		// Count windows and sessions are both identified by an ordinal, but the engine
-		// keys everything by WindowSpan<DateTime>, so the ordinal has to be carried inside a span
-		// that is only ever compared, never measured. A zero-width span (start == end) collapses
-		// under the engine's half-open [start, end) comparisons and two adjacent ordinals would
-		// alias onto one another.
+		// The engine keys everything by WindowSpan<DateTime>, so an ordinal rides inside a span that is
+		// only compared, never measured. A zero-width span collapses under the engine's half-open
+		// [start, end) comparisons and adjacent ordinals alias onto one another.
 		for window_id in [0u64, 1, 41, 1_000_000_000_000] {
 			let span = ordinal_window_span(window_id);
 			assert!(span.start < span.end, "ordinal {window_id} produced an empty span");

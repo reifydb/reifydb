@@ -21,7 +21,6 @@ use crate::{
 	ws::subscription::{create_test_table, recv_multiple_with_timeout, recv_with_timeout, unique_table_name},
 };
 
-/// Test creating many subscriptions from a single client
 #[test]
 fn test_many_subscriptions_single_client() {
 	let runtime = Arc::new(Runtime::new().unwrap());
@@ -33,7 +32,6 @@ fn test_many_subscriptions_single_client() {
 		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
-		// Create 50 tables and subscriptions
 		const NUM_SUBS: usize = 50;
 		let mut sub_ids = Vec::new();
 		let mut tables = Vec::new();
@@ -49,18 +47,13 @@ fn test_many_subscriptions_single_client() {
 			tables.push(table);
 		}
 
-		// Allow subscriptions to settle
-
-		// Insert into all tables
 		for table in &tables {
 			client.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
 		}
 
-		// Receive all notifications (with generous timeout for 50 notifications)
 		let changes = recv_multiple_with_timeout(&mut client, NUM_SUBS, 30000).await;
 		assert_eq!(changes.len(), NUM_SUBS, "Should receive {} notifications, got {}", NUM_SUBS, changes.len());
 
-		// Verify all subscription IDs are represented
 		let received_sub_ids: std::collections::HashSet<_> =
 			changes.iter().map(|c| c.subscription_id.as_str()).collect();
 		for sub_id in &sub_ids {
@@ -71,7 +64,6 @@ fn test_many_subscriptions_single_client() {
 			);
 		}
 
-		// Cleanup: unsubscribe from all
 		for sub_id in &sub_ids {
 			client.unsubscribe(sub_id).await.unwrap();
 		}
@@ -81,7 +73,6 @@ fn test_many_subscriptions_single_client() {
 	cleanup_server(Some(server));
 }
 
-/// Test many clients connecting concurrently
 #[test]
 fn test_many_concurrent_clients() {
 	let runtime = Arc::new(Runtime::new().unwrap());
@@ -92,7 +83,6 @@ fn test_many_concurrent_clients() {
 	runtime.block_on(async {
 		const NUM_CLIENTS: usize = 20;
 
-		// First, create one client to set up the shared table
 		let mut setup_client =
 			WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		setup_client.authenticate("mysecrettoken").await.unwrap();
@@ -101,10 +91,8 @@ fn test_many_concurrent_clients() {
 		create_test_table(&setup_client, &shared_table, &[("id", "int4")]).await.unwrap();
 		setup_client.close().await.unwrap();
 
-		// Track how many clients received their notification
 		let received_count = Arc::new(AtomicUsize::new(0));
 
-		// Spawn all clients concurrently
 		let mut handles = Vec::new();
 		for client_idx in 0..NUM_CLIENTS {
 			let port = port;
@@ -120,30 +108,25 @@ fn test_many_concurrent_clients() {
 					.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
 					.await?;
 
-				// Wait for notification with timeout
 				let change = recv_with_timeout(&mut client, 10000).await;
 				if change.is_some() {
 					counter.fetch_add(1, Ordering::SeqCst);
 				}
 
-				// Close gracefully (no explicit unsubscribe needed for this test)
 				client.close().await?;
 				Ok::<_, Box<dyn Error + Send + Sync>>(())
 			});
 			handles.push((client_idx, handle));
 		}
 
-		// Give clients time to connect and subscribe
 		sleep(Duration::from_milliseconds(500).unwrap().to_std()).await;
 
-		// Create a new client to trigger the insert
 		let mut trigger_client =
 			WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		trigger_client.authenticate("mysecrettoken").await.unwrap();
 		trigger_client.command(&format!("INSERT test::{} [{{ id: 999 }}]", shared_table), None).await.unwrap();
 		trigger_client.close().await.unwrap();
 
-		// Wait for all clients to complete
 		for (idx, handle) in handles {
 			match handle.await {
 				Ok(Ok(())) => {}
@@ -163,7 +146,6 @@ fn test_many_concurrent_clients() {
 	cleanup_server(Some(server));
 }
 
-/// Test rapid subscribe/unsubscribe cycles
 #[test]
 fn test_rapid_subscribe_unsubscribe() {
 	let runtime = Arc::new(Runtime::new().unwrap());
@@ -178,7 +160,6 @@ fn test_rapid_subscribe_unsubscribe() {
 		let table = unique_table_name("stress_rapid");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		// Rapid subscribe/unsubscribe cycles - 100 times
 		const NUM_CYCLES: usize = 100;
 		for i in 0..NUM_CYCLES {
 			let sub_id = client
@@ -187,13 +168,11 @@ fn test_rapid_subscribe_unsubscribe() {
 				.unwrap();
 			client.unsubscribe(&sub_id).await.unwrap();
 
-			// Log progress every 25 cycles
 			if (i + 1) % 25 == 0 {
 				eprintln!("Completed {} rapid cycles", i + 1);
 			}
 		}
 
-		// Verify system still works after rapid cycles
 		let sub_id = client
 			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
 			.await
@@ -212,7 +191,6 @@ fn test_rapid_subscribe_unsubscribe() {
 	cleanup_server(Some(server));
 }
 
-/// Test that server handles clients disconnecting without unsubscribing
 #[test]
 fn test_client_disconnect_without_unsubscribe() {
 	let runtime = Arc::new(Runtime::new().unwrap());
@@ -223,7 +201,6 @@ fn test_client_disconnect_without_unsubscribe() {
 	runtime.block_on(async {
 		const NUM_CLIENTS: usize = 10;
 
-		// Create shared table first
 		let mut setup_client =
 			WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		setup_client.authenticate("mysecrettoken").await.unwrap();
@@ -232,7 +209,6 @@ fn test_client_disconnect_without_unsubscribe() {
 		create_test_table(&setup_client, &shared_table, &[("id", "int4")]).await.unwrap();
 		setup_client.close().await.unwrap();
 
-		// Connect multiple clients and subscribe, then disconnect abruptly (drop without unsubscribe)
 		for i in 0..NUM_CLIENTS {
 			let mut client =
 				WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
@@ -242,8 +218,7 @@ fn test_client_disconnect_without_unsubscribe() {
 				.await
 				.unwrap();
 
-			// Drop the client without calling unsubscribe or close
-			// This simulates an abrupt disconnect
+			// Dropping without unsubscribe or close simulates an abrupt disconnect.
 			drop(client);
 
 			if (i + 1) % 5 == 0 {
@@ -254,7 +229,6 @@ fn test_client_disconnect_without_unsubscribe() {
 		// Give server time to clean up disconnected clients
 		sleep(Duration::from_milliseconds(500).unwrap().to_std()).await;
 
-		// Server should still be healthy - new clients should be able to connect and subscribe
 		let mut new_client =
 			WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		new_client.authenticate("mysecrettoken").await.unwrap();
@@ -265,7 +239,6 @@ fn test_client_disconnect_without_unsubscribe() {
 			.unwrap();
 		assert!(!sub_id.is_empty(), "New client should be able to subscribe after abrupt disconnects");
 
-		// Insert and verify new client receives notification
 		new_client.command(&format!("INSERT test::{} [{{ id: 1 }}]", shared_table), None).await.unwrap();
 
 		let change = recv_with_timeout(&mut new_client, 5000).await;
@@ -278,7 +251,6 @@ fn test_client_disconnect_without_unsubscribe() {
 	cleanup_server(Some(server));
 }
 
-/// Test concurrent connect/disconnect cycles
 #[test]
 fn test_concurrent_connect_disconnect() {
 	let runtime = Arc::new(Runtime::new().unwrap());
@@ -303,10 +275,8 @@ fn test_concurrent_connect_disconnect() {
 		}
 		setup_client.close().await.unwrap();
 
-		// Track successful operations
 		let success_count = Arc::new(AtomicUsize::new(0));
 
-		// Spawn tasks that continuously connect/disconnect
 		let mut handles = Vec::new();
 		for task_idx in 0..NUM_TASKS {
 			let port = port;
@@ -335,7 +305,6 @@ fn test_concurrent_connect_disconnect() {
 							.await
 						{
 							Ok(sub_id) => {
-								// Small delay to simulate some work
 								sleep(Duration::from_milliseconds(10)
 									.unwrap()
 									.to_std())
@@ -350,7 +319,6 @@ fn test_concurrent_connect_disconnect() {
 							Err(e) if retries < MAX_RETRIES
 								&& e.to_string().contains("TXN_001") =>
 							{
-								// Transaction conflict, retry after small delay
 								retries += 1;
 								client.close().await?;
 								sleep(Duration::from_milliseconds(10 * retries as i64)
@@ -378,7 +346,6 @@ fn test_concurrent_connect_disconnect() {
 			handles.push((task_idx, handle));
 		}
 
-		// Wait for all tasks to complete
 		for (idx, handle) in handles {
 			match handle.await {
 				Ok(Ok(())) => {}
@@ -391,7 +358,6 @@ fn test_concurrent_connect_disconnect() {
 		let expected = NUM_TASKS * ITERATIONS_PER_TASK;
 		assert_eq!(count, expected, "All {} connect/disconnect cycles should succeed, got {}", expected, count);
 
-		// Verify server is still healthy after all the concurrent activity
 		let mut final_client =
 			WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		final_client.authenticate("mysecrettoken").await.unwrap();
@@ -429,9 +395,8 @@ fn test_subscribe_receive_unsubscribe_cycles() {
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
 		const NUM_CYCLES: usize = 200;
-		// Generous per-op bound: a healthy op completes in milliseconds even under heavy parallel
-		// load, so 30s only trips on a genuine hang - turning it into a fast, attributed failure
-		// instead of stalling the whole test run.
+		// A healthy op completes in milliseconds even under heavy parallel load, so 30s only trips
+		// on a genuine hang, failing fast and attributed instead of stalling the run.
 		let op_timeout = Duration::from_seconds(30).unwrap();
 		for i in 0..NUM_CYCLES {
 			let sub_id = timeout(

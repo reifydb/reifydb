@@ -592,7 +592,6 @@ pub mod tests {
 	};
 	use crate::builders::{TestChangeBuilder, TestRowBuilder};
 
-	// Simple pass-through operator for basic tests
 	struct TestOperator {
 		_node_id: FlowNodeId,
 		_config: Config,
@@ -617,12 +616,10 @@ pub mod tests {
 		}
 
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
-			// Pass-through: forward each input diff via the builder.
 			forward_diffs_passthrough(ctx, &input)
 		}
 	}
 
-	// Stateful operator that stores values from flow changes
 	struct StatefulTestOperator;
 
 	impl OperatorMetadata for StatefulTestOperator {
@@ -641,10 +638,6 @@ pub mod tests {
 		}
 
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
-			// Stash the post-row's first int8 value into operator
-			// state, keyed by the row number. Then forward the
-			// diffs unchanged via the builder so callers can still
-			// inspect the apply output.
 			for diff in input.diffs() {
 				let post = match diff.kind() {
 					DiffType::Insert | DiffType::Update => Some(diff.post()),
@@ -666,10 +659,6 @@ pub mod tests {
 		}
 	}
 
-	/// Helper used by both test operators: read each input diff and emit
-	/// it back unchanged via `ctx.builder()`. This keeps the harness's
-	/// `apply` returning a `Change` that mirrors the input - same shape
-	/// the legacy `Ok(input)` pass-through produced.
 	fn forward_diffs_passthrough(ctx: &mut FFIOperatorContext, input: &BorrowedChange<'_>) -> Result<()> {
 		let mut builder = ctx.builder();
 		for diff in input.diffs() {
@@ -719,8 +708,6 @@ pub mod tests {
 		Ok(())
 	}
 
-	/// Acquire matching builders for each column in `cols`, copy bytes +
-	/// offsets across, commit, and return the committed handles + names.
 	fn clone_columns(
 		builder: &mut ColumnsBuilder<'_>,
 		cols: BorrowedColumns<'_>,
@@ -739,7 +726,6 @@ pub mod tests {
 					core::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
 				}
 			}
-			// For var-len types, copy offsets too.
 			if matches!(type_code, ColumnTypeCode::Utf8 | ColumnTypeCode::Blob) {
 				let off = col.offsets();
 				let dst_off = active.offsets_ptr();
@@ -780,24 +766,19 @@ pub mod tests {
 
 	#[test]
 	fn test_harness_with_stateful_operator() {
-		// Build harness with stateful operator
 		let mut harness = FFIOperatorHarnessBuilder::<StatefulTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
 			.expect("Failed to build harness");
 
-		// Create a flow change with an insert
 		let input = TestChangeBuilder::new().insert_row(1, vec![Value::Int8(42i64)]).build();
 
-		// Apply the flow change - operator should store the value in state
 		let output = harness.apply(input).expect("Apply failed");
 
-		// Verify output has the expected diff
 		assert_eq!(output.diffs.len(), 1);
 
-		// Verify the operator stored state correctly via FFI callbacks.
-		// State is wrapped in the canonical operator_state row + postcard
-		// payload, so assertions go through the typed accessor.
+		// State is wrapped in the canonical operator_state row plus a postcard payload, so
+		// assertions have to go through the typed accessor.
 		let state = harness.state();
 		state.assert_typed_value::<i64>(probe_row_key(1).as_encoded(), &42i64);
 	}
@@ -809,11 +790,9 @@ pub mod tests {
 			.build()
 			.expect("Failed to build harness");
 
-		// History starts empty
 		assert_eq!(harness.history_len(), 0);
 		assert!(harness.last_change().is_none());
 
-		// Each apply() call records a Change
 		let input_a = TestChangeBuilder::new().insert_row(1, vec![Value::Int8(1i64)]).build();
 		harness.apply(input_a).expect("apply a failed");
 		assert_eq!(harness.history_len(), 1);
@@ -822,18 +801,15 @@ pub mod tests {
 		harness.apply(input_b).expect("apply b failed");
 		assert_eq!(harness.history_len(), 2);
 
-		// Index returns the i-th recorded Change
 		assert_eq!(harness[0].diffs.len(), 1);
 		assert_eq!(harness[1].diffs.len(), 1);
 
-		// Chainable insert also records
 		harness.insert(TestRowBuilder::new(3).add_value(Value::Int8(3i64)).build());
 		assert_eq!(harness.history_len(), 3);
 
-		// last_change returns the most recent
 		assert!(harness.last_change().is_some());
 
-		// clear_history resets without affecting state
+		// clear_history must not disturb operator state.
 		let state_count_before = harness.state().len();
 		harness.clear_history();
 		assert_eq!(harness.history_len(), 0);
@@ -847,7 +823,6 @@ pub mod tests {
 			.build()
 			.expect("Failed to build harness");
 
-		// Insert multiple rows
 		let input1 = TestChangeBuilder::new()
 			.insert_row(1, vec![Value::Int8(10i64)])
 			.insert_row(2, vec![Value::Int8(20i64)])
@@ -858,18 +833,15 @@ pub mod tests {
 		let state = harness.state();
 		assert_eq!(state.len(), 2);
 
-		// Insert another row
 		let input2 = TestChangeBuilder::new().insert_row(RowNumber(3), vec![Value::Int8(30i64)]).build();
 
 		harness.apply(input2).expect("Second apply failed");
 
-		// Verify all three values were stored
 		let state = harness.state();
 		state.assert_typed_value::<i64>(probe_row_key(1).as_encoded(), &10i64);
 		state.assert_typed_value::<i64>(probe_row_key(2).as_encoded(), &20i64);
 		state.assert_typed_value::<i64>(probe_row_key(3).as_encoded(), &30i64);
 
-		// Verify total state count
 		assert_eq!(state.len(), 3);
 	}
 
@@ -895,8 +867,8 @@ pub mod tests {
 		}
 
 		fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
-			// Row n arms a Seal timer at n milliseconds, so a test picks which
-			// timers are due purely by choosing the row numbers it inserts.
+			// Row n arms a Seal timer at n milliseconds, so a test picks which timers are due
+			// purely by choosing the row numbers it inserts.
 			for diff in input.diffs() {
 				if !matches!(diff.kind(), DiffType::Insert) {
 					continue;
@@ -913,10 +885,8 @@ pub mod tests {
 		}
 
 		fn on_timer(&mut self, ctx: &mut FFIOperatorContext, timer: Timer<'_>) -> Result<()> {
-			// One state entry per fire, keyed by the instant fired at. State is
-			// what proves on_timer actually reached the OPERATOR; the fired
-			// count alone would still pass if the harness popped the wheel and
-			// dropped the callback on the floor.
+			// State is what proves on_timer reached the operator; a fired count alone would
+			// still pass if the harness popped the wheel and dropped the callback.
 			ctx.state().set::<i64>(&probe_row_key(timer.at.to_nanos()), &1i64)
 		}
 	}
@@ -964,12 +934,8 @@ pub mod tests {
 
 	#[test]
 	fn a_timer_emission_reaches_the_caller_as_a_change() {
-		// This is the assertion that was impossible to write before `on_timer` drained the sink
-		// registry. `fire_timer` runs the callback but leaves the emitted diffs sitting in the
-		// registry, so they surface attributed to whichever `apply` happens to come next, or vanish
-		// when none does. Production closes the boundary per timer, so an operator that seals on the
-		// wheel worked in the real engine and was untestable here.
-		// Mutation: drop the drain from `on_timer` and this returns None.
+		// Without a drain per timer, emitted diffs sit in the registry and surface attributed to
+		// whichever apply comes next, or vanish when none does.
 		let mut harness = FFIOperatorHarness::<SealEmittingOperator>::builder().build().unwrap();
 
 		let change = harness
@@ -1037,9 +1003,8 @@ pub mod tests {
 		}
 
 		fn on_timer(&mut self, ctx: &mut FFIOperatorContext, timer: Timer<'_>) -> Result<()> {
-			// Re-arms one millisecond out, which is still at or below the
-			// watermark the test advances to. The limit is what keeps this from
-			// tripping advance_watermark's runaway panic.
+			// Re-arms one millisecond out, still at or below the watermark the test advances
+			// to; the limit is what keeps this off advance_watermark's runaway panic.
 			self.fires += 1;
 			ctx.state().set::<i64>(&probe_row_key(timer.at.to_nanos()), &self.fires)?;
 			if self.fires < REARM_LIMIT {
@@ -1055,11 +1020,8 @@ pub mod tests {
 
 	#[test]
 	fn an_armed_guest_timer_fires_when_the_harness_watermark_passes_it() {
-		// The point of the whole phase: a guest operator's timer fires because the
-		// WATERMARK reached it, with no further input arriving. Before this the sdk
-		// harness could only say "pretend on_timer happened" via fire_timer, so no
-		// guest test could distinguish "sealed by the clock" from "sealed by the
-		// next row".
+		// The timer must fire because the watermark reached it, with no further input arriving;
+		// otherwise a guest test cannot tell "sealed by the clock" from "sealed by the next row".
 		let mut harness = FFIOperatorHarnessBuilder::<TimerTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
@@ -1086,10 +1048,8 @@ pub mod tests {
 
 	#[test]
 	fn advancing_the_harness_watermark_twice_fires_a_timer_once() {
-		// A fired timer stays fired. take_due_timers removes before returning, so
-		// re-advancing over the same instant - or past it - cannot resurrect it.
-		// Getting this wrong would make every seal in a guest test fire once per
-		// subsequent advance, silently inflating retraction counts.
+		// A resurrected timer would make every seal fire once per subsequent advance, silently
+		// inflating retraction counts.
 		let mut harness = FFIOperatorHarnessBuilder::<TimerTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
@@ -1107,11 +1067,8 @@ pub mod tests {
 
 	#[test]
 	fn a_timer_rearmed_inside_on_timer_below_the_watermark_fires_in_the_same_advance() {
-		// This is why advance_watermark drains in a loop rather than taking one
-		// pass. Session windows re-arm on every extending event, so an operator
-		// arming at an instant the watermark has ALREADY passed is normal, and the
-		// real wheel picks it up in the same round. A single-pass harness would
-		// leave it armed and the test would see one fire instead of three.
+		// Session windows re-arm on every extending event, so arming below an already-passed
+		// watermark is normal and the real wheel picks it up in the same round.
 		let mut harness = FFIOperatorHarnessBuilder::<RearmingTimerTestOperator>::new()
 			.with_node_id(FlowNodeId(1))
 			.build()
@@ -1131,20 +1088,16 @@ pub mod tests {
 	}
 
 	fn group_state_key(node: FlowNodeId, group: GroupId, keyspace: Keyspace) -> FlowNodeStateKey {
-		// Composes the key the way the substrate does - a node prefix over the inner
-		// [group][keyspace][suffix] - so what these tests seed is addressable by the same phase
-		// ranges the sweep scans.
+		// Must compose the key the way the substrate does, or what these tests seed is not
+		// addressable by the phase ranges the sweep scans.
 		FlowNodeStateKey::new(node, OperatorStateKey::inner_encoded(group, keyspace, b"k").as_slice().to_vec())
 	}
 
 	#[test]
 	fn the_data_phase_leaves_behind_the_mapping_that_names_the_published_row() {
-		// The engine erases a group's data half long before - and usually instead of - its identity
-		// half: reclaim_nodes runs the data phase last and the identity phase only when the sink
-		// declares a row ttl. An operator woken in that window has to answer Update against the row
-		// it already published, and the only reason it can know that is the mapping still being
-		// there. A harness that wiped both halves at once would let an operator that answers Insert
-		// pass, publishing a second row over one the sink is still holding.
+		// The engine erases a group's data half long before its identity half, and an operator
+		// woken in that window can only answer Update because the mapping is still there. Wiping
+		// both at once would let an operator that answers Insert pass.
 		const NODE: FlowNodeId = FlowNodeId(1);
 		const GROUP: GroupId = GroupId(7);
 		let accumulator = group_state_key(NODE, GROUP, Keyspace::ACCUMULATOR).encode();
@@ -1169,10 +1122,8 @@ pub mod tests {
 
 	#[test]
 	fn erasing_a_group_never_reaches_the_node_scoped_dictionary_that_resolves_it() {
-		// Node scope holds the interning dictionary and the id counter, which every other group
-		// depends on. The group-major reaper refuses it structurally; a harness that erased it
-		// while reclaiming an unrelated group would destroy the substrate's own address book and
-		// the next lookup would mint a second id for a key that already had one.
+		// Node scope holds the interning dictionary and id counter every other group depends on;
+		// erasing it would make the next lookup mint a second id for a key that already had one.
 		const NODE: FlowNodeId = FlowNodeId(1);
 		let dictionary = group_state_key(NODE, GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY).encode();
 		let counter = group_state_key(NODE, GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER).encode();

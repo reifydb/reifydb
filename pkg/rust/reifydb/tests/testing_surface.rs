@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// The harness is only useful to an out-of-tree operator author if it is reachable the way the other
-// test surfaces are, so this drives it through `reifydb::testing::flow` and nowhere else. Reaching
-// past that - into `reifydb::sub_flow` - would work today and is exactly what must not become the
-// documented path, because it makes a test-only harness part of a subsystem's public shape.
-
 use reifydb::{
 	abi::operator::capabilities::OperatorCapability,
 	core::interface::catalog::flow::FlowNodeId,
@@ -47,10 +42,9 @@ impl OperatorLogic for Inert {
 
 #[test]
 fn a_guest_operator_reaches_the_sweep_through_the_published_testing_surface() {
-	// The assertion is the grid rather than a reclaimed group: a guest that holds no state has
-	// nothing to retire, so counting retirements here would pass for the wrong reason. What this
-	// pins is that the declared ttl crossed the package boundary and reached the substrate as a
-	// real retention scale - the step that decides whether a node is swept at all.
+	// Drives the harness through `reifydb::testing::flow` only; reaching into `reifydb::sub_flow`
+	// works today and must not become the path. The grid is the assertion, not a reclaimed group:
+	// a guest holding no state has nothing to retire and would pass for the wrong reason.
 	let ttl = Duration::from_seconds(60).expect("60s is representable");
 
 	let harness =

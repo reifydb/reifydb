@@ -26,7 +26,6 @@ fn test_password_login_success() {
 		assert!(!result.token.is_empty(), "Token should not be empty");
 		assert!(!result.identity.is_empty(), "Identity should not be empty");
 
-		// Verify authenticated queries work
 		let query_result = client.query("MAP {v: 42}", None).await.unwrap();
 		assert_eq!(query_result.len(), 1);
 
@@ -85,7 +84,6 @@ fn test_token_login_success() {
 		assert!(!result.token.is_empty(), "Token should not be empty");
 		assert!(!result.identity.is_empty(), "Identity should not be empty");
 
-		// Verify authenticated queries work
 		let query_result = client.query("MAP {v: 42}", None).await.unwrap();
 		assert_eq!(query_result.len(), 1);
 
@@ -123,20 +121,16 @@ fn test_sequential_logins() {
 		let mut client =
 			WsClient::connect(&format!("ws://[::1]:{}", ws_port), WireFormat::Frames).await.unwrap();
 
-		// Login as alice
 		let result_a = client.login_with_password("alice", "alice-pass").await.unwrap();
 		assert!(!result_a.token.is_empty());
 
-		// Verify query works as alice
 		let query_result = client.query("MAP {v: 1}", None).await.unwrap();
 		assert_eq!(query_result.len(), 1);
 
-		// Login as bob (replaces alice session)
 		let result_b = client.login_with_token("bob-secret-token").await.unwrap();
 		assert!(!result_b.token.is_empty());
 		assert_ne!(result_a.token, result_b.token);
 
-		// Verify query works as bob
 		let query_result = client.query("MAP {v: 2}", None).await.unwrap();
 		assert_eq!(query_result.len(), 1);
 
@@ -159,15 +153,12 @@ fn test_logout_success() {
 		let result = client.login_with_password("alice", "alice-pass").await.unwrap();
 		let old_token = result.token.clone();
 
-		// Verify query works before logout
 		let query_result = client.query("MAP {v: 1}", None).await.unwrap();
 		assert_eq!(query_result.len(), 1);
 
-		// Logout
 		client.logout().await.unwrap();
 		client.close().await.unwrap();
 
-		// Verify the old token is revoked server-side
 		let mut client2 =
 			WsClient::connect(&format!("ws://[::1]:{}", ws_port), WireFormat::Frames).await.unwrap();
 		let auth_result = client2.authenticate(&old_token).await;
@@ -189,10 +180,8 @@ fn test_logout_twice() {
 			WsClient::connect(&format!("ws://[::1]:{}", ws_port), WireFormat::Frames).await.unwrap();
 		client.login_with_password("alice", "alice-pass").await.unwrap();
 
-		// First logout
 		client.logout().await.unwrap();
 
-		// Second logout should be a no-op (is_authenticated is false)
 		client.logout().await.unwrap();
 
 		client.close().await.unwrap();
@@ -212,7 +201,6 @@ fn test_logout_without_token() {
 		let mut client =
 			WsClient::connect(&format!("ws://[::1]:{}", ws_port), WireFormat::Frames).await.unwrap();
 
-		// Logout without ever logging in should be a no-op
 		client.logout().await.unwrap();
 
 		client.close().await.unwrap();
@@ -234,14 +222,11 @@ fn test_logout_independent_sessions() {
 		let mut client_b =
 			WsClient::connect(&format!("ws://[::1]:{}", ws_port), WireFormat::Frames).await.unwrap();
 
-		// Both login as alice (separate sessions)
 		client_a.login_with_password("alice", "alice-pass").await.unwrap();
 		client_b.login_with_password("alice", "alice-pass").await.unwrap();
 
-		// Logout client_a
 		client_a.logout().await.unwrap();
 
-		// client_b should still work
 		let query_result = client_b.query("MAP {v: 42}", None).await.unwrap();
 		assert_eq!(query_result.len(), 1);
 

@@ -390,10 +390,9 @@ mod tests {
 
 	#[test]
 	fn flow_apply_store_reads_recorded_late_lands_in_extras() {
-		// dispatch.rs records store_reads via Span::record AFTER the operator ran (the count
-		// is a delta around apply), so it arrives through on_record, not span creation. If the
-		// layer only captured creation-time attributes, the dump would silently show gets=0
-		// for every operator and per-node read attribution would be lost.
+		// store_reads is a delta around apply, so it is recorded after the operator ran and
+		// arrives through on_record. Capturing only creation-time attributes would report
+		// gets=0 for every operator and lose per-node read attribution.
 		let sink: Arc<RecordingSink> = Arc::new(RecordingSink::default());
 		let (layer, _interner) = build_layer(sink.clone(), CategorySet::all());
 		let subscriber = Registry::default().with(layer);

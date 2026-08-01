@@ -3,17 +3,9 @@
 
 //! Scheduling contract of the lifecycle lane.
 //!
-//! Every reclamation class in the system runs through this one actor, so its two guarantees are what keep the
-//! database both bounded and responsive:
-//!
-//! - ONE tick performs exactly ONE bounded slice. A class with a large backlog must yield the lane back rather than
-//!   drain inline, or a single sweep of a multi-gigabyte keyspace stalls every other class behind it (and, because the
-//!   lane is also the flush lane, stalls durability).
-//! - `RunToExhaustion` is the deliberate opposite, used where a caller must observe a fully-drained state, and it must
-//!   always notify its waiter - a missed notification is a deadlocked shutdown or a hung test.
-//!
-//! The catch-up reschedule itself is a timer message the deterministic harness cannot observe, so it is pinned
-//! indirectly: the tick must report `Continue` and must call `run_slice` exactly once even while work remains.
+//! Every reclamation class runs through this one actor, which is also the flush lane: one tick performs exactly one
+//! bounded slice, and `RunToExhaustion` always notifies its waiter. The catch-up reschedule is a timer the harness
+//! cannot observe, so it is pinned indirectly through `Continue` plus a single `run_slice`.
 
 use std::sync::Arc;
 

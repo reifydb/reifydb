@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// The second line of defence described in `engine::flow::time_domain`: the domain walk runs at
-// DEFINITION time, and registration re-runs it for flows loaded from the catalog on restart, "whose
-// sources may have been altered since".
-//
-// Nothing about that claim is exercised by the definition-time path, because there the flow and its
-// sources are consistent by construction - the walk has just been run over them. What matters is the
-// case the doc names: a flow that was legal when it was defined, reloaded against a catalog that has
-// since moved underneath it. This file builds exactly that state - the flow's own DAG is reloaded from
-// the catalog, and only the source object's `TimeSource` differs from what DDL saw - and pins that the
-// re-check catches it, in both directions.
+// The definition-time walk cannot cover this: there the flow and its sources are consistent by
+// construction. Each test reloads the flow's own DAG and alters only the source object's TimeSource,
+// which is the restart state where a flow legal at DDL is resolved against a catalog that has moved.
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::common::TimeSource;
@@ -31,10 +24,8 @@ fn event() -> TimeSource {
 	}
 }
 
-// Rewrites the source table's declared TimeSource in the catalog, leaving the flow's own record
-// untouched. This is the drift the re-check exists for: on a restart the flow comes back exactly as it
-// was defined, while the catalog it is resolved against has moved.
 fn alter_source_time(engine: &TestEngine, txn: &mut AdminTransaction, table: &str, time: TimeSource) {
+	// Only the source's declaration moves; the flow's own record stays as DDL wrote it.
 	let catalog = engine.catalog();
 	let namespace = catalog.find_namespace_by_name(&mut Transaction::Admin(txn), "td").unwrap().unwrap();
 	let mut altered =
@@ -62,14 +53,9 @@ fn recheck(engine: &TestEngine, txn: &mut AdminTransaction, dag: &FlowDag) -> Op
 }
 
 #[test]
-// Intent: a flow that declared nothing over a processing-time source was legal at DDL, and must stop
-// being legal once that source starts declaring event time. This is the trap FLOW_041 exists for,
-// arriving by the one route definition-time validation cannot see - the author never edited the view,
-// so nothing re-runs the DDL check, and without the registration re-check the flow would come back on
-// restart and quietly bucket event-time rows by wall clock.
-// Mutation: drop the check_time_domain call from register_with_transaction and the reloaded DAG below
-// sails through, while every definition-time test still passes.
 fn a_source_that_gains_event_time_invalidates_an_undeclared_flow() {
+	// The author never edited the view, so nothing re-runs the DDL check; without the re-check
+	// the flow comes back on restart and buckets event-time rows by wall clock.
 	let engine = TestEngine::new();
 	engine.admin("CREATE NAMESPACE td");
 	engine.admin("CREATE TABLE td::src { id: int4, at: datetime }");
@@ -78,8 +64,7 @@ fn a_source_that_gains_event_time_invalidates_an_undeclared_flow() {
 	let mut txn = engine.begin_admin(IdentityId::system()).unwrap();
 	let dag = reload_dag(&engine, &mut txn, "v");
 
-	// Precondition: as defined, the reloaded flow is accepted. Without this the test could pass
-	// against a DAG that was never valid in the first place.
+	// Without this the test could pass against a DAG that was never valid in the first place.
 	assert_eq!(recheck(&engine, &mut txn, &dag), None, "the flow must be legal before the source is altered");
 
 	alter_source_time(&engine, &mut txn, "src", event());
@@ -92,12 +77,9 @@ fn a_source_that_gains_event_time_invalidates_an_undeclared_flow() {
 }
 
 #[test]
-// Intent: the other direction, and the one that loses data rather than merely mislabelling it. A flow
-// that explicitly declared event time was legal over an event-time source; if that source reverts to
-// processing there is no column left to populate #time from, so every row would silently fall back to
-// arrival while the flow still claims to bucket by event time.
-// Mutation: reconcile only the (None, Event) cell and this flow re-registers happily.
 fn a_source_that_loses_event_time_invalidates_an_event_time_flow() {
+	// With the populator gone there is no column left to fill #time from, so every row falls
+	// back to arrival while the flow still claims to bucket by event time.
 	let engine = TestEngine::new();
 	engine.admin("CREATE NAMESPACE td");
 	engine.admin("CREATE TABLE td::src { id: int4, at: datetime } WITH { time: event, ts: at }");
@@ -118,13 +100,9 @@ fn a_source_that_loses_event_time_invalidates_an_event_time_flow() {
 }
 
 #[test]
-// Intent: the explicit processing override survives the same drift. This is the cell that separates the
-// re-check from a blanket "the source changed, reject" rule - an author who wrote `time: processing`
-// over an event-time source said so on purpose, and a source that gains or loses its populator must not
-// retroactively invalidate that choice on restart. Without this the re-check would be indistinguishable
-// from a staleness check, and would start refusing to boot flows that are behaving exactly as declared.
-// Mutation: reject on any declared/source mismatch and this fails while both tests above still pass.
 fn an_explicit_processing_override_survives_the_source_changing_underneath_it() {
+	// Separates the re-check from a blanket "the source changed, reject" rule, which would
+	// refuse to boot flows behaving exactly as declared.
 	let engine = TestEngine::new();
 	engine.admin("CREATE NAMESPACE td");
 	engine.admin("CREATE TABLE td::src { id: int4, at: datetime } WITH { time: event, ts: at }");

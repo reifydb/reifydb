@@ -182,22 +182,20 @@ pub mod tests {
 		};
 	}
 
-	/// Constructs a Command by parsing the given input string.
 	macro_rules! cmd {
 		($input:expr) => {{ crate::testscript::parser::parse_command(&format!("{}\n", $input)).expect("invalid command") }};
 	}
 
-	/// Tests Argument.name().
 	#[test]
 	fn test_argument_name() {
 		assert_eq!(arg!("value").name(), "value");
 		assert_eq!(arg!("key" => "value").name(), "key");
 	}
 
-	/// Basic tests of Argument.parse(). Not comprehensive, since it
-	/// dispatches to flow::str::parse().
 	#[test]
 	fn test_argument_parse() {
+		// Not comprehensive: parse() only wraps the target type's own FromStr, so this pins the
+		// error-message wrapping rather than the parsing.
 		assert_eq!(arg!("-1").parse::<i64>().unwrap(), -1_i64);
 		assert_eq!(arg!("0").parse::<i64>().unwrap(), 0_i64);
 		assert_eq!(arg!("1").parse::<i64>().unwrap(), 1_i64);
@@ -220,73 +218,62 @@ pub mod tests {
 		);
 	}
 
-	/// Tests Command.consume_args(). ArgumentConsumer is tested separately.
 	#[test]
 	fn test_command_consume_args() {
 		let cmd = cmd!("cmd foo key=value bar");
 		assert_eq!(cmd.consume_args().rest(), vec![&cmd.args[0], &cmd.args[1], &cmd.args[2]]);
 	}
 
-	/// Tests ArgumentConsumer.lookup().
 	#[test]
 	fn test_argument_consumer_lookup() {
 		let cmd = cmd!("cmd value key=value foo=bar key=other");
 
-		// lookup() returns None on unknown keys, including ones that
-		// match a value argument.
+		// A positional argument whose value matches the key must not be found by lookup().
 		let mut args = cmd.consume_args();
 		assert_eq!(args.lookup("unknown"), None);
 		assert_eq!(args.lookup("value"), None);
 		assert_eq!(args.rest().len(), 4);
 
-		// lookup() removes duplicate keys, returning the last.
+		// Duplicate keys collapse to the last, and all of them are consumed.
 		let mut args = cmd.consume_args();
 		assert_eq!(args.lookup("key"), Some(&cmd.args[3]));
 		assert_eq!(args.rest(), vec![&cmd.args[0], &cmd.args[2]]);
 
-		// lookup() removes single keys.
 		let mut args = cmd.consume_args();
 		assert_eq!(args.lookup("foo"), Some(&cmd.args[2]));
 		assert_eq!(args.rest(), vec![&cmd.args[0], &cmd.args[1], &cmd.args[3]]);
 	}
 
-	/// Tests ArgumentConsumer.lookup_parse().
 	#[test]
 	fn test_argument_consumer_lookup_parse() {
 		let cmd = cmd!("cmd value key=1 foo=bar key=2");
 
-		// lookup_parse() returns None on unknown keys, including ones
-		// that match a value argument.
+		// A positional argument whose value matches the key must not be found.
 		let mut args = cmd.consume_args();
 		assert_eq!(args.lookup_parse::<String>("unknown").unwrap(), None);
 		assert_eq!(args.lookup_parse::<String>("value").unwrap(), None);
 		assert_eq!(args.rest().len(), 4);
 
-		// lookup_parse() parses and removes duplicate keys, returning
-		// the last.
+		// Duplicate keys collapse to the last, and all of them are consumed.
 		let mut args = cmd.consume_args();
 		assert_eq!(args.lookup_parse("key").unwrap(), Some(2));
 		assert_eq!(args.rest(), vec![&cmd.args[0], &cmd.args[2]]);
 
-		// lookup_parse() parses and removes single keys, with string
-		// parsing being a noop.
 		let mut args = cmd.consume_args();
 		assert_eq!(args.lookup_parse("foo").unwrap(), Some("bar".to_string()));
 		assert_eq!(args.rest(), vec![&cmd.args[0], &cmd.args[1], &cmd.args[3]]);
 
-		// lookup_parse() does not remove arguments on parse errors,
-		// even with duplicate keys.
+		// A parse error must leave every argument in place, duplicates included.
 		let mut args = cmd.consume_args();
 		assert!(args.lookup_parse::<bool>("key").is_err());
 		assert_eq!(args.rest(), vec![&cmd.args[0], &cmd.args[1], &cmd.args[2], &cmd.args[3]]);
 	}
 
-	/// Tests ArgumentConsumer.next(), next_pos(), and next_key().
 	#[test]
 	fn test_argument_consumer_next() {
 		let cmd = cmd!("cmd foo key=1 key=2 bar");
 
-		// next() returns references to all arguments and consumes them.
+		// next() walks every argument regardless of kind.
 		let mut args = cmd.consume_args();
 		assert_eq!(args.next(), Some(&cmd.args[0]));
 		assert_eq!(args.next(), Some(&cmd.args[1]));
@@ -295,8 +282,7 @@ pub mod tests {
 		assert_eq!(args.next(), None);
 		assert!(args.rest().is_empty());
 
-		// next_key() returns references to key/value arguments and
-		// consumes them.
+		// next_key() takes only key/value arguments, leaving the positional ones for next().
 		let mut args = cmd.consume_args();
 		assert_eq!(args.next_key(), Some(&cmd.args[1]));
 		assert_eq!(args.next_key(), Some(&cmd.args[2]));
@@ -306,8 +292,7 @@ pub mod tests {
 		assert_eq!(args.next(), None);
 		assert!(args.rest().is_empty());
 
-		// next_pos() returns references to key/value arguments and
-		// consumes them.
+		// next_pos() takes only positional arguments, leaving the key/value ones for next().
 		let mut args = cmd.consume_args();
 		assert_eq!(args.next_pos(), Some(&cmd.args[0]));
 		assert_eq!(args.next_pos(), Some(&cmd.args[3]));
@@ -318,43 +303,38 @@ pub mod tests {
 		assert!(args.rest().is_empty());
 	}
 
-	/// Tests ArgumentConsumer.reject_rest().
 	#[test]
 	fn test_argument_consumer_reject_rest() {
-		// Empty args return Ok.
 		let cmd = cmd!("cmd");
 		assert!(cmd.consume_args().reject_rest().is_ok());
 
-		// Positional argument fails. It does not consume the arg.
+		// Rejection must not consume the offending argument.
 		let cmd = cmd!("cmd value");
 		let mut args = cmd.consume_args();
 		assert_eq!(args.reject_rest().unwrap_err().to_string(), "invalid argument 'value'");
 		assert!(!args.rest().is_empty());
 
-		// Key/value argument fails.
+		// A key/value argument reports its key, not its value.
 		let cmd = cmd!("cmd key=value");
 		let mut args = cmd.consume_args();
 		assert_eq!(args.reject_rest().unwrap_err().to_string(), "invalid argument 'key'");
 		assert!(!args.rest().is_empty());
 	}
 
-	/// Tests ArgumentConsumer.rest(), rest_pos() and rest_key().
 	#[test]
 	fn test_argument_consumer_rest() {
 		let cmd = cmd!("cmd foo key=1 key=2 bar");
 
-		// rest() returns references to all arguments and consumes them.
+		// Each variant must drain what it returns, so a second call comes back empty.
 		let mut args = cmd.consume_args();
 		assert_eq!(args.rest(), vec![&cmd.args[0], &cmd.args[1], &cmd.args[2], &cmd.args[3]]);
 		assert!(args.rest().is_empty());
 
-		// rest_pos() returns and consumes positional arguments.
 		let mut args = cmd.consume_args();
 		assert_eq!(args.rest_pos(), vec![&cmd.args[0], &cmd.args[3]]);
 		assert!(args.rest_pos().is_empty());
 		assert_eq!(args.rest(), vec![&cmd.args[1], &cmd.args[2]]);
 
-		// rest_key() returns and consumes key/value arguments.
 		let mut args = cmd.consume_args();
 		assert_eq!(args.rest_key(), vec![&cmd.args[1], &cmd.args[2]]);
 		assert!(args.rest_key().is_empty());

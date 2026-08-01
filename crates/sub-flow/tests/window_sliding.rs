@@ -21,12 +21,8 @@ fn setup() -> TestDb {
 }
 
 /// One table feeding a sliding window whose size is a whole number of slides, so the window a
-/// coordinate belongs to can be worked out by hand.
-///
-/// Window starts are multiples of the slide in absolute epoch milliseconds, NOT offsets from
-/// whatever date the test picked. 2026-01-01T00:00:00Z happens to be a multiple of 15s, which is
-/// why the offsets below read cleanly - a row early in that day is still covered by windows that
-/// started on the previous one.
+/// coordinate belongs to can be worked out by hand. Window starts are multiples of the slide in
+/// absolute epoch millis, so a row early in a day is still covered by windows from the previous one.
 fn sliding_window(db: &TestDb, size: &str, slide: &str, grace: &str) {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
@@ -40,18 +36,9 @@ fn sliding_window(db: &TestDb, size: &str, slide: &str, grace: &str) {
 
 #[test]
 fn a_row_lands_in_every_window_that_covers_it() {
-	// Intent: overlap is the entire point of a sliding window. With size 60s and slide 15s the
-	// windows starting at 15s, 30s, 45s and 60s all cover t=70s, while the one starting at 0s
-	// ends at 60s and does not. Four rows, one per covering window, all carrying the same total.
-	//
-	// The grace is load-bearing, not decoration. Every window the containment filter rejects is by
-	// construction an OLDER one, and at zero grace such a window has already sealed by the time
-	// the row arrives - so the admission gate refuses it and the missing filter leaves no trace.
-	// A grace keeps it open long enough to be counted. At "0s" this test passed with the filter
-	// deleted, which is how a mutation run caught it.
-	//
-	// Mutation: drop the containment filter in sliding_window_anchors and the window starting at
-	// 0s appears too, making it five. Emit only one window and it collapses to tumbling.
+	// Overlap is the whole point: at size 60s and slide 15s the windows starting 15s, 30s, 45s and
+	// 60s cover t=70s while the one starting at 0s ends before it. The 120s grace is load-bearing -
+	// every wrongly-covering window is an older one, and at zero grace it has already sealed.
 	let db = setup();
 	sliding_window(&db, "60s", "15s", "120s");
 
@@ -77,12 +64,9 @@ fn a_row_lands_in_every_window_that_covers_it() {
 
 #[test]
 fn a_sliding_window_stamps_time_with_its_start_not_its_index() {
-	// Intent: THE regression that sliding's coordinate fix exists for. A window used to be
-	// identified by its slide index, so span.start was a small integer that everything
-	// downstream read as milliseconds. #time is where that is directly observable: the four
-	// windows covering t=70s must be stamped 15s, 30s, 45s and 60s.
-	// Mutation: identify a window by its index again and every #time collapses to within four
-	// milliseconds of the Unix epoch, because the indices are 1, 2, 3 and 4.
+	// #time is where a window identified by its slide index rather than its start coordinate is
+	// directly observable: an index is a small integer everything downstream reads as millis, so
+	// the stamps would collapse to within four milliseconds of the epoch.
 	let db = setup();
 	sliding_window(&db, "60s", "15s", "0s");
 
@@ -107,19 +91,9 @@ fn a_sliding_window_stamps_time_with_its_start_not_its_index() {
 
 #[test]
 fn a_sliding_window_seals_size_plus_grace_after_its_start() {
-	// Intent: each window's seal horizon is its OWN start plus size plus grace, so overlapping
-	// windows holding the identical row must seal at different times. That is what makes this
-	// stronger than a count check: a global seal cannot produce a partial result, it either
-	// refuses the third row everywhere or admits it everywhere.
-	// The row at T0 lands in the four windows starting T0-45s, T0-30s, T0-15s and T0. With
-	// size 60s and grace 30s they close at T0+46s, T0+61s, T0+76s and T0+91s respectively. The
-	// second row lifts the watermark to T0+70s, which is past the first two instants and short
-	// of the last two. A third row back at T0 is covered by those same four windows, so exactly
-	// the two still open may take it. Sealing leaves a closed window's published total standing,
-	// which is why the split shows up as 7 versus 107 rather than as a row count.
-	// Mutation: measure the horizon from the slide index instead of the start coordinate and
-	// every window seals on the first watermark past size + grace, so all four refuse the third
-	// row together and no total reaches 107.
+	// Each window's seal horizon is its own start plus size plus grace, so overlapping windows
+	// holding the identical row seal at different times. A global seal cannot produce a partial
+	// result, so the 7-versus-107 split is what a count check would miss.
 	let db = setup();
 	sliding_window(&db, "60s", "15s", "30s");
 

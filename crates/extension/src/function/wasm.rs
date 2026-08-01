@@ -36,8 +36,7 @@ impl WasmScalarFunction {
 	}
 }
 
-// SAFETY: WasmScalarFunction only holds inert data (name + bytes).
-
+// SAFETY: holds only a name and module bytes; each call instantiates the module fresh, sharing nothing.
 unsafe impl Send for WasmScalarFunction {}
 unsafe impl Sync for WasmScalarFunction {}
 

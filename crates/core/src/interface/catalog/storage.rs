@@ -126,16 +126,11 @@ impl PartialEq<SeriesId> for StorageId {
 mod tests {
 	use super::*;
 
-	/// `StorageId` deliberately has no tag table of its own - it delegates to `ObjectId`. If someone
-	/// gives it one, the two can drift and a key would decode as a different kind carrying the same
-	/// numeric id. That is the exact defect that made `to_type_u8` disagree with the key encoders.
-	///
-	/// This also guards the one arm that the compiler cannot: `from_object` narrows through a
-	/// `_ => None` wildcard, so a variant added to the enum without its own arm there still
-	/// compiles and simply stops decoding. The symptom is a scan that silently returns nothing,
-	/// never a fault, so every row-owning variant must appear in this loop.
 	#[test]
 	fn the_type_tags_agree_with_the_wide_object_tags() {
+		// `StorageId` has no tag table of its own; giving it one lets the two drift so a key decodes
+		// as a different kind with the same id. The loop also covers the arm the compiler cannot:
+		// `from_type_tag` narrows through a `_ => None`, so a new variant silently stops decoding.
 		for storage in [
 			StorageId::Table(TableId(7)),
 			StorageId::RingBuffer(RingBufferId(7)),
@@ -147,20 +142,19 @@ mod tests {
 		}
 	}
 
-	/// The kinds that have no rows must not decode into a storage id at all. Accepting one would
-	/// reintroduce the widening bug from the other direction: a view tag would silently become a
-	/// table of the same numeric id, and its row settings would be read from the wrong object.
 	#[test]
 	fn the_kinds_without_rows_do_not_decode_into_a_storage_id() {
+		// Accepting a rowless kind would make a view tag decode as a table of the same numeric id,
+		// and its row settings would then be read from the wrong object.
 		for object in [ObjectId::view(7), ObjectId::vtable(7), ObjectId::dictionary(7)] {
 			assert_eq!(StorageId::from_type_tag(object.type_tag(), object.as_u64()), None);
 		}
 	}
 
-	/// Widening must round-trip exactly, because every encoder writes the widened form. A variant
-	/// mapped to the wrong `ObjectId` arm would write the wrong tag byte and orphan the row.
 	#[test]
 	fn widening_to_an_object_preserves_the_kind_and_the_id() {
+		// Every encoder writes the widened form, so a variant mapped to the wrong `ObjectId` arm
+		// writes the wrong tag byte and orphans the row.
 		assert_eq!(ObjectId::from(StorageId::Table(TableId(1))), ObjectId::Table(TableId(1)));
 		assert_eq!(
 			ObjectId::from(StorageId::RingBuffer(RingBufferId(2))),

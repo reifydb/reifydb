@@ -425,10 +425,8 @@ mod tests {
 		o.insert(key(vec![Value::uint8(1u64)]), row(&[("v", Value::float8(1.0_f64))]));
 		let mut p = MaterializedView::empty();
 		p.insert(key(vec![Value::uint8(1u64)]), row(&[("v", Value::float8(1.0_f64 + 1e-12))]));
-		// Exact comparison: differs.
 		let strict = compare(&p, &o, &Tolerances::new());
 		assert!(!strict.is_match());
-		// With tolerance: matches.
 		let lenient = compare(&p, &o, &Tolerances::new().with("v", 1e-9));
 		assert!(lenient.is_match(), "{:?}", lenient);
 	}
@@ -452,8 +450,7 @@ mod tests {
 		o.insert(key(vec![Value::uint8(1u64)]), row(&[("count", Value::uint8(5u64))]));
 		let mut p = MaterializedView::empty();
 		p.insert(key(vec![Value::uint8(1u64)]), row(&[("count", Value::uint8(6u64))]));
-		// Tolerance on an integer column does not apply; this should
-		// still be a divergence.
+		// A tolerance registered on an integer column must not soften the comparison.
 		let result = compare(&p, &o, &Tolerances::new().with("count", 1.0));
 		assert!(!result.is_match());
 	}
@@ -486,14 +483,13 @@ mod tests {
 		assert!(report.contains("divergent:         1"));
 		assert!(report.contains("oracle"));
 		assert!(report.contains("operator"));
-		// Column name appears as a row in the table.
 		assert!(report.contains("| v "), "missing v row in table: {report}");
 	}
 
 	#[test]
 	fn format_failure_table_has_5_columns_with_diff_and_tol() {
-		// One float divergence (with registered tolerance), one int
-		// divergence (no tolerance).
+		// One divergence with a registered tolerance and one without, so the report has to
+		// render both the tolerance and the "exact" cases.
 		let mut o = MaterializedView::empty();
 		o.insert(
 			key(vec![Value::utf8("TOKA"), Value::uint8(0u64)]),
@@ -507,42 +503,32 @@ mod tests {
 		let result = compare(&p, &o, &Tolerances::new().with("base_volume", 1e-9));
 		let report = result.format_failure(&["seed: 42".to_string()], 5);
 
-		// Header row contains all 5 column labels.
 		assert!(report.contains("column"), "{report}");
 		assert!(report.contains("oracle"), "{report}");
 		assert!(report.contains("operator"), "{report}");
 		assert!(report.contains("tol"), "{report}");
 		assert!(report.contains("diff"), "{report}");
 
-		// Float diff with leading sign.
 		assert!(report.contains("+1.5"), "missing +1.5 diff: {report}");
-		// Float column has the registered tolerance, not "exact".
 		assert!(report.contains("1e-9"), "missing 1e-9 tol: {report}");
 
-		// Int diff with leading sign.
 		assert!(report.contains("+1"), "missing +1 int diff: {report}");
-		// Int column with no registered tolerance shows "exact".
 		assert!(report.contains("exact"), "missing exact tol: {report}");
 
-		// Output key without type wrappers.
 		assert!(report.contains("TOKA, 0"), "key not stripped: {report}");
 		assert!(!report.contains("Utf8(\"TOKA\")"), "Utf8 wrapper leaked: {report}");
 		assert!(!report.contains("Uint8(0)"), "Uint8 wrapper leaked: {report}");
 
-		// No Float8/OrderedF64 wrappers in body.
 		assert!(!report.contains("Float8("), "Float8 wrapper leaked: {report}");
 		assert!(!report.contains("OrderedF64"), "OrderedF64 wrapper leaked: {report}");
 	}
 
 	#[test]
 	fn format_diff_handles_absent_and_non_numeric() {
-		// Absent on one side -> "--".
 		assert_eq!(format_diff(&None, &Some(Value::float8(1.0_f64))), "--");
 		assert_eq!(format_diff(&Some(Value::float8(1.0_f64)), &None), "--");
-		// Numeric subtraction.
 		assert_eq!(format_diff(&Some(Value::float8(10.0_f64)), &Some(Value::float8(7.5_f64))), "-2.5");
 		assert_eq!(format_diff(&Some(Value::uint4(5u32)), &Some(Value::uint4(8u32))), "+3");
-		// Non-numeric differing.
 		assert_eq!(format_diff(&Some(Value::utf8("a")), &Some(Value::utf8("b"))), "(differs)");
 	}
 

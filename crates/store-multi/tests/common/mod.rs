@@ -43,14 +43,9 @@ use reifydb_testing::testscript;
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 use testscript::command::Command;
 
-/// Shared testscript runner used by every per-backend test binary
-/// (memory / sqlite / tiered / tiered_snapshot).
-///
-/// `auto_flush`:
-/// - `true` (default via `from_store` and `new`): every committing command is followed by `flush_pending_blocking()`.
-///   Used by memory/sqlite/tiered parity tests where reads must always see the latest commits in persistent.
-/// - `false` (via `from_store_no_auto_flush`): commits do not implicitly flush; the explicit `flush` testscript command
-///   is the only way to move data into persistent. Used by the tier-snapshot defect-hunting suite.
+/// Shared testscript runner for every per-backend test binary. With `auto_flush` each committing command
+/// is followed by `flush_pending_blocking()`; without it the explicit `flush` command is the only way to
+/// move data into persistent, which is what lets a script control flush timing precisely.
 pub struct Runner {
 	pub store: StandardMultiStore,
 	pub version: CommitVersion,
@@ -58,11 +53,8 @@ pub struct Runner {
 }
 
 impl Runner {
-	/// Buffer-only constructor (memory or sqlite buffer, no persistent).
-	///
-	/// Each integration test binary compiles its own copy of `common`; this
-	/// constructor is only consumed by `store_multi.rs`, so other binaries
-	/// see it as unused.
+	/// Buffer-only constructor (no persistent tier). Each test binary compiles its own copy of `common`
+	/// and only `store_multi.rs` consumes this, so the others see it as dead code.
 	#[allow(dead_code)]
 	pub fn new(storage: MultiCommitBufferTier) -> Self {
 		let pools = Pools::new(PoolConfig::default());
@@ -94,8 +86,7 @@ impl Runner {
 		}
 	}
 
-	/// Reuse an externally built store WITHOUT auto-flush. Used by the
-	/// tier-snapshot suite to control flush timing precisely.
+	/// Reuse an externally built store without auto-flush, leaving flush timing to the script.
 	#[allow(dead_code)]
 	pub fn from_store_no_auto_flush(store: StandardMultiStore) -> Self {
 		Self {
@@ -462,13 +453,8 @@ impl testscript::runner::Runner for Runner {
 	}
 }
 
-/// A constant eviction cutoff injected by the `watermark` testscript command.
-///
-/// Mirrors the `StaticWatermark` used by the store-multi unit/integration tests:
-/// the store reads this through the `EvictionWatermark` trait when the flush actor
-/// sweeps, so a script can pin the cutoff `W` before issuing `flush`. The store
-/// stores the watermark in a `OnceLock`, so a single `watermark` command per script
-/// is what takes effect.
+/// Constant eviction cutoff injected by the `watermark` testscript command, letting a script pin W before
+/// issuing `flush`. The store keeps it in a `OnceLock`, so only the first `watermark` per script takes effect.
 struct FixedWatermark(CommitVersion);
 
 impl EvictionWatermark for FixedWatermark {

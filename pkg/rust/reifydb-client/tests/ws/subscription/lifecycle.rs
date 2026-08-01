@@ -30,13 +30,10 @@ fn test_no_changes_after_unsubscribe() {
 			.await
 			.unwrap();
 
-		// Unsubscribe
 		client.unsubscribe(&sub_id).await.unwrap();
 
-		// Insert data after unsubscribe
 		client.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
 
-		// Should NOT receive any change
 		let change = recv_with_timeout(&mut client, 500).await;
 		assert!(change.is_none(), "Should NOT receive changes after unsubscribe");
 
@@ -65,7 +62,6 @@ fn test_close_cleans_up_subscriptions() {
 			.await
 			.unwrap();
 
-		// Close without explicit unsubscribe - should not panic
 		client.close().await.unwrap();
 	});
 
@@ -86,7 +82,6 @@ fn test_rapid_subscribe_unsubscribe() {
 		let table = unique_table_name("sub_rapid");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		// Rapid subscribe/unsubscribe cycles
 		for _ in 0..10 {
 			let sub_id = client
 				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
@@ -95,7 +90,6 @@ fn test_rapid_subscribe_unsubscribe() {
 			client.unsubscribe(&sub_id).await.unwrap();
 		}
 
-		// Should still work after rapid cycles
 		let sub_id = client
 			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
 			.await

@@ -28,9 +28,8 @@ const NODE: FlowNodeId = FlowNodeId(1);
 const TTL_SECS: i64 = 60;
 const SPAN_MS: u64 = TTL_SECS as u64 * 1_000;
 const ARRIVAL_MS: u64 = 1_000;
-// A group is due once the cutoff clears the whole bucket it was stamped in, and the grid is the span
-// divided by BUCKETS_PER_HORIZON, so a sweep one grid width past the span is the first that reaches
-// an arrival at ARRIVAL_MS.
+// A group is due once the cutoff clears the whole bucket it was stamped in, so one grid width past
+// the span is the first sweep that reaches an arrival at ARRIVAL_MS.
 const SWEEP_MS: u64 = ARRIVAL_MS + SPAN_MS + SPAN_MS / 16;
 
 struct ProbeRow {
@@ -56,12 +55,9 @@ const PROBE_OUTPUT_COLUMNS: &[OperatorColumn] = &[
 	},
 ];
 
-/// A keyed guest that holds group-scoped state and reports whether each apply MINTED its row number
-/// or found one already there.
-///
-/// `is_new` is the whole point: it is the only signal that survives a sweep, and it is what decides
-/// whether an operator publishes an Insert or an Update. A guest that ignores it republishes over a
-/// row the sink is still holding.
+/// A keyed guest holding group-scoped state that reports whether each apply minted its row number
+/// or found one already there. `is_new` is the only signal surviving a sweep, and it decides
+/// whether the operator publishes an Insert or an Update over a row the sink is still holding.
 struct KeyedCounter;
 
 impl OperatorMetadata for KeyedCounter {
@@ -151,10 +147,9 @@ fn is_new_of(change: &reifydb_core::interface::change::Change) -> Vec<i64> {
 
 #[test]
 fn a_guest_whose_data_was_reclaimed_still_finds_the_row_number_it_published_under() {
-	// The sweep runs the data phase and, with no sink row ttl declared, never runs the identity
-	// phase at all - so a guest routinely wakes with its accumulator gone and the mapping that names
-	// its published row still in place. `is_new` false is the operator's only way to know that, and
-	// the only thing standing between it and a second row published over a live one.
+	// With no sink row ttl declared the sweep runs the data phase but never the identity phase, so a
+	// guest wakes with its accumulator gone and the mapping naming its published row still there.
+	// `is_new` false is the only thing between it and a second row published over a live one.
 	let mut harness = Harness::guest(KeyedCounter, NODE, OperatorCapability::STANDARD_WITH_RECLAIM, Some(ttl()))
 		.with_activity_grid();
 
@@ -175,11 +170,9 @@ fn a_guest_whose_data_was_reclaimed_still_finds_the_row_number_it_published_unde
 
 #[test]
 fn a_guest_that_declares_no_retention_is_never_swept() {
-	// The 17 chaindex operators that advertise Reclaim without sealing on anything of their own get
-	// their entire retention from the view's `with { ttl: .. }`. Drop it and the node is not merely
-	// slower to reclaim, it is skipped outright and counted perpetual while its state grows - which
-	// reads as healthy everywhere except the state size itself. Same operator as above, same sweep,
-	// ttl removed.
+	// An operator that advertises Reclaim without sealing on anything of its own draws all its
+	// retention from the view's `with { ttl: .. }`. Without one the node is not merely slower to
+	// reclaim - it is skipped outright and counted perpetual while its state grows.
 	let mut harness = Harness::guest(KeyedCounter, NODE, OperatorCapability::STANDARD_WITH_RECLAIM, None)
 		.with_activity_grid();
 

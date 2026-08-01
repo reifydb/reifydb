@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Workspace-wide value system. Defines the `Value` enum every column carries, the `ValueType` enum that classifies it,
-//! the `Constraint` family that narrows a type (max-bytes, precision-scale, optional), and the per-primitive
-//! representations - integers, unsigned integers, decimals, floats, blobs, booleans, temporals, UUIDs, JSON,
-//! identity ids, and row numbers - that those variants wrap.
-//!
-//! The variants, their order, and their on-the-wire shape are stable. Adding a variant is a coordinated
-//! workspace change that lands together with `wire-format` and the storage encoders; rearranging existing
-//! variants silently corrupts persisted data.
+//! Workspace-wide value system: the `Value` enum every column carries, the `ValueType` that classifies
+//! it, and the `Constraint` family that narrows a type. Variant order is part of the wire format -
+//! adding one is a coordinated change and rearranging existing ones corrupts persisted data.
 
 use std::{
 	cmp::Ordering,
@@ -664,8 +659,6 @@ mod tests {
 		uuid::{Uuid4, Uuid7},
 	};
 
-	// Happy path - one per numeric type
-
 	#[test]
 	fn to_usize_uint1() {
 		assert_eq!(Value::uint1(42u8).to_usize(), Some(42));
@@ -741,8 +734,6 @@ mod tests {
 		assert_eq!(Value::Decimal(Decimal::from_i64(42)).to_usize(), Some(42));
 	}
 
-	// Edge cases & errors - negative numbers
-
 	#[test]
 	fn to_usize_int1_negative() {
 		assert_eq!(Value::int1(-1i8).to_usize(), None);
@@ -783,8 +774,6 @@ mod tests {
 		assert_eq!(Value::Int(Int::from_i64(-5)).to_usize(), None);
 	}
 
-	// Edge cases - zero boundary
-
 	#[test]
 	fn to_usize_zero() {
 		assert_eq!(Value::uint1(0u8).to_usize(), Some(0));
@@ -799,8 +788,6 @@ mod tests {
 	fn to_usize_float4_zero() {
 		assert_eq!(Value::float4(0.0f32).to_usize(), Some(0));
 	}
-
-	// Edge cases - non-numeric types return None
 
 	#[test]
 	fn to_usize_boolean_none() {
@@ -852,8 +839,6 @@ mod tests {
 		assert_eq!(Value::none().to_usize(), None);
 	}
 
-	// Edge cases - fractional truncation
-
 	#[test]
 	fn to_usize_float8_fractional() {
 		assert_eq!(Value::float8(3.7f64).to_usize(), Some(3));
@@ -864,15 +849,10 @@ mod tests {
 		assert_eq!(Value::Decimal(Decimal::from_str("3.7").unwrap()).to_usize(), Some(3));
 	}
 
-	// Value::PartialEq currently treats every Value::None { .. } as equal regardless of `inner`
-	// (see the `(Value::None { .. }, Value::None { .. }) => true` arm above). That is wrong:
-	// Option<Duration>::None and Option<Boolean>::None are different values, and Option<Duration>::None
-	// is different again from Option<Option<Duration>>::None. Code that round-trips a None through
-	// Any encoding (or compares config values) needs `==` to catch a lost/changed inner type instead
-	// of silently treating it as "the same None".
-
 	#[test]
 	fn test_none_with_same_inner_type_are_equal() {
+		// A none carries its inner type, so equality must compare it: a round trip through Any
+		// encoding relies on `==` catching an inner type that was lost or changed.
 		assert_eq!(Value::none_of(ValueType::Duration), Value::none_of(ValueType::Duration));
 	}
 
@@ -895,9 +875,7 @@ mod tests {
 
 	#[test]
 	fn test_value_every_arm_round_trips() {
-		// Every Value arm must survive archive -> access -> deserialize
-		// unchanged; a lossy arm silently corrupts persisted operator
-		// state built from that variant. All inputs fixed, no RNG.
+		// A lossy arm silently corrupts any persisted operator state built from that variant.
 		let values = vec![
 			Value::None {
 				inner: ValueType::Utf8,

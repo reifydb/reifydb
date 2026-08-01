@@ -975,12 +975,10 @@ pub mod tests {
 		let statements = parser.parse().unwrap();
 		assert_eq!(statements.len(), 2, "Should parse two separate statements");
 
-		// First statement should be the let assignment
 		let first_stmt = &statements[0];
 		assert_eq!(first_stmt.nodes.len(), 1);
 		assert!(matches!(first_stmt.nodes[0], Ast::Let(_)));
 
-		// Second statement should be the FROM
 		let second_stmt = &statements[1];
 		assert_eq!(second_stmt.nodes.len(), 1);
 		assert!(matches!(second_stmt.nodes[0], Ast::From(_)));

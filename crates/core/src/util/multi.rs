@@ -121,12 +121,10 @@ pub mod tests {
 	fn test_basic_operations() {
 		let multi = MultiVersionContainer::<Test>::new();
 
-		// Test empty state
 		assert!(multi.is_empty());
 		assert_eq!(multi.len(), 0);
 		assert!(multi.get_latest().is_none());
 
-		// Test insert
 		let def1 = Test {
 			name: "v1".to_string(),
 		};
@@ -134,12 +132,11 @@ pub mod tests {
 		assert!(!multi.is_empty());
 		assert_eq!(multi.len(), 1);
 
-		// Test get
+		// A read above the newest version resolves to that version, not to none.
 		assert_eq!(multi.get(1), Some(def1.clone()));
-		assert_eq!(multi.get(2), Some(def1.clone())); // Should return v1
+		assert_eq!(multi.get(2), Some(def1.clone()));
 		assert_eq!(multi.get_latest(), Some(def1.clone()));
 
-		// Test multiple versions
 		let def2 = Test {
 			name: "v2".to_string(),
 		};

@@ -10,11 +10,8 @@ use crate::{
 	workload::{SetupQuery, Workload},
 };
 
-/// Write workload - insert operations
-///
 /// Creates a table and performs sequential inserts.
 pub struct WriteWorkload {
-	/// Starting ID for inserts (after initial data)
 	next_id: AtomicU64,
 }
 

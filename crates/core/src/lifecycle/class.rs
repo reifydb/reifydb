@@ -233,16 +233,9 @@ mod tests {
 
 	#[test]
 	fn every_class_declares_a_floor_term_for_exactly_the_data_it_reclaims() {
-		// A class that reclaims versioned data and declares no floor deletes at head version: whatever it
-		// owns, it deletes immediately on write. That is never legitimate, so an empty term list is a
-		// construction error rather than a permissive default.
-		//
-		// The converse pins the exemption so it cannot be used as a hiding place. A class reclaiming only
-		// space already freed by other classes (vacuum relocating pages that are on the freelist) touches no
-		// row, version or tombstone, so no version bounds it and there is no honest term to name. Claiming
-		// one anyway would be a lie in the matrix and in the boot report, which is exactly what the other
-		// tests here exist to prevent. Deleting versioned data under that exemption is the failure this
-		// direction catches.
+		// A class reclaiming versioned data with no floor term deletes at head version. The converse
+		// pins the exemption: a class touching no row, version or tombstone has no honest term to
+		// name, and deleting versioned data under that exemption is what this direction catches.
 		for class in RetentionClass::all() {
 			if class.reclaims_versioned_data() {
 				assert!(
@@ -261,9 +254,7 @@ mod tests {
 	#[test]
 	fn both_group_phases_wait_for_the_flow_that_owns_the_state() {
 		// Group state belongs to one flow, and that flow may still hold unprocessed input that writes
-		// to the very group being reclaimed. Neither phase may run ahead of it, so both name the term.
-		// This is also the term that used to resolve to None, which is why it is asserted rather than
-		// assumed.
+		// to the very group being reclaimed, so neither phase may run ahead of it.
 		for class in [RetentionClass::OperatorGroupData, RetentionClass::OperatorGroupIdentity] {
 			assert!(
 				class.constrained_by(FloorTerm::OwningFlowCheckpoint),
@@ -274,15 +265,9 @@ mod tests {
 
 	#[test]
 	fn both_group_phases_bind_only_to_the_owning_flow() {
-		// The two phases used to bind to different version-anchored expiry terms - data to the
-		// operator horizon, identity to the row ttl. Both are gone: operator state now ages in event
-		// time off the flow watermark, so the only thing a version floor still has to protect is
-		// state the owning flow has not finished writing to.
-		// The lifetime difference that motivated the split did NOT go away, it moved: identity trails
-		// data by the longest sink ttl plus a bucket of slack, in the cutoffs rather than in the
-		// floor terms. That is asserted where it now lives, in seal_cutoffs.
-		// Mutation: give either class an expiry term back and it starts holding a version floor down
-		// for a horizon it no longer ages by.
+		// Operator state ages in event time off the flow watermark, so the only thing a version floor
+		// still protects is state the owning flow has not finished writing to. An expiry term here
+		// would hold a version floor down for a horizon the class no longer ages by.
 		for class in [RetentionClass::OperatorGroupData, RetentionClass::OperatorGroupIdentity] {
 			assert!(class.constrained_by(FloorTerm::OwningFlowCheckpoint));
 			assert!(!class.constrained_by(FloorTerm::OperatorExpiry));
@@ -302,10 +287,8 @@ mod tests {
 
 	#[test]
 	fn row_expiry_classes_are_not_hostage_to_readers_of_other_data() {
-		// This is the core of decision B3 and the fix for the incident that motivated it: a wedged CDC
-		// consumer or a leaked query lease used to freeze row expiry through one shared watermark. Row
-		// expiry is protected by MVCC-transactional discovery, not by those readers, so those terms must
-		// stay out of its floor.
+		// Row expiry is protected by MVCC-transactional discovery, not by these readers. Sharing one
+		// watermark with them lets a wedged CDC consumer or a leaked query lease freeze it.
 		for class in [RetentionClass::RowTtlSilent, RetentionClass::RowTtlAnnounced] {
 			assert!(
 				!class.constrained_by(FloorTerm::ConsumerCheckpoint),
@@ -324,11 +307,9 @@ mod tests {
 
 	#[test]
 	fn version_history_classes_respect_every_reader_of_a_snapshot() {
-		// Buffer history IS what a live reader resolves against: an in-flight query and a held lease
-		// must both be present. A lagging subscription no longer gets its own term: its batch lease
-		// (acquired at the oldest change version the batch needs) rides the LeaseMin term, and
-		// between batches an overtaken worker is detected at lease acquire (TXN_012) and resyncs
-		// instead of pinning history unboundedly.
+		// Buffer history is what a live reader resolves against, so an in-flight query and a held
+		// lease must both be present. A lagging subscription rides LeaseMin through its batch lease
+		// rather than holding a term of its own.
 		let class = RetentionClass::BufferHistoricalGc;
 
 		for term in [FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin] {
@@ -342,10 +323,9 @@ mod tests {
 
 	#[test]
 	fn a_lagging_subscription_must_not_pin_buffer_history_between_batches() {
-		// The old SubscriptionSnapshot term let a lagging subscription worker pin buffer history
-		// without bound - the exact slow-consumer stall the consumer-class split removes. Ephemeral
-		// readers protect their in-flight batch with a lease (LeaseMin) and are otherwise overtaken
-		// loudly: a failed lease acquire triggers a resync, never a silent read of reclaimed history.
+		// An ephemeral reader protects its in-flight batch with a lease and is otherwise overtaken
+		// loudly: a failed acquire triggers a resync, never a silent read of reclaimed history. A
+		// term of its own would let a lagging worker pin buffer history without bound.
 		assert!(
 			!RetentionClass::BufferHistoricalGc.constrained_by(FloorTerm::ConsumerCheckpoint),
 			"a CDC log consumer reads cdc.db, not buffer history, and must not pin it"
@@ -356,14 +336,11 @@ mod tests {
 		);
 	}
 
-	// The commit buffer is RAM and is empty after a restart, so only a live reader can be harmed by
-	// flushing it; a durable checkpoint is a crash-recovery position, not a reader. cdc.db is the
-	// opposite: after a crash a flow resumes from its durable checkpoint, so CDC below that must
-	// survive even though no live reader is sitting there. Collapsing the two terms is what pinned
-	// the flush cutoff to the laziest flow's 10k-throttled durable checkpoint and left the buffer
-	// unable to drain while the system was idle.
 	#[test]
 	fn the_flush_floor_tracks_live_positions_while_cdc_truncation_tracks_durable_checkpoints() {
+		// The commit buffer is RAM and empty after a restart, so only a live reader can be harmed by
+		// flushing it. cdc.db is the opposite: a flow resumes from its durable checkpoint, so CDC below
+		// that must survive even with no live reader there. Collapsing the terms stalls buffer drain.
 		assert!(
 			RetentionClass::PersistentFlush.constrained_by(FloorTerm::ConsumerPosition),
 			"flushing the in-memory buffer may only be held back by a reader that is live now"
@@ -385,9 +362,8 @@ mod tests {
 
 	#[test]
 	fn cdc_truncation_is_pinned_only_by_its_consumers() {
-		// CDC genuinely must respect the slowest consumer - that term is correct here, unlike in row
-		// expiry. But it must not additionally inherit query or lease terms, or an unrelated stuck query
-		// would stop cdc.db from ever shrinking.
+		// CDC must respect the slowest consumer, but inheriting query or lease terms would let an
+		// unrelated stuck query stop cdc.db from ever shrinking.
 		let class = RetentionClass::CdcTruncate;
 
 		assert!(
@@ -406,9 +382,8 @@ mod tests {
 
 	#[test]
 	fn pending_drop_purges_wait_for_the_flush_that_could_resurrect_them() {
-		// The persistent tier is version-guarded single-version-per-key: purging a key whose superseding
-		// write has not flushed lets the stale flush write it back. That is the resurrection bug, and this
-		// term is the thing preventing it.
+		// The persistent tier is single-version-per-key, so purging a key whose superseding write has
+		// not flushed lets the stale flush resurrect it.
 		assert!(
 			RetentionClass::CompactionReclaim.constrained_by(FloorTerm::FlushWatermark),
 			"a pending drop purged before its flush is durable can be resurrected by that flush"
@@ -417,9 +392,8 @@ mod tests {
 
 	#[test]
 	fn the_epoch_log_is_bounded_by_the_longest_ttl_it_must_still_answer() {
-		// Pruning epoch samples below the longest declared ttl would make that ttl unresolvable: the cutoff
-		// silently becomes none and the data it governs never expires. That is the original defect, so the
-		// horizon term is what keeps the epoch log from re-creating it.
+		// Pruning epoch samples below the longest declared ttl makes that ttl unresolvable: the cutoff
+		// silently becomes none and the data it governs never expires.
 		assert!(
 			RetentionClass::EpochLog.constrained_by(FloorTerm::RetentionHorizon),
 			"pruning epoch samples inside the retention horizon would make long ttls unresolvable"

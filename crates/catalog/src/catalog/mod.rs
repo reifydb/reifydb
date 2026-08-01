@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Per-object-type catalog operations: every kind of catalog object has a sibling module here that knows how to
-//! create, look up, list, modify, and delete instances of that object. Each follows the same shape - admin-only
-//! mutations, transactional reads, name-and-id resolution - so adding a new catalog object kind is mostly a
-//! mechanical exercise.
-//!
-//! Resolution lives next to the object modules so qualified-name lookup, dictionary lookup, and id-to-object
-//! lookup share a single set of helpers; reaching for those helpers from outside this module keeps name resolution
-//! consistent across DDL, DML, and admin paths.
+//! Per-object-type catalog operations, one sibling module per object kind, each in the same shape:
+//! admin-only mutations, transactional reads, name-and-id resolution. Resolution lives here rather
+//! than in callers so DDL, DML and admin paths all resolve names through one set of helpers.
 
 pub mod authentication;
 pub mod binding;

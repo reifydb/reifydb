@@ -35,11 +35,8 @@ use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_
 
 #[test]
 fn an_operator_that_declares_reclaim_reaches_the_host_with_it() {
-	// A group-scoped operator declares Reclaim in its own capability list, and that list is
-	// the whole truth the host loads. If the bit were lost on the way into the descriptor,
-	// reclaim_flow would skip the node and count it perpetual while its state grew - the leak
-	// this work item closes, and invisible because the operator's source would still look
-	// correct. TestVolume mirrors the 46 chaindex aggregators that now declare it.
+	// The descriptor's capability list is the whole truth the host loads: losing the bit there
+	// makes reclaim_flow skip the node while the operator's source still looks correct.
 	assert!(TestVolume::CAPABILITIES.contains(&OperatorCapability::Reclaim));
 
 	let descriptor = create_descriptor::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>();
@@ -50,10 +47,8 @@ fn an_operator_that_declares_reclaim_reaches_the_host_with_it() {
 	);
 }
 
-// An invertible volume aggregator. Its accumulator keeps only running
-// Moments (no per-slot map): Insert adds, Update is routed by the driver
-// as remove(pre)+add(post), Remove subtracts. This is the case the old
-// per-slot map existed to handle and that the pre/post diff now subsumes.
+// An invertible volume aggregator holding only running moments: the driver routes an Update
+// as remove(pre)+add(post), so no per-slot map is needed to undo a contribution.
 
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, Default, HeapSize)]
@@ -144,10 +139,9 @@ fn millis(value: u64) -> Duration {
 	Duration::from_milliseconds_const(value as i64)
 }
 
-// TestVolume with sealing enabled: 60ms windows + 60ms grace, so windows seal once the
-// frontier moves more than 120ms past their start. The coordinate is a DateTime rather than a
-// bare u64 because the frontier is built from the seal ledger and the flow watermark, both of
-// which are instants - a u64 coordinate carries no unit that either can be compared against.
+// Sealing variant: 60ms windows plus 60ms grace. The coordinate is a DateTime because the
+// frontier comes from the seal ledger and the flow watermark, both instants; a bare u64 would
+// carry no unit either could be compared against.
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, Default)]
 struct SealedVolume;
@@ -197,10 +191,8 @@ impl TumblingRegistration for SealedVolume {
 	}
 }
 
-// A removal-safe minimum aggregator over an ordered multiset. Demonstrates
-// the non-invertible family: an Update that replaces the current minimum
-// with a larger value must raise the window minimum, which a scalar
-// running-min could not do.
+// The non-invertible family: an Update replacing the current minimum with a larger value has
+// to raise the window minimum, which a scalar running-min cannot do.
 
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, Default, HeapSize)]
@@ -319,9 +311,7 @@ fn single_insert_emits_insert() {
 
 #[test]
 fn update_applies_post_minus_pre_no_double_count() {
-	// The crux of the redesign: an Update carries pre=10, post=25.
-	// The driver routes it as remove(10)+add(25) on a running sum,
-	// yielding 25 - not 10 + 25 = 35 - with NO per-slot map.
+	// An update routed as remove(pre)+add(post) lands on 25; folding only post would give 35.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
 		.build()
 		.expect("harness");
@@ -340,9 +330,8 @@ fn update_applies_post_minus_pre_no_double_count() {
 
 #[test]
 fn two_contributions_then_remove_subtracts_pre() {
-	// Two distinct slots in one window sum to 15; a Remove carrying
-	// pre=5 subtracts that contribution, leaving 10. No slot key is
-	// needed - the diff's pre value is what gets subtracted.
+	// The diff's pre value is what gets subtracted, so no per-slot key is needed to find the
+	// contribution being withdrawn.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
 		.build()
 		.expect("harness");
@@ -362,10 +351,8 @@ fn two_contributions_then_remove_subtracts_pre() {
 
 #[test]
 fn remove_clears_window_emits_remove() {
-	// An emptied window emits a Remove of its previously emitted aggregate
-	// row, so a downstream consumer withdraws the stale row instead of
-	// leaking it. The accumulator is empty (finalize returns None); the
-	// engine carries the prior value so the driver can emit the Remove.
+	// The accumulator finalizes to nothing, so the prior value has to come from the engine for
+	// the driver to withdraw the stale row instead of leaking it.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
 		.build()
 		.expect("harness");
@@ -397,11 +384,8 @@ fn boundary_slot_belongs_to_next_window() {
 
 #[test]
 fn late_event_for_sealed_window_dropped() {
-	// Grace semantics: SealedVolume seals windows whose start falls more
-	// than seal_after (window 60 + grace 60 = 120) behind the routed
-	// watermark. Advancing to window 180 seals window 0; a late insert for
-	// it must be dropped. An ungated driver (TestVolume) accepts the same
-	// late insert - covered by late_event_without_sealing_is_accepted.
+	// A window seals once the watermark passes start + seal_after, and a sealed window must
+	// refuse further inserts rather than reopen.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
 		.build()
 		.expect("harness");
@@ -413,11 +397,9 @@ fn late_event_for_sealed_window_dropped() {
 
 #[test]
 fn late_event_within_grace_is_accepted() {
-	// Window 0 stays mutable while the watermark has not passed start + seal_after: with the
-	// watermark at 120 (== 0 + 120), the boundary is inclusive on the mutable side. The watermark
-	// has to be advanced explicitly, because arrival no longer moves the frontier - without it the
-	// frontier sits at the epoch and this would assert acceptance against a gate that never closes,
-	// which is true for any boundary rule and so tests none of them.
+	// The boundary is inclusive on the mutable side: at watermark == start + seal_after the
+	// window is still open. The watermark must be advanced explicitly, or the gate never
+	// closes and the assertion would hold under any boundary rule.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
 		.build()
 		.expect("harness");
@@ -431,11 +413,9 @@ fn late_event_within_grace_is_accepted() {
 
 #[test]
 fn a_gated_driver_admits_a_late_event_while_the_watermark_has_not_moved() {
-	// The state the seal-on-timer design introduced: the frontier is the seal ledger merged with
-	// the flow watermark, so a gated driver whose flow has not reported progress has nothing to
-	// measure lateness against and must accept the row. Arrival alone used to advance the frontier,
-	// which is what made a guest window with a stopped feed never seal. If this ever starts
-	// dropping, the frontier is being derived from the batch again.
+	// The frontier comes from the seal ledger and the flow watermark, not from arrivals, so a
+	// flow that has reported no progress has nothing to measure lateness against. If this ever
+	// starts dropping, the frontier is being derived from the batch again.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
 		.build()
 		.expect("harness");
@@ -449,8 +429,8 @@ fn a_gated_driver_admits_a_late_event_while_the_watermark_has_not_moved() {
 
 #[test]
 fn late_event_without_sealing_is_accepted() {
-	// With seal_after = None (the default) there is no gate: drivers accept
-	// arbitrarily late mutations and state lives until the operator TTL.
+	// Without a gate, drivers accept arbitrarily late mutations and state lives until the
+	// operator TTL.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
 		.build()
 		.expect("harness");
@@ -461,14 +441,9 @@ fn late_event_without_sealing_is_accepted() {
 
 #[test]
 fn remove_within_grace_is_applied_and_sealed_remove_is_dropped() {
-	// Grace is the single mutability horizon for every mutation kind: a
-	// retraction (reorg correction) is honored while the window is open or
-	// within grace, and dropped once the window seals - the sealed value is
-	// final by contract. Window 0 holds 15; a remove at watermark 60 (well
-	// inside start + seal_after = 120) subtracts, leaving 10. Advancing the
-	// watermark to 240 seals window 0 and reclaims its state; a further
-	// remove is dropped and emits nothing, leaving the last published value
-	// untouched.
+	// Grace is the single mutability horizon for every mutation kind, retractions included: a
+	// remove is honored while the window is open and dropped once it seals, because the sealed
+	// value is final by contract.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
 		.build()
 		.expect("harness");
@@ -514,10 +489,8 @@ fn multiple_groups_isolate_state() {
 
 #[test]
 fn min_update_replacing_minimum_raises_window_min() {
-	// The removal-safe multiset case: window holds {5, 8, 6}, min = 5.
-	// An Update replacing the 5 with 10 must raise the min to 6. A
-	// running scalar min cannot do this; the multiset remove(5)+add(10)
-	// leaves {6, 8, 10}.
+	// Raising the minimum away is what a running scalar min cannot do; the multiset has to
+	// surface the next-smallest value instead.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestMin>>>::new()
 		.build()
 		.expect("harness");
@@ -542,13 +515,8 @@ fn min_update_replacing_minimum_raises_window_min() {
 
 #[test]
 fn sealing_frees_window_state_from_the_store() {
-	// Sealing must reclaim the sealed window's accumulator state, not
-	// just gate its mutations: state left behind is only reaped by the
-	// wall-clock operator-state TTL backstop, which the paced jupiter
-	// replay showed retaining hours of sealed windows. Window 0 is
-	// created, then an insert at 240 moves the watermark so the seal
-	// horizon (240 - 120) passes window 0: at least one of its store
-	// keys must be gone afterwards.
+	// Sealing has to reclaim the window's accumulator state, not just gate its mutations;
+	// state left behind is only reaped by the wall-clock operator-state TTL backstop.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<SealedVolume>>>::new()
 		.build()
 		.expect("harness");
@@ -560,8 +528,7 @@ fn sealing_frees_window_state_from_the_store() {
 	let freed = before.keys().filter(|k| !after.contains_key(*k)).count();
 	assert!(freed > 0, "sealing window 0 must remove its accumulator state from the store");
 
-	// Control: without seal_after, ordinary apply churn must never
-	// remove a key - reclamation may only come from the seal sweep.
+	// Control: reclamation may only come from the seal sweep, never from ordinary apply churn.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>::new()
 		.build()
 		.expect("harness");
@@ -574,8 +541,7 @@ fn sealing_frees_window_state_from_the_store() {
 
 #[test]
 fn min_remove_duplicate_keeps_value_until_last_removed() {
-	// Two events share value 5. Removing one occurrence must keep the
-	// min at 5 (the multiset still holds one 5).
+	// Removing one of two equal values must not evict the value itself from the multiset.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingDriver<TestMin>>>::new()
 		.build()
 		.expect("harness");

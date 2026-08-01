@@ -3,9 +3,8 @@
 
 use crate::common::{Row, normalize, random_rows, run_path_incremental, run_path_snapshot};
 
-// `take N` is a sliding window of the most recent N rows by arrival. Each new row is admitted;
-// when the window is full, the oldest in-window arrival is evicted. Both bulk-hydrate (snapshot)
-// and incremental (CDC) ingest paths must converge on the same final sink state.
+// `take N` keeps the most recent N rows by arrival, evicting the oldest in-window arrival once full. The
+// bulk-hydrate and incremental ingest paths must converge on the same final sink state.
 
 #[test]
 fn smoke_empty_log_take() {
@@ -15,10 +14,10 @@ fn smoke_empty_log_take() {
 	assert!(a.is_empty(), "empty input should produce empty sink output, got {:?}", a);
 }
 
-// 6 rows feed `take 5`. With monotonic insert order, arrival-order matches RowNumber order, so
-// the first-inserted row is the oldest arrival and is the one evicted.
 #[test]
 fn take_emits_newest_n_rows() {
+	// Monotonic insert order makes arrival order match RowNumber order, so the first-inserted of the six
+	// rows is the one evicted.
 	let rql = "from app::t | take 5";
 	let rows = vec![
 		Row {

@@ -33,9 +33,8 @@ impl Workload for WindowWorkload {
 	type Row = WindowRow;
 
 	fn sample(&self, rng: &mut StdRng, number: RowNumber) -> WindowRow {
-		// Group, then coordinate, then value: this order and this count of draws are what the pinned
-		// window regressions were recorded against. Changing either shifts every later operation in
-		// the corpus.
+		// The order and count of draws are what the pinned regressions were recorded against;
+		// changing either shifts every later operation in the corpus.
 		WindowRow {
 			number,
 			group: rng.random_range(1..=self.groups),

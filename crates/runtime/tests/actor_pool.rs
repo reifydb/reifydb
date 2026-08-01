@@ -97,11 +97,10 @@ impl Actor for EchoActor {
 	}
 }
 
-// The Park re-check race: a message sent exactly while the actor transitions
-// SCHEDULED -> IDLE must still be processed. Runs many producers against a
-// single pinned worker; any lost wake shows up as processed < sent.
 #[test]
 fn lost_wake_stress() {
+	// A message sent exactly as the actor transitions SCHEDULED -> IDLE must still be
+	// processed; a lost wake shows up as processed < sent.
 	let rt = runtime(1, 1, 1);
 	let processed = Arc::new(AtomicUsize::new(0));
 	let handle = rt.spawner().spawn_coordination(
@@ -139,10 +138,10 @@ fn lost_wake_stress() {
 	);
 }
 
-// A saturated flow group must never delay a coordination actor: the groups own
-// disjoint worker threads.
 #[test]
 fn group_isolation() {
+	// A saturated flow group must never delay a coordination actor; the groups own disjoint
+	// worker threads.
 	let rt = runtime(2, 2, 1);
 	let done = Arc::new(AtomicUsize::new(0));
 
@@ -204,10 +203,10 @@ impl Actor for SequenceActor {
 	}
 }
 
-// Per-actor ordering and mutual exclusion must hold even when idle workers
-// steal the actor between batches.
 #[test]
 fn ordering_and_mutual_exclusion_under_steal() {
+	// Per-actor ordering and mutual exclusion must survive an idle worker stealing the actor
+	// between batches.
 	let rt = runtime(4, 1, 1);
 
 	const PRODUCERS: usize = 4;
@@ -278,10 +277,9 @@ impl Actor for YieldingActor {
 	}
 }
 
-// Yield must re-enqueue at the worker's tail so a backlogged yielding actor
-// cannot monopolize its worker.
 #[test]
 fn yield_fairness() {
+	// Yield must re-enqueue at the worker's tail, or a backlogged yielding actor monopolizes it.
 	let rt = runtime(1, 1, 1);
 
 	let a_processed = Arc::new(AtomicUsize::new(0));
@@ -306,14 +304,13 @@ fn yield_fairness() {
 	assert!(drained < BACKLOG, "probe only ran after the yielding actor drained its whole backlog ({drained})");
 }
 
-// An idle sibling worker must steal queued actors from a busy worker in the
-// same group.
 #[test]
 fn steal_liveness() {
+	// An idle sibling worker must steal queued actors from a busy worker in the same group.
 	let rt = runtime(1, 2, 1);
 	let done = Arc::new(AtomicUsize::new(0));
 
-	// Round-robin pinning: a -> worker 0, b -> worker 1, c -> worker 0.
+	// Round-robin pinning puts a and c on worker 0 and b on worker 1.
 	let a = rt.spawner().spawn_flow(
 		"flow-a",
 		SleepActor {
@@ -346,15 +343,14 @@ fn steal_liveness() {
 	assert!(wait_until(Duration::from_secs(5), || done.load(Ordering::SeqCst) == 4));
 	let elapsed = start.elapsed();
 
-	// Without stealing worker 0 serializes a (600ms) then c (300ms) = 900ms;
-	// with stealing worker 1 takes c after b and everything completes in ~600ms.
+	// Without stealing worker 0 serializes a then c for ~900ms; the 800ms bound sits between
+	// that and the ~600ms a successful steal produces.
 	assert!(elapsed < Duration::from_millis(800), "steal did not happen: {elapsed:?}");
 }
 
-// Shutdown must drain worker queues, stop all actors, and join every worker
-// thread without hanging.
 #[test]
 fn shutdown_drains_and_joins() {
+	// Shutdown must drain queues, stop every actor and join every worker without hanging.
 	let rt = runtime(2, 2, 2);
 	let processed = Arc::new(AtomicUsize::new(0));
 
@@ -402,10 +398,10 @@ impl Actor for EphemeralActor {
 	}
 }
 
-// Ephemeral actors run request/response lifecycles on the task pool, side by
-// side with one-shot spawn_task closures.
 #[test]
 fn ephemeral_lifecycle_and_spawn_task() {
+	// Ephemeral actors share the task pool with one-shot spawn_task closures, so neither may
+	// starve the other.
 	let rt = runtime(1, 1, 2);
 	let pools = rt.handle().pools();
 

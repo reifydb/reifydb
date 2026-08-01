@@ -29,10 +29,8 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime},
 };
 
-/// Bundles every handle a TTL test needs: the maintenance task under test, storage, mock clock,
-/// materialized catalog (for setting `CDC_TTL_DURATION`), and event bus (for capturing eviction
-/// events). `run_slice` executes synchronously on the test thread, so storage-side assertions need
-/// no polling; only the async event bus is waited on.
+/// Handles for a ttl test. `run_slice` runs on the test thread, so storage assertions need no polling; only the
+/// async event bus is waited on.
 struct TtlFixture {
 	task: CdcTtlTask<MemoryCdcStorage, TestCdcHost>,
 	storage: MemoryCdcStorage,
@@ -43,8 +41,7 @@ struct TtlFixture {
 }
 
 impl TtlFixture {
-	/// Build a fresh fixture with the mock clock initialised to `initial_nanos`. Each test gets
-	/// its own `ActorSystem` (kept alive for the event bus) so tests stay isolated.
+	/// Each fixture owns its `ActorSystem`, kept alive for the event bus, so tests stay isolated.
 	fn new(initial_nanos: u64) -> Self {
 		let storage = MemoryCdcStorage::new();
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
@@ -67,8 +64,7 @@ impl TtlFixture {
 		}
 	}
 
-	/// Run one full cleanup cycle: drain every TTL-eligible entry up to the watermark cap, exactly
-	/// as one periodic maintenance pass (a `run_slice` loop to `Exhausted`) would.
+	/// Drains to `Exhausted`, the way one periodic maintenance pass does.
 	fn cleanup(&mut self) {
 		while self.task.run_slice().is_yielded() {}
 	}
@@ -119,8 +115,8 @@ impl EventListener<CdcEvictedEvent> for EvictionRecorder {
 
 #[test]
 fn ttl_unset_does_not_evict_anything() {
-	// Default config => CdcTtlDuration is the typed-null Value::None => the cleanup pass
-	// must be a no-op even after the clock jumps forward by an hour.
+	// With no ttl configured CdcTtlDuration is none, so the cleanup pass must stay a no-op even after the
+	// clock jumps forward by an hour.
 	let mut f = TtlFixture::new(1_000_000_000);
 	write_cdc(&f.storage, 1, 100);
 	write_cdc(&f.storage, 2, 200);
@@ -155,7 +151,7 @@ fn ttl_keeps_all_when_every_entry_is_within_cutoff() {
 	write_cdc(&f.storage, 1, 8_000_000_000); // t = 8 s
 	write_cdc(&f.storage, 2, 9_000_000_000); // t = 9 s
 
-	// cutoff = now - 60 s = -50 s (saturated to 0). All entries are >= 0 → kept.
+	// cutoff = now - 60 s = -50 s (saturated to 0). All entries are >= 0 -> kept.
 	f.cleanup();
 
 	assert_eq!(f.storage.min_version().unwrap(), Some(CommitVersion(1)));
@@ -216,24 +212,24 @@ fn ttl_progressive_eviction_as_clock_advances() {
 	write_cdc(&f.storage, 2, 5_000_000_000); // t = 5 s
 	write_cdc(&f.storage, 3, 10_000_000_000); // t = 10 s
 
-	// Pass 1: now = 8 s, cutoff = -2 s (saturated to 0). Nothing < 0 → keep all.
+	// Pass 1: now = 8 s, cutoff = -2 s (saturated to 0). Nothing < 0 -> keep all.
 	f.mock.advance_secs(8);
 	f.cleanup();
 	assert_eq!(f.storage.min_version().unwrap(), Some(CommitVersion(1)));
 
-	// Pass 2: now = 12 s, cutoff = 2 s. Only v1 (t = 0) is older → drop v1.
+	// Pass 2: now = 12 s, cutoff = 2 s. Only v1 (t = 0) is older -> drop v1.
 	f.mock.advance_secs(4);
 	f.cleanup();
 	assert!(f.storage.read(CommitVersion(1)).unwrap().is_none());
 	assert!(f.storage.read(CommitVersion(2)).unwrap().is_some());
 
-	// Pass 3: now = 17 s, cutoff = 7 s. v2 (t = 5 s) becomes eligible → drop v2.
+	// Pass 3: now = 17 s, cutoff = 7 s. v2 (t = 5 s) becomes eligible -> drop v2.
 	f.mock.advance_secs(5);
 	f.cleanup();
 	assert!(f.storage.read(CommitVersion(2)).unwrap().is_none());
 	assert!(f.storage.read(CommitVersion(3)).unwrap().is_some());
 
-	// Pass 4: now = 25 s, cutoff = 15 s. v3 (t = 10 s) becomes eligible too → drop v3.
+	// Pass 4: now = 25 s, cutoff = 15 s. v3 (t = 10 s) becomes eligible too -> drop v3.
 	f.mock.advance_secs(8);
 	f.cleanup();
 	assert_eq!(f.storage.min_version().unwrap(), None);
@@ -241,9 +237,8 @@ fn ttl_progressive_eviction_as_clock_advances() {
 
 #[test]
 fn ttl_emits_evicted_event_with_correct_cutoff() {
-	// Evictions should produce a CdcEvictedEvent whose `version` is the first kept version
-	// (i.e. the cutoff that was passed to `drop_before`) and whose `entries` lists the
-	// dropped storage rows.
+	// The event's `version` is the first KEPT version - the cutoff handed to `drop_before` - and `entries`
+	// lists the dropped storage rows.
 	let mut f = TtlFixture::new(20_000_000_000); // now = 20 s
 	set_ttl_secs(&f.catalog, 10); // cutoff = 10 s
 	write_cdc(&f.storage, 1, 5_000_000_000); // drop
@@ -282,8 +277,8 @@ fn ttl_does_not_emit_event_when_nothing_is_evicted() {
 
 #[test]
 fn ttl_setting_zero_duration_is_rejected_by_catalog() {
-	// Sanity check that the validate hook is wired in - the catalog rejects zero TTLs at
-	// the set_config boundary, so a misconfigured operator never reaches the task.
+	// The catalog rejects a zero ttl at the set_config boundary, so a misconfigured operator never reaches
+	// the task.
 	let catalog = CatalogCache::new();
 	let zero = Value::duration_seconds(0);
 	let err = catalog.set_config(ConfigKey::CdcTtlDuration, CommitVersion(1), zero).unwrap_err();

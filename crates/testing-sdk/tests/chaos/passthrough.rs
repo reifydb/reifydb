@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Must-match scenarios. A correct (passthrough) operator paired with the
-//! identity oracle has to agree on the materialized output table for every
-//! valid `Scenario`. If any of these fail, the harness has a bug -
-//! tighten the harness, do not loosen the test.
+//! A passthrough operator paired with the identity oracle has to agree on the materialized
+//! output table for every valid `Scenario`. A failure here is a harness bug: tighten the
+//! harness, do not loosen the test.
 //!
-//! Each `chaos_test!` expands to N separate `#[test]` cases (`make test-chaos
-//! N=`, default 32), one per index; each draws a fresh random seed per run
-//! unless `SEED` pins it. A failure reports its seed for replay (`make
-//! test-chaos SEED=... FILTER=...`).
+//! A failure reports its seed; replay with `make test-chaos SEED=... FILTER=...`.
 
 use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_testing_macro::chaos_test;
@@ -57,7 +53,6 @@ chaos_test!(passthrough_matches_under_insert_only, |seed| {
 		.expect("build")
 		.run();
 	outcome.assert_matches();
-	// Sanity: every event under insert_only must be Insert.
 	assert!(outcome.events().all(|e| e.is_insert()), "non-insert under insert_only");
 });
 
@@ -98,9 +93,8 @@ chaos_test!(passthrough_matches_under_no_update, |seed| {
 });
 
 chaos_test!(passthrough_matches_with_chaos_primitives_at_high_probability, |seed| {
-	// duplicate-burst at 0.6 + rewrite at 0.4: most Updates get rewritten or
-	// duplicated. Passthrough must still match the identity oracle because
-	// both rewrites are equivalent at the materialized-table level.
+	// Both primitives high enough that most Updates get rewritten or duplicated; both are
+	// equivalent at the materialized-table level, so the oracle must not move.
 	let outcome = ChaosHarness::<PassthroughOperator>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())

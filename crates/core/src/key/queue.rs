@@ -74,29 +74,27 @@ mod tests {
 
 	use super::*;
 
-	/// Encode/decode must round-trip: a queue def row is addressed by this key
-	/// alone, so a broken codec silently orphans every definition.
 	#[test]
 	fn test_encode_decode_roundtrip() {
+		// A queue def row is addressed by this key alone, so a broken codec orphans every definition.
 		let encoded = QueueKey::encoded(QueueId(42));
 		let decoded = QueueKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.queue, QueueId(42));
 	}
 
-	/// The kind byte guards the key family: decoding a foreign key must fail
-	/// rather than reinterpret its payload as a queue id.
 	#[test]
 	fn test_decode_rejects_foreign_kind() {
+		// The kind byte guards the family: a foreign key must fail rather than have its payload
+		// reinterpreted as a queue id.
 		let mut serializer = KeySerializer::with_capacity(9);
 		serializer.extend_u8(KeyKind::NamespaceQueue as u8).extend_u64(7u64);
 		assert!(QueueKey::decode(&serializer.to_encoded_key()).is_none());
 	}
 
-	/// Keys are stored bitwise-inverted, so lexicographic byte order runs
-	/// opposite to the logical value; that is why the range ends at KIND - 1.
-	/// Getting the bound backwards makes list_queues silently return nothing.
 	#[test]
 	fn test_full_scan_brackets_every_queue_key() {
+		// Keys are stored bitwise-inverted, so byte order runs opposite to the logical value; that is
+		// why the range ends at KIND - 1. Reversing the bound makes list_queues return nothing.
 		let range = QueueKey::full_scan();
 
 		let Bound::Included(start) = &range.start else {
@@ -119,10 +117,10 @@ mod tests {
 		}
 	}
 
-	/// A neighbouring key family must never land inside the queue scan range,
-	/// or a full scan would decode foreign rows as queue definitions.
 	#[test]
 	fn test_full_scan_excludes_the_neighbouring_kind() {
+		// A neighbouring key family inside the range would let a full scan decode foreign rows as
+		// queue definitions.
 		let range = QueueKey::full_scan();
 		let Bound::Included(start) = &range.start else {
 			panic!("expected an included start bound")

@@ -337,11 +337,9 @@ pub mod tests {
 		cmd.commit_unchecked().unwrap()
 	}
 
-	// Framed exactly as an operator composes its keys. A bare byte string would encode as some other
-	// group's prefix, which `assert_framed` rejects: these tests exercise the state surface, so they
-	// must address it the way production does or they would be asserting against keys reclamation
-	// could prefix-delete.
 	fn make_key(s: &str) -> StateKey {
+		// Framed as an operator composes its keys. A bare byte string encodes as some other group's
+		// prefix, so these tests would assert against keys reclamation could prefix-delete.
 		OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, s.as_bytes())
 	}
 
@@ -372,10 +370,8 @@ pub mod tests {
 		let key = make_key("state_key");
 		let value = make_value("state_value");
 
-		// Set state
 		txn.state_set(node_id, &key, value.clone()).unwrap();
 
-		// Get state back
 		let result = txn.state_get(node_id, &key).unwrap();
 		assert_eq!(result, Some(value));
 	}
@@ -395,10 +391,8 @@ pub mod tests {
 		txn.state_set(node_id, &make_key("a"), make_value("1")).unwrap();
 		txn.state_set(node_id, &make_key("b"), make_value("2")).unwrap();
 
-		// One namespace, so re-writing a key resolves to the latest value. This assertion used to
-		// read the other way round: the two envelopes each kept their own "a", and the point of
-		// the test was that neither leaked into the other's batch read. Re-splitting them would
-		// return two rows for "a" here and fail.
+		// One namespace, so re-writing a key resolves to the latest value; re-splitting the
+		// envelopes would return two rows for "a" here.
 		txn.state_set(node_id, &make_key("a"), make_value("data")).unwrap();
 
 		let batch = txn.state_get_many(node_id, &[make_key("a"), make_key("b"), make_key("missing")]).unwrap();
@@ -448,7 +442,6 @@ pub mod tests {
 		let key = make_key("state_key");
 		let value = make_value("state_value");
 
-		// Set then remove
 		txn.state_set(node_id, &key, value.clone()).unwrap();
 		assert_eq!(txn.state_get(node_id, &key).unwrap(), Some(value));
 
@@ -474,7 +467,6 @@ pub mod tests {
 		txn.state_set(node1, &key, make_value("node1_value")).unwrap();
 		txn.state_set(node2, &key, make_value("node2_value")).unwrap();
 
-		// Each node should have its own value
 		assert_eq!(txn.state_get(node1, &key).unwrap(), Some(make_value("node1_value")));
 		assert_eq!(txn.state_get(node2, &key).unwrap(), Some(make_value("node2_value")));
 	}
@@ -520,11 +512,9 @@ pub mod tests {
 		txn.state_set(node1, &make_key("key2"), make_value("value2")).unwrap();
 		txn.state_set(node2, &make_key("key3"), make_value("value3")).unwrap();
 
-		// Scan node1 should only return node1's state
 		let items: Vec<_> = txn.state_scan_all(node1).unwrap().items.into_iter().collect();
 		assert_eq!(items.len(), 2);
 
-		// Scan node2 should only return node2's state
 		let items: Vec<_> = txn.state_scan_all(node2).unwrap().items.into_iter().collect();
 		assert_eq!(items.len(), 1);
 	}
@@ -564,7 +554,6 @@ pub mod tests {
 		txn.state_set(node_id, &make_key("c"), make_value("3")).unwrap();
 		txn.state_set(node_id, &make_key("d"), make_value("4")).unwrap();
 
-		// Range query from "b" to "d" (exclusive)
 		let range = EncodedKeyRange::new(
 			Bound::Included(make_key("b").into_encoded()),
 			Bound::Excluded(make_key("d").into_encoded()),
@@ -572,7 +561,6 @@ pub mod tests {
 		let iter = txn.state_range_all(node_id, range).unwrap();
 		let items: Vec<_> = iter.items.into_iter().collect();
 
-		// Should only include "b" and "c"
 		assert_eq!(items.len(), 2);
 	}
 
@@ -593,13 +581,10 @@ pub mod tests {
 		txn.state_set(node_id, &make_key("key2"), make_value("value2")).unwrap();
 		txn.state_set(node_id, &make_key("key3"), make_value("value3")).unwrap();
 
-		// Verify state exists
 		assert_eq!(txn.state_scan_all(node_id).unwrap().items.into_iter().count(), 3);
 
-		// Clear all state
 		txn.state_clear(node_id).unwrap();
 
-		// Verify state is empty
 		assert_eq!(txn.state_scan_all(node_id).unwrap().items.into_iter().count(), 0);
 	}
 
@@ -621,13 +606,9 @@ pub mod tests {
 		txn.state_set(node1, &make_key("key2"), make_value("value2")).unwrap();
 		txn.state_set(node2, &make_key("key3"), make_value("value3")).unwrap();
 
-		// Clear node1
 		txn.state_clear(node1).unwrap();
 
-		// Node1 should be empty
 		assert_eq!(txn.state_scan_all(node1).unwrap().items.into_iter().count(), 0);
-
-		// Node2 should still have state
 		assert_eq!(txn.state_scan_all(node2).unwrap().items.into_iter().count(), 1);
 	}
 
@@ -644,7 +625,6 @@ pub mod tests {
 
 		let node_id = FlowNodeId(1);
 
-		// Clear on empty node should not error
 		txn.state_clear(node_id).unwrap();
 	}
 
@@ -664,10 +644,8 @@ pub mod tests {
 		let value = make_value("existing");
 		let shape = RowShape::testing(&[ValueType::Int8, ValueType::Float8]);
 
-		// Set existing state
 		txn.state_set(node_id, &key, value.clone()).unwrap();
 
-		// load_or_create should return existing value
 		let result = txn.load_or_create_row(node_id, &key, &shape).unwrap();
 		assert_eq!(result, value);
 	}
@@ -687,10 +665,8 @@ pub mod tests {
 		let key = make_key("key1");
 		let shape = RowShape::testing(&[ValueType::Int8, ValueType::Float8]);
 
-		// load_or_create should allocate new row
 		let result = txn.load_or_create_row(node_id, &key, &shape).unwrap();
 
-		// Result should be a newly allocated row (shape.allocate())
 		assert!(!result.is_empty());
 	}
 
@@ -711,7 +687,6 @@ pub mod tests {
 
 		txn.save_row(node_id, &key, row.clone()).unwrap();
 
-		// Verify saved
 		let result = txn.state_get(node_id, &key).unwrap();
 		assert_eq!(result, Some(row));
 	}
@@ -736,24 +711,20 @@ pub mod tests {
 		txn.state_set(node2, &make_key("a"), make_value("n2_a")).unwrap();
 		txn.state_set(node3, &make_key("c"), make_value("n3_c")).unwrap();
 
-		// Verify each node has correct state
 		assert_eq!(txn.state_get(node1, &make_key("a")).unwrap(), Some(make_value("n1_a")));
 		assert_eq!(txn.state_get(node1, &make_key("b")).unwrap(), Some(make_value("n1_b")));
 		assert_eq!(txn.state_get(node2, &make_key("a")).unwrap(), Some(make_value("n2_a")));
 		assert_eq!(txn.state_get(node3, &make_key("c")).unwrap(), Some(make_value("n3_c")));
 
-		// Cross-node keys should not exist
 		assert_eq!(txn.state_get(node2, &make_key("b")).unwrap(), None);
 		assert_eq!(txn.state_get(node3, &make_key("a")).unwrap(), None);
 	}
 
 	#[test]
 	fn store_reads_counts_store_reaching_reads_only() {
-		// The store_reads counter feeds the flow::engine::apply gets= extra: per-operator
-		// attribution of store traffic. It must count exactly the reads that leave the
-		// transaction (point gets and batched external keys, hits and misses alike) and
-		// never the ones served by the pending overlay, otherwise the profiler dump would
-		// misattribute the read amplification it exists to measure.
+		// store_reads drives per-operator attribution of store traffic, so it must count exactly
+		// the reads that leave the transaction and never the ones the pending overlay serves, or
+		// the profiler misattributes the read amplification it exists to measure.
 		let engine = TestEngine::new();
 		let node_id = FlowNodeId(1);
 		let committed_key = make_key("committed");
@@ -770,8 +741,7 @@ pub mod tests {
 		);
 		assert_eq!(txn.store_reads(), 0);
 
-		// A write is a pure overlay operation: neither it nor its overlay-served read-back
-		// may count.
+		// A write is a pure overlay operation: neither it nor its overlay-served read-back counts.
 		let pending_key = make_key("pending");
 		txn.state_set(node_id, &pending_key, make_value("p")).unwrap();
 		assert_eq!(txn.state_get(node_id, &pending_key).unwrap(), Some(make_value("p")));
@@ -788,8 +758,7 @@ pub mod tests {
 		assert!(batch.items.is_empty());
 		assert_eq!(txn.store_reads(), 4);
 
-		// A header-sized value to a never-read key must not reach the store either: state
-		// writes carry their own anchors, so no write ever reads the prior row back.
+		// State writes carry their own anchors, so no write ever reads the prior row back.
 		let wide_key = make_key("wide");
 		txn.state_set(node_id, &wide_key, EncodedRow(CowVec::new(vec![0u8; 32]))).unwrap();
 		assert_eq!(txn.store_reads(), 4, "a state write must never reach the store");
@@ -797,11 +766,9 @@ pub mod tests {
 
 	#[test]
 	fn state_reads_are_cached_within_a_transaction() {
-		// Operator state is read-mostly and the snapshot is immutable within a txn, so a
-		// second read of the same key (hit or miss, point or batch) must be served from
-		// the read-through cache instead of reaching the store again. This is the fix for
-		// the per-version re-read amplification: without it every operator re-pays a
-		// store roundtrip for state it already loaded in the same slice.
+		// The snapshot is immutable within a txn, so a second read of the same key (hit or miss,
+		// point or batch) must come from the read-through cache. Without it every operator re-pays
+		// a store roundtrip for state it already loaded in the same slice.
 		let engine = TestEngine::new();
 		let node_id = FlowNodeId(1);
 		let committed_key = make_key("committed");
@@ -841,10 +808,9 @@ pub mod tests {
 
 	#[test]
 	fn cached_state_reads_never_mask_writes_or_removes() {
-		// The cache sits BELOW the pending overlays: a write or remove issued after a
-		// cached read must win on every later read. If the cache were consulted first,
-		// an operator would read back its own stale pre-write state and fold updates
-		// into a dead accumulator.
+		// The cache sits below the pending overlays, so a write or remove issued after a cached read
+		// wins on every later read. Consulting the cache first would let an operator read back its
+		// own stale pre-write state and fold updates into a dead accumulator.
 		let engine = TestEngine::new();
 		let node_id = FlowNodeId(1);
 		let key = make_key("k");
@@ -878,12 +844,9 @@ pub mod tests {
 
 	#[test]
 	fn a_state_write_keeps_the_callers_anchors_without_reading_the_prior_row() {
-		// The dominant operator shape is load-mutate-save, and the save must cost nothing:
-		// operator state rows carry the anchors their writer stamped, so the write is a
-		// pure overlay op. A save that read the prior row back to carry its created_at
-		// forward cost one store read per written key on every flush, and it defeats the
-		// operator-resident caches above it: once a cache serves the load, the prior row is
-		// no longer in the transaction and the save alone would reach the store.
+		// Operator state rows carry the anchors their writer stamped, so a save is a pure overlay
+		// op. Reading the prior row back to carry created_at forward costs a store read per written
+		// key per flush, and defeats the caches above once one of them serves the load.
 		let engine = TestEngine::new();
 		let node_id = FlowNodeId(1);
 		let key = make_key("acc");
@@ -915,22 +878,16 @@ pub mod tests {
 
 	#[test]
 	fn deferred_read_sees_state_committed_above_object_version() {
-		// A deferred consume's operator-state reads must observe the latest committed
-		// snapshot, not be bounded to the consume's own input (object) version. A
-		// prior consume's accumulated join state is committed at that consume's COMMIT
-		// version, which is strictly greater than any input data version. If a later
-		// consume read operator state bounded to its own lower object_version, the
-		// other side of a join written by the prior consume would be invisible and the
-		// row would wrongly emit an unmatched (null) result. This pins that invariant
-		// (it is the root cause of the deferred left-join null-match flake).
+		// A prior consume commits its join state at that consume's commit version, strictly above
+		// any input data version. Bounding operator-state reads to the later consume's own object
+		// version would hide the other side of the join and emit an unmatched none result.
 		let engine = TestEngine::new();
 		let node_id = FlowNodeId(1);
 		let inner_key = make_key("late_right_side");
 		let value = make_value("matched_row");
 
-		// The object (input) version we will read at. Two further commits then push
-		// the operator-state write strictly more than one version above it, so the read
-		// bound (which resolves to object_version + 1) cannot reach it on its own.
+		// Two further commits push the operator-state write more than one version above the object
+		// version, so the read bound (object_version + 1) cannot reach it on its own.
 		let object_version = commit_state_row(&engine, node_id, &make_key("warmup_a"), make_value("a"));
 		commit_state_row(&engine, node_id, &make_key("warmup_b"), make_value("b"));
 		let committed_at = commit_state_row(&engine, node_id, &inner_key, value.clone());
@@ -969,11 +926,9 @@ pub mod tests {
 
 	#[test]
 	fn committing_persists_state_writes_and_keeps_prior_state() {
-		// The committing variant wraps the command being committed: its state writes route
-		// to that command (state_set -> cmd, not the in-memory pending) and become durable
-		// when the flow commits, alongside any state committed by prior transactions. This
-		// guards the committing write+commit path the transactional tick relies on; a
-		// regression that dropped these writes or failed to persist them would be caught.
+		// The committing variant wraps the command being committed, so state writes route to that
+		// command rather than the in-memory pending and become durable when the flow commits,
+		// alongside state committed by prior transactions.
 		let engine = TestEngine::new();
 		let node_id = FlowNodeId(1);
 		let prior_key = make_key("prior");
@@ -997,8 +952,6 @@ pub mod tests {
 			txn.commit().unwrap();
 		}
 
-		// After the committing flow commits, both the prior state and the state it wrote
-		// are durable and observable at the latest snapshot.
 		let (_version, lease) = engine.acquire_current_snapshot_lease().unwrap();
 		let query = engine.multi().begin_query_at_version(&lease).unwrap();
 		let prior_encoded = FlowNodeStateKey::encoded(node_id, prior_key.as_slice());
@@ -1015,12 +968,9 @@ pub mod tests {
 
 	#[test]
 	fn transactional_read_sees_committed_state_below_version_and_base_pending() {
-		// The transactional variant reads committed operator state via state_query (opened
-		// at the latest snapshot by the interceptor) plus a base_pending overlay for the
-		// current transaction's own writes. Its state read must NOT be bounded to the txn
-		// `version`: here `version` is set below the committed state, which must still be
-		// visible. This is the exact situation that broke the deferred path; this guards
-		// the transactional path against the same version-bounding regression.
+		// The transactional variant reads committed state via state_query at the latest snapshot
+		// plus a base_pending overlay. The read must not be bounded to the txn `version`, which is
+		// set below the committed state here and would hide it.
 		let engine = TestEngine::new();
 		let node_id = FlowNodeId(1);
 		let committed_key = make_key("committed");
@@ -1054,7 +1004,6 @@ pub mod tests {
 			state_budget: OperatorStateBudgetHandle::default(),
 		});
 
-		// Committed state above the txn version is visible (state_query is at the snapshot).
 		let committed = txn.state_get_many(node_id, &[committed_key]).unwrap();
 		assert_eq!(
 			committed.items.len(),
@@ -1063,7 +1012,6 @@ pub mod tests {
 		);
 		assert_eq!(committed.items[0].row, committed_value);
 
-		// base_pending (the current transaction's writes) is visible via the overlay.
 		let base = txn.state_get_many(node_id, &[base_key]).unwrap();
 		assert_eq!(base.items.len(), 1);
 		assert_eq!(base.items[0].row, base_value);
@@ -1071,11 +1019,8 @@ pub mod tests {
 
 	#[test]
 	fn deferred_read_sees_base_pending_overlay() {
-		// A deferred slice reads its own prior writes through the base_pending overlay:
-		// the pinned query snapshot cannot see the flow's last commit (it landed above
-		// chunk_end), so a Set must resolve from the overlay, a Remove must shadow a
-		// committed row, and the slice's own pending must shadow the overlay. This is
-		// the deferred mirror of the transactional guard above.
+		// The pinned query snapshot cannot see the flow's last commit, so a deferred slice reads its
+		// own prior writes through the base_pending overlay.
 		let engine = TestEngine::new();
 		let node_id = FlowNodeId(1);
 
@@ -1105,7 +1050,6 @@ pub mod tests {
 			state_budget: OperatorStateBudgetHandle::default(),
 		});
 
-		// Point reads: Set resolves from the overlay, Remove shadows committed state.
 		assert_eq!(
 			txn.state_get(node_id, &overlaid_key).unwrap(),
 			Some(overlaid_value.clone()),
@@ -1117,18 +1061,15 @@ pub mod tests {
 			"a Remove in base_pending must shadow the committed row"
 		);
 
-		// Batch read path (lookup_overlays).
 		let batch = txn.state_get_many(node_id, &[overlaid_key.clone(), committed_key.clone()]).unwrap();
 		assert_eq!(batch.items.len(), 1);
 		assert_eq!(batch.items[0].row, overlaid_value);
 
-		// Range/scan path: the overlay entry appears, the removed row does not.
 		let scan = txn.state_scan_all(node_id).unwrap();
 		let scanned: Vec<_> = scan.items.iter().map(|item| item.row.clone()).collect();
 		assert!(scanned.contains(&overlaid_value), "range merge must surface base_pending Sets");
 		assert!(!scanned.contains(&committed_value), "range merge must shadow base_pending Removes");
 
-		// The slice's own pending shadows the overlay.
 		let shadow_value = make_value("shadow");
 		txn.state_set(node_id, &overlaid_key, shadow_value.clone()).unwrap();
 		assert_eq!(txn.state_get(node_id, &overlaid_key).unwrap(), Some(shadow_value));
@@ -1136,12 +1077,9 @@ pub mod tests {
 
 	#[test]
 	fn deferred_reads_owned_rows_at_state_version() {
-		// The restart scenario: a flow's own materialized rows commit above the
-		// version its next slice pins `query` to, and the in-memory overlay is
-		// empty after a restart. Owned-row keys (Row kind) must therefore route
-		// through state_query, which reads at the lease. An Ephemeral txn at the
-		// same pinned version must keep the pinned behavior (subscription
-		// hydration reads views deliberately as-of a version).
+		// After a restart a flow's own materialized rows sit above the version its next slice pins
+		// `query` to, with an empty overlay, so owned-row keys must route through state_query at
+		// the lease. Ephemeral stays pinned because subscription hydration reads as-of a version.
 		let engine = TestEngine::new();
 		let row_key = RowKey::encoded(StorageId::table(TableId(7)), RowNumber(1));
 		let row_value = make_value("own_row");
@@ -1195,9 +1133,8 @@ pub mod tests {
 
 	#[test]
 	fn ephemeral_read_sees_state_map_and_pending() {
-		// The ephemeral variant has no state_query; it serves operator-state reads from an
-		// in-memory state map (its seeded prior state) with the pending overlay on top.
-		// Guards that both the seeded map and live writes are read back.
+		// The ephemeral variant has no state_query, so it serves operator-state reads from an
+		// in-memory state map with the pending overlay on top.
 		let engine = TestEngine::new();
 		let node_id = FlowNodeId(1);
 		let seeded_key = make_key("seeded");
@@ -1220,7 +1157,6 @@ pub mod tests {
 		assert_eq!(seeded.items.len(), 1, "seeded ephemeral state must be readable");
 		assert_eq!(seeded.items[0].row, seeded_value);
 
-		// A live write is visible via the pending overlay.
 		let live_key = make_key("live");
 		let live_value = make_value("live_value");
 		txn.state_set(node_id, &live_key, live_value.clone()).unwrap();
@@ -1231,10 +1167,9 @@ pub mod tests {
 
 	#[test]
 	fn batch_prefetch_respects_byte_cap() {
-		// fetch_external memoizes what it fetched; without the cap the batch path
-		// reopened exactly the unbounded per-transaction memo growth the 64 MiB
-		// point-path cap was added to close. A rejected entry must not be counted,
-		// must not enter the memo, and must not shrink the batch result.
+		// fetch_external memoizes what it fetched, so without the cap the batch path reopens the
+		// unbounded per-transaction memo growth the point-path cap closed. A rejected entry must
+		// not be counted, must not enter the memo, and must not shrink the batch result.
 		let engine = TestEngine::new();
 		let node_id = FlowNodeId(1);
 		let key = make_key("k1");
@@ -1267,10 +1202,8 @@ pub mod tests {
 
 	#[test]
 	fn batch_prefetch_accounts_bytes_like_the_point_path() {
-		// prefetch_bytes must reflect the memo no matter which path filled it, or
-		// the cap is meaningless for batch-heavy operators. Pinned by comparison:
-		// the same hit + miss pair memoized via the batch path and via the point
-		// path must land on the identical byte count.
+		// prefetch_bytes must reflect the memo no matter which path filled it, or the cap is
+		// meaningless for batch-heavy operators.
 		let engine = TestEngine::new();
 		let node_id = FlowNodeId(1);
 		let hit = make_key("hit");

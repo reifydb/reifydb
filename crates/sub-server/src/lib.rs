@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Common infrastructure shared by every server transport - gRPC, HTTP, WebSocket, admin. Owns the dispatch loop
-//! that accepts an authenticated request, looks up the binding, executes it through the engine, and serialises the
-//! result back to the caller. Authentication, format negotiation, response shaping, subscription bookkeeping, and
-//! interceptor hooks all live here so the transport-specific crates only need to handle protocol framing.
-//!
-//! This crate does not bind a socket; protocol-specific crates (`sub-server-grpc`, `sub-server-http`,
-//! `sub-server-ws`, `sub-server-admin`) do that and delegate every per-request decision back here.
+//! Common infrastructure shared by every server transport. Owns the dispatch loop from authenticated request to
+//! serialised response, plus auth, format negotiation, subscription bookkeeping and interceptor hooks. It binds no
+//! socket: the protocol crates do that and delegate every per-request decision back here.
 
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]

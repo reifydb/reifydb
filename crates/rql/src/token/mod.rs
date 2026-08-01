@@ -86,7 +86,6 @@ pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<
 
 				'\'' | '"' => scan_literal(&mut cursor),
 
-				// Numbers or digit-starting identifiers (e.g., 10min, 5sec)
 				'0'..='9' => {
 					let state = cursor.save_state();
 					match scan_literal(&mut cursor) {
@@ -115,11 +114,9 @@ pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<
 					}
 				}
 
-				// Dot could be operator or start of decimal
-				// literal
+				// A leading dot is ambiguous: `.5` is a decimal literal, `a.b` is the access operator,
+				// so only the next character decides which scanner gets first refusal.
 				'.' => {
-					// Check if followed by digit - if so,
-					// try literal first
 					if cursor.peek_ahead(1).is_some_and(|ch| ch.is_ascii_digit()) {
 						scan_literal(&mut cursor).or_else(|| scan_operator(&mut cursor))
 					} else {
@@ -127,34 +124,21 @@ pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<
 					}
 				}
 
-				// Pure punctuation operators
 				'(' | ')' | '[' | ']' | '{' | '}' | '+' | '*' | '/' | '^' | '%' | '?' => {
 					scan_operator(&mut cursor)
 				}
 
-				// Multi-char operators starting with these
-				// chars - try operator first
 				'<' | '>' | ':' | '&' | '|' | '=' | '!' => scan_operator(&mut cursor),
 
-				// Minus could be operator or negative number
 				'-' => scan_operator(&mut cursor).or_else(|| scan_literal(&mut cursor)),
 
-				// Separators
 				',' | ';' => scan_separator(&mut cursor),
 
-				// Letters could be keywords, literals
-				// (true/false/none), word operators, or
-				// identifiers
-				'a'..='z' | 'A'..='Z' | '_' => {
-					// Try in order: keyword, literal,
-					// operator, identifier
-					scan_keyword(&mut cursor)
-						.or_else(|| scan_literal(&mut cursor))
-						.or_else(|| scan_operator(&mut cursor))
-						.or_else(|| scan_identifier(&mut cursor))
-				}
+				'a'..='z' | 'A'..='Z' | '_' => scan_keyword(&mut cursor)
+					.or_else(|| scan_literal(&mut cursor))
+					.or_else(|| scan_operator(&mut cursor))
+					.or_else(|| scan_identifier(&mut cursor)),
 
-				// Everything else - try all scanners in order
 				_ => scan_literal(&mut cursor)
 					.or_else(|| scan_operator(&mut cursor))
 					.or_else(|| scan_variable(&mut cursor))
@@ -167,8 +151,6 @@ pub fn tokenize<'b>(bump: &'b Bump, input: &'b str) -> Result<BumpVec<'b, Token<
 		match token {
 			Some(tok) => tokens.push(tok),
 			None => {
-				// Unable to token - report error with
-				// current character
 				let ch = cursor.peek().unwrap_or('?');
 				let message = format!(
 					"Unexpected character '{}' at line {}, column {}",

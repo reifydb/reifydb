@@ -375,8 +375,7 @@ mod tests {
 
 	#[test]
 	fn boundary_coord_belongs_to_next_window() {
-		// The recurring off-by-one bug: an event at exactly window_end
-		// must NOT be claimed by the current window. Encoded once, here.
+		// An event at exactly window_end must not be claimed by the current window.
 		let cur = WindowSpan::<u64>::for_coord(60, 60);
 		let nxt = cur.next();
 		assert!(!cur.contains(120));
@@ -443,13 +442,9 @@ mod tests {
 
 	#[test]
 	fn a_time_coordinate_can_only_have_a_duration_subtracted_from_it() {
-		// This is the invariant that used to live in a hand-written unit conversion, and the reason it
-		// now lives in the type system instead: a seal horizon is watermark - seal_after, and when both
-		// sides were a bare u64 nothing stopped a millisecond span reaching a nanosecond coordinate.
-		// The result was a horizon a million times too small, which sealed every window but the newest
-		// and silently discarded late events and retractions across 33 operators.
-		// Pairing the coordinate with its own Span makes the wrong subtraction fail to compile, so what
-		// is left to assert is that the pairing computes what it claims.
+		// A seal horizon is watermark - seal_after; with both sides a bare u64 nothing stopped a
+		// millisecond span reaching a nanosecond coordinate, yielding a horizon a million times too
+		// small. Pairing a coordinate with its own Span makes the wrong subtraction fail to compile.
 		let watermark = DateTime::from_timestamp_millis(6_060_000).expect("representable instant");
 		let one_minute = Duration::from_seconds(60).expect("representable span");
 
@@ -463,10 +458,9 @@ mod tests {
 
 	#[test]
 	fn a_count_domain_reports_no_millisecond_span() {
-		// A count window seals after N rows. There is no elapsed time after which a further row becomes
-		// inadmissible, so handing the host a row count where it expects milliseconds would derive a
-		// node horizon from a number that is not a duration at all - the same category error in the
-		// opposite direction. None is the honest answer, and the host treats it as "no seal span".
+		// A count window seals after N rows, with no elapsed time after which a further row becomes
+		// inadmissible. Handing the host a row count where it expects milliseconds would derive a
+		// node horizon from something that is not a duration; the host reads none as "no seal span".
 		assert_eq!(<u64 as WindowCoord>::span_millis(100), None);
 	}
 
@@ -508,11 +502,9 @@ mod tests {
 
 	#[test]
 	fn two_events_sharing_a_coordinate_stay_distinct() {
-		// The whole reason a slot is a coordinate plus a tie-break. Upstream stamps events at a
-		// coarser granularity than they arrive at (seconds, against sub-second chain slots), so
-		// several genuinely different events routinely land on one coordinate. Keyed by the
-		// coordinate alone the later one would overwrite the earlier in the slot map and its
-		// contribution would vanish from the window with no error anywhere.
+		// Upstream stamps events more coarsely than they arrive, so distinct events routinely land
+		// on one coordinate. Keyed by the coordinate alone the later would overwrite the earlier in
+		// the slot map and its contribution would vanish from the window with no error anywhere.
 		let mut slots = BTreeMap::new();
 		slots.insert(Stamped::new(at(1_000), 7u64), "first");
 		slots.insert(Stamped::new(at(1_000), 9u64), "second");
@@ -528,9 +520,7 @@ mod tests {
 	#[test]
 	fn ordering_is_lexicographic_with_the_coordinate_first() {
 		// The map walk order IS the replay order for path-dependent accumulators, so a tie-break
-		// must never outrank a coordinate. If it did, an event with a large tie at an early
-		// coordinate would replay after a later coordinate and the recurrence would read its
-		// inputs out of time order.
+		// must never outrank a coordinate or the recurrence reads its inputs out of time order.
 		let early_high_tie = Stamped::new(at(1_000), u64::MAX);
 		let late_low_tie = Stamped::new(at(2_000), 0u64);
 
@@ -551,12 +541,9 @@ mod tests {
 
 	#[test]
 	fn seal_write_lands_both_halves_in_the_archived_bytes() {
-		// The sealed high-water persist path rewrites the archived slot in place rather than
-		// materializing and re-encoding. Both halves have to land: a coordinate that updated while
-		// its tie went stale would resume window meta replay from a slot that never existed, and
-		// late-event rejection keys off exactly that value.
-		// Returning true is also the point of the shared type - the default Slot::seal_write
-		// returns false, which silently drops every bump onto the slow rewrite path.
+		// The persist path rewrites the archived slot in place, and both halves have to land: a
+		// coordinate updated while its tie went stale resumes replay from a slot that never
+		// existed. Returning false would drop every bump onto the slow rewrite path instead.
 		let initial = Stamped::new(at(1_000), 7u64);
 		let mut bytes = initial.encode_state(DateTime::default()).expect("encodes");
 

@@ -427,10 +427,8 @@ mod tests {
 		Identity,
 	}
 
-	/// Every keyspace this substrate declares, by name and by the phase that is allowed to erase it,
-	/// so the census below is over the real set rather than the handful the partition test samples.
-	/// The phase is written down rather than read back from `is_data`, or the census would agree with
-	/// whatever `HIGHEST_DATA` happens to say and a keyspace changing sides would pass unremarked.
+	/// Every keyspace the substrate declares, with the phase allowed to erase it. The phase is written
+	/// down rather than read back from `is_data`, or a keyspace changing sides would pass unremarked.
 	const CENSUS: [(&str, Keyspace, Phase); 36] = [
 		("ROW_NUMBER_MAPPING", Keyspace::ROW_NUMBER_MAPPING, Phase::Identity),
 		("GROUP_DICTIONARY", Keyspace::GROUP_DICTIONARY, Phase::Identity),
@@ -470,10 +468,8 @@ mod tests {
 		("FIRST_CUSTOM", Keyspace::FIRST_CUSTOM, Phase::Data),
 	];
 
-	/// The number of `Keyspace` constants the source actually declares, counted from the text of the
-	/// `impl` block. There is no reflection over associated constants, so this is the only way the
-	/// census can notice a keyspace that was declared and never listed - the case where every
-	/// assertion below is skipped for the one byte nobody thought about.
+	/// Counts `Keyspace` constants from the source text. There is no reflection over associated
+	/// constants, so this is the only way the census can notice a keyspace nobody listed.
 	fn declared_keyspaces() -> usize {
 		let source = include_str!("operator_state.rs");
 		let body = source
@@ -491,12 +487,9 @@ mod tests {
 
 	#[test]
 	fn a_bare_row_number_key_is_indistinguishable_from_another_groups_prefix() {
-		// An operator's state key IS the inner [group][keyspace][suffix]; the host appends it to
-		// [kind][node] verbatim and checks nothing. Row numbers and group ids come from two
-		// independent node counters, so the same small integer is routinely both at once. A singleton
-		// addressed by a bare row number therefore lands exactly on a live group's prefix, and
-		// reclaiming that group prefix-deletes it - the operator reads a cold start, never an error.
-		// That silence is why the shape has to be rejected at the boundary rather than debugged later.
+		// Row numbers and group ids come from independent node counters, so a singleton addressed by
+		// a bare row number lands exactly on a live group's prefix and is erased when that group is
+		// reclaimed - the operator reads a cold start, never an error.
 		let mut bare = KeySerializer::with_capacity(4);
 		bare.extend_u64(7u64);
 		let bare = bare.finish().as_ref().to_vec();
@@ -522,12 +515,9 @@ mod tests {
 
 	#[test]
 	fn the_empty_key_is_framing_because_it_sorts_below_every_group() {
-		// SingleStateful addresses one row for a whole node with an empty key, and that is sound for a
-		// reason the length check must not mistake for a bug: composed, the key is [kind][node] with
-		// nothing after it, so it sorts strictly BELOW [kind][node][varint(group)] for every group.
-		// Both reclaim phases start at a group prefix, so neither can reach it, while a node drop
-		// still prefix-covers it. A key with bytes has no such guarantee - it lands in whatever group
-		// its leading varint spells.
+		// Composed, an empty inner key is [kind][node] with nothing after it, so it sorts strictly
+		// BELOW [kind][node][varint(group)] for every group: no reclaim phase can reach it, while a
+		// node drop still prefix-covers it. A key with bytes lands in whatever group its varint spells.
 		let empty: &[u8] = &[];
 		assert!(is_framed_inner(empty));
 
@@ -542,10 +532,9 @@ mod tests {
 
 	#[test]
 	fn a_keyspace_this_substrate_never_defines_is_not_framing() {
-		// Length alone is a weak test: any two bytes decode as [group][keyspace]. Demanding a keyspace
-		// that actually exists rejects the gap between the data range and the identity constants,
-		// where a truncated or foreign key lands. It cannot catch a tuple key whose second field
-		// happens to fall inside the data range, so this is a floor on the check, not a proof.
+		// A well-formed [group][keyspace] is as short as two bytes, so length alone is a weak test.
+		// Demanding a keyspace that exists rejects the gap between the data range and the identity
+		// constants; it cannot catch a key whose second field falls inside the data range.
 		let mut stray = KeySerializer::with_capacity(4);
 		stray.extend_u64(3u64).extend_u8(0x90u8);
 		assert!(!is_framed_inner(stray.finish().as_ref()));
@@ -598,10 +587,9 @@ mod tests {
 
 	#[test]
 	fn a_group_range_contains_exactly_that_groups_keys() {
-		// The whole reclamation design rests on this: erasing a group is a single bounded range
-		// delete, and completeness is structural rather than a registry of keyspaces. If a range
-		// could swallow a neighbouring group's keys this silently destroys live state; if it could
-		// miss any of its own, the leak this step exists to close survives.
+		// Erasing a group is a single bounded range delete, so completeness is structural rather than
+		// a registry of keyspaces: a range that swallows a neighbour's keys destroys live state, and
+		// one that misses its own leaks it.
 		let population = population();
 		for node in NODES {
 			for group in GROUPS {
@@ -624,10 +612,9 @@ mod tests {
 
 	#[test]
 	fn variable_length_group_ids_cannot_prefix_one_another() {
-		// Group ids are varint encoded, so ids of different magnitudes produce different byte
-		// lengths. If a short id's encoding were a prefix of a longer one's, group 1's range would
-		// contain group 1000's keys and reclaiming the former would erase the latter. This is the
-		// property that makes the range test above hold for every id, not just the ones sampled.
+		// Group ids are varint encoded, so different magnitudes give different byte lengths. If a
+		// short id's encoding were a prefix of a longer one's, group 1's range would contain group
+		// 1000's keys and reclaiming the former would erase the latter.
 		let encodings: Vec<Vec<u8>> = GROUPS
 			.iter()
 			.map(|group| {
@@ -654,10 +641,9 @@ mod tests {
 
 	#[test]
 	fn the_data_and_identity_ranges_partition_the_group() {
-		// Two-phase reclamation is only one range operation per phase because the keyspace byte
-		// orders identity before data after inversion. If the split leaked either way, phase 1
-		// would either take the row-number mapping with it (duplicate rows on the next wake,
-		// landmine L2) or leave live accumulators behind (the leak survives).
+		// Two-phase reclamation is one range operation per phase only because the keyspace byte orders
+		// identity before data after inversion. A leak either way takes the row-number mapping with
+		// phase 1 (duplicate rows on the next wake) or leaves live accumulators behind.
 		for node in NODES {
 			for group in GROUPS {
 				let data = group_data_range(FlowNodeId(node), GroupId(group));
@@ -704,18 +690,9 @@ mod tests {
 
 	#[test]
 	fn every_declared_keyspace_is_distinct_framing_and_swept_by_exactly_one_phase() {
-		// The census the partition test above cannot be: it samples six keyspaces of thirty-six, so a
-		// new one declared on the wrong side of HIGHEST_DATA, or given a byte another keyspace
-		// already holds, is invisible to it. Both failures are silent and both are severe. A
-		// duplicate byte puts two operators' state at one address, so one erases the other's rows on
-		// every write. A keyspace above HIGHEST_DATA that is missing from `is_known` makes
-		// `is_framed_inner` reject its own rows, and the sweep's `from_framed(..).expect(..)` turns
-		// the first row it scans there into a panic on the reclamation path.
-		//
-		// Each keyspace is checked against the phase written down beside it rather than against
-		// `is_data`, so moving HIGHEST_DATA fails here and names the keyspaces it moved: were the
-		// expectation derived, both sides would move together and a join keyspace quietly promoted to
-		// identity - never reclaimed, unbounded - would leave this green.
+		// The partition test samples six keyspaces of thirty-six, so it cannot see a duplicate byte
+		// (two operators' state at one address, each erasing the other) or a keyspace above
+		// HIGHEST_DATA missing from `is_known` (the sweep panics on the first row it scans there).
 		assert_eq!(
 			CENSUS.len(),
 			declared_keyspaces(),
@@ -756,9 +733,8 @@ mod tests {
 
 	#[test]
 	fn node_scoped_entries_sit_outside_every_group_range() {
-		// The interning dictionary and the due-ordered expiry index live at node scope. Reclaiming a
-		// group must not touch the table that resolves group ids, or the substrate would erase its
-		// own address book while other groups still depend on it.
+		// Reclaiming a group must not touch the node-scope table that resolves group ids, or the
+		// substrate erases its own address book while other groups still depend on it.
 		for node in NODES {
 			let dictionary = OperatorStateKey::node_scoped(
 				FlowNodeId(node),
@@ -778,8 +754,8 @@ mod tests {
 
 	#[test]
 	fn a_node_range_contains_exactly_that_nodes_keys() {
-		// drop_flow_node erases a whole node by range. Containing a neighbour's keys would destroy a
-		// live flow's state; missing its own would strand the keyspace exactly as it does today.
+		// drop_flow_node erases a whole node by range: containing a neighbour's keys destroys a live
+		// flow's state, and missing its own strands the keyspace.
 		let population = population();
 		for node in NODES {
 			let range = node_range(FlowNodeId(node));
@@ -797,9 +773,8 @@ mod tests {
 
 	#[test]
 	fn a_keyspace_range_isolates_one_keyspace_of_one_group() {
-		// Hydration and per-keyspace scans read through this range. Bleeding into an adjacent
-		// keyspace would feed one cache another's payloads, which fails to decode at best and
-		// silently mixes state at worst.
+		// Hydration and per-keyspace scans read through this range; bleeding into an adjacent keyspace
+		// feeds one cache another's payloads - a decode failure at best, mixed state at worst.
 		let node = FlowNodeId(17);
 		let group = GroupId(42);
 		let range = keyspace_range(node, group, Keyspace::BUFFER);
@@ -829,10 +804,9 @@ mod tests {
 
 	#[test]
 	fn keys_still_classify_as_operator_state_of_their_node() {
-		// The codec deliberately keeps KeyKind::FlowNodeState so tier classification and the
-		// compiler-forced CDC exclusion keep working untouched. If a structured key stopped
-		// classifying as Operator it would be routed to the wrong tier and start appearing
-		// in the CDC log, which operator state must never do.
+		// Tier classification and the CDC exclusion both key off KeyKind::FlowNodeState. A key that
+		// stopped classifying as Operator would be routed to the wrong tier and appear in the CDC
+		// log, which operator state must never do.
 		let key = OperatorStateKey::new(FlowNodeId(9), GroupId(4), Keyspace::ACCUMULATOR, vec![1]).encode();
 
 		assert_eq!(classify_key(&key), EntryKind::Operator(FlowNodeId(9)));
@@ -843,10 +817,9 @@ mod tests {
 
 	#[test]
 	fn an_inner_key_composed_with_its_node_prefix_reproduces_the_full_key() {
-		// The state API owns the [kind][node] head and callers supply only the tail, so the two forms
-		// must agree exactly. If they drifted, a key written through the state API would be
-		// unreachable by a range built from the full-key helpers - state would be silently stranded
-		// where reclamation cannot see it.
+		// The state API owns the [kind][node] head and callers supply only the tail. If the two forms
+		// drifted, a key written through the state API would be unreachable from a range built by the
+		// full-key helpers - state stranded where reclamation cannot see it.
 		let key = OperatorStateKey::new(FlowNodeId(17), GroupId(42), Keyspace::BUFFER, vec![9, 9]);
 
 		let mut composed = FlowNodeStateKey::encoded(FlowNodeId(17), vec![]).as_slice().to_vec();
@@ -858,10 +831,8 @@ mod tests {
 	#[test]
 	fn the_node_scope_group_range_stays_inside_its_node() {
 		// Group 0 encodes as 0xFF, so its inner prefix is all-ones and has no byte-wise successor:
-		// EncodedKeyRange::prefix yields an unbounded end. Composed with the node prefix that
-		// degrades to "the rest of this node", which is exactly group 0's keys because it sorts last
-		// within the node. Were it to stay unbounded, hydrating the interning dictionary would walk
-		// into the next node's state.
+		// EncodedKeyRange::prefix yields an unbounded end. Composing the node prefix bounds it to the
+		// rest of this node, which is exactly group 0's keys because it sorts last within the node.
 		let range = group_inner_range(GroupId::NODE_SCOPE)
 			.with_prefix(FlowNodeStateKey::encoded(FlowNodeId(17), vec![]));
 
@@ -886,9 +857,8 @@ mod tests {
 
 	#[test]
 	fn inner_ranges_partition_the_group_like_their_full_key_counterparts() {
-		// Reclamation runs through the state API, so the inner forms are the ones that actually
-		// execute. A split that held only for full keys would pass the phase test above and still
-		// take the row-number mapping with phase 1.
+		// Reclamation runs through the state API, so the inner forms are the ones that execute; a
+		// split holding only for full keys would still take the row-number mapping with phase 1.
 		let node = FlowNodeId(17);
 		let prefix = FlowNodeStateKey::encoded(node, vec![]);
 		for group in GROUPS {
@@ -921,9 +891,8 @@ mod tests {
 
 	#[test]
 	fn interned_group_keys_stay_compact() {
-		// Interning exists to buy contiguity without paying for it in key bytes: raw group bytes
-		// would put two base58 addresses in every accumulator key. A regression here means the
-		// substrate is inflating the very state the plan set out to shrink.
+		// Interning buys contiguity without paying for it in key bytes; raw group bytes would put two
+		// base58 addresses in every accumulator key.
 		let interned =
 			OperatorStateKey::new(FlowNodeId(17), GroupId(123_456), Keyspace::ACCUMULATOR, vec![0; 8])
 				.encode();
@@ -941,12 +910,9 @@ mod tests {
 
 	#[test]
 	fn the_ram_predicate_and_the_disk_range_agree_on_every_key() {
-		// This is the load-bearing invariant of two-sided reclamation. Phase 1 deletes disk rows with
-		// group_data_inner_range and drops cached rows with group_data_of_inner. If the two ever
-		// disagree, one side keeps what the other destroyed: a key the range takes but the predicate
-		// rejects becomes a ghost row served from RAM after its disk row is gone (landmine L5), and a
-		// key the predicate takes but the range leaves has its membership bit cleared while the row is
-		// still on disk, which makes the filter answer DefinitelyAbsent for a live key - silent loss.
+		// Phase 1 deletes disk rows by range and drops cached rows by predicate. A key the range takes
+		// but the predicate rejects becomes a ghost row served from RAM; a key the predicate takes but
+		// the range leaves clears the membership bit for a row still on disk - silent loss.
 		for group in GROUPS.map(GroupId) {
 			let range = group_data_inner_range(group);
 			for other in GROUPS.map(GroupId) {
@@ -966,9 +932,8 @@ mod tests {
 
 	#[test]
 	fn the_ram_predicate_refuses_identity_keyspaces() {
-		// Phase 1 must never drop a cached identity row: its disk row deliberately outlives the data
-		// so a sink row can still name its mapping. Dropping it would clear the membership bit for a
-		// key that is still stored.
+		// An identity row's disk row deliberately outlives the data so a sink row can still name its
+		// mapping; dropping the cached copy would clear the membership bit for a stored key.
 		for keyspace in IDENTITY_KEYSPACES {
 			let key = OperatorStateKey::inner_encoded(GroupId(9), keyspace, vec![1]);
 			assert_eq!(
@@ -981,19 +946,16 @@ mod tests {
 
 	#[test]
 	fn a_key_too_short_to_carry_a_keyspace_is_refused() {
-		// The group id is a varint, so there is no length floor to lean on: two bytes is a legitimate
-		// key for a small group with an empty suffix. Only a key that cannot yield both fields is
-		// undecodable.
+		// The group id is a varint, so there is no length floor: two bytes is a legitimate key for a
+		// small group with an empty suffix. Only a key that cannot yield both fields is undecodable.
 		assert_eq!(group_data_of_inner(&[]), None);
 		assert_eq!(group_data_of_inner(&[0xAB]), None, "a group with no keyspace byte must not decode");
 	}
 
 	#[test]
 	fn the_predicate_agrees_with_the_disk_range_on_arbitrary_bytes() {
-		// The well-formed sweep above only proves agreement on keys the substrate itself built. Cached
-		// keys arrive as opaque bytes from operator code, so the two sides must also agree on strings
-		// no encoder produced - otherwise a malformed key is dropped from RAM while its disk row
-		// survives (membership under-count, silent loss) or the reverse (ghost row, L5).
+		// Cached keys arrive as opaque bytes from operator code, so the predicate and the range must
+		// also agree on strings no encoder produced.
 		let mut seed = 0x2545F4914F6CDD1Du64;
 		let mut next = move || {
 			seed ^= seed << 13;
@@ -1017,9 +979,8 @@ mod tests {
 
 	#[test]
 	fn a_group_set_is_sorted_deduped_and_never_admits_node_scope() {
-		// The set is built from due_groups output and searched per cached key, so ordering is a
-		// correctness precondition for binary_search, not a nicety. Node scope holds the interning
-		// dictionary and must never be reachable through a bulk invalidation.
+		// The set is searched per cached key, so ordering is a precondition for binary_search. Node
+		// scope holds the interning dictionary and must never be reachable through bulk invalidation.
 		let set = GroupSet::new([GroupId(9), GroupId(2), GroupId(9), GroupId::NODE_SCOPE, GroupId(5)]);
 
 		assert_eq!(set.as_slice(), &[GroupId(2), GroupId(5), GroupId(9)]);

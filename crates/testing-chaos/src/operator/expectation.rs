@@ -232,10 +232,8 @@ mod tests {
 
 	#[test]
 	fn abstaining_is_not_the_same_claim_as_naming_no_rows() {
-		// A model whose oracle only describes the operator once every horizon has been crossed must be
-		// able to say nothing mid-run. Saying it with an empty multiset instead would read as "the view
-		// must hold nothing", so every operator that emits on a tick rather than on arrival would be
-		// reported as divergent for the whole run. These two must not collapse into each other.
+		// A model must be able to say nothing mid-run. Saying it with an empty multiset would read
+		// as "the view must hold nothing", failing every operator that emits on a tick.
 		let actual = view(&[(1, &[("g", Value::Int4(1)), ("total", Value::Int4(5))])], &["g", "total"]);
 		let abstain: Option<Vec<Vec<Value>>> = None;
 		let names_nothing: Option<Vec<Vec<Value>>> = Some(vec![]);
@@ -278,11 +276,9 @@ mod tests {
 
 	#[test]
 	fn a_second_row_for_one_window_is_caught_even_when_the_multiset_permits_its_value() {
-		// The hole the key closes. A key whose row-number mapping was reclaimed mints a brand new
-		// number, so its duplicate folds into the view without colliding with anything. The positional
-		// multiset then catches it only by coincidence - here both published tuples are values the
-		// model legitimately permits for other windows of the same group, so containment is satisfied
-		// and the duplicate passes unnoticed.
+		// A key whose row-number mapping was reclaimed mints a fresh number, so its duplicate
+		// folds in without colliding; both tuples are values the model permits for other windows
+		// of the group, so a positional multiset alone would let the duplicate through.
 		let duplicate = windowed(&[(1, 1, 5, 1_000), (2, 1, 9, 1_000)]);
 		let permitted: Vec<Vec<Value>> =
 			vec![vec![Value::Int4(1), Value::Int4(5)], vec![Value::Int4(1), Value::Int4(9)]];
@@ -307,10 +303,9 @@ mod tests {
 
 	#[test]
 	fn a_row_carrying_no_event_time_is_reported_rather_than_folded_onto_one_key() {
-		// rekey substitutes a placeholder for a named column a row lacks, which is survivable there.
-		// Doing the same for a missing event position would drop every row onto one key and report a
-		// duplicate on every step of every suite - a detector that always fires is as useless as one
-		// that never does, and far more expensive to diagnose.
+		// rekey substitutes a placeholder for a named column a row lacks, but doing the same for a
+		// missing event time would drop every row onto one key and report a duplicate on every
+		// step of every suite.
 		let mut timeless = windowed(&[(1, 1, 5, 1_000)]);
 		timeless.insert(
 			OutputKey::new(vec![Value::Uint8(2)]),
@@ -356,10 +351,9 @@ mod tests {
 
 	#[test]
 	fn a_view_claim_reports_only_the_side_its_bound_names() {
-		// The two one-sided bounds exist so a model can admit a lagging view without permitting a wrong
-		// one. AtLeast must ignore rows the operator published early; AtMost must ignore rows the model
-		// requires but the operator has not emitted yet. A value that disagrees is not lag, so it must
-		// fail under either.
+		// The one-sided bounds let a model admit a lagging view without permitting a wrong one:
+		// AtLeast ignores rows published early, AtMost ignores rows not emitted yet, and a value
+		// that disagrees is not lag so it fails under both.
 		let claim_row = |key: i32, total: i32| {
 			(
 				OutputKey::new(vec![Value::Int4(key)]),
@@ -400,9 +394,8 @@ mod tests {
 
 	#[test]
 	fn a_view_claim_honours_its_own_named_tolerances_not_the_workloads() {
-		// The workload's positional tolerances describe a projection; a keyed claim compares whole rows by
-		// column name and carries its own. Passing the workload's slice through would silently apply the
-		// wrong column's tolerance, so the claim must ignore it.
+		// The workload's tolerances are positional; a keyed claim compares by column name, so
+		// passing that slice through would apply the wrong column's tolerance.
 		let mut oracle = MaterializedView::empty();
 		oracle.columns = vec!["g".to_string(), "total".to_string()];
 		oracle.insert(

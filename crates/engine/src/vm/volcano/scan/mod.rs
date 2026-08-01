@@ -25,19 +25,9 @@ pub mod table;
 pub mod view;
 pub mod vtable;
 
-/// Reject reading ANY view - transactional or deferred - while the current
-/// transaction holds unprocessed changes to objects upstream of it, walking
-/// the flow DAG through every view kind: you never read your own uncommitted
-/// writes through a view. Transactional views are maintained in the
-/// pre-commit interceptor and deferred views asynchronously after commit, so
-/// such a read would silently return the view's pre-request contents; failing
-/// the transaction (TXN_015) is the contract instead. Query, Test, and
-/// Replica transactions never accumulate changes and pass through
-/// unconditionally - the Test exemption is load-bearing for RUN TESTS, which
-/// maintains views inline. A view this transaction created is absent from the
-/// published lineage snapshot, which only learns of a flow at post-commit, so
-/// a snapshot miss falls back to the catalog rather than waving the read
-/// through: the guard fails closed on an unknown view.
+/// Reading a view while the transaction holds unprocessed changes upstream of it would return the
+/// view's pre-request contents, since transactional views are maintained pre-commit and deferred
+/// ones after it. Fails closed: an unknown view is resolved from the catalog, not waved through.
 pub(crate) fn guard_view_read(view: &ResolvedView, rx: &mut Transaction<'_>, services: &Services) -> Result<()> {
 	if !rx.has_unprocessed_flow_changes() {
 		return Ok(());
@@ -63,12 +53,8 @@ pub(crate) fn guard_view_read(view: &ResolvedView, rx: &mut Transaction<'_>, ser
 	.into())
 }
 
-/// Recompute the upstream closure straight from the catalog the current
-/// transaction can see. The published snapshot only learns of a flow at
-/// post-commit, so a view this very transaction created is absent from it;
-/// treating that absence as "no upstreams" would let the read through. The
-/// catalog already holds the uncommitted CREATE VIEW, so it is the truth
-/// here. Returns None only when no flow produces the view at all.
+/// The published snapshot only learns of a flow at post-commit, so a view this transaction just
+/// created is missing from it while the catalog already holds the uncommitted CREATE VIEW.
 fn upstream_from_catalog(
 	services: &Services,
 	rx: &mut Transaction<'_>,
@@ -130,11 +116,8 @@ fn resolve_object_names(services: &Services, rx: &mut Transaction<'_>, objects: 
 		.collect()
 }
 
-/// Render an object's name namespace-qualified, matching how the offending view
-/// itself is rendered. Without the namespace, `alpha::orders` and
-/// `beta::orders` both print as `orders` and the diagnostic cannot be acted on.
-/// Degrades to the bare name if the namespace is unreadable: this is already
-/// the error path, and a slightly vaguer message beats masking the real error.
+/// Without the namespace, `alpha::orders` and `beta::orders` both print as `orders` and the
+/// diagnostic cannot be acted on. Degrades to the bare name rather than masking the real error.
 fn qualify(services: &Services, rx: &mut Transaction<'_>, namespace: NamespaceId, name: &str) -> String {
 	match services.catalog.find_namespace(rx, namespace) {
 		Ok(Some(namespace)) => format!("{}::{}", namespace.name(), name),

@@ -3,7 +3,6 @@
 
 use std::{collections::HashMap, error::Error, fmt::Write, sync::Arc};
 
-// === Native (network) test helpers ===
 #[cfg(not(reifydb_single_threaded))]
 use reifydb::{Database, RuntimeConfig, WithSubsystem, server};
 use reifydb_client::{Frame, Params, Value};
@@ -13,11 +12,9 @@ use tokio::runtime::Runtime;
 
 #[cfg(not(reifydb_single_threaded))]
 pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
-	// The uptime workspace member turns on reqwest's `rustls-no-provider` feature, which Cargo
-	// unifies across the whole workspace. That leaves reqwest expecting a process-wide rustls
-	// crypto provider that only uptime's own `main` installs, so HttpClient panics at build time
-	// in these test binaries. Install the ring provider (the workspace's chosen backend) once;
-	// the error on subsequent calls means it is already installed.
+	// Cargo unifies reqwest's `rustls-no-provider` feature across the workspace, so reqwest
+	// expects a process-wide provider that only uptime's own `main` installs. Install ring
+	// once; an error on later calls just means it is already installed.
 	let _ = rustls::crypto::ring::default_provider().install_default();
 	server::memory()
 		.with_runtime_config(RuntimeConfig::default().seeded(0))
@@ -29,13 +26,9 @@ pub fn create_server_instance(_runtime: &Arc<Runtime>) -> Database {
 		.unwrap()
 }
 
-/// Server instance whose clock is the supplied mock clock, so a test can drive time-based
-/// subscription shaping (throttle, linger) deterministically by advancing it.
-///
-/// Those gates compare against `clock.now().to_millis()`; the default seeded clock is frozen at
-/// 0, so a linger window never elapses on its own. Handing in a clock the test also holds
-/// lets it step time forward on demand. The poller bounds its wait under a simulated clock
-/// so the advance is observed promptly. The RNG stays seeded for determinism.
+/// Throttle and linger gates compare against `clock.now()`; the default seeded clock is frozen
+/// at 0, so a window never elapses on its own. Handing in a clock the test also holds lets it
+/// step time forward on demand.
 #[allow(dead_code)]
 #[cfg(not(reifydb_single_threaded))]
 pub fn create_server_instance_with_clock(
@@ -54,7 +47,6 @@ pub fn create_server_instance_with_clock(
 		.unwrap()
 }
 
-/// Start server and return WebSocket admin port
 #[allow(dead_code)]
 #[cfg(not(reifydb_single_threaded))]
 pub fn start_server_and_get_ws_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
@@ -66,7 +58,6 @@ pub fn start_server_and_get_ws_port(_runtime: &Arc<Runtime>, server: &mut Databa
 	Ok(server.sub_server_ws().unwrap().admin_port().unwrap())
 }
 
-/// Start server and return gRPC admin port
 #[allow(dead_code)]
 #[cfg(not(reifydb_single_threaded))]
 pub fn start_server_and_get_grpc_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
@@ -78,7 +69,6 @@ pub fn start_server_and_get_grpc_port(_runtime: &Arc<Runtime>, server: &mut Data
 	Ok(server.sub_server_grpc().unwrap().admin_port().unwrap())
 }
 
-/// Start server and return HTTP admin port
 #[allow(dead_code)]
 #[cfg(not(reifydb_single_threaded))]
 pub fn start_server_and_get_http_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
@@ -90,7 +80,6 @@ pub fn start_server_and_get_http_port(_runtime: &Arc<Runtime>, server: &mut Data
 	Ok(server.sub_server_http().unwrap().admin_port().unwrap())
 }
 
-/// Clean up server instance
 #[cfg(not(reifydb_single_threaded))]
 pub fn cleanup_server(mut server: Option<Database>) {
 	if let Some(mut srv) = server.take() {
@@ -98,8 +87,6 @@ pub fn cleanup_server(mut server: Option<Database>) {
 		drop(srv);
 	}
 }
-
-// === DST test helpers ===
 
 #[cfg(reifydb_single_threaded)]
 use reifydb::{Database, RuntimeConfig, embedded};
@@ -143,7 +130,6 @@ impl DstTestContext {
 		let handle = system.spawn_ephemeral("server", ServerActor::new(engine, auth_service, clock));
 		let client = DstClient::new(handle.actor_ref().clone(), system.clone());
 
-		// Authenticate to get identity
 		let auth_response = client.authenticate(
 			"token".to_string(),
 			HashMap::from([("token".to_string(), "mysecrettoken".to_string())]),
@@ -190,16 +176,12 @@ pub fn dst_response_to_result(response: ServerResponse) -> Result<Vec<Frame>, Bo
 	}
 }
 
-// === Shared helpers (used by both native and DST) ===
-
-/// Parse RQL command from testscript Command
 #[allow(dead_code)]
 pub fn parse_rql(command: &Command) -> String {
 	command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ")
 }
 
-/// Parse positional parameters from command arguments
-/// First argument is the RQL, rest are positional parameters
+/// First argument is the RQL, the rest are positional parameters.
 #[allow(dead_code)]
 pub fn parse_positional_params(command: &Command) -> (String, Params) {
 	let args: Vec<&str> = command.args.iter().map(|a| a.value.as_str()).collect();
@@ -214,8 +196,7 @@ pub fn parse_positional_params(command: &Command) -> (String, Params) {
 	(rql, Params::Positional(Arc::new(params)))
 }
 
-/// Parse named parameters from command arguments
-/// First argument is the RQL, rest are name=value pairs
+/// First argument is the RQL, the rest are `name=value` pairs.
 #[allow(dead_code)]
 pub fn parse_named_params(command: &Command) -> (String, Params) {
 	let args: Vec<&str> = command.args.iter().map(|a| a.value.as_str()).collect();
@@ -236,10 +217,8 @@ pub fn parse_named_params(command: &Command) -> (String, Params) {
 	(rql, Params::Named(Arc::new(params)))
 }
 
-/// Parse a parameter value from string
 #[allow(dead_code)]
 fn parse_param_value(s: &str) -> Value {
-	// Try to parse as number first
 	if let Ok(i) = s.parse::<i32>() {
 		return Value::Int4(i);
 	}
@@ -252,7 +231,6 @@ fn parse_param_value(s: &str) -> Value {
 		}
 	}
 
-	// Handle boolean
 	if s == "true" {
 		return Value::Boolean(true);
 	}
@@ -260,7 +238,6 @@ fn parse_param_value(s: &str) -> Value {
 		return Value::Boolean(false);
 	}
 
-	// Handle quoted strings
 	if s.starts_with('\'') && s.ends_with('\'') && s.len() > 1 {
 		return Value::Utf8(s[1..s.len() - 1].to_string());
 	}
@@ -268,11 +245,9 @@ fn parse_param_value(s: &str) -> Value {
 		return Value::Utf8(s[1..s.len() - 1].to_string());
 	}
 
-	// Default to string
 	Value::Utf8(s.to_string())
 }
 
-/// Write frames to output string
 #[allow(dead_code)]
 pub fn write_frames(frames: Vec<Frame>) -> Result<String, Box<dyn Error>> {
 	let mut output = String::new();

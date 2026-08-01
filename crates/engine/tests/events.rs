@@ -28,13 +28,13 @@ fn test_create_event_multiple_variants() {
 
 #[test]
 fn test_create_enum_is_not_event_handler_rejected() {
-	// CREATE HANDLER on a plain ENUM must fail at compile (physical planning) time.
+	// A handler on a plain ENUM must fault at plan time; letting it register would create a
+	// handler nothing can ever dispatch to.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE ns");
 	t.admin("CREATE ENUM ns::status { Active, Inactive }");
 
 	let msg = t.admin_err("CREATE HANDLER ns::h ON ns::status::Active { }");
-	// Physical planner returns: "'status' is not an EVENT type. Use CREATE EVENT..."
 	assert!(
 		msg.to_lowercase().contains("not an event") || msg.to_lowercase().contains("event type"),
 		"Expected 'not an event' error, got: {msg}"
@@ -74,7 +74,7 @@ fn test_create_handler_unknown_variant() {
 
 #[test]
 fn test_dispatch_no_handlers() {
-	// Dispatching an event with no registered handlers is a no-op - zero handlers fired.
+	// An unhandled dispatch is a no-op, not a fault.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE ns");
 	t.admin("CREATE EVENT ns::order_event { OrderPlaced { id: int4 } }");
@@ -86,7 +86,7 @@ fn test_dispatch_no_handlers() {
 
 #[test]
 fn test_dispatch_single_handler() {
-	// One handler fires and produces a side-effect row in the audit table.
+	// The reported count must be backed by a real side effect, not just a registration lookup.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE ns");
 	t.admin("CREATE TABLE ns::audit { kind: utf8 }");
@@ -98,7 +98,6 @@ fn test_dispatch_single_handler() {
 	let fired: u8 = frames[0].get::<u8>("handlers_fired", 0).unwrap().unwrap();
 	assert_eq!(fired, 1);
 
-	// Verify the INSERT side-effect
 	let audit = t.query("FROM ns::audit");
 	assert_eq!(TestEngine::row_count(&audit), 1);
 	let kind: String = audit[0].get::<String>("kind", 0).unwrap().unwrap();
@@ -107,7 +106,7 @@ fn test_dispatch_single_handler() {
 
 #[test]
 fn test_dispatch_fanout_two_handlers() {
-	// Two handlers registered on the same variant - both must fire.
+	// Dispatch fans out; stopping after the first handler would silently drop the rest.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE ns");
 	t.admin("CREATE TABLE ns::audit { kind: utf8 }");
@@ -127,7 +126,7 @@ fn test_dispatch_fanout_two_handlers() {
 
 #[test]
 fn test_dispatch_only_matching_variant() {
-	// A handler registered on variant B must NOT fire when variant A is dispatched.
+	// Handlers are keyed by variant, not by event type; keying by type would fire all of them.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE ns");
 	t.admin("CREATE TABLE ns::audit { kind: utf8 }");
@@ -135,7 +134,6 @@ fn test_dispatch_only_matching_variant() {
 	t.admin("CREATE HANDLER ns::on_shipped ON ns::order_event::OrderShipped \
 		 { INSERT ns::audit [{ kind: \"shipped\" }] }");
 
-	// Dispatch OrderPlaced - the handler is for OrderShipped, should not fire.
 	let frames = t.command("DISPATCH ns::order_event::OrderPlaced { id: 1 }");
 	let fired: u8 = frames[0].get::<u8>("handlers_fired", 0).unwrap().unwrap();
 	assert_eq!(fired, 0);
@@ -146,24 +144,21 @@ fn test_dispatch_only_matching_variant() {
 
 #[test]
 fn test_dispatch_chained_events() {
-	// Handler A DISPATCHes event B; handler B inserts a row - both effects land in the
-	// same transaction.
+	// A dispatch raised from inside a handler must be delivered within the same transaction,
+	// or the second effect would be lost on rollback of the first.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE ns");
 	t.admin("CREATE TABLE ns::audit { kind: utf8 }");
 	t.admin("CREATE EVENT ns::order_event { OrderPlaced { id: int4 }, OrderShipped { id: int4 } }");
 
-	// handler_a fires on OrderPlaced, dispatches OrderShipped
 	t.admin("CREATE HANDLER ns::on_placed ON ns::order_event::OrderPlaced \
 		 { INSERT ns::audit [{ kind: \"placed\" }]; DISPATCH ns::order_event::OrderShipped { id: 1 } }");
 
-	// handler_b fires on OrderShipped
 	t.admin("CREATE HANDLER ns::on_shipped ON ns::order_event::OrderShipped \
 		 { INSERT ns::audit [{ kind: \"shipped\" }] }");
 
 	t.command("DISPATCH ns::order_event::OrderPlaced { id: 1 }");
 
-	// Both "placed" and "shipped" rows should exist in the same committed transaction.
 	let audit = t.query("FROM ns::audit");
 	assert_eq!(TestEngine::row_count(&audit), 2);
 
@@ -191,12 +186,12 @@ fn test_dispatch_handler_accesses_event_fields() {
 
 #[test]
 fn test_dispatch_wrong_type_enum_not_event() {
-	// Dispatching to a plain ENUM must fail (physical planner catches at compile time).
+	// DISPATCH names a sum type, so nothing in the syntax distinguishes an enum from an event;
+	// the check has to happen at plan time.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE ns");
 	t.admin("CREATE ENUM ns::status { Active, Inactive }");
 
-	// DISPATCH targets a SumType by name; physical planner checks is_event.
 	let msg = t.command_err("DISPATCH ns::status::Active { }");
 	assert!(
 		msg.to_lowercase().contains("not an event") || msg.to_lowercase().contains("event type"),

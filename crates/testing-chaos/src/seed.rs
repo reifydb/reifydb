@@ -76,15 +76,9 @@ fn env_seed() -> Option<u64> {
 mod tests {
 	use super::{derive_seed, resolve_seed};
 
-	// These reach private helpers, so they stay unit tests. The `chaos_test!` expansion itself is
-	// covered from tests/chaos.rs, where the generated path has to resolve through the real
-	// external crate name.
-
 	#[test]
 	fn derive_seed_is_deterministic_and_decorrelated() {
-		// Same inputs hash identically; changing base or salt changes the
-		// stream. Reproduction relies on this: a fixed base seed replays the
-		// exact same per-index seed.
+		// Replay depends on this: a fixed base seed must reproduce the exact per-index seed.
 		assert_eq!(derive_seed(1, 1), derive_seed(1, 1));
 		assert_ne!(derive_seed(1, 1), derive_seed(1, 2));
 		assert_ne!(derive_seed(1, 1), derive_seed(2, 1));
@@ -92,8 +86,7 @@ mod tests {
 
 	#[test]
 	fn derived_iteration_seeds_are_distinct() {
-		// Across many indices from one base, no two iterations should share a
-		// seed, or the suite would silently re-explore the same point.
+		// Two iterations sharing a seed means the suite silently re-explores the same point.
 		let mut seeds: Vec<u64> = (0..1000u64).map(|i| derive_seed(42, i)).collect();
 		let total = seeds.len();
 		seeds.sort_unstable();
@@ -103,9 +96,8 @@ mod tests {
 
 	#[test]
 	fn pinned_seed_reproduces_exactly() {
-		// With SEED set, every index resolves to that exact seed, so a
-		// reported failure replays by pinning the printed value - regardless
-		// of which index originally ran it.
+		// A pin has to override the index, or replaying a reported failure would need to know
+		// which index originally ran it.
 		assert_eq!(resolve_seed(Some(42), 7, 3), 42);
 		assert_eq!(resolve_seed(Some(42), 0, 0), 42);
 		assert_eq!(resolve_seed(Some(42), 999, 31), 42);
@@ -113,11 +105,8 @@ mod tests {
 
 	#[test]
 	fn unpinned_seed_is_per_index_and_per_base() {
-		// Without a pin, each index derives a distinct seed from the base,
-		// and a different base yields a different seed for the same index.
-		// The latter is the deterministic core of "different seeds every
-		// run": random_base_seed() supplies a fresh base per run, so the
-		// same-named test explores a new seed each time.
+		// Varying with the base is what makes a fresh base per run explore new seeds under the
+		// same test name.
 		assert_eq!(resolve_seed(None, 7, 3), derive_seed(7, 3));
 		assert_ne!(resolve_seed(None, 7, 3), resolve_seed(None, 7, 4));
 		assert_ne!(resolve_seed(None, 7, 3), resolve_seed(None, 8, 3));

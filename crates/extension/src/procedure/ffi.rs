@@ -74,7 +74,7 @@ impl NativeProcedureFFI {
 	}
 }
 
-// SAFETY: the Mutex around `instance` provides single-actor access; that same
+// SAFETY: instance and cached_ctx are only touched while the instance Mutex is held.
 unsafe impl Send for NativeProcedureFFI {}
 unsafe impl Sync for NativeProcedureFFI {}
 
@@ -82,6 +82,7 @@ impl Drop for NativeProcedureFFI {
 	fn drop(&mut self) {
 		let instance = *self.instance.lock();
 		if !instance.is_null() {
+			// SAFETY: instance came from this descriptor's create; Drop runs at most once.
 			unsafe { (self.vtable.destroy)(instance) };
 		}
 	}
@@ -154,13 +155,14 @@ impl NativeProcedureFFI {
 
 	#[inline]
 	fn reset_arena(&self) {
-		// SAFETY: single-threaded per call (Mutex held); no live pointers
+		// SAFETY: the arena is thread-local and nothing marshalled into it outlives a call.
 		FFI_PROC_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
 	}
 
 	#[inline]
 	fn prepare_ffi_context(&self, ctx: &mut ProcedureContext<'_, '_>) {
 		let ffi_ctx_ptr = self.cached_ctx.get();
+		// SAFETY: cached_ctx owns the ContextFFI for the life of self; execute holds the Mutex.
 		unsafe {
 			(*ffi_ctx_ptr).txn_ptr = ctx.tx as *mut Transaction<'_> as *mut c_void;
 			(*ffi_ctx_ptr).clock_now_nanos = ctx.runtime_context.clock.now().to_nanos();
@@ -180,6 +182,7 @@ impl NativeProcedureFFI {
 
 		let ffi_ctx_ptr = self.cached_ctx.get();
 		with_registry(&self.builder_registry, || {
+			// SAFETY: instance is non-null under the held Mutex; params_bytes outlives the call.
 			call_with_abort_on_panic("procedure::call", || unsafe {
 				(self.vtable.call)(instance, ffi_ctx_ptr, params_bytes.as_ptr(), params_bytes.len())
 			})

@@ -6,30 +6,24 @@ use reqwest::Client as ReqwestClient;
 
 use crate::config::Protocol;
 
-/// Error type for client operations
 pub type Error = reifydb_client::value::error::Error;
 
-/// Unified client abstraction over HTTP and WebSocket protocols
 pub enum Client {
 	Http(HttpClient),
 	Ws(WsClient),
 }
 
-/// Operation to execute on the server
 pub enum Operation {
-	/// Read-only query
 	Query(String),
-	/// Write command (INSERT, UPDATE, DELETE, CREATE, etc.)
 	Command(String),
 }
 
 impl Client {
-	/// Connect to the server using the specified protocol
 	pub async fn connect(protocol: Protocol, url: &str, token: Option<&str>) -> Result<Self, Error> {
 		Self::connect_with_http_client(protocol, url, token, None).await
 	}
 
-	/// Connect with a shared HTTP client for connection pooling
+	/// Passing an existing `ReqwestClient` shares its connection pool across workers.
 	pub async fn connect_with_http_client(
 		protocol: Protocol,
 		url: &str,
@@ -58,7 +52,6 @@ impl Client {
 		}
 	}
 
-	/// Execute an operation on the server
 	pub async fn execute(&self, operation: &Operation) -> Result<(), Error> {
 		match (self, operation) {
 			(Client::Http(client), Operation::Query(rql)) => {
@@ -77,12 +70,11 @@ impl Client {
 		Ok(())
 	}
 
-	/// Close the connection gracefully
+	/// A no-op for HTTP, which has no explicit close and relies on the connection pool.
 	pub async fn close(self) -> Result<(), Error> {
 		if let Client::Ws(client) = self {
 			client.close().await?;
 		}
-		// HTTP client has no explicit close - uses connection pooling
 		Ok(())
 	}
 }

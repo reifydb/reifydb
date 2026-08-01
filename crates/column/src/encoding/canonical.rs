@@ -87,8 +87,8 @@ mod tests {
 
 	#[test]
 	fn registry_builtins_registers_all_canonical_and_compressed_encodings() {
+		// 13 is 4 canonical plus 9 compressed; the count catches an encoding added without registration.
 		let r = EncodingRegistry::builtins();
-		// 4 canonical + 9 compressed stubs = 13
 		assert_eq!(r.len(), 13);
 		for id in [
 			EncodingId::CANONICAL_BOOL,

@@ -50,7 +50,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
-		// Create a view
 		let view = CatalogStore::create_deferred_view(
 			&mut txn,
 			ViewToCreate {
@@ -68,10 +67,8 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Get column IDs for the view
 		let columns = CatalogStore::list_columns(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
 
-		// Create primary key
 		let pk_id = CatalogStore::create_primary_key(
 			&mut txn,
 			PrimaryKeyToCreate {
@@ -81,7 +78,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Get the primary key ID
 		let retrieved_pk_id = CatalogStore::get_view_pk_id(&mut Transaction::Admin(&mut txn), view.id())
 			.unwrap()
 			.expect("Primary key ID should exist");
@@ -94,7 +90,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
-		// Create a view
 		let view = CatalogStore::create_deferred_view(
 			&mut txn,
 			ViewToCreate {
@@ -112,7 +107,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Get the primary key ID - should be None
 		let pk_id = CatalogStore::get_view_pk_id(&mut Transaction::Admin(&mut txn), view.id()).unwrap();
 
 		assert!(pk_id.is_none());
@@ -122,7 +116,6 @@ pub mod tests {
 	fn test_get_view_pk_id_nonexistent_view() {
 		let mut txn = create_test_admin_transaction();
 
-		// Get the primary key ID for non-existent view - should be None
 		let pk_id = CatalogStore::get_view_pk_id(&mut Transaction::Admin(&mut txn), ViewId(999)).unwrap();
 
 		assert!(pk_id.is_none());

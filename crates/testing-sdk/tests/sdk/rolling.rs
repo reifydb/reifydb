@@ -25,12 +25,8 @@ use reifydb_testing_sdk::{
 };
 use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
 
-// Rolling sum over the last 3 windows, where EACH window is itself an
-// invertible sum accumulator. This exercises the rolling improvement:
-// multiple input rows can share a window coordinate and accumulate, and a
-// single event can be removed from inside a window (remove(pre)) without
-// dropping the whole window - which the old last-write-wins buffer could
-// not do.
+// Rolling sum where each window is itself an invertible accumulator, so rows can share a
+// window coordinate and a single event can be removed without dropping the whole window.
 
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, Default, HeapSize)]
@@ -156,8 +152,7 @@ fn single_insert_emits_insert() {
 
 #[test]
 fn multiple_events_accumulate_within_one_window() {
-	// Two rows share window coordinate 0; the window accumulates to 7.
-	// This is the capability the old last-write-wins buffer lacked.
+	// Two rows sharing a window coordinate must accumulate, not overwrite each other.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
 		.build()
 		.expect("harness");
@@ -174,8 +169,7 @@ fn multiple_events_accumulate_within_one_window() {
 
 #[test]
 fn partial_remove_within_window_keeps_window_alive() {
-	// Window 0 holds two events (sum 7). Removing one event leaves the
-	// window with sum 4 - the window is NOT dropped wholesale.
+	// Removing one of two events inside a window must leave the window standing, not drop it.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
 		.build()
 		.expect("harness");
@@ -226,11 +220,8 @@ fn buffer_fills_then_evicts_oldest_window() {
 
 #[test]
 fn late_window_event_accepted_without_sealing() {
-	// The rolling driver carries no seal envelope in this fixture, so under
-	// grace semantics late events merge into their (older) coord instead of
-	// being dropped by an implicit high-water gate. Time-based sealing for
-	// rolling ledgers is the sub-flow face's job; capacity-based SDK rolling
-	// is bounded by its capacity eviction.
+	// Without a seal envelope there is no implicit high-water gate, so a late event merges
+	// into its older coordinate; capacity eviction is what bounds this driver.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
 		.build()
 		.expect("harness");
@@ -241,10 +232,8 @@ fn late_window_event_accepted_without_sealing() {
 
 #[test]
 fn remove_clears_buffer_emits_remove() {
-	// A Remove that empties the only window must withdraw the previously
-	// emitted output row - a terminal Remove carrying the prior rolling_sum -
-	// rather than silently leaking a ghost row. This is what makes reorg
-	// retraction correct for rolling-window views.
+	// Emptying the buffer has to withdraw the previously emitted row; leaking a ghost row is
+	// what breaks reorg retraction.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
 		.build()
 		.expect("harness");
@@ -280,7 +269,6 @@ fn millis(value: u64) -> Duration {
 	Duration::from_milliseconds_const(value as i64)
 }
 
-// TestRollingSum with sealing enabled, over a DateTime coordinate.
 struct SealedRollingSum;
 
 impl RollingOperator for SealedRollingSum {
@@ -336,10 +324,8 @@ impl RollingRegistration for SealedRollingSum {
 
 #[test]
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
-	// A group that stops reporting - a delisted symbol, a wallet that goes
-	// quiet - must still have its state reclaimed, or a high-cardinality
-	// group key grows without bound. Nothing arrives after the initial
-	// batch here; the only thing that moves is the watermark.
+	// A group that stops reporting must still be reclaimed, or a high-cardinality group key
+	// grows without bound; nothing moves here after the initial batch except the watermark.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<SealedRollingSum>>>::new()
 		.build()
 		.expect("harness");
@@ -364,8 +350,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 
 #[test]
 fn an_ungated_rolling_operator_arms_no_seal_timer() {
-	// seal_after defaults to None. An operator that never opted into
-	// sealing must not acquire a retention policy it did not ask for.
+	// An operator that never opted into sealing must not acquire a retention policy.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingDriver<TestRollingSum>>>::new()
 		.build()
 		.expect("harness");

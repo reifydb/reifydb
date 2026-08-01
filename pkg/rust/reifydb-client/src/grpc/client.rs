@@ -79,7 +79,6 @@ fn to_grpc_change(frames: Vec<Frame>) -> GrpcChange {
 	}
 }
 
-/// Options controlling a gRPC connection, including automatic reconnection.
 #[derive(Clone)]
 pub struct GrpcClientOptions {
 	pub format: WireFormat,
@@ -87,7 +86,6 @@ pub struct GrpcClientOptions {
 }
 
 impl GrpcClientOptions {
-	/// Options for `format` with the default reconnection policy.
 	pub fn new(format: WireFormat) -> Self {
 		Self {
 			format,
@@ -107,12 +105,10 @@ pub struct GrpcClient {
 }
 
 impl GrpcClient {
-	/// Connect with the default reconnection policy.
 	pub async fn connect(url: &str, format: WireFormat) -> Result<Self, Error> {
 		Self::connect_with_options(url, GrpcClientOptions::new(format)).await
 	}
 
-	/// Connect with explicit options (wire format + reconnection policy).
 	pub async fn connect_with_options(url: &str, options: GrpcClientOptions) -> Result<Self, Error> {
 		if options.format == WireFormat::Frames {
 			return Err(ClientError::UnsupportedWireFormat(
@@ -137,8 +133,7 @@ impl GrpcClient {
 		self.token = Some(token.to_string());
 	}
 
-	/// Login with identifier and password. On success, stores the session token
-	/// for subsequent requests and returns the login result.
+	/// Stores the session token on success; later requests carry it automatically.
 	pub async fn login_with_password(&mut self, identifier: &str, password: &str) -> Result<LoginResult, Error> {
 		let mut credentials = HashMap::new();
 		credentials.insert("identifier".to_string(), identifier.to_string());
@@ -177,7 +172,6 @@ impl GrpcClient {
 		}
 	}
 
-	/// Logout from the server, revoking the current session token.
 	pub async fn logout(&mut self) -> Result<(), Error> {
 		if self.token.is_none() {
 			return Ok(());
@@ -321,8 +315,7 @@ impl GrpcClient {
 		Ok(())
 	}
 
-	/// Open a batch subscription over N queries. The server coalesces per-tick deltas
-	/// into a single envelope keyed by member subscription id.
+	/// The server coalesces per-tick deltas into one envelope keyed by member subscription id.
 	pub async fn batch_subscribe(&self, items: &[BatchItem<'_>]) -> Result<BatchGrpcSubscription, Error> {
 		let queries: Vec<String> = items.iter().map(|i| build_subscription_rql(i.rql, &i.config)).collect();
 		let client_batch_id = self.sub_id_counter.fetch_add(1, Ordering::Relaxed).to_string();
@@ -429,16 +422,13 @@ pub struct GrpcSubscription {
 	attempt: u32,
 }
 
-/// Member information returned from a successful `batch_subscribe` - pairs the
-/// client's query index with the server-assigned subscription id.
+/// Pairs the client's query index with the server-assigned subscription id.
 #[derive(Debug, Clone)]
 pub struct BatchMemberHandle {
 	pub index: usize,
 	pub subscription_id: String,
 }
 
-/// A batch subscription over gRPC. Receives coalesced per-tick envelopes from
-/// N underlying member subscriptions.
 pub struct BatchGrpcSubscription {
 	client_batch_id: String,
 	members: Vec<BatchMemberHandle>,
@@ -450,8 +440,7 @@ pub struct BatchGrpcSubscription {
 	attempt: u32,
 }
 
-/// One envelope delivered by a batch subscription: a map from member
-/// `subscription_id` → typed change that arrived within that poller tick.
+/// One poller tick: member `subscription_id` -> the change that arrived within it.
 #[derive(Debug, Clone)]
 pub struct BatchFramesEnvelope {
 	pub batch_id: String,
@@ -459,8 +448,7 @@ pub struct BatchFramesEnvelope {
 	pub entry_errors: HashMap<String, String>,
 }
 
-/// A non-data server-initiated notification on a batch stream: either a member
-/// closed (upstream ended, batch still alive) or the batch itself closed.
+/// `MemberClosed` means that member's upstream ended; the batch stays alive.
 #[derive(Debug, Clone)]
 pub enum BatchStreamEvent {
 	Change(BatchFramesEnvelope),
@@ -479,12 +467,8 @@ impl BatchGrpcSubscription {
 		&self.members
 	}
 
-	/// Receive the next envelope. When the server stream ends or errors, the batch is
-	/// re-established (with re-auth and resubscribe) under the same stable client batch id;
-	/// `None` is returned only once reconnection attempts are exhausted.
-	///
-	/// `BatchMemberClosed` notifications are surfaced so callers can track which
-	/// members have stopped producing.
+	/// On stream end or error the batch is re-established under the same client batch id;
+	/// `None` only once reconnect attempts are exhausted. `MemberClosed` is surfaced, not swallowed.
 	pub async fn recv(&mut self) -> Option<BatchStreamEvent> {
 		loop {
 			match self.stream.message().await {
@@ -551,9 +535,8 @@ impl BatchGrpcSubscription {
 		}
 	}
 
-	/// Re-establish the batch under a fresh channel. `connect_timeout_ms` bounds the whole attempt
-	/// - dial, `batch_subscribe` and the subscribed ack - because a peer that completes a TCP
-	/// handshake and then answers nothing passes the dial stage but never the rest.
+	/// `connect_timeout_ms` bounds the whole attempt (dial, `batch_subscribe`, subscribed ack):
+	/// a peer that completes the TCP handshake then answers nothing passes dial but never the rest.
 	async fn open_stream(&self) -> Option<(Streaming<BatchSubscriptionEvent>, Vec<BatchMemberHandle>)> {
 		let channel = open_channel(&self.url).await.ok()?;
 		let mut client = ReifyDbClient::new(channel);
@@ -585,14 +568,14 @@ impl BatchGrpcSubscription {
 }
 
 impl GrpcSubscription {
-	/// The stable client subscription id, preserved across reconnects.
+	/// The server-assigned id from the initial subscribe; it is not refreshed when the stream is
+	/// re-established, so after a reconnect it no longer names the server's current subscription.
 	pub fn subscription_id(&self) -> &str {
 		&self.subscription_id
 	}
 
-	/// Receive the next change. When the server stream ends or errors, the subscription is
-	/// re-established (with re-auth and resubscribe) under the same stable client id; `None`
-	/// is returned only once reconnection attempts are exhausted.
+	/// On stream end or error the subscription is re-established by replaying the same RQL on a
+	/// fresh channel; `None` only once reconnect attempts are exhausted.
 	pub async fn recv(&mut self) -> Option<GrpcChange> {
 		loop {
 			match self.stream.message().await {
@@ -622,8 +605,7 @@ impl GrpcSubscription {
 		}
 	}
 
-	/// Receive the next raw change payload without any reconnection handling; returns `None`
-	/// when the stream ends or errors.
+	/// Unlike `recv`, does not reconnect: `None` as soon as the stream ends or errors.
 	pub async fn recv_raw(&mut self) -> Option<RawChangePayload> {
 		loop {
 			let msg = self.stream.message().await.ok()??;
@@ -644,9 +626,8 @@ impl GrpcSubscription {
 		}
 	}
 
-	/// Re-establish the subscription under a fresh channel. `connect_timeout_ms` bounds the whole
-	/// attempt - dial, `subscribe` and the subscribed ack - because a peer that completes a TCP
-	/// handshake and then answers nothing passes the dial stage but never the rest.
+	/// `connect_timeout_ms` bounds the whole attempt (dial, `subscribe`, subscribed ack):
+	/// a peer that completes the TCP handshake then answers nothing passes dial but never the rest.
 	async fn open_stream(&self) -> Option<Streaming<SubscriptionEvent>> {
 		let channel = open_channel(&self.url).await.ok()?;
 		let mut client = ReifyDbClient::new(channel);

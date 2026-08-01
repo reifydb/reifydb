@@ -57,7 +57,6 @@ pub mod tests {
 	fn test_parse_separator_invalid() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "foobar rest").unwrap();
-		// Should parse as identifier, not separator
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 	}
 
@@ -89,20 +88,14 @@ pub mod tests {
 	    test_separator_comma => (Comma, ",")
 	}
 
-	// Special test for newline
-	// Note: Newlines are treated as whitespace and skipped during
-	// tokenization So they won't produce separator tokens in the current
-	// implementation
 	#[test]
 	fn test_separator_new_line() {
+		// A newline is whitespace, not a separator token, but it must still advance the line counter.
 		let bump = Bump::new();
-		// Newlines are skipped as whitespace, so "\n rest" just
-		// produces "rest"
 		let tokens = tokenize(&bump, "\n rest").unwrap();
 		assert_eq!(tokens.len(), 1);
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].fragment.text(), "rest");
-		// The token is on line 2 because the newline was consumed
 		assert_eq!(tokens[0].fragment.line().0, 2);
 		assert_eq!(tokens[0].fragment.column().0, 2);
 	}

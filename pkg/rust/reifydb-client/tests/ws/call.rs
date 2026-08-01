@@ -114,11 +114,8 @@ fn call_passes_named_params_through() {
 
 #[test]
 fn rbcf_client_and_frames_binding_interop() {
-	// Cross-format interop guard: an rbcf client calling a frames-format binding must still get a
-	// correctly decoded result. The Rust client decodes both wire encodings transparently, so this
-	// asserts interop, not which encoding was chosen; the observable proof that the server honors
-	// the requested format lives in the TypeScript wireformat tests (a json-only client there fails
-	// against a non-json binding without the server-side format honoring).
+	// An rbcf client calling a frames-format binding must still decode. The Rust client handles
+	// both encodings transparently, so this asserts interop, not which encoding was chosen.
 	run(|_client, fx, url| async move {
 		let mut rbcf_client = WsClient::connect(&url, WireFormat::Rbcf).await.unwrap();
 		rbcf_client.authenticate("mysecrettoken").await.unwrap();

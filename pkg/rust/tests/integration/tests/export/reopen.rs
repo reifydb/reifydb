@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Regression: when a persistent (sqlite) database is reopened, the catalog cache must repopulate
-// each object's columns. Ring buffers previously cached empty columns on reopen, so `from ns::rb`
-// failed with ENG_001 "mismatched column count: expected 0, got 2". All object kinds must scan
-// correctly after a reopen, returning the same rows as before the reopen.
-
 use reifydb_test_harness::{
 	assert::rows,
 	db::{TempDbPath, TestDb},
@@ -13,6 +8,8 @@ use reifydb_test_harness::{
 
 #[test]
 fn ringbuffer_scans_after_sqlite_reopen() {
+	// A reopen must repopulate each object's columns in the catalog cache; ring buffers cached
+	// empty columns instead, so the scan failed on a column-count mismatch.
 	let path = TempDbPath::new("reopen_rb");
 
 	let before = {
@@ -55,13 +52,11 @@ fn series_scans_after_sqlite_reopen() {
 	assert_eq!(before, after, "series rows must be identical after reopen");
 }
 
-/// Queues carry no rows yet, so the reopen risk is the definition itself: if
-/// load_queues is not wired into the cache loader, the queue silently vanishes
-/// from system::queues after a restart while still occupying its keys on disk.
-/// The declared options must survive too, since the scheduling lane will read
-/// them from the cache.
 #[test]
 fn queue_definition_survives_sqlite_reopen() {
+	// A queue carries no rows, so the reopen risk is the definition itself: left out of the cache
+	// loader it vanishes from system::queues after a restart while still holding its keys on disk.
+	// The declared options must survive too, since the scheduling lane reads them from the cache.
 	let path = TempDbPath::new("reopen_queue");
 
 	let before = {
@@ -82,10 +77,9 @@ fn queue_definition_survives_sqlite_reopen() {
 	assert_eq!(before, after, "the queue definition must be identical after reopen");
 }
 
-/// A queue dropped before the restart must stay dropped: a stale cache entry
-/// rebuilt from a leftover key would resurrect it.
 #[test]
 fn dropped_queue_stays_gone_after_sqlite_reopen() {
+	// A stale cache entry rebuilt from a leftover key on disk would resurrect the dropped queue.
 	let path = TempDbPath::new("reopen_queue_dropped");
 
 	{

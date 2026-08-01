@@ -9,8 +9,7 @@ fn main() {
 	// Create and start an in-memory database
 	let db = embedded::memory().build().unwrap();
 
-	// Example 1: Standalone EXTEND with constants (creates a single-encoded
-	// frame)
+	// Example 1: Standalone EXTEND with constants (creates a single-row frame)
 	info!("Example 1: Standalone EXTEND with constants");
 	log_query(r#"extend { total: 42, tax: 3.14 }"#);
 

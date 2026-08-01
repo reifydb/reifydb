@@ -1,18 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Test-only companion to `reifydb-sub-flow`: the operator harness that drives the subsystem's own
-//! reclamation sweep.
+//! Test-only companion to `reifydb-sub-flow`, kept out of that crate because every build that
+//! runs flows resolves it.
 //!
-//! It is a separate crate rather than a feature of `reifydb-sub-flow` for the same reason
-//! `reifydb-testing-sdk` is separate from `reifydb-sdk`: the subsystem is resolved by every build
-//! that runs flows, and nothing test-only should ride along with it. Reach it through
-//! `reifydb::testing::flow`.
-//!
-//! What distinguishes [`harness::Harness`] from the guest harness in `reifydb-testing-sdk` is who
-//! decides. The sdk harness erases the group state a test names; this one hands production's own
-//! `reclaim_nodes` a real `FlowTransaction` over a real engine and lets the sweep decide what is
-//! due, so an operator that declares retention it never receives fails here and passes there.
+//! Unlike the sdk harness, which erases the group state a test names, [`harness::Harness`] hands
+//! production's own `reclaim_nodes` a real `FlowTransaction` and lets the sweep decide what is
+//! due; an operator declaring retention it never receives fails here and passes there.
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
@@ -23,9 +17,6 @@ pub mod native;
 
 pub use native::assert_backend_parity;
 
-/// The harness a guest operator is driven through.
-///
-/// Named here so a consumer never has to reach into `reifydb-sub-flow` for `ApplyOperator` just to
-/// write down the type of its own fixture. The wrapper is an implementation detail of how the host
-/// hosts a guest, not something a guest author should have to import.
+/// Named here so a guest author never has to import `ApplyOperator` from `reifydb-sub-flow` just
+/// to write down the type of a fixture.
 pub type GuestHarness = harness::Harness<reifydb_sub_flow::operator::apply::ApplyOperator>;

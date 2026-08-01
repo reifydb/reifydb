@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Abstract syntax tree for RQL. The parser entry point `parse_str` tokenises a source string and emits an
-//! `AstStatement` tree allocated in a bump arena tied to the source lifetime, so spans inside the AST can refer
-//! back to fragments of the original text without copying.
-//!
-//! AST shapes are public so external tooling - formatters, linters, the explain renderer - can inspect parsed
-//! queries without re-parsing them. Adding or renaming a public AST node is a breaking change for that tooling.
+//! Abstract syntax tree for RQL. The tree is bump-allocated against the source lifetime, so its spans can point
+//! back into the original text without copying it. AST shapes are public for external tooling (formatters, linters,
+//! the explain renderer), which makes adding or renaming a node a breaking change for them.
 
 use tracing::instrument;
 

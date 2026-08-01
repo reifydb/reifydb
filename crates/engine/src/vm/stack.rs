@@ -395,7 +395,6 @@ pub mod tests {
 
 	use super::*;
 
-	// Helper function to create test columns
 	fn create_test_columns(values: Vec<Value>) -> Columns {
 		if values.is_empty() {
 			let column_data = ColumnBuffer::none_typed(ValueType::Boolean, 0);
@@ -417,10 +416,8 @@ pub mod tests {
 		let mut ctx = SymbolTable::new();
 		let cols = create_test_columns(vec![Value::utf8("Alice".to_string())]);
 
-		// Set a variable
 		ctx.set("name".to_string(), Variable::columns(cols.clone()), false).unwrap();
 
-		// Get the variable
 		assert!(ctx.get("name").is_some());
 		assert!(!ctx.is_mutable("name"));
 		assert!(ctx.exists_in_any_scope("name"));
@@ -433,12 +430,10 @@ pub mod tests {
 		let cols1 = create_test_columns(vec![Value::Int4(42)]);
 		let cols2 = create_test_columns(vec![Value::Int4(84)]);
 
-		// Set as mutable
 		ctx.set("counter".to_string(), Variable::columns(cols1.clone()), true).unwrap();
 		assert!(ctx.is_mutable("counter"));
 		assert!(ctx.get("counter").is_some());
 
-		// Update mutable variable
 		ctx.set("counter".to_string(), Variable::columns(cols2.clone()), true).unwrap();
 		assert!(ctx.get("counter").is_some());
 	}
@@ -450,14 +445,12 @@ pub mod tests {
 		let cols1 = create_test_columns(vec![Value::utf8("Alice".to_string())]);
 		let cols2 = create_test_columns(vec![Value::utf8("Bob".to_string())]);
 
-		// Set as immutable
 		ctx.set("name".to_string(), Variable::columns(cols1.clone()), false).unwrap();
 
-		// Try to reassign immutable variable - should fail
 		let result = ctx.set("name".to_string(), Variable::columns(cols2), false);
 		assert!(result.is_err());
 
-		// Original value should be preserved
+		// A refused reassignment must leave the original binding intact.
 		assert!(ctx.get("name").is_some());
 	}
 
@@ -465,31 +458,26 @@ pub mod tests {
 	fn test_scope_management() {
 		let mut ctx = SymbolTable::new();
 
-		// Initially in global scope
 		assert_eq!(ctx.scope_depth(), 0);
 		assert_eq!(ctx.current_scope_type(), &ScopeType::Global);
 
-		// Enter a function scope
 		ctx.enter_scope(ScopeType::Function);
 		assert_eq!(ctx.scope_depth(), 1);
 		assert_eq!(ctx.current_scope_type(), &ScopeType::Function);
 
-		// Enter a block scope
 		ctx.enter_scope(ScopeType::Block);
 		assert_eq!(ctx.scope_depth(), 2);
 		assert_eq!(ctx.current_scope_type(), &ScopeType::Block);
 
-		// Exit block scope
 		ctx.exit_scope().unwrap();
 		assert_eq!(ctx.scope_depth(), 1);
 		assert_eq!(ctx.current_scope_type(), &ScopeType::Function);
 
-		// Exit function scope
 		ctx.exit_scope().unwrap();
 		assert_eq!(ctx.scope_depth(), 0);
 		assert_eq!(ctx.current_scope_type(), &ScopeType::Global);
 
-		// Cannot exit global scope
+		// Popping the global scope would leave the table with nowhere to bind.
 		assert!(ctx.exit_scope().is_err());
 	}
 
@@ -499,19 +487,16 @@ pub mod tests {
 		let outer_cols = create_test_columns(vec![Value::utf8("outer".to_string())]);
 		let inner_cols = create_test_columns(vec![Value::utf8("inner".to_string())]);
 
-		// Set variable in global scope
 		ctx.set("var".to_string(), Variable::columns(outer_cols.clone()), false).unwrap();
 		assert!(ctx.get("var").is_some());
 
-		// Enter new scope and shadow the variable
+		// Rebinding an existing name in an inner scope must shadow, not overwrite.
 		ctx.enter_scope(ScopeType::Block);
 		ctx.set("var".to_string(), Variable::columns(inner_cols.clone()), false).unwrap();
 
-		// Should see the inner variable
 		assert!(ctx.get("var").is_some());
 		assert!(ctx.exists_in_current_scope("var"));
 
-		// Exit scope - should see outer variable again
 		ctx.exit_scope().unwrap();
 		assert!(ctx.get("var").is_some());
 	}
@@ -521,20 +506,17 @@ pub mod tests {
 		let mut ctx = SymbolTable::new();
 		let outer_cols = create_test_columns(vec![Value::utf8("outer".to_string())]);
 
-		// Set variable in global scope
 		ctx.set("global_var".to_string(), Variable::columns(outer_cols.clone()), false).unwrap();
 
-		// Enter new scope
 		ctx.enter_scope(ScopeType::Function);
 
-		// Should still be able to access parent scope variable
+		// A function scope reads through to its parent; only the binding's own scope is local.
 		assert!(ctx.get("global_var").is_some());
 		assert!(!ctx.exists_in_current_scope("global_var"));
 		assert!(ctx.exists_in_any_scope("global_var"));
 
-		// Get with scope information
 		let (_, scope_depth) = ctx.get_with_scope("global_var").unwrap();
-		assert_eq!(scope_depth, 0); // Found in global scope
+		assert_eq!(scope_depth, 0);
 	}
 
 	#[test]
@@ -543,17 +525,14 @@ pub mod tests {
 		let cols1 = create_test_columns(vec![Value::utf8("value1".to_string())]);
 		let cols2 = create_test_columns(vec![Value::utf8("value2".to_string())]);
 
-		// Set immutable variable in global scope
 		ctx.set("var".to_string(), Variable::columns(cols1.clone()), false).unwrap();
 
-		// Enter new scope and create new variable with same name (shadowing)
+		// Mutability belongs to the binding, not the name, so shadowing must not leak it out.
 		ctx.enter_scope(ScopeType::Block);
-		ctx.set("var".to_string(), Variable::columns(cols2.clone()), true).unwrap(); // This one is mutable
+		ctx.set("var".to_string(), Variable::columns(cols2.clone()), true).unwrap();
 
-		// Should be mutable in current scope
 		assert!(ctx.is_mutable("var"));
 
-		// Exit scope - should be immutable again (from global scope)
 		ctx.exit_scope().unwrap();
 		assert!(!ctx.is_mutable("var"));
 	}
@@ -563,7 +542,6 @@ pub mod tests {
 		let mut ctx = SymbolTable::new();
 		let cols = create_test_columns(vec![Value::utf8("test".to_string())]);
 
-		// Set variables in global scope
 		ctx.set("global1".to_string(), Variable::columns(cols.clone()), false).unwrap();
 		ctx.set("global2".to_string(), Variable::columns(cols.clone()), false).unwrap();
 
@@ -572,13 +550,13 @@ pub mod tests {
 		assert!(global_visible.contains(&"global1".to_string()));
 		assert!(global_visible.contains(&"global2".to_string()));
 
-		// Enter new scope and add more variables
 		ctx.enter_scope(ScopeType::Function);
 		ctx.set("local1".to_string(), Variable::columns(cols.clone()), false).unwrap();
-		ctx.set("global1".to_string(), Variable::columns(cols.clone()), false).unwrap(); // Shadow global1
+		ctx.set("global1".to_string(), Variable::columns(cols.clone()), false).unwrap();
 
 		let function_visible = ctx.visible_variable_names();
-		assert_eq!(function_visible.len(), 3); // global1 (shadowed), global2, local1
+		// A shadowed name is visible once, not twice.
+		assert_eq!(function_visible.len(), 3);
 		assert!(function_visible.contains(&"global1".to_string()));
 		assert!(function_visible.contains(&"global2".to_string()));
 		assert!(function_visible.contains(&"local1".to_string()));
@@ -589,7 +567,6 @@ pub mod tests {
 		let mut ctx = SymbolTable::new();
 		let cols = create_test_columns(vec![Value::utf8("test".to_string())]);
 
-		// Add variables and enter scopes
 		ctx.set("var1".to_string(), Variable::columns(cols.clone()), false).unwrap();
 		ctx.enter_scope(ScopeType::Function);
 		ctx.set("var2".to_string(), Variable::columns(cols.clone()), false).unwrap();
@@ -599,7 +576,7 @@ pub mod tests {
 		assert_eq!(ctx.scope_depth(), 2);
 		assert_eq!(ctx.visible_variable_names().len(), 3);
 
-		// Clear should reset to global scope with no variables
+		// Clear must unwind the scope stack too, not only drop the bindings.
 		ctx.clear();
 		assert_eq!(ctx.scope_depth(), 0);
 		assert_eq!(ctx.current_scope_type(), &ScopeType::Global);

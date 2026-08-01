@@ -1,22 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Reproducer: a DEFERRED view that APPENDs a base table with a TRANSACTIONAL filter view leaks the
-// unfiltered base rows into the transactional-filter branch.
-//
-// WHY: a deferred consumer of a transactional source view is (over-)registered for the source view's
-// own storage sources (the base table) in `register_source_view`. The deferred dispatch
-// (`seed_entry_nodes`) then routes base-table changes to the consumer's `SourceView` node, which is a
-// pass-through, so the raw base rows flow into the APPEND's transactional-view branch instead of only
-// the filter's materialized output. The all-transactional twin is immune (its source view is read
-// synchronously), so the deferred view must hold the SAME multiset as the twin.
-//
-// The leak is masked for pure inserts (leaked base rows for filter-matching ids collide on identity
-// with the legitimate filtered rows and cancel out), so the workload includes an UPDATE that moves a
-// row OUT of the filter and a DELETE - which break the masking and surface a leaked NON-matching row.
-//
-// RED until the over-registration is fixed (the consumer's `SourceView` node should be registered only
-// for the transactional view's OUTPUT, not its base sources); GREEN after.
+// A deferred consumer of a transactional source view registered for that view's own storage sources
+// receives base-table changes on a pass-through node, leaking raw base rows into the APPEND's
+// filter branch. The all-transactional twin reads its source synchronously and cannot.
 
 use std::time::Duration as StdDuration;
 
@@ -49,9 +36,9 @@ fn rows(db: &TestDb, rql: &str) -> Vec<(i32, i32)> {
 	out
 }
 
-// Poll a deferred view until it holds `want` rows or the deadline passes, then return its sorted
-// multiset so the caller's assertion reports the actual (possibly leaked) contents.
 fn await_rows(db: &TestDb, rql: &str, want: usize) -> Vec<(i32, i32)> {
+	// Returns the last observation even on timeout, so the caller's assertion can report the
+	// actual leaked contents rather than only a count.
 	let mut last = Vec::new();
 	await_value(want, StdDuration::from_secs(10), || {
 		last = rows(db, rql);
@@ -75,6 +62,9 @@ fn deferred_append_over_transactional_filter_does_not_leak_base() {
 		"CREATE TRANSACTIONAL VIEW v::tu { id: int4, cat: int4 } AS { FROM v::base APPEND { FROM v::txf } MAP { id, cat } }",
 	);
 
+	// Pure inserts mask the leak: a leaked base row for a filter-matching id collides on identity
+	// with the legitimate filtered row. The UPDATE moves a row out of the filter and the DELETE
+	// breaks the collision, which is what surfaces a leaked non-matching row.
 	db.command("INSERT v::base [{ id: 1, cat: 1 }]");
 	db.command("INSERT v::base [{ id: 2, cat: 2 }]");
 	db.command("INSERT v::base [{ id: 3, cat: 1 }]");
@@ -82,7 +72,7 @@ fn deferred_append_over_transactional_filter_does_not_leak_base() {
 	db.command("UPDATE v::base { cat: 9 } FILTER id == 1");
 	db.command("DELETE v::base FILTER id == 4");
 
-	// All-transactional twin is the synchronous ground truth: base ∪ (cat==1 rows).
+	// The all-transactional twin is the synchronous ground truth: base plus the cat==1 rows.
 	let twin = rows(&db, "FROM v::tu");
 	let deferred = await_rows(&db, "FROM v::du", twin.len());
 	assert_eq!(

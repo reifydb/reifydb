@@ -450,7 +450,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Boolean, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
-		// Set some values
 		shape.set_value(&mut row, 0, &Value::Utf8("hello".to_string()));
 		shape.set_value(&mut row, 1, &Value::Boolean(true));
 		shape.set_value(&mut row, 2, &Value::Utf8("world".to_string()));
@@ -459,7 +458,6 @@ pub mod tests {
 		assert!(row.is_defined(1));
 		assert!(row.is_defined(2));
 
-		// Set some as undefined
 		shape.set_value(&mut row, 0, &Value::none());
 		shape.set_value(&mut row, 2, &Value::none());
 
@@ -522,7 +520,6 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
 		let mut row = shape.allocate();
 
-		// Only set some values
 		let values = vec![
 			Value::Utf8("first".to_string()),
 			Value::none(),
@@ -569,7 +566,7 @@ pub mod tests {
 
 		shape.set_values(&mut row, &values);
 
-		// Verify no dynamic section
+		// An all-static row must not allocate a dynamic section at all.
 		assert_eq!(shape.dynamic_section_size(&row), 0);
 		assert_eq!(row.len(), shape.total_static_size());
 
@@ -676,10 +673,8 @@ pub mod tests {
 			Value::Float4(OrderedF32::try_from(1.5f32).unwrap()),
 		];
 
-		// Set values
 		shape.set_values(&mut row, &original_values);
 
-		// Get values back
 		let retrieved_values: Vec<Value> = (0..4).map(|i| shape.get_value(&row, i)).collect();
 
 		assert_eq!(retrieved_values, original_values);
@@ -700,7 +695,6 @@ pub mod tests {
 
 		assert_eq!(retrieved_values, values);
 
-		// Verify blob content directly
 		match &retrieved_values[0] {
 			Value::Blob(b) => assert_eq!(b.as_bytes(), &[0xDE, 0xAD, 0xBE, 0xEF]),
 			_ => panic!("Expected Blob value"),
@@ -800,13 +794,11 @@ pub mod tests {
 
 		assert_eq!(retrieved_values, values);
 
-		// Verify dynamic content exists (for blob and utf8)
 		assert!(shape.dynamic_section_size(&row) > 0);
 	}
 
 	#[test]
 	fn test_all_types_comprehensive() {
-		// except encoded id
 		let (_, clock, rng) = test_clock_and_rng();
 
 		let shape = RowShape::testing(&[
@@ -867,7 +859,6 @@ pub mod tests {
 
 		assert_eq!(retrieved_values, values);
 
-		// Verify all fields are defined
 		for i in 0..21 {
 			assert!(row.is_defined(i), "Field {} should be defined", i);
 		}
@@ -955,15 +946,10 @@ pub mod tests {
 		assert_eq!(retrieved, values);
 	}
 
-	// Mirrors CatalogStore::set_config (crates/catalog/src/store/config/set.rs), which always
-	// wraps a config's value in Value::any(..) before storing it, even when that value is itself
-	// None (e.g. METRICS_PROFILER_SNAPSHOT_INTERVAL's default, Value::None { inner: Duration },
-	// meaning "snapshotting disabled"). `Value::PartialEq` treats all `Value::None` as equal
-	// regardless of `inner` (crates/value/src/value/mod.rs), so these destructure and compare
-	// `inner` directly rather than relying on `assert_eq!` against the wrapped value.
-
 	#[test]
 	fn test_any_field_stores_wrapped_none_duration() {
+		// Config values are stored wrapped in Value::any even when the value is itself a none,
+		// so the Any encoding must keep both the wrapper and the none's inner type.
 		let shape = RowShape::testing(&[ValueType::Any]);
 		let mut row = shape.allocate();
 

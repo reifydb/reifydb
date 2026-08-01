@@ -1,18 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Contract: reading ANY view - transactional or deferred - inside the same command/admin
-// transaction that already wrote to any object transitively upstream of it (through any mix of view
-// kinds, no async boundaries) must fail the transaction with TXN_015. You never read your own
-// uncommitted writes through a view.
-//
-// WHY this matters: transactional views are maintained by the pre-commit interceptor and deferred
-// views asynchronously after commit, so during the transaction the view still holds its pre-request
-// contents. Before this guard, such a read silently returned stale data. The guard turns the silent
-// staleness into a loud failure, while leaving every legitimate pattern untouched: reading before
-// writing, separate requests (deferred views may legitimately lag there - that is their contract),
-// and RUN TESTS bodies (which maintain views inline and are exempt via the Test transaction
-// variant).
+// Reading any view inside the transaction that already wrote something transitively upstream of it
+// must fail with TXN_015: a view still holds its pre-request contents during the transaction, so
+// such a read is silently stale. Reading before writing, and separate requests, stay legal.
 
 use reifydb::{Value, WithSubsystem, embedded};
 use reifydb_test_harness::db::TestDb;
@@ -130,8 +121,8 @@ fn deferred_view_read_in_separate_request_is_allowed() {
 	);
 
 	db.command("INSERT app::orders [{ id: 1, total: 40 }]");
-	// Cross-request staleness is the accepted deferred contract: the read is
-	// legal and its contents are deliberately not asserted here.
+	// Cross-request staleness is the deferred contract, so the contents are deliberately not
+	// asserted - only that the read is legal.
 	db.query("FROM app::deferred_revenue");
 }
 
@@ -142,9 +133,8 @@ fn freshly_created_deferred_view_is_guarded_in_next_request() {
 		"CREATE DEFERRED VIEW app::deferred_revenue { revenue: int8 } AS { FROM app::orders AGGREGATE { revenue: math::sum(total) } BY {} }",
 	);
 
-	// The very next request must already be guarded: lineage publishes
-	// synchronously at post-commit of the CREATE, not via the CDC-driven
-	// deferred supervisor (which lags). This test pins that design choice.
+	// Lineage publishes synchronously at post-commit of the CREATE rather than through the
+	// CDC-driven supervisor, which lags, so the very next request is already guarded.
 	let err = db.try_command("INSERT app::orders [{ id: 1, total: 40 }]; FROM app::deferred_revenue").unwrap_err();
 	assert_eq!(err.0.code, "TXN_015", "lineage must cover a deferred view immediately after CREATE; got: {err:?}");
 }
@@ -153,11 +143,9 @@ fn freshly_created_deferred_view_is_guarded_in_next_request() {
 fn deferred_view_created_and_written_in_one_request_is_guarded() {
 	let db = make_db();
 
-	// Lineage only learns of a flow at post-commit, so the published snapshot cannot know a view
-	// this very request created. The guard must fall back to the catalog - which already holds
-	// the uncommitted CREATE - rather than read a snapshot miss as "this view has no upstreams".
-	// Failing open here returned an empty frame for a deferred view that then backfills from its
-	// creation version to revenue=40: a silently stale read, exactly what TXN_015 forbids.
+	// Lineage only learns of a flow at post-commit, so the snapshot cannot know a view this request
+	// created. The guard has to fall back to the catalog, which already holds the uncommitted
+	// CREATE, rather than read a snapshot miss as "this view has no upstreams".
 	let err = db
 		.try_admin(
 			"CREATE DEFERRED VIEW app::fresh { revenue: int8 } AS { FROM app::orders AGGREGATE { revenue: math::sum(total) } BY {} };
@@ -180,9 +168,8 @@ fn deferred_view_created_and_written_in_one_request_is_guarded() {
 fn transactional_view_created_and_written_in_one_request_is_guarded() {
 	let db = make_db();
 
-	// Same snapshot miss, transactional sink. The stale read is less visible here (transactional
-	// views never backfill, so the view stays empty forever) but that is precisely the point: the
-	// empty frame concealed that the write would never reach the view at all.
+	// The same snapshot miss on a transactional sink, where a stale read is less visible because
+	// the view never backfills - the empty frame conceals that the write never reaches it.
 	let err = db
 		.try_admin(
 			"CREATE TRANSACTIONAL VIEW app::fresh { revenue: int8 } AS { FROM app::orders AGGREGATE { revenue: math::sum(total) } BY {} };
@@ -204,7 +191,7 @@ fn view_created_in_one_request_without_reading_it_is_allowed() {
 	let db = make_db();
 
 	// The fallback must not over-fire: creating a view and writing its upstream in one request is
-	// legal as long as the view is never read. Guarding this would break every bootstrap script.
+	// legal so long as the view is never read, or every bootstrap script breaks.
 	db.admin(
 		"CREATE DEFERRED VIEW app::fresh { revenue: int8 } AS { FROM app::orders AGGREGATE { revenue: math::sum(total) } BY {} };
 		 INSERT app::orders [{ id: 1, total: 40 }]",
@@ -237,9 +224,8 @@ fn chain_through_deferred_boundary_fails_with_txn_015() {
 		"CREATE TRANSACTIONAL VIEW app::over_deferred { doubled: int8 } AS { FROM app::deferred_revenue MAP { doubled: revenue * 2 } }",
 	);
 
-	// The uniform rule has no async boundaries: orders feeds over_deferred
-	// through the deferred view, so a same-request write+read still counts
-	// as reading your own uncommitted writes through a view.
+	// The rule has no async boundaries: orders reaches over_deferred through the deferred view, so
+	// a same-request write and read still counts as reading your own uncommitted writes.
 	let err = db.try_command("INSERT app::orders [{ id: 1, total: 40 }]; FROM app::over_deferred").unwrap_err();
 	assert_eq!(err.0.code, "TXN_015", "the walk must cross the deferred boundary; got: {err:?}");
 	assert!(

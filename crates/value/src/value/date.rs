@@ -254,7 +254,6 @@ pub mod tests {
 
 	#[test]
 	fn test_date_display_standard_dates() {
-		// Standard dates
 		let date = Date::new(2024, 3, 15).unwrap();
 		assert_eq!(format!("{}", date), "2024-03-15");
 
@@ -267,15 +266,13 @@ pub mod tests {
 
 	#[test]
 	fn test_date_display_edge_cases() {
-		// Unix epoch
 		let date = Date::new(1970, 1, 1).unwrap();
 		assert_eq!(format!("{}", date), "1970-01-01");
 
-		// Leap year
 		let date = Date::new(2024, 2, 29).unwrap();
 		assert_eq!(format!("{}", date), "2024-02-29");
 
-		// Single digit day/month
+		// Single-digit month and day must be zero-padded to keep the width fixed.
 		let date = Date::new(2024, 1, 9).unwrap();
 		assert_eq!(format!("{}", date), "2024-01-09");
 
@@ -285,15 +282,12 @@ pub mod tests {
 
 	#[test]
 	fn test_date_display_boundary_dates() {
-		// Very early date
 		let date = Date::new(1, 1, 1).unwrap();
 		assert_eq!(format!("{}", date), "0001-01-01");
 
-		// Far future date
 		let date = Date::new(9999, 12, 31).unwrap();
 		assert_eq!(format!("{}", date), "9999-12-31");
 
-		// Century boundaries
 		let date = Date::new(1900, 1, 1).unwrap();
 		assert_eq!(format!("{}", date), "1900-01-01");
 
@@ -306,11 +300,10 @@ pub mod tests {
 
 	#[test]
 	fn test_date_display_negative_years() {
-		// Year 0 (1 BC)
+		// Year 0 is 1 BC in the proleptic calendar; BC years render with a leading minus.
 		let date = Date::new(0, 1, 1).unwrap();
 		assert_eq!(format!("{}", date), "0000-01-01");
 
-		// Negative years (BC)
 		let date = Date::new(-1, 1, 1).unwrap();
 		assert_eq!(format!("{}", date), "-0001-01-01");
 
@@ -349,7 +342,6 @@ pub mod tests {
 
 	#[test]
 	fn test_date_display_days_in_month() {
-		// Test first and last days of various months
 		let test_cases = [
 			(2024, 1, 1, "2024-01-01"),
 			(2024, 1, 31, "2024-01-31"),
@@ -369,7 +361,6 @@ pub mod tests {
 
 	#[test]
 	fn test_date_roundtrip() {
-		// Test that converting to/from days preserves the date
 		let test_dates = [
 			(1900, 1, 1),
 			(1970, 1, 1),
@@ -420,7 +411,7 @@ pub mod tests {
 
 	#[test]
 	fn test_serde_postcard_roundtrip_negative_years() {
-		// Binary (postcard) is the hot CDC path; negative days (pre-epoch) must survive the i32 encoding.
+		// Postcard is the CDC wire format; pre-epoch dates are negative and must survive it.
 		for (y, m, d) in [(-100, 12, 31), (0, 1, 1), (1970, 1, 1), (2024, 3, 15), (9999, 12, 31)] {
 			let date = Date::new(y, m, d).unwrap();
 			let bytes = to_allocvec(&date).unwrap();
@@ -483,9 +474,7 @@ pub mod tests {
 
 	#[test]
 	fn saturating_sub_day_truncates() {
-		// Date has day resolution: a sub-day duration that does not cross a day
-		// boundary truncates to zero days and leaves the date unchanged, while a
-		// 36h duration crosses exactly one boundary and advances exactly 1 day.
+		// Date has day resolution, so a duration truncates to whole days rather than rounding.
 		let base = Date::from_ymd(2024, 1, 15).unwrap();
 
 		let half_day = base.saturating_add(Duration::from_seconds(12 * 3600).unwrap());

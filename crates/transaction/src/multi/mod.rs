@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Multi-version transactional path. Owns the conflict detector that decides whether a write transaction can
-//! commit at its read snapshot, the watermark machinery that tracks the lowest still-readable version for GC, and
-//! the oracle that hands out commit versions in monotonic order. Read, write, and replica transaction bodies are
-//! the three concrete shapes a multi-version transaction can take.
+//! Multi-version transactional path: the conflict detector, the watermark tracking the lowest still-readable
+//! version for GC, and the oracle handing out commit versions in monotonic order.
 //!
-//! Snapshot isolation is what this layer provides; serialisable isolation requires the conflict detector to
-//! consider read-write conflicts in addition to write-write, and that mode is selected per transaction at start.
+//! The detector aborts on read-write overlap as well as write-write; there is no isolation-level
+//! switch, only `ConflictMode::Disabled` for trusted single-writer paths that skip detection entirely.
 
 use reifydb_core::common::CommitVersion;
 use reifydb_store_multi::MultiVersionScope;
@@ -17,22 +15,16 @@ use crate::multi::transaction::{
 	MultiTransaction, read::MultiReadTransaction, replica::MultiReplicaTransaction, write::MultiWriteTransaction,
 };
 
-/// Watermark choice for a transaction-level range scan.
-///
-/// The read version is taken from the transaction's `tm.version()`; this enum
-/// captures only whether a lower-bound watermark applies.
+/// Whether a transaction-level range scan applies a lower-bound watermark; the upper bound is always the
+/// transaction's own read version.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum RangeScope {
-	/// Yield all visible versions per key (existing behavior).
 	All,
-	/// Skip rows with `commit_version <= after`. Used by the
-	/// Delta + Main merge to avoid double-emitting rows already in a snapshot.
+	/// Skips rows at or below `after`, so a Delta + Main merge does not re-emit rows already in the snapshot.
 	After(CommitVersion),
 }
 
 impl RangeScope {
-	/// Lift to a storage-layer `MultiVersionScope` given the transaction's
-	/// read version.
 	#[inline]
 	pub fn into_multi(self, read: CommitVersion) -> MultiVersionScope {
 		match self {

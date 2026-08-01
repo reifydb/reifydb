@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Catalog bootstrap. Runs at startup, installs the system namespace, the seed identities (root, the system
-//! background actors), and any built-in objects the engine needs before it can serve traffic. On a fresh database
-//! the bootstrap writes the initial state; on a recovered database it idempotently confirms the same objects
-//! exist and matches versions.
+//! Catalog bootstrap: installs the system namespace, the seed identities and the built-in objects
+//! the engine needs before it can serve traffic. Idempotent - on a recovered database it confirms
+//! the same objects exist and matches versions rather than rewriting them.
 
 use std::collections::HashMap;
 

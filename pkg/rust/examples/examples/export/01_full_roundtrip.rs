@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Scenario: full logical backup / clone.
-// `ExportOptions::all()` dumps the schema AND data of every user object into a
-// single, self-contained RQL script. Re-importing that script into a fresh
+// Scenario: full logical backup / clone. `ExportOptions::all()` dumps the schema and the data of
+// every user object into one self-contained RQL script, and re-importing that script into a fresh
 // database reproduces the original exactly.
 
 use reifydb::{Database, ExportOptions, Params, Value, embedded};
@@ -35,8 +34,7 @@ fn main() {
 	restored.import(&dump).unwrap();
 	info!("Imported the dump into a fresh database");
 
-	// Prove the round-trip preserved the data: the same query returns the
-	// same rows from both databases.
+	// The same query must return the same rows from both databases.
 	for object in ["shop::products", "metrics::events", "metrics::recent"] {
 		let query = format!("from {object}");
 		let from_source = rows(&source, &query);

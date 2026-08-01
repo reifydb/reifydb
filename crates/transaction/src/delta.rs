@@ -159,17 +159,11 @@ pub mod tests {
 		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	// Characterization of a divergence between the two commit paths, pinned here so a later unification is a
-	// deliberate change rather than an accident.
-	//
-	// MultiWriteTransaction::assemble_committed_deltas sources delta_log, which retains every write in order, so
-	// optimize_deltas sees Set-then-Remove on a never-committed key and cancels the pair: the commit is a no-op.
-	// MultiReplicaTransaction::drain_deltas sources pending_writes, which collapses to the latest write per key, so
-	// optimize_deltas only ever sees the bare Remove and emits a tombstone.
-	//
-	// Same transaction, different deltas. Whichever way this is resolved, the two must agree.
 	#[test]
 	fn delta_log_sourcing_cancels_an_insert_delete_pair() {
+		// Pinned divergence: the primary path retains both writes and cancels them, while the
+		// replica path (next test) sees only the Remove and emits a tombstone for the same
+		// transaction. The two must eventually agree, so any unification has to be deliberate.
 		let from_delta_log = vec![
 			Delta::Set {
 				key: make_key("key_a"),
@@ -210,7 +204,6 @@ pub mod tests {
 
 		let optimized = optimize_deltas(deltas, &HashSet::new());
 
-		// Insert + Delete on a never-committed key cancels out completely.
 		assert_eq!(optimized.len(), 0);
 	}
 
@@ -228,8 +221,7 @@ pub mod tests {
 		preexisting.insert(make_key("key_a"));
 		let optimized = optimize_deltas(deltas, &preexisting);
 
-		// Update + Delete on a prior-committed key must keep the tombstone -
-		// otherwise the prior version remains visible.
+		// Dropping the tombstone here would leave the prior committed version visible.
 		assert_eq!(optimized.len(), 1);
 		match &optimized[0] {
 			Delta::Remove {
@@ -249,11 +241,10 @@ pub mod tests {
 		}
 	}
 
-	/// A silent removal still has to survive coalescing as a tombstone: silence controls only whether
-	/// CDC hears about it, never whether the row is actually gone. Collapsing it away would leave the
-	/// prior version readable.
 	#[test]
 	fn test_update_silent_remove_keeps_tombstone_and_stays_silent() {
+		// Silence controls only whether CDC hears about the removal, never whether the row is
+		// gone; collapsing it away would leave the prior version readable.
 		let deltas = vec![
 			Delta::Set {
 				key: make_key("key_a"),
@@ -302,7 +293,6 @@ pub mod tests {
 
 		let optimized = optimize_deltas(deltas, &HashSet::new());
 
-		// Multiple updates should coalesce to single update
 		assert_eq!(optimized.len(), 1);
 		match &optimized[0] {
 			Delta::Set {
@@ -332,7 +322,6 @@ pub mod tests {
 
 		let optimized = optimize_deltas(deltas, &HashSet::new());
 
-		// Insert + Update + Delete should cancel
 		assert_eq!(optimized.len(), 0);
 	}
 
@@ -356,9 +345,7 @@ pub mod tests {
 
 		let optimized = optimize_deltas(deltas, &HashSet::new());
 
-		// key_a: Insert+Delete = cancel
-		// key_b: Insert = keep
-		// key_c: Insert = keep
+		// key_a cancels; key_b and key_c survive.
 		assert_eq!(optimized.len(), 2);
 	}
 }

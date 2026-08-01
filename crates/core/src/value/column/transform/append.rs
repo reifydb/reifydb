@@ -1793,9 +1793,7 @@ pub mod tests {
 
 			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
-			// Dictionary column should be undefined
 			assert!(!test_instance[0].is_defined(0));
-			// Bool column should be defined
 			assert_eq!(test_instance[1].get_value(0), Value::Boolean(true));
 		}
 
@@ -1812,7 +1810,7 @@ pub mod tests {
 
 			test_instance.append_rows(&shape, [row], vec![]).unwrap();
 
-			// First two are undefined (promoted from Undefined column), third is defined
+			// The first two rows carry over from the undefined column the append promoted.
 			assert!(!test_instance[0].is_defined(0));
 			assert!(!test_instance[0].is_defined(1));
 			assert!(test_instance[0].is_defined(2));

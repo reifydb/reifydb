@@ -749,8 +749,8 @@ mod tests {
 		EncodedKey::new(s.as_bytes())
 	}
 
-	// The shape the block operators reclaim over: (slot, base, quote).
 	fn slot_key(slot: u64) -> EncodedKey {
+		// The shape the block operators reclaim over: (slot, base, quote).
 		EncodedKey::builder().u64(slot).u32(1u32).u32(2u32).build()
 	}
 
@@ -766,9 +766,9 @@ mod tests {
 		)
 	}
 
-	// Persist a deferred transaction's pending row-number writes to the shared store, so a
-	// subsequent transaction (or a cold provider) resolves them the way a committed flow would.
 	fn commit_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
+		// Persists the pending writes so a later transaction or a cold provider resolves them the
+		// way a committed flow would.
 		let pending = txn.take_pending();
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 		cmd.disable_conflict_tracking().unwrap();
@@ -788,12 +788,9 @@ mod tests {
 
 	#[test]
 	fn reported_memory_counts_retained_containers_not_entry_bookkeeping() {
-		// memory() must report what the allocator actually holds. SlabLru stores each key twice
-		// (once in the slab node, once in the map) and struct_bytes() already counts both copies
-		// at capacity. Inline keys carry their payload inside that 64-byte EncodedKey, so a cache
-		// of inline keys retains exactly struct_bytes() and nothing more. Adding the per-entry
-		// entry_bytes() charge on top counts the same storage a third time, which is what inflated
-		// flow_node::*::row_number_cache_bytes in the memory registry.
+		// SlabLru stores each key twice and struct_bytes() already counts both copies at capacity.
+		// An inline key carries its payload inside the EncodedKey, so a cache of them retains
+		// exactly struct_bytes(); adding entry_bytes() on top counts the same storage a third time.
 		let mut state = NodeState::default();
 		for i in 0..64u64 {
 			state.remember(GROUP, &slot_key(i), RowNumber(i));
@@ -809,9 +806,9 @@ mod tests {
 
 	#[test]
 	fn reported_memory_counts_a_shared_out_of_line_key_once() {
-		// A key past EncodedKey::INLINE_CAP spills to a refcounted Arc. SlabLru still clones it into both the
-		// slab node and the map, but the clones share one allocation, so the out-of-line payload is resident
-		// once. Charging it per copy over-reports caches keyed by long keys, which would evict them early.
+		// A key past EncodedKey::INLINE_CAP spills to a refcounted Arc, so the two clones SlabLru
+		// holds share one allocation. Charging it per copy over-reports caches keyed by long keys
+		// and evicts them early.
 		let long = EncodedKey::new(vec![7u8; 200]);
 		assert!(long.heap_bytes() > 0, "key must spill out of line or this test proves nothing");
 
@@ -844,8 +841,7 @@ mod tests {
 			"a drained cache holds no key payload, so it reports exactly its containers"
 		);
 		// Not merely equal to `full`: releasing a slot pushes its index onto the free list, so a
-		// fully drained cache retains slightly more than a full one. What must never happen is
-		// reported memory falling as entries leave.
+		// drained cache retains slightly more than a full one. Reported memory must never fall.
 		assert!(
 			state.memory().bytes.as_bytes() >= full,
 			"retained capacity must not shrink on eviction: {} < {}",
@@ -856,10 +852,9 @@ mod tests {
 
 	#[test]
 	fn eviction_charge_covers_what_an_entry_actually_retains() {
-		// A budget only means something if the per-entry charge covers what the entry actually
-		// retains: the slab slot plus the map bucket, both of which outlive the caller. Charging
-		// less lets a nominal 1 MiB cache hold several MiB. The original charge was 96 bytes
-		// against ~205 bytes retained, so every node held ~2.5x its budget.
+		// A budget only means something if the per-entry charge covers what the entry retains: the
+		// slab slot plus the map bucket, both of which outlive the caller. Charging less lets a
+		// nominal 1 MiB cache hold several MiB.
 		let mut state = NodeState::default();
 		for i in 0..256u64 {
 			state.remember(GROUP, &slot_key(i), RowNumber(i));
@@ -935,10 +930,9 @@ mod tests {
 
 	#[test]
 	fn duplicate_keys_in_one_batch_share_a_single_row_number() {
-		// The group_sum fixture emits one record per input row (not per distinct group), so a
-		// single batch carries the same key twice. Both occurrences must resolve to the SAME
-		// freshly-minted number and only the first must report is_new - otherwise the operator
-		// emits two output rows for one group. This is the regression the flow suite caught.
+		// Operators emit one record per input row, not per distinct group, so a single batch can
+		// carry the same key twice. Both occurrences must resolve to one freshly-minted number and
+		// only the first report is_new, or the operator emits two output rows for one group.
 		let engine = TestEngine::new();
 		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
@@ -990,9 +984,8 @@ mod tests {
 
 	#[test]
 	fn a_cold_provider_resolves_persisted_mappings_from_the_store() {
-		// A restart is a fresh provider with an empty cache. It must hydrate the persisted group
-		// mappings from the store rather than re-minting - re-minting would hand a downstream
-		// consumer a different row number for a row it already tracks.
+		// A restart is a fresh provider with an empty cache. Re-minting instead of hydrating would
+		// hand a downstream consumer a different row number for a row it already tracks.
 		let engine = TestEngine::new();
 		let minted = {
 			let seed = RowNumberProvider::default();
@@ -1012,9 +1005,8 @@ mod tests {
 
 	#[test]
 	fn the_counter_high_water_survives_a_restart() {
-		// The monotonic counter is seeded from the persisted high-water on a cold provider, so a
-		// restart never re-issues a number a prior run already handed out. The counter is node
-		// scoped, so ids stay unique across the node's groups.
+		// A cold provider seeds its counter from the persisted high-water, so a restart never
+		// re-issues a number a prior run already handed out.
 		let engine = TestEngine::new();
 		{
 			let seed = RowNumberProvider::default();
@@ -1034,9 +1026,8 @@ mod tests {
 
 	#[test]
 	fn the_counter_is_shared_across_a_nodes_groups() {
-		// Row numbers must be unique per node, not per group: a downstream consumer tracks a row by
-		// its number across every group of the node. Two groups minting from independent sequences
-		// would hand the same number to two different rows.
+		// A downstream consumer tracks a row by its number across every group of the node, so two
+		// groups minting from independent sequences would give one number to two different rows.
 		let engine = TestEngine::new();
 		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
@@ -1131,9 +1122,9 @@ mod tests {
 
 	#[test]
 	fn a_complete_group_proves_absence_without_a_store_read() {
-		// The membership filter is gone: a group that has been fully hydrated (or freshly interned)
-		// is complete, and a complete group answers "never minted" from the cache alone. This is the
-		// property that keeps the firehose new-key path off the store, now at group granularity.
+		// A fully hydrated or freshly interned group is complete, and a complete group answers
+		// "never minted" from the cache alone. That is what keeps the firehose new-key path off the
+		// store.
 		let engine = TestEngine::new();
 		let provider = RowNumberProvider::default();
 
@@ -1155,9 +1146,8 @@ mod tests {
 
 	#[test]
 	fn a_freshly_interned_group_mints_new_keys_without_a_store_read() {
-		// mark_fresh is what txn.intern_group calls when the interner reports a brand-new group. A
-		// fresh group's mapping keyspace is provably empty, so its keys mint with zero store reads -
-		// preserving the firehose no-read path for new assets without any membership filter.
+		// mark_fresh is what txn.intern_group calls for a brand-new group. Its mapping keyspace is
+		// provably empty, so keys mint with zero store reads.
 		let engine = TestEngine::new();
 		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
@@ -1179,11 +1169,9 @@ mod tests {
 
 	#[test]
 	fn an_over_capacity_group_falls_back_to_the_store_for_absence() {
-		// The deliberate consequence of dropping the membership filter: a group holding more mapping
-		// keys than the byte budget cannot stay complete, so hydration evicts and the group can no
-		// longer prove absence from memory - it pays a store read. This never bites distinct or the
-		// windowed operators, which hold one mapping key per group, but the substrate must document
-		// it rather than silently over-claim a RAM absence.
+		// A group holding more mapping keys than the byte budget cannot stay complete, so hydration
+		// evicts and the group pays a store read to prove absence. Over-claiming a RAM absence here
+		// would be worse than the read.
 		let engine = TestEngine::new();
 		let budget = ByteSize::from_bytes(entry_bytes(&key("k1")) * 2);
 		{
@@ -1235,11 +1223,8 @@ mod tests {
 	#[test]
 	fn eviction_drops_only_expired_mappings_and_keeps_the_rest_in_memory() {
 		// The reclaim sweep runs evict_expired against every node that declares a mapping span.
-		// Evicting by clearing the whole cache silently downgrades the provider to one store
-		// roundtrip per key for the rest of its life - the surviving mapping and its completeness
-		// must both outlive the sweep. The cutoff is now an instant compared against the mapping's
-		// own stamp rather than a commit version, so the two mappings are separated in event time
-		// here instead of by separate commits; the assertions are unchanged.
+		// Clearing the whole cache instead silently downgrades the provider to one store roundtrip
+		// per key for the rest of its life, so the survivor and its completeness must both outlive it.
 		let engine = TestEngine::new();
 		let provider = RowNumberProvider::default();
 
@@ -1311,10 +1296,9 @@ mod tests {
 
 	#[test]
 	fn invalidating_a_group_drops_its_cache_without_serving_a_ghost() {
-		// After phase-2 identity reclamation deletes a group's mapping rows, the cache
-		// still names them. Serving that stale row number is a ghost - a row number for a mapping
-		// that no longer exists. invalidate_groups must clear the reclaimed group's cache while
-		// leaving every other group's mappings intact.
+		// After phase-2 identity reclamation deletes a group's mapping rows the cache still names
+		// them, and serving that number is a ghost. invalidate_groups must clear the reclaimed
+		// group while leaving every other group's mappings intact.
 		let engine = TestEngine::new();
 		let provider = RowNumberProvider::default();
 		let mut txn = deferred(&engine);
@@ -1342,9 +1326,8 @@ mod tests {
 
 	#[test]
 	fn the_row_number_counter_never_collides_with_the_interners_group_counter() {
-		// Both node counters live in the node-scope NODE_COUNTER keyspace. If they shared a cell, a
-		// group mint would advance the row-number sequence and vice versa, breaking the contiguity
-		// row-number consumers depend on. A distinct suffix keeps them in separate cells.
+		// Both node counters live in the node-scope NODE_COUNTER keyspace. Sharing a cell would let
+		// a group mint advance the row-number sequence, breaking the contiguity consumers rely on.
 		let group_counter =
 			OperatorStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![]);
 		assert_ne!(counter_key(), group_counter, "the row-number counter must not alias the group-id counter");

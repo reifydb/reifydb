@@ -93,7 +93,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
-		// Create multiple dictionaries
 		for i in 0..3 {
 			let to_create = DictionaryToCreate {
 				namespace: namespace.id(),
@@ -128,7 +127,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Create 2 dictionaries in namespace1
 		for i in 0..2 {
 			let to_create = DictionaryToCreate {
 				namespace: namespace1.id(),
@@ -139,7 +137,6 @@ pub mod tests {
 			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
 
-		// Create 3 dictionaries in namespace2
 		for i in 0..3 {
 			let to_create = DictionaryToCreate {
 				namespace: namespace2.id(),
@@ -150,12 +147,10 @@ pub mod tests {
 			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
 
-		// Verify namespace1 has 2 dictionaries
 		let ns1_dicts =
 			CatalogStore::list_dictionaries(&mut Transaction::Admin(&mut txn), namespace1.id()).unwrap();
 		assert_eq!(ns1_dicts.len(), 2);
 
-		// Verify namespace2 has 3 dictionaries
 		let ns2_dicts =
 			CatalogStore::list_dictionaries(&mut Transaction::Admin(&mut txn), namespace2.id()).unwrap();
 		assert_eq!(ns2_dicts.len(), 3);
@@ -179,7 +174,6 @@ pub mod tests {
 		)
 		.unwrap();
 
-		// Create dictionaries in both namespaces
 		for i in 0..2 {
 			let to_create = DictionaryToCreate {
 				namespace: namespace1.id(),
@@ -200,7 +194,6 @@ pub mod tests {
 			CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		}
 
-		// List all dictionaries
 		let all_dicts = CatalogStore::list_all_dictionaries(&mut Transaction::Admin(&mut txn)).unwrap();
 		assert_eq!(all_dicts.len(), 5);
 	}

@@ -62,12 +62,8 @@ mod tests {
 
 	#[test]
 	fn columns_from_block_reads_a_second_key_whose_shape_differs_from_the_first() {
-		// Reproduces the production crash end to end through the real join code path:
-		// an already-resolved key (e.g. a known token, shape with two fields) is stored
-		// first; a freshly-discovered key then arrives with a different field set (e.g.
-		// an extra column), giving it a distinct RowShape fingerprint. Reading the
-		// second key's rows back must not fail with "Row shape not found in store"
-		// just because the first key's shape was the only one this Store instance
+		// A key arriving with an extra column gets its own shape fingerprint, and reading it back
+		// must not fail just because the first key's shape was the only one this Store instance
 		// ever persisted.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
@@ -91,22 +87,17 @@ mod tests {
 
 	#[test]
 	fn columns_from_block_decodes_each_row_with_its_own_shape_when_one_key_spans_two_shapes() {
-		// Two rows under the SAME join key, written in separate batches whose fields
-		// land in a different order (e.g. because the upstream field list is rebuilt
-		// per tick, not guaranteed stable), get different RowShapeFingerprints. Each
-		// row must be decoded with its own shape, not the first row's.
+		// An upstream field list rebuilt per tick is not order-stable, so two rows under one key
+		// can carry different shape fingerprints and each must decode with its own.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let mut store = Store::new(FlowNodeId(71), JoinSide::Right, test_membership());
 		let key = h(0xC);
 
-		// Row 1: written with fields in order [mint, flag].
 		let row1 = columns_with_fields(&[("mint", 111), ("flag", 1)], 1);
 		add_to_state_entry_batch(&mut txn, &mut store, &key, &row1, &[0]).unwrap();
 
-		// Row 2: same logical fields, but the upstream batch produced them in the
-		// OPPOSITE order, giving row 2 a different RowShapeFingerprint even though the
-		// column set is identical.
+		// The same column set in the opposite order, which is a different fingerprint.
 		let row2 = columns_with_fields(&[("flag", 999), ("mint", 222)], 2);
 		add_to_state_entry_batch(&mut txn, &mut store, &key, &row2, &[0]).unwrap();
 

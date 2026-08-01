@@ -50,6 +50,7 @@ impl ProcedureLoader {
 			.cache
 			.get(path)
 			.ok_or_else(|| SdkError::Other(format!("Library not loaded: {}", path.display())))?;
+		// SAFETY: the procedure ABI declares this symbol; the descriptor is module-static data.
 		unsafe {
 			let get_descriptor: Symbol<extern "C" fn() -> *const ProcedureDescriptorFFI> =
 				library.get(b"ffi_procedure_get_descriptor\0").map_err(|e| {
@@ -78,6 +79,7 @@ impl ProcedureLoader {
 	) -> FFIResult<(String, u32)> {
 		validate_api_version(descriptor.api).map_err(|e| SdkError::Other(e.to_string()))?;
 
+		// SAFETY: the buffer points into the loaded image's static data, which outlives this read.
 		let name = unsafe { buffer_to_string(&descriptor.name) };
 		self.procedure_paths.insert(name.clone(), path.to_path_buf());
 
@@ -92,6 +94,7 @@ impl ProcedureLoader {
 		let descriptor = self.get_descriptor(path)?;
 		let (name, api) = self.validate_and_register(&descriptor, path)?;
 
+		// SAFETY: the descriptor's buffers are module-static data.
 		let info = unsafe {
 			LoadedProcedureInfo {
 				name,
@@ -114,6 +117,7 @@ impl ProcedureLoader {
 		self.validate_and_register(&descriptor, path)?;
 
 		let library = self.cache.get(path).unwrap();
+		// SAFETY: the ABI declares this symbol as ProcedureCreateFnFFI and the cache keeps it loaded.
 		let create_fn: ProcedureCreateFnFFI = unsafe {
 			let create_symbol: Symbol<ProcedureCreateFnFFI> = library
 				.get(b"ffi_procedure_create\0")
@@ -127,6 +131,7 @@ impl ProcedureLoader {
 			return Err(SdkError::Other("Failed to create procedure instance".to_string()));
 		}
 
+		// SAFETY: the buffer points into the loaded image's static data, which outlives this read.
 		let name = unsafe { buffer_to_string(&descriptor.name) };
 		Ok(Some(NativeProcedureFFI::new(name, descriptor, instance)))
 	}

@@ -140,15 +140,13 @@ mod tests {
 		let large_vec = vec![0; 10_000];
 		let event = DefineTestEvent::new(large_vec, "test".to_string());
 
-		// Clone should be cheap (just Arc increment)
+		// A clone must be an Arc bump, not a copy of the 10k payload.
 		let clone1 = event.clone();
 		let clone2 = event.clone();
 
-		// Verify they share the same Arc by comparing pointers
 		assert!(Arc::ptr_eq(&event.inner, &clone1.inner));
 		assert!(Arc::ptr_eq(&event.inner, &clone2.inner));
 
-		// Data should be accessible
 		assert_eq!(event.data().len(), 10_000);
 		assert_eq!(clone1.data().len(), 10_000);
 		assert_eq!(clone2.data().len(), 10_000);
@@ -161,7 +159,7 @@ mod tests {
 		assert_eq!(event.data(), &vec![1, 2, 3]);
 		assert_eq!(event.name(), "my_event");
 
-		// Test that we get references, not owned values
+		// The accessors must hand back references, not owned clones.
 		let _data_ref: &Vec<i32> = event.data();
 		let _name_ref: &String = event.name();
 	}
@@ -171,7 +169,6 @@ mod tests {
 		let event = EmptyDefineEvent::new();
 		let clone = event.clone();
 
-		// Should compile and work
 		drop(event);
 		drop(clone);
 	}
@@ -180,7 +177,6 @@ mod tests {
 	fn testine_event_implements_event_trait() {
 		let event = DefineTestEvent::new(vec![42], "test".to_string());
 
-		// Test Event trait methods
 		let any_ref = event.as_any();
 		assert!(any_ref.downcast_ref::<DefineTestEvent>().is_some());
 
@@ -191,14 +187,12 @@ mod tests {
 
 	#[test]
 	fn testine_event_send_sync() {
-		// This test verifies that events are Send + Sync
 		fn assert_send<T: Send>() {}
 		fn assert_sync<T: Sync>() {}
 
 		assert_send::<DefineTestEvent>();
 		assert_sync::<DefineTestEvent>();
 
-		// Test that we can actually send across threads
 		let event = DefineTestEvent::new(vec![1, 2, 3], "thread_test".to_string());
 		let handle = thread::spawn(move || {
 			assert_eq!(event.data(), &vec![1, 2, 3]);
@@ -212,7 +206,6 @@ mod tests {
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let event_bus = EventBus::new(&actor_system.spawner());
 
-		// Create a listener for DefineTestEvent
 		#[derive(Clone)]
 		struct DefineTestListener {
 			counter: Arc<Mutex<i32>>,
@@ -231,12 +224,10 @@ mod tests {
 
 		event_bus.register::<DefineTestEvent, DefineTestListener>(listener.clone());
 
-		// Emit event
 		event_bus.emit(DefineTestEvent::new(vec![1, 2, 3], "test".to_string()));
 		event_bus.wait_for_completion();
 		assert_eq!(*listener.counter.lock().unwrap(), 3);
 
-		// Emit another
 		event_bus.emit(DefineTestEvent::new(vec![1, 2, 3, 4, 5], "test2".to_string()));
 		event_bus.wait_for_completion();
 		assert_eq!(*listener.counter.lock().unwrap(), 8);

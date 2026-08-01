@@ -72,11 +72,9 @@ mod tests {
 
 	#[test]
 	fn a_row_capacity_has_no_lag_no_grace_and_no_horizon_to_ask_for() {
-		// A rolling window over ROWS always has a current value, so it has no closed
-		// state, no instant to seal at and no meaningful lag. Lag and grace are declared
-		// in milliseconds, and subtracting milliseconds from a row number silently drops
-		// rows in proportion to the lag - a 30s lag would demand 30000 rows of headroom.
-		// RollingOverRows has no such method, so there is nothing to answer wrongly.
+		// A rolling window over ROWS always has a current value, so there is no lag, grace or seal
+		// instant to ask for. Lag and grace are milliseconds, and subtracting them from a row number
+		// would drop rows in proportion to the lag; the type carries no such method to answer wrongly.
 		let rows = RollingOverRows::new(64);
 
 		assert_eq!(rows.capacity(), 64);
@@ -84,20 +82,18 @@ mod tests {
 
 	#[test]
 	fn the_rolling_span_is_the_size_extended_by_the_lag() {
-		// Lag shifts the whole window back in time, so a lagged rolling window must
-		// RETAIN size + lag or the lagged read falls off the end of the buffer it is reading.
-		// Both the eviction cutoff and the seal policy are built from this one span, which is
-		// why it is computed once here rather than at each of them.
+		// Lag shifts the whole window back in time, so a lagged rolling window must retain size + lag
+		// or the lagged read falls off the end of the buffer. Eviction cutoff and seal policy are
+		// both built from this one span.
 		assert_eq!(RollingOverTime::new(ms(5_000), ms(0)).span(), ms(5_000));
 		assert_eq!(RollingOverTime::new(ms(5_000), ms(2_000)).span(), ms(7_000));
 	}
 
 	#[test]
 	fn eviction_uses_the_bare_span_and_sealing_adds_the_grace() {
-		// The asymmetry that made SealInstant and EvictionInstant separate types in the
-		// first place. Rolling ADMITS a late row inside the grace but EVICTS on the bare span; an
-		// eviction that also waited out the grace keeps every rolling window one grace-period too
-		// wide, inflating every aggregate it publishes.
+		// Rolling admits a late row inside the grace but evicts on the bare span. An eviction that
+		// also waited out the grace keeps every window one grace-period too wide, inflating every
+		// aggregate it publishes.
 		let rolling = RollingOverTime::new(ms(5_000), ms(0));
 
 		assert_eq!(rolling.eviction_cutoff(at(8_000)), Some(at(3_000)));
@@ -106,13 +102,9 @@ mod tests {
 
 	#[test]
 	fn a_ledger_younger_than_the_span_evicts_nothing_rather_than_clamping_to_the_epoch() {
-		// At startup the ledger sits at or near the epoch while the span is minutes, so this is
-		// the FIRST thing a fresh rolling window computes, not an edge case. Underflowing would
-		// produce a cutoff near the maximum instant and evict every row the window holds. But
-		// clamping to the epoch is wrong too, because eviction is INCLUSIVE: a coordinate at
-		// exactly the epoch satisfies `coord <= cutoff` at every ledger and every size, so a
-		// clamped cutoff means such a row can never be retained by any rolling window. A span
-		// that has not yet elapsed has nothing to evict at all, which is what None says.
+		// At startup the ledger sits near the epoch while the span is minutes. Underflowing yields a
+		// cutoff near the maximum instant and evicts everything; clamping to the epoch is wrong too,
+		// since eviction is inclusive and a row at the epoch could then never be retained.
 		let rolling = RollingOverTime::new(ms(5_000), ms(0));
 
 		assert_eq!(rolling.eviction_cutoff(at(0)), None);
@@ -127,11 +119,9 @@ mod tests {
 
 	#[test]
 	fn the_seal_horizon_never_sits_later_than_the_eviction_cutoff() {
-		// Sealing decides what may still be AMENDED, eviction decides what is still
-		// STORED. A horizon later than the cutoff means a window is declared sealed while its
-		// rows are still retained, so a late row is refused for a window that could still have
-		// accepted it. The grace is what keeps the horizon behind, and this holds it across the
-		// whole lag/grace space rather than at one point.
+		// Sealing decides what may still be amended, eviction what is still stored. A horizon later
+		// than the cutoff declares a window sealed while its rows are still retained, refusing a late
+		// row the window could have accepted.
 		for lag in [ms(0), ms(1), ms(9_000)] {
 			for grace in [ms(0), ms(1), ms(9_000)] {
 				let rolling = RollingOverTime::new(ms(5_000), lag);

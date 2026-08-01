@@ -19,17 +19,10 @@ fn row(bytes: &[u8]) -> EncodedRow {
 	EncodedRow(CowVec::new(bytes.to_vec()))
 }
 
-// Exercises StandardMultiStore::get_many across three distinct tables - two operator-state
-// tables (EntryKind::Operator) and the multi table (EntryKind::Multi) - which is the fan-out the
-// testscript snapshots cannot reach, since their raw keys all classify to EntryKind::Multi.
-//
-// Verifies that each key resolves from its own table, that the SAME payload under different nodes
-// does not bleed across tables (k1 and k2 share the payload "shared" but live in different
-// operator tables and must return different values), and that absent keys are omitted.
-//
-// `flush` moves the buffer contents into persistent before reading, so the same assertions run
-// against whichever tier ends up serving the read.
 fn check_get_many_across_tables(store: &StandardMultiStore, flush: bool) {
+	// k1 and k2 carry the same payload under different operator nodes, so a table-scoping bug shows
+	// up as one bleeding into the other. Testscript snapshots cannot reach this fan-out: their raw
+	// keys all classify to the single Multi table.
 	let k1 = fns(1, b"shared");
 	let k2 = fns(2, b"shared");
 	let p = EncodedKey::new(b"plain");
@@ -75,12 +68,10 @@ fn check_get_many_across_tables(store: &StandardMultiStore, flush: bool) {
 	assert!(!found.contains_key(&absent_multi));
 }
 
-// Persistent get_many rounds chunk.len() up to a fixed placeholder bucket {1,8,64,512,900} and pads
-// the extra IN-list slots with a repeat of the first key, so distinct prepared SQL stays O(tables).
-// This guards that padding never drops a present key, never invents a phantom result for an absent
-// key, and returns the right value per key across counts that sit just below, exactly on, and just
-// above the 1/8/64 bucket edges - the exact place the round-up + pad-with-duplicate could go wrong.
 fn check_get_many_bucket_boundaries(store: &StandardMultiStore) {
+	// Persistent get_many rounds a chunk up to a placeholder bucket {1,8,64,512,900} and pads the
+	// spare slots with a repeat of the first key, so the counts here sit just below, on, and just
+	// above the bucket edges where a pad could drop a key or invent a phantom result.
 	let mut deltas = Vec::new();
 	let mut present: Vec<EncodedKey> = Vec::new();
 	for i in 0u64..130 {

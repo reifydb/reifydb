@@ -268,13 +268,11 @@ impl Object {
 mod tests {
 	use super::*;
 
-	/// The tag is written into the catalog and row-settings keyspaces, so these bytes are on-disk
-	/// layout: changing one silently orphans every row already stored under the old tag. Pinned
-	/// literally rather than derived, so a reordering of the enum cannot move them. 0x05 used to
-	/// belong to the retired `Flow` variant and 0x07 to `Series` before the range was made
-	/// contiguous; both were reclaimed once no writer could emit them.
 	#[test]
 	fn the_type_tags_are_contiguous_and_pinned_to_their_on_disk_bytes() {
+		// The tag goes into the catalog and row-settings keyspaces, so it is on-disk layout: changing
+		// one orphans every row already stored under the old tag. Pinned literally rather than
+		// derived, so reordering the enum cannot move them.
 		assert_eq!(ObjectId::Table(TableId(1)).type_tag(), 0x01);
 		assert_eq!(ObjectId::View(ViewId(1)).type_tag(), 0x02);
 		assert_eq!(ObjectId::TableVirtual(VTableId(1)).type_tag(), 0x03);
@@ -284,21 +282,19 @@ mod tests {
 		assert_eq!(ObjectId::Queue(QueueId(1)).type_tag(), 0x07);
 	}
 
-	/// Accepting an out-of-range tag would let a corrupt or truncated key decode into a neighbouring
-	/// kind instead of erroring, which is how a wrong-kind lookup turns into a silent miss rather
-	/// than a fault. 0x08 is the first unassigned byte above the range and 0x00 the one below, so
-	/// they bracket it from both sides.
 	#[test]
 	fn a_tag_outside_the_assigned_range_is_rejected_rather_than_mapped_to_a_neighbour() {
+		// Accepting an out-of-range tag would let a corrupt key decode into a neighbouring kind, so a
+		// wrong-kind lookup becomes a silent miss. 0x08 and 0x00 bracket the assigned range 0x01-0x07.
 		assert_eq!(ObjectId::from_type_tag(0x00, 42), None);
 		assert_eq!(ObjectId::from_type_tag(0x08, 42), None);
 		assert_eq!(ObjectId::from_type_tag(0xff, 42), None);
 	}
 
-	/// Encoders write `type_tag` and decoders read `from_type_tag`; if the two tables ever drift
-	/// apart again, a key would decode as a different object kind carrying the same numeric id.
 	#[test]
 	fn every_variant_survives_a_tag_round_trip_as_the_same_kind() {
+		// Encoders write `type_tag` and decoders read `from_type_tag`; if the two tables drift, a key
+		// decodes as a different object kind carrying the same numeric id.
 		let objects = [
 			ObjectId::Table(TableId(7)),
 			ObjectId::View(ViewId(7)),

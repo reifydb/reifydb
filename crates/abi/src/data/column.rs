@@ -160,11 +160,10 @@ impl ColumnsFFI {
 mod tests {
 	use super::ColumnTypeCode;
 
-	/// `from_u32` decodes by indexing `ALL`, so the array order IS the wire contract. Nothing in the
-	/// language ties it to the `= N` discriminants above, and a variant inserted into one but not the
-	/// other silently shifts every later code. This is the check that keeps the two in step.
 	#[test]
 	fn the_all_array_is_ordered_by_discriminant() {
+		// from_u32 decodes by indexing ALL, so array order is the wire contract; nothing in the
+		// language ties it to the `= N` discriminants.
 		for (index, code) in ColumnTypeCode::ALL.iter().enumerate() {
 			assert_eq!(
 				*code as u32, index as u32,
@@ -174,20 +173,19 @@ mod tests {
 		}
 	}
 
-	/// The marshalling boundary writes `code as u32` and reads it back through `from_u32`. This
-	/// asserts the two are actually inverse for every variant - the property that was silently false
-	/// while the WASM decoder kept its own hand-written table one slot out of step.
 	#[test]
 	fn every_variant_survives_an_encode_decode_round_trip() {
+		// The marshalling boundary writes `code as u32` and reads it back through from_u32, so the
+		// two must be inverse for every variant.
 		for code in ColumnTypeCode::ALL {
 			assert_eq!(ColumnTypeCode::from_u32(code as u32), Some(code));
 		}
 	}
 
-	/// A code outside the table must not resolve to a real type. Returning `Some` here would let a
-	/// truncated or future-versioned payload decode as whatever variant happened to sit at that index.
 	#[test]
 	fn a_code_outside_the_table_does_not_decode() {
+		// Returning Some would let a truncated or future-versioned payload decode as whatever
+		// variant happens to sit at that index.
 		assert_eq!(ColumnTypeCode::from_u32(ColumnTypeCode::ALL.len() as u32), None);
 		assert_eq!(ColumnTypeCode::from_u32(u32::MAX), None);
 	}

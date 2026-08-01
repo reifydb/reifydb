@@ -1,16 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! All three `BatchSize` variants must drive the operator end-to-end
-//! without breaking the materialized-table contract. Operators that batch
-//! input rows internally (block-trade, normalized-block) have batch-size
-//! sensitivity in production; this suite verifies the harness drives them
-//! with valid Changes regardless of batching shape.
+//! All three `BatchSize` variants must drive the operator end-to-end without breaking the
+//! materialized-table contract; operators that batch input rows internally are batch-size
+//! sensitive in production.
 //!
-//! Each `chaos_test!` expands to N separate `#[test]` cases (`make test-chaos
-//! N=`, default 32), one per index; each draws a fresh random seed per run
-//! unless `SEED` pins it. A failure reports its seed for replay (`make
-//! test-chaos SEED=... FILTER=...`).
+//! A failure reports its seed; replay with `make test-chaos SEED=... FILTER=...`.
 
 use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_testing_macro::chaos_test;

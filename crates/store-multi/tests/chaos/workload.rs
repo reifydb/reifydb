@@ -70,8 +70,7 @@ pub fn check_get(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: u
 
 pub fn check_get_many(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, rows: &[u64], read: u64, step: u32) {
 	let keys: Vec<EncodedKey> = rows.iter().map(|&row| RowKey::encoded(STORAGE, row)).collect();
-	// Distinct rows that resolve to a present value - the exact set get_many must return, regardless of how
-	// many duplicates the input `rows` contained.
+	// The exact set get_many must return, whatever duplicates the input carried.
 	let mut distinct_present: std::collections::BTreeSet<u64> = std::collections::BTreeSet::new();
 	for &row in rows {
 		if oracle
@@ -131,13 +130,9 @@ pub fn check_range(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, scop
 	check_range_inner(configs, oracle, scope, batch, step, RowKey::full_scan(STORAGE), None);
 }
 
-/// A random sub-range over the keyspace: returns the store's `EncodedKeyRange` and the oracle's matching
-/// `RangeFilter` (both in encoded-key space, so descending row encoding is handled identically). Endpoints
-/// are built from `RowKey::encoded` of two random rows, each side independently Included/Excluded; the
-/// "open" choice uses the object's own start/end key (what `RowKey::full_scan` uses) rather than a raw
-/// `Bound::Unbounded`. An object-less `Unbounded` endpoint classifies to the catch-all Multi table by design
-/// (see range_cache.rs `non_source_range_reads_through_with_warm_cache`), so to scan an object's rows the
-/// endpoints must carry the object - which `object_start`/`object_end` do.
+/// A random sub-range: the store's `EncodedKeyRange` and the oracle's matching `RangeFilter`, both in
+/// encoded-key space so descending row encoding is handled identically. The "open" choice uses the
+/// object's own start/end key, because an object-less `Unbounded` endpoint classifies to the Multi table.
 pub fn random_sub_range(rng: &mut StdRng, keyspace: u64) -> (EncodedKeyRange, RangeFilter) {
 	let a = RowKey::encoded(STORAGE, rng.random_range(1..=keyspace)).to_vec();
 	let b = RowKey::encoded(STORAGE, rng.random_range(1..=keyspace)).to_vec();
@@ -381,12 +376,9 @@ pub fn drive(seed: u64, p: Params) {
 	}
 }
 
-/// Seed-derived configuration for the mixed workload.
-///
-/// The two sweeps in chaos.rs pin specific configurations so they stay comparable across commits;
-/// this one draws its configuration from the seed as well, which is the only way the parameter space
-/// is explored at all. Ranges bracket both pinned configurations and extend past each end, so the
-/// sweep reaches keyspaces smaller and larger than either and flush shares below and above both.
+/// Seed-derived configuration for the mixed workload. The pinned sweeps stay comparable across commits;
+/// this one is what actually explores the parameter space, so the ranges bracket both pinned
+/// configurations and extend past each end.
 pub fn random_params(seed: u64) -> (u64, Params) {
 	let (mut rng, sequence_seed) = split(seed);
 	let min_steps = rng.random_range(40..=100u32);

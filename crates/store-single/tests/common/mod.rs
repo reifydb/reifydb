@@ -41,15 +41,9 @@ use reifydb_testing::testscript;
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 use testscript::command::Command;
 
-/// Shared testscript runner used by every per-backend integration test
-/// (memory / sqlite / tiered).
-///
-/// `auto_flush`:
-/// - `true` (set via `from_store_auto_flush`): every committing command is followed by `flush_pending_blocking()`. Used
-///   by tiered parity tests so reads always see the latest commits in persistent.
-/// - `false` (default for buffer-only constructors and `from_store_no_auto_flush`): commits do not implicitly flush.
-///   The explicit `flush` testscript command is the only way to move data into persistent. Used by tier-snapshot
-///   defect-hunting suites.
+/// Shared testscript runner for every per-backend integration test. With `auto_flush` each committing
+/// command is followed by `flush_pending_blocking()`; without it (the default) the explicit `flush`
+/// command is the only way to move data into persistent, which is what lets a script control timing.
 pub struct Runner {
 	pub store: StandardSingleStore,
 	pub auto_flush: bool,
@@ -78,7 +72,7 @@ impl Runner {
 		}
 	}
 
-	/// Persistent-only constructor (no buffer). Mirrors `new` for the unbuffered case.
+	/// Persistent-only constructor, so reads and writes bypass the buffer tier entirely.
 	#[allow(dead_code)]
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn sqlite_unbuffered(persistent: PersistentConfig) -> Self {
@@ -107,8 +101,7 @@ impl Runner {
 		}
 	}
 
-	/// Reuse an externally built store WITHOUT auto-flush. Used by tier-snapshot suites to control
-	/// flush timing precisely.
+	/// Reuse an externally built store without auto-flush, leaving flush timing to the script.
 	#[allow(dead_code)]
 	pub fn from_store_no_auto_flush(store: StandardSingleStore) -> Self {
 		Self {

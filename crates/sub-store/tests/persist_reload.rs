@@ -16,13 +16,12 @@ use reifydb_sub_store::{
 use reifydb_test_harness::db::{TestDb, poll_until};
 use reifydb_value::value::{Value, duration::Duration};
 
-// A shared /dev/shm-backed column.db survives across two independent opens, which lets us
-// simulate a process restart: the first database writes blocks, a fresh tier reads them back.
 #[test]
 fn materialized_columns_persist_to_disk_and_reload_after_restart() {
+	// A shared column.db surviving two independent opens is what simulates a process restart: the
+	// first database writes blocks, a fresh tier reads them back.
 	let (column_cfg, _guard) = SqliteConfig::in_memory();
 
-	// Phase 1: a running database materializes a table; the column tier persists each block to disk.
 	{
 		let storage_config = StorageConfig {
 			table_tick_interval: Duration::from_milliseconds(50).unwrap(),
@@ -43,8 +42,8 @@ fn materialized_columns_persist_to_disk_and_reload_after_restart() {
 		let storage = db.subsystem::<StorageSubsystem>().expect("StorageSubsystem registered");
 		let block_store = storage.block_store().clone();
 
-		// persist() runs before the catalog commit, which runs before the cache put, so a block
-		// visible in the cache is already durable in column.db.
+		// The actor persists before the catalog commit and puts into the cache last, so a block
+		// visible in the cache is already durable.
 		poll_until(
 			|| block_store.entries().into_iter().map(|(_, b)| b).find(|b| b.len() == 3),
 			Duration::from_seconds(5).unwrap().to_std(),
@@ -54,8 +53,7 @@ fn materialized_columns_persist_to_disk_and_reload_after_restart() {
 		db.stop();
 	}
 
-	// Phase 2: a fresh tier + block store reload the block straight from column.db, with no
-	// running database and no re-materialization.
+	// The reload runs with no database and no re-materialization, so only disk state can satisfy it.
 	let tier = Arc::new(SqliteColumnStore::new(column_cfg));
 	let persisted = tier.load_all().expect("load_all");
 	assert!(!persisted.is_empty(), "column.db must contain a persisted block after materialization");

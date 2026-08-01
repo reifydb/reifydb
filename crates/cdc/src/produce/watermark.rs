@@ -140,11 +140,9 @@ mod tests {
 
 	#[test]
 	fn the_deferred_join_stall_scenario() {
-		// Regression for the deferred-flow stall: concurrent commits race through
-		// the post-commit listener, so the producer can process 13 before 12. The
-		// watermark must NOT report 13 while 12's CDC is unwritten; otherwise a
-		// consumer reads (11,13], finds no CDC for the still-pending 12, and skips
-		// its checkpoint past the insert, losing it forever.
+		// Concurrent commits race through the post-commit listener, so the producer can process 13
+		// before 12. Reporting 13 while 12's CDC is unwritten lets a consumer read (11,13], find
+		// nothing for 12, and checkpoint past that insert forever.
 		let w = wm();
 		for n in 7..=11 {
 			w.advance(v(n));

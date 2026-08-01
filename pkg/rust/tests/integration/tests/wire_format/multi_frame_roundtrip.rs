@@ -79,10 +79,8 @@ fn single_statement_sort_take_round_trips() {
 	assert_rbcf_round_trip(&frames);
 }
 
-/// Run several single-statement queries and concatenate their frames into one
-/// Vec<Frame>, mirroring what the engine returns for a multi-statement RQL
-/// over the gRPC path. The in-process SDK's `query` returns only the
-/// first statement's frame, so we splice the multi-frame buffer manually here.
+/// The in-process SDK's `query` returns only the first statement's frame, so the multi-frame buffer
+/// the gRPC path yields for a multi-statement RQL is spliced by hand here.
 fn collect_frames(db: &TestDb, statements: &[&str]) -> Vec<Frame> {
 	let mut out = Vec::with_capacity(statements.len());
 	for rql in statements {
@@ -95,8 +93,6 @@ fn collect_frames(db: &TestDb, statements: &[&str]) -> Vec<Frame> {
 
 #[test]
 fn multi_statement_two_sort_take_round_trips() {
-	// The minimal repro of the birdeye observation: two `sort | take`
-	// statements concatenated into a multi-frame buffer.
 	let db = new_db();
 	seed_table(&db);
 	let frames = collect_frames(
@@ -109,8 +105,6 @@ fn multi_statement_two_sort_take_round_trips() {
 
 #[test]
 fn multi_statement_sort_take_then_aggregate_round_trips() {
-	// Mirrors the token_overview shape: latest-row by sort+take followed by
-	// an aggregate-by-group.
 	let db = new_db();
 	seed_table(&db);
 	let frames = collect_frames(
@@ -126,7 +120,6 @@ fn multi_statement_sort_take_then_aggregate_round_trips() {
 
 #[test]
 fn multi_statement_aggregate_then_sort_take_round_trips() {
-	// Reverse order of the previous case.
 	let db = new_db();
 	seed_table(&db);
 	let frames = collect_frames(
@@ -142,8 +135,7 @@ fn multi_statement_aggregate_then_sort_take_round_trips() {
 
 #[test]
 fn multi_statement_take_take_round_trips() {
-	// Sanity: same shape minus the sort. Pins the passing baseline so a
-	// regression in the take/no-sort path is also caught.
+	// The no-sort baseline, so a regression in the take-only path is caught too.
 	let db = new_db();
 	seed_table(&db);
 	let frames = collect_frames(&db, &["FROM wf::t | TAKE 1", "FROM wf::t | TAKE 1"]);
@@ -153,7 +145,6 @@ fn multi_statement_take_take_round_trips() {
 
 #[test]
 fn multi_statement_filter_take_filter_take_round_trips() {
-	// Sanity: filter+take shape (no sort).
 	let db = new_db();
 	seed_table(&db);
 	let frames = collect_frames(
@@ -166,9 +157,6 @@ fn multi_statement_filter_take_filter_take_round_trips() {
 
 #[test]
 fn handler_shape_three_frames_round_trips() {
-	// Mimics the birdeye token_overview multi-statement RQL shape with one
-	// frame each from: sort+take (latest price), aggregate (markets count),
-	// sort+take (history price).
 	let db = new_db();
 	seed_table(&db);
 	let frames = collect_frames(

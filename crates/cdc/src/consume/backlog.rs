@@ -340,9 +340,8 @@ mod tests {
 
 	#[test]
 	fn coverage_starts_just_below_the_first_published_version() {
-		// The first publish establishes the floor: everything from that version on is covered,
-		// everything before it lives only on disk. A cursor at version-1 must Hit, a cursor
-		// one lower must go to the loader.
+		// The first publish establishes the floor: from that version on the backlog is authoritative,
+		// anything earlier lives only on disk and must be sent to the loader.
 		let b = backlog(u64::MAX);
 		b.publish(cv(100), Some(cdc_with_payload(100, 10)));
 		match b.pull(cv(99), cv(100), ByteSize::from_mib(1)) {
@@ -362,8 +361,8 @@ mod tests {
 
 	#[test]
 	fn irrelevant_versions_extend_coverage_without_entries() {
-		// Versions that carry nothing a flow cares about still advance coverage; a pull across
-		// them returns an empty Hit that advances the cursor to the bound, with no disk trip.
+		// Versions carrying nothing a flow cares about must still extend coverage, or crossing
+		// them would cost a disk trip for no data.
 		let b = backlog(u64::MAX);
 		b.publish(cv(5), None);
 		match b.pull(cv(4), cv(9), ByteSize::from_mib(1)) {
@@ -507,9 +506,8 @@ mod tests {
 
 	#[test]
 	fn out_of_order_publish_below_the_floor_is_ignored() {
-		// The producer can process commits out of order; a version that arrives below the
-		// established floor cannot extend coverage downward and must not leave a stray entry
-		// that a Behind verdict would then contradict.
+		// The producer can process commits out of order; a version arriving below the established
+		// floor cannot extend coverage downward, and a stray entry there would contradict Behind.
 		let b = backlog(u64::MAX);
 		b.publish(cv(101), Some(cdc_with_payload(101, 10)));
 		b.publish(cv(99), Some(cdc_with_payload(99, 10)));
@@ -525,9 +523,8 @@ mod tests {
 
 	#[test]
 	fn notify_fires_once_until_disarmed() {
-		// Wake coalescing: a burst of publishes is one supervisor wake, and the next produce
-		// after a disarm wakes again. Without the re-arm a supervisor that scanned everything
-		// would sleep through all later CDC forever.
+		// A burst of publishes must coalesce into one supervisor wake; without the re-arm on
+		// disarm, a supervisor that scanned everything would sleep through all later CDC.
 		let fired = Arc::new(AtomicUsize::new(0));
 		let b = backlog(u64::MAX);
 		let counter = fired.clone();
@@ -545,9 +542,8 @@ mod tests {
 
 	#[test]
 	fn byte_accounting_balances_across_publish_replace_and_eviction() {
-		// The flow_backlog bytes metric is only trustworthy if every mutation keeps the tally
-		// in balance; a drifting tally would also break the ceiling itself, which compares
-		// against these bytes.
+		// The ceiling compares against this tally, so drift here breaks eviction itself, not just
+		// the reported metric.
 		let one = entry_bytes();
 		let b = backlog(u64::MAX);
 		b.publish(cv(1), Some(cdc_with_payload(1, 100)));

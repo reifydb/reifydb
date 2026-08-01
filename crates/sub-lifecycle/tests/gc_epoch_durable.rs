@@ -1,18 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 //
-//! Durable version-epoch log: the mechanism that makes a declared TTL actually enforceable.
+//! Durable version-epoch log: what keeps the time-to-version map answerable across a restart.
 //!
-//! Every TTL in the system becomes a cutoff via `floor_version_at(now - ttl)`. When that lookup returns none the
-//! consumer reclaims NOTHING - correctly, because none means "no safe floor known" - and does so silently while
-//! continuing to tick. That is the failure this log exists to prevent, and it has two historical shapes:
-//!
-//! - after a restart the RAM map was empty, so nothing expired until the process had been up longer than the TTL;
-//! - at production commit rates the bounded RAM buffer aged out within hours, so a 24h TTL never resolved at all.
-//!
-//! The tests below pin the properties that close both: a sample survives to storage, hydration re-establishes
-//! coverage for instants that precede this process, pruning respects the horizon rather than the buffer size, and
-//! an idle database does not feed itself versions forever.
+//! No row or operator ttl resolves through this map any more - both compare a row's own timestamp against a cutoff
+//! instant. These tests pin the map itself: samples reaching storage, hydration covering instants older than this
+//! process, and pruning bounded by the longest declared ttl rather than by a buffer size.
 
 use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
 use reifydb_codec::encoded::shape::RowShape;
@@ -39,8 +32,7 @@ use reifydb_value::value::{duration::Duration, identity::IdentityId, value_type:
 
 const MINUTE_SECS: u64 = 60;
 
-/// Advances the commit version with a well-formed system write, standing in for ingest traffic. The epoch only
-/// records a sample when the head version has moved, so the tests need a real version to record.
+/// Advances the head commit version; the epoch only records a sample once the head has moved.
 fn commit_a_version(engine: &StandardEngine, consumer: &str, at: u64) {
 	let mut txn = engine.begin_command(IdentityId::system()).expect("system command transaction");
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new(consumer), CommitVersion(at), ConsumerClass::Ephemeral)
@@ -48,9 +40,8 @@ fn commit_a_version(engine: &StandardEngine, consumer: &str, at: u64) {
 	txn.commit().expect("commit");
 }
 
-/// Reads the durable epoch keyspace directly, so a test can assert what reached storage rather than what the RAM
-/// map happens to still hold. Returns (bucket key, sample instant, version) - the key and the instant are
-/// deliberately separate here, because their divergence is the thing under test.
+/// Reads the durable keyspace directly, so a test asserts what reached storage rather than what the RAM map
+/// still holds. Returns (bucket, sample instant, version); bucket and instant diverging is the thing under test.
 fn durable_samples(engine: &StandardEngine) -> Vec<(u64, u64, u64)> {
 	let shape = RowShape::testing(&[ValueType::Uint8, ValueType::Uint8]);
 	let txn = engine.begin_query(IdentityId::system()).expect("system query transaction");
@@ -66,9 +57,8 @@ fn durable_samples(engine: &StandardEngine) -> Vec<(u64, u64, u64)> {
 	samples
 }
 
-/// The CDC test harness registers VersionEpochListener, which records a sample per commit at raw wall-clock nanos.
-/// That warms the shared epoch and can satisfy an assertion the code under test never satisfied, so epoch tests
-/// build without it.
+/// The CDC harness registers a listener that warms the shared epoch, which can satisfy an assertion the code
+/// under test never satisfied.
 fn engine_without_epoch_listener() -> TestEngine {
 	TestEngine::builder().build()
 }
@@ -79,8 +69,7 @@ fn open_gate(engine: &StandardEngine) -> RetentionStartupGate {
 
 #[test]
 fn a_sample_reaches_storage_so_a_later_process_can_read_it() {
-	// The whole premise of the durable log. A sample that only ever lives in RAM is the pre-existing behaviour,
-	// under which every restart reset TTL coverage to zero.
+	// A sample that only ever lives in RAM resets the map's coverage to zero on every restart.
 	let t = TestEngine::new();
 	let engine: StandardEngine = t.inner().clone();
 	commit_a_version(&engine, "ingest", 1);
@@ -95,13 +84,9 @@ fn a_sample_reaches_storage_so_a_later_process_can_read_it() {
 
 #[test]
 fn hydration_restores_coverage_for_an_instant_that_precedes_this_process() {
-	// This is the restart property stated directly: an instant BEFORE the epoch was ever populated in this
-	// process must still resolve to a version, because the answer came off disk. Without it, a process restarted
-	// after downtime longer than its TTLs reclaims nothing until it has been up that long again.
-	//
-	// Hydration targets a FRESH epoch, so what is asserted is what came off disk rather than what this process
-	// already sampled into the shared map. Asserting against the shared map cannot fail when hydration restores
-	// nothing at all.
+	// An instant from before this process started must still resolve to a version, or the map answers nothing
+	// about anything older than the current uptime. Hydration targets a fresh epoch so the assertion cannot
+	// pass off the shared map.
 	let t = engine_without_epoch_listener();
 	let engine: StandardEngine = t.inner().clone();
 	let clock = t.mock_clock();
@@ -116,7 +101,7 @@ fn hydration_restores_coverage_for_an_instant_that_precedes_this_process() {
 	commit_a_version(&engine, "ingest", 2);
 	task.run_slice();
 
-	// A cold map stands in for the restarted process: it has never seen a commit in this process.
+	// A cold map stands in for the restarted process.
 	let restored_epoch = VersionEpoch::new();
 	assert_eq!(
 		restored_epoch.floor_version_at(EpochSeconds::new(early_instant)),
@@ -138,10 +123,9 @@ fn hydration_restores_coverage_for_an_instant_that_precedes_this_process() {
 
 #[test]
 fn hydration_restores_history_even_though_the_sampler_already_recorded_now() {
-	// The boot ordering, reproduced: the periodic sampler records a sample for the CURRENT instant before
-	// hydration runs, so every durable sample is older than what the map already holds. A forward-only insert
-	// discards all of them and the restarted process is left with no coverage for its TTLs, silently - no error,
-	// no log, just a class that reclaims nothing. Restoring history is backwards by definition.
+	// The sampler records the current instant before hydration runs, so every durable sample is older than what
+	// the map already holds; a forward-only insert would discard all of them and leave the restarted process
+	// with no coverage at all, silently.
 	let t = engine_without_epoch_listener();
 	let engine: StandardEngine = t.inner().clone();
 	let clock = t.mock_clock();
@@ -173,9 +157,8 @@ fn hydration_restores_history_even_though_the_sampler_already_recorded_now() {
 
 #[test]
 fn a_sample_never_claims_a_version_was_current_before_it_was() {
-	// The skew, stated directly. A sample taken part-way through a bucket used to be filed under the bucket
-	// START, so it claimed that version was already reached up to a full bucket earlier. A ttl reading that
-	// instant then gets a cutoff NEWER than the truth and deletes rows that have not lived out their ttl.
+	// Filing a mid-bucket sample under the bucket start claims that version was reached up to a bucket earlier,
+	// so any reader of the map gets a floor newer than the truth for every instant in that bucket.
 	let t = engine_without_epoch_listener();
 	let engine: StandardEngine = t.inner().clone();
 	let clock = t.mock_clock();
@@ -208,10 +191,9 @@ fn a_sample_never_claims_a_version_was_current_before_it_was() {
 
 #[test]
 fn a_sample_at_the_horizon_edge_survives_because_its_instant_is_still_covered() {
-	// Pruning and hydration both order by bucket, but a row filed under a bucket that has just fallen outside
-	// the window can hold a sample taken inside it. Deciding by bucket drops it, which shortens coverage by up
-	// to one bucket exactly where the longest declared ttl reads - and an uncovered instant resolves to no
-	// cutoff, so that class reclaims nothing.
+	// A row filed under a bucket that has just left the window can still hold a sample taken inside it.
+	// Deciding by bucket drops it, shortening coverage by up to one bucket at the oldest edge of the horizon,
+	// and an uncovered instant resolves to nothing at all.
 	let t = engine_without_epoch_listener();
 	let engine: StandardEngine = t.inner().clone();
 	let clock = t.mock_clock();
@@ -243,9 +225,8 @@ fn a_sample_at_the_horizon_edge_survives_because_its_instant_is_still_covered() 
 
 #[test]
 fn a_sample_is_not_pruned_while_its_instant_is_still_inside_the_horizon() {
-	// The pruner's half of the same edge. Rows are keyed by bucket, so a bucket that has fallen outside the
-	// window can still hold a sample taken inside it. Deleting by bucket throws that sample away early, and the
-	// coverage it was providing disappears with it.
+	// The pruner's half of the same edge: deleting by bucket throws away a sample taken inside the window, and
+	// the coverage it was providing goes with it.
 	let t = engine_without_epoch_listener();
 	let engine: StandardEngine = t.inner().clone();
 	let clock = t.mock_clock();
@@ -273,9 +254,8 @@ fn a_sample_is_not_pruned_while_its_instant_is_still_inside_the_horizon() {
 
 #[test]
 fn an_idle_database_does_not_feed_itself_versions_forever() {
-	// A sample commit is itself a version. Without the skip-if-unchanged guard, each slice would record the
-	// version created by the previous slice, so an idle database would allocate versions and epoch rows forever -
-	// a leak introduced by the very mechanism meant to bound one.
+	// A sample commit is itself a version, so without the skip-if-unchanged guard each slice records the version
+	// the previous slice created and an idle database allocates versions and epoch rows forever.
 	let t = TestEngine::new();
 	let engine: StandardEngine = t.inner().clone();
 	commit_a_version(&engine, "ingest", 1);
@@ -325,8 +305,8 @@ fn a_new_bucket_records_a_fresh_sample_once_the_version_moves() {
 
 #[test]
 fn pruning_drops_samples_beyond_the_horizon_and_keeps_the_ones_inside_it() {
-	// Retention of the log is bounded by the longest declared ttl, not by a sample count. Pruning inside the
-	// horizon would make that ttl unresolvable - a silent none - which is the original defect wearing a new hat.
+	// The log is bounded by the longest declared ttl, not by a sample count; pruning inside that horizon
+	// shortens the map's coverage below what the horizon promises.
 	let t = TestEngine::new();
 	let engine: StandardEngine = t.inner().clone();
 	let clock = t.mock_clock();
@@ -352,9 +332,8 @@ fn pruning_drops_samples_beyond_the_horizon_and_keeps_the_ones_inside_it() {
 
 #[test]
 fn pruning_is_held_back_while_the_startup_gate_is_closed() {
-	// Landmine L6: making the epoch durable un-blinds every consumer at boot. Pruning is deletion like any other,
-	// so it waits out the startup grace - but sampling must continue during it, or the gate would create the very
-	// coverage gap it is protecting against.
+	// Pruning is deletion like any other, so it waits out the startup grace - but sampling must continue during
+	// it, or the gate creates the very coverage gap it is protecting against.
 	let t = TestEngine::new();
 	let engine: StandardEngine = t.inner().clone();
 	let clock = t.mock_clock();
@@ -380,9 +359,8 @@ fn pruning_is_held_back_while_the_startup_gate_is_closed() {
 
 #[test]
 fn a_sample_never_anchors_an_instant_to_version_zero() {
-	// Version zero means no commit has happened yet. Recording it would place "now" before every row in the
-	// database, so the first expiry pass could compute a cutoff above live data and delete it. The guard must
-	// hold on a database that has only ever seen its own bootstrap writes.
+	// Anchoring an instant to version zero places "now" before every row in the database, so any reader of the
+	// map would resolve a floor above live data.
 	let t = TestEngine::new();
 	let engine: StandardEngine = t.inner().clone();
 
@@ -397,9 +375,8 @@ fn a_sample_never_anchors_an_instant_to_version_zero() {
 
 #[test]
 fn hydrating_a_cold_database_leaves_the_epoch_resolving_nothing() {
-	// The safety property the whole design must not break: a fresh database has no samples, so every cutoff is
-	// none and every consumer deletes nothing. Hydration returning "no coverage" must never be confused with
-	// hydration returning "reclaim everything".
+	// A fresh database has no samples, so the map must answer none rather than a floor; "no coverage" can never
+	// be allowed to read as "everything is below the floor".
 	let t = TestEngine::new();
 	let engine: StandardEngine = t.inner().clone();
 
@@ -416,7 +393,7 @@ fn hydrating_a_cold_database_leaves_the_epoch_resolving_nothing() {
 #[test]
 fn the_class_is_paced_by_the_configured_bucket_width() {
 	// The cadence has to follow the bucket: sampling faster than the bucket width writes nothing new (the guard
-	// suppresses it), and slower leaves buckets with no sample, which is a resolution hole in expiry.
+	// suppresses it), and slower leaves buckets with no sample, which is a resolution hole in the map.
 	let t = TestEngine::new();
 	let engine: StandardEngine = t.inner().clone();
 	let task = EpochLogTask::new(engine.clone(), open_gate(&engine));
@@ -431,8 +408,8 @@ fn the_class_is_paced_by_the_configured_bucket_width() {
 
 #[test]
 fn the_gate_is_the_only_thing_between_a_cold_start_and_the_whole_backlog() {
-	// Documents the contract the factory relies on when it arms the gate: an open gate reclaims immediately.
-	// If this ever stopped being true the startup grace would be decorative.
+	// The factory relies on this when it arms the gate: an open gate reclaims immediately, otherwise the startup
+	// grace is decorative.
 	let t = TestEngine::new();
 	let gate = RetentionStartupGate::arm(Clock::Mock(t.mock_clock()), Duration::from_seconds(0).unwrap());
 

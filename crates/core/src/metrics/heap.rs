@@ -314,9 +314,6 @@ impl HeapSize for Value {
 mod tests {
 	use super::HeapSize;
 
-	// The derive must sum heap_size over every field so that adding a
-	// heap-owning field later is picked up automatically, and scalar
-	// fields must contribute zero.
 	#[derive(HeapSize)]
 	struct DerivedSample {
 		name: String,
@@ -326,6 +323,8 @@ mod tests {
 
 	#[test]
 	fn derived_heap_size_sums_all_fields() {
+		// The derive must sum every field so a heap-owning field added later is picked up
+		// automatically, and scalar fields must contribute zero.
 		let sample = DerivedSample {
 			name: String::with_capacity(32),
 			values: Vec::with_capacity(4),

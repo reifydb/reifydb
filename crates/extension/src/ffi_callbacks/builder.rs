@@ -141,8 +141,7 @@ thread_local! {
 }
 
 pub fn with_registry<R>(registry: &BuilderRegistry, f: impl FnOnce() -> R) -> R {
-	// SAFETY: we only hold the pointer for the duration of `f`; the
-
+	// SAFETY: the 'static is confined to this frame - the thread-local is restored before returning.
 	let extended: &'static BuilderRegistry = unsafe { mem::transmute(registry) };
 	let prev = REGISTRY.with(|cell| cell.replace(Some(extended)));
 	let result = f();
@@ -356,8 +355,7 @@ impl ActiveBuilder {
 			if offsets_len > offsets.capacity() {
 				return Err(FFI_ERROR_INTERNAL);
 			}
-			// SAFETY: offsets_len <= offsets.capacity() (checked above); the FFI writer
-
+			// SAFETY: within capacity (checked) and the guest filled every slot before commit.
 			unsafe {
 				offsets.set_len(offsets_len);
 			}
@@ -373,8 +371,7 @@ impl ActiveBuilder {
 		if data_byte_len > self.data.capacity() {
 			return Err(FFI_ERROR_INTERNAL);
 		}
-		// SAFETY: data_byte_len <= self.data.capacity() (checked above); the FFI writer
-
+		// SAFETY: within capacity (checked) and the guest wrote that many bytes before commit.
 		unsafe {
 			self.data.set_len(data_byte_len);
 		}
@@ -383,8 +380,7 @@ impl ActiveBuilder {
 			if needed > bitvec.capacity() {
 				return Err(FFI_ERROR_INTERNAL);
 			}
-			// SAFETY: needed <= bitvec.capacity() (checked above); the FFI writer
-
+			// SAFETY: within capacity (checked) and the guest wrote the bits before commit.
 			unsafe {
 				bitvec.set_len(needed);
 			}
@@ -435,6 +431,7 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 	};
 
 	let mut inner = registry.inner.lock();
+	// SAFETY: ctx is non-null here and the host keeps the ContextFFI live for the whole call.
 	let txn_clock_now = unsafe { (*ctx).clock_now_nanos };
 	let now = DateTime::from_nanos(txn_clock_now);
 
@@ -523,6 +520,7 @@ fn assemble_columns(
 	if row_count > 0 && row_numbers_ptr.is_null() {
 		return Err(FFI_ERROR_NULL_PTR);
 	}
+	// SAFETY: all three are non-null here and the caller guarantees `count` initialized elements.
 	let handles = unsafe { slice::from_raw_parts(handles_ptr, count) };
 	let names = unsafe { slice::from_raw_parts(name_ptrs, count) };
 	let lens = unsafe { slice::from_raw_parts(name_lens, count) };
@@ -541,6 +539,7 @@ fn assemble_columns(
 		let name_bytes = if names[i].is_null() || lens[i] == 0 {
 			""
 		} else {
+			// SAFETY: names[i] is non-null and readable for lens[i] bytes per the caller.
 			let s = unsafe { slice::from_raw_parts(names[i], lens[i]) };
 			str::from_utf8(s).unwrap_or("")
 		};
@@ -550,6 +549,7 @@ fn assemble_columns(
 	let row_numbers: Vec<RowNumber> = if row_count == 0 {
 		Vec::new()
 	} else {
+		// SAFETY: row_count > 0 passed the null check and row_numbers_len was verified equal to it.
 		let raw = unsafe { slice::from_raw_parts(row_numbers_ptr, row_count) };
 		raw.iter().copied().map(RowNumber).collect()
 	};
@@ -750,6 +750,7 @@ fn numeric_bytes_to_vec<T: Copy>(data: &[u8], count: usize) -> Option<Vec<T>> {
 		return None;
 	}
 	let mut v: Vec<T> = Vec::with_capacity(count);
+	// SAFETY: bounds checked above and `v` is fresh, so no overlap; `data` must be aligned for T.
 	unsafe {
 		ptr::copy_nonoverlapping(data.as_ptr() as *const T, v.as_mut_ptr(), count);
 		v.set_len(count);

@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! A silent removal committed by one write transaction must be invisible to a
-//! later transaction's range scan (RangeScope::All), exactly like a get. The
-//! window engines range-scan their own bookkeeping (rolling coord entries,
-//! expiry index) on every apply; a resurrected entry double-unmerges running
-//! accumulators (observed as transactional rolling views going empty).
+//! A committed silent removal must be invisible to a later range scan, exactly as it is to a get.
+//! Window engines range-scan their own bookkeeping on every apply, so a resurrected entry
+//! double-unmerges the running accumulators and empties the view.
 
 use std::sync::Arc;
 

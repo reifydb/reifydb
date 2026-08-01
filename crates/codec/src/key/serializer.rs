@@ -793,17 +793,16 @@ pub mod tests {
 
 	#[test]
 	fn test_extend_bytes() {
+		// 0xff 0xff terminates a byte string, so a literal 0xff in the data is escaped to
+		// 0xff 0x00 and cannot be mistaken for the terminator.
 		let mut serializer = KeySerializer::new();
 		serializer.extend_bytes(b"hello");
 		let result = serializer.finish();
-		// Should have "hello" plus terminator (0xff, 0xff)
 		assert_eq!(result, vec![b'h', b'e', b'l', b'l', b'o', 0xff, 0xff]);
 
-		// Test with 0xff in the data
 		let mut serializer = KeySerializer::new();
 		serializer.extend_bytes(&[0x01, 0xff, 0x02]);
 		let result = serializer.finish();
-		// 0xff should be escaped as 0xff, 0x00
 		assert_eq!(result, vec![0x01, 0xff, 0x00, 0x02, 0xff, 0xff]);
 	}
 
@@ -812,7 +811,6 @@ pub mod tests {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_str("hello world");
 		let result = serializer.finish();
-		// Should encode as UTF-8 bytes plus terminator
 		assert!(result.len() > "hello world".len());
 		assert!(result.ends_with(&[0xff, 0xff]));
 	}
@@ -831,7 +829,6 @@ pub mod tests {
 		serializer.extend_bool(true).extend_i32(42i32).extend_str("test").extend_u64(1000u64);
 		let result = serializer.finish();
 
-		// Should have bool (1 byte) + i32 (4 bytes) + "test" with terminator (6 bytes) + u64 (varies)
 		assert!(result.len() >= 13);
 
 		let mut de = KeyDeserializer::from_bytes(&result);
@@ -844,7 +841,8 @@ pub mod tests {
 
 	#[test]
 	fn test_ordering_descending_i32() {
-		// Test that descending order is preserved: larger values -> smaller bytes
+		// Keycode is descending: a larger value must encode to smaller bytes so a forward scan
+		// returns it first.
 		let mut ser1 = KeySerializer::new();
 		ser1.extend_i32(1i32);
 		let bytes1 = ser1.finish();
@@ -857,8 +855,6 @@ pub mod tests {
 		ser3.extend_i32(1000i32);
 		let bytes3 = ser3.finish();
 
-		// In descending order: larger values encode to smaller bytes
-		// So: bytes_1000 < bytes_100 < bytes_1
 		assert!(bytes3 < bytes2, "encode(1000) should be < encode(100)");
 		assert!(bytes2 < bytes1, "encode(100) should be < encode(1)");
 	}
@@ -910,8 +906,8 @@ pub mod tests {
 
 	#[test]
 	fn test_extend_value_with_direction_utf8() {
-		// Strings encode ascending in keycode; asc must preserve lexicographic order and desc must reverse it
-		// (this is the regression that the uniform-invert implementation got backwards).
+		// Strings encode ascending in keycode, unlike the numeric types, so asc must preserve
+		// lexicographic order and only desc inverts it.
 		let enc = |s: &str, d: SortOrder| {
 			let mut ser = KeySerializer::new();
 			ser.extend_value_with_direction(&Value::Utf8(s.to_string()), d);
@@ -925,6 +921,7 @@ pub mod tests {
 
 	#[test]
 	fn test_ordering_descending_u64() {
+		// Keycode is descending: a larger u64 must encode to smaller bytes.
 		let mut ser1 = KeySerializer::new();
 		ser1.extend_u64(1u64);
 		let bytes1 = ser1.finish();
@@ -937,16 +934,13 @@ pub mod tests {
 		ser3.extend_u64(10000u64);
 		let bytes3 = ser3.finish();
 
-		// Descending: larger u64 -> smaller bytes
 		assert!(bytes3 < bytes2, "encode(10000) should be < encode(100)");
 		assert!(bytes2 < bytes1, "encode(100) should be < encode(1)");
 	}
 
 	#[test]
 	fn test_ordering_descending_negative() {
-		// Test negative numbers ordering
-		// In descending order: -1 > -100 > -1000
-		// So encoded bytes: encode(-1) < encode(-100) < encode(-1000)
+		// The sign flip must keep negatives in the same descending order as positives.
 		let mut ser1 = KeySerializer::new();
 		ser1.extend_i32(-1i32);
 		let bytes_neg1 = ser1.finish();
@@ -959,14 +953,13 @@ pub mod tests {
 		ser3.extend_i32(-1000i32);
 		let bytes_neg1000 = ser3.finish();
 
-		// In descending: -1 > -100 > -1000, so encode(-1) < encode(-100) < encode(-1000)
 		assert!(bytes_neg1 < bytes_neg100, "encode(-1) should be < encode(-100)");
 		assert!(bytes_neg100 < bytes_neg1000, "encode(-100) should be < encode(-1000)");
 	}
 
 	#[test]
 	fn test_ordering_mixed_sign() {
-		// Test that positive/negative ordering is correct
+		// The sign flip must order across zero, not just within one sign.
 		let mut ser_neg = KeySerializer::new();
 		ser_neg.extend_i32(-1i32);
 		let bytes_neg = ser_neg.finish();
@@ -979,7 +972,6 @@ pub mod tests {
 		ser_pos.extend_i32(1i32);
 		let bytes_pos = ser_pos.finish();
 
-		// In descending: 1 > 0 > -1, so encode(1) < encode(0) < encode(-1)
 		assert!(bytes_pos < bytes_zero, "encode(1) should be < encode(0)");
 		assert!(bytes_zero < bytes_neg, "encode(0) should be < encode(-1)");
 	}
@@ -1045,7 +1037,6 @@ pub mod tests {
 		let uuid = Uuid4::generate();
 		serializer.extend_uuid4(&uuid);
 		let result = serializer.finish();
-		// UUID is 16 bytes plus encoding overhead
 		assert!(result.len() > 16);
 	}
 
@@ -1056,7 +1047,6 @@ pub mod tests {
 		let uuid = Uuid7::generate(&clock, &rng);
 		serializer.extend_uuid7(&uuid);
 		let result = serializer.finish();
-		// UUID is 16 bytes plus encoding overhead
 		assert!(result.len() > 16);
 	}
 
@@ -1066,7 +1056,6 @@ pub mod tests {
 		let blob = Blob::from(vec![0x01, 0x02, 0x03]);
 		serializer.extend_blob(&blob);
 		let result = serializer.finish();
-		// Should have data plus terminator
 		assert!(result.len() > 3);
 	}
 
@@ -1076,7 +1065,6 @@ pub mod tests {
 		let int = Int(BigInt::from(42));
 		serializer.extend_int(&int);
 		let result = serializer.finish();
-		// Should have sign byte + length + data
 		assert!(result.len() > 0);
 	}
 
@@ -1086,7 +1074,6 @@ pub mod tests {
 		let uint = Uint(BigInt::from(42));
 		serializer.extend_uint(&uint);
 		let result = serializer.finish();
-		// Should have length + data
 		assert!(result.len() > 0);
 	}
 
@@ -1096,39 +1083,34 @@ pub mod tests {
 		let decimal = Decimal::from_str("3.14").unwrap();
 		serializer.extend_decimal(&decimal);
 		let result = serializer.finish();
-		// Should encode as string
 		assert!(result.len() > 0);
 	}
 
 	#[test]
 	fn test_extend_value() {
-		// Test None (Any inner type)
+		// Every value carries its type tag first, so a key can be decoded without a schema.
 		let mut serializer = KeySerializer::new();
 		serializer.extend_value(&Value::none());
 		let result = serializer.finish();
 		assert_eq!(result, vec![0x00, 0x1a]); // none marker + Any type tag (ValueKind::Any = 26)
 
-		// Test None with typed inner
 		let mut serializer = KeySerializer::new();
 		serializer.extend_value(&Value::none_of(ValueType::Int4));
 		let result = serializer.finish();
 		assert_eq!(result, vec![0x00, 0x06]); // marker + Int4 inner type marker
 
-		// Test boolean
 		let mut serializer = KeySerializer::new();
 		serializer.extend_value(&Value::Boolean(true));
 		let result = serializer.finish();
 		assert_eq!(result[0], 0x01); // Boolean marker
 		assert_eq!(result.len(), 2); // marker + encoded bool
 
-		// Test integer
 		let mut serializer = KeySerializer::new();
 		serializer.extend_value(&Value::Int4(42));
 		let result = serializer.finish();
 		assert_eq!(result[0], 0x06); // Int4 marker
 		assert_eq!(result.len(), 5); // marker + 4 bytes
 
-		// Test string
 		let mut serializer = KeySerializer::new();
 		serializer.extend_value(&Value::Utf8("test".to_string()));
 		let result = serializer.finish();
@@ -1550,11 +1532,9 @@ pub mod tests {
 		assert!(de.is_empty());
 	}
 
-	/// Compile-time exhaustiveness guard: if a new Value variant is added,
-	/// this test will fail to compile. Add a corresponding `test_roundtrip_<variant>`
-	/// test above, then add the new variant arm here.
 	#[test]
 	fn test_roundtrip_exhaustiveness_guard() {
+		// A new Value variant stops this compiling, forcing a round-trip test for it above.
 		let value = Value::none();
 		match value {
 			Value::None {

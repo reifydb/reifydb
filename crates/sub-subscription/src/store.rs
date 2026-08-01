@@ -208,16 +208,14 @@ mod tests {
 		let id = store.next_id();
 		store.register(id, vec!["test".to_string()]);
 
-		// Three separate commits so each push evaluates buffer capacity
-		// against the already-committed tail - mirrors how the subscription
-		// CDC consumer drives the store one batch at a time.
+		// Three separate commits so each push evaluates capacity against the already-committed tail, the
+		// way the CDC consumer drives the store one batch at a time.
 		store.commit_staged(stage(id, &[1]));
 		store.commit_staged(stage(id, &[2]));
 		store.commit_staged(stage(id, &[3]));
 
 		let drained = store.drain(&id, 10);
 		assert_eq!(drained.len(), 2);
-		// The oldest value(1) has been evicted; remaining are value(2) and value(3)
 	}
 
 	#[test]

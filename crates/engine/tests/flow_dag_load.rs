@@ -7,18 +7,11 @@ use reifydb_rql::flow::loader::load_flow_dag;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::identity::IdentityId;
 
-// Regression for the deferred-view torn-read race. The post-commit CatalogCacheInterceptor
-// populates flow nodes then edges incrementally and non-atomically into a lock-free cache, so a
-// concurrent CDC-driven flow loader could observe the `flow_edges_by_flow` index after only some
-// (or none) of the edges had been inserted, build a sink with empty inputs, and abort flow
-// registration in sub-flow's register.rs at `inputs[0]` on the empty slice.
-//
-// load_flow_dag therefore reads the committed store snapshot through CatalogStore directly, not
-// the cache. We reproduce the exact torn shape deterministically by tombstoning every edge in the
-// cache only (the `_by_flow` index entry stays, but each edge stops being visible at the read
-// version), then assert the rebuilt DAG still connects the sink to its incoming edge.
 #[test]
 fn load_flow_dag_reads_store_snapshot_not_torn_cache() {
+	// The cache is filled non-atomically, so a concurrent loader can see the index before the
+	// edges. Tombstoning every edge in the cache alone reproduces that torn shape: a loader
+	// reading the cache would build a sink with no inputs and abort flow registration.
 	let engine = TestEngine::new();
 	let catalog = engine.catalog();
 	engine.admin("CREATE NAMESPACE fdl");
@@ -40,8 +33,7 @@ fn load_flow_dag_reads_store_snapshot_not_torn_cache() {
 		catalog.cache().set_flow_edge(edge.id, version, None);
 	}
 
-	// Precondition: the cache-first read now hands back a torn (empty) edge set - this is the
-	// state that produced an orphaned sink under the old loader.
+	// Without this the test could pass against a cache that was never torn.
 	assert!(
 		catalog.list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap().is_empty(),
 		"the cache view must be torn for this flow before exercising the loader"

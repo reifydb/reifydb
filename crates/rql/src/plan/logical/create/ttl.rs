@@ -88,10 +88,9 @@ mod tests {
 	use crate::{bump::Bump, token::tokenize};
 
 	#[test]
-	// Intent: a compound TTL duration - the form Duration::Display emits (e.g. "2d2h" for 50h)
-	// and that generated MIGRATE statements carry - must compile, not panic with ERR-mod:312.
-	// Guards the view-migration boot path that regressed in raptor.
 	fn compile_ttl_accepts_compound_duration() {
+		// Duration::Display emits the compound form ("2d2h" for 50h), so generated MIGRATE statements carry
+		// it back in and it has to compile rather than fault.
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "'2d2h'").unwrap();
 		let duration = tokens.into_iter().next().unwrap();
@@ -117,19 +116,16 @@ mod tests {
 
 	#[test]
 	fn compile_ttl_accepts_a_sub_second_ttl() {
-		// The old 1s floor existed because expiry resolved through the version epoch one
-		// whole-second bucket at a time, so a shorter ttl could not be honoured to anywhere near
-		// its stated precision. Expiry now compares the row's own timestamp against the cutoff
-		// instant, so sub-second durations mean exactly what they say and must be declarable.
+		// The 1s floor existed while expiry resolved through the version epoch a whole second at a time.
+		// Expiry now compares each row's own timestamp against the cutoff, so sub-second spans are honoured.
 		assert!(compile("'500ms'").is_ok(), "a sub-second ttl must compile now that expiry is per-row");
 		assert!(compile("'1ms'").is_ok(), "and precision goes well below that");
 	}
 
 	#[test]
 	fn compile_ttl_accepts_a_ttl_beyond_the_old_epoch_coverage() {
-		// The old ceiling was the epoch's guaranteed coverage: past it floor_version_at yielded no
-		// cutoff, so the class silently reclaimed nothing. Nothing consults the epoch for a row or
-		// operator ttl any more, so a long horizon is just a long horizon.
+		// The ceiling was the epoch's guaranteed coverage, past which no cutoff resolved and the class
+		// silently reclaimed nothing. No row or operator ttl consults the epoch any more.
 		let beyond = format!(
 			"'{}d'",
 			EpochRetention::default().guaranteed_coverage().seconds() / (24 * 60 * 60) + 1
@@ -141,9 +137,8 @@ mod tests {
 
 	#[test]
 	fn compile_ttl_still_rejects_a_non_positive_ttl() {
-		// The one bound that survives, and the only one that was ever about the ttl itself rather
-		// than about the mechanism behind it: a zero or negative ttl states that rows expire before
-		// they are written, which no cutoff arithmetic can honour.
+		// The only bound about the ttl itself rather than the mechanism behind it: a non-positive ttl says
+		// rows expire before they are written, which no cutoff arithmetic can honour.
 		assert!(compile("'0s'").is_err(), "a zero ttl must not compile");
 	}
 }

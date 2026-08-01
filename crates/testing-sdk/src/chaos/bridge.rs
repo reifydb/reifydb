@@ -420,8 +420,8 @@ mod tests {
 		(tally(Kind::Insert), tally(Kind::Update), tally(Kind::Remove))
 	}
 
-	/// Replays the stream the way a keyed consumer would, so an incoherent log is caught here.
 	fn replay_live(events: &[Recorded]) -> Vec<u64> {
+		// Replays the stream the way a keyed consumer would, so an incoherent log is caught here.
 		let mut live: Vec<u64> = Vec::new();
 		for event in events {
 			let number = event.number();
@@ -472,9 +472,8 @@ mod tests {
 
 	#[test]
 	fn insert_only_with_tight_cap_stops_at_cap() {
-		// max_live is a ceiling, not a trimming of the driver's bookkeeping: once the cap is reached the
-		// remaining steps must publish nothing. If it silently evicted instead, the run would keep inserting
-		// and a configuration asking for 25 live rows would exercise 100.
+		// max_live is a ceiling, not an eviction policy: if it silently evicted, a configuration
+		// asking for 25 live rows would exercise 100.
 		let events =
 			run(schema_sequential(), registry_kv(1..1000), cfg(100, 25, SupportedOps::insert_only()), 42);
 		assert!(events.iter().all(|e| e.kind == Kind::Insert));
@@ -545,9 +544,8 @@ mod tests {
 
 	#[test]
 	fn update_preserves_key_columns_under_hashof() {
-		// A row's identity is derived from its key column, so revaluing it must hold that column fixed.
-		// Resampling the key would silently move the row to a different identity and make the update
-		// indistinguishable from a delete-plus-insert of an unrelated row.
+		// Identity is derived from the key column, so resampling it would move the row and make the
+		// update indistinguishable from a delete-plus-insert of an unrelated row.
 		let events = run(schema_hashof(), registry_kv(1..1000), cfg(20, 50, SupportedOps::no_remove()), 5);
 		let updates: Vec<&Recorded> = events.iter().filter(|e| e.kind == Kind::Update).collect();
 		assert!(!updates.is_empty(), "expected at least one update over 20 steps");
@@ -733,9 +731,8 @@ mod tests {
 
 	#[test]
 	fn the_recorded_log_matches_what_the_subject_was_asked_to_apply() {
-		// The model's log is what every oracle reads, so it must describe the same operations in the same
-		// order that the subject actually received. A log that drifted from the applied stream would make
-		// every downstream comparison meaningless while still looking self-consistent.
+		// Every oracle reads the model's log, so a log that drifted from the applied stream would
+		// make all downstream comparisons meaningless while still looking self-consistent.
 		let (events, changes) = run_with_changes(
 			schema_sequential(),
 			registry_kv(1..1000),

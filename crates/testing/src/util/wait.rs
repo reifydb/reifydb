@@ -62,7 +62,6 @@ pub mod tests {
 
 	#[tokio::test]
 	async fn test_wait_for_immediate() {
-		// Condition is already true
 		wait_for(|| true, "Should not timeout").await;
 	}
 

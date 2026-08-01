@@ -196,7 +196,6 @@ pub mod tests {
 
 		assert_eq!(stats.entry_count, Count::new(2));
 
-		// Drop one entry
 		stats.record_compaction(bytes(10), bytes(100), Count::new(1));
 
 		assert_eq!(stats.key_bytes, bytes(20));
@@ -206,10 +205,10 @@ pub mod tests {
 
 	#[test]
 	fn test_cdc_stats_record_compaction_saturates() {
+		// Compacting more than was recorded must clamp; these are unsigned counters.
 		let mut stats = CdcMetrics::new();
 		stats.record(bytes(10), bytes(100));
 
-		// Drop more than recorded - should saturate at 0
 		stats.record_compaction(bytes(20), bytes(200), Count::new(1));
 
 		assert_eq!(stats.key_bytes, ByteSize::ZERO);

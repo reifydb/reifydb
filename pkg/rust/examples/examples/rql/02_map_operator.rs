@@ -138,7 +138,7 @@ map {
 		// +-----------+---------+------------+---------+-------+
 	}
 
-	// Example 6: MAP with comptokenize expressions
+	// Example 6: MAP with complex expressions
 	info!("\nExample 6: MAP with comptokenize expressions");
 
 	// Create a table for more realistic example

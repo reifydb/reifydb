@@ -1,19 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Process file-descriptor limit management.
-
-/// Raise the soft `RLIMIT_NOFILE` (open file descriptors) limit to the hard
-/// limit for the current process.
-///
-/// Each accepted connection (HTTP/WS/gRPC) and each outbound socket consumes
-/// one file descriptor. The default soft limit (often 1024) is exhausted under
-/// concurrent load and surfaces as `accept error: Too many open files (os error
-/// 24)`. Raising the soft limit to the hard limit gives the process the full
-/// headroom the OS already permits, without needing root.
-///
-/// Idempotent and safe to call more than once. Never panics: on failure it logs
-/// a warning and leaves the limit unchanged. No-op on non-unix targets.
+/// The default soft `RLIMIT_NOFILE` (often 1024) is exhausted by concurrent connections and
+/// surfaces as `accept error: Too many open files (os error 24)`; the hard limit is reachable
+/// without root. Idempotent, and never panics: on failure it warns and leaves the limit unchanged.
 #[cfg(unix)]
 pub fn raise_fd_limit() {
 	use std::io::Error;
@@ -55,7 +45,6 @@ pub fn raise_fd_limit() {
 	}
 }
 
-/// No-op on non-unix targets, which do not expose `RLIMIT_NOFILE`.
 #[cfg(not(unix))]
 pub fn raise_fd_limit() {}
 

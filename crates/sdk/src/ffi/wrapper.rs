@@ -353,8 +353,8 @@ pub unsafe extern "C" fn ffi_flush_state<O: FFIOperator>(
 	match result {
 		Ok((Ok(()), None)) => FFI_SAMPLE_NO_DATA,
 		Ok((Ok(()), report)) => {
-			// SAFETY: usage was null-checked above and the caller guarantees it
-
+			// SAFETY: usage was null-checked above and the caller guarantees it is aligned and writable
+			// for a StateUsageFFI for the duration of this call.
 			unsafe {
 				*usage = usage_from_sample(report);
 			}
@@ -375,15 +375,12 @@ pub unsafe extern "C" fn ffi_flush_state<O: FFIOperator>(
 	}
 }
 
-/// FFI entry point for `sample`. Reads the operator's approximate memory off the
-/// hot path. Returns `FFI_OK` when a memory sample was written, and
-/// `FFI_SAMPLE_NO_DATA` when the operator declines to report; declining is
-/// legitimate and leaves `out` untouched.
+/// Declining to report is legitimate: `FFI_SAMPLE_NO_DATA` leaves `out` untouched rather than writing zeroes.
 ///
 /// # Safety
 ///
 /// - `instance` must be a valid pointer to an `OperatorWrapper<O>`.
-/// - `out_entries` and `out_bytes` must be valid, writable pointers.
+/// - `out` must be a valid, writable, aligned pointer to a `StateUsageFFI`.
 pub unsafe extern "C" fn ffi_sample<O: FFIOperator>(instance: *mut c_void, out: *mut StateUsageFFI) -> i32 {
 	if instance.is_null() || out.is_null() {
 		return FFI_ERROR_NULL_PTR;
@@ -397,8 +394,8 @@ pub unsafe extern "C" fn ffi_sample<O: FFIOperator>(instance: *mut c_void, out: 
 	match result {
 		Ok(None) => FFI_SAMPLE_NO_DATA,
 		Ok(Some(report)) => {
-			// SAFETY: out was null-checked above and the caller guarantees it points
-
+			// SAFETY: out was null-checked above and the caller guarantees it is aligned and writable for
+			// a StateUsageFFI for the duration of this call.
 			unsafe {
 				*out = usage_from_sample(Some(report));
 			}
@@ -461,8 +458,8 @@ pub unsafe extern "C" fn ffi_invalidate_groups<O: FFIOperator>(
 	}
 
 	let result = catch_unwind(AssertUnwindSafe(|| {
-		// SAFETY: the caller guarantees `groups` covers `len` initialised u64s for this call, and
-
+		// SAFETY: the caller guarantees `groups` covers `len` initialised, aligned u64s for the duration of
+		// this call, and GroupId is a transparent u64 so the reinterpretation preserves layout.
 		let ids = if len == 0 {
 			&[][..]
 		} else {
@@ -509,10 +506,8 @@ mod tests {
 
 	#[test]
 	fn guest_usage_reports_the_total_once_and_never_adds_the_dirty_subset() {
-		// StateUsageFFI carries no dirty slot, so dirty_memory is a guest-local
-		// diagnostic. It is already contained in memory (approximate_memory is
-		// clean + dirty), and folding it in again shipped clean + 2 * dirty
-		// across the boundary, where the host charges it straight to the lease.
+		// The reported total already contains the dirty subset, and the host charges whatever crosses the
+		// boundary straight to the lease, so folding dirty in again bills it twice.
 		let sample = OperatorSample::with_memory(memory(10, 4096)).with_dirty_memory(memory(4, 1024));
 
 		let usage = usage_from_sample(Some(sample));
@@ -535,9 +530,8 @@ mod tests {
 
 	#[test]
 	fn guest_usage_carries_membership_and_completeness_behind_presence_flags() {
-		// has_membership / has_completeness disambiguate "not reported" from "all
-		// zero": a pre-hydration operator ships neither, and without the flags the
-		// host would render every such node as a degraded values_complete=0 gauge.
+		// The flags separate "not reported" from "all zero": a pre-hydration operator ships neither, and
+		// without them the host renders every such node as a degraded values_complete=0 gauge.
 		let bare = usage_from_sample(Some(OperatorSample::with_memory(memory(1, 64))));
 		assert_eq!(bare.has_membership, 0, "an unreported membership slot must not claim presence");
 		assert_eq!(bare.has_completeness, 0);
@@ -575,10 +569,8 @@ mod tests {
 
 	#[test]
 	fn guest_usage_carries_the_private_pool_behind_a_presence_flag() {
-		// Guest operators run on a private lease-sized pool the host cannot see;
-		// this is the only channel that tells the host what budget the guest
-		// actually enforced and whether it evicted. has_pool keeps a host without
-		// a pool report from rendering a fake 0-byte budget.
+		// A guest's private pool is invisible to the host, so this is the only channel reporting the budget
+		// it actually enforced; the flag keeps an absent report from rendering as a real 0-byte budget.
 		let bare = usage_from_sample(Some(OperatorSample::with_memory(memory(1, 64))));
 		assert_eq!(bare.has_pool, 0, "an unreported pool must not claim presence");
 

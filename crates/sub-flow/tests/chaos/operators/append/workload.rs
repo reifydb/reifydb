@@ -54,8 +54,8 @@ fn columns_of(rows: &[&AppendRow]) -> Columns {
 }
 
 fn tagged(mut diff: Diff, input: usize) -> Diff {
-	// Append resolves the input from the diff's origin and refuses a diff it cannot place, so this
-	// is not decoration - an untagged diff is an error, not a default.
+	// An untagged diff falls back to the change origin, which is input 0 here, so leaving one untagged
+	// lands its rows on the first input silently rather than failing.
 	diff.set_origin(Some(ChangeOrigin::Flow(input_node(input))));
 	diff
 }
@@ -67,13 +67,9 @@ fn change(diffs: Vec<Diff>) -> Change {
 pub struct AppendWorkload {
 	pub inputs: usize,
 
-	/// How many distinct row numbers an input draws from.
-	///
-	/// Small on purpose. Append's group key is (input, source row), and the whole reason the input
-	/// index is in it is that two inputs number their rows independently and both hold a row 7. A
-	/// corpus drawing from the driver's global counter would give every input a disjoint set of
-	/// numbers and could never regress-test that: drop the input index from the key and the sweep
-	/// would still pass.
+	/// How many distinct row numbers an input draws from. Small on purpose: two inputs both holding a
+	/// row 7 is the collision the input index in the group key exists to separate, and a corpus drawing
+	/// from the driver's global counter would give every input a disjoint set and never reach it.
 	pub row_space: u64,
 }
 
@@ -105,9 +101,8 @@ impl Workload for AppendWorkload {
 	}
 
 	fn identity(&self, row: &AppendRow) -> Option<Vec<u8>> {
-		// A row number repeating on the SAME input is the same row being written again, which the
-		// driver must turn into an update. The same number on a DIFFERENT input is an unrelated row,
-		// so the input has to be part of the identity or half the corpus would collapse.
+		// The same number on a different input is an unrelated row, so the input has to be part of
+		// the identity or half the corpus would collapse into updates.
 		let mut id = vec![row.input as u8];
 		id.extend_from_slice(&row.source.0.to_le_bytes());
 		Some(id)
@@ -134,11 +129,9 @@ impl Workload for AppendWorkload {
 	}
 }
 
-/// Packs a run of operations into diffs the way an upstream flow would.
-///
-/// A diff carries one `Columns` and is resolved against one input, so a run can never span two
-/// inputs. Coalescing only consecutive operations rather than regrouping the whole batch keeps the
-/// inputs in the order the driver drew them, which is what the model replays.
+/// Packs a run of operations into diffs the way an upstream flow would. A diff resolves against one
+/// input, so a run can never span two; coalescing only consecutive operations keeps the inputs in the
+/// order the driver drew them, which is what the model replays.
 fn coalesce(ops: &[Op<AppendRow>]) -> Vec<Diff> {
 	let mut diffs = Vec::new();
 	let mut start = 0;
@@ -161,9 +154,7 @@ fn continues_run(run: &[Op<AppendRow>], next: &Op<AppendRow>) -> bool {
 				| (Op::Remove(_), Op::Remove(_))
 				| (Op::Update(..), Op::Update(..))
 		);
-	// One diff never names the same row twice. A source that writes a row twice in a batch folds
-	// those into a single operation before it emits anything, so a diff carrying both would be a
-	// shape no operator is built for - and since append renumbers by row, both copies would resolve
+	// One diff never names the same row twice: append renumbers by row, so both copies would resolve
 	// to one output row and the second would withdraw what the first published.
 	same_shape && !run.iter().any(|op| identity_of(op) == identity_of(next))
 }

@@ -225,7 +225,6 @@ fn test_subscription_temporal() {
 		assert!(change.is_some());
 
 		let frame = &change.unwrap().changes[0].frame;
-		// Verify temporal values are returned as typed values
 		let d_val = find_column(frame, "d").unwrap().data.get_value(0);
 		assert!(matches!(d_val, Value::Date(_)), "Expected Date value, got {:?}", d_val);
 
@@ -275,11 +274,9 @@ fn test_subscription_uuid() {
 		let u4_val = find_column(frame, "u4").unwrap().data.get_value(0);
 		let u7_val = find_column(frame, "u7").unwrap().data.get_value(0);
 
-		// UUIDs should be typed Uuid4/Uuid7 values
 		assert!(matches!(u4_val, Value::Uuid4(_)), "Expected Uuid4 value, got {:?}", u4_val);
 		assert!(matches!(u7_val, Value::Uuid7(_)), "Expected Uuid7 value, got {:?}", u7_val);
 
-		// Verify string representation has correct format
 		let u4_str = format!("{}", u4_val);
 		let u7_str = format!("{}", u7_val);
 		assert!(u4_str.contains("-"), "UUID4 should contain hyphens");

@@ -121,11 +121,11 @@ mod tests {
 
 	#[test]
 	fn datetime_bucket_closes_after_grace_elapses() {
+		// The bucket bound is in the series precision (ms) while the clock is nanos: end 1000 is 1e9 nanos.
 		let s = series_with(SeriesKey::DateTime {
 			column: "ts".into(),
 			precision: TimestampPrecision::Millisecond,
 		});
-		// bucket.end at 1000ms past epoch
 		let b = Bucket {
 			start: 0,
 			end: 1000,

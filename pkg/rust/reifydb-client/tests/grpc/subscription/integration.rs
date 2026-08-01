@@ -44,7 +44,6 @@ fn test_basic_drop_subscription_success() {
 
 		assert!(!sub.subscription_id().is_empty(), "Subscription ID should be > 0");
 
-		// Drop subscription should succeed
 		drop(sub);
 		Ok(())
 	});
@@ -56,13 +55,11 @@ fn test_basic_receive_insert_notifications() {
 		let table = ctx.create_table("sub_insert", "id: int4, name: utf8, value: int4").await?;
 		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Insert data after subscription is established
 		ctx.insert(&table, "{ id: 1, name: 'test', value: 100 }").await?;
 
 		let change = TestContext::recv(&mut sub).await.expect("Should receive insert notification");
 		let frame = &change.changes[0].frame;
 
-		// Verify the data
 		let id_col = find_column(frame, "id").expect("id column should exist");
 		assert_eq!(id_col.data.get_value(0), Value::Int4(1));
 
@@ -172,14 +169,13 @@ fn test_op_batch_consecutive_rows() {
 		let table = ctx.create_table("sub_op_batch", "id: int4, name: utf8").await?;
 		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Insert 10 rows at once
 		let rows: Vec<String> = (1..=10).map(|i| format!("{{ id: {}, name: 'user{}' }}", i, i)).collect();
 		ctx.insert(&table, &rows.join(", ")).await?;
 
 		let change = TestContext::recv(&mut sub).await.expect("Should receive batch notification");
 		let frame = &change.changes[0].frame;
 
-		// Should be batched into one notification with all 10 rows
+		// One command must arrive as one notification carrying all ten rows, not ten pushes.
 		let id_col = find_column(frame, "id").expect("id column should exist");
 		assert_eq!(id_col.data.len(), 10, "Should have 10 rows");
 
@@ -215,12 +211,10 @@ fn test_concurrent_multiple_subscriptions() {
 			.await
 			.unwrap();
 
-		// Insert into table 1
 		client.command(&format!("INSERT test::{} [{{ id: 1, name: 'alice' }}]", table1), None).await.unwrap();
 
 		recv_with_timeout(&mut sub1, 5000).await.expect("Should receive change from table1");
 
-		// Insert into table 2
 		client.command(&format!("INSERT test::{} [{{ id: 2, value: 200 }}]", table2), None).await.unwrap();
 
 		recv_with_timeout(&mut sub2, 5000).await.expect("Should receive change from table2");
@@ -248,7 +242,6 @@ fn test_concurrent_5_plus_subscriptions() {
 		let mut tables = Vec::new();
 		let mut subs = Vec::new();
 
-		// Create all tables and subscribe
 		for i in 0..NUM_TABLES {
 			let table = unique_table_name(&format!("sub_conc_{}", i));
 			create_test_table(&client, &table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
@@ -260,14 +253,13 @@ fn test_concurrent_5_plus_subscriptions() {
 			subs.push(sub);
 		}
 
-		// Insert into all tables
 		for (i, table) in tables.iter().enumerate() {
 			client.command(&format!("INSERT test::{} [{{ id: {}, value: {} }}]", table, i, i * 100), None)
 				.await
 				.unwrap();
 		}
 
-		// Wait for all callbacks - each subscription independently
+		// Each gRPC subscription is its own stream, so each is drained separately.
 		let mut received = 0;
 		for sub in &mut subs {
 			let change = recv_with_timeout(sub, 15000).await;
@@ -277,7 +269,6 @@ fn test_concurrent_5_plus_subscriptions() {
 		}
 		assert_eq!(received, NUM_TABLES, "Should receive {} notifications", NUM_TABLES);
 
-		// Cleanup subscriptions
 		drop(subs);
 	});
 
@@ -305,22 +296,18 @@ fn test_reconnection_resubscribe_after_disconnect() {
 			.unwrap();
 		assert!(!sub.subscription_id().is_empty(), "Subscription ID should be > 0");
 
-		// Drop and reconnect
 		drop(sub);
 		drop(client);
 
-		// Reconnect
 		let mut client2 =
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client2.authenticate("mysecrettoken");
 
-		// Resubscribe
 		let mut sub2 = client2
 			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
 			.await
 			.unwrap();
 
-		// Insert new data
 		client2.command(&format!("INSERT test::{} [{{ id: 1, name: 'after_reconnect' }}]", table), None)
 			.await
 			.unwrap();
@@ -356,7 +343,6 @@ fn test_reconnection_multiple_subscriptions() {
 			create_test_table(&client, table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 		}
 
-		// Subscribe to all tables
 		let mut subs = Vec::new();
 		for table in &tables {
 			let sub = client
@@ -366,7 +352,6 @@ fn test_reconnection_multiple_subscriptions() {
 			subs.push(sub);
 		}
 
-		// Drop and reconnect
 		drop(subs);
 		drop(client);
 
@@ -374,7 +359,6 @@ fn test_reconnection_multiple_subscriptions() {
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client2.authenticate("mysecrettoken");
 
-		// Resubscribe to all tables
 		let mut subs2 = Vec::new();
 		for table in &tables {
 			let sub = client2
@@ -384,7 +368,6 @@ fn test_reconnection_multiple_subscriptions() {
 			subs2.push(sub);
 		}
 
-		// Insert into all tables
 		for (i, table) in tables.iter().enumerate() {
 			client2.command(&format!("INSERT test::{} [{{ id: {}, value: {} }}]", table, i, i * 100), None)
 				.await
@@ -470,7 +453,6 @@ fn test_lifecycle_cleanup_on_disconnect() {
 			.await
 			.unwrap();
 
-		// Drop without explicit cleanup - should not panic
 		drop(_sub);
 	});
 
@@ -483,19 +465,16 @@ fn test_lifecycle_no_callbacks_after_drop() {
 		let table = ctx.create_table("sub_no_cb", "id: int4, value: int4").await?;
 		let sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Drop subscription immediately
 		drop(sub);
 
-		// Insert data
 		ctx.insert(&table, "{ id: 1, value: 100 }").await?;
 
-		// Small wait to verify no callback fires
 		sleep(Duration::from_milliseconds(100).unwrap().to_std()).await;
 
-		// Create new subscription to verify data was inserted
+		// The outcome is deliberately not asserted: hydration is on by default, so a fresh
+		// subscription may legitimately replay the earlier insert.
 		let mut sub2 = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Should NOT receive the previous insert (it happened before this subscription)
 		let change = recv_with_timeout(&mut sub2, 500).await;
 		let _ = change;
 
@@ -509,7 +488,6 @@ fn test_edge_empty_result_sets() {
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("sub_empty", "id: int4, value: int4").await?;
 
-		// Subscribe with filter that won't match
 		let mut sub = ctx
 			.client
 			.subscribe(
@@ -518,22 +496,18 @@ fn test_edge_empty_result_sets() {
 			)
 			.await?;
 
-		// Insert data that doesn't match filter
 		ctx.insert(&table, "{ id: 1, value: 100 }").await?;
 
-		// Small wait to verify no callback fires for non-matching data
 		sleep(Duration::from_milliseconds(100).unwrap().to_std()).await;
 
 		let change = recv_with_timeout(&mut sub, 500).await;
 		assert!(change.is_none(), "Should not trigger callback for non-matching data");
 
-		// Insert data that matches filter
 		ctx.insert(&table, "{ id: 1001, value: 200 }").await?;
 
 		let change = recv_with_timeout(&mut sub, 5000).await.expect("Should receive matching data");
 		let frame = &change.changes[0].frame;
 
-		// Verify matching row data
 		let id_col = find_column(frame, "id").expect("id column should exist");
 		assert_eq!(id_col.data.get_value(0), Value::Int4(1001));
 
@@ -551,14 +525,12 @@ fn test_edge_large_batch_of_changes() {
 		let table = ctx.create_table("sub_large", "id: int4, value: int4").await?;
 		let mut sub = ctx.subscribe(&table, SubscriptionConfig::default()).await?;
 
-		// Insert 100 rows
 		let rows: Vec<String> = (0..100).map(|i| format!("{{ id: {}, value: {} }}", i, i * 10)).collect();
 		ctx.insert(&table, &rows.join(", ")).await?;
 
 		let change = TestContext::recv(&mut sub).await.expect("Should receive batch notification");
 		let frame = &change.changes[0].frame;
 
-		// Should have received all 100 rows
 		let id_col = find_column(frame, "id").expect("id column should exist");
 		assert_eq!(id_col.data.len(), 100, "Should have 100 rows");
 
@@ -588,14 +560,13 @@ fn test_edge_rapid_successive_changes() {
 			.await
 			.unwrap();
 
-		// Fire 10 insert commands rapidly
 		for i in 0..10 {
 			client.command(&format!("INSERT test::{} [{{ id: {}, value: {} }}]", table, i, i * 10), None)
 				.await
 				.unwrap();
 		}
 
-		// Collect all changes with timeout
+		// Rapid inserts may coalesce, so the invariant is total rows, not notification count.
 		let mut total_rows = 0usize;
 		let deadline = tokio::time::Instant::now() + Duration::from_milliseconds(15000).unwrap().to_std();
 		while total_rows < 10 {
@@ -843,7 +814,7 @@ fn test_stress_client_disconnect_without_unsubscribe() {
 				.await
 				.unwrap();
 
-			// Drop everything abruptly
+			// Dropping both without cleanup simulates an abrupt disconnect.
 			drop(sub);
 			drop(client);
 

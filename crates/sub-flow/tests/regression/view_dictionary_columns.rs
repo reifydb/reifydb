@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// A deferred view column declared `utf8 with { dictionary: ns::d }` must be a full peer of a table
-// dictionary column: the materialization sink interns the value (assigning a dictionary id exactly as
-// table DML does), stores the compact id, and a query over the view transparently decodes it back to
-// the original string. The source table here carries NO dictionary, so the values are interned ONLY by
-// the view sink - if the sink merely resolved existing ids (instead of interning) these rows would
-// never materialize, and if the view scan did not decode, the query would return integer ids instead
-// of strings. The duplicate `usdc` proves dedup: both rows decode to the same string from one id.
+// A view column declared `utf8 with { dictionary: ns::d }` must be a full peer of a table dictionary
+// column. The source table carries no dictionary, so the sink is the only thing that can intern:
+// resolving existing ids instead would materialize nothing, and no decode would return integers.
 
 use std::{thread, time::Instant};
 
@@ -102,8 +98,8 @@ fn view_interned_value_shares_id_with_table_on_same_dictionary() {
 		view_rows
 	);
 
-	// A table column on the SAME dictionary must reuse the id the view already assigned for 'usdc'
-	// (shared, deduped id space across every column referencing the dictionary).
+	// The id space is shared across every column referencing the dictionary, so a table column must
+	// reuse the id the view already assigned for 'usdc'.
 	db.admin("CREATE TABLE app::t { sym: utf8 with { dictionary: app::syms } }");
 	db.command("INSERT app::t [{ sym: 'usdc' }]");
 
@@ -118,15 +114,11 @@ fn view_interned_value_shares_id_with_table_on_same_dictionary() {
 	);
 }
 
-// The interceptor-free commit, end to end. A TRANSACTIONAL view materializes inline, inside the
-// committing transaction's pre-commit interceptor, which runs its flows in a rayon scope on the
-// compute pool. Interning from there opens and commits the dictionary entry's own transaction. If
-// that commit ran the interceptor chain, rayon would re-enter the transactional flow interceptor
-// inline on this very thread, a sibling sink would call intern on the same dictionary, and it would
-// re-acquire the same non-reentrant allocation lock: hard self-deadlock. This test hangs if the
-// dictionary commit is ever given interceptors.
 #[test]
 fn transactional_view_interning_a_dictionary_column_does_not_deadlock() {
+	// A transactional view materializes inside the pre-commit interceptor, so the dictionary
+	// entry's own commit must run without interceptors: running them re-enters the flow
+	// interceptor on this thread and re-acquires the non-reentrant allocation lock. Hangs if so.
 	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db"));
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE DICTIONARY app::syms FOR utf8 AS uint4");
@@ -155,13 +147,11 @@ fn transactional_view_interning_a_dictionary_column_does_not_deadlock() {
 	);
 }
 
-// Two transactional views over the SAME dictionary materialize as rayon-parallel siblings inside one
-// commit, each with its own pending writes but one shared registry. A first-seen value reaching both
-// at once is the easiest way to fork one value into two ids - which would silently split every
-// group-by and operator state keyed on that id, with no error anywhere. The allocation lock plus the
-// committed re-read under it must collapse them onto one id, and the two views must agree.
 #[test]
 fn parallel_transactional_views_on_one_dictionary_agree_on_one_id() {
+	// Two sibling views materialize in parallel inside one commit with separate pending writes, so
+	// a first-seen value reaching both at once is the easiest way to fork it into two ids - which
+	// silently splits every group-by and operator state keyed on that id, with no error anywhere.
 	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db"));
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE DICTIONARY app::syms FOR utf8 AS uint4");

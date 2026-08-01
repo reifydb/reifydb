@@ -55,7 +55,6 @@ pub mod tests {
 
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
-		// Verify edge was created
 		let result = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), edge.id).unwrap();
 		assert_eq!(result.id, edge.id);
 		assert_eq!(result.flow, flow.id);
@@ -76,7 +75,6 @@ pub mod tests {
 		let edge1 = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 		let edge2 = create_flow_edge(&mut txn, flow.id, node2.id, node3.id);
 
-		// Verify both edges exist
 		let result1 = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), edge1.id).unwrap();
 		let result2 = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), edge2.id).unwrap();
 
@@ -102,7 +100,6 @@ pub mod tests {
 		let edge1 = create_flow_edge(&mut txn, flow1.id, node1a.id, node1b.id);
 		let edge2 = create_flow_edge(&mut txn, flow2.id, node2a.id, node2b.id);
 
-		// Verify edges are in correct flows
 		let result1 = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), edge1.id).unwrap();
 		let result2 = CatalogStore::get_flow_edge(&mut Transaction::Admin(&mut txn), edge2.id).unwrap();
 
@@ -121,7 +118,6 @@ pub mod tests {
 
 		let edge = create_flow_edge(&mut txn, flow.id, node1.id, node2.id);
 
-		// Verify edge appears in flow index by listing edges for flow
 		let edges = CatalogStore::list_flow_edges_by_flow(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
 		assert_eq!(edges.len(), 1);
 		assert_eq!(edges[0].id, edge.id);

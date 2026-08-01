@@ -474,11 +474,10 @@ mod tests {
 		DictionaryEntryKey::encoded(d.id, xxh3_128(&bytes).0.to_be_bytes())
 	}
 
-	// The invariant the whole design rests on: the id an intern hands back already has a committed
-	// entry in the store. Nothing may observe an id whose entry is not yet in the store, otherwise a
-	// cold registry could remint the same value under a different id.
 	#[test]
 	fn intern_commits_the_entry_before_returning_the_id() {
+		// An id observable before its entry is durable lets a cold registry remint the same value
+		// under a different id.
 		let store = MockStore::default();
 		let registry = registry_on(&store);
 		let d = dict(ValueType::Uint8);
@@ -496,11 +495,9 @@ mod tests {
 		assert_eq!(store.commit_count(), 1, "the entry must be persisted by exactly one commit");
 	}
 
-	// Distinct values get distinct ids; the same value resolves to one id whether it comes from the
-	// cache or from a cold read. A value that forks into two ids splits every operator state keyed on
-	// it, so this is the property the allocation lock exists to hold.
 	#[test]
 	fn same_value_shares_one_id_distinct_values_differ() {
+		// A value that forks into two ids splits every operator state keyed on it.
 		let store = MockStore::default();
 		let registry = registry_on(&store);
 		let d = dict(ValueType::Uint8);
@@ -518,11 +515,10 @@ mod tests {
 		assert_eq!(store.commit_count(), 2, "only the two first sights commit");
 	}
 
-	// A second process (or a rebuilt flow engine) shares the store but not the cache. It must resolve
-	// an already-durable value to the existing id through the committed read rather than mint a
-	// second one.
 	#[test]
 	fn a_cold_registry_resolves_a_durable_value_without_reminting() {
+		// A rebuilt engine shares the store but not the cache, so it must resolve through the
+		// committed read rather than mint a second id.
 		let store = MockStore::default();
 		let d = dict(ValueType::Uint8);
 
@@ -536,11 +532,10 @@ mod tests {
 		assert_eq!(store.commit_count(), 1, "resolving a durable value must not commit anything");
 	}
 
-	// Restart: the counter lives only in memory, so it is reseeded from the maximum durable index id.
-	// Because no id is ever handed out without a committed entry, that maximum is at or above every id
-	// ever issued, and an id can never be reissued to a different value.
 	#[test]
 	fn restart_reseeds_the_counter_above_every_issued_id() {
+		// The counter is memory-only; reseeding below the durable maximum would reissue a live id
+		// to a different value.
 		let store = MockStore::default();
 		let d = dict(ValueType::Uint8);
 
@@ -560,10 +555,9 @@ mod tests {
 		);
 	}
 
-	// One commit per batch, not per value: a warmup burst of first-seen values would otherwise pay a
-	// store transaction (and its coarse lock round trip) per value instead of one for the batch.
 	#[test]
 	fn a_batch_of_new_values_produces_exactly_one_commit() {
+		// Per-value commits would make a warmup burst pay a store transaction each.
 		let store = MockStore::default();
 		let registry = registry_on(&store);
 		let d = dict(ValueType::Uint8);
@@ -576,10 +570,9 @@ mod tests {
 		assert_eq!(store.commit_count(), 1, "eight first-seen values must cost exactly one commit");
 	}
 
-	// A batch carrying the same value twice - two trades on one mint in one block - must allocate a
-	// single id and write a single entry, not two.
 	#[test]
 	fn a_batch_dedupes_a_repeated_value_to_one_id() {
+		// A value repeated within one batch must allocate one id and write one entry, not two.
 		let store = MockStore::default();
 		let registry = registry_on(&store);
 		let d = dict(ValueType::Uint8);
@@ -591,11 +584,10 @@ mod tests {
 		assert_eq!(store.commit_count(), 1);
 	}
 
-	// Concurrent first sight of the same value on two threads: the allocation lock plus the re-read
-	// under it must collapse them onto one id. Two ids for one value would silently split every
-	// group-by and operator state keyed on that id, and nothing downstream would report an error.
 	#[test]
 	fn two_threads_interning_the_same_new_value_agree_on_one_id() {
+		// Two ids for one value would split every group-by keyed on it, and nothing downstream
+		// would report an error.
 		let store = MockStore::default();
 		let registry = registry_on(&store);
 		let d = dict(ValueType::Uint8);
@@ -615,10 +607,9 @@ mod tests {
 		assert_eq!(store.commit_count(), 1, "exactly one thread may commit the entry");
 	}
 
-	// Two different values whose hashes collide must be refused rather than silently aliased onto one
-	// id, which would make one value decode as the other.
 	#[test]
 	fn a_hash_collision_is_refused_not_aliased() {
+		// Aliasing colliding values onto one id would make one of them decode as the other.
 		let store = MockStore::default();
 		let registry = registry_on(&store);
 		let d = dict(ValueType::Uint8);

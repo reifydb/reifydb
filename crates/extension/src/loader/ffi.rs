@@ -12,14 +12,15 @@ use reifydb_abi::{constants::CURRENT_API, data::buffer::BufferFFI};
 
 use crate::error::ExtensionError;
 
-/// Extract a UTF-8 string from a `BufferFFI`.
+/// Invalid UTF-8 yields a placeholder rather than an error, so this never fails a load.
 ///
 /// # Safety
-/// The buffer must contain valid UTF-8 data and the pointer must be valid for the given length.
+/// `buffer.ptr` must be valid for reads of `buffer.len` bytes for the duration of the call.
 pub unsafe fn buffer_to_string(buffer: &BufferFFI) -> String {
 	if buffer.ptr.is_null() || buffer.len == 0 {
 		return String::new();
 	}
+	// SAFETY: ptr is non-null with non-zero len here, and the caller guarantees the range is readable.
 	let slice = unsafe { slice::from_raw_parts(buffer.ptr, buffer.len) };
 	str::from_utf8(slice).unwrap_or("<invalid UTF-8>").to_string()
 }
@@ -47,6 +48,7 @@ impl LibraryCache {
 
 	pub fn load(&mut self, path: &Path) -> Result<(), ExtensionError> {
 		if !self.libraries.contains_key(path) {
+			// SAFETY: loading runs the object's initializers; only trusted paths reach here.
 			let lib = unsafe {
 				Library::new(path).map_err(|e| {
 					ExtensionError::FFILoad(format!(
@@ -73,6 +75,7 @@ impl LibraryCache {
 		self.load(path)?;
 		let library = self.libraries.get(path).unwrap();
 
+		// SAFETY: the ABI declares the magic symbol with this signature; Symbol borrows the library.
 		let magic_result: Result<Symbol<extern "C" fn() -> u32>, _> = unsafe { library.get(symbol_name) };
 
 		match magic_result {

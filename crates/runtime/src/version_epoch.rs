@@ -309,7 +309,6 @@ mod tests {
 		EpochSeconds::new(seconds)
 	}
 
-	/// Coarse buckets of 10s, exact retention of the newest 5 samples, 50 samples total.
 	fn small() -> VersionEpoch {
 		VersionEpoch::with_retention(EpochRetention {
 			fine_samples: 5,
@@ -318,10 +317,9 @@ mod tests {
 		})
 	}
 
-	/// Records at `at`, then rolls the open bucket forward so the sample is sealed and visible
-	/// to a floor lookup at `at` itself. Commits seal the previous bucket, so a test that only
-	/// ever records once would be asserting against a permanently open bucket.
 	fn record_sealed(epoch: &VersionEpoch, at: EpochSeconds, version: u64) {
+		// Commits seal the previous bucket, so recording only once would assert against a
+		// permanently open bucket that no floor lookup at `at` can see.
 		epoch.record(at, version);
 		epoch.record(at.plus(BUCKET_WIDTH), version);
 	}
@@ -537,12 +535,9 @@ mod tests {
 
 	#[test]
 	fn the_minimum_ttl_covers_at_least_one_whole_bucket() {
-		// Expiry resolves through whole buckets: a row becomes eligible at the first bucket boundary
-		// at or after `now - ttl`, so its real lifetime lands somewhere in [ttl, ttl + BUCKET_WIDTH].
-		// Expiry is therefore never early, only late, and the bucket width is the absolute bound on
-		// that lateness. Requiring the minimum TTL to cover a whole bucket caps the error at 100% of
-		// the declared TTL; below that a row outlives its ttl by a multiple of itself, so the two
-		// constants may only move together.
+		// Expiry resolves through whole buckets, so a real lifetime lands in [ttl, ttl + BUCKET_WIDTH]:
+		// never early, only late. A minimum TTL covering one bucket caps that error at 100% of the
+		// declared TTL, which is why the two constants may only move together.
 		assert!(
 			MIN_TTL.to_std().as_secs() >= BUCKET_WIDTH.seconds(),
 			"a TTL at the minimum must span at least one whole bucket, or a row outlives its ttl by a \

@@ -220,11 +220,10 @@ mod tests {
 		}
 	}
 
-	/// A replicated Delete always announces: it arrived as a CDC record, so re-silencing it on the
-	/// replica would strand the replica's own subscribers. The pre-image rides along when the primary
-	/// captured one.
 	#[test]
 	fn test_delete_to_delta_with_pre() {
+		// A replicated Delete must stay announced: re-silencing it would strand the replica's own
+		// subscribers, and the primary's pre-image rides along.
 		let sc = SystemChange::Delete {
 			key: EncodedKey::new(vec![1]),
 			pre: Some(EncodedRow(CowVec::new(vec![2]))),
@@ -243,11 +242,10 @@ mod tests {
 		}
 	}
 
-	/// Our own producer always attaches a pre-image to an announced delete, so a Delete arriving with
-	/// none did not come from a reifydb primary. There is nothing to announce with, and inventing an
-	/// empty before-image would hand the replica's subscribers a fabricated row, so it applies silently.
 	#[test]
 	fn test_delete_without_pre_applies_silently() {
+		// Our own producer always attaches a pre-image, so a Delete arriving without one is not from a
+		// reifydb primary; inventing an empty before-image would hand subscribers a fabricated row.
 		let sc = SystemChange::Delete {
 			key: EncodedKey::new(vec![1]),
 			pre: None,

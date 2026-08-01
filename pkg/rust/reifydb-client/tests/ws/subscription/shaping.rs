@@ -24,13 +24,10 @@ fn config(hydration: bool, throttle: Option<u64>, linger: Option<u64>) -> Subscr
 	}
 }
 
-// Drive delivery by stepping the mock clock. An immediate (unshaped or throttle
-// leading-edge) change arrives on the first poll; a buffered (linger) change arrives once
-// an advance carries the clock past `first_pending_at + window`. Advancing in a loop is
-// robust to the async gap between the insert committing and the poller buffering it: each
-// step is larger than any window used here, so one advance after buffering makes the gate
-// ready regardless of exactly when buffering landed.
 async fn recv_after_advancing(ctx: &mut TestContext, clock: &MockClock) -> Option<ChangePayload> {
+	// Stepping in a loop absorbs the async gap between the insert committing and the poller
+	// buffering it: each step exceeds every window used here, so one advance after buffering
+	// opens the gate no matter when buffering landed.
 	for _ in 0..40 {
 		if let Some(change) = recv_with_timeout(&mut ctx.client, 50).await {
 			return Some(change);
@@ -40,14 +37,14 @@ async fn recv_after_advancing(ctx: &mut TestContext, clock: &MockClock) -> Optio
 	None
 }
 
-// Delivery is the invariant across every shaping combination: throttle and linger only
-// change *when* a change is pushed, never *whether* a lone change is eventually delivered.
 async fn assert_isolated_insert_delivers(
 	mut ctx: TestContext,
 	clock: MockClock,
 	config: SubscriptionConfig,
 	label: &str,
 ) -> Result<(), Box<dyn Error>> {
+	// Throttle and linger change only when a change is pushed, never whether a lone change is
+	// eventually delivered - that holds for every shaping combination.
 	let table = ctx.create_table("shape", "id: int4, name: utf8").await?;
 	let sub_id = ctx.subscribe(&table, config).await?;
 
@@ -89,11 +86,9 @@ delivery_case!(deliver_hydration_off_throttle, hydration = false, throttle = Som
 delivery_case!(deliver_hydration_off_linger, hydration = false, throttle = None, linger = Some(200));
 delivery_case!(deliver_hydration_off_both, hydration = false, throttle = Some(150), linger = Some(200));
 
-// Hydration replays rows that already exist at subscribe time; disabling it skips that
-// replay while still delivering subsequent live changes. Neither path is time-shaped, so
-// these run on the default (frozen) clock without advancing.
 #[test]
 fn hydration_enabled_replays_existing_rows() {
+	// Hydration is not time-shaped, so this runs on the default frozen clock without advancing.
 	SubscriptionTestHarness::run(|mut ctx| async move {
 		let table = ctx.create_table("hydrate", "id: int4, name: utf8").await?;
 		ctx.insert(&table, "{ id: 7, name: 'seed' }").await?;

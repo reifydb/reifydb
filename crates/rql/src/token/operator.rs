@@ -239,7 +239,6 @@ pub mod tests {
 	fn test_parse_operator_invalid() {
 		let bump = Bump::new();
 		let tokens = tokenize(&bump, "foobar rest").unwrap();
-		// Should parse as identifier, not operator
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 	}
 

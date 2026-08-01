@@ -16,13 +16,10 @@ fn row(bytes: &[u8]) -> EncodedRow {
 	EncodedRow(CowVec::new(bytes.to_vec()))
 }
 
-// Exercises the persistent-tier read-connection pool: many reader threads read from the pool while
-// the writer connection commits concurrently (persistent-only store -> every get/commit hits SQLite
-// directly). Verifies no deadlock, reads never error, and the final read observes the last commit.
-// The "memory" config is a real /dev/shm WAL file, so this validates concurrent multi-connection WAL
-// access (the same code path used for on-disk File configs).
 #[test]
 fn concurrent_reads_during_writes_no_deadlock() {
+	// The "memory" config is a real /dev/shm WAL file, so reader threads against the pool while the
+	// writer connection commits exercise the same multi-connection WAL path an on-disk config uses.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	let key = EncodedKey::new(b"k");
 
@@ -44,8 +41,7 @@ fn concurrent_reads_during_writes_no_deadlock() {
 			let key = key.clone();
 			thread::spawn(move || {
 				for _ in 0..500 {
-					// Reads must succeed and always observe some committed value (never None,
-					// since v0 was committed before any reader started).
+					// v0 was committed before any reader started, so None is never correct here.
 					let got = store.get(&key, CommitVersion(u64::MAX)).unwrap();
 					assert!(got.is_some());
 				}

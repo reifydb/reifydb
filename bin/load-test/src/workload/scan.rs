@@ -8,9 +8,7 @@ use crate::{
 	workload::{SetupQuery, Workload},
 };
 
-/// Scan workload - table scans with filters
-///
-/// Pre-populates a table and performs range scans with LIMIT.
+/// Pre-populates a table, then runs bounded range scans from a random offset.
 pub struct ScanWorkload {
 	table_size: u64,
 }
@@ -34,7 +32,6 @@ impl Workload for ScanWorkload {
 			SetupQuery::command("create table bench.users { id: int8, name: utf8, email: utf8 }"),
 		];
 
-		// Insert data in batches of 1000
 		let batch_size = 1000u64;
 		for batch_start in (0..self.table_size).step_by(batch_size as usize) {
 			let batch_end = (batch_start + batch_size).min(self.table_size);
@@ -54,7 +51,6 @@ impl Workload for ScanWorkload {
 	}
 
 	fn next_operation(&self, rng: &mut StdRng, _worker_id: usize) -> Operation {
-		// Random starting point for scan
 		let start_id = rng.random_range(0..self.table_size.saturating_sub(100));
 		Operation::Query(format!("from bench.users filter id > {} take 100", start_id))
 	}

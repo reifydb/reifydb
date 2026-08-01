@@ -57,7 +57,6 @@ fn test_unsubscribe_success() {
 			.await
 			.unwrap();
 
-		// Unsubscribe should succeed without error
 		let result = client.unsubscribe(&sub_id).await;
 		assert!(result.is_ok(), "Unsubscribe should succeed");
 
@@ -78,7 +77,6 @@ fn test_subscribe_invalid_query() {
 		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
-		// Invalid RQL should return an error
 		let result = client.subscribe("INVALID RQL SYNTAX HERE", SubscriptionConfig::default()).await;
 		assert!(result.is_err(), "Invalid query should return error");
 
@@ -99,7 +97,6 @@ fn test_subscribe_nonexistent_table() {
 		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
-		// Non-existent table should return an error
 		let result = client.subscribe("from nonexistent_table_xyz_12345", SubscriptionConfig::default()).await;
 		assert!(result.is_err(), "Non-existent table should return error");
 
@@ -120,9 +117,8 @@ fn test_unsubscribe_invalid_id() {
 		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
-		// Invalid subscription ID - server may or may not error
+		// An unknown id may or may not error server-side; this only pins that it never panics.
 		let result = client.unsubscribe("fake-subscription-id-12345").await;
-		// Just verify it doesn't panic - behavior may vary
 		let _ = result;
 
 		client.close().await.unwrap();
@@ -150,7 +146,6 @@ fn test_try_recv_empty() {
 			.await
 			.unwrap();
 
-		// try_recv should return Empty when no changes
 		let result = client.try_recv();
 		assert!(result.is_err(), "try_recv should return error when empty");
 

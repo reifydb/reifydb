@@ -48,6 +48,7 @@ fn write(store: &MultiStore, k: &EncodedKey, payload: &[u8], version: CommitVers
 
 #[test]
 fn single_key_scope_filter() {
+	// Between's lower bound is exclusive: after=10 admits nothing even though v=10 exists.
 	let store = MultiStore::testing_memory();
 	let k = key(b"K");
 
@@ -55,7 +56,6 @@ fn single_key_scope_filter() {
 	write(&store, &k, b"v5", CommitVersion(5));
 	write(&store, &k, b"v10", CommitVersion(10));
 
-	// AsOf { read: 20 } -> highest visible (v=10).
 	let scope = MultiVersionScope::AsOf {
 		read: CommitVersion(20),
 	};
@@ -63,7 +63,6 @@ fn single_key_scope_filter() {
 	assert_eq!(rows.len(), 1);
 	assert_eq!(rows[0].version, CommitVersion(10));
 
-	// Between { after: 5, read: 20 } -> still v=10 (10 > 5).
 	let scope = MultiVersionScope::Between {
 		after: CommitVersion(5),
 		read: CommitVersion(20),
@@ -72,7 +71,6 @@ fn single_key_scope_filter() {
 	assert_eq!(rows.len(), 1);
 	assert_eq!(rows[0].version, CommitVersion(10));
 
-	// Between { after: 10, read: 20 } -> nothing (10 is excluded; v=5,1 are also).
 	let scope = MultiVersionScope::Between {
 		after: CommitVersion(10),
 		read: CommitVersion(20),
@@ -80,7 +78,6 @@ fn single_key_scope_filter() {
 	let rows: Vec<_> = store.range(EncodedKeyRange::all(), scope, 16).collect::<Result<_, _>>().unwrap();
 	assert!(rows.is_empty(), "expected no rows above watermark = 10, got {rows:?}");
 
-	// Between { after: 4, read: 20 } -> v=10 (highest in (4, 20]).
 	let scope = MultiVersionScope::Between {
 		after: CommitVersion(4),
 		read: CommitVersion(20),
@@ -89,7 +86,6 @@ fn single_key_scope_filter() {
 	assert_eq!(rows.len(), 1);
 	assert_eq!(rows[0].version, CommitVersion(10));
 
-	// Between { after: 4, read: 7 } -> v=5 (highest in (4, 7]).
 	let scope = MultiVersionScope::Between {
 		after: CommitVersion(4),
 		read: CommitVersion(7),
@@ -125,10 +121,8 @@ fn multi_key_independent_filter() {
 
 #[test]
 fn skipped_versions_do_not_consume_batch_budget() {
-	// Each key has versions 1 and 11. With after=5, only v=11 qualifies per key.
-	// Insert N keys. Run with batch_size = N. Assert exactly N rows back, proving
-	// that the v=1 entries are skipped at the tier level (never reach the
-	// `collected` BTreeMap in store/multi.rs::scan_tier_chunk).
+	// Only v=11 qualifies per key, so a batch of exactly N must still return N rows - proof the skipped
+	// v=1 entries never consume batch budget.
 	const N: usize = 5;
 	let store = MultiStore::testing_memory();
 
@@ -152,12 +146,8 @@ fn skipped_versions_do_not_consume_batch_budget() {
 
 #[test]
 fn sqlite_tier_parity_single_key() {
-	// Drive the SQLite path via TierStorage directly. Verifies that the persistent
-	// (single-version-per-key) SQLite tier honors MultiVersionScope filtering for both
-	// the SQL `version <= read` predicate AND the Rust-side `scope.contains` check
-	// (the `v > after` lower bound for Between). The persistent tier overwrites on
-	// every `set`, so this test installs distinct keys at distinct versions rather
-	// than multiple versions of one key.
+	// The persistent tier keeps one version per key, so the fixture uses distinct keys at distinct
+	// versions; both the SQL upper bound and the Rust-side exclusive lower bound must apply.
 	let (storage, _guard) = MultiPersistentTier::sqlite_in_memory();
 	let table = EntryKind::Multi;
 
@@ -182,7 +172,6 @@ fn sqlite_tier_parity_single_key() {
 		batch.entries.into_iter().map(|e| e.version).collect()
 	};
 
-	// AsOf { read: 20 } -> all three keys are visible (versions 1, 5, 10 all <= 20).
 	assert_eq!(
 		read_at(MultiVersionScope::AsOf {
 			read: CommitVersion(20),
@@ -190,7 +179,7 @@ fn sqlite_tier_parity_single_key() {
 		vec![CommitVersion(1), CommitVersion(5), CommitVersion(10)]
 	);
 
-	// AsOf { read: 4 } -> SQL `version <= 4` predicate excludes B (v=5) and C (v=10).
+	// The SQL upper bound alone excludes B and C.
 	assert_eq!(
 		read_at(MultiVersionScope::AsOf {
 			read: CommitVersion(4),
@@ -198,8 +187,7 @@ fn sqlite_tier_parity_single_key() {
 		vec![CommitVersion(1)]
 	);
 
-	// Between { after: 1, read: 20 } -> the Rust-side `scope.contains` excludes A (v=1
-	// fails v > 1). B and C remain.
+	// The Rust-side exclusive lower bound alone excludes A.
 	assert_eq!(
 		read_at(MultiVersionScope::Between {
 			after: CommitVersion(1),
@@ -208,7 +196,6 @@ fn sqlite_tier_parity_single_key() {
 		vec![CommitVersion(5), CommitVersion(10)]
 	);
 
-	// Between { after: 5, read: 20 } -> excludes A and B (v=1, v=5 both <= 5). Only C.
 	assert_eq!(
 		read_at(MultiVersionScope::Between {
 			after: CommitVersion(5),
@@ -217,8 +204,7 @@ fn sqlite_tier_parity_single_key() {
 		vec![CommitVersion(10)]
 	);
 
-	// Between { after: 0, read: 4 } -> SQL upper bound filters out B and C; the lower
-	// bound admits A (1 > 0). Exercises both filtering layers together.
+	// Both filtering layers together: the upper bound drops B and C, the lower bound still admits A.
 	assert_eq!(
 		read_at(MultiVersionScope::Between {
 			after: CommitVersion(0),
@@ -228,11 +214,9 @@ fn sqlite_tier_parity_single_key() {
 	);
 }
 
-// Sanity check: AsOf path is byte-for-byte equivalent to the prior
-// `version` parameter behavior. Built directly against StandardMultiStore
-// to avoid any wrapping.
 #[test]
 fn asof_matches_prior_behavior() {
+	// Built directly against the store so no wrapper can influence the AsOf resolution.
 	let storage = MultiStore::testing_memory();
 	let k = key(b"sentinel");
 	write(&storage, &k, b"v3", CommitVersion(3));
@@ -246,10 +230,8 @@ fn asof_matches_prior_behavior() {
 	assert_eq!(rows[0].version, CommitVersion(3));
 }
 
-// Ensure StandardMultiStore is reachable via the MultiStore::standard
-// constructor path; only used to avoid unused-import lints if other
-// constructors are removed in the future.
 #[allow(dead_code)]
 fn _assert_constructors_compile() {
+	// Keeps the constructor path referenced so removing other constructors cannot silently orphan it.
 	let _ = StandardMultiStore::testing_memory();
 }

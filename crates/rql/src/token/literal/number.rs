@@ -213,9 +213,10 @@ pub mod tests {
 	#[test]
 	fn test_leading_dot_decimal_with_identifier() {
 		let bump = Bump::new();
-		// Leading dot followed by digit and then identifier tokenizes as Dot + Identifier
+		// The trailing alpha makes the digit-starting identifier win, leaving the dot as an operator rather
+		// than the start of a decimal.
 		let tokens = tokenize(&bump, ".5sec").unwrap();
-		assert_eq!(tokens.len(), 2); // Dot, Identifier("5sec")
+		assert_eq!(tokens.len(), 2);
 		assert_eq!(tokens[0].kind, TokenKind::Operator(Operator::Dot));
 		assert_eq!(tokens[1].kind, TokenKind::Identifier);
 		assert_eq!(tokens[1].fragment.text(), "5sec");
@@ -224,7 +225,6 @@ pub mod tests {
 	#[test]
 	fn test_leading_dot_decimal_standalone() {
 		let bump = Bump::new();
-		// Leading dot decimals should work when standalone or with spacing
 		let tokens = tokenize(&bump, ".5").unwrap();
 		assert_eq!(tokens.len(), 1);
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
@@ -234,13 +234,13 @@ pub mod tests {
 	#[test]
 	fn test_number_with_trailing() {
 		let bump = Bump::new();
-		// Digit-starting tokens with alpha chars are now single Identifier tokens
+		// A digit-starting token with alpha chars is one identifier; only whitespace splits it back into a
+		// number and a name.
 		let tokens = tokenize(&bump, "42abc").unwrap();
 		assert_eq!(tokens.len(), 1);
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
 		assert_eq!(tokens[0].fragment.text(), "42abc");
 
-		// With proper spacing, they remain separate
 		let tokens = tokenize(&bump, "42 abc").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), "42");
@@ -248,14 +248,13 @@ pub mod tests {
 
 	#[test]
 	fn test_invalid_numbers() {
+		// A radix literal stops at the first character outside its alphabet rather than swallowing it.
 		let bump = Bump::new();
-		// Invalid hex (starts with _)
 		let result = tokenize(&bump, "0x_FF");
 		assert!(result.is_err() || result.unwrap()[0].fragment.text() != "0x_FF");
 
-		// Invalid binary (contains 2)
 		let result = tokenize(&bump, "0b102");
-		assert!(result.is_ok()); // Will be parsed as 0b10 followed by 2
+		assert!(result.is_ok());
 		let tokens = result.unwrap();
 		assert_eq!(tokens[0].fragment.text(), "0b10");
 		assert_eq!(tokens[1].fragment.text(), "2");

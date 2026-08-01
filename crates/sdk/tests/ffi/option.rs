@@ -50,7 +50,6 @@ fn ident(b: [u8; 16]) -> IdentityId {
 	IdentityId::new(Uuid7(Uuid::from_bytes(b)))
 }
 
-// Bool.
 #[test]
 fn option_bool_all_defined() {
 	let input = ColumnBuffer::bool_optional([Some(true), Some(false), Some(true)]);
@@ -98,7 +97,6 @@ fn option_bool_first_undefined() {
 	assert_column_eq("option_bool_first_undef", &input, &output);
 }
 
-// Float4.
 #[test]
 fn option_float4_alternating() {
 	let input =
@@ -122,7 +120,6 @@ fn option_float4_first_undefined() {
 	assert_column_eq("option_float4_first_undef", &input, &output);
 }
 
-// Float8.
 #[test]
 fn option_float8_alternating() {
 	let input = ColumnBuffer::float8_optional([Some(1.5f64), None, Some(f64::INFINITY), None, Some(-0.0f64)]);
@@ -138,7 +135,6 @@ fn option_float8_all_undefined() {
 	assert_column_eq("option_float8_all_undef", &input, &output);
 }
 
-// Int1..Int16.
 #[test]
 fn option_int1_alternating() {
 	let input = ColumnBuffer::int1_optional([Some(i8::MIN), None, Some(0i8), None, Some(i8::MAX)]);
@@ -215,7 +211,6 @@ fn option_int16_alternating() {
 	assert_column_eq("option_int16_alt", &input, &output);
 }
 
-// Uint1..Uint16.
 #[test]
 fn option_uint1_alternating() {
 	let input = ColumnBuffer::uint1_optional([Some(0u8), None, Some(127u8), None, Some(u8::MAX)]);
@@ -252,7 +247,6 @@ fn option_uint16_alternating() {
 	assert_column_eq("option_uint16_alt", &input, &output);
 }
 
-// Utf8.
 #[test]
 fn option_utf8_all_defined() {
 	let input =
@@ -323,7 +317,6 @@ fn option_utf8_alternating_nine_rows() {
 	assert_column_eq("option_utf8_alt_9", &input, &output);
 }
 
-// Blob.
 #[test]
 fn option_blob_alternating() {
 	let input = ColumnBuffer::blob_optional([
@@ -352,7 +345,6 @@ fn option_blob_first_undefined() {
 	assert_column_eq("option_blob_first_undef", &input, &output);
 }
 
-// Date.
 #[test]
 fn option_date_alternating() {
 	let input = ColumnBuffer::date_optional([
@@ -374,7 +366,6 @@ fn option_date_all_undefined() {
 	assert_column_eq("option_date_all_undef", &input, &output);
 }
 
-// DateTime.
 #[test]
 fn option_datetime_alternating() {
 	let input = ColumnBuffer::datetime_optional([Some(dt(0)), None, Some(dt(1)), None, Some(dt(u64::MAX))]);
@@ -390,7 +381,6 @@ fn option_datetime_all_undefined() {
 	assert_column_eq("option_datetime_all_undef", &input, &output);
 }
 
-// Time.
 #[test]
 fn option_time_alternating() {
 	let input = ColumnBuffer::time_optional([
@@ -412,7 +402,6 @@ fn option_time_all_undefined() {
 	assert_column_eq("option_time_all_undef", &input, &output);
 }
 
-// Duration.
 #[test]
 fn option_duration_alternating() {
 	let input = ColumnBuffer::duration_optional([
@@ -434,7 +423,6 @@ fn option_duration_all_undefined() {
 	assert_column_eq("option_duration_all_undef", &input, &output);
 }
 
-// IdentityId.
 #[test]
 fn option_identity_id_alternating() {
 	let input = ColumnBuffer::identity_id_optional([
@@ -463,7 +451,6 @@ fn option_identity_id_first_undefined() {
 	assert_column_eq("option_identity_first_undef", &input, &output);
 }
 
-// Uuid4.
 #[test]
 fn option_uuid4_alternating() {
 	let input = ColumnBuffer::uuid4_optional([
@@ -485,7 +472,6 @@ fn option_uuid4_all_undefined() {
 	assert_column_eq("option_uuid4_all_undef", &input, &output);
 }
 
-// Uuid7.
 #[test]
 fn option_uuid7_alternating() {
 	let input = ColumnBuffer::uuid7_optional([
@@ -507,7 +493,6 @@ fn option_uuid7_all_undefined() {
 	assert_column_eq("option_uuid7_all_undef", &input, &output);
 }
 
-// Int (BigInt).
 #[test]
 fn option_int_alternating() {
 	let input = ColumnBuffer::int_optional([
@@ -529,7 +514,6 @@ fn option_int_all_undefined() {
 	assert_column_eq("option_int_all_undef", &input, &output);
 }
 
-// Uint (BigInt).
 #[test]
 fn option_uint_alternating() {
 	let input = ColumnBuffer::uint_optional([
@@ -551,7 +535,6 @@ fn option_uint_all_undefined() {
 	assert_column_eq("option_uint_all_undef", &input, &output);
 }
 
-// Decimal.
 #[test]
 fn option_decimal_alternating() {
 	use std::str::FromStr;
@@ -574,7 +557,6 @@ fn option_decimal_all_undefined() {
 	assert_column_eq("option_decimal_all_undef", &input, &output);
 }
 
-// Any.
 #[test]
 fn option_any_alternating() {
 	let input = ColumnBuffer::any_optional([
@@ -596,7 +578,6 @@ fn option_any_all_undefined() {
 	assert_column_eq("option_any_all_undef", &input, &output);
 }
 
-// DictionaryId.
 #[test]
 fn option_dictionary_id_alternating() {
 	let input = ColumnBuffer::dictionary_id_optional([
@@ -635,9 +616,9 @@ fn option_dictionary_id_each_variant_with_undefined() {
 	assert_column_eq("option_dict_id_each_variant", &input, &output);
 }
 
-// 16-row bitvec spanning two bytes - the previous bool case kept for parity.
 #[test]
 fn option_bool_alternating_sixteen_rows() {
+	// 16 rows put the defined bitvec across two bytes, where a per-byte marshal loop would drop the second.
 	let values: Vec<Option<bool>> = (0..16)
 		.map(|i| {
 			if i % 2 == 0 {
@@ -652,10 +633,9 @@ fn option_bool_alternating_sixteen_rows() {
 	assert_column_eq("option_bool_sixteen", &input, &output);
 }
 
-// Bitvec power-of-two boundaries with a numeric inner type to cross-check
-// the bitvec independent of the inner type's marshal path.
 #[test]
 fn option_int8_thirty_two_rows_pattern() {
+	// A numeric inner type exercises the bitvec at a power-of-two boundary independently of the bool path.
 	let values: Vec<Option<i64>> = (0..32i64)
 		.map(|i| {
 			if i % 3 == 0 {
@@ -686,7 +666,6 @@ fn option_int8_sixty_four_rows_pattern() {
 	assert_column_eq("option_int8_sixty_four", &input, &output);
 }
 
-// Suppress unused warnings for helpers not used in all builds.
 #[allow(dead_code)]
 fn _assert_helpers_used() {
 	let _ = f32o(0.0);

@@ -100,16 +100,15 @@ pub mod tests {
 
 	#[test]
 	fn test_invalid_temporal() {
+		// `@` never stands alone, so a bare, misfollowed or space-separated `@` must fault rather than fall
+		// through to another scanner.
 		let bump = Bump::new();
-		// Just @ without content should fail to token
 		let result = tokenize(&bump, "@");
 		assert!(result.is_err(), "@ alone should fail to tokenize");
 
-		// @ followed by invalid characters should fail
 		let result = tokenize(&bump, "@#invalid");
 		assert!(result.is_err(), "@# should fail to tokenize as # is not valid");
 
-		// @ followed by space should fail since @ alone is not valid
 		let result = tokenize(&bump, "@ 2024");
 		assert!(result.is_err(), "@ followed by space should fail to tokenize");
 	}

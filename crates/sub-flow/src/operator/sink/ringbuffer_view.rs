@@ -1118,15 +1118,14 @@ mod tests {
 		engine.current_version().unwrap()
 	}
 
-	// Stands in for the dispatcher: fires the partition's RowTtl timer at `at`, which is the instant
-	// the flow watermark has reached. Eviction is decided entirely by the timer's own instant, so the
-	// operator never reads a clock and the test never needs one.
 	fn fire(
 		engine: &TestEngine,
 		op: &SinkRingBufferViewOperator,
 		partition_values: &[Value],
 		at: u64,
 	) -> Option<Change> {
+		// Stands in for the dispatcher. Eviction is decided by the timer's own instant, so
+		// neither the operator nor the test needs a clock.
 		let mut txn = deferred_txn(engine);
 		let out = op
 			.on_timer(
@@ -1148,13 +1147,9 @@ mod tests {
 
 	#[test]
 	fn every_ringbuffer_state_key_is_node_scoped_in_its_own_keyspace() {
-		// These keys used to be hand-rolled as [0x01|rn] and [0x02|partition|rn]. A raw leading
-		// byte is indistinguishable from a group-id varint, so such a key structurally sits
-		// inside whatever group range shares its prefix - safe only because 0x01 and 0x02 happen
-		// to decode as group ids beyond 2^42, which nothing stated and nothing checked.
-		// Node scope is group 0, and both reclaim phases refuse it outright, so a ringbuffer key
-		// can no longer be range-deleted by reclaiming some unrelated group. Hand-rolling a
-		// prefix here again must fail this test rather than reintroduce that coupling silently.
+		// A hand-rolled leading byte is indistinguishable from a group-id varint, so such a key
+		// sits inside whatever group range shares its prefix and can be range-deleted by an
+		// unrelated reclaim. Node scope is group 0, which both reclaim phases refuse outright.
 		let op = build_op(true, false, None);
 		let partition = Partition::of(&[Value::Utf8("sol".to_string())]);
 
@@ -1205,9 +1200,8 @@ mod tests {
 
 	#[test]
 	fn a_row_ttl_timer_is_a_noop_when_ttl_disabled() {
-		// A ring buffer with no row ttl arms no RowTtl timer at all, so this firing can only ever
-		// arrive by mistake. It must still evict nothing: capacity is the only bound on a ttl-less
-		// ring, and eviction here would silently truncate a buffer the author asked to keep whole.
+		// A ttl-less ring arms no RowTtl timer, so this firing can only arrive by mistake:
+		// capacity is its only bound, and evicting here truncates a buffer meant to stay whole.
 		let engine = TestEngine::new();
 		let op = build_op(true, true, None);
 		insert(&engine, &op, true, &[("us", 1), ("us", 2)], 1);
@@ -1220,10 +1214,8 @@ mod tests {
 
 	#[test]
 	fn a_timer_that_fires_before_anything_expires_evicts_nothing() {
-		// The conservative direction, and the one a cold start lands in: a flow whose watermark has
-		// not yet reached row_time + ttl must evict nothing. Eviction is driven by the timer's own
-		// instant rather than by a clock, so a watermark younger than the horizon simply finds
-		// nothing due - it must never fall back to "evict what looks old".
+		// The direction a cold start lands in: a watermark short of row_time + ttl must find
+		// nothing due and never fall back to "evict what looks old".
 		let engine = TestEngine::new();
 		let op = build_op(true, true, Some(hour_ttl()));
 		insert(&engine, &op, true, &[("us", 1), ("us", 2)], 1);
@@ -1240,9 +1232,8 @@ mod tests {
 
 	#[test]
 	fn expired_partition_state_is_fully_reclaimed_and_active_partition_survives() {
-		// The leak this fix exists for: a quiet partition's per-partition operator state
-		// (forward map, row entries, metadata key) must be reclaimed, not stranded. A partition
-		// that received fresher rows must be left entirely untouched.
+		// A quiet partition's whole per-partition state must be reclaimed rather than stranded,
+		// while a partition that received fresher rows is left untouched.
 		let engine = TestEngine::new();
 		let op = build_op(true, true, Some(hour_ttl()));
 
@@ -1287,8 +1278,8 @@ mod tests {
 
 	#[test]
 	fn drop_mode_reclaims_state_but_is_silent() {
-		// cleanup_announce: false => announce_evictions false. State must STILL be reclaimed (the
-		// leak fix), but no downstream change may be announced.
+		// Suppressing the announcement must not suppress the reclamation: state still goes, only
+		// the downstream change is withheld.
 		let engine = TestEngine::new();
 		let op = build_op(true, false, Some(hour_ttl()));
 
@@ -1319,11 +1310,9 @@ mod tests {
 
 	#[test]
 	fn min_survivor_head_is_correct_when_an_out_of_order_row_expires_first() {
-		// Eviction must key off each row's own expiry and then recompute the head from what is
-		// actually left, never assume the expired rows form a prefix of the ring. Event time makes
-		// that assumption wrong for real: rows arrive out of order, so the row that expires first
-		// can sit physically AFTER a survivor. Here storage row 0 is the fresh one and storage row
-		// 1 carries the older #time, which is the inverse of arrival order.
+		// In event time the expired rows are not a prefix of the ring: an out-of-order arrival
+		// can put the first row to expire physically after a survivor, so the head has to be
+		// recomputed from what is left rather than advanced by the evicted count.
 		let engine = TestEngine::new();
 		let op = build_op(true, true, Some(hour_ttl()));
 

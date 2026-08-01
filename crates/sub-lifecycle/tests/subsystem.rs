@@ -3,9 +3,8 @@
 
 //! Subsystem contract: always-on reporting, and a shutdown that is both effective and idempotent.
 //!
-//! The health surface is not decoration. Operators use it to answer "is reclamation running?" - the question that
-//! went unanswered for the entire lifetime of the leak this subsystem was built to fix. A subsystem that reports
-//! Healthy while its lane is stopped is worse than one that reports nothing, because it actively misleads.
+//! The health surface answers "is reclamation running?", so a subsystem reporting Healthy while its lane is
+//! stopped is worse than one reporting nothing at all.
 
 use reifydb_core::{
 	interface::version::ComponentType,

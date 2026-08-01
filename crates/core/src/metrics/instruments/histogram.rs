@@ -259,8 +259,7 @@ mod tests {
 	#[test]
 	fn exactly_on_boundary() {
 		let h = Histogram::new("t", "h", ReadingKind::Ratio, SIMPLE_BOUNDS);
-		// partition_point(|&b| b < 10.0) → first bucket where boundary >= 10.0 → index 0
-		// So exactly-on-boundary falls into the bucket whose upper bound is that boundary
+		// A value exactly on a boundary falls into the bucket whose upper bound is that boundary.
 		h.observe(10.0);
 		assert_eq!(h.buckets[0].load(Ordering::Relaxed), 1);
 	}
@@ -289,7 +288,7 @@ mod tests {
 		];
 		let h = Histogram::new("t", "h", ReadingKind::Ratio, FINE);
 		for i in 1..=100 {
-			h.observe(i as f64 - 0.5); // 0.5, 1.5, ..., 99.5 → lands in buckets [0..100]
+			h.observe(i as f64 - 0.5); // 0.5, 1.5, ..., 99.5 -> buckets [0..100]
 		}
 		let p = h.percentiles();
 		assert_eq!(p.p50, 50.0);

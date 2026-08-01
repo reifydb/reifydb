@@ -225,13 +225,13 @@ pub mod tests {
 
 	#[test]
 	fn test_not_comparison_precedence() {
+		// `not` binds looser than a comparison, so this is `not (x == 5)` and never `(not x) == 5`.
 		let bump = Bump::new();
 		let source = "not x == 5";
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		// Should parse as: not (x == 5), not (not x) == 5
 		let Ast::Prefix(AstPrefix {
 			operator,
 			node,
@@ -241,21 +241,17 @@ pub mod tests {
 		};
 		assert!(matches!(*operator, AstPrefixOperator::Not(_)));
 
-		// The inner expression should be a comparison (x == 5)
 		let Ast::Infix(inner) = node.deref() else {
 			panic!("Expected infix comparison inside NOT, got {:?}", node.deref())
 		};
 
-		// Verify it's an equality comparison
 		assert!(matches!(inner.operator, InfixOperator::Equal(_)));
 
-		// Left side should be identifier 'x'
 		let Ast::Identifier(left_id) = inner.left.deref() else {
 			panic!("Expected identifier on left side")
 		};
 		assert_eq!(left_id.text(), "x");
 
-		// Right side should be number '5'
 		let Literal(AstLiteral::Number(right_num)) = inner.right.deref() else {
 			panic!("Expected number on right side")
 		};

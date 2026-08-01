@@ -16,7 +16,6 @@ use reifydb_value::{
 	},
 };
 
-/// Create a simple column with just a name.
 fn column(name: &str, data: FrameColumnData) -> FrameColumn {
 	FrameColumn {
 		name: name.to_string(),

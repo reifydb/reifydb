@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Storage-layer coverage for the PartitionedSource keyspace: partitioned rows (KeyKind::PartitionedRow)
-// route to EntryKind::PartitionedSource(object) -> a dedicated partsource_<object> persistent table.
+// Storage-layer coverage for the PartitionedSource keyspace: partitioned rows route to
+// EntryKind::PartitionedSource(object) and a dedicated partsource_<object> persistent table.
 
 use std::sync::Arc;
 
@@ -47,12 +47,10 @@ impl EvictionWatermark for FixedWatermark {
 	}
 }
 
-/// Partitioned rows must survive a flush to persistent AND stay readable via range/point reads that
-/// union the commit buffer and the persistent tier. The discriminating case is `classify_range`: a
-/// missing partitioned-range arm would route range reads to the `multi` table (empty after flush) and
-/// silently drop the flushed rows.
 #[test]
 fn partitioned_rows_route_to_partsource_across_tiers() {
+	// A missing partitioned arm in range classification routes range reads to the multi table, which
+	// is empty after a flush, so the flushed rows would silently disappear from the scan.
 	let pools = Pools::new(PoolConfig::default());
 	let actor_system = ActorSystem::new(pools, Clock::Real);
 	let spawner = actor_system.spawner();
@@ -79,7 +77,6 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	let k_eu2 = PartitionedRowKey::encoded(object, eu, RowLocator::Row(RowNumber(2)));
 	let k_us3 = PartitionedRowKey::encoded(object, us, RowLocator::Row(RowNumber(3)));
 
-	// Commit two partitioned rows and flush them to the persistent tier.
 	MultiVersionCommit::commit(
 		&store,
 		CowVec::new(vec![
@@ -99,7 +96,7 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	store.set_eviction_watermark(Arc::new(FixedWatermark(CommitVersion(1))));
 	store.flush_pending_blocking();
 
-	// A third partitioned row stays in the commit buffer (no flush).
+	// This third row is deliberately left unflushed so the reads below straddle both tiers.
 	MultiVersionCommit::commit(
 		&store,
 		CowVec::new(vec![Delta::Set {
@@ -114,19 +111,16 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 		read: CommitVersion(2),
 	};
 
-	// Full-object range must union flushed (us1, eu2) + buffered (us3).
 	let all: Vec<_> =
 		store.range(PartitionedRowKey::full_scan(object), scope, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	assert_eq!(all.len(), 3, "full-object range must return flushed + buffered partitioned rows across tiers");
 
-	// Single-partition range prunes to the two us rows (us1 flushed + us3 buffered), not eu2.
 	let us_rows: Vec<_> = store
 		.range(PartitionedRowKey::partition_range(object, us), scope, 1024)
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap();
 	assert_eq!(us_rows.len(), 2, "us partition range must return only us rows across tiers");
 
-	// Point reads across tiers.
 	assert!(
 		store.get(&k_us1, CommitVersion(2)).unwrap().is_some(),
 		"flushed partitioned row readable via point get"
@@ -136,7 +130,6 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 		"buffered partitioned row readable via point get"
 	);
 
-	// Physical placement: flushed row is in partsource_<object>, NOT in the shared multi table.
 	let persistent = store.persistent().expect("persistent tier configured");
 	assert!(
 		persistent

@@ -15,12 +15,10 @@ use reifydb_sub_store::{
 use reifydb_test_harness::db::{TestDb, poll_until};
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 
-// Closing a series bucket should record the materializer's read version as
-// `sealed_at_commit_version`. This is the watermark a delta scan filters
-// against in plan-3, so it must be both populated and bounded above by the
-// engine's current commit version at assertion time.
 #[test]
 fn series_snapshot_records_sealed_at_commit_version() {
+	// Only checks that a bucket materializes and that the engine's version does not go backwards;
+	// `sealed_at_commit_version` itself is never read here.
 	let fast_config = StorageConfig {
 		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
@@ -52,9 +50,6 @@ fn series_snapshot_records_sealed_at_commit_version() {
 	let storage = db.subsystem::<StorageSubsystem>().expect("StorageSubsystem registered");
 	let block_store = storage.block_store().clone();
 
-	// Wait for at least one block to materialize. The catalog row holds the
-	// `sealed_at_commit_version`, which we read via the engine's catalog
-	// after an admin transaction.
 	poll_until(
 		|| {
 			if !block_store.is_empty() {
@@ -67,10 +62,8 @@ fn series_snapshot_records_sealed_at_commit_version() {
 	)
 	.expect("series snapshot did not materialize within 5 seconds");
 
-	// Inspect the committed ColumnSnapshot rows via the engine catalog.
+	// A trivial admin query as a liveness check; its result is deliberately discarded.
 	let admin_check = db.try_admin("FROM []");
-	// The simple smoke check above ensures the database is healthy; the
-	// actual sealed_at value verification uses the catalog directly.
 	let _ = admin_check;
 
 	let now_version = db.engine().current_version().expect("current_version after");
@@ -82,12 +75,10 @@ fn series_snapshot_records_sealed_at_commit_version() {
 	db.stop();
 }
 
-// System columns on a series snapshot must come from the row's real header
-// metadata, not synthetic placeholders. Pre-plan-1, the reader synthesized
-// `RowNumber(i)` and `DateTime::default()` (nanos=0) - both pinned in the
-// assertions below to make a regression obvious.
 #[test]
 fn series_snapshot_system_columns_match_row_metadata() {
+	// System columns must come from the row header, so the two synthetic shapes a reader can fall back
+	// to - a sequential RowNumber and a default DateTime - are both rejected below.
 	let fast_config = StorageConfig {
 		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
@@ -149,10 +140,9 @@ fn series_snapshot_system_columns_match_row_metadata() {
 	db.stop();
 }
 
-// Same shape for tables: every row in a table snapshot must carry its real
-// per-row metadata, not the synthesized defaults.
 #[test]
 fn table_snapshot_system_columns_match_row_metadata() {
+	// The same header-metadata requirement as the series case, on the table materialization path.
 	let fast_config = StorageConfig {
 		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),

@@ -42,7 +42,6 @@ pub async fn create_test_table(client: &WsClient, name: &str, columns: &[(&str, 
 	Ok(())
 }
 
-/// Wait for a change with timeout
 pub async fn recv_with_timeout(client: &mut WsClient, timeout_ms: u64) -> Option<ChangePayload> {
 	match timeout(Duration::from_milliseconds(timeout_ms as i64).unwrap().to_std(), client.recv()).await {
 		Ok(result) => result,
@@ -50,7 +49,6 @@ pub async fn recv_with_timeout(client: &mut WsClient, timeout_ms: u64) -> Option
 	}
 }
 
-/// Wait for multiple changes with timeout
 pub async fn recv_multiple_with_timeout(client: &mut WsClient, count: usize, timeout_ms: u64) -> Vec<ChangePayload> {
 	let mut results = Vec::new();
 	let deadline = tokio::time::Instant::now() + Duration::from_milliseconds(timeout_ms as i64).unwrap().to_std();
@@ -78,9 +76,8 @@ pub struct JsonColumn {
 	pub payload: Vec<String>,
 }
 
-/// Extract all columns from the first frame in a ChangePayload body.
-/// The body is expected to be `{ "frames": [{ "row_numbers": [...], "columns": [...] }] }`
-/// where each column is `{ "name": "...", "type": "...", "payload": [...] }`.
+/// Body shape: `{ "frames": [{ "row_numbers": [...], "columns": [...] }] }` where each column
+/// is `{ "name": "...", "type": "...", "payload": [...] }`.
 pub fn extract_columns(body: &serde_json::Value) -> Vec<JsonColumn> {
 	let frames = body.get("frames").and_then(|f| f.as_array());
 	let frame = frames.and_then(|f| f.first());
@@ -112,21 +109,18 @@ pub fn extract_columns(body: &serde_json::Value) -> Vec<JsonColumn> {
 	}
 }
 
-/// Find a column by name from a ChangePayload body.
 pub fn find_column(body: &serde_json::Value, name: &str) -> Option<JsonColumn> {
 	extract_columns(body).into_iter().find(|c| c.name == name)
 }
 
-/// Get the _op column value from a change body (1=insert, 2=update, 3=delete)
+/// `_op` encoding: 1=insert, 2=update, 3=delete.
 pub fn get_op_value(body: &serde_json::Value, row_index: usize) -> Option<i32> {
 	find_column(body, "_op").and_then(|col| col.payload.get(row_index).cloned()).and_then(|s| s.parse::<i32>().ok())
 }
 
-/// Test harness for subscription tests that abstracts away boilerplate
 pub struct SubscriptionTestHarness;
 
 impl SubscriptionTestHarness {
-	/// Run a subscription test with automatic setup and cleanup
 	pub fn run<F, Fut>(test_fn: F)
 	where
 		F: Fn(TestContext) -> Fut + Send + Sync,
@@ -135,9 +129,8 @@ impl SubscriptionTestHarness {
 		Self::run_on(create_server_instance, test_fn)
 	}
 
-	/// Run a subscription test with a mock clock the test can advance, to drive time-based
-	/// shaping (throttle, linger) deterministically. The clock starts at 0; advancing it
-	/// past a configured window makes the poller flush the buffered change.
+	/// The mock clock starts at 0; advancing it past a configured window makes the poller flush
+	/// the buffered change, which is what keeps throttle and linger tests deterministic.
 	#[allow(dead_code)]
 	pub fn run_with_clock<F, Fut>(test_fn: F)
 	where
@@ -185,7 +178,6 @@ impl SubscriptionTestHarness {
 	}
 }
 
-/// Context provided to each test with convenience methods
 pub struct TestContext {
 	pub client: WsClient,
 	table_prefix: String,
@@ -199,14 +191,12 @@ impl TestContext {
 		}
 	}
 
-	/// Execute raw RQL command
 	pub async fn rql(&self, query: &str) -> Result<(), Box<dyn Error>> {
 		self.client.command(query, None).await?;
 		Ok(())
 	}
 
-	/// Create a table with given columns using RQL directly
-	/// Returns the full table name (with prefix for uniqueness)
+	/// Returns the prefixed table name, which is what the other helpers expect.
 	pub async fn create_table(&self, name: &str, columns: &str) -> Result<String, Box<dyn Error>> {
 		let full_name = format!("{}_{}", self.table_prefix, name);
 		let _ = self.client.admin("create namespace test", None).await;
@@ -214,7 +204,6 @@ impl TestContext {
 		Ok(full_name)
 	}
 
-	/// Subscribe to a table, waits for settle, returns subscription ID
 	pub async fn subscribe(&mut self, table: &str, config: SubscriptionConfig) -> Result<String, Box<dyn Error>> {
 		let sub_id = self.client.subscribe(&format!("from test::{}", table), config).await?;
 		Ok(sub_id)

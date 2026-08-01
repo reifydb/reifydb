@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Auth service handle wired up by the runtime. Owns the catalog and admin-transaction handles needed to verify
-//! credentials, mint tokens, and load identities; exposes the high-level "authenticate this request" entry point
-//! that server transports invoke. Per-method specifics (token, Solana key) sit in submodules so the public surface
-//! stays method-agnostic.
+//! The "authenticate this request" entry point server transports invoke. Per-method specifics live in submodules
+//! so the public surface stays method-agnostic.
 
 mod authenticate;
 mod github;

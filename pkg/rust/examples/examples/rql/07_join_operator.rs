@@ -117,8 +117,7 @@ inner join {
 		info!("{}", frame);
 	}
 
-	// Example 2: Left join (includes all employees, even without
-	// department)
+	// Example 2: Left join (keeps every employee, even one with no department)
 	info!("\nExample 2: Left join employees with departments");
 	log_query(
 		r#"from company::employees

@@ -9,31 +9,22 @@ use std::error::Error;
 
 use reifydb::Database;
 
-/// Start a server with auth users configured for login testing.
-///
-/// Creates:
-/// - root with token auth ('mysecrettoken')
-/// - alice with password auth ('alice-pass')
-/// - bob with token auth ('bob-secret-token')
-///
-/// Returns (ws_port, grpc_port, http_port).
+/// Creates root (token 'mysecrettoken'), alice (password 'alice-pass') and bob (token
+/// 'bob-secret-token'). Returns (ws_port, grpc_port, http_port).
 pub fn start_server_with_auth_users(server: &mut Database) -> Result<(u16, u16, u16), Box<dyn Error>> {
 	let params = reifydb_value::params::Params::None;
 
-	// Root token auth (for admin setup)
 	server.admin_as_root(
 		"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
 		params.clone(),
 	)?;
 
-	// Password user
 	server.admin_as_root("CREATE USER alice", params.clone())?;
 	server.admin_as_root(
 		"CREATE AUTHENTICATION FOR alice { method: password; password: 'alice-pass' }",
 		params.clone(),
 	)?;
 
-	// Token user
 	server.admin_as_root("CREATE USER bob", params.clone())?;
 	server.admin_as_root("CREATE AUTHENTICATION FOR bob { method: token; token: 'bob-secret-token' }", params)?;
 

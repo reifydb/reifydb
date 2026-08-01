@@ -14,11 +14,9 @@ fn find_queue(t: &TestEngine, namespace: &str, name: &str) -> Option<Queue> {
 	catalog.find_queue_by_name(&mut txn, namespace.id(), name).unwrap()
 }
 
-/// A bare dispatch block must land the declared defaults in the catalog, not
-/// zeroes: a queue created with 0 partitions or 0 retry attempts could never
-/// deliver work once the scheduling lane arrives.
 #[test]
 fn test_create_queue_with_bare_dispatch_applies_defaults() {
+	// A queue landing 0 partitions or 0 retry attempts could never deliver work.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE QUEUE test::jobs { order_id: uuid7, kind: utf8 } WITH { fifo: {} }");
@@ -34,11 +32,9 @@ fn test_create_queue_with_bare_dispatch_applies_defaults() {
 	assert!(!queue.underlying);
 }
 
-/// Every declared option must reach the catalog unchanged, including the two
-/// Duration fields - a dropped or mis-scaled duration silently changes when
-/// items expire and how fast they retry.
 #[test]
 fn test_create_queue_with_all_options_round_trips() {
+	// A dropped or mis-scaled Duration silently changes when items expire and how fast they retry.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin(r#"CREATE QUEUE test::jobs { order_id: uuid7, kind: utf8 } WITH {
@@ -56,11 +52,9 @@ fn test_create_queue_with_all_options_round_trips() {
 	assert_eq!(queue.retry.backoff, Duration::from_seconds_const(30));
 }
 
-/// Partition count is the concurrency knob for the future claim lane; 0 would
-/// make the queue undeliverable and an unbounded count would explode the
-/// scheduling keyspace, so both ends of the range must be rejected at compile.
 #[test]
 fn test_create_queue_rejects_out_of_range_partitions() {
+	// 0 partitions makes the queue undeliverable; an unbounded count explodes the scheduling keyspace.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 
@@ -85,11 +79,9 @@ fn test_create_queue_accepts_range_boundaries() {
 	assert_eq!(find_queue(&t, "test", "high").unwrap().partitions(), 1024);
 }
 
-/// ordered_by names the column whose values get per-key FIFO ordering. Pointing
-/// it at a column that does not exist must fail loudly at DDL time rather than
-/// producing a queue whose ordering key can never be read.
 #[test]
 fn test_create_queue_rejects_unknown_ordered_by_column() {
+	// Otherwise the queue exists with an ordering key that can never be read.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 
@@ -99,10 +91,9 @@ fn test_create_queue_rejects_unknown_ordered_by_column() {
 	assert!(find_queue(&t, "test", "jobs").is_none());
 }
 
-/// A retry budget below 1 means an item dies before its first attempt, and a
-/// zero backoff would spin the reaper; both are rejected at compile.
 #[test]
 fn test_create_queue_rejects_degenerate_retry() {
+	// A budget below 1 kills an item before its first attempt; a zero backoff spins the reaper.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 
@@ -113,10 +104,9 @@ fn test_create_queue_rejects_degenerate_retry() {
 	assert!(backoff.contains("positive"), "error should explain the positivity rule, got: {backoff}");
 }
 
-/// DDL is admin-gated across the board; a queue must not be creatable from an
-/// ordinary command transaction.
 #[test]
 fn test_create_queue_requires_admin() {
+	// DDL is admin-gated across the board, so an ordinary command transaction must not create one.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 
@@ -138,10 +128,9 @@ fn test_create_queue_duplicate_name_rejected() {
 	assert!(err.contains("CA_095"), "duplicate queue should use the queue-specific code, got: {err}");
 }
 
-/// system::queues is the operator-facing view of the definitions; ordered_by
-/// must render as none when undeclared rather than as an empty column name.
 #[test]
 fn test_system_queues_lists_definitions() {
+	// An undeclared ordered_by must render as none, not as an empty column name.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE QUEUE test::plain { id: int4 } WITH { fifo: {} }");
@@ -174,10 +163,9 @@ fn test_drop_queue_removes_the_definition() {
 	assert_eq!(TestEngine::row_count(&t.query("FROM system::queues")), 0);
 }
 
-/// A dropped name must be reusable: if the namespace link row survived, the
-/// name would stay permanently taken.
 #[test]
 fn test_dropped_queue_name_can_be_recreated() {
+	// A surviving namespace link row would leave the name permanently taken.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
@@ -191,10 +179,9 @@ fn test_dropped_queue_name_can_be_recreated() {
 	assert_eq!(second.partitions(), 8);
 }
 
-/// IF EXISTS is the difference between a guarded teardown and a hard failure;
-/// both branches must behave as declared.
 #[test]
 fn test_drop_missing_queue_honours_if_exists() {
+	// IF EXISTS is the difference between a guarded teardown and a hard failure.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 
@@ -205,10 +192,9 @@ fn test_drop_missing_queue_honours_if_exists() {
 	assert!(err.contains("CA_096"), "missing queue should report queue_not_found, got: {err}");
 }
 
-/// Dropping a namespace must take its queues with it; a surviving definition
-/// would be unreachable by name yet still occupy its id and columns.
 #[test]
 fn test_drop_namespace_cascades_to_queues() {
+	// A surviving definition is unreachable by name yet still occupies its id and columns.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
@@ -221,13 +207,10 @@ fn test_drop_namespace_cascades_to_queues() {
 	assert_eq!(TestEngine::row_count(&t.query("FROM system::queues")), 0);
 }
 
-/// The queue probe sits last in the resolver chain, after table, ringbuffer,
-/// view, dictionary and series. A queue must resolve to itself rather than fall
-/// through to a same-named primitive of another kind: a wrong hit would scan a
-/// different object's rows under the queue's name and report them as items.
-/// The declared columns are the observable proof of which object was reached.
 #[test]
 fn test_queue_resolves_as_a_queue_not_another_primitive() {
+	// The queue probe sits last in the resolver chain, so a wrong hit would scan another
+	// object's rows under the queue's name and report them as items.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE TABLE test::decoy { other: utf8 }");
@@ -240,10 +223,9 @@ fn test_queue_resolves_as_a_queue_not_another_primitive() {
 	assert_eq!(frames[0].rows().count(), 0, "a queue with no items scans empty, it does not error");
 }
 
-/// Definitions must survive a value that only exists in the WITH block: this is
-/// the codec check for the optional Duration field specifically.
 #[test]
 fn test_retention_only_queue_keeps_its_duration() {
+	// Covers the codec path for an optional Duration that only the WITH block supplies.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin(r#"CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, retention: { done: "1h" } }"#);
@@ -255,12 +237,10 @@ fn test_retention_only_queue_keeps_its_duration() {
 	assert_eq!(queue.retry.backoff, Queue::DEFAULT_RETRY_BACKOFF);
 }
 
-/// Declared deduplication is the queue's contract with every producer, so it has
-/// to survive the catalog round trip intact. A lost column list would silently
-/// widen what counts as a duplicate; a lost ttl would silently shorten how long
-/// the guarantee holds.
 #[test]
 fn test_create_queue_with_deduplicate_round_trips() {
+	// A lost column list silently widens what counts as a duplicate; a lost ttl silently
+	// shortens how long the guarantee holds.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin(
@@ -275,10 +255,9 @@ fn test_create_queue_with_deduplicate_round_trips() {
 	assert!(!deduplicate.is_forever());
 }
 
-/// An omitted ttl means the record never expires. Defaulting to anything finite
-/// would silently put an expiry date on a guarantee the user never bounded.
 #[test]
 fn test_deduplicate_without_ttl_defaults_to_forever() {
+	// Any finite default puts an expiry date on a guarantee the user never bounded.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, deduplicate: { by: {id} } }");
@@ -289,11 +268,9 @@ fn test_deduplicate_without_ttl_defaults_to_forever() {
 	assert_eq!(deduplicate.ttl, Duration::MAX);
 }
 
-/// `forever` spelled explicitly must mean the same thing as omitting the ttl, or
-/// the documented way to ask for a permanent guarantee would differ from the
-/// default one.
 #[test]
 fn test_deduplicate_ttl_forever_is_accepted_explicitly() {
+	// The documented way to ask for a permanent guarantee must not differ from the default one.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {}, deduplicate: { by: {id}, ttl: forever } }");
@@ -301,11 +278,9 @@ fn test_deduplicate_ttl_forever_is_accepted_explicitly() {
 	assert!(find_queue(&t, "test", "jobs").unwrap().deduplicate.unwrap().is_forever());
 }
 
-/// A queue that declares nothing must stay undeduplicated rather than picking up
-/// an implicit rule, since that would start dropping items a producer expects to
-/// be distinct.
 #[test]
 fn test_a_queue_without_deduplicate_declares_none() {
+	// An implicit rule would start dropping items a producer expects to be distinct.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
@@ -313,11 +288,9 @@ fn test_a_queue_without_deduplicate_declares_none() {
 	assert!(find_queue(&t, "test", "jobs").unwrap().deduplicate.is_none());
 }
 
-/// A typo in a `by` column would silently deduplicate on nothing, or on the wrong
-/// field. It has to fault at CREATE, where the author can still see it, rather
-/// than at the first enqueue.
 #[test]
 fn test_deduplicate_rejects_an_unknown_column() {
+	// A typo must fault at CREATE, where the author can still see it, not at the first enqueue.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 
@@ -327,10 +300,9 @@ fn test_deduplicate_rejects_an_unknown_column() {
 	assert!(find_queue(&t, "test", "jobs").is_none(), "the rejected queue must not exist");
 }
 
-/// An empty column list is a declaration that deduplicates on nothing, which
-/// would collapse the whole queue onto a single key.
 #[test]
 fn test_deduplicate_rejects_an_empty_column_list() {
+	// Deduplicating on nothing collapses the whole queue onto a single key.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 
@@ -339,10 +311,9 @@ fn test_deduplicate_rejects_an_empty_column_list() {
 	assert!(find_queue(&t, "test", "jobs").is_none());
 }
 
-/// `by` is what makes the declaration mean anything, so a block carrying only a
-/// ttl is incomplete rather than a queue that deduplicates on everything.
 #[test]
 fn test_deduplicate_requires_by() {
+	// A block carrying only a ttl is incomplete, not a queue that deduplicates on everything.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 
@@ -351,10 +322,9 @@ fn test_deduplicate_requires_by() {
 	assert!(find_queue(&t, "test", "jobs").is_none());
 }
 
-/// A repeated column contributes nothing and signals the author meant two
-/// different fields, so it is rejected rather than silently collapsed.
 #[test]
 fn test_deduplicate_rejects_a_repeated_column() {
+	// A repeat contributes nothing and signals the author meant two different fields.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 
@@ -362,10 +332,9 @@ fn test_deduplicate_rejects_a_repeated_column() {
 	assert!(!err.is_empty(), "a repeated by column must fault");
 }
 
-/// Only a duration literal or `forever` are meaningful. A bare identifier is a
-/// misspelling of one of them and must not be read as some other unit.
 #[test]
 fn test_deduplicate_rejects_a_bare_identifier_ttl() {
+	// A bare identifier is a misspelling of a duration literal or `forever`, not another unit.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 
@@ -375,10 +344,10 @@ fn test_deduplicate_rejects_a_bare_identifier_ttl() {
 	assert!(!err.is_empty(), "an unrecognised ttl word must fault");
 }
 
-/// The declaration must be visible to an operator without reading the DDL back,
-/// and `forever` must read as `forever` rather than as a max-duration number.
 #[test]
 fn test_system_queues_exposes_the_deduplicate_declaration() {
+	// An operator must see the declaration without reading the DDL back, and `forever`
+	// must read as `forever` rather than as a max-duration number.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin(

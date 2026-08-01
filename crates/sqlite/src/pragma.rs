@@ -79,9 +79,8 @@ mod tests {
 	use super::{apply, apply_read_only};
 	use crate::SqliteConfig;
 
-	/// A throwaway on-disk database. Several pragma defaults differ between file-backed and
-	/// in-memory databases, so these tests have to run against a real file to mean anything.
 	fn scratch(name: &str) -> (Connection, PathBuf) {
+		// Pragma defaults differ between file-backed and in-memory databases; these tests need a file.
 		let path = temp_dir().join(format!("reifydb_pragma_{name}_{}.db", Uuid::new_v4()));
 		let conn = Connection::open(&path).unwrap();
 		(conn, path)
@@ -94,19 +93,11 @@ mod tests {
 		let _ = remove_file(path.with_extension("db-shm"));
 	}
 
-	/// Locks in the unit conversions performed by `apply`: `cache_size` is the KiB count negated
-	/// (SQLite reads a negative `cache_size` as KiB, a positive one as pages), while `page_size`
-	/// and `mmap_size` are raw bytes. A future change that, say, swapped `as_kib()` for
-	/// `as_bytes()` on the cache would record 2_048_000 here and fail.
 	#[test]
 	fn a_none_pragma_is_never_issued_and_sqlites_own_default_survives() {
-		// The point of making these fields optional: None must mean "do not touch this setting",
-		// not "set it to some stand-in value". The distinctive 4321 matters - new()'s own default is
-		// 2000 KiB, which SQLite also reports as -2000, so asserting -2000 against an untouched
-		// new() would pass even if apply fell back to the configured value instead of skipping.
-		// Setting a value first and then clearing it makes the two outcomes tell apart: a genuine
-		// skip reads SQLite's -2000, any fallback to the config reads -4321. It also pins the trap
-		// that None is NOT how you disable caching, which the sibling test covers from the far side.
+		// None must mean "leave this setting alone", not "use a stand-in". 4321 is distinctive because
+		// new()'s own default of 2000 KiB also reads back as -2000, so asserting -2000 against an
+		// untouched new() would pass even if apply fell back to the config instead of skipping.
 		let (conn, path) = scratch("none");
 		let config = SqliteConfig::new(&path).cache_size(ByteSize::from_kib(4321)).cache_size(None);
 
@@ -120,12 +111,9 @@ mod tests {
 
 	#[test]
 	fn journal_mode_none_leaves_a_fresh_database_on_a_rollback_journal() {
-		// The most dangerous None in the config, and the one whose failure schedule hides it: WAL is
-		// persisted in the database header, so an unset journal_mode looks harmless against every
-		// already-created database and only detonates on a clean install. store-multi opens a writer
-		// plus a pool of readers concurrently, and outside WAL those readers take locks that block
-		// the writer. Both directions are asserted so that shipping WAL stays a tested property
-		// rather than a habit.
+		// WAL lives in the database header, so an unset journal_mode looks harmless against every
+		// already-created database and only detonates on a clean install. Outside WAL, store-multi's
+		// concurrent reader pool takes locks that block its writer.
 		let (unset_conn, unset_path) = scratch("journal_none");
 		apply(&unset_conn, &SqliteConfig::new(&unset_path).journal_mode(None)).unwrap();
 		let unset: String = unset_conn.pragma_query_value(None, "journal_mode", |r| r.get(0)).unwrap();
@@ -143,11 +131,9 @@ mod tests {
 
 	#[test]
 	fn an_explicit_zero_still_issues_the_pragma() {
-		// ByteSize::ZERO and None are different instructions and have to stay that way: zero asks
-		// SQLite to retain no page cache, None declines to configure it at all. Collapsing the two
-		// by treating ZERO as "unset" would silently restore the 2000 KiB default on every
-		// connection, which is the per-connection cache this whole change exists to be able to
-		// remove.
+		// ZERO and None are different instructions: zero asks SQLite to retain no page cache, None
+		// declines to configure it at all. Treating ZERO as unset would silently restore the 2000 KiB
+		// per-connection default.
 		let (conn, path) = scratch("zero");
 
 		apply(&conn, &SqliteConfig::new(&path).cache_size(ByteSize::ZERO)).unwrap();
@@ -160,10 +146,8 @@ mod tests {
 
 	#[test]
 	fn the_read_only_path_decides_each_pragma_independently() {
-		// apply_read_only configures the multi store's read pool, where a per-connection pragma
-		// costs the most because it is applied once per pooled connection. Each field has to be
-		// decided on its own: skipping one must not skip the next, and issuing one must not drag
-		// the other along with it.
+		// apply_read_only runs once per pooled connection, so each field must be decided on its own:
+		// skipping one must not skip the next, and issuing one must not drag the other along.
 		let (conn, path) = scratch("readonly");
 		let config = SqliteConfig::new(&path).mmap_size(None).cache_size(ByteSize::from_kib(1500));
 

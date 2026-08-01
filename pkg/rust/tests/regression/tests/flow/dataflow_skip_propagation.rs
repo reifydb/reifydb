@@ -1,17 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// Regression: transactional sub-flow execution is dataflow-scheduled - each view runs
-// the moment all its direct producer flows settle, instead of waiting for a whole
-// topological level to finish. The subtle invariant a level->dataflow rewrite can
-// break: a producer flow that has NO relevant change in a commit must still settle and
-// decrement its consumers' in_degree. Otherwise a downstream view that also depends on
-// a different, changed producer would never be dispatched and would silently go stale.
-//
-// Object: t1 -> view a, t2 -> view b, view c = (a append b), so c has two producers
-// (in_degree 2). A commit that touches only t1 makes flow b skip (t2 unchanged) while
-// flow a emits; c can only run if the skipping b still unblocked it.
-
 use reifydb::{WithSubsystem, embedded};
 use reifydb_test_harness::db::TestDb;
 
@@ -26,6 +15,9 @@ fn row_count(db: &TestDb, rql: &str) -> usize {
 
 #[test]
 fn skipping_producer_still_updates_shared_consumer() {
+	// A producer with no relevant change in a commit must still settle and unblock its consumers;
+	// otherwise a view that also depends on a changed producer is never dispatched and goes
+	// silently stale.
 	let mut db = setup();
 	db.admin("create namespace test");
 	db.admin("create table test::t1 { id: int4, name: utf8 }");

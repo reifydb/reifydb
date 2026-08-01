@@ -7,21 +7,14 @@
 use reifydb::{Database, Params};
 use tracing::info;
 
-/// Helper function to log queries with formatting
-/// The query text is displayed in bold for better readability
 pub fn log_query(query: &str) {
 	info!("Query:");
 	let formatted_query = query.lines().collect::<Vec<_>>().join("\n");
 	info!("{}", formatted_query);
 }
 
-/// Seed a small demo schema reused across the export examples.
-///
-/// Creates two namespaces and one of every exportable object kind, with a
-/// dictionary-backed and an enum-typed column on the table, so the examples can
-/// demonstrate selection, dependency closure, and round-tripping:
-/// - `shop`    : enum `status`, dictionary `tokens`, table `products`
-/// - `metrics` : series `events`, ring buffer `recent`
+/// Two namespaces covering every exportable object kind except `Queue`, with a dictionary-backed
+/// and an enum-typed column on `shop::products` so the examples can show dependency closure.
 pub fn seed_demo(db: &Database) {
 	db.admin_as_root(
 		r#"

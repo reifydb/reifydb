@@ -8,18 +8,9 @@ use reifydb_value::value::{Value, row_number::RowNumber};
 
 use crate::{framework::workload::WindowRow, operators::window::grid::render};
 
-/// A rolling window keeps one row per GROUP, not one per window: the buffer of contributions
-/// trails the seal ledger and the emitted value is the aggregate over whatever is still in it.
-///
-/// Two boundaries here are deliberately asymmetric and are what this oracle exists to pin:
-///   admission drops a coordinate STRICTLY below `ledger - (size + grace)` (`is_sealed` compares
-///   with `<`), while eviction pops everything at or below `ledger - size` (RollingEviction::Before
-///   is inclusive despite its name). Getting either off by one shifts the retained set.
-///
-/// Because eviction is inclusive, `ledger - size` must not clamp when the span has not yet
-/// elapsed: a clamped cutoff of zero would evict a coordinate AT the epoch at every ledger and
-/// every size. A ledger younger than the span evicts nothing at all, which is RollingEviction::Nothing
-/// on the operator side and None here.
+/// A rolling window keeps one row per group, aggregating whatever still trails the seal ledger. The
+/// boundaries are asymmetric: admission drops strictly below `ledger - size - grace`, eviction pops at
+/// or below `ledger - size`, and a ledger younger than the span evicts nothing rather than clamping.
 pub struct Oracle {
 	size_ms: u64,
 	grace_ms: u64,
@@ -122,9 +113,8 @@ impl Model<WindowRow> for Oracle {
 	}
 
 	fn all(&self) -> Vec<Vec<Value>> {
-		// A rolling group's value is fully determined by the ledger, so what MUST be published and
-		// what MAY be published are the same set. That collapses the driver's two containment
-		// checks into an equality, which is strictly stronger than the fixed-grid case.
+		// A rolling group's value is fully determined by the ledger, so must-publish and may-publish
+		// are the same set, which collapses the driver's two containment checks into an equality.
 		self.live()
 	}
 
@@ -133,14 +123,9 @@ impl Model<WindowRow> for Oracle {
 	}
 }
 
-/// A count-based rolling window: no seal horizon at all, and eviction is by CAPACITY rather than
-/// by coordinate.
-///
-/// This has to simulate the buffer rather than recompute from the corpus, because capacity
-/// eviction is destructive: once a row has been pushed out by newer arrivals it never comes back,
-/// not even if a newer row is later retracted and leaves the buffer short. The coordinate is the
-/// row number (`u64::coord` reads `row_numbers()`), so evicting the lowest key evicts the oldest
-/// row.
+/// A count-based rolling window: no seal horizon, and eviction is by capacity. It simulates the buffer
+/// rather than recomputing from the corpus, because capacity eviction is destructive - a row pushed
+/// out never comes back, even if a newer row is later retracted and leaves the buffer short.
 pub struct CapacityOracle {
 	capacity: usize,
 	buffers: BTreeMap<i32, BTreeMap<u64, i64>>,

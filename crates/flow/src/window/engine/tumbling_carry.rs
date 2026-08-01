@@ -465,9 +465,8 @@ mod tests {
 	use super::*;
 	use crate::window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig};
 
-	// In-memory store that allocates a distinct row number per key (the state.rs
-	// mock collapses every key onto row 1, which would alias all window
-	// accumulators and defeat a storage-bound test).
+	// Allocates a distinct row number per key; the state.rs mock collapses every key onto row 1,
+	// which would alias all window accumulators and defeat a storage-bound test.
 	#[derive(Default)]
 	struct CountingStore {
 		data: HashMap<Vec<u8>, StateBytes>,
@@ -486,9 +485,8 @@ mod tests {
 				.count()
 		}
 
-		// Live per-window accumulator rows sit in the ACCUMULATOR keyspace of the
-		// internal store (alongside meta and the expiry index); count only those.
 		fn accumulator_count(&self) -> usize {
+			// Meta and the expiry index share the store, so count only the accumulator keyspace.
 			self.keyspace_count(Keyspace::ACCUMULATOR)
 		}
 
@@ -496,16 +494,16 @@ mod tests {
 			self.keyspace_count(Keyspace::WINDOW_META)
 		}
 
-		// One row-number mapping ('M') is minted per (group, window) via get_or_create_row_number;
-		// this counts the live mappings so a test can prove sealed windows reclaim theirs.
 		fn row_mapping_count(&self) -> usize {
+			// One mapping is minted per (group, window), so this is what proves a sealed window
+			// reclaims its own.
 			self.rows.len()
 		}
 
-		// Phase-1 group reclamation: every data keyspace inside a real group goes, node scope stays,
-		// and the row-number mappings live outside `data` so they survive exactly as they do under
-		// the group-major reaper.
 		fn drop_group_data_entries(&mut self) -> usize {
+			// Phase-1 reclamation: every data keyspace inside a real group goes, node scope stays,
+			// and the row-number mappings live outside `data` so they survive as they do in
+			// production.
 			let keys: Vec<Vec<u8>> = self
 				.data
 				.keys()
@@ -638,15 +636,13 @@ mod tests {
 			.build()
 	}
 
-	// Feed one event into window `ws` for group "BTC" as its own batch, so the
-	// high-water mark advances one window per call.
 	fn feed(engine: &mut Engine, store: &mut CountingStore, ws: u64, price: f64) {
+		// One event per batch, so the high-water mark advances one window per call.
 		let _ = feed_group(engine, store, "BTC", ws, price);
 	}
 
-	// Same as `feed` but for an explicit group, returning the emitted results so a caller can capture
-	// the published row. Distinct groups get distinct accumulator rows, which is what the eviction test
-	// needs to overflow the 8-slot accumulator cache.
+	// Distinct groups get distinct accumulator rows, which is what the eviction test needs to
+	// overflow the 8-slot accumulator cache.
 	fn feed_group(
 		engine: &mut Engine,
 		store: &mut CountingStore,
@@ -672,11 +668,9 @@ mod tests {
 
 	#[test]
 	fn retention_seals_old_windows_and_reclaims_accumulator_rows() {
-		// With a 2-window retention horizon, only the windows within `hw - 120`
-		// stay live; every older window must seal to the O(1) carry scalar and
-		// have its accumulator row removed from the store. After 60 windows the
-		// live accumulator-row count must stay bounded by the horizon, not grow
-		// with the number of windows seen.
+		// With a 2-window retention horizon, older windows must seal to the O(1) carry scalar and
+		// drop their accumulator row, so the live row count stays bounded by the horizon rather
+		// than growing with the number of windows seen.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(Some(2 * WINDOW)));
 		for i in 0..60u64 {
@@ -692,11 +686,9 @@ mod tests {
 
 	#[test]
 	fn retention_seals_old_windows_and_reclaims_row_number_mappings() {
-		// The per-(group, window) row-number mapping ('M') is minted for every window but is not
-		// reclaimed by accumulator eviction (it is keyed by row_key, not row_number). When a window
-		// seals past retention its mapping must be dropped alongside its accumulator, or 'M' grows
-		// per-window forever - a larger leak than the per-group meta. After 60 windows the mapping
-		// count must stay bounded by the retention horizon, not track the number of windows seen.
+		// The per-(group, window) mapping is keyed by row_key, not row_number, so accumulator
+		// eviction does not reclaim it. Sealing past retention must drop it alongside the
+		// accumulator or the mapping keyspace grows per window forever.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(Some(2 * WINDOW)));
 		for i in 0..60u64 {
@@ -712,11 +704,9 @@ mod tests {
 
 	#[test]
 	fn a_window_whose_state_was_reclaimed_updates_its_row_rather_than_inserting_a_second() {
-		// The carry engine holds an accumulator, a carry meta and a last_output, and the data phase
-		// takes all three at once while the row-number mapping stays addressable. What comes back has
-		// no memory of the value it published, but the sink still holds that row, so the next event
-		// has to land on it. A second insert would put a duplicate row over a live one, and the carry
-		// engine is the one place where a re-publish also has to survive losing its seeded carry.
+		// The data phase takes the accumulator, the carry meta and last_output at once while the
+		// mapping stays addressable, so what comes back has no memory of what it published but the
+		// sink still holds that row. A second insert would lay a duplicate row over a live one.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 		let published = feed_group(&mut engine, &mut store, "BTC", 0, 5.0);
@@ -744,8 +734,8 @@ mod tests {
 
 	#[test]
 	fn meta_survives_while_group_high_water_at_or_after_threshold() {
-		// Safety boundary: an active group whose high water is at or beyond the threshold must keep
-		// its meta ('W') - the carry it holds is still needed to seed the next window.
+		// An active group whose high water is at or beyond the threshold must keep its meta: the
+		// carry it holds still seeds the next window.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(Some(2 * WINDOW)));
 		for i in 0..3u64 {
@@ -760,9 +750,8 @@ mod tests {
 
 	#[test]
 	fn meta_reclaimed_when_group_stale_past_threshold() {
-		// Invariant: a carry group that has gone quiet (high water below the threshold) is dead;
-		// the sweep reclaims its meta and the sealed carry it held, bounding the per-group
-		// internal-state growth that `persist_meta` would otherwise leak one key per group forever.
+		// A carry group whose high water falls below the threshold is dead, and the sweep reclaims
+		// its meta and sealed carry; otherwise `persist_meta` leaks one key per group forever.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(Some(2 * WINDOW)));
 		for i in 0..3u64 {
@@ -778,9 +767,8 @@ mod tests {
 
 	#[test]
 	fn without_retention_every_window_accumulator_is_retained() {
-		// The contrast that proves the bound above is the sealing, not some
-		// other cap: with no retention configured the engine keeps every window's
-		// accumulator forever (the pre-sealing behavior).
+		// The contrast that proves the bound above comes from sealing and not some other cap: with
+		// no retention configured the engine keeps every window's accumulator forever.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 		for i in 0..60u64 {
@@ -796,14 +784,9 @@ mod tests {
 
 	#[test]
 	fn terminal_remove_after_restart_uses_persisted_last_output() {
-		// Unlike rolling, a carry window's withdrawn value cannot be recomputed from the window's own
-		// surviving state: once it empties, its accumulator finalizes to nothing, and the output also
-		// depended on the value carried in from earlier windows. So the engine persists `last_output`
-		// in the WindowEntry. This test publishes a window, drops the engine (a restart / panic
-		// recovery), then retracts the only contribution with a fresh engine that holds no in-memory
-		// WindowEntry, and asserts the terminal Remove still carries the originally published value.
-		// That proves `last_output` is durable, not ephemeral; if it were reverted to in-memory-only
-		// state the second engine would have nothing to withdraw and this test would fail.
+		// A carry window's withdrawn value cannot be recomputed from its own surviving state: an
+		// emptied accumulator finalizes to nothing, and the output also depended on the value
+		// carried in from earlier windows. `last_output` must therefore be durable, not ephemeral.
 		let mut store = CountingStore::default();
 
 		let mut engine = Engine::new(carry_config(None));
@@ -840,12 +823,9 @@ mod tests {
 
 	#[test]
 	fn last_output_survives_lru_eviction() {
-		// The other way the persisted state is read back is LRU eviction, no restart needed: the
-		// accumulator cache holds only 8 windows, so tracking more evicts the oldest and the next
-		// access re-reads it from the store. We publish 11 single-window groups so group G00 is evicted,
-		// flush, then retract G00 and assert its accumulator reloads and the terminal Remove carries the
-		// persisted last_output. It would fail if last_output stopped being persisted, or the
-		// accumulator failed to round-trip through the store.
+		// The other way the persisted state is read back is LRU eviction, with no restart: the
+		// accumulator cache holds 8 windows, so tracking more evicts the oldest and the next access
+		// re-reads it from the store.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 
@@ -862,8 +842,8 @@ mod tests {
 		assert!(matches!(published_g00[0].kind, EmitKind::Insert));
 		assert_eq!(published_g00[0].value, 1.0);
 
-		// G00's window was published first and pushed out of the 8-slot accumulator cache by the later
-		// groups, so the engine must re-read its accumulator from the store to apply this retraction.
+		// G00's window was pushed out of the 8-slot accumulator cache by the later groups, so the
+		// engine must re-read its accumulator from the store to apply this retraction.
 		let span = WindowSpan::for_coord(0, WINDOW);
 		let mut buckets: TumblingBuckets<String, u64, (u64, f64)> = BTreeMap::new();
 		buckets.insert(("G00".to_string(), span), vec![AccumulatorEvent::Remove((0, 1.0))]);
@@ -898,11 +878,9 @@ mod tests {
 
 	#[test]
 	fn carry_meta_projects_its_high_water_without_touching_its_window_map() {
-		// CarryMeta is the reason the archived projection exists: it carries a
-		// whole BTreeMap of windows that the meta sweep has no use for, and the
-		// old sweep deserialized all of it per group to read one u64. The
-		// projection must agree with the owned path no matter how much
-		// unrelated state the value holds.
+		// CarryMeta is why the archived projection exists: it carries a whole BTreeMap of windows
+		// the meta sweep has no use for, and deserializing all of it per group to read one u64 is
+		// what the projection avoids. It must agree with the owned path however much state it holds.
 		let mut meta: CarryMeta<u64, i64, i64> = CarryMeta::default();
 		let empty_bytes = meta.encode_state(DateTime::EPOCH).unwrap();
 		assert_eq!(
@@ -929,9 +907,8 @@ mod tests {
 		assert_eq!(projected, Some(99), "the populated window map must not disturb the high water");
 	}
 
-	// Fixed-size probe accumulator whose Clone increments a counter, so a test
-	// can prove the carry chain finalizes loaded windows from the cache view
-	// instead of deep-cloning them.
+	// Counts clones of the probe accumulator, so a test can prove the carry chain finalizes loaded
+	// windows from the cache view instead of deep-cloning them.
 	static COUNTING_CARRY_CLONES: AtomicUsize = AtomicUsize::new(0);
 
 	#[operator_state]
@@ -1009,14 +986,9 @@ mod tests {
 
 	#[test]
 	fn carry_chain_finalizes_loaded_windows_without_cloning() {
-		// A batch touching an early window makes the carry chain re-finalize
-		// every later window. With a fresh engine those accumulators load from
-		// the store and must finalize via the archived view; the touched
-		// window itself is dirty and must finalize via the Native view.
-		// Exactly one clone is expected for the whole apply: the get() of the
-		// touched window's accumulator on the read-modify-write path. The two
-		// chain-loaded windows must contribute zero (the old get()-based chain
-		// cloned all three).
+		// Touching an early window makes the carry chain re-finalize every later one. On a fresh
+		// engine those load from the store and must finalize through the archived view, leaving
+		// exactly one clone for the whole apply: the touched window's read-modify-write get().
 		let mut store = CountingStore::default();
 		let mut engine = ProbeEngine::new(carry_config(None));
 		feed_probe(&mut engine, &mut store, 0, 1.0);

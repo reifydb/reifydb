@@ -33,11 +33,11 @@ fn test_memory(path: &Path) {
 	run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 
-/// Runs physical drop tests for buffer storage.
+/// Testscript runner over the commit buffer tier.
 pub struct Runner {
 	storage: MultiCommitBufferTier,
 	table: EntryKind,
-	/// Current version counter - increments with each write
+	/// Bumped per write command, so each command lands at its own commit version.
 	version: u64,
 }
 
@@ -138,7 +138,7 @@ impl testscript::runner::Runner for Runner {
 				writeln!(output, "ok")?;
 			}
 
-			// drop KEY - physically removes all versions of the entry
+			// compact KEY - physically removes all versions of the entry
 			"compact" => {
 				let mut args = command.consume_args();
 				let key =
@@ -146,7 +146,6 @@ impl testscript::runner::Runner for Runner {
 				let table = self.parse_table(&mut args)?;
 				args.reject_rest()?;
 
-				// Look up all versions of this key and drop them all
 				let all_versions = self.storage.get_all_versions(table, key.as_slice())?;
 				if !all_versions.is_empty() {
 					let versions_to_compact: Vec<_> =

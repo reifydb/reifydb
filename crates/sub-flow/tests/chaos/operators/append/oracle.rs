@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! What append owes its consumer: every live source row, once, under a stable identity.
-//!
-//! Append does not transform a row - it renumbers it. So the claim below is deliberately thin, and
-//! the sharper check is the one the driver runs alongside it: the session folds the emitted diffs
-//! keyed on the OUTPUT row number, and reports the stream as unfoldable if append ever mints a
-//! second number for a row it already published, reuses one number for two source rows, or updates
-//! a row it never inserted. Those are the failures the mapping can actually have, and no comparison
-//! of values would catch them.
+//! What append owes its consumer: every live source row, once, under a stable identity. Append
+//! renumbers rather than transforms, so the claim here is thin - the sharper check is the driver
+//! folding emitted diffs on the output row number, which no comparison of values would catch.
 
 use std::collections::BTreeMap;
 

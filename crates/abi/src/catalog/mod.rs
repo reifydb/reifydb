@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! C ABI shapes for the slice of catalog state an FFI extension can inspect: namespaces, tables, columns, and
-//! primary keys. Limited intentionally - extensions do not need the entire catalog object hierarchy, only enough
-//! to know what shape they are reading from or writing into.
+//! The slice of catalog state an FFI extension can inspect. Deliberately narrow: enough to know the shape being
+//! read from or written into, not the whole catalog hierarchy.
 
 pub mod column;
 pub mod namespace;

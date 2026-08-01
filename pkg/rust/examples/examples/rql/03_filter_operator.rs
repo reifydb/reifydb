@@ -169,7 +169,7 @@ filter department == "Sales" or department == "Marketing""#,
 		// Shows Sales or Marketing employees
 	}
 
-	// Example 8: Comptokenize filter with parentheses
+	// Example 8: Complex filter with parentheses
 	info!("\nExample 8: Comptokenize filter with parentheses");
 	log_query(
 		r#"from hr::employees

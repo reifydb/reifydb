@@ -107,10 +107,9 @@ mod tests {
 		}
 	}
 
-	// The None policy must behave exactly like TargetConvert's None arm:
-	// checked_convert failure becomes Ok(None) instead of an error.
 	#[test]
 	fn none_policy_matches_targetconvert_none_arm() {
+		// A checked_convert failure must become Ok(None) here, not an error.
 		let out: Option<i8> = NonePolicyConvert.convert(300i16, Fragment::internal("300")).unwrap();
 		assert_eq!(out, None);
 		let out: Option<i8> = NonePolicyConvert.convert(100i16, Fragment::internal("100")).unwrap();
@@ -123,18 +122,18 @@ mod tests {
 		assert!(err.is_err());
 	}
 
-	// Error policy: out-of-range values raise NUMBER_002 through the house cast.
 	#[test]
 	fn error_policy_raises_number_out_of_range() {
+		// Out-of-range must surface as the house cast diagnostic, not a generic failure.
 		let ctx = ctx();
 		let data = ColumnBuffer::int2([300]);
 		let err = coerce_column(&ctx, &data, ValueType::Int1, CoercePolicy::Error).unwrap_err();
 		assert_eq!(err.into_diagnostic().code, "NUMBER_002");
 	}
 
-	// None policy: the same out-of-range value becomes an undefined row.
 	#[test]
 	fn none_policy_turns_overflow_into_none() {
+		// The same input the Error policy rejects must become an undefined row here.
 		let ctx = ctx();
 		let data = ColumnBuffer::int2([300, 100]);
 		let cast = coerce_column(&ctx, &data, ValueType::Int1, CoercePolicy::None).unwrap();
@@ -142,9 +141,9 @@ mod tests {
 		assert!(cast.is_defined(1));
 	}
 
-	// Option-shaped input keeps its shape and per-row nones after coercion.
 	#[test]
 	fn option_shape_and_nones_are_preserved() {
+		// Coercion must not flatten Option-shaped input or drop its per-row nones.
 		let ctx = ctx();
 		let inner = ColumnBuffer::int2([1, 2, 3]);
 		let data = ColumnBuffer::Option {

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! C ABI shapes for FFI operators. Defines the descriptor an operator declares about itself, the column types it
-//! sees on the boundary, the capabilities flags the host inspects to know what an operator supports, and the
-//! vtable that gives the host concrete function pointers to invoke. Every field is `repr(C)` and wire-stable.
+//! C ABI shapes for FFI operators. The host inspects the descriptor's capability flags to know which vtable
+//! entries an operator actually supports.
 
 pub mod capabilities;
 pub mod column;

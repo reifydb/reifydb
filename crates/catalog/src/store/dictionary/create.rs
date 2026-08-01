@@ -136,13 +136,11 @@ pub mod tests {
 			id_type: ValueType::Uint4,
 		};
 
-		// First creation should succeed
 		let result = CatalogStore::create_dictionary(&mut txn, to_create.clone()).unwrap();
 		assert!(result.id.0 > 0);
 		assert_eq!(result.namespace, test_namespace.id());
 		assert_eq!(result.name, "test_dict");
 
-		// Second creation should fail with duplicate error
 		let err = CatalogStore::create_dictionary(&mut txn, to_create).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_006");
 	}
@@ -170,7 +168,6 @@ pub mod tests {
 
 		CatalogStore::create_dictionary(&mut txn, to_create2).unwrap();
 
-		// Check namespace links
 		let links: Vec<_> = txn
 			.range(NamespaceDictionaryKey::full_scan(test_namespace.id()), RangeScope::All, 1024)
 			.unwrap()
@@ -178,14 +175,13 @@ pub mod tests {
 			.unwrap();
 		assert_eq!(links.len(), 2);
 
-		// Check first link (descending order, so dict2 comes first)
+		// Keys are descending, so the later dictionary comes first.
 		let link = &links[0];
 		let row = &link.row;
 		let id2 = dictionary_namespace::SHAPE.get::<u64>(row, dictionary_namespace::ID);
 		assert!(id2 > 0);
 		assert_eq!(dictionary_namespace::SHAPE.get_utf8(row, dictionary_namespace::NAME), "dict2");
 
-		// Check second link (dict1 comes second)
 		let link = &links[1];
 		let row = &link.row;
 		let id1 = dictionary_namespace::SHAPE.get::<u64>(row, dictionary_namespace::ID);
@@ -198,7 +194,6 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
-		// Test with Uint1 ID type
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("small_dict"),
@@ -208,7 +203,6 @@ pub mod tests {
 		let result = CatalogStore::create_dictionary(&mut txn, to_create).unwrap();
 		assert_eq!(result.id_type, ValueType::Uint1);
 
-		// Test with Uint8 ID type
 		let to_create = DictionaryToCreate {
 			namespace: test_namespace.id(),
 			name: Fragment::internal("large_dict"),

@@ -630,7 +630,6 @@ pub mod tests {
 
 		txn.set(&key, value.clone()).unwrap();
 
-		// Should get value from pending buffer
 		let result = txn.get(&key).unwrap();
 		assert_eq!(result, Some(value));
 	}
@@ -642,18 +641,15 @@ pub mod tests {
 		let key = make_key("key1");
 		let value = make_value("value1");
 
-		// Set value in first transaction and commit
 		{
 			let mut cmd_txn = t.begin_admin(IdentityId::system()).unwrap();
 			cmd_txn.set(&key, value.clone()).unwrap();
 			cmd_txn.commit().unwrap();
 		}
 
-		// Create new command transaction to read committed data
 		let parent = t.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
 
-		// Create FlowTransaction - should see committed value
 		let mut txn = FlowTransaction::deferred(
 			&parent,
 			version,
@@ -662,7 +658,6 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		// Should get value from query transaction
 		let result = txn.get(&key).unwrap();
 		assert_eq!(result, Some(value));
 	}
@@ -683,11 +678,9 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		// Override with new value in pending
 		let new_value = make_value("new");
 		txn.set(&key, new_value.clone()).unwrap();
 
-		// Should get new value from pending, not old value from committed
 		let result = txn.get(&key).unwrap();
 		assert_eq!(result, Some(new_value));
 	}
@@ -708,10 +701,8 @@ pub mod tests {
 			Clock::Mock(MockClock::from_millis(1000)),
 		);
 
-		// Remove in pending
 		txn.remove(&key).unwrap();
 
-		// Should return None even though it exists in committed
 		let result = txn.get(&key).unwrap();
 		assert_eq!(result, None);
 	}
@@ -754,14 +745,12 @@ pub mod tests {
 
 		let key = make_key("key1");
 
-		// Set value in first transaction and commit
 		{
 			let mut cmd_txn = t.begin_admin(IdentityId::system()).unwrap();
 			cmd_txn.set(&key, make_value("value1")).unwrap();
 			cmd_txn.commit().unwrap();
 		}
 
-		// Create new command transaction
 		let parent = t.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
 		let mut txn = FlowTransaction::deferred(
@@ -842,7 +831,6 @@ pub mod tests {
 		let items: Vec<_> =
 			txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
 
-		// Should be in sorted order
 		assert_eq!(items.len(), 3);
 		assert_eq!(items[0].key, make_key("a"));
 		assert_eq!(items[1].key, make_key("b"));
@@ -867,7 +855,6 @@ pub mod tests {
 		let items: Vec<_> =
 			txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
 
-		// Should only have 2 items (remove filtered out)
 		assert_eq!(items.len(), 2);
 		assert_eq!(items[0].key, make_key("a"));
 		assert_eq!(items[1].key, make_key("c"));
@@ -908,7 +895,6 @@ pub mod tests {
 		let range = EncodedKeyRange::new(Included(make_key("b")), Excluded(make_key("d")));
 		let items: Vec<_> = txn.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
 
-		// Should only include b and c (not d, exclusive end)
 		assert_eq!(items.len(), 2);
 		assert_eq!(items[0].key, make_key("b"));
 		assert_eq!(items[1].key, make_key("c"));
@@ -949,7 +935,6 @@ pub mod tests {
 		let iter = txn.prefix(&prefix).unwrap();
 		let items: Vec<_> = iter.items.into_iter().collect();
 
-		// Should only include keys with prefix "test_"
 		assert_eq!(items.len(), 2);
 		assert_eq!(items[0].key, make_key("test_a"));
 		assert_eq!(items[1].key, make_key("test_b"));
