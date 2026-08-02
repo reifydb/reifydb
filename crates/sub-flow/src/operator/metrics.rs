@@ -5,7 +5,15 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	metrics::{collect::MetricsCollector, heap::OperatorSample, sample::MetricsSample},
+	metrics::{
+		collect::MetricsCollector,
+		heap::OperatorSample,
+		operator::{
+			GROUP_CACHE_BYTES, GROUP_MEMBERSHIP_BYTES, ROW_NUMBER_CACHE_BYTES, ROW_NUMBER_MEMBERSHIP_BYTES,
+			STATE_DIRTY_BYTES, STATE_MEMBERSHIP_BYTES, STATE_POOL_BUDGET, STATE_RESIDENT_BYTES,
+		},
+		sample::MetricsSample,
+	},
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_flow::transaction::{
@@ -67,7 +75,7 @@ pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, operator: Oper
 			"state_entries",
 			memory.entries.as_u64(),
 		));
-		out.push(MetricsSample::bytes(format!("flow_node::{operator}"), "state_resident_bytes", memory.bytes));
+		out.push(MetricsSample::bytes(format!("flow_node::{operator}"), STATE_RESIDENT_BYTES, memory.bytes));
 	}
 	if let Some(memory) = sample.dirty_memory {
 		out.push(MetricsSample::count(
@@ -75,7 +83,7 @@ pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, operator: Oper
 			"state_dirty_entries",
 			memory.entries.as_u64(),
 		));
-		out.push(MetricsSample::bytes(format!("flow_node::{operator}"), "state_dirty_bytes", memory.bytes));
+		out.push(MetricsSample::bytes(format!("flow_node::{operator}"), STATE_DIRTY_BYTES, memory.bytes));
 	}
 	if let Some(memory) = sample.row_number_cache {
 		out.push(MetricsSample::count(
@@ -83,7 +91,7 @@ pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, operator: Oper
 			"row_number_cache_entries",
 			memory.entries.as_u64(),
 		));
-		out.push(MetricsSample::heap(format!("flow_node::{operator}"), "row_number_cache_bytes", memory.bytes));
+		out.push(MetricsSample::heap(format!("flow_node::{operator}"), ROW_NUMBER_CACHE_BYTES, memory.bytes));
 	}
 	if let Some(memory) = sample.membership {
 		out.push(MetricsSample::count(
@@ -91,7 +99,7 @@ pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, operator: Oper
 			"state_membership_entries",
 			memory.entries.as_u64(),
 		));
-		out.push(MetricsSample::heap(format!("flow_node::{operator}"), "state_membership_bytes", memory.bytes));
+		out.push(MetricsSample::heap(format!("flow_node::{operator}"), STATE_MEMBERSHIP_BYTES, memory.bytes));
 	}
 	if let Some(completeness) = sample.completeness {
 		out.push(MetricsSample::count(
@@ -119,7 +127,7 @@ pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, operator: Oper
 		}
 	}
 	if let Some(pool) = sample.pool {
-		out.push(MetricsSample::bytes(format!("flow_node::{operator}"), "state_pool_budget", pool.budget));
+		out.push(MetricsSample::bytes(format!("flow_node::{operator}"), STATE_POOL_BUDGET, pool.budget));
 		if pool.evictions.as_u64() > 0 {
 			out.push(MetricsSample::counter(
 				format!("flow_node::{operator}"),
@@ -545,7 +553,7 @@ pub(crate) fn push_group_samples(out: &mut Vec<MetricsSample>, operator: Operato
 	let scope = format!("flow_node::{operator}");
 	if sample.cache.entries.as_u64() > 0 || sample.cache.bytes.as_bytes() > 0 {
 		out.push(MetricsSample::count(scope.clone(), "group_cache_entries", sample.cache.entries.as_u64()));
-		out.push(MetricsSample::heap(scope.clone(), "group_cache_bytes", sample.cache.bytes));
+		out.push(MetricsSample::heap(scope.clone(), GROUP_CACHE_BYTES, sample.cache.bytes));
 	}
 	if sample.membership.entries.as_u64() > 0 || sample.membership.bytes.as_bytes() > 0 {
 		out.push(MetricsSample::count(
@@ -553,7 +561,7 @@ pub(crate) fn push_group_samples(out: &mut Vec<MetricsSample>, operator: Operato
 			"group_membership_entries",
 			sample.membership.entries.as_u64(),
 		));
-		out.push(MetricsSample::heap(scope.clone(), "group_membership_bytes", sample.membership.bytes));
+		out.push(MetricsSample::heap(scope.clone(), GROUP_MEMBERSHIP_BYTES, sample.membership.bytes));
 	}
 	out.push(MetricsSample::count(
 		scope.clone(),
@@ -620,7 +628,7 @@ impl MetricsCollector for RowNumberMetricsCollector {
 				));
 				out.push(MetricsSample::heap(
 					scope.clone(),
-					"row_number_cache_bytes",
+					ROW_NUMBER_CACHE_BYTES,
 					sample.cache.bytes,
 				));
 			}
@@ -632,7 +640,7 @@ impl MetricsCollector for RowNumberMetricsCollector {
 				));
 				out.push(MetricsSample::heap(
 					scope.clone(),
-					"row_number_membership_bytes",
+					ROW_NUMBER_MEMBERSHIP_BYTES,
 					sample.membership.bytes,
 				));
 			}

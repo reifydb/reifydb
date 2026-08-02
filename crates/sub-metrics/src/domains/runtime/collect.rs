@@ -8,7 +8,7 @@ use std::fs::read_to_string;
 use libc::mallinfo2;
 use reifydb_allocator::{JemallocStats, jemalloc_stats};
 use reifydb_cdc::storage::CdcStore;
-use reifydb_core::metrics::{registry::MetricsRegistry, sample::MetricsSample};
+use reifydb_core::metrics::{operator, registry::MetricsRegistry, sample::MetricsSample};
 use reifydb_engine::engine::StandardEngine;
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::memory::global_memory_used;
@@ -179,7 +179,7 @@ pub fn collect_operators(c: &Collectors) -> Vec<MetricsSample> {
 	let disk = c.engine.operator_disk_payload_bytes();
 	let mut out = Vec::with_capacity(disk.len());
 	for (node, bytes) in disk {
-		out.push(MetricsSample::bytes(format!("flow_node::{node}"), "disk_payload_bytes", bytes));
+		out.push(MetricsSample::bytes(format!("flow_node::{node}"), operator::DISK_PAYLOAD_BYTES, bytes));
 	}
 	out.extend(c.registry.collect_operators());
 	out

@@ -89,12 +89,12 @@ impl MetricsAccumulator {
 			}
 			return;
 		};
-		let expected_dimensions = match state.spec.shape {
-			DomainShape::Long => 1,
-			DomainShape::Wide => state.spec.dimensions.len(),
-		};
 		for row in rows {
 			reifydb_assertions! {
+				let expected_dimensions = match state.spec.shape {
+					DomainShape::Long => 1,
+					DomainShape::Wide => state.spec.dimensions.len(),
+				};
 				assert!(
 					row.dimensions.len() == expected_dimensions,
 					"row for domain {:?} carries {} dimensions, spec declares {}",

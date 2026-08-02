@@ -17,71 +17,71 @@ use reifydb_value::byte_size::ByteSize;
 struct OperatorState;
 
 impl MetricsCollector for OperatorState {
-    fn collect(&self, out: &mut Vec<MetricsSample>) {
-        out.push(MetricsSample::bytes("flow_node::7", "state_resident_bytes", ByteSize::from_bytes(4096)));
-    }
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		out.push(MetricsSample::bytes("flow_node::7", "state_resident_bytes", ByteSize::from_bytes(4096)));
+	}
 }
 
 struct ProcessWide;
 
 impl MetricsCollector for ProcessWide {
-    fn collect(&self, out: &mut Vec<MetricsSample>) {
-        out.push(MetricsSample::heap("commit_buffer", "current_bytes", ByteSize::from_bytes(2048)));
-    }
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		out.push(MetricsSample::heap("commit_buffer", "current_bytes", ByteSize::from_bytes(2048)));
+	}
 }
 
 fn reader_with(registry: MetricsRegistry) -> SampleReader {
-    let engine = TestEngine::new();
-    SampleReader::new(Collectors {
-        engine: (*engine).clone(),
-        registry,
-    })
+	let engine = TestEngine::new();
+	SampleReader::new(Collectors {
+		engine: (*engine).clone(),
+		registry,
+	})
 }
 
 #[test]
 fn the_operators_domain_carries_registered_operator_collectors() {
-    // Without this, the domain degrades to disk-only and every consumer reports operators as
-    // holding no memory at all, which is indistinguishable from operators that are genuinely idle.
-    let registry = MetricsRegistry::new();
-    registry.register_operator_collector(Arc::new(OperatorState));
+	// Without this, the domain degrades to disk-only and every consumer reports operators as
+	// holding no memory at all, which is indistinguishable from operators that are genuinely idle.
+	let registry = MetricsRegistry::new();
+	registry.register_operator_collector(Arc::new(OperatorState));
 
-    let samples = reader_with(registry).samples_for(Domain::Operators);
+	let samples = reader_with(registry).samples_for(Domain::Operators);
 
-    let state = samples
-        .iter()
-        .find(|sample| sample.metric == "state_resident_bytes")
-        .expect("the operators domain must carry per-operator state, not only disk payload");
-    assert_eq!(state.scope, "flow_node::7", "per-operator samples stay scoped to their operator");
-    assert_eq!(state.reading.as_f64(), 4096.0);
+	let state = samples
+		.iter()
+		.find(|sample| sample.metric == "state_resident_bytes")
+		.expect("the operators domain must carry per-operator state, not only disk payload");
+	assert_eq!(state.scope, "flow_node::7", "per-operator samples stay scoped to their operator");
+	assert_eq!(state.reading.as_f64(), 4096.0);
 }
 
 #[test]
 fn the_operators_domain_excludes_process_wide_collectors() {
-    // The split is the whole point of the merge: runtime::memory answers "where is process memory",
-    // runtime::operators answers "which operator holds it". Leaking subsystem totals into the
-    // operator stream would make them look like an operator named commit_buffer.
-    let registry = MetricsRegistry::new();
-    registry.register_collector(Arc::new(ProcessWide));
+	// The split is the whole point of the merge: runtime::memory answers "where is process memory",
+	// runtime::operators answers "which operator holds it". Leaking subsystem totals into the
+	// operator stream would make them look like an operator named commit_buffer.
+	let registry = MetricsRegistry::new();
+	registry.register_collector(Arc::new(ProcessWide));
 
-    let samples = reader_with(registry).samples_for(Domain::Operators);
+	let samples = reader_with(registry).samples_for(Domain::Operators);
 
-    assert!(
-        !samples.iter().any(|sample| sample.scope == "commit_buffer"),
-        "a process-wide collector must not appear in the operator stream"
-    );
+	assert!(
+		!samples.iter().any(|sample| sample.scope == "commit_buffer"),
+		"a process-wide collector must not appear in the operator stream"
+	);
 }
 
 #[test]
 fn the_memory_domain_excludes_operator_collectors() {
-    // The other direction of the same split: per-operator rows in runtime::memory are what forced
-    // raptor to reassemble one operator's footprint from two domains by hand.
-    let registry = MetricsRegistry::new();
-    registry.register_operator_collector(Arc::new(OperatorState));
+	// The other direction of the same split: per-operator rows in runtime::memory are what forced
+	// raptor to reassemble one operator's footprint from two domains by hand.
+	let registry = MetricsRegistry::new();
+	registry.register_operator_collector(Arc::new(OperatorState));
 
-    let samples = reader_with(registry).samples_for(Domain::Memory);
+	let samples = reader_with(registry).samples_for(Domain::Memory);
 
-    assert!(
-        !samples.iter().any(|sample| sample.scope.starts_with("flow_node::")),
-        "operator collectors must not appear in the memory stream"
-    );
+	assert!(
+		!samples.iter().any(|sample| sample.scope.starts_with("flow_node::")),
+		"operator collectors must not appear in the memory stream"
+	);
 }

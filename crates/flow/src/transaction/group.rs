@@ -434,14 +434,25 @@ impl GroupInterner {
 				 row-number mapping a live sink row still names (group={id:?})"
 			);
 		}
-		let effective = match Self::load_record(operator, txn, id)? {
-			Some(record) if record.activity_bucket != GroupRecord::RECLAIMED_BUCKET => {
-				record.activity_bucket.max(bucket)
-			}
-			_ => bucket,
-		};
+		let previous = Self::load_record(operator, txn, id)?
+			.map(|record| record.activity_bucket)
+			.filter(|bucket| *bucket != GroupRecord::RECLAIMED_BUCKET);
+		let effective = previous.map_or(bucket, |previous| previous.max(bucket));
 		if effective != bucket {
 			return Ok(effective);
+		}
+		if let Some(previous) = previous
+			&& previous != bucket
+		{
+			reifydb_assertions! {
+				assert!(
+					previous < bucket,
+					"the superseded activity entry must sit strictly below the bucket replacing \
+					 it; removing one at or above it would drop the entry due_in needs to find \
+					 this group (group={id:?}, previous={previous}, bucket={bucket})"
+				);
+			}
+			txn.state_remove(operator, &index_key(Keyspace::ACTIVITY_INDEX, previous, id))?;
 		}
 		txn.state_set(
 			operator,
@@ -598,10 +609,18 @@ impl GroupInterner {
 			);
 		}
 		let key = side_record_key(id, side);
-		if let Some(row) = txn.state_get(operator, &key)?
-			&& decode_payload::<u64>(&row)? >= bucket
-		{
-			return Ok(());
+		let previous = match txn.state_get(operator, &key)? {
+			Some(row) => {
+				let previous = decode_payload::<u64>(&row)?;
+				if previous >= bucket {
+					return Ok(());
+				}
+				Some(previous)
+			}
+			None => None,
+		};
+		if let Some(previous) = previous {
+			txn.state_remove(operator, &side_index_key(side, previous, id))?;
 		}
 		txn.state_set(operator, &key, encode_payload(&bucket, now)?)?;
 		txn.state_set(operator, &side_index_key(side, bucket, id), encode_payload(&1u64, now)?)?;
@@ -1233,6 +1252,178 @@ mod tests {
 			interner.due_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(200)), 10).unwrap(),
 			vec![id],
 			"once the cutoff clears the whole bucket the group is due"
+		);
+	}
+
+	fn activity_buckets_of(txn: &mut FlowTransaction, operator: OperatorId, id: GroupId) -> Vec<u64> {
+		// Every entry lives under NODE_SCOPE with the group in its suffix, so the only way to ask
+		// "what does this group hold" is to scan the index and filter.
+		let range = keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::ACTIVITY_INDEX);
+		let mut buckets: Vec<u64> = txn
+			.state_range(operator, range, None)
+			.unwrap()
+			.items
+			.iter()
+			.filter_map(|item| {
+				let decoded = OperatorGroupStateKey::decode(&item.key)?;
+				let (bucket, found) = decode_activity_suffix(&decoded.suffix)?;
+				(found == id).then_some(bucket)
+			})
+			.collect();
+		buckets.sort_unstable();
+		buckets
+	}
+
+	fn side_buckets_of(txn: &mut FlowTransaction, operator: OperatorId, id: GroupId, side: Keyspace) -> Vec<u64> {
+		let range = keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::SIDE_ACTIVITY_INDEX);
+		let mut buckets: Vec<u64> = txn
+			.state_range(operator, range, None)
+			.unwrap()
+			.items
+			.iter()
+			.filter_map(|item| {
+				let decoded = OperatorGroupStateKey::decode(&item.key)?;
+				let (found_side, bucket, found) = decode_side_suffix(&decoded.suffix)?;
+				(found == id && found_side == side).then_some(bucket)
+			})
+			.collect();
+		buckets.sort_unstable();
+		buckets
+	}
+
+	#[test]
+	fn a_group_active_across_many_buckets_keeps_only_its_newest_activity_entry() {
+		// The index is a per-group cell, not an append-only heartbeat log. Leaving the superseded
+		// entry behind makes the index grow with UPTIME rather than with group count: measured on
+		// raptor, 16 quote mints held 4,005 rows because each wrote one row per 625ms bucket and
+		// nothing removed the previous one. Only the newest entry carries information, since
+		// due_in decides an entry is live by comparing it against GroupRecord::activity_bucket.
+		let engine = TestEngine::new();
+		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
+		let mut txn = deferred(&engine);
+		let busy = group("busy");
+
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &busy, Position(DateTime::from_nanos(50))).unwrap();
+		for position in [150, 250, 350, 450, 550] {
+			intern_at(&interner, NODE, &mut txn, &busy, Position(DateTime::from_nanos(position))).unwrap();
+		}
+
+		assert_eq!(
+			activity_buckets_of(&mut txn, NODE, id),
+			vec![5],
+			"six buckets of activity must leave exactly one entry, at the newest bucket"
+		);
+	}
+
+	#[test]
+	fn a_side_stamped_across_many_buckets_keeps_only_its_newest_entry() {
+		// stamp_side has the same shape as stamp and the same defect; on raptor it accounted for a
+		// further 27,755 rows. It must be fixed with its sibling or the leak simply moves.
+		let engine = TestEngine::new();
+		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
+		let mut txn = deferred(&engine);
+
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("keyed"), Position(DateTime::from_nanos(50)))
+			.unwrap();
+		for position in [150, 250, 350] {
+			stamp_side_at(
+				&interner,
+				&mut txn,
+				id,
+				Keyspace::JOIN_LEFT,
+				Position(DateTime::from_nanos(position)),
+			);
+		}
+
+		assert_eq!(
+			side_buckets_of(&mut txn, NODE, id, Keyspace::JOIN_LEFT),
+			vec![3],
+			"only the newest side bucket may survive"
+		);
+	}
+
+	#[test]
+	fn two_sides_of_one_group_do_not_evict_each_others_activity_entries() {
+		// The side index is keyed by (side, bucket, group), so a removal that ignored the side
+		// would let a left stamp erase the right side's entry and strand right rows past their
+		// own horizon.
+		let engine = TestEngine::new();
+		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
+		let mut txn = deferred(&engine);
+
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &group("keyed"), Position(DateTime::from_nanos(50)))
+			.unwrap();
+		// Both sides must cross a bucket, and cross to different ones: if only one side ever
+		// transitions, a removal that ignored `side` and always addressed the other would be a
+		// no-op and the test would pass while the bug is present.
+		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_LEFT, Position(DateTime::from_nanos(150)));
+		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_RIGHT, Position(DateTime::from_nanos(150)));
+		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_LEFT, Position(DateTime::from_nanos(250)));
+		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_RIGHT, Position(DateTime::from_nanos(350)));
+
+		assert_eq!(
+			side_buckets_of(&mut txn, NODE, id, Keyspace::JOIN_LEFT),
+			vec![2],
+			"the left side must retire its own bucket 1 entry and keep only bucket 2"
+		);
+		assert_eq!(
+			side_buckets_of(&mut txn, NODE, id, Keyspace::JOIN_RIGHT),
+			vec![3],
+			"and the right side must retire its own, not have the left side retire it for them"
+		);
+	}
+
+	#[test]
+	fn stamping_an_older_bucket_writes_nothing_and_keeps_the_newest_entry() {
+		// The removal must sit AFTER stamp's `effective != bucket` guard. Ahead of it, an older
+		// bucket would delete the live entry and the group would vanish from due_in entirely -
+		// reclaimable state that no sweep can ever find again.
+		// stamp is called directly because nothing reaches this guard through intern_many: its
+		// cache check (`bucket > interned.bucket`) short-circuits first, and hydrate_once warms
+		// that cache on restart, so the guard is defence in depth rather than a live path.
+		let engine = TestEngine::new();
+		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
+		let mut txn = deferred(&engine);
+		let busy = group("busy");
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &busy, Position(DateTime::from_nanos(950))).unwrap();
+
+		let now = txn.clock().now();
+		let effective = GroupInterner::stamp(&mut txn, NODE, id, &busy, 0, now).unwrap();
+
+		assert_eq!(effective, 9, "the stored bucket outranks the older one and is reported back");
+		assert_eq!(
+			activity_buckets_of(&mut txn, NODE, id),
+			vec![9],
+			"the stale stamp must neither add an entry nor remove the live one"
+		);
+		assert_eq!(
+			interner.due_groups(NODE, &mut txn, Cutoff(DateTime::from_nanos(1_000)), 10).unwrap(),
+			vec![id],
+			"and the surviving entry must still be the one due_in finds"
+		);
+	}
+
+	#[test]
+	fn a_group_on_an_undeclared_grid_never_transitions_so_pays_no_removal() {
+		// The whole cost of this change is one removal per bucket crossing. An undeclared scale
+		// resolves every position to a single bucket, so operators with no declared retention must
+		// cross nothing and keep their single entry - this is what makes the fix self-gating and
+		// removes any need to branch on the ttl declaration shape.
+		let engine = TestEngine::new();
+		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
+		interner.set_activity_grid(NODE, None);
+		let mut txn = deferred(&engine);
+		let busy = group("busy");
+
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &busy, Position(DateTime::from_nanos(50))).unwrap();
+		for position in [10_000, 20_000, 30_000] {
+			intern_at(&interner, NODE, &mut txn, &busy, Position(DateTime::from_nanos(position))).unwrap();
+		}
+
+		assert_eq!(
+			activity_buckets_of(&mut txn, NODE, id),
+			vec![0],
+			"an undeclared grid has one bucket, so every touch lands on it"
 		);
 	}
 

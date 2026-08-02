@@ -5,11 +5,16 @@
 # Clean Targets - Remove build artifacts from all packages
 # =============================================================================
 
-.PHONY: clean clean-workspace clean-pkg-typescript
+.PHONY: clean clean-cargo clean-workspace clean-pkg-typescript
 
 # Main clean target - cleans everything
-clean: clean-workspace clean-pkg-typescript
+clean: clean-workspace clean-cargo clean-pkg-typescript
 	@echo "✅ All packages cleaned!"
+
+# Clean the entire cargo target directory
+clean-cargo:
+	@echo "📦 Running cargo clean..."
+	@cargo clean
 
 # Clean only reifydb workspace member crates (preserves vendored dependency builds)
 clean-workspace:
