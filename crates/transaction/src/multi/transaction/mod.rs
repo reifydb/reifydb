@@ -92,7 +92,10 @@ where
 		version_epoch: VersionEpoch,
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
-	) -> Result<Self> {
+	) -> Result<Self>
+	where
+		L: 'static,
+	{
 		let version = clock.next()?;
 		let oracle = Oracle::new(clock, spawner, metrics_clock, version_epoch, rng, config);
 		oracle.query.advance_to(version);

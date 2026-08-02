@@ -3,10 +3,16 @@
 
 use std::{
 	collections::{BTreeMap, HashSet},
+	ops::Deref,
 	sync::Arc,
 };
+#[cfg(not(reifydb_single_threaded))]
+use std::thread::JoinHandle;
 
 use cleanup::cleanup_old_windows;
+use commit_queue::CommitQueue;
+#[cfg(not(reifydb_single_threaded))]
+use commit_queue::spawn_sequencer;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
@@ -23,6 +29,7 @@ use reifydb_runtime::{
 	version_epoch::{EpochSeconds, VersionEpoch},
 };
 use reifydb_value::Result;
+use smallvec::SmallVec;
 use tracing::{Span, field, instrument};
 
 use crate::multi::{
@@ -31,6 +38,7 @@ use crate::multi::{
 };
 
 pub mod cleanup;
+mod commit_queue;
 
 #[derive(Clone, Copy)]
 pub(crate) struct SpanTiming {
@@ -79,8 +87,8 @@ impl ModifiedKeyIndex {
 	}
 
 	#[inline]
-	fn might_contain(&self, key: &EncodedKey) -> bool {
-		self.hashes.contains(&hash_item(key))
+	fn might_contain_hash(&self, hash: u64) -> bool {
+		self.hashes.contains(&hash)
 	}
 
 	#[cfg(test)]
@@ -121,8 +129,8 @@ impl CommittedWindow {
 		self.transactions.push(txn);
 	}
 
-	fn might_have_key(&self, key: &EncodedKey) -> bool {
-		self.modified_keys.might_contain(key)
+	fn might_have_key_hash(&self, hash: u64) -> bool {
+		self.modified_keys.might_contain_hash(hash)
 	}
 
 	pub(super) fn max_version(&self) -> CommitVersion {
@@ -148,7 +156,7 @@ pub(crate) enum CreateCommitResult {
 	TooOld,
 }
 
-pub(crate) struct Oracle<L>
+pub(crate) struct CommitShared<L>
 where
 	L: VersionProvider,
 {
@@ -156,13 +164,34 @@ where
 	pub(crate) inner: OracleLock,
 	pub(crate) query: WaterMark,
 	pub(crate) command: WaterMark,
+	metrics_clock: Clock,
+	version_epoch: VersionEpoch,
+	config: Arc<dyn GetConfig>,
+	queue: CommitQueue,
+}
+
+pub(crate) struct Oracle<L>
+where
+	L: VersionProvider,
+{
+	shared: Arc<CommitShared<L>>,
+	#[cfg(not(reifydb_single_threaded))]
+	sequencer_join: Option<JoinHandle<()>>,
 	pub(crate) leases: Arc<VersionLeases>,
 	shutdown_signal: Arc<RwLock<bool>>,
 	spawner: ActorSpawner,
-	metrics_clock: Clock,
-	version_epoch: VersionEpoch,
 	rng: Rng,
-	config: Arc<dyn GetConfig>,
+}
+
+impl<L> Deref for Oracle<L>
+where
+	L: VersionProvider,
+{
+	type Target = CommitShared<L>;
+
+	fn deref(&self) -> &CommitShared<L> {
+		&self.shared
+	}
 }
 
 impl<L> Oracle<L>
@@ -176,10 +205,11 @@ where
 		version_epoch: VersionEpoch,
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
-	) -> Self {
-		let shutdown_signal = Arc::new(RwLock::new(false));
-
-		Self {
+	) -> Self
+	where
+		L: 'static,
+	{
+		let shared = Arc::new(CommitShared {
 			clock,
 			inner: OracleLock::new(OracleState {
 				time_windows: BTreeMap::new(),
@@ -187,13 +217,20 @@ where
 			}),
 			query: WaterMark::with_advancer("txn-mark-query".into(), &spawner),
 			command: WaterMark::with_advancer("txn-mark-cmd".into(), &spawner),
-			leases: VersionLeases::new(),
-			shutdown_signal,
-			spawner,
 			metrics_clock,
 			version_epoch,
-			rng,
 			config,
+			queue: CommitQueue::new(),
+		});
+
+		Self {
+			#[cfg(not(reifydb_single_threaded))]
+			sequencer_join: Some(spawn_sequencer(&shared)),
+			shared,
+			leases: VersionLeases::new(),
+			shutdown_signal: Arc::new(RwLock::new(false)),
+			spawner,
+			rng,
 		}
 	}
 
@@ -221,13 +258,10 @@ where
 		%version,
 		read_keys = field::Empty,
 		write_keys = field::Empty,
-		relevant_windows = field::Empty,
 		windows_checked = field::Empty,
 		txns_checked = field::Empty,
-		find_windows_us = field::Empty,
 		conflict_check_us = field::Empty,
 		clock_next_us = field::Empty,
-		inner_write_lock_us = field::Empty,
 		add_txn_us = field::Empty,
 		cleanup_us = field::Empty,
 		has_conflict = field::Empty
@@ -237,141 +271,9 @@ where
 		version: CommitVersion,
 		conflicts: ConflictManager,
 	) -> Result<CreateCommitResult> {
-		let timing = SpanTiming::current();
-		let window_size = self.config.get_config_uint8(ConfigKey::OracleWindowSize);
-
-		let lock_start = timing.mark(&self.metrics_clock);
-		let mut inner = self.inner.write();
-		timing.record_micros(lock_start, "inner_write_lock_us");
-
-		if let Some(early) = self.check_too_old(&inner, version) {
-			return Ok(early);
-		}
-
-		if self.detect_conflicts(&inner, version, &conflicts, timing) {
-			return Ok(CreateCommitResult::Conflict(conflicts));
-		}
-
-		let commit_version = self.allocate_commit_version(timing)?;
-		let needs_cleanup = self.register_committed(&mut inner, commit_version, conflicts, window_size, timing);
-
-		if needs_cleanup {
-			let cleanup_start = timing.mark(&self.metrics_clock);
-			let safe_evict_below = self.query.done_until();
-			let state = &mut *inner;
-			cleanup_old_windows(&mut state.time_windows, &mut state.evicted_up_through, safe_evict_below);
-			timing.record_micros(cleanup_start, "cleanup_us");
-		}
-		drop(inner);
-
-		Ok(CreateCommitResult::Success(commit_version))
+		let window_size = self.shared.config.get_config_uint8(ConfigKey::OracleWindowSize);
+		self.shared.commit(version, conflicts, window_size)
 	}
-
-	#[inline]
-	fn check_too_old(&self, inner: &OracleState, version: CommitVersion) -> Option<CreateCommitResult> {
-		if version < inner.evicted_up_through {
-			Some(CreateCommitResult::TooOld)
-		} else {
-			None
-		}
-	}
-
-	fn detect_conflicts(
-		&self,
-		inner: &OracleState,
-		version: CommitVersion,
-		conflicts: &ConflictManager,
-		timing: SpanTiming,
-	) -> bool {
-		let read_keys = conflicts.get_read_keys();
-		let write_keys = conflicts.get_write_keys();
-		if timing.recording {
-			Span::current().record("read_keys", read_keys.len());
-			Span::current().record("write_keys", write_keys.len());
-		}
-		let has_keys = !read_keys.is_empty() || !write_keys.is_empty();
-
-		let find_start = timing.mark(&self.metrics_clock);
-		let relevant_windows: Vec<&CommittedWindow> = if conflicts.has_range_operations() {
-			inner.time_windows.values().collect()
-		} else if !has_keys {
-			Vec::new()
-		} else {
-			inner.time_windows
-				.values()
-				.filter(|win| read_keys.iter().chain(write_keys.iter()).any(|k| win.might_have_key(k)))
-				.collect()
-		};
-		timing.record_micros(find_start, "find_windows_us");
-		if timing.recording {
-			Span::current().record("relevant_windows", relevant_windows.len());
-		}
-
-		let conflict_start = timing.mark(&self.metrics_clock);
-		let mut windows_checked = 0u64;
-		let mut txns_checked = 0u64;
-		for window in &relevant_windows {
-			windows_checked += 1;
-			if window.max_version <= version {
-				continue;
-			}
-
-			for committed_txn in &window.transactions {
-				txns_checked += 1;
-				if committed_txn.version <= version {
-					continue;
-				}
-
-				if let Some(old_conflicts) = &committed_txn.conflict_manager
-					&& conflicts.has_conflict(old_conflicts)
-				{
-					timing.record_micros(conflict_start, "conflict_check_us");
-					if timing.recording {
-						Span::current().record("windows_checked", windows_checked);
-						Span::current().record("txns_checked", txns_checked);
-						Span::current().record("has_conflict", true);
-					}
-					return true;
-				}
-			}
-		}
-		timing.record_micros(conflict_start, "conflict_check_us");
-		if timing.recording {
-			Span::current().record("windows_checked", windows_checked);
-			Span::current().record("txns_checked", txns_checked);
-		}
-		false
-	}
-
-	#[inline]
-	fn allocate_commit_version(&self, timing: SpanTiming) -> Result<CommitVersion> {
-		let clock = self.clock.clone();
-		let clock_start = timing.mark(&self.metrics_clock);
-		let commit_version = self.query.register_in_flight_with(|| clock.next())?;
-		timing.record_micros(clock_start, "clock_next_us");
-
-		self.version_epoch.record(EpochSeconds::new(self.metrics_clock.now().to_secs()), commit_version.0);
-
-		self.command.register_in_flight(commit_version);
-		Ok(commit_version)
-	}
-
-	#[inline]
-	fn register_committed(
-		&self,
-		inner: &mut OracleState,
-		commit_version: CommitVersion,
-		conflicts: ConflictManager,
-		window_size: u64,
-		timing: SpanTiming,
-	) -> bool {
-		let add_start = timing.mark(&self.metrics_clock);
-		inner.add_committed_transaction(commit_version, conflicts, window_size);
-		timing.record_micros(add_start, "add_txn_us");
-
-		inner.time_windows.len() > 1
-	}
-
 	pub(crate) fn bootstrapping_completed(&self) {
 		let mut inner = self.inner.write();
 		inner.time_windows.clear();
@@ -385,6 +287,11 @@ where
 		{
 			let mut shutdown = self.shutdown_signal.write();
 			*shutdown = true;
+		}
+		#[cfg(not(reifydb_single_threaded))]
+		if let Some(handle) = self.sequencer_join.take() {
+			self.shared.queue.stop_sequencer();
+			let _ = handle.join();
 		}
 		self.query.drain();
 		self.command.drain();
@@ -424,6 +331,121 @@ where
 		drop(inner);
 
 		Ok(CreateCommitResult::Success(commit_version))
+	}
+}
+
+impl<L> CommitShared<L>
+where
+	L: VersionProvider,
+{
+	fn service(
+		&self,
+		state: &mut OracleState,
+		version: CommitVersion,
+		conflicts: ConflictManager,
+		window_size: u64,
+		timing: SpanTiming,
+	) -> Result<CreateCommitResult> {
+		if version < state.evicted_up_through {
+			return Ok(CreateCommitResult::TooOld);
+		}
+
+		if self.detect_conflicts(state, version, &conflicts, timing) {
+			return Ok(CreateCommitResult::Conflict(conflicts));
+		}
+
+		let commit_version = self.allocate_commit_version(timing)?;
+
+		let add_start = timing.mark(&self.metrics_clock);
+		state.add_committed_transaction(commit_version, conflicts, window_size);
+		timing.record_micros(add_start, "add_txn_us");
+
+		if state.time_windows.len() > 1 {
+			let cleanup_start = timing.mark(&self.metrics_clock);
+			let safe_evict_below = self.query.done_until();
+			cleanup_old_windows(&mut state.time_windows, &mut state.evicted_up_through, safe_evict_below);
+			timing.record_micros(cleanup_start, "cleanup_us");
+		}
+
+		Ok(CreateCommitResult::Success(commit_version))
+	}
+
+	fn detect_conflicts(
+		&self,
+		state: &OracleState,
+		version: CommitVersion,
+		conflicts: &ConflictManager,
+		timing: SpanTiming,
+	) -> bool {
+		let read_keys = conflicts.get_read_keys();
+		let write_keys = conflicts.get_write_keys();
+		if timing.recording {
+			Span::current().record("read_keys", read_keys.len());
+			Span::current().record("write_keys", write_keys.len());
+		}
+		let has_keys = !read_keys.is_empty() || !write_keys.is_empty();
+		let has_ranges = conflicts.has_range_operations();
+		if !has_keys && !has_ranges {
+			return false;
+		}
+
+		let mut key_hashes: SmallVec<[u64; 8]> = SmallVec::new();
+		if !has_ranges {
+			for key in read_keys.iter().chain(write_keys.iter()) {
+				key_hashes.push(hash_item(key));
+			}
+		}
+
+		let conflict_start = timing.mark(&self.metrics_clock);
+		let mut windows_checked = 0u64;
+		let mut txns_checked = 0u64;
+		for window in state.time_windows.values() {
+			if window.max_version <= version {
+				continue;
+			}
+			if !has_ranges && !key_hashes.iter().any(|hash| window.might_have_key_hash(*hash)) {
+				continue;
+			}
+			windows_checked += 1;
+
+			for committed_txn in &window.transactions {
+				txns_checked += 1;
+				if committed_txn.version <= version {
+					continue;
+				}
+
+				if let Some(old_conflicts) = &committed_txn.conflict_manager
+					&& conflicts.has_conflict(old_conflicts)
+				{
+					timing.record_micros(conflict_start, "conflict_check_us");
+					if timing.recording {
+						Span::current().record("windows_checked", windows_checked);
+						Span::current().record("txns_checked", txns_checked);
+						Span::current().record("has_conflict", true);
+					}
+					return true;
+				}
+			}
+		}
+		timing.record_micros(conflict_start, "conflict_check_us");
+		if timing.recording {
+			Span::current().record("windows_checked", windows_checked);
+			Span::current().record("txns_checked", txns_checked);
+		}
+		false
+	}
+
+	#[inline]
+	fn allocate_commit_version(&self, timing: SpanTiming) -> Result<CommitVersion> {
+		let clock = self.clock.clone();
+		let clock_start = timing.mark(&self.metrics_clock);
+		let commit_version = self.query.register_in_flight_with(|| clock.next())?;
+		timing.record_micros(clock_start, "clock_next_us");
+
+		self.version_epoch.record(EpochSeconds::new(self.metrics_clock.now().to_secs()), commit_version.0);
+
+		self.command.register_in_flight(commit_version);
+		Ok(commit_version)
 	}
 }
 
@@ -902,6 +924,72 @@ mod tests {
 
 		let done_until = oracle.command.done_until();
 		assert_eq!(done_until.0, expected, "Watermark should be at highest committed version");
+	}
+
+	#[test]
+	fn sustained_concurrent_disjoint_commits_all_reach_the_watermark() {
+		// The commit queue parks requesters and may hand their work to the combiner or the
+		// sequencer thread; a lost unpark or a dropped queue node strands a committer
+		// forever and a skipped watermark registration wedges done_until, so both are
+		// exercised under sustained queue pressure rather than one commit per thread.
+		const THREADS: usize = 8;
+		const PER_THREAD: usize = 250;
+
+		let oracle = Arc::new(create_test_oracle(0));
+		let mut handles = vec![];
+
+		for t in 0..THREADS {
+			let oracle = oracle.clone();
+			handles.push(thread::spawn(move || {
+				let mut max_version = CommitVersion(0);
+				for i in 0..PER_THREAD {
+					let key = create_test_key(&format!("key_{}_{}", t, i));
+					let mut conflicts = ConflictManager::new();
+					conflicts.mark_write(&key);
+					match oracle.new_commit(CommitVersion(1), conflicts).unwrap() {
+						CreateCommitResult::Success(version) => {
+							oracle.done_commit(version);
+							max_version = max_version.max(version);
+						}
+						other => panic!(
+							"disjoint keys must never conflict, got variant {:?}",
+							discriminant(&other)
+						),
+					}
+				}
+				max_version
+			}));
+		}
+
+		let mut max_version = CommitVersion(0);
+		for handle in handles {
+			max_version = max_version.max(handle.join().unwrap());
+		}
+
+		let reached =
+			oracle.command.wait_for_mark_timeout(max_version, Duration::from_seconds(5).unwrap());
+		assert!(
+			reached,
+			"done_until stalled below {}; a commit was serviced without registering on \
+			 the watermark or a waiter was never woken",
+			max_version.0
+		);
+	}
+
+	#[cfg(not(reifydb_single_threaded))]
+	#[test]
+	fn stop_joins_the_sequencer_thread_cleanly() {
+		// Oracle::stop must join the sequencer thread; if the stop signal or the final
+		// queue drain is lost, either this test hangs on join or a committer parked on an
+		// unserviced request never wakes.
+		let mut oracle = create_test_oracle(0);
+
+		let mut conflicts = ConflictManager::new();
+		conflicts.mark_write(&create_test_key("pre_stop"));
+		let result = oracle.new_commit(CommitVersion(1), conflicts).unwrap();
+		assert!(matches!(result, CreateCommitResult::Success(_)));
+
+		oracle.stop();
 	}
 
 	#[test]
