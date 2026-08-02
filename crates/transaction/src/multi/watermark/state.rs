@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	cmp::Reverse,
-	collections::BinaryHeap,
-	sync::{
-		Arc,
-		atomic::{AtomicU64, Ordering},
-	},
+use std::sync::{
+	Arc,
+	atomic::{AtomicU64, Ordering},
 };
 
 use reifydb_runtime::sync::waiter::WaiterHandle;
@@ -15,13 +11,15 @@ use reifydb_value::reifydb_assertions;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 
-use super::{MAX_PENDING, MAX_WAITERS, OLD_VERSION_THRESHOLD, PENDING_CLEANUP_THRESHOLD};
+use super::{MAX_WAITERS, OLD_VERSION_THRESHOLD};
 
 type WaiterList = SmallVec<[Arc<WaiterHandle>; 1]>;
 
 const MAX_ORPHANED: usize = 10000;
 
 const ORPHAN_CLEANUP_THRESHOLD: u64 = 1000;
+
+const INITIAL_SLOTS: usize = 1024;
 
 #[repr(align(64))]
 pub struct WatermarkShared {
@@ -40,14 +38,38 @@ pub enum AdvanceOutcome {
 	MoreWork,
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
+struct Slot {
+	refcount: i32,
+	begun: bool,
+}
+
+impl Slot {
+	fn vacant(&self) -> bool {
+		!self.begun && self.refcount == 0
+	}
+}
+
 pub struct WatermarkState {
-	indices: BinaryHeap<Reverse<u64>>,
-	pending: FxHashMap<u64, i64>,
-	begun: FxHashSet<u64>,
+	ring: Box<[Slot]>,
+	tail: u64,
+	head: u64,
 	orphaned_done: FxHashSet<u64>,
 	waiters: FxHashMap<u64, WaiterList>,
 	last_swept: u64,
+}
+
+impl Default for WatermarkState {
+	fn default() -> Self {
+		Self {
+			ring: vec![Slot::default(); INITIAL_SLOTS].into_boxed_slice(),
+			tail: 1,
+			head: 0,
+			orphaned_done: FxHashSet::default(),
+			waiters: FxHashMap::default(),
+			last_swept: 0,
+		}
+	}
 }
 
 impl WatermarkState {
@@ -66,17 +88,16 @@ impl WatermarkState {
 			self.cleanup_if_needed(done_until, out);
 		}
 
-		let first_begin = self.begun.insert(version);
+		let cancelled = !self.orphaned_done.is_empty() && self.orphaned_done.remove(&version);
 
-		if self.orphaned_done.remove(&version) {
-			self.pending.insert(version, 0);
+		self.admit(version);
+		let slot = self.slot(version);
+		if cancelled {
+			slot.refcount = 0;
 		} else {
-			self.pending.entry(version).and_modify(|v| *v += 1).or_insert(1);
+			slot.refcount += 1;
 		}
-
-		if first_begin {
-			self.indices.push(Reverse(version));
-		}
+		slot.begun = true;
 
 		self.advance_with_deferred_cleanup(done_until, out, budget)
 	}
@@ -92,12 +113,12 @@ impl WatermarkState {
 			self.cleanup_if_needed(done_until, out);
 		}
 
-		if self.begun.contains(&version) {
-			self.pending.entry(version).and_modify(|v| *v -= 1).or_insert(-1);
-		} else {
+		if !self.is_begun(version) {
 			self.orphaned_done.insert(version);
 			return AdvanceOutcome::Complete;
 		}
+
+		self.slot(version).refcount -= 1;
 
 		self.advance_with_deferred_cleanup(done_until, out, budget)
 	}
@@ -131,9 +152,7 @@ impl WatermarkState {
 	}
 
 	fn needs_cleanup(&self) -> bool {
-		self.pending.len() > MAX_PENDING
-			|| self.waiters.len() > MAX_WAITERS
-			|| self.orphaned_done.len() > MAX_ORPHANED
+		self.waiters.len() > MAX_WAITERS || self.orphaned_done.len() > MAX_ORPHANED
 	}
 
 	pub fn register_waiter(
@@ -151,6 +170,76 @@ impl WatermarkState {
 		}
 	}
 
+	fn empty(&self) -> bool {
+		self.head < self.tail
+	}
+
+	fn mask(&self) -> u64 {
+		(self.ring.len() - 1) as u64
+	}
+
+	fn slot(&mut self, version: u64) -> &mut Slot {
+		let index = (version & self.mask()) as usize;
+		&mut self.ring[index]
+	}
+
+	fn is_begun(&self, version: u64) -> bool {
+		!self.empty()
+			&& version >= self.tail
+			&& version <= self.head
+			&& self.ring[(version & self.mask()) as usize].begun
+	}
+
+	fn admit(&mut self, version: u64) {
+		if self.empty() {
+			self.tail = version;
+			self.head = version;
+			return;
+		}
+
+		if version >= self.tail && version <= self.head {
+			return;
+		}
+
+		let tail = self.tail.min(version);
+		let head = self.head.max(version);
+		if head - tail >= self.ring.len() as u64 {
+			self.grow(head - tail + 1);
+		}
+		self.tail = tail;
+		self.head = head;
+
+		reifydb_assertions! {
+			assert!(
+				self.head - self.tail < self.ring.len() as u64,
+				"the watermark ring window {}..={} exceeds its {} slots; two distinct versions \
+				 would alias onto one slot and merge their refcounts, letting the frontier pass \
+				 a version that still has a live holder",
+				self.tail,
+				self.head,
+				self.ring.len()
+			);
+		}
+	}
+
+	fn grow(&mut self, span: u64) {
+		let mut slots = self.ring.len();
+		while (slots as u64) < span {
+			slots = slots.checked_mul(2).expect("watermark ring capacity overflowed usize");
+		}
+
+		let old_mask = self.mask();
+		let new_mask = (slots - 1) as u64;
+		let mut grown = vec![Slot::default(); slots].into_boxed_slice();
+		for version in self.tail..=self.head {
+			let slot = self.ring[(version & old_mask) as usize];
+			if !slot.vacant() {
+				grown[(version & new_mask) as usize] = slot;
+			}
+		}
+		self.ring = grown;
+	}
+
 	fn try_advance(
 		&mut self,
 		done_until: &AtomicU64,
@@ -159,52 +248,49 @@ impl WatermarkState {
 	) -> AdvanceOutcome {
 		let old_done_until = done_until.load(Ordering::SeqCst);
 		let mut until = old_done_until;
-		let mut pops: usize = 0;
+		let mut visits: usize = 0;
 		let mut capped_out = false;
 
-		while let Some(Reverse(min)) = self.indices.peek().copied() {
+		while !self.empty() {
 			if let AdvanceBudget::Capped(cap) = budget
-				&& pops >= cap
+				&& visits >= cap
 			{
 				capped_out = true;
 				break;
 			}
 
-			if !self.begun.contains(&min) {
-				if min <= old_done_until {
-					self.indices.pop();
-					self.pending.remove(&min);
-					pops += 1;
-					continue;
-				}
-				break;
-			}
+			let version = self.tail;
+			let index = (version & self.mask()) as usize;
+			let slot = self.ring[index];
 
-			if let Some(done) = self.pending.get(&min)
-				&& done.gt(&0)
-			{
+			if slot.begun && slot.refcount > 0 {
 				break;
 			}
 
 			reifydb_assertions! {
 				assert_eq!(
-					self.pending.get(&min).copied().unwrap_or(0),
+					slot.refcount,
 					0,
-					"version {min} is being popped from the watermark with a negative refcount, \
+					"version {version} is being consumed by the watermark with a negative refcount, \
 					 meaning mark_finished ran more often than register_in_flight for it; the \
 					 frontier may have advanced past a version that a later register believed \
 					 was still protected"
 				);
 			}
 
-			self.indices.pop();
-			self.pending.remove(&min);
-			self.begun.remove(&min);
-			pops += 1;
-			until = min;
+			self.ring[index] = Slot::default();
+			self.tail += 1;
+			visits += 1;
+			if slot.begun {
+				until = version;
+			}
 		}
 
-		if until != old_done_until {
+		if self.empty() && self.ring.len() > INITIAL_SLOTS {
+			self.ring = vec![Slot::default(); INITIAL_SLOTS].into_boxed_slice();
+		}
+
+		if until > old_done_until {
 			done_until.fetch_max(until, Ordering::SeqCst);
 
 			reifydb_assertions! {
@@ -263,13 +349,6 @@ impl WatermarkState {
 	}
 
 	fn cleanup_if_needed(&mut self, done_until: &AtomicU64, out: &mut Vec<Arc<WaiterHandle>>) {
-		if self.pending.len() > MAX_PENDING {
-			let current = done_until.load(Ordering::SeqCst);
-			let cutoff = current.saturating_sub(PENDING_CLEANUP_THRESHOLD);
-			self.pending.retain(|&k, _| k > cutoff);
-			self.begun.retain(|&k| k > cutoff);
-		}
-
 		if self.waiters.len() > MAX_WAITERS {
 			let current = done_until.load(Ordering::SeqCst);
 			let cutoff = current.saturating_sub(OLD_VERSION_THRESHOLD);
@@ -289,6 +368,20 @@ impl WatermarkState {
 			self.orphaned_done.retain(|&v| v > cutoff);
 		}
 	}
+
+	#[cfg(test)]
+	fn refcount(&self, version: u64) -> i32 {
+		self.ring[(version & self.mask()) as usize].refcount
+	}
+
+	#[cfg(test)]
+	fn live_range(&self) -> Option<(u64, u64)> {
+		if self.empty() {
+			None
+		} else {
+			Some((self.tail, self.head))
+		}
+	}
 }
 
 #[cfg(test)]
@@ -296,11 +389,11 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn duplicate_begin_pushes_the_heap_exactly_once() {
+	fn duplicate_begin_refcounts_one_slot_instead_of_admitting_twice() {
 		// Two register_in_flight calls for the same version (two snapshots sharing it) must
-		// refcount in `pending`, not duplicate the heap entry. A duplicate heap entry would
-		// survive the first pop and permanently block try_advance at that version, because
-		// the second pop finds the version no longer in `begun` and stops the frontier.
+		// refcount a single slot. Losing the second holder's count would let the frontier pass
+		// the version while that holder is still reading at it, exposing its snapshot to
+		// eviction; widening the window would leave a slot that nothing ever clears.
 		let mut state = WatermarkState::new();
 		let done_until = AtomicU64::new(0);
 		let mut out = Vec::new();
@@ -308,45 +401,116 @@ mod tests {
 		state.process_begin(1, &done_until, &mut out, AdvanceBudget::Unlimited);
 		state.process_begin(1, &done_until, &mut out, AdvanceBudget::Unlimited);
 
-		assert_eq!(state.indices.len(), 1, "second begin of the same version must not push a duplicate");
-		assert_eq!(state.pending.get(&1), Some(&2), "both begins must be refcounted");
+		assert_eq!(state.refcount(1), 2, "both begins must be refcounted onto one slot");
+		assert_eq!(state.live_range(), Some((1, 1)), "a repeated version must not widen the window");
 
 		state.process_done(1, &done_until, &mut out, AdvanceBudget::Unlimited);
 		assert_eq!(done_until.load(Ordering::SeqCst), 0, "one of two holders finishing must not advance");
 
 		state.process_done(1, &done_until, &mut out, AdvanceBudget::Unlimited);
 		assert_eq!(done_until.load(Ordering::SeqCst), 1, "the last holder finishing advances the frontier");
-		assert!(state.indices.is_empty(), "the popped version must leave the heap");
+		assert_eq!(state.live_range(), None, "the consumed version must leave the window");
 	}
 
 	#[test]
-	fn stale_index_entry_left_by_cleanup_does_not_wedge_the_frontier() {
-		// cleanup_if_needed retains `pending` and `begun` above a cutoff but never rebuilds
-		// `indices`, so after an overflow cleanup the heap can hold versions that no longer
-		// exist in `begun`. try_advance must skip such stale entries when they are already
-		// covered by done_until instead of treating them as a not-yet-begun version and
-		// freezing the frontier below them forever.
+	fn a_version_never_registered_here_does_not_wedge_the_frontier() {
+		// Each watermark sees its own subset of the version space, so the frontier must jump
+		// over version numbers that were allocated but never registered on it. Treating such a
+		// gap as a not-yet-begun version would freeze done_until below the true frontier
+		// forever, stalling every waiter above it and pinning GC at a version nobody reads.
 		let mut state = WatermarkState::new();
 		let done_until = AtomicU64::new(0);
 		let mut out = Vec::new();
 
 		state.process_begin(1, &done_until, &mut out, AdvanceBudget::Unlimited);
 		state.process_begin(2, &done_until, &mut out, AdvanceBudget::Unlimited);
-		state.process_begin(3, &done_until, &mut out, AdvanceBudget::Unlimited);
+		state.process_begin(4, &done_until, &mut out, AdvanceBudget::Unlimited);
 
-		// Mimic exactly what cleanup_if_needed does to version 1: forget it from the maps
-		// while its heap entry stays behind, with done_until already covering it.
-		state.begun.remove(&1);
-		state.pending.remove(&1);
-		done_until.store(1, Ordering::SeqCst);
-
+		state.process_done(1, &done_until, &mut out, AdvanceBudget::Unlimited);
 		state.process_done(2, &done_until, &mut out, AdvanceBudget::Unlimited);
-		state.process_done(3, &done_until, &mut out, AdvanceBudget::Unlimited);
+		assert_eq!(done_until.load(Ordering::SeqCst), 2, "the frontier stops below the live version 4");
+
+		state.process_done(4, &done_until, &mut out, AdvanceBudget::Unlimited);
+		assert_eq!(
+			done_until.load(Ordering::SeqCst),
+			4,
+			"the gap at version 3 must be skipped, not block the frontier"
+		);
+	}
+
+	#[test]
+	fn a_snapshot_at_the_frontier_pins_it_until_the_reader_finishes() {
+		// A read transaction registers the version it is reading at, which is routinely the
+		// version done_until already sits on. That registration is what stops GC evicting the
+		// snapshot out from under it, so the frontier must refuse to move past it even though
+		// the version is not above done_until.
+		let mut state = WatermarkState::new();
+		let done_until = AtomicU64::new(0);
+		let mut out = Vec::new();
+
+		state.process_begin(1, &done_until, &mut out, AdvanceBudget::Unlimited);
+		state.process_done(1, &done_until, &mut out, AdvanceBudget::Unlimited);
+		assert_eq!(done_until.load(Ordering::SeqCst), 1);
+
+		state.process_begin(1, &done_until, &mut out, AdvanceBudget::Unlimited);
+		state.process_begin(2, &done_until, &mut out, AdvanceBudget::Unlimited);
+		state.process_done(2, &done_until, &mut out, AdvanceBudget::Unlimited);
 
 		assert_eq!(
 			done_until.load(Ordering::SeqCst),
-			3,
-			"the stale heap entry for version 1 must be skipped, not block the frontier"
+			1,
+			"version 2 finishing must not advance past the reader still holding version 1"
+		);
+
+		state.process_done(1, &done_until, &mut out, AdvanceBudget::Unlimited);
+		assert_eq!(done_until.load(Ordering::SeqCst), 2, "releasing the reader lets the frontier catch up");
+	}
+
+	#[test]
+	fn a_window_wider_than_the_ring_grows_instead_of_aliasing() {
+		// The ring maps versions onto slots by masking, so two versions more than a full
+		// capacity apart land on the same slot. Holding a low version open while the head runs
+		// past tail + capacity must grow the ring; without growth the newer version would
+		// silently inherit the older one's refcount and the frontier would skip a live holder.
+		let mut state = WatermarkState::new();
+		let done_until = AtomicU64::new(0);
+		let mut out = Vec::new();
+
+		let span = INITIAL_SLOTS as u64 + 64;
+		state.process_begin(1, &done_until, &mut out, AdvanceBudget::Unlimited);
+		for version in 2..=span {
+			state.process_begin(version, &done_until, &mut out, AdvanceBudget::Unlimited);
+			state.process_done(version, &done_until, &mut out, AdvanceBudget::Unlimited);
+		}
+
+		assert_eq!(done_until.load(Ordering::SeqCst), 0, "version 1 is still held, so nothing may advance");
+		assert_eq!(state.refcount(1), 1, "the held version must survive the regrow intact");
+		assert_eq!(state.live_range(), Some((1, span)), "the window must span the whole live range");
+
+		state.process_done(1, &done_until, &mut out, AdvanceBudget::Unlimited);
+		assert_eq!(done_until.load(Ordering::SeqCst), span, "releasing version 1 drains the whole window");
+		assert_eq!(state.live_range(), None);
+	}
+
+	#[test]
+	fn a_done_arriving_before_its_begin_cancels_that_begin() {
+		// mark_finished can reach the watermark for a version that register_in_flight has not
+		// recorded yet. The done must be remembered and cancel the matching begin, otherwise
+		// that begin would wait forever for a completion that already happened and pin the
+		// frontier below it permanently.
+		let mut state = WatermarkState::new();
+		let done_until = AtomicU64::new(0);
+		let mut out = Vec::new();
+
+		state.process_begin(1, &done_until, &mut out, AdvanceBudget::Unlimited);
+		state.process_done(2, &done_until, &mut out, AdvanceBudget::Unlimited);
+		state.process_begin(2, &done_until, &mut out, AdvanceBudget::Unlimited);
+		state.process_done(1, &done_until, &mut out, AdvanceBudget::Unlimited);
+
+		assert_eq!(
+			done_until.load(Ordering::SeqCst),
+			2,
+			"the early done must satisfy version 2 rather than leave it pending"
 		);
 	}
 
