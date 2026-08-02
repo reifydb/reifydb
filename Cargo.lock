@@ -3810,6 +3810,7 @@ dependencies = [
  "reifydb-testing-chaos",
  "reifydb-testing-macro",
  "reifydb-value",
+ "rustc-hash",
  "smallvec",
  "test_each_file",
  "thiserror 2.0.18",

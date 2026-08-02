@@ -7,6 +7,13 @@ use std::{
 	hash::{Hash, Hasher},
 };
 
+#[inline]
+pub fn hash_item<T: Hash>(item: &T) -> u64 {
+	let mut hasher = DefaultHasher::new();
+	item.hash(&mut hasher);
+	hasher.finish()
+}
+
 #[derive(Debug, Clone)]
 pub struct BloomFilter {
 	bits: Vec<u64>,
@@ -84,9 +91,7 @@ impl BloomFilter {
 
 	#[inline]
 	fn hash<T: Hash>(&self, item: &T) -> u64 {
-		let mut hasher = DefaultHasher::new();
-		item.hash(&mut hasher);
-		hasher.finish()
+		hash_item(item)
 	}
 
 	#[inline]

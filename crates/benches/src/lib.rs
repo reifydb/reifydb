@@ -22,6 +22,25 @@ pub fn merge(histograms: impl IntoIterator<Item = Histogram<u64>>) -> Histogram<
 	merged
 }
 
+/// Returns the sample whose throughput is the median of the set.
+///
+/// Run-to-run variance on this workload is wide enough to swamp several of the wins being
+/// evaluated, so single samples are not decision-grade. Median (not mean) so one descheduled run
+/// cannot drag the reported figure.
+pub fn median_by_throughput<S>(samples: &[S], key: impl Fn(&S) -> (u64, Duration)) -> &S {
+	assert!(!samples.is_empty(), "median of an empty sample set is undefined");
+	let mut ranked: Vec<(f64, usize)> = samples
+		.iter()
+		.enumerate()
+		.map(|(index, sample)| {
+			let (ops, elapsed) = key(sample);
+			(ops as f64 / elapsed.as_secs_f64(), index)
+		})
+		.collect();
+	ranked.sort_by(|a, b| a.0.partial_cmp(&b.0).expect("throughput is finite"));
+	&samples[ranked[ranked.len() / 2].1]
+}
+
 pub struct BenchReport {
 	name: String,
 	lines: Vec<String>,

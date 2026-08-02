@@ -11,11 +11,14 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::config::{ConfigKey, GetConfig},
-	util::bloom::BloomFilter,
+	util::bloom::hash_item,
 };
 use reifydb_runtime::{
 	actor::system::ActorSpawner,
-	context::{clock::Clock, rng::Rng},
+	context::{
+		clock::{Clock, Instant},
+		rng::Rng,
+	},
 	sync::rwlock::RwLock,
 	version_epoch::{EpochSeconds, VersionEpoch},
 };
@@ -29,22 +32,80 @@ use crate::multi::{
 
 pub mod cleanup;
 
+#[derive(Clone, Copy)]
+pub(crate) struct SpanTiming {
+	recording: bool,
+}
+
+impl SpanTiming {
+	#[inline]
+	fn current() -> Self {
+		Self {
+			recording: !Span::current().is_disabled(),
+		}
+	}
+
+	#[inline]
+	fn mark(&self, clock: &Clock) -> Option<Instant> {
+		self.recording.then(|| clock.instant())
+	}
+
+	#[inline]
+	fn record_micros(&self, start: Option<Instant>, field: &'static str) {
+		if let Some(start) = start {
+			Span::current().record(field, start.elapsed().as_micros() as u64);
+		}
+	}
+}
+
+pub(crate) type OracleLock = RwLock<OracleState>;
+
+const WINDOW_KEY_CAPACITY: usize = 500;
+
+pub(crate) struct ModifiedKeyIndex {
+	hashes: HashSet<u64>,
+}
+
+impl ModifiedKeyIndex {
+	fn new() -> Self {
+		Self {
+			hashes: HashSet::with_capacity(WINDOW_KEY_CAPACITY),
+		}
+	}
+
+	#[inline]
+	fn insert(&mut self, key: &EncodedKey) {
+		self.hashes.insert(hash_item(key));
+	}
+
+	#[inline]
+	fn might_contain(&self, key: &EncodedKey) -> bool {
+		self.hashes.contains(&hash_item(key))
+	}
+
+	#[cfg(test)]
+	pub(crate) fn contains(&self, key: &EncodedKey) -> bool {
+		self.hashes.contains(&hash_item(key))
+	}
+
+	#[cfg(test)]
+	pub(crate) fn len(&self) -> usize {
+		self.hashes.len()
+	}
+}
+
 pub(crate) struct CommittedWindow {
 	transactions: Vec<CommittedTxn>,
-	modified_keys: HashSet<EncodedKey>,
-	bloom: BloomFilter,
+	modified_keys: ModifiedKeyIndex,
 	max_version: CommitVersion,
-	lock: RwLock<()>,
 }
 
 impl CommittedWindow {
 	fn new(min_version: CommitVersion) -> Self {
 		Self {
 			transactions: Vec::with_capacity(200),
-			modified_keys: HashSet::with_capacity(500),
-			bloom: BloomFilter::new(500),
+			modified_keys: ModifiedKeyIndex::new(),
 			max_version: min_version,
-			lock: RwLock::new(()),
 		}
 	}
 
@@ -53,8 +114,7 @@ impl CommittedWindow {
 
 		if let Some(ref conflicts) = txn.conflict_manager {
 			for key in conflicts.get_write_keys() {
-				self.modified_keys.insert(key.clone());
-				self.bloom.add(&key);
+				self.modified_keys.insert(key);
 			}
 		}
 
@@ -62,10 +122,7 @@ impl CommittedWindow {
 	}
 
 	fn might_have_key(&self, key: &EncodedKey) -> bool {
-		if !self.bloom.might_contain(key) {
-			return false;
-		}
-		self.modified_keys.contains(key)
+		self.modified_keys.might_contain(key)
 	}
 
 	pub(super) fn max_version(&self) -> CommitVersion {
@@ -96,7 +153,7 @@ where
 	L: VersionProvider,
 {
 	pub(crate) clock: L,
-	pub(crate) inner: RwLock<OracleState>,
+	pub(crate) inner: OracleLock,
 	pub(crate) query: WaterMark,
 	pub(crate) command: WaterMark,
 	pub(crate) leases: Arc<VersionLeases>,
@@ -124,7 +181,7 @@ where
 
 		Self {
 			clock,
-			inner: RwLock::new(OracleState {
+			inner: OracleLock::new(OracleState {
 				time_windows: BTreeMap::new(),
 				evicted_up_through: CommitVersion(0),
 			}),
@@ -180,26 +237,32 @@ where
 		version: CommitVersion,
 		conflicts: ConflictManager,
 	) -> Result<CreateCommitResult> {
-		let lock_start = self.metrics_clock.instant();
+		let timing = SpanTiming::current();
+		let window_size = self.config.get_config_uint8(ConfigKey::OracleWindowSize);
+
+		let lock_start = timing.mark(&self.metrics_clock);
 		let mut inner = self.inner.write();
-		Span::current().record("inner_write_lock_us", lock_start.elapsed().as_micros() as u64);
+		timing.record_micros(lock_start, "inner_write_lock_us");
 
 		if let Some(early) = self.check_too_old(&inner, version) {
 			return Ok(early);
 		}
 
-		if self.detect_conflicts(&inner, version, &conflicts) {
+		if self.detect_conflicts(&inner, version, &conflicts, timing) {
 			return Ok(CreateCommitResult::Conflict(conflicts));
 		}
 
-		let commit_version = self.allocate_commit_version()?;
-		let needs_cleanup = self.register_committed(&mut inner, commit_version, conflicts);
-
-		drop(inner);
+		let commit_version = self.allocate_commit_version(timing)?;
+		let needs_cleanup = self.register_committed(&mut inner, commit_version, conflicts, window_size, timing);
 
 		if needs_cleanup {
-			self.cleanup_old_windows();
+			let cleanup_start = timing.mark(&self.metrics_clock);
+			let safe_evict_below = self.query.done_until();
+			let state = &mut *inner;
+			cleanup_old_windows(&mut state.time_windows, &mut state.evicted_up_through, safe_evict_below);
+			timing.record_micros(cleanup_start, "cleanup_us");
 		}
+		drop(inner);
 
 		Ok(CreateCommitResult::Success(commit_version))
 	}
@@ -213,86 +276,79 @@ where
 		}
 	}
 
-	fn detect_conflicts(&self, inner: &OracleState, version: CommitVersion, conflicts: &ConflictManager) -> bool {
+	fn detect_conflicts(
+		&self,
+		inner: &OracleState,
+		version: CommitVersion,
+		conflicts: &ConflictManager,
+		timing: SpanTiming,
+	) -> bool {
 		let read_keys = conflicts.get_read_keys();
 		let write_keys = conflicts.get_write_keys();
-		Span::current().record("read_keys", read_keys.len());
-		Span::current().record("write_keys", write_keys.len());
+		if timing.recording {
+			Span::current().record("read_keys", read_keys.len());
+			Span::current().record("write_keys", write_keys.len());
+		}
 		let has_keys = !read_keys.is_empty() || !write_keys.is_empty();
 
-		let find_start = self.metrics_clock.instant();
-		let relevant_windows: Vec<CommitVersion> = if conflicts.has_range_operations() {
-			inner.time_windows.keys().copied().collect()
+		let find_start = timing.mark(&self.metrics_clock);
+		let relevant_windows: Vec<&CommittedWindow> = if conflicts.has_range_operations() {
+			inner.time_windows.values().collect()
 		} else if !has_keys {
 			Vec::new()
 		} else {
 			inner.time_windows
-				.iter()
-				.filter(|(_, win)| {
-					read_keys.iter().chain(write_keys.iter()).any(|k| win.might_have_key(k))
-				})
-				.map(|(v, _)| *v)
+				.values()
+				.filter(|win| read_keys.iter().chain(write_keys.iter()).any(|k| win.might_have_key(k)))
 				.collect()
 		};
-		Span::current().record("find_windows_us", find_start.elapsed().as_micros() as u64);
-		Span::current().record("relevant_windows", relevant_windows.len());
+		timing.record_micros(find_start, "find_windows_us");
+		if timing.recording {
+			Span::current().record("relevant_windows", relevant_windows.len());
+		}
 
-		let conflict_start = self.metrics_clock.instant();
+		let conflict_start = timing.mark(&self.metrics_clock);
 		let mut windows_checked = 0u64;
 		let mut txns_checked = 0u64;
-		for window_version in &relevant_windows {
-			if let Some(window) = inner.time_windows.get(window_version) {
-				windows_checked += 1;
-				if window.max_version <= version {
+		for window in &relevant_windows {
+			windows_checked += 1;
+			if window.max_version <= version {
+				continue;
+			}
+
+			for committed_txn in &window.transactions {
+				txns_checked += 1;
+				if committed_txn.version <= version {
 					continue;
 				}
 
-				if !conflicts.has_range_operations() {
-					let needs_detailed_check = read_keys
-						.iter()
-						.chain(write_keys.iter())
-						.any(|key| window.might_have_key(key));
-
-					if !needs_detailed_check {
-						continue;
-					}
-				}
-
-				let _window_lock = window.lock.read();
-
-				for committed_txn in &window.transactions {
-					txns_checked += 1;
-					if committed_txn.version <= version {
-						continue;
-					}
-
-					if let Some(old_conflicts) = &committed_txn.conflict_manager
-						&& conflicts.has_conflict(old_conflicts)
-					{
-						Span::current().record(
-							"conflict_check_us",
-							conflict_start.elapsed().as_micros() as u64,
-						);
+				if let Some(old_conflicts) = &committed_txn.conflict_manager
+					&& conflicts.has_conflict(old_conflicts)
+				{
+					timing.record_micros(conflict_start, "conflict_check_us");
+					if timing.recording {
 						Span::current().record("windows_checked", windows_checked);
 						Span::current().record("txns_checked", txns_checked);
 						Span::current().record("has_conflict", true);
-						return true;
 					}
+					return true;
 				}
 			}
 		}
-		Span::current().record("conflict_check_us", conflict_start.elapsed().as_micros() as u64);
-		Span::current().record("windows_checked", windows_checked);
-		Span::current().record("txns_checked", txns_checked);
+		timing.record_micros(conflict_start, "conflict_check_us");
+		if timing.recording {
+			Span::current().record("windows_checked", windows_checked);
+			Span::current().record("txns_checked", txns_checked);
+		}
 		false
 	}
 
 	#[inline]
-	fn allocate_commit_version(&self) -> Result<CommitVersion> {
+	fn allocate_commit_version(&self, timing: SpanTiming) -> Result<CommitVersion> {
 		let clock = self.clock.clone();
-		let clock_start = self.metrics_clock.instant();
+		let clock_start = timing.mark(&self.metrics_clock);
 		let commit_version = self.query.register_in_flight_with(|| clock.next())?;
-		Span::current().record("clock_next_us", clock_start.elapsed().as_micros() as u64);
+		timing.record_micros(clock_start, "clock_next_us");
 
 		self.version_epoch.record(EpochSeconds::new(self.metrics_clock.now().to_secs()), commit_version.0);
 
@@ -306,23 +362,14 @@ where
 		inner: &mut OracleState,
 		commit_version: CommitVersion,
 		conflicts: ConflictManager,
+		window_size: u64,
+		timing: SpanTiming,
 	) -> bool {
-		let add_start = self.metrics_clock.instant();
-		let window_size = self.config.get_config_uint8(ConfigKey::OracleWindowSize);
+		let add_start = timing.mark(&self.metrics_clock);
 		inner.add_committed_transaction(commit_version, conflicts, window_size);
-		Span::current().record("add_txn_us", add_start.elapsed().as_micros() as u64);
+		timing.record_micros(add_start, "add_txn_us");
 
 		inner.time_windows.len() > 1
-	}
-
-	#[inline]
-	fn cleanup_old_windows(&self) {
-		let cleanup_start = self.metrics_clock.instant();
-		let safe_evict_below = self.query.done_until();
-		let mut inner = self.inner.write();
-		let inner = &mut *inner;
-		cleanup_old_windows(&mut inner.time_windows, &mut inner.evicted_up_through, safe_evict_below);
-		Span::current().record("cleanup_us", cleanup_start.elapsed().as_micros() as u64);
 	}
 
 	pub(crate) fn bootstrapping_completed(&self) {
@@ -373,7 +420,7 @@ where
 			return Ok(CreateCommitResult::TooOld);
 		}
 
-		let commit_version = self.allocate_commit_version()?;
+		let commit_version = self.allocate_commit_version(SpanTiming::current())?;
 		drop(inner);
 
 		Ok(CreateCommitResult::Success(commit_version))

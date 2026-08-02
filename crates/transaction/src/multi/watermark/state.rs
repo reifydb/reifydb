@@ -3,7 +3,7 @@
 
 use std::{
 	cmp::Reverse,
-	collections::{BinaryHeap, HashMap, HashSet},
+	collections::BinaryHeap,
 	sync::{
 		Arc,
 		atomic::{AtomicU64, Ordering},
@@ -12,8 +12,12 @@ use std::{
 
 use reifydb_runtime::sync::waiter::WaiterHandle;
 use reifydb_value::reifydb_assertions;
+use rustc_hash::{FxHashMap, FxHashSet};
+use smallvec::SmallVec;
 
 use super::{MAX_PENDING, MAX_WAITERS, OLD_VERSION_THRESHOLD, PENDING_CLEANUP_THRESHOLD};
+
+type WaiterList = SmallVec<[Arc<WaiterHandle>; 1]>;
 
 const MAX_ORPHANED: usize = 10000;
 
@@ -39,10 +43,11 @@ pub enum AdvanceOutcome {
 #[derive(Default)]
 pub struct WatermarkState {
 	indices: BinaryHeap<Reverse<u64>>,
-	pending: HashMap<u64, i64>,
-	begun: HashSet<u64>,
-	orphaned_done: HashSet<u64>,
-	waiters: HashMap<u64, Vec<Arc<WaiterHandle>>>,
+	pending: FxHashMap<u64, i64>,
+	begun: FxHashSet<u64>,
+	orphaned_done: FxHashSet<u64>,
+	waiters: FxHashMap<u64, WaiterList>,
+	last_swept: u64,
 }
 
 impl WatermarkState {
@@ -166,7 +171,7 @@ impl WatermarkState {
 			}
 
 			if !self.begun.contains(&min) {
-				if min <= done_until.load(Ordering::SeqCst) {
+				if min <= old_done_until {
 					self.indices.pop();
 					self.pending.remove(&min);
 					pops += 1;
@@ -213,14 +218,17 @@ impl WatermarkState {
 			self.notify_waiters(old_done_until, until, out);
 		} else {
 			let current = done_until.load(Ordering::SeqCst);
-			self.waiters.retain(|&idx, waiters_list| {
-				if idx <= current {
-					out.append(waiters_list);
-					false
-				} else {
-					true
-				}
-			});
+			if current != self.last_swept && !self.waiters.is_empty() {
+				self.last_swept = current;
+				self.waiters.retain(|&idx, waiters_list| {
+					if idx <= current {
+						out.extend(waiters_list.drain(..));
+						false
+					} else {
+						true
+					}
+				});
+			}
 		}
 
 		if capped_out {
@@ -231,9 +239,25 @@ impl WatermarkState {
 	}
 
 	fn notify_waiters(&mut self, from: u64, to: u64, out: &mut Vec<Arc<WaiterHandle>>) {
+		if self.waiters.is_empty() {
+			return;
+		}
+
+		if (self.waiters.len() as u64) < to - from {
+			self.waiters.retain(|&idx, waiters_list| {
+				if idx > from && idx <= to {
+					out.extend(waiters_list.drain(..));
+					false
+				} else {
+					true
+				}
+			});
+			return;
+		}
+
 		(from + 1..=to).for_each(|idx| {
 			if let Some(mut waiters_list) = self.waiters.remove(&idx) {
-				out.append(&mut waiters_list);
+				out.extend(waiters_list.drain(..));
 			}
 		});
 	}
@@ -251,7 +275,7 @@ impl WatermarkState {
 			let cutoff = current.saturating_sub(OLD_VERSION_THRESHOLD);
 			self.waiters.retain(|&k, waiters_list| {
 				if k <= cutoff {
-					out.append(waiters_list);
+					out.extend(waiters_list.drain(..));
 					false
 				} else {
 					true
@@ -414,5 +438,49 @@ mod tests {
 		let outcome = state.process_done(1, &done_until, &mut out, AdvanceBudget::Unlimited);
 		assert_eq!(outcome, AdvanceOutcome::Complete, "a thousand-pop burst still completes inline");
 		assert_eq!(done_until.load(Ordering::SeqCst), 1_000);
+	}
+
+	#[test]
+	fn frontier_moved_by_another_path_still_releases_a_passed_over_waiter() {
+		// done_until can be raised by a path that notifies nobody, leaving a waiter enqueued for
+		// a version the frontier has already passed. The no-progress sweep in try_advance is the
+		// only thing that releases it. That sweep is skipped when the frontier has not moved
+		// since the previous sweep, so this pins the case where it HAS moved: skipping it here
+		// would park that caller forever.
+		let mut state = WatermarkState::new();
+		let done_until = AtomicU64::new(0);
+		let mut out = Vec::new();
+
+		state.register_waiter(5, Arc::new(WaiterHandle::new()), &done_until, &mut out);
+		assert!(out.is_empty(), "a waiter ahead of the frontier must be enqueued, not released");
+
+		done_until.store(10, Ordering::SeqCst);
+		state.advance_chunk(&done_until, &mut out, 4);
+
+		assert_eq!(out.len(), 1, "a waiter the frontier passed must be released by the sweep");
+		assert!(state.waiters.is_empty(), "the released waiter must leave the map");
+	}
+
+	#[test]
+	fn repeated_sweeps_at_an_unchanged_frontier_do_not_drop_a_live_waiter() {
+		// The sweep is guarded on the frontier having moved, so it runs at most once per
+		// frontier value. A waiter registered ahead of an unchanged frontier must survive every
+		// subsequent no-progress call rather than being released early, which would wake a
+		// reader before its snapshot version was actually durable.
+		let mut state = WatermarkState::new();
+		let done_until = AtomicU64::new(7);
+		let mut out = Vec::new();
+
+		state.register_waiter(9, Arc::new(WaiterHandle::new()), &done_until, &mut out);
+		for _ in 0..3 {
+			state.advance_chunk(&done_until, &mut out, 4);
+		}
+
+		assert!(out.is_empty(), "a waiter above the frontier must not be released");
+		assert_eq!(state.waiters.len(), 1, "it must still be enqueued");
+
+		done_until.store(9, Ordering::SeqCst);
+		state.advance_chunk(&done_until, &mut out, 4);
+		assert_eq!(out.len(), 1, "reaching its version releases it");
 	}
 }
