@@ -2880,6 +2880,7 @@ name = "reifydb-benches"
 version = "0.8.1"
 dependencies = [
  "hdrhistogram",
+ "reifydb-allocator",
  "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",

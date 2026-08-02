@@ -28,6 +28,8 @@ use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTr
 use reifydb_store_single::SingleStore;
 use reifydb_value::{util::cowvec::CowVec, value::{Value, row_number::RowNumber}};
 
+reifydb_allocator::set_global_allocator!();
+
 const TXNS_PER_THREAD: u64 = 50_000;
 const REPEATS: usize = 5;
 

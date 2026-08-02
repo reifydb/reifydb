@@ -15,6 +15,7 @@ publish = false
 hdrhistogram = { workspace = true }
 
 [dev-dependencies]
+reifydb-allocator = { workspace = true, features = ["alloc-jemalloc"] }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
