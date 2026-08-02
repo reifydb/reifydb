@@ -174,6 +174,17 @@ impl WatermarkState {
 		self.head < self.tail
 	}
 
+	#[cfg(reifydb_assertions)]
+	pub(crate) fn min_live_in_flight(&self) -> Option<u64> {
+		if self.empty() {
+			return None;
+		}
+		(self.tail..=self.head).find(|&version| {
+			let slot = self.ring[(version & self.mask()) as usize];
+			slot.begun && slot.refcount > 0
+		})
+	}
+
 	fn mask(&self) -> u64 {
 		(self.ring.len() - 1) as u64
 	}

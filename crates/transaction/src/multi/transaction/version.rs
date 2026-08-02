@@ -20,6 +20,8 @@ const BLOCK_SIZE: u64 = 100_000;
 
 pub trait VersionProvider: Send + Sync + Clone {
 	fn next(&self) -> Result<CommitVersion>;
+	fn reserve(&self) -> Result<CommitVersion>;
+	fn publish(&self, version: CommitVersion);
 	fn current(&self) -> Result<CommitVersion>;
 
 	fn advance_to(&self, _version: CommitVersion) {}
@@ -91,20 +93,18 @@ impl StandardVersionProvider {
 	}
 }
 
-impl VersionProvider for StandardVersionProvider {
-	fn next(&self) -> Result<CommitVersion> {
-		let version = self.next_version.fetch_add(1, Ordering::SeqCst) + 1;
-
+impl StandardVersionProvider {
+	fn cover_with_persisted_block(&self, version: u64) -> Result<()> {
 		let block_end = self.current_block_end.load(Ordering::SeqCst);
 		if version <= block_end {
-			return Ok(CommitVersion(version));
+			return Ok(());
 		}
 
 		let _lock = self.block_persist_lock.lock();
 
 		let block_end = self.current_block_end.load(Ordering::SeqCst);
 		if version <= block_end {
-			return Ok(CommitVersion(version));
+			return Ok(());
 		}
 
 		let new_block_start = (version / BLOCK_SIZE) * BLOCK_SIZE;
@@ -122,7 +122,25 @@ impl VersionProvider for StandardVersionProvider {
 				 persisted_block_end={new_block_end})"
 			);
 		}
+		Ok(())
+	}
+}
+
+impl VersionProvider for StandardVersionProvider {
+	fn next(&self) -> Result<CommitVersion> {
+		let version = self.next_version.fetch_add(1, Ordering::SeqCst) + 1;
+		self.cover_with_persisted_block(version)?;
 		Ok(CommitVersion(version))
+	}
+
+	fn reserve(&self) -> Result<CommitVersion> {
+		let version = self.next_version.load(Ordering::SeqCst) + 1;
+		self.cover_with_persisted_block(version)?;
+		Ok(CommitVersion(version))
+	}
+
+	fn publish(&self, version: CommitVersion) {
+		self.next_version.fetch_max(version.0, Ordering::SeqCst);
 	}
 
 	fn current(&self) -> Result<CommitVersion> {
@@ -241,6 +259,52 @@ pub mod tests {
 
 		assert_eq!(all_versions[0], 1);
 		assert_eq!(all_versions[999], 1000);
+	}
+
+	#[test]
+	fn a_reserved_version_stays_invisible_until_published() {
+		// The oracle registers a reserved version on both watermarks before publishing it;
+		// if reserve bumped the public counter, a concurrent begin could snapshot at a
+		// version no watermark knows about, and the commit frontier could pass it before
+		// registration - the torn-snapshot / lost-CDC window this API exists to close.
+		let single = SingleTransaction::testing();
+		let provider = StandardVersionProvider::new(single).unwrap();
+
+		let reserved = provider.reserve().unwrap();
+		assert_eq!(reserved, 1);
+		assert_eq!(provider.current().unwrap(), 0, "reserve must not move the public version");
+
+		let reserved_again = provider.reserve().unwrap();
+		assert_eq!(reserved_again, 1, "an unpublished reservation must not consume the version");
+
+		provider.publish(reserved);
+		assert_eq!(provider.current().unwrap(), 1);
+		assert_eq!(provider.next().unwrap(), 2);
+	}
+
+	#[test]
+	fn reserving_across_a_block_boundary_persists_the_new_block() {
+		// A crash between reserve and publish must never let a restart reissue the reserved
+		// version to a different commit; the block covering it has to be durable at reserve
+		// time, exactly as next() guarantees for published versions.
+		let single = SingleTransaction::testing();
+
+		{
+			let provider = StandardVersionProvider::new(single.clone()).unwrap();
+			for _ in 0..BLOCK_SIZE {
+				provider.next().unwrap();
+			}
+			let reserved = provider.reserve().unwrap();
+			assert_eq!(reserved, BLOCK_SIZE + 1);
+			provider.publish(reserved);
+			assert_eq!(provider.current().unwrap(), BLOCK_SIZE + 1);
+		}
+
+		let restarted = StandardVersionProvider::new(single).unwrap();
+		assert!(
+			restarted.next().unwrap().0 > BLOCK_SIZE + 1,
+			"a restart handed out a version at or below one that was already reserved"
+		);
 	}
 
 	#[test]

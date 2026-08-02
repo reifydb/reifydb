@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[allow(clippy::disallowed_types)]
+use std::time::Duration;
 use std::{
 	env, fs,
 	path::PathBuf,
 	process::Command,
-	time::{Duration, SystemTime, UNIX_EPOCH},
+	time::{SystemTime, UNIX_EPOCH},
 };
 
 use hdrhistogram::Histogram;
@@ -27,6 +29,7 @@ pub fn merge(histograms: impl IntoIterator<Item = Histogram<u64>>) -> Histogram<
 /// Run-to-run variance on this workload is wide enough to swamp several of the wins being
 /// evaluated, so single samples are not decision-grade. Median (not mean) so one descheduled run
 /// cannot drag the reported figure.
+#[allow(clippy::disallowed_types)]
 pub fn median_by_throughput<S>(samples: &[S], key: impl Fn(&S) -> (u64, Duration)) -> &S {
 	assert!(!samples.is_empty(), "median of an empty sample set is undefined");
 	let mut ranked: Vec<(f64, usize)> = samples
@@ -54,6 +57,7 @@ impl BenchReport {
 		}
 	}
 
+	#[allow(clippy::disallowed_types)]
 	pub fn record(&mut self, label: &str, ops: u64, elapsed: Duration, histogram: &Histogram<u64>) {
 		let ops_per_sec = ops as f64 / elapsed.as_secs_f64();
 		let line = format!(
@@ -69,6 +73,7 @@ impl BenchReport {
 		self.lines.push(line);
 	}
 
+	#[allow(clippy::disallowed_types)]
 	pub fn record_throughput(&mut self, label: &str, ops: u64, elapsed: Duration) {
 		let ops_per_sec = ops as f64 / elapsed.as_secs_f64();
 		let line = format!("{label} ops={ops} elapsed_ms={} ops_per_sec={ops_per_sec:.0}", elapsed.as_millis());
@@ -112,6 +117,7 @@ fn git_revision() -> String {
 	}
 }
 
+#[allow(clippy::disallowed_methods)]
 fn unix_seconds() -> u64 {
 	SystemTime::now().duration_since(UNIX_EPOCH).expect("system clock is past the epoch").as_secs()
 }

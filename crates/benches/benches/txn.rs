@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{sync::Arc, thread, time::Instant};
+use std::{
+	collections::HashSet,
+	env,
+	sync::Arc,
+	thread,
+	time::{Duration, Instant},
+};
 
+use hdrhistogram::Histogram;
+use reifydb_allocator::set_global_allocator;
 use reifydb_benches::{BenchReport, latency_histogram, median_by_throughput, merge};
 use reifydb_codec::{encoded::row::EncodedRow, key as keycode, key::encoded::EncodedKey};
 use reifydb_core::{
@@ -14,7 +22,7 @@ use reifydb_core::{
 			id::TableId,
 			storage::StorageId,
 		},
-		store::classify_key,
+		store::{EntryKind, classify_key},
 	},
 	key::{EncodableKey, row::RowKey},
 };
@@ -24,21 +32,18 @@ use reifydb_runtime::{
 	version_epoch::VersionEpoch,
 };
 use reifydb_store_multi::MultiStore;
-use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
 use reifydb_store_single::SingleStore;
-use reifydb_value::{util::cowvec::CowVec, value::{Value, row_number::RowNumber}};
+use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
+use reifydb_value::{
+	util::cowvec::CowVec,
+	value::{Value, row_number::RowNumber},
+};
 
-reifydb_allocator::set_global_allocator!();
+set_global_allocator!();
 
 const TXNS_PER_THREAD: u64 = 50_000;
 const REPEATS: usize = 5;
 
-/// Which storage entry each thread's writes land in.
-///
-/// Storage locks are striped per `EntryKind::Source(StorageId)` - that is, per table - and NOT per
-/// key, so distinct rows in one table still serialize on the same three per-entry write locks.
-/// Running both modes and diffing the curves separates storage-tier contention (visible only in
-/// `SharedTable`) from oracle/watermark contention (present in both).
 #[derive(Clone, Copy, PartialEq)]
 enum TableLayout {
 	SharedTable,
@@ -92,9 +97,6 @@ fn build_stack() -> (ActorSystem, MultiTransaction) {
 }
 
 fn encoded_key(layout: TableLayout, thread_id: u64, index: u64) -> EncodedKey {
-	// The row number must carry thread_id even in SharedTable mode: threads share one StorageId
-	// there by design, so numbering rows by index alone would make every thread write the same
-	// keys and turn a throughput benchmark into a conflict benchmark.
 	RowKey {
 		storage: layout.storage_for(thread_id),
 		row: RowNumber(thread_id * TXNS_PER_THREAD + index + 1),
@@ -108,9 +110,9 @@ fn encoded_row(value: u64) -> EncodedRow {
 
 struct Sample {
 	ops: u64,
-	elapsed: std::time::Duration,
-	begin: hdrhistogram::Histogram<u64>,
-	commit: hdrhistogram::Histogram<u64>,
+	elapsed: Duration,
+	begin: Histogram<u64>,
+	commit: Histogram<u64>,
 }
 
 fn run_once(threads: usize, layout: TableLayout) -> Sample {
@@ -162,17 +164,12 @@ fn write_txns(report: &mut BenchReport, threads: usize, layout: TableLayout) {
 }
 
 fn verify_key_classification() {
-	// The previous version of this benchmark used keycode::serialize(&u64) keys, which do not
-	// decode as Key::Row. classify_key therefore returned EntryKind::Multi for every thread and
-	// funnelled all writers onto a single storage Entry, so the measured curve was dominated by
-	// storage-tier lock contention that no realistic workload would see. Assert the encoding is
-	// right, or every number this benchmark prints is measuring the wrong thing.
 	let shared = classify_key(&encoded_key(TableLayout::SharedTable, 0, 0));
 	let other = classify_key(&encoded_key(TableLayout::SharedTable, 7, 0));
 	assert_eq!(shared, other, "shared_table must place every thread in one storage entry");
 	assert_ne!(
 		shared,
-		reifydb_core::interface::store::EntryKind::Multi,
+		EntryKind::Multi,
 		"benchmark keys must decode as Key::Row, otherwise every thread contends on EntryKind::Multi"
 	);
 
@@ -180,11 +177,8 @@ fn verify_key_classification() {
 	let b = classify_key(&encoded_key(TableLayout::TablePerThread, 1, 0));
 	assert_ne!(a, b, "table_per_thread must place each thread in its own storage entry");
 
-	// Threads must never write the same key, in either layout. If they do, the workload becomes
-	// an OCC conflict benchmark and commit() starts failing - which is what happens when the row
-	// number is derived from the loop index alone.
 	for layout in [TableLayout::SharedTable, TableLayout::TablePerThread] {
-		let mut seen = std::collections::HashSet::new();
+		let mut seen = HashSet::new();
 		for thread_id in 0..32u64 {
 			for index in [0u64, 1, TXNS_PER_THREAD - 1] {
 				let key = encoded_key(layout, thread_id, index);
@@ -202,17 +196,9 @@ fn verify_key_classification() {
 fn main() {
 	verify_key_classification();
 
-	// MATRIX=1 trims to the high-thread region on one layout. Below ~12 threads run-to-run
-	// variance is wider than the effects being compared (two byte-identical 1-thread configs
-	// measured 31% apart), so those points cannot rank anything; the 16/24/32 region agreed to
-	// within 1% across layouts and is the only part of the curve worth A/B-ing against.
-	let matrix = std::env::var("MATRIX").is_ok();
+	let matrix = env::var("MATRIX").is_ok();
 
-	// THREADS pins the sweep to a single width so an external `taskset` decides which physical
-	// cores are used. That turns cache locality into the only free variable: the same thread
-	// count placed inside one L3 domain versus split across two isolates cross-fabric hand-off
-	// cost from queueing, which no amount of thread-count sweeping can separate.
-	let fixed: Option<usize> = std::env::var("THREADS").ok().and_then(|v| v.parse().ok());
+	let fixed: Option<usize> = env::var("THREADS").ok().and_then(|v| v.parse().ok());
 
 	let mut report = BenchReport::new("txn");
 	let layouts: &[TableLayout] = if matrix || fixed.is_some() {

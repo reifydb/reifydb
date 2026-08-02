@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(not(reifydb_single_threaded))]
+use std::thread::JoinHandle;
 use std::{
 	collections::{BTreeMap, HashSet},
 	ops::Deref,
 	sync::Arc,
 };
-#[cfg(not(reifydb_single_threaded))]
-use std::thread::JoinHandle;
 
 use cleanup::cleanup_old_windows;
 use commit_queue::CommitQueue;
@@ -28,7 +28,7 @@ use reifydb_runtime::{
 	sync::rwlock::RwLock,
 	version_epoch::{EpochSeconds, VersionEpoch},
 };
-use reifydb_value::Result;
+use reifydb_value::{Result, reifydb_assertions};
 use smallvec::SmallVec;
 use tracing::{Span, field, instrument};
 
@@ -437,14 +437,24 @@ where
 
 	#[inline]
 	fn allocate_commit_version(&self, timing: SpanTiming) -> Result<CommitVersion> {
-		let clock = self.clock.clone();
 		let clock_start = timing.mark(&self.metrics_clock);
-		let commit_version = self.query.register_in_flight_with(|| clock.next())?;
+		let commit_version = self.clock.reserve()?;
+		self.query.register_in_flight(commit_version);
+		self.command.register_in_flight(commit_version);
+		reifydb_assertions! {
+			assert!(
+				self.command.done_until() < commit_version,
+				"the commit frontier already passed version {} before it was registered; a \
+				 snapshot opened at or above it would tear, and CDC consumers checkpointed \
+				 past it would permanently skip its changes",
+				commit_version.0
+			);
+		}
+		self.clock.publish(commit_version);
 		timing.record_micros(clock_start, "clock_next_us");
 
 		self.version_epoch.record(EpochSeconds::new(self.metrics_clock.now().to_secs()), commit_version.0);
 
-		self.command.register_in_flight(commit_version);
 		Ok(commit_version)
 	}
 }
@@ -509,6 +519,14 @@ mod tests {
 	impl VersionProvider for MockVersionProvider {
 		fn next(&self) -> Result<CommitVersion> {
 			Ok(CommitVersion(self.current.fetch_add(1, Ordering::Relaxed) + 1))
+		}
+
+		fn reserve(&self) -> Result<CommitVersion> {
+			Ok(CommitVersion(self.current.load(Ordering::Relaxed) + 1))
+		}
+
+		fn publish(&self, version: CommitVersion) {
+			self.current.fetch_max(version.0, Ordering::Relaxed);
 		}
 
 		fn current(&self) -> Result<CommitVersion> {
@@ -966,8 +984,7 @@ mod tests {
 			max_version = max_version.max(handle.join().unwrap());
 		}
 
-		let reached =
-			oracle.command.wait_for_mark_timeout(max_version, Duration::from_seconds(5).unwrap());
+		let reached = oracle.command.wait_for_mark_timeout(max_version, Duration::from_seconds(5).unwrap());
 		assert!(
 			reached,
 			"done_until stalled below {}; a commit was serviced without registering on \

@@ -19,7 +19,7 @@ use reifydb_runtime::{
 	},
 	sync::{mutex::Mutex, waiter::WaiterHandle},
 };
-use reifydb_value::value::duration::Duration;
+use reifydb_value::{reifydb_assertions, value::duration::Duration};
 use tracing::instrument;
 
 #[cfg(not(reifydb_single_threaded))]
@@ -157,6 +157,17 @@ impl WaterMark {
 	}
 
 	pub fn advance_to(&self, version: CommitVersion) {
+		reifydb_assertions! {
+			if let Some(live) = self.state.lock().min_live_in_flight() {
+				assert!(
+					version.0 < live,
+					"advancing the frontier to {} by fiat would leap over the live in-flight \
+					 version {}; consumers would treat that commit as applied before its writes \
+					 exist, tearing snapshots and permanently skipping its CDC events",
+					version.0, live
+				);
+			}
+		}
 		self.shared.done_until.fetch_max(version.0, Ordering::SeqCst);
 	}
 
@@ -205,9 +216,13 @@ impl WaterMark {
 
 #[cfg(test)]
 pub mod tests {
+	#[cfg(not(reifydb_single_threaded))]
+	use std::sync::atomic::AtomicBool;
 	use std::{sync::atomic::AtomicUsize, thread, thread::sleep};
 
-	use reifydb_runtime::context::clock::Clock;
+	#[cfg(reifydb_single_threaded)]
+	use reifydb_runtime::context::clock::MockClock;
+	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 
 	use super::*;
 	use crate::multi::watermark::OLD_VERSION_THRESHOLD;
@@ -505,11 +520,11 @@ pub mod tests {
 	}
 
 	#[cfg(not(reifydb_single_threaded))]
-	fn watermark_with_live_advancer(name: &str) -> (reifydb_runtime::actor::system::ActorSystem, WaterMark) {
+	fn watermark_with_live_advancer(name: &str) -> (ActorSystem, WaterMark) {
 		// The returned ActorSystem must stay alive for the test's duration; dropping it
 		// kills the advancer and silently degrades every kick into the inline fallback,
 		// which would make the actor-path assertions vacuously pass.
-		let system = reifydb_runtime::actor::system::ActorSystem::testing(Clock::Real);
+		let system = ActorSystem::testing(Clock::Real);
 		let spawner = system.spawner();
 		let watermark = WaterMark::with_advancer(name.into(), &spawner);
 		(system, watermark)
@@ -643,6 +658,20 @@ pub mod tests {
 		assert_eq!(reentered.load(Ordering::SeqCst), 1, "callback ran exactly once");
 	}
 
+	#[cfg(reifydb_assertions)]
+	#[test]
+	#[should_panic(expected = "leap over the live in-flight")]
+	fn fiat_advance_over_a_live_in_flight_version_panics_under_assertions() {
+		// advance_to is a bare fetch_max on done_until that bypasses the ring entirely
+		// (bootstrap and replica-apply use it); if it ever leaps over a version that is
+		// registered but not yet finished, consumers treat that commit as applied before
+		// its writes exist - torn snapshots and permanently skipped CDC events. The
+		// tripwire must turn that silent downstream corruption into a loud local panic.
+		let watermark = WaterMark::new("advance-tripwire".into());
+		watermark.register_in_flight(CommitVersion(5));
+		watermark.advance_to(CommitVersion(10));
+	}
+
 	#[test]
 	fn new_without_advancer_advances_fully_inline() {
 		// WaterMark::new is the no-advancer configuration (unit fixtures, single-threaded
@@ -726,8 +755,8 @@ pub mod tests {
 		// consumers treat done_until as a GC cutoff that only grows.
 		let (_system, watermark) = watermark_with_live_advancer("monotonic");
 		let watermark = Arc::new(watermark);
-		let counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
-		let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+		let counter = Arc::new(AtomicU64::new(0));
+		let stop = Arc::new(AtomicBool::new(false));
 		let total = 200_000u64;
 
 		let sampler = {
@@ -778,9 +807,7 @@ pub mod tests {
 		// Single-threaded builds (wasm, DST) must never spawn the advancer: actor sends
 		// run handlers inline on the caller's stack there, and the RefCell-backed mutex
 		// would panic on the re-entrant state lock.
-		let system = reifydb_runtime::actor::system::ActorSystem::testing(Clock::Mock(
-			reifydb_runtime::context::clock::MockClock::from_millis(0),
-		));
+		let system = ActorSystem::testing(Clock::Mock(MockClock::from_millis(0)));
 		let watermark = WaterMark::with_advancer("single-threaded".into(), &system.spawner());
 		assert!(
 			matches!(watermark.advancer, AdvancerHandle::Inline),
