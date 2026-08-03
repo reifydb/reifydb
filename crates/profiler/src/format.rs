@@ -122,13 +122,13 @@ pub fn aggregates_table(records: &[AggregateRecord], top_n: usize) -> String {
 #[inline]
 fn write_accumulator_header(out: &mut String, records: &[AggregateRecord]) {
 	let total_calls: u64 = records.iter().map(|r| r.calls).sum();
-	let total_us: u64 = records.iter().map(|r| r.total_us).sum();
+	let self_us: u64 = records.iter().map(|r| r.self_us).sum();
 	let _ = writeln!(
 		out,
-		"profile (accumulator) {} records, {} calls, total={}",
+		"profile (accumulator) {} records, {} calls, self={}",
 		records.len(),
 		total_calls,
-		fmt_us(total_us)
+		fmt_us(self_us)
 	);
 }
 
@@ -139,14 +139,14 @@ fn render_category(out: &mut String, records: &[AggregateRecord], cat: ProfilerC
 		return;
 	}
 	let cat_calls: u64 = cat_records.iter().map(|r| r.calls).sum();
-	let cat_total: u64 = cat_records.iter().map(|r| r.total_us).sum();
+	let cat_self: u64 = cat_records.iter().map(|r| r.self_us).sum();
 	let _ = writeln!(
 		out,
-		"  {}: {} records, {} calls, total={}",
+		"  {}: {} records, {} calls, self={}",
 		category_label(cat),
 		cat_records.len(),
 		cat_calls,
-		fmt_us(cat_total)
+		fmt_us(cat_self)
 	);
 
 	let mut by_name: HashMap<&str, Vec<&AggregateRecord>> = HashMap::new();
@@ -581,6 +581,7 @@ mod tests {
 				dimensions: Vec::new(),
 				calls: 6,
 				total_us: 1_000,
+				self_us: 1_000,
 				histogram: PercentileHistogram::new(),
 				extras_sum: [0; MAX_EXTRAS],
 			},
@@ -590,6 +591,7 @@ mod tests {
 				dimensions: vec!["map".to_string(), "n1".to_string()],
 				calls: 3,
 				total_us: 5_000,
+				self_us: 5_000,
 				histogram: PercentileHistogram::new(),
 				extras_sum: [0; MAX_EXTRAS],
 			},
@@ -599,6 +601,7 @@ mod tests {
 				dimensions: vec!["filter".to_string(), "n2".to_string()],
 				calls: 2,
 				total_us: 3_000,
+				self_us: 3_000,
 				histogram: PercentileHistogram::new(),
 				extras_sum: [0; MAX_EXTRAS],
 			},
@@ -608,18 +611,19 @@ mod tests {
 				dimensions: Vec::new(),
 				calls: 30,
 				total_us: 1_500,
+				self_us: 1_500,
 				histogram: PercentileHistogram::new(),
 				extras_sum: [0; MAX_EXTRAS],
 			},
 		];
 		let table = aggregates_table(&records, 10);
-		assert!(table.starts_with("profile (accumulator) 4 records, 41 calls, total="));
-		assert!(table.contains("Flow: 3 records, 11 calls, total="));
+		assert!(table.starts_with("profile (accumulator) 4 records, 41 calls, self="));
+		assert!(table.contains("Flow: 3 records, 11 calls, self="));
 		assert!(table.contains("flow::engine::apply [2 ops, total="));
 		assert!(table.contains("\n      map@n1  "), "expected nested map@n1 row, got:\n{}", table);
 		assert!(table.contains("\n      filter@n2  "), "expected nested filter@n2 row, got:\n{}", table);
 		assert!(table.contains("\n    flow::engine::process_batch  total="));
-		assert!(table.contains("Storage: 1 records, 30 calls, total="));
+		assert!(table.contains("Storage: 1 records, 30 calls, self="));
 		assert!(table.contains("\n    store::multi::write  total="));
 	}
 
@@ -631,6 +635,7 @@ mod tests {
 			dimensions: vec![op.to_string()],
 			calls: 1,
 			total_us: total,
+			self_us: total,
 			histogram: PercentileHistogram::new(),
 			extras_sum: [0; MAX_EXTRAS],
 		};
@@ -644,6 +649,42 @@ mod tests {
 	}
 
 	#[test]
+	fn a_category_total_counts_each_span_once_across_nesting() {
+		// A parent's inclusive total already contains its children, so summing totals counts every
+		// leaf once per ancestor above it. That is what reported 2.3s of Flow work inside a 10s
+		// window and made Join look like a larger share of the engine than it is.
+		let parent = AggregateRecord {
+			category: ProfilerCategory::Flow,
+			span_name: "flow::operator::join::insert".to_string(),
+			dimensions: Vec::new(),
+			calls: 1,
+			total_us: 1_000,
+			self_us: 200,
+			histogram: PercentileHistogram::new(),
+			extras_sum: [0; MAX_EXTRAS],
+		};
+		let child = AggregateRecord {
+			span_name: "flow::operator::join::store::put_row".to_string(),
+			total_us: 800,
+			self_us: 800,
+			..parent.clone()
+		};
+
+		let table = aggregates_table(&[parent, child], 10);
+
+		assert!(
+			table.contains("Flow: 2 records, 2 calls, self=1.0ms"),
+			"the category must report 200us of parent work plus 800us of child work, not 1.8ms:\n{}",
+			table
+		);
+		assert!(
+			table.contains("flow::operator::join::insert  total=1.0ms"),
+			"per-span rows stay inclusive so the nesting is still readable:\n{}",
+			table
+		);
+	}
+
+	#[test]
 	fn aggregates_table_single_no_dim_record_renders_inline() {
 		let records = vec![AggregateRecord {
 			category: ProfilerCategory::Flow,
@@ -651,6 +692,7 @@ mod tests {
 			dimensions: Vec::new(),
 			calls: 5,
 			total_us: 800,
+			self_us: 800,
 			histogram: PercentileHistogram::new(),
 			extras_sum: [0; MAX_EXTRAS],
 		}];

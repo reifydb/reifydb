@@ -21,6 +21,7 @@ pub struct MinimalSpanRecord {
 	pub category_id: u8,
 	pub callsite_id: u64,
 	pub duration_us: u32,
+	pub self_us: u32,
 	pub dim_indices: [DimIdx; MAX_DIMENSIONS],
 	pub extras: [u64; MAX_EXTRAS],
 }
@@ -31,6 +32,7 @@ impl MinimalSpanRecord {
 			category_id: category as u8,
 			callsite_id,
 			duration_us,
+			self_us: duration_us,
 			dim_indices: [DIM_UNSET; MAX_DIMENSIONS],
 			extras: [0; MAX_EXTRAS],
 		}
@@ -76,14 +78,16 @@ pub struct AggregateRecord {
 	pub dimensions: Vec<String>,
 	pub calls: u64,
 	pub total_us: u64,
+	pub self_us: u64,
 	pub histogram: PercentileHistogram,
 	pub extras_sum: [u64; MAX_EXTRAS],
 }
 
 impl AggregateRecord {
-	pub fn fold(&mut self, duration_us: u32, extras: &[u64; MAX_EXTRAS]) {
+	pub fn fold(&mut self, duration_us: u32, self_us: u32, extras: &[u64; MAX_EXTRAS]) {
 		self.calls = self.calls.saturating_add(1);
 		self.total_us = self.total_us.saturating_add(duration_us as u64);
+		self.self_us = self.self_us.saturating_add(self_us as u64);
 		self.histogram.observe(duration_us);
 		for (sum, &extra) in self.extras_sum.iter_mut().zip(extras.iter()) {
 			*sum = sum.saturating_add(extra);
@@ -131,15 +135,20 @@ mod tests {
 			dimensions: vec!["map".to_string(), "n1".to_string()],
 			calls: 0,
 			total_us: 0,
+			self_us: 0,
 			histogram: PercentileHistogram::new(),
 			extras_sum: [0; MAX_EXTRAS],
 		};
-		agg.fold(100, &[10, 20, 0, 0]);
-		agg.fold(50, &[5, 10, 0, 0]);
-		agg.fold(200, &[2, 4, 0, 0]);
+		agg.fold(100, 60, &[10, 20, 0, 0]);
+		agg.fold(50, 50, &[5, 10, 0, 0]);
+		agg.fold(200, 120, &[2, 4, 0, 0]);
 
 		assert_eq!(agg.calls, 3);
 		assert_eq!(agg.total_us, 350);
+		assert_eq!(
+			agg.self_us, 230,
+			"self time accumulates apart from the inclusive total, so nesting cannot inflate it"
+		);
 		assert_eq!(agg.extras_sum, [17, 34, 0, 0]);
 		assert_eq!(agg.histogram.total_count(), 3);
 		let p = agg.histogram.percentiles();

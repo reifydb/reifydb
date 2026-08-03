@@ -54,6 +54,7 @@ struct SpanExt {
 	scope: Arc<ScopeState>,
 	callsite_id: u64,
 	started_at: Instant,
+	child_us: u64,
 	flow_fields: Option<FlowApplyFields>,
 }
 
@@ -137,6 +138,7 @@ where
 			return;
 		};
 		let record = self.build_record(&entry);
+		self.charge_parent(&ctx, &id, record.duration_us as u64);
 		self.emit_record(&entry.scope, record);
 	}
 }
@@ -213,7 +215,29 @@ impl ProfilerLayer {
 				record.duration_us = u32::try_from(elapsed).unwrap_or(u32::MAX);
 			}
 		}
+		record.self_us =
+			u32::try_from((record.duration_us as u64).saturating_sub(entry.child_us)).unwrap_or(u32::MAX);
 		record
+	}
+
+	#[inline]
+	fn charge_parent<S>(&self, ctx: &Context<'_, S>, id: &Id, elapsed_us: u64)
+	where
+		S: Subscriber + for<'a> LookupSpan<'a>,
+	{
+		let Some(span) = ctx.span(id) else {
+			return;
+		};
+		let Some(parent) = span.parent() else {
+			return;
+		};
+		for ancestor in parent.scope() {
+			let mut ext = ancestor.extensions_mut();
+			if let Some(entry) = ext.get_mut::<SpanExt>() {
+				entry.child_us = entry.child_us.saturating_add(elapsed_us);
+				return;
+			}
+		}
 	}
 
 	#[inline]
@@ -250,6 +274,7 @@ impl ProfilerLayer {
 			scope,
 			callsite_id,
 			started_at: self.clock.instant(),
+			child_us: 0,
 			flow_fields,
 		};
 		if let Some(span) = ctx.span(id) {

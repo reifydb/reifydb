@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, ops::Bound, slice::from_ref, sync::Arc};
+use std::{
+	collections::{BTreeSet, HashMap},
+	ops::Bound,
+	slice::from_ref,
+	sync::Arc,
+};
 
 use dashmap::DashMap;
 use reifydb_codec::{
@@ -13,7 +18,7 @@ use reifydb_codec::{
 	state::{OperatorState, StateBytes, decode_state},
 };
 use reifydb_core::{
-	interface::catalog::flow::OperatorId,
+	interface::{catalog::flow::OperatorId, store::MultiVersionBatch},
 	key::{
 		EncodableKey,
 		operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey, keyspace_inner_range},
@@ -41,6 +46,9 @@ use super::FlowTransaction;
 
 const DEFAULT_BYTE_BUDGET: u64 = 1024 * 1024;
 const HYDRATE_CHUNK: usize = 8_192;
+const DUE_PREFETCH: usize = 4_096;
+const APPROXIMATE_BTREE_ENTRY_BYTES: u64 = 32;
+const APPROXIMATE_MAP_SLOT_BYTES: u64 = 17;
 const DEFAULT_ACTIVITY_BUCKET_WIDTH: u64 = 1 << 20;
 
 fn entry_bytes(key: &EncodedKey) -> u64 {
@@ -130,6 +138,66 @@ struct Interned {
 	bucket: u64,
 }
 
+struct DueBatch {
+	due: Vec<(u64, GroupId)>,
+	last_bucket: Option<u64>,
+}
+
+#[derive(Default)]
+struct DuePrefix {
+	entries: BTreeSet<(u64, u64)>,
+	bucket_of: HashMap<u64, u64>,
+	complete_through: u64,
+}
+
+impl DuePrefix {
+	fn covers(&self, first_live: u64) -> bool {
+		first_live <= self.complete_through
+	}
+
+	fn serve(&self, first_live: u64, limit: usize) -> Vec<GroupId> {
+		self.entries.range((0, 0)..(first_live, 0)).take(limit).map(|(_, id)| GroupId(*id)).collect()
+	}
+
+	fn insert(&mut self, bucket: u64, id: GroupId) {
+		self.remove_group(id);
+		if bucket >= self.complete_through {
+			return;
+		}
+		self.entries.insert((bucket, id.0));
+		self.bucket_of.insert(id.0, bucket);
+	}
+
+	fn remove_group(&mut self, id: GroupId) {
+		if let Some(bucket) = self.bucket_of.remove(&id.0) {
+			self.entries.remove(&(bucket, id.0));
+		}
+	}
+
+	fn approximate_memory(&self) -> StateMemory {
+		let entries = self.entries.len() as u64;
+		let tree = entries * APPROXIMATE_BTREE_ENTRY_BYTES;
+		let map = self.bucket_of.capacity() as u64 * APPROXIMATE_MAP_SLOT_BYTES;
+		StateMemory::new(Count::new(entries), ByteSize::from_bytes(tree + map))
+	}
+
+	fn adopt(&mut self, due: &[(u64, GroupId)], complete_through: u64) {
+		reifydb_assertions! {
+			assert!(
+				complete_through >= self.complete_through,
+				"a refill must never shrink the region the prefix claims to know; walking the \
+				 boundary backwards would leave groups below it unreachable to every later sweep \
+				 and they would never be reclaimed (was={}, now={complete_through})",
+				self.complete_through
+			);
+		}
+		self.complete_through = complete_through;
+		for (bucket, id) in due {
+			self.insert(*bucket, *id);
+		}
+	}
+}
+
 struct NodeState {
 	cache: SlabLru<EncodedKey, Interned>,
 	cache_size: ByteSize,
@@ -140,6 +208,9 @@ struct NodeState {
 	revocations: u64,
 	position: Option<Position>,
 	buckets: Option<ActivityBuckets>,
+	activity: DuePrefix,
+	identity: DuePrefix,
+	sides: HashMap<u8, DuePrefix>,
 }
 
 impl Default for NodeState {
@@ -154,6 +225,9 @@ impl Default for NodeState {
 			revocations: 0,
 			position: None,
 			buckets: None,
+			activity: DuePrefix::default(),
+			identity: DuePrefix::default(),
+			sides: HashMap::new(),
 		}
 	}
 }
@@ -218,11 +292,20 @@ impl NodeState {
 		let bytes = ByteSize::from_bytes(self.cache.struct_bytes() as u64 + key_heap);
 		StateMemory::new(Count::new(self.cache.len() as u64), bytes)
 	}
+
+	fn due_memory(&self) -> StateMemory {
+		self.sides
+			.values()
+			.fold(self.activity.approximate_memory() + self.identity.approximate_memory(), |total, side| {
+				total + side.approximate_memory()
+			})
+	}
 }
 
 pub struct GroupInternerSample {
 	pub cache: StateMemory,
 	pub membership: StateMemory,
+	pub due: StateMemory,
 	pub completeness: StateCompleteness,
 }
 
@@ -311,6 +394,7 @@ impl GroupInterner {
 		for (i, id) in to_stamp {
 			let effective = Self::stamp(txn, operator, id, &groups[i], bucket, now)?;
 			state.remember(&groups[i], id, effective);
+			Self::track_stamp(state, id, effective);
 		}
 		if to_resolve.is_empty() {
 			state.evict_to_budget(budget);
@@ -383,6 +467,7 @@ impl GroupInterner {
 				txn.state_set(operator, dictionary, encode_payload(&id.0, now)?)?;
 				Self::stamp(txn, operator, id, &groups[i], bucket, now)?;
 				state.remember(&groups[i], id, bucket);
+				Self::track_stamp(state, id, bucket);
 				state.membership.insert(membership_hash(&groups[i]));
 				assigned.insert(dictionary.as_slice().to_vec(), id);
 			}
@@ -399,11 +484,17 @@ impl GroupInterner {
 		for (i, id) in resolved_from_store {
 			let effective = Self::stamp(txn, operator, id, &groups[i], bucket, now)?;
 			state.remember(&groups[i], id, effective);
+			Self::track_stamp(state, id, effective);
 		}
 
 		state.evict_to_budget(budget);
 
 		Ok(results.into_iter().map(|r| r.expect("every position filled")).collect())
+	}
+
+	fn track_stamp(state: &mut NodeState, id: GroupId, bucket: u64) {
+		state.activity.insert(bucket, id);
+		state.identity.remove_group(id);
 	}
 
 	fn stamp_position(txn: &FlowTransaction) -> Position {
@@ -515,6 +606,8 @@ impl GroupInterner {
 		txn.state_set(operator, &index_key(Keyspace::IDENTITY_INDEX, bucket, id), encode_payload(&1u64, now)?)?;
 		txn.state_set(operator, &record_key(id), encode_payload(&GroupRecord::reclaimed(record.group), now)?)?;
 		state.remember(&group, id, GroupRecord::RECLAIMED_BUCKET);
+		state.activity.remove_group(id);
+		state.identity.insert(bucket, id);
 		Ok(true)
 	}
 
@@ -567,6 +660,20 @@ impl GroupInterner {
 			&& interned.bucket != GroupRecord::RECLAIMED_BUCKET
 		{
 			txn.state_remove(operator, &index_key(Keyspace::ACTIVITY_INDEX, interned.bucket, interned.id))?;
+		}
+		let id = match cached {
+			Some(interned) => Some(interned.id),
+			None => match txn.state_get(operator, &dictionary_key(group))? {
+				Some(row) => Some(GroupId(decode_payload::<u64>(&row)?)),
+				None => None,
+			},
+		};
+		if let Some(id) = id {
+			state.activity.remove_group(id);
+			state.identity.remove_group(id);
+			for prefix in state.sides.values_mut() {
+				prefix.remove_group(id);
+			}
 		}
 		txn.state_remove(operator, &dictionary_key(group))?;
 		Ok(existed)
@@ -625,6 +732,7 @@ impl GroupInterner {
 		}
 		txn.state_set(operator, &key, encode_payload(&bucket, now)?)?;
 		txn.state_set(operator, &side_index_key(side, bucket, id), encode_payload(&1u64, now)?)?;
+		self.inner.operators.entry(operator).or_default().sides.entry(side.0).or_default().insert(bucket, id);
 		Ok(())
 	}
 
@@ -641,13 +749,48 @@ impl GroupInterner {
 			return Ok(Vec::new());
 		}
 		let first_live = self.buckets_of(operator).first_live(cutoff);
+		let mut guard = self.inner.operators.entry(operator).or_default();
+		let prefix = guard.sides.entry(side.0).or_default();
+		if prefix.covers(first_live) {
+			return Ok(prefix.serve(first_live, limit));
+		}
+		let from = prefix.complete_through;
+		let batch = Self::due_side_scan(operator, txn, side, from, first_live, limit.max(DUE_PREFETCH))?;
+		let scanned = Self::due_side_verify(operator, txn, side, &batch)?;
+		match Self::settled_through(&scanned, &batch, from, first_live) {
+			Some(complete_through) => {
+				prefix.adopt(&scanned.due, complete_through);
+				Ok(prefix.serve(first_live, limit))
+			}
+			None => Ok(scanned.due.iter().map(|(_, id)| *id).take(limit).collect()),
+		}
+	}
+
+	#[instrument(name = "flow::reclaim::due_side_scan", level = "trace", skip_all)]
+	fn due_side_scan(
+		operator: OperatorId,
+		txn: &mut FlowTransaction,
+		side: Keyspace,
+		from: u64,
+		first_live: u64,
+		limit: usize,
+	) -> Result<MultiVersionBatch> {
 		let range = EncodedKeyRange::new(
-			Bound::Included(side_index_bound(side, 0).into_encoded()),
+			Bound::Included(side_index_bound(side, from).into_encoded()),
 			Bound::Excluded(side_index_bound(side, first_live).into_encoded()),
 		);
-		let batch = txn.state_range(operator, range, Some(limit))?;
+		txn.state_range(operator, range, Some(limit))
+	}
 
+	#[instrument(name = "flow::reclaim::due_side_verify", level = "trace", skip_all, fields(candidates = tracing::field::Empty, due = tracing::field::Empty, stale = tracing::field::Empty))]
+	fn due_side_verify(
+		operator: OperatorId,
+		txn: &mut FlowTransaction,
+		side: Keyspace,
+		batch: &MultiVersionBatch,
+	) -> Result<DueBatch> {
 		let mut due = Vec::new();
+		let mut last_bucket = None;
 		let mut stale: Vec<GroupStateKey> = Vec::new();
 		for item in &batch.items {
 			let decoded = OperatorStateKey::decode(&item.key)
@@ -657,6 +800,7 @@ impl GroupInterner {
 			let Some((_found, bucket, id)) = decode_side_suffix(&inner.2) else {
 				continue;
 			};
+			last_bucket = Some(bucket);
 			reifydb_assertions! {
 				assert!(
 					_found == side,
@@ -671,7 +815,7 @@ impl GroupInterner {
 				None => None,
 			};
 			match current {
-				Some(current) if current == bucket => due.push(id),
+				Some(current) if current == bucket => due.push((bucket, id)),
 				_ => stale.push(GroupStateKey::from_framed(EncodedKey::new(decoded.key.clone()))
 					.expect("the index range yields framed inner keys")),
 			}
@@ -683,7 +827,10 @@ impl GroupInterner {
 		span.record("candidates", batch.items.len() as u64);
 		span.record("due", due.len() as u64);
 		span.record("stale", stale.len() as u64);
-		Ok(due)
+		Ok(DueBatch {
+			due,
+			last_bucket,
+		})
 	}
 
 	pub fn forget_side(
@@ -693,6 +840,7 @@ impl GroupInterner {
 		id: GroupId,
 		side: Keyspace,
 	) -> Result<()> {
+		self.inner.operators.entry(operator).or_default().sides.entry(side.0).or_default().remove_group(id);
 		txn.state_remove(operator, &side_record_key(id, side))
 	}
 
@@ -722,13 +870,64 @@ impl GroupInterner {
 			return Ok(Vec::new());
 		}
 		let first_live = self.buckets_of(operator).first_live(cutoff);
+		let mut guard = self.inner.operators.entry(operator).or_default();
+		let prefix = if keyspace == Keyspace::IDENTITY_INDEX {
+			&mut guard.identity
+		} else {
+			&mut guard.activity
+		};
+		if prefix.covers(first_live) {
+			return Ok(prefix.serve(first_live, limit));
+		}
+		let from = prefix.complete_through;
+		let batch = Self::due_scan(operator, txn, keyspace, from, first_live, limit.max(DUE_PREFETCH))?;
+		let scanned = Self::due_verify(operator, txn, keyspace, &batch, live)?;
+		match Self::settled_through(&scanned, &batch, from, first_live) {
+			Some(complete_through) => {
+				prefix.adopt(&scanned.due, complete_through);
+				Ok(prefix.serve(first_live, limit))
+			}
+			None => Ok(scanned.due.iter().map(|(_, id)| *id).take(limit).collect()),
+		}
+	}
+
+	fn settled_through(scanned: &DueBatch, batch: &MultiVersionBatch, from: u64, first_live: u64) -> Option<u64> {
+		if !batch.has_more {
+			return Some(first_live);
+		}
+		match scanned.last_bucket {
+			Some(last) if last > from => Some(last),
+			_ => None,
+		}
+	}
+
+	#[instrument(name = "flow::reclaim::due_scan", level = "trace", skip_all)]
+	fn due_scan(
+		operator: OperatorId,
+		txn: &mut FlowTransaction,
+		keyspace: Keyspace,
+		from: u64,
+		first_live: u64,
+		limit: usize,
+	) -> Result<MultiVersionBatch> {
 		let range = EncodedKeyRange::new(
-			Bound::Included(index_bound(keyspace, 0).into_encoded()),
+			Bound::Included(index_bound(keyspace, from).into_encoded()),
 			Bound::Excluded(index_bound(keyspace, first_live).into_encoded()),
 		);
-		let batch = txn.state_range(operator, range, Some(limit))?;
+		txn.state_range(operator, range, Some(limit))
+	}
 
+	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
+	#[instrument(name = "flow::reclaim::due_verify", level = "trace", skip_all)]
+	fn due_verify(
+		operator: OperatorId,
+		txn: &mut FlowTransaction,
+		keyspace: Keyspace,
+		batch: &MultiVersionBatch,
+		live: impl Fn(&GroupRecord, u64) -> bool,
+	) -> Result<DueBatch> {
 		let mut due = Vec::new();
+		let mut last_bucket = None;
 		let mut stale: Vec<GroupStateKey> = Vec::new();
 		for item in &batch.items {
 			let decoded = OperatorStateKey::decode(&item.key)
@@ -747,8 +946,9 @@ impl GroupInterner {
 			let Some((bucket, id)) = decode_activity_suffix(&inner.2) else {
 				continue;
 			};
+			last_bucket = Some(bucket);
 			match Self::load_record(operator, txn, id)? {
-				Some(record) if live(&record, bucket) => due.push(id),
+				Some(record) if live(&record, bucket) => due.push((bucket, id)),
 				_ => stale.push(GroupStateKey::from_framed(EncodedKey::new(decoded.key.clone()))
 					.expect("the index range yields framed inner keys")),
 			}
@@ -756,7 +956,10 @@ impl GroupInterner {
 		for key in &stale {
 			txn.state_remove(operator, key)?;
 		}
-		Ok(due)
+		Ok(DueBatch {
+			due,
+			last_bucket,
+		})
 	}
 
 	#[instrument(name = "flow::reclaim::load_record", level = "trace", skip_all)]
@@ -791,6 +994,7 @@ impl GroupInterner {
 					GroupInternerSample {
 						cache: state.memory(),
 						membership: state.membership.memory(),
+						due: state.due_memory(),
 						completeness: state.completeness(),
 					},
 				)
@@ -901,6 +1105,86 @@ mod tests {
 
 	fn group(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes())
+	}
+
+	#[test]
+	fn a_group_that_moves_forward_leaves_nothing_at_the_bucket_it_left() {
+		// The prefix answers without consulting storage, so a superseded entry it keeps is one no
+		// verification read will ever reject: the group reads as due at the bucket it has already
+		// left, and reclamation drops rows its real activity still covers.
+		let mut prefix = DuePrefix::default();
+		prefix.adopt(&[], 100);
+
+		prefix.insert(10, GroupId(7));
+		prefix.insert(20, GroupId(7));
+
+		assert!(
+			prefix.serve(15, 10).is_empty(),
+			"the group moved to bucket 20, so a cutoff that only clears bucket 10 must not retire it"
+		);
+		assert_eq!(
+			prefix.serve(25, 10),
+			vec![GroupId(7)],
+			"and it must still retire once the cutoff clears the bucket it actually holds"
+		);
+	}
+
+	#[test]
+	fn a_prefix_holding_groups_reports_more_memory_than_an_empty_one() {
+		// The prefix is what C' trades disk scanning for, so an estimate that stays flat as it
+		// fills would hide exactly the growth the design promises to bound.
+		let empty = DuePrefix::default();
+		assert_eq!(empty.approximate_memory().entries, Count::new(0));
+
+		let mut prefix = DuePrefix::default();
+		prefix.adopt(&[(1, GroupId(1)), (2, GroupId(2)), (3, GroupId(3))], 100);
+
+		let memory = prefix.approximate_memory();
+		assert_eq!(memory.entries, Count::new(3), "entries is the exact live count, not an estimate");
+		assert!(
+			memory.bytes > empty.approximate_memory().bytes,
+			"three tracked groups must read as more resident memory than none"
+		);
+	}
+
+	#[test]
+	fn due_memory_counts_every_side_not_just_the_group_clocks() {
+		// A join holds one prefix per side, so sides are the largest consumer in the workload this
+		// design was built for. Summing only activity and identity would under-report precisely the
+		// operator whose memory matters most.
+		let mut state = NodeState::default();
+		state.activity.adopt(&[(1, GroupId(1))], 100);
+		let clocks_only = state.due_memory();
+
+		state.sides.entry(7).or_default().adopt(&[(1, GroupId(1)), (2, GroupId(2))], 100);
+
+		assert!(
+			state.due_memory().bytes > clocks_only.bytes,
+			"a populated side prefix must add to the operator's reported memory"
+		);
+		assert_eq!(
+			state.due_memory().entries,
+			Count::new(3),
+			"entries totals every prefix the operator holds, across both group clocks and its sides"
+		);
+	}
+
+	#[test]
+	fn a_group_that_moves_beyond_the_known_region_still_loses_its_old_entry() {
+		// Dropping the old entry only when the new one is storable would strand the group at its
+		// old bucket forever: every stamp past complete_through is the common case, so the stale
+		// entry outlives all of them and retires a group that never stopped being active.
+		let mut prefix = DuePrefix::default();
+		prefix.adopt(&[], 100);
+
+		prefix.insert(10, GroupId(7));
+		prefix.insert(500, GroupId(7));
+
+		assert!(
+			prefix.serve(50, 10).is_empty(),
+			"the group is active at bucket 500, past what the prefix tracks, so it is not due here"
+		);
+		assert!(!prefix.covers(500), "and the prefix must not claim to know a region it never scanned");
 	}
 
 	fn deferred(engine: &TestEngine) -> FlowTransaction {

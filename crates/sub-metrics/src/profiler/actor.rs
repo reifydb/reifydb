@@ -95,7 +95,14 @@ impl ProfilerCollectorActor {
 			let ident = SpanIdent::new(category, record.callsite_id, record.dim_indices);
 			let span_name =
 				callsite::resolve(record.callsite_id).unwrap_or_else(|| span_name_for(category));
-			acc.upsert(ident, span_name, record.duration_us, &record.extras, &self.interner);
+			acc.upsert(
+				ident,
+				span_name,
+				record.duration_us,
+				record.self_us,
+				&record.extras,
+				&self.interner,
+			);
 			state.processed_records = state.processed_records.saturating_add(1);
 		}
 	}

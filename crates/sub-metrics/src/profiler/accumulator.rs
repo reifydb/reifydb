@@ -35,11 +35,12 @@ impl ProfilerAccumulator {
 		ident: SpanIdent,
 		span_name: &'static str,
 		duration_us: u32,
+		self_us: u32,
 		extras: &[u64; MAX_EXTRAS],
 		interner: &DimInterner,
 	) {
 		if let Some(existing) = self.records.get_mut(&ident) {
-			existing.fold(duration_us, extras);
+			existing.fold(duration_us, self_us, extras);
 			return;
 		}
 		if self.records.len() >= self.capacity {
@@ -51,10 +52,11 @@ impl ProfilerAccumulator {
 			dimensions: resolve_dims(&ident, interner),
 			calls: 0,
 			total_us: 0,
+			self_us: 0,
 			histogram: PercentileHistogram::new(),
 			extras_sum: [0; MAX_EXTRAS],
 		};
-		new_record.fold(duration_us, extras);
+		new_record.fold(duration_us, self_us, extras);
 		self.records.insert(ident, new_record);
 		self.instruments.accumulator_size.set(self.records.len() as f64);
 	}
@@ -156,9 +158,9 @@ mod tests {
 		let interner = DimInterner::new();
 		let mut acc = ProfilerAccumulator::new(8, 0, Arc::new(ProfilerInstruments::new()));
 		let ident = make_ident(ProfilerCategory::Query, 1);
-		acc.upsert(ident, "vm::execute", 100, &[0; MAX_EXTRAS], &interner);
-		acc.upsert(ident, "vm::execute", 50, &[0; MAX_EXTRAS], &interner);
-		acc.upsert(ident, "vm::execute", 200, &[0; MAX_EXTRAS], &interner);
+		acc.upsert(ident, "vm::execute", 100, 100, &[0; MAX_EXTRAS], &interner);
+		acc.upsert(ident, "vm::execute", 50, 50, &[0; MAX_EXTRAS], &interner);
+		acc.upsert(ident, "vm::execute", 200, 200, &[0; MAX_EXTRAS], &interner);
 		assert_eq!(acc.len(), 1);
 		let rec = acc.records.get(&ident).unwrap();
 		assert_eq!(rec.calls, 3);
@@ -172,7 +174,7 @@ mod tests {
 		let mut acc = ProfilerAccumulator::new(2, 0, Arc::new(ProfilerInstruments::new()));
 		for i in 1..=3 {
 			let ident = make_ident(ProfilerCategory::Storage, i);
-			acc.upsert(ident, "store::single::get", 10, &[0; MAX_EXTRAS], &interner);
+			acc.upsert(ident, "store::single::get", 10, 10, &[0; MAX_EXTRAS], &interner);
 		}
 		assert!(acc.len() <= 2);
 	}
@@ -183,9 +185,9 @@ mod tests {
 		let mut acc = ProfilerAccumulator::new(8, 0, Arc::new(ProfilerInstruments::new()));
 		let a = make_ident(ProfilerCategory::Flow, 1);
 		let b = make_ident(ProfilerCategory::Flow, 2);
-		acc.upsert(a, "flow::engine::apply", 100, &[0; MAX_EXTRAS], &interner);
-		acc.upsert(a, "flow::engine::apply", 100, &[0; MAX_EXTRAS], &interner);
-		acc.upsert(b, "flow::engine::apply", 500, &[0; MAX_EXTRAS], &interner);
+		acc.upsert(a, "flow::engine::apply", 100, 100, &[0; MAX_EXTRAS], &interner);
+		acc.upsert(a, "flow::engine::apply", 100, 100, &[0; MAX_EXTRAS], &interner);
+		acc.upsert(b, "flow::engine::apply", 500, 500, &[0; MAX_EXTRAS], &interner);
 
 		let top = acc.top_n(ProfilerCategory::Flow, 5);
 		assert_eq!(top.len(), 2);
