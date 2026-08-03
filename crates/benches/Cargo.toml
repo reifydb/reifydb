@@ -13,16 +13,26 @@ publish = false
 
 [dependencies]
 hdrhistogram = { workspace = true }
+rand = { workspace = true }
 
 [dev-dependencies]
+reifydb = { workspace = true, features = ["sub_server_http", "sub_server_ws", "sub_server_grpc"] }
+reifydb-client = { workspace = true, features = ["http", "ws", "grpc"] }
 reifydb-allocator = { workspace = true, features = ["alloc-jemalloc"] }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
+reifydb-testing-scenario = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
+rustls = { workspace = true }
+tokio = { workspace = true }
+
+[[bench]]
+name = "query"
+harness = false
 
 [[bench]]
 name = "watermark"

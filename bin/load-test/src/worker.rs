@@ -13,13 +13,13 @@ use hdrhistogram::Histogram;
 use rand::{SeedableRng, rngs::StdRng};
 use reifydb_value::value::duration::Duration;
 
-use crate::{client::Client, metrics::Metrics, workload::Workload};
+use crate::{client::Client, metrics::Metrics, runner::Runner};
 
 pub struct Worker {
 	#[allow(dead_code)]
 	id: usize,
 	client: Client,
-	workload: Arc<dyn Workload>,
+	runner: Arc<Runner>,
 	metrics: Arc<Metrics>,
 	rng: StdRng,
 	/// Latency is recorded here rather than in Metrics, so workers never contend on its mutex.
@@ -27,7 +27,7 @@ pub struct Worker {
 }
 
 impl Worker {
-	pub fn new(id: usize, client: Client, workload: Arc<dyn Workload>, metrics: Arc<Metrics>, seed: u64) -> Self {
+	pub fn new(id: usize, client: Client, runner: Arc<Runner>, metrics: Arc<Metrics>, seed: u64) -> Self {
 		// Unique per worker but derived from the run seed, so a run stays reproducible.
 		let rng = StdRng::seed_from_u64(seed.wrapping_add(id as u64));
 
@@ -37,7 +37,7 @@ impl Worker {
 		Self {
 			id,
 			client,
-			workload,
+			runner,
 			metrics,
 			rng,
 			local_histogram,
@@ -59,7 +59,7 @@ impl Worker {
 	}
 
 	async fn execute_one(&mut self) {
-		let operation = self.workload.next_operation(&mut self.rng, self.id);
+		let operation = self.runner.next_operation(&mut self.rng);
 
 		let start = Instant::now();
 		let result = self.client.execute(&operation).await;

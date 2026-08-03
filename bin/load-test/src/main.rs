@@ -8,8 +8,8 @@ mod client;
 mod config;
 mod metrics;
 mod output;
+mod runner;
 mod worker;
-mod workload;
 
 use std::{
 	process,
@@ -20,25 +20,28 @@ use std::{
 };
 
 use clap::Parser;
-use client::{Client, Operation};
+use client::Client;
 use config::{Config, Protocol};
 use metrics::Metrics;
 use num_cpus::get as get_num_cpus;
-use output::{clear_progress, print_header, print_progress, print_summary};
+use output::{clear_progress, print_header, print_progress, print_scenarios, print_summary};
 use rand::random;
 use reifydb::allocator;
+use reifydb_testing_scenario::{profile::StopCondition, registry};
 use reifydb_value::value::duration::Duration;
 use reqwest::Client as ReqwestClient;
+use rustls::crypto::ring::default_provider;
 
 allocator::set_global_allocator!();
+use runner::{Runner, select_query};
 use tokio::{runtime::Builder, spawn, task::JoinSet, time};
 use worker::Worker;
-use workload::create_workload;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 fn main() {
 	allocator::verify();
+	let _ = default_provider().install_default();
 
 	Builder::new_multi_thread()
 		.worker_threads(get_num_cpus())
@@ -55,35 +58,52 @@ fn main() {
 		});
 }
 
+fn is_already_exists(message: &str) -> bool {
+	message.contains("already exists") || message.contains("ALREADY_EXISTS")
+}
+
 async fn async_main() -> Result<()> {
 	let config = Config::parse();
 
-	let workload = create_workload(config.workload, &config);
+	if config.list {
+		print_scenarios(&registry::all());
+		return Ok(());
+	}
+
+	let scenario = registry::by_name(&config.scenario).ok_or_else(|| {
+		format!("unknown scenario '{}'; available: {}", config.scenario, registry::names().join(", "))
+	})?;
+	scenario.validate()?;
+
+	let resolved = config.resolve(&scenario)?;
+	let query = select_query(&scenario, config.query.as_deref())?;
+	let runner = Arc::new(Runner::new(scenario, query, resolved.scale));
 	let metrics = Arc::new(Metrics::new());
 
 	if !config.quiet {
-		print_header(&config, workload.description());
+		print_header(&config, &resolved, &runner.description());
 	}
 
 	if !config.quiet {
-		println!("Setting up workload...");
+		println!("Setting up scenario...");
 	}
 
-	let setup_queries = workload.setup_queries();
-	if !setup_queries.is_empty() {
-		let setup_client = Client::connect(config.protocol, &config.url(), config.token.as_deref()).await?;
+	let setup_operations = runner.setup_operations();
+	if !setup_operations.is_empty() {
+		let setup_client =
+			Client::connect(config.protocol, &config.admin_url(), config.token.as_deref()).await?;
 
-		for query in setup_queries {
-			let operation = if query.is_command {
-				Operation::Command(query.rql)
-			} else {
-				Operation::Query(query.rql)
-			};
-
+		for operation in setup_operations {
 			if let Err(e) = setup_client.execute(&operation).await {
-				let err_str = e.to_string();
-				if !err_str.contains("already exists") && !err_str.contains("ALREADY_EXISTS") {
-					eprintln!("Setup error: {}", e);
+				// Tolerating an existing table keeps a rerun after an aborted run working;
+				// every other failure means the workload would measure a dataset that was
+				// never created, so it has to stop the run rather than print and continue.
+				let message = e.to_string();
+				if !is_already_exists(&message) {
+					setup_client.close().await?;
+					return Err(
+						format!("setup failed on `{}`: {}", operation.rql(), message).into()
+					);
 				}
 			}
 		}
@@ -92,12 +112,12 @@ async fn async_main() -> Result<()> {
 	}
 
 	if !config.quiet {
-		println!("Creating {} connections...", config.connections);
+		println!("Creating {} connections...", resolved.connections);
 	}
 
 	let shared_http_client = if matches!(config.protocol, Protocol::Http) {
 		Some(ReqwestClient::builder()
-			.pool_max_idle_per_host(config.connections)
+			.pool_max_idle_per_host(resolved.connections)
 			.timeout(Duration::from_seconds(30).unwrap().to_std())
 			.build()?)
 	} else {
@@ -105,9 +125,9 @@ async fn async_main() -> Result<()> {
 	};
 
 	let seed = config.seed.unwrap_or_else(random);
-	let mut workers = Vec::with_capacity(config.connections);
+	let mut workers = Vec::with_capacity(resolved.connections);
 
-	for i in 0..config.connections {
+	for i in 0..resolved.connections {
 		let client = Client::connect_with_http_client(
 			config.protocol,
 			&config.url(),
@@ -116,7 +136,7 @@ async fn async_main() -> Result<()> {
 		)
 		.await?;
 
-		workers.push(Worker::new(i, client, Arc::clone(&workload), Arc::clone(&metrics), seed));
+		workers.push(Worker::new(i, client, Arc::clone(&runner), Arc::clone(&metrics), seed));
 	}
 
 	if config.warmup > 0 {
@@ -124,7 +144,7 @@ async fn async_main() -> Result<()> {
 			println!("Warming up ({} requests)...", config.warmup);
 		}
 
-		let warmup_per_worker = config.warmup / config.connections as u64;
+		let warmup_per_worker = config.warmup / resolved.connections as u64;
 		let mut warmup_tasks = JoinSet::new();
 
 		for mut worker in workers.drain(..) {
@@ -175,29 +195,32 @@ async fn async_main() -> Result<()> {
 		None
 	};
 
-	if let Some(duration) = config.duration {
-		for mut worker in workers.drain(..) {
-			let stop = Arc::clone(&stop_signal);
-			benchmark_tasks.spawn(async move {
-				worker.run_duration(duration, stop).await;
-				worker
-			});
+	match resolved.stop {
+		StopCondition::Duration(duration) => {
+			for mut worker in workers.drain(..) {
+				let stop = Arc::clone(&stop_signal);
+				benchmark_tasks.spawn(async move {
+					worker.run_duration(duration, stop).await;
+					worker
+				});
+			}
 		}
-	} else {
-		let requests_per_worker = config.requests / config.connections as u64;
-		let extra = config.requests % config.connections as u64;
+		StopCondition::Iterations(requests) => {
+			let requests_per_worker = requests / resolved.connections as u64;
+			let extra = requests % resolved.connections as u64;
 
-		for (i, mut worker) in workers.drain(..).enumerate() {
-			let count = requests_per_worker
-				+ if (i as u64) < extra {
-					1
-				} else {
-					0
-				};
-			benchmark_tasks.spawn(async move {
-				worker.run_requests(count).await;
-				worker
-			});
+			for (i, mut worker) in workers.drain(..).enumerate() {
+				let count = requests_per_worker
+					+ if (i as u64) < extra {
+						1
+					} else {
+						0
+					};
+				benchmark_tasks.spawn(async move {
+					worker.run_requests(count).await;
+					worker
+				});
+			}
 		}
 	}
 
@@ -222,19 +245,22 @@ async fn async_main() -> Result<()> {
 	}
 
 	let summary = metrics.summary();
-	print_summary(&summary, workload.description());
+	print_summary(&summary, &runner.description());
 
-	let teardown_queries = workload.teardown_queries();
-	if !teardown_queries.is_empty() {
+	let teardown_operations = runner.teardown_operations();
+	if !teardown_operations.is_empty() {
 		if !config.quiet {
 			println!();
 			println!("Cleaning up...");
 		}
 
-		let teardown_client = Client::connect(config.protocol, &config.url(), config.token.as_deref()).await?;
+		let teardown_client =
+			Client::connect(config.protocol, &config.admin_url(), config.token.as_deref()).await?;
 
-		for rql in teardown_queries {
-			let _ = teardown_client.execute(&Operation::Command(rql)).await;
+		for operation in teardown_operations {
+			if let Err(e) = teardown_client.execute(&operation).await {
+				eprintln!("Cleanup failed on `{}`: {}", operation.rql(), e);
+			}
 		}
 
 		teardown_client.close().await?;

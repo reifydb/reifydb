@@ -16,6 +16,15 @@ pub enum Client {
 pub enum Operation {
 	Query(String),
 	Command(String),
+	Admin(String),
+}
+
+impl Operation {
+	pub fn rql(&self) -> &str {
+		match self {
+			Operation::Query(rql) | Operation::Command(rql) | Operation::Admin(rql) => rql,
+		}
+	}
 }
 
 impl Client {
@@ -65,6 +74,12 @@ impl Client {
 			}
 			(Client::Ws(client), Operation::Command(rql)) => {
 				client.command(rql, None).await?;
+			}
+			(Client::Http(client), Operation::Admin(rql)) => {
+				client.admin(rql, None).await?;
+			}
+			(Client::Ws(client), Operation::Admin(rql)) => {
+				client.admin(rql, None).await?;
 			}
 		}
 		Ok(())

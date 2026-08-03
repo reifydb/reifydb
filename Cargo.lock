@@ -1920,8 +1920,10 @@ dependencies = [
  "rand 0.10.1",
  "reifydb",
  "reifydb-client",
+ "reifydb-testing-scenario",
  "reifydb-value",
  "reqwest 0.13.4",
+ "rustls",
  "tokio",
 ]
 
@@ -2880,14 +2882,20 @@ name = "reifydb-benches"
 version = "0.8.1"
 dependencies = [
  "hdrhistogram",
+ "rand 0.10.1",
+ "reifydb",
  "reifydb-allocator",
+ "reifydb-client",
  "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-store-multi",
  "reifydb-store-single",
+ "reifydb-testing-scenario",
  "reifydb-transaction",
  "reifydb-value",
+ "rustls",
+ "tokio",
 ]
 
 [[package]]
@@ -3773,6 +3781,15 @@ dependencies = [
 [[package]]
 name = "reifydb-testing-macro"
 version = "0.8.1"
+
+[[package]]
+name = "reifydb-testing-scenario"
+version = "0.8.1"
+dependencies = [
+ "rand 0.10.1",
+ "reifydb-test-harness",
+ "reifydb-value",
+]
 
 [[package]]
 name = "reifydb-testing-sdk"

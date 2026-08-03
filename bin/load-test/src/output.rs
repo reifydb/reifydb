@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_testing_scenario::{profile::StopCondition, scenario::Scenario};
+
 use crate::{
-	config::{Config, Protocol},
+	config::{Config, Protocol, Resolved},
 	metrics::MetricsSummary,
 };
 
-pub fn print_header(config: &Config, description: &str) {
+pub fn print_header(config: &Config, resolved: &Resolved, description: &str) {
 	println!();
 	println!("====== {} ======", description);
 	println!("Host: {}:{}", config.host, config.effective_port());
@@ -17,12 +19,33 @@ pub fn print_header(config: &Config, description: &str) {
 			Protocol::Ws => "WebSocket",
 		}
 	);
-	println!("Connections: {}", config.connections);
 
-	if let Some(duration) = config.duration {
-		println!("Duration: {:?}", duration);
-	} else {
-		println!("Requests: {}", format_number(config.requests));
+	if let Some(profile) = &resolved.profile {
+		println!("Profile: {}", profile);
+	}
+
+	println!("Connections: {}", resolved.connections);
+
+	if resolved.scale > 0 {
+		println!("Rows: {}", format_number(resolved.scale));
+	}
+
+	match resolved.stop {
+		StopCondition::Duration(duration) => println!("Duration: {:?}", duration),
+		StopCondition::Iterations(requests) => println!("Requests: {}", format_number(requests)),
+	}
+	println!();
+}
+
+pub fn print_scenarios(scenarios: &[Scenario]) {
+	for scenario in scenarios {
+		println!();
+		println!("{} - {}", scenario.name, scenario.description);
+		println!("  queries:  {}", scenario.queries.iter().map(|q| q.name).collect::<Vec<_>>().join(", "));
+		println!(
+			"  profiles: {}",
+			scenario.profiles.iter().map(|p| p.name.as_str()).collect::<Vec<_>>().join(", ")
+		);
 	}
 	println!();
 }

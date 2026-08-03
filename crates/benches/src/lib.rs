@@ -12,6 +12,54 @@ use std::{
 
 use hdrhistogram::Histogram;
 
+// Every benchmark takes its axes from unprefixed environment variables so `make bench-x THREADS=4`
+// works, which requires the makefile to export those names. An exported-but-unset make variable
+// arrives as an empty string rather than as absent, so empty has to mean "use the default"; without
+// that, naming a variable in the makefile's export list would pin its axis on every run.
+pub fn env_opt(key: &str) -> Option<String> {
+	env::var(key).ok().map(|raw| raw.trim().to_string()).filter(|raw| !raw.is_empty())
+}
+
+pub fn env_flag(key: &str) -> bool {
+	env_opt(key).is_some_and(|raw| !matches!(raw.to_ascii_lowercase().as_str(), "0" | "false" | "no"))
+}
+
+pub fn env_u64(key: &str, fallback: u64) -> u64 {
+	env_opt(key).and_then(|raw| raw.parse().ok()).unwrap_or(fallback)
+}
+
+pub fn env_usize(key: &str, fallback: usize) -> usize {
+	env_opt(key).and_then(|raw| raw.parse().ok()).unwrap_or(fallback)
+}
+
+pub fn env_list_u64(key: &str, fallback: &[u64]) -> Vec<u64> {
+	match env_opt(key) {
+		Some(raw) => raw.split(',').filter_map(|part| part.trim().parse().ok()).collect(),
+		None => fallback.to_vec(),
+	}
+}
+
+pub fn env_list_usize(key: &str, fallback: &[usize]) -> Vec<usize> {
+	match env_opt(key) {
+		Some(raw) => raw.split(',').filter_map(|part| part.trim().parse().ok()).collect(),
+		None => fallback.to_vec(),
+	}
+}
+
+/// Selects named items by a comma-separated list, keeping `fallback` when the variable is unset.
+pub fn env_select<T: Copy>(key: &str, all: &[(&str, T)], fallback: &[T]) -> Vec<T> {
+	match env_opt(key) {
+		Some(raw) => raw
+			.split(',')
+			.filter_map(|part| {
+				let wanted = part.trim();
+				all.iter().find(|(name, _)| *name == wanted).map(|(_, value)| *value)
+			})
+			.collect(),
+		None => fallback.to_vec(),
+	}
+}
+
 pub fn latency_histogram() -> Histogram<u64> {
 	Histogram::new_with_bounds(1, 60_000_000_000, 3).expect("static histogram bounds are valid")
 }

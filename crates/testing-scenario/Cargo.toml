@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 ReifyDB
+
+[package]
+name = "reifydb-testing-scenario"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Fixed load and benchmark scenarios: dataset, queries and concurrency profiles shared by the load tester and the benchmarks"
+
+[dependencies]
+reifydb-value = { workspace = true }
+
+rand = { workspace = true }
+
+[dev-dependencies]
+reifydb-test-harness = { workspace = true, features = ["database"] }
