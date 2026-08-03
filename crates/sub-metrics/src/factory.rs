@@ -105,14 +105,14 @@ impl MetricsSubsystemFactory {
 		surfaces.register_all(engine)?;
 		let interval = engine.catalog().get_config_duration(ConfigKey::MetricsSampleInterval);
 		let snapshot_interval = engine.catalog().get_config_duration_opt(ConfigKey::MetricsSnapshotInterval);
-		if let Some(snapshot) = snapshot_interval {
-			if snapshot < interval {
-				return Err(error!(internal!(
-					"METRICS_SNAPSHOT_INTERVAL ({:?}) must not be shorter than METRICS_SAMPLE_INTERVAL ({:?}); a shorter snapshot cadence would append duplicate readings between rolls",
-					snapshot,
-					interval
-				)));
-			}
+		if let Some(snapshot) = snapshot_interval
+			&& snapshot < interval
+		{
+			return Err(error!(internal!(
+				"METRICS_SNAPSHOT_INTERVAL ({:?}) must not be shorter than METRICS_SAMPLE_INTERVAL ({:?}); a shorter snapshot cadence would append duplicate readings between rolls",
+				snapshot,
+				interval
+			)));
 		}
 		let actor = MetricsSamplerActor::new(
 			collectors.clone(),

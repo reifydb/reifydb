@@ -10,7 +10,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
-pub fn spans_columns(records: &mut Vec<AggregateRecord>, now: DateTime) -> Columns {
+pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Columns {
 	records.sort_by(|a, b| {
 		(Reverse(a.total_us), a.category.name(), &a.span_name, &a.dimensions).cmp(&(
 			Reverse(b.total_us),

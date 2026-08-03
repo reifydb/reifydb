@@ -24,7 +24,7 @@ use reifydb_value::{
 		Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType,
 	},
 };
-use tracing::instrument;
+use tracing::{Span, instrument};
 
 use crate::operator::join::{Identity, operator::JoinOperator, state::JoinSide, store::Store};
 
@@ -185,9 +185,10 @@ pub(crate) fn update_row_in_entry(
 	if pre_row_number == post_row_number {
 		store.update_row_in(txn, prepared.group, post_row_number, &encoded)
 	} else {
-		if !store.remove_row_in(txn, prepared.group, pre_row_number)? {
+		if store.get_row_in(txn, prepared.group, pre_row_number)?.is_none() {
 			return Ok(false);
 		}
+		store.remove_row_in(txn, prepared.group, pre_row_number)?;
 		store.write_row(txn, prepared.group, post_row_number, &encoded)?;
 		Ok(true)
 	}
@@ -372,7 +373,7 @@ where
 		}
 		after = Some(last);
 	}
-	let span = tracing::Span::current();
+	let span = Span::current();
 	span.record("blocks", blocks);
 	span.record("rows", rows);
 	Ok(out)

@@ -19,6 +19,7 @@ use reifydb_runtime::{
 };
 use reifydb_store_multi::{MultiStore, tier::read::ReadBufferShardMetrics};
 use reifydb_value::{
+	byte_size::ByteSize,
 	count::Count,
 	params::Params,
 	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
@@ -245,7 +246,7 @@ fn counter_count(metric: &'static str, value: u64) -> Measure {
 	}
 }
 
-fn level_bytes(metric: &'static str, bytes: reifydb_value::byte_size::ByteSize) -> Measure {
+fn level_bytes(metric: &'static str, bytes: ByteSize) -> Measure {
 	Measure {
 		metric,
 		reading: Reading::Bytes(bytes),

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::{cell::RefCell, collections::HashMap, ops::Bound};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_codec::{
@@ -19,6 +19,7 @@ use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey, keyspace_inner_range},
+	value::column::columns::Columns,
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
@@ -32,11 +33,15 @@ use tracing::instrument;
 use super::state::JoinSide;
 use crate::{
 	error::FlowStateError,
-	operator::stateful::utils::{state_get, state_range, state_remove, state_set},
+	operator::{
+		join::strategy::hash::columns_from_block,
+		stateful::utils::{state_get, state_range, state_remove, state_set},
+	},
 };
 
 const ROW_NUMBER_BYTES: usize = 8;
 const SHAPE_CACHE_CAPACITY: usize = 8;
+const SLOT: RowNumber = RowNumber::MAX;
 
 pub(crate) fn group_bytes(hash: &Hash128) -> EncodedKey {
 	EncodedKey::new(encode_u128_asc(hash.0))
@@ -47,6 +52,7 @@ pub(crate) struct Store {
 	side: JoinSide,
 	shape_cache: RowShapeCacheCell,
 	co_stamped: Vec<Keyspace>,
+	slot_cache: RefCell<HashMap<GroupId, Option<(EncodedRow, Columns)>>>,
 }
 
 impl Store {
@@ -56,7 +62,27 @@ impl Store {
 			side,
 			shape_cache: RowShapeCacheCell::new(SHAPE_CACHE_CAPACITY),
 			co_stamped: Vec::new(),
+			slot_cache: RefCell::new(HashMap::new()),
 		}
+	}
+
+	pub(crate) fn slot(&self, txn: &mut FlowTransaction, group: GroupId) -> Result<Option<(EncodedRow, Columns)>> {
+		if let Some(cached) = self.slot_cache.borrow().get(&group) {
+			return Ok(cached.clone());
+		}
+		let entry = match self.get_row_in(txn, group, SLOT)? {
+			Some(row) => {
+				let columns = columns_from_block(txn, self, vec![(SLOT, row.clone())])?;
+				Some((row, columns))
+			}
+			None => None,
+		};
+		self.slot_cache.borrow_mut().insert(group, entry.clone());
+		Ok(entry)
+	}
+
+	fn forget_slot(&self, group: GroupId) {
+		self.slot_cache.borrow_mut().remove(&group);
 	}
 
 	pub(crate) fn also_stamping(mut self, keyspaces: Vec<Keyspace>) -> Self {
@@ -122,6 +148,7 @@ impl Store {
 		row_number: RowNumber,
 		encoded: &EncodedRow,
 	) -> Result<()> {
+		self.forget_slot(group);
 		let key = self.row_key(group, row_number);
 		state_set(self.operator_id, txn, &key, encoded.clone())
 	}
@@ -134,16 +161,12 @@ impl Store {
 		self.intern(txn, hash)
 	}
 
-	#[instrument(name = "flow::operator::join::store::get_row", level = "trace", skip_all)]
-	pub(crate) fn get_row(
+	pub(crate) fn get_row_in(
 		&self,
 		txn: &mut FlowTransaction,
-		hash: &Hash128,
+		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<Option<EncodedRow>> {
-		let Some(group) = self.resolve(txn, hash)? else {
-			return Ok(None);
-		};
 		let key = self.row_key(group, row_number);
 		state_get(self.operator_id, txn, &key)
 	}
@@ -176,6 +199,7 @@ impl Store {
 		if state_get(self.operator_id, txn, &key)?.is_none() {
 			return Ok(false);
 		}
+		self.forget_slot(group);
 		state_set(self.operator_id, txn, &key, encoded.clone())?;
 		Ok(true)
 	}
@@ -189,7 +213,11 @@ impl Store {
 		let Some(group) = self.resolve(txn, hash)? else {
 			return Ok(false);
 		};
-		self.remove_row_in(txn, group, row_number)
+		if self.get_row_in(txn, group, row_number)?.is_none() {
+			return Ok(false);
+		}
+		self.remove_row_in(txn, group, row_number)?;
+		Ok(true)
 	}
 
 	pub(crate) fn remove_row_in(
@@ -197,13 +225,10 @@ impl Store {
 		txn: &mut FlowTransaction,
 		group: GroupId,
 		row_number: RowNumber,
-	) -> Result<bool> {
+	) -> Result<()> {
+		self.forget_slot(group);
 		let key = self.row_key(group, row_number);
-		let existed = state_get(self.operator_id, txn, &key)?.is_some();
-		if existed {
-			state_remove(self.operator_id, txn, &key)?;
-		}
-		Ok(existed)
+		state_remove(self.operator_id, txn, &key)
 	}
 
 	#[instrument(name = "flow::operator::join::rows_for_key", level = "trace", skip_all, fields(limit = limit))]
@@ -331,6 +356,20 @@ mod tests {
 		r
 	}
 
+	/// Resolve-then-read, the composition production used before callers began holding the group
+	/// across a batch. Kept here so the read-path assertions still exercise both halves together.
+	fn get_row(
+		store: &Store,
+		txn: &mut FlowTransaction,
+		hash: &Hash128,
+		row_number: RowNumber,
+	) -> Result<Option<EncodedRow>> {
+		let Some(group) = store.group_of(txn, hash)? else {
+			return Ok(None);
+		};
+		store.get_row_in(txn, group, row_number)
+	}
+
 	#[test]
 	fn put_row_then_rows_for_key_returns_inserted() {
 		let engine = TestEngine::new();
@@ -413,8 +452,8 @@ mod tests {
 		right.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x20)).unwrap();
 
 		let shape = RowShape::operator_state();
-		let left_row = left.get_row(&mut txn, &h(0xAAA), rn(1)).unwrap().expect("left row present");
-		let right_row = right.get_row(&mut txn, &h(0xAAA), rn(1)).unwrap().expect("right row present");
+		let left_row = get_row(&left, &mut txn, &h(0xAAA), rn(1)).unwrap().expect("left row present");
+		let right_row = get_row(&right, &mut txn, &h(0xAAA), rn(1)).unwrap().expect("right row present");
 		assert_eq!(shape.get_blob(&left_row, 0).as_bytes(), &[0x10u8][..]);
 		assert_eq!(shape.get_blob(&right_row, 0).as_bytes(), &[0x20u8][..]);
 
@@ -441,7 +480,7 @@ mod tests {
 
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
 
-		assert!(store.get_row(&mut txn, &h(0xCCC), rn(1)).unwrap().is_none());
+		assert!(get_row(&store, &mut txn, &h(0xCCC), rn(1)).unwrap().is_none());
 		assert!(store.rows_for_key(&mut txn, &h(0xCCC), None, 8).unwrap().is_empty());
 		assert!(!store.contains_key(&mut txn, &h(0xCCC)).unwrap());
 		assert!(!store.remove_row(&mut txn, &h(0xCCC), rn(1)).unwrap());
@@ -464,16 +503,16 @@ mod tests {
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
 		store.put_row(&mut txn, &h(0xAAA), RowNumber::MAX, &row(0x20)).unwrap();
 
-		let slot = store.get_row(&mut txn, &h(0xAAA), RowNumber::MAX).unwrap();
+		let slot = get_row(&store, &mut txn, &h(0xAAA), RowNumber::MAX).unwrap();
 		let shape = RowShape::operator_state();
 		assert_eq!(shape.get_blob(&slot.expect("slot present"), 0).as_bytes(), &[0x20u8][..]);
 
 		assert!(
-			store.get_row(&mut txn, &h(0xAAA), rn(99)).unwrap().is_none(),
+			get_row(&store, &mut txn, &h(0xAAA), rn(99)).unwrap().is_none(),
 			"a row number that was never written must not resolve to any sibling row"
 		);
 		assert!(
-			store.get_row(&mut txn, &h(0xBBB), RowNumber::MAX).unwrap().is_none(),
+			get_row(&store, &mut txn, &h(0xBBB), RowNumber::MAX).unwrap().is_none(),
 			"a different hash must not share the slot stored under another hash"
 		);
 	}
@@ -570,6 +609,42 @@ mod tests {
 		assert!(!store.contains_key(&mut txn, &h(0xAAA)).unwrap());
 
 		assert!(!store.remove_row(&mut txn, &h(0xAAA), rn(99)).unwrap());
+	}
+
+	#[test]
+	fn removing_an_absent_row_is_invisible_to_every_reader() {
+		// remove_row_in no longer reads before deleting, so it can be handed a row number that the
+		// retention sweep already reclaimed, or one that was never stored under this group at all.
+		// The tombstone that produces must stay invisible: siblings under the key must still scan in
+		// order, the key must still report present, and the absent row must still read as absent.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator = OperatorId(46);
+		let store = Store::new(operator, JoinSide::Left);
+		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		store.put_row(&mut txn, &h(0xAAA), rn(3), &row(0x30)).unwrap();
+		let group =
+			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
+
+		store.remove_row_in(&mut txn, group, rn(2)).unwrap();
+		store.remove_row_in(&mut txn, group, rn(2)).unwrap();
+
+		assert!(store.get_row_in(&mut txn, group, rn(2)).unwrap().is_none());
+		assert!(store.contains_key(&mut txn, &h(0xAAA)).unwrap(), "the key still holds two rows");
+		let rows = store.rows_for_key(&mut txn, &h(0xAAA), None, 64).unwrap();
+		assert_eq!(
+			rows.iter().map(|(rn, _)| *rn).collect::<Vec<_>>(),
+			vec![rn(1), rn(3)],
+			"a tombstone for a row that was never stored must not surface in the key's scan"
+		);
+
+		store.remove_row_in(&mut txn, group, rn(1)).unwrap();
+		let rows = store.rows_for_key(&mut txn, &h(0xAAA), None, 64).unwrap();
+		assert_eq!(
+			rows.iter().map(|(rn, _)| *rn).collect::<Vec<_>>(),
+			vec![rn(3)],
+			"a blind remove of a row that is there must still delete exactly that row"
+		);
 	}
 
 	#[test]
@@ -749,7 +824,7 @@ mod tests {
 
 		assert!(!store.contains_key(&mut txn, &h(0xBBB)).unwrap());
 		assert!(store.rows_for_key(&mut txn, &h(0xBBB), None, 8).unwrap().is_empty());
-		assert!(store.get_row(&mut txn, &h(0xBBB), RowNumber::MAX).unwrap().is_none());
+		assert!(get_row(&store, &mut txn, &h(0xBBB), RowNumber::MAX).unwrap().is_none());
 		assert!(!store.remove_row(&mut txn, &h(0xBBB), rn(1)).unwrap());
 		assert!(!store.update_row(&mut txn, &h(0xBBB), rn(1), &row(0x20)).unwrap());
 	}

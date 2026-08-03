@@ -67,7 +67,6 @@ impl LatestInnerHashJoin {
 		}
 		match ctx.side {
 			JoinSide::Left => {
-				add_to_state_entry_batch(txn, &mut ctx.state.left, key_hash, post, indices)?;
 				if ctx.operator.snapshot {
 					let ledger = ctx.operator.snapshot_ledger();
 					let snapshot_ctx = SnapshotJoinContext {
@@ -81,6 +80,7 @@ impl LatestInnerHashJoin {
 						.map(|columns| vec![Diff::insert(columns)])
 						.unwrap_or_default());
 				}
+				add_to_state_entry_batch(txn, &mut ctx.state.left, key_hash, post, indices)?;
 				match read_right_slot(txn, &ctx.state.right, key_hash)? {
 					Some(slot) => Ok(vec![Diff::insert(
 						ctx.operator.join_left_with_slot(post, indices, &slot),
@@ -101,7 +101,6 @@ impl LatestInnerHashJoin {
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		let old = read_right_slot(txn, &ctx.state.right, key_hash)?;
 		if ctx.operator.snapshot {
 			let ledger = ctx.operator.snapshot_ledger();
 			let snapshot_ctx = SnapshotJoinContext {
@@ -113,8 +112,8 @@ impl LatestInnerHashJoin {
 			overwrite_right_slot(txn, &ctx.state.right, key_hash, post, indices)?;
 			return Ok(Vec::new());
 		}
-		overwrite_right_slot(txn, &ctx.state.right, key_hash, post, indices)?;
-		let new = read_right_slot(txn, &ctx.state.right, key_hash)?;
+		let old = read_right_slot(txn, &ctx.state.right, key_hash)?;
+		let new = overwrite_right_slot(txn, &ctx.state.right, key_hash, post, indices)?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();
 		for_each_left_block(txn, &ctx.state.left, key_hash, |_txn, left| {
@@ -153,7 +152,7 @@ impl LatestInnerHashJoin {
 		}
 		match ctx.side {
 			JoinSide::Left => {
-				let result = if ctx.operator.snapshot {
+				if ctx.operator.snapshot {
 					let ledger = ctx.operator.snapshot_ledger();
 					let snapshot_ctx = SnapshotJoinContext {
 						ledger: &ledger,
@@ -161,21 +160,24 @@ impl LatestInnerHashJoin {
 						right_store: &ctx.state.right,
 					};
 					let mut withdrawn = Vec::new();
-					for &idx in indices {
-						if let Some(columns) =
-							withdraw_slot(txn, &snapshot_ctx, key_hash, pre, idx)?
-						{
-							withdrawn.push(Diff::remove(columns));
+					if let Some(group) = ctx.state.right.group_of(txn, key_hash)? {
+						for &idx in indices {
+							if let Some(columns) =
+								withdraw_slot(txn, &snapshot_ctx, group, pre, idx)?
+							{
+								withdrawn.push(Diff::remove(columns));
+							}
 						}
 					}
-					withdrawn
-				} else {
-					match read_right_slot(txn, &ctx.state.right, key_hash)? {
-						Some(slot) => vec![Diff::remove(
+					return Ok(withdrawn);
+				}
+				let result = match read_right_slot(txn, &ctx.state.right, key_hash)? {
+					Some(slot) => {
+						vec![Diff::remove(
 							ctx.operator.join_left_with_slot(pre, indices, &slot),
-						)],
-						None => Vec::new(),
+						)]
 					}
+					None => Vec::new(),
 				};
 				if let Some(group) = ctx.state.left.group_of(txn, key_hash)? {
 					for &idx in indices {
@@ -194,7 +196,6 @@ impl LatestInnerHashJoin {
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		let old = read_right_slot(txn, &ctx.state.right, key_hash)?;
 		if ctx.operator.snapshot {
 			let ledger = ctx.operator.snapshot_ledger();
 			let snapshot_ctx = SnapshotJoinContext {
@@ -206,6 +207,7 @@ impl LatestInnerHashJoin {
 			remove_right_slot(txn, &ctx.state.right, key_hash)?;
 			return Ok(Vec::new());
 		}
+		let old = read_right_slot(txn, &ctx.state.right, key_hash)?;
 		remove_right_slot(txn, &ctx.state.right, key_hash)?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();
@@ -249,20 +251,14 @@ impl LatestInnerHashJoin {
 						right_store: &ctx.state.right,
 					};
 					let mut result = Vec::new();
-					let prepared = prepare_entry_update(txn, &ctx.state.left, keys.pre, post)?;
-					let mut stored = false;
+					let withdraw_group = ctx.state.right.group_of(txn, keys.pre)?;
 					for &idx in indices {
-						let withdrawn = withdraw_slot(txn, &snapshot_ctx, keys.pre, pre, idx)?;
-						if let Some(prepared) = &prepared {
-							stored |= update_row_in_entry(
-								txn,
-								&ctx.state.left,
-								prepared,
-								pre.row_numbers()[idx],
-								post,
-								idx,
-							)?;
-						}
+						let withdrawn = match withdraw_group {
+							Some(group) => {
+								withdraw_slot(txn, &snapshot_ctx, group, pre, idx)?
+							}
+							None => None,
+						};
 						let published = publish_slot(
 							txn,
 							&snapshot_ctx,
@@ -272,9 +268,6 @@ impl LatestInnerHashJoin {
 							false,
 						)?;
 						result.extend(update_diff(withdrawn, published));
-					}
-					if let Some(prepared) = &prepared {
-						finish_entry_update(txn, &ctx.state.left, prepared, stored)?;
 					}
 					return Ok(result);
 				}

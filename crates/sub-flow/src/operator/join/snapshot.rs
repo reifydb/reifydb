@@ -604,7 +604,7 @@ pub(crate) fn withdraw_joined(
 		let released = ctx.ledger.release(txn, group, left_number, right_number)?;
 		let content = match released {
 			Some(retired) => Some(retired),
-			None => ctx.right_store.get_row(txn, key_hash, right_number)?,
+			None => ctx.right_store.get_row_in(txn, group, right_number)?,
 		};
 		let Some(content) = content else {
 			continue;
@@ -651,7 +651,7 @@ pub(crate) fn publish_slot(
 	let group = ctx.right_store.group_for(txn, key_hash)?;
 	let left_numbers: Vec<RowNumber> = left_indices.iter().map(|&idx| left.row_numbers()[idx]).collect();
 
-	let Some(content) = ctx.right_store.get_row(txn, key_hash, SLOT)? else {
+	let Some((content, slot)) = ctx.right_store.slot(txn, group)? else {
 		if !outer {
 			return Ok(None);
 		}
@@ -664,20 +664,16 @@ pub(crate) fn publish_slot(
 	for left_number in &left_numbers {
 		ctx.ledger.publish(txn, group, *left_number, SLOT, &content)?;
 	}
-	let slot = columns_from_block(txn, ctx.right_store, vec![(SLOT, content)])?;
 	Ok(Some(ctx.operator.join_left_with_slot(left, left_indices, &slot)))
 }
 
 pub(crate) fn withdraw_slot(
 	txn: &mut FlowTransaction,
 	ctx: &SnapshotJoinContext,
-	key_hash: &Hash128,
+	group: GroupId,
 	left: &Columns,
 	left_idx: usize,
 ) -> Result<Option<Columns>> {
-	let Some(group) = ctx.right_store.group_of(txn, key_hash)? else {
-		return Ok(None);
-	};
 	let left_number = left.row_numbers()[left_idx];
 	for (right, _) in ctx.ledger.published(txn, group, left_number)? {
 		let right_number = match right {
@@ -690,7 +686,7 @@ pub(crate) fn withdraw_slot(
 		let released = ctx.ledger.release(txn, group, left_number, right_number)?;
 		let content = match released {
 			Some(retired) => Some(retired),
-			None => ctx.right_store.get_row(txn, key_hash, right_number)?,
+			None => ctx.right_store.get_row_in(txn, group, right_number)?,
 		};
 		let Some(content) = content else {
 			continue;
@@ -714,7 +710,7 @@ pub(crate) fn retire_right(
 	let Some(group) = ctx.right_store.group_of(txn, key_hash)? else {
 		return Ok(());
 	};
-	let Some(content) = ctx.right_store.get_row(txn, key_hash, row_number)? else {
+	let Some(content) = ctx.right_store.get_row_in(txn, group, row_number)? else {
 		return Ok(());
 	};
 	ctx.ledger.retire(txn, group, row_number, &content)

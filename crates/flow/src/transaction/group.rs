@@ -40,7 +40,7 @@ use reifydb_value::{
 	util::hash::xxh3_64,
 	value::{datetime::DateTime, duration::Duration},
 };
-use tracing::instrument;
+use tracing::{Span, instrument};
 
 use super::FlowTransaction;
 
@@ -852,7 +852,7 @@ impl GroupInterner {
 		for key in &stale {
 			txn.state_remove(operator, key)?;
 		}
-		let span = tracing::Span::current();
+		let span = Span::current();
 		span.record("candidates", batch.items.len() as u64);
 		span.record("due", due.len() as u64);
 		span.record("stale", stale.len() as u64);

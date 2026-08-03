@@ -51,6 +51,7 @@ use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	Result,
 	byte_size::ByteSize,
 	count::Count,
 	params::Params,
@@ -515,10 +516,7 @@ fn level_count(metric: &'static str, count: u64) -> Measure {
 	}
 }
 
-fn storage_rows(
-	reader: &MetricsReader<SingleStore>,
-	txn: &mut Transaction<'_>,
-) -> reifydb_value::Result<Vec<MetricsRow>> {
+fn storage_rows(reader: &MetricsReader<SingleStore>, txn: &mut Transaction<'_>) -> Result<Vec<MetricsRow>> {
 	let mut rows = Vec::new();
 	let mut flows: HashMap<(u64, u64, Tier), MultiStorageMetrics> = HashMap::new();
 	for tier in [Tier::Buffer, Tier::Persistent] {
@@ -573,7 +571,7 @@ fn storage_row(
 	}
 }
 
-fn cdc_rows(reader: &MetricsReader<SingleStore>, txn: &mut Transaction<'_>) -> reifydb_value::Result<Vec<MetricsRow>> {
+fn cdc_rows(reader: &MetricsReader<SingleStore>, txn: &mut Transaction<'_>) -> Result<Vec<MetricsRow>> {
 	let mut rows = Vec::new();
 	let mut flows: HashMap<(u64, u64), CdcMetrics> = HashMap::new();
 	for (metric_id, metrics) in reader.cdc_reader().scan_all().unwrap_or_default() {
