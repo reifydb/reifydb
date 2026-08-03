@@ -43,6 +43,8 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
+use tracing::instrument;
+
 use crate::{
 	context::FlowContext,
 	error::FlowStateError,
@@ -155,6 +157,7 @@ impl DistinctOperator {
 		})
 	}
 
+	#[instrument(name = "flow::operator::distinct::load_entry", level = "trace", skip_all)]
 	fn load_entry(&self, txn: &mut FlowTransaction, group: GroupId) -> Result<LoadedEntry> {
 		match utils::state_get(self.operator, txn, &Self::entry_key(group))? {
 			Some(row) => {
@@ -174,6 +177,7 @@ impl DistinctOperator {
 		}
 	}
 
+	#[instrument(name = "flow::operator::distinct::load_layout", level = "trace", skip_all)]
 	fn load_layout(&self, txn: &mut FlowTransaction) -> Result<DistinctLayout> {
 		match utils::state_get(self.operator, txn, &Self::layout_storage_key())? {
 			Some(row) => {
@@ -192,6 +196,7 @@ impl DistinctOperator {
 		}
 	}
 
+	#[instrument(name = "flow::operator::distinct::batch_hashes", level = "trace", skip_all, fields(diffs = diffs.len()))]
 	fn batch_hashes(&self, diffs: &[Diff]) -> Result<HashSet<Hash128>> {
 		let mut touched: HashSet<Hash128> = HashSet::new();
 		for diff in diffs {

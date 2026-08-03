@@ -36,7 +36,7 @@ use reifydb_value::{
 	util::hash::Hash128,
 	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
-use tracing::Span;
+use tracing::{Span, instrument};
 
 use super::operator::{RollingEngineSlot, WindowOperator};
 use crate::operator::{
@@ -161,6 +161,7 @@ fn rolling_span(operator: &WindowOperator, lag: Duration) -> Duration {
 
 type RollingEngineBuckets<C> = RollingBuckets<Hash128, C, (WindowSlotKey, Vec<Option<Value>>)>;
 
+#[instrument(name = "flow::operator::window::intern_partitions", level = "trace", skip_all, fields(partitions = touched.len()))]
 fn intern_partitions(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
@@ -274,6 +275,7 @@ fn route_rolling_columns<C: RollingDomain>(
 	Ok(())
 }
 
+#[instrument(name = "flow::operator::window::rolling", level = "trace", skip_all)]
 pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	if operator.is_count_based() {
 		apply_rolling::<u64>(operator, txn, change)

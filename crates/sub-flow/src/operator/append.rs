@@ -23,6 +23,8 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
 
+use tracing::instrument;
+
 use crate::{
 	error::FlowGraphError,
 	operator::{OperatorCell, drops::SealedDrops},
@@ -184,6 +186,7 @@ impl Operator for AppendOperator {
 
 impl AppendOperator {
 	#[inline]
+	#[instrument(name = "flow::operator::append::create_row_numbers", level = "trace", skip_all, fields(groups = groups.len()))]
 	fn translate_create_row_numbers(
 		&self,
 		txn: &mut FlowTransaction,
@@ -200,6 +203,7 @@ impl AppendOperator {
 	}
 
 	#[inline]
+	#[instrument(name = "flow::operator::append::lookup_row_numbers", level = "trace", skip_all, fields(groups = groups.len()))]
 	fn lookup_row_numbers(
 		&self,
 		txn: &mut FlowTransaction,
@@ -221,6 +225,7 @@ impl AppendOperator {
 	}
 
 	#[inline]
+	#[instrument(name = "flow::operator::append::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn translate_append_insert(
 		&self,
 		txn: &mut FlowTransaction,
@@ -237,6 +242,7 @@ impl AppendOperator {
 	}
 
 	#[inline]
+	#[instrument(name = "flow::operator::append::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn translate_append_update(
 		&self,
 		txn: &mut FlowTransaction,
@@ -259,6 +265,7 @@ impl AppendOperator {
 	}
 
 	#[inline]
+	#[instrument(name = "flow::operator::append::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
 	fn translate_append_remove(
 		&self,
 		txn: &mut FlowTransaction,

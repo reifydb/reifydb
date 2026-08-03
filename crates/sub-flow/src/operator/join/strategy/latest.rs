@@ -6,8 +6,11 @@ use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{Result, util::hash::Hash128, value::row_number::RowNumber};
 
 use super::hash::{build_shape, columns_from_block, encode_row};
+use tracing::instrument;
+
 use crate::operator::join::store::{RowPresence, Store};
 
+#[instrument(name = "flow::operator::join::latest::overwrite_right_slot", level = "trace", skip_all, fields(rows = indices.len()))]
 pub(crate) fn overwrite_right_slot(
 	txn: &mut FlowTransaction,
 	right: &Store,
@@ -34,6 +37,7 @@ pub(crate) fn overwrite_right_slot(
 	Ok(())
 }
 
+#[instrument(name = "flow::operator::join::latest::read_right_slot", level = "trace", skip_all)]
 pub(crate) fn read_right_slot(txn: &mut FlowTransaction, right: &Store, key_hash: &Hash128) -> Result<Option<Columns>> {
 	match right.get_row(txn, key_hash, RowNumber::MAX)? {
 		Some(row) => Ok(Some(columns_from_block(txn, right, vec![(RowNumber::MAX, row)])?)),
@@ -41,6 +45,7 @@ pub(crate) fn read_right_slot(txn: &mut FlowTransaction, right: &Store, key_hash
 	}
 }
 
+#[instrument(name = "flow::operator::join::latest::remove_right_slot", level = "trace", skip_all)]
 pub(crate) fn remove_right_slot(txn: &mut FlowTransaction, right: &Store, key_hash: &Hash128) -> Result<()> {
 	right.remove_row(txn, key_hash, RowNumber::MAX)?;
 	Ok(())

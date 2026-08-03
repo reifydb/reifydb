@@ -18,15 +18,15 @@ use reifydb_flow::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, config::TumblingCarryConfig, is_sealed, tumbling::TumblingBuckets,
-			tumbling_carry::TumblingCarryEngine,
+			AccumulatorEvent, EmitKind, WindowResult, config::TumblingCarryConfig, is_sealed,
+			tumbling::TumblingBuckets, tumbling_carry::TumblingCarryEngine,
 		},
 		ledger::FiredAt,
 		span::{Slot, SlotCoord, SlotSpan, WindowAnchor, WindowCoord, WindowSpan},
 	},
 };
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
-use tracing::debug;
+use tracing::{debug, instrument};
 
 use crate::{
 	config::Config,
@@ -61,6 +61,13 @@ type Buckets<A> = TumblingBuckets<
 	<A as TumblingCarryOperator>::GroupKey,
 	SlotCoord<<A as TumblingCarryOperator>::WindowSlot>,
 	AccumulatorContribution<A>,
+>;
+type WindowResults<A> = Vec<
+	WindowResult<
+		<A as TumblingCarryOperator>::GroupKey,
+		SlotCoord<<A as TumblingCarryOperator>::WindowSlot>,
+		<A as TumblingCarryOperator>::Output,
+	>,
 >;
 
 pub trait TumblingCarryOperator {
@@ -146,6 +153,7 @@ where
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
+	#[instrument(name = "flow::operator::tumbling::route", level = "trace", skip_all, fields(operator = A::NAME))]
 	fn route(&self, ctx: &mut impl OperatorContext, change: &impl ChangeView) -> Buckets<A> {
 		let mut buckets: Buckets<A> = BTreeMap::new();
 
@@ -200,6 +208,7 @@ where
 	}
 
 	#[inline]
+	#[instrument(name = "flow::operator::tumbling::emit", level = "trace", skip_all, fields(operator = A::NAME))]
 	fn emit_batches(
 		&self,
 		ctx: &mut impl OperatorContext,
@@ -254,6 +263,54 @@ where
 			engine.expire_meta(store, horizon.to_order())?;
 		}
 		Ok(())
+	}
+
+	#[instrument(name = "flow::operator::tumbling::seal", level = "trace", skip_all, fields(operator = A::NAME))]
+	fn seal(
+		&mut self,
+		ctx: &mut impl OperatorContext,
+		buckets: &mut Buckets<A>,
+		seal_after: Duration,
+	) -> Result<()> {
+		let mut store = OperatorContextStore(ctx);
+		let newest = buckets.keys().map(|(_, span)| span.start.order_key()).max();
+		if let Some(newest) = newest {
+			arm_seal_timer(&mut store, newest, seal_after)?;
+		}
+		let watermark = seal_frontier(&mut store)?;
+		let horizon = seal_horizon_of(watermark, seal_after);
+		Self::expire_through(&mut self.engine, &mut store, horizon)?;
+		let mut dropped = 0u64;
+		buckets.retain(|(_, span), events| {
+			if is_sealed(span.start.order_key(), horizon) {
+				dropped += events.len() as u64;
+				false
+			} else {
+				true
+			}
+		});
+		if dropped > 0 {
+			debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
+		}
+		Ok(())
+	}
+
+	#[instrument(name = "flow::operator::tumbling::accumulate", level = "trace", skip_all, fields(operator = A::NAME))]
+	fn accumulate(&mut self, ctx: &mut impl OperatorContext, buckets: Buckets<A>) -> Result<WindowResults<A>> {
+		let Self {
+			aggregator,
+			engine,
+			..
+		} = &mut *self;
+		let mut store = OperatorContextStore(ctx);
+		Ok(engine.apply(
+			&mut store,
+			buckets,
+			|group, window_start| aggregator.encode_row_key(group, window_start),
+			|| aggregator.new_accumulator(),
+			|group, span, value, prev_carry| aggregator.build_output(group, span, value, prev_carry),
+			|value, prev_carry| aggregator.carry_forward(value, prev_carry),
+		)?)
 	}
 }
 
@@ -338,49 +395,13 @@ where
 
 		let seal_after = self.aggregator.seal_after();
 		if let Some(seal_after) = seal_after {
-			let mut store = OperatorContextStore(ctx);
-			let newest = buckets.keys().map(|(_, span)| span.start.order_key()).max();
-			if let Some(newest) = newest {
-				arm_seal_timer(&mut store, newest, seal_after)?;
-			}
-			let watermark = seal_frontier(&mut store)?;
-			let horizon = seal_horizon_of(watermark, seal_after);
-			Self::expire_through(&mut self.engine, &mut store, horizon)?;
-			let mut dropped = 0u64;
-			buckets.retain(|(_, span), events| {
-				if is_sealed(span.start.order_key(), horizon) {
-					dropped += events.len() as u64;
-					false
-				} else {
-					true
-				}
-			});
-			if dropped > 0 {
-				debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
-			}
+			self.seal(ctx, &mut buckets, seal_after)?;
 			if buckets.is_empty() {
 				return Ok(());
 			}
 		}
 
-		let results = {
-			let Self {
-				aggregator,
-				engine,
-				..
-			} = &mut *self;
-			let mut store = OperatorContextStore(ctx);
-			engine.apply(
-				&mut store,
-				buckets,
-				|group, window_start| aggregator.encode_row_key(group, window_start),
-				|| aggregator.new_accumulator(),
-				|group, span, value, prev_carry| {
-					aggregator.build_output(group, span, value, prev_carry)
-				},
-				|value, prev_carry| aggregator.carry_forward(value, prev_carry),
-			)?
-		};
+		let results = self.accumulate(ctx, buckets)?;
 
 		let mut inserts: Vec<(RowNumber, A::Output)> = Vec::new();
 		let mut updates: Vec<(RowNumber, A::Output)> = Vec::new();

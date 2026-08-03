@@ -14,6 +14,7 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_flow::transaction::FlowTransaction;
+use tracing::instrument;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -139,6 +140,7 @@ pub(crate) fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize) ->
 	encoded
 }
 
+#[instrument(name = "flow::operator::join::add_state_entry", level = "trace", skip_all)]
 pub(crate) fn add_to_state_entry_batch(
 	txn: &mut FlowTransaction,
 	store: &mut Store,
@@ -198,6 +200,7 @@ pub(crate) fn is_first_right_row(txn: &mut FlowTransaction, right_store: &Store,
 	Ok(!right_store.contains_key(txn, key_hash)?)
 }
 
+#[instrument(name = "flow::operator::join::decode_run", level = "trace", skip_all, fields(rows = rows.len()))]
 fn decode_run(
 	txn: &mut FlowTransaction,
 	store: &Store,
@@ -211,6 +214,7 @@ fn decode_run(
 	Ok(Columns::from_encoded_rows(&shape, ids, rows))
 }
 
+#[instrument(name = "flow::operator::join::merge_runs", level = "trace", skip_all, fields(runs = runs.len()))]
 fn merge_runs(runs: Vec<Columns>) -> Columns {
 	let mut names: Vec<String> = Vec::new();
 	for run in &runs {
@@ -255,6 +259,7 @@ fn merge_runs(runs: Vec<Columns>) -> Columns {
 	Columns::with_system(result_columns, SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time))
 }
 
+#[instrument(name = "flow::operator::join::columns_from_block", level = "trace", skip_all, fields(rows = block.len()))]
 pub(crate) fn columns_from_block(
 	txn: &mut FlowTransaction,
 	store: &Store,
@@ -299,6 +304,7 @@ where
 	stream_join_blocks_encoded(txn, store, key_hash, false, |txn, opposite, _| join_block(txn, opposite))
 }
 
+#[instrument(name = "flow::operator::join::probe", level = "trace", skip_all, fields(blocks = tracing::field::Empty, rows = tracing::field::Empty))]
 pub(crate) fn stream_join_blocks_encoded<F>(
 	txn: &mut FlowTransaction,
 	store: &Store,
@@ -312,11 +318,15 @@ where
 	let limit = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
 	let mut out = Vec::new();
 	let mut after: Option<RowNumber> = None;
+	let mut blocks = 0u64;
+	let mut rows = 0u64;
 	loop {
 		let block = store.rows_for_key_block(txn, key_hash, after.as_ref(), limit)?;
 		if block.is_empty() {
 			break;
 		}
+		blocks += 1;
+		rows += block.len() as u64;
 		let last = block.last().unwrap().0;
 		let exhausted = block.len() < limit;
 		let encoded = match want_encoded {
@@ -330,6 +340,9 @@ where
 		}
 		after = Some(last);
 	}
+	let span = tracing::Span::current();
+	span.record("blocks", blocks);
+	span.record("rows", rows);
 	Ok(out)
 }
 
@@ -339,6 +352,7 @@ pub(crate) struct JoinEmitContext<'a> {
 	pub operator: &'a JoinOperator,
 }
 
+#[instrument(name = "flow::operator::join::emit_update_joined", level = "trace", skip_all)]
 pub(crate) fn emit_update_joined_columns(
 	txn: &mut FlowTransaction,
 	pre: &Columns,
@@ -391,6 +405,7 @@ pub(crate) fn emit_update_joined_columns(
 	})
 }
 
+#[instrument(name = "flow::operator::join::emit_joined", level = "trace", skip_all)]
 pub(crate) fn emit_joined_columns_batch(
 	txn: &mut FlowTransaction,
 	primary: &Columns,
@@ -427,6 +442,7 @@ pub(crate) fn emit_joined_columns_batch(
 	})
 }
 
+#[instrument(name = "flow::operator::join::emit_remove_joined", level = "trace", skip_all)]
 pub(crate) fn emit_remove_joined_columns_batch(
 	txn: &mut FlowTransaction,
 	primary: &Columns,
@@ -463,6 +479,7 @@ pub(crate) fn emit_remove_joined_columns_batch(
 	})
 }
 
+#[instrument(name = "flow::operator::join::for_each_left_block", level = "trace", skip_all)]
 pub(crate) fn for_each_left_block<F>(
 	txn: &mut FlowTransaction,
 	left_store: &Store,

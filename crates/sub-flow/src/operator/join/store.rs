@@ -22,6 +22,7 @@ use reifydb_core::{
 	state::{keyspace::fold_hash128, membership::MembershipAnswer},
 };
 use reifydb_flow::transaction::FlowTransaction;
+use tracing::instrument;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -87,6 +88,7 @@ impl Store {
 		Ok(())
 	}
 
+	#[instrument(name = "flow::operator::join::store::hydrate_membership", level = "trace", skip_all)]
 	fn ensure_membership_hydrated(&self, txn: &mut FlowTransaction) -> Result<()> {
 		self.membership.hydrate(self.operator_id, txn)
 	}
@@ -119,6 +121,7 @@ impl Store {
 		keyspace_inner_range(group, self.side.keyspace())
 	}
 
+	#[instrument(name = "flow::operator::join::store::put_row", level = "trace", skip_all)]
 	pub(crate) fn put_row(
 		&self,
 		txn: &mut FlowTransaction,
@@ -148,6 +151,7 @@ impl Store {
 		self.intern(txn, hash)
 	}
 
+	#[instrument(name = "flow::operator::join::store::get_row", level = "trace", skip_all)]
 	pub(crate) fn get_row(
 		&self,
 		txn: &mut FlowTransaction,
@@ -210,6 +214,7 @@ impl Store {
 		Ok(existed)
 	}
 
+	#[instrument(name = "flow::operator::join::rows_for_key_block", level = "trace", skip_all, fields(limit = limit))]
 	pub(crate) fn rows_for_key_block(
 		&self,
 		txn: &mut FlowTransaction,

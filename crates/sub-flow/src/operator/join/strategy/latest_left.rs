@@ -11,6 +11,8 @@ use super::{
 	latest::{overwrite_right_slot, read_right_slot, remove_right_slot},
 	latest_inner::update_diff,
 };
+use tracing::instrument;
+
 use crate::operator::join::{
 	snapshot::{SnapshotJoinContext, publish_slot, retire_slot, withdraw_slot},
 	state::JoinSide,
@@ -63,6 +65,7 @@ impl LatestLeftHashJoin {
 		}
 	}
 
+	#[instrument(name = "flow::operator::join::latest_left::handle_insert", level = "trace", skip_all, fields(rows = indices.len()))]
 	pub(crate) fn handle_insert(
 		&self,
 		txn: &mut FlowTransaction,
@@ -100,6 +103,7 @@ impl LatestLeftHashJoin {
 		}
 	}
 
+	#[instrument(name = "flow::operator::join::latest_left::handle_right_insert", level = "trace", skip_all, fields(rows = indices.len()))]
 	fn handle_right_insert(
 		&self,
 		txn: &mut FlowTransaction,
@@ -144,6 +148,7 @@ impl LatestLeftHashJoin {
 		Ok(result)
 	}
 
+	#[instrument(name = "flow::operator::join::latest_left::handle_remove", level = "trace", skip_all)]
 	pub(crate) fn handle_remove(
 		&self,
 		txn: &mut FlowTransaction,
@@ -227,6 +232,7 @@ impl LatestLeftHashJoin {
 		Ok(result)
 	}
 
+	#[instrument(name = "flow::operator::join::latest_left::handle_update", level = "trace", skip_all)]
 	pub(crate) fn handle_update(
 		&self,
 		txn: &mut FlowTransaction,

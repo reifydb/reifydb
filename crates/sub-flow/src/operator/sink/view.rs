@@ -46,6 +46,8 @@ use super::{
 	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
 	shape_field_columns,
 };
+use tracing::instrument;
+
 use crate::{error::FlowSinkError, operator::OperatorCell};
 
 const CREATED_AT_CACHE_CAPACITY: usize = 16_384;
@@ -198,6 +200,7 @@ impl Operator for SinkTableViewOperator {
 
 impl SinkTableViewOperator {
 	#[inline]
+	#[instrument(name = "flow::operator::sink::view::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_table_view_insert(
 		&self,
 		txn: &mut FlowTransaction,
@@ -243,6 +246,7 @@ impl SinkTableViewOperator {
 	}
 
 	#[inline]
+	#[instrument(name = "flow::operator::sink::view::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_table_view_update(
 		&self,
 		txn: &mut FlowTransaction,
@@ -353,6 +357,7 @@ impl SinkTableViewOperator {
 	}
 
 	#[inline]
+	#[instrument(name = "flow::operator::sink::view::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
 	fn apply_table_view_remove(&self, txn: &mut FlowTransaction, view: &View, pre: &Columns) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns())?;
 		let dict_encoded = dictionary_encode_view_columns(txn, view, &coerced)?;

@@ -10,6 +10,8 @@ use super::{
 	hash::{add_to_state_entry_batch, for_each_left_block, remove_from_state_entry, update_row_in_entry},
 	latest::{overwrite_right_slot, read_right_slot, remove_right_slot},
 };
+use tracing::instrument;
+
 use crate::operator::join::{
 	snapshot::{SnapshotJoinContext, publish_slot, retire_slot, withdraw_slot},
 	state::JoinSide,
@@ -49,6 +51,7 @@ impl LatestInnerHashJoin {
 		Ok(Vec::new())
 	}
 
+	#[instrument(name = "flow::operator::join::latest_inner::handle_insert", level = "trace", skip_all, fields(rows = indices.len()))]
 	pub(crate) fn handle_insert(
 		&self,
 		txn: &mut FlowTransaction,
@@ -87,6 +90,7 @@ impl LatestInnerHashJoin {
 		}
 	}
 
+	#[instrument(name = "flow::operator::join::latest_inner::handle_right_insert", level = "trace", skip_all, fields(rows = indices.len()))]
 	fn handle_right_insert(
 		&self,
 		txn: &mut FlowTransaction,
@@ -133,6 +137,7 @@ impl LatestInnerHashJoin {
 		Ok(result)
 	}
 
+	#[instrument(name = "flow::operator::join::latest_inner::handle_remove", level = "trace", skip_all)]
 	pub(crate) fn handle_remove(
 		&self,
 		txn: &mut FlowTransaction,
@@ -215,6 +220,7 @@ impl LatestInnerHashJoin {
 		Ok(result)
 	}
 
+	#[instrument(name = "flow::operator::join::latest_inner::handle_update", level = "trace", skip_all)]
 	pub(crate) fn handle_update(
 		&self,
 		txn: &mut FlowTransaction,

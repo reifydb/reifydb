@@ -34,6 +34,8 @@ use reifydb_value::{
 	value::{Value, row_number::RowNumber},
 };
 
+use tracing::instrument;
+
 use crate::{
 	context::FlowContext,
 	operator::{OperatorCell, stateful::raw::RawStatefulOperator, store::OperatorStateStore},
@@ -300,6 +302,7 @@ impl Operator for GateOperator {
 
 impl GateOperator {
 	#[inline]
+	#[instrument(name = "flow::operator::gate::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_gate_insert(&self, txn: &mut FlowTransaction, post: &Columns, result: &mut Vec<Diff>) -> Result<()> {
 		if post.row_numbers().is_empty() {
 			let mask = self.evaluate(post)?;
@@ -327,6 +330,7 @@ impl GateOperator {
 	}
 
 	#[inline]
+	#[instrument(name = "flow::operator::gate::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_gate_update(
 		&self,
 		txn: &mut FlowTransaction,
@@ -369,6 +373,7 @@ impl GateOperator {
 	}
 
 	#[inline]
+	#[instrument(name = "flow::operator::gate::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
 	fn apply_gate_remove(&self, txn: &mut FlowTransaction, pre: Columns, result: &mut Vec<Diff>) -> Result<()> {
 		if pre.row_numbers().is_empty() {
 			result.push(Diff::Remove {

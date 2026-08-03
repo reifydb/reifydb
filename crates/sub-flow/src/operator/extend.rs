@@ -21,6 +21,8 @@ use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{Result, fragment::Fragment, value::system_columns::SystemColumns};
 
+use tracing::instrument;
+
 use crate::{context::FlowContext, operator::OperatorCell};
 
 pub struct ExtendOperator {
@@ -66,6 +68,7 @@ impl ExtendOperator {
 		self.parent.output_schema()
 	}
 
+	#[instrument(name = "flow::operator::extend::extend", level = "trace", skip_all, fields(rows = columns.row_count()))]
 	fn extend(&self, columns: &Columns) -> Result<Columns> {
 		let row_count = columns.row_count();
 		if row_count == 0 {

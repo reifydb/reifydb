@@ -33,6 +33,7 @@ use reifydb_flow::{
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
+use tracing::instrument;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -259,6 +260,7 @@ impl JoinOperator {
 		SnapshotLedger::new(self.operator)
 	}
 
+	#[instrument(name = "flow::operator::join::compute_keys", level = "trace", skip_all, fields(rows = columns.row_count()))]
 	pub(crate) fn compute_join_keys(
 		&self,
 		columns: &Columns,
@@ -690,6 +692,7 @@ impl Operator for JoinOperator {
 impl JoinOperator {
 	#[inline]
 	#[allow(clippy::too_many_arguments)]
+	#[instrument(name = "flow::operator::join::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_join_insert(
 		&self,
 		txn: &mut FlowTransaction,
@@ -749,6 +752,7 @@ impl JoinOperator {
 
 	#[inline]
 	#[allow(clippy::too_many_arguments)]
+	#[instrument(name = "flow::operator::join::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
 	fn apply_join_remove(
 		&self,
 		txn: &mut FlowTransaction,
@@ -804,6 +808,7 @@ impl JoinOperator {
 
 	#[inline]
 	#[allow(clippy::too_many_arguments)]
+	#[instrument(name = "flow::operator::join::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_join_update(
 		&self,
 		txn: &mut FlowTransaction,

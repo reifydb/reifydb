@@ -30,7 +30,7 @@ use reifydb_value::{
 	util::hash::Hash128,
 	value::{Value, datetime::DateTime, duration::Duration},
 };
-use tracing::Span;
+use tracing::{Span, instrument};
 
 use super::operator::WindowOperator;
 use crate::operator::{
@@ -46,6 +46,7 @@ use crate::operator::{
 };
 
 #[allow(clippy::too_many_arguments)]
+#[instrument(name = "flow::operator::window::route", level = "trace", skip_all, fields(rows = columns.row_count()))]
 fn route_engine_columns(
 	operator: &WindowOperator,
 	columns: &Columns,
@@ -243,6 +244,7 @@ fn route_count_tumbling(
 	Ok(())
 }
 
+#[instrument(name = "flow::operator::window::tumbling", level = "trace", skip_all)]
 pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let window_size = operator.size_duration().unwrap_or_default();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
@@ -354,6 +356,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
+#[instrument(name = "flow::operator::window::intern", level = "trace", skip_all, fields(windows = arrival.len()))]
 fn intern_batch(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
@@ -378,6 +381,7 @@ fn sliding_insert_anchors(
 	Ok(operator.sliding_window_anchors(coord))
 }
 
+#[instrument(name = "flow::operator::window::sliding", level = "trace", skip_all)]
 pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let is_count = operator.is_count_based();
@@ -613,6 +617,7 @@ fn session_assign(
 	Ok(assignment.session_id())
 }
 
+#[instrument(name = "flow::operator::window::session", level = "trace", skip_all)]
 pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let kind = operator.session_kind();
@@ -868,6 +873,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
+#[instrument(name = "flow::operator::window::gate_seals", level = "trace", skip_all)]
 fn gate_and_arm_seals(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,
@@ -936,6 +942,7 @@ fn gate_and_arm_seals(
 }
 
 #[tracing::instrument(name = "flow::window::seal", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
+#[instrument(name = "flow::operator::window::seal", level = "trace", skip_all)]
 fn seal_due_windows(
 	operator: &WindowOperator,
 	txn: &mut FlowTransaction,

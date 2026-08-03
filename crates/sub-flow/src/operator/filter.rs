@@ -25,6 +25,8 @@ use reifydb_value::{
 	value::{Value, value_type::ValueType},
 };
 
+use tracing::instrument;
+
 use crate::{context::FlowContext, operator::OperatorCell};
 
 pub struct FilterOperator {
@@ -63,6 +65,7 @@ impl FilterOperator {
 		}
 	}
 
+	#[instrument(name = "flow::operator::filter::evaluate", level = "trace", skip_all, fields(rows = columns.row_count()))]
 	fn evaluate(&self, columns: &Columns) -> Result<Vec<bool>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {
@@ -111,6 +114,7 @@ impl FilterOperator {
 		Ok(mask)
 	}
 
+	#[instrument(name = "flow::operator::filter::passing", level = "trace", skip_all, fields(rows = columns.row_count()))]
 	fn filter_passing(&self, columns: &Columns, mask: &[bool]) -> Columns {
 		let passing_indices: Vec<usize> =
 			mask.iter().enumerate().filter(|&(_, pass)| *pass).map(|(idx, _)| idx).collect();
@@ -167,6 +171,7 @@ impl FilterOperator {
 		self.parent.output_schema()
 	}
 
+	#[instrument(name = "flow::operator::filter::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_filter_insert(&self, post: &Columns, result: &mut Vec<Diff>) -> Result<()> {
 		let mask = self.evaluate(post)?;
 		let passing = self.filter_passing(post, &mask);
@@ -177,6 +182,7 @@ impl FilterOperator {
 	}
 
 	#[inline]
+	#[instrument(name = "flow::operator::filter::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
 	fn apply_filter_remove(&self, pre: &Columns, result: &mut Vec<Diff>) -> Result<()> {
 		let mask = self.evaluate(pre)?;
 		let passing = self.filter_passing(pre, &mask);
@@ -187,6 +193,7 @@ impl FilterOperator {
 	}
 
 	#[inline]
+	#[instrument(name = "flow::operator::filter::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_filter_update(&self, pre: &Columns, post: &Columns, result: &mut Vec<Diff>) -> Result<()> {
 		let pre_mask = self.evaluate(pre)?;
 		let post_mask = self.evaluate(post)?;

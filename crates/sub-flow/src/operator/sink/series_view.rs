@@ -38,6 +38,8 @@ use super::{
 	shape_field_columns,
 	view::dictionary_encode_view_columns,
 };
+use tracing::instrument;
+
 use crate::operator::OperatorCell;
 
 pub struct SinkSeriesViewOperator {
@@ -124,6 +126,7 @@ impl Operator for SinkSeriesViewOperator {
 
 impl SinkSeriesViewOperator {
 	#[inline]
+	#[instrument(name = "flow::operator::sink::series::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_series_view_insert(
 		&self,
 		txn: &mut FlowTransaction,
@@ -169,6 +172,7 @@ impl SinkSeriesViewOperator {
 	}
 
 	#[inline]
+	#[instrument(name = "flow::operator::sink::series::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_series_view_update(
 		&self,
 		txn: &mut FlowTransaction,
@@ -244,6 +248,7 @@ impl SinkSeriesViewOperator {
 	}
 
 	#[inline]
+	#[instrument(name = "flow::operator::sink::series::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
 	fn apply_series_view_remove(
 		&self,
 		txn: &mut FlowTransaction,

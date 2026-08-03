@@ -35,6 +35,8 @@ use reifydb_value::{
 };
 use serde::{Deserialize, Serialize};
 
+use tracing::instrument;
+
 use crate::{
 	error::FlowStateError,
 	operator::{
@@ -221,6 +223,7 @@ impl TakeOperator {
 	}
 
 	#[inline]
+	#[instrument(name = "flow::operator::take::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_insert_diff(&self, state: &mut TakeState, post: Columns, output_diffs: &mut Vec<Diff>) {
 		let schema = row_shape_from_columns(&post);
 		let row_count = post.row_count();
@@ -243,6 +246,7 @@ impl TakeOperator {
 	}
 
 	#[inline]
+	#[instrument(name = "flow::operator::take::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_update_diff(&self, state: &mut TakeState, pre: Columns, post: Columns, output_diffs: &mut Vec<Diff>) {
 		let schema = row_shape_from_columns(&post);
 		let row_count = post.row_count();
@@ -275,6 +279,7 @@ impl TakeOperator {
 	}
 
 	#[inline]
+	#[instrument(name = "flow::operator::take::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
 	fn apply_remove_diff(&self, state: &mut TakeState, pre: Columns, output_diffs: &mut Vec<Diff>) {
 		let schema = row_shape_from_columns(&pre);
 		let row_count = pre.row_count();
