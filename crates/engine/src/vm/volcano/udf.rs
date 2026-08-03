@@ -72,6 +72,126 @@ impl UdfEvalNode {
 			(Box::new(UdfEvalNode::new(input, all_udfs)), rewritten, udf_names)
 		}
 	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::udf_eval::args")]
+	fn eval_args(call: &CompiledUdfCall, eval_ctx: &EvalContext) -> Result<Vec<ColumnWithName>> {
+		let mut arg_columns = Vec::with_capacity(call.compiled_args.len());
+		for compiled_arg in &call.compiled_args {
+			arg_columns.push(compiled_arg.execute(eval_ctx)?);
+		}
+		Ok(arg_columns)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::udf_eval::vectorized")]
+	fn run_vectorized<'a>(
+		rx: &mut Transaction<'a>,
+		stored_ctx: &QueryContext,
+		call: &CompiledUdfCall,
+		arg_columns: &[ColumnWithName],
+		row_count: usize,
+	) -> Result<ColumnWithName> {
+		let mut func_symbols = stored_ctx.symbols.clone();
+		func_symbols.enter_scope(ScopeType::Function);
+
+		for (cap_name, cap_var) in &call.udf.callable.captured {
+			func_symbols.set(cap_name.clone(), cap_var.clone(), true)?;
+		}
+
+		for (param, arg_col) in call.udf.callable.parameters.iter().zip(arg_columns.iter()) {
+			let param_name = strip_dollar_prefix(param.name.text()).to_string();
+			let col_var = Variable::columns(Columns::new(vec![arg_col.clone()]));
+			func_symbols.set(param_name, col_var, true)?;
+		}
+
+		let mut vm = Vm::with_batch_size_from_services(
+			func_symbols,
+			row_count,
+			&stored_ctx.services,
+			&EMPTY_PARAMS,
+			stored_ctx.identity,
+		);
+		let mut func_result: Vec<Frame> = Vec::new();
+		vm.run(&stored_ctx.services, rx, &call.udf.callable.body, &mut func_result)?;
+
+		let result_var = collect_call_result(&mut vm, &mut func_result);
+		Ok(match result_var {
+			Variable::Columns {
+				columns: c,
+				..
+			} if !c.is_empty() => {
+				let name =
+					c.names.iter()
+						.next()
+						.cloned()
+						.unwrap_or_else(|| call.udf.result_column.clone());
+				let data = c.columns.into_inner().into_iter().next().unwrap();
+				ColumnWithName::new(name, data)
+			}
+			_ => {
+				let data = ColumnBuffer::none_typed(ValueType::Any, row_count);
+				ColumnWithName {
+					name: call.udf.result_column.clone(),
+					data,
+				}
+			}
+		})
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::udf_eval::scalar")]
+	fn run_scalar<'a>(
+		rx: &mut Transaction<'a>,
+		stored_ctx: &QueryContext,
+		call: &CompiledUdfCall,
+		arg_columns: &[ColumnWithName],
+		row_count: usize,
+	) -> Result<ColumnWithName> {
+		let mut results: Vec<Value> = Vec::with_capacity(row_count);
+		let mut func_symbols = stored_ctx.symbols.clone();
+
+		for row_idx in 0..row_count {
+			func_symbols.enter_scope(ScopeType::Function);
+
+			for (cap_name, cap_var) in &call.udf.callable.captured {
+				func_symbols.set(cap_name.clone(), cap_var.clone(), true)?;
+			}
+
+			for (param, arg_col) in call.udf.callable.parameters.iter().zip(arg_columns.iter()) {
+				let param_name = strip_dollar_prefix(param.name.text()).to_string();
+				let value = arg_col.data().get_value(row_idx);
+				func_symbols.set(param_name, Variable::scalar(value), true)?;
+			}
+
+			let mut vm = Vm::from_services(
+				func_symbols,
+				&stored_ctx.services,
+				&EMPTY_PARAMS,
+				stored_ctx.identity,
+			);
+			let mut func_result: Vec<Frame> = Vec::new();
+			vm.run(&stored_ctx.services, rx, &call.udf.callable.body, &mut func_result)?;
+			let result_var = collect_call_result(&mut vm, &mut func_result);
+			let result = match result_var {
+				Variable::Columns {
+					columns: c,
+				} if c.is_scalar() => c.scalar_value(),
+				_ => Value::none(),
+			};
+
+			func_symbols = vm.symbols;
+			let _ = func_symbols.exit_scope();
+			results.push(result);
+		}
+
+		let col_type = results.first().map(|v| v.get_type()).unwrap_or(ValueType::Any);
+		let mut data = ColumnBuffer::none_typed(col_type, 0);
+		for value in &results {
+			data.push_value(value.clone());
+		}
+		Ok(ColumnWithName {
+			name: call.udf.result_column.clone(),
+			data,
+		})
+	}
 }
 
 impl QueryNode for UdfEvalNode {
@@ -119,106 +239,12 @@ impl QueryNode for UdfEvalNode {
 			let session = EvalContext::from_query(stored_ctx);
 			let eval_ctx = session.with_eval(columns.clone(), row_count);
 
-			let mut arg_columns = Vec::with_capacity(call.compiled_args.len());
-			for compiled_arg in &call.compiled_args {
-				arg_columns.push(compiled_arg.execute(&eval_ctx)?);
-			}
+			let arg_columns = Self::eval_args(call, &eval_ctx)?;
 
 			let result_column = if is_vectorizable(&call.udf.callable.body) {
-				let mut func_symbols = stored_ctx.symbols.clone();
-				func_symbols.enter_scope(ScopeType::Function);
-
-				for (cap_name, cap_var) in &call.udf.callable.captured {
-					func_symbols.set(cap_name.clone(), cap_var.clone(), true)?;
-				}
-
-				for (param, arg_col) in call.udf.callable.parameters.iter().zip(arg_columns.iter()) {
-					let param_name = strip_dollar_prefix(param.name.text()).to_string();
-					let col_var = Variable::columns(Columns::new(vec![arg_col.clone()]));
-					func_symbols.set(param_name, col_var, true)?;
-				}
-
-				let mut vm = Vm::with_batch_size_from_services(
-					func_symbols,
-					row_count,
-					&stored_ctx.services,
-					&EMPTY_PARAMS,
-					stored_ctx.identity,
-				);
-				let mut func_result: Vec<Frame> = Vec::new();
-				vm.run(&stored_ctx.services, rx, &call.udf.callable.body, &mut func_result)?;
-
-				let result_var = collect_call_result(&mut vm, &mut func_result);
-				match result_var {
-					Variable::Columns {
-						columns: c,
-						..
-					} if !c.is_empty() => {
-						let name =
-							c.names.iter()
-								.next()
-								.cloned()
-								.unwrap_or_else(|| call.udf.result_column.clone());
-						let data = c.columns.into_inner().into_iter().next().unwrap();
-						ColumnWithName::new(name, data)
-					}
-					_ => {
-						let data = ColumnBuffer::none_typed(ValueType::Any, row_count);
-						ColumnWithName {
-							name: call.udf.result_column.clone(),
-							data,
-						}
-					}
-				}
+				Self::run_vectorized(rx, stored_ctx, call, &arg_columns, row_count)?
 			} else {
-				let mut results: Vec<Value> = Vec::with_capacity(row_count);
-				let mut func_symbols = stored_ctx.symbols.clone();
-
-				for row_idx in 0..row_count {
-					func_symbols.enter_scope(ScopeType::Function);
-
-					for (cap_name, cap_var) in &call.udf.callable.captured {
-						func_symbols.set(cap_name.clone(), cap_var.clone(), true)?;
-					}
-
-					for (param, arg_col) in
-						call.udf.callable.parameters.iter().zip(arg_columns.iter())
-					{
-						let param_name = strip_dollar_prefix(param.name.text()).to_string();
-						let value = arg_col.data().get_value(row_idx);
-						func_symbols.set(param_name, Variable::scalar(value), true)?;
-					}
-
-					let mut vm = Vm::from_services(
-						func_symbols,
-						&stored_ctx.services,
-						&EMPTY_PARAMS,
-						stored_ctx.identity,
-					);
-					let mut func_result: Vec<Frame> = Vec::new();
-					vm.run(&stored_ctx.services, rx, &call.udf.callable.body, &mut func_result)?;
-					let result_var = collect_call_result(&mut vm, &mut func_result);
-					let result = match result_var {
-						Variable::Columns {
-							columns: c,
-						} if c.is_scalar() => c.scalar_value(),
-						_ => Value::none(),
-					};
-
-					func_symbols = vm.symbols;
-					let _ = func_symbols.exit_scope();
-					results.push(result);
-				}
-
-				let col_type = results.first().map(|v| v.get_type()).unwrap_or(ValueType::Any);
-				let mut data = ColumnBuffer::none_typed(col_type, 0);
-				for value in &results {
-					data.push_value(value.clone());
-				}
-				ColumnWithName {
-					name: call.udf.result_column.clone(),
-					data,
-				}
+				Self::run_scalar(rx, stored_ctx, call, &arg_columns, row_count)?
 			};
 
 			columns.columns.make_mut().push(result_column.data);

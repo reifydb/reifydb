@@ -7,6 +7,7 @@ use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::VariableExpression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::reifydb_assertions;
+use tracing::instrument;
 
 use crate::{
 	Result,
@@ -34,11 +35,13 @@ impl VariableNode {
 }
 
 impl QueryNode for VariableNode {
+	#[instrument(level = "trace", skip_all, name = "volcano::variable::initialize")]
 	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
+	#[instrument(level = "trace", skip_all, name = "volcano::variable::next")]
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "VariableNode::next() called before initialize()");

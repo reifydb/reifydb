@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
+use reifydb_core::value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders};
 use reifydb_routine::routine::{
 	Function, Procedure,
 	context::{FunctionContext, ProcedureContext},
@@ -11,6 +11,7 @@ use reifydb_routine::routine::{
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, params::Params, value::Value};
+use tracing::instrument;
 
 use crate::{
 	Result,
@@ -42,9 +43,60 @@ impl GeneratorNode {
 			generator: None,
 		}
 	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::generator::eval_params")]
+	fn eval_params(&self, session: &EvalContext<'_>) -> Result<Vec<ColumnWithName>> {
+		let evaluation_ctx = session.with_eval_empty();
+
+		let mut evaluated_columns = Vec::new();
+		for expr in &self.expressions {
+			let column = evaluate(&evaluation_ctx, expr)?;
+			evaluated_columns.push(column);
+		}
+		Ok(evaluated_columns)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::generator::invoke")]
+	fn invoke<'a>(
+		&self,
+		txn: &mut Transaction<'a>,
+		stored_ctx: &QueryContext,
+		evaluated_columns: Vec<ColumnWithName>,
+	) -> Result<Columns> {
+		match self.generator.as_ref().unwrap() {
+			GeneratorImpl::Function(generator) => {
+				let evaluated_params = Columns::new(evaluated_columns);
+				let mut fn_ctx = FunctionContext {
+					fragment: self.function_name.clone(),
+					identity: stored_ctx.identity,
+					row_count: evaluated_params.row_count(),
+					runtime_context: &stored_ctx.services.runtime_context,
+				};
+				Ok(generator.call(&mut fn_ctx, &evaluated_params)?)
+			}
+			GeneratorImpl::Procedure(procedure) => {
+				let values: Vec<Value> =
+					evaluated_columns.iter().map(|col| col.data().get_value(0)).collect();
+				let params = Params::Positional(Arc::new(values));
+				let mut proc_ctx = ProcedureContext {
+					fragment: self.function_name.clone(),
+					identity: stored_ctx.identity,
+					row_count: 1,
+					runtime_context: &stored_ctx.services.runtime_context,
+					tx: txn,
+					params: &params,
+					catalog: &stored_ctx.services.catalog,
+					ioc: &stored_ctx.services.ioc,
+				};
+				let empty = Columns::empty();
+				Ok(procedure.call(&mut proc_ctx, &empty)?)
+			}
+		}
+	}
 }
 
 impl QueryNode for GeneratorNode {
+	#[instrument(level = "trace", skip_all, name = "volcano::generator::initialize")]
 	fn initialize<'a>(&mut self, _txn: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 
@@ -65,51 +117,18 @@ impl QueryNode for GeneratorNode {
 		Ok(())
 	}
 
+	#[instrument(level = "trace", skip_all, name = "volcano::generator::next")]
 	fn next<'a>(&mut self, txn: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		if self.exhausted {
 			return Ok(None);
 		}
 
-		let stored_ctx = self.context.as_ref().unwrap();
+		let stored_ctx = self.context.as_ref().unwrap().clone();
 
-		let session = EvalContext::from_query(stored_ctx);
-		let evaluation_ctx = session.with_eval_empty();
+		let session = EvalContext::from_query(&stored_ctx);
+		let evaluated_columns = self.eval_params(&session)?;
 
-		let mut evaluated_columns = Vec::new();
-		for expr in &self.expressions {
-			let column = evaluate(&evaluation_ctx, expr)?;
-			evaluated_columns.push(column);
-		}
-
-		let columns = match self.generator.as_ref().unwrap() {
-			GeneratorImpl::Function(generator) => {
-				let evaluated_params = Columns::new(evaluated_columns);
-				let mut fn_ctx = FunctionContext {
-					fragment: self.function_name.clone(),
-					identity: stored_ctx.identity,
-					row_count: evaluated_params.row_count(),
-					runtime_context: &stored_ctx.services.runtime_context,
-				};
-				generator.call(&mut fn_ctx, &evaluated_params)?
-			}
-			GeneratorImpl::Procedure(procedure) => {
-				let values: Vec<Value> =
-					evaluated_columns.iter().map(|col| col.data().get_value(0)).collect();
-				let params = Params::Positional(Arc::new(values));
-				let mut proc_ctx = ProcedureContext {
-					fragment: self.function_name.clone(),
-					identity: stored_ctx.identity,
-					row_count: 1,
-					runtime_context: &stored_ctx.services.runtime_context,
-					tx: txn,
-					params: &params,
-					catalog: &stored_ctx.services.catalog,
-					ioc: &stored_ctx.services.ioc,
-				};
-				let empty = Columns::empty();
-				procedure.call(&mut proc_ctx, &empty)?
-			}
-		};
+		let columns = self.invoke(txn, &stored_ctx, evaluated_columns)?;
 
 		self.exhausted = true;
 

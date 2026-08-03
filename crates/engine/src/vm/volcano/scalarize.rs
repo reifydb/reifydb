@@ -7,6 +7,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{error::Error, reifydb_assertions};
+use tracing::instrument;
 
 use crate::{
 	Result,
@@ -30,6 +31,7 @@ impl ScalarizeNode {
 }
 
 impl QueryNode for ScalarizeNode {
+	#[instrument(level = "trace", skip_all, name = "volcano::scalarize::initialize")]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		self.input.initialize(rx, ctx)?;
 		self.initialized = Some(());
@@ -37,6 +39,7 @@ impl QueryNode for ScalarizeNode {
 		Ok(())
 	}
 
+	#[instrument(level = "trace", skip_all, name = "volcano::scalarize::next")]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		reifydb_assertions! {
 			assert!(self.initialized.is_some(), "ScalarizeNode::next() called before initialize()");

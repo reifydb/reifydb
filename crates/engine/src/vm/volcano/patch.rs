@@ -136,14 +136,13 @@ impl Transform for PatchNode {
 			self.context.as_ref().expect("PatchNode::apply() called before initialize()");
 
 		let row_count = input.row_count();
-		let system = input.system.clone();
 
 		let patch_names: Vec<Fragment> = self.expressions.iter().map(display_label).collect();
 
 		let session = EvalContext::from_transform(ctx, stored_ctx);
 		let mut patch_columns = Vec::with_capacity(self.expressions.len());
 		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {
-			let mut exec_ctx = session.with_eval(input.clone(), row_count);
+			let mut exec_ctx = Self::eval_context(&session, &input, row_count);
 
 			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
 				let alias_name = alias_expr.alias.name();
@@ -156,7 +155,7 @@ impl Transform for PatchNode {
 				}
 			}
 
-			let mut column = compiled_expr.execute(&exec_ctx)?;
+			let mut column = Self::eval_patch(compiled_expr, &exec_ctx)?;
 
 			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type())
 				&& column.data.get_type() != target_type
@@ -172,6 +171,24 @@ impl Transform for PatchNode {
 			patch_columns.push(column);
 		}
 
+		Ok(Self::merge(input, &patch_names, patch_columns))
+	}
+}
+
+impl PatchNode {
+	#[instrument(level = "trace", skip_all, name = "volcano::patch::eval_context")]
+	fn eval_context<'e>(session: &EvalContext<'e>, input: &Columns, row_count: usize) -> EvalContext<'e> {
+		session.with_eval(input.clone(), row_count)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::patch::eval")]
+	fn eval_patch(compiled: &CompiledExpr, exec_ctx: &EvalContext) -> Result<ColumnWithName> {
+		compiled.execute(exec_ctx)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::patch::merge")]
+	fn merge(input: Columns, patch_names: &[Fragment], patch_columns: Vec<ColumnWithName>) -> Columns {
+		let system = input.system.clone();
 		let mut result_columns: Vec<ColumnWithName> = Vec::new();
 
 		for (original_name, original_data) in input.names.iter().zip(input.columns.iter()) {
@@ -196,10 +213,10 @@ impl Transform for PatchNode {
 			names_vec.push(c.name);
 			buffers_vec.push(c.data);
 		}
-		Ok(Columns {
+		Columns {
 			system,
 			columns: CowVec::new(buffers_vec),
 			names: CowVec::new(names_vec),
-		})
+		}
 	}
 }

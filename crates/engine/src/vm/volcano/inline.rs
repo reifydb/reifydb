@@ -20,6 +20,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{Value, constraint::Constraint, value_type::ValueType},
 };
+use tracing::instrument;
 
 use crate::{
 	Result,
@@ -69,6 +70,7 @@ impl InlineDataNode {
 		}
 	}
 
+	#[instrument(level = "trace", skip_all, name = "volcano::inline::expand_sumtypes")]
 	fn expand_sumtype_constructors<'a>(&mut self, txn: &mut Transaction<'a>) -> Result<()> {
 		let Some(ctx) = self.context.as_ref().cloned() else {
 			return Ok(());
@@ -262,11 +264,13 @@ fn try_resolve_unit_variant<'a>(
 }
 
 impl QueryNode for InlineDataNode {
+	#[instrument(level = "trace", skip_all, name = "volcano::inline::initialize")]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
 		self.expand_sumtype_constructors(rx)?;
 		Ok(())
 	}
 
+	#[instrument(level = "trace", skip_all, name = "volcano::inline::next")]
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "InlineDataNode::next() called before initialize()");
@@ -338,19 +342,25 @@ impl InlineDataNode {
 		}
 	}
 
-	fn next_infer_namespace(&mut self, ctx: &QueryContext) -> Result<Option<Columns>> {
+	#[instrument(level = "trace", skip_all, name = "volcano::inline::column_names")]
+	fn collect_column_names(rows: &[Vec<AliasExpression>]) -> BTreeSet<String> {
 		let mut all_columns: BTreeSet<String> = BTreeSet::new();
 
-		for row in &self.rows {
+		for row in rows {
 			for keyed_expr in row {
 				let column_name = keyed_expr.alias.0.text().to_string();
 				all_columns.insert(column_name);
 			}
 		}
 
+		all_columns
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::inline::row_maps")]
+	fn build_row_maps(rows: &[Vec<AliasExpression>]) -> Vec<HashMap<String, &AliasExpression>> {
 		let mut rows_data: Vec<HashMap<String, &AliasExpression>> = Vec::new();
 
-		for row in &self.rows {
+		for row in rows {
 			let mut row_map: HashMap<String, &AliasExpression> = HashMap::new();
 			for alias_expr in row {
 				let column_name = alias_expr.alias.0.text().to_string();
@@ -359,110 +369,139 @@ impl InlineDataNode {
 			rows_data.push(row_map);
 		}
 
+		rows_data
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::inline::eval")]
+	fn eval_column_values(
+		session: &EvalContext<'_>,
+		rows_data: &[HashMap<String, &AliasExpression>],
+		column_name: &str,
+	) -> Result<(Vec<Value>, Option<ValueType>, Option<Fragment>)> {
+		let mut all_values = Vec::new();
+		let mut first_value_type: Option<ValueType> = None;
+		let mut column_fragment: Option<Fragment> = None;
+
+		for row_data in rows_data {
+			if let Some(alias_expr) = row_data.get(column_name) {
+				if column_fragment.is_none() {
+					column_fragment = Some(alias_expr.fragment.clone());
+				}
+				let eval_ctx = session.with_eval_empty();
+
+				let evaluated = evaluate(&eval_ctx, &alias_expr.expression)?;
+
+				let mut iter = evaluated.data().iter();
+				if let Some(value) = iter.next() {
+					if first_value_type.is_none() && !matches!(value, Value::None { .. }) {
+						first_value_type = Some(value.get_type());
+					}
+					all_values.push(value);
+				} else {
+					all_values.push(Value::none());
+				}
+			} else {
+				all_values.push(Value::none());
+			}
+		}
+
+		Ok((all_values, first_value_type, column_fragment))
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::inline::materialize")]
+	fn materialize_inferred_column(
+		session: &EvalContext<'_>,
+		all_values: &[Value],
+		first_value_type: Option<ValueType>,
+	) -> ColumnBuffer {
+		let wide_type = if let Some(ref fvt) = first_value_type {
+			if *fvt == ValueType::Decimal {
+				Some(ValueType::Decimal)
+			} else if *fvt == ValueType::Int {
+				Some(ValueType::Int)
+			} else if *fvt == ValueType::Uint {
+				Some(ValueType::Uint)
+			} else if fvt.is_integer() {
+				Some(ValueType::Int16)
+			} else if fvt.is_floating_point() {
+				Some(ValueType::Float8)
+			} else if *fvt == ValueType::Utf8 {
+				Some(ValueType::Utf8)
+			} else if *fvt == ValueType::Boolean {
+				Some(ValueType::Boolean)
+			} else {
+				None
+			}
+		} else {
+			None
+		};
+
+		let mut column_data = if wide_type.is_none() {
+			ColumnBuffer::none_typed(ValueType::Boolean, all_values.len())
+		} else {
+			let mut data = ColumnBuffer::with_capacity(wide_type.clone().unwrap(), 0);
+
+			for value in all_values {
+				if matches!(value, Value::None { .. }) {
+					data.push_none();
+				} else if wide_type.as_ref().is_some_and(|wt| value.get_type() == *wt) {
+					data.push_value(value.clone());
+				} else {
+					let temp_data = ColumnBuffer::from(value.clone());
+					let eval_ctx = session.with_eval_empty();
+
+					match cast_column_data(
+						&eval_ctx,
+						&temp_data,
+						wide_type.clone().unwrap(),
+						Fragment::none,
+					) {
+						Ok(casted) => {
+							if let Some(casted_value) = casted.iter().next() {
+								data.push_value(casted_value);
+							} else {
+								data.push_none();
+							}
+						}
+						Err(_) => {
+							data.push_none();
+						}
+					}
+				}
+			}
+
+			data
+		};
+
+		if wide_type == Some(ValueType::Int16) {
+			let optimal_type = Self::find_optimal_integer_type(&column_data);
+			if optimal_type != ValueType::Int16 {
+				let eval_ctx = session.with_eval(Columns::empty(), column_data.len());
+
+				if let Ok(demoted) =
+					cast_column_data(&eval_ctx, &column_data, optimal_type, || Fragment::none())
+				{
+					column_data = demoted;
+				}
+			}
+		}
+
+		column_data
+	}
+
+	fn next_infer_namespace(&mut self, ctx: &QueryContext) -> Result<Option<Columns>> {
+		let all_columns = Self::collect_column_names(&self.rows);
+		let rows_data = Self::build_row_maps(&self.rows);
+
 		let session = EvalContext::from_query(ctx);
 
 		let mut columns = Vec::new();
 
 		for column_name in all_columns {
-			let mut all_values = Vec::new();
-			let mut first_value_type: Option<ValueType> = None;
-			let mut column_fragment: Option<Fragment> = None;
+			let (all_values, first_value_type, column_fragment) =
+				Self::eval_column_values(&session, &rows_data, &column_name)?;
 
-			for row_data in &rows_data {
-				if let Some(alias_expr) = row_data.get(&column_name) {
-					if column_fragment.is_none() {
-						column_fragment = Some(alias_expr.fragment.clone());
-					}
-					let eval_ctx = session.with_eval_empty();
-
-					let evaluated = evaluate(&eval_ctx, &alias_expr.expression)?;
-
-					let mut iter = evaluated.data().iter();
-					if let Some(value) = iter.next() {
-						if first_value_type.is_none() && !matches!(value, Value::None { .. }) {
-							first_value_type = Some(value.get_type());
-						}
-						all_values.push(value);
-					} else {
-						all_values.push(Value::none());
-					}
-				} else {
-					all_values.push(Value::none());
-				}
-			}
-
-			let wide_type = if let Some(ref fvt) = first_value_type {
-				if *fvt == ValueType::Decimal {
-					Some(ValueType::Decimal)
-				} else if *fvt == ValueType::Int {
-					Some(ValueType::Int)
-				} else if *fvt == ValueType::Uint {
-					Some(ValueType::Uint)
-				} else if fvt.is_integer() {
-					Some(ValueType::Int16)
-				} else if fvt.is_floating_point() {
-					Some(ValueType::Float8)
-				} else if *fvt == ValueType::Utf8 {
-					Some(ValueType::Utf8)
-				} else if *fvt == ValueType::Boolean {
-					Some(ValueType::Boolean)
-				} else {
-					None
-				}
-			} else {
-				None
-			};
-
-			let mut column_data = if wide_type.is_none() {
-				ColumnBuffer::none_typed(ValueType::Boolean, all_values.len())
-			} else {
-				let mut data = ColumnBuffer::with_capacity(wide_type.clone().unwrap(), 0);
-
-				for value in &all_values {
-					if matches!(value, Value::None { .. }) {
-						data.push_none();
-					} else if wide_type.as_ref().is_some_and(|wt| value.get_type() == *wt) {
-						data.push_value(value.clone());
-					} else {
-						let temp_data = ColumnBuffer::from(value.clone());
-						let eval_ctx = session.with_eval_empty();
-
-						match cast_column_data(
-							&eval_ctx,
-							&temp_data,
-							wide_type.clone().unwrap(),
-							Fragment::none,
-						) {
-							Ok(casted) => {
-								if let Some(casted_value) = casted.iter().next() {
-									data.push_value(casted_value);
-								} else {
-									data.push_none();
-								}
-							}
-							Err(_) => {
-								data.push_none();
-							}
-						}
-					}
-				}
-
-				data
-			};
-
-			if wide_type == Some(ValueType::Int16) {
-				let optimal_type = Self::find_optimal_integer_type(&column_data);
-				if optimal_type != ValueType::Int16 {
-					let eval_ctx = session.with_eval(Columns::empty(), column_data.len());
-
-					if let Ok(demoted) =
-						cast_column_data(&eval_ctx, &column_data, optimal_type, || {
-							Fragment::none()
-						}) {
-						column_data = demoted;
-					}
-				}
-			}
+			let column_data = Self::materialize_inferred_column(&session, &all_values, first_value_type);
 
 			columns.push(ColumnWithName::new(
 				column_fragment.unwrap_or_else(|| Fragment::internal(column_name)),
@@ -481,118 +520,112 @@ impl InlineDataNode {
 		let headers = self.headers.as_ref().unwrap();
 		let session = EvalContext::from_query(ctx);
 
-		let mut rows_data: Vec<HashMap<String, &AliasExpression>> = Vec::new();
-
-		for row in &self.rows {
-			let mut row_map: HashMap<String, &AliasExpression> = HashMap::new();
-			for alias_expr in row {
-				let column_name = alias_expr.alias.0.text().to_string();
-				row_map.insert(column_name, alias_expr);
-			}
-			rows_data.push(row_map);
-		}
+		let rows_data = Self::build_row_maps(&self.rows);
 
 		let mut columns = Vec::new();
 
 		for column_name in &headers.columns {
-			let table_column = source.columns().iter().find(|col| col.name == column_name.text());
-
-			let mut column_data = if let Some(tc) = table_column {
-				ColumnBuffer::none_typed(tc.constraint.get_type(), 0)
-			} else {
-				ColumnBuffer::with_capacity(ValueType::Int16, 0)
-			};
-			let mut column_fragment: Option<Fragment> = None;
-
-			for row_data in &rows_data {
-				if let Some(alias_expr) = row_data.get(column_name.text()) {
-					if column_fragment.is_none() {
-						column_fragment = Some(alias_expr.fragment.clone());
-					}
-					let mut eval_ctx = session.with_eval_empty();
-					eval_ctx.target = table_column.map(|tc| TargetColumn::Partial {
-						source_name: Some(source.identifier().text().to_string()),
-						column_name: Some(tc.name.clone()),
-						column_type: tc.constraint.get_type(),
-						properties: tc
-							.properties
-							.iter()
-							.map(|cp| cp.property.clone())
-							.collect(),
-					});
-
-					let evaluated = evaluate(&eval_ctx, &alias_expr.expression)?;
-
-					let eval_len = evaluated.data().len();
-					if table_column.is_some() {
-						if eval_len == 1 {
-							column_data.extend(evaluated.data().clone())?;
-						} else if eval_len == 0 {
-							column_data.push_value(Value::none());
-						} else {
-							let first_value =
-								evaluated.data().iter().next().unwrap_or(Value::none());
-							column_data.push_value(first_value);
-						}
-					} else {
-						let value = if eval_len > 0 {
-							evaluated.data().iter().next().unwrap_or(Value::none())
-						} else {
-							Value::none()
-						};
-						match &value {
-							Value::None {
-								..
-							} => column_data.push_none(),
-							Value::Int16(_) => column_data.push_value(value),
-							_ => {
-								let temp = ColumnBuffer::from(value.clone());
-								match cast_column_data(
-									&eval_ctx,
-									&temp,
-									ValueType::Int16,
-									Fragment::none,
-								) {
-									Ok(casted) => {
-										if let Some(v) = casted.iter().next() {
-											column_data.push_value(v);
-										} else {
-											column_data.push_none();
-										}
-									}
-									Err(_) => column_data.push_value(value),
-								}
-							}
-						}
-					}
-				} else {
-					column_data.push_value(Value::none());
-				}
-			}
-
-			if table_column.is_none() {
-				let optimal_type = Self::find_optimal_integer_type(&column_data);
-				if optimal_type != ValueType::Int16 {
-					let eval_ctx = session.with_eval(Columns::empty(), column_data.len());
-					if let Ok(demoted) =
-						cast_column_data(&eval_ctx, &column_data, optimal_type, || {
-							Fragment::none()
-						}) {
-						column_data = demoted;
-					}
-				}
-			}
-
-			columns.push(ColumnWithName::new(
-				column_fragment
-					.map(|f| f.with_text(column_name.text()))
-					.unwrap_or_else(|| column_name.clone()),
-				column_data,
-			));
+			columns.push(Self::build_source_column(&session, source, &rows_data, column_name)?);
 		}
 
 		let columns = Columns::new(columns);
 
 		Ok(Some(columns))
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::inline::source_column")]
+	fn build_source_column(
+		session: &EvalContext<'_>,
+		source: &ResolvedObject,
+		rows_data: &[HashMap<String, &AliasExpression>],
+		column_name: &Fragment,
+	) -> Result<ColumnWithName> {
+		let table_column = source.columns().iter().find(|col| col.name == column_name.text());
+
+		let mut column_data = if let Some(tc) = table_column {
+			ColumnBuffer::none_typed(tc.constraint.get_type(), 0)
+		} else {
+			ColumnBuffer::with_capacity(ValueType::Int16, 0)
+		};
+		let mut column_fragment: Option<Fragment> = None;
+
+		for row_data in rows_data {
+			if let Some(alias_expr) = row_data.get(column_name.text()) {
+				if column_fragment.is_none() {
+					column_fragment = Some(alias_expr.fragment.clone());
+				}
+				let mut eval_ctx = session.with_eval_empty();
+				eval_ctx.target = table_column.map(|tc| TargetColumn::Partial {
+					source_name: Some(source.identifier().text().to_string()),
+					column_name: Some(tc.name.clone()),
+					column_type: tc.constraint.get_type(),
+					properties: tc.properties.iter().map(|cp| cp.property.clone()).collect(),
+				});
+
+				let evaluated = evaluate(&eval_ctx, &alias_expr.expression)?;
+
+				let eval_len = evaluated.data().len();
+				if table_column.is_some() {
+					if eval_len == 1 {
+						column_data.extend(evaluated.data().clone())?;
+					} else if eval_len == 0 {
+						column_data.push_value(Value::none());
+					} else {
+						let first_value =
+							evaluated.data().iter().next().unwrap_or(Value::none());
+						column_data.push_value(first_value);
+					}
+				} else {
+					let value = if eval_len > 0 {
+						evaluated.data().iter().next().unwrap_or(Value::none())
+					} else {
+						Value::none()
+					};
+					match &value {
+						Value::None {
+							..
+						} => column_data.push_none(),
+						Value::Int16(_) => column_data.push_value(value),
+						_ => {
+							let temp = ColumnBuffer::from(value.clone());
+							match cast_column_data(
+								&eval_ctx,
+								&temp,
+								ValueType::Int16,
+								Fragment::none,
+							) {
+								Ok(casted) => {
+									if let Some(v) = casted.iter().next() {
+										column_data.push_value(v);
+									} else {
+										column_data.push_none();
+									}
+								}
+								Err(_) => column_data.push_value(value),
+							}
+						}
+					}
+				}
+			} else {
+				column_data.push_value(Value::none());
+			}
+		}
+
+		if table_column.is_none() {
+			let optimal_type = Self::find_optimal_integer_type(&column_data);
+			if optimal_type != ValueType::Int16 {
+				let eval_ctx = session.with_eval(Columns::empty(), column_data.len());
+				if let Ok(demoted) =
+					cast_column_data(&eval_ctx, &column_data, optimal_type, || Fragment::none())
+				{
+					column_data = demoted;
+				}
+			}
+		}
+
+		Ok(ColumnWithName::new(
+			column_fragment.map(|f| f.with_text(column_name.text())).unwrap_or_else(|| column_name.clone()),
+			column_data,
+		))
 	}
 }

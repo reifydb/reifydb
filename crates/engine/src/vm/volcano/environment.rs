@@ -6,6 +6,7 @@ use std::sync::Arc;
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::reifydb_assertions;
+use tracing::instrument;
 
 use crate::{
 	Result,
@@ -28,11 +29,13 @@ impl EnvironmentNode {
 }
 
 impl QueryNode for EnvironmentNode {
+	#[instrument(level = "trace", skip_all, name = "volcano::environment::initialize")]
 	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
+	#[instrument(level = "trace", skip_all, name = "volcano::environment::next")]
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "EnvironmentNode::next() called before initialize()");

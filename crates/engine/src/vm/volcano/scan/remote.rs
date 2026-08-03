@@ -13,6 +13,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_value::{params::Params, value::Value};
+use tracing::instrument;
 
 #[cfg(not(reifydb_single_threaded))]
 use crate::vm::stack::Variable;
@@ -45,6 +46,7 @@ impl RemoteFetchNode {
 }
 
 impl QueryNode for RemoteFetchNode {
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::remote::initialize")]
 	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
 		#[cfg(not(reifydb_single_threaded))]
 		{
@@ -96,6 +98,7 @@ impl QueryNode for RemoteFetchNode {
 		Ok(())
 	}
 
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::remote::next")]
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		Ok(self.batches.pop_front())
 	}

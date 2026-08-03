@@ -10,6 +10,7 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, reifydb_assertions, value::value_type::ValueType};
+use tracing::instrument;
 
 use crate::{
 	Result,
@@ -50,10 +51,12 @@ impl IndexScanNode {
 }
 
 impl QueryNode for IndexScanNode {
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::index::initialize")]
 	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
 		Ok(())
 	}
 
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::index::next")]
 	fn next<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "IndexScanNode::next() called before initialize()");

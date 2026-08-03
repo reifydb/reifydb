@@ -6,6 +6,7 @@ use std::sync::Arc;
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::nodes::RunTestsNode;
 use reifydb_transaction::transaction::Transaction;
+use tracing::instrument;
 
 use crate::{
 	Result,
@@ -37,10 +38,12 @@ impl RunTestsQueryNode {
 }
 
 impl QueryNode for RunTestsQueryNode {
+	#[instrument(level = "trace", skip_all, name = "volcano::run_tests::initialize")]
 	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
 		Ok(())
 	}
 
+	#[instrument(level = "trace", skip_all, name = "volcano::run_tests::next")]
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		if self.executed {
 			return Ok(None);

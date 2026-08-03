@@ -7,8 +7,10 @@ use std::{cell::RefCell, collections::HashMap, sync::Arc, time::Instant};
 
 use rand::{SeedableRng, rngs::StdRng};
 use reifydb::{Database, embedded};
+use reifydb_core::interface::catalog::config::ConfigKey;
+use reifydb_value::value::Value;
 use reifydb_allocator::set_global_allocator;
-use reifydb_benches::{BenchReport, env_u64};
+use reifydb_benches::{BenchReport, env_opt, env_u64};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_testing_scenario::{query::OperationKind, registry::by_name, scenario::Scenario};
 use tracing::{Id, Subscriber, subscriber::set_default};
@@ -20,6 +22,9 @@ use tracing_subscriber::{
 
 set_global_allocator!();
 
+const DEFAULT_SCENARIO: &str = "scan";
+const DEFAULT_QUERY: &str = "full_scan";
+const DEFAULT_BATCH_SIZE: u64 = 32;
 const DEFAULT_SCALE: u64 = 100_000;
 const DEFAULT_ITERATIONS: u64 = 20;
 const DEFAULT_WARMUP: u64 = 3;
@@ -115,7 +120,7 @@ fn seed(db: &Database, scenario: &Scenario, scale: u64) {
 			OperationKind::Command => db.command_as_root(&statement.rql, ()),
 			OperationKind::Query => db.query_as_root(&statement.rql, ()),
 		};
-		outcome.unwrap_or_else(|e| panic!("scan setup rejected `{}`: {}", statement.rql, e));
+		outcome.unwrap_or_else(|e| panic!("scenario setup rejected `{}`: {}", statement.rql, e));
 	}
 }
 
@@ -123,7 +128,7 @@ fn seed(db: &Database, scenario: &Scenario, scale: u64) {
 fn run(db: &Database, rql: &str, iterations: u64) -> Duration {
 	let started = Instant::now();
 	for _ in 0..iterations {
-		db.query_as_root(rql, ()).expect("full_scan executes");
+		db.query_as_root(rql, ()).expect("profiled query executes");
 	}
 	started.elapsed()
 }
@@ -133,13 +138,25 @@ fn main() {
 	let iterations = env_u64("ITERATIONS", DEFAULT_ITERATIONS);
 	let warmup = env_u64("WARMUP", DEFAULT_WARMUP);
 
-	let scenario = by_name("scan").expect("scan scenario is registered");
-	let query = scenario.query("full_scan").expect("scan scenario defines full_scan");
+	let scenario_name = env_opt("SCENARIO").unwrap_or_else(|| DEFAULT_SCENARIO.to_string());
+	let scenario =
+		by_name(&scenario_name).unwrap_or_else(|| panic!("scenario '{}' is not registered", scenario_name));
+	let query_name = env_opt("QUERY").unwrap_or_else(|| DEFAULT_QUERY.to_string());
+	let query = scenario
+		.query(&query_name)
+		.unwrap_or_else(|| panic!("scenario '{}' defines no query '{}'", scenario_name, query_name));
 	let rql = query.rql.render(&mut StdRng::seed_from_u64(0), scale, 0);
 
-	let db = embedded::memory().build().expect("embedded database builds");
+	let batch_size = env_u64("BATCH_SIZE", DEFAULT_BATCH_SIZE) as u16;
+	let db = embedded::memory()
+		.with_config(ConfigKey::QueryRowBatchSize, Value::Uint2(batch_size))
+		.build()
+		.expect("embedded database builds");
 	seed(&db, &scenario, scale);
-	println!("scenario=scan query=full_scan scale={} rql={}", scale, rql);
+	println!(
+		"scenario={} query={} scale={} batch_size={} rql={}",
+		scenario_name, query_name, scale, batch_size, rql
+	);
 
 	run(&db, &rql, warmup);
 

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders};
+use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::reifydb_assertions;
@@ -32,6 +32,76 @@ impl AssertNode {
 			context: None,
 		}
 	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::assert::eval")]
+	fn eval(
+		session: &EvalContext<'_>,
+		columns: &Columns,
+		row_count: usize,
+		assert_expr: &Expression,
+	) -> Result<ColumnWithName> {
+		let eval_ctx = session.with_eval(columns.clone(), row_count);
+		evaluate(&eval_ctx, assert_expr)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::assert::verify")]
+	fn verify(&self, data: &ColumnBuffer, row_count: usize, assert_expr: &Expression) -> Result<()> {
+		let frag = assert_expr.full_fragment_owned();
+		let label = display_label(assert_expr);
+		match data {
+			ColumnBuffer::Bool(container) => {
+				for i in 0..row_count {
+					let valid = container.is_defined(i);
+					let value = container.data().get(i);
+					if !valid || !value {
+						return Err(EngineError::AssertionFailed {
+							fragment: frag.clone(),
+							message: self.message.clone().unwrap_or_default(),
+							expression: Some(label.text().to_string()),
+						}
+						.into());
+					}
+				}
+			}
+			ColumnBuffer::Option {
+				inner,
+				bitvec,
+			} => match inner.as_ref() {
+				ColumnBuffer::Bool(container) => {
+					for i in 0..row_count {
+						let defined = i < bitvec.len() && bitvec.get(i);
+						let valid = defined && container.is_defined(i);
+						let value = valid && container.data().get(i);
+						if !value {
+							return Err(EngineError::AssertionFailed {
+								fragment: frag.clone(),
+								message: self.message.clone().unwrap_or_default(),
+								expression: Some(label.text().to_string()),
+							}
+							.into());
+						}
+					}
+				}
+				_ => {
+					return Err(EngineError::AssertionFailed {
+						fragment: frag.clone(),
+						message: "assert expression must evaluate to a boolean".to_string(),
+						expression: Some(label.text().to_string()),
+					}
+					.into());
+				}
+			},
+			_ => {
+				return Err(EngineError::AssertionFailed {
+					fragment: frag.clone(),
+					message: "assert expression must evaluate to a boolean".to_string(),
+					expression: Some(label.text().to_string()),
+				}
+				.into());
+			}
+		}
+		Ok(())
+	}
 }
 
 impl QueryNode for AssertNode {
@@ -54,74 +124,8 @@ impl QueryNode for AssertNode {
 			let session = EvalContext::from_query(stored_ctx);
 
 			for assert_expr in &self.expressions {
-				let eval_ctx = session.with_eval(columns.clone(), row_count);
-
-				let result = evaluate(&eval_ctx, assert_expr)?;
-
-				let frag = assert_expr.full_fragment_owned();
-				let label = display_label(assert_expr);
-				match result.data() {
-					ColumnBuffer::Bool(container) => {
-						for i in 0..row_count {
-							let valid = container.is_defined(i);
-							let value = container.data().get(i);
-							if !valid || !value {
-								return Err(EngineError::AssertionFailed {
-									fragment: frag.clone(),
-									message: self
-										.message
-										.clone()
-										.unwrap_or_default(),
-									expression: Some(label.text().to_string()),
-								}
-								.into());
-							}
-						}
-					}
-					ColumnBuffer::Option {
-						inner,
-						bitvec,
-					} => match inner.as_ref() {
-						ColumnBuffer::Bool(container) => {
-							for i in 0..row_count {
-								let defined = i < bitvec.len() && bitvec.get(i);
-								let valid = defined && container.is_defined(i);
-								let value = valid && container.data().get(i);
-								if !value {
-									return Err(EngineError::AssertionFailed {
-										fragment: frag.clone(),
-										message: self
-											.message
-											.clone()
-											.unwrap_or_default(),
-										expression: Some(label
-											.text()
-											.to_string()),
-									}
-									.into());
-								}
-							}
-						}
-						_ => {
-							return Err(EngineError::AssertionFailed {
-								fragment: frag.clone(),
-								message: "assert expression must evaluate to a boolean"
-									.to_string(),
-								expression: Some(label.text().to_string()),
-							}
-							.into());
-						}
-					},
-					_ => {
-						return Err(EngineError::AssertionFailed {
-							fragment: frag.clone(),
-							message: "assert expression must evaluate to a boolean"
-								.to_string(),
-							expression: Some(label.text().to_string()),
-						}
-						.into());
-					}
-				}
+				let result = Self::eval(&session, &columns, row_count, assert_expr)?;
+				self.verify(result.data(), row_count, assert_expr)?;
 			}
 
 			Ok(Some(columns))
@@ -151,6 +155,67 @@ impl AssertWithoutInputNode {
 			done: false,
 		}
 	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::assert::noinput::eval")]
+	fn eval(session: &EvalContext<'_>, assert_expr: &Expression) -> Result<ColumnWithName> {
+		let eval_ctx = session.with_eval_empty();
+		evaluate(&eval_ctx, assert_expr)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::assert::noinput::verify")]
+	fn verify(&self, data: &ColumnBuffer, assert_expr: &Expression) -> Result<()> {
+		let frag = assert_expr.full_fragment_owned();
+		let label = display_label(assert_expr);
+		match data {
+			ColumnBuffer::Bool(container) => {
+				let valid = container.is_defined(0);
+				let value = container.data().get(0);
+				if !valid || !value {
+					return Err(EngineError::AssertionFailed {
+						fragment: frag.clone(),
+						message: self.message.clone().unwrap_or_default(),
+						expression: Some(label.text().to_string()),
+					}
+					.into());
+				}
+			}
+			ColumnBuffer::Option {
+				inner,
+				bitvec,
+			} => match inner.as_ref() {
+				ColumnBuffer::Bool(container) => {
+					let defined = !bitvec.is_empty() && bitvec.get(0);
+					let valid = defined && container.is_defined(0);
+					let value = valid && container.data().get(0);
+					if !value {
+						return Err(EngineError::AssertionFailed {
+							fragment: frag.clone(),
+							message: self.message.clone().unwrap_or_default(),
+							expression: Some(label.text().to_string()),
+						}
+						.into());
+					}
+				}
+				_ => {
+					return Err(EngineError::AssertionFailed {
+						fragment: frag.clone(),
+						message: "assert expression must evaluate to a boolean".to_string(),
+						expression: Some(label.text().to_string()),
+					}
+					.into());
+				}
+			},
+			_ => {
+				return Err(EngineError::AssertionFailed {
+					fragment: frag.clone(),
+					message: "assert expression must evaluate to a boolean".to_string(),
+					expression: Some(label.text().to_string()),
+				}
+				.into());
+			}
+		}
+		Ok(())
+	}
 }
 
 impl QueryNode for AssertWithoutInputNode {
@@ -174,61 +239,8 @@ impl QueryNode for AssertWithoutInputNode {
 		let session = EvalContext::from_query(stored_ctx);
 
 		for assert_expr in &self.expressions {
-			let eval_ctx = session.with_eval_empty();
-
-			let result = evaluate(&eval_ctx, assert_expr)?;
-
-			let frag = assert_expr.full_fragment_owned();
-			let label = display_label(assert_expr);
-			match result.data() {
-				ColumnBuffer::Bool(container) => {
-					let valid = container.is_defined(0);
-					let value = container.data().get(0);
-					if !valid || !value {
-						return Err(EngineError::AssertionFailed {
-							fragment: frag.clone(),
-							message: self.message.clone().unwrap_or_default(),
-							expression: Some(label.text().to_string()),
-						}
-						.into());
-					}
-				}
-				ColumnBuffer::Option {
-					inner,
-					bitvec,
-				} => match inner.as_ref() {
-					ColumnBuffer::Bool(container) => {
-						let defined = !bitvec.is_empty() && bitvec.get(0);
-						let valid = defined && container.is_defined(0);
-						let value = valid && container.data().get(0);
-						if !value {
-							return Err(EngineError::AssertionFailed {
-								fragment: frag.clone(),
-								message: self.message.clone().unwrap_or_default(),
-								expression: Some(label.text().to_string()),
-							}
-							.into());
-						}
-					}
-					_ => {
-						return Err(EngineError::AssertionFailed {
-							fragment: frag.clone(),
-							message: "assert expression must evaluate to a boolean"
-								.to_string(),
-							expression: Some(label.text().to_string()),
-						}
-						.into());
-					}
-				},
-				_ => {
-					return Err(EngineError::AssertionFailed {
-						fragment: frag.clone(),
-						message: "assert expression must evaluate to a boolean".to_string(),
-						expression: Some(label.text().to_string()),
-					}
-					.into());
-				}
-			}
+			let result = Self::eval(&session, assert_expr)?;
+			self.verify(result.data(), assert_expr)?;
 		}
 
 		Ok(None)
