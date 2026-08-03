@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{sync::Arc, thread};
+use std::{sync::Arc, time::Duration};
 
-use reifydb::{ConfigKey, RuntimeConfig, Value, embedded as db_embedded, value::value::duration::Duration};
+use reifydb::{ConfigKey, RuntimeConfig, Value, embedded as db_embedded};
 use reifydb_sub_metrics::accumulator::StatementMetricsAccumulator;
 use reifydb_test_harness::db::TestDb;
 
-fn wait_for_metrics_processing() {
-	thread::sleep(Duration::from_milliseconds(150).unwrap().to_std());
+const TIMEOUT: Duration = Duration::from_secs(10);
+
+fn await_table_metrics(db: &TestDb, query: &str, want: usize) {
+	// The sampler publishes asynchronously, so poll the very query under test until every written
+	// table has surfaced; a fixed sleep would leave the sort assertions running on a short frame.
+	let rows = db.await_row_count(query, want, TIMEOUT);
+	assert_eq!(rows, want, "expected {} table rows in system::metrics::storage::current, got {}", want, rows);
 }
 
 fn new_db_with_metrics() -> TestDb {
@@ -20,9 +25,10 @@ fn new_db_with_metrics() -> TestDb {
 	TestDb::from(
 		db_embedded::memory()
 			.with_runtime_config(RuntimeConfig::default().seeded(0))
-			// Seed a fast flush interval so the collector populates system::metrics::storage::table::current
+			// Seed a fast flush interval so the collector populates system::metrics::storage::current
 			// well within wait_for_metrics_processing(); the default 10s cadence would leave it empty.
 			.with_config(ConfigKey::MetricsFlushInterval, Value::duration_milliseconds(10))
+			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
 			.with_dependency(accumulator)
 			.build()
 			.expect("build"),
@@ -49,10 +55,13 @@ fn test_sort_table_storage_stats_multiline_syntax() {
 	"#,
 	);
 
-	wait_for_metrics_processing();
-
-	let multiline_query = "from system::metrics::storage::table::current
+	// The nine per-object metrics tables merged into system::metrics::storage::current, so the
+	// table rows this test sorts are now selected by the object_kind dimension.
+	let multiline_query = "from system::metrics::storage::current
+filter {object_kind == 'table'}
 sort {total_bytes:asc}";
+
+	await_table_metrics(&db, multiline_query, 2);
 
 	let frames = db.query(multiline_query);
 
@@ -106,10 +115,13 @@ fn test_asc_is_not_desc() {
 	"#,
 	);
 
-	wait_for_metrics_processing();
+	let asc = "from system::metrics::storage::current\nfilter {object_kind == 'table'}\nsort {total_bytes:asc}";
+	let desc = "from system::metrics::storage::current\nfilter {object_kind == 'table'}\nsort {total_bytes:desc}";
 
-	let frames_asc = db.query("from system::metrics::storage::table::current\nsort {total_bytes:asc}");
-	let frames_desc = db.query("from system::metrics::storage::table::current\nsort {total_bytes:desc}");
+	await_table_metrics(&db, asc, 2);
+
+	let frames_asc = db.query(asc);
+	let frames_desc = db.query(desc);
 
 	let frame_asc = frames_asc.first().unwrap();
 	let bytes_col_asc = frame_asc.columns.iter().find(|c| c.name == "total_bytes").unwrap();
@@ -166,9 +178,11 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 	"#,
 	);
 
-	wait_for_metrics_processing();
+	let asc = "FROM system::metrics::storage::current FILTER {object_kind == 'table'} SORT {total_bytes:ASC}";
 
-	let frames_asc = db.query("FROM system::metrics::storage::table::current SORT {total_bytes:ASC}");
+	await_table_metrics(&db, asc, 4);
+
+	let frames_asc = db.query(asc);
 
 	let frame_asc = frames_asc.first().expect("Expected at least one frame");
 	let bytes_col_asc = frame_asc.columns.iter().find(|c| c.name == "total_bytes").unwrap();
@@ -187,7 +201,9 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 		);
 	}
 
-	let frames_desc = db.query("FROM system::metrics::storage::table::current SORT {total_bytes:DESC}");
+	let frames_desc = db.query(
+		"FROM system::metrics::storage::current FILTER {object_kind == 'table'} SORT {total_bytes:DESC}",
+	);
 
 	let frame_desc = frames_desc.first().expect("Expected at least one frame");
 	let bytes_col_desc = frame_desc.columns.iter().find(|c| c.name == "total_bytes").unwrap();
