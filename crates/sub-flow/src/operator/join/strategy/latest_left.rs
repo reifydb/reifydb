@@ -8,7 +8,10 @@ use tracing::instrument;
 
 use super::{
 	JoinContext, UpdateKeys,
-	hash::{add_to_state_entry_batch, for_each_left_block, remove_from_state_entry, update_row_in_entry},
+	hash::{
+		add_to_state_entry_batch, finish_entry_update, for_each_left_block, prepare_entry_update,
+		update_row_in_entry,
+	},
 	latest::{overwrite_right_slot, read_right_slot, remove_right_slot},
 	latest_inner::update_diff,
 };
@@ -184,13 +187,10 @@ impl LatestLeftHashJoin {
 					};
 					vec![Diff::remove(removed)]
 				};
-				for &idx in indices {
-					remove_from_state_entry(
-						txn,
-						&mut ctx.state.left,
-						key_hash,
-						pre.row_numbers()[idx],
-					)?;
+				if let Some(group) = ctx.state.left.group_of(txn, key_hash)? {
+					for &idx in indices {
+						ctx.state.left.remove_row_in(txn, group, pre.row_numbers()[idx])?;
+					}
 				}
 				Ok(result)
 			}
@@ -261,16 +261,20 @@ impl LatestLeftHashJoin {
 						right_store: &ctx.state.right,
 					};
 					let mut result = Vec::new();
+					let prepared = prepare_entry_update(txn, &ctx.state.left, keys.pre, post)?;
+					let mut stored = false;
 					for &idx in indices {
 						let withdrawn = withdraw_slot(txn, &snapshot_ctx, keys.pre, pre, idx)?;
-						update_row_in_entry(
-							txn,
-							&mut ctx.state.left,
-							keys.pre,
-							pre.row_numbers()[idx],
-							post,
-							idx,
-						)?;
+						if let Some(prepared) = &prepared {
+							stored |= update_row_in_entry(
+								txn,
+								&ctx.state.left,
+								prepared,
+								pre.row_numbers()[idx],
+								post,
+								idx,
+							)?;
+						}
 						let published = publish_slot(
 							txn,
 							&snapshot_ctx,
@@ -281,18 +285,28 @@ impl LatestLeftHashJoin {
 						)?;
 						result.extend(update_diff(withdrawn, published));
 					}
+					if let Some(prepared) = &prepared {
+						finish_entry_update(txn, &ctx.state.left, prepared, stored)?;
+					}
 					return Ok(result);
 				}
 
+				let prepared = prepare_entry_update(txn, &ctx.state.left, keys.pre, post)?;
+				let mut stored = false;
 				for &idx in indices {
-					update_row_in_entry(
-						txn,
-						&mut ctx.state.left,
-						keys.pre,
-						pre.row_numbers()[idx],
-						post,
-						idx,
-					)?;
+					if let Some(prepared) = &prepared {
+						stored |= update_row_in_entry(
+							txn,
+							&ctx.state.left,
+							prepared,
+							pre.row_numbers()[idx],
+							post,
+							idx,
+						)?;
+					}
+				}
+				if let Some(prepared) = &prepared {
+					finish_entry_update(txn, &ctx.state.left, prepared, stored)?;
 				}
 				let (pre_joined, post_joined) = match read_right_slot(txn, &ctx.state.right, keys.pre)?
 				{

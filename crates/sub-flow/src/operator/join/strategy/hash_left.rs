@@ -9,8 +9,7 @@ use super::{
 	JoinContext, UpdateKeys,
 	hash::{
 		JoinEmitContext, add_to_state_entry_batch, emit_joined_columns_batch, emit_remove_joined_columns_batch,
-		emit_update_joined_columns, for_each_left_block, is_first_right_row, remove_from_state_entry,
-		update_row_in_entry,
+		emit_update_joined_columns, for_each_left_block, is_first_right_row, update_single_row_in_entry,
 	},
 };
 use crate::operator::join::{
@@ -231,10 +230,13 @@ impl LeftHashJoin {
 			emitted
 		};
 
+		let left_group = ctx.state.left.group_of(txn, key_hash)?;
 		for &idx in indices {
 			let row_number = pre.row_numbers()[idx];
 			ctx.operator.cleanup_left_row_joins(txn, *row_number)?;
-			remove_from_state_entry(txn, &mut ctx.state.left, key_hash, row_number)?;
+			if let Some(group) = left_group {
+				ctx.state.left.remove_row_in(txn, group, row_number)?;
+			}
 		}
 		Ok(result)
 	}
@@ -272,9 +274,12 @@ impl LeftHashJoin {
 			}
 		}
 
+		let right_group = ctx.state.right.group_of(txn, key_hash)?;
 		for &idx in indices {
 			let row_number = pre.row_numbers()[idx];
-			remove_from_state_entry(txn, &mut ctx.state.right, key_hash, row_number)?;
+			if let Some(group) = right_group {
+				ctx.state.right.remove_row_in(txn, group, row_number)?;
+			}
 		}
 
 		if !ctx.operator.snapshot && !ctx.state.right.contains_key(txn, key_hash)? {
@@ -344,13 +349,13 @@ impl LeftHashJoin {
 				right_store: &ctx.state.right,
 			};
 			let resynced = resync_joined(txn, &snapshot_ctx, keys, pre, post, row_idx, true)?;
-			if !update_row_in_entry(txn, &mut ctx.state.left, keys.pre, pre_row_number, post, row_idx)? {
+			if !update_single_row_in_entry(txn, &ctx.state.left, keys.pre, pre_row_number, post, row_idx)? {
 				return self.handle_insert(txn, post, &[row_idx], keys.post, ctx);
 			}
 			return Ok(resynced);
 		}
 
-		if !update_row_in_entry(txn, &mut ctx.state.left, keys.pre, pre_row_number, post, row_idx)? {
+		if !update_single_row_in_entry(txn, &ctx.state.left, keys.pre, pre_row_number, post, row_idx)? {
 			return self.handle_insert(txn, post, &[row_idx], keys.post, ctx);
 		}
 
@@ -394,7 +399,7 @@ impl LeftHashJoin {
 			retire_right(txn, &snapshot_ctx, keys.pre, pre_row_number)?;
 		}
 
-		if !update_row_in_entry(txn, &mut ctx.state.right, keys.pre, pre_row_number, post, row_idx)? {
+		if !update_single_row_in_entry(txn, &ctx.state.right, keys.pre, pre_row_number, post, row_idx)? {
 			return self.handle_insert(txn, post, &[row_idx], keys.post, ctx);
 		}
 

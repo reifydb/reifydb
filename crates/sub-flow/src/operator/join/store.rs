@@ -64,7 +64,7 @@ impl Store {
 		self
 	}
 
-	fn stamp(&self, txn: &mut FlowTransaction, group: GroupId) -> Result<()> {
+	pub(crate) fn stamp(&self, txn: &mut FlowTransaction, group: GroupId) -> Result<()> {
 		txn.stamp_side(self.operator_id, group, self.side.keyspace())?;
 		for keyspace in &self.co_stamped {
 			txn.stamp_side(self.operator_id, group, *keyspace)?;
@@ -104,12 +104,18 @@ impl Store {
 		row_number: RowNumber,
 		encoded: &EncodedRow,
 	) -> Result<()> {
-		let group = self.intern(txn, hash)?;
-		self.stamp(txn, group)?;
+		let group = self.intern_and_stamp(txn, hash)?;
 		self.write_row(txn, group, row_number, encoded)
 	}
 
-	fn write_row(
+	#[instrument(name = "flow::operator::join::store::intern_and_stamp", level = "trace", skip_all)]
+	pub(crate) fn intern_and_stamp(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<GroupId> {
+		let group = self.intern(txn, hash)?;
+		self.stamp(txn, group)?;
+		Ok(group)
+	}
+
+	pub(crate) fn write_row(
 		&self,
 		txn: &mut FlowTransaction,
 		group: GroupId,
@@ -152,11 +158,24 @@ impl Store {
 		let Some(group) = self.resolve(txn, hash)? else {
 			return Ok(false);
 		};
+		let updated = self.update_row_in(txn, group, row_number, encoded)?;
+		if updated {
+			self.stamp(txn, group)?;
+		}
+		Ok(updated)
+	}
+
+	pub(crate) fn update_row_in(
+		&self,
+		txn: &mut FlowTransaction,
+		group: GroupId,
+		row_number: RowNumber,
+		encoded: &EncodedRow,
+	) -> Result<bool> {
 		let key = self.row_key(group, row_number);
 		if state_get(self.operator_id, txn, &key)?.is_none() {
 			return Ok(false);
 		}
-		self.stamp(txn, group)?;
 		state_set(self.operator_id, txn, &key, encoded.clone())?;
 		Ok(true)
 	}
@@ -170,6 +189,15 @@ impl Store {
 		let Some(group) = self.resolve(txn, hash)? else {
 			return Ok(false);
 		};
+		self.remove_row_in(txn, group, row_number)
+	}
+
+	pub(crate) fn remove_row_in(
+		&self,
+		txn: &mut FlowTransaction,
+		group: GroupId,
+		row_number: RowNumber,
+	) -> Result<bool> {
 		let key = self.row_key(group, row_number);
 		let existed = state_get(self.operator_id, txn, &key)?.is_some();
 		if existed {
@@ -372,29 +400,6 @@ mod tests {
 	}
 
 	#[test]
-	fn a_rejected_update_stamps_nothing() {
-		// Stamping before the row-exists check would enrol a side that holds no rows, and every
-		// later sweep would pay to reclaim an empty keyspace for a key never stored.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let operator = OperatorId(53);
-		let store = Store::new(operator, JoinSide::Left);
-		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		let group =
-			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
-		txn.forget_side(operator, group, Keyspace::JOIN_LEFT).unwrap();
-
-		assert!(!store.update_row(&mut txn, &h(0xAAA), rn(99), &row(0x11)).unwrap(), "no such row number");
-
-		assert!(
-			txn.due_side_groups(operator, Keyspace::JOIN_LEFT, Cutoff(DateTime::MAX), 10)
-				.unwrap()
-				.is_empty(),
-			"an update that stored nothing must leave the side index alone"
-		);
-	}
-
-	#[test]
 	fn both_sides_of_one_join_key_share_a_group_without_sharing_rows() {
 		// The group IS the join key hash, with both sides inside it; only the keyspace byte keeps
 		// a left and a right row at the same hash and row number from overwriting each other.
@@ -487,6 +492,55 @@ mod tests {
 		let shape = RowShape::operator_state();
 		let blob = shape.get_blob(&rows[0].1, 0);
 		assert_eq!(blob.as_bytes(), &[0x99u8][..]);
+	}
+
+	#[test]
+	fn a_rejected_update_stamps_nothing() {
+		// Stamping before the row-exists check would enrol a side that holds no rows, and every
+		// later sweep would pay to reclaim an empty keyspace for a key never stored.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator = OperatorId(53);
+		let store = Store::new(operator, JoinSide::Left);
+		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		let group =
+			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
+		txn.forget_side(operator, group, Keyspace::JOIN_LEFT).unwrap();
+
+		assert!(!store.update_row(&mut txn, &h(0xAAA), rn(99), &row(0x11)).unwrap(), "no such row number");
+
+		assert!(
+			txn.due_side_groups(operator, Keyspace::JOIN_LEFT, Cutoff(DateTime::MAX), 10)
+				.unwrap()
+				.is_empty(),
+			"an update that stored nothing must leave the side index alone"
+		);
+	}
+
+	#[test]
+	fn update_row_in_never_stamps_on_its_own() {
+		// The stamp moved out to the caller, which fires it once per key and only when a row was
+		// actually stored. That is only correct if the write primitive itself never stamps -
+		// otherwise a rejected update would enrol a side holding no rows, and every later sweep
+		// would pay to reclaim an empty keyspace for a key never stored.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let operator = OperatorId(53);
+		let store = Store::new(operator, JoinSide::Left);
+		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		let group =
+			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
+		txn.forget_side(operator, group, Keyspace::JOIN_LEFT).unwrap();
+
+		assert!(!store.update_row_in(&mut txn, group, rn(99), &row(0x11)).unwrap(), "no such row number");
+		assert!(store.update_row_in(&mut txn, group, rn(1), &row(0x11)).unwrap(), "this one stores");
+
+		assert!(
+			txn.due_side_groups(operator, Keyspace::JOIN_LEFT, Cutoff(DateTime::MAX), 10)
+				.unwrap()
+				.is_empty(),
+			"neither the rejected nor the accepted write may touch the side index by itself"
+		);
 	}
 
 	#[test]

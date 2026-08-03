@@ -9,7 +9,7 @@ use super::{
 	JoinContext, UpdateKeys,
 	hash::{
 		JoinEmitContext, add_to_state_entry_batch, emit_joined_columns_batch, emit_remove_joined_columns_batch,
-		emit_update_joined_columns, remove_from_state_entry, update_row_in_entry,
+		emit_update_joined_columns, update_single_row_in_entry,
 	},
 };
 use crate::operator::join::{
@@ -153,6 +153,10 @@ impl InnerHashJoin {
 			result.extend(emit_remove_joined_columns_batch(txn, pre, indices, ctx.side, &emit_ctx)?);
 		}
 
+		let group = match ctx.side {
+			JoinSide::Left => ctx.state.left.group_of(txn, key_hash)?,
+			JoinSide::Right => ctx.state.right.group_of(txn, key_hash)?,
+		};
 		for &idx in indices {
 			let row_number = pre.row_numbers()[idx];
 
@@ -160,12 +164,14 @@ impl InnerHashJoin {
 				ctx.operator.cleanup_left_row_joins(txn, *row_number)?;
 			}
 
-			match ctx.side {
-				JoinSide::Left => {
-					remove_from_state_entry(txn, &mut ctx.state.left, key_hash, row_number)?;
-				}
-				JoinSide::Right => {
-					remove_from_state_entry(txn, &mut ctx.state.right, key_hash, row_number)?;
+			if let Some(group) = group {
+				match ctx.side {
+					JoinSide::Left => {
+						ctx.state.left.remove_row_in(txn, group, row_number)?;
+					}
+					JoinSide::Right => {
+						ctx.state.right.remove_row_in(txn, group, row_number)?;
+					}
 				}
 			}
 		}
@@ -221,9 +227,9 @@ impl InnerHashJoin {
 			return match ctx.side {
 				JoinSide::Left => {
 					let diffs = resync_joined(txn, &snapshot_ctx, keys, pre, post, row_idx, false)?;
-					update_row_in_entry(
+					update_single_row_in_entry(
 						txn,
-						&mut ctx.state.left,
+						&ctx.state.left,
 						keys.pre,
 						pre_row_number,
 						post,
@@ -233,9 +239,9 @@ impl InnerHashJoin {
 				}
 				JoinSide::Right => {
 					retire_right(txn, &snapshot_ctx, keys.pre, pre_row_number)?;
-					update_row_in_entry(
+					update_single_row_in_entry(
 						txn,
-						&mut ctx.state.right,
+						&ctx.state.right,
 						keys.pre,
 						pre_row_number,
 						post,
@@ -247,12 +253,22 @@ impl InnerHashJoin {
 		}
 
 		let updated = match ctx.side {
-			JoinSide::Left => {
-				update_row_in_entry(txn, &mut ctx.state.left, keys.pre, pre_row_number, post, row_idx)?
-			}
-			JoinSide::Right => {
-				update_row_in_entry(txn, &mut ctx.state.right, keys.pre, pre_row_number, post, row_idx)?
-			}
+			JoinSide::Left => update_single_row_in_entry(
+				txn,
+				&ctx.state.left,
+				keys.pre,
+				pre_row_number,
+				post,
+				row_idx,
+			)?,
+			JoinSide::Right => update_single_row_in_entry(
+				txn,
+				&ctx.state.right,
+				keys.pre,
+				pre_row_number,
+				post,
+				row_idx,
+			)?,
 		};
 
 		if !updated {

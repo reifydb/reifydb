@@ -735,8 +735,7 @@ impl GroupInterner {
 				 side={side:?})"
 			);
 		}
-		if self
-			.inner
+		if self.inner
 			.operators
 			.entry(operator)
 			.or_default()

@@ -11,6 +11,7 @@ use reifydb_core::{
 		change::Diff,
 	},
 	internal,
+	key::operator_group_state::GroupId,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_flow::transaction::FlowTransaction;
@@ -141,29 +142,60 @@ pub(crate) fn add_to_state_entry_batch(
 	}
 	let shape = build_shape(columns);
 	store.set_row_shape(txn, &shape)?;
+	let group = store.intern_and_stamp(txn, key_hash)?;
 	for &idx in indices {
 		let encoded = encode_row(&shape, columns, idx);
-		store.put_row(txn, key_hash, columns.row_numbers()[idx], &encoded)?;
+		store.write_row(txn, group, columns.row_numbers()[idx], &encoded)?;
 	}
 	Ok(())
 }
 
-pub(crate) fn remove_from_state_entry(
+pub(crate) struct EntryUpdate {
+	group: GroupId,
+	shape: RowShape,
+}
+
+pub(crate) fn prepare_entry_update(
 	txn: &mut FlowTransaction,
-	store: &mut Store,
+	store: &Store,
 	key_hash: &Hash128,
-	row_number: RowNumber,
-) -> Result<bool> {
-	let removed = store.remove_row(txn, key_hash, row_number)?;
-	if !removed {
-		return Ok(false);
-	}
-	Ok(!store.contains_key(txn, key_hash)?)
+	post: &Columns,
+) -> Result<Option<EntryUpdate>> {
+	let shape = build_shape(post);
+	store.set_row_shape(txn, &shape)?;
+	let Some(group) = store.group_of(txn, key_hash)? else {
+		return Ok(None);
+	};
+	Ok(Some(EntryUpdate {
+		group,
+		shape,
+	}))
 }
 
 pub(crate) fn update_row_in_entry(
 	txn: &mut FlowTransaction,
-	store: &mut Store,
+	store: &Store,
+	prepared: &EntryUpdate,
+	pre_row_number: RowNumber,
+	post: &Columns,
+	row_idx: usize,
+) -> Result<bool> {
+	let encoded = encode_row(&prepared.shape, post, row_idx);
+	let post_row_number = post.row_numbers()[row_idx];
+	if pre_row_number == post_row_number {
+		store.update_row_in(txn, prepared.group, post_row_number, &encoded)
+	} else {
+		if !store.remove_row_in(txn, prepared.group, pre_row_number)? {
+			return Ok(false);
+		}
+		store.write_row(txn, prepared.group, post_row_number, &encoded)?;
+		Ok(true)
+	}
+}
+
+pub(crate) fn update_single_row_in_entry(
+	txn: &mut FlowTransaction,
+	store: &Store,
 	key_hash: &Hash128,
 	pre_row_number: RowNumber,
 	post: &Columns,
@@ -182,6 +214,18 @@ pub(crate) fn update_row_in_entry(
 		store.put_row(txn, key_hash, post_row_number, &encoded)?;
 		Ok(true)
 	}
+}
+
+pub(crate) fn finish_entry_update(
+	txn: &mut FlowTransaction,
+	store: &Store,
+	prepared: &EntryUpdate,
+	stored: bool,
+) -> Result<()> {
+	if stored {
+		store.stamp(txn, prepared.group)?;
+	}
+	Ok(())
 }
 
 pub(crate) fn is_first_right_row(txn: &mut FlowTransaction, right_store: &Store, key_hash: &Hash128) -> Result<bool> {
