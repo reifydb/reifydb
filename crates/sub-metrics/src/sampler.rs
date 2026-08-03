@@ -12,6 +12,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
 	actor::{
 		context::Context,
+		reply::Reply,
 		traits::{Actor, Directive},
 	},
 	context::clock::Clock,
@@ -36,9 +37,10 @@ use crate::{
 	},
 };
 
-#[derive(Clone, Debug)]
 pub enum SamplerMessage {
-	Tick,
+	Tick {
+		ack: Option<Reply<()>>,
+	},
 	Push {
 		domain: MetricsDomain,
 		surface: Surface,
@@ -180,7 +182,9 @@ impl Actor for MetricsSamplerActor {
 	type State = SamplerState;
 
 	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
-		ctx.schedule_once(self.interval, || SamplerMessage::Tick);
+		ctx.schedule_once(self.interval, || SamplerMessage::Tick {
+			ack: None,
+		});
 		SamplerState {
 			accumulator: MetricsAccumulator::new(MetricsDomain::ALL.map(MetricsDomain::spec)),
 			last_snapshot: None,
@@ -189,9 +193,16 @@ impl Actor for MetricsSamplerActor {
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		match msg {
-			SamplerMessage::Tick => {
+			SamplerMessage::Tick {
+				ack,
+			} => {
 				self.sample_and_publish(state);
-				ctx.schedule_once(self.interval, || SamplerMessage::Tick);
+				ctx.schedule_once(self.interval, || SamplerMessage::Tick {
+					ack: None,
+				});
+				if let Some(ack) = ack {
+					ack.send(());
+				}
 			}
 			SamplerMessage::Push {
 				domain,

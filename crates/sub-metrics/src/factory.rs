@@ -83,6 +83,7 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 			&retention_metrics,
 			epoch_gauge.clone(),
 		)?;
+		ioc.register_service(sampler.clone());
 		Self::wire_accounting(ioc, &engine, &spawner, epoch_gauge, sampler)?;
 
 		Ok(Box::new(MetricsSubsystem::new(SampleReader::new(collectors))))

@@ -72,6 +72,10 @@ cfg_if! {
 			pub async fn recv(self) -> Result<T, AskError> {
 				self.0.await.map_err(|_| AskError::ResponseClosed)
 			}
+
+			pub fn blocking_recv(self) -> Result<T, AskError> {
+				self.0.blocking_recv().map_err(|_| AskError::ResponseClosed)
+			}
 		}
 	}
 }
