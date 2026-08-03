@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeMap, HashMap, HashSet},
+	collections::{BTreeMap, HashMap, HashSet, btree_map::Entry},
 	ops::{Bound, RangeBounds},
 	vec,
 };
@@ -562,13 +562,15 @@ fn merge_tier_batch(
 			continue;
 		}
 
-		let should_update = match collected.get(&entry.key) {
-			None => true,
-			Some((existing_version, _)) => entry.version > *existing_version,
-		};
-
-		if should_update {
-			collected.insert(entry.key, (entry.version, entry.value));
+		match collected.entry(entry.key) {
+			Entry::Vacant(slot) => {
+				slot.insert((entry.version, entry.value));
+			}
+			Entry::Occupied(mut slot) => {
+				if entry.version > slot.get().0 {
+					slot.insert((entry.version, entry.value));
+				}
+			}
 		}
 	}
 

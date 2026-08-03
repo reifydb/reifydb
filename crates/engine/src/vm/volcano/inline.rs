@@ -479,7 +479,7 @@ impl InlineDataNode {
 				let eval_ctx = session.with_eval(Columns::empty(), column_data.len());
 
 				if let Ok(demoted) =
-					cast_column_data(&eval_ctx, &column_data, optimal_type, || Fragment::none())
+					cast_column_data(&eval_ctx, &column_data, optimal_type, Fragment::none)
 				{
 					column_data = demoted;
 				}
@@ -616,7 +616,7 @@ impl InlineDataNode {
 			if optimal_type != ValueType::Int16 {
 				let eval_ctx = session.with_eval(Columns::empty(), column_data.len());
 				if let Ok(demoted) =
-					cast_column_data(&eval_ctx, &column_data, optimal_type, || Fragment::none())
+					cast_column_data(&eval_ctx, &column_data, optimal_type, Fragment::none)
 				{
 					column_data = demoted;
 				}

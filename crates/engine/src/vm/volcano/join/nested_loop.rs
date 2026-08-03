@@ -154,8 +154,8 @@ impl NestedLoopJoinNode {
 				let right_row = right_columns.get_row(j);
 
 				let eval_columns = build_eval_columns(
-					&left_columns,
-					&right_columns,
+					left_columns,
+					right_columns,
 					&left_row,
 					&right_row,
 					&self.alias,

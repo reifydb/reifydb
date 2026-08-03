@@ -300,7 +300,7 @@ impl Columns {
 	}
 
 	fn append_all_defined_from_shape(&mut self, shape: &RowShape, row: &EncodedRow) -> Result<()> {
-		let names_snapshot: Vec<String> = self.names.iter().map(|n| n.text().to_string()).collect();
+		let names = &self.names;
 		let columns = self.columns.make_mut();
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = shape.get_field(index).unwrap();
@@ -436,7 +436,7 @@ impl Columns {
 					return Err(CoreError::FrameError {
 						message: format!(
 							"type mismatch for column '{}'({}): incompatible with value {}",
-							names_snapshot[index],
+							names[index].text(),
 							column.get_type(),
 							v
 						),

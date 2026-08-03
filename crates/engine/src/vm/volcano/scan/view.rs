@@ -35,6 +35,8 @@ use crate::{
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
+type DrainedBatch = (Vec<EncodedRow>, Vec<RowNumber>, Option<EncodedKey>, bool);
+
 pub(crate) struct ViewScanNode {
 	view: ResolvedView,
 	context: Option<Arc<QueryContext>>,
@@ -139,7 +141,7 @@ impl ViewScanNode {
 		&self,
 		stream: &mut dyn Iterator<Item = Result<MultiVersionRow>>,
 		batch_size: u64,
-	) -> Result<(Vec<EncodedRow>, Vec<RowNumber>, Option<EncodedKey>, bool)> {
+	) -> Result<DrainedBatch> {
 		let mut batch_rows = Vec::new();
 		let mut row_numbers = Vec::new();
 		let mut new_last_key = None;

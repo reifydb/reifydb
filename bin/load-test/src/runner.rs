@@ -146,8 +146,22 @@ mod tests {
 
 	#[test]
 	fn a_single_query_scenario_needs_no_explicit_selection() {
-		let scenario = by_name("scan").unwrap();
+		// `read` is used rather than `scan` because it genuinely defines one query; pointing this
+		// at a scenario that later grows a second query silently turns it into an ambiguity test.
+		let scenario = by_name("read").unwrap();
 		assert_eq!(select_query(&scenario, None), Ok(0));
+	}
+
+	#[test]
+	fn a_multi_query_scenario_rejects_an_absent_selection() {
+		// Defaulting to the first query would silently benchmark range_scan when the caller meant
+		// full_scan, so the ambiguity has to surface as an error naming every candidate.
+		let scenario = by_name("scan").unwrap();
+		let error = select_query(&scenario, None).unwrap_err();
+
+		assert!(error.contains("--query is required"), "{}", error);
+		assert!(error.contains("range_scan"), "{}", error);
+		assert!(error.contains("full_scan"), "{}", error);
 	}
 
 	#[test]

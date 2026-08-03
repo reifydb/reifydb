@@ -29,6 +29,8 @@ use crate::{
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
+type DrainedBatch = (Vec<EncodedRow>, Vec<RowNumber>, Option<EncodedKey>, bool);
+
 pub struct QueueScan {
 	queue: ResolvedQueue,
 	headers: ColumnHeaders,
@@ -106,7 +108,7 @@ impl QueueScan {
 	fn drain_batch(
 		stream: &mut dyn Iterator<Item = Result<MultiVersionRow>>,
 		batch_size: u64,
-	) -> Result<(Vec<EncodedRow>, Vec<RowNumber>, Option<EncodedKey>, bool)> {
+	) -> Result<DrainedBatch> {
 		let mut batch_rows: Vec<EncodedRow> = Vec::new();
 		let mut row_numbers: Vec<RowNumber> = Vec::new();
 		let mut new_last_key = None;
