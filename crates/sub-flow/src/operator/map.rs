@@ -20,7 +20,6 @@ use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{Result, fragment::Fragment, value::system_columns::SystemColumns};
-
 use tracing::instrument;
 
 use crate::{context::FlowContext, operator::OperatorCell};

@@ -22,7 +22,6 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
-
 use tracing::instrument;
 
 use crate::{

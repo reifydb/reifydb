@@ -4,14 +4,13 @@
 use reifydb_core::{interface::change::Diff, value::column::columns::Columns};
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{Result, util::hash::Hash128};
+use tracing::instrument;
 
 use super::{
 	JoinContext, UpdateKeys,
 	hash::{add_to_state_entry_batch, for_each_left_block, remove_from_state_entry, update_row_in_entry},
 	latest::{overwrite_right_slot, read_right_slot, remove_right_slot},
 };
-use tracing::instrument;
-
 use crate::operator::join::{
 	snapshot::{SnapshotJoinContext, publish_slot, retire_slot, withdraw_slot},
 	state::JoinSide,
@@ -108,10 +107,10 @@ impl LatestInnerHashJoin {
 				right_store: &ctx.state.right,
 			};
 			retire_slot(txn, &snapshot_ctx, key_hash)?;
-			overwrite_right_slot(txn, &ctx.state.right, key_hash, post, indices, old.is_some())?;
+			overwrite_right_slot(txn, &ctx.state.right, key_hash, post, indices)?;
 			return Ok(Vec::new());
 		}
-		overwrite_right_slot(txn, &ctx.state.right, key_hash, post, indices, old.is_some())?;
+		overwrite_right_slot(txn, &ctx.state.right, key_hash, post, indices)?;
 		let new = read_right_slot(txn, &ctx.state.right, key_hash)?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();

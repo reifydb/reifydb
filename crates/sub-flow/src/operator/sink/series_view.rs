@@ -31,6 +31,7 @@ use reifydb_value::{
 	value::{Value, partition::Partition},
 };
 use smallvec::smallvec;
+use tracing::instrument;
 
 use super::{
 	coerce_columns, encode_row_at_index,
@@ -38,8 +39,6 @@ use super::{
 	shape_field_columns,
 	view::dictionary_encode_view_columns,
 };
-use tracing::instrument;
-
 use crate::operator::OperatorCell;
 
 pub struct SinkSeriesViewOperator {

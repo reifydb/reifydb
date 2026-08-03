@@ -10,7 +10,6 @@ pub mod budget;
 pub mod cache;
 pub mod group;
 pub mod horizon;
-pub mod keyspace;
 pub mod map;
 pub mod membership;
 pub mod store;

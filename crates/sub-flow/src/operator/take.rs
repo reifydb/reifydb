@@ -34,7 +34,6 @@ use reifydb_value::{
 	value::{Value, blob::Blob, row_number::RowNumber},
 };
 use serde::{Deserialize, Serialize};
-
 use tracing::instrument;
 
 use crate::{

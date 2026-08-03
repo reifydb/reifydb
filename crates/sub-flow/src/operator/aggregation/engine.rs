@@ -30,13 +30,12 @@ use reifydb_value::{
 	util::hash::Hash128,
 	value::{Value, datetime::DateTime, duration::Duration},
 };
+use tracing::instrument;
 
 use super::{
 	accumulator::{RowAccumulator, WindowSlotKey},
 	core::Aggregation,
 };
-use tracing::instrument;
-
 use crate::operator::{stateful::utils, store::OperatorStateStore};
 
 pub(crate) type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKey, Vec<Option<Value>>)>;

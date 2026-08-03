@@ -33,7 +33,6 @@ use reifydb_value::{
 	Result,
 	value::{Value, row_number::RowNumber},
 };
-
 use tracing::instrument;
 
 use crate::{

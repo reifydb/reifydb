@@ -24,7 +24,6 @@ use reifydb_value::{
 	Result,
 	value::{Value, value_type::ValueType},
 };
-
 use tracing::instrument;
 
 use crate::{context::FlowContext, operator::OperatorCell};

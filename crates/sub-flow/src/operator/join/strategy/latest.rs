@@ -4,11 +4,10 @@
 use reifydb_core::value::column::columns::Columns;
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{Result, util::hash::Hash128, value::row_number::RowNumber};
-
-use super::hash::{build_shape, columns_from_block, encode_row};
 use tracing::instrument;
 
-use crate::operator::join::store::{RowPresence, Store};
+use super::hash::{build_shape, columns_from_block, encode_row};
+use crate::operator::join::store::Store;
 
 #[instrument(name = "flow::operator::join::latest::overwrite_right_slot", level = "trace", skip_all, fields(rows = indices.len()))]
 pub(crate) fn overwrite_right_slot(
@@ -17,22 +16,15 @@ pub(crate) fn overwrite_right_slot(
 	key_hash: &Hash128,
 	columns: &Columns,
 	indices: &[usize],
-	slot_occupied: bool,
 ) -> Result<()> {
 	if indices.is_empty() {
 		return Ok(());
 	}
 	let shape = build_shape(columns);
 	right.set_row_shape(txn, &shape)?;
-	let mut presence = if slot_occupied {
-		RowPresence::Live
-	} else {
-		RowPresence::New
-	};
 	for &idx in indices {
 		let encoded = encode_row(&shape, columns, idx);
-		right.put_row(txn, key_hash, RowNumber::MAX, &encoded, presence)?;
-		presence = RowPresence::Live;
+		right.put_row(txn, key_hash, RowNumber::MAX, &encoded)?;
 	}
 	Ok(())
 }

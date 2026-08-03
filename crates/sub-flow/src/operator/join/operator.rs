@@ -15,7 +15,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::operator_group_state::{GroupId, GroupSet, Keyspace},
+	key::operator_group_state::{GroupId, Keyspace},
 	metrics::heap::OperatorSample,
 	value::column::{ColumnWithName, columns::Columns},
 };
@@ -33,18 +33,18 @@ use reifydb_flow::{
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
-use tracing::instrument;
 use reifydb_value::{
 	Result,
 	error::Error,
 	util::hash::{Hash128, xxh3_128},
 	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber, value_type::ValueType},
 };
+use tracing::instrument;
 
 use super::{
 	column::JoinedColumnsBuilder,
 	snapshot::{SnapshotLedger, snapshot_ledger_keyspaces},
-	state::{JoinMembership, JoinSide, JoinState},
+	state::{JoinSide, JoinState},
 	strategy::{JoinContext, JoinStrategy, UpdateKeys},
 };
 use crate::{
@@ -152,7 +152,6 @@ pub struct JoinOperator {
 	pub(crate) latest: bool,
 	left_ttl: Option<Duration>,
 	right_ttl: Option<Duration>,
-	membership: Arc<JoinMembership>,
 	ctx: Arc<FlowContext>,
 }
 
@@ -216,7 +215,6 @@ impl JoinOperator {
 			latest,
 			left_ttl,
 			right_ttl,
-			membership: Arc::new(JoinMembership::new()),
 			ctx,
 		}
 	}
@@ -251,7 +249,6 @@ impl JoinOperator {
 			latest: false,
 			left_ttl,
 			right_ttl,
-			membership: Arc::new(JoinMembership::new()),
 			ctx: Arc::new(FlowContext::default()),
 		}
 	}
@@ -583,16 +580,7 @@ impl Operator for JoinOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		Some(OperatorSample::default()
-			.with_membership(self.membership.memory())
-			.with_completeness(self.membership.completeness()))
-	}
-
-	fn invalidate_groups(&self, groups: &GroupSet) {
-		if groups.is_empty() {
-			return;
-		}
-		self.membership.invalidate();
+		Some(OperatorSample::default())
 	}
 
 	fn retention_scale(&self) -> Option<Duration> {
@@ -643,7 +631,7 @@ impl Operator for JoinOperator {
 			return Ok(Change::from_flow(self.operator, change.version, Vec::new(), change.changed_at));
 		}
 
-		let mut state = JoinState::new(self.operator, self.membership.clone(), self.snapshot);
+		let mut state = JoinState::new(self.operator, self.snapshot);
 		let mut result = Vec::with_capacity(change.diffs.len() * 2);
 
 		let version = change.version;
@@ -883,7 +871,7 @@ mod span_tests {
 	use reifydb_value::value::blob::Blob;
 
 	use super::*;
-	use crate::operator::join::store::{RowPresence, Store, group_bytes};
+	use crate::operator::join::store::{Store, group_bytes};
 
 	fn watermark() -> DateTime {
 		// Frontiers are instants, not durations, so pinning the watermark keeps `WATERMARK - ttl`
@@ -1080,11 +1068,10 @@ mod span_tests {
 		let op = make_op(78, Some(ttl(50)), None, &engine);
 		let mut txn = engine.flow_txn().deferred();
 
-		let left = Store::new(op.operator, JoinSide::Left, op.membership.clone())
-			.also_stamping(snapshot_ledger_keyspaces(true));
+		let left = Store::new(op.operator, JoinSide::Left).also_stamping(snapshot_ledger_keyspaces(true));
 		let hash = Hash128(0xFEED);
 		at(&mut txn, 10);
-		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x01), RowPresence::Unknown).unwrap();
+		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x01)).unwrap();
 
 		let group = txn
 			.lookup_group(op.operator, &group_bytes(&hash))
@@ -1108,11 +1095,10 @@ mod span_tests {
 		let op = make_op(79, Some(ttl(50)), None, &engine);
 		let mut txn = engine.flow_txn().deferred();
 
-		let left = Store::new(op.operator, JoinSide::Left, op.membership.clone())
-			.also_stamping(snapshot_ledger_keyspaces(false));
+		let left = Store::new(op.operator, JoinSide::Left).also_stamping(snapshot_ledger_keyspaces(false));
 		let hash = Hash128(0xBEEF);
 		at(&mut txn, 10);
-		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x01), RowPresence::Unknown).unwrap();
+		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x01)).unwrap();
 
 		let cutoff = Cutoff(DateTime::from_millis(20));
 		assert!(!txn.due_side_groups(op.operator, Keyspace::JOIN_LEFT, cutoff, 16).unwrap().is_empty());
@@ -1192,37 +1178,6 @@ mod span_tests {
 			txn.get_row_number(op.operator, GroupId::NODE_SCOPE, &young).unwrap().is_some(),
 			"a mapping stamped after the cutoff must survive; the version-anchored sweep could not \
 			 express this and evicted both"
-		);
-	}
-
-	#[test]
-	fn group_reclamation_drops_every_instance_the_substrate_deleted() {
-		// The callback carries only the group id, not how many rows went, so decrementing a
-		// single instance would strand the second row of a two-row key as maybe-present for the
-		// rest of the run and decay the side into permanent read-through.
-		let engine = TestEngine::new();
-		let op = make_op(60, None, None, &engine);
-		let mut txn = engine.flow_txn().deferred();
-
-		let membership = op.membership.clone();
-		let left = Store::new(op.operator, JoinSide::Left, membership.clone());
-		let hash = Hash128(0xABC);
-		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x10), RowPresence::Unknown).unwrap();
-		left.put_row(&mut txn, &hash, RowNumber(2), &op_row(0x20), RowPresence::Unknown).unwrap();
-
-		let group = txn
-			.lookup_group(op.operator, &group_bytes(&hash))
-			.unwrap()
-			.expect("a stored key must have been interned");
-		txn.reclaim_group_data(op.operator, group, 128).unwrap();
-		op.invalidate_groups(&GroupSet::new([group]));
-
-		let absences_before = membership.side(JoinSide::Left).completeness().absences_served.as_u64();
-		assert!(!left.contains_key(&mut txn, &hash).unwrap());
-		assert_eq!(
-			membership.side(JoinSide::Left).completeness().absences_served.as_u64(),
-			absences_before + 1,
-			"a reclaimed key must come back as a RAM absence, not a lingering maybe-present"
 		);
 	}
 

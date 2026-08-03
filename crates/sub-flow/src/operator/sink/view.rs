@@ -40,14 +40,13 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, partition::Partition, row_number::RowNumber, value_type::ValueType},
 };
 use smallvec::smallvec;
+use tracing::instrument;
 
 use super::{
 	coerce_columns, encode_row_at_index,
 	partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
 	shape_field_columns,
 };
-use tracing::instrument;
-
 use crate::{error::FlowSinkError, operator::OperatorCell};
 
 const CREATED_AT_CACHE_CAPACITY: usize = 16_384;

@@ -14,7 +14,6 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_flow::transaction::FlowTransaction;
-use tracing::instrument;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -24,28 +23,17 @@ use reifydb_value::{
 		Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType,
 	},
 };
+use tracing::instrument;
 
-use crate::operator::join::{
-	Identity,
-	operator::JoinOperator,
-	state::JoinSide,
-	store::{RowPresence, Store},
-};
+use crate::operator::join::{Identity, operator::JoinOperator, state::JoinSide, store::Store};
 
 #[cfg(test)]
 mod tests {
-	use std::sync::Arc;
-
 	use reifydb_core::interface::catalog::flow::OperatorId;
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 
 	use super::*;
-	use crate::operator::join::state::JoinMembership;
-
-	fn test_membership() -> Arc<JoinMembership> {
-		Arc::new(JoinMembership::new())
-	}
 
 	fn h(v: u128) -> Hash128 {
 		Hash128(v)
@@ -68,7 +56,7 @@ mod tests {
 		// ever persisted.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let mut store = Store::new(OperatorId(70), JoinSide::Right, test_membership());
+		let mut store = Store::new(OperatorId(70), JoinSide::Right);
 
 		let key_a = h(0xA);
 		let resolved = columns_with_fields(&[("mint", 1), ("decimals", 8)], 1);
@@ -92,7 +80,7 @@ mod tests {
 		// can carry different shape fingerprints and each must decode with its own.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
-		let mut store = Store::new(OperatorId(71), JoinSide::Right, test_membership());
+		let mut store = Store::new(OperatorId(71), JoinSide::Right);
 		let key = h(0xC);
 
 		let row1 = columns_with_fields(&[("mint", 111), ("flag", 1)], 1);
@@ -155,7 +143,7 @@ pub(crate) fn add_to_state_entry_batch(
 	store.set_row_shape(txn, &shape)?;
 	for &idx in indices {
 		let encoded = encode_row(&shape, columns, idx);
-		store.put_row(txn, key_hash, columns.row_numbers()[idx], &encoded, RowPresence::Unknown)?;
+		store.put_row(txn, key_hash, columns.row_numbers()[idx], &encoded)?;
 	}
 	Ok(())
 }
@@ -191,7 +179,7 @@ pub(crate) fn update_row_in_entry(
 		if !store.remove_row(txn, key_hash, pre_row_number)? {
 			return Ok(false);
 		}
-		store.put_row(txn, key_hash, post_row_number, &encoded, RowPresence::Unknown)?;
+		store.put_row(txn, key_hash, post_row_number, &encoded)?;
 		Ok(true)
 	}
 }

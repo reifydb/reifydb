@@ -42,7 +42,6 @@ use reifydb_value::{
 	util::hash::Hash128,
 	value::{datetime::DateTime, duration::Duration},
 };
-
 use tracing::instrument;
 
 use crate::{
