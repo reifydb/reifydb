@@ -6,7 +6,7 @@ use std::{mem, sync::Arc};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
 	interface::resolved::ResolvedObject,
-	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
+	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::{Expression, name::display_label};
@@ -42,6 +42,56 @@ impl FilterNode {
 			udf_names: Vec::new(),
 			context: None,
 		}
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::filter::eval")]
+	fn eval_predicate(
+		session: &EvalContext,
+		compiled: &CompiledExpr,
+		columns: &Columns,
+		row_count: usize,
+	) -> Result<ColumnWithName> {
+		let exec_ctx = session.with_eval(columns.clone(), row_count);
+		compiled.execute(&exec_ctx)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::filter::mask")]
+	fn build_mask(result: &ColumnBuffer, row_count: usize) -> BitVec {
+		match result {
+			ColumnBuffer::Bool(container) => {
+				let mut mask = BitVec::repeat(row_count, false);
+				for i in 0..row_count {
+					if i < container.len() {
+						let valid = container.is_defined(i);
+						let filter_result = container.data().get(i);
+						mask.set(i, valid & filter_result);
+					}
+				}
+				mask
+			}
+			ColumnBuffer::Option {
+				inner,
+				bitvec,
+			} => match inner.as_ref() {
+				ColumnBuffer::Bool(container) => {
+					let mut mask = BitVec::repeat(row_count, false);
+					for i in 0..row_count {
+						let defined = i < bitvec.len() && bitvec.get(i);
+						let valid = defined && container.is_defined(i);
+						let value = valid && container.data().get(i);
+						mask.set(i, value);
+					}
+					mask
+				}
+				_ => panic!("filter expression must evaluate to a boolean column"),
+			},
+			_ => panic!("filter expression must evaluate to a boolean column"),
+		}
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::filter::compact")]
+	fn compact(columns: &mut Columns, mask: &BitVec) -> Result<()> {
+		columns.filter(mask)
 	}
 }
 
@@ -116,42 +166,10 @@ impl Transform for FilterNode {
 				break;
 			}
 
-			let exec_ctx = session.with_eval(columns.clone(), row_count);
+			let result = Self::eval_predicate(&session, compiled_expr, &columns, row_count)?;
+			let filter_mask = Self::build_mask(result.data(), row_count);
 
-			let result = compiled_expr.execute(&exec_ctx)?;
-
-			let filter_mask = match result.data() {
-				ColumnBuffer::Bool(container) => {
-					let mut mask = BitVec::repeat(row_count, false);
-					for i in 0..row_count {
-						if i < container.len() {
-							let valid = container.is_defined(i);
-							let filter_result = container.data().get(i);
-							mask.set(i, valid & filter_result);
-						}
-					}
-					mask
-				}
-				ColumnBuffer::Option {
-					inner,
-					bitvec,
-				} => match inner.as_ref() {
-					ColumnBuffer::Bool(container) => {
-						let mut mask = BitVec::repeat(row_count, false);
-						for i in 0..row_count {
-							let defined = i < bitvec.len() && bitvec.get(i);
-							let valid = defined && container.is_defined(i);
-							let value = valid && container.data().get(i);
-							mask.set(i, value);
-						}
-						mask
-					}
-					_ => panic!("filter expression must evaluate to a boolean column"),
-				},
-				_ => panic!("filter expression must evaluate to a boolean column"),
-			};
-
-			columns.filter(&filter_mask)?;
+			Self::compact(&mut columns, &filter_mask)?;
 			row_count = columns.row_count();
 		}
 

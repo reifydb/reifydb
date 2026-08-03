@@ -79,6 +79,13 @@ impl RowPointLookupNode {
 
 		Ok(shape)
 	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::lookup::point::append_rows")]
+	fn append_batch<'a>(&mut self, rx: &mut Transaction<'a>, columns: &mut Columns, row: EncodedRow) -> Result<()> {
+		let shape = self.get_or_load_shape(rx, &row)?;
+		columns.append_rows(&shape, iter::once(row), vec![RowNumber(self.row_number)])?;
+		Ok(())
+	}
 }
 
 impl QueryNode for RowPointLookupNode {
@@ -99,8 +106,7 @@ impl QueryNode for RowPointLookupNode {
 
 		if let Some(multi_values) = rx.get(&encoded_key)? {
 			let mut columns = columns_from_object(&self.source);
-			let shape = self.get_or_load_shape(rx, &multi_values.row)?;
-			columns.append_rows(&shape, iter::once(multi_values.row), vec![RowNumber(self.row_number)])?;
+			self.append_batch(rx, &mut columns, multi_values.row)?;
 
 			Ok(Some(columns))
 		} else {
@@ -153,6 +159,42 @@ impl RowListLookupNode {
 
 		Ok(shape)
 	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::lookup::list::fetch")]
+	fn fetch_batch<'a>(
+		&self,
+		rx: &mut Transaction<'a>,
+		object_id: StorageId,
+		start: usize,
+		end: usize,
+	) -> Result<(Vec<EncodedRow>, Vec<RowNumber>)> {
+		let mut batch_rows = Vec::new();
+		let mut found_row_numbers = Vec::new();
+
+		for &row_num in &self.row_numbers[start..end] {
+			let encoded_key = RowKey::encoded(object_id, RowNumber(row_num));
+
+			if let Some(multi_values) = rx.get(&encoded_key)? {
+				batch_rows.push(multi_values.row);
+				found_row_numbers.push(RowNumber(row_num));
+			}
+		}
+
+		Ok((batch_rows, found_row_numbers))
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::lookup::list::append_rows")]
+	fn append_batch<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		columns: &mut Columns,
+		rows: Vec<EncodedRow>,
+		row_numbers: Vec<RowNumber>,
+	) -> Result<()> {
+		let shape = self.get_or_load_shape(rx, &rows[0])?;
+		columns.append_rows(&shape, rows.into_iter(), row_numbers)?;
+		Ok(())
+	}
 }
 
 impl QueryNode for RowListLookupNode {
@@ -172,19 +214,9 @@ impl QueryNode for RowListLookupNode {
 		}
 
 		let object_id = get_object_id(&self.source)?;
-		let mut batch_rows = Vec::new();
-		let mut found_row_numbers = Vec::new();
-
 		let end_index = (self.current_index + batch_size).min(self.row_numbers.len());
 
-		for &row_num in &self.row_numbers[self.current_index..end_index] {
-			let encoded_key = RowKey::encoded(object_id, RowNumber(row_num));
-
-			if let Some(multi_values) = rx.get(&encoded_key)? {
-				batch_rows.push(multi_values.row);
-				found_row_numbers.push(RowNumber(row_num));
-			}
-		}
+		let (batch_rows, found_row_numbers) = self.fetch_batch(rx, object_id, self.current_index, end_index)?;
 
 		self.current_index = end_index;
 
@@ -196,8 +228,7 @@ impl QueryNode for RowListLookupNode {
 		}
 
 		let mut columns = columns_from_object(&self.source);
-		let shape = self.get_or_load_shape(rx, &batch_rows[0])?;
-		columns.append_rows(&shape, batch_rows.into_iter(), found_row_numbers)?;
+		self.append_batch(rx, &mut columns, batch_rows, found_row_numbers)?;
 
 		Ok(Some(columns))
 	}
@@ -252,6 +283,42 @@ impl RowRangeScanNode {
 
 		Ok(shape)
 	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::range::fetch")]
+	fn fetch_batch<'a>(
+		&self,
+		rx: &mut Transaction<'a>,
+		object_id: StorageId,
+		start: u64,
+		end: u64,
+	) -> Result<(Vec<EncodedRow>, Vec<RowNumber>)> {
+		let mut batch_rows = Vec::new();
+		let mut found_row_numbers = Vec::new();
+
+		for row_num in start..=end {
+			let encoded_key = RowKey::encoded(object_id, RowNumber(row_num));
+
+			if let Some(multi_values) = rx.get(&encoded_key)? {
+				batch_rows.push(multi_values.row);
+				found_row_numbers.push(RowNumber(row_num));
+			}
+		}
+
+		Ok((batch_rows, found_row_numbers))
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::range::append_rows")]
+	fn append_batch<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		columns: &mut Columns,
+		rows: Vec<EncodedRow>,
+		row_numbers: Vec<RowNumber>,
+	) -> Result<()> {
+		let shape = self.get_or_load_shape(rx, &rows[0])?;
+		columns.append_rows(&shape, rows.into_iter(), row_numbers)?;
+		Ok(())
+	}
 }
 
 impl QueryNode for RowRangeScanNode {
@@ -271,19 +338,9 @@ impl QueryNode for RowRangeScanNode {
 		}
 
 		let object_id = get_object_id(&self.source)?;
-		let mut batch_rows = Vec::new();
-		let mut found_row_numbers = Vec::new();
-
 		let batch_end = (self.current_row + batch_size as u64 - 1).min(self.end);
 
-		for row_num in self.current_row..=batch_end {
-			let encoded_key = RowKey::encoded(object_id, RowNumber(row_num));
-
-			if let Some(multi_values) = rx.get(&encoded_key)? {
-				batch_rows.push(multi_values.row);
-				found_row_numbers.push(RowNumber(row_num));
-			}
-		}
+		let (batch_rows, found_row_numbers) = self.fetch_batch(rx, object_id, self.current_row, batch_end)?;
 
 		self.current_row = batch_end + 1;
 		if self.current_row > self.end {
@@ -298,8 +355,7 @@ impl QueryNode for RowRangeScanNode {
 		}
 
 		let mut columns = columns_from_object(&self.source);
-		let shape = self.get_or_load_shape(rx, &batch_rows[0])?;
-		columns.append_rows(&shape, batch_rows.into_iter(), found_row_numbers)?;
+		self.append_batch(rx, &mut columns, batch_rows, found_row_numbers)?;
 
 		Ok(Some(columns))
 	}

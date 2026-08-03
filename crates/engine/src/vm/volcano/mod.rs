@@ -10,9 +10,11 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{Value, dictionary::DictionaryEntryId};
+use tracing::instrument;
 
 use crate::{Result, transaction::operation::dictionary::DictionaryOperations};
 
+#[instrument(level = "trace", skip_all, name = "volcano::scan::dictionaries")]
 pub(crate) fn decode_dictionary_columns(
 	columns: &mut Columns,
 	dictionaries: &[Option<Dictionary>],

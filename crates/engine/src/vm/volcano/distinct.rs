@@ -30,23 +30,12 @@ impl DistinctNode {
 			headers: None,
 		}
 	}
-}
 
-impl QueryNode for DistinctNode {
-	#[instrument(level = "trace", skip_all, name = "volcano::distinct::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
-		self.input.initialize(rx, ctx)?;
-		Ok(())
-	}
-
-	#[instrument(level = "trace", skip_all, name = "volcano::distinct::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		if self.headers.is_some() {
-			return Ok(None);
-		}
-
+	#[instrument(level = "trace", skip_all, name = "volcano::distinct::collect")]
+	fn collect_input<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		let mut all_columns: Option<Columns> = None;
 		let mut charged = 0usize;
+
 		while let Some(cols) = self.input.next(rx, ctx)? {
 			if cols.row_count() == 0 {
 				continue;
@@ -60,14 +49,11 @@ impl QueryNode for DistinctNode {
 			}
 		}
 
-		let all_columns = match all_columns {
-			Some(cols) => cols,
-			None => {
-				self.headers = Some(ColumnHeaders::empty());
-				return Ok(None);
-			}
-		};
+		Ok(all_columns)
+	}
 
+	#[instrument(level = "trace", skip_all, name = "volcano::distinct::dedupe")]
+	fn dedupe(&self, all_columns: &Columns) -> Vec<usize> {
 		let row_count = all_columns.row_count();
 		let mut seen = HashSet::<Hash128>::new();
 		let mut kept_indices = Vec::new();
@@ -103,7 +89,41 @@ impl QueryNode for DistinctNode {
 			}
 		}
 
-		let result = all_columns.extract_by_indices(&kept_indices);
+		kept_indices
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::distinct::extract")]
+	fn extract(all_columns: &Columns, kept_indices: &[usize]) -> Columns {
+		all_columns.extract_by_indices(kept_indices)
+	}
+}
+
+impl QueryNode for DistinctNode {
+	#[instrument(level = "trace", skip_all, name = "volcano::distinct::initialize")]
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		self.input.initialize(rx, ctx)?;
+		Ok(())
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::distinct::next")]
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+		if self.headers.is_some() {
+			return Ok(None);
+		}
+
+		let all_columns = self.collect_input(rx, ctx)?;
+
+		let all_columns = match all_columns {
+			Some(cols) => cols,
+			None => {
+				self.headers = Some(ColumnHeaders::empty());
+				return Ok(None);
+			}
+		};
+
+		let kept_indices = self.dedupe(&all_columns);
+
+		let result = Self::extract(&all_columns, &kept_indices);
 		self.headers = Some(ColumnHeaders::from_columns(&result));
 
 		Ok(Some(result))

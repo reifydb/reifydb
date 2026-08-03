@@ -5,12 +5,13 @@ use std::sync::Arc;
 
 use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
-	key::encoded::EncodedKey,
+	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
 	interface::{
 		catalog::{dictionary::Dictionary, storage::StorageId},
 		resolved::ResolvedView,
+		store::MultiVersionRow,
 	},
 	internal_error,
 	key::{
@@ -123,6 +124,91 @@ impl ViewScanNode {
 
 		Ok(shape)
 	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::view::range_open")]
+	fn open_range<'rx, 'tx>(
+		rx: &'rx mut Transaction<'tx>,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'rx>> {
+		rx.range(range, RangeScope::All, batch_size as usize)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::view::drain")]
+	fn drain_batch(
+		&self,
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow>>,
+		batch_size: u64,
+	) -> Result<(Vec<EncodedRow>, Vec<RowNumber>, Option<EncodedKey>, bool)> {
+		let mut batch_rows = Vec::new();
+		let mut row_numbers = Vec::new();
+		let mut new_last_key = None;
+		let mut drained = false;
+
+		for _ in 0..batch_size {
+			match stream.next() {
+				Some(Ok(multi)) => {
+					let row = if self.sorted {
+						let bytes = multi.key.as_slice();
+						RowNumber(u64::from_be_bytes(
+							bytes[bytes.len() - 8..].try_into().unwrap(),
+						))
+					} else if self.partitioned {
+						match PartitionedRowKey::decode(&multi.key) {
+							Some(key) => match key.locator {
+								RowLocator::Row(rn) => rn,
+								RowLocator::Series {
+									sequence,
+									..
+								} => RowNumber(sequence),
+							},
+							None => continue,
+						}
+					} else if let Some(key) = RowKey::decode(&multi.key) {
+						key.row
+					} else {
+						continue;
+					};
+					batch_rows.push(multi.row);
+					row_numbers.push(row);
+					new_last_key = Some(multi.key);
+				}
+				Some(Err(e)) => return Err(e),
+				None => {
+					drained = true;
+					break;
+				}
+			}
+		}
+
+		Ok((batch_rows, row_numbers, new_last_key, drained))
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::view::column_alloc")]
+	fn storage_columns(&self) -> Vec<ColumnWithName> {
+		self.view
+			.columns()
+			.iter()
+			.enumerate()
+			.map(|(idx, col)| ColumnWithName {
+				name: Fragment::internal(&col.name),
+				data: ColumnBuffer::with_capacity(self.storage_types[idx].clone(), 0),
+			})
+			.collect()
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::view::append_rows")]
+	fn append_batch<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		columns: &mut Columns,
+		rows: Vec<EncodedRow>,
+		row_numbers: Vec<RowNumber>,
+	) -> Result<()> {
+		let shape = self.get_or_load_shape(rx, &rows[0])?;
+		columns.append_rows(&shape, rows.into_iter(), row_numbers)?;
+		Ok(())
+	}
 }
 
 impl QueryNode for ViewScanNode {
@@ -157,48 +243,15 @@ impl QueryNode for ViewScanNode {
 			RowKeyRange::scan_range(underlying, self.last_key.as_ref())
 		};
 
-		let mut batch_rows = Vec::new();
-		let mut row_numbers = Vec::new();
-		let mut new_last_key = None;
+		let (batch_rows, row_numbers, new_last_key, drained) = {
+			let mut stream = Self::open_range(rx, range, batch_size)?;
+			self.drain_batch(&mut stream, batch_size)?
+		};
 
-		let mut stream = rx.range(range, RangeScope::All, batch_size as usize)?;
-		for _ in 0..batch_size {
-			match stream.next() {
-				Some(Ok(multi)) => {
-					let row = if self.sorted {
-						let bytes = multi.key.as_slice();
-						RowNumber(u64::from_be_bytes(
-							bytes[bytes.len() - 8..].try_into().unwrap(),
-						))
-					} else if self.partitioned {
-						match PartitionedRowKey::decode(&multi.key) {
-							Some(key) => match key.locator {
-								RowLocator::Row(rn) => rn,
-								RowLocator::Series {
-									sequence,
-									..
-								} => RowNumber(sequence),
-							},
-							None => continue,
-						}
-					} else if let Some(key) = RowKey::decode(&multi.key) {
-						key.row
-					} else {
-						continue;
-					};
-					batch_rows.push(multi.row);
-					row_numbers.push(row);
-					new_last_key = Some(multi.key);
-				}
-				Some(Err(e)) => return Err(e),
-				None => {
-					self.exhausted = true;
-					break;
-				}
-			}
+		if drained {
+			self.exhausted = true;
 		}
 
-		drop(stream);
 		if batch_rows.is_empty() {
 			self.exhausted = true;
 			if self.last_key.is_none() {
@@ -209,22 +262,8 @@ impl QueryNode for ViewScanNode {
 
 		self.last_key = new_last_key;
 
-		let storage_columns: Vec<ColumnWithName> = self
-			.view
-			.columns()
-			.iter()
-			.enumerate()
-			.map(|(idx, col)| ColumnWithName {
-				name: Fragment::internal(&col.name),
-				data: ColumnBuffer::with_capacity(self.storage_types[idx].clone(), 0),
-			})
-			.collect();
-
-		let mut columns = Columns::with_system(storage_columns, SystemColumns::default());
-		{
-			let shape = self.get_or_load_shape(rx, &batch_rows[0])?;
-			columns.append_rows(&shape, batch_rows.into_iter(), row_numbers)?;
-		}
+		let mut columns = Columns::with_system(self.storage_columns(), SystemColumns::default());
+		self.append_batch(rx, &mut columns, batch_rows, row_numbers)?;
 
 		decode_dictionary_columns(&mut columns, &self.dictionaries, rx)?;
 

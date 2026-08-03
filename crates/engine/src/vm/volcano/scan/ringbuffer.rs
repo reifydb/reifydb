@@ -125,6 +125,91 @@ impl RingBufferScan {
 		Ok(shape)
 	}
 
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::ringbuffer::drain")]
+	fn drain_batch(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		batch_size: usize,
+		partitioned: bool,
+	) -> Result<(Vec<EncodedRow>, Vec<RowNumber>, Vec<Partition>)> {
+		let mut batch_rows: Vec<EncodedRow> = Vec::new();
+		let mut row_numbers: Vec<RowNumber> = Vec::new();
+		let mut partitions_sidecar: Vec<Partition> = Vec::new();
+
+		while batch_rows.len() < batch_size && self.current_partition_index < self.partitions.len() {
+			if !self.current_partition_loaded {
+				self.current_partition_rows =
+					self.load_partition_rows(txn, self.current_partition_index)?;
+				self.current_partition_cursor = 0;
+				self.current_partition_loaded = true;
+			}
+
+			let hash = if partitioned {
+				Some(Partition::of(&self.partitions[self.current_partition_index].partition_values))
+			} else {
+				None
+			};
+
+			while batch_rows.len() < batch_size
+				&& self.current_partition_cursor < self.current_partition_rows.len()
+			{
+				let (rn, row) = self.current_partition_rows[self.current_partition_cursor].clone();
+				batch_rows.push(row);
+				row_numbers.push(rn);
+				if let Some(h) = hash {
+					partitions_sidecar.push(h);
+				}
+				self.current_partition_cursor += 1;
+			}
+
+			if self.current_partition_cursor >= self.current_partition_rows.len() {
+				self.current_partition_index += 1;
+				self.current_partition_loaded = false;
+			}
+		}
+
+		Ok((batch_rows, row_numbers, partitions_sidecar))
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::ringbuffer::column_alloc")]
+	fn storage_columns(&self) -> Vec<ColumnWithName> {
+		self.ringbuffer
+			.columns()
+			.iter()
+			.enumerate()
+			.map(|(idx, col)| ColumnWithName {
+				name: Fragment::internal(&col.name),
+				data: ColumnBuffer::with_capacity(self.storage_types[idx].clone(), 0),
+			})
+			.collect()
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::ringbuffer::empty_columns")]
+	fn empty_columns(&self) -> Vec<ColumnWithName> {
+		self.ringbuffer
+			.columns()
+			.iter()
+			.map(|col| ColumnWithName {
+				name: Fragment::internal(&col.name),
+				data: ColumnBuffer::none_typed(col.constraint.get_type(), 0),
+			})
+			.collect()
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::ringbuffer::append_rows")]
+	fn append_batch(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		columns: &mut Columns,
+		rows: Vec<EncodedRow>,
+		row_numbers: Vec<RowNumber>,
+	) -> Result<()> {
+		let shape = self.get_or_load_shape(txn, &rows[0])?;
+		columns.append_rows(&shape, rows.into_iter(), row_numbers.clone())?;
+		Ok(())
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::ringbuffer::load_partition")]
 	fn load_partition_rows(
 		&self,
 		txn: &mut Transaction<'_>,
@@ -200,57 +285,11 @@ impl QueryNode for RingBufferScan {
 		let batch_size = self.context.as_ref().expect("RingBufferScan context not set").batch_size as usize;
 		let partitioned = !self.partition_col_indices.is_empty();
 
-		let mut batch_rows: Vec<EncodedRow> = Vec::new();
-		let mut row_numbers: Vec<RowNumber> = Vec::new();
-		let mut partitions_sidecar: Vec<Partition> = Vec::new();
-
-		while batch_rows.len() < batch_size && self.current_partition_index < self.partitions.len() {
-			if !self.current_partition_loaded {
-				self.current_partition_rows =
-					self.load_partition_rows(txn, self.current_partition_index)?;
-				self.current_partition_cursor = 0;
-				self.current_partition_loaded = true;
-			}
-
-			let hash = if partitioned {
-				Some(Partition::of(&self.partitions[self.current_partition_index].partition_values))
-			} else {
-				None
-			};
-
-			while batch_rows.len() < batch_size
-				&& self.current_partition_cursor < self.current_partition_rows.len()
-			{
-				let (rn, row) = self.current_partition_rows[self.current_partition_cursor].clone();
-				batch_rows.push(row);
-				row_numbers.push(rn);
-				if let Some(h) = hash {
-					partitions_sidecar.push(h);
-				}
-				self.current_partition_cursor += 1;
-			}
-
-			if self.current_partition_cursor >= self.current_partition_rows.len() {
-				self.current_partition_index += 1;
-				self.current_partition_loaded = false;
-			}
-		}
+		let (batch_rows, row_numbers, partitions_sidecar) = self.drain_batch(txn, batch_size, partitioned)?;
 
 		if !batch_rows.is_empty() {
-			let storage_columns: Vec<ColumnWithName> = self
-				.ringbuffer
-				.columns()
-				.iter()
-				.enumerate()
-				.map(|(idx, col)| ColumnWithName {
-					name: Fragment::internal(&col.name),
-					data: ColumnBuffer::with_capacity(self.storage_types[idx].clone(), 0),
-				})
-				.collect();
-
-			let mut columns = Columns::with_system(storage_columns, SystemColumns::default());
-			let shape = self.get_or_load_shape(txn, &batch_rows[0])?;
-			columns.append_rows(&shape, batch_rows.into_iter(), row_numbers.clone())?;
+			let mut columns = Columns::with_system(self.storage_columns(), SystemColumns::default());
+			self.append_batch(txn, &mut columns, batch_rows, row_numbers)?;
 			if partitioned {
 				columns.system.set_partitions(partitions_sidecar);
 			}
@@ -262,16 +301,7 @@ impl QueryNode for RingBufferScan {
 
 		self.finished = true;
 		if self.partitions.is_empty() || self.partitions.iter().all(|p| p.metadata.is_empty()) {
-			let columns: Vec<ColumnWithName> = self
-				.ringbuffer
-				.columns()
-				.iter()
-				.map(|col| ColumnWithName {
-					name: Fragment::internal(&col.name),
-					data: ColumnBuffer::none_typed(col.constraint.get_type(), 0),
-				})
-				.collect();
-			return Ok(Some(Columns::new(columns)));
+			return Ok(Some(Columns::new(self.empty_columns())));
 		}
 		Ok(None)
 	}

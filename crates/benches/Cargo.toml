@@ -29,9 +29,16 @@ reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
 rustls = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [[bench]]
 name = "query"
+harness = false
+
+[[bench]]
+name = "scan-profile"
+path = "benches/scan_profile.rs"
 harness = false
 
 [[bench]]

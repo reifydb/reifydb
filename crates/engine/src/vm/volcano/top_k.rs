@@ -10,7 +10,7 @@ use reifydb_core::{
 		SortDirection::{Asc, Desc},
 		SortKey,
 	},
-	value::column::{columns::Columns, headers::ColumnHeaders},
+	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{error, error::Error, reifydb_assertions, value::Value};
@@ -104,22 +104,7 @@ impl QueryNode for TopKNode {
 			return Ok(None);
 		}
 
-		let mut columns_opt: Option<Columns> = None;
-		let mut charged = 0usize;
-
-		while let Some(columns) = self.input.next(rx, ctx)? {
-			if let Some(existing_columns) = &mut columns_opt {
-				existing_columns.system.extend(&columns.system)?;
-				for (i, col) in columns.columns.iter().enumerate() {
-					existing_columns[i].extend(col.clone())?;
-				}
-			} else {
-				columns_opt = Some(columns);
-			}
-			if let Some(acc) = &columns_opt {
-				charge_query_memory(&ctx.memory, &mut charged, acc)?;
-			}
-		}
+		let columns_opt = self.collect_input(rx, ctx)?;
 
 		let mut columns = match columns_opt {
 			Some(f) => f,
@@ -145,47 +130,8 @@ impl QueryNode for TopKNode {
 
 		let directions: Vec<_> = self.by.iter().map(|k| k.direction.clone()).collect();
 
-		let mut heap: BinaryHeap<HeapEntry> = BinaryHeap::with_capacity(self.limit);
-
-		for row_idx in 0..row_count {
-			let sort_values: Vec<Value> = key_cols.iter().map(|(col, _)| col.get_value(row_idx)).collect();
-
-			let entry = HeapEntry::new(row_idx, sort_values, directions.clone());
-
-			if heap.len() < self.limit {
-				heap.push(entry);
-			} else if let Some(top) = heap.peek()
-				&& entry.cmp(top) == Ordering::Less
-			{
-				heap.pop();
-				heap.push(entry);
-			}
-		}
-
-		let mut indices: Vec<usize> = heap.into_iter().map(|e| e.row_idx).collect();
-
-		indices.sort_unstable_by(|&l, &r| {
-			for (col, dir) in &key_cols {
-				let vl = col.get_value(l);
-				let vr = col.get_value(r);
-				let ord = vl.partial_cmp(&vr).unwrap_or(Ordering::Equal);
-				let ord = match dir {
-					Asc => ord,
-					Desc => ord.reverse(),
-				};
-				if ord != Ordering::Equal {
-					return ord;
-				}
-			}
-			Ordering::Equal
-		});
-
-		columns.system.permute_in_place(&indices);
-
-		let cols = columns.columns.make_mut();
-		for col in cols.iter_mut() {
-			col.reorder(&indices);
-		}
+		let indices = self.select_top(&key_cols, &directions, row_count);
+		Self::permute(&mut columns, &indices);
 
 		Ok(Some(columns))
 	}
@@ -227,13 +173,85 @@ impl TopKNode {
 			Ordering::Equal
 		});
 
-		columns.system.permute_in_place(&indices);
+		Self::permute(columns, &indices);
+
+		Ok(Some(columns.clone()))
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::top_k::collect")]
+	fn collect_input<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+		let mut columns_opt: Option<Columns> = None;
+		let mut charged = 0usize;
+
+		while let Some(columns) = self.input.next(rx, ctx)? {
+			if let Some(existing_columns) = &mut columns_opt {
+				existing_columns.system.extend(&columns.system)?;
+				for (i, col) in columns.columns.iter().enumerate() {
+					existing_columns[i].extend(col.clone())?;
+				}
+			} else {
+				columns_opt = Some(columns);
+			}
+			if let Some(acc) = &columns_opt {
+				charge_query_memory(&ctx.memory, &mut charged, acc)?;
+			}
+		}
+
+		Ok(columns_opt)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::top_k::heap")]
+	fn select_top(
+		&self,
+		key_cols: &[(ColumnBuffer, SortDirection)],
+		directions: &[SortDirection],
+		row_count: usize,
+	) -> Vec<usize> {
+		let mut heap: BinaryHeap<HeapEntry> = BinaryHeap::with_capacity(self.limit);
+
+		for row_idx in 0..row_count {
+			let sort_values: Vec<Value> = key_cols.iter().map(|(col, _)| col.get_value(row_idx)).collect();
+
+			let entry = HeapEntry::new(row_idx, sort_values, directions.to_vec());
+
+			if heap.len() < self.limit {
+				heap.push(entry);
+			} else if let Some(top) = heap.peek()
+				&& entry.cmp(top) == Ordering::Less
+			{
+				heap.pop();
+				heap.push(entry);
+			}
+		}
+
+		let mut indices: Vec<usize> = heap.into_iter().map(|e| e.row_idx).collect();
+
+		indices.sort_unstable_by(|&l, &r| {
+			for (col, dir) in key_cols {
+				let vl = col.get_value(l);
+				let vr = col.get_value(r);
+				let ord = vl.partial_cmp(&vr).unwrap_or(Ordering::Equal);
+				let ord = match dir {
+					Asc => ord,
+					Desc => ord.reverse(),
+				};
+				if ord != Ordering::Equal {
+					return ord;
+				}
+			}
+			Ordering::Equal
+		});
+
+		indices
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::top_k::permute")]
+	fn permute(columns: &mut Columns, indices: &[usize]) {
+		columns.system.permute_in_place(indices);
 
 		let cols = columns.columns.make_mut();
 		for col in cols.iter_mut() {
-			col.reorder(&indices);
+			col.reorder(indices);
 		}
-
-		Ok(Some(columns.clone()))
 	}
 }

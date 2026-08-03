@@ -109,6 +109,40 @@ impl QueryNode for NestedLoopJoinNode {
 		let resolved = resolve_column_names(&left_columns, &right_columns, &self.alias, None);
 
 		let session = EvalContext::from_query(ctx);
+		let (result_rows, result_row_numbers) = self.probe(
+			&session,
+			&left_columns,
+			&right_columns,
+			&left_row_numbers,
+			left_rows,
+			right_rows,
+			right_width,
+		);
+
+		let columns = Self::materialize(&resolved.qualified_names, result_rows, result_row_numbers);
+
+		self.headers = Some(ColumnHeaders::from_columns(&columns));
+		Ok(Some(columns))
+	}
+
+	fn headers(&self) -> Option<ColumnHeaders> {
+		self.headers.clone()
+	}
+}
+
+impl NestedLoopJoinNode {
+	#[allow(clippy::too_many_arguments)]
+	#[instrument(level = "trace", skip_all, name = "volcano::join::nested_loop::probe")]
+	fn probe(
+		&self,
+		session: &EvalContext,
+		left_columns: &Columns,
+		right_columns: &Columns,
+		left_row_numbers: &[RowNumber],
+		left_rows: usize,
+		right_rows: usize,
+		right_width: usize,
+	) -> (Vec<Vec<Value>>, Vec<RowNumber>) {
 		let mut result_rows = Vec::new();
 		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
 
@@ -155,18 +189,20 @@ impl QueryNode for NestedLoopJoinNode {
 			}
 		}
 
-		let names_refs: Vec<&str> = resolved.qualified_names.iter().map(|s| s.as_str()).collect();
-		let columns = if result_row_numbers.is_empty() {
+		(result_rows, result_row_numbers)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::join::nested_loop::materialize")]
+	fn materialize(
+		qualified_names: &[String],
+		result_rows: Vec<Vec<Value>>,
+		result_row_numbers: Vec<RowNumber>,
+	) -> Columns {
+		let names_refs: Vec<&str> = qualified_names.iter().map(|s| s.as_str()).collect();
+		if result_row_numbers.is_empty() {
 			Columns::from_rows(&names_refs, &result_rows)
 		} else {
 			Columns::from_rows(&names_refs, &result_rows).with_row_numbers(result_row_numbers)
-		};
-
-		self.headers = Some(ColumnHeaders::from_columns(&columns));
-		Ok(Some(columns))
-	}
-
-	fn headers(&self) -> Option<ColumnHeaders> {
-		self.headers.clone()
+		}
 	}
 }

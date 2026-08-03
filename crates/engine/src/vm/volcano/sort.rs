@@ -6,10 +6,11 @@ use std::cmp::Ordering::Equal;
 use reifydb_core::{
 	error::diagnostic::query,
 	sort::{
+		SortDirection,
 		SortDirection::{Asc, Desc},
 		SortKey,
 	},
-	value::column::{columns::Columns, headers::ColumnHeaders},
+	value::column::{buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
@@ -35,22 +36,9 @@ impl SortNode {
 			initialized: None,
 		}
 	}
-}
 
-impl QueryNode for SortNode {
-	#[instrument(level = "trace", skip_all, name = "volcano::sort::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
-		self.input.initialize(rx, ctx)?;
-		self.initialized = Some(());
-		Ok(())
-	}
-
-	#[instrument(level = "trace", skip_all, name = "volcano::sort::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		reifydb_assertions! {
-			assert!(self.initialized.is_some(), "SortNode::next() called before initialize()");
-		}
-
+	#[instrument(level = "trace", skip_all, name = "volcano::sort::collect")]
+	fn collect_input<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
 		let mut columns_opt: Option<Columns> = None;
 		let mut charged = 0usize;
 
@@ -67,6 +55,26 @@ impl QueryNode for SortNode {
 				charge_query_memory(&ctx.memory, &mut charged, acc)?;
 			}
 		}
+
+		Ok(columns_opt)
+	}
+}
+
+impl QueryNode for SortNode {
+	#[instrument(level = "trace", skip_all, name = "volcano::sort::initialize")]
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		self.input.initialize(rx, ctx)?;
+		self.initialized = Some(());
+		Ok(())
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::sort::next")]
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+		reifydb_assertions! {
+			assert!(self.initialized.is_some(), "SortNode::next() called before initialize()");
+		}
+
+		let columns_opt = self.collect_input(rx, ctx)?;
 
 		let columns = match columns_opt {
 			Some(f) => f,
@@ -105,11 +113,20 @@ impl Transform for SortNode {
 				})
 				.collect::<Result<Vec<_>>>()?;
 
-		let row_count = columns.row_count();
+		let indices = Self::rank_rows(&key_refs, columns.row_count());
+		Self::permute(&mut columns, &indices);
+
+		Ok(columns)
+	}
+}
+
+impl SortNode {
+	#[instrument(level = "trace", skip_all, name = "volcano::sort::rank")]
+	fn rank_rows(key_refs: &[(ColumnBuffer, SortDirection)], row_count: usize) -> Vec<usize> {
 		let mut indices: Vec<usize> = (0..row_count).collect();
 
 		indices.sort_unstable_by(|&l, &r| {
-			for (col, dir) in &key_refs {
+			for (col, dir) in key_refs {
 				let vl = col.get_value(l);
 				let vr = col.get_value(r);
 				let ord = vl.partial_cmp(&vr).unwrap_or(Equal);
@@ -124,13 +141,16 @@ impl Transform for SortNode {
 			Equal
 		});
 
-		columns.system.permute_in_place(&indices);
+		indices
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::sort::permute")]
+	fn permute(columns: &mut Columns, indices: &[usize]) {
+		columns.system.permute_in_place(indices);
 
 		let cols = columns.columns.make_mut();
 		for col in cols.iter_mut() {
-			col.reorder(&indices);
+			col.reorder(indices);
 		}
-
-		Ok(columns)
 	}
 }

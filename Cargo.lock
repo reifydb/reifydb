@@ -2896,6 +2896,8 @@ dependencies = [
  "reifydb-value",
  "rustls",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

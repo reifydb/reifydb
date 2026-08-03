@@ -8,7 +8,7 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
-	interface::{catalog::dictionary::Dictionary, resolved::ResolvedQueue},
+	interface::{catalog::dictionary::Dictionary, resolved::ResolvedQueue, store::MultiVersionRow},
 	internal_error,
 	key::{
 		EncodableKey,
@@ -93,6 +93,82 @@ impl QueueScan {
 		Ok(shape)
 	}
 
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::queue::range_open")]
+	fn open_range<'rx, 'tx>(
+		rx: &'rx mut Transaction<'tx>,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'rx>> {
+		rx.range_rev(range, RangeScope::All, batch_size as usize)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::queue::drain")]
+	fn drain_batch(
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow>>,
+		batch_size: u64,
+	) -> Result<(Vec<EncodedRow>, Vec<RowNumber>, Option<EncodedKey>, bool)> {
+		let mut batch_rows: Vec<EncodedRow> = Vec::new();
+		let mut row_numbers: Vec<RowNumber> = Vec::new();
+		let mut new_last_key = None;
+		let mut drained = false;
+
+		for _ in 0..batch_size {
+			match stream.next() {
+				Some(Ok(multi)) => {
+					if let Some(key) = RowKey::decode(&multi.key) {
+						batch_rows.push(multi.row);
+						row_numbers.push(key.row);
+						new_last_key = Some(multi.key);
+					}
+				}
+				Some(Err(e)) => return Err(e),
+				None => {
+					drained = true;
+					break;
+				}
+			}
+		}
+
+		Ok((batch_rows, row_numbers, new_last_key, drained))
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::queue::column_alloc")]
+	fn storage_columns(&self, shape: &RowShape, declared: usize) -> Result<Vec<ColumnWithName>> {
+		let mut storage_columns: Vec<ColumnWithName> = self
+			.queue
+			.columns()
+			.iter()
+			.enumerate()
+			.map(|(idx, col)| ColumnWithName {
+				name: Fragment::internal(&col.name),
+				data: ColumnBuffer::with_capacity(self.storage_types[idx].clone(), 0),
+			})
+			.collect();
+
+		for index in declared..shape.field_count() {
+			let field = shape.get_field(index).ok_or_else(|| {
+				internal_error!("queue {} shape lost field {}", self.queue.def().name, index)
+			})?;
+			storage_columns.push(ColumnWithName {
+				name: Fragment::internal(field.name.clone()),
+				data: ColumnBuffer::with_capacity(field.constraint.get_type(), 0),
+			});
+		}
+
+		Ok(storage_columns)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::queue::append_rows")]
+	fn append_batch(
+		shape: &RowShape,
+		columns: &mut Columns,
+		rows: Vec<EncodedRow>,
+		row_numbers: Vec<RowNumber>,
+	) -> Result<()> {
+		columns.append_rows(shape, rows.into_iter(), row_numbers)?;
+		Ok(())
+	}
+
 	fn enqueue_order_range(&self) -> EncodedKeyRange {
 		let full = RowKeyRange::scan_range(self.queue.def().id.into(), None);
 		match &self.last_key {
@@ -130,30 +206,14 @@ impl QueryNode for QueueScan {
 		let batch_size = self.context.as_ref().expect("QueueScan context not set").batch_size;
 		let range = self.enqueue_order_range();
 
-		let mut batch_rows: Vec<EncodedRow> = Vec::new();
-		let mut row_numbers: Vec<RowNumber> = Vec::new();
-		let mut new_last_key = None;
+		let (batch_rows, row_numbers, new_last_key, drained) = {
+			let mut stream = Self::open_range(rx, range, batch_size)?;
+			Self::drain_batch(&mut stream, batch_size)?
+		};
 
-		let mut stream = rx.range_rev(range, RangeScope::All, batch_size as usize)?;
-
-		for _ in 0..batch_size {
-			match stream.next() {
-				Some(Ok(multi)) => {
-					if let Some(key) = RowKey::decode(&multi.key) {
-						batch_rows.push(multi.row);
-						row_numbers.push(key.row);
-						new_last_key = Some(multi.key);
-					}
-				}
-				Some(Err(e)) => return Err(e),
-				None => {
-					self.exhausted = true;
-					break;
-				}
-			}
+		if drained {
+			self.exhausted = true;
 		}
-
-		drop(stream);
 
 		if batch_rows.is_empty() {
 			self.exhausted = true;
@@ -168,29 +228,10 @@ impl QueryNode for QueueScan {
 		let shape = self.get_or_load_shape(rx, &batch_rows[0])?;
 		let declared = self.queue.columns().len();
 
-		let mut storage_columns: Vec<ColumnWithName> = self
-			.queue
-			.columns()
-			.iter()
-			.enumerate()
-			.map(|(idx, col)| ColumnWithName {
-				name: Fragment::internal(&col.name),
-				data: ColumnBuffer::with_capacity(self.storage_types[idx].clone(), 0),
-			})
-			.collect();
-
-		for index in declared..shape.field_count() {
-			let field = shape.get_field(index).ok_or_else(|| {
-				internal_error!("queue {} shape lost field {}", self.queue.def().name, index)
-			})?;
-			storage_columns.push(ColumnWithName {
-				name: Fragment::internal(field.name.clone()),
-				data: ColumnBuffer::with_capacity(field.constraint.get_type(), 0),
-			});
-		}
+		let storage_columns = self.storage_columns(&shape, declared)?;
 
 		let mut columns = Columns::with_system(storage_columns, SystemColumns::default());
-		columns.append_rows(&shape, batch_rows.into_iter(), row_numbers)?;
+		Self::append_batch(&shape, &mut columns, batch_rows, row_numbers)?;
 
 		decode_dictionary_columns(&mut columns, &self.dictionaries, rx)?;
 

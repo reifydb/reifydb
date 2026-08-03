@@ -62,36 +62,20 @@ impl AggregateNode {
 			context: Some(context),
 		}
 	}
-}
 
-impl QueryNode for AggregateNode {
-	#[instrument(level = "trace", skip_all, name = "volcano::aggregate::initialize")]
-	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
-		self.input.initialize(rx, ctx)?;
+	#[instrument(level = "trace", skip_all, name = "volcano::aggregate::accumulate")]
+	fn accumulate<'a>(
+		input: &mut Box<dyn QueryNode>,
+		rx: &mut Transaction<'a>,
+		ctx: &mut QueryContext,
+		keys: &[&str],
+		projections: &mut [Projection],
+		dict: &mut GroupKeyDict,
+	) -> Result<()> {
+		while let Some(columns) = input.next(rx, ctx)? {
+			let groups = columns.group_by_ids(keys, dict)?;
 
-		Ok(())
-	}
-
-	#[instrument(level = "trace", skip_all, name = "volcano::aggregate::next")]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
-		reifydb_assertions! {
-			assert!(self.context.is_some(), "AggregateNode::next() called before initialize()");
-		}
-		let stored_ctx = self.context.as_ref().unwrap();
-
-		if self.headers.is_some() {
-			return Ok(None);
-		}
-
-		let (keys, mut projections) =
-			parse_keys_and_aggregates(&self.by, &self.map, &stored_ctx.services.routines, stored_ctx)?;
-
-		let mut dict = GroupKeyDict::new();
-
-		while let Some(columns) = self.input.next(rx, ctx)? {
-			let groups = columns.group_by_ids(&keys, &mut dict)?;
-
-			for projection in &mut projections {
+			for projection in projections.iter_mut() {
 				if let Projection::Aggregate {
 					accumulator,
 					column,
@@ -111,6 +95,11 @@ impl QueryNode for AggregateNode {
 			}
 		}
 
+		Ok(())
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::aggregate::finalize")]
+	fn finalize(projections: Vec<Projection>, keys: &[&str], dict: &GroupKeyDict) -> Vec<ColumnWithName> {
 		let mut result_columns = Vec::new();
 
 		for projection in projections {
@@ -141,7 +130,7 @@ impl QueryNode for AggregateNode {
 					..
 				} => {
 					let (keys_out, mut data) = accumulator.finalize().unwrap();
-					align_column_data(&dict, &keys_out, &mut data).unwrap();
+					align_column_data(dict, &keys_out, &mut data).unwrap();
 					result_columns.push(ColumnWithName {
 						name: Fragment::internal(alias.fragment()),
 						data,
@@ -149,6 +138,38 @@ impl QueryNode for AggregateNode {
 				}
 			}
 		}
+
+		result_columns
+	}
+}
+
+impl QueryNode for AggregateNode {
+	#[instrument(level = "trace", skip_all, name = "volcano::aggregate::initialize")]
+	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
+		self.input.initialize(rx, ctx)?;
+
+		Ok(())
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::aggregate::next")]
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<Columns>> {
+		reifydb_assertions! {
+			assert!(self.context.is_some(), "AggregateNode::next() called before initialize()");
+		}
+		let stored_ctx = self.context.as_ref().unwrap();
+
+		if self.headers.is_some() {
+			return Ok(None);
+		}
+
+		let (keys, mut projections) =
+			parse_keys_and_aggregates(&self.by, &self.map, &stored_ctx.services.routines, stored_ctx)?;
+
+		let mut dict = GroupKeyDict::new();
+
+		Self::accumulate(&mut self.input, rx, ctx, &keys, &mut projections, &mut dict)?;
+
+		let result_columns = Self::finalize(projections, &keys, &dict);
 
 		let columns = Columns::new(result_columns);
 		self.headers = Some(ColumnHeaders::from_columns(&columns));

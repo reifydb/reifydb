@@ -102,26 +102,74 @@ impl QueryNode for NaturalJoinNode {
 		let resolved =
 			resolve_column_names(&left_columns, &right_columns, &self.alias, Some(&excluded_indices));
 
-		let mut result_rows = Vec::new();
-		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
-
 		let right_col_indices: Vec<usize> = common_columns.iter().map(|(_, _, ri)| *ri).collect();
 		let mut hash_buf = Vec::with_capacity(256);
+		let hash_table = Self::build(&right_columns, &right_col_indices, &mut hash_buf);
+
+		let left_col_indices: Vec<usize> = common_columns.iter().map(|(_, li, _)| *li).collect();
+
+		let (result_rows, result_row_numbers) = self.probe(
+			&left_columns,
+			&right_columns,
+			&hash_table,
+			&common_columns,
+			&excluded_right_cols,
+			&left_col_indices,
+			&left_row_numbers,
+			left_rows,
+			&mut hash_buf,
+		);
+
+		let columns = Self::materialize(&resolved.qualified_names, result_rows, result_row_numbers);
+
+		self.headers = Some(ColumnHeaders::from_columns(&columns));
+		Ok(Some(columns))
+	}
+
+	fn headers(&self) -> Option<ColumnHeaders> {
+		self.headers.clone()
+	}
+}
+
+impl NaturalJoinNode {
+	#[instrument(level = "trace", skip_all, name = "volcano::join::natural::build")]
+	fn build(
+		right_columns: &Columns,
+		right_col_indices: &[usize],
+		hash_buf: &mut Vec<u8>,
+	) -> HashMap<Hash128, Vec<usize>> {
 		let mut hash_table: HashMap<Hash128, Vec<usize>> = HashMap::new();
 		let right_rows = right_columns.row_count();
 		for j in 0..right_rows {
-			if let Some(h) = compute_join_hash(&right_columns, &right_col_indices, j, &mut hash_buf) {
+			if let Some(h) = compute_join_hash(right_columns, right_col_indices, j, hash_buf) {
 				hash_table.entry(h).or_default().push(j);
 			}
 		}
+		hash_table
+	}
 
-		let left_col_indices: Vec<usize> = common_columns.iter().map(|(_, li, _)| *li).collect();
+	#[allow(clippy::too_many_arguments)]
+	#[instrument(level = "trace", skip_all, name = "volcano::join::natural::probe")]
+	fn probe(
+		&self,
+		left_columns: &Columns,
+		right_columns: &Columns,
+		hash_table: &HashMap<Hash128, Vec<usize>>,
+		common_columns: &[(String, usize, usize)],
+		excluded_right_cols: &HashSet<usize>,
+		left_col_indices: &[usize],
+		left_row_numbers: &[RowNumber],
+		left_rows: usize,
+		hash_buf: &mut Vec<u8>,
+	) -> (Vec<Vec<Value>>, Vec<RowNumber>) {
+		let mut result_rows = Vec::new();
+		let mut result_row_numbers: Vec<RowNumber> = Vec::new();
 
 		for i in 0..left_rows {
 			let left_row = left_columns.get_row(i);
 			let mut matched = false;
 
-			let candidates = compute_join_hash(&left_columns, &left_col_indices, i, &mut hash_buf)
+			let candidates = compute_join_hash(left_columns, left_col_indices, i, hash_buf)
 				.and_then(|h| hash_table.get(&h));
 
 			if let Some(indices) = candidates {
@@ -160,18 +208,20 @@ impl QueryNode for NaturalJoinNode {
 			}
 		}
 
-		let names_refs: Vec<&str> = resolved.qualified_names.iter().map(|s| s.as_str()).collect();
-		let columns = if result_row_numbers.is_empty() {
+		(result_rows, result_row_numbers)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::join::natural::materialize")]
+	fn materialize(
+		qualified_names: &[String],
+		result_rows: Vec<Vec<Value>>,
+		result_row_numbers: Vec<RowNumber>,
+	) -> Columns {
+		let names_refs: Vec<&str> = qualified_names.iter().map(|s| s.as_str()).collect();
+		if result_row_numbers.is_empty() {
 			Columns::from_rows(&names_refs, &result_rows)
 		} else {
 			Columns::from_rows(&names_refs, &result_rows).with_row_numbers(result_row_numbers)
-		};
-
-		self.headers = Some(ColumnHeaders::from_columns(&columns));
-		Ok(Some(columns))
-	}
-
-	fn headers(&self) -> Option<ColumnHeaders> {
-		self.headers.clone()
+		}
 	}
 }

@@ -45,6 +45,20 @@ impl ExtendNode {
 			context: None,
 		}
 	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::extend::eval_context")]
+	fn eval_context<'e>(
+		session: &EvalContext<'e>,
+		new_columns: &[ColumnWithName],
+		row_count: usize,
+	) -> EvalContext<'e> {
+		session.with_eval(Columns::new(new_columns.to_vec()), row_count)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::extend::eval")]
+	fn eval_projection(compiled: &CompiledExpr, exec_ctx: &EvalContext) -> Result<ColumnWithName> {
+		compiled.execute(exec_ctx)
+	}
 }
 
 impl QueryNode for ExtendNode {
@@ -161,7 +175,7 @@ impl Transform for ExtendNode {
 
 		let mut new_names = Vec::with_capacity(compiled.len());
 		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {
-			let mut exec_ctx = session.with_eval(Columns::new(new_columns.clone()), row_count);
+			let mut exec_ctx = Self::eval_context(&session, &new_columns, row_count);
 
 			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
 				let alias_name = alias_expr.alias.name();
@@ -173,7 +187,7 @@ impl Transform for ExtendNode {
 				}
 			}
 
-			let mut column = compiled_expr.execute(&exec_ctx)?;
+			let mut column = Self::eval_projection(compiled_expr, &exec_ctx)?;
 
 			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type())
 				&& column.data.get_type() != target_type

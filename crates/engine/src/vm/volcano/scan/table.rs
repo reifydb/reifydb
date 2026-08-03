@@ -5,12 +5,12 @@ use std::sync::Arc;
 
 use reifydb_codec::{
 	encoded::{row::EncodedRow, shape::RowShape},
-	key::encoded::EncodedKey,
+	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
 	common::CommitVersion,
 	error::diagnostic,
-	interface::{catalog::dictionary::Dictionary, resolved::ResolvedTable},
+	interface::{catalog::dictionary::Dictionary, resolved::ResolvedTable, store::MultiVersionRow},
 	key::{
 		EncodableKey,
 		partitioned_row::{PartitionedRowKey, RowLocator},
@@ -23,7 +23,7 @@ use reifydb_value::{
 	error,
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{partition::Partition, system_columns::SystemColumns, value_type::ValueType},
+	value::{partition::Partition, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType},
 };
 use tracing::instrument;
 
@@ -119,6 +119,102 @@ impl TableScanNode {
 
 		Ok(shape)
 	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::range_open")]
+	fn open_range<'rx, 'tx>(
+		rx: &'rx mut Transaction<'tx>,
+		range: EncodedKeyRange,
+		scope: RangeScope,
+		batch_size: u64,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + 'rx>> {
+		rx.range(range, scope, batch_size as usize)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::drain")]
+	fn drain_batch(
+		stream: &mut dyn Iterator<Item = Result<MultiVersionRow>>,
+		batch_size: u64,
+		partitioned: bool,
+	) -> Result<ScannedBatch> {
+		let mut batch = ScannedBatch::default();
+
+		for _ in 0..batch_size {
+			match stream.next() {
+				Some(Ok(multi)) => {
+					let decoded = if partitioned {
+						PartitionedRowKey::decode(&multi.key).and_then(|k| match k.locator {
+							RowLocator::Row(rn) => Some((rn, Some(k.partition))),
+							_ => None,
+						})
+					} else {
+						RowKey::decode(&multi.key).map(|k| (k.row, None))
+					};
+					if let Some((rn, partition)) = decoded {
+						batch.rows.push(multi.row);
+						batch.row_numbers.push(rn);
+						if let Some(p) = partition {
+							batch.partitions.push(p);
+						}
+						batch.last_key = Some(multi.key);
+					}
+				}
+				Some(Err(e)) => return Err(e),
+				None => {
+					batch.exhausted = true;
+					break;
+				}
+			}
+		}
+
+		Ok(batch)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::column_alloc")]
+	fn storage_columns(&self) -> Vec<ColumnWithName> {
+		self.table
+			.columns()
+			.iter()
+			.enumerate()
+			.map(|(idx, col)| ColumnWithName {
+				name: Fragment::internal(&col.name),
+				data: ColumnBuffer::with_capacity(self.storage_types[idx].clone(), 0),
+			})
+			.collect()
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::empty_columns")]
+	fn empty_columns(&self) -> Vec<ColumnWithName> {
+		self.table
+			.columns()
+			.iter()
+			.map(|col| ColumnWithName {
+				name: Fragment::internal(&col.name),
+				data: ColumnBuffer::none_typed(col.constraint.get_type(), 0),
+			})
+			.collect()
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::table::append_rows")]
+	fn append_batch<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		columns: &mut Columns,
+		rows: Vec<EncodedRow>,
+		row_numbers: Vec<RowNumber>,
+	) -> Result<()> {
+		let shape = self.get_or_load_shape(rx, &rows[0])?;
+		columns.append_rows(&shape, rows.into_iter(), row_numbers.clone())?;
+		Ok(())
+	}
+}
+
+#[derive(Default)]
+struct ScannedBatch {
+	rows: Vec<EncodedRow>,
+	row_numbers: Vec<RowNumber>,
+	partitions: Vec<Partition>,
+	last_key: Option<EncodedKey>,
+	exhausted: bool,
 }
 
 impl QueryNode for TableScanNode {
@@ -154,86 +250,35 @@ impl QueryNode for TableScanNode {
 			RowKeyRange::scan_range(self.table.def().id.into(), self.last_key.as_ref())
 		};
 
-		let mut batch_rows = Vec::new();
-		let mut row_numbers = Vec::new();
-		let mut partitions: Vec<Partition> = Vec::new();
-		let mut new_last_key = None;
-
 		let scope = match self.min_commit_version {
 			Some(v) => RangeScope::After(v),
 			None => RangeScope::All,
 		};
 
-		let mut stream = rx.range(range, scope, batch_size as usize)?;
+		let batch = {
+			let mut stream = Self::open_range(rx, range, scope, batch_size)?;
+			Self::drain_batch(&mut stream, batch_size, partitioned)?
+		};
 
-		for _ in 0..batch_size {
-			match stream.next() {
-				Some(Ok(multi)) => {
-					let decoded = if partitioned {
-						PartitionedRowKey::decode(&multi.key).and_then(|k| match k.locator {
-							RowLocator::Row(rn) => Some((rn, Some(k.partition))),
-							_ => None,
-						})
-					} else {
-						RowKey::decode(&multi.key).map(|k| (k.row, None))
-					};
-					if let Some((rn, partition)) = decoded {
-						batch_rows.push(multi.row);
-						row_numbers.push(rn);
-						if let Some(p) = partition {
-							partitions.push(p);
-						}
-						new_last_key = Some(multi.key);
-					}
-				}
-				Some(Err(e)) => return Err(e),
-				None => {
-					self.exhausted = true;
-					break;
-				}
-			}
+		if batch.exhausted {
+			self.exhausted = true;
 		}
 
-		drop(stream);
-
-		if batch_rows.is_empty() {
+		if batch.rows.is_empty() {
 			self.exhausted = true;
 			if self.last_key.is_none() {
-				let columns: Vec<ColumnWithName> = self
-					.table
-					.columns()
-					.iter()
-					.map(|col| ColumnWithName {
-						name: Fragment::internal(&col.name),
-						data: ColumnBuffer::none_typed(col.constraint.get_type(), 0),
-					})
-					.collect();
-				return Ok(Some(Columns::new(columns)));
+				return Ok(Some(Columns::new(self.empty_columns())));
 			}
 			return Ok(None);
 		}
 
-		self.last_key = new_last_key;
+		self.last_key = batch.last_key;
 
-		let storage_columns: Vec<ColumnWithName> = {
-			self.table
-				.columns()
-				.iter()
-				.enumerate()
-				.map(|(idx, col)| ColumnWithName {
-					name: Fragment::internal(&col.name),
-					data: ColumnBuffer::with_capacity(self.storage_types[idx].clone(), 0),
-				})
-				.collect()
-		};
+		let mut columns = Columns::with_system(self.storage_columns(), SystemColumns::default());
+		self.append_batch(rx, &mut columns, batch.rows, batch.row_numbers)?;
 
-		let mut columns = Columns::with_system(storage_columns, SystemColumns::default());
-		{
-			let shape = self.get_or_load_shape(rx, &batch_rows[0])?;
-			columns.append_rows(&shape, batch_rows.into_iter(), row_numbers.clone())?;
-		}
 		if partitioned {
-			columns.system.set_partitions(partitions);
+			columns.system.set_partitions(batch.partitions);
 		}
 
 		decode_dictionary_columns(&mut columns, &self.dictionaries, rx)?;

@@ -189,6 +189,21 @@ impl HashJoinNode {
 		}
 	}
 
+	#[instrument(level = "trace", skip_all, name = "volcano::join::hash::materialize")]
+	fn materialize(
+		resolved_names: &[String],
+		result_rows: Vec<Vec<Value>>,
+		result_row_numbers: Vec<RowNumber>,
+	) -> Columns {
+		let names_refs: Vec<&str> = resolved_names.iter().map(|s| s.as_str()).collect();
+		if result_row_numbers.is_empty() {
+			Columns::from_rows(&names_refs, &result_rows)
+		} else {
+			Columns::from_rows(&names_refs, &result_rows).with_row_numbers(result_row_numbers)
+		}
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::join::hash::build")]
 	fn build<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<()> {
 		let build_columns = load_and_merge_all(&mut self.right, rx, ctx)?;
 		let right_width = build_columns.len();
@@ -472,12 +487,7 @@ impl QueryNode for HashJoinNode {
 		}
 
 		let state = self.state.as_ref().unwrap();
-		let names_refs: Vec<&str> = state.resolved_names.iter().map(|s| s.as_str()).collect();
-		let columns = if result_row_numbers.is_empty() {
-			Columns::from_rows(&names_refs, &result_rows)
-		} else {
-			Columns::from_rows(&names_refs, &result_rows).with_row_numbers(result_row_numbers)
-		};
+		let columns = Self::materialize(&state.resolved_names, result_rows, result_row_numbers);
 
 		self.headers = Some(ColumnHeaders::from_columns(&columns));
 		Ok(Some(columns))

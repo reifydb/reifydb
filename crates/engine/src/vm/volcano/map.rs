@@ -10,7 +10,9 @@ use reifydb_core::{
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, reifydb_assertions, util::cowvec::CowVec};
+use reifydb_value::{
+	fragment::Fragment, reifydb_assertions, util::cowvec::CowVec, value::system_columns::SystemColumns,
+};
 use tracing::instrument;
 
 use super::NoopNode;
@@ -112,7 +114,7 @@ impl Transform for MapNode {
 		let mut new_columns = Vec::with_capacity(compiled.len());
 
 		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {
-			let mut exec_ctx = session.with_eval(input.clone(), row_count);
+			let mut exec_ctx = Self::eval_context(&session, &input, row_count);
 
 			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
 				let alias_name = alias_expr.alias.name();
@@ -124,7 +126,7 @@ impl Transform for MapNode {
 				}
 			}
 
-			let mut column = compiled_expr.execute(&exec_ctx)?;
+			let mut column = Self::eval_projection(compiled_expr, &exec_ctx)?;
 
 			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type())
 				&& column.data.get_type() != target_type
@@ -140,17 +142,34 @@ impl Transform for MapNode {
 			new_columns.push(column);
 		}
 
+		Ok(Self::assemble(input.system, new_columns))
+	}
+}
+
+impl MapNode {
+	#[instrument(level = "trace", skip_all, name = "volcano::map::eval_context")]
+	fn eval_context<'e>(session: &EvalContext<'e>, input: &Columns, row_count: usize) -> EvalContext<'e> {
+		session.with_eval(input.clone(), row_count)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::map::eval")]
+	fn eval_projection(compiled: &CompiledExpr, exec_ctx: &EvalContext) -> Result<ColumnWithName> {
+		compiled.execute(exec_ctx)
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::map::assemble")]
+	fn assemble(system: SystemColumns, new_columns: Vec<ColumnWithName>) -> Columns {
 		let mut names_vec = Vec::with_capacity(new_columns.len());
 		let mut buffers_vec = Vec::with_capacity(new_columns.len());
 		for c in new_columns {
 			names_vec.push(c.name);
 			buffers_vec.push(c.data);
 		}
-		Ok(Columns {
-			system: input.system,
+		Columns {
+			system,
 			columns: CowVec::new(buffers_vec),
 			names: CowVec::new(names_vec),
-		})
+		}
 	}
 }
 

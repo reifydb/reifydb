@@ -6,7 +6,7 @@ use std::{ops::Bound, sync::Arc};
 use postcard::from_bytes;
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
-	interface::{resolved::ResolvedDictionary, store::SingleVersionRange},
+	interface::{catalog::dictionary::Dictionary, resolved::ResolvedDictionary, store::SingleVersionRange},
 	internal_error,
 	key::{EncodableKey, dictionary::DictionaryEntryIndexKey},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
@@ -46,6 +46,63 @@ impl DictionaryScanNode {
 			exhausted: false,
 		})
 	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::dictionary::drain")]
+	fn drain_batch<'a>(
+		rx: &mut Transaction<'a>,
+		range: EncodedKeyRange,
+		batch_size: u64,
+		dict_def: &Dictionary,
+	) -> Result<(Vec<DictionaryEntryId>, Vec<Value>, Option<EncodedKey>)> {
+		let mut ids: Vec<DictionaryEntryId> = Vec::new();
+		let mut values: Vec<Value> = Vec::new();
+		let mut new_last_key = None;
+
+		let single = rx
+			.single()
+			.ok_or_else(|| internal_error!("single-version store is not available for dictionary scans"))?;
+		let store = single.read_store();
+		let batch = SingleVersionRange::range_batch(&store, range, batch_size)?;
+
+		for entry in batch.items {
+			new_last_key = Some(entry.key.clone());
+
+			if let Some(key) = DictionaryEntryIndexKey::decode(&entry.key) {
+				let entry_id = DictionaryEntryId::from_u128(key.id, dict_def.id_type.clone())?;
+
+				let value: Value = from_bytes(&entry.row).map_err(|e| {
+					internal_error!("Failed to deserialize dictionary value: {}", e)
+				})?;
+
+				ids.push(entry_id);
+				values.push(value);
+			}
+		}
+
+		Ok((ids, values, new_last_key))
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::dictionary::empty_columns")]
+	fn empty_columns(dict_def: &Dictionary) -> Vec<ColumnWithName> {
+		vec![
+			ColumnWithName {
+				name: Fragment::internal("id"),
+				data: ColumnBuffer::none_typed(dict_def.id_type.clone(), 0),
+			},
+			ColumnWithName {
+				name: Fragment::internal("value"),
+				data: ColumnBuffer::none_typed(dict_def.value_type.clone(), 0),
+			},
+		]
+	}
+
+	#[instrument(level = "trace", skip_all, name = "volcano::scan::dictionary::assemble")]
+	fn assemble(ids: &[DictionaryEntryId], values: &[Value], dict_def: &Dictionary) -> Result<Option<Columns>> {
+		let id_column = build_id_column(ids, dict_def.id_type.clone())?;
+		let value_column = build_value_column(values, dict_def.value_type.clone())?;
+
+		Ok(Some(Columns::new(vec![id_column, value_column])))
+	}
 }
 
 impl QueryNode for DictionaryScanNode {
@@ -74,57 +131,19 @@ impl QueryNode for DictionaryScanNode {
 			Some(last) => EncodedKeyRange::new(Bound::Excluded(last.clone()), full_scan.end),
 		};
 
-		let mut ids: Vec<DictionaryEntryId> = Vec::new();
-		let mut values: Vec<Value> = Vec::new();
-		let mut new_last_key = None;
-
-		let single = rx
-			.single()
-			.ok_or_else(|| internal_error!("single-version store is not available for dictionary scans"))?;
-		let store = single.read_store();
-		let batch = SingleVersionRange::range_batch(&store, range, batch_size)?;
-
-		for entry in batch.items {
-			new_last_key = Some(entry.key.clone());
-
-			if let Some(key) = DictionaryEntryIndexKey::decode(&entry.key) {
-				let entry_id = DictionaryEntryId::from_u128(key.id, dict_def.id_type.clone())?;
-
-				let value: Value = from_bytes(&entry.row).map_err(|e| {
-					internal_error!("Failed to deserialize dictionary value: {}", e)
-				})?;
-
-				ids.push(entry_id);
-				values.push(value);
-			}
-		}
+		let (ids, values, new_last_key) = Self::drain_batch(rx, range, batch_size, dict_def)?;
 
 		if ids.is_empty() {
 			self.exhausted = true;
 			if self.last_key.is_none() {
-				let columns = Columns::new(vec![
-					ColumnWithName {
-						name: Fragment::internal("id"),
-						data: ColumnBuffer::none_typed(dict_def.id_type.clone(), 0),
-					},
-					ColumnWithName {
-						name: Fragment::internal("value"),
-						data: ColumnBuffer::none_typed(dict_def.value_type.clone(), 0),
-					},
-				]);
-				return Ok(Some(columns));
+				return Ok(Some(Columns::new(Self::empty_columns(dict_def))));
 			}
 			return Ok(None);
 		}
 
 		self.last_key = new_last_key;
 
-		let id_column = build_id_column(&ids, dict_def.id_type.clone())?;
-		let value_column = build_value_column(&values, dict_def.value_type.clone())?;
-
-		let columns = Columns::new(vec![id_column, value_column]);
-
-		Ok(Some(columns))
+		Self::assemble(&ids, &values, dict_def)
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders> {
