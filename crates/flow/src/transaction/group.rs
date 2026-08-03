@@ -47,6 +47,7 @@ use super::FlowTransaction;
 const DEFAULT_BYTE_BUDGET: u64 = 1024 * 1024;
 const HYDRATE_CHUNK: usize = 8_192;
 const DUE_PREFETCH: usize = 4_096;
+const SIDE_BUCKET_CACHE_CAP: usize = 65_536;
 const APPROXIMATE_BTREE_ENTRY_BYTES: u64 = 32;
 const APPROXIMATE_MAP_SLOT_BYTES: u64 = 17;
 const DEFAULT_ACTIVITY_BUCKET_WIDTH: u64 = 1 << 20;
@@ -211,6 +212,7 @@ struct NodeState {
 	activity: DuePrefix,
 	identity: DuePrefix,
 	sides: HashMap<u8, DuePrefix>,
+	side_now: HashMap<(u64, u8), u64>,
 }
 
 impl Default for NodeState {
@@ -228,6 +230,7 @@ impl Default for NodeState {
 			activity: DuePrefix::default(),
 			identity: DuePrefix::default(),
 			sides: HashMap::new(),
+			side_now: HashMap::new(),
 		}
 	}
 }
@@ -291,6 +294,21 @@ impl NodeState {
 		let key_heap: u64 = self.cache.keys().map(|key| key.heap_bytes() as u64).sum();
 		let bytes = ByteSize::from_bytes(self.cache.struct_bytes() as u64 + key_heap);
 		StateMemory::new(Count::new(self.cache.len() as u64), bytes)
+	}
+
+	fn remember_side(&mut self, id: GroupId, side: Keyspace, bucket: u64) {
+		if self.side_now.len() >= SIDE_BUCKET_CACHE_CAP {
+			self.side_now.clear();
+		}
+		self.side_now.insert((id.0, side.0), bucket);
+	}
+
+	fn forget_side_of(&mut self, id: GroupId, side: Keyspace) {
+		self.side_now.remove(&(id.0, side.0));
+	}
+
+	fn forget_all_sides_of(&mut self, id: GroupId) {
+		self.side_now.retain(|(group, _), _| *group != id.0);
 	}
 
 	fn due_memory(&self) -> StateMemory {
@@ -674,6 +692,7 @@ impl GroupInterner {
 			for prefix in state.sides.values_mut() {
 				prefix.remove_group(id);
 			}
+			state.forget_all_sides_of(id);
 		}
 		txn.state_remove(operator, &dictionary_key(group))?;
 		Ok(existed)
@@ -716,6 +735,17 @@ impl GroupInterner {
 				 side={side:?})"
 			);
 		}
+		if self
+			.inner
+			.operators
+			.entry(operator)
+			.or_default()
+			.side_now
+			.get(&(id.0, side.0))
+			.is_some_and(|previous| *previous >= bucket)
+		{
+			return Ok(());
+		}
 		let key = side_record_key(id, side);
 		let previous = match txn.state_get(operator, &key)? {
 			Some(row) => {
@@ -732,7 +762,9 @@ impl GroupInterner {
 		}
 		txn.state_set(operator, &key, encode_payload(&bucket, now)?)?;
 		txn.state_set(operator, &side_index_key(side, bucket, id), encode_payload(&1u64, now)?)?;
-		self.inner.operators.entry(operator).or_default().sides.entry(side.0).or_default().insert(bucket, id);
+		let mut guard = self.inner.operators.entry(operator).or_default();
+		guard.sides.entry(side.0).or_default().insert(bucket, id);
+		guard.remember_side(id, side, bucket);
 		Ok(())
 	}
 
@@ -840,7 +872,10 @@ impl GroupInterner {
 		id: GroupId,
 		side: Keyspace,
 	) -> Result<()> {
-		self.inner.operators.entry(operator).or_default().sides.entry(side.0).or_default().remove_group(id);
+		let mut guard = self.inner.operators.entry(operator).or_default();
+		guard.sides.entry(side.0).or_default().remove_group(id);
+		guard.forget_side_of(id, side);
+		drop(guard);
 		txn.state_remove(operator, &side_record_key(id, side))
 	}
 
@@ -1780,6 +1815,53 @@ mod tests {
 	) {
 		set_position(txn, position);
 		interner.stamp_side(NODE, txn, id, side).unwrap();
+	}
+
+	#[test]
+	fn a_forgotten_side_that_is_stamped_again_writes_its_record_back() {
+		// stamp_side answers from a RAM cache of the bucket it last wrote, so a side whose record
+		// was deleted has to leave that cache too. Otherwise the re-stamp reads as already-done,
+		// the record never returns, and no later sweep can ever retire that side's rows.
+		let engine = TestEngine::new();
+		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
+		let mut txn = deferred(&engine);
+		let (id, _) =
+			intern_at(&interner, NODE, &mut txn, &group("k"), Position(DateTime::from_nanos(150))).unwrap();
+
+		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_LEFT, Position(DateTime::from_nanos(150)));
+		assert!(txn.state_get(NODE, &side_record_key(id, Keyspace::JOIN_LEFT)).unwrap().is_some());
+
+		interner.forget_side(NODE, &mut txn, id, Keyspace::JOIN_LEFT).unwrap();
+		assert!(txn.state_get(NODE, &side_record_key(id, Keyspace::JOIN_LEFT)).unwrap().is_none());
+
+		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_LEFT, Position(DateTime::from_nanos(150)));
+
+		assert!(
+			txn.state_get(NODE, &side_record_key(id, Keyspace::JOIN_LEFT)).unwrap().is_some(),
+			"restamping at the same bucket must rewrite the record the forget removed"
+		);
+	}
+
+	#[test]
+	fn forgetting_a_group_drops_the_side_buckets_it_had_cached() {
+		// Ids are never reused, so a leftover entry cannot mis-answer a later stamp - but it is
+		// never read again either, and the cache would grow with every group the sweep retires.
+		let engine = TestEngine::new();
+		let interner = GroupInterner::new(ByteSize::from_bytes(DEFAULT_BYTE_BUDGET), 100);
+		let mut txn = deferred(&engine);
+		let key = group("k");
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &key, Position(DateTime::from_nanos(150))).unwrap();
+
+		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_LEFT, Position(DateTime::from_nanos(150)));
+		stamp_side_at(&interner, &mut txn, id, Keyspace::JOIN_RIGHT, Position(DateTime::from_nanos(150)));
+		assert_eq!(interner.inner.operators.get(&NODE).unwrap().side_now.len(), 2);
+
+		interner.forget(NODE, &mut txn, &key).unwrap();
+
+		assert!(
+			interner.inner.operators.get(&NODE).unwrap().side_now.is_empty(),
+			"a forgotten group must leave no side buckets behind for either of its sides"
+		);
 	}
 
 	#[test]

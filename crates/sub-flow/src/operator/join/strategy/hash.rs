@@ -66,7 +66,7 @@ mod tests {
 		let freshly_discovered = columns_with_fields(&[("mint", 2), ("decimals", 6), ("bump", 255)], 2);
 		add_to_state_entry_batch(&mut txn, &mut store, &key_b, &freshly_discovered, &[0]).unwrap();
 
-		let block_b = store.rows_for_key_block(&mut txn, &key_b, None, 10).unwrap();
+		let block_b = store.rows_for_key(&mut txn, &key_b, None, 10).unwrap();
 		assert_eq!(block_b.len(), 1);
 		let read_back =
 			columns_from_block(&mut txn, &store, block_b).expect("row shape for key B must be found");
@@ -90,7 +90,7 @@ mod tests {
 		let row2 = columns_with_fields(&[("flag", 999), ("mint", 222)], 2);
 		add_to_state_entry_batch(&mut txn, &mut store, &key, &row2, &[0]).unwrap();
 
-		let block = store.rows_for_key_block(&mut txn, &key, None, 10).unwrap();
+		let block = store.rows_for_key(&mut txn, &key, None, 10).unwrap();
 		assert_eq!(block.len(), 2);
 		let read_back = columns_from_block(&mut txn, &store, block).unwrap();
 
@@ -309,7 +309,7 @@ where
 	let mut blocks = 0u64;
 	let mut rows = 0u64;
 	loop {
-		let block = store.rows_for_key_block(txn, key_hash, after.as_ref(), limit)?;
+		let block = store.rows_for_key(txn, key_hash, after.as_ref(), limit)?;
 		if block.is_empty() {
 			break;
 		}
@@ -480,7 +480,7 @@ where
 	let limit = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
 	let mut after: Option<RowNumber> = None;
 	loop {
-		let block = left_store.rows_for_key_block(txn, key_hash, after.as_ref(), limit)?;
+		let block = left_store.rows_for_key(txn, key_hash, after.as_ref(), limit)?;
 		if block.is_empty() {
 			break;
 		}

@@ -182,8 +182,8 @@ impl Store {
 		Ok(existed)
 	}
 
-	#[instrument(name = "flow::operator::join::rows_for_key_block", level = "trace", skip_all, fields(limit = limit))]
-	pub(crate) fn rows_for_key_block(
+	#[instrument(name = "flow::operator::join::rows_for_key", level = "trace", skip_all, fields(limit = limit))]
+	pub(crate) fn rows_for_key(
 		&self,
 		txn: &mut FlowTransaction,
 		hash: &Hash128,
@@ -207,31 +207,7 @@ impl Store {
 				}
 			}
 		}
-		Ok(out)
-	}
 
-	#[cfg(test)]
-	pub(crate) fn rows_for_key(
-		&self,
-		txn: &mut FlowTransaction,
-		hash: &Hash128,
-	) -> Result<Vec<(RowNumber, EncodedRow)>> {
-		let limit = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
-		let mut out = Vec::new();
-		let mut after: Option<RowNumber> = None;
-		loop {
-			let block = self.rows_for_key_block(txn, hash, after.as_ref(), limit)?;
-			if block.is_empty() {
-				break;
-			}
-			let last = block.last().unwrap().0;
-			let exhausted = block.len() < limit;
-			out.extend(block);
-			if exhausted {
-				break;
-			}
-			after = Some(last);
-		}
 		Ok(out)
 	}
 
@@ -341,12 +317,12 @@ mod tests {
 		store.put_row(&mut txn, &h(0xAAA), rn(2), &row(0x20)).unwrap();
 		store.put_row(&mut txn, &h(0xBBB), rn(3), &row(0x30)).unwrap();
 
-		let rows_a = store.rows_for_key(&mut txn, &h(0xAAA)).unwrap();
+		let rows_a = store.rows_for_key(&mut txn, &h(0xAAA), None, 64).unwrap();
 		assert_eq!(rows_a.len(), 2);
 		assert_eq!(rows_a[0].0, rn(1));
 		assert_eq!(rows_a[1].0, rn(2));
 
-		let rows_b = store.rows_for_key(&mut txn, &h(0xBBB)).unwrap();
+		let rows_b = store.rows_for_key(&mut txn, &h(0xBBB), None, 64).unwrap();
 		assert_eq!(rows_b.len(), 1);
 		assert_eq!(rows_b[0].0, rn(3));
 	}
@@ -465,7 +441,7 @@ mod tests {
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
 
 		assert!(store.get_row(&mut txn, &h(0xCCC), rn(1)).unwrap().is_none());
-		assert!(store.rows_for_key_block(&mut txn, &h(0xCCC), None, 8).unwrap().is_empty());
+		assert!(store.rows_for_key(&mut txn, &h(0xCCC), None, 8).unwrap().is_empty());
 		assert!(!store.contains_key(&mut txn, &h(0xCCC)).unwrap());
 		assert!(!store.remove_row(&mut txn, &h(0xCCC), rn(1)).unwrap());
 		assert!(!store.update_row(&mut txn, &h(0xCCC), rn(1), &row(0x20)).unwrap());
@@ -510,7 +486,7 @@ mod tests {
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
 		assert!(store.update_row(&mut txn, &h(0xAAA), rn(1), &row(0x99)).unwrap());
 
-		let rows = store.rows_for_key(&mut txn, &h(0xAAA)).unwrap();
+		let rows = store.rows_for_key(&mut txn, &h(0xAAA), None, 64).unwrap();
 		assert_eq!(rows.len(), 1);
 		let shape = RowShape::operator_state();
 		let blob = shape.get_blob(&rows[0].1, 0);
@@ -524,7 +500,7 @@ mod tests {
 		let store = Store::new(OperatorId(3), JoinSide::Left);
 
 		assert!(!store.update_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap());
-		assert!(store.rows_for_key(&mut txn, &h(0xAAA)).unwrap().is_empty());
+		assert!(store.rows_for_key(&mut txn, &h(0xAAA), None, 64).unwrap().is_empty());
 	}
 
 	#[test]
@@ -600,7 +576,7 @@ mod tests {
 	}
 
 	#[test]
-	fn rows_for_key_block_pages_with_resume_cursor() {
+	fn rows_for_key_pages_with_resume_cursor() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(OperatorId(30), JoinSide::Left);
@@ -611,16 +587,16 @@ mod tests {
 		// A different hash must not leak into the scanned key's blocks.
 		store.put_row(&mut txn, &h(0xBBB), rn(99), &row(0xFF)).unwrap();
 
-		let page1 = store.rows_for_key_block(&mut txn, &h(0xAAA), None, 2).unwrap();
+		let page1 = store.rows_for_key(&mut txn, &h(0xAAA), None, 2).unwrap();
 		assert_eq!(page1.iter().map(|(rn, _)| *rn).collect::<Vec<_>>(), vec![rn(1), rn(2)]);
 
 		let after = page1.last().unwrap().0;
-		let page2 = store.rows_for_key_block(&mut txn, &h(0xAAA), Some(&after), 2).unwrap();
+		let page2 = store.rows_for_key(&mut txn, &h(0xAAA), Some(&after), 2).unwrap();
 		assert_eq!(page2.iter().map(|(rn, _)| *rn).collect::<Vec<_>>(), vec![rn(3), rn(4)]);
 
 		// Resuming past the last row of an exact-multiple key must terminate, not wrap.
 		let after = page2.last().unwrap().0;
-		let page3 = store.rows_for_key_block(&mut txn, &h(0xAAA), Some(&after), 2).unwrap();
+		let page3 = store.rows_for_key(&mut txn, &h(0xAAA), Some(&after), 2).unwrap();
 		assert!(page3.is_empty(), "scan must end exactly at the key's last row");
 	}
 
@@ -630,16 +606,25 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(OperatorId(31), JoinSide::Right);
 
-		// One full block plus a partial one: a blocked probe risks dropping or duplicating rows
-		// at the boundary.
+		// Paging is now the only way to read a key, so the boundary risk moved into the caller's
+		// loop: a wrong resume cursor drops or repeats the rows either side of a full block.
 		let block_size = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize);
 		let total = block_size + 3;
 		for i in 1..=total {
 			store.put_row(&mut txn, &h(0xCCC), rn(i), &row(0x01)).unwrap();
 		}
 
-		let rows = store.rows_for_key(&mut txn, &h(0xCCC)).unwrap();
-		let got: Vec<u64> = rows.iter().map(|(rn, _)| rn.0).collect();
+		let mut got: Vec<u64> = Vec::new();
+		let mut after: Option<RowNumber> = None;
+		while got.len() <= total as usize {
+			let block =
+				store.rows_for_key(&mut txn, &h(0xCCC), after.as_ref(), block_size as usize).unwrap();
+			if block.is_empty() {
+				break;
+			}
+			after = Some(block.last().unwrap().0);
+			got.extend(block.iter().map(|(rn, _)| rn.0));
+		}
 		let expected: Vec<u64> = (1..=total).collect();
 		assert_eq!(got, expected, "every match exactly once, in row-number order, across the block boundary");
 	}
@@ -713,7 +698,7 @@ mod tests {
 		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
 
 		assert!(!store.contains_key(&mut txn, &h(0xBBB)).unwrap());
-		assert!(store.rows_for_key_block(&mut txn, &h(0xBBB), None, 8).unwrap().is_empty());
+		assert!(store.rows_for_key(&mut txn, &h(0xBBB), None, 8).unwrap().is_empty());
 		assert!(store.get_row(&mut txn, &h(0xBBB), RowNumber::MAX).unwrap().is_none());
 		assert!(!store.remove_row(&mut txn, &h(0xBBB), rn(1)).unwrap());
 		assert!(!store.update_row(&mut txn, &h(0xBBB), rn(1), &row(0x20)).unwrap());
