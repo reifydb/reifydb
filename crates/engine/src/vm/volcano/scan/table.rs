@@ -203,7 +203,7 @@ impl TableScanNode {
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
 		let shape = self.get_or_load_shape(rx, &rows[0])?;
-		columns.append_rows(&shape, rows.into_iter(), row_numbers.clone())?;
+		columns.append_rows(&shape, rows.into_iter(), row_numbers)?;
 		Ok(())
 	}
 }

@@ -4,6 +4,7 @@
 use std::{
 	collections::{BTreeMap, HashMap, HashSet},
 	ops::{Bound, RangeBounds},
+	vec,
 };
 
 use reifydb_codec::{
@@ -740,8 +741,7 @@ impl StandardMultiStore {
 			range,
 			scope,
 			batch_size,
-			current_batch: Vec::new(),
-			current_index: 0,
+			current_batch: Vec::new().into_iter(),
 		}
 	}
 
@@ -757,8 +757,7 @@ impl StandardMultiStore {
 			range,
 			scope,
 			batch_size,
-			current_batch: Vec::new(),
-			current_index: 0,
+			current_batch: Vec::new().into_iter(),
 		}
 	}
 
@@ -1215,17 +1214,14 @@ pub struct MultiVersionRangeIter {
 	range: EncodedKeyRange,
 	scope: MultiVersionScope,
 	batch_size: usize,
-	current_batch: Vec<MultiVersionRow>,
-	current_index: usize,
+	current_batch: vec::IntoIter<MultiVersionRow>,
 }
 
 impl Iterator for MultiVersionRangeIter {
 	type Item = Result<MultiVersionRow>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if self.current_index < self.current_batch.len() {
-			let item = self.current_batch[self.current_index].clone();
-			self.current_index += 1;
+		if let Some(item) = self.current_batch.next() {
 			return Some(Ok(item));
 		}
 
@@ -1241,8 +1237,7 @@ impl Iterator for MultiVersionRangeIter {
 					}
 					return self.next();
 				}
-				self.current_batch = batch.items;
-				self.current_index = 0;
+				self.current_batch = batch.items.into_iter();
 				self.next()
 			}
 			Err(e) => Some(Err(e)),
@@ -1256,17 +1251,14 @@ pub struct MultiVersionRangeRevIter {
 	range: EncodedKeyRange,
 	scope: MultiVersionScope,
 	batch_size: usize,
-	current_batch: Vec<MultiVersionRow>,
-	current_index: usize,
+	current_batch: vec::IntoIter<MultiVersionRow>,
 }
 
 impl Iterator for MultiVersionRangeRevIter {
 	type Item = Result<MultiVersionRow>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if self.current_index < self.current_batch.len() {
-			let item = self.current_batch[self.current_index].clone();
-			self.current_index += 1;
+		if let Some(item) = self.current_batch.next() {
 			return Some(Ok(item));
 		}
 
@@ -1287,8 +1279,7 @@ impl Iterator for MultiVersionRangeRevIter {
 					}
 					return self.next();
 				}
-				self.current_batch = batch.items;
-				self.current_index = 0;
+				self.current_batch = batch.items.into_iter();
 				self.next()
 			}
 			Err(e) => Some(Err(e)),

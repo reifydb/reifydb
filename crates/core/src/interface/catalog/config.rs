@@ -153,7 +153,7 @@ impl ConfigKey {
 	pub fn default_value(&self) -> Value {
 		match self {
 			Self::OracleWindowSize => Value::Uint8(500),
-			Self::QueryRowBatchSize => Value::Uint2(32),
+			Self::QueryRowBatchSize => Value::Uint2(128),
 			Self::QueryMemoryLimit => Value::Uint8(1024 * 1024 * 1024),
 			Self::OperatorStateMemoryLimit => Value::Uint8(2 * 1024 * 1024 * 1024),
 			Self::OperatorStateLeaseDefault => Value::Uint8(64 * 1024 * 1024),
@@ -1484,8 +1484,8 @@ mod tests {
 	}
 
 	#[test]
-	fn test_query_row_batch_size_default_is_uint2_32() {
-		assert_eq!(ConfigKey::QueryRowBatchSize.default_value(), Value::Uint2(32));
+	fn test_query_row_batch_size_default_is_uint2_128() {
+		assert_eq!(ConfigKey::QueryRowBatchSize.default_value(), Value::Uint2(128));
 	}
 
 	#[test]

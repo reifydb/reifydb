@@ -7,12 +7,12 @@ use std::{cell::RefCell, collections::HashMap, sync::Arc, time::Instant};
 
 use rand::{SeedableRng, rngs::StdRng};
 use reifydb::{Database, embedded};
-use reifydb_core::interface::catalog::config::ConfigKey;
-use reifydb_value::value::Value;
 use reifydb_allocator::set_global_allocator;
 use reifydb_benches::{BenchReport, env_opt, env_u64};
+use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_testing_scenario::{query::OperationKind, registry::by_name, scenario::Scenario};
+use reifydb_value::value::Value;
 use tracing::{Id, Subscriber, subscriber::set_default};
 use tracing_subscriber::{
 	Registry,
@@ -24,7 +24,7 @@ set_global_allocator!();
 
 const DEFAULT_SCENARIO: &str = "scan";
 const DEFAULT_QUERY: &str = "full_scan";
-const DEFAULT_BATCH_SIZE: u64 = 32;
+const DEFAULT_BATCH_SIZE: u64 = 128;
 const DEFAULT_SCALE: u64 = 100_000;
 const DEFAULT_ITERATIONS: u64 = 20;
 const DEFAULT_WARMUP: u64 = 3;
