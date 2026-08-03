@@ -29,9 +29,10 @@ pub enum ProfilerCategory {
 	RowShape = 18,
 	Api = 19,
 	Actor = 20,
+	Lifecycle = 21,
 }
 
-pub const CATEGORY_COUNT: usize = 21;
+pub const CATEGORY_COUNT: usize = 22;
 
 pub const ALL_CATEGORIES: [ProfilerCategory; CATEGORY_COUNT] = [
 	ProfilerCategory::Query,
@@ -55,6 +56,7 @@ pub const ALL_CATEGORIES: [ProfilerCategory; CATEGORY_COUNT] = [
 	ProfilerCategory::RowShape,
 	ProfilerCategory::Api,
 	ProfilerCategory::Actor,
+	ProfilerCategory::Lifecycle,
 ];
 
 impl ProfilerCategory {
@@ -85,6 +87,7 @@ impl ProfilerCategory {
 			18 => Some(ProfilerCategory::RowShape),
 			19 => Some(ProfilerCategory::Api),
 			20 => Some(ProfilerCategory::Actor),
+			21 => Some(ProfilerCategory::Lifecycle),
 			_ => None,
 		}
 	}
@@ -135,6 +138,8 @@ impl ProfilerCategory {
 			Some(ProfilerCategory::Mutate)
 		} else if name.starts_with("http::") || name.starts_with("dispatch::") {
 			Some(ProfilerCategory::Transport)
+		} else if name.starts_with("lifecycle::") {
+			Some(ProfilerCategory::Lifecycle)
 		} else if name.starts_with("task::") {
 			Some(ProfilerCategory::Task)
 		} else if name.starts_with("policy::") {
@@ -172,6 +177,7 @@ impl ProfilerCategory {
 			ProfilerCategory::RowShape => "row_shape",
 			ProfilerCategory::Api => "api",
 			ProfilerCategory::Actor => "actor",
+			ProfilerCategory::Lifecycle => "lifecycle",
 		}
 	}
 }

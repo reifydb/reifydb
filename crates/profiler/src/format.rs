@@ -395,6 +395,7 @@ fn category_label(c: ProfilerCategory) -> &'static str {
 		ProfilerCategory::RowShape => "RowShape",
 		ProfilerCategory::Api => "Api",
 		ProfilerCategory::Actor => "Actor",
+		ProfilerCategory::Lifecycle => "Lifecycle",
 	}
 }
 

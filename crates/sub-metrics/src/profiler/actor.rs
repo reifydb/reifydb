@@ -180,6 +180,7 @@ fn span_name_for(category: ProfilerCategory) -> &'static str {
 		RowShape => "row_shape",
 		Api => "api",
 		Actor => "actor",
+		Lifecycle => "lifecycle",
 	}
 }
 

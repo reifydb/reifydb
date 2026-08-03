@@ -35,6 +35,7 @@ use reifydb_value::{
 	util::hash::xxh3_64,
 	value::{datetime::DateTime, duration::Duration},
 };
+use tracing::instrument;
 
 use super::FlowTransaction;
 
@@ -627,6 +628,7 @@ impl GroupInterner {
 		Ok(())
 	}
 
+	#[instrument(name = "flow::reclaim::due_side_groups", level = "trace", skip_all)]
 	pub fn due_side_groups(
 		&self,
 		operator: OperatorId,
@@ -677,6 +679,10 @@ impl GroupInterner {
 		for key in &stale {
 			txn.state_remove(operator, key)?;
 		}
+		let span = tracing::Span::current();
+		span.record("candidates", batch.items.len() as u64);
+		span.record("due", due.len() as u64);
+		span.record("stale", stale.len() as u64);
 		Ok(due)
 	}
 
@@ -702,6 +708,7 @@ impl GroupInterner {
 		})
 	}
 
+	#[instrument(name = "flow::reclaim::due_in", level = "trace", skip_all, fields(candidates = tracing::field::Empty, due = tracing::field::Empty, stale = tracing::field::Empty))]
 	fn due_in(
 		&self,
 		operator: OperatorId,
@@ -752,6 +759,7 @@ impl GroupInterner {
 		Ok(due)
 	}
 
+	#[instrument(name = "flow::reclaim::load_record", level = "trace", skip_all)]
 	fn load_record(operator: OperatorId, txn: &mut FlowTransaction, id: GroupId) -> Result<Option<GroupRecord>> {
 		let Some(row) = txn.state_get(operator, &record_key(id))? else {
 			return Ok(None);
@@ -792,6 +800,7 @@ impl GroupInterner {
 		out
 	}
 
+	#[instrument(name = "flow::group::hydrate_once", level = "trace", skip_all)]
 	fn hydrate_once(
 		state: &mut NodeState,
 		operator: OperatorId,
@@ -1255,6 +1264,7 @@ mod tests {
 		);
 	}
 
+	#[instrument(name = "flow::group::activity_buckets", level = "trace", skip_all)]
 	fn activity_buckets_of(txn: &mut FlowTransaction, operator: OperatorId, id: GroupId) -> Vec<u64> {
 		// Every entry lives under NODE_SCOPE with the group in its suffix, so the only way to ask
 		// "what does this group hold" is to scan the index and filter.
@@ -1274,6 +1284,7 @@ mod tests {
 		buckets
 	}
 
+	#[instrument(name = "flow::group::side_buckets", level = "trace", skip_all)]
 	fn side_buckets_of(txn: &mut FlowTransaction, operator: OperatorId, id: GroupId, side: Keyspace) -> Vec<u64> {
 		let range = keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::SIDE_ACTIVITY_INDEX);
 		let mut buckets: Vec<u64> = txn
