@@ -18,7 +18,6 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::{Result, value::datetime::DateTime};
-use tracing::instrument;
 
 use super::{FlowTransaction, group::encode_payload};
 use crate::timer::Timer;
@@ -87,7 +86,6 @@ impl TimerWheel {
 		Ok(())
 	}
 
-	#[instrument(name = "flow::timer::take_due", level = "trace", skip_all)]
 	pub fn take_due(
 		&self,
 		operator: OperatorId,
@@ -140,7 +138,6 @@ impl TimerWheel {
 		Ok(due)
 	}
 
-	#[instrument(name = "flow::timer::hydrate_once", level = "trace", skip_all)]
 	fn hydrate_once(state: &mut WheelState, operator: OperatorId, txn: &mut FlowTransaction) -> Result<()> {
 		if state.hydrated {
 			return Ok(());

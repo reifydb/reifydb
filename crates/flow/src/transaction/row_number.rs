@@ -29,7 +29,6 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
-use tracing::instrument;
 
 use super::FlowTransaction;
 
@@ -400,7 +399,6 @@ impl RowNumberProvider {
 		Ok(true)
 	}
 
-	#[instrument(name = "flow::rownum::drop_below", level = "trace", skip_all)]
 	pub fn drop_below(
 		&self,
 		operator: OperatorId,
@@ -432,7 +430,6 @@ impl RowNumberProvider {
 		Ok(dropped)
 	}
 
-	#[instrument(name = "flow::rownum::remove_by_prefix", level = "trace", skip_all)]
 	pub fn remove_by_prefix(
 		&self,
 		operator: OperatorId,
@@ -468,7 +465,6 @@ impl RowNumberProvider {
 		}
 	}
 
-	#[instrument(name = "flow::rownum::evict_expired", level = "trace", skip_all)]
 	pub fn evict_expired(
 		&self,
 		operator: OperatorId,
@@ -584,7 +580,6 @@ impl RowNumberProvider {
 		self.inner.operators.remove(&operator);
 	}
 
-	#[instrument(name = "flow::rownum::hydrate_group", level = "trace", skip_all)]
 	fn hydrate_group(
 		state: &mut NodeState,
 		operator: OperatorId,

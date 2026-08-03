@@ -64,7 +64,6 @@ impl Store {
 		self
 	}
 
-	#[instrument(name = "flow::operator::join::store::stamp", level = "trace", skip_all)]
 	fn stamp(&self, txn: &mut FlowTransaction, group: GroupId) -> Result<()> {
 		txn.stamp_side(self.operator_id, group, self.side.keyspace())?;
 		for keyspace in &self.co_stamped {
@@ -73,12 +72,10 @@ impl Store {
 		Ok(())
 	}
 
-	#[instrument(name = "flow::operator::join::store::resolve", level = "trace", skip_all)]
 	fn resolve(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<Option<GroupId>> {
 		txn.lookup_group(self.operator_id, &group_bytes(hash))
 	}
 
-	#[instrument(name = "flow::operator::join::store::intern", level = "trace", skip_all)]
 	fn intern(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<GroupId> {
 		let (group, _) = txn.intern_group(self.operator_id, &group_bytes(hash))?;
 		Ok(group)
@@ -112,7 +109,6 @@ impl Store {
 		self.write_row(txn, group, row_number, encoded)
 	}
 
-	#[instrument(name = "flow::operator::join::store::write_row", level = "trace", skip_all)]
 	fn write_row(
 		&self,
 		txn: &mut FlowTransaction,
