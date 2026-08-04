@@ -7,6 +7,7 @@
 
 # Configuration
 TEST_SUITE_DIR ?= ../testsuite
+TEST_REFERENCE_DIR ?= ../testreference
 EXTERNAL_DIR ?= ../external
 TEST_PKG_DIR := ./pkg
 
@@ -59,6 +60,8 @@ help:
 	@echo "  ───────────────────────────────────────────────────────────────"
 	@printf "  %-25s %s\n" "test-suite" "Run all test suites (smoke, compatibility, etc.)"
 	@printf "  %-25s %s\n" "test-suite-dev" "Run fast development tests for all test suites"
+	@printf "  %-25s %s\n" "test-reference" "Run the reference conformance suites (../testreference)"
+	@printf "  %-25s %s\n" "test-reference-dev" "Run fast reference conformance tests"
 	@printf "  %-25s %s\n" "test-pkg-rust" "Run test packages (rust)"
 	@printf "  %-25s %s\n" "test-pkg-typescript" "Run test packages (typescript)"
 	@printf "  %-25s %s\n" "test-examples" "Build and run all examples"
@@ -190,6 +193,7 @@ test-dev: test-workspace test-dst test-pkg-rust test-examples test-suite-dev
 include mk/test-workspace.mk
 include mk/test-dst.mk
 include mk/test-suites.mk
+include mk/test-reference.mk
 include mk/test-external.mk
 include mk/test-pkg-rust.mk
 include mk/test-pkg-typescript.mk
