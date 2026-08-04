@@ -8,19 +8,37 @@ mod framework;
 #[path = "chaos/operators/mod.rs"]
 mod operators;
 
-use reifydb_core::common::{WindowKind, WindowSize};
+use std::collections::BTreeSet;
+
+use reifydb_core::{
+	common::{WindowKind, WindowSize},
+	interface::change::Diff,
+	value::column::columns::Columns,
+};
 use reifydb_sub_flow::execution::reclaim::ReclaimBudget;
 use reifydb_testing_chaos::{
 	fuzz::run_reported,
-	operator::{subject::Subject, view::RowKey, workload::Workload},
+	operator::{session::Session, subject::Subject, view::MaterializedView, view::RowKey, workload::Workload},
 };
 use reifydb_testing_macro::chaos_test;
-use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
+use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber};
 
 use crate::{
 	framework::{generator, harness::Harness},
 	operators::{
+		aggregate::{
+			Agg,
+			workload::{AggregateRow, AggregateWorkload},
+		},
 		append::workload::{AppendRow, AppendWorkload},
+		distinct::workload::{DistinctRow, DistinctWorkload},
+		gate::workload::{GateRow, GateWorkload},
+		pipeline::Chain,
+		rowwise::{
+			Shape,
+			workload::{RowwiseRow, RowwiseWorkload},
+		},
+		take::workload::{TakeRow, TakeWorkload},
 		join::{
 			Variant,
 			workload::{JoinRow, JoinWorkload, Side},
@@ -694,6 +712,845 @@ chaos_test!(append_inputs_3_row_space_8_chaos, |seed| {
 chaos_test!(append_random_chaos, |seed| {
 	operators::append::drive_random(seed);
 });
+
+fn aggregate_params(agg: Agg, value_ceiling: i64) -> operators::aggregate::Params {
+	operators::aggregate::Params {
+		agg,
+		groups: 4,
+		value_ceiling,
+		steps: 60,
+		max_batch: 5,
+		max_live: 40,
+		remove_pct: 25,
+		update_pct: 30,
+	}
+}
+
+// Wide enough that a group rarely holds two equal values, so the accumulator stays on its incremental
+// path and the sweep is about the fold itself rather than about recompute.
+const AGGREGATE_SPREAD: i64 = 20;
+
+chaos_test!(aggregate_sum_chaos, |seed| {
+	operators::aggregate::drive(seed, aggregate_params(Agg::Sum, AGGREGATE_SPREAD));
+});
+
+chaos_test!(aggregate_count_chaos, |seed| {
+	operators::aggregate::drive(seed, aggregate_params(Agg::Count, AGGREGATE_SPREAD));
+});
+
+chaos_test!(aggregate_min_chaos, |seed| {
+	operators::aggregate::drive(seed, aggregate_params(Agg::Min, AGGREGATE_SPREAD));
+});
+
+chaos_test!(aggregate_max_chaos, |seed| {
+	operators::aggregate::drive(seed, aggregate_params(Agg::Max, AGGREGATE_SPREAD));
+});
+
+chaos_test!(aggregate_min_ties_chaos, |seed| {
+	// Every row in a group carries the same value, so every retraction takes out the value the group
+	// currently reports. `Min::invert` refuses that case and the accumulator must fall back to a full
+	// recompute - the path a spread-out corpus almost never reaches.
+	operators::aggregate::drive(seed, aggregate_params(Agg::Min, 1));
+});
+
+chaos_test!(aggregate_max_ties_chaos, |seed| {
+	operators::aggregate::drive(seed, aggregate_params(Agg::Max, 1));
+});
+
+chaos_test!(aggregate_single_group_chaos, |seed| {
+	// One group means every row contends for the same accumulator slot, which is where a lost
+	// retraction shows up as a wrong total rather than as a stranded group.
+	operators::aggregate::drive(
+		seed,
+		operators::aggregate::Params {
+			groups: 1,
+			..aggregate_params(Agg::Sum, 4)
+		},
+	);
+});
+
+chaos_test!(aggregate_random_chaos, |seed| {
+	operators::aggregate::drive_random(seed);
+});
+
+#[test]
+fn an_aggregate_operator_can_be_built_and_driven() {
+	// A build failure inside a chaos_test reports as a divergence on step zero, which reads as an
+	// oracle defect. This separates "the operator cannot be constructed" from "the operator is wrong".
+	let mut harness = Harness::new(|runtime| operators::aggregate::build(Agg::Sum, runtime));
+	let workload = AggregateWorkload {
+		groups: 2,
+		value_ceiling: 10,
+	};
+
+	let out = harness
+		.apply(workload.insert(&[
+			AggregateRow {
+				number: RowNumber(1),
+				group: 1,
+				value: 7,
+			},
+			AggregateRow {
+				number: RowNumber(2),
+				group: 1,
+				value: 5,
+			},
+		]))
+		.expect("apply must succeed");
+
+	assert_eq!(out.diffs.len(), 1, "two rows of one group are one aggregate row, got {:?}", out.diffs);
+}
+
+#[test]
+fn the_aggregate_fold_is_stated_independently_of_the_monoid_it_checks() {
+	// The oracle's whole value rests on not being the operator's own arithmetic, so what it computes
+	// is worth stating outright: sum promotes an int8 input to int16, count reports int8 whatever it
+	// counted, and min and max hand the input width back.
+	assert_eq!(Agg::Sum.fold(&[1, 2, 3]), Value::Int16(6));
+	assert_eq!(Agg::Count.fold(&[1, 2, 3]), Value::Int8(3));
+	assert_eq!(Agg::Min.fold(&[3, 1, 2]), Value::Int8(1));
+	assert_eq!(Agg::Max.fold(&[3, 1, 2]), Value::Int8(3));
+
+	// Sum must not overflow the way an int8 accumulator would, which is the reason for the promotion.
+	assert_eq!(Agg::Sum.fold(&[i64::MAX, i64::MAX]), Value::Int16(i64::MAX as i128 * 2));
+}
+
+#[test]
+fn the_operator_emits_the_value_widths_the_oracle_renders() {
+	// `values_match` falls through to `a == b`, so an Int8 and a Uint8 holding the same number are a
+	// divergence whose two sides print identically - "oracle 1, operator 1, diff +0", which reads as
+	// a framework defect rather than a width mismatch. This is the bridge between the oracle's fold
+	// and the operator, asserted on the type rather than the number so it fails legibly.
+	//
+	// Notably these are NOT the widths `Monoid::state_type` declares: it says Uint8 for count. The
+	// aggregate engine routes representable shapes through `SlotKind` and never consults the monoid,
+	// so `state_type` has no callers anywhere in the workspace and its answer is stale.
+	for agg in operators::aggregate::MATRIX {
+		let mut harness = Harness::new(|runtime| operators::aggregate::build(agg, runtime));
+		let workload = AggregateWorkload {
+			groups: 1,
+			value_ceiling: 10,
+		};
+
+		let out = harness
+			.apply(workload.insert(&[AggregateRow {
+				number: RowNumber(1),
+				group: 1,
+				value: 7,
+			}]))
+			.expect("apply must succeed");
+
+		let post = out.diffs.iter().next().and_then(|diff| diff.post()).expect("one row is one aggregate row");
+		let names: Vec<String> = post.names.iter().map(|name| name.text().to_string()).collect();
+		let idx = names
+			.iter()
+			.position(|name| name == agg.column())
+			.unwrap_or_else(|| panic!("{} must publish a {} column, got {names:?}", agg.label(), agg.column()));
+
+		let emitted = post.columns[idx].get_value(0);
+		let rendered = agg.fold(&[7]);
+		assert_eq!(
+			std::mem::discriminant(&emitted),
+			std::mem::discriminant(&rendered),
+			"{} emits {emitted:?} but the oracle renders {rendered:?}; the widths must agree or every \
+			 comparison in the sweep fails with two identical-looking numbers",
+			agg.label()
+		);
+		assert_eq!(emitted, rendered, "{} must agree on the value too", agg.label());
+	}
+}
+
+fn pipeline_params(chain: operators::pipeline::Chain) -> operators::pipeline::Params {
+	operators::pipeline::Params {
+		chain,
+		groups: 4,
+		value_ceiling: 100,
+		steps: 60,
+		max_batch: 5,
+		max_live: 40,
+		remove_pct: 25,
+		update_pct: 35,
+	}
+}
+
+chaos_test!(pipeline_filter_aggregate_chaos, |seed| {
+	// Membership changes upstream become inserts and removes the corpus never issued, and the
+	// aggregate has to fold them into the right total. A filter that mislabels a crossing gives the
+	// aggregate a contribution to add twice or none to subtract.
+	operators::pipeline::drive(seed, pipeline_params(Chain::Filter { threshold: 50 }));
+});
+
+chaos_test!(pipeline_map_aggregate_chaos, |seed| {
+	// The chain that exists because of a mutation that survived: an aggregate reads the `pre` of an
+	// update to retract the old contribution, so a stage publishing `post` as its own `pre` leaves the
+	// old value in the total forever. Invisible to a single-operator view comparison, visible here.
+	operators::pipeline::drive(seed, pipeline_params(Chain::Map));
+});
+
+chaos_test!(pipeline_gate_aggregate_chaos, |seed| {
+	// A latch feeding a fold. A row that falls back below the threshold must keep contributing, and a
+	// filter-shaped gate would quietly subtract it.
+	operators::pipeline::drive(seed, pipeline_params(Chain::Gate { threshold: 50 }));
+});
+
+chaos_test!(pipeline_random_chaos, |seed| {
+	operators::pipeline::drive_random(seed);
+});
+
+#[test]
+fn the_pipeline_sweep_reaches_every_chain() {
+	let mut seen: BTreeSet<&'static str> = BTreeSet::new();
+	for seed in 0..400u64 {
+		let (_, params) = operators::pipeline::random_params(seed);
+		seen.insert(params.chain.label());
+	}
+	assert_eq!(seen.len(), operators::pipeline::MATRIX.len(), "the sweep must reach every chain, saw {seen:?}");
+}
+
+fn rowwise_params(shape: operators::rowwise::Shape) -> operators::rowwise::Params {
+	operators::rowwise::Params {
+		shape,
+		value_ceiling: 100,
+		steps: 60,
+		max_batch: 5,
+		max_live: 40,
+		remove_pct: 25,
+		update_pct: 35,
+	}
+}
+
+chaos_test!(filter_midpoint_chaos, |seed| {
+	// Half the corpus passes, so updates cross the predicate in both directions often. Crossing is the
+	// whole risk surface: an update that enters the result must be published as an insert and one that
+	// leaves it as a remove, and emitting an update in either case gives the sink a row it never had.
+	operators::rowwise::drive(seed, rowwise_params(Shape::Filter { threshold: 50 }));
+});
+
+chaos_test!(filter_strict_chaos, |seed| {
+	// Almost nothing passes, so the result set is nearly always empty and the rare admission is the
+	// only thing the sweep has to get right.
+	operators::rowwise::drive(seed, rowwise_params(Shape::Filter { threshold: 95 }));
+});
+
+chaos_test!(filter_permissive_chaos, |seed| {
+	// Everything passes, so filter degenerates to a pass-through and the sweep checks it neither drops
+	// nor duplicates while doing nothing.
+	operators::rowwise::drive(seed, rowwise_params(Shape::Filter { threshold: 0 }));
+});
+
+chaos_test!(map_chaos, |seed| {
+	operators::rowwise::drive(seed, rowwise_params(Shape::Map));
+});
+
+chaos_test!(extend_chaos, |seed| {
+	operators::rowwise::drive(seed, rowwise_params(Shape::Extend));
+});
+
+chaos_test!(rowwise_random_chaos, |seed| {
+	operators::rowwise::drive_random(seed);
+});
+
+#[test]
+fn a_filter_publishes_a_crossing_as_an_insert_or_a_remove_not_an_update() {
+	// The one thing a filter can get wrong that a view-level comparison would not always catch: a row
+	// that enters or leaves the result must change membership, not merely change value. A sink handed
+	// an update for a row it is not holding cannot fold it.
+	let mut harness = Harness::new(|runtime| operators::rowwise::build(Shape::Filter { threshold: 50 }, runtime));
+	let workload = RowwiseWorkload {
+		value_ceiling: 100,
+		shape: Shape::Filter {
+			threshold: 50,
+		},
+	};
+	let row = |number: u64, value: i64| RowwiseRow {
+		number: RowNumber(number),
+		value,
+	};
+
+	let refused = harness.apply(workload.insert(&[row(1, 10)])).expect("apply must succeed");
+	assert!(refused.diffs.is_empty(), "a row below the predicate must not be published, got {:?}", refused.diffs);
+
+	let entering = harness.apply(workload.update(&row(1, 10), &row(1, 60))).expect("apply must succeed");
+	assert!(
+		matches!(entering.diffs.as_slice(), [Diff::Insert { .. }]),
+		"a row crossing into the result must arrive as an insert, got {:?}",
+		entering.diffs
+	);
+
+	let staying = harness.apply(workload.update(&row(1, 60), &row(1, 70))).expect("apply must succeed");
+	assert!(
+		matches!(staying.diffs.as_slice(), [Diff::Update { .. }]),
+		"a row that was in the result and stays in it is an update, got {:?}",
+		staying.diffs
+	);
+
+	let leaving = harness.apply(workload.update(&row(1, 70), &row(1, 10))).expect("apply must succeed");
+	assert!(
+		matches!(leaving.diffs.as_slice(), [Diff::Remove { .. }]),
+		"a row crossing out of the result must leave as a remove, got {:?}",
+		leaving.diffs
+	);
+}
+
+#[test]
+fn the_rowwise_operators_emit_what_their_oracles_render() {
+	// The bridge between each shape's RQL and its hand-written Rust answer, asserted on one row so a
+	// disagreement reports as a type or arithmetic mismatch here rather than as a divergent view
+	// inside a sweep. Widths matter: `values_match` compares Values, so an Int8 and an Int16 holding
+	// the same number are a divergence whose two sides print identically.
+	for shape in operators::rowwise::MATRIX {
+		let mut harness = Harness::new(|runtime| operators::rowwise::build(shape, runtime));
+		let workload = RowwiseWorkload {
+			value_ceiling: 100,
+			shape,
+		};
+		let row = RowwiseRow {
+			number: RowNumber(1),
+			value: 60,
+		};
+
+		let out = harness.apply(workload.insert(std::slice::from_ref(&row))).expect("apply must succeed");
+		let post = out
+			.diffs
+			.iter()
+			.next()
+			.and_then(|diff| diff.post())
+			.unwrap_or_else(|| panic!("{} must publish a row that passes, got {:?}", shape.label(), out.diffs));
+
+		let emitted: Vec<Value> = post.columns.iter().map(|column| column.get_value(0)).collect();
+		assert_eq!(
+			emitted,
+			shape.render(&row),
+			"{} emits {emitted:?} but its oracle renders {:?}",
+			shape.label(),
+			shape.render(&row)
+		);
+	}
+}
+
+#[test]
+fn a_rowwise_update_carries_the_previous_row_as_its_pre() {
+    // Found by mutation: making map publish `post` as its own `pre` passed all 64 sweep iterations.
+    // A view-folding oracle cannot see this. The session folds an update by row number and keeps the
+    // post, so a wrong pre changes nothing it can compare - the same blind spot the snapshot join's
+    // retraction has, and it is guarded the same way, by reading the returned diffs directly.
+    //
+    // It matters for the same reason it does there: a consumer that builds its retraction from
+    // pre_data verbatim, as chaindex block_trade does, subtracts whatever pre says. A pre equal to
+    // post subtracts the row that was just added and leaves the one that should have gone.
+    for shape in operators::rowwise::MATRIX {
+        let mut harness = Harness::new(|runtime| operators::rowwise::build(shape, runtime));
+        let workload = RowwiseWorkload {
+            value_ceiling: 100,
+            shape,
+        };
+        let before = RowwiseRow {
+            number: RowNumber(1),
+            value: 60,
+        };
+        let after = RowwiseRow {
+            number: RowNumber(1),
+            value: 80,
+        };
+
+        harness.apply(workload.insert(std::slice::from_ref(&before))).expect("apply must succeed");
+        let out = harness.apply(workload.update(&before, &after)).expect("apply must succeed");
+
+        // Both values sit above the filter's threshold, so every shape stays in its result and the
+        // change is an update rather than a crossing. Without that this would be asserting the
+        // membership transition instead of the content of `pre`.
+        let [Diff::Update { pre, post, .. }] = out.diffs.as_slice() else {
+            panic!("{} must publish one update, got {:?}", shape.label(), out.diffs);
+        };
+
+        let emitted_pre: Vec<Value> = pre.columns.iter().map(|column| column.get_value(0)).collect();
+        let emitted_post: Vec<Value> = post.columns.iter().map(|column| column.get_value(0)).collect();
+        assert_eq!(
+            emitted_pre,
+            shape.render(&before),
+            "{}'s update must retract the row as it was published before, not as it is now",
+            shape.label()
+        );
+        assert_eq!(emitted_post, shape.render(&after), "{}'s update must publish the new row", shape.label());
+        assert_ne!(emitted_pre, emitted_post, "the two halves must differ, or this asserts nothing");
+    }
+}
+
+#[test]
+fn the_rowwise_sweep_reaches_every_shape_and_both_ends_of_the_predicate() {
+	let mut seen: BTreeSet<&'static str> = BTreeSet::new();
+	let mut permissive = 0;
+	let mut strict = 0;
+	for seed in 0..400u64 {
+		let (_, params) = operators::rowwise::random_params(seed);
+		seen.insert(params.shape.label());
+		if let Shape::Filter {
+			threshold,
+		} = params.shape
+		{
+			if threshold * 4 <= params.value_ceiling {
+				permissive += 1;
+			}
+			if threshold * 4 >= params.value_ceiling * 3 {
+				strict += 1;
+			}
+		}
+	}
+	assert_eq!(seen.len(), 3, "the sweep must reach filter, map and extend, saw {seen:?}");
+	assert!(permissive > 0, "the sweep must sometimes pass nearly everything");
+	assert!(strict > 0, "the sweep must sometimes pass nearly nothing");
+}
+
+fn gate_params(threshold: i64) -> operators::gate::Params {
+	operators::gate::Params {
+		threshold,
+		value_ceiling: 100,
+		steps: 60,
+		max_batch: 5,
+		max_live: 40,
+		remove_pct: 25,
+		update_pct: 35,
+	}
+}
+
+chaos_test!(gate_midpoint_chaos, |seed| {
+	// Half the corpus passes on arrival and half does not, so the sweep spends its time on both the
+	// admit-on-insert and the admit-later-by-update paths.
+	operators::gate::drive(seed, gate_params(50));
+});
+
+chaos_test!(gate_strict_chaos, |seed| {
+	// Almost nothing passes on arrival, so nearly every admission happens later through an update
+	// that crosses the threshold. That is the path a filter-shaped implementation gets wrong.
+	operators::gate::drive(seed, gate_params(95));
+});
+
+chaos_test!(gate_permissive_chaos, |seed| {
+	// Everything passes immediately, so the gate degenerates to a pass-through and the sweep is
+	// checking that it does not drop or duplicate anything while doing nothing.
+	operators::gate::drive(seed, gate_params(0));
+});
+
+chaos_test!(gate_random_chaos, |seed| {
+	operators::gate::drive_random(seed);
+});
+
+#[test]
+fn a_gate_latches_and_does_not_release_when_its_condition_stops_holding() {
+	// The property that distinguishes a gate from a filter, asserted directly. A row admitted at 60
+	// must stay in the view when it drops to 10, and its fall must be published as an update rather
+	// than as a retraction. A filter would withdraw it here, and a filter-shaped oracle would agree.
+	let mut harness = Harness::new(|runtime| operators::gate::build(50, runtime));
+	let workload = GateWorkload {
+		value_ceiling: 100,
+	};
+	let row = |number: u64, value: i64| GateRow {
+		number: RowNumber(number),
+		value,
+	};
+
+	let refused = harness.apply(workload.insert(&[row(1, 10)])).expect("apply must succeed");
+	assert!(refused.diffs.is_empty(), "a row below the threshold must not be admitted, got {:?}", refused.diffs);
+
+	let admitted = harness.apply(workload.update(&row(1, 10), &row(1, 60))).expect("apply must succeed");
+	assert!(
+		matches!(admitted.diffs.as_slice(), [Diff::Insert { .. }]),
+		"crossing the threshold must admit the row as an insert, not an update over nothing, got {:?}",
+		admitted.diffs
+	);
+
+	let fell = harness.apply(workload.update(&row(1, 60), &row(1, 10))).expect("apply must succeed");
+	let [Diff::Update { post, .. }] = fell.diffs.as_slice() else {
+		panic!("an admitted row falling below the threshold must stay in the view as an update, got {:?}", fell.diffs);
+	};
+	assert_eq!(payload(post, 0), 10, "and it must carry the value it fell to");
+
+	let withdrawn = harness.apply(workload.remove(&row(1, 10))).expect("apply must succeed");
+	assert!(
+		matches!(withdrawn.diffs.as_slice(), [Diff::Remove { .. }]),
+		"removal is the only thing that takes an admitted row out, got {:?}",
+		withdrawn.diffs
+	);
+
+	let restarted = harness.apply(workload.insert(&[row(1, 10)])).expect("apply must succeed");
+	assert!(
+		restarted.diffs.is_empty(),
+		"re-inserting below the threshold must start the latch over rather than resume it, got {:?}",
+		restarted.diffs
+	);
+}
+
+#[test]
+fn the_gate_sweep_reaches_both_ends_of_its_threshold() {
+	// The threshold decides which paths a corpus can reach at all: at the permissive end nothing is
+	// ever admitted late, and at the strict end almost everything is. A generator that drifted to the
+	// middle would leave both untested while every sweep still passed.
+	let mut permissive = 0;
+	let mut strict = 0;
+	for seed in 0..400u64 {
+		let (_, params) = operators::gate::random_params(seed);
+		assert!(
+			params.threshold <= params.value_ceiling,
+			"a threshold above the ceiling admits nothing at all and tests only the empty view: {params:?}"
+		);
+		if params.threshold * 4 <= params.value_ceiling {
+			permissive += 1;
+		}
+		if params.threshold * 4 >= params.value_ceiling * 3 {
+			strict += 1;
+		}
+	}
+	assert!(permissive > 0, "the sweep must sometimes admit most rows on arrival");
+	assert!(strict > 0, "the sweep must sometimes force admissions to happen later, through updates");
+}
+
+fn take_params(limit: usize, max_live: usize) -> operators::take::Params {
+	operators::take::Params {
+		limit,
+		value_ceiling: 40,
+		steps: 60,
+		max_batch: 5,
+		max_live,
+		remove_pct: 25,
+		update_pct: 30,
+	}
+}
+
+chaos_test!(take_limit_8_chaos, |seed| {
+	// A live set four times the limit means most arrivals evict and most departures promote.
+	operators::take::drive(seed, take_params(8, 32));
+});
+
+chaos_test!(take_limit_1_chaos, |seed| {
+	// The sharpest form: one slot, so every arrival evicts the incumbent and every departure has to
+	// promote the newest candidate back. Eviction and promotion on essentially every step.
+	operators::take::drive(seed, take_params(1, 5));
+});
+
+chaos_test!(take_under_limit_chaos, |seed| {
+	// The live set never reaches the limit, so nothing is ever evicted and take must behave as a
+	// pass-through. A suite that only ever overflows would never notice take dropping a row it had
+	// no reason to drop.
+	operators::take::drive(seed, take_params(16, 10));
+});
+
+chaos_test!(take_at_the_boundary_chaos, |seed| {
+	// The live set sits exactly at the limit, so the corpus spends its time crossing the one
+	// threshold where the operator decides between admitting and evicting.
+	operators::take::drive(seed, take_params(6, 6));
+});
+
+chaos_test!(take_random_chaos, |seed| {
+	operators::take::drive_random(seed);
+});
+
+#[test]
+fn a_take_operator_keeps_the_newest_rows_and_promotes_on_retraction() {
+	// The contract asserted directly, so a failure says which half broke. With a limit of two, the
+	// third arrival must evict the first; retracting a survivor must bring the evicted row back
+	// rather than leaving the view short.
+	let mut harness = Harness::new(|_| operators::take::build(2));
+	let workload = TakeWorkload {
+		value_ceiling: 100,
+	};
+	let row = |number: u64, value: i64| TakeRow {
+		number: RowNumber(number),
+		value,
+	};
+	let mut session = Session::new(&mut harness);
+
+	session.apply(workload.insert(&[row(1, 10), row(2, 20)])).expect("apply must succeed");
+	assert_eq!(retained_identities(session.view()), vec![1, 2], "both rows fit under the limit");
+
+	session.apply(workload.insert(&[row(3, 30)])).expect("apply must succeed");
+	assert_eq!(
+		retained_identities(session.view()),
+		vec![2, 3],
+		"a third arrival against a limit of two must evict the oldest, not refuse the newcomer"
+	);
+
+	session.apply(workload.remove(&row(3, 30))).expect("apply must succeed");
+	assert_eq!(
+		retained_identities(session.view()),
+		vec![1, 2],
+		"a freed slot must promote the newest evicted row back rather than leave the view short"
+	);
+}
+
+#[test]
+fn an_update_does_not_make_a_row_newer_than_rows_that_arrived_after_it() {
+	// The distinction the oracle overrides `Model::update` for. Row 1 is the eviction candidate; an
+	// update to it must not reorder it ahead of row 2, or the next arrival would evict the wrong row.
+	// Stated here so the override is pinned by an assertion rather than only by a comment.
+	let mut harness = Harness::new(|_| operators::take::build(2));
+	let workload = TakeWorkload {
+		value_ceiling: 100,
+	};
+	let row = |number: u64, value: i64| TakeRow {
+		number: RowNumber(number),
+		value,
+	};
+	let mut session = Session::new(&mut harness);
+
+	session.apply(workload.insert(&[row(1, 10), row(2, 20)])).expect("apply must succeed");
+	session.apply(workload.update(&row(1, 10), &row(1, 99))).expect("apply must succeed");
+	session.apply(workload.insert(&[row(3, 30)])).expect("apply must succeed");
+
+	assert_eq!(
+		retained_identities(session.view()),
+		vec![2, 3],
+		"row 1 was updated, not re-admitted, so it must still be the oldest and the one evicted"
+	);
+}
+
+#[test]
+fn take_never_publishes_more_than_its_limit_or_a_row_that_is_not_live() {
+	// The lossy regime, which the exact oracle deliberately refuses to model: past `limit * 5` live
+	// rows the candidate buffer prunes, and a pruned row can never be promoted back, so the view
+	// becomes a function of eviction history. Two things must still hold, and they are what a
+	// consumer actually depends on: the view never exceeds the limit, and it never holds a row that
+	// is not live. Falling short of the limit is permitted here - that is the documented loss.
+	const LIMIT: usize = 3;
+	let mut harness = Harness::new(|_| operators::take::build(LIMIT));
+	let workload = TakeWorkload {
+		value_ceiling: 100,
+	};
+	let mut session = Session::new(&mut harness);
+
+	let mut live: Vec<TakeRow> = Vec::new();
+	for number in 1..=(LIMIT * 12) as u64 {
+		let row = TakeRow {
+			number: RowNumber(number),
+			value: number as i64,
+		};
+		session.apply(workload.insert(std::slice::from_ref(&row))).expect("apply must succeed");
+		live.push(row);
+		assert!(
+			session.view().len() <= LIMIT,
+			"the view holds {} rows against a limit of {LIMIT}",
+			session.view().len()
+		);
+	}
+
+	// Retract from the newest end, which is where the retained rows are, so every retraction frees a
+	// slot and reaches for a candidate.
+	while let Some(row) = live.pop() {
+		session.apply(workload.remove(&row)).expect("apply must succeed");
+		assert!(
+			session.view().len() <= LIMIT,
+			"the view holds {} rows against a limit of {LIMIT} after a retraction",
+			session.view().len()
+		);
+		let alive: BTreeSet<i32> = live.iter().map(|r| r.identity()).collect();
+		let published = retained_identities(session.view());
+		for identity in &published {
+			assert!(
+				alive.contains(identity),
+				"the view holds row {identity}, which is not live: {published:?} against {alive:?}"
+			);
+		}
+	}
+
+	assert!(session.view().is_empty(), "every row was retracted, so the view must be empty");
+	assert!(session.incoherent().is_empty(), "the diff stream must stay foldable: {:?}", session.incoherent());
+}
+
+/// The identity column of every row in a published view, ascending. Take carries the source row
+/// number through, and the workload puts it in a column, so this names exactly which rows survived.
+fn retained_identities(view: &MaterializedView) -> Vec<i32> {
+	let mut out: Vec<i32> = view
+		.rows
+		.values()
+		.map(|row| match row.get("g") {
+			Some(Value::Int4(v)) => *v,
+			other => panic!("every published row must carry an int4 identity column, got {other:?}"),
+		})
+		.collect();
+	out.sort_unstable();
+	out
+}
+
+#[test]
+fn the_take_sweep_reaches_both_sides_of_its_limit() {
+	// Take behaves completely differently above and below its limit, and a generator that drifted to
+	// one side would leave the other untested while every sweep still passed.
+	let mut over = 0;
+	let mut under = 0;
+	let mut single_slot = 0;
+	for seed in 0..400u64 {
+		let (_, params) = operators::take::random_params(seed);
+		assert!(
+			params.max_live <= operators::take::exact_oracle_ceiling(params.limit),
+			"the generator must not draw a corpus the exact oracle cannot model: {params:?}"
+		);
+		if params.max_live > params.limit {
+			over += 1;
+		}
+		if params.max_live <= params.limit {
+			under += 1;
+		}
+		if params.limit == 1 {
+			single_slot += 1;
+		}
+	}
+	assert!(over > 0, "the sweep must sometimes overflow the limit, which is where eviction happens");
+	assert!(under > 0, "the sweep must sometimes stay under it, where take is a pass-through");
+	assert!(single_slot > 0, "the sweep must reach a limit of one, where every step evicts and promotes");
+}
+
+fn distinct_params(groups: i32, regroup_pct: u32) -> operators::distinct::Params {
+	operators::distinct::Params {
+		groups,
+		value_ceiling: 12,
+		regroup_pct,
+		steps: 60,
+		max_batch: 5,
+		max_live: 40,
+		remove_pct: 25,
+		update_pct: 30,
+	}
+}
+
+chaos_test!(distinct_keys_4_chaos, |seed| {
+	operators::distinct::drive(seed, distinct_params(4, 0));
+});
+
+chaos_test!(distinct_single_key_chaos, |seed| {
+	// One key means every row collides, so every arrival either displaces the visible row or is
+	// suppressed by it, and every departure either promotes a successor or empties the key. The
+	// promote-on-retract path is the one that leaves a stale payload behind when it is wrong.
+	operators::distinct::drive(seed, distinct_params(1, 0));
+});
+
+chaos_test!(distinct_regrouping_chaos, |seed| {
+	// An update that moves a row to a different key must retract from the old entry and publish into
+	// the new one in the same step, and either half can promote or empty a key on its own. That is
+	// the widest path in `process_update` and it is unreachable when an update only rewrites payload.
+	operators::distinct::drive(seed, distinct_params(3, 60));
+});
+
+chaos_test!(distinct_wide_keys_chaos, |seed| {
+	// The opposite end: keys outnumber the live rows, so most keys hold exactly one row and the
+	// suite is about minting and retiring keys rather than about contention inside one.
+	operators::distinct::drive(
+		seed,
+		operators::distinct::Params {
+			groups: 32,
+			max_live: 20,
+			..distinct_params(32, 30)
+		},
+	);
+});
+
+chaos_test!(distinct_random_chaos, |seed| {
+	operators::distinct::drive_random(seed);
+});
+
+#[test]
+fn a_distinct_operator_publishes_one_row_per_key_and_promotes_on_retraction() {
+	// The two halves of the contract, asserted directly rather than through a sweep, so a failure
+	// says which half broke. Row 2 outranks row 1 on the same key, so it is the one published; when
+	// it leaves, row 1 must be promoted rather than the key going dark or keeping row 2's payload.
+	let mut harness = Harness::new(operators::distinct::build);
+	let workload = DistinctWorkload {
+		groups: 1,
+		value_ceiling: 100,
+		regroup_pct: 0,
+	};
+	let row = |number: u64, value: i64| DistinctRow {
+		number: RowNumber(number),
+		group: 1,
+		value,
+	};
+
+	let out = harness.apply(workload.insert(&[row(1, 10), row(2, 20)])).expect("apply must succeed");
+	let published: Vec<i64> = out
+		.diffs
+		.iter()
+		.filter_map(|diff| diff.post())
+		.flat_map(|post| (0..post.row_count()).map(|i| payload(post, i)).collect::<Vec<_>>())
+		.collect();
+	assert_eq!(
+		published.last(),
+		Some(&20),
+		"the highest-numbered row of a key is the one published, got {published:?}"
+	);
+
+	let promoted = harness.apply(workload.remove(&row(2, 20))).expect("apply must succeed");
+	let [Diff::Update { pre, post, .. }] = promoted.diffs.as_slice() else {
+		panic!("retracting the visible row of a key that still holds another must promote it, got {:?}", promoted.diffs);
+	};
+	assert_eq!(payload(pre, 0), 20, "the retraction must carry the payload that was published");
+	assert_eq!(payload(post, 0), 10, "and the promotion must carry the surviving row's payload");
+
+	let emptied = harness.apply(workload.remove(&row(1, 10))).expect("apply must succeed");
+	assert!(
+		matches!(emptied.diffs.as_slice(), [Diff::Remove { .. }]),
+		"retracting the last row of a key must withdraw it, got {:?}",
+		emptied.diffs
+	);
+}
+
+/// The payload column of one row of a `Columns`, looked up by name so a change in column order cannot
+/// make an assertion read a different column and still pass.
+fn payload(columns: &Columns, idx: usize) -> i64 {
+	let names: Vec<String> = columns.names.iter().map(|name| name.text().to_string()).collect();
+	let at = names
+		.iter()
+		.position(|name| name == "v")
+		.unwrap_or_else(|| panic!("the published row must carry the payload column, got {names:?}"));
+	match columns.columns[at].get_value(idx) {
+		Value::Int8(v) => v,
+		other => panic!("the payload must be an int8, got {other:?}"),
+	}
+}
+
+#[test]
+fn the_distinct_sweep_reaches_both_contention_and_regrouping() {
+	// A generator can narrow silently while every test still passes. Distinct only does work when
+	// rows collide on a key, so a sweep that drifted towards many keys would stop testing the
+	// operator and nothing would say so.
+	let mut colliding = 0;
+	let mut regrouping = 0;
+	let mut wide = 0;
+	for seed in 0..400u64 {
+		let (_, params) = operators::distinct::random_params(seed);
+		if params.groups <= 2 {
+			colliding += 1;
+		}
+		if params.regroup_pct >= 30 {
+			regrouping += 1;
+		}
+		if params.groups >= 6 {
+			wide += 1;
+		}
+	}
+	assert!(colliding > 0, "the sweep must sometimes draw few enough keys to force contention");
+	assert!(regrouping > 0, "the sweep must sometimes move rows between keys often");
+	assert!(wide > 0, "the sweep must also reach the sparse end, where most keys hold one row");
+}
+
+#[test]
+fn the_aggregate_sweep_reaches_every_monoid_and_the_tie_that_defeats_inversion() {
+	// Same failure mode the other sweeps guard against: a generator can narrow silently while every
+	// test still passes, leaving a monoid or the recompute path untested and nothing to say so.
+	let mut seen: BTreeSet<&'static str> = BTreeSet::new();
+	let mut tied = 0;
+	let mut removing = 0;
+	for seed in 0..400u64 {
+		let (_, params) = operators::aggregate::random_params(seed);
+		seen.insert(params.agg.label());
+		if params.value_ceiling <= 2 {
+			tied += 1;
+		}
+		if params.remove_pct >= 20 {
+			removing += 1;
+		}
+	}
+	assert_eq!(seen.len(), operators::aggregate::MATRIX.len(), "the sweep must reach every monoid, saw {seen:?}");
+	assert!(tied > 0, "the sweep must sometimes draw a value space narrow enough to force ties");
+	assert!(removing > 0, "the sweep must sometimes remove often enough to exercise retraction");
+}
 
 #[test]
 fn the_join_and_append_sweeps_reach_the_shapes_their_operators_are_built_around() {

@@ -12,10 +12,6 @@ use std::sync::Arc;
 use reifydb_core::{
 	common::WindowKind, interface::catalog::flow::OperatorId, state::budget::OperatorStateBudgetHandle,
 };
-use reifydb_routine::{
-	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
-	routine::registry::Routines,
-};
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_sub_flow::{
@@ -35,12 +31,7 @@ pub struct WindowSpec {
 	pub grace: Duration,
 }
 
-fn routines() -> Routines {
-	let b = Routines::builder();
-	let b = default_native_functions(b);
-	let b = default_native_procedures(b);
-	default_native_monoids(b).configure()
-}
+use crate::operators::routines;
 
 pub fn build(spec: &WindowSpec, runtime: RuntimeContext) -> WindowOperator {
 	let operator = OperatorId(1);
