@@ -13,6 +13,9 @@ mod deferred_append_over_transactional_filter;
 #[path = "regression/latest_snapshot_join_republish.rs"]
 mod latest_snapshot_join_republish;
 
+#[path = "regression/snapshot_join_retraction.rs"]
+mod snapshot_join_retraction;
+
 #[path = "regression/view_dictionary_columns.rs"]
 mod view_dictionary_columns;
 
