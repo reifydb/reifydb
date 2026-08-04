@@ -409,7 +409,7 @@ impl RowNumberProvider {
 		let base = mapping_range(group);
 		let boundary = mapping_key(group, upper);
 		let range = EncodedKeyRange::new(Bound::Excluded(boundary.into_encoded()), base.end.clone());
-		let batch = txn.state_range(operator, range, None)?;
+		let batch = txn.state_range(operator, range, None, "rownum::drop_below")?;
 
 		let mut guard = self.inner.operators.entry(operator).or_default();
 		let state = &mut *guard;
@@ -440,7 +440,7 @@ impl RowNumberProvider {
 		let inner_prefix =
 			OperatorGroupStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix);
 		let range = EncodedKeyRange::prefix(inner_prefix.as_ref());
-		let batch = txn.state_range(operator, range, None)?;
+		let batch = txn.state_range(operator, range, None, "rownum::remove_by_prefix")?;
 
 		let mut guard = self.inner.operators.entry(operator).or_default();
 		let state = &mut *guard;
@@ -480,7 +480,7 @@ impl RowNumberProvider {
 			None => base.start.clone(),
 		};
 		let range = EncodedKeyRange::new(start, base.end.clone());
-		let batch = txn.state_range(operator, range, Some(batch_size))?;
+		let batch = txn.state_range(operator, range, Some(batch_size), "rownum::evict_expired")?;
 		let reached_end = !batch.has_more;
 		let last_key = batch.items.last().map(|item| {
 			EncodedKey::new(
@@ -601,7 +601,7 @@ impl RowNumberProvider {
 		let mut start = base.start.clone();
 		loop {
 			let range = EncodedKeyRange::new(start, base.end.clone());
-			let batch = txn.state_range(operator, range, Some(HYDRATE_CHUNK))?;
+			let batch = txn.state_range(operator, range, Some(HYDRATE_CHUNK), "rownum::hydrate")?;
 			let mut last_inner: Option<EncodedKey> = None;
 			for item in &batch.items {
 				let decoded = OperatorStateKey::decode(&item.key)

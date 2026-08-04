@@ -11,6 +11,10 @@ pub enum TimerKind {
 }
 
 impl TimerKind {
+	pub fn is_unique(&self) -> bool {
+		matches!(self, Self::Maintenance)
+	}
+
 	pub fn from_u8(value: u8) -> Option<Self> {
 		match value {
 			0 => Some(Self::Seal),

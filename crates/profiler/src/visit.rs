@@ -57,6 +57,39 @@ impl Visit for FlowApplyFields {
 	}
 }
 
+#[derive(Default, Clone, Debug)]
+pub struct StateRangeFields {
+	pub site: String,
+	pub operator_id: Option<u64>,
+}
+
+impl Visit for StateRangeFields {
+	fn record_u64(&mut self, field: &Field, value: u64) {
+		if field.name() == "operator_id" {
+			self.operator_id = Some(value);
+		}
+	}
+
+	fn record_i64(&mut self, field: &Field, value: i64) {
+		if value >= 0 {
+			self.record_u64(field, value as u64);
+		}
+	}
+
+	fn record_str(&mut self, field: &Field, value: &str) {
+		if field.name() == "site" {
+			self.site.replace_range(.., value);
+		}
+	}
+
+	fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
+		if field.name() == "site" {
+			self.site.clear();
+			self.site.push_str(format!("{:?}", value).trim_matches('"'));
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use std::sync::Arc;

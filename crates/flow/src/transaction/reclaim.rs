@@ -110,7 +110,12 @@ impl FlowTransaction {
 			Some(resume) => Bound::Excluded(resume),
 			None => base.start.clone(),
 		};
-		let batch = self.state_range(operator, EncodedKeyRange::new(start, base.end.clone()), Some(limit))?;
+		let batch = self.state_range(
+			operator,
+			EncodedKeyRange::new(start, base.end.clone()),
+			Some(limit),
+			"reclaim::group_keyspace",
+		)?;
 		let more = batch.has_more;
 		let last = batch.items.last().map(Self::inner_key);
 
@@ -196,7 +201,7 @@ impl FlowTransaction {
 		if limit == 0 {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
-		let batch = self.state_range(operator, range, Some(limit))?;
+		let batch = self.state_range(operator, range, Some(limit), "reclaim::range")?;
 		let keys: Vec<GroupStateKey> = batch
 			.items
 			.iter()
@@ -282,7 +287,7 @@ mod tests {
 	}
 
 	fn count(txn: &mut FlowTransaction, range: EncodedKeyRange) -> usize {
-		txn.state_range(NODE, range, None).unwrap().items.len()
+		txn.state_range(NODE, range, None, "test").unwrap().items.len()
 	}
 
 	fn commit_pending(engine: &TestEngine, txn: &mut FlowTransaction) {

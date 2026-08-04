@@ -97,6 +97,8 @@ impl Keyspace {
 
 	pub const SIDE_ACTIVITY_RECORD: Self = Self(0xF4);
 
+	pub const TIMER_INDEX: Self = Self(0xF3);
+
 	pub const ACCUMULATOR: Self = Self(0x10);
 
 	pub const BUFFER: Self = Self(0x11);
@@ -158,6 +160,7 @@ impl Keyspace {
 			Self::NODE_WATERMARK => "NODE_WATERMARK",
 			Self::SOURCE_WATERMARK => "SOURCE_WATERMARK",
 			Self::TIMER_WHEEL => "TIMER_WHEEL",
+			Self::TIMER_INDEX => "TIMER_INDEX",
 			Self::SIDE_ACTIVITY_INDEX => "SIDE_ACTIVITY_INDEX",
 			Self::SIDE_ACTIVITY_RECORD => "SIDE_ACTIVITY_RECORD",
 			Self::ACCUMULATOR => "ACCUMULATOR",
@@ -210,7 +213,8 @@ impl Keyspace {
 					| Self::GROUP_RECORD | Self::ACTIVITY_INDEX
 					| Self::IDENTITY_INDEX | Self::NODE_WATERMARK
 					| Self::SOURCE_WATERMARK | Self::TIMER_WHEEL
-					| Self::SIDE_ACTIVITY_INDEX | Self::SIDE_ACTIVITY_RECORD
+					| Self::TIMER_INDEX | Self::SIDE_ACTIVITY_INDEX
+					| Self::SIDE_ACTIVITY_RECORD
 			)
 	}
 }
@@ -482,7 +486,7 @@ mod tests {
 
 	/// Every keyspace the substrate declares, with the phase allowed to erase it. The phase is written
 	/// down rather than read back from `is_data`, or a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, Keyspace, Phase); 36] = [
+	const CENSUS: [(&str, Keyspace, Phase); 37] = [
 		("ROW_NUMBER_MAPPING", Keyspace::ROW_NUMBER_MAPPING, Phase::Identity),
 		("GROUP_DICTIONARY", Keyspace::GROUP_DICTIONARY, Phase::Identity),
 		("NODE_COUNTER", Keyspace::NODE_COUNTER, Phase::Identity),
@@ -492,6 +496,7 @@ mod tests {
 		("NODE_WATERMARK", Keyspace::NODE_WATERMARK, Phase::Identity),
 		("SOURCE_WATERMARK", Keyspace::SOURCE_WATERMARK, Phase::Identity),
 		("TIMER_WHEEL", Keyspace::TIMER_WHEEL, Phase::Identity),
+		("TIMER_INDEX", Keyspace::TIMER_INDEX, Phase::Identity),
 		("SIDE_ACTIVITY_INDEX", Keyspace::SIDE_ACTIVITY_INDEX, Phase::Identity),
 		("SIDE_ACTIVITY_RECORD", Keyspace::SIDE_ACTIVITY_RECORD, Phase::Identity),
 		("ACCUMULATOR", Keyspace::ACCUMULATOR, Phase::Data),

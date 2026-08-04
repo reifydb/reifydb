@@ -104,7 +104,7 @@ impl StateStore for OperatorStateStore<'_> {
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 	) -> Result<()> {
-		let batch = self.txn.state_range(self.operator, range, limit)?;
+		let batch = self.txn.state_range(self.operator, range, limit, "operator::store_visit")?;
 		for r in batch.items {
 			if let Some(decoded) = OperatorStateKey::decode(&r.key)
 				&& let Some(inner) = GroupStateKey::from_framed(EncodedKey::new(decoded.key))

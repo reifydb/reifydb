@@ -100,7 +100,7 @@ fn build_remove(value: i64, row_num: u64) -> Change {
 
 fn persisted_rows(op: &DistinctOperator, txn: &mut FlowTransaction) -> BTreeMap<Vec<u8>, Vec<u8>> {
 	let mut out = BTreeMap::new();
-	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None).unwrap();
+	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None, "test").unwrap();
 	for item in batch.items {
 		let inner = OperatorStateKey::decode(&item.key).expect("internal state key");
 		if let Some((_, keyspace, _)) = OperatorGroupStateKey::decode_inner(&inner.key) {
@@ -121,7 +121,7 @@ fn layout_row(op: &DistinctOperator, txn: &mut FlowTransaction) -> Option<Vec<u8
 
 fn entry_groups(op: &DistinctOperator, txn: &mut FlowTransaction) -> Vec<GroupId> {
 	let mut out = Vec::new();
-	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None).unwrap();
+	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None, "test").unwrap();
 	for item in batch.items {
 		let inner = OperatorStateKey::decode(&item.key).expect("internal state key");
 		if let Some((group, keyspace, _)) = OperatorGroupStateKey::decode_inner(&inner.key)

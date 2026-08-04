@@ -19,7 +19,7 @@ use crate::{
 	record::{DimIdx, MAX_EXTRAS, MinimalSpanRecord},
 	scope::{ProfilerScope, REGISTRY, ScopeState, active_scope},
 	sink::ProfilerSink,
-	visit::FlowApplyFields,
+	visit::{FlowApplyFields, StateRangeFields},
 };
 
 pub struct ProfilerLayer {
@@ -56,6 +56,7 @@ struct SpanExt {
 	started_at: Instant,
 	child_us: u64,
 	flow_fields: Option<FlowApplyFields>,
+	state_fields: Option<StateRangeFields>,
 }
 
 fn metadata_callsite_id(metadata: &'static Metadata<'static>) -> u64 {
@@ -118,7 +119,8 @@ where
 		let scope = self.discover_span_scope(&ctx, id);
 		let callsite_id = self.register_span_callsite(metadata);
 		let flow_fields = self.extract_flow_fields(category, attrs, metadata);
-		self.insert_span_ext(&ctx, id, category, scope, callsite_id, flow_fields);
+		let state_fields = self.extract_state_fields(category, attrs, metadata);
+		self.insert_span_ext(&ctx, id, category, scope, callsite_id, flow_fields, state_fields);
 	}
 
 	fn on_record(&self, id: &Id, values: &Record<'_>, ctx: Context<'_, S>) {
@@ -126,10 +128,13 @@ where
 			return;
 		};
 		let mut ext = span.extensions_mut();
-		if let Some(entry) = ext.get_mut::<SpanExt>()
-			&& let Some(fields) = entry.flow_fields.as_mut()
-		{
-			values.record(fields);
+		if let Some(entry) = ext.get_mut::<SpanExt>() {
+			if let Some(fields) = entry.flow_fields.as_mut() {
+				values.record(fields);
+			}
+			if let Some(fields) = entry.state_fields.as_mut() {
+				values.record(fields);
+			}
 		}
 	}
 
@@ -179,6 +184,22 @@ impl ProfilerLayer {
 	}
 
 	#[inline]
+	fn extract_state_fields(
+		&self,
+		category: ProfilerCategory,
+		attrs: &Attributes<'_>,
+		metadata: &'static Metadata<'static>,
+	) -> Option<StateRangeFields> {
+		if category == ProfilerCategory::Flow && metadata.name() == "flow::state::range_limited" {
+			let mut fields = StateRangeFields::default();
+			attrs.record(&mut fields);
+			Some(fields)
+		} else {
+			None
+		}
+	}
+
+	#[inline]
 	fn build_record(&self, entry: &SpanExt) -> MinimalSpanRecord {
 		let mut record = MinimalSpanRecord::new(entry.category, entry.callsite_id, 0);
 		match (entry.category, &entry.flow_fields) {
@@ -213,6 +234,14 @@ impl ProfilerLayer {
 				}
 				let elapsed = entry.started_at.elapsed().as_micros();
 				record.duration_us = u32::try_from(elapsed).unwrap_or(u32::MAX);
+			}
+		}
+		if let Some(s) = &entry.state_fields {
+			if !s.site.is_empty() {
+				record.dim_indices[0] = self.interner.intern(&s.site);
+			}
+			if let Some(operator) = s.operator_id {
+				record.dim_indices[1] = self.interner.intern(&format!("op{operator}"));
 			}
 		}
 		record.self_us =
@@ -266,6 +295,7 @@ impl ProfilerLayer {
 		scope: Arc<ScopeState>,
 		callsite_id: u64,
 		flow_fields: Option<FlowApplyFields>,
+		state_fields: Option<StateRangeFields>,
 	) where
 		S: Subscriber + for<'a> LookupSpan<'a>,
 	{
@@ -276,6 +306,7 @@ impl ProfilerLayer {
 			started_at: self.clock.instant(),
 			child_us: 0,
 			flow_fields,
+			state_fields,
 		};
 		if let Some(span) = ctx.span(id) {
 			span.extensions_mut().insert(ext);
@@ -301,7 +332,10 @@ mod tests {
 	use tracing_subscriber::{Registry, layer::SubscriberExt};
 
 	use super::*;
-	use crate::{category::ProfilerLevel, scope::ProfilerScope, sink::ProfilerSink, summary::ProfilerSummary};
+	use crate::{
+		category::ProfilerLevel, record::DIM_UNSET, scope::ProfilerScope, sink::ProfilerSink,
+		summary::ProfilerSummary,
+	};
 
 	#[derive(Default)]
 	struct RecordingSink {
@@ -411,6 +445,49 @@ mod tests {
 		assert_eq!(rec.extras[0], 10);
 		assert_eq!(rec.extras[1], 5);
 		assert_eq!(rec.extras[2], 3);
+	}
+
+	#[test]
+	fn state_range_interns_its_site_without_borrowing_the_apply_duration_override() {
+		// state_range shares the Flow category with flow::engine::apply, but it has no
+		// apply_time_us to override its duration with. If it took the apply branch the span
+		// would report 0us and every call site would look free; if it skipped interning the
+		// site the 11 call sites would collapse into one undifferentiated row, which is the
+		// whole reason the dimension exists. The site must land in dim 0 and the duration must
+		// come from the wall clock.
+		let sink: Arc<RecordingSink> = Arc::new(RecordingSink::default());
+		let (layer, interner) = build_layer(sink.clone(), CategorySet::all());
+		let subscriber = Registry::default().with(layer);
+		with_default(subscriber, || {
+			let handle = ProfilerScope::start_with_sink("scope", sink.clone(), Clock::Real);
+			handle.run_sync(|| {
+				let span = trace_span!(
+					"flow::state::range_limited",
+					operator_id = 7u64,
+					site = "timer::hydrate_probe"
+				);
+				let _g = span.enter();
+			});
+			let _summary = handle.finish();
+		});
+		let recs = sink.records.lock();
+		assert_eq!(recs.len(), 1);
+		let rec = recs[0];
+		assert_eq!(rec.category(), ProfilerCategory::Flow);
+		assert_eq!(
+			interner.resolve(rec.dim_indices[0]).as_deref(),
+			Some("timer::hydrate_probe"),
+			"the call site must be interned into dim 0 so the profile table can split by it"
+		);
+		assert_ne!(
+			rec.dim_indices[0], DIM_UNSET,
+			"an unset dim would render as <no-dims> and merge every call site into one row"
+		);
+		assert_eq!(
+			interner.resolve(rec.dim_indices[1]).as_deref(),
+			Some("op7"),
+			"the operator must occupy dim 1 so one hot wheel cannot hide inside a site-wide average"
+		);
 	}
 
 	#[test]

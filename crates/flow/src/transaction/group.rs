@@ -848,7 +848,7 @@ impl GroupInterner {
 			Bound::Included(side_index_bound(side, from).into_encoded()),
 			Bound::Excluded(side_index_bound(side, first_live).into_encoded()),
 		);
-		txn.state_range(operator, range, Some(limit))
+		txn.state_range(operator, range, Some(limit), "group::due_side_scan")
 	}
 
 	fn due_side_verify(
@@ -984,7 +984,7 @@ impl GroupInterner {
 			Bound::Included(index_bound(keyspace, from).into_encoded()),
 			Bound::Excluded(index_bound(keyspace, first_live).into_encoded()),
 		);
-		txn.state_range(operator, range, Some(limit))
+		txn.state_range(operator, range, Some(limit), "group::due_scan")
 	}
 
 	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
@@ -1091,7 +1091,7 @@ impl GroupInterner {
 		let mut start = base.start.clone();
 		loop {
 			let range = EncodedKeyRange::new(start, base.end.clone());
-			let batch = txn.state_range(operator, range, Some(HYDRATE_CHUNK))?;
+			let batch = txn.state_range(operator, range, Some(HYDRATE_CHUNK), "group::hydrate")?;
 			let mut last_inner: Option<EncodedKey> = None;
 			for item in &batch.items {
 				let decoded = OperatorStateKey::decode(&item.key)
@@ -1620,7 +1620,7 @@ mod tests {
 		// "what does this group hold" is to scan the index and filter.
 		let range = keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::ACTIVITY_INDEX);
 		let mut buckets: Vec<u64> = txn
-			.state_range(operator, range, None)
+			.state_range(operator, range, None, "test")
 			.unwrap()
 			.items
 			.iter()
@@ -1637,7 +1637,7 @@ mod tests {
 	fn side_buckets_of(txn: &mut FlowTransaction, operator: OperatorId, id: GroupId, side: Keyspace) -> Vec<u64> {
 		let range = keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::SIDE_ACTIVITY_INDEX);
 		let mut buckets: Vec<u64> = txn
-			.state_range(operator, range, None)
+			.state_range(operator, range, None, "test")
 			.unwrap()
 			.items
 			.iter()

@@ -572,7 +572,7 @@ mod tests {
 	}
 
 	fn rows(txn: &mut FlowTransaction, id: GroupId) -> usize {
-		txn.state_range(NODE, group_inner_range(id), None).unwrap().items.len()
+		txn.state_range(NODE, group_inner_range(id), None, "test").unwrap().items.len()
 	}
 
 	fn node_deferred(engine: &TestEngine, operators: &[OperatorId]) -> FlowTransaction {
@@ -609,7 +609,10 @@ mod tests {
 	fn node_accumulators(txn: &mut FlowTransaction, operator: OperatorId, id: GroupId) -> usize {
 		// Not the whole group range: the GROUP_RECORD survives the data phase, so counting the
 		// range would conflate "erased" with "left the record the second phase still needs".
-		txn.state_range(operator, keyspace_inner_range(id, Keyspace::ACCUMULATOR), None).unwrap().items.len()
+		txn.state_range(operator, keyspace_inner_range(id, Keyspace::ACCUMULATOR), None, "test")
+			.unwrap()
+			.items
+			.len()
 	}
 
 	fn data_only(operator: OperatorId, cutoff_ms: u64) -> SweepInputs {
@@ -813,7 +816,7 @@ mod tests {
 	}
 
 	fn side_rows(txn: &mut FlowTransaction, id: GroupId, keyspace: Keyspace) -> usize {
-		txn.state_range(NODE, keyspace_inner_range(id, keyspace), None).unwrap().items.len()
+		txn.state_range(NODE, keyspace_inner_range(id, keyspace), None, "test").unwrap().items.len()
 	}
 
 	#[test]

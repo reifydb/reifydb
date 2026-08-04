@@ -93,13 +93,15 @@ impl FlowTransaction {
 	}
 
 	#[instrument(name = "flow::state::range_limited", level = "debug", skip(self, range), fields(
-		operator_id = id.0
+		operator_id = id.0,
+		site = site
 	))]
 	pub fn state_range(
 		&mut self,
 		id: OperatorId,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
+		site: &'static str,
 	) -> Result<MultiVersionBatch> {
 		let prefixed_range = range.with_prefix(OperatorStateKey::encoded(id, vec![]));
 		let iter = self.range(prefixed_range, RangeScope::All, 1024);

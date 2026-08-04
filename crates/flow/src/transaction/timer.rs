@@ -17,9 +17,12 @@ use reifydb_core::{
 		operator_state::OperatorStateKey,
 	},
 };
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 
-use super::{FlowTransaction, group::encode_payload};
+use super::{
+	FlowTransaction,
+	group::{decode_payload, encode_payload},
+};
 use crate::timer::Timer;
 
 const TAKE_CHUNK: usize = 1_024;
@@ -34,6 +37,20 @@ fn timer_suffix(at: DateTime, kind: TimerKind, key: &EncodedKey) -> Vec<u8> {
 
 fn timer_key(at: DateTime, kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
 	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::TIMER_WHEEL, timer_suffix(at, kind, key))
+}
+
+fn index_key(kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
+	let mut suffix = Vec::with_capacity(1 + key.len());
+	suffix.push(kind as u8);
+	suffix.extend_from_slice(key.as_ref());
+	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::TIMER_INDEX, suffix)
+}
+
+fn armed_at(operator: OperatorId, txn: &mut FlowTransaction, index: &GroupStateKey) -> Result<Option<u64>> {
+	match txn.state_get(operator, index)? {
+		Some(row) => Ok(Some(decode_payload::<u64>(&row)?)),
+		None => Ok(None),
+	}
 }
 
 fn decode_timer(suffix: &[u8]) -> Timer {
@@ -80,17 +97,64 @@ pub struct TimerWheel {
 impl TimerWheel {
 	pub fn arm(&self, operator: OperatorId, txn: &mut FlowTransaction, timer: &Timer) -> Result<()> {
 		let now = txn.clock().now();
-		let mut state = self.inner.entry(operator).or_default();
-		if state.hydrated {
-			let at = timer.at.to_millis();
-			state.earliest = Some(state.earliest.map_or(at, |earliest| earliest.min(at)));
+		let at = timer.at.to_millis();
+		if !timer.kind.is_unique() {
+			let mut state = self.inner.entry(operator).or_default();
+			if state.hydrated {
+				state.earliest = Some(state.earliest.map_or(at, |earliest| earliest.min(at)));
+			}
+			drop(state);
+			txn.state_set(
+				operator,
+				&timer_key(timer.at, timer.kind, &timer.key),
+				encode_payload(&1u64, now)?,
+			)?;
+			return Ok(());
+		}
+		let index = index_key(timer.kind, &timer.key);
+		let previous = armed_at(operator, txn, &index)?;
+		if previous == Some(at) {
+			return Ok(());
+		}
+		if let Some(previous) = previous {
+			let stale = timer_key(DateTime::from_millis(previous), timer.kind, &timer.key);
+			reifydb_assertions! {
+				assert!(
+					txn.state_get(operator, &stale)?.is_some(),
+					"the timer index names an instant the wheel does not hold, so the two have \
+					 diverged and the stale wheel row can never be cancelled again; every arm would \
+					 then leave a permanent entry and the due probe degrades with it \
+					 (operator={}, previous={}, requested={})",
+					operator.0,
+					previous,
+					at
+				);
+			}
+			txn.state_remove(operator, &stale)?;
+		}
+		{
+			let mut state = self.inner.entry(operator).or_default();
+			if let Some(previous) = previous {
+				state.invalidate_if_earliest(previous);
+			}
+			if state.hydrated {
+				state.earliest = Some(state.earliest.map_or(at, |earliest| earliest.min(at)));
+			}
 		}
 		txn.state_set(operator, &timer_key(timer.at, timer.kind, &timer.key), encode_payload(&1u64, now)?)?;
+		txn.state_set(operator, &index, encode_payload(&at, now)?)?;
 		Ok(())
 	}
 
 	pub fn disarm(&self, operator: OperatorId, txn: &mut FlowTransaction, timer: &Timer) -> Result<()> {
-		self.inner.entry(operator).or_default().invalidate_if_earliest(timer.at.to_millis());
+		let at = timer.at.to_millis();
+		if timer.kind.is_unique() {
+			let index = index_key(timer.kind, &timer.key);
+			if armed_at(operator, txn, &index)? == Some(at) {
+				txn.state_remove(operator, &index)?;
+			}
+		}
+		self.inner.entry(operator).or_default().invalidate_if_earliest(at);
 		txn.state_remove(operator, &timer_key(timer.at, timer.kind, &timer.key))?;
 		Ok(())
 	}
@@ -122,7 +186,7 @@ impl TimerWheel {
 		loop {
 			let want = (limit - due.len()).min(TAKE_CHUNK);
 			let range = EncodedKeyRange::new(start, base.end.clone());
-			let batch = txn.state_range(operator, range, Some(want))?;
+			let batch = txn.state_range(operator, range, Some(want), "timer::take_due")?;
 			let mut last_inner: Option<EncodedKey> = None;
 			for item in &batch.items {
 				let decoded = OperatorStateKey::decode(&item.key)
@@ -143,6 +207,12 @@ impl TimerWheel {
 
 		for timer in &due {
 			txn.state_remove(operator, &timer_key(timer.at, timer.kind, &timer.key))?;
+			if timer.kind.is_unique() {
+				let index = index_key(timer.kind, &timer.key);
+				if armed_at(operator, txn, &index)? == Some(timer.at.to_millis()) {
+					txn.state_remove(operator, &index)?;
+				}
+			}
 		}
 		Ok(due)
 	}
@@ -153,7 +223,7 @@ impl TimerWheel {
 		}
 		state.hydrated = true;
 		let range = keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::TIMER_WHEEL);
-		let batch = txn.state_range(operator, range, Some(1))?;
+		let batch = txn.state_range(operator, range, Some(1), "timer::hydrate_probe")?;
 		state.earliest = batch.items.first().map(|item| {
 			let decoded = OperatorStateKey::decode(&item.key)
 				.expect("state_range must return OperatorState keys");
@@ -239,6 +309,73 @@ mod tests {
 		assert_eq!(
 			wheel.take_due(NODE, &mut txn, at(5_000), NO_LIMIT).unwrap(),
 			vec![timer(5_000, TimerKind::Seal, "bucket")]
+		);
+	}
+
+	#[test]
+	fn rearming_a_unique_kind_moves_its_deadline_instead_of_minting_a_second_timer() {
+		// Maintenance is a sliding deadline that operators re-arm every batch as event time
+		// advances. A wheel row is keyed by its instant, so without engine-owned identity each
+		// re-arm abandons the previous instant instead of moving it, and the wheel settles at one
+		// row per distinct arm across the whole horizon. Every due probe then scans that pile.
+		// Only the newest deadline may survive, and it must be the one that fires.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		let wheel = TimerWheel::default();
+
+		wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "m")).unwrap();
+		wheel.arm(NODE, &mut txn, &timer(6_000, TimerKind::Maintenance, "m")).unwrap();
+		wheel.arm(NODE, &mut txn, &timer(7_000, TimerKind::Maintenance, "m")).unwrap();
+
+		assert_eq!(
+			wheel.take_due(NODE, &mut txn, at(10_000), NO_LIMIT).unwrap(),
+			vec![timer(7_000, TimerKind::Maintenance, "m")],
+			"re-arming must move the one deadline, not leave the superseded instants armed"
+		);
+	}
+
+	#[test]
+	fn a_backlog_kind_still_holds_every_instant_it_was_armed_at() {
+		// Uniqueness has to be per kind, never universal. Seal timers are per bucket, so a flow
+		// catching up after an outage legitimately holds many outstanding seals on one key;
+		// collapsing those to the newest would silently drop every earlier bucket. This pins the
+		// contrast against the Maintenance case above so the policy cannot be widened by accident.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		let wheel = TimerWheel::default();
+
+		wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "m")).unwrap();
+		wheel.arm(NODE, &mut txn, &timer(6_000, TimerKind::Seal, "m")).unwrap();
+
+		assert_eq!(
+			wheel.take_due(NODE, &mut txn, at(10_000), NO_LIMIT).unwrap(),
+			vec![timer(5_000, TimerKind::Seal, "m"), timer(6_000, TimerKind::Seal, "m")],
+			"a backlog kind must keep every bucket it was armed for"
+		);
+	}
+
+	#[test]
+	fn a_fired_unique_timer_can_be_armed_again_at_a_later_instant() {
+		// take_due deletes the wheel row, so the identity entry has to go with it. Were it left
+		// behind it would name an instant the wheel no longer holds: the next arm would try to
+		// cancel a row that is not there, and a re-arm landing on that same stale instant would be
+		// mistaken for "already armed" and skipped entirely, so the timer would never fire again.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		let wheel = TimerWheel::default();
+
+		wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "m")).unwrap();
+		assert_eq!(
+			wheel.take_due(NODE, &mut txn, at(5_000), NO_LIMIT).unwrap(),
+			vec![timer(5_000, TimerKind::Maintenance, "m")]
+		);
+
+		wheel.arm(NODE, &mut txn, &timer(5_000, TimerKind::Maintenance, "m")).unwrap();
+
+		assert_eq!(
+			wheel.take_due(NODE, &mut txn, at(10_000), NO_LIMIT).unwrap(),
+			vec![timer(5_000, TimerKind::Maintenance, "m")],
+			"re-arming the instant that just fired must arm a live timer, not be skipped as a duplicate"
 		);
 	}
 
