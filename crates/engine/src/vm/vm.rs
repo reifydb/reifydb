@@ -155,7 +155,6 @@ impl<'a> Vm<'a> {
 			symbols: &self.symbols,
 			routines: self.routines,
 			runtime_context: self.runtime_context,
-			arena: None,
 			identity: self.identity,
 			is_aggregate_context: false,
 			columns: Columns::empty(),

@@ -103,7 +103,6 @@ impl PolicyEvaluatorTrait for PolicyEvaluator<'_> {
 			symbols: self.symbols,
 			routines: &self.services.routines,
 			runtime_context: &self.services.runtime_context,
-			arena: None,
 			identity,
 			is_aggregate_context: false,
 			columns: Columns::empty(),

@@ -122,7 +122,6 @@ pub(crate) fn evaluate_returning(
 		symbols,
 		routines: &services.routines,
 		runtime_context: &services.runtime_context,
-		arena: None,
 		identity: IdentityId::root(),
 		is_aggregate_context: false,
 		columns: Columns::empty(),

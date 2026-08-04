@@ -66,7 +66,6 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 		symbols: &EMPTY_SYMBOL_TABLE,
 		routines: &EMPTY_ROUTINES,
 		runtime_context: &DEFAULT_RUNTIME_CONTEXT,
-		arena: None,
 		identity: IdentityId::root(),
 		is_aggregate_context: false,
 		columns: Columns::empty(),

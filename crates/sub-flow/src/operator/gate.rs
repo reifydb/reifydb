@@ -193,7 +193,6 @@ impl GateOperator {
 			symbols: &self.ctx.symbols,
 			routines: &self.routines,
 			runtime_context: &self.runtime_context,
-			arena: None,
 			identity: self.ctx.identity,
 			is_aggregate_context: false,
 			columns: Columns::empty(),

@@ -183,7 +183,6 @@ pub mod tests {
 			symbols: &SymbolTable::new(),
 			routines: &routines,
 			runtime_context: &runtime_ctx,
-			arena: None,
 			identity: IdentityId::root(),
 			is_aggregate_context: false,
 			columns: Columns::empty(),

@@ -73,7 +73,6 @@ pub(crate) fn dispatch(
 		symbols: &vm.symbols,
 		routines: &services.routines,
 		runtime_context: &services.runtime_context,
-		arena: None,
 		identity: tx.identity(),
 		is_aggregate_context: false,
 		columns: Columns::empty(),

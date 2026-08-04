@@ -13,7 +13,6 @@ use reifydb_value::{params::Params, value::value_type::ValueType};
 
 use crate::{
 	Result,
-	arena::QueryArena,
 	vm::{
 		services::Services,
 		stack::{SymbolTable, Variable},
@@ -67,7 +66,6 @@ pub(crate) fn run_query_plan(
 	let mut all_columns: Option<Columns> = None;
 	let mut charged = 0usize;
 	let mut mutable_context = (*context).clone();
-	let mut arena = QueryArena::new();
 
 	while let Some(batch) = query_node.next(txn, &mut mutable_context)? {
 		match &mut all_columns {
@@ -77,7 +75,6 @@ pub(crate) fn run_query_plan(
 		if let Some(acc) = &all_columns {
 			charge_query_memory(&context.memory, &mut charged, acc)?;
 		}
-		arena.reset();
 	}
 
 	if all_columns.is_none() {

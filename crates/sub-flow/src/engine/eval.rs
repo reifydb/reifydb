@@ -41,7 +41,6 @@ pub fn evaluate_operator_config(
 		symbols: &EMPTY_SYMBOL_TABLE,
 		routines,
 		runtime_context,
-		arena: None,
 		identity: IdentityId::root(),
 		is_aggregate_context: false,
 		columns: Columns::empty(),

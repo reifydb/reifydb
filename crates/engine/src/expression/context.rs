@@ -12,10 +12,7 @@ use reifydb_routine::routine::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_value::{params::Params, value::identity::IdentityId};
 
-use crate::{
-	arena::QueryArena,
-	vm::{stack::SymbolTable, volcano::query::QueryContext},
-};
+use crate::vm::{stack::SymbolTable, volcano::query::QueryContext};
 
 pub struct EvalContext<'a> {
 	pub target: Option<TargetColumn>,
@@ -27,7 +24,6 @@ pub struct EvalContext<'a> {
 	pub is_aggregate_context: bool,
 	pub routines: &'a Routines,
 	pub runtime_context: &'a RuntimeContext,
-	pub arena: Option<&'a QueryArena>,
 	pub identity: IdentityId,
 }
 
@@ -49,7 +45,6 @@ impl<'a> EvalContext<'a> {
 			is_aggregate_context: false,
 			routines: &EMPTY_ROUTINES,
 			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
-			arena: None,
 			identity: IdentityId::root(),
 		}
 	}
@@ -65,7 +60,6 @@ impl<'a> EvalContext<'a> {
 			is_aggregate_context: self.is_aggregate_context,
 			routines: self.routines,
 			runtime_context: self.runtime_context,
-			arena: self.arena,
 			identity: self.identity,
 		}
 	}
@@ -91,7 +85,6 @@ impl<'a> EvalContext<'a> {
 			is_aggregate_context: false,
 			routines: &ctx.services.routines,
 			runtime_context: &ctx.services.runtime_context,
-			arena: None,
 			identity: ctx.identity,
 		}
 	}
@@ -107,7 +100,6 @@ impl<'a> EvalContext<'a> {
 			is_aggregate_context: false,
 			routines: &stored.services.routines,
 			runtime_context: ctx.runtime_context,
-			arena: None,
 			identity: stored.identity,
 		}
 	}
