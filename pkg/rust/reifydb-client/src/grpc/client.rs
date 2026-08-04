@@ -30,14 +30,14 @@ use super::generated::{
 	BatchUnsubscribeRequest as ProtoBatchUnsubscribeRequest, CommandRequest as ProtoCommandRequest,
 	LogoutRequest as ProtoLogoutRequest, NamedParams, OperationRequest as ProtoOperationRequest,
 	Params as ProtoParams, PositionalParams, QueryRequest as ProtoQueryRequest,
-	SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent, TypedValue,
-	UnsubscribeRequest as ProtoUnsubscribeRequest, batch_subscription_event, params::Params as ProtoParamsOneof,
-	reify_db_client::ReifyDbClient, subscription_event,
+	QueueClaimRequest as ProtoQueueClaimRequest, SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent,
+	TypedValue, UnsubscribeRequest as ProtoUnsubscribeRequest, batch_subscription_event,
+	params::Params as ProtoParamsOneof, reify_db_client::ReifyDbClient, subscription_event,
 };
 use crate::{
 	AdminResult, BatchChangeEntry, BatchChangePayload, BatchMemberClosedPayload, BatchMemberInfo, BatchPushEvent,
-	ChangePayload, CommandResult, FrameChange, LoginResult, QueryResult, ReconnectOptions, ResponseMeta,
-	WireFormat,
+	ChangePayload, CommandResult, FrameChange, LoginResult, QueryResult, QueueClaimRequest, ReconnectOptions,
+	ResponseMeta, WireFormat,
 	changes::frames_to_changes,
 	client::{BatchSubscription as ClientBatchSubscription, ReifyClient, Subscription as ClientSubscription},
 	error::ClientError,
@@ -278,6 +278,25 @@ impl GrpcClient {
 			frames,
 			meta,
 		})
+	}
+
+	/// Claim items from a queue, optionally long-polling until work arrives or the budget expires.
+	///
+	/// `wait_for` and `lease_ttl` are RQL duration literals such as `"25s"`. An absent or zero
+	/// `wait_for` is a plain non-blocking claim.
+	pub async fn queue_claim(&self, request: QueueClaimRequest) -> Result<Vec<Frame>, Error> {
+		let mut client = self.inner.clone();
+		let mut req = Request::new(ProtoQueueClaimRequest {
+			queue: request.queue,
+			worker: request.worker,
+			max_n: request.max_n,
+			lease_ttl: request.lease_ttl,
+			wait_for: request.wait_for,
+		});
+		self.attach_auth(&mut req);
+
+		let response = client.queue_claim(req).await.map_err(status_to_error)?;
+		decode_rbcf(&response.into_inner().rbcf)
 	}
 
 	pub async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<GrpcSubscription, Error> {

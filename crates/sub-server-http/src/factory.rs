@@ -24,6 +24,8 @@ pub struct HttpConfigurator {
 	max_connections: usize,
 	query_timeout: Duration,
 	request_timeout: Duration,
+	claim_wait_max: Duration,
+	claim_max_parked: usize,
 	spawner: Option<ActorSpawner>,
 	clock: Option<Clock>,
 	rng: Option<Rng>,
@@ -44,6 +46,8 @@ impl HttpConfigurator {
 			max_connections: 10_000,
 			query_timeout: Duration::from_seconds(30).unwrap(),
 			request_timeout: Duration::from_seconds(60).unwrap(),
+			claim_wait_max: Duration::from_seconds(60).unwrap(),
+			claim_max_parked: 10_000,
 			spawner: None,
 			clock: None,
 			rng: None,
@@ -63,6 +67,16 @@ impl HttpConfigurator {
 
 	pub fn max_connections(mut self, max: usize) -> Self {
 		self.max_connections = max;
+		self
+	}
+
+	pub fn claim_wait_max(mut self, budget: Duration) -> Self {
+		self.claim_wait_max = budget;
+		self
+	}
+
+	pub fn claim_max_parked(mut self, max: usize) -> Self {
+		self.claim_max_parked = max;
 		self
 	}
 
@@ -103,6 +117,8 @@ impl HttpConfigurator {
 			max_connections: self.max_connections,
 			query_timeout: self.query_timeout,
 			request_timeout: self.request_timeout,
+			claim_wait_max: self.claim_wait_max,
+			claim_max_parked: self.claim_max_parked,
 			spawner: self.spawner,
 			clock: self.clock,
 			rng: self.rng,
@@ -122,6 +138,10 @@ pub struct HttpConfig {
 	pub query_timeout: Duration,
 
 	pub request_timeout: Duration,
+
+	pub claim_wait_max: Duration,
+
+	pub claim_max_parked: usize,
 
 	pub spawner: Option<ActorSpawner>,
 
@@ -166,6 +186,8 @@ impl SubsystemFactory for HttpSubsystemFactory {
 			config.query_timeout,
 			config.request_timeout,
 			config.max_connections,
+			config.claim_wait_max,
+			config.claim_max_parked,
 			spawner,
 			engine,
 			clock,
@@ -222,6 +244,8 @@ impl HttpSubsystemFactory {
 		query_timeout: Duration,
 		request_timeout: Duration,
 		max_connections: usize,
+		claim_wait_max: Duration,
+		claim_max_parked: usize,
 		spawner: ActorSpawner,
 		engine: StandardEngine,
 		clock: Clock,
@@ -232,7 +256,9 @@ impl HttpSubsystemFactory {
 		let query_config = StateConfig::new()
 			.query_timeout(query_timeout)
 			.request_timeout(request_timeout)
-			.max_connections(max_connections);
+			.max_connections(max_connections)
+			.claim_wait_max(claim_wait_max)
+			.claim_max_parked(claim_max_parked);
 
 		AppState::new(spawner, engine, auth_service, query_config, interceptors, clock, rng)
 	}

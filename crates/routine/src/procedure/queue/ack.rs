@@ -21,6 +21,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{Value, datetime::DateTime, value_type::ValueType},
 };
+use tracing::{Span, field::Empty, instrument};
 
 use crate::procedure::{
 	identity::set_attribute::extract_args,
@@ -58,12 +59,14 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueAck {
 		ValueType::Any
 	}
 
+	#[instrument(name = "queue::ack", level = "debug", skip_all, fields(outcome = Empty, status = Empty))]
 	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
 		require_command_transaction(PROCEDURE, ctx.tx)?;
 
 		let args = extract_args(PROCEDURE, ctx.params, 3)?;
 		let raw_token = utf8_arg(PROCEDURE, &args[0], 0)?;
 		let outcome = outcome_arg(&args[1], 1)?;
+		Span::current().record("outcome", outcome_name(outcome));
 		let response = optional_utf8_arg(&args[2], 2)?;
 
 		let token = ClaimToken::parse(PROCEDURE, &ctx.fragment, &raw_token)?;
@@ -124,6 +127,8 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueAck {
 				STATUS_STALE
 			}
 		};
+
+		Span::current().record("status", status);
 
 		Ok(Columns::single_row([
 			("status", Value::Utf8(status.to_string())),

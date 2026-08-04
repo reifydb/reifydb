@@ -25,7 +25,26 @@ pub enum RequestPayload {
 	BatchSubscribe(BatchSubscribeRequest),
 	BatchUnsubscribe(BatchUnsubscribeRequest),
 	Call(CallRequest),
+	QueueClaim(QueueClaimRequest),
 	Logout,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QueueClaimRequest {
+	pub queue: String,
+
+	pub worker: String,
+
+	pub max_n: Option<u32>,
+
+	pub lease_ttl: Option<String>,
+
+	pub wait_for: Option<String>,
+
+	#[serde(default)]
+	pub format: WireFormat,
+
+	pub unwrap: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

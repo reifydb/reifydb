@@ -29,6 +29,7 @@ pub struct WsConfigurator {
 	max_connections: usize,
 
 	query_timeout: Duration,
+	claim_wait_max: Duration,
 
 	max_frame_size: ByteSize,
 
@@ -44,6 +45,7 @@ impl Default for WsConfigurator {
 			admin_bind_addr: None,
 			max_connections: 10_000,
 			query_timeout: Duration::from_seconds(30).unwrap(),
+			claim_wait_max: Duration::from_seconds(60).unwrap(),
 			max_frame_size: ByteSize::from_mib(16),
 			runtime: None,
 			poll_batch_size: 100,
@@ -68,6 +70,11 @@ impl WsConfigurator {
 
 	pub fn max_connections(mut self, max: usize) -> Self {
 		self.max_connections = max;
+		self
+	}
+
+	pub fn claim_wait_max(mut self, budget: Duration) -> Self {
+		self.claim_wait_max = budget;
 		self
 	}
 
@@ -97,6 +104,7 @@ impl WsConfigurator {
 			admin_bind_addr: self.admin_bind_addr,
 			max_connections: self.max_connections,
 			query_timeout: self.query_timeout,
+			claim_wait_max: self.claim_wait_max,
 			max_frame_size: self.max_frame_size,
 			runtime: self.runtime,
 			poll_batch_size: self.poll_batch_size,
@@ -113,6 +121,8 @@ pub struct WsConfig {
 	pub max_connections: usize,
 
 	pub query_timeout: Duration,
+
+	pub claim_wait_max: Duration,
 
 	pub max_frame_size: ByteSize,
 
@@ -152,8 +162,10 @@ impl SubsystemFactory for WsSubsystemFactory {
 		let rng = ioc.resolve::<Rng>()?;
 		let ioc_handle = ioc.resolve::<Handle>()?;
 
-		let query_config =
-			StateConfig::new().query_timeout(config.query_timeout).max_connections(config.max_connections);
+		let query_config = StateConfig::new()
+			.query_timeout(config.query_timeout)
+			.max_connections(config.max_connections)
+			.claim_wait_max(config.claim_wait_max);
 
 		let interceptors = ioc.resolve::<RequestInterceptorChain>().unwrap_or_default();
 		let handle = config.runtime.unwrap_or(ioc_handle);

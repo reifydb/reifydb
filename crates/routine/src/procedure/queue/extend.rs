@@ -18,6 +18,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{Value, duration::Duration, value_type::ValueType},
 };
+use tracing::instrument;
 
 use crate::procedure::{
 	identity::set_attribute::extract_args,
@@ -51,6 +52,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueExtend {
 		ValueType::Any
 	}
 
+	#[instrument(name = "queue::extend", level = "debug", skip_all)]
 	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
 		require_command_transaction(PROCEDURE, ctx.tx)?;
 

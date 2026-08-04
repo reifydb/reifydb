@@ -14,6 +14,7 @@ use reifydb_runtime::actor::reply::reply_channel;
 use reifydb_sub_server::{
 	auth::{AuthError, extract_identity_from_auth_header},
 	binding::dispatch_binding,
+	claim::{WireClaimRequest, dispatch_claim},
 	dispatch::dispatch,
 	interceptor::{Protocol, RequestContext, RequestMetadata},
 	subscription::{
@@ -49,8 +50,8 @@ use crate::{
 		AdminRequest, AdminResponse, AuthenticateRequest, AuthenticateResponse, BatchSubscribeRequest,
 		BatchSubscriptionEvent, BatchUnsubscribeRequest, BatchUnsubscribeResponse, CommandRequest,
 		CommandResponse, LogoutRequest, LogoutResponse, OperationRequest, OperationResponse,
-		Params as ProtoParams, QueryRequest, QueryResponse, SubscribeRequest, SubscriptionEvent,
-		UnsubscribeRequest, UnsubscribeResponse, reify_db_server::ReifyDb,
+		Params as ProtoParams, QueryRequest, QueryResponse, QueueClaimRequest, QueueClaimResponse,
+		SubscribeRequest, SubscriptionEvent, UnsubscribeRequest, UnsubscribeResponse, reify_db_server::ReifyDb,
 	},
 	server_state::GrpcServerState,
 	subscription::{GrpcWireSink, SubscriptionRegistry, WireFormat},
@@ -619,6 +620,34 @@ impl ReifyDb for ReifyDbService {
 				.await
 				.map_err(GrpcError::from)?;
 		Ok(Self::build_call_response(encode_rbcf(frames), &metrics))
+	}
+
+	async fn queue_claim(
+		&self,
+		request: Request<QueueClaimRequest>,
+	) -> Result<Response<QueueClaimResponse>, Status> {
+		let identity = self.extract_identity(&request)?;
+		let metadata = Self::build_metadata(&request);
+		let inner = request.into_inner();
+
+		let claim = WireClaimRequest {
+			queue: inner.queue,
+			worker: inner.worker,
+			max_n: inner.max_n,
+			lease_ttl: inner.lease_ttl,
+			wait_for: inner.wait_for,
+		}
+		.into_claim_request()
+		.map_err(Status::invalid_argument)?;
+
+		let (frames, metrics) =
+			dispatch_claim(&self.state, identity, claim, metadata).await.map_err(GrpcError::from)?;
+
+		let mut response = Response::new(QueueClaimResponse {
+			rbcf: encode_rbcf(frames),
+		});
+		insert_meta_headers(response.metadata_mut(), &metrics);
+		Ok(response)
 	}
 }
 

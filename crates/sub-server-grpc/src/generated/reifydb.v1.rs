@@ -50,6 +50,24 @@ pub struct OperationResponse {
     #[prost(bytes = "vec", tag = "1")]
     pub rbcf: ::prost::alloc::vec::Vec<u8>,
 }
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct QueueClaimRequest {
+    #[prost(string, tag = "1")]
+    pub queue: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub worker: ::prost::alloc::string::String,
+    #[prost(uint32, optional, tag = "3")]
+    pub max_n: ::core::option::Option<u32>,
+    #[prost(string, optional, tag = "4")]
+    pub lease_ttl: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "5")]
+    pub wait_for: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct QueueClaimResponse {
+    #[prost(bytes = "vec", tag = "1")]
+    pub rbcf: ::prost::alloc::vec::Vec<u8>,
+}
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SubscribeRequest {
     #[prost(string, tag = "1")]
@@ -574,6 +592,10 @@ pub mod reify_db_server {
             &self,
             request: tonic::Request<super::OperationRequest>,
         ) -> std::result::Result<tonic::Response<super::OperationResponse>, tonic::Status>;
+        async fn queue_claim(
+            &self,
+            request: tonic::Request<super::QueueClaimRequest>,
+        ) -> std::result::Result<tonic::Response<super::QueueClaimResponse>, tonic::Status>;
     }
     #[derive(Debug)]
     pub struct ReifyDbServer<T> {
@@ -1029,6 +1051,49 @@ pub mod reify_db_server {
                     let inner = self.inner.clone();
                     let fut = async move {
                         let method = LogoutSvc(inner);
+                        let codec = tonic_prost::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/reifydb.v1.ReifyDB/QueueClaim" => {
+                    #[allow(non_camel_case_types)]
+                    struct QueueClaimSvc<T: ReifyDb>(pub Arc<T>);
+                    impl<T: ReifyDb> tonic::server::UnaryService<super::QueueClaimRequest>
+                    for QueueClaimSvc<T> {
+                        type Response = super::QueueClaimResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::QueueClaimRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as ReifyDb>::queue_claim(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = QueueClaimSvc(inner);
                         let codec = tonic_prost::ProstCodec::default();
                         let mut grpc = tonic::server::Grpc::new(codec)
                             .apply_compression_config(

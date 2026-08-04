@@ -12,6 +12,7 @@ service ReifyDB {
   rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse);
   rpc Logout(LogoutRequest) returns (LogoutResponse);
   rpc Call(OperationRequest) returns (OperationResponse);
+  rpc QueueClaim(QueueClaimRequest) returns (QueueClaimResponse);
 }
 
 // Every response payload is an RBCF message (the canonical binary columnar
@@ -28,6 +29,17 @@ message QueryResponse { bytes rbcf = 1; }
 // Call a bound procedure via its gRPC binding name (globally unique across `system::bindings::grpc`).
 message OperationRequest  { string name = 1; optional Params params = 2; }
 message OperationResponse { bytes rbcf = 1; }
+
+// Claim items from a queue. wait_for and lease_ttl are RQL duration literals such as "25s";
+// an absent or zero wait_for is a plain non-blocking claim.
+message QueueClaimRequest {
+  string queue = 1;
+  string worker = 2;
+  optional uint32 max_n = 3;
+  optional string lease_ttl = 4;
+  optional string wait_for = 5;
+}
+message QueueClaimResponse { bytes rbcf = 1; }
 
 message SubscribeRequest { string rql = 1; }
 message UnsubscribeRequest { string subscription_id = 1; }

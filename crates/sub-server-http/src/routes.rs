@@ -10,13 +10,15 @@ use tower_http::trace::TraceLayer;
 
 use crate::{
 	handlers::{
-		handle_admin, handle_authenticate, handle_binding, handle_command, handle_logout, handle_query, health,
+		handle_admin, handle_authenticate, handle_binding, handle_command, handle_logout, handle_query,
+		handle_queue_claim, health,
 	},
 	state::HttpServerState,
 };
 
 pub fn router(state: HttpServerState) -> Router {
 	let max_connections = state.max_connections();
+	let claim_max_parked = state.claim_max_parked();
 	let admin_enabled = state.admin_enabled();
 
 	let mut app = Router::new()
@@ -32,5 +34,11 @@ pub fn router(state: HttpServerState) -> Router {
 
 	app = app.route("/api/{*path}", any(handle_binding));
 
-	app.layer(TraceLayer::new_for_http()).layer(ConcurrencyLimitLayer::new(max_connections)).with_state(state)
+	let app = app.layer(ConcurrencyLimitLayer::new(max_connections));
+
+	let claim = Router::new()
+		.route("/v1/queue/claim", post(handle_queue_claim))
+		.layer(ConcurrencyLimitLayer::new(claim_max_parked));
+
+	Router::new().merge(app).merge(claim).layer(TraceLayer::new_for_http()).with_state(state)
 }

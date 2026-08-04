@@ -3,4 +3,6 @@
 
 pub mod hydrate;
 pub mod interceptor;
+pub mod lookup;
 pub mod partition;
+pub mod wake;

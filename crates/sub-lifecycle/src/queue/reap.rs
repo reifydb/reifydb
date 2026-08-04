@@ -31,9 +31,18 @@ use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId, row_number::RowNumber},
 };
-use tracing::{debug, instrument, warn};
+use tracing::{Span, debug, field::Empty, instrument, warn};
 
 use crate::plane::RetentionPlane;
+
+fn releases_work(queue: &Queue, transition: &QueueAckTransition, now: DateTime) -> bool {
+	match transition {
+		QueueAckTransition::Retry {
+			backoff_until,
+		} => *backoff_until <= now,
+		QueueAckTransition::Done | QueueAckTransition::Dead => queue.ordered_by().is_some(),
+	}
+}
 
 struct ReapCursor {
 	queue: QueueId,
@@ -163,6 +172,12 @@ impl QueueLeaseReapTask {
 		})
 	}
 
+	#[instrument(
+		name = "queue::reap::item",
+		level = "trace",
+		skip_all,
+		fields(queue = queue.id.0, partition = partition, item = candidate.row.0)
+	)]
 	fn reap(&self, queue: &Queue, partition: u16, candidate: &Candidate, now: DateTime) -> Result<bool> {
 		let Some(lease_deadline) = candidate.state.lease_deadline else {
 			return Ok(false);
@@ -176,7 +191,19 @@ impl QueueLeaseReapTask {
 			lease_deadline,
 		};
 
-		apply_reap_transition(&self.engine.single_owned(), queue.id, partition, &lease, &transition, now)
+		let applied = apply_reap_transition(
+			&self.engine.single_owned(),
+			queue.id,
+			partition,
+			&lease,
+			&transition,
+			now,
+		)?;
+		if applied && releases_work(queue, &transition, now) {
+			self.engine.queue_wake().nudge(queue.id, 1);
+		}
+
+		Ok(applied)
 	}
 
 	fn is_expired(state: &QueueItemState, now: DateTime) -> bool {
@@ -197,7 +224,7 @@ impl LifecycleTask for QueueLeaseReapTask {
 		&[RetentionClass::QueueLeaseReap]
 	}
 
-	#[instrument(name = "lifecycle::queue::reap::slice", level = "debug", skip_all)]
+	#[instrument(name = "queue::reap::slice", level = "debug", skip_all, fields(scanned = Empty, reaped = Empty))]
 	fn run_slice(&mut self) -> Progress {
 		let now = self.clock.now();
 		let budget = (self.config.get_config_uint8(ConfigKey::QueueLeaseReapBatchSize) as usize).max(1);
@@ -278,6 +305,10 @@ impl LifecycleTask for QueueLeaseReapTask {
 				}
 			}
 		}
+
+		let span = Span::current();
+		span.record("scanned", scanned);
+		span.record("reaped", reaped);
 
 		let backlog = u64::from(parked.is_some());
 		self.cursor = parked;

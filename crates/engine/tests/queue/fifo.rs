@@ -7,6 +7,8 @@ mod ddl;
 mod extend;
 mod hydrate;
 mod insert;
+mod introspection;
+mod longpoll;
 mod ordered;
 mod ordered_hydration;
 mod replay;

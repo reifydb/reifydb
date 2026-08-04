@@ -123,3 +123,12 @@ path = "examples/export/03_selective.rs"
 name = "export-tuning"
 path = "examples/export/04_tuning.rs"
 
+
+# Scratch benchmarks (built by CI, not part of run-all)
+[[bin]]
+name = "scratch-queue-claim-bench"
+path = "examples/scratch/queue_claim_bench.rs"
+
+[[bin]]
+name = "scratch-queue-wake-bench"
+path = "examples/scratch/queue_wake_bench.rs"

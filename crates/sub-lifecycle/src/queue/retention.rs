@@ -36,7 +36,7 @@ use reifydb_value::{
 		value_type::ValueType,
 	},
 };
-use tracing::{debug, instrument, warn};
+use tracing::{Span, debug, field::Empty, instrument, warn};
 
 use crate::plane::RetentionPlane;
 
@@ -255,7 +255,7 @@ impl LifecycleTask for QueueRetentionTask {
 		&[RetentionClass::QueueRetention]
 	}
 
-	#[instrument(name = "lifecycle::queue::retention::slice", level = "debug", skip_all)]
+	#[instrument(name = "queue::retention::slice", level = "debug", skip_all, fields(scanned = Empty, deleted = Empty))]
 	fn run_slice(&mut self) -> Progress {
 		let now = self.clock.now();
 		let budget = (self.config.get_config_uint8(ConfigKey::QueueRetentionBatchSize) as usize).max(1);
@@ -387,6 +387,10 @@ impl LifecycleTask for QueueRetentionTask {
 
 		backlog += u64::from(parked.is_some());
 		self.item_cursor = parked;
+		let span = Span::current();
+		span.record("scanned", scanned);
+		span.record("deleted", deleted);
+
 		self.plane.record_reclamation(RetentionClass::QueueRetention, floor, deleted, backlog);
 
 		if backlog > 0 {

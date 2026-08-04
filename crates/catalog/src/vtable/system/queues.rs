@@ -16,7 +16,10 @@ use reifydb_value::{
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{BaseVTable, Batch, VTableContext},
+	vtable::{
+		BaseVTable, Batch, VTableContext,
+		system::queue_stats::{earliest, partition_stats},
+	},
 };
 
 pub struct SystemQueues {
@@ -61,6 +64,10 @@ impl BaseVTable for SystemQueues {
 		let mut deduplicate_ttl = ColumnBuffer::utf8_with_capacity(queues.len());
 		let mut times = ColumnBuffer::utf8_with_capacity(queues.len());
 		let mut timestamps = ColumnBuffer::utf8_with_capacity(queues.len());
+		let mut depths = ColumnBuffer::uint8_with_capacity(queues.len());
+		let mut in_flights = ColumnBuffer::uint8_with_capacity(queues.len());
+		let mut blocked_keys = ColumnBuffer::uint8_with_capacity(queues.len());
+		let mut oldest_due_at = ColumnBuffer::datetime_with_capacity(queues.len());
 
 		for queue in queues {
 			ids.push(queue.id.0);
@@ -88,6 +95,34 @@ impl BaseVTable for SystemQueues {
 			}
 			times.push(queue.time.domain().as_str());
 			timestamps.push(queue.time.ts().unwrap_or_default());
+
+			match partition_stats(txn, &queue)? {
+				Some(stats) => {
+					let mut depth = 0u64;
+					let mut in_flight = 0u64;
+					let mut blocked = 0u64;
+					let mut oldest = None;
+					for partition in stats {
+						depth += partition.counters.depth;
+						in_flight += partition.counters.in_flight;
+						blocked += partition.counters.blocked_keys;
+						oldest = earliest(oldest, partition.oldest_due_at);
+					}
+					depths.push_value(Value::Uint8(depth));
+					in_flights.push_value(Value::Uint8(in_flight));
+					blocked_keys.push_value(Value::Uint8(blocked));
+					oldest_due_at.push_value(
+						oldest.map(Value::DateTime)
+							.unwrap_or(Value::none_of(ValueType::DateTime)),
+					);
+				}
+				None => {
+					depths.push_value(Value::none_of(ValueType::Uint8));
+					in_flights.push_value(Value::none_of(ValueType::Uint8));
+					blocked_keys.push_value(Value::none_of(ValueType::Uint8));
+					oldest_due_at.push_value(Value::none_of(ValueType::DateTime));
+				}
+			}
 		}
 
 		let columns = vec![
@@ -100,6 +135,10 @@ impl BaseVTable for SystemQueues {
 			ColumnWithName::new(Fragment::internal("deduplicate_ttl"), deduplicate_ttl),
 			ColumnWithName::new(Fragment::internal("time"), times),
 			ColumnWithName::new(Fragment::internal("ts"), timestamps),
+			ColumnWithName::new(Fragment::internal("depth"), depths),
+			ColumnWithName::new(Fragment::internal("in_flight"), in_flights),
+			ColumnWithName::new(Fragment::internal("blocked_keys"), blocked_keys),
+			ColumnWithName::new(Fragment::internal("oldest_due_at"), oldest_due_at),
 		];
 
 		self.exhausted = true;

@@ -14,6 +14,7 @@ pub mod accept;
 pub mod actor;
 pub mod auth;
 pub mod binding;
+pub mod claim;
 pub mod dispatch;
 pub mod execute;
 pub mod format;

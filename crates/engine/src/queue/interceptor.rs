@@ -4,25 +4,90 @@
 use std::collections::BTreeMap;
 
 use reifydb_core::{common::CommitVersion, interface::catalog::id::QueueId};
+use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
-	change::{QueueRowAck, RowChange},
+	change::{QueueAckTransition, QueueRowAck, RowChange},
 	interceptor::transaction::{PostCommitContext, PostCommitInterceptor},
 	queue::scheduling::{QueueAdmission, admit_ready_items, apply_ack_transitions},
 	single::SingleTransaction,
 };
-use tracing::error;
+use reifydb_value::value::datetime::DateTime;
+use tracing::{error, instrument};
 
-use crate::Result;
+use crate::{Result, queue::wake::QueueWakeRegistry};
 
 pub struct QueueSchedulingInterceptor {
 	single: SingleTransaction,
+	wake: QueueWakeRegistry,
+	clock: Clock,
 }
 
 impl QueueSchedulingInterceptor {
-	pub fn new(single: SingleTransaction) -> Self {
+	pub fn new(single: SingleTransaction, wake: QueueWakeRegistry, clock: Clock) -> Self {
 		Self {
 			single,
+			wake,
+			clock,
 		}
+	}
+
+	#[instrument(
+		name = "queue::interceptor::enqueue",
+		level = "debug",
+		skip_all,
+		fields(queue = queue.0, partition = partition, items = items.len())
+	)]
+	fn admit(&self, queue: QueueId, partition: u16, items: &[QueueAdmission], version: CommitVersion) {
+		if let Err(err) = admit_ready_items(&self.single, queue, partition, items) {
+			error!(
+				queue = queue.0,
+				partition,
+				version = version.0,
+				items = items.len(),
+				error = %err,
+				"queue scheduling handoff failed; hydration will recover these items at next boot"
+			);
+			return;
+		}
+
+		let now = self.clock.now();
+		self.wake.nudge(queue, items.iter().filter(|item| is_due(item.not_before, now)).count());
+	}
+
+	#[instrument(
+		name = "queue::interceptor::ack",
+		level = "debug",
+		skip_all,
+		fields(queue = queue.0, partition = partition, items = items.len())
+	)]
+	fn ack(&self, queue: QueueId, partition: u16, items: &[QueueRowAck], version: CommitVersion) {
+		if let Err(err) = apply_ack_transitions(&self.single, queue, partition, items) {
+			error!(
+				queue = queue.0,
+				partition,
+				version = version.0,
+				items = items.len(),
+				error = %err,
+				"queue ack transition failed; the lease will expire and the item is redelivered"
+			);
+			return;
+		}
+
+		let now = self.clock.now();
+		self.wake.nudge(queue, items.iter().filter(|ack| releases_work(ack, now)).count());
+	}
+}
+
+fn is_due(not_before: Option<DateTime>, now: DateTime) -> bool {
+	not_before.is_none_or(|instant| instant <= now)
+}
+
+fn releases_work(ack: &QueueRowAck, now: DateTime) -> bool {
+	match &ack.transition {
+		QueueAckTransition::Retry {
+			backoff_until,
+		} => *backoff_until <= now,
+		QueueAckTransition::Done | QueueAckTransition::Dead => ack.key_hash.is_some(),
 	}
 }
 
@@ -53,29 +118,11 @@ impl PostCommitInterceptor for QueueSchedulingInterceptor {
 		}
 
 		for ((queue, partition), items) in admissions {
-			if let Err(err) = admit_ready_items(&self.single, queue, partition, &items) {
-				error!(
-					queue = queue.0,
-					partition,
-					version = ctx.version.0,
-					items = items.len(),
-					error = %err,
-					"queue scheduling handoff failed; hydration will recover these items at next boot"
-				);
-			}
+			self.admit(queue, partition, &items, ctx.version);
 		}
 
 		for ((queue, partition), items) in acks {
-			if let Err(err) = apply_ack_transitions(&self.single, queue, partition, &items) {
-				error!(
-					queue = queue.0,
-					partition,
-					version = ctx.version.0,
-					items = items.len(),
-					error = %err,
-					"queue ack transition failed; the lease will expire and the item is redelivered"
-				);
-			}
+			self.ack(queue, partition, &items, ctx.version);
 		}
 
 		Ok(())

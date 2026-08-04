@@ -28,7 +28,7 @@ use reifydb_value::{
 		value_type::ValueType,
 	},
 };
-use tracing::debug;
+use tracing::{Span, debug, field::Empty, instrument};
 
 use crate::procedure::{
 	identity::set_attribute::extract_args,
@@ -69,6 +69,12 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueClaim {
 		ValueType::Any
 	}
 
+	#[instrument(
+		name = "queue::claim",
+		level = "debug",
+		skip_all,
+		fields(queue = Empty, worker = Empty, requested = Empty, claimed = Empty)
+	)]
 	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
 		require_command_transaction(PROCEDURE, ctx.tx)?;
 
@@ -77,6 +83,11 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueClaim {
 		let queue_name = utf8_arg(PROCEDURE, &args[1], 1)?;
 		let max_n = positive_count(&args[2], 2)?;
 		let lease_ttl = positive_duration(&args[3], 3)?;
+
+		let span = Span::current();
+		span.record("queue", queue_name.as_str());
+		span.record("worker", worker.as_str());
+		span.record("requested", max_n);
 
 		let now = ctx.runtime_context.clock.now();
 		let queue = resolve_queue_by_name(ctx.catalog, &mut *ctx.tx, &queue_name, &ctx.fragment)?;
@@ -90,6 +101,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueClaim {
 				.clone();
 
 		let leases = lease_due_items(ctx, &single, &queue, &worker, max_n, lease_ttl, now)?;
+		span.record("claimed", leases.len());
 
 		claimed_columns(ctx, &queue, &worker, &leases)
 	}
@@ -208,6 +220,7 @@ fn readable_candidates(
 	Ok(readable)
 }
 
+#[instrument(name = "queue::claim::scan", level = "trace", skip_all, fields(queue = queue.id.0, partition = partition))]
 fn due_candidates(
 	single: &SingleTransaction,
 	queue: &Queue,

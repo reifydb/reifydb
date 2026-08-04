@@ -75,7 +75,7 @@ pub use reifydb_value::{
 		value_type::ValueType,
 	},
 };
-#[cfg(any(feature = "http", feature = "ws"))]
+#[cfg(any(feature = "http", feature = "ws", feature = "grpc"))]
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 #[cfg(any(feature = "ws", feature = "grpc", all(feature = "dst", reifydb_single_threaded)))]
@@ -242,6 +242,7 @@ pub enum RequestPayload {
 	BatchSubscribe(BatchSubscribeRequest),
 	BatchUnsubscribe(BatchUnsubscribeRequest),
 	Call(CallRequest),
+	QueueClaim(WsQueueClaimRequest),
 	Logout,
 }
 
@@ -316,6 +317,34 @@ pub struct BatchUnsubscribeRequest {
 pub struct CallRequest {
 	pub name: String,
 	pub params: Option<WireParams>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub format: Option<WireFormat>,
+}
+
+#[cfg(any(feature = "http", feature = "ws", feature = "grpc"))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct QueueClaimRequest {
+	pub queue: String,
+	pub worker: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub max_n: Option<u32>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub lease_ttl: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub wait_for: Option<String>,
+}
+
+#[cfg(any(feature = "http", feature = "ws"))]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WsQueueClaimRequest {
+	pub queue: String,
+	pub worker: String,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub max_n: Option<u32>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub lease_ttl: Option<String>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub wait_for: Option<String>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub format: Option<WireFormat>,
 }

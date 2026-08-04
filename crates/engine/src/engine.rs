@@ -72,7 +72,7 @@ use tracing::instrument;
 use crate::{
 	Result,
 	bulk_insert::builder::{BulkInsertBuilder, Unchecked, Validated},
-	queue::interceptor::QueueSchedulingInterceptor,
+	queue::{interceptor::QueueSchedulingInterceptor, wake::QueueWakeRegistry},
 	vm::{
 		Admin, Command, Query, Subscription,
 		executor::Executor,
@@ -447,11 +447,21 @@ impl StandardEngine {
 			interceptors.post_commit.add(Arc::new(CatalogCacheInterceptor::new(&catalog_for_interceptor)));
 		}));
 
+		let queue_wake = config.ioc.try_resolve::<QueueWakeRegistry>().unwrap_or_else(|| {
+			let registry = QueueWakeRegistry::new();
+			config.ioc.register_service(registry.clone());
+			registry
+		});
+
 		let single_for_interceptor = single.clone();
+		let wake_for_interceptor = queue_wake.clone();
+		let clock_for_interceptor = config.runtime_context.clock.clone();
 		interceptors.add_late(Arc::new(move |interceptors: &mut Interceptors| {
-			interceptors
-				.post_commit
-				.add(Arc::new(QueueSchedulingInterceptor::new(single_for_interceptor.clone())));
+			interceptors.post_commit.add(Arc::new(QueueSchedulingInterceptor::new(
+				single_for_interceptor.clone(),
+				wake_for_interceptor.clone(),
+				clock_for_interceptor.clone(),
+			)));
 		}));
 
 		let interceptors = Arc::new(interceptors);
@@ -605,6 +615,11 @@ impl StandardEngine {
 	#[inline]
 	pub fn ioc(&self) -> &IocContainer {
 		&self.executor.ioc
+	}
+
+	#[inline]
+	pub fn queue_wake(&self) -> QueueWakeRegistry {
+		self.ioc().resolve::<QueueWakeRegistry>().expect("StandardEngine::new registers the QueueWakeRegistry")
 	}
 
 	#[inline]
