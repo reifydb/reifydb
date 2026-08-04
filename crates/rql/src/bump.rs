@@ -3,9 +3,10 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-pub(crate) use bumpalo::{Bump, collections::Vec as BumpVec};
+pub(crate) use bumpalo::collections::Vec as BumpVec;
 use reifydb_value::fragment::{Fragment, StatementColumn, StatementLine};
 
+pub type Bump = bumpalo::Bump;
 pub type BumpBox<'b, T> = bumpalo::boxed::Box<'b, T>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
