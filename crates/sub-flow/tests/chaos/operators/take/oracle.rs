@@ -98,10 +98,7 @@ impl Model<TakeRow> for TakeOracle {
 				 oracle and the corpus have diverged",
 				row.number
 			),
-			None => panic!(
-				"the driver retracted row {:?}, which the oracle never admitted",
-				row.number
-			),
+			None => panic!("the driver retracted row {:?}, which the oracle never admitted", row.number),
 		}
 	}
 
@@ -110,10 +107,9 @@ impl Model<TakeRow> for TakeOracle {
 		// fresh arrival sequence. The operator rewrites content in place and leaves the sequence alone,
 		// so an updated row does not jump the queue ahead of rows that arrived after it.
 		assert_eq!(pre.number, post.number, "an update must not change a row's number");
-		let (seq, held) = self
-			.live
-			.remove(&pre.number)
-			.unwrap_or_else(|| panic!("the driver updated row {:?}, which the oracle never admitted", pre.number));
+		let (seq, held) = self.live.remove(&pre.number).unwrap_or_else(|| {
+			panic!("the driver updated row {:?}, which the oracle never admitted", pre.number)
+		});
 		assert_eq!(
 			held.value, pre.value,
 			"the driver updates from the value it last admitted for row {:?}",

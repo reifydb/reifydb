@@ -33,16 +33,16 @@ use crate::{
 		append::workload::{AppendRow, AppendWorkload},
 		distinct::workload::{DistinctRow, DistinctWorkload},
 		gate::workload::{GateRow, GateWorkload},
+		join::{
+			Variant,
+			workload::{JoinRow, JoinWorkload, Side},
+		},
 		pipeline::Chain,
 		rowwise::{
 			Shape,
 			workload::{RowwiseRow, RowwiseWorkload},
 		},
 		take::workload::{TakeRow, TakeWorkload},
-		join::{
-			Variant,
-			workload::{JoinRow, JoinWorkload, Side},
-		},
 		window::{WindowSpec, build, grid::Fold},
 	},
 };
@@ -315,6 +315,37 @@ fn the_window_folds_are_stated_independently_of_the_slots_they_check() {
 	assert_eq!(Fold::Min.apply(&[3, 1, 2]), Value::Int8(1));
 	assert_eq!(Fold::Max.apply(&[3, 1, 2]), Value::Int8(3));
 }
+
+fn rolling_fold_params(grace_secs: u64) -> operators::window::rolling::Params {
+	operators::window::rolling::Params {
+		size_secs: 30,
+		grace_secs,
+		groups: 3,
+		steps: 60,
+		max_batch: 4,
+		coord_span_ms: 400_000,
+		remove_pct: 30,
+		update_pct: 25,
+		seal_pct: 30,
+	}
+}
+
+chaos_test!(window_rolling_min_graced_chaos, |seed| {
+	// The only path that reaches the sealing accumulator's SEALED half. Min is non-invertible under
+	// grace, so the slot is a SealingMin; rolling is the kind whose seal driver ages entries out of
+	// the grace tail, which is what fills `sealed`. Tumbling reaches the container and its tail only.
+	operators::window::rolling::drive_folded(seed, rolling_fold_params(45), Fold::Min);
+});
+
+chaos_test!(window_rolling_max_graced_chaos, |seed| {
+	operators::window::rolling::drive_folded(seed, rolling_fold_params(45), Fold::Max);
+});
+
+chaos_test!(window_rolling_min_zero_grace_chaos, |seed| {
+	// Zero grace keeps min invertible, so this drives the multiset instead and is the control that
+	// says the graced sweeps above are testing something different.
+	operators::window::rolling::drive_folded(seed, rolling_fold_params(0), Fold::Min);
+});
 
 chaos_test!(window_tumbling_random_chaos, |seed| {
 	operators::window::tumbling::drive_random(seed);
@@ -886,10 +917,9 @@ fn the_operator_emits_the_value_widths_the_oracle_renders() {
 
 		let post = out.diffs.iter().next().and_then(|diff| diff.post()).expect("one row is one aggregate row");
 		let names: Vec<String> = post.names.iter().map(|name| name.text().to_string()).collect();
-		let idx = names
-			.iter()
-			.position(|name| name == agg.column())
-			.unwrap_or_else(|| panic!("{} must publish a {} column, got {names:?}", agg.label(), agg.column()));
+		let idx = names.iter().position(|name| name == agg.column()).unwrap_or_else(|| {
+			panic!("{} must publish a {} column, got {names:?}", agg.label(), agg.column())
+		});
 
 		let emitted = post.columns[idx].get_value(0);
 		let rendered = agg.fold(&[7]);
@@ -921,7 +951,12 @@ chaos_test!(pipeline_filter_aggregate_chaos, |seed| {
 	// Membership changes upstream become inserts and removes the corpus never issued, and the
 	// aggregate has to fold them into the right total. A filter that mislabels a crossing gives the
 	// aggregate a contribution to add twice or none to subtract.
-	operators::pipeline::drive(seed, pipeline_params(Chain::Filter { threshold: 50 }));
+	operators::pipeline::drive(
+		seed,
+		pipeline_params(Chain::Filter {
+			threshold: 50,
+		}),
+	);
 });
 
 chaos_test!(pipeline_map_aggregate_chaos, |seed| {
@@ -934,7 +969,12 @@ chaos_test!(pipeline_map_aggregate_chaos, |seed| {
 chaos_test!(pipeline_gate_aggregate_chaos, |seed| {
 	// A latch feeding a fold. A row that falls back below the threshold must keep contributing, and a
 	// filter-shaped gate would quietly subtract it.
-	operators::pipeline::drive(seed, pipeline_params(Chain::Gate { threshold: 50 }));
+	operators::pipeline::drive(
+		seed,
+		pipeline_params(Chain::Gate {
+			threshold: 50,
+		}),
+	);
 });
 
 chaos_test!(pipeline_random_chaos, |seed| {
@@ -967,19 +1007,34 @@ chaos_test!(filter_midpoint_chaos, |seed| {
 	// Half the corpus passes, so updates cross the predicate in both directions often. Crossing is the
 	// whole risk surface: an update that enters the result must be published as an insert and one that
 	// leaves it as a remove, and emitting an update in either case gives the sink a row it never had.
-	operators::rowwise::drive(seed, rowwise_params(Shape::Filter { threshold: 50 }));
+	operators::rowwise::drive(
+		seed,
+		rowwise_params(Shape::Filter {
+			threshold: 50,
+		}),
+	);
 });
 
 chaos_test!(filter_strict_chaos, |seed| {
 	// Almost nothing passes, so the result set is nearly always empty and the rare admission is the
 	// only thing the sweep has to get right.
-	operators::rowwise::drive(seed, rowwise_params(Shape::Filter { threshold: 95 }));
+	operators::rowwise::drive(
+		seed,
+		rowwise_params(Shape::Filter {
+			threshold: 95,
+		}),
+	);
 });
 
 chaos_test!(filter_permissive_chaos, |seed| {
 	// Everything passes, so filter degenerates to a pass-through and the sweep checks it neither drops
 	// nor duplicates while doing nothing.
-	operators::rowwise::drive(seed, rowwise_params(Shape::Filter { threshold: 0 }));
+	operators::rowwise::drive(
+		seed,
+		rowwise_params(Shape::Filter {
+			threshold: 0,
+		}),
+	);
 });
 
 chaos_test!(map_chaos, |seed| {
@@ -999,7 +1054,14 @@ fn a_filter_publishes_a_crossing_as_an_insert_or_a_remove_not_an_update() {
 	// The one thing a filter can get wrong that a view-level comparison would not always catch: a row
 	// that enters or leaves the result must change membership, not merely change value. A sink handed
 	// an update for a row it is not holding cannot fold it.
-	let mut harness = Harness::new(|runtime| operators::rowwise::build(Shape::Filter { threshold: 50 }, runtime));
+	let mut harness = Harness::new(|runtime| {
+		operators::rowwise::build(
+			Shape::Filter {
+				threshold: 50,
+			},
+			runtime,
+		)
+	});
 	let workload = RowwiseWorkload {
 		value_ceiling: 100,
 		shape: Shape::Filter {
@@ -1054,12 +1116,9 @@ fn the_rowwise_operators_emit_what_their_oracles_render() {
 		};
 
 		let out = harness.apply(workload.insert(std::slice::from_ref(&row))).expect("apply must succeed");
-		let post = out
-			.diffs
-			.iter()
-			.next()
-			.and_then(|diff| diff.post())
-			.unwrap_or_else(|| panic!("{} must publish a row that passes, got {:?}", shape.label(), out.diffs));
+		let post = out.diffs.iter().next().and_then(|diff| diff.post()).unwrap_or_else(|| {
+			panic!("{} must publish a row that passes, got {:?}", shape.label(), out.diffs)
+		});
 
 		let emitted: Vec<Value> = post.columns.iter().map(|column| column.get_value(0)).collect();
 		assert_eq!(
@@ -1074,50 +1133,57 @@ fn the_rowwise_operators_emit_what_their_oracles_render() {
 
 #[test]
 fn a_rowwise_update_carries_the_previous_row_as_its_pre() {
-    // Found by mutation: making map publish `post` as its own `pre` passed all 64 sweep iterations.
-    // A view-folding oracle cannot see this. The session folds an update by row number and keeps the
-    // post, so a wrong pre changes nothing it can compare - the same blind spot the snapshot join's
-    // retraction has, and it is guarded the same way, by reading the returned diffs directly.
-    //
-    // It matters for the same reason it does there: a consumer that builds its retraction from
-    // pre_data verbatim, as chaindex block_trade does, subtracts whatever pre says. A pre equal to
-    // post subtracts the row that was just added and leaves the one that should have gone.
-    for shape in operators::rowwise::MATRIX {
-        let mut harness = Harness::new(|runtime| operators::rowwise::build(shape, runtime));
-        let workload = RowwiseWorkload {
-            value_ceiling: 100,
-            shape,
-        };
-        let before = RowwiseRow {
-            number: RowNumber(1),
-            value: 60,
-        };
-        let after = RowwiseRow {
-            number: RowNumber(1),
-            value: 80,
-        };
+	// Found by mutation: making map publish `post` as its own `pre` passed all 64 sweep iterations.
+	// A view-folding oracle cannot see this. The session folds an update by row number and keeps the
+	// post, so a wrong pre changes nothing it can compare - the same blind spot the snapshot join's
+	// retraction has, and it is guarded the same way, by reading the returned diffs directly.
+	//
+	// It matters for the same reason it does there: a consumer that builds its retraction from
+	// pre_data verbatim, as chaindex block_trade does, subtracts whatever pre says. A pre equal to
+	// post subtracts the row that was just added and leaves the one that should have gone.
+	for shape in operators::rowwise::MATRIX {
+		let mut harness = Harness::new(|runtime| operators::rowwise::build(shape, runtime));
+		let workload = RowwiseWorkload {
+			value_ceiling: 100,
+			shape,
+		};
+		let before = RowwiseRow {
+			number: RowNumber(1),
+			value: 60,
+		};
+		let after = RowwiseRow {
+			number: RowNumber(1),
+			value: 80,
+		};
 
-        harness.apply(workload.insert(std::slice::from_ref(&before))).expect("apply must succeed");
-        let out = harness.apply(workload.update(&before, &after)).expect("apply must succeed");
+		harness.apply(workload.insert(std::slice::from_ref(&before))).expect("apply must succeed");
+		let out = harness.apply(workload.update(&before, &after)).expect("apply must succeed");
 
-        // Both values sit above the filter's threshold, so every shape stays in its result and the
-        // change is an update rather than a crossing. Without that this would be asserting the
-        // membership transition instead of the content of `pre`.
-        let [Diff::Update { pre, post, .. }] = out.diffs.as_slice() else {
-            panic!("{} must publish one update, got {:?}", shape.label(), out.diffs);
-        };
+		// Both values sit above the filter's threshold, so every shape stays in its result and the
+		// change is an update rather than a crossing. Without that this would be asserting the
+		// membership transition instead of the content of `pre`.
+		let [
+			Diff::Update {
+				pre,
+				post,
+				..
+			},
+		] = out.diffs.as_slice()
+		else {
+			panic!("{} must publish one update, got {:?}", shape.label(), out.diffs);
+		};
 
-        let emitted_pre: Vec<Value> = pre.columns.iter().map(|column| column.get_value(0)).collect();
-        let emitted_post: Vec<Value> = post.columns.iter().map(|column| column.get_value(0)).collect();
-        assert_eq!(
-            emitted_pre,
-            shape.render(&before),
-            "{}'s update must retract the row as it was published before, not as it is now",
-            shape.label()
-        );
-        assert_eq!(emitted_post, shape.render(&after), "{}'s update must publish the new row", shape.label());
-        assert_ne!(emitted_pre, emitted_post, "the two halves must differ, or this asserts nothing");
-    }
+		let emitted_pre: Vec<Value> = pre.columns.iter().map(|column| column.get_value(0)).collect();
+		let emitted_post: Vec<Value> = post.columns.iter().map(|column| column.get_value(0)).collect();
+		assert_eq!(
+			emitted_pre,
+			shape.render(&before),
+			"{}'s update must retract the row as it was published before, not as it is now",
+			shape.label()
+		);
+		assert_eq!(emitted_post, shape.render(&after), "{}'s update must publish the new row", shape.label());
+		assert_ne!(emitted_pre, emitted_post, "the two halves must differ, or this asserts nothing");
+	}
 }
 
 #[test]
@@ -1204,8 +1270,17 @@ fn a_gate_latches_and_does_not_release_when_its_condition_stops_holding() {
 	);
 
 	let fell = harness.apply(workload.update(&row(1, 60), &row(1, 10))).expect("apply must succeed");
-	let [Diff::Update { post, .. }] = fell.diffs.as_slice() else {
-		panic!("an admitted row falling below the threshold must stay in the view as an update, got {:?}", fell.diffs);
+	let [
+		Diff::Update {
+			post,
+			..
+		},
+	] = fell.diffs.as_slice()
+	else {
+		panic!(
+			"an admitted row falling below the threshold must stay in the view as an update, got {:?}",
+			fell.diffs
+		);
 	};
 	assert_eq!(payload(post, 0), 10, "and it must carry the value it fell to");
 
@@ -1521,8 +1596,18 @@ fn a_distinct_operator_publishes_one_row_per_key_and_promotes_on_retraction() {
 	);
 
 	let promoted = harness.apply(workload.remove(&row(2, 20))).expect("apply must succeed");
-	let [Diff::Update { pre, post, .. }] = promoted.diffs.as_slice() else {
-		panic!("retracting the visible row of a key that still holds another must promote it, got {:?}", promoted.diffs);
+	let [
+		Diff::Update {
+			pre,
+			post,
+			..
+		},
+	] = promoted.diffs.as_slice()
+	else {
+		panic!(
+			"retracting the visible row of a key that still holds another must promote it, got {:?}",
+			promoted.diffs
+		);
 	};
 	assert_eq!(payload(pre, 0), 20, "the retraction must carry the payload that was published");
 	assert_eq!(payload(post, 0), 10, "and the promotion must carry the surviving row's payload");

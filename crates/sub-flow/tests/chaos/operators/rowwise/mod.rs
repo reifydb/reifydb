@@ -38,7 +38,10 @@ use crate::{
 		routines,
 		rowwise::{
 			oracle::RowwiseOracle,
-			workload::{IDENTITY_COLUMN, PAYLOAD_COLUMN, ROWWISE_OPERATOR, RowwiseRow, RowwiseWorkload, SOURCE_OPERATOR},
+			workload::{
+				IDENTITY_COLUMN, PAYLOAD_COLUMN, ROWWISE_OPERATOR, RowwiseRow, RowwiseWorkload,
+				SOURCE_OPERATOR,
+			},
 		},
 	},
 };
@@ -196,11 +199,25 @@ pub fn build(shape: Shape, runtime: RuntimeContext) -> Rowwise {
 	match shape {
 		Shape::Filter {
 			..
-		} => Rowwise::Filter(FilterOperator::new(parent, ROWWISE_OPERATOR, expressions, routines(), runtime, ctx)),
-		Shape::Map => Rowwise::Map(MapOperator::new(parent, ROWWISE_OPERATOR, expressions, routines(), runtime, ctx)),
-		Shape::Extend => {
-			Rowwise::Extend(ExtendOperator::new(parent, ROWWISE_OPERATOR, expressions, routines(), runtime, ctx))
+		} => Rowwise::Filter(FilterOperator::new(
+			parent,
+			ROWWISE_OPERATOR,
+			expressions,
+			routines(),
+			runtime,
+			ctx,
+		)),
+		Shape::Map => {
+			Rowwise::Map(MapOperator::new(parent, ROWWISE_OPERATOR, expressions, routines(), runtime, ctx))
 		}
+		Shape::Extend => Rowwise::Extend(ExtendOperator::new(
+			parent,
+			ROWWISE_OPERATOR,
+			expressions,
+			routines(),
+			runtime,
+			ctx,
+		)),
 	}
 }
 

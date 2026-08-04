@@ -15,7 +15,10 @@ use std::collections::BTreeMap;
 use reifydb_testing_chaos::operator::{expectation::KeyedMultiset, model::Model, view::RowKey};
 use reifydb_value::value::{Value, row_number::RowNumber};
 
-use crate::operators::rowwise::{Shape, workload::{IDENTITY_COLUMN, RowwiseRow}};
+use crate::operators::rowwise::{
+	Shape,
+	workload::{IDENTITY_COLUMN, RowwiseRow},
+};
 
 pub struct RowwiseOracle {
 	shape: Shape,
@@ -31,8 +34,12 @@ impl RowwiseOracle {
 	}
 
 	fn claim(&self) -> KeyedMultiset {
-		let mut rows: Vec<Vec<Value>> =
-			self.live.values().filter(|row| self.shape.admits(row)).map(|row| self.shape.render(row)).collect();
+		let mut rows: Vec<Vec<Value>> = self
+			.live
+			.values()
+			.filter(|row| self.shape.admits(row))
+			.map(|row| self.shape.render(row))
+			.collect();
 		rows.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
 
 		// Keyed on the identity column, which every shape carries through, so two output rows claiming

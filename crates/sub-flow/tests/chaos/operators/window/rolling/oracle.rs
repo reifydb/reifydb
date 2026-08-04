@@ -6,7 +6,10 @@ use std::collections::BTreeMap;
 use reifydb_testing_chaos::operator::model::Model;
 use reifydb_value::value::{Value, row_number::RowNumber};
 
-use crate::{framework::workload::WindowRow, operators::window::grid::render};
+use crate::{
+	framework::workload::WindowRow,
+	operators::window::grid::{Fold, render},
+};
 
 /// A rolling window keeps one row per group, aggregating whatever still trails the seal ledger. The
 /// boundaries are asymmetric: admission drops strictly below `ledger - size - grace`, eviction pops at
@@ -16,6 +19,7 @@ pub struct Oracle {
 	grace_ms: u64,
 	ledger: u64,
 	contributions: Vec<Contribution>,
+	fold: Fold,
 }
 
 struct Contribution {
@@ -33,7 +37,16 @@ impl Oracle {
 			grace_ms,
 			ledger: 0,
 			contributions: Vec::new(),
+			fold: Fold::Sum,
 		}
+	}
+
+	/// Sum stays the default so the pinned rolling corpora keep the oracle they were recorded against.
+	/// Min and max opt in, and they are the reason this exists: only a non-invertible fold reaches the
+	/// sealing accumulator, and only a rolling window ever populates its sealed half.
+	pub fn with_fold(mut self, fold: Fold) -> Self {
+		self.fold = fold;
+		self
 	}
 
 	fn admission_horizon(&self) -> u64 {
@@ -52,12 +65,17 @@ impl Oracle {
 		self.eviction_cutoff().is_none_or(|cutoff| coord > cutoff)
 	}
 
-	fn totals(&self) -> BTreeMap<(i32, u64), i64> {
-		let mut totals: BTreeMap<(i32, u64), i64> = BTreeMap::new();
+	fn folded(&self) -> Vec<Vec<Value>> {
+		let mut grouped: BTreeMap<i32, Vec<i64>> = BTreeMap::new();
 		for c in self.contributions.iter().filter(|c| c.live && self.is_retained(c.coord)) {
-			*totals.entry((c.group, 0)).or_insert(0) += c.value;
+			grouped.entry(c.group).or_default().push(c.value);
 		}
-		totals
+		let mut out: Vec<Vec<Value>> = grouped
+			.into_iter()
+			.map(|(group, values)| vec![Value::Int4(group), self.fold.apply(&values)])
+			.collect();
+		out.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
+		out
 	}
 }
 
@@ -109,7 +127,7 @@ impl Model<WindowRow> for Oracle {
 	}
 
 	fn live(&self) -> Vec<Vec<Value>> {
-		render(self.totals().into_iter())
+		self.folded()
 	}
 
 	fn all(&self) -> Vec<Vec<Value>> {

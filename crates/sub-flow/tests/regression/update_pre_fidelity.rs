@@ -206,7 +206,12 @@ fn a_filter_update_retracts_the_row_it_previously_published() {
 	harness.apply(generator::insert(vec![row(1, 1, 60)])).expect("seed applies");
 	let out = harness.apply(generator::update(vec![(row(1, 1, 60), row(1, 1, 80))])).expect("update applies");
 
-	retracts_the_previous_row("filter", &out, &[Value::Int4(1), Value::Int8(60)], &[Value::Int4(1), Value::Int8(80)]);
+	retracts_the_previous_row(
+		"filter",
+		&out,
+		&[Value::Int4(1), Value::Int8(60)],
+		&[Value::Int4(1), Value::Int8(80)],
+	);
 }
 
 #[test]
@@ -481,7 +486,10 @@ mod join {
 			expected[LV] = Value::Int8(8);
 
 			let (retracted, republished) = retraction_and_publication(&updated, &who);
-			assert_eq!(retracted, published, "{who}: the retraction must carry the row previously published");
+			assert_eq!(
+				retracted, published,
+				"{who}: the retraction must carry the row previously published"
+			);
 			assert_eq!(republished, expected, "{who}: and the publication must carry the updated row");
 		}
 	}
@@ -498,29 +506,29 @@ mod join {
 		//
 		// The insert is checked as well as the update because the same partition runs on both, and only
 		// the update path happened to surface it.
-        for (outer, latest, snapshot) in MATRIX {
-            let who = label(outer, latest, snapshot);
-            let mut harness = Harness::with_engine(|engine, _| build(engine, outer, latest, snapshot));
+		for (outer, latest, snapshot) in MATRIX {
+			let who = label(outer, latest, snapshot);
+			let mut harness = Harness::with_engine(|engine, _| build(engine, outer, latest, snapshot));
 
-            harness.apply(change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT)]))
-                .expect("the right side seeds");
-            let inserted = harness
-                .apply(change(vec![tagged(Diff::insert(row(&LEFT_COLUMNS, 1, 1, 7)), LEFT)]))
-                .expect("the left row joins");
-            let updated = harness
-                .apply(change(vec![tagged(
-                    Diff::update(row(&LEFT_COLUMNS, 1, 1, 7), row(&LEFT_COLUMNS, 1, 1, 8)),
-                    LEFT,
-                )]))
-                .expect("the left row updates");
+			harness.apply(change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT)]))
+				.expect("the right side seeds");
+			let inserted = harness
+				.apply(change(vec![tagged(Diff::insert(row(&LEFT_COLUMNS, 1, 1, 7)), LEFT)]))
+				.expect("the left row joins");
+			let updated = harness
+				.apply(change(vec![tagged(
+					Diff::update(row(&LEFT_COLUMNS, 1, 1, 7), row(&LEFT_COLUMNS, 1, 1, 8)),
+					LEFT,
+				)]))
+				.expect("the left row updates");
 
-            for (stage, out) in [("insert", &inserted), ("update", &updated)] {
-                for diff in out.diffs.iter() {
-                    let rows = diff.pre().map(|c| c.row_count()).unwrap_or(0)
-                        + diff.post().map(|c| c.row_count()).unwrap_or(0);
-                    assert!(rows > 0, "{who}: the {stage} published a row-less diff: {diff:?}");
-                }
-            }
-        }
-    }
+			for (stage, out) in [("insert", &inserted), ("update", &updated)] {
+				for diff in out.diffs.iter() {
+					let rows = diff.pre().map(|c| c.row_count()).unwrap_or(0)
+						+ diff.post().map(|c| c.row_count()).unwrap_or(0);
+					assert!(rows > 0, "{who}: the {stage} published a row-less diff: {diff:?}");
+				}
+			}
+		}
+	}
 }

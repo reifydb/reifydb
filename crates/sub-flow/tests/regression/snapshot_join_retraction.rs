@@ -19,18 +19,17 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_engine::test_harness::TestEngine;
+use reifydb_flow::operator::Operator;
 use reifydb_rql::expression::parse_expression;
 use reifydb_sub_flow::{
 	context::FlowContext,
 	operator::join::operator::{JoinOperator, JoinSideConfig},
 };
 use reifydb_test_harness::operator::transaction::FlowTxn;
-use reifydb_flow::operator::Operator;
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
-		Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns,
-		value_type::ValueType,
+		Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType,
 	},
 };
 
@@ -65,9 +64,7 @@ fn row(spec: &[(&str, ValueType); 3], number: u64, key: i32, value: i64) -> Colu
 	let columns = spec
 		.iter()
 		.zip(buffers)
-		.map(|((name, _), buffer)| {
-			ColumnWithName::new(Fragment::internal(*name), buffer)
-		})
+		.map(|((name, _), buffer)| ColumnWithName::new(Fragment::internal(*name), buffer))
 		.collect();
 	let at = DateTime::from_millis(1_000_000 + number);
 	Columns::with_system(
@@ -136,27 +133,31 @@ fn a_left_update_retracts_against_the_right_value_it_was_emitted_with() {
 	let operator = join(&engine);
 	let mut txn = engine.flow_txn().deferred();
 
-	operator
-		.apply(&mut txn, change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT_OPERATOR)]))
+	operator.apply(&mut txn, change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT_OPERATOR)]))
 		.expect("the right slot is seeded");
 
 	let inserted = operator
 		.apply(&mut txn, change(vec![tagged(Diff::insert(row(&LEFT_COLUMNS, 1, 1, 7)), LEFT_OPERATOR)]))
 		.expect("the left row joins");
-	let [Diff::Insert { post, .. }] = inserted.diffs.as_slice() else {
+	let [
+		Diff::Insert {
+			post,
+			..
+		},
+	] = inserted.diffs.as_slice()
+	else {
 		panic!("a matched left insert must emit exactly one insert, got {:?}", inserted.diffs);
 	};
 	assert_eq!(right_value(post), 10, "the left row must be emitted against the slot it found");
 
-	operator
-		.apply(
-			&mut txn,
-			change(vec![tagged(
-				Diff::update(row(&RIGHT_COLUMNS, 100, 1, 10), row(&RIGHT_COLUMNS, 100, 1, 20)),
-				RIGHT_OPERATOR,
-			)]),
-		)
-		.expect("the right slot moves");
+	operator.apply(
+		&mut txn,
+		change(vec![tagged(
+			Diff::update(row(&RIGHT_COLUMNS, 100, 1, 10), row(&RIGHT_COLUMNS, 100, 1, 20)),
+			RIGHT_OPERATOR,
+		)]),
+	)
+	.expect("the right slot moves");
 
 	let updated = operator
 		.apply(
@@ -168,7 +169,14 @@ fn a_left_update_retracts_against_the_right_value_it_was_emitted_with() {
 		)
 		.expect("the left row updates");
 
-	let [Diff::Update { pre, post, .. }] = updated.diffs.as_slice() else {
+	let [
+		Diff::Update {
+			pre,
+			post,
+			..
+		},
+	] = updated.diffs.as_slice()
+	else {
 		panic!("a left update under an unchanged key must emit one update, got {:?}", updated.diffs);
 	};
 	assert_eq!(
@@ -189,11 +197,9 @@ fn a_right_side_change_alone_emits_nothing() {
 	let operator = join(&engine);
 	let mut txn = engine.flow_txn().deferred();
 
-	operator
-		.apply(&mut txn, change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT_OPERATOR)]))
+	operator.apply(&mut txn, change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT_OPERATOR)]))
 		.expect("the right slot is seeded");
-	operator
-		.apply(&mut txn, change(vec![tagged(Diff::insert(row(&LEFT_COLUMNS, 1, 1, 7)), LEFT_OPERATOR)]))
+	operator.apply(&mut txn, change(vec![tagged(Diff::insert(row(&LEFT_COLUMNS, 1, 1, 7)), LEFT_OPERATOR)]))
 		.expect("the left row joins");
 
 	let moved = operator
@@ -217,11 +223,9 @@ fn a_left_update_against_an_unchanged_slot_still_reports_both_sides() {
 	let operator = join(&engine);
 	let mut txn = engine.flow_txn().deferred();
 
-	operator
-		.apply(&mut txn, change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT_OPERATOR)]))
+	operator.apply(&mut txn, change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT_OPERATOR)]))
 		.expect("the right slot is seeded");
-	operator
-		.apply(&mut txn, change(vec![tagged(Diff::insert(row(&LEFT_COLUMNS, 1, 1, 7)), LEFT_OPERATOR)]))
+	operator.apply(&mut txn, change(vec![tagged(Diff::insert(row(&LEFT_COLUMNS, 1, 1, 7)), LEFT_OPERATOR)]))
 		.expect("the left row joins");
 
 	let updated = operator
@@ -234,7 +238,14 @@ fn a_left_update_against_an_unchanged_slot_still_reports_both_sides() {
 		)
 		.expect("the left row updates");
 
-	let [Diff::Update { pre, post, .. }] = updated.diffs.as_slice() else {
+	let [
+		Diff::Update {
+			pre,
+			post,
+			..
+		},
+	] = updated.diffs.as_slice()
+	else {
 		panic!("a left update must emit one update, got {:?}", updated.diffs);
 	};
 	assert_eq!(right_value(pre), 10);

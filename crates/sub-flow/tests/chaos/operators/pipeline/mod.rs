@@ -110,10 +110,9 @@ impl Chain {
 			| Chain::Gate {
 				threshold,
 			} => vec![format!("{PAYLOAD_COLUMN} > {threshold}")],
-			Chain::Map => vec![
-				GROUP_COLUMN.to_string(),
-				format!("{MAPPED_COLUMN}: {PAYLOAD_COLUMN} * {FACTOR}"),
-			],
+			Chain::Map => {
+				vec![GROUP_COLUMN.to_string(), format!("{MAPPED_COLUMN}: {PAYLOAD_COLUMN} * {FACTOR}")]
+			}
 		}
 	}
 
@@ -148,12 +147,7 @@ impl Chain {
 	}
 
 	pub fn latches(self) -> bool {
-		matches!(
-			self,
-			Chain::Gate {
-				..
-			}
-		)
+		matches!(self, Chain::Gate { .. })
 	}
 }
 

@@ -15,6 +15,7 @@ use crate::{
 	framework::{fuzz, harness::Harness, workload::WindowWorkload},
 	operators::window::{
 		WindowSpec, build,
+		grid::Fold,
 		rolling::oracle::{CapacityOracle, Oracle},
 	},
 };
@@ -33,6 +34,13 @@ pub struct Params {
 }
 
 pub fn drive(seed: u64, params: Params) -> Corpus {
+	drive_folded(seed, params, Fold::Sum)
+}
+
+/// The rolling family under a different fold. Min and max are non-invertible whenever grace is
+/// non-zero, and rolling is the only kind whose seal driver ages entries out of the grace tail, so
+/// this is the one path that populates the sealing accumulator's sealed half.
+pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
 	let size_ms = params.size_secs * 1_000;
 	let grace_ms = params.grace_secs * 1_000;
 
@@ -42,7 +50,7 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 			lag: None,
 		},
 		group_by: "g",
-		aggregations: "total: math::sum(v)",
+		aggregations: fold.rql(),
 		grace: Duration::from_seconds(params.grace_secs as i64).unwrap(),
 	};
 
@@ -51,7 +59,7 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 		groups: params.groups,
 		coord_span_ms: params.coord_span_ms,
 	};
-	let mut model = Oracle::new(size_ms, grace_ms);
+	let mut model = Oracle::new(size_ms, grace_ms).with_fold(fold);
 
 	driver::drive(
 		seed,
