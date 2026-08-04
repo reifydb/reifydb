@@ -58,10 +58,6 @@ impl Monoid for Max {
 		])
 	}
 
-	fn state_type(&self, input: ValueType) -> ValueType {
-		input
-	}
-
 	fn lift(&self, value: &Value) -> MonoidState {
 		MonoidState {
 			value: value.clone(),

@@ -396,15 +396,3 @@ fn count_accepts_any_type() {
 	assert!(count.accepted_types().accepts(0, &ValueType::Utf8));
 	assert!(count.accepted_types().accepts(0, &ValueType::Boolean));
 }
-
-#[test]
-fn state_type_widens_to_the_family_ceiling_for_sum_but_not_min_max_or_count() {
-	assert_eq!(Sum::new().state_type(ValueType::Int1), ValueType::Int16);
-	assert_eq!(Sum::new().state_type(ValueType::Uint4), ValueType::Uint16);
-	assert_eq!(Sum::new().state_type(ValueType::Float4), ValueType::Float8);
-	assert_eq!(Sum::new().state_type(ValueType::Decimal), ValueType::Decimal);
-
-	assert_eq!(Min::new().state_type(ValueType::Int4), ValueType::Int4);
-	assert_eq!(Max::new().state_type(ValueType::Date), ValueType::Date);
-	assert_eq!(Count::new().state_type(ValueType::Int4), ValueType::Uint8);
-}

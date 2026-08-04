@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use reifydb_value::value::{
 	Value,
-	value_type::{ValueType, input_types::InputTypes},
+	value_type::input_types::InputTypes,
 };
 use serde::{Deserialize, Serialize};
 
@@ -50,9 +50,6 @@ pub trait Monoid: Send + Sync {
 
 	/// Accepted input value types; validated at CREATE.
 	fn accepted_types(&self) -> InputTypes;
-
-	/// The value type `finalize` produces for a given input column type.
-	fn state_type(&self, input: ValueType) -> ValueType;
 
 	/// Lift a single defined value into a one-element state. Callers must not call this
 	/// with an undefined (`Value::None`) value - skip those before lifting.

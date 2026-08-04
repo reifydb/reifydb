@@ -3,7 +3,7 @@
 
 use reifydb_value::value::{
 	Value,
-	value_type::{ValueType, input_types::InputTypes},
+	value_type::input_types::InputTypes,
 };
 
 use crate::{
@@ -36,10 +36,6 @@ impl Monoid for Count {
 
 	fn accepted_types(&self) -> InputTypes {
 		InputTypes::any()
-	}
-
-	fn state_type(&self, _input: ValueType) -> ValueType {
-		ValueType::Uint8
 	}
 
 	fn lift(&self, _value: &Value) -> MonoidState {

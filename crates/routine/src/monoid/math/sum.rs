@@ -6,7 +6,7 @@ use reifydb_value::{
 	value::{
 		Value,
 		number::safe::{add::SafeAdd, sub::SafeSub},
-		value_type::{ValueType, input_types::InputTypes},
+		value_type::input_types::InputTypes,
 	},
 };
 
@@ -40,21 +40,6 @@ impl Monoid for Sum {
 
 	fn accepted_types(&self) -> InputTypes {
 		InputTypes::numeric()
-	}
-
-	fn state_type(&self, input: ValueType) -> ValueType {
-		match input {
-			ValueType::Int1 | ValueType::Int2 | ValueType::Int4 | ValueType::Int8 | ValueType::Int16 => {
-				ValueType::Int16
-			}
-			ValueType::Uint1
-			| ValueType::Uint2
-			| ValueType::Uint4
-			| ValueType::Uint8
-			| ValueType::Uint16 => ValueType::Uint16,
-			ValueType::Float4 | ValueType::Float8 => ValueType::Float8,
-			other => other,
-		}
 	}
 
 	fn lift(&self, value: &Value) -> MonoidState {
