@@ -10,7 +10,10 @@ use reifydb_value::{
 	value::{int::Int, value_type::ValueType},
 };
 
-use crate::encoded::{row::EncodedRow, shape::RowShape};
+use crate::encoded::{
+	row::{EncodedRowBuilder, read_defined},
+	shape::RowShape,
+};
 
 const MODE_INLINE: u128 = 0x00000000000000000000000000000000;
 const MODE_MASK: u128 = 0x80000000000000000000000000000000;
@@ -21,7 +24,7 @@ const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF;
 const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 
 impl RowShape {
-	pub fn set_int(&self, row: &mut EncodedRow, index: usize, value: &Int) {
+	pub fn set_int(&self, row: &mut EncodedRowBuilder, index: usize, value: &Int) {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(
@@ -43,7 +46,7 @@ impl RowShape {
 			// uniquely-owned buffer, and write_unaligned needs no alignment.
 			unsafe {
 				ptr::write_unaligned(
-					row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u128,
+					row.as_mut_slice().as_mut_ptr().add(field.offset as usize) as *mut u128,
 					packed.to_le(),
 				);
 			}
@@ -55,7 +58,7 @@ impl RowShape {
 		self.replace_dynamic_data(row, index, &bytes);
 	}
 
-	pub fn get_int(&self, row: &EncodedRow, index: usize) -> Int {
+	pub fn get_int(&self, row: &[u8], index: usize) -> Int {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(
@@ -87,14 +90,14 @@ impl RowShape {
 			let length = ((packed & DYNAMIC_LENGTH_MASK) >> 64) as usize;
 
 			let dynamic_start = self.dynamic_section_start();
-			let bigint_bytes = &row.as_slice()[dynamic_start + offset..dynamic_start + offset + length];
+			let bigint_bytes = &row[dynamic_start + offset..dynamic_start + offset + length];
 
 			Int::from(StdBigInt::from_signed_bytes_le(bigint_bytes))
 		}
 	}
 
-	pub fn try_get_int(&self, row: &EncodedRow, index: usize) -> Option<Int> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Int {
+	pub fn try_get_int(&self, row: &[u8], index: usize) -> Option<Int> {
+		if read_defined(row, index) && self.fields()[index].constraint.get_type() == ValueType::Int {
 			Some(self.get_int(row, index))
 		} else {
 			None

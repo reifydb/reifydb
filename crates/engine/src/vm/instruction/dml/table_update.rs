@@ -4,7 +4,10 @@
 use std::sync::Arc;
 
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{
+		row::{EncodedRow, EncodedRowBuilder},
+		shape::RowShape,
+	},
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
@@ -178,7 +181,7 @@ fn run_table_update(
 		let sidecar_partitions: Vec<Partition> = columns.partitions().to_vec();
 		let row_count = columns.row_count();
 
-		let mut prepared_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
+		let mut prepared_rows: Vec<EncodedRowBuilder> = Vec::with_capacity(row_count);
 		let mut partitions_out: Vec<Partition> = Vec::with_capacity(row_count);
 		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
 			let mut row = build_updated_table_row(
@@ -246,7 +249,7 @@ fn build_updated_table_row(
 	columns: &Columns,
 	context: &QueryContext,
 	row_idx: usize,
-) -> Result<EncodedRow> {
+) -> Result<EncodedRowBuilder> {
 	let mut row = shape.allocate();
 	for (table_idx, table_column) in table.columns.iter().enumerate() {
 		let mut value = if let Some(input_column) = columns.iter().find(|col| col.name() == table_column.name) {
@@ -299,7 +302,7 @@ fn rotate_table_pk_index(
 	shape: &RowShape,
 	pk_def: &PrimaryKey,
 	row_key: &EncodedKey,
-	new_row: &EncodedRow,
+	new_row: &[u8],
 	row_number: RowNumber,
 ) -> Result<()> {
 	if let Some(pre_row_data) = txn.get(row_key)? {
@@ -312,7 +315,10 @@ fn rotate_table_pk_index(
 	let row_number_shape = RowShape::testing(&[ValueType::Uint8]);
 	let mut row_number_encoded = row_number_shape.allocate();
 	row_number_shape.set::<u64>(&mut row_number_encoded, 0, u64::from(row_number));
-	txn.set(&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), post_key).encode(), row_number_encoded)?;
+	txn.set(
+		&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), post_key).encode(),
+		row_number_encoded.freeze(),
+	)?;
 	Ok(())
 }
 

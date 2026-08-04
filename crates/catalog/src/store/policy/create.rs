@@ -59,7 +59,7 @@ impl CatalogStore {
 		SHAPE.set_utf8(&mut row, TARGET_OBJECT, to_create.target_object.as_deref().unwrap_or(""));
 		SHAPE.set::<bool>(&mut row, ENABLED, true);
 
-		txn.set(&PolicyKey::encoded(policy_id), row)?;
+		txn.set(&PolicyKey::encoded(policy_id), row.freeze())?;
 
 		let mut ops = Vec::new();
 		for (i, op) in to_create.operations.iter().enumerate() {
@@ -68,7 +68,7 @@ impl CatalogStore {
 			policy_op::SHAPE.set_utf8(&mut op_row, policy_op::OPERATION, &op.operation);
 			policy_op::SHAPE.set_utf8(&mut op_row, policy_op::BODY_SOURCE, &op.body_source);
 
-			txn.set(&PolicyOpKey::encoded(policy_id, i as u64), op_row)?;
+			txn.set(&PolicyOpKey::encoded(policy_id, i as u64), op_row.freeze())?;
 
 			ops.push(PolicyOperation {
 				policy_id,

@@ -54,12 +54,12 @@ impl CatalogStore {
 		binding::SHAPE.set_utf8(&mut row, binding::RPC_NAME, rpc_name);
 		binding::SHAPE.set_utf8(&mut row, binding::FORMAT, to_create.format.as_str());
 
-		txn.set(&BindingKey::encoded(id), row)?;
+		txn.set(&BindingKey::encoded(id), row.freeze())?;
 
 		let mut ns_row = binding_namespace::SHAPE.allocate();
 		binding_namespace::SHAPE.set::<u64>(&mut ns_row, binding_namespace::ID, u64::from(id));
 		binding_namespace::SHAPE.set_utf8(&mut ns_row, binding_namespace::NAME, &to_create.name);
-		txn.set(&NamespaceBindingKey::encoded(to_create.namespace, id), ns_row)?;
+		txn.set(&NamespaceBindingKey::encoded(to_create.namespace, id), ns_row.freeze())?;
 
 		Ok(Binding {
 			id,

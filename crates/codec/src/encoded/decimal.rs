@@ -8,7 +8,10 @@ use reifydb_value::{
 	value::{decimal::Decimal, value_type::ValueType},
 };
 
-use crate::encoded::{row::EncodedRow, shape::RowShape};
+use crate::encoded::{
+	row::{EncodedRowBuilder, read_defined},
+	shape::RowShape,
+};
 
 #[cfg(reifydb_assertions)]
 const MODE_DYNAMIC: u128 = 0x80000000000000000000000000000000;
@@ -19,7 +22,7 @@ const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF;
 const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 
 impl RowShape {
-	pub fn set_decimal(&self, row: &mut EncodedRow, index: usize, value: &Decimal) {
+	pub fn set_decimal(&self, row: &mut EncodedRowBuilder, index: usize, value: &Decimal) {
 		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
@@ -41,7 +44,7 @@ impl RowShape {
 		self.replace_dynamic_data(row, index, &serialized);
 	}
 
-	pub fn get_decimal(&self, row: &EncodedRow, index: usize) -> Decimal {
+	pub fn get_decimal(&self, row: &[u8], index: usize) -> Decimal {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(
@@ -66,7 +69,7 @@ impl RowShape {
 		let length = ((packed & DYNAMIC_LENGTH_MASK) >> 64) as usize;
 
 		let dynamic_start = self.dynamic_section_start();
-		let data_bytes = &row.as_slice()[dynamic_start + offset..dynamic_start + offset + length];
+		let data_bytes = &row[dynamic_start + offset..dynamic_start + offset + length];
 
 		let original_scale = i64::from_le_bytes(data_bytes[0..8].try_into().unwrap());
 		let mantissa = StdBigInt::from_signed_bytes_le(&data_bytes[8..]);
@@ -76,8 +79,8 @@ impl RowShape {
 		Decimal::from(big_decimal)
 	}
 
-	pub fn try_get_decimal(&self, row: &EncodedRow, index: usize) -> Option<Decimal> {
-		if row.is_defined(index)
+	pub fn try_get_decimal(&self, row: &[u8], index: usize) -> Option<Decimal> {
+		if read_defined(row, index)
 			&& matches!(self.fields()[index].constraint.get_type().inner_type(), ValueType::Decimal)
 		{
 			Some(self.get_decimal(row, index))

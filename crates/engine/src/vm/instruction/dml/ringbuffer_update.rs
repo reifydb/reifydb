@@ -266,7 +266,7 @@ fn build_updated_ringbuffer_row(
 
 		shape.set_value(&mut row, rb_idx, &value);
 	}
-	Ok(row)
+	Ok(row.freeze())
 }
 
 #[inline]

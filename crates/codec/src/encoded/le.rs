@@ -3,11 +3,14 @@
 
 use reifydb_value::{encoding::RowField, reifydb_assertions};
 
-use crate::encoded::{row::EncodedRow, shape::RowShape};
+use crate::encoded::{
+	row::{EncodedRowBuilder, read_defined},
+	shape::RowShape,
+};
 
 impl RowShape {
 	#[inline]
-	pub fn set<T: RowField>(&self, row: &mut EncodedRow, index: usize, value: T) {
+	pub fn set<T: RowField>(&self, row: &mut EncodedRowBuilder, index: usize, value: T) {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(
@@ -20,11 +23,11 @@ impl RowShape {
 		}
 		let offset = field.offset as usize;
 		row.set_valid(index, true);
-		value.write_le(&mut row.make_mut()[offset..offset + T::ENCODED_SIZE]);
+		value.write_le(&mut row.as_mut_slice()[offset..offset + T::ENCODED_SIZE]);
 	}
 
 	#[inline]
-	pub fn get<T: RowField>(&self, row: &EncodedRow, index: usize) -> T {
+	pub fn get<T: RowField>(&self, row: &[u8], index: usize) -> T {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(
@@ -36,12 +39,12 @@ impl RowShape {
 			assert_eq!(*field.constraint.get_type().inner_type(), T::VALUE_TYPE);
 		}
 		let offset = field.offset as usize;
-		T::read_le(&row.as_slice()[offset..offset + T::ENCODED_SIZE])
+		T::read_le(&row[offset..offset + T::ENCODED_SIZE])
 	}
 
 	#[inline]
-	pub fn try_get<T: RowField>(&self, row: &EncodedRow, index: usize) -> Option<T> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == T::VALUE_TYPE {
+	pub fn try_get<T: RowField>(&self, row: &[u8], index: usize) -> Option<T> {
+		if read_defined(row, index) && self.fields()[index].constraint.get_type() == T::VALUE_TYPE {
 			Some(self.get(row, index))
 		} else {
 			None
@@ -79,7 +82,7 @@ mod tests {
 
 		shape.set::<u64>(&mut row, 0, 0xAAAA_AAAA_AAAA_AAAAu64);
 		shape.set::<u64>(&mut row, 5, 0xBBBB_BBBB_BBBB_BBBBu64);
-		let before = row.as_slice().to_vec();
+		let before = row.to_vec();
 
 		shape.set::<bool>(&mut row, 1, true);
 		shape.set::<Date>(&mut row, 2, date);
@@ -97,7 +100,7 @@ mod tests {
 			let offset = shape.fields()[*index].offset as usize;
 			assert_eq!(bytes.len(), shape.fields()[*index].size as usize, "field {index} slot width");
 			assert_eq!(
-				&row.as_slice()[offset..offset + bytes.len()],
+				&row[offset..offset + bytes.len()],
 				bytes.as_slice(),
 				"field {index} does not hold its own little-endian form"
 			);

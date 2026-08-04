@@ -3,7 +3,7 @@
 
 use once_cell::sync::Lazy;
 use reifydb_codec::encoded::{
-	row::EncodedRow,
+	row::{EncodedRow, EncodedRowBuilder},
 	shape::{RowShape, RowShapeField},
 };
 use reifydb_core::interface::catalog::queue::{QueueDeduplicate, QueueDispatch};
@@ -57,7 +57,7 @@ pub(crate) fn decode_dispatch(row: &EncodedRow) -> QueueDispatch {
 	}
 }
 
-pub(crate) fn encode_dispatch(row: &mut EncodedRow, dispatch: &QueueDispatch) {
+pub(crate) fn encode_dispatch(row: &mut EncodedRowBuilder, dispatch: &QueueDispatch) {
 	queue::SHAPE.set::<u8>(row, queue::DISPATCH, dispatch.tag());
 	queue::SHAPE.set::<u16>(row, queue::PARTITIONS, dispatch.partitions());
 	queue::SHAPE.set_utf8(row, queue::ORDERED_BY, dispatch.ordered_by().unwrap_or(""));
@@ -74,7 +74,7 @@ pub(crate) fn decode_deduplicate(row: &EncodedRow) -> Option<QueueDeduplicate> {
 	})
 }
 
-pub(crate) fn encode_deduplicate(row: &mut EncodedRow, deduplicate: Option<&QueueDeduplicate>) {
+pub(crate) fn encode_deduplicate(row: &mut EncodedRowBuilder, deduplicate: Option<&QueueDeduplicate>) {
 	match deduplicate {
 		Some(deduplicate) => {
 			queue::SHAPE.set_utf8(row, queue::DEDUPLICATE_BY, deduplicate.by.join(","));

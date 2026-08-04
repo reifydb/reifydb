@@ -124,7 +124,7 @@ impl CatalogStore {
 
 		write_time_source(&ringbuffer::SHAPE, &mut row, ringbuffer::TS, &to_create.time);
 
-		txn.set(&RingBufferKey::encoded(ringbuffer), row)?;
+		txn.set(&RingBufferKey::encoded(ringbuffer), row.freeze())?;
 
 		Ok(())
 	}
@@ -139,7 +139,7 @@ impl CatalogStore {
 		ringbuffer_namespace::SHAPE.set::<u64>(&mut row, ringbuffer_namespace::ID, u64::from(ringbuffer));
 		ringbuffer_namespace::SHAPE.set_utf8(&mut row, ringbuffer_namespace::NAME, name);
 
-		txn.set(&NamespaceRingBufferKey::encoded(namespace, ringbuffer), row)?;
+		txn.set(&NamespaceRingBufferKey::encoded(namespace, ringbuffer), row.freeze())?;
 
 		Ok(())
 	}

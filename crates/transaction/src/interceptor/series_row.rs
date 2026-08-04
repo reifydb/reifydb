@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::row::{EncodedRow, EncodedRowBuilder};
 use reifydb_core::interface::catalog::series::Series;
 use reifydb_value::Result;
 
@@ -10,11 +10,11 @@ use crate::interceptor::chain::InterceptorChain;
 
 pub struct SeriesRowPreInsertContext<'a> {
 	pub series: &'a Series,
-	pub rows: &'a mut [EncodedRow],
+	pub rows: &'a mut [EncodedRowBuilder],
 }
 
 impl<'a> SeriesRowPreInsertContext<'a> {
-	pub fn new(series: &'a Series, rows: &'a mut [EncodedRow]) -> Self {
+	pub fn new(series: &'a Series, rows: &'a mut [EncodedRowBuilder]) -> Self {
 		Self {
 			series,
 			rows,
@@ -156,11 +156,11 @@ where
 
 pub struct SeriesRowPreUpdateContext<'a> {
 	pub series: &'a Series,
-	pub rows: &'a mut [EncodedRow],
+	pub rows: &'a mut [EncodedRowBuilder],
 }
 
 impl<'a> SeriesRowPreUpdateContext<'a> {
-	pub fn new(series: &'a Series, rows: &'a mut [EncodedRow]) -> Self {
+	pub fn new(series: &'a Series, rows: &'a mut [EncodedRowBuilder]) -> Self {
 		Self {
 			series,
 			rows,
@@ -448,7 +448,11 @@ where
 pub struct SeriesRowInterceptor;
 
 impl SeriesRowInterceptor {
-	pub fn pre_insert(txn: &mut impl WithInterceptors, series: &Series, rows: &mut [EncodedRow]) -> Result<()> {
+	pub fn pre_insert(
+		txn: &mut impl WithInterceptors,
+		series: &Series,
+		rows: &mut [EncodedRowBuilder],
+	) -> Result<()> {
 		let ctx = SeriesRowPreInsertContext::new(series, rows);
 		txn.series_row_pre_insert_interceptors().execute(ctx)
 	}
@@ -458,7 +462,11 @@ impl SeriesRowInterceptor {
 		txn.series_row_post_insert_interceptors().execute(ctx)
 	}
 
-	pub fn pre_update(txn: &mut impl WithInterceptors, series: &Series, rows: &mut [EncodedRow]) -> Result<()> {
+	pub fn pre_update(
+		txn: &mut impl WithInterceptors,
+		series: &Series,
+		rows: &mut [EncodedRowBuilder],
+	) -> Result<()> {
 		let ctx = SeriesRowPreUpdateContext::new(series, rows);
 		txn.series_row_pre_update_interceptors().execute(ctx)
 	}

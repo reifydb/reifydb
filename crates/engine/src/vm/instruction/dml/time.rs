@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{common::TimeSource, interface::catalog::column::Column};
 use reifydb_value::{
 	Result,
@@ -15,7 +15,7 @@ pub(crate) fn resolve_time(
 	columns: &[Column],
 	time: &TimeSource,
 	shape: &RowShape,
-	row: &EncodedRow,
+	row: &[u8],
 	arrival: DateTime,
 ) -> Result<DateTime> {
 	let Some(ts_column) = time.ts() else {
@@ -44,7 +44,7 @@ pub(crate) fn resolve_time_for_update(
 	columns: &[Column],
 	time: &TimeSource,
 	shape: &RowShape,
-	row: &EncodedRow,
+	row: &[u8],
 	previous_time: DateTime,
 ) -> Result<DateTime> {
 	match time {
@@ -57,7 +57,7 @@ pub(crate) fn resolve_time_for_update(
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::encoded::shape::RowShapeField;
+	use reifydb_codec::encoded::{row::EncodedRow, shape::RowShapeField};
 	use reifydb_core::interface::catalog::{
 		column::{Column, ColumnIndex},
 		id::ColumnId,
@@ -100,7 +100,7 @@ mod tests {
 		let mut row = shape.allocate();
 		shape.set_value(&mut row, 0, &Value::Utf8("sig".to_string()));
 		shape.set_value(&mut row, 1, &Value::DateTime(DateTime::from_nanos(block_time_nanos)));
-		row
+		row.freeze()
 	}
 
 	fn event() -> TimeSource {
@@ -114,7 +114,7 @@ mod tests {
 		columns: &[Column],
 		time: &TimeSource,
 		shape: &RowShape,
-		row: &EncodedRow,
+		row: &[u8],
 		arrival_nanos: u64,
 	) -> u64 {
 		resolve_time(object, columns, time, shape, row, at(arrival_nanos))
@@ -247,7 +247,7 @@ mod tests {
 		columns: &[Column],
 		time: &TimeSource,
 		shape: &RowShape,
-		row: &EncodedRow,
+		row: &[u8],
 		previous_time_nanos: u64,
 	) -> u64 {
 		resolve_time_for_update(object, columns, time, shape, row, at(previous_time_nanos))

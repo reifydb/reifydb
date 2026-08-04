@@ -23,7 +23,7 @@ impl CatalogStore {
 		SHAPE.set_utf8(&mut row, NAME, name);
 		SHAPE.set::<bool>(&mut row, ENABLED, true);
 
-		txn.set(&IdentityKey::encoded(id), row)?;
+		txn.set(&IdentityKey::encoded(id), row.freeze())?;
 
 		Ok(Identity {
 			id,
@@ -55,7 +55,7 @@ impl CatalogStore {
 		SHAPE.set_utf8(&mut row, NAME, name);
 		SHAPE.set::<bool>(&mut row, ENABLED, true);
 
-		txn.set(&IdentityKey::encoded(id), row)?;
+		txn.set(&IdentityKey::encoded(id), row.freeze())?;
 
 		Ok(Identity {
 			id,

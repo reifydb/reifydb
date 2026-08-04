@@ -322,7 +322,7 @@ fn build_insert_ringbuffer_row(
 		&row,
 		now,
 	)?);
-	Ok((row, row_values))
+	Ok((row.freeze(), row_values))
 }
 
 #[inline]

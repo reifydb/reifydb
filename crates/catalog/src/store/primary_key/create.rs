@@ -89,7 +89,7 @@ impl CatalogStore {
 		SHAPE.set::<u64>(&mut row, primary_key::SOURCE, to_create.object.as_u64());
 		SHAPE.set_blob(&mut row, primary_key::COLUMN_IDS, &serialize_column_ids(&to_create.column_ids));
 
-		txn.set(&PrimaryKeyKey::encoded(id), row)?;
+		txn.set(&PrimaryKeyKey::encoded(id), row.freeze())?;
 		Ok(id)
 	}
 

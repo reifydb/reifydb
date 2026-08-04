@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::row::{EncodedRow, EncodedRowBuilder};
 use reifydb_core::interface::catalog::table::Table;
 use reifydb_value::{Result, value::row_number::RowNumber};
 
@@ -11,11 +11,11 @@ use crate::interceptor::chain::InterceptorChain;
 pub struct TableRowPreInsertContext<'a> {
 	pub table: &'a Table,
 	pub ids: &'a [RowNumber],
-	pub rows: &'a mut [EncodedRow],
+	pub rows: &'a mut [EncodedRowBuilder],
 }
 
 impl<'a> TableRowPreInsertContext<'a> {
-	pub fn new(table: &'a Table, ids: &'a [RowNumber], rows: &'a mut [EncodedRow]) -> Self {
+	pub fn new(table: &'a Table, ids: &'a [RowNumber], rows: &'a mut [EncodedRowBuilder]) -> Self {
 		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		Self {
 			table,
@@ -163,11 +163,11 @@ where
 pub struct TableRowPreUpdateContext<'a> {
 	pub table: &'a Table,
 	pub ids: &'a [RowNumber],
-	pub rows: &'a mut [EncodedRow],
+	pub rows: &'a mut [EncodedRowBuilder],
 }
 
 impl<'a> TableRowPreUpdateContext<'a> {
-	pub fn new(table: &'a Table, ids: &'a [RowNumber], rows: &'a mut [EncodedRow]) -> Self {
+	pub fn new(table: &'a Table, ids: &'a [RowNumber], rows: &'a mut [EncodedRowBuilder]) -> Self {
 		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		Self {
 			table,
@@ -469,7 +469,7 @@ impl TableRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		table: &Table,
 		ids: &[RowNumber],
-		rows: &mut [EncodedRow],
+		rows: &mut [EncodedRowBuilder],
 	) -> Result<()> {
 		let ctx = TableRowPreInsertContext::new(table, ids, rows);
 		txn.table_row_pre_insert_interceptors().execute(ctx)
@@ -489,7 +489,7 @@ impl TableRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		table: &Table,
 		ids: &[RowNumber],
-		rows: &mut [EncodedRow],
+		rows: &mut [EncodedRowBuilder],
 	) -> Result<()> {
 		let ctx = TableRowPreUpdateContext::new(table, ids, rows);
 		txn.table_row_pre_update_interceptors().execute(ctx)

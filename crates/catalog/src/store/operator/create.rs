@@ -20,13 +20,13 @@ impl CatalogStore {
 		operator::SHAPE.set::<u8>(&mut row, operator::TYPE, node_def.node_type);
 		operator::SHAPE.set_blob(&mut row, operator::DATA, &node_def.data);
 
-		txn.set(&OperatorKey::encoded(node_def.id), row)?;
+		txn.set(&OperatorKey::encoded(node_def.id), row.freeze())?;
 
 		let mut index_row = operator_by_flow::SHAPE.allocate();
 		operator_by_flow::SHAPE.set::<u64>(&mut index_row, operator_by_flow::FLOW, u64::from(node_def.flow));
 		operator_by_flow::SHAPE.set::<u64>(&mut index_row, operator_by_flow::ID, u64::from(node_def.id));
 
-		txn.set(&OperatorByFlowKey::encoded(node_def.flow, node_def.id), index_row)?;
+		txn.set(&OperatorByFlowKey::encoded(node_def.flow, node_def.id), index_row.freeze())?;
 
 		txn.track_operator_created(node_def.clone())?;
 

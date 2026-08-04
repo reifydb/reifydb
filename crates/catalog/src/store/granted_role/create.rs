@@ -23,7 +23,7 @@ impl CatalogStore {
 		SHAPE.set::<IdentityId>(&mut row, IDENTITY, identity);
 		SHAPE.set::<u64>(&mut row, ROLE_ID, role);
 
-		txn.set(&GrantedRoleKey::encoded(identity, role), row)?;
+		txn.set(&GrantedRoleKey::encoded(identity, role), row.freeze())?;
 
 		Ok(GrantedRole {
 			identity,

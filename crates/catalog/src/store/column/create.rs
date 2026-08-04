@@ -176,7 +176,7 @@ impl CatalogStore {
 		let dict_id_value = column_to_create.dictionary_id.map(u64::from).unwrap_or(0);
 		column::SHAPE.set::<u64>(&mut row, DICTIONARY_ID, dict_id_value);
 
-		txn.set(&ColumnsKey::encoded(id), row)
+		txn.set(&ColumnsKey::encoded(id), row.freeze())
 	}
 
 	fn store_object_column_row(
@@ -189,7 +189,7 @@ impl CatalogStore {
 		object_column::SHAPE.set::<u64>(&mut row, object_column::ID, u64::from(id));
 		object_column::SHAPE.set_utf8(&mut row, object_column::NAME, &column_to_create.column);
 		object_column::SHAPE.set::<u8>(&mut row, object_column::INDEX, u8::from(column_to_create.index));
-		txn.set(&ColumnKey::encoded(object, id), row)
+		txn.set(&ColumnKey::encoded(object, id), row.freeze())
 	}
 
 	fn create_properties_and_build(

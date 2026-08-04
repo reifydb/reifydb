@@ -159,7 +159,7 @@ pub(crate) fn encode_row_at_index(
 	encoded.set_timestamps(created_at, updated_at);
 	encoded.set_time(time);
 
-	Ok((row_number, encoded))
+	Ok((row_number, encoded.freeze()))
 }
 
 pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTransaction) -> Result<()> {

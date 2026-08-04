@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	interface::catalog::{key::PrimaryKey, table::Table},
 	sort::SortDirection,
@@ -21,12 +21,7 @@ use reifydb_value::value::{
 
 use crate::Result;
 
-pub fn encode_primary_key(
-	pk_def: &PrimaryKey,
-	row: &EncodedRow,
-	table: &Table,
-	shape: &RowShape,
-) -> Result<EncodedIndexKey> {
+pub fn encode_primary_key(pk_def: &PrimaryKey, row: &[u8], table: &Table, shape: &RowShape) -> Result<EncodedIndexKey> {
 	let types: Vec<ValueType> = pk_def.columns.iter().map(|c| c.constraint.get_type()).collect();
 	let directions = vec![SortDirection::Asc; types.len()];
 	let index_shape = IndexShape::new(&types, &directions)?;

@@ -55,7 +55,7 @@ impl CatalogStore {
 		}
 		SHAPE.set_utf8(&mut row, LOCAL_NAME, &to_create.local_name);
 
-		txn.set(&NamespaceKey::encoded(namespace_id), row)?;
+		txn.set(&NamespaceKey::encoded(namespace_id), row.freeze())?;
 
 		Self::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)
 	}
@@ -77,7 +77,7 @@ impl CatalogStore {
 		}
 		SHAPE.set_utf8(&mut row, LOCAL_NAME, &to_create.local_name);
 
-		txn.set(&NamespaceKey::encoded(namespace_id), row)?;
+		txn.set(&NamespaceKey::encoded(namespace_id), row.freeze())?;
 
 		Self::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)
 	}

@@ -38,7 +38,7 @@ pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> Result<()> {
 		None => {
 			let mut row = shape.allocate();
 			shape.set::<u8>(&mut row, 0, CURRENT_STORAGE_VERSION);
-			tx.set(&key, row)?;
+			tx.set(&key, row.freeze())?;
 		}
 		Some(single) => {
 			let version = shape.get::<u8>(&single.row, 0);

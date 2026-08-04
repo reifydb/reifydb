@@ -6,7 +6,10 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+use reifydb_codec::encoded::{
+	row::{EncodedRow, EncodedRowBuilder},
+	shape::RowShape,
+};
 use reifydb_core::{
 	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
@@ -279,7 +282,7 @@ fn build_insert_table_row(
 	let now = services.runtime_context.clock.now();
 	row.set_timestamps(now, now);
 	row.set_time(resolve_time(&target.table.name, &target.table.columns, &target.table.time, shape, &row, now)?);
-	Ok(row)
+	Ok(row.freeze())
 }
 
 fn insert_validated_table_rows(
@@ -291,7 +294,7 @@ fn insert_validated_table_rows(
 	has_returning: bool,
 	pk: Option<&PkContext<'_>>,
 ) -> Result<Vec<(RowNumber, EncodedRow)>> {
-	let mut owned_rows: Vec<EncodedRow> = validated_rows.to_vec();
+	let mut owned_rows: Vec<EncodedRowBuilder> = validated_rows.iter().map(|r| r.clone().thaw()).collect();
 	txn.insert_table(target.table, shape, row_numbers, &mut owned_rows)?;
 
 	if let Some(pk) = pk {
@@ -301,7 +304,7 @@ fn insert_validated_table_rows(
 	}
 
 	if has_returning {
-		Ok(row_numbers.iter().copied().zip(owned_rows).collect())
+		Ok(row_numbers.iter().copied().zip(owned_rows.into_iter().map(|r| r.freeze())).collect())
 	} else {
 		Ok(Vec::new())
 	}
@@ -313,7 +316,7 @@ fn write_insert_table_pk_index(
 	target: &TableTarget<'_>,
 	shape: &RowShape,
 	pk: &PkContext<'_>,
-	row: &EncodedRow,
+	row: &[u8],
 	row_number: RowNumber,
 ) -> Result<()> {
 	let index_key = primary_key::encode_primary_key(pk.pk_def, row, target.table, shape)?;
@@ -324,7 +327,7 @@ fn write_insert_table_pk_index(
 	}
 	let mut row_number_encoded = pk.row_number_shape.allocate();
 	pk.row_number_shape.set::<u64>(&mut row_number_encoded, 0, u64::from(row_number));
-	txn.set(&index_entry_key.encode(), row_number_encoded)?;
+	txn.set(&index_entry_key.encode(), row_number_encoded.freeze())?;
 	Ok(())
 }
 

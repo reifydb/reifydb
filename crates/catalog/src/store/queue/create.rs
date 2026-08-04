@@ -132,7 +132,7 @@ impl CatalogStore {
 
 		write_time_source(&queue::SHAPE, &mut row, queue::TS, &to_create.time);
 
-		txn.set(&QueueKey::encoded(queue_id), row)?;
+		txn.set(&QueueKey::encoded(queue_id), row.freeze())?;
 
 		Ok(())
 	}
@@ -147,7 +147,7 @@ impl CatalogStore {
 		queue_namespace::SHAPE.set::<u64>(&mut row, queue_namespace::ID, u64::from(queue_id));
 		queue_namespace::SHAPE.set_utf8(&mut row, queue_namespace::NAME, name);
 
-		txn.set(&NamespaceQueueKey::encoded(namespace, queue_id), row)?;
+		txn.set(&NamespaceQueueKey::encoded(namespace, queue_id), row.freeze())?;
 
 		Ok(())
 	}

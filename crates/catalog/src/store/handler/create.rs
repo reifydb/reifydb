@@ -58,13 +58,13 @@ impl CatalogStore {
 		handler_shape::SHAPE.set::<u8>(&mut row, handler_shape::ON_VARIANT_TAG, to_create.variant.variant_tag);
 		handler_shape::SHAPE.set_utf8(&mut row, handler_shape::BODY_SOURCE, &to_create.body_source);
 
-		txn.set(&HandlerKey::encoded(handler_id), row)?;
+		txn.set(&HandlerKey::encoded(handler_id), row.freeze())?;
 
 		let mut ns_row = handler_namespace::SHAPE.allocate();
 		handler_namespace::SHAPE.set::<u64>(&mut ns_row, handler_namespace::ID, u64::from(handler_id));
 		handler_namespace::SHAPE.set_utf8(&mut ns_row, handler_namespace::NAME, to_create.name.text());
 
-		txn.set(&NamespaceHandlerKey::encoded(namespace_id, handler_id), ns_row)?;
+		txn.set(&NamespaceHandlerKey::encoded(namespace_id, handler_id), ns_row.freeze())?;
 
 		let mut var_row = handler_namespace::SHAPE.allocate();
 		handler_namespace::SHAPE.set::<u64>(&mut var_row, handler_namespace::ID, u64::from(handler_id));
@@ -77,7 +77,7 @@ impl CatalogStore {
 				to_create.variant.variant_tag,
 				handler_id,
 			),
-			var_row,
+			var_row.freeze(),
 		)?;
 
 		Ok(Handler {

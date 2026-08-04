@@ -50,7 +50,7 @@ impl CatalogStore {
 		SHAPE.set_utf8(&mut row, METHOD, method);
 		SHAPE.set_utf8(&mut row, PROPERTIES, &properties_json);
 
-		txn.set(&AuthenticationKey::encoded(id), row)?;
+		txn.set(&AuthenticationKey::encoded(id), row.freeze())?;
 
 		Ok(Authentication {
 			id,

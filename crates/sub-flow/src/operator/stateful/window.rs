@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{
+		row::{EncodedRow, EncodedRowBuilder},
+		shape::RowShape,
+	},
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::key::{EncodableKey, operator_group_state::GroupStateKey, operator_state::OperatorStateKey};
@@ -15,7 +18,7 @@ use crate::operator::stateful::raw::RawStatefulOperator;
 pub trait WindowStateful: RawStatefulOperator {
 	fn layout(&self) -> RowShape;
 
-	fn create_state(&self) -> EncodedRow {
+	fn create_state(&self) -> EncodedRowBuilder {
 		let layout = self.layout();
 		layout.allocate()
 	}
@@ -119,10 +122,10 @@ pub mod tests {
 
 		let state1 = operator.load_state(&mut txn, &window_key).unwrap();
 
-		let mut modified = state1.clone();
+		let mut modified = state1.clone().thaw();
 		let layout = operator.layout();
 		layout.set::<i64>(&mut modified, 0, 0xAB);
-		operator.save_state(&mut txn, &window_key, modified.clone()).unwrap();
+		operator.save_state(&mut txn, &window_key, modified.clone().freeze()).unwrap();
 
 		let state2 = operator.load_state(&mut txn, &window_key).unwrap();
 		assert_eq!(layout.get::<i64>(&state2, 0), 0xAB);
@@ -139,7 +142,7 @@ pub mod tests {
 		for (i, window_key) in window_keys.iter().enumerate() {
 			let mut state = operator.create_state();
 			layout.set::<i64>(&mut state, 0, i as i64);
-			operator.save_state(&mut txn, window_key, state).unwrap();
+			operator.save_state(&mut txn, window_key, state.freeze()).unwrap();
 		}
 
 		for (i, window_key) in window_keys.iter().enumerate() {
@@ -159,7 +162,7 @@ pub mod tests {
 		for (i, window_key) in window_keys.iter().enumerate() {
 			let mut state = operator.create_state();
 			layout.set::<i64>(&mut state, 0, i as i64);
-			operator.save_state(&mut txn, window_key, state).unwrap();
+			operator.save_state(&mut txn, window_key, state.freeze()).unwrap();
 		}
 
 		// Inverted encoding, so expiring windows below 5 means the range above key(5).
@@ -190,7 +193,7 @@ pub mod tests {
 		for (idx, window_key) in window_keys.iter().enumerate() {
 			let mut state = operator.create_state();
 			layout.set::<i64>(&mut state, 0, (idx + 5) as i64);
-			operator.save_state(&mut txn, window_key, state).unwrap();
+			operator.save_state(&mut txn, window_key, state.freeze()).unwrap();
 		}
 
 		// Every window is at or above 5, so a cutoff of 3 must find nothing.
@@ -216,7 +219,7 @@ pub mod tests {
 		for (i, window_key) in window_keys.iter().enumerate() {
 			let mut state = operator.create_state();
 			layout.set::<i64>(&mut state, 0, i as i64);
-			operator.save_state(&mut txn, window_key, state).unwrap();
+			operator.save_state(&mut txn, window_key, state.freeze()).unwrap();
 		}
 
 		let before_key = test_window_key(100);
@@ -246,7 +249,7 @@ pub mod tests {
 			all_window_keys.push(window_key.clone());
 			let mut state = operator.create_state();
 			layout.set::<i64>(&mut state, 0, current_window as i64);
-			operator.save_state(&mut txn, &window_key, state).unwrap();
+			operator.save_state(&mut txn, &window_key, state.freeze()).unwrap();
 
 			if current_window >= window_size {
 				let expire_before = current_window - window_size + 1;

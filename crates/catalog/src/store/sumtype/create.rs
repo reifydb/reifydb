@@ -60,13 +60,13 @@ impl CatalogStore {
 		sumtype_shape::SHAPE.set_utf8(&mut row, sumtype_shape::VARIANTS_JSON, &variants_json);
 		sumtype_shape::SHAPE.set::<u8>(&mut row, sumtype_shape::KIND, to_create.def.kind as u8);
 
-		txn.set(&SumTypeKey::encoded(sumtype_id), row)?;
+		txn.set(&SumTypeKey::encoded(sumtype_id), row.freeze())?;
 
 		let mut ns_row = sumtype_namespace::SHAPE.allocate();
 		sumtype_namespace::SHAPE.set::<u64>(&mut ns_row, sumtype_namespace::ID, u64::from(sumtype_id));
 		sumtype_namespace::SHAPE.set_utf8(&mut ns_row, sumtype_namespace::NAME, to_create.name.text());
 
-		txn.set(&NamespaceSumTypeKey::encoded(namespace_id, sumtype_id), ns_row)?;
+		txn.set(&NamespaceSumTypeKey::encoded(namespace_id, sumtype_id), ns_row.freeze())?;
 
 		CatalogStore::get_sumtype(&mut Transaction::Admin(&mut *txn), sumtype_id)
 	}

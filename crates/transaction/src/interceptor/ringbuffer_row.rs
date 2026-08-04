@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::row::{EncodedRow, EncodedRowBuilder};
 use reifydb_core::interface::catalog::ringbuffer::RingBuffer;
 use reifydb_value::{Result, value::row_number::RowNumber};
 
@@ -10,11 +10,11 @@ use crate::interceptor::chain::InterceptorChain;
 
 pub struct RingBufferRowPreInsertContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
-	pub rows: &'a mut [EncodedRow],
+	pub rows: &'a mut [EncodedRowBuilder],
 }
 
 impl<'a> RingBufferRowPreInsertContext<'a> {
-	pub fn new(ringbuffer: &'a RingBuffer, rows: &'a mut [EncodedRow]) -> Self {
+	pub fn new(ringbuffer: &'a RingBuffer, rows: &'a mut [EncodedRowBuilder]) -> Self {
 		Self {
 			ringbuffer,
 			rows,
@@ -160,11 +160,11 @@ where
 pub struct RingBufferRowPreUpdateContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
 	pub ids: &'a [RowNumber],
-	pub rows: &'a mut [EncodedRow],
+	pub rows: &'a mut [EncodedRowBuilder],
 }
 
 impl<'a> RingBufferRowPreUpdateContext<'a> {
-	pub fn new(ringbuffer: &'a RingBuffer, ids: &'a [RowNumber], rows: &'a mut [EncodedRow]) -> Self {
+	pub fn new(ringbuffer: &'a RingBuffer, ids: &'a [RowNumber], rows: &'a mut [EncodedRowBuilder]) -> Self {
 		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		Self {
 			ringbuffer,
@@ -470,7 +470,7 @@ impl RingBufferRowInterceptor {
 	pub fn pre_insert(
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBuffer,
-		rows: &mut [EncodedRow],
+		rows: &mut [EncodedRowBuilder],
 	) -> Result<()> {
 		let ctx = RingBufferRowPreInsertContext::new(ringbuffer, rows);
 		txn.ringbuffer_row_pre_insert_interceptors().execute(ctx)
@@ -490,7 +490,7 @@ impl RingBufferRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBuffer,
 		ids: &[RowNumber],
-		rows: &mut [EncodedRow],
+		rows: &mut [EncodedRowBuilder],
 	) -> Result<()> {
 		let ctx = RingBufferRowPreUpdateContext::new(ringbuffer, ids, rows);
 		txn.ringbuffer_row_pre_update_interceptors().execute(ctx)

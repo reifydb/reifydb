@@ -180,7 +180,7 @@ impl CatalogStore {
 			}
 		}
 
-		txn.set(&ViewKey::encoded(view), row)?;
+		txn.set(&ViewKey::encoded(view), row.freeze())?;
 
 		Ok(())
 	}
@@ -194,7 +194,7 @@ impl CatalogStore {
 		let mut row = view_namespace::SHAPE.allocate();
 		view_namespace::SHAPE.set::<u64>(&mut row, view_namespace::ID, u64::from(view));
 		view_namespace::SHAPE.set_utf8(&mut row, view_namespace::NAME, name);
-		txn.set(&NamespaceViewKey::encoded(namespace, view), row)?;
+		txn.set(&NamespaceViewKey::encoded(namespace, view), row.freeze())?;
 		Ok(())
 	}
 

@@ -26,7 +26,7 @@ impl CatalogStore {
 		}
 		SHAPE.set_utf8(&mut row, LOCAL_NAME, existing.local_name());
 
-		txn.set(&NamespaceKey::encoded(namespace_id), row)?;
+		txn.set(&NamespaceKey::encoded(namespace_id), row.freeze())?;
 		Ok(())
 	}
 }

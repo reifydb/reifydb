@@ -232,9 +232,10 @@ fn insert_series_row(
 	}
 	let row = build_encoded_series_row(services, series, shape, key_value, &encoded_values)?;
 
-	let mut rows_buf = [row];
+	let mut rows_buf = [row.thaw()];
 	SeriesRowInterceptor::pre_insert(txn, series, &mut rows_buf)?;
 	let [row] = rows_buf;
+	let row = row.freeze();
 	txn.set(&encoded_key, row.clone())?;
 	let rows = [row.clone()];
 	SeriesRowInterceptor::post_insert(txn, series, &rows)?;
@@ -409,7 +410,7 @@ fn build_encoded_series_row(
 	let now = services.runtime_context.clock.now();
 	row.set_timestamps(now, now);
 	row.set_time(resolve_time(&series.name, &series.columns, &series.time, shape, &row, now)?);
-	Ok(row)
+	Ok(row.freeze())
 }
 
 fn track_series_insert_flow_change(txn: &mut Transaction<'_>, series: &Series, snapshot: &SeriesRowSnapshot<'_>) {

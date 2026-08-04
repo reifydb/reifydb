@@ -173,7 +173,7 @@ impl FlowTransaction {
 			}
 			None => {
 				Span::current().record("created", true);
-				Ok(shape.allocate())
+				Ok(shape.allocate().freeze())
 			}
 		}
 	}

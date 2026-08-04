@@ -145,7 +145,7 @@ impl EpochLog {
 		let mut row = self.shape.allocate();
 		self.shape.set::<u64>(&mut row, AT_SECS, at.seconds());
 		self.shape.set::<u64>(&mut row, VERSION, version.0);
-		row
+		row.freeze()
 	}
 
 	fn decode(&self, row: &EncodedRow) -> Sample {

@@ -273,7 +273,7 @@ fn encode_version(version: ContentVersion) -> EncodedRow {
 	let shape = RowShape::operator_state();
 	let mut row = shape.allocate();
 	shape.set_blob(&mut row, 0, &Blob::from(version.0.to_le_bytes().to_vec()));
-	row
+	row.freeze()
 }
 
 fn decode_version(row: &EncodedRow) -> Result<ContentVersion> {
@@ -298,7 +298,7 @@ fn encode_pin(pin: &Pin) -> Result<EncodedRow> {
 	let shape = RowShape::operator_state();
 	let mut row = shape.allocate();
 	shape.set_blob(&mut row, 0, &Blob::from(serialized));
-	Ok(row)
+	Ok(row.freeze())
 }
 
 fn decode_pin(row: &EncodedRow) -> Result<Pin> {
@@ -330,7 +330,7 @@ mod tests {
 		let shape = RowShape::operator_state();
 		let mut r = shape.allocate();
 		shape.set_blob(&mut r, 0, &Blob::from(payload.to_vec()));
-		r
+		r.freeze()
 	}
 
 	fn rn(v: u64) -> RowNumber {

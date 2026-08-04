@@ -18,10 +18,10 @@ use reifydb_value::{
 };
 
 use super::shape::RowShape;
-use crate::encoded::row::EncodedRow;
+use crate::encoded::row::{EncodedRowBuilder, read_defined};
 
 impl RowShape {
-	pub fn set_values(&self, row: &mut EncodedRow, values: &[Value]) {
+	pub fn set_values(&self, row: &mut EncodedRowBuilder, values: &[Value]) {
 		reifydb_assertions! {
 			assert!(values.len() == self.fields().len());
 		}
@@ -30,7 +30,7 @@ impl RowShape {
 		}
 	}
 
-	pub fn set_value(&self, row: &mut EncodedRow, index: usize, val: &Value) {
+	pub fn set_value(&self, row: &mut EncodedRowBuilder, index: usize, val: &Value) {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(
@@ -268,9 +268,9 @@ impl RowShape {
 		}
 	}
 
-	pub fn get_value(&self, row: &EncodedRow, index: usize) -> Value {
+	pub fn get_value(&self, row: &[u8], index: usize) -> Value {
 		let field = &self.fields()[index];
-		if !row.is_defined(index) {
+		if !read_defined(row, index) {
 			return Value::none();
 		}
 		let field_type = match field.constraint.get_type() {

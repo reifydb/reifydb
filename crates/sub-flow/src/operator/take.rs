@@ -76,7 +76,7 @@ fn encode_take_row(shape: &RowShape, columns: &Columns, row_idx: usize) -> Encod
 	let values: Vec<Value> = columns.columns.iter().map(|buf| buf.get_value(row_idx)).collect();
 	let mut encoded = shape.allocate();
 	shape.set_values(&mut encoded, &values);
-	encoded
+	encoded.freeze()
 }
 
 fn decode_take_row(shape: &RowShape, row_number: RowNumber, encoded: &EncodedRow) -> Columns {
@@ -136,9 +136,9 @@ impl TakeOperator {
 				})?;
 				let blob = Blob::from(serialized);
 				let key = utils::empty_state_key();
-				let mut row = utils::load_or_create_row(operator_id, txn, &key, &shape)?;
+				let mut row = utils::load_or_create_row(operator_id, txn, &key, &shape)?.thaw();
 				shape.set_blob(&mut row, 0, &blob);
-				utils::save_row(operator_id, txn, &key, row)?;
+				utils::save_row(operator_id, txn, &key, row.freeze())?;
 				Ok(())
 			});
 			Ok((s, persist))

@@ -38,7 +38,7 @@ impl CatalogStore {
 		);
 		migration_shape::SHAPE.set::<u128>(&mut row, migration_shape::HASH, to_create.hash.0);
 
-		txn.set(&MigrationKey::encoded(migration_id), row)?;
+		txn.set(&MigrationKey::encoded(migration_id), row.freeze())?;
 
 		Ok(Migration {
 			id: migration_id,
@@ -68,7 +68,7 @@ impl CatalogStore {
 			},
 		);
 
-		txn.set(&MigrationEventKey::encoded(event_id), row)?;
+		txn.set(&MigrationEventKey::encoded(event_id), row.freeze())?;
 
 		Ok(MigrationEvent {
 			id: event_id,

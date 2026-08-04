@@ -29,7 +29,7 @@ pub(crate) fn encode_row_settings(settings: &RowSettings) -> EncodedRow {
 
 	row_settings::SHAPE.set::<u8>(&mut row, row_settings::PERSISTENT, u8::from(settings.persistent));
 
-	row
+	row.freeze()
 }
 
 pub(crate) fn decode_row_settings(row: &EncodedRow) -> Option<RowSettings> {

@@ -59,6 +59,131 @@ impl<D: Fallible + ?Sized> RkyvDeserialize<EncodedRow, D> for ArchivedVec<u8> {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncodedRowBuilder(Vec<u8>);
+
+impl EncodedRowBuilder {
+	pub(crate) fn zeroed(size: usize) -> Self {
+		Self(vec![0u8; size])
+	}
+
+	pub fn as_slice(&self) -> &[u8] {
+		&self.0
+	}
+
+	pub fn as_mut_slice(&mut self) -> &mut [u8] {
+		&mut self.0
+	}
+
+	pub(crate) fn vec_mut(&mut self) -> &mut Vec<u8> {
+		&mut self.0
+	}
+
+	pub fn len(&self) -> usize {
+		self.0.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.0.is_empty()
+	}
+
+	pub fn extend_from_slice(&mut self, bytes: &[u8]) {
+		self.0.extend_from_slice(bytes);
+	}
+
+	#[inline]
+	pub fn is_defined(&self, index: usize) -> bool {
+		read_defined(&self.0, index)
+	}
+
+	pub(crate) fn set_valid(&mut self, index: usize, valid: bool) {
+		let byte = SHAPE_HEADER_SIZE + index / 8;
+		let bit = index % 8;
+		if valid {
+			self.0[byte] |= 1 << bit;
+		} else {
+			self.0[byte] &= !(1 << bit);
+		}
+	}
+
+	#[inline]
+	pub fn fingerprint(&self) -> RowShapeFingerprint {
+		read_fingerprint(&self.0)
+	}
+
+	pub fn set_fingerprint(&mut self, fingerprint: RowShapeFingerprint) {
+		self.0[0..FINGERPRINT_SIZE].copy_from_slice(&fingerprint.to_le_bytes());
+	}
+
+	#[inline]
+	pub fn created_at(&self) -> DateTime {
+		read_stamp(&self.0, CREATED_AT_OFFSET)
+	}
+
+	#[inline]
+	pub fn updated_at(&self) -> DateTime {
+		read_stamp(&self.0, UPDATED_AT_OFFSET)
+	}
+
+	#[inline]
+	pub fn time(&self) -> DateTime {
+		read_stamp(&self.0, TIME_OFFSET)
+	}
+
+	pub fn set_timestamps(&mut self, created_at: DateTime, updated_at: DateTime) {
+		self.0[CREATED_AT_OFFSET..CREATED_AT_OFFSET + DateTime::ENCODED_SIZE]
+			.copy_from_slice(&created_at.to_le_bytes());
+		self.0[UPDATED_AT_OFFSET..UPDATED_AT_OFFSET + DateTime::ENCODED_SIZE]
+			.copy_from_slice(&updated_at.to_le_bytes());
+	}
+
+	pub fn set_time(&mut self, time: DateTime) {
+		self.0[TIME_OFFSET..TIME_OFFSET + DateTime::ENCODED_SIZE].copy_from_slice(&time.to_le_bytes());
+	}
+
+	pub fn freeze(self) -> EncodedRow {
+		EncodedRow(CowVec::new(self.0))
+	}
+}
+
+impl Deref for EncodedRowBuilder {
+	type Target = [u8];
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl From<EncodedRowBuilder> for EncodedRow {
+	fn from(builder: EncodedRowBuilder) -> Self {
+		builder.freeze()
+	}
+}
+
+#[inline]
+pub fn read_defined(buf: &[u8], index: usize) -> bool {
+	let byte = SHAPE_HEADER_SIZE + index / 8;
+	let bit = index % 8;
+	(buf[byte] & (1 << bit)) != 0
+}
+
+#[inline]
+fn read_fingerprint(buf: &[u8]) -> RowShapeFingerprint {
+	let bytes: [u8; FINGERPRINT_SIZE] = buf[0..FINGERPRINT_SIZE].try_into().unwrap();
+	RowShapeFingerprint::from_le_bytes(bytes)
+}
+
+#[inline]
+fn read_stamp(buf: &[u8], offset: usize) -> DateTime {
+	DateTime::from_le_bytes(buf[offset..offset + DateTime::ENCODED_SIZE].try_into().unwrap())
+}
+
+impl EncodedRow {
+	pub fn thaw(self) -> EncodedRowBuilder {
+		EncodedRowBuilder(self.0.into_inner())
+	}
+}
+
 impl EncodedRow {
 	pub fn make_mut(&mut self) -> &mut [u8] {
 		self.0.make_mut()
@@ -69,16 +194,6 @@ impl EncodedRow {
 		let byte = SHAPE_HEADER_SIZE + index / 8;
 		let bit = index % 8;
 		(self.0[byte] & (1 << bit)) != 0
-	}
-
-	pub(crate) fn set_valid(&mut self, index: usize, valid: bool) {
-		let byte = SHAPE_HEADER_SIZE + index / 8;
-		let bit = index % 8;
-		if valid {
-			self.0.make_mut()[byte] |= 1 << bit;
-		} else {
-			self.0.make_mut()[byte] &= !(1 << bit);
-		}
 	}
 
 	#[inline]

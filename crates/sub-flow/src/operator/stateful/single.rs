@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+use reifydb_codec::encoded::{
+	row::{EncodedRow, EncodedRowBuilder},
+	shape::RowShape,
+};
 use reifydb_core::key::operator_group_state::GroupStateKey;
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::Result;
@@ -15,7 +18,7 @@ pub trait SingleStateful: RawStatefulOperator {
 		utils::empty_state_key()
 	}
 
-	fn create_state(&self) -> EncodedRow {
+	fn create_state(&self) -> EncodedRowBuilder {
 		let layout = self.layout();
 		layout.allocate()
 	}
@@ -32,11 +35,12 @@ pub trait SingleStateful: RawStatefulOperator {
 
 	fn update_state<F>(&self, txn: &mut FlowTransaction, f: F) -> Result<EncodedRow>
 	where
-		F: FnOnce(&RowShape, &mut EncodedRow) -> Result<()>,
+		F: FnOnce(&RowShape, &mut EncodedRowBuilder) -> Result<()>,
 	{
 		let shape = self.layout();
-		let mut row = self.load_state(txn)?;
+		let mut row = self.load_state(txn)?.thaw();
 		f(&shape, &mut row)?;
+		let row = row.freeze();
 		self.save_state(txn, row.clone())?;
 		Ok(row)
 	}
@@ -86,10 +90,10 @@ pub mod tests {
 
 		let state1 = operator.load_state(&mut txn).unwrap();
 
-		let mut modified = state1.clone();
+		let mut modified = state1.clone().thaw();
 		let layout = operator.layout();
 		layout.set::<i64>(&mut modified, 0, 0x33);
-		operator.save_state(&mut txn, modified.clone()).unwrap();
+		operator.save_state(&mut txn, modified.clone().freeze()).unwrap();
 
 		let state2 = operator.load_state(&mut txn).unwrap();
 		assert_eq!(layout.get::<i64>(&state2, 0), 0x33);

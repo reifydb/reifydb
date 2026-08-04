@@ -21,13 +21,12 @@ use std::{
 
 use reifydb_value::{
 	reifydb_assertions,
-	util::cowvec::CowVec,
 	value::{constraint::TypeConstraint, value_type::ValueType},
 };
 use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 
-use super::row::{EncodedRow, SHAPE_HEADER_SIZE};
+use super::row::{EncodedRowBuilder, SHAPE_HEADER_SIZE, read_defined};
 use crate::encoded::shape::fingerprint::{RowShapeFingerprint, compute_fingerprint};
 
 const PACKED_MODE_DYNAMIC: u128 = 0x80000000000000000000000000000000;
@@ -219,18 +218,18 @@ impl RowShape {
 		self.total_static_size()
 	}
 
-	pub fn dynamic_section_size(&self, row: &EncodedRow) -> usize {
+	pub fn dynamic_section_size(&self, row: &[u8]) -> usize {
 		row.len().saturating_sub(self.total_static_size())
 	}
 
-	pub(crate) fn read_dynamic_ref(&self, row: &EncodedRow, index: usize) -> Option<(usize, usize)> {
-		if !row.is_defined(index) {
+	pub(crate) fn read_dynamic_ref(&self, row: &[u8], index: usize) -> Option<(usize, usize)> {
+		if !read_defined(row, index) {
 			return None;
 		}
 		let field = &self.fields()[index];
 		match field.constraint.get_type().inner_type() {
 			ValueType::Utf8 | ValueType::Blob | ValueType::Any => {
-				let ref_slice = &row.as_slice()[field.offset as usize..field.offset as usize + 8];
+				let ref_slice = &row[field.offset as usize..field.offset as usize + 8];
 				let offset =
 					u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]])
 						as usize;
@@ -259,11 +258,18 @@ impl RowShape {
 		}
 	}
 
-	pub(crate) fn write_dynamic_ref(&self, row: &mut EncodedRow, index: usize, offset: usize, length: usize) {
+	pub(crate) fn write_dynamic_ref(
+		&self,
+		row: &mut EncodedRowBuilder,
+		index: usize,
+		offset: usize,
+		length: usize,
+	) {
 		let field = &self.fields()[index];
 		match field.constraint.get_type().inner_type() {
 			ValueType::Utf8 | ValueType::Blob | ValueType::Any => {
-				let ref_slice = &mut row.0.make_mut()[field.offset as usize..field.offset as usize + 8];
+				let ref_slice =
+					&mut row.as_mut_slice()[field.offset as usize..field.offset as usize + 8];
 				ref_slice[0..4].copy_from_slice(&(offset as u32).to_le_bytes());
 				ref_slice[4..8].copy_from_slice(&(length as u32).to_le_bytes());
 			}
@@ -276,7 +282,7 @@ impl RowShape {
 				// make_mut() gives unique ownership and write_unaligned needs no alignment.
 				unsafe {
 					ptr::write_unaligned(
-						row.0.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u128,
+						row.as_mut_slice().as_mut_ptr().add(field.offset as usize) as *mut u128,
 						packed.to_le(),
 					);
 				}
@@ -285,17 +291,17 @@ impl RowShape {
 		}
 	}
 
-	pub(crate) fn replace_dynamic_data(&self, row: &mut EncodedRow, index: usize, new_data: &[u8]) {
-		if let Some((old_offset, old_length)) = self.read_dynamic_ref(row, index) {
+	pub(crate) fn replace_dynamic_data(&self, row: &mut EncodedRowBuilder, index: usize, new_data: &[u8]) {
+		if let Some((old_offset, old_length)) = self.read_dynamic_ref(&row[..], index) {
 			let delta = new_data.len() as isize - old_length as isize;
 
 			let refs_to_update: Vec<(usize, usize, usize)> = if delta != 0 {
 				self.fields()
 					.iter()
 					.enumerate()
-					.filter(|(i, _)| *i != index && row.is_defined(*i))
+					.filter(|(i, _)| *i != index && read_defined(row, *i))
 					.filter_map(|(i, _)| {
-						self.read_dynamic_ref(row, i)
+						self.read_dynamic_ref(&row[..], i)
 							.filter(|(off, _)| *off > old_offset)
 							.map(|(off, len)| (i, off, len))
 					})
@@ -307,7 +313,7 @@ impl RowShape {
 			let dynamic_start = self.dynamic_section_start();
 			let abs_start = dynamic_start + old_offset;
 			let abs_end = abs_start + old_length;
-			row.0.make_mut().splice(abs_start..abs_end, new_data.iter().copied());
+			row.vec_mut().splice(abs_start..abs_end, new_data.iter().copied());
 
 			self.write_dynamic_ref(row, index, old_offset, new_data.len());
 
@@ -316,22 +322,22 @@ impl RowShape {
 				self.write_dynamic_ref(row, i, new_off, len);
 			}
 		} else {
-			let dynamic_offset = self.dynamic_section_size(row);
-			row.0.extend_from_slice(new_data);
+			let dynamic_offset = self.dynamic_section_size(&row[..]);
+			row.extend_from_slice(new_data);
 			self.write_dynamic_ref(row, index, dynamic_offset, new_data.len());
 		}
 		row.set_valid(index, true);
 	}
 
-	pub(crate) fn remove_dynamic_data(&self, row: &mut EncodedRow, index: usize) {
-		if let Some((old_offset, old_length)) = self.read_dynamic_ref(row, index) {
+	pub(crate) fn remove_dynamic_data(&self, row: &mut EncodedRowBuilder, index: usize) {
+		if let Some((old_offset, old_length)) = self.read_dynamic_ref(&row[..], index) {
 			let refs_to_update: Vec<(usize, usize, usize)> = self
 				.fields()
 				.iter()
 				.enumerate()
-				.filter(|(i, _)| *i != index && row.is_defined(*i))
+				.filter(|(i, _)| *i != index && read_defined(row, *i))
 				.filter_map(|(i, _)| {
-					self.read_dynamic_ref(row, i)
+					self.read_dynamic_ref(&row[..], i)
 						.filter(|(off, _)| *off > old_offset)
 						.map(|(off, len)| (i, off, len))
 				})
@@ -340,7 +346,7 @@ impl RowShape {
 			let dynamic_start = self.dynamic_section_start();
 			let abs_start = dynamic_start + old_offset;
 			let abs_end = abs_start + old_length;
-			row.0.make_mut().splice(abs_start..abs_end, iter::empty());
+			row.vec_mut().splice(abs_start..abs_end, iter::empty());
 
 			for (i, off, len) in refs_to_update {
 				let new_off = off - old_length;
@@ -349,9 +355,9 @@ impl RowShape {
 		}
 	}
 
-	pub fn allocate(&self) -> EncodedRow {
+	pub fn allocate(&self) -> EncodedRowBuilder {
 		let (total_size, _) = self.get_cached_layout();
-		let mut row = EncodedRow(CowVec::new(vec![0u8; total_size]));
+		let mut row = EncodedRowBuilder::zeroed(total_size);
 		row.set_fingerprint(self.fingerprint);
 		reifydb_assertions! {
 			assert!(
@@ -368,7 +374,7 @@ impl RowShape {
 		(offset + align).saturating_sub(1) & !(align.saturating_sub(1))
 	}
 
-	pub fn set_none(&self, row: &mut EncodedRow, index: usize) {
+	pub fn set_none(&self, row: &mut EncodedRowBuilder, index: usize) {
 		self.remove_dynamic_data(row, index);
 		row.set_valid(index, false);
 	}

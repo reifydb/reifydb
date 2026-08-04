@@ -2,7 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{
+		row::{EncodedRow, EncodedRowBuilder},
+		shape::RowShape,
+	},
 	key::serializer::KeySerializer,
 };
 use reifydb_core::key::operator_group_state::{GroupStateKey, Keyspace};
@@ -30,7 +33,7 @@ pub trait KeyedStateful: RawStatefulOperator {
 		GroupStateKey::node_scoped(Keyspace::FIRST_CUSTOM, serializer.finish().as_ref())
 	}
 
-	fn create_state(&self) -> EncodedRow {
+	fn create_state(&self) -> EncodedRowBuilder {
 		let layout = self.layout();
 		layout.allocate()
 	}
@@ -47,11 +50,12 @@ pub trait KeyedStateful: RawStatefulOperator {
 
 	fn update_state<F>(&self, txn: &mut FlowTransaction, key_values: &[Value], f: F) -> Result<EncodedRow>
 	where
-		F: FnOnce(&RowShape, &mut EncodedRow) -> Result<()>,
+		F: FnOnce(&RowShape, &mut EncodedRowBuilder) -> Result<()>,
 	{
 		let shape = self.layout();
-		let mut row = self.load_state(txn, key_values)?;
+		let mut row = self.load_state(txn, key_values)?.thaw();
 		f(&shape, &mut row)?;
+		let row = row.freeze();
 		self.save_state(txn, key_values, row.clone())?;
 		Ok(row)
 	}
@@ -117,10 +121,10 @@ pub mod tests {
 		let state1 = operator.load_state(&mut txn, &key).unwrap();
 
 		// with_key_types lays state out as [Blob, Int4], so field 1 is the Int4.
-		let mut modified = state1.clone();
+		let mut modified = state1.clone().thaw();
 		let layout = operator.layout();
 		layout.set::<i32>(&mut modified, 1, 0x42);
-		operator.save_state(&mut txn, &key, modified.clone()).unwrap();
+		operator.save_state(&mut txn, &key, modified.clone().freeze()).unwrap();
 
 		let state2 = operator.load_state(&mut txn, &key).unwrap();
 		assert_eq!(layout.get::<i32>(&state2, 1), 0x42);
@@ -155,7 +159,7 @@ pub mod tests {
 		let key = vec![Value::Int4(300), Value::Utf8("remove_key".to_string())];
 
 		let state = operator.create_state();
-		operator.save_state(&mut txn, &key, state).unwrap();
+		operator.save_state(&mut txn, &key, state.freeze()).unwrap();
 
 		operator.remove_state(&mut txn, &key).unwrap();
 

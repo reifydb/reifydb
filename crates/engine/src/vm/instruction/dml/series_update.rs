@@ -129,9 +129,10 @@ pub(crate) fn update_series(
 			let key_value = extract_series_update_key_value(&columns, &series, row_idx);
 			let row_number = RowNumber::from(u64::from(row_numbers[row_idx]));
 
-			let mut rows_buf = [row];
+			let mut rows_buf = [row.thaw()];
 			SeriesRowInterceptor::pre_update(txn, &series, &mut rows_buf)?;
 			let [row] = rows_buf;
+			let row = row.freeze();
 			if !series.partition_by.is_empty() {
 				let expected = columns.partitions()[row_idx];
 				let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
@@ -352,7 +353,7 @@ fn build_series_update_row(series: &Series, columns: &Columns, shape: &RowShape,
 			.unwrap_or(Value::none());
 		shape.set_value(&mut row, i + 1, &value);
 	}
-	row
+	row.freeze()
 }
 
 fn track_series_update_flow_change(

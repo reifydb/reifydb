@@ -10,7 +10,10 @@ use reifydb_value::{
 	value::{uint::Uint, value_type::ValueType},
 };
 
-use crate::encoded::{row::EncodedRow, shape::RowShape};
+use crate::encoded::{
+	row::{EncodedRowBuilder, read_defined},
+	shape::RowShape,
+};
 
 const MODE_INLINE: u128 = 0x00000000000000000000000000000000;
 const MODE_MASK: u128 = 0x80000000000000000000000000000000;
@@ -21,7 +24,7 @@ const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF;
 const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 
 impl RowShape {
-	pub fn set_uint(&self, row: &mut EncodedRow, index: usize, value: &Uint) {
+	pub fn set_uint(&self, row: &mut EncodedRowBuilder, index: usize, value: &Uint) {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(
@@ -45,7 +48,7 @@ impl RowShape {
 			// uniquely-owned buffer, and write_unaligned needs no alignment.
 			unsafe {
 				ptr::write_unaligned(
-					row.make_mut().as_mut_ptr().add(field.offset as usize) as *mut u128,
+					row.as_mut_slice().as_mut_ptr().add(field.offset as usize) as *mut u128,
 					packed.to_le(),
 				);
 			}
@@ -57,7 +60,7 @@ impl RowShape {
 		self.replace_dynamic_data(row, index, &bytes);
 	}
 
-	pub fn get_uint(&self, row: &EncodedRow, index: usize) -> Uint {
+	pub fn get_uint(&self, row: &[u8], index: usize) -> Uint {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(
@@ -86,15 +89,15 @@ impl RowShape {
 			let length = ((packed & DYNAMIC_LENGTH_MASK) >> 64) as usize;
 
 			let dynamic_start = self.dynamic_section_start();
-			let data_bytes = &row.as_slice()[dynamic_start + offset..dynamic_start + offset + length];
+			let data_bytes = &row[dynamic_start + offset..dynamic_start + offset + length];
 
 			let unsigned = BigUint::from_bytes_le(data_bytes);
 			Uint::from(BigInt::from(unsigned))
 		}
 	}
 
-	pub fn try_get_uint(&self, row: &EncodedRow, index: usize) -> Option<Uint> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Uint {
+	pub fn try_get_uint(&self, row: &[u8], index: usize) -> Option<Uint> {
+		if read_defined(row, index) && self.fields()[index].constraint.get_type() == ValueType::Uint {
 			Some(self.get_uint(row, index))
 		} else {
 			None

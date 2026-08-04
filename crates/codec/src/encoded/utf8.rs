@@ -5,10 +5,13 @@ use std::str;
 
 use reifydb_value::{reifydb_assertions, value::value_type::ValueType};
 
-use crate::encoded::{row::EncodedRow, shape::RowShape};
+use crate::encoded::{
+	row::{EncodedRowBuilder, read_defined},
+	shape::RowShape,
+};
 
 impl RowShape {
-	pub fn set_utf8(&self, row: &mut EncodedRow, index: usize, value: impl AsRef<str>) {
+	pub fn set_utf8(&self, row: &mut EncodedRowBuilder, index: usize, value: impl AsRef<str>) {
 		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
@@ -21,7 +24,7 @@ impl RowShape {
 		self.replace_dynamic_data(row, index, value.as_ref().as_bytes());
 	}
 
-	pub fn get_utf8<'a>(&'a self, row: &'a EncodedRow, index: usize) -> &'a str {
+	pub fn get_utf8<'a>(&'a self, row: &'a [u8], index: usize) -> &'a str {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(
@@ -33,21 +36,21 @@ impl RowShape {
 			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Utf8);
 		}
 
-		let ref_slice = &row.as_slice()[field.offset as usize..field.offset as usize + 8];
+		let ref_slice = &row[field.offset as usize..field.offset as usize + 8];
 		let offset = u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]]) as usize;
 		let length = u32::from_le_bytes([ref_slice[4], ref_slice[5], ref_slice[6], ref_slice[7]]) as usize;
 
 		let dynamic_start = self.dynamic_section_start();
 		let string_start = dynamic_start + offset;
-		let string_slice = &row.as_slice()[string_start..string_start + length];
+		let string_slice = &row[string_start..string_start + length];
 
 		// SAFETY: set_utf8 is the only writer of a Utf8 field and stores `&str` bytes verbatim, so the slice
 		// delimited by this field's dynamic offset and length is valid UTF-8.
 		unsafe { str::from_utf8_unchecked(string_slice) }
 	}
 
-	pub fn try_get_utf8<'a>(&'a self, row: &'a EncodedRow, index: usize) -> Option<&'a str> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::Utf8 {
+	pub fn try_get_utf8<'a>(&'a self, row: &'a [u8], index: usize) -> Option<&'a str> {
+		if read_defined(row, index) && self.fields()[index].constraint.get_type() == ValueType::Utf8 {
 			Some(self.get_utf8(row, index))
 		} else {
 			None

@@ -31,7 +31,7 @@ impl CatalogStore {
 		SHAPE.set::<u64>(&mut row, ATTRIBUTE, attribute);
 		SHAPE.set_blob(&mut row, VALUE, &Blob::new(encoded));
 
-		txn.set(&IdentityAttributeValueKey::encoded(identity, attribute), row)?;
+		txn.set(&IdentityAttributeValueKey::encoded(identity, attribute), row.freeze())?;
 
 		Ok(IdentityAttributeValue {
 			identity,

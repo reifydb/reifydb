@@ -24,7 +24,7 @@ impl CatalogStore {
 			SHAPE.set_utf8(&mut row, TARGET_OBJECT, def.target_object.as_deref().unwrap_or(""));
 			SHAPE.set::<bool>(&mut row, ENABLED, enabled);
 
-			txn.set(&PolicyKey::encoded(policy_id), row)?;
+			txn.set(&PolicyKey::encoded(policy_id), row.freeze())?;
 		}
 
 		Ok(())

@@ -5,7 +5,7 @@ pub mod create;
 mod find;
 pub(crate) mod shape;
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::row::{EncodedRow, EncodedRowBuilder};
 use reifydb_core::row::{JoinTtl, OperatorSettings, OperatorTtl};
 use reifydb_value::value::duration::Duration;
 
@@ -26,7 +26,7 @@ pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedRo
 		}
 	}
 
-	row
+	row.freeze()
 }
 
 pub(crate) fn decode_operator_settings(row: &EncodedRow) -> Option<OperatorSettings> {
@@ -48,7 +48,7 @@ pub(crate) fn decode_operator_settings(row: &EncodedRow) -> Option<OperatorSetti
 	}
 }
 
-fn encode_side(row: &mut EncodedRow, ttl: &Option<OperatorTtl>, duration_idx: usize) {
+fn encode_side(row: &mut EncodedRowBuilder, ttl: &Option<OperatorTtl>, duration_idx: usize) {
 	let duration = ttl.as_ref().map(|ttl| ttl.duration).unwrap_or_else(Duration::zero);
 	operator_settings::SHAPE.set::<Duration>(row, duration_idx, duration);
 }

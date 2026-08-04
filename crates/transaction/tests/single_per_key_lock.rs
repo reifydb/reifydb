@@ -50,7 +50,7 @@ fn concurrent_read_modify_write_on_a_fresh_key_is_serialized() {
 						};
 						let mut row = shape.allocate();
 						shape.set::<u64>(&mut row, 0, current + 1);
-						tx.set(&key, row)
+						tx.set(&key, row.freeze())
 					})
 					.unwrap();
 				});

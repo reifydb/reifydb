@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+use reifydb_codec::encoded::{row::EncodedRowBuilder, shape::RowShape};
 use reifydb_core::common::TimeSource;
 
-pub(crate) fn write_time_source(shape: &RowShape, row: &mut EncodedRow, index: usize, time: &TimeSource) {
+pub(crate) fn write_time_source(shape: &RowShape, row: &mut EncodedRowBuilder, index: usize, time: &TimeSource) {
 	match time.ts() {
 		Some(ts) => shape.set_utf8(row, index, ts),
 		None => shape.set_none(row, index),
 	}
 }
 
-pub(crate) fn read_time_source(shape: &RowShape, row: &EncodedRow, index: usize) -> TimeSource {
+pub(crate) fn read_time_source(shape: &RowShape, row: &[u8], index: usize) -> TimeSource {
 	match shape.try_get_utf8(row, index) {
 		Some(ts) if !ts.is_empty() => TimeSource::Event {
 			ts: ts.to_string(),

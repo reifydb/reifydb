@@ -968,7 +968,7 @@ pub mod tests {
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Boolean(true)]);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(
 				test_instance[0],
@@ -986,7 +986,7 @@ pub mod tests {
 			let shape = RowShape::testing(&[ValueType::Float4]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Float4(OrderedF32::try_from(1.5).unwrap())]);
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(
 				test_instance[0],
@@ -1004,7 +1004,7 @@ pub mod tests {
 			let shape = RowShape::testing(&[ValueType::Float8]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Float8(OrderedF64::try_from(2.25).unwrap())]);
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(
 				test_instance[0],
@@ -1022,7 +1022,7 @@ pub mod tests {
 			let shape = RowShape::testing(&[ValueType::Int1]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Int1(42)]);
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(
 				test_instance[0],
@@ -1037,7 +1037,7 @@ pub mod tests {
 			let shape = RowShape::testing(&[ValueType::Int2]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Int2(-1234)]);
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(
 				test_instance[0],
@@ -1055,7 +1055,7 @@ pub mod tests {
 			let shape = RowShape::testing(&[ValueType::Int4]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Int4(56789)]);
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(
 				test_instance[0],
@@ -1073,7 +1073,7 @@ pub mod tests {
 			let shape = RowShape::testing(&[ValueType::Int8]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Int8(-987654321)]);
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(
 				test_instance[0],
@@ -1091,7 +1091,7 @@ pub mod tests {
 			let shape = RowShape::testing(&[ValueType::Int16]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Int16(123456789012345678901234567890i128)]);
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(
 				test_instance[0],
@@ -1109,7 +1109,7 @@ pub mod tests {
 			let shape = RowShape::testing(&[ValueType::Utf8]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Utf8("reifydb".into())]);
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(
 				test_instance[0],
@@ -1127,7 +1127,7 @@ pub mod tests {
 			let shape = RowShape::testing(&[ValueType::Uint1]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Uint1(255)]);
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(
 				test_instance[0],
@@ -1142,7 +1142,7 @@ pub mod tests {
 			let shape = RowShape::testing(&[ValueType::Uint2]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Uint2(65535)]);
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(
 				test_instance[0],
@@ -1160,7 +1160,7 @@ pub mod tests {
 			let shape = RowShape::testing(&[ValueType::Uint4]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Uint4(4294967295)]);
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(
 				test_instance[0],
@@ -1178,7 +1178,7 @@ pub mod tests {
 			let shape = RowShape::testing(&[ValueType::Uint8]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Uint8(18446744073709551615)]);
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(
 				test_instance[0],
@@ -1196,7 +1196,7 @@ pub mod tests {
 			let shape = RowShape::testing(&[ValueType::Uint16]);
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Uint16(340282366920938463463374607431768211455u128)]);
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(
 				test_instance[0],
@@ -1215,7 +1215,7 @@ pub mod tests {
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Int2(2)]);
 
-			let err = test_instance.append_rows(&shape, [row], vec![]).err().unwrap();
+			let err = test_instance.append_rows(&shape, [row.freeze()], vec![]).err().unwrap();
 			assert!(err.to_string().contains("mismatched column count: expected 0, got 1"));
 		}
 
@@ -1229,7 +1229,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set_values(&mut row_two, &[Value::Int2(3), Value::Boolean(false)]);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::int2([1, 2, 3]));
 			assert_eq!(test_instance[1], ColumnBuffer::bool([true, true, false]));
@@ -1246,7 +1246,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set::<bool>(&mut row_two, 0, false);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::bool([true, false]));
 		}
@@ -1262,7 +1262,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set_values(&mut row_two, &[Value::Float4(OrderedF32::try_from(2.0).unwrap())]);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::float4([1.0, 2.0]));
 		}
@@ -1278,7 +1278,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set_values(&mut row_two, &[Value::Float8(OrderedF64::try_from(2.0).unwrap())]);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::float8([1.0, 2.0]));
 		}
@@ -1293,7 +1293,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set_values(&mut row_two, &[Value::Int1(2)]);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::int1([1, 2]));
 		}
@@ -1308,7 +1308,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set_values(&mut row_two, &[Value::Int2(200)]);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::int2([100, 200]));
 		}
@@ -1323,7 +1323,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set_values(&mut row_two, &[Value::Int4(2000)]);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::int4([1000, 2000]));
 		}
@@ -1338,7 +1338,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set_values(&mut row_two, &[Value::Int8(20000)]);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::int8([10000, 20000]));
 		}
@@ -1354,7 +1354,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set_values(&mut row_two, &[Value::Int16(2000)]);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::int16([1000, 2000]));
 		}
@@ -1370,7 +1370,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set_values(&mut row_two, &[Value::Utf8("b".into())]);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::utf8(["a".to_string(), "b".to_string()]));
 		}
@@ -1385,7 +1385,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set_values(&mut row_two, &[Value::Uint1(2)]);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::uint1([1, 2]));
 		}
@@ -1401,7 +1401,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set_values(&mut row_two, &[Value::Uint2(200)]);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::uint2([100, 200]));
 		}
@@ -1417,7 +1417,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set_values(&mut row_two, &[Value::Uint4(2000)]);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::uint4([1000, 2000]));
 		}
@@ -1433,7 +1433,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set_values(&mut row_two, &[Value::Uint8(20000)]);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::uint8([10000, 20000]));
 		}
@@ -1449,7 +1449,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set_values(&mut row_two, &[Value::Uint16(2000)]);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::uint16([1000, 2000]));
 		}
@@ -1462,7 +1462,7 @@ pub mod tests {
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::none(), Value::Boolean(false)]);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::int2_with_bitvec(vec![1, 0], vec![true, false]));
 			assert_eq!(test_instance[1], ColumnBuffer::bool_with_bitvec([true, false], [true, true]));
@@ -1476,7 +1476,7 @@ pub mod tests {
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Boolean(true), Value::Boolean(true)]);
 
-			let result = test_instance.append_rows(&shape, [row], vec![]);
+			let result = test_instance.append_rows(&shape, [row.freeze()], vec![]);
 			assert!(result.is_err());
 			assert!(result.unwrap_err().to_string().contains("type mismatch"));
 		}
@@ -1489,7 +1489,7 @@ pub mod tests {
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::Int2(2)]);
 
-			let result = test_instance.append_rows(&shape, [row], vec![]);
+			let result = test_instance.append_rows(&shape, [row.freeze()], vec![]);
 			assert!(result.is_err());
 			assert!(result.unwrap_err().to_string().contains("mismatched column count"));
 		}
@@ -1506,7 +1506,7 @@ pub mod tests {
 			shape.set::<bool>(&mut row_one, 0, true);
 			shape.set_none(&mut row_one, 1);
 
-			test_instance.append_rows(&shape, [row_one], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::bool_with_bitvec([true], [true]));
 
@@ -1525,7 +1525,7 @@ pub mod tests {
 			shape.set::<f32>(&mut row, 0, 1.5f32);
 			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::float4_with_bitvec([1.5], [true]));
 			assert_eq!(test_instance[1], ColumnBuffer::float4_with_bitvec([0.0], [false]));
@@ -1543,7 +1543,7 @@ pub mod tests {
 			shape.set::<f64>(&mut row, 0, 2.5f64);
 			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::float8_with_bitvec([2.5], [true]));
 			assert_eq!(test_instance[1], ColumnBuffer::float8_with_bitvec([0.0], [false]));
@@ -1561,7 +1561,7 @@ pub mod tests {
 			shape.set::<i8>(&mut row, 0, 42i8);
 			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::int1_with_bitvec([42], [true]));
 			assert_eq!(test_instance[1], ColumnBuffer::int1_with_bitvec([0], [false]));
@@ -1579,7 +1579,7 @@ pub mod tests {
 			shape.set::<i16>(&mut row, 0, -1234i16);
 			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::int2_with_bitvec([-1234], [true]));
 			assert_eq!(test_instance[1], ColumnBuffer::int2_with_bitvec([0], [false]));
@@ -1597,7 +1597,7 @@ pub mod tests {
 			shape.set::<i32>(&mut row, 0, 56789i32);
 			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::int4_with_bitvec([56789], [true]));
 			assert_eq!(test_instance[1], ColumnBuffer::int4_with_bitvec([0], [false]));
@@ -1615,7 +1615,7 @@ pub mod tests {
 			shape.set::<i64>(&mut row, 0, -987654321i64);
 			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::int8_with_bitvec([-987654321], [true]));
 			assert_eq!(test_instance[1], ColumnBuffer::int8_with_bitvec([0], [false]));
@@ -1633,7 +1633,7 @@ pub mod tests {
 			shape.set::<i128>(&mut row, 0, 123456789012345678901234567890i128);
 			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(
 				test_instance[0],
@@ -1654,7 +1654,7 @@ pub mod tests {
 			shape.set_utf8(&mut row, 0, "reifydb");
 			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::utf8_with_bitvec(["reifydb".to_string()], [true]));
 			assert_eq!(test_instance[1], ColumnBuffer::utf8_with_bitvec(["".to_string()], [false]));
@@ -1672,7 +1672,7 @@ pub mod tests {
 			shape.set::<u8>(&mut row, 0, 255u8);
 			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::uint1_with_bitvec([255], [true]));
 			assert_eq!(test_instance[1], ColumnBuffer::uint1_with_bitvec([0], [false]));
@@ -1690,7 +1690,7 @@ pub mod tests {
 			shape.set::<u16>(&mut row, 0, 65535u16);
 			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::uint2_with_bitvec([65535], [true]));
 			assert_eq!(test_instance[1], ColumnBuffer::uint2_with_bitvec([0], [false]));
@@ -1708,7 +1708,7 @@ pub mod tests {
 			shape.set::<u32>(&mut row, 0, 4294967295u32);
 			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::uint4_with_bitvec([4294967295], [true]));
 			assert_eq!(test_instance[1], ColumnBuffer::uint4_with_bitvec([0], [false]));
@@ -1726,7 +1726,7 @@ pub mod tests {
 			shape.set::<u64>(&mut row, 0, 18446744073709551615u64);
 			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0], ColumnBuffer::uint8_with_bitvec([18446744073709551615], [true]));
 			assert_eq!(test_instance[1], ColumnBuffer::uint8_with_bitvec([0], [false]));
@@ -1744,7 +1744,7 @@ pub mod tests {
 			shape.set::<u128>(&mut row, 0, 340282366920938463463374607431768211455u128);
 			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(
 				test_instance[0],
@@ -1768,7 +1768,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set_values(&mut row_two, &[Value::DictionaryId(DictionaryEntryId::U4(20))]);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0].get_value(0), Value::DictionaryId(DictionaryEntryId::U4(10)));
 			assert_eq!(test_instance[0].get_value(1), Value::DictionaryId(DictionaryEntryId::U4(20)));
@@ -1790,7 +1790,7 @@ pub mod tests {
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::none(), Value::Boolean(true)]);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert!(!test_instance[0].is_defined(0));
 			assert_eq!(test_instance[1].get_value(0), Value::Boolean(true));
@@ -1807,7 +1807,7 @@ pub mod tests {
 			let mut row = shape.allocate();
 			shape.set_values(&mut row, &[Value::DictionaryId(DictionaryEntryId::U4(5))]);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			// The first two rows carry over from the undefined column the append promoted.
 			assert!(!test_instance[0].is_defined(0));
@@ -1832,7 +1832,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set::<IdentityId>(&mut row_two, 0, id2);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0].get_value(0), Value::IdentityId(id1));
 			assert_eq!(test_instance[0].get_value(1), Value::IdentityId(id2));
@@ -1855,7 +1855,7 @@ pub mod tests {
 			shape.set::<IdentityId>(&mut row, 0, id);
 			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0].get_value(0), Value::IdentityId(id));
 			assert!(test_instance[0].is_defined(0));
@@ -1878,7 +1878,7 @@ pub mod tests {
 			let mut row_two = shape.allocate();
 			shape.set_blob(&mut row_two, 0, &blob2);
 
-			test_instance.append_rows(&shape, [row_one, row_two], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0].get_value(0), Value::Blob(blob1));
 			assert_eq!(test_instance[0].get_value(1), Value::Blob(blob2));
@@ -1901,7 +1901,7 @@ pub mod tests {
 			shape.set_blob(&mut row, 0, &blob);
 			shape.set_none(&mut row, 1);
 
-			test_instance.append_rows(&shape, [row], vec![]).unwrap();
+			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
 			assert_eq!(test_instance[0].get_value(0), Value::Blob(blob));
 			assert!(test_instance[0].is_defined(0));

@@ -100,7 +100,7 @@ pub fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedRow {
 	metadata_shape::SHAPE.set::<u64>(&mut row, metadata_shape::HEAD, metadata.head);
 	metadata_shape::SHAPE.set::<u64>(&mut row, metadata_shape::TAIL, metadata.tail);
 	metadata_shape::SHAPE.set::<u64>(&mut row, metadata_shape::COUNT, metadata.count);
-	row
+	row.freeze()
 }
 
 pub fn decode_ringbuffer_metadata(row: &EncodedRow) -> RingBufferMetadata {

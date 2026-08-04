@@ -19,7 +19,7 @@ impl CatalogStore {
 		flow::SHAPE.set_utf8(&mut row, flow::NAME, &new_name);
 		flow::SHAPE.set::<u8>(&mut row, flow::STATUS, flow.status as u8);
 
-		txn.set(&FlowKey::encoded(flow_id), row)?;
+		txn.set(&FlowKey::encoded(flow_id), row.freeze())?;
 
 		Ok(())
 	}
@@ -37,7 +37,7 @@ impl CatalogStore {
 		flow::SHAPE.set_utf8(&mut row, flow::NAME, &flow.name);
 		flow::SHAPE.set::<u8>(&mut row, flow::STATUS, status as u8);
 
-		txn.set(&FlowKey::encoded(flow_id), row)?;
+		txn.set(&FlowKey::encoded(flow_id), row.freeze())?;
 
 		Ok(())
 	}

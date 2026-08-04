@@ -227,7 +227,7 @@ impl SinkRingBufferViewOperator {
 		let key = self.forward_key(source_rn);
 		let mut row = self.state_shape.allocate();
 		self.state_shape.set_blob(&mut row, 0, &Blob::from(storage_rn.0.to_be_bytes().to_vec()));
-		self.state_set(txn, &key, row)
+		self.state_set(txn, &key, row.freeze())
 	}
 
 	fn drop_forward(&self, txn: &mut FlowTransaction, source_rn: RowNumber) -> Result<()> {
@@ -279,10 +279,10 @@ impl SinkRingBufferViewOperator {
 		payload.extend_from_slice(&time.to_millis().to_be_bytes());
 		payload.extend_from_slice(&source_rn.0.to_be_bytes());
 		self.state_shape.set_blob(&mut row, 0, &Blob::from(payload));
-		self.state_set(txn, &key, row)?;
+		self.state_set(txn, &key, row.freeze())?;
 		if let Some(expires_at) = self.expires_at(time) {
 			let key = self.expiry_key(partition, expires_at, storage_rn);
-			self.state_set(txn, &key, self.state_shape.allocate())?;
+			self.state_set(txn, &key, self.state_shape.allocate().freeze())?;
 		}
 		Ok(())
 	}
@@ -589,7 +589,7 @@ impl SinkRingBufferViewOperator {
 				)?;
 				let mut row = self.state_shape.allocate();
 				self.state_shape.set_blob(&mut row, 0, &Blob::from(at.to_be_bytes().to_vec()));
-				self.state_set(txn, &arm_key, row)
+				self.state_set(txn, &arm_key, row.freeze())
 			}
 			None => self.state_remove(txn, &arm_key),
 		}

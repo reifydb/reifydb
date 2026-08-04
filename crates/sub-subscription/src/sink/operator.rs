@@ -175,9 +175,9 @@ impl EphemeralSinkSubscriptionOperator {
 				})?;
 				let blob = Blob::from(serialized);
 				let key = utils::empty_state_key();
-				let mut row = utils::load_or_create_row(operator_id, txn, &key, &shape)?;
+				let mut row = utils::load_or_create_row(operator_id, txn, &key, &shape)?.thaw();
 				shape.set_blob(&mut row, 0, &blob);
-				utils::save_row(operator_id, txn, &key, row)?;
+				utils::save_row(operator_id, txn, &key, row.freeze())?;
 				Ok(())
 			});
 			Ok((s, persist))

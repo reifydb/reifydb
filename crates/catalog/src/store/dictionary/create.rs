@@ -73,7 +73,7 @@ impl CatalogStore {
 		dictionary::SHAPE.set::<u8>(&mut row, dictionary::VALUE_TYPE, type_tag_byte(&to_create.value_type));
 		dictionary::SHAPE.set::<u8>(&mut row, dictionary::ID_TYPE, type_tag_byte(&to_create.id_type));
 
-		txn.set(&DictionaryKey::encoded(dictionary), row)?;
+		txn.set(&DictionaryKey::encoded(dictionary), row.freeze())?;
 
 		Ok(())
 	}
@@ -88,7 +88,7 @@ impl CatalogStore {
 		dictionary_namespace::SHAPE.set::<u64>(&mut row, dictionary_namespace::ID, u64::from(dictionary));
 		dictionary_namespace::SHAPE.set_utf8(&mut row, dictionary_namespace::NAME, name);
 
-		txn.set(&NamespaceDictionaryKey::encoded(namespace, dictionary), row)?;
+		txn.set(&NamespaceDictionaryKey::encoded(namespace, dictionary), row.freeze())?;
 
 		Ok(())
 	}

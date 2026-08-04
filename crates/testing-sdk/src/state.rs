@@ -67,7 +67,7 @@ impl TestStateStore {
 	pub fn set_value(&mut self, key: EncodedKey, values: &[Value], shape: &RowShape) {
 		let mut encoded = shape.allocate();
 		shape.set_values(&mut encoded, values);
-		self.set(key, encoded);
+		self.set(key, encoded.freeze());
 	}
 
 	pub fn snapshot(&self) -> HashMap<EncodedKey, EncodedRow> {

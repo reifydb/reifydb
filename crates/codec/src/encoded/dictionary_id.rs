@@ -8,10 +8,13 @@ use reifydb_value::{
 	value::{constraint::Constraint, dictionary::DictionaryEntryId, value_type::ValueType},
 };
 
-use crate::encoded::{row::EncodedRow, shape::RowShape};
+use crate::encoded::{
+	row::{EncodedRowBuilder, read_defined},
+	shape::RowShape,
+};
 
 impl RowShape {
-	pub fn set_dictionary_id(&self, row: &mut EncodedRow, index: usize, entry: &DictionaryEntryId) {
+	pub fn set_dictionary_id(&self, row: &mut EncodedRowBuilder, index: usize, entry: &DictionaryEntryId) {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(
@@ -26,7 +29,7 @@ impl RowShape {
 		// SAFETY: row.len() >= total_static_size() puts the slot at field.offset inside the uniquely-owned
 		// buffer and it is at least as wide as the widest arm; write_unaligned needs no alignment.
 		unsafe {
-			let ptr = row.make_mut().as_mut_ptr().add(field.offset as usize);
+			let ptr = row.as_mut_slice().as_mut_ptr().add(field.offset as usize);
 			match entry {
 				DictionaryEntryId::U1(v) => ptr.write_unaligned(*v),
 				DictionaryEntryId::U2(v) => ptr::write_unaligned(ptr as *mut u16, *v),
@@ -37,7 +40,7 @@ impl RowShape {
 		}
 	}
 
-	pub fn get_dictionary_id(&self, row: &EncodedRow, index: usize) -> DictionaryEntryId {
+	pub fn get_dictionary_id(&self, row: &[u8], index: usize) -> DictionaryEntryId {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(
@@ -68,8 +71,8 @@ impl RowShape {
 		}
 	}
 
-	pub fn try_get_dictionary_id(&self, row: &EncodedRow, index: usize) -> Option<DictionaryEntryId> {
-		if row.is_defined(index) && self.fields()[index].constraint.get_type() == ValueType::DictionaryId {
+	pub fn try_get_dictionary_id(&self, row: &[u8], index: usize) -> Option<DictionaryEntryId> {
+		if read_defined(row, index) && self.fields()[index].constraint.get_type() == ValueType::DictionaryId {
 			Some(self.get_dictionary_id(row, index))
 		} else {
 			None

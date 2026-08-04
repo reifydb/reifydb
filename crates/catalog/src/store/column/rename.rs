@@ -46,7 +46,7 @@ impl CatalogStore {
 				column::DICTIONARY_ID,
 				column::SHAPE.get::<u64>(&old, column::DICTIONARY_ID),
 			);
-			txn.set(&ColumnsKey::encoded(column_id), row)?;
+			txn.set(&ColumnsKey::encoded(column_id), row.freeze())?;
 		}
 
 		if let Some(multi) = txn.get(&ColumnKey::encoded(object, column_id))? {
@@ -63,7 +63,7 @@ impl CatalogStore {
 				object_column::INDEX,
 				object_column::SHAPE.get::<u8>(&old, object_column::INDEX),
 			);
-			txn.set(&ColumnKey::encoded(object, column_id), row)?;
+			txn.set(&ColumnKey::encoded(object, column_id), row.freeze())?;
 		}
 
 		Ok(())

@@ -714,7 +714,7 @@ impl Columns {
 
 		Row {
 			number: row_number,
-			encoded,
+			encoded: encoded.freeze(),
 			shape: layout,
 		}
 	}

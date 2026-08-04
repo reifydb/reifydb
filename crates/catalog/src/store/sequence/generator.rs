@@ -92,7 +92,7 @@ macro_rules! impl_generator {
 					let mut tx = txn.begin_single_command([key])?;
 					let result = match tx.get(key)? {
 						Some(row) => {
-							let mut row = row.row;
+							let mut row = row.row.thaw();
 							let current_value = SHAPE.get::<$prim>(&row, 0);
 							let next_value = current_value.saturating_add(incr);
 
@@ -104,14 +104,14 @@ macro_rules! impl_generator {
 							}
 
 							SHAPE.set::<$prim>(&mut row, 0, next_value);
-							tx.set(key, row)?;
+							tx.set(key, row.freeze())?;
 							next_value
 						}
 						None => match default {
 							Some(value) => {
 								let mut new_row = SHAPE.allocate();
 								SHAPE.set::<$prim>(&mut new_row, 0, value);
-								tx.set(key, new_row)?;
+								tx.set(key, new_row.freeze())?;
 								value
 							}
 							None => {
@@ -127,7 +127,7 @@ macro_rules! impl_generator {
 
 								let mut new_row = SHAPE.allocate();
 								SHAPE.set::<$prim>(&mut new_row, 0, last);
-								tx.set(key, new_row)?;
+								tx.set(key, new_row.freeze())?;
 								last
 							}
 						},
@@ -143,11 +143,11 @@ macro_rules! impl_generator {
 				) -> Result<()> {
 					let mut tx = txn.begin_single_command([key])?;
 					let mut row = match tx.get(key)? {
-						Some(row) => row.row,
+						Some(row) => row.row.thaw(),
 						None => SHAPE.allocate(),
 					};
 					SHAPE.set::<$prim>(&mut row, 0, value);
-					tx.set(key, row)?;
+					tx.set(key, row.freeze())?;
 					tx.commit()?;
 					Ok(())
 				}
@@ -192,7 +192,7 @@ macro_rules! impl_generator {
 					SHAPE.set::<$prim>(&mut row, 0, $max);
 
 					let key = EncodedKey::new("sequence");
-					txn.with_single_command([&key], |tx| tx.set(&key, row)).unwrap();
+					txn.with_single_command([&key], |tx| tx.set(&key, row.freeze())).unwrap();
 
 					let err = $generator::next(&mut txn, &EncodedKey::new("sequence"), None)
 						.unwrap_err();
@@ -305,7 +305,7 @@ macro_rules! impl_generator {
 					SHAPE.set::<$prim>(&mut row, 0, initial_val);
 
 					let key = EncodedKey::new("sequence");
-					txn.with_single_command([&key], |tx| tx.set(&key, row)).unwrap();
+					txn.with_single_command([&key], |tx| tx.set(&key, row.freeze())).unwrap();
 
 					let result = $generator::next_batched(
 						&mut txn,

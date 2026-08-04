@@ -24,10 +24,10 @@ impl CatalogStore {
 			)),
 		};
 
-		let mut updated_row = multi.row.clone();
+		let mut updated_row = multi.row.clone().thaw();
 		table::SHAPE.set::<u64>(&mut updated_row, table::PRIMARY_KEY, primary_key_id.0);
 
-		txn.set(&TableKey::encoded(table_id), updated_row)?;
+		txn.set(&TableKey::encoded(table_id), updated_row.freeze())?;
 
 		Ok(())
 	}

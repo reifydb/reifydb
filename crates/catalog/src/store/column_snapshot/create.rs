@@ -108,7 +108,7 @@ impl CatalogStore {
 
 		column_snapshot::SHAPE.set::<u64>(&mut row, column_snapshot::ROW_COUNT, to_create.row_count);
 
-		txn.set(&ColumnSnapshotKey::encoded(id), row)?;
+		txn.set(&ColumnSnapshotKey::encoded(id), row.freeze())?;
 		Ok(())
 	}
 
@@ -125,13 +125,13 @@ impl CatalogStore {
 				table_id,
 				..
 			} => {
-				txn.set(&TableColumnSnapshotKey::encoded(*table_id, id), row)?;
+				txn.set(&TableColumnSnapshotKey::encoded(*table_id, id), row.freeze())?;
 			}
 			ColumnSnapshotSource::SeriesBucket {
 				series_id,
 				..
 			} => {
-				txn.set(&SeriesColumnSnapshotKey::encoded(*series_id, id), row)?;
+				txn.set(&SeriesColumnSnapshotKey::encoded(*series_id, id), row.freeze())?;
 			}
 		}
 

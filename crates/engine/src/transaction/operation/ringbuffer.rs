@@ -174,9 +174,10 @@ impl RingBufferOperations for CommandTransaction {
 			RingBufferRowInterceptor::post_delete(self, ringbuffer, &ids, &existing_rows)?;
 		}
 
-		let mut rows_buf = [row];
+		let mut rows_buf = [row.thaw()];
 		RingBufferRowInterceptor::pre_insert(self, ringbuffer, &mut rows_buf)?;
 		let [row] = rows_buf;
+		let row = row.freeze();
 
 		self.set(&key, row.clone())?;
 
@@ -207,10 +208,11 @@ impl RingBufferOperations for CommandTransaction {
 			None => return Ok(row),
 		};
 
-		let mut rows_buf = [row];
+		let mut rows_buf = [row.thaw()];
 		let ids = [id];
 		RingBufferRowInterceptor::pre_update(self, &ringbuffer, &ids, &mut rows_buf)?;
 		let [row] = rows_buf;
+		let row = row.freeze();
 
 		if let Some(expected) = partition {
 			let shape = row_shape_from_columns(&ringbuffer.columns);
@@ -296,9 +298,10 @@ impl RingBufferOperations for AdminTransaction {
 			RingBufferRowInterceptor::post_delete(self, ringbuffer, &ids, &existing_rows)?;
 		}
 
-		let mut rows_buf = [row];
+		let mut rows_buf = [row.thaw()];
 		RingBufferRowInterceptor::pre_insert(self, ringbuffer, &mut rows_buf)?;
 		let [row] = rows_buf;
+		let row = row.freeze();
 
 		self.set(&key, row.clone())?;
 
@@ -329,10 +332,11 @@ impl RingBufferOperations for AdminTransaction {
 			None => return Ok(row),
 		};
 
-		let mut rows_buf = [row];
+		let mut rows_buf = [row.thaw()];
 		let ids = [id];
 		RingBufferRowInterceptor::pre_update(self, &ringbuffer, &ids, &mut rows_buf)?;
 		let [row] = rows_buf;
+		let row = row.freeze();
 
 		if let Some(expected) = partition {
 			let shape = row_shape_from_columns(&ringbuffer.columns);

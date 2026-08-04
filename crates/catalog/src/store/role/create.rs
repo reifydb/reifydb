@@ -32,7 +32,7 @@ impl CatalogStore {
 		SHAPE.set::<u64>(&mut row, ID, role_id);
 		SHAPE.set_utf8(&mut row, NAME, name);
 
-		txn.set(&RoleKey::encoded(role_id), row)?;
+		txn.set(&RoleKey::encoded(role_id), row.freeze())?;
 
 		Ok(Role {
 			id: role_id,

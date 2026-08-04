@@ -1139,7 +1139,7 @@ mod span_tests {
 		let shape = RowShape::operator_state();
 		let mut r = shape.allocate();
 		shape.set_blob(&mut r, 0, &Blob::from(vec![payload]));
-		r
+		r.freeze()
 	}
 
 	#[test]

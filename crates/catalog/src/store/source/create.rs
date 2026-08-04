@@ -77,7 +77,7 @@ impl CatalogStore {
 		source::SHAPE.set::<u8>(&mut row, source::STATUS, FlowStatus::Active.to_u8());
 
 		let key = SourceKey::encoded(source);
-		txn.set(&key, row)?;
+		txn.set(&key, row.freeze())?;
 
 		Ok(())
 	}
@@ -92,7 +92,7 @@ impl CatalogStore {
 		source_namespace::SHAPE.set::<u64>(&mut row, source_namespace::ID, u64::from(source));
 		source_namespace::SHAPE.set_utf8(&mut row, source_namespace::NAME, name);
 		let key = NamespaceSourceKey::encoded(namespace, source);
-		txn.set(&key, row)?;
+		txn.set(&key, row.freeze())?;
 		Ok(())
 	}
 }

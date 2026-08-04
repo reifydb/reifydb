@@ -107,7 +107,7 @@ impl CatalogStore {
 		);
 		write_time_source(&table::SHAPE, &mut row, table::TS, &to_create.time);
 
-		txn.set(&TableKey::encoded(table), row)?;
+		txn.set(&TableKey::encoded(table), row.freeze())?;
 
 		Ok(())
 	}
@@ -121,7 +121,7 @@ impl CatalogStore {
 		let mut row = table_namespace::SHAPE.allocate();
 		table_namespace::SHAPE.set::<u64>(&mut row, table_namespace::ID, u64::from(table));
 		table_namespace::SHAPE.set_utf8(&mut row, table_namespace::NAME, name);
-		txn.set(&NamespaceTableKey::encoded(namespace, table), row)?;
+		txn.set(&NamespaceTableKey::encoded(namespace, table), row.freeze())?;
 		Ok(())
 	}
 

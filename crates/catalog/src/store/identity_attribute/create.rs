@@ -38,7 +38,7 @@ impl CatalogStore {
 		SHAPE.set_utf8(&mut row, NAME, name);
 		SHAPE.set::<u8>(&mut row, VALUE_TYPE, type_tag_byte(&value_type));
 
-		txn.set(&IdentityAttributeKey::encoded(attribute_id), row)?;
+		txn.set(&IdentityAttributeKey::encoded(attribute_id), row.freeze())?;
 
 		Ok(IdentityAttribute {
 			id: attribute_id,

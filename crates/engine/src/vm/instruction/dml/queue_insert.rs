@@ -155,7 +155,7 @@ pub(crate) fn insert_queue(
 			} => returned.push(ReturnedRow {
 				created: false,
 				row_number,
-				encoded: encoded.unwrap_or_else(|| shape.allocate()),
+				encoded: encoded.unwrap_or_else(|| shape.allocate().freeze()),
 			}),
 		}
 	}
@@ -205,7 +205,7 @@ fn write_deduplication_record(
 	let mut record = shape.allocate();
 	shape.set::<u64>(&mut record, 0, row_number.0);
 	shape.set_value(&mut record, 1, &Value::DateTime(now.saturating_add(ttl)));
-	txn.set(&QueueDeduplicationKey::encoded(queue.id, key.to_vec()), record)?;
+	txn.set(&QueueDeduplicationKey::encoded(queue.id, key.to_vec()), record.freeze())?;
 	Ok(())
 }
 
@@ -568,7 +568,7 @@ fn build_insert_queue_row(
 	row.set_timestamps(now, now);
 	row.set_time(resolve_time(&target.queue.name, &target.queue.columns, &target.queue.time, shape, &row, now)?);
 
-	Ok(row)
+	Ok(row.freeze())
 }
 
 #[inline]

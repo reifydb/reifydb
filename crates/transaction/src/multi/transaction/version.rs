@@ -88,7 +88,7 @@ impl StandardVersionProvider {
 		shape.set::<u64>(&mut row, 0, version);
 
 		let mut tx = single.begin_command([&key])?;
-		tx.set(&key, row)?;
+		tx.set(&key, row.freeze())?;
 		tx.commit()
 	}
 }
@@ -326,7 +326,7 @@ pub mod tests {
 
 		{
 			let mut tx = single.begin_command([&key]).unwrap();
-			tx.set(&key, row).unwrap();
+			tx.set(&key, row.freeze()).unwrap();
 			tx.commit().unwrap();
 		} // dropped here, releasing the key lock the provider needs
 

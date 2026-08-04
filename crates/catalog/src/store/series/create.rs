@@ -138,7 +138,7 @@ impl CatalogStore {
 
 		write_time_source(&series::SHAPE, &mut row, series::TS, &to_create.time);
 
-		txn.set(&SeriesStorageKey::encoded(series_id), row)?;
+		txn.set(&SeriesStorageKey::encoded(series_id), row.freeze())?;
 
 		Ok(())
 	}
@@ -153,7 +153,7 @@ impl CatalogStore {
 		series_namespace::SHAPE.set::<u64>(&mut row, series_namespace::ID, u64::from(series_id));
 		series_namespace::SHAPE.set_utf8(&mut row, series_namespace::NAME, name);
 
-		txn.set(&NamespaceSeriesKey::encoded(namespace, series_id), row)?;
+		txn.set(&NamespaceSeriesKey::encoded(namespace, series_id), row.freeze())?;
 
 		Ok(())
 	}
@@ -192,7 +192,7 @@ impl CatalogStore {
 		series_metadata::SHAPE.set::<u64>(&mut row, series_metadata::NEWEST_KEY, 0u64);
 		series_metadata::SHAPE.set::<u64>(&mut row, series_metadata::SEQUENCE_COUNTER, 0u64);
 
-		txn.set(&SeriesMetadataKey::encoded(series_id), row)?;
+		txn.set(&SeriesMetadataKey::encoded(series_id), row.freeze())?;
 
 		Ok(())
 	}

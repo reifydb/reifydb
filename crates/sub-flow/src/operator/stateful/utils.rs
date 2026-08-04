@@ -82,7 +82,7 @@ pub fn load_or_create_row(
 ) -> Result<EncodedRow> {
 	match state_get(id, txn, key)? {
 		Some(row) => Ok(row),
-		None => Ok(shape.allocate()),
+		None => Ok(shape.allocate().freeze()),
 	}
 }
 

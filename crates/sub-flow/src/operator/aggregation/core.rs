@@ -316,7 +316,7 @@ impl Aggregation {
 		layout.set_values(&mut encoded, slot_values);
 		let row = Row {
 			number: RowNumber(0),
-			encoded,
+			encoded: encoded.freeze(),
 			shape: layout,
 		};
 		let columns = Columns::from_row(&row);
@@ -358,7 +358,7 @@ impl Aggregation {
 		encoded.set_time(time);
 		Ok(Row {
 			number: row_number,
-			encoded,
+			encoded: encoded.freeze(),
 			shape: layout,
 		})
 	}

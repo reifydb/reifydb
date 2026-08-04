@@ -34,7 +34,7 @@ impl CatalogStore {
 		}
 		SHAPE.set::<DateTime>(&mut row, CREATED_AT, created_at);
 
-		txn.set(&TokenKey::encoded(id), row)?;
+		txn.set(&TokenKey::encoded(id), row.freeze())?;
 
 		Ok(Token {
 			id,

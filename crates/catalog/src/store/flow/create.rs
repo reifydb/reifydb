@@ -91,7 +91,7 @@ impl CatalogStore {
 		flow::SHAPE.set::<u8>(&mut row, flow::TIME, TimeDomain::declared_to_u8(to_create.time));
 
 		let key = FlowKey::encoded(flow);
-		txn.set(&key, row)?;
+		txn.set(&key, row.freeze())?;
 
 		Ok(())
 	}
@@ -106,7 +106,7 @@ impl CatalogStore {
 		flow_namespace::SHAPE.set::<u64>(&mut row, flow_namespace::ID, u64::from(flow));
 		flow_namespace::SHAPE.set_utf8(&mut row, flow_namespace::NAME, name);
 		let key = NamespaceFlowKey::encoded(namespace, flow);
-		txn.set(&key, row)?;
+		txn.set(&key, row.freeze())?;
 		Ok(())
 	}
 }

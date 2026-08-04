@@ -101,7 +101,7 @@ impl StateBytes {
 		shape.set_blob_from_slice(&mut row, STATE_FIELD, body);
 		row.set_timestamps(now, now);
 		Self {
-			row,
+			row: row.freeze(),
 		}
 	}
 
@@ -122,7 +122,7 @@ impl StateBytes {
 	}
 
 	pub fn body_mut(&mut self) -> &mut [u8] {
-		OPERATOR_STATE_SHAPE.get_blob_slice_mut(&mut self.row, STATE_FIELD)
+		OPERATOR_STATE_SHAPE.get_blob_slice_mut(self.row.make_mut(), STATE_FIELD)
 	}
 
 	pub fn refresh_updated_at(&mut self, now: DateTime) {
@@ -458,7 +458,7 @@ mod tests {
 	fn test_from_row_rejects_foreign_shape() {
 		// A foreign shape must be rejected by fingerprint, not misread as state bytes.
 		let foreign = RowShape::testing(&[ValueType::Int8]).allocate();
-		let err = StateBytes::from_row(foreign).unwrap_err();
+		let err = StateBytes::from_row(foreign.freeze()).unwrap_err();
 		assert!(matches!(err, StateError::UnexpectedObject { .. }));
 	}
 
@@ -468,12 +468,12 @@ mod tests {
 		// loudly rather than be read as the current format.
 		let shape = operator_state_shape();
 		let row = shape.allocate();
-		let err = StateBytes::from_row(row).unwrap_err();
+		let err = StateBytes::from_row(row.freeze()).unwrap_err();
 		assert_eq!(err, StateError::UnsupportedFormat(0));
 
 		let mut future = shape.allocate();
 		shape.set::<u8>(&mut future, 1, 9u8);
-		let err = StateBytes::from_row(future).unwrap_err();
+		let err = StateBytes::from_row(future.freeze()).unwrap_err();
 		assert_eq!(err, StateError::UnsupportedFormat(9));
 	}
 

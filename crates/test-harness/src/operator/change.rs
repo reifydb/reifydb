@@ -30,7 +30,7 @@ pub fn ts_row(row_number: u64, timestamp: i64) -> Row {
 	shape.set_values(&mut encoded, &[Value::Int8(timestamp)]);
 	Row {
 		number: RowNumber(row_number),
-		encoded,
+		encoded: encoded.freeze(),
 		shape,
 	}
 }

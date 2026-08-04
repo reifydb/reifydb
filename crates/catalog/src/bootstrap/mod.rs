@@ -189,7 +189,7 @@ mod read_configs_tests {
 		SHAPE.set_value(&mut row, VALUE, &Value::any(value));
 		let key_bytes = ConfigStorageKey::for_key(key);
 		let mut batches = HashMap::new();
-		batches.insert(EntryKind::Multi, vec![(key_bytes, Some(row.0))]);
+		batches.insert(EntryKind::Multi, vec![(key_bytes, Some(row.freeze().0))]);
 		buffer.set(version, batches).unwrap();
 	}
 
@@ -293,7 +293,7 @@ mod read_configs_tests {
 
 		let key_bytes = ConfigStorageKey::for_key(ConfigKey::ThreadsCoordination);
 		let mut batches = HashMap::new();
-		batches.insert(EntryKind::Multi, vec![(key_bytes, Some(row.0))]);
+		batches.insert(EntryKind::Multi, vec![(key_bytes, Some(row.freeze().0))]);
 		buffer.set(CommitVersion(1), batches).unwrap();
 
 		let out = read_configs(Some(&buffer), None, &[ConfigKey::ThreadsCoordination]).unwrap();

@@ -68,7 +68,7 @@ pub(crate) fn resolve_partition_flow(
 		None => {
 			let mut row = REGISTRY_SHAPE.allocate();
 			REGISTRY_SHAPE.set_value(&mut row, 0, &candidate);
-			txn.set(&key, row)?;
+			txn.set(&key, row.freeze())?;
 		}
 	}
 	if verified.len() >= VERIFIED_PARTITIONS_CAPACITY {

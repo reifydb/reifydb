@@ -5,10 +5,7 @@ use std::{collections::HashSet, sync::LazyLock};
 
 use postcard::to_stdvec;
 use reifydb_codec::{
-	encoded::{
-		row::EncodedRow,
-		shape::{RowShape, RowShapeField},
-	},
+	encoded::shape::{RowShape, RowShapeField},
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
@@ -38,16 +35,16 @@ pub fn partition_col_indices(columns: &[Column], partition_by: &[String]) -> Vec
 		.collect()
 }
 
-pub fn partition_values(shape: &RowShape, row: &EncodedRow, indices: &[usize]) -> Vec<Value> {
+pub fn partition_values(shape: &RowShape, row: &[u8], indices: &[usize]) -> Vec<Value> {
 	indices.iter().map(|&i| shape.get_value(row, i)).collect()
 }
 
-pub fn table_partition_of_row(table: &Table, shape: &RowShape, row: &EncodedRow) -> Partition {
+pub fn table_partition_of_row(table: &Table, shape: &RowShape, row: &[u8]) -> Partition {
 	let indices = partition_col_indices(&table.columns, &table.partition_by);
 	Partition::of(&partition_values(shape, row, &indices))
 }
 
-pub fn table_row_key(table: &Table, shape: &RowShape, row: &EncodedRow, row_number: RowNumber) -> EncodedKey {
+pub fn table_row_key(table: &Table, shape: &RowShape, row: &[u8], row_number: RowNumber) -> EncodedKey {
 	if table.partition_by.is_empty() {
 		RowKey::encoded(table.id, row_number)
 	} else {
@@ -91,7 +88,7 @@ pub fn resolve_partition(
 		None => {
 			let mut row = REGISTRY_SHAPE.allocate();
 			REGISTRY_SHAPE.set_value(&mut row, 0, &candidate);
-			txn.set(&key, row)?;
+			txn.set(&key, row.freeze())?;
 		}
 	}
 	Ok(())

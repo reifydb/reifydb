@@ -61,7 +61,7 @@ impl TestRowBuilder {
 
 		Row {
 			number: self.row_number,
-			encoded,
+			encoded: encoded.freeze(),
 			shape,
 		}
 	}

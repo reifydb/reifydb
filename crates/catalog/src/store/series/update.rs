@@ -14,7 +14,7 @@ fn encode_series_metadata(metadata: &SeriesMetadata) -> EncodedRow {
 	series_metadata::SHAPE.set::<u64>(&mut row, series_metadata::OLDEST_KEY, metadata.oldest_key);
 	series_metadata::SHAPE.set::<u64>(&mut row, series_metadata::NEWEST_KEY, metadata.newest_key);
 	series_metadata::SHAPE.set::<u64>(&mut row, series_metadata::SEQUENCE_COUNTER, metadata.sequence_counter);
-	row
+	row.freeze()
 }
 
 impl CatalogStore {

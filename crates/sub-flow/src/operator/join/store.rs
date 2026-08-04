@@ -317,7 +317,7 @@ impl Store {
 		let op = RowShape::operator_state();
 		let mut row = op.allocate();
 		op.set_blob(&mut row, 0, &Blob::from(serialized));
-		state_set(self.operator_id, txn, &key, row)?;
+		state_set(self.operator_id, txn, &key, row.freeze())?;
 		self.shape_cache.insert(shape.clone());
 		Ok(())
 	}
@@ -353,7 +353,7 @@ mod tests {
 		let shape = RowShape::operator_state();
 		let mut r = shape.allocate();
 		shape.set_blob(&mut r, 0, &Blob::from(vec![payload]));
-		r
+		r.freeze()
 	}
 
 	/// Resolve-then-read, the composition production used before callers began holding the group
