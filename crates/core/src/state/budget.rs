@@ -259,6 +259,17 @@ impl OperatorStateBudgetHandle {
 		Count::new(leases.values().filter(|lease| !lease.is_reporting()).count() as u64)
 	}
 
+	pub fn lease_count(&self) -> Count {
+		Count::new(self.0.leases.lock().len() as u64)
+	}
+
+	pub fn reported_lease_bytes(&self) -> ByteSize {
+		self.0.leases
+			.lock()
+			.values()
+			.fold(ByteSize::ZERO, |acc, lease| acc.saturating_add(lease.reported_bytes()))
+	}
+
 	pub fn release_lease(&self, operator: OperatorId) {
 		let mut leases = self.0.leases.lock();
 		leases.remove(&operator);
@@ -468,6 +479,66 @@ mod tests {
 			LeaseHealth::Silent,
 			"a cacheless operator is silent, not faulted"
 		);
+	}
+
+	#[test]
+	fn test_reported_lease_bytes_separates_reservation_from_usage() {
+		// `leased` charges max(grant, reported) and the grant never falls below LEASE_FLOOR, so a pool
+		// of small operators reports hundreds of MiB leased while holding kilobytes. Read alone that
+		// gauge is indistinguishable from a lease leak, which is exactly how it was read in production;
+		// the reported total and the lease count are what make it decodable as floor * count.
+		let pool = OperatorStateBudgetHandle::new(mb(2048));
+		let reported = ByteSize::from_bytes(4096);
+
+		for id in 1..=3 {
+			let operator = OperatorId(id);
+			pool.grant_lease(operator, mb(64));
+			pool.report_lease(
+				operator,
+				LeaseReport {
+					state: StateMemory::new(Count::new(1), reported),
+					row_numbers: StateMemory::default(),
+				},
+			);
+			pool.resize_lease_to_demand(operator, ByteSize::from_bytes(5120));
+		}
+
+		assert_eq!(pool.lease_count(), Count::new(3));
+		assert_eq!(
+			pool.reported_lease_bytes(),
+			ByteSize::from_bytes(3 * reported.as_bytes()),
+			"reported is what the operators actually hold, summed"
+		);
+		assert_eq!(
+			pool.snapshot().leased,
+			ByteSize::from_bytes(3 * LEASE_FLOOR.as_bytes()),
+			"leased is the floor times the lease count, 2048x the bytes actually held"
+		);
+	}
+
+	#[test]
+	fn test_reported_lease_bytes_drops_a_cacheless_operator() {
+		// A cacheless report already frees the grant; it must also leave the reported total, or an
+		// operator that stopped caching keeps inflating the number that is supposed to be ground truth.
+		let pool = OperatorStateBudgetHandle::new(mb(100));
+		let operator = OperatorId(1);
+		pool.grant_lease(operator, mb(16));
+		pool.report_lease(
+			operator,
+			LeaseReport {
+				state: StateMemory::new(Count::new(1), mb(40)),
+				row_numbers: StateMemory::default(),
+			},
+		);
+		assert_eq!(pool.reported_lease_bytes(), mb(40));
+
+		pool.report_lease_none(operator);
+
+		assert_eq!(pool.reported_lease_bytes(), ByteSize::ZERO);
+		assert_eq!(pool.lease_count(), Count::new(1), "the lease still exists, it just holds nothing");
+
+		pool.release_lease(operator);
+		assert_eq!(pool.lease_count(), Count::ZERO);
 	}
 
 	#[test]

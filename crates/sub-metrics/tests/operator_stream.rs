@@ -22,6 +22,14 @@ impl MetricsCollector for OperatorState {
 	}
 }
 
+struct OperatorHeap;
+
+impl MetricsCollector for OperatorHeap {
+	fn collect(&self, out: &mut Vec<MetricsSample>) {
+		out.push(MetricsSample::heap("flow_node::7", "group_cache_bytes", ByteSize::from_bytes(4096)));
+	}
+}
+
 struct ProcessWide;
 
 impl MetricsCollector for ProcessWide {
@@ -84,4 +92,32 @@ fn the_memory_domain_excludes_operator_collectors() {
 		!samples.iter().any(|sample| sample.scope.starts_with("flow_node::")),
 		"operator collectors must not appear in the memory stream"
 	);
+}
+
+#[test]
+fn operator_heap_counts_toward_named_bytes() {
+	// named_bytes is the numerator of the dark_bytes reconciliation, and collect_memory built it by
+	// summing only the samples it had already pushed. The operator collectors live in a bucket that
+	// push_subsystem_samples never reads, so every operator cache landed in dark_bytes and read as an
+	// unattributed leak of exactly the operator heap. The roll-up keeps the per-operator rows out of
+	// the memory stream (the split above) while still paying them into the numerator.
+	let registry = MetricsRegistry::new();
+	registry.register_operator_collector(Arc::new(OperatorHeap));
+
+	let samples = reader_with(registry).samples_for(Domain::Memory);
+
+	let rollup = samples
+		.iter()
+		.find(|sample| sample.scope == "flow_operators")
+		.expect("the memory stream must carry the operator heap roll-up");
+	assert_eq!(rollup.metric, "resident_bytes");
+	assert_eq!(rollup.reading.as_f64(), 4096.0, "the roll-up sums the operator bucket, not the memory bucket");
+	assert_eq!(rollup.reading.heap_bytes(), Some(4096), "a non-heap roll-up would leave the bytes dark");
+
+	let named = samples
+		.iter()
+		.find(|sample| sample.metric == "named_bytes")
+		.expect("the memory stream must carry the reconciliation numerator");
+	let heap: u64 = samples.iter().filter_map(|sample| sample.reading.heap_bytes()).sum();
+	assert_eq!(named.reading.as_f64() as u64, heap, "named_bytes must account for every heap sample it emits");
 }

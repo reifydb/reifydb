@@ -576,6 +576,12 @@ impl MetricsCollector for OperatorStateBudgetCollector {
 		out.push(MetricsSample::bytes("operator_state", "dirty_bytes", snapshot.dirty));
 		out.push(MetricsSample::bytes("operator_state", "in_flight_bytes", snapshot.in_flight));
 		out.push(MetricsSample::bytes("operator_state", "leased_bytes", snapshot.leased));
+		out.push(MetricsSample::count("operator_state", "lease_count", self.budget.lease_count().as_u64()));
+		out.push(MetricsSample::bytes(
+			"operator_state",
+			"lease_reported_bytes",
+			self.budget.reported_lease_bytes(),
+		));
 		out.push(MetricsSample::count("operator_state", "silent_leases", self.budget.silent_leases().as_u64()));
 		out.push(MetricsSample::bytes("operator_state", "overage_bytes", snapshot.overage()));
 		out.push(MetricsSample::counter("operator_state", "evictions", self.budget.evictions().as_u64()));

@@ -30,6 +30,7 @@ pub fn collect_memory(c: &Collectors) -> Vec<MetricsSample> {
 	push_process_samples(&mut out, &proc_mem);
 	push_allocator_samples(&mut out, &jemalloc, &alloc);
 	push_subsystem_samples(c, &mut out);
+	push_operator_rollup(c, &mut out);
 	push_sqlite_samples(&mut out);
 	let named_heap = out.iter().filter_map(|sample| sample.reading.heap_bytes()).sum::<u64>();
 	push_derived_samples(&mut out, named_heap, &proc_mem, &jemalloc, &alloc);
@@ -107,6 +108,12 @@ fn push_allocator_samples(out: &mut Vec<MetricsSample>, jemalloc: &Option<Jemall
 fn push_subsystem_samples(c: &Collectors, out: &mut Vec<MetricsSample>) {
 	out.extend(c.registry.collect());
 	collect_dictionary(c, out);
+}
+
+#[inline]
+fn push_operator_rollup(c: &Collectors, out: &mut Vec<MetricsSample>) {
+	let heap: u64 = c.registry.collect_operators().iter().filter_map(|sample| sample.reading.heap_bytes()).sum();
+	out.push(MetricsSample::heap("flow_operators", "resident_bytes", ByteSize::from_bytes(heap)));
 }
 
 #[inline]
