@@ -102,7 +102,8 @@ impl FlowTransaction {
 		limit: Option<usize>,
 	) -> Result<MultiVersionBatch> {
 		let prefixed_range = range.with_prefix(OperatorStateKey::encoded(id, vec![]));
-		let iter = self.range(prefixed_range, RangeScope::All, 1024);
+		let batch_size = limit.map_or(1024, |l| l.saturating_add(1).min(1024));
+		let iter = self.range(prefixed_range, RangeScope::All, batch_size);
 		let mut items = Vec::new();
 		for result in iter {
 			if limit.is_some_and(|l| items.len() == l) {
