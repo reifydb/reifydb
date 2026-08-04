@@ -164,6 +164,7 @@ fn render_category(out: &mut String, records: &[AggregateRecord], cat: ProfilerC
 #[inline]
 fn render_group(out: &mut String, span_name: &str, mut group: Vec<&AggregateRecord>, top_n: usize) {
 	let group_total: u64 = group.iter().map(|r| r.total_us).sum();
+	let group_self: u64 = group.iter().map(|r| r.self_us).sum();
 	let group_calls: u64 = group.iter().map(|r| r.calls).sum();
 
 	if group.len() == 1 && group[0].dimensions.is_empty() {
@@ -171,9 +172,10 @@ fn render_group(out: &mut String, span_name: &str, mut group: Vec<&AggregateReco
 		let p = r.histogram.percentiles();
 		let _ = writeln!(
 			out,
-			"    {}  total={} calls={} p50={} p75={} p90={} p95={} p99={}",
+			"    {}  total={} self={} calls={} p50={} p75={} p90={} p95={} p99={}",
 			span_name,
 			fmt_us(r.total_us),
+			fmt_us(r.self_us),
 			r.calls,
 			fmt_us(p.p50 as u64),
 			fmt_us(p.p75 as u64),
@@ -186,10 +188,11 @@ fn render_group(out: &mut String, span_name: &str, mut group: Vec<&AggregateReco
 
 	let _ = writeln!(
 		out,
-		"    {} [{} ops, total={}, calls={}]",
+		"    {} [{} ops, total={}, self={}, calls={}]",
 		span_name,
 		group.len(),
 		fmt_us(group_total),
+		fmt_us(group_self),
 		group_calls,
 	);
 
@@ -213,9 +216,10 @@ fn render_group(out: &mut String, span_name: &str, mut group: Vec<&AggregateReco
 		let p = r.histogram.percentiles();
 		let _ = write!(
 			out,
-			"      {:<width$}  total={} calls={} p50={} p75={} p90={} p95={} p99={}",
+			"      {:<width$}  total={} self={} calls={} p50={} p75={} p90={} p95={} p99={}",
 			labels[i],
 			fmt_us(r.total_us),
+			fmt_us(r.self_us),
 			r.calls,
 			fmt_us(p.p50 as u64),
 			fmt_us(p.p75 as u64),
@@ -646,6 +650,58 @@ mod tests {
 		assert!(table.contains("\n      op_b  "));
 		assert!(!table.contains("\n      op_c  "), "op_c should be truncated by top_n=2: {}", table);
 		assert!(!table.contains("\n      op_d  "), "op_d should be truncated by top_n=2: {}", table);
+	}
+
+	#[test]
+	fn an_inline_row_reports_self_apart_from_its_inclusive_total() {
+		// On a saturated box the actionable number is self, not the inclusive total: a span that
+		// spends all of its time inside children burns no CPU of its own. Rendering total into both
+		// slots would read as "range_limited burns 1.0ms" when it burns 200us, so they must differ.
+		let record = AggregateRecord {
+			category: ProfilerCategory::Flow,
+			span_name: "flow::state::range_limited".to_string(),
+			dimensions: Vec::new(),
+			calls: 1,
+			total_us: 1_000,
+			self_us: 200,
+			histogram: PercentileHistogram::new(),
+			extras_sum: [0; MAX_EXTRAS],
+		};
+
+		let table = aggregates_table(&[record], 10);
+
+		assert!(
+			table.contains("flow::state::range_limited  total=1.0ms self=200us"),
+			"an inline row must carry its own self time beside the inclusive total:\n{}",
+			table
+		);
+	}
+
+	#[test]
+	fn a_dimensioned_group_reports_self_per_row_and_in_its_header() {
+		// Grouped rows are where operator attribution is read off, so each dimension needs its own
+		// self and the header needs the group's sum. Summing totals into the header self would say
+		// 7.0ms of CPU across two operators that together burn 1.5ms.
+		let mk = |op: &str, total_us: u64, self_us: u64| AggregateRecord {
+			category: ProfilerCategory::Flow,
+			span_name: "flow::engine::apply".to_string(),
+			dimensions: vec![op.to_string()],
+			calls: 1,
+			total_us,
+			self_us,
+			histogram: PercentileHistogram::new(),
+			extras_sum: [0; MAX_EXTRAS],
+		};
+
+		let table = aggregates_table(&[mk("op_a", 4_000, 1_000), mk("op_b", 3_000, 500)], 10);
+
+		assert!(
+			table.contains("flow::engine::apply [2 ops, total=7.0ms, self=1.5ms, calls=2]"),
+			"the group header must sum self across its rows:\n{}",
+			table
+		);
+		assert!(table.contains("op_a  total=4.0ms self=1.0ms"), "op_a row lost its self time:\n{}", table);
+		assert!(table.contains("op_b  total=3.0ms self=500us"), "op_b row lost its self time:\n{}", table);
 	}
 
 	#[test]
