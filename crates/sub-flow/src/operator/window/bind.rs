@@ -141,6 +141,17 @@ impl WindowOperator {
 		Mint::new(self.meta_slot()).membership(&mut store, group, row_number)
 	}
 
+	pub(super) fn drop_row_index(
+		&self,
+		txn: &mut FlowTransaction,
+		group_hash: Hash128,
+		row_number: RowNumber,
+	) -> Result<()> {
+		let group = self.partition_group(txn, group_hash)?;
+		let mut store = OperatorStateStore::new(txn, self.core.operator);
+		Mint::new(self.meta_slot()).drop_membership(&mut store, group, row_number)
+	}
+
 	pub fn get_and_increment_global_count(
 		&self,
 		txn: &mut FlowTransaction,

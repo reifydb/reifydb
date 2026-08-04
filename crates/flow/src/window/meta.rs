@@ -316,6 +316,15 @@ impl WindowMeta {
 		self.row_index.put(store, &key, state)
 	}
 
+	pub fn drop_row_index<S: StateStore>(
+		&mut self,
+		store: &mut S,
+		group: GroupId,
+		row_number: RowNumber,
+	) -> Result<()> {
+		self.row_index.remove(store, &RowIndexKey(group, row_number))
+	}
+
 	pub fn load_session<S: StateStore>(&mut self, store: &mut S, group: GroupId) -> Result<SessionTracker> {
 		let Some(state) = self.session.get(store, &SessionKey(group))? else {
 			return Ok(SessionTracker::default());

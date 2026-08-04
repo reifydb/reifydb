@@ -2074,3 +2074,41 @@ chaos_test!(source_ringbuffer_chaos, |seed| {
 chaos_test!(source_random_chaos, |seed| {
 	operators::source::drive_random(seed);
 });
+
+chaos_test!(window_session_rotating_chaos, |seed| {
+	// Coordinates drawn far wider than the gap, so nearly every arrival opens a new session and the
+	// rotation path carries the sweep.
+	operators::window::session::drive(seed, operators::window::session::params(200, 20_000, Fold::Sum));
+});
+
+chaos_test!(window_session_extending_chaos, |seed| {
+	// The mirror: a gap wider than the whole coordinate span keeps one session open per group, so
+	// what is exercised is extension at both ends rather than rotation.
+	operators::window::session::drive(seed, operators::window::session::params(20_000, 5_000, Fold::Sum));
+});
+
+chaos_test!(window_session_boundary_chaos, |seed| {
+	// Gap and span the same order, which is the only band where rotation, backwards extension and
+	// refusal all occur in one corpus.
+	operators::window::session::drive(seed, operators::window::session::params(2_000, 6_000, Fold::Sum));
+});
+
+chaos_test!(window_session_zero_gap_chaos, |seed| {
+	// A zero gap makes every distinct instant its own session while repeats still merge, so a
+	// tracker that confused "no quiet period" with "same coordinate" collapses the corpus.
+	operators::window::session::drive(seed, operators::window::session::params(0, 400, Fold::Sum));
+});
+
+chaos_test!(window_session_min_chaos, |seed| {
+	// Min is not merely different arithmetic: it is non-invertible once grace is non-zero and takes
+	// the full-recompute path, so a retraction inside a session is recomputed rather than subtracted.
+	operators::window::session::drive(seed, operators::window::session::params(2_000, 6_000, Fold::Min));
+});
+
+chaos_test!(window_session_max_chaos, |seed| {
+	operators::window::session::drive(seed, operators::window::session::params(2_000, 6_000, Fold::Max));
+});
+
+chaos_test!(window_session_random_chaos, |seed| {
+	operators::window::session::drive_random(seed);
+});

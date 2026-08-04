@@ -46,6 +46,15 @@ impl<'a> Mint<'a> {
 	) -> Result<()> {
 		self.meta.store_row_index(store, group, row_number, window_id)
 	}
+
+	pub fn drop_membership<S: StateStore>(
+		&mut self,
+		store: &mut S,
+		group: GroupId,
+		row_number: RowNumber,
+	) -> Result<()> {
+		self.meta.drop_row_index(store, group, row_number)
+	}
 }
 
 #[cfg(test)]

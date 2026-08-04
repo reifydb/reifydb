@@ -167,6 +167,7 @@ fn route_count_tumbling(
 							now,
 						);
 					}
+					operator.drop_row_index(txn, *hash, pre.row_numbers()[row_idx])?;
 				}
 			}
 			Diff::Update {
@@ -472,6 +473,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							event_ts,
 						);
 					}
+					operator.drop_row_index(txn, *hash, pre.row_numbers()[row_idx])?;
 				}
 			}
 			Diff::Update {
@@ -702,6 +704,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							event_ts,
 						);
 					}
+					operator.drop_row_index(txn, *hash, pre.row_numbers()[row_idx])?;
 				}
 			}
 			Diff::Update {

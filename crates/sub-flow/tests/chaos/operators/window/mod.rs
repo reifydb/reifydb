@@ -4,6 +4,7 @@
 pub mod count;
 pub mod grid;
 pub mod rolling;
+pub mod session;
 pub mod sliding;
 pub mod tumbling;
 
