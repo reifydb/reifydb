@@ -32,14 +32,19 @@ fn report_retention_classes(task_names: &[&'static str], coverage: &RetentionCov
 	info!(tasks = task_names.len(), names = ?task_names, "Lifecycle subsystem started");
 	for class in RetentionClass::all() {
 		let terms: Vec<String> = class.floor_terms().iter().map(|term| term.to_string()).collect();
-		if let Some(owner) = coverage.owner(*class) {
-			info!(class = class.name(), owner, floor = ?terms, "lifecycle retention class");
-		} else {
-			error!(
+		match (coverage.owner(*class), coverage.absence(*class)) {
+			(Some(owner), _) => {
+				info!(class = class.name(), owner, floor = ?terms, "lifecycle retention class")
+			}
+			(None, Some(reason)) => info!(
+				class = class.name(),
+				reason, "lifecycle retention class has no producer here; nothing can accumulate in it"
+			),
+			(None, None) => error!(
 				class = class.name(),
 				floor = ?terms,
 				"lifecycle retention class has NO registered executor; nothing reclaims it"
-			);
+			),
 		}
 	}
 }

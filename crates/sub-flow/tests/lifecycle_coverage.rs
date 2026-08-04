@@ -18,6 +18,86 @@ fn coverage_of_a_flow_enabled_database() -> RetentionCoverage {
 		.expect("the builder must register RetentionCoverage before any subsystem is created")
 }
 
+fn coverage_of_a_database_without_flow() -> RetentionCoverage {
+	let db = embedded::memory().build().expect("memory database without flow must build");
+	db.engine()
+		.ioc()
+		.try_resolve::<RetentionCoverage>()
+		.expect("the builder must register RetentionCoverage before any subsystem is created")
+}
+
+const OPERATOR_GROUP_CLASSES: [RetentionClass; 2] =
+	[RetentionClass::OperatorGroupData, RetentionClass::OperatorGroupIdentity];
+
+#[test]
+fn a_database_without_the_flow_subsystem_declares_the_operator_classes_absent() {
+	// A node that builds no flows - raptor's backend federates remote namespaces and defines none - never
+	// constructs the FlowSubsystem, so nothing claims these two and every boot logged them at ERROR. The
+	// state is real but harmless: with no flow there is no operator group state to reclaim. Only the
+	// builder knows that, so it is the builder that has to say it.
+	let coverage = coverage_of_a_database_without_flow();
+
+	for class in OPERATOR_GROUP_CLASSES {
+		assert_eq!(
+			coverage.absence(class),
+			Some("flow subsystem not enabled"),
+			"{class} must be explained on a flow-less database, not reported as an unreclaimed lane"
+		);
+		assert!(!coverage.is_covered(class), "{class} has no executor without the flow tick");
+	}
+}
+
+#[test]
+fn a_flow_enabled_database_leaves_the_operator_classes_unexcused() {
+	// The direction that keeps the ERROR meaningful: a declaration made unconditionally, or left in place
+	// once flow is on, would excuse the exact lane the report exists to catch. If the flow tick reclaimer
+	// ever stops claiming these, this must go back to being an error and not an absence.
+	let coverage = coverage_of_a_flow_enabled_database();
+
+	for class in OPERATOR_GROUP_CLASSES {
+		assert!(
+			coverage.absence(class).is_none(),
+			"{class} is produced whenever flow runs, so excusing it here would hide a dead reclaimer"
+		);
+	}
+}
+
+#[test]
+fn no_class_is_both_reclaimed_and_excused() {
+	// The two declarations come from different components at different points in the build. If both can
+	// land on one class the report's precedence decides which is true, and the loser is a claim nobody
+	// checks - either a phantom executor or a lane excused while something still runs it.
+	for coverage in [coverage_of_a_flow_enabled_database(), coverage_of_a_database_without_flow()] {
+		for class in RetentionClass::all() {
+			assert!(
+				!(coverage.is_covered(*class) && coverage.absence(*class).is_some()),
+				"{class} is claimed by {:?} and excused as {:?} at once",
+				coverage.owner(*class),
+				coverage.absence(*class)
+			);
+		}
+	}
+}
+
+#[test]
+fn every_retention_class_is_either_reclaimed_or_explained() {
+	// What the ERROR branch is left to mean once absence is declarable: nothing unaccounted for, on any
+	// build shape, with no exemption list to bless the next lane that quietly stops registering. A class
+	// added without a decision about who reclaims it fails here rather than at 3am in a log.
+	for coverage in [coverage_of_a_flow_enabled_database(), coverage_of_a_database_without_flow()] {
+		let unaccounted: Vec<&str> = RetentionClass::all()
+			.iter()
+			.filter(|class| !coverage.is_covered(**class) && coverage.absence(**class).is_none())
+			.map(|class| class.name())
+			.collect();
+
+		assert!(
+			unaccounted.is_empty(),
+			"retention classes with no executor and no declared reason: {unaccounted:?}"
+		);
+	}
+}
+
 #[test]
 fn the_flow_tick_reclaimer_declares_the_operator_classes_it_owns() {
 	// Neither class is reclaimed by a LifecycleTask - the group reclaim driver runs inside

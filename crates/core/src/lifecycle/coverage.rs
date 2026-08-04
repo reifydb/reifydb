@@ -10,12 +10,14 @@ use crate::lifecycle::class::RetentionClass;
 #[derive(Clone)]
 pub struct RetentionCoverage {
 	owners: Arc<Mutex<BTreeMap<RetentionClass, &'static str>>>,
+	absences: Arc<Mutex<BTreeMap<RetentionClass, &'static str>>>,
 }
 
 impl RetentionCoverage {
 	pub fn new() -> Self {
 		Self {
 			owners: Arc::new(Mutex::new(BTreeMap::new())),
+			absences: Arc::new(Mutex::new(BTreeMap::new())),
 		}
 	}
 
@@ -23,8 +25,16 @@ impl RetentionCoverage {
 		self.owners.lock().entry(class).or_insert(owner);
 	}
 
+	pub fn absent(&self, class: RetentionClass, reason: &'static str) {
+		self.absences.lock().entry(class).or_insert(reason);
+	}
+
 	pub fn owner(&self, class: RetentionClass) -> Option<&'static str> {
 		self.owners.lock().get(&class).copied()
+	}
+
+	pub fn absence(&self, class: RetentionClass) -> Option<&'static str> {
+		self.absences.lock().get(&class).copied()
 	}
 
 	pub fn is_covered(&self, class: RetentionClass) -> bool {
@@ -86,6 +96,48 @@ mod tests {
 		assert!(coverage.is_empty());
 		for class in RetentionClass::all() {
 			assert!(!coverage.is_covered(*class), "{} must start uncovered", class.name());
+			assert!(coverage.absence(*class).is_none(), "{} must start with no absence", class.name());
 		}
+	}
+
+	#[test]
+	fn a_lane_declared_absent_is_explained_without_becoming_covered() {
+		// Absence answers a different question than coverage: "nothing produces here" is not "something
+		// reclaims here". Recording it as a pseudo-owner would report a reason string where the report
+		// prints an executor name, and would fold the class into the covered set that liveness assertions
+		// read - a lane nothing ever runs would then be expected to record slices.
+		let coverage = RetentionCoverage::new();
+		coverage.absent(RetentionClass::VacuumBudget, "store has no persistent tier");
+
+		assert_eq!(coverage.absence(RetentionClass::VacuumBudget), Some("store has no persistent tier"));
+		assert!(
+			!coverage.is_covered(RetentionClass::VacuumBudget),
+			"an absent lane has no executor, so it must not count as covered"
+		);
+		assert_eq!(coverage.owner(RetentionClass::VacuumBudget), None);
+	}
+
+	#[test]
+	fn covering_a_class_never_declares_it_absent() {
+		// The opposite conflation: a covered class picking up an absence would downgrade its report line
+		// from "reclaimed by X" to "nothing produces here", hiding a live lane behind an excuse.
+		let coverage = RetentionCoverage::new();
+		coverage.cover(RetentionClass::EpochLog, "epoch-log");
+
+		assert!(
+			coverage.absence(RetentionClass::EpochLog).is_none(),
+			"a class with an executor has no absence to report"
+		);
+	}
+
+	#[test]
+	fn the_first_reason_a_lane_is_declared_absent_is_the_one_reported() {
+		// Same stability contract as the owner: declaration order across subsystems is a builder detail,
+		// and a reason that changes with it makes the boot report unreproducible.
+		let coverage = RetentionCoverage::new();
+		coverage.absent(RetentionClass::CdcTruncate, "no cdc store registered");
+		coverage.absent(RetentionClass::CdcTruncate, "some later excuse");
+
+		assert_eq!(coverage.absence(RetentionClass::CdcTruncate), Some("no cdc store registered"));
 	}
 }

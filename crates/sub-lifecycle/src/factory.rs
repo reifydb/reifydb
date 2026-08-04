@@ -8,6 +8,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::catalog::config::{ConfigKey, GetConfig},
 	lifecycle::{
+		class::RetentionClass,
 		coverage::RetentionCoverage,
 		gate::{Gated, RetentionStartupGate},
 		metrics::RetentionMetrics,
@@ -41,6 +42,10 @@ use crate::{
 	subsystem::LifecycleSubsystem,
 };
 
+const NO_FLUSH_ENGINE: &str = "store has no flush engine";
+const NO_PERSISTENT_TIER: &str = "store has no persistent tier";
+const NO_CDC_STORE: &str = "no cdc store registered";
+
 pub struct LifecycleSubsystemFactory;
 
 impl Default for LifecycleSubsystemFactory {
@@ -54,6 +59,7 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let spawner = ioc.resolve::<ActorSpawner>()?;
 		let registry = ioc.resolve::<LifecycleRegistry>()?;
+		let coverage = ioc.try_resolve::<RetentionCoverage>().unwrap_or_default();
 
 		let store = match engine.multi_owned().store() {
 			MultiStore::Standard(s) => s.clone(),
@@ -121,6 +127,8 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 				),
 				plane.clone(),
 			)));
+		} else {
+			coverage.absent(RetentionClass::PersistentFlush, NO_FLUSH_ENGINE);
 		}
 
 		let compaction_engine = store.compaction_engine();
@@ -144,6 +152,9 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 				VacuumBudgetTask::new(store.clone(), plane.clone(), config.clone()),
 				plane.clone(),
 			)));
+		} else {
+			coverage.absent(RetentionClass::TombstoneReap, NO_PERSISTENT_TIER);
+			coverage.absent(RetentionClass::VacuumBudget, NO_PERSISTENT_TIER);
 		}
 
 		registry.register(Box::new(Measured::new(
@@ -160,11 +171,12 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 				),
 				plane.clone(),
 			)));
+		} else {
+			coverage.absent(RetentionClass::CdcTruncate, NO_CDC_STORE);
 		}
 
 		let tasks = registry.take();
 		let task_names = tasks.iter().map(|task| task.name()).collect();
-		let coverage = ioc.try_resolve::<RetentionCoverage>().unwrap_or_default();
 		for task in &tasks {
 			for class in task.classes() {
 				coverage.cover(*class, task.name());

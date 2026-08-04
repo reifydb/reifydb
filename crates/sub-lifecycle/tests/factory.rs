@@ -10,7 +10,10 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	lifecycle::{class::RetentionClass, metrics::RetentionMetrics, registry::LifecycleRegistry},
+	lifecycle::{
+		class::RetentionClass, coverage::RetentionCoverage, metrics::RetentionMetrics,
+		registry::LifecycleRegistry,
+	},
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{engine::StandardEngine, test_harness::TestEngine};
@@ -317,6 +320,109 @@ fn no_retention_class_is_left_without_an_executor_by_accident() {
 		unexplained.is_empty(),
 		"retention classes with no registered executor and no declared condition: {unexplained:?}"
 	);
+}
+
+/// Classes the factory registers no task for on a memory store, each because the tier it operates on is
+/// absent. The factory must say so on the shared registry rather than leave the boot report to guess.
+const PERSISTENT_ONLY: [RetentionClass; 3] =
+	[RetentionClass::PersistentFlush, RetentionClass::TombstoneReap, RetentionClass::VacuumBudget];
+
+#[test]
+fn a_store_without_a_persistent_tier_declares_the_persistent_lanes_absent() {
+	// Skipping a task and saying nothing is what made the boot report call every tier-absent lane an
+	// unreclaimed one at ERROR. An operator cannot tell that from a lane that genuinely stopped, so the
+	// same branch that skips the task owes the report a reason.
+	let test_engine = TestEngine::new();
+	let engine: StandardEngine = test_engine.inner().clone();
+	let coverage = RetentionCoverage::new();
+	let ioc = engine
+		.ioc()
+		.clone()
+		.register(engine.clone())
+		.register(LifecycleRegistry::new())
+		.register(RetentionMetrics::new())
+		.register(coverage.clone());
+
+	create(&ioc);
+
+	for class in PERSISTENT_ONLY {
+		assert!(
+			coverage.absence(class).is_some(),
+			"{class} registers no task on a memory store, so the factory must declare why; without it the \
+			 boot report reads as a dead lane"
+		);
+		assert!(
+			!coverage.is_covered(class),
+			"{class} has no executor here - declaring it absent must not fake one"
+		);
+	}
+}
+
+#[test]
+fn an_ioc_without_a_cdc_store_declares_cdc_truncate_absent() {
+	let test_engine = TestEngine::new();
+	let engine: StandardEngine = test_engine.inner().clone();
+	let spawner = engine.ioc().resolve::<ActorSpawner>().expect("test engine registers a spawner");
+	let coverage = RetentionCoverage::new();
+	let ioc = IocContainer::new()
+		.register(engine.clone())
+		.register(spawner)
+		.register(LifecycleRegistry::new())
+		.register(RetentionMetrics::new())
+		.register(coverage.clone());
+
+	create(&ioc);
+
+	assert_eq!(coverage.absence(RetentionClass::CdcTruncate), Some("no cdc store registered"));
+	assert!(!coverage.is_covered(RetentionClass::CdcTruncate));
+}
+
+#[test]
+fn a_cdc_store_makes_cdc_truncate_covered_rather_than_absent() {
+	// The paired direction, and the one that catches a blanket declaration: an absence recorded outside the
+	// skip branch would still satisfy the test above while excusing a lane that is present and expected to
+	// run, turning a genuinely stalled cdc-truncate into an info line.
+	let test_engine = TestEngine::new();
+	let engine: StandardEngine = test_engine.inner().clone();
+	let coverage = RetentionCoverage::new();
+	let ioc = engine
+		.ioc()
+		.clone()
+		.register(engine.clone())
+		.register(LifecycleRegistry::new())
+		.register(RetentionMetrics::new())
+		.register(coverage.clone());
+
+	create(&ioc);
+
+	assert_eq!(coverage.owner(RetentionClass::CdcTruncate), Some("cdc-ttl"));
+	assert!(
+		coverage.absence(RetentionClass::CdcTruncate).is_none(),
+		"cdc-truncate has a registered executor here, so excusing it would hide a stall behind an absence"
+	);
+}
+
+#[test]
+fn the_factory_declares_onto_the_registered_coverage_not_a_private_default() {
+	// The factory falls back to a default registry when none is registered. Writing to that fallback while
+	// one exists in the IoC would leave every declaration invisible to the boot report - the same silent
+	// outcome as never declaring at all.
+	let test_engine = TestEngine::new();
+	let engine: StandardEngine = test_engine.inner().clone();
+	let coverage = RetentionCoverage::new();
+	let ioc = engine
+		.ioc()
+		.clone()
+		.register(engine.clone())
+		.register(LifecycleRegistry::new())
+		.register(RetentionMetrics::new())
+		.register(coverage.clone());
+
+	create(&ioc);
+
+	assert_eq!(coverage.owner(RetentionClass::EpochLog), Some("epoch-log"));
+	assert_eq!(coverage.owner(RetentionClass::CompactionReclaim), Some("compaction-reclaim"));
+	assert_eq!(coverage.absence(RetentionClass::VacuumBudget), Some("store has no persistent tier"));
 }
 
 #[test]
