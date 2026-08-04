@@ -9,6 +9,7 @@ description = "Core type system and value representations for ReifyDB"
 
 [features]
 default = []
+cow-stats = []
 
 [build-dependencies]
 reifydb-build = { workspace = true }

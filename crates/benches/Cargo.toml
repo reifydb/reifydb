@@ -11,12 +11,15 @@ repository.workspace = true
 description = "Hand-rolled performance benchmarks for ReifyDB"
 publish = false
 
+[features]
+cow-stats = ["reifydb-value/cow-stats"]
+
 [dependencies]
 hdrhistogram = { workspace = true }
 rand = { workspace = true }
 
 [dev-dependencies]
-reifydb = { workspace = true, features = ["sub_server_http", "sub_server_ws", "sub_server_grpc"] }
+reifydb = { workspace = true, features = ["sub_server_http", "sub_server_ws", "sub_server_grpc", "sub_flow"] }
 reifydb-client = { workspace = true, features = ["http", "ws", "grpc"] }
 reifydb-allocator = { workspace = true, features = ["alloc-jemalloc"] }
 reifydb-codec = { workspace = true }
@@ -39,6 +42,11 @@ harness = false
 [[bench]]
 name = "scan-profile"
 path = "benches/scan_profile.rs"
+harness = false
+
+[[bench]]
+name = "cow-profile"
+path = "benches/cow_profile.rs"
 harness = false
 
 [[bench]]

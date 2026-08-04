@@ -7,6 +7,48 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::storage::DataVec;
 
+#[cfg(feature = "cow-stats")]
+pub mod stats {
+	use std::sync::atomic::{AtomicU64, Ordering};
+
+	pub static MUTATIONS: AtomicU64 = AtomicU64::new(0);
+	pub static COPIES: AtomicU64 = AtomicU64::new(0);
+	pub static ELEMENTS_COPIED: AtomicU64 = AtomicU64::new(0);
+	pub static CLONES: AtomicU64 = AtomicU64::new(0);
+	pub static BYTES_CLONED: AtomicU64 = AtomicU64::new(0);
+	pub static EMPTY_CLONES: AtomicU64 = AtomicU64::new(0);
+
+	#[derive(Debug, Clone, Copy)]
+	pub struct Snapshot {
+		pub mutations: u64,
+		pub copies: u64,
+		pub elements_copied: u64,
+		pub clones: u64,
+		pub bytes_cloned: u64,
+		pub empty_clones: u64,
+	}
+
+	pub fn reset() {
+		MUTATIONS.store(0, Ordering::Relaxed);
+		COPIES.store(0, Ordering::Relaxed);
+		ELEMENTS_COPIED.store(0, Ordering::Relaxed);
+		CLONES.store(0, Ordering::Relaxed);
+		BYTES_CLONED.store(0, Ordering::Relaxed);
+		EMPTY_CLONES.store(0, Ordering::Relaxed);
+	}
+
+	pub fn snapshot() -> Snapshot {
+		Snapshot {
+			mutations: MUTATIONS.load(Ordering::Relaxed),
+			copies: COPIES.load(Ordering::Relaxed),
+			elements_copied: ELEMENTS_COPIED.load(Ordering::Relaxed),
+			clones: CLONES.load(Ordering::Relaxed),
+			bytes_cloned: BYTES_CLONED.load(Ordering::Relaxed),
+			empty_clones: EMPTY_CLONES.load(Ordering::Relaxed),
+		}
+	}
+}
+
 #[derive(Debug, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct CowVec<T>
 where
@@ -88,6 +130,18 @@ impl<T: Clone + PartialEq> PartialEq<CowVec<T>> for [T] {
 
 impl<T: Clone + PartialEq> Clone for CowVec<T> {
 	fn clone(&self) -> Self {
+		#[cfg(feature = "cow-stats")]
+		{
+			stats::CLONES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+			let len = self.inner.len();
+			if len == 0 {
+				stats::EMPTY_CLONES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+			}
+			stats::BYTES_CLONED.fetch_add(
+				(len * std::mem::size_of::<T>()) as u64,
+				std::sync::atomic::Ordering::Relaxed,
+			);
+		}
 		CowVec {
 			inner: Arc::clone(&self.inner),
 		}
@@ -140,6 +194,15 @@ impl<T: Clone + PartialEq> CowVec<T> {
 	}
 
 	pub fn make_mut(&mut self) -> &mut Vec<T> {
+		#[cfg(feature = "cow-stats")]
+		{
+			stats::MUTATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+			if Arc::strong_count(&self.inner) > 1 {
+				stats::COPIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+				stats::ELEMENTS_COPIED
+					.fetch_add(self.inner.len() as u64, std::sync::atomic::Ordering::Relaxed);
+			}
+		}
 		Arc::make_mut(&mut self.inner)
 	}
 

@@ -65,3 +65,49 @@ impl Storage for Cow {
 	type Vec<T: Clone + PartialEq + 'static> = CowVec<T>;
 	type BitVec = BitVec;
 }
+
+#[derive(Clone, Debug)]
+pub struct Plain;
+
+impl Storage for Plain {
+	type Vec<T: Clone + PartialEq + 'static> = Vec<T>;
+	type BitVec = BitVec;
+}
+
+impl<T: Clone + PartialEq> DataVec<T> for Vec<T> {
+	fn spawn(&self, capacity: usize) -> Self {
+		Vec::with_capacity(capacity)
+	}
+
+	fn push(&mut self, value: T) {
+		Vec::push(self, value)
+	}
+
+	fn clear(&mut self) {
+		Vec::clear(self)
+	}
+
+	fn len(&self) -> usize {
+		Vec::len(self)
+	}
+
+	fn as_slice(&self) -> &[T] {
+		Vec::as_slice(self)
+	}
+
+	fn get(&self, idx: usize) -> Option<&T> {
+		<[T]>::get(self, idx)
+	}
+
+	fn extend_from_slice(&mut self, other: &[T]) {
+		Vec::extend_from_slice(self, other)
+	}
+
+	fn extend_iter(&mut self, iter: impl Iterator<Item = T>) {
+		Extend::extend(self, iter)
+	}
+
+	fn capacity(&self) -> usize {
+		Vec::capacity(self)
+	}
+}
