@@ -18,7 +18,12 @@ use reifydb_core::{
 use reifydb_sub_flow::execution::reclaim::ReclaimBudget;
 use reifydb_testing_chaos::{
 	fuzz::run_reported,
-	operator::{session::Session, subject::Subject, view::MaterializedView, view::RowKey, workload::Workload},
+	operator::{
+		session::Session,
+		subject::Subject,
+		view::{MaterializedView, RowKey},
+		workload::Workload,
+	},
 };
 use reifydb_testing_macro::chaos_test;
 use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber};
@@ -42,6 +47,7 @@ use crate::{
 			Shape,
 			workload::{RowwiseRow, RowwiseWorkload},
 		},
+		sink::Layout,
 		take::workload::{TakeRow, TakeWorkload},
 		window::{WindowSpec, build, grid::Fold},
 	},
@@ -1963,4 +1969,108 @@ chaos_test!(join_matrix_snapshot_right_pct_50_chaos, |seed| {
 			.collect();
 
 	assert!(diverged.is_empty(), "{}", diverged.join("\n\n"));
+});
+
+chaos_test!(sink_table_unpartitioned_chaos, |seed| {
+	operators::sink::drive(seed, operators::sink::params(operators::sink::Kind::Table, Layout::Unpartitioned));
+});
+
+chaos_test!(sink_table_partitioned_chaos, |seed| {
+	operators::sink::drive(seed, operators::sink::params(operators::sink::Kind::Table, Layout::Partitioned));
+});
+
+chaos_test!(sink_series_unpartitioned_chaos, |seed| {
+	operators::sink::drive(seed, operators::sink::params(operators::sink::Kind::Series, Layout::Unpartitioned));
+});
+
+chaos_test!(sink_series_partitioned_chaos, |seed| {
+	operators::sink::drive(seed, operators::sink::params(operators::sink::Kind::Series, Layout::Partitioned));
+});
+
+chaos_test!(sink_ring_roomy_unpartitioned_chaos, |seed| {
+	// Nothing is ever evicted, so a divergence here is not an eviction bug.
+	operators::sink::drive(
+		seed,
+		operators::sink::params(
+			operators::sink::Kind::Ring {
+				capacity: 64,
+			},
+			Layout::Unpartitioned,
+		),
+	);
+});
+
+chaos_test!(sink_ring_roomy_partitioned_chaos, |seed| {
+	operators::sink::drive(
+		seed,
+		operators::sink::params(
+			operators::sink::Kind::Ring {
+				capacity: 64,
+			},
+			Layout::Partitioned,
+		),
+	);
+});
+
+chaos_test!(sink_ring_evicting_unpartitioned_chaos, |seed| {
+	// Overrun continuously, so both eviction paths run rather than only the common one.
+	operators::sink::drive(
+		seed,
+		operators::sink::params(
+			operators::sink::Kind::Ring {
+				capacity: 4,
+			},
+			Layout::Unpartitioned,
+		),
+	);
+});
+
+chaos_test!(sink_ring_evicting_partitioned_chaos, |seed| {
+	// The same pressure per lane, which is the distinction the unpartitioned cell cannot make.
+	operators::sink::drive(
+		seed,
+		operators::sink::params(
+			operators::sink::Kind::Ring {
+				capacity: 4,
+			},
+			Layout::Partitioned,
+		),
+	);
+});
+
+chaos_test!(sink_ring_capacity_1_chaos, |seed| {
+	// The degenerate lane: every insert evicts its predecessor.
+	operators::sink::drive(
+		seed,
+		operators::sink::params(
+			operators::sink::Kind::Ring {
+				capacity: 1,
+			},
+			Layout::Partitioned,
+		),
+	);
+});
+
+chaos_test!(sink_random_chaos, |seed| {
+	operators::sink::drive_random(seed);
+});
+
+chaos_test!(source_series_chaos, |seed| {
+	operators::source::drive(seed, operators::source::params(operators::source::Kind::Series));
+});
+
+chaos_test!(source_table_chaos, |seed| {
+	operators::source::drive(seed, operators::source::params(operators::source::Kind::Table));
+});
+
+chaos_test!(source_view_chaos, |seed| {
+	operators::source::drive(seed, operators::source::params(operators::source::Kind::View));
+});
+
+chaos_test!(source_ringbuffer_chaos, |seed| {
+	operators::source::drive(seed, operators::source::params(operators::source::Kind::RingBuffer));
+});
+
+chaos_test!(source_random_chaos, |seed| {
+	operators::source::drive_random(seed);
 });

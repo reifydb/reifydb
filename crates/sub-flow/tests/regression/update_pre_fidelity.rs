@@ -532,3 +532,243 @@ mod join {
 		}
 	}
 }
+
+// A source's only work is dictionary decode, and its own chaos sweep cannot see half of it: a folded
+// view keys an update's `pre` by row number and never reads its values. Measured, not assumed -
+// decoding `post` but not `pre` passes all 160 iterations of the source sweeps.
+mod source {
+	use reifydb_core::{
+		common::{CommitVersion, TimeSource},
+		interface::{
+			catalog::{
+				flow::OperatorId,
+				id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
+				ringbuffer::RingBuffer,
+				series::SeriesKey,
+				table::Table,
+				view::{SeriesView, View, ViewKind},
+			},
+			change::{Change, Diff},
+		},
+		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
+	};
+	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_flow::operator::Operator;
+	use reifydb_sub_flow::operator::scan::{
+		ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator, table::SourceTableOperator,
+		view::SourceViewOperator,
+	};
+	use reifydb_testing_flow::harness::Harness;
+	use reifydb_value::{
+		fragment::Fragment,
+		value::{
+			Value,
+			datetime::DateTime,
+			dictionary::{DictionaryEntryId, DictionaryId},
+			row_number::RowNumber,
+			system_columns::SystemColumns,
+			value_type::ValueType,
+		},
+	};
+
+	use super::values;
+
+	const SOURCE: OperatorId = OperatorId(0);
+
+	// Two different symbols, so a `pre` built from `post` is a value mismatch and not merely an
+	// undecoded id.
+	const BEFORE: &str = "sol";
+	const AFTER: &str = "eth";
+
+	fn table() -> Table {
+		Table {
+			id: TableId(7),
+			namespace: NamespaceId(1),
+			name: "src".to_string(),
+			columns: vec![],
+			primary_key: None,
+			partition_by: vec![],
+			underlying: false,
+			time: TimeSource::Processing,
+		}
+	}
+
+	fn ringbuffer() -> RingBuffer {
+		RingBuffer {
+			id: RingBufferId(11),
+			namespace: NamespaceId(1),
+			name: "src".to_string(),
+			columns: vec![],
+			primary_key: None,
+			capacity: 64,
+			partition_by: vec![],
+			underlying: false,
+			time: TimeSource::Processing,
+		}
+	}
+
+	fn series_view() -> View {
+		View::Series(SeriesView {
+			id: ViewId(42),
+			namespace: NamespaceId(1),
+			name: "src".to_string(),
+			kind: ViewKind::Deferred,
+			columns: vec![],
+			primary_key: None,
+			storage: SeriesId(9),
+			key: SeriesKey::Integer {
+				column: "v".to_string(),
+			},
+			tag: None,
+			sort: vec![],
+		})
+	}
+
+	fn declare(engine: &TestEngine) {
+		engine.admin("CREATE NAMESPACE chaos");
+		engine.admin("CREATE DICTIONARY chaos::syms FOR utf8 AS uint2");
+	}
+
+	fn encoded(dictionary_id: DictionaryId, entry: &DictionaryEntryId) -> Columns {
+		let mut symbols = ColumnBuffer::with_capacity(ValueType::DictionaryId, 1);
+		symbols.push_value(entry.to_value());
+		if let ColumnBuffer::DictionaryId(container) = &mut symbols {
+			container.set_dictionary_id(dictionary_id);
+		}
+		let at = DateTime::from_millis(1_000_000);
+		Columns::with_system(
+			vec![ColumnWithName::new(Fragment::internal("sym"), symbols)],
+			SystemColumns::new(vec![RowNumber(1)], Vec::new(), vec![at], vec![at], vec![at]),
+		)
+	}
+
+	#[test]
+	fn every_source_decodes_both_halves_of_an_update() {
+		for kind in ["series", "table", "view", "ringbuffer"] {
+			let mut harness = Harness::with_engine(|engine, _| {
+				declare(engine);
+				match kind {
+					"series" => Op::Series(SourceSeriesOperator::new(SOURCE)),
+					"table" => Op::Table(SourceTableOperator::new(SOURCE, table())),
+					"view" => Op::View(SourceViewOperator::new(SOURCE, series_view())),
+					_ => Op::Ring(SourceRingBufferOperator::new(SOURCE, ringbuffer())),
+				}
+			})
+			.with_dictionaries();
+
+			let catalog = harness.engine().inner().catalog().clone();
+			let namespace = catalog.cache().find_namespace_by_name("chaos").expect("namespace");
+			let dictionary =
+				catalog.cache().find_dictionary_by_name(namespace.id(), "syms").expect("dictionary");
+			let registry = harness.dictionary_registry();
+			let intern = |symbol: &str| {
+				registry.intern(&dictionary, &Value::Utf8(symbol.to_string())).expect("intern").id
+			};
+
+			let out = harness
+				.apply(Change::from_flow(
+					SOURCE,
+					CommitVersion(1),
+					vec![Diff::update(
+						encoded(dictionary.id, &intern(BEFORE)),
+						encoded(dictionary.id, &intern(AFTER)),
+					)],
+					DateTime::default(),
+				))
+				.expect("the update applies");
+
+			let (pre, post) = super::sole_update(&out, kind);
+			assert_eq!(
+				pre,
+				vec![Value::Utf8(BEFORE.to_string())],
+				"{kind}: the retracted half must carry the decoded symbol, not a raw id"
+			);
+			assert_eq!(
+				post,
+				vec![Value::Utf8(AFTER.to_string())],
+				"{kind}: and so must the published half"
+			);
+		}
+	}
+
+	#[test]
+	fn every_source_decodes_the_row_it_removes() {
+		for kind in ["series", "table", "view", "ringbuffer"] {
+			let mut harness = Harness::with_engine(|engine, _| {
+				declare(engine);
+				match kind {
+					"series" => Op::Series(SourceSeriesOperator::new(SOURCE)),
+					"table" => Op::Table(SourceTableOperator::new(SOURCE, table())),
+					"view" => Op::View(SourceViewOperator::new(SOURCE, series_view())),
+					_ => Op::Ring(SourceRingBufferOperator::new(SOURCE, ringbuffer())),
+				}
+			})
+			.with_dictionaries();
+
+			let catalog = harness.engine().inner().catalog().clone();
+			let namespace = catalog.cache().find_namespace_by_name("chaos").expect("namespace");
+			let dictionary =
+				catalog.cache().find_dictionary_by_name(namespace.id(), "syms").expect("dictionary");
+			let entry = harness
+				.dictionary_registry()
+				.intern(&dictionary, &Value::Utf8(BEFORE.to_string()))
+				.expect("intern")
+				.id;
+
+			let out = harness
+				.apply(Change::from_flow(
+					SOURCE,
+					CommitVersion(1),
+					vec![Diff::remove(encoded(dictionary.id, &entry))],
+					DateTime::default(),
+				))
+				.expect("the remove applies");
+
+			let removed = out.diffs.iter().find_map(|diff| diff.pre()).expect("a remove carries a pre");
+			assert_eq!(
+				values(removed),
+				vec![Value::Utf8(BEFORE.to_string())],
+				"{kind}: a removal must name the decoded row, since a consumer retracts from it verbatim"
+			);
+		}
+	}
+
+	enum Op {
+		Series(SourceSeriesOperator),
+		Table(SourceTableOperator),
+		View(SourceViewOperator),
+		Ring(SourceRingBufferOperator),
+	}
+
+	impl Operator for Op {
+		fn id(&self) -> OperatorId {
+			SOURCE
+		}
+
+		fn capabilities(&self) -> &[reifydb_abi::operator::capabilities::OperatorCapability] {
+			match self {
+				Op::Series(o) => o.capabilities(),
+				Op::Table(o) => o.capabilities(),
+				Op::View(o) => o.capabilities(),
+				Op::Ring(o) => o.capabilities(),
+			}
+		}
+
+		fn apply(
+			&self,
+			txn: &mut reifydb_flow::transaction::FlowTransaction,
+			change: Change,
+		) -> reifydb_value::Result<Change> {
+			match self {
+				Op::Series(o) => o.apply(txn, change),
+				Op::Table(o) => o.apply(txn, change),
+				Op::View(o) => o.apply(txn, change),
+				Op::Ring(o) => o.apply(txn, change),
+			}
+		}
+
+		fn output_schema(&self) -> Option<Columns> {
+			None
+		}
+	}
+}

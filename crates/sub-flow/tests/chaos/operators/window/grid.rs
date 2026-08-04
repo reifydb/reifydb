@@ -23,14 +23,6 @@ pub enum Fold {
 }
 
 impl Fold {
-	pub fn label(self) -> &'static str {
-		match self {
-			Fold::Sum => "sum",
-			Fold::Min => "min",
-			Fold::Max => "max",
-		}
-	}
-
 	pub fn rql(self) -> &'static str {
 		match self {
 			Fold::Sum => "total: math::sum(v)",

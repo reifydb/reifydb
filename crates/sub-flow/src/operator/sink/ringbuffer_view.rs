@@ -55,7 +55,7 @@ use super::{
 };
 use crate::{
 	error::FlowStateError,
-	operator::{OperatorCell, stateful::raw::RawStatefulOperator},
+	operator::{OperatorCell, join::column::JoinedColumnsBuilder, stateful::raw::RawStatefulOperator},
 };
 
 fn partition_suffix(partition: Option<Partition>) -> Vec<u8> {
@@ -424,6 +424,7 @@ impl Operator for SinkRingBufferViewOperator {
 					&view,
 					object_id,
 					&mut metadata,
+					&mut partition_metadata,
 					pre,
 					&mut touched,
 				)?,
@@ -866,6 +867,7 @@ impl SinkRingBufferViewOperator {
 		let row_count = source_post.row_count();
 		let field_columns = shape_field_columns(source_post, shape);
 		let verified = self.verified_partitions();
+		let mut applied: Vec<usize> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let pre_source_rn = source_pre.row_numbers()[row_idx];
 			let post_source_rn = source_post.row_numbers()[row_idx];
@@ -897,23 +899,36 @@ impl SinkRingBufferViewOperator {
 			let (_, post_encoded) =
 				encode_row_at_index(source_post, row_idx, shape, storage_rn, &field_columns)?;
 			txn.set(&key, post_encoded)?;
+			applied.push(row_idx);
 		}
-		emit_view_change(txn, view, Diff::update(coerced_pre, coerced_post));
+		if !applied.is_empty() {
+			emit_view_change(
+				txn,
+				view,
+				Diff::update(
+					JoinedColumnsBuilder::retain_rows(&coerced_pre, &applied),
+					JoinedColumnsBuilder::retain_rows(&coerced_post, &applied),
+				),
+			);
+		}
 		Ok(())
 	}
 
 	#[inline]
+	#[allow(clippy::too_many_arguments)]
 	fn apply_ringbuffer_remove(
 		&self,
 		txn: &mut FlowTransaction,
 		view: &View,
 		object_id: StorageId,
 		metadata: &mut Option<RingBufferMetadata>,
+		partition_metadata: &mut HashMap<Vec<Value>, RingBufferMetadata>,
 		pre: &Columns,
 		touched: &mut Vec<Vec<Value>>,
 	) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns())?;
 		let row_count = coerced.row_count();
+		let mut applied: Vec<usize> = Vec::with_capacity(row_count);
 		for row_idx in 0..row_count {
 			let source_rn = coerced.row_numbers()[row_idx];
 			let Some(storage_rn) = self.get_forward(txn, source_rn)? else {
@@ -937,21 +952,29 @@ impl SinkRingBufferViewOperator {
 			txn.remove(&key)?;
 
 			if let Some(partition_values) = partition_values {
-				let mut pm = self.read_partition_metadata(txn, &partition_values)?;
-				pm.count = pm.count.saturating_sub(1);
-				if pm.is_empty() {
-					self.remove_partition_metadata(txn, &partition_values)?;
-				} else {
-					self.write_partition_metadata(txn, &partition_values, &pm)?;
+				if !partition_metadata.contains_key(&partition_values) {
+					let loaded = self.read_partition_metadata(txn, &partition_values)?;
+					partition_metadata.insert(partition_values.clone(), loaded);
 				}
+				let pm = partition_metadata
+					.get_mut(&partition_values)
+					.expect("partition metadata was just loaded");
+				pm.count = pm.count.saturating_sub(1);
 			} else {
 				let meta = metadata
 					.as_mut()
 					.expect("non-partitioned ring buffer sink must have loaded global metadata");
 				meta.count = meta.count.saturating_sub(1);
 			}
+			applied.push(row_idx);
 		}
-		emit_view_change(txn, view, Diff::remove(coerced));
+		if !applied.is_empty() {
+			emit_view_change(
+				txn,
+				view,
+				Diff::remove(JoinedColumnsBuilder::retain_rows(&coerced, &applied)),
+			);
+		}
 		Ok(())
 	}
 }

@@ -10,10 +10,7 @@ pub mod math;
 
 use std::sync::Arc;
 
-use reifydb_value::value::{
-	Value,
-	value_type::input_types::InputTypes,
-};
+use reifydb_value::value::{Value, value_type::input_types::InputTypes};
 use serde::{Deserialize, Serialize};
 
 use crate::routine::{RoutineInfo, error::RoutineError, registry::RoutinesConfigurator};

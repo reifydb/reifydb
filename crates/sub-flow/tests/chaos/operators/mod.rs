@@ -10,6 +10,8 @@ pub mod keyed_reclaim;
 pub mod pipeline;
 pub mod reclaim;
 pub mod rowwise;
+pub mod sink;
+pub mod source;
 pub mod take;
 pub mod window;
 

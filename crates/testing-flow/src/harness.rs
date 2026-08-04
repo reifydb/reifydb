@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::mem;
+use std::{mem, sync::Arc};
 
 use reifydb_abi::operator::{capabilities::OperatorCapability, timer::TimerKind};
 use reifydb_catalog::catalog::Catalog;
@@ -9,7 +9,10 @@ use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers},
 	common::CommitVersion,
-	interface::{catalog::flow::OperatorId, change::Change},
+	interface::{
+		catalog::{flow::OperatorId, object::ObjectId},
+		change::{Change, Diff},
+	},
 	key::{EncodableKey, operator_group_state::OperatorGroupStateKey, operator_state::OperatorStateKey},
 	state::{budget::OperatorStateBudgetHandle, group::ActivityBuckets, horizon::Cutoff},
 };
@@ -39,10 +42,13 @@ use reifydb_testing_chaos::operator::{
 	reclaim::{PhaseCutoffs, Reclaimed, RetiredGroup, StateFootprint},
 	subject::Subject,
 };
-use reifydb_transaction::interceptor::interceptors::Interceptors;
+use reifydb_transaction::{
+	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
+	interceptor::interceptors::Interceptors,
+};
 use reifydb_value::{
 	Result,
-	value::{Value, datetime::DateTime, duration::Duration},
+	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 
 pub struct Harness<O: Operator> {
@@ -52,6 +58,7 @@ pub struct Harness<O: Operator> {
 	version: u64,
 	pending: Pending,
 	substrate: FlowSubstrate,
+	catalog: Catalog,
 	sink_row_ttl: Option<Duration>,
 	reclaim_budget: ReclaimBudget,
 	mapping_cursor: Option<EncodedKey>,
@@ -79,6 +86,7 @@ impl<O: Operator> Harness<O> {
 			version: 1,
 			pending: Pending::new(),
 			substrate: FlowSubstrate::new(),
+			catalog: Catalog::testing(),
 			sink_row_ttl: None,
 			reclaim_budget: ReclaimBudget {
 				groups: 256,
@@ -129,6 +137,23 @@ impl<O: Operator> Harness<O> {
 		self
 	}
 
+	pub fn with_dictionaries(mut self) -> Self {
+		self.catalog = self.engine.inner().catalog().clone();
+		let single = self.engine.begin_admin(IdentityId::system()).expect("begin admin").single.clone();
+		let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single)));
+		self.substrate = FlowSubstrate::with_dictionary(registry);
+		self
+	}
+
+	pub fn dictionary_registry(&self) -> DictionaryAllocatorRegistry {
+		let single = self.engine.begin_admin(IdentityId::system()).expect("begin admin").single.clone();
+		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single)))
+	}
+
+	pub fn engine(&self) -> &TestEngine {
+		&self.engine
+	}
+
 	pub fn with_sink_row_ttl(mut self, ttl: Duration) -> Self {
 		self.sink_row_ttl = Some(ttl);
 		self
@@ -171,7 +196,7 @@ impl<O: Operator> Harness<O> {
 			query,
 			state_query,
 			single: self.engine.inner().single().clone(),
-			catalog: Catalog::testing(),
+			catalog: self.catalog.clone(),
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(self.clock.clone()),
 			substrate: self.substrate.clone(),
@@ -196,6 +221,16 @@ impl<O: Operator> Harness<O> {
 		txn.flush_operator_states()?;
 		self.end(txn);
 		Ok(out)
+	}
+
+	pub fn apply_emitting(&mut self, change: Change) -> Result<Vec<(ObjectId, Diff)>> {
+		let at = coordinate_of(&change);
+		let mut txn = self.begin(at);
+		self.operator.apply(&mut txn, change)?;
+		txn.flush_operator_states()?;
+		let emitted = txn.take_accumulator_entries();
+		self.end(txn);
+		Ok(emitted)
 	}
 
 	pub fn on_timer(&mut self, timer: Timer) -> Result<Option<Change>> {

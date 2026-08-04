@@ -361,7 +361,9 @@ mod tests {
 		write(&mut txn, GROUP, Keyspace::JOIN_RIGHT, 1);
 		seed(&mut txn, GROUP);
 
-		let outcome = txn.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, ignored_cutoff(), &mut None, 100).unwrap();
+		let outcome = txn
+			.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, ignored_cutoff(), &mut None, 100)
+			.unwrap();
 
 		assert_eq!(outcome.removed, 2, "only the two left rows");
 		assert!(!outcome.more);
@@ -414,11 +416,15 @@ mod tests {
 			write(&mut txn, GROUP, Keyspace::JOIN_LEFT, suffix);
 		}
 
-		let first = txn.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, ignored_cutoff(), &mut None, 2).unwrap();
+		let first = txn
+			.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, ignored_cutoff(), &mut None, 2)
+			.unwrap();
 		assert_eq!(first.removed, 2);
 		assert!(first.more, "three rows are still there");
 
-		let second = txn.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, ignored_cutoff(), &mut None, 100).unwrap();
+		let second = txn
+			.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, ignored_cutoff(), &mut None, 100)
+			.unwrap();
 		assert_eq!(second.removed, 3);
 		assert!(!second.more);
 		assert_eq!(count(&mut txn, keyspace_inner_range(GROUP, Keyspace::JOIN_LEFT)), 0);
