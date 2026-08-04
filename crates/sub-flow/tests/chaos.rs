@@ -43,7 +43,7 @@ use crate::{
 			Variant,
 			workload::{JoinRow, JoinWorkload, Side},
 		},
-		window::{WindowSpec, build},
+		window::{WindowSpec, build, grid::Fold},
 	},
 };
 
@@ -271,6 +271,50 @@ chaos_test!(window_tumbling_flow_shaped_chaos, |seed| {
 		},
 	);
 });
+
+fn window_fold_params(grace_secs: u64) -> operators::window::tumbling::Params {
+	operators::window::tumbling::Params {
+		size_secs: 30,
+		grace_secs,
+		groups: 3,
+		steps: 60,
+		max_batch: 4,
+		coord_span_ms: 400_000,
+		remove_pct: 30,
+		update_pct: 25,
+		seal_pct: 20,
+	}
+}
+
+chaos_test!(window_tumbling_min_zero_grace_chaos, |seed| {
+	// Zero grace keeps min invertible, so it runs on the multiset and a retraction of the current
+	// minimum is what forces the full recompute.
+	operators::window::tumbling::drive_folded(seed, window_fold_params(0), Fold::Min);
+});
+
+chaos_test!(window_tumbling_max_zero_grace_chaos, |seed| {
+	operators::window::tumbling::drive_folded(seed, window_fold_params(0), Fold::Max);
+});
+
+chaos_test!(window_tumbling_min_graced_chaos, |seed| {
+	// Grace makes min non-invertible, so the operator switches to the sealing accumulator. No sweep
+	// reached that path while sum was the only fold: sum is invertible at every grace setting.
+	operators::window::tumbling::drive_folded(seed, window_fold_params(45), Fold::Min);
+});
+
+chaos_test!(window_tumbling_max_graced_chaos, |seed| {
+	operators::window::tumbling::drive_folded(seed, window_fold_params(45), Fold::Max);
+});
+
+#[test]
+fn the_window_folds_are_stated_independently_of_the_slots_they_check() {
+	// Same role as the aggregate's width pin: a mismatch between what the slot emits and what the
+	// oracle renders shows up as a divergence whose two sides print identically. Sum promotes an int8
+	// input to int16; min and max hand the input width back.
+	assert_eq!(Fold::Sum.apply(&[1, 2, 3]), Value::Int16(6));
+	assert_eq!(Fold::Min.apply(&[3, 1, 2]), Value::Int8(1));
+	assert_eq!(Fold::Max.apply(&[3, 1, 2]), Value::Int8(3));
+}
 
 chaos_test!(window_tumbling_random_chaos, |seed| {
 	operators::window::tumbling::drive_random(seed);

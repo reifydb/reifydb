@@ -8,6 +8,50 @@ use reifydb_value::value::{Value, row_number::RowNumber};
 
 use crate::framework::workload::WindowRow;
 
+/// How a window's contributions collapse into the value it publishes.
+///
+/// Sum is the fold every pinned window corpus was recorded against and stays the default, so adding
+/// this enum does not re-point them. Min and max are here because they are not merely a different
+/// arithmetic: `AggregateSlot::invertible` reports them invertible only when grace is zero, so a
+/// window declaring grace runs them through the sealing accumulator instead of the multiset - a
+/// different code path that no sweep reached while sum was the only fold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fold {
+	Sum,
+	Min,
+	Max,
+}
+
+impl Fold {
+	pub fn label(self) -> &'static str {
+		match self {
+			Fold::Sum => "sum",
+			Fold::Min => "min",
+			Fold::Max => "max",
+		}
+	}
+
+	pub fn rql(self) -> &'static str {
+		match self {
+			Fold::Sum => "total: math::sum(v)",
+			Fold::Min => "total: math::min(v)",
+			Fold::Max => "total: math::max(v)",
+		}
+	}
+
+	/// The published value, stated in Rust rather than through the monoid the operator uses. Sum
+	/// promotes an int8 input to int16; min and max hand the input width back. Pinned by
+	/// `the_window_folds_are_stated_independently_of_the_slots_they_check`.
+	pub fn apply(self, values: &[i64]) -> Value {
+		assert!(!values.is_empty(), "a window with no live contributions publishes nothing to fold");
+		match self {
+			Fold::Sum => Value::Int16(values.iter().map(|v| *v as i128).sum()),
+			Fold::Min => Value::Int8(*values.iter().min().expect("non-empty")),
+			Fold::Max => Value::Int8(*values.iter().max().expect("non-empty")),
+		}
+	}
+}
+
 /// Which fixed-grid windows a coordinate belongs to. This is the only thing that differs between
 /// tumbling and sliding: both anchor their seal horizon on the window start, both close at
 /// `start + size + grace`, and both accumulate the same way.
@@ -20,6 +64,7 @@ pub struct GridOracle<G: Grid> {
 	cutoff_ms: u64,
 	ledger: u64,
 	contributions: Vec<Contribution>,
+	fold: Fold,
 }
 
 struct Contribution {
@@ -37,19 +82,37 @@ impl<G: Grid> GridOracle<G> {
 			cutoff_ms: size_ms + grace_ms,
 			ledger: 0,
 			contributions: Vec::new(),
+			fold: Fold::Sum,
 		}
+	}
+
+	/// Sum stays the default so every pinned corpus keeps the oracle it was recorded against; a
+	/// non-sum sweep opts in here.
+	pub fn with_fold(mut self, fold: Fold) -> Self {
+		self.fold = fold;
+		self
 	}
 
 	fn is_closed(&self, window: u64) -> bool {
 		window.saturating_add(self.cutoff_ms).saturating_add(1) <= self.ledger
 	}
 
-	fn totals(&self) -> BTreeMap<(i32, u64), i64> {
-		let mut totals: BTreeMap<(i32, u64), i64> = BTreeMap::new();
+	fn grouped(&self) -> BTreeMap<(i32, u64), Vec<i64>> {
+		let mut grouped: BTreeMap<(i32, u64), Vec<i64>> = BTreeMap::new();
 		for c in self.contributions.iter().filter(|c| c.live) {
-			*totals.entry((c.group, c.window)).or_insert(0) += c.value;
+			grouped.entry((c.group, c.window)).or_default().push(c.value);
 		}
-		totals
+		grouped
+	}
+
+	fn folded(&self) -> Vec<Vec<Value>> {
+		let mut out: Vec<Vec<Value>> = self
+			.grouped()
+			.into_iter()
+			.map(|((group, _), values)| vec![Value::Int4(group), self.fold.apply(&values)])
+			.collect();
+		out.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
+		out
 	}
 }
 
@@ -125,7 +188,7 @@ impl<G: Grid> Model<WindowRow> for GridOracle<G> {
 	}
 
 	fn all(&self) -> KeyedMultiset {
-		KeyedMultiset::new(window_row_key(), render(self.totals().into_iter()))
+		KeyedMultiset::new(window_row_key(), self.folded())
 	}
 
 	fn after_drain(&self) -> KeyedMultiset {

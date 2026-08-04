@@ -20,7 +20,7 @@ use crate::{
 	operators::window::{
 		WindowSpec, build,
 		count::{CountOracle, Ordinals},
-		grid::{Grid, GridOracle},
+		grid::{Fold, Grid, GridOracle},
 	},
 };
 
@@ -101,6 +101,15 @@ pub fn drive_reclaiming(seed: u64, params: Params, reclaim_pct: u32, sink_row_tt
 }
 
 pub fn drive(seed: u64, params: Params) -> Corpus {
+	drive_folded(seed, params, Fold::Sum)
+}
+
+/// The same corpus and grid under a different fold.
+///
+/// Min and max are not just different arithmetic here: `AggregateSlot::invertible` calls them
+/// invertible only when grace is zero, so a graced window runs them through the sealing accumulator
+/// rather than the multiset. Driving both grace settings is what reaches both.
+pub fn drive_folded(seed: u64, params: Params, fold: Fold) -> Corpus {
 	let size_ms = params.size_secs * 1_000;
 	let grace_ms = params.grace_secs * 1_000;
 
@@ -109,7 +118,7 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 			size: WindowSize::Duration(Duration::from_seconds(params.size_secs as i64).unwrap()),
 		},
 		group_by: "g",
-		aggregations: "total: math::sum(v)",
+		aggregations: fold.rql(),
 		grace: Duration::from_seconds(params.grace_secs as i64).unwrap(),
 	};
 
@@ -124,7 +133,8 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 		},
 		size_ms,
 		grace_ms,
-	);
+	)
+	.with_fold(fold);
 
 	driver::drive(
 		seed,
