@@ -15,7 +15,6 @@ use reifydb_value::{
 	Result,
 	error::TypeError,
 	fragment::{Fragment, LazyFragment},
-	storage::DataBitVec,
 	util::bitvec::BitVec,
 	value::{Value, value_type::ValueType},
 };
@@ -59,7 +58,7 @@ pub fn cast_column_data(
 			other => other.clone(),
 		};
 		let total_len = inner.len();
-		let defined_count = DataBitVec::count_ones(bitvec);
+		let defined_count = bitvec.count_ones();
 
 		if defined_count == 0 {
 			return Ok(ColumnBuffer::none_typed(inner_target, total_len));
@@ -75,7 +74,7 @@ pub fn cast_column_data(
 			let mut expand_indices = Vec::with_capacity(total_len);
 			let mut src_idx = 0usize;
 			for i in 0..total_len {
-				if DataBitVec::get(bitvec, i) {
+				if bitvec.get(i) {
 					expand_indices.push(src_idx);
 					src_idx += 1;
 				} else {

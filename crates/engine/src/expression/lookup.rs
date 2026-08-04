@@ -137,20 +137,20 @@ fn extract_column_data_by_type(col: &ColumnWithName, take: usize, col_type: Valu
 			extract_typed_column!(col, take, Uint(b) => b.clone(), Uint::zero(), uint_with_bitvec)
 		}
 		ValueType::Any => {
-			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::none()), any_with_bitvec)
+			extract_typed_column!(col, take, Any(boxed) => *boxed.clone(), Value::none(), any_with_bitvec)
 		}
 		ValueType::Decimal => {
 			extract_typed_column!(col, take, Decimal(b) => b.clone(), Decimal::from_i64(0), decimal_with_bitvec)
 		}
 		ValueType::Option(inner) => extract_column_data_by_type(col, take, *inner),
 		ValueType::List(_) => {
-			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::none()), any_with_bitvec)
+			extract_typed_column!(col, take, Any(boxed) => *boxed.clone(), Value::none(), any_with_bitvec)
 		}
 		ValueType::Record(_) => {
-			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::none()), any_with_bitvec)
+			extract_typed_column!(col, take, Any(boxed) => *boxed.clone(), Value::none(), any_with_bitvec)
 		}
 		ValueType::Tuple(_) => {
-			extract_typed_column!(col, take, Any(boxed) => Box::new(*boxed.clone()), Box::new(Value::none()), any_with_bitvec)
+			extract_typed_column!(col, take, Any(boxed) => *boxed.clone(), Value::none(), any_with_bitvec)
 		}
 	}
 }

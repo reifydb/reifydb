@@ -73,7 +73,7 @@ pub enum SystemColumnsError {
 }
 
 #[inline]
-fn gather<T: Copy + PartialEq>(src: &Vec<T>, indices: &[usize]) -> Vec<T> {
+fn gather<T: Copy + PartialEq>(src: &[T], indices: &[usize]) -> Vec<T> {
 	if src.is_empty() {
 		return Vec::new();
 	}
@@ -81,7 +81,7 @@ fn gather<T: Copy + PartialEq>(src: &Vec<T>, indices: &[usize]) -> Vec<T> {
 }
 
 #[inline]
-fn retain<T: Copy + PartialEq>(src: &Vec<T>, mask: &BitVec) -> Vec<T> {
+fn retain<T: Copy + PartialEq>(src: &[T], mask: &BitVec) -> Vec<T> {
 	if src.is_empty() {
 		return Vec::new();
 	}
@@ -89,7 +89,7 @@ fn retain<T: Copy + PartialEq>(src: &Vec<T>, mask: &BitVec) -> Vec<T> {
 }
 
 #[inline]
-fn head<T: Copy + PartialEq>(src: &Vec<T>, n: usize) -> Vec<T> {
+fn head<T: Copy + PartialEq>(src: &[T], n: usize) -> Vec<T> {
 	if src.is_empty() {
 		return Vec::new();
 	}

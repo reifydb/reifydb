@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{reifydb_assertions, storage::DataBitVec, util::bitvec::BitVec};
+use reifydb_value::{reifydb_assertions, util::bitvec::BitVec};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NoneBitmap {
@@ -82,10 +82,10 @@ impl NoneBitmap {
 	}
 
 	pub fn from_defined_bitvec(bv: &BitVec) -> Self {
-		let len = DataBitVec::len(bv);
+		let len = bv.len();
 		let mut out = Self::all_present(len);
 		for row in 0..len {
-			if !DataBitVec::get(bv, row) {
+			if !bv.get(row) {
 				out.set_none(row);
 			}
 		}

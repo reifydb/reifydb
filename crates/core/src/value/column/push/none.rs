@@ -3,7 +3,7 @@
 
 use std::mem;
 
-use reifydb_value::{storage::DataBitVec, util::bitvec::BitVec};
+use reifydb_value::util::bitvec::BitVec;
 
 use crate::value::column::buffer::{ColumnBuffer, with_container};
 
@@ -15,7 +15,7 @@ impl ColumnBuffer {
 				bitvec,
 			} => {
 				with_container!(inner.as_mut(), |c| c.push_default());
-				DataBitVec::push(bitvec, false);
+				bitvec.push(false);
 			}
 			_ => {
 				let len = self.len();
@@ -23,7 +23,7 @@ impl ColumnBuffer {
 				let mut inner = mem::replace(self, ColumnBuffer::bool(vec![]));
 
 				with_container!(&mut inner, |c| c.push_default());
-				DataBitVec::push(&mut bitvec, false);
+				bitvec.push(false);
 				*self = ColumnBuffer::Option {
 					inner: Box::new(inner),
 					bitvec,

@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	storage::{DataBitVec, DataVec, Plain, Storage},
+	util::bitvec::BitVec,
 	value::{
 		Value,
 		dictionary::{DictionaryEntryId, DictionaryId},
@@ -19,12 +19,12 @@ use crate::{
 	},
 };
 
-pub struct DictionaryContainer<S: Storage = Plain> {
-	data: S::Vec<DictionaryEntryId>,
+pub struct DictionaryContainer {
+	data: Vec<DictionaryEntryId>,
 	dictionary_id: Option<DictionaryId>,
 }
 
-impl<S: Storage> Clone for DictionaryContainer<S> {
+impl Clone for DictionaryContainer {
 	fn clone(&self) -> Self {
 		Self {
 			data: self.data.clone(),
@@ -33,10 +33,7 @@ impl<S: Storage> Clone for DictionaryContainer<S> {
 	}
 }
 
-impl<S: Storage> Debug for DictionaryContainer<S>
-where
-	S::Vec<DictionaryEntryId>: Debug,
-{
+impl Debug for DictionaryContainer {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("DictionaryContainer")
 			.field("data", &self.data)
@@ -45,16 +42,13 @@ where
 	}
 }
 
-impl<S: Storage> PartialEq for DictionaryContainer<S>
-where
-	S::Vec<DictionaryEntryId>: PartialEq,
-{
+impl PartialEq for DictionaryContainer {
 	fn eq(&self, other: &Self) -> bool {
 		self.data == other.data && self.dictionary_id == other.dictionary_id
 	}
 }
 
-impl Serialize for DictionaryContainer<Plain> {
+impl Serialize for DictionaryContainer {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a> {
@@ -69,7 +63,7 @@ impl Serialize for DictionaryContainer<Plain> {
 	}
 }
 
-impl<'de> Deserialize<'de> for DictionaryContainer<Plain> {
+impl<'de> Deserialize<'de> for DictionaryContainer {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper {
@@ -84,7 +78,7 @@ impl<'de> Deserialize<'de> for DictionaryContainer<Plain> {
 	}
 }
 
-impl<S: Storage> Deref for DictionaryContainer<S> {
+impl Deref for DictionaryContainer {
 	type Target = [DictionaryEntryId];
 
 	fn deref(&self) -> &Self::Target {
@@ -92,7 +86,7 @@ impl<S: Storage> Deref for DictionaryContainer<S> {
 	}
 }
 
-impl DictionaryContainer<Plain> {
+impl DictionaryContainer {
 	pub fn new(data: Vec<DictionaryEntryId>) -> Self {
 		Self {
 			data,
@@ -115,8 +109,8 @@ impl DictionaryContainer<Plain> {
 	}
 }
 
-impl<S: Storage> DictionaryContainer<S> {
-	pub fn from_parts(data: S::Vec<DictionaryEntryId>, dictionary_id: Option<DictionaryId>) -> Self {
+impl DictionaryContainer {
+	pub fn from_parts(data: Vec<DictionaryEntryId>, dictionary_id: Option<DictionaryId>) -> Self {
 		Self {
 			data,
 			dictionary_id,
@@ -124,25 +118,25 @@ impl<S: Storage> DictionaryContainer<S> {
 	}
 
 	pub fn len(&self) -> usize {
-		DataVec::len(&self.data)
+		self.data.len()
 	}
 
 	pub fn is_empty(&self) -> bool {
-		DataVec::is_empty(&self.data)
+		self.data.is_empty()
 	}
 
 	pub fn clear(&mut self) {
-		DataVec::clear(&mut self.data);
+		self.data.clear();
 	}
 
 	pub fn push(&mut self, value: impl Into<Option<DictionaryEntryId>>) {
 		let value = value.into();
 		match value {
 			Some(id) => {
-				DataVec::push(&mut self.data, id);
+				self.data.push(id);
 			}
 			None => {
-				DataVec::push(&mut self.data, DictionaryEntryId::default());
+				self.data.push(DictionaryEntryId::default());
 			}
 		}
 	}
@@ -163,11 +157,11 @@ impl<S: Storage> DictionaryContainer<S> {
 		self.data.iter().map(|&id| Some(id))
 	}
 
-	pub fn data(&self) -> &S::Vec<DictionaryEntryId> {
+	pub fn data(&self) -> &Vec<DictionaryEntryId> {
 		&self.data
 	}
 
-	pub fn data_mut(&mut self) -> &mut S::Vec<DictionaryEntryId> {
+	pub fn data_mut(&mut self) -> &mut Vec<DictionaryEntryId> {
 		&mut self.data
 	}
 
@@ -184,7 +178,7 @@ impl<S: Storage> DictionaryContainer<S> {
 	}
 
 	pub fn extend(&mut self, other: &Self) -> Result<()> {
-		DataVec::extend_from_slice(&mut self.data, DataVec::as_slice(&other.data));
+		self.data.extend_from_slice(other.data.as_slice());
 		Ok(())
 	}
 
@@ -192,12 +186,12 @@ impl<S: Storage> DictionaryContainer<S> {
 		self.get(index).map(Value::DictionaryId).unwrap_or(Value::none_of(ValueType::DictionaryId))
 	}
 
-	pub fn filter(&mut self, mask: &S::BitVec) {
-		let mut new_data = DataVec::spawn(&self.data, DataBitVec::count_ones(mask));
+	pub fn filter(&mut self, mask: &BitVec) {
+		let mut new_data = Vec::with_capacity(mask.count_ones());
 
-		for (i, keep) in DataBitVec::iter(mask).enumerate() {
-			if keep && i < DataVec::len(&self.data) {
-				DataVec::push(&mut new_data, self.data[i]);
+		for (i, keep) in mask.iter().enumerate() {
+			if keep && i < self.data.len() {
+				new_data.push(self.data[i]);
 			}
 		}
 
@@ -205,13 +199,13 @@ impl<S: Storage> DictionaryContainer<S> {
 	}
 
 	pub fn reorder(&mut self, indices: &[usize]) {
-		let mut new_data = DataVec::spawn(&self.data, indices.len());
+		let mut new_data = Vec::with_capacity(indices.len());
 
 		for &index in indices {
-			if index < DataVec::len(&self.data) {
-				DataVec::push(&mut new_data, self.data[index]);
+			if index < self.data.len() {
+				new_data.push(self.data[index]);
 			} else {
-				DataVec::push(&mut new_data, DictionaryEntryId::default());
+				new_data.push(DictionaryEntryId::default());
 			}
 		}
 
@@ -220,16 +214,16 @@ impl<S: Storage> DictionaryContainer<S> {
 
 	pub fn take(&self, num: usize) -> Self {
 		Self {
-			data: DataVec::take(&self.data, num),
+			data: self.data[..num.min(self.data.len())].to_vec(),
 			dictionary_id: self.dictionary_id,
 		}
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
 		let count = (end - start).min(self.len().saturating_sub(start));
-		let mut new_data = DataVec::spawn(&self.data, count);
+		let mut new_data = Vec::with_capacity(count);
 		for i in start..(start + count) {
-			DataVec::push(&mut new_data, self.data[i]);
+			new_data.push(self.data[i]);
 		}
 		Self {
 			data: new_data,
@@ -242,7 +236,7 @@ impl<S: Storage> DictionaryContainer<S> {
 	}
 
 	pub fn capacity(&self) -> usize {
-		DataVec::capacity(&self.data)
+		self.data.capacity()
 	}
 
 	pub fn heap_size(&self) -> usize {
@@ -250,13 +244,13 @@ impl<S: Storage> DictionaryContainer<S> {
 	}
 }
 
-impl From<Vec<DictionaryEntryId>> for DictionaryContainer<Plain> {
+impl From<Vec<DictionaryEntryId>> for DictionaryContainer {
 	fn from(data: Vec<DictionaryEntryId>) -> Self {
 		Self::from_vec(data)
 	}
 }
 
-impl FromIterator<Option<DictionaryEntryId>> for DictionaryContainer<Plain> {
+impl FromIterator<Option<DictionaryEntryId>> for DictionaryContainer {
 	fn from_iter<T: IntoIterator<Item = Option<DictionaryEntryId>>>(iter: T) -> Self {
 		let mut container = Self::with_capacity(0);
 		for item in iter {

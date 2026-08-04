@@ -4,7 +4,6 @@
 use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
 use reifydb_value::{
 	Result, reifydb_assertions,
-	storage::DataBitVec,
 	util::bitvec::BitVec,
 	value::{
 		Value,
@@ -142,7 +141,7 @@ impl Columns {
 				..
 			} = &*column
 			{
-				DataBitVec::count_ones(bitvec) == 0
+				bitvec.count_ones() == 0
 			} else {
 				false
 			};
@@ -267,7 +266,7 @@ impl Columns {
 					| ValueType::List(_)
 					| ValueType::Record(_)
 					| ValueType::Tuple(_) => ColumnBuffer::any_with_bitvec(
-						vec![Box::new(Value::none()); size],
+						vec![Value::none(); size],
 						BitVec::repeat(size, false),
 					),
 				};
@@ -315,10 +314,10 @@ impl Columns {
 					let value = shape.get_value(row, index);
 					if matches!(value, Value::None { .. }) {
 						inner.push_none();
-						DataBitVec::push(bitvec, false);
+						bitvec.push(false);
 					} else {
 						inner.push_value(value);
-						DataBitVec::push(bitvec, true);
+						bitvec.push(true);
 					}
 				}
 				(ColumnBuffer::Bool(container), ValueType::Boolean) => {
@@ -468,7 +467,7 @@ impl Columns {
 				) => {
 					let value = shape.get_value(row, index);
 					inner.push_value(value);
-					DataBitVec::push(bitvec, true);
+					bitvec.push(true);
 				}
 				(ColumnBuffer::Bool(container), ValueType::Boolean) => {
 					container.push(shape.get::<bool>(row, index));

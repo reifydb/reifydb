@@ -23,7 +23,6 @@ pub mod take;
 use std::fmt;
 
 use reifydb_value::{
-	storage::{DataBitVec, Plain, Storage},
 	util::bitvec::BitVec,
 	value::{
 		Value,
@@ -46,60 +45,60 @@ use reifydb_value::{
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-pub enum ColumnBuffer<S: Storage = Plain> {
-	Bool(BoolContainer<S>),
-	Float4(NumberContainer<f32, S>),
-	Float8(NumberContainer<f64, S>),
-	Int1(NumberContainer<i8, S>),
-	Int2(NumberContainer<i16, S>),
-	Int4(NumberContainer<i32, S>),
-	Int8(NumberContainer<i64, S>),
-	Int16(NumberContainer<i128, S>),
-	Uint1(NumberContainer<u8, S>),
-	Uint2(NumberContainer<u16, S>),
-	Uint4(NumberContainer<u32, S>),
-	Uint8(NumberContainer<u64, S>),
-	Uint16(NumberContainer<u128, S>),
+pub enum ColumnBuffer {
+	Bool(BoolContainer),
+	Float4(NumberContainer<f32>),
+	Float8(NumberContainer<f64>),
+	Int1(NumberContainer<i8>),
+	Int2(NumberContainer<i16>),
+	Int4(NumberContainer<i32>),
+	Int8(NumberContainer<i64>),
+	Int16(NumberContainer<i128>),
+	Uint1(NumberContainer<u8>),
+	Uint2(NumberContainer<u16>),
+	Uint4(NumberContainer<u32>),
+	Uint8(NumberContainer<u64>),
+	Uint16(NumberContainer<u128>),
 	Utf8 {
-		container: Utf8Container<S>,
+		container: Utf8Container,
 		max_bytes: MaxBytes,
 	},
-	Date(TemporalContainer<Date, S>),
-	DateTime(TemporalContainer<DateTime, S>),
-	Time(TemporalContainer<Time, S>),
-	Duration(TemporalContainer<Duration, S>),
-	IdentityId(IdentityIdContainer<S>),
-	Uuid4(UuidContainer<Uuid4, S>),
-	Uuid7(UuidContainer<Uuid7, S>),
+	Date(TemporalContainer<Date>),
+	DateTime(TemporalContainer<DateTime>),
+	Time(TemporalContainer<Time>),
+	Duration(TemporalContainer<Duration>),
+	IdentityId(IdentityIdContainer),
+	Uuid4(UuidContainer<Uuid4>),
+	Uuid7(UuidContainer<Uuid7>),
 	Blob {
-		container: BlobContainer<S>,
+		container: BlobContainer,
 		max_bytes: MaxBytes,
 	},
 	Int {
-		container: NumberContainer<Int, S>,
+		container: NumberContainer<Int>,
 		max_bytes: MaxBytes,
 	},
 	Uint {
-		container: NumberContainer<Uint, S>,
+		container: NumberContainer<Uint>,
 		max_bytes: MaxBytes,
 	},
 	Decimal {
-		container: NumberContainer<Decimal, S>,
+		container: NumberContainer<Decimal>,
 		precision: Precision,
 		scale: Scale,
 	},
 
-	Any(AnyContainer<S>),
+	Any(AnyContainer),
 
-	DictionaryId(DictionaryContainer<S>),
+	DictionaryId(DictionaryContainer),
 
 	Option {
-		inner: Box<ColumnBuffer<S>>,
-		bitvec: S::BitVec,
+		inner: Box<ColumnBuffer>,
+		bitvec: BitVec,
 	},
 }
 
-impl<S: Storage> Clone for ColumnBuffer<S> {
+impl Clone for ColumnBuffer {
 	fn clone(&self) -> Self {
 		match self {
 			ColumnBuffer::Bool(c) => ColumnBuffer::Bool(c.clone()),
@@ -172,7 +171,7 @@ impl<S: Storage> Clone for ColumnBuffer<S> {
 	}
 }
 
-impl<S: Storage> PartialEq for ColumnBuffer<S> {
+impl PartialEq for ColumnBuffer {
 	fn eq(&self, other: &Self) -> bool {
 		match (self, other) {
 			(ColumnBuffer::Bool(a), ColumnBuffer::Bool(b)) => a == b,
@@ -264,7 +263,7 @@ impl<S: Storage> PartialEq for ColumnBuffer<S> {
 	}
 }
 
-impl fmt::Debug for ColumnBuffer<Plain> {
+impl fmt::Debug for ColumnBuffer {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			ColumnBuffer::Bool(c) => f.debug_tuple("Bool").field(c).finish(),
@@ -322,7 +321,7 @@ impl fmt::Debug for ColumnBuffer<Plain> {
 	}
 }
 
-impl Serialize for ColumnBuffer<Plain> {
+impl Serialize for ColumnBuffer {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		enum Helper<'a> {
@@ -446,7 +445,7 @@ impl Serialize for ColumnBuffer<Plain> {
 	}
 }
 
-impl<'de> Deserialize<'de> for ColumnBuffer<Plain> {
+impl<'de> Deserialize<'de> for ColumnBuffer {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
 		#[derive(Deserialize)]
 		enum Helper {
@@ -628,8 +627,8 @@ macro_rules! with_container {
 
 pub(crate) use with_container;
 
-impl<S: Storage> ColumnBuffer<S> {
-	pub fn unwrap_option(&self) -> (&ColumnBuffer<S>, Option<&S::BitVec>) {
+impl ColumnBuffer {
+	pub fn unwrap_option(&self) -> (&ColumnBuffer, Option<&BitVec>) {
 		match self {
 			ColumnBuffer::Option {
 				inner,
@@ -639,7 +638,7 @@ impl<S: Storage> ColumnBuffer<S> {
 		}
 	}
 
-	pub fn into_unwrap_option(self) -> (ColumnBuffer<S>, Option<S::BitVec>) {
+	pub fn into_unwrap_option(self) -> (ColumnBuffer, Option<BitVec>) {
 		match self {
 			ColumnBuffer::Option {
 				inner,
@@ -742,7 +741,7 @@ impl<S: Storage> ColumnBuffer<S> {
 			ColumnBuffer::Option {
 				bitvec,
 				..
-			} => idx < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, idx),
+			} => idx < bitvec.len() && bitvec.get(idx),
 		}
 	}
 
@@ -785,19 +784,19 @@ impl<S: Storage> ColumnBuffer<S> {
 	}
 }
 
-impl<S: Storage> ColumnBuffer<S> {
+impl ColumnBuffer {
 	pub fn none_count(&self) -> usize {
 		match self {
 			ColumnBuffer::Option {
 				bitvec,
 				..
-			} => DataBitVec::count_zeros(bitvec),
+			} => bitvec.count_zeros(),
 			_ => 0,
 		}
 	}
 }
 
-impl<S: Storage> ColumnBuffer<S> {
+impl ColumnBuffer {
 	pub fn len(&self) -> usize {
 		match self {
 			ColumnBuffer::Option {
@@ -827,7 +826,7 @@ impl<S: Storage> ColumnBuffer<S> {
 			ColumnBuffer::Option {
 				inner,
 				bitvec,
-			} => inner.heap_size() + DataBitVec::len(bitvec).div_ceil(8),
+			} => inner.heap_size() + bitvec.len().div_ceil(8),
 			_ => with_container!(self, |c| c.heap_size()),
 		}
 	}
@@ -839,7 +838,7 @@ impl<S: Storage> ColumnBuffer<S> {
 				bitvec,
 			} => {
 				inner.clear();
-				DataBitVec::clear(bitvec);
+				bitvec.clear();
 			}
 			_ => with_container!(self, |c| c.clear()),
 		}
@@ -851,7 +850,7 @@ impl<S: Storage> ColumnBuffer<S> {
 				inner,
 				bitvec,
 			} => {
-				if index < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, index) {
+				if index < bitvec.len() && bitvec.get(index) {
 					inner.as_string(index)
 				} else {
 					"none".to_string()

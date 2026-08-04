@@ -4,7 +4,6 @@
 use std::fmt::Debug;
 
 use reifydb_value::{
-	storage::{DataBitVec, DataVec},
 	util::bitvec::BitVec,
 	value::{
 		Value,
@@ -75,14 +74,14 @@ fn merge_validity_bitvecs(
 ) -> BitVec {
 	let mut out = BitVec::with_capacity(total_len);
 	for i in 0..total_len {
-		let bit = if DataBitVec::get(then_mask, i) {
-			i < DataBitVec::len(then_bv) && DataBitVec::get(then_bv, i)
-		} else if DataBitVec::get(else_mask, i) {
-			i < DataBitVec::len(else_bv) && DataBitVec::get(else_bv, i)
+		let bit = if then_mask.get(i) {
+			i < then_bv.len() && then_bv.get(i)
+		} else if else_mask.get(i) {
+			i < else_bv.len() && else_bv.get(i)
 		} else {
 			false
 		};
-		DataBitVec::push(&mut out, bit);
+		out.push(bit);
 	}
 	out
 }
@@ -97,9 +96,9 @@ fn scatter_merge_generic(
 	let result_type = self_col.get_type();
 	let mut data = ColumnBuffer::with_capacity(result_type.clone(), total_len);
 	for i in 0..total_len {
-		if DataBitVec::get(then_mask, i) {
+		if then_mask.get(i) {
 			data.push_value(self_col.get_value(i));
-		} else if DataBitVec::get(else_mask, i) {
+		} else if else_mask.get(i) {
 			data.push_value(other.get_value(i));
 		} else {
 			data.push_value(Value::none_of(result_type.clone()));
@@ -195,27 +194,27 @@ fn bool_scatter(
 	let mut out = BitVec::with_capacity(total_len);
 	let mut validity: Option<BitVec> = None;
 	for i in 0..total_len {
-		let in_then = DataBitVec::get(then_mask, i);
-		let in_else = !in_then && DataBitVec::get(else_mask, i);
-		let bit = if in_then && i < DataBitVec::len(a_data) {
-			DataBitVec::get(a_data, i)
-		} else if in_else && i < DataBitVec::len(b_data) {
-			DataBitVec::get(b_data, i)
+		let in_then = then_mask.get(i);
+		let in_else = !in_then && else_mask.get(i);
+		let bit = if in_then && i < a_data.len() {
+			a_data.get(i)
+		} else if in_else && i < b_data.len() {
+			b_data.get(i)
 		} else {
 			false
 		};
-		DataBitVec::push(&mut out, bit);
+		out.push(bit);
 		if !in_then && !in_else {
 			let v = validity.get_or_insert_with(|| {
 				let mut bv = BitVec::with_capacity(total_len);
 				for _ in 0..i {
-					DataBitVec::push(&mut bv, true);
+					bv.push(true);
 				}
 				bv
 			});
-			DataBitVec::push(v, false);
+			v.push(false);
 		} else if let Some(v) = validity.as_mut() {
-			DataBitVec::push(v, true);
+			v.push(true);
 		}
 	}
 	(out, validity)
@@ -236,12 +235,12 @@ where
 	let mut out: Vec<T> = Vec::with_capacity(total_len);
 	let mut validity: Option<BitVec> = None;
 	for i in 0..total_len {
-		let in_then = DataBitVec::get(then_mask, i);
-		let in_else = !in_then && DataBitVec::get(else_mask, i);
+		let in_then = then_mask.get(i);
+		let in_else = !in_then && else_mask.get(i);
 		let value = if in_then {
-			DataVec::get(a_data, i).cloned().unwrap_or_default()
+			a_data.get(i).cloned().unwrap_or_default()
 		} else if in_else {
-			DataVec::get(b_data, i).cloned().unwrap_or_default()
+			b_data.get(i).cloned().unwrap_or_default()
 		} else {
 			T::default()
 		};
@@ -250,13 +249,13 @@ where
 			let v = validity.get_or_insert_with(|| {
 				let mut bv = BitVec::with_capacity(total_len);
 				for _ in 0..i {
-					DataBitVec::push(&mut bv, true);
+					bv.push(true);
 				}
 				bv
 			});
-			DataBitVec::push(v, false);
+			v.push(false);
 		} else if let Some(v) = validity.as_mut() {
-			DataBitVec::push(v, true);
+			v.push(true);
 		}
 	}
 	(out, validity)
@@ -277,12 +276,12 @@ where
 	let mut out: Vec<T> = Vec::with_capacity(total_len);
 	let mut validity: Option<BitVec> = None;
 	for i in 0..total_len {
-		let in_then = DataBitVec::get(then_mask, i);
-		let in_else = !in_then && DataBitVec::get(else_mask, i);
+		let in_then = then_mask.get(i);
+		let in_else = !in_then && else_mask.get(i);
 		let value = if in_then {
-			DataVec::get(a_data, i).cloned().unwrap_or_default()
+			a_data.get(i).cloned().unwrap_or_default()
 		} else if in_else {
-			DataVec::get(b_data, i).cloned().unwrap_or_default()
+			b_data.get(i).cloned().unwrap_or_default()
 		} else {
 			T::default()
 		};
@@ -291,13 +290,13 @@ where
 			let v = validity.get_or_insert_with(|| {
 				let mut bv = BitVec::with_capacity(total_len);
 				for _ in 0..i {
-					DataBitVec::push(&mut bv, true);
+					bv.push(true);
 				}
 				bv
 			});
-			DataBitVec::push(v, false);
+			v.push(false);
 		} else if let Some(v) = validity.as_mut() {
-			DataBitVec::push(v, true);
+			v.push(true);
 		}
 	}
 	(out, validity)
@@ -318,12 +317,12 @@ where
 	let mut out: Vec<T> = Vec::with_capacity(total_len);
 	let mut validity: Option<BitVec> = None;
 	for i in 0..total_len {
-		let in_then = DataBitVec::get(then_mask, i);
-		let in_else = !in_then && DataBitVec::get(else_mask, i);
+		let in_then = then_mask.get(i);
+		let in_else = !in_then && else_mask.get(i);
 		let value = if in_then {
-			DataVec::get(a_data, i).cloned().unwrap_or_default()
+			a_data.get(i).cloned().unwrap_or_default()
 		} else if in_else {
-			DataVec::get(b_data, i).cloned().unwrap_or_default()
+			b_data.get(i).cloned().unwrap_or_default()
 		} else {
 			T::default()
 		};
@@ -332,13 +331,13 @@ where
 			let v = validity.get_or_insert_with(|| {
 				let mut bv = BitVec::with_capacity(total_len);
 				for _ in 0..i {
-					DataBitVec::push(&mut bv, true);
+					bv.push(true);
 				}
 				bv
 			});
-			DataBitVec::push(v, false);
+			v.push(false);
 		} else if let Some(v) = validity.as_mut() {
-			DataBitVec::push(v, true);
+			v.push(true);
 		}
 	}
 	(out, validity)

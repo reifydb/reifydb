@@ -11,16 +11,15 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	storage::{DataBitVec, Plain, Storage},
 	util::bitvec::BitVec,
 	value::{Value, value_type::ValueType},
 };
 
-pub struct BoolContainer<S: Storage = Plain> {
-	data: S::BitVec,
+pub struct BoolContainer {
+	data: BitVec,
 }
 
-impl<S: Storage> Clone for BoolContainer<S> {
+impl Clone for BoolContainer {
 	fn clone(&self) -> Self {
 		Self {
 			data: self.data.clone(),
@@ -28,25 +27,19 @@ impl<S: Storage> Clone for BoolContainer<S> {
 	}
 }
 
-impl<S: Storage> Debug for BoolContainer<S>
-where
-	S::BitVec: Debug,
-{
+impl Debug for BoolContainer {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("BoolContainer").field("data", &self.data).finish()
 	}
 }
 
-impl<S: Storage> PartialEq for BoolContainer<S>
-where
-	S::BitVec: PartialEq,
-{
+impl PartialEq for BoolContainer {
 	fn eq(&self, other: &Self) -> bool {
 		self.data == other.data
 	}
 }
 
-impl Serialize for BoolContainer<Plain> {
+impl Serialize for BoolContainer {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a> {
@@ -59,7 +52,7 @@ impl Serialize for BoolContainer<Plain> {
 	}
 }
 
-impl<'de> Deserialize<'de> for BoolContainer<Plain> {
+impl<'de> Deserialize<'de> for BoolContainer {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper {
@@ -72,7 +65,7 @@ impl<'de> Deserialize<'de> for BoolContainer<Plain> {
 	}
 }
 
-impl Deref for BoolContainer<Plain> {
+impl Deref for BoolContainer {
 	type Target = BitVec;
 
 	fn deref(&self) -> &Self::Target {
@@ -80,7 +73,7 @@ impl Deref for BoolContainer<Plain> {
 	}
 }
 
-impl BoolContainer<Plain> {
+impl BoolContainer {
 	pub fn new(data: Vec<bool>) -> Self {
 		Self {
 			data: BitVec::from_slice(&data),
@@ -100,19 +93,19 @@ impl BoolContainer<Plain> {
 	}
 }
 
-impl<S: Storage> BoolContainer<S> {
-	pub fn from_parts(data: S::BitVec) -> Self {
+impl BoolContainer {
+	pub fn from_parts(data: BitVec) -> Self {
 		Self {
 			data,
 		}
 	}
 
 	pub fn len(&self) -> usize {
-		DataBitVec::len(&self.data)
+		self.data.len()
 	}
 
 	pub fn capacity(&self) -> usize {
-		DataBitVec::capacity(&self.data)
+		self.data.capacity()
 	}
 
 	pub fn heap_size(&self) -> usize {
@@ -120,24 +113,24 @@ impl<S: Storage> BoolContainer<S> {
 	}
 
 	pub fn is_empty(&self) -> bool {
-		DataBitVec::len(&self.data) == 0
+		self.data.len() == 0
 	}
 
 	pub fn clear(&mut self) {
-		DataBitVec::clear(&mut self.data);
+		self.data.clear();
 	}
 
 	pub fn push(&mut self, value: bool) {
-		DataBitVec::push(&mut self.data, value);
+		self.data.push(value);
 	}
 
 	pub fn push_default(&mut self) {
-		DataBitVec::push(&mut self.data, false);
+		self.data.push(false);
 	}
 
 	pub fn get(&self, index: usize) -> Option<bool> {
 		if index < self.len() {
-			Some(DataBitVec::get(&self.data, index))
+			Some(self.data.get(index))
 		} else {
 			None
 		}
@@ -151,17 +144,17 @@ impl<S: Storage> BoolContainer<S> {
 		true
 	}
 
-	pub fn data(&self) -> &S::BitVec {
+	pub fn data(&self) -> &BitVec {
 		&self.data
 	}
 
-	pub fn data_mut(&mut self) -> &mut S::BitVec {
+	pub fn data_mut(&mut self) -> &mut BitVec {
 		&mut self.data
 	}
 
 	pub fn as_string(&self, index: usize) -> String {
 		if index < self.len() {
-			DataBitVec::get(&self.data, index).to_string()
+			self.data.get(index).to_string()
 		} else {
 			"none".to_string()
 		}
@@ -169,38 +162,38 @@ impl<S: Storage> BoolContainer<S> {
 
 	pub fn get_value(&self, index: usize) -> Value {
 		if index < self.len() {
-			Value::Boolean(DataBitVec::get(&self.data, index))
+			Value::Boolean(self.data.get(index))
 		} else {
 			Value::none_of(ValueType::Boolean)
 		}
 	}
 
 	pub fn extend(&mut self, other: &Self) -> Result<()> {
-		DataBitVec::extend_from(&mut self.data, &other.data);
+		self.data.extend(&other.data);
 		Ok(())
 	}
 
 	pub fn iter(&self) -> impl Iterator<Item = Option<bool>> + '_ {
-		DataBitVec::iter(&self.data).map(Some)
+		self.data.iter().map(Some)
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
 		let count = (end - start).min(self.len().saturating_sub(start));
-		let mut new_data = DataBitVec::spawn(&self.data, count);
+		let mut new_data = BitVec::with_capacity(count);
 		for i in start..(start + count) {
-			DataBitVec::push(&mut new_data, DataBitVec::get(&self.data, i));
+			new_data.push(self.data.get(i));
 		}
 		Self {
 			data: new_data,
 		}
 	}
 
-	pub fn filter(&mut self, mask: &S::BitVec) {
-		let mut new_data = DataBitVec::spawn(&self.data, DataBitVec::count_ones(mask));
+	pub fn filter(&mut self, mask: &BitVec) {
+		let mut new_data = BitVec::with_capacity(mask.count_ones());
 
-		for (i, keep) in DataBitVec::iter(mask).enumerate() {
+		for (i, keep) in mask.iter().enumerate() {
 			if keep && i < self.len() {
-				DataBitVec::push(&mut new_data, DataBitVec::get(&self.data, i));
+				new_data.push(self.data.get(i));
 			}
 		}
 
@@ -208,13 +201,13 @@ impl<S: Storage> BoolContainer<S> {
 	}
 
 	pub fn reorder(&mut self, indices: &[usize]) {
-		let mut new_data = DataBitVec::spawn(&self.data, indices.len());
+		let mut new_data = BitVec::with_capacity(indices.len());
 
 		for &idx in indices {
 			if idx < self.len() {
-				DataBitVec::push(&mut new_data, DataBitVec::get(&self.data, idx));
+				new_data.push(self.data.get(idx));
 			} else {
-				DataBitVec::push(&mut new_data, false);
+				new_data.push(false);
 			}
 		}
 
@@ -223,22 +216,22 @@ impl<S: Storage> BoolContainer<S> {
 
 	pub fn take(&self, num: usize) -> Self {
 		Self {
-			data: DataBitVec::take(&self.data, num),
+			data: self.data.take(num),
 		}
 	}
 }
 
-impl<S: Storage> IntoIterator for BoolContainer<S> {
+impl IntoIterator for BoolContainer {
 	type Item = Option<bool>;
 	type IntoIter = std::iter::Map<std::vec::IntoIter<bool>, fn(bool) -> Option<bool>>;
 
 	fn into_iter(self) -> Self::IntoIter {
-		let data: Vec<bool> = DataBitVec::iter(&self.data).collect();
+		let data: Vec<bool> = self.data.iter().collect();
 		data.into_iter().map(Some as fn(bool) -> Option<bool>)
 	}
 }
 
-impl Default for BoolContainer<Plain> {
+impl Default for BoolContainer {
 	fn default() -> Self {
 		Self::with_capacity(0)
 	}

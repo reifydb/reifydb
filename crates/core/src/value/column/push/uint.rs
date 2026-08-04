@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{storage::DataBitVec, value::uint::Uint};
+use reifydb_value::value::uint::Uint;
 
 use crate::value::column::{ColumnBuffer, push::Push};
 
@@ -19,7 +19,7 @@ impl Push<Uint> for ColumnBuffer {
 				bitvec,
 			} => {
 				inner.push(value);
-				DataBitVec::push(bitvec, true);
+				bitvec.push(true);
 			}
 			_ => unreachable!("Push<Uint> for ColumnBuffer with incompatible type"),
 		}

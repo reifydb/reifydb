@@ -11,15 +11,15 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	storage::{DataBitVec, DataVec, Plain, Storage},
+	util::bitvec::BitVec,
 	value::{Value, identity::IdentityId, value_type::ValueType},
 };
 
-pub struct IdentityIdContainer<S: Storage = Plain> {
-	data: S::Vec<IdentityId>,
+pub struct IdentityIdContainer {
+	data: Vec<IdentityId>,
 }
 
-impl<S: Storage> Clone for IdentityIdContainer<S> {
+impl Clone for IdentityIdContainer {
 	fn clone(&self) -> Self {
 		Self {
 			data: self.data.clone(),
@@ -27,25 +27,19 @@ impl<S: Storage> Clone for IdentityIdContainer<S> {
 	}
 }
 
-impl<S: Storage> Debug for IdentityIdContainer<S>
-where
-	S::Vec<IdentityId>: Debug,
-{
+impl Debug for IdentityIdContainer {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("IdentityIdContainer").field("data", &self.data).finish()
 	}
 }
 
-impl<S: Storage> PartialEq for IdentityIdContainer<S>
-where
-	S::Vec<IdentityId>: PartialEq,
-{
+impl PartialEq for IdentityIdContainer {
 	fn eq(&self, other: &Self) -> bool {
 		self.data == other.data
 	}
 }
 
-impl Serialize for IdentityIdContainer<Plain> {
+impl Serialize for IdentityIdContainer {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a> {
@@ -58,7 +52,7 @@ impl Serialize for IdentityIdContainer<Plain> {
 	}
 }
 
-impl<'de> Deserialize<'de> for IdentityIdContainer<Plain> {
+impl<'de> Deserialize<'de> for IdentityIdContainer {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper {
@@ -71,7 +65,7 @@ impl<'de> Deserialize<'de> for IdentityIdContainer<Plain> {
 	}
 }
 
-impl<S: Storage> Deref for IdentityIdContainer<S> {
+impl Deref for IdentityIdContainer {
 	type Target = [IdentityId];
 
 	fn deref(&self) -> &Self::Target {
@@ -79,7 +73,7 @@ impl<S: Storage> Deref for IdentityIdContainer<S> {
 	}
 }
 
-impl IdentityIdContainer<Plain> {
+impl IdentityIdContainer {
 	pub fn new(data: Vec<IdentityId>) -> Self {
 		Self {
 			data,
@@ -99,33 +93,33 @@ impl IdentityIdContainer<Plain> {
 	}
 }
 
-impl<S: Storage> IdentityIdContainer<S> {
-	pub fn from_parts(data: S::Vec<IdentityId>) -> Self {
+impl IdentityIdContainer {
+	pub fn from_parts(data: Vec<IdentityId>) -> Self {
 		Self {
 			data,
 		}
 	}
 
 	pub fn len(&self) -> usize {
-		DataVec::len(&self.data)
+		self.data.len()
 	}
 
 	pub fn is_empty(&self) -> bool {
-		DataVec::is_empty(&self.data)
+		self.data.is_empty()
 	}
 
 	pub fn clear(&mut self) {
-		DataVec::clear(&mut self.data);
+		self.data.clear();
 	}
 
 	pub fn push(&mut self, value: impl Into<Option<IdentityId>>) {
 		let value = value.into();
 		match value {
 			Some(id) => {
-				DataVec::push(&mut self.data, id);
+				self.data.push(id);
 			}
 			None => {
-				DataVec::push(&mut self.data, IdentityId::default());
+				self.data.push(IdentityId::default());
 			}
 		}
 	}
@@ -146,11 +140,11 @@ impl<S: Storage> IdentityIdContainer<S> {
 		self.data.iter().map(|&id| Some(id))
 	}
 
-	pub fn data(&self) -> &S::Vec<IdentityId> {
+	pub fn data(&self) -> &Vec<IdentityId> {
 		&self.data
 	}
 
-	pub fn data_mut(&mut self) -> &mut S::Vec<IdentityId> {
+	pub fn data_mut(&mut self) -> &mut Vec<IdentityId> {
 		&mut self.data
 	}
 
@@ -159,7 +153,7 @@ impl<S: Storage> IdentityIdContainer<S> {
 	}
 
 	pub fn extend(&mut self, other: &Self) -> Result<()> {
-		DataVec::extend_from_slice(&mut self.data, DataVec::as_slice(&other.data));
+		self.data.extend_from_slice(other.data.as_slice());
 		Ok(())
 	}
 
@@ -167,12 +161,12 @@ impl<S: Storage> IdentityIdContainer<S> {
 		self.get(index).map(Value::IdentityId).unwrap_or(Value::none_of(ValueType::IdentityId))
 	}
 
-	pub fn filter(&mut self, mask: &S::BitVec) {
-		let mut new_data = DataVec::spawn(&self.data, DataBitVec::count_ones(mask));
+	pub fn filter(&mut self, mask: &BitVec) {
+		let mut new_data = Vec::with_capacity(mask.count_ones());
 
-		for (i, keep) in DataBitVec::iter(mask).enumerate() {
-			if keep && i < DataVec::len(&self.data) {
-				DataVec::push(&mut new_data, self.data[i]);
+		for (i, keep) in mask.iter().enumerate() {
+			if keep && i < self.data.len() {
+				new_data.push(self.data[i]);
 			}
 		}
 
@@ -180,13 +174,13 @@ impl<S: Storage> IdentityIdContainer<S> {
 	}
 
 	pub fn reorder(&mut self, indices: &[usize]) {
-		let mut new_data = DataVec::spawn(&self.data, indices.len());
+		let mut new_data = Vec::with_capacity(indices.len());
 
 		for &index in indices {
-			if index < DataVec::len(&self.data) {
-				DataVec::push(&mut new_data, self.data[index]);
+			if index < self.data.len() {
+				new_data.push(self.data[index]);
 			} else {
-				DataVec::push(&mut new_data, IdentityId::default());
+				new_data.push(IdentityId::default());
 			}
 		}
 
@@ -195,15 +189,15 @@ impl<S: Storage> IdentityIdContainer<S> {
 
 	pub fn take(&self, num: usize) -> Self {
 		Self {
-			data: DataVec::take(&self.data, num),
+			data: self.data[..num.min(self.data.len())].to_vec(),
 		}
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
 		let count = (end - start).min(self.len().saturating_sub(start));
-		let mut new_data = DataVec::spawn(&self.data, count);
+		let mut new_data = Vec::with_capacity(count);
 		for i in start..(start + count) {
-			DataVec::push(&mut new_data, self.data[i]);
+			new_data.push(self.data[i]);
 		}
 		Self {
 			data: new_data,
@@ -215,7 +209,7 @@ impl<S: Storage> IdentityIdContainer<S> {
 	}
 
 	pub fn capacity(&self) -> usize {
-		DataVec::capacity(&self.data)
+		self.data.capacity()
 	}
 
 	pub fn heap_size(&self) -> usize {
@@ -223,13 +217,13 @@ impl<S: Storage> IdentityIdContainer<S> {
 	}
 }
 
-impl From<Vec<IdentityId>> for IdentityIdContainer<Plain> {
+impl From<Vec<IdentityId>> for IdentityIdContainer {
 	fn from(data: Vec<IdentityId>) -> Self {
 		Self::from_vec(data)
 	}
 }
 
-impl FromIterator<Option<IdentityId>> for IdentityIdContainer<Plain> {
+impl FromIterator<Option<IdentityId>> for IdentityIdContainer {
 	fn from_iter<T: IntoIterator<Item = Option<IdentityId>>>(iter: T) -> Self {
 		let mut container = Self::with_capacity(0);
 		for item in iter {

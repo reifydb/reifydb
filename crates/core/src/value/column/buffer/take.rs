@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{storage::DataBitVec, util::bitvec::BitVec};
+use reifydb_value::util::bitvec::BitVec;
 
 use crate::value::column::ColumnBuffer;
 
@@ -86,11 +86,9 @@ impl ColumnBuffer {
 				inner,
 				bitvec,
 			} => {
-				let new_bitvec = DataBitVec::take(bitvec, num);
+				let new_bitvec = bitvec.take(num);
 
-				if DataBitVec::count_ones(&new_bitvec) == DataBitVec::len(&new_bitvec)
-					&& DataBitVec::len(&new_bitvec) > 0
-				{
+				if new_bitvec.count_ones() == new_bitvec.len() && !new_bitvec.is_empty() {
 					inner.take(num)
 				} else {
 					ColumnBuffer::Option {
@@ -112,7 +110,7 @@ impl ColumnBuffer {
 				let len = end - start;
 				let mut new_bits = Vec::with_capacity(len);
 				for row in start..end {
-					new_bits.push(DataBitVec::get(bitvec, row));
+					new_bits.push(bitvec.get(row));
 				}
 				let new_bitvec = BitVec::from(new_bits);
 				ColumnBuffer::Option {
@@ -132,7 +130,7 @@ impl ColumnBuffer {
 			} => {
 				let mut new_bits = Vec::with_capacity(indices.len());
 				for &i in indices {
-					new_bits.push(DataBitVec::get(bitvec, i));
+					new_bits.push(bitvec.get(i));
 				}
 				let new_bitvec = BitVec::from(new_bits);
 				ColumnBuffer::Option {

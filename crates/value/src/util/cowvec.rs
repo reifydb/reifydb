@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(feature = "cow-stats")]
+use std::sync::atomic::Ordering;
 use std::{borrow::Borrow, mem, ops::Deref, sync::Arc, vec};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-use crate::storage::DataVec;
 
 #[cfg(feature = "cow-stats")]
 pub mod stats {
@@ -132,15 +132,12 @@ impl<T: Clone + PartialEq> Clone for CowVec<T> {
 	fn clone(&self) -> Self {
 		#[cfg(feature = "cow-stats")]
 		{
-			stats::CLONES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+			stats::CLONES.fetch_add(1, Ordering::Relaxed);
 			let len = self.inner.len();
 			if len == 0 {
-				stats::EMPTY_CLONES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+				stats::EMPTY_CLONES.fetch_add(1, Ordering::Relaxed);
 			}
-			stats::BYTES_CLONED.fetch_add(
-				(len * std::mem::size_of::<T>()) as u64,
-				std::sync::atomic::Ordering::Relaxed,
-			);
+			stats::BYTES_CLONED.fetch_add((len * mem::size_of::<T>()) as u64, Ordering::Relaxed);
 		}
 		CowVec {
 			inner: Arc::clone(&self.inner),
@@ -196,11 +193,10 @@ impl<T: Clone + PartialEq> CowVec<T> {
 	pub fn make_mut(&mut self) -> &mut Vec<T> {
 		#[cfg(feature = "cow-stats")]
 		{
-			stats::MUTATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+			stats::MUTATIONS.fetch_add(1, Ordering::Relaxed);
 			if Arc::strong_count(&self.inner) > 1 {
-				stats::COPIES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-				stats::ELEMENTS_COPIED
-					.fetch_add(self.inner.len() as u64, std::sync::atomic::Ordering::Relaxed);
+				stats::COPIES.fetch_add(1, Ordering::Relaxed);
+				stats::ELEMENTS_COPIED.fetch_add(self.inner.len() as u64, Ordering::Relaxed);
 			}
 		}
 		Arc::make_mut(&mut self.inner)
@@ -319,48 +315,6 @@ where
 		Ok(CowVec {
 			inner: Arc::new(vec),
 		})
-	}
-}
-
-impl<T: Clone + PartialEq> DataVec<T> for CowVec<T> {
-	fn spawn(&self, capacity: usize) -> Self {
-		CowVec::with_capacity(capacity)
-	}
-
-	fn push(&mut self, value: T) {
-		CowVec::push(self, value)
-	}
-
-	fn clear(&mut self) {
-		CowVec::clear(self)
-	}
-
-	fn len(&self) -> usize {
-		CowVec::len(self)
-	}
-
-	fn as_slice(&self) -> &[T] {
-		CowVec::as_slice(self)
-	}
-
-	fn get(&self, idx: usize) -> Option<&T> {
-		CowVec::get(self, idx)
-	}
-
-	fn extend_from_slice(&mut self, other: &[T]) {
-		CowVec::extend_from_slice(self, other)
-	}
-
-	fn extend_iter(&mut self, iter: impl Iterator<Item = T>) {
-		CowVec::extend(self, iter)
-	}
-
-	fn capacity(&self) -> usize {
-		CowVec::capacity(self)
-	}
-
-	fn take(&self, n: usize) -> Self {
-		CowVec::take(self, n)
 	}
 }
 

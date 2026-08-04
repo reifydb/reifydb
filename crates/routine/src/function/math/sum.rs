@@ -70,7 +70,7 @@ impl<'a> Routine<FunctionContext<'a>> for Sum {
 
 		for i in 0..row_count {
 			let val1 = args[0].get_value(i);
-			results.push(Box::new(val1));
+			results.push(val1);
 		}
 
 		Ok(Columns::new(vec![ColumnWithName::new(ctx.fragment.clone(), ColumnBuffer::any(results))]))

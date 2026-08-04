@@ -3,21 +3,18 @@
 
 use num_traits::NumCast;
 use reifydb_codec::{key::serializer::KeySerializer, tag::ValueKind};
-use reifydb_value::{
-	storage::DataBitVec,
-	value::{
-		Value,
-		date::Date,
-		datetime::DateTime,
-		decimal::Decimal,
-		duration::Duration,
-		identity::IdentityId,
-		int::Int,
-		time::Time,
-		uint::Uint,
-		uuid::{Uuid4, Uuid7},
-		value_type::ValueType,
-	},
+use reifydb_value::value::{
+	Value,
+	date::Date,
+	datetime::DateTime,
+	decimal::Decimal,
+	duration::Duration,
+	identity::IdentityId,
+	int::Int,
+	time::Time,
+	uint::Uint,
+	uuid::{Uuid4, Uuid7},
+	value_type::ValueType,
 };
 
 use crate::value::column::{ColumnBuffer, buffer::with_container};
@@ -33,7 +30,7 @@ impl ColumnBuffer {
 				inner,
 				bitvec,
 			} => {
-				if index < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, index) {
+				if index < bitvec.len() && bitvec.get(index) {
 					inner.get_value(index)
 				} else {
 					Value::None {
@@ -55,7 +52,7 @@ impl ColumnBuffer {
 				inner,
 				bitvec,
 			} => {
-				if index < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, index) {
+				if index < bitvec.len() && bitvec.get(index) {
 					inner.extend_key(index, serializer);
 				} else {
 					serializer.extend_value(&Value::None {
@@ -101,7 +98,7 @@ impl ColumnBuffer {
 				inner,
 				bitvec,
 			} => {
-				if index < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, index) {
+				if index < bitvec.len() && bitvec.get(index) {
 					inner.get_str(index)
 				} else {
 					None
@@ -121,7 +118,7 @@ impl ColumnBuffer {
 				inner,
 				bitvec,
 			} => {
-				if index < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, index) {
+				if index < bitvec.len() && bitvec.get(index) {
 					inner.get_bytes(index)
 				} else {
 					None

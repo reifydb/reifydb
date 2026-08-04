@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{storage::DataBitVec, value::decimal::Decimal};
+use reifydb_value::value::decimal::Decimal;
 
 use crate::value::column::{ColumnBuffer, push::Push};
 
@@ -19,7 +19,7 @@ impl Push<Decimal> for ColumnBuffer {
 				bitvec,
 			} => {
 				inner.push(value);
-				DataBitVec::push(bitvec, true);
+				bitvec.push(true);
 			}
 			_ => unreachable!("Push<Decimal> for ColumnBuffer with incompatible type"),
 		}

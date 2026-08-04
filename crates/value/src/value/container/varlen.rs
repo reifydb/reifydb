@@ -9,17 +9,14 @@ use std::{
 use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeSeq};
 use serde_bytes::{ByteBuf, Bytes};
 
-use crate::{
-	reifydb_assertions,
-	storage::{DataVec, Plain, Storage},
-};
+use crate::reifydb_assertions;
 
-pub struct VarlenContainer<S: Storage = Plain> {
-	data: S::Vec<u8>,
-	offsets: S::Vec<u64>,
+pub struct VarlenContainer {
+	data: Vec<u8>,
+	offsets: Vec<u64>,
 }
 
-impl<S: Storage> Clone for VarlenContainer<S> {
+impl Clone for VarlenContainer {
 	fn clone(&self) -> Self {
 		Self {
 			data: self.data.clone(),
@@ -28,11 +25,7 @@ impl<S: Storage> Clone for VarlenContainer<S> {
 	}
 }
 
-impl<S: Storage> Debug for VarlenContainer<S>
-where
-	S::Vec<u8>: Debug,
-	S::Vec<u64>: Debug,
-{
+impl Debug for VarlenContainer {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("VarlenContainer")
 			.field("len", &self.len())
@@ -41,11 +34,7 @@ where
 	}
 }
 
-impl<S: Storage> PartialEq for VarlenContainer<S>
-where
-	S::Vec<u8>: PartialEq,
-	S::Vec<u64>: PartialEq,
-{
+impl PartialEq for VarlenContainer {
 	fn eq(&self, other: &Self) -> bool {
 		if self.len() != other.len() {
 			return false;
@@ -59,7 +48,7 @@ where
 	}
 }
 
-impl VarlenContainer<Plain> {
+impl VarlenContainer {
 	pub fn from_byte_slices<'a, I>(items: I) -> Self
 	where
 		I: IntoIterator<Item = &'a [u8]>,
@@ -119,11 +108,11 @@ impl VarlenContainer<Plain> {
 	}
 }
 
-impl<S: Storage> VarlenContainer<S> {
-	pub fn from_storage_parts(data: S::Vec<u8>, offsets: S::Vec<u64>) -> Self {
+impl VarlenContainer {
+	pub fn from_storage_parts(data: Vec<u8>, offsets: Vec<u64>) -> Self {
 		reifydb_assertions! {
 			assert!(
-				DataVec::len(&offsets) >= 1,
+				offsets.len() >= 1,
 				"offsets must always include the leading 0; got empty offsets"
 			);
 		}
@@ -134,7 +123,7 @@ impl<S: Storage> VarlenContainer<S> {
 	}
 
 	pub fn len(&self) -> usize {
-		DataVec::len(&self.offsets).saturating_sub(1)
+		self.offsets.len().saturating_sub(1)
 	}
 
 	pub fn is_empty(&self) -> bool {
@@ -142,7 +131,7 @@ impl<S: Storage> VarlenContainer<S> {
 	}
 
 	pub fn data_byte_len(&self) -> usize {
-		DataVec::len(&self.data)
+		self.data.len()
 	}
 
 	pub fn data_bytes(&self) -> &[u8] {
@@ -163,29 +152,29 @@ impl<S: Storage> VarlenContainer<S> {
 	}
 
 	pub fn capacity(&self) -> usize {
-		DataVec::capacity(&self.offsets).saturating_sub(1)
+		self.offsets.capacity().saturating_sub(1)
 	}
 
 	pub fn heap_size(&self) -> usize {
-		DataVec::capacity(&self.data) + DataVec::capacity(&self.offsets) * size_of::<u64>()
+		self.data.capacity() + self.offsets.capacity() * size_of::<u64>()
 	}
 
-	pub fn data(&self) -> &S::Vec<u8> {
+	pub fn data(&self) -> &Vec<u8> {
 		&self.data
 	}
 
-	pub fn offsets_data(&self) -> &S::Vec<u64> {
+	pub fn offsets_data(&self) -> &Vec<u64> {
 		&self.offsets
 	}
 
 	pub fn clear_generic(&mut self) {
-		DataVec::clear(&mut self.data);
-		DataVec::clear(&mut self.offsets);
-		DataVec::push(&mut self.offsets, 0u64);
+		self.data.clear();
+		self.offsets.clear();
+		self.offsets.push(0u64);
 	}
 }
 
-impl VarlenContainer<Plain> {
+impl VarlenContainer {
 	pub fn clear(&mut self) {
 		let data_mut = &mut self.data;
 		data_mut.clear();
@@ -202,7 +191,7 @@ impl VarlenContainer<Plain> {
 	}
 
 	pub fn extend_from(&mut self, other: &Self) {
-		let base = DataVec::len(&self.data) as u64;
+		let base = self.data.len() as u64;
 		let other_offsets = other.offsets.as_slice();
 		let other_data = other.data.as_slice();
 
@@ -268,7 +257,7 @@ impl VarlenContainer<Plain> {
 	}
 }
 
-impl Serialize for VarlenContainer<Plain> {
+impl Serialize for VarlenContainer {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		let mut seq = serializer.serialize_seq(Some(self.len()))?;
 		for i in 0..self.len() {
@@ -279,7 +268,7 @@ impl Serialize for VarlenContainer<Plain> {
 	}
 }
 
-impl<'de> Deserialize<'de> for VarlenContainer<Plain> {
+impl<'de> Deserialize<'de> for VarlenContainer {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		let items: Vec<ByteBuf> = Vec::deserialize(deserializer)?;
 		let total: usize = items.iter().map(|b| b.len()).sum();
@@ -294,7 +283,7 @@ impl<'de> Deserialize<'de> for VarlenContainer<Plain> {
 	}
 }
 
-impl Default for VarlenContainer<Plain> {
+impl Default for VarlenContainer {
 	fn default() -> Self {
 		Self::empty()
 	}
@@ -425,7 +414,7 @@ mod tests {
 	fn serde_round_trip_preserves_content() {
 		let original = VarlenContainer::from_byte_slices([b"hello".as_slice(), b"", b"world"]);
 		let encoded: Vec<u8> = postcard_to_allocvec(&original).unwrap();
-		let decoded: VarlenContainer<Plain> = postcard_from_bytes(&encoded).unwrap();
+		let decoded: VarlenContainer = postcard_from_bytes(&encoded).unwrap();
 		assert_eq!(decoded.len(), 3);
 		assert_eq!(decoded.get_bytes(0), Some(b"hello".as_slice()));
 		assert_eq!(decoded.get_bytes(1), Some(b"".as_slice()));
@@ -438,7 +427,7 @@ mod tests {
 		// sequences of length-prefixed bytes), so the two are wire-compatible.
 		let strings = vec!["a".to_string(), "bc".to_string(), "def".to_string()];
 		let encoded: Vec<u8> = postcard_to_allocvec(&strings).unwrap();
-		let decoded: VarlenContainer<Plain> = postcard_from_bytes(&encoded).unwrap();
+		let decoded: VarlenContainer = postcard_from_bytes(&encoded).unwrap();
 		assert_eq!(decoded.len(), 3);
 		assert_eq!(decoded.get_bytes(0), Some(b"a".as_slice()));
 		assert_eq!(decoded.get_bytes(1), Some(b"bc".as_slice()));

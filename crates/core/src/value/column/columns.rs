@@ -167,11 +167,11 @@ fn value_to_buffer(value: Value) -> ColumnBuffer {
 		Value::Uint(v) => ColumnBuffer::uint(vec![v]),
 		Value::Decimal(v) => ColumnBuffer::decimal(vec![v]),
 		Value::DictionaryId(v) => ColumnBuffer::dictionary_id(vec![v]),
-		Value::Any(v) => ColumnBuffer::any(vec![v]),
-		Value::Type(v) => ColumnBuffer::any(vec![Box::new(Value::Type(v))]),
-		Value::List(v) => ColumnBuffer::any(vec![Box::new(Value::List(v))]),
-		Value::Record(v) => ColumnBuffer::any(vec![Box::new(Value::Record(v))]),
-		Value::Tuple(v) => ColumnBuffer::any(vec![Box::new(Value::Tuple(v))]),
+		Value::Any(v) => ColumnBuffer::any(vec![*v]),
+		Value::Type(v) => ColumnBuffer::any(vec![Value::Type(v)]),
+		Value::List(v) => ColumnBuffer::any(vec![Value::List(v)]),
+		Value::Record(v) => ColumnBuffer::any(vec![Value::Record(v)]),
+		Value::Tuple(v) => ColumnBuffer::any(vec![Value::Tuple(v)]),
 	}
 }
 
@@ -935,12 +935,7 @@ pub mod tests {
 
 	#[test]
 	fn extract_by_indices_preserves_any_values() {
-		let data = [
-			Box::new(Value::Int4(1)),
-			Box::new(Value::Utf8("two".to_string())),
-			Box::new(Value::Boolean(true)),
-			Box::new(Value::none()),
-		];
+		let data = [Value::Int4(1), Value::Utf8("two".to_string()), Value::Boolean(true), Value::none()];
 		assert_extract_preserves_values(ColumnBuffer::any(data), &[3, 1, 2]);
 	}
 

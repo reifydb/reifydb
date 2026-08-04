@@ -11,18 +11,18 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	storage::{DataBitVec, DataVec, Plain, Storage},
+	util::bitvec::BitVec,
 	value::{Value, is::IsUuid},
 };
 
-pub struct UuidContainer<T, S: Storage = Plain>
+pub struct UuidContainer<T>
 where
 	T: IsUuid,
 {
-	data: S::Vec<T>,
+	data: Vec<T>,
 }
 
-impl<T: IsUuid, S: Storage> Clone for UuidContainer<T, S> {
+impl<T: IsUuid> Clone for UuidContainer<T> {
 	fn clone(&self) -> Self {
 		Self {
 			data: self.data.clone(),
@@ -30,25 +30,19 @@ impl<T: IsUuid, S: Storage> Clone for UuidContainer<T, S> {
 	}
 }
 
-impl<T: IsUuid + Debug, S: Storage> Debug for UuidContainer<T, S>
-where
-	S::Vec<T>: Debug,
-{
+impl<T: IsUuid + Debug> Debug for UuidContainer<T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("UuidContainer").field("data", &self.data).finish()
 	}
 }
 
-impl<T: IsUuid, S: Storage> PartialEq for UuidContainer<T, S>
-where
-	S::Vec<T>: PartialEq,
-{
+impl<T: IsUuid> PartialEq for UuidContainer<T> {
 	fn eq(&self, other: &Self) -> bool {
 		self.data == other.data
 	}
 }
 
-impl<T: IsUuid + Serialize> Serialize for UuidContainer<T, Plain> {
+impl<T: IsUuid + Serialize> Serialize for UuidContainer<T> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a, T: Clone + PartialEq + Serialize> {
@@ -61,7 +55,7 @@ impl<T: IsUuid + Serialize> Serialize for UuidContainer<T, Plain> {
 	}
 }
 
-impl<'de, T: IsUuid + Deserialize<'de>> Deserialize<'de> for UuidContainer<T, Plain> {
+impl<'de, T: IsUuid + Deserialize<'de>> Deserialize<'de> for UuidContainer<T> {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper<T: Clone + PartialEq> {
@@ -74,7 +68,7 @@ impl<'de, T: IsUuid + Deserialize<'de>> Deserialize<'de> for UuidContainer<T, Pl
 	}
 }
 
-impl<T: IsUuid, S: Storage> Deref for UuidContainer<T, S> {
+impl<T: IsUuid> Deref for UuidContainer<T> {
 	type Target = [T];
 
 	fn deref(&self) -> &Self::Target {
@@ -82,7 +76,7 @@ impl<T: IsUuid, S: Storage> Deref for UuidContainer<T, S> {
 	}
 }
 
-impl<T> UuidContainer<T, Plain>
+impl<T> UuidContainer<T>
 where
 	T: IsUuid + Clone + Debug + Default,
 {
@@ -105,22 +99,22 @@ where
 	}
 }
 
-impl<T, S: Storage> UuidContainer<T, S>
+impl<T> UuidContainer<T>
 where
 	T: IsUuid + Clone + Debug + Default,
 {
-	pub fn from_parts(data: S::Vec<T>) -> Self {
+	pub fn from_parts(data: Vec<T>) -> Self {
 		Self {
 			data,
 		}
 	}
 
 	pub fn len(&self) -> usize {
-		DataVec::len(&self.data)
+		self.data.len()
 	}
 
 	pub fn capacity(&self) -> usize {
-		DataVec::capacity(&self.data)
+		self.data.capacity()
 	}
 
 	pub fn heap_size(&self) -> usize {
@@ -128,24 +122,24 @@ where
 	}
 
 	pub fn is_empty(&self) -> bool {
-		DataVec::is_empty(&self.data)
+		self.data.is_empty()
 	}
 
 	pub fn clear(&mut self) {
-		DataVec::clear(&mut self.data);
+		self.data.clear();
 	}
 
 	pub fn push(&mut self, value: T) {
-		DataVec::push(&mut self.data, value);
+		self.data.push(value);
 	}
 
 	pub fn push_default(&mut self) {
-		DataVec::push(&mut self.data, T::default());
+		self.data.push(T::default());
 	}
 
 	pub fn get(&self, index: usize) -> Option<&T> {
 		if index < self.len() {
-			DataVec::get(&self.data, index)
+			self.data.get(index)
 		} else {
 			None
 		}
@@ -155,11 +149,11 @@ where
 		idx < self.len()
 	}
 
-	pub fn data(&self) -> &S::Vec<T> {
+	pub fn data(&self) -> &Vec<T> {
 		&self.data
 	}
 
-	pub fn data_mut(&mut self) -> &mut S::Vec<T> {
+	pub fn data_mut(&mut self) -> &mut Vec<T> {
 		&mut self.data
 	}
 
@@ -180,7 +174,7 @@ where
 	}
 
 	pub fn extend(&mut self, other: &Self) -> Result<()> {
-		DataVec::extend_iter(&mut self.data, other.data.iter().cloned());
+		self.data.extend(other.data.iter().cloned());
 		Ok(())
 	}
 
@@ -193,21 +187,21 @@ where
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
 		let count = (end - start).min(self.len().saturating_sub(start));
-		let mut new_data = DataVec::spawn(&self.data, count);
+		let mut new_data = Vec::with_capacity(count);
 		for i in start..(start + count) {
-			DataVec::push(&mut new_data, self.data[i].clone());
+			new_data.push(self.data[i].clone());
 		}
 		Self {
 			data: new_data,
 		}
 	}
 
-	pub fn filter(&mut self, mask: &S::BitVec) {
-		let mut new_data = DataVec::spawn(&self.data, DataBitVec::count_ones(mask));
+	pub fn filter(&mut self, mask: &BitVec) {
+		let mut new_data = Vec::with_capacity(mask.count_ones());
 
-		for (i, keep) in DataBitVec::iter(mask).enumerate() {
+		for (i, keep) in mask.iter().enumerate() {
 			if keep && i < self.len() {
-				DataVec::push(&mut new_data, self.data[i].clone());
+				new_data.push(self.data[i].clone());
 			}
 		}
 
@@ -215,13 +209,13 @@ where
 	}
 
 	pub fn reorder(&mut self, indices: &[usize]) {
-		let mut new_data = DataVec::spawn(&self.data, indices.len());
+		let mut new_data = Vec::with_capacity(indices.len());
 
 		for &idx in indices {
 			if idx < self.len() {
-				DataVec::push(&mut new_data, self.data[idx].clone());
+				new_data.push(self.data[idx].clone());
 			} else {
-				DataVec::push(&mut new_data, T::default());
+				new_data.push(T::default());
 			}
 		}
 
@@ -230,12 +224,12 @@ where
 
 	pub fn take(&self, num: usize) -> Self {
 		Self {
-			data: DataVec::take(&self.data, num),
+			data: self.data[..num.min(self.data.len())].to_vec(),
 		}
 	}
 }
 
-impl<T> Default for UuidContainer<T, Plain>
+impl<T> Default for UuidContainer<T>
 where
 	T: IsUuid + Clone + Debug + Default,
 {

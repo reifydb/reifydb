@@ -10,12 +10,9 @@
 
 use std::fmt::Debug;
 
-use reifydb_value::{
-	storage::DataBitVec,
-	value::{
-		blob::Blob, date::Date, datetime::DateTime, dictionary::DictionaryEntryId, duration::Duration,
-		number::safe::convert::SafeConvert, time::Time,
-	},
+use reifydb_value::value::{
+	blob::Blob, date::Date, datetime::DateTime, dictionary::DictionaryEntryId, duration::Duration,
+	number::safe::convert::SafeConvert, time::Time,
 };
 
 use crate::value::column::ColumnBuffer;
@@ -54,7 +51,7 @@ macro_rules! impl_push {
 						bitvec,
 					} => {
 						inner.push(value);
-						DataBitVec::push(bitvec, true);
+						bitvec.push(true);
 					}
 					other => panic!(
 						"called `push::<{}>()` on ColumnBuffer::{:?}",
@@ -83,7 +80,7 @@ macro_rules! impl_numeric_push {
 					}
 					ColumnBuffer::Option { inner, bitvec } => {
 						inner.push(value);
-						DataBitVec::push(bitvec, true);
+						bitvec.push(true);
 					}
 					other => {
 						panic!(
@@ -109,7 +106,7 @@ impl Push<bool> for ColumnBuffer {
 				bitvec,
 			} => {
 				inner.push(value);
-				DataBitVec::push(bitvec, true);
+				bitvec.push(true);
 			}
 			other => panic!("called `push::<bool>()` on ColumnBuffer::{:?}", other.get_type()),
 		}
@@ -337,7 +334,7 @@ impl Push<Blob> for ColumnBuffer {
 				bitvec,
 			} => {
 				inner.push(value);
-				DataBitVec::push(bitvec, true);
+				bitvec.push(true);
 			}
 			other => panic!("called `push::<Blob>()` on ColumnBuffer::{:?}", other.get_type()),
 		}
@@ -358,7 +355,7 @@ impl Push<String> for ColumnBuffer {
 				bitvec,
 			} => {
 				inner.push(value);
-				DataBitVec::push(bitvec, true);
+				bitvec.push(true);
 			}
 			other => {
 				panic!("called `push::<String>()` on ColumnBuffer::{:?}", other.get_type())
@@ -378,7 +375,7 @@ impl Push<DictionaryEntryId> for ColumnBuffer {
 				bitvec,
 			} => {
 				inner.push(value);
-				DataBitVec::push(bitvec, true);
+				bitvec.push(true);
 			}
 			other => panic!("called `push::<DictionaryEntryId>()` on ColumnBuffer::{:?}", other.get_type()),
 		}

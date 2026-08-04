@@ -40,7 +40,7 @@ impl<'a> Routine<FunctionContext<'a>> for JsonArray {
 		if args.is_empty() {
 			return Ok(Columns::new(vec![ColumnWithName::new(
 				ctx.fragment.clone(),
-				ColumnBuffer::any(vec![Box::new(Value::List(vec![]))]),
+				ColumnBuffer::any(vec![Value::List(vec![])]),
 			)]));
 		}
 
@@ -59,14 +59,14 @@ impl<'a> Routine<FunctionContext<'a>> for JsonArray {
 		}
 
 		let row_count = unwrapped[0].len();
-		let mut results: Vec<Box<Value>> = Vec::with_capacity(row_count);
+		let mut results: Vec<Value> = Vec::with_capacity(row_count);
 
 		for row in 0..row_count {
 			let mut items = Vec::with_capacity(unwrapped.len());
 			for col_data in unwrapped.iter() {
 				items.push(col_data.get_value(row));
 			}
-			results.push(Box::new(Value::List(items)));
+			results.push(Value::List(items));
 		}
 
 		let result_data = ColumnBuffer::any(results);

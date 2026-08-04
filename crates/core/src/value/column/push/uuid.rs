@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{
-	storage::DataBitVec,
-	value::{
-		identity::IdentityId,
-		uuid::{Uuid4, Uuid7},
-	},
+use reifydb_value::value::{
+	identity::IdentityId,
+	uuid::{Uuid4, Uuid7},
 };
 
 use crate::value::column::{buffer::ColumnBuffer, push::Push};
@@ -20,7 +17,7 @@ impl Push<Uuid4> for ColumnBuffer {
 				bitvec,
 			} => {
 				inner.push(value);
-				DataBitVec::push(bitvec, true);
+				bitvec.push(true);
 			}
 			other => {
 				panic!("called `push::<Uuid4>()` on incompatible ColumnBuffer::{:?}", other.get_type());
@@ -38,7 +35,7 @@ impl Push<Uuid7> for ColumnBuffer {
 				bitvec,
 			} => {
 				inner.push(value);
-				DataBitVec::push(bitvec, true);
+				bitvec.push(true);
 			}
 			other => {
 				panic!("called `push::<Uuid7>()` on incompatible ColumnBuffer::{:?}", other.get_type());
@@ -56,7 +53,7 @@ impl Push<IdentityId> for ColumnBuffer {
 				bitvec,
 			} => {
 				inner.push(value);
-				DataBitVec::push(bitvec, true);
+				bitvec.push(true);
 			}
 			other => {
 				panic!(

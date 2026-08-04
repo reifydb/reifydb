@@ -9,7 +9,7 @@ pub(crate) fn decode_any_column(row_count: usize, data: &[u8]) -> Result<FrameCo
 	let mut r = Reader::new(data);
 	let mut values = Vec::with_capacity(row_count);
 	for _ in 0..row_count {
-		values.push(Box::new(decode_value_from(&mut r)?));
+		values.push(decode_value_from(&mut r)?);
 	}
 	Ok(FrameColumnData::Any(AnyContainer::new(values)))
 }

@@ -6,7 +6,7 @@ use reifydb_value::value::{
 };
 
 fn make(v: Vec<Value>) -> FrameColumnData {
-	FrameColumnData::Any(AnyContainer::new(v.into_iter().map(Box::new).collect()))
+	FrameColumnData::Any(AnyContainer::new(v))
 }
 
 crate::plain_tests! {

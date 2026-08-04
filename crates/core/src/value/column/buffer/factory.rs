@@ -684,12 +684,12 @@ impl ColumnBuffer {
 		}
 	}
 
-	pub fn any(data: impl IntoIterator<Item = Box<Value>>) -> Self {
+	pub fn any(data: impl IntoIterator<Item = Value>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		ColumnBuffer::Any(AnyContainer::from_vec(data))
 	}
 
-	pub fn any_optional(data: impl IntoIterator<Item = Option<Box<Value>>>) -> Self {
+	pub fn any_optional(data: impl IntoIterator<Item = Option<Value>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 		let mut has_none = false;
@@ -701,7 +701,7 @@ impl ColumnBuffer {
 					bitvec.push(true);
 				}
 				None => {
-					values.push(Box::new(Value::none()));
+					values.push(Value::none());
 					bitvec.push(false);
 					has_none = true;
 				}
@@ -723,7 +723,7 @@ impl ColumnBuffer {
 		ColumnBuffer::Any(AnyContainer::with_capacity(capacity))
 	}
 
-	pub fn any_with_bitvec(data: impl IntoIterator<Item = Box<Value>>, bitvec: impl Into<BitVec>) -> Self {
+	pub fn any_with_bitvec(data: impl IntoIterator<Item = Value>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -830,11 +830,11 @@ impl ColumnBuffer {
 			ValueType::Int => Self::int(vec![Int::default(); len]),
 			ValueType::Uint => Self::uint(vec![Uint::default(); len]),
 			ValueType::Decimal => Self::decimal(vec![Decimal::from(0); len]),
-			ValueType::Any => Self::any(vec![Box::new(Value::none()); len]),
+			ValueType::Any => Self::any(vec![Value::none(); len]),
 			ValueType::DictionaryId => Self::dictionary_id(vec![DictionaryEntryId::default(); len]),
-			ValueType::List(_) => Self::any(vec![Box::new(Value::List(vec![])); len]),
-			ValueType::Record(_) => Self::any(vec![Box::new(Value::Record(vec![])); len]),
-			ValueType::Tuple(_) => Self::any(vec![Box::new(Value::Tuple(vec![])); len]),
+			ValueType::List(_) => Self::any(vec![Value::List(vec![]); len]),
+			ValueType::Record(_) => Self::any(vec![Value::Record(vec![]); len]),
+			ValueType::Tuple(_) => Self::any(vec![Value::Tuple(vec![]); len]),
 			ValueType::Option(inner) => return Self::none_typed(*inner, len),
 		};
 		ColumnBuffer::Option {

@@ -11,15 +11,15 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result, reifydb_assertions,
-	storage::{Plain, Storage},
+	util::bitvec::BitVec,
 	value::{Value, container::varlen::VarlenContainer, value_type::ValueType},
 };
 
-pub struct Utf8Container<S: Storage = Plain> {
-	inner: VarlenContainer<S>,
+pub struct Utf8Container {
+	inner: VarlenContainer,
 }
 
-impl<S: Storage> Clone for Utf8Container<S> {
+impl Clone for Utf8Container {
 	fn clone(&self) -> Self {
 		Self {
 			inner: self.inner.clone(),
@@ -27,31 +27,31 @@ impl<S: Storage> Clone for Utf8Container<S> {
 	}
 }
 
-impl<S: Storage> Debug for Utf8Container<S>
+impl Debug for Utf8Container
 where
-	VarlenContainer<S>: Debug,
+	VarlenContainer: Debug,
 {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("Utf8Container").field("inner", &self.inner).finish()
 	}
 }
 
-impl<S: Storage> PartialEq for Utf8Container<S>
+impl PartialEq for Utf8Container
 where
-	VarlenContainer<S>: PartialEq,
+	VarlenContainer: PartialEq,
 {
 	fn eq(&self, other: &Self) -> bool {
 		self.inner == other.inner
 	}
 }
 
-impl Serialize for Utf8Container<Plain> {
+impl Serialize for Utf8Container {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		self.inner.serialize(serializer)
 	}
 }
 
-impl<'de> Deserialize<'de> for Utf8Container<Plain> {
+impl<'de> Deserialize<'de> for Utf8Container {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		let inner = VarlenContainer::deserialize(deserializer)?;
 		Ok(Self {
@@ -60,7 +60,7 @@ impl<'de> Deserialize<'de> for Utf8Container<Plain> {
 	}
 }
 
-impl Utf8Container<Plain> {
+impl Utf8Container {
 	pub fn new(data: Vec<String>) -> Self {
 		Self::from_vec(data)
 	}
@@ -102,24 +102,24 @@ impl Utf8Container<Plain> {
 	}
 }
 
-impl<S: Storage> Utf8Container<S> {
-	pub fn from_inner(inner: VarlenContainer<S>) -> Self {
+impl Utf8Container {
+	pub fn from_inner(inner: VarlenContainer) -> Self {
 		Self {
 			inner,
 		}
 	}
 
-	pub fn from_storage_parts(data: S::Vec<u8>, offsets: S::Vec<u64>) -> Self {
+	pub fn from_storage_parts(data: Vec<u8>, offsets: Vec<u64>) -> Self {
 		Self {
 			inner: VarlenContainer::from_storage_parts(data, offsets),
 		}
 	}
 
-	pub fn data_storage(&self) -> &S::Vec<u8> {
+	pub fn data_storage(&self) -> &Vec<u8> {
 		self.inner.data()
 	}
 
-	pub fn offsets_storage(&self) -> &S::Vec<u64> {
+	pub fn offsets_storage(&self) -> &Vec<u64> {
 		self.inner.offsets_data()
 	}
 
@@ -166,7 +166,7 @@ impl<S: Storage> Utf8Container<S> {
 		self.inner.offsets()
 	}
 
-	pub fn inner(&self) -> &VarlenContainer<S> {
+	pub fn inner(&self) -> &VarlenContainer {
 		&self.inner
 	}
 
@@ -190,7 +190,7 @@ impl<S: Storage> Utf8Container<S> {
 	}
 }
 
-impl Utf8Container<Plain> {
+impl Utf8Container {
 	pub fn push(&mut self, value: String) {
 		self.inner.push_bytes(value.as_bytes());
 	}
@@ -214,7 +214,7 @@ impl Utf8Container<Plain> {
 		}
 	}
 
-	pub fn filter(&mut self, mask: &<Plain as Storage>::BitVec) {
+	pub fn filter(&mut self, mask: &BitVec) {
 		let bits: Vec<bool> = mask.iter().collect();
 		self.inner.filter_in_place(|i| bits.get(i).copied().unwrap_or(false));
 	}
@@ -230,7 +230,7 @@ impl Utf8Container<Plain> {
 	}
 }
 
-impl Default for Utf8Container<Plain> {
+impl Default for Utf8Container {
 	fn default() -> Self {
 		Self::with_capacity(0)
 	}

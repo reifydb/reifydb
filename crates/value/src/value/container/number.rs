@@ -11,18 +11,18 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	storage::{DataBitVec, DataVec, Plain, Storage},
+	util::bitvec::BitVec,
 	value::{Value, is::IsNumber},
 };
 
-pub struct NumberContainer<T, S: Storage = Plain>
+pub struct NumberContainer<T>
 where
 	T: IsNumber,
 {
-	data: S::Vec<T>,
+	data: Vec<T>,
 }
 
-impl<T: IsNumber, S: Storage> Clone for NumberContainer<T, S> {
+impl<T: IsNumber> Clone for NumberContainer<T> {
 	fn clone(&self) -> Self {
 		Self {
 			data: self.data.clone(),
@@ -30,25 +30,19 @@ impl<T: IsNumber, S: Storage> Clone for NumberContainer<T, S> {
 	}
 }
 
-impl<T: IsNumber + Debug, S: Storage> Debug for NumberContainer<T, S>
-where
-	S::Vec<T>: Debug,
-{
+impl<T: IsNumber + Debug> Debug for NumberContainer<T> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("NumberContainer").field("data", &self.data).finish()
 	}
 }
 
-impl<T: IsNumber, S: Storage> PartialEq for NumberContainer<T, S>
-where
-	S::Vec<T>: PartialEq,
-{
+impl<T: IsNumber> PartialEq for NumberContainer<T> {
 	fn eq(&self, other: &Self) -> bool {
 		self.data == other.data
 	}
 }
 
-impl<T: IsNumber + Serialize> Serialize for NumberContainer<T, Plain> {
+impl<T: IsNumber + Serialize> Serialize for NumberContainer<T> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a, T: Clone + PartialEq + Serialize> {
@@ -61,7 +55,7 @@ impl<T: IsNumber + Serialize> Serialize for NumberContainer<T, Plain> {
 	}
 }
 
-impl<'de, T: IsNumber + Deserialize<'de>> Deserialize<'de> for NumberContainer<T, Plain> {
+impl<'de, T: IsNumber + Deserialize<'de>> Deserialize<'de> for NumberContainer<T> {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper<T: Clone + PartialEq> {
@@ -74,7 +68,7 @@ impl<'de, T: IsNumber + Deserialize<'de>> Deserialize<'de> for NumberContainer<T
 	}
 }
 
-impl<T: IsNumber, S: Storage> Deref for NumberContainer<T, S> {
+impl<T: IsNumber> Deref for NumberContainer<T> {
 	type Target = [T];
 
 	fn deref(&self) -> &Self::Target {
@@ -82,7 +76,7 @@ impl<T: IsNumber, S: Storage> Deref for NumberContainer<T, S> {
 	}
 }
 
-impl<T> NumberContainer<T, Plain>
+impl<T> NumberContainer<T>
 where
 	T: IsNumber + Clone + Debug + Default,
 {
@@ -105,22 +99,22 @@ where
 	}
 }
 
-impl<T, S: Storage> NumberContainer<T, S>
+impl<T> NumberContainer<T>
 where
 	T: IsNumber + Clone + Debug + Default,
 {
-	pub fn from_parts(data: S::Vec<T>) -> Self {
+	pub fn from_parts(data: Vec<T>) -> Self {
 		Self {
 			data,
 		}
 	}
 
 	pub fn len(&self) -> usize {
-		DataVec::len(&self.data)
+		self.data.len()
 	}
 
 	pub fn capacity(&self) -> usize {
-		DataVec::capacity(&self.data)
+		self.data.capacity()
 	}
 
 	pub fn heap_size(&self) -> usize {
@@ -128,24 +122,24 @@ where
 	}
 
 	pub fn is_empty(&self) -> bool {
-		DataVec::is_empty(&self.data)
+		self.data.is_empty()
 	}
 
 	pub fn clear(&mut self) {
-		DataVec::clear(&mut self.data);
+		self.data.clear();
 	}
 
 	pub fn push(&mut self, value: T) {
-		DataVec::push(&mut self.data, value);
+		self.data.push(value);
 	}
 
 	pub fn push_default(&mut self) {
-		DataVec::push(&mut self.data, T::default());
+		self.data.push(T::default());
 	}
 
 	pub fn get(&self, index: usize) -> Option<&T> {
 		if index < self.len() {
-			DataVec::get(&self.data, index)
+			self.data.get(index)
 		} else {
 			None
 		}
@@ -159,11 +153,11 @@ where
 		true
 	}
 
-	pub fn data(&self) -> &S::Vec<T> {
+	pub fn data(&self) -> &Vec<T> {
 		&self.data
 	}
 
-	pub fn data_mut(&mut self) -> &mut S::Vec<T> {
+	pub fn data_mut(&mut self) -> &mut Vec<T> {
 		&mut self.data
 	}
 
@@ -184,7 +178,7 @@ where
 	}
 
 	pub fn extend(&mut self, other: &Self) -> Result<()> {
-		DataVec::extend_iter(&mut self.data, other.data.iter().cloned());
+		self.data.extend(other.data.iter().cloned());
 		Ok(())
 	}
 
@@ -197,21 +191,21 @@ where
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
 		let count = (end - start).min(self.len().saturating_sub(start));
-		let mut new_data = DataVec::spawn(&self.data, count);
+		let mut new_data = Vec::with_capacity(count);
 		for i in start..(start + count) {
-			DataVec::push(&mut new_data, self.data[i].clone());
+			new_data.push(self.data[i].clone());
 		}
 		Self {
 			data: new_data,
 		}
 	}
 
-	pub fn filter(&mut self, mask: &S::BitVec) {
-		let mut new_data = DataVec::spawn(&self.data, DataBitVec::count_ones(mask));
+	pub fn filter(&mut self, mask: &BitVec) {
+		let mut new_data = Vec::with_capacity(mask.count_ones());
 
-		for (i, keep) in DataBitVec::iter(mask).enumerate() {
+		for (i, keep) in mask.iter().enumerate() {
 			if keep && i < self.len() {
-				DataVec::push(&mut new_data, self.data[i].clone());
+				new_data.push(self.data[i].clone());
 			}
 		}
 
@@ -219,13 +213,13 @@ where
 	}
 
 	pub fn reorder(&mut self, indices: &[usize]) {
-		let mut new_data = DataVec::spawn(&self.data, indices.len());
+		let mut new_data = Vec::with_capacity(indices.len());
 
 		for &idx in indices {
 			if idx < self.len() {
-				DataVec::push(&mut new_data, self.data[idx].clone());
+				new_data.push(self.data[idx].clone());
 			} else {
-				DataVec::push(&mut new_data, T::default());
+				new_data.push(T::default());
 			}
 		}
 
@@ -235,17 +229,17 @@ where
 	pub fn push_with_convert<U>(&mut self, value: U, converter: impl FnOnce(U) -> Option<T>) {
 		match converter(value) {
 			Some(v) => {
-				DataVec::push(&mut self.data, v);
+				self.data.push(v);
 			}
 			None => {
-				DataVec::push(&mut self.data, T::default());
+				self.data.push(T::default());
 			}
 		}
 	}
 
 	pub fn take(&self, num: usize) -> Self {
 		Self {
-			data: DataVec::take(&self.data, num),
+			data: self.data[..num.min(self.data.len())].to_vec(),
 		}
 	}
 }

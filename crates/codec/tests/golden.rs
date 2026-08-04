@@ -175,9 +175,9 @@ fn golden_rbcf_frames() {
 		FrameColumn {
 			name: "anys".to_string(),
 			data: FrameColumnData::Any(AnyContainer::new(vec![
-				Box::new(Value::Int4(9)),
-				Box::new(Value::none_of(ValueType::Duration)),
-				Box::new(Value::Utf8("x".to_string())),
+				Value::Int4(9),
+				Value::none_of(ValueType::Duration),
+				Value::Utf8("x".to_string()),
 			])),
 		},
 	];

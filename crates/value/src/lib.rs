@@ -19,7 +19,6 @@ pub mod encoding;
 pub mod error;
 pub mod fragment;
 pub mod params;
-pub mod storage;
 pub mod util;
 pub mod value;
 

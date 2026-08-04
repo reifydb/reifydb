@@ -335,8 +335,7 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			let fragment = e.fragment.clone();
 			CompiledExpr::new(move |ctx| {
 				let row_count = ctx.take.unwrap_or(ctx.row_count);
-				let values: Vec<Box<Value>> =
-					(0..row_count).map(|_| Box::new(Value::Type(ty.clone()))).collect();
+				let values: Vec<Value> = (0..row_count).map(|_| Value::Type(ty.clone())).collect();
 				Ok(ColumnWithName::new(fragment.text(), ColumnBuffer::any(values)))
 			})
 		}
@@ -365,12 +364,12 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 						.collect::<Result<Vec<_>>>()?;
 
 					let len = columns.first().map_or(1, |c| c.data().len());
-					let mut data: Vec<Box<Value>> = Vec::with_capacity(len);
+					let mut data: Vec<Value> = Vec::with_capacity(len);
 
 					for i in 0..len {
 						let items: Vec<Value> =
 							columns.iter().map(|col| col.data().get_value(i)).collect();
-						data.push(Box::new(Value::Tuple(items)));
+						data.push(Value::Tuple(items));
 					}
 
 					Ok(ColumnWithName::new(fragment.clone(), ColumnBuffer::any(data)))
@@ -390,12 +389,12 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					compiled.iter().map(|expr| expr.execute(ctx)).collect::<Result<Vec<_>>>()?;
 
 				let len = columns.first().map_or(1, |c| c.data().len());
-				let mut data: Vec<Box<Value>> = Vec::with_capacity(len);
+				let mut data: Vec<Value> = Vec::with_capacity(len);
 
 				for i in 0..len {
 					let items: Vec<Value> =
 						columns.iter().map(|col| col.data().get_value(i)).collect();
-					data.push(Box::new(Value::List(items)));
+					data.push(Value::List(items));
 				}
 
 				Ok(ColumnWithName::new(fragment.clone(), ColumnBuffer::any(data)))

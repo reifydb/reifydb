@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{Result, storage::DataBitVec, util::bitvec::BitVec};
+use reifydb_value::{Result, util::bitvec::BitVec};
 
 use crate::value::column::{ColumnBuffer, ColumnWithName, buffer::with_container};
 
@@ -19,10 +19,10 @@ impl ColumnBuffer {
 				bitvec,
 			} => {
 				inner.filter(mask)?;
-				let mut new_bitvec = DataBitVec::spawn(bitvec, DataBitVec::count_ones(mask));
-				for (i, keep) in DataBitVec::iter(mask).enumerate() {
-					if keep && i < DataBitVec::len(bitvec) {
-						DataBitVec::push(&mut new_bitvec, DataBitVec::get(bitvec, i));
+				let mut new_bitvec = BitVec::with_capacity(mask.count_ones());
+				for (i, keep) in mask.iter().enumerate() {
+					if keep && i < bitvec.len() {
+						new_bitvec.push(bitvec.get(i));
 					}
 				}
 				*bitvec = new_bitvec;

@@ -37,11 +37,11 @@ impl ColumnBuffer {
 			Value::None {
 				inner,
 			} => ColumnBuffer::none_typed(inner, row_count),
-			Value::Type(t) => ColumnBuffer::any(vec![Box::new(Value::Type(t)); row_count]),
-			Value::Any(v) => ColumnBuffer::any(vec![v.clone(); row_count]),
-			Value::List(v) => ColumnBuffer::any(vec![Box::new(Value::List(v)); row_count]),
-			Value::Record(v) => ColumnBuffer::any(vec![Box::new(Value::Record(v)); row_count]),
-			Value::Tuple(v) => ColumnBuffer::any(vec![Box::new(Value::Tuple(v)); row_count]),
+			Value::Type(t) => ColumnBuffer::any(vec![Value::Type(t); row_count]),
+			Value::Any(v) => ColumnBuffer::any(vec![*v; row_count]),
+			Value::List(v) => ColumnBuffer::any(vec![Value::List(v); row_count]),
+			Value::Record(v) => ColumnBuffer::any(vec![Value::Record(v); row_count]),
+			Value::Tuple(v) => ColumnBuffer::any(vec![Value::Tuple(v); row_count]),
 		}
 	}
 }

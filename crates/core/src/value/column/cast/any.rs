@@ -41,7 +41,7 @@ pub fn from_any(
 			continue;
 		}
 
-		let value = &*any_container.data()[i];
+		let value = &any_container.data()[i];
 
 		let single_column = ColumnBuffer::from(value.clone());
 		match cast_column_data(ctx, &single_column, target.clone(), lazy_fragment.clone()) {

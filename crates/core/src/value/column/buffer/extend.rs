@@ -3,7 +3,7 @@
 
 use std::mem;
 
-use reifydb_value::{Result, storage::DataBitVec, util::bitvec::BitVec};
+use reifydb_value::{Result, util::bitvec::BitVec};
 
 use crate::{
 	return_internal_error,
@@ -98,14 +98,14 @@ impl ColumnBuffer {
 			) => {
 				if l_inner.get_type() == r_inner.get_type() {
 					l_inner.extend(*r_inner)?;
-				} else if DataBitVec::count_ones(&r_bitvec) == 0 {
+				} else if r_bitvec.count_ones() == 0 {
 					let r_len = r_inner.len();
 					with_container!(l_inner.as_mut(), |c| {
 						for _ in 0..r_len {
 							c.push_default();
 						}
 					});
-				} else if DataBitVec::count_ones(l_bitvec) == 0 {
+				} else if l_bitvec.count_ones() == 0 {
 					let l_len = l_inner.len();
 					let r_type = r_inner.get_type();
 					let (mut new_inner, _) =
@@ -115,7 +115,7 @@ impl ColumnBuffer {
 				} else {
 					return_internal_error!("column type mismatch in Option extend");
 				}
-				DataBitVec::extend_from(l_bitvec, &r_bitvec);
+				l_bitvec.extend(&r_bitvec);
 			}
 
 			(
@@ -126,7 +126,7 @@ impl ColumnBuffer {
 				other,
 			) => {
 				let other_len = other.len();
-				if inner.get_type() != other.get_type() && DataBitVec::count_ones(bitvec) == 0 {
+				if inner.get_type() != other.get_type() && bitvec.count_ones() == 0 {
 					let l_len = inner.len();
 					let r_type = other.get_type();
 					let (mut new_inner, _) =
@@ -137,7 +137,7 @@ impl ColumnBuffer {
 					inner.extend(other)?;
 				}
 				for _ in 0..other_len {
-					DataBitVec::push(bitvec, true);
+					bitvec.push(true);
 				}
 			}
 
@@ -151,13 +151,11 @@ impl ColumnBuffer {
 				let l_len = self.len();
 				let r_len = r_inner.len();
 				let mut l_bitvec = BitVec::repeat(l_len, true);
-				DataBitVec::extend_from(&mut l_bitvec, &r_bitvec);
+				l_bitvec.extend(&r_bitvec);
 				let inner = mem::replace(self, ColumnBuffer::bool(vec![]));
 				let mut boxed_inner = Box::new(inner);
 
-				if boxed_inner.get_type() != r_inner.get_type()
-					&& DataBitVec::count_ones(&r_bitvec) == 0
-				{
+				if boxed_inner.get_type() != r_inner.get_type() && r_bitvec.count_ones() == 0 {
 					with_container!(boxed_inner.as_mut(), |c| {
 						for _ in 0..r_len {
 							c.push_default();

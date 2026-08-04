@@ -115,8 +115,8 @@ impl_as_slice!(
 	}
 );
 
-impl AsSlice<Box<Value>> for ColumnBuffer {
-	fn as_slice(&self) -> &[Box<Value>] {
+impl AsSlice<Value> for ColumnBuffer {
+	fn as_slice(&self) -> &[Value] {
 		match self {
 			ColumnBuffer::Any(container) => container.data().as_slice(),
 			ColumnBuffer::Option {
@@ -124,7 +124,7 @@ impl AsSlice<Box<Value>> for ColumnBuffer {
 				..
 			} => inner.as_slice(),
 			other => {
-				panic!("called `as_slice::<Box<Value>>()` on ColumnBuffer::{:?}", other.get_type())
+				panic!("called `as_slice::<Value>()` on ColumnBuffer::{:?}", other.get_type())
 			}
 		}
 	}

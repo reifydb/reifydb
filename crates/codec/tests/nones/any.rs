@@ -7,7 +7,7 @@ use reifydb_value::value::{
 };
 
 fn make(v: Vec<Value>) -> FrameColumnData {
-	FrameColumnData::Any(AnyContainer::new(v.into_iter().map(Box::new).collect()))
+	FrameColumnData::Any(AnyContainer::new(v))
 }
 
 crate::nones_tests! {
@@ -27,10 +27,7 @@ fn any_cell_holding_none_of_duration_round_trips() {
 	// so it bypasses the outer bitvec and rides the Any value codec.
 	crate::utils::round_trip_column(
 		"c",
-		FrameColumnData::Any(AnyContainer::new(vec![
-			Box::new(Value::none_of(ValueType::Duration)),
-			Box::new(Value::Int4(5)),
-		])),
+		FrameColumnData::Any(AnyContainer::new(vec![Value::none_of(ValueType::Duration), Value::Int4(5)])),
 	);
 }
 
@@ -38,25 +35,22 @@ fn any_cell_holding_none_of_duration_round_trips() {
 fn any_cell_holding_none_of_nested_option_duration_round_trips() {
 	crate::utils::round_trip_column(
 		"c",
-		FrameColumnData::Any(AnyContainer::new(vec![Box::new(Value::none_of(ValueType::Option(Box::new(
+		FrameColumnData::Any(AnyContainer::new(vec![Value::none_of(ValueType::Option(Box::new(
 			ValueType::Duration,
-		))))])),
+		)))])),
 	);
 }
 
 #[test]
 fn any_cell_holding_none_of_triple_nested_option_round_trips() {
 	let inner_ty = ValueType::Option(Box::new(ValueType::Option(Box::new(ValueType::Duration))));
-	crate::utils::round_trip_column(
-		"c",
-		FrameColumnData::Any(AnyContainer::new(vec![Box::new(Value::none_of(inner_ty))])),
-	);
+	crate::utils::round_trip_column("c", FrameColumnData::Any(AnyContainer::new(vec![Value::none_of(inner_ty)])));
 }
 
 #[test]
 fn any_cell_holding_bare_none_round_trips() {
 	// Value::none() defaults its inner type to Any, so it encodes identically to none_of(Any).
-	crate::utils::round_trip_column("c", FrameColumnData::Any(AnyContainer::new(vec![Box::new(Value::none())])));
+	crate::utils::round_trip_column("c", FrameColumnData::Any(AnyContainer::new(vec![Value::none()])));
 }
 
 #[test]
@@ -74,7 +68,7 @@ fn any_cell_holding_none_of_various_inner_types_round_trips() {
 	for ty in cases {
 		crate::utils::round_trip_column(
 			"c",
-			FrameColumnData::Any(AnyContainer::new(vec![Box::new(Value::none_of(ty.clone()))])),
+			FrameColumnData::Any(AnyContainer::new(vec![Value::none_of(ty.clone())])),
 		);
 	}
 }
@@ -84,14 +78,14 @@ fn any_cell_mixed_concrete_and_none_of_different_types_round_trips() {
 	crate::utils::round_trip_column(
 		"c",
 		FrameColumnData::Any(AnyContainer::new(vec![
-			Box::new(Value::Int4(1)),
-			Box::new(Value::none_of(ValueType::Duration)),
-			Box::new(Value::Utf8("hello".to_string())),
-			Box::new(Value::none_of(ValueType::Boolean)),
-			Box::new(Value::Blob(Blob::new(vec![1, 2, 3]))),
-			Box::new(Value::none()),
-			Box::new(Value::Date(Date::from_days_since_epoch(0).unwrap())),
-			Box::new(Value::Uuid4(Uuid4(uuid::Uuid::nil()))),
+			Value::Int4(1),
+			Value::none_of(ValueType::Duration),
+			Value::Utf8("hello".to_string()),
+			Value::none_of(ValueType::Boolean),
+			Value::Blob(Blob::new(vec![1, 2, 3])),
+			Value::none(),
+			Value::Date(Date::from_days_since_epoch(0).unwrap()),
+			Value::Uuid4(Uuid4(uuid::Uuid::nil())),
 		])),
 	);
 }

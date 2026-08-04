@@ -3,14 +3,16 @@
 
 #[allow(clippy::disallowed_types)]
 use std::time::Duration;
-use std::{hint::black_box, time::Instant};
+use std::{hint::black_box, thread, time::Instant};
 
 use reifydb::{Database, WithSubsystem, embedded};
 use reifydb_allocator::set_global_allocator;
 use reifydb_benches::{env_opt, env_u64};
 use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_testing_scenario::{query::OperationKind, registry::by_name, scenario::Scenario};
-use reifydb_value::{storage::DataVec, util::cowvec::CowVec, value::Value};
+#[cfg(feature = "cow-stats")]
+use reifydb_value::util::cowvec::stats;
+use reifydb_value::{util::cowvec::CowVec, value::Value};
 
 set_global_allocator!();
 
@@ -132,8 +134,6 @@ fn run(db: &Database, rql: &str, iterations: u64) -> Option<Duration> {
 
 #[cfg(feature = "cow-stats")]
 fn measure(db: &Database, shape: &Shape, iterations: u64, warmup: u64) {
-	use reifydb_value::util::cowvec::stats;
-
 	if run(db, &shape.rql, warmup).is_none() {
 		println!("{:<20} REJECTED: {}", shape.name, shape.rql);
 		return;
@@ -223,12 +223,10 @@ fn insert_rows(db: &Database, rows: u64, per_statement: u64) {
 
 #[cfg(feature = "cow-stats")]
 fn write_phase(label: &str, with_view: bool, rows: u64, batch_size: u16) {
-	use reifydb_value::util::cowvec::stats;
-
 	let db = write_db(with_view, batch_size);
 	stats::reset();
 	let started = Instant::now();
-	insert_rows(&db, rows, 100);
+	insert_rows(&db, rows, env_u64("ROWS_PER_STMT", 100));
 	let view_rows = if with_view {
 		let mut seen = 0;
 		for _ in 0..200 {
@@ -239,7 +237,7 @@ fn write_phase(label: &str, with_view: bool, rows: u64, batch_size: u16) {
 			if seen > 0 {
 				break;
 			}
-			std::thread::yield_now();
+			thread::yield_now();
 		}
 		seen
 	} else {
@@ -275,7 +273,7 @@ fn write_phase(label: &str, with_view: bool, rows: u64, batch_size: u16) {
 fn write_phase(label: &str, with_view: bool, rows: u64, batch_size: u16) {
 	let db = write_db(with_view, batch_size);
 	let started = Instant::now();
-	insert_rows(&db, rows, 100);
+	insert_rows(&db, rows, env_u64("ROWS_PER_STMT", 100));
 	drop(db);
 	println!("{:<20} {:>9}", label, started.elapsed().as_millis());
 }
@@ -319,32 +317,32 @@ fn microbenchmarks() {
 	let cow = time(|| {
 		let mut v: CowVec<u64> = CowVec::with_capacity(MICRO_ROWS);
 		for i in 0..MICRO_ROWS {
-			DataVec::push(&mut v, i as u64);
+			v.push(i as u64);
 		}
-		black_box(DataVec::len(&v));
+		black_box(v.len());
 	});
 	let plain = time(|| {
 		let mut v: Vec<u64> = Vec::with_capacity(MICRO_ROWS);
 		for i in 0..MICRO_ROWS {
-			DataVec::push(&mut v, i as u64);
+			v.push(i as u64);
 		}
-		black_box(DataVec::len(&v));
+		black_box(v.len());
 	});
 	row("push (pre-sized)", cow, plain);
 
 	let cow = time(|| {
 		let mut acc: CowVec<u64> = CowVec::with_capacity(0);
 		for batch in &batches {
-			DataVec::extend_from_slice(&mut acc, batch);
+			acc.extend_from_slice(batch);
 		}
-		black_box(DataVec::len(&acc));
+		black_box(acc.len());
 	});
 	let plain = time(|| {
 		let mut acc: Vec<u64> = Vec::with_capacity(0);
 		for batch in &batches {
-			DataVec::extend_from_slice(&mut acc, batch);
+			acc.extend_from_slice(batch);
 		}
-		black_box(DataVec::len(&acc));
+		black_box(acc.len());
 	});
 	row("extend_from_slice (accum)", cow, plain);
 
@@ -355,14 +353,14 @@ fn microbenchmarks() {
 		let cow = time(|| {
 			let mut total = 0;
 			for _ in 0..reps {
-				total += DataVec::len(&src_cow.clone());
+				total += src_cow.clone().len();
 			}
 			black_box(total);
 		});
 		let plain = time(|| {
 			let mut total = 0;
 			for _ in 0..reps {
-				total += DataVec::len(&src_plain.clone());
+				total += src_plain.clone().len();
 			}
 			black_box(total);
 		});

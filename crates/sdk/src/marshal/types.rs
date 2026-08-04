@@ -310,7 +310,7 @@ impl Arena {
 	pub(super) fn unmarshal_any_data(&self, ffi: &ColumnDataFFI) -> AnyContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
-			return AnyContainer::new(vec![Box::new(Value::none()); row_count]);
+			return AnyContainer::new(vec![Value::none(); row_count]);
 		}
 
 		// SAFETY: the `is_empty` guard above rules out a null pointer and a zero length; the producer
@@ -324,7 +324,7 @@ impl Arena {
 				let start = offsets[i] as usize;
 				let end = offsets[i + 1] as usize;
 				let value: Value = decode_any_cell(&data[start..end]).unwrap_or(Value::none());
-				values.push(Box::new(value));
+				values.push(value);
 			}
 
 			AnyContainer::new(values)

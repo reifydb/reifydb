@@ -730,7 +730,7 @@ fn unmarshal_cells<T: Default + Clone + IsNumber>(
 
 fn unmarshal_any(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> AnyContainer {
 	if data.is_empty() || offsets_bytes.is_empty() {
-		return AnyContainer::new(vec![Box::new(Value::none()); row_count]);
+		return AnyContainer::new(vec![Value::none(); row_count]);
 	}
 	let offsets = read_offsets(offsets_bytes);
 	let mut values = Vec::with_capacity(row_count);
@@ -738,7 +738,7 @@ fn unmarshal_any(data: &[u8], row_count: usize, offsets_bytes: &[u8]) -> AnyCont
 		let start = offsets[i] as usize;
 		let end = offsets[i + 1] as usize;
 		let value: Value = decode_any_cell(&data[start..end]).unwrap_or_else(|_| Value::none());
-		values.push(Box::new(value));
+		values.push(value);
 	}
 	AnyContainer::new(values)
 }

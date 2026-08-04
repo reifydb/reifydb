@@ -11,15 +11,15 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	storage::{DataBitVec, DataVec, Plain, Storage},
+	util::bitvec::BitVec,
 	value::{Value, row_number::RowNumber, value_type::ValueType},
 };
 
-pub struct RowNumberContainer<S: Storage = Plain> {
-	data: S::Vec<RowNumber>,
+pub struct RowNumberContainer {
+	data: Vec<RowNumber>,
 }
 
-impl<S: Storage> Clone for RowNumberContainer<S> {
+impl Clone for RowNumberContainer {
 	fn clone(&self) -> Self {
 		Self {
 			data: self.data.clone(),
@@ -27,25 +27,19 @@ impl<S: Storage> Clone for RowNumberContainer<S> {
 	}
 }
 
-impl<S: Storage> Debug for RowNumberContainer<S>
-where
-	S::Vec<RowNumber>: Debug,
-{
+impl Debug for RowNumberContainer {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		f.debug_struct("RowNumberContainer").field("data", &self.data).finish()
 	}
 }
 
-impl<S: Storage> PartialEq for RowNumberContainer<S>
-where
-	S::Vec<RowNumber>: PartialEq,
-{
+impl PartialEq for RowNumberContainer {
 	fn eq(&self, other: &Self) -> bool {
 		self.data == other.data
 	}
 }
 
-impl Serialize for RowNumberContainer<Plain> {
+impl Serialize for RowNumberContainer {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a> {
@@ -59,7 +53,7 @@ impl Serialize for RowNumberContainer<Plain> {
 	}
 }
 
-impl<'de> Deserialize<'de> for RowNumberContainer<Plain> {
+impl<'de> Deserialize<'de> for RowNumberContainer {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper {
@@ -72,7 +66,7 @@ impl<'de> Deserialize<'de> for RowNumberContainer<Plain> {
 	}
 }
 
-impl<S: Storage> Deref for RowNumberContainer<S> {
+impl Deref for RowNumberContainer {
 	type Target = [RowNumber];
 
 	fn deref(&self) -> &Self::Target {
@@ -80,7 +74,7 @@ impl<S: Storage> Deref for RowNumberContainer<S> {
 	}
 }
 
-impl RowNumberContainer<Plain> {
+impl RowNumberContainer {
 	pub fn new(data: Vec<RowNumber>) -> Self {
 		Self {
 			data,
@@ -100,36 +94,36 @@ impl RowNumberContainer<Plain> {
 	}
 }
 
-impl<S: Storage> RowNumberContainer<S> {
-	pub fn from_parts(data: S::Vec<RowNumber>) -> Self {
+impl RowNumberContainer {
+	pub fn from_parts(data: Vec<RowNumber>) -> Self {
 		Self {
 			data,
 		}
 	}
 
 	pub fn len(&self) -> usize {
-		DataVec::len(&self.data)
+		self.data.len()
 	}
 
 	pub fn capacity(&self) -> usize {
-		DataVec::capacity(&self.data)
+		self.data.capacity()
 	}
 
 	pub fn is_empty(&self) -> bool {
-		DataVec::is_empty(&self.data)
+		self.data.is_empty()
 	}
 
 	pub fn push(&mut self, value: RowNumber) {
-		DataVec::push(&mut self.data, value);
+		self.data.push(value);
 	}
 
 	pub fn push_default(&mut self) {
-		DataVec::push(&mut self.data, RowNumber::default());
+		self.data.push(RowNumber::default());
 	}
 
 	pub fn get(&self, index: usize) -> Option<&RowNumber> {
 		if index < self.len() {
-			DataVec::get(&self.data, index)
+			self.data.get(index)
 		} else {
 			None
 		}
@@ -139,11 +133,11 @@ impl<S: Storage> RowNumberContainer<S> {
 		idx < self.len()
 	}
 
-	pub fn data(&self) -> &S::Vec<RowNumber> {
+	pub fn data(&self) -> &Vec<RowNumber> {
 		&self.data
 	}
 
-	pub fn data_mut(&mut self) -> &mut S::Vec<RowNumber> {
+	pub fn data_mut(&mut self) -> &mut Vec<RowNumber> {
 		&mut self.data
 	}
 
@@ -164,7 +158,7 @@ impl<S: Storage> RowNumberContainer<S> {
 	}
 
 	pub fn extend(&mut self, other: &Self) -> Result<()> {
-		DataVec::extend_iter(&mut self.data, other.data.iter().cloned());
+		self.data.extend(other.data.iter().cloned());
 		Ok(())
 	}
 
@@ -174,21 +168,21 @@ impl<S: Storage> RowNumberContainer<S> {
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
 		let count = (end - start).min(self.len().saturating_sub(start));
-		let mut new_data = DataVec::spawn(&self.data, count);
+		let mut new_data = Vec::with_capacity(count);
 		for i in start..(start + count) {
-			DataVec::push(&mut new_data, self.data[i]);
+			new_data.push(self.data[i]);
 		}
 		Self {
 			data: new_data,
 		}
 	}
 
-	pub fn filter(&mut self, mask: &S::BitVec) {
-		let mut new_data = DataVec::spawn(&self.data, DataBitVec::count_ones(mask));
+	pub fn filter(&mut self, mask: &BitVec) {
+		let mut new_data = Vec::with_capacity(mask.count_ones());
 
-		for (i, keep) in DataBitVec::iter(mask).enumerate() {
+		for (i, keep) in mask.iter().enumerate() {
 			if keep && i < self.len() {
-				DataVec::push(&mut new_data, self.data[i]);
+				new_data.push(self.data[i]);
 			}
 		}
 
@@ -196,13 +190,13 @@ impl<S: Storage> RowNumberContainer<S> {
 	}
 
 	pub fn reorder(&mut self, indices: &[usize]) {
-		let mut new_data = DataVec::spawn(&self.data, indices.len());
+		let mut new_data = Vec::with_capacity(indices.len());
 
 		for &idx in indices {
 			if idx < self.len() {
-				DataVec::push(&mut new_data, self.data[idx]);
+				new_data.push(self.data[idx]);
 			} else {
-				DataVec::push(&mut new_data, RowNumber::default());
+				new_data.push(RowNumber::default());
 			}
 		}
 
@@ -211,12 +205,12 @@ impl<S: Storage> RowNumberContainer<S> {
 
 	pub fn take(&self, num: usize) -> Self {
 		Self {
-			data: DataVec::take(&self.data, num),
+			data: self.data[..num.min(self.data.len())].to_vec(),
 		}
 	}
 }
 
-impl Default for RowNumberContainer<Plain> {
+impl Default for RowNumberContainer {
 	fn default() -> Self {
 		Self::with_capacity(0)
 	}

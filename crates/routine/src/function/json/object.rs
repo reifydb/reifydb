@@ -82,7 +82,7 @@ impl<'a> Routine<FunctionContext<'a>> for JsonObject {
 			unwrapped[0].len()
 		};
 		let num_pairs = unwrapped.len() / 2;
-		let mut results: Vec<Box<Value>> = Vec::with_capacity(row_count);
+		let mut results: Vec<Value> = Vec::with_capacity(row_count);
 
 		for row in 0..row_count {
 			let mut fields = Vec::with_capacity(num_pairs);
@@ -95,7 +95,7 @@ impl<'a> Routine<FunctionContext<'a>> for JsonObject {
 
 				fields.push((key, value));
 			}
-			results.push(Box::new(Value::Record(fields)));
+			results.push(Value::Record(fields));
 		}
 
 		let result_data = ColumnBuffer::any(results);

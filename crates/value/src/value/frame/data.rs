@@ -4,7 +4,6 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	storage::DataBitVec,
 	util::{
 		bitvec::BitVec,
 		float_format::{format_f32, format_f64},
@@ -133,7 +132,7 @@ impl FrameColumnData {
 			FrameColumnData::Option {
 				bitvec,
 				..
-			} => idx < DataBitVec::len(bitvec) && DataBitVec::get(bitvec, idx),
+			} => idx < bitvec.len() && bitvec.get(idx),
 		}
 	}
 
@@ -265,7 +264,7 @@ impl FrameColumnData {
 				inner,
 				bitvec,
 			} => {
-				if DataBitVec::get(bitvec, index) {
+				if bitvec.get(index) {
 					inner.as_string(index)
 				} else {
 					"none".to_string()
@@ -309,7 +308,7 @@ impl FrameColumnData {
 				inner,
 				bitvec,
 			} => {
-				if DataBitVec::get(bitvec, index) {
+				if bitvec.get(index) {
 					inner.get_value(index)
 				} else {
 					Value::none_of(inner.get_type())

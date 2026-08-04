@@ -707,8 +707,7 @@ fn finalize_buffer(
 				decode_per_element::<Value>(&data, &offsets, written_count, |bytes| {
 					decode_any_cell(bytes).ok()
 				})?;
-			let boxed: Vec<Box<Value>> = values.into_iter().map(Box::new).collect();
-			ColumnBuffer::Any(AnyContainer::from_vec(boxed))
+			ColumnBuffer::Any(AnyContainer::from_vec(values))
 		}
 		ColumnTypeCode::DictionaryId => {
 			let entries: Vec<DictionaryEntryId> =

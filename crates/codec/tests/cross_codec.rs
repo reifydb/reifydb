@@ -60,7 +60,7 @@ fn value_codec_and_rbcf_any_column_round_trip_identically() {
 	let values = cross_codec_values();
 	let column = FrameColumn {
 		name: "c".to_string(),
-		data: FrameColumnData::Any(AnyContainer::new(values.iter().cloned().map(Box::new).collect())),
+		data: FrameColumnData::Any(AnyContainer::new(values.clone())),
 	};
 	let frame = Frame::new(vec![column]);
 	let bytes = encode_frames(&[frame], &EncodeOptions::fast()).unwrap();
@@ -68,7 +68,7 @@ fn value_codec_and_rbcf_any_column_round_trip_identically() {
 	match &decoded[0].columns[0].data {
 		FrameColumnData::Any(container) => {
 			for (expected, actual) in values.iter().zip(container.iter()) {
-				match (expected, actual.as_ref()) {
+				match (expected, actual) {
 					(
 						Value::None {
 							inner: l,

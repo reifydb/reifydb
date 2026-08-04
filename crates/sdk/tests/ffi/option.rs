@@ -560,11 +560,11 @@ fn option_decimal_all_undefined() {
 #[test]
 fn option_any_alternating() {
 	let input = ColumnBuffer::any_optional([
-		Some(Box::new(Value::Int8(7))),
+		Some(Value::Int8(7)),
 		None,
-		Some(Box::new(Value::Utf8("x".to_string()))),
+		Some(Value::Utf8("x".to_string())),
 		None,
-		Some(Box::new(Value::Boolean(true))),
+		Some(Value::Boolean(true)),
 	]);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_any_alt", &input, &output);
@@ -572,7 +572,7 @@ fn option_any_alternating() {
 
 #[test]
 fn option_any_all_undefined() {
-	let nones: Vec<Option<Box<Value>>> = vec![None; 4];
+	let nones: Vec<Option<Value>> = vec![None; 4];
 	let input = ColumnBuffer::any_optional(nones);
 	let output = round_trip_column("o", input.clone());
 	assert_column_eq("option_any_all_undef", &input, &output);

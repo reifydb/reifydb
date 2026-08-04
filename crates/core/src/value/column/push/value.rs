@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_value::{
-	storage::DataBitVec,
 	util::bitvec::BitVec,
 	value::{
 		Value,
@@ -26,7 +25,7 @@ macro_rules! push_or_promote {
 	(@wrap_option $self:expr, $new_col:expr, $len:expr) => {
 		if $len > 0 {
 			let mut bitvec = BitVec::repeat($len, false);
-			DataBitVec::push(&mut bitvec, true);
+			bitvec.push(true);
 			*$self = ColumnBuffer::Option {
 				inner: Box::new($new_col),
 				bitvec,
@@ -79,8 +78,8 @@ impl ColumnBuffer {
 		{
 			if matches!(value, Value::None { .. }) {
 				with_container!(inner.as_mut(), |c| c.push_default());
-				DataBitVec::push(bitvec, false);
-			} else if DataBitVec::count_ones(bitvec) == 0 {
+				bitvec.push(false);
+			} else if bitvec.count_ones() == 0 {
 				let len = inner.len();
 
 				let mut new_inner = match &value {
@@ -114,15 +113,15 @@ impl ColumnBuffer {
 					Value::Int(_) => ColumnBuffer::int(vec![Int::default(); len]),
 					Value::Uint(_) => ColumnBuffer::uint(vec![Uint::default(); len]),
 					Value::Decimal(_) => ColumnBuffer::decimal(vec![Decimal::default(); len]),
-					Value::Any(_) => ColumnBuffer::any(vec![Box::new(Value::none()); len]),
-					Value::Record(_) => ColumnBuffer::any(vec![Box::new(Value::none()); len]),
-					Value::Tuple(_) => ColumnBuffer::any(vec![Box::new(Value::none()); len]),
+					Value::Any(_) => ColumnBuffer::any(vec![Value::none(); len]),
+					Value::Record(_) => ColumnBuffer::any(vec![Value::none(); len]),
+					Value::Tuple(_) => ColumnBuffer::any(vec![Value::none(); len]),
 					_ => unreachable!(),
 				};
 				new_inner.push_value(value);
 				if len > 0 {
 					let mut new_bitvec = BitVec::repeat(len, false);
-					DataBitVec::push(&mut new_bitvec, true);
+					new_bitvec.push(true);
 					*self = ColumnBuffer::Option {
 						inner: Box::new(new_inner),
 						bitvec: new_bitvec,
@@ -132,7 +131,7 @@ impl ColumnBuffer {
 				}
 			} else {
 				inner.push_value(value);
-				DataBitVec::push(bitvec, true);
+				bitvec.push(true);
 			}
 			return;
 		}
@@ -179,7 +178,7 @@ impl ColumnBuffer {
 			Value::Record(v) => self.push_value(Value::Any(Box::new(Value::Record(v)))),
 			Value::Tuple(v) => self.push_value(Value::Any(Box::new(Value::Tuple(v)))),
 			Value::Any(v) => match self {
-				ColumnBuffer::Any(container) => container.push(v),
+				ColumnBuffer::Any(container) => container.push(*v),
 				_ => unreachable!("Cannot push Any value to non-Any column"),
 			},
 		}
