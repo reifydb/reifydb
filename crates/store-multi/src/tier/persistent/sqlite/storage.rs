@@ -692,13 +692,15 @@ impl SqlitePersistentStorage {
 			}
 			Err(e) => return Err(error!(internal(format!("Failed to scan persistent range: {}", e)))),
 		};
+		let page_was_full = raw.len() >= req.batch_size;
+		let last_scanned = raw.last().map(|e| e.key.clone());
 		let entries: Vec<RawEntry> = raw.into_iter().filter(|e| req.scope.contains(e.version)).collect();
 
-		if entries.len() < req.batch_size {
+		if !page_was_full {
 			cursor.exhausted = true;
 		}
-		if let Some(last) = entries.last() {
-			cursor.last_key = Some(last.key.clone());
+		if let Some(last) = last_scanned {
+			cursor.last_key = Some(last);
 		}
 
 		let has_more = !cursor.exhausted;
@@ -1151,6 +1153,49 @@ mod tests {
 
 	fn visible(s: &SqlitePersistentStorage, k: &EncodedKey) -> bool {
 		s.get(table(), k.as_slice(), CommitVersion(u64::MAX)).unwrap().value().is_some()
+	}
+
+	#[test]
+	fn a_page_the_scope_filter_empties_does_not_end_the_scan() {
+		// The SQL only bounds version <= read, but Between also demands version > after, so the
+		// surviving-row count is not evidence about whether sqlite has more rows. Deciding
+		// exhaustion from it stops the scan on the first page that filters out, silently dropping
+		// every later match; resuming from the last surviving key instead of the last scanned key
+		// would re-read the filtered rows forever. Keys 1-2 fill a whole page and all fail the
+		// filter, so a correct cursor must still reach keys 3-4.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		s.set(
+			CommitVersion(1),
+			HashMap::from([(table(), vec![(key(1), Some(row(b"a"))), (key(2), Some(row(b"b")))])]),
+		)
+		.unwrap();
+		s.set(
+			CommitVersion(5),
+			HashMap::from([(table(), vec![(key(3), Some(row(b"c"))), (key(4), Some(row(b"d")))])]),
+		)
+		.unwrap();
+
+		let scope = MultiVersionScope::Between {
+			after: CommitVersion(1),
+			read: CommitVersion(10),
+		};
+		let mut cursor = RangeCursor::default();
+		let mut seen: Vec<EncodedKey> = Vec::new();
+		loop {
+			let batch = s
+				.range_next(table(), &mut cursor, Bound::Unbounded, Bound::Unbounded, scope, 2)
+				.unwrap();
+			seen.extend(batch.entries.iter().map(|e| e.key.clone()));
+			if !batch.has_more {
+				break;
+			}
+		}
+
+		assert_eq!(
+			seen,
+			vec![key(3), key(4)],
+			"rows newer than `after` must survive a page that filtered out entirely"
+		);
 	}
 
 	#[test]

@@ -4,6 +4,7 @@
 mod catalog;
 mod context;
 mod dbstat;
+mod operator;
 mod report;
 
 use std::{path::Path, process::exit};
@@ -28,6 +29,33 @@ struct Cli {
 enum Command {
 	Storage(StorageArgs),
 	Catalog(CatalogArgs),
+	Operator(OperatorArgs),
+}
+
+#[derive(Parser)]
+struct OperatorArgs {
+	#[command(subcommand)]
+	command: OperatorCommand,
+}
+
+#[derive(Subcommand)]
+enum OperatorCommand {
+	Keyspace(KeyspaceArgs),
+}
+
+#[derive(Parser)]
+struct KeyspaceArgs {
+	dir: String,
+	#[arg(long)]
+	operator: Option<u64>,
+	#[arg(long, default_value_t = 40)]
+	top: usize,
+	#[arg(long)]
+	groups: bool,
+	#[arg(long)]
+	names: bool,
+	#[arg(long)]
+	json: bool,
 }
 
 #[derive(Parser)]
@@ -63,6 +91,9 @@ fn main() {
 	let result = match cli.command {
 		Command::Storage(args) => storage(&ctx, args),
 		Command::Catalog(args) => catalog_dump(args),
+		Command::Operator(args) => match args.command {
+			OperatorCommand::Keyspace(args) => operator_keyspace(args),
+		},
 	};
 	if let Err(e) = result {
 		eprintln!("error: {e}");
@@ -97,6 +128,26 @@ fn storage(ctx: &Context, args: StorageArgs) -> Result<()> {
 	);
 	eprintln!("done in {:.1}s", started.elapsed().as_secs_f64());
 	Ok(())
+}
+
+fn operator_keyspace(args: KeyspaceArgs) -> Result<()> {
+	let multi_db = require_multi_db(&args.dir)?;
+	let cat = if args.names {
+		eprintln!("opening {} via the embedded engine (this writes to the directory - use a copy)", args.dir);
+		Some(catalog::with_open(&args.dir, catalog::load)?)
+	} else {
+		None
+	};
+	operator::keyspace(
+		&multi_db,
+		cat.as_ref(),
+		operator::Options {
+			operator: args.operator,
+			top: args.top,
+			json: args.json,
+			groups: args.groups,
+		},
+	)
 }
 
 fn catalog_dump(args: CatalogArgs) -> Result<()> {

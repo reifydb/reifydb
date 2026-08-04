@@ -147,6 +147,48 @@ impl Keyspace {
 
 	pub const FIRST_CUSTOM: Self = Self(0x40);
 
+	pub fn name(&self) -> &'static str {
+		match *self {
+			Self::ROW_NUMBER_MAPPING => "ROW_NUMBER_MAPPING",
+			Self::GROUP_DICTIONARY => "GROUP_DICTIONARY",
+			Self::NODE_COUNTER => "NODE_COUNTER",
+			Self::GROUP_RECORD => "GROUP_RECORD",
+			Self::ACTIVITY_INDEX => "ACTIVITY_INDEX",
+			Self::IDENTITY_INDEX => "IDENTITY_INDEX",
+			Self::NODE_WATERMARK => "NODE_WATERMARK",
+			Self::SOURCE_WATERMARK => "SOURCE_WATERMARK",
+			Self::TIMER_WHEEL => "TIMER_WHEEL",
+			Self::SIDE_ACTIVITY_INDEX => "SIDE_ACTIVITY_INDEX",
+			Self::SIDE_ACTIVITY_RECORD => "SIDE_ACTIVITY_RECORD",
+			Self::ACCUMULATOR => "ACCUMULATOR",
+			Self::BUFFER => "BUFFER",
+			Self::RUNNING => "RUNNING",
+			Self::EMIT => "EMIT",
+			Self::EXPIRY => "EXPIRY",
+			Self::COUNT => "COUNT",
+			Self::ROW_INDEX => "ROW_INDEX",
+			Self::SESSION => "SESSION",
+			Self::ROLLING_META => "ROLLING_META",
+			Self::ENGINE_META => "ENGINE_META",
+			Self::DISTINCT_ENTRY => "DISTINCT_ENTRY",
+			Self::WINDOW_META => "WINDOW_META",
+			Self::JOIN_LEFT => "JOIN_LEFT",
+			Self::JOIN_RIGHT => "JOIN_RIGHT",
+			Self::JOIN_SCHEMA => "JOIN_SCHEMA",
+			Self::RINGBUFFER_FORWARD => "RINGBUFFER_FORWARD",
+			Self::RINGBUFFER_ENTRY => "RINGBUFFER_ENTRY",
+			Self::GATE_VISIBILITY => "GATE_VISIBILITY",
+			Self::DISTINCT_LAYOUT => "DISTINCT_LAYOUT",
+			Self::RINGBUFFER_EXPIRY => "RINGBUFFER_EXPIRY",
+			Self::RINGBUFFER_TTL_ARM => "RINGBUFFER_TTL_ARM",
+			Self::SEAL_LEDGER => "SEAL_LEDGER",
+			Self::JOIN_PUBLISHED => "JOIN_PUBLISHED",
+			Self::JOIN_PIN => "JOIN_PIN",
+			Self::FIRST_CUSTOM => "FIRST_CUSTOM",
+			_ => "CUSTOM",
+		}
+	}
+
 	pub fn is_data(&self) -> bool {
 		self.0 <= Self::HIGHEST_DATA
 	}
@@ -704,6 +746,28 @@ mod tests {
 				}
 			}
 		}
+	}
+
+	#[test]
+	fn every_declared_keyspace_names_itself_for_offline_attribution() {
+		// reifydb-dev attributes operator rows per keyspace by this name, so a keyspace that falls
+		// through to "CUSTOM" makes the population it holds unattributable in exactly the audit that
+		// would find it leaking. The census length is already pinned to the declared count, so
+		// covering the census covers every constant.
+		for (name, keyspace, _) in CENSUS {
+			assert_eq!(
+				keyspace.name(),
+				name,
+				"{name} ({:#04x}) does not name itself, so an offline census reports it as CUSTOM",
+				keyspace.0
+			);
+		}
+
+		assert_eq!(
+			Keyspace(0x41).name(),
+			"CUSTOM",
+			"a byte no constant claims must fall through rather than borrow a neighbour's name"
+		);
 	}
 
 	#[test]
