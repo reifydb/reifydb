@@ -16,6 +16,9 @@ mod latest_snapshot_join_republish;
 #[path = "regression/snapshot_join_retraction.rs"]
 mod snapshot_join_retraction;
 
+#[path = "regression/update_pre_fidelity.rs"]
+mod update_pre_fidelity;
+
 #[path = "regression/view_dictionary_columns.rs"]
 mod view_dictionary_columns;
 
