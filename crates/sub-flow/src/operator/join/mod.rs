@@ -31,21 +31,21 @@ impl Emitted {
 	}
 
 	pub(crate) fn is_empty(&self) -> bool {
-		self.fresh.is_empty() && self.existing.is_empty()
+		self.fresh.row_count() == 0 && self.existing.row_count() == 0
 	}
 
 	pub(crate) fn published(self) -> Vec<Diff> {
 		let mut out = Vec::new();
-		if !self.fresh.is_empty() {
+		if self.fresh.row_count() > 0 {
 			out.push(Diff::insert(self.fresh));
 		}
-		if !self.existing.is_empty() {
+		if self.existing.row_count() > 0 {
 			out.push(Diff::update(self.existing.clone(), self.existing));
 		}
 		out
 	}
 
 	pub(crate) fn withdrawn(self) -> Option<Diff> {
-		(!self.existing.is_empty()).then(|| Diff::remove(self.existing))
+		(self.existing.row_count() > 0).then(|| Diff::remove(self.existing))
 	}
 }

@@ -343,10 +343,6 @@ mod join {
 		(true, true, true),
 	];
 
-	// The cells that append a spurious diff. Split out so the retraction property can still be
-	// asserted for all eight without the defect masking it.
-	const SPURIOUS: [(bool, bool, bool); 2] = [(false, false, true), (true, false, true)];
-
 	fn schema(spec: &[(&str, ValueType)]) -> Columns {
 		Columns::new(
 			spec.iter()
@@ -429,14 +425,6 @@ mod join {
 		)
 	}
 
-	fn is_none(value: &Value) -> bool {
-		matches!(value, Value::None { .. })
-	}
-
-	fn all_none(diff: &Diff) -> bool {
-		diff.pre().map(values).iter().chain(diff.post().map(values).iter()).all(|row| row.iter().all(is_none))
-	}
-
 	// Seeds a right slot, joins a left row, then updates the left row. Returns what the join first
 	// published and the change the update produced.
 	fn drive(outer: bool, latest: bool, snapshot: bool) -> (Vec<Value>, Change) {
@@ -459,11 +447,11 @@ mod join {
 
 	// A left update reaches the output as an Update in some strategies and as Remove-then-Insert in
 	// others. Both encode the same change, so the property is stated over whichever the strategy
-	// chose. All-none diffs are skipped so the defect below cannot mask this.
+	// chose.
 	fn retraction_and_publication(out: &Change, who: &str) -> (Vec<Value>, Vec<Value>) {
 		let mut retracted = None;
 		let mut published = None;
-		for diff in out.diffs.iter().filter(|diff| !all_none(diff)) {
+		for diff in out.diffs.iter() {
 			if let Some(pre) = diff.pre().map(values) {
 				assert!(retracted.is_none(), "{who} retracted twice: {:?}", out.diffs);
 				retracted = Some(pre);
@@ -499,30 +487,40 @@ mod join {
 	}
 
 	#[test]
-	fn a_snapshot_join_without_latest_appends_a_spurious_empty_update() {
-		// A DEFECT, characterised so the gate stays green while it stays visible. `snapshot` with
-		// `latest` off answers a left update with the correct Remove and Insert and then a third
-		// Update whose every column, on both halves, is none.
+	fn no_join_strategy_publishes_a_row_less_diff() {
+		// Regression. `Emitted::published` gated on `Columns::is_empty`, which asks whether there are
+		// any COLUMNS, not any rows - and `retain_rows` with an empty index list returns the full column
+		// set with zero rows in it. Every publish where all identities were fresh therefore carried a
+		// second, row-less Update, and `snapshot` without `latest` was where it reached the output.
 		//
-		// Invisible elsewhere: the chaos matrix drives both cells and passes, because folding an
-		// all-none row over a row number that already holds one changes nothing it compares.
-		// Reproduces identically through a raw deferred transaction, so it is not a harness artefact.
+		// Invisible to the chaos matrix, which drives those cells and passes: folding a row-less diff
+		// changes nothing a view comparison looks at.
 		//
-		// Reachable: `snapshot` and `latest` are parsed independently in `rql/src/ast/parse/create.rs`
-		// with no rule requiring one with the other.
-		//
-		// Fixing it fails this test; delete it and drop SPURIOUS.
-		for (outer, latest, snapshot) in SPURIOUS {
-			let who = label(outer, latest, snapshot);
-			let (_, updated) = drive(outer, latest, snapshot);
+		// The insert is checked as well as the update because the same partition runs on both, and only
+		// the update path happened to surface it.
+        for (outer, latest, snapshot) in MATRIX {
+            let who = label(outer, latest, snapshot);
+            let mut harness = Harness::with_engine(|engine, _| build(engine, outer, latest, snapshot));
 
-			let empty: Vec<&Diff> = updated.diffs.iter().filter(|diff| all_none(diff)).collect();
-			assert_eq!(empty.len(), 1, "{who}: expected one all-none diff, got {:?}", updated.diffs);
-			assert!(
-				matches!(empty[0], Diff::Update { .. }),
-				"{who}: the spurious diff is an Update; another kind is a different defect, got {:?}",
-				empty[0]
-			);
-		}
-	}
+            harness.apply(change(vec![tagged(Diff::insert(row(&RIGHT_COLUMNS, 100, 1, 10)), RIGHT)]))
+                .expect("the right side seeds");
+            let inserted = harness
+                .apply(change(vec![tagged(Diff::insert(row(&LEFT_COLUMNS, 1, 1, 7)), LEFT)]))
+                .expect("the left row joins");
+            let updated = harness
+                .apply(change(vec![tagged(
+                    Diff::update(row(&LEFT_COLUMNS, 1, 1, 7), row(&LEFT_COLUMNS, 1, 1, 8)),
+                    LEFT,
+                )]))
+                .expect("the left row updates");
+
+            for (stage, out) in [("insert", &inserted), ("update", &updated)] {
+                for diff in out.diffs.iter() {
+                    let rows = diff.pre().map(|c| c.row_count()).unwrap_or(0)
+                        + diff.post().map(|c| c.row_count()).unwrap_or(0);
+                    assert!(rows > 0, "{who}: the {stage} published a row-less diff: {diff:?}");
+                }
+            }
+        }
+    }
 }
