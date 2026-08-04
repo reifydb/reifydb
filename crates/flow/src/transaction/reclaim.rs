@@ -247,6 +247,13 @@ mod tests {
 	// cutoff must clear whole buckets, not land inside one.
 	const BUCKET_WIDTH: u64 = 3_750_000_000;
 
+	// JOIN_LEFT is not a per-row keyspace, so `reclaim_group_keyspace` takes the whole-range path and
+	// neither of these is read. They are named rather than inlined so a future reader does not take
+	// the values for meaningful bounds on what these tests assert.
+	fn ignored_cutoff() -> Cutoff {
+		Cutoff(DateTime::MAX)
+	}
+
 	fn payload() -> EncodedRow {
 		1u64.encode_state(DateTime::EPOCH).unwrap().into_row()
 	}
@@ -354,7 +361,7 @@ mod tests {
 		write(&mut txn, GROUP, Keyspace::JOIN_RIGHT, 1);
 		seed(&mut txn, GROUP);
 
-		let outcome = txn.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, 100).unwrap();
+		let outcome = txn.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, ignored_cutoff(), &mut None, 100).unwrap();
 
 		assert_eq!(outcome.removed, 2, "only the two left rows");
 		assert!(!outcome.more);
@@ -387,7 +394,7 @@ mod tests {
 		write(&mut txn, GROUP, Keyspace::JOIN_LEFT, 1);
 		write(&mut txn, NEIGHBOUR, Keyspace::JOIN_LEFT, 1);
 
-		txn.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, 100).unwrap();
+		txn.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, ignored_cutoff(), &mut None, 100).unwrap();
 
 		assert_eq!(
 			count(&mut txn, keyspace_inner_range(NEIGHBOUR, Keyspace::JOIN_LEFT)),
@@ -407,11 +414,11 @@ mod tests {
 			write(&mut txn, GROUP, Keyspace::JOIN_LEFT, suffix);
 		}
 
-		let first = txn.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, 2).unwrap();
+		let first = txn.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, ignored_cutoff(), &mut None, 2).unwrap();
 		assert_eq!(first.removed, 2);
 		assert!(first.more, "three rows are still there");
 
-		let second = txn.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, 100).unwrap();
+		let second = txn.reclaim_group_keyspace(NODE, GROUP, Keyspace::JOIN_LEFT, ignored_cutoff(), &mut None, 100).unwrap();
 		assert_eq!(second.removed, 3);
 		assert!(!second.more);
 		assert_eq!(count(&mut txn, keyspace_inner_range(GROUP, Keyspace::JOIN_LEFT)), 0);
