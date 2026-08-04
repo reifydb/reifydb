@@ -137,11 +137,21 @@ impl FloorSource for EngineFloors {
 	}
 
 	fn flush_watermark(&self) -> CommitVersion {
-		EvictionWatermark::watermark(&self.engine)
+		durable_frontier(
+			EvictionWatermark::watermark(&self.engine),
+			self.engine.multi().store().commit().oldest_pending_version(),
+		)
 	}
 
 	fn owning_flow_checkpoint(&self) -> CommitVersion {
 		self.engine.flow_watermark()
+	}
+}
+
+fn durable_frontier(permitted: CommitVersion, oldest_pending: Option<CommitVersion>) -> CommitVersion {
+	match oldest_pending {
+		Some(oldest) => permitted.min(CommitVersion(oldest.0.saturating_sub(1))),
+		None => permitted,
 	}
 }
 
@@ -231,5 +241,50 @@ mod tests {
 			"the report must name the flow as the thing holding reclamation back, or a stalled \
 			 group class looks like an idle one"
 		);
+	}
+
+	#[test]
+	fn an_unflushed_write_holds_the_frontier_below_the_permitted_watermark() {
+		// This is the whole point of the term: FlushWatermark protects "a write that has not yet
+		// reached the persistent tier". The permitted watermark only says how far the flusher is
+		// allowed to go, and it is budgeted, so it runs ahead of what is actually durable. Returning
+		// the permitted value here lets TombstoneReap physically delete rows that a still-buffered
+		// write at version 1013 is about to rewrite - a resurrected removal.
+		let frontier = durable_frontier(CommitVersion(1178), Some(CommitVersion(1013)));
+
+		assert_eq!(
+			frontier,
+			CommitVersion(1012),
+			"the frontier must stop one version below the oldest un-flushed write"
+		);
+	}
+
+	#[test]
+	fn a_drained_buffer_does_not_lift_the_frontier_above_the_permitted_watermark() {
+		// With nothing buffered it is tempting to call everything durable, but a commit that has
+		// already been allocated a version and has not yet reached the buffer is invisible here. The
+		// permitted watermark trails those in-flight commits, so it stays the ceiling.
+		let frontier = durable_frontier(CommitVersion(500), None);
+
+		assert_eq!(frontier, CommitVersion(500));
+	}
+
+	#[test]
+	fn a_buffer_holding_only_recent_writes_does_not_lower_the_frontier() {
+		// Steady state: the flusher has drained everything it is allowed to touch and the buffer only
+		// holds versions above the watermark. Clamping here would stall reclamation on a healthy
+		// system, so the permitted watermark must win.
+		let frontier = durable_frontier(CommitVersion(500), Some(CommitVersion(900)));
+
+		assert_eq!(frontier, CommitVersion(500));
+	}
+
+	#[test]
+	fn a_pending_write_at_the_first_version_floors_the_frontier_at_zero() {
+		// Version 0 is the "nothing reclaimable" sentinel every class already understands. Wrapping
+		// to u64::MAX here would invert the guard into unrestricted deletion.
+		let frontier = durable_frontier(CommitVersion(500), Some(CommitVersion(0)));
+
+		assert_eq!(frontier, CommitVersion(0));
 	}
 }

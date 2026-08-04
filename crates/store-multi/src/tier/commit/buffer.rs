@@ -57,6 +57,12 @@ impl MultiCommitBufferTier {
 		}
 	}
 
+	pub fn oldest_pending_version(&self) -> Option<CommitVersion> {
+		match self {
+			Self::Memory(s) => s.oldest_pending_version(),
+		}
+	}
+
 	pub fn current_resident_bytes(&self) -> ByteSize {
 		match self {
 			Self::Memory(s) => s.current_resident_bytes(),

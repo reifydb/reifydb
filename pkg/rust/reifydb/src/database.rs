@@ -215,8 +215,9 @@ impl Database {
 
 	fn shutdown_internal(&mut self, drain: bool) -> Result<()> {
 		if !self.running {
-			return Ok(()); // Already stopped
+			return Ok(());
 		}
+		self.running = false;
 
 		info!("Stopping system");
 
@@ -266,8 +267,7 @@ impl Database {
 	}
 
 	#[inline]
-	fn mark_stopped(&mut self) {
-		self.running = false;
+	fn mark_stopped(&self) {
 		info!("System stopped successfully");
 		self.health_monitor.update_component_health("system".to_string(), HealthStatus::Healthy, false);
 	}
@@ -582,5 +582,90 @@ impl Database {
 
 	pub fn root_session(&self) -> Session {
 		Session::trusted(self.engine.clone(), IdentityId::root())
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{
+		any::Any,
+		panic::{AssertUnwindSafe, catch_unwind},
+	};
+
+	use reifydb_core::{
+		interface::version::{ComponentType, HasVersion, SystemVersion},
+		util::ioc::IocContainer,
+	};
+	use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
+
+	use super::*;
+	use crate::{WithSubsystem, embedded};
+
+	struct PanicOnShutdown;
+
+	impl Shutdown for PanicOnShutdown {
+		fn shutdown(&self) {
+			panic!("subsystem teardown failed");
+		}
+	}
+
+	impl Subsystem for PanicOnShutdown {
+		fn name(&self) -> &'static str {
+			"panic-on-shutdown"
+		}
+
+		fn is_running(&self) -> bool {
+			true
+		}
+
+		fn health_status(&self) -> HealthStatus {
+			HealthStatus::Healthy
+		}
+
+		fn as_any(&self) -> &dyn Any {
+			self
+		}
+	}
+
+	impl HasVersion for PanicOnShutdown {
+		fn version(&self) -> SystemVersion {
+			SystemVersion {
+				name: "panic-on-shutdown".to_string(),
+				version: "0".to_string(),
+				description: "fails its teardown so a partial shutdown can be observed".to_string(),
+				r#type: ComponentType::Subsystem,
+			}
+		}
+	}
+
+	struct PanicOnShutdownFactory;
+
+	impl SubsystemFactory for PanicOnShutdownFactory {
+		fn create(self: Box<Self>, _ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+			Ok(Box::new(PanicOnShutdown))
+		}
+	}
+
+	#[test]
+	fn a_shutdown_that_does_not_finish_is_still_marked_as_entered() {
+		// The panic escapes stop() and unwinds out of whoever owned the Database, so `db` is dropped
+		// while unwinding. If the entry latch were still unset, Drop would re-run the identical
+		// shutdown_internal - the same drain, the same flush - inside a destructor during cleanup.
+		// A second panic there is non-unwinding: the process aborts with SIGABRT and the original
+		// failure never surfaces. Latching on entry is what turns that abort back into one readable
+		// panic, so this asserts the latch, not the teardown.
+		let mut db = embedded::memory()
+			.with_subsystem(Box::new(PanicOnShutdownFactory))
+			.build()
+			.expect("in-memory database builds");
+
+		let outcome = catch_unwind(AssertUnwindSafe(|| db.stop()));
+
+		assert!(outcome.is_err(), "the subsystem must have panicked, or this proves nothing");
+		assert!(
+			!db.running,
+			"a shutdown that panicked partway must still count as entered; leaving it set is what \
+			 makes Drop retry the failing teardown and abort the process"
+		);
 	}
 }

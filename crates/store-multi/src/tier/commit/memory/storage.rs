@@ -184,6 +184,17 @@ impl MemoryRowStorage {
 		}
 	}
 
+	pub fn oldest_pending_version(&self) -> Option<CommitVersion> {
+		self.inner
+			.entries
+			.data
+			.keys()
+			.into_iter()
+			.filter_map(|kind| self.inner.entries.data.get(&kind))
+			.filter_map(|entry| entry.oldest.read().keys().next().copied())
+			.min()
+	}
+
 	pub fn collect_evictable_below(
 		&self,
 		table: EntryKind,
@@ -1821,5 +1832,127 @@ pub mod tests {
 			"clearing a table must zero its byte tally, not leak it"
 		);
 		assert_eq!(storage.historical_resident_bytes(), ByteSize::ZERO);
+	}
+
+	#[test]
+	fn an_empty_buffer_has_no_oldest_pending_version() {
+		// None means "nothing is waiting to be flushed", which is what lets a retention floor sit at
+		// the permitted watermark. Reporting a version here would peg the floor to a write that
+		// does not exist.
+		let storage = MemoryRowStorage::new();
+
+		assert_eq!(storage.oldest_pending_version(), None);
+	}
+
+	#[test]
+	fn oldest_pending_version_is_the_minimum_across_every_entry_kind() {
+		// The retention floor is global, so a single lagging keyspace has to hold it down. Taking a
+		// per-kind minimum, or the newest version instead of the oldest, is what lets the tombstone
+		// reaper delete rows an un-flushed write is about to rewrite.
+		let storage = MemoryRowStorage::new();
+		let key = EncodedKey::new(b"k");
+
+		storage.set(
+			CommitVersion(40),
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"late".to_vec())))])]),
+		)
+		.unwrap();
+		storage.set(
+			CommitVersion(7),
+			HashMap::from([(
+				EntryKind::Source(StorageId::Table(TableId(1))),
+				vec![(key.clone(), Some(CowVec::new(b"early".to_vec())))],
+			)]),
+		)
+		.unwrap();
+		storage.set(
+			CommitVersion(19),
+			HashMap::from([(
+				EntryKind::Source(StorageId::Table(TableId(2))),
+				vec![(key.clone(), Some(CowVec::new(b"mid".to_vec())))],
+			)]),
+		)
+		.unwrap();
+
+		assert_eq!(
+			storage.oldest_pending_version(),
+			Some(CommitVersion(7)),
+			"the oldest un-flushed write in any keyspace is what bounds the durable frontier"
+		);
+	}
+
+	#[test]
+	fn the_oldest_bucket_in_a_keyspace_wins_over_its_newer_ones() {
+		// One keyspace holds many keys, each indexed under its own oldest resident version. Reading
+		// the newest bucket instead of the oldest reports a frontier above writes that are still
+		// buffered - and the tombstone reaper deletes under exactly that frontier.
+		let storage = MemoryRowStorage::new();
+
+		storage.set(
+			CommitVersion(11),
+			HashMap::from([(
+				EntryKind::Multi,
+				vec![(EncodedKey::new(b"late"), Some(CowVec::new(b"v".to_vec())))],
+			)]),
+		)
+		.unwrap();
+		storage.set(
+			CommitVersion(4),
+			HashMap::from([(
+				EntryKind::Multi,
+				vec![(EncodedKey::new(b"early"), Some(CowVec::new(b"v".to_vec())))],
+			)]),
+		)
+		.unwrap();
+
+		assert_eq!(storage.oldest_pending_version(), Some(CommitVersion(4)));
+	}
+
+	#[test]
+	fn a_superseded_version_still_counts_as_pending_until_it_is_compacted_away() {
+		// Overwriting a key moves the old version into the historical map; it is still resident and
+		// still un-flushed. If the index followed the current version instead, the frontier would
+		// jump past a version the flusher has not written yet.
+		let storage = MemoryRowStorage::new();
+		let key = EncodedKey::new(b"k");
+
+		storage.set(
+			CommitVersion(3),
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v3".to_vec())))])]),
+		)
+		.unwrap();
+		storage.set(
+			CommitVersion(9),
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v9".to_vec())))])]),
+		)
+		.unwrap();
+
+		assert_eq!(storage.oldest_pending_version(), Some(CommitVersion(3)));
+
+		storage.compact(HashMap::from([(EntryKind::Multi, vec![(key.clone(), CommitVersion(3))])])).unwrap();
+
+		assert_eq!(
+			storage.oldest_pending_version(),
+			Some(CommitVersion(9)),
+			"once the sweep drains v3 the frontier may advance to the next un-flushed write"
+		);
+	}
+
+	#[test]
+	fn draining_the_buffer_clears_the_oldest_pending_version() {
+		// A sweep that empties a keyspace has to retire its bucket from the index. A stale bucket
+		// pins the retention floor at a version that is already durable, and reclamation stalls
+		// forever with no failing symptom.
+		let storage = MemoryRowStorage::new();
+		let key = EncodedKey::new(b"k");
+
+		storage.set(
+			CommitVersion(5),
+			HashMap::from([(EntryKind::Multi, vec![(key.clone(), Some(CowVec::new(b"v".to_vec())))])]),
+		)
+		.unwrap();
+		storage.compact(HashMap::from([(EntryKind::Multi, vec![(key.clone(), CommitVersion(5))])])).unwrap();
+
+		assert_eq!(storage.oldest_pending_version(), None);
 	}
 }
