@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[cfg(target_os = "linux")]
-use std::fs;
 use std::{
 	collections::hash_map::{DefaultHasher, RandomState},
 	env,
@@ -14,37 +12,23 @@ use std::{
 static PROCESS_BASE_SEED: LazyLock<u64> = LazyLock::new(random_base_seed);
 
 pub fn run_iteration(name: &str, index: u64, body: fn(u64)) {
-	let seed = iteration_seed(index);
-	#[cfg(target_os = "linux")]
-	let fds_before = open_fd_count();
+	let seed = iteration_seed(name, index);
 	let outcome = panic::catch_unwind(AssertUnwindSafe(|| body(seed)));
 	if let Err(payload) = outcome {
 		report_failure(name, index, seed);
 		panic::resume_unwind(payload);
 	}
-	#[cfg(target_os = "linux")]
-	assert_no_fd_leak(name, index, seed, fds_before);
 }
 
-#[cfg(target_os = "linux")]
-fn open_fd_count() -> usize {
-	fs::read_dir("/proc/self/fd").map(|d| d.count()).unwrap_or(0)
+fn iteration_seed(name: &str, index: u64) -> u64 {
+	resolve_seed(env_seed(), workload_base(*PROCESS_BASE_SEED, name), index)
 }
 
-#[cfg(target_os = "linux")]
-fn assert_no_fd_leak(name: &str, index: u64, seed: u64, fds_before: usize) {
-	const FD_SLACK: usize = 64;
-	let fds_after = open_fd_count();
-	assert!(
-		fds_after <= fds_before + FD_SLACK,
-		"chaos \"{name}\" iteration {index}: open file descriptors grew from {fds_before} to {fds_after} (slack \
-		 {FD_SLACK}) across one iteration; a database lifecycle is leaking fds, the SQLITE_CANTOPEN failure mode \
-		 (reproduce: make test-chaos SEED={seed} FILTER={name}_{index})"
-	);
-}
-
-fn iteration_seed(index: u64) -> u64 {
-	resolve_seed(env_seed(), *PROCESS_BASE_SEED, index)
+fn workload_base(base: u64, name: &str) -> u64 {
+	let mut h = DefaultHasher::new();
+	base.hash(&mut h);
+	name.hash(&mut h);
+	h.finish()
 }
 
 fn resolve_seed(pinned: Option<u64>, base: u64, index: u64) -> u64 {
@@ -74,7 +58,36 @@ fn env_seed() -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
-	use super::{derive_seed, resolve_seed};
+	use super::{derive_seed, resolve_seed, workload_base};
+
+	#[test]
+	fn same_index_seeds_differ_across_workloads() {
+		// Under nextest every test owns a process, so a fresh PROCESS_BASE_SEED per process hid
+		// that the seed ignored the workload name. One shared process (cargo test) exposes it:
+		// without the name in the base, aggregate_count_chaos_5 and distinct_chaos_5 explore the
+		// exact same point and the suite silently loses half its coverage.
+		let base = 7;
+		assert_ne!(
+			resolve_seed(None, workload_base(base, "aggregate_count_chaos"), 5),
+			resolve_seed(None, workload_base(base, "distinct_chaos"), 5)
+		);
+	}
+
+	#[test]
+	fn a_workload_base_is_stable_for_replay() {
+		// Replay reproduces from the printed seed, so the same base and name must always derive
+		// the same value; a hasher randomised per process would break every reported repro.
+		assert_eq!(workload_base(7, "aggregate_count_chaos"), workload_base(7, "aggregate_count_chaos"));
+		assert_ne!(workload_base(7, "aggregate_count_chaos"), workload_base(8, "aggregate_count_chaos"));
+	}
+
+	#[test]
+	fn a_pinned_seed_still_overrides_the_workload_name() {
+		// SEED= pins one exact point for reproduction; if the name salt leaked past the pin, a
+		// reported failure would replay under a different seed than the one it printed.
+		assert_eq!(resolve_seed(Some(42), workload_base(7, "aggregate_count_chaos"), 5), 42);
+		assert_eq!(resolve_seed(Some(42), workload_base(9, "distinct_chaos"), 3), 42);
+	}
 
 	#[test]
 	fn derive_seed_is_deterministic_and_decorrelated() {

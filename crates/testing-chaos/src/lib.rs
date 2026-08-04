@@ -14,6 +14,7 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod corpus;
+pub mod fd;
 pub mod fuzz;
 #[cfg(feature = "operator")]
 pub mod operator;

@@ -21,6 +21,7 @@ operator = ["dep:reifydb-core", "dep:reifydb-value"]
 [dependencies]
 rand = { workspace = true }
 reifydb-core = { workspace = true, optional = true }
+reifydb-runtime = { workspace = true }
 reifydb-value = { workspace = true, optional = true }
 
 [dev-dependencies]

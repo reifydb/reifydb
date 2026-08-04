@@ -262,7 +262,7 @@ impl<O: Operator> Harness<O> {
 				.collect(),
 			mapping: reclaimable.mapping.map(Cutoff),
 			mapping_cursor: self.mapping_cursor.take(),
-			keyspace_cursors: std::mem::take(&mut self.keyspace_cursors),
+			keyspace_cursors: mem::take(&mut self.keyspace_cursors),
 		};
 
 		let mut budget = self.reclaim_budget;

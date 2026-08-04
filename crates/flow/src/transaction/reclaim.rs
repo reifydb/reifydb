@@ -112,7 +112,7 @@ impl FlowTransaction {
 		};
 		let batch = self.state_range(operator, EncodedKeyRange::new(start, base.end.clone()), Some(limit))?;
 		let more = batch.has_more;
-		let last = batch.items.last().map(|item| Self::inner_key(item));
+		let last = batch.items.last().map(Self::inner_key);
 
 		let mut removed = 0;
 		let mut oldest_survivor: Option<DateTime> = None;
