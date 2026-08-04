@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::change::Diff, value::column::columns::Columns};
+use reifydb_core::{interface::change::Diff, key::operator_group_state::GroupId, value::column::columns::Columns};
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{Result, util::hash::Hash128};
 use tracing::instrument;
@@ -15,7 +15,7 @@ use super::{
 	latest::{overwrite_right_slot, read_right_slot, remove_right_slot},
 };
 use crate::operator::join::{
-	snapshot::{SnapshotJoinContext, publish_slot, retire_slot, withdraw_slot},
+	snapshot::{SnapshotJoinContext, publish_slot, retain_published_slot, retire_slot, withdraw_slot},
 	state::JoinSide,
 };
 
@@ -253,6 +253,20 @@ impl LatestInnerHashJoin {
 					let mut result = Vec::new();
 					let withdraw_group = ctx.state.right.group_of(txn, keys.pre)?;
 					for &idx in indices {
+						if let Some(slot) = republished_slot(
+							txn,
+							&snapshot_ctx,
+							withdraw_group,
+							pre,
+							post,
+							idx,
+						)? {
+							result.push(Diff::update(
+								ctx.operator.join_left_with_slot(pre, &[idx], &slot),
+								ctx.operator.join_left_with_slot(post, &[idx], &slot),
+							));
+							continue;
+						}
 						let withdrawn = match withdraw_group {
 							Some(group) => {
 								withdraw_slot(txn, &snapshot_ctx, group, pre, idx)?
@@ -302,6 +316,24 @@ impl LatestInnerHashJoin {
 			JoinSide::Right => self.handle_right_insert(txn, post, indices, keys.post, ctx),
 		}
 	}
+}
+
+pub(crate) fn republished_slot(
+	txn: &mut FlowTransaction,
+	ctx: &SnapshotJoinContext,
+	group: Option<GroupId>,
+	pre: &Columns,
+	post: &Columns,
+	idx: usize,
+) -> Result<Option<Columns>> {
+	let Some(group) = group else {
+		return Ok(None);
+	};
+	let left = pre.row_numbers()[idx];
+	if left != post.row_numbers()[idx] {
+		return Ok(None);
+	}
+	retain_published_slot(txn, ctx, group, left)
 }
 
 pub(crate) fn update_diff(withdrawn: Option<Columns>, published: Option<Columns>) -> Vec<Diff> {

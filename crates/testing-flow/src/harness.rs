@@ -25,7 +25,9 @@ use reifydb_runtime::context::{
 };
 use reifydb_sdk::{config::Config, operator::OperatorLogic};
 use reifydb_sub_flow::{
-	execution::reclaim::{PhaseReclaim, ReclaimBudget, ReclaimReport, SweepInputs, reclaim_nodes},
+	execution::reclaim::{
+		KeyspaceCursors, PhaseReclaim, ReclaimBudget, ReclaimReport, SweepInputs, SweepOutcome, reclaim_nodes,
+	},
 	operator::{
 		OperatorCell,
 		apply::ApplyOperator,
@@ -53,6 +55,7 @@ pub struct Harness<O: Operator> {
 	sink_row_ttl: Option<Duration>,
 	reclaim_budget: ReclaimBudget,
 	mapping_cursor: Option<EncodedKey>,
+	keyspace_cursors: KeyspaceCursors,
 }
 
 impl<O: Operator> Harness<O> {
@@ -82,6 +85,7 @@ impl<O: Operator> Harness<O> {
 				rows: 1_024,
 			},
 			mapping_cursor: None,
+			keyspace_cursors: KeyspaceCursors::new(),
 		}
 	}
 }
@@ -223,6 +227,7 @@ impl<O: Operator> Harness<O> {
 				.collect(),
 			mapping: reclaimable.mapping.map(Cutoff),
 			mapping_cursor: self.mapping_cursor.take(),
+			keyspace_cursors: std::mem::take(&mut self.keyspace_cursors),
 		};
 
 		let mut budget = self.reclaim_budget;
@@ -233,7 +238,13 @@ impl<O: Operator> Harness<O> {
 		})?;
 		txn.flush_operator_states()?;
 		self.end(txn);
-		self.mapping_cursor = outcome.cursors.into_iter().next().and_then(|(_, cursor)| cursor);
+		let SweepOutcome {
+			cursors,
+			keyspace_cursors,
+		} = outcome;
+		self.mapping_cursor = cursors.into_iter().next().and_then(|(_, cursor)| cursor);
+		self.keyspace_cursors =
+			keyspace_cursors.into_iter().next().map(|(_, cursors)| cursors).unwrap_or_default();
 
 		Ok(reclaimed_from(&report, operator_id))
 	}

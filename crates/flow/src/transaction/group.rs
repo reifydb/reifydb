@@ -724,16 +724,16 @@ impl GroupInterner {
 				 enrol the group's identity in a sweep that reclaims rows (side={side:?})"
 			);
 		}
-		let now = txn.clock().now();
-		let position = Self::stamp_position(txn);
-		let bucket = self.buckets(operator).of(position);
-		reifydb_assertions! {
-			assert!(
-				bucket != GroupRecord::RECLAIMED_BUCKET,
-				"a live side stamp landed on the bucket reserved to mark reclaimed data; the side \
-				 would read as already reclaimed while it is being written (group={id:?}, \
-				 side={side:?})"
-			);
+		let bucket = self.buckets(operator).of(Self::stamp_position(txn));
+
+		if side.ages_per_row() {
+			if self.inner.operators.entry(operator).or_default().side_now.contains_key(&(id.0, side.0)) {
+				return Ok(());
+			}
+			if txn.state_get(operator, &side_record_key(id, side))?.is_some() {
+				return Ok(());
+			}
+			return self.write_side_stamp(operator, txn, id, side, bucket, None);
 		}
 		if self.inner
 			.operators
@@ -745,8 +745,7 @@ impl GroupInterner {
 		{
 			return Ok(());
 		}
-		let key = side_record_key(id, side);
-		let previous = match txn.state_get(operator, &key)? {
+		let previous = match txn.state_get(operator, &side_record_key(id, side))? {
 			Some(row) => {
 				let previous = decode_payload::<u64>(&row)?;
 				if previous >= bucket {
@@ -756,10 +755,50 @@ impl GroupInterner {
 			}
 			None => None,
 		};
+		self.write_side_stamp(operator, txn, id, side, bucket, previous)
+	}
+
+	pub fn restamp_side(
+		&self,
+		operator: OperatorId,
+		txn: &mut FlowTransaction,
+		id: GroupId,
+		side: Keyspace,
+		oldest: DateTime,
+	) -> Result<()> {
+		let bucket = self.buckets(operator).of(Position(oldest));
+		let previous = match txn.state_get(operator, &side_record_key(id, side))? {
+			Some(row) => Some(decode_payload::<u64>(&row)?),
+			None => None,
+		};
+		if previous == Some(bucket) {
+			return Ok(());
+		}
+		self.write_side_stamp(operator, txn, id, side, bucket, previous)
+	}
+
+	fn write_side_stamp(
+		&self,
+		operator: OperatorId,
+		txn: &mut FlowTransaction,
+		id: GroupId,
+		side: Keyspace,
+		bucket: u64,
+		previous: Option<u64>,
+	) -> Result<()> {
+		reifydb_assertions! {
+			assert!(
+				bucket != GroupRecord::RECLAIMED_BUCKET,
+				"a live side stamp landed on the bucket reserved to mark reclaimed data; the side \
+				 would read as already reclaimed while it is being written (group={id:?}, \
+				 side={side:?})"
+			);
+		}
+		let now = txn.clock().now();
 		if let Some(previous) = previous {
 			txn.state_remove(operator, &side_index_key(side, previous, id))?;
 		}
-		txn.state_set(operator, &key, encode_payload(&bucket, now)?)?;
+		txn.state_set(operator, &side_record_key(id, side), encode_payload(&bucket, now)?)?;
 		txn.state_set(operator, &side_index_key(side, bucket, id), encode_payload(&1u64, now)?)?;
 		let mut guard = self.inner.operators.entry(operator).or_default();
 		guard.sides.entry(side.0).or_default().insert(bucket, id);
@@ -2478,6 +2517,17 @@ impl FlowTransaction {
 	pub fn forget_side(&mut self, operator: OperatorId, id: GroupId, side: Keyspace) -> Result<()> {
 		let interner = self.group_interner();
 		interner.forget_side(operator, self, id, side)
+	}
+
+	pub fn restamp_side(
+		&mut self,
+		operator: OperatorId,
+		id: GroupId,
+		side: Keyspace,
+		oldest: DateTime,
+	) -> Result<()> {
+		let interner = self.group_interner();
+		interner.restamp_side(operator, self, id, side, oldest)
 	}
 
 	pub fn node_position(&mut self, operator: OperatorId) -> Result<Position> {

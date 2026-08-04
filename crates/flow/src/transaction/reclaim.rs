@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::Bound;
+
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
-	interface::catalog::flow::OperatorId,
+	interface::{catalog::flow::OperatorId, store::MultiVersionRow},
 	key::{
 		EncodableKey,
 		operator_group_state::{
@@ -12,8 +14,9 @@ use reifydb_core::{
 		},
 		operator_state::OperatorStateKey,
 	},
+	state::horizon::Cutoff,
 };
-use reifydb_value::{Result, reifydb_assertions};
+use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 
 use super::FlowTransaction;
 
@@ -27,6 +30,22 @@ impl ReclaimOutcome {
 	pub const NOTHING: Self = Self {
 		removed: 0,
 		more: false,
+	};
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyspaceOutcome {
+	pub removed: usize,
+	pub more: bool,
+
+	pub oldest_survivor: Option<DateTime>,
+}
+
+impl KeyspaceOutcome {
+	pub const NOTHING: Self = Self {
+		removed: 0,
+		more: false,
+		oldest_survivor: None,
 	};
 }
 
@@ -56,8 +75,10 @@ impl FlowTransaction {
 		operator: OperatorId,
 		group: GroupId,
 		keyspace: Keyspace,
+		cutoff: Cutoff,
+		cursor: &mut Option<EncodedKey>,
 		limit: usize,
-	) -> Result<ReclaimOutcome> {
+	) -> Result<KeyspaceOutcome> {
 		reifydb_assertions! {
 			assert!(
 				!group.is_node_scope(),
@@ -72,10 +93,72 @@ impl FlowTransaction {
 				 (keyspace={keyspace:?})"
 			);
 		}
-		if group.is_node_scope() || !keyspace.is_data() {
-			return Ok(ReclaimOutcome::NOTHING);
+		if group.is_node_scope() || !keyspace.is_data() || limit == 0 {
+			return Ok(KeyspaceOutcome::NOTHING);
 		}
-		self.reclaim_range(operator, keyspace_inner_range(group, keyspace), limit)
+		if !keyspace.ages_per_row() {
+			let outcome = self.reclaim_range(operator, keyspace_inner_range(group, keyspace), limit)?;
+			return Ok(KeyspaceOutcome {
+				removed: outcome.removed,
+				more: outcome.more,
+				oldest_survivor: None,
+			});
+		}
+
+		let base = keyspace_inner_range(group, keyspace);
+		let start = match cursor.clone() {
+			Some(resume) => Bound::Excluded(resume),
+			None => base.start.clone(),
+		};
+		let batch = self.state_range(operator, EncodedKeyRange::new(start, base.end.clone()), Some(limit))?;
+		let more = batch.has_more;
+		let last = batch.items.last().map(|item| Self::inner_key(item));
+
+		let mut removed = 0;
+		let mut oldest_survivor: Option<DateTime> = None;
+		for item in &batch.items {
+			let written = item.row.updated_at();
+			reifydb_assertions! {
+				assert!(
+					!written.is_epoch(),
+					"a row in a per-row keyspace carries no write stamp. Rows are stamped by \
+					 whoever encodes them, not by the store, so an unstamped row reads as \
+					 written at the epoch and this sweep takes it on the first pass that \
+					 reaches its group - deleting live state with no error to show for it. \
+					 Every writer of {keyspace:?} must stamp from FlowTransaction::written_at \
+					 before the keyspace may opt into Keyspace::ages_per_row"
+				);
+			}
+			if written > cutoff.instant() {
+				oldest_survivor = Some(match oldest_survivor {
+					Some(current) if current <= written => current,
+					_ => written,
+				});
+				continue;
+			}
+			self.state_remove(operator, &Self::inner_group_key(item))?;
+			removed += 1;
+		}
+
+		*cursor = match more {
+			true => last,
+			false => None,
+		};
+		Ok(KeyspaceOutcome {
+			removed,
+			more,
+			oldest_survivor,
+		})
+	}
+
+	fn inner_key(item: &MultiVersionRow) -> EncodedKey {
+		EncodedKey::new(
+			OperatorStateKey::decode(&item.key).expect("state_range must return OperatorState keys").key,
+		)
+	}
+
+	fn inner_group_key(item: &MultiVersionRow) -> GroupStateKey {
+		GroupStateKey::from_framed(Self::inner_key(item)).expect("operator state rows carry a framed inner key")
 	}
 
 	pub fn reclaim_group_identity(

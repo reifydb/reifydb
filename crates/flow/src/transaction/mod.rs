@@ -455,6 +455,16 @@ impl FlowTransaction {
 		self.inner().change_coordinate
 	}
 
+	/// The event time a write made now should carry. Operator state ages against the same clock the
+	/// group buckets are derived from, so a row stamped from the wall clock would expire on a
+	/// different timeline during a replay.
+	pub fn written_at(&self) -> DateTime {
+		match self.change_coordinate() {
+			Some(coordinate) => coordinate.at,
+			None => self.clock().now(),
+		}
+	}
+
 	pub fn set_flow_watermark(&mut self, watermark: DateTime) {
 		self.inner_mut().flow_watermark = Some(watermark);
 	}

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::HashMap;
+
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::key::encoded::EncodedKey;
@@ -184,6 +186,7 @@ impl FlowEngineInner {
 					.collect(),
 				mapping: reclaimable.mapping.map(Cutoff),
 				mapping_cursor: self.mapping_cursors.entry(operator_id).or_default().clone(),
+				keyspace_cursors: self.keyspace_cursors.entry(operator_id).or_default().clone(),
 			});
 		}
 
@@ -198,6 +201,9 @@ impl FlowEngineInner {
 		})?;
 		for (operator, cursor) in outcome.cursors {
 			*self.mapping_cursors.entry(operator).or_default() = cursor;
+		}
+		for (operator, cursors) in outcome.keyspace_cursors {
+			*self.keyspace_cursors.entry(operator).or_default() = cursors;
 		}
 
 		self.record(&report, remaining);
@@ -256,10 +262,16 @@ pub struct SweepInputs {
 	pub mapping: Option<Cutoff>,
 
 	pub mapping_cursor: Option<EncodedKey>,
+
+	pub keyspace_cursors: KeyspaceCursors,
 }
+
+pub type KeyspaceCursors = HashMap<(GroupId, Keyspace), (Option<EncodedKey>, Option<DateTime>)>;
 
 pub struct SweepOutcome {
 	pub cursors: Vec<(OperatorId, Option<EncodedKey>)>,
+
+	pub keyspace_cursors: Vec<(OperatorId, KeyspaceCursors)>,
 }
 
 pub fn reclaim_nodes(
@@ -270,11 +282,13 @@ pub fn reclaim_nodes(
 	invalidate: &mut dyn FnMut(OperatorId, GroupSet),
 ) -> Result<SweepOutcome> {
 	let mut cursors = Vec::new();
+	let mut keyspace_cursor_out = Vec::new();
 	for input in inputs {
 		if remaining.exhausted() {
 			break;
 		}
 		let operator = input.operator;
+		let mut keyspace_cursors = input.keyspace_cursors;
 		let mut reclaimed = NodeReclaim::new(operator);
 
 		if let Some(cutoff) = input.identity {
@@ -289,7 +303,15 @@ pub fn reclaim_nodes(
 			if remaining.exhausted() {
 				break;
 			}
-			let retired = reclaim_keyspace(txn, operator, keyspace, cutoff, remaining, report)?;
+			let retired = reclaim_keyspace(
+				txn,
+				operator,
+				keyspace,
+				cutoff,
+				&mut keyspace_cursors,
+				remaining,
+				report,
+			)?;
 			if !retired.is_empty() {
 				invalidate(operator, GroupSet::new(retired.clone()));
 			}
@@ -322,6 +344,7 @@ pub fn reclaim_nodes(
 			});
 		}
 		cursors.push((operator, cursor));
+		keyspace_cursor_out.push((operator, keyspace_cursors));
 
 		if let Some(cutoff) = input.data {
 			let released = reclaim_data(txn, operator, cutoff, remaining, report)?;
@@ -338,6 +361,7 @@ pub fn reclaim_nodes(
 	}
 	Ok(SweepOutcome {
 		cursors,
+		keyspace_cursors: keyspace_cursor_out,
 	})
 }
 
@@ -384,6 +408,7 @@ fn reclaim_keyspace(
 	operator: OperatorId,
 	keyspace: Keyspace,
 	cutoff: Cutoff,
+	cursors: &mut KeyspaceCursors,
 	remaining: &mut ReclaimBudget,
 	report: &mut ReclaimReport,
 ) -> Result<Vec<GroupId>> {
@@ -395,18 +420,36 @@ fn reclaim_keyspace(
 			continue;
 		}
 		remaining.groups -= 1;
-		let outcome = txn.reclaim_group_keyspace(operator, group, keyspace, remaining.rows)?;
+		let (mut cursor, seen) = cursors.get(&(group, keyspace)).cloned().unwrap_or_default();
+		let outcome =
+			txn.reclaim_group_keyspace(operator, group, keyspace, cutoff, &mut cursor, remaining.rows)?;
 		remaining.rows -= outcome.removed;
 		report.rows += outcome.removed;
+		let oldest = older_of(seen, outcome.oldest_survivor);
 		if outcome.more {
+			cursors.insert((group, keyspace), (cursor, oldest));
 			report.backlog += 1;
 			continue;
 		}
-		txn.forget_side(operator, group, keyspace)?;
-		retired.push(group);
+		cursors.remove(&(group, keyspace));
+		match oldest {
+			Some(at) => txn.restamp_side(operator, group, keyspace, at)?,
+			None => {
+				txn.forget_side(operator, group, keyspace)?;
+				retired.push(group);
+			}
+		}
 		report.keyspace_groups += 1;
 	}
 	Ok(retired)
+}
+
+fn older_of(left: Option<DateTime>, right: Option<DateTime>) -> Option<DateTime> {
+	match (left, right) {
+		(Some(left), Some(right)) => Some(left.min(right)),
+		(Some(only), None) | (None, Some(only)) => Some(only),
+		(None, None) => None,
+	}
 }
 
 #[instrument(name = "lifecycle::operator::group::identity", level = "debug", skip_all, fields(operator = operator.0))]
@@ -577,6 +620,7 @@ mod tests {
 			keyspaces: Vec::new(),
 			mapping: None,
 			mapping_cursor: None,
+			keyspace_cursors: KeyspaceCursors::new(),
 		}
 	}
 
@@ -629,6 +673,7 @@ mod tests {
 				keyspaces: vec![(Keyspace::JOIN_LEFT, Cutoff(DateTime::from_millis(800)))],
 				mapping: None,
 				mapping_cursor: None,
+				keyspace_cursors: KeyspaceCursors::new(),
 			}],
 			&mut txn,
 			&mut remaining,
@@ -663,6 +708,7 @@ mod tests {
 				keyspaces: vec![(Keyspace::JOIN_LEFT, cutoff), (Keyspace::JOIN_RIGHT, cutoff)],
 				mapping: None,
 				mapping_cursor: None,
+				keyspace_cursors: KeyspaceCursors::new(),
 			}],
 			&mut txn,
 			&mut remaining,
@@ -786,6 +832,7 @@ mod tests {
 			NODE,
 			Keyspace::JOIN_LEFT,
 			Cutoff(DateTime::from_millis(800)),
+			&mut KeyspaceCursors::new(),
 			&mut remaining,
 			&mut report,
 		)
@@ -810,19 +857,34 @@ mod tests {
 		let mut txn = deferred(&engine);
 		let id = seed_sides(&mut txn, "keyed", 500, 900);
 		let cutoff = Cutoff(DateTime::from_millis(800));
+		let mut cursors = KeyspaceCursors::new();
 
 		let mut remaining = budget(10, 1);
 		let mut report = ReclaimReport::default();
-		let partial =
-			reclaim_keyspace(&mut txn, NODE, Keyspace::JOIN_LEFT, cutoff, &mut remaining, &mut report)
-				.unwrap();
+		let partial = reclaim_keyspace(
+			&mut txn,
+			NODE,
+			Keyspace::JOIN_LEFT,
+			cutoff,
+			&mut cursors,
+			&mut remaining,
+			&mut report,
+		)
+		.unwrap();
 		assert!(partial.is_empty(), "an unfinished side must not be handed back");
 
 		let mut remaining = budget(10, 100);
 		let mut report = ReclaimReport::default();
-		let retired =
-			reclaim_keyspace(&mut txn, NODE, Keyspace::JOIN_LEFT, cutoff, &mut remaining, &mut report)
-				.unwrap();
+		let retired = reclaim_keyspace(
+			&mut txn,
+			NODE,
+			Keyspace::JOIN_LEFT,
+			cutoff,
+			&mut cursors,
+			&mut remaining,
+			&mut report,
+		)
+		.unwrap();
 
 		assert_eq!(retired, vec![id], "a drained side hands its group back for RAM invalidation");
 	}
@@ -837,10 +899,29 @@ mod tests {
 		let mut remaining = budget(10, 100);
 		let mut report = ReclaimReport::default();
 		let cutoff = Cutoff(DateTime::from_millis(800));
-		reclaim_keyspace(&mut txn, NODE, Keyspace::JOIN_LEFT, cutoff, &mut remaining, &mut report).unwrap();
+		let mut cursors = KeyspaceCursors::new();
+		reclaim_keyspace(
+			&mut txn,
+			NODE,
+			Keyspace::JOIN_LEFT,
+			cutoff,
+			&mut cursors,
+			&mut remaining,
+			&mut report,
+		)
+		.unwrap();
 
 		let mut second = ReclaimReport::default();
-		reclaim_keyspace(&mut txn, NODE, Keyspace::JOIN_LEFT, cutoff, &mut remaining, &mut second).unwrap();
+		reclaim_keyspace(
+			&mut txn,
+			NODE,
+			Keyspace::JOIN_LEFT,
+			cutoff,
+			&mut cursors,
+			&mut remaining,
+			&mut second,
+		)
+		.unwrap();
 
 		assert_eq!(second.keyspace_groups, 0, "a drained side must not come back");
 		assert_eq!(second.rows, 0);
@@ -863,6 +944,7 @@ mod tests {
 			NODE,
 			Keyspace::JOIN_LEFT,
 			Cutoff(DateTime::from_millis(800)),
+			&mut KeyspaceCursors::new(),
 			&mut remaining,
 			&mut report,
 		)
@@ -896,7 +978,16 @@ mod tests {
 		let mut remaining = budget(10, 1);
 		let mut report = ReclaimReport::default();
 
-		reclaim_keyspace(&mut txn, NODE, Keyspace::JOIN_LEFT, cutoff, &mut remaining, &mut report).unwrap();
+		reclaim_keyspace(
+			&mut txn,
+			NODE,
+			Keyspace::JOIN_LEFT,
+			cutoff,
+			&mut KeyspaceCursors::new(),
+			&mut remaining,
+			&mut report,
+		)
+		.unwrap();
 
 		assert_eq!(report.rows, 1, "the budget allowed exactly one row");
 		assert_eq!(report.keyspace_groups, 0, "an unfinished side is not a retired side");
@@ -905,7 +996,16 @@ mod tests {
 
 		let mut remaining = budget(10, 100);
 		let mut report = ReclaimReport::default();
-		reclaim_keyspace(&mut txn, NODE, Keyspace::JOIN_LEFT, cutoff, &mut remaining, &mut report).unwrap();
+		reclaim_keyspace(
+			&mut txn,
+			NODE,
+			Keyspace::JOIN_LEFT,
+			cutoff,
+			&mut KeyspaceCursors::new(),
+			&mut remaining,
+			&mut report,
+		)
+		.unwrap();
 
 		assert_eq!(report.keyspace_groups, 1, "the second pass finishes it");
 		assert_eq!(side_rows(&mut txn, id, Keyspace::JOIN_LEFT), 0);

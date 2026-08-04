@@ -61,6 +61,7 @@ use crate::operator::native::native_operator_loader;
 use crate::{
 	builder::CustomOperators,
 	engine::cache::{ExecutionLevelCache, ScheduleCache},
+	execution::reclaim::KeyspaceCursors,
 	operator::{OperatorCell, metrics::OperatorSampleRegistry},
 };
 
@@ -80,6 +81,8 @@ pub struct FlowEngineInner {
 	pub(crate) runtime_context: RuntimeContext,
 	pub(crate) custom_operators: CustomOperators,
 	pub(crate) mapping_cursors: DashMap<OperatorId, Option<EncodedKey>>,
+
+	pub(crate) keyspace_cursors: DashMap<OperatorId, KeyspaceCursors>,
 	pub(crate) substrate: FlowSubstrate,
 	pub(crate) operator_samples: OperatorSampleRegistry,
 	pub(crate) state_budget: OperatorStateBudgetHandle,
@@ -171,6 +174,7 @@ impl FlowEngineInner {
 			runtime_context,
 			custom_operators,
 			mapping_cursors: DashMap::new(),
+			keyspace_cursors: DashMap::new(),
 			substrate,
 			operator_samples,
 			state_budget,

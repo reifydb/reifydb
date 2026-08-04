@@ -131,10 +131,14 @@ impl SnapshotLedger {
 			}
 			self.unpin(txn, group, right, previous)?;
 		}
-		txn.stamp_side(self.operator_id, group, Keyspace::JOIN_PUBLISHED)?;
-		txn.stamp_side(self.operator_id, group, Keyspace::JOIN_PIN)?;
-		state_set(self.operator_id, txn, &key, encode_version(version))?;
+		self.touch(txn, group)?;
+		state_set(self.operator_id, txn, &key, encode_version(txn, version))?;
 		self.pin(txn, group, right, version)
+	}
+
+	pub(crate) fn touch(&self, txn: &mut FlowTransaction, group: GroupId) -> Result<()> {
+		txn.stamp_side(self.operator_id, group, Keyspace::JOIN_PUBLISHED)?;
+		txn.stamp_side(self.operator_id, group, Keyspace::JOIN_PIN)
 	}
 
 	pub(crate) fn published(
@@ -164,9 +168,8 @@ impl SnapshotLedger {
 		if state_get(self.operator_id, txn, &key)?.is_some() {
 			return Ok(());
 		}
-		txn.stamp_side(self.operator_id, group, Keyspace::JOIN_PUBLISHED)?;
-		txn.stamp_side(self.operator_id, group, Keyspace::JOIN_PIN)?;
-		state_set(self.operator_id, txn, &key, encode_version(ContentVersion(0)))
+		self.touch(txn, group)?;
+		state_set(self.operator_id, txn, &key, encode_version(txn, ContentVersion(0)))
 	}
 
 	pub(crate) fn release_unmatched(
@@ -211,7 +214,7 @@ impl SnapshotLedger {
 			return Ok(());
 		}
 		pin.retired = Some(content.0.to_vec());
-		state_set(self.operator_id, txn, &key, encode_pin(&pin)?)
+		state_set(self.operator_id, txn, &key, encode_pin(txn, &pin)?)
 	}
 
 	fn pin(
@@ -230,7 +233,7 @@ impl SnapshotLedger {
 			},
 		};
 		pin.refs += 1;
-		state_set(self.operator_id, txn, &key, encode_pin(&pin)?)
+		state_set(self.operator_id, txn, &key, encode_pin(txn, &pin)?)
 	}
 
 	fn unpin(
@@ -249,7 +252,7 @@ impl SnapshotLedger {
 		let content = pin.retired.clone().map(|bytes| EncodedRow(CowVec::new(bytes)));
 		match pin.refs {
 			0 => state_remove(self.operator_id, txn, &key)?,
-			_ => state_set(self.operator_id, txn, &key, encode_pin(&pin)?)?,
+			_ => state_set(self.operator_id, txn, &key, encode_pin(txn, &pin)?)?,
 		}
 		Ok(content)
 	}
@@ -269,10 +272,12 @@ fn decode_published(bytes: &[u8]) -> Option<PublishedRight> {
 	}
 }
 
-fn encode_version(version: ContentVersion) -> EncodedRow {
+fn encode_version(txn: &FlowTransaction, version: ContentVersion) -> EncodedRow {
 	let shape = RowShape::operator_state();
 	let mut row = shape.allocate();
 	shape.set_blob(&mut row, 0, &Blob::from(version.0.to_le_bytes().to_vec()));
+	let at = txn.written_at();
+	row.set_timestamps(at, at);
 	row.freeze()
 }
 
@@ -288,7 +293,7 @@ fn decode_version(row: &EncodedRow) -> Result<ContentVersion> {
 	Ok(ContentVersion(u64::from_le_bytes(bytes)))
 }
 
-fn encode_pin(pin: &Pin) -> Result<EncodedRow> {
+fn encode_pin(txn: &FlowTransaction, pin: &Pin) -> Result<EncodedRow> {
 	let serialized = to_stdvec(pin).map_err(|e| {
 		Error::from(FlowStateError::Encode {
 			state: "snapshot pin",
@@ -298,6 +303,8 @@ fn encode_pin(pin: &Pin) -> Result<EncodedRow> {
 	let shape = RowShape::operator_state();
 	let mut row = shape.allocate();
 	shape.set_blob(&mut row, 0, &Blob::from(serialized));
+	let at = txn.written_at();
+	row.set_timestamps(at, at);
 	Ok(row.freeze())
 }
 
@@ -695,6 +702,26 @@ pub(crate) fn withdraw_slot(
 		return Ok(Some(ctx.operator.join_left_with_slot(left, &[left_idx], &slot)));
 	}
 	Ok(None)
+}
+
+pub(crate) fn retain_published_slot(
+	txn: &mut FlowTransaction,
+	ctx: &SnapshotJoinContext,
+	group: GroupId,
+	left: RowNumber,
+) -> Result<Option<Columns>> {
+	let Some((content, slot)) = ctx.right_store.slot(txn, group)? else {
+		return Ok(None);
+	};
+	let mut records = ctx.ledger.published(txn, group, left)?;
+	let Some((right, recorded)) = records.pop() else {
+		return Ok(None);
+	};
+	if !records.is_empty() || right != PublishedRight::Row(SLOT) || recorded != ContentVersion::of(&content) {
+		return Ok(None);
+	}
+	ctx.ledger.touch(txn, group)?;
+	Ok(Some(slot))
 }
 
 pub(crate) fn retire_slot(txn: &mut FlowTransaction, ctx: &SnapshotJoinContext, key_hash: &Hash128) -> Result<()> {

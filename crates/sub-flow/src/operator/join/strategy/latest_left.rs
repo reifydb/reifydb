@@ -13,7 +13,7 @@ use super::{
 		update_row_in_entry,
 	},
 	latest::{overwrite_right_slot, read_right_slot, remove_right_slot},
-	latest_inner::update_diff,
+	latest_inner::{republished_slot, update_diff},
 };
 use crate::operator::join::{
 	snapshot::{SnapshotJoinContext, publish_slot, retire_slot, withdraw_slot},
@@ -263,6 +263,20 @@ impl LatestLeftHashJoin {
 					let mut result = Vec::new();
 					let withdraw_group = ctx.state.right.group_of(txn, keys.pre)?;
 					for &idx in indices {
+						if let Some(slot) = republished_slot(
+							txn,
+							&snapshot_ctx,
+							withdraw_group,
+							pre,
+							post,
+							idx,
+						)? {
+							result.push(Diff::update(
+								ctx.operator.join_left_with_slot(pre, &[idx], &slot),
+								ctx.operator.join_left_with_slot(post, &[idx], &slot),
+							));
+							continue;
+						}
 						let withdrawn = match withdraw_group {
 							Some(group) => {
 								withdraw_slot(txn, &snapshot_ctx, group, pre, idx)?

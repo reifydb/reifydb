@@ -1076,7 +1076,7 @@ mod span_tests {
 			.lookup_group(op.operator, &group_bytes(&hash))
 			.unwrap()
 			.expect("a stored left row must have interned its key");
-		let cutoff = Cutoff(DateTime::from_millis(20));
+		let cutoff = cutoff_at(20);
 		for keyspace in [Keyspace::JOIN_LEFT, Keyspace::JOIN_PUBLISHED, Keyspace::JOIN_PIN] {
 			assert_eq!(
 				txn.due_side_groups(op.operator, keyspace, cutoff, 16).unwrap(),
@@ -1099,7 +1099,7 @@ mod span_tests {
 		at(&mut txn, 10);
 		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x01)).unwrap();
 
-		let cutoff = Cutoff(DateTime::from_millis(20));
+		let cutoff = cutoff_at(20);
 		assert!(!txn.due_side_groups(op.operator, Keyspace::JOIN_LEFT, cutoff, 16).unwrap().is_empty());
 		for keyspace in [Keyspace::JOIN_PUBLISHED, Keyspace::JOIN_PIN] {
 			assert!(
@@ -1109,17 +1109,72 @@ mod span_tests {
 		}
 	}
 
+	#[test]
+	fn a_ledger_entry_past_the_cutoff_is_reclaimed_while_its_key_keeps_publishing() {
+		// The sweep gates on a per-group stamp that every publish re-arms, and reclaims the group's
+		// whole keyspace at once when it finally goes stale. A key that never goes quiet - the quote
+		// mint on a market join is SOL - is therefore never due, and one published row per left row
+		// accumulates for the life of the operator. This is the mapping leak in a second keyspace.
+		//
+		// The second assertion is the half that rules out the easy fix: making the group due would
+		// take the live left row's record with it, and its joined row could never be withdrawn.
+		let engine = TestEngine::new();
+		let op = make_op(80, Some(ttl(50)), None, &engine);
+		let mut txn = engine.flow_txn().deferred();
+		let ledger = SnapshotLedger::new(op.operator);
+
+		let right = Store::new(op.operator, JoinSide::Right);
+		let hash = Hash128(0xC0FFEE);
+		let group = right.group_for(&mut txn, &hash).unwrap();
+		let slot = RowNumber::MAX;
+		let content = op_row(0x01);
+
+		at(&mut txn, 0);
+		ledger.publish(&mut txn, group, RowNumber(1), slot, &content).unwrap();
+		at(&mut txn, 40);
+		ledger.publish(&mut txn, group, RowNumber(2), slot, &content).unwrap();
+
+		let cutoff = cutoff_at(10);
+		for due in txn.due_side_groups(op.operator, Keyspace::JOIN_PUBLISHED, cutoff, 16).unwrap() {
+			txn.reclaim_group_keyspace(op.operator, due, Keyspace::JOIN_PUBLISHED, cutoff, &mut None, 100)
+				.unwrap();
+		}
+
+		assert!(
+			ledger.published(&mut txn, group, RowNumber(1)).unwrap().is_empty(),
+			"a record stamped at or before the cutoff must be reclaimed even though a later publish \
+			 under the same key re-armed the group's stamp"
+		);
+		assert_eq!(
+			ledger.published(&mut txn, group, RowNumber(2)).unwrap().len(),
+			1,
+			"and the record of a left row still inside the ttl must survive that same sweep"
+		);
+	}
+
 	fn ttl(millis: i64) -> Duration {
 		Duration::from_milliseconds_const(millis)
 	}
+
+	// Every test time is an offset from this base rather than from the epoch. A row written at the
+	// epoch is byte-identical to one whose writer forgot to stamp it, which is precisely what the
+	// per-row sweep asserts against, so a test starting at zero would trip that guard for the wrong
+	// reason - or worse, hide a real unstamped writer behind a test that looks correct.
+	const BASE_MS: u64 = 1_000_000;
 
 	fn at(txn: &mut FlowTransaction, millis: u64) {
 		// Mappings are stamped from the change coordinate, not the clock, so a write is placed in
 		// event time by setting it rather than by advancing a mock clock.
 		txn.set_change_coordinate(ChangeCoordinate {
-			at: DateTime::from_millis(millis),
+			at: DateTime::from_millis(BASE_MS + millis),
 			version: CommitVersion(0),
 		});
+	}
+
+	fn cutoff_at(millis: u64) -> Cutoff {
+		// Shares BASE_MS with `at` so the two stay on one timeline; a cutoff built straight from
+		// from_millis would sit a thousand seconds before every write and reclaim nothing.
+		Cutoff(DateTime::from_millis(BASE_MS + millis))
 	}
 
 	fn make_op(
@@ -1160,14 +1215,7 @@ mod span_tests {
 		txn.get_or_create_row_number(op.operator, GroupId::NODE_SCOPE, &young).unwrap();
 
 		let mut cursor = None;
-		txn.evict_row_numbers(
-			op.operator,
-			GroupId::NODE_SCOPE,
-			Cutoff(DateTime::from_millis(10)),
-			&mut cursor,
-			100,
-		)
-		.unwrap();
+		txn.evict_row_numbers(op.operator, GroupId::NODE_SCOPE, cutoff_at(10), &mut cursor, 100).unwrap();
 
 		assert!(
 			txn.get_row_number(op.operator, GroupId::NODE_SCOPE, &old).unwrap().is_none(),
@@ -1193,14 +1241,7 @@ mod span_tests {
 		let (n1, _) = txn.get_or_create_row_number(op.operator, GroupId::NODE_SCOPE, &first).unwrap();
 
 		let mut cursor = None;
-		txn.evict_row_numbers(
-			op.operator,
-			GroupId::NODE_SCOPE,
-			Cutoff(DateTime::from_millis(100)),
-			&mut cursor,
-			100,
-		)
-		.unwrap();
+		txn.evict_row_numbers(op.operator, GroupId::NODE_SCOPE, cutoff_at(100), &mut cursor, 100).unwrap();
 		assert!(txn.get_row_number(op.operator, GroupId::NODE_SCOPE, &first).unwrap().is_none());
 
 		let second = JoinOperator::make_composite_key(RowNumber(7), RowNumber(7));
