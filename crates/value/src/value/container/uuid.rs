@@ -11,12 +11,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	storage::{Cow, DataBitVec, DataVec, Storage},
-	util::cowvec::CowVec,
+	storage::{DataBitVec, DataVec, Plain, Storage},
 	value::{Value, is::IsUuid},
 };
 
-pub struct UuidContainer<T, S: Storage = Cow>
+pub struct UuidContainer<T, S: Storage = Plain>
 where
 	T: IsUuid,
 {
@@ -49,11 +48,11 @@ where
 	}
 }
 
-impl<T: IsUuid + Serialize> Serialize for UuidContainer<T, Cow> {
+impl<T: IsUuid + Serialize> Serialize for UuidContainer<T, Plain> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a, T: Clone + PartialEq + Serialize> {
-			data: &'a CowVec<T>,
+			data: &'a Vec<T>,
 		}
 		Helper {
 			data: &self.data,
@@ -62,11 +61,11 @@ impl<T: IsUuid + Serialize> Serialize for UuidContainer<T, Cow> {
 	}
 }
 
-impl<'de, T: IsUuid + Deserialize<'de>> Deserialize<'de> for UuidContainer<T, Cow> {
+impl<'de, T: IsUuid + Deserialize<'de>> Deserialize<'de> for UuidContainer<T, Plain> {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper<T: Clone + PartialEq> {
-			data: CowVec<T>,
+			data: Vec<T>,
 		}
 		let h = Helper::deserialize(deserializer)?;
 		Ok(UuidContainer {
@@ -83,25 +82,25 @@ impl<T: IsUuid, S: Storage> Deref for UuidContainer<T, S> {
 	}
 }
 
-impl<T> UuidContainer<T, Cow>
+impl<T> UuidContainer<T, Plain>
 where
 	T: IsUuid + Clone + Debug + Default,
 {
 	pub fn new(data: Vec<T>) -> Self {
 		Self {
-			data: CowVec::new(data),
+			data,
 		}
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
-			data: CowVec::with_capacity(capacity),
+			data: Vec::with_capacity(capacity),
 		}
 	}
 
 	pub fn from_vec(data: Vec<T>) -> Self {
 		Self {
-			data: CowVec::new(data),
+			data,
 		}
 	}
 }
@@ -236,7 +235,7 @@ where
 	}
 }
 
-impl<T> Default for UuidContainer<T, Cow>
+impl<T> Default for UuidContainer<T, Plain>
 where
 	T: IsUuid + Clone + Debug + Default,
 {

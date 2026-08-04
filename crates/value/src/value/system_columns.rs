@@ -6,17 +6,17 @@ use std::fmt::{self, Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	util::{bitvec::BitVec, cowvec::CowVec},
+	util::bitvec::BitVec,
 	value::{datetime::DateTime, partition::Partition, row_number::RowNumber},
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SystemColumns {
-	row_numbers: CowVec<RowNumber>,
-	partitions: CowVec<Partition>,
-	created_at: CowVec<DateTime>,
-	updated_at: CowVec<DateTime>,
-	time: CowVec<DateTime>,
+	row_numbers: Vec<RowNumber>,
+	partitions: Vec<Partition>,
+	created_at: Vec<DateTime>,
+	updated_at: Vec<DateTime>,
+	time: Vec<DateTime>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -73,31 +73,31 @@ pub enum SystemColumnsError {
 }
 
 #[inline]
-fn gather<T: Copy + PartialEq>(src: &CowVec<T>, indices: &[usize]) -> CowVec<T> {
+fn gather<T: Copy + PartialEq>(src: &Vec<T>, indices: &[usize]) -> Vec<T> {
 	if src.is_empty() {
-		return CowVec::default();
+		return Vec::new();
 	}
-	CowVec::new(indices.iter().map(|&i| src[i]).collect())
+	indices.iter().map(|&i| src[i]).collect()
 }
 
 #[inline]
-fn retain<T: Copy + PartialEq>(src: &CowVec<T>, mask: &BitVec) -> CowVec<T> {
+fn retain<T: Copy + PartialEq>(src: &Vec<T>, mask: &BitVec) -> Vec<T> {
 	if src.is_empty() {
-		return CowVec::default();
+		return Vec::new();
 	}
-	CowVec::new(src.iter().enumerate().filter(|(i, _)| *i < mask.len() && mask.get(*i)).map(|(_, &v)| v).collect())
+	src.iter().enumerate().filter(|(i, _)| *i < mask.len() && mask.get(*i)).map(|(_, &v)| v).collect()
 }
 
 #[inline]
-fn head<T: Copy + PartialEq>(src: &CowVec<T>, n: usize) -> CowVec<T> {
+fn head<T: Copy + PartialEq>(src: &Vec<T>, n: usize) -> Vec<T> {
 	if src.is_empty() {
-		return CowVec::default();
+		return Vec::new();
 	}
-	src.take(n)
+	src[..n.min(src.len())].to_vec()
 }
 
 #[inline]
-fn concat<T: Copy + PartialEq>(dst: &mut CowVec<T>, src: &CowVec<T>) {
+fn concat<T: Copy + PartialEq>(dst: &mut Vec<T>, src: &Vec<T>) {
 	if src.is_empty() {
 		return;
 	}
@@ -117,11 +117,11 @@ impl SystemColumns {
 		time: Vec<DateTime>,
 	) -> Self {
 		Self {
-			row_numbers: CowVec::new(row_numbers),
-			partitions: CowVec::new(partitions),
-			created_at: CowVec::new(created_at),
-			updated_at: CowVec::new(updated_at),
-			time: CowVec::new(time),
+			row_numbers,
+			partitions,
+			created_at,
+			updated_at,
+			time,
 		}
 	}
 
@@ -132,23 +132,23 @@ impl SystemColumns {
 	}
 
 	pub fn set_row_numbers(&mut self, row_numbers: Vec<RowNumber>) {
-		self.row_numbers = CowVec::new(row_numbers);
+		self.row_numbers = row_numbers;
 	}
 
 	pub fn set_partitions(&mut self, partitions: Vec<Partition>) {
-		self.partitions = CowVec::new(partitions);
+		self.partitions = partitions;
 	}
 
 	pub fn set_created_at(&mut self, created_at: Vec<DateTime>) {
-		self.created_at = CowVec::new(created_at);
+		self.created_at = created_at;
 	}
 
 	pub fn set_updated_at(&mut self, updated_at: Vec<DateTime>) {
-		self.updated_at = CowVec::new(updated_at);
+		self.updated_at = updated_at;
 	}
 
 	pub fn set_time(&mut self, time: Vec<DateTime>) {
-		self.time = CowVec::new(time);
+		self.time = time;
 	}
 }
 
@@ -594,7 +594,7 @@ mod tests {
 	#[should_panic(expected = "time")]
 	fn assert_invariants_rejects_a_partial_sidecar() {
 		let mut partial = populated();
-		partial.time = CowVec::new(vec![dt(1)]);
+		partial.time = vec![dt(1)];
 		partial.assert_invariants(4, "test");
 	}
 }

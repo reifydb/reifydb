@@ -11,12 +11,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	storage::{Cow, DataBitVec, DataVec, Storage},
-	util::cowvec::CowVec,
+	storage::{DataBitVec, DataVec, Plain, Storage},
 	value::{Value, identity::IdentityId, value_type::ValueType},
 };
 
-pub struct IdentityIdContainer<S: Storage = Cow> {
+pub struct IdentityIdContainer<S: Storage = Plain> {
 	data: S::Vec<IdentityId>,
 }
 
@@ -46,11 +45,11 @@ where
 	}
 }
 
-impl Serialize for IdentityIdContainer<Cow> {
+impl Serialize for IdentityIdContainer<Plain> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a> {
-			data: &'a CowVec<IdentityId>,
+			data: &'a Vec<IdentityId>,
 		}
 		Helper {
 			data: &self.data,
@@ -59,11 +58,11 @@ impl Serialize for IdentityIdContainer<Cow> {
 	}
 }
 
-impl<'de> Deserialize<'de> for IdentityIdContainer<Cow> {
+impl<'de> Deserialize<'de> for IdentityIdContainer<Plain> {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper {
-			data: CowVec<IdentityId>,
+			data: Vec<IdentityId>,
 		}
 		let h = Helper::deserialize(deserializer)?;
 		Ok(IdentityIdContainer {
@@ -80,22 +79,22 @@ impl<S: Storage> Deref for IdentityIdContainer<S> {
 	}
 }
 
-impl IdentityIdContainer<Cow> {
+impl IdentityIdContainer<Plain> {
 	pub fn new(data: Vec<IdentityId>) -> Self {
 		Self {
-			data: CowVec::new(data),
+			data,
 		}
 	}
 
 	pub fn from_vec(data: Vec<IdentityId>) -> Self {
 		Self {
-			data: CowVec::new(data),
+			data,
 		}
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
-			data: CowVec::with_capacity(capacity),
+			data: Vec::with_capacity(capacity),
 		}
 	}
 }
@@ -224,13 +223,13 @@ impl<S: Storage> IdentityIdContainer<S> {
 	}
 }
 
-impl From<Vec<IdentityId>> for IdentityIdContainer<Cow> {
+impl From<Vec<IdentityId>> for IdentityIdContainer<Plain> {
 	fn from(data: Vec<IdentityId>) -> Self {
 		Self::from_vec(data)
 	}
 }
 
-impl FromIterator<Option<IdentityId>> for IdentityIdContainer<Cow> {
+impl FromIterator<Option<IdentityId>> for IdentityIdContainer<Plain> {
 	fn from_iter<T: IntoIterator<Item = Option<IdentityId>>>(iter: T) -> Self {
 		let mut container = Self::with_capacity(0);
 		for item in iter {

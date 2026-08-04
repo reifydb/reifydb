@@ -237,8 +237,8 @@ impl QueryNode for QueueScan {
 
 		decode_dictionary_columns(&mut columns, &self.dictionaries, rx)?;
 
-		columns.columns.make_mut().truncate(declared);
-		columns.names.make_mut().truncate(declared);
+		columns.columns.truncate(declared);
+		columns.names.truncate(declared);
 
 		Ok(Some(columns))
 	}

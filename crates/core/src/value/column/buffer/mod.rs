@@ -23,7 +23,7 @@ pub mod take;
 use std::fmt;
 
 use reifydb_value::{
-	storage::{Cow, DataBitVec, Storage},
+	storage::{DataBitVec, Plain, Storage},
 	util::bitvec::BitVec,
 	value::{
 		Value,
@@ -46,7 +46,7 @@ use reifydb_value::{
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-pub enum ColumnBuffer<S: Storage = Cow> {
+pub enum ColumnBuffer<S: Storage = Plain> {
 	Bool(BoolContainer<S>),
 	Float4(NumberContainer<f32, S>),
 	Float8(NumberContainer<f64, S>),
@@ -264,7 +264,7 @@ impl<S: Storage> PartialEq for ColumnBuffer<S> {
 	}
 }
 
-impl fmt::Debug for ColumnBuffer<Cow> {
+impl fmt::Debug for ColumnBuffer<Plain> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			ColumnBuffer::Bool(c) => f.debug_tuple("Bool").field(c).finish(),
@@ -322,7 +322,7 @@ impl fmt::Debug for ColumnBuffer<Cow> {
 	}
 }
 
-impl Serialize for ColumnBuffer<Cow> {
+impl Serialize for ColumnBuffer<Plain> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		enum Helper<'a> {
@@ -446,7 +446,7 @@ impl Serialize for ColumnBuffer<Cow> {
 	}
 }
 
-impl<'de> Deserialize<'de> for ColumnBuffer<Cow> {
+impl<'de> Deserialize<'de> for ColumnBuffer<Plain> {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
 		#[derive(Deserialize)]
 		enum Helper {

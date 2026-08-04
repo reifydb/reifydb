@@ -11,8 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	storage::{Cow, DataBitVec, DataVec, Storage},
-	util::cowvec::CowVec,
+	storage::{DataBitVec, DataVec, Plain, Storage},
 	value::{
 		Value,
 		dictionary::{DictionaryEntryId, DictionaryId},
@@ -20,7 +19,7 @@ use crate::{
 	},
 };
 
-pub struct DictionaryContainer<S: Storage = Cow> {
+pub struct DictionaryContainer<S: Storage = Plain> {
 	data: S::Vec<DictionaryEntryId>,
 	dictionary_id: Option<DictionaryId>,
 }
@@ -55,11 +54,11 @@ where
 	}
 }
 
-impl Serialize for DictionaryContainer<Cow> {
+impl Serialize for DictionaryContainer<Plain> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a> {
-			data: &'a CowVec<DictionaryEntryId>,
+			data: &'a Vec<DictionaryEntryId>,
 			dictionary_id: Option<DictionaryId>,
 		}
 		Helper {
@@ -70,11 +69,11 @@ impl Serialize for DictionaryContainer<Cow> {
 	}
 }
 
-impl<'de> Deserialize<'de> for DictionaryContainer<Cow> {
+impl<'de> Deserialize<'de> for DictionaryContainer<Plain> {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper {
-			data: CowVec<DictionaryEntryId>,
+			data: Vec<DictionaryEntryId>,
 			dictionary_id: Option<DictionaryId>,
 		}
 		let h = Helper::deserialize(deserializer)?;
@@ -93,24 +92,24 @@ impl<S: Storage> Deref for DictionaryContainer<S> {
 	}
 }
 
-impl DictionaryContainer<Cow> {
+impl DictionaryContainer<Plain> {
 	pub fn new(data: Vec<DictionaryEntryId>) -> Self {
 		Self {
-			data: CowVec::new(data),
+			data,
 			dictionary_id: None,
 		}
 	}
 
 	pub fn from_vec(data: Vec<DictionaryEntryId>) -> Self {
 		Self {
-			data: CowVec::new(data),
+			data,
 			dictionary_id: None,
 		}
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
-			data: CowVec::with_capacity(capacity),
+			data: Vec::with_capacity(capacity),
 			dictionary_id: None,
 		}
 	}
@@ -251,13 +250,13 @@ impl<S: Storage> DictionaryContainer<S> {
 	}
 }
 
-impl From<Vec<DictionaryEntryId>> for DictionaryContainer<Cow> {
+impl From<Vec<DictionaryEntryId>> for DictionaryContainer<Plain> {
 	fn from(data: Vec<DictionaryEntryId>) -> Self {
 		Self::from_vec(data)
 	}
 }
 
-impl FromIterator<Option<DictionaryEntryId>> for DictionaryContainer<Cow> {
+impl FromIterator<Option<DictionaryEntryId>> for DictionaryContainer<Plain> {
 	fn from_iter<T: IntoIterator<Item = Option<DictionaryEntryId>>>(iter: T) -> Self {
 		let mut container = Self::with_capacity(0);
 		for item in iter {

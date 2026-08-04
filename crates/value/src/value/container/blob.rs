@@ -10,11 +10,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	storage::{Cow, Storage},
+	storage::{Plain, Storage},
 	value::{Value, blob::Blob, container::varlen::VarlenContainer, value_type::ValueType},
 };
 
-pub struct BlobContainer<S: Storage = Cow> {
+pub struct BlobContainer<S: Storage = Plain> {
 	inner: VarlenContainer<S>,
 }
 
@@ -44,13 +44,13 @@ where
 	}
 }
 
-impl Serialize for BlobContainer<Cow> {
+impl Serialize for BlobContainer<Plain> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		self.inner.serialize(serializer)
 	}
 }
 
-impl<'de> Deserialize<'de> for BlobContainer<Cow> {
+impl<'de> Deserialize<'de> for BlobContainer<Plain> {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		let inner = VarlenContainer::deserialize(deserializer)?;
 		Ok(Self {
@@ -59,7 +59,7 @@ impl<'de> Deserialize<'de> for BlobContainer<Cow> {
 	}
 }
 
-impl BlobContainer<Cow> {
+impl BlobContainer<Plain> {
 	pub fn new(data: Vec<Blob>) -> Self {
 		Self::from_vec(data)
 	}
@@ -168,7 +168,7 @@ impl<S: Storage> BlobContainer<S> {
 	}
 }
 
-impl BlobContainer<Cow> {
+impl BlobContainer<Plain> {
 	pub fn push(&mut self, value: Blob) {
 		self.inner.push_bytes(value.as_bytes());
 	}
@@ -192,7 +192,7 @@ impl BlobContainer<Cow> {
 		}
 	}
 
-	pub fn filter(&mut self, mask: &<Cow as Storage>::BitVec) {
+	pub fn filter(&mut self, mask: &<Plain as Storage>::BitVec) {
 		let bits: Vec<bool> = mask.iter().collect();
 		self.inner.filter_in_place(|i| bits.get(i).copied().unwrap_or(false));
 	}
@@ -208,7 +208,7 @@ impl BlobContainer<Cow> {
 	}
 }
 
-impl Default for BlobContainer<Cow> {
+impl Default for BlobContainer<Plain> {
 	fn default() -> Self {
 		Self::with_capacity(0)
 	}

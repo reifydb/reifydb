@@ -27,7 +27,6 @@ use reifydb_runtime::context::RuntimeContext;
 use reifydb_test_harness::operator::transaction::FlowTxn;
 use reifydb_value::{
 	fragment::Fragment,
-	util::cowvec::CowVec,
 	value::{
 		container::number::NumberContainer, datetime::DateTime, row_number::RowNumber,
 		system_columns::SystemColumns,
@@ -72,7 +71,7 @@ fn make_op(operator_id: u64, engine: &TestEngine) -> DistinctOperator {
 fn build_insert(value: i64, row_num: u64) -> Change {
 	let cols = vec![ColumnWithName::new(
 		Fragment::internal("k"),
-		ColumnBuffer::Int8(NumberContainer::from_parts(CowVec::new(vec![value]))),
+		ColumnBuffer::Int8(NumberContainer::from_parts(vec![value])),
 	)];
 	let now = DateTime::default();
 	let columns = Columns::with_system(
@@ -87,7 +86,7 @@ fn build_insert(value: i64, row_num: u64) -> Change {
 fn build_remove(value: i64, row_num: u64) -> Change {
 	let cols = vec![ColumnWithName::new(
 		Fragment::internal("k"),
-		ColumnBuffer::Int8(NumberContainer::from_parts(CowVec::new(vec![value]))),
+		ColumnBuffer::Int8(NumberContainer::from_parts(vec![value])),
 	)];
 	let now = DateTime::default();
 	let columns = Columns::with_system(

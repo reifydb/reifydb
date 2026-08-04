@@ -95,7 +95,7 @@ impl Variable {
 
 	pub fn scalar_named(name: &str, value: Value) -> Self {
 		let mut columns = Columns::single_row([("value", value)]);
-		columns.names.make_mut()[0] = Fragment::internal(name);
+		columns.names[0] = Fragment::internal(name);
 		Variable::Columns {
 			columns,
 		}
@@ -142,8 +142,8 @@ impl Variable {
 		};
 		let actual = cols.len();
 		if actual == 1 {
-			let name = cols.names.into_inner().into_iter().next().unwrap();
-			let data = cols.columns.into_inner().into_iter().next().unwrap();
+			let name = cols.names.into_iter().next().unwrap();
+			let data = cols.columns.into_iter().next().unwrap();
 			Ok(ColumnWithName::new(name, data))
 		} else {
 			Err(error::TypeError::Runtime {

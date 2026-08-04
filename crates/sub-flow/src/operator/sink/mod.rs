@@ -30,7 +30,6 @@ use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	params::Params,
-	util::cowvec::CowVec,
 	value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, row_number::RowNumber},
 };
 
@@ -112,8 +111,8 @@ pub(crate) fn coerce_columns(columns: &Columns, target_columns: &[CatalogColumn]
 	}
 	Ok(Columns {
 		system: columns.system.clone(),
-		columns: CowVec::new(buffers_vec),
-		names: CowVec::new(names_vec),
+		columns: buffers_vec,
+		names: names_vec,
 	})
 }
 
@@ -199,7 +198,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 			new_data.push_value(value);
 		}
 
-		columns.columns.make_mut()[*col_pos] = new_data;
+		columns.columns[*col_pos] = new_data;
 	}
 
 	Ok(())

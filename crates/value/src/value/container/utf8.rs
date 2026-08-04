@@ -11,11 +11,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result, reifydb_assertions,
-	storage::{Cow, Storage},
+	storage::{Plain, Storage},
 	value::{Value, container::varlen::VarlenContainer, value_type::ValueType},
 };
 
-pub struct Utf8Container<S: Storage = Cow> {
+pub struct Utf8Container<S: Storage = Plain> {
 	inner: VarlenContainer<S>,
 }
 
@@ -45,13 +45,13 @@ where
 	}
 }
 
-impl Serialize for Utf8Container<Cow> {
+impl Serialize for Utf8Container<Plain> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		self.inner.serialize(serializer)
 	}
 }
 
-impl<'de> Deserialize<'de> for Utf8Container<Cow> {
+impl<'de> Deserialize<'de> for Utf8Container<Plain> {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		let inner = VarlenContainer::deserialize(deserializer)?;
 		Ok(Self {
@@ -60,7 +60,7 @@ impl<'de> Deserialize<'de> for Utf8Container<Cow> {
 	}
 }
 
-impl Utf8Container<Cow> {
+impl Utf8Container<Plain> {
 	pub fn new(data: Vec<String>) -> Self {
 		Self::from_vec(data)
 	}
@@ -190,7 +190,7 @@ impl<S: Storage> Utf8Container<S> {
 	}
 }
 
-impl Utf8Container<Cow> {
+impl Utf8Container<Plain> {
 	pub fn push(&mut self, value: String) {
 		self.inner.push_bytes(value.as_bytes());
 	}
@@ -214,7 +214,7 @@ impl Utf8Container<Cow> {
 		}
 	}
 
-	pub fn filter(&mut self, mask: &<Cow as Storage>::BitVec) {
+	pub fn filter(&mut self, mask: &<Plain as Storage>::BitVec) {
 		let bits: Vec<bool> = mask.iter().collect();
 		self.inner.filter_in_place(|i| bits.get(i).copied().unwrap_or(false));
 	}
@@ -230,7 +230,7 @@ impl Utf8Container<Cow> {
 	}
 }
 
-impl Default for Utf8Container<Cow> {
+impl Default for Utf8Container<Plain> {
 	fn default() -> Self {
 		Self::with_capacity(0)
 	}

@@ -3,7 +3,6 @@
 
 use reifydb_value::{
 	fragment::Fragment,
-	util::cowvec::CowVec,
 	value::{
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 		frame::{column::FrameColumn, data::FrameColumnData, frame::Frame},
@@ -169,8 +168,8 @@ impl From<Frame> for Columns {
 		}
 		Columns {
 			system: frame.system,
-			columns: CowVec::new(buffers),
-			names: CowVec::new(names),
+			columns: buffers,
+			names,
 		}
 	}
 }

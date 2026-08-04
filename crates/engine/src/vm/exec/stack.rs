@@ -88,7 +88,7 @@ impl<'a> Vm<'a> {
 
 		if self.batch_size > 1 && (self.active_mask.is_some() || !self.mask_stack.is_empty()) {
 			let mask = self.effective_mask();
-			for col in columns.columns.make_mut().iter_mut() {
+			for col in columns.columns.iter_mut() {
 				col.filter(&mask)?;
 			}
 		}

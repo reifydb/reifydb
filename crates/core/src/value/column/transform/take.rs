@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{Result, util::cowvec::CowVec};
+use reifydb_value::Result;
 
 use crate::value::column::columns::Columns;
 
@@ -15,7 +15,7 @@ impl Columns {
 			new_buffers.push(data.take(n));
 		}
 
-		self.columns = CowVec::new(new_buffers);
+		self.columns = new_buffers;
 
 		Ok(())
 	}

@@ -9,7 +9,7 @@ impl Columns {
 	pub fn filter(&mut self, mask: &BitVec) -> Result<()> {
 		self.system.filter(mask);
 
-		let columns = self.columns.make_mut();
+		let columns = &mut self.columns;
 		for column in columns.iter_mut() {
 			column.filter(mask)?;
 		}

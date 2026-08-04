@@ -11,7 +11,7 @@ use reifydb_core::{
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, reifydb_assertions, return_error, util::cowvec::CowVec};
+use reifydb_value::{fragment::Fragment, reifydb_assertions, return_error};
 use tracing::instrument;
 
 use super::NoopNode;
@@ -228,8 +228,8 @@ impl Transform for ExtendNode {
 		}
 		Ok(Columns {
 			system,
-			columns: CowVec::new(buffers_vec),
-			names: CowVec::new(names_vec),
+			columns: buffers_vec,
+			names: names_vec,
 		})
 	}
 }

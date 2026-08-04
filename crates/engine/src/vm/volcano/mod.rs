@@ -39,7 +39,7 @@ pub(crate) fn decode_dictionary_columns(
 					new_data.push_value(Value::none());
 				}
 			}
-			columns.columns.make_mut()[col_idx] = new_data;
+			columns.columns[col_idx] = new_data;
 		}
 	}
 	Ok(())

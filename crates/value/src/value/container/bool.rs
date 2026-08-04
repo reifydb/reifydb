@@ -11,12 +11,12 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	storage::{Cow, DataBitVec, Storage},
+	storage::{DataBitVec, Plain, Storage},
 	util::bitvec::BitVec,
 	value::{Value, value_type::ValueType},
 };
 
-pub struct BoolContainer<S: Storage = Cow> {
+pub struct BoolContainer<S: Storage = Plain> {
 	data: S::BitVec,
 }
 
@@ -46,7 +46,7 @@ where
 	}
 }
 
-impl Serialize for BoolContainer<Cow> {
+impl Serialize for BoolContainer<Plain> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a> {
@@ -59,7 +59,7 @@ impl Serialize for BoolContainer<Cow> {
 	}
 }
 
-impl<'de> Deserialize<'de> for BoolContainer<Cow> {
+impl<'de> Deserialize<'de> for BoolContainer<Plain> {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper {
@@ -72,7 +72,7 @@ impl<'de> Deserialize<'de> for BoolContainer<Cow> {
 	}
 }
 
-impl Deref for BoolContainer<Cow> {
+impl Deref for BoolContainer<Plain> {
 	type Target = BitVec;
 
 	fn deref(&self) -> &Self::Target {
@@ -80,7 +80,7 @@ impl Deref for BoolContainer<Cow> {
 	}
 }
 
-impl BoolContainer<Cow> {
+impl BoolContainer<Plain> {
 	pub fn new(data: Vec<bool>) -> Self {
 		Self {
 			data: BitVec::from_slice(&data),
@@ -238,7 +238,7 @@ impl<S: Storage> IntoIterator for BoolContainer<S> {
 	}
 }
 
-impl Default for BoolContainer<Cow> {
+impl Default for BoolContainer<Plain> {
 	fn default() -> Self {
 		Self::with_capacity(0)
 	}

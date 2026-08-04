@@ -11,12 +11,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	storage::{Cow, DataBitVec, DataVec, Storage},
-	util::cowvec::CowVec,
+	storage::{DataBitVec, DataVec, Plain, Storage},
 	value::{Value, is::IsTemporal},
 };
 
-pub struct TemporalContainer<T, S: Storage = Cow>
+pub struct TemporalContainer<T, S: Storage = Plain>
 where
 	T: IsTemporal,
 {
@@ -49,11 +48,11 @@ where
 	}
 }
 
-impl<T: IsTemporal + Serialize> Serialize for TemporalContainer<T, Cow> {
+impl<T: IsTemporal + Serialize> Serialize for TemporalContainer<T, Plain> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a, T: Clone + PartialEq + Serialize> {
-			data: &'a CowVec<T>,
+			data: &'a Vec<T>,
 		}
 		Helper {
 			data: &self.data,
@@ -62,11 +61,11 @@ impl<T: IsTemporal + Serialize> Serialize for TemporalContainer<T, Cow> {
 	}
 }
 
-impl<'de, T: IsTemporal + Deserialize<'de>> Deserialize<'de> for TemporalContainer<T, Cow> {
+impl<'de, T: IsTemporal + Deserialize<'de>> Deserialize<'de> for TemporalContainer<T, Plain> {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper<T: Clone + PartialEq> {
-			data: CowVec<T>,
+			data: Vec<T>,
 		}
 		let h = Helper::deserialize(deserializer)?;
 		Ok(TemporalContainer {
@@ -83,25 +82,25 @@ impl<T: IsTemporal, S: Storage> Deref for TemporalContainer<T, S> {
 	}
 }
 
-impl<T> TemporalContainer<T, Cow>
+impl<T> TemporalContainer<T, Plain>
 where
 	T: IsTemporal + Clone + Debug + Default,
 {
 	pub fn new(data: Vec<T>) -> Self {
 		Self {
-			data: CowVec::new(data),
+			data,
 		}
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
-			data: CowVec::with_capacity(capacity),
+			data: Vec::with_capacity(capacity),
 		}
 	}
 
 	pub fn from_vec(data: Vec<T>) -> Self {
 		Self {
-			data: CowVec::new(data),
+			data,
 		}
 	}
 }
@@ -240,7 +239,7 @@ where
 	}
 }
 
-impl<T> Default for TemporalContainer<T, Cow>
+impl<T> Default for TemporalContainer<T, Plain>
 where
 	T: IsTemporal + Clone + Debug + Default,
 {

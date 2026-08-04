@@ -11,12 +11,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	storage::{Cow, DataBitVec, DataVec, Storage},
-	util::cowvec::CowVec,
+	storage::{DataBitVec, DataVec, Plain, Storage},
 	value::{Value, row_number::RowNumber, value_type::ValueType},
 };
 
-pub struct RowNumberContainer<S: Storage = Cow> {
+pub struct RowNumberContainer<S: Storage = Plain> {
 	data: S::Vec<RowNumber>,
 }
 
@@ -46,11 +45,11 @@ where
 	}
 }
 
-impl Serialize for RowNumberContainer<Cow> {
+impl Serialize for RowNumberContainer<Plain> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a> {
-			data: &'a CowVec<RowNumber>,
+			data: &'a Vec<RowNumber>,
 		}
 
 		Helper {
@@ -60,11 +59,11 @@ impl Serialize for RowNumberContainer<Cow> {
 	}
 }
 
-impl<'de> Deserialize<'de> for RowNumberContainer<Cow> {
+impl<'de> Deserialize<'de> for RowNumberContainer<Plain> {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper {
-			data: CowVec<RowNumber>,
+			data: Vec<RowNumber>,
 		}
 		let h = Helper::deserialize(deserializer)?;
 		Ok(RowNumberContainer {
@@ -81,22 +80,22 @@ impl<S: Storage> Deref for RowNumberContainer<S> {
 	}
 }
 
-impl RowNumberContainer<Cow> {
+impl RowNumberContainer<Plain> {
 	pub fn new(data: Vec<RowNumber>) -> Self {
 		Self {
-			data: CowVec::new(data),
+			data,
 		}
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
-			data: CowVec::with_capacity(capacity),
+			data: Vec::with_capacity(capacity),
 		}
 	}
 
 	pub fn from_vec(data: Vec<RowNumber>) -> Self {
 		Self {
-			data: CowVec::new(data),
+			data,
 		}
 	}
 }
@@ -217,7 +216,7 @@ impl<S: Storage> RowNumberContainer<S> {
 	}
 }
 
-impl Default for RowNumberContainer<Cow> {
+impl Default for RowNumberContainer<Plain> {
 	fn default() -> Self {
 		Self::with_capacity(0)
 	}

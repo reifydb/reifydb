@@ -124,7 +124,7 @@ impl UdfEvalNode {
 						.next()
 						.cloned()
 						.unwrap_or_else(|| call.udf.result_column.clone());
-				let data = c.columns.into_inner().into_iter().next().unwrap();
+				let data = c.columns.into_iter().next().unwrap();
 				ColumnWithName::new(name, data)
 			}
 			_ => {
@@ -247,8 +247,8 @@ impl QueryNode for UdfEvalNode {
 				Self::run_scalar(rx, stored_ctx, call, &arg_columns, row_count)?
 			};
 
-			columns.columns.make_mut().push(result_column.data);
-			columns.names.make_mut().push(call.udf.result_column.clone());
+			columns.columns.push(result_column.data);
+			columns.names.push(call.udf.result_column.clone());
 		}
 
 		Ok(Some(columns))
@@ -307,13 +307,13 @@ pub(crate) fn strip_udf_columns(columns: &mut Columns, udf_names: &[String]) {
 	}
 	let keep: Vec<bool> = columns.names.iter().map(|n| !udf_names.iter().any(|u| u == n.text())).collect();
 	let mut idx = 0;
-	columns.columns.make_mut().retain(|_| {
+	columns.columns.retain(|_| {
 		let k = keep[idx];
 		idx += 1;
 		k
 	});
 	let mut idx = 0;
-	columns.names.make_mut().retain(|_| {
+	columns.names.retain(|_| {
 		let k = keep[idx];
 		idx += 1;
 		k

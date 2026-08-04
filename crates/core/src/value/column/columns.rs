@@ -15,7 +15,6 @@ use reifydb_value::{
 	Result,
 	fragment::Fragment,
 	reifydb_assertions,
-	util::cowvec::CowVec,
 	value::{
 		Value,
 		constraint::Constraint,
@@ -38,8 +37,8 @@ use crate::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Columns {
 	pub system: SystemColumns,
-	pub columns: CowVec<ColumnBuffer>,
-	pub names: CowVec<Fragment>,
+	pub columns: Vec<ColumnBuffer>,
+	pub names: Vec<Fragment>,
 }
 
 impl Columns {
@@ -104,7 +103,7 @@ impl Index<usize> for Columns {
 
 impl IndexMut<usize> for Columns {
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-		&mut self.columns.make_mut()[index]
+		&mut self.columns[index]
 	}
 }
 
@@ -203,8 +202,8 @@ impl Columns {
 
 		Self {
 			system: SystemColumns::empty(),
-			columns: CowVec::new(buffers),
-			names: CowVec::new(names),
+			columns: buffers,
+			names,
 		}
 	}
 
@@ -222,8 +221,8 @@ impl Columns {
 
 		Self {
 			system,
-			columns: CowVec::new(buffers),
-			names: CowVec::new(names),
+			columns: buffers,
+			names,
 		}
 	}
 
@@ -236,8 +235,8 @@ impl Columns {
 		}
 		Self {
 			system: SystemColumns::empty(),
-			columns: CowVec::new(buffers),
-			names: CowVec::new(names),
+			columns: buffers,
+			names,
 		}
 	}
 
@@ -270,14 +269,14 @@ impl Columns {
 		}
 		Self {
 			system: SystemColumns::empty(),
-			columns: CowVec::new(buffers),
-			names: CowVec::new(names),
+			columns: buffers,
+			names,
 		}
 	}
 
 	pub fn apply_headers(&mut self, headers: &ColumnHeaders) {
 		let n = self.len();
-		let names = self.names.make_mut();
+		let names = &mut self.names;
 		for (i, name) in headers.columns.iter().enumerate() {
 			if i < n {
 				names[i] = name.clone();
@@ -353,7 +352,7 @@ impl Columns {
 	}
 
 	pub fn data_at_mut(&mut self, index: usize) -> &mut ColumnBuffer {
-		&mut self.columns.make_mut()[index]
+		&mut self.columns[index]
 	}
 
 	pub fn row(&self, i: usize) -> Vec<Value> {
@@ -417,8 +416,8 @@ impl Columns {
 		let _ = &mut name_vec;
 		Self {
 			system: SystemColumns::empty(),
-			columns: CowVec::new(buffers),
-			names: CowVec::new(name_vec),
+			columns: buffers,
+			names: name_vec,
 		}
 	}
 
@@ -464,8 +463,8 @@ impl Columns {
 	pub fn empty() -> Self {
 		Self {
 			system: SystemColumns::empty(),
-			columns: CowVec::new(Vec::new()),
-			names: CowVec::new(Vec::new()),
+			columns: Vec::new(),
+			names: Vec::new(),
 		}
 	}
 }
@@ -493,7 +492,7 @@ impl Columns {
 
 		Columns {
 			system: self.system.permute(indices),
-			columns: CowVec::new(new_buffers),
+			columns: new_buffers,
 			names: self.names.clone(),
 		}
 	}
@@ -520,7 +519,7 @@ impl Columns {
 			source.columns.len(),
 		);
 
-		let self_cols = self.columns.make_mut();
+		let self_cols = &mut self.columns;
 		for (i, src_col) in source.columns.iter().enumerate() {
 			for &idx in indices {
 				self_cols[i].push_value(src_col.get_value(idx));
@@ -558,12 +557,11 @@ impl Columns {
 	}
 
 	#[inline]
-	fn extend_data_columns(&mut self, source_columns: CowVec<ColumnBuffer>) -> Result<()> {
-		let dest_cols = self.columns.make_mut();
-		let source_cols = source_columns.into_inner();
+	fn extend_data_columns(&mut self, source_columns: Vec<ColumnBuffer>) -> Result<()> {
+		let dest_cols = &mut self.columns;
 		reifydb_assertions! {
 			let dest_len = dest_cols.len();
-			let src_len = source_cols.len();
+			let src_len = source_columns.len();
 			assert!(
 				dest_len == src_len,
 				"append_all extends destination columns by source index, so a source with more columns than \
@@ -571,7 +569,7 @@ impl Columns {
 				 partially extended (dest_len={dest_len}, src_len={src_len})"
 			);
 		}
-		for (i, src_col) in source_cols.into_iter().enumerate() {
+		for (i, src_col) in source_columns.into_iter().enumerate() {
 			dest_cols[i].extend(src_col)?;
 		}
 		Ok(())
@@ -620,8 +618,8 @@ impl Columns {
 
 		Columns {
 			system: self.system.clone(),
-			columns: CowVec::new(new_buffers),
-			names: CowVec::new(new_names),
+			columns: new_buffers,
+			names: new_names,
 		}
 	}
 
@@ -649,8 +647,8 @@ impl Columns {
 		self.columns.clear();
 		self.names.clear();
 
-		self.columns.make_mut().reserve(field_count);
-		self.names.make_mut().reserve(field_count);
+		self.columns.reserve(field_count);
+		self.names.reserve(field_count);
 
 		self.system.push(RowStamps {
 			row_number: Some(row.number),

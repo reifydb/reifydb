@@ -449,7 +449,7 @@ pub(crate) fn dictionary_encode_view_columns(
 		for outcome in &outcomes {
 			new_data.push_value(outcome.id.to_value());
 		}
-		encoded.columns.make_mut()[*col_pos] = new_data;
+		encoded.columns[*col_pos] = new_data;
 	}
 
 	Ok(Some(encoded))

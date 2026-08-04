@@ -283,8 +283,8 @@ fn project_returning(
 	for row in returned {
 		created.push_value(Value::Boolean(row.created));
 	}
-	columns.columns.make_mut().push(created);
-	columns.names.make_mut().push(Fragment::internal(QUEUE_CREATED_COLUMN));
+	columns.columns.push(created);
+	columns.names.push(Fragment::internal(QUEUE_CREATED_COLUMN));
 
 	evaluate_returning(services, symbols, returning_exprs, columns)
 }
@@ -336,8 +336,8 @@ fn partition_of(
 
 #[inline]
 fn truncate_to_declared(columns: &mut Columns, declared: usize) {
-	columns.columns.make_mut().truncate(declared);
-	columns.names.make_mut().truncate(declared);
+	columns.columns.truncate(declared);
+	columns.names.truncate(declared);
 }
 
 #[inline]

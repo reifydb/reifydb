@@ -11,12 +11,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	storage::{Cow, DataBitVec, DataVec, Storage},
-	util::cowvec::CowVec,
+	storage::{DataBitVec, DataVec, Plain, Storage},
 	value::Value,
 };
 
-pub struct AnyContainer<S: Storage = Cow> {
+pub struct AnyContainer<S: Storage = Plain> {
 	data: S::Vec<Box<Value>>,
 }
 
@@ -46,11 +45,11 @@ where
 	}
 }
 
-impl Serialize for AnyContainer<Cow> {
+impl Serialize for AnyContainer<Plain> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a> {
-			data: &'a CowVec<Box<Value>>,
+			data: &'a Vec<Box<Value>>,
 		}
 		Helper {
 			data: &self.data,
@@ -59,11 +58,11 @@ impl Serialize for AnyContainer<Cow> {
 	}
 }
 
-impl<'de> Deserialize<'de> for AnyContainer<Cow> {
+impl<'de> Deserialize<'de> for AnyContainer<Plain> {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper {
-			data: CowVec<Box<Value>>,
+			data: Vec<Box<Value>>,
 		}
 		let h = Helper::deserialize(deserializer)?;
 		Ok(AnyContainer {
@@ -80,22 +79,22 @@ impl<S: Storage> Deref for AnyContainer<S> {
 	}
 }
 
-impl AnyContainer<Cow> {
+impl AnyContainer<Plain> {
 	pub fn new(data: Vec<Box<Value>>) -> Self {
 		Self {
-			data: CowVec::new(data),
+			data,
 		}
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
-			data: CowVec::with_capacity(capacity),
+			data: Vec::with_capacity(capacity),
 		}
 	}
 
 	pub fn from_vec(data: Vec<Box<Value>>) -> Self {
 		Self {
-			data: CowVec::new(data),
+			data,
 		}
 	}
 }

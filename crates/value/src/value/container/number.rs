@@ -11,12 +11,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
-	storage::{Cow, DataBitVec, DataVec, Storage},
-	util::cowvec::CowVec,
+	storage::{DataBitVec, DataVec, Plain, Storage},
 	value::{Value, is::IsNumber},
 };
 
-pub struct NumberContainer<T, S: Storage = Cow>
+pub struct NumberContainer<T, S: Storage = Plain>
 where
 	T: IsNumber,
 {
@@ -49,11 +48,11 @@ where
 	}
 }
 
-impl<T: IsNumber + Serialize> Serialize for NumberContainer<T, Cow> {
+impl<T: IsNumber + Serialize> Serialize for NumberContainer<T, Plain> {
 	fn serialize<Ser: Serializer>(&self, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
 		#[derive(Serialize)]
 		struct Helper<'a, T: Clone + PartialEq + Serialize> {
-			data: &'a CowVec<T>,
+			data: &'a Vec<T>,
 		}
 		Helper {
 			data: &self.data,
@@ -62,11 +61,11 @@ impl<T: IsNumber + Serialize> Serialize for NumberContainer<T, Cow> {
 	}
 }
 
-impl<'de, T: IsNumber + Deserialize<'de>> Deserialize<'de> for NumberContainer<T, Cow> {
+impl<'de, T: IsNumber + Deserialize<'de>> Deserialize<'de> for NumberContainer<T, Plain> {
 	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> StdResult<Self, D::Error> {
 		#[derive(Deserialize)]
 		struct Helper<T: Clone + PartialEq> {
-			data: CowVec<T>,
+			data: Vec<T>,
 		}
 		let h = Helper::deserialize(deserializer)?;
 		Ok(NumberContainer {
@@ -83,25 +82,25 @@ impl<T: IsNumber, S: Storage> Deref for NumberContainer<T, S> {
 	}
 }
 
-impl<T> NumberContainer<T, Cow>
+impl<T> NumberContainer<T, Plain>
 where
 	T: IsNumber + Clone + Debug + Default,
 {
 	pub fn new(data: Vec<T>) -> Self {
 		Self {
-			data: CowVec::new(data),
+			data,
 		}
 	}
 
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
-			data: CowVec::with_capacity(capacity),
+			data: Vec::with_capacity(capacity),
 		}
 	}
 
 	pub fn from_vec(data: Vec<T>) -> Self {
 		Self {
-			data: CowVec::new(data),
+			data,
 		}
 	}
 }

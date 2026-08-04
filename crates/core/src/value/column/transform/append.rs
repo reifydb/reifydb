@@ -55,7 +55,7 @@ impl Columns {
 				.into());
 			}
 			let other_data = other.columns[i].clone();
-			self.columns.make_mut()[i].extend(other_data)?;
+			self.columns[i].extend(other_data)?;
 		}
 		Ok(())
 	}
@@ -134,7 +134,7 @@ impl Columns {
 
 	#[inline]
 	fn retype_all_none_columns(&mut self, shape: &RowShape) {
-		let columns = self.columns.make_mut();
+		let columns = &mut self.columns;
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = shape.get_field(index).unwrap();
 			let is_all_none = if let ColumnBuffer::Option {
@@ -301,7 +301,7 @@ impl Columns {
 
 	fn append_all_defined_from_shape(&mut self, shape: &RowShape, row: &EncodedRow) -> Result<()> {
 		let names = &self.names;
-		let columns = self.columns.make_mut();
+		let columns = &mut self.columns;
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = shape.get_field(index).unwrap();
 			match (&mut *column, field.constraint.get_type()) {
@@ -449,7 +449,7 @@ impl Columns {
 	}
 
 	fn append_fallback_from_shape(&mut self, shape: &RowShape, row: &EncodedRow) -> Result<()> {
-		let columns = self.columns.make_mut();
+		let columns = &mut self.columns;
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = shape.get_field(index).unwrap();
 

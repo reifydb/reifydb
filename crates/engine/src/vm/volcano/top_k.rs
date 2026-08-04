@@ -249,7 +249,7 @@ impl TopKNode {
 	fn permute(columns: &mut Columns, indices: &[usize]) {
 		columns.system.permute_in_place(indices);
 
-		let cols = columns.columns.make_mut();
+		let cols = &mut columns.columns;
 		for col in cols.iter_mut() {
 			col.reorder(indices);
 		}

@@ -17,7 +17,7 @@ use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
-	util::{bitvec::BitVec, cowvec::CowVec},
+	util::bitvec::BitVec,
 	value::{
 		Value,
 		constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
@@ -629,31 +629,31 @@ fn finalize_buffer(
 		ColumnTypeCode::Uint16 => from_numeric_bytes::<u128>(&data, written_count, ColumnBuffer::Uint16)?,
 		ColumnTypeCode::Date => {
 			let v = numeric_bytes_to_vec::<Date>(&data, written_count)?;
-			ColumnBuffer::Date(TemporalContainer::from_parts(CowVec::new(v)))
+			ColumnBuffer::Date(TemporalContainer::from_parts(v))
 		}
 		ColumnTypeCode::DateTime => {
 			let v = numeric_bytes_to_vec::<DateTime>(&data, written_count)?;
-			ColumnBuffer::DateTime(TemporalContainer::from_parts(CowVec::new(v)))
+			ColumnBuffer::DateTime(TemporalContainer::from_parts(v))
 		}
 		ColumnTypeCode::Time => {
 			let v = numeric_bytes_to_vec::<Time>(&data, written_count)?;
-			ColumnBuffer::Time(TemporalContainer::from_parts(CowVec::new(v)))
+			ColumnBuffer::Time(TemporalContainer::from_parts(v))
 		}
 		ColumnTypeCode::Duration => {
 			let v = numeric_bytes_to_vec::<Duration>(&data, written_count)?;
-			ColumnBuffer::Duration(TemporalContainer::from_parts(CowVec::new(v)))
+			ColumnBuffer::Duration(TemporalContainer::from_parts(v))
 		}
 		ColumnTypeCode::IdentityId => {
 			let v = numeric_bytes_to_vec::<IdentityId>(&data, written_count)?;
-			ColumnBuffer::IdentityId(IdentityIdContainer::from_parts(CowVec::new(v)))
+			ColumnBuffer::IdentityId(IdentityIdContainer::from_parts(v))
 		}
 		ColumnTypeCode::Uuid4 => {
 			let v = numeric_bytes_to_vec::<Uuid4>(&data, written_count)?;
-			ColumnBuffer::Uuid4(UuidContainer::from_parts(CowVec::new(v)))
+			ColumnBuffer::Uuid4(UuidContainer::from_parts(v))
 		}
 		ColumnTypeCode::Uuid7 => {
 			let v = numeric_bytes_to_vec::<Uuid7>(&data, written_count)?;
-			ColumnBuffer::Uuid7(UuidContainer::from_parts(CowVec::new(v)))
+			ColumnBuffer::Uuid7(UuidContainer::from_parts(v))
 		}
 		ColumnTypeCode::Utf8 => {
 			let offsets = offsets.unwrap_or_else(|| vec![0u64]);
@@ -764,5 +764,5 @@ fn from_numeric_bytes<T: Copy + IsNumber + fmt::Debug + Default>(
 	wrap: fn(NumberContainer<T>) -> ColumnBuffer,
 ) -> Option<ColumnBuffer> {
 	let v = numeric_bytes_to_vec::<T>(data, count)?;
-	Some(wrap(NumberContainer::from_parts(CowVec::new(v))))
+	Some(wrap(NumberContainer::from_parts(v)))
 }

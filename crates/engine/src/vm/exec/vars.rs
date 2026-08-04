@@ -116,7 +116,7 @@ impl<'a> Vm<'a> {
 				..
 			} => {
 				if c.is_scalar() {
-					c.names.make_mut()[0] = Fragment::internal(name);
+					c.names[0] = Fragment::internal(name);
 				}
 				Variable::columns(c)
 			}

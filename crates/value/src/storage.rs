@@ -3,7 +3,7 @@
 
 use std::ops::Deref;
 
-use crate::util::{bitvec::BitVec, cowvec::CowVec};
+use crate::util::bitvec::BitVec;
 
 pub trait DataVec<T: Clone>: Deref<Target = [T]> + Clone {
 	fn spawn(&self, capacity: usize) -> Self;
@@ -56,14 +56,6 @@ pub trait DataBitVec: Clone {
 pub trait Storage: Clone {
 	type Vec<T: Clone + PartialEq + 'static>: DataVec<T> + PartialEq;
 	type BitVec: DataBitVec + PartialEq;
-}
-
-#[derive(Clone, Debug)]
-pub struct Cow;
-
-impl Storage for Cow {
-	type Vec<T: Clone + PartialEq + 'static> = CowVec<T>;
-	type BitVec = BitVec;
 }
 
 #[derive(Clone, Debug)]
