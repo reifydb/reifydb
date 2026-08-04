@@ -22,11 +22,7 @@ impl<'bump> Parser<'bump> {
 		while self.current()?.is_operator(Operator::DoubleColon) {
 			namespace_fragments.push(current.fragment);
 			self.advance()?;
-			current = if self.current()?.is_identifier() {
-				self.consume_identifier()?
-			} else {
-				self.consume_identifier()?
-			};
+			current = self.consume_identifier()?;
 		}
 
 		let function = if namespace_fragments.is_empty() {
@@ -69,11 +65,7 @@ impl<'bump> Parser<'bump> {
 			namespace_fragments.push(current_ident_token.fragment);
 
 			self.advance()?;
-			let next_ident_token = if self.current()?.is_identifier() {
-				self.consume_identifier()?
-			} else {
-				self.consume_identifier()?
-			};
+			let next_ident_token = self.consume_identifier()?;
 
 			if self.current()?.is_operator(Operator::OpenParen) {
 				let open_paren_token = self.advance()?;

@@ -392,7 +392,7 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 			}
 		},
 
-		Ast::Join(node) => match node {
+		Ast::Join(node) => match &**node {
 			AstJoin::InnerJoin {
 				with,
 				using_clause,
@@ -791,7 +791,7 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 		}
 		Ast::Alter(node) => {
 			buf.write_u8(tag::ALTER);
-			match node {
+			match &**node {
 				AstAlter::Sequence(n) => {
 					buf.write_u8(0x01);
 					for ns in &n.sequence.namespace {

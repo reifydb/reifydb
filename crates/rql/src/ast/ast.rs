@@ -81,7 +81,7 @@ pub enum Ast<'bump> {
 	Cast(AstCast<'bump>),
 	Continue(AstContinue<'bump>),
 	Create(BumpBox<'bump, AstCreate<'bump>>),
-	Alter(AstAlter<'bump>),
+	Alter(BumpBox<'bump, AstAlter<'bump>>),
 	Drop(AstDrop<'bump>),
 	Describe(AstDescribe<'bump>),
 	Distinct(AstDistinct<'bump>),
@@ -99,7 +99,7 @@ pub enum Ast<'bump> {
 	Delete(AstDelete<'bump>),
 	Insert(AstInsert<'bump>),
 	Update(AstUpdate<'bump>),
-	Join(AstJoin<'bump>),
+	Join(BumpBox<'bump, AstJoin<'bump>>),
 	Take(AstTake<'bump>),
 	Skip(AstSkip<'bump>),
 	List(AstList<'bump>),
@@ -186,7 +186,7 @@ impl<'bump> Ast<'bump> {
 				AstLiteral::Text(node) => &node.0,
 				AstLiteral::None(node) => &node.0,
 			},
-			Ast::Join(node) => match node {
+			Ast::Join(node) => match &**node {
 				AstJoin::InnerJoin {
 					token,
 					..

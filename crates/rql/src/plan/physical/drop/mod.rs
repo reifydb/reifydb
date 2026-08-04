@@ -603,7 +603,7 @@ impl<'bump> Compiler<'bump> {
 			let ns_fragment = if let Some(n) = drop.source.namespace.first() {
 				self.interner.intern_fragment(n).with_text(&ns_name)
 			} else {
-				Fragment::internal("default".to_string())
+				Fragment::internal("default")
 			};
 			return_error!(namespace_not_found(ns_fragment, &ns_name));
 		};

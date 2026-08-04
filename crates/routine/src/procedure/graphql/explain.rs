@@ -178,16 +178,18 @@ fn detail_of(ast: &Ast<'_>) -> String {
 			..
 		}) => variable.token.value().to_string(),
 		Ast::From(_) => String::new(),
-		Ast::Join(AstJoin::NaturalJoin {
-			alias,
-			..
-		}) => format!("natural {}", alias.text()),
-		Ast::Join(AstJoin::InnerJoin {
-			..
-		}) => "inner".to_string(),
-		Ast::Join(AstJoin::LeftJoin {
-			..
-		}) => "left".to_string(),
+		Ast::Join(node) => match &**node {
+			AstJoin::NaturalJoin {
+				alias,
+				..
+			} => format!("natural {}", alias.text()),
+			AstJoin::InnerJoin {
+				..
+			} => "inner".to_string(),
+			AstJoin::LeftJoin {
+				..
+			} => "left".to_string(),
+		},
 		Ast::Take(AstTake {
 			take: AstTakeValue::Literal(n),
 			..

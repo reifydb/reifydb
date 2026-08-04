@@ -201,17 +201,20 @@ impl AstWalker {
 			Ast::Insert(_) => {
 				return;
 			}
-			Ast::Join(AstJoin::LeftJoin {
-				with,
-				using_clause,
-				..
-			}) => {
-				for node in &with.statement.nodes {
-					ref_children.push(node);
-				}
-				for pair in &using_clause.pairs {
-					ref_children.push(&pair.first);
-					ref_children.push(&pair.second);
+			Ast::Join(node) => {
+				if let AstJoin::LeftJoin {
+					with,
+					using_clause,
+					..
+				} = &**node
+				{
+					for node in &with.statement.nodes {
+						ref_children.push(node);
+					}
+					for pair in &using_clause.pairs {
+						ref_children.push(&pair.first);
+						ref_children.push(&pair.second);
+					}
 				}
 			}
 			Ast::Map(s) => {
@@ -361,7 +364,7 @@ fn ast_description(ast: &Ast<'_>, kind: &str) -> String {
 			let field_names: Vec<&str> = r.keyed_values.iter().map(|f| f.key.text()).collect();
 			format!("{} ({} fields: {})", kind, r.keyed_values.len(), field_names.join(", "))
 		}
-		Ast::Alter(alter) => match alter {
+		Ast::Alter(alter) => match alter.as_ref() {
 			AstAlter::Sequence(s) => {
 				let namespace = s
 					.sequence

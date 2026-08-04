@@ -114,7 +114,10 @@ impl<'bump> Parser<'bump> {
 					let create = self.parse_create()?;
 					Ok(Ast::Create(BumpBox::new_in(create, self.bump())))
 				}
-				Keyword::Alter => Ok(Ast::Alter(self.parse_alter()?)),
+				Keyword::Alter => {
+					let alter = self.parse_alter()?;
+					Ok(Ast::Alter(BumpBox::new_in(alter, self.bump())))
+				}
 				Keyword::Drop => Ok(Ast::Drop(self.parse_drop()?)),
 				Keyword::Delete | Keyword::Insert | Keyword::Update => {
 					if self.position + 1 < self.tokens.len()
@@ -137,10 +140,22 @@ impl<'bump> Parser<'bump> {
 						self.try_parse_keyword_as_function_call()
 					}
 				}
-				Keyword::Inner => Ok(Ast::Join(self.parse_inner_join()?)),
-				Keyword::Join => Ok(Ast::Join(self.parse_join()?)),
-				Keyword::Left => Ok(Ast::Join(self.parse_left_join()?)),
-				Keyword::Natural => Ok(Ast::Join(self.parse_natural_join()?)),
+				Keyword::Inner => {
+					let join = self.parse_inner_join()?;
+					Ok(Ast::Join(BumpBox::new_in(join, self.bump())))
+				}
+				Keyword::Join => {
+					let join = self.parse_join()?;
+					Ok(Ast::Join(BumpBox::new_in(join, self.bump())))
+				}
+				Keyword::Left => {
+					let join = self.parse_left_join()?;
+					Ok(Ast::Join(BumpBox::new_in(join, self.bump())))
+				}
+				Keyword::Natural => {
+					let join = self.parse_natural_join()?;
+					Ok(Ast::Join(BumpBox::new_in(join, self.bump())))
+				}
 				Keyword::Take => Ok(Ast::Take(self.parse_take()?)),
 				Keyword::Sort => Ok(Ast::Sort(self.parse_sort()?)),
 				Keyword::Distinct => Ok(Ast::Distinct(self.parse_distinct()?)),

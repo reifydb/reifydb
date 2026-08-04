@@ -149,7 +149,7 @@ impl<'bump> Compiler<'bump> {
 		match node {
 			Ast::Create(node) => self.compile_create(BumpBox::into_inner(node), tx),
 			Ast::Drop(node) => self.compile_drop(node),
-			Ast::Alter(node) => self.compile_alter(node, tx),
+			Ast::Alter(node) => self.compile_alter(BumpBox::into_inner(node), tx),
 			Ast::Delete(node) => self.compile_delete(node, tx),
 			Ast::Insert(node) => self.compile_insert(node, tx),
 			Ast::Update(node) => self.compile_update(node, tx),
@@ -220,7 +220,7 @@ impl<'bump> Compiler<'bump> {
 			Ast::Filter(node) => self.compile_filter(node),
 			Ast::Gate(node) => self.compile_gate(node),
 			Ast::From(node) => self.compile_from(node, tx),
-			Ast::Join(node) => self.compile_join(node, tx),
+			Ast::Join(node) => self.compile_join(BumpBox::into_inner(node), tx),
 			Ast::Take(node) => self.compile_take(node),
 			Ast::Sort(node) => self.compile_sort(node),
 			Ast::Distinct(node) => self.compile_distinct(node),
