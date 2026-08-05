@@ -396,21 +396,22 @@ impl GroupInterner {
 		let bucket = buckets.of(position);
 		let mut results: Vec<Option<(GroupId, bool)>> = (0..groups.len()).map(|_| None).collect();
 		let mut to_resolve: Vec<usize> = Vec::new();
-		let mut to_stamp: Vec<(usize, GroupId)> = Vec::new();
+		let mut to_stamp: Vec<(usize, GroupId, u64)> = Vec::new();
 		for (i, group) in groups.iter().enumerate() {
 			match state.cache.get(group) {
 				Some(interned) => {
 					if interned.bucket == GroupRecord::RECLAIMED_BUCKET || bucket > interned.bucket
 					{
-						to_stamp.push((i, interned.id));
+						to_stamp.push((i, interned.id, interned.bucket));
 					}
 					results[i] = Some((interned.id, false));
 				}
 				None => to_resolve.push(i),
 			}
 		}
-		for (i, id) in to_stamp {
-			let effective = Self::stamp(txn, operator, id, &groups[i], bucket, now)?;
+		for (i, id, cached) in to_stamp {
+			let previous = (cached != GroupRecord::RECLAIMED_BUCKET).then_some(cached);
+			let effective = Self::stamp_known(txn, operator, id, &groups[i], bucket, previous, now)?;
 			state.remember(&groups[i], id, effective);
 			Self::track_stamp(state, id, effective);
 		}
@@ -547,6 +548,30 @@ impl GroupInterner {
 		let previous = Self::load_record(operator, txn, id)?
 			.map(|record| record.activity_bucket)
 			.filter(|bucket| *bucket != GroupRecord::RECLAIMED_BUCKET);
+		Self::stamp_known(txn, operator, id, group, bucket, previous, now)
+	}
+
+	fn stamp_known(
+		txn: &mut FlowTransaction,
+		operator: OperatorId,
+		id: GroupId,
+		group: &EncodedKey,
+		bucket: u64,
+		previous: Option<u64>,
+		now: DateTime,
+	) -> Result<u64> {
+		reifydb_assertions! {
+			assert!(
+				bucket != GroupRecord::RECLAIMED_BUCKET,
+				"a live stamp landed on the bucket phase 1 reserves to mark reclaimed data (group={id:?})"
+			);
+			assert!(
+				previous != Some(GroupRecord::RECLAIMED_BUCKET),
+				"the reclaimed sentinel must be mapped to None before it reaches here; passing it \
+				 through would remove an activity entry at the sentinel bucket and strand the real \
+				 one, so the group would never come due again (group={id:?})"
+			);
+		}
 		let effective = previous.map_or(bucket, |previous| previous.max(bucket));
 		if effective != bucket {
 			return Ok(effective);
@@ -1473,6 +1498,72 @@ mod tests {
 			before,
 			"minting groups must not reach the store; the membership filter proves absence and the \
 			 record cannot exist for an id the counter just handed out"
+		);
+	}
+
+	#[test]
+	fn restamping_from_the_cached_bucket_moves_the_activity_entry_rather_than_duplicating_it() {
+		// The re-stamp path now trusts the cached bucket instead of re-reading the record, so the
+		// value it hands to stamp_known is what decides which activity entry gets removed. If it
+		// were ever wrong the group would keep an entry at a stale bucket and due_groups would
+		// find it early, or keep two and reclaim it twice. Neither raises an error, so the index
+		// itself is what has to be asserted.
+		let engine = TestEngine::new();
+		let interner = GroupInterner::default();
+		interner.set_activity_grid(NODE, Some(Duration::from_seconds(60).unwrap()));
+		let mut txn = deferred(&engine);
+		let key = group("moves");
+
+		let (id, _) = intern_at(&interner, NODE, &mut txn, &key, Position(DateTime::from_nanos(0))).unwrap();
+		let first = activity_buckets_of(&mut txn, NODE, id);
+		assert_eq!(first.len(), 1, "a freshly minted group holds exactly one activity entry");
+
+		intern_at(&interner, NODE, &mut txn, &key, Position(DateTime::from_nanos(120_000_000_000))).unwrap();
+		let second = activity_buckets_of(&mut txn, NODE, id);
+
+		assert_eq!(second.len(), 1, "advancing the bucket must move the entry, never leave both behind");
+		assert!(
+			second[0] > first[0],
+			"the surviving entry must be the newer bucket: first={first:?} second={second:?}"
+		);
+	}
+
+	#[test]
+	fn restamping_a_cached_group_never_reads_its_record() {
+		// The whole point of carrying the cached bucket: a Join probes one group per join key on
+		// every batch, so a read here is a store round trip per probe. Measured at 88,208 point
+		// reads per profile window before this path stopped reading.
+		let engine = TestEngine::new();
+		let interner = GroupInterner::default();
+		interner.set_activity_grid(NODE, Some(Duration::from_seconds(60).unwrap()));
+		let key = group("hot");
+
+		// The record must be committed, not pending. A read served by the transaction's own
+		// overlay never reaches the store and so never counts, which makes a same-transaction
+		// version of this test pass even with the read restored.
+		let mut txn = deferred(&engine);
+		intern_at(&interner, NODE, &mut txn, &key, Position(DateTime::from_nanos(0))).unwrap();
+		commit_pending(&engine, &mut txn);
+
+		let mut txn = deferred(&engine);
+		let before = txn.store_reads();
+
+		for step in 1..=8u64 {
+			intern_at(
+				&interner,
+				NODE,
+				&mut txn,
+				&key,
+				Position(DateTime::from_nanos(step * 120_000_000_000)),
+			)
+			.unwrap();
+		}
+
+		assert_eq!(
+			txn.store_reads(),
+			before,
+			"a cached group already knows its previous bucket; re-reading the record to recover it \
+			 is the read this path exists to avoid"
 		);
 	}
 
