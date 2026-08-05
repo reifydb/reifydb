@@ -22,11 +22,17 @@ pub struct FreelistGauge {
 	pub page_count: u64,
 }
 
+const STARVATION_WINDOW_NANOS: u64 = 5 * 60 * 1_000_000_000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StuckOnset {
 	Quiet,
 	FloorPinned {
 		floor: Floor,
+		binding: FloorTerm,
+		backlog_hint: u64,
+	},
+	Starved {
 		binding: FloorTerm,
 		backlog_hint: u64,
 	},
@@ -59,6 +65,7 @@ struct ClassCounters {
 	floor_version: AtomicU64,
 	binding: AtomicU64,
 	stuck_streak: AtomicU64,
+	starved_since: AtomicU64,
 	work_done: AtomicU64,
 	backlog_hint: AtomicU64,
 	slices: AtomicU64,
@@ -71,6 +78,73 @@ struct ClassCounters {
 }
 
 impl ClassCounters {
+	fn record_starvation(
+		&self,
+		floor_key: u64,
+		binding: FloorTerm,
+		work_done: u64,
+		backlog_hint: u64,
+	) -> StuckOnset {
+		if work_done > 0 || backlog_hint == 0 {
+			self.stuck_streak.store(0, Ordering::Relaxed);
+			return StuckOnset::Quiet;
+		}
+
+		self.stuck_slices.fetch_add(1, Ordering::Relaxed);
+		if self.stuck_streak.fetch_add(1, Ordering::Relaxed) == 0 {
+			self.starved_since.store(floor_key, Ordering::Relaxed);
+			return StuckOnset::Quiet;
+		}
+
+		let since = self.starved_since.load(Ordering::Relaxed);
+		if floor_key < since {
+			self.starved_since.store(floor_key, Ordering::Relaxed);
+			return StuckOnset::Quiet;
+		}
+		if floor_key - since < STARVATION_WINDOW_NANOS {
+			return StuckOnset::Quiet;
+		}
+
+		self.starved_since.store(floor_key, Ordering::Relaxed);
+		StuckOnset::Starved {
+			binding,
+			backlog_hint,
+		}
+	}
+
+	fn record_pinning(&self, floor: Option<(Floor, FloorTerm)>, work_done: u64, backlog_hint: u64) -> StuckOnset {
+		let stuck = match floor {
+			Some((floor, _)) => {
+				let key = floor.monotonic_key();
+				let previous = self.floor_version.swap(key, Ordering::Relaxed);
+				key <= previous && work_done == 0
+			}
+			None => true,
+		};
+
+		if !stuck {
+			self.stuck_streak.store(0, Ordering::Relaxed);
+			return StuckOnset::Quiet;
+		}
+
+		self.stuck_slices.fetch_add(1, Ordering::Relaxed);
+		if self.stuck_streak.fetch_add(1, Ordering::Relaxed) > 0 {
+			return StuckOnset::Quiet;
+		}
+		if backlog_hint == 0 {
+			return StuckOnset::Quiet;
+		}
+
+		match floor {
+			Some((floor, binding)) => StuckOnset::FloorPinned {
+				floor,
+				binding,
+				backlog_hint,
+			},
+			None => StuckOnset::FloorUnresolvable,
+		}
+	}
+
 	fn snapshot(&self) -> ClassSnapshot {
 		ClassSnapshot {
 			floor_version: self.floor_version.load(Ordering::Relaxed),
@@ -126,32 +200,13 @@ impl RetentionMetrics {
 		counters.backlog_hint.store(backlog_hint, Ordering::Relaxed);
 		counters.binding.store(encode_binding(floor.map(|(_, binding)| binding)), Ordering::Relaxed);
 
-		let stuck = match floor {
-			Some((floor, _)) => {
-				let key = floor.monotonic_key();
-				let previous = counters.floor_version.swap(key, Ordering::Relaxed);
-				key <= previous && work_done == 0
-			}
-			None => true,
-		};
-
-		if !stuck {
-			counters.stuck_streak.store(0, Ordering::Relaxed);
-			return StuckOnset::Quiet;
-		}
-
-		counters.stuck_slices.fetch_add(1, Ordering::Relaxed);
-		if counters.stuck_streak.fetch_add(1, Ordering::Relaxed) > 0 {
-			return StuckOnset::Quiet;
-		}
 		match floor {
-			Some(_) if backlog_hint == 0 => StuckOnset::Quiet,
-			Some((floor, binding)) => StuckOnset::FloorPinned {
-				floor,
-				binding,
-				backlog_hint,
-			},
-			None => StuckOnset::FloorUnresolvable,
+			Some((floor, binding)) if binding.is_clock_driven() => {
+				let key = floor.monotonic_key();
+				counters.floor_version.store(key, Ordering::Relaxed);
+				counters.record_starvation(key, binding, work_done, backlog_hint)
+			}
+			_ => counters.record_pinning(floor, work_done, backlog_hint),
 		}
 	}
 
@@ -194,11 +249,161 @@ fn decode_binding(encoded: u64) -> Option<FloorTerm> {
 
 #[cfg(test)]
 mod tests {
-	use super::RetentionMetrics;
+	use reifydb_value::value::datetime::DateTime;
+
+	use super::{RetentionMetrics, STARVATION_WINDOW_NANOS, StuckOnset};
 	use crate::{
 		common::CommitVersion,
 		lifecycle::class::{Floor, FloorTerm, RetentionClass},
 	};
+
+	const HOUR_NANOS: u64 = 3_600 * 1_000_000_000;
+
+	const BASE: u64 = 10 * HOUR_NANOS;
+
+	fn expiry_floor(nanos: u64) -> Option<(Floor, FloorTerm)> {
+		// Every clock-driven floor in the ledger is `now - ttl` rendered as an instant, so a test
+		// exercising that path has to hand the same shape over: a version floor would take the pinned
+		// branch and prove nothing about the branch under test.
+		Some((Floor::Instant(DateTime::from_nanos(nanos)), FloorTerm::RowExpiry))
+	}
+
+	#[test]
+	fn a_clock_driven_binding_is_never_reported_as_a_pinned_floor() {
+		// A row-expiry floor is `now - ttl`: only the clock feeds it, so no reader, lease or consumer
+		// can hold it down and "the floor will not advance" cannot be a true diagnosis for it. The
+		// sequence below is what a budgeted sweep across a ttl ladder produces - the reported cutoff
+		// swinging between a short-lived and a long-lived object - which the pinned predicate reads as
+		// a floor moving backwards and alarms on.
+		let metrics = RetentionMetrics::new();
+		let class = RetentionClass::RowTtlSilent;
+
+		for step in 0..20u64 {
+			let floor = match step % 2 {
+				0 => BASE,
+				_ => BASE - HOUR_NANOS,
+			};
+			let onset = metrics.record_reclamation(class, expiry_floor(floor), 0, 2);
+
+			assert!(
+				!matches!(onset, StuckOnset::FloorPinned { .. }),
+				"slice {step} reported a floor that nothing but the clock can move as pinned"
+			);
+		}
+	}
+
+	#[test]
+	fn a_catch_up_sweep_shorter_than_the_window_never_alarms() {
+		// A sweep that cannot finish inside one budget leaves a backlog and reclaims nothing on the
+		// slices that only scan, and the lane re-runs it every few milliseconds. That is a healthy
+		// catch-up, not starvation, and alarming on it buries the real signal under dozens of lines a
+		// second.
+		let metrics = RetentionMetrics::new();
+		let class = RetentionClass::RowTtlSilent;
+		let step = STARVATION_WINDOW_NANOS / 100;
+
+		for slice in 0..50u64 {
+			let onset = metrics.record_reclamation(class, expiry_floor(BASE + slice * step), 0, 2);
+
+			assert_eq!(onset, StuckOnset::Quiet, "slice {slice} alarmed inside the starvation window");
+		}
+	}
+
+	#[test]
+	fn a_backlog_that_outlives_the_window_alarms_once_per_window() {
+		// The condition worth waking someone for is a class that has held a backlog and reclaimed
+		// nothing for long enough that it cannot be a sweep in progress. It must still speak once per
+		// window rather than once per slice, because the lane re-slices at its catch-up cadence.
+		let metrics = RetentionMetrics::new();
+		let class = RetentionClass::RowTtlSilent;
+
+		assert_eq!(metrics.record_reclamation(class, expiry_floor(BASE), 0, 7), StuckOnset::Quiet);
+		assert_eq!(
+			metrics.record_reclamation(class, expiry_floor(BASE + STARVATION_WINDOW_NANOS), 0, 7),
+			StuckOnset::Starved {
+				binding: FloorTerm::RowExpiry,
+				backlog_hint: 7,
+			},
+			"a backlog held across the whole window with nothing reclaimed must alarm"
+		);
+		assert_eq!(
+			metrics.record_reclamation(class, expiry_floor(BASE + STARVATION_WINDOW_NANOS + 1), 0, 7),
+			StuckOnset::Quiet,
+			"the very next slice must not alarm again, or the window has bought nothing"
+		);
+	}
+
+	#[test]
+	fn reclaiming_anything_restarts_the_starvation_window() {
+		// A class that drains some of its backlog is making progress, and the clock it is measured
+		// against keeps running. Without restarting the window, the accumulated age of an old stall
+		// would alarm on a class that has since recovered.
+		let metrics = RetentionMetrics::new();
+		let class = RetentionClass::RowTtlSilent;
+
+		metrics.record_reclamation(class, expiry_floor(BASE), 0, 4);
+		metrics.record_reclamation(class, expiry_floor(BASE + STARVATION_WINDOW_NANOS), 12, 4);
+
+		assert_eq!(
+			metrics.record_reclamation(class, expiry_floor(BASE + STARVATION_WINDOW_NANOS + 1), 0, 4),
+			StuckOnset::Quiet,
+			"the slice after progress opens a fresh window rather than inheriting the old one"
+		);
+		assert_eq!(
+			metrics.record_reclamation(class, expiry_floor(BASE + 2 * STARVATION_WINDOW_NANOS), 0, 4),
+			StuckOnset::Quiet,
+			"and the fresh window must run its full length from the slice that opened it"
+		);
+		assert_eq!(
+			metrics.record_reclamation(class, expiry_floor(BASE + 2 * STARVATION_WINDOW_NANOS + 2), 0, 4),
+			StuckOnset::Starved {
+				binding: FloorTerm::RowExpiry,
+				backlog_hint: 4,
+			},
+			"once the fresh window elapses the class is starving again and must say so"
+		);
+	}
+
+	#[test]
+	fn an_externally_pinned_floor_is_still_reported_as_pinned() {
+		// Splitting the alarm by binding must not retire the case it exists for: a lease, a query or a
+		// consumer holding the floor down is a real pin, diagnosed by naming the party responsible.
+		let metrics = RetentionMetrics::new();
+		let class = RetentionClass::BufferHistoricalGc;
+		let floor = Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin));
+
+		assert_eq!(metrics.record_reclamation(class, floor, 0, 3), StuckOnset::Quiet);
+
+		assert_eq!(
+			metrics.record_reclamation(class, floor, 0, 3),
+			StuckOnset::FloorPinned {
+				floor: Floor::Version(CommitVersion(10)),
+				binding: FloorTerm::LeaseMin,
+				backlog_hint: 3,
+			},
+			"a version floor that did not move while work waited must still name what holds it"
+		);
+	}
+
+	#[test]
+	fn an_unresolvable_floor_alarms_only_when_something_is_waiting_on_it() {
+		// "No floor" and "nothing eligible" are different states. A database that declares no ttl at
+		// all resolves no cutoff and has nothing to reclaim, which is not a fault; the same missing
+		// cutoff with rows waiting behind it means the class can reclaim nothing and must be heard.
+		let idle = RetentionMetrics::new();
+		assert_eq!(
+			idle.record_reclamation(RetentionClass::RowTtlSilent, None, 0, 0),
+			StuckOnset::Quiet,
+			"an unresolvable floor with nothing eligible is not a fault to alarm on"
+		);
+
+		let waiting = RetentionMetrics::new();
+		assert_eq!(
+			waiting.record_reclamation(RetentionClass::RowTtlSilent, None, 0, 3),
+			StuckOnset::FloorUnresolvable,
+			"the same missing cutoff with work waiting behind it must still be reported"
+		);
+	}
 
 	#[test]
 	fn every_class_is_present_from_construction() {
@@ -313,30 +518,10 @@ mod tests {
 		let metrics = RetentionMetrics::new();
 		let class = RetentionClass::RowTtlSilent;
 
-		metrics.record_reclamation(
-			class,
-			Some((Floor::Version(CommitVersion(10)), FloorTerm::RowExpiry)),
-			0,
-			0,
-		);
-		metrics.record_reclamation(
-			class,
-			Some((Floor::Version(CommitVersion(10)), FloorTerm::RowExpiry)),
-			0,
-			0,
-		);
-		metrics.record_reclamation(
-			class,
-			Some((Floor::Version(CommitVersion(20)), FloorTerm::RowExpiry)),
-			5,
-			0,
-		);
-		metrics.record_reclamation(
-			class,
-			Some((Floor::Version(CommitVersion(20)), FloorTerm::RowExpiry)),
-			0,
-			0,
-		);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 0);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 0);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(20)), FloorTerm::LeaseMin)), 5, 0);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(20)), FloorTerm::LeaseMin)), 0, 0);
 
 		assert_eq!(
 			metrics.snapshot(class).stuck_slices,
@@ -353,18 +538,8 @@ mod tests {
 		let metrics = RetentionMetrics::new();
 		let class = RetentionClass::RowTtlSilent;
 
-		metrics.record_reclamation(
-			class,
-			Some((Floor::Version(CommitVersion(10)), FloorTerm::RowExpiry)),
-			0,
-			0,
-		);
-		metrics.record_reclamation(
-			class,
-			Some((Floor::Version(CommitVersion(10)), FloorTerm::RowExpiry)),
-			0,
-			0,
-		);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 0);
+		metrics.record_reclamation(class, Some((Floor::Version(CommitVersion(10)), FloorTerm::LeaseMin)), 0, 0);
 
 		assert_eq!(metrics.snapshot(class).stuck_slices, 1, "an idle frozen floor is still counted as stuck");
 		assert_eq!(metrics.snapshot(class).backlog_hint, 0, "and reports nothing eligible");

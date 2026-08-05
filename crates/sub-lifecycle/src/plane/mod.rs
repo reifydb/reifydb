@@ -99,6 +99,16 @@ impl RetentionPlane {
 				backlog = backlog_hint,
 				"retention class has eligible work but its floor will not advance"
 			),
+			StuckOnset::Starved {
+				binding,
+				backlog_hint,
+			} => warn!(
+				class = class.name(),
+				binding = %binding,
+				ages_by = binding.protects(),
+				backlog = backlog_hint,
+				"retention class has not reclaimed anything while its backlog persisted"
+			),
 			StuckOnset::FloorUnresolvable => warn!(
 				class = class.name(),
 				"retention class has no resolvable floor; it can reclaim nothing"

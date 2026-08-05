@@ -134,7 +134,9 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 	pub fn schedule_repeat(&self, interval: impl Into<Duration>, msg: M) -> TimerHandle {
 		let interval = interval.into().to_std();
 		let actor_ref = self.self_ref.clone();
-		self.system.scheduler().schedule_repeat(interval, move || Repeat::after_send(actor_ref.send(msg.clone())))
+		self.system
+			.scheduler()
+			.schedule_repeat(interval, move || Repeat::after_send(actor_ref.send(msg.clone())))
 	}
 
 	#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]

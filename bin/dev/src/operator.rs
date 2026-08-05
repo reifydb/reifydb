@@ -61,9 +61,7 @@ pub fn keyspace(multi_db: &str, cat: Option<&Catalog>, opts: Options) -> Result<
 	for operator in operator_tables(&conn, opts.operator)? {
 		let table = format!("operator_{operator}__current");
 		let mut stmt = conn
-			.prepare(&format!(
-				"SELECT key, length(coalesce(value, x'')), value IS NULL FROM \"{table}\""
-			))
+			.prepare(&format!("SELECT key, length(coalesce(value, x'')), value IS NULL FROM \"{table}\""))
 			.map_err(|e| format!("failed to scan {table}: {e}"))?;
 		let mut q = stmt.query([]).map_err(|e| format!("failed to scan {table}: {e}"))?;
 		while let Some(row) = q.next().map_err(|e| format!("failed to read {table}: {e}"))? {

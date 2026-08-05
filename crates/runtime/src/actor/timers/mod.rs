@@ -111,7 +111,10 @@ mod tests {
 		assert_eq!(Repeat::after_send(actor.send(1)), Repeat::Keep, "precondition: the first send fits");
 
 		let full = actor.send(2);
-		assert!(matches!(full, Err(SendError::Full(_))), "precondition: capacity 1 must reject the second send");
+		assert!(
+			matches!(full, Err(SendError::Full(_))),
+			"precondition: capacity 1 must reject the second send"
+		);
 		assert_eq!(Repeat::after_send(full), Repeat::Keep, "backpressure must not retire a repeating timer");
 	}
 
@@ -123,7 +126,10 @@ mod tests {
 		drop(mailbox);
 
 		let closed = actor.send(1);
-		assert!(matches!(closed, Err(SendError::Closed(_))), "precondition: a dropped mailbox closes the channel");
+		assert!(
+			matches!(closed, Err(SendError::Closed(_))),
+			"precondition: a dropped mailbox closes the channel"
+		);
 		assert_eq!(Repeat::after_send(closed), Repeat::Cancel, "a dead actor must retire its timer");
 	}
 }

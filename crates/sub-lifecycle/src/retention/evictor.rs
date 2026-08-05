@@ -64,10 +64,8 @@ pub struct EvictorState {
 
 #[derive(Default)]
 struct ClassTally {
-	floor: Option<(Floor, FloorTerm)>,
 	rows: u64,
 	backlog: u64,
-	resolved_any: bool,
 }
 
 #[derive(Default)]
@@ -138,16 +136,11 @@ impl Evictor {
 			}
 			let (storage, ttl) = &eligible[(start + offset) % eligible.len()];
 			let storage = *storage;
-			let Some((cutoff, binding)) = self.expiry_cutoff(now, ttl) else {
+			let Some((cutoff, _)) = self.expiry_cutoff(now, ttl) else {
 				stats.objects_skipped += 1;
 				resume_after = Some(storage);
 				continue;
 			};
-			tally.resolved_any = true;
-			tally.floor = Some(match tally.floor {
-				Some(held) if held.0.monotonic_key() <= cutoff.raw() => held,
-				_ => (Floor::Instant(cutoff.instant()), binding),
-			});
 
 			stats.objects_scanned += 1;
 			let expired_before = stats.rows_expired;
@@ -172,13 +165,8 @@ impl Evictor {
 			None
 		};
 
-		let floor = if tally.resolved_any {
-			tally.floor
-		} else {
-			None
-		};
 		let backlog = tally.backlog + u64::from(unvisited_eligible);
-		self.plane.record_reclamation(target, floor, tally.rows, backlog);
+		self.plane.record_reclamation(target, self.class_floor(&eligible, now), tally.rows, backlog);
 		let budget_exhausted = budget == 0;
 		if budget_exhausted {
 			self.plane.record_budget_exhausted(target);
@@ -207,6 +195,20 @@ impl Evictor {
 		} else {
 			Progress::Exhausted
 		}
+	}
+
+	fn class_floor(&self, eligible: &[(StorageId, Ttl)], now: DateTime) -> Option<(Floor, FloorTerm)> {
+		let mut floor: Option<(Floor, FloorTerm)> = None;
+		for (_, ttl) in eligible {
+			let Some((cutoff, binding)) = self.expiry_cutoff(now, ttl) else {
+				continue;
+			};
+			floor = Some(match floor {
+				Some(held) if held.0.monotonic_key() <= cutoff.raw() => held,
+				_ => (Floor::Instant(cutoff.instant()), binding),
+			});
+		}
+		floor
 	}
 
 	fn expiry_cutoff(&self, now: DateTime, ttl: &Ttl) -> Option<(Cutoff, FloorTerm)> {
@@ -703,6 +705,8 @@ mod tests {
 	use super::*;
 
 	const HOUR: EpochSpan = EpochSpan::new(3_600);
+
+	const FOUR_HOURS: EpochSpan = EpochSpan::new(4 * 3_600);
 
 	const HOUR_NANOS: i64 = 3_600 * 1_000_000_000;
 
@@ -1290,6 +1294,104 @@ mod tests {
 				 advanced past the head of the object list"
 			);
 		}
+	}
+
+	#[test]
+	fn the_reported_floor_spans_every_eligible_object_not_only_the_visited_ones() {
+		// The floor a class reports is what bounds everything that class may delete, so it has to be
+		// the most conservative cutoff across every object the class owns. Folded over only the objects
+		// a budgeted tick reached, the reported floor swings with the resume rotation instead, and a
+		// floor that swings is read downstream as a floor that will not advance.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin(
+			"create table test::short { v: int4 } with { row: { ttl: { duration: \"1h\", announce: false } } }",
+		);
+		test.admin(
+			"create table test::long { v: int4 } with { row: { ttl: { duration: \"4h\", announce: false } } }",
+		);
+		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
+		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1));
+		// The clock starts at the epoch, where `now - 4h` underflows and the 4h object would resolve no
+		// cutoff at all; it has to sit past the longest declared ttl for either object to have a floor.
+		test.mock_clock().advance_secs(FOUR_HOURS.seconds() + HOUR.seconds());
+		test.command("INSERT test::short [{ v: 1 }, { v: 2 }, { v: 3 }, { v: 4 }]");
+		test.command("INSERT test::long [{ v: 1 }, { v: 2 }]");
+		age_past_ttl(&test);
+
+		let evictor = Evictor::new(test.inner().clone());
+		let now = test.mock_clock().now();
+		let mut state = EvictorState::default();
+		let progress = evictor.run_tick(&mut state, RetentionClass::RowTtlSilent, now);
+
+		assert_eq!(
+			progress,
+			Progress::Yielded,
+			"precondition: the budget must run out before the tick ever reaches test::long"
+		);
+		assert_eq!(
+			evictor.plane().snapshot(RetentionClass::RowTtlSilent).floor_version,
+			now.checked_sub(FOUR_HOURS.to_duration()).unwrap().to_nanos(),
+			"the floor must come from the 4h object this tick never visited, because that is the \
+			 oldest cutoff the class is still bound by"
+		);
+	}
+
+	#[test]
+	fn the_reported_floor_does_not_regress_when_the_rotation_reaches_a_longer_ttl() {
+		// Consecutive ticks visit different objects because an exhausted budget rotates the starting
+		// offset. A floor folded over the visited subset drops by the whole ttl spread the moment the
+		// rotation lands on a longer-lived object, and a floor that moves backwards while no work is
+		// done is precisely the state the plane reports as eligible work behind a floor that will not
+		// advance.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin(
+			"create table test::short { v: int4 } with { row: { ttl: { duration: \"1h\", announce: false } } }",
+		);
+		test.admin(
+			"create table test::long { v: int4 } with { row: { ttl: { duration: \"4h\", announce: false } } }",
+		);
+		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
+		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1));
+		// The clock starts at the epoch, where `now - 4h` underflows and the 4h object would resolve no
+		// cutoff at all; it has to sit past the longest declared ttl for either object to have a floor.
+		test.mock_clock().advance_secs(FOUR_HOURS.seconds() + HOUR.seconds());
+		test.command("INSERT test::short [{ v: 1 }, { v: 2 }]");
+		test.command("INSERT test::long [{ v: 1 }, { v: 2 }]");
+		age_past_ttl(&test);
+
+		let evictor = Evictor::new(test.inner().clone());
+		let mut state = EvictorState::default();
+		evictor.run_tick(&mut state, RetentionClass::RowTtlSilent, test.mock_clock().now());
+
+		assert_eq!(
+			row_count(&test, "from test::short"),
+			0,
+			"precondition: the first tick must spend its whole budget on the 1h object"
+		);
+		let first = evictor.plane().snapshot(RetentionClass::RowTtlSilent).floor_version;
+
+		test.mock_clock().advance_secs(600);
+		let second = test.mock_clock().now();
+		evictor.run_tick(&mut state, RetentionClass::RowTtlSilent, second);
+
+		let snapshot = evictor.plane().snapshot(RetentionClass::RowTtlSilent);
+
+		assert_eq!(
+			snapshot.floor_version,
+			second.checked_sub(FOUR_HOURS.to_duration()).unwrap().to_nanos(),
+			"the second tick starts at the 4h object, and the class floor must still be measured from \
+			 the longest declared ttl rather than from whatever the rotation happened to reach"
+		);
+		assert!(
+			snapshot.floor_version > first,
+			"a floor derived from the clock and a fixed set of ttls can only move forwards"
+		);
+		assert_eq!(
+			snapshot.stuck_slices, 0,
+			"a class whose floor advances on every tick must never be accounted as stuck"
+		);
 	}
 
 	#[test]

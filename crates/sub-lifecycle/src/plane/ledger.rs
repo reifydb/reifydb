@@ -215,6 +215,34 @@ mod tests {
 	}
 
 	#[test]
+	fn a_clock_driven_term_is_exactly_one_that_resolves_to_an_instant() {
+		// The retention alarm splits on is_clock_driven: a term classified that way can never be
+		// reported as pinned, because `now - ttl` is arithmetic no other party contributes to. A
+		// version floor is somebody else's progress - a reader, a lease, a consumer, an unflushed
+		// write - and classifying one of those as clock-driven would silently retire the only alarm
+		// that catches it being held down. This ties the classification to what the ledger actually
+		// returns, so the two cannot drift apart.
+		let ledger = ledger(10);
+
+		for term in FloorTerm::all() {
+			let resolved = ledger.term(*term, now(), Some(one_hour()));
+			match resolved {
+				Some(Floor::Instant(_)) => assert!(
+					term.is_clock_driven(),
+					"{term} resolves to an instant off the clock but is not classified \
+					 clock-driven, so a floor that cannot be pinned would still be alarmed on"
+				),
+				Some(Floor::Version(_)) => assert!(
+					!term.is_clock_driven(),
+					"{term} resolves to a version derived from another party's progress, so \
+					 classifying it clock-driven retires the alarm that catches it wedged"
+				),
+				None => panic!("{term} resolved no floor; the fixture must place every term"),
+			}
+		}
+	}
+
+	#[test]
 	fn a_group_class_resolves_to_a_cutoff_instead_of_declining_to_answer() {
 		// A none term propagates to the whole class, so any class naming OwningFlowCheckpoint would
 		// reclaim nothing forever while reporting healthy. Both group phases name it.

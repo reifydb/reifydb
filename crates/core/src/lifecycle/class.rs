@@ -85,6 +85,19 @@ impl FloorTerm {
 		}
 	}
 
+	pub fn is_clock_driven(&self) -> bool {
+		match self {
+			Self::RowExpiry | Self::OperatorExpiry => true,
+			Self::QueryDoneUntil
+			| Self::LeaseMin
+			| Self::ConsumerCheckpoint
+			| Self::ConsumerPosition
+			| Self::FlushWatermark
+			| Self::OwningFlowCheckpoint
+			| Self::RetentionHorizon => false,
+		}
+	}
+
 	pub fn all() -> &'static [Self] {
 		&[
 			Self::RowExpiry,

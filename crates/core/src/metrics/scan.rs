@@ -59,9 +59,12 @@ mod tests {
 		record_page(5, 5);
 		let before = ScanCounters::sample();
 
-		assert_eq!(before.since(), ScanCounters {
-			fetched: 0,
-			tombstones: 0
-		});
+		assert_eq!(
+			before.since(),
+			ScanCounters {
+				fetched: 0,
+				tombstones: 0
+			}
+		);
 	}
 }
