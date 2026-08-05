@@ -237,6 +237,8 @@ impl ProfilerLayer {
 			}
 		}
 		if let Some(s) = &entry.state_fields {
+			record.extras[0] = s.rows_fetched;
+			record.extras[1] = s.rows_tombstoned;
 			if !s.site.is_empty() {
 				record.dim_indices[0] = self.interner.intern(&s.site);
 			}
@@ -488,6 +490,36 @@ mod tests {
 			Some("op7"),
 			"the operator must occupy dim 1 so one hot wheel cannot hide inside a site-wide average"
 		);
+	}
+
+	#[test]
+	fn state_range_carries_its_physical_row_counts_into_extras() {
+		// A scan's cost tracks rows the storage fetched, not rows it returned: the timer probe
+		// asks for one row and sqlite hands back every tombstone in the prefix because LIMIT
+		// applies after the WHERE. Without these two counters the profile shows a slow probe and
+		// no way to tell an expensive scan from an expensive tombstone tax.
+		let sink: Arc<RecordingSink> = Arc::new(RecordingSink::default());
+		let (layer, _interner) = build_layer(sink.clone(), CategorySet::all());
+		let subscriber = Registry::default().with(layer);
+		with_default(subscriber, || {
+			let handle = ProfilerScope::start_with_sink("scope", sink.clone(), Clock::Real);
+			handle.run_sync(|| {
+				let span = trace_span!(
+					"flow::state::range_limited",
+					operator_id = 7u64,
+					site = "timer::hydrate_probe",
+					rows_fetched = 431u64,
+					rows_tombstoned = 430u64
+				);
+				let _g = span.enter();
+			});
+			let _summary = handle.finish();
+		});
+		let recs = sink.records.lock();
+		assert_eq!(recs.len(), 1);
+		let rec = recs[0];
+		assert_eq!(rec.extras[0], 431, "rows fetched from storage must reach extras[0]");
+		assert_eq!(rec.extras[1], 430, "of which tombstones must reach extras[1]");
 	}
 
 	#[test]

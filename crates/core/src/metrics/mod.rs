@@ -9,3 +9,4 @@ pub mod operator;
 pub mod registry;
 pub mod report;
 pub mod sample;
+pub mod scan;

@@ -694,6 +694,10 @@ impl SqlitePersistentStorage {
 		};
 		let page_was_full = raw.len() >= req.batch_size;
 		let last_scanned = raw.last().map(|e| e.key.clone());
+		reifydb_core::metrics::scan::record_page(
+			raw.len() as u64,
+			raw.iter().filter(|e| e.value.is_none()).count() as u64,
+		);
 		let entries: Vec<RawEntry> = raw.into_iter().filter(|e| req.scope.contains(e.version)).collect();
 
 		if !page_was_full {

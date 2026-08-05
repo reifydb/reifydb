@@ -11,6 +11,7 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 	key::{operator_group_state::GroupStateKey, operator_state::OperatorStateKey},
+	metrics::scan::ScanCounters,
 };
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
@@ -94,7 +95,9 @@ impl FlowTransaction {
 
 	#[instrument(name = "flow::state::range_limited", level = "debug", skip(self, range), fields(
 		operator_id = id.0,
-		site = site
+		site = site,
+		rows_fetched = field::Empty,
+		rows_tombstoned = field::Empty
 	))]
 	pub fn state_range(
 		&mut self,
@@ -103,21 +106,25 @@ impl FlowTransaction {
 		limit: Option<usize>,
 		site: &'static str,
 	) -> Result<MultiVersionBatch> {
+		let before = ScanCounters::sample();
 		let prefixed_range = range.with_prefix(OperatorStateKey::encoded(id, vec![]));
 		let iter = self.range(prefixed_range, RangeScope::All, 1024);
 		let mut items = Vec::new();
+		let mut has_more = false;
 		for result in iter {
 			if limit.is_some_and(|l| items.len() == l) {
-				return Ok(MultiVersionBatch {
-					items,
-					has_more: true,
-				});
+				has_more = true;
+				break;
 			}
 			items.push(result?);
 		}
+		let scanned = before.since();
+		let span = Span::current();
+		span.record("rows_fetched", scanned.fetched);
+		span.record("rows_tombstoned", scanned.tombstones);
 		Ok(MultiVersionBatch {
 			items,
-			has_more: false,
+			has_more,
 		})
 	}
 

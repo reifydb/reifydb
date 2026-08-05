@@ -61,12 +61,17 @@ impl Visit for FlowApplyFields {
 pub struct StateRangeFields {
 	pub site: String,
 	pub operator_id: Option<u64>,
+	pub rows_fetched: u64,
+	pub rows_tombstoned: u64,
 }
 
 impl Visit for StateRangeFields {
 	fn record_u64(&mut self, field: &Field, value: u64) {
-		if field.name() == "operator_id" {
-			self.operator_id = Some(value);
+		match field.name() {
+			"operator_id" => self.operator_id = Some(value),
+			"rows_fetched" => self.rows_fetched = value,
+			"rows_tombstoned" => self.rows_tombstoned = value,
+			_ => {}
 		}
 	}
 
