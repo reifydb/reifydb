@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use reifydb_core::{
-	common::{CommitVersion, TimeDomain},
+	common::CommitVersion,
 	interface::{
 		catalog::flow::{FlowId, OperatorId},
 		change::Change,
@@ -15,7 +15,7 @@ use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::{Span, field, instrument};
 
-use crate::{engine::FlowEngineInner, execution::retention_instant, operator::max_input_time};
+use crate::{engine::FlowEngineInner, operator::max_input_time};
 
 impl FlowEngineInner {
 	#[instrument(name = "flow::engine::process", level = "debug", skip(self, txn, change), fields(
@@ -87,7 +87,7 @@ impl FlowEngineInner {
 				changes.iter().filter_map(max_input_time).max().map(|at| (*operator_id, at))
 			})
 			.collect();
-		freeze_arrival_frontier(txn, flow.time_domain(), &sources, &arrivals)?;
+		freeze_arrival_frontier(txn, &sources, &arrivals)?;
 
 		let mut nodes_processed = self.run_topology(txn, flow, pending, topo)?;
 		nodes_processed += self.dispatch_due_timers(txn, flow, version, topo)?;
@@ -125,7 +125,7 @@ impl FlowEngineInner {
 				.max()
 				.expect("a non-empty inbox has a version");
 			txn.set_change_coordinate(ChangeCoordinate {
-				at: retention_instant(txn, flow, at),
+				at,
 				version,
 			});
 
@@ -150,13 +150,12 @@ impl FlowEngineInner {
 
 fn freeze_arrival_frontier(
 	txn: &mut FlowTransaction,
-	domain: TimeDomain,
 	sources: &[OperatorId],
 	arrivals: &[(OperatorId, DateTime)],
 ) -> Result<()> {
 	let watermarks = txn.source_watermarks();
 	if !sources.is_empty() {
-		let frontier = watermarks.flow_watermark(domain, sources, txn)?;
+		let frontier = watermarks.flow_watermark(sources, txn)?;
 		txn.set_flow_watermark(frontier);
 	}
 	for (operator, at) in arrivals {
@@ -201,8 +200,8 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 
-		freeze_arrival_frontier(&mut txn, TimeDomain::Event, &[SOURCE], &[(SOURCE, at(5_000))]).unwrap();
-		freeze_arrival_frontier(&mut txn, TimeDomain::Event, &[SOURCE], &[(SOURCE, at(20_000))]).unwrap();
+		freeze_arrival_frontier(&mut txn, &[SOURCE], &[(SOURCE, at(5_000))]).unwrap();
+		freeze_arrival_frontier(&mut txn, &[SOURCE], &[(SOURCE, at(20_000))]).unwrap();
 
 		assert_eq!(
 			txn.flow_watermark(),

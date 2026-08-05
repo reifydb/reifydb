@@ -1136,6 +1136,11 @@ mod pull_protocol {
 		// A tick that commits must still drain afterwards, or the generation it promoted is
 		// never pruned - a leak on precisely the quietest flows. Only a pull moves the cursor
 		// past the gap, so a cursor that stays put is proof none ran.
+		//
+		// The tick commit is manufactured through retention: the watermark derives from the
+		// rows' arrival stamps, never the clock, so seals fire inline with the data that
+		// carries the watermark past them and what is left for a quiet flow's tick to commit
+		// is the reclaim sweep retiring the window groups those seals left behind.
 		let h = harness_with(
 			"CREATE TABLE app::t { id: int4, g: int4, v: int4 }",
 			r#"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } AS {
@@ -1148,24 +1153,37 @@ mod pull_protocol {
 		assert!(h.flow.ticks(), "a flow whose operators never tick would skip on_tick's body entirely");
 		h.te.admin("CREATE TABLE app::unrelated { id: int4 }");
 
+		let Clock::Mock(clock) = h.engine.clock() else {
+			panic!("this test separates arrival stamps by hand and needs the mock clock")
+		};
+
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(v0);
 
-		h.te.command("INSERT app::t [{ id: 1, g: 1, v: 5 }]");
-		let target = h.engine.current_version().expect("current version");
-		h.await_safe_watermark(target);
-		h.wake(&actor);
-		assert_eq!(
-			h.await_view_rows(1, seconds(10).to_std()),
-			1,
-			"the woken row must reach the window, or no seal timer is ever armed"
-		);
-		assert_eq!(
-			h.await_position(target, seconds(5).to_std()),
-			Some(target),
-			"the wake must settle the cursor before the tick, so that any later move is the \
-			 tick's doing and nothing else's"
-		);
+		// Three arrivals 3s apart: each lands in its own 1s bucket and its wake seals the
+		// bucket before it inline. The second seal moves the sealed-through anchor past the
+		// first bucket's group, which is what gives the tick's reclaim something to retire.
+		let mut target = v0;
+		for (id, expected_rows) in [(1u64, 1usize), (2, 2), (3, 3)] {
+			if id > 1 {
+				clock.advance_secs(3);
+			}
+			h.te.command(&format!("INSERT app::t [{{ id: {id}, g: 1, v: 5 }}]"));
+			target = h.engine.current_version().expect("current version");
+			h.await_safe_watermark(target);
+			h.wake(&actor);
+			assert_eq!(
+				h.await_view_rows(expected_rows, seconds(10).to_std()),
+				expected_rows,
+				"each arrival must land in its own bucket, or no sealed group is left to reclaim"
+			);
+			assert_eq!(
+				h.await_position(target, seconds(5).to_std()),
+				Some(target),
+				"the wake must settle the cursor before the tick, so that any later move is \
+				 the tick's doing and nothing else's"
+			);
+		}
 
 		// Versions the actor is never woken for: only the tick commit's follow-up pull can
 		// carry the cursor over them.
@@ -1174,19 +1192,15 @@ mod pull_protocol {
 		h.await_safe_watermark(gap);
 		assert!(gap > target, "the test needs unconsumed safe versions above the settled cursor");
 
-		let Clock::Mock(clock) = h.engine.clock() else {
-			panic!("this test arms and fires a seal timer by hand and needs the mock clock")
-		};
-		clock.advance_secs(3);
-
 		let pre_tick = h.engine.current_version().expect("current version");
 		assert!(actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
 
 		assert!(
 			h.await_version_beyond(pre_tick, seconds(10)).is_some(),
-			"precondition: the tick must actually reach a commit. A tick that produces no \
-			 output leaves `committing` false and falls straight through to on_tick's own \
-			 trailing Drain, which would satisfy the assertion below for the wrong reason"
+			"precondition: the tick must actually reach a commit - its reclaim must retire \
+			 the sealed window groups. A tick that produces no output leaves `committing` \
+			 false and falls straight through to on_tick's own trailing Drain, which would \
+			 satisfy the assertion below for the wrong reason"
 		);
 
 		assert!(

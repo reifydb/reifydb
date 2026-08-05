@@ -158,7 +158,7 @@ fn a_processing_view_over_an_event_source_buckets_by_arrival_not_by_the_declared
 		db.query_as_root("FROM app::e", ())
 	);
 
-	// A coordinate taken from `ts` would fall behind the clock-driven cutoff and be evicted.
+	// A coordinate taken from `ts` would fall behind the arrival-driven cutoff and be evicted.
 	let held = db.await_exact_row_count("FROM app::p | filter { total == 4.0 }", 1, StdDuration::from_secs(2));
 	assert_eq!(
 		held,
@@ -205,7 +205,7 @@ fn an_event_view_over_an_event_source_buckets_by_the_declared_column_not_by_arri
 fn a_processing_view_over_a_processing_source_keeps_its_rows_live() {
 	// The source declares no ts, so its #time is already arrival and the re-stamp is a no-op. The
 	// one fault a no-op can still hide is stamping epoch instead of arrival, putting every row ~56
-	// years behind the clock-driven cutoff - hence the assertion that the rows stay live.
+	// years behind the arrival-driven cutoff - hence the assertion that the rows stay live.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { g: int4, v: float8 }");

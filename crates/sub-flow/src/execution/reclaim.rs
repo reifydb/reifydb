@@ -277,7 +277,7 @@ impl FlowEngineInner {
 			.get_operator_ids()
 			.filter(|id| flow.get_operator(id).is_some_and(|operator| operator.ty.is_source()))
 			.collect();
-		txn.source_watermarks().flow_watermark(flow.time_domain(), &sources, txn)
+		txn.source_watermarks().flow_watermark(&sources, txn)
 	}
 
 	fn row_ttl(&self, storage: StorageId) -> Option<Duration> {

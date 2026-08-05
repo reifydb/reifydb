@@ -41,6 +41,7 @@ use crate::operator::{
 			slot_coord, window_group_key,
 		},
 	},
+	max_input_time,
 	stateful::utils,
 	store::OperatorStateStore,
 };
@@ -113,7 +114,7 @@ fn route_count_tumbling(
 	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
 ) -> Result<()> {
 	let rows = TumblingOverRows::holding(operator.size_count().unwrap_or(1));
-	let now = operator.core.current_timestamp();
+	let now = max_input_time(change).unwrap_or_else(|| txn.written_at());
 	for diff in change.diffs.iter() {
 		match diff {
 			Diff::Insert {

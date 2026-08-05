@@ -247,10 +247,11 @@ fn whether_a_sealed_bucket_was_published_at_all_depends_on_arrival_order() {
 }
 
 #[test]
-fn a_processing_window_rolls_on_the_clock_while_an_event_window_stays_open() {
+fn a_processing_window_rolls_on_arrival_time_while_an_event_window_stays_open() {
 	// Two views over the same table and the same rows, differing only in declared domain, so any
-	// divergence between them is the domain and nothing else. A processing-time watermark is the
-	// wall clock and rolls while idle; an event-time one moves only on data and must stay open.
+	// divergence between them is the domain and nothing else. A processing-time watermark derives
+	// from the rows' arrival stamps - it holds while idle and moves when rows arrive - while an
+	// event-time one moves only on the declared ts and must stay open.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
@@ -277,11 +278,12 @@ fn a_processing_window_rolls_on_the_clock_while_an_event_window_stays_open() {
 		"the processing window never published a live row, so the roll assertion would be vacuous"
 	);
 
-	// Not a synchronisation wait - the quiet interval IS the test. A processing-time window can
-	// only be seen to close by letting the wall clock, which is its watermark, cross 2s.
+	// Not a synchronisation wait - the quiet interval separates the two arrivals by more than the
+	// 2s window, so the second row's arrival stamp lands in a different bucket than the first's.
 	sleep(StdDuration::from_millis(2_500));
 
-	// Same event time as the first row: still inside the event window, past the processing one.
+	// Same event time as the first row: still inside the event window, but its arrival stamp is
+	// 2.5s past the first row's, outside the processing one.
 	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 7, ts: "2026-01-01T00:00:00Z" }]"#);
 	db.await_all_flows(TIMEOUT);
 
@@ -289,8 +291,8 @@ fn a_processing_window_rolls_on_the_clock_while_an_event_window_stays_open() {
 	assert_eq!(
 		rolled,
 		2,
-		"a processing-time window must stop accepting once the clock leaves it, so the second row \
-		 belongs to a new window rather than the first one; view now: {:?}",
+		"a processing-time window must stop accepting once the arrival watermark leaves it, so the \
+		 second row belongs to a new window rather than the first one; view now: {:?}",
 		db.query_as_root("FROM app::p", ())
 	);
 

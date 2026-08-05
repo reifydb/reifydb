@@ -26,7 +26,6 @@ use reifydb_engine::{
 use reifydb_flow::window::{
 	engine::tumbling::TumblingEngine,
 	meta::{EngineMeta, EngineMetaKey},
-	span::WindowCoord,
 };
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::{Expression, name::display_label};
@@ -361,10 +360,6 @@ impl Aggregation {
 			encoded: encoded.freeze(),
 			shape: layout,
 		})
-	}
-
-	pub fn current_timestamp(&self) -> DateTime {
-		<DateTime as WindowCoord>::from_order(self.runtime_context.clock.now().to_millis())
 	}
 
 	fn eval_session(&self) -> EvalContext<'_> {

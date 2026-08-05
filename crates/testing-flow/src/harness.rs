@@ -5,7 +5,10 @@ use std::{mem, sync::Arc};
 
 use reifydb_abi::operator::{capabilities::OperatorCapability, timer::TimerKind};
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::{
+	encoded::row::EncodedRow,
+	key::encoded::{EncodedKey, EncodedKeyRange},
+};
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers},
 	common::CommitVersion,
@@ -184,6 +187,15 @@ impl<O: Operator> Harness<O> {
 		}
 		self.end(txn);
 		Ok(footprint)
+	}
+
+	pub fn state_items(&mut self) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+		let operator = self.operator.id();
+		let mut txn = self.begin(DateTime::default());
+		let batch = txn.state_range(operator, EncodedKeyRange::all(), None, "test::harness")?;
+		let items = batch.items.into_iter().map(|item| (item.key, item.row)).collect();
+		self.end(txn);
+		Ok(items)
 	}
 
 	fn begin(&mut self, at: DateTime) -> FlowTransaction {

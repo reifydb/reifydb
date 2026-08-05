@@ -5,7 +5,6 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use reifydb_core::{
-	common::TimeDomain,
 	interface::catalog::flow::OperatorId,
 	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
 };
@@ -36,7 +35,6 @@ pub struct SourceWatermarks {
 impl SourceWatermarks {
 	pub fn advance(&self, source: OperatorId, txn: &mut FlowTransaction, at: DateTime) -> Result<()> {
 		let coordinate = at.to_millis();
-		let now = txn.clock().now();
 		let mut state = self.inner.entry(source).or_default();
 		Self::hydrate_once(&mut state, source, txn)?;
 		let persist = match state.value {
@@ -50,7 +48,7 @@ impl SourceWatermarks {
 		};
 		state.value = Some(coordinate);
 		if persist {
-			txn.state_set(source, &source_watermark_key(), encode_payload(&coordinate, now)?)?;
+			txn.state_set(source, &source_watermark_key(), encode_payload(&coordinate, at)?)?;
 		}
 		Ok(())
 	}
@@ -59,35 +57,24 @@ impl SourceWatermarks {
 		Ok(DateTime::from_millis(self.raw(source, txn)?))
 	}
 
-	pub fn flow_watermark(
-		&self,
-		domain: TimeDomain,
-		sources: &[OperatorId],
-		txn: &mut FlowTransaction,
-	) -> Result<DateTime> {
-		match domain {
-			TimeDomain::Processing => Ok(txn.clock().now()),
-			TimeDomain::Event => {
-				reifydb_assertions! {
-					assert!(
-						!sources.is_empty(),
-						"an event-time flow watermark was read with no sources; the \
-						 min-merge over nothing would pin the watermark at zero and hold \
-						 every horizon open, so the caller failed to wire the flow's \
-						 source list"
-					);
-				}
-				let mut merged: Option<u64> = None;
-				for source in sources {
-					let value = self.raw(*source, txn)?;
-					merged = Some(match merged {
-						Some(current) => current.min(value),
-						None => value,
-					});
-				}
-				Ok(DateTime::from_millis(merged.unwrap_or(0)))
-			}
+	pub fn flow_watermark(&self, sources: &[OperatorId], txn: &mut FlowTransaction) -> Result<DateTime> {
+		reifydb_assertions! {
+			assert!(
+				!sources.is_empty(),
+				"a flow watermark was read with no sources; the min-merge over nothing would \
+				 pin the watermark at zero and hold every horizon open, so the caller failed \
+				 to wire the flow's source list"
+			);
 		}
+		let mut merged: Option<u64> = None;
+		for source in sources {
+			let value = self.raw(*source, txn)?;
+			merged = Some(match merged {
+				Some(current) => current.min(value),
+				None => value,
+			});
+		}
+		Ok(DateTime::from_millis(merged.unwrap_or(0)))
 	}
 
 	fn raw(&self, source: OperatorId, txn: &mut FlowTransaction) -> Result<u64> {
@@ -177,17 +164,17 @@ mod tests {
 
 		watermarks.advance(SOURCE_A, &mut txn, at(10_000)).unwrap();
 		watermarks.advance(SOURCE_B, &mut txn, at(2_000)).unwrap();
-		assert_eq!(watermarks.flow_watermark(TimeDomain::Event, &sources, &mut txn).unwrap(), at(2_000));
+		assert_eq!(watermarks.flow_watermark(&sources, &mut txn).unwrap(), at(2_000));
 
 		watermarks.advance(SOURCE_A, &mut txn, at(20_000)).unwrap();
 		assert_eq!(
-			watermarks.flow_watermark(TimeDomain::Event, &sources, &mut txn).unwrap(),
+			watermarks.flow_watermark(&sources, &mut txn).unwrap(),
 			at(2_000),
 			"the fast source must not advance the flow watermark past the slow one"
 		);
 
 		watermarks.advance(SOURCE_B, &mut txn, at(12_000)).unwrap();
-		assert_eq!(watermarks.flow_watermark(TimeDomain::Event, &sources, &mut txn).unwrap(), at(12_000));
+		assert_eq!(watermarks.flow_watermark(&sources, &mut txn).unwrap(), at(12_000));
 	}
 
 	#[test]
@@ -234,35 +221,35 @@ mod tests {
 		let watermarks = SourceWatermarks::default();
 
 		assert_eq!(watermarks.source_watermark(SOURCE_A, &mut txn).unwrap(), at(0));
-		assert_eq!(watermarks.flow_watermark(TimeDomain::Event, &[SOURCE_A], &mut txn).unwrap(), at(0));
+		assert_eq!(watermarks.flow_watermark(&[SOURCE_A], &mut txn).unwrap(), at(0));
 	}
 
 	#[test]
-	fn event_silence_holds_while_processing_silence_advances() {
-		// Both halves in one test so neither can be satisfied by breaking the other: an event
-		// watermark is data-driven and holds while no data arrives, a processing watermark is the
-		// wall clock so an idle flow keeps draining.
+	fn the_watermark_is_the_min_merge_of_stamped_arrivals_never_the_clock() {
+		// Replay determinism: the flow watermark derives from stamped row time in every domain -
+		// processing time is event time over arrival stamps. The clock starts far ahead of the
+		// data and moves again mid-test, so a clock read anywhere in the merge shows up as
+		// 100_000 or 150_000 where 5_000 is expected.
 		let engine = TestEngine::new();
 		let clock = MockClock::from_millis(100_000);
 		let mut txn = deferred(&engine, clock.clone());
 		let watermarks = SourceWatermarks::default();
-		let sources = [SOURCE_A];
+		let sources = [SOURCE_A, SOURCE_B];
 
-		watermarks.advance(SOURCE_A, &mut txn, at(5_000)).unwrap();
-		assert_eq!(watermarks.flow_watermark(TimeDomain::Event, &sources, &mut txn).unwrap(), at(5_000));
-		assert_eq!(watermarks.flow_watermark(TimeDomain::Processing, &sources, &mut txn).unwrap(), at(100_000));
+		watermarks.advance(SOURCE_A, &mut txn, at(10_000)).unwrap();
+		watermarks.advance(SOURCE_B, &mut txn, at(5_000)).unwrap();
+		assert_eq!(
+			watermarks.flow_watermark(&sources, &mut txn).unwrap(),
+			at(5_000),
+			"the watermark must be the min-merge of the arrival-derived sources, not the clock"
+		);
 
 		clock.advance_millis(50_000);
 
 		assert_eq!(
-			watermarks.flow_watermark(TimeDomain::Event, &sources, &mut txn).unwrap(),
+			watermarks.flow_watermark(&sources, &mut txn).unwrap(),
 			at(5_000),
-			"an event watermark must not advance without data"
-		);
-		assert_eq!(
-			watermarks.flow_watermark(TimeDomain::Processing, &sources, &mut txn).unwrap(),
-			at(150_000),
-			"a processing watermark must keep draining while idle"
+			"with no new data the watermark must hold however far the clock runs"
 		);
 	}
 

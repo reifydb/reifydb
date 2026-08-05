@@ -14,7 +14,7 @@ use reifydb_flow::{
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::Result;
 
-use crate::{engine::FlowEngineInner, execution::retention_instant};
+use crate::engine::FlowEngineInner;
 
 const MAX_TIMER_ROUNDS: u32 = 4_096;
 const MAX_TIMERS_PER_DISPATCH: usize = 8_192;
@@ -29,7 +29,6 @@ impl FlowEngineInner {
 	) -> Result<u32> {
 		let wheel = txn.timer_wheel();
 		let watermarks = txn.source_watermarks();
-		let domain = flow.time_domain();
 		let sources: Vec<OperatorId> = topo
 			.iter()
 			.copied()
@@ -43,7 +42,7 @@ impl FlowEngineInner {
 		let mut rounds = 0u32;
 		let mut budget = MAX_TIMERS_PER_DISPATCH;
 		loop {
-			let watermark = watermarks.flow_watermark(domain, &sources, txn)?;
+			let watermark = watermarks.flow_watermark(&sources, txn)?;
 			txn.set_flow_watermark(watermark);
 			let mut due: Vec<(OperatorId, Timer)> = Vec::new();
 			for operator_id in topo {
@@ -85,7 +84,7 @@ impl FlowEngineInner {
 					continue;
 				};
 				txn.set_change_coordinate(ChangeCoordinate {
-					at: retention_instant(txn, flow, timer.at),
+					at: timer.at,
 					version,
 				});
 				let Some(result) = operator.on_timer(txn, timer)? else {
