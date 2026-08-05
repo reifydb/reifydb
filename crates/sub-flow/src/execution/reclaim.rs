@@ -23,9 +23,11 @@ use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
 };
-use tracing::{Span, field, info, instrument};
+use tracing::{Span, field, instrument, trace};
 
 use crate::engine::FlowEngineInner;
+
+const SWEEP_DIVISOR: u64 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReclaimBudget {
@@ -184,6 +186,9 @@ impl FlowEngineInner {
 					.keyspaces
 					.into_iter()
 					.map(|(keyspace, at)| (keyspace, Cutoff(at)))
+					.filter(|(keyspace, cutoff)| {
+						self.keyspace_sweep_due(operator_id, *keyspace, watermark, *cutoff)
+					})
 					.collect(),
 				mapping: reclaimable.mapping.map(Cutoff),
 				mapping_cursor: self.mapping_cursors.entry(operator_id).or_default().clone(),
@@ -209,7 +214,7 @@ impl FlowEngineInner {
 
 		self.record(&report, remaining);
 		if report.scanned > 0 {
-			info!(
+			trace!(
 				flow_id = ?flow_id,
 				scanned = report.scanned,
 				removed = report.rows,
@@ -221,6 +226,26 @@ impl FlowEngineInner {
 			);
 		}
 		Ok(report)
+	}
+
+	fn keyspace_sweep_due(
+		&self,
+		operator: OperatorId,
+		keyspace: Keyspace,
+		watermark: DateTime,
+		cutoff: Cutoff,
+	) -> bool {
+		let draining = self
+			.keyspace_cursors
+			.get(&operator)
+			.is_some_and(|cursors| cursors.keys().any(|(_, held)| *held == keyspace));
+		let last = self.keyspace_swept_at.get(&(operator, keyspace)).map(|entry| *entry.value());
+
+		let due = sweep_due(last, watermark, cutoff, draining);
+		if due {
+			self.keyspace_swept_at.insert((operator, keyspace), watermark);
+		}
+		due
 	}
 
 	fn record(&self, report: &ReclaimReport, remaining: ReclaimBudget) {
@@ -409,6 +434,17 @@ fn reclaim_data(
 	Ok(released)
 }
 
+fn sweep_due(last: Option<DateTime>, watermark: DateTime, cutoff: Cutoff, draining: bool) -> bool {
+	if draining {
+		return true;
+	}
+	let span = watermark.to_nanos().saturating_sub(cutoff.instant().to_nanos());
+	match last {
+		Some(last) => watermark.to_nanos().saturating_sub(last.to_nanos()) >= span / SWEEP_DIVISOR,
+		None => true,
+	}
+}
+
 fn mapping_cutoff(declared: Option<Cutoff>, identity: Option<Cutoff>) -> Option<Cutoff> {
 	match identity {
 		Some(identity) => declared.map(|declared| Cutoff(declared.instant().min(identity.instant()))),
@@ -428,10 +464,6 @@ fn reclaim_keyspace(
 ) -> Result<Vec<GroupId>> {
 	let due = txn.due_side_groups(operator, keyspace, cutoff, remaining.groups)?;
 	let mut retired = Vec::new();
-	let mut probe_scanned = 0usize;
-	let mut probe_removed = 0usize;
-	let mut probe_oldest: Option<DateTime> = None;
-	let mut probe_newest: Option<DateTime> = None;
 	for group in due {
 		if remaining.exhausted() {
 			report.backlog += 1;
@@ -444,13 +476,6 @@ fn reclaim_keyspace(
 		remaining.rows -= outcome.removed;
 		report.rows += outcome.removed;
 		report.scanned += outcome.scanned;
-		probe_scanned += outcome.scanned;
-		probe_removed += outcome.removed;
-		probe_oldest = older_of(probe_oldest, outcome.oldest_survivor);
-		probe_newest = match (probe_newest, outcome.newest_survivor) {
-			(Some(a), Some(b)) => Some(a.max(b)),
-			(only, None) | (None, only) => only,
-		};
 		let oldest = older_of(seen, outcome.oldest_survivor);
 		if outcome.more {
 			cursors.insert((group, keyspace), (cursor, oldest));
@@ -466,25 +491,6 @@ fn reclaim_keyspace(
 			}
 		}
 		report.keyspace_groups += 1;
-	}
-	if probe_scanned > 0 {
-		let span_ms = match (probe_oldest, probe_newest) {
-			(Some(o), Some(n)) => (n.to_nanos().saturating_sub(o.to_nanos())) / 1_000_000,
-			_ => 0,
-		};
-		let behind_ms = match probe_oldest {
-			Some(o) => (o.to_nanos().saturating_sub(cutoff.instant().to_nanos())) / 1_000_000,
-			None => 0,
-		};
-		info!(
-			operator = operator.0,
-			keyspace = keyspace.0,
-			scanned = probe_scanned,
-			removed = probe_removed,
-			survivor_span_ms = span_ms,
-			oldest_above_cutoff_ms = behind_ms,
-			"keyspace sweep survivors"
-		);
 	}
 	Ok(retired)
 }
@@ -568,6 +574,58 @@ mod tests {
 	use super::*;
 
 	const NODE: OperatorId = OperatorId(1);
+
+	fn at(nanos: u64) -> DateTime {
+		DateTime::from_nanos(nanos)
+	}
+
+	const SECOND: u64 = 1_000_000_000;
+
+	#[test]
+	fn a_keyspace_is_not_reswept_until_the_watermark_advances_half_its_span() {
+		// The sweep reads every live row to find the few that just expired, so its wasted work is
+		// span/interval. Running it on every flow tick (~1.26s against a 10s ttl) measured 8.7
+		// rows read per row deleted. Harvesting half the window at a time makes that ~2.
+		let watermark = at(100 * SECOND);
+		let cutoff = Cutoff(at(90 * SECOND));
+
+		assert!(
+			!sweep_due(Some(at(96 * SECOND)), watermark, cutoff, false),
+			"4s into a 10s span is under the 5s cadence and must not re-sweep"
+		);
+		assert!(
+			sweep_due(Some(at(95 * SECOND)), watermark, cutoff, false),
+			"exactly half the span must be due, or the cadence drifts a tick later every pass"
+		);
+		assert!(
+			sweep_due(None, watermark, cutoff, false),
+			"a keyspace never swept must not wait for a cadence it has no baseline for"
+		);
+	}
+
+	#[test]
+	fn a_half_drained_keyspace_keeps_sweeping_regardless_of_cadence() {
+		// A budget-truncated pass leaves a cursor mid-keyspace. Gating that behind the cadence
+		// strands the remainder until the next window, and the rows it already passed over stay
+		// past their ttl with the group restamped as though it had been drained.
+		let watermark = at(100 * SECOND);
+		let cutoff = Cutoff(at(90 * SECOND));
+
+		assert!(
+			sweep_due(Some(watermark), watermark, cutoff, true),
+			"a held cursor must outrank the cadence even with zero elapsed watermark"
+		);
+	}
+
+	#[test]
+	fn a_keyspace_whose_span_is_zero_is_always_due() {
+		// A zero span means the cutoff is the watermark itself: everything below it is expired
+		// now. Dividing that by the cadence must not produce an interval that defers the sweep,
+		// or a keyspace that should drain continuously never runs a second time.
+		let watermark = at(100 * SECOND);
+
+		assert!(sweep_due(Some(watermark), watermark, Cutoff(watermark), false));
+	}
 
 	fn ms(milliseconds: i64) -> Duration {
 		Duration::from_milliseconds(milliseconds).expect("test duration must be representable")

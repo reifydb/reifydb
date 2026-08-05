@@ -40,7 +40,6 @@ pub struct KeyspaceOutcome {
 	pub more: bool,
 
 	pub oldest_survivor: Option<DateTime>,
-	pub newest_survivor: Option<DateTime>,
 }
 
 impl KeyspaceOutcome {
@@ -49,7 +48,6 @@ impl KeyspaceOutcome {
 		scanned: 0,
 		more: false,
 		oldest_survivor: None,
-		newest_survivor: None,
 	};
 }
 
@@ -107,7 +105,6 @@ impl FlowTransaction {
 				scanned: outcome.removed,
 				more: outcome.more,
 				oldest_survivor: None,
-				newest_survivor: None,
 			});
 		}
 
@@ -127,7 +124,6 @@ impl FlowTransaction {
 
 		let mut removed = 0;
 		let mut oldest_survivor: Option<DateTime> = None;
-		let mut newest_survivor: Option<DateTime> = None;
 		for item in &batch.items {
 			let written = item.row.updated_at();
 			reifydb_assertions! {
@@ -146,10 +142,6 @@ impl FlowTransaction {
 					Some(current) if current <= written => current,
 					_ => written,
 				});
-				newest_survivor = Some(match newest_survivor {
-					Some(current) if current >= written => current,
-					_ => written,
-				});
 				continue;
 			}
 			self.state_remove(operator, &Self::inner_group_key(item))?;
@@ -165,7 +157,6 @@ impl FlowTransaction {
 			scanned: batch.items.len(),
 			more,
 			oldest_survivor,
-			newest_survivor,
 		})
 	}
 

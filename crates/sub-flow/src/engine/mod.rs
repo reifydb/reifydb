@@ -27,6 +27,7 @@ use reifydb_core::{
 		id::{TableId, ViewId},
 		object::ObjectId,
 	},
+	key::operator_group_state::Keyspace,
 	lifecycle::metrics::RetentionMetrics,
 	metrics::heap::{OperatorSample, StateMemory},
 	state::budget::{LeaseReport, OperatorStateBudgetHandle},
@@ -49,7 +50,10 @@ use reifydb_runtime::{
 use reifydb_sdk::config::Config;
 #[cfg(reifydb_target = "native")]
 use reifydb_value::{Result, error::Error, params::Params};
-use reifydb_value::{byte_size::ByteSize, value::Value};
+use reifydb_value::{
+	byte_size::ByteSize,
+	value::{Value, datetime::DateTime},
+};
 use tracing::{debug, instrument};
 
 #[cfg(reifydb_target = "native")]
@@ -83,6 +87,8 @@ pub struct FlowEngineInner {
 	pub(crate) mapping_cursors: DashMap<OperatorId, Option<EncodedKey>>,
 
 	pub(crate) keyspace_cursors: DashMap<OperatorId, KeyspaceCursors>,
+
+	pub(crate) keyspace_swept_at: DashMap<(OperatorId, Keyspace), DateTime>,
 	pub(crate) substrate: FlowSubstrate,
 	pub(crate) operator_samples: OperatorSampleRegistry,
 	pub(crate) state_budget: OperatorStateBudgetHandle,
@@ -175,6 +181,7 @@ impl FlowEngineInner {
 			custom_operators,
 			mapping_cursors: DashMap::new(),
 			keyspace_cursors: DashMap::new(),
+			keyspace_swept_at: DashMap::new(),
 			substrate,
 			operator_samples,
 			state_budget,
