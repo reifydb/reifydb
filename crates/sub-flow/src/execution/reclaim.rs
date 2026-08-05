@@ -29,6 +29,8 @@ use crate::engine::FlowEngineInner;
 
 const SWEEP_DIVISOR: u64 = 2;
 
+const AGES_PER_ROW_SCAN_CAP: usize = 1_024;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReclaimBudget {
 	pub groups: usize,
@@ -471,8 +473,12 @@ fn reclaim_keyspace(
 		}
 		remaining.groups -= 1;
 		let (mut cursor, seen) = cursors.get(&(group, keyspace)).cloned().unwrap_or_default();
+		let scan_limit = match keyspace.ages_per_row() {
+			true => remaining.rows.min(AGES_PER_ROW_SCAN_CAP),
+			false => remaining.rows,
+		};
 		let outcome =
-			txn.reclaim_group_keyspace(operator, group, keyspace, cutoff, &mut cursor, remaining.rows)?;
+			txn.reclaim_group_keyspace(operator, group, keyspace, cutoff, &mut cursor, scan_limit)?;
 		remaining.rows -= outcome.removed;
 		report.rows += outcome.removed;
 		report.scanned += outcome.scanned;
