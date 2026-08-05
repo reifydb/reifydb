@@ -14,15 +14,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{
-		catalog::{
-			flow::OperatorId,
-			id::{NamespaceId, TableId},
-			namespace::Namespace,
-			table::Table,
-		},
-		change::Diff,
-	},
+	interface::{catalog::flow::OperatorId, change::Diff},
 	key::operator_group_state::{GroupId, GroupStateKey},
 };
 use reifydb_flow::window::event::Polarity;
@@ -30,7 +22,7 @@ use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	operator::{
 		column::{row::Row, sink::native::NativeRowSink},
-		context::{CatalogApi, DictionaryApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit},
+		context::{DictionaryApi, OperatorContext, RowEmit, RowShapeApi, StateApi, StoreApi, UpdateEmit},
 	},
 	state::{decode_payload, encode_payload},
 };
@@ -71,23 +63,6 @@ pub trait NativeBridge {
 	fn store_prefix(&mut self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>>;
 	fn store_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>>;
 
-	fn catalog_find_namespace(
-		&mut self,
-		namespace: NamespaceId,
-		version: CommitVersion,
-	) -> Result<Option<Namespace>>;
-	fn catalog_find_namespace_by_name(
-		&mut self,
-		namespace: &str,
-		version: CommitVersion,
-	) -> Result<Option<Namespace>>;
-	fn catalog_find_table(&mut self, table: TableId, version: CommitVersion) -> Result<Option<Table>>;
-	fn catalog_find_table_by_name(
-		&mut self,
-		namespace: NamespaceId,
-		name: &str,
-		version: CommitVersion,
-	) -> Result<Option<Table>>;
 	fn catalog_find_row_shape(&mut self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>>;
 
 	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>>;
@@ -433,37 +408,12 @@ impl StoreApi for NativeStore<'_> {
 	}
 }
 
-pub struct NativeCatalog<'a> {
+pub struct NativeRowShapeResolver<'a> {
 	bridge: *mut (dyn NativeBridge + 'a),
 	_marker: PhantomData<&'a mut (dyn NativeBridge + 'a)>,
 }
 
-impl CatalogApi for NativeCatalog<'_> {
-	fn find_namespace(&self, namespace: NamespaceId, version: CommitVersion) -> SdkResult<Option<Namespace>> {
-		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.bridge).catalog_find_namespace(namespace, version) }.map_err(to_sdk_err)
-	}
-	fn find_namespace_by_name(&self, namespace: &str, version: CommitVersion) -> SdkResult<Option<Namespace>> {
-		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.bridge).catalog_find_namespace_by_name(namespace, version) }.map_err(to_sdk_err)
-	}
-	fn find_table(&self, table: TableId, version: CommitVersion) -> SdkResult<Option<Table>> {
-		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.bridge).catalog_find_table(table, version) }.map_err(to_sdk_err)
-	}
-	fn find_table_by_name(
-		&self,
-		namespace: NamespaceId,
-		name: &str,
-		version: CommitVersion,
-	) -> SdkResult<Option<Table>> {
-		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.bridge).catalog_find_table_by_name(namespace, name, version) }.map_err(to_sdk_err)
-	}
+impl RowShapeApi for NativeRowShapeResolver<'_> {
 	fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> SdkResult<Option<RowShape>> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
@@ -530,8 +480,8 @@ impl OperatorContext for NativeOperatorContext<'_> {
 			_marker: PhantomData,
 		}
 	}
-	fn catalog(&mut self) -> impl CatalogApi + '_ {
-		NativeCatalog {
+	fn row_shape(&mut self) -> impl RowShapeApi + '_ {
+		NativeRowShapeResolver {
 			bridge: self.bridge,
 			_marker: PhantomData,
 		}
@@ -598,7 +548,7 @@ impl OperatorContext for NativeOperatorContext<'_> {
 	}
 	fn shape_for_row(&mut self, row: &EncodedRow) -> SdkResult<RowShape> {
 		let fingerprint = row.fingerprint();
-		match self.catalog().find_row_shape(fingerprint)? {
+		match self.row_shape().find_row_shape(fingerprint)? {
 			Some(shape) => Ok(shape),
 			None => Err(SdkError::Other(format!(
 				"row shape with fingerprint {} not registered in catalog",

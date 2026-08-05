@@ -22,15 +22,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{
-		catalog::{
-			flow::OperatorId,
-			id::{NamespaceId, TableId},
-			namespace::Namespace,
-			table::Table,
-		},
-		change::Change,
-	},
+	interface::{catalog::flow::OperatorId, change::Change},
 	key::operator_group_state::{GroupId, GroupSet, GroupStateKey},
 	metrics::heap::OperatorSample,
 };
@@ -264,33 +256,8 @@ impl NativeBridge for FlowNativeBridge<'_> {
 		let rows = self.txn.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>>>()?;
 		Ok(rows.into_iter().map(|r| (r.key, r.row)).collect())
 	}
-	fn catalog_find_namespace(
-		&mut self,
-		namespace: NamespaceId,
-		version: CommitVersion,
-	) -> Result<Option<Namespace>> {
-		Ok(self.txn.host_catalog().find_namespace(namespace, version))
-	}
-	fn catalog_find_namespace_by_name(
-		&mut self,
-		namespace: &str,
-		version: CommitVersion,
-	) -> Result<Option<Namespace>> {
-		Ok(self.txn.host_catalog().find_namespace_by_name(namespace, version))
-	}
-	fn catalog_find_table(&mut self, table: TableId, version: CommitVersion) -> Result<Option<Table>> {
-		Ok(self.txn.host_catalog().find_table(table, version))
-	}
-	fn catalog_find_table_by_name(
-		&mut self,
-		namespace: NamespaceId,
-		name: &str,
-		version: CommitVersion,
-	) -> Result<Option<Table>> {
-		Ok(self.txn.host_catalog().find_table_by_name(namespace, name, version))
-	}
 	fn catalog_find_row_shape(&mut self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>> {
-		Ok(self.txn.host_catalog().find_row_shape(fingerprint))
+		Ok(self.txn.host_row_shape().find_row_shape(fingerprint))
 	}
 	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>> {
 		Ok(self.txn.find_dictionary_by_name(name).map(|d| d.id))

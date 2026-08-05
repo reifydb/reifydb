@@ -2,8 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::callbacks::{
-	builder::BuilderCallbacks, catalog::CatalogCallbacks, dictionary::DictionaryCallbacks, host::HostCallbacks,
-	log::LogCallbacks, memory::MemoryCallbacks, rql::RqlCallbacks, state::StateCallbacks, store::StoreCallbacks,
+	builder::BuilderCallbacks, dictionary::DictionaryCallbacks, host::HostCallbacks, log::LogCallbacks,
+	memory::MemoryCallbacks, row_shape::RowShapeCallbacks, rql::RqlCallbacks, state::StateCallbacks,
+	store::StoreCallbacks,
 };
 use reifydb_extension::{
 	ffi_callbacks::builder,
@@ -56,14 +57,8 @@ pub fn create_host_callbacks() -> HostCallbacks {
 			iterator_next: store::host_store_iterator_next,
 			iterator_free: store::host_store_iterator_free,
 		},
-		catalog: CatalogCallbacks {
-			find_namespace: catalog::host_catalog_find_namespace,
-			find_namespace_by_name: catalog::host_catalog_find_namespace_by_name,
-			find_table: catalog::host_catalog_find_table,
-			find_table_by_name: catalog::host_catalog_find_table_by_name,
+		row_shape: RowShapeCallbacks {
 			find_row_shape: catalog::host_catalog_find_row_shape,
-			free_namespace: catalog::host_catalog_free_namespace,
-			free_table: catalog::host_catalog_free_table,
 			free_row_shape: catalog::host_catalog_free_row_shape,
 		},
 		rql: RqlCallbacks {

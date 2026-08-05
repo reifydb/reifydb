@@ -5,11 +5,11 @@
 //! table piecemeal and hand the guest one complete struct at load time.
 
 pub mod builder;
-pub mod catalog;
 pub mod dictionary;
 pub mod host;
 pub mod log;
 pub mod memory;
+pub mod row_shape;
 pub mod rql;
 pub mod state;
 pub mod store;

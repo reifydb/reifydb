@@ -613,11 +613,11 @@ use std::ptr;
 
 use reifydb_abi::{
 	callbacks::{
-		builder::BuilderCallbacks, catalog::CatalogCallbacks, dictionary::DictionaryCallbacks,
-		host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks, rql::RqlCallbacks,
-		state::StateCallbacks, store::StoreCallbacks,
+		builder::BuilderCallbacks, dictionary::DictionaryCallbacks, host::HostCallbacks, log::LogCallbacks,
+		memory::MemoryCallbacks, row_shape::RowShapeCallbacks, rql::RqlCallbacks, state::StateCallbacks,
+		store::StoreCallbacks,
 	},
-	catalog::{namespace::NamespaceFFI, row_shape::RowShapeFFI, table::TableFFI},
+	catalog::row_shape::RowShapeFFI,
 	constants::{
 		FFI_END_OF_ITERATION, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK, GROUP_ABSENT,
 	},
@@ -651,52 +651,9 @@ use crate::{
 	},
 };
 
-extern "C" fn test_catalog_find_namespace(
-	_ctx: *mut ContextFFI,
-	_namespace_id: u64,
-	_version: u64,
-	_output: *mut NamespaceFFI,
-) -> i32 {
-	1
-}
-
-extern "C" fn test_catalog_find_namespace_by_name(
-	_ctx: *mut ContextFFI,
-	_name_ptr: *const u8,
-	_name_len: usize,
-	_version: u64,
-	_output: *mut NamespaceFFI,
-) -> i32 {
-	1
-}
-
-extern "C" fn test_catalog_find_table(
-	_ctx: *mut ContextFFI,
-	_table_id: u64,
-	_version: u64,
-	_output: *mut TableFFI,
-) -> i32 {
-	1
-}
-
-extern "C" fn test_catalog_find_table_by_name(
-	_ctx: *mut ContextFFI,
-	_namespace_id: u64,
-	_name_ptr: *const u8,
-	_name_len: usize,
-	_version: u64,
-	_output: *mut TableFFI,
-) -> i32 {
-	1
-}
-
 extern "C" fn test_catalog_find_row_shape(_ctx: *mut ContextFFI, _fingerprint: u64, _output: *mut RowShapeFFI) -> i32 {
 	1
 }
-
-extern "C" fn test_catalog_free_namespace(_namespace: *mut NamespaceFFI) {}
-
-extern "C" fn test_catalog_free_table(_table: *mut TableFFI) {}
 
 extern "C" fn test_catalog_free_row_shape(_row_shape: *mut RowShapeFFI) {}
 
@@ -1187,14 +1144,8 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			iterator_next: test_store_iterator_next,
 			iterator_free: test_store_iterator_free,
 		},
-		catalog: CatalogCallbacks {
-			find_namespace: test_catalog_find_namespace,
-			find_namespace_by_name: test_catalog_find_namespace_by_name,
-			find_table: test_catalog_find_table,
-			find_table_by_name: test_catalog_find_table_by_name,
+		row_shape: RowShapeCallbacks {
 			find_row_shape: test_catalog_find_row_shape,
-			free_namespace: test_catalog_free_namespace,
-			free_table: test_catalog_free_table,
 			free_row_shape: test_catalog_free_row_shape,
 		},
 		rql: RqlCallbacks {

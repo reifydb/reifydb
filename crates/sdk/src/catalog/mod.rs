@@ -1,145 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod namespace;
 pub mod row_shape;
-pub mod table;
 
-use std::{slice::from_raw_parts, str};
-
-use reifydb_abi::catalog::{column::ColumnFFI, primary_key::PrimaryKeyFFI};
 use reifydb_codec::{
 	encoded::shape::{RowShape, fingerprint::RowShapeFingerprint},
 	tag::value_type_from_tag_byte,
 };
-use reifydb_core::{
-	common::CommitVersion,
-	interface::catalog::{
-		column::{Column, ColumnIndex},
-		id::{ColumnId, NamespaceId, PrimaryKeyId, TableId},
-		key::PrimaryKey,
-		namespace::Namespace,
-		table::Table,
-	},
-};
-use reifydb_value::value::{
-	constraint::{Constraint, TypeConstraint, bytes::MaxBytes, precision::Precision, scale::Scale},
-	value_type::ValueType,
+use reifydb_value::value::constraint::{
+	Constraint, TypeConstraint, bytes::MaxBytes, precision::Precision, scale::Scale,
 };
 
 use crate::{error::SdkError, operator::context::ffi::FFIOperatorContext};
 
-pub struct Catalog<'a> {
+pub struct RowShapeResolver<'a> {
 	ctx: &'a mut FFIOperatorContext,
 }
 
-impl<'a> Catalog<'a> {
+impl<'a> RowShapeResolver<'a> {
 	pub(crate) fn new(ctx: &'a mut FFIOperatorContext) -> Self {
 		Self {
 			ctx,
 		}
 	}
 
-	pub fn find_namespace(
-		&self,
-		namespace: NamespaceId,
-		version: CommitVersion,
-	) -> Result<Option<Namespace>, SdkError> {
-		namespace::raw_catalog_find_namespace(self.ctx, namespace, version)
-	}
-
-	pub fn find_namespace_by_name(
-		&self,
-		namespace: &str,
-		version: CommitVersion,
-	) -> Result<Option<Namespace>, SdkError> {
-		namespace::raw_catalog_find_namespace_by_name(self.ctx, namespace, version)
-	}
-
-	pub fn find_table(&self, table: TableId, version: CommitVersion) -> Result<Option<Table>, SdkError> {
-		table::raw_catalog_find_table(self.ctx, table, version)
-	}
-
-	pub fn find_table_by_name(
-		&self,
-		namespace: NamespaceId,
-		name: &str,
-		version: CommitVersion,
-	) -> Result<Option<Table>, SdkError> {
-		table::raw_catalog_find_table_by_name(self.ctx, namespace, name, version)
-	}
-
 	pub fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>, SdkError> {
 		row_shape::raw_catalog_find_row_shape(self.ctx, fingerprint)
 	}
-}
-
-/// # Safety
-///
-/// `ffi_col.name.ptr` must be null or valid for reads of `ffi_col.name.len`
-/// initialised bytes for the duration of the call.
-pub(crate) unsafe fn unmarshal_column(ffi_col: &ColumnFFI) -> Result<Column, SdkError> {
-	let name_bytes = if !ffi_col.name.ptr.is_null() && ffi_col.name.len > 0 {
-		// SAFETY: discharges this function's own contract; the branch above established that
-		// `name.ptr` is non-null and `name.len` is non-zero.
-		unsafe { from_raw_parts(ffi_col.name.ptr, ffi_col.name.len) }
-	} else {
-		&[]
-	};
-
-	let name = str::from_utf8(name_bytes)
-		.map_err(|_| SdkError::Other("Invalid UTF-8 in column name".to_string()))?
-		.to_string();
-
-	let constraint = decode_type_constraint(
-		ffi_col.base_type,
-		ffi_col.constraint_type,
-		ffi_col.constraint_param1,
-		ffi_col.constraint_param2,
-	)?;
-
-	Ok(Column {
-		id: ColumnId(ffi_col.id),
-		name,
-		constraint,
-		properties: Vec::new(),
-		index: ColumnIndex(ffi_col.column_index),
-		auto_increment: ffi_col.auto_increment != 0,
-		dictionary_id: None,
-	})
-}
-
-/// # Safety
-///
-/// `ffi_pk.column_ids` must be null or valid for reads of `ffi_pk.column_count`
-/// initialised, aligned `u64` for the duration of the call.
-pub(crate) unsafe fn unmarshal_primary_key(ffi_pk: &PrimaryKeyFFI) -> Result<PrimaryKey, SdkError> {
-	let column_ids = if !ffi_pk.column_ids.is_null() && ffi_pk.column_count > 0 {
-		// SAFETY: discharges this function's own contract; the branch above established that
-		// `column_ids` is non-null and `column_count` is non-zero.
-		unsafe { from_raw_parts(ffi_pk.column_ids, ffi_pk.column_count).to_vec() }
-	} else {
-		Vec::new()
-	};
-
-	let columns = column_ids
-		.into_iter()
-		.enumerate()
-		.map(|(idx, col_id)| Column {
-			id: ColumnId(col_id),
-			name: format!("col_{}", col_id),
-			constraint: TypeConstraint::unconstrained(ValueType::Int4),
-			properties: Vec::new(),
-			index: ColumnIndex(idx as u8),
-			auto_increment: false,
-			dictionary_id: None,
-		})
-		.collect();
-
-	Ok(PrimaryKey {
-		id: PrimaryKeyId(ffi_pk.id),
-		columns,
-	})
 }
 
 pub(crate) fn decode_type_constraint(

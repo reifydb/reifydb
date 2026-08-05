@@ -15,13 +15,7 @@ use reifydb_codec::{
 	state::{OperatorState, StateBytes},
 };
 use reifydb_core::{
-	common::CommitVersion,
-	interface::catalog::{
-		flow::OperatorId,
-		id::{NamespaceId, TableId},
-		namespace::Namespace,
-		table::Table,
-	},
+	interface::catalog::flow::OperatorId,
 	key::operator_group_state::{GroupId, GroupStateKey},
 };
 use reifydb_value::value::{
@@ -149,16 +143,7 @@ pub trait StoreApi {
 	}
 }
 
-pub trait CatalogApi {
-	fn find_namespace(&self, namespace: NamespaceId, version: CommitVersion) -> Result<Option<Namespace>>;
-	fn find_namespace_by_name(&self, namespace: &str, version: CommitVersion) -> Result<Option<Namespace>>;
-	fn find_table(&self, table: TableId, version: CommitVersion) -> Result<Option<Table>>;
-	fn find_table_by_name(
-		&self,
-		namespace: NamespaceId,
-		name: &str,
-		version: CommitVersion,
-	) -> Result<Option<Table>>;
+pub trait RowShapeApi {
 	fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>>;
 }
 
@@ -186,7 +171,7 @@ pub trait OperatorContext {
 	}
 	fn state(&mut self) -> impl StateApi + '_;
 	fn store(&mut self) -> impl StoreApi + '_;
-	fn catalog(&mut self) -> impl CatalogApi + '_;
+	fn row_shape(&mut self) -> impl RowShapeApi + '_;
 	fn dictionary(&mut self) -> impl DictionaryApi + '_;
 	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>>;
 	fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId> {

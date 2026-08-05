@@ -111,7 +111,7 @@ use timer::TimerWheel;
 use watermark::SourceWatermarks;
 
 use crate::{
-	host::{HostCatalog, StandardHostCatalog},
+	host::{HostRowShape, StandardHostRowShape},
 	timer::Timer,
 };
 
@@ -175,7 +175,7 @@ pub struct FlowTransactionInner {
 	pub state_query: Option<MultiReadTransaction>,
 	pub single: SingleTransaction,
 	pub catalog: Catalog,
-	pub host_catalog: Arc<dyn HostCatalog>,
+	pub host_row_shape: Arc<dyn HostRowShape>,
 	pub interceptors: Interceptors,
 	pub accumulator: ChangeAccumulator,
 	pub clock: Clock,
@@ -294,7 +294,7 @@ impl FlowTransaction {
 				state_query: Some(state_query),
 				single: parent.single.clone(),
 				catalog: catalog.clone(),
-				host_catalog: Arc::new(StandardHostCatalog::new(catalog)),
+				host_row_shape: Arc::new(StandardHostRowShape::new(catalog)),
 				interceptors,
 				accumulator: ChangeAccumulator::new(),
 				clock,
@@ -326,7 +326,7 @@ impl FlowTransaction {
 				state_query: Some(state_query),
 				single: params.single,
 				catalog: params.catalog.clone(),
-				host_catalog: Arc::new(StandardHostCatalog::new(params.catalog)),
+				host_row_shape: Arc::new(StandardHostRowShape::new(params.catalog)),
 				interceptors: params.interceptors,
 				accumulator: ChangeAccumulator::new(),
 				clock: params.clock,
@@ -362,7 +362,7 @@ impl FlowTransaction {
 				state_query: Some(state_query),
 				single,
 				catalog: params.catalog.clone(),
-				host_catalog: Arc::new(StandardHostCatalog::new(params.catalog)),
+				host_row_shape: Arc::new(StandardHostRowShape::new(params.catalog)),
 				interceptors: params.interceptors,
 				accumulator: ChangeAccumulator::new(),
 				clock: params.clock,
@@ -401,7 +401,7 @@ impl FlowTransaction {
 				state_query: Some(params.state_query),
 				single: params.single,
 				catalog: params.catalog.clone(),
-				host_catalog: Arc::new(StandardHostCatalog::new(params.catalog)),
+				host_row_shape: Arc::new(StandardHostRowShape::new(params.catalog)),
 				interceptors: params.interceptors,
 				accumulator: ChangeAccumulator::new(),
 				clock: params.clock,
@@ -505,7 +505,7 @@ impl FlowTransaction {
 				state_query: None,
 				single,
 				catalog: catalog.clone(),
-				host_catalog: Arc::new(StandardHostCatalog::new(catalog)),
+				host_row_shape: Arc::new(StandardHostRowShape::new(catalog)),
 				interceptors: Interceptors::new(),
 				accumulator: ChangeAccumulator::new(),
 				clock,
@@ -609,8 +609,8 @@ impl FlowTransaction {
 		(inner.query.clone(), inner.single.clone())
 	}
 
-	pub fn host_catalog(&self) -> &dyn HostCatalog {
-		&*self.inner().host_catalog
+	pub fn host_row_shape(&self) -> &dyn HostRowShape {
+		&*self.inner().host_row_shape
 	}
 
 	pub fn clock(&self) -> &Clock {

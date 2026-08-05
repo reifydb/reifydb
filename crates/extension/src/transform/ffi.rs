@@ -124,7 +124,7 @@ fn pure_host_callbacks() -> HostCallbacks {
 			message: logging::host_log_message,
 		},
 		store: stubs::store(),
-		catalog: stubs::catalog(),
+		row_shape: stubs::row_shape(),
 		rql: stubs::rql(),
 		dictionary: stubs::dictionary(),
 		builder: BuilderCallbacks {
@@ -143,10 +143,10 @@ fn pure_host_callbacks() -> HostCallbacks {
 pub(crate) mod stubs {
 	use reifydb_abi::{
 		callbacks::{
-			catalog::CatalogCallbacks, dictionary::DictionaryCallbacks, rql::RqlCallbacks,
+			dictionary::DictionaryCallbacks, row_shape::RowShapeCallbacks, rql::RqlCallbacks,
 			state::StateCallbacks, store::StoreCallbacks,
 		},
-		catalog::{namespace::NamespaceFFI, row_shape::RowShapeFFI, table::TableFFI},
+		catalog::row_shape::RowShapeFFI,
 		constants::FFI_ERROR_INTERNAL,
 		context::{
 			context::ContextFFI,
@@ -315,50 +315,17 @@ pub(crate) mod stubs {
 	}
 	extern "C" fn store_iterator_free(_: *mut StoreIteratorFFI) {}
 
-	pub fn catalog() -> CatalogCallbacks {
-		CatalogCallbacks {
-			find_namespace: catalog_find_namespace,
-			find_namespace_by_name: catalog_find_namespace_by_name,
-			find_table: catalog_find_table,
-			find_table_by_name: catalog_find_table_by_name,
-			find_row_shape: catalog_find_row_shape,
-			free_namespace: catalog_free_namespace,
-			free_table: catalog_free_table,
-			free_row_shape: catalog_free_row_shape,
+	pub fn row_shape() -> RowShapeCallbacks {
+		RowShapeCallbacks {
+			find_row_shape: row_shape_find,
+			free_row_shape: row_shape_free,
 		}
 	}
 
-	extern "C" fn catalog_find_namespace(_: *mut ContextFFI, _: u64, _: u64, _: *mut NamespaceFFI) -> i32 {
+	extern "C" fn row_shape_find(_: *mut ContextFFI, _: u64, _: *mut RowShapeFFI) -> i32 {
 		FFI_ERROR_INTERNAL
 	}
-	extern "C" fn catalog_find_namespace_by_name(
-		_: *mut ContextFFI,
-		_: *const u8,
-		_: usize,
-		_: u64,
-		_: *mut NamespaceFFI,
-	) -> i32 {
-		FFI_ERROR_INTERNAL
-	}
-	extern "C" fn catalog_find_table(_: *mut ContextFFI, _: u64, _: u64, _: *mut TableFFI) -> i32 {
-		FFI_ERROR_INTERNAL
-	}
-	extern "C" fn catalog_find_table_by_name(
-		_: *mut ContextFFI,
-		_: u64,
-		_: *const u8,
-		_: usize,
-		_: u64,
-		_: *mut TableFFI,
-	) -> i32 {
-		FFI_ERROR_INTERNAL
-	}
-	extern "C" fn catalog_find_row_shape(_: *mut ContextFFI, _: u64, _: *mut RowShapeFFI) -> i32 {
-		FFI_ERROR_INTERNAL
-	}
-	extern "C" fn catalog_free_namespace(_: *mut NamespaceFFI) {}
-	extern "C" fn catalog_free_table(_: *mut TableFFI) {}
-	extern "C" fn catalog_free_row_shape(_: *mut RowShapeFFI) {}
+	extern "C" fn row_shape_free(_: *mut RowShapeFFI) {}
 
 	pub fn dictionary() -> DictionaryCallbacks {
 		DictionaryCallbacks {

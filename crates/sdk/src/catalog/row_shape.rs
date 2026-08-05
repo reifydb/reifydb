@@ -22,7 +22,7 @@ pub(super) fn raw_catalog_find_row_shape(
 	// alive for the call; on FFI_OK the host has written a fully initialised RowShapeFFI into `output`
 	// whose field array stays live until `free_row_shape`, discharging `unmarshal_row_shape`.
 	unsafe {
-		let callback = (*ctx.ctx).callbacks.catalog.find_row_shape;
+		let callback = (*ctx.ctx).callbacks.row_shape.find_row_shape;
 
 		let mut output = MaybeUninit::<RowShapeFFI>::uninit();
 
@@ -33,7 +33,7 @@ pub(super) fn raw_catalog_find_row_shape(
 				let ffi_shape = output.assume_init();
 				let shape = unmarshal_row_shape(&ffi_shape)?;
 
-				let free_callback = (*ctx.ctx).callbacks.catalog.free_row_shape;
+				let free_callback = (*ctx.ctx).callbacks.row_shape.free_row_shape;
 				free_callback(&mut output.as_mut_ptr().read());
 
 				Ok(Some(shape))

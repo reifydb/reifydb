@@ -100,7 +100,7 @@ fn procedure_host_callbacks() -> HostCallbacks {
 			message: logging::host_log_message,
 		},
 		store: stubs::store(),
-		catalog: stubs::catalog(),
+		row_shape: stubs::row_shape(),
 		rql: RqlCallbacks {
 			rql: rql::host_rql,
 		},

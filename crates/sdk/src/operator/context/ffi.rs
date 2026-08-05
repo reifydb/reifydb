@@ -13,13 +13,7 @@ use reifydb_codec::{
 	state::{OperatorState, StateBytes},
 };
 use reifydb_core::{
-	common::CommitVersion,
-	interface::catalog::{
-		flow::OperatorId,
-		id::{NamespaceId, TableId},
-		namespace::Namespace,
-		table::Table,
-	},
+	interface::catalog::flow::OperatorId,
 	key::operator_group_state::{GroupId, GroupStateKey},
 };
 use reifydb_flow::window::event::Polarity;
@@ -34,9 +28,9 @@ use reifydb_value::{
 	},
 };
 
-use super::{CatalogApi, DictionaryApi, OperatorContext, RowEmit, StateApi, StoreApi, UpdateEmit};
+use super::{DictionaryApi, OperatorContext, RowEmit, RowShapeApi, StateApi, StoreApi, UpdateEmit};
 use crate::{
-	catalog::Catalog,
+	catalog::RowShapeResolver,
 	dictionary::Dictionary,
 	error::{Result, SdkError},
 	operator::{
@@ -135,8 +129,8 @@ impl FFIOperatorContext {
 		Store::new(self)
 	}
 
-	pub fn catalog(&mut self) -> Catalog<'_> {
-		Catalog::new(self)
+	pub fn row_shape(&mut self) -> RowShapeResolver<'_> {
+		RowShapeResolver::new(self)
 	}
 
 	pub fn dictionary(&mut self) -> Dictionary<'_> {
@@ -145,7 +139,7 @@ impl FFIOperatorContext {
 
 	pub fn shape_for_row(&mut self, row: &EncodedRow) -> Result<RowShape> {
 		let fingerprint = row.fingerprint();
-		match self.catalog().find_row_shape(fingerprint)? {
+		match self.row_shape().find_row_shape(fingerprint)? {
 			Some(shape) => Ok(shape),
 			None => Err(SdkError::Other(format!(
 				"row shape with fingerprint {} not registered in catalog",
@@ -285,26 +279,9 @@ impl StoreApi for Store<'_> {
 	}
 }
 
-impl CatalogApi for Catalog<'_> {
-	fn find_namespace(&self, namespace: NamespaceId, version: CommitVersion) -> Result<Option<Namespace>> {
-		Catalog::find_namespace(self, namespace, version)
-	}
-	fn find_namespace_by_name(&self, namespace: &str, version: CommitVersion) -> Result<Option<Namespace>> {
-		Catalog::find_namespace_by_name(self, namespace, version)
-	}
-	fn find_table(&self, table: TableId, version: CommitVersion) -> Result<Option<Table>> {
-		Catalog::find_table(self, table, version)
-	}
-	fn find_table_by_name(
-		&self,
-		namespace: NamespaceId,
-		name: &str,
-		version: CommitVersion,
-	) -> Result<Option<Table>> {
-		Catalog::find_table_by_name(self, namespace, name, version)
-	}
+impl RowShapeApi for RowShapeResolver<'_> {
 	fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>> {
-		Catalog::find_row_shape(self, fingerprint)
+		RowShapeResolver::find_row_shape(self, fingerprint)
 	}
 }
 
@@ -344,8 +321,8 @@ impl OperatorContext for FFIOperatorContext {
 	fn store(&mut self) -> impl StoreApi + '_ {
 		FFIOperatorContext::store(self)
 	}
-	fn catalog(&mut self) -> impl CatalogApi + '_ {
-		FFIOperatorContext::catalog(self)
+	fn row_shape(&mut self) -> impl RowShapeApi + '_ {
+		FFIOperatorContext::row_shape(self)
 	}
 	fn dictionary(&mut self) -> impl DictionaryApi + '_ {
 		FFIOperatorContext::dictionary(self)
