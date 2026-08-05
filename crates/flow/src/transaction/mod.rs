@@ -383,9 +383,15 @@ impl FlowTransaction {
 	pub fn commit(self) -> Result<CommitVersion> {
 		match self {
 			Self::Committing {
+				mut inner,
 				mut cmd,
-				..
-			} => cmd.commit_unchecked(),
+			} => {
+				let changed_at = inner.clock.now();
+				for change in inner.accumulator.take_changes(inner.version, changed_at)? {
+					cmd.track_flow_change(change);
+				}
+				cmd.commit_unchecked()
+			}
 			_ => panic!("FlowTransaction::commit only valid on Committing variant"),
 		}
 	}

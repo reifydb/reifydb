@@ -51,6 +51,7 @@ pub enum CommitterMessage {
 	Tick {
 		pending: Pending,
 		pending_shapes: Vec<RowShape>,
+		view_changes: Vec<Change>,
 		reply: TickCommitReply,
 	},
 }
@@ -132,7 +133,13 @@ impl CommitterActor {
 		});
 	}
 
-	fn submit_tick(&self, pending: Pending, pending_shapes: Vec<RowShape>, reply: TickCommitReply) {
+	fn submit_tick(
+		&self,
+		pending: Pending,
+		pending_shapes: Vec<RowShape>,
+		view_changes: Vec<Change>,
+		reply: TickCommitReply,
+	) {
 		let pending = Arc::new(pending);
 
 		let in_flight = pending_bytes(&pending);
@@ -142,7 +149,7 @@ impl CommitterActor {
 		let apply_committer = self.committer.clone();
 		let apply_pending = Arc::clone(&pending);
 		let apply: GroupCommitApply = Box::new(move |transaction| {
-			apply_committer.apply_tick(transaction, &apply_pending, pending_shapes)
+			apply_committer.apply_tick(transaction, &apply_pending, pending_shapes, view_changes)
 		});
 
 		let completion_committer = self.committer.clone();
@@ -184,8 +191,9 @@ impl Actor for CommitterActor {
 			CommitterMessage::Tick {
 				pending,
 				pending_shapes,
+				view_changes,
 				reply,
-			} => self.submit_tick(pending, pending_shapes, reply),
+			} => self.submit_tick(pending, pending_shapes, view_changes, reply),
 		}
 		Directive::Continue
 	}
@@ -299,17 +307,12 @@ impl Committer {
 		transaction: &mut CommandTransaction,
 		pending: &Pending,
 		pending_shapes: Vec<RowShape>,
+		view_changes: Vec<Change>,
 	) -> Result<()> {
-		for (key, pw) in pending.iter_sorted() {
-			match pw {
-				PendingWrite::Set(value) => transaction.set(key, value.clone())?,
-				PendingWrite::Remove {
-					announce: true,
-				} => transaction.remove(key)?,
-				PendingWrite::Remove {
-					announce: false,
-				} => transaction.remove_silent(key)?,
-			}
+		apply_pending_writes(transaction, pending)?;
+
+		for change in view_changes {
+			transaction.track_flow_change(change);
 		}
 
 		self.catalog.persist_pending_shapes(&mut Transaction::Command(transaction), pending_shapes)

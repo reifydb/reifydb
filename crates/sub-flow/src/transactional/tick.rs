@@ -216,3 +216,225 @@ fn commit_tick_flow(
 
 	txn.commit().map(|_| ()).map_err(|e| format!("commit: {e}"))
 }
+
+#[cfg(test)]
+mod tests {
+	use std::{
+		ops::Bound,
+		sync::Arc,
+		thread::sleep,
+		time::{Duration as StdDuration, Instant as StdInstant},
+	};
+
+	use reifydb_core::{
+		actors::pending::{Pending, PendingLayers, PendingWrite},
+		interface::{
+			WithEventBus,
+			catalog::{flow::OperatorId, object::ObjectId},
+			change::{Change, ChangeOrigin, Diff},
+		},
+		state::budget::OperatorStateBudgetHandle,
+	};
+	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_flow::transaction::{DeferredParams, TransactionalParams, substrate::FlowSubstrate};
+	use reifydb_runtime::context::RuntimeContext;
+	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::value::identity::IdentityId;
+
+	use super::*;
+	use crate::{builder::CustomOperators, catalog::FlowCatalog, operator::metrics::OperatorSampleRegistry};
+
+	fn poll<T>(mut probe: impl FnMut() -> Option<T>) -> Option<T> {
+		// Std time, not the engine clock: the engine clock is a frozen mock, so an elapsed
+		// check against it would hang rather than fail.
+		let started = StdInstant::now();
+		loop {
+			if let Some(found) = probe() {
+				return Some(found);
+			}
+			if started.elapsed() >= StdDuration::from_secs(10) {
+				return None;
+			}
+			sleep(StdDuration::from_millis(10));
+		}
+	}
+
+	#[test]
+	fn a_tick_fired_eviction_is_tracked_on_the_committed_transaction() {
+		// Sinks emit only through the FlowTransaction's change accumulator; on the
+		// transactional tick path that accumulator used to be dropped when the wrapped
+		// CommandTransaction committed, so a timer-driven eviction updated storage without
+		// leaving a change record - invisible to CDC and subscription consumers, unlike the
+		// identical eviction fired inline during a user commit. Falsified by skipping the
+		// accumulator drain in FlowTransaction::commit (the Committing arm): the view row
+		// still disappears from storage, but the Remove change record polled for below never
+		// appears.
+		let te = TestEngine::builder().with_cdc().build();
+		te.admin("CREATE NAMESPACE app");
+		te.admin("CREATE TABLE app::t { id: int4, v: int4, ts: datetime } with { ts: ts }");
+		te.admin("CREATE TRANSACTIONAL RINGBUFFER VIEW app::v { id: int4, v: int4 } \
+			 WITH { capacity: 1000, time: event, row: { ttl: { duration: '1s', announce: true } } } \
+			 AS { FROM app::t map { id, v } }");
+		let engine = te.inner().clone();
+		let catalog = engine.catalog();
+
+		let flow_catalog = FlowCatalog::new(catalog.clone());
+		let mut query = engine.begin_query(IdentityId::system()).expect("query");
+		let flows = catalog.list_flows_all(&mut Transaction::Query(&mut query)).expect("list flows");
+		let flow_id = flows.first().expect("one flow").id;
+		drop(query);
+
+		let flow_engine = FlowEngine::new(
+			catalog.clone(),
+			engine.executor(),
+			engine.event_bus().clone(),
+			RuntimeContext::with_clock(engine.clock().clone()),
+			CustomOperators::new(HashMap::new()),
+			FlowSubstrate::with_dictionary(engine.dictionary_allocators()),
+			OperatorSampleRegistry::new(),
+			OperatorStateBudgetHandle::default(),
+		);
+		let flow = {
+			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
+			let (flow, _) = flow_catalog
+				.get_or_load_flow(&mut Transaction::Command(&mut txn), flow_id)
+				.expect("load flow");
+			flow_engine.write().register(&mut txn, flow.clone()).expect("register");
+			txn.rollback().expect("rollback registration probe");
+			flow
+		};
+
+		// One row at event time 60s: its 1s ttl timer becomes due at 61s. The batch runs in a
+		// Transactional flow transaction exactly like the inline interceptor's scheduler runs
+		// it (the Committing variant cannot see its own writes, so the ttl arm - which reads
+		// back the expiry index it just wrote - only happens on the pending-based inline
+		// path). It arms the timer and leaves the watermark at 60s - too early to fire it.
+		te.command(r#"INSERT app::t [{ id: 1, v: 10, ts: "1970-01-01T00:01:00Z" }]"#);
+		let table_changes = poll(|| {
+			let items = engine
+				.cdc_store()
+				.read_range(Bound::Unbounded, Bound::Unbounded, 10_000)
+				.expect("read cdc range")
+				.items;
+			let changes: Vec<Change> = items
+				.iter()
+				.flat_map(|cdc| cdc.changes.clone())
+				.filter(|c| matches!(c.origin, ChangeOrigin::Object(ObjectId::Table(_))))
+				.collect();
+			(!changes.is_empty()).then_some(changes)
+		})
+		.expect("the insert's cdc record must appear");
+
+		let mut batch_txn = FlowTransaction::transactional(TransactionalParams {
+			version: engine.multi().begin_query().expect("query").version(),
+			pending: Pending::new(),
+			base_pending: Pending::new(),
+			query: engine.multi().begin_query().expect("query"),
+			state_query: engine.multi().begin_query().expect("state query"),
+			single: engine.single().clone(),
+			catalog: catalog.clone(),
+			interceptors: engine.create_interceptors(),
+			clock: engine.clock().clone(),
+			view_overlay: Arc::new(Vec::new()),
+			substrate: flow_engine.read().substrate.clone(),
+			state_budget: flow_engine.read().state_budget.clone(),
+		});
+		flow_engine.read().process_batch(&mut batch_txn, table_changes, flow_id).expect("process batch");
+		batch_txn.flush_operator_states().expect("flush batch");
+		let batch_pending = batch_txn.take_pending();
+		drop(batch_txn);
+		let mut batch_cmd = engine.begin_command(IdentityId::system()).expect("command");
+		batch_cmd.disable_conflict_tracking().expect("disable conflict tracking");
+		for (key, pw) in batch_pending.iter_sorted() {
+			match pw {
+				PendingWrite::Set(value) => batch_cmd.set(key, value.clone()).expect("set"),
+				PendingWrite::Remove {
+					announce: true,
+				} => batch_cmd.remove(key).expect("remove"),
+				PendingWrite::Remove {
+					announce: false,
+				} => batch_cmd.remove_silent(key).expect("remove silent"),
+			}
+		}
+		batch_cmd.commit_unchecked().expect("commit batch");
+		assert_eq!(
+			te.query("FROM app::v").first().map(|f| f.row_count()).unwrap_or(0),
+			1,
+			"precondition: the batch must land the row in the ring before its ttl can evict it"
+		);
+
+		// The watermark reaches 120s without a batch to dispatch the timer (restart hydration
+		// or a budget-capped dispatch leave exactly this state), so the tick is the only
+		// thing that can fire the eviction. The throwaway transaction only carries the
+		// hydration read; the advance sticks in the shared substrate.
+		let substrate = flow_engine.read().substrate.clone();
+		let sources: Vec<OperatorId> = flow
+			.get_operator_ids()
+			.filter(|id| flow.get_operator(id).is_some_and(|op| op.ty.is_source()))
+			.collect();
+		assert!(!sources.is_empty(), "the flow under test must have a source to advance");
+		let mut probe_txn = FlowTransaction::deferred_from_parts(DeferredParams {
+			version: engine.current_version().expect("current version"),
+			pending: Pending::new(),
+			base_pending: PendingLayers::empty(),
+			query: engine.multi().begin_query().expect("query"),
+			state_query: engine.multi().begin_query().expect("state query"),
+			single: engine.single().clone(),
+			catalog: catalog.clone(),
+			interceptors: engine.create_interceptors(),
+			clock: engine.clock().clone(),
+			substrate: substrate.clone(),
+			state_budget: OperatorStateBudgetHandle::default(),
+		});
+		for source in sources {
+			substrate.watermarks
+				.advance(source, &mut probe_txn, DateTime::from_millis(120_000))
+				.expect("advance watermark");
+		}
+		drop(probe_txn);
+
+		let pre_tick = engine.current_version().expect("current version");
+		commit_tick_flow(
+			&engine,
+			&catalog,
+			&engine.clock().clone(),
+			&flow_engine,
+			flow_id,
+			DateTime::from_millis(120_000),
+		)
+		.expect("commit tick flow");
+
+		assert_eq!(
+			te.query("FROM app::v").first().map(|f| f.row_count()).unwrap_or(0),
+			0,
+			"precondition: the tick must have evicted the expired row from storage; without \
+			 the eviction there is no change record whose presence could be asserted"
+		);
+
+		let record = poll(|| {
+			engine.cdc_store()
+				.read_range(Bound::Unbounded, Bound::Unbounded, 10_000)
+				.expect("read cdc range")
+				.items
+				.into_iter()
+				.filter(|cdc| cdc.version > pre_tick)
+				.flat_map(|cdc| cdc.changes)
+				.find(|change| {
+					matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_)))
+						&& change.diffs.iter().any(|d| {
+							matches!(
+								d,
+								Diff::Remove {
+									..
+								}
+							)
+						})
+				})
+		});
+		assert!(
+			record.is_some(),
+			"a timer-driven eviction committed by commit_tick_flow must land as a tracked \
+			 flow change record on the committed transaction, exactly like an inline one"
+		);
+	}
+}

@@ -22,6 +22,7 @@ use reifydb_core::{
 			object::ObjectId,
 		},
 		cdc::Cdc,
+		change::Change,
 	},
 	lifecycle::metrics::RetentionMetrics,
 	state::budget::OperatorStateBudgetHandle,
@@ -461,11 +462,12 @@ impl FlowActor {
 			let timestamp = DateTime::from_millis(self.clock.now().to_millis());
 			match self.computer.tick(&mut state.flow_engine, self.flow_id, timestamp, state.durable_cursor)
 			{
-				Ok((pending, pending_shapes)) => {
-					let has_output =
-						pending.iter_sorted().next().is_some() || !pending_shapes.is_empty();
+				Ok((pending, pending_shapes, view_changes)) => {
+					let has_output = pending.iter_sorted().next().is_some()
+						|| !pending_shapes.is_empty()
+						|| !view_changes.is_empty();
 					if has_output {
-						self.dispatch_tick_commit(state, ctx, pending, pending_shapes);
+						self.dispatch_tick_commit(state, ctx, pending, pending_shapes, view_changes);
 					}
 				}
 				Err(e) => {
@@ -497,6 +499,7 @@ impl FlowActor {
 		ctx: &Context<FlowActorMessage>,
 		pending: Pending,
 		pending_shapes: Vec<RowShape>,
+		view_changes: Vec<Change>,
 	) {
 		state.committing = true;
 		state.drain_after_commit = true;
@@ -510,6 +513,7 @@ impl FlowActor {
 			.send(CommitterMessage::Tick {
 				pending,
 				pending_shapes,
+				view_changes,
 				reply,
 			})
 			.is_err()
@@ -661,8 +665,17 @@ mod pull_protocol {
 		consume::{checkpoint::CdcCheckpoint, watermark::CdcConsumerWatermark},
 		produce::watermark::CdcProducerWatermark,
 	};
-	use reifydb_core::{actors::flow::FlowActorHandle, interface::change::ChangeOrigin};
+	use reifydb_core::{
+		actors::{flow::FlowActorHandle, pending::PendingLayers},
+		interface::{
+			catalog::flow::OperatorId,
+			cdc::SystemChange,
+			change::{ChangeOrigin, Diff},
+		},
+		key::{Key, kind::KeyKind},
+	};
 	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_flow::transaction::{DeferredParams, FlowTransaction};
 	use reifydb_transaction::{
 		group::{GroupCommitBegin, GroupCommitHandle},
 		transaction::Transaction,
@@ -803,6 +816,11 @@ mod pull_protocol {
 		}
 
 		fn spawn_actor_with_bounded_control(&self, cursor: CommitVersion) -> FlowActorHandle {
+			let substrate = FlowSubstrate::with_dictionary(self.engine.dictionary_allocators());
+			self.spawn_actor_with_substrate(cursor, substrate)
+		}
+
+		fn spawn_actor_with_substrate(&self, cursor: CommitVersion, substrate: FlowSubstrate) -> FlowActorHandle {
 			self.await_safe_watermark(cursor);
 
 			let handle = self.engine.spawner().spawn_flow(
@@ -814,7 +832,7 @@ mod pull_protocol {
 					loader: self.loader_handle.actor_ref().clone(),
 					control: self.control.clone(),
 					custom_operators: CustomOperators::new(HashMap::new()),
-					substrate: FlowSubstrate::with_dictionary(self.engine.dictionary_allocators()),
+					substrate,
 					operator_samples: OperatorSampleRegistry::new(),
 					state_budget: OperatorStateBudgetHandle::default(),
 					retention_metrics: RetentionMetrics::new(),
@@ -943,6 +961,51 @@ mod pull_protocol {
 
 		fn await_checkpoint_beyond(&self, floor: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
 			self.poll_until(timeout, || self.persisted_checkpoint().filter(|got| *got > floor))
+		}
+
+		fn advance_source_watermarks(&self, substrate: &FlowSubstrate, at: DateTime) {
+			// Reproduces the state a tick fires timers from: the watermark already covers the
+			// timer but no batch dispatched it (restart hydration, or a batch that exhausted
+			// its timer budget). The advance sticks in the substrate the actor shares; the
+			// throwaway transaction only carries the hydration read and is dropped.
+			let sources: Vec<OperatorId> = self
+				.flow
+				.get_operator_ids()
+				.filter(|id| self.flow.get_operator(id).is_some_and(|op| op.ty.is_source()))
+				.collect();
+			assert!(!sources.is_empty(), "the flow under test must have a source to advance");
+			let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+				version: self.engine.current_version().expect("current version"),
+				pending: Pending::new(),
+				base_pending: PendingLayers::empty(),
+				query: self.engine.multi().begin_query().expect("query"),
+				state_query: self.engine.multi().begin_query().expect("state query"),
+				single: self.engine.single().clone(),
+				catalog: self.engine.catalog(),
+				interceptors: self.engine.create_interceptors(),
+				clock: self.engine.clock().clone(),
+				substrate: substrate.clone(),
+				state_budget: OperatorStateBudgetHandle::default(),
+			});
+			for source in sources {
+				substrate.watermarks.advance(source, &mut txn, at).expect("advance watermark");
+			}
+		}
+
+		fn cdc_records(&self) -> Vec<Cdc> {
+			self.engine
+				.cdc_store()
+				.read_range(Bound::Unbounded, Bound::Unbounded, 10_000)
+				.expect("read cdc range")
+				.items
+		}
+
+		fn view_change_beyond(&self, floor: CommitVersion) -> Option<Change> {
+			self.cdc_records()
+				.into_iter()
+				.filter(|cdc| cdc.version > floor)
+				.flat_map(|cdc| cdc.changes)
+				.find(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
 		}
 	}
 
@@ -1287,5 +1350,157 @@ mod pull_protocol {
 			h.persisted_checkpoint()
 		);
 		drop(actor);
+	}
+
+	fn ring_harness(announce: bool) -> Harness {
+		// An event-time ring whose capacity is never reached, so the only eviction these tests
+		// can observe is the row ttl. The ttl announce flag is the variable under test.
+		harness_with(
+			"CREATE TABLE app::t { id: int4, v: int4, ts: datetime } with { ts: ts }",
+			&format!(
+				"CREATE DEFERRED RINGBUFFER VIEW app::v {{ id: int4, v: int4 }} \
+				 WITH {{ capacity: 1000, time: event, row: {{ ttl: {{ duration: '1s', announce: {announce} }} }} }} \
+				 AS {{ FROM app::t map {{ id, v }} }}"
+			),
+		)
+	}
+
+	fn drive_ring_ttl_tick(h: &Harness) -> (FlowActorHandle, CommitVersion) {
+		// Lands one row at event time 60s (its 1s ttl timer becomes due at 61s), settles the
+		// wake's slice - the watermark is then 60s, so the wake itself cannot fire the timer -
+		// and only then carries the watermark to 120s without a batch. The tick sent last is
+		// therefore the only thing that can fire the eviction, and pre_tick bounds its commit.
+		assert!(h.flow.ticks(), "a ring buffer sink with a row ttl must tick, or on_tick never runs");
+		let substrate = FlowSubstrate::with_dictionary(h.engine.dictionary_allocators());
+		let v0 = h.engine.current_version().expect("current version");
+		h.control.store(CommitVersion(u64::MAX));
+		let actor = h.spawn_actor_with_substrate(v0, substrate.clone());
+
+		h.te.command(r#"INSERT app::t [{ id: 1, v: 10, ts: "1970-01-01T00:01:00Z" }]"#);
+		let target = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(target);
+		h.wake(&actor);
+		assert_eq!(
+			h.await_view_rows(1, StdDuration::from_secs(10)),
+			1,
+			"the row must land in the ring before its ttl can have anything to evict"
+		);
+		assert_eq!(
+			h.await_position(target, StdDuration::from_secs(5)),
+			Some(target),
+			"the wake must settle before the tick, so the eviction is the tick's doing and \
+			 nothing else's"
+		);
+
+		h.advance_source_watermarks(&substrate, DateTime::from_millis(120_000));
+
+		let pre_tick = h.engine.current_version().expect("current version");
+		assert!(actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
+		let tick_version = h
+			.await_version_beyond(pre_tick, seconds(10))
+			.expect("the tick must commit the eviction it fired");
+		h.await_safe_watermark(tick_version);
+		(actor, pre_tick)
+	}
+
+	#[test]
+	fn a_tick_fired_eviction_lands_in_the_commits_change_stream() {
+		// A ring row's ttl can become due with no batch in flight: the watermark covering the
+		// timer arrives via restart hydration or a budget-capped dispatch, and the periodic
+		// tick is what fires it. The eviction is announced, so the tick commit must carry the
+		// retraction as a flow change record exactly like a batch-fired eviction would - CDC
+		// and subscription consumers otherwise keep serving a row the view no longer has.
+		// Falsified by dropping view_changes anywhere on the tick path (SliceComputer::tick
+		// discarding the accumulator, CommitterMessage::Tick not carrying them, or apply_tick
+		// not tracking them): storage still loses the row, but no record appears here.
+		let h = ring_harness(true);
+		let (_actor, pre_tick) = drive_ring_ttl_tick(&h);
+
+		let change = h
+			.poll_until(seconds(10), || h.view_change_beyond(pre_tick))
+			.expect("the tick commit must carry a view change record for the announced eviction");
+		let removes: Vec<&Diff> =
+			change.diffs.iter().filter(|diff| matches!(diff, Diff::Remove { .. })).collect();
+		assert_eq!(removes.len(), 1, "the eviction must surface as one Remove diff, got {:?}", change.diffs);
+		if let Diff::Remove {
+			pre,
+			..
+		} = removes[0]
+		{
+			assert_eq!(pre.row_count(), 1, "the retraction must carry the evicted row as its pre-image");
+		}
+	}
+
+	#[test]
+	fn an_unannounced_tick_eviction_stays_out_of_the_change_stream() {
+		// announce: false is the per-view declaration that retention is not change: the tick
+		// must still delete the expired row from storage, but nothing may reach the change
+		// stream - downstream consumers of such views deliberately keep results built from
+		// rows the ring has already dropped. Falsified by forcing announce_evictions to true
+		// where the sink is registered (register.rs): the eviction is then routed into the
+		// accumulator and a change record appears below.
+		let h = ring_harness(false);
+		let (_actor, pre_tick) = drive_ring_ttl_tick(&h);
+
+		assert_eq!(
+			h.poll_until(seconds(10), || (h.view_rows() == 0).then_some(())),
+			Some(()),
+			"precondition: the unannounced eviction must still remove the expired row from \
+			 storage, otherwise there is no eviction whose silence could be asserted"
+		);
+		assert!(
+			h.view_change_beyond(pre_tick).is_none(),
+			"an announce: false eviction must leave no view change record on the tick commit"
+		);
+	}
+
+	#[test]
+	fn a_tick_evictions_storage_delete_carries_the_slice_paths_pre_image() {
+		// Tick and slice commits share apply_pending_writes, so a Row-key remove on the tick
+		// path must announce the stored row as its pre-image exactly as a slice remove would -
+		// CDC consumers use that pre-image to retract without a point lookup into state that
+		// no longer exists. Falsified by routing apply_tick's writes through remove_silent for
+		// Row keys: the delete then either vanishes from the record or loses its pre. (The
+		// once-suggested mutation to plain transaction.remove no longer falsifies anything:
+		// since the remove/drop unification, remove() itself fetches and announces the
+		// pre-image, which is exactly the parity this test pins.)
+		let h = ring_harness(true);
+		let (_actor, pre_tick) = drive_ring_ttl_tick(&h);
+
+		let (evicted_key, evicted_pre) = h
+			.poll_until(seconds(10), || {
+				h.cdc_records()
+					.into_iter()
+					.filter(|cdc| cdc.version > pre_tick)
+					.flat_map(|cdc| cdc.system_changes)
+					.find_map(|sc| match sc {
+						SystemChange::Delete {
+							key,
+							pre,
+						} if matches!(Key::kind(&key), Some(KeyKind::Row)) => Some((key, pre)),
+						_ => None,
+					})
+			})
+			.expect("the tick commit must delete the expired ring row");
+
+		let inserted_post = h
+			.cdc_records()
+			.into_iter()
+			.filter(|cdc| cdc.version <= pre_tick)
+			.flat_map(|cdc| cdc.system_changes)
+			.find_map(|sc| match sc {
+				SystemChange::Insert {
+					key,
+					post,
+				} if key == evicted_key => Some(post),
+				_ => None,
+			})
+			.expect("the wake's slice commit must have inserted the ring row the tick later evicts");
+
+		assert_eq!(
+			evicted_pre,
+			Some(inserted_post),
+			"a tick-path Row remove must announce the same pre-image the slice path stored"
+		);
 	}
 }

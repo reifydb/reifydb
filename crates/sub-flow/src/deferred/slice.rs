@@ -163,15 +163,23 @@ impl SliceComputer {
 		flow_engine.process_batch(&mut txn, changes, flow_id)?;
 		txn.flush_operator_states()?;
 
-		let mut accumulator = ChangeAccumulator::new();
-		for (id, diff) in txn.take_accumulator_entries() {
-			accumulator.track(id, diff);
-		}
-		let view_changes = accumulator.take_changes(state_version, self.engine.clock().now())?;
+		let view_changes = self.consolidated_view_changes(&mut txn, state_version)?;
 
 		let pending_shapes = txn.take_pending_shapes();
 		let pending = txn.take_pending();
 		Ok((pending, pending_shapes, view_changes))
+	}
+
+	fn consolidated_view_changes(
+		&self,
+		txn: &mut FlowTransaction,
+		state_version: CommitVersion,
+	) -> Result<Vec<Change>> {
+		let mut accumulator = ChangeAccumulator::new();
+		for (id, diff) in txn.take_accumulator_entries() {
+			accumulator.track(id, diff);
+		}
+		accumulator.take_changes(state_version, self.engine.clock().now())
 	}
 
 	pub fn tick(
@@ -180,7 +188,7 @@ impl SliceComputer {
 		flow_id: FlowId,
 		timestamp: DateTime,
 		checkpoint: CommitVersion,
-	) -> Result<(Pending, Vec<RowShape>)> {
+	) -> Result<(Pending, Vec<RowShape>, Vec<Change>)> {
 		let (state_version, lease) = self.engine.acquire_current_snapshot_lease()?;
 		let query = self.engine.multi().begin_query_at_version(&lease)?;
 		let state_query = self.engine.multi().begin_query_at_version(&lease)?;
@@ -201,7 +209,9 @@ impl SliceComputer {
 
 		flow_engine.process_tick(&mut txn, flow_id, timestamp, checkpoint)?;
 		txn.flush_operator_states()?;
-		Ok((txn.take_pending(), txn.take_pending_shapes()))
+
+		let view_changes = self.consolidated_view_changes(&mut txn, state_version)?;
+		Ok((txn.take_pending(), txn.take_pending_shapes(), view_changes))
 	}
 }
 
