@@ -16,8 +16,8 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_flow::transaction::{DeferredParams, FlowTransaction};
+use reifydb_transaction::change_accumulator::ChangeAccumulator;
 use reifydb_value::{Result, value::datetime::DateTime};
-use smallvec::smallvec;
 
 use crate::{
 	deferred::{committer::FlowSlice, overlay::FlowWriteOverlay},
@@ -163,16 +163,11 @@ impl SliceComputer {
 		flow_engine.process_batch(&mut txn, changes, flow_id)?;
 		txn.flush_operator_states()?;
 
-		let mut view_changes = Vec::new();
-		let changed_at = self.engine.clock().now();
+		let mut accumulator = ChangeAccumulator::new();
 		for (id, diff) in txn.take_accumulator_entries() {
-			view_changes.push(Change {
-				origin: ChangeOrigin::Object(id),
-				version: state_version,
-				diffs: smallvec![diff],
-				changed_at,
-			});
+			accumulator.track(id, diff);
 		}
+		let view_changes = accumulator.take_changes(state_version, self.engine.clock().now())?;
 
 		let pending_shapes = txn.take_pending_shapes();
 		let pending = txn.take_pending();
@@ -238,6 +233,7 @@ mod tests {
 		},
 		value::column::columns::Columns,
 	};
+	use smallvec::smallvec;
 
 	use super::*;
 

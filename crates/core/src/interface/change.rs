@@ -10,7 +10,10 @@ use smallvec::SmallVec;
 
 use crate::{
 	common::CommitVersion,
-	interface::catalog::{flow::OperatorId, object::ObjectId},
+	interface::{
+		catalog::{flow::OperatorId, object::ObjectId},
+		consolidate::coalesce_diffs,
+	},
 	value::column::columns::Columns,
 };
 
@@ -252,64 +255,7 @@ impl Change {
 			return Ok(());
 		}
 		let original = mem::take(&mut self.diffs);
-		let mut merged: Diffs = SmallVec::with_capacity(original.len());
-		for diff in original {
-			if diff.row_count() == 0 {
-				continue;
-			}
-			let same_kind_and_origin = match (merged.last(), &diff) {
-				(Some(last), next) => last.kind() == next.kind() && last.origin() == next.origin(),
-				_ => false,
-			};
-			if same_kind_and_origin {
-				let last = merged.last_mut().expect("non-empty by same_kind_and_origin branch");
-				merge_into(last, diff)?;
-			} else {
-				merged.push(diff);
-			}
-		}
-		self.diffs = merged;
+		self.diffs = SmallVec::from_vec(coalesce_diffs(original.into_vec())?);
 		Ok(())
-	}
-}
-
-fn merge_into(target: &mut Diff, source: Diff) -> Result<()> {
-	match (target, source) {
-		(
-			Diff::Insert {
-				post: t,
-				..
-			},
-			Diff::Insert {
-				post: s,
-				..
-			},
-		) => t.append_all(s),
-		(
-			Diff::Update {
-				pre: tp,
-				post: tpost,
-				..
-			},
-			Diff::Update {
-				pre: sp,
-				post: spost,
-				..
-			},
-		) => {
-			tp.append_all(sp)?;
-			tpost.append_all(spost)
-		}
-		(
-			Diff::Remove {
-				pre: t,
-				..
-			},
-			Diff::Remove {
-				pre: s,
-				..
-			},
-		) => t.append_all(s),
-		_ => unreachable!("merge_into requires matching diff kinds"),
 	}
 }

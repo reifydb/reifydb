@@ -20,6 +20,7 @@ pub mod auth;
 pub mod catalog;
 pub mod cdc;
 pub mod change;
+pub mod consolidate;
 pub mod evaluate;
 pub mod flow;
 pub mod identifier;
