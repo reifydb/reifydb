@@ -1,0 +1,17 @@
+[package]
+name = "reifydb-store-operator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "In-memory single-version arena storage for flow operator state"
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[dependencies]
+reifydb-codec = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-value = { workspace = true }

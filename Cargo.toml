@@ -31,6 +31,7 @@ members = [
     "crates/sqlite",
     "crates/store",
     "crates/store-multi",
+    "crates/store-operator",
     "crates/store-single",
     "crates/testing",
     "crates/testing-chaos",
@@ -113,6 +114,7 @@ default-members = [
     "crates/sqlite",
     "crates/store",
     "crates/store-multi",
+    "crates/store-operator",
     "crates/store-single",
     "crates/testing",
     "crates/testing-chaos",
@@ -230,6 +232,7 @@ reifydb-rql-graphql = { version = "0.8.1", path = "crates/rql-graphql" }
 reifydb-sqlite = { version = "0.8.1", path = "crates/sqlite" }
 reifydb-store = { version = "0.8.1", path = "crates/store" }
 reifydb-store-multi = { version = "0.8.1", path = "crates/store-multi" }
+reifydb-store-operator = { version = "0.8.1", path = "crates/store-operator" }
 reifydb-store-single = { version = "0.8.1", path = "crates/store-single" }
 reifydb-sub-raft = { version = "0.8.1", path = "crates/sub-raft" }
 reifydb-testing = { version = "0.8.1", path = "crates/testing" }

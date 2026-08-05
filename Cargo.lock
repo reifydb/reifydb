@@ -3354,6 +3354,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-store-operator"
+version = "0.8.1"
+dependencies = [
+ "reifydb-build",
+ "reifydb-codec",
+ "reifydb-core",
+ "reifydb-runtime",
+ "reifydb-value",
+]
+
+[[package]]
 name = "reifydb-store-single"
 version = "0.8.1"
 dependencies = [
