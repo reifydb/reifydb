@@ -14,7 +14,11 @@ use crate::actor::timers::dst as dst_timers;
 use crate::actor::timers::wasi::{schedule_once_fn, schedule_repeat, schedule_repeat_fn};
 #[cfg(reifydb_target = "wasm")]
 use crate::actor::timers::wasm::{schedule_once_fn, schedule_repeat, schedule_repeat_fn};
-use crate::actor::{mailbox::ActorRef, system::ActorSystem, timers::TimerHandle};
+use crate::actor::{
+	mailbox::ActorRef,
+	system::ActorSystem,
+	timers::{Repeat, TimerHandle},
+};
 
 #[derive(Clone)]
 pub struct CancellationToken {
@@ -130,7 +134,7 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 	pub fn schedule_repeat(&self, interval: impl Into<Duration>, msg: M) -> TimerHandle {
 		let interval = interval.into().to_std();
 		let actor_ref = self.self_ref.clone();
-		self.system.scheduler().schedule_repeat(interval, move || actor_ref.send(msg.clone()).is_ok())
+		self.system.scheduler().schedule_repeat(interval, move || Repeat::after_send(actor_ref.send(msg.clone())))
 	}
 
 	#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
@@ -159,7 +163,7 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 	) -> TimerHandle {
 		let interval = interval.into().to_std();
 		let actor_ref = self.self_ref.clone();
-		self.system.scheduler().schedule_repeat(interval, move || actor_ref.send(factory()).is_ok())
+		self.system.scheduler().schedule_repeat(interval, move || Repeat::after_send(actor_ref.send(factory())))
 	}
 
 	#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
@@ -201,7 +205,7 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 		{
 			self.system.scheduler().schedule_repeat(interval, move || {
 				let now = clock.now().to_nanos();
-				actor_ref.send(factory(now)).is_ok()
+				Repeat::after_send(actor_ref.send(factory(now)))
 			})
 		}
 

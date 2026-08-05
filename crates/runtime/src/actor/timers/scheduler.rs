@@ -21,7 +21,7 @@ use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, unbounded};
 use reifydb_value::reifydb_assertions;
 use tracing::error;
 
-use super::{TimerHandle, next_timer_id};
+use super::{Repeat, TimerHandle, next_timer_id};
 
 struct TimerEntry {
 	id: u64,
@@ -39,7 +39,7 @@ enum TimerKind {
 	},
 
 	Repeat {
-		callback: Arc<dyn Fn() -> bool + Send + Sync>,
+		callback: Arc<dyn Fn() -> Repeat + Send + Sync>,
 		interval: Duration,
 	},
 }
@@ -75,7 +75,7 @@ enum SchedulerCommand {
 	ScheduleRepeat {
 		id: u64,
 		interval: Duration,
-		callback: Arc<dyn Fn() -> bool + Send + Sync>,
+		callback: Arc<dyn Fn() -> Repeat + Send + Sync>,
 		cancelled: Arc<AtomicBool>,
 	},
 
@@ -124,7 +124,7 @@ impl SchedulerHandle {
 
 	pub fn schedule_repeat<F>(&self, interval: Duration, callback: F) -> TimerHandle
 	where
-		F: Fn() -> bool + Send + Sync + 'static,
+		F: Fn() -> Repeat + Send + Sync + 'static,
 	{
 		let id = next_timer_id();
 		let handle = TimerHandle::new(id);
@@ -302,8 +302,7 @@ fn drain_due_timers(heap: &mut BinaryHeap<TimerEntry>) {
 				callback,
 				interval,
 			} => {
-				let keep = run_repeat_guarded(&callback);
-				if !keep {
+				if run_repeat_guarded(&callback) == Repeat::Cancel {
 					entry.cancelled.store(true, Ordering::SeqCst);
 				}
 
@@ -331,12 +330,12 @@ fn run_once_guarded(callback: Box<dyn FnOnce() + Send>) {
 }
 
 #[inline]
-fn run_repeat_guarded(callback: &Arc<dyn Fn() -> bool + Send + Sync>) -> bool {
+fn run_repeat_guarded(callback: &Arc<dyn Fn() -> Repeat + Send + Sync>) -> Repeat {
 	match catch_unwind(AssertUnwindSafe(|| callback())) {
-		Ok(keep) => keep,
+		Ok(outcome) => outcome,
 		Err(_) => {
 			error!("repeating timer callback panicked; cancelling timer");
-			false
+			Repeat::Cancel
 		}
 	}
 }
@@ -383,7 +382,7 @@ mod tests {
 
 		let handle = scheduler.schedule_repeat(Duration::from_millis(10), move || {
 			counter_clone.fetch_add(1, Ordering::SeqCst);
-			true
+			Repeat::Keep
 		});
 
 		// Polled to a deadline rather than slept for a fixed window, so a "never repeats"
@@ -401,7 +400,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_schedule_repeat_stops_on_false() {
+	fn test_schedule_repeat_stops_on_cancel() {
 		let mut scheduler = SchedulerHandle::new();
 
 		let counter = Arc::new(AtomicUsize::new(0));
@@ -409,9 +408,12 @@ mod tests {
 
 		scheduler.schedule_repeat(Duration::from_millis(10), move || {
 			let count = counter_clone.fetch_add(1, Ordering::SeqCst);
-			// Returning false must stop the rearm; the sleep below is long enough for
+			// Returning Cancel must stop the rearm; the sleep below is long enough for
 			// many more iterations if it does not.
-			count < 3
+			match count < 3 {
+				true => Repeat::Keep,
+				false => Repeat::Cancel,
+			}
 		});
 
 		thread::sleep(Duration::from_millis(100));

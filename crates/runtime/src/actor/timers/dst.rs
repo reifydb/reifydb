@@ -15,7 +15,7 @@ use std::{
 	time::Duration,
 };
 
-use super::{TimerHandle, next_timer_id};
+use super::{Repeat, TimerHandle, next_timer_id};
 use crate::{actor::mailbox::ActorRef, context::clock::MockClock};
 
 pub(crate) struct DstTimerEntry {
@@ -103,7 +103,8 @@ pub(crate) fn schedule_repeat_fn<M: 'static, F: Fn() -> M + 'static>(
 
 	let actor_ref_clone = actor_ref.clone();
 	let factory_clone = factory.clone();
-	let callback: Rc<dyn Fn() -> bool> = Rc::new(move || actor_ref_clone.send(factory_clone()).is_ok());
+	let callback: Rc<dyn Fn() -> bool> =
+		Rc::new(move || Repeat::after_send(actor_ref_clone.send(factory_clone())).is_keep());
 
 	heap.borrow_mut().push(DstTimerEntry {
 		id: handle.id(),

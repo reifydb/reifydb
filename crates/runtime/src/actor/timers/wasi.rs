@@ -10,7 +10,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use super::{TimerHandle, next_timer_id};
+use super::{Repeat, TimerHandle, next_timer_id};
 use crate::actor::mailbox::ActorRef;
 
 struct TimerEntry {
@@ -71,7 +71,7 @@ fn enqueue_repeat_fn<M: Send + 'static, F: Fn() -> M + Send + 'static>(
 	let callback: Box<dyn FnOnce()> = Box::new({
 		let actor_ref_clone = actor_ref.clone();
 		move || {
-			if actor_ref.send(factory()).is_ok() {
+			if Repeat::after_send(actor_ref.send(factory())).is_keep() {
 				enqueue_repeat_fn(actor_ref_clone, interval, factory, cancelled_for_reschedule);
 			}
 		}

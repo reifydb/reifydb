@@ -8,7 +8,7 @@ use std::{cell::RefCell, rc::Rc, sync::atomic::Ordering, time::Duration};
 use js_sys::Function;
 use wasm_bindgen::prelude::*;
 
-use super::{TimerHandle, next_timer_id};
+use super::{Repeat, TimerHandle, next_timer_id};
 use crate::actor::mailbox::ActorRef;
 
 #[wasm_bindgen]
@@ -64,7 +64,7 @@ pub fn schedule_repeat_fn<M: Send + 'static, F: Fn() -> M + Send + 'static>(
 			return;
 		}
 
-		if actor_ref.send(factory()).is_err() {
+		if !Repeat::after_send(actor_ref.send(factory())).is_keep() {
 			if let Some(h) = interval_handle_clone.borrow().as_ref() {
 				global_clear_interval(h);
 			}
