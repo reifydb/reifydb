@@ -109,7 +109,7 @@ impl SqliteConfig {
 			path: DbPath::File(path.as_ref().to_path_buf()),
 			flags: OpenFlags::default(),
 			journal_mode: Some(JournalMode::Wal),
-			synchronous_mode: Some(SynchronousMode::Full),
+			synchronous_mode: Some(SynchronousMode::Normal),
 			temp_store: Some(TempStore::Memory),
 			cache_size: Some(ByteSize::from_kib(2000)),
 			wal_autocheckpoint: Some(1000),
@@ -467,7 +467,7 @@ mod tests {
 		let config = SqliteConfig::default();
 		assert_eq!(config.path, DbPath::File(PathBuf::from("reifydb.db")));
 		assert_eq!(config.journal_mode, Some(JournalMode::Wal));
-		assert_eq!(config.synchronous_mode, Some(SynchronousMode::Full));
+		assert_eq!(config.synchronous_mode, Some(SynchronousMode::Normal));
 		assert_eq!(config.temp_store, Some(TempStore::Memory));
 	}
 
