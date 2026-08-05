@@ -154,8 +154,6 @@ impl DistinctLayout {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct DistinctEntry {
 	pub(super) rows: BTreeMap<RowNumber, SerializedRow>,
-
-	pub(super) last_seen_nanos: u64,
 }
 
 impl HeapSize for DistinctEntry {

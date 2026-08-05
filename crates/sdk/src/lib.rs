@@ -16,7 +16,6 @@ pub mod connector;
 pub mod dictionary;
 pub mod error;
 pub mod ffi;
-pub mod flow;
 pub mod marshal;
 pub mod operator;
 pub mod procedure;

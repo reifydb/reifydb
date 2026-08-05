@@ -1,20 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
-
-use reifydb_core::{
-	actors::pending::PendingWrite,
-	common::CommitVersion,
-	event::row::OperatorRowsExpiredEvent,
-	interface::{
-		catalog::flow::{FlowId, OperatorId},
-		change::Change,
-	},
-	key::{EncodableKey, operator_state::OperatorStateKey},
-};
+use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
 use reifydb_flow::transaction::FlowTransaction;
-use reifydb_rql::flow::operator::FlowNode;
 use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
 
@@ -39,68 +27,10 @@ impl FlowEngineInner {
 		};
 
 		let topo = flow.topological_order()?;
-		let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
-		for operator_id in topo.iter().copied() {
-			let operator = match flow.get_operator(&operator_id) {
-				Some(n) => n.clone(),
-				None => continue,
-			};
-
-			self.dispatch_inbox(txn, &operator, operator_id, &mut pending)?;
-		}
 
 		self.dispatch_due_timers(txn, &flow, checkpoint, &topo)?;
 
-		self.emit_operator_expiry_metrics(txn);
 		self.reclaim_flow(txn, flow_id, checkpoint, ReclaimBudget::from_config(&self.catalog))?;
 		Ok(())
-	}
-
-	#[inline]
-	fn dispatch_inbox(
-		&self,
-		txn: &mut FlowTransaction,
-		operator: &FlowNode,
-		operator_id: OperatorId,
-		pending: &mut HashMap<OperatorId, Vec<Change>>,
-	) -> Result<()> {
-		let Some(inbox) = pending.remove(&operator_id).filter(|v| !v.is_empty()) else {
-			return Ok(());
-		};
-		let combined_output = self.dispatch_node(txn, operator, inbox)?;
-		if !combined_output.diffs.is_empty() {
-			for child_id in &operator.outputs {
-				pending.entry(*child_id).or_default().push(combined_output.clone());
-			}
-		}
-		Ok(())
-	}
-	fn emit_operator_expiry_metrics(&self, txn: &FlowTransaction) {
-		let mut per_node: HashMap<OperatorId, u64> = HashMap::new();
-		for (key, write) in txn.pending().iter_sorted() {
-			if !matches!(write, PendingWrite::Remove { .. }) {
-				continue;
-			}
-			let operator = OperatorStateKey::decode(key)
-				.map(|k| k.operator)
-				.or_else(|| OperatorStateKey::decode(key).map(|k| k.operator));
-			if let Some(operator) = operator {
-				*per_node.entry(operator).or_default() += 1;
-			}
-		}
-
-		if per_node.is_empty() {
-			return;
-		}
-
-		let rows: u64 = per_node.values().copied().sum();
-		self.event_bus.emit(OperatorRowsExpiredEvent::new(
-			per_node.len() as u64,
-			0,
-			rows,
-			rows,
-			per_node.clone(),
-			per_node,
-		));
 	}
 }

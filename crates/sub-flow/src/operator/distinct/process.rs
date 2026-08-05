@@ -122,7 +122,6 @@ impl DistinctOperator {
 			state.layout_dirty = true;
 		}
 		let hashes = self.compute_hashes(columns)?;
-		let now_nanos = self.runtime_context.clock.now().to_nanos();
 
 		let mut order: Vec<usize> = (0..row_count).collect();
 		if !columns.row_numbers().is_empty() {
@@ -138,7 +137,6 @@ impl DistinctOperator {
 			let new_serialized = SerializedRow::from_columns_at_index(columns, row_idx);
 
 			if let Some(entry) = state.entries.get_mut(&hash) {
-				entry.last_seen_nanos = now_nanos;
 				let prev_rn = entry.rows.keys().next_back().copied().unwrap();
 				let displaced = if row_number > prev_rn {
 					entry.rows.get(&prev_rn).cloned()
@@ -156,7 +154,6 @@ impl DistinctOperator {
 					hash,
 					DistinctEntry {
 						rows,
-						last_seen_nanos: now_nanos,
 					},
 				);
 				new_entries.push((row_idx, hash));
@@ -215,7 +212,6 @@ impl DistinctOperator {
 		}
 		let pre_hashes = self.compute_hashes(pre_columns)?;
 		let post_hashes = self.compute_hashes(post_columns)?;
-		let now_nanos = self.runtime_context.clock.now().to_nanos();
 
 		let mut result = Vec::new();
 		let mut dropped = 0u64;
@@ -228,7 +224,6 @@ impl DistinctOperator {
 			if pre_hash == post_hash {
 				let new_serialized = SerializedRow::from_columns_at_index(post_columns, row_idx);
 				let visible = if let Some(entry) = state.entries.get_mut(&pre_hash) {
-					entry.last_seen_nanos = now_nanos;
 					let visible_rn = entry.rows.keys().next_back().copied();
 					entry.rows.insert(row_number, new_serialized);
 					state.dirty.insert(pre_hash);
@@ -290,7 +285,6 @@ impl DistinctOperator {
 			let new_serialized = SerializedRow::from_columns_at_index(post_columns, row_idx);
 			let post_mutation: (bool, Option<SerializedRow>) =
 				if let Some(entry) = state.entries.get_mut(&post_hash) {
-					entry.last_seen_nanos = now_nanos;
 					let prev_rn = entry.rows.keys().next_back().copied().unwrap();
 					let displaced = if row_number > prev_rn {
 						entry.rows.get(&prev_rn).cloned()
@@ -306,7 +300,6 @@ impl DistinctOperator {
 						post_hash,
 						DistinctEntry {
 							rows,
-							last_seen_nanos: now_nanos,
 						},
 					);
 					(true, None)
