@@ -207,7 +207,7 @@ impl ConfigKey {
 				inner: ValueType::Duration,
 			},
 			Self::CommitGroupMaxEntries => Value::Uint8(256),
-			Self::TombstoneReapInterval => Value::duration_seconds(60),
+			Self::TombstoneReapInterval => Value::duration_seconds(1),
 			Self::TombstoneReapBatchSize => Value::Uint8(1024),
 			Self::VacuumInterval => Value::duration_seconds(60),
 			Self::VacuumFreelistThresholdPercent => Value::Uint8(20),
