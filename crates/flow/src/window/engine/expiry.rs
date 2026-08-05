@@ -13,6 +13,7 @@ use reifydb_core::{
 	state::store::StateStore,
 };
 use reifydb_value::{Result, byte_size::ByteSize, count::Count};
+use tracing::instrument;
 
 use crate::window::engine::expiry_range;
 
@@ -37,6 +38,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 		}
 	}
 
+	#[instrument(name = "flow::window::expiry_hydrate", level = "debug", skip_all)]
 	fn hydrate(&mut self, store: &mut impl StateStore) -> Result<&mut BTreeMap<GroupStateKey, E>> {
 		if self.entries.is_none() {
 			let mut map = BTreeMap::new();

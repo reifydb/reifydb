@@ -7,6 +7,7 @@ use crate::{
 	category::{ALL_CATEGORIES, ProfilerCategory},
 	intern::DimInterner,
 	record::{AggregateRecord, DimIdx},
+	spec::spec_for,
 	summary::ProfilerSummary,
 };
 
@@ -211,8 +212,7 @@ fn render_group(out: &mut String, span_name: &str, mut group: Vec<&AggregateReco
 		.collect();
 	let max_label_width = labels.iter().map(|s| s.len()).max().unwrap_or(0);
 
-	let is_apply = span_name == "flow::engine::apply";
-	let is_state_range = span_name == "flow::state::range_limited";
+	let render_extras = spec_for(span_name).and_then(|spec| spec.render);
 	for (i, r) in group.iter().enumerate() {
 		let p = r.histogram.percentiles();
 		let _ = write!(
@@ -229,21 +229,8 @@ fn render_group(out: &mut String, span_name: &str, mut group: Vec<&AggregateReco
 			fmt_us(p.p99 as u64),
 			width = max_label_width,
 		);
-		if is_apply {
-			let e = r.extras();
-			let _ = write!(out, " lock={} io={}->{} gets={}", fmt_us(e[2]), e[0], e[1], e[3]);
-		}
-		if is_state_range {
-			let e = r.extras();
-			let dead = match e[0] {
-				0 => 0.0,
-				fetched => e[1] as f64 * 100.0 / fetched as f64,
-			};
-			let per_call = match r.calls {
-				0 => 0,
-				calls => e[0] / calls,
-			};
-			let _ = write!(out, " fetched={} tomb={} dead={:.0}% rows/call={}", e[0], e[1], dead, per_call);
+		if let Some(render) = render_extras {
+			render(r, out);
 		}
 		let _ = writeln!(out);
 	}

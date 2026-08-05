@@ -16,10 +16,11 @@ use crate::{
 	callsite,
 	category::{CategorySet, ProfilerCategory},
 	intern::DimInterner,
-	record::{DimIdx, MAX_EXTRAS, MinimalSpanRecord},
+	record::{DIM_UNSET, DimIdx, MAX_DIMENSIONS, MinimalSpanRecord},
 	scope::{ProfilerScope, REGISTRY, ScopeState, active_scope},
 	sink::ProfilerSink,
-	visit::{FlowApplyFields, StateRangeFields},
+	spec::spec_for,
+	visit::SpecFields,
 };
 
 pub struct ProfilerLayer {
@@ -55,8 +56,7 @@ struct SpanExt {
 	callsite_id: u64,
 	started_at: Instant,
 	child_us: u64,
-	flow_fields: Option<FlowApplyFields>,
-	state_fields: Option<StateRangeFields>,
+	fields: Option<SpecFields>,
 }
 
 fn metadata_callsite_id(metadata: &'static Metadata<'static>) -> u64 {
@@ -118,9 +118,8 @@ where
 		};
 		let scope = self.discover_span_scope(&ctx, id);
 		let callsite_id = self.register_span_callsite(metadata);
-		let flow_fields = self.extract_flow_fields(category, attrs, metadata);
-		let state_fields = self.extract_state_fields(category, attrs, metadata);
-		self.insert_span_ext(&ctx, id, category, scope, callsite_id, flow_fields, state_fields);
+		let fields = self.extract_spec_fields(attrs, metadata);
+		self.insert_span_ext(&ctx, id, category, scope, callsite_id, fields);
 	}
 
 	fn on_record(&self, id: &Id, values: &Record<'_>, ctx: Context<'_, S>) {
@@ -128,13 +127,10 @@ where
 			return;
 		};
 		let mut ext = span.extensions_mut();
-		if let Some(entry) = ext.get_mut::<SpanExt>() {
-			if let Some(fields) = entry.flow_fields.as_mut() {
-				values.record(fields);
-			}
-			if let Some(fields) = entry.state_fields.as_mut() {
-				values.record(fields);
-			}
+		if let Some(entry) = ext.get_mut::<SpanExt>()
+			&& let Some(fields) = entry.fields.as_mut()
+		{
+			values.record(fields);
 		}
 	}
 
@@ -168,65 +164,31 @@ impl ProfilerLayer {
 	}
 
 	#[inline]
-	fn extract_flow_fields(
+	fn extract_spec_fields(
 		&self,
-		category: ProfilerCategory,
 		attrs: &Attributes<'_>,
 		metadata: &'static Metadata<'static>,
-	) -> Option<FlowApplyFields> {
-		if category == ProfilerCategory::Flow && metadata.name() == "flow::engine::apply" {
-			let mut fields = FlowApplyFields::default();
-			attrs.record(&mut fields);
-			Some(fields)
-		} else {
-			None
-		}
-	}
-
-	#[inline]
-	fn extract_state_fields(
-		&self,
-		category: ProfilerCategory,
-		attrs: &Attributes<'_>,
-		metadata: &'static Metadata<'static>,
-	) -> Option<StateRangeFields> {
-		if category == ProfilerCategory::Flow && metadata.name() == "flow::state::range_limited" {
-			let mut fields = StateRangeFields::default();
-			attrs.record(&mut fields);
-			Some(fields)
-		} else {
-			None
-		}
+	) -> Option<SpecFields> {
+		let spec = spec_for(metadata.name())?;
+		let mut fields = SpecFields::new(spec);
+		attrs.record(&mut fields);
+		Some(fields)
 	}
 
 	#[inline]
 	fn build_record(&self, entry: &SpanExt) -> MinimalSpanRecord {
 		let mut record = MinimalSpanRecord::new(entry.category, entry.callsite_id, 0);
-		match (entry.category, &entry.flow_fields) {
-			(ProfilerCategory::Flow, Some(f)) => {
-				record.duration_us = u32::try_from(f.apply_time_us).unwrap_or(u32::MAX);
-				let mut dims: [DimIdx; 2] = [0, 0];
-				if !f.node_type.is_empty() {
-					dims[0] = self.interner.intern(&f.node_type);
-				}
-				if !f.node_id.is_empty() {
-					dims[1] = self.interner.intern(&f.node_id);
-				}
-				record.dim_indices = dims;
-				let mut extras = [0u64; MAX_EXTRAS];
-				extras[0] = f.input_rows;
-				extras[1] = f.output_rows;
-				extras[2] = f.lock_wait_us;
-				extras[3] = f.store_reads;
-				record.extras = extras;
+		match entry.fields.as_ref().and_then(SpecFields::duration_override) {
+			Some(override_us) => {
+				record.duration_us = u32::try_from(override_us).unwrap_or(u32::MAX);
 			}
-			_ => {
+			None => {
 				reifydb_assertions! {
 					let now = self.clock.instant();
 					assert!(
 						now >= entry.started_at,
 						"span close observed a clock instant before its start, so elapsed() would saturate \
-						 to zero and silently report a missing duration for an untracked-flow span; the \
+						 to zero and silently report a missing duration for a wall-clock span; the \
 						 profiler relies on a monotonic clock for span timing (now_us={}, started_us={})",
 						now.elapsed().as_micros(),
 						entry.started_at.elapsed().as_micros()
@@ -236,15 +198,15 @@ impl ProfilerLayer {
 				record.duration_us = u32::try_from(elapsed).unwrap_or(u32::MAX);
 			}
 		}
-		if let Some(s) = &entry.state_fields {
-			record.extras[0] = s.rows_fetched;
-			record.extras[1] = s.rows_tombstoned;
-			if !s.site.is_empty() {
-				record.dim_indices[0] = self.interner.intern(&s.site);
+		if let Some(fields) = &entry.fields {
+			let mut dims: [DimIdx; MAX_DIMENSIONS] = [DIM_UNSET; MAX_DIMENSIONS];
+			for (slot, label) in fields.dims().iter().enumerate() {
+				if !label.is_empty() {
+					dims[slot] = self.interner.intern(label);
+				}
 			}
-			if let Some(operator) = s.operator_id {
-				record.dim_indices[1] = self.interner.intern(&format!("op{operator}"));
-			}
+			record.dim_indices = dims;
+			record.extras = *fields.extras();
 		}
 		record.self_us =
 			u32::try_from((record.duration_us as u64).saturating_sub(entry.child_us)).unwrap_or(u32::MAX);
@@ -296,8 +258,7 @@ impl ProfilerLayer {
 		category: ProfilerCategory,
 		scope: Arc<ScopeState>,
 		callsite_id: u64,
-		flow_fields: Option<FlowApplyFields>,
-		state_fields: Option<StateRangeFields>,
+		fields: Option<SpecFields>,
 	) where
 		S: Subscriber + for<'a> LookupSpan<'a>,
 	{
@@ -307,8 +268,7 @@ impl ProfilerLayer {
 			callsite_id,
 			started_at: self.clock.instant(),
 			child_us: 0,
-			flow_fields,
-			state_fields,
+			fields,
 		};
 		if let Some(span) = ctx.span(id) {
 			span.extensions_mut().insert(ext);

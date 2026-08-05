@@ -5,26 +5,73 @@ use std::fmt;
 
 use tracing::field::{Field, Visit};
 
-#[derive(Default, Clone, Debug)]
-pub struct FlowApplyFields {
-	pub node_id: String,
-	pub node_type: String,
-	pub input_rows: u64,
-	pub output_rows: u64,
-	pub apply_time_us: u64,
-	pub lock_wait_us: u64,
-	pub store_reads: u64,
+use crate::{
+	record::{MAX_DIMENSIONS, MAX_EXTRAS},
+	spec::{DimSource, SpanSpec},
+};
+
+/// Field values pulled off a span according to its [`SpanSpec`].
+#[derive(Clone, Debug)]
+pub struct SpecFields {
+	spec: &'static SpanSpec,
+	dims: [String; MAX_DIMENSIONS],
+	extras: [u64; MAX_EXTRAS],
+	duration_override: Option<u64>,
 }
 
-impl Visit for FlowApplyFields {
+impl SpecFields {
+	pub fn new(spec: &'static SpanSpec) -> Self {
+		Self {
+			spec,
+			dims: Default::default(),
+			extras: [0; MAX_EXTRAS],
+			duration_override: None,
+		}
+	}
+
+	pub fn dims(&self) -> &[String; MAX_DIMENSIONS] {
+		&self.dims
+	}
+
+	pub fn extras(&self) -> &[u64; MAX_EXTRAS] {
+		&self.extras
+	}
+
+	pub fn duration_override(&self) -> Option<u64> {
+		self.duration_override
+	}
+
+	fn set_text_dim(&mut self, name: &str, value: &str) {
+		for (slot, source) in self.spec.dims.iter().enumerate() {
+			if matches!(source, DimSource::Text(field) if *field == name) {
+				self.dims[slot].replace_range(.., value);
+			}
+		}
+	}
+}
+
+impl Visit for SpecFields {
 	fn record_u64(&mut self, field: &Field, value: u64) {
-		match field.name() {
-			"input_rows" => self.input_rows = value,
-			"output_rows" => self.output_rows = value,
-			"apply_time_us" => self.apply_time_us = value,
-			"lock_wait_us" => self.lock_wait_us = value,
-			"store_reads" => self.store_reads = value,
-			_ => {}
+		let name = field.name();
+		if self.spec.duration_override == Some(name) {
+			self.duration_override = Some(value);
+		}
+		for (slot, source) in self.spec.dims.iter().enumerate() {
+			if let DimSource::Number {
+				field: dim_field,
+				prefix,
+			} = source
+				&& *dim_field == name
+			{
+				self.dims[slot].clear();
+				self.dims[slot].push_str(prefix);
+				self.dims[slot].push_str(&value.to_string());
+			}
+		}
+		for (slot, extra) in self.spec.extras.iter().enumerate() {
+			if *extra == name {
+				self.extras[slot] = value;
+			}
 		}
 	}
 
@@ -35,63 +82,12 @@ impl Visit for FlowApplyFields {
 	}
 
 	fn record_str(&mut self, field: &Field, value: &str) {
-		match field.name() {
-			"node_id" => self.node_id.replace_range(.., value),
-			"node_type" => self.node_type.replace_range(.., value),
-			_ => {}
-		}
+		self.set_text_dim(field.name(), value);
 	}
 
 	fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-		match field.name() {
-			"node_id" => {
-				self.node_id.clear();
-				self.node_id.push_str(&format!("{:?}", value));
-			}
-			"node_type" => {
-				self.node_type.clear();
-				self.node_type.push_str(format!("{:?}", value).trim_matches('"'));
-			}
-			_ => {}
-		}
-	}
-}
-
-#[derive(Default, Clone, Debug)]
-pub struct StateRangeFields {
-	pub site: String,
-	pub operator_id: Option<u64>,
-	pub rows_fetched: u64,
-	pub rows_tombstoned: u64,
-}
-
-impl Visit for StateRangeFields {
-	fn record_u64(&mut self, field: &Field, value: u64) {
-		match field.name() {
-			"operator_id" => self.operator_id = Some(value),
-			"rows_fetched" => self.rows_fetched = value,
-			"rows_tombstoned" => self.rows_tombstoned = value,
-			_ => {}
-		}
-	}
-
-	fn record_i64(&mut self, field: &Field, value: i64) {
-		if value >= 0 {
-			self.record_u64(field, value as u64);
-		}
-	}
-
-	fn record_str(&mut self, field: &Field, value: &str) {
-		if field.name() == "site" {
-			self.site.replace_range(.., value);
-		}
-	}
-
-	fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-		if field.name() == "site" {
-			self.site.clear();
-			self.site.push_str(format!("{:?}", value).trim_matches('"'));
-		}
+		let rendered = format!("{:?}", value);
+		self.set_text_dim(field.name(), rendered.trim_matches('"'));
 	}
 }
 
@@ -112,46 +108,108 @@ mod tests {
 	};
 
 	use super::*;
+	use crate::spec::spec_for;
 
 	struct CaptureLayer {
-		captured: Arc<Mutex<Option<FlowApplyFields>>>,
+		captured: Arc<Mutex<Option<SpecFields>>>,
 	}
 
 	impl<S> Layer<S> for CaptureLayer
 	where
 		S: Subscriber + for<'a> LookupSpan<'a>,
 	{
-		fn on_new_span(&self, attrs: &Attributes<'_>, _id: &Id, _ctx: Context<'_, S>) {
-			let mut v = FlowApplyFields::default();
+		fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
+			let Some(name) = ctx.span(id).map(|s| s.name()) else {
+				return;
+			};
+			let Some(spec) = spec_for(name) else {
+				return;
+			};
+			let mut v = SpecFields::new(spec);
 			attrs.record(&mut v);
 			*self.captured.lock() = Some(v);
 		}
 	}
 
-	#[test]
-	fn extracts_flow_apply_fields() {
+	fn capture(build: impl FnOnce()) -> SpecFields {
 		let captured = Arc::new(Mutex::new(None));
 		let layer = CaptureLayer {
 			captured: captured.clone(),
 		};
 		let subscriber = Registry::default().with(layer);
-		with_default(subscriber, || {
+		with_default(subscriber, build);
+		let taken = captured.lock().clone();
+		taken.expect("a span matching a spec must be captured")
+	}
+
+	#[test]
+	fn apply_fields_land_in_the_slots_its_spec_declares() {
+		// Slot order is what the formatter prints as lock=/io=/gets=, so a field landing in the
+		// wrong slot silently relabels the counters rather than failing.
+		let captured = capture(|| {
 			let _span = debug_span!(
 				"flow::engine::apply",
-				node_id = "n1",
 				node_type = "map",
+				operator_id = 79u64,
 				input_rows = 10u64,
 				output_rows = 7u64,
 				apply_time_us = 250u64,
 				lock_wait_us = 5u64,
+				store_reads = 3u64,
 			);
 		});
-		let captured = captured.lock().clone().unwrap();
-		assert_eq!(captured.node_id, "n1");
-		assert_eq!(captured.node_type, "map");
-		assert_eq!(captured.input_rows, 10);
-		assert_eq!(captured.output_rows, 7);
-		assert_eq!(captured.apply_time_us, 250);
-		assert_eq!(captured.lock_wait_us, 5);
+		assert_eq!(captured.dims()[0], "map");
+		assert_eq!(captured.dims()[1], "op79", "operator_id must label the second dimension");
+		assert_eq!(captured.extras(), &[10, 7, 5, 3]);
+		assert_eq!(captured.duration_override(), Some(250));
+	}
+
+	#[test]
+	fn a_span_without_a_duration_override_field_reports_none() {
+		// build_record falls back to the wall clock only when this is None. If an absent
+		// apply_time_us defaulted to Some(0), every span without one would report as free.
+		let captured = capture(|| {
+			let _span = debug_span!(
+				"flow::state::range_limited",
+				site = "timer::hydrate_probe",
+				operator_id = 7u64,
+				rows_fetched = 12u64,
+				rows_tombstoned = 4u64,
+			);
+		});
+		assert_eq!(captured.duration_override(), None);
+		assert_eq!(captured.dims()[0], "timer::hydrate_probe");
+		assert_eq!(captured.dims()[1], "op7");
+		assert_eq!(captured.extras()[0], 12);
+		assert_eq!(captured.extras()[1], 4);
+	}
+
+	#[test]
+	fn a_debug_formatted_dimension_loses_its_quotes() {
+		// Fields recorded with ?value arrive through record_debug wrapped in quotes. Leaving them
+		// would render the row as site@"reclaim::range" and split one logical dimension into two
+		// labels depending on how the call site happened to record it.
+		let captured = capture(|| {
+			let _span = debug_span!("flow::state::range_limited", site = ?"reclaim::range", operator_id = 1u64);
+		});
+		assert_eq!(captured.dims()[0], "reclaim::range");
+	}
+
+	#[test]
+	fn a_field_the_spec_does_not_declare_is_ignored() {
+		// Spans carry fields for logging that are neither dimensions nor counters. One of them
+		// landing in a slot would corrupt an unrelated column.
+		let captured = capture(|| {
+			let _span = debug_span!(
+				"flow::state::range_limited",
+				site = "reclaim::range",
+				operator_id = 1u64,
+				rows_fetched = 5u64,
+				rows_tombstoned = 0u64,
+				num_parents = 9u64,
+			);
+		});
+		assert_eq!(captured.extras()[2], 0, "an undeclared field must not reach a slot");
+		assert_eq!(captured.extras()[3], 0);
 	}
 }

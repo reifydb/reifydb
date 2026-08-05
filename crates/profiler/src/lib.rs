@@ -22,5 +22,6 @@ pub mod percentile;
 pub mod record;
 pub mod scope;
 pub mod sink;
+pub mod spec;
 pub mod summary;
 pub mod visit;

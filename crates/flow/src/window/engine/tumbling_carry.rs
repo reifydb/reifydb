@@ -22,6 +22,7 @@ use reifydb_core::{
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
+use tracing::instrument;
 use rkyv::{Archive, with::AsVec};
 
 use crate::window::{
@@ -130,6 +131,7 @@ where
 		self.accumulators.invalidate_group_data(groups)
 	}
 
+	#[instrument(name = "flow::window::meta_hydrate", level = "debug", skip_all)]
 	fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
 		if self.hydrated {
 			return Ok(());

@@ -25,7 +25,7 @@ impl FlowEngineInner {
 	}
 
 	#[instrument(name = "flow::engine::apply", level = "trace", skip(self, txn, change, operator), fields(
-		operator_id = ?operator.id,
+		operator_id = operator.id.0,
 		node_type = operator.ty.label(),
 		num_parents = operator.inputs.len(),
 		input_diffs = change.diffs.len(),

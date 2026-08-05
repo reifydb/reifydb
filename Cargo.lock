@@ -3045,6 +3045,7 @@ dependencies = [
  "serde_bytes",
  "smallvec",
  "thiserror 2.0.18",
+ "tracing",
  "uuid",
 ]
 

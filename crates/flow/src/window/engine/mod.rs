@@ -35,7 +35,7 @@ use reifydb_core::{
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, value::row_number::RowNumber};
 use rkyv::{munge::munge, option::ArchivedOption, seal::Seal};
-use tracing::debug;
+use tracing::{debug, instrument};
 
 use crate::window::span::{Slot, WindowCoord, WindowSpan};
 
@@ -218,6 +218,7 @@ pub(crate) fn meta_range() -> EncodedKeyRange {
 /// `low_water` is a lower bound on the current minimum high water, so a bound already at or above
 /// the threshold skips the scan entirely and keeps the steady-state sweep O(1). Staleness is a
 /// value, not a key prefix, so the scan itself must cover the whole meta keyspace.
+#[instrument(name = "flow::window::sweep_stale_meta", level = "debug", skip_all)]
 pub(crate) fn sweep_stale_meta<S, M>(
 	store: &mut S,
 	meta: &mut StateCache<MetaKey, M>,

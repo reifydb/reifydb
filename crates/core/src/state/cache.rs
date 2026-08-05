@@ -18,6 +18,7 @@ use reifydb_value::{
 	value::datetime::DateTime,
 };
 use rkyv::seal::Seal;
+use tracing::instrument;
 
 use crate::{
 	key::operator_group_state::{GroupSet, GroupStateKey, IntoGroupStateKey, group_data_of_inner},
@@ -502,6 +503,7 @@ where
 		Ok(())
 	}
 
+	#[instrument(name = "flow::state::cache_hydrate", level = "debug", skip_all)]
 	pub fn hydrate(
 		&mut self,
 		store: &mut impl StateStore,
