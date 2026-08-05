@@ -23,7 +23,7 @@ use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
 };
-use tracing::{Span, field, instrument};
+use tracing::{Span, field, info, instrument};
 
 use crate::engine::FlowEngineInner;
 
@@ -92,6 +92,7 @@ pub struct ReclaimReport {
 	pub identity_groups: usize,
 	pub keyspace_groups: usize,
 	pub rows: usize,
+	pub scanned: usize,
 	pub backlog: usize,
 	pub perpetual_nodes: usize,
 	pub ungridded_nodes: usize,
@@ -207,6 +208,18 @@ impl FlowEngineInner {
 		}
 
 		self.record(&report, remaining);
+		if report.scanned > 0 {
+			info!(
+				flow_id = ?flow_id,
+				scanned = report.scanned,
+				removed = report.rows,
+				backlog = report.backlog,
+				keyspace_groups = report.keyspace_groups,
+				data_groups = report.data_groups,
+				identity_groups = report.identity_groups,
+				"flow retention sweep"
+			);
+		}
 		Ok(report)
 	}
 
@@ -384,6 +397,7 @@ fn reclaim_data(
 		let outcome = txn.reclaim_group_data(operator, group, remaining.rows)?;
 		remaining.rows -= outcome.removed;
 		report.rows += outcome.removed;
+		report.scanned += outcome.removed;
 		if outcome.more {
 			report.backlog += 1;
 			continue;
@@ -425,6 +439,7 @@ fn reclaim_keyspace(
 			txn.reclaim_group_keyspace(operator, group, keyspace, cutoff, &mut cursor, remaining.rows)?;
 		remaining.rows -= outcome.removed;
 		report.rows += outcome.removed;
+		report.scanned += outcome.scanned;
 		let oldest = older_of(seen, outcome.oldest_survivor);
 		if outcome.more {
 			cursors.insert((group, keyspace), (cursor, oldest));
@@ -471,6 +486,7 @@ fn reclaim_identity(
 		let outcome = txn.reclaim_group_identity(operator, group, remaining.rows)?;
 		remaining.rows -= outcome.removed;
 		report.rows += outcome.removed;
+		report.scanned += outcome.removed;
 		if outcome.more {
 			report.backlog += 1;
 			continue;

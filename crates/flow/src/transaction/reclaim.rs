@@ -36,6 +36,7 @@ impl ReclaimOutcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KeyspaceOutcome {
 	pub removed: usize,
+	pub scanned: usize,
 	pub more: bool,
 
 	pub oldest_survivor: Option<DateTime>,
@@ -44,6 +45,7 @@ pub struct KeyspaceOutcome {
 impl KeyspaceOutcome {
 	pub const NOTHING: Self = Self {
 		removed: 0,
+		scanned: 0,
 		more: false,
 		oldest_survivor: None,
 	};
@@ -100,6 +102,7 @@ impl FlowTransaction {
 			let outcome = self.reclaim_range(operator, keyspace_inner_range(group, keyspace), limit)?;
 			return Ok(KeyspaceOutcome {
 				removed: outcome.removed,
+				scanned: outcome.removed,
 				more: outcome.more,
 				oldest_survivor: None,
 			});
@@ -151,6 +154,7 @@ impl FlowTransaction {
 		};
 		Ok(KeyspaceOutcome {
 			removed,
+			scanned: batch.items.len(),
 			more,
 			oldest_survivor,
 		})
@@ -284,6 +288,14 @@ mod tests {
 	fn write(txn: &mut FlowTransaction, group: GroupId, keyspace: Keyspace, suffix: u8) {
 		let key = OperatorGroupStateKey::inner_encoded(group, keyspace, vec![suffix]);
 		txn.state_set(NODE, &key, payload()).unwrap();
+	}
+
+	fn write_stamped(txn: &mut FlowTransaction, group: GroupId, keyspace: Keyspace, suffix: u8, at: u64) {
+		// A per-row keyspace decides row by row from the write stamp, so these rows carry a real one
+		// rather than the epoch stamp `payload` writes.
+		let key = OperatorGroupStateKey::inner_encoded(group, keyspace, vec![suffix]);
+		let row = 1u64.encode_state(DateTime::from_nanos(at)).unwrap().into_row();
+		txn.state_set(NODE, &key, row).unwrap();
 	}
 
 	fn count(txn: &mut FlowTransaction, range: EncodedKeyRange) -> usize {
@@ -433,6 +445,68 @@ mod tests {
 		assert_eq!(second.removed, 3);
 		assert!(!second.more);
 		assert_eq!(count(&mut txn, keyspace_inner_range(GROUP, Keyspace::JOIN_LEFT)), 0);
+	}
+
+	#[test]
+	fn a_per_row_sweep_reports_every_row_it_walked_not_only_the_ones_it_deleted() {
+		// scanned against removed is what separates a sweep that is slow because it deletes a lot from
+		// one that is slow because it re-reads live state it is not yet allowed to delete. Reporting
+		// only `removed` makes the second case read as an idle sweep, which is the reading that sent
+		// the last round of retention work after the reaper instead of after the scan.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		for suffix in 0..2u8 {
+			write_stamped(&mut txn, GROUP, Keyspace::JOIN_PUBLISHED, suffix, 1_000);
+		}
+		for suffix in 2..5u8 {
+			write_stamped(&mut txn, GROUP, Keyspace::JOIN_PUBLISHED, suffix, 9_000);
+		}
+
+		let outcome = txn
+			.reclaim_group_keyspace(
+				NODE,
+				GROUP,
+				Keyspace::JOIN_PUBLISHED,
+				Cutoff(DateTime::from_nanos(5_000)),
+				&mut None,
+				100,
+			)
+			.unwrap();
+
+		assert_eq!(outcome.removed, 2, "only the two rows written before the cutoff may be deleted");
+		assert_eq!(outcome.scanned, 5, "but every row in the keyspace was read and compared to find them");
+		assert_eq!(
+			outcome.oldest_survivor,
+			Some(DateTime::from_nanos(9_000)),
+			"the survivors decide when this side is next due"
+		);
+	}
+
+	#[test]
+	fn a_sweep_that_deletes_nothing_still_reports_what_it_read() {
+		// The pathological case the metric exists for: every row is younger than the cutoff, so the
+		// sweep walks the whole live working set and reclaims nothing. With scanned tied to removed
+		// this is indistinguishable from a group that was never offered to the sweep at all.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		for suffix in 0..4u8 {
+			write_stamped(&mut txn, GROUP, Keyspace::JOIN_PUBLISHED, suffix, 9_000);
+		}
+
+		let outcome = txn
+			.reclaim_group_keyspace(
+				NODE,
+				GROUP,
+				Keyspace::JOIN_PUBLISHED,
+				Cutoff(DateTime::from_nanos(5_000)),
+				&mut None,
+				100,
+			)
+			.unwrap();
+
+		assert_eq!(outcome.removed, 0);
+		assert_eq!(outcome.scanned, 4, "four rows of work for nothing reclaimed must be visible");
+		assert!(!outcome.more);
 	}
 
 	#[test]

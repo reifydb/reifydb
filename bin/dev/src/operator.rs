@@ -21,6 +21,7 @@ const UNDECODABLE: &str = "<undecodable>";
 #[derive(Default, Clone)]
 pub struct Census {
 	pub rows: u64,
+	pub tombstones: u64,
 	pub key_bytes: u64,
 	pub value_bytes: u64,
 }
@@ -28,6 +29,17 @@ pub struct Census {
 impl Census {
 	pub fn bytes(&self) -> u64 {
 		self.key_bytes + self.value_bytes
+	}
+
+	pub fn live(&self) -> u64 {
+		self.rows.saturating_sub(self.tombstones)
+	}
+
+	pub fn dead_share(&self) -> f64 {
+		match self.rows {
+			0 => 0.0,
+			total => self.tombstones as f64 * 100.0 / total as f64,
+		}
 	}
 }
 
@@ -49,15 +61,19 @@ pub fn keyspace(multi_db: &str, cat: Option<&Catalog>, opts: Options) -> Result<
 	for operator in operator_tables(&conn, opts.operator)? {
 		let table = format!("operator_{operator}__current");
 		let mut stmt = conn
-			.prepare(&format!("SELECT key, length(coalesce(value, x'')) FROM \"{table}\""))
+			.prepare(&format!(
+				"SELECT key, length(coalesce(value, x'')), value IS NULL FROM \"{table}\""
+			))
 			.map_err(|e| format!("failed to scan {table}: {e}"))?;
 		let mut q = stmt.query([]).map_err(|e| format!("failed to scan {table}: {e}"))?;
 		while let Some(row) = q.next().map_err(|e| format!("failed to read {table}: {e}"))? {
 			let key: Vec<u8> = row.get(0).map_err(|e| format!("failed to read {table}: {e}"))?;
 			let value_len: i64 = row.get(1).map_err(|e| format!("failed to read {table}: {e}"))?;
+			let dead: bool = row.get(2).map_err(|e| format!("failed to read {table}: {e}"))?;
 			let (label, group) = classify(&key);
 			let entry = tally.entry((operator, label.clone())).or_default();
 			entry.rows += 1;
+			entry.tombstones += u64::from(dead);
 			entry.key_bytes += key.len() as u64;
 			entry.value_bytes += value_len.max(0) as u64;
 			if opts.groups
@@ -127,9 +143,12 @@ fn render(
 		for ((operator, label), census) in rows.iter().take(shown(rows.len(), opts.top)) {
 			let logical = cat.and_then(|c| c.operators.get(operator)).cloned().unwrap_or_default();
 			println!(
-				"{{\"operator\":{operator},\"keyspace\":\"{label}\",\"rows\":{},\"bytes\":{},\
-				 \"key_bytes\":{},\"value_bytes\":{},\"groups\":{},\"logical\":\"{}\"}}",
+				"{{\"operator\":{operator},\"keyspace\":\"{label}\",\"rows\":{},\"live\":{},\
+				 \"tombstones\":{},\"bytes\":{},\"key_bytes\":{},\"value_bytes\":{},\"groups\":{},\
+				 \"logical\":\"{}\"}}",
 				census.rows,
+				census.live(),
+				census.tombstones,
 				census.bytes(),
 				census.key_bytes,
 				census.value_bytes,
@@ -141,10 +160,13 @@ fn render(
 	}
 
 	println!(
-		"{:>12}  {:<22} {:>12} {:>10} {:>6}{}  {}",
+		"{:>12}  {:<22} {:>12} {:>12} {:>10} {:>7} {:>10} {:>6}{}  {}",
 		"PHYSICAL",
 		"KEYSPACE",
 		"ROWS",
+		"LIVE",
+		"TOMB",
+		"DEAD%",
 		"BYTES",
 		"%",
 		if opts.groups {
@@ -168,10 +190,13 @@ fn render(
 			String::new()
 		};
 		println!(
-			"{:>12}  {:<22} {:>12} {:>10} {:>5.1}%{}  {}",
+			"{:>12}  {:<22} {:>12} {:>12} {:>10} {:>6.1}% {:>10} {:>5.1}%{}  {}",
 			format!("operator_{operator}"),
 			label,
 			census.rows,
+			census.live(),
+			census.tombstones,
+			census.dead_share(),
 			human(census.bytes()),
 			share,
 			group_col,
@@ -181,7 +206,20 @@ fn render(
 	if rows.len() > limit {
 		println!("\n{} of {} rows shown ({} hidden; use --top)", limit, rows.len(), rows.len() - limit);
 	}
-	println!("\ngrand total: {} rows, {} across {} keyspaces", grand_rows, human(grand_bytes), rows.len());
+	let grand_tombstones: u64 = rows.iter().map(|(_, c)| c.tombstones).sum();
+	println!(
+		"\ngrand total: {} rows ({} live, {} tombstones = {:.1}% dead), {} across {} keyspaces",
+		grand_rows,
+		grand_rows - grand_tombstones,
+		grand_tombstones,
+		if grand_rows == 0 {
+			0.0
+		} else {
+			grand_tombstones as f64 * 100.0 / grand_rows as f64
+		},
+		human(grand_bytes),
+		rows.len()
+	);
 }
 
 fn shown(len: usize, top: usize) -> usize {
