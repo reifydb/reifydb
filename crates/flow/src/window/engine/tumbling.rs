@@ -192,7 +192,7 @@ where
 				 (order={ordered}, buckets={bucketed})"
 			);
 		}
-		let results = self.apply_events(store, buckets, &slot_resolved, &mut meta_loaded, &new_accumulator)?;
+		let results = self.apply_events(store, buckets, order, &slot_resolved, &mut meta_loaded, &new_accumulator)?;
 		self.persist_meta(store, meta_loaded)?;
 		Ok(results)
 	}
@@ -261,7 +261,8 @@ where
 	fn apply_events<S, NA>(
 		&mut self,
 		store: &mut S,
-		buckets: TumblingBuckets<G, C, Accumulator::Contribution>,
+		mut buckets: TumblingBuckets<G, C, Accumulator::Contribution>,
+		order: &[(G, WindowSpan<C>)],
 		slot_resolved: &SlotResolved<G, C>,
 		meta_loaded: &mut MetaLoaded<G, C>,
 		new_accumulator: &NA,
@@ -272,7 +273,11 @@ where
 	{
 		let mut results: Vec<WindowResult<G, C, Accumulator::Output>> = Vec::new();
 
-		for ((group, span), events) in buckets {
+		for ordered in order {
+			let Some(events) = buckets.remove(ordered) else {
+				continue;
+			};
+			let (group, span) = ordered.clone();
 			meta_loaded.entry(group.clone()).or_default().observe(span.start);
 
 			let Some(ResolvedSlot {
@@ -351,6 +356,14 @@ where
 					}
 				}
 			}
+		}
+		reifydb_assertions! {
+			assert!(
+				buckets.is_empty(),
+				"the resolution order must drain every bucket; a leftover bucket's events were \
+				 silently dropped and its window never gets a row number (leftovers={})",
+				buckets.len()
+			);
 		}
 		Ok(results)
 	}

@@ -212,7 +212,7 @@ impl RowNumberProvider {
 		txn: &mut FlowTransaction,
 		keys: &[EncodedKey],
 	) -> Result<Vec<(RowNumber, bool)>> {
-		let now = Self::mapping_time(txn);
+		let now = txn.written_at();
 		let budget = self.inner.budget;
 		let mut guard = self.inner.operators.entry(operator).or_default();
 		Self::hydrate_group(&mut guard, operator, txn, group, budget)?;
@@ -458,13 +458,6 @@ impl RowNumberProvider {
 		Ok(())
 	}
 
-	fn mapping_time(txn: &FlowTransaction) -> DateTime {
-		match txn.change_coordinate() {
-			Some(coordinate) => coordinate.at,
-			None => txn.clock().now(),
-		}
-	}
-
 	pub fn evict_expired(
 		&self,
 		operator: OperatorId,
@@ -646,7 +639,7 @@ impl RowNumberProvider {
 		};
 		let high_water = seed + count;
 		state.next = Some(high_water);
-		let now = txn.clock().now();
+		let now = txn.written_at();
 		txn.state_set(operator, &counter_key(), encode_payload(&high_water, now)?)?;
 		Ok(seed)
 	}

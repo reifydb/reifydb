@@ -13,7 +13,7 @@ use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
 	Result,
 	util::hash::{Hash128, xxh3_128},
-	value::{row_number::RowNumber, system_columns::SystemColumns},
+	value::{datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
 };
 
 use crate::operator::{
@@ -23,6 +23,14 @@ use crate::operator::{
 	},
 	stateful::utils,
 };
+
+fn row_time(txn: &FlowTransaction, columns: &Columns, row_idx: usize) -> DateTime {
+	if columns.time().is_empty() {
+		txn.written_at()
+	} else {
+		columns.time()[row_idx]
+	}
+}
 
 impl DistinctOperator {
 	pub(super) fn with_stable_rn(cols: Columns, stable_rn: RowNumber) -> Columns {
@@ -119,7 +127,7 @@ impl DistinctOperator {
 		}
 
 		if state.layout.update_from_columns(columns) {
-			state.layout_dirty = true;
+			state.layout_changed_at = Some(row_time(txn, columns, 0));
 		}
 		let hashes = self.compute_hashes(columns)?;
 
@@ -158,7 +166,9 @@ impl DistinctOperator {
 				);
 				new_entries.push((row_idx, hash));
 			}
-			state.dirty.insert(hash);
+		}
+		for (row_idx, &hash) in hashes.iter().enumerate() {
+			state.dirty.insert(hash, row_time(txn, columns, row_idx));
 		}
 
 		new_entries.sort_by_key(|&(i, _)| columns.row_numbers()[i]);
@@ -208,7 +218,7 @@ impl DistinctOperator {
 		}
 
 		if state.layout.update_from_columns(post_columns) {
-			state.layout_dirty = true;
+			state.layout_changed_at = Some(row_time(txn, post_columns, 0));
 		}
 		let pre_hashes = self.compute_hashes(pre_columns)?;
 		let post_hashes = self.compute_hashes(post_columns)?;
@@ -226,7 +236,7 @@ impl DistinctOperator {
 				let visible = if let Some(entry) = state.entries.get_mut(&pre_hash) {
 					let visible_rn = entry.rows.keys().next_back().copied();
 					entry.rows.insert(row_number, new_serialized);
-					state.dirty.insert(pre_hash);
+					state.dirty.insert(pre_hash, row_time(txn, post_columns, row_idx));
 					visible_rn == Some(row_number)
 				} else {
 					dropped += 1;
@@ -256,7 +266,7 @@ impl DistinctOperator {
 					let prev_rn = entry.rows.keys().next_back().copied().unwrap();
 					let removed = entry.rows.remove(&row_number).is_some();
 					if removed {
-						state.dirty.insert(pre_hash);
+						state.dirty.insert(pre_hash, row_time(txn, post_columns, row_idx));
 						if entry.rows.is_empty() {
 							Some((true, None))
 						} else {
@@ -304,7 +314,7 @@ impl DistinctOperator {
 					);
 					(true, None)
 				};
-			state.dirty.insert(post_hash);
+			state.dirty.insert(post_hash, row_time(txn, post_columns, row_idx));
 
 			if let Some((pre_is_empty, pre_new_visible_opt)) = pre_mutation {
 				let (stable_rn, _) = txn.get_or_create_row_number(
@@ -385,7 +395,7 @@ impl DistinctOperator {
 			if !removed {
 				continue;
 			}
-			state.dirty.insert(hash);
+			state.dirty.insert(hash, row_time(txn, columns, row_idx));
 
 			if entry.rows.is_empty() {
 				empty_hashes.push(hash);

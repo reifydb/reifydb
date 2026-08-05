@@ -383,7 +383,7 @@ impl GroupInterner {
 		txn: &mut FlowTransaction,
 		groups: &[EncodedKey],
 	) -> Result<Vec<(GroupId, bool)>> {
-		let now = txn.clock().now();
+		let now = txn.written_at();
 		let budget = self.inner.budget;
 		let mut guard = self.inner.operators.entry(operator).or_default();
 		Self::hydrate_once(&mut guard, operator, txn, budget)?;
@@ -654,7 +654,7 @@ impl GroupInterner {
 
 	pub fn defer(&self, operator: OperatorId, txn: &mut FlowTransaction, id: GroupId) -> Result<bool> {
 		let budget = self.inner.budget;
-		let now = txn.clock().now();
+		let now = txn.written_at();
 		let mut guard = self.inner.operators.entry(operator).or_default();
 		Self::hydrate_once(&mut guard, operator, txn, budget)?;
 		let state = &mut *guard;
@@ -842,7 +842,7 @@ impl GroupInterner {
 				 side={side:?})"
 			);
 		}
-		let now = txn.clock().now();
+		let now = txn.written_at();
 		if let Some(previous) = previous {
 			txn.state_remove(operator, &side_index_key(side, previous, id))?;
 		}
@@ -1198,7 +1198,7 @@ impl GroupInterner {
 		}
 		let high_water = seed + count;
 		state.next = Some(high_water);
-		let now = txn.clock().now();
+		let now = txn.written_at();
 		txn.state_set(operator, &counter_key(), encode_payload(&high_water, now)?)?;
 		Ok(seed)
 	}

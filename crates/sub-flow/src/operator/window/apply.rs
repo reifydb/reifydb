@@ -41,7 +41,6 @@ use crate::operator::{
 			slot_coord, window_group_key,
 		},
 	},
-	max_input_time,
 	stateful::utils,
 	store::OperatorStateStore,
 };
@@ -75,6 +74,16 @@ fn route_engine_columns(
 }
 
 #[allow(clippy::too_many_arguments)]
+fn intern_window_group(
+	operator: &WindowOperator,
+	txn: &mut FlowTransaction,
+	hash: Hash128,
+	span: WindowSpan<DateTime>,
+) -> Result<()> {
+	txn.intern_group(operator.core.operator, &window_group_key(hash, span.start.to_order()))?;
+	Ok(())
+}
+
 fn push_count_event(
 	buckets: &mut EngineBuckets,
 	group_values: &mut HashMap<Hash128, Vec<Value>>,
@@ -114,7 +123,6 @@ fn route_count_tumbling(
 	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
 ) -> Result<()> {
 	let rows = TumblingOverRows::holding(operator.size_count().unwrap_or(1));
-	let now = max_input_time(change).unwrap_or_else(|| txn.written_at());
 	for diff in change.diffs.iter() {
 		match diff {
 			Diff::Insert {
@@ -123,12 +131,14 @@ fn route_count_tumbling(
 			} => {
 				let groups = operator.core.compute_groups(post)?;
 				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
+				let times = operator.row_times(post, post.row_count())?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 					let ordinal = operator.get_and_increment_global_count(txn, *hash)?;
 					let window_id = rows.window_id(ordinal);
 					operator.store_row_index(txn, *hash, post.row_numbers()[row_idx], window_id)?;
+					intern_window_group(operator, txn, *hash, ordinal_window_span(window_id))?;
 					let contribution = operator.core.build_contribution(post, &slot_cols, row_idx);
-					let coord = slot_coord(true, now, post.row_numbers()[row_idx].0);
+					let coord = slot_coord(true, times[row_idx], post.row_numbers()[row_idx].0);
 					push_count_event(
 						buckets,
 						group_values,
@@ -139,7 +149,7 @@ fn route_count_tumbling(
 						ordinal_window_span(window_id),
 						coord,
 						AccumulatorEvent::Add(contribution),
-						now,
+						times[row_idx],
 					);
 				}
 			}
@@ -149,9 +159,10 @@ fn route_count_tumbling(
 			} => {
 				let groups = operator.core.compute_groups(pre)?;
 				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
+				let times = operator.row_times(pre, pre.row_count())?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 					let contribution = operator.core.build_contribution(pre, &slot_cols, row_idx);
-					let coord = slot_coord(true, now, pre.row_numbers()[row_idx].0);
+					let coord = slot_coord(true, times[row_idx], pre.row_numbers()[row_idx].0);
 					for window_id in
 						operator.lookup_row_index(txn, *hash, pre.row_numbers()[row_idx])?
 					{
@@ -165,7 +176,7 @@ fn route_count_tumbling(
 							ordinal_window_span(window_id),
 							coord,
 							AccumulatorEvent::Remove(contribution.clone()),
-							now,
+							times[row_idx],
 						);
 					}
 					operator.drop_row_index(txn, *hash, pre.row_numbers()[row_idx])?;
@@ -179,6 +190,7 @@ fn route_count_tumbling(
 				let groups = operator.core.compute_groups(pre)?;
 				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let post_cols = operator.core.evaluate_slot_inputs(post)?;
+				let times = operator.row_times(post, post.row_count())?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 					let row_number = pre.row_numbers()[row_idx];
 					let existing = operator.lookup_row_index(txn, *hash, row_number)?;
@@ -191,9 +203,16 @@ fn route_count_tumbling(
 							post.row_numbers()[row_idx],
 							window_id,
 						)?;
+						intern_window_group(
+							operator,
+							txn,
+							*hash,
+							ordinal_window_span(window_id),
+						)?;
 						let contribution =
 							operator.core.build_contribution(post, &post_cols, row_idx);
-						let coord = slot_coord(true, now, post.row_numbers()[row_idx].0);
+						let coord =
+							slot_coord(true, times[row_idx], post.row_numbers()[row_idx].0);
 						push_count_event(
 							buckets,
 							group_values,
@@ -204,14 +223,15 @@ fn route_count_tumbling(
 							ordinal_window_span(window_id),
 							coord,
 							AccumulatorEvent::Add(contribution),
-							now,
+							times[row_idx],
 						);
 					} else {
 						let pre_contrib =
 							operator.core.build_contribution(pre, &pre_cols, row_idx);
 						let post_contrib =
 							operator.core.build_contribution(post, &post_cols, row_idx);
-						let coord = slot_coord(true, now, pre.row_numbers()[row_idx].0);
+						let coord =
+							slot_coord(true, times[row_idx], pre.row_numbers()[row_idx].0);
 						for window_id in existing {
 							push_count_event(
 								buckets,
@@ -223,7 +243,7 @@ fn route_count_tumbling(
 								ordinal_window_span(window_id),
 								coord,
 								AccumulatorEvent::Remove(pre_contrib.clone()),
-								now,
+								times[row_idx],
 							);
 							push_count_event(
 								buckets,
@@ -235,7 +255,7 @@ fn route_count_tumbling(
 								ordinal_window_span(window_id),
 								coord,
 								AccumulatorEvent::Add(post_contrib.clone()),
-								now,
+								times[row_idx],
 							);
 						}
 					}
@@ -425,6 +445,12 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							post.row_numbers()[row_idx],
 							*wid,
 						)?;
+						intern_window_group(
+							operator,
+							txn,
+							*hash,
+							operator.sliding_window_span(*wid),
+						)?;
 						push_count_event(
 							&mut buckets,
 							&mut group_values,
@@ -512,6 +538,12 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 								*hash,
 								post.row_numbers()[row_idx],
 								*wid,
+							)?;
+							intern_window_group(
+								operator,
+								txn,
+								*hash,
+								operator.sliding_window_span(*wid),
 							)?;
 							push_count_event(
 								&mut buckets,
@@ -659,6 +691,12 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 							post.row_numbers()[row_idx],
 							session_id,
 						)?;
+						intern_window_group(
+							operator,
+							txn,
+							*hash,
+							ordinal_window_span(session_id),
+						)?;
 						let contribution =
 							operator.core.build_contribution(post, &slot_cols, row_idx);
 						let coord = slot_coord(false, event_ts, post.row_numbers()[row_idx].0);
@@ -737,6 +775,12 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 								*hash,
 								post.row_numbers()[row_idx],
 								session_id,
+							)?;
+							intern_window_group(
+								operator,
+								txn,
+								*hash,
+								ordinal_window_span(session_id),
 							)?;
 							let contribution = operator
 								.core

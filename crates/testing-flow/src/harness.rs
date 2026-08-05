@@ -253,6 +253,44 @@ impl<O: Operator> Harness<O> {
 		Ok(out)
 	}
 
+	/// Drains the timer wheel to quiescence: every timer at or below `watermark_ms` fires through
+	/// the operator in wheel order, mirroring the engine's timer dispatch, and re-armed timers
+	/// that fall due keep firing until a round takes nothing.
+	pub fn settle_timers(&mut self, watermark_ms: u64) -> Result<Vec<Change>> {
+		const MAX_ROUNDS: u32 = 4_096;
+		let watermark =
+			DateTime::from_timestamp_millis(watermark_ms).expect("a settle watermark is representable");
+		let operator = self.operator.id();
+		let wheel = self.substrate.timers.clone();
+		let mut emitted = Vec::new();
+		let mut rounds = 0u32;
+		loop {
+			let mut txn = self.begin(watermark);
+			let due = wheel.take_due(operator, &mut txn, watermark, usize::MAX)?;
+			if due.is_empty() {
+				self.end(txn);
+				return Ok(emitted);
+			}
+			rounds += 1;
+			assert!(
+				rounds <= MAX_ROUNDS,
+				"timer settling did not reach quiescence within {MAX_ROUNDS} rounds; the operator \
+				 keeps arming timers that are already due"
+			);
+			for timer in due {
+				txn.set_change_coordinate(ChangeCoordinate {
+					at: timer.at,
+					version: CommitVersion(self.version),
+				});
+				if let Some(change) = self.operator.on_timer(&mut txn, timer)? {
+					emitted.push(change);
+				}
+			}
+			txn.flush_operator_states()?;
+			self.end(txn);
+		}
+	}
+
 	pub fn reclaim(&mut self, at_ms: u64) -> Result<Reclaimed> {
 		let operator_id = self.operator.id();
 		if self.substrate.group.buckets(operator_id).event_grid().is_none() {

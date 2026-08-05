@@ -86,7 +86,7 @@ pub struct TimerWheel {
 
 impl TimerWheel {
 	pub fn arm(&self, operator: OperatorId, txn: &mut FlowTransaction, timer: &Timer) -> Result<()> {
-		let now = txn.clock().now();
+		let now = txn.written_at();
 		let at = timer.at.to_millis();
 		if !timer.kind.is_unique() {
 			let mut state = self.inner.entry(operator).or_default();

@@ -196,26 +196,34 @@ impl DistinctOperator {
 	}
 
 	#[instrument(name = "flow::operator::distinct::batch_hashes", level = "trace", skip_all, fields(diffs = diffs.len()))]
-	fn batch_hashes(&self, diffs: &[Diff]) -> Result<HashSet<Hash128>> {
-		let mut touched: HashSet<Hash128> = HashSet::new();
+	fn batch_hashes(&self, diffs: &[Diff]) -> Result<Vec<Hash128>> {
+		let mut touched: Vec<Hash128> = Vec::new();
+		let mut seen: HashSet<Hash128> = HashSet::new();
+		let mut fold = |hashes: Vec<Hash128>, touched: &mut Vec<Hash128>| {
+			for hash in hashes {
+				if seen.insert(hash) {
+					touched.push(hash);
+				}
+			}
+		};
 		for diff in diffs {
 			match diff {
 				Diff::Insert {
 					post,
 					..
-				} => touched.extend(self.compute_hashes(post)?),
+				} => fold(self.compute_hashes(post)?, &mut touched),
 				Diff::Update {
 					pre,
 					post,
 					..
 				} => {
-					touched.extend(self.compute_hashes(pre)?);
-					touched.extend(self.compute_hashes(post)?);
+					fold(self.compute_hashes(pre)?, &mut touched);
+					fold(self.compute_hashes(post)?, &mut touched);
 				}
 				Diff::Remove {
 					pre,
 					..
-				} => touched.extend(self.compute_hashes(pre)?),
+				} => fold(self.compute_hashes(pre)?, &mut touched),
 			}
 		}
 		Ok(touched)
@@ -249,7 +257,7 @@ impl Operator for DistinctOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let operator_id = self.operator;
-		let touched = self.batch_hashes(&change.diffs)?;
+		let ordered = self.batch_hashes(&change.diffs)?;
 
 		let (mut working, persist) = txn.take_operator_state::<DistinctWorkingSet, _>(operator_id, |txn| {
 			let layout = self.load_layout(txn)?;
@@ -257,8 +265,8 @@ impl Operator for DistinctOperator {
 				state: DistinctState {
 					entries: IndexMap::new(),
 					layout,
-					dirty: HashSet::new(),
-					layout_dirty: false,
+					dirty: HashMap::new(),
+					layout_changed_at: None,
 				},
 				loaded: HashSet::new(),
 				groups: HashMap::new(),
@@ -266,12 +274,11 @@ impl Operator for DistinctOperator {
 			let persist: PersistFn = Box::new(move |txn, value| {
 				let working =
 					*value.downcast::<DistinctWorkingSet>().expect("DistinctWorkingSet slot type");
-				let now = txn.clock().now();
-				for hash in &working.state.dirty {
+				for (hash, at) in &working.state.dirty {
 					let key = Self::entry_key(working.groups[hash]);
 					match working.state.entries.get(hash) {
 						Some(entry) => {
-							let bytes = entry.encode_state(now).map_err(|e| {
+							let bytes = entry.encode_state(*at).map_err(|e| {
 								Error::from(FlowStateError::Encode {
 									state: "DistinctEntry",
 									cause: e.to_string(),
@@ -282,8 +289,8 @@ impl Operator for DistinctOperator {
 						None => utils::state_remove(operator_id, txn, &key)?,
 					}
 				}
-				if working.state.layout_dirty {
-					let layout_bytes = working.state.layout.encode_state(now).map_err(|e| {
+				if let Some(at) = working.state.layout_changed_at {
+					let layout_bytes = working.state.layout.encode_state(at).map_err(|e| {
 						Error::from(FlowStateError::Encode {
 							state: "DistinctLayout",
 							cause: e.to_string(),
@@ -301,7 +308,6 @@ impl Operator for DistinctOperator {
 			Ok((working, persist))
 		})?;
 
-		let ordered: Vec<Hash128> = touched.into_iter().collect();
 		let group_keys: Vec<EncodedKey> = ordered.iter().map(|hash| Self::group_bytes(*hash)).collect();
 		let interned = txn.intern_groups(operator_id, &group_keys)?;
 		let mut fresh: HashMap<Hash128, bool> = HashMap::with_capacity(ordered.len());
@@ -320,7 +326,7 @@ impl Operator for DistinctOperator {
 						working.state.entries.insert(hash, entry);
 					}
 					LoadedEntry::Empty => {
-						working.state.dirty.insert(hash);
+						working.state.dirty.insert(hash, DateTime::default());
 					}
 					LoadedEntry::Absent => {}
 				}

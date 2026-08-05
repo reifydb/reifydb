@@ -199,17 +199,22 @@ fn drive_count(clock_ms: u64) -> (String, Snapshot) {
 fn count_window_meta_takes_the_max_row_time_never_the_clock() {
 	// A count window has no time column driving its spans, which historically made its
 	// EngineMeta.last_event_time a wall-clock stamp - the last clock read that reached persisted
-	// window state. It must instead be the batch's max row time: 41_000 here, with both mock
-	// clocks sitting far away so a clock read cannot masquerade as the right answer.
+	// window state. It must instead derive from row time, and per BUCKET rather than per batch:
+	// a batch-max stamp is clock-free but changes with batch boundaries, which the replay
+	// determinism gate forbids. Rows 1 and 2 (40_000, 41_000) fill the first count-2 bucket, so
+	// its meta reads 41_000; row 3 (39_000) opens the second, so its meta reads 39_000. Both
+	// mock clocks sit far away so a clock read cannot masquerade as the right answer.
 	let (_, live) = drive_count(CLOCK_LIVE_MS);
 
 	assert!(!live.metas.is_empty(), "no EngineMeta row was persisted, so last_event_time was never exercised");
-	for last in &live.metas {
-		assert_eq!(
-			*last, 41_000,
-			"last_event_time must be the batch's max row time, not the clock ({CLOCK_LIVE_MS})"
-		);
-	}
+	let mut metas = live.metas.clone();
+	metas.sort_unstable();
+	assert_eq!(
+		metas,
+		vec![39_000, 41_000],
+		"last_event_time must be each bucket's max row time, never the clock ({CLOCK_LIVE_MS}) and \
+		 never the batch max (41_000 everywhere)"
+	);
 }
 
 #[test]
