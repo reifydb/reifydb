@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::encoded::row::{EncodedRow, SHAPE_HEADER_SIZE};
 use reifydb_core::{
-	actors::pending::{Pending, PendingWrite},
+	actors::pending::PendingWrite,
 	common::CommitVersion,
 	interface::catalog::flow::OperatorId,
 	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_flow::transaction::{ChangeCoordinate, FlowTransaction, TransactionalParams, substrate::FlowSubstrate};
+use reifydb_flow::transaction::{ChangeCoordinate, FlowTransaction};
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
@@ -71,28 +71,6 @@ impl<'a> FlowTxnBuilder<'a> {
 		let mut txn =
 			FlowTransaction::deferred(&parent, self.version, self.catalog, Interceptors::new(), self.clock);
 		txn.set_change_coordinate(default_coordinate(self.version));
-		txn
-	}
-
-	pub fn transactional(self) -> FlowTransaction {
-		let query = self.engine.multi().begin_query().unwrap();
-		let state_query = self.engine.multi().begin_query().unwrap();
-		let version = self.version;
-		let mut txn = FlowTransaction::transactional(TransactionalParams {
-			version,
-			pending: Pending::new(),
-			base_pending: Pending::new(),
-			query,
-			state_query,
-			single: self.engine.inner().single().clone(),
-			catalog: self.catalog,
-			interceptors: Interceptors::new(),
-			clock: self.clock,
-			view_overlay: Arc::new(Vec::new()),
-			substrate: FlowSubstrate::new(),
-			state_budget: OperatorStateBudgetHandle::default(),
-		});
-		txn.set_change_coordinate(default_coordinate(version));
 		txn
 	}
 

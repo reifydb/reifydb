@@ -132,7 +132,7 @@ impl<'bump> Parser<'bump> {
 			if (self.consume_if(TokenKind::Keyword(Keyword::Policy))?).is_some() {
 				return self.parse_create_policy(token, AstPolicyTargetType::View);
 			}
-			return self.parse_transactional_view(token);
+			return self.parse_deferred_view(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Deferred))?).is_some() {
@@ -4014,6 +4014,34 @@ pub mod tests {
 				assert!(col.properties.is_empty());
 			}
 			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_bare_create_view_defaults_to_deferred() {
+		// The grammar default: an unspecified view kind means deferred, so only the explicit
+		// `create transactional view` spelling reaches the (unimplemented) transactional kind.
+		// Falsified by routing the bare form back to parse_transactional_view.
+		let bump = Bump::new();
+		let source = r#"
+        create view test::views{field: int2}
+    "#;
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+		match create {
+			AstCreate::DeferredView(AstCreateDeferredView {
+				view,
+				..
+			}) => {
+				assert_eq!(view.namespace[0].text(), "test");
+				assert_eq!(view.name.text(), "views");
+			}
+			other => panic!("bare create view must parse as a deferred view, got {other:?}"),
 		}
 	}
 

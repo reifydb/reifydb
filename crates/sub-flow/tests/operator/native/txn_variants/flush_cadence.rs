@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-// The flush_state cadence re-asserted across all three FlowTransaction variants: the native backend
+// The flush_state cadence re-asserted across both FlowTransaction variants: the native backend
 // defers flush_state to commit, so the probe's state must be invisible after apply and persisted
 // only by the explicit flush, in every variant.
 
@@ -40,13 +40,6 @@ fn assert_flush_is_deferred(txn: &mut FlowTransaction) {
 fn deferred() {
 	let e = engine();
 	let mut txn = e.flow_txn().deferred();
-	assert_flush_is_deferred(&mut txn);
-}
-
-#[test]
-fn transactional() {
-	let e = engine();
-	let mut txn = e.flow_txn().transactional();
 	assert_flush_is_deferred(&mut txn);
 }
 

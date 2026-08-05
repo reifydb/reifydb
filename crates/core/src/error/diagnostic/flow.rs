@@ -330,18 +330,6 @@ pub fn flow_unknown_diff_origin(operator: &str, origin: Option<String>) -> Diagn
 	)
 }
 
-pub fn flow_sink_view_not_visible_at_registration(flow_id: u64, view_id: u64) -> Diagnostic {
-	flow_diagnostic(
-		"FLOW_030",
-		format!(
-			"transactional flow {} references sink view {} that is not visible to its registration query",
-			flow_id, view_id
-		),
-		"A freshly created view must be findable when its flow is registered; otherwise the transactional \
-		 view is silently left unmaterialized. This indicates a registration-ordering bug.",
-	)
-}
-
 pub fn native_abi_tag_mismatch(plugin: u32, host: u32) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_031",

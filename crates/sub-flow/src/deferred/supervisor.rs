@@ -17,16 +17,16 @@ use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage, FlowSupervisorMessage},
 	common::CommitVersion,
 	interface::{
-		catalog::{flow::FlowId, object::ObjectId},
+		catalog::{flow::FlowId, object::ObjectId, view::ViewKind},
 		cdc::{Cdc, CdcConsumerId},
 		change::ChangeOrigin,
 	},
 	lifecycle::metrics::RetentionMetrics,
 	state::budget::OperatorStateBudgetHandle,
 };
-use reifydb_engine::engine::StandardEngine;
+use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
 use reifydb_flow::transaction::substrate::FlowSubstrate;
-use reifydb_rql::flow::{analyzer::FlowGraphAnalyzer, flow::FlowDag};
+use reifydb_rql::flow::{analyzer::FlowGraphAnalyzer, flow::FlowDag, operator::OperatorDef};
 use reifydb_runtime::{
 	actor::{
 		context::Context,
@@ -58,7 +58,6 @@ use crate::{
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
 	},
 	operator::metrics::OperatorSampleRegistry,
-	transactional::registry::TransactionalFlowRegistry,
 };
 
 const FLOW_RETRY_LIMIT: u32 = 3;
@@ -73,7 +72,7 @@ pub struct FlowSupervisorParams {
 	pub loader: ActorRef<LoaderMessage>,
 	pub control: ControlFrontier,
 	pub poll_frontier: CdcConsumerWatermark,
-	pub registrar: TransactionalFlowRegistry,
+	pub view_lineage: ViewLineage,
 	pub tracker: ObjectVersionTracker,
 	pub flow_tracker: FlowPositionTracker,
 	pub health: FlowHealthRegistry,
@@ -99,7 +98,7 @@ pub struct FlowSupervisor {
 	loader: ActorRef<LoaderMessage>,
 	control: ControlFrontier,
 	poll_frontier: CdcConsumerWatermark,
-	registrar: TransactionalFlowRegistry,
+	view_lineage: ViewLineage,
 	tracker: ObjectVersionTracker,
 	flow_tracker: FlowPositionTracker,
 	health: FlowHealthRegistry,
@@ -135,7 +134,7 @@ impl FlowSupervisor {
 			loader: params.loader,
 			control: params.control,
 			poll_frontier: params.poll_frontier,
-			registrar: params.registrar,
+			view_lineage: params.view_lineage,
 			tracker: params.tracker,
 			flow_tracker: params.flow_tracker,
 			health: params.health,
@@ -154,12 +153,7 @@ impl FlowSupervisor {
 		}
 	}
 
-	fn handle_bootstrap(
-		&self,
-		state: &mut SupervisorState,
-		flows: Vec<(FlowId, bool)>,
-		scan_from: Option<CommitVersion>,
-	) {
+	fn handle_bootstrap(&self, state: &mut SupervisorState, flows: Vec<FlowId>, scan_from: Option<CommitVersion>) {
 		let migration_base = self.fetch_ddl_cursor().unwrap_or(CommitVersion(0));
 
 		let mut query = match self.engine.begin_query(IdentityId::system()) {
@@ -172,7 +166,7 @@ impl FlowSupervisor {
 
 		let mut to_spawn: Vec<(FlowDag, CommitVersion)> = Vec::new();
 		let mut seeds: Vec<(FlowId, CommitVersion)> = Vec::new();
-		for (flow_id, is_deferred) in flows {
+		for flow_id in flows {
 			let flow = match self
 				.flow_catalog
 				.get_or_load_flow(&mut Transaction::Query(&mut query), flow_id)
@@ -183,10 +177,8 @@ impl FlowSupervisor {
 					continue;
 				}
 			};
+			self.reject_transactional_flow(&flow);
 			state.analyzer.add(flow.clone());
-			if !is_deferred {
-				continue;
-			}
 			let seed = CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut query), &flow_id)
 				.unwrap_or(None)
 				.unwrap_or(migration_base);
@@ -194,6 +186,7 @@ impl FlowSupervisor {
 			to_spawn.push((flow, seed));
 		}
 		drop(query);
+		self.publish_lineage(state);
 
 		let scan_cursor = scan_from.unwrap_or(migration_base);
 		state.scan_cursor = scan_cursor;
@@ -285,6 +278,7 @@ impl FlowSupervisor {
 	) -> Vec<(FlowId, CommitVersion)> {
 		let deleted = extract_deleted_flow_ids(items);
 		let mut changed = false;
+		let mut lineage_dirty = false;
 		for flow_id in &deleted {
 			if let Some(handle) = state.flows.remove(flow_id) {
 				let _ = handle.actor_ref().send(FlowActorMessage::Stop {
@@ -297,6 +291,7 @@ impl FlowSupervisor {
 			self.health.clear(*flow_id);
 			self.flow_catalog.remove(*flow_id);
 			state.analyzer.remove(*flow_id);
+			lineage_dirty = true;
 		}
 
 		let mut seeds: Vec<(FlowId, CommitVersion)> = Vec::new();
@@ -312,18 +307,15 @@ impl FlowSupervisor {
 			let Some((flow, is_new)) = self.load_flow_at(flow_id, version) else {
 				continue;
 			};
+			self.reject_transactional_flow(&flow);
 			if !is_new {
 				state.analyzer.add(flow);
 				self.flow_catalog.remove(flow_id);
-				continue;
-			}
-			if self.register_transactional(&flow) {
-				state.analyzer.add(flow);
-				self.flow_catalog.remove(flow_id);
-				changed = true;
+				lineage_dirty = true;
 				continue;
 			}
 			state.analyzer.add(flow.clone());
+			lineage_dirty = true;
 			let seed = if flow.is_subscription() {
 				bound
 			} else {
@@ -332,6 +324,10 @@ impl FlowSupervisor {
 			seeds.push((flow_id, seed));
 			to_spawn.push((flow, seed));
 			changed = true;
+		}
+
+		if lineage_dirty {
+			self.publish_lineage(state);
 		}
 
 		let registered: BTreeSet<FlowId> =
@@ -393,21 +389,34 @@ impl FlowSupervisor {
 		}
 	}
 
-	fn register_transactional(&self, flow: &FlowDag) -> bool {
-		let mut query = match self.engine.begin_query(IdentityId::system()) {
-			Ok(q) => q,
-			Err(e) => {
-				warn!(flow_id = flow.id.0, error = %e, "failed to begin query for transactional check");
-				return false;
-			}
-		};
-		match self.registrar.try_register(flow.clone(), &mut query) {
-			Ok(is_transactional) => is_transactional,
-			Err(e) => {
-				warn!(flow_id = flow.id.0, error = %e, "failed to register transactional flow");
-				false
+	fn reject_transactional_flow(&self, flow: &FlowDag) {
+		for operator_id in flow.get_operator_ids() {
+			let Some(operator) = flow.get_operator(&operator_id) else {
+				continue;
+			};
+			let view = match &operator.ty {
+				OperatorDef::SinkTableView {
+					view,
+					..
+				}
+				| OperatorDef::SinkRingBufferView {
+					view,
+					..
+				}
+				| OperatorDef::SinkSeriesView {
+					view,
+					..
+				} => view,
+				_ => continue,
+			};
+			if self.flow_catalog.find_view(*view).is_some_and(|def| def.kind() == ViewKind::Transactional) {
+				unimplemented!("transactional view execution; see plan-operator.md follow-up");
 			}
 		}
+	}
+
+	fn publish_lineage(&self, state: &SupervisorState) {
+		self.view_lineage.publish(state.analyzer.get_dependency_graph().upstream_closure());
 	}
 
 	fn compute_source_objects(

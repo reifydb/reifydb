@@ -127,15 +127,3 @@ fn an_undeclared_chain_over_processing_sources_stays_silent() {
 	);
 }
 
-#[test]
-fn a_transactional_view_is_reconciled_like_a_deferred_one() {
-	// The two kinds are declared with different keywords, which is where a skipped arm hides.
-	let t = event_source_chain();
-
-	assert_eq!(
-		code(&t, "CREATE TRANSACTIONAL VIEW cv::txn { id: int4, at: datetime } AS { FROM cv::upstream }")
-			.as_deref(),
-		Some("FLOW_041"),
-		"an undeclared transactional view over an event-time view must be rejected too"
-	);
-}

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::time::Duration as StdDuration;
+
 use reifydb::{WithSubsystem, embedded};
 use reifydb_test_harness::db::TestDb;
 
@@ -8,9 +10,11 @@ fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|c| c).build().unwrap())
 }
 
-fn row_count(db: &TestDb, rql: &str) -> usize {
-	let frames = db.command(rql);
-	frames.first().map(|f| f.row_count()).unwrap_or(0)
+fn settled_row_count(db: &TestDb, rql: &str) -> usize {
+	// The views are deferred, so the count is only meaningful once every flow has consumed the
+	// inserts; waiting for a target count instead could pass on a transient state.
+	assert!(db.await_all_flows(StdDuration::from_secs(10)), "flows must catch up before asserting");
+	db.row_count(rql)
 }
 
 #[test]
@@ -40,7 +44,7 @@ fn distinct_in_join_subquery_deduplicates() {
 	db.command(r#"INSERT test::swaps [{ swap_id: 1, quote_mint: "USDC" }]"#);
 
 	assert_eq!(
-		row_count(&db, "from test::result"),
+		settled_row_count(&db, "from test::result"),
 		1,
 		"distinct should collapse 3 USDC price rows to 1 before the join"
 	);
@@ -68,7 +72,7 @@ fn map_in_join_subquery_executes() {
 	db.command(r#"INSERT test2::swaps [{ swap_id: 1, quote_mint: "USDC" }]"#);
 
 	assert_eq!(
-		row_count(&db, "from test2::result"),
+		settled_row_count(&db, "from test2::result"),
 		1,
 		"join with map in the subquery pipeline should produce 1 matched row"
 	);
@@ -96,7 +100,7 @@ fn plain_join_subquery_without_pipeline_unchanged() {
 	db.command(r#"INSERT test3::a [{ id: 1, val: "x" }]"#);
 
 	assert_eq!(
-		row_count(&db, "from test3::result"),
+		settled_row_count(&db, "from test3::result"),
 		1,
 		"single-node join subquery must still produce exactly 1 matched row"
 	);

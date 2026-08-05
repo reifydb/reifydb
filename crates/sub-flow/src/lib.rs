@@ -22,7 +22,5 @@ pub mod error;
 pub mod execution;
 #[cfg(reifydb_target = "native")]
 pub(crate) mod ffi;
-pub(crate) mod lineage;
 pub mod operator;
 pub mod subsystem;
-pub(crate) mod transactional;

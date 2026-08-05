@@ -5,10 +5,9 @@ use reifydb_cdc::error::CdcError;
 use reifydb_core::error::diagnostic::flow::{
 	flow_catch_up_read_failed, flow_ffi_unsupported_on_wasm, flow_missing_input_edge, flow_operator_input_arity,
 	flow_parent_operator_not_found, flow_sink_dictionary_not_found, flow_sink_missing_system_column,
-	flow_sink_view_not_visible_at_registration, flow_span_on_unageable_node, flow_span_without_reclaim,
-	flow_state_decode_failed, flow_state_encode_failed, flow_unknown_diff_origin, flow_unknown_operator,
-	flow_unsupported_operator, native_abi_tag_mismatch, native_create_failed, native_library_not_loaded,
-	native_operator_not_found, native_symbol_not_found,
+	flow_span_on_unageable_node, flow_span_without_reclaim, flow_state_decode_failed, flow_state_encode_failed,
+	flow_unknown_diff_origin, flow_unknown_operator, flow_unsupported_operator, native_abi_tag_mismatch,
+	native_create_failed, native_library_not_loaded, native_operator_not_found, native_symbol_not_found,
 };
 use reifydb_value::error::{Diagnostic, Error, IntoDiagnostic};
 
@@ -112,12 +111,6 @@ pub enum FlowGraphError {
 		origin: Option<String>,
 	},
 
-	#[error("transactional flow {flow_id} references sink view {view_id} not visible at registration")]
-	SinkViewNotVisibleAtRegistration {
-		flow_id: u64,
-		view_id: u64,
-	},
-
 	#[error("{operator} in flow {flow_id} declares a retention span but cannot reclaim")]
 	SpanWithoutReclaim {
 		flow_id: u64,
@@ -162,10 +155,6 @@ impl IntoDiagnostic for FlowGraphError {
 				flow_id,
 				operator,
 			} => flow_span_on_unageable_node(&format!("flow {flow_id}"), operator.as_str()),
-			FlowGraphError::SinkViewNotVisibleAtRegistration {
-				flow_id,
-				view_id,
-			} => flow_sink_view_not_visible_at_registration(flow_id, view_id),
 		}
 	}
 }

@@ -338,10 +338,7 @@ pub mod tests {
 	use super::*;
 	use crate::{
 		test_util::create_test_transaction,
-		transaction::{
-			CommittingParams, DeferredParams, TransactionalParams, read::PREFETCH_MEMO_BYTE_CAP,
-			substrate::FlowSubstrate,
-		},
+		transaction::{DeferredParams, read::PREFETCH_MEMO_BYTE_CAP, substrate::FlowSubstrate},
 	};
 
 	fn commit_state_row(
@@ -945,99 +942,6 @@ pub mod tests {
 			"operator state committed at {committed_at:?} (above object_version {object_version:?}) must be visible to a deferred read"
 		);
 		assert_eq!(batch.items[0].row, value);
-	}
-
-	#[test]
-	fn committing_persists_state_writes_and_keeps_prior_state() {
-		// The committing variant wraps the command being committed, so state writes route to that
-		// command rather than the in-memory pending and become durable when the flow commits,
-		// alongside state committed by prior transactions.
-		let engine = TestEngine::new();
-		let operator_id = OperatorId(1);
-		let prior_key = make_key("prior");
-		let prior_value = make_value("prior_value");
-		commit_state_row(&engine, operator_id, &prior_key, prior_value.clone());
-
-		let written_key = make_key("written_by_tick");
-		let written_value = make_value("tick_value");
-		{
-			let cmd = engine.begin_command(IdentityId::system()).unwrap();
-			let mut txn = FlowTransaction::committing(CommittingParams {
-				cmd,
-				catalog: Catalog::testing(),
-				interceptors: engine.create_interceptors(),
-				clock: engine.clock().clone(),
-				substrate: FlowSubstrate::new(),
-				state_budget: OperatorStateBudgetHandle::default(),
-			})
-			.unwrap();
-			txn.state_set(operator_id, &written_key, written_value.clone()).unwrap();
-			txn.commit().unwrap();
-		}
-
-		let (_version, lease) = engine.acquire_current_snapshot_lease().unwrap();
-		let query = engine.multi().begin_query_at_version(&lease).unwrap();
-		let prior_encoded = OperatorStateKey::encoded(operator_id, prior_key.as_slice());
-		let written_encoded = OperatorStateKey::encoded(operator_id, written_key.as_slice());
-		let found = query.get_many(&[prior_encoded.clone(), written_encoded.clone()]).unwrap();
-		assert_eq!(
-			found.len(),
-			2,
-			"the committing flow's write and the prior committed state must both be durable after commit"
-		);
-		assert_eq!(found.get(&prior_encoded).unwrap().row, prior_value);
-		assert_eq!(found.get(&written_encoded).unwrap().row, written_value);
-	}
-
-	#[test]
-	fn transactional_read_sees_committed_state_below_version_and_base_pending() {
-		// The transactional variant reads committed state via state_query at the latest snapshot
-		// plus a base_pending overlay. The read must not be bounded to the txn `version`, which is
-		// set below the committed state here and would hide it.
-		let engine = TestEngine::new();
-		let operator_id = OperatorId(1);
-		let committed_key = make_key("committed");
-		let committed_value = make_value("committed_value");
-
-		let low_version = commit_state_row(&engine, operator_id, &make_key("warmup"), make_value("w"));
-		commit_state_row(&engine, operator_id, &make_key("bump"), make_value("bump"));
-		let committed_at = commit_state_row(&engine, operator_id, &committed_key, committed_value.clone());
-		assert!(
-			committed_at.0 >= low_version.0 + 2,
-			"committed state must land at least two versions above the txn version so a wrongful bound (which resolves to version + 1) would hide it: committed_at={committed_at:?} low_version={low_version:?}"
-		);
-
-		let base_key = make_key("in_flight");
-		let base_value = make_value("in_flight_value");
-		let mut base_pending = Pending::new();
-		base_pending.insert(OperatorStateKey::encoded(operator_id, base_key.as_slice()), base_value.clone());
-
-		let mut txn = FlowTransaction::transactional(TransactionalParams {
-			version: low_version,
-			pending: Pending::new(),
-			base_pending,
-			query: engine.multi().begin_query().unwrap(),
-			state_query: engine.multi().begin_query().unwrap(),
-			single: engine.single().clone(),
-			catalog: Catalog::testing(),
-			interceptors: engine.create_interceptors(),
-			clock: engine.clock().clone(),
-			view_overlay: Arc::new(Vec::new()),
-			substrate: FlowSubstrate::new(),
-			state_budget: OperatorStateBudgetHandle::default(),
-		});
-
-		let committed = txn.state_get_many(operator_id, &[committed_key]).unwrap();
-		assert_eq!(
-			committed.items.len(),
-			1,
-			"committed state at {committed_at:?} must be visible even though the txn version is {low_version:?}"
-		);
-		assert_eq!(committed.items[0].row, committed_value);
-
-		let base = txn.state_get_many(operator_id, &[base_key]).unwrap();
-		assert_eq!(base.items.len(), 1);
-		assert_eq!(base.items[0].row, base_value);
 	}
 
 	#[test]

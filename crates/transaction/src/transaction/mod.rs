@@ -231,12 +231,6 @@ impl<'a> TestTransaction<'a> {
 			return Ok(());
 		}
 
-		let hook = self.inner.interceptors.test_pre_commit.clone();
-
-		if let Some(hook) = hook {
-			hook(self)?;
-		}
-
 		let offset = self.baseline;
 		let transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)> = self
 			.inner
@@ -329,9 +323,9 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	/// True when accumulated object changes have not yet reached the pre-commit interceptor that
-	/// processes them. Query and Replica never accumulate; Test is exempt because its views are
-	/// maintained inline and the shared admin accumulator legitimately holds entries mid-test.
+	/// True when accumulated object changes have not yet been folded into the commit's change
+	/// stream. Query and Replica never accumulate; Test is exempt because the shared admin
+	/// accumulator legitimately holds entries mid-test.
 	pub fn has_unprocessed_flow_changes(&self) -> bool {
 		match self {
 			Self::Command(txn) => !txn.accumulator.is_empty(),

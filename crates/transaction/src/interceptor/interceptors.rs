@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
-
-use reifydb_value::Result;
-
 use super::{
 	authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor},
 	chain::InterceptorChain,
@@ -65,10 +61,8 @@ use super::{
 		ViewPreUpdateInterceptor,
 	},
 };
-use crate::transaction::TestTransaction;
 
 pub type Chain<I> = InterceptorChain<I>;
-type TestPreCommitHook = Arc<dyn Fn(&mut TestTransaction<'_>) -> Result<()> + Send + Sync>;
 
 pub struct Interceptors {
 	pub table_row_pre_insert: Chain<dyn TableRowPreInsertInterceptor + Send + Sync>,
@@ -137,8 +131,6 @@ pub struct Interceptors {
 	pub identity_attribute_value_pre_delete: Chain<dyn IdentityAttributeValuePreDeleteInterceptor + Send + Sync>,
 	pub authentication_post_create: Chain<dyn AuthenticationPostCreateInterceptor + Send + Sync>,
 	pub authentication_pre_delete: Chain<dyn AuthenticationPreDeleteInterceptor + Send + Sync>,
-
-	pub(crate) test_pre_commit: Option<TestPreCommitHook>,
 }
 
 impl Default for Interceptors {
@@ -216,12 +208,7 @@ impl Interceptors {
 			identity_attribute_value_pre_delete: InterceptorChain::new(),
 			authentication_post_create: InterceptorChain::new(),
 			authentication_pre_delete: InterceptorChain::new(),
-			test_pre_commit: None,
 		}
-	}
-
-	pub fn set_test_pre_commit(&mut self, hook: TestPreCommitHook) {
-		self.test_pre_commit = Some(hook);
 	}
 }
 
@@ -298,7 +285,6 @@ impl Clone for Interceptors {
 			identity_attribute_value_pre_delete: self.identity_attribute_value_pre_delete.clone(),
 			authentication_post_create: self.authentication_post_create.clone(),
 			authentication_pre_delete: self.authentication_pre_delete.clone(),
-			test_pre_commit: self.test_pre_commit.clone(),
 		}
 	}
 }

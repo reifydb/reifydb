@@ -33,13 +33,6 @@ fn a_deferred_flow_drains_a_window_group_left_behind_by_retraction() {
 }
 
 #[test]
-fn a_transactional_flow_drains_a_window_group_left_behind_by_retraction() {
-	// The two tick paths reach reclamation from different call sites with different checkpoints, so
-	// wiring that landed on only one leaves half the flows retaining forever and looking healthy.
-	drains_a_stranded_window_group("TRANSACTIONAL");
-}
-
-#[test]
 fn a_rolling_partition_that_wakes_after_reclamation_publishes_one_row_not_two() {
 	// A rolling group is coord-less - the group IS the partition - so it can go idle, be reclaimed,
 	// and receive events again under the same key, which a tumbling window never does. A woken

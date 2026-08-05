@@ -86,7 +86,7 @@ use reifydb_transaction::{
 	},
 	multi::transaction::read::MultiReadTransaction,
 	single::SingleTransaction,
-	transaction::{admin::AdminTransaction, command::CommandTransaction},
+	transaction::admin::AdminTransaction,
 };
 use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
@@ -121,24 +121,6 @@ pub struct ChangeCoordinate {
 	pub version: CommitVersion,
 }
 
-pub struct TransactionalParams {
-	pub version: CommitVersion,
-	pub pending: Pending,
-	pub base_pending: Pending,
-	pub query: MultiReadTransaction,
-	pub state_query: MultiReadTransaction,
-	pub single: SingleTransaction,
-	pub catalog: Catalog,
-	pub interceptors: Interceptors,
-	pub clock: Clock,
-
-	pub view_overlay: Arc<Vec<Change>>,
-
-	pub substrate: FlowSubstrate,
-
-	pub state_budget: OperatorStateBudgetHandle,
-}
-
 pub struct DeferredParams {
 	pub version: CommitVersion,
 	pub pending: Pending,
@@ -146,17 +128,6 @@ pub struct DeferredParams {
 	pub query: MultiReadTransaction,
 	pub state_query: MultiReadTransaction,
 	pub single: SingleTransaction,
-	pub catalog: Catalog,
-	pub interceptors: Interceptors,
-	pub clock: Clock,
-
-	pub substrate: FlowSubstrate,
-
-	pub state_budget: OperatorStateBudgetHandle,
-}
-
-pub struct CommittingParams {
-	pub cmd: CommandTransaction,
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
 	pub clock: Clock,
@@ -210,22 +181,10 @@ pub enum FlowTransaction {
 		inner: FlowTransactionInner,
 	},
 
-	Transactional {
-		inner: FlowTransactionInner,
-
-		view_overlay: Arc<Vec<Change>>,
-	},
-
 	Ephemeral {
 		inner: FlowTransactionInner,
 
 		state: HashMap<EncodedKey, EncodedRow>,
-	},
-
-	Committing {
-		inner: FlowTransactionInner,
-
-		cmd: Box<CommandTransaction>,
 	},
 }
 
@@ -236,15 +195,7 @@ impl FlowTransaction {
 				inner,
 				..
 			}
-			| Self::Transactional {
-				inner,
-				..
-			}
 			| Self::Ephemeral {
-				inner,
-				..
-			}
-			| Self::Committing {
 				inner,
 				..
 			} => inner,
@@ -257,15 +208,7 @@ impl FlowTransaction {
 				inner,
 				..
 			}
-			| Self::Transactional {
-				inner,
-				..
-			}
 			| Self::Ephemeral {
-				inner,
-				..
-			}
-			| Self::Committing {
 				inner,
 				..
 			} => inner,
@@ -343,88 +286,6 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn committing(mut params: CommittingParams) -> Result<Self> {
-		params.cmd.disable_conflict_tracking()?;
-		let version = params.cmd.version();
-		let mut query = params.cmd.multi.begin_query()?;
-		query.read_as_of_version_inclusive(version);
-		let mut state_query = params.cmd.multi.begin_query()?;
-		state_query.read_as_of_version_inclusive(version);
-		let single = params.cmd.single.clone();
-
-		Ok(Self::Committing {
-			inner: FlowTransactionInner {
-				version,
-				pending: Pending::new(),
-				base_pending: PendingLayers::empty(),
-				pending_shapes: Vec::new(),
-				query,
-				state_query: Some(state_query),
-				single,
-				catalog: params.catalog.clone(),
-				host_row_shape: Arc::new(StandardHostRowShape::new(params.catalog)),
-				interceptors: params.interceptors,
-				accumulator: ChangeAccumulator::new(),
-				clock: params.clock,
-				operator_states: HashMap::new(),
-				prefetch: HashMap::new(),
-				prefetch_bytes: 0,
-				prefetch_rejections: 0,
-				store_reads: 0,
-				change_coordinate: None,
-				flow_watermark: None,
-				substrate: params.substrate,
-				state_budget: params.state_budget,
-			},
-			cmd: Box::new(params.cmd),
-		})
-	}
-
-	pub fn commit(self) -> Result<CommitVersion> {
-		match self {
-			Self::Committing {
-				mut inner,
-				mut cmd,
-			} => {
-				let changed_at = inner.clock.now();
-				for change in inner.accumulator.take_changes(inner.version, changed_at)? {
-					cmd.track_flow_change(change);
-				}
-				cmd.commit_unchecked()
-			}
-			_ => panic!("FlowTransaction::commit only valid on Committing variant"),
-		}
-	}
-
-	pub fn transactional(params: TransactionalParams) -> Self {
-		Self::Transactional {
-			inner: FlowTransactionInner {
-				version: params.version,
-				pending: params.pending,
-				base_pending: PendingLayers::single(Arc::new(params.base_pending)),
-				pending_shapes: Vec::new(),
-				query: params.query,
-				state_query: Some(params.state_query),
-				single: params.single,
-				catalog: params.catalog.clone(),
-				host_row_shape: Arc::new(StandardHostRowShape::new(params.catalog)),
-				interceptors: params.interceptors,
-				accumulator: ChangeAccumulator::new(),
-				clock: params.clock,
-				operator_states: HashMap::new(),
-				prefetch: HashMap::new(),
-				prefetch_bytes: 0,
-				prefetch_rejections: 0,
-				store_reads: 0,
-				change_coordinate: None,
-				flow_watermark: None,
-				substrate: params.substrate,
-				state_budget: params.state_budget,
-			},
-			view_overlay: params.view_overlay,
-		}
-	}
-
 	pub fn row_numbers(&self) -> RowNumberProvider {
 		self.inner().substrate.row.clone()
 	}
@@ -477,16 +338,6 @@ impl FlowTransaction {
 
 	pub fn flow_watermark(&self) -> Option<DateTime> {
 		self.inner().flow_watermark
-	}
-
-	pub fn view_overlay(&self) -> Option<Arc<Vec<Change>>> {
-		match self {
-			Self::Transactional {
-				view_overlay,
-				..
-			} => Some(Arc::clone(view_overlay)),
-			_ => None,
-		}
 	}
 
 	pub fn ephemeral(

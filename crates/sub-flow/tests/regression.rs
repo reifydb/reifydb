@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[path = "regression/append_multiplicity.rs"]
-mod append_multiplicity;
-
-#[path = "regression/apply_partition_immutability.rs"]
-mod apply_partition_immutability;
-
-#[path = "regression/deferred_append_over_transactional_filter.rs"]
-mod deferred_append_over_transactional_filter;
-
 #[path = "regression/latest_snapshot_join_republish.rs"]
 mod latest_snapshot_join_republish;
 

@@ -33,13 +33,6 @@ fn deferred() {
 }
 
 #[test]
-fn transactional() {
-	let e = engine();
-	let mut txn = e.flow_txn().transactional();
-	assert_update_uses_caller_anchors(&mut txn);
-}
-
-#[test]
 fn ephemeral() {
 	let e = engine();
 	let mut txn = e.flow_txn().ephemeral();

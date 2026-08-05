@@ -44,25 +44,18 @@ use reifydb_core::{
 	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
 };
-use reifydb_engine::engine::StandardEngine;
+use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
 use reifydb_flow::transaction::substrate::FlowSubstrate;
-use reifydb_rql::flow::loader::load_flow_dag;
-use reifydb_runtime::{
-	actor::system::{ActorHandle, ActorSpawner},
-	context::{RuntimeContext, clock::Clock},
-	shutdown::Shutdown,
-	sync::mutex::Mutex,
-};
+use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock, shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::{
 	group::{GroupCommitBegin, GroupCommitHandle},
-	interceptor::interceptors::Interceptors,
-	transaction::{TestTransaction, Transaction},
+	transaction::Transaction,
 };
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
-	value::{Value, duration::Duration, identity::IdentityId},
+	value::{duration::Duration, identity::IdentityId},
 };
 use tracing::warn;
 
@@ -79,16 +72,9 @@ use crate::{
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
 		watermark::compute_flow_watermarks,
 	},
-	engine::{FlowEngine, FlowEngineInner},
-	lineage::FlowLineageTracker,
 	operator::metrics::{
 		GroupInternerMetricsCollector, OperatorSampleCollector, OperatorSampleRegistry,
 		OperatorStateBudgetCollector, RowNumberMetricsCollector,
-	},
-	transactional::{
-		interceptor::{TransactionalFlowPostCommitInterceptor, TransactionalFlowPreCommitInterceptor},
-		registry::TransactionalFlowRegistry,
-		tick::{TransactionalTickActor, TransactionalTickMessage},
 	},
 };
 
@@ -103,9 +89,7 @@ pub struct FlowSubsystem {
 	loader_handle: Mutex<Option<LoaderHandle>>,
 	committer_handle: Mutex<Option<CommitterHandle>>,
 	supervisor_handle: Mutex<Option<FlowSupervisorHandle>>,
-	transactional_tick_handle: Mutex<Option<ActorHandle<TransactionalTickMessage>>>,
-	transactional_flow_engine: FlowEngine,
-	lineage: FlowLineageTracker,
+	view_lineage: ViewLineage,
 	health: FlowHealthRegistry,
 	running: AtomicBool,
 }
@@ -163,24 +147,8 @@ impl FlowSubsystem {
 		metrics_registry.register_operator_collector(Arc::new(GroupInternerMetricsCollector::new(
 			substrate.group.clone(),
 		)));
-		let transactional_flow_engine = Self::build_transactional_engine(
-			&engine,
-			&clock,
-			&custom_operators,
-			&substrate,
-			&operator_samples,
-			&state_budget,
-			&retention_metrics,
-		);
 
-		let lineage = FlowLineageTracker::new(engine.view_lineage());
-
-		let registrar = TransactionalFlowRegistry {
-			flow_engine: transactional_flow_engine.clone(),
-			engine: engine.clone(),
-			catalog: engine.catalog(),
-			lineage: lineage.clone(),
-		};
+		let view_lineage = engine.view_lineage();
 
 		let backlog = ioc.resolve::<FlowBacklog>().expect("FlowBacklog must be registered");
 		metrics_registry.register_collector(Arc::new(backlog.clone()));
@@ -205,7 +173,7 @@ impl FlowSubsystem {
 				loader: loader_handle.actor_ref().clone(),
 				control,
 				poll_frontier: poll_frontier.clone(),
-				registrar: registrar.clone(),
+				view_lineage: view_lineage.clone(),
 				tracker: object_tracker.clone(),
 				flow_tracker: flow_tracker.clone(),
 				health: health.clone(),
@@ -224,24 +192,6 @@ impl FlowSubsystem {
 			}),
 		);
 
-		Self::register_flow_interceptors(
-			&engine,
-			&transactional_flow_engine,
-			&lineage,
-			&clock,
-			&custom_operators,
-		);
-
-		let transactional_tick_handle = flow_scope.spawn_flow(
-			"transactional-flow-tick",
-			TransactionalTickActor::new(
-				transactional_flow_engine.clone(),
-				engine.clone(),
-				engine.catalog(),
-				clock.clone(),
-			),
-		);
-
 		Self::register_watermark_sampler(
 			ioc,
 			&engine,
@@ -258,7 +208,7 @@ impl FlowSubsystem {
 		ioc.register_service::<Arc<dyn ConsumerPositions>>(Arc::new(flow_tracker.clone()));
 
 		let scan_from = engine.current_version().ok();
-		let bootstrap_flows = Self::bootstrap_flows(&engine, &flow_catalog, &registrar);
+		let bootstrap_flows = Self::bootstrap_flows(&engine);
 		let _ = supervisor_handle.actor_ref().send(FlowSupervisorMessage::Bootstrap {
 			flows: bootstrap_flows,
 			scan_from,
@@ -275,9 +225,7 @@ impl FlowSubsystem {
 			loader_handle: Mutex::new(Some(loader_handle)),
 			committer_handle: Mutex::new(Some(committer_handle)),
 			supervisor_handle: Mutex::new(Some(supervisor_handle)),
-			transactional_tick_handle: Mutex::new(Some(transactional_tick_handle)),
-			transactional_flow_engine,
-			lineage,
+			view_lineage,
 			health,
 			running: AtomicBool::new(true),
 		})
@@ -321,30 +269,6 @@ impl FlowSubsystem {
 	}
 
 	#[inline]
-	fn build_transactional_engine(
-		engine: &StandardEngine,
-		clock: &Clock,
-		custom_operators: &CustomOperators,
-		substrate: &FlowSubstrate,
-		operator_samples: &OperatorSampleRegistry,
-		state_budget: &OperatorStateBudgetHandle,
-		retention_metrics: &RetentionMetrics,
-	) -> FlowEngine {
-		let flow_engine = FlowEngine::new(
-			engine.catalog(),
-			engine.executor(),
-			engine.event_bus().clone(),
-			RuntimeContext::with_clock(clock.clone()),
-			custom_operators.clone(),
-			substrate.clone(),
-			operator_samples.clone(),
-			state_budget.clone(),
-		);
-		flow_engine.write().adopt_retention_metrics(retention_metrics.clone());
-		flow_engine
-	}
-
-	#[inline]
 	fn register_watermark_sampler(
 		ioc: &IocContainer,
 		engine: &StandardEngine,
@@ -368,127 +292,17 @@ impl FlowSubsystem {
 	}
 
 	#[inline]
-	fn bootstrap_flows(
-		engine: &StandardEngine,
-		flow_catalog: &FlowCatalog,
-		registrar: &TransactionalFlowRegistry,
-	) -> Vec<(FlowId, bool)> {
+	fn bootstrap_flows(engine: &StandardEngine) -> Vec<FlowId> {
 		let mut bootstrap_flows = Vec::new();
 		if let Ok(mut query) = engine.begin_query(IdentityId::system()) {
 			match engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)) {
 				Ok(existing_flows) => {
-					for existing in existing_flows {
-						match flow_catalog.get_or_load_flow(
-							&mut Transaction::Query(&mut query),
-							existing.id,
-						) {
-							Ok((flow, _)) => match registrar.try_register(flow, &mut query)
-							{
-								Ok(is_transactional) => bootstrap_flows
-									.push((existing.id, !is_transactional)),
-								Err(e) => warn!(
-									flow_id = existing.id.0,
-									error = %e,
-									"failed to register transactional flow during bootstrap"
-								),
-							},
-							Err(e) => warn!(
-								flow_id = existing.id.0,
-								error = %e,
-								"failed to load flow during bootstrap"
-							),
-						}
-					}
+					bootstrap_flows.extend(existing_flows.into_iter().map(|existing| existing.id));
 				}
 				Err(e) => warn!(error = %e, "failed to list flows during bootstrap"),
 			}
 		}
 		bootstrap_flows
-	}
-
-	#[inline]
-	fn register_flow_interceptors(
-		engine: &StandardEngine,
-		transactional_flow_engine: &FlowEngine,
-		lineage: &FlowLineageTracker,
-		clock: &Clock,
-		custom_operators: &CustomOperators,
-	) {
-		let flow_engine_for_pre = transactional_flow_engine.clone();
-		let engine_for_pre = engine.clone();
-		let catalog_for_pre = engine.catalog();
-
-		let flow_engine_for_post = transactional_flow_engine.clone();
-		let engine_for_post = engine.clone();
-		let catalog_for_post = engine.catalog();
-		let lineage_for_post = lineage.clone();
-
-		let test_flow_engine = transactional_flow_engine.clone();
-		let test_engine = engine.clone();
-		let test_catalog = engine.catalog();
-		let test_event_bus = engine.event_bus().clone();
-		let test_runtime_context = RuntimeContext::with_clock(clock.clone());
-		let test_custom_operators = custom_operators.clone();
-
-		engine.add_interceptor_factory(Arc::new(move |interceptors: &mut Interceptors| {
-			interceptors.pre_commit.add(Arc::new(TransactionalFlowPreCommitInterceptor {
-				flow_engine: flow_engine_for_pre.clone(),
-				engine: engine_for_pre.clone(),
-				catalog: catalog_for_pre.clone(),
-			}));
-			interceptors.post_commit.add(Arc::new(TransactionalFlowPostCommitInterceptor {
-				registrar: TransactionalFlowRegistry {
-					flow_engine: flow_engine_for_post.clone(),
-					engine: engine_for_post.clone(),
-					catalog: catalog_for_post.clone(),
-					lineage: lineage_for_post.clone(),
-				},
-			}));
-
-			let hook_flow_engine = test_flow_engine.clone();
-			let hook_engine = test_engine.clone();
-			let hook_catalog = test_catalog.clone();
-			let hook_event_bus = test_event_bus.clone();
-			let hook_runtime_context = test_runtime_context.clone();
-			let hook_custom_operators = test_custom_operators.clone();
-
-			interceptors.set_test_pre_commit(Arc::new(move |test_txn: &mut TestTransaction<'_>| {
-				let mut fresh_engine = FlowEngineInner::new(
-					hook_catalog.clone(),
-					hook_engine.executor(),
-					hook_event_bus.clone(),
-					hook_runtime_context.clone(),
-					hook_custom_operators.clone(),
-					FlowSubstrate::with_dictionary(hook_engine.dictionary_allocators()),
-					OperatorSampleRegistry::new(),
-					OperatorStateBudgetHandle::new(state_budget_default()),
-				);
-
-				let flows = hook_catalog
-					.list_flows_all(&mut Transaction::Test(Box::new(test_txn.reborrow())))?;
-
-				for flow in flows {
-					let dag = load_flow_dag(
-						&mut Transaction::Test(Box::new(test_txn.reborrow())),
-						flow.id,
-					)?;
-					fresh_engine.register_with_transaction(
-						&mut Transaction::Test(Box::new(test_txn.reborrow())),
-						dag,
-					)?;
-				}
-
-				*hook_flow_engine.write() = fresh_engine;
-				Ok(())
-			}));
-		}));
-	}
-}
-
-fn state_budget_default() -> ByteSize {
-	match ConfigKey::OperatorStateMemoryLimit.default_value() {
-		Value::Uint8(bytes) => ByteSize::from_bytes(bytes),
-		other => panic!("OPERATOR_STATE_MEMORY_LIMIT default must be Uint8 bytes, got {:?}", other),
 	}
 }
 
@@ -512,12 +326,7 @@ impl Shutdown for FlowSubsystem {
 			let _ = handle.join();
 		}
 
-		if let Some(handle) = self.transactional_tick_handle.lock().take() {
-			let _ = handle.join();
-		}
-
-		self.transactional_flow_engine.write().clear();
-		self.lineage.clear();
+		self.view_lineage.publish(Default::default());
 	}
 }
 

@@ -33,23 +33,7 @@ fn non_terminal_sort_in_deferred_view_rejected() {
 }
 
 #[test]
-fn non_terminal_sort_in_transactional_view_rejected() {
-	let db = setup();
-	let diag = create_view_error(
-		&db,
-		"CREATE TRANSACTIONAL VIEW v::t { id: int4, qty: int4 } AS { FROM v::base SORT { qty } MAP { id, qty } }",
-	);
-	assert_eq!(diag.code, "FLOW_012", "expected FLOW_012, got {:?}: {}", diag.code, diag.message);
-}
-
-#[test]
 fn terminal_sort_in_deferred_view_succeeds() {
 	let db = setup();
 	create_view_ok(&db, "CREATE DEFERRED VIEW v::d { id: int4, qty: int4 } AS { FROM v::base SORT { qty } }");
-}
-
-#[test]
-fn terminal_sort_in_transactional_view_succeeds() {
-	let db = setup();
-	create_view_ok(&db, "CREATE TRANSACTIONAL VIEW v::t { id: int4, qty: int4 } AS { FROM v::base SORT { qty } }");
 }

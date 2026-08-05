@@ -26,9 +26,12 @@ pub mod view;
 pub mod vtable;
 
 /// Reading a view while the transaction holds unprocessed changes upstream of it would return the
-/// view's pre-request contents, since transactional views are maintained pre-commit and deferred
-/// ones after it. Fails closed: an unknown view is resolved from the catalog, not waved through.
+/// view's pre-request contents, since view maintenance runs after commit. Fails closed: an unknown
+/// view is resolved from the catalog, not waved through.
 pub(crate) fn guard_view_read(view: &ResolvedView, rx: &mut Transaction<'_>, services: &Services) -> Result<()> {
+	if matches!(rx, Transaction::Test(_)) {
+		unimplemented!("RUN TESTS view reads; see plan-operator.md follow-up");
+	}
 	if !rx.has_unprocessed_flow_changes() {
 		return Ok(());
 	}

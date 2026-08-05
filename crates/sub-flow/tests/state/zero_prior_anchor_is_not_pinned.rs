@@ -25,13 +25,6 @@ fn deferred() {
 }
 
 #[test]
-fn transactional() {
-	let e = engine();
-	let mut txn = e.flow_txn().transactional();
-	assert_zero_prior_anchor_is_not_pinned(&mut txn);
-}
-
-#[test]
 fn ephemeral() {
 	let e = engine();
 	let mut txn = e.flow_txn().ephemeral();
