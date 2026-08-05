@@ -148,7 +148,7 @@ pub(super) fn build_range_current_sql(
 			" AND key > ?"
 		});
 	}
-	sql.push_str(" AND version <= ?");
+	sql.push_str(" AND value IS NOT NULL AND version <= ?");
 	if descending {
 		sql.push_str(" ORDER BY key DESC LIMIT ?");
 	} else {

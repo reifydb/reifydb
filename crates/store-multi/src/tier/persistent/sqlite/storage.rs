@@ -1160,6 +1160,52 @@ mod tests {
 	}
 
 	#[test]
+	fn a_range_does_not_fetch_the_tombstones_it_would_only_discard() {
+		// The timer probe asks for one row and used to receive every tombstone in the prefix,
+		// because LIMIT applies after the WHERE: measured at 1,837 rows fetched per probe, 100%
+		// of them dead. Filtering in SQL is only sound because `collected_to_batch` drops a None
+		// value for every scope, and the commit buffer only ever holds versions ABOVE what was
+		// flushed to persistent - so a persistent tombstone has no lower tier left to shadow.
+		let (s, _guard) = SqlitePersistentStorage::in_memory();
+		let mut writes = Vec::new();
+		for i in 1..=50u64 {
+			writes.push((key(i), Some(row(b"doomed"))));
+		}
+		s.set(CommitVersion(1), HashMap::from([(table(), writes)])).unwrap();
+		let mut deletes = Vec::new();
+		for i in 1..=50u64 {
+			deletes.push((key(i), None));
+		}
+		s.set(CommitVersion(2), HashMap::from([(table(), deletes)])).unwrap();
+		s.set(CommitVersion(3), HashMap::from([(table(), vec![(key(200), Some(row(b"alive")))])])).unwrap();
+		assert_eq!(s.count_current(table()).unwrap(), 51, "precondition: 50 tombstones are physically present");
+
+		let before = reifydb_core::metrics::scan::ScanCounters::sample();
+		let mut cursor = RangeCursor::default();
+		let batch = s
+			.range_next(
+				table(),
+				&mut cursor,
+				Bound::Unbounded,
+				Bound::Unbounded,
+				MultiVersionScope::AsOf {
+					read: CommitVersion(10),
+				},
+				1024,
+			)
+			.unwrap();
+		let scanned = before.since();
+
+		assert_eq!(
+			batch.entries.iter().map(|e| e.key.clone()).collect::<Vec<_>>(),
+			vec![key(200)],
+			"a tombstoned key must not surface, and the one live row must"
+		);
+		assert_eq!(scanned.fetched, 1, "the 50 tombstones must never cross into Rust");
+		assert_eq!(scanned.tombstones, 0);
+	}
+
+	#[test]
 	fn a_page_the_scope_filter_empties_does_not_end_the_scan() {
 		// The SQL only bounds version <= read, but Between also demands version > after, so the
 		// surviving-row count is not evidence about whether sqlite has more rows. Deciding
