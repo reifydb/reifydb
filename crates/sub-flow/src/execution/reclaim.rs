@@ -428,6 +428,10 @@ fn reclaim_keyspace(
 ) -> Result<Vec<GroupId>> {
 	let due = txn.due_side_groups(operator, keyspace, cutoff, remaining.groups)?;
 	let mut retired = Vec::new();
+	let mut probe_scanned = 0usize;
+	let mut probe_removed = 0usize;
+	let mut probe_oldest: Option<DateTime> = None;
+	let mut probe_newest: Option<DateTime> = None;
 	for group in due {
 		if remaining.exhausted() {
 			report.backlog += 1;
@@ -440,6 +444,13 @@ fn reclaim_keyspace(
 		remaining.rows -= outcome.removed;
 		report.rows += outcome.removed;
 		report.scanned += outcome.scanned;
+		probe_scanned += outcome.scanned;
+		probe_removed += outcome.removed;
+		probe_oldest = older_of(probe_oldest, outcome.oldest_survivor);
+		probe_newest = match (probe_newest, outcome.newest_survivor) {
+			(Some(a), Some(b)) => Some(a.max(b)),
+			(only, None) | (None, only) => only,
+		};
 		let oldest = older_of(seen, outcome.oldest_survivor);
 		if outcome.more {
 			cursors.insert((group, keyspace), (cursor, oldest));
@@ -455,6 +466,25 @@ fn reclaim_keyspace(
 			}
 		}
 		report.keyspace_groups += 1;
+	}
+	if probe_scanned > 0 {
+		let span_ms = match (probe_oldest, probe_newest) {
+			(Some(o), Some(n)) => (n.to_nanos().saturating_sub(o.to_nanos())) / 1_000_000,
+			_ => 0,
+		};
+		let behind_ms = match probe_oldest {
+			Some(o) => (o.to_nanos().saturating_sub(cutoff.instant().to_nanos())) / 1_000_000,
+			None => 0,
+		};
+		info!(
+			operator = operator.0,
+			keyspace = keyspace.0,
+			scanned = probe_scanned,
+			removed = probe_removed,
+			survivor_span_ms = span_ms,
+			oldest_above_cutoff_ms = behind_ms,
+			"keyspace sweep survivors"
+		);
 	}
 	Ok(retired)
 }
