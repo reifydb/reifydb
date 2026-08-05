@@ -29,7 +29,7 @@ pub struct OperatorStateStore<'a> {
 
 impl<'a> OperatorStateStore<'a> {
 	pub fn new(txn: &'a mut FlowTransaction, operator: OperatorId) -> Self {
-		let now = txn.clock().now();
+		let now = txn.written_at();
 		Self {
 			txn,
 			operator,
@@ -135,7 +135,7 @@ impl StateStore for OperatorStateStore<'_> {
 		self.txn.remove_row_number(self.operator, group, key).map(|_| ())
 	}
 
-	fn clock_now(&self) -> DateTime {
+	fn written_at(&self) -> DateTime {
 		self.now
 	}
 }

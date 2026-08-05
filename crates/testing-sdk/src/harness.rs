@@ -84,12 +84,12 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		FFIOperatorHarnessBuilder::new()
 	}
 
-	fn refresh_clock(&mut self) {
-		self.ffi_context.clock_now_nanos = self.clock.now().to_nanos();
+	fn refresh_written_at(&mut self) {
+		self.ffi_context.written_at_nanos = self.clock.now().to_nanos();
 	}
 
 	pub fn apply(&mut self, input: Change) -> Result<Change> {
-		self.refresh_clock();
+		self.refresh_written_at();
 		let version = input.version;
 		let changed_at = input.changed_at;
 		let origin = input.origin.clone();
@@ -123,7 +123,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 	}
 
 	pub fn apply_without_flush(&mut self, input: Change) -> Result<Change> {
-		self.refresh_clock();
+		self.refresh_written_at();
 		let version = input.version;
 		let changed_at = input.changed_at;
 		let origin = input.origin.clone();
@@ -155,7 +155,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 	}
 
 	pub fn flush(&mut self) -> Result<()> {
-		self.refresh_clock();
+		self.refresh_written_at();
 		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
 		with_registry(&self.builder_registry, || {
 			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
@@ -164,7 +164,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 	}
 
 	pub fn fire_timer(&mut self, at: DateTime, kind: TimerKind, key: &[u8]) -> Result<()> {
-		self.refresh_clock();
+		self.refresh_written_at();
 		let ffi_ctx_ptr = &mut *self.ffi_context as *mut ContextFFI;
 		with_registry(&self.builder_registry, || {
 			let mut op_ctx = FFIOperatorContext::new(ffi_ctx_ptr);
@@ -387,7 +387,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 	}
 
 	pub fn create_operator_context(&mut self) -> FFIOperatorContext {
-		self.refresh_clock();
+		self.refresh_written_at();
 		FFIOperatorContext::new(&mut *self.ffi_context as *mut ContextFFI)
 	}
 
@@ -504,7 +504,7 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 			txn_ptr: &*context as *const TestContext as *mut c_void,
 			executor_ptr: null(),
 			operator_id: self.operator_id.0,
-			clock_now_nanos: self.clock.now().to_nanos(),
+			written_at_nanos: self.clock.now().to_nanos(),
 			state_lease_bytes: 64 * 1024 * 1024,
 			callbacks: create_test_callbacks(),
 		});
@@ -532,7 +532,7 @@ pub fn drive_ffi_apply<O: FFIOperator + OperatorMetadata>(input: &Change) -> i32
 		txn_ptr: &*context as *const TestContext as *mut c_void,
 		executor_ptr: null(),
 		operator_id: 1,
-		clock_now_nanos: 0,
+		written_at_nanos: 0,
 		state_lease_bytes: 64 * 1024 * 1024,
 		callbacks: create_test_callbacks(),
 	};

@@ -38,7 +38,7 @@ use reifydb_value::{
 };
 
 pub trait NativeBridge {
-	fn clock_now(&self) -> DateTime;
+	fn written_at(&self) -> DateTime;
 	fn version(&self) -> CommitVersion;
 	fn state_lease_bytes(&self) -> u64;
 
@@ -114,7 +114,7 @@ pub struct NativeOperatorContext<'a> {
 
 impl<'a> NativeOperatorContext<'a> {
 	pub fn new(bridge: &'a mut (dyn NativeBridge + 'a), operator: OperatorId) -> Self {
-		let now = bridge.clock_now();
+		let now = bridge.written_at();
 		let state_lease_bytes = bridge.state_lease_bytes();
 		Self {
 			bridge: bridge as *mut (dyn NativeBridge + 'a),
@@ -347,10 +347,6 @@ impl StateApi for NativeState<'_> {
 		}
 		Ok(())
 	}
-
-	fn now(&self) -> DateTime {
-		self.now
-	}
 }
 
 pub struct NativeStore<'a> {
@@ -461,7 +457,7 @@ impl OperatorContext for NativeOperatorContext<'_> {
 	fn operator_id(&self) -> OperatorId {
 		self.operator
 	}
-	fn clock_now(&self) -> DateTime {
+	fn written_at(&self) -> DateTime {
 		self.now
 	}
 	fn state_lease_bytes(&self) -> u64 {

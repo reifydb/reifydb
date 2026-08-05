@@ -106,7 +106,7 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 		Ok(self.0.remove_row_number(group, key)?)
 	}
 
-	fn clock_now(&self) -> DateTime {
-		self.0.clock_now()
+	fn written_at(&self) -> DateTime {
+		self.0.written_at()
 	}
 }

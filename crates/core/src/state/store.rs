@@ -43,7 +43,7 @@ pub trait StateStore {
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
 
-	fn clock_now(&self) -> DateTime;
+	fn written_at(&self) -> DateTime;
 
 	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 

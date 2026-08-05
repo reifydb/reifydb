@@ -715,7 +715,7 @@ where
 
 	pub fn flush(&mut self, store: &mut impl StateStore) -> Result<()> {
 		let order = mem::take(&mut self.dirty_order);
-		let now = store.clock_now();
+		let now = store.written_at();
 		for (index, key) in order.iter().enumerate() {
 			let Some(mut slot) = self.dirty.remove(key) else {
 				continue;
@@ -1125,7 +1125,7 @@ mod tests {
 		fn remove_row_number(&mut self, _group: GroupId, _key: &EncodedKey) -> Result<()> {
 			Ok(())
 		}
-		fn clock_now(&self) -> DateTime {
+		fn written_at(&self) -> DateTime {
 			self.now
 		}
 	}

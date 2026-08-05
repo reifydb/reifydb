@@ -807,7 +807,7 @@ pub(crate) mod test_support {
 			self.rows.remove(&(group, key.as_bytes().to_vec()));
 			Ok(())
 		}
-		fn clock_now(&self) -> DateTime {
+		fn written_at(&self) -> DateTime {
 			DateTime::EPOCH
 		}
 	}

@@ -66,7 +66,7 @@ impl SealLedger {
 		let state = SealLedgerState {
 			sealed_through: fired_order,
 		};
-		let now = store.clock_now();
+		let now = store.written_at();
 		store.state_set(&seal_ledger_key(), state.encode_state(now)?)?;
 		Ok(SealedThrough::from_order(fired_order))
 	}

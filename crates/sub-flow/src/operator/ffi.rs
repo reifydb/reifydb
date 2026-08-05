@@ -111,7 +111,7 @@ impl FFIOperatorHandle {
 				txn_ptr: ptr::null_mut(),
 				executor_ptr: ptr::null(),
 				operator_id: operator_id.0,
-				clock_now_nanos: 0,
+				written_at_nanos: 0,
 				state_lease_bytes: lease.bytes().as_bytes(),
 				callbacks: create_host_callbacks(),
 			}),
@@ -121,21 +121,21 @@ impl FFIOperatorHandle {
 
 	fn ensure_txn_setup(&self, txn: &mut FlowTransaction) -> Result<()> {
 		let txn_version = txn.version().0;
+		// SAFETY: one actor drives this operator and no guest call is in flight here, so
+		// the context cell is not aliased while this &mut exists.
+		let ctx = unsafe { &mut *self.cached_ctx.get() };
 		if self.last_registered_txn.get() != txn_version {
 			ensure_flush_slot(txn, self.operator_id, self.vtable, self.instance, self.executor.clone())?;
 			self.last_registered_txn.set(txn_version);
-			// SAFETY: one actor drives this operator and no guest call is in flight here, so
-			// the context cell is not aliased while this &mut exists.
-			let ctx = unsafe { &mut *self.cached_ctx.get() };
 			ctx.txn_ptr = txn as *mut _ as *mut c_void;
 			ctx.executor_ptr = &self.executor as *const _ as *const c_void;
-			ctx.clock_now_nanos = txn.clock().now().to_nanos();
 			ctx.state_lease_bytes = self
 				.state_budget
 				.current_lease(self.operator_id)
 				.map(|lease| lease.grant.bytes().as_bytes())
 				.unwrap_or(0);
 		}
+		ctx.written_at_nanos = txn.written_at().to_nanos();
 		Ok(())
 	}
 }

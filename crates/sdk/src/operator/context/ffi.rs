@@ -242,10 +242,6 @@ impl StateApi for State<'_> {
 		State::set_bytes(self, key, payload)
 	}
 
-	fn now(&self) -> DateTime {
-		State::now(self)
-	}
-
 	fn get_many_bytes_visit(
 		&self,
 		keys: &[GroupStateKey],
@@ -305,10 +301,10 @@ impl OperatorContext for FFIOperatorContext {
 	fn operator_id(&self) -> OperatorId {
 		FFIOperatorContext::operator_id(self)
 	}
-	fn clock_now(&self) -> DateTime {
+	fn written_at(&self) -> DateTime {
 		// SAFETY: FFIOperatorContext::new asserts self.ctx is non-null, and the host keeps the ContextFFI
 		// alive and aligned for at least the lifetime of &self.
-		DateTime::from_nanos(unsafe { (*self.ctx).clock_now_nanos })
+		DateTime::from_nanos(unsafe { (*self.ctx).written_at_nanos })
 	}
 	fn state_lease_bytes(&self) -> u64 {
 		// SAFETY: FFIOperatorContext::new asserts self.ctx is non-null, and the host keeps the ContextFFI

@@ -107,8 +107,6 @@ pub trait StateApi {
 		end: Bound<&GroupStateKey>,
 		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
 	) -> Result<()>;
-
-	fn now(&self) -> DateTime;
 }
 
 /// Reads the data store - table and view rows addressed by `RowKey`. That is a different keyspace
@@ -165,7 +163,7 @@ pub trait OperatorContext {
 		Self: 'a;
 
 	fn operator_id(&self) -> OperatorId;
-	fn clock_now(&self) -> DateTime;
+	fn written_at(&self) -> DateTime;
 	fn state_lease_bytes(&self) -> u64 {
 		0
 	}

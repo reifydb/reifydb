@@ -13,7 +13,7 @@ pub struct ContextFFI {
 
 	pub operator_id: u64,
 
-	pub clock_now_nanos: u64,
+	pub written_at_nanos: u64,
 
 	pub state_lease_bytes: u64,
 

@@ -60,7 +60,7 @@ mod tests {
 			txn_ptr: &test_ctx as *const TestContext as *mut c_void,
 			executor_ptr: null(),
 			operator_id: 1,
-			clock_now_nanos: 0,
+			written_at_nanos: 0,
 			state_lease_bytes: 64 * 1024 * 1024,
 			callbacks: create_test_callbacks(),
 		};

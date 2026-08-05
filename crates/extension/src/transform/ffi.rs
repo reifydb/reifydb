@@ -55,7 +55,7 @@ impl NativeTransformFFI {
 				txn_ptr: ptr::null_mut(),
 				executor_ptr: ptr::null(),
 				operator_id: 0,
-				clock_now_nanos: 0,
+				written_at_nanos: 0,
 				state_lease_bytes: 0,
 				callbacks: pure_host_callbacks(),
 			}),
@@ -92,7 +92,7 @@ impl Transform for NativeTransformFFI {
 		let ffi_ctx_ptr = self.cached_ctx.get();
 		// SAFETY: cached_ctx owns the ContextFFI for the life of self and apply is not re-entrant.
 		unsafe {
-			(*ffi_ctx_ptr).clock_now_nanos = ctx.runtime_context.clock.now().to_nanos();
+			(*ffi_ctx_ptr).written_at_nanos = ctx.runtime_context.clock.now().to_nanos();
 		}
 
 		let result_code = with_registry(&self.builder_registry, || {

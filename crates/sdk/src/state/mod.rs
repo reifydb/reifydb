@@ -41,7 +41,7 @@ impl<'a> State<'a> {
 	}
 
 	pub fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> Result<()> {
-		let row = encode_payload(value, self.now())?;
+		let row = encode_payload(value, self.written_at())?;
 		ffi::set(self.ctx, key.as_encoded(), &row)
 	}
 
@@ -137,10 +137,10 @@ impl<'a> State<'a> {
 	}
 
 	#[inline]
-	pub fn now(&self) -> DateTime {
+	fn written_at(&self) -> DateTime {
 		// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null, and the host keeps the ContextFFI alive
 		// and aligned for at least the lifetime of the borrow this State was created from.
-		DateTime::from_nanos(unsafe { (*self.ctx.ctx).clock_now_nanos })
+		DateTime::from_nanos(unsafe { (*self.ctx.ctx).written_at_nanos })
 	}
 }
 

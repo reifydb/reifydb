@@ -66,7 +66,7 @@ impl NativeProcedureFFI {
 				txn_ptr: ptr::null_mut(),
 				executor_ptr: ptr::null(),
 				operator_id: 0,
-				clock_now_nanos: 0,
+				written_at_nanos: 0,
 				state_lease_bytes: 0,
 				callbacks: procedure_host_callbacks(),
 			}),
@@ -165,7 +165,7 @@ impl NativeProcedureFFI {
 		// SAFETY: cached_ctx owns the ContextFFI for the life of self; execute holds the Mutex.
 		unsafe {
 			(*ffi_ctx_ptr).txn_ptr = ctx.tx as *mut Transaction<'_> as *mut c_void;
-			(*ffi_ctx_ptr).clock_now_nanos = ctx.runtime_context.clock.now().to_nanos();
+			(*ffi_ctx_ptr).written_at_nanos = ctx.runtime_context.clock.now().to_nanos();
 		}
 	}
 

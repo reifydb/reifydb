@@ -432,8 +432,8 @@ pub unsafe extern "C" fn host_builder_emit_diff(
 
 	let mut inner = registry.inner.lock();
 	// SAFETY: ctx is non-null here and the host keeps the ContextFFI live for the whole call.
-	let txn_clock_now = unsafe { (*ctx).clock_now_nanos };
-	let now = DateTime::from_nanos(txn_clock_now);
+	let written_at_nanos = unsafe { (*ctx).written_at_nanos };
+	let now = DateTime::from_nanos(written_at_nanos);
 
 	let pre_columns = match assemble_columns_opt(
 		&mut inner,

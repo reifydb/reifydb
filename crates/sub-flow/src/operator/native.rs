@@ -154,7 +154,7 @@ pub struct FlowNativeBridge<'a> {
 
 impl<'a> FlowNativeBridge<'a> {
 	pub fn new(txn: &'a mut FlowTransaction, operator: OperatorId) -> Self {
-		let now = txn.clock().now();
+		let now = txn.written_at();
 		Self {
 			txn,
 			operator,
@@ -164,7 +164,7 @@ impl<'a> FlowNativeBridge<'a> {
 }
 
 impl NativeBridge for FlowNativeBridge<'_> {
-	fn clock_now(&self) -> DateTime {
+	fn written_at(&self) -> DateTime {
 		self.now
 	}
 	fn version(&self) -> CommitVersion {
