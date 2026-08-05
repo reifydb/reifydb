@@ -25,7 +25,7 @@ use crate::{
 };
 
 enum PointEntry {
-	Value(EncodedRow),
+	Row(EncodedRow),
 	Tombstone,
 }
 
@@ -35,7 +35,7 @@ const ENTRY_OVERHEAD: usize = NODE_FILL_DIVISOR * (size_of::<EncodedKey>() + siz
 
 fn point_bytes(key: &EncodedKey, entry: &PointEntry) -> u64 {
 	let value_len = match entry {
-		PointEntry::Value(row) => row.as_slice().len(),
+		PointEntry::Row(row) => row.as_slice().len(),
 		PointEntry::Tombstone => 0,
 	};
 	(ENTRY_OVERHEAD + key.heap_bytes() + value_len) as u64
@@ -142,7 +142,7 @@ impl ArenaInner {
 	}
 
 	pub(crate) fn set(&mut self, key: EncodedKey, value: EncodedRow, config: &OperatorStoreConfig) {
-		self.active.put(key, PointEntry::Value(value));
+		self.active.put(key, PointEntry::Row(value));
 		self.roll(config);
 	}
 
@@ -226,7 +226,7 @@ impl ArenaInner {
 		for batch in self.batches_newest_first() {
 			if let Some(entry) = batch.entries.get(key) {
 				return match entry {
-					PointEntry::Value(row) => Some(row.clone()),
+					PointEntry::Row(row) => Some(row.clone()),
 					PointEntry::Tombstone => None,
 				};
 			}
@@ -240,7 +240,7 @@ impl ArenaInner {
 	pub(crate) fn contains(&self, key: &EncodedKey) -> bool {
 		for batch in self.batches_newest_first() {
 			if let Some(entry) = batch.entries.get(key) {
-				return matches!(entry, PointEntry::Value(_));
+				return matches!(entry, PointEntry::Row(_));
 			}
 			if batch.covers(key) {
 				return false;
@@ -288,7 +288,7 @@ impl ArenaInner {
 			if stack[..winner_index].iter().any(|batch| batch.covers(key)) {
 				continue;
 			}
-			if let PointEntry::Value(row) = entry {
+			if let PointEntry::Row(row) = entry {
 				if items.len() == limit {
 					return (items, true);
 				}
@@ -338,9 +338,9 @@ fn merge(inputs: Vec<Batch>, merging_oldest: bool, floor: &FloorSpec) -> Batch {
 					merged.put(key, PointEntry::Tombstone);
 				}
 			}
-			PointEntry::Value(row) => {
+			PointEntry::Row(row) => {
 				if !floor_expired(floor, &key, &row) {
-					merged.put(key, PointEntry::Value(row));
+					merged.put(key, PointEntry::Row(row));
 				}
 			}
 		}
