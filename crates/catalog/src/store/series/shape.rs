@@ -19,6 +19,7 @@ pub(crate) mod series {
 	pub(crate) const PARTITION_BY: usize = 8;
 	pub(crate) const UNDERLYING: usize = 9;
 	pub(crate) const TS: usize = 10;
+	pub(crate) const TIME_DOMAIN: usize = 11;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
@@ -33,6 +34,7 @@ pub(crate) mod series {
 			RowShapeField::unconstrained("partition_by", ValueType::Utf8),
 			RowShapeField::unconstrained("underlying", ValueType::Uint1),
 			RowShapeField::unconstrained("ts", ValueType::Utf8),
+			RowShapeField::unconstrained("time_domain", ValueType::Uint1),
 		])
 	});
 }

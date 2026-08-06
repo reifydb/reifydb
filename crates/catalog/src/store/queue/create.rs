@@ -130,7 +130,7 @@ impl CatalogStore {
 		);
 		encode_deduplicate(&mut row, to_create.deduplicate.as_ref());
 
-		write_time_source(&queue::SHAPE, &mut row, queue::TS, &to_create.time);
+		write_time_source(&queue::SHAPE, &mut row, queue::TIME_DOMAIN, queue::TS, &to_create.time);
 
 		txn.set(&QueueKey::encoded(queue_id), row.freeze())?;
 

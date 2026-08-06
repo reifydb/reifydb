@@ -140,6 +140,7 @@ impl WindowSize {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TimeDomain {
+	None,
 	Event,
 	Processing,
 }
@@ -147,36 +148,23 @@ pub enum TimeDomain {
 impl TimeDomain {
 	pub fn to_u8(self) -> u8 {
 		match self {
-			TimeDomain::Processing => 0,
+			TimeDomain::None => 0,
 			TimeDomain::Event => 1,
+			TimeDomain::Processing => 2,
 		}
 	}
 
 	pub fn from_u8(value: u8) -> Self {
 		match value {
 			1 => TimeDomain::Event,
-			_ => TimeDomain::Processing,
-		}
-	}
-
-	pub fn declared_to_u8(declared: Option<Self>) -> u8 {
-		match declared {
-			None => 0,
-			Some(TimeDomain::Processing) => 1,
-			Some(TimeDomain::Event) => 2,
-		}
-	}
-
-	pub fn declared_from_u8(value: u8) -> Option<Self> {
-		match value {
-			1 => Some(TimeDomain::Processing),
-			2 => Some(TimeDomain::Event),
-			_ => None,
+			2 => TimeDomain::Processing,
+			_ => TimeDomain::None,
 		}
 	}
 
 	pub fn as_str(&self) -> &'static str {
 		match self {
+			TimeDomain::None => "none",
 			TimeDomain::Event => "event",
 			TimeDomain::Processing => "processing",
 		}
@@ -185,6 +173,7 @@ impl TimeDomain {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TimeSource {
+	None,
 	Event {
 		ts: String,
 	},
@@ -194,6 +183,7 @@ pub enum TimeSource {
 impl TimeSource {
 	pub fn domain(&self) -> TimeDomain {
 		match self {
+			TimeSource::None => TimeDomain::None,
 			TimeSource::Event {
 				..
 			} => TimeDomain::Event,
@@ -206,7 +196,7 @@ impl TimeSource {
 			TimeSource::Event {
 				ts,
 			} => Some(ts.as_str()),
-			TimeSource::Processing => None,
+			TimeSource::None | TimeSource::Processing => None,
 		}
 	}
 }

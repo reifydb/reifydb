@@ -104,6 +104,16 @@ pub fn resolve_source_time(declaration: &TimeDeclaration) -> Result<TimeSource> 
 			}
 			Ok(TimeSource::Processing)
 		}
+		TimeDomain::None => {
+			if let Some(ts) = declaration.ts.as_ref() {
+				return Err(AstError::UnexpectedToken {
+					expected: "time: none must not declare a ts column".to_string(),
+					fragment: ts.clone(),
+				}
+				.into());
+			}
+			Ok(TimeSource::None)
+		}
 	}
 }
 

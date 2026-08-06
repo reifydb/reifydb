@@ -48,7 +48,7 @@ pub(crate) fn resolve_time_for_update(
 	previous_time: DateTime,
 ) -> Result<DateTime> {
 	match time {
-		TimeSource::Processing => Ok(previous_time),
+		TimeSource::None | TimeSource::Processing => Ok(previous_time),
 		TimeSource::Event {
 			..
 		} => resolve_time(object, columns, time, shape, row, previous_time),

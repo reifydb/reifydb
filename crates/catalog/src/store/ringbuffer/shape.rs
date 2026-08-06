@@ -16,6 +16,7 @@ pub(crate) mod ringbuffer {
 	pub(crate) const PARTITION_BY: usize = 5;
 	pub(crate) const UNDERLYING: usize = 6;
 	pub(crate) const TS: usize = 7;
+	pub(crate) const TIME_DOMAIN: usize = 8;
 
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
@@ -27,6 +28,7 @@ pub(crate) mod ringbuffer {
 			RowShapeField::unconstrained("partition_by", ValueType::Utf8),
 			RowShapeField::unconstrained("underlying", ValueType::Uint1),
 			RowShapeField::unconstrained("ts", ValueType::Utf8),
+			RowShapeField::unconstrained("time_domain", ValueType::Uint1),
 		])
 	});
 }

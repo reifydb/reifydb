@@ -17,5 +17,5 @@ use reifydb_core::common::TimeSource;
 use crate::store::{ringbuffer::shape::ringbuffer, time_source::read_time_source};
 
 pub(crate) fn decode_ringbuffer_time(row: &EncodedRow) -> TimeSource {
-	read_time_source(&ringbuffer::SHAPE, row, ringbuffer::TS)
+	read_time_source(&ringbuffer::SHAPE, row, ringbuffer::TIME_DOMAIN, ringbuffer::TS)
 }
