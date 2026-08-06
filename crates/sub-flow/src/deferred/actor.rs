@@ -840,7 +840,7 @@ impl Actor for FlowActor {
 #[cfg(test)]
 mod pull_protocol {
 	use std::{
-		collections::HashMap,
+		collections::{HashMap, VecDeque},
 		ops::Bound,
 		thread::sleep,
 		time::{Duration as StdDuration, Instant},
@@ -873,7 +873,10 @@ mod pull_protocol {
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::{DeferredParams, FlowTransaction};
-	use reifydb_runtime::sync::waiter::WaiterHandle;
+	use reifydb_runtime::{
+		actor::system::ActorHandle,
+		sync::{mutex::Mutex, waiter::WaiterHandle},
+	};
 	use reifydb_sqlite::SqliteConfig;
 	use reifydb_store_operator::{OperatorStore, snapshot::SnapshotStore};
 	use reifydb_testing_flow::state::{State, assert_batch_equivalent};
@@ -1315,17 +1318,44 @@ mod pull_protocol {
 		/// actor spawned at the durable checkpoint carrying whatever the load reported. This is
 		/// the only shape a real restart takes, so catch-up must be driven through it.
 		fn restart(&self, cursor: CommitVersion, load_batch_bytes: ByteSize) -> Restart {
-			let substrate =
-				FlowSubstrate::with_dictionary(self.engine.dictionary_allocators(), OperatorStore::default());
-			let snapshot_load = match &self.snapshots {
+			let substrate = self.fresh_substrate();
+			let snapshot_load = self.load_snapshot(&substrate);
+			self.spawn_restart(
+				substrate,
+				snapshot_load,
+				cursor,
+				load_batch_bytes,
+				self.loader_handle.actor_ref().clone(),
+			)
+		}
+
+		fn fresh_substrate(&self) -> FlowSubstrate {
+			FlowSubstrate::with_dictionary(self.engine.dictionary_allocators(), OperatorStore::default())
+		}
+
+		fn load_snapshot(&self, substrate: &FlowSubstrate) -> FlowSnapshotLoad {
+			match &self.snapshots {
 				Some(snapshots) => snapshots.load_flow(
 					&substrate.operators,
 					self.flow.get_operator_ids(),
 					self.engine.cdc_store().truncated_before().unwrap_or(CommitVersion(0)),
 				),
 				None => FlowSnapshotLoad::Empty,
-			};
+			}
+		}
 
+		/// Split out of `restart` so a test can act in the window between the load and the spawn:
+		/// the supervisor validates a snapshot against the truncation floor as it stands at
+		/// bootstrap, and the actor re-reads that floor when it starts replaying. Only a test that
+		/// can move the floor between those two reads exercises the second one.
+		fn spawn_restart(
+			&self,
+			substrate: FlowSubstrate,
+			snapshot_load: FlowSnapshotLoad,
+			cursor: CommitVersion,
+			load_batch_bytes: ByteSize,
+			loader: ActorRef<LoaderMessage>,
+		) -> Restart {
 			let committer = Committer::new(
 				FlowCatalog::new(self.engine.catalog()),
 				self.tracker.clone(),
@@ -1350,7 +1380,7 @@ mod pull_protocol {
 					engine: self.engine.clone(),
 					committer: committer_handle.actor_ref().clone(),
 					backlog: self.backlog.clone(),
-					loader: self.loader_handle.actor_ref().clone(),
+					loader,
 					control: self.control.clone(),
 					custom_operators: CustomOperators::new(HashMap::new()),
 					substrate: substrate.clone(),
@@ -1388,6 +1418,84 @@ mod pull_protocol {
 		snapshot_load: FlowSnapshotLoad,
 		actor: FlowActorHandle,
 		_committer: CommitterHandle,
+	}
+
+	/// A loader that parks every request instead of answering it, so a test can hold a flow inside
+	/// catch-up for as long as it needs to. Racing this by hand does not work: a replay over an
+	/// in-memory corpus finishes in microseconds, so anything a test tries to interleave with it
+	/// lands after it has already completed and every assertion about what may happen DURING a
+	/// replay then passes vacuously. Releasing hands the parked request to the real loader, so
+	/// what the flow eventually replays is exactly what it would have replayed unaided.
+	#[derive(Clone, Default)]
+	struct GatedLoader {
+		parked: Arc<Mutex<VecDeque<LoaderMessage>>>,
+	}
+
+	impl GatedLoader {
+		fn parked_count(&self) -> usize {
+			self.parked.lock().len()
+		}
+
+		fn release_one(&self, real: &ActorRef<LoaderMessage>) -> bool {
+			let Some(request) = self.parked.lock().pop_front() else {
+				return false;
+			};
+			real.send(request).is_ok()
+		}
+	}
+
+	impl Actor for GatedLoader {
+		type State = ();
+		type Message = LoaderMessage;
+
+		fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {}
+
+		fn handle(
+			&self,
+			_state: &mut Self::State,
+			msg: Self::Message,
+			_ctx: &Context<Self::Message>,
+		) -> Directive {
+			self.parked.lock().push_back(msg);
+			Directive::Continue
+		}
+
+		fn config(&self) -> ActorConfig {
+			ActorConfig::new()
+		}
+	}
+
+	/// Spawns a gated loader in front of the real one and restarts the flow through it. Returns
+	/// once the flow has provably entered catch-up: it has issued a fetch that only this test can
+	/// answer, which also means its `init` has finished - the point every later clock advance has
+	/// to come after, since `init` stamps `last_snapshot_at` from the same mock clock.
+	fn restart_gated(
+		h: &Harness,
+		checkpoint: CommitVersion,
+	) -> (Restart, GatedLoader, ActorHandle<LoaderMessage>) {
+		let gate = GatedLoader::default();
+		let gate_handle = h.engine.spawner().spawn_flow("pull-protocol-gated-loader", gate.clone());
+		let substrate = h.fresh_substrate();
+		let snapshot_load = h.load_snapshot(&substrate);
+		assert!(
+			matches!(snapshot_load, FlowSnapshotLoad::Restored(_)),
+			"precondition: the restart must have a snapshot to resume from ({snapshot_load:?})"
+		);
+		let restart = h.spawn_restart(
+			substrate,
+			snapshot_load,
+			checkpoint,
+			// One cdc record per batch, so the replay needs many round trips and the test keeps
+			// control between every one of them.
+			ByteSize::from_bytes(1),
+			gate_handle.actor_ref().clone(),
+		);
+		assert!(
+			h.poll_until(seconds(10), || (gate.parked_count() > 0).then_some(())).is_some(),
+			"catch-up must have requested a batch: without a parked request the flow is not \
+			 inside a replay and nothing below tests what it claims to"
+		);
+		(restart, gate, gate_handle)
 	}
 
 	fn seconds(seconds: i64) -> Duration {
@@ -2228,9 +2336,14 @@ mod pull_protocol {
 		// it would answer with the post-crash head/tail and the sink would assign storage row
 		// numbers the live run never assigned. The arena mirror is what makes that read
 		// replayable, and it is only worth anything if it holds the SAME numbers the mvcc row
-		// does - through inserts and through the capacity evictions that move head. Falsified by
-		// dropping the mirror write from write_metadata (nothing to find in the arena) or by
-		// writing it only on the insert path and not on the eviction path (head drifts apart).
+		// does - through inserts and through the capacity evictions that move head.
+		//
+		// What this adds over the sink's own write-path assertion is WHERE the mirror lives: that
+		// assertion reads back through `read_meta_mirror`, so a mirror written under the wrong
+		// keyspace tag still satisfies it while being invisible to the census, to the floors, and
+		// to reclaim. This test goes at the arena directly and filters on RINGBUFFER_META, so it
+		// is falsified by changing the tag in `meta_key` - the scan below then finds nothing.
+		// (Dropping the mirror write entirely is caught earlier, by that write-path assertion.)
 		let h = harness_with(
 			"CREATE TABLE app::t { id: int4, v: int4, ts: datetime } with { ts: ts }",
 			"CREATE DEFERRED RINGBUFFER VIEW app::v { id: int4, v: int4 } \
@@ -2364,9 +2477,15 @@ mod pull_protocol {
 		// through the replay cursor, so the next boot would replay nothing and keep the hole
 		// forever. A crash mid catch-up must therefore leave the old generation newest, and a
 		// fresh attempt must still land on the reference. Falsified by removing `catching_up`
-		// from maybe_snapshot's guard: the tick sent below then publishes the partial arena at
-		// the checkpoint, the second restart loads THAT and replays nothing, and the comparison
-		// at the end fails.
+		// from maybe_snapshot's guard: the tick below then publishes the partial arena at the
+		// checkpoint and the per-operator check fails.
+		//
+		// Every step here is ordered by something observable rather than by elapsed time. An
+		// earlier version of this test raced instead, and both of its interleavings were wrong:
+		// `spawn_restart` returns before the actor's `init` has run, so the clock advance landed
+		// BEFORE init stamped `last_snapshot_at` and the tick was then rejected on the interval
+		// check, never reaching the guard it was meant to test; and the replay finished long
+		// before the tick arrived, so `catching_up` was already false.
 		let (h, store) = aggregate_harness();
 		let fill = aggregate_fill();
 		let gap = aggregate_gap();
@@ -2384,21 +2503,34 @@ mod pull_protocol {
 			panic!("this test ages the snapshot interval by hand and needs the mock clock")
 		};
 
-		// One CDC record per loader chunk, so the gap takes many round trips and a tick can land
-		// while the replay is still in flight.
-		let interrupted = h.restart(checkpoint, ByteSize::from_bytes(1));
-		assert!(
-			matches!(interrupted.snapshot_load, FlowSnapshotLoad::Restored(_)),
-			"precondition: the interrupted attempt must have had a snapshot to resume from"
-		);
-		// After the spawn, never before: the actor stamps last_snapshot_at in init, so a clock
-		// advance made earlier is erased and the tick below would skip the interval check for a
-		// reason that has nothing to do with catching up.
+		let (interrupted, gate, gate_handle) = restart_gated(&h, checkpoint);
+		// Safe only now: the parked request proves init has run, so this advance is not erased by
+		// init's own stamp and the tick below reaches the interval check with 5s of age on it.
 		clock.advance_secs(5);
-		h.poll_until(seconds(10), || (interrupted.substrate.operators.total_bytes() > 0).then_some(()));
+
+		// Replay one batch so the arena holds PARTIAL state - the thing a snapshot must not
+		// capture. Waiting for the next parked request is what proves the batch was applied.
+		assert!(gate.release_one(h.loader_handle.actor_ref()), "release the first catch-up batch");
+		assert!(
+			h.poll_until(seconds(10), || (gate.parked_count() > 0).then_some(())).is_some(),
+			"the replay must ask for a second batch, or the gap was consumed in one and there is \
+			 no partial state to snapshot"
+		);
+
 		assert!(interrupted.actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
+		// Mailbox order does the synchronising: the tick was enqueued before the answer to the
+		// parked request, so the actor handles it while `catching_up` is still set. Seeing the
+		// NEXT request appear proves it got past both.
+		assert!(gate.release_one(h.loader_handle.actor_ref()), "release the second catch-up batch");
+		assert!(
+			h.poll_until(seconds(10), || (gate.parked_count() > 0).then_some(())).is_some(),
+			"the tick and the batch behind it must both have been handled, or the check below \
+			 passes without the guard ever being reached"
+		);
+
 		h.stop(&interrupted.actor);
 		drop(interrupted);
+		drop(gate_handle);
 
 		// Checked per operator, not just through the load: a mid-replay snapshot may cover only
 		// the operators the partial replay happened to touch, and the consistent-set load would
@@ -2430,11 +2562,16 @@ mod pull_protocol {
 	}
 
 	#[test]
-	fn an_unrecoverable_gap_poisons_the_flow() {
+	fn a_gap_truncated_before_the_load_is_rejected_at_load_and_poisons_the_flow() {
 		// If CDC no longer covers the snapshot's cursor there is no way to rebuild the gap. The
 		// flow must freeze loudly with its views still readable rather than resume from state
-		// that is missing every version in the hole. Falsified by falling through to a normal
-		// boot when the truncation floor is above the snapshot cursor.
+		// that is missing every version in the hole. When the floor is already up when the
+		// supervisor loads, `validate`'s coverage check is what catches it: it rejects every
+		// generation, leaving no set to resume from, and the actor poisons on that. Asserting the
+		// load outcome and not just "something poisoned" is the point - the sibling test below
+		// covers the other mechanism, and without this the two are indistinguishable. Falsified by
+		// dropping the `flow_cursor < truncated_before` check from `validate`: the load then
+		// reports Restored and the flow replays a hole.
 		let (h, _store) = aggregate_harness();
 		let fill = aggregate_fill();
 		let gap = aggregate_gap();
@@ -2447,9 +2584,60 @@ mod pull_protocol {
 			.expect("truncate cdc past the snapshot cursor");
 
 		let restart = h.restart(checkpoint, ByteSize::from_mib(8));
+		assert_eq!(
+			restart.snapshot_load,
+			FlowSnapshotLoad::Inconsistent,
+			"the load must refuse to hand the actor a cursor it cannot replay from"
+		);
 		assert!(
 			h.poll_until(seconds(10), || (!restart.health.poisoned().is_empty()).then_some(())).is_some(),
 			"a flow whose catch-up window has been truncated away must poison, not resume"
+		);
+		assert_eq!(
+			h.view_rows(),
+			rows_before,
+			"a poisoned flow keeps serving what it already materialized; nothing may be rebuilt or lost"
+		);
+		drop(restart);
+	}
+
+	#[test]
+	fn a_gap_truncated_after_the_load_poisons_the_flow() {
+		// The floor the supervisor validated against is a reading, not a lock: CDC truncation runs
+		// on its own and can pass the snapshot cursor between the load and the moment the actor
+		// starts replaying. That window is the only reason `begin_catch_up` re-reads the floor at
+		// all, and it is unreachable through `restart`, which loads and spawns in one step - hence
+		// the split. Falsified by dropping the `truncated_before > cursor` check from
+		// begin_catch_up: the flow then replays a window CDC no longer holds and boots on state
+		// missing every version in the hole, silently.
+		let (h, _store) = aggregate_harness();
+		let fill = aggregate_fill();
+		let gap = aggregate_gap();
+		let (_reference, checkpoint, actor) = drive_to_snapshot_and_gap(&h, &as_rql(&fill), &as_rql(&gap));
+		let rows_before = h.view_rows();
+		h.stop(&actor);
+
+		let substrate = h.fresh_substrate();
+		let snapshot_load = h.load_snapshot(&substrate);
+		assert!(
+			matches!(snapshot_load, FlowSnapshotLoad::Restored(_)),
+			"precondition: the load must succeed here, or this test is the sibling above ({snapshot_load:?})"
+		);
+
+		h.engine.cdc_store()
+			.drop_before(checkpoint, usize::MAX)
+			.expect("truncate cdc after the load has already accepted the snapshot");
+
+		let restart = h.spawn_restart(
+			substrate,
+			snapshot_load,
+			checkpoint,
+			ByteSize::from_mib(8),
+			h.loader_handle.actor_ref().clone(),
+		);
+		assert!(
+			h.poll_until(seconds(10), || (!restart.health.poisoned().is_empty()).then_some(())).is_some(),
+			"a floor that passed the snapshot cursor after the load must still stop the replay"
 		);
 		assert_eq!(
 			h.view_rows(),
