@@ -85,11 +85,14 @@ fn a_node_that_has_swept_reports_the_frontier_it_reclaimed_through() {
 	db.admin("CREATE DEFERRED VIEW sp::v { g: int4, total: int8 } with { time: event } AS { \
 		 FROM sp::t AGGREGATE { total: math::count(id) } BY { g } WITH { ttl: { duration: \"1s\" } } }");
 
-	// Event time, not the wall clock, so the frontier the sweep reports is a value this test can name.
-	db.command(r#"INSERT sp::t [{ id: 1, g: 1, ts: "1970-01-01T00:00:00Z" }]"#);
-	db.command(r#"INSERT sp::t [{ id: 2, g: 2, ts: "1970-01-01T00:10:00Z" }]"#);
+	// Event time, not the wall clock, so the frontier compaction reports is a value this test can
+	// name. The base sits far from the epoch because an epoch-stamped state row is what the arena
+	// treats as an unstamped writer.
+	db.command(r#"INSERT sp::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);
+	db.command(r#"INSERT sp::t [{ id: 2, g: 2, ts: "2026-01-01T00:10:00Z" }]"#);
 
-	let want = vec![Value::DateTime(DateTime::from_millis(599_000))];
+	const BASE_2026_MS: u64 = 1_767_225_600_000;
+	let want = vec![Value::DateTime(DateTime::from_millis(BASE_2026_MS + 599_000))];
 	let got = await_value(want.clone(), StdDuration::from_secs(20), || {
 		db.query(STATEFUL).first().map(|frame| column_values(frame, "frontier")).unwrap_or_default()
 	});

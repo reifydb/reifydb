@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod reclaim;
-pub mod regression;
 
 use rand::RngExt;
 use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{pick, run_reported, split},
-	operator::{drive as driver, drive::DriveOutcome, scenario::Scenario},
+	operator::{drive as driver, scenario::Scenario},
 };
 use reifydb_value::value::duration::Duration;
 
@@ -52,63 +50,6 @@ impl Grid for SlidingGrid {
 			.filter(|start| coord_ms >= *start && coord_ms < start + self.size_ms)
 			.collect()
 	}
-}
-
-/// The same corpus and oracle as `drive`, with the sweep wired into the step loop. Sliding is the more
-/// searching of the two `GridOracle` drivers: overlapping windows put one coordinate in several, so a
-/// group carries many live rows and a stray duplicate has more values to hide behind.
-pub fn drive_reclaiming(seed: u64, params: Params, reclaim_pct: u32, sink_row_ttl: bool) -> DriveOutcome {
-	let size_ms = params.size_secs * 1_000;
-	let slide_ms = params.slide_secs * 1_000;
-	let grace_ms = params.grace_secs * 1_000;
-	assert!(slide_ms < size_ms, "the sweep only covers overlapping sliding windows; slide must be < size");
-
-	let spec = WindowSpec {
-		kind: WindowKind::Sliding {
-			size: WindowSize::Duration(Duration::from_seconds(params.size_secs as i64).unwrap()),
-			slide: WindowSize::Duration(Duration::from_seconds(params.slide_secs as i64).unwrap()),
-		},
-		group_by: "g",
-		aggregations: "total: math::sum(v)",
-		grace: Duration::from_seconds(params.grace_secs as i64).unwrap(),
-	};
-
-	// The declared span is size + grace and never the slide, which is what `resolve_horizon` produces
-	// from the operator's own seal span.
-	let span = Duration::from_milliseconds((size_ms + grace_ms) as i64).expect("span is representable");
-
-	let mut harness = Harness::new(|runtime| build(&spec, runtime)).with_activity_grid();
-	if sink_row_ttl {
-		harness = harness.with_sink_row_ttl(span);
-	}
-	let workload = WindowWorkload {
-		groups: params.groups,
-		coord_span_ms: params.coord_span_ms,
-	};
-	let mut model = GridOracle::new(
-		SlidingGrid {
-			size_ms,
-			slide_ms,
-		},
-		size_ms,
-		grace_ms,
-	);
-
-	driver::drive(
-		seed,
-		Scenario::windowed(
-			params.steps,
-			params.max_batch,
-			params.coord_span_ms,
-			params.coord_span_ms + size_ms + grace_ms + 10_000,
-		)
-		.with_mix(params.remove_pct, params.update_pct, params.seal_pct)
-		.with_reclaim(reclaim_pct),
-		&mut harness,
-		&workload,
-		&mut model,
-	)
-	.assert_clean()
 }
 
 pub fn drive(seed: u64, params: Params) -> Corpus {
@@ -195,15 +136,6 @@ pub fn drive_random(seed: u64) {
 	});
 }
 
-/// A reclaiming run over a configuration drawn from the seed. One hand-picked seed cannot reach the
-/// band that matters here; the value of this is entirely in the seeds it draws that nobody chose.
-pub fn drive_reclaiming_random(seed: u64) {
-	let (sequence_seed, params) = random_params(seed);
-	let run = params.clone();
-	run_reported("window_sliding_reclaim_random_chaos", sequence_seed, &params, || {
-		drive_reclaiming(sequence_seed, run, 20, true);
-	});
-}
 
 #[derive(Debug, Clone)]
 pub struct CountParams {

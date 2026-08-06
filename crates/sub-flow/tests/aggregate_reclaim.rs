@@ -24,7 +24,7 @@ fn setup() -> TestDb {
 	TestDb::from(
 		embedded::memory()
 			.with_flow(|f| f)
-			// The retention ledger is the only surface that reports what the tick pass actually
+			// The per-operator compaction counters are the only surface that reports what the tick pass
 			// reclaimed; a short sample cadence keeps the polls inside their timeouts.
 			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
 			.build()
@@ -33,7 +33,7 @@ fn setup() -> TestDb {
 }
 
 const RECLAIMED_A_GROUP: &str =
-	"from system::metrics::lifecycle::current filter { class == 'operator-group-data' and work_done > 0 }";
+	"from system::metrics::runtime::operators::current filter { metric == 'state_compaction_dropped' and value > 0.0 }";
 
 fn create_flow(db: &TestDb) {
 	db.admin("CREATE NAMESPACE app");
@@ -53,12 +53,12 @@ fn an_aggregates_idle_group_is_reclaimed_through_the_flow_tick() {
 	let db = setup();
 	create_flow(&db);
 
-	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "1970-01-01T00:00:00Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);
 	db.await_row_count("FROM app::v", 1, TIMEOUT);
 
 	// A second key carries the flow's event watermark past group 1's ttl, so group 1 goes idle
 	// while others keep arriving - not a flow that stopped entirely.
-	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "1970-01-01T00:10:00Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "2026-01-01T00:10:00Z" }]"#);
 
 	// Asserted, not merely awaited: `await_row_count` returns its last observation on timeout, so
 	// discarding it would pass against a chain that reclaims nothing.
@@ -80,9 +80,9 @@ fn an_aggregate_without_a_ttl_reclaims_nothing() {
 	db.admin("CREATE DEFERRED VIEW app::v { g: int4, total: int8 } with { time: event } \
 		 AS { FROM app::t AGGREGATE { total: math::count(id) } BY { g } }");
 
-	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "1970-01-01T00:00:00Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);
 	db.await_row_count("FROM app::v", 1, TIMEOUT);
-	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "1970-01-01T00:10:00Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "2026-01-01T00:10:00Z" }]"#);
 	// Both groups published, so the flow is live and has ticked through the same path the declared
 	// case reclaims on. Anything that follows is absence of reclamation, not absence of activity.
 	db.await_row_count("FROM app::v", 2, TIMEOUT);

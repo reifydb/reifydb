@@ -179,12 +179,12 @@ impl ArenaInner {
 		self.frozen.push(take(&mut self.active));
 	}
 
-	pub(crate) fn compact(&mut self, floor: &FloorSpec) {
+	pub(crate) fn compact(&mut self, floor: &FloorSpec) -> u64 {
 		self.freeze();
 		if self.frozen.is_empty() {
-			return;
+			return 0;
 		}
-		self.merge_from(0, floor);
+		self.merge_from(0, floor)
 	}
 
 	fn roll(&mut self, config: &OperatorStoreConfig) {
@@ -209,13 +209,14 @@ impl ArenaInner {
 		start
 	}
 
-	fn merge_from(&mut self, start: usize, floor: &FloorSpec) {
+	fn merge_from(&mut self, start: usize, floor: &FloorSpec) -> u64 {
 		let inputs = self.frozen.split_off(start);
 		let merging_oldest = self.frozen.is_empty();
-		let merged = merge(inputs, merging_oldest, floor);
+		let (merged, dropped) = merge(inputs, merging_oldest, floor);
 		if !merged.is_empty() {
 			self.frozen.push(merged);
 		}
+		dropped
 	}
 
 	fn batches_newest_first(&self) -> impl Iterator<Item = &Batch> {
@@ -299,7 +300,7 @@ impl ArenaInner {
 	}
 }
 
-fn merge(inputs: Vec<Batch>, merging_oldest: bool, floor: &FloorSpec) -> Batch {
+fn merge(inputs: Vec<Batch>, merging_oldest: bool, floor: &FloorSpec) -> (Batch, u64) {
 	let mut ranges_by_batch = Vec::with_capacity(inputs.len());
 	let mut cursors = Vec::with_capacity(inputs.len());
 	for batch in inputs {
@@ -307,6 +308,7 @@ fn merge(inputs: Vec<Batch>, merging_oldest: bool, floor: &FloorSpec) -> Batch {
 		cursors.push(batch.entries.into_iter().peekable());
 	}
 	let mut merged = Batch::default();
+	let mut dropped = 0u64;
 	loop {
 		let mut min_key: Option<EncodedKey> = None;
 		for cursor in cursors.iter_mut() {
@@ -339,7 +341,9 @@ fn merge(inputs: Vec<Batch>, merging_oldest: bool, floor: &FloorSpec) -> Batch {
 				}
 			}
 			PointEntry::Row(row) => {
-				if !floor_expired(floor, &key, &row) {
+				if floor_expired(floor, &key, &row) {
+					dropped += 1;
+				} else {
 					merged.put(key, PointEntry::Row(row));
 				}
 			}
@@ -353,7 +357,7 @@ fn merge(inputs: Vec<Batch>, merging_oldest: bool, floor: &FloorSpec) -> Batch {
 			}
 		}
 	}
-	merged
+	(merged, dropped)
 }
 
 pub(crate) struct Arena {

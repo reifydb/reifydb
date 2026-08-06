@@ -29,9 +29,10 @@ use reifydb_engine::expression::{
 	context::CompileContext,
 };
 use reifydb_flow::{
-	operator::{Operator, Reclaimable},
+	operator::Operator,
 	transaction::{FlowTransaction, slot::PersistFn},
 };
+use reifydb_store_operator::FloorSpec;
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -59,12 +60,7 @@ const LAYOUT_KEY_PREFIX: u8 = 0x02;
 
 const DROP_REASON: &str = "removes whose distinct entry was reclaimed";
 
-const CAPABILITIES: &[OperatorCapability] = &[
-	OperatorCapability::Insert,
-	OperatorCapability::Update,
-	OperatorCapability::Delete,
-	OperatorCapability::Reclaim,
-];
+const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
 
 pub(super) struct DistinctWorkingSet {
 	pub(super) state: DistinctState,
@@ -251,8 +247,8 @@ impl Operator for DistinctOperator {
 		self.ttl
 	}
 
-	fn reclaimable_through(&self, _txn: &mut FlowTransaction, watermark: DateTime) -> Result<Reclaimable> {
-		Ok(self.ttl.map(|ttl| Reclaimable::data(watermark.saturating_sub(ttl))).unwrap_or_default())
+	fn floors(&self, _txn: &mut FlowTransaction, watermark: DateTime) -> Result<FloorSpec> {
+		Ok(self.ttl.map(|ttl| FloorSpec::data(watermark.saturating_sub(ttl))).unwrap_or_default())
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {

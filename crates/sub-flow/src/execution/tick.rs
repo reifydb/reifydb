@@ -6,7 +6,7 @@ use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
 
-use crate::{engine::FlowEngineInner, execution::reclaim::ReclaimBudget};
+use crate::engine::FlowEngineInner;
 
 impl FlowEngineInner {
 	#[instrument(name = "flow::engine::process_tick", level = "debug", skip(self, txn), fields(
@@ -30,7 +30,7 @@ impl FlowEngineInner {
 
 		self.dispatch_due_timers(txn, &flow, checkpoint, &topo)?;
 
-		self.reclaim_flow(txn, flow_id, checkpoint, ReclaimBudget::from_config(&self.catalog))?;
+		self.compact_flow(txn, flow_id)?;
 		Ok(())
 	}
 }

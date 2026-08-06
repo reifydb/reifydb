@@ -34,16 +34,16 @@ use reifydb_testing_sdk::{
 use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
 
 #[test]
-fn an_operator_that_declares_reclaim_reaches_the_host_with_it() {
-	// The descriptor's capability list is the whole truth the host loads: losing the bit there
-	// makes reclaim_flow skip the operator while the operator's source still looks correct.
-	assert!(TestVolume::CAPABILITIES.contains(&OperatorCapability::Reclaim));
+fn a_declared_capability_reaches_the_host_through_the_descriptor() {
+	// The descriptor's capability list is the whole truth the host loads: losing a bit there
+	// silently gates the wrong methods while the operator's source still looks correct.
+	assert!(TestVolume::CAPABILITIES.contains(&OperatorCapability::Delete));
 
 	let descriptor = create_descriptor::<FFIOperatorAdapter<TumblingDriver<TestVolume>>>();
 
 	assert!(
-		from_bitmask(descriptor.capabilities).contains(&OperatorCapability::Reclaim),
-		"a declared Reclaim must survive the descriptor round trip"
+		from_bitmask(descriptor.capabilities).contains(&OperatorCapability::Delete),
+		"a declared capability must survive the descriptor round trip"
 	);
 }
 
@@ -124,7 +124,7 @@ impl TumblingRegistration for TestVolume {
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD_WITH_RECLAIM;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 
 	fn from_config(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)

@@ -31,15 +31,12 @@ const ALWAYS_ON: [&str; 5] =
 
 /// Classes this subsystem registers no lifecycle task for on this fixture; adding one is a reviewed decision that
 /// exempts it from the coverage assertion below. Three need a persistent tier the memory store lacks and
-/// cdc-truncate needs a CdcStore in the IoC; the two operator-group classes ride the flow tick instead, pinned by
-/// `sub-flow/tests/lifecycle_coverage.rs`.
-const CONDITIONAL: [RetentionClass; 6] = [
+/// cdc-truncate needs a CdcStore in the IoC.
+const CONDITIONAL: [RetentionClass; 4] = [
 	RetentionClass::PersistentFlush,
 	RetentionClass::CdcTruncate,
 	RetentionClass::TombstoneReap,
 	RetentionClass::VacuumBudget,
-	RetentionClass::OperatorGroupData,
-	RetentionClass::OperatorGroupIdentity,
 ];
 
 fn lifecycle(subsystem: &dyn Subsystem) -> &LifecycleSubsystem {

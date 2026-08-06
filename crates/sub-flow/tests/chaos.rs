@@ -15,7 +15,6 @@ use reifydb_core::{
 	interface::change::Diff,
 	value::column::columns::Columns,
 };
-use reifydb_sub_flow::execution::reclaim::ReclaimBudget;
 use reifydb_testing_chaos::{
 	fuzz::run_reported,
 	operator::{
@@ -66,22 +65,6 @@ fn tumbling_sum() -> WindowSpec {
 		grace: Duration::default(),
 	}
 }
-
-const SPAN_MS: u64 = WINDOW_SECS as u64 * 1_000;
-
-// Sixteen buckets per horizon, so a 60s span grids at 3.75s.
-const GRID_WIDTH_MS: u64 = SPAN_MS / 16;
-
-// A seal at T only proves windows anchored at or before `T - span - 1` are closed, so a group in
-// bucket zero comes due only once the anchor clears a full grid width.
-const SEAL_MS: u64 = SPAN_MS + GRID_WIDTH_MS + 1;
-
-// One millisecond short: a group is due only once its bucket falls strictly below the cutoff's.
-const EARLY_SEAL_MS: u64 = SEAL_MS - 1;
-
-// Bounds the identity phase only - the data phase is bounded by the seal ledger - so it must sit
-// past the horizon without being what makes a group due.
-const SWEEP_MS: u64 = SPAN_MS + GRID_WIDTH_MS;
 
 #[test]
 fn a_window_operator_can_be_built_and_driven() {
@@ -135,58 +118,6 @@ chaos_test!(window_tumbling_grace_chaos, |seed| {
 			seal_pct: 30,
 		},
 	);
-});
-
-chaos_test!(window_tumbling_reclaim_chaos, |seed| {
-	// Grace wider than the size keeps a window open past its own span, which is where a sweep and a
-	// live window actually meet. Vacuity is not asserted per seed: the seal is the primary reclaimer,
-	// so roughly one corpus in twenty correctly leaves the sweep nothing to do.
-	operators::window::tumbling::drive_reclaiming(
-		seed,
-		operators::window::tumbling::Params {
-			size_secs: 30,
-			grace_secs: 45,
-			groups: 3,
-			steps: 60,
-			max_batch: 4,
-			coord_span_ms: 400_000,
-			remove_pct: 25,
-			update_pct: 15,
-			seal_pct: 30,
-		},
-		20,
-		true,
-	);
-});
-
-chaos_test!(window_tumbling_reclaim_random_chaos, |seed| {
-	operators::window::tumbling::drive_reclaiming_random(seed);
-});
-
-chaos_test!(window_sliding_reclaim_chaos, |seed| {
-	// Only the seed varies, so this searches the neighbourhood of a shape that once diverged rather
-	// than one point in it.
-	operators::window::sliding::drive_reclaiming(
-		seed,
-		operators::window::sliding::Params {
-			size_secs: 30,
-			slide_secs: 10,
-			grace_secs: 45,
-			groups: 3,
-			steps: 60,
-			max_batch: 4,
-			coord_span_ms: 400_000,
-			remove_pct: 25,
-			update_pct: 15,
-			seal_pct: 30,
-		},
-		20,
-		true,
-	);
-});
-
-chaos_test!(window_sliding_reclaim_random_chaos, |seed| {
-	operators::window::sliding::drive_reclaiming_random(seed);
 });
 
 chaos_test!(window_sliding_sum_chaos, |seed| {
@@ -605,100 +536,6 @@ fn a_join_operator_can_be_built_and_driven() {
 }
 
 #[test]
-fn a_harness_without_a_registered_grid_can_never_reclaim() {
-	// The reclaim driver skips a node with no event grid silently, so a suite built on an ungridded
-	// harness would report green while asserting nothing about reclamation.
-	let plain = Harness::new(|_| operators::append::build(2));
-	assert!(
-		plain.activity_grid().event_grid().is_none(),
-		"the default is the undeclared grid, which is exactly what the driver refuses to sweep"
-	);
-
-	// The grid comes from the operator, so a fixture declaring no ttl is perpetual and stays
-	// ungridded.
-	let span = Duration::from_seconds(16).expect("16s is representable");
-	let declared = Harness::new(|_| operators::append::build_with_ttl(2, Some(span))).with_activity_grid();
-	let grid = declared.activity_grid().event_grid().expect("a declared scale must grid in event time");
-	assert_eq!(
-		grid.width(),
-		Duration::from_seconds(1).unwrap(),
-		"sixteen buckets per scale, so a 16s ttl grids at one second here"
-	);
-}
-
-#[test]
-fn the_harness_sweep_retires_a_group_only_once_its_seal_ledger_clears_its_horizon() {
-	// The frontier is the operator's seal ledger, not the instant the sweep is called at: nothing
-	// unsealed is reclaimable. A sweep that retired nothing, or everything immediately, would be
-	// indistinguishable from working code in every suite built on it.
-	let mut harness =
-		Harness::new(|runtime| operators::window::build(&tumbling_sum(), runtime)).with_activity_grid();
-
-	let at = |ms: u64| DateTime::from_timestamp_millis(ms).unwrap();
-	harness.apply(generator::insert(vec![generator::row(RowNumber(1), 1, 10, at(0))])).expect("apply must succeed");
-
-	let unsealed = harness.reclaim(SWEEP_MS).expect("sweep must succeed");
-	assert!(
-		unsealed.is_empty(),
-		"an operator that has sealed nothing has nothing reclaimable, but the sweep took {unsealed:?}"
-	);
-
-	harness.tick(EARLY_SEAL_MS).expect("seal must succeed");
-	let early = harness.reclaim(SWEEP_MS).expect("sweep must succeed");
-	assert!(
-		early.is_empty(),
-		"a group one millisecond inside its horizon must survive, but the sweep took {early:?}"
-	);
-
-	harness.tick(SEAL_MS).expect("seal must succeed");
-	let due = harness.reclaim(SWEEP_MS).expect("sweep must succeed");
-	assert!(!due.data.is_empty(), "once the seal clears bucket 0 the group must be retired");
-}
-
-#[test]
-fn a_truncated_budget_leaves_the_rest_of_the_due_groups_for_the_next_sweep() {
-	// The production budget is 256 groups per tick, which no chaos run approaches, so partial
-	// reclamation has to be a scenario knob rather than a hope.
-	let mut harness = Harness::new(|runtime| operators::window::build(&tumbling_sum(), runtime))
-		.with_activity_grid()
-		.with_reclaim_budget(ReclaimBudget {
-			groups: 1,
-			rows: 1_024,
-		});
-
-	let at = |ms: u64| DateTime::from_timestamp_millis(ms).unwrap();
-	harness.apply(generator::insert(vec![
-		generator::row(RowNumber(1), 1, 10, at(0)),
-		generator::row(RowNumber(2), 2, 20, at(0)),
-	]))
-	.expect("apply must succeed");
-
-	// Both groups are due only once the operator has sealed past their bucket, so without this tick
-	// the budget assertions below pass vacuously at zero.
-	harness.tick(SEAL_MS).expect("seal must succeed");
-
-	let first = harness.reclaim(SWEEP_MS).expect("sweep must succeed");
-	assert_eq!(first.data.len(), 1, "a one-group budget must stop after one group");
-
-	let second = harness.reclaim(SWEEP_MS).expect("sweep must succeed");
-	assert_eq!(second.data.len(), 1, "the group left behind is still due and goes on the next sweep");
-
-	let third = harness.reclaim(SWEEP_MS).expect("sweep must succeed");
-	assert!(third.is_empty(), "and a drained node must not keep offering the same groups back");
-}
-
-#[test]
-fn a_harness_without_a_declared_horizon_sweeps_nothing() {
-	// The default has to be inert, or every existing suite would start reclaiming underneath itself.
-	// No declared horizon means no grid, which is the exact condition production skips a node on.
-	let mut harness = Harness::new(|runtime| operators::window::build(&tumbling_sum(), runtime));
-	let at = |ms: u64| DateTime::from_timestamp_millis(ms).unwrap();
-	harness.apply(generator::insert(vec![generator::row(RowNumber(1), 1, 10, at(0))])).expect("apply must succeed");
-
-	assert!(harness.reclaim(1_000_000).expect("sweep must succeed").is_empty());
-}
-
-#[test]
 fn an_append_operator_can_be_built_and_driven() {
 	// Append refuses a diff whose origin it cannot resolve to one of its inputs, so a mistagged
 	// corpus fails here rather than quietly driving nothing.
@@ -764,8 +601,6 @@ chaos_test!(join_left_keys_1_chaos, |seed| {
 			coord_span_ms: 400_000,
 			left_ttl: None,
 			right_ttl: None,
-			tick_pct: 0,
-			sink_row_ttl: None,
 			static_right: 0,
 		},
 	);
@@ -1764,8 +1599,6 @@ chaos_test!(join_inner_none_pct_30_chaos, |seed| {
 			coord_span_ms: 400_000,
 			left_ttl: None,
 			right_ttl: None,
-			tick_pct: 0,
-			sink_row_ttl: None,
 			static_right: 0,
 		},
 	);
@@ -1792,8 +1625,6 @@ chaos_test!(join_matrix_definedness_flip_chaos, |seed| {
 					coord_span_ms: 400_000,
 					left_ttl: None,
 					right_ttl: None,
-					tick_pct: 0,
-					sink_row_ttl: None,
 					static_right: 0,
 				};
 				operators::join::divergence_with_definedness_flips(seed, params)
@@ -1833,8 +1664,6 @@ fn the_join_oracles_are_not_interchangeable() {
 				coord_span_ms: 400_000,
 				left_ttl: None,
 				right_ttl: None,
-				tick_pct: 0,
-				sink_row_ttl: None,
 				static_right: 0,
 			};
 			let divergence = operators::join::divergence_checked_as(7, params, oracle);
@@ -2112,3 +1941,203 @@ chaos_test!(window_session_max_chaos, |seed| {
 chaos_test!(window_session_random_chaos, |seed| {
 	operators::window::session::drive_random(seed);
 });
+
+fn group_data_rows_stamped_below(harness: &mut Harness<impl reifydb_flow::operator::Operator>, cutoff_ms: u64) -> usize {
+	// Counts group-scoped data rows whose write stamp sits strictly below the cutoff; those are
+	// exactly the rows a floor at `cutoff_ms` must have cancelled at merge time.
+	use reifydb_codec::encoded::row::SHAPE_HEADER_SIZE;
+	use reifydb_core::key::{
+		EncodableKey, operator_group_state::OperatorGroupStateKey, operator_state::OperatorStateKey,
+	};
+	let cutoff = DateTime::from_timestamp_millis(cutoff_ms).unwrap();
+	harness.state_items()
+		.expect("state scan must succeed")
+		.into_iter()
+		.filter(|(key, row)| {
+			let Some(decoded) = OperatorStateKey::decode(key) else {
+				return false;
+			};
+			let Some((group, keyspace, _)) = OperatorGroupStateKey::decode_inner(&decoded.key) else {
+				return false;
+			};
+			if group.is_node_scope() || !keyspace.is_data() {
+				return false;
+			}
+			row.as_slice().len() >= SHAPE_HEADER_SIZE && row.updated_at() < cutoff
+		})
+		.count()
+}
+
+fn mapping_rows(harness: &mut Harness<impl reifydb_flow::operator::Operator>) -> usize {
+	use reifydb_core::key::{
+		EncodableKey,
+		operator_group_state::{Keyspace, OperatorGroupStateKey},
+		operator_state::OperatorStateKey,
+	};
+	harness.state_items()
+		.expect("state scan must succeed")
+		.into_iter()
+		.filter(|(key, _)| {
+			OperatorStateKey::decode(key)
+				.and_then(|decoded| OperatorGroupStateKey::decode_inner(&decoded.key))
+				.is_some_and(|(_, keyspace, _)| keyspace == Keyspace::ROW_NUMBER_MAPPING)
+		})
+		.count()
+}
+
+#[test]
+fn tick_compaction_reclaims_a_sealed_window_and_the_gate_still_refuses_late_rows() {
+	// End-to-end window retention on the new mechanism: before anything seals the window derives
+	// empty floors and compaction drops nothing; once the seal ledger clears a window, compaction
+	// cancels every state row stamped below the sealed anchor and the arena shrinks; and a late row
+	// into the sealed window is still refused by the gate, so nothing it dropped can resurrect.
+	// Mutation falsified against: the window operator returning an empty FloorSpec after sealing
+	// (dropped would be 0 and the stamped-below scan non-empty).
+	let mut harness = Harness::new(|runtime| build(&tumbling_sum(), runtime));
+	let at = |ms: u64| DateTime::from_timestamp_millis(ms).unwrap();
+
+	// 1_200_000 is a multiple of the 60s window size, so the row anchors its own window; the base
+	// is far from zero because an epoch-stamped state row is indistinguishable from an unstamped one.
+	harness.apply(generator::insert(vec![generator::row(RowNumber(1), 1, 10, at(1_200_000))]))
+		.expect("apply must succeed");
+	harness.apply(generator::insert(vec![generator::row(RowNumber(2), 2, 20, at(1_860_000))]))
+		.expect("apply must succeed");
+
+	let unsealed = harness.compact(1_900_000).expect("compaction must succeed");
+	assert_eq!(unsealed.outcome.dropped, 0, "an operator that has sealed nothing has empty floors");
+	assert!(unsealed.floor.is_none(), "and reports no frontier");
+	assert!(harness.footprint().unwrap().data_rows > 0, "both groups' state must still be present");
+
+	// The seal timer fires at 1_900_000, so the ledger advances there and the anchor lands at
+	// 1_839_999: group 1 (stamped 1_200_000) is below it, group 2 (stamped 1_860_000) is not.
+	harness.tick(1_900_000).expect("seal must succeed");
+
+	let bytes_before = harness.state_bytes();
+	let sealed = harness.compact(1_900_000).expect("compaction must succeed");
+
+	assert!(sealed.outcome.dropped > 0, "the sealed group's floored rows must be cancelled at the merge");
+	assert!(harness.state_bytes() < bytes_before, "cancelled rows must release their arena bytes");
+	assert_eq!(
+		sealed.floor,
+		Some(at(1_839_999)),
+		"the reported frontier is the sealed anchor the floor was derived from"
+	);
+	assert_eq!(
+		group_data_rows_stamped_below(&mut harness, 1_839_999),
+		0,
+		"no group-scoped data row below the anchor may survive compaction"
+	);
+
+	let late = harness
+		.apply(generator::insert(vec![generator::row(RowNumber(3), 1, 99, at(1_210_000))]))
+		.expect("apply must succeed");
+	assert!(late.diffs.is_empty(), "a row into a sealed window is refused by the gate, not folded");
+	assert_eq!(
+		group_data_rows_stamped_below(&mut harness, 1_839_999),
+		0,
+		"and the refused row must not resurrect state below the anchor"
+	);
+}
+
+#[test]
+fn join_side_floors_drop_expired_entries_and_keep_the_boundary_row() {
+	// The join floors each side's keyspace at behind(that side's ttl). An entry stamped strictly
+	// below the cutoff dies at tick compaction; an entry exactly AT the cutoff survives, or every
+	// declared ttl silently widens by one instant.
+	// Mutation falsified against: the floor comparison relaxing from strictly-below to at-or-below
+	// (the boundary row would die and the survivor count drop to 1).
+	let left_ttl = Duration::from_seconds(60).unwrap();
+	let mut harness =
+		Harness::with_engine(|engine, _| operators::join::build(engine, Variant::inner(), Some(left_ttl), None));
+	let workload = JoinWorkload {
+		keys: 8,
+		right_pct: 0,
+		none_pct: 0,
+		rekey_pct: 0,
+		coord_span_ms: 1,
+		flip_definedness: false,
+	};
+
+	let left = |number: u64, key: i32, coord_ms: u64| JoinRow {
+		side: Side::Left,
+		number: RowNumber(number),
+		key: Some(key),
+		value: 1,
+		coord_ms,
+	};
+	harness.apply(workload.insert(&[left(1, 1, 600_000)])).expect("apply must succeed");
+	harness.apply(workload.insert(&[left(2, 2, 640_000)])).expect("apply must succeed");
+	harness.apply(workload.insert(&[left(3, 3, 680_000)])).expect("apply must succeed");
+
+	let compacted = harness.compact(700_000).expect("compaction must succeed");
+
+	assert!(compacted.outcome.dropped > 0, "the expired left entry must be cancelled");
+	assert_eq!(
+		group_data_rows_stamped_below(&mut harness, 640_000),
+		0,
+		"every left entry strictly below behind(left_ttl) is gone"
+	);
+	let survivors = harness
+		.state_items()
+		.expect("state scan must succeed")
+		.into_iter()
+		.filter(|(key, _)| {
+			use reifydb_core::key::{
+				EncodableKey,
+				operator_group_state::{Keyspace, OperatorGroupStateKey},
+				operator_state::OperatorStateKey,
+			};
+			OperatorStateKey::decode(key)
+				.and_then(|decoded| OperatorGroupStateKey::decode_inner(&decoded.key))
+				.is_some_and(|(_, keyspace, _)| keyspace == Keyspace::JOIN_LEFT)
+		})
+		.count();
+	assert_eq!(survivors, 2, "the boundary entry (== cutoff) and the young entry must both survive");
+}
+
+#[test]
+fn join_row_number_mappings_honor_the_sink_ttl_horizon_not_the_data_floor() {
+	// A published pair's row-number mapping must outlive the sink row that names it, so it ages at
+	// min(declared mapping horizon, watermark - sink row ttl) and NOT at the data floor: evicting
+	// it while the published row is live would mint a second row number over the same pair.
+	// Mutation falsified against: collapsing the identity horizon onto the data floor (the mapping
+	// would already be gone at the first compaction, where this test demands it survives).
+	let left_ttl = Duration::from_seconds(60).unwrap();
+	let sink_ttl = Duration::from_seconds(600).unwrap();
+	let mut harness =
+		Harness::with_engine(|engine, _| operators::join::build(engine, Variant::inner(), Some(left_ttl), None))
+			.with_sink_row_ttl(sink_ttl);
+	let workload = JoinWorkload {
+		keys: 8,
+		right_pct: 0,
+		none_pct: 0,
+		rekey_pct: 0,
+		coord_span_ms: 1,
+		flip_definedness: false,
+	};
+
+	let row = |side: Side, number: u64, coord_ms: u64| JoinRow {
+		side,
+		number: RowNumber(number),
+		key: Some(1),
+		value: 1,
+		coord_ms,
+	};
+	harness.apply(workload.insert(&[row(Side::Left, 1, 100_000)])).expect("apply must succeed");
+	let published = harness.apply(workload.insert(&[row(Side::Right, 2, 100_500)])).expect("apply must succeed");
+	assert!(!published.diffs.is_empty(), "precondition: the pair must publish, which is what mints the mapping");
+	assert!(mapping_rows(&mut harness) > 0, "precondition: a row-number mapping exists");
+
+	// At 400_000 the data floor (340_000) has passed the pair's stamp, but the identity horizon
+	// (watermark - 600s) saturates at the epoch: the mapping must survive the data-floor compaction.
+	let data_only = harness.compact(400_000).expect("compaction must succeed");
+	assert!(data_only.outcome.dropped > 0, "the expired left entry itself is cancelled at the data floor");
+	assert!(
+		mapping_rows(&mut harness) > 0,
+		"the mapping must survive a compaction whose data floor has passed it"
+	);
+
+	// At 800_000 the identity horizon reaches 200_000, past the mapping's stamp: now it dies.
+	harness.compact(800_000).expect("compaction must succeed");
+	assert_eq!(mapping_rows(&mut harness), 0, "past the sink-ttl horizon the mapping is evicted");
+}

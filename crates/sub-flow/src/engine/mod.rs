@@ -27,8 +27,6 @@ use reifydb_core::{
 		id::{TableId, ViewId},
 		object::ObjectId,
 	},
-	key::operator_group_state::Keyspace,
-	lifecycle::metrics::RetentionMetrics,
 	metrics::heap::{OperatorSample, StateMemory},
 	state::budget::{LeaseReport, OperatorStateBudgetHandle},
 };
@@ -65,7 +63,6 @@ use crate::operator::native::native_operator_loader;
 use crate::{
 	builder::CustomOperators,
 	engine::cache::{ExecutionLevelCache, ScheduleCache},
-	execution::reclaim::KeyspaceCursors,
 	operator::{OperatorCell, metrics::OperatorSampleRegistry},
 };
 
@@ -86,13 +83,10 @@ pub struct FlowEngineInner {
 	pub(crate) custom_operators: CustomOperators,
 	pub(crate) mapping_cursors: DashMap<OperatorId, Option<EncodedKey>>,
 
-	pub(crate) keyspace_cursors: DashMap<OperatorId, KeyspaceCursors>,
-
-	pub(crate) keyspace_swept_at: DashMap<(OperatorId, Keyspace), DateTime>,
+	pub(crate) compacted_at: DashMap<OperatorId, DateTime>,
 	pub(crate) substrate: FlowSubstrate,
 	pub(crate) operator_samples: OperatorSampleRegistry,
 	pub(crate) state_budget: OperatorStateBudgetHandle,
-	pub(crate) retention_metrics: RetentionMetrics,
 }
 
 #[derive(Clone)]
@@ -180,17 +174,11 @@ impl FlowEngineInner {
 			runtime_context,
 			custom_operators,
 			mapping_cursors: DashMap::new(),
-			keyspace_cursors: DashMap::new(),
-			keyspace_swept_at: DashMap::new(),
+			compacted_at: DashMap::new(),
 			substrate,
 			operator_samples,
 			state_budget,
-			retention_metrics: RetentionMetrics::new(),
 		}
-	}
-
-	pub fn adopt_retention_metrics(&mut self, metrics: RetentionMetrics) {
-		self.retention_metrics = metrics;
 	}
 
 	#[instrument(name = "flow::engine::sample", level = "debug", skip_all)]
@@ -362,8 +350,11 @@ impl FlowEngineInner {
 		for operator_id in node_ids {
 			self.operators.remove(&operator_id);
 			self.substrate.row.evict(operator_id);
+			self.substrate.operators.drop_arena(operator_id);
 			self.state_budget.release_lease(operator_id);
 			self.executor.services().node_retention_store.remove(operator_id);
+			self.mapping_cursors.remove(&operator_id);
+			self.compacted_at.remove(&operator_id);
 		}
 
 		for entries in self.sources.values_mut() {
@@ -503,5 +494,60 @@ mod tests {
 		);
 
 		assert_eq!(lease_demand(&report), ByteSize::from_bytes(10240));
+	}
+
+	#[test]
+	fn removing_a_flow_drops_its_operators_arenas() {
+		// remove_flow is the only arena teardown a retired flow gets: without drop_arena its
+		// operators' state stays resident (and counted in total_bytes) until the process restarts.
+		// Mutation falsified against: removing the drop_arena call from remove_flow (per-operator
+		// bytes and the process-wide total both stay non-zero).
+		use std::collections::HashMap;
+
+		use reifydb_codec::encoded::row::EncodedRow;
+		use reifydb_core::interface::{WithEventBus, catalog::flow::FlowId};
+		use reifydb_engine::test_harness::TestEngine;
+		use reifydb_rql::flow::{
+			flow::FlowDag,
+			operator::{FlowNode, OperatorDef},
+		};
+		use reifydb_value::util::cowvec::CowVec;
+
+		use crate::operator::scan::series::SourceSeriesOperator;
+
+		let engine = TestEngine::new();
+		let mut inner = FlowEngineInner::new(
+			engine.catalog(),
+			engine.executor(),
+			engine.event_bus().clone(),
+			RuntimeContext::with_clock(engine.clock().clone()),
+			CustomOperators::new(HashMap::new()),
+			FlowSubstrate {
+				operators: engine.inner().operator_state(),
+				..FlowSubstrate::default()
+			},
+			OperatorSampleRegistry::new(),
+			OperatorStateBudgetHandle::default(),
+		);
+
+		let operator = OperatorId(7);
+		let mut builder = FlowDag::builder(FlowId(1));
+		builder.add_node(FlowNode::new(
+			operator,
+			OperatorDef::SourceSeries {
+				series: reifydb_core::interface::catalog::id::SeriesId(1),
+			},
+		));
+		inner.register_flow_dag(builder.build());
+		inner.insert_operator(operator, OperatorCell::new(SourceSeriesOperator::new(operator)));
+
+		let store = inner.substrate.operators.clone();
+		store.set(operator, reifydb_codec::key::encoded::EncodedKey::new(b"k"), EncodedRow(CowVec::new(vec![1u8; 64])));
+		assert!(store.bytes(operator) > 0, "precondition: the operator's arena holds state");
+
+		inner.remove_flow(FlowId(1));
+
+		assert_eq!(store.bytes(operator), 0, "the retired operator's arena must be dropped");
+		assert_eq!(store.total_bytes(), 0, "and its bytes must leave the process-wide accounting");
 	}
 }

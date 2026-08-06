@@ -2,13 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 //! The lifecycle boot report is the only place that answers "is anything reclaiming this class?".
-//! Coverage is declared by whoever executes it, wherever that lives: a covered-set derived only
-//! from the lifecycle subsystem's own tasks reports the flow-tick classes at ERROR on every boot.
+//! Coverage is declared by whoever executes it; operator state now ages through per-operator arena
+//! compaction on the flow tick and has no retention class of its own, so the report accounts only
+//! for the store-side classes.
 
 use reifydb::{WithSubsystem, embedded};
 use reifydb_core::lifecycle::{class::RetentionClass, coverage::RetentionCoverage};
-
-const FLOW_TICK_RECLAIM: &str = "flow-tick-reclaim";
 
 fn coverage_of_a_flow_enabled_database() -> RetentionCoverage {
 	let db = embedded::memory().with_flow(|f| f).build().expect("memory database with flow must build");
@@ -24,42 +23,6 @@ fn coverage_of_a_database_without_flow() -> RetentionCoverage {
 		.ioc()
 		.try_resolve::<RetentionCoverage>()
 		.expect("the builder must register RetentionCoverage before any subsystem is created")
-}
-
-const OPERATOR_GROUP_CLASSES: [RetentionClass; 2] =
-	[RetentionClass::OperatorGroupData, RetentionClass::OperatorGroupIdentity];
-
-#[test]
-fn a_database_without_the_flow_subsystem_declares_the_operator_classes_absent() {
-	// A node that builds no flows - raptor's backend federates remote namespaces and defines none - never
-	// constructs the FlowSubsystem, so nothing claims these two and every boot logged them at ERROR. The
-	// state is real but harmless: with no flow there is no operator group state to reclaim. Only the
-	// builder knows that, so it is the builder that has to say it.
-	let coverage = coverage_of_a_database_without_flow();
-
-	for class in OPERATOR_GROUP_CLASSES {
-		assert_eq!(
-			coverage.absence(class),
-			Some("flow subsystem not enabled"),
-			"{class} must be explained on a flow-less database, not reported as an unreclaimed lane"
-		);
-		assert!(!coverage.is_covered(class), "{class} has no executor without the flow tick");
-	}
-}
-
-#[test]
-fn a_flow_enabled_database_leaves_the_operator_classes_unexcused() {
-	// The direction that keeps the ERROR meaningful: a declaration made unconditionally, or left in place
-	// once flow is on, would excuse the exact lane the report exists to catch. If the flow tick reclaimer
-	// ever stops claiming these, this must go back to being an error and not an absence.
-	let coverage = coverage_of_a_flow_enabled_database();
-
-	for class in OPERATOR_GROUP_CLASSES {
-		assert!(
-			coverage.absence(class).is_none(),
-			"{class} is produced whenever flow runs, so excusing it here would hide a dead reclaimer"
-		);
-	}
 }
 
 #[test]
@@ -96,17 +59,6 @@ fn every_retention_class_is_either_reclaimed_or_explained() {
 			"retention classes with no executor and no declared reason: {unaccounted:?}"
 		);
 	}
-}
-
-#[test]
-fn the_flow_tick_reclaimer_declares_the_operator_classes_it_owns() {
-	// Neither class is reclaimed by a LifecycleTask - the group reclaim driver runs inside
-	// FlowTransaction on the flow tick. Registration is what makes that visible to the report
-	// instead of leaving it to look like a dead lane.
-	let coverage = coverage_of_a_flow_enabled_database();
-
-	assert_eq!(coverage.owner(RetentionClass::OperatorGroupData), Some(FLOW_TICK_RECLAIM));
-	assert_eq!(coverage.owner(RetentionClass::OperatorGroupIdentity), Some(FLOW_TICK_RECLAIM));
 }
 
 #[test]

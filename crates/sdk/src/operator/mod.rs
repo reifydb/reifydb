@@ -21,7 +21,7 @@ use column::operator::OperatorColumn;
 use context::{OperatorContext, ffi::FFIOperatorContext};
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
-	interface::catalog::flow::OperatorId, key::operator_group_state::GroupSet, metrics::heap::OperatorSample,
+	interface::catalog::flow::OperatorId, metrics::heap::OperatorSample,
 };
 use timer::Timer;
 use view::ChangeView;
@@ -38,8 +38,6 @@ pub trait FFIOperator: 'static {
 	fn on_timer(&mut self, _ctx: &mut FFIOperatorContext, _timer: Timer<'_>) -> Result<()> {
 		Ok(())
 	}
-
-	fn invalidate_groups(&mut self, _groups: &GroupSet) {}
 
 	fn seal_after_ms(&self) -> Option<u64> {
 		None
@@ -87,7 +85,6 @@ pub trait OperatorLogic: Send + Sync {
 		None
 	}
 
-	fn invalidate_groups(&mut self, _groups: &GroupSet) {}
 }
 
 pub struct FFIOperatorAdapter<C> {
@@ -129,9 +126,5 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> FFIOperator for FFIOperatorA
 
 	fn sample(&self) -> Option<OperatorSample> {
 		self.core.sample()
-	}
-
-	fn invalidate_groups(&mut self, groups: &GroupSet) {
-		self.core.invalidate_groups(groups)
 	}
 }

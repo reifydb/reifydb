@@ -14,7 +14,7 @@ use reifydb_codec::{
 	state::OperatorState,
 };
 use reifydb_core::{
-	key::operator_group_state::{GroupId, GroupSet},
+	key::operator_group_state::GroupId,
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		cache::{StateCache, StateView},
@@ -214,14 +214,6 @@ where
 		let mut engine = Self::scoped(config, group_scoped);
 		engine.running = Some(running);
 		engine
-	}
-
-	pub fn invalidate_groups(&mut self, groups: &GroupSet) -> usize {
-		let mut dropped = self.buffers.invalidate_group_data(groups);
-		if let Some(running) = &mut self.running {
-			dropped += running.invalidate_group_data(groups);
-		}
-		dropped
 	}
 
 	pub fn with_lag(mut self, lag: <C::Coord as WindowCoord>::Span) -> Self {

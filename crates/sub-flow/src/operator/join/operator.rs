@@ -27,9 +27,10 @@ use reifydb_engine::{
 	vm::executor::Executor,
 };
 use reifydb_flow::{
-	operator::{Operator, Reclaimable},
+	operator::Operator,
 	transaction::FlowTransaction,
 };
+use reifydb_store_operator::FloorSpec;
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -56,12 +57,7 @@ use crate::{
 	},
 };
 
-const CAPABILITIES: &[OperatorCapability] = &[
-	OperatorCapability::Insert,
-	OperatorCapability::Update,
-	OperatorCapability::Delete,
-	OperatorCapability::Reclaim,
-];
+const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
 
 fn group_by_key(keys: &[Option<Hash128>]) -> (Vec<Hash128>, HashMap<Hash128, Vec<usize>>, Vec<usize>) {
 	let mut order: Vec<Hash128> = Vec::new();
@@ -590,33 +586,30 @@ impl Operator for JoinOperator {
 		}
 	}
 
-	fn reclaimable_through(&self, _txn: &mut FlowTransaction, watermark: DateTime) -> Result<Reclaimable> {
+	fn floors(&self, _txn: &mut FlowTransaction, watermark: DateTime) -> Result<FloorSpec> {
 		let behind = |span: Duration| watermark.saturating_sub(span);
 
-		let mut keyspaces = Vec::new();
+		let mut spec = FloorSpec::default();
 		if let Some(ttl) = self.left_ttl {
-			keyspaces.push((Keyspace::JOIN_LEFT, behind(ttl)));
-			keyspaces.extend(snapshot_ledger_keyspaces(self.snapshot)
-				.into_iter()
-				.map(|ks| (ks, behind(ttl))));
+			spec.set(Keyspace::JOIN_LEFT, behind(ttl));
+			for keyspace in snapshot_ledger_keyspaces(self.snapshot) {
+				spec.set(keyspace, behind(ttl));
+			}
+			if !self.latest {
+				spec.set(Keyspace::ROW_NUMBER_MAPPING, behind(ttl));
+			}
 		}
 		if let Some(ttl) = self.right_ttl
 			&& !self.latest
 		{
-			keyspaces.push((Keyspace::JOIN_RIGHT, behind(ttl)));
+			spec.set(Keyspace::JOIN_RIGHT, behind(ttl));
 		}
-
-		Ok(Reclaimable {
-			data: match (self.left_ttl, self.right_ttl) {
-				(Some(left), Some(right)) => Some(behind(left.max(right))),
-				_ => None,
-			},
-			keyspaces,
-			mapping: match self.latest {
-				true => None,
-				false => self.left_ttl.map(behind),
-			},
-		})
+		if !self.latest
+			&& let (Some(left), Some(right)) = (self.left_ttl, self.right_ttl)
+		{
+			spec.set_data(behind(left.max(right)));
+		}
+		Ok(spec)
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
@@ -882,9 +875,9 @@ mod span_tests {
 		watermark().saturating_sub(span)
 	}
 
-	fn frontier(op: &JoinOperator, engine: &TestEngine) -> Reclaimable {
+	fn frontier(op: &JoinOperator, engine: &TestEngine) -> FloorSpec {
 		let mut txn = engine.flow_txn().deferred();
-		op.reclaimable_through(&mut txn, watermark()).expect("the join reports a frontier")
+		op.floors(&mut txn, watermark()).expect("the join reports its floors")
 	}
 
 	#[test]
@@ -898,10 +891,17 @@ mod span_tests {
 		let mut op = make_op(70, Some(left), Some(right), &engine);
 		op.snapshot = false;
 
+		let spec = frontier(&op, &engine);
 		assert_eq!(
-			frontier(&op, &engine).keyspaces,
-			vec![(Keyspace::JOIN_LEFT, behind(left)), (Keyspace::JOIN_RIGHT, behind(right))],
+			spec.cutoff(Keyspace::JOIN_LEFT),
+			Some(behind(left)),
 			"each side must age on its own keyspace at its own declared ttl"
+		);
+		assert_eq!(spec.cutoff(Keyspace::JOIN_RIGHT), Some(behind(right)));
+		assert_eq!(
+			spec.data_cutoff(),
+			Some(behind(right)),
+			"the shared group data floors at the longer of the two declared ttls"
 		);
 	}
 
@@ -914,18 +914,13 @@ mod span_tests {
 
 		let mut untimed_right = make_op(71, Some(left), None, &engine);
 		untimed_right.snapshot = false;
-		assert_eq!(
-			frontier(&untimed_right, &engine).keyspaces,
-			vec![(Keyspace::JOIN_LEFT, behind(left))],
-			"the untimed right side must not be enrolled"
-		);
+		let spec = frontier(&untimed_right, &engine);
+		assert_eq!(spec.cutoff(Keyspace::JOIN_LEFT), Some(behind(left)));
+		assert_eq!(spec.cutoff(Keyspace::JOIN_RIGHT), None, "the untimed right side must not be enrolled");
 
 		let mut untimed = make_op(72, None, None, &engine);
 		untimed.snapshot = false;
-		assert!(
-			frontier(&untimed, &engine).keyspaces.is_empty(),
-			"a join with no ttl at all ages only on the operator horizon"
-		);
+		assert!(frontier(&untimed, &engine).is_empty(), "a join with no ttl at all never floors anything");
 	}
 
 	#[test]
@@ -939,8 +934,12 @@ mod span_tests {
 		let mut op = make_op(90, Some(left), None, &engine);
 		op.snapshot = false;
 
-		assert_eq!(op.retention_scale(), Some(left), "the side sweep needs an event-time grid to stamp on");
-		assert_eq!(frontier(&op, &engine).data, None, "one declared side cannot retire the shared group");
+		assert_eq!(op.retention_scale(), Some(left), "the side floor needs an event-time grid to stamp on");
+		assert_eq!(
+			frontier(&op, &engine).data_cutoff(),
+			None,
+			"one declared side cannot floor the shared group data"
+		);
 	}
 
 	#[test]
@@ -953,13 +952,11 @@ mod span_tests {
 		op.snapshot = false;
 
 		let mut txn = engine.flow_txn().deferred();
-		let young = op.reclaimable_through(&mut txn, DateTime::from_millis(1_000)).unwrap();
+		let young = op.floors(&mut txn, DateTime::from_millis(1_000)).unwrap();
 
-		assert_eq!(young.data, Some(DateTime::EPOCH), "a watermark below the ttl floors at the epoch");
-		assert_eq!(
-			young.keyspaces,
-			vec![(Keyspace::JOIN_LEFT, DateTime::EPOCH), (Keyspace::JOIN_RIGHT, DateTime::EPOCH),]
-		);
+		assert_eq!(young.data_cutoff(), Some(DateTime::EPOCH), "a watermark below the ttl floors at the epoch");
+		assert_eq!(young.cutoff(Keyspace::JOIN_LEFT), Some(DateTime::EPOCH));
+		assert_eq!(young.cutoff(Keyspace::JOIN_RIGHT), Some(DateTime::EPOCH));
 	}
 
 	#[test]
@@ -993,11 +990,13 @@ mod span_tests {
 		let left = ttl(50);
 
 		assert_eq!(
-			frontier(&make_op(74, Some(left), Some(ttl(9_000)), &engine), &engine).mapping,
+			frontier(&make_op(74, Some(left), Some(ttl(9_000)), &engine), &engine)
+				.cutoff(Keyspace::ROW_NUMBER_MAPPING),
 			Some(behind(left))
 		);
 		assert_eq!(
-			frontier(&make_op(75, None, Some(ttl(9_000)), &engine), &engine).mapping,
+			frontier(&make_op(75, None, Some(ttl(9_000)), &engine), &engine)
+				.cutoff(Keyspace::ROW_NUMBER_MAPPING),
 			None,
 			"a join with no left ttl declares no mapping span"
 		);
@@ -1011,7 +1010,7 @@ mod span_tests {
 		let mut op = make_op(76, Some(ttl(50)), None, &engine);
 		op.latest = true;
 
-		assert_eq!(frontier(&op, &engine).mapping, None);
+		assert_eq!(frontier(&op, &engine).cutoff(Keyspace::ROW_NUMBER_MAPPING), None);
 	}
 
 	#[test]
@@ -1029,33 +1028,35 @@ mod span_tests {
 		op.latest = true;
 		op.snapshot = false;
 
+		let spec = frontier(&op, &engine);
+		assert_eq!(spec.cutoff(Keyspace::JOIN_LEFT), Some(behind(Duration::from_seconds(60).unwrap())));
 		assert_eq!(
-			frontier(&op, &engine).keyspaces,
-			vec![(Keyspace::JOIN_LEFT, behind(Duration::from_seconds(60).unwrap()))],
+			spec.cutoff(Keyspace::JOIN_RIGHT),
+			None,
 			"latest mode declares the left span and withholds the right"
+		);
+		assert_eq!(
+			spec.data_cutoff(),
+			None,
+			"a latest join must not set a data-wide floor: it would reach the withheld right side"
 		);
 	}
 
 	#[test]
-	fn a_snapshot_join_ages_its_ledger_on_the_left_span_and_declares_it_after_the_left_side() {
-		// The ledger is only meaningful as long as the left row it describes, hence the left ttl.
-		// Order matters as much: with JOIN_LEFT last, a budget-truncated sweep strips live left
-		// rows of what they published and their joined rows can never be withdrawn again.
+	fn a_snapshot_join_ages_its_ledger_on_the_left_span() {
+		// The ledger is only meaningful as long as the left row it describes, hence the left ttl;
+		// a ledger floored at the right span would strip live left rows of what they published and
+		// their joined rows could never be withdrawn again.
 		let engine = TestEngine::new();
 		let left = ttl(50);
 
 		let op = make_op(77, Some(left), Some(ttl(9_000)), &engine);
 
-		assert_eq!(
-			frontier(&op, &engine).keyspaces,
-			vec![
-				(Keyspace::JOIN_LEFT, behind(left)),
-				(Keyspace::JOIN_PUBLISHED, behind(left)),
-				(Keyspace::JOIN_PIN, behind(left)),
-				(Keyspace::JOIN_RIGHT, behind(ttl(9_000))),
-			],
-			"the ledger must age with the left side and be swept after it"
-		);
+		let spec = frontier(&op, &engine);
+		assert_eq!(spec.cutoff(Keyspace::JOIN_LEFT), Some(behind(left)));
+		assert_eq!(spec.cutoff(Keyspace::JOIN_PUBLISHED), Some(behind(left)));
+		assert_eq!(spec.cutoff(Keyspace::JOIN_PIN), Some(behind(left)));
+		assert_eq!(spec.cutoff(Keyspace::JOIN_RIGHT), Some(behind(ttl(9_000))));
 	}
 
 	#[test]
@@ -1107,49 +1108,6 @@ mod span_tests {
 				"{keyspace:?} must stay unenrolled on a join that never publishes to it"
 			);
 		}
-	}
-
-	#[test]
-	fn a_ledger_entry_past_the_cutoff_is_reclaimed_while_its_key_keeps_publishing() {
-		// The sweep gates on a per-group stamp that every publish re-arms, and reclaims the group's
-		// whole keyspace at once when it finally goes stale. A key that never goes quiet - the quote
-		// mint on a market join is SOL - is therefore never due, and one published row per left row
-		// accumulates for the life of the operator. This is the mapping leak in a second keyspace.
-		//
-		// The second assertion is the half that rules out the easy fix: making the group due would
-		// take the live left row's record with it, and its joined row could never be withdrawn.
-		let engine = TestEngine::new();
-		let op = make_op(80, Some(ttl(50)), None, &engine);
-		let mut txn = engine.flow_txn().deferred();
-		let ledger = SnapshotLedger::new(op.operator);
-
-		let right = Store::new(op.operator, JoinSide::Right);
-		let hash = Hash128(0xC0FFEE);
-		let group = right.group_for(&mut txn, &hash).unwrap();
-		let slot = RowNumber::MAX;
-		let content = op_row(0x01);
-
-		at(&mut txn, 0);
-		ledger.publish(&mut txn, group, RowNumber(1), slot, &content).unwrap();
-		at(&mut txn, 40);
-		ledger.publish(&mut txn, group, RowNumber(2), slot, &content).unwrap();
-
-		let cutoff = cutoff_at(10);
-		for due in txn.due_side_groups(op.operator, Keyspace::JOIN_PUBLISHED, cutoff, 16).unwrap() {
-			txn.reclaim_group_keyspace(op.operator, due, Keyspace::JOIN_PUBLISHED, cutoff, &mut None, 100)
-				.unwrap();
-		}
-
-		assert!(
-			ledger.published(&mut txn, group, RowNumber(1)).unwrap().is_empty(),
-			"a record stamped at or before the cutoff must be reclaimed even though a later publish \
-			 under the same key re-armed the group's stamp"
-		);
-		assert_eq!(
-			ledger.published(&mut txn, group, RowNumber(2)).unwrap().len(),
-			1,
-			"and the record of a left row still inside the ttl must survive that same sweep"
-		);
 	}
 
 	fn ttl(millis: i64) -> Duration {

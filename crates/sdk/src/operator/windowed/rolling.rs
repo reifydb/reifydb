@@ -14,7 +14,6 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_group_state::GroupSet,
 	metrics::heap::{HeapSize, OperatorSample},
 	state::store::StateStore,
 };
@@ -312,10 +311,6 @@ where
 
 	fn seal_after_ms(&self) -> Option<u64> {
 		self.aggregator.seal_after().and_then(<DateTime as WindowCoord>::span_millis)
-	}
-
-	fn invalidate_groups(&mut self, groups: &GroupSet) {
-		self.engine.invalidate_groups(groups);
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {

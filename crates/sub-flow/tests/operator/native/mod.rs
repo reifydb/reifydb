@@ -8,7 +8,6 @@ pub type Harness<C> = NativeOperatorHarness<C>;
 mod error_abort;
 mod flush_cadence;
 mod lease_resize;
-mod reclaim;
 mod row_number_registry;
 mod store_range;
 mod window_count;

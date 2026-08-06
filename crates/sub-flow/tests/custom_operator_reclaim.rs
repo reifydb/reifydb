@@ -80,7 +80,7 @@ impl OperatorMetadata for Tally {
 	const DESCRIPTION: &'static str = "test-only per-group tally with an operator-declared seal horizon";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = TALLY_COLUMNS;
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = TALLY_COLUMNS;
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD_WITH_RECLAIM;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
 fn group_key(g: i32) -> EncodedKey {
@@ -147,7 +147,7 @@ fn setup() -> TestDb {
 	TestDb::from(
 		embedded::memory()
 			.with_flow(|f| f.register_operator::<Tally>())
-			// The retention ledger is the only surface that reports what the tick pass actually
+			// The per-operator compaction counters are the only surface that reports what the tick pass
 			// reclaimed; a short sample cadence keeps the polls inside their timeouts.
 			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
 			.build()
@@ -156,7 +156,7 @@ fn setup() -> TestDb {
 }
 
 const RECLAIMED_A_GROUP: &str =
-	"from system::metrics::lifecycle::current filter { class == 'operator-group-data' and work_done > 0 }";
+	"from system::metrics::runtime::operators::current filter { metric == 'state_compaction_dropped' and value > 0.0 }";
 
 #[test]
 fn a_custom_operators_idle_group_is_reclaimed_through_the_flow_tick() {
@@ -168,12 +168,12 @@ fn a_custom_operators_idle_group_is_reclaimed_through_the_flow_tick() {
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
 	db.admin("CREATE DEFERRED VIEW app::v { g: int4, ts: int8, total: int8 } with { time: event } AS { FROM app::t APPLY tally{} }");
 
-	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "1970-01-01T00:00:00Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);
 	db.await_row_count("FROM app::v", 1, TIMEOUT);
 
 	// A second key carries the node's event watermark far past group 1's seal horizon, so group 1
 	// goes idle without being touched itself - the same shape as a quiet mint while others trade.
-	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "1970-01-01T00:10:00Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "2026-01-01T00:10:00Z" }]"#);
 
 	// Asserted, not merely awaited: `await_row_count` returns its last observation on timeout, so
 	// discarding it would pass against a chain that reclaims nothing.
@@ -194,14 +194,14 @@ fn a_group_that_wakes_after_reclamation_publishes_under_its_original_row() {
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
 	db.admin("CREATE DEFERRED VIEW app::v { g: int4, ts: int8, total: int8 } with { time: event } AS { FROM app::t APPLY tally{} }");
 
-	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "1970-01-01T00:00:00Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);
 	db.await_row_count("FROM app::v FILTER { g == 1 }", 1, TIMEOUT);
 
-	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "1970-01-01T00:10:00Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "2026-01-01T00:10:00Z" }]"#);
 	db.await_row_count(RECLAIMED_A_GROUP, 1, TIMEOUT);
 
 	// Group 1 wakes under the same key.
-	db.command(r#"INSERT app::t [{ id: 3, g: 1, ts: "1970-01-01T00:10:00.001Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 3, g: 1, ts: "2026-01-01T00:10:00.001Z" }]"#);
 
 	// The flow must have applied that insert before a count means anything: awaiting a count of 1
 	// returns on the first poll, since g == 1 already holds a row from the first insert.

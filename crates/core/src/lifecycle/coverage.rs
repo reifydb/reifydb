@@ -62,17 +62,17 @@ mod tests {
 
 	#[test]
 	fn a_class_reclaimed_outside_the_lifecycle_subsystem_still_counts_as_covered() {
-		// The group classes are reclaimed on the flow tick, not by a LifecycleTask, so a covered set
-		// derived only from this subsystem's tasks reports them unreclaimed on every boot - an error
-		// indistinguishable from a genuinely dead lane. Coverage is declared by whoever executes it.
+		// Coverage is declared by whoever executes it, wherever that lives: a covered set derived
+		// only from the lifecycle subsystem's own tasks would report an externally reclaimed class
+		// as unreclaimed on every boot - an error indistinguishable from a genuinely dead lane.
 		let coverage = RetentionCoverage::new();
 		coverage.cover(RetentionClass::TombstoneReap, "tombstone-reap");
-		coverage.cover(RetentionClass::OperatorGroupData, "flow-tick-reclaim");
+		coverage.cover(RetentionClass::CdcTruncate, "cdc-subsystem");
 
-		assert_eq!(coverage.owner(RetentionClass::OperatorGroupData), Some("flow-tick-reclaim"));
+		assert_eq!(coverage.owner(RetentionClass::CdcTruncate), Some("cdc-subsystem"));
 		assert!(coverage.is_covered(RetentionClass::TombstoneReap));
 		assert!(
-			!coverage.is_covered(RetentionClass::OperatorGroupIdentity),
+			!coverage.is_covered(RetentionClass::EpochLog),
 			"a class nobody claimed must stay uncovered so the report can still name it"
 		);
 	}

@@ -13,7 +13,7 @@ use reifydb_codec::{
 	state::OperatorState,
 };
 use reifydb_core::{
-	key::operator_group_state::{GroupId, GroupSet},
+	key::operator_group_state::GroupId,
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{cache::StateCache, store::StateStore},
 };
@@ -77,10 +77,6 @@ where
 	pub fn expire_meta<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
 		self.hydrate_once(store)?;
 		sweep_stale_meta(store, &mut self.meta, threshold, &mut self.meta_low_water)
-	}
-
-	pub fn invalidate_groups(&mut self, groups: &GroupSet) -> usize {
-		self.buffers.invalidate_group_data(groups) + self.running.invalidate_group_data(groups)
 	}
 
 	fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {

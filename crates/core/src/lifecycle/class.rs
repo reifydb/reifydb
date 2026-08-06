@@ -143,10 +143,6 @@ pub enum RetentionClass {
 
 	RowTtlAnnounced,
 
-	OperatorGroupData,
-
-	OperatorGroupIdentity,
-
 	BufferHistoricalGc,
 
 	PersistentFlush,
@@ -167,8 +163,6 @@ impl RetentionClass {
 		&[
 			Self::RowTtlSilent,
 			Self::RowTtlAnnounced,
-			Self::OperatorGroupData,
-			Self::OperatorGroupIdentity,
 			Self::BufferHistoricalGc,
 			Self::PersistentFlush,
 			Self::CompactionReclaim,
@@ -183,8 +177,6 @@ impl RetentionClass {
 		match self {
 			Self::RowTtlSilent => "row-ttl-silent",
 			Self::RowTtlAnnounced => "row-ttl-announced",
-			Self::OperatorGroupData => "operator-group-data",
-			Self::OperatorGroupIdentity => "operator-group-identity",
 			Self::BufferHistoricalGc => "buffer-historical-gc",
 			Self::PersistentFlush => "persistent-flush",
 			Self::CompactionReclaim => "pending-drops-purge",
@@ -199,8 +191,6 @@ impl RetentionClass {
 		match self {
 			Self::RowTtlSilent
 			| Self::RowTtlAnnounced
-			| Self::OperatorGroupData
-			| Self::OperatorGroupIdentity
 			| Self::BufferHistoricalGc
 			| Self::PersistentFlush
 			| Self::CompactionReclaim
@@ -215,8 +205,6 @@ impl RetentionClass {
 		match self {
 			Self::RowTtlSilent => &[FloorTerm::RowExpiry],
 			Self::RowTtlAnnounced => &[FloorTerm::RowExpiry],
-			Self::OperatorGroupData => &[FloorTerm::OwningFlowCheckpoint],
-			Self::OperatorGroupIdentity => &[FloorTerm::OwningFlowCheckpoint],
 			Self::BufferHistoricalGc => &[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin],
 			Self::PersistentFlush => {
 				&[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin, FloorTerm::ConsumerPosition]
@@ -261,30 +249,6 @@ mod tests {
 					"{class} reclaims no versioned data, so a version floor cannot be what bounds it"
 				);
 			}
-		}
-	}
-
-	#[test]
-	fn both_group_phases_wait_for_the_flow_that_owns_the_state() {
-		// Group state belongs to one flow, and that flow may still hold unprocessed input that writes
-		// to the very group being reclaimed, so neither phase may run ahead of it.
-		for class in [RetentionClass::OperatorGroupData, RetentionClass::OperatorGroupIdentity] {
-			assert!(
-				class.constrained_by(FloorTerm::OwningFlowCheckpoint),
-				"{class} would reclaim state the owning flow has not finished writing to"
-			);
-		}
-	}
-
-	#[test]
-	fn both_group_phases_bind_only_to_the_owning_flow() {
-		// Operator state ages in event time off the flow watermark, so the only thing a version floor
-		// still protects is state the owning flow has not finished writing to. An expiry term here
-		// would hold a version floor down for a horizon the class no longer ages by.
-		for class in [RetentionClass::OperatorGroupData, RetentionClass::OperatorGroupIdentity] {
-			assert!(class.constrained_by(FloorTerm::OwningFlowCheckpoint));
-			assert!(!class.constrained_by(FloorTerm::OperatorExpiry));
-			assert!(!class.constrained_by(FloorTerm::RowExpiry));
 		}
 	}
 

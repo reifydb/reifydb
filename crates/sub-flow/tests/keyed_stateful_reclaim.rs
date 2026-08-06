@@ -86,7 +86,7 @@ impl OperatorMetadata for Counter {
 	const DESCRIPTION: &'static str = "test-only KeyedStateful counter with an operator-declared seal horizon";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = COUNTER_COLUMNS;
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = COUNTER_COLUMNS;
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD_WITH_RECLAIM;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
 impl OperatorLogic for Counter {
@@ -156,7 +156,7 @@ fn setup() -> TestDb {
 }
 
 const RECLAIMED_A_GROUP: &str =
-	"from system::metrics::lifecycle::current filter { class == 'operator-group-data' and work_done > 0 }";
+	"from system::metrics::runtime::operators::current filter { metric == 'state_compaction_dropped' and value > 0.0 }";
 
 #[test]
 fn a_keyed_stateful_guests_idle_group_is_reclaimed() {
@@ -168,12 +168,12 @@ fn a_keyed_stateful_guests_idle_group_is_reclaimed() {
 	db.admin("CREATE DEFERRED VIEW app::v { g: int4, ts: int8, total: int8 } with { time: event } \
 		 AS { FROM app::t APPLY counter{} }");
 
-	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "1970-01-01T00:00:00Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);
 	db.await_row_count("FROM app::v", 1, TIMEOUT);
 
 	// A second key carries the node's event watermark past group 1's seal horizon, so group 1 goes
 	// idle without being touched itself.
-	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "1970-01-01T00:10:00Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "2026-01-01T00:10:00Z" }]"#);
 
 	assert_eq!(
 		db.await_row_count(RECLAIMED_A_GROUP, 1, TIMEOUT),
@@ -193,14 +193,14 @@ fn a_woken_keys_state_restarted_because_the_sweep_actually_erased_it() {
 	db.admin("CREATE DEFERRED VIEW app::v { g: int4, ts: int8, total: int8 } with { time: event } \
 		 AS { FROM app::t APPLY counter{} }");
 
-	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "1970-01-01T00:00:00Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);
 	db.await_row_count("FROM app::v FILTER { g == 1 }", 1, TIMEOUT);
 	assert_eq!(total_for(&db, 1), Some(1), "precondition: the first event counts to one");
 
-	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "1970-01-01T00:10:00Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "2026-01-01T00:10:00Z" }]"#);
 	db.await_row_count(RECLAIMED_A_GROUP, 1, TIMEOUT);
 
-	db.command(r#"INSERT app::t [{ id: 3, g: 1, ts: "1970-01-01T00:10:00.001Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 3, g: 1, ts: "2026-01-01T00:10:00.001Z" }]"#);
 
 	// Settling the flow, not polling for the value asserted: the total already read 1 from the
 	// first event, so a poll would return before the third insert had been applied.

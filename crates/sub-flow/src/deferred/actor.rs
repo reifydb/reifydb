@@ -24,7 +24,6 @@ use reifydb_core::{
 		cdc::Cdc,
 		change::Change,
 	},
-	lifecycle::metrics::RetentionMetrics,
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::engine::StandardEngine;
@@ -72,7 +71,6 @@ pub struct FlowActorParams {
 	pub substrate: FlowSubstrate,
 	pub operator_samples: OperatorSampleRegistry,
 	pub state_budget: OperatorStateBudgetHandle,
-	pub retention_metrics: RetentionMetrics,
 	pub clock: Clock,
 	pub health: FlowHealthRegistry,
 	pub flow_tracker: FlowPositionTracker,
@@ -97,7 +95,6 @@ pub struct FlowActor {
 	substrate: FlowSubstrate,
 	operator_samples: OperatorSampleRegistry,
 	state_budget: OperatorStateBudgetHandle,
-	retention_metrics: RetentionMetrics,
 	clock: Clock,
 	health: FlowHealthRegistry,
 	flow_tracker: FlowPositionTracker,
@@ -149,7 +146,6 @@ impl FlowActor {
 			substrate: params.substrate,
 			operator_samples: params.operator_samples,
 			state_budget: params.state_budget,
-			retention_metrics: params.retention_metrics,
 			clock: params.clock,
 			health: params.health,
 			flow_tracker: params.flow_tracker,
@@ -205,7 +201,7 @@ impl FlowActor {
 	}
 
 	fn build_flow_engine(&self) -> FlowEngineInner {
-		let mut engine = FlowEngineInner::new(
+		let engine = FlowEngineInner::new(
 			self.engine.catalog(),
 			self.engine.executor(),
 			self.engine.event_bus().clone(),
@@ -215,7 +211,6 @@ impl FlowActor {
 			self.operator_samples.clone(),
 			self.state_budget.clone(),
 		);
-		engine.adopt_retention_metrics(self.retention_metrics.clone());
 		engine
 	}
 
@@ -665,7 +660,6 @@ mod pull_protocol {
 		consume::{checkpoint::CdcCheckpoint, watermark::CdcConsumerWatermark},
 		produce::watermark::CdcProducerWatermark,
 	};
-	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::{
 		actors::{flow::FlowActorHandle, pending::PendingLayers},
 		interface::{
@@ -844,7 +838,6 @@ mod pull_protocol {
 					substrate,
 					operator_samples: OperatorSampleRegistry::new(),
 					state_budget: OperatorStateBudgetHandle::default(),
-					retention_metrics: RetentionMetrics::new(),
 					clock: self.engine.clock().clone(),
 					health: self.health.clone(),
 					flow_tracker: self.tracker.clone(),
@@ -1552,7 +1545,7 @@ mod pull_protocol {
 		);
 
 		// State shards per operator; a whole-keyspace scan never routes there.
-		let mut query = h.engine.multi().begin_query().expect("query");
+		let query = h.engine.multi().begin_query().expect("query");
 		for operator in h.flow.get_operator_ids() {
 			let leaked = query
 				.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024)
@@ -1613,7 +1606,6 @@ mod pull_protocol {
 				substrate: substrate2.clone(),
 				operator_samples: OperatorSampleRegistry::new(),
 				state_budget: OperatorStateBudgetHandle::default(),
-				retention_metrics: RetentionMetrics::new(),
 				clock: h.engine.clock().clone(),
 				health: health2.clone(),
 				flow_tracker: h.tracker.clone(),

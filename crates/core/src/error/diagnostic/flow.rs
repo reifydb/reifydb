@@ -500,26 +500,6 @@ pub fn flow_rolling_lag_requires_event_time(flow: &str) -> Diagnostic {
 	}
 }
 
-pub fn flow_span_without_reclaim(flow: &str, operator: &str) -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_044".to_string(),
-		rql: None,
-		message: format!("{operator} in {flow} declares a retention span but cannot reclaim"),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some(format!(
-			"A span only means anything to an operator the substrate can age. {operator} declares no \
-			 Reclaim capability, so the span would be accepted and then silently ignored, and the \
-			 operator's state would grow without bound. Remove the span, or implement Reclaim on \
-			 {operator}."
-		)),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
 pub fn flow_catch_up_read_failed(from: u64, up_to: u64, cause: &str) -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_046".to_string(),

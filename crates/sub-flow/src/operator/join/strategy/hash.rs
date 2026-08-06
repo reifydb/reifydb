@@ -126,6 +126,10 @@ pub(crate) fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize) ->
 	let values: Vec<Value> = columns.columns.iter().map(|buf| buf.get_value(row_idx)).collect();
 	let mut encoded = shape.allocate();
 	shape.set_values(&mut encoded, &values);
+	if let Some(at) = columns.time().get(row_idx).copied() {
+		encoded.set_timestamps(at, at);
+		encoded.set_time(at);
+	}
 	encoded.freeze()
 }
 

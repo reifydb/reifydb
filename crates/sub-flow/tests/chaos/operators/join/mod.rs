@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod oracle;
-pub mod reclaim;
 pub mod workload;
 
 use std::sync::Arc;
@@ -30,7 +29,7 @@ use reifydb_value::value::{duration::Duration, row_number::RowNumber};
 use crate::{
 	framework::harness::Harness,
 	operators::join::{
-		oracle::{Envelope, HashOracle, LatestOracle, SnapshotOracle},
+		oracle::{HashOracle, LatestOracle, SnapshotOracle},
 		workload::{
 			JOIN_OPERATOR, JoinRow, JoinWorkload, LEFT_COLUMNS, LEFT_OPERATOR, RIGHT_COLUMNS,
 			RIGHT_OPERATOR, Side, schema,
@@ -178,14 +177,6 @@ pub struct Params {
 	pub left_ttl: Option<Duration>,
 	pub right_ttl: Option<Duration>,
 
-	/// Share of steps that advance the watermark. Zero everywhere but the reclaiming entry point,
-	/// where it is the only thing that can move the instant the sweep runs at.
-	pub tick_pct: u32,
-
-	/// The row ttl of the view this join publishes into, which is what bounds identity. None means
-	/// the published rows never expire, and the mapping phase is then correctly unreachable.
-	pub sink_row_ttl: Option<Duration>,
-
 	/// Size of the frozen right side loaded before the run, for `drive_static_right` only. The other
 	/// entry points draw their right rows from the corpus and ignore this.
 	pub static_right: u32,
@@ -209,8 +200,6 @@ pub fn matched_params(variant: Variant) -> Params {
 		coord_span_ms: 400_000,
 		left_ttl: None,
 		right_ttl: None,
-		tick_pct: 0,
-		sink_row_ttl: None,
 		static_right: 12,
 	}
 }
@@ -243,60 +232,6 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 	drive_with(seed, params, false, oracle).assert_clean().corpus
 }
 
-/// What a reclaiming run reached, so a test can refuse to be vacuous from either end.
-pub struct JoinReclaim {
-	pub outcome: DriveOutcome,
-
-	pub envelope: Envelope,
-}
-
-impl JoinReclaim {
-	#[track_caller]
-	pub fn assert_clean(&self) {
-		if let Some(report) = &self.outcome.divergence {
-			panic!("{report}");
-		}
-	}
-}
-
-/// Drives a join whose two sides age, with a sweep interleaved into the corpus. Join is the only
-/// operator declaring per-side keyspace spans, so this is the only route to the keyspace phase; the
-/// tick share advances the watermark because a join has no clock.
-pub fn drive_reclaiming(seed: u64, params: Params, reclaim_pct: u32) -> JoinReclaim {
-	let variant = params.variant;
-	// The mapping cutoff is clamped to the identity cutoff, which this ttl is what derives, so with no
-	// sink ttl both phases are disabled and only the keyspace phase is reachable.
-	let mut harness = Harness::with_engine(|engine, _| build(engine, variant, params.left_ttl, params.right_ttl))
-		.with_activity_grid();
-	if let Some(ttl) = params.sink_row_ttl {
-		harness = harness.with_sink_row_ttl(ttl);
-	}
-	let workload = JoinWorkload {
-		keys: params.keys,
-		right_pct: params.right_pct,
-		none_pct: params.none_pct,
-		rekey_pct: params.rekey_pct,
-		coord_span_ms: params.coord_span_ms,
-		flip_definedness: false,
-	};
-	let mut model = HashOracle::new(variant.left_outer());
-
-	let outcome = driver::drive(
-		seed,
-		scenario(&params)
-			.with_mix(params.remove_pct, params.update_pct, params.tick_pct)
-			.with_coord_span(params.coord_span_ms)
-			.with_reclaim(reclaim_pct),
-		&mut harness,
-		&workload,
-		&mut model,
-	);
-
-	JoinReclaim {
-		envelope: model.envelope(),
-		outcome,
-	}
-}
 
 /// Drives one variant's operator against a different variant's oracle and hands back the divergence
 /// that must follow. This tests the suite, not the operator: an oracle that described nothing, or a
@@ -451,8 +386,6 @@ pub fn random_params(seed: u64) -> (u64, Params) {
 		coord_span_ms: rng.random_range(50_000..=800_000u64),
 		left_ttl: None,
 		right_ttl: None,
-		tick_pct: 0,
-		sink_row_ttl: None,
 		static_right: 0,
 	};
 	(sequence_seed, params)

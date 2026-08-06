@@ -13,7 +13,7 @@ use reifydb_codec::{
 	state::OperatorState,
 };
 use reifydb_core::{
-	key::operator_group_state::{GroupId, GroupSet},
+	key::operator_group_state::GroupId,
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		cache::{StateCache, StateView},
@@ -125,10 +125,6 @@ where
 			hydrated: false,
 			_pd: PhantomData,
 		}
-	}
-
-	pub fn invalidate_groups(&mut self, groups: &GroupSet) -> usize {
-		self.accumulators.invalidate_group_data(groups)
 	}
 
 	#[instrument(name = "flow::window::meta_hydrate", level = "debug", skip_all)]

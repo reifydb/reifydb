@@ -27,7 +27,7 @@ impl OperatorMetadata for Inert {
 	const DESCRIPTION: &'static str = "Holds nothing; exists to prove the harness is reachable";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD_WITH_RECLAIM;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
 impl OperatorLogic for Inert {
@@ -48,14 +48,14 @@ fn a_guest_operator_reaches_the_sweep_through_the_published_testing_surface() {
 	let ttl = Duration::from_seconds(60).expect("60s is representable");
 
 	let harness =
-		Harness::guest(Inert, NODE, OperatorCapability::STANDARD_WITH_RECLAIM, Some(ttl)).with_activity_grid();
+		Harness::guest(Inert, NODE, OperatorCapability::STANDARD, Some(ttl)).with_activity_grid();
 	assert!(
 		harness.activity_grid().event_grid().is_some(),
 		"a declared ttl must grid the node, or the driver skips it and counts it perpetual"
 	);
 
 	let ungridded =
-		Harness::guest(Inert, NODE, OperatorCapability::STANDARD_WITH_RECLAIM, None).with_activity_grid();
+		Harness::guest(Inert, NODE, OperatorCapability::STANDARD, None).with_activity_grid();
 	assert!(
 		ungridded.activity_grid().event_grid().is_none(),
 		"and without one it must not, which is the whole difference between the two cohorts"

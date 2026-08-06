@@ -23,18 +23,19 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, change::Change},
-	key::operator_group_state::{GroupId, GroupSet, GroupStateKey},
+	key::operator_group_state::{GroupId, GroupStateKey},
 	metrics::heap::OperatorSample,
 };
 use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_flow::{
-	operator::{BoxedOperator, Operator, Reclaimable},
+	operator::{BoxedOperator, Operator},
 	timer::Timer,
 	transaction::{
 		FlowTransaction,
 		slot::{PersistFn, zero_usage},
 	},
 };
+use reifydb_store_operator::FloorSpec;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::{
 	config::Config,
@@ -61,7 +62,7 @@ use crate::{
 	error::NativeOperatorError,
 	operator::{
 		context::native::{NativeBridge, NativeOperatorContext},
-		scale_from_millis, sealed_or_idle,
+		scale_from_millis, sealed_or_idle_floor,
 	},
 };
 
@@ -132,8 +133,6 @@ pub trait BridgedOperator: Send {
 	fn seal_after_ms(&self) -> Option<u64> {
 		None
 	}
-
-	fn invalidate_groups(&self, _groups: &GroupSet) {}
 
 	fn flush_state(&self, _bridge: &mut dyn NativeBridge) -> Result<()> {
 		Ok(())
@@ -549,13 +548,6 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 		Ok(Some(Change::from_flow(self.operator, version, diffs, at)))
 	}
 
-	fn invalidate_groups(&self, groups: &GroupSet) {
-		// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time and no apply or
-		// timer call is in flight here; no other borrow of the cell is live.
-		let logic = unsafe { &mut *self.logic.get() };
-		logic.invalidate_groups(groups);
-	}
-
 	fn flush_state(&self, bridge: &mut dyn NativeBridge) -> Result<()> {
 		let mut ctx = NativeOperatorContext::new(bridge, self.operator);
 		// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time, and the logic
@@ -644,12 +636,8 @@ impl Operator for NativeBridgedOperator {
 		scale_from_millis(self.inner.seal_after_ms())
 	}
 
-	fn reclaimable_through(&self, txn: &mut FlowTransaction, watermark: DateTime) -> Result<Reclaimable> {
-		sealed_or_idle(txn, self.operator, watermark, self.retention_scale())
-	}
-
-	fn invalidate_groups(&self, groups: &GroupSet) {
-		self.inner.invalidate_groups(groups)
+	fn floors(&self, txn: &mut FlowTransaction, watermark: DateTime) -> Result<FloorSpec> {
+		sealed_or_idle_floor(txn, self.operator, watermark, self.retention_scale())
 	}
 
 	fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
@@ -665,19 +653,16 @@ impl Operator for NativeBridgedOperator {
 
 #[cfg(test)]
 mod tests {
-	use std::sync::Arc;
-
 	use reifydb_abi::constants::OPERATOR_ABI_TAG;
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::change::Change,
-		key::operator_group_state::{GroupId, GroupSet},
+		key::operator_group_state::GroupId,
 		state::horizon::Position,
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_extension::operator::ffi_loader::check_operator_abi_tag;
 	use reifydb_flow::{operator::Operator, transaction::ChangeCoordinate};
-	use reifydb_runtime::sync::mutex::Mutex;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 	use reifydb_value::{
 		Result,
@@ -771,9 +756,7 @@ mod tests {
 		assert!(check_operator_abi_tag(NATIVE_ABI_TAG).is_err());
 	}
 
-	struct RecordingBridged {
-		invalidated: Arc<Mutex<Vec<GroupId>>>,
-	}
+	struct RecordingBridged;
 
 	impl BridgedOperator for RecordingBridged {
 		fn id(&self) -> OperatorId {
@@ -791,29 +774,14 @@ mod tests {
 		fn seal_after_ms(&self) -> Option<u64> {
 			Some(65_000)
 		}
-
-		fn invalidate_groups(&self, groups: &GroupSet) {
-			self.invalidated.lock().extend_from_slice(groups.as_slice());
-		}
 	}
 
 	#[test]
-	fn the_host_wrapper_forwards_seal_span_and_reclaimed_groups_to_the_dylib() {
-		// A wrapper that drops invalidate_groups lets the reclaim driver erase a native
-		// operator's group state on disk while the dylib keeps serving it from RAM. Both the
-		// span and the invalidation have to cross this seam.
-		let invalidated = Arc::new(Mutex::new(Vec::new()));
-		let wrapper = NativeBridgedOperator::new(
-			Box::new(RecordingBridged {
-				invalidated: invalidated.clone(),
-			}),
-			NODE,
-			&[],
-		);
+	fn the_host_wrapper_forwards_the_seal_span_from_the_dylib() {
+		// The retention scale sizes both the activity grid and the floor derivation, so a wrapper
+		// that swallowed seal_after_ms would register a sealing native operator as perpetual.
+		let wrapper = NativeBridgedOperator::new(Box::new(RecordingBridged), NODE, &[]);
 
 		assert_eq!(Operator::retention_scale(&wrapper), Some(Duration::from_milliseconds(65_000).unwrap()));
-
-		Operator::invalidate_groups(&wrapper, &GroupSet::new([GroupId(3), GroupId(9)]));
-		assert_eq!(*invalidated.lock(), vec![GroupId(3), GroupId(9)]);
 	}
 }

@@ -12,13 +12,12 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
-	key::operator_group_state::GroupSet,
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
 use reifydb_engine::flow::aggregate::AggregateContext;
 use reifydb_flow::{
-	operator::{Operator, Reclaimable},
+	operator::Operator,
 	transaction::FlowTransaction,
 	window::{
 		engine::{ExpiryAnchor, config::WindowEngineConfig, tumbling::TumblingBuckets},
@@ -28,6 +27,7 @@ use reifydb_flow::{
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
+use reifydb_store_operator::{CompactionOutcome, FloorSpec};
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
@@ -87,24 +87,26 @@ impl Operator for AggregateOperator {
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
-		OperatorCapability::STANDARD_WITH_RECLAIM
+		OperatorCapability::STANDARD
 	}
 
 	fn retention_scale(&self) -> Option<Duration> {
 		self.ttl
 	}
 
-	fn reclaimable_through(&self, _txn: &mut FlowTransaction, watermark: DateTime) -> Result<Reclaimable> {
-		Ok(self.ttl.map(|ttl| Reclaimable::data(watermark.saturating_sub(ttl))).unwrap_or_default())
+	fn floors(&self, _txn: &mut FlowTransaction, watermark: DateTime) -> Result<FloorSpec> {
+		Ok(self.ttl.map(|ttl| FloorSpec::data(watermark.saturating_sub(ttl))).unwrap_or_default())
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		apply_aggregate_engine(&self.core, txn, change)
 	}
 
-	fn invalidate_groups(&self, groups: &GroupSet) {
-		self.core.tumbling_engine_invalidate(groups);
-		self.core.engine_meta_invalidate(groups);
+	fn on_compacted(&self, outcome: &CompactionOutcome) {
+		if outcome.dropped == 0 {
+			return;
+		}
+		self.core.reset_engine_caches();
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

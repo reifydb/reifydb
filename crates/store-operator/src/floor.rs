@@ -12,12 +12,20 @@ use reifydb_value::value::datetime::DateTime;
 
 #[derive(Debug, Clone, Default)]
 pub struct FloorSpec {
+	data: Option<DateTime>,
 	cutoffs: BTreeMap<Keyspace, DateTime>,
 }
 
 impl FloorSpec {
 	pub fn new() -> Self {
 		Self::default()
+	}
+
+	pub fn data(cutoff: DateTime) -> Self {
+		Self {
+			data: Some(cutoff),
+			cutoffs: BTreeMap::new(),
+		}
 	}
 
 	pub fn with(mut self, keyspace: Keyspace, cutoff: DateTime) -> Self {
@@ -29,12 +37,27 @@ impl FloorSpec {
 		self.cutoffs.insert(keyspace, cutoff);
 	}
 
+	pub fn set_data(&mut self, cutoff: DateTime) {
+		self.data = Some(cutoff);
+	}
+
 	pub fn cutoff(&self, keyspace: Keyspace) -> Option<DateTime> {
-		self.cutoffs.get(&keyspace).copied()
+		match self.cutoffs.get(&keyspace).copied() {
+			Some(cutoff) => Some(cutoff),
+			None => self.data.filter(|_| keyspace.is_data()),
+		}
+	}
+
+	pub fn data_cutoff(&self) -> Option<DateTime> {
+		self.data
+	}
+
+	pub fn max_cutoff(&self) -> Option<DateTime> {
+		self.cutoffs.values().copied().chain(self.data).max()
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.cutoffs.is_empty()
+		self.data.is_none() && self.cutoffs.is_empty()
 	}
 }
 
@@ -57,5 +80,9 @@ pub(crate) fn floor_expired(floor: &FloorSpec, key: &EncodedKey, row: &EncodedRo
 	if row.as_slice().len() < SHAPE_HEADER_SIZE {
 		return false;
 	}
-	row.updated_at() < cutoff
+	let written = row.updated_at();
+	if written.is_epoch() {
+		return false;
+	}
+	written < cutoff
 }

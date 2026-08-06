@@ -4,9 +4,10 @@
 //! Test-only companion to `reifydb-sub-flow`, kept out of that crate because every build that
 //! runs flows resolves it.
 //!
-//! Unlike the sdk harness, which erases the group state a test names, [`harness::Harness`] hands
-//! production's own `reclaim_nodes` a real `FlowTransaction` and lets the sweep decide what is
-//! due; an operator declaring retention it never receives fails here and passes there.
+//! Unlike the sdk harness, which erases the group state a test names, [`harness::Harness`] drives
+//! production's own tick compaction (`compact_operator`) against a real `FlowTransaction` and
+//! arena, so the operator's own floors decide what is dropped; an operator declaring retention it
+//! never receives fails here and passes there.
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]

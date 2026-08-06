@@ -133,6 +133,27 @@ fn entry_groups(op: &DistinctOperator, txn: &mut FlowTransaction) -> Vec<GroupId
 	out
 }
 
+fn erase_group_data(op: &DistinctOperator, txn: &mut FlowTransaction, group: GroupId) -> usize {
+	// The state-level effect of a tick compaction whose data floor has passed the group: every data
+	// keyspace row cancelled, identity keyspaces untouched.
+	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None, "test").unwrap();
+	let mut erased = 0;
+	for item in batch.items {
+		let inner = OperatorStateKey::decode(&item.key).expect("internal state key");
+		if let Some((found, keyspace, _)) = OperatorGroupStateKey::decode_inner(&inner.key)
+			&& found == group && keyspace.is_data()
+		{
+			let key = reifydb_core::key::operator_group_state::GroupStateKey::from_framed(
+				reifydb_codec::key::encoded::EncodedKey::new(inner.key.clone()),
+			)
+			.expect("distinct state rows carry a framed inner key");
+			txn.state_remove(op.id(), &key).unwrap();
+			erased += 1;
+		}
+	}
+	erased
+}
+
 #[test]
 fn flush_persists_only_mutated_entries() {
 	let engine = TestEngine::new();
@@ -178,13 +199,15 @@ fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_hol
 	let published = post.row_numbers()[0];
 	txn.flush_operator_states().unwrap();
 
+	// Erase the group's data keyspaces the way tick compaction does (the floor cancels every data
+	// row while identity keyspaces survive), so the operator wakes to a mapping without an entry.
 	let groups = entry_groups(&op, &mut txn);
 	assert_eq!(groups.len(), 1, "precondition: exactly one distinct entry is persisted");
-	let outcome = txn.reclaim_group_data(op.id(), groups[0], 100).unwrap();
-	assert!(outcome.removed > 0, "precondition: the data phase must have erased the entry");
+	let erased = erase_group_data(&op, &mut txn, groups[0]);
+	assert!(erased > 0, "precondition: compaction must have erased the entry");
 	assert!(
 		txn.get_row_number(op.id(), groups[0], &utils::empty_key()).unwrap().is_some(),
-		"precondition: the data phase must leave the mapping behind, or there is nothing to collide with"
+		"precondition: the floor must leave the mapping behind, or there is nothing to collide with"
 	);
 
 	let second = op.apply(&mut txn, build_insert(42, 2)).unwrap();

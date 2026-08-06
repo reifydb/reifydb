@@ -42,8 +42,6 @@ pub enum ConfigKey {
 	RetentionEvictInterval,
 	RetentionEvictBatchSize,
 	RetentionEvictMaxBatchesPerTick,
-	OperatorReclaimGroupsPerTick,
-	OperatorReclaimRowsPerTick,
 	EpochBucketInterval,
 	RetentionStartupGrace,
 	MaxRetentionHorizonFloor,
@@ -101,8 +99,6 @@ impl ConfigKey {
 			Self::RetentionEvictInterval,
 			Self::RetentionEvictBatchSize,
 			Self::RetentionEvictMaxBatchesPerTick,
-			Self::OperatorReclaimGroupsPerTick,
-			Self::OperatorReclaimRowsPerTick,
 			Self::EpochBucketInterval,
 			Self::RetentionStartupGrace,
 			Self::MaxRetentionHorizonFloor,
@@ -160,8 +156,6 @@ impl ConfigKey {
 			Self::RetentionEvictInterval => Value::duration_seconds(60),
 			Self::RetentionEvictBatchSize => Value::Uint8(1024),
 			Self::RetentionEvictMaxBatchesPerTick => Value::Uint8(8),
-			Self::OperatorReclaimGroupsPerTick => Value::Uint8(256),
-			Self::OperatorReclaimRowsPerTick => Value::Uint8(1024),
 			Self::EpochBucketInterval => Value::duration_seconds(60),
 			Self::RetentionStartupGrace => Value::duration_seconds(300),
 			Self::MaxRetentionHorizonFloor => Value::duration_seconds(7 * 24 * 60 * 60),
@@ -238,12 +232,6 @@ impl ConfigKey {
 			}
 			Self::RetentionEvictMaxBatchesPerTick => {
 				"Upper bound on eviction transactions per retention tick. Caps how long one tick can run when draining a backlog; remaining work resumes on the next tick."
-			}
-			Self::OperatorReclaimGroupsPerTick => {
-				"Max operator groups one flow tick may reclaim, across both the data and identity phases. Groups left over stay due and resume on the next tick."
-			}
-			Self::OperatorReclaimRowsPerTick => {
-				"Max operator-state rows one flow tick may remove while reclaiming groups. Bounds how long a high-cardinality group holds the sole write connection; the remainder resumes on the next tick."
 			}
 			Self::EpochBucketInterval => {
 				"Wall-clock width of one durable version-epoch bucket. The epoch log persists at most one \
@@ -446,8 +434,6 @@ impl ConfigKey {
 			Self::RetentionEvictInterval => true,
 			Self::RetentionEvictBatchSize => false,
 			Self::RetentionEvictMaxBatchesPerTick => false,
-			Self::OperatorReclaimGroupsPerTick => false,
-			Self::OperatorReclaimRowsPerTick => false,
 			Self::EpochBucketInterval => false,
 			Self::RetentionStartupGrace => false,
 			Self::MaxRetentionHorizonFloor => false,
@@ -505,8 +491,6 @@ impl ConfigKey {
 			Self::RetentionEvictInterval => &[ValueType::Duration],
 			Self::RetentionEvictBatchSize => &[ValueType::Uint8],
 			Self::RetentionEvictMaxBatchesPerTick => &[ValueType::Uint8],
-			Self::OperatorReclaimGroupsPerTick => &[ValueType::Uint8],
-			Self::OperatorReclaimRowsPerTick => &[ValueType::Uint8],
 			Self::EpochBucketInterval => &[ValueType::Duration],
 			Self::RetentionStartupGrace => &[ValueType::Duration],
 			Self::MaxRetentionHorizonFloor => &[ValueType::Duration],
@@ -564,8 +548,6 @@ impl ConfigKey {
 			Self::RetentionEvictInterval => false,
 			Self::RetentionEvictBatchSize => false,
 			Self::RetentionEvictMaxBatchesPerTick => false,
-			Self::OperatorReclaimGroupsPerTick => false,
-			Self::OperatorReclaimRowsPerTick => false,
 			Self::EpochBucketInterval => false,
 			Self::RetentionStartupGrace => false,
 			Self::MaxRetentionHorizonFloor => false,
@@ -921,8 +903,6 @@ impl fmt::Display for ConfigKey {
 			Self::RetentionEvictInterval => write!(f, "RETENTION_EVICT_INTERVAL"),
 			Self::RetentionEvictBatchSize => write!(f, "RETENTION_EVICT_BATCH_SIZE"),
 			Self::RetentionEvictMaxBatchesPerTick => write!(f, "RETENTION_EVICT_MAX_BATCHES_PER_TICK"),
-			Self::OperatorReclaimGroupsPerTick => write!(f, "OPERATOR_RECLAIM_GROUPS_PER_TICK"),
-			Self::OperatorReclaimRowsPerTick => write!(f, "OPERATOR_RECLAIM_ROWS_PER_TICK"),
 			Self::EpochBucketInterval => write!(f, "EPOCH_BUCKET_INTERVAL"),
 			Self::RetentionStartupGrace => write!(f, "RETENTION_STARTUP_GRACE"),
 			Self::MaxRetentionHorizonFloor => write!(f, "MAX_RETENTION_HORIZON_FLOOR"),
@@ -984,8 +964,6 @@ impl FromStr for ConfigKey {
 			"RETENTION_EVICT_INTERVAL" => Ok(Self::RetentionEvictInterval),
 			"RETENTION_EVICT_BATCH_SIZE" => Ok(Self::RetentionEvictBatchSize),
 			"RETENTION_EVICT_MAX_BATCHES_PER_TICK" => Ok(Self::RetentionEvictMaxBatchesPerTick),
-			"OPERATOR_RECLAIM_GROUPS_PER_TICK" => Ok(Self::OperatorReclaimGroupsPerTick),
-			"OPERATOR_RECLAIM_ROWS_PER_TICK" => Ok(Self::OperatorReclaimRowsPerTick),
 			"EPOCH_BUCKET_INTERVAL" => Ok(Self::EpochBucketInterval),
 			"RETENTION_STARTUP_GRACE" => Ok(Self::RetentionStartupGrace),
 			"MAX_RETENTION_HORIZON_FLOOR" => Ok(Self::MaxRetentionHorizonFloor),
@@ -1213,7 +1191,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 54);
+		assert_eq!(all.len(), 52);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));

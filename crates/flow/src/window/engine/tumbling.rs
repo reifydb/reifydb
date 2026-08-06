@@ -16,7 +16,7 @@ use reifydb_codec::{
 	state::OperatorState,
 };
 use reifydb_core::{
-	key::operator_group_state::{GroupId, GroupSet},
+	key::operator_group_state::GroupId,
 	metrics::heap::{StateCompleteness, StateMemory},
 	state::{cache::StateCache, store::StateStore},
 };
@@ -201,10 +201,6 @@ where
 		self.accumulators.flush(store)?;
 		self.meta.flush(store)?;
 		Ok(())
-	}
-
-	pub fn invalidate_groups(&mut self, groups: &GroupSet) -> usize {
-		self.accumulators.invalidate_group_data(groups)
 	}
 
 	fn warm_and_load_meta<S: StateStore>(

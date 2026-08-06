@@ -11,7 +11,6 @@ use crate::{
 	operator::{
 		expectation::{Bound, Expectation},
 		model::Model,
-		reclaim::ReclaimTally,
 		scenario::Scenario,
 		session::Session,
 		subject::Subject,
@@ -24,7 +23,6 @@ pub struct DriveOutcome {
 	pub corpus: Corpus,
 	pub view: MaterializedView,
 
-	pub reclaimed: ReclaimTally,
 
 	pub divergence: Option<String>,
 }
@@ -53,11 +51,9 @@ where
 
 	let mut arrival = 0u64;
 	let mut trace: Vec<String> = Vec::new();
-	let mut reclaimed = ReclaimTally::default();
 
 	let mut fingerprint = mix(0, seed);
 
-	let phases = scenario.tick_pct + scenario.reclaim_pct;
 
 	for step in 0..scenario.steps {
 		let roll = rng.random_range(0..100);
@@ -69,16 +65,6 @@ where
 			fingerprint = mix(mix(fingerprint, 1), watermark);
 			session.tick(watermark).expect("tick must succeed");
 			model.advance_ledger(watermark);
-		} else if roll < phases {
-			fingerprint = mix(mix(fingerprint, 9), watermark);
-			let swept = session.reclaim(watermark).expect("reclaim must succeed");
-
-			trace.push(format!(
-				"step {step}: reclaim at {watermark} -> data={:?} identity={:?} keyspace={:?} mapping_rows={}",
-				swept.data, swept.identity, swept.keyspace, swept.mapping_rows
-			));
-			model.reclaimed(&swept);
-			reclaimed.record(&swept);
 		} else if scenario.mixed_batches {
 			let target = scenario.batch.draw(&mut rng);
 			fingerprint = mix(fingerprint, 8);
@@ -160,7 +146,7 @@ where
 			if !ops.is_empty() {
 				session.apply(workload.change(&ops)).expect("apply must succeed");
 			}
-		} else if !live.is_empty() && roll < phases + scenario.remove_pct {
+		} else if !live.is_empty() && roll < scenario.tick_pct + scenario.remove_pct {
 			let idx = rng.random_range(0..live.len());
 			let row = live.remove(idx);
 			trace.push(format!("step {step}: remove {row:?}"));
@@ -168,7 +154,7 @@ where
 			fingerprint = mix(mix(mix(mix(fingerprint, 2), lanes.number), lanes.group), lanes.coord);
 			model.retract(&row);
 			session.apply(workload.remove(&row)).expect("apply must succeed");
-		} else if !live.is_empty() && roll < phases + scenario.remove_pct + scenario.update_pct {
+		} else if !live.is_empty() && roll < scenario.tick_pct + scenario.remove_pct + scenario.update_pct {
 			let idx = rng.random_range(0..live.len());
 			let pre = live[idx].clone();
 			let post = workload.revalue(&mut rng, &pre);
@@ -255,20 +241,20 @@ where
 				"step {step}: the operator published an unfoldable diff stream: {:?}",
 				session.incoherent()
 			);
-			return stopped(fingerprint, &trace, session, reclaimed, report);
+			return stopped(fingerprint, &trace, session, report);
 		}
 
 		if let Err(report) =
 			model.live().check(session.view(), workload.projection(), workload.tolerances(), Bound::AtLeast)
 		{
 			dump(&trace);
-			return stopped(fingerprint, &trace, session, reclaimed, format!("step {step}: {report}"));
+			return stopped(fingerprint, &trace, session, format!("step {step}: {report}"));
 		}
 		if let Err(report) =
 			model.all().check(session.view(), workload.projection(), workload.tolerances(), Bound::AtMost)
 		{
 			dump(&trace);
-			return stopped(fingerprint, &trace, session, reclaimed, format!("step {step}: {report}"));
+			return stopped(fingerprint, &trace, session, format!("step {step}: {report}"));
 		}
 	}
 
@@ -277,70 +263,33 @@ where
 
 	let ticks = session.drain(drain_at_ms, 256).expect("drain tick must succeed");
 
-	if scenario.reclaim_pct == 0 {
-		if let Err(report) = model.after_drain().check(
-			session.view(),
-			workload.projection(),
-			workload.tolerances(),
-			Bound::Exactly,
-		) {
-			dump(&trace);
-			let report = format!(
-				"repeated ticks past every horizon must leave exactly what the model says survives, but \
-				 after {ticks} ticks: {report}"
-			);
-			return stopped(fingerprint, &trace, session, reclaimed, report);
-		}
-	} else {
-		if let Err(report) = model.after_drain().check(
-			session.view(),
-			workload.projection(),
-			workload.tolerances(),
-			Bound::AtLeast,
-		) {
-			dump(&trace);
-			let report = format!(
-				"a sweep may strand a row but may not delete one the model still expects, yet after \
-				 {ticks} drain ticks: {report}"
-			);
-			return stopped(fingerprint, &trace, session, reclaimed, report);
-		}
-		if let Err(report) =
-			model.all().check(session.view(), workload.projection(), workload.tolerances(), Bound::AtMost)
-		{
-			dump(&trace);
-			let report = format!(
-				"a sweep may strand a row but may not conjure one that was never admitted, yet after \
-				 {ticks} drain ticks: {report}"
-			);
-			return stopped(fingerprint, &trace, session, reclaimed, report);
-		}
+	if let Err(report) =
+		model.after_drain().check(session.view(), workload.projection(), workload.tolerances(), Bound::Exactly)
+	{
+		dump(&trace);
+		let report = format!(
+			"repeated ticks past every horizon must leave exactly what the model says survives, but \
+			 after {ticks} ticks: {report}"
+		);
+		return stopped(fingerprint, &trace, session, report);
 	}
 	if !session.incoherent().is_empty() {
 		dump(&trace);
 		let report = format!("the drain published an unfoldable diff stream: {:?}", session.incoherent());
-		return stopped(fingerprint, &trace, session, reclaimed, report);
+		return stopped(fingerprint, &trace, session, report);
 	}
 
 	DriveOutcome {
 		corpus: Corpus::new(fingerprint, trace.len()),
 		view: session.into_view(),
-		reclaimed,
 		divergence: None,
 	}
 }
 
-fn stopped<S: Subject>(
-	fingerprint: u64,
-	trace: &[String],
-	session: Session<'_, S>,
-	reclaimed: ReclaimTally,
-	report: String,
-) -> DriveOutcome {
+fn stopped<S: Subject>(fingerprint: u64, trace: &[String], session: Session<'_, S>, report: String) -> DriveOutcome {
 	DriveOutcome {
 		corpus: Corpus::new(fingerprint, trace.len()),
 		view: session.into_view(),
-		reclaimed,
 		divergence: Some(report),
 	}
 }

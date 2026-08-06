@@ -8,14 +8,15 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::operator_group_state::{GroupId, GroupSet},
+	key::operator_group_state::{GroupId, GroupSet, Keyspace},
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
 use reifydb_flow::{
-	operator::{Operator, Reclaimable},
+	operator::Operator,
 	transaction::FlowTransaction,
 };
+use reifydb_store_operator::FloorSpec;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -29,12 +30,7 @@ use crate::{
 	operator::{OperatorCell, drops::SealedDrops},
 };
 
-const CAPABILITIES: &[OperatorCapability] = &[
-	OperatorCapability::Insert,
-	OperatorCapability::Update,
-	OperatorCapability::Delete,
-	OperatorCapability::Reclaim,
-];
+const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
 
 const REMOVE_RECLAIM_LIMIT: usize = 8;
 
@@ -126,8 +122,16 @@ impl Operator for AppendOperator {
 		self.ttl
 	}
 
-	fn reclaimable_through(&self, _txn: &mut FlowTransaction, watermark: DateTime) -> Result<Reclaimable> {
-		Ok(self.ttl.map(|ttl| Reclaimable::data(watermark.saturating_sub(ttl))).unwrap_or_default())
+	fn floors(&self, _txn: &mut FlowTransaction, watermark: DateTime) -> Result<FloorSpec> {
+		Ok(self
+			.ttl
+			.map(|ttl| {
+				let behind = watermark.saturating_sub(ttl);
+				let mut spec = FloorSpec::data(behind);
+				spec.set(Keyspace::ROW_NUMBER_MAPPING, behind);
+				spec
+			})
+			.unwrap_or_default())
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
@@ -545,51 +549,6 @@ mod tests {
 			Count::new(1),
 			"the removed row's mapping must leave the cache with the rows it named"
 		);
-	}
-
-	#[test]
-	fn an_idle_row_loses_its_mapping_only_after_the_data_phase_released_the_group() {
-		// Append holds no data, so its group reaches the identity phase with an empty data range.
-		// The order still matters: the identity cutoff trails the sink row ttl, and taking the
-		// mapping earlier retires the name of a sink row that is still there.
-		let engine = TestEngine::new();
-		let op = op(8);
-		let mut txn = txn_at(&engine, op.operator, 100);
-		op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[11]))).unwrap();
-		let group = group_of(&mut txn, &op, 0, 11).expect("precondition: the row is interned");
-
-		assert!(
-			txn.due_identity_groups(op.operator, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10)
-				.unwrap()
-				.is_empty(),
-			"a group the data phase has not released is not an identity candidate"
-		);
-
-		let outcome = txn.reclaim_group_data(op.operator, group, 100).unwrap();
-		assert_eq!(outcome.removed, 0, "append writes no data rows, so the data phase has nothing to erase");
-		txn.defer_group(op.operator, group).unwrap();
-		assert!(
-			txn.get_row_number(op.operator, group, &AppendOperator::mapping_key()).unwrap().is_some(),
-			"the mapping must survive the data phase"
-		);
-
-		assert_eq!(
-			txn.due_identity_groups(op.operator, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10)
-				.unwrap(),
-			vec![group]
-		);
-		txn.reclaim_group_identity(op.operator, group, 100).unwrap();
-
-		assert_eq!(group_rows(&mut txn, &op, group), 0, "the identity phase must empty the group");
-		assert_eq!(group_of(&mut txn, &op, 0, 11), None, "and take the dictionary entry with it");
-	}
-
-	#[test]
-	fn capabilities_declare_reclaim_or_the_substrate_skips_the_node() {
-		// The sweep reads the declaration, not the operator type, so a operator that omits Reclaim is
-		// counted perpetual and never scanned - every mapping it holds becomes permanent while
-		// the report calls it healthy.
-		assert!(op(10).capabilities().contains(&OperatorCapability::Reclaim));
 	}
 
 	#[test]

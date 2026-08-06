@@ -105,7 +105,6 @@ pub struct Scenario {
 
 	pub tick_pct: u32,
 
-	pub reclaim_pct: u32,
 
 	pub coord_span_ms: u64,
 
@@ -131,7 +130,6 @@ impl Scenario {
 			remove_pct: 0,
 			update_pct: 0,
 			tick_pct: 0,
-			reclaim_pct: 0,
 			coord_span_ms,
 			drain_at_ms,
 			max_live: None,
@@ -151,7 +149,6 @@ impl Scenario {
 			remove_pct: 25,
 			update_pct: 30,
 			tick_pct: 0,
-			reclaim_pct: 0,
 			coord_span_ms: 0,
 			drain_at_ms: 0,
 			max_live: Some(50),
@@ -184,11 +181,6 @@ impl Scenario {
 		self.remove_pct = remove_pct;
 		self.update_pct = update_pct;
 		self.tick_pct = tick_pct;
-		self
-	}
-
-	pub fn with_reclaim(mut self, pct: u32) -> Self {
-		self.reclaim_pct = pct;
 		self
 	}
 

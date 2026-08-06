@@ -36,10 +36,7 @@ use reifydb_core::{
 		flow::FlowWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	lifecycle::{
-		class::RetentionClass, coverage::RetentionCoverage, metrics::RetentionMetrics,
-		watermark::ConsumerPositions,
-	},
+	lifecycle::watermark::ConsumerPositions,
 	metrics::registry::MetricsRegistry,
 	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
@@ -82,8 +79,6 @@ use crate::{
 const FLOW_CHECKPOINT_LAG: u64 = 10_000;
 const FLOW_CHECKPOINT_MAX_AGE_MS: i64 = 5_000;
 
-const FLOW_TICK_RECLAIM: &str = "flow-tick-reclaim";
-
 pub struct FlowSubsystem {
 	flow_scope: ActorSpawner,
 	loader_handle: Mutex<Option<LoaderHandle>>,
@@ -122,11 +117,6 @@ impl FlowSubsystem {
 		let state_budget = ioc
 			.resolve::<OperatorStateBudgetHandle>()
 			.expect("OperatorStateBudgetHandle must be registered");
-		let retention_metrics = ioc.resolve::<RetentionMetrics>().expect("RetentionMetrics must be registered");
-		if let Some(coverage) = ioc.try_resolve::<RetentionCoverage>() {
-			coverage.cover(RetentionClass::OperatorGroupData, FLOW_TICK_RECLAIM);
-			coverage.cover(RetentionClass::OperatorGroupIdentity, FLOW_TICK_RECLAIM);
-		}
 		let poll_frontier = CdcConsumerWatermark::default();
 		let materialization = FlowMaterialization::new(poll_frontier.clone(), flow_tracker.clone());
 		let committer = Committer::new(
@@ -186,7 +176,6 @@ impl FlowSubsystem {
 				substrate: substrate.clone(),
 				operator_samples: operator_samples.clone(),
 				state_budget: state_budget.clone(),
-				retention_metrics: retention_metrics.clone(),
 				clock: clock.clone(),
 				spawner: flow_scope.clone(),
 				consumer_id: flow_consumer_id,

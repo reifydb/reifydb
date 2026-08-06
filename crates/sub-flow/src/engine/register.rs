@@ -3,7 +3,6 @@
 
 use std::{mem, sync::Arc};
 
-use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_catalog::vtable::system::node_retention_store::NodeRetentionInfo;
 use reifydb_core::{
 	common::{JoinType, WindowKind},
@@ -125,17 +124,6 @@ impl FlowEngineInner {
 		}
 		if !operator.ty.consults_declared_span() {
 			return Err(FlowGraphError::SpanOnUnageableNode {
-				flow_id: flow.id.0,
-				operator: operator.ty.label(),
-			}
-			.into());
-		}
-		let reclaims = self
-			.operators
-			.get(&operator.id)
-			.is_some_and(|operator| operator.capabilities().contains(&OperatorCapability::Reclaim));
-		if !reclaims {
-			return Err(FlowGraphError::SpanWithoutReclaim {
 				flow_id: flow.id.0,
 				operator: operator.ty.label(),
 			}

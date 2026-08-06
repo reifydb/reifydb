@@ -427,6 +427,92 @@ fn floor_only_drops_real_group_data_of_the_specified_keyspace() {
 }
 
 #[test]
+fn a_data_wide_floor_reaches_every_data_keyspace_but_an_explicit_entry_outranks_it() {
+	// An operator cannot enumerate every keyspace its state lives in (a guest invents its own above
+	// FIRST_CUSTOM), so the data-wide floor must reach data keyspaces it never heard of, while an
+	// explicit per-keyspace cutoff overrides it for the keyspaces that age on their own horizon.
+	// Identity keyspaces and node scope stay immune even under a data-wide floor.
+	// Mutation falsified against: cutoff() resolving the data default before the explicit entry
+	// (JOIN_LEFT row would die), and the data default applying to non-data keyspaces (counter dies).
+	let store = manual_store();
+
+	let custom = data_key(3, Keyspace::FIRST_CUSTOM, b"x");
+	let accumulator = data_key(3, Keyspace::ACCUMULATOR, b"x");
+	let overridden = data_key(3, Keyspace::JOIN_LEFT, b"x");
+	let counter = data_key(3, Keyspace::NODE_COUNTER, b"x");
+	let node_scope = data_key(GroupId::NODE_SCOPE.0, Keyspace::ACCUMULATOR, b"x");
+
+	for key in [&custom, &accumulator, &overridden, &counter, &node_scope] {
+		store.set(OP, key.clone(), stamped(b"v", 500));
+	}
+
+	let floor = FloorSpec::data(DateTime::from_nanos(1_000)).with(Keyspace::JOIN_LEFT, DateTime::from_nanos(100));
+	let outcome = store.compact(OP, &floor);
+
+	assert_eq!(store.get(OP, &custom), None, "a never-declared custom keyspace must obey the data-wide floor");
+	assert_eq!(store.get(OP, &accumulator), None, "a known data keyspace must obey the data-wide floor");
+	assert_eq!(
+		store.get(OP, &overridden),
+		Some(stamped(b"v", 500)),
+		"an explicit per-keyspace cutoff must outrank the data-wide floor"
+	);
+	assert_eq!(store.get(OP, &counter), Some(stamped(b"v", 500)), "identity stays immune to a data-wide floor");
+	assert_eq!(store.get(OP, &node_scope), Some(stamped(b"v", 500)), "node scope stays immune");
+	assert_eq!(outcome.dropped, 2, "exactly the two floor-expired rows are reported dropped");
+	assert!(outcome.reclaimed_bytes > 0, "the dropped rows' bytes must be reported reclaimed");
+}
+
+#[test]
+fn an_epoch_stamped_row_is_never_floor_dropped() {
+	// An unstamped row is byte-identical to one written at the epoch, so the floor refuses both:
+	// the writer-stamp contract fails safe as retention (a visible leak) rather than as silent
+	// deletion of live state. A legitimate event AT the epoch is retained for the same reason.
+	// Mutation falsified against: removing the epoch guard (the row dies under any positive cutoff).
+	let store = manual_store();
+	store.set(OP, data_key(1, Keyspace::ACCUMULATOR, b"unstamped"), stamped(b"v", 0));
+
+	store.compact(OP, &FloorSpec::data(DateTime::from_nanos(u64::MAX)));
+
+	assert_eq!(
+		store.get(OP, &data_key(1, Keyspace::ACCUMULATOR, b"unstamped")),
+		Some(stamped(b"v", 0)),
+		"an epoch-stamped row must survive every floor"
+	);
+}
+
+#[test]
+fn compaction_reports_zero_work_when_nothing_expires() {
+	// The outcome feeds per-operator reclamation counters that stay quiet at zero; a compaction that
+	// merged batches without dropping a floored row must not fabricate activity.
+	// Mutation falsified against: counting every merged entry as dropped instead of only
+	// floor-expired ones.
+	let store = manual_store();
+	store.set(OP, data_key(1, Keyspace::ACCUMULATOR, b"live"), stamped(b"v", 5_000));
+	store.freeze(OP);
+	store.set(OP, data_key(1, Keyspace::ACCUMULATOR, b"also"), stamped(b"v", 6_000));
+
+	let outcome = store.compact(OP, &FloorSpec::data(DateTime::from_nanos(1_000)));
+
+	assert_eq!(outcome.dropped, 0);
+	assert!(outcome.is_noop() || outcome.reclaimed_bytes > 0, "merge overhead may shrink bytes, never grow them");
+	assert_eq!(scan_all(&store, OP).len(), 2, "both live rows survive");
+}
+
+#[test]
+fn the_max_cutoff_spans_explicit_entries_and_the_data_floor() {
+	// The frontier column reports the operator's most advanced floor; taking only the explicit
+	// entries would report a window operator (data-wide floor only) as permanently none.
+	// Mutation falsified against: min instead of max, and ignoring the data default.
+	let explicit_newer = FloorSpec::data(DateTime::from_nanos(10)).with(Keyspace::JOIN_LEFT, DateTime::from_nanos(99));
+	assert_eq!(explicit_newer.max_cutoff(), Some(DateTime::from_nanos(99)));
+
+	let data_newer = FloorSpec::data(DateTime::from_nanos(50)).with(Keyspace::JOIN_LEFT, DateTime::from_nanos(7));
+	assert_eq!(data_newer.max_cutoff(), Some(DateTime::from_nanos(50)));
+
+	assert_eq!(FloorSpec::new().max_cutoff(), None, "an empty spec has no frontier to report");
+}
+
+#[test]
 fn byte_accounting_tracks_every_transition_and_reaches_zero() {
 	// The byte counters feed memory metrics, so they must move with every mutation: grow on set,
 	// shrink on overwrite-with-smaller, stay put across freeze, and reach exactly zero once
@@ -595,8 +681,11 @@ fn randomized_operations_match_a_naive_model() {
 	for _ in 0..4000 {
 		match rng.next() % 100 {
 			0..50 => {
+				// Stamps start at 1: an epoch stamp is the never-floored sentinel (see
+				// an_epoch_stamped_row_is_never_floor_dropped), and the naive model does not
+				// replicate that carve-out.
 				let key = random_key(&mut rng);
-				let updated_at = rng.next() % 128;
+				let updated_at = 1 + rng.next() % 127;
 				let payload = vec![(rng.next() % 256) as u8; (rng.next() % 24) as usize];
 				let row = stamped(&payload, updated_at);
 				model.insert(key.clone(), row.clone());

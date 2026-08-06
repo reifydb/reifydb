@@ -8,14 +8,13 @@ use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	common::{CommitVersion, WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, change::Change},
-	key::operator_group_state::GroupSet,
 	metrics::heap::OperatorSample,
 	state::{budget::OperatorStateBudgetHandle, horizon::window_retention_scale},
 	value::column::columns::Columns,
 };
 use reifydb_engine::flow::aggregate::AggregateContext;
 use reifydb_flow::{
-	operator::{Operator, Reclaimable},
+	operator::Operator,
 	timer::Timer,
 	transaction::FlowTransaction,
 	window::{
@@ -26,6 +25,7 @@ use reifydb_flow::{
 		span::WindowCoord,
 	},
 };
+use reifydb_store_operator::FloorSpec;
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -53,12 +53,7 @@ use crate::{
 	},
 };
 
-const CAPABILITIES: &[OperatorCapability] = &[
-	OperatorCapability::Insert,
-	OperatorCapability::Update,
-	OperatorCapability::Delete,
-	OperatorCapability::Reclaim,
-];
+const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
 
 pub struct WindowConfig {
 	pub parent: OperatorCell,
@@ -237,25 +232,13 @@ impl Operator for WindowOperator {
 		window_retention_scale(&self.kind, self.grace())
 	}
 
-	fn reclaimable_through(&self, txn: &mut FlowTransaction, _watermark: DateTime) -> Result<Reclaimable> {
+	fn floors(&self, txn: &mut FlowTransaction, _watermark: DateTime) -> Result<FloorSpec> {
 		let (Some(sealed), Some(admissible)) =
 			(read_sealed_through(txn, self.core.operator)?, self.retention_scale())
 		else {
-			return Ok(Reclaimable::default());
+			return Ok(FloorSpec::default());
 		};
-		Ok(SealPolicy::of(admissible).sealed_anchor(sealed.at()).map(Reclaimable::data).unwrap_or_default())
-	}
-
-	fn invalidate_groups(&self, groups: &GroupSet) {
-		self.core.tumbling_engine_invalidate(groups);
-		self.core.engine_meta_invalidate(groups);
-		if let Some(slot) = self.rolling_engine_slot().as_mut() {
-			match slot {
-				RollingEngineSlot::CountedRow(engine) => engine.invalidate_groups(groups),
-				RollingEngineSlot::TimedRow(engine) => engine.invalidate_groups(groups),
-			};
-		}
-		self.meta_slot().invalidate_groups(groups);
+		Ok(SealPolicy::of(admissible).sealed_anchor(sealed.at()).map(FloorSpec::data).unwrap_or_default())
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

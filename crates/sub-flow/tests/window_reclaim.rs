@@ -16,7 +16,7 @@ fn setup() -> TestDb {
 	TestDb::from(
 		embedded::memory()
 			.with_flow(|f| f)
-			// The retention ledger is the only surface that reports what the tick pass actually
+			// The per-operator compaction counters are the only surface that reports what the tick pass
 			// reclaimed; a short sample cadence keeps the polls inside their timeouts.
 			.with_config(ConfigKey::MetricsSampleInterval, Value::duration_milliseconds(20))
 			.build()
@@ -25,7 +25,7 @@ fn setup() -> TestDb {
 }
 
 const RECLAIMED_A_GROUP: &str =
-	"from system::metrics::lifecycle::current filter { class == 'operator-group-data' and work_done > 0 }";
+	"from system::metrics::runtime::operators::current filter { metric == 'state_compaction_dropped' and value > 0.0 }";
 
 #[test]
 fn a_deferred_flow_drains_a_window_group_left_behind_by_retraction() {
@@ -113,7 +113,7 @@ fn drains_a_stranded_window_group(view_kind: &str) {
 		 (nothing inside a group range to erase), stamped in a domain the seal cutoff cannot read, or the \
 		 node was skipped for want of the Reclaim capability; ledger now: {:?}",
 		db.query_as_root(
-			"from system::metrics::lifecycle::current filter { class == 'operator-group-data' }",
+			"from system::metrics::runtime::operators::current filter { metric == 'state_compaction_dropped' }",
 			()
 		)
 	);

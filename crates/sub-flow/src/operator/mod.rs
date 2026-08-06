@@ -3,15 +3,13 @@
 
 use std::{ops::Deref, sync::Arc};
 
-use reifydb_abi::operator::capabilities::OperatorCapability;
 #[cfg(reifydb_target = "native")]
 use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_core::key::operator_group_state::GroupSet;
-#[cfg(reifydb_target = "native")]
-use reifydb_flow::operator::Reclaimable;
 use reifydb_flow::transaction::FlowTransaction;
 #[cfg(reifydb_target = "native")]
 use reifydb_flow::window::{ledger::read_sealed_through, policy::SealPolicy};
+#[cfg(reifydb_target = "native")]
+use reifydb_store_operator::FloorSpec;
 #[cfg(reifydb_target = "native")]
 use reifydb_value::value::duration::Duration;
 use reifydb_value::{Result, value::datetime::DateTime};
@@ -24,19 +22,22 @@ pub(crate) fn scale_from_millis(span: Option<u64>) -> Option<Duration> {
 }
 
 #[cfg(reifydb_target = "native")]
-pub(crate) fn sealed_or_idle(
+pub(crate) fn sealed_or_idle_floor(
 	txn: &mut FlowTransaction,
 	operator: OperatorId,
 	watermark: DateTime,
 	scale: Option<Duration>,
-) -> Result<Reclaimable> {
+) -> Result<FloorSpec> {
 	let Some(scale) = scale else {
-		return Ok(Reclaimable::default());
+		return Ok(FloorSpec::default());
 	};
 	if let Some(sealed) = read_sealed_through(txn, operator)? {
-		return Ok(SealPolicy::of(scale).sealed_anchor(sealed.at()).map(Reclaimable::data).unwrap_or_default());
+		return Ok(SealPolicy::of(scale)
+			.sealed_anchor(sealed.at())
+			.map(FloorSpec::data)
+			.unwrap_or_default());
 	}
-	Ok(Reclaimable::data(watermark.saturating_sub(scale)))
+	Ok(FloorSpec::data(watermark.saturating_sub(scale)))
 }
 
 pub mod aggregation;
@@ -81,13 +82,6 @@ impl OperatorCell {
 	pub fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		enforce_apply_capabilities(self.id(), self.capabilities(), &change);
 		self.0.apply(txn, change)
-	}
-
-	pub fn invalidate_groups(&self, groups: &GroupSet) {
-		if groups.is_empty() || !self.capabilities().contains(&OperatorCapability::Reclaim) {
-			return;
-		}
-		self.0.invalidate_groups(groups);
 	}
 }
 

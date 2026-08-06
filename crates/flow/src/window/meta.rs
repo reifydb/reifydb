@@ -6,7 +6,7 @@ use std::mem::size_of;
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	key::operator_group_state::{
-		GroupId, GroupSet, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorGroupStateKey,
+		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorGroupStateKey,
 		keyspace_inner_range,
 	},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
@@ -224,14 +224,6 @@ impl WindowMeta {
 		Ok(())
 	}
 
-	pub fn invalidate_groups(&mut self, groups: &GroupSet) -> usize {
-		let mut dropped = self.rolling_meta.invalidate_group_data(groups);
-		dropped += self.count.invalidate_group_data(groups);
-		dropped += self.row_index.invalidate_group_data(groups);
-		dropped += self.session.invalidate_group_data(groups);
-		dropped
-	}
-
 	pub fn flush<S: StateStore>(&mut self, store: &mut S) -> Result<()> {
 		self.seal_ledger.flush(store)?;
 		self.count.flush(store)?;
@@ -374,7 +366,7 @@ mod tests {
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::{
 		key::operator_group_state::{
-			GroupId, GroupSet, IntoGroupStateKey, OperatorGroupStateKey, group_data_inner_range,
+			GroupId, IntoGroupStateKey, OperatorGroupStateKey, group_data_inner_range,
 		},
 		state::budget::OperatorStateBudgetHandle,
 	};
@@ -457,26 +449,6 @@ mod tests {
 		assert_eq!(count_group, session_group, "both belong to the same partition");
 		assert_ne!(count_ks, session_ks, "only the keyspace may distinguish them");
 		assert!(count_suffix.is_empty() && session_suffix.is_empty());
-	}
-
-	#[test]
-	fn reclaiming_a_partition_group_drops_its_meta_state_from_ram() {
-		// Moving the keys into the group only makes the store rows reclaimable. The substrate
-		// deletes them behind the operator's back, so anything left in the clean tier keeps
-		// answering from RAM - a session tracker that outlives its state and reopens a closed one.
-		let mut meta = WindowMeta::new(OperatorStateBudgetHandle::default());
-		let mut store = MockStore::default();
-
-		meta.save_session(&mut store, GROUP, &SessionTracker::resumed(1, 2, 3)).unwrap();
-		meta.get_and_increment_count(&mut store, GROUP).unwrap();
-		meta.store_row_index(&mut store, GROUP, RowNumber(7), 11).unwrap();
-		meta.flush(&mut store).unwrap();
-
-		assert_eq!(
-			meta.invalidate_groups(&GroupSet::new([GROUP])),
-			3,
-			"every partition-scoped cache must drop the reclaimed group, not just rolling meta"
-		);
 	}
 
 	#[test]

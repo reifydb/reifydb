@@ -23,7 +23,6 @@ use reifydb_abi::{
 	operator::{timer::TimerKind, vtable::OperatorVTableFFI},
 };
 use reifydb_core::{
-	key::operator_group_state::{GroupId, GroupSet},
 	metrics::heap::OperatorSample,
 };
 use reifydb_value::value::datetime::DateTime;
@@ -463,43 +462,6 @@ fn usage_from_sample(sample: Option<OperatorSample>) -> StateUsageFFI {
 	usage
 }
 
-/// # Safety
-///
-/// `groups` must point to `len` contiguous `u64` values, or be null when `len` is zero. The callee
-/// only reads them for the duration of the call and never retains the pointer.
-pub unsafe extern "C" fn ffi_invalidate_groups<O: FFIOperator>(
-	instance: *mut c_void,
-	groups: *const u64,
-	len: usize,
-) -> i32 {
-	if instance.is_null() || (groups.is_null() && len != 0) {
-		return FFI_ERROR_NULL_PTR;
-	}
-
-	let result = catch_unwind(AssertUnwindSafe(|| {
-		// SAFETY: the caller guarantees `groups` covers `len` initialised, aligned u64s for the duration of
-		// this call, and GroupId is a transparent u64 so the reinterpretation preserves layout.
-		let ids = if len == 0 {
-			&[][..]
-		} else {
-			unsafe { slice::from_raw_parts(groups as *const GroupId, len) }
-		};
-		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
-		wrapper.operator.invalidate_groups(&GroupSet::new(ids.iter().copied()));
-	}));
-
-	match result {
-		Ok(()) => FFI_OK,
-		Err(payload) => {
-			let bt = Backtrace::force_capture();
-			let detail = describe_panic_payload(&payload);
-			error!("Panic in ffi_invalidate_groups - aborting");
-			print_ffi_fatal("ffi_invalidate_groups", any::type_name::<O>(), -99, &detail, None, Some(&bt));
-			abort();
-		}
-	}
-}
-
 pub fn create_vtable<O: FFIOperator>() -> OperatorVTableFFI {
 	OperatorVTableFFI {
 		apply: ffi_apply::<O>,
@@ -507,7 +469,6 @@ pub fn create_vtable<O: FFIOperator>() -> OperatorVTableFFI {
 		destroy: ffi_destroy::<O>,
 		flush_state: ffi_flush_state::<O>,
 		sample: ffi_sample::<O>,
-		invalidate_groups: ffi_invalidate_groups::<O>,
 		seal_after_ms: ffi_seal_after_ms::<O>,
 	}
 }

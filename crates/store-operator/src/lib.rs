@@ -15,7 +15,7 @@ pub mod store;
 
 pub use config::OperatorStoreConfig;
 pub use floor::FloorSpec;
-pub use store::{OperatorBatch, OperatorStore};
+pub use store::{CompactionOutcome, OperatorBatch, OperatorStore};
 
 pub struct OperatorStoreVersion;
 

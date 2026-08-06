@@ -16,6 +16,18 @@ use crate::{
 	floor::FloorSpec,
 };
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CompactionOutcome {
+	pub dropped: u64,
+	pub reclaimed_bytes: u64,
+}
+
+impl CompactionOutcome {
+	pub fn is_noop(&self) -> bool {
+		self.dropped == 0 && self.reclaimed_bytes == 0
+	}
+}
+
 #[derive(Debug, Clone)]
 pub struct OperatorBatch {
 	pub items: Vec<(EncodedKey, EncodedRow)>,
@@ -96,16 +108,15 @@ impl OperatorStore {
 		arena.mutate(&self.inner.total_bytes, |inner| inner.freeze());
 	}
 
-	pub fn compact(&self, operator: OperatorId, floor: &FloorSpec) {
+	pub fn compact(&self, operator: OperatorId, floor: &FloorSpec) -> CompactionOutcome {
 		let Some(arena) = self.inner.arenas.get(&operator) else {
-			return;
+			return CompactionOutcome::default();
 		};
-		arena.mutate(&self.inner.total_bytes, |inner| inner.compact(floor));
-	}
-
-	pub fn compact_all(&self, floor: &FloorSpec) {
-		for operator in self.inner.arenas.keys() {
-			self.compact(operator, floor);
+		let before = arena.bytes();
+		let dropped = arena.mutate(&self.inner.total_bytes, |inner| inner.compact(floor));
+		CompactionOutcome {
+			dropped,
+			reclaimed_bytes: before.saturating_sub(arena.bytes()),
 		}
 	}
 

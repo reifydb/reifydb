@@ -20,7 +20,7 @@ use reifydb_core::{
 		EncodableKey, Key, kind::KeyKind, operator_group_state::OperatorGroupStateKey,
 		operator_state::OperatorStateKey,
 	},
-	state::{budget::OperatorStateBudgetHandle, group::ActivityBuckets, horizon::Cutoff},
+	state::{budget::OperatorStateBudgetHandle, group::ActivityBuckets},
 };
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_flow::{
@@ -37,9 +37,7 @@ use reifydb_runtime::context::{
 };
 use reifydb_sdk::{config::Config, operator::OperatorLogic};
 use reifydb_sub_flow::{
-	execution::reclaim::{
-		KeyspaceCursors, PhaseReclaim, ReclaimBudget, ReclaimReport, SweepInputs, SweepOutcome, reclaim_nodes,
-	},
+	execution::compaction::{OperatorCompaction, compact_operator, identity_cutoff},
 	operator::{
 		OperatorCell,
 		apply::ApplyOperator,
@@ -47,10 +45,7 @@ use reifydb_sub_flow::{
 		scan::series::SourceSeriesOperator,
 	},
 };
-use reifydb_testing_chaos::operator::{
-	reclaim::{PhaseCutoffs, Reclaimed, RetiredGroup, StateFootprint},
-	subject::Subject,
-};
+use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject};
 use reifydb_transaction::{
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
 	interceptor::interceptors::Interceptors,
@@ -69,9 +64,7 @@ pub struct Harness<O: Operator> {
 	substrate: FlowSubstrate,
 	catalog: Catalog,
 	sink_row_ttl: Option<Duration>,
-	reclaim_budget: ReclaimBudget,
 	mapping_cursor: Option<EncodedKey>,
-	keyspace_cursors: KeyspaceCursors,
 }
 
 impl<O: Operator> Harness<O> {
@@ -101,12 +94,7 @@ impl<O: Operator> Harness<O> {
 			substrate,
 			catalog: Catalog::testing(),
 			sink_row_ttl: None,
-			reclaim_budget: ReclaimBudget {
-				groups: 256,
-				rows: 1_024,
-			},
 			mapping_cursor: None,
-			keyspace_cursors: KeyspaceCursors::new(),
 		}
 	}
 }
@@ -169,11 +157,6 @@ impl<O: Operator> Harness<O> {
 
 	pub fn with_sink_row_ttl(mut self, ttl: Duration) -> Self {
 		self.sink_row_ttl = Some(ttl);
-		self
-	}
-
-	pub fn with_reclaim_budget(mut self, budget: ReclaimBudget) -> Self {
-		self.reclaim_budget = budget;
 		self
 	}
 
@@ -318,92 +301,22 @@ impl<O: Operator> Harness<O> {
 		}
 	}
 
-	pub fn reclaim(&mut self, at_ms: u64) -> Result<Reclaimed> {
-		let operator_id = self.operator.id();
-		if self.substrate.group.buckets(operator_id).event_grid().is_none() {
-			return Ok(Reclaimed::default());
-		}
+	pub fn state_bytes(&self) -> u64 {
+		self.substrate.operators.bytes(self.operator.id())
+	}
+
+	pub fn compact(&mut self, at_ms: u64) -> Result<OperatorCompaction> {
 		let watermark = DateTime::from_timestamp_millis(at_ms)?;
+		let identity = identity_cutoff(self.sink_row_ttl, watermark);
+		let store = self.substrate.operators.clone();
 
 		let mut txn = self.begin(watermark);
-		let reclaimable = self.operator.reclaimable_through(&mut txn, watermark)?;
-
-		let inputs = SweepInputs {
-			operator: operator_id,
-			data: reclaimable.data.map(Cutoff),
-			identity: self.sink_row_ttl.map(|span| Cutoff(watermark.saturating_sub(span))),
-			keyspaces: reclaimable
-				.keyspaces
-				.into_iter()
-				.map(|(keyspace, at)| (keyspace, Cutoff(at)))
-				.collect(),
-			mapping: reclaimable.mapping.map(Cutoff),
-			mapping_cursor: self.mapping_cursor.take(),
-			keyspace_cursors: mem::take(&mut self.keyspace_cursors),
-		};
-
-		let mut budget = self.reclaim_budget;
-		let mut report = ReclaimReport::default();
-		let operator = &self.operator;
-		let outcome = reclaim_nodes(vec![inputs], &mut txn, &mut budget, &mut report, &mut |_, groups| {
-			operator.invalidate_groups(&groups);
-		})?;
+		let mut cursor = self.mapping_cursor.take();
+		let compacted = compact_operator(&mut txn, &store, &self.operator, watermark, identity, &mut cursor)?;
+		self.mapping_cursor = cursor;
 		txn.flush_operator_states()?;
 		self.end(txn);
-		let SweepOutcome {
-			cursors,
-			keyspace_cursors,
-		} = outcome;
-		self.mapping_cursor = cursors.into_iter().next().and_then(|(_, cursor)| cursor);
-		self.keyspace_cursors =
-			keyspace_cursors.into_iter().next().map(|(_, cursors)| cursors).unwrap_or_default();
-
-		Ok(reclaimed_from(&report, operator_id))
-	}
-}
-
-fn reclaimed_from(report: &ReclaimReport, operator: OperatorId) -> Reclaimed {
-	let Some(reclaim) = report.operator(operator) else {
-		return Reclaimed {
-			rows: report.rows,
-			backlog: report.backlog,
-			..Default::default()
-		};
-	};
-	let retired = |phase: &PhaseReclaim| {
-		phase.groups
-			.iter()
-			.map(|group| RetiredGroup {
-				group: group.0,
-				cutoff_ms: phase.cutoff.instant().to_millis(),
-			})
-			.collect::<Vec<_>>()
-	};
-
-	let ms = |cutoff: &Cutoff| cutoff.instant().to_millis();
-
-	Reclaimed {
-		data: reclaim.data.as_ref().map(retired).unwrap_or_default(),
-		identity: reclaim.identity.as_ref().map(retired).unwrap_or_default(),
-		keyspace: reclaim
-			.keyspaces
-			.iter()
-			.flat_map(|keyspace| {
-				keyspace.groups.iter().map(|group| RetiredGroup {
-					group: group.0,
-					cutoff_ms: keyspace.cutoff.instant().to_millis(),
-				})
-			})
-			.collect(),
-		mapping_rows: reclaim.mapping.map(|mapping| mapping.rows).unwrap_or_default(),
-		cutoffs: PhaseCutoffs {
-			data: reclaim.data.as_ref().map(|phase| ms(&phase.cutoff)),
-			identity: reclaim.identity.as_ref().map(|phase| ms(&phase.cutoff)),
-			keyspace: reclaim.keyspaces.iter().map(|keyspace| ms(&keyspace.cutoff)).max(),
-			mapping: reclaim.mapping.as_ref().map(|mapping| ms(&mapping.cutoff)),
-		},
-		rows: report.rows,
-		backlog: report.backlog,
+		Ok(compacted)
 	}
 }
 
@@ -491,10 +404,6 @@ mod tests {
 impl<O: Operator> Subject for Harness<O> {
 	fn apply(&mut self, change: Change) -> Result<Change> {
 		Harness::apply(self, change)
-	}
-
-	fn reclaim(&mut self, at_ms: u64) -> Result<Reclaimed> {
-		Harness::reclaim(self, at_ms)
 	}
 
 	fn footprint(&mut self) -> Result<Option<StateFootprint>> {

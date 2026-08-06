@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_catalog::{
-	catalog::{Catalog, flow::FlowToCreate, view::ViewColumnToCreate},
-	vtable::system::operator_store::OperatorLibraryStore,
-};
+use reifydb_catalog::catalog::{Catalog, flow::FlowToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
 	common::TimeDomain,
 	interface::catalog::{
@@ -86,7 +83,6 @@ pub mod transactional;
 pub(crate) fn create_deferred_view_flow(
 	catalog: &Catalog,
 	routines: &Routines,
-	operators: &OperatorLibraryStore,
 	txn: &mut AdminTransaction,
 	view: &View,
 	plan: QueryPlan,
@@ -104,5 +100,5 @@ pub(crate) fn create_deferred_view_flow(
 
 	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow.id, time)?;
 	check_time_domain(catalog, &mut Transaction::Admin(txn), &dag)?;
-	check_declared_spans(catalog, operators, &mut Transaction::Admin(txn), &dag)
+	check_declared_spans(catalog, &mut Transaction::Admin(txn), &dag)
 }

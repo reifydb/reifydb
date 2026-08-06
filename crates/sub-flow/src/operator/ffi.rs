@@ -28,7 +28,6 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
 	},
-	key::operator_group_state::GroupSet,
 	metrics::heap::{OperatorSample, StateCompleteness, StateMemory, StatePool},
 	state::budget::{LeaseGrant, LeaseReport, OperatorStateBudgetHandle},
 	value::column::columns::Columns,
@@ -36,13 +35,13 @@ use reifydb_core::{
 use reifydb_engine::vm::executor::Executor;
 use reifydb_extension::ffi_callbacks::builder::{BuilderRegistry, with_registry};
 use reifydb_flow::{
-	operator::Reclaimable,
 	timer::Timer,
 	transaction::{
 		FlowTransaction,
 		slot::{PersistFn, zero_usage},
 	},
 };
+use reifydb_store_operator::FloorSpec;
 use reifydb_sdk::{error::SdkError, ffi::arena::Arena};
 use reifydb_value::{
 	Result,
@@ -55,7 +54,7 @@ use tracing::{Span, error, field, instrument};
 use crate::{
 	engine::lease_demand,
 	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
-	operator::{Operator, scale_from_millis, sealed_or_idle},
+	operator::{Operator, scale_from_millis, sealed_or_idle_floor},
 };
 
 thread_local! {
@@ -256,8 +255,8 @@ impl Operator for FFIOperatorHandle {
 		scale_from_millis(Some(unsafe { (self.vtable.seal_after_ms)(self.instance) }))
 	}
 
-	fn reclaimable_through(&self, txn: &mut FlowTransaction, watermark: DateTime) -> Result<Reclaimable> {
-		sealed_or_idle(txn, self.operator_id, watermark, self.retention_scale())
+	fn floors(&self, txn: &mut FlowTransaction, watermark: DateTime) -> Result<FloorSpec> {
+		sealed_or_idle_floor(txn, self.operator_id, watermark, self.retention_scale())
 	}
 
 	#[instrument(name = "flow::ffi::apply", level = "trace", skip_all, fields(
@@ -336,25 +335,6 @@ impl Operator for FFIOperatorHandle {
 			return Ok(None);
 		}
 		Ok(Some(output_change))
-	}
-
-	fn invalidate_groups(&self, groups: &GroupSet) {
-		if groups.is_empty() || !self.capabilities.contains(&OperatorCapability::Reclaim) {
-			return;
-		}
-		let (ptr, len) = groups.as_raw_parts();
-		// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
-		// Drop calls destroy; ptr/len are the raw parts of `groups`, borrowed for the whole call, so that
-		// range stays readable throughout.
-		let code = self.invoke_under_panic_guard("invalidate_groups", || unsafe {
-			(self.vtable.invalidate_groups)(self.instance, ptr, len)
-		});
-		if code != FFI_OK {
-			error!(
-				operator_id = self.operator_id.0,
-				code, "FFI operator failed to invalidate reclaimed groups"
-			);
-		}
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

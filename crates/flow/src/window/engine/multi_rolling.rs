@@ -13,7 +13,7 @@ use reifydb_codec::{
 	state::OperatorState,
 };
 use reifydb_core::{
-	key::operator_group_state::{GroupId, GroupSet},
+	key::operator_group_state::GroupId,
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{cache::StateCache, map::PersistedMap, store::StateStore},
 };
@@ -93,10 +93,6 @@ where
 			hydrated: false,
 			_pd: PhantomData,
 		}
-	}
-
-	pub fn invalidate_groups(&mut self, groups: &GroupSet) -> usize {
-		self.buffers.invalidate_group_data(groups) + self.last_emit.invalidate_group_data(groups)
 	}
 
 	fn hydrate_once<S: StateStore>(&mut self, store: &mut S) -> Result<()> {

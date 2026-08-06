@@ -243,35 +243,6 @@ mod tests {
 	}
 
 	#[test]
-	fn a_group_class_resolves_to_a_cutoff_instead_of_declining_to_answer() {
-		// A none term propagates to the whole class, so any class naming OwningFlowCheckpoint would
-		// reclaim nothing forever while reporting healthy. Both group phases name it.
-		for class in [RetentionClass::OperatorGroupData, RetentionClass::OperatorGroupIdentity] {
-			let cutoff = ledger(u64::MAX).cutoff(class, now(), Some(one_hour()));
-
-			assert!(cutoff.is_some(), "{class} still declines to produce a cutoff");
-		}
-	}
-
-	#[test]
-	fn a_flow_that_has_not_processed_its_input_holds_the_group_cutoff_down() {
-		// OperatorGroupData names OwningFlowCheckpoint and nothing else, so a flow parked at version 10
-		// pins the cutoff there: reclaiming above it discards state that flow's own unapplied input
-		// still writes to.
-		let (cutoff, binding) = ledger(10)
-			.cutoff_with_binding(RetentionClass::OperatorGroupData, now(), Some(one_hour()))
-			.expect("both terms resolve");
-
-		assert_eq!(cutoff, Floor::Version(CommitVersion(10)));
-		assert_eq!(
-			binding,
-			FloorTerm::OwningFlowCheckpoint,
-			"the report must name the flow as the thing holding reclamation back, or a stalled \
-			 group class looks like an idle one"
-		);
-	}
-
-	#[test]
 	fn an_unflushed_write_holds_the_frontier_below_the_permitted_watermark() {
 		// This is the whole point of the term: FlushWatermark protects "a write that has not yet
 		// reached the persistent tier". The permitted watermark only says how far the flusher is

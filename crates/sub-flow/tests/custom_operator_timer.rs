@@ -80,7 +80,7 @@ impl OperatorMetadata for Alarm {
 	const DESCRIPTION: &'static str = "test-only operator that emits solely from timer callbacks";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = ALARM_COLUMNS;
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = ALARM_COLUMNS;
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD_WITH_RECLAIM;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
 fn group_key(g: i32) -> EncodedKey {
@@ -267,14 +267,14 @@ fn interning_inside_a_callback_stamps_the_firing_instant_not_the_change_that_wok
 		"CREATE DEFERRED VIEW app::v { g: int4, fired_at: int8 } with { time: event } AS { FROM app::t APPLY alarm{ seal: 1000 } }",
 	);
 
-	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "1970-01-01T00:00:00Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);
 	// Releases group 1's timer, which re-interns group 1 from inside the callback.
-	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "1970-01-01T00:10:00Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "2026-01-01T00:10:00Z" }]"#);
 
 	db.await_row_count("FROM app::v filter { g == 1 }", 1, TIMEOUT);
 
 	let reclaimed = db.await_row_count(
-		"from system::metrics::lifecycle::current filter { class == 'operator-group-data' and work_done > 0 }",
+		"from system::metrics::runtime::operators::current filter { metric == 'state_compaction_dropped' and value > 0.0 }",
 		1,
 		TIMEOUT,
 	);
@@ -301,7 +301,7 @@ impl OperatorMetadata for Snooze {
 		"test-only operator that re-arms one timer per group, cancelling the instant it armed before";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = ALARM_COLUMNS;
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = ALARM_COLUMNS;
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD_WITH_RECLAIM;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
 impl OperatorLogic for Snooze {

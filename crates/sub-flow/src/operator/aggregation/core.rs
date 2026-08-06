@@ -10,7 +10,6 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_group_state::GroupSet,
 	metrics::heap::{StateCompleteness, StateMemory},
 	row::Row,
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
@@ -221,19 +220,12 @@ impl Aggregation {
 		serializer.finish()
 	}
 
-	pub(crate) fn engine_meta_invalidate(&self, groups: &GroupSet) {
-		// SAFETY: reclamation runs on the tick path, sequential with apply on the same actor, so
-		// no other borrow of the UnsafeCell is live while this &mut exists.
-		if let Some(cache) = unsafe { &mut *self.engine_meta.get() } {
-			cache.invalidate_group_data(groups);
-		}
-	}
-
-	pub(crate) fn tumbling_engine_invalidate(&self, groups: &GroupSet) {
-		// SAFETY: reclamation runs on the tick path, sequential with apply on the same actor, so
-		// no other borrow of the UnsafeCell is live while this &mut exists.
-		if let Some(engine) = unsafe { (*self.tumbling_engine.get()).as_mut() } {
-			engine.invalidate_groups(groups);
+	pub(crate) fn reset_engine_caches(&self) {
+		// SAFETY: compaction runs on the tick path, sequential with apply on the same actor, so
+		// no other borrow of either UnsafeCell is live while these &mut exist.
+		unsafe {
+			*self.tumbling_engine.get() = None;
+			*self.engine_meta.get() = None;
 		}
 	}
 

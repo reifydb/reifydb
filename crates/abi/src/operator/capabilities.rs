@@ -7,26 +7,14 @@ pub enum OperatorCapability {
 	Insert = 1 << 0,
 	Update = 1 << 1,
 	Delete = 1 << 2,
-	Reclaim = 1 << 4,
 }
 
 impl OperatorCapability {
 	pub const STANDARD: &'static [OperatorCapability] =
 		&[OperatorCapability::Insert, OperatorCapability::Update, OperatorCapability::Delete];
 
-	pub const STANDARD_WITH_RECLAIM: &'static [OperatorCapability] = &[
-		OperatorCapability::Insert,
-		OperatorCapability::Update,
-		OperatorCapability::Delete,
-		OperatorCapability::Reclaim,
-	];
-
-	pub const ALL: &'static [OperatorCapability] = &[
-		OperatorCapability::Insert,
-		OperatorCapability::Update,
-		OperatorCapability::Delete,
-		OperatorCapability::Reclaim,
-	];
+	pub const ALL: &'static [OperatorCapability] =
+		&[OperatorCapability::Insert, OperatorCapability::Update, OperatorCapability::Delete];
 
 	pub const fn bit(self) -> u32 {
 		self as u32
@@ -65,17 +53,9 @@ mod tests {
 		// from_bitmask filters over ALL, so a variant missing from ALL is dropped on every
 		// descriptor round trip and the operator loses that capability with no error anywhere. The
 		// match is exhaustive so a new variant fails to compile here rather than vanishing at runtime.
-		for capability in [
-			OperatorCapability::Insert,
-			OperatorCapability::Update,
-			OperatorCapability::Delete,
-			OperatorCapability::Reclaim,
-		] {
+		for capability in [OperatorCapability::Insert, OperatorCapability::Update, OperatorCapability::Delete] {
 			match capability {
-				OperatorCapability::Insert
-				| OperatorCapability::Update
-				| OperatorCapability::Delete
-				| OperatorCapability::Reclaim => {}
+				OperatorCapability::Insert | OperatorCapability::Update | OperatorCapability::Delete => {}
 			}
 			assert!(
 				OperatorCapability::ALL.contains(&capability),
@@ -90,18 +70,19 @@ mod tests {
 
 	#[test]
 	fn presets_survive_a_bitmask_round_trip() {
-		// Losing the Reclaim bit in transit makes reclaim_flow skip the node and count it perpetual
-		// while its state grows, with the boot report calling it healthy.
 		let restored = from_bitmask(to_bitmask(OperatorCapability::STANDARD));
 		assert!(restored.contains(&OperatorCapability::Insert));
 		assert!(restored.contains(&OperatorCapability::Update));
 		assert!(restored.contains(&OperatorCapability::Delete));
-		assert!(!restored.contains(&OperatorCapability::Reclaim), "STANDARD must not imply Reclaim");
+	}
 
-		let restored = from_bitmask(to_bitmask(OperatorCapability::STANDARD_WITH_RECLAIM));
-		assert!(restored.contains(&OperatorCapability::Reclaim));
-		assert!(restored.contains(&OperatorCapability::Insert));
-		assert!(restored.contains(&OperatorCapability::Update));
-		assert!(restored.contains(&OperatorCapability::Delete));
+	#[test]
+	fn an_unknown_descriptor_bit_is_dropped_rather_than_misread() {
+		// Guests built against an older ABI may still set retired bits (the removed Reclaim
+		// capability was 1 << 4); from_bitmask must ignore them instead of aliasing them onto a
+		// live capability.
+		let stale = to_bitmask(OperatorCapability::STANDARD) | (1 << 4);
+		let restored = from_bitmask(stale);
+		assert_eq!(restored, OperatorCapability::STANDARD.to_vec());
 	}
 }

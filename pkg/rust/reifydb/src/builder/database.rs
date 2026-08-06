@@ -35,10 +35,7 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	lifecycle::{
-		class::RetentionClass, coverage::RetentionCoverage, metrics::RetentionMetrics,
-		registry::LifecycleRegistry,
-	},
+	lifecycle::{coverage::RetentionCoverage, metrics::RetentionMetrics, registry::LifecycleRegistry},
 	metrics::registry::MetricsRegistry,
 	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
@@ -110,15 +107,6 @@ pub enum CdcBackend {
 	Memory,
 	#[cfg(not(target_arch = "wasm32"))]
 	Sqlite(SqliteConfig),
-}
-
-const NO_FLOW_SUBSYSTEM: &str = "flow subsystem not enabled";
-
-fn declare_operator_group_classes_absent(ioc: &IocContainer) -> Result<()> {
-	let coverage = ioc.resolve::<RetentionCoverage>()?;
-	coverage.absent(RetentionClass::OperatorGroupData, NO_FLOW_SUBSYSTEM);
-	coverage.absent(RetentionClass::OperatorGroupIdentity, NO_FLOW_SUBSYSTEM);
-	Ok(())
 }
 
 pub struct DatabaseBuilder {
@@ -639,12 +627,7 @@ impl DatabaseBuilder {
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
-		} else {
-			declare_operator_group_classes_absent(&self.ioc)?;
 		}
-
-		#[cfg(not(feature = "sub_flow"))]
-		declare_operator_group_classes_absent(&self.ioc)?;
 
 		#[cfg(feature = "sub_flow")]
 		{

@@ -55,8 +55,8 @@ const HOARDER_COLUMNS: &[OperatorColumn] = &[
 	},
 ];
 
-// Declares STANDARD where Sweeper declares STANDARD_WITH_RECLAIM. Only that capability bit decides
-// the FLOW_044 refusal; the per-group state below just makes the pair a realistic operator.
+// A guest operator with per-group state: a declared span on the apply node wrapping it is aged by
+// the apply wrapper's own floors, so the declaration is accepted without any capability handshake.
 struct Hoarder;
 
 impl RawStatefulOperator for Hoarder {}
@@ -69,22 +69,6 @@ impl OperatorMetadata for Hoarder {
 	const INPUT_COLUMNS: &'static [OperatorColumn] = HOARDER_COLUMNS;
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = HOARDER_COLUMNS;
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
-}
-
-// Identical to Hoarder but for declaring Reclaim. Without this control, the FLOW_044 test would
-// pass equally against a rule that refused every span on an apply node.
-struct Sweeper;
-
-impl RawStatefulOperator for Sweeper {}
-
-impl OperatorMetadata for Sweeper {
-	const NAME: &'static str = "sweeper";
-	const API: u32 = 1;
-	const VERSION: &'static str = "0.0.1";
-	const DESCRIPTION: &'static str = "test-only per-group tally that can drop what it accumulates";
-	const INPUT_COLUMNS: &'static [OperatorColumn] = HOARDER_COLUMNS;
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = HOARDER_COLUMNS;
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD_WITH_RECLAIM;
 }
 
 fn tally_apply(
@@ -140,20 +124,10 @@ impl OperatorLogic for Hoarder {
 	}
 }
 
-impl OperatorLogic for Sweeper {
-	fn create(_operator_id: OperatorId, _config: &Config) -> SdkResult<Self> {
-		Ok(Sweeper)
-	}
-
-	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> SdkResult<()> {
-		tally_apply(self, ctx, change)
-	}
-}
-
 fn setup_with_custom_operators() -> TestDb {
 	TestDb::from(
 		embedded::memory()
-			.with_flow(|f| f.register_operator::<Hoarder>().register_operator::<Sweeper>())
+			.with_flow(|f| f.register_operator::<Hoarder>())
 			.build()
 			.expect("build memory db with flow"),
 	)
@@ -209,10 +183,10 @@ fn a_span_on_a_stateful_node_that_can_age_is_accepted() {
 }
 
 #[test]
-fn a_span_on_an_operator_that_cannot_reclaim_is_refused() {
-	// The node type is stateful and its horizon is a span, so the refusal has to come from the
-	// instantiated operator's capability set. An apply node is the only route there, since every
-	// built-in stateful operator declares Reclaim; the reachable failure is a guest that does not.
+fn a_span_on_an_apply_operator_is_accepted_and_aged_by_the_wrapper() {
+	// A guest operator needs no capability handshake for a declared span: the apply wrapper's own
+	// floors age the guest's state at the declared ttl, so the declaration is accepted for any
+	// registered operator rather than refused for want of a capability bit.
 	let db = setup_with_custom_operators();
 	db.admin("CREATE NAMESPACE sp");
 	db.admin("CREATE TABLE sp::t { id: int4, g: int4 }");
@@ -222,29 +196,9 @@ fn a_span_on_an_operator_that_cannot_reclaim_is_refused() {
 			&db,
 			"CREATE DEFERRED VIEW sp::h { g: int4, total: int8 } AS { \
 			 FROM sp::t APPLY hoarder{} with { ttl: { duration: \"1s\" } } }"
-		)
-		.as_deref(),
-		Some("FLOW_044"),
-		"a span on an operator without Reclaim must be refused, not accepted and silently ignored"
-	);
-}
-
-#[test]
-fn the_same_span_on_an_operator_that_can_reclaim_is_accepted() {
-	// Sweeper differs from Hoarder only by declaring Reclaim and the RQL is identical, so a rule
-	// refusing spans on apply nodes wholesale fails here instead of passing both.
-	let db = setup_with_custom_operators();
-	db.admin("CREATE NAMESPACE sp");
-	db.admin("CREATE TABLE sp::t { id: int4, g: int4 }");
-
-	assert_eq!(
-		rejection(
-			&db,
-			"CREATE DEFERRED VIEW sp::s { g: int4, total: int8 } AS { \
-			 FROM sp::t APPLY sweeper{} with { ttl: { duration: \"1s\" } } }"
 		),
 		None,
-		"an operator that declares Reclaim can honor the span, so its declaration must be accepted"
+		"the apply wrapper enforces the span itself, so the declaration must be accepted"
 	);
 }
 
@@ -259,9 +213,7 @@ fn a_statically_registered_operator_reaches_the_operator_catalog() {
 		db.query("FROM system::operator_libraries map { operator }")
 	);
 	assert_eq!(
-		db.row_count(
-			"FROM system::operator_libraries FILTER { operator == 'sweeper' and cap_reclaim == true }"
-		),
+		db.row_count("FROM system::operator_libraries FILTER { operator == 'hoarder' and cap_insert == true }"),
 		1,
 		"the capability bits must survive the trip, not just the name; catalog now: {:?}",
 		db.query("FROM system::operator_libraries")
@@ -279,13 +231,5 @@ fn a_statically_registered_operator_reaches_the_operator_catalog() {
 		1,
 		"outputs are published too; outputs now: {:?}",
 		db.query("FROM system::operator_library_outputs")
-	);
-	assert_eq!(
-		db.row_count(
-			"FROM system::operator_libraries FILTER { operator == 'hoarder' and cap_reclaim == true }"
-		),
-		0,
-		"hoarder declares STANDARD, so its Reclaim bit must be false - if both operators reported the \
-		 same capabilities the span check could not tell them apart"
 	);
 }

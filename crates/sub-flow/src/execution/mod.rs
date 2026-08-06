@@ -5,8 +5,8 @@
 //! the transactional (inline pre-commit) and deferred (CDC) paths run through this same code.
 
 mod batch;
+pub mod compaction;
 mod dispatch;
-pub mod reclaim;
 mod routing;
 mod tick;
 mod timers;

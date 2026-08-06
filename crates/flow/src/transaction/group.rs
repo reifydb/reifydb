@@ -1214,6 +1214,7 @@ mod tests {
 	use reifydb_value::value::{duration::Duration, identity::IdentityId};
 
 	use super::*;
+	use reifydb_core::key::operator_group_state::group_data_inner_range;
 	use reifydb_core::{
 		actors::pending::{Pending, PendingLayers},
 		state::budget::OperatorStateBudgetHandle,
@@ -1727,19 +1728,29 @@ mod tests {
 	}
 
 	#[test]
-	fn the_reverse_record_survives_the_data_phase() {
+	fn the_reverse_record_lives_outside_the_group_data_range() {
+		// Floor compaction cancels rows in the group's data keyspaces only, so the reverse record
+		// must sit outside that range or a floored group could no longer resolve its own bytes.
 		let engine = TestEngine::new();
 		let interner = GroupInterner::default();
 		let mut txn = deferred(&engine);
 		let bytes = group("outlives-its-data");
 		let (id, _) = intern_at(&interner, NODE, &mut txn, &bytes, Position(DateTime::from_nanos(0))).unwrap();
 
-		txn.reclaim_group_data(NODE, id, 100).unwrap();
+		let batch = txn
+			.state_range(NODE, group_data_inner_range(id), None, "test")
+			.expect("the group data range must scan");
+		for item in batch.items {
+			let decoded = OperatorStateKey::decode(&item.key).expect("state keys decode");
+			let inner = GroupStateKey::from_framed(EncodedKey::new(decoded.key))
+				.expect("the data range yields framed inner keys");
+			txn.state_remove(NODE, &inner).unwrap();
+		}
 
 		assert_eq!(
 			interner.group_bytes(NODE, &mut txn, id).unwrap(),
 			Some(bytes),
-			"phase 1 must not take the record that phase 2 depends on"
+			"erasing every data row must not take the record identity depends on"
 		);
 	}
 

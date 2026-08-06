@@ -12,7 +12,6 @@ use reifydb_testing_chaos::operator::{
 	compare::Tolerances,
 	expectation::ViewClaim,
 	model::Model,
-	reclaim::Reclaimed,
 	view::{MaterializedRow, MaterializedView, OutputKey},
 };
 use reifydb_value::value::{Value, value_type::ValueType};
@@ -219,23 +218,6 @@ impl Model<JoinRow> for HashOracle {
 
 	fn advance_ledger(&mut self, _at_ms: u64) {}
 
-	fn reclaimed(&mut self, swept: &Reclaimed) {
-		if let Some(mapping) = swept.cutoffs.mapping {
-			self.mapping_cutoff = self.mapping_cutoff.max(mapping);
-		}
-		// Each side's rows live in their own keyspace and retire on that side's ttl; the data phase
-		// folds in through `state_cutoff_ms` because it reaches the same group range.
-		let Some(cutoff) = swept.state_cutoff_ms() else {
-			return;
-		};
-		let retired: BTreeSet<(i32, Side)> =
-			self.key_high.iter().filter(|(_, high)| **high <= cutoff).map(|(side, _)| *side).collect();
-		for row in self.left.values().chain(self.right.values()) {
-			if row.key.is_some_and(|key| retired.contains(&(key, row.side))) {
-				self.exposed.insert(row.number.0);
-			}
-		}
-	}
 
 	fn step_complete(&mut self) {
 		// Folded here rather than in `reclaimed`: a key can form after the sweep that stranded one of

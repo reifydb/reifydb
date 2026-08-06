@@ -24,7 +24,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_group_state::{GroupId, GroupSet, GroupStateKey, Keyspace, OperatorGroupStateKey},
+		operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
 		operator_state::OperatorStateKey,
 	},
 	row::Row,
@@ -235,13 +235,11 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 
 	pub fn reclaim_groups(&mut self, groups: &[GroupId]) -> ReclaimedGroups {
 		let removed = self.erase_group_state(groups, |_| true);
-		self.operator.invalidate_groups(&GroupSet::new(groups.iter().copied()));
 		Self::reclaimed(groups, removed)
 	}
 
 	pub fn reclaim_group_data(&mut self, groups: &[GroupId]) -> ReclaimedGroups {
 		let removed = self.erase_group_state(groups, |keyspace| keyspace.is_data());
-		self.operator.invalidate_groups(&GroupSet::new(groups.iter().copied()));
 		Self::reclaimed(groups, removed)
 	}
 
