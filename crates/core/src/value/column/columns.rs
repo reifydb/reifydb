@@ -501,35 +501,7 @@ impl Columns {
 		self.extract_by_indices(&[index])
 	}
 
-	pub fn append_rows_by_indices(&mut self, source: &Columns, indices: &[usize]) {
-		if indices.is_empty() {
-			return;
-		}
-
-		if self.columns.is_empty() {
-			*self = source.extract_by_indices(indices);
-			return;
-		}
-
-		assert_eq!(
-			self.columns.len(),
-			source.columns.len(),
-			"append_rows: column count mismatch (self={}, source={})",
-			self.columns.len(),
-			source.columns.len(),
-		);
-
-		let self_cols = &mut self.columns;
-		for (i, src_col) in source.columns.iter().enumerate() {
-			for &idx in indices {
-				self_cols[i].push_value(src_col.get_value(idx));
-			}
-		}
-
-		self.system.append_indices(&source.system, indices);
-	}
-
-	pub fn append_all(&mut self, source: Columns) -> Result<()> {
+	pub fn append(&mut self, source: Columns) -> Result<()> {
 		if source.row_count() == 0 {
 			return Ok(());
 		}
@@ -548,7 +520,7 @@ impl Columns {
 	fn validate_append_compatibility(&self, source: &Columns) -> Result<()> {
 		if self.columns.len() != source.columns.len() {
 			return_internal_error!(
-				"Columns::append_all: column count mismatch (self={}, source={})",
+				"Columns::append: column count mismatch (self={}, source={})",
 				self.columns.len(),
 				source.columns.len()
 			);
@@ -564,7 +536,7 @@ impl Columns {
 			let src_len = source_columns.len();
 			assert!(
 				dest_len == src_len,
-				"append_all extends destination columns by source index, so a source with more columns than \
+				"append extends destination columns by source index, so a source with more columns than \
 				 the destination would index dest_cols out of bounds and panic mid-append, leaving self \
 				 partially extended (dest_len={dest_len}, src_len={src_len})"
 			);
@@ -582,7 +554,7 @@ impl Columns {
 			None => return Ok(None),
 		};
 		for cols in iter {
-			merged.append_all(cols)?;
+			merged.append(cols)?;
 		}
 		if merged.row_count() == 0 {
 			return Ok(None);

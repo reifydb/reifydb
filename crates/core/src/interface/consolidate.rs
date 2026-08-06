@@ -127,7 +127,7 @@ fn merge_into(target: &mut Diff, source: Diff) -> Result<()> {
 				post: s,
 				..
 			},
-		) => t.append_all(s),
+		) => t.append(s),
 		(
 			Diff::Update {
 				pre: tp,
@@ -140,8 +140,8 @@ fn merge_into(target: &mut Diff, source: Diff) -> Result<()> {
 				..
 			},
 		) => {
-			tp.append_all(sp)?;
-			tpost.append_all(spost)
+			tp.append(sp)?;
+			tpost.append(spost)
 		}
 		(
 			Diff::Remove {
@@ -152,7 +152,7 @@ fn merge_into(target: &mut Diff, source: Diff) -> Result<()> {
 				pre: s,
 				..
 			},
-		) => t.append_all(s),
+		) => t.append(s),
 		_ => unreachable!("merge_into requires matching diff kinds"),
 	}
 }
@@ -382,7 +382,7 @@ fn apply_remove(states: &mut IndexMap<StateKey, RowState>, key: StateKey, pre: C
 
 fn append_into(target: &mut Option<Columns>, source: Columns) -> Result<()> {
 	match target {
-		Some(existing) => existing.append_all(source),
+		Some(existing) => existing.append(source),
 		None => {
 			*target = Some(source);
 			Ok(())
