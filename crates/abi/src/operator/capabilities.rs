@@ -55,7 +55,9 @@ mod tests {
 		// match is exhaustive so a new variant fails to compile here rather than vanishing at runtime.
 		for capability in [OperatorCapability::Insert, OperatorCapability::Update, OperatorCapability::Delete] {
 			match capability {
-				OperatorCapability::Insert | OperatorCapability::Update | OperatorCapability::Delete => {}
+				OperatorCapability::Insert
+				| OperatorCapability::Update
+				| OperatorCapability::Delete => {}
 			}
 			assert!(
 				OperatorCapability::ALL.contains(&capability),

@@ -26,14 +26,11 @@ use reifydb_engine::{
 	},
 	vm::executor::Executor,
 };
-use reifydb_flow::{
-	operator::Operator,
-	transaction::FlowTransaction,
-};
-use reifydb_store_operator::FloorSpec;
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
+use reifydb_store_operator::FloorSpec;
 use reifydb_value::{
 	Result,
 	error::Error,

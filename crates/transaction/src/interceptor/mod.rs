@@ -36,10 +36,7 @@ use dictionary_row::{
 	DictionaryRowPreDeleteInterceptor, DictionaryRowPreInsertInterceptor, DictionaryRowPreUpdateInterceptor,
 };
 use granted_role::{GrantedRolePostCreateInterceptor, GrantedRolePreDeleteInterceptor};
-use identity::{
-	IdentityPostCreateInterceptor, IdentityPostUpdateInterceptor, IdentityPreDeleteInterceptor,
-	IdentityPreUpdateInterceptor,
-};
+use identity::{IdentityPostCreateInterceptor, IdentityPreDeleteInterceptor};
 use identity_attribute::{IdentityAttributePostCreateInterceptor, IdentityAttributePreDeleteInterceptor};
 use identity_attribute_value::{
 	IdentityAttributeValuePostCreateInterceptor, IdentityAttributeValuePreDeleteInterceptor,
@@ -56,7 +53,7 @@ use ringbuffer_row::{
 	RingBufferRowPostDeleteInterceptor, RingBufferRowPostInsertInterceptor, RingBufferRowPostUpdateInterceptor,
 	RingBufferRowPreDeleteInterceptor, RingBufferRowPreInsertInterceptor, RingBufferRowPreUpdateInterceptor,
 };
-use role::{RolePostCreateInterceptor, RolePostUpdateInterceptor, RolePreDeleteInterceptor, RolePreUpdateInterceptor};
+use role::{RolePostCreateInterceptor, RolePreDeleteInterceptor};
 use series::{
 	SeriesPostCreateInterceptor, SeriesPostUpdateInterceptor, SeriesPreDeleteInterceptor,
 	SeriesPreUpdateInterceptor,
@@ -196,13 +193,9 @@ pub trait WithInterceptors {
 	fn series_pre_delete_interceptors(&mut self) -> &mut Chain<dyn SeriesPreDeleteInterceptor + Send + Sync>;
 
 	fn identity_post_create_interceptors(&mut self) -> &mut Chain<dyn IdentityPostCreateInterceptor + Send + Sync>;
-	fn identity_pre_update_interceptors(&mut self) -> &mut Chain<dyn IdentityPreUpdateInterceptor + Send + Sync>;
-	fn identity_post_update_interceptors(&mut self) -> &mut Chain<dyn IdentityPostUpdateInterceptor + Send + Sync>;
 	fn identity_pre_delete_interceptors(&mut self) -> &mut Chain<dyn IdentityPreDeleteInterceptor + Send + Sync>;
 
 	fn role_post_create_interceptors(&mut self) -> &mut Chain<dyn RolePostCreateInterceptor + Send + Sync>;
-	fn role_pre_update_interceptors(&mut self) -> &mut Chain<dyn RolePreUpdateInterceptor + Send + Sync>;
-	fn role_post_update_interceptors(&mut self) -> &mut Chain<dyn RolePostUpdateInterceptor + Send + Sync>;
 	fn role_pre_delete_interceptors(&mut self) -> &mut Chain<dyn RolePreDeleteInterceptor + Send + Sync>;
 
 	fn granted_role_post_create_interceptors(

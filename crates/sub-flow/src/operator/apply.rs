@@ -97,15 +97,13 @@ impl Operator for ApplyOperator {
 #[cfg(test)]
 mod tests {
 	use reifydb_abi::operator::capabilities::OperatorCapability;
-	use reifydb_core::{
-		interface::{
-			catalog::{
-				flow::OperatorId,
-				id::{NamespaceId, TableId, ViewId},
-				view::{TableView, View, ViewKind},
-			},
-			change::Change,
+	use reifydb_core::interface::{
+		catalog::{
+			flow::OperatorId,
+			id::{NamespaceId, TableId, ViewId},
+			view::{TableView, View, ViewKind},
 		},
+		change::Change,
 	};
 	use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 	use reifydb_store_operator::FloorSpec;
@@ -216,7 +214,8 @@ mod tests {
 		);
 		assert_eq!(declared.retention_scale(), Some(ms(1_000)));
 
-		let neither = ApplyOperator::new(noop_parent(), OperatorId(7), Box::new(RecordingInner::new(None)), None);
+		let neither =
+			ApplyOperator::new(noop_parent(), OperatorId(7), Box::new(RecordingInner::new(None)), None);
 		assert_eq!(neither.retention_scale(), None, "a operator declaring nothing anywhere stays perpetual");
 	}
 
@@ -269,7 +268,8 @@ mod tests {
 			"a silent inner operator defers to the declared ttl"
 		);
 
-		let neither = ApplyOperator::new(noop_parent(), OperatorId(7), Box::new(RecordingInner::new(None)), None);
+		let neither =
+			ApplyOperator::new(noop_parent(), OperatorId(7), Box::new(RecordingInner::new(None)), None);
 		assert!(neither.floors(&mut txn, watermark).unwrap().is_empty());
 	}
 }

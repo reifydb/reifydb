@@ -6,7 +6,7 @@ use reifydb_sub_api::subsystem::SubsystemFactory;
 use reifydb_sub_flow::builder::FlowConfigurator;
 #[cfg(feature = "sub_metric_profiler")]
 use reifydb_sub_metrics::profiler::builder::ProfilerConfigurator;
-#[cfg(feature = "sub_replication")]
+#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
 use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;

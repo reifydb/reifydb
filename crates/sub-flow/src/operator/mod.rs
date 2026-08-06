@@ -32,10 +32,7 @@ pub(crate) fn sealed_or_idle_floor(
 		return Ok(FloorSpec::default());
 	};
 	if let Some(sealed) = read_sealed_through(txn, operator)? {
-		return Ok(SealPolicy::of(scale)
-			.sealed_anchor(sealed.at())
-			.map(FloorSpec::data)
-			.unwrap_or_default());
+		return Ok(SealPolicy::of(scale).sealed_anchor(sealed.at()).map(FloorSpec::data).unwrap_or_default());
 	}
 	Ok(FloorSpec::data(watermark.saturating_sub(scale)))
 }

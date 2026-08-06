@@ -7,13 +7,10 @@ use reifydb_value::{Result, value::identity::IdentityId};
 use crate::{
 	change::{
 		Change,
-		OperationType::{Create, Delete, Update},
+		OperationType::{Create, Delete},
 		TransactionalIdentityChanges,
 	},
-	interceptor::identity::{
-		IdentityPostCreateContext, IdentityPostUpdateContext, IdentityPreDeleteContext,
-		IdentityPreUpdateContext,
-	},
+	interceptor::identity::{IdentityPostCreateContext, IdentityPreDeleteContext},
 	transaction::admin::AdminTransaction,
 };
 
@@ -24,18 +21,6 @@ impl CatalogTrackIdentityChangeOperations for AdminTransaction {
 			pre: None,
 			post: Some(identity),
 			op: Create,
-		};
-		self.changes.add_identity_change(change);
-		Ok(())
-	}
-
-	fn track_identity_updated(&mut self, pre: Identity, post: Identity) -> Result<()> {
-		self.interceptors.identity_pre_update.execute(IdentityPreUpdateContext::new(&pre))?;
-		self.interceptors.identity_post_update.execute(IdentityPostUpdateContext::new(&pre, &post))?;
-		let change = Change {
-			pre: Some(pre),
-			post: Some(post),
-			op: Update,
 		};
 		self.changes.add_identity_change(change);
 		Ok(())

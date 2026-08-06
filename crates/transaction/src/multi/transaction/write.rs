@@ -8,6 +8,8 @@ use reifydb_codec::{
 	encoded::row::EncodedRow,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
+#[cfg(reifydb_assertions)]
+use reifydb_core::key::{EncodableKey, operator_state::OperatorStateKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::{Delta, RemoveAnnounce},
@@ -18,7 +20,6 @@ use reifydb_core::{
 			MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow,
 		},
 	},
-	key::{EncodableKey, operator_state::OperatorStateKey},
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::message::Command;

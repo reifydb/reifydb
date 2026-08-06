@@ -8,10 +8,7 @@ use tracing::instrument;
 
 use super::{
 	JoinContext, UpdateKeys,
-	hash::{
-		add_to_state_entry_batch, for_each_left_block, prepare_entry_update,
-		update_row_in_entry,
-	},
+	hash::{add_to_state_entry_batch, for_each_left_block, prepare_entry_update, update_row_in_entry},
 	latest::{overwrite_right_slot, read_right_slot, remove_right_slot},
 	latest_inner::{republished_slot, update_diff},
 };

@@ -74,13 +74,6 @@ impl TransactionalSourceChanges for AdminTransaction {
 		None
 	}
 
-	fn is_source_deleted(&self, id: SourceId) -> bool {
-		self.changes
-			.source
-			.iter()
-			.any(|change| change.op == Delete && change.pre.as_ref().map(|s| s.id == id).unwrap_or(false))
-	}
-
 	fn is_source_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
 		self.changes.source.iter().any(|change| {
 			change.op == Delete

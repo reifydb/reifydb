@@ -9,9 +9,8 @@ use reifydb_core::{
 		collect::MetricsCollector,
 		heap::OperatorSample,
 		operator::{
-			GROUP_CACHE_BYTES, GROUP_MEMBERSHIP_BYTES, ROW_NUMBER_CACHE_BYTES,
-			ROW_NUMBER_MEMBERSHIP_BYTES, STATE_DIRTY_BYTES, STATE_MEMBERSHIP_BYTES, STATE_POOL_BUDGET,
-			STATE_RESIDENT_BYTES,
+			GROUP_CACHE_BYTES, GROUP_MEMBERSHIP_BYTES, ROW_NUMBER_CACHE_BYTES, ROW_NUMBER_MEMBERSHIP_BYTES,
+			STATE_DIRTY_BYTES, STATE_MEMBERSHIP_BYTES, STATE_POOL_BUDGET, STATE_RESIDENT_BYTES,
 		},
 		sample::MetricsSample,
 	},
@@ -57,10 +56,6 @@ impl OperatorSampleRegistry {
 		totals.dropped += dropped;
 		totals.reclaimed_bytes += reclaimed_bytes;
 		totals.mapping_rows += mapping_rows;
-	}
-
-	pub fn compaction_totals(&self, operator: OperatorId) -> CompactionTotals {
-		self.compactions.lock().get(&operator).copied().unwrap_or_default()
 	}
 
 	pub fn forget(&self, operator: OperatorId) {

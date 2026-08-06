@@ -55,15 +55,11 @@ pub trait CatalogTrackRelationshipChangeOperations {
 pub trait CatalogTrackNamespaceChangeOperations {
 	fn track_namespace_created(&mut self, namespace: Namespace) -> Result<()>;
 
-	fn track_namespace_updated(&mut self, pre: Namespace, post: Namespace) -> Result<()>;
-
 	fn track_namespace_deleted(&mut self, namespace: Namespace) -> Result<()>;
 }
 
 pub trait CatalogTrackFlowChangeOperations {
 	fn track_flow_created(&mut self, flow: Flow) -> Result<()>;
-
-	fn track_flow_updated(&mut self, pre: Flow, post: Flow) -> Result<()>;
 
 	fn track_flow_deleted(&mut self, flow: Flow) -> Result<()>;
 }
@@ -89,15 +85,11 @@ pub trait CatalogTrackFlowEdgeChangeOperations {
 pub trait CatalogTrackViewChangeOperations {
 	fn track_view_created(&mut self, view: View) -> Result<()>;
 
-	fn track_view_updated(&mut self, pre: View, post: View) -> Result<()>;
-
 	fn track_view_deleted(&mut self, view: View) -> Result<()>;
 }
 
 pub trait CatalogTrackDictionaryChangeOperations {
 	fn track_dictionary_created(&mut self, dictionary: Dictionary) -> Result<()>;
-
-	fn track_dictionary_updated(&mut self, pre: Dictionary, post: Dictionary) -> Result<()>;
 
 	fn track_dictionary_deleted(&mut self, dictionary: Dictionary) -> Result<()>;
 }
@@ -121,15 +113,11 @@ pub trait CatalogTrackSeriesChangeOperations {
 pub trait CatalogTrackRingBufferChangeOperations {
 	fn track_ringbuffer_created(&mut self, ringbuffer: RingBuffer) -> Result<()>;
 
-	fn track_ringbuffer_updated(&mut self, pre: RingBuffer, post: RingBuffer) -> Result<()>;
-
 	fn track_ringbuffer_deleted(&mut self, ringbuffer: RingBuffer) -> Result<()>;
 }
 
 pub trait CatalogTrackQueueChangeOperations {
 	fn track_queue_created(&mut self, queue: Queue) -> Result<()>;
-
-	fn track_queue_updated(&mut self, pre: Queue, post: Queue) -> Result<()>;
 
 	fn track_queue_deleted(&mut self, queue: Queue) -> Result<()>;
 }
@@ -137,15 +125,11 @@ pub trait CatalogTrackQueueChangeOperations {
 pub trait CatalogTrackSumTypeChangeOperations {
 	fn track_sumtype_created(&mut self, sumtype: SumType) -> Result<()>;
 
-	fn track_sumtype_updated(&mut self, pre: SumType, post: SumType) -> Result<()>;
-
 	fn track_sumtype_deleted(&mut self, sumtype: SumType) -> Result<()>;
 }
 
 pub trait CatalogTrackProcedureChangeOperations {
 	fn track_procedure_created(&mut self, procedure: Procedure) -> Result<()>;
-
-	fn track_procedure_updated(&mut self, pre: Procedure, post: Procedure) -> Result<()>;
 
 	fn track_procedure_deleted(&mut self, procedure: Procedure) -> Result<()>;
 }
@@ -165,15 +149,11 @@ pub trait CatalogTrackHandlerChangeOperations {
 pub trait CatalogTrackIdentityChangeOperations {
 	fn track_identity_created(&mut self, identity: Identity) -> Result<()>;
 
-	fn track_identity_updated(&mut self, pre: Identity, post: Identity) -> Result<()>;
-
 	fn track_identity_deleted(&mut self, identity: Identity) -> Result<()>;
 }
 
 pub trait CatalogTrackRoleChangeOperations {
 	fn track_role_created(&mut self, role: Role) -> Result<()>;
-
-	fn track_role_updated(&mut self, pre: Role, post: Role) -> Result<()>;
 
 	fn track_role_deleted(&mut self, role: Role) -> Result<()>;
 }
@@ -206,8 +186,6 @@ pub trait CatalogTrackPolicyChangeOperations {
 
 pub trait CatalogTrackMigrationChangeOperations {
 	fn track_migration_created(&mut self, migration: Migration) -> Result<()>;
-
-	fn track_migration_deleted(&mut self, migration: Migration) -> Result<()>;
 }
 
 pub trait CatalogTrackMigrationEventChangeOperations {
@@ -240,24 +218,10 @@ pub trait CatalogTrackSinkChangeOperations {
 
 pub trait CatalogTrackRowSettingsChangeOperations {
 	fn track_row_settings_created(&mut self, storage: StorageId, settings: RowSettings) -> Result<()>;
-
-	fn track_row_settings_updated(&mut self, storage: StorageId, pre: RowSettings, post: RowSettings)
-	-> Result<()>;
-
-	fn track_row_settings_deleted(&mut self, storage: StorageId, settings: RowSettings) -> Result<()>;
 }
 
 pub trait CatalogTrackOperatorSettingsChangeOperations {
 	fn track_operator_settings_created(&mut self, operator: OperatorId, settings: OperatorSettings) -> Result<()>;
-
-	fn track_operator_settings_updated(
-		&mut self,
-		operator: OperatorId,
-		pre: OperatorSettings,
-		post: OperatorSettings,
-	) -> Result<()>;
-
-	fn track_operator_settings_deleted(&mut self, operator: OperatorId, settings: OperatorSettings) -> Result<()>;
 }
 
 pub trait CatalogTrackChangeOperations:

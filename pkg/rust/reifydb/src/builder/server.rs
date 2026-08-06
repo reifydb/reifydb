@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{path::PathBuf, sync::Arc};
+#[cfg(reifydb_target = "native")]
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use reifydb_auth::service::AuthConfigurator;
 use reifydb_catalog::{bootstrap::read_configs, cache::CatalogCache};
@@ -40,7 +42,7 @@ use reifydb_sub_metrics::profiler::{
 };
 #[cfg(feature = "sub_raft")]
 use reifydb_sub_raft::config::RaftConfig;
-#[cfg(feature = "sub_replication")]
+#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
 use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
 #[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
 use reifydb_sub_replication::factory::ReplicationSubsystemFactory;

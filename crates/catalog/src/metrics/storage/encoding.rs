@@ -9,10 +9,7 @@ use reifydb_codec::{
 	reader::Reader,
 };
 use reifydb_core::{
-	interface::{
-		catalog::{flow::OperatorId, metrics::MetricsId},
-		store::Tier,
-	},
+	interface::{catalog::metrics::MetricsId, store::Tier},
 	key::{
 		catalog::{EncodedKeyBuilderCatalogExt, KeyDeserializerCatalogExt},
 		kind::KeyKind,
@@ -28,8 +25,7 @@ const SUBKEY_BY_OBJECT: u8 = 0x02;
 const SUBKEY_CDC: u8 = 0x03;
 
 const ID_OBJECT: u8 = 0x00;
-const ID_OPERATOR: u8 = 0x01;
-const ID_SYSTEM: u8 = 0x02;
+const ID_SYSTEM: u8 = 0x01;
 
 pub fn encode_storage_stats_key(tier: Tier, id: MetricsId) -> EncodedKey {
 	let builder = EncodedKeyBuilder::new()
@@ -145,7 +141,6 @@ fn byte_to_tier(b: u8) -> Option<Tier> {
 fn extend_object_id(builder: EncodedKeyBuilder, id: MetricsId) -> EncodedKeyBuilder {
 	match id {
 		MetricsId::Object(object_id) => builder.u8(ID_OBJECT).object_id(object_id),
-		MetricsId::Operator(operator_id) => builder.u8(ID_OPERATOR).u64(operator_id.0),
 		MetricsId::System => builder.u8(ID_SYSTEM),
 	}
 }
@@ -153,7 +148,6 @@ fn extend_object_id(builder: EncodedKeyBuilder, id: MetricsId) -> EncodedKeyBuil
 fn decode_object_id(de: &mut KeyDeserializer) -> Option<MetricsId> {
 	match de.read_u8().ok()? {
 		ID_OBJECT => Some(MetricsId::Object(de.read_object_id().ok()?)),
-		ID_OPERATOR => Some(MetricsId::Operator(OperatorId(de.read_u64().ok()?))),
 		ID_SYSTEM => Some(MetricsId::System),
 		_ => None,
 	}
@@ -162,7 +156,6 @@ fn decode_object_id(de: &mut KeyDeserializer) -> Option<MetricsId> {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::{
-		flow::OperatorId,
 		id::{RingBufferId, SeriesId, TableId},
 		object::ObjectId,
 	};
@@ -175,17 +168,6 @@ pub mod tests {
 		let tier = Tier::Buffer;
 		let object_id = ObjectId::Table(TableId(12345));
 		let id = MetricsId::Object(object_id);
-
-		let key = encode_storage_stats_key(tier, id);
-		let decoded = decode_storage_stats_key(&key).unwrap();
-
-		assert_eq!(decoded, (tier, id));
-	}
-
-	#[test]
-	fn test_storage_stats_key_operator_roundtrip() {
-		let tier = Tier::Persistent;
-		let id = MetricsId::Operator(OperatorId(999));
 
 		let key = encode_storage_stats_key(tier, id);
 		let decoded = decode_storage_stats_key(&key).unwrap();

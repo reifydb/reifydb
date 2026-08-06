@@ -130,34 +130,16 @@ pub trait Colorize: Sized {
 	fn red(self) -> ColoredString;
 	fn green(self) -> ColoredString;
 	fn yellow(self) -> ColoredString;
-	fn blue(self) -> ColoredString;
-	fn magenta(self) -> ColoredString;
-	fn cyan(self) -> ColoredString;
-	fn white(self) -> ColoredString;
-	fn black(self) -> ColoredString;
 
-	fn bright_red(self) -> ColoredString;
-	fn bright_green(self) -> ColoredString;
-	fn bright_yellow(self) -> ColoredString;
 	fn bright_blue(self) -> ColoredString;
-	fn bright_magenta(self) -> ColoredString;
 	fn bright_cyan(self) -> ColoredString;
-	fn bright_white(self) -> ColoredString;
 	fn bright_black(self) -> ColoredString;
 
 	fn bold(self) -> ColoredString;
-	fn dimmed(self) -> ColoredString;
 	fn italic(self) -> ColoredString;
 	fn underline(self) -> ColoredString;
 
-	fn on_red(self) -> ColoredString;
-	fn on_green(self) -> ColoredString;
 	fn on_yellow(self) -> ColoredString;
-	fn on_blue(self) -> ColoredString;
-	fn on_magenta(self) -> ColoredString;
-	fn on_cyan(self) -> ColoredString;
-	fn on_white(self) -> ColoredString;
-	fn on_black(self) -> ColoredString;
 }
 
 impl<T: Into<String>> Colorize for T {
@@ -179,75 +161,15 @@ impl<T: Into<String>> Colorize for T {
 		s
 	}
 
-	fn blue(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.foreground = Some(Color::Blue);
-		s
-	}
-
-	fn magenta(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.foreground = Some(Color::Magenta);
-		s
-	}
-
-	fn cyan(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.foreground = Some(Color::Cyan);
-		s
-	}
-
-	fn white(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.foreground = Some(Color::White);
-		s
-	}
-
-	fn black(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.foreground = Some(Color::Black);
-		s
-	}
-
-	fn bright_red(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.foreground = Some(Color::BrightRed);
-		s
-	}
-
-	fn bright_green(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.foreground = Some(Color::BrightGreen);
-		s
-	}
-
-	fn bright_yellow(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.foreground = Some(Color::BrightYellow);
-		s
-	}
-
 	fn bright_blue(self) -> ColoredString {
 		let mut s = ColoredString::new(self);
 		s.foreground = Some(Color::BrightBlue);
 		s
 	}
 
-	fn bright_magenta(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.foreground = Some(Color::BrightMagenta);
-		s
-	}
-
 	fn bright_cyan(self) -> ColoredString {
 		let mut s = ColoredString::new(self);
 		s.foreground = Some(Color::BrightCyan);
-		s
-	}
-
-	fn bright_white(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.foreground = Some(Color::BrightWhite);
 		s
 	}
 
@@ -263,12 +185,6 @@ impl<T: Into<String>> Colorize for T {
 		s
 	}
 
-	fn dimmed(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.dimmed = true;
-		s
-	}
-
 	fn italic(self) -> ColoredString {
 		let mut s = ColoredString::new(self);
 		s.italic = true;
@@ -281,51 +197,9 @@ impl<T: Into<String>> Colorize for T {
 		s
 	}
 
-	fn on_red(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.background = Some(Color::Red);
-		s
-	}
-
-	fn on_green(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.background = Some(Color::Green);
-		s
-	}
-
 	fn on_yellow(self) -> ColoredString {
 		let mut s = ColoredString::new(self);
 		s.background = Some(Color::Yellow);
-		s
-	}
-
-	fn on_blue(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.background = Some(Color::Blue);
-		s
-	}
-
-	fn on_magenta(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.background = Some(Color::Magenta);
-		s
-	}
-
-	fn on_cyan(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.background = Some(Color::Cyan);
-		s
-	}
-
-	fn on_white(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.background = Some(Color::White);
-		s
-	}
-
-	fn on_black(self) -> ColoredString {
-		let mut s = ColoredString::new(self);
-		s.background = Some(Color::Black);
 		s
 	}
 }
@@ -346,63 +220,13 @@ impl Colorize for ColoredString {
 		self
 	}
 
-	fn blue(mut self) -> ColoredString {
-		self.foreground = Some(Color::Blue);
-		self
-	}
-
-	fn magenta(mut self) -> ColoredString {
-		self.foreground = Some(Color::Magenta);
-		self
-	}
-
-	fn cyan(mut self) -> ColoredString {
-		self.foreground = Some(Color::Cyan);
-		self
-	}
-
-	fn white(mut self) -> ColoredString {
-		self.foreground = Some(Color::White);
-		self
-	}
-
-	fn black(mut self) -> ColoredString {
-		self.foreground = Some(Color::Black);
-		self
-	}
-
-	fn bright_red(mut self) -> ColoredString {
-		self.foreground = Some(Color::BrightRed);
-		self
-	}
-
-	fn bright_green(mut self) -> ColoredString {
-		self.foreground = Some(Color::BrightGreen);
-		self
-	}
-
-	fn bright_yellow(mut self) -> ColoredString {
-		self.foreground = Some(Color::BrightYellow);
-		self
-	}
-
 	fn bright_blue(mut self) -> ColoredString {
 		self.foreground = Some(Color::BrightBlue);
 		self
 	}
 
-	fn bright_magenta(mut self) -> ColoredString {
-		self.foreground = Some(Color::BrightMagenta);
-		self
-	}
-
 	fn bright_cyan(mut self) -> ColoredString {
 		self.foreground = Some(Color::BrightCyan);
-		self
-	}
-
-	fn bright_white(mut self) -> ColoredString {
-		self.foreground = Some(Color::BrightWhite);
 		self
 	}
 
@@ -416,11 +240,6 @@ impl Colorize for ColoredString {
 		self
 	}
 
-	fn dimmed(mut self) -> ColoredString {
-		self.dimmed = true;
-		self
-	}
-
 	fn italic(mut self) -> ColoredString {
 		self.italic = true;
 		self
@@ -431,43 +250,8 @@ impl Colorize for ColoredString {
 		self
 	}
 
-	fn on_red(mut self) -> ColoredString {
-		self.background = Some(Color::Red);
-		self
-	}
-
-	fn on_green(mut self) -> ColoredString {
-		self.background = Some(Color::Green);
-		self
-	}
-
 	fn on_yellow(mut self) -> ColoredString {
 		self.background = Some(Color::Yellow);
-		self
-	}
-
-	fn on_blue(mut self) -> ColoredString {
-		self.background = Some(Color::Blue);
-		self
-	}
-
-	fn on_magenta(mut self) -> ColoredString {
-		self.background = Some(Color::Magenta);
-		self
-	}
-
-	fn on_cyan(mut self) -> ColoredString {
-		self.background = Some(Color::Cyan);
-		self
-	}
-
-	fn on_white(mut self) -> ColoredString {
-		self.background = Some(Color::White);
-		self
-	}
-
-	fn on_black(mut self) -> ColoredString {
-		self.background = Some(Color::Black);
 		self
 	}
 }

@@ -12,11 +12,7 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{
-	common::CommitVersion,
-	error::diagnostic::internal::internal,
-	interface::store::EntryKind,
-};
+use reifydb_core::{common::CommitVersion, error::diagnostic::internal::internal, interface::store::EntryKind};
 use reifydb_runtime::{
 	shutdown::Shutdown,
 	sync::{

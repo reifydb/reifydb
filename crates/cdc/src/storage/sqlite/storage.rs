@@ -110,6 +110,10 @@ impl SqliteCdcStorage {
 		}
 	}
 
+	pub fn block_cache_capacity(&self) -> usize {
+		self.inner.block_cache.capacity()
+	}
+
 	fn read_conn(&self, class: ReadClass) -> &Mutex<Option<Connection>> {
 		match class {
 			ReadClass::Hot => &self.inner.hot_read,

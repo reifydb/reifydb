@@ -20,6 +20,10 @@ impl BlockCache {
 		}
 	}
 
+	pub fn capacity(&self) -> usize {
+		self.inner.capacity()
+	}
+
 	pub fn get(&self, key: CommitVersion) -> Option<Arc<Vec<Cdc>>> {
 		self.inner.get(&key)
 	}

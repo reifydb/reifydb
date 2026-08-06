@@ -19,6 +19,7 @@ pub struct Subscription {
 }
 
 impl Subscription {
+	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
 	pub(crate) fn new(
 		id: SubscriptionId,
 		store: Arc<SubscriptionStore>,

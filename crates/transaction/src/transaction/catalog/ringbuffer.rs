@@ -11,7 +11,7 @@ use reifydb_value::Result;
 use crate::{
 	change::{
 		Change,
-		OperationType::{Create, Delete, Update},
+		OperationType::{Create, Delete},
 		TransactionalRingBufferChanges,
 	},
 	transaction::admin::AdminTransaction,
@@ -23,16 +23,6 @@ impl CatalogTrackRingBufferChangeOperations for AdminTransaction {
 			pre: None,
 			post: Some(ringbuffer),
 			op: Create,
-		};
-		self.changes.add_ringbuffer_change(change);
-		Ok(())
-	}
-
-	fn track_ringbuffer_updated(&mut self, pre: RingBuffer, post: RingBuffer) -> Result<()> {
-		let change = Change {
-			pre: Some(pre),
-			post: Some(post),
-			op: Update,
 		};
 		self.changes.add_ringbuffer_change(change);
 		Ok(())

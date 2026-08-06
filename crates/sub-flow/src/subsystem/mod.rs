@@ -43,9 +43,11 @@ use reifydb_core::{
 };
 use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
 use reifydb_flow::transaction::substrate::FlowSubstrate;
-use reifydb_store_operator::snapshot::SnapshotStore;
-use reifydb_store_single::SingleStore;
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock, shutdown::Shutdown, sync::mutex::Mutex};
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_store_operator::snapshot::SnapshotStore;
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_store_single::SingleStore;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::{
 	group::{GroupCommitBegin, GroupCommitHandle},
@@ -58,6 +60,8 @@ use reifydb_value::{
 };
 use tracing::warn;
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::deferred::snapshot::FlowSnapshots;
 use crate::{
 	builder::{CustomOperators, FlowConfig},
 	catalog::FlowCatalog,
@@ -67,7 +71,7 @@ use crate::{
 		health::FlowHealthRegistry,
 		loader::{LoaderActor, LoaderHandle, LoaderMetrics},
 		quiescence::FlowMaterialization,
-		snapshot::{FlowSnapshots, SnapshotPinTracker},
+		snapshot::SnapshotPinTracker,
 		supervisor::{FlowSupervisor, FlowSupervisorParams},
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
 		watermark::compute_flow_watermarks,
@@ -120,12 +124,11 @@ impl FlowSubsystem {
 		let state_budget = ioc
 			.resolve::<OperatorStateBudgetHandle>()
 			.expect("OperatorStateBudgetHandle must be registered");
+		#[cfg(not(target_arch = "wasm32"))]
 		let snapshots = match (ioc.try_resolve::<SnapshotStore>(), ioc.try_resolve::<SingleStore>()) {
-			(Some(snapshot_store), Some(single_store)) => Some(FlowSnapshots::new(
-				snapshot_store,
-				single_store,
-				engine.dictionary_allocators(),
-			)),
+			(Some(snapshot_store), Some(single_store)) => {
+				Some(FlowSnapshots::new(snapshot_store, single_store, engine.dictionary_allocators()))
+			}
 			_ => None,
 		};
 		let snapshot_pins = SnapshotPinTracker::new();
@@ -198,6 +201,7 @@ impl FlowSubsystem {
 				load_batch_bytes,
 				checkpoint_lag: FLOW_CHECKPOINT_LAG,
 				checkpoint_max_age: Duration::from_milliseconds(FLOW_CHECKPOINT_MAX_AGE_MS).unwrap(),
+				#[cfg(not(target_arch = "wasm32"))]
 				snapshots,
 			}),
 		);

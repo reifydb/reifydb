@@ -178,36 +178,7 @@ pub trait RawStatefulOperator {
 		ctx.state().remove(key)
 	}
 
-	fn state_scan_prefix<T: OperatorState>(
-		&self,
-		ctx: &mut impl OperatorContext,
-		prefix: &GroupStateKey,
-	) -> Result<Vec<(GroupStateKey, T)>> {
-		ctx.state().scan_prefix(prefix)
-	}
-
-	fn state_keys_with_prefix(
-		&self,
-		ctx: &mut impl OperatorContext,
-		prefix: &GroupStateKey,
-	) -> Result<Vec<GroupStateKey>> {
-		ctx.state().keys_with_prefix(prefix)
-	}
-
-	fn state_contains(&self, ctx: &mut impl OperatorContext, key: &GroupStateKey) -> Result<bool> {
-		ctx.state().contains(key)
-	}
-
 	fn state_clear(&self, ctx: &mut impl OperatorContext) -> Result<()> {
 		ctx.state().clear()
-	}
-
-	fn state_scan_range<T: OperatorState>(
-		&self,
-		ctx: &mut impl OperatorContext,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
-	) -> Result<Vec<(GroupStateKey, T)>> {
-		ctx.state().range(start, end)
 	}
 }

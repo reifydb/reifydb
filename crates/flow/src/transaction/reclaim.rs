@@ -102,10 +102,7 @@ mod tests {
 	use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 
 	use super::*;
-	use crate::transaction::{
-		ChangeCoordinate, DeferredParams,
-		substrate::FlowSubstrate,
-	};
+	use crate::transaction::{ChangeCoordinate, DeferredParams, substrate::FlowSubstrate};
 
 	const NODE: OperatorId = OperatorId(1);
 

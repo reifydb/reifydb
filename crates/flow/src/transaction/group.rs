@@ -545,23 +545,22 @@ impl GroupInterner {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::common::CommitVersion;
+	use reifydb_core::{
+		actors::pending::{Pending, PendingLayers},
+		common::CommitVersion,
+		key::operator_group_state::group_data_inner_range,
+		state::budget::OperatorStateBudgetHandle,
+	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_value::value::{duration::Duration, identity::IdentityId};
 
 	use super::*;
-	use reifydb_core::key::operator_group_state::group_data_inner_range;
-	use reifydb_core::{
-		actors::pending::{Pending, PendingLayers},
-		state::budget::OperatorStateBudgetHandle,
-	};
 	use crate::transaction::{
-		DeferredParams,
+		ChangeCoordinate, DeferredParams,
 		substrate::{FlowSubstrate, apply_operator_state},
 	};
-	use crate::transaction::ChangeCoordinate;
 
 	const NODE: OperatorId = OperatorId(1);
 

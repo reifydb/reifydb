@@ -1,23 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Declarative per-span dimension and counter wiring.
-//!
-//! A span that wants its rows split by a runtime value, or wants counters carried alongside its
-//! timings, declares that here instead of being special-cased in the layer and the formatter. The
-//! layer reads [`SpanSpec::dims`] and [`SpanSpec::extras`] to fill a record; the formatter reads
-//! [`SpanSpec::render`] to print the counters back. Adding a dimensioned span is a table entry.
-
 use std::fmt::Write;
 
 use crate::{format::fmt_us, record::AggregateRecord};
 
-/// Where one dimension's label comes from.
 #[derive(Debug)]
 pub enum DimSource {
-	/// A string-valued field, used verbatim.
 	Text(&'static str),
-	/// An integer-valued field, labelled `{prefix}{value}` so the row reads `site@op79`.
+
 	Number {
 		field: &'static str,
 		prefix: &'static str,
@@ -39,8 +30,7 @@ impl DimSource {
 #[derive(Debug)]
 pub struct SpanSpec {
 	pub name: &'static str,
-	/// A field whose value replaces the wall-clock duration. Only set this where the span
-	/// deliberately reports something narrower than its own elapsed time.
+
 	pub duration_override: Option<&'static str>,
 	pub dims: &'static [DimSource],
 	pub extras: &'static [&'static str],

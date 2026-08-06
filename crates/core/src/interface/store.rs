@@ -86,35 +86,12 @@ pub trait MultiVersionCommit: Send + Sync {
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()>;
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ReadOptions {
-	pub bypass_buffer: bool,
-}
-
 pub trait MultiVersionGet: Send + Sync {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>>;
-
-	fn get_with_options(
-		&self,
-		key: &EncodedKey,
-		version: CommitVersion,
-		_options: ReadOptions,
-	) -> Result<Option<MultiVersionRow>> {
-		self.get(key, version)
-	}
 }
 
 pub trait MultiVersionContains: Send + Sync {
 	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool>;
-
-	fn contains_with_options(
-		&self,
-		key: &EncodedKey,
-		version: CommitVersion,
-		_options: ReadOptions,
-	) -> Result<bool> {
-		self.contains(key, version)
-	}
 }
 
 pub trait MultiVersionGetPrevious: Send + Sync {

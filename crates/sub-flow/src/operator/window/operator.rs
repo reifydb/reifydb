@@ -25,10 +25,10 @@ use reifydb_flow::{
 		span::WindowCoord,
 	},
 };
-use reifydb_store_operator::FloorSpec;
 use reifydb_routine::routine::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
+use reifydb_store_operator::FloorSpec;
 use reifydb_value::{
 	Result, reifydb_assertions,
 	util::hash::Hash128,
@@ -160,10 +160,6 @@ impl WindowOperator {
 
 	pub(crate) fn note_sealed_drops(&self, dropped: u64) {
 		self.sealed_drops.note(dropped);
-	}
-
-	pub fn is_rolling(&self) -> bool {
-		matches!(self.kind, WindowKind::Rolling { .. })
 	}
 
 	pub fn size_duration(&self) -> Option<Duration> {

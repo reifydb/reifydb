@@ -3,7 +3,7 @@
 
 #[allow(clippy::disallowed_types)]
 use std::time::Duration;
-use std::{hint::black_box, thread, time::Instant};
+use std::{hint::black_box, time::Instant};
 
 use reifydb::{Database, WithSubsystem, embedded};
 use reifydb_allocator::set_global_allocator;

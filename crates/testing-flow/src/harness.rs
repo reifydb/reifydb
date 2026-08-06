@@ -263,9 +263,6 @@ impl<O: Operator> Harness<O> {
 		Ok(out)
 	}
 
-	/// Drains the timer wheel to quiescence: every timer at or below `watermark_ms` fires through
-	/// the operator in wheel order, mirroring the engine's timer dispatch, and re-armed timers
-	/// that fall due keep firing until a round takes nothing.
 	pub fn settle_timers(&mut self, watermark_ms: u64) -> Result<Vec<Change>> {
 		const MAX_ROUNDS: u32 = 4_096;
 		let watermark =

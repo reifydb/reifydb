@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::mem;
+#[cfg(any(test, all(not(reifydb_single_threaded), any(target_os = "linux", target_os = "macos"))))]
+use std::process::exit;
 #[cfg(target_os = "macos")]
 use std::ptr;
 #[cfg(target_os = "linux")]
 use std::{fs, io};
-use std::{mem, process::exit};
 
 #[cfg(target_os = "macos")]
 #[allow(deprecated)]
@@ -23,13 +25,17 @@ use reifydb_sub_task::{
 };
 #[cfg(all(not(reifydb_single_threaded), any(target_os = "linux", target_os = "macos")))]
 use reifydb_value::value::duration::Duration;
-use tracing::{error, trace};
+#[cfg(any(test, all(not(reifydb_single_threaded), any(target_os = "linux", target_os = "macos"))))]
+use tracing::error;
+#[cfg(all(not(reifydb_single_threaded), any(target_os = "linux", target_os = "macos")))]
+use tracing::trace;
 
 #[cfg(not(reifydb_single_threaded))]
 const MEMORY_KILL_THRESHOLD_PERCENT: f32 = 90.0;
 
 #[derive(Debug, Clone)]
 pub struct MemoryWatchdog {
+	#[cfg(any(test, all(not(reifydb_single_threaded), any(target_os = "linux", target_os = "macos"))))]
 	kill_threshold_percent: f32,
 }
 
@@ -41,6 +47,7 @@ pub struct MemoryStats {
 }
 
 impl MemoryWatchdog {
+	#[cfg(any(test, all(not(reifydb_single_threaded), any(target_os = "linux", target_os = "macos"))))]
 	pub fn new(kill_threshold_percent: f32) -> Self {
 		Self {
 			kill_threshold_percent,
@@ -127,6 +134,7 @@ impl MemoryWatchdog {
 		panic!("Memory monitoring is only supported on Linux and macOS".to_string())
 	}
 
+	#[cfg(any(test, all(not(reifydb_single_threaded), any(target_os = "linux", target_os = "macos"))))]
 	fn check_and_kill_if_exceeded(&self, stats: &MemoryStats) {
 		if stats.percent_used >= self.kill_threshold_percent {
 			let msg = format!(

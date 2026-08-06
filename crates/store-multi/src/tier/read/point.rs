@@ -282,14 +282,6 @@ impl MultiReadBufferTier {
 		}
 	}
 
-	pub fn page_is_warm_candidate(&self, page: PageId) -> bool {
-		let shard = self.shard_for(&page).lock();
-		match shard.pages.get(&page) {
-			Some(p) => !p.range_complete && !p.warm_blocked,
-			None => true,
-		}
-	}
-
 	pub fn set_warm_blocked(&self, page: PageId) {
 		let mut shard = self.shard_for(&page).lock();
 		let next = shard.next_tick;

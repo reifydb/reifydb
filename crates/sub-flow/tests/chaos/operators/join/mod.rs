@@ -232,7 +232,6 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 	drive_with(seed, params, false, oracle).assert_clean().corpus
 }
 
-
 /// Drives one variant's operator against a different variant's oracle and hands back the divergence
 /// that must follow. This tests the suite, not the operator: an oracle that described nothing, or a
 /// claim that was never compared, would look exactly like a green sweep.

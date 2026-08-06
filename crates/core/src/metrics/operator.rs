@@ -26,9 +26,7 @@ pub const MEMORY_BYTES: &[&str] = &[
 
 #[cfg(test)]
 mod tests {
-	use super::{
-		DISK_PAYLOAD_BYTES, GROUP_CACHE_BYTES, GROUP_MEMBERSHIP_BYTES, MEMORY_BYTES, STATE_POOL_BUDGET,
-	};
+	use super::{DISK_PAYLOAD_BYTES, GROUP_CACHE_BYTES, GROUP_MEMBERSHIP_BYTES, MEMORY_BYTES, STATE_POOL_BUDGET};
 
 	#[test]
 	fn the_memory_set_carries_every_group_heap_metric() {

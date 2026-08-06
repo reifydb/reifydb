@@ -10,10 +10,10 @@ use reifydb_value::Result;
 use crate::{
 	change::{
 		Change,
-		OperationType::{Create, Delete, Update},
+		OperationType::{Create, Delete},
 		TransactionalRoleChanges,
 	},
-	interceptor::role::{RolePostCreateContext, RolePostUpdateContext, RolePreDeleteContext, RolePreUpdateContext},
+	interceptor::role::{RolePostCreateContext, RolePreDeleteContext},
 	transaction::admin::AdminTransaction,
 };
 
@@ -24,18 +24,6 @@ impl CatalogTrackRoleChangeOperations for AdminTransaction {
 			pre: None,
 			post: Some(role),
 			op: Create,
-		};
-		self.changes.add_role_change(change);
-		Ok(())
-	}
-
-	fn track_role_updated(&mut self, pre: Role, post: Role) -> Result<()> {
-		self.interceptors.role_pre_update.execute(RolePreUpdateContext::new(&pre))?;
-		self.interceptors.role_post_update.execute(RolePostUpdateContext::new(&pre, &post))?;
-		let change = Change {
-			pre: Some(pre),
-			post: Some(post),
-			op: Update,
 		};
 		self.changes.add_role_change(change);
 		Ok(())

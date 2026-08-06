@@ -9,7 +9,7 @@ use reifydb_value::{Result, value::sumtype::SumTypeId};
 use crate::{
 	change::{
 		Change,
-		OperationType::{Create, Delete, Update},
+		OperationType::{Create, Delete},
 		TransactionalSumTypeChanges,
 	},
 	transaction::admin::AdminTransaction,
@@ -21,16 +21,6 @@ impl CatalogTrackSumTypeChangeOperations for AdminTransaction {
 			pre: None,
 			post: Some(sumtype),
 			op: Create,
-		};
-		self.changes.add_sumtype_change(change);
-		Ok(())
-	}
-
-	fn track_sumtype_updated(&mut self, pre: SumType, post: SumType) -> Result<()> {
-		let change = Change {
-			pre: Some(pre),
-			post: Some(post),
-			op: Update,
 		};
 		self.changes.add_sumtype_change(change);
 		Ok(())

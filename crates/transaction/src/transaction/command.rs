@@ -42,10 +42,7 @@ use crate::{
 			DictionaryRowPreInsertInterceptor, DictionaryRowPreUpdateInterceptor,
 		},
 		granted_role::{GrantedRolePostCreateInterceptor, GrantedRolePreDeleteInterceptor},
-		identity::{
-			IdentityPostCreateInterceptor, IdentityPostUpdateInterceptor, IdentityPreDeleteInterceptor,
-			IdentityPreUpdateInterceptor,
-		},
+		identity::{IdentityPostCreateInterceptor, IdentityPreDeleteInterceptor},
 		identity_attribute::{IdentityAttributePostCreateInterceptor, IdentityAttributePreDeleteInterceptor},
 		identity_attribute_value::{
 			IdentityAttributeValuePostCreateInterceptor, IdentityAttributeValuePreDeleteInterceptor,
@@ -64,10 +61,7 @@ use crate::{
 			RingBufferRowPostUpdateInterceptor, RingBufferRowPreDeleteInterceptor,
 			RingBufferRowPreInsertInterceptor, RingBufferRowPreUpdateInterceptor,
 		},
-		role::{
-			RolePostCreateInterceptor, RolePostUpdateInterceptor, RolePreDeleteInterceptor,
-			RolePreUpdateInterceptor,
-		},
+		role::{RolePostCreateInterceptor, RolePreDeleteInterceptor},
 		series::{
 			SeriesPostCreateInterceptor, SeriesPostUpdateInterceptor, SeriesPreDeleteInterceptor,
 			SeriesPreUpdateInterceptor,
@@ -96,10 +90,7 @@ use crate::{
 		transaction::{MultiTransaction, write::MultiWriteTransaction},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
-	transaction::{
-		RqlExecutor, Transaction, apply_pre_commit_writes, collect_transaction_writes, query::QueryTransaction,
-		write::Write,
-	},
+	transaction::{RqlExecutor, Transaction, apply_pre_commit_writes, collect_transaction_writes, write::Write},
 };
 
 pub struct CommandTransaction {
@@ -340,17 +331,6 @@ impl CommandTransaction {
 		self.cmd.as_ref().unwrap().pending_writes()
 	}
 
-	#[instrument(name = "transaction::command::with_single_query", level = "trace", skip(self, keys, f))]
-	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
-	where
-		I: IntoIterator<Item = &'a EncodedKey> + Send,
-		F: FnOnce(&mut SingleReadTransaction<'_>) -> Result<R> + Send,
-		R: Send,
-	{
-		self.check_active()?;
-		self.single.with_query(keys, f)
-	}
-
 	#[instrument(name = "transaction::command::with_single_command", level = "trace", skip(self, keys, f))]
 	pub fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
 	where
@@ -360,49 +340,6 @@ impl CommandTransaction {
 	{
 		self.check_active()?;
 		self.single.with_command(keys, f)
-	}
-
-	#[instrument(name = "transaction::command::with_multi_query", level = "trace", skip(self, f))]
-	pub fn with_multi_query<F, R>(&self, f: F) -> Result<R>
-	where
-		F: FnOnce(&mut QueryTransaction) -> Result<R>,
-	{
-		self.check_active()?;
-
-		let mut query_txn =
-			QueryTransaction::new(self.multi.begin_query()?, self.single.clone(), self.identity);
-
-		f(&mut query_txn)
-	}
-
-	#[instrument(name = "transaction::command::with_multi_query_as_of_exclusive", level = "trace", skip(self, f))]
-	pub fn with_multi_query_as_of_exclusive<F, R>(&self, version: CommitVersion, f: F) -> Result<R>
-	where
-		F: FnOnce(&mut QueryTransaction) -> Result<R>,
-	{
-		self.check_active()?;
-
-		let mut query_txn =
-			QueryTransaction::new(self.multi.begin_query()?, self.single.clone(), self.identity);
-
-		query_txn.read_as_of_version_exclusive(version)?;
-
-		f(&mut query_txn)
-	}
-
-	#[instrument(name = "transaction::command::with_multi_query_as_of_inclusive", level = "trace", skip(self, f))]
-	pub fn with_multi_query_as_of_inclusive<F, R>(&self, version: CommitVersion, f: F) -> Result<R>
-	where
-		F: FnOnce(&mut QueryTransaction) -> Result<R>,
-	{
-		self.check_active()?;
-
-		let mut query_txn =
-			QueryTransaction::new(self.multi.begin_query()?, self.single.clone(), self.identity);
-
-		query_txn.multi.read_as_of_version_inclusive(version);
-
-		f(&mut query_txn)
 	}
 
 	#[instrument(name = "transaction::command::begin_single_query", level = "trace", skip(self, keys))]
@@ -850,28 +787,12 @@ impl WithInterceptors for CommandTransaction {
 		&mut self.interceptors.identity_post_create
 	}
 
-	fn identity_pre_update_interceptors(&mut self) -> &mut Chain<dyn IdentityPreUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.identity_pre_update
-	}
-
-	fn identity_post_update_interceptors(&mut self) -> &mut Chain<dyn IdentityPostUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.identity_post_update
-	}
-
 	fn identity_pre_delete_interceptors(&mut self) -> &mut Chain<dyn IdentityPreDeleteInterceptor + Send + Sync> {
 		&mut self.interceptors.identity_pre_delete
 	}
 
 	fn role_post_create_interceptors(&mut self) -> &mut Chain<dyn RolePostCreateInterceptor + Send + Sync> {
 		&mut self.interceptors.role_post_create
-	}
-
-	fn role_pre_update_interceptors(&mut self) -> &mut Chain<dyn RolePreUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.role_pre_update
-	}
-
-	fn role_post_update_interceptors(&mut self) -> &mut Chain<dyn RolePostUpdateInterceptor + Send + Sync> {
-		&mut self.interceptors.role_post_update
 	}
 
 	fn role_pre_delete_interceptors(&mut self) -> &mut Chain<dyn RolePreDeleteInterceptor + Send + Sync> {

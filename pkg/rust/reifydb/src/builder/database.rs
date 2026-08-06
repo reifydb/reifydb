@@ -70,7 +70,7 @@ use reifydb_sub_lifecycle::factory::LifecycleSubsystemFactory;
 use reifydb_sub_metrics::factory::MetricsSubsystemFactory;
 #[cfg(feature = "sub_metric_profiler")]
 use reifydb_sub_metrics::profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
-#[cfg(feature = "sub_replication")]
+#[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
 use reifydb_sub_replication::builder::{ReplicationConfig, ReplicationConfigurator};
 #[cfg(all(feature = "sub_replication", not(reifydb_single_threaded)))]
 use reifydb_sub_replication::factory::ReplicationSubsystemFactory;
@@ -414,7 +414,10 @@ impl DatabaseBuilder {
 		let cdc_store = match &self.cdc_backend {
 			CdcBackend::Memory => CdcStore::memory(),
 			#[cfg(not(target_arch = "wasm32"))]
-			CdcBackend::Sqlite(config) => CdcStore::sqlite(config.clone()),
+			CdcBackend::Sqlite(config) => CdcStore::sqlite_with_block_cache_capacity(
+				config.clone(),
+				multi.config().get_config_uint8(ConfigKey::CdcCompactBlockCacheCapacity) as usize,
+			),
 		};
 		self.ioc = self.ioc.register(cdc_store.clone());
 

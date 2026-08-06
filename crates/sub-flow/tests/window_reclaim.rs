@@ -24,8 +24,7 @@ fn setup() -> TestDb {
 	)
 }
 
-const RECLAIMED_A_GROUP: &str =
-	"from system::metrics::runtime::operators::current filter { metric == 'state_compaction_dropped' and value > 0.0 }";
+const RECLAIMED_A_GROUP: &str = "from system::metrics::runtime::operators::current filter { metric == 'state_compaction_dropped' and value > 0.0 }";
 
 #[test]
 fn a_deferred_flow_drains_a_window_group_left_behind_by_retraction() {

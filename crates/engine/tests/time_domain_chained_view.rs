@@ -126,4 +126,3 @@ fn an_undeclared_chain_over_processing_sources_stays_silent() {
 		"the ordinary processing-time chain must create without a declaration anywhere"
 	);
 }
-

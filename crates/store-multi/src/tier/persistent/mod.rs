@@ -8,10 +8,7 @@
 use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{
-	common::CommitVersion,
-	interface::store::EntryKind,
-};
+use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
@@ -144,7 +141,6 @@ impl MultiPersistentTier {
 			Self::Sqlite(s) => s.load_range_consistent(table, start, end, read, limit),
 		}
 	}
-
 }
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
@@ -201,10 +197,6 @@ impl MultiPersistentTier {
 		_read: CommitVersion,
 		_limit: Option<usize>,
 	) -> Result<Vec<RawEntry>> {
-		match *self {}
-	}
-
-	pub fn delete_keys_through(&self, _table: EntryKind, _keys: &[(EncodedKey, CommitVersion)]) -> Result<u64> {
 		match *self {}
 	}
 }

@@ -68,7 +68,6 @@ pub enum ConfigKey {
 	FlowPullBatchBytes,
 	FlowLoadBatchBytes,
 	OperatorSnapshotInterval,
-	CdcWatermarkWaitTimeout,
 	CdcConsumeWaitTimeout,
 	FlowJoinProbeBlockSize,
 	ThreadsAsync,
@@ -126,7 +125,6 @@ impl ConfigKey {
 			Self::FlowPullBatchBytes,
 			Self::FlowLoadBatchBytes,
 			Self::OperatorSnapshotInterval,
-			Self::CdcWatermarkWaitTimeout,
 			Self::CdcConsumeWaitTimeout,
 			Self::FlowJoinProbeBlockSize,
 			Self::ThreadsAsync,
@@ -186,7 +184,6 @@ impl ConfigKey {
 			Self::FlowPullBatchBytes => Value::Uint8(8 * 1024 * 1024),
 			Self::FlowLoadBatchBytes => Value::Uint8(8 * 1024 * 1024),
 			Self::OperatorSnapshotInterval => Value::duration_seconds(300),
-			Self::CdcWatermarkWaitTimeout => Value::duration_seconds(1),
 			Self::CdcConsumeWaitTimeout => Value::duration_seconds(30),
 			Self::FlowJoinProbeBlockSize => Value::Uint8(1024),
 			Self::ThreadsAsync => Value::Uint2(1),
@@ -348,11 +345,6 @@ impl ConfigKey {
 				 change log always covers replay from the newest usable snapshot. None disables \
 				 snapshotting; the flow then rebuilds operator state from scratch after a restart."
 			}
-			Self::CdcWatermarkWaitTimeout => {
-				"Backstop timeout for the CDC consumer's wait for the transaction watermark to reach the \
-				 latest commit before consuming; catch-up is event-driven, so this only bounds a missed \
-				 wakeup. Must be > 0."
-			}
 			Self::CdcConsumeWaitTimeout => {
 				"Backstop timeout for the CDC consumer's wait for a consume reply from the downstream \
 				 consumer. A lost reply would otherwise wedge the poll loop forever; on timeout the batch \
@@ -469,7 +461,6 @@ impl ConfigKey {
 			Self::FlowPullBatchBytes => true,
 			Self::FlowLoadBatchBytes => true,
 			Self::OperatorSnapshotInterval => false,
-			Self::CdcWatermarkWaitTimeout => false,
 			Self::CdcConsumeWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
 			Self::ThreadsAsync => true,
@@ -527,7 +518,6 @@ impl ConfigKey {
 			Self::FlowPullBatchBytes => &[ValueType::Uint8],
 			Self::FlowLoadBatchBytes => &[ValueType::Uint8],
 			Self::OperatorSnapshotInterval => &[ValueType::Duration],
-			Self::CdcWatermarkWaitTimeout => &[ValueType::Duration],
 			Self::CdcConsumeWaitTimeout => &[ValueType::Duration],
 			Self::FlowJoinProbeBlockSize => &[ValueType::Uint8],
 			Self::ThreadsAsync => &[ValueType::Uint2],
@@ -585,7 +575,6 @@ impl ConfigKey {
 			Self::FlowPullBatchBytes => false,
 			Self::FlowLoadBatchBytes => false,
 			Self::OperatorSnapshotInterval => true,
-			Self::CdcWatermarkWaitTimeout => false,
 			Self::CdcConsumeWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
 			Self::ThreadsAsync => false,
@@ -775,16 +764,6 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
-			Self::CdcWatermarkWaitTimeout => match value {
-				Value::Duration(d) => {
-					if d.is_positive() {
-						Ok(())
-					} else {
-						Err("CDC_WATERMARK_WAIT_TIMEOUT must be greater than zero".to_string())
-					}
-				}
-				_ => Ok(()),
-			},
 			Self::CdcConsumeWaitTimeout => match value {
 				Value::Duration(d) => {
 					if d.is_positive() {
@@ -941,7 +920,6 @@ impl fmt::Display for ConfigKey {
 			Self::FlowPullBatchBytes => write!(f, "FLOW_PULL_BATCH_BYTES"),
 			Self::FlowLoadBatchBytes => write!(f, "FLOW_LOAD_BATCH_BYTES"),
 			Self::OperatorSnapshotInterval => write!(f, "OPERATOR_SNAPSHOT_INTERVAL"),
-			Self::CdcWatermarkWaitTimeout => write!(f, "CDC_WATERMARK_WAIT_TIMEOUT"),
 			Self::CdcConsumeWaitTimeout => write!(f, "CDC_CONSUME_WAIT_TIMEOUT"),
 			Self::FlowJoinProbeBlockSize => write!(f, "FLOW_JOIN_PROBE_BLOCK_SIZE"),
 			Self::ThreadsAsync => write!(f, "THREADS_ASYNC"),
@@ -1003,7 +981,6 @@ impl FromStr for ConfigKey {
 			"FLOW_PULL_BATCH_BYTES" => Ok(Self::FlowPullBatchBytes),
 			"FLOW_LOAD_BATCH_BYTES" => Ok(Self::FlowLoadBatchBytes),
 			"OPERATOR_SNAPSHOT_INTERVAL" => Ok(Self::OperatorSnapshotInterval),
-			"CDC_WATERMARK_WAIT_TIMEOUT" => Ok(Self::CdcWatermarkWaitTimeout),
 			"CDC_CONSUME_WAIT_TIMEOUT" => Ok(Self::CdcConsumeWaitTimeout),
 			"FLOW_JOIN_PROBE_BLOCK_SIZE" => Ok(Self::FlowJoinProbeBlockSize),
 			"THREADS_ASYNC" => Ok(Self::ThreadsAsync),
@@ -1205,7 +1182,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 53);
+		assert_eq!(all.len(), 52);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::CommitGroupLinger));
 		assert!(all.contains(&ConfigKey::CommitGroupMaxEntries));
@@ -1215,7 +1192,6 @@ mod tests {
 		assert!(all.contains(&ConfigKey::MultiFlushInterval));
 		assert!(all.contains(&ConfigKey::MultiWalAutocheckpoint));
 		assert!(all.contains(&ConfigKey::CdcWalAutocheckpoint));
-		assert!(all.contains(&ConfigKey::CdcWatermarkWaitTimeout));
 		assert!(all.contains(&ConfigKey::CdcConsumeWaitTimeout));
 		assert!(all.contains(&ConfigKey::FlowJoinProbeBlockSize));
 		assert!(all.contains(&ConfigKey::CdcTtlScanInterval));

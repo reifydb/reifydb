@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-
 use reifydb_core::common::{WindowKind, WindowSize};
 use reifydb_testing_chaos::{
 	corpus::Corpus,
@@ -130,7 +129,6 @@ pub fn drive_random(seed: u64) {
 		drive(sequence_seed, run);
 	});
 }
-
 
 #[derive(Debug, Clone)]
 pub struct CountParams {

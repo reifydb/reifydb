@@ -35,13 +35,13 @@ use reifydb_flow::{
 		slot::{PersistFn, zero_usage},
 	},
 };
-use reifydb_store_operator::FloorSpec;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::{
 	config::Config,
 	error::{Result as SdkResult, SdkError},
 	operator::{OperatorLogic, timer::Timer as SdkTimer, view::native::NativeChangeView},
 };
+use reifydb_store_operator::FloorSpec;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
@@ -284,46 +284,6 @@ impl NativeBridge for FlowNativeBridge<'_> {
 				continue;
 			};
 			visit(&key, &r.row)?;
-		}
-		Ok(())
-	}
-	fn state_range_visit(
-		&mut self,
-		range: EncodedKeyRange,
-		visit: &mut dyn FnMut(&GroupStateKey, &EncodedRow) -> SdkResult<()>,
-	) -> SdkResult<()> {
-		let batch =
-			self.txn.state_range_all(self.operator, range).map_err(|e| SdkError::Other(e.to_string()))?;
-		for r in &batch.items {
-			let Some(key) = GroupStateKey::from_framed(r.key.clone()) else {
-				continue;
-			};
-			visit(&key, &r.row)?;
-		}
-		Ok(())
-	}
-	fn store_range_visit(
-		&mut self,
-		range: EncodedKeyRange,
-		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
-	) -> SdkResult<()> {
-		let rows =
-			self.txn.range(range, RangeScope::All, 1024)
-				.collect::<Result<Vec<_>>>()
-				.map_err(|e| SdkError::Other(e.to_string()))?;
-		for r in &rows {
-			visit(&r.key, &r.row)?;
-		}
-		Ok(())
-	}
-	fn store_prefix_visit(
-		&mut self,
-		prefix: &EncodedKey,
-		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
-	) -> SdkResult<()> {
-		let batch = self.txn.prefix(prefix).map_err(|e| SdkError::Other(e.to_string()))?;
-		for r in &batch.items {
-			visit(&r.key, &r.row)?;
 		}
 		Ok(())
 	}
@@ -655,9 +615,7 @@ impl Operator for NativeBridgedOperator {
 mod tests {
 	use reifydb_abi::constants::OPERATOR_ABI_TAG;
 	use reifydb_core::{
-		common::CommitVersion,
-		interface::change::Change,
-		key::operator_group_state::GroupId,
+		common::CommitVersion, interface::change::Change, key::operator_group_state::GroupId,
 		state::horizon::Position,
 	};
 	use reifydb_engine::test_harness::TestEngine;

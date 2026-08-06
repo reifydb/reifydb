@@ -105,7 +105,6 @@ pub struct Scenario {
 
 	pub tick_pct: u32,
 
-
 	pub coord_span_ms: u64,
 
 	pub drain_at_ms: u64,

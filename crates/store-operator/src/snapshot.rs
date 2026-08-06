@@ -73,9 +73,7 @@ impl SnapshotStore {
 	) -> Result<u64> {
 		let chunk_bytes = write.chunk_bytes.max(1);
 		let mut guard = self.inner.conn.lock();
-		let conn = guard
-			.as_mut()
-			.ok_or_else(|| internal_error!("operator snapshot connection is closed"))?;
+		let conn = guard.as_mut().ok_or_else(|| internal_error!("operator snapshot connection is closed"))?;
 		let txn = conn.transaction().map_err(|e| internal_error!("snapshot begin failed: {}", e))?;
 
 		let operator = write.operator.0 as i64;
@@ -85,8 +83,8 @@ impl SnapshotStore {
 				params![operator],
 				|row| row.get::<_, i64>(0),
 			)
-			.map_err(|e| internal_error!("snapshot generation lookup failed: {}", e))?
-			as u64 + 1;
+			.map_err(|e| internal_error!("snapshot generation lookup failed: {}", e))? as u64
+			+ 1;
 
 		let mut hasher = Xxh3::new();
 		let mut buffer: Vec<u8> = Vec::new();
@@ -139,9 +137,7 @@ impl SnapshotStore {
 
 	pub fn generations(&self, operator: OperatorId) -> Result<Vec<u64>> {
 		let guard = self.inner.conn.lock();
-		let conn = guard
-			.as_ref()
-			.ok_or_else(|| internal_error!("operator snapshot connection is closed"))?;
+		let conn = guard.as_ref().ok_or_else(|| internal_error!("operator snapshot connection is closed"))?;
 		let mut stmt = conn
 			.prepare_cached(
 				r#"SELECT generation FROM "snapshot_manifest" WHERE operator = ?1 ORDER BY generation DESC"#,
@@ -156,9 +152,7 @@ impl SnapshotStore {
 
 	pub fn generation_cursors(&self, operator: OperatorId) -> Result<Vec<(u64, CommitVersion)>> {
 		let guard = self.inner.conn.lock();
-		let conn = guard
-			.as_ref()
-			.ok_or_else(|| internal_error!("operator snapshot connection is closed"))?;
+		let conn = guard.as_ref().ok_or_else(|| internal_error!("operator snapshot connection is closed"))?;
 		let mut stmt = conn
 			.prepare_cached(
 				r#"SELECT generation, flow_cursor FROM "snapshot_manifest"
@@ -176,9 +170,7 @@ impl SnapshotStore {
 
 	pub fn operators(&self) -> Result<Vec<OperatorId>> {
 		let guard = self.inner.conn.lock();
-		let conn = guard
-			.as_ref()
-			.ok_or_else(|| internal_error!("operator snapshot connection is closed"))?;
+		let conn = guard.as_ref().ok_or_else(|| internal_error!("operator snapshot connection is closed"))?;
 		let mut stmt = conn
 			.prepare_cached(r#"SELECT DISTINCT operator FROM "snapshot_manifest" ORDER BY operator ASC"#)
 			.map_err(|e| internal_error!("snapshot operator query failed: {}", e))?;
@@ -191,9 +183,7 @@ impl SnapshotStore {
 
 	pub fn load(&self, operator: OperatorId, generation: u64) -> Result<LoadedSnapshot> {
 		let guard = self.inner.conn.lock();
-		let conn = guard
-			.as_ref()
-			.ok_or_else(|| internal_error!("operator snapshot connection is closed"))?;
+		let conn = guard.as_ref().ok_or_else(|| internal_error!("operator snapshot connection is closed"))?;
 
 		let manifest = conn
 			.query_row(
@@ -295,9 +285,7 @@ impl SnapshotStore {
 
 	pub fn discard(&self, operator: OperatorId, generation: u64) -> Result<()> {
 		let mut guard = self.inner.conn.lock();
-		let conn = guard
-			.as_mut()
-			.ok_or_else(|| internal_error!("operator snapshot connection is closed"))?;
+		let conn = guard.as_mut().ok_or_else(|| internal_error!("operator snapshot connection is closed"))?;
 		let txn = conn.transaction().map_err(|e| internal_error!("snapshot discard begin failed: {}", e))?;
 		txn.execute(
 			r#"DELETE FROM "snapshot_chunk" WHERE operator = ?1 AND generation = ?2"#,

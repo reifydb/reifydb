@@ -22,8 +22,8 @@ use reifydb_core::{
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
-use tracing::instrument;
 use rkyv::{Archive, with::AsVec};
+use tracing::instrument;
 
 use crate::window::{
 	accumulator::WindowAccumulator,

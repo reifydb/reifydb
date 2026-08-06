@@ -33,9 +33,7 @@ fn open(path: &TempDbPath) -> TestDb {
 }
 
 fn insert(db: &TestDb, id: u32, group: u32) {
-	db.command(&format!(
-		r#"insert app::t [{{ id: {id}, g: {group}, ts: "1970-01-01T00:{id:02}:00Z" }}]"#
-	));
+	db.command(&format!(r#"insert app::t [{{ id: {id}, g: {group}, ts: "1970-01-01T00:{id:02}:00Z" }}]"#));
 }
 
 fn total_for(frames: &[Frame], group: i32) -> Option<i64> {
@@ -75,10 +73,8 @@ fn operator_state_survives_a_real_restart() {
 		let mut db = open(&path);
 		db.admin("create namespace app");
 		db.admin("create table app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
-		db.admin(
-			"create deferred view app::v { g: int4, total: int8 } with { time: event } \
-			 as { from app::t aggregate { total: math::count(id) } by { g } }",
-		);
+		db.admin("create deferred view app::v { g: int4, total: int8 } with { time: event } \
+			 as { from app::t aggregate { total: math::count(id) } by { g } }");
 
 		for id in 1..=5 {
 			insert(&db, id, 1);

@@ -1942,7 +1942,10 @@ chaos_test!(window_session_random_chaos, |seed| {
 	operators::window::session::drive_random(seed);
 });
 
-fn group_data_rows_stamped_below(harness: &mut Harness<impl reifydb_flow::operator::Operator>, cutoff_ms: u64) -> usize {
+fn group_data_rows_stamped_below(
+	harness: &mut Harness<impl reifydb_flow::operator::Operator>,
+	cutoff_ms: u64,
+) -> usize {
 	// Counts group-scoped data rows whose write stamp sits strictly below the cutoff; those are
 	// exactly the rows a floor at `cutoff_ms` must have cancelled at merge time.
 	use reifydb_codec::encoded::row::SHAPE_HEADER_SIZE;
@@ -2047,8 +2050,9 @@ fn join_side_floors_drop_expired_entries_and_keep_the_boundary_row() {
 	// Mutation falsified against: the floor comparison relaxing from strictly-below to at-or-below
 	// (the boundary row would die and the survivor count drop to 1).
 	let left_ttl = Duration::from_seconds(60).unwrap();
-	let mut harness =
-		Harness::with_engine(|engine, _| operators::join::build(engine, Variant::inner(), Some(left_ttl), None));
+	let mut harness = Harness::with_engine(|engine, _| {
+		operators::join::build(engine, Variant::inner(), Some(left_ttl), None)
+	});
 	let workload = JoinWorkload {
 		keys: 8,
 		right_pct: 0,
@@ -2104,9 +2108,10 @@ fn join_row_number_mappings_honor_the_sink_ttl_horizon_not_the_data_floor() {
 	// would already be gone at the first compaction, where this test demands it survives).
 	let left_ttl = Duration::from_seconds(60).unwrap();
 	let sink_ttl = Duration::from_seconds(600).unwrap();
-	let mut harness =
-		Harness::with_engine(|engine, _| operators::join::build(engine, Variant::inner(), Some(left_ttl), None))
-			.with_sink_row_ttl(sink_ttl);
+	let mut harness = Harness::with_engine(|engine, _| {
+		operators::join::build(engine, Variant::inner(), Some(left_ttl), None)
+	})
+	.with_sink_row_ttl(sink_ttl);
 	let workload = JoinWorkload {
 		keys: 8,
 		right_pct: 0,
@@ -2132,10 +2137,7 @@ fn join_row_number_mappings_honor_the_sink_ttl_horizon_not_the_data_floor() {
 	// (watermark - 600s) saturates at the epoch: the mapping must survive the data-floor compaction.
 	let data_only = harness.compact(400_000).expect("compaction must succeed");
 	assert!(data_only.outcome.dropped > 0, "the expired left entry itself is cancelled at the data floor");
-	assert!(
-		mapping_rows(&mut harness) > 0,
-		"the mapping must survive a compaction whose data floor has passed it"
-	);
+	assert!(mapping_rows(&mut harness) > 0, "the mapping must survive a compaction whose data floor has passed it");
 
 	// At 800_000 the identity horizon reaches 200_000, past the mapping's stamp: now it dies.
 	harness.compact(800_000).expect("compaction must succeed");

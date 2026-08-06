@@ -47,6 +47,8 @@ use reifydb_value::{
 };
 use tracing::{error, info, warn};
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::deferred::snapshot::FlowSnapshots;
 use crate::{
 	builder::CustomOperators,
 	deferred::{
@@ -56,7 +58,7 @@ use crate::{
 		loader::{LoaderMessage, LoaderReply},
 		overlay::FlowWriteOverlay,
 		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep},
-		snapshot::{FlowSnapshotLoad, FlowSnapshots},
+		snapshot::FlowSnapshotLoad,
 		tracker::FlowPositionTracker,
 	},
 	engine::FlowEngineInner,
@@ -85,6 +87,7 @@ pub struct FlowActorParams {
 	pub checkpoint_max_age: Duration,
 	pub retry_limit: u32,
 	pub retry_backoff: Duration,
+	#[cfg(not(target_arch = "wasm32"))]
 	pub snapshots: Option<FlowSnapshots>,
 	pub snapshot_load: FlowSnapshotLoad,
 }
@@ -114,6 +117,7 @@ pub struct FlowActor {
 	checkpoint_max_age: Duration,
 	initial_source_objects: Arc<BTreeSet<ObjectId>>,
 	initial_cursor: CommitVersion,
+	#[cfg(not(target_arch = "wasm32"))]
 	snapshots: Option<FlowSnapshots>,
 	snapshot_load: FlowSnapshotLoad,
 }
@@ -133,6 +137,7 @@ pub struct FlowActorState {
 	overlay: FlowWriteOverlay,
 	drain_after_commit: bool,
 	last_checkpoint_at: DateTime,
+	#[cfg(not(target_arch = "wasm32"))]
 	last_snapshot_at: DateTime,
 }
 
@@ -167,6 +172,7 @@ impl FlowActor {
 			checkpoint_max_age: params.checkpoint_max_age,
 			initial_source_objects: params.source_objects,
 			initial_cursor: params.cursor,
+			#[cfg(not(target_arch = "wasm32"))]
 			snapshots: params.snapshots,
 			snapshot_load: params.snapshot_load,
 		}
@@ -180,6 +186,7 @@ impl FlowActor {
 		self.engine.catalog().get_config_duration_opt(ConfigKey::FlowSampleInterval)
 	}
 
+	#[cfg(not(target_arch = "wasm32"))]
 	fn snapshot_interval(&self) -> Option<Duration> {
 		self.engine.catalog().get_config_duration_opt(ConfigKey::OperatorSnapshotInterval)
 	}
@@ -372,6 +379,7 @@ impl FlowActor {
 			arena_bytes = self.substrate.operators.total_bytes(),
 			"flow catch-up replay complete"
 		);
+		#[cfg(not(target_arch = "wasm32"))]
 		self.snapshot_now(state, ctx);
 		if state.committing {
 			state.drain_after_commit = true;
@@ -598,10 +606,15 @@ impl FlowActor {
 			{
 				Ok((pending, pending_shapes, view_changes)) => {
 					let has_output = pending.iter_sorted().next().is_some()
-						|| !pending_shapes.is_empty()
-						|| !view_changes.is_empty();
+						|| !pending_shapes.is_empty() || !view_changes.is_empty();
 					if has_output {
-						self.dispatch_tick_commit(state, ctx, pending, pending_shapes, view_changes);
+						self.dispatch_tick_commit(
+							state,
+							ctx,
+							pending,
+							pending_shapes,
+							view_changes,
+						);
 					}
 				}
 				Err(e) => {
@@ -612,6 +625,7 @@ impl FlowActor {
 
 		ctx.schedule_once(self.tick_interval(), || FlowActorMessage::Tick);
 
+		#[cfg(not(target_arch = "wasm32"))]
 		self.maybe_snapshot(state, ctx);
 
 		if !state.poisoned && !state.committing && !state.catching_up {
@@ -619,6 +633,7 @@ impl FlowActor {
 		}
 	}
 
+	#[cfg(not(target_arch = "wasm32"))]
 	fn maybe_snapshot(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		if self.snapshots.is_none() || state.poisoned || state.committing || state.catching_up {
 			return;
@@ -632,6 +647,7 @@ impl FlowActor {
 		self.snapshot_now(state, ctx);
 	}
 
+	#[cfg(not(target_arch = "wasm32"))]
 	fn snapshot_now(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		let Some(snapshots) = &self.snapshots else {
 			return;
@@ -740,6 +756,7 @@ impl Actor for FlowActor {
 			overlay: FlowWriteOverlay::new(),
 			drain_after_commit: false,
 			last_checkpoint_at: self.clock.now(),
+			#[cfg(not(target_arch = "wasm32"))]
 			last_snapshot_at: self.clock.now(),
 		};
 
@@ -832,7 +849,7 @@ impl Actor for FlowActor {
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod pull_protocol {
 	use std::{
 		collections::{HashMap, VecDeque},
@@ -846,6 +863,10 @@ mod pull_protocol {
 		produce::watermark::CdcProducerWatermark,
 		storage::CdcStorage,
 	};
+	use reifydb_codec::{
+		encoded::row::EncodedRow,
+		key::encoded::{EncodedKey, EncodedKeyRange},
+	};
 	use reifydb_core::{
 		actors::{flow::FlowActorHandle, pending::PendingLayers},
 		interface::{
@@ -857,14 +878,12 @@ mod pull_protocol {
 			change::{ChangeOrigin, Diff},
 		},
 		key::{
-			Key, cdc_consumer::FlowSnapshotPin, kind::KeyKind,
+			Key,
+			cdc_consumer::FlowSnapshotPin,
+			kind::KeyKind,
 			operator_group_state::{Keyspace, OperatorGroupStateKey},
 			operator_state::OperatorStateKey,
 		},
-	};
-	use reifydb_codec::{
-		encoded::row::EncodedRow,
-		key::encoded::{EncodedKey, EncodedKeyRange},
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::{DeferredParams, FlowTransaction};
@@ -912,8 +931,6 @@ mod pull_protocol {
 	}
 
 	fn harness() -> Harness {
-		// FLOW_TICK is an hour out and there is no supervisor, so only wakes these tests
-		// send can advance the actor.
 		harness_with(
 			"CREATE TABLE app::t { id: int4 }",
 			"CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }",
@@ -1049,8 +1066,6 @@ mod pull_protocol {
 
 	impl Harness {
 		fn spawn_actor(&self, cursor: CommitVersion) -> FlowActorHandle {
-			// `init`'s lazy Drain skips the cursor to the safe watermark, so the actor must
-			// be settled at `cursor` before the test writes anything a wake will deliver.
 			self.control.store(CommitVersion(u64::MAX));
 			self.spawn_actor_with_bounded_control(cursor)
 		}
@@ -1059,7 +1074,11 @@ mod pull_protocol {
 			self.spawn_actor_with_substrate(cursor, self.substrate.clone())
 		}
 
-		fn spawn_actor_with_substrate(&self, cursor: CommitVersion, substrate: FlowSubstrate) -> FlowActorHandle {
+		fn spawn_actor_with_substrate(
+			&self,
+			cursor: CommitVersion,
+			substrate: FlowSubstrate,
+		) -> FlowActorHandle {
 			self.await_safe_watermark(cursor);
 
 			let handle = self.engine.spawner().spawn_flow(
@@ -1110,8 +1129,6 @@ mod pull_protocol {
 		}
 
 		fn view_bearing_records(&self, up_to: CommitVersion) -> usize {
-			// This flow's slices never overlap, so one view-bearing commit is exactly one
-			// slice.
 			self.engine
 				.cdc_store()
 				.read_range(Bound::Unbounded, Bound::Unbounded, 10_000)
@@ -1139,8 +1156,6 @@ mod pull_protocol {
 		}
 
 		fn await_safe_watermark(&self, want: CommitVersion) {
-			// The spawn waits for the init Drain to land on exactly `want`, which only
-			// happens once the safe watermark already covers it.
 			let deadline = Instant::now() + StdDuration::from_secs(10);
 			loop {
 				let safe = self.engine.cdc_producer_watermark().min(self.engine.done_until());
@@ -1164,8 +1179,6 @@ mod pull_protocol {
 		}
 
 		fn poll_until<T>(&self, timeout: Duration, mut probe: impl FnMut() -> Option<T>) -> Option<T> {
-			// Not the engine clock: that one is a frozen mock the tick tests advance by
-			// hand, so an elapsed check against it would hang rather than fail.
 			let started = Clock::testing().instant();
 			let timeout = timeout.to_std();
 			loop {
@@ -1180,8 +1193,6 @@ mod pull_protocol {
 		}
 
 		fn await_position_at_least(&self, floor: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
-			// A drain that skips lands wherever is safe at that instant, at or above the
-			// floor but never exactly on it.
 			self.poll_until(timeout, || {
 				self.tracker.all().get(&self.flow_id).copied().filter(|got| *got >= floor)
 			})
@@ -1192,8 +1203,6 @@ mod pull_protocol {
 		}
 
 		fn persisted_checkpoint(&self) -> Option<CommitVersion> {
-			// The durable position, not the in-memory one: only what survives a restart can
-			// tell a real checkpoint from a claimed one.
 			let mut txn = self.engine.begin_query(IdentityId::system()).expect("query");
 			CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut txn), &self.flow_id)
 				.expect("fetch checkpoint")
@@ -1204,10 +1213,6 @@ mod pull_protocol {
 		}
 
 		fn advance_source_watermarks(&self, substrate: &FlowSubstrate, at: DateTime) {
-			// Reproduces the state a tick fires timers from: the watermark already covers the
-			// timer but no batch dispatched it (restart hydration, or a batch that exhausted
-			// its timer budget). The advance sticks in the substrate the actor shares; the
-			// throwaway transaction only carries the hydration read and is dropped.
 			let sources: Vec<OperatorId> = self
 				.flow
 				.get_operator_ids()
@@ -1249,8 +1254,6 @@ mod pull_protocol {
 		}
 
 		fn arena_state(&self, substrate: &FlowSubstrate) -> State {
-			// Full keys, not the arena's inner form: the shared comparator decodes the operator
-			// prefix to name the keyspace a difference lives in.
 			let mut out = State::new();
 			for operator in self.flow.get_operator_ids() {
 				let prefix = OperatorStateKey::encoded(operator, vec![]);
@@ -1268,9 +1271,6 @@ mod pull_protocol {
 			out
 		}
 
-		/// Blocks until catch-up has COMPLETED, using the only unambiguous signal there is: the
-		/// snapshot it publishes on completion, stamped at the cursor it caught up to. Waiting on
-		/// arena size instead would race a replay that is merely partway there.
 		fn await_catch_up(&self, store: &SnapshotStore, upto: CommitVersion) {
 			let probe = self.flow.get_operator_ids().next().expect("the flow must have an operator");
 			assert!(
@@ -1300,7 +1300,8 @@ mod pull_protocol {
 		fn stop(&self, actor: &FlowActorHandle) {
 			let stopped = Arc::new(WaiterHandle::new());
 			let notify = Arc::clone(&stopped);
-			assert!(actor.actor_ref()
+			assert!(actor
+				.actor_ref()
 				.send(FlowActorMessage::Stop {
 					delete_checkpoint: false,
 					reply: Box::new(move || notify.notify()),
@@ -1309,9 +1310,6 @@ mod pull_protocol {
 			assert!(stopped.wait_timeout(seconds(10)), "the actor must stop before the restart");
 		}
 
-		/// The supervisor's bootstrap in miniature: a FRESH arena, `load_flow` into it, and an
-		/// actor spawned at the durable checkpoint carrying whatever the load reported. This is
-		/// the only shape a real restart takes, so catch-up must be driven through it.
 		fn restart(&self, cursor: CommitVersion, load_batch_bytes: ByteSize) -> Restart {
 			let substrate = self.fresh_substrate();
 			let snapshot_load = self.load_snapshot(&substrate);
@@ -1339,10 +1337,6 @@ mod pull_protocol {
 			}
 		}
 
-		/// Split out of `restart` so a test can act in the window between the load and the spawn:
-		/// the supervisor validates a snapshot against the truncation floor as it stands at
-		/// bootstrap, and the actor re-reads that floor when it starts replaying. Only a test that
-		/// can move the floor between those two reads exercises the second one.
 		fn spawn_restart(
 			&self,
 			substrate: FlowSubstrate,
@@ -1359,7 +1353,8 @@ mod pull_protocol {
 				SnapshotPinTracker::new(),
 			);
 			let begin_engine = self.engine.clone();
-			let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+			let begin: GroupCommitBegin =
+				Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 			let committer_handle = self.engine.spawner().spawn_flow(
 				"pull-protocol-committer-restart",
 				CommitterActor::new(
@@ -1415,12 +1410,6 @@ mod pull_protocol {
 		_committer: CommitterHandle,
 	}
 
-	/// A loader that parks every request instead of answering it, so a test can hold a flow inside
-	/// catch-up for as long as it needs to. Racing this by hand does not work: a replay over an
-	/// in-memory corpus finishes in microseconds, so anything a test tries to interleave with it
-	/// lands after it has already completed and every assertion about what may happen DURING a
-	/// replay then passes vacuously. Releasing hands the parked request to the real loader, so
-	/// what the flow eventually replays is exactly what it would have replayed unaided.
 	#[derive(Clone, Default)]
 	struct GatedLoader {
 		parked: Arc<Mutex<VecDeque<LoaderMessage>>>,
@@ -1460,14 +1449,7 @@ mod pull_protocol {
 		}
 	}
 
-	/// Spawns a gated loader in front of the real one and restarts the flow through it. Returns
-	/// once the flow has provably entered catch-up: it has issued a fetch that only this test can
-	/// answer, which also means its `init` has finished - the point every later clock advance has
-	/// to come after, since `init` stamps `last_snapshot_at` from the same mock clock.
-	fn restart_gated(
-		h: &Harness,
-		checkpoint: CommitVersion,
-	) -> (Restart, GatedLoader, ActorHandle<LoaderMessage>) {
+	fn restart_gated(h: &Harness, checkpoint: CommitVersion) -> (Restart, GatedLoader, ActorHandle<LoaderMessage>) {
 		let gate = GatedLoader::default();
 		let gate_handle = h.engine.spawner().spawn_flow("pull-protocol-gated-loader", gate.clone());
 		let substrate = h.fresh_substrate();
@@ -1480,8 +1462,6 @@ mod pull_protocol {
 			substrate,
 			snapshot_load,
 			checkpoint,
-			// One cdc record per batch, so the replay needs many round trips and the test keeps
-			// control between every one of them.
 			ByteSize::from_bytes(1),
 			gate_handle.actor_ref().clone(),
 		);
@@ -1503,8 +1483,6 @@ mod pull_protocol {
 
 	#[test]
 	fn a_wake_that_lands_during_a_commit_is_not_lost() {
-		// A wake that lands mid-commit must leave a marker the commit completion honors:
-		// nothing else wakes this actor, so dropping it strands the second row for good.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(v0);
@@ -1535,9 +1513,6 @@ mod pull_protocol {
 
 	#[test]
 	fn a_burst_of_commits_coalesces_into_few_slices() {
-		// Rows that accumulate behind an in-flight commit must ride out as one slice: the
-		// per-slice envelope (transaction, DAG walk, state flush, commit) is the bulk of the
-		// flow CPU bill. Nine uncoalesced wakes are nine slices; coalesced they are two.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(v0);
@@ -1566,8 +1541,6 @@ mod pull_protocol {
 
 	#[test]
 	fn a_flow_behind_the_backlog_recovers_through_the_loader() {
-		// A cursor the backlog has evicted past can only be recovered through durable CDC:
-		// nothing may be lost to the eviction and nothing applied twice on rejoin.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(v0);
@@ -1579,7 +1552,6 @@ mod pull_protocol {
 		let target = h.engine.current_version().expect("current version");
 		h.await_safe_watermark(target);
 
-		// With everything unconsumed evicted, the loader is the only path to the view.
 		h.backlog.evict_below(target);
 		h.wake(&actor);
 
@@ -1602,8 +1574,6 @@ mod pull_protocol {
 
 	#[test]
 	fn the_control_frontier_bounds_how_far_a_flow_may_pull() {
-		// A flow that outruns the control frontier could consume versions carrying its own
-		// deletion or a sibling's creation before the supervisor had scanned them.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		h.control.store(v0);
@@ -1636,9 +1606,6 @@ mod pull_protocol {
 
 	#[test]
 	fn a_producer_watermark_overshoot_does_not_stall_or_overrun_the_pull() {
-		// The producer watermark can transiently sit ahead of done_until. Reading past
-		// done_until consumes versions whose effects are not yet visible; treating the
-		// overshoot as a stall strands the row until the (1h) tick.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(v0);
@@ -1647,8 +1614,6 @@ mod pull_protocol {
 		let target = h.engine.current_version().expect("current version");
 		h.await_safe_watermark(target);
 
-		// An overshoot of one would be swallowed by the flow's own slice commit, leaving an
-		// unclamped pull indistinguishable from a clamped one.
 		let producer = h.engine.ioc().resolve::<CdcProducerWatermark>().expect("producer watermark");
 		for _ in 0..10 {
 			producer.advance(CommitVersion(producer.get().0 + 1));
@@ -1680,14 +1645,6 @@ mod pull_protocol {
 
 	#[test]
 	fn a_tick_that_commits_must_still_drain_afterwards() {
-		// A tick that commits must still drain afterwards, or the generation it promoted is
-		// never pruned - a leak on precisely the quietest flows. Only a pull moves the cursor
-		// past the gap, so a cursor that stays put is proof none ran.
-		//
-		// The tick commit is manufactured through retention: the watermark derives from the
-		// rows' arrival stamps, never the clock, so seals fire inline with the data that
-		// carries the watermark past them and what is left for a quiet flow's tick to commit
-		// is the reclaim sweep retiring the window groups those seals left behind.
 		let h = harness_with(
 			"CREATE TABLE app::t { id: int4, g: int4, v: int4 }",
 			r#"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } AS {
@@ -1707,9 +1664,6 @@ mod pull_protocol {
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(v0);
 
-		// Three arrivals 3s apart: each lands in its own 1s bucket and its wake seals the
-		// bucket before it inline. The second seal moves the sealed-through anchor past the
-		// first bucket's group, which is what gives the tick's reclaim something to retire.
 		let mut target = v0;
 		for (id, expected_rows) in [(1u64, 1usize), (2, 2), (3, 3)] {
 			if id > 1 {
@@ -1732,15 +1686,11 @@ mod pull_protocol {
 			);
 		}
 
-		// Versions the actor is never woken for: only the tick commit's follow-up pull can
-		// carry the cursor over them.
 		h.te.command("INSERT app::unrelated [{ id: 1 }]");
 		let gap = h.engine.current_version().expect("current version");
 		h.await_safe_watermark(gap);
 		assert!(gap > target, "the test needs unconsumed safe versions above the settled cursor");
 
-		// A reclaim-only tick writes only to the arena, so arena shrinkage is the proof it
-		// reached a commit.
 		let arena_before = h.substrate.operators.total_bytes();
 		assert!(arena_before > 0, "precondition: the sealed window groups must hold arena state to retire");
 		assert!(actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
@@ -1768,9 +1718,6 @@ mod pull_protocol {
 
 	#[test]
 	fn a_tick_commit_must_not_pass_itself_off_as_a_checkpoint() {
-		// A tick commit persists no checkpoint. Crediting it with one makes the flow believe
-		// it is more durable than it is and stop checkpointing for good; flow checkpoints
-		// gate CDC log compaction, so the log would then grow without bound.
 		let h = harness_with(
 			"CREATE TABLE app::t { id: int4, g: int4, v: int4 }",
 			r#"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } AS {
@@ -1807,8 +1754,6 @@ mod pull_protocol {
 			 durable position starts where the cursor does and any later gap is a real stall"
 		);
 
-		// Versions the actor is never woken for: only going idle after the tick commits can
-		// carry the cursor over them, which is also when it decides whether to checkpoint.
 		h.te.command("INSERT app::unrelated [{ id: 1 }]");
 		let gap = h.engine.current_version().expect("current version");
 		h.await_safe_watermark(gap);
@@ -1842,23 +1787,15 @@ mod pull_protocol {
 	}
 
 	fn ring_harness(announce: bool) -> Harness {
-		// An event-time ring whose capacity is never reached, so the only eviction these tests
-		// can observe is the row ttl. The ttl announce flag is the variable under test.
 		harness_with(
 			"CREATE TABLE app::t { id: int4, v: int4, ts: datetime } with { ts: ts }",
-			&format!(
-				"CREATE DEFERRED RINGBUFFER VIEW app::v {{ id: int4, v: int4 }} \
+			&format!("CREATE DEFERRED RINGBUFFER VIEW app::v {{ id: int4, v: int4 }} \
 				 WITH {{ capacity: 1000, time: event, row: {{ ttl: {{ duration: '1s', announce: {announce} }} }} }} \
-				 AS {{ FROM app::t map {{ id, v }} }}"
-			),
+				 AS {{ FROM app::t map {{ id, v }} }}"),
 		)
 	}
 
 	fn drive_ring_ttl_tick(h: &Harness) -> (FlowActorHandle, CommitVersion) {
-		// Lands one row at event time 60s (its 1s ttl timer becomes due at 61s), settles the
-		// wake's slice - the watermark is then 60s, so the wake itself cannot fire the timer -
-		// and only then carries the watermark to 120s without a batch. The tick sent last is
-		// therefore the only thing that can fire the eviction, and pre_tick bounds its commit.
 		assert!(h.flow.ticks(), "a ring buffer sink with a row ttl must tick, or on_tick never runs");
 		let substrate = h.substrate.clone();
 		let v0 = h.engine.current_version().expect("current version");
@@ -1894,14 +1831,6 @@ mod pull_protocol {
 
 	#[test]
 	fn a_tick_fired_eviction_lands_in_the_commits_change_stream() {
-		// A ring row's ttl can become due with no batch in flight: the watermark covering the
-		// timer arrives via restart hydration or a budget-capped dispatch, and the periodic
-		// tick is what fires it. The eviction is announced, so the tick commit must carry the
-		// retraction as a flow change record exactly like a batch-fired eviction would - CDC
-		// and subscription consumers otherwise keep serving a row the view no longer has.
-		// Falsified by dropping view_changes anywhere on the tick path (SliceComputer::tick
-		// discarding the accumulator, CommitterMessage::Tick not carrying them, or apply_tick
-		// not tracking them): storage still loses the row, but no record appears here.
 		let h = ring_harness(true);
 		let (_actor, pre_tick) = drive_ring_ttl_tick(&h);
 
@@ -1922,12 +1851,6 @@ mod pull_protocol {
 
 	#[test]
 	fn an_unannounced_tick_eviction_stays_out_of_the_change_stream() {
-		// announce: false is the per-view declaration that retention is not change: the tick
-		// must still delete the expired row from storage, but nothing may reach the change
-		// stream - downstream consumers of such views deliberately keep results built from
-		// rows the ring has already dropped. Falsified by forcing announce_evictions to true
-		// where the sink is registered (register.rs): the eviction is then routed into the
-		// accumulator and a change record appears below.
 		let h = ring_harness(false);
 		let (_actor, pre_tick) = drive_ring_ttl_tick(&h);
 
@@ -1945,14 +1868,6 @@ mod pull_protocol {
 
 	#[test]
 	fn a_tick_evictions_storage_delete_carries_the_slice_paths_pre_image() {
-		// Tick and slice commits share apply_pending_writes, so a Row-key remove on the tick
-		// path must announce the stored row as its pre-image exactly as a slice remove would -
-		// CDC consumers use that pre-image to retract without a point lookup into state that
-		// no longer exists. Falsified by routing apply_tick's writes through remove_silent for
-		// Row keys: the delete then either vanishes from the record or loses its pre. (The
-		// once-suggested mutation to plain transaction.remove no longer falsifies anything:
-		// since the remove/drop unification, remove() itself fetches and announces the
-		// pre-image, which is exactly the parity this test pins.)
 		let h = ring_harness(true);
 		let (_actor, pre_tick) = drive_ring_ttl_tick(&h);
 
@@ -1995,9 +1910,6 @@ mod pull_protocol {
 
 	#[test]
 	fn operator_state_lives_in_the_arena_and_never_reaches_the_multi_store() {
-		// State must land in the arena with zero OperatorState keys in the multi store or
-		// CDC (falsified by reverting the split in apply_pending_writes), and a restart with
-		// an empty arena must not wedge the actor.
 		let h = harness_with(
 			"CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }",
 			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } with { time: event } \
@@ -2026,7 +1938,6 @@ mod pull_protocol {
 			"the aggregate's operator state must land in the shared arena"
 		);
 
-		// State shards per operator; a whole-keyspace scan never routes there.
 		let query = h.engine.multi().begin_query().expect("query");
 		for operator in h.flow.get_operator_ids() {
 			let leaked = query
@@ -2052,7 +1963,8 @@ mod pull_protocol {
 
 		let stopped = Arc::new(WaiterHandle::new());
 		let notify = Arc::clone(&stopped);
-		assert!(actor.actor_ref()
+		assert!(actor
+			.actor_ref()
 			.send(FlowActorMessage::Stop {
 				delete_checkpoint: false,
 				reply: Box::new(move || notify.notify()),
@@ -2074,7 +1986,11 @@ mod pull_protocol {
 		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 		let committer2_handle = h.engine.spawner().spawn_flow(
 			"pull-protocol-committer-restart",
-			CommitterActor::new(committer2, GroupCommitHandle::inline(begin), OperatorStateBudgetHandle::default()),
+			CommitterActor::new(
+				committer2,
+				GroupCommitHandle::inline(begin),
+				OperatorStateBudgetHandle::default(),
+			),
 		);
 		let health2 = FlowHealthRegistry::new();
 		let actor2 = h.engine.spawner().spawn_flow(
@@ -2131,15 +2047,6 @@ mod pull_protocol {
 
 	#[test]
 	fn an_elapsed_snapshot_interval_persists_generations_and_advances_the_pin() {
-		// End-to-end trigger wiring: once OperatorSnapshotInterval elapses on the actor's
-		// clock, the next tick with no commit in flight must write a snapshot generation for
-		// every stateful operator of the flow and ride a slice commit that advances the
-		// flow's snapshot pin to the FLOW CURSOR every manifest was stamped with. Falsified by
-		// never calling maybe_snapshot from the tick path, by gating it on ticks_enabled, by
-		// not dispatching the pin commit, by reading the interval from the wrong config key,
-		// or by pinning at min(upper): an arena upper is the flow's own commit version, which
-		// always sits ABOVE the cursor, so pinning there lets CDC truncate the very records
-		// catch-up needs.
 		let mut h = harness_with(
 			"CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }",
 			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } with { time: event } \
@@ -2177,15 +2084,12 @@ mod pull_protocol {
 		assert_eq!(h.await_view_rows(2, StdDuration::from_secs(10)), 2, "the aggregate must materialize");
 		assert_eq!(h.await_position(target, StdDuration::from_secs(5)), Some(target));
 
-		let stateful: Vec<OperatorId> = h
-			.flow
-			.get_operator_ids()
-			.filter(|id| h.substrate.operators.upper(*id) > CommitVersion(0))
-			.collect();
+		let stateful: Vec<OperatorId> =
+			h.flow.get_operator_ids()
+				.filter(|id| h.substrate.operators.upper(*id) > CommitVersion(0))
+				.collect();
 		assert!(!stateful.is_empty(), "precondition: the aggregate flow must hold committed operator state");
 
-		// Repeated ticks because a tick whose body commits sets `committing` and skips the
-		// snapshot; only a quiet tick after the interval elapsed can run it.
 		clock.advance_secs(2);
 		let snapshotted = h.poll_until(seconds(10), || {
 			assert!(actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
@@ -2202,8 +2106,11 @@ mod pull_protocol {
 		let pin = h
 			.poll_until(seconds(10), || {
 				let mut query = h.engine.begin_query(IdentityId::system()).expect("query");
-				CdcCheckpoint::fetch_row(&mut Transaction::Query(&mut query), &FlowSnapshotPin(h.flow_id))
-					.expect("fetch pin")
+				CdcCheckpoint::fetch_row(
+					&mut Transaction::Query(&mut query),
+					&FlowSnapshotPin(h.flow_id),
+				)
+				.expect("fetch pin")
 			})
 			.expect("the completed snapshot must advance the flow's pin through a slice commit");
 		for id in &stateful {
@@ -2231,9 +2138,6 @@ mod pull_protocol {
 		drop(actor);
 	}
 
-	/// Runs the shared catch-up scenario: fill state, snapshot at S, keep committing to C, stop,
-	/// then restart against a fresh arena so the gap (S, C] can only be closed by replay.
-	/// Returns the reference state of the uninterrupted run and the checkpoint it reached.
 	fn drive_to_snapshot_and_gap(
 		h: &Harness,
 		fill: &[&str],
@@ -2276,13 +2180,8 @@ mod pull_protocol {
 	}
 
 	fn aggregate_rows(ids: std::ops::RangeInclusive<u32>) -> Vec<String> {
-		ids.map(|id| {
-			format!(
-				r#"INSERT app::t [{{id: {id}, g: {}, ts: "1970-01-01T00:{id:02}:00Z"}}]"#,
-				id % 3
-			)
-		})
-		.collect()
+		ids.map(|id| format!(r#"INSERT app::t [{{id: {id}, g: {}, ts: "1970-01-01T00:{id:02}:00Z"}}]"#, id % 3))
+			.collect()
 	}
 
 	fn aggregate_fill() -> Vec<String> {
@@ -2299,17 +2198,10 @@ mod pull_protocol {
 
 	#[test]
 	fn catch_up_rebuilds_state_byte_identically() {
-		// The whole point of the chunk: a flow that boots from a snapshot taken at S while its
-		// durable checkpoint sits at C must replay (S, C] into the arena, and land where an
-		// uninterrupted run landed. Booting at C with state from S is silent corruption - the
-		// aggregate would be missing every row in the gap and no error would ever surface.
-		// Falsified by skipping the replay loop (returning false from begin_catch_up): the
-		// restarted arena then holds only the four fill rows' state.
 		let (h, store) = aggregate_harness();
 		let fill = aggregate_fill();
 		let gap = aggregate_gap();
-		let (reference, checkpoint, actor) =
-			drive_to_snapshot_and_gap(&h, &as_rql(&fill), &as_rql(&gap));
+		let (reference, checkpoint, actor) = drive_to_snapshot_and_gap(&h, &as_rql(&fill), &as_rql(&gap));
 		h.stop(&actor);
 
 		let restart = h.restart(checkpoint, ByteSize::from_mib(8));
@@ -2319,7 +2211,11 @@ mod pull_protocol {
 			restart.snapshot_load
 		);
 		h.await_catch_up(&store, checkpoint);
-		assert!(restart.health.poisoned().is_empty(), "a covered gap must not poison: {:?}", restart.health.poisoned());
+		assert!(
+			restart.health.poisoned().is_empty(),
+			"a covered gap must not poison: {:?}",
+			restart.health.poisoned()
+		);
 
 		assert_batch_equivalent("aggregate catch-up", &reference, &h.arena_state(&restart.substrate));
 		drop(restart);
@@ -2327,18 +2223,6 @@ mod pull_protocol {
 
 	#[test]
 	fn the_ring_sink_metadata_mirror_tracks_the_mvcc_row() {
-		// The ringbuffer metadata row is routed to an UNPINNED state handle, so during a replay
-		// it would answer with the post-crash head/tail and the sink would assign storage row
-		// numbers the live run never assigned. The arena mirror is what makes that read
-		// replayable, and it is only worth anything if it holds the SAME numbers the mvcc row
-		// does - through inserts and through the capacity evictions that move head.
-		//
-		// What this adds over the sink's own write-path assertion is WHERE the mirror lives: that
-		// assertion reads back through `read_meta_mirror`, so a mirror written under the wrong
-		// keyspace tag still satisfies it while being invisible to the census, to the floors, and
-		// to reclaim. This test goes at the arena directly and filters on RINGBUFFER_META, so it
-		// is falsified by changing the tag in `meta_key` - the scan below then finds nothing.
-		// (Dropping the mirror write entirely is caught earlier, by that write-path assertion.)
 		let h = harness_with(
 			"CREATE TABLE app::t { id: int4, v: int4, ts: datetime } with { ts: ts }",
 			"CREATE DEFERRED RINGBUFFER VIEW app::v { id: int4, v: int4 } \
@@ -2347,8 +2231,6 @@ mod pull_protocol {
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(v0);
 
-		// More rows than the capacity, one wake each, so head moves under real evictions rather
-		// than sitting at its initial value.
 		for id in 1..=6u32 {
 			h.te.command(&format!(
 				r#"INSERT app::t [{{ id: {id}, v: {id}, ts: "1970-01-01T00:{id:02}:00Z" }}]"#
@@ -2418,11 +2300,6 @@ mod pull_protocol {
 
 	#[test]
 	fn catch_up_writes_no_view_rows_and_no_change_records() {
-		// Replay recomputes state from input the flow already committed for, so its view rows and
-		// change records are already durable. Re-emitting them would double-write every row in
-		// the gap and hand every CDC and subscription consumer a second copy of changes they
-		// already saw. Falsified by dropping the suppression (committing the replay's pending
-		// instead of applying only its operator-state keys).
 		let (h, store) = aggregate_harness();
 		let fill = aggregate_fill();
 		let gap = aggregate_gap();
@@ -2440,9 +2317,6 @@ mod pull_protocol {
 			&h.arena_state(&restart.substrate),
 		);
 
-		// Actively hunt for a violation rather than sampling once: a replay that did commit its
-		// output would land asynchronously, and a single sample right after completion could miss
-		// it. Finding nothing over the whole window is the assertion.
 		let offender = h.poll_until(seconds(2), || {
 			h.cdc_records()
 				.into_iter()
@@ -2467,20 +2341,6 @@ mod pull_protocol {
 
 	#[test]
 	fn a_crash_during_catch_up_leaves_the_snapshot_alone_and_the_retry_still_lands() {
-		// Catch-up must never publish a snapshot of half-replayed state: a snapshot written mid
-		// replay would be stamped with the flow's CHECKPOINT while the arena only holds state
-		// through the replay cursor, so the next boot would replay nothing and keep the hole
-		// forever. A crash mid catch-up must therefore leave the old generation newest, and a
-		// fresh attempt must still land on the reference. Falsified by removing `catching_up`
-		// from maybe_snapshot's guard: the tick below then publishes the partial arena at the
-		// checkpoint and the per-operator check fails.
-		//
-		// Every step here is ordered by something observable rather than by elapsed time. An
-		// earlier version of this test raced instead, and both of its interleavings were wrong:
-		// `spawn_restart` returns before the actor's `init` has run, so the clock advance landed
-		// BEFORE init stamped `last_snapshot_at` and the tick was then rejected on the interval
-		// check, never reaching the guard it was meant to test; and the replay finished long
-		// before the tick arrived, so `catching_up` was already false.
 		let (h, store) = aggregate_harness();
 		let fill = aggregate_fill();
 		let gap = aggregate_gap();
@@ -2499,12 +2359,9 @@ mod pull_protocol {
 		};
 
 		let (interrupted, gate, gate_handle) = restart_gated(&h, checkpoint);
-		// Safe only now: the parked request proves init has run, so this advance is not erased by
-		// init's own stamp and the tick below reaches the interval check with 5s of age on it.
+
 		clock.advance_secs(5);
 
-		// Replay one batch so the arena holds PARTIAL state - the thing a snapshot must not
-		// capture. Waiting for the next parked request is what proves the batch was applied.
 		assert!(gate.release_one(h.loader_handle.actor_ref()), "release the first catch-up batch");
 		assert!(
 			h.poll_until(seconds(10), || (gate.parked_count() > 0).then_some(())).is_some(),
@@ -2513,9 +2370,7 @@ mod pull_protocol {
 		);
 
 		assert!(interrupted.actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
-		// Mailbox order does the synchronising: the tick was enqueued before the answer to the
-		// parked request, so the actor handles it while `catching_up` is still set. Seeing the
-		// NEXT request appear proves it got past both.
+
 		assert!(gate.release_one(h.loader_handle.actor_ref()), "release the second catch-up batch");
 		assert!(
 			h.poll_until(seconds(10), || (gate.parked_count() > 0).then_some(())).is_some(),
@@ -2527,9 +2382,6 @@ mod pull_protocol {
 		drop(interrupted);
 		drop(gate_handle);
 
-		// Checked per operator, not just through the load: a mid-replay snapshot may cover only
-		// the operators the partial replay happened to touch, and the consistent-set load would
-		// then quietly fall back and hide it. The gate is what must stop it being written at all.
 		for id in h.flow.get_operator_ids() {
 			let cursors = store.generation_cursors(id).expect("generation cursors");
 			assert!(
@@ -2558,16 +2410,6 @@ mod pull_protocol {
 
 	#[test]
 	fn a_gap_truncated_before_the_load_is_rejected_at_load_and_poisons_the_flow() {
-		// If CDC no longer covers the snapshot's cursor there is no way to rebuild the gap. The
-		// flow must freeze loudly with its views still readable rather than resume from state
-		// that is missing every version in the hole. When the floor is already up when the
-		// supervisor loads, `validate`'s coverage check is what catches it: it rejects every
-		// generation, leaving no set to resume from, and the actor poisons on that. Asserting the
-		// load outcome and not just "something poisoned" is the point - the sibling test below
-		// covers the other mechanism, and without this the two are indistinguishable. Falsified by
-		// dropping the `flow_cursor < truncated_before` check from `validate`: the load then
-		// reports Restored and the flow replays a hole. The reason assertion is falsified by
-		// collapsing every exhausted load onto one cause.
 		let (h, _store) = aggregate_harness();
 		let fill = aggregate_fill();
 		let gap = aggregate_gap();
@@ -2607,13 +2449,6 @@ mod pull_protocol {
 
 	#[test]
 	fn a_gap_truncated_after_the_load_poisons_the_flow() {
-		// The floor the supervisor validated against is a reading, not a lock: CDC truncation runs
-		// on its own and can pass the snapshot cursor between the load and the moment the actor
-		// starts replaying. That window is the only reason `begin_catch_up` re-reads the floor at
-		// all, and it is unreachable through `restart`, which loads and spawns in one step - hence
-		// the split. Falsified by dropping the `truncated_before > cursor` check from
-		// begin_catch_up: the flow then replays a window CDC no longer holds and boots on state
-		// missing every version in the hole, silently.
 		let (h, _store) = aggregate_harness();
 		let fill = aggregate_fill();
 		let gap = aggregate_gap();
@@ -2653,11 +2488,6 @@ mod pull_protocol {
 
 	#[test]
 	fn catch_up_snapshots_immediately_on_completion() {
-		// A crash loop must not replay the same window on every boot: the moment catch-up
-		// finishes, the rebuilt arena has to become the newest generation, stamped at the cursor
-		// it is now caught up to. Falsified by removing the snapshot_now call from
-		// finish_catch_up: the second restart below then reports the OLD cursor and replays the
-		// whole gap again.
 		let (h, store) = aggregate_harness();
 		let fill = aggregate_fill();
 		let gap = aggregate_gap();
@@ -2686,11 +2516,7 @@ mod pull_protocol {
 			FlowSnapshotLoad::Restored(checkpoint),
 			"the second boot must resume at the checkpoint itself, with nothing left to replay"
 		);
-		assert_batch_equivalent(
-			"post-catch-up snapshot",
-			&reference,
-			&h.arena_state(&second.substrate),
-		);
+		assert_batch_equivalent("post-catch-up snapshot", &reference, &h.arena_state(&second.substrate));
 		drop(second);
 	}
 }

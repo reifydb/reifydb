@@ -16,11 +16,6 @@ use super::{
 		DictionaryRowPreInsertInterceptor, DictionaryRowPreUpdateContext, DictionaryRowPreUpdateInterceptor,
 	},
 	filter::InterceptFilter,
-	identity::{
-		IdentityPostCreateContext, IdentityPostCreateInterceptor, IdentityPostUpdateContext,
-		IdentityPostUpdateInterceptor, IdentityPreDeleteContext, IdentityPreDeleteInterceptor,
-		IdentityPreUpdateContext, IdentityPreUpdateInterceptor,
-	},
 	namespace::{
 		NamespacePostCreateContext, NamespacePostCreateInterceptor, NamespacePostUpdateContext,
 		NamespacePostUpdateInterceptor, NamespacePreDeleteContext, NamespacePreDeleteInterceptor,
@@ -36,10 +31,6 @@ use super::{
 		RingBufferRowPostInsertInterceptor, RingBufferRowPostUpdateContext, RingBufferRowPostUpdateInterceptor,
 		RingBufferRowPreDeleteContext, RingBufferRowPreDeleteInterceptor, RingBufferRowPreInsertContext,
 		RingBufferRowPreInsertInterceptor, RingBufferRowPreUpdateContext, RingBufferRowPreUpdateInterceptor,
-	},
-	role::{
-		RolePostCreateContext, RolePostCreateInterceptor, RolePostUpdateContext, RolePostUpdateInterceptor,
-		RolePreDeleteContext, RolePreDeleteInterceptor, RolePreUpdateContext, RolePreUpdateInterceptor,
 	},
 	series::{
 		SeriesPostCreateContext, SeriesPostCreateInterceptor, SeriesPostUpdateContext,
@@ -489,39 +480,3 @@ define_filtered_interceptor!(
 	pre,
 	name
 );
-
-define_filtered_interceptor!(
-	FilteredIdentityPostCreateInterceptor,
-	IdentityPostCreateInterceptor,
-	IdentityPostCreateContext,
-	post
-);
-
-define_filtered_interceptor!(
-	FilteredIdentityPreUpdateInterceptor,
-	IdentityPreUpdateInterceptor,
-	IdentityPreUpdateContext,
-	pre
-);
-
-define_filtered_interceptor!(
-	FilteredIdentityPostUpdateInterceptor,
-	IdentityPostUpdateInterceptor,
-	IdentityPostUpdateContext,
-	pre
-);
-
-define_filtered_interceptor!(
-	FilteredIdentityPreDeleteInterceptor,
-	IdentityPreDeleteInterceptor,
-	IdentityPreDeleteContext,
-	pre
-);
-
-define_filtered_interceptor!(FilteredRolePostCreateInterceptor, RolePostCreateInterceptor, RolePostCreateContext, post);
-
-define_filtered_interceptor!(FilteredRolePreUpdateInterceptor, RolePreUpdateInterceptor, RolePreUpdateContext, pre);
-
-define_filtered_interceptor!(FilteredRolePostUpdateInterceptor, RolePostUpdateInterceptor, RolePostUpdateContext, pre);
-
-define_filtered_interceptor!(FilteredRolePreDeleteInterceptor, RolePreDeleteInterceptor, RolePreDeleteContext, pre);

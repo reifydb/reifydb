@@ -14,8 +14,6 @@ pub enum MetricsObject {
 	RingBuffer,
 	Dictionary,
 	Series,
-	Flow,
-	Operator,
 	System,
 }
 
@@ -28,8 +26,6 @@ impl MetricsObject {
 			MetricsObject::RingBuffer => "ringbuffer",
 			MetricsObject::Dictionary => "dictionary",
 			MetricsObject::Series => "series",
-			MetricsObject::Flow => "flow",
-			MetricsObject::Operator => "operator",
 			MetricsObject::System => "system",
 		}
 	}
@@ -60,19 +56,6 @@ impl MetricsObject {
 				let namespace_id = CatalogStore::find_series(txn, id)?.map_or(0, |s| s.namespace.0);
 				Ok(Some(ResolvedMetric::plain(MetricsObject::Series, id.0, namespace_id)))
 			}
-			MetricsId::Operator(operator_id) => {
-				let Some(operator) = CatalogStore::find_operator(txn, operator_id)? else {
-					return Ok(None);
-				};
-				let flow_id = operator.flow;
-				let namespace_id = CatalogStore::find_flow(txn, flow_id)?.map_or(0, |f| f.namespace.0);
-				Ok(Some(ResolvedMetric {
-					object: MetricsObject::Operator,
-					id: operator_id.0,
-					namespace_id,
-					flow: Some((flow_id.0, namespace_id)),
-				}))
-			}
 			MetricsId::System => {
 				Ok(Some(ResolvedMetric::plain(MetricsObject::System, 0, NamespaceId::SYSTEM.0)))
 			}
@@ -86,7 +69,6 @@ pub struct ResolvedMetric {
 	pub object: MetricsObject,
 	pub id: u64,
 	pub namespace_id: u64,
-	pub flow: Option<(u64, u64)>,
 }
 
 impl ResolvedMetric {
@@ -95,7 +77,6 @@ impl ResolvedMetric {
 			object,
 			id,
 			namespace_id,
-			flow: None,
 		}
 	}
 }

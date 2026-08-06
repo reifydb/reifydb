@@ -13,10 +13,7 @@
 pub mod admin;
 pub mod cdc;
 pub mod flow;
-pub mod historical_gc;
 pub mod metrics;
-pub mod operator_ttl;
 pub mod pending;
 pub mod replication;
-pub mod retention;
 pub mod server;

@@ -22,7 +22,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
 	interface::catalog::{
-		config::ConfigKey,
+		config::{ConfigKey, GetConfig},
 		flow::{FlowId, OperatorId},
 		id::{TableId, ViewId},
 		object::ObjectId,
@@ -47,11 +47,8 @@ use reifydb_runtime::{
 #[cfg(reifydb_target = "native")]
 use reifydb_sdk::config::Config;
 #[cfg(reifydb_target = "native")]
-use reifydb_value::{Result, error::Error, params::Params};
-use reifydb_value::{
-	byte_size::ByteSize,
-	value::{Value, datetime::DateTime},
-};
+use reifydb_value::{Result, error::Error, params::Params, value::Value};
+use reifydb_value::{byte_size::ByteSize, value::datetime::DateTime};
 use tracing::{debug, instrument};
 
 #[cfg(reifydb_target = "native")]
@@ -265,7 +262,7 @@ impl FlowEngineInner {
 			})
 		})?;
 
-		let lease = self.state_budget.grant_lease(operator_id, state_lease_default());
+		let lease = self.state_budget.grant_lease(operator_id, self.state_lease_default());
 		let created = loader_write.create_operator_by_name(operator, operator_id, &config_bytes);
 		let (descriptor, instance) = match created {
 			Ok(created) => created,
@@ -304,7 +301,7 @@ impl FlowEngineInner {
 	) -> Result<BoxedOperator> {
 		let loader = native_operator_loader();
 		let mut loader_write = loader.write();
-		let _lease = self.state_budget.grant_lease(operator_id, state_lease_default());
+		let _lease = self.state_budget.grant_lease(operator_id, self.state_lease_default());
 		match loader_write.create_operator_by_name(operator, operator_id, config) {
 			Ok(op) => Ok(op),
 			Err(e) => {
@@ -414,12 +411,9 @@ impl FlowEngineInner {
 		self.schedule_cache.set(schedule.clone());
 		schedule
 	}
-}
 
-pub(crate) fn state_lease_default() -> ByteSize {
-	match ConfigKey::OperatorStateLeaseDefault.default_value() {
-		Value::Uint8(bytes) => ByteSize::from_bytes(bytes),
-		other => panic!("OPERATOR_STATE_LEASE_DEFAULT default must be Uint8 bytes, got {:?}", other),
+	pub(crate) fn state_lease_default(&self) -> ByteSize {
+		ByteSize::from_bytes(self.catalog.get_config_uint8(ConfigKey::OperatorStateLeaseDefault))
 	}
 }
 
@@ -497,6 +491,75 @@ mod tests {
 	}
 
 	#[test]
+	fn state_lease_default_reads_the_configured_value_not_the_compiled_in_default() {
+		// OPERATOR_STATE_LEASE_DEFAULT is declared live-reconfigurable (requires_restart() is
+		// false), so every lease grant has to resolve it through the engine's catalog. Resolving
+		// ConfigKey::default_value() instead pins every operator at the compiled-in 64 MiB and no
+		// configured value can ever be observed.
+		use std::collections::HashMap;
+
+		use reifydb_core::{common::CommitVersion, interface::WithEventBus};
+		use reifydb_engine::test_harness::TestEngine;
+		use reifydb_value::value::Value;
+
+		let compiled_in = match ConfigKey::OperatorStateLeaseDefault.default_value() {
+			Value::Uint8(bytes) => bytes,
+			other => panic!("OPERATOR_STATE_LEASE_DEFAULT default must be Uint8 bytes, got {other:?}"),
+		};
+		let configured = compiled_in / 4;
+		assert_ne!(configured, compiled_in, "the fixture must differ from the default or nothing is proven");
+
+		let engine = TestEngine::new();
+		engine.catalog()
+			.cache()
+			.set_config(ConfigKey::OperatorStateLeaseDefault, CommitVersion(1), Value::Uint8(configured))
+			.expect("a positive lease default must be accepted");
+
+		let inner = FlowEngineInner::new(
+			engine.catalog(),
+			engine.executor(),
+			engine.event_bus().clone(),
+			RuntimeContext::with_clock(engine.clock().clone()),
+			CustomOperators::new(HashMap::new()),
+			FlowSubstrate::default(),
+			OperatorSampleRegistry::new(),
+			OperatorStateBudgetHandle::default(),
+		);
+
+		assert_eq!(inner.state_lease_default(), ByteSize::from_bytes(configured));
+	}
+
+	#[test]
+	fn state_lease_default_falls_back_to_the_compiled_in_default_when_unconfigured() {
+		// The catalog read must not change the out-of-the-box grant size: an unconfigured engine
+		// still has to lease the declared default rather than zero or the lease floor.
+		use std::collections::HashMap;
+
+		use reifydb_core::interface::WithEventBus;
+		use reifydb_engine::test_harness::TestEngine;
+		use reifydb_value::value::Value;
+
+		let compiled_in = match ConfigKey::OperatorStateLeaseDefault.default_value() {
+			Value::Uint8(bytes) => bytes,
+			other => panic!("OPERATOR_STATE_LEASE_DEFAULT default must be Uint8 bytes, got {other:?}"),
+		};
+
+		let engine = TestEngine::new();
+		let inner = FlowEngineInner::new(
+			engine.catalog(),
+			engine.executor(),
+			engine.event_bus().clone(),
+			RuntimeContext::with_clock(engine.clock().clone()),
+			CustomOperators::new(HashMap::new()),
+			FlowSubstrate::default(),
+			OperatorSampleRegistry::new(),
+			OperatorStateBudgetHandle::default(),
+		);
+
+		assert_eq!(inner.state_lease_default(), ByteSize::from_bytes(compiled_in));
+	}
+
+	#[test]
 	fn removing_a_flow_drops_its_operators_arenas() {
 		// remove_flow is the only arena teardown a retired flow gets: without drop_arena its
 		// operators' state stays resident (and counted in total_bytes) until the process restarts.
@@ -542,7 +605,11 @@ mod tests {
 		inner.insert_operator(operator, OperatorCell::new(SourceSeriesOperator::new(operator)));
 
 		let store = inner.substrate.operators.clone();
-		store.set(operator, reifydb_codec::key::encoded::EncodedKey::new(b"k"), EncodedRow(CowVec::new(vec![1u8; 64])));
+		store.set(
+			operator,
+			reifydb_codec::key::encoded::EncodedKey::new(b"k"),
+			EncodedRow(CowVec::new(vec![1u8; 64])),
+		);
 		assert!(store.bytes(operator) > 0, "precondition: the operator's arena holds state");
 
 		inner.remove_flow(FlowId(1));

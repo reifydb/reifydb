@@ -20,9 +20,7 @@ use change::BorrowedChange;
 use column::operator::OperatorColumn;
 use context::{OperatorContext, ffi::FFIOperatorContext};
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_core::{
-	interface::catalog::flow::OperatorId, metrics::heap::OperatorSample,
-};
+use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::OperatorSample};
 use timer::Timer;
 use view::ChangeView;
 
@@ -84,7 +82,6 @@ pub trait OperatorLogic: Send + Sync {
 	fn sample(&self) -> Option<OperatorSample> {
 		None
 	}
-
 }
 
 pub struct FFIOperatorAdapter<C> {

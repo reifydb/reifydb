@@ -42,22 +42,6 @@ impl CatalogTrackGrantedRoleChangeOperations for AdminTransaction {
 }
 
 impl TransactionalGrantedRoleChanges for AdminTransaction {
-	fn find_granted_role(&self, identity: IdentityId, role: RoleId) -> Option<&GrantedRole> {
-		for change in self.changes.granted_role.iter().rev() {
-			if let Some(ir) = &change.post {
-				if ir.identity == identity && ir.role_id == role {
-					return Some(ir);
-				}
-			} else if let Some(ir) = &change.pre
-				&& ir.identity == identity && ir.role_id == role
-				&& change.op == Delete
-			{
-				return None;
-			}
-		}
-		None
-	}
-
 	fn find_granted_roles_for_identity(&self, identity: IdentityId) -> Vec<&GrantedRole> {
 		let mut result = Vec::new();
 		for change in &self.changes.granted_role {

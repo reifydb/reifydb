@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::{
-	change::CatalogTrackConfigChangeOperations,
-	config::{Config, ConfigKey},
-};
+use reifydb_core::interface::catalog::{change::CatalogTrackConfigChangeOperations, config::Config};
 use reifydb_value::Result;
 
 use crate::{
-	change::{Change, OperationType::Update, TransactionalConfigChanges},
+	change::{Change, OperationType::Update},
 	transaction::admin::AdminTransaction,
 };
 
@@ -21,11 +18,5 @@ impl CatalogTrackConfigChangeOperations for AdminTransaction {
 		};
 		self.changes.add_config_change(change);
 		Ok(())
-	}
-}
-
-impl TransactionalConfigChanges for AdminTransaction {
-	fn find_config(&self, key: ConfigKey) -> Option<&Config> {
-		self.changes.config.iter().rev().find_map(|change| change.post.as_ref().filter(|c| c.key == key))
 	}
 }

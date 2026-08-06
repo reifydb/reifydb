@@ -9,7 +9,7 @@ use reifydb_value::Result;
 use crate::{
 	change::{
 		Change,
-		OperationType::{Create, Delete, Update},
+		OperationType::{Create, Delete},
 		TransactionalNamespaceChanges,
 	},
 	transaction::admin::AdminTransaction,
@@ -21,16 +21,6 @@ impl CatalogTrackNamespaceChangeOperations for AdminTransaction {
 			pre: None,
 			post: Some(namespace),
 			op: Create,
-		};
-		self.changes.add_namespace_change(change);
-		Ok(())
-	}
-
-	fn track_namespace_updated(&mut self, pre: Namespace, post: Namespace) -> Result<()> {
-		let change = Change {
-			pre: Some(pre),
-			post: Some(post),
-			op: Update,
 		};
 		self.changes.add_namespace_change(change);
 		Ok(())

@@ -134,8 +134,6 @@ fn entry_groups(op: &DistinctOperator, txn: &mut FlowTransaction) -> Vec<GroupId
 }
 
 fn erase_group_data(op: &DistinctOperator, txn: &mut FlowTransaction, group: GroupId) -> usize {
-	// The state-level effect of a tick compaction whose data floor has passed the group: every data
-	// keyspace row cancelled, identity keyspaces untouched.
 	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None, "test").unwrap();
 	let mut erased = 0;
 	for item in batch.items {
@@ -199,8 +197,6 @@ fn a_value_whose_entry_was_reclaimed_republishes_over_the_row_the_sink_still_hol
 	let published = post.row_numbers()[0];
 	txn.flush_operator_states().unwrap();
 
-	// Erase the group's data keyspaces the way tick compaction does (the floor cancels every data
-	// row while identity keyspaces survive), so the operator wakes to a mapping without an entry.
 	let groups = entry_groups(&op, &mut txn);
 	assert_eq!(groups.len(), 1, "precondition: exactly one distinct entry is persisted");
 	let erased = erase_group_data(&op, &mut txn, groups[0]);

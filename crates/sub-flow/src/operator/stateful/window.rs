@@ -5,7 +5,7 @@ use reifydb_codec::{
 		row::{EncodedRow, EncodedRowBuilder},
 		shape::RowShape,
 	},
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKeyRange,
 };
 use reifydb_core::key::{EncodableKey, operator_group_state::GroupStateKey, operator_state::OperatorStateKey};
 use reifydb_flow::transaction::FlowTransaction;
@@ -29,17 +29,6 @@ pub trait WindowStateful: RawStatefulOperator {
 
 	fn save_state(&self, txn: &mut FlowTransaction, window_key: &GroupStateKey, row: EncodedRow) -> Result<()> {
 		utils::save_row(self.id(), txn, window_key, row)
-	}
-
-	fn scan_keys_in_range(&self, txn: &mut FlowTransaction, range: &EncodedKeyRange) -> Result<Vec<EncodedKey>> {
-		let prefixed_range = range.clone().with_prefix(OperatorStateKey::new(self.id(), vec![]).encode());
-		let stream = txn.range(prefixed_range, RangeScope::All, 1024);
-		let mut keys = Vec::new();
-		for result in stream {
-			let multi = result?;
-			keys.push(EncodedKey::new(multi.key));
-		}
-		Ok(keys)
 	}
 
 	fn expire_range(&self, txn: &mut FlowTransaction, range: EncodedKeyRange) -> Result<u32> {

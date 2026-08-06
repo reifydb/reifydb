@@ -73,7 +73,6 @@ pub trait TransactionalChanges:
 	+ TransactionalIdentityAttributeChanges
 	+ TransactionalIdentityAttributeValueChanges
 	+ TransactionalViewChanges
-	+ TransactionalConfigChanges
 	+ TransactionalRowSettingsChanges
 	+ TransactionalOperatorSettingsChanges
 {
@@ -91,18 +90,10 @@ pub trait TransactionalBindingChanges {
 
 pub trait TransactionalRowSettingsChanges {
 	fn find_row_settings(&self, storage: StorageId) -> Option<&RowSettings>;
-
-	fn is_row_settings_deleted(&self, storage: StorageId) -> bool;
 }
 
 pub trait TransactionalOperatorSettingsChanges {
 	fn find_operator_settings(&self, operator: OperatorId) -> Option<&OperatorSettings>;
-
-	fn is_operator_settings_deleted(&self, operator: OperatorId) -> bool;
-}
-
-pub trait TransactionalConfigChanges {
-	fn find_config(&self, key: ConfigKey) -> Option<&Config>;
 }
 
 pub trait TransactionalDictionaryChanges {
@@ -281,8 +272,6 @@ pub trait TransactionalAuthenticationChanges {
 }
 
 pub trait TransactionalGrantedRoleChanges {
-	fn find_granted_role(&self, identity: IdentityId, role: RoleId) -> Option<&GrantedRole>;
-
 	fn find_granted_roles_for_identity(&self, identity: IdentityId) -> Vec<&GrantedRole>;
 
 	fn is_granted_role_deleted(&self, identity: IdentityId, role: RoleId) -> bool;
@@ -320,8 +309,6 @@ pub trait TransactionalPolicyChanges {
 
 	fn find_policy_by_name(&self, name: &str) -> Option<&Policy>;
 
-	fn is_policy_deleted(&self, id: PolicyId) -> bool;
-
 	fn is_policy_deleted_by_name(&self, name: &str) -> bool;
 }
 
@@ -329,8 +316,6 @@ pub trait TransactionalSourceChanges {
 	fn find_source(&self, id: SourceId) -> Option<&Source>;
 
 	fn find_source_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Source>;
-
-	fn is_source_deleted(&self, id: SourceId) -> bool;
 
 	fn is_source_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
@@ -340,19 +325,11 @@ pub trait TransactionalSinkChanges {
 
 	fn find_sink_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Sink>;
 
-	fn is_sink_deleted(&self, id: SinkId) -> bool;
-
 	fn is_sink_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool;
 }
 
 pub trait TransactionalMigrationChanges {
-	fn find_migration(&self, id: MigrationId) -> Option<&Migration>;
-
 	fn find_migration_by_name(&self, name: &str) -> Option<&Migration>;
-
-	fn is_migration_deleted(&self, id: MigrationId) -> bool;
-
-	fn is_migration_deleted_by_name(&self, name: &str) -> bool;
 }
 
 #[derive(Default, Debug, Clone)]
@@ -1220,10 +1197,6 @@ impl TransactionalCatalogChanges {
 		}
 	}
 
-	pub fn table_exists(&self, id: TableId) -> bool {
-		self.get_table(id).is_some()
-	}
-
 	pub fn get_table(&self, id: TableId) -> Option<&Table> {
 		for change in self.table.iter().rev() {
 			if let Some(table) = &change.post {
@@ -1237,10 +1210,6 @@ impl TransactionalCatalogChanges {
 			}
 		}
 		None
-	}
-
-	pub fn view_exists(&self, id: ViewId) -> bool {
-		self.get_view(id).is_some()
 	}
 
 	pub fn get_view(&self, id: ViewId) -> Option<&View> {
@@ -1271,25 +1240,6 @@ impl TransactionalCatalogChanges {
 			}
 		}
 		None
-	}
-
-	pub fn get_operator_settings(&self, operator: OperatorId) -> Option<&OperatorSettings> {
-		for change in self.operator_settings.iter().rev() {
-			if let Some((o, settings)) = &change.post {
-				if *o == operator {
-					return Some(settings);
-				}
-			} else if let Some((o, _)) = &change.pre
-				&& *o == operator && change.op == Delete
-			{
-				return None;
-			}
-		}
-		None
-	}
-
-	pub fn get_pending_changes(&self) -> &[Operation] {
-		&self.log
 	}
 
 	pub fn txn_id(&self) -> TransactionId {

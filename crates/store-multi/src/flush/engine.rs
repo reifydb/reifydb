@@ -20,14 +20,14 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
-#[cfg(not(target_arch = "wasm32"))]
-use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use reifydb_value::byte_size::ByteSize;
+use reifydb_value::value::duration::Duration;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use tracing::{debug, error, warn};
 
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::commit::memory::storage::EvictedVersion;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]

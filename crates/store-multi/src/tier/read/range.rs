@@ -6,7 +6,6 @@ use std::{collections::BTreeMap, ops::Bound};
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::interface::store::EntryKind;
 use reifydb_store::row::page::{PageId, key_range_of, page_of};
-use reifydb_value::byte_size::ByteSize;
 use tracing::instrument;
 
 use crate::{
@@ -27,13 +26,6 @@ impl MultiReadBufferTier {
 
 	pub fn page_key_range(&self, page: PageId) -> Option<EncodedKeyRange> {
 		key_range_of(page, self.bucket_shift())
-	}
-
-	pub fn invalidate_page(&self, page: PageId) {
-		let mut shard = self.shard_for(&page).lock();
-		if let Some(removed) = shard.pages.remove(&page) {
-			shard.budget.release(ByteSize::from_bytes(removed.bytes as u64));
-		}
 	}
 
 	pub fn populate_page(&self, page: PageId, entries: Vec<RawEntry>, complete: bool) {

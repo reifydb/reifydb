@@ -47,15 +47,13 @@ fn a_guest_operator_reaches_the_sweep_through_the_published_testing_surface() {
 	// a guest holding no state has nothing to retire and would pass for the wrong reason.
 	let ttl = Duration::from_seconds(60).expect("60s is representable");
 
-	let harness =
-		Harness::guest(Inert, NODE, OperatorCapability::STANDARD, Some(ttl)).with_activity_grid();
+	let harness = Harness::guest(Inert, NODE, OperatorCapability::STANDARD, Some(ttl)).with_activity_grid();
 	assert!(
 		harness.activity_grid().event_grid().is_some(),
 		"a declared ttl must grid the node, or the driver skips it and counts it perpetual"
 	);
 
-	let ungridded =
-		Harness::guest(Inert, NODE, OperatorCapability::STANDARD, None).with_activity_grid();
+	let ungridded = Harness::guest(Inert, NODE, OperatorCapability::STANDARD, None).with_activity_grid();
 	assert!(
 		ungridded.activity_grid().event_grid().is_none(),
 		"and without one it must not, which is the whole difference between the two cohorts"

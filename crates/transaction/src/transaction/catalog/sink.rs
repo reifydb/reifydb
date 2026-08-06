@@ -74,13 +74,6 @@ impl TransactionalSinkChanges for AdminTransaction {
 		None
 	}
 
-	fn is_sink_deleted(&self, id: SinkId) -> bool {
-		self.changes
-			.sink
-			.iter()
-			.any(|change| change.op == Delete && change.pre.as_ref().map(|s| s.id == id).unwrap_or(false))
-	}
-
 	fn is_sink_deleted_by_name(&self, namespace: NamespaceId, name: &str) -> bool {
 		self.changes.sink.iter().any(|change| {
 			change.op == Delete

@@ -10,7 +10,7 @@ use reifydb_value::Result;
 use crate::{
 	change::{
 		Change,
-		OperationType::{Create, Delete, Update},
+		OperationType::{Create, Delete},
 		TransactionalRowSettingsChanges,
 	},
 	transaction::admin::AdminTransaction,
@@ -22,31 +22,6 @@ impl CatalogTrackRowSettingsChangeOperations for AdminTransaction {
 			pre: None,
 			post: Some((storage, settings)),
 			op: Create,
-		};
-		self.changes.add_row_settings_change(change);
-		Ok(())
-	}
-
-	fn track_row_settings_updated(
-		&mut self,
-		storage: StorageId,
-		pre: RowSettings,
-		post: RowSettings,
-	) -> Result<()> {
-		let change = Change {
-			pre: Some((storage, pre)),
-			post: Some((storage, post)),
-			op: Update,
-		};
-		self.changes.add_row_settings_change(change);
-		Ok(())
-	}
-
-	fn track_row_settings_deleted(&mut self, storage: StorageId, settings: RowSettings) -> Result<()> {
-		let change = Change {
-			pre: Some((storage, settings)),
-			post: None,
-			op: Delete,
 		};
 		self.changes.add_row_settings_change(change);
 		Ok(())
@@ -67,11 +42,5 @@ impl TransactionalRowSettingsChanges for AdminTransaction {
 			}
 		}
 		None
-	}
-
-	fn is_row_settings_deleted(&self, storage: StorageId) -> bool {
-		self.changes.row_settings.iter().rev().any(|change| {
-			change.op == Delete && change.pre.as_ref().map(|(s, _)| *s == storage).unwrap_or(false)
-		})
 	}
 }

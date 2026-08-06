@@ -37,10 +37,7 @@ use reifydb_transaction::{
 			DictionaryRowPreInsertInterceptor, DictionaryRowPreUpdateInterceptor,
 		},
 		granted_role::{GrantedRolePostCreateInterceptor, GrantedRolePreDeleteInterceptor},
-		identity::{
-			IdentityPostCreateInterceptor, IdentityPostUpdateInterceptor, IdentityPreDeleteInterceptor,
-			IdentityPreUpdateInterceptor,
-		},
+		identity::{IdentityPostCreateInterceptor, IdentityPreDeleteInterceptor},
 		identity_attribute::{IdentityAttributePostCreateInterceptor, IdentityAttributePreDeleteInterceptor},
 		identity_attribute_value::{
 			IdentityAttributeValuePostCreateInterceptor, IdentityAttributeValuePreDeleteInterceptor,
@@ -59,10 +56,7 @@ use reifydb_transaction::{
 			RingBufferRowPostUpdateInterceptor, RingBufferRowPreDeleteInterceptor,
 			RingBufferRowPreInsertInterceptor, RingBufferRowPreUpdateInterceptor,
 		},
-		role::{
-			RolePostCreateInterceptor, RolePostUpdateInterceptor, RolePreDeleteInterceptor,
-			RolePreUpdateInterceptor,
-		},
+		role::{RolePostCreateInterceptor, RolePreDeleteInterceptor},
 		series::{
 			SeriesPostCreateInterceptor, SeriesPostUpdateInterceptor, SeriesPreDeleteInterceptor,
 			SeriesPreUpdateInterceptor,
@@ -456,12 +450,6 @@ impl FlowTransaction {
 		&self.inner().pending
 	}
 
-	pub fn update_version(&mut self, new_version: CommitVersion) {
-		let inner = self.inner_mut();
-		inner.version = new_version;
-		inner.query.read_as_of_version_inclusive(new_version);
-	}
-
 	pub fn catalog(&self) -> &Catalog {
 		&self.inner().catalog
 	}
@@ -752,8 +740,6 @@ impl WithInterceptors for FlowTransaction {
 	interceptor_method!(series_post_update_interceptors, series_post_update, SeriesPostUpdateInterceptor);
 	interceptor_method!(series_pre_delete_interceptors, series_pre_delete, SeriesPreDeleteInterceptor);
 	interceptor_method!(identity_post_create_interceptors, identity_post_create, IdentityPostCreateInterceptor);
-	interceptor_method!(identity_pre_update_interceptors, identity_pre_update, IdentityPreUpdateInterceptor);
-	interceptor_method!(identity_post_update_interceptors, identity_post_update, IdentityPostUpdateInterceptor);
 	interceptor_method!(identity_pre_delete_interceptors, identity_pre_delete, IdentityPreDeleteInterceptor);
 	interceptor_method!(
 		identity_attribute_post_create_interceptors,
@@ -776,8 +762,6 @@ impl WithInterceptors for FlowTransaction {
 		IdentityAttributeValuePreDeleteInterceptor
 	);
 	interceptor_method!(role_post_create_interceptors, role_post_create, RolePostCreateInterceptor);
-	interceptor_method!(role_pre_update_interceptors, role_pre_update, RolePreUpdateInterceptor);
-	interceptor_method!(role_post_update_interceptors, role_post_update, RolePostUpdateInterceptor);
 	interceptor_method!(role_pre_delete_interceptors, role_pre_delete, RolePreDeleteInterceptor);
 	interceptor_method!(
 		granted_role_post_create_interceptors,

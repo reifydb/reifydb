@@ -10,7 +10,8 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::OperatorId,
 	key::{
-		Key, kind::KeyKind,
+		Key,
+		kind::KeyKind,
 		operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
 	},
 	state::budget::OperatorStateBudgetHandle,

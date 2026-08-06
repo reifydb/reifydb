@@ -12,10 +12,7 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
-use reifydb_flow::{
-	operator::Operator,
-	transaction::FlowTransaction,
-};
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_store_operator::FloorSpec;
 use reifydb_value::{
 	Result,
@@ -123,8 +120,7 @@ impl Operator for AppendOperator {
 	}
 
 	fn floors(&self, _txn: &mut FlowTransaction, watermark: DateTime) -> Result<FloorSpec> {
-		Ok(self
-			.ttl
+		Ok(self.ttl
 			.map(|ttl| {
 				let behind = watermark.saturating_sub(ttl);
 				let mut spec = FloorSpec::data(behind);
@@ -295,8 +291,7 @@ impl AppendOperator {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		common::CommitVersion, key::operator_group_state::group_inner_range,
-		value::column::columns::Columns,
+		common::CommitVersion, key::operator_group_state::group_inner_range, value::column::columns::Columns,
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::ChangeCoordinate;

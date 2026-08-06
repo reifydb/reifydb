@@ -155,8 +155,7 @@ fn setup() -> TestDb {
 	)
 }
 
-const RECLAIMED_A_GROUP: &str =
-	"from system::metrics::runtime::operators::current filter { metric == 'state_compaction_dropped' and value > 0.0 }";
+const RECLAIMED_A_GROUP: &str = "from system::metrics::runtime::operators::current filter { metric == 'state_compaction_dropped' and value > 0.0 }";
 
 #[test]
 fn a_keyed_stateful_guests_idle_group_is_reclaimed() {

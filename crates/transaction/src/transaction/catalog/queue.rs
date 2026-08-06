@@ -11,7 +11,7 @@ use reifydb_value::Result;
 use crate::{
 	change::{
 		Change,
-		OperationType::{Create, Delete, Update},
+		OperationType::{Create, Delete},
 		TransactionalQueueChanges,
 	},
 	transaction::admin::AdminTransaction,
@@ -23,16 +23,6 @@ impl CatalogTrackQueueChangeOperations for AdminTransaction {
 			pre: None,
 			post: Some(queue),
 			op: Create,
-		};
-		self.changes.add_queue_change(change);
-		Ok(())
-	}
-
-	fn track_queue_updated(&mut self, pre: Queue, post: Queue) -> Result<()> {
-		let change = Change {
-			pre: Some(pre),
-			post: Some(post),
-			op: Update,
 		};
 		self.changes.add_queue_change(change);
 		Ok(())

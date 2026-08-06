@@ -8,11 +8,11 @@
 //! then compares the emitted output (post-consolidation) and the raw state keyspaces.
 //!
 //! Comparison contract:
-//! - Clock axis: byte-identical everything - keys, value bodies, AND row header stamps - across
-//!   every operator keyspace, data and control. No allowlist. This is what tasks "no clock read
-//!   is ever encoded into operator state" buys.
-//! - Batch axis: keys and value BODIES must match everywhere; the named allowlists carve out
-//!   exactly the state that is arrival-derived by design, and nothing else.
+//! - Clock axis: byte-identical everything - keys, value bodies, AND row header stamps - across every operator
+//!   keyspace, data and control. No allowlist. This is what tasks "no clock read is ever encoded into operator state"
+//!   buys.
+//! - Batch axis: keys and value BODIES must match everywhere; the named allowlists carve out exactly the state that is
+//!   arrival-derived by design, and nothing else.
 //!
 //! Both comparators live in `reifydb_testing_flow::state` so the catch-up suites hold flows to
 //! the same contract this one does.
@@ -260,9 +260,7 @@ mod count_window {
 			(8, 2, 23, 6_000),
 			(9, 1, 29, 7_000),
 		];
-		rows.iter()
-			.map(|&(rn, g, v, ms)| Event::Insert(generator::row(RowNumber(rn), g, v, at(ms))))
-			.collect()
+		rows.iter().map(|&(rn, g, v, ms)| Event::Insert(generator::row(RowNumber(rn), g, v, at(ms)))).collect()
 	}
 
 	fn drive(clock_ms: u64, slices: &[usize]) -> Run {
@@ -335,9 +333,7 @@ mod time_window {
 			(9, 2, 29, 7_500),
 			(10, 1, 31, 9_500),
 		];
-		rows.iter()
-			.map(|&(rn, g, v, ms)| Event::Insert(generator::row(RowNumber(rn), g, v, at(ms))))
-			.collect()
+		rows.iter().map(|&(rn, g, v, ms)| Event::Insert(generator::row(RowNumber(rn), g, v, at(ms)))).collect()
 	}
 
 	fn drive(clock_ms: u64, slices: &[usize]) -> Run {
@@ -400,11 +396,7 @@ mod time_window {
 				canonical.emitted, sliced.emitted,
 				"time-window/batch/{label}: consolidated output must not depend on batch boundaries"
 			);
-			assert_batch_equivalent(
-				&format!("time-window/batch/{label}"),
-				&canonical.state,
-				&sliced.state,
-			);
+			assert_batch_equivalent(&format!("time-window/batch/{label}"), &canonical.state, &sliced.state);
 		}
 	}
 }

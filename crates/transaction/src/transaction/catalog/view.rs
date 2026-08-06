@@ -11,7 +11,7 @@ use reifydb_value::Result;
 use crate::{
 	change::{
 		Change,
-		OperationType::{Create, Delete, Update},
+		OperationType::{Create, Delete},
 		TransactionalViewChanges,
 	},
 	transaction::admin::AdminTransaction,
@@ -23,16 +23,6 @@ impl CatalogTrackViewChangeOperations for AdminTransaction {
 			pre: None,
 			post: Some(view),
 			op: Create,
-		};
-		self.changes.add_view_change(change);
-		Ok(())
-	}
-
-	fn track_view_updated(&mut self, pre: View, post: View) -> Result<()> {
-		let change = Change {
-			pre: Some(pre),
-			post: Some(post),
-			op: Update,
 		};
 		self.changes.add_view_change(change);
 		Ok(())

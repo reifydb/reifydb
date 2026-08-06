@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! The byte-identity contract for operator arena state, shared by every suite that asserts a flow
-//! ended up in the same place twice: the clock axis and the batch axis of the replay-determinism
-//! suite, the in-crate catch-up tests, and the process-lifetime crash test. One definition means
-//! a state difference one suite would reject cannot be silently tolerated by another.
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, state::StateBytes};
@@ -15,18 +10,10 @@ use reifydb_core::key::{
 	operator_state::OperatorStateKey,
 };
 
-/// The one keyspace whose value BODY is an arrival coordinate by design: the node watermark IS the
-/// last persisted arrival position, so runs sliced into different batches legitimately persist
-/// different values. Its key set must still match. Everything else the interner writes - the group
-/// record's id-to-group mapping included - is arrival-free and is held to keys and bodies.
 pub const ARRIVAL_VALUED: &[Keyspace] = &[Keyspace::NODE_WATERMARK];
 
-/// Keyspaces whose row header stamps are carried mutation times derived from row event time, not
-/// from the dispatch coordinate: these must be byte-identical INCLUDING headers even across batch
-/// boundaries. This pins the distinct flush-stamp mechanism.
 pub const ROW_STAMPED: &[Keyspace] = &[Keyspace::DISTINCT_ENTRY, Keyspace::DISTINCT_LAYOUT];
 
-/// One operator arena rendered as the store hands it out: ascending keys, raw rows.
 pub type State = Vec<(EncodedKey, EncodedRow)>;
 
 pub fn keyspace_of(key: &EncodedKey) -> Option<Keyspace> {
@@ -42,9 +29,6 @@ pub fn body_of(row: &EncodedRow) -> Vec<u8> {
 	}
 }
 
-/// The strictest contract there is: raw key and raw row bytes, row headers included, across every
-/// keyspace with no allowlist. A wall-clock read, a batch-boundary dependency or a replayed
-/// version applied twice all surface here.
 pub fn assert_identical_bytes(label: &str, a: &State, b: &State) {
 	let a: Vec<(Vec<u8>, Vec<u8>)> = a.iter().map(|(k, r)| (k.to_vec(), r.to_vec())).collect();
 	let b: Vec<(Vec<u8>, Vec<u8>)> = b.iter().map(|(k, r)| (k.to_vec(), r.to_vec())).collect();
@@ -58,18 +42,12 @@ pub fn assert_identical_bytes(label: &str, a: &State, b: &State) {
 		 {} entries only in the second\n  first difference in keyspace {:?}",
 		only_a.len(),
 		only_b.len(),
-		only_a
-			.first()
+		only_a.first()
 			.or(only_b.first())
 			.map(|(key, _)| keyspace_of(&EncodedKey::new(key.clone())).map(|k| k.name()))
 	);
 }
 
-/// The re-batching contract: keys and value BODIES must match everywhere, with the named
-/// allowlists above carving out exactly the state that is arrival-derived by design and nothing
-/// else. This is the strongest statement available whenever the same input is fed through
-/// different batch boundaries - a replay-determinism batch axis, or a catch-up replay whose
-/// loader chunks never line up with the live run's slices.
 pub fn assert_batch_equivalent(label: &str, a: &State, b: &State) {
 	let mut a_strict: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
 	let mut b_strict: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
@@ -107,8 +85,5 @@ pub fn assert_batch_equivalent(label: &str, a: &State, b: &State) {
 		a_bodies, b_bodies,
 		"{label}: every non-allowlisted keyspace must agree on keys and value bodies across batch boundaries"
 	);
-	assert_eq!(
-		a_arrival, b_arrival,
-		"{label}: arrival-valued keyspaces must agree on their key sets"
-	);
+	assert_eq!(a_arrival, b_arrival, "{label}: arrival-valued keyspaces must agree on their key sets");
 }

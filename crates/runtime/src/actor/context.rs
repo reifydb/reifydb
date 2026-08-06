@@ -8,17 +8,15 @@ use std::sync::{
 
 use reifydb_value::value::duration::Duration;
 
+#[cfg(not(reifydb_single_threaded))]
+use crate::actor::timers::Repeat;
 #[cfg(reifydb_target = "dst")]
 use crate::actor::timers::dst as dst_timers;
 #[cfg(reifydb_target = "wasi")]
 use crate::actor::timers::wasi::{schedule_once_fn, schedule_repeat, schedule_repeat_fn};
 #[cfg(reifydb_target = "wasm")]
 use crate::actor::timers::wasm::{schedule_once_fn, schedule_repeat, schedule_repeat_fn};
-use crate::actor::{
-	mailbox::ActorRef,
-	system::ActorSystem,
-	timers::{Repeat, TimerHandle},
-};
+use crate::actor::{mailbox::ActorRef, system::ActorSystem, timers::TimerHandle};
 
 #[derive(Clone)]
 pub struct CancellationToken {

@@ -191,10 +191,6 @@ impl Keyspace {
 		!self.is_data()
 	}
 
-	pub fn ages_per_row(&self) -> bool {
-		matches!(*self, Self::JOIN_PUBLISHED | Self::JOIN_PIN)
-	}
-
 	pub fn is_known(&self) -> bool {
 		self.is_data()
 			|| matches!(

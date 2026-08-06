@@ -282,6 +282,11 @@ impl CdcStore {
 		Self::Sqlite(sqlite::storage::SqliteCdcStorage::new(config))
 	}
 
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub fn sqlite_with_block_cache_capacity(config: SqliteConfig, block_cache_capacity: usize) -> Self {
+		Self::Sqlite(sqlite::storage::SqliteCdcStorage::new_with_cache_capacity(config, block_cache_capacity))
+	}
+
 	pub fn hot_reader(&self) -> CdcHotReader {
 		CdcHotReader {
 			store: self.clone(),

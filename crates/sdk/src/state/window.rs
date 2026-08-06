@@ -29,8 +29,4 @@ pub trait WindowStateful: RawStatefulOperator {
 	) -> Result<()> {
 		ctx.state().set(window_key, value)
 	}
-
-	fn remove_window(&self, ctx: &mut impl OperatorContext, window_key: &GroupStateKey) -> Result<()> {
-		ctx.state().remove(window_key)
-	}
 }

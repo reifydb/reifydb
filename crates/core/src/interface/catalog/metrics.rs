@@ -3,13 +3,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::interface::catalog::{flow::OperatorId, object::ObjectId};
+use crate::interface::catalog::object::ObjectId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MetricsId {
 	Object(ObjectId),
-
-	Operator(OperatorId),
 
 	System,
 }

@@ -10,8 +10,8 @@ use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::metrics::sample::MetricsSample;
 use reifydb_core::{
-	common::CommitVersion, event::EventBus,
-	lifecycle::watermark::EvictionWatermark, metrics::collect::MetricsCollector,
+	common::CommitVersion, event::EventBus, lifecycle::watermark::EvictionWatermark,
+	metrics::collect::MetricsCollector,
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, shutdown::Shutdown, sync::rwlock::RwLock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -158,12 +158,6 @@ impl StandardMultiStore {
 	pub fn invalidate_read_key(&self, key: &EncodedKey) {
 		if let Some(read) = &self.read {
 			read.invalidate(key);
-		}
-	}
-
-	pub fn remove_dropped_read_key(&self, key: &EncodedKey) {
-		if let Some(read) = &self.read {
-			read.remove_dropped(key);
 		}
 	}
 

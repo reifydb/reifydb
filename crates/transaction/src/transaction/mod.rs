@@ -42,10 +42,7 @@ use crate::{
 			DictionaryRowPreInsertInterceptor, DictionaryRowPreUpdateInterceptor,
 		},
 		granted_role::{GrantedRolePostCreateInterceptor, GrantedRolePreDeleteInterceptor},
-		identity::{
-			IdentityPostCreateInterceptor, IdentityPostUpdateInterceptor, IdentityPreDeleteInterceptor,
-			IdentityPreUpdateInterceptor,
-		},
+		identity::{IdentityPostCreateInterceptor, IdentityPreDeleteInterceptor},
 		identity_attribute::{IdentityAttributePostCreateInterceptor, IdentityAttributePreDeleteInterceptor},
 		identity_attribute_value::{
 			IdentityAttributeValuePostCreateInterceptor, IdentityAttributeValuePreDeleteInterceptor,
@@ -63,10 +60,7 @@ use crate::{
 			RingBufferRowPostUpdateInterceptor, RingBufferRowPreDeleteInterceptor,
 			RingBufferRowPreInsertInterceptor, RingBufferRowPreUpdateInterceptor,
 		},
-		role::{
-			RolePostCreateInterceptor, RolePostUpdateInterceptor, RolePreDeleteInterceptor,
-			RolePreUpdateInterceptor,
-		},
+		role::{RolePostCreateInterceptor, RolePreDeleteInterceptor},
 		series::{
 			SeriesPostCreateInterceptor, SeriesPostUpdateInterceptor, SeriesPreDeleteInterceptor,
 			SeriesPreUpdateInterceptor,
@@ -561,32 +555,11 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn command_mut(&mut self) -> &mut CommandTransaction {
-		match self {
-			Self::Command(txn) => txn,
-			_ => panic!("Expected Command transaction"),
-		}
-	}
-
 	pub fn admin_mut(&mut self) -> &mut AdminTransaction {
 		match self {
 			Self::Admin(txn) => txn,
 			Self::Test(t) => t.inner,
 			_ => panic!("Expected Admin transaction"),
-		}
-	}
-
-	pub fn query_mut(&mut self) -> &mut QueryTransaction {
-		match self {
-			Self::Query(txn) => txn,
-			_ => panic!("Expected Query transaction"),
-		}
-	}
-
-	pub fn replica_mut(&mut self) -> &mut ReplicaTransaction {
-		match self {
-			Self::Replica(txn) => txn,
-			_ => panic!("Expected Replica transaction"),
 		}
 	}
 
@@ -874,20 +847,10 @@ impl WithInterceptors for Transaction<'_> {
 		&mut Chain<dyn IdentityPostCreateInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(
-		identity_pre_update_interceptors,
-		&mut Chain<dyn IdentityPreUpdateInterceptor + Send + Sync>
-	);
-	delegate_interceptor!(
-		identity_post_update_interceptors,
-		&mut Chain<dyn IdentityPostUpdateInterceptor + Send + Sync>
-	);
-	delegate_interceptor!(
 		identity_pre_delete_interceptors,
 		&mut Chain<dyn IdentityPreDeleteInterceptor + Send + Sync>
 	);
 	delegate_interceptor!(role_post_create_interceptors, &mut Chain<dyn RolePostCreateInterceptor + Send + Sync>);
-	delegate_interceptor!(role_pre_update_interceptors, &mut Chain<dyn RolePreUpdateInterceptor + Send + Sync>);
-	delegate_interceptor!(role_post_update_interceptors, &mut Chain<dyn RolePostUpdateInterceptor + Send + Sync>);
 	delegate_interceptor!(role_pre_delete_interceptors, &mut Chain<dyn RolePreDeleteInterceptor + Send + Sync>);
 	delegate_interceptor!(
 		granted_role_post_create_interceptors,

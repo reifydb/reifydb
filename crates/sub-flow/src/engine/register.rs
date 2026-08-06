@@ -42,7 +42,7 @@ use tracing::instrument;
 use super::eval::evaluate_operator_config;
 use crate::{
 	context::FlowContext,
-	engine::{FlowEngineInner, state_lease_default},
+	engine::FlowEngineInner,
 	error::FlowGraphError,
 	operator::{
 		OperatorCell,
@@ -684,7 +684,7 @@ impl FlowEngineInner {
 
 		if let Some(factory) = self.custom_operators.get(operator.as_str()) {
 			let parent = self.parent(first_input(inputs)?)?;
-			let _lease = self.state_budget.grant_lease(operator_id, state_lease_default());
+			let _lease = self.state_budget.grant_lease(operator_id, self.state_lease_default());
 			let inner = match factory(operator_id, &cfg) {
 				Ok(op) => op,
 				Err(e) => {

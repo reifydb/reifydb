@@ -294,7 +294,12 @@ impl Committer {
 		}
 
 		for (flow_id, version) in snapshot_pins {
-			CdcCheckpoint::persist(transaction, &FlowSnapshotPin(*flow_id), *version, ConsumerClass::Pinning)?;
+			CdcCheckpoint::persist(
+				transaction,
+				&FlowSnapshotPin(*flow_id),
+				*version,
+				ConsumerClass::Pinning,
+			)?;
 		}
 
 		for flow_id in checkpoint_deletes {
@@ -657,8 +662,7 @@ mod group_commit_integration {
 		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 		// max_entries = 2 flushes when the poison joins the slice; slice first so its apply
 		// runs before the sibling fails the group.
-		let group =
-			GroupCommitHandle::spawn(&engine.spawner(), begin, Duration::from_seconds(5).unwrap(), 2);
+		let group = GroupCommitHandle::spawn(&engine.spawner(), begin, Duration::from_seconds(5).unwrap(), 2);
 		let (handle, committer) = build_committer_actor(&engine, group.clone());
 		let store = committer.operators.clone();
 

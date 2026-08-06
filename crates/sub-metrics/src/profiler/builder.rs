@@ -33,18 +33,8 @@ impl ProfilerConfigurator {
 		self
 	}
 
-	pub fn with_category(mut self, c: ProfilerCategory) -> Self {
-		self.categories.insert(c);
-		self
-	}
-
 	pub fn with_category_level(mut self, c: ProfilerCategory, level: ProfilerLevel) -> Self {
 		self.categories.insert_at(c, level);
-		self
-	}
-
-	pub fn without_category(mut self, c: ProfilerCategory) -> Self {
-		self.categories.remove(c);
 		self
 	}
 
@@ -66,21 +56,6 @@ impl ProfilerConfigurator {
 			set.insert_at(c, level);
 		}
 		self.categories = set;
-		self
-	}
-
-	pub fn with_accumulator_capacity(mut self, cap: usize) -> Self {
-		self.accumulator_capacity = cap;
-		self
-	}
-
-	pub fn with_min_calls_for_retention(mut self, n: u64) -> Self {
-		self.min_calls_for_retention = n;
-		self
-	}
-
-	pub fn with_scope_local_capacity(mut self, cap: usize) -> Self {
-		self.scope_local_capacity = cap;
 		self
 	}
 }

@@ -72,14 +72,6 @@ impl TransactionalPolicyChanges for AdminTransaction {
 			.find_map(|change| change.post.as_ref().filter(|p| p.name.as_deref() == Some(name)))
 	}
 
-	fn is_policy_deleted(&self, id: PolicyId) -> bool {
-		self.changes
-			.policy
-			.iter()
-			.rev()
-			.any(|change| change.op == Delete && change.pre.as_ref().map(|p| p.id) == Some(id))
-	}
-
 	fn is_policy_deleted_by_name(&self, name: &str) -> bool {
 		self.changes.policy.iter().rev().any(|change| {
 			change.op == Delete

@@ -26,8 +26,7 @@ use reifydb_value::value::duration::Duration;
 
 /// Classes that must register on EVERY boot, under every store configuration. If one of these ever becomes
 /// conditional, the leak it guards against comes back silently.
-const ALWAYS_ON: [&str; 4] =
-	["retention-evict-silent", "retention-evict-announced", "historical-gc", "epoch-log"];
+const ALWAYS_ON: [&str; 4] = ["retention-evict-silent", "retention-evict-announced", "historical-gc", "epoch-log"];
 
 /// Classes this subsystem registers no lifecycle task for on this fixture; adding one is a reviewed decision that
 /// exempts it from the coverage assertion below. Three need a persistent tier the memory store lacks and

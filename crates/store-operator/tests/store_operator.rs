@@ -503,7 +503,8 @@ fn the_max_cutoff_spans_explicit_entries_and_the_data_floor() {
 	// The frontier column reports the operator's most advanced floor; taking only the explicit
 	// entries would report a window operator (data-wide floor only) as permanently none.
 	// Mutation falsified against: min instead of max, and ignoring the data default.
-	let explicit_newer = FloorSpec::data(DateTime::from_nanos(10)).with(Keyspace::JOIN_LEFT, DateTime::from_nanos(99));
+	let explicit_newer =
+		FloorSpec::data(DateTime::from_nanos(10)).with(Keyspace::JOIN_LEFT, DateTime::from_nanos(99));
 	assert_eq!(explicit_newer.max_cutoff(), Some(DateTime::from_nanos(99)));
 
 	let data_newer = FloorSpec::data(DateTime::from_nanos(50)).with(Keyspace::JOIN_LEFT, DateTime::from_nanos(7));

@@ -9,7 +9,7 @@ use reifydb_value::{Result, value::dictionary::DictionaryId};
 use crate::{
 	change::{
 		Change,
-		OperationType::{Create, Delete, Update},
+		OperationType::{Create, Delete},
 		TransactionalDictionaryChanges,
 	},
 	transaction::admin::AdminTransaction,
@@ -21,16 +21,6 @@ impl CatalogTrackDictionaryChangeOperations for AdminTransaction {
 			pre: None,
 			post: Some(dictionary),
 			op: Create,
-		};
-		self.changes.add_dictionary_change(change);
-		Ok(())
-	}
-
-	fn track_dictionary_updated(&mut self, pre: Dictionary, post: Dictionary) -> Result<()> {
-		let change = Change {
-			pre: Some(pre),
-			post: Some(post),
-			op: Update,
 		};
 		self.changes.add_dictionary_change(change);
 		Ok(())

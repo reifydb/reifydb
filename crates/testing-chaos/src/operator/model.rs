@@ -17,7 +17,6 @@ pub trait Model<R> {
 
 	fn advance_ledger(&mut self, at_ms: u64);
 
-
 	fn live(&self) -> Self::Expectation;
 
 	fn all(&self) -> Self::Expectation;

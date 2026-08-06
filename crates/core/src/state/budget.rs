@@ -219,14 +219,6 @@ impl OperatorStateBudgetHandle {
 		LeaseGrant(granted)
 	}
 
-	pub fn resize_lease(&self, operator: OperatorId, grant: ByteSize) {
-		let mut leases = self.0.leases.lock();
-		if let Some(lease) = leases.get_mut(&operator) {
-			lease.grant = grant.max(LEASE_FLOOR);
-			Self::recompute_leased(&self.0, &leases);
-		}
-	}
-
 	pub fn resize_lease_to_demand(&self, operator: OperatorId, demand: ByteSize) {
 		let mut leases = self.0.leases.lock();
 		let snapshot = self.snapshot();
@@ -539,15 +531,6 @@ mod tests {
 
 		pool.release_lease(operator);
 		assert_eq!(pool.lease_count(), Count::ZERO);
-	}
-
-	#[test]
-	fn test_resize_respects_floor() {
-		let pool = OperatorStateBudgetHandle::new(mb(100));
-		let operator = OperatorId(4);
-		pool.grant_lease(operator, mb(64));
-		pool.resize_lease(operator, mb(1));
-		assert_eq!(pool.current_lease(operator).unwrap().grant.bytes(), LEASE_FLOOR);
 	}
 
 	#[test]

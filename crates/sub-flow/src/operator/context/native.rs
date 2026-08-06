@@ -74,21 +74,6 @@ pub trait NativeBridge {
 		keys: &[GroupStateKey],
 		visit: &mut dyn FnMut(&GroupStateKey, &EncodedRow) -> SdkResult<()>,
 	) -> SdkResult<()>;
-	fn state_range_visit(
-		&mut self,
-		range: EncodedKeyRange,
-		visit: &mut dyn FnMut(&GroupStateKey, &EncodedRow) -> SdkResult<()>,
-	) -> SdkResult<()>;
-	fn store_range_visit(
-		&mut self,
-		range: EncodedKeyRange,
-		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
-	) -> SdkResult<()>;
-	fn store_prefix_visit(
-		&mut self,
-		prefix: &EncodedKey,
-		visit: &mut dyn FnMut(&EncodedKey, &EncodedRow) -> SdkResult<()>,
-	) -> SdkResult<()>;
 }
 
 fn to_sdk_err<E: ToString>(e: E) -> SdkError {
@@ -246,57 +231,6 @@ impl StateApi for NativeState<'_> {
 		let rows = unsafe { (*self.bridge).state_range(range) }.map_err(to_sdk_err)?;
 		rows.into_iter().map(|(k, r)| Ok((k, decode(&r)?))).collect()
 	}
-	fn get_many_visit<T: OperatorState>(
-		&self,
-		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, T) -> SdkResult<()>,
-	) -> SdkResult<()> {
-		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
-		// cannot reach the context, so it cannot re-enter the bridge while this borrow is live.
-		unsafe {
-			(*self.bridge).state_get_many_visit(keys, &mut |k, row| {
-				let value = decode::<T>(row)?;
-				visit(k.clone(), value)
-			})
-		}
-	}
-	fn range_visit<T: OperatorState>(
-		&self,
-		start: Bound<&GroupStateKey>,
-		end: Bound<&GroupStateKey>,
-		visit: &mut dyn FnMut(GroupStateKey, T) -> SdkResult<()>,
-	) -> SdkResult<()> {
-		let range = EncodedKeyRange::new(
-			start.map(|k| k.as_encoded().clone()),
-			end.map(|k| k.as_encoded().clone()),
-		);
-		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
-		// cannot reach the context, so it cannot re-enter the bridge while this borrow is live.
-		unsafe {
-			(*self.bridge).state_range_visit(range, &mut |k, row| {
-				let value = decode::<T>(row)?;
-				visit(k.clone(), value)
-			})
-		}
-	}
-	fn scan_prefix_visit<T: OperatorState>(
-		&self,
-		prefix: &GroupStateKey,
-		visit: &mut dyn FnMut(GroupStateKey, T) -> SdkResult<()>,
-	) -> SdkResult<()> {
-		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
-		// cannot reach the context, so it cannot re-enter the bridge while this borrow is live.
-		unsafe {
-			(*self.bridge).state_range_visit(EncodedKeyRange::prefix(prefix.as_slice()), &mut |k, row| {
-				let value = decode::<T>(row)?;
-				visit(k.clone(), value)
-			})
-		}
-	}
-
 	fn get_bytes(&self, key: &GroupStateKey) -> SdkResult<Option<StateBytes>> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
@@ -379,28 +313,6 @@ impl StoreApi for NativeStore<'_> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).store_range(range) }.map_err(to_sdk_err)
-	}
-	fn range_visit(
-		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-		visit: &mut dyn FnMut(EncodedKey, EncodedRow) -> SdkResult<()>,
-	) -> SdkResult<()> {
-		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
-		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
-		// cannot reach the context, so it cannot re-enter the bridge while this borrow is live.
-		unsafe { (*self.bridge).store_range_visit(range, &mut |k, row| visit(k.clone(), row.clone())) }
-	}
-	fn prefix_visit(
-		&self,
-		prefix: &EncodedKey,
-		visit: &mut dyn FnMut(EncodedKey, EncodedRow) -> SdkResult<()>,
-	) -> SdkResult<()> {
-		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
-		// cannot reach the context, so it cannot re-enter the bridge while this borrow is live.
-		unsafe { (*self.bridge).store_prefix_visit(prefix, &mut |k, row| visit(k.clone(), row.clone())) }
 	}
 }
 

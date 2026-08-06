@@ -1,31 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{BTreeMap, BTreeSet},
-	ops::Bound,
-	sync::Arc,
-};
+use std::{collections::BTreeMap, sync::Arc};
+#[cfg(not(target_arch = "wasm32"))]
+use std::{collections::BTreeSet, ops::Bound};
 
+#[cfg(not(target_arch = "wasm32"))]
 use reifydb_codec::{
 	encoded::row::EncodedRow,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::flow::{FlowId, OperatorId},
+	interface::catalog::flow::FlowId,
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
 use reifydb_runtime::sync::mutex::Mutex;
+#[cfg(not(target_arch = "wasm32"))]
 use reifydb_store_operator::{
 	OperatorStore,
 	snapshot::{DEFAULT_SNAPSHOT_CHUNK_BYTES, LoadedSnapshot, SnapshotStore, SnapshotWrite},
 };
+#[cfg(not(target_arch = "wasm32"))]
 use reifydb_store_single::SingleStore;
+#[cfg(not(target_arch = "wasm32"))]
 use reifydb_transaction::dictionary::{DictionaryAllocatorRegistry, store::durable_max_index_id};
+#[cfg(not(target_arch = "wasm32"))]
 use reifydb_value::{Result, value::dictionary::DictionaryId};
+#[cfg(not(target_arch = "wasm32"))]
 use tracing::{error, info, warn};
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone)]
 pub struct FlowSnapshots {
 	store: SnapshotStore,
@@ -33,6 +40,7 @@ pub struct FlowSnapshots {
 	dictionaries: DictionaryAllocatorRegistry,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl FlowSnapshots {
 	pub fn new(store: SnapshotStore, single: SingleStore, dictionaries: DictionaryAllocatorRegistry) -> Self {
 		Self {
@@ -143,7 +151,10 @@ impl FlowSnapshots {
 		loop {
 			let Some((cursor, picks)) = consistent_set(&catalog, &rejected) else {
 				let rejection = first.unwrap_or(SnapshotRejection::CursorDisagreement);
-				error!(reason = rejection.reason(), "no operator snapshot set is left to resume this flow from");
+				error!(
+					reason = rejection.reason(),
+					"no operator snapshot set is left to resume this flow from"
+				);
 				return FlowSnapshotLoad::Inconsistent(rejection);
 			};
 			match self.load_set(operators, &picks, cursor, truncated_before) {
@@ -295,6 +306,7 @@ impl FlowSnapshots {
 	}
 }
 
+#[cfg_attr(target_arch = "wasm32", expect(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnapshotRejection {
 	Unreadable,
@@ -305,6 +317,7 @@ pub enum SnapshotRejection {
 }
 
 impl SnapshotRejection {
+	#[cfg(not(target_arch = "wasm32"))]
 	fn is_undecodable(&self) -> bool {
 		match self {
 			Self::DictionaryLoss | Self::ManifestMismatch => true,
@@ -333,6 +346,7 @@ impl SnapshotRejection {
 	}
 }
 
+#[cfg_attr(target_arch = "wasm32", expect(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FlowSnapshotLoad {
 	Empty,
@@ -340,11 +354,13 @@ pub enum FlowSnapshotLoad {
 	Inconsistent(SnapshotRejection),
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 enum SetLoad {
 	Restored,
 	Rejected((OperatorId, u64), SnapshotRejection),
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn consistent_set(
 	catalog: &[(OperatorId, Vec<(u64, CommitVersion)>)],
 	rejected: &BTreeSet<(OperatorId, u64)>,
@@ -378,6 +394,7 @@ fn consistent_set(
 	None
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 struct ArenaScan<'a> {
 	operators: &'a OperatorStore,
 	id: OperatorId,
@@ -385,8 +402,10 @@ struct ArenaScan<'a> {
 	resume: Option<Bound<EncodedKey>>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 const ARENA_SCAN_BATCH: u64 = 1024;
 
+#[cfg(not(target_arch = "wasm32"))]
 impl<'a> ArenaScan<'a> {
 	fn new(operators: &'a OperatorStore, id: OperatorId) -> Self {
 		Self {
@@ -398,6 +417,7 @@ impl<'a> ArenaScan<'a> {
 	}
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl Iterator for ArenaScan<'_> {
 	type Item = Result<(EncodedKey, EncodedRow)>;
 
@@ -480,7 +500,7 @@ impl MetricsCollector for SnapshotPinTracker {
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
 	use std::ops::Bound;
 
@@ -521,12 +541,6 @@ mod tests {
 
 	#[test]
 	fn write_then_load_restores_arena_content_and_upper_and_pins_at_the_flow_cursor() {
-		// The full round trip. The pin is the FLOW CURSOR, not any arena upper: a flow commits
-		// after it consumes, so every arena upper sits ABOVE the cursor, and pinning CDC at an
-		// upper would permit truncating exactly the records catch-up still needs. Per-operator
-		// uppers are still restored, because they are what the next snapshot pass stamps.
-		// Falsified by returning min(upper) as the pin, by stamping the manifests with upper
-		// instead of the cursor, or by skipping set_upper at load.
 		let (snapshots, _store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
 		source.set(OP_A, key(b"a1"), row(b"va1"));
@@ -552,9 +566,6 @@ mod tests {
 
 	#[test]
 	fn the_sweep_discards_generations_no_live_flow_owns() {
-		// Nothing else erases an operator's generations once its flow is gone: remove_flow tears down
-		// the arena, not operator.db. Without this sweep a dropped operator's snapshots stay on disk
-		// for the life of the database. Falsified by inverting the live-set filter.
 		let (snapshots, store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
 		source.set(OP_A, key(b"a"), row(b"live"));
@@ -571,10 +582,6 @@ mod tests {
 
 	#[test]
 	fn an_empty_live_set_sweeps_nothing() {
-		// Bootstrap reaches the sweep before it knows whether a flow failed to load, so an empty live
-		// set means "nothing known yet", not "nothing is live". Treating it as authoritative erases
-		// every generation in the store and turns one bad bootstrap into total state loss.
-		// Falsified by removing the is_empty guard.
 		let (snapshots, store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
 		source.set(OP_A, key(b"a"), row(b"live"));
@@ -588,10 +595,6 @@ mod tests {
 
 	#[test]
 	fn a_stateless_flow_writes_nothing_and_returns_no_pin() {
-		// Operators that never carried committed state (upper == 0) have nothing to snapshot
-		// and must not drag the flow pin to version zero, which would block CDC truncation
-		// forever. Falsified by dropping the upper-zero filter: empty generations appear below
-		// and a pin is returned for a flow that has nothing to restore.
 		let (snapshots, store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
 		source.set(OP_A, key(b"a"), row(b"v"));
@@ -603,12 +606,6 @@ mod tests {
 
 	#[test]
 	fn load_refuses_a_snapshot_behind_the_cdc_truncation_floor() {
-		// CDC coverage check, now against the FLOW CURSOR: replay resumes at the cursor, so a
-		// snapshot whose cursor predates truncated_before cannot be caught up and must be
-		// refused rather than silently resumed from stale state. Comparing the arena upper
-		// here would pass while the needed records are already gone, which is the exact hole
-		// this version-space split closes. Falsified by inverting the comparison: the accepting
-		// case below then fails while the refusing case loads.
 		let (snapshots, store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
 		source.set(OP_A, key(b"a"), row(b"v"));
@@ -643,8 +640,6 @@ mod tests {
 
 	#[test]
 	fn a_snapshot_the_cdc_floor_outran_stays_on_disk_for_recovery() {
-		// A truncation floor establishes that a generation cannot be replayed forward, not that it
-		// is corrupt. Falsified by discarding on every validate rejection.
 		let (snapshots, store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
 		source.set(OP_A, key(b"a"), row(b"survivor"));
@@ -658,7 +653,11 @@ mod tests {
 			"precondition: the floor is above the snapshot cursor, so the load must refuse"
 		);
 
-		assert_eq!(store.generations(OP_A).expect("generations"), vec![1], "the refused generation must survive");
+		assert_eq!(
+			store.generations(OP_A).expect("generations"),
+			vec![1],
+			"the refused generation must survive"
+		);
 		let recovered = store.load(OP_A, 1).expect("the refused generation must still be readable");
 		assert_eq!(recovered.manifest.flow_cursor, CommitVersion(5));
 		assert_eq!(recovered.manifest.upper, CommitVersion(9));
@@ -671,10 +670,6 @@ mod tests {
 
 	#[test]
 	fn a_flow_that_never_snapshotted_loads_empty_rather_than_inconsistent() {
-		// Boot with no generations at all is the ordinary cold start and must stay a silent
-		// empty boot; only a flow that HAS generations it cannot reconcile may poison. Falsified
-		// by returning Inconsistent whenever no cursor is found, which would poison every flow
-		// created after the last snapshot pass.
 		let (snapshots, _store, _guard) = snapshot_fixture();
 		let restored = OperatorStore::default();
 
@@ -686,13 +681,6 @@ mod tests {
 
 	#[test]
 	fn a_crash_between_two_operators_falls_back_to_the_older_consistent_set() {
-		// A snapshot pass writes one sqlite transaction per operator, so process death between
-		// them leaves one operator a generation ahead of another. Loading the newest generation
-		// of each would put the flow's operators at DIFFERENT cursors, and any single resume
-		// point would then either skip or double-apply a window for one of them. The load must
-		// step back to the newest cursor every operator can supply. Falsified by picking each
-		// operator's newest generation independently: OP_A then carries "second" while the
-		// reported cursor is 4.
 		let (snapshots, store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
 		source.set(OP_A, key(b"a"), row(b"first"));
@@ -701,7 +689,6 @@ mod tests {
 		source.set_upper(OP_B, CommitVersion(5));
 		assert_eq!(snapshots.write_flow(&source, &[OP_A, OP_B], CommitVersion(4)), Some(CommitVersion(4)));
 
-		// The interrupted pass: OP_A reaches disk at cursor 8, OP_B never does.
 		let ahead = OperatorStore::default();
 		ahead.set(OP_A, key(b"a"), row(b"second"));
 		ahead.set_upper(OP_A, CommitVersion(9));
@@ -721,10 +708,6 @@ mod tests {
 
 	#[test]
 	fn a_flow_with_no_shared_cursor_left_reports_inconsistent() {
-		// Only two generations are retained, so a second interrupted pass can push the shared
-		// cursor off the end. There is then no version the whole flow's state agrees on and no
-		// safe resume point; the caller must poison rather than boot a half-old arena. Falsified
-		// by falling back to loading whatever the newest generations are.
 		let (snapshots, _store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
 		source.set(OP_A, key(b"a"), row(b"v"));
@@ -745,8 +728,6 @@ mod tests {
 
 	#[test]
 	fn the_load_reports_the_cause_that_stopped_it_not_the_shape_it_left_behind() {
-		// Every exhausted load ends with no set left to pick, so the terminal shape cannot identify
-		// the fault. Falsified by returning CursorDisagreement on exhaustion regardless of cause.
 		let (snapshots, store, _guard) = snapshot_fixture();
 		store.write(
 			SnapshotWrite {
@@ -769,11 +750,6 @@ mod tests {
 
 	#[test]
 	fn load_refuses_a_dictionary_regression_and_falls_back_to_the_previous_generation() {
-		// Dictionary barrier at load: a manifest recording interned ids beyond what is
-		// durable means a crash lost interns the snapshot references; decoding them after the
-		// counter reseeds would be silently wrong, so that generation must be discarded and
-		// the previous one used instead. Falsified by dropping the load-time dictionary check
-		// (the poisoned newest generation then seeds the arena) or by not falling back.
 		let (snapshots, store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
 		source.set(OP_A, key(b"old"), row(b"generation-1"));
@@ -813,10 +789,6 @@ mod tests {
 
 	#[test]
 	fn a_failed_dictionary_flush_aborts_the_snapshot_pass() {
-		// Dictionary barrier at write: if the single store cannot make pending interns
-		// durable, completing a snapshot would record state whose dictionary ids may not
-		// survive a crash, so the whole pass must abort with the old generations untouched.
-		// Falsified by ignoring the flush_pending_blocking return value.
 		let (config, _db_guard) = SqliteConfig::test();
 		let store = SnapshotStore::sqlite(config);
 		let (mut single, _single_guard) = SingleStore::testing_memory_with_persistent_sqlite();
@@ -830,8 +802,7 @@ mod tests {
 		.expect("commit a pending single-store write");
 		single.persistent().expect("persistent tier configured").shutdown();
 
-		let snapshots =
-			FlowSnapshots::new(store.clone(), single, DictionaryAllocatorRegistry::default());
+		let snapshots = FlowSnapshots::new(store.clone(), single, DictionaryAllocatorRegistry::default());
 		let source = OperatorStore::default();
 		source.set(OP_A, key(b"a"), row(b"v"));
 		source.set_upper(OP_A, CommitVersion(5));
@@ -849,10 +820,6 @@ mod tests {
 
 	#[test]
 	fn pin_lag_is_checkpoint_minus_pin_per_flow() {
-		// The pin-lag metric is (flow checkpoint - snapshot pin): how far CDC must be
-		// retained beyond the flow's durable position for a snapshot restore to catch up.
-		// Falsified by inverting the subtraction, by recording the pin into the checkpoint
-		// slot, or by keeping deleted flows in the collector output.
 		let tracker = SnapshotPinTracker::new();
 		tracker.record_checkpoint(FlowId(1), CommitVersion(9));
 		tracker.record_pin(FlowId(1), CommitVersion(7));

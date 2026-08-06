@@ -60,11 +60,6 @@ impl MultiReadTransaction {
 		Ok(self.engine.get(key, version)?.map(Into::into))
 	}
 
-	pub fn get_at_latest(&self, key: &EncodedKey) -> Result<Option<TransactionValue>> {
-		let version = self.engine.version()?;
-		Ok(self.engine.get(key, version)?.map(Into::into))
-	}
-
 	#[instrument(name = "transaction::get_many", level = "trace", skip(self, keys), fields(key_count = keys.len()))]
 	pub fn get_many(&self, keys: &[EncodedKey]) -> Result<HashMap<EncodedKey, MultiVersionRow>> {
 		let version = self.tm.version();
@@ -79,15 +74,6 @@ impl MultiReadTransaction {
 	pub fn scan(&self) -> Result<MultiVersionBatch> {
 		let items: Vec<_> =
 			self.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>()?;
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
-	}
-
-	pub fn scan_rev(&self) -> Result<MultiVersionBatch> {
-		let items: Vec<_> =
-			self.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>()?;
 		Ok(MultiVersionBatch {
 			items,
 			has_more: false,

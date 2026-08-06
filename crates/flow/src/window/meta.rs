@@ -6,8 +6,7 @@ use std::mem::size_of;
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	key::operator_group_state::{
-		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorGroupStateKey,
-		keyspace_inner_range,
+		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorGroupStateKey, keyspace_inner_range,
 	},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},

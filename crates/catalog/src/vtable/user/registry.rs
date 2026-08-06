@@ -11,7 +11,6 @@ use reifydb_runtime::sync::rwlock::RwLock;
 
 use crate::vtable::tables::{UserVTableDataFunction, VTables};
 
-#[derive(Clone)]
 pub struct UserVTableEntry {
 	pub def: Arc<VTable>,
 	pub data_fn: UserVTableDataFunction,
@@ -36,8 +35,6 @@ pub struct UserVTableRegistry {
 struct UserVTableRegistryInner {
 	entries: HashMap<(NamespaceId, String), UserVTableEntry>,
 
-	entries_by_id: HashMap<VTableId, UserVTableEntry>,
-
 	next_id: u64,
 }
 
@@ -52,7 +49,6 @@ impl UserVTableRegistry {
 		Self {
 			inner: Arc::new(RwLock::new(UserVTableRegistryInner {
 				entries: HashMap::new(),
-				entries_by_id: HashMap::new(),
 				next_id: 1000,
 			})),
 		}
@@ -67,30 +63,12 @@ impl UserVTableRegistry {
 
 	pub fn register(&self, namespace: NamespaceId, name: String, entry: UserVTableEntry) {
 		let mut inner = self.inner.write();
-		let id = entry.def.id;
-		inner.entries.insert((namespace, name), entry.clone());
-		inner.entries_by_id.insert(id, entry);
-	}
-
-	pub fn unregister(&self, namespace: NamespaceId, name: &str) -> Option<UserVTableEntry> {
-		let mut inner = self.inner.write();
-		if let Some(entry) = inner.entries.remove(&(namespace, name.to_string())) {
-			let id = entry.def.id;
-			inner.entries_by_id.remove(&id);
-			Some(entry)
-		} else {
-			None
-		}
+		inner.entries.insert((namespace, name), entry);
 	}
 
 	pub fn find_by_name(&self, namespace: NamespaceId, name: &str) -> Option<VTables> {
 		let inner = self.inner.read();
 		inner.entries.get(&(namespace, name.to_string())).map(|e| e.create_instance())
-	}
-
-	pub fn find_by_id(&self, id: VTableId) -> Option<VTables> {
-		let inner = self.inner.read();
-		inner.entries_by_id.get(&id).map(|e| e.create_instance())
 	}
 
 	pub fn list_definitions(&self) -> Vec<Arc<VTable>> {
@@ -101,6 +79,5 @@ impl UserVTableRegistry {
 	pub fn clear(&self) {
 		let mut inner = self.inner.write();
 		inner.entries.clear();
-		inner.entries_by_id.clear();
 	}
 }

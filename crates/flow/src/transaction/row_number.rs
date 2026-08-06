@@ -732,22 +732,21 @@ impl FlowTransaction {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::common::CommitVersion;
+	use reifydb_core::{
+		actors::pending::{Pending, PendingLayers},
+		common::CommitVersion,
+		state::budget::OperatorStateBudgetHandle,
+	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_value::value::identity::IdentityId;
 
 	use super::*;
-	use reifydb_core::{
-		actors::pending::{Pending, PendingLayers},
-		state::budget::OperatorStateBudgetHandle,
-	};
 	use crate::transaction::{
-		DeferredParams,
+		ChangeCoordinate, DeferredParams,
 		substrate::{FlowSubstrate, apply_operator_state},
 	};
-	use crate::transaction::ChangeCoordinate;
 
 	const NODE: OperatorId = OperatorId(1);
 	const GROUP: GroupId = GroupId(7);

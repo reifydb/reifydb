@@ -4,10 +4,7 @@
 use std::{cell::UnsafeCell, sync::Arc};
 
 use postcard::to_stdvec;
-use reifydb_codec::{
-	encoded::shape::{RowShape, RowShapeField},
-	key::{encoded::EncodedKey, serializer::KeySerializer},
-};
+use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	metrics::heap::{StateCompleteness, StateMemory},
@@ -210,14 +207,6 @@ impl Aggregation {
 			cache.membership_memory(),
 			cache.completeness(),
 		))
-	}
-
-	pub fn create_window_key(&self, group_hash: Hash128, window_id: u64) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(32);
-		serializer.extend_bytes(b"win:");
-		serializer.extend_u128(group_hash);
-		serializer.extend_u64(window_id);
-		serializer.finish()
 	}
 
 	pub(crate) fn reset_engine_caches(&self) {

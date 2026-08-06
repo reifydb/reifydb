@@ -12,12 +12,11 @@ use reifydb_core::{
 			authentication::{Authentication, AuthenticationId},
 			binding::Binding,
 			column_snapshot::ColumnSnapshot,
-			config::{Config, ConfigKey},
 			dictionary::Dictionary,
 			flow::{Flow, FlowId, OperatorId},
 			handler::Handler,
 			id::{
-				BindingId, ColumnSnapshotId, HandlerId, MigrationId, NamespaceId, ProcedureId, QueueId,
+				BindingId, ColumnSnapshotId, HandlerId, NamespaceId, ProcedureId, QueueId,
 				RelationshipId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 			},
 			identity::{
@@ -55,15 +54,15 @@ use crate::{
 	TransactionId,
 	change::{
 		TransactionalAuthenticationChanges, TransactionalBindingChanges, TransactionalChanges,
-		TransactionalColumnSnapshotChanges, TransactionalConfigChanges, TransactionalDictionaryChanges,
-		TransactionalFlowChanges, TransactionalGrantedRoleChanges, TransactionalHandlerChanges,
-		TransactionalIdentityAttributeChanges, TransactionalIdentityAttributeValueChanges,
-		TransactionalIdentityChanges, TransactionalMigrationChanges, TransactionalNamespaceChanges,
-		TransactionalOperatorSettingsChanges, TransactionalPolicyChanges, TransactionalProcedureChanges,
-		TransactionalQueueChanges, TransactionalRelationshipChanges, TransactionalRingBufferChanges,
-		TransactionalRoleChanges, TransactionalRowSettingsChanges, TransactionalSeriesChanges,
-		TransactionalSinkChanges, TransactionalSourceChanges, TransactionalSumTypeChanges,
-		TransactionalTableChanges, TransactionalTestChanges, TransactionalViewChanges,
+		TransactionalColumnSnapshotChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
+		TransactionalGrantedRoleChanges, TransactionalHandlerChanges, TransactionalIdentityAttributeChanges,
+		TransactionalIdentityAttributeValueChanges, TransactionalIdentityChanges,
+		TransactionalMigrationChanges, TransactionalNamespaceChanges, TransactionalOperatorSettingsChanges,
+		TransactionalPolicyChanges, TransactionalProcedureChanges, TransactionalQueueChanges,
+		TransactionalRelationshipChanges, TransactionalRingBufferChanges, TransactionalRoleChanges,
+		TransactionalRowSettingsChanges, TransactionalSeriesChanges, TransactionalSinkChanges,
+		TransactionalSourceChanges, TransactionalSumTypeChanges, TransactionalTableChanges,
+		TransactionalTestChanges, TransactionalViewChanges,
 	},
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
 	single::{SingleTransaction, read::SingleReadTransaction},
@@ -85,15 +84,6 @@ impl QueryTransaction {
 		Self {
 			multi,
 			single: Some(single),
-			identity,
-			executor: None,
-		}
-	}
-
-	pub fn new_read_only(multi: MultiReadTransaction, identity: IdentityId) -> Self {
-		Self {
-			multi,
-			single: None,
 			identity,
 			executor: None,
 		}
@@ -162,24 +152,6 @@ impl QueryTransaction {
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		self.multi.range_rev(range, scope, batch_size)
-	}
-
-	#[instrument(name = "transaction::query::with_single_query", level = "trace", skip(self, keys, f))]
-	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
-	where
-		I: IntoIterator<Item = &'a EncodedKey> + Send,
-		F: FnOnce(&mut SingleReadTransaction<'_>) -> Result<R> + Send,
-		R: Send,
-	{
-		self.single.as_ref().expect("single not available in read-only query context").with_query(keys, f)
-	}
-
-	#[instrument(name = "transaction::query::with_multi_query", level = "trace", skip(self, f))]
-	pub fn with_multi_query<F, R>(&mut self, f: F) -> Result<R>
-	where
-		F: FnOnce(&mut MultiReadTransaction) -> Result<R>,
-	{
-		f(&mut self.multi)
 	}
 
 	#[instrument(name = "transaction::query::begin_single_query", level = "trace", skip(self, keys))]
@@ -482,10 +454,6 @@ impl TransactionalRoleChanges for QueryTransaction {
 }
 
 impl TransactionalGrantedRoleChanges for QueryTransaction {
-	fn find_granted_role(&self, _identity: IdentityId, _role: RoleId) -> Option<&GrantedRole> {
-		None
-	}
-
 	fn find_granted_roles_for_identity(&self, _identity: IdentityId) -> Vec<&GrantedRole> {
 		Vec::new()
 	}
@@ -547,30 +515,14 @@ impl TransactionalPolicyChanges for QueryTransaction {
 		None
 	}
 
-	fn is_policy_deleted(&self, _id: PolicyId) -> bool {
-		false
-	}
-
 	fn is_policy_deleted_by_name(&self, _name: &str) -> bool {
 		false
 	}
 }
 
 impl TransactionalMigrationChanges for QueryTransaction {
-	fn find_migration(&self, _id: MigrationId) -> Option<&Migration> {
-		None
-	}
-
 	fn find_migration_by_name(&self, _name: &str) -> Option<&Migration> {
 		None
-	}
-
-	fn is_migration_deleted(&self, _id: MigrationId) -> bool {
-		false
-	}
-
-	fn is_migration_deleted_by_name(&self, _name: &str) -> bool {
-		false
 	}
 }
 
@@ -605,10 +557,6 @@ impl TransactionalSourceChanges for QueryTransaction {
 		None
 	}
 
-	fn is_source_deleted(&self, _id: SourceId) -> bool {
-		false
-	}
-
 	fn is_source_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
 	}
@@ -623,18 +571,8 @@ impl TransactionalSinkChanges for QueryTransaction {
 		None
 	}
 
-	fn is_sink_deleted(&self, _id: SinkId) -> bool {
-		false
-	}
-
 	fn is_sink_deleted_by_name(&self, _namespace: NamespaceId, _name: &str) -> bool {
 		false
-	}
-}
-
-impl TransactionalConfigChanges for QueryTransaction {
-	fn find_config(&self, _key: ConfigKey) -> Option<&Config> {
-		None
 	}
 }
 
@@ -642,19 +580,11 @@ impl TransactionalRowSettingsChanges for QueryTransaction {
 	fn find_row_settings(&self, _storage: StorageId) -> Option<&RowSettings> {
 		None
 	}
-
-	fn is_row_settings_deleted(&self, _storage: StorageId) -> bool {
-		false
-	}
 }
 
 impl TransactionalOperatorSettingsChanges for QueryTransaction {
 	fn find_operator_settings(&self, _operator: OperatorId) -> Option<&OperatorSettings> {
 		None
-	}
-
-	fn is_operator_settings_deleted(&self, _operator: OperatorId) -> bool {
-		false
 	}
 }
 

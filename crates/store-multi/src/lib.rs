@@ -29,11 +29,9 @@ use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
-	interface::{
-		store::{
-			MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious,
-			MultiVersionRow, MultiVersionStore,
-		},
+	interface::store::{
+		MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious, MultiVersionRow,
+		MultiVersionStore,
 	},
 	metrics::collect::MetricsCollector,
 };

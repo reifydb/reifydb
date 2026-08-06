@@ -23,7 +23,6 @@ pub struct DriveOutcome {
 	pub corpus: Corpus,
 	pub view: MaterializedView,
 
-
 	pub divergence: Option<String>,
 }
 
@@ -53,7 +52,6 @@ where
 	let mut trace: Vec<String> = Vec::new();
 
 	let mut fingerprint = mix(0, seed);
-
 
 	for step in 0..scenario.steps {
 		let roll = rng.random_range(0..100);

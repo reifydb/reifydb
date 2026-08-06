@@ -218,7 +218,6 @@ impl Model<JoinRow> for HashOracle {
 
 	fn advance_ledger(&mut self, _at_ms: u64) {}
 
-
 	fn step_complete(&mut self) {
 		// Folded here rather than in `reclaimed`: a key can form after the sweep that stranded one of
 		// its rows, and a key must be recorded before the row carrying it is removed, since that

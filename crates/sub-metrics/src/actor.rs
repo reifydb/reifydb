@@ -501,7 +501,6 @@ fn level_count(metric: &'static str, count: u64) -> Measure {
 
 fn storage_rows(reader: &MetricsReader<SingleStore>, txn: &mut Transaction<'_>) -> Result<Vec<MetricsRow>> {
 	let mut rows = Vec::new();
-	let mut flows: HashMap<(u64, u64, Tier), MultiStorageMetrics> = HashMap::new();
 	for tier in [Tier::Buffer, Tier::Persistent] {
 		for (metric_id, combined) in reader.scan_tier(tier).unwrap_or_default() {
 			let Some(resolved) = MetricsObject::resolve(txn, metric_id)? else {
@@ -514,14 +513,7 @@ fn storage_rows(reader: &MetricsReader<SingleStore>, txn: &mut Transaction<'_>) 
 				tier,
 				&combined.storage,
 			));
-			if let Some((flow_id, flow_namespace)) = resolved.flow {
-				let entry = flows.entry((flow_id, flow_namespace, tier)).or_default();
-				*entry += combined.storage;
-			}
 		}
-	}
-	for ((flow_id, namespace_id, tier), storage) in flows {
-		rows.push(storage_row("flow", flow_id, namespace_id, tier, &storage));
 	}
 	Ok(rows)
 }
@@ -556,19 +548,11 @@ fn storage_row(
 
 fn cdc_rows(reader: &MetricsReader<SingleStore>, txn: &mut Transaction<'_>) -> Result<Vec<MetricsRow>> {
 	let mut rows = Vec::new();
-	let mut flows: HashMap<(u64, u64), CdcMetrics> = HashMap::new();
 	for (metric_id, metrics) in reader.cdc_reader().scan_all().unwrap_or_default() {
 		let Some(resolved) = MetricsObject::resolve(txn, metric_id)? else {
 			continue;
 		};
 		rows.push(cdc_row(resolved.object.name(), resolved.id, resolved.namespace_id, &metrics));
-		if let Some((flow_id, flow_namespace)) = resolved.flow {
-			let entry = flows.entry((flow_id, flow_namespace)).or_default();
-			*entry += metrics;
-		}
-	}
-	for ((flow_id, namespace_id), metrics) in flows {
-		rows.push(cdc_row("flow", flow_id, namespace_id, &metrics));
 	}
 	Ok(rows)
 }

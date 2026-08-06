@@ -10,7 +10,6 @@ use crate::{
 	spec::{DimSource, SpanSpec},
 };
 
-/// Field values pulled off a span according to its [`SpanSpec`].
 #[derive(Clone, Debug)]
 pub struct SpecFields {
 	spec: &'static SpanSpec,
@@ -60,8 +59,7 @@ impl Visit for SpecFields {
 			if let DimSource::Number {
 				field: dim_field,
 				prefix,
-			} = source
-				&& *dim_field == name
+			} = source && *dim_field == name
 			{
 				self.dims[slot].clear();
 				self.dims[slot].push_str(prefix);
@@ -190,7 +188,8 @@ mod tests {
 		// would render the row as site@"reclaim::range" and split one logical dimension into two
 		// labels depending on how the call site happened to record it.
 		let captured = capture(|| {
-			let _span = debug_span!("flow::state::range_limited", site = ?"reclaim::range", operator_id = 1u64);
+			let _span =
+				debug_span!("flow::state::range_limited", site = ?"reclaim::range", operator_id = 1u64);
 		});
 		assert_eq!(captured.dims()[0], "reclaim::range");
 	}

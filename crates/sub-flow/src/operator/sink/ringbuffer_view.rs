@@ -1070,7 +1070,6 @@ mod tests {
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		common::CommitVersion,
-		key::{Key, kind::KeyKind},
 		interface::{
 			catalog::{
 				column::{Column as CatalogColumn, ColumnIndex},
@@ -1080,6 +1079,7 @@ mod tests {
 			},
 			resolved::ResolvedNamespace,
 		},
+		key::{Key, kind::KeyKind},
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::substrate::apply_operator_state;

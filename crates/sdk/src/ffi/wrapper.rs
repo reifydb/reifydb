@@ -22,9 +22,7 @@ use reifydb_abi::{
 	},
 	operator::{timer::TimerKind, vtable::OperatorVTableFFI},
 };
-use reifydb_core::{
-	metrics::heap::OperatorSample,
-};
+use reifydb_core::metrics::heap::OperatorSample;
 use reifydb_value::value::datetime::DateTime;
 use tracing::{error, instrument, warn};
 

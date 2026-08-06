@@ -274,34 +274,6 @@ impl StandardEngine {
 		outcome
 	}
 
-	#[instrument(name = "engine::query_as_at_version", level = "debug", skip(self, params, lease), fields(rql = %rql, version = %lease.version().0))]
-	pub fn query_as_at_version(
-		&self,
-		identity: IdentityId,
-		rql: &str,
-		params: Params,
-		lease: &VersionLeaseGuard,
-	) -> ExecutionResult {
-		let mut txn = match self.begin_query_at_version(lease, identity) {
-			Ok(t) => t,
-			Err(mut e) => {
-				e.with_rql(rql.to_string());
-				return ExecutionResult::from_error(e);
-			}
-		};
-		let mut outcome = self.executor.query(
-			&mut txn,
-			Query {
-				rql,
-				params,
-			},
-		);
-		if let Some(ref mut e) = outcome.error {
-			e.with_rql(rql.to_string());
-		}
-		outcome
-	}
-
 	#[instrument(name = "engine::query_in_txn", level = "debug", skip(self, txn, params), fields(rql = %rql))]
 	pub fn query_in_txn(&self, txn: &mut QueryTransaction, rql: &str, params: Params) -> ExecutionResult {
 		let mut outcome = self.executor.query(
@@ -335,29 +307,6 @@ impl StandardEngine {
 		);
 		if let Some(ref mut e) = outcome.error {
 			e.with_rql(rql.to_string());
-		}
-		outcome
-	}
-
-	#[instrument(name = "engine::procedure_as", level = "debug", skip(self, params), fields(name = %name))]
-	pub fn procedure_as(&self, identity: IdentityId, name: &str, params: Params) -> ExecutionResult {
-		if let Err(e) = self.reject_if_read_only() {
-			return ExecutionResult::from_error(e);
-		}
-		if let Err(e) = self.reject_if_shutting_down(identity) {
-			return ExecutionResult::from_error(e);
-		}
-		let mut txn = match self.begin_command(identity) {
-			Ok(t) => t,
-			Err(e) => {
-				return ExecutionResult::from_error(e);
-			}
-		};
-		let mut outcome = self.executor.call_procedure(&mut txn, name, &params);
-		if outcome.is_ok()
-			&& let Err(e) = txn.commit()
-		{
-			outcome.error = Some(e);
 		}
 		outcome
 	}

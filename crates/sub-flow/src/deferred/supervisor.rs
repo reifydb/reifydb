@@ -17,13 +17,14 @@ use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage, FlowSupervisorMessage},
 	common::CommitVersion,
 	interface::{
-		catalog::{flow::{FlowId, OperatorId}, object::ObjectId, view::ViewKind},
+		catalog::{flow::FlowId, object::ObjectId, view::ViewKind},
 		cdc::{Cdc, CdcConsumerId},
 		change::ChangeOrigin,
 	},
-	key::cdc_consumer::FlowSnapshotPin,
 	state::budget::OperatorStateBudgetHandle,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_core::{interface::catalog::flow::OperatorId, key::cdc_consumer::FlowSnapshotPin};
 use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
 use reifydb_flow::transaction::substrate::FlowSubstrate;
 use reifydb_rql::flow::{analyzer::FlowGraphAnalyzer, flow::FlowDag, operator::OperatorDef};
@@ -44,6 +45,8 @@ use reifydb_value::{
 };
 use tracing::{debug, error, warn};
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::deferred::snapshot::FlowSnapshots;
 use crate::{
 	builder::CustomOperators,
 	catalog::FlowCatalog,
@@ -55,7 +58,7 @@ use crate::{
 		health::FlowHealthRegistry,
 		loader::LoaderMessage,
 		routing::{self, ViewRoute},
-		snapshot::{FlowSnapshotLoad, FlowSnapshots},
+		snapshot::FlowSnapshotLoad,
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
 	},
 	operator::metrics::OperatorSampleRegistry,
@@ -88,6 +91,7 @@ pub struct FlowSupervisorParams {
 	pub load_batch_bytes: ByteSize,
 	pub checkpoint_lag: u64,
 	pub checkpoint_max_age: Duration,
+	#[cfg(not(target_arch = "wasm32"))]
 	pub snapshots: Option<FlowSnapshots>,
 }
 
@@ -114,6 +118,7 @@ pub struct FlowSupervisor {
 	load_batch_bytes: ByteSize,
 	checkpoint_lag: u64,
 	checkpoint_max_age: Duration,
+	#[cfg(not(target_arch = "wasm32"))]
 	snapshots: Option<FlowSnapshots>,
 }
 
@@ -150,6 +155,7 @@ impl FlowSupervisor {
 			load_batch_bytes: params.load_batch_bytes,
 			checkpoint_lag: params.checkpoint_lag,
 			checkpoint_max_age: params.checkpoint_max_age,
+			#[cfg(not(target_arch = "wasm32"))]
 			snapshots: params.snapshots,
 		}
 	}
@@ -165,13 +171,18 @@ impl FlowSupervisor {
 			}
 		};
 
-		let truncated_before = self.snapshots.as_ref().map(|_| {
-			self.engine.cdc_store().truncated_before().unwrap_or(CommitVersion(0))
-		});
+		#[cfg(not(target_arch = "wasm32"))]
+		let truncated_before = self
+			.snapshots
+			.as_ref()
+			.map(|_| self.engine.cdc_store().truncated_before().unwrap_or(CommitVersion(0)));
 
 		let mut to_spawn: Vec<(FlowDag, CommitVersion, FlowSnapshotLoad)> = Vec::new();
 		let mut seeds: Vec<(FlowId, CommitVersion)> = Vec::new();
+		#[cfg(not(target_arch = "wasm32"))]
 		let mut pins: Vec<(FlowId, CommitVersion)> = Vec::new();
+		#[cfg(target_arch = "wasm32")]
+		let pins: Vec<(FlowId, CommitVersion)> = Vec::new();
 		for flow_id in flows {
 			let flow = match self
 				.flow_catalog
@@ -188,28 +199,35 @@ impl FlowSupervisor {
 			let seed = CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut query), &flow_id)
 				.unwrap_or(None)
 				.unwrap_or(migration_base);
-			let mut snapshot_load = FlowSnapshotLoad::Empty;
-			if let (Some(snapshots), Some(truncated_before)) = (&self.snapshots, truncated_before) {
-				snapshot_load = snapshots.load_flow(
-					&self.substrate.operators,
-					flow.get_operator_ids(),
-					truncated_before,
-				);
-				let existing_pin = CdcCheckpoint::fetch_opt(
-					&mut Transaction::Query(&mut query),
-					&FlowSnapshotPin(flow_id),
-				)
-				.unwrap_or(None);
-				if existing_pin.is_none() {
-					pins.push((flow_id, seed));
+			#[cfg(not(target_arch = "wasm32"))]
+			let snapshot_load = match (&self.snapshots, truncated_before) {
+				(Some(snapshots), Some(truncated_before)) => {
+					let loaded = snapshots.load_flow(
+						&self.substrate.operators,
+						flow.get_operator_ids(),
+						truncated_before,
+					);
+					let existing_pin = CdcCheckpoint::fetch_opt(
+						&mut Transaction::Query(&mut query),
+						&FlowSnapshotPin(flow_id),
+					)
+					.unwrap_or(None);
+					if existing_pin.is_none() {
+						pins.push((flow_id, seed));
+					}
+					loaded
 				}
-			}
+				_ => FlowSnapshotLoad::Empty,
+			};
+			#[cfg(target_arch = "wasm32")]
+			let snapshot_load = FlowSnapshotLoad::Empty;
 			seeds.push((flow_id, seed));
 			to_spawn.push((flow, seed, snapshot_load));
 		}
 		drop(query);
 		self.publish_lineage(state);
 
+		#[cfg(not(target_arch = "wasm32"))]
 		if let Some(snapshots) = &self.snapshots {
 			let live: BTreeSet<OperatorId> =
 				to_spawn.iter().flat_map(|(flow, _, _)| flow.get_operator_ids()).collect();
@@ -289,11 +307,14 @@ impl FlowSupervisor {
 
 		let now = self.clock.now();
 		if !seeds.is_empty() || now - state.last_control_commit_at >= self.checkpoint_max_age {
+			#[cfg(not(target_arch = "wasm32"))]
 			let pins = if self.snapshots.is_some() {
 				seeds.clone()
 			} else {
 				Vec::new()
 			};
+			#[cfg(target_arch = "wasm32")]
+			let pins: Vec<(FlowId, CommitVersion)> = Vec::new();
 			self.commit_control(seeds, pins, Some(bound));
 			state.last_control_commit_at = now;
 		}
@@ -501,6 +522,7 @@ impl FlowSupervisor {
 			checkpoint_max_age: self.checkpoint_max_age,
 			retry_limit: FLOW_RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(FLOW_RETRY_BACKOFF_MS as i64).unwrap(),
+			#[cfg(not(target_arch = "wasm32"))]
 			snapshots: self.snapshots.clone(),
 			snapshot_load,
 		};

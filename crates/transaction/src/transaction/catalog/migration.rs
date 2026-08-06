@@ -3,17 +3,12 @@
 
 use reifydb_core::interface::catalog::{
 	change::{CatalogTrackMigrationChangeOperations, CatalogTrackMigrationEventChangeOperations},
-	id::MigrationId,
 	migration::{Migration, MigrationEvent},
 };
 use reifydb_value::Result;
 
 use crate::{
-	change::{
-		Change,
-		OperationType::{Create, Delete},
-		TransactionalMigrationChanges,
-	},
+	change::{Change, OperationType::Create, TransactionalMigrationChanges},
 	transaction::admin::AdminTransaction,
 };
 
@@ -23,16 +18,6 @@ impl CatalogTrackMigrationChangeOperations for AdminTransaction {
 			pre: None,
 			post: Some(migration),
 			op: Create,
-		};
-		self.changes.add_migration_change(change);
-		Ok(())
-	}
-
-	fn track_migration_deleted(&mut self, migration: Migration) -> Result<()> {
-		let change = Change {
-			pre: Some(migration),
-			post: None,
-			op: Delete,
 		};
 		self.changes.add_migration_change(change);
 		Ok(())
@@ -52,36 +37,7 @@ impl CatalogTrackMigrationEventChangeOperations for AdminTransaction {
 }
 
 impl TransactionalMigrationChanges for AdminTransaction {
-	fn find_migration(&self, id: MigrationId) -> Option<&Migration> {
-		for change in self.changes.migration.iter().rev() {
-			if let Some(migration) = &change.post {
-				if migration.id == id {
-					return Some(migration);
-				}
-			} else if let Some(migration) = &change.pre
-				&& migration.id == id && change.op == Delete
-			{
-				return None;
-			}
-		}
-		None
-	}
-
 	fn find_migration_by_name(&self, name: &str) -> Option<&Migration> {
 		self.changes.migration.iter().rev().find_map(|change| change.post.as_ref().filter(|m| m.name == name))
-	}
-
-	fn is_migration_deleted(&self, id: MigrationId) -> bool {
-		self.changes
-			.migration
-			.iter()
-			.rev()
-			.any(|change| change.op == Delete && change.pre.as_ref().map(|m| m.id == id).unwrap_or(false))
-	}
-
-	fn is_migration_deleted_by_name(&self, name: &str) -> bool {
-		self.changes.migration.iter().rev().any(|change| {
-			change.op == Delete && change.pre.as_ref().map(|m| m.name == name).unwrap_or(false)
-		})
 	}
 }

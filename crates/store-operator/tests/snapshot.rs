@@ -103,11 +103,7 @@ fn tampered_or_reordered_chunks_refuse_to_load() {
 		write(&store, OP, 5, &[], 64, &entries(16)).expect("write snapshot");
 
 		let raw = raw_connection(dir);
-		raw.execute(
-			"UPDATE \"snapshot_chunk\" SET seq = 99 WHERE seq = 0",
-			[],
-		)
-		.expect("stash chunk 0");
+		raw.execute("UPDATE \"snapshot_chunk\" SET seq = 99 WHERE seq = 0", []).expect("stash chunk 0");
 		raw.execute("UPDATE \"snapshot_chunk\" SET seq = 0 WHERE seq = 1", []).expect("move chunk 1");
 		raw.execute("UPDATE \"snapshot_chunk\" SET seq = 1 WHERE seq = 99", []).expect("restore chunk 0");
 		assert!(store.load(OP, 1).is_err(), "reordered chunks must fail the load");
@@ -117,11 +113,8 @@ fn tampered_or_reordered_chunks_refuse_to_load() {
 		raw.execute("UPDATE \"snapshot_chunk\" SET seq = 0 WHERE seq = 99", []).expect("restore order");
 		assert!(store.load(OP, 1).is_ok(), "restoring the original order must load again");
 
-		raw.execute(
-			"UPDATE \"snapshot_chunk\" SET bytes = zeroblob(length(bytes)) WHERE seq = 0",
-			[],
-		)
-		.expect("tamper chunk bytes");
+		raw.execute("UPDATE \"snapshot_chunk\" SET bytes = zeroblob(length(bytes)) WHERE seq = 0", [])
+			.expect("tamper chunk bytes");
 		assert!(store.load(OP, 1).is_err(), "tampered chunk bytes must fail the load");
 		Ok(())
 	})
@@ -140,17 +133,13 @@ fn aborted_generation_leaves_the_previous_one_untouched() {
 		let original = entries(4);
 		write(&store, OP, 10, &[], 64, &original).expect("write generation 1");
 
-		let mut failing = entries(16)
-			.into_iter()
-			.map(Ok)
-			.enumerate()
-			.map(|(index, entry)| {
-				if index == 8 {
-					Err(internal_error!("injected failure between chunks and manifest"))
-				} else {
-					entry
-				}
-			});
+		let mut failing = entries(16).into_iter().map(Ok).enumerate().map(|(index, entry)| {
+			if index == 8 {
+				Err(internal_error!("injected failure between chunks and manifest"))
+			} else {
+				entry
+			}
+		});
 		assert!(store
 			.write(
 				SnapshotWrite {
@@ -164,7 +153,11 @@ fn aborted_generation_leaves_the_previous_one_untouched() {
 			)
 			.is_err());
 
-		assert_eq!(store.generations(OP).expect("generations"), vec![1], "no partial generation may be visible");
+		assert_eq!(
+			store.generations(OP).expect("generations"),
+			vec![1],
+			"no partial generation may be visible"
+		);
 		let loaded = store.load(OP, 1).expect("previous generation must still load");
 		assert_eq!(loaded.entries, original);
 		assert_eq!(loaded.manifest.upper, CommitVersion(10));

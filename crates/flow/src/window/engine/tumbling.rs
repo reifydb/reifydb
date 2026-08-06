@@ -192,7 +192,8 @@ where
 				 (order={ordered}, buckets={bucketed})"
 			);
 		}
-		let results = self.apply_events(store, buckets, order, &slot_resolved, &mut meta_loaded, &new_accumulator)?;
+		let results =
+			self.apply_events(store, buckets, order, &slot_resolved, &mut meta_loaded, &new_accumulator)?;
 		self.persist_meta(store, meta_loaded)?;
 		Ok(results)
 	}

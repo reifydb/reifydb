@@ -46,13 +46,13 @@ use reifydb_sub_subscription::{store::SubscriptionStore, subsystem::Subscription
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_sub_task::{handle::TaskHandle, subsystem::TaskSubsystem};
 use reifydb_transaction::group::GroupCommitHandle;
-#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
-use reifydb_value::error::Error;
 use reifydb_value::{
 	Result,
 	params::Params,
-	value::{Value, duration::Duration, frame::frame::Frame, identity::IdentityId},
+	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
 };
+#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+use reifydb_value::{error::Error, value::Value};
 use tracing::{info, instrument, warn};
 
 #[cfg(feature = "sub_raft")]

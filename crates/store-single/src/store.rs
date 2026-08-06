@@ -541,12 +541,6 @@ mod tests {
 
 	#[test]
 	fn flush_pending_blocking_reports_whether_the_batch_became_durable() {
-		// The operator snapshot barrier relies on this return value: a snapshot generation may
-		// only complete once every pending dictionary intern is durably in single.db, so a
-		// flush that could not persist MUST report false and a clean one MUST report true.
-		// Falsified by making flush_pending_blocking unconditionally return true (the closed
-		// persistent tier below would then be reported as flushed) or by notifying the waiter
-		// without propagating the drain outcome.
 		let (mut store, _guard) = StandardSingleStore::testing_memory_with_persistent_sqlite();
 
 		let k = key("intern");
