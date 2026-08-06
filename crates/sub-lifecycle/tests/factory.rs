@@ -26,8 +26,8 @@ use reifydb_value::value::duration::Duration;
 
 /// Classes that must register on EVERY boot, under every store configuration. If one of these ever becomes
 /// conditional, the leak it guards against comes back silently.
-const ALWAYS_ON: [&str; 5] =
-	["retention-evict-silent", "retention-evict-announced", "compaction-reclaim", "historical-gc", "epoch-log"];
+const ALWAYS_ON: [&str; 4] =
+	["retention-evict-silent", "retention-evict-announced", "historical-gc", "epoch-log"];
 
 /// Classes this subsystem registers no lifecycle task for on this fixture; adding one is a reviewed decision that
 /// exempts it from the coverage assertion below. Three need a persistent tier the memory store lacks and
@@ -418,7 +418,6 @@ fn the_factory_declares_onto_the_registered_coverage_not_a_private_default() {
 	create(&ioc);
 
 	assert_eq!(coverage.owner(RetentionClass::EpochLog), Some("epoch-log"));
-	assert_eq!(coverage.owner(RetentionClass::CompactionReclaim), Some("compaction-reclaim"));
 	assert_eq!(coverage.absence(RetentionClass::VacuumBudget), Some("store has no persistent tier"));
 }
 

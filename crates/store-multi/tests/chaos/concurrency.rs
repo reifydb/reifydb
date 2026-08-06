@@ -215,18 +215,6 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 			}));
 		}
 
-		let pump = s.spawn({
-			let store = store.clone();
-			let stop = &stop;
-			let cfg = &cfg;
-			move || {
-				while stop.load(Ordering::SeqCst) < cfg.writers {
-					store.drain_compaction();
-					thread::sleep(Duration::from_milliseconds(1).unwrap().to_std());
-				}
-			}
-		});
-
 		let mut reader_handles = Vec::new();
 		for _ in 0..cfg.readers {
 			let store = store.clone();
@@ -301,7 +289,6 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 		for h in reader_handles {
 			h.join().expect("reader thread panicked");
 		}
-		pump.join().expect("pump thread panicked");
 		writer_handles.into_iter().map(|h| h.join().expect("writer thread panicked")).collect()
 	});
 
@@ -339,7 +326,6 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 		"FINAL state has rows no writer left live: {live_unexpected:?} (seed={seed})"
 	);
 
-	store.drain_compaction();
 	store.clear_read();
 	let op_live: BTreeMap<u64, Vec<u8>> = scan_op_rows(&store, final_version, 16, false).into_iter().collect();
 	for (row, want) in &op_expected {

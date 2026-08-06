@@ -69,7 +69,6 @@ fn a_lifecycle_task_still_owns_the_classes_it_registered() {
 	let coverage = coverage_of_a_flow_enabled_database();
 
 	assert_eq!(coverage.owner(RetentionClass::EpochLog), Some("epoch-log"));
-	assert_eq!(coverage.owner(RetentionClass::CompactionReclaim), Some("compaction-reclaim"));
 }
 
 /// Executors that exist only when the store has the tier they operate on. On a memory store the

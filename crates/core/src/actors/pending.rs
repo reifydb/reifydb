@@ -71,17 +71,6 @@ impl Pending {
 		);
 	}
 
-	pub fn remove_silent_batch(&mut self, keys: &[EncodedKey]) {
-		self.writes.extend(keys.iter().map(|k| {
-			(
-				k.clone(),
-				PendingWrite::Remove {
-					announce: false,
-				},
-			)
-		}));
-	}
-
 	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedRow> {
 		match self.writes.get(key) {
 			Some(PendingWrite::Set(value)) => Some(value),

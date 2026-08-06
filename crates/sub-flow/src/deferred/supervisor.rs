@@ -17,7 +17,7 @@ use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage, FlowSupervisorMessage},
 	common::CommitVersion,
 	interface::{
-		catalog::{flow::FlowId, object::ObjectId, view::ViewKind},
+		catalog::{flow::{FlowId, OperatorId}, object::ObjectId, view::ViewKind},
 		cdc::{Cdc, CdcConsumerId},
 		change::ChangeOrigin,
 	},
@@ -209,6 +209,12 @@ impl FlowSupervisor {
 		}
 		drop(query);
 		self.publish_lineage(state);
+
+		if let Some(snapshots) = &self.snapshots {
+			let live: BTreeSet<OperatorId> =
+				to_spawn.iter().flat_map(|(flow, _, _)| flow.get_operator_ids()).collect();
+			snapshots.sweep_orphans(&live);
+		}
 
 		let scan_cursor = scan_from.unwrap_or(migration_base);
 		state.scan_cursor = scan_cursor;

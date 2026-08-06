@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_cdc::consume::{checkpoint::CdcCheckpoint, watermark::compute_pinning_watermark};
+use reifydb_cdc::consume::watermark::compute_pinning_watermark;
 use reifydb_core::{
 	common::CommitVersion,
-	interface::cdc::CdcConsumerId,
 	lifecycle::watermark::{EvictionWatermark, QueryWatermark},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -33,18 +32,6 @@ impl StandardEngine {
 			Err(_) => return CommitVersion(0),
 		};
 		match compute_pinning_watermark(&mut Transaction::Query(&mut txn)) {
-			Ok(Some(v)) => v,
-			Ok(None) => CommitVersion(u64::MAX),
-			Err(_) => CommitVersion(0),
-		}
-	}
-
-	pub fn flow_watermark(&self) -> CommitVersion {
-		let mut txn = match self.begin_query(IdentityId::system()) {
-			Ok(txn) => txn,
-			Err(_) => return CommitVersion(0),
-		};
-		match CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut txn), &CdcConsumerId::flow_consumer()) {
 			Ok(Some(v)) => v,
 			Ok(None) => CommitVersion(u64::MAX),
 			Err(_) => CommitVersion(0),

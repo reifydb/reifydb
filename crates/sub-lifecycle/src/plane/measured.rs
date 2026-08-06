@@ -80,10 +80,6 @@ mod tests {
 		fn flush_watermark(&self) -> CommitVersion {
 			CommitVersion(u64::MAX)
 		}
-
-		fn owning_flow_checkpoint(&self) -> CommitVersion {
-			CommitVersion(u64::MAX)
-		}
 	}
 
 	fn plane() -> RetentionPlane {

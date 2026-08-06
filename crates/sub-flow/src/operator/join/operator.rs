@@ -623,7 +623,7 @@ impl Operator for JoinOperator {
 			return Ok(Change::from_flow(self.operator, change.version, Vec::new(), change.changed_at));
 		}
 
-		let mut state = JoinState::new(self.operator, self.snapshot);
+		let mut state = JoinState::new(self.operator);
 		let mut result = Vec::with_capacity(change.diffs.len() * 2);
 
 		let version = change.version;
@@ -855,15 +855,12 @@ impl JoinOperator {
 
 #[cfg(test)]
 mod span_tests {
-	use reifydb_codec::encoded::row::EncodedRow;
 	use reifydb_core::{common::CommitVersion, state::horizon::Cutoff};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::ChangeCoordinate;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
-	use reifydb_value::value::blob::Blob;
 
 	use super::*;
-	use crate::operator::join::store::{Store, group_bytes};
 
 	fn watermark() -> DateTime {
 		// Frontiers are instants, not durations, so pinning the watermark keeps `WATERMARK - ttl`
@@ -1059,57 +1056,6 @@ mod span_tests {
 		assert_eq!(spec.cutoff(Keyspace::JOIN_RIGHT), Some(behind(ttl(9_000))));
 	}
 
-	#[test]
-	fn storing_a_left_row_stamps_the_snapshot_ledger_even_when_it_publishes_nothing() {
-		// Equal spans only bound the ledger if the two clocks start together. Stamping on publish
-		// instead lets a left row that matches nothing age its ledger ahead of itself, so the
-		// sweep deletes the records of live left rows and their joined rows strand in the view.
-		let engine = TestEngine::new();
-		let op = make_op(78, Some(ttl(50)), None, &engine);
-		let mut txn = engine.flow_txn().deferred();
-
-		let left = Store::new(op.operator, JoinSide::Left).also_stamping(snapshot_ledger_keyspaces(true));
-		let hash = Hash128(0xFEED);
-		at(&mut txn, 10);
-		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x01)).unwrap();
-
-		let group = txn
-			.lookup_group(op.operator, &group_bytes(&hash))
-			.unwrap()
-			.expect("a stored left row must have interned its key");
-		let cutoff = cutoff_at(20);
-		for keyspace in [Keyspace::JOIN_LEFT, Keyspace::JOIN_PUBLISHED, Keyspace::JOIN_PIN] {
-			assert_eq!(
-				txn.due_side_groups(op.operator, keyspace, cutoff, 16).unwrap(),
-				vec![group],
-				"{keyspace:?} must fall due with the left side it describes, not on its own clock"
-			);
-		}
-	}
-
-	#[test]
-	fn a_plain_join_leaves_the_snapshot_ledger_keyspaces_alone() {
-		// Without snapshot nothing is ever written to the ledger, so stamping it would enrol a group
-		// in a sweep with no records to reclaim and no left row depending on it.
-		let engine = TestEngine::new();
-		let op = make_op(79, Some(ttl(50)), None, &engine);
-		let mut txn = engine.flow_txn().deferred();
-
-		let left = Store::new(op.operator, JoinSide::Left).also_stamping(snapshot_ledger_keyspaces(false));
-		let hash = Hash128(0xBEEF);
-		at(&mut txn, 10);
-		left.put_row(&mut txn, &hash, RowNumber(1), &op_row(0x01)).unwrap();
-
-		let cutoff = cutoff_at(20);
-		assert!(!txn.due_side_groups(op.operator, Keyspace::JOIN_LEFT, cutoff, 16).unwrap().is_empty());
-		for keyspace in [Keyspace::JOIN_PUBLISHED, Keyspace::JOIN_PIN] {
-			assert!(
-				txn.due_side_groups(op.operator, keyspace, cutoff, 16).unwrap().is_empty(),
-				"{keyspace:?} must stay unenrolled on a join that never publishes to it"
-			);
-		}
-	}
-
 	fn ttl(millis: i64) -> Duration {
 		Duration::from_milliseconds_const(millis)
 	}
@@ -1146,13 +1092,6 @@ mod span_tests {
 		let routines = engine.executor().routines.clone();
 		let rc = RuntimeContext::with_clock(engine.clock().clone());
 		JoinOperator::new_for_state_tests(OperatorId(operator), left_ttl, right_ttl, routines, rc)
-	}
-
-	fn op_row(payload: u8) -> EncodedRow {
-		let shape = RowShape::operator_state();
-		let mut r = shape.allocate();
-		shape.set_blob(&mut r, 0, &Blob::from(vec![payload]));
-		r.freeze()
 	}
 
 	#[test]

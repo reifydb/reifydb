@@ -16,11 +16,12 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
-			flow::OperatorId,
+			id::TableId,
+			storage::StorageId,
 		},
 		store::{EntryKind, MultiVersionCommit},
 	},
-	key::operator_state::OperatorStateKey,
+	key::row::RowKey,
 	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
 };
 use reifydb_runtime::version_epoch::VersionEpoch;
@@ -29,9 +30,12 @@ use reifydb_sub_lifecycle::{
 	plane::{RetentionPlane, ledger::FloorSource},
 	store::vacuum::VacuumBudgetTask,
 };
-use reifydb_value::{util::cowvec::CowVec, value::Value};
+use reifydb_value::{
+	util::cowvec::CowVec,
+	value::{Value, row_number::RowNumber},
+};
 
-const NODE: OperatorId = OperatorId(1);
+const STORAGE: StorageId = StorageId::Table(TableId(1));
 
 /// Vacuum reclaims free pages, not versioned data, so no reader floor constrains it; every term sits wide open.
 struct NoFloors;
@@ -54,10 +58,6 @@ impl FloorSource for NoFloors {
 	}
 
 	fn flush_watermark(&self) -> CommitVersion {
-		CommitVersion(u64::MAX)
-	}
-
-	fn owning_flow_checkpoint(&self) -> CommitVersion {
 		CommitVersion(u64::MAX)
 	}
 }
@@ -83,7 +83,7 @@ impl GetConfig for StubConfig {
 }
 
 fn opkey(n: u64) -> reifydb_codec::key::encoded::EncodedKey {
-	OperatorStateKey::encoded(NODE, n.to_be_bytes().to_vec())
+	RowKey::encoded(STORAGE, RowNumber(n))
 }
 
 /// Leaves 500 rows' worth of pages on the freelist; auto_vacuum=INCREMENTAL does not reclaim them until
@@ -103,7 +103,7 @@ fn seed_freelist(store: &StandardMultiStore) -> (u64, u64) {
 	store.flush_all_blocking();
 	let persistent = store.persistent().expect("persistent tier configured");
 	let keys: Vec<_> = (1..=500u64).map(opkey).collect();
-	persistent.delete_keys(EntryKind::Operator(NODE), &keys).unwrap();
+	persistent.delete_keys(EntryKind::Source(STORAGE), &keys).unwrap();
 	persistent.freelist_page_count().unwrap()
 }
 

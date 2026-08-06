@@ -52,7 +52,6 @@ pub fn key_range_of(page: PageId, bucket_shift: u8) -> Option<EncodedKeyRange> {
 			.encode();
 			Some(EncodedKeyRange::new(Bound::Included(start), Bound::Included(end)))
 		}
-		EntryKind::Operator(_) => None,
 		EntryKind::PartitionedSource(_) => None,
 		EntryKind::Multi => None,
 	}

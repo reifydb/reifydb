@@ -50,8 +50,4 @@ impl NodeRetentionStore {
 	pub fn get(&self, operator: OperatorId) -> Option<NodeRetentionInfo> {
 		self.operators.read().get(&operator).cloned()
 	}
-
-	pub fn list(&self) -> Vec<NodeRetentionInfo> {
-		self.operators.read().values().cloned().collect()
-	}
 }

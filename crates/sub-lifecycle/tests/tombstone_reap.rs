@@ -61,10 +61,6 @@ impl FloorSource for ScriptedFlushWatermark {
 	fn flush_watermark(&self) -> CommitVersion {
 		CommitVersion(self.0.load(Ordering::SeqCst))
 	}
-
-	fn owning_flow_checkpoint(&self) -> CommitVersion {
-		CommitVersion(u64::MAX)
-	}
 }
 
 struct StubConfig {

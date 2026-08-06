@@ -74,20 +74,6 @@ fn lifecycle_current_populates_without_per_domain_opt_in() {
 }
 
 #[test]
-fn lifecycle_current_reports_liveness_so_a_lane_that_stopped_ticking_is_visible() {
-	// slices is the heartbeat, incrementing once per slice whether or not it found work; a class pinned at zero
-	// while the process is up has stopped being scheduled, which work_done alone cannot distinguish from idle.
-	let db = db_with_refresh();
-
-	let rows = db.await_row_count("from system::metrics::lifecycle::current filter { slices > 0 }", 1, TIMEOUT);
-
-	assert!(
-		rows > 0,
-		"no retention class ever reported a slice: either the lane is not running or liveness is not reaching the surface"
-	);
-}
-
-#[test]
 fn lifecycle_current_leaves_the_freelist_gauge_none_for_classes_that_never_observe_it() {
 	// freelist_pages and page_count belong to the persistent tier, so on a memory-only database they must read as
 	// none: zero is a legitimate freelist reading and would claim an observation that never happened.

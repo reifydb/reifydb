@@ -28,11 +28,6 @@ use reifydb_core::{
 		catalog::config::{ConfigKey, GetConfig},
 		store::Tier,
 	},
-	key::{
-		EncodableKey,
-		operator_group_state::{Keyspace, OperatorGroupStateKey},
-		operator_state::OperatorStateKey,
-	},
 	metrics::{
 		execution::StatementMetrics,
 		sample::{MetricKind, Reading},
@@ -181,11 +176,7 @@ impl MetricsFlushActor {
 	fn read_prior_sizes(&self, writes: &[MultiWrite], version: CommitVersion) -> HashMap<EncodedKey, u64> {
 		let mut pre_sizes: HashMap<EncodedKey, u64> = HashMap::new();
 		if version.0 > 0 {
-			let lookup_keys: Vec<EncodedKey> = writes
-				.iter()
-				.filter(|w| !is_write_once_row_number_mapping(&w.key))
-				.map(|w| w.key.clone())
-				.collect();
+			let lookup_keys: Vec<EncodedKey> = writes.iter().map(|w| w.key.clone()).collect();
 			if !lookup_keys.is_empty() {
 				match self.resolver.get_many(&lookup_keys, CommitVersion(version.0 - 1)) {
 					Ok(rows) => {
@@ -228,14 +219,6 @@ impl MetricsFlushActor {
 		}
 		advance_max_version(&mut state.max_version, version);
 	}
-}
-
-#[inline]
-fn is_write_once_row_number_mapping(key: &EncodedKey) -> bool {
-	OperatorStateKey::decode(key).is_some_and(|decoded| {
-		OperatorGroupStateKey::decode_inner(&decoded.key)
-			.is_some_and(|(_, keyspace, _)| keyspace == Keyspace::ROW_NUMBER_MAPPING)
-	})
 }
 
 fn record_each_write(state: &mut MetricsFlushActorState, writes: &[MultiWrite], pre_sizes: &HashMap<EncodedKey, u64>) {
@@ -608,53 +591,9 @@ mod tests {
 		actors::metrics::MetricsMessage,
 		event::metric::{Request, RequestExecutedEvent},
 		fingerprint::{RequestFingerprint, StatementFingerprint},
-		interface::catalog::flow::OperatorId,
-		key::{
-			EncodableKey,
-			operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
-			operator_state::OperatorStateKey,
-		},
 		metrics::execution::StatementMetrics,
 	};
 	use reifydb_value::value::{datetime::DateTime, duration::Duration};
-
-	use super::is_write_once_row_number_mapping;
-
-	#[test]
-	fn a_row_number_mapping_is_recognised_as_write_once() {
-		// Mappings never have a prior version, so this predicate spares the flush actor a point
-		// read per mapping per commit. It must answer over the structured key - a first-byte tag
-		// test stopped matching once mappings moved into the group keyspace, and a predicate that
-		// can never fire looks identical to one that is never needed.
-		let node = OperatorId(7);
-		let mapping = OperatorStateKey::new(
-			node,
-			OperatorGroupStateKey::inner_encoded(GroupId::FIRST, Keyspace::ROW_NUMBER_MAPPING, [1, 2, 3])
-				.as_slice()
-				.to_vec(),
-		);
-		assert!(
-			is_write_once_row_number_mapping(&mapping.encode()),
-			"a structured row-number mapping key must be recognised as write-once"
-		);
-	}
-
-	#[test]
-	fn other_operator_state_is_not_write_once() {
-		// Accumulators are rewritten on every batch, so skipping their prior-size lookup
-		// would undercount every window operator's state growth.
-		let node = OperatorId(7);
-		let accumulator = OperatorStateKey::new(
-			node,
-			OperatorGroupStateKey::inner_encoded(GroupId::FIRST, Keyspace::ACCUMULATOR, [1, 2, 3])
-				.as_slice()
-				.to_vec(),
-		);
-		assert!(
-			!is_write_once_row_number_mapping(&accumulator.encode()),
-			"an accumulator key must not be treated as write-once"
-		);
-	}
 
 	#[test]
 	fn test_metric_message_construction() {

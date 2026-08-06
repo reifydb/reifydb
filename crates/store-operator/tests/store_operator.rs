@@ -665,7 +665,7 @@ fn randomized_operations_match_a_naive_model() {
 
 	let keyspaces = [Keyspace::ACCUMULATOR, Keyspace::BUFFER, Keyspace::NODE_COUNTER, Keyspace::FIRST_CUSTOM];
 
-	let mut random_key = |rng: &mut Xorshift| -> EncodedKey {
+	let random_key = |rng: &mut Xorshift| -> EncodedKey {
 		match rng.next() % 10 {
 			0 => key(&[0xAB]),
 			1 => data_key(GroupId::NODE_SCOPE.0, Keyspace::ACCUMULATOR, &[(rng.next() % 8) as u8]),

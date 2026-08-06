@@ -295,7 +295,7 @@ impl AppendOperator {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		common::CommitVersion, key::operator_group_state::group_inner_range, state::horizon::Cutoff,
+		common::CommitVersion, key::operator_group_state::group_inner_range,
 		value::column::columns::Columns,
 	};
 	use reifydb_engine::test_harness::TestEngine;
@@ -307,8 +307,6 @@ mod tests {
 	};
 
 	use super::*;
-
-	const BUCKET_WIDTH: u64 = 3_750_000_000;
 
 	fn op(operator: u64) -> AppendOperator {
 		AppendOperator::new_for_state_tests(OperatorId(operator))
@@ -493,37 +491,6 @@ mod tests {
 
 		assert_eq!(group_of(&mut txn, &op, 0, 5), None, "the dictionary entry must go");
 		assert_eq!(group_rows(&mut txn, &op, group), 0, "and the group's range must be left empty");
-	}
-
-	#[test]
-	fn an_update_restamps_activity_so_a_live_row_is_not_retired() {
-		// Idleness is measured from the last stamped bucket, so without a restamp a row updated
-		// daily but never re-inserted comes due on the bucket of its first sighting and loses the
-		// mapping naming its sink row; the next update then resolves to nothing.
-		let engine = TestEngine::new();
-		let op = op(7);
-		let mut txn = txn_at(&engine, op.operator, 100);
-		op.translate_create_row_numbers(&mut txn, &AppendOperator::group_keys(0, &rows(&[3]))).unwrap();
-		engine.commit_pending(&mut txn);
-
-		let mut txn = txn_at(&engine, op.operator, 5 * BUCKET_WIDTH);
-		let group = group_of(&mut txn, &op, 0, 3).expect("precondition: the row survived the commit");
-		assert_eq!(
-			txn.due_groups(op.operator, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10).unwrap(),
-			vec![group],
-			"precondition: stamped in bucket 0, the group is due once the cutoff clears it"
-		);
-
-		op.translate_append_update(&mut txn, 0, rows(&[3]), rows(&[3]))
-			.unwrap()
-			.expect("a known row translates");
-
-		assert!(
-			txn.due_groups(op.operator, Cutoff(DateTime::from_nanos(2 * BUCKET_WIDTH)), 10)
-				.unwrap()
-				.is_empty(),
-			"the update must have moved the group to the bucket it was active in"
-		);
 	}
 
 	#[test]

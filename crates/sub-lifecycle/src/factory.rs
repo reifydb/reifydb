@@ -35,10 +35,7 @@ use crate::{
 	},
 	plane::{RetentionPlane, horizon::max_retention_horizon, measured::Measured},
 	retention::evictor::RetentionEvictTask,
-	store::{
-		compaction::CompactionReclaimTask, flush::PersistentFlushTask, tombstone::TombstoneReapTask,
-		vacuum::VacuumBudgetTask,
-	},
+	store::{flush::PersistentFlushTask, tombstone::TombstoneReapTask, vacuum::VacuumBudgetTask},
 	subsystem::LifecycleSubsystem,
 };
 
@@ -130,13 +127,6 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 		} else {
 			coverage.absent(RetentionClass::PersistentFlush, NO_FLUSH_ENGINE);
 		}
-
-		let compaction_engine = store.compaction_engine();
-		let interval = compaction_engine.flush_interval();
-		registry.register(Box::new(Measured::new(
-			CompactionReclaimTask::new(compaction_engine, interval),
-			plane.clone(),
-		)));
 
 		if store.persistent().is_some() {
 			registry.register(Box::new(Measured::new(

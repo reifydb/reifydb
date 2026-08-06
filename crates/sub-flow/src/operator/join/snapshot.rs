@@ -131,14 +131,8 @@ impl SnapshotLedger {
 			}
 			self.unpin(txn, group, right, previous)?;
 		}
-		self.touch(txn, group)?;
 		state_set(self.operator_id, txn, &key, encode_version(txn, version))?;
 		self.pin(txn, group, right, version)
-	}
-
-	pub(crate) fn touch(&self, txn: &mut FlowTransaction, group: GroupId) -> Result<()> {
-		txn.stamp_side(self.operator_id, group, Keyspace::JOIN_PUBLISHED)?;
-		txn.stamp_side(self.operator_id, group, Keyspace::JOIN_PIN)
 	}
 
 	pub(crate) fn published(
@@ -168,7 +162,6 @@ impl SnapshotLedger {
 		if state_get(self.operator_id, txn, &key)?.is_some() {
 			return Ok(());
 		}
-		self.touch(txn, group)?;
 		state_set(self.operator_id, txn, &key, encode_version(txn, ContentVersion(0)))
 	}
 
@@ -720,7 +713,6 @@ pub(crate) fn retain_published_slot(
 	if !records.is_empty() || right != PublishedRight::Row(SLOT) || recorded != ContentVersion::of(&content) {
 		return Ok(None);
 	}
-	ctx.ledger.touch(txn, group)?;
 	Ok(Some(slot))
 }
 

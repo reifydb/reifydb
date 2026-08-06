@@ -83,19 +83,11 @@ impl Keyspace {
 
 	pub const GROUP_RECORD: Self = Self(0xFB);
 
-	pub const ACTIVITY_INDEX: Self = Self(0xFA);
-
-	pub const IDENTITY_INDEX: Self = Self(0xF9);
-
 	pub const NODE_WATERMARK: Self = Self(0xF8);
 
 	pub const SOURCE_WATERMARK: Self = Self(0xF7);
 
 	pub const TIMER_WHEEL: Self = Self(0xF6);
-
-	pub const SIDE_ACTIVITY_INDEX: Self = Self(0xF5);
-
-	pub const SIDE_ACTIVITY_RECORD: Self = Self(0xF4);
 
 	pub const TIMER_INDEX: Self = Self(0xF3);
 
@@ -157,14 +149,10 @@ impl Keyspace {
 			Self::GROUP_DICTIONARY => "GROUP_DICTIONARY",
 			Self::NODE_COUNTER => "NODE_COUNTER",
 			Self::GROUP_RECORD => "GROUP_RECORD",
-			Self::ACTIVITY_INDEX => "ACTIVITY_INDEX",
-			Self::IDENTITY_INDEX => "IDENTITY_INDEX",
 			Self::NODE_WATERMARK => "NODE_WATERMARK",
 			Self::SOURCE_WATERMARK => "SOURCE_WATERMARK",
 			Self::TIMER_WHEEL => "TIMER_WHEEL",
 			Self::TIMER_INDEX => "TIMER_INDEX",
-			Self::SIDE_ACTIVITY_INDEX => "SIDE_ACTIVITY_INDEX",
-			Self::SIDE_ACTIVITY_RECORD => "SIDE_ACTIVITY_RECORD",
 			Self::ACCUMULATOR => "ACCUMULATOR",
 			Self::BUFFER => "BUFFER",
 			Self::RUNNING => "RUNNING",
@@ -213,11 +201,9 @@ impl Keyspace {
 				*self,
 				Self::ROW_NUMBER_MAPPING
 					| Self::GROUP_DICTIONARY | Self::NODE_COUNTER
-					| Self::GROUP_RECORD | Self::ACTIVITY_INDEX
-					| Self::IDENTITY_INDEX | Self::NODE_WATERMARK
+					| Self::GROUP_RECORD | Self::NODE_WATERMARK
 					| Self::SOURCE_WATERMARK | Self::TIMER_WHEEL
-					| Self::TIMER_INDEX | Self::SIDE_ACTIVITY_INDEX
-					| Self::SIDE_ACTIVITY_RECORD
+					| Self::TIMER_INDEX
 			)
 	}
 }
@@ -468,10 +454,7 @@ mod tests {
 		keyspace_range, node_range,
 	};
 	use crate::{
-		interface::{
-			catalog::flow::OperatorId,
-			store::{EntryKind, classify_key},
-		},
+		interface::catalog::flow::OperatorId,
 		key::{EncodableKey, operator_state::OperatorStateKey},
 	};
 
@@ -489,19 +472,15 @@ mod tests {
 
 	/// Every keyspace the substrate declares, with the phase allowed to erase it. The phase is written
 	/// down rather than read back from `is_data`, or a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, Keyspace, Phase); 38] = [
+	const CENSUS: [(&str, Keyspace, Phase); 34] = [
 		("ROW_NUMBER_MAPPING", Keyspace::ROW_NUMBER_MAPPING, Phase::Identity),
 		("GROUP_DICTIONARY", Keyspace::GROUP_DICTIONARY, Phase::Identity),
 		("NODE_COUNTER", Keyspace::NODE_COUNTER, Phase::Identity),
 		("GROUP_RECORD", Keyspace::GROUP_RECORD, Phase::Identity),
-		("ACTIVITY_INDEX", Keyspace::ACTIVITY_INDEX, Phase::Identity),
-		("IDENTITY_INDEX", Keyspace::IDENTITY_INDEX, Phase::Identity),
 		("NODE_WATERMARK", Keyspace::NODE_WATERMARK, Phase::Identity),
 		("SOURCE_WATERMARK", Keyspace::SOURCE_WATERMARK, Phase::Identity),
 		("TIMER_WHEEL", Keyspace::TIMER_WHEEL, Phase::Identity),
 		("TIMER_INDEX", Keyspace::TIMER_INDEX, Phase::Identity),
-		("SIDE_ACTIVITY_INDEX", Keyspace::SIDE_ACTIVITY_INDEX, Phase::Identity),
-		("SIDE_ACTIVITY_RECORD", Keyspace::SIDE_ACTIVITY_RECORD, Phase::Identity),
 		("ACCUMULATOR", Keyspace::ACCUMULATOR, Phase::Data),
 		("BUFFER", Keyspace::BUFFER, Phase::Data),
 		("RUNNING", Keyspace::RUNNING, Phase::Data),
@@ -894,17 +873,16 @@ mod tests {
 	}
 
 	#[test]
-	fn keys_still_classify_as_operator_state_of_their_node() {
-		// Tier classification and the CDC exclusion both key off KeyKind::OperatorState. A key that
-		// stopped classifying as Operator would be routed to the wrong tier and appear in the CDC
-		// log, which operator state must never do.
+	fn keys_still_decode_as_operator_state_of_their_node() {
+		// The committer splits operator state off the commit path by decoding this key kind and
+		// reading the operator out of it. A key that stopped decoding, or decoded to another
+		// operator, would be routed as ordinary multi-version data and land in the CDC log, which
+		// operator state must never do.
 		let key =
 			OperatorGroupStateKey::new(OperatorId(9), GroupId(4), Keyspace::ACCUMULATOR, vec![1]).encode();
 
-		assert_eq!(classify_key(&key), EntryKind::Operator(OperatorId(9)));
-
-		let legacy = OperatorStateKey::decode(&key).expect("must remain decodable as its key kind");
-		assert_eq!(legacy.operator, OperatorId(9));
+		let decoded = OperatorStateKey::decode(&key).expect("must remain decodable as its key kind");
+		assert_eq!(decoded.operator, OperatorId(9));
 	}
 
 	#[test]

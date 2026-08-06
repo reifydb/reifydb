@@ -298,11 +298,6 @@ impl TestRunner for Runner {
 					cow_vec![Delta::remove_silent(key)],
 					version,
 				)?;
-
-				// The commit enqueues a compaction request that no task drains in this harness,
-				// so drain it here or the removal's MultiCommittedEvent never fires and the next
-				// stats command waits on a version the flush actor has not reached.
-				self.multi_store.drain_compaction();
 			}
 
 			"stats" => {

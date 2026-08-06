@@ -10,11 +10,8 @@ use reifydb_value::{Result, util::cowvec::CowVec};
 use crate::{
 	common::CommitVersion,
 	delta::Delta,
-	interface::catalog::{flow::OperatorId, object::ObjectId, storage::StorageId},
-	key::{
-		EncodableKeyRange, Key, kind::KeyKind, operator_state::OperatorStateKeyRange,
-		partitioned_row::PartitionedRowKeyRange, row::RowKeyRange,
-	},
+	interface::catalog::{object::ObjectId, storage::StorageId},
+	key::{EncodableKeyRange, Key, partitioned_row::PartitionedRowKeyRange, row::RowKeyRange},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -30,21 +27,14 @@ pub enum EntryKind {
 	Source(StorageId),
 
 	PartitionedSource(ObjectId),
-
-	Operator(OperatorId),
 }
 
 pub fn classify_key(key: &EncodedKey) -> EntryKind {
 	match Key::decode(key) {
 		Some(Key::Row(row_key)) => EntryKind::Source(row_key.storage),
 		Some(Key::PartitionedRow(partitioned_key)) => EntryKind::PartitionedSource(partitioned_key.object),
-		Some(Key::OperatorState(state_key)) => EntryKind::Operator(state_key.operator),
 		_ => EntryKind::Multi,
 	}
-}
-
-pub fn is_single_version_semantics_key(key: &EncodedKey) -> bool {
-	Key::kind(key).is_some_and(|kind| matches!(kind, KeyKind::OperatorState))
 }
 
 pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
@@ -54,10 +44,6 @@ pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
 
 	if let (Some(start), Some(_end)) = PartitionedRowKeyRange::decode(range) {
 		return Some(EntryKind::PartitionedSource(start.object));
-	}
-
-	if let (Some(start), Some(_end)) = OperatorStateKeyRange::decode(range) {
-		return Some(EntryKind::Operator(start.operator));
 	}
 
 	None

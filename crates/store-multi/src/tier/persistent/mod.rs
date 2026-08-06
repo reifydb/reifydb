@@ -10,12 +10,12 @@ use std::{collections::HashMap, ops::Bound};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{catalog::flow::OperatorId, store::EntryKind},
+	interface::store::EntryKind,
 };
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
-use reifydb_value::{Result, byte_size::ByteSize, util::cowvec::CowVec};
+use reifydb_value::{Result, util::cowvec::CowVec};
 
 use crate::{
 	MultiVersionScope,
@@ -145,19 +145,10 @@ impl MultiPersistentTier {
 		}
 	}
 
-	pub fn operator_disk_payload_bytes(&self) -> Result<Vec<(OperatorId, ByteSize)>> {
-		match self {
-			Self::Sqlite(s) => s.operator_disk_payload_bytes(),
-		}
-	}
 }
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 impl MultiPersistentTier {
-	pub fn operator_disk_payload_bytes(&self) -> Result<Vec<(OperatorId, ByteSize)>> {
-		match *self {}
-	}
-
 	pub fn set_checkpoint_threshold(&self, _frames: u32) {
 		match *self {}
 	}

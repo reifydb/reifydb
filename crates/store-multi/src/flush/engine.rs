@@ -15,13 +15,12 @@ use reifydb_core::interface::catalog::storage::StorageId;
 use reifydb_core::lifecycle::progress::Progress;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::{common::CommitVersion, interface::store::EntryKind};
-use reifydb_core::{event::EventBus, interface::catalog::flow::OperatorId, lifecycle::watermark::EvictionWatermark};
+use reifydb_core::{event::EventBus, lifecycle::watermark::EvictionWatermark};
 use reifydb_runtime::{
 	context::clock::Clock,
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 #[cfg(not(target_arch = "wasm32"))]
-use reifydb_value::value::datetime::DateTime;
 use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
@@ -29,7 +28,6 @@ use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
 use tracing::{debug, error, warn};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::store::multi::read_cacheable;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use crate::tier::commit::memory::storage::EvictedVersion;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -40,16 +38,10 @@ use crate::{
 };
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-const OPERATOR_DISK_MEASURE_INTERVAL: Duration = Duration::from_seconds_const(60);
-
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub const FLUSH_KEY_BUDGET: usize = 2048;
 
 #[derive(Default)]
-pub struct FlushEngineState {
-	#[cfg(not(target_arch = "wasm32"))]
-	last_operator_disk_measure: Option<DateTime>,
-}
+pub struct FlushEngineState {}
 
 #[allow(dead_code)]
 pub struct FlushEngine {
@@ -59,7 +51,6 @@ pub struct FlushEngine {
 	persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 	eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 	read: Option<MultiReadBufferTier>,
-	operator_disk_payload: Arc<RwLock<Vec<(OperatorId, ByteSize)>>>,
 	clock: Clock,
 	event_bus: EventBus,
 	sweep_lock: Mutex<FlushEngineState>,
@@ -89,7 +80,6 @@ impl FlushEngine {
 		persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 		eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 		read: Option<MultiReadBufferTier>,
-		operator_disk_payload: Arc<RwLock<Vec<(OperatorId, ByteSize)>>>,
 		clock: Clock,
 		event_bus: EventBus,
 	) -> Self {
@@ -100,7 +90,6 @@ impl FlushEngine {
 			persistence,
 			eviction_watermark,
 			read,
-			operator_disk_payload,
 			clock,
 			event_bus,
 			sweep_lock: Mutex::new(FlushEngineState::default()),
@@ -108,12 +97,11 @@ impl FlushEngine {
 	}
 
 	pub fn sweep_slice(&self, budget: usize) -> SweepOutcome {
-		let mut state = self.sweep_lock.lock();
+		let _state = self.sweep_lock.lock();
 		let (progress, reclaimed) = match self.eviction_cutoff() {
 			Some(cutoff) => self.sweep_once(cutoff, budget),
 			None => (Progress::Exhausted, 0),
 		};
-		self.maybe_measure_operator_disk(&mut state, self.clock.now());
 		SweepOutcome {
 			progress,
 			reclaimed,
@@ -176,7 +164,7 @@ impl FlushEngine {
 
 		let mut remaining = budget;
 		let mut more = false;
-		let mut plan: Vec<(EntryKind, bool, bool, EvictablePartition)> = Vec::new();
+		let mut plan: Vec<(EntryKind, bool, EvictablePartition)> = Vec::new();
 		let mut batches: HashMap<CommitVersion, TierBatch> = HashMap::new();
 		for kind in entry_kinds {
 			if remaining == 0 {
@@ -199,7 +187,7 @@ impl FlushEngine {
 						.push((key.clone(), value.clone()));
 				}
 			}
-			plan.push((kind, persistent_object, read_cacheable(kind), (to_persist, to_drop)));
+			plan.push((kind, persistent_object, (to_persist, to_drop)));
 		}
 		if plan.is_empty() {
 			return (Progress::Exhausted, 0);
@@ -223,8 +211,8 @@ impl FlushEngine {
 		let mut persists: Vec<MultiPersist> = Vec::new();
 
 		let mut dropped = 0usize;
-		for (kind, persistent_object, cacheable, (to_persist, to_drop)) in plan {
-			self.refresh_read_tier(persistent_object, cacheable, &to_persist, &to_drop, &accepted);
+		for (kind, persistent_object, (to_persist, to_drop)) in plan {
+			self.refresh_read_tier(persistent_object, &to_persist, &to_drop, &accepted);
 			if persistent_object {
 				for (key, _, value) in &to_persist {
 					if accepted_keys.contains(key.as_slice()) {
@@ -292,7 +280,6 @@ impl FlushEngine {
 	fn refresh_read_tier(
 		&self,
 		persistent_object: bool,
-		cacheable: bool,
 		to_persist: &[(EncodedKey, CommitVersion, Option<CowVec<u8>>)],
 		to_drop: &[EvictedVersion],
 		accepted: &[EncodedKey],
@@ -300,7 +287,7 @@ impl FlushEngine {
 		let Some(read) = &self.read else {
 			return;
 		};
-		if persistent_object && cacheable {
+		if persistent_object {
 			let accepted: HashSet<&[u8]> = accepted.iter().map(|k| k.as_slice()).collect();
 			for (key, version, value) in to_persist {
 				if accepted.contains(key.as_slice()) {
@@ -319,30 +306,6 @@ impl FlushEngine {
 		} else {
 			for evicted in to_drop {
 				read.invalidate(&evicted.key);
-			}
-		}
-	}
-
-	fn maybe_measure_operator_disk(&self, state: &mut FlushEngineState, now: DateTime) {
-		let due = match state.last_operator_disk_measure {
-			None => true,
-			Some(last) => {
-				now.to_nanos().saturating_sub(last.to_nanos())
-					>= OPERATOR_DISK_MEASURE_INTERVAL.to_std().as_nanos() as u64
-			}
-		};
-		if !due {
-			return;
-		}
-		state.last_operator_disk_measure = Some(now);
-		self.measure_operator_disk();
-	}
-
-	fn measure_operator_disk(&self) {
-		match self.persistent.operator_disk_payload_bytes() {
-			Ok(sizes) => *self.operator_disk_payload.write() = sizes,
-			Err(e) => {
-				warn!(error = %e, "operator disk measurement failed; keeping previous measurement")
 			}
 		}
 	}
@@ -438,7 +401,6 @@ mod tests {
 				persistence_lock,
 				watermark_lock,
 				None,
-				Arc::new(RwLock::new(Vec::new())),
 				Clock::Real,
 				testing_event_bus(),
 			),
@@ -484,7 +446,6 @@ mod tests {
 				persistence_lock,
 				watermark_lock,
 				None,
-				Arc::new(RwLock::new(Vec::new())),
 				Clock::Real,
 				event_bus,
 			),
@@ -566,7 +527,6 @@ mod tests {
 				persistence_lock,
 				watermark_lock,
 				Some(read),
-				Arc::new(RwLock::new(Vec::new())),
 				Clock::Real,
 				testing_event_bus(),
 			),
@@ -1077,54 +1037,6 @@ mod tests {
 				VersionedGetResult::Tombstone
 			),
 			"a delete committed above the watermark must persist as a tombstone, not resurrect"
-		);
-	}
-
-	#[test]
-	fn measure_operator_disk_publishes_sizes_into_the_shared_cache() {
-		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
-		write(&actor.commit, EntryKind::Operator(OperatorId(7)), &ek("s"), 1, "state");
-
-		actor.sweep(CommitVersion(2));
-		assert!(
-			actor.operator_disk_payload.read().is_empty(),
-			"a sweep by itself must not refresh the disk cache"
-		);
-
-		actor.measure_operator_disk();
-		let cache = actor.operator_disk_payload.read().clone();
-		assert_eq!(cache.len(), 1, "exactly the one flushed operator must be measured");
-		assert_eq!(cache[0].0, OperatorId(7));
-		assert!(cache[0].1.as_bytes() > 0, "the flushed state row must have a non-zero disk footprint");
-	}
-
-	#[test]
-	fn operator_disk_measurement_is_gated_to_its_interval() {
-		let (actor, _guard) = build_engine(Arc::new(AllPersistent), Some(CommitVersion(2)));
-		let mut state = FlushEngineState::default();
-
-		write(&actor.commit, EntryKind::Operator(OperatorId(7)), &ek("s"), 1, "state");
-		actor.sweep(CommitVersion(2));
-
-		actor.maybe_measure_operator_disk(&mut state, DateTime::from_nanos(0));
-		assert_eq!(actor.operator_disk_payload.read().len(), 1, "the very first tick must measure immediately");
-
-		write(&actor.commit, EntryKind::Operator(OperatorId(9)), &ek("t"), 2, "state");
-		actor.sweep(CommitVersion(2));
-
-		actor.maybe_measure_operator_disk(&mut state, DateTime::from_nanos(1_000_000_000));
-		assert_eq!(
-			actor.operator_disk_payload.read().len(),
-			1,
-			"a tick 1s after the last measurement must NOT re-measure; per-table scans on every \
-			 5s flush tick would be a hot-path regression"
-		);
-
-		actor.maybe_measure_operator_disk(&mut state, DateTime::from_nanos(60_000_000_000));
-		assert_eq!(
-			actor.operator_disk_payload.read().len(),
-			2,
-			"a tick at the 60s measure interval must re-measure and pick up the new operator"
 		);
 	}
 

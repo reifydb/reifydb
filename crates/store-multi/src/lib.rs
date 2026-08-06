@@ -30,7 +30,6 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	interface::{
-		catalog::flow::OperatorId,
 		store::{
 			MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious,
 			MultiVersionRow, MultiVersionStore,
@@ -41,7 +40,7 @@ use reifydb_core::{
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
-use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
+use reifydb_value::util::cowvec::CowVec;
 use store::StandardMultiStore;
 use tier::read::ReadBufferShardMetrics;
 
@@ -109,12 +108,6 @@ impl MultiStore {
 		}
 	}
 
-	pub fn drain_compaction(&self) {
-		match self {
-			MultiStore::Standard(store) => store.drain_compaction(),
-		}
-	}
-
 	pub fn commit(&self) -> &tier::commit::buffer::MultiCommitBufferTier {
 		match self {
 			MultiStore::Standard(store) => store.commit(),
@@ -130,12 +123,6 @@ impl MultiStore {
 	pub fn read_buffer_shard_metrics(&self) -> Vec<ReadBufferShardMetrics> {
 		match self {
 			MultiStore::Standard(store) => store.read_buffer_shard_metrics(),
-		}
-	}
-
-	pub fn operator_disk_payload_bytes(&self) -> Vec<(OperatorId, ByteSize)> {
-		match self {
-			MultiStore::Standard(store) => store.operator_disk_payload_bytes(),
 		}
 	}
 

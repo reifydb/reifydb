@@ -146,7 +146,7 @@ pub(crate) fn add_to_state_entry_batch(
 	}
 	let shape = build_shape(columns);
 	store.set_row_shape(txn, &shape)?;
-	let group = store.intern_and_stamp(txn, key_hash)?;
+	let group = store.group_for(txn, key_hash)?;
 	for &idx in indices {
 		let encoded = encode_row(&shape, columns, idx);
 		store.write_row(txn, group, columns.row_numbers()[idx], &encoded)?;
@@ -219,18 +219,6 @@ pub(crate) fn update_single_row_in_entry(
 		store.put_row(txn, key_hash, post_row_number, &encoded)?;
 		Ok(true)
 	}
-}
-
-pub(crate) fn finish_entry_update(
-	txn: &mut FlowTransaction,
-	store: &Store,
-	prepared: &EntryUpdate,
-	stored: bool,
-) -> Result<()> {
-	if stored {
-		store.stamp(txn, prepared.group)?;
-	}
-	Ok(())
 }
 
 pub(crate) fn is_first_right_row(txn: &mut FlowTransaction, right_store: &Store, key_hash: &Hash128) -> Result<bool> {

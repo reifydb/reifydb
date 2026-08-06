@@ -15,7 +15,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	error::diagnostic::internal::internal,
-	interface::{catalog::flow::OperatorId, store::EntryKind},
+	interface::store::EntryKind,
 };
 use reifydb_runtime::{
 	shutdown::Shutdown,
@@ -47,7 +47,7 @@ use crate::{
 		TierStorage, VersionedGetResult,
 		commit::memory::storage::EvictedVersion,
 		persistent::sqlite::{
-			entry::{current_table_name, operator_node_of_table_name},
+			entry::current_table_name,
 			query::{
 				build_create_current_sql, build_delete_below_version_sql, build_delete_keys_sql,
 				build_get_current_sql, build_get_many_current_sql, build_range_consistent_sql,
@@ -249,53 +249,6 @@ impl SqlitePersistentStorage {
 			Err(e) if e.to_string().contains("no such table") => Ok(0),
 			Err(e) => Err(error!(internal(format!("Failed to count persistent current: {}", e)))),
 		}
-	}
-
-	pub fn operator_disk_payload_bytes(&self) -> Result<Vec<(OperatorId, ByteSize)>> {
-		let guard = self.inner.readers.acquire();
-		let Some(conn) = guard.as_ref() else {
-			return Ok(Vec::new());
-		};
-		let names: Vec<String> = {
-			let mut stmt = conn
-				.prepare_cached(
-					"SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'operator%'",
-				)
-				.map_err(|e| {
-					error!(internal(format!("Failed to prepare operator table listing: {}", e)))
-				})?;
-			stmt.query_map([], |row| row.get::<_, String>(0))
-				.map_err(|e| error!(internal(format!("Failed to list operator tables: {}", e))))?
-				.collect::<SqliteResult<Vec<_>>>()
-				.map_err(|e| error!(internal(format!("Failed to read operator table name: {}", e))))?
-		};
-
-		let mut bytes_by_node: HashMap<OperatorId, u64> = HashMap::new();
-		for name in names {
-			let Some(node) = operator_node_of_table_name(&name) else {
-				continue;
-			};
-			let sql = format!(
-				"SELECT COALESCE(SUM(LENGTH(key) + LENGTH(version) + COALESCE(LENGTH(value), 0)), 0) \
-				 FROM \"{}\"",
-				name
-			);
-			let bytes = match conn.query_row(&sql, [], |row| row.get::<_, i64>(0)) {
-				Ok(bytes) => bytes,
-				Err(e) if e.to_string().contains("no such table") => continue,
-				Err(e) => {
-					return Err(error!(internal(format!(
-						"Failed to measure operator table {}: {}",
-						name, e
-					))));
-				}
-			};
-			*bytes_by_node.entry(node).or_insert(0) += bytes as u64;
-		}
-		let mut out: Vec<(OperatorId, ByteSize)> =
-			bytes_by_node.into_iter().map(|(node, bytes)| (node, ByteSize::from_bytes(bytes))).collect();
-		out.sort_by_key(|(node, _)| *node);
-		Ok(out)
 	}
 
 	pub fn delete_below_version(
@@ -811,11 +764,6 @@ struct RangeChunkRequest<'a> {
 }
 
 impl SqlitePersistentStorage {
-	#[instrument(name = "store::multi::persistent::sqlite::get::operator", level = "trace", skip(self), fields(key_len = key.len(), version = version.0))]
-	fn get_operator(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
-		self.get_impl(table, key, version)
-	}
-
 	#[instrument(name = "store::multi::persistent::sqlite::get::source", level = "trace", skip(self), fields(key_len = key.len(), version = version.0))]
 	fn get_source(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
 		self.get_impl(table, key, version)
@@ -856,16 +804,6 @@ impl SqlitePersistentStorage {
 			Err(e) if e.to_string().contains("no such table") => Ok(VersionedGetResult::NotFound),
 			Err(e) => Err(error!(internal(format!("Failed to read persistent: {}", e)))),
 		}
-	}
-
-	#[instrument(name = "store::multi::persistent::sqlite::get_many::operator", level = "trace", skip(self, keys), fields(key_count = keys.len(), version = version.0))]
-	fn get_many_operator(
-		&self,
-		table: EntryKind,
-		keys: &[&[u8]],
-		version: CommitVersion,
-	) -> Result<Vec<VersionedGetResult>> {
-		self.get_many_impl(table, keys, version)
 	}
 
 	#[instrument(name = "store::multi::persistent::sqlite::get_many::source", level = "trace", skip(self, keys), fields(key_count = keys.len(), version = version.0))]
@@ -968,7 +906,6 @@ impl SqlitePersistentStorage {
 impl TierStorage for SqlitePersistentStorage {
 	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
 		match table {
-			EntryKind::Operator(_) => self.get_operator(table, key, version),
 			EntryKind::Source(_) => self.get_source(table, key, version),
 			_ => self.get_multi(table, key, version),
 		}
@@ -981,7 +918,6 @@ impl TierStorage for SqlitePersistentStorage {
 		version: CommitVersion,
 	) -> Result<Vec<VersionedGetResult>> {
 		match table {
-			EntryKind::Operator(_) => self.get_many_operator(table, keys, version),
 			EntryKind::Source(_) => self.get_many_source(table, keys, version),
 			_ => self.get_many_multi(table, keys, version),
 		}
@@ -1359,52 +1295,6 @@ mod tests {
 			"a row whose version equals the cutoff is evicted (the bound is inclusive)"
 		);
 		assert!(!visible(&s, &key(1)));
-	}
-
-	#[test]
-	fn operator_disk_payload_bytes_sums_key_version_value_lengths_per_node() {
-		// This sum is the source of the per-operator disk_payload_bytes metric, so a miscount here is
-		// reported straight to operators.
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		s.set(
-			CommitVersion(1),
-			HashMap::from([
-				(
-					EntryKind::Operator(OperatorId(7)),
-					vec![(key(1), Some(row(b"aaaa"))), (key(2), None), (key(3), Some(row(b"ii")))],
-				),
-				(EntryKind::Operator(OperatorId(9)), vec![(key(4), Some(row(b"c")))]),
-				(table(), vec![(key(5), Some(row(b"source-row")))]),
-			]),
-		)
-		.unwrap();
-
-		let got: Vec<(u64, u64)> = s
-			.operator_disk_payload_bytes()
-			.unwrap()
-			.iter()
-			.map(|(node, bytes)| (node.0, bytes.as_bytes()))
-			.collect();
-
-		// key() encodes to 8 bytes and the version blob is always 8 bytes.
-		let node7 = (8 + 8 + 4) + (8 + 8) + (8 + 8 + 2);
-		let node9 = 8 + 8 + 1;
-		assert_eq!(
-			got,
-			vec![(7, node7), (9, node9)],
-			"per-node disk bytes must sum key+version+value over state AND internal-state tables, \
-			 count tombstone rows, exclude source tables, and sort by node id"
-		);
-	}
-
-	#[test]
-	fn operator_disk_payload_bytes_is_empty_without_operator_tables() {
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		s.set(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"a")))])])).unwrap();
-		assert!(
-			s.operator_disk_payload_bytes().unwrap().is_empty(),
-			"a store holding only source tables must report no operator disk usage"
-		);
 	}
 
 	#[test]

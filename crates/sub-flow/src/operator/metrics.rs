@@ -9,7 +9,7 @@ use reifydb_core::{
 		collect::MetricsCollector,
 		heap::OperatorSample,
 		operator::{
-			GROUP_CACHE_BYTES, GROUP_DUE_BYTES, GROUP_MEMBERSHIP_BYTES, ROW_NUMBER_CACHE_BYTES,
+			GROUP_CACHE_BYTES, GROUP_MEMBERSHIP_BYTES, ROW_NUMBER_CACHE_BYTES,
 			ROW_NUMBER_MEMBERSHIP_BYTES, STATE_DIRTY_BYTES, STATE_MEMBERSHIP_BYTES, STATE_POOL_BUDGET,
 			STATE_RESIDENT_BYTES,
 		},
@@ -226,7 +226,6 @@ mod tests {
 		let sample = GroupInternerSample {
 			cache: StateMemory::new(Count::new(12), ByteSize::from_bytes(640)),
 			membership: StateMemory::new(Count::new(12), ByteSize::from_bytes(64)),
-			due: StateMemory::ZERO,
 			completeness: healthy(),
 		};
 
@@ -251,42 +250,12 @@ mod tests {
 	}
 
 	#[test]
-	fn a_populated_due_prefix_reports_as_heap_beside_the_dictionary() {
-		// The due prefix is the one structure that trades disk scanning for resident memory, so if
-		// it does not reach MEMORY_BYTES the operator reads as holding less than it does, and the
-		// bound the design relies on becomes unobservable.
-		let sample = GroupInternerSample {
-			cache: StateMemory::ZERO,
-			membership: StateMemory::ZERO,
-			due: StateMemory::new(Count::new(9), ByteSize::from_bytes(512)),
-			completeness: healthy(),
-		};
-
-		let mut out = Vec::new();
-		push_group_samples(&mut out, OperatorId(4), &sample);
-
-		let metrics: Vec<(&str, f64, Option<u64>)> =
-			out.iter().map(|s| (s.metric, s.reading.as_f64(), s.reading.heap_bytes())).collect();
-		assert_eq!(
-			metrics,
-			vec![
-				("group_due_entries", 9.0, None),
-				("group_due_bytes", 512.0, Some(512)),
-				("group_values_complete", 1.0, None),
-				("group_membership_complete", 1.0, None),
-			],
-			"the prefix emits an entry count and a heap reading, and the heap reading carries bytes"
-		);
-	}
-
-	#[test]
 	fn a_node_that_has_interned_nothing_still_reports_its_health() {
 		// An empty dictionary must not emit phantom zero population rows, but a operator whose
 		// absence proofs were revoked while holding no groups still has to stay visible.
 		let sample = GroupInternerSample {
 			cache: StateMemory::ZERO,
 			membership: StateMemory::ZERO,
-			due: StateMemory::ZERO,
 			completeness: healthy(),
 		};
 
@@ -305,7 +274,6 @@ mod tests {
 		let sample = GroupInternerSample {
 			cache: StateMemory::new(Count::new(1), ByteSize::from_bytes(48)),
 			membership: StateMemory::ZERO,
-			due: StateMemory::ZERO,
 			completeness: StateCompleteness {
 				values_complete: false,
 				membership_complete: true,
@@ -648,10 +616,6 @@ pub(crate) fn push_group_samples(out: &mut Vec<MetricsSample>, operator: Operato
 			sample.membership.entries.as_u64(),
 		));
 		out.push(MetricsSample::heap(scope.clone(), GROUP_MEMBERSHIP_BYTES, sample.membership.bytes));
-	}
-	if sample.due.entries.as_u64() > 0 || sample.due.bytes.as_bytes() > 0 {
-		out.push(MetricsSample::count(scope.clone(), "group_due_entries", sample.due.entries.as_u64()));
-		out.push(MetricsSample::heap(scope.clone(), GROUP_DUE_BYTES, sample.due.bytes));
 	}
 	out.push(MetricsSample::count(
 		scope.clone(),

@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 //! A committed silent removal must be invisible to a later range scan, exactly as it is to a get.
-//! Window engines range-scan their own bookkeeping on every apply, so a resurrected entry
-//! double-unmerges the running accumulators and empties the view.
+//! Range scans decide what a reader sees; an entry that survives its own removal in the range path
+//! but not the point path is a split-brain read the caller cannot detect.
 
 use std::sync::Arc;
 
@@ -13,12 +13,10 @@ use reifydb_core::{
 	event::EventBus,
 	interface::catalog::{
 		config::{ConfigKey, GetConfig},
-		flow::OperatorId,
+		id::TableId,
+		storage::StorageId,
 	},
-	key::{
-		operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
-		operator_state::OperatorStateKey,
-	},
+	key::row::RowKey,
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -38,7 +36,10 @@ use reifydb_transaction::{
 	},
 	single::SingleTransaction,
 };
-use reifydb_value::{util::cowvec::CowVec, value::Value};
+use reifydb_value::{
+	util::cowvec::CowVec,
+	value::{Value, row_number::RowNumber},
+};
 
 struct DefaultConfig;
 impl GetConfig for DefaultConfig {
@@ -70,31 +71,33 @@ fn test_engine() -> MultiTransaction {
 	.unwrap()
 }
 
-fn coord_key(node: u64, suffix: &[u8]) -> EncodedKey {
-	let inner = OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::BUFFER, suffix);
-	OperatorStateKey::encoded(OperatorId(node), inner.as_slice())
+fn coord_key(storage: u64, row: u64) -> EncodedKey {
+	RowKey::encoded(StorageId::Table(TableId(storage)), RowNumber(row))
 }
 
-fn range_keys(engine: &MultiTransaction, node: u64) -> Vec<EncodedKey> {
+fn range_keys(engine: &MultiTransaction, storage: u64) -> Vec<EncodedKey> {
 	let query = MultiReadTransaction::new(engine.clone(), None).unwrap();
-	query.range(OperatorStateKey::node_range(OperatorId(node)), RangeScope::All, 1024)
+	query.range(RowKey::full_scan(StorageId::Table(TableId(storage))), RangeScope::All, 1024)
 		.map(|r| r.unwrap().key)
 		.collect()
 }
 
 #[test]
 fn committed_drop_is_invisible_to_later_range_scan() {
+	// The removal contract is a property of the versioned range path, not of any one key kind, so
+	// this exercises it through ordinary row keys. Falsified by having the second scan return key_a.
 	let engine = test_engine();
 	let node = 7u64;
-	let key_a = coord_key(node, b"a");
-	let key_b = coord_key(node, b"b");
+	let key_a = coord_key(node, 1);
+	let key_b = coord_key(node, 2);
 
 	let mut tx = MultiWriteTransaction::new(engine.clone()).unwrap();
 	tx.set(&key_a, EncodedRow(CowVec::new(b"one".to_vec()))).unwrap();
 	tx.set(&key_b, EncodedRow(CowVec::new(b"two".to_vec()))).unwrap();
 	tx.commit(vec![]).unwrap();
 
-	assert_eq!(range_keys(&engine, node), vec![key_a.clone(), key_b.clone()], "both entries visible before drop");
+	// Row keys are keycode-encoded, so a scan returns them by descending row number.
+	assert_eq!(range_keys(&engine, node), vec![key_b.clone(), key_a.clone()], "both entries visible before drop");
 
 	let mut tx = MultiWriteTransaction::new(engine.clone()).unwrap();
 	tx.remove_silent(&key_a).unwrap();

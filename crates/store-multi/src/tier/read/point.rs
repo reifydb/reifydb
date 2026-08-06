@@ -20,7 +20,6 @@ use crate::tier::{
 impl MultiReadBufferTier {
 	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> VersionedGetResult {
 		match classify_key(key) {
-			EntryKind::Operator(_) => VersionedGetResult::NotFound,
 			EntryKind::Source(_) => self.get_source(key, version),
 			_ => self.get_multi(key, version),
 		}

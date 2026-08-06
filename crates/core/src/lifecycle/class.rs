@@ -53,8 +53,6 @@ impl fmt::Display for Floor {
 pub enum FloorTerm {
 	RowExpiry,
 
-	OperatorExpiry,
-
 	QueryDoneUntil,
 
 	LeaseMin,
@@ -65,8 +63,6 @@ pub enum FloorTerm {
 
 	FlushWatermark,
 
-	OwningFlowCheckpoint,
-
 	RetentionHorizon,
 }
 
@@ -74,26 +70,23 @@ impl FloorTerm {
 	pub fn protects(&self) -> &'static str {
 		match self {
 			Self::RowExpiry => "rows younger than their declared ttl",
-			Self::OperatorExpiry => "operator state younger than its declared ttl",
 			Self::QueryDoneUntil => "an in-flight query reading at its snapshot version",
 			Self::LeaseMin => "a held operator-state lease",
 			Self::ConsumerCheckpoint => "a CDC log consumer that has not yet consumed the version",
 			Self::ConsumerPosition => "a live flow that has not yet consumed the version",
 			Self::FlushWatermark => "a write that has not yet reached the persistent tier",
-			Self::OwningFlowCheckpoint => "the owning flow's own unprocessed input",
 			Self::RetentionHorizon => "epoch samples still needed to resolve the longest declared ttl",
 		}
 	}
 
 	pub fn is_clock_driven(&self) -> bool {
 		match self {
-			Self::RowExpiry | Self::OperatorExpiry => true,
+			Self::RowExpiry => true,
 			Self::QueryDoneUntil
 			| Self::LeaseMin
 			| Self::ConsumerCheckpoint
 			| Self::ConsumerPosition
 			| Self::FlushWatermark
-			| Self::OwningFlowCheckpoint
 			| Self::RetentionHorizon => false,
 		}
 	}
@@ -101,13 +94,11 @@ impl FloorTerm {
 	pub fn all() -> &'static [Self] {
 		&[
 			Self::RowExpiry,
-			Self::OperatorExpiry,
 			Self::QueryDoneUntil,
 			Self::LeaseMin,
 			Self::ConsumerCheckpoint,
 			Self::ConsumerPosition,
 			Self::FlushWatermark,
-			Self::OwningFlowCheckpoint,
 			Self::RetentionHorizon,
 		]
 	}
@@ -125,13 +116,11 @@ impl fmt::Display for FloorTerm {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			Self::RowExpiry => write!(f, "row-expiry"),
-			Self::OperatorExpiry => write!(f, "operator-expiry"),
 			Self::QueryDoneUntil => write!(f, "query-done-until"),
 			Self::LeaseMin => write!(f, "lease-min"),
 			Self::ConsumerCheckpoint => write!(f, "consumer-checkpoint"),
 			Self::ConsumerPosition => write!(f, "consumer-position"),
 			Self::FlushWatermark => write!(f, "flush-watermark"),
-			Self::OwningFlowCheckpoint => write!(f, "owning-flow-checkpoint"),
 			Self::RetentionHorizon => write!(f, "retention-horizon"),
 		}
 	}
@@ -146,8 +135,6 @@ pub enum RetentionClass {
 	BufferHistoricalGc,
 
 	PersistentFlush,
-
-	CompactionReclaim,
 
 	TombstoneReap,
 
@@ -165,7 +152,6 @@ impl RetentionClass {
 			Self::RowTtlAnnounced,
 			Self::BufferHistoricalGc,
 			Self::PersistentFlush,
-			Self::CompactionReclaim,
 			Self::TombstoneReap,
 			Self::VacuumBudget,
 			Self::CdcTruncate,
@@ -179,7 +165,6 @@ impl RetentionClass {
 			Self::RowTtlAnnounced => "row-ttl-announced",
 			Self::BufferHistoricalGc => "buffer-historical-gc",
 			Self::PersistentFlush => "persistent-flush",
-			Self::CompactionReclaim => "pending-drops-purge",
 			Self::TombstoneReap => "tombstone-reap",
 			Self::VacuumBudget => "vacuum-budget",
 			Self::CdcTruncate => "cdc-truncate",
@@ -193,7 +178,6 @@ impl RetentionClass {
 			| Self::RowTtlAnnounced
 			| Self::BufferHistoricalGc
 			| Self::PersistentFlush
-			| Self::CompactionReclaim
 			| Self::TombstoneReap
 			| Self::CdcTruncate
 			| Self::EpochLog => true,
@@ -209,7 +193,6 @@ impl RetentionClass {
 			Self::PersistentFlush => {
 				&[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin, FloorTerm::ConsumerPosition]
 			}
-			Self::CompactionReclaim => &[FloorTerm::FlushWatermark],
 			Self::TombstoneReap => &[FloorTerm::FlushWatermark],
 			Self::VacuumBudget => &[],
 			Self::CdcTruncate => &[FloorTerm::ConsumerCheckpoint],
@@ -354,16 +337,6 @@ mod tests {
 		assert!(
 			!class.constrained_by(FloorTerm::LeaseMin),
 			"an operator-state lease does not read the CDC log"
-		);
-	}
-
-	#[test]
-	fn pending_drop_purges_wait_for_the_flush_that_could_resurrect_them() {
-		// The persistent tier is single-version-per-key, so purging a key whose superseding write has
-		// not flushed lets the stale flush resurrect it.
-		assert!(
-			RetentionClass::CompactionReclaim.constrained_by(FloorTerm::FlushWatermark),
-			"a pending drop purged before its flush is durable can be resurrected by that flush"
 		);
 	}
 

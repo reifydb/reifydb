@@ -16,7 +16,7 @@ use reifydb_core::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, MultiVersionCommit, MultiVersionGet, classify_key},
 	},
-	key::{operator_state::OperatorStateKey, row::RowKey},
+	key::row::RowKey,
 	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_runtime::{
@@ -439,109 +439,6 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 		"an older snapshot must be served the seeded v2 from the read tier"
 	);
 	assert_eq!(get(&store, &k, 4).as_deref(), Some(b"v2".as_slice()), "v4 resolves to the latest <= 4 (seeded v2)");
-}
-
-fn read_tier_entries(store: &StandardMultiStore) -> usize {
-	let shards = store.read_buffer_shard_metrics();
-	assert!(
-		!shards.is_empty(),
-		"the read tier must be configured for these assertions to mean anything; an unconfigured tier \
-		 would report zero entries vacuously"
-	);
-	shards.iter().map(|m| m.state.entries).sum()
-}
-
-#[test]
-fn real_flush_actor_sweep_does_not_seed_operator_keys_into_read_tier() {
-	// The read tier serves NotFound for operator kinds by design (residency lives in the core StateCache),
-	// so anything the sweep seeds there is unservable dead weight charged to the read buffer's budget.
-	let (store, _guard) = store_with_fast_flush();
-	let k = OperatorStateKey::encoded(7, b"a".to_vec());
-	let kind = classify_key(&k);
-
-	store.set_row_settings_provider(Arc::new(AllPersistent));
-	store.set_eviction_watermark(Arc::new(StaticWatermark(CommitVersion(2))));
-
-	commit(&store, &k, 1, "v1");
-	commit(&store, &k, 2, "v2");
-	store.flush_pending_blocking();
-
-	let commit_tier = store.commit();
-	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
-	loop {
-		let evicted = matches!(
-			commit_tier.get(kind, k.as_ref(), CommitVersion(2)).unwrap(),
-			VersionedGetResult::NotFound
-		);
-		if evicted {
-			break;
-		}
-		if Instant::now() >= deadline {
-			panic!(
-				"flush actor sweep did not evict the operator key from the commit tier within the timeout"
-			);
-		}
-		std::thread::yield_now();
-	}
-
-	// Eviction only becomes observable after the read-tier decision, so this cannot race the sweep.
-	assert_eq!(
-		read_tier_entries(&store),
-		0,
-		"the sweep must not seed operator keys into the read tier; a nonzero count means operator bytes \
-		 leaked into the read buffer as unservable dead weight"
-	);
-
-	assert_eq!(
-		get(&store, &k, 2).as_deref(),
-		Some(b"v2".as_slice()),
-		"the evicted operator value must remain readable from the persistent tier"
-	);
-	assert_eq!(read_tier_entries(&store), 0, "an operator read-through must not back-populate the read tier");
-}
-
-#[test]
-fn real_flush_actor_sweep_purges_preexisting_operator_read_tier_entries() {
-	// Sweeping an operator key must invalidate (not merely skip) it, so a stale read-tier entry for that
-	// key is purged rather than left as unservable residue.
-	let (store, _guard) = store_with_fast_flush();
-	let k = OperatorStateKey::encoded(7, b"a".to_vec());
-	let kind = classify_key(&k);
-
-	store.set_row_settings_provider(Arc::new(AllPersistent));
-
-	// No ingress path puts operator keys in the read tier any more, so the residue needs a raw insert.
-	store.insert_read_key(k.clone(), CommitVersion(1), Some(CowVec::new(b"stale".to_vec())));
-	assert_eq!(read_tier_entries(&store), 1, "the simulated residue must be resident before the sweep");
-
-	store.set_eviction_watermark(Arc::new(StaticWatermark(CommitVersion(2))));
-	commit(&store, &k, 1, "v1");
-	commit(&store, &k, 2, "v2");
-	store.flush_pending_blocking();
-
-	let commit_tier = store.commit();
-	let deadline = Instant::now() + Duration::from_seconds(10).unwrap().to_std();
-	loop {
-		let evicted = matches!(
-			commit_tier.get(kind, k.as_ref(), CommitVersion(2)).unwrap(),
-			VersionedGetResult::NotFound
-		);
-		if evicted {
-			break;
-		}
-		if Instant::now() >= deadline {
-			panic!(
-				"flush actor sweep did not evict the operator key from the commit tier within the timeout"
-			);
-		}
-		std::thread::yield_now();
-	}
-
-	assert_eq!(
-		read_tier_entries(&store),
-		0,
-		"sweeping an operator key must purge its pre-existing read-tier residue via invalidate"
-	);
 }
 
 fn versioned_row(payload: &[u8]) -> CowVec<u8> {

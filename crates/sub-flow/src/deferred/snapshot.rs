@@ -24,7 +24,7 @@ use reifydb_store_operator::{
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::dictionary::{DictionaryAllocatorRegistry, store::durable_max_index_id};
 use reifydb_value::{Result, value::dictionary::DictionaryId};
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 #[derive(Clone)]
 pub struct FlowSnapshots {
@@ -153,6 +153,43 @@ impl FlowSnapshots {
 					first.get_or_insert(rejection);
 				}
 			}
+		}
+	}
+
+	pub fn sweep_orphans(&self, live: &BTreeSet<OperatorId>) {
+		if live.is_empty() {
+			return;
+		}
+		let stored = match self.store.operators() {
+			Ok(stored) => stored,
+			Err(e) => {
+				error!(error = %e, "could not list operators holding snapshot generations; skipping orphan sweep");
+				return;
+			}
+		};
+		let mut discarded = 0usize;
+		for operator in stored {
+			if live.contains(&operator) {
+				continue;
+			}
+			let generations = match self.store.generations(operator) {
+				Ok(generations) => generations,
+				Err(e) => {
+					error!(operator = operator.0, error = %e, "could not list generations of an orphaned operator");
+					continue;
+				}
+			};
+			for generation in generations {
+				match self.store.discard(operator, generation) {
+					Ok(()) => discarded += 1,
+					Err(e) => {
+						error!(operator = operator.0, generation, error = %e, "failed to discard an orphaned snapshot generation")
+					}
+				}
+			}
+		}
+		if discarded > 0 {
+			info!(discarded, "discarded snapshot generations of operators no live flow owns");
 		}
 	}
 
@@ -511,6 +548,42 @@ mod tests {
 		assert_eq!(scan(&restored, OP_B), scan(&source, OP_B));
 		assert_eq!(restored.upper(OP_A), CommitVersion(9));
 		assert_eq!(restored.upper(OP_B), CommitVersion(5));
+	}
+
+	#[test]
+	fn the_sweep_discards_generations_no_live_flow_owns() {
+		// Nothing else erases an operator's generations once its flow is gone: remove_flow tears down
+		// the arena, not operator.db. Without this sweep a dropped operator's snapshots stay on disk
+		// for the life of the database. Falsified by inverting the live-set filter.
+		let (snapshots, store, _guard) = snapshot_fixture();
+		let source = OperatorStore::default();
+		source.set(OP_A, key(b"a"), row(b"live"));
+		source.set_upper(OP_A, CommitVersion(9));
+		source.set(OP_B, key(b"b"), row(b"orphan"));
+		source.set_upper(OP_B, CommitVersion(9));
+		snapshots.write_flow(&source, &[OP_A, OP_B], CommitVersion(4));
+
+		snapshots.sweep_orphans(&BTreeSet::from([OP_A]));
+
+		assert_eq!(store.generations(OP_A), Ok(vec![1]), "the live operator's generation must survive");
+		assert_eq!(store.generations(OP_B), Ok(vec![]), "the orphan's generation must be discarded");
+	}
+
+	#[test]
+	fn an_empty_live_set_sweeps_nothing() {
+		// Bootstrap reaches the sweep before it knows whether a flow failed to load, so an empty live
+		// set means "nothing known yet", not "nothing is live". Treating it as authoritative erases
+		// every generation in the store and turns one bad bootstrap into total state loss.
+		// Falsified by removing the is_empty guard.
+		let (snapshots, store, _guard) = snapshot_fixture();
+		let source = OperatorStore::default();
+		source.set(OP_A, key(b"a"), row(b"live"));
+		source.set_upper(OP_A, CommitVersion(9));
+		snapshots.write_flow(&source, &[OP_A], CommitVersion(4));
+
+		snapshots.sweep_orphans(&BTreeSet::new());
+
+		assert_eq!(store.generations(OP_A), Ok(vec![1]), "an unknown live set must not erase anything");
 	}
 
 	#[test]

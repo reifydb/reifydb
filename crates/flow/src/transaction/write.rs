@@ -31,11 +31,6 @@ impl FlowTransaction {
 		self.inner_mut().pending.remove_batch(keys);
 		Ok(())
 	}
-
-	pub fn remove_silent_batch(&mut self, keys: &[EncodedKey]) -> Result<()> {
-		self.inner_mut().pending.remove_silent_batch(keys);
-		Ok(())
-	}
 }
 
 #[cfg(test)]

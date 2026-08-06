@@ -27,8 +27,6 @@ pub trait FloorSource: Send + Sync + 'static {
 	fn consumer_position(&self) -> CommitVersion;
 
 	fn flush_watermark(&self) -> CommitVersion;
-
-	fn owning_flow_checkpoint(&self) -> CommitVersion;
 }
 
 pub struct HorizonLedger {
@@ -55,16 +53,13 @@ impl HorizonLedger {
 
 	pub fn term(&self, term: FloorTerm, now: DateTime, ttl: Option<Duration>) -> Option<Floor> {
 		match term {
-			FloorTerm::RowExpiry | FloorTerm::OperatorExpiry => {
-				self.expiry_instant(now, ttl?).map(Floor::Instant)
-			}
+			FloorTerm::RowExpiry => self.expiry_instant(now, ttl?).map(Floor::Instant),
 			FloorTerm::RetentionHorizon => self.expiry_cutoff(now, ttl?).map(Floor::Version),
 			FloorTerm::QueryDoneUntil => Some(Floor::Version(self.source.query_done_until())),
 			FloorTerm::LeaseMin => Some(Floor::Version(self.source.lease_min())),
 			FloorTerm::ConsumerCheckpoint => Some(Floor::Version(self.source.consumer_checkpoint())),
 			FloorTerm::ConsumerPosition => Some(Floor::Version(self.source.consumer_position())),
 			FloorTerm::FlushWatermark => Some(Floor::Version(self.source.flush_watermark())),
-			FloorTerm::OwningFlowCheckpoint => Some(Floor::Version(self.source.owning_flow_checkpoint())),
 		}
 	}
 
@@ -142,10 +137,6 @@ impl FloorSource for EngineFloors {
 			self.engine.multi().store().commit().oldest_pending_version(),
 		)
 	}
-
-	fn owning_flow_checkpoint(&self) -> CommitVersion {
-		self.engine.flow_watermark()
-	}
 }
 
 fn durable_frontier(permitted: CommitVersion, oldest_pending: Option<CommitVersion>) -> CommitVersion {
@@ -164,11 +155,9 @@ mod tests {
 	const ONE_HOUR_IN: EpochSeconds = EpochSeconds::new(3_600);
 	const TWO_HOURS_IN: EpochSeconds = EpochSeconds::new(7_200);
 
-	struct ScriptedFlow {
-		flow: CommitVersion,
-	}
+	struct ScriptedFloors;
 
-	impl FloorSource for ScriptedFlow {
+	impl FloorSource for ScriptedFloors {
 		fn query_done_until(&self) -> CommitVersion {
 			CommitVersion(u64::MAX)
 		}
@@ -188,22 +177,13 @@ mod tests {
 		fn flush_watermark(&self) -> CommitVersion {
 			CommitVersion(u64::MAX)
 		}
-
-		fn owning_flow_checkpoint(&self) -> CommitVersion {
-			self.flow
-		}
 	}
 
-	fn ledger(flow: u64) -> HorizonLedger {
+	fn ledger() -> HorizonLedger {
 		let epoch = VersionEpoch::new();
 		epoch.backfill(ONE_HOUR_IN, 1_000);
 		epoch.record(TWO_HOURS_IN, 5_000);
-		HorizonLedger::new(
-			Arc::new(ScriptedFlow {
-				flow: CommitVersion(flow),
-			}),
-			epoch,
-		)
+		HorizonLedger::new(Arc::new(ScriptedFloors), epoch)
 	}
 
 	fn now() -> DateTime {
@@ -222,7 +202,7 @@ mod tests {
 		// write - and classifying one of those as clock-driven would silently retire the only alarm
 		// that catches it being held down. This ties the classification to what the ledger actually
 		// returns, so the two cannot drift apart.
-		let ledger = ledger(10);
+		let ledger = ledger();
 
 		for term in FloorTerm::all() {
 			let resolved = ledger.term(*term, now(), Some(one_hour()));

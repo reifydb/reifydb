@@ -9,7 +9,7 @@ use tracing::instrument;
 use super::{
 	JoinContext, UpdateKeys,
 	hash::{
-		add_to_state_entry_batch, finish_entry_update, for_each_left_block, prepare_entry_update,
+		add_to_state_entry_batch, for_each_left_block, prepare_entry_update,
 		update_row_in_entry,
 	},
 	latest::{overwrite_right_slot, read_right_slot, remove_right_slot},
@@ -297,10 +297,9 @@ impl LatestLeftHashJoin {
 				}
 
 				let prepared = prepare_entry_update(txn, &ctx.state.left, keys.pre, post)?;
-				let mut stored = false;
 				for &idx in indices {
 					if let Some(prepared) = &prepared {
-						stored |= update_row_in_entry(
+						update_row_in_entry(
 							txn,
 							&ctx.state.left,
 							prepared,
@@ -309,9 +308,6 @@ impl LatestLeftHashJoin {
 							idx,
 						)?;
 					}
-				}
-				if let Some(prepared) = &prepared {
-					finish_entry_update(txn, &ctx.state.left, prepared, stored)?;
 				}
 				let (pre_joined, post_joined) = match read_right_slot(txn, &ctx.state.right, keys.pre)?
 				{

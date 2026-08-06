@@ -6,34 +6,20 @@
 //! suite, the in-crate catch-up tests, and the process-lifetime crash test. One definition means
 //! a state difference one suite would reject cannot be silently tolerated by another.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use reifydb_codec::{
-	encoded::row::EncodedRow,
-	key::encoded::EncodedKey,
-	state::{StateBytes, decode_state},
-};
-use reifydb_core::{
-	key::{
-		EncodableKey,
-		operator_group_state::{Keyspace, OperatorGroupStateKey},
-		operator_state::OperatorStateKey,
-	},
-	state::group::GroupRecord,
+use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, state::StateBytes};
+use reifydb_core::key::{
+	EncodableKey,
+	operator_group_state::{Keyspace, OperatorGroupStateKey},
+	operator_state::OperatorStateKey,
 };
 
-/// Keyspaces whose KEYS embed the arrival-time activity bucket of the dispatch that stamped them.
-/// Batch boundaries are exactly what varies between a live run and a replay of the same input, so
-/// their keys legitimately differ; the entry COUNT still must not (one live entry per group at
-/// quiescence).
-pub const ARRIVAL_KEYED: &[Keyspace] = &[Keyspace::ACTIVITY_INDEX, Keyspace::SIDE_ACTIVITY_INDEX];
-
-/// Keyspaces whose value BODIES embed an arrival position or bucket: the group record carries its
-/// activity bucket, the side record carries a bucket, and the node watermark IS the last persisted
-/// arrival position. Their key sets must still match; for GROUP_RECORD the decoded id-to-group
-/// mapping must too, since that mapping is what the allocation-order fix pins.
-pub const ARRIVAL_VALUED: &[Keyspace] =
-	&[Keyspace::GROUP_RECORD, Keyspace::SIDE_ACTIVITY_RECORD, Keyspace::NODE_WATERMARK];
+/// The one keyspace whose value BODY is an arrival coordinate by design: the node watermark IS the
+/// last persisted arrival position, so runs sliced into different batches legitimately persist
+/// different values. Its key set must still match. Everything else the interner writes - the group
+/// record's id-to-group mapping included - is arrival-free and is held to keys and bodies.
+pub const ARRIVAL_VALUED: &[Keyspace] = &[Keyspace::NODE_WATERMARK];
 
 /// Keyspaces whose row header stamps are carried mutation times derived from row event time, not
 /// from the dispatch coordinate: these must be byte-identical INCLUDING headers even across batch
@@ -89,34 +75,20 @@ pub fn assert_batch_equivalent(label: &str, a: &State, b: &State) {
 	let mut b_strict: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
 	let mut a_bodies: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
 	let mut b_bodies: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
-	let mut a_counts: BTreeMap<u8, usize> = BTreeMap::new();
-	let mut b_counts: BTreeMap<u8, usize> = BTreeMap::new();
-	let mut a_arrival: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
-	let mut b_arrival: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
+	let mut a_arrival: BTreeSet<Vec<u8>> = BTreeSet::new();
+	let mut b_arrival: BTreeSet<Vec<u8>> = BTreeSet::new();
 
 	let classify = |state: &State,
 	                strict: &mut BTreeMap<Vec<u8>, Vec<u8>>,
 	                bodies: &mut BTreeMap<Vec<u8>, Vec<u8>>,
-	                counts: &mut BTreeMap<u8, usize>,
-	                arrival: &mut BTreeMap<Vec<u8>, Vec<u8>>| {
+	                arrival: &mut BTreeSet<Vec<u8>>| {
 		for (key, row) in state {
 			let Some(keyspace) = keyspace_of(key) else {
 				strict.insert(key.to_vec(), row.to_vec());
 				continue;
 			};
-			if ARRIVAL_KEYED.contains(&keyspace) {
-				*counts.entry(keyspace.0).or_insert(0) += 1;
-			} else if ARRIVAL_VALUED.contains(&keyspace) {
-				let group = if keyspace == Keyspace::GROUP_RECORD {
-					decode_state::<GroupRecord>(
-						&StateBytes::from_row(row.clone()).expect("a group record decodes"),
-					)
-					.expect("a group record decodes")
-					.group
-				} else {
-					Vec::new()
-				};
-				arrival.insert(key.to_vec(), group);
+			if ARRIVAL_VALUED.contains(&keyspace) {
+				arrival.insert(key.to_vec());
 			} else if ROW_STAMPED.contains(&keyspace) {
 				strict.insert(key.to_vec(), row.to_vec());
 			} else {
@@ -124,8 +96,8 @@ pub fn assert_batch_equivalent(label: &str, a: &State, b: &State) {
 			}
 		}
 	};
-	classify(a, &mut a_strict, &mut a_bodies, &mut a_counts, &mut a_arrival);
-	classify(b, &mut b_strict, &mut b_bodies, &mut b_counts, &mut b_arrival);
+	classify(a, &mut a_strict, &mut a_bodies, &mut a_arrival);
+	classify(b, &mut b_strict, &mut b_bodies, &mut b_arrival);
 
 	assert_eq!(
 		a_strict, b_strict,
@@ -136,11 +108,7 @@ pub fn assert_batch_equivalent(label: &str, a: &State, b: &State) {
 		"{label}: every non-allowlisted keyspace must agree on keys and value bodies across batch boundaries"
 	);
 	assert_eq!(
-		a_counts, b_counts,
-		"{label}: arrival-keyed index keyspaces must hold one live entry per group either way"
-	);
-	assert_eq!(
 		a_arrival, b_arrival,
-		"{label}: arrival-valued keyspaces must agree on their key sets and id-to-group mappings"
+		"{label}: arrival-valued keyspaces must agree on their key sets"
 	);
 }

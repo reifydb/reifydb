@@ -51,7 +51,6 @@ pub(crate) struct Store {
 	operator_id: OperatorId,
 	side: JoinSide,
 	shape_cache: RowShapeCacheCell,
-	co_stamped: Vec<Keyspace>,
 	slot_cache: RefCell<HashMap<GroupId, Option<(EncodedRow, Columns)>>>,
 }
 
@@ -61,7 +60,6 @@ impl Store {
 			operator_id,
 			side,
 			shape_cache: RowShapeCacheCell::new(SHAPE_CACHE_CAPACITY),
-			co_stamped: Vec::new(),
 			slot_cache: RefCell::new(HashMap::new()),
 		}
 	}
@@ -83,19 +81,6 @@ impl Store {
 
 	fn forget_slot(&self, group: GroupId) {
 		self.slot_cache.borrow_mut().remove(&group);
-	}
-
-	pub(crate) fn also_stamping(mut self, keyspaces: Vec<Keyspace>) -> Self {
-		self.co_stamped = keyspaces;
-		self
-	}
-
-	pub(crate) fn stamp(&self, txn: &mut FlowTransaction, group: GroupId) -> Result<()> {
-		txn.stamp_side(self.operator_id, group, self.side.keyspace())?;
-		for keyspace in &self.co_stamped {
-			txn.stamp_side(self.operator_id, group, *keyspace)?;
-		}
-		Ok(())
 	}
 
 	fn resolve(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<Option<GroupId>> {
@@ -130,15 +115,8 @@ impl Store {
 		row_number: RowNumber,
 		encoded: &EncodedRow,
 	) -> Result<()> {
-		let group = self.intern_and_stamp(txn, hash)?;
-		self.write_row(txn, group, row_number, encoded)
-	}
-
-	#[instrument(name = "flow::operator::join::store::intern_and_stamp", level = "trace", skip_all)]
-	pub(crate) fn intern_and_stamp(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<GroupId> {
 		let group = self.intern(txn, hash)?;
-		self.stamp(txn, group)?;
-		Ok(group)
+		self.write_row(txn, group, row_number, encoded)
 	}
 
 	pub(crate) fn write_row(
@@ -181,11 +159,7 @@ impl Store {
 		let Some(group) = self.resolve(txn, hash)? else {
 			return Ok(false);
 		};
-		let updated = self.update_row_in(txn, group, row_number, encoded)?;
-		if updated {
-			self.stamp(txn, group)?;
-		}
-		Ok(updated)
+		self.update_row_in(txn, group, row_number, encoded)
 	}
 
 	pub(crate) fn update_row_in(
@@ -334,10 +308,9 @@ fn row_number_from_key(bytes: &[u8]) -> Option<RowNumber> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::encoded::row::EncodedRow;
-	use reifydb_core::state::horizon::Cutoff;
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
-	use reifydb_value::value::{datetime::DateTime, value_type::ValueType};
+	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 
@@ -388,54 +361,6 @@ mod tests {
 		let rows_b = store.rows_for_key(&mut txn, &h(0xBBB), None, 64).unwrap();
 		assert_eq!(rows_b.len(), 1);
 		assert_eq!(rows_b[0].0, rn(3));
-	}
-
-	#[test]
-	fn writing_a_row_stamps_its_own_side_and_only_its_own_side() {
-		// Both sides of a key share one group, so a stamp that landed on the wrong side would let
-		// a busy left side hold the right side's rows past the right ttl - the exact conflation
-		// the side index exists to break.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let operator = OperatorId(51);
-		let left = Store::new(operator, JoinSide::Left);
-
-		left.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		let group =
-			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
-
-		let far_future = Cutoff(DateTime::MAX);
-		assert_eq!(
-			txn.due_side_groups(operator, Keyspace::JOIN_LEFT, far_future, 10).unwrap(),
-			vec![group],
-			"the written side must be enrolled in its own sweep"
-		);
-		assert!(
-			txn.due_side_groups(operator, Keyspace::JOIN_RIGHT, far_future, 10).unwrap().is_empty(),
-			"a left write must not enrol the right side, which holds no rows to retire"
-		);
-	}
-
-	#[test]
-	fn updating_a_row_renews_its_side() {
-		// An update is activity, so the ttl clock restarts: otherwise a key kept alive purely by
-		// updates is reclaimed on the strength of its first insert while the join still probes it.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let operator = OperatorId(52);
-		let store = Store::new(operator, JoinSide::Left);
-		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		let group =
-			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
-		txn.forget_side(operator, group, Keyspace::JOIN_LEFT).unwrap();
-
-		assert!(store.update_row(&mut txn, &h(0xAAA), rn(1), &row(0x11)).unwrap());
-
-		assert_eq!(
-			txn.due_side_groups(operator, Keyspace::JOIN_LEFT, Cutoff(DateTime::MAX), 10).unwrap(),
-			vec![group],
-			"the update must have re-stamped the side"
-		);
 	}
 
 	#[test]
@@ -531,55 +456,6 @@ mod tests {
 		let shape = RowShape::operator_state();
 		let blob = shape.get_blob(&rows[0].1, 0);
 		assert_eq!(blob.as_bytes(), &[0x99u8][..]);
-	}
-
-	#[test]
-	fn a_rejected_update_stamps_nothing() {
-		// Stamping before the row-exists check would enrol a side that holds no rows, and every
-		// later sweep would pay to reclaim an empty keyspace for a key never stored.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let operator = OperatorId(53);
-		let store = Store::new(operator, JoinSide::Left);
-		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		let group =
-			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
-		txn.forget_side(operator, group, Keyspace::JOIN_LEFT).unwrap();
-
-		assert!(!store.update_row(&mut txn, &h(0xAAA), rn(99), &row(0x11)).unwrap(), "no such row number");
-
-		assert!(
-			txn.due_side_groups(operator, Keyspace::JOIN_LEFT, Cutoff(DateTime::MAX), 10)
-				.unwrap()
-				.is_empty(),
-			"an update that stored nothing must leave the side index alone"
-		);
-	}
-
-	#[test]
-	fn update_row_in_never_stamps_on_its_own() {
-		// The stamp moved out to the caller, which fires it once per key and only when a row was
-		// actually stored. That is only correct if the write primitive itself never stamps -
-		// otherwise a rejected update would enrol a side holding no rows, and every later sweep
-		// would pay to reclaim an empty keyspace for a key never stored.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let operator = OperatorId(53);
-		let store = Store::new(operator, JoinSide::Left);
-		store.put_row(&mut txn, &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		let group =
-			txn.lookup_group(operator, &group_bytes(&h(0xAAA))).unwrap().expect("the write interned it");
-		txn.forget_side(operator, group, Keyspace::JOIN_LEFT).unwrap();
-
-		assert!(!store.update_row_in(&mut txn, group, rn(99), &row(0x11)).unwrap(), "no such row number");
-		assert!(store.update_row_in(&mut txn, group, rn(1), &row(0x11)).unwrap(), "this one stores");
-
-		assert!(
-			txn.due_side_groups(operator, Keyspace::JOIN_LEFT, Cutoff(DateTime::MAX), 10)
-				.unwrap()
-				.is_empty(),
-			"neither the rejected nor the accepted write may touch the side index by itself"
-		);
 	}
 
 	#[test]

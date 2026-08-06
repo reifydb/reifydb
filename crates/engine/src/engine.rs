@@ -34,7 +34,6 @@ use reifydb_core::{
 		WithEventBus,
 		catalog::{
 			column::{Column, ColumnIndex},
-			flow::OperatorId,
 			id::{ColumnId, NamespaceId},
 			vtable::{VTable, VTableId},
 		},
@@ -60,7 +59,6 @@ use reifydb_transaction::{
 	transaction::{admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction},
 };
 use reifydb_value::{
-	byte_size::ByteSize,
 	error,
 	error::Error,
 	fragment::Fragment,
@@ -614,11 +612,6 @@ impl StandardEngine {
 	#[inline]
 	pub fn oracle_window_count(&self) -> usize {
 		self.multi.oracle_window_count()
-	}
-
-	#[inline]
-	pub fn operator_disk_payload_bytes(&self) -> Vec<(OperatorId, ByteSize)> {
-		self.multi.store().operator_disk_payload_bytes()
 	}
 
 	#[inline]

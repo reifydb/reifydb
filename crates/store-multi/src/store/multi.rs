@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeMap, HashMap, HashSet, btree_map::Entry},
+	collections::{BTreeMap, HashMap, btree_map::Entry},
 	ops::{Bound, RangeBounds},
 	vec,
 };
@@ -12,14 +12,12 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
-	actors::compaction::CompactionRequest,
 	common::CommitVersion,
 	delta::Delta,
 	event::metric::{MultiCommittedEvent, MultiDelete, MultiWrite},
 	interface::store::{
 		EntryKind, MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet,
 		MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore, classify_key, classify_range,
-		is_single_version_semantics_key,
 	},
 };
 use reifydb_store::row::page::PageId;
@@ -27,7 +25,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	util::{cowvec::CowVec, hex},
 };
-use tracing::{Span, field, instrument};
+use tracing::instrument;
 
 use super::StandardMultiStore;
 use crate::{
@@ -47,7 +45,6 @@ pub(crate) const WARM_THRESHOLD: u64 = 4 * TIER_SCAN_CHUNK_SIZE as u64;
 impl MultiVersionGet for StandardMultiStore {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
 		match classify_key(key) {
-			EntryKind::Operator(_) => self.get_operator(key, version),
 			EntryKind::Source(_) => self.get_source(key, version),
 			_ => self.get_multi(key, version),
 		}
@@ -55,11 +52,6 @@ impl MultiVersionGet for StandardMultiStore {
 }
 
 impl StandardMultiStore {
-	#[instrument(name = "store::multi::get::operator", level = "trace", skip(self, key), fields(version = version.0))]
-	fn get_operator(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
-		self.get_impl(key, version)
-	}
-
 	#[instrument(name = "store::multi::get::source", level = "trace", skip(self, key), fields(version = version.0))]
 	fn get_source(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
 		self.get_impl(key, version)
@@ -142,9 +134,7 @@ impl StandardMultiStore {
 				value,
 				version: v,
 			} => {
-				if let Some(read) = &self.read
-					&& read_cacheable(table)
-				{
+				if let Some(read) = &self.read {
 					read.insert(key.clone(), v, Some(value.clone()));
 				}
 				Some(Some(MultiVersionRow {
@@ -159,11 +149,6 @@ impl StandardMultiStore {
 	}
 }
 
-#[inline]
-pub(crate) fn read_cacheable(kind: EntryKind) -> bool {
-	!matches!(kind, EntryKind::Operator(_))
-}
-
 impl MultiVersionContains for StandardMultiStore {
 	#[instrument(name = "store::multi::contains", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref()), version = version.0), ret)]
 	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool> {
@@ -172,13 +157,9 @@ impl MultiVersionContains for StandardMultiStore {
 }
 
 impl MultiVersionCommit for StandardMultiStore {
-	#[instrument(name = "store::multi::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0, compaction_count = field::Empty))]
+	#[instrument(name = "store::multi::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0))]
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
 		let classified = classify_deltas(&deltas);
-
-		let compaction_batch = build_compaction_batch(&classified.pending_set_keys, version);
-		Span::current().record("compaction_count", compaction_batch.len());
-		self.dispatch_compaction(compaction_batch);
 
 		self.update_read_cache_on_commit(&classified.batches);
 
@@ -191,7 +172,6 @@ impl MultiVersionCommit for StandardMultiStore {
 }
 
 struct ClassifiedDeltas {
-	pending_set_keys: HashSet<EncodedKey>,
 	writes: Vec<MultiWrite>,
 	deletes: Vec<MultiDelete>,
 	batches: TierBatch,
@@ -199,7 +179,6 @@ struct ClassifiedDeltas {
 
 #[inline]
 fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
-	let mut pending_set_keys: HashSet<EncodedKey> = HashSet::new();
 	let mut writes: Vec<MultiWrite> = Vec::new();
 	let mut deletes: Vec<MultiDelete> = Vec::new();
 	let mut batches: TierBatch = HashMap::new();
@@ -207,16 +186,12 @@ fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 	for delta in deltas.iter() {
 		let key = delta.key();
 		let table = classify_key(key);
-		let is_single_version = is_single_version_semantics_key(key);
 
 		match delta {
 			Delta::Set {
 				key,
 				row,
 			} => {
-				if is_single_version {
-					pending_set_keys.insert(key.clone());
-				}
 				writes.push(MultiWrite {
 					key: key.clone(),
 					value_bytes: row.len() as u64,
@@ -237,27 +212,10 @@ fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 	}
 
 	ClassifiedDeltas {
-		pending_set_keys,
 		writes,
 		deletes,
 		batches,
 	}
-}
-
-#[inline]
-fn build_compaction_batch(pending_set_keys: &HashSet<EncodedKey>, version: CommitVersion) -> Vec<CompactionRequest> {
-	let mut compaction_batch = Vec::with_capacity(pending_set_keys.len());
-	for key in pending_set_keys.iter() {
-		let encoded = EncodedKey::new(key);
-		let table = classify_key(&encoded);
-		compaction_batch.push(CompactionRequest {
-			table,
-			key: encoded,
-			commit_version: version,
-			pending_version: Some(version),
-		});
-	}
-	compaction_batch
 }
 
 impl StandardMultiStore {
@@ -377,7 +335,7 @@ impl StandardMultiStore {
 						value,
 						version: v,
 					},
-				) = (&self.read, &result) && read_cacheable(table)
+				) = (&self.read, &result)
 				{
 					read.insert(table_keys[slot].clone(), *v, Some(value.clone()));
 				}
@@ -434,22 +392,11 @@ impl StandardMultiStore {
 	}
 
 	#[inline]
-	fn dispatch_compaction(&self, compaction_batch: Vec<CompactionRequest>) {
-		if compaction_batch.is_empty() {
-			return;
-		}
-		self.compaction_engine.enqueue(compaction_batch);
-	}
-
-	#[inline]
 	fn update_read_cache_on_commit(&self, batches: &TierBatch) {
 		let Some(read) = &self.read else {
 			return;
 		};
-		for (table, entries) in batches {
-			if !read_cacheable(*table) {
-				continue;
-			}
+		for entries in batches.values() {
 			for (key, _) in entries {
 				read.invalidate(key);
 			}
@@ -1191,9 +1138,7 @@ impl StandardMultiStore {
 				value,
 				version,
 			} => {
-				if let Some(read) = &self.read
-					&& read_cacheable(table)
-				{
+				if let Some(read) = &self.read {
 					read.insert(key.clone(), version, Some(value.clone()));
 				}
 				Some(Some(MultiVersionRow {
@@ -1381,147 +1326,6 @@ mod cache_tests {
 			)]))
 			.unwrap();
 		}
-	}
-
-	#[test]
-	fn operator_removal_writes_a_tombstone_for_every_state_key() {
-		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-		let node = OperatorId(7);
-		let table = EntryKind::Operator(node);
-		let data_key = OperatorStateKey::encoded(node, vec![1u8]);
-		let internal_key = OperatorStateKey::encoded(node, vec![2u8]);
-
-		for v in [1u64, 2] {
-			MultiVersionCommit::commit(
-				&store,
-				cow_vec![Delta::Set {
-					key: data_key.clone(),
-					row: EncodedRow(CowVec::new(vec![v as u8])),
-				}],
-				CommitVersion(v),
-			)
-			.unwrap();
-		}
-		for v in [3u64, 4] {
-			MultiVersionCommit::commit(
-				&store,
-				cow_vec![Delta::Set {
-					key: internal_key.clone(),
-					row: EncodedRow(CowVec::new(vec![v as u8])),
-				}],
-				CommitVersion(v),
-			)
-			.unwrap();
-		}
-
-		MultiVersionCommit::commit(
-			&store,
-			cow_vec![Delta::remove_silent(data_key.clone()), Delta::remove_silent(internal_key.clone())],
-			CommitVersion(5),
-		)
-		.unwrap();
-
-		let commit = store.commit();
-		let data_versions = commit.get_all_versions(table, data_key.as_ref()).unwrap();
-		let internal_versions = commit.get_all_versions(table, internal_key.as_ref()).unwrap();
-
-		assert!(
-			data_versions.iter().any(|(version, value)| *version == CommitVersion(5) && value.is_none()),
-			"the removal must land as a tombstone at its own version; without it the removal is not \
-			 durable and a crash before reclamation resurrects the key"
-		);
-		assert!(
-			internal_versions
-				.iter()
-				.any(|(version, value)| *version == CommitVersion(5) && value.is_none()),
-			"operator internal state must tombstone on exactly the same terms as data state"
-		);
-
-		assert!(
-			MultiVersionGet::get(&store, &data_key, CommitVersion(9)).unwrap().is_none(),
-			"and a reader above the tombstone sees the key as gone"
-		);
-		assert!(MultiVersionGet::get(&store, &internal_key, CommitVersion(9)).unwrap().is_none());
-	}
-
-	#[test]
-	fn operator_remove_leaves_a_tombstone_in_commit_tier() {
-		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-		let node = OperatorId(8);
-		let table = EntryKind::Operator(node);
-		let key = OperatorStateKey::encoded(node, vec![9u8]);
-
-		MultiVersionCommit::commit(
-			&store,
-			cow_vec![Delta::Set {
-				key: key.clone(),
-				row: EncodedRow(CowVec::new(vec![1u8])),
-			}],
-			CommitVersion(1),
-		)
-		.unwrap();
-		MultiVersionCommit::commit(&store, cow_vec![Delta::remove_silent(key.clone())], CommitVersion(2))
-			.unwrap();
-
-		let commit = store.commit();
-		let versions = commit.get_all_versions(table, key.as_ref()).unwrap();
-		assert!(
-			versions.iter().any(|(_, value)| value.is_none()),
-			"Remove leaves a tombstone in the commit tier (the path Drop must avoid); versions={versions:?}"
-		);
-	}
-
-	#[test]
-	fn operator_state_churn_retains_one_tombstone_per_removal_until_reclaimed() {
-		const ROUNDS: u64 = 200;
-
-		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-		let node = OperatorId(21);
-		let table = EntryKind::Operator(node);
-		let key_at = |round: u64| OperatorStateKey::encoded(node, round.to_be_bytes().to_vec());
-
-		let mut version = 0u64;
-		for round in 0..ROUNDS {
-			version += 1;
-			MultiVersionCommit::commit(
-				&store,
-				cow_vec![Delta::Set {
-					key: key_at(round),
-					row: EncodedRow(CowVec::new(vec![1u8])),
-				}],
-				CommitVersion(version),
-			)
-			.unwrap();
-
-			if round > 0 {
-				version += 1;
-				MultiVersionCommit::commit(
-					&store,
-					cow_vec![Delta::remove_silent(key_at(round - 1))],
-					CommitVersion(version),
-				)
-				.unwrap();
-			}
-		}
-
-		let live = match store.commit() {
-			MultiCommitBufferTier::Memory(s) => s.count_current(table).unwrap(),
-		};
-		assert_eq!(
-			live, ROUNDS,
-			"every round contributes exactly one current entry: the live key plus one tombstone for \
-			 each removed key. A lower number means removals stopped tombstoning; a higher one means \
-			 something is writing more than one entry per removal"
-		);
-
-		assert!(
-			MultiVersionGet::get(&store, &key_at(ROUNDS - 1), CommitVersion(version)).unwrap().is_some(),
-			"the one key never removed must still be readable"
-		);
-		assert!(
-			MultiVersionGet::get(&store, &key_at(0), CommitVersion(version)).unwrap().is_none(),
-			"and every removed key must read as gone"
-		);
 	}
 
 	#[test]

@@ -13,7 +13,6 @@ pub const ROW_NUMBER_MEMBERSHIP_BYTES: &str = "row_number_membership_bytes";
 
 pub const GROUP_CACHE_BYTES: &str = "group_cache_bytes";
 pub const GROUP_MEMBERSHIP_BYTES: &str = "group_membership_bytes";
-pub const GROUP_DUE_BYTES: &str = "group_due_bytes";
 
 pub const MEMORY_BYTES: &[&str] = &[
 	STATE_RESIDENT_BYTES,
@@ -23,21 +22,19 @@ pub const MEMORY_BYTES: &[&str] = &[
 	ROW_NUMBER_MEMBERSHIP_BYTES,
 	GROUP_CACHE_BYTES,
 	GROUP_MEMBERSHIP_BYTES,
-	GROUP_DUE_BYTES,
 ];
 
 #[cfg(test)]
 mod tests {
 	use super::{
-		DISK_PAYLOAD_BYTES, GROUP_CACHE_BYTES, GROUP_DUE_BYTES, GROUP_MEMBERSHIP_BYTES, MEMORY_BYTES,
-		STATE_POOL_BUDGET,
+		DISK_PAYLOAD_BYTES, GROUP_CACHE_BYTES, GROUP_MEMBERSHIP_BYTES, MEMORY_BYTES, STATE_POOL_BUDGET,
 	};
 
 	#[test]
 	fn the_memory_set_carries_every_group_heap_metric() {
 		// A heap metric that is emitted but missing from MEMORY_BYTES reads as zero to anyone
 		// summing an operator's memory, so the operator under-reports silently instead of failing.
-		for metric in [GROUP_CACHE_BYTES, GROUP_MEMBERSHIP_BYTES, GROUP_DUE_BYTES] {
+		for metric in [GROUP_CACHE_BYTES, GROUP_MEMBERSHIP_BYTES] {
 			assert!(
 				MEMORY_BYTES.contains(&metric),
 				"{metric} is emitted as heap but excluded from MEMORY_BYTES"

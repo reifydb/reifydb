@@ -18,6 +18,7 @@ use reifydb_core::{
 			MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow,
 		},
 	},
+	key::{EncodableKey, operator_state::OperatorStateKey},
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sub_raft::message::Command;
@@ -394,6 +395,15 @@ impl MultiWriteTransaction {
 		is_remove = pending.was_removed()
 	))]
 	fn modify(&mut self, pending: DeltaEntry) -> Result<()> {
+		reifydb_assertions! {
+			assert!(
+				OperatorStateKey::decode(pending.key()).is_none(),
+				"operator state must reach the arena through the committer split, never the \
+				 multi store: {}",
+				hex_display(pending.key().as_ref())
+			);
+		}
+
 		let cnt = self.count + 1;
 		let size = self.size + self.pending_writes.estimate_size(&pending);
 		if cnt >= self.pending_writes.max_batch_entries() || size >= self.pending_writes.max_batch_size() {

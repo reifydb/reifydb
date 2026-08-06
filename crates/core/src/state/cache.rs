@@ -897,9 +897,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		error::diagnostic::flow::flow_error,
-		key::operator_group_state::{
-			GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorGroupStateKey,
-		},
+		key::operator_group_state::{GroupId, GroupStateKey, IntoGroupStateKey, Keyspace},
 	};
 
 	/// A bare `String` would read as some other group's prefix; this frames the tests' string keys

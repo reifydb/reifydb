@@ -232,7 +232,6 @@ mod distinct {
 			Keyspace::GROUP_DICTIONARY,
 			Keyspace::GROUP_RECORD,
 			Keyspace::ROW_NUMBER_MAPPING,
-			Keyspace::ACTIVITY_INDEX,
 			Keyspace::NODE_WATERMARK,
 			Keyspace::NODE_COUNTER,
 		] {

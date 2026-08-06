@@ -10,13 +10,13 @@ use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::metrics::sample::MetricsSample;
 use reifydb_core::{
-	common::CommitVersion, event::EventBus, interface::catalog::flow::OperatorId,
+	common::CommitVersion, event::EventBus,
 	lifecycle::watermark::EvictionWatermark, metrics::collect::MetricsCollector,
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, shutdown::Shutdown, sync::rwlock::RwLock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
-use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
+use reifydb_value::util::cowvec::CowVec;
 use tracing::instrument;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -32,12 +32,8 @@ use crate::{
 	},
 };
 
-pub mod compaction;
 pub mod multi;
 pub mod router;
-pub mod worker;
-
-use worker::{CompactionEngine, CompactionWorkerConfig};
 
 use crate::Result;
 
@@ -68,7 +64,6 @@ pub struct StandardMultiStoreInner {
 	pub(crate) commit: MultiCommitBufferTier,
 	pub(crate) persistent: Option<MultiPersistentTier>,
 	pub(crate) read: Option<MultiReadBufferTier>,
-	pub(crate) compaction_engine: Arc<CompactionEngine>,
 
 	#[allow(dead_code)]
 	pub(crate) flush_engine: Option<Arc<FlushEngine>>,
@@ -76,7 +71,6 @@ pub struct StandardMultiStoreInner {
 	pub(crate) row_settings_provider: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
 	#[allow(dead_code)]
 	pub(crate) eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
-	pub(crate) operator_disk_payload: Arc<RwLock<Vec<(OperatorId, ByteSize)>>>,
 
 	pub(crate) event_bus: EventBus,
 }
@@ -92,8 +86,6 @@ impl StandardMultiStore {
 
 		let eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
 
-		let operator_disk_payload: Arc<RwLock<Vec<(OperatorId, ByteSize)>>> = Arc::new(RwLock::new(Vec::new()));
-
 		let read = config.persistent.is_some().then(|| MultiReadBufferTier::new(ReadBufferConfig::default()));
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -108,7 +100,6 @@ impl StandardMultiStore {
 					row_settings_provider.clone(),
 					eviction_watermark.clone(),
 					read.clone(),
-					operator_disk_payload.clone(),
 					config.clock.clone(),
 					config.event_bus.clone(),
 				))),
@@ -125,21 +116,13 @@ impl StandardMultiStore {
 
 		let read = persistent.as_ref().and(read);
 
-		let compaction_engine = Arc::new(CompactionEngine::new(
-			CompactionWorkerConfig::default(),
-			commit.clone(),
-			config.event_bus.clone(),
-		));
-
 		Ok(Self(Arc::new(StandardMultiStoreInner {
 			commit,
 			persistent,
 			read,
-			compaction_engine,
 			flush_engine,
 			row_settings_provider,
 			eviction_watermark,
-			operator_disk_payload,
 			event_bus: config.event_bus,
 		})))
 	}
@@ -160,10 +143,6 @@ impl StandardMultiStore {
 		self.flush_engine.clone()
 	}
 
-	pub fn compaction_engine(&self) -> Arc<CompactionEngine> {
-		self.compaction_engine.clone()
-	}
-
 	pub fn configure_wal_autocheckpoint(&self, frames: u32) {
 		if let Some(persistent) = &self.persistent {
 			persistent.set_checkpoint_threshold(frames);
@@ -180,10 +159,6 @@ impl StandardMultiStore {
 		if let Some(read) = &self.read {
 			read.invalidate(key);
 		}
-	}
-
-	pub fn drain_compaction(&self) {
-		self.compaction_engine.drain_to_exhaustion();
 	}
 
 	pub fn remove_dropped_read_key(&self, key: &EncodedKey) {
@@ -239,10 +214,6 @@ impl StandardMultiStore {
 
 	pub fn read_buffer_shard_metrics(&self) -> Vec<ReadBufferShardMetrics> {
 		self.read.as_ref().map(|read| read.shard_metrics()).unwrap_or_default()
-	}
-
-	pub fn operator_disk_payload_bytes(&self) -> Vec<(OperatorId, ByteSize)> {
-		self.operator_disk_payload.read().clone()
 	}
 
 	pub fn flush_pending_blocking(&self) {
