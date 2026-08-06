@@ -160,25 +160,23 @@ pub struct VolumeTumbling;
 
 impl TumblingOperator for VolumeTumbling {
 	type GroupKey = String;
-	type WindowSlot = u64;
 	type Accumulator = VolumeAccumulator;
 	type Output = VolumeOut;
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, f64)> {
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, f64)> {
 		let group = row.utf8("group")?.to_string();
-		let slot = row.u64("slot")?;
 		let size = row.f64("size")?;
-		Some((group, slot, size))
+		Some((group, size))
 	}
 
-	fn window_for(&self, coord: u64) -> WindowSpan<u64> {
-		WindowSpan::for_coord(coord, WINDOW)
+	fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime> {
+		WindowSpan::for_coord(coord, millis(WINDOW))
 	}
 
-	fn build_output(&self, group: &String, span: WindowSpan<u64>, value: OrdF64) -> Option<VolumeOut> {
+	fn build_output(&self, group: &String, span: WindowSpan<DateTime>, value: OrdF64) -> Option<VolumeOut> {
 		Some(VolumeOut {
 			group: group.clone(),
-			window_start: span.start,
+			window_start: span.start.to_order(),
 			volume: value.get(),
 		})
 	}
@@ -196,8 +194,8 @@ impl TumblingRegistration for VolumeTumbling {
 		Ok(Self)
 	}
 
-	fn encode_row_key(&self, group: &String, window_start: u64) -> EncodedKey {
-		EncodedKey::builder().str(group).u64(window_start).build()
+	fn encode_row_key(&self, group: &String, window_start: DateTime) -> EncodedKey {
+		EncodedKey::builder().str(group).u64(window_start.to_order()).build()
 	}
 }
 
@@ -249,25 +247,23 @@ pub struct MinTumbling;
 
 impl TumblingOperator for MinTumbling {
 	type GroupKey = String;
-	type WindowSlot = u64;
 	type Accumulator = MinAccumulator;
 	type Output = MinOut;
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, OrdF64)> {
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, OrdF64)> {
 		let group = row.utf8("group")?.to_string();
-		let slot = row.u64("slot")?;
 		let size = row.f64("size")?;
-		Some((group, slot, OrdF64::new(size)?))
+		Some((group, OrdF64::new(size)?))
 	}
 
-	fn window_for(&self, coord: u64) -> WindowSpan<u64> {
-		WindowSpan::for_coord(coord, WINDOW)
+	fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime> {
+		WindowSpan::for_coord(coord, millis(WINDOW))
 	}
 
-	fn build_output(&self, group: &String, span: WindowSpan<u64>, value: OrdF64) -> Option<MinOut> {
+	fn build_output(&self, group: &String, span: WindowSpan<DateTime>, value: OrdF64) -> Option<MinOut> {
 		Some(MinOut {
 			group: group.clone(),
-			window_start: span.start,
+			window_start: span.start.to_order(),
 			min: value.get(),
 		})
 	}
@@ -285,8 +281,8 @@ impl TumblingRegistration for MinTumbling {
 		Ok(Self)
 	}
 
-	fn encode_row_key(&self, group: &String, window_start: u64) -> EncodedKey {
-		EncodedKey::builder().str(group).u64(window_start).build()
+	fn encode_row_key(&self, group: &String, window_start: DateTime) -> EncodedKey {
+		EncodedKey::builder().str(group).u64(window_start.to_order()).build()
 	}
 }
 
@@ -374,25 +370,24 @@ pub struct OhlcvSealingTumbling;
 
 impl TumblingOperator for OhlcvSealingTumbling {
 	type GroupKey = String;
-	type WindowSlot = u64;
 	type Accumulator = OhlcvAcc;
 	type Output = OhlcvOut;
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, (u64, OrdF64))> {
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, (u64, OrdF64))> {
 		let group = row.utf8("group")?.to_string();
 		let slot = row.u64("slot")?;
 		let price = OrdF64::new(row.f64("price")?)?;
-		Some((group, slot, (slot, price)))
+		Some((group, (slot, price)))
 	}
 
-	fn window_for(&self, coord: u64) -> WindowSpan<u64> {
-		WindowSpan::for_coord(coord, WINDOW)
+	fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime> {
+		WindowSpan::for_coord(coord, millis(WINDOW))
 	}
 
-	fn build_output(&self, group: &String, span: WindowSpan<u64>, value: OhlcvValue) -> Option<OhlcvOut> {
+	fn build_output(&self, group: &String, span: WindowSpan<DateTime>, value: OhlcvValue) -> Option<OhlcvOut> {
 		Some(OhlcvOut {
 			group: group.clone(),
-			window_start: span.start,
+			window_start: span.start.to_order(),
 			open: value.open.get(),
 			high: value.high.get(),
 			low: value.low.get(),
@@ -413,8 +408,8 @@ impl TumblingRegistration for OhlcvSealingTumbling {
 		Ok(Self)
 	}
 
-	fn encode_row_key(&self, group: &String, window_start: u64) -> EncodedKey {
-		EncodedKey::builder().str(group).u64(window_start).build()
+	fn encode_row_key(&self, group: &String, window_start: DateTime) -> EncodedKey {
+		EncodedKey::builder().str(group).u64(window_start.to_order()).build()
 	}
 }
 

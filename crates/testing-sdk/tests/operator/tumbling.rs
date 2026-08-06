@@ -35,6 +35,7 @@ fn run_volume(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome 
 		.with_output_shape(common::volume_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
 		.with_output_key(["group", "window_start"])
+		.with_time_column("slot")
 		.with_column("group", samplers::utf8_choices(&["BTC", "ETH", "SOL"]))
 		.with_column("slot", samplers::u64_range(0..300))
 		.with_column("size", size_sampler(none_values))
@@ -54,6 +55,7 @@ fn run_min(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 		.with_output_shape(common::min_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
 		.with_output_key(["group", "window_start"])
+		.with_time_column("slot")
 		.with_column("group", samplers::utf8_choices(&["BTC", "ETH", "SOL"]))
 		.with_column("slot", samplers::u64_range(0..300))
 		// Tight value set so duplicate minima exercise multiset removal.
@@ -79,6 +81,7 @@ fn run_ohlcv(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 		.with_output_shape(common::ohlcv_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
 		.with_output_key(["group", "window_start"])
+		.with_time_column("slot")
 		.with_column("group", samplers::utf8_choices(&["BTC", "ETH"]))
 		// Slots span more than WINDOW so some events age past OHLCV_GRACE and reach the
 		// sealing path.

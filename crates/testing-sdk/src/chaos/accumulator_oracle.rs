@@ -19,7 +19,7 @@ use reifydb_core::{
 };
 use reifydb_flow::window::{
 	accumulator::WindowAccumulator,
-	span::{SlotCoord, WindowCoord, WindowSpan},
+	span::{WindowCoord, WindowSpan},
 };
 use reifydb_sdk::operator::{
 	column::{row::Row, sink::native::NativeRowSink},
@@ -53,10 +53,9 @@ fn with_oracle_ctx<R>(f: impl FnOnce(&mut FFIOperatorContext) -> R) -> R {
 	f(&mut op_ctx)
 }
 
-type EventSlot<A> = <A as TumblingOperator>::WindowSlot;
-type Coord<A> = SlotCoord<<A as TumblingOperator>::WindowSlot>;
+type Coord = DateTime;
 type Group<A> = <A as TumblingOperator>::GroupKey;
-type WindowKey<A> = (Group<A>, Coord<A>);
+type WindowKey<A> = (Group<A>, Coord);
 
 pub fn tumbling_accumulator_oracle<A>(
 	aggregate: &A,
@@ -69,8 +68,8 @@ where
 	A::Output: Row,
 {
 	let mut accumulators: HashMap<WindowKey<A>, A::Accumulator> = HashMap::new();
-	let mut spans: HashMap<WindowKey<A>, WindowSpan<Coord<A>>> = HashMap::new();
-	let mut high_water: HashMap<Group<A>, Coord<A>> = HashMap::new();
+	let mut spans: HashMap<WindowKey<A>, WindowSpan<Coord>> = HashMap::new();
+	let mut high_water: HashMap<Group<A>, Coord> = HashMap::new();
 	let mut last_visible: HashMap<WindowKey<A>, A::Output> = HashMap::new();
 
 	for batch in batches {
@@ -106,9 +105,9 @@ fn apply_leg<A>(
 	aggregate: &A,
 	row: &CoreRow,
 	is_add: bool,
-	snapshot: &HashMap<Group<A>, Coord<A>>,
+	snapshot: &HashMap<Group<A>, Coord>,
 	accumulators: &mut HashMap<WindowKey<A>, A::Accumulator>,
-	spans: &mut HashMap<WindowKey<A>, WindowSpan<Coord<A>>>,
+	spans: &mut HashMap<WindowKey<A>, WindowSpan<Coord>>,
 	touched: &mut BTreeSet<WindowKey<A>>,
 ) where
 	A: TumblingOperator,
@@ -145,14 +144,16 @@ fn apply_leg<A>(
 fn extract_one<A>(
 	aggregate: &A,
 	row: &CoreRow,
-) -> Option<(Group<A>, EventSlot<A>, <A::Accumulator as WindowAccumulator>::Contribution)>
+) -> Option<(Group<A>, Coord, <A::Accumulator as WindowAccumulator>::Contribution)>
 where
 	A: TumblingOperator,
 {
 	let columns = Columns::from_row(row);
 	let view = NativeColumnsView::new(&columns);
 	let row_view = view.row(0)?;
-	with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
+	let coord = row_view.row_time()?;
+	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;
+	Some((group, coord, contribution))
 }
 
 fn materialize_outputs<O: Row>(
