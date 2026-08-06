@@ -60,6 +60,8 @@ use reifydb_runtime::{Runtime, context::RuntimeContext, version_epoch::VersionEp
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_store_operator::snapshot::SnapshotStore;
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -409,12 +411,17 @@ impl DatabaseBuilder {
 			self.ioc = self.ioc.register(tokio_handle.clone());
 		}
 
-		let cdc_store = match self.cdc_backend {
+		let cdc_store = match &self.cdc_backend {
 			CdcBackend::Memory => CdcStore::memory(),
 			#[cfg(not(target_arch = "wasm32"))]
-			CdcBackend::Sqlite(config) => CdcStore::sqlite(config),
+			CdcBackend::Sqlite(config) => CdcStore::sqlite(config.clone()),
 		};
 		self.ioc = self.ioc.register(cdc_store.clone());
+
+		#[cfg(not(target_arch = "wasm32"))]
+		if let CdcBackend::Sqlite(config) = &self.cdc_backend {
+			self.ioc = self.ioc.register(SnapshotStore::sqlite(config.clone()));
+		}
 
 		let operator_state_budget = OperatorStateBudgetHandle::new(ByteSize::from_bytes(
 			multi.config().get_config_uint8(ConfigKey::OperatorStateMemoryLimit),

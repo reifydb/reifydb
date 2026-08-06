@@ -98,6 +98,7 @@ impl SliceComputer {
 				checkpoint_deletes: Vec::new(),
 				view_changes,
 				control_cursor: None,
+				snapshot_pins: Vec::new(),
 			},
 			advance_to,
 			more,
@@ -354,7 +355,8 @@ mod integration {
 		builder::CustomOperators,
 		catalog::FlowCatalog,
 		deferred::{
-			committer::Committer, quiescence::FlowMaterialization, routing, tracker::FlowPositionTracker,
+			committer::Committer, quiescence::FlowMaterialization, routing, snapshot::SnapshotPinTracker,
+			tracker::FlowPositionTracker,
 		},
 		operator::metrics::OperatorSampleRegistry,
 	};
@@ -571,6 +573,7 @@ mod integration {
 			FlowPositionTracker::new(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
+			SnapshotPinTracker::new(),
 		);
 		let config = SliceConfig {
 			checkpoint_lag: 10_000,
@@ -679,6 +682,7 @@ mod integration {
 			FlowPositionTracker::new(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
+			SnapshotPinTracker::new(),
 		);
 		let config = SliceConfig {
 			checkpoint_lag: 10_000,
@@ -825,6 +829,7 @@ mod integration {
 			FlowPositionTracker::new(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
+			SnapshotPinTracker::new(),
 		);
 		let config = SliceConfig {
 			checkpoint_lag: 10_000,

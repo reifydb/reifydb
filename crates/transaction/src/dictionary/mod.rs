@@ -346,6 +346,12 @@ impl DictionaryAllocatorRegistry {
 		}
 		(count, bytes)
 	}
+
+	pub fn dictionary_ids(&self) -> Vec<DictionaryId> {
+		let mut ids: Vec<DictionaryId> = self.inner.slots.iter().map(|slot| *slot.key()).collect();
+		ids.sort_unstable();
+		ids
+	}
 }
 
 fn outcomes(dictionary: &Dictionary, resolved: Vec<Option<u128>>, created_ids: &[u128]) -> Result<Vec<InternOutcome>> {

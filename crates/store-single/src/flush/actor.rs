@@ -3,7 +3,9 @@
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use std::mem;
-use std::sync::Arc;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, atomic::AtomicBool};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_codec::key::encoded::EncodedKey;
@@ -34,6 +36,7 @@ pub enum FlushMessage {
 	Shutdown,
 	FlushPending {
 		waiter: Arc<WaiterHandle>,
+		flushed: Arc<AtomicBool>,
 	},
 }
 
@@ -70,15 +73,15 @@ impl FlushActor {
 		spawner.spawn_coordination("single-persistent-flush", actor).actor_ref().clone()
 	}
 
-	fn drain(&self, state: &mut FlushActorState) {
+	fn drain(&self, state: &mut FlushActorState) -> bool {
 		if !self.begin_flush(state) {
-			return;
+			return false;
 		}
 
 		let drained = self.take_dirty();
 		if drained.is_empty() {
 			state.flushing = false;
-			return;
+			return true;
 		}
 
 		reifydb_assertions! {
@@ -90,8 +93,9 @@ impl FlushActor {
 			);
 		}
 
-		self.flush_to_persistent(drained);
+		let flushed = self.flush_to_persistent(drained);
 		state.flushing = false;
+		flushed
 	}
 
 	#[inline]
@@ -110,15 +114,17 @@ impl FlushActor {
 	}
 
 	#[inline]
-	fn flush_to_persistent(&self, drained: DirtyMap) {
+	fn flush_to_persistent(&self, drained: DirtyMap) -> bool {
 		let entries: Vec<(EncodedKey, Option<CowVec<u8>>)> =
 			drained.iter().map(|(key, value)| (key.clone(), value.clone())).collect();
 		let count = entries.len();
 		if let Err(e) = self.persistent.set(entries) {
 			error!(error = %e, rows = count, "single persistent flush: set failed, returning rows for retry");
 			self.restore_dirty(drained);
+			false
 		} else {
 			debug!(rows = count, "single persistent flush completed");
+			true
 		}
 	}
 
@@ -149,22 +155,23 @@ impl Actor for FlushActor {
 
 	fn handle(&self, state: &mut FlushActorState, msg: FlushMessage, ctx: &Context<FlushMessage>) -> Directive {
 		if ctx.is_cancelled() {
-			self.drain(state);
+			let _ = self.drain(state);
 			return Directive::Stop;
 		}
 		match msg {
 			FlushMessage::Tick(_) => {
-				self.drain(state);
+				let _ = self.drain(state);
 			}
 			FlushMessage::Shutdown => {
 				debug!("Single persistent flush actor shutting down");
-				self.drain(state);
+				let _ = self.drain(state);
 				return Directive::Stop;
 			}
 			FlushMessage::FlushPending {
 				waiter,
+				flushed,
 			} => {
-				self.drain(state);
+				flushed.store(self.drain(state), Ordering::Release);
 				waiter.notify();
 			}
 		}

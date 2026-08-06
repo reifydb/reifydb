@@ -4,7 +4,10 @@
 use std::{
 	collections::{BTreeMap, HashMap},
 	ops::{Bound, Deref},
-	sync::Arc,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
 };
 
 use reifydb_codec::{
@@ -113,27 +116,27 @@ impl StandardSingleStore {
 		reporters
 	}
 
-	pub fn flush_pending_blocking(&self) {
+	pub fn flush_pending_blocking(&self) -> bool {
 		let Some(actor_ref) = self.flush_actor.as_ref() else {
-			return;
+			return self.persistent.is_none();
 		};
 
-		if self.dirty.lock().is_empty() {
-			return;
-		}
-
 		let waiter = Arc::new(WaiterHandle::new());
-		let waiter_for_msg = Arc::clone(&waiter);
+		let flushed = Arc::new(AtomicBool::new(false));
 		if actor_ref
 			.send_blocking(FlushMessage::FlushPending {
-				waiter: waiter_for_msg,
+				waiter: Arc::clone(&waiter),
+				flushed: Arc::clone(&flushed),
 			})
 			.is_err()
 		{
-			return;
+			return false;
 		}
 
-		waiter.wait_timeout(Duration::from_seconds(5).unwrap());
+		if !waiter.wait_timeout(Duration::from_seconds(5).unwrap()) {
+			return false;
+		}
+		flushed.load(Ordering::Acquire)
 	}
 }
 
@@ -533,6 +536,43 @@ mod tests {
 			 keeps serving the values, so nothing looks wrong until a restart, when they are simply gone. \
 			 The single-version keyspace holds the persisted commit-version high-water mark and the row \
 			 number sequences, whose entire purpose is to stop identifiers being reused after a crash"
+		);
+	}
+
+	#[test]
+	fn flush_pending_blocking_reports_whether_the_batch_became_durable() {
+		// The operator snapshot barrier relies on this return value: a snapshot generation may
+		// only complete once every pending dictionary intern is durably in single.db, so a
+		// flush that could not persist MUST report false and a clean one MUST report true.
+		// Falsified by making flush_pending_blocking unconditionally return true (the closed
+		// persistent tier below would then be reported as flushed) or by notifying the waiter
+		// without propagating the drain outcome.
+		let (mut store, _guard) = StandardSingleStore::testing_memory_with_persistent_sqlite();
+
+		let k = key("intern");
+		SingleVersionCommit::commit(
+			&mut store,
+			CowVec::new(vec![Delta::Set {
+				key: k.clone(),
+				row: EncodedRow(CowVec::new(b"1".to_vec())),
+			}]),
+		)
+		.unwrap();
+		assert!(store.flush_pending_blocking(), "a healthy persistent tier must report a completed flush");
+		assert!(store.dirty.lock().is_empty(), "the reported success must mean the batch left the dirty map");
+
+		SingleVersionCommit::commit(
+			&mut store,
+			CowVec::new(vec![Delta::Set {
+				key: key("lost"),
+				row: EncodedRow(CowVec::new(b"2".to_vec())),
+			}]),
+		)
+		.unwrap();
+		store.persistent().expect("persistent tier configured").shutdown();
+		assert!(
+			!store.flush_pending_blocking(),
+			"a flush that cannot persist must report failure so the snapshot barrier aborts"
 		);
 	}
 }

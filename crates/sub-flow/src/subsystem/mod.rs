@@ -43,6 +43,8 @@ use reifydb_core::{
 };
 use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
 use reifydb_flow::transaction::substrate::FlowSubstrate;
+use reifydb_store_operator::snapshot::SnapshotStore;
+use reifydb_store_single::SingleStore;
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock, shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::{
@@ -65,6 +67,7 @@ use crate::{
 		health::FlowHealthRegistry,
 		loader::{LoaderActor, LoaderHandle, LoaderMetrics},
 		quiescence::FlowMaterialization,
+		snapshot::{FlowSnapshots, SnapshotPinTracker},
 		supervisor::{FlowSupervisor, FlowSupervisorParams},
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
 		watermark::compute_flow_watermarks,
@@ -117,6 +120,16 @@ impl FlowSubsystem {
 		let state_budget = ioc
 			.resolve::<OperatorStateBudgetHandle>()
 			.expect("OperatorStateBudgetHandle must be registered");
+		let snapshots = match (ioc.try_resolve::<SnapshotStore>(), ioc.try_resolve::<SingleStore>()) {
+			(Some(snapshot_store), Some(single_store)) => Some(FlowSnapshots::new(
+				snapshot_store,
+				single_store,
+				engine.dictionary_allocators(),
+			)),
+			_ => None,
+		};
+		let snapshot_pins = SnapshotPinTracker::new();
+
 		let poll_frontier = CdcConsumerWatermark::default();
 		let materialization = FlowMaterialization::new(poll_frontier.clone(), flow_tracker.clone());
 		let committer = Committer::new(
@@ -124,6 +137,7 @@ impl FlowSubsystem {
 			flow_tracker.clone(),
 			materialization.clone(),
 			substrate.operators.clone(),
+			snapshot_pins.clone(),
 		);
 		let committer_handle = flow_scope.spawn_flow(
 			"flow-committer",
@@ -142,6 +156,7 @@ impl FlowSubsystem {
 		metrics_registry.register_operator_collector(Arc::new(GroupInternerMetricsCollector::new(
 			substrate.group.clone(),
 		)));
+		metrics_registry.register_collector(Arc::new(snapshot_pins));
 
 		let view_lineage = engine.view_lineage();
 
@@ -183,6 +198,7 @@ impl FlowSubsystem {
 				load_batch_bytes,
 				checkpoint_lag: FLOW_CHECKPOINT_LAG,
 				checkpoint_max_age: Duration::from_milliseconds(FLOW_CHECKPOINT_MAX_AGE_MS).unwrap(),
+				snapshots,
 			}),
 		);
 

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::{
+	ops::Bound,
+	sync::atomic::{AtomicU64, Ordering},
+};
 
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 use reifydb_core::{
@@ -11,6 +14,10 @@ use reifydb_core::{
 		EncodableKey,
 		dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
 	},
+};
+use reifydb_store_single::{
+	SingleStore,
+	tier::{RangeCursor, TierStorage},
 };
 use reifydb_value::{Result, value::dictionary::DictionaryId};
 
@@ -29,6 +36,38 @@ pub struct DictEntryWrite {
 	pub entry_value: EncodedRow,
 	pub index_key: EncodedKey,
 	pub index_value: EncodedRow,
+}
+
+pub fn durable_max_index_id(store: &SingleStore, dictionary: DictionaryId) -> Result<Option<u128>> {
+	let range = DictionaryEntryIndexKey::full_scan(dictionary);
+	match store.persistent() {
+		Some(tier) => {
+			let mut cursor = RangeCursor::new();
+			let batch = tier.range_next(
+				&mut cursor,
+				bound_as_slice(&range.start),
+				bound_as_slice(&range.end),
+				1,
+			)?;
+			Ok(batch.entries
+				.first()
+				.and_then(|entry| DictionaryEntryIndexKey::decode(&entry.key).map(|key| key.id)))
+		}
+		None => {
+			let batch = SingleVersionRange::range_batch(store, range, 1)?;
+			Ok(batch.items
+				.first()
+				.and_then(|row| DictionaryEntryIndexKey::decode(&row.key).map(|key| key.id)))
+		}
+	}
+}
+
+fn bound_as_slice(bound: &Bound<EncodedKey>) -> Bound<&[u8]> {
+	match bound {
+		Bound::Included(key) => Bound::Included(key.as_slice()),
+		Bound::Excluded(key) => Bound::Excluded(key.as_slice()),
+		Bound::Unbounded => Bound::Unbounded,
+	}
 }
 
 pub struct UnconfiguredDictionaryStore;

@@ -7,6 +7,10 @@ authors.workspace = true
 repository.workspace = true
 description = "In-memory single-version arena storage for flow operator state"
 
+[features]
+default = ["sqlite"]
+sqlite = ["rusqlite", "reifydb-sqlite", "xxhash-rust"]
+
 [build-dependencies]
 reifydb-build = { workspace = true }
 
@@ -14,4 +18,12 @@ reifydb-build = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
+reifydb-sqlite = { workspace = true, optional = true }
 reifydb-value = { workspace = true }
+xxhash-rust = { workspace = true, optional = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rusqlite = { workspace = true, features = ["bundled"], optional = true }
+
+[dev-dependencies]
+reifydb-testing = { workspace = true }

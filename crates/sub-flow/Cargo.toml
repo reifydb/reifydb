@@ -23,7 +23,8 @@ reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-extension = { workspace = true }
 reifydb-flow = { workspace = true, features = ["runtime"] }
-reifydb-store-operator = { workspace = true }
+reifydb-store-operator = { workspace = true, features = ["sqlite"] }
+reifydb-store-single = { workspace = true }
 reifydb-routine = { workspace = true }
 reifydb-abi = { workspace = true }
 reifydb-runtime = { workspace = true }
@@ -49,6 +50,7 @@ tracing = { workspace = true }
 libloading = { workspace = true }
 
 [dev-dependencies]
+reifydb-sqlite = { workspace = true }
 reifydb-testing-sdk = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-value = { workspace = true }

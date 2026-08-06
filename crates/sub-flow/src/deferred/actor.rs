@@ -55,6 +55,7 @@ use crate::{
 		loader::{LoaderMessage, LoaderReply},
 		overlay::FlowWriteOverlay,
 		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep},
+		snapshot::FlowSnapshots,
 		tracker::FlowPositionTracker,
 	},
 	engine::FlowEngineInner,
@@ -83,6 +84,7 @@ pub struct FlowActorParams {
 	pub checkpoint_max_age: Duration,
 	pub retry_limit: u32,
 	pub retry_backoff: Duration,
+	pub snapshots: Option<FlowSnapshots>,
 }
 
 pub struct FlowActor {
@@ -110,6 +112,7 @@ pub struct FlowActor {
 	checkpoint_max_age: Duration,
 	initial_source_objects: Arc<BTreeSet<ObjectId>>,
 	initial_cursor: CommitVersion,
+	snapshots: Option<FlowSnapshots>,
 }
 
 pub struct FlowActorState {
@@ -124,6 +127,7 @@ pub struct FlowActorState {
 	overlay: FlowWriteOverlay,
 	drain_after_commit: bool,
 	last_checkpoint_at: DateTime,
+	last_snapshot_at: DateTime,
 }
 
 impl FlowActor {
@@ -157,6 +161,7 @@ impl FlowActor {
 			checkpoint_max_age: params.checkpoint_max_age,
 			initial_source_objects: params.source_objects,
 			initial_cursor: params.cursor,
+			snapshots: params.snapshots,
 		}
 	}
 
@@ -166,6 +171,10 @@ impl FlowActor {
 
 	fn sample_interval(&self) -> Option<Duration> {
 		self.engine.catalog().get_config_duration_opt(ConfigKey::FlowSampleInterval)
+	}
+
+	fn snapshot_interval(&self) -> Option<Duration> {
+		self.engine.catalog().get_config_duration_opt(ConfigKey::OperatorSnapshotInterval)
 	}
 
 	fn poison(&self, state: &mut FlowActorState, reason: String) {
@@ -473,9 +482,39 @@ impl FlowActor {
 
 		ctx.schedule_once(self.tick_interval(), || FlowActorMessage::Tick);
 
+		self.maybe_snapshot(state, ctx);
+
 		if !state.poisoned && !state.committing {
 			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 		}
+	}
+
+	fn maybe_snapshot(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
+		let Some(snapshots) = &self.snapshots else {
+			return;
+		};
+		if state.poisoned || state.committing {
+			return;
+		}
+		let Some(interval) = self.snapshot_interval() else {
+			return;
+		};
+		let now = self.clock.now();
+		if now - state.last_snapshot_at < interval {
+			return;
+		}
+		state.last_snapshot_at = now;
+
+		let ids: Vec<_> = self.flow.get_operator_ids().collect();
+		let Some(pin) = snapshots.write_flow(&self.substrate.operators, &ids) else {
+			return;
+		};
+
+		let advance_to = state.cursor;
+		let mut slice = FlowSlice::empty();
+		slice.checkpoints.push((self.flow_id, advance_to));
+		slice.snapshot_pins.push((self.flow_id, pin));
+		self.dispatch_commit(state, ctx, slice, advance_to, false);
 	}
 
 	fn on_sample(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
@@ -568,6 +607,7 @@ impl Actor for FlowActor {
 			overlay: FlowWriteOverlay::new(),
 			drain_after_commit: false,
 			last_checkpoint_at: self.clock.now(),
+			last_snapshot_at: self.clock.now(),
 		}
 	}
 
@@ -664,15 +704,16 @@ mod pull_protocol {
 		actors::{flow::FlowActorHandle, pending::PendingLayers},
 		interface::{
 			catalog::flow::OperatorId,
-			cdc::SystemChange,
+			cdc::{ConsumerClass, SystemChange},
 			change::{ChangeOrigin, Diff},
 		},
-		key::{Key, kind::KeyKind, operator_state::OperatorStateKey},
+		key::{Key, cdc_consumer::FlowSnapshotPin, kind::KeyKind, operator_state::OperatorStateKey},
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::{DeferredParams, FlowTransaction};
 	use reifydb_runtime::sync::waiter::WaiterHandle;
-	use reifydb_store_operator::OperatorStore;
+	use reifydb_sqlite::SqliteConfig;
+	use reifydb_store_operator::{OperatorStore, snapshot::SnapshotStore};
 	use reifydb_transaction::{
 		group::{GroupCommitBegin, GroupCommitHandle},
 		multi::RangeScope,
@@ -688,6 +729,7 @@ mod pull_protocol {
 			loader::{LoaderActor, LoaderHandle, LoaderMetrics},
 			quiescence::FlowMaterialization,
 			routing,
+			snapshot::SnapshotPinTracker,
 		},
 	};
 
@@ -704,6 +746,7 @@ mod pull_protocol {
 		source_objects: Arc<BTreeSet<ObjectId>>,
 		substrate: FlowSubstrate,
 		health: FlowHealthRegistry,
+		snapshots: Option<FlowSnapshots>,
 	}
 
 	fn harness() -> Harness {
@@ -773,6 +816,7 @@ mod pull_protocol {
 			tracker.clone(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			substrate.operators.clone(),
+			SnapshotPinTracker::new(),
 		);
 		let begin_engine = engine.clone();
 		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
@@ -808,6 +852,7 @@ mod pull_protocol {
 			source_objects,
 			substrate,
 			health: FlowHealthRegistry::new(),
+			snapshots: None,
 		}
 	}
 
@@ -850,6 +895,7 @@ mod pull_protocol {
 					checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
 					retry_limit: 3,
 					retry_backoff: Duration::from_milliseconds(50).unwrap(),
+					snapshots: self.snapshots.clone(),
 				}),
 			);
 
@@ -1586,6 +1632,7 @@ mod pull_protocol {
 			h.tracker.clone(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			substrate2.operators.clone(),
+			SnapshotPinTracker::new(),
 		);
 		let begin_engine = h.engine.clone();
 		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
@@ -1618,6 +1665,7 @@ mod pull_protocol {
 				checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
 				retry_limit: 3,
 				retry_backoff: Duration::from_milliseconds(50).unwrap(),
+				snapshots: None,
 			}),
 		);
 
@@ -1642,5 +1690,86 @@ mod pull_protocol {
 			"the restarted flow must rebuild its state in its own arena"
 		);
 		drop(actor2);
+	}
+
+	#[test]
+	fn an_elapsed_snapshot_interval_persists_generations_and_advances_the_pin() {
+		// End-to-end trigger wiring: once OperatorSnapshotInterval elapses on the actor's
+		// clock, the next tick with no commit in flight must write a snapshot generation for
+		// every stateful operator of the flow and ride a slice commit that advances the
+		// flow's snapshot pin to min(upper). Falsified by never calling maybe_snapshot from
+		// the tick path, by gating it on ticks_enabled, by not dispatching the pin commit,
+		// or by reading the interval from the wrong config key.
+		let mut h = harness_with(
+			"CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }",
+			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } with { time: event } \
+			 AS { FROM app::t AGGREGATE { total: math::count(id) } BY { g } }",
+		);
+		{
+			let catalog = h.engine.catalog();
+			let mut admin = h.engine.begin_admin(IdentityId::system()).expect("begin admin");
+			catalog.set_config(&mut admin, ConfigKey::OperatorSnapshotInterval, Value::duration_seconds(1))
+				.expect("set snapshot interval");
+			admin.commit().expect("commit config");
+		}
+		let (snapshot_config, _db_guard) = SqliteConfig::test();
+		let snapshot_store = SnapshotStore::sqlite(snapshot_config);
+		h.snapshots = Some(FlowSnapshots::new(
+			snapshot_store.clone(),
+			h.engine.single().read_store(),
+			h.engine.dictionary_allocators(),
+		));
+
+		let Clock::Mock(clock) = h.engine.clock() else {
+			panic!("this test drives the snapshot interval by hand and needs the mock clock")
+		};
+
+		let v0 = h.engine.current_version().expect("current version");
+		let actor = h.spawn_actor(v0);
+
+		h.te.command(
+			r#"INSERT app::t [{id: 1, g: 1, ts: "1970-01-01T00:00:00Z"},
+			                   {id: 2, g: 2, ts: "1970-01-01T00:01:00Z"}]"#,
+		);
+		let target = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(target);
+		h.wake(&actor);
+		assert_eq!(h.await_view_rows(2, StdDuration::from_secs(10)), 2, "the aggregate must materialize");
+		assert_eq!(h.await_position(target, StdDuration::from_secs(5)), Some(target));
+
+		let stateful: Vec<OperatorId> = h
+			.flow
+			.get_operator_ids()
+			.filter(|id| h.substrate.operators.upper(*id) > CommitVersion(0))
+			.collect();
+		assert!(!stateful.is_empty(), "precondition: the aggregate flow must hold committed operator state");
+
+		// Repeated ticks because a tick whose body commits sets `committing` and skips the
+		// snapshot; only a quiet tick after the interval elapsed can run it.
+		clock.advance_secs(2);
+		let snapshotted = h.poll_until(seconds(10), || {
+			assert!(actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
+			sleep(StdDuration::from_millis(20));
+			stateful.iter()
+				.all(|id| !snapshot_store.generations(*id).expect("generations").is_empty())
+				.then_some(())
+		});
+		assert!(
+			snapshotted.is_some(),
+			"every stateful operator must gain a snapshot generation once the interval elapses"
+		);
+
+		let expected_pin =
+			stateful.iter().map(|id| h.substrate.operators.upper(*id)).min().expect("stateful is non-empty");
+		let pin = h
+			.poll_until(seconds(10), || {
+				let mut query = h.engine.begin_query(IdentityId::system()).expect("query");
+				CdcCheckpoint::fetch_row(&mut Transaction::Query(&mut query), &FlowSnapshotPin(h.flow_id))
+					.expect("fetch pin")
+			})
+			.expect("the completed snapshot must advance the flow's pin through a slice commit");
+		assert_eq!(pin.version, expected_pin, "the pin must be min(upper) across the flow's snapshots");
+		assert_eq!(pin.class, ConsumerClass::Pinning, "an Ephemeral pin would not bound CDC truncation");
+		drop(actor);
 	}
 }

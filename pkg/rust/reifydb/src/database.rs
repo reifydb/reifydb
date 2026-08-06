@@ -249,7 +249,9 @@ impl Database {
 		}
 
 		if let Some(single_store) = self.engine.ioc().try_resolve::<SingleStore>() {
-			single_store.flush_pending_blocking();
+			if !single_store.flush_pending_blocking() {
+				warn!("single store flush did not complete during shutdown");
+			}
 		}
 	}
 

@@ -21,6 +21,7 @@ use reifydb_core::{
 		cdc::{Cdc, CdcConsumerId},
 		change::ChangeOrigin,
 	},
+	key::cdc_consumer::FlowSnapshotPin,
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
@@ -54,6 +55,7 @@ use crate::{
 		health::FlowHealthRegistry,
 		loader::LoaderMessage,
 		routing::{self, ViewRoute},
+		snapshot::FlowSnapshots,
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
 	},
 	operator::metrics::OperatorSampleRegistry,
@@ -86,6 +88,7 @@ pub struct FlowSupervisorParams {
 	pub load_batch_bytes: ByteSize,
 	pub checkpoint_lag: u64,
 	pub checkpoint_max_age: Duration,
+	pub snapshots: Option<FlowSnapshots>,
 }
 
 pub struct FlowSupervisor {
@@ -111,6 +114,7 @@ pub struct FlowSupervisor {
 	load_batch_bytes: ByteSize,
 	checkpoint_lag: u64,
 	checkpoint_max_age: Duration,
+	snapshots: Option<FlowSnapshots>,
 }
 
 pub struct SupervisorState {
@@ -146,6 +150,7 @@ impl FlowSupervisor {
 			load_batch_bytes: params.load_batch_bytes,
 			checkpoint_lag: params.checkpoint_lag,
 			checkpoint_max_age: params.checkpoint_max_age,
+			snapshots: params.snapshots,
 		}
 	}
 
@@ -160,8 +165,13 @@ impl FlowSupervisor {
 			}
 		};
 
+		let truncated_before = self.snapshots.as_ref().map(|_| {
+			self.engine.cdc_store().truncated_before().unwrap_or(CommitVersion(0))
+		});
+
 		let mut to_spawn: Vec<(FlowDag, CommitVersion)> = Vec::new();
 		let mut seeds: Vec<(FlowId, CommitVersion)> = Vec::new();
+		let mut pins: Vec<(FlowId, CommitVersion)> = Vec::new();
 		for flow_id in flows {
 			let flow = match self
 				.flow_catalog
@@ -178,6 +188,17 @@ impl FlowSupervisor {
 			let seed = CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut query), &flow_id)
 				.unwrap_or(None)
 				.unwrap_or(migration_base);
+			if let (Some(snapshots), Some(truncated_before)) = (&self.snapshots, truncated_before) {
+				snapshots.load_flow(&self.substrate.operators, flow.get_operator_ids(), truncated_before);
+				let existing_pin = CdcCheckpoint::fetch_opt(
+					&mut Transaction::Query(&mut query),
+					&FlowSnapshotPin(flow_id),
+				)
+				.unwrap_or(None);
+				if existing_pin.is_none() {
+					pins.push((flow_id, seed));
+				}
+			}
 			seeds.push((flow_id, seed));
 			to_spawn.push((flow, seed));
 		}
@@ -191,7 +212,7 @@ impl FlowSupervisor {
 		self.poll_frontier.store(scan_cursor);
 		self.backlog.set_anchor(scan_cursor);
 
-		self.commit_control(seeds, None);
+		self.commit_control(seeds, pins, None);
 
 		let registered: BTreeSet<FlowId> = to_spawn.iter().map(|(f, _)| f.id).collect();
 		for (flow, seed) in to_spawn {
@@ -257,7 +278,12 @@ impl FlowSupervisor {
 
 		let now = self.clock.now();
 		if !seeds.is_empty() || now - state.last_control_commit_at >= self.checkpoint_max_age {
-			self.commit_control(seeds, Some(bound));
+			let pins = if self.snapshots.is_some() {
+				seeds.clone()
+			} else {
+				Vec::new()
+			};
+			self.commit_control(seeds, pins, Some(bound));
 			state.last_control_commit_at = now;
 		}
 
@@ -463,16 +489,23 @@ impl FlowSupervisor {
 			checkpoint_max_age: self.checkpoint_max_age,
 			retry_limit: FLOW_RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(FLOW_RETRY_BACKOFF_MS as i64).unwrap(),
+			snapshots: self.snapshots.clone(),
 		};
 		self.spawner.spawn_flow(&format!("flow-{}", flow_id.0), FlowActor::new(params))
 	}
 
-	fn commit_control(&self, seeds: Vec<(FlowId, CommitVersion)>, cursor: Option<CommitVersion>) {
-		if seeds.is_empty() && cursor.is_none() {
+	fn commit_control(
+		&self,
+		seeds: Vec<(FlowId, CommitVersion)>,
+		pins: Vec<(FlowId, CommitVersion)>,
+		cursor: Option<CommitVersion>,
+	) {
+		if seeds.is_empty() && pins.is_empty() && cursor.is_none() {
 			return;
 		}
 		let mut slice = FlowSlice::empty();
 		slice.checkpoints = seeds;
+		slice.snapshot_pins = pins;
 		slice.control_cursor = cursor.map(|v| (self.consumer_id.clone(), v));
 		let reply: SliceCommitReply = Box::new(|_| {});
 		let _ = self.committer.send(CommitterMessage::Slice {

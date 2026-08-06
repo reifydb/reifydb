@@ -91,7 +91,7 @@ impl SingleStore {
 		}
 	}
 
-	pub fn flush_pending_blocking(&self) {
+	pub fn flush_pending_blocking(&self) -> bool {
 		match self {
 			SingleStore::Standard(store) => store.flush_pending_blocking(),
 		}

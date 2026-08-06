@@ -30,6 +30,7 @@ reifydb-runtime = { workspace = true }
 reifydb-sdk = { workspace = true }
 reifydb-sqlite = { workspace = true }
 reifydb-store-multi = { workspace = true }
+reifydb-store-operator = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-sub-metrics = { workspace = true }
 reifydb-subscription = { workspace = true}

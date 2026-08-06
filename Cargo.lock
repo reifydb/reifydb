@@ -2802,6 +2802,7 @@ dependencies = [
  "reifydb-sdk",
  "reifydb-sqlite",
  "reifydb-store-multi",
+ "reifydb-store-operator",
  "reifydb-store-single",
  "reifydb-sub-api",
  "reifydb-sub-flow",
@@ -3363,7 +3364,11 @@ dependencies = [
  "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
+ "reifydb-sqlite",
+ "reifydb-testing",
  "reifydb-value",
+ "rusqlite",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -3417,7 +3422,9 @@ dependencies = [
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-sdk",
+ "reifydb-sqlite",
  "reifydb-store-operator",
+ "reifydb-store-single",
  "reifydb-sub-api",
  "reifydb-test-harness",
  "reifydb-testing-chaos",
