@@ -5,16 +5,14 @@ use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 use crate::window::span::WindowCoord;
 
+pub const SEAL_GATE_STEP: Duration = Duration::from_milliseconds_const(1);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AdmissibleSpan(Duration);
 
 impl AdmissibleSpan {
 	pub fn duration(self) -> Duration {
 		self.0
-	}
-
-	pub fn millis(self) -> u64 {
-		<DateTime as WindowCoord>::span_millis(self.0).unwrap_or(0)
 	}
 }
 
@@ -92,9 +90,7 @@ impl SealPolicy {
 	}
 
 	pub fn seal_instant(self, anchor: DateTime) -> SealInstant {
-		SealInstant(<DateTime as WindowCoord>::from_order(
-			anchor.to_order().saturating_add(self.admissible.millis()).saturating_add(1),
-		))
+		SealInstant(anchor.saturating_add(self.admissible.0).saturating_add(SEAL_GATE_STEP))
 	}
 
 	pub fn seal_instant_from_order(self, anchor_order: u64) -> SealInstant {
@@ -102,10 +98,7 @@ impl SealPolicy {
 	}
 
 	pub fn sealed_anchor(self, at: DateTime) -> Option<DateTime> {
-		at.to_order()
-			.checked_sub(self.admissible.millis())
-			.and_then(|anchor| anchor.checked_sub(1))
-			.map(<DateTime as WindowCoord>::from_order)
+		at.checked_sub(self.admissible.0).and_then(|anchor| anchor.checked_sub(SEAL_GATE_STEP))
 	}
 }
 
@@ -122,10 +115,7 @@ impl EvictionPolicy {
 	}
 
 	pub fn eviction_instant(self, anchor: DateTime) -> EvictionInstant {
-		EvictionInstant(<DateTime as WindowCoord>::from_order(
-			anchor.to_order()
-				.saturating_add(<DateTime as WindowCoord>::span_millis(self.span).unwrap_or(0)),
-		))
+		EvictionInstant(anchor.saturating_add(self.span))
 	}
 
 	pub fn eviction_instant_from_order(self, anchor_order: u64) -> EvictionInstant {
@@ -150,7 +140,7 @@ mod tests {
 		// is what converts one into the other.
 		let policy = SealPolicy::tumbling(ms(1_000), ms(200));
 
-		assert_eq!(policy.admissible().millis(), 1_200);
+		assert_eq!(policy.admissible().duration(), ms(1_200));
 		assert_eq!(policy.seal_instant(at_millis(5_000)).at(), at_millis(6_201));
 	}
 
@@ -210,10 +200,10 @@ mod tests {
 	fn every_kind_admits_its_own_base_span_plus_grace() {
 		// Tumbling and sliding admit size + grace, session admits gap + grace, rolling
 		// admits span + grace. A divergence here is a behaviour change, not a refactor.
-		assert_eq!(SealPolicy::tumbling(ms(1_000), ms(50)).admissible().millis(), 1_050);
-		assert_eq!(SealPolicy::sliding(ms(1_000), ms(50)).admissible().millis(), 1_050);
-		assert_eq!(SealPolicy::session(ms(300), ms(50)).admissible().millis(), 350);
-		assert_eq!(SealPolicy::rolling(ms(2_000), ms(50)).admissible().millis(), 2_050);
+		assert_eq!(SealPolicy::tumbling(ms(1_000), ms(50)).admissible().duration(), ms(1_050));
+		assert_eq!(SealPolicy::sliding(ms(1_000), ms(50)).admissible().duration(), ms(1_050));
+		assert_eq!(SealPolicy::session(ms(300), ms(50)).admissible().duration(), ms(350));
+		assert_eq!(SealPolicy::rolling(ms(2_000), ms(50)).admissible().duration(), ms(2_050));
 	}
 
 	#[test]
@@ -226,9 +216,9 @@ mod tests {
 		for grace in [ms(0), ms(1), enormous] {
 			let policy = SealPolicy::tumbling(ms(1_000), grace);
 			assert!(
-				policy.admissible().millis() >= 1_000,
-				"admissible {} fell below the 1000ms window for grace {grace:?}",
-				policy.admissible().millis()
+				policy.admissible().duration() >= ms(1_000),
+				"admissible {:?} fell below the 1000ms window for grace {grace:?}",
+				policy.admissible().duration()
 			);
 		}
 	}

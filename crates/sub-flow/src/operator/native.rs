@@ -62,7 +62,7 @@ use crate::{
 	error::NativeOperatorError,
 	operator::{
 		context::native::{NativeBridge, NativeOperatorContext},
-		scale_from_millis, sealed_or_idle_floor,
+		sealed_or_idle_floor,
 	},
 };
 
@@ -130,7 +130,7 @@ pub trait BridgedOperator: Send {
 		Ok(None)
 	}
 
-	fn seal_after_ms(&self) -> Option<u64> {
+	fn seal_after(&self) -> Option<Duration> {
 		None
 	}
 
@@ -475,11 +475,11 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 		logic.sample()
 	}
 
-	fn seal_after_ms(&self) -> Option<u64> {
+	fn seal_after(&self) -> Option<Duration> {
 		// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time and no apply or
 		// timer call is in flight here; no other borrow of the cell is live.
 		let logic = unsafe { &*self.logic.get() };
-		logic.seal_after_ms()
+		logic.seal_after()
 	}
 
 	fn on_timer(&self, bridge: &mut dyn NativeBridge, timer: Timer) -> Result<Option<Change>> {
@@ -593,7 +593,7 @@ impl Operator for NativeBridgedOperator {
 	}
 
 	fn retention_scale(&self) -> Option<Duration> {
-		scale_from_millis(self.inner.seal_after_ms())
+		self.inner.seal_after().filter(|span| !span.is_zero())
 	}
 
 	fn floors(&self, txn: &mut FlowTransaction, watermark: DateTime) -> Result<FloorSpec> {
@@ -729,8 +729,8 @@ mod tests {
 			Ok(change)
 		}
 
-		fn seal_after_ms(&self) -> Option<u64> {
-			Some(65_000)
+		fn seal_after(&self) -> Option<Duration> {
+			Some(Duration::from_milliseconds_const(65_000))
 		}
 	}
 

@@ -23,7 +23,7 @@ use reifydb_sdk::{
 	state::{RawStatefulOperator, keyed::KeyedStateful},
 };
 use reifydb_test_harness::db::TestDb;
-use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
+use reifydb_value::value::{constraint::TypeConstraint, duration::Duration, value_type::ValueType};
 
 const TIMEOUT: StdDuration = StdDuration::from_secs(20);
 
@@ -94,8 +94,8 @@ impl OperatorLogic for Counter {
 		Ok(Counter)
 	}
 
-	fn seal_after_ms(&self) -> Option<u64> {
-		Some(SEAL_AFTER_MS)
+	fn seal_after(&self) -> Option<Duration> {
+		Some(Duration::from_milliseconds_const(SEAL_AFTER_MS as i64))
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> SdkResult<()> {

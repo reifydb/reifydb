@@ -22,6 +22,7 @@ use reifydb_abi::{
 	},
 	operator::{timer::TimerKind, vtable::OperatorVTableFFI},
 };
+use reifydb_flow::window::span::WindowCoord;
 use reifydb_core::metrics::heap::OperatorSample;
 use reifydb_value::value::datetime::DateTime;
 use tracing::{error, instrument, warn};
@@ -302,7 +303,7 @@ pub unsafe extern "C" fn ffi_on_timer<O: FFIOperator>(
 pub unsafe extern "C" fn ffi_seal_after_ms<O: FFIOperator>(instance: *mut c_void) -> u64 {
 	let result = catch_unwind(AssertUnwindSafe(|| {
 		let wrapper = OperatorWrapper::<O>::from_ptr(instance);
-		wrapper.operator.seal_after_ms().unwrap_or(0)
+		wrapper.operator.seal_after().and_then(<DateTime as WindowCoord>::span_millis).unwrap_or(0)
 	}));
 
 	match result {

@@ -312,32 +312,6 @@ fn last_value_is_last_write_wins() {
 }
 
 #[test]
-fn endpoint_by_coord_tracks_both_ends_and_is_removal_safe() {
-	let mut ends: EndpointByCoord<u64, i64> = EndpointByCoord::default();
-	ends.observe(10, 100);
-	ends.observe(30, 300);
-	ends.observe(20, 200);
-	assert_eq!(ends.earliest(), Some((&10, &100)));
-	assert_eq!(ends.earliest_coord(), Some(&10));
-	assert_eq!(ends.latest(), Some((&30, &300)));
-	assert_eq!(ends.latest_coord(), Some(&30));
-
-	ends.forget(&10);
-	assert_eq!(ends.earliest(), Some((&20, &200)), "forgetting the min reveals the prior min");
-	ends.forget(&30);
-	assert_eq!(ends.latest(), Some((&20, &200)), "forgetting the max reveals the prior max");
-
-	ends.observe(20, 999);
-	assert_eq!(ends.earliest_value(), Some(&999));
-	assert_eq!(ends.latest_value(), Some(&999));
-
-	ends.forget(&20);
-	assert!(ends.is_empty());
-	assert_eq!(ends.earliest(), None);
-	assert_eq!(ends.latest(), None);
-}
-
-#[test]
 fn retained_acc_add_remove_is_inverse_for_fresh_key() {
 	assert_add_remove_is_inverse::<RetainedAccumulator<u64, i64>>(&[(1u64, 10i64), (2, 20)], (3u64, 30i64));
 }

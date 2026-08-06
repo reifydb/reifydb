@@ -290,8 +290,8 @@ where
 		Self::expire_through(engine, &mut store, seal_horizon_of(frontier, seal_after))
 	}
 
-	fn seal_after_ms(&self) -> Option<u64> {
-		self.aggregator.seal_after().and_then(<DateTime as WindowCoord>::span_millis)
+	fn seal_after(&self) -> Option<Duration> {
+		self.aggregator.seal_after()
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {

@@ -16,13 +16,6 @@ fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))
 }
 
-fn rejection(db: &TestDb, rql: &str) -> Option<String> {
-	match db.try_admin(rql) {
-		Ok(_) => None,
-		Err(err) => Some(err.diagnostic().code),
-	}
-}
-
 #[test]
 fn rolling_sum_accumulates_correctly_across_separate_commits() {
 	let db = setup();

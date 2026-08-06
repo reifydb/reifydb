@@ -7,7 +7,7 @@
 use reifydb_codec::state::{OperatorState, decode_state};
 use reifydb_flow::window::accumulator::{
 	WindowAccumulator,
-	invertible::{EndpointByCoord, KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64},
+	invertible::{KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64},
 	sealing::{SealingEndpoint, SealingMin},
 };
 use reifydb_value::{
@@ -19,19 +19,6 @@ use super::common::{assert_add_remove_is_inverse, assert_order_independent};
 
 fn of(v: f64) -> OrdF64 {
 	OrdF64::new(v).expect("not nan")
-}
-
-#[test]
-fn endpoint_by_coord_roundtrip() {
-	let mut ends: EndpointByCoord<u64, i64> = EndpointByCoord::default();
-	ends.observe(10, 100);
-	ends.observe(30, 300);
-	ends.observe(20, 200);
-	let bytes = ends.encode_state(DateTime::EPOCH).expect("encode");
-	let restored: EndpointByCoord<u64, i64> = decode_state(&bytes).expect("decode");
-	assert_eq!(restored, ends);
-	assert_eq!(restored.earliest(), Some((&10, &100)), "earliest endpoint survives roundtrip");
-	assert_eq!(restored.latest(), Some((&30, &300)), "latest endpoint survives roundtrip");
 }
 
 #[test]

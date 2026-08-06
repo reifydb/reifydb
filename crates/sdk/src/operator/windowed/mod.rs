@@ -24,6 +24,7 @@ use reifydb_core::{
 use reifydb_flow::window::{
 	engine::config::WindowEngineConfig,
 	ledger::{FiredAt, SealLedger},
+	policy::SEAL_GATE_STEP,
 	span::{WindowCoord, WindowSpan},
 };
 use reifydb_value::{
@@ -34,13 +35,13 @@ use reifydb_value::{
 
 use crate::{config::Config, operator::context::OperatorContext};
 
-pub(crate) fn seal_frontier<C: WindowCoord>(store: &mut impl StateStore) -> Result<C> {
+pub(crate) fn seal_frontier(store: &mut impl StateStore) -> Result<DateTime> {
 	let ledger = SealLedger::read_order(store)?.unwrap_or(0);
 	let watermark = store.flow_watermark()?.map_or(0, |at| at.to_millis());
-	Ok(C::from_order(ledger.max(watermark)))
+	Ok(<DateTime as WindowCoord>::from_order(ledger.max(watermark)))
 }
 
-pub(crate) fn advance_seal_frontier<C: WindowCoord>(store: &mut impl StateStore, fired: FiredAt) -> Result<C> {
+pub(crate) fn advance_seal_frontier(store: &mut impl StateStore, fired: FiredAt) -> Result<DateTime> {
 	SealLedger::advance(store, fired)?;
 	seal_frontier(store)
 }
@@ -49,21 +50,16 @@ pub(crate) fn bucket_of(coord: DateTime, size: Duration) -> DateTime {
 	WindowSpan::for_coord(coord, size).start
 }
 
-pub(crate) fn seal_horizon_of<C: WindowCoord>(frontier: C, seal_after: Duration) -> C {
-	C::from_order(
-		frontier.to_order().saturating_sub(<DateTime as WindowCoord>::span_millis(seal_after).unwrap_or(0)),
-	)
+pub(crate) fn seal_horizon_of(frontier: DateTime, seal_after: Duration) -> DateTime {
+	frontier.saturating_sub(seal_after)
 }
 
-pub(crate) fn arm_seal_timer<C: WindowCoord>(
+pub(crate) fn arm_seal_timer(
 	store: &mut impl StateStore,
-	newest_window: C,
+	newest_window: DateTime,
 	seal_after: Duration,
 ) -> Result<()> {
-	let seal_after_ms = <DateTime as WindowCoord>::span_millis(seal_after).unwrap_or(0);
-	let at = <DateTime as WindowCoord>::from_order(
-		newest_window.to_order().saturating_add(seal_after_ms).saturating_add(1),
-	);
+	let at = newest_window.saturating_add(seal_after).saturating_add(SEAL_GATE_STEP);
 	store.arm_timer(at, TimerKind::Seal, &EncodedKey::new(Vec::new()))
 }
 

@@ -367,59 +367,6 @@ where
 
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
-pub struct EndpointByCoord<C: Ord, V> {
-	#[rkyv(with = AsVec)]
-	entries: BTreeMap<C, V>,
-}
-
-impl<C: Ord, V> Default for EndpointByCoord<C, V> {
-	fn default() -> Self {
-		Self {
-			entries: BTreeMap::new(),
-		}
-	}
-}
-
-impl<C: Ord + Clone, V: Clone> EndpointByCoord<C, V> {
-	pub fn observe(&mut self, coord: C, value: V) {
-		self.entries.insert(coord, value);
-	}
-
-	pub fn forget(&mut self, coord: &C) {
-		self.entries.remove(coord);
-	}
-
-	pub fn earliest(&self) -> Option<(&C, &V)> {
-		self.entries.first_key_value()
-	}
-
-	pub fn earliest_value(&self) -> Option<&V> {
-		self.entries.first_key_value().map(|(_, v)| v)
-	}
-
-	pub fn earliest_coord(&self) -> Option<&C> {
-		self.entries.first_key_value().map(|(c, _)| c)
-	}
-
-	pub fn latest(&self) -> Option<(&C, &V)> {
-		self.entries.last_key_value()
-	}
-
-	pub fn latest_value(&self) -> Option<&V> {
-		self.entries.last_key_value().map(|(_, v)| v)
-	}
-
-	pub fn latest_coord(&self) -> Option<&C> {
-		self.entries.last_key_value().map(|(c, _)| c)
-	}
-
-	pub fn is_empty(&self) -> bool {
-		self.entries.is_empty()
-	}
-}
-
-#[operator_state]
-#[derive(Debug, Clone, PartialEq)]
 pub struct KeyedInvertibleAccumulator<K: Ord, A> {
 	#[rkyv(with = AsVec)]
 	subs: BTreeMap<K, A>,
@@ -548,12 +495,6 @@ impl<K: Ord + HeapSize, V: HeapSize> HeapSize for RetainedAccumulator<K, V> {
 impl<V: HeapSize> HeapSize for LastValue<V> {
 	fn heap_size(&self) -> usize {
 		self.value.heap_size()
-	}
-}
-
-impl<C: Ord + HeapSize, V: HeapSize> HeapSize for EndpointByCoord<C, V> {
-	fn heap_size(&self) -> usize {
-		self.entries.heap_size()
 	}
 }
 

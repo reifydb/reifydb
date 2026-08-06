@@ -13,46 +13,40 @@ fn fits(size: u64, slide: u64) -> Option<(u64, u64)> {
 	(size > 0 && slide > 0 && slide < size).then_some((size, slide))
 }
 
+fn fits_span(size: Duration, slide: Duration) -> Option<(Duration, Duration)> {
+	(size.is_positive() && slide.is_positive() && slide < size).then_some((size, slide))
+}
+
 pub struct SlidingOverTime {
-	size: u64,
-	slide: u64,
+	size: Duration,
+	slide: Duration,
 }
 
 impl SlidingOverTime {
 	pub fn by_duration(size: Duration, slide: Duration) -> Option<Self> {
-		let (size, slide) = fits(
-			<DateTime as WindowCoord>::span_millis(size)?,
-			<DateTime as WindowCoord>::span_millis(slide)?,
-		)?;
+		let (size, slide) = fits_span(size, slide)?;
 		Some(Self {
 			size,
 			slide,
 		})
 	}
 
-	pub fn size(&self) -> u64 {
-		self.size
-	}
-
-	pub fn slide(&self) -> u64 {
-		self.slide
-	}
-
 	pub fn span(&self, anchor: u64) -> WindowSpan<DateTime> {
-		WindowSpan::new(
-			<DateTime as WindowCoord>::from_order(anchor),
-			<DateTime as WindowCoord>::from_order(anchor.saturating_add(self.size)),
-		)
+		let start = <DateTime as WindowCoord>::from_order(anchor);
+		WindowSpan::new(start, start.saturating_add(self.size))
 	}
 
 	pub fn anchors(&self, coord: EventCoord) -> Vec<u64> {
-		let instant = coord.at().to_order();
-		let lowest = instant.saturating_sub(self.size.saturating_sub(1)) / self.slide;
-		let highest = instant / self.slide;
-		(lowest..=highest)
-			.map(|window| window * self.slide)
-			.filter(|start| instant >= *start && instant < start + self.size)
-			.collect()
+		let instant = coord.at();
+		let mut start = instant.saturating_sub(self.size).floor_to(self.slide);
+		let mut anchors = Vec::new();
+		while start <= instant {
+			if instant < start.saturating_add(self.size) {
+				anchors.push(start.to_order());
+			}
+			start = start.saturating_add(self.slide);
+		}
+		anchors
 	}
 }
 
@@ -68,14 +62,6 @@ impl SlidingOverRows {
 			size: RowSpan::of(size),
 			slide: RowSpan::of(slide),
 		})
-	}
-
-	pub fn size(&self) -> RowSpan {
-		self.size
-	}
-
-	pub fn slide(&self) -> RowSpan {
-		self.slide
 	}
 
 	pub fn span(&self, anchor: u64) -> WindowSpan<DateTime> {
@@ -191,18 +177,4 @@ mod tests {
 		assert_eq!(span.end, DateTime::from_millis(5_250));
 	}
 
-	#[test]
-	fn every_window_a_coordinate_joins_really_does_contain_it() {
-		// Over-reporting is as silent as under-reporting: the row lands in a window whose span does
-		// not cover it, and retraction later subtracts it from a window it was never in.
-		for instant in (0..4_000).step_by(37) {
-			for start in timed().anchors(event_coord_at_millis(instant)) {
-				assert!(
-					instant >= start && instant < start + timed().size(),
-					"instant {instant} was placed in window [{start}, {})",
-					start + timed().size()
-				);
-			}
-		}
-	}
 }

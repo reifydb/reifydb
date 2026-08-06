@@ -14,12 +14,13 @@ use reifydb_core::{
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
-	value::{Value, row_number::RowNumber},
+	value::{Value, datetime::DateTime, row_number::RowNumber},
 };
 
 use crate::window::{
 	kind::session::SessionTracker,
 	ledger::{SealLedgerState, seal_ledger_key},
+	span::WindowCoord,
 };
 
 #[operator_state]
@@ -320,7 +321,11 @@ impl WindowMeta {
 		let Some(state) = self.session.get(store, &SessionKey(group))? else {
 			return Ok(SessionTracker::default());
 		};
-		Ok(SessionTracker::resumed(state.session_id, state.last_event_time, state.session_start))
+		Ok(SessionTracker::resumed(
+			state.session_id,
+			<DateTime as WindowCoord>::from_order(state.last_event_time),
+			<DateTime as WindowCoord>::from_order(state.session_start),
+		))
 	}
 
 	pub fn save_session<S: StateStore>(
@@ -334,8 +339,8 @@ impl WindowMeta {
 			&SessionKey(group),
 			SessionState {
 				session_id: tracker.session_id,
-				last_event_time: tracker.last,
-				session_start: tracker.start,
+				last_event_time: tracker.last.to_order(),
+				session_start: tracker.start.to_order(),
 			},
 		)
 	}
@@ -363,6 +368,7 @@ mod tests {
 	use std::ops::Bound::{Excluded, Included, Unbounded};
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
+	use reifydb_value::factory::at_millis;
 	use reifydb_core::{
 		key::operator_group_state::{
 			GroupId, IntoGroupStateKey, OperatorGroupStateKey, group_data_inner_range,
@@ -464,10 +470,10 @@ mod tests {
 			"a group with no persisted session must load as unopened"
 		);
 
-		meta.save_session(&mut store, GROUP, &SessionTracker::resumed(0, 0, 0)).unwrap();
+		meta.save_session(&mut store, GROUP, &SessionTracker::resumed(0, at_millis(0), at_millis(0))).unwrap();
 		meta.flush(&mut store).unwrap();
 
-		assert_eq!(meta.load_session(&mut store, GROUP).unwrap(), SessionTracker::resumed(0, 0, 0));
+		assert_eq!(meta.load_session(&mut store, GROUP).unwrap(), SessionTracker::resumed(0, at_millis(0), at_millis(0)));
 	}
 
 	#[test]

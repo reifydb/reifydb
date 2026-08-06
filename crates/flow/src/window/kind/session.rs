@@ -3,18 +3,18 @@
 
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
-use crate::window::{coord::EventCoord, policy::SealPolicy, span::WindowCoord};
+use crate::window::{coord::EventCoord, policy::SealPolicy};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SessionTracker {
 	pub session_id: u64,
-	pub last: u64,
-	pub start: u64,
+	pub last: DateTime,
+	pub start: DateTime,
 	opened: bool,
 }
 
 impl SessionTracker {
-	pub fn resumed(session_id: u64, last: u64, start: u64) -> Self {
+	pub fn resumed(session_id: u64, last: DateTime, start: DateTime) -> Self {
 		Self {
 			session_id,
 			last,
@@ -27,13 +27,13 @@ impl SessionTracker {
 		!self.opened
 	}
 
-	fn adopt(&mut self, coord: u64) {
+	fn adopt(&mut self, coord: DateTime) {
 		self.last = coord;
 		self.start = coord;
 		self.opened = true;
 	}
 
-	fn extend(&mut self, coord: u64) {
+	fn extend(&mut self, coord: DateTime) {
 		self.last = self.last.max(coord);
 		self.start = self.start.min(coord);
 	}
@@ -86,23 +86,18 @@ impl SessionKind {
 		}
 	}
 
-	pub fn gap_millis(&self) -> u64 {
-		<DateTime as WindowCoord>::span_millis(self.gap).unwrap_or(0)
-	}
-
 	pub fn seal_policy(&self, grace: Duration) -> SealPolicy {
 		SealPolicy::session(self.gap, grace)
 	}
 
 	pub fn assign(&self, tracker: &mut SessionTracker, coord: EventCoord) -> SessionAssignment {
-		let coord = coord.at().to_order();
-		let gap = self.gap_millis();
+		let coord = coord.at();
 
 		if tracker.is_unopened() {
 			tracker.adopt(coord);
 			return SessionAssignment::Opened(tracker.session_id);
 		}
-		if coord > tracker.last && coord - tracker.last > gap {
+		if coord > tracker.last && coord - tracker.last > self.gap {
 			let closed = tracker.session_id;
 			tracker.session_id += 1;
 			tracker.adopt(coord);
@@ -111,7 +106,7 @@ impl SessionKind {
 				opened: tracker.session_id,
 			};
 		}
-		if coord < tracker.start && tracker.start - coord > gap {
+		if coord < tracker.start && tracker.start - coord > self.gap {
 			return SessionAssignment::Refused;
 		}
 		tracker.extend(coord);
@@ -121,6 +116,8 @@ impl SessionKind {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_value::factory::at_millis;
+
 	use super::*;
 	use crate::factory::event_coord_at_millis;
 
@@ -170,8 +167,8 @@ mod tests {
 		kind().assign(&mut tracker, event_coord_at_millis(5_000));
 
 		assert_eq!(kind().assign(&mut tracker, event_coord_at_millis(4_500)), SessionAssignment::Extended(0));
-		assert_eq!(tracker.start, 4_500);
-		assert_eq!(tracker.last, 5_000, "reaching backwards must not drag the high end down");
+		assert_eq!(tracker.start, at_millis(4_500));
+		assert_eq!(tracker.last, at_millis(5_000), "reaching backwards must not drag the high end down");
 	}
 
 	#[test]
@@ -184,8 +181,8 @@ mod tests {
 		kind().assign(&mut tracker, event_coord_at_millis(5_000));
 
 		assert_eq!(kind().assign(&mut tracker, event_coord_at_millis(3_999)), SessionAssignment::Refused);
-		assert_eq!(tracker.start, 5_000, "a refused row must leave the tracker untouched");
-		assert_eq!(tracker.last, 5_000);
+		assert_eq!(tracker.start, at_millis(5_000), "a refused row must leave the tracker untouched");
+		assert_eq!(tracker.last, at_millis(5_000));
 	}
 
 	#[test]
@@ -199,7 +196,7 @@ mod tests {
 
 		assert_eq!(assignment, SessionAssignment::Opened(0));
 		assert_eq!(assignment.closed(), None);
-		assert_eq!(tracker, SessionTracker::resumed(0, 9_000, 9_000));
+		assert_eq!(tracker, SessionTracker::resumed(0, at_millis(9_000), at_millis(9_000)));
 	}
 
 	#[test]
@@ -210,7 +207,7 @@ mod tests {
 		let mut tracker = SessionTracker::default();
 
 		assert_eq!(kind().assign(&mut tracker, event_coord_at_millis(0)), SessionAssignment::Opened(0));
-		assert_eq!(tracker.last, 0, "the tracker must keep the epoch coordinate it adopted");
+		assert_eq!(tracker.last, at_millis(0), "the tracker must keep the epoch coordinate it adopted");
 		assert_eq!(
 			kind().assign(&mut tracker, event_coord_at_millis(1_001)),
 			SessionAssignment::Rotated {
@@ -230,7 +227,7 @@ mod tests {
 		kind().assign(&mut tracker, event_coord_at_millis(0));
 
 		assert_ne!(tracker, SessionTracker::default());
-		assert_eq!(tracker, SessionTracker::resumed(0, 0, 0));
+		assert_eq!(tracker, SessionTracker::resumed(0, at_millis(0), at_millis(0)));
 	}
 
 	#[test]
@@ -238,10 +235,10 @@ mod tests {
 		// A session outlives the batch that opened it, so the tracker is reloaded per batch.
 		// Resuming into a fresh tracker restarts the ids at 0 and aliases every group's second
 		// session onto its first.
-		let mut tracker = SessionTracker::resumed(7, 5_000, 4_000);
+		let mut tracker = SessionTracker::resumed(7, at_millis(5_000), at_millis(4_000));
 
 		assert_eq!(kind().assign(&mut tracker, event_coord_at_millis(5_500)), SessionAssignment::Extended(7));
-		assert_eq!(tracker, SessionTracker::resumed(7, 5_500, 4_000));
+		assert_eq!(tracker, SessionTracker::resumed(7, at_millis(5_500), at_millis(4_000)));
 	}
 
 	#[test]

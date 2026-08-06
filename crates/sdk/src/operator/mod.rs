@@ -21,6 +21,7 @@ use column::operator::OperatorColumn;
 use context::{OperatorContext, ffi::FFIOperatorContext};
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::OperatorSample};
+use reifydb_value::value::duration::Duration;
 use timer::Timer;
 use view::ChangeView;
 
@@ -37,7 +38,7 @@ pub trait FFIOperator: 'static {
 		Ok(())
 	}
 
-	fn seal_after_ms(&self) -> Option<u64> {
+	fn seal_after(&self) -> Option<Duration> {
 		None
 	}
 
@@ -71,7 +72,7 @@ pub trait OperatorLogic: Send + Sync {
 		Ok(())
 	}
 
-	fn seal_after_ms(&self) -> Option<u64> {
+	fn seal_after(&self) -> Option<Duration> {
 		None
 	}
 
@@ -113,8 +114,8 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> FFIOperator for FFIOperatorA
 		self.core.on_timer(ctx, timer)
 	}
 
-	fn seal_after_ms(&self) -> Option<u64> {
-		self.core.seal_after_ms()
+	fn seal_after(&self) -> Option<Duration> {
+		self.core.seal_after()
 	}
 
 	fn flush_state(&mut self, ctx: &mut FFIOperatorContext) -> Result<()> {

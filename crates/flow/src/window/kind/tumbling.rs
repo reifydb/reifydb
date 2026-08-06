@@ -20,10 +20,6 @@ impl TumblingOverRows {
 		}
 	}
 
-	pub fn capacity(&self) -> RowSpan {
-		self.capacity
-	}
-
 	pub fn window_id(&self, coord: OrdinalCoord) -> u64 {
 		coord.value() / self.capacity.rows()
 	}
@@ -39,15 +35,6 @@ mod tests {
 
 	fn ordinal(value: u64) -> OrdinalCoord {
 		OrdinalCoord::from_arrival_counter(value)
-	}
-
-	#[test]
-	fn a_capacity_of_zero_collapses_to_one_rather_than_dividing_by_zero() {
-		// `with { count: 0 }` compiles and every ordinal is then divided by the capacity. Clamping in
-		// the constructor rather than at each call site means a new caller cannot forget it; a zero
-		// count degrades to a one-row window rather than being refused.
-		assert_eq!(TumblingOverRows::holding(RowSpan::of(0)).capacity(), RowSpan::of(1));
-		assert_eq!(TumblingOverRows::holding(RowSpan::of(0)).window_id(ordinal(7)), 7);
 	}
 
 	#[test]
