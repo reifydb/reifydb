@@ -3,9 +3,12 @@
 
 use std::fmt::Debug;
 
+use reifydb_core::metrics::heap::HeapSize;
+use reifydb_macro::operator_state;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use rkyv::{Archive, munge::munge, primitive::ArchivedU64, seal::Seal};
 
-use crate::window::span::WindowCoord;
+use crate::window::span::{IsZero, Slot, WindowCoord};
 
 pub trait TimeStamped {
 	fn row_time(&self) -> DateTime;
@@ -30,49 +33,145 @@ impl EventCoord {
 	}
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct RowSpan {
+	rows: u64,
+}
+
+impl RowSpan {
+	pub const ZERO: Self = Self {
+		rows: 0,
+	};
+
+	pub fn of(rows: u64) -> Self {
+		Self {
+			rows,
+		}
+	}
+
+	pub fn rows(self) -> u64 {
+		self.rows
+	}
+}
+
+impl IsZero for RowSpan {
+	#[inline]
+	fn is_zero(&self) -> bool {
+		self.rows == 0
+	}
+}
+
+#[operator_state(seal)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct OrdinalCoord(u64);
+#[rkyv(derive(Hash, PartialEq, Eq, PartialOrd, Ord))]
+pub struct OrdinalCoord {
+	ordinal: u64,
+}
 
 impl OrdinalCoord {
 	pub fn from_arrival_counter(ordinal: u64) -> Self {
-		Self(ordinal)
+		Self {
+			ordinal,
+		}
 	}
 
 	pub fn from_row_number(row_number: RowNumber) -> Self {
-		Self(row_number.0)
+		Self {
+			ordinal: row_number.0,
+		}
 	}
 
 	pub fn value(self) -> u64 {
-		self.0
+		self.ordinal
 	}
 }
 
-pub trait WindowDomain {
-	type Coord: WindowCoord;
-
-	const SEALS_ON_TIMER: bool;
+impl HeapSize for OrdinalCoord {
+	fn heap_size(&self) -> usize {
+		0
+	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EventTime;
+impl WindowCoord for OrdinalCoord {
+	type Span = RowSpan;
 
-impl WindowDomain for EventTime {
-	type Coord = DateTime;
+	const MAX: Self = Self {
+		ordinal: u64::MAX,
+	};
 
-	const SEALS_ON_TIMER: bool = true;
+	fn saturating_sub_span(self, span: RowSpan) -> Self {
+		Self {
+			ordinal: self.ordinal.saturating_sub(span.rows),
+		}
+	}
+
+	fn checked_sub_span(self, span: RowSpan) -> Option<Self> {
+		self.ordinal.checked_sub(span.rows).map(|ordinal| Self {
+			ordinal,
+		})
+	}
+
+	fn add_span(self, span: RowSpan) -> Self {
+		Self {
+			ordinal: self.ordinal + span.rows,
+		}
+	}
+
+	fn floor_to(self, span: RowSpan) -> Self {
+		Self {
+			ordinal: self.ordinal - (self.ordinal % span.rows),
+		}
+	}
+
+	fn span_since(self, earlier: Self) -> RowSpan {
+		RowSpan {
+			rows: self.ordinal - earlier.ordinal,
+		}
+	}
+
+	fn to_order(self) -> u64 {
+		self.ordinal
+	}
+
+	fn from_order(order: u64) -> Self {
+		Self {
+			ordinal: order,
+		}
+	}
+
+	fn span_millis(_span: RowSpan) -> Option<u64> {
+		None
+	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Ordinal;
+impl Slot for OrdinalCoord {
+	type Coord = OrdinalCoord;
 
-impl WindowDomain for Ordinal {
-	type Coord = u64;
+	fn order_key(&self) -> OrdinalCoord {
+		*self
+	}
 
-	const SEALS_ON_TIMER: bool = false;
+	fn from_order_key(coord: OrdinalCoord) -> Self {
+		coord
+	}
+
+	fn archived_order_key(archived: &<Self as Archive>::Archived) -> OrdinalCoord {
+		OrdinalCoord {
+			ordinal: archived.ordinal.to_native(),
+		}
+	}
+
+	fn seal_write(archived: Seal<'_, <Self as Archive>::Archived>, value: Self) -> bool {
+		munge!(let ArchivedOrdinalCoord { mut ordinal } = archived);
+		*ordinal = ArchivedU64::from_native(value.ordinal);
+		true
+	}
 }
 
 #[cfg(test)]
 mod tests {
+	use rkyv::{rancor::Error, to_bytes};
+
 	use super::*;
 
 	struct Row {
@@ -111,6 +210,39 @@ mod tests {
 	}
 
 	#[test]
+	fn an_ordinal_archives_to_the_same_bytes_as_the_bare_count_it_replaced() {
+		// A changed archived layout is silent: stored buffer keys get reinterpreted, not rejected.
+		let value = 0x0123_4567_89AB_CDEFu64;
+
+		let wrapped = to_bytes::<Error>(&OrdinalCoord::from_arrival_counter(value)).expect("archive");
+		let bare = to_bytes::<Error>(&value).expect("archive");
+
+		assert_eq!(wrapped.as_ref(), bare.as_ref(), "the newtype changed the persisted layout");
+	}
+
+	#[test]
+	fn ordinal_arithmetic_counts_rows_and_refuses_to_answer_in_milliseconds() {
+		// A span here is rows, not milliseconds. span_millis answering Some would let a row count
+		// reach the seal horizon as a duration.
+		let coord = OrdinalCoord::from_arrival_counter(100);
+
+		assert_eq!(coord.saturating_sub_span(RowSpan::of(64)), OrdinalCoord::from_arrival_counter(36));
+		assert_eq!(coord.add_span(RowSpan::of(5)), OrdinalCoord::from_arrival_counter(105));
+		assert_eq!(coord.span_since(OrdinalCoord::from_arrival_counter(60)), RowSpan::of(40));
+		assert_eq!(<OrdinalCoord as WindowCoord>::span_millis(RowSpan::of(64)), None);
+	}
+
+	#[test]
+	fn an_ordinal_below_its_own_span_has_no_earlier_coordinate_rather_than_wrapping() {
+		// Wrapping below zero lands near u64::MAX and evicts the whole buffer on the first pass.
+		let coord = OrdinalCoord::from_arrival_counter(10);
+
+		assert_eq!(coord.checked_sub_span(RowSpan::of(11)), None);
+		assert_eq!(coord.checked_sub_span(RowSpan::of(10)), Some(OrdinalCoord::from_arrival_counter(0)));
+		assert_eq!(coord.saturating_sub_span(RowSpan::of(11)), OrdinalCoord::from_arrival_counter(0));
+	}
+
+	#[test]
 	fn both_ordinal_sources_produce_the_same_domain() {
 		// An ordinal can be minted from a per-group arrival counter or from a RowNumber, and both
 		// must land in one domain type or each count kind would need its own driver.
@@ -119,13 +251,5 @@ mod tests {
 
 		assert_eq!(minted, from_row);
 		assert_eq!(minted.value(), 7);
-	}
-
-	#[test]
-	fn only_the_event_time_domain_seals_on_a_timer() {
-		// A count window's coordinate is an arrival ordinal with no instant to arm a timer against,
-		// so the two domains must declare opposite answers for any shell that routes on this.
-		assert!(EventTime::SEALS_ON_TIMER);
-		assert!(!Ordinal::SEALS_ON_TIMER);
 	}
 }

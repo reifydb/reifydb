@@ -23,8 +23,10 @@ use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestRowBuilder},
 	harness::FFIOperatorHarnessBuilder,
 };
-use reifydb_value::factory::millis;
-use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
+use reifydb_value::{
+	factory::millis,
+	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
+};
 
 // Rolling sum where each window is itself an invertible accumulator, so rows can share a
 // window coordinate and a single event can be removed without dropping the whole window.

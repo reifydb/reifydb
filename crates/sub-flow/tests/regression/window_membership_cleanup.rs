@@ -33,7 +33,10 @@ use reifydb_sub_flow::{
 	},
 };
 use reifydb_testing_flow::{generator, harness::Harness};
-use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
+use reifydb_value::{
+	factory::at_millis,
+	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+};
 
 const SOURCE: OperatorId = OperatorId(0);
 const SUBJECT: OperatorId = OperatorId(1);
@@ -151,12 +154,9 @@ fn a_session_window_keeps_no_state_per_removed_row() {
 // The exact shape the session sweep found, pinned as a fixed sequence. The seed that surfaced it
 // (12750666829617941778) is not a durable handle: it names a position in a generated corpus, so any
 // change to the workload or its parameters points it somewhere else entirely.
-fn at(ms: u64) -> DateTime {
-	DateTime::from_timestamp_millis(ms).expect("a stamp is representable")
-}
 
 fn valued(number: u64, value: i64, ms: u64) -> reifydb_core::row::Row {
-	generator::row(RowNumber(number), GROUP, value, at(ms))
+	generator::row(RowNumber(number), GROUP, value, at_millis(ms))
 }
 
 #[test]

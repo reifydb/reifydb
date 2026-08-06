@@ -355,6 +355,7 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::state::{budget::OperatorStateBudgetHandle, store::StateStore};
+	use reifydb_value::{factory::at_millis, value::datetime::DateTime};
 
 	use crate::window::{
 		accumulator::WindowAccumulator,
@@ -375,7 +376,7 @@ mod tests {
 		EncodedKey::builder().u32(*group).build()
 	}
 
-	fn running_sum(_group: &u32, running: &SumAccumulator, _newest: &i64, _coord: u64) -> Option<i64> {
+	fn running_sum(_group: &u32, running: &SumAccumulator, _newest: &i64, _coord: DateTime) -> Option<i64> {
 		running.finalize()
 	}
 
@@ -387,9 +388,9 @@ mod tests {
 		let mut store = MockStore::default();
 
 		let mut engine =
-			RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
+			RollingIncrementalEngine::<u32, DateTime, SumAccumulator, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
 		let published: Vec<RollingResult<u32, i64>> =
 			engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
 		engine.flush(&mut store).unwrap();
@@ -400,9 +401,9 @@ mod tests {
 		// A brand new engine with empty caches, forced to read the persisted buffer and running
 		// accumulator back from the store.
 		let mut engine =
-			RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
+			RollingIncrementalEngine::<u32, DateTime, SumAccumulator, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);
 		let withdrawn: Vec<RollingResult<u32, i64>> =
 			engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
 		engine.flush(&mut store).unwrap();
@@ -429,10 +430,10 @@ mod tests {
 		// mint a second one. Insert is decided from the mapping, not from state a data sweep takes.
 		let mut store = MockStore::default();
 		let mut engine =
-			RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new(test_config());
+			RollingIncrementalEngine::<u32, DateTime, SumAccumulator, SumAccumulator>::new(test_config());
 
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
 		let published: Vec<RollingResult<u32, i64>> =
 			engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
 		engine.flush(&mut store).unwrap();
@@ -447,9 +448,9 @@ mod tests {
 		);
 
 		let mut engine =
-			RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(3)]);
+			RollingIncrementalEngine::<u32, DateTime, SumAccumulator, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(3)]);
 		let republished: Vec<RollingResult<u32, i64>> =
 			engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
 
@@ -472,12 +473,12 @@ mod tests {
 		// buffers/running keyspace collision as the restart test, inside one long-lived engine.
 		let mut store = MockStore::default();
 		let mut engine =
-			RollingIncrementalEngine::<u32, u64, SumAccumulator, SumAccumulator>::new(test_config());
+			RollingIncrementalEngine::<u32, DateTime, SumAccumulator, SumAccumulator>::new(test_config());
 
 		let mut published_group_1: Vec<RollingResult<u32, i64>> = Vec::new();
 		for group in 1u32..=11u32 {
-			let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-			buckets.insert((group, 10u64), vec![AccumulatorEvent::Add(i64::from(group))]);
+			let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+			buckets.insert((group, at_millis(10)), vec![AccumulatorEvent::Add(i64::from(group))]);
 			let out: Vec<RollingResult<u32, i64>> =
 				engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
 			if group == 1 {
@@ -491,8 +492,8 @@ mod tests {
 
 		// Group 1 was pushed out of the 8-slot cache by the later groups, so the same engine must
 		// re-read its buffer from the store to apply this retraction.
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(1)]);
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(1)]);
 		let withdrawn: Vec<RollingResult<u32, i64>> =
 			engine.apply(&mut store, buckets, 4, row_key, |v: &i64| *v, running_sum).unwrap();
 		engine.flush(&mut store).unwrap();

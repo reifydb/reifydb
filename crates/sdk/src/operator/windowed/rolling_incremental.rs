@@ -237,8 +237,7 @@ where
 	}
 }
 
-type EventBuckets<A> =
-	RollingBuckets<<A as RollingOperator>::GroupKey, DateTime, WindowContribution<A>>;
+type EventBuckets<A> = RollingBuckets<<A as RollingOperator>::GroupKey, DateTime, WindowContribution<A>>;
 
 impl<A> RollingIncrementalDriver<A>
 where
@@ -268,13 +267,17 @@ where
 							let Some(coord) = row.row_time() else {
 								continue;
 							};
-							let Some((group, contribution)) = self.aggregator.extract(ctx, &row)
+							let Some((group, contribution)) =
+								self.aggregator.extract(ctx, &row)
 							else {
 								continue;
 							};
-							buckets.entry((group, bucket_of(coord, self.aggregator.bucket_size())))
-								.or_default()
-								.push(AccumulatorEvent::Add(contribution));
+							buckets.entry((
+								group,
+								bucket_of(coord, self.aggregator.bucket_size()),
+							))
+							.or_default()
+							.push(AccumulatorEvent::Add(contribution));
 						}
 					}
 				}
@@ -283,22 +286,32 @@ where
 						let n = pre.row_count().min(post.row_count());
 						for i in 0..n {
 							if let Some(pre_row) = pre.row(i)
-								&& let Some(coord) = pre_row.row_time()
-								&& let Some((group, contribution)) =
-									self.aggregator.extract(ctx, &pre_row)
+								&& let Some(coord) = pre_row.row_time() && let Some((
+								group,
+								contribution,
+							)) =
+								self.aggregator.extract(ctx, &pre_row)
 							{
-								buckets.entry((group, bucket_of(coord, self.aggregator.bucket_size())))
-									.or_default()
-									.push(AccumulatorEvent::Remove(contribution));
+								buckets.entry((
+									group,
+									bucket_of(coord, self.aggregator.bucket_size()),
+								))
+								.or_default()
+								.push(AccumulatorEvent::Remove(contribution));
 							}
 							if let Some(post_row) = post.row(i)
-								&& let Some(coord) = post_row.row_time()
-								&& let Some((group, contribution)) =
-									self.aggregator.extract(ctx, &post_row)
+								&& let Some(coord) = post_row.row_time() && let Some((
+								group,
+								contribution,
+							)) =
+								self.aggregator.extract(ctx, &post_row)
 							{
-								buckets.entry((group, bucket_of(coord, self.aggregator.bucket_size())))
-									.or_default()
-									.push(AccumulatorEvent::Add(contribution));
+								buckets.entry((
+									group,
+									bucket_of(coord, self.aggregator.bucket_size()),
+								))
+								.or_default()
+								.push(AccumulatorEvent::Add(contribution));
 							}
 						}
 					}
@@ -312,13 +325,17 @@ where
 							let Some(coord) = row.row_time() else {
 								continue;
 							};
-							let Some((group, contribution)) = self.aggregator.extract(ctx, &row)
+							let Some((group, contribution)) =
+								self.aggregator.extract(ctx, &row)
 							else {
 								continue;
 							};
-							buckets.entry((group, bucket_of(coord, self.aggregator.bucket_size())))
-								.or_default()
-								.push(AccumulatorEvent::Remove(contribution));
+							buckets.entry((
+								group,
+								bucket_of(coord, self.aggregator.bucket_size()),
+							))
+							.or_default()
+							.push(AccumulatorEvent::Remove(contribution));
 						}
 					}
 				}

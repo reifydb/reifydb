@@ -10,7 +10,10 @@ use reifydb_flow::window::accumulator::{
 	invertible::{EndpointByCoord, KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64},
 	sealing::{SealingEndpoint, SealingMin},
 };
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::{
+	factory::{at_millis, millis},
+	value::datetime::DateTime,
+};
 
 use super::common::{assert_add_remove_is_inverse, assert_order_independent};
 
@@ -45,12 +48,12 @@ fn last_value_roundtrip() {
 fn sealing_min_default_is_fully_invertible() {
 	// With no lateness bound nothing seals, so add/remove stays a pure inverse even when the
 	// probe is a new minimum.
-	assert_add_remove_is_inverse::<SealingMin<u64, i64>>(&[(1u64, 10i64), (2, 20), (3, 30)], (4u64, -5i64));
+	assert_add_remove_is_inverse::<SealingMin<DateTime, i64>>(&[(at_millis(1), 10i64), (at_millis(2), 20), (at_millis(3), 30)], (at_millis(4), -5i64));
 
-	let mut accumulator: SealingMin<u64, i64> = SealingMin::default();
-	accumulator.add(&(0, 5));
-	accumulator.add(&(100, 1));
-	accumulator.remove(&(100, 1));
+	let mut accumulator: SealingMin<DateTime, i64> = SealingMin::default();
+	accumulator.add(&(at_millis(0), 5));
+	accumulator.add(&(at_millis(100), 1));
+	accumulator.remove(&(at_millis(100), 1));
 	assert_eq!(accumulator.finalize(), Some(5), "removing the min reveals the prior min when nothing has sealed");
 }
 
@@ -58,12 +61,12 @@ fn sealing_min_default_is_fully_invertible() {
 fn sealing_endpoint_late_earlier_arrival_updates_open() {
 	// open is the earliest observation overall, not the first one to seal, so a late but
 	// earlier arrival has to reclaim it.
-	let mut accumulator: SealingEndpoint<u64, i64> = SealingEndpoint::with_grace(10);
-	accumulator.add(&(5, 50));
-	accumulator.add(&(20, 200)); // hw=20; coord 5 ages (20-5=15>10) -> sealed_open=(5,50)
+	let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::with_grace(millis(10));
+	accumulator.add(&(at_millis(5), 50));
+	accumulator.add(&(at_millis(20), 200)); // hw=20; coord 5 ages (20-5=15>10) -> sealed_open=(5,50)
 	assert_eq!(accumulator.open(), Some(&50), "open frozen to the earliest seen so far");
 
-	accumulator.add(&(2, 999)); // hw=20; coord 2 ages immediately (18>10) and 2 < 5
+	accumulator.add(&(at_millis(2), 999)); // hw=20; coord 2 ages immediately (18>10) and 2 < 5
 	assert_eq!(accumulator.open(), Some(&999), "a genuinely earlier late arrival reclaims open");
 	assert_eq!(accumulator.close(), Some(&200), "close unchanged by the earlier arrival");
 }
@@ -71,12 +74,12 @@ fn sealing_endpoint_late_earlier_arrival_updates_open() {
 #[test]
 fn sealing_endpoint_late_middle_arrival_keeps_open() {
 	// A late arrival later than the sealed open must not move it.
-	let mut accumulator: SealingEndpoint<u64, i64> = SealingEndpoint::with_grace(10);
-	accumulator.add(&(2, 999));
-	accumulator.add(&(20, 200)); // hw=20; coord 2 ages -> sealed_open=(2,999)
+	let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::with_grace(millis(10));
+	accumulator.add(&(at_millis(2), 999));
+	accumulator.add(&(at_millis(20), 200)); // hw=20; coord 2 ages -> sealed_open=(2,999)
 	assert_eq!(accumulator.open(), Some(&999));
 
-	accumulator.add(&(5, 50)); // coord 5 ages (15>10) but 5 > 2, so open stays (2,999)
+	accumulator.add(&(at_millis(5), 50)); // coord 5 ages (15>10) but 5 > 2, so open stays (2,999)
 	assert_eq!(accumulator.open(), Some(&999), "a later late arrival does not displace the earlier open");
 }
 

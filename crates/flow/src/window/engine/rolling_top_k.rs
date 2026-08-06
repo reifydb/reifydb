@@ -442,8 +442,9 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::state::{budget::OperatorStateBudgetHandle, store::StateStore};
+	use reifydb_value::{factory::at_millis, value::datetime::DateTime};
 
-	use super::{TopKEmit, RollingTopKBuffer, RollingTopKEmit, RollingTopKEngine};
+	use super::{RollingTopKBuffer, RollingTopKEmit, RollingTopKEngine, TopKEmit};
 	use crate::window::engine::{
 		AccumulatorEvent,
 		config::WindowEngineConfig,
@@ -463,7 +464,7 @@ mod tests {
 		EncodedKey::builder().u32(*group).u32(*sk).build()
 	}
 
-	fn combine(_group: &u32, buffer: &RollingTopKBuffer<u64, SumAccumulator>) -> RollingTopKEmit<u32, i64> {
+	fn combine(_group: &u32, buffer: &RollingTopKBuffer<DateTime, SumAccumulator>) -> RollingTopKEmit<u32, i64> {
 		let mut out = BTreeMap::new();
 		if !buffer.is_empty() {
 			out.insert(0u32, buffer.values().map(|a| a.sum).sum());
@@ -478,9 +479,9 @@ mod tests {
 		// back through the store. It fails on a serialization break or an unpersisted last_emit.
 		let mut store = MockStore::default();
 
-		let mut engine = RollingTopKEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
 		let published = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(published.len(), 1);
@@ -496,9 +497,9 @@ mod tests {
 		};
 
 		// A brand new engine with empty caches, forced to reload the persisted GroupState.
-		let mut engine = RollingTopKEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);
 		let withdrawn = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
 
@@ -529,9 +530,9 @@ mod tests {
 		let mut store = MockStore::default();
 		let ranked_key = row_key(&1, &0);
 
-		let mut engine = RollingTopKEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
 		let published = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		let published_row = match &published[0] {
@@ -549,9 +550,9 @@ mod tests {
 			"precondition: the identity half must survive the data phase"
 		);
 
-		let mut engine = RollingTopKEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(3)]);
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(3)]);
 		let republished = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 
 		assert_eq!(republished.len(), 1);
@@ -577,9 +578,9 @@ mod tests {
 		// row_key(group=1, sk=0), distinct from the rolling coord (10).
 		let ranked_key = row_key(&1, &0);
 
-		let mut engine = RollingTopKEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
 		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		// The mapping is scoped to the interned group, not NODE_SCOPE, and reclamation deletes by
@@ -588,8 +589,8 @@ mod tests {
 		let group = store.lookup_group(&state_key(&1)).unwrap().expect("applying the group interns it");
 		assert!(store.contains_row_mapping(group, &ranked_key), "publishing the ranking mints its mapping");
 
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);
 		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert!(
@@ -603,12 +604,12 @@ mod tests {
 		// The other way the GroupState is read back is LRU eviction, with no restart: the cache
 		// holds 8 groups, so tracking more evicts the oldest and the next access re-reads it.
 		let mut store = MockStore::default();
-		let mut engine = RollingTopKEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
 
 		let mut published_row_1 = None;
 		for group in 1u32..=11u32 {
-			let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-			buckets.insert((group, 10u64), vec![AccumulatorEvent::Add(i64::from(group))]);
+			let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+			buckets.insert((group, at_millis(10)), vec![AccumulatorEvent::Add(i64::from(group))]);
 			let out = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 			if group == 1 {
 				assert_eq!(out.len(), 1);
@@ -629,8 +630,8 @@ mod tests {
 
 		// Group 1 was pushed out of the 8-slot cache by the later groups, so the same engine must
 		// re-read its GroupState from the store to apply this retraction.
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(1)]);
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(1)]);
 		let withdrawn = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
 
@@ -656,7 +657,7 @@ mod tests {
 		// reduces the visible state to one value, checked against a live-buffer oracle each batch.
 		const CAP: usize = 4;
 		let mut store = MockStore::default();
-		let mut engine = RollingTopKEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
 
 		let mut state = 0x1234_5678_9abc_def0u64;
 		let mut roll = |bound: u64| {
@@ -702,14 +703,14 @@ mod tests {
 				live.remove(&lowest);
 			}
 
-			let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+			let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 			for &(coord, value, is_add) in &plan {
 				let ev = if is_add {
 					AccumulatorEvent::Add(value)
 				} else {
 					AccumulatorEvent::Remove(value)
 				};
-				buckets.entry((1u32, coord)).or_default().push(ev);
+				buckets.entry((1u32, at_millis(coord))).or_default().push(ev);
 			}
 			let emits = engine.apply(&mut store, buckets, CAP, state_key, row_key, combine).unwrap();
 			engine.flush(&mut store).unwrap();

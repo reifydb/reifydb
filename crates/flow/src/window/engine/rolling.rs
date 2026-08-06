@@ -1039,6 +1039,10 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{key::operator_group_state::GroupId, state::budget::OperatorStateBudgetHandle};
+	use reifydb_value::{
+		factory::{at_millis, millis},
+		value::datetime::DateTime,
+	};
 
 	use crate::window::engine::{
 		AccumulatorEvent, EmitKind,
@@ -1061,7 +1065,14 @@ mod tests {
 		EncodedKey::builder().u32(*group).build()
 	}
 
-	fn sum_combine(_group: &u32, buffer: &RollingBuffer<u64, SumAccumulator>) -> Option<i64> {
+	fn past_every_coord() -> DateTime {
+		// The drain-everything cutoff. It stays one millisecond below the coordinate maximum because
+		// the running frontier uses the maximum itself as its "no high water yet" sentinel, and a
+		// cutoff sitting exactly on that sentinel would compare equal to it rather than after it.
+		DateTime::MAX.saturating_sub(millis(1))
+	}
+
+	fn sum_combine(_group: &u32, buffer: &RollingBuffer<DateTime, SumAccumulator>) -> Option<i64> {
 		if buffer.is_empty() {
 			None
 		} else {
@@ -1075,14 +1086,14 @@ mod tests {
 		// GroupMeta must be reclaimed; `persist_meta` never removes it, so without the sweep a
 		// quiet group leaks one internal-state key forever.
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(1)]);
-		buckets.insert((1u32, 20u64), vec![AccumulatorEvent::Add(2)]);
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+		buckets.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(2)]);
 		engine.apply_evicting(
 			&mut store,
 			buckets,
-			RollingEviction::Before(0),
+			RollingEviction::Before(at_millis(0)),
 			row_key,
 			SumAccumulator::default,
 			sum_combine,
@@ -1100,14 +1111,14 @@ mod tests {
 	fn meta_survives_while_group_high_water_at_or_after_threshold() {
 		// A group whose high water is at or beyond the threshold is still live and keeps its meta.
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(1)]);
-		buckets.insert((1u32, 20u64), vec![AccumulatorEvent::Add(2)]);
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+		buckets.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(2)]);
 		engine.apply_evicting(
 			&mut store,
 			buckets,
-			RollingEviction::Before(0),
+			RollingEviction::Before(at_millis(0)),
 			row_key,
 			SumAccumulator::default,
 			sum_combine,
@@ -1126,9 +1137,9 @@ mod tests {
 		// coordinate unretainable. The group must still be indexed, or the tick that first has
 		// something to evict cannot see it.
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 0u64), vec![AccumulatorEvent::Add(7)]);
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(0)), vec![AccumulatorEvent::Add(7)]);
 
 		let results = engine
 			.apply_evicting(
@@ -1152,15 +1163,15 @@ mod tests {
 		// The counterpart: a real Before(0) means the span has elapsed and zero is outside the
 		// window, so the coordinate at zero must go. Only the absence of a cutoff retains it.
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 0u64), vec![AccumulatorEvent::Add(7)]);
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(0)), vec![AccumulatorEvent::Add(7)]);
 
 		let results = engine
 			.apply_evicting(
 				&mut store,
 				buckets,
-				RollingEviction::Before(0),
+				RollingEviction::Before(at_millis(0)),
 				row_key,
 				SumAccumulator::default,
 				sum_combine,
@@ -1178,16 +1189,16 @@ mod tests {
 	#[test]
 	fn expire_before_evicts_a_quiet_group_then_rekeys_then_removes() {
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(1)]);
-		buckets.insert((1u32, 20u64), vec![AccumulatorEvent::Add(2)]);
-		buckets.insert((1u32, 30u64), vec![AccumulatorEvent::Add(3)]);
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+		buckets.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(2)]);
+		buckets.insert((1u32, at_millis(30)), vec![AccumulatorEvent::Add(3)]);
 		// Before(0) evicts nothing at apply (all coords > 0), so the buffer keeps 10,20,30.
 		engine.apply_evicting(
 			&mut store,
 			buckets,
-			RollingEviction::Before(0),
+			RollingEviction::Before(at_millis(0)),
 			row_key,
 			SumAccumulator::default,
 			sum_combine,
@@ -1197,8 +1208,8 @@ mod tests {
 		assert_eq!(store.index_entry_count(), 1, "the group is indexed by its oldest coord");
 
 		// A tick with no new events for this group evicts coords <= 20; coord 30 survives.
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
-		let out = engine.expire_before(&mut store, 20, sum_combine).unwrap();
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let out = engine.expire_before(&mut store, at_millis(20), sum_combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(out.len(), 1);
 		match &out[0] {
@@ -1217,8 +1228,8 @@ mod tests {
 		assert_eq!(store.index_entry_count(), 1, "still one entry, re-keyed to coord 30");
 
 		// The next tick evicts the last coord: the group empties and is removed.
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
-		let out = engine.expire_before(&mut store, 30, sum_combine).unwrap();
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let out = engine.expire_before(&mut store, at_millis(30), sum_combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(out.len(), 1);
 		match &out[0] {
@@ -1233,21 +1244,21 @@ mod tests {
 		assert_eq!(store.index_entry_count(), 0, "the emptied group leaves no index entry");
 
 		// A further tick finds nothing due.
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
-		assert!(engine.expire_before(&mut store, 1000, sum_combine).unwrap().is_empty());
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		assert!(engine.expire_before(&mut store, at_millis(1000), sum_combine).unwrap().is_empty());
 	}
 
 	#[test]
 	fn expire_before_leaves_groups_whose_oldest_coord_is_not_due() {
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 100u64), vec![AccumulatorEvent::Add(1)]);
-		buckets.insert((2u32, 5u64), vec![AccumulatorEvent::Add(9)]);
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(100)), vec![AccumulatorEvent::Add(1)]);
+		buckets.insert((2u32, at_millis(5)), vec![AccumulatorEvent::Add(9)]);
 		engine.apply_evicting(
 			&mut store,
 			buckets,
-			RollingEviction::Before(0),
+			RollingEviction::Before(at_millis(0)),
 			row_key,
 			SumAccumulator::default,
 			sum_combine,
@@ -1257,8 +1268,8 @@ mod tests {
 		assert_eq!(store.index_entry_count(), 2);
 
 		// Cutoff 5 is due only for group 2 (oldest coord 5); group 1 (oldest 100) is untouched.
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
-		let out = engine.expire_before(&mut store, 5, sum_combine).unwrap();
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let out = engine.expire_before(&mut store, at_millis(5), sum_combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(out.len(), 1, "only the group with a due coord is processed");
 		assert!(matches!(&out[0], RollingExpiry::Remove { group, .. } if *group == 2));
@@ -1271,15 +1282,15 @@ mod tests {
 		// operator stall every other flow. Capped groups stay in the due index, which sorts by
 		// inverted coord so the oldest backlog defers.
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(1)]);
-		buckets.insert((2u32, 20u64), vec![AccumulatorEvent::Add(2)]);
-		buckets.insert((3u32, 30u64), vec![AccumulatorEvent::Add(3)]);
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+		buckets.insert((2u32, at_millis(20)), vec![AccumulatorEvent::Add(2)]);
+		buckets.insert((3u32, at_millis(30)), vec![AccumulatorEvent::Add(3)]);
 		engine.apply_evicting(
 			&mut store,
 			buckets,
-			RollingEviction::Before(0),
+			RollingEviction::Before(at_millis(0)),
 			row_key,
 			SumAccumulator::default,
 			sum_combine,
@@ -1290,16 +1301,16 @@ mod tests {
 
 		let capped = WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).expire_batch(2).build();
 
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(capped.clone());
-		let first = engine.expire_before(&mut store, 1000, sum_combine).unwrap();
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(capped.clone());
+		let first = engine.expire_before(&mut store, at_millis(1000), sum_combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(first.len(), 2, "one tick drains at most expire_batch groups");
 		assert!(matches!(&first[0], RollingExpiry::Remove { group, .. } if *group == 3));
 		assert!(matches!(&first[1], RollingExpiry::Remove { group, .. } if *group == 2));
 		assert_eq!(store.index_entry_count(), 1, "the deferred group keeps its index entry");
 
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(capped);
-		let second = engine.expire_before(&mut store, 1000, sum_combine).unwrap();
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(capped);
+		let second = engine.expire_before(&mut store, at_millis(1000), sum_combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(second.len(), 1, "the next tick picks up the deferred group");
 		assert!(matches!(&second[0], RollingExpiry::Remove { group, .. } if *group == 1));
@@ -1313,9 +1324,9 @@ mod tests {
 		// `combine` is a pure function of the buffer; a combine reading non-persisted state breaks it.
 		let mut store = MockStore::default();
 
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
 		let published: Vec<RollingResult<u32, i64>> =
 			engine.apply(&mut store, buckets, 4, row_key, sum_combine).unwrap();
 		engine.flush(&mut store).unwrap();
@@ -1325,9 +1336,9 @@ mod tests {
 
 		// A brand new engine with no in-memory GroupSlot or prior_output, reading only the
 		// persisted buffer left behind by the first engine.
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);
 		let withdrawn: Vec<RollingResult<u32, i64>> =
 			engine.apply(&mut store, buckets, 4, row_key, sum_combine).unwrap();
 		engine.flush(&mut store).unwrap();
@@ -1353,12 +1364,12 @@ mod tests {
 		// 8 groups, so tracking more evicts the oldest and the next access re-reads it. Same
 		// persist/reload path as the restart test, inside one long-lived engine.
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 
 		let mut published_group_1: Vec<RollingResult<u32, i64>> = Vec::new();
 		for group in 1u32..=11u32 {
-			let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-			buckets.insert((group, 10u64), vec![AccumulatorEvent::Add(i64::from(group))]);
+			let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+			buckets.insert((group, at_millis(10)), vec![AccumulatorEvent::Add(i64::from(group))]);
 			let out: Vec<RollingResult<u32, i64>> =
 				engine.apply(&mut store, buckets, 4, row_key, sum_combine).unwrap();
 			if group == 1 {
@@ -1372,8 +1383,8 @@ mod tests {
 
 		// Group 1 was pushed out of the 8-slot cache by the later groups, so the same engine must
 		// re-read its buffer from the store to apply this retraction.
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(1)]);
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(1)]);
 		let withdrawn: Vec<RollingResult<u32, i64>> =
 			engine.apply(&mut store, buckets, 4, row_key, sum_combine).unwrap();
 		engine.flush(&mut store).unwrap();
@@ -1420,8 +1431,8 @@ mod tests {
 		// engine on an identical workload. A divergence means the maintenance missed a mutation path.
 		let mut recombine_store = MockStore::default();
 		let mut runnable_store = MockStore::default();
-		let mut recombine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
-		let mut runnable = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config());
+		let mut recombine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut runnable = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config());
 
 		let mut state = 0xDEAD_BEEF_CAFE_1234u64;
 		let mut roll = |bound: u64| {
@@ -1446,14 +1457,14 @@ mod tests {
 				plan.push((group, coord, value, false));
 			}
 			let build = |plan: &[(u32, u64, i64, bool)]| {
-				let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+				let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 				for &(group, coord, value, is_add) in plan {
 					let event = if is_add {
 						AccumulatorEvent::Add(value)
 					} else {
 						AccumulatorEvent::Remove(value)
 					};
-					buckets.entry((group, coord)).or_default().push(event);
+					buckets.entry((group, at_millis(coord))).or_default().push(event);
 				}
 				buckets
 			};
@@ -1461,7 +1472,7 @@ mod tests {
 				.apply_evicting(
 					&mut recombine_store,
 					build(&plan),
-					RollingEviction::Before(cutoff),
+					RollingEviction::Before(at_millis(cutoff)),
 					row_key,
 					SumAccumulator::default,
 					sum_combine,
@@ -1471,7 +1482,7 @@ mod tests {
 				.apply_running(
 					&mut runnable_store,
 					build(&plan),
-					RollingEviction::Before(cutoff),
+					RollingEviction::Before(at_millis(cutoff)),
 					row_key,
 					SumAccumulator::default,
 				)
@@ -1485,8 +1496,8 @@ mod tests {
 			if round % 5 == 4 {
 				cutoff = coord_base.saturating_sub(30);
 				let recombine_exp =
-					recombine.expire_before(&mut recombine_store, cutoff, sum_combine).unwrap();
-				let runnable_exp = runnable.expire_before_running(&mut runnable_store, cutoff).unwrap();
+					recombine.expire_before(&mut recombine_store, at_millis(cutoff), sum_combine).unwrap();
+				let runnable_exp = runnable.expire_before_running(&mut runnable_store, at_millis(cutoff)).unwrap();
 				assert_eq!(
 					describe_expiries(&recombine_exp),
 					describe_expiries(&runnable_exp),
@@ -1506,8 +1517,8 @@ mod tests {
 		);
 
 		// Drain everything: terminal removes must match group-for-group.
-		let recombine_final = recombine.expire_before(&mut recombine_store, u64::MAX - 1, sum_combine).unwrap();
-		let runnable_final = runnable.expire_before_running(&mut runnable_store, u64::MAX - 1).unwrap();
+		let recombine_final = recombine.expire_before(&mut recombine_store, past_every_coord(), sum_combine).unwrap();
+		let runnable_final = runnable.expire_before_running(&mut runnable_store, past_every_coord()).unwrap();
 		assert_eq!(
 			describe_expiries(&recombine_final),
 			describe_expiries(&runnable_final),
@@ -1525,15 +1536,15 @@ mod tests {
 		// the running accumulator the first time the runnable path touches the group, on both the
 		// apply and the expiry path.
 		let mut store = MockStore::default();
-		let mut recombine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
-		buckets.insert((1u32, 20u64), vec![AccumulatorEvent::Add(7)]);
+		let mut recombine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
+		buckets.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(7)]);
 		recombine
 			.apply_evicting(
 				&mut store,
 				buckets,
-				RollingEviction::Before(0),
+				RollingEviction::Before(at_millis(0)),
 				row_key,
 				SumAccumulator::default,
 				sum_combine,
@@ -1541,14 +1552,14 @@ mod tests {
 			.unwrap();
 		recombine.flush(&mut store).unwrap();
 
-		let mut runnable = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 30u64), vec![AccumulatorEvent::Add(100)]);
+		let mut runnable = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(30)), vec![AccumulatorEvent::Add(100)]);
 		let out = runnable
 			.apply_running(
 				&mut store,
 				buckets,
-				RollingEviction::Before(0),
+				RollingEviction::Before(at_millis(0)),
 				row_key,
 				SumAccumulator::default,
 			)
@@ -1559,7 +1570,7 @@ mod tests {
 			"bootstrap must fold the pre-existing buffer into the running sum"
 		);
 
-		let expired = runnable.expire_before_running(&mut store, 20).unwrap();
+		let expired = runnable.expire_before_running(&mut store, at_millis(20)).unwrap();
 		assert_eq!(
 			describe_expiries(&expired),
 			vec![(1u32, Some(100i64))],
@@ -1569,8 +1580,8 @@ mod tests {
 
 		// A fresh runnable engine over the flushed state reads the persisted running entry back
 		// without bootstrapping, and drains to a terminal remove.
-		let mut reopened = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config());
-		let drained = reopened.expire_before_running(&mut store, u64::MAX - 1).unwrap();
+		let mut reopened = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config());
+		let drained = reopened.expire_before_running(&mut store, past_every_coord()).unwrap();
 		assert_eq!(
 			describe_expiries(&drained),
 			vec![(1u32, None)],
@@ -1584,15 +1595,15 @@ mod tests {
 		// apply paths share per-coord storage, so a leak on either is the unbounded state growth
 		// this engine exists to prevent.
 		let mut store = MockStore::default();
-		let mut recombine = RollingEngine::<u32, u64, SumAccumulator>::new(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
-		buckets.insert((1u32, 20u64), vec![AccumulatorEvent::Add(7)]);
+		let mut recombine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
+		buckets.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(7)]);
 		recombine
 			.apply_evicting(
 				&mut store,
 				buckets,
-				RollingEviction::Before(0),
+				RollingEviction::Before(at_millis(0)),
 				row_key,
 				SumAccumulator::default,
 				sum_combine,
@@ -1605,14 +1616,14 @@ mod tests {
 			"the recombine path persists both coords in the group's buffer"
 		);
 
-		let mut runnable = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config());
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((2u32, 30u64), vec![AccumulatorEvent::Add(1)]);
-		buckets.insert((1u32, 30u64), vec![AccumulatorEvent::Add(100)]);
+		let mut runnable = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((2u32, at_millis(30)), vec![AccumulatorEvent::Add(1)]);
+		buckets.insert((1u32, at_millis(30)), vec![AccumulatorEvent::Add(100)]);
 		runnable.apply_running(
 			&mut store,
 			buckets,
-			RollingEviction::Before(0),
+			RollingEviction::Before(at_millis(0)),
 			row_key,
 			SumAccumulator::default,
 		)
@@ -1622,7 +1633,7 @@ mod tests {
 		assert_eq!(store.buffer_entry_count(), 2, "each live group persists one buffer entry");
 		assert_eq!(store.running_entry_count(), 2, "each live group persists one running entry");
 
-		let drained = runnable.expire_before_running(&mut store, u64::MAX - 1).unwrap();
+		let drained = runnable.expire_before_running(&mut store, past_every_coord()).unwrap();
 		runnable.flush(&mut store).unwrap();
 		assert_eq!(drained.len(), 2, "both groups drain");
 		assert!(drained.iter().all(|e| matches!(e, RollingExpiry::Remove { .. })));
@@ -1638,7 +1649,7 @@ mod tests {
 		// independent oracle each round, so an early merge, missed crossing or double count shows up.
 		const LAG: u64 = 5;
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config()).with_lag(LAG);
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config()).with_lag(millis(LAG));
 
 		let mut state = 0xFEED_FACE_0123_4567u64;
 		let mut roll = |bound: u64| {
@@ -1715,20 +1726,20 @@ mod tests {
 				}
 			}
 
-			let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+			let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 			for &(group, coord, value, is_add) in &plan {
 				let event = if is_add {
 					AccumulatorEvent::Add(value)
 				} else {
 					AccumulatorEvent::Remove(value)
 				};
-				buckets.entry((group, coord)).or_default().push(event);
+				buckets.entry((group, at_millis(coord))).or_default().push(event);
 			}
 			let out = engine
 				.apply_running(
 					&mut store,
 					buckets,
-					RollingEviction::Before(cutoff),
+					RollingEviction::Before(at_millis(cutoff)),
 					row_key,
 					SumAccumulator::default,
 				)
@@ -1755,7 +1766,7 @@ mod tests {
 
 			if round % 5 == 4 {
 				cutoff = coord_base.saturating_sub(60);
-				let expiries = engine.expire_before_running(&mut store, cutoff).unwrap();
+				let expiries = engine.expire_before_running(&mut store, at_millis(cutoff)).unwrap();
 				let dead: Vec<(u32, u64)> = live
 					.iter()
 					.filter(|&(&(_, coord), _)| coord <= cutoff)
@@ -1793,7 +1804,7 @@ mod tests {
 			coord_base += roll(20);
 		}
 
-		let drained = engine.expire_before_running(&mut store, u64::MAX - 1).unwrap();
+		let drained = engine.expire_before_running(&mut store, past_every_coord()).unwrap();
 		for e in &drained {
 			match e {
 				RollingExpiry::Update {
@@ -1824,25 +1835,25 @@ mod tests {
 		// first event emits nothing, later events pull older coords across the frontier, a
 		// retraction of a pending coord is invisible, and only-pending eviction withdraws the row.
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config()).with_lag(10);
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config()).with_lag(millis(10));
 
-		let apply = |engine: &mut RollingEngine<u32, u64, SumAccumulator>,
+		let apply = |engine: &mut RollingEngine<u32, DateTime, SumAccumulator>,
 		             store: &mut MockStore,
 		             coord: u64,
 		             value: i64,
 		             is_add: bool,
 		             cutoff: u64| {
-			let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
+			let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 			let event = if is_add {
 				AccumulatorEvent::Add(value)
 			} else {
 				AccumulatorEvent::Remove(value)
 			};
-			buckets.insert((1u32, coord), vec![event]);
+			buckets.insert((1u32, at_millis(coord)), vec![event]);
 			engine.apply_running(
 				store,
 				buckets,
-				RollingEviction::Before(cutoff),
+				RollingEviction::Before(at_millis(cutoff)),
 				row_key,
 				SumAccumulator::default,
 			)
@@ -1894,23 +1905,23 @@ mod tests {
 		// newest - lag, losing pending coords that would have slid into the window later. The fast
 		// path withdraws the visible row but keeps them for a later event to surface.
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, u64, SumAccumulator>::new_runnable(test_config()).with_lag(10);
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config()).with_lag(millis(10));
 
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 100u64), vec![AccumulatorEvent::Add(5)]);
-		buckets.insert((1u32, 115u64), vec![AccumulatorEvent::Add(7)]);
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(100)), vec![AccumulatorEvent::Add(5)]);
+		buckets.insert((1u32, at_millis(115)), vec![AccumulatorEvent::Add(7)]);
 		let out = engine
 			.apply_running(
 				&mut store,
 				buckets,
-				RollingEviction::Before(0),
+				RollingEviction::Before(at_millis(0)),
 				row_key,
 				SumAccumulator::default,
 			)
 			.unwrap();
 		assert_eq!(describe(&out), vec![(1u32, EmitKind::Insert, 5i64)]);
 
-		let expired = engine.expire_before_running(&mut store, 105).unwrap();
+		let expired = engine.expire_before_running(&mut store, at_millis(105)).unwrap();
 		assert_eq!(
 			describe_expiries(&expired),
 			vec![(1u32, None)],
@@ -1924,13 +1935,13 @@ mod tests {
 		);
 		assert_eq!(store.index_entry_count(), 1, "the group stays indexed at its pending coord");
 
-		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
-		buckets.insert((1u32, 130u64), vec![AccumulatorEvent::Add(9)]);
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(130)), vec![AccumulatorEvent::Add(9)]);
 		let out = engine
 			.apply_running(
 				&mut store,
 				buckets,
-				RollingEviction::Before(105),
+				RollingEviction::Before(at_millis(105)),
 				row_key,
 				SumAccumulator::default,
 			)

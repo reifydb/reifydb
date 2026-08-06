@@ -31,8 +31,10 @@ use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestRowBuilder},
 	harness::FFIOperatorHarnessBuilder,
 };
-use reifydb_value::factory::millis;
-use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
+use reifydb_value::{
+	factory::millis,
+	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
+};
 
 #[test]
 fn a_declared_capability_reaches_the_host_through_the_descriptor() {

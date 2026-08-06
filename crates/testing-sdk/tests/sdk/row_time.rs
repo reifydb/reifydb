@@ -10,9 +10,7 @@
 
 use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
 use reifydb_core::value::column::columns::Columns;
-use reifydb_sdk::operator::{
-	view::{ColumnsView, RowView, native::NativeColumnsView},
-};
+use reifydb_sdk::operator::view::{ColumnsView, RowView, native::NativeColumnsView};
 use reifydb_testing_sdk::builders::TestRowBuilder;
 use reifydb_value::value::{Value, datetime::DateTime, value_type::ValueType};
 
@@ -24,9 +22,7 @@ fn shape() -> RowShape {
 }
 
 fn row(rn: u64, group: &str, price: f64) -> TestRowBuilder {
-	TestRowBuilder::new(rn)
-		.with_values(vec![Value::Utf8(group.into()), Value::float8(price)])
-		.with_shape(shape())
+	TestRowBuilder::new(rn).with_values(vec![Value::Utf8(group.into()), Value::float8(price)]).with_shape(shape())
 }
 
 #[test]

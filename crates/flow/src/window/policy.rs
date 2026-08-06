@@ -135,14 +135,12 @@ impl EvictionPolicy {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_value::factory::at_millis;
+
 	use super::*;
 
 	fn ms(millis: u64) -> Duration {
 		Duration::from_milliseconds_const(millis as i64)
-	}
-
-	fn at(millis: u64) -> DateTime {
-		DateTime::from_millis(millis)
 	}
 
 	#[test]
@@ -153,7 +151,7 @@ mod tests {
 		let policy = SealPolicy::tumbling(ms(1_000), ms(200));
 
 		assert_eq!(policy.admissible().millis(), 1_200);
-		assert_eq!(policy.seal_instant(at(5_000)).at(), at(6_201));
+		assert_eq!(policy.seal_instant(at_millis(5_000)).at(), at_millis(6_201));
 	}
 
 	#[test]
@@ -162,11 +160,11 @@ mod tests {
 		// newest window that timer actually sealed. Treating the ledger itself as the immutable
 		// frontier erases the accumulator of a window that is still open and still taking rows.
 		let policy = SealPolicy::tumbling(ms(30_000), ms(45_000));
-		let ledger = at(358_262);
+		let ledger = at_millis(358_262);
 
 		let anchor = policy.sealed_anchor(ledger).expect("the ledger is past one admissible span");
 
-		assert_eq!(anchor, at(283_261), "ledger - (size + grace) - 1");
+		assert_eq!(anchor, at_millis(283_261), "ledger - (size + grace) - 1");
 		assert!(anchor < ledger, "a frontier at or past the ledger reclaims windows that have not sealed");
 		assert_eq!(
 			policy.seal_instant(anchor).at(),
@@ -182,9 +180,9 @@ mod tests {
 		// the anchor near u64::MAX and report every window sealed, reclaiming the operator in one sweep.
 		let policy = SealPolicy::tumbling(ms(30_000), ms(45_000));
 
-		assert_eq!(policy.sealed_anchor(at(0)), None);
-		assert_eq!(policy.sealed_anchor(at(75_000)), None, "the anchor would be 0 - 1, not 0");
-		assert_eq!(policy.sealed_anchor(at(75_001)), Some(at(0)));
+		assert_eq!(policy.sealed_anchor(at_millis(0)), None);
+		assert_eq!(policy.sealed_anchor(at_millis(75_000)), None, "the anchor would be 0 - 1, not 0");
+		assert_eq!(policy.sealed_anchor(at_millis(75_001)), Some(at_millis(0)));
 	}
 
 	#[test]
@@ -195,8 +193,8 @@ mod tests {
 		let admission = SealPolicy::rolling(ms(1_000), ms(200));
 		let eviction = EvictionPolicy::rolling(ms(1_000));
 
-		assert_eq!(admission.seal_instant(at(5_000)).at(), at(6_201));
-		assert_eq!(eviction.eviction_instant(at(5_000)).at(), at(6_000));
+		assert_eq!(admission.seal_instant(at_millis(5_000)).at(), at_millis(6_201));
+		assert_eq!(eviction.eviction_instant(at_millis(5_000)).at(), at_millis(6_000));
 	}
 
 	#[test]
@@ -205,7 +203,7 @@ mod tests {
 		// carrying the +1 there retains one millisecond too much on every rolling window, forever.
 		let eviction = EvictionPolicy::rolling(ms(0));
 
-		assert_eq!(eviction.eviction_instant(at(7_000)).at(), at(7_000));
+		assert_eq!(eviction.eviction_instant(at_millis(7_000)).at(), at_millis(7_000));
 	}
 
 	#[test]

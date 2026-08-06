@@ -4,6 +4,7 @@
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 use crate::window::{
+	coord::RowSpan,
 	policy::{EvictionPolicy, SealPolicy},
 	span::WindowCoord,
 };
@@ -43,31 +44,29 @@ impl RollingOverTime {
 }
 
 pub struct RollingOverRows {
-	capacity: u64,
+	capacity: RowSpan,
 }
 
 impl RollingOverRows {
-	pub fn new(capacity: u64) -> Self {
+	pub fn new(capacity: RowSpan) -> Self {
 		Self {
 			capacity,
 		}
 	}
 
 	pub fn capacity(&self) -> usize {
-		self.capacity as usize
+		self.capacity.rows() as usize
 	}
 }
 
 #[cfg(test)]
 mod tests {
+	use reifydb_value::factory::at_millis;
+
 	use super::*;
 
 	fn ms(millis: u64) -> Duration {
 		Duration::from_milliseconds_const(millis as i64)
-	}
-
-	fn at(millis: u64) -> DateTime {
-		DateTime::from_millis(millis)
 	}
 
 	#[test]
@@ -75,7 +74,7 @@ mod tests {
 		// A rolling window over ROWS always has a current value, so there is no lag, grace or seal
 		// instant to ask for. Lag and grace are milliseconds, and subtracting them from a row number
 		// would drop rows in proportion to the lag; the type carries no such method to answer wrongly.
-		let rows = RollingOverRows::new(64);
+		let rows = RollingOverRows::new(RowSpan::of(64));
 
 		assert_eq!(rows.capacity(), 64);
 	}
@@ -96,8 +95,8 @@ mod tests {
 		// aggregate it publishes.
 		let rolling = RollingOverTime::new(ms(5_000), ms(0));
 
-		assert_eq!(rolling.eviction_cutoff(at(8_000)), Some(at(3_000)));
-		assert_eq!(rolling.seal_horizon(at(8_000), ms(200)), at(2_800));
+		assert_eq!(rolling.eviction_cutoff(at_millis(8_000)), Some(at_millis(3_000)));
+		assert_eq!(rolling.seal_horizon(at_millis(8_000), ms(200)), at_millis(2_800));
 	}
 
 	#[test]
@@ -107,14 +106,14 @@ mod tests {
 		// since eviction is inclusive and a row at the epoch could then never be retained.
 		let rolling = RollingOverTime::new(ms(5_000), ms(0));
 
-		assert_eq!(rolling.eviction_cutoff(at(0)), None);
-		assert_eq!(rolling.eviction_cutoff(at(1_000)), None);
+		assert_eq!(rolling.eviction_cutoff(at_millis(0)), None);
+		assert_eq!(rolling.eviction_cutoff(at_millis(1_000)), None);
 		assert_eq!(
-			rolling.eviction_cutoff(at(5_000)),
-			Some(at(0)),
+			rolling.eviction_cutoff(at_millis(5_000)),
+			Some(at_millis(0)),
 			"a span that has exactly elapsed yields a real cutoff, not another None"
 		);
-		assert_eq!(rolling.seal_horizon(at(1_000), ms(200)), at(0));
+		assert_eq!(rolling.seal_horizon(at_millis(1_000), ms(200)), at_millis(0));
 	}
 
 	#[test]
@@ -126,10 +125,10 @@ mod tests {
 			for grace in [ms(0), ms(1), ms(9_000)] {
 				let rolling = RollingOverTime::new(ms(5_000), lag);
 				let cutoff = rolling
-					.eviction_cutoff(at(60_000))
+					.eviction_cutoff(at_millis(60_000))
 					.expect("a ledger well past the span must yield a cutoff");
 				assert!(
-					rolling.seal_horizon(at(60_000), grace) <= cutoff,
+					rolling.seal_horizon(at_millis(60_000), grace) <= cutoff,
 					"horizon passed the cutoff at lag {lag:?} grace {grace:?}"
 				);
 			}

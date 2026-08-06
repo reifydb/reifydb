@@ -100,7 +100,7 @@ impl<C: WindowAnchor> TumblingCarryConfigBuilder<C> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::byte_size::ByteSize;
+	use reifydb_value::{byte_size::ByteSize, value::datetime::DateTime};
 
 	use super::*;
 
@@ -123,7 +123,7 @@ mod tests {
 	#[test]
 	fn a_carry_config_forwards_the_pool_through_its_base() {
 		let pool = OperatorStateBudgetHandle::new(ByteSize::from_bytes(4096));
-		let config: TumblingCarryConfig<u64> =
+		let config: TumblingCarryConfig<DateTime> =
 			TumblingCarryConfig::builder(WindowEngineConfig::builder(pool.clone()).build())
 				.retention(None)
 				.build();

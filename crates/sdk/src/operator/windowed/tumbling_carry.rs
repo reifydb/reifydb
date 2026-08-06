@@ -56,8 +56,7 @@ type CarryEngine<A> = TumblingCarryEngine<
 	<A as TumblingCarryOperator>::Carry,
 	<A as TumblingCarryOperator>::Output,
 >;
-type Buckets<A> =
-	TumblingBuckets<<A as TumblingCarryOperator>::GroupKey, DateTime, AccumulatorContribution<A>>;
+type Buckets<A> = TumblingBuckets<<A as TumblingCarryOperator>::GroupKey, DateTime, AccumulatorContribution<A>>;
 type WindowResults<A> =
 	Vec<WindowResult<<A as TumblingCarryOperator>::GroupKey, DateTime, <A as TumblingCarryOperator>::Output>>;
 

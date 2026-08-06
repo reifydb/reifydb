@@ -244,6 +244,7 @@ impl EncodedRow {
 mod tests {
 	use reifydb_value::{
 		encoding::LeBytes,
+		factory::at_nanos,
 		value::{datetime::DateTime, value_type::ValueType},
 	};
 
@@ -260,30 +261,26 @@ mod tests {
 		)
 	}
 
-	fn at(nanos: u64) -> DateTime {
-		DateTime::from_nanos(nanos)
-	}
-
 	#[test]
 	fn time_round_trips_independently_of_created_at_and_updated_at() {
 		// The three stamps answer different questions (when the DB learned a row, last touched
 		// it, when the event happened), so overlapping slots would make one readable as another.
 		let mut row = shape(1).allocate();
 
-		row.set_timestamps(at(11), at(22));
-		row.set_time(at(33));
+		row.set_timestamps(at_nanos(11), at_nanos(22));
+		row.set_time(at_nanos(33));
 
-		assert_eq!(row.created_at(), at(11));
-		assert_eq!(row.updated_at(), at(22));
-		assert_eq!(row.time(), at(33));
+		assert_eq!(row.created_at(), at_nanos(11));
+		assert_eq!(row.updated_at(), at_nanos(22));
+		assert_eq!(row.time(), at_nanos(33));
 
-		row.set_time(at(44));
-		assert_eq!(row.created_at(), at(11), "writing #time must not disturb created_at");
-		assert_eq!(row.updated_at(), at(22), "writing #time must not disturb updated_at");
-		assert_eq!(row.time(), at(44));
+		row.set_time(at_nanos(44));
+		assert_eq!(row.created_at(), at_nanos(11), "writing #time must not disturb created_at");
+		assert_eq!(row.updated_at(), at_nanos(22), "writing #time must not disturb updated_at");
+		assert_eq!(row.time(), at_nanos(44));
 
-		row.set_timestamps(at(55), at(66));
-		assert_eq!(row.time(), at(44), "writing the wall stamps must not disturb #time");
+		row.set_timestamps(at_nanos(55), at_nanos(66));
+		assert_eq!(row.time(), at_nanos(44), "writing the wall stamps must not disturb #time");
 	}
 
 	#[test]
@@ -291,15 +288,15 @@ mod tests {
 		// set_timestamps is the seal flush's verbatim-rewrite path. #time describes when the
 		// event happened, so re-stamping it locally would drift retention to wall clock.
 		let mut row = shape(1).allocate();
-		row.set_timestamps(at(7), at(7));
-		row.set_time(at(1_000));
+		row.set_timestamps(at_nanos(7), at_nanos(7));
+		row.set_time(at_nanos(1_000));
 
 		let created_at = row.created_at();
-		row.set_timestamps(created_at, at(99));
+		row.set_timestamps(created_at, at_nanos(99));
 
-		assert_eq!(row.created_at(), at(7));
-		assert_eq!(row.updated_at(), at(99), "the rewrite refreshes updated_at");
-		assert_eq!(row.time(), at(1_000), "#time is propagated, never re-stamped locally");
+		assert_eq!(row.created_at(), at_nanos(7));
+		assert_eq!(row.updated_at(), at_nanos(99), "the rewrite refreshes updated_at");
+		assert_eq!(row.time(), at_nanos(1_000), "#time is propagated, never re-stamped locally");
 	}
 
 	#[test]
@@ -322,15 +319,15 @@ mod tests {
 		for i in 0..9 {
 			shape.set::<u64>(&mut row, i, (i as u64 + 1) * 1_000);
 		}
-		row.set_timestamps(at(1), at(2));
+		row.set_timestamps(at_nanos(1), at_nanos(2));
 		row.set_time(DateTime::MAX);
 
 		for i in 0..9 {
 			assert_eq!(shape.get::<u64>(&row, i), (i as u64 + 1) * 1_000, "field {i} misread");
 			assert!(row.is_defined(i), "field {i} lost its definedness bit to a header write");
 		}
-		assert_eq!(row.created_at(), at(1));
-		assert_eq!(row.updated_at(), at(2));
+		assert_eq!(row.created_at(), at_nanos(1));
+		assert_eq!(row.updated_at(), at_nanos(2));
 		assert_eq!(row.time(), DateTime::MAX);
 	}
 
@@ -362,7 +359,7 @@ mod tests {
 		// Stamps go through DateTime's own byte form, not a local u64 cast, so widening
 		// DateTime moves the header with it instead of truncating into an old-width slot.
 		let mut row = shape(1).allocate();
-		let stamp = at(0x0102_0304_0506_0708);
+		let stamp = at_nanos(0x0102_0304_0506_0708);
 		row.set_time(stamp);
 
 		assert_eq!(&row.0[TIME_OFFSET..TIME_OFFSET + DateTime::ENCODED_SIZE], &stamp.to_le_bytes());

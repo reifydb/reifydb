@@ -47,8 +47,7 @@ use crate::{
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
 			WindowedBudget, advance_seal_frontier, arm_seal_timer, bridge::OperatorContextStore, bucket_of,
-			group_of,
-			intern_window_groups, seal_frontier, seal_horizon_of, window_engine_config,
+			group_of, intern_window_groups, seal_frontier, seal_horizon_of, window_engine_config,
 		},
 	},
 };

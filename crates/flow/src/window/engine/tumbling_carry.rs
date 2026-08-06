@@ -458,10 +458,15 @@ mod tests {
 		key::operator_group_state::{GroupStateKey, Keyspace, OperatorGroupStateKey},
 		state::budget::OperatorStateBudgetHandle,
 	};
-	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+	use reifydb_value::{
+		factory::{at_millis, millis},
+		value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+	};
 
 	use super::*;
-	use crate::window::{accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig};
+	use crate::window::{
+		accumulator::invertible::RetainedAccumulator, engine::config::WindowEngineConfig, span::WindowCoord,
+	};
 
 	// Allocates a distinct row number per key; the state.rs mock collapses every key onto row 1,
 	// which would alias all window accumulators and defeat a storage-bound test.
@@ -625,17 +630,17 @@ mod tests {
 		}
 	}
 
-	type Engine = TumblingCarryEngine<String, u64, RetainedAccumulator<u64, f64>, f64, f64>;
+	type Engine = TumblingCarryEngine<String, DateTime, RetainedAccumulator<u64, f64>, f64, f64>;
 
 	const WINDOW: u64 = 60;
 
-	fn carry_config(retention: Option<u64>) -> TumblingCarryConfig<u64> {
+	fn carry_config(retention: Option<Duration>) -> TumblingCarryConfig<DateTime> {
 		TumblingCarryConfig::builder(WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).build())
 			.retention(retention)
 			.build()
 	}
 
-	fn feed(engine: &mut Engine, store: &mut CountingStore, ws: u64, price: f64) {
+	fn feed(engine: &mut Engine, store: &mut CountingStore, ws: DateTime, price: f64) {
 		// One event per batch, so the high-water mark advances one window per call.
 		let _ = feed_group(engine, store, "BTC", ws, price);
 	}
@@ -646,18 +651,18 @@ mod tests {
 		engine: &mut Engine,
 		store: &mut CountingStore,
 		group: &str,
-		ws: u64,
+		ws: DateTime,
 		price: f64,
-	) -> Vec<WindowResult<String, u64, f64>> {
-		let mut buckets: TumblingBuckets<String, u64, (u64, f64)> = BTreeMap::new();
-		let span = WindowSpan::for_coord(ws, WINDOW);
-		buckets.insert((group.to_string(), span), vec![AccumulatorEvent::Add((ws, price))]);
+	) -> Vec<WindowResult<String, DateTime, f64>> {
+		let mut buckets: TumblingBuckets<String, DateTime, (u64, f64)> = BTreeMap::new();
+		let span = WindowSpan::for_coord(ws, millis(WINDOW));
+		buckets.insert((group.to_string(), span), vec![AccumulatorEvent::Add((ws.to_order(), price))]);
 		engine.apply(
 			store,
 			buckets,
-			|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
+			|g: &String, w: DateTime| EncodedKey::builder().str(g).u64(w.to_order()).build(),
 			RetainedAccumulator::<u64, f64>::default,
-			|_g: &String, _s: WindowSpan<u64>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
+			|_g: &String, _s: WindowSpan<DateTime>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
 				(!v.is_empty()).then(|| v.values().sum::<f64>())
 			},
 			|v: &BTreeMap<u64, f64>, _p: Option<&f64>| v.last_key_value().map(|(_, val)| *val),
@@ -671,9 +676,9 @@ mod tests {
 		// drop their accumulator row, so the live row count stays bounded by the horizon rather
 		// than growing with the number of windows seen.
 		let mut store = CountingStore::default();
-		let mut engine = Engine::new(carry_config(Some(2 * WINDOW)));
+		let mut engine = Engine::new(carry_config(Some(millis(2 * WINDOW))));
 		for i in 0..60u64 {
-			feed(&mut engine, &mut store, i * WINDOW, i as f64);
+			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
 		}
 		engine.flush(&mut store).expect("flush");
 		assert!(
@@ -689,9 +694,9 @@ mod tests {
 		// eviction does not reclaim it. Sealing past retention must drop it alongside the
 		// accumulator or the mapping keyspace grows per window forever.
 		let mut store = CountingStore::default();
-		let mut engine = Engine::new(carry_config(Some(2 * WINDOW)));
+		let mut engine = Engine::new(carry_config(Some(millis(2 * WINDOW))));
 		for i in 0..60u64 {
-			feed(&mut engine, &mut store, i * WINDOW, i as f64);
+			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
 		}
 		engine.flush(&mut store).expect("flush");
 		assert!(
@@ -708,7 +713,7 @@ mod tests {
 		// sink still holds that row. A second insert would lay a duplicate row over a live one.
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
-		let published = feed_group(&mut engine, &mut store, "BTC", 0, 5.0);
+		let published = feed_group(&mut engine, &mut store, "BTC", at_millis(0), 5.0);
 		engine.flush(&mut store).expect("flush");
 		assert_eq!(published.len(), 1);
 		assert!(matches!(published[0].kind, EmitKind::Insert), "precondition: the window publishes once");
@@ -717,7 +722,7 @@ mod tests {
 		assert_eq!(store.row_mapping_count(), 1, "precondition: the identity half must survive the data phase");
 
 		let mut engine = Engine::new(carry_config(None));
-		let republished = feed_group(&mut engine, &mut store, "BTC", 0, 3.0);
+		let republished = feed_group(&mut engine, &mut store, "BTC", at_millis(0), 3.0);
 
 		assert_eq!(republished.len(), 1);
 		assert_eq!(
@@ -742,7 +747,7 @@ mod tests {
 		let mut engine = Engine::new(carry_config(None));
 		let mut emitted_windows = Vec::new();
 		for i in 0..5u64 {
-			let out = feed_group(&mut engine, &mut store, "BTC", i * WINDOW, i as f64 + 1.0);
+			let out = feed_group(&mut engine, &mut store, "BTC", at_millis(i * WINDOW), i as f64 + 1.0);
 			println!(
 				"[win-probe] fed window_start={} results={} kinds={:?}",
 				i * WINDOW,
@@ -766,9 +771,9 @@ mod tests {
 		// An active group whose high water is at or beyond the threshold must keep its meta: the
 		// carry it holds still seeds the next window.
 		let mut store = CountingStore::default();
-		let mut engine = Engine::new(carry_config(Some(2 * WINDOW)));
+		let mut engine = Engine::new(carry_config(Some(millis(2 * WINDOW))));
 		for i in 0..3u64 {
-			feed(&mut engine, &mut store, i * WINDOW, i as f64);
+			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
 		}
 		engine.flush(&mut store).expect("flush");
 		let dropped = engine.expire_meta(&mut store, WINDOW).unwrap();
@@ -782,9 +787,9 @@ mod tests {
 		// A carry group whose high water falls below the threshold is dead, and the sweep reclaims
 		// its meta and sealed carry; otherwise `persist_meta` leaks one key per group forever.
 		let mut store = CountingStore::default();
-		let mut engine = Engine::new(carry_config(Some(2 * WINDOW)));
+		let mut engine = Engine::new(carry_config(Some(millis(2 * WINDOW))));
 		for i in 0..3u64 {
-			feed(&mut engine, &mut store, i * WINDOW, i as f64);
+			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
 		}
 		engine.flush(&mut store).expect("flush");
 		assert_eq!(store.meta_entry_count(), 1);
@@ -801,7 +806,7 @@ mod tests {
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 		for i in 0..60u64 {
-			feed(&mut engine, &mut store, i * WINDOW, i as f64);
+			feed(&mut engine, &mut store, at_millis(i * WINDOW), i as f64);
 		}
 		engine.flush(&mut store).expect("flush");
 		assert_eq!(
@@ -819,20 +824,20 @@ mod tests {
 		let mut store = CountingStore::default();
 
 		let mut engine = Engine::new(carry_config(None));
-		feed(&mut engine, &mut store, 0, 5.0);
+		feed(&mut engine, &mut store, at_millis(0), 5.0);
 		engine.flush(&mut store).expect("flush");
 
 		let mut engine = Engine::new(carry_config(None));
-		let span = WindowSpan::for_coord(0, WINDOW);
-		let mut buckets: TumblingBuckets<String, u64, (u64, f64)> = BTreeMap::new();
+		let span = WindowSpan::for_coord(at_millis(0), millis(WINDOW));
+		let mut buckets: TumblingBuckets<String, DateTime, (u64, f64)> = BTreeMap::new();
 		buckets.insert(("BTC".to_string(), span), vec![AccumulatorEvent::Remove((0, 5.0))]);
-		let withdrawn: Vec<WindowResult<String, u64, f64>> = engine
+		let withdrawn: Vec<WindowResult<String, DateTime, f64>> = engine
 			.apply(
 				&mut store,
 				buckets,
-				|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
+				|g: &String, w: DateTime| EncodedKey::builder().str(g).u64(w.to_order()).build(),
 				RetainedAccumulator::<u64, f64>::default,
-				|_g: &String, _s: WindowSpan<u64>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
+				|_g: &String, _s: WindowSpan<DateTime>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
 					(!v.is_empty()).then(|| v.values().sum::<f64>())
 				},
 				|v: &BTreeMap<u64, f64>, _p: Option<&f64>| v.last_key_value().map(|(_, val)| *val),
@@ -858,10 +863,10 @@ mod tests {
 		let mut store = CountingStore::default();
 		let mut engine = Engine::new(carry_config(None));
 
-		let mut published_g00: Vec<WindowResult<String, u64, f64>> = Vec::new();
+		let mut published_g00: Vec<WindowResult<String, DateTime, f64>> = Vec::new();
 		for i in 0..11u64 {
 			let group = format!("G{i:02}");
-			let out = feed_group(&mut engine, &mut store, &group, 0, (i + 1) as f64);
+			let out = feed_group(&mut engine, &mut store, &group, at_millis(0), (i + 1) as f64);
 			if i == 0 {
 				published_g00 = out;
 			}
@@ -873,16 +878,16 @@ mod tests {
 
 		// G00's window was pushed out of the 8-slot accumulator cache by the later groups, so the
 		// engine must re-read its accumulator from the store to apply this retraction.
-		let span = WindowSpan::for_coord(0, WINDOW);
-		let mut buckets: TumblingBuckets<String, u64, (u64, f64)> = BTreeMap::new();
+		let span = WindowSpan::for_coord(at_millis(0), millis(WINDOW));
+		let mut buckets: TumblingBuckets<String, DateTime, (u64, f64)> = BTreeMap::new();
 		buckets.insert(("G00".to_string(), span), vec![AccumulatorEvent::Remove((0, 1.0))]);
-		let withdrawn: Vec<WindowResult<String, u64, f64>> = engine
+		let withdrawn: Vec<WindowResult<String, DateTime, f64>> = engine
 			.apply(
 				&mut store,
 				buckets,
-				|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
+				|g: &String, w: DateTime| EncodedKey::builder().str(g).u64(w.to_order()).build(),
 				RetainedAccumulator::<u64, f64>::default,
-				|_g: &String, _s: WindowSpan<u64>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
+				|_g: &String, _s: WindowSpan<DateTime>, v: &BTreeMap<u64, f64>, _p: Option<&f64>| {
 					(!v.is_empty()).then(|| v.values().sum::<f64>())
 				},
 				|v: &BTreeMap<u64, f64>, _p: Option<&f64>| v.last_key_value().map(|(_, val)| *val),
@@ -910,28 +915,28 @@ mod tests {
 		// CarryMeta is why the archived projection exists: it carries a whole BTreeMap of windows
 		// the meta sweep has no use for, and deserializing all of it per group to read one u64 is
 		// what the projection avoids. It must agree with the owned path however much state it holds.
-		let mut meta: CarryMeta<u64, i64, i64> = CarryMeta::default();
+		let mut meta: CarryMeta<DateTime, i64, i64> = CarryMeta::default();
 		let empty_bytes = meta.encode_state(DateTime::EPOCH).unwrap();
 		assert_eq!(
-			CarryMeta::<u64, i64, i64>::archived_high_water_order(
-				CarryMeta::<u64, i64, i64>::archived(&empty_bytes).unwrap()
+			CarryMeta::<DateTime, i64, i64>::archived_high_water_order(
+				CarryMeta::<DateTime, i64, i64>::archived(&empty_bytes).unwrap()
 			),
 			None,
 			"a default CarryMeta has no high water"
 		);
 
-		meta.high_water = Some(99);
+		meta.high_water = Some(at_millis(99));
 		meta.windows.insert(
-			10,
+			at_millis(10),
 			WindowEntry {
-				span: WindowSpan::new(10u64, 20),
+				span: WindowSpan::new(at_millis(10), at_millis(20)),
 				carry_out: Some(7i64),
 				last_output: Some(3i64),
 			},
 		);
 		let bytes = meta.encode_state(DateTime::EPOCH).unwrap();
-		let projected = CarryMeta::<u64, i64, i64>::archived_high_water_order(
-			CarryMeta::<u64, i64, i64>::archived(&bytes).unwrap(),
+		let projected = CarryMeta::<DateTime, i64, i64>::archived_high_water_order(
+			CarryMeta::<DateTime, i64, i64>::archived(&bytes).unwrap(),
 		);
 		assert_eq!(projected, Some(99), "the populated window map must not disturb the high water");
 	}
@@ -991,23 +996,23 @@ mod tests {
 		}
 	}
 
-	type ProbeEngine = TumblingCarryEngine<String, u64, CountingCarryAcc, f64, f64>;
+	type ProbeEngine = TumblingCarryEngine<String, DateTime, CountingCarryAcc, f64, f64>;
 
 	fn feed_probe(
 		engine: &mut ProbeEngine,
 		store: &mut CountingStore,
-		ws: u64,
+		ws: DateTime,
 		value: f64,
-	) -> Vec<WindowResult<String, u64, f64>> {
-		let mut buckets: TumblingBuckets<String, u64, f64> = BTreeMap::new();
-		let span = WindowSpan::for_coord(ws, WINDOW);
+	) -> Vec<WindowResult<String, DateTime, f64>> {
+		let mut buckets: TumblingBuckets<String, DateTime, f64> = BTreeMap::new();
+		let span = WindowSpan::for_coord(ws, millis(WINDOW));
 		buckets.insert(("BTC".to_string(), span), vec![AccumulatorEvent::Add(value)]);
 		engine.apply(
 			store,
 			buckets,
-			|g: &String, w: u64| EncodedKey::builder().str(g).u64(w).build(),
+			|g: &String, w: DateTime| EncodedKey::builder().str(g).u64(w.to_order()).build(),
 			CountingCarryAcc::default,
-			|_g: &String, _s: WindowSpan<u64>, v: &f64, _p: Option<&f64>| Some(*v),
+			|_g: &String, _s: WindowSpan<DateTime>, v: &f64, _p: Option<&f64>| Some(*v),
 			|v: &f64, _p: Option<&f64>| Some(*v),
 		)
 		.expect("apply")
@@ -1020,20 +1025,20 @@ mod tests {
 		// exactly one clone for the whole apply: the touched window's read-modify-write get().
 		let mut store = CountingStore::default();
 		let mut engine = ProbeEngine::new(carry_config(None));
-		feed_probe(&mut engine, &mut store, 0, 1.0);
-		feed_probe(&mut engine, &mut store, 60, 2.0);
-		feed_probe(&mut engine, &mut store, 120, 3.0);
+		feed_probe(&mut engine, &mut store, at_millis(0), 1.0);
+		feed_probe(&mut engine, &mut store, at_millis(60), 2.0);
+		feed_probe(&mut engine, &mut store, at_millis(120), 3.0);
 		engine.flush(&mut store).expect("flush");
 
 		let mut fresh = ProbeEngine::new(carry_config(None));
 		let before = COUNTING_CARRY_CLONES.load(Ordering::SeqCst);
-		let results = feed_probe(&mut fresh, &mut store, 0, 1.0);
+		let results = feed_probe(&mut fresh, &mut store, at_millis(0), 1.0);
 		assert!(
-			results.iter().any(|w| w.span.start == 0 && w.value == 2.0),
+			results.iter().any(|w| w.span.start == at_millis(0) && w.value == 2.0),
 			"the touched window re-emits its updated sum through the Native view"
 		);
 		assert!(
-			results.iter().any(|w| w.span.start == 120 && w.value == 3.0),
+			results.iter().any(|w| w.span.start == at_millis(120) && w.value == 3.0),
 			"a chain-loaded window re-emits its archived-view finalize output"
 		);
 		assert_eq!(

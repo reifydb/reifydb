@@ -18,6 +18,7 @@ use reifydb_flow::{
 	timer::Timer,
 	transaction::FlowTransaction,
 	window::{
+		coord::OrdinalCoord,
 		engine::{config::WindowEngineConfig, rolling::RollingEngine},
 		ledger::{FiredAt, read_sealed_through},
 		meta::WindowMeta,
@@ -69,7 +70,7 @@ pub struct WindowConfig {
 }
 
 pub(crate) enum RollingEngineSlot {
-	CountedRow(Box<RollingEngine<Hash128, u64, RowAccumulator>>),
+	CountedRow(Box<RollingEngine<Hash128, OrdinalCoord, RowAccumulator>>),
 	TimedRow(Box<RollingEngine<Hash128, DateTime, RowAccumulator>>),
 }
 

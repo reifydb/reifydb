@@ -52,6 +52,7 @@ use reifydb_testing_flow::{
 	state::{State, assert_batch_equivalent, assert_identical_bytes, keyspace_of},
 };
 use reifydb_value::{
+	factory::at_millis,
 	fragment::Fragment,
 	value::{
 		Value, datetime::DateTime, duration::Duration, row_number::RowNumber, system_columns::SystemColumns,
@@ -72,10 +73,6 @@ fn routines() -> Routines {
 	let b = default_native_functions(b);
 	let b = default_native_procedures(b);
 	default_native_monoids(b).configure()
-}
-
-fn at(ms: u64) -> DateTime {
-	DateTime::from_timestamp_millis(ms).expect("a test stamp is representable")
 }
 
 fn count_keyspace(state: &State, keyspace: Keyspace) -> usize {
@@ -143,14 +140,19 @@ mod distinct {
 			.iter()
 			.enumerate()
 			.map(|(i, &v)| {
-				Event::Insert(generator::row(RowNumber(i as u64 + 1), 1, v, at(1_000 * (i as u64 + 1))))
+				Event::Insert(generator::row(
+					RowNumber(i as u64 + 1),
+					1,
+					v,
+					at_millis(1_000 * (i as u64 + 1)),
+				))
 			})
 			.collect();
-		events.push(Event::Remove(generator::row(RowNumber(4), 1, 10, at(4_000))));
-		events.push(Event::Remove(generator::row(RowNumber(2), 1, 10, at(2_000))));
+		events.push(Event::Remove(generator::row(RowNumber(4), 1, 10, at_millis(4_000))));
+		events.push(Event::Remove(generator::row(RowNumber(2), 1, 10, at_millis(2_000))));
 		events.push(Event::Update(
-			generator::row(RowNumber(9), 1, 50, at(9_000)),
-			generator::row(RowNumber(9), 1, 55, at(19_000)),
+			generator::row(RowNumber(9), 1, 50, at_millis(9_000)),
+			generator::row(RowNumber(9), 1, 55, at_millis(19_000)),
 		));
 		events
 	}
@@ -260,7 +262,9 @@ mod count_window {
 			(8, 2, 23, 6_000),
 			(9, 1, 29, 7_000),
 		];
-		rows.iter().map(|&(rn, g, v, ms)| Event::Insert(generator::row(RowNumber(rn), g, v, at(ms)))).collect()
+		rows.iter()
+			.map(|&(rn, g, v, ms)| Event::Insert(generator::row(RowNumber(rn), g, v, at_millis(ms))))
+			.collect()
 	}
 
 	fn drive(clock_ms: u64, slices: &[usize]) -> Run {
@@ -333,7 +337,9 @@ mod time_window {
 			(9, 2, 29, 7_500),
 			(10, 1, 31, 9_500),
 		];
-		rows.iter().map(|&(rn, g, v, ms)| Event::Insert(generator::row(RowNumber(rn), g, v, at(ms)))).collect()
+		rows.iter()
+			.map(|&(rn, g, v, ms)| Event::Insert(generator::row(RowNumber(rn), g, v, at_millis(ms))))
+			.collect()
 	}
 
 	fn drive(clock_ms: u64, slices: &[usize]) -> Run {
@@ -475,7 +481,7 @@ mod join {
 				ColumnWithName::new(Fragment::internal(*name), buffer)
 			})
 			.collect();
-		let time = at(spec.ms);
+		let time = at_millis(spec.ms);
 		Columns::with_system(
 			columns,
 			SystemColumns::new(vec![RowNumber(spec.rn)], Vec::new(), vec![time], vec![time], vec![time]),

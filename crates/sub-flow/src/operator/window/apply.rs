@@ -11,7 +11,7 @@ use reifydb_core::{
 use reifydb_flow::{
 	transaction::FlowTransaction,
 	window::{
-		coord::EventCoord,
+		coord::{EventCoord, RowSpan},
 		driver::{gate::disarm_seal, sweep::SealSweep},
 		engine::{AccumulatorEvent, ExpiryAnchor, WindowStateKey, tumbling::TumblingEngine},
 		kind::{
@@ -122,7 +122,7 @@ fn route_count_tumbling(
 	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
 	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
 ) -> Result<()> {
-	let rows = TumblingOverRows::holding(operator.size_count().unwrap_or(1));
+	let rows = TumblingOverRows::holding(RowSpan::of(operator.size_count().unwrap_or(1)));
 	for diff in change.diffs.iter() {
 		match diff {
 			Diff::Insert {
@@ -1037,7 +1037,7 @@ mod tests {
 		engine::{is_sealed, seal_horizon},
 		span::WindowCoord,
 	};
-	use reifydb_value::value::duration::Duration;
+	use reifydb_value::{factory::at_millis, value::duration::Duration};
 
 	use super::SealPolicy;
 
@@ -1066,9 +1066,14 @@ mod tests {
 
 	#[test]
 	fn seal_horizon_saturates_for_young_watermarks() {
-		// A watermark smaller than seal_after must not wrap; nothing is sealed yet.
-		assert_eq!(seal_horizon(3, 10), 0, "young watermark saturates to zero horizon");
-		assert!(!is_sealed(0, seal_horizon(3, 10)), "anchor zero is not below a zero horizon");
-		assert!(is_sealed(4, seal_horizon(20, 10)), "anchor below watermark - seal_after is sealed");
+		// The epoch is the domain floor; wrapping past it declares every window sealed.
+		let seal_after = Duration::from_milliseconds_const(10);
+
+		assert_eq!(seal_horizon(at_millis(3), seal_after), at_millis(0), "young watermark saturates to the epoch");
+		assert!(!is_sealed(at_millis(0), seal_horizon(at_millis(3), seal_after)), "the epoch is not below itself");
+		assert!(
+			is_sealed(at_millis(4), seal_horizon(at_millis(20), seal_after)),
+			"anchor below watermark - seal_after is sealed"
+		);
 	}
 }

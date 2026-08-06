@@ -27,9 +27,7 @@ fn a_lagged_rolling_window_still_reaches_the_time_domain_validation() {
 	let engine = TestEngine::new();
 	engine.admin("CREATE NAMESPACE td");
 	engine.admin("CREATE TABLE td::src { id: int4, at: datetime, v: float8 }");
-	engine.admin(
-		"CREATE DEFERRED VIEW td::v { id: int4, total: float8 } AS { \
+	engine.admin("CREATE DEFERRED VIEW td::v { id: int4, total: float8 } AS { \
 		 FROM td::src | window rolling { total: math::sum(v) } \
-		 with { interval: \"1m\", lag: \"1m\" } by { id } }",
-	);
+		 with { interval: \"1m\", lag: \"1m\" } by { id } }");
 }

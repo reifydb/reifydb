@@ -45,8 +45,10 @@ use reifydb_sdk::{
 };
 use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::strategy::{ColumnSampler, samplers};
-use reifydb_value::factory::millis;
-use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
+use reifydb_value::{
+	factory::{at_millis, millis},
+	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
+};
 
 pub const WINDOW: u64 = 60;
 /// Held below WINDOW so aging is reachable inside a single window.
@@ -294,17 +296,17 @@ impl TumblingRegistration for MinTumbling {
 #[reifydb_macro::operator_state]
 #[derive(Clone, Debug, HeapSize)]
 pub struct OhlcvAcc {
-	high: SealingMax<u64, OrdF64>,
-	low: SealingMin<u64, OrdF64>,
-	ends: SealingEndpoint<u64, OrdF64>,
+	high: SealingMax<DateTime, OrdF64>,
+	low: SealingMin<DateTime, OrdF64>,
+	ends: SealingEndpoint<DateTime, OrdF64>,
 }
 
 impl Default for OhlcvAcc {
 	fn default() -> Self {
 		Self {
-			high: SealingMax::with_grace(OHLCV_GRACE),
-			low: SealingMin::with_grace(OHLCV_GRACE),
-			ends: SealingEndpoint::with_grace(OHLCV_GRACE),
+			high: SealingMax::with_grace(millis(OHLCV_GRACE)),
+			low: SealingMin::with_grace(millis(OHLCV_GRACE)),
+			ends: SealingEndpoint::with_grace(millis(OHLCV_GRACE)),
 		}
 	}
 }
@@ -318,16 +320,16 @@ pub struct OhlcvValue {
 }
 
 impl WindowAccumulator for OhlcvAcc {
-	type Contribution = (u64, OrdF64);
+	type Contribution = (DateTime, OrdF64);
 	type Output = OhlcvValue;
 
-	fn add(&mut self, contribution: &(u64, OrdF64)) {
+	fn add(&mut self, contribution: &(DateTime, OrdF64)) {
 		self.high.add(contribution);
 		self.low.add(contribution);
 		self.ends.add(contribution);
 	}
 
-	fn remove(&mut self, contribution: &(u64, OrdF64)) {
+	fn remove(&mut self, contribution: &(DateTime, OrdF64)) {
 		self.high.remove(contribution);
 		self.low.remove(contribution);
 		self.ends.remove(contribution);
@@ -376,11 +378,11 @@ impl TumblingOperator for OhlcvSealingTumbling {
 	type Accumulator = OhlcvAcc;
 	type Output = OhlcvOut;
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, (u64, OrdF64))> {
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, (DateTime, OrdF64))> {
 		let group = row.utf8("group")?.to_string();
 		let slot = row.u64("slot")?;
 		let price = OrdF64::new(row.f64("price")?)?;
-		Some((group, (slot, price)))
+		Some((group, (at_millis(slot), price)))
 	}
 
 	fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime> {

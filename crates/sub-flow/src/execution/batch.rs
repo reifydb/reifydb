@@ -170,7 +170,7 @@ mod tests {
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_value::value::identity::IdentityId;
+	use reifydb_value::{factory::at_millis, value::identity::IdentityId};
 
 	use super::*;
 
@@ -188,10 +188,6 @@ mod tests {
 		)
 	}
 
-	fn at(millis: u64) -> DateTime {
-		DateTime::from_millis(millis)
-	}
-
 	#[test]
 	fn a_versions_own_rows_do_not_move_the_frontier_the_operators_gate_against() {
 		// The admit frontier is snapshotted BEFORE the version's own rows advance the source
@@ -200,19 +196,19 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 
-		freeze_arrival_frontier(&mut txn, &[SOURCE], &[(SOURCE, at(5_000))]).unwrap();
-		freeze_arrival_frontier(&mut txn, &[SOURCE], &[(SOURCE, at(20_000))]).unwrap();
+		freeze_arrival_frontier(&mut txn, &[SOURCE], &[(SOURCE, at_millis(5_000))]).unwrap();
+		freeze_arrival_frontier(&mut txn, &[SOURCE], &[(SOURCE, at_millis(20_000))]).unwrap();
 
 		assert_eq!(
 			txn.flow_watermark(),
-			Some(at(5_000)),
+			Some(at_millis(5_000)),
 			"the frontier must be the one that existed before this version's rows, not after them"
 		);
 
 		let watermarks = txn.source_watermarks();
 		assert_eq!(
 			watermarks.source_watermark(SOURCE, &mut txn).unwrap(),
-			at(20_000),
+			at_millis(20_000),
 			"the version's rows must still have advanced the source, or the frontier is only stale \
 			 because nothing was folded in at all"
 		);

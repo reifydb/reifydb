@@ -4,7 +4,10 @@
 use reifydb_codec::state::{OperatorState, decode_state};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::{
+	factory::{at_millis, millis},
+	value::datetime::DateTime,
+};
 
 use super::{WindowAccumulator, invertible::*, sealing::*};
 
@@ -417,79 +420,79 @@ fn keyed_invertible_roundtrip() {
 
 #[test]
 fn sealing_max_seals_aged_and_keeps_recent_tail_removal_safe() {
-	let mut accumulator: SealingMax<u64, i64> = SealingMax::with_grace(10);
-	accumulator.add(&(0, 5));
-	accumulator.add(&(5, 8));
-	accumulator.add(&(12, 3));
+	let mut accumulator: SealingMax<DateTime, i64> = SealingMax::with_grace(millis(10));
+	accumulator.add(&(at_millis(0), 5));
+	accumulator.add(&(at_millis(5), 8));
+	accumulator.add(&(at_millis(12), 3));
 	assert_eq!(accumulator.max(), Some(8));
 
-	accumulator.remove(&(0, 5));
+	accumulator.remove(&(at_millis(0), 5));
 	assert_eq!(accumulator.max(), Some(8), "aged removal does not disturb the sealed max");
 
-	accumulator.remove(&(5, 8));
+	accumulator.remove(&(at_millis(5), 8));
 	assert_eq!(accumulator.max(), Some(5), "tail max 8 removed; falls back to sealed 5");
 }
 
 #[test]
 fn sealing_min_seals_aged_extreme() {
-	let mut accumulator: SealingMin<u64, i64> = SealingMin::with_grace(10);
-	accumulator.add(&(0, 2));
-	accumulator.add(&(5, 9));
-	accumulator.add(&(12, 7));
+	let mut accumulator: SealingMin<DateTime, i64> = SealingMin::with_grace(millis(10));
+	accumulator.add(&(at_millis(0), 2));
+	accumulator.add(&(at_millis(5), 9));
+	accumulator.add(&(at_millis(12), 7));
 	assert_eq!(accumulator.min(), Some(2));
-	accumulator.remove(&(5, 9));
+	accumulator.remove(&(at_millis(5), 9));
 	assert_eq!(accumulator.min(), Some(2), "sealed min 2 survives removal of a live event");
 }
 
 #[test]
 fn sealing_max_default_never_seals_and_is_fully_invertible() {
-	assert_add_remove_is_inverse::<SealingMax<u64, i64>>(&[(1u64, 10i64), (2, 20)], (3u64, 30i64));
-	let mut accumulator: SealingMax<u64, i64> = SealingMax::default();
-	accumulator.add(&(0, 5));
-	accumulator.add(&(100, 8));
-	accumulator.remove(&(100, 8));
+	assert_add_remove_is_inverse::<SealingMax<DateTime, i64>>(&[(at_millis(1), 10i64), (at_millis(2), 20)], (at_millis(3), 30i64));
+	let mut accumulator: SealingMax<DateTime, i64> = SealingMax::default();
+	accumulator.add(&(at_millis(0), 5));
+	accumulator.add(&(at_millis(100), 8));
+	accumulator.remove(&(at_millis(100), 8));
 	assert_eq!(accumulator.max(), Some(5), "removing the max reveals the prior max (no sealing)");
 }
 
 #[test]
 fn sealing_endpoint_freezes_open_and_tracks_live_close() {
-	let mut accumulator: SealingEndpoint<u64, i64> = SealingEndpoint::with_grace(10);
-	accumulator.add(&(0, 100));
-	accumulator.add(&(5, 200));
-	accumulator.add(&(12, 300));
+	let mut accumulator: SealingEndpoint<DateTime, i64> = SealingEndpoint::with_grace(millis(10));
+	accumulator.add(&(at_millis(0), 100));
+	accumulator.add(&(at_millis(5), 200));
+	accumulator.add(&(at_millis(12), 300));
 	assert_eq!(accumulator.open(), Some(&100), "open frozen to the earliest observation");
 	assert_eq!(accumulator.close(), Some(&300), "close is the latest live observation");
 
-	accumulator.remove(&(0, 100));
+	accumulator.remove(&(at_millis(0), 100));
 	assert_eq!(accumulator.open(), Some(&100), "aged open removal is a dropped no-op (frozen)");
 
-	accumulator.remove(&(12, 300));
+	accumulator.remove(&(at_millis(12), 300));
 	assert_eq!(accumulator.close(), Some(&200), "removing the latest reveals the prior latest in the tail");
 
-	accumulator.add(&(20, 400));
+	accumulator.add(&(at_millis(20), 400));
 	assert_eq!(accumulator.open(), Some(&100));
 	assert_eq!(accumulator.close(), Some(&400));
 }
 
 #[test]
 fn sealing_endpoint_default_is_fully_invertible() {
-	assert_add_remove_is_inverse::<SealingEndpoint<u64, i64>>(&[(1u64, 10i64), (3, 30)], (2u64, 20i64));
+	assert_add_remove_is_inverse::<SealingEndpoint<DateTime, i64>>(&[(at_millis(1), 10i64), (at_millis(3), 30)], (at_millis(2), 20i64));
 }
 
 #[test]
 fn sealing_primitives_roundtrip() {
-	let mut mx: SealingMax<u64, i64> = SealingMax::with_grace(10);
-	mx.add(&(0, 5));
-	mx.add(&(12, 8));
+	let mut mx: SealingMax<DateTime, i64> = SealingMax::with_grace(millis(10));
+	mx.add(&(at_millis(0), 5));
+	mx.add(&(at_millis(12), 8));
 	let bytes = mx.encode_state(DateTime::EPOCH).expect("encode");
-	let restored: SealingMax<u64, i64> = decode_state(&bytes).expect("decode");
+	let restored: SealingMax<DateTime, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, mx);
 
-	let mut ep: SealingEndpoint<u64, i64> = SealingEndpoint::with_grace(10);
-	ep.add(&(0, 100));
-	ep.add(&(12, 300));
+	let mut ep: SealingEndpoint<DateTime, i64> = SealingEndpoint::with_grace(millis(10));
+	ep.add(&(at_millis(0), 100));
+	ep.add(&(at_millis(12), 300));
 	let bytes = ep.encode_state(DateTime::EPOCH).expect("encode");
-	let restored: SealingEndpoint<u64, i64> = decode_state(&bytes).expect("decode");
+	let restored: SealingEndpoint<DateTime, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, ep);
 }
 
@@ -513,116 +516,116 @@ impl SealFold for AbsPathFold {
 
 #[test]
 fn sealing_fold_no_grace_sums_all_adjacent_steps() {
-	let mut accumulator: SealingFold<u64, AbsPathFold> = SealingFold::default();
-	accumulator.add(&(0, 10.0));
-	accumulator.add(&(1, 20.0));
-	accumulator.add(&(2, 15.0));
+	let mut accumulator: SealingFold<DateTime, AbsPathFold> = SealingFold::default();
+	accumulator.add(&(at_millis(0), 10.0));
+	accumulator.add(&(at_millis(1), 20.0));
+	accumulator.add(&(at_millis(2), 15.0));
 
 	assert_eq!(accumulator.finalize(), Some(15.0));
 }
 
 #[test]
 fn sealing_fold_seals_aged_prefix_exactly_for_forward_data() {
-	let mut accumulator: SealingFold<u64, AbsPathFold> = SealingFold::with_grace(1);
-	accumulator.add(&(0, 10.0));
-	accumulator.add(&(1, 20.0));
-	accumulator.add(&(2, 15.0));
+	let mut accumulator: SealingFold<DateTime, AbsPathFold> = SealingFold::with_grace(millis(1));
+	accumulator.add(&(at_millis(0), 10.0));
+	accumulator.add(&(at_millis(1), 20.0));
+	accumulator.add(&(at_millis(2), 15.0));
 	assert_eq!(accumulator.finalize(), Some(15.0), "sealed prefix preserves the full path exactly");
 }
 
 #[test]
 fn sealing_fold_aged_removal_is_dropped_no_op_but_live_removal_is_safe() {
-	let mut accumulator: SealingFold<u64, AbsPathFold> = SealingFold::with_grace(1);
-	accumulator.add(&(0, 10.0));
-	accumulator.add(&(1, 20.0));
-	accumulator.add(&(2, 15.0));
+	let mut accumulator: SealingFold<DateTime, AbsPathFold> = SealingFold::with_grace(millis(1));
+	accumulator.add(&(at_millis(0), 10.0));
+	accumulator.add(&(at_millis(1), 20.0));
+	accumulator.add(&(at_millis(2), 15.0));
 
-	accumulator.remove(&(0, 10.0));
+	accumulator.remove(&(at_millis(0), 10.0));
 	assert_eq!(accumulator.finalize(), Some(15.0), "aged removal does not disturb the sealed path");
 
-	accumulator.remove(&(2, 15.0));
+	accumulator.remove(&(at_millis(2), 15.0));
 	assert_eq!(accumulator.finalize(), Some(10.0), "live removal recomputes the path");
 }
 
 #[test]
 fn sealing_fold_default_add_remove_is_inverse() {
-	assert_add_remove_is_inverse::<SealingFold<u64, AbsPathFold>>(&[(0u64, 10.0f64), (1, 20.0)], (2u64, 30.0f64));
+	assert_add_remove_is_inverse::<SealingFold<DateTime, AbsPathFold>>(&[(at_millis(0), 10.0f64), (at_millis(1), 20.0)], (at_millis(2), 30.0f64));
 }
 
 #[test]
 fn sealing_fold_roundtrip() {
-	let mut accumulator: SealingFold<u64, AbsPathFold> = SealingFold::with_grace(1);
-	accumulator.add(&(0, 10.0));
-	accumulator.add(&(1, 20.0));
-	accumulator.add(&(2, 15.0));
+	let mut accumulator: SealingFold<DateTime, AbsPathFold> = SealingFold::with_grace(millis(1));
+	accumulator.add(&(at_millis(0), 10.0));
+	accumulator.add(&(at_millis(1), 20.0));
+	accumulator.add(&(at_millis(2), 15.0));
 	let bytes = accumulator.encode_state(DateTime::EPOCH).expect("encode");
-	let restored: SealingFold<u64, AbsPathFold> = decode_state(&bytes).expect("decode");
+	let restored: SealingFold<DateTime, AbsPathFold> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored.finalize(), accumulator.finalize());
 }
 
 #[test]
 fn sealing_tail_drops_aged_keeps_recent() {
-	let mut tail: SealingTail<u64, i64> = SealingTail::with_grace(10);
-	tail.add(0, 1);
-	tail.add(5, 2);
-	tail.add(12, 3);
-	let keys: Vec<u64> = tail.tail().keys().copied().collect();
-	assert_eq!(keys, vec![5, 12], "aged prefix dropped, recent tail kept in order");
-	tail.remove(&5);
-	let keys: Vec<u64> = tail.tail().keys().copied().collect();
-	assert_eq!(keys, vec![12], "live tail entry removable");
+	let mut tail: SealingTail<DateTime, i64> = SealingTail::with_grace(millis(10));
+	tail.add(at_millis(0), 1);
+	tail.add(at_millis(5), 2);
+	tail.add(at_millis(12), 3);
+	let keys: Vec<DateTime> = tail.tail().keys().copied().collect();
+	assert_eq!(keys, vec![at_millis(5), at_millis(12)], "aged prefix dropped, recent tail kept in order");
+	tail.remove(&at_millis(5));
+	let keys: Vec<DateTime> = tail.tail().keys().copied().collect();
+	assert_eq!(keys, vec![at_millis(12)], "live tail entry removable");
 }
 
 #[test]
 fn sealing_tail_default_never_drops() {
-	let mut tail: SealingTail<u64, i64> = SealingTail::default();
-	tail.add(0, 1);
-	tail.add(100, 2);
+	let mut tail: SealingTail<DateTime, i64> = SealingTail::default();
+	tail.add(at_millis(0), 1);
+	tail.add(at_millis(100), 2);
 	assert_eq!(tail.tail().len(), 2, "with no grace bound nothing is dropped");
 }
 
 #[test]
 fn sealing_tail_roundtrip() {
-	let mut tail: SealingTail<u64, i64> = SealingTail::with_grace(10);
-	tail.add(0, 1);
-	tail.add(12, 3);
+	let mut tail: SealingTail<DateTime, i64> = SealingTail::with_grace(millis(10));
+	tail.add(at_millis(0), 1);
+	tail.add(at_millis(12), 3);
 	let bytes = tail.encode_state(DateTime::EPOCH).expect("encode");
-	let restored: SealingTail<u64, i64> = decode_state(&bytes).expect("decode");
+	let restored: SealingTail<DateTime, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, tail);
 }
 
 #[test]
 fn tail_acc_no_grace_retains_whole_window_like_retained_acc() {
-	let mut accumulator: TailAccumulator<u64, i64> = TailAccumulator::default();
-	accumulator.add(&(0, 10));
-	accumulator.add(&(100, 20));
+	let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::default();
+	accumulator.add(&(at_millis(0), 10));
+	accumulator.add(&(at_millis(100), 20));
 	let map = accumulator.finalize().expect("non-empty");
 	assert_eq!(map.len(), 2);
-	assert_eq!(map.get(&0), Some(&10));
-	assert_eq!(map.get(&100), Some(&20));
+	assert_eq!(map.get(&at_millis(0)), Some(&10));
+	assert_eq!(map.get(&at_millis(100)), Some(&20));
 }
 
 #[test]
 fn tail_acc_default_add_remove_is_inverse() {
-	assert_add_remove_is_inverse::<TailAccumulator<u64, i64>>(&[(0u64, 10i64), (1, 20)], (2u64, 30i64));
+	assert_add_remove_is_inverse::<TailAccumulator<DateTime, i64>>(&[(at_millis(0), 10i64), (at_millis(1), 20)], (at_millis(2), 30i64));
 }
 
 #[test]
 fn tail_acc_with_grace_drops_aged_from_finalize() {
-	let mut accumulator: TailAccumulator<u64, i64> = TailAccumulator::with_grace(10);
-	accumulator.add(&(0, 10));
-	accumulator.add(&(5, 20));
-	accumulator.add(&(12, 30));
+	let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::with_grace(millis(10));
+	accumulator.add(&(at_millis(0), 10));
+	accumulator.add(&(at_millis(5), 20));
+	accumulator.add(&(at_millis(12), 30));
 	let map = accumulator.finalize().expect("non-empty");
-	assert_eq!(map.keys().copied().collect::<Vec<_>>(), vec![5, 12], "aged prefix dropped from the emitted map");
+	assert_eq!(map.keys().copied().collect::<Vec<_>>(), vec![at_millis(5), at_millis(12)], "aged prefix dropped from the emitted map");
 }
 
 #[test]
 fn tail_acc_roundtrip() {
-	let mut accumulator: TailAccumulator<u64, i64> = TailAccumulator::with_grace(10);
-	accumulator.add(&(0, 1));
-	accumulator.add(&(12, 3));
+	let mut accumulator: TailAccumulator<DateTime, i64> = TailAccumulator::with_grace(millis(10));
+	accumulator.add(&(at_millis(0), 1));
+	accumulator.add(&(at_millis(12), 3));
 	let bytes = accumulator.encode_state(DateTime::EPOCH).expect("encode");
-	let restored: TailAccumulator<u64, i64> = decode_state(&bytes).expect("decode");
+	let restored: TailAccumulator<DateTime, i64> = decode_state(&bytes).expect("decode");
 	assert_eq!(restored, accumulator);
 }

@@ -29,8 +29,7 @@ pub fn check_window_time_requirements(catalog: &Catalog, txn: &mut Transaction<'
 				..
 			},
 			..
-		} = &operator.ty
-			&& source_time_domain(catalog, &mut txn.reborrow(), flow)? != TimeDomain::Event
+		} = &operator.ty && source_time_domain(catalog, &mut txn.reborrow(), flow)? != TimeDomain::Event
 		{
 			return Err(Error(Box::new(flow_rolling_lag_requires_event_time(&flow_name))));
 		}

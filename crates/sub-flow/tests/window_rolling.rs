@@ -198,7 +198,6 @@ fn a_processing_view_over_a_processing_source_keeps_its_rows_live() {
 	);
 }
 
-
 #[test]
 fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
 	// A late row must be ignored, not withdraw the whole group it belongs to. Lateness is decided

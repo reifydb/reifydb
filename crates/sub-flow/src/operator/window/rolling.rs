@@ -18,6 +18,7 @@ use reifydb_flow::{
 	window::{
 		accumulator::WindowAccumulator,
 		driver::gate::EvictionGate,
+		coord::{OrdinalCoord, RowSpan},
 		engine::{
 			AccumulatorEvent, EmitKind, is_sealed,
 			rolling::{
@@ -71,32 +72,34 @@ pub(crate) trait RollingDomain: WindowAnchor + Hash + HeapSize + Send + Sync {
 	fn seals_on_timer() -> bool;
 }
 
-impl RollingDomain for u64 {
+impl RollingDomain for OrdinalCoord {
 	fn engine(
 		operator: &WindowOperator,
 		runnable: bool,
-		lag: u64,
-	) -> &mut RollingEngine<Hash128, u64, RowAccumulator> {
+		lag: RowSpan,
+	) -> &mut RollingEngine<Hash128, OrdinalCoord, RowAccumulator> {
 		counted_row_engine(operator, runnable, lag)
 	}
 
-	fn lag(_declared: Duration) -> u64 {
-		0
+	fn lag(_declared: Duration) -> RowSpan {
+		RowSpan::ZERO
 	}
 
-	fn eviction(operator: &WindowOperator, _ledger: DateTime, _lag: u64) -> RollingEviction<u64> {
-		RollingEviction::Capacity(RollingOverRows::new(operator.size_count().unwrap_or(0)).capacity())
+	fn eviction(operator: &WindowOperator, _ledger: DateTime, _lag: RowSpan) -> RollingEviction<OrdinalCoord> {
+		RollingEviction::Capacity(
+			RollingOverRows::new(RowSpan::of(operator.size_count().unwrap_or(0))).capacity(),
+		)
 	}
 
-	fn coord(columns: &Columns, row_idx: usize, _timestamps: &[DateTime]) -> u64 {
-		columns.row_numbers()[row_idx].0
+	fn coord(columns: &Columns, row_idx: usize, _timestamps: &[DateTime]) -> OrdinalCoord {
+		OrdinalCoord::from_row_number(columns.row_numbers()[row_idx])
 	}
 
-	fn slot_key(_coord: u64, row_number: u64) -> WindowSlotKey {
+	fn slot_key(_coord: OrdinalCoord, row_number: u64) -> WindowSlotKey {
 		WindowSlotKey::new(DateTime::default(), row_number)
 	}
 
-	fn seal_horizon(_operator: &WindowOperator, _ledger: DateTime) -> Option<u64> {
+	fn seal_horizon(_operator: &WindowOperator, _ledger: DateTime) -> Option<OrdinalCoord> {
 		None
 	}
 
@@ -178,8 +181,8 @@ fn rolling_runnable(operator: &WindowOperator, kinds: &[SlotKind]) -> bool {
 fn counted_row_engine(
 	operator: &WindowOperator,
 	runnable: bool,
-	lag: u64,
-) -> &mut RollingEngine<Hash128, u64, RowAccumulator> {
+	lag: RowSpan,
+) -> &mut RollingEngine<Hash128, OrdinalCoord, RowAccumulator> {
 	let slot = operator.rolling_engine_slot();
 	if !matches!(slot, Some(RollingEngineSlot::CountedRow(_))) {
 		let engine = if runnable {
@@ -278,7 +281,7 @@ fn route_rolling_columns<C: RollingDomain>(
 #[instrument(name = "flow::operator::window::rolling", level = "trace", skip_all)]
 pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 	if operator.is_count_based() {
-		apply_rolling::<u64>(operator, txn, change)
+		apply_rolling::<OrdinalCoord>(operator, txn, change)
 	} else {
 		apply_rolling::<DateTime>(operator, txn, change)
 	}
@@ -630,6 +633,10 @@ mod tests {
 
 	use super::*;
 
+	fn ordinal(value: u64) -> OrdinalCoord {
+		OrdinalCoord::from_arrival_counter(value)
+	}
+
 	fn evict_instant(oldest: u64, span: Duration) -> DateTime {
 		EvictionPolicy::rolling(span).eviction_instant_from_order(oldest).at()
 	}
@@ -639,11 +646,11 @@ mod tests {
 		// A count window's coordinate is a row number, not an instant, and nothing errors if one
 		// is fed to duration arithmetic: the timer lands just past the epoch, fires at once and
 		// rearms forever. A count window evicts on capacity and has no notion of closed.
-		assert!(!<u64 as RollingDomain>::seals_on_timer(), "a row number is not an instant to arm a timer at");
+		assert!(!<OrdinalCoord as RollingDomain>::seals_on_timer(), "a row number is not an instant to arm a timer at");
 		assert!(<DateTime as RollingDomain>::seals_on_timer(), "an event-time window does seal on the wheel");
 
 		assert!(
-			!<u64 as RollingDomain>::needs_event_timestamps(),
+			!<OrdinalCoord as RollingDomain>::needs_event_timestamps(),
 			"a count window buckets by arrival order, so event time must not reach its coordinate"
 		);
 	}
@@ -679,7 +686,7 @@ mod tests {
 		// in the domain rather than in whoever remembers to check the count case first.
 		let declared = Duration::from_seconds(30).expect("representable span");
 
-		assert_eq!(<u64 as RollingDomain>::lag(declared), 0, "a row count has no millisecond lag");
+		assert_eq!(<OrdinalCoord as RollingDomain>::lag(declared), RowSpan::ZERO, "a row count has no millisecond lag");
 		assert_eq!(
 			<DateTime as RollingDomain>::lag(declared),
 			declared,
@@ -848,8 +855,8 @@ mod tests {
 		let config = || WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).build();
 		let mut legacy_store = MockStore::default();
 		let mut runnable_store = MockStore::default();
-		let mut legacy = RollingEngine::<Hash128, u64, RowAccumulator>::new(config());
-		let mut runnable = RollingEngine::<Hash128, u64, RowAccumulator>::new_runnable(config());
+		let mut legacy = RollingEngine::<Hash128, OrdinalCoord, RowAccumulator>::new(config());
+		let mut runnable = RollingEngine::<Hash128, OrdinalCoord, RowAccumulator>::new_runnable(config());
 		let slot_kinds = kinds();
 
 		let mut state = 0x0123_4567_89AB_CDEFu64;
@@ -879,7 +886,7 @@ mod tests {
 				plan.push((group, coord, dollars, false));
 			}
 			let build = |plan: &[(Hash128, u64, [f64; 3], bool)]| {
-				let mut buckets: RollingEngineBuckets<u64> = TestBTreeMap::new();
+				let mut buckets: RollingEngineBuckets<OrdinalCoord> = TestBTreeMap::new();
 				for (group, coord, dollars, is_add) in plan {
 					let c = contribution(*coord, *dollars);
 					let event = if *is_add {
@@ -887,7 +894,7 @@ mod tests {
 					} else {
 						AccumulatorEvent::Remove(c)
 					};
-					buckets.entry((*group, *coord)).or_default().push(event);
+					buckets.entry((*group, ordinal(*coord))).or_default().push(event);
 				}
 				buckets
 			};
@@ -896,10 +903,10 @@ mod tests {
 				.apply_evicting(
 					&mut legacy_store,
 					build(&plan),
-					RollingEviction::Before(cutoff),
+					RollingEviction::Before(ordinal(cutoff)),
 					group_key,
 					|| RowAccumulator::new(&sk, Duration::default()),
-					|_g, buffer| combine_rolling(buffer, &sk, 0, Duration::default()),
+					|_g, buffer| combine_rolling(buffer, &sk, RowSpan::ZERO, Duration::default()),
 				)
 				.unwrap();
 			let sk = slot_kinds.clone();
@@ -907,7 +914,7 @@ mod tests {
 				.apply_running(
 					&mut runnable_store,
 					build(&plan),
-					RollingEviction::Before(cutoff),
+					RollingEviction::Before(ordinal(cutoff)),
 					group_key,
 					|| RowAccumulator::new(&sk, Duration::default()),
 				)
@@ -923,11 +930,11 @@ mod tests {
 				cutoff = coord_base.saturating_sub(20);
 				let sk = slot_kinds.clone();
 				let legacy_exp = legacy
-					.expire_before(&mut legacy_store, cutoff, |_g, buffer| {
-						combine_rolling(buffer, &sk, 0, Duration::default())
+					.expire_before(&mut legacy_store, ordinal(cutoff), |_g, buffer| {
+						combine_rolling(buffer, &sk, RowSpan::ZERO, Duration::default())
 					})
 					.unwrap();
-				let runnable_exp = runnable.expire_before_running(&mut runnable_store, cutoff).unwrap();
+				let runnable_exp = runnable.expire_before_running(&mut runnable_store, ordinal(cutoff)).unwrap();
 				assert_eq!(
 					legacy_exp.len(),
 					runnable_exp.len(),
@@ -974,11 +981,11 @@ mod tests {
 		// buffers, running entries or index entries behind.
 		let sk = slot_kinds.clone();
 		let legacy_final = legacy
-			.expire_before(&mut legacy_store, u64::MAX - 1, |_g, buffer| {
-				combine_rolling(buffer, &sk, 0, Duration::default())
+			.expire_before(&mut legacy_store, ordinal(u64::MAX - 1), |_g, buffer| {
+				combine_rolling(buffer, &sk, RowSpan::ZERO, Duration::default())
 			})
 			.unwrap();
-		let runnable_final = runnable.expire_before_running(&mut runnable_store, u64::MAX - 1).unwrap();
+		let runnable_final = runnable.expire_before_running(&mut runnable_store, ordinal(u64::MAX - 1)).unwrap();
 		assert_eq!(legacy_final.len(), runnable_final.len(), "terminal drain cardinality diverged");
 		assert!(
 			runnable_final.iter().all(|e| matches!(e, RollingExpiry::Remove { .. })),

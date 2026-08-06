@@ -137,15 +137,12 @@ mod substrate_stamping_tests {
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
 	use reifydb_value::{
+		factory::at_millis,
 		fragment::Fragment,
 		value::{row_number::RowNumber, system_columns::SystemColumns},
 	};
 
 	use super::*;
-
-	fn at(millis: i64) -> DateTime {
-		DateTime::from_timestamp(millis).unwrap()
-	}
 
 	fn columns(times: &[DateTime]) -> Columns {
 		let n = times.len();
@@ -157,15 +154,15 @@ mod substrate_stamping_tests {
 			SystemColumns::new(
 				(1..=n as u64).map(RowNumber).collect(),
 				Vec::new(),
-				vec![at(0); n],
-				vec![at(0); n],
+				vec![at_millis(0); n],
+				vec![at_millis(0); n],
 				times.to_vec(),
 			),
 		)
 	}
 
 	fn change(diffs: Diffs) -> Change {
-		Change::from_flow(OperatorId(1), CommitVersion(1), diffs, at(0))
+		Change::from_flow(OperatorId(1), CommitVersion(1), diffs, at_millis(0))
 	}
 
 	#[test]
@@ -173,9 +170,9 @@ mod substrate_stamping_tests {
 		// The substrate derives the stamp from the input, never from the operator, which is what
 		// lets a guest operator stay oblivious to #time without breaking the clock.
 		let mut diffs = Diffs::new();
-		diffs.push(Diff::insert(columns(&[at(1_000), at(9_000), at(5_000)])));
+		diffs.push(Diff::insert(columns(&[at_millis(1_000), at_millis(9_000), at_millis(5_000)])));
 
-		assert_eq!(max_input_time(&change(diffs)), Some(at(9_000)));
+		assert_eq!(max_input_time(&change(diffs)), Some(at_millis(9_000)));
 	}
 
 	#[test]
@@ -184,15 +181,15 @@ mod substrate_stamping_tests {
 		// another operator's state early; the epoch row is replaced too, or an unstamped row would
 		// read as 1970 and retention would evict it at once.
 		let mut produced = Diffs::new();
-		produced.push(Diff::insert(columns(&[at(999_999), at(0)])));
+		produced.push(Diff::insert(columns(&[at_millis(999_999), at_millis(0)])));
 		let mut out = change(produced);
 
-		stamp_output_time(&mut out, Some(at(4_000)));
+		stamp_output_time(&mut out, Some(at_millis(4_000)));
 
 		let stamped = out.diffs[0].post().unwrap();
 		assert_eq!(
 			stamped.time().to_vec(),
-			vec![at(4_000), at(4_000)],
+			vec![at_millis(4_000), at_millis(4_000)],
 			"every output row takes the substrate's stamp, not the operator's"
 		);
 	}
@@ -202,13 +199,13 @@ mod substrate_stamping_tests {
 		// A pre image left above the inherited instant would advance the watermark through the
 		// pre side alone and make a retention decision see two times for one row.
 		let mut produced = Diffs::new();
-		produced.push(Diff::update(columns(&[at(9_000)]), columns(&[at(10_000)])));
+		produced.push(Diff::update(columns(&[at_millis(9_000)]), columns(&[at_millis(10_000)])));
 		let mut out = change(produced);
 
-		stamp_output_time(&mut out, Some(at(7_000)));
+		stamp_output_time(&mut out, Some(at_millis(7_000)));
 
-		assert_eq!(out.diffs[0].pre().unwrap().time().to_vec(), vec![at(7_000)]);
-		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![at(7_000)]);
+		assert_eq!(out.diffs[0].pre().unwrap().time().to_vec(), vec![at_millis(7_000)]);
+		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![at_millis(7_000)]);
 	}
 
 	#[test]
@@ -216,12 +213,18 @@ mod substrate_stamping_tests {
 		// Every row sits above the inherited instant, so a clamp that visited only the first
 		// would still pass if the rest were left alone.
 		let mut produced = Diffs::new();
-		produced.push(Diff::insert(columns(&[at(9_000), at(10_000), at(11_000), at(12_000), at(13_000)])));
+		produced.push(Diff::insert(columns(&[
+			at_millis(9_000),
+			at_millis(10_000),
+			at_millis(11_000),
+			at_millis(12_000),
+			at_millis(13_000),
+		])));
 		let mut out = change(produced);
 
-		stamp_output_time(&mut out, Some(at(8_000)));
+		stamp_output_time(&mut out, Some(at_millis(8_000)));
 
-		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![at(8_000); 5]);
+		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![at_millis(8_000); 5]);
 	}
 
 	#[test]
@@ -232,19 +235,19 @@ mod substrate_stamping_tests {
 		assert_eq!(max_input_time(&empty), None);
 
 		let mut produced = Diffs::new();
-		produced.push(Diff::insert(columns(&[at(3_000)])));
+		produced.push(Diff::insert(columns(&[at_millis(3_000)])));
 		let mut out = change(produced);
 
 		stamp_output_time(&mut out, None);
 
-		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![at(3_000)]);
+		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![at_millis(3_000)]);
 	}
 
 	#[test]
 	fn an_operator_stamping_above_its_inputs_is_still_overwritten() {
 		// No relaxation of the clamp may reach the above-inputs direction, and the comparison is
 		// strict: one nanosecond over is enough.
-		let inherited = at(5_000);
+		let inherited = at_millis(5_000);
 		let one_nano_above = DateTime::from_nanos(inherited.to_nanos() + 1);
 
 		let mut produced = Diffs::new();
@@ -261,17 +264,17 @@ mod substrate_stamping_tests {
 		// A window stamps the bucket START, at or below every event it consumed; overwriting it
 		// costs replay stability. Equality must survive - a bucket start can coincide with its
 		// only event.
-		let inherited = at(5_000);
+		let inherited = at_millis(5_000);
 
 		let mut produced = Diffs::new();
-		produced.push(Diff::insert(columns(&[at(1_000), inherited])));
+		produced.push(Diff::insert(columns(&[at_millis(1_000), inherited])));
 		let mut out = change(produced);
 
 		stamp_output_time(&mut out, Some(inherited));
 
 		assert_eq!(
 			out.diffs[0].post().unwrap().time().to_vec(),
-			vec![at(1_000), inherited],
+			vec![at_millis(1_000), inherited],
 			"below survives, and equal counts as below"
 		);
 	}
@@ -285,9 +288,9 @@ mod substrate_stamping_tests {
 		produced.push(Diff::insert(columns(&[DateTime::default()])));
 		let mut out = change(produced);
 
-		stamp_output_time(&mut out, Some(at(6_000)));
+		stamp_output_time(&mut out, Some(at_millis(6_000)));
 
-		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![at(6_000)]);
+		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![at_millis(6_000)]);
 	}
 
 	#[test]
@@ -295,9 +298,9 @@ mod substrate_stamping_tests {
 		// Both paths a guest window emits from inherit an instant at or after the bucket start,
 		// so one rule carries the start through without a special case - which is what lets a
 		// consumer read #time instead of a window_start data column.
-		let window_start = at(60_000);
-		let newest_event_in_bucket = at(119_000);
-		let seal_fires_at = at(120_001);
+		let window_start = at_millis(60_000);
+		let newest_event_in_bucket = at_millis(119_000);
+		let seal_fires_at = at_millis(120_001);
 
 		let mut on_apply = change({
 			let mut d = Diffs::new();
@@ -321,10 +324,10 @@ mod substrate_stamping_tests {
 		// An operator fed several diffs must inherit the latest instant anywhere in the batch,
 		// not the first diff's.
 		let mut diffs = Diffs::new();
-		diffs.push(Diff::insert(columns(&[at(1_000)])));
-		diffs.push(Diff::insert(columns(&[at(12_000)])));
-		diffs.push(Diff::insert(columns(&[at(3_000)])));
+		diffs.push(Diff::insert(columns(&[at_millis(1_000)])));
+		diffs.push(Diff::insert(columns(&[at_millis(12_000)])));
+		diffs.push(Diff::insert(columns(&[at_millis(3_000)])));
 
-		assert_eq!(max_input_time(&change(diffs)), Some(at(12_000)));
+		assert_eq!(max_input_time(&change(diffs)), Some(at_millis(12_000)));
 	}
 }

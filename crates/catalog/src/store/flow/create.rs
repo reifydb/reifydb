@@ -111,7 +111,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-			interface::catalog::{
+		interface::catalog::{
 			flow::{FlowId, FlowStatus},
 			id::NamespaceId,
 		},

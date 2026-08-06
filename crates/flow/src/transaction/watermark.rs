@@ -105,7 +105,7 @@ mod tests {
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_value::value::identity::IdentityId;
+	use reifydb_value::{factory::at_millis, value::identity::IdentityId};
 
 	use super::*;
 	use crate::transaction::{
@@ -143,10 +143,6 @@ mod tests {
 		apply_operator_state(&engine.inner().operator_state(), txn.version(), &pending);
 	}
 
-	fn at(millis: u64) -> DateTime {
-		DateTime::from_millis(millis)
-	}
-
 	#[test]
 	fn the_source_watermark_never_moves_backwards() {
 		// The per-source watermark is a running max over #time. Late rows arrive with older stamps
@@ -156,10 +152,10 @@ mod tests {
 		let mut txn = deferred(&engine, MockClock::from_millis(0));
 		let watermarks = SourceWatermarks::default();
 
-		watermarks.advance(SOURCE_A, &mut txn, at(5_000)).unwrap();
-		watermarks.advance(SOURCE_A, &mut txn, at(3_000)).unwrap();
+		watermarks.advance(SOURCE_A, &mut txn, at_millis(5_000)).unwrap();
+		watermarks.advance(SOURCE_A, &mut txn, at_millis(3_000)).unwrap();
 
-		assert_eq!(watermarks.source_watermark(SOURCE_A, &mut txn).unwrap(), at(5_000));
+		assert_eq!(watermarks.source_watermark(SOURCE_A, &mut txn).unwrap(), at_millis(5_000));
 	}
 
 	#[test]
@@ -171,19 +167,19 @@ mod tests {
 		let watermarks = SourceWatermarks::default();
 		let sources = [SOURCE_A, SOURCE_B];
 
-		watermarks.advance(SOURCE_A, &mut txn, at(10_000)).unwrap();
-		watermarks.advance(SOURCE_B, &mut txn, at(2_000)).unwrap();
-		assert_eq!(watermarks.flow_watermark(&sources, &mut txn).unwrap(), at(2_000));
+		watermarks.advance(SOURCE_A, &mut txn, at_millis(10_000)).unwrap();
+		watermarks.advance(SOURCE_B, &mut txn, at_millis(2_000)).unwrap();
+		assert_eq!(watermarks.flow_watermark(&sources, &mut txn).unwrap(), at_millis(2_000));
 
-		watermarks.advance(SOURCE_A, &mut txn, at(20_000)).unwrap();
+		watermarks.advance(SOURCE_A, &mut txn, at_millis(20_000)).unwrap();
 		assert_eq!(
 			watermarks.flow_watermark(&sources, &mut txn).unwrap(),
-			at(2_000),
+			at_millis(2_000),
 			"the fast source must not advance the flow watermark past the slow one"
 		);
 
-		watermarks.advance(SOURCE_B, &mut txn, at(12_000)).unwrap();
-		assert_eq!(watermarks.flow_watermark(&sources, &mut txn).unwrap(), at(12_000));
+		watermarks.advance(SOURCE_B, &mut txn, at_millis(12_000)).unwrap();
+		assert_eq!(watermarks.flow_watermark(&sources, &mut txn).unwrap(), at_millis(12_000));
 	}
 
 	#[test]
@@ -195,27 +191,27 @@ mod tests {
 		let warm = SourceWatermarks::default();
 
 		let mut txn = deferred(&engine, MockClock::from_millis(0));
-		warm.advance(SOURCE_A, &mut txn, at(5_400)).unwrap();
-		warm.advance(SOURCE_A, &mut txn, at(5_900)).unwrap();
+		warm.advance(SOURCE_A, &mut txn, at_millis(5_400)).unwrap();
+		warm.advance(SOURCE_A, &mut txn, at_millis(5_900)).unwrap();
 		commit_pending(&engine, &mut txn);
 
 		let mut cold_txn = deferred(&engine, MockClock::from_millis(0));
 		let cold = SourceWatermarks::default();
 		assert_eq!(
 			cold.source_watermark(SOURCE_A, &mut cold_txn).unwrap(),
-			at(5_400),
+			at_millis(5_400),
 			"the same-second advance must not have persisted"
 		);
 
 		let mut txn = deferred(&engine, MockClock::from_millis(0));
-		warm.advance(SOURCE_A, &mut txn, at(6_100)).unwrap();
+		warm.advance(SOURCE_A, &mut txn, at_millis(6_100)).unwrap();
 		commit_pending(&engine, &mut txn);
 
 		let mut cold_txn = deferred(&engine, MockClock::from_millis(0));
 		let cold = SourceWatermarks::default();
 		assert_eq!(
 			cold.source_watermark(SOURCE_A, &mut cold_txn).unwrap(),
-			at(6_100),
+			at_millis(6_100),
 			"crossing the 1s bucket must persist"
 		);
 	}
@@ -229,8 +225,8 @@ mod tests {
 		let mut txn = deferred(&engine, MockClock::from_millis(500_000));
 		let watermarks = SourceWatermarks::default();
 
-		assert_eq!(watermarks.source_watermark(SOURCE_A, &mut txn).unwrap(), at(0));
-		assert_eq!(watermarks.flow_watermark(&[SOURCE_A], &mut txn).unwrap(), at(0));
+		assert_eq!(watermarks.source_watermark(SOURCE_A, &mut txn).unwrap(), at_millis(0));
+		assert_eq!(watermarks.flow_watermark(&[SOURCE_A], &mut txn).unwrap(), at_millis(0));
 	}
 
 	#[test]
@@ -245,11 +241,11 @@ mod tests {
 		let watermarks = SourceWatermarks::default();
 		let sources = [SOURCE_A, SOURCE_B];
 
-		watermarks.advance(SOURCE_A, &mut txn, at(10_000)).unwrap();
-		watermarks.advance(SOURCE_B, &mut txn, at(5_000)).unwrap();
+		watermarks.advance(SOURCE_A, &mut txn, at_millis(10_000)).unwrap();
+		watermarks.advance(SOURCE_B, &mut txn, at_millis(5_000)).unwrap();
 		assert_eq!(
 			watermarks.flow_watermark(&sources, &mut txn).unwrap(),
-			at(5_000),
+			at_millis(5_000),
 			"the watermark must be the min-merge of the arrival-derived sources, not the clock"
 		);
 
@@ -257,7 +253,7 @@ mod tests {
 
 		assert_eq!(
 			watermarks.flow_watermark(&sources, &mut txn).unwrap(),
-			at(5_000),
+			at_millis(5_000),
 			"with no new data the watermark must hold however far the clock runs"
 		);
 	}

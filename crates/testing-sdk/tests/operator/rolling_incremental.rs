@@ -15,7 +15,6 @@ use reifydb_testing_sdk::chaos::{
 	schema::KeyStrategy,
 	strategy::{ColumnSampler, samplers},
 };
-
 use reifydb_value::value::{Value, value_type::ValueType};
 
 use super::common::{self, VelocityIncremental};

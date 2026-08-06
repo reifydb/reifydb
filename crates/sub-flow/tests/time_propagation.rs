@@ -44,11 +44,7 @@ fn an_event_time_source_propagates_its_stamp_through_a_chain_of_views() {
 	db.await_row_count("FROM cv::downstream", 1, TIMEOUT);
 
 	let source = only_time(&db, "FROM cv::src");
-	assert_eq!(
-		only_time(&db, "FROM cv::upstream"),
-		source,
-		"one view deep must carry the source's own stamp"
-	);
+	assert_eq!(only_time(&db, "FROM cv::upstream"), source, "one view deep must carry the source's own stamp");
 	assert_eq!(
 		only_time(&db, "FROM cv::downstream"),
 		source,

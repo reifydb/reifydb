@@ -2532,7 +2532,8 @@ impl<'bump> Parser<'bump> {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'capacity', 'partition', or 'row'".to_string(),
+									expected: "'capacity', 'partition', or 'row'"
+										.to_string(),
 								},
 								message: format!(
 									"unexpected key '{}' in WITH clause",
@@ -5132,10 +5133,7 @@ mod time_declaration_tests {
 			r#"create deferred view ns::v { a: int4 } with { ts: at } as { from ns::t }"#,
 			r#"create transactional view ns::v { a: int4 } with { time: event } as { from ns::t }"#,
 		] {
-			assert!(
-				declared_in(&bump, source).is_err(),
-				"a view must reject a time declaration: {source}"
-			);
+			assert!(declared_in(&bump, source).is_err(), "a view must reject a time declaration: {source}");
 		}
 	}
 

@@ -18,8 +18,8 @@ use reifydb_flow::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, is_sealed,
-			rolling_top_k::{TopKEmit, RollingTopKEngine},
 			rolling::RollingBuckets,
+			rolling_top_k::{RollingTopKEngine, TopKEmit},
 		},
 		ledger::FiredAt,
 		span::WindowCoord,
@@ -314,8 +314,11 @@ where
 							let Some(coord) = row.row_time() else {
 								continue;
 							};
-							if let Some((group, contribution)) = self.aggregator.extract(ctx, &row) {
-								let bucket = bucket_of(coord, self.aggregator.bucket_size());
+							if let Some((group, contribution)) =
+								self.aggregator.extract(ctx, &row)
+							{
+								let bucket =
+									bucket_of(coord, self.aggregator.bucket_size());
 								buckets.entry((group, bucket))
 									.or_default()
 									.push(AccumulatorEvent::Add(contribution));
@@ -328,21 +331,27 @@ where
 						let n = pre.row_count().min(post.row_count());
 						for i in 0..n {
 							if let Some(pre_row) = pre.row(i)
-								&& let Some(coord) = pre_row.row_time()
-								&& let Some((group, contribution)) =
-									self.aggregator.extract(ctx, &pre_row)
+								&& let Some(coord) = pre_row.row_time() && let Some((
+								group,
+								contribution,
+							)) =
+								self.aggregator.extract(ctx, &pre_row)
 							{
-								let bucket = bucket_of(coord, self.aggregator.bucket_size());
+								let bucket =
+									bucket_of(coord, self.aggregator.bucket_size());
 								buckets.entry((group, bucket))
 									.or_default()
 									.push(AccumulatorEvent::Remove(contribution));
 							}
 							if let Some(post_row) = post.row(i)
-								&& let Some(coord) = post_row.row_time()
-								&& let Some((group, contribution)) =
-									self.aggregator.extract(ctx, &post_row)
+								&& let Some(coord) = post_row.row_time() && let Some((
+								group,
+								contribution,
+							)) =
+								self.aggregator.extract(ctx, &post_row)
 							{
-								let bucket = bucket_of(coord, self.aggregator.bucket_size());
+								let bucket =
+									bucket_of(coord, self.aggregator.bucket_size());
 								buckets.entry((group, bucket))
 									.or_default()
 									.push(AccumulatorEvent::Add(contribution));
@@ -359,8 +368,11 @@ where
 							let Some(coord) = row.row_time() else {
 								continue;
 							};
-							if let Some((group, contribution)) = self.aggregator.extract(ctx, &row) {
-								let bucket = bucket_of(coord, self.aggregator.bucket_size());
+							if let Some((group, contribution)) =
+								self.aggregator.extract(ctx, &row)
+							{
+								let bucket =
+									bucket_of(coord, self.aggregator.bucket_size());
 								buckets.entry((group, bucket))
 									.or_default()
 									.push(AccumulatorEvent::Remove(contribution));

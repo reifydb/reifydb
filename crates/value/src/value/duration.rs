@@ -489,6 +489,14 @@ impl Duration {
 		Self::normalized(months, days, nanos)
 	}
 
+	pub fn div_duration(self, rhs: Self) -> Result<i64, Box<TypeError>> {
+		let divisor = rhs.as_nanos()?;
+		if divisor == 0 {
+			return Err(Box::new(Self::overflow_err("cannot divide a duration by a zero duration")));
+		}
+		Ok(self.as_nanos()? / divisor)
+	}
+
 	fn saturating_normalized(months: i32, days: i32, nanos: i64) -> Self {
 		let total = days as i128 * NANOS_PER_DAY as i128 + nanos as i128;
 		let new_days = (total / NANOS_PER_DAY as i128).clamp(i32::MIN as i128, i32::MAX as i128) as i32;
@@ -1703,5 +1711,33 @@ mod conversion_tests {
 		// Config durations are never negative; a negative one degrades to zero, not a panic.
 		let negative = Duration::from_seconds(-5).unwrap();
 		assert_eq!(negative.to_std(), StdDuration::ZERO);
+	}
+
+	#[test]
+	fn dividing_a_span_counts_whole_steps_and_drops_the_remainder() {
+		// A partial slide must not count: rounding up files the row under a window start in its future.
+		let second = Duration::from_seconds(1).unwrap();
+
+		assert_eq!(second.div_duration(Duration::from_milliseconds(250).unwrap()).unwrap(), 4);
+		assert_eq!(second.div_duration(Duration::from_milliseconds(300).unwrap()).unwrap(), 3);
+		assert_eq!(second.div_duration(Duration::from_seconds(2).unwrap()).unwrap(), 0);
+	}
+
+	#[test]
+	fn dividing_by_a_zero_span_is_refused_rather_than_panicking() {
+		// RQL does not close every route to a zero slide, and dividing would panic the flow.
+		let err = Duration::from_seconds(1).unwrap().div_duration(Duration::zero());
+
+		assert!(err.is_err(), "a zero divisor must be an error, not a division by zero");
+	}
+
+	#[test]
+	fn division_reads_the_whole_duration_not_just_its_nanosecond_field() {
+		// Days and nanos are separate fields; reading nanos alone answers zero for a days dividend.
+		let day = Duration::from_days(1).unwrap();
+		let hour = Duration::from_hours(1).unwrap();
+
+		assert_eq!(day.div_duration(hour).unwrap(), 24);
+		assert_eq!(day.get_nanos(), 0, "precondition: the dividend carries no nanoseconds of its own");
 	}
 }

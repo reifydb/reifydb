@@ -92,15 +92,13 @@ impl EvictionGate {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_value::factory::at_millis;
+
 	use super::*;
 	use crate::window::engine::test_support::{MockStore, RecordedTimer};
 
 	fn ms(millis: u64) -> Duration {
 		Duration::from_milliseconds_const(millis as i64)
-	}
-
-	fn at(millis: u64) -> DateTime {
-		DateTime::from_millis(millis)
 	}
 
 	fn key() -> EncodedKey {
@@ -120,11 +118,11 @@ mod tests {
 		// The frontier must never move backwards when one of its two inputs lags. The flow watermark
 		// is a min-merge across sources, so a newly attached source drags it down; taking the max
 		// stops that re-admitting rows into windows this operator has already sealed and emitted.
-		let lagging = SealGate::new(policy(), Some(sealed_through(9_000)), Some(at(3_000)));
-		let leading = SealGate::new(policy(), Some(sealed_through(3_000)), Some(at(9_000)));
+		let lagging = SealGate::new(policy(), Some(sealed_through(9_000)), Some(at_millis(3_000)));
+		let leading = SealGate::new(policy(), Some(sealed_through(3_000)), Some(at_millis(9_000)));
 
-		assert_eq!(lagging.frontier(), at(9_000));
-		assert_eq!(leading.frontier(), at(9_000));
+		assert_eq!(lagging.frontier(), at_millis(9_000));
+		assert_eq!(leading.frontier(), at_millis(9_000));
 	}
 
 	#[test]
@@ -144,7 +142,7 @@ mod tests {
 		// same seal ledger and flow watermark. The guest reaches the watermark through the
 		// flow_watermark callback rather than inferring one from the coordinates in its batch.
 		let ledger = sealed_through(9_000);
-		let watermark = at(3_000);
+		let watermark = at_millis(3_000);
 
 		let host_side = SealGate::new(policy(), Some(ledger), Some(watermark));
 		let guest_side = SealGate::new(policy(), Some(ledger), Some(watermark));
@@ -177,8 +175,8 @@ mod tests {
 		assert_eq!(
 			store.timers(),
 			&[
-				RecordedTimer::disarmed(at(5_201), TimerKind::Seal, key()),
-				RecordedTimer::armed(at(6_201), TimerKind::Seal, key()),
+				RecordedTimer::disarmed(at_millis(5_201), TimerKind::Seal, key()),
+				RecordedTimer::armed(at_millis(6_201), TimerKind::Seal, key()),
 			]
 		);
 	}
@@ -193,7 +191,7 @@ mod tests {
 
 		gate.arm(&mut store, &key(), Some(5_000), 5_000).unwrap();
 
-		assert_eq!(store.timers(), &[RecordedTimer::armed(at(6_201), TimerKind::Seal, key())]);
+		assert_eq!(store.timers(), &[RecordedTimer::armed(at_millis(6_201), TimerKind::Seal, key())]);
 	}
 
 	#[test]
@@ -205,7 +203,7 @@ mod tests {
 
 		gate.arm(&mut store, &key(), None, 5_000).unwrap();
 
-		assert_eq!(store.timers(), &[RecordedTimer::armed(at(6_201), TimerKind::Seal, key())]);
+		assert_eq!(store.timers(), &[RecordedTimer::armed(at_millis(6_201), TimerKind::Seal, key())]);
 	}
 
 	#[test]
@@ -220,8 +218,8 @@ mod tests {
 		assert_eq!(
 			store.timers(),
 			&[
-				RecordedTimer::disarmed(at(5_000), TimerKind::Seal, key()),
-				RecordedTimer::armed(at(6_000), TimerKind::Seal, key()),
+				RecordedTimer::disarmed(at_millis(5_000), TimerKind::Seal, key()),
+				RecordedTimer::armed(at_millis(6_000), TimerKind::Seal, key()),
 			]
 		);
 	}
@@ -250,7 +248,7 @@ mod tests {
 
 		gate.rearm(&mut store, &key(), Some(4_000), None).unwrap();
 
-		assert_eq!(store.timers(), &[RecordedTimer::disarmed(at(5_000), TimerKind::Seal, key())]);
+		assert_eq!(store.timers(), &[RecordedTimer::disarmed(at_millis(5_000), TimerKind::Seal, key())]);
 	}
 
 	#[test]
@@ -267,8 +265,8 @@ mod tests {
 		assert_eq!(
 			store.timers(),
 			&[
-				RecordedTimer::armed(at(6_201), TimerKind::Seal, key()),
-				RecordedTimer::disarmed(at(6_201), TimerKind::Seal, key()),
+				RecordedTimer::armed(at_millis(6_201), TimerKind::Seal, key()),
+				RecordedTimer::disarmed(at_millis(6_201), TimerKind::Seal, key()),
 			]
 		);
 	}

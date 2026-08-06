@@ -8,12 +8,12 @@ use reifydb_core::{
 use reifydb_flow::{
 	transaction::FlowTransaction,
 	window::{
-		coord::{EventCoord, EventTime, Ordinal, OrdinalCoord},
+		coord::{EventCoord, OrdinalCoord, RowSpan},
 		driver::{gate::SealGate, mint::Mint},
 		kind::{
 			ordinal_window_span,
 			session::{SessionKind, SessionTracker},
-			sliding::SlidingKind,
+			sliding::{SlidingOverRows, SlidingOverTime},
 			tumbling::TumblingOverRows,
 		},
 		ledger::FiredAt,
@@ -70,24 +70,24 @@ impl WindowOperator {
 		self.meta_slot().save_session(&mut store, group, tracker)
 	}
 
-	fn sliding_over_time(&self) -> Option<SlidingKind<EventTime>> {
+	fn sliding_over_time(&self) -> Option<SlidingOverTime> {
 		match &self.kind {
 			WindowKind::Sliding {
 				size: WindowSize::Duration(size),
 				slide: WindowSize::Duration(slide),
 				..
-			} => SlidingKind::by_duration(*size, *slide),
+			} => SlidingOverTime::by_duration(*size, *slide),
 			_ => None,
 		}
 	}
 
-	fn sliding_over_rows(&self) -> Option<SlidingKind<Ordinal>> {
+	fn sliding_over_rows(&self) -> Option<SlidingOverRows> {
 		match &self.kind {
 			WindowKind::Sliding {
 				size: WindowSize::Count(size),
 				slide: WindowSize::Count(slide),
 				..
-			} => SlidingKind::by_count(*size, *slide),
+			} => SlidingOverRows::by_count(RowSpan::of(*size), RowSpan::of(*slide)),
 			_ => None,
 		}
 	}
@@ -108,7 +108,7 @@ impl WindowOperator {
 			return ordinal_window_span(anchor);
 		}
 		self.sliding_over_time().map_or_else(
-			|| TumblingOverRows::holding(1).span(OrdinalCoord::from_arrival_counter(anchor)),
+			|| TumblingOverRows::holding(RowSpan::of(1)).span(OrdinalCoord::from_arrival_counter(anchor)),
 			|kind| kind.span(anchor),
 		)
 	}

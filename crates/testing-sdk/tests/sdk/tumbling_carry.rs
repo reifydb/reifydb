@@ -26,8 +26,10 @@ use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestRowBuilder},
 	harness::FFIOperatorHarnessBuilder,
 };
-use reifydb_value::factory::millis;
-use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
+use reifydb_value::{
+	factory::millis,
+	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
+};
 
 // A TWAP-shaped fixture that isolates the carry rotation. `carry_in` echoes the prior
 // window's closing observation, so assertions here are about the rotation and not the

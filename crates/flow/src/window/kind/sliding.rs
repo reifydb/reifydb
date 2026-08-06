@@ -1,28 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::marker::PhantomData;
-
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 use crate::window::{
-	coord::{EventCoord, EventTime, Ordinal, OrdinalCoord, WindowDomain},
+	coord::{EventCoord, OrdinalCoord, RowSpan},
 	kind::ordinal_window_span,
 	span::{WindowCoord, WindowSpan},
 };
 
-pub struct SlidingKind<D: WindowDomain> {
-	size: u64,
-	slide: u64,
-	domain: PhantomData<D>,
+fn fits(size: u64, slide: u64) -> Option<(u64, u64)> {
+	(size > 0 && slide > 0 && slide < size).then_some((size, slide))
 }
 
-impl<D: WindowDomain> SlidingKind<D> {
-	fn build(size: u64, slide: u64) -> Option<Self> {
-		(size > 0 && slide > 0 && slide < size).then_some(Self {
+pub struct SlidingOverTime {
+	size: u64,
+	slide: u64,
+}
+
+impl SlidingOverTime {
+	pub fn by_duration(size: Duration, slide: Duration) -> Option<Self> {
+		let (size, slide) = fits(
+			<DateTime as WindowCoord>::span_millis(size)?,
+			<DateTime as WindowCoord>::span_millis(slide)?,
+		)?;
+		Some(Self {
 			size,
 			slide,
-			domain: PhantomData,
 		})
 	}
 
@@ -32,15 +36,6 @@ impl<D: WindowDomain> SlidingKind<D> {
 
 	pub fn slide(&self) -> u64 {
 		self.slide
-	}
-}
-
-impl SlidingKind<EventTime> {
-	pub fn by_duration(size: Duration, slide: Duration) -> Option<Self> {
-		Self::build(
-			<DateTime as WindowCoord>::span_millis(size)?,
-			<DateTime as WindowCoord>::span_millis(slide)?,
-		)
 	}
 
 	pub fn span(&self, anchor: u64) -> WindowSpan<DateTime> {
@@ -61,9 +56,26 @@ impl SlidingKind<EventTime> {
 	}
 }
 
-impl SlidingKind<Ordinal> {
-	pub fn by_count(size: u64, slide: u64) -> Option<Self> {
-		Self::build(size, slide)
+pub struct SlidingOverRows {
+	size: RowSpan,
+	slide: RowSpan,
+}
+
+impl SlidingOverRows {
+	pub fn by_count(size: RowSpan, slide: RowSpan) -> Option<Self> {
+		let (size, slide) = fits(size.rows(), slide.rows())?;
+		Some(Self {
+			size: RowSpan::of(size),
+			slide: RowSpan::of(slide),
+		})
+	}
+
+	pub fn size(&self) -> RowSpan {
+		self.size
+	}
+
+	pub fn slide(&self) -> RowSpan {
+		self.slide
 	}
 
 	pub fn span(&self, anchor: u64) -> WindowSpan<DateTime> {
@@ -72,16 +84,18 @@ impl SlidingKind<Ordinal> {
 
 	pub fn anchors(&self, coord: OrdinalCoord) -> Vec<u64> {
 		let row = coord.value() + 1;
-		let lowest = if row > self.size {
-			(row - self.size) / self.slide
+		let size = self.size.rows();
+		let slide = self.slide.rows();
+		let lowest = if row > size {
+			(row - size) / slide
 		} else {
 			0
 		};
-		let highest = (row - 1) / self.slide;
+		let highest = (row - 1) / slide;
 		(lowest..=highest)
 			.filter(|window| {
-				let first = window * self.slide + 1;
-				row >= first && row < first + self.size
+				let first = window * slide + 1;
+				row >= first && row < first + size
 			})
 			.collect()
 	}
@@ -90,21 +104,18 @@ impl SlidingKind<Ordinal> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::factory::event_coord_at_millis;
 
 	fn ms(millis: u64) -> Duration {
 		Duration::from_milliseconds_const(millis as i64)
 	}
 
-	fn timed() -> SlidingKind<EventTime> {
-		SlidingKind::by_duration(ms(1_000), ms(250)).expect("a 250ms slide fits inside a 1000ms window")
+	fn timed() -> SlidingOverTime {
+		SlidingOverTime::by_duration(ms(1_000), ms(250)).expect("a 250ms slide fits inside a 1000ms window")
 	}
 
-	fn counted() -> SlidingKind<Ordinal> {
-		SlidingKind::by_count(4, 2).expect("a slide of 2 fits inside a window of 4")
-	}
-
-	fn at(millis: u64) -> EventCoord {
-		EventCoord::of(&DateTime::from_millis(millis))
+	fn counted() -> SlidingOverRows {
+		SlidingOverRows::by_count(RowSpan::of(4), RowSpan::of(2)).expect("a slide of 2 fits inside a window of 4")
 	}
 
 	#[test]
@@ -112,24 +123,24 @@ mod tests {
 		// Every anchor path divides by the slide. RQL rejects `slide >= size`, which lets `slide: 0`
 		// through, so a zero slide reaches the arithmetic and panics the whole flow from a plain
 		// user query.
-		assert!(SlidingKind::<EventTime>::by_duration(ms(1_000), ms(0)).is_none());
-		assert!(SlidingKind::<Ordinal>::by_count(4, 0).is_none());
+		assert!(SlidingOverTime::by_duration(ms(1_000), ms(0)).is_none());
+		assert!(SlidingOverRows::by_count(RowSpan::of(4), RowSpan::of(0)).is_none());
 	}
 
 	#[test]
 	fn a_slide_that_does_not_fit_inside_the_window_is_refused() {
 		// A slide at or above the size makes the windows disjoint or gapped - tumbling at best,
 		// row-dropping at worst. RQL rejects matched pairs; refusing here closes every other route.
-		assert!(SlidingKind::<EventTime>::by_duration(ms(1_000), ms(1_000)).is_none());
-		assert!(SlidingKind::<Ordinal>::by_count(4, 9).is_none());
-		assert!(SlidingKind::<Ordinal>::by_count(0, 0).is_none());
+		assert!(SlidingOverTime::by_duration(ms(1_000), ms(1_000)).is_none());
+		assert!(SlidingOverRows::by_count(RowSpan::of(4), RowSpan::of(9)).is_none());
+		assert!(SlidingOverRows::by_count(RowSpan::of(0), RowSpan::of(0)).is_none());
 	}
 
 	#[test]
 	fn a_time_coordinate_lands_in_every_window_whose_span_still_covers_it() {
 		// One row contributes to several overlapping windows, and missing one under-counts that
 		// window forever. Size 1000 with slide 250 covers an instant with exactly four windows.
-		assert_eq!(timed().anchors(at(5_000)), vec![4_250, 4_500, 4_750, 5_000]);
+		assert_eq!(timed().anchors(event_coord_at_millis(5_000)), vec![4_250, 4_500, 4_750, 5_000]);
 	}
 
 	#[test]
@@ -137,8 +148,8 @@ mod tests {
 		// The low bound saturates because an instant inside the first window would otherwise
 		// underflow to near u64::MAX and iterate a range the size of the address space. The epoch is
 		// a real coordinate here: unstamped rows sit at exactly DateTime::default().
-		assert_eq!(timed().anchors(at(0)), vec![0]);
-		assert_eq!(timed().anchors(at(250)), vec![0, 250]);
+		assert_eq!(timed().anchors(event_coord_at_millis(0)), vec![0]);
+		assert_eq!(timed().anchors(event_coord_at_millis(250)), vec![0, 250]);
 	}
 
 	#[test]
@@ -156,7 +167,10 @@ mod tests {
 		// A row that maps to no anchor is silently dropped - it reaches no accumulator and is absent
 		// from every aggregate with nothing logged.
 		for instant in (0..4_000).step_by(37) {
-			assert!(!timed().anchors(at(instant)).is_empty(), "instant {instant} joined no window");
+			assert!(
+				!timed().anchors(event_coord_at_millis(instant)).is_empty(),
+				"instant {instant} joined no window"
+			);
 		}
 		for ordinal in 0..500 {
 			assert!(
@@ -182,7 +196,7 @@ mod tests {
 		// Over-reporting is as silent as under-reporting: the row lands in a window whose span does
 		// not cover it, and retraction later subtracts it from a window it was never in.
 		for instant in (0..4_000).step_by(37) {
-			for start in timed().anchors(at(instant)) {
+			for start in timed().anchors(event_coord_at_millis(instant)) {
 				assert!(
 					instant >= start && instant < start + timed().size(),
 					"instant {instant} was placed in window [{start}, {})",

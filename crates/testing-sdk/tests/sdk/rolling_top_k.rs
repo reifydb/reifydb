@@ -26,8 +26,10 @@ use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestRowBuilder},
 	harness::FFIOperatorHarnessBuilder,
 };
-use reifydb_value::factory::millis;
-use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
+use reifydb_value::{
+	factory::millis,
+	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
+};
 
 // Rolling top-2 traders by summed volume. Each window cell is keyed and invertible so an
 // Update or Remove subtracts a trade's volume rather than dropping the whole window.

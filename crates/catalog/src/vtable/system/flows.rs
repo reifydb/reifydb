@@ -65,7 +65,6 @@ impl BaseVTable for SystemFlows {
 				FlowStatus::Failed => "Failed",
 			};
 			statuses.push(status_str);
-
 		}
 
 		let columns = vec![

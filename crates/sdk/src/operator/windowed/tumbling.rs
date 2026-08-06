@@ -49,8 +49,7 @@ use crate::{
 
 type AccumulatorContribution<A> = <<A as TumblingOperator>::Accumulator as WindowAccumulator>::Contribution;
 type AccumulatorValue<A> = <<A as TumblingOperator>::Accumulator as WindowAccumulator>::Output;
-type Buckets<A> =
-	TumblingBuckets<<A as TumblingOperator>::GroupKey, DateTime, AccumulatorContribution<A>>;
+type Buckets<A> = TumblingBuckets<<A as TumblingOperator>::GroupKey, DateTime, AccumulatorContribution<A>>;
 type WindowOrder<A> = Vec<(<A as TumblingOperator>::GroupKey, WindowSpan<DateTime>)>;
 
 pub trait TumblingOperator {

@@ -188,11 +188,9 @@ impl FlowEngineInner {
 
 #[cfg(test)]
 mod cadence_tests {
-	use super::*;
+	use reifydb_value::factory::at_nanos;
 
-	fn at(nanos: u64) -> DateTime {
-		DateTime::from_nanos(nanos)
-	}
+	use super::*;
 
 	const SECOND: u64 = 1_000_000_000;
 
@@ -203,15 +201,15 @@ mod cadence_tests {
 		// rewrites live state ten times per expiry; harvesting half the window at a time bounds
 		// that at ~2x. Mutation falsified against: dropping the cadence (always due) and inverting
 		// the comparison (never due at exactly half the span).
-		let watermark = at(100 * SECOND);
-		let floor = Some(at(90 * SECOND));
+		let watermark = at_nanos(100 * SECOND);
+		let floor = Some(at_nanos(90 * SECOND));
 
 		assert!(
-			!compaction_due(Some(at(96 * SECOND)), watermark, floor),
+			!compaction_due(Some(at_nanos(96 * SECOND)), watermark, floor),
 			"4s into a 10s span is under the 5s cadence and must not re-compact"
 		);
 		assert!(
-			compaction_due(Some(at(95 * SECOND)), watermark, floor),
+			compaction_due(Some(at_nanos(95 * SECOND)), watermark, floor),
 			"exactly half the span must be due, or the cadence drifts a tick later every pass"
 		);
 		assert!(
@@ -224,14 +222,14 @@ mod cadence_tests {
 	fn an_operator_with_no_floor_is_never_due() {
 		// A floorless operator has nothing merge-time cancellation could drop, so a merge would be
 		// pure rewrite cost. Mutation falsified against: treating None as always-due.
-		assert!(!compaction_due(None, at(100 * SECOND), None));
+		assert!(!compaction_due(None, at_nanos(100 * SECOND), None));
 	}
 
 	#[test]
 	fn a_floor_at_the_watermark_is_always_due() {
 		// A zero span means everything below the watermark is already expired; dividing by the
 		// cadence must not produce an interval that defers the merge forever.
-		let watermark = at(100 * SECOND);
+		let watermark = at_nanos(100 * SECOND);
 		assert!(compaction_due(Some(watermark), watermark, Some(watermark)));
 	}
 }

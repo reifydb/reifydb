@@ -38,7 +38,10 @@ use reifydb_sub_flow::{
 	},
 };
 use reifydb_testing_flow::{generator, harness::Harness};
-use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
+use reifydb_value::{
+	factory::at_millis,
+	value::{duration::Duration, row_number::RowNumber},
+};
 
 const SOURCE: OperatorId = OperatorId(0);
 const SUBJECT: OperatorId = OperatorId(1);
@@ -72,10 +75,6 @@ fn harness(kind: WindowKind, clock_ms: u64) -> Harness<WindowOperator> {
 			ctx: Arc::new(FlowContext::default()),
 		})
 	})
-}
-
-fn at(ms: u64) -> DateTime {
-	DateTime::from_timestamp_millis(ms).expect("a test stamp is representable")
 }
 
 /// What one run leaves behind: every state key, the value bytes of every data-keyspace row (the
@@ -130,20 +129,20 @@ fn drive_sealing(clock_ms: u64) -> (Vec<String>, Snapshot) {
 	emitted.push(format!(
 		"{:?}",
 		h.apply(generator::insert(vec![
-			generator::row(RowNumber(1), GROUP, 5, at(1_000)),
-			generator::row(RowNumber(2), GROUP, 7, at(1_500)),
+			generator::row(RowNumber(1), GROUP, 5, at_millis(1_000)),
+			generator::row(RowNumber(2), GROUP, 7, at_millis(1_500)),
 		]))
 		.expect("the first bucket applies")
 	));
 	emitted.push(format!(
 		"{:?}",
-		h.apply(generator::insert(vec![generator::row(RowNumber(3), GROUP, 9, at(10_000))]))
+		h.apply(generator::insert(vec![generator::row(RowNumber(3), GROUP, 9, at_millis(10_000))]))
 			.expect("the second bucket applies")
 	));
 	emitted.push(format!(
 		"{:?}",
 		h.on_timer(Timer {
-			at: at(10_000),
+			at: at_millis(10_000),
 			kind: TimerKind::Seal,
 			key: EncodedKey::new(Vec::new()),
 		})
@@ -185,9 +184,9 @@ fn drive_count(clock_ms: u64) -> (String, Snapshot) {
 	let emitted = format!(
 		"{:?}",
 		h.apply(generator::insert(vec![
-			generator::row(RowNumber(1), GROUP, 5, at(40_000)),
-			generator::row(RowNumber(2), GROUP, 7, at(41_000)),
-			generator::row(RowNumber(3), GROUP, 9, at(39_000)),
+			generator::row(RowNumber(1), GROUP, 5, at_millis(40_000)),
+			generator::row(RowNumber(2), GROUP, 7, at_millis(41_000)),
+			generator::row(RowNumber(3), GROUP, 9, at_millis(39_000)),
 		]))
 		.expect("the count rows apply")
 	);

@@ -3,22 +3,18 @@
 
 use crate::value::{datetime::DateTime, duration::Duration};
 
-/// A `Duration` of `value` milliseconds.
 pub fn millis(value: u64) -> Duration {
 	Duration::from_milliseconds_const(value as i64)
 }
 
-/// A `Duration` of `value` seconds.
 pub fn secs(value: u64) -> Duration {
 	Duration::from_seconds_const(value as i64)
 }
 
-/// A `DateTime` `value` milliseconds after the epoch.
 pub fn at_millis(value: u64) -> DateTime {
 	DateTime::from_millis(value)
 }
 
-/// A `DateTime` `value` nanoseconds after the epoch.
 pub fn at_nanos(value: u64) -> DateTime {
 	DateTime::from_nanos(value)
 }

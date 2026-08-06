@@ -29,8 +29,10 @@ use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestRowBuilder},
 	harness::FFIOperatorHarnessBuilder,
 };
-use reifydb_value::factory::millis;
-use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
+use reifydb_value::{
+	factory::millis,
+	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
+};
 
 // Velocity-style operator. The baseline is the running moments minus the newest window, which
 // is what makes the score O(1) instead of a fold over the buffer.

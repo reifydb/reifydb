@@ -876,11 +876,6 @@ mod archived_projection_tests {
 		// sweep_stale_meta reclaims purely on this projection, so a wrong order key silently drops
 		// a live group's meta or keeps dead meta forever. The expected values are spelled out
 		// rather than derived, so the archive is checked against meaning, not another implementation.
-		let u64_meta = GroupMeta {
-			high_water: Some(4242u64),
-		};
-		assert_eq!(via_archive(&u64_meta), Some(4242));
-
 		let millis = 1_700_000_000_123u64;
 		let datetime_meta = GroupMeta {
 			high_water: Some(DateTime::from_timestamp_millis(millis).unwrap()),
@@ -904,7 +899,7 @@ mod archived_projection_tests {
 	fn a_group_that_never_advanced_projects_to_none_through_the_archive() {
 		// none must survive the archive as none. An accidental Some(0) compares below every
 		// threshold and makes the sweep reclaim meta for groups that simply have not seen an event.
-		let empty: GroupMeta<u64> = GroupMeta {
+		let empty: GroupMeta<DateTime> = GroupMeta {
 			high_water: None,
 		};
 		assert_eq!(via_archive(&empty), None);

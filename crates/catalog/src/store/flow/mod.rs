@@ -10,11 +10,9 @@ pub(crate) mod shape;
 pub mod update;
 
 use reifydb_codec::encoded::row::EncodedRow;
-use reifydb_core::{
-	interface::catalog::{
-		flow::{Flow, FlowId, FlowStatus},
-		id::NamespaceId,
-	},
+use reifydb_core::interface::catalog::{
+	flow::{Flow, FlowId, FlowStatus},
+	id::NamespaceId,
 };
 
 use crate::store::flow::shape::flow;
