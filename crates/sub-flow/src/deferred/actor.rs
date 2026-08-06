@@ -260,13 +260,8 @@ impl FlowActor {
 	fn begin_catch_up(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) -> bool {
 		let cursor = match self.snapshot_load {
 			FlowSnapshotLoad::Empty => return false,
-			FlowSnapshotLoad::Inconsistent => {
-				self.poison(
-					state,
-					"the flow's operator snapshots carry no cursor every operator agrees on; \
-					 resuming would mix state from different versions"
-						.to_string(),
-				);
+			FlowSnapshotLoad::Inconsistent(rejection) => {
+				self.poison(state, rejection.reason().to_string());
 				return false;
 			}
 			FlowSnapshotLoad::Restored(cursor) => cursor,
@@ -887,7 +882,7 @@ mod pull_protocol {
 	};
 	use reifydb_value::{util::cowvec::CowVec, value::Value};
 
-	use super::*;
+	use super::{super::snapshot::SnapshotRejection, *};
 	use crate::{
 		catalog::FlowCatalog,
 		deferred::{
@@ -2571,7 +2566,8 @@ mod pull_protocol {
 		// load outcome and not just "something poisoned" is the point - the sibling test below
 		// covers the other mechanism, and without this the two are indistinguishable. Falsified by
 		// dropping the `flow_cursor < truncated_before` check from `validate`: the load then
-		// reports Restored and the flow replays a hole.
+		// reports Restored and the flow replays a hole. The reason assertion is falsified by
+		// collapsing every exhausted load onto one cause.
 		let (h, _store) = aggregate_harness();
 		let fill = aggregate_fill();
 		let gap = aggregate_gap();
@@ -2586,12 +2582,20 @@ mod pull_protocol {
 		let restart = h.restart(checkpoint, ByteSize::from_mib(8));
 		assert_eq!(
 			restart.snapshot_load,
-			FlowSnapshotLoad::Inconsistent,
+			FlowSnapshotLoad::Inconsistent(SnapshotRejection::TruncatedBeyondSnapshot),
 			"the load must refuse to hand the actor a cursor it cannot replay from"
 		);
+		let poisoned = h
+			.poll_until(seconds(10), || {
+				let poisoned = restart.health.poisoned();
+				(!poisoned.is_empty()).then_some(poisoned)
+			})
+			.expect("a flow whose catch-up window has been truncated away must poison, not resume");
 		assert!(
-			h.poll_until(seconds(10), || (!restart.health.poisoned().is_empty()).then_some(())).is_some(),
-			"a flow whose catch-up window has been truncated away must poison, not resume"
+			poisoned[0].1.contains("cdc is truncated past"),
+			"the reason must name the cause that stopped this load; cdc retention and snapshot \
+			 consistency share no remediation. Got: {}",
+			poisoned[0].1
 		);
 		assert_eq!(
 			h.view_rows(),

@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, ops::Bound, sync::Arc};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	ops::Bound,
+	sync::Arc,
+};
 
 use reifydb_codec::{
 	encoded::row::EncodedRow,
@@ -10,7 +14,6 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	internal_error,
 	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
 use reifydb_runtime::sync::mutex::Mutex;
@@ -125,38 +128,30 @@ impl FlowSnapshots {
 		truncated_before: CommitVersion,
 	) -> FlowSnapshotLoad {
 		let ids: Vec<OperatorId> = ids.collect();
-		let mut expected: Option<Vec<OperatorId>> = None;
-		loop {
-			let catalog = match self.generation_catalog(&ids) {
-				Ok(catalog) => catalog,
-				Err(e) => {
-					error!(error = %e, "operator snapshot generations unreadable");
-					return FlowSnapshotLoad::Inconsistent;
-				}
-			};
-			let present: Vec<OperatorId> = catalog.iter().map(|(id, _)| *id).collect();
-			match &expected {
-				None if present.is_empty() => return FlowSnapshotLoad::Empty,
-				None => expected = Some(present),
-				Some(first) if *first != present => {
-					error!(
-						"an operator lost every retained snapshot generation; its state cannot \
-						 be restored at any cursor the rest of the flow agrees on"
-					);
-					return FlowSnapshotLoad::Inconsistent;
-				}
-				Some(_) => {}
+		let catalog = match self.generation_catalog(&ids) {
+			Ok(catalog) => catalog,
+			Err(e) => {
+				error!(error = %e, "operator snapshot generations unreadable");
+				return FlowSnapshotLoad::Inconsistent(SnapshotRejection::Unreadable);
 			}
-			let Some((cursor, picks)) = consistent_set(&catalog) else {
-				error!(
-					"no consistent operator snapshot set across the flow; every retained generation \
-					 disagrees on the cursor it was taken at"
-				);
-				return FlowSnapshotLoad::Inconsistent;
+		};
+		if catalog.is_empty() {
+			return FlowSnapshotLoad::Empty;
+		}
+		let mut rejected: BTreeSet<(OperatorId, u64)> = BTreeSet::new();
+		let mut first: Option<SnapshotRejection> = None;
+		loop {
+			let Some((cursor, picks)) = consistent_set(&catalog, &rejected) else {
+				let rejection = first.unwrap_or(SnapshotRejection::CursorDisagreement);
+				error!(reason = rejection.reason(), "no operator snapshot set is left to resume this flow from");
+				return FlowSnapshotLoad::Inconsistent(rejection);
 			};
 			match self.load_set(operators, &picks, cursor, truncated_before) {
 				SetLoad::Restored => return FlowSnapshotLoad::Restored(cursor),
-				SetLoad::Retry => continue,
+				SetLoad::Rejected(pick, rejection) => {
+					rejected.insert(pick);
+					first.get_or_insert(rejection);
+				}
 			}
 		}
 	}
@@ -189,20 +184,16 @@ impl FlowSnapshots {
 					operators.set_upper(*id, snapshot.manifest.upper);
 					loaded.push(*id);
 				}
-				Err(e) => {
-					error!(
-						operator = id.0,
-						generation,
-						error = %e,
-						"discarding invalid operator snapshot generation"
-					);
-					if let Err(e) = self.store.discard(*id, *generation) {
-						error!(operator = id.0, generation, error = %e, "failed to discard invalid snapshot generation");
+				Err(rejection) => {
+					if rejection.is_undecodable() {
+						if let Err(e) = self.store.discard(*id, *generation) {
+							error!(operator = id.0, generation, error = %e, "failed to discard an undecodable snapshot generation");
+						}
 					}
 					for id in loaded {
 						operators.drop_arena(id);
 					}
-					return SetLoad::Retry;
+					return SetLoad::Rejected((*id, *generation), rejection);
 				}
 			}
 		}
@@ -215,34 +206,93 @@ impl FlowSnapshots {
 		generation: u64,
 		cursor: CommitVersion,
 		truncated_before: CommitVersion,
-	) -> Result<LoadedSnapshot> {
-		let loaded = self.store.load(id, generation)?;
+	) -> std::result::Result<LoadedSnapshot, SnapshotRejection> {
+		let loaded = match self.store.load(id, generation) {
+			Ok(loaded) => loaded,
+			Err(e) => {
+				error!(operator = id.0, generation, error = %e, "operator snapshot generation is unreadable");
+				return Err(SnapshotRejection::Unreadable);
+			}
+		};
 		for (dictionary, recorded) in &loaded.manifest.dictionary_max {
-			let durable = durable_max_index_id(&self.single, DictionaryId(*dictionary))?.unwrap_or(0);
+			let durable = match durable_max_index_id(&self.single, DictionaryId(*dictionary)) {
+				Ok(durable) => durable.unwrap_or(0),
+				Err(e) => {
+					error!(operator = id.0, generation, error = %e, "durable dictionary state is unreadable");
+					return Err(SnapshotRejection::Unreadable);
+				}
+			};
 			if *recorded > durable {
-				return Err(internal_error!(
-					"snapshot references dictionary {} up to id {} but only {} is durable; interned values were lost",
-					dictionary,
-					recorded,
-					durable
-				));
+				error!(
+					operator = id.0,
+					generation,
+					dictionary = *dictionary,
+					recorded = %recorded,
+					durable = %durable,
+					"snapshot references interned values that did not survive; its rows can no longer be decoded"
+				);
+				return Err(SnapshotRejection::DictionaryLoss);
 			}
 		}
 		if loaded.manifest.flow_cursor != cursor {
-			return Err(internal_error!(
-				"snapshot cursor {} does not match the set cursor {} it was selected for",
-				loaded.manifest.flow_cursor.0,
-				cursor.0
-			));
+			error!(
+				operator = id.0,
+				generation,
+				manifest = loaded.manifest.flow_cursor.0,
+				set = cursor.0,
+				"snapshot cursor does not match the set cursor it was selected for"
+			);
+			return Err(SnapshotRejection::ManifestMismatch);
 		}
 		if loaded.manifest.flow_cursor < truncated_before {
-			return Err(internal_error!(
-				"snapshot cursor {} predates the cdc truncation floor {}; replay from it is impossible",
-				loaded.manifest.flow_cursor.0,
-				truncated_before.0
-			));
+			error!(
+				operator = id.0,
+				generation,
+				cursor = loaded.manifest.flow_cursor.0,
+				truncated_before = truncated_before.0,
+				"snapshot cursor predates the cdc truncation floor; replay from it is impossible"
+			);
+			return Err(SnapshotRejection::TruncatedBeyondSnapshot);
 		}
 		Ok(loaded)
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SnapshotRejection {
+	Unreadable,
+	DictionaryLoss,
+	ManifestMismatch,
+	TruncatedBeyondSnapshot,
+	CursorDisagreement,
+}
+
+impl SnapshotRejection {
+	fn is_undecodable(&self) -> bool {
+		match self {
+			Self::DictionaryLoss | Self::ManifestMismatch => true,
+			Self::Unreadable | Self::TruncatedBeyondSnapshot | Self::CursorDisagreement => false,
+		}
+	}
+
+	pub fn reason(&self) -> &'static str {
+		match self {
+			Self::Unreadable => {
+				"the flow's operator snapshots could not be read; the snapshot store is damaged or unavailable"
+			}
+			Self::DictionaryLoss => {
+				"the flow's operator snapshots reference interned values that did not survive; their rows can no longer be decoded"
+			}
+			Self::ManifestMismatch => {
+				"the flow's operator snapshot manifests disagree with the cursors recorded for them"
+			}
+			Self::TruncatedBeyondSnapshot => {
+				"cdc is truncated past every operator snapshot this flow has; the versions needed to rebuild the gap are gone"
+			}
+			Self::CursorDisagreement => {
+				"the flow's operator snapshots carry no cursor every operator agrees on; resuming would mix state from different versions"
+			}
+		}
 	}
 }
 
@@ -250,19 +300,26 @@ impl FlowSnapshots {
 pub enum FlowSnapshotLoad {
 	Empty,
 	Restored(CommitVersion),
-	Inconsistent,
+	Inconsistent(SnapshotRejection),
 }
 
 enum SetLoad {
 	Restored,
-	Retry,
+	Rejected((OperatorId, u64), SnapshotRejection),
 }
 
 fn consistent_set(
 	catalog: &[(OperatorId, Vec<(u64, CommitVersion)>)],
+	rejected: &BTreeSet<(OperatorId, u64)>,
 ) -> Option<(CommitVersion, Vec<(OperatorId, u64)>)> {
-	let mut cursors: Vec<CommitVersion> =
-		catalog.iter().flat_map(|(_, generations)| generations.iter().map(|(_, cursor)| *cursor)).collect();
+	let mut cursors: Vec<CommitVersion> = Vec::new();
+	for (id, generations) in catalog {
+		for (generation, cursor) in generations {
+			if !rejected.contains(&(*id, *generation)) {
+				cursors.push(*cursor);
+			}
+		}
+	}
 	cursors.sort_unstable();
 	cursors.dedup();
 	for cursor in cursors.into_iter().rev() {
@@ -271,7 +328,9 @@ fn consistent_set(
 			.map(|(id, generations)| {
 				generations
 					.iter()
-					.find(|(_, candidate)| *candidate == cursor)
+					.find(|(generation, candidate)| {
+						*candidate == cursor && !rejected.contains(&(*id, *generation))
+					})
 					.map(|(generation, _)| (*id, *generation))
 			})
 			.collect();
@@ -473,7 +532,7 @@ mod tests {
 	fn load_refuses_a_snapshot_behind_the_cdc_truncation_floor() {
 		// CDC coverage check, now against the FLOW CURSOR: replay resumes at the cursor, so a
 		// snapshot whose cursor predates truncated_before cannot be caught up and must be
-		// discarded rather than silently resumed from stale state. Comparing the arena upper
+		// refused rather than silently resumed from stale state. Comparing the arena upper
 		// here would pass while the needed records are already gone, which is the exact hole
 		// this version-space split closes. Falsified by inverting the comparison: the accepting
 		// case below then fails while the refusing case loads.
@@ -486,15 +545,16 @@ mod tests {
 		let refused = OperatorStore::default();
 		assert_eq!(
 			snapshots.load_flow(&refused, [OP_A].into_iter(), CommitVersion(6)),
-			FlowSnapshotLoad::Inconsistent,
+			FlowSnapshotLoad::Inconsistent(SnapshotRejection::TruncatedBeyondSnapshot),
 			"cursor 5 < truncated_before 6 must be refused, and a flow whose only generation is \
 			 uncovered has no set to fall back to"
 		);
 		assert_eq!(refused.upper(OP_A), CommitVersion(0));
 		assert!(scan(&refused, OP_A).is_empty());
-		assert!(
-			store.generations(OP_A).expect("generations").is_empty(),
-			"the uncovered generation must be discarded"
+		assert_eq!(
+			store.generations(OP_A).expect("generations"),
+			vec![1],
+			"refusing to resume from a generation is not a reason to destroy it"
 		);
 
 		assert_eq!(snapshots.write_flow(&source, &[OP_A], CommitVersion(5)), Some(CommitVersion(5)));
@@ -506,6 +566,34 @@ mod tests {
 		);
 		assert_eq!(accepted.upper(OP_A), CommitVersion(9));
 		assert_eq!(scan(&accepted, OP_A), scan(&source, OP_A));
+	}
+
+	#[test]
+	fn a_snapshot_the_cdc_floor_outran_stays_on_disk_for_recovery() {
+		// A truncation floor establishes that a generation cannot be replayed forward, not that it
+		// is corrupt. Falsified by discarding on every validate rejection.
+		let (snapshots, store, _guard) = snapshot_fixture();
+		let source = OperatorStore::default();
+		source.set(OP_A, key(b"a"), row(b"survivor"));
+		source.set_upper(OP_A, CommitVersion(9));
+		assert_eq!(snapshots.write_flow(&source, &[OP_A], CommitVersion(5)), Some(CommitVersion(5)));
+
+		let refused = OperatorStore::default();
+		assert_eq!(
+			snapshots.load_flow(&refused, [OP_A].into_iter(), CommitVersion(6)),
+			FlowSnapshotLoad::Inconsistent(SnapshotRejection::TruncatedBeyondSnapshot),
+			"precondition: the floor is above the snapshot cursor, so the load must refuse"
+		);
+
+		assert_eq!(store.generations(OP_A).expect("generations"), vec![1], "the refused generation must survive");
+		let recovered = store.load(OP_A, 1).expect("the refused generation must still be readable");
+		assert_eq!(recovered.manifest.flow_cursor, CommitVersion(5));
+		assert_eq!(recovered.manifest.upper, CommitVersion(9));
+		assert_eq!(
+			recovered.entries,
+			vec![(key(b"a"), row(b"survivor"))],
+			"the state itself was never in question and must come back byte for byte"
+		);
 	}
 
 	#[test]
@@ -577,9 +665,33 @@ mod tests {
 		let restored = OperatorStore::default();
 		assert_eq!(
 			snapshots.load_flow(&restored, [OP_A, OP_B].into_iter(), CommitVersion(0)),
-			FlowSnapshotLoad::Inconsistent
+			FlowSnapshotLoad::Inconsistent(SnapshotRejection::CursorDisagreement)
 		);
 		assert_eq!(restored.total_bytes(), 0, "nothing may be left in the arena from a refused set");
+	}
+
+	#[test]
+	fn the_load_reports_the_cause_that_stopped_it_not_the_shape_it_left_behind() {
+		// Every exhausted load ends with no set left to pick, so the terminal shape cannot identify
+		// the fault. Falsified by returning CursorDisagreement on exhaustion regardless of cause.
+		let (snapshots, store, _guard) = snapshot_fixture();
+		store.write(
+			SnapshotWrite {
+				operator: OP_A,
+				upper: CommitVersion(8),
+				flow_cursor: CommitVersion(7),
+				dictionary_max: &[(7, 100)],
+				chunk_bytes: 1024,
+			},
+			&mut vec![Ok((key(b"a"), row(b"v")))].into_iter(),
+		)
+		.expect("write a generation referencing undurable interns");
+
+		let restored = OperatorStore::default();
+		assert_eq!(
+			snapshots.load_flow(&restored, [OP_A].into_iter(), CommitVersion(0)),
+			FlowSnapshotLoad::Inconsistent(SnapshotRejection::DictionaryLoss)
+		);
 	}
 
 	#[test]
