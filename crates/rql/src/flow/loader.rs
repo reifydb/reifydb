@@ -20,7 +20,7 @@ pub fn load_flow_dag(txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<FlowD
 	let node_defs = CatalogStore::list_operators_by_flow(txn, flow_id)?;
 	let edge_defs = CatalogStore::list_flow_edges_by_flow(txn, flow_id)?;
 
-	let mut builder = FlowDag::builder(flow_id).time(flow_def.time);
+	let mut builder = FlowDag::builder(flow_id);
 
 	for node_def in node_defs {
 		let node_type: OperatorDef = from_bytes(node_def.data.as_ref())
@@ -41,31 +41,47 @@ pub fn load_flow_dag(txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<FlowD
 
 #[cfg(test)]
 mod tests {
-	use reifydb_catalog::test_utils::{create_flow_with_time, create_namespace};
-	use reifydb_core::common::TimeDomain;
+	use postcard::to_allocvec;
+	use reifydb_catalog::test_utils::{create_flow, create_namespace, create_operator};
 	use reifydb_engine::test_harness::create_test_admin_transaction;
 
 	use super::*;
 
-	fn loaded(time: Option<TimeDomain>) -> FlowDag {
+	#[test]
+	fn the_loader_restores_every_persisted_operator() {
+		// The loader is the only path from catalog rows back to a runnable graph, so an operator
+		// that fails to come back is a silently shorter pipeline after every restart rather than
+		// a load error. These two tests replace a pair that only proved the flow-level time
+		// declaration round-tripped; that declaration is gone, but the loader still needs its own
+		// contract pinned.
 		let mut txn = create_test_admin_transaction();
 		create_namespace(&mut txn, "test");
-		let flow = create_flow_with_time(&mut txn, "test", "win", time);
-		load_flow_dag(&mut Transaction::Admin(&mut txn), flow.id).unwrap()
+		let flow = create_flow(&mut txn, "test", "win");
+		let encoded = to_allocvec(&OperatorDef::SourceInlineData {}).expect("encode");
+		let first = create_operator(&mut txn, flow.id, 0, &encoded);
+		let second = create_operator(&mut txn, flow.id, 0, &encoded);
+
+		let dag = load_flow_dag(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
+
+		let mut restored: Vec<_> = dag.get_operator_ids().collect();
+		restored.sort();
+		let mut expected = vec![first.id, second.id];
+		expected.sort();
+		assert_eq!(restored, expected, "every persisted operator must come back");
+		assert_eq!(dag.id, flow.id, "the loaded graph keeps the flow identity it was asked for");
 	}
 
 	#[test]
-	fn the_loader_restores_a_declared_event_domain() {
-		// A domain persisted but not read back leaves every flow bucketing by the wall clock, silently and
-		// across every restart.
-		assert_eq!(loaded(Some(TimeDomain::Event)).time, Some(TimeDomain::Event));
-	}
+	fn a_flow_with_no_operators_loads_as_an_empty_graph() {
+		// An empty flow must load rather than error: registration walks the graph, and turning
+		// "nothing to do" into a hard failure would block startup on a half-created view.
+		let mut txn = create_test_admin_transaction();
+		create_namespace(&mut txn, "test");
+		let flow = create_flow(&mut txn, "test", "empty");
 
-	#[test]
-	fn the_loader_keeps_silence_and_explicit_processing_apart() {
-		// Silence is what lets registration reject an event-time source; explicit processing overrides that
-		// check. Collapsing either into the other turns a rejection into a silent domain switch.
-		assert_eq!(loaded(Some(TimeDomain::Processing)).time, Some(TimeDomain::Processing));
-		assert_eq!(loaded(None).time, None);
+		let dag = load_flow_dag(&mut Transaction::Admin(&mut txn), flow.id).unwrap();
+
+		assert_eq!(dag.get_operator_ids().count(), 0, "no operators persisted, so none restored");
+		assert!(dag.topological_order().unwrap().is_empty());
 	}
 }

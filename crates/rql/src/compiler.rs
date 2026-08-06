@@ -1135,7 +1135,6 @@ impl InstructionCompiler {
 					storage_kind: compile_view_storage_kind(node.storage_kind),
 					ttl: node.ttl,
 					persistent: node.persistent,
-					time: node.time,
 				}));
 				self.emit(Instruction::Emit);
 			}
@@ -1151,7 +1150,6 @@ impl InstructionCompiler {
 					storage_kind: compile_view_storage_kind(node.storage_kind),
 					ttl: node.ttl,
 					persistent: node.persistent,
-					time: node.time,
 				}));
 				self.emit(Instruction::Emit);
 			}

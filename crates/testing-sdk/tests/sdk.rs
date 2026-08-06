@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[path = "sdk/row_time.rs"]
+mod row_time;
+
 #[path = "sdk/writer.rs"]
 mod writer;
 

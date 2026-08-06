@@ -164,7 +164,7 @@ fn a_keyed_stateful_guests_idle_group_is_reclaimed() {
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
-	db.admin("CREATE DEFERRED VIEW app::v { g: int4, ts: int8, total: int8 } with { time: event } \
+	db.admin("CREATE DEFERRED VIEW app::v { g: int4, ts: int8, total: int8 } \
 		 AS { FROM app::t APPLY counter{} }");
 
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);
@@ -189,7 +189,7 @@ fn a_woken_keys_state_restarted_because_the_sweep_actually_erased_it() {
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
-	db.admin("CREATE DEFERRED VIEW app::v { g: int4, ts: int8, total: int8 } with { time: event } \
+	db.admin("CREATE DEFERRED VIEW app::v { g: int4, ts: int8, total: int8 } \
 		 AS { FROM app::t APPLY counter{} }");
 
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);

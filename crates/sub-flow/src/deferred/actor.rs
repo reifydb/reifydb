@@ -1059,7 +1059,7 @@ mod pull_protocol {
 	fn aggregate_harness() -> (Harness, SnapshotStore) {
 		snapshotting_harness(
 			"CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }",
-			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } with { time: event } \
+			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } \
 			 AS { FROM app::t AGGREGATE { total: math::count(id) } BY { g } }",
 		)
 	}
@@ -1790,7 +1790,7 @@ mod pull_protocol {
 		harness_with(
 			"CREATE TABLE app::t { id: int4, v: int4, ts: datetime } with { ts: ts }",
 			&format!("CREATE DEFERRED RINGBUFFER VIEW app::v {{ id: int4, v: int4 }} \
-				 WITH {{ capacity: 1000, time: event, row: {{ ttl: {{ duration: '1s', announce: {announce} }} }} }} \
+				 WITH {{ capacity: 1000, row: {{ ttl: {{ duration: '1s', announce: {announce} }} }} }} \
 				 AS {{ FROM app::t map {{ id, v }} }}"),
 		)
 	}
@@ -1912,7 +1912,7 @@ mod pull_protocol {
 	fn operator_state_lives_in_the_arena_and_never_reaches_the_multi_store() {
 		let h = harness_with(
 			"CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }",
-			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } with { time: event } \
+			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } \
 			 AS { FROM app::t AGGREGATE { total: math::count(id) } BY { g } }",
 		);
 		let v0 = h.engine.current_version().expect("current version");
@@ -2049,7 +2049,7 @@ mod pull_protocol {
 	fn an_elapsed_snapshot_interval_persists_generations_and_advances_the_pin() {
 		let mut h = harness_with(
 			"CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }",
-			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } with { time: event } \
+			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } \
 			 AS { FROM app::t AGGREGATE { total: math::count(id) } BY { g } }",
 		);
 		{
@@ -2226,7 +2226,7 @@ mod pull_protocol {
 		let h = harness_with(
 			"CREATE TABLE app::t { id: int4, v: int4, ts: datetime } with { ts: ts }",
 			"CREATE DEFERRED RINGBUFFER VIEW app::v { id: int4, v: int4 } \
-			 WITH { capacity: 3, time: event } AS { FROM app::t map { id, v } }",
+			 WITH { capacity: 3 } AS { FROM app::t map { id, v } }",
 		);
 		let v0 = h.engine.current_version().expect("current version");
 		let actor = h.spawn_actor(v0);

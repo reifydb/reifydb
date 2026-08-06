@@ -3,7 +3,6 @@
 
 use reifydb_catalog::{catalog::Catalog, store::operator_settings::create::create_operator_settings};
 use reifydb_core::{
-	common::TimeDomain,
 	error::diagnostic::{
 		flow::{
 			flow_dictionary_source_unsupported, flow_ephemeral_id_capacity_exceeded,
@@ -55,9 +54,8 @@ pub fn compile_flow(
 	plan: QueryPlan,
 	sink: Option<&View>,
 	flow_id: FlowId,
-	time: Option<TimeDomain>,
 ) -> Result<FlowDag> {
-	let compiler = FlowCompiler::new(catalog.clone(), routines.clone(), flow_id, time);
+	let compiler = FlowCompiler::new(catalog.clone(), routines.clone(), flow_id);
 	compiler.compile(&mut Transaction::Admin(txn), plan, sink)
 }
 
@@ -92,11 +90,11 @@ pub(crate) struct FlowCompiler {
 }
 
 impl FlowCompiler {
-	pub fn new(catalog: Catalog, routines: Routines, flow_id: FlowId, time: Option<TimeDomain>) -> Self {
+	pub fn new(catalog: Catalog, routines: Routines, flow_id: FlowId) -> Self {
 		Self {
 			catalog,
 			routines,
-			builder: FlowDag::builder(flow_id).time(time),
+			builder: FlowDag::builder(flow_id),
 			sink: None,
 			ephemeral: false,
 			local_node_counter: 0,

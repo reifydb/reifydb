@@ -13,7 +13,7 @@ fn setup(window: &str) -> TestDb {
 	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"));
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { g: int4, v: float8, ts: datetime } with { ts: ts }");
-	db.admin(&format!(r#"CREATE DEFERRED VIEW app::r {{ g: int4, total: float8 }} with {{ time: event }} AS {{
+	db.admin(&format!(r#"CREATE DEFERRED VIEW app::r {{ g: int4, total: float8 }} AS {{
 			FROM app::t
 				| {window}
 				by {{ g }}

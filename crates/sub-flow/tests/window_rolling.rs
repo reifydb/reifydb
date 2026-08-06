@@ -28,7 +28,7 @@ fn rolling_sum_accumulates_correctly_across_separate_commits() {
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { g: int4, v: float8, ts: datetime } with { ts: ts }");
-	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } with { time: event } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
 					with { interval: "1h", grace: "5m" }
@@ -80,7 +80,7 @@ fn a_processing_domain_rolling_window_rolls_up_over_the_rows_own_times() {
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { g: int4, v: float8 }");
-	db.admin(r#"CREATE DEFERRED VIEW app::p { g: int4, total: float8 } with { time: processing } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::p { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
 					with { interval: "1h", grace: "5m" }
@@ -122,61 +122,20 @@ fn a_processing_domain_rolling_window_rolls_up_over_the_rows_own_times() {
 }
 
 #[test]
-fn a_processing_view_over_an_event_source_buckets_by_arrival_not_by_the_declared_column() {
-	// A view may declare `time: processing` over a table declaring `ts: ts` - a deliberate
-	// re-timing boundary. The ts sits years before the arrival and the gap exceeds the interval, so
-	// bucketing by ts evicts on the first timer while bucketing by arrival keeps the row.
-	let db = setup();
-	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { g: int4, v: float8, ts: datetime } with { ts: ts }");
-	db.admin(r#"CREATE DEFERRED VIEW app::p { g: int4, total: float8 } with { time: processing } AS {
-			FROM app::t
-				| window rolling { total: math::sum(v) }
-					with { interval: "1h", grace: "5m" }
-					by { g }
-		}"#);
-	db.admin(r#"CREATE DEFERRED VIEW app::e { g: int4, total: float8 } with { time: event } AS {
-			FROM app::t
-				| window rolling { total: math::sum(v) }
-					with { interval: "1h", grace: "5m" }
-					by { g }
-		}"#);
-
-	db.command(r#"INSERT app::t [{ g: 1, v: 4.0, ts: "2020-03-01T00:00:00Z" }]"#);
-
-	// Both must materialize first, or "still holds" below passes for a never-populated view.
-	assert_eq!(
-		db.await_row_count("FROM app::p | filter { total == 4.0 }", 1, StdDuration::from_secs(5)),
-		1,
-		"the processing view must bucket the row by its arrival, not by a 2020 ts; view now: {:?}",
-		db.query_as_root("FROM app::p", ())
-	);
-	assert_eq!(
-		db.await_row_count("FROM app::e | filter { total == 4.0 }", 1, StdDuration::from_secs(5)),
-		1,
-		"the event view must bucket the row by its declared ts; view now: {:?}",
-		db.query_as_root("FROM app::e", ())
-	);
-
-	// A coordinate taken from `ts` would fall behind the arrival-driven cutoff and be evicted.
-	let held = db.await_exact_row_count("FROM app::p | filter { total == 4.0 }", 1, StdDuration::from_secs(2));
-	assert_eq!(
-		held,
-		1,
-		"a row that arrived just now must stay inside a 1h rolling window; view now: {:?}",
-		db.query_as_root("FROM app::p", ())
-	);
-}
-
-#[test]
 fn an_event_view_over_an_event_source_buckets_by_the_declared_column_not_by_arrival() {
-	// The control for the test above: same table and window, only the declared domain differs, so
-	// a re-stamp applied to every flow rather than only processing ones passes there and fails
-	// here. Both rows share one arrival but their ts values are 5h apart, so only ts ages one out.
+	// Both rows share one arrival but their ts values are 5h apart, so only a coordinate taken
+	// from ts ages one out - bucketing by arrival would keep both and total 9.0. This is the whole
+	// event-time contract in one assertion.
+	//
+	// Its former control - a view declaring `time: processing` over this same source, asserting it
+	// bucketed by arrival instead - was deleted with the flow-level time declaration. Worth
+	// recording why: once views stopped declaring, that control became a byte-identical copy of
+	// this view while its name and comments still claimed it re-timed to arrival, so it passed
+	// while asserting something false. A green test that cannot fail is worse than none.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { g: int4, v: float8, ts: datetime } with { ts: ts }");
-	db.admin(r#"CREATE DEFERRED VIEW app::e { g: int4, total: float8 } with { time: event } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::e { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
 					with { interval: "1h", grace: "5m" }
@@ -203,13 +162,18 @@ fn an_event_view_over_an_event_source_buckets_by_the_declared_column_not_by_arri
 
 #[test]
 fn a_processing_view_over_a_processing_source_keeps_its_rows_live() {
-	// The source declares no ts, so its #time is already arrival and the re-stamp is a no-op. The
-	// one fault a no-op can still hide is stamping epoch instead of arrival, putting every row ~56
-	// years behind the arrival-driven cutoff - hence the assertion that the rows stay live.
+	// The source declares no ts, so its #time is arrival, and the window buckets on that same
+	// stamp. This is now the whole contract for a processing-time source: it is legal, it creates
+	// without a declaration, and coordinate and watermark agree because both read #time. A
+	// companion test that asserted an event-time view over such a source was REFUSED was deleted
+	// with the flow-level time declaration - there is no longer a second clock to disagree with,
+	// so there is nothing left to refuse. The one fault this shape can still hide is stamping
+	// epoch instead of arrival, putting every row ~56 years behind the cutoff - hence the
+	// assertion that the rows stay live.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { g: int4, v: float8 }");
-	db.admin(r#"CREATE DEFERRED VIEW app::p { g: int4, total: float8 } with { time: processing } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::p { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
 					with { interval: "1h", grace: "5m" }
@@ -234,30 +198,6 @@ fn a_processing_view_over_a_processing_source_keeps_its_rows_live() {
 	);
 }
 
-#[test]
-fn an_event_view_over_a_processing_source_is_refused() {
-	// A source declaring no ts has no event time to offer, so an event-time view over it would
-	// bucket whatever the substrate happened to stamp. Refusing the DDL outright is what makes the
-	// three legal cells above mean anything, so this asserts on creation rather than on data.
-	let db = setup();
-	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { g: int4, v: float8 }");
-
-	assert_eq!(
-		rejection(
-			&db,
-			r#"CREATE DEFERRED VIEW app::e { g: int4, total: float8 } with { time: event } AS {
-				FROM app::t
-					| window rolling { total: math::sum(v) }
-						with { interval: "1h", grace: "5m" }
-						by { g }
-			}"#
-		)
-		.as_deref(),
-		Some("FLOW_040"),
-		"an event-time view over a source with no declared ts must be refused at creation"
-	);
-}
 
 #[test]
 fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
@@ -267,7 +207,7 @@ fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: float8, ts: datetime } with { ts: ts }");
-	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } with { time: event } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
 					with { interval: "1h", grace: "5m" }
@@ -306,7 +246,7 @@ fn retracting_a_row_that_has_already_left_the_window_leaves_the_group_intact() {
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: float8, ts: datetime } with { ts: ts }");
-	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } with { time: event } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
 					with { interval: "1h", grace: "5m" }

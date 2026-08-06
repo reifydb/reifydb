@@ -983,7 +983,6 @@ impl<'bump> Parser<'bump> {
 		let AstViewWithClause {
 			settings,
 			partition_by,
-			time_declaration,
 		} = clause;
 
 		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
@@ -1029,7 +1028,6 @@ impl<'bump> Parser<'bump> {
 				partition_by,
 			},
 			settings,
-			time_declaration,
 		}))
 	}
 
@@ -1045,7 +1043,7 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedDeferredViewIdentifier::new(name).with_namespace(namespace);
 
-		let (storage_kind, settings, time_declaration) = self.parse_view_storage_with_clause(hint)?;
+		let (storage_kind, settings) = self.parse_view_storage_with_clause(hint)?;
 
 		let as_clause = self.parse_view_as_clause()?;
 
@@ -1056,7 +1054,6 @@ impl<'bump> Parser<'bump> {
 			as_clause,
 			storage_kind,
 			settings,
-			time_declaration,
 		}))
 	}
 
@@ -1071,7 +1068,6 @@ impl<'bump> Parser<'bump> {
 		let AstViewWithClause {
 			settings,
 			partition_by,
-			time_declaration,
 		} = if !self.is_eof() && self.current()?.is_keyword(Keyword::With) {
 			self.advance()?;
 			self.parse_view_with_clause()?
@@ -1122,7 +1118,6 @@ impl<'bump> Parser<'bump> {
 				partition_by,
 			},
 			settings,
-			time_declaration,
 		}))
 	}
 
@@ -1138,7 +1133,7 @@ impl<'bump> Parser<'bump> {
 
 		let view = MaybeQualifiedTransactionalViewIdentifier::new(name).with_namespace(namespace);
 
-		let (storage_kind, settings, time_declaration) = self.parse_view_storage_with_clause(hint)?;
+		let (storage_kind, settings) = self.parse_view_storage_with_clause(hint)?;
 
 		let as_clause = self.parse_view_as_clause()?;
 
@@ -1149,7 +1144,6 @@ impl<'bump> Parser<'bump> {
 			as_clause,
 			storage_kind,
 			settings,
-			time_declaration,
 		}))
 	}
 
@@ -2489,12 +2483,11 @@ impl<'bump> Parser<'bump> {
 	fn parse_view_storage_with_clause(
 		&mut self,
 		hint: ViewStorageKindHint,
-	) -> Result<(AstViewStorageKind, Option<AstRowSettings<'bump>>, AstTimeDeclaration<'bump>)> {
+	) -> Result<(AstViewStorageKind, Option<AstRowSettings<'bump>>)> {
 		self.consume_keyword(Keyword::With)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut settings = None;
-		let mut time_declaration = AstTimeDeclaration::default();
 
 		match hint {
 			ViewStorageKindHint::RingBuffer => {
@@ -2535,18 +2528,11 @@ impl<'bump> Parser<'bump> {
 						"row" => {
 							settings = Some(self.parse_row_config()?);
 						}
-						"time" => {
-							time_declaration.time = Some(self.consume_identifier()?);
-						}
-						"ts" => {
-							time_declaration.ts = Some(self.consume_identifier()?);
-						}
 						other => {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'capacity', 'partition', 'row', 'time', or 'ts'"
-										.to_string(),
+									expected: "'capacity', 'partition', or 'row'".to_string(),
 								},
 								message: format!(
 									"unexpected key '{}' in WITH clause",
@@ -2579,7 +2565,6 @@ impl<'bump> Parser<'bump> {
 						partition_by,
 					},
 					settings,
-					time_declaration,
 				))
 			}
 			ViewStorageKindHint::Series => {
@@ -2626,19 +2611,12 @@ impl<'bump> Parser<'bump> {
 						"row" => {
 							settings = Some(self.parse_row_config()?);
 						}
-						"time" => {
-							time_declaration.time = Some(self.consume_identifier()?);
-						}
-						"ts" => {
-							time_declaration.ts = Some(self.consume_identifier()?);
-						}
 						other => {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected:
-										"'key', 'precision', 'partition', 'row', 'time', or 'ts'"
-											.to_string(),
+									expected: "'key', 'precision', 'partition', or 'row'"
+										.to_string(),
 								},
 								message: format!(
 									"unexpected key '{}' in WITH clause",
@@ -2662,7 +2640,6 @@ impl<'bump> Parser<'bump> {
 						partition_by,
 					},
 					settings,
-					time_declaration,
 				))
 			}
 		}
@@ -2689,17 +2666,11 @@ impl<'bump> Parser<'bump> {
 				"row" => {
 					clause.settings = Some(self.parse_row_config()?);
 				}
-				"time" => {
-					clause.time_declaration.time = Some(self.consume_identifier()?);
-				}
-				"ts" => {
-					clause.time_declaration.ts = Some(self.consume_identifier()?);
-				}
 				other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'partition', 'row', 'time', or 'ts'".to_string(),
+							expected: "'partition' or 'row'".to_string(),
 						},
 						message: format!("unexpected key '{}' in WITH clause", other),
 						fragment,
@@ -5068,8 +5039,6 @@ mod time_declaration_tests {
 			AstCreate::Series(s) => &s.time_declaration,
 			AstCreate::RingBuffer(r) => &r.time_declaration,
 			AstCreate::Queue(q) => &q.time_declaration,
-			AstCreate::DeferredView(v) => &v.time_declaration,
-			AstCreate::TransactionalView(v) => &v.time_declaration,
 			other => panic!("statement carries no time declaration: {other:?}"),
 		};
 		Ok((
@@ -5152,66 +5121,41 @@ mod time_declaration_tests {
 	}
 
 	#[test]
-	fn a_flow_parses_both_keys_so_the_resolver_can_reject_ts_with_a_span() {
-		// The grammar has to accept `ts` so the resolver can reject it with a span; a parse-level "unexpected
-		// key" never tells the author the key belongs on the source object.
-		assert_eq!(
-			declared(r#"create deferred view ns::v { a: int4 } with { time: event } as { from ns::t }"#),
-			(Some("event".to_string()), None),
-			"deferred view"
-		);
-		assert_eq!(
-			declared(
-				r#"create deferred view ns::v { a: int4 } with { time: event, ts: at } as { from ns::t }"#
-			),
-			(Some("event".to_string()), Some("at".to_string())),
-			"a flow-level ts must reach the resolver, not die at the parser"
-		);
+	fn a_view_rejects_a_time_declaration_outright() {
+		// A view has no time declaration any more: #time is stamped once at the source and every
+		// downstream operator reads it. Accepting `time:` here and ignoring it would put the author
+		// back in the exact trap this change removed - a view that looks event-time while its rows
+		// carry whatever the source stamped.
+		let bump = Bump::new();
+		for source in [
+			r#"create deferred view ns::v { a: int4 } with { time: event } as { from ns::t }"#,
+			r#"create deferred view ns::v { a: int4 } with { ts: at } as { from ns::t }"#,
+			r#"create transactional view ns::v { a: int4 } with { time: event } as { from ns::t }"#,
+		] {
+			assert!(
+				declared_in(&bump, source).is_err(),
+				"a view must reject a time declaration: {source}"
+			);
+		}
 	}
 
 	#[test]
-	fn a_storage_backed_view_accepts_the_event_keyword() {
-		// Ringbuffer- and series-backed views parse their WITH block in a separate function with its own copy
-		// of the `time`/`ts` arms, so the keyword hazard can be fixed for plain views and still live here.
-		assert_eq!(
-			declared(
-				r#"create deferred ringbuffer view ns::v { a: int4 } with { capacity: 10, time: event } as { from ns::t }"#
-			),
-			(Some("event".to_string()), None),
-			"deferred ringbuffer view"
-		);
-		assert_eq!(
-			declared(
-				r#"create transactional ringbuffer view ns::v { a: int4 } with { capacity: 10, time: event } as { from ns::t }"#
-			),
-			(Some("event".to_string()), None),
-			"transactional ringbuffer view"
-		);
-		assert_eq!(
-			declared(
-				r#"create deferred series view ns::v { a: int4 } with { key: a, time: event } as { from ns::t }"#
-			),
-			(Some("event".to_string()), None),
-			"deferred series view"
-		);
-		assert_eq!(
-			declared(
-				r#"create transactional series view ns::v { a: int4 } with { key: a, time: event } as { from ns::t }"#
-			),
-			(Some("event".to_string()), None),
-			"transactional series view"
-		);
-	}
-
-	#[test]
-	fn a_storage_backed_view_carries_a_keyword_named_ts_to_the_resolver() {
-		// Reaching the resolver is what turns "expected identifier" into "declare ts on the source".
-		assert_eq!(
-			declared(
-				r#"create deferred ringbuffer view ns::v { a: int4 } with { capacity: 10, time: event, ts: event } as { from ns::t }"#
-			),
-			(Some("event".to_string()), Some("event".to_string()))
-		);
+	fn a_storage_backed_view_rejects_a_time_declaration_too() {
+		// Ringbuffer- and series-backed views parse their WITH block in a separate function with its
+		// own copy of the key arms, so removing the keys from the plain-view loop does not remove
+		// them here. Naming all four is what keeps the two loops from drifting apart.
+		let bump = Bump::new();
+		for source in [
+			r#"create deferred ringbuffer view ns::v { a: int4 } with { capacity: 10, time: event } as { from ns::t }"#,
+			r#"create transactional ringbuffer view ns::v { a: int4 } with { capacity: 10, ts: at } as { from ns::t }"#,
+			r#"create deferred series view ns::v { a: int4 } with { key: a, time: event } as { from ns::t }"#,
+			r#"create transactional series view ns::v { a: int4 } with { key: a, ts: at } as { from ns::t }"#,
+		] {
+			assert!(
+				declared_in(&bump, source).is_err(),
+				"a storage-backed view must reject a time declaration: {source}"
+			);
+		}
 	}
 
 	#[test]

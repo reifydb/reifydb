@@ -28,7 +28,7 @@ use reifydb_catalog::catalog::{
 	table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	common::{IndexType, JoinType, TimeDomain, TimeSource},
+	common::{IndexType, JoinType, TimeSource},
 	interface::{
 		catalog::{
 			property::ColumnPropertyKind,
@@ -583,7 +583,6 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub storage_kind: AstViewStorageKind,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
-	pub time: Option<TimeDomain>,
 }
 
 #[derive(Debug)]
@@ -595,7 +594,6 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub storage_kind: AstViewStorageKind,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
-	pub time: Option<TimeDomain>,
 }
 
 #[derive(Debug)]

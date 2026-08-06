@@ -823,7 +823,6 @@ pub struct AstCreateDeferredView<'bump> {
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub settings: Option<AstRowSettings<'bump>>,
-	pub time_declaration: AstTimeDeclaration<'bump>,
 }
 
 #[derive(Debug)]
@@ -834,7 +833,6 @@ pub struct AstCreateTransactionalView<'bump> {
 	pub as_clause: Option<AstStatement<'bump>>,
 	pub storage_kind: AstViewStorageKind,
 	pub settings: Option<AstRowSettings<'bump>>,
-	pub time_declaration: AstTimeDeclaration<'bump>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -910,7 +908,6 @@ pub struct AstTimeDeclaration<'bump> {
 pub struct AstViewWithClause<'bump> {
 	pub settings: Option<AstRowSettings<'bump>>,
 	pub partition_by: Vec<String>,
-	pub time_declaration: AstTimeDeclaration<'bump>,
 }
 
 #[derive(Debug)]

@@ -58,15 +58,6 @@ pub fn flows() -> Arc<VTable> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				Column {
-					id: TIME,
-					name: "time".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Utf8),
-					properties: vec![],
-					index: ColumnIndex(4),
-					auto_increment: false,
-					dictionary_id: None,
-				},
 			],
 		})
 	})

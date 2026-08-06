@@ -82,7 +82,7 @@ fn a_node_that_has_swept_reports_the_frontier_it_reclaimed_through() {
 	);
 	db.admin("CREATE NAMESPACE sp");
 	db.admin("CREATE TABLE sp::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
-	db.admin("CREATE DEFERRED VIEW sp::v { g: int4, total: int8 } with { time: event } AS { \
+	db.admin("CREATE DEFERRED VIEW sp::v { g: int4, total: int8 } AS { \
 		 FROM sp::t AGGREGATE { total: math::count(id) } BY { g } WITH { ttl: { duration: \"1s\" } } }");
 
 	// Event time, not the wall clock, so the frontier compaction reports is a value this test can
@@ -111,7 +111,7 @@ fn a_window_reports_the_seal_its_operator_derives_rather_than_perpetual() {
 	let db = setup();
 	db.admin("CREATE NAMESPACE sp");
 	db.admin("CREATE TABLE sp::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
-	db.admin(r#"CREATE DEFERRED VIEW sp::w { g: int4, total: int8 } with { time: event } AS {
+	db.admin(r#"CREATE DEFERRED VIEW sp::w { g: int4, total: int8 } AS {
 			FROM sp::t
 				| window tumbling { total: math::sum(v) }
 					with { interval: "1s", grace: "0s" }

@@ -117,9 +117,14 @@ fn input_shape() -> RowShape {
 }
 
 fn input_row(rn: u64, group: &str, ts: u64, price: f64) -> CoreRow {
+	// #time is stamped from the same `ts` the fixture buckets on. The window coordinate is
+	// moving off the named column and onto #time, so keeping the two in agreement is what lets
+	// these tests keep asserting the same thing across that move. An unstamped row would sit at
+	// the epoch, and every window here would silently collapse into one bucket.
 	TestRowBuilder::new(rn)
 		.with_values(vec![Value::Utf8(group.into()), Value::Uint8(ts), Value::float8(price)])
 		.with_shape(input_shape())
+		.with_time(DateTime::from_millis(ts))
 		.build()
 }
 
@@ -325,6 +330,37 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 		"a fired seal timer must reclaim the meta of groups that stopped reporting, but the \
 		 store went from {before} rows to {}",
 		h.snapshot_state().len()
+	);
+}
+
+#[test]
+fn a_seal_gated_operator_keeps_emitting_when_the_flow_watermark_runs_on_processing_time() {
+	// Production freeze: solana::market::{twap,vwap,volume,ohlcv}::* published rows for the very
+	// first block of a replayed corpus and then never again, while their source view kept
+	// advancing. The corpus carries July event timestamps but the flow watermark advances on
+	// processing time (these views declare no `ts:` time domain), so from the second batch on the
+	// seal horizon sits weeks ahead of every event-time window and `seal` discards every bucket.
+	//
+	// The window coordinate and the seal horizon must be read on the same clock. An operator whose
+	// windows are event-time must not have its buckets sealed by a processing-time watermark.
+	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<SealedCarry>>>::new()
+		.build()
+		.expect("harness");
+
+	let first = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	println!("[win-probe] batch@event_ts=0 diffs={}", first.diffs.len());
+	assert!(!first.diffs.is_empty(), "precondition: the first event-time window publishes");
+
+	// The flow watermark is processing time: far beyond any event-time coordinate in the feed.
+	h.advance_watermark(DateTime::from_millis(1_500_000_000_000)).expect("advance watermark");
+
+	let second = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 60, 20.0)).build()).expect("apply");
+	println!("[win-probe] batch@event_ts=60 diffs={}", second.diffs.len());
+
+	assert!(
+		!second.diffs.is_empty(),
+		"a later event-time window must still publish; a processing-time watermark sealed it \
+		 away, which is the production ladder freezing after its first block"
 	);
 }
 

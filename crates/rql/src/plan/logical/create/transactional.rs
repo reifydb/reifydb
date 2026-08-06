@@ -16,10 +16,7 @@ use crate::{
 	ast::ast::{AstColumnProperty, AstCreateTransactionalView, AstViewStorageKind},
 	bump::BumpVec,
 	convert_data_type_with_constraints,
-	plan::logical::{
-		Compiler, CreateTransactionalViewNode, LogicalPlan,
-		time_domain::{TimeDeclaration, resolve_flow_time},
-	},
+	plan::logical::{Compiler, CreateTransactionalViewNode, LogicalPlan},
 };
 
 impl<'bump> Compiler<'bump> {
@@ -146,8 +143,6 @@ impl<'bump> Compiler<'bump> {
 			None => (None, true),
 		};
 
-		let time = resolve_flow_time(&TimeDeclaration::from(&ast.time_declaration))?;
-
 		Ok(LogicalPlan::CreateTransactionalView(CreateTransactionalViewNode {
 			view,
 			if_not_exists: false,
@@ -156,7 +151,6 @@ impl<'bump> Compiler<'bump> {
 			storage_kind: ast.storage_kind,
 			ttl,
 			persistent,
-			time,
 		}))
 	}
 }

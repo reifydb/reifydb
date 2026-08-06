@@ -732,6 +732,36 @@ mod tests {
 	}
 
 	#[test]
+	fn every_successive_window_emits_its_own_result() {
+		// Production symptom: a `apply twap { window_duration: '1m' }` ladder over an advancing
+		// event-time stream published output for the first window only and then froze, while its
+		// source view kept advancing. Every existing test here feeds many windows but only asserts
+		// on reclamation counts, so a driver that stops emitting after the first window passes them
+		// all. Each successive window carries its own events, so each must publish its own row.
+		let mut store = CountingStore::default();
+		let mut engine = Engine::new(carry_config(None));
+		let mut emitted_windows = Vec::new();
+		for i in 0..5u64 {
+			let out = feed_group(&mut engine, &mut store, "BTC", i * WINDOW, i as f64 + 1.0);
+			println!(
+				"[win-probe] fed window_start={} results={} kinds={:?}",
+				i * WINDOW,
+				out.len(),
+				out.iter().map(|r| (r.span.start, r.kind)).collect::<Vec<_>>()
+			);
+			if !out.is_empty() {
+				emitted_windows.push(i * WINDOW);
+			}
+		}
+		assert_eq!(
+			emitted_windows,
+			vec![0, WINDOW, 2 * WINDOW, 3 * WINDOW, 4 * WINDOW],
+			"each window that received an event must publish; a ladder that stops after the first \
+			 window is the production freeze"
+		);
+	}
+
+	#[test]
 	fn meta_survives_while_group_high_water_at_or_after_threshold() {
 		// An active group whose high water is at or beyond the threshold must keep its meta: the
 		// carry it holds still seeds the next window.

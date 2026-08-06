@@ -803,7 +803,7 @@ mod integration {
 		let te = TestEngine::builder().with_cdc().build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
-		te.admin("CREATE DEFERRED VIEW app::v { g: int4, total: int8 } with { time: event } \
+		te.admin("CREATE DEFERRED VIEW app::v { g: int4, total: int8 } \
 			 AS { FROM app::t AGGREGATE { total: math::count(id) } BY { g } }");
 		te.command(
 			r#"INSERT app::t [{id: 1, g: 1, ts: "1970-01-01T00:00:00Z"},

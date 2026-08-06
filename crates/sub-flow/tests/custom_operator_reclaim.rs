@@ -165,7 +165,7 @@ fn a_custom_operators_idle_group_is_reclaimed_through_the_flow_tick() {
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
-	db.admin("CREATE DEFERRED VIEW app::v { g: int4, ts: int8, total: int8 } with { time: event } AS { FROM app::t APPLY tally{} }");
+	db.admin("CREATE DEFERRED VIEW app::v { g: int4, ts: int8, total: int8 } AS { FROM app::t APPLY tally{} }");
 
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);
 	db.await_row_count("FROM app::v", 1, TIMEOUT);
@@ -191,7 +191,7 @@ fn a_group_that_wakes_after_reclamation_publishes_under_its_original_row() {
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
-	db.admin("CREATE DEFERRED VIEW app::v { g: int4, ts: int8, total: int8 } with { time: event } AS { FROM app::t APPLY tally{} }");
+	db.admin("CREATE DEFERRED VIEW app::v { g: int4, ts: int8, total: int8 } AS { FROM app::t APPLY tally{} }");
 
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);
 	db.await_row_count("FROM app::v FILTER { g == 1 }", 1, TIMEOUT);

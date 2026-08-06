@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	common::{TimeDomain, TimeSource},
+	common::TimeSource,
 	interface::catalog::{
 		column::ColumnIndex,
 		flow::{Flow, FlowEdge, FlowId, FlowStatus, Operator, OperatorId},
@@ -219,15 +219,6 @@ pub fn create_test_ringbuffer_column(
 }
 
 pub fn create_flow(txn: &mut AdminTransaction, namespace: &str, flow: &str) -> Flow {
-	create_flow_with_time(txn, namespace, flow, Some(TimeDomain::Processing))
-}
-
-pub fn create_flow_with_time(
-	txn: &mut AdminTransaction,
-	namespace: &str,
-	flow: &str,
-	time: Option<TimeDomain>,
-) -> Flow {
 	let namespace = CatalogStore::find_namespace_by_name(&mut Transaction::Admin(&mut *txn), namespace)
 		.unwrap()
 		.expect("Namespace not found");
@@ -238,7 +229,6 @@ pub fn create_flow_with_time(
 			name: Fragment::internal(flow),
 			namespace: namespace.id(),
 			status: FlowStatus::Active,
-			time,
 		},
 	)
 	.unwrap()

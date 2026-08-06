@@ -26,7 +26,7 @@ fn setup() -> TestDb {
 fn sliding_window(db: &TestDb, size: &str, slide: &str, grace: &str) {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
-	db.admin(&format!(r#"CREATE DEFERRED VIEW app::w {{ g: int4, total: int8 }} with {{ time: event }} AS {{
+	db.admin(&format!(r#"CREATE DEFERRED VIEW app::w {{ g: int4, total: int8 }} AS {{
 				FROM app::t
 					| window sliding {{ total: math::sum(v) }}
 						with {{ interval: "{size}", slide: "{slide}", grace: "{grace}" }}

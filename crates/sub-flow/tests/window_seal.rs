@@ -23,7 +23,7 @@ fn two_source_window(db: &TestDb) {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::fast { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
 	db.admin("CREATE TABLE app::slow { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
-	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } with { time: event } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } AS {
 			FROM app::fast APPEND { FROM app::slow }
 				| window tumbling { total: math::sum(v) }
 					with { interval: "1s", grace: "0s" }
@@ -107,7 +107,7 @@ fn ordering_pair(grace: &str) -> (TestDb, TestDb) {
 		db.admin("CREATE NAMESPACE app");
 		db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
 		db.admin(&format!(
-			r#"CREATE DEFERRED VIEW app::w {{ g: int4, total: int8 }} with {{ time: event }} AS {{
+			r#"CREATE DEFERRED VIEW app::w {{ g: int4, total: int8 }} AS {{
 				FROM app::t
 					| window tumbling {{ total: math::sum(v) }}
 						with {{ interval: "1s", grace: "{grace}" }}
@@ -247,21 +247,22 @@ fn whether_a_sealed_bucket_was_published_at_all_depends_on_arrival_order() {
 }
 
 #[test]
-fn a_processing_window_rolls_on_arrival_time_while_an_event_window_stays_open() {
-	// Two views over the same table and the same rows, differing only in declared domain, so any
-	// divergence between them is the domain and nothing else. A processing-time watermark derives
-	// from the rows' arrival stamps - it holds while idle and moves when rows arrive - while an
-	// event-time one moves only on the declared ts and must stay open.
+fn a_window_stays_open_while_the_wall_clock_runs_past_it() {
+	// This is the integration-level statement of the defect that motivated the #time work: a
+	// window is coordinated by event time, so the wall clock running ahead must not close it.
+	// Production replayed a corpus of July blocks on an August clock and every bucket was sealed
+	// away before it could publish.
+	//
+	// Both rows carry the SAME ts and are inserted 2.5s of wall clock apart, which is longer than
+	// the 2s window. If anything anywhere reaches for a processing clock, the second row lands in
+	// a fresh bucket and the total is 5 and 7 rather than one bucket of 12.
+	//
+	// This replaces a pair of views that differed only in a declared time domain. Views no longer
+	// declare one, so the processing half became a byte-identical copy of this one.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
-	db.admin(r#"CREATE DEFERRED VIEW app::p { g: int4, total: int8 } with { time: processing } AS {
-			FROM app::t
-				| window tumbling { total: math::sum(v) }
-					with { interval: "2s", grace: "0s" }
-					by { g }
-		}"#);
-	db.admin(r#"CREATE DEFERRED VIEW app::e { g: int4, total: int8 } with { time: event } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::e { g: int4, total: int8 } AS {
 			FROM app::t
 				| window tumbling { total: math::sum(v) }
 					with { interval: "2s", grace: "0s" }
@@ -269,39 +270,32 @@ fn a_processing_window_rolls_on_arrival_time_while_an_event_window_stays_open() 
 		}"#);
 
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, v: 5, ts: "2026-01-01T00:00:00Z" }]"#);
-	db.await_row_count("FROM app::e", 1, TIMEOUT);
-
-	// Both windows must materialize first, or the counts below pass for a window never there.
 	assert_eq!(
-		db.await_row_count("FROM app::p", 1, TIMEOUT),
+		db.await_row_count("FROM app::e FILTER { total == 5 }", 1, TIMEOUT),
 		1,
-		"the processing window never published a live row, so the roll assertion would be vacuous"
+		"the window must publish before the wall clock is advanced, or the assertion below is \
+		 vacuous against a window that never existed"
 	);
 
-	// Not a synchronisation wait - the quiet interval separates the two arrivals by more than the
-	// 2s window, so the second row's arrival stamp lands in a different bucket than the first's.
+	// Not a synchronisation wait: the quiet interval is longer than the window, so a coordinate
+	// taken from arrival would put the next row in a different bucket.
 	sleep(StdDuration::from_millis(2_500));
 
-	// Same event time as the first row: still inside the event window, but its arrival stamp is
-	// 2.5s past the first row's, outside the processing one.
 	db.command(r#"INSERT app::t [{ id: 2, g: 1, v: 7, ts: "2026-01-01T00:00:00Z" }]"#);
 	db.await_all_flows(TIMEOUT);
 
-	let rolled = db.await_exact_row_count("FROM app::p", 2, TIMEOUT);
 	assert_eq!(
-		rolled,
-		2,
-		"a processing-time window must stop accepting once the arrival watermark leaves it, so the \
-		 second row belongs to a new window rather than the first one; view now: {:?}",
-		db.query_as_root("FROM app::p", ())
-	);
-
-	let held = db.await_exact_row_count("FROM app::e FILTER { total == 12 }", 1, TIMEOUT);
-	assert_eq!(
-		held,
+		db.await_exact_row_count("FROM app::e FILTER { total == 12 }", 1, TIMEOUT),
 		1,
-		"an event-time window whose source stopped reporting must stay open however long the wall clock \
-		 runs, and still admit a row carrying its own event time; view now: {:?}",
+		"both rows carry the same event time, so they belong to one window however far the wall \
+		 clock has run; a split into two buckets means something read a processing clock. view \
+		 now: {:?}",
+		db.query_as_root("FROM app::e", ())
+	);
+	assert_eq!(
+		db.await_exact_row_count("FROM app::e", 1, TIMEOUT),
+		1,
+		"one event-time bucket means exactly one published row; view now: {:?}",
 		db.query_as_root("FROM app::e", ())
 	);
 }
@@ -314,7 +308,7 @@ fn a_session_that_keeps_extending_seals_only_after_its_final_gap() {
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
-	db.admin(r#"CREATE DEFERRED VIEW app::s { g: int4, total: int8 } with { time: event } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::s { g: int4, total: int8 } AS {
 			FROM app::t
 				| window session { total: math::sum(v) }
 					with { gap: "2s", grace: "0s" }
@@ -344,7 +338,7 @@ fn a_row_at_the_epoch_is_refused_once_its_window_has_sealed() {
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
-	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } with { time: event } AS {
+	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } AS {
 			FROM app::t
 				| window tumbling { total: math::sum(v) }
 					with { interval: "1s", grace: "3s" }

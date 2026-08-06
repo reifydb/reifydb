@@ -22,7 +22,7 @@ fn event_ring(db: &TestDb, ttl: &str) {
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::events { id: int4, v: int4, ts: datetime } with { ts: ts }");
 	db.admin(&format!("CREATE DEFERRED RINGBUFFER VIEW app::rb {{ id: int4, v: int4 }} \
-		 WITH {{ capacity: 1000, time: event, row: {{ ttl: {{ duration: '{ttl}', announce: true }} }} }} \
+		 WITH {{ capacity: 1000, row: {{ ttl: {{ duration: '{ttl}', announce: true }} }} }} \
 		 AS {{ FROM app::events map {{ id, v }} }}"));
 }
 
@@ -79,20 +79,20 @@ fn a_frozen_event_watermark_keeps_a_row_far_past_its_ttl_in_wall_time() {
 }
 
 #[test]
-fn an_idle_processing_ring_buffer_holds_and_drains_on_the_next_arrival() {
-	// A processing watermark is arrival time - event time over the arrival stamps - so it moves
-	// only when rows arrive. An idle processing ring must therefore hold its rows however long
-	// the wall clock runs (a clock-driven drain would evict different rows when the stream is
-	// replayed later), and it is the next arrival, stamped past the ttl, that finally expires
-	// the head. The event ring is fed the same rows with a fixed ts, so it holds throughout.
+fn an_idle_ring_buffer_holds_and_drains_on_the_next_arrival() {
+	// A watermark only moves when rows arrive, so an idle ring must hold its rows however long the
+	// wall clock runs - a clock-driven drain would evict different rows when the same stream is
+	// replayed later. It is the next arrival, stamped past the ttl, that finally expires the head.
+	// Both rings read the same event-time source and so run on the same clock; they differ only in
+	// ttl, which is what makes the short one drain while the long one holds.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::events { id: int4, v: int4, ts: datetime } with { ts: ts }");
 	db.admin("CREATE DEFERRED RINGBUFFER VIEW app::held { id: int4, v: int4 } \
-		 WITH { capacity: 1000, time: event, row: { ttl: { duration: '1h', announce: true } } } \
+		 WITH { capacity: 1000, row: { ttl: { duration: '1h', announce: true } } } \
 		 AS { FROM app::events map { id, v } }");
 	db.admin("CREATE DEFERRED RINGBUFFER VIEW app::drained { id: int4, v: int4 } \
-		 WITH { capacity: 1000, time: processing, row: { ttl: { duration: '1s', announce: true } } } \
+		 WITH { capacity: 1000, row: { ttl: { duration: '1s', announce: true } } } \
 		 AS { FROM app::events map { id, v } }");
 
 	insert(&db, 1, 10, "2026-01-01T00:00:00Z");
@@ -106,7 +106,7 @@ fn an_idle_processing_ring_buffer_holds_and_drains_on_the_next_arrival() {
 	assert_eq!(
 		db.await_exact_row_count("FROM app::drained FILTER { id == 1 }", 1, TIMEOUT),
 		1,
-		"an idle processing ring must hold: its arrival watermark never reached the expiry; view now: {:?}",
+		"an idle ring must hold: its watermark never reached the expiry; view now: {:?}",
 		db.query_as_root("FROM app::drained", ())
 	);
 
@@ -122,6 +122,6 @@ fn an_idle_processing_ring_buffer_holds_and_drains_on_the_next_arrival() {
 	assert_eq!(
 		db.await_exact_row_count("FROM app::held FILTER { id == 1 }", 1, TIMEOUT),
 		1,
-		"the event ring's rows sit one second apart in ts, far inside its 1h ttl, so it must hold"
+		"the long-ttl ring's rows sit one second apart in ts, far inside its 1h ttl, so it must hold"
 	);
 }

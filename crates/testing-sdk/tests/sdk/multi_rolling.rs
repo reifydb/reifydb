@@ -134,6 +134,9 @@ fn input_shape() -> RowShape {
 }
 
 fn input_row(rn: u64, group: &str, window_start: u64, trader: u64, volume: f64) -> CoreRow {
+	// #time is stamped from the same coordinate the fixture buckets on, so these tests assert
+	// the same thing before and after the window coordinate moves onto #time. Leaving it
+	// unstamped would park every row at the epoch and collapse all windows into one bucket.
 	TestRowBuilder::new(rn)
 		.with_values(vec![
 			Value::Utf8(group.into()),
@@ -142,6 +145,7 @@ fn input_row(rn: u64, group: &str, window_start: u64, trader: u64, volume: f64) 
 			Value::float8(volume),
 		])
 		.with_shape(input_shape())
+		.with_time(DateTime::from_millis(window_start))
 		.build()
 }
 

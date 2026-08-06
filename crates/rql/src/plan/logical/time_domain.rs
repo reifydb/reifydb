@@ -107,22 +107,6 @@ pub fn resolve_source_time(declaration: &TimeDeclaration) -> Result<TimeSource> 
 	}
 }
 
-pub fn resolve_flow_time(declaration: &TimeDeclaration) -> Result<Option<TimeDomain>> {
-	if let Some(ts) = declaration.ts.as_ref() {
-		return Err(AstError::UnexpectedToken {
-			expected: "a flow declares a time domain, not a ts column; declare `ts` on the source object"
-				.to_string(),
-			fragment: ts.clone(),
-		}
-		.into());
-	}
-
-	match declaration.time.as_ref() {
-		Some(time) => match_domain(time).map(Some),
-		None => Ok(None),
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -177,27 +161,10 @@ mod tests {
 	}
 
 	#[test]
-	fn a_flow_may_never_name_a_ts_column() {
-		// A flow's rows can come from several sources with different stamp names, and none survives a
-		// projection or aggregate, so a populator only ever names a column on the source. Accepting a
-		// flow-level `ts` and ignoring it is the silent trap the two levels exist to keep apart.
-		let err = resolve_flow_time(&TimeDeclaration {
-			time: Some(Fragment::statement("event", 3, 11)),
-			ts: Some(Fragment::statement("block_time", 4, 7)),
-		})
-		.unwrap_err();
-		assert_eq!(err.fragment.text(), "block_time", "the flow-level `ts` is the key to delete");
-
-		let err = resolve_flow_time(&declaration(None, Some("block_time"))).unwrap_err();
-		assert!(
-			err.fragment.text() == "block_time",
-			"a bare `ts` must be rejected at the flow level too, not silently read as event time"
-		);
-	}
-
-	#[test]
-	fn an_unknown_time_value_is_rejected_at_both_levels() {
-		// An unrecognised value must fault at the text the author typed rather than fall back to a default.
+	fn an_unknown_time_value_is_rejected() {
+		// An unrecognised value must fault at the text the author typed rather than fall back to a
+		// default, because the default is Processing and silently bucketing by ingest time is the
+		// failure this whole declaration exists to prevent.
 		let unknown = TimeDeclaration {
 			time: Some(Fragment::statement("wallclock", 9, 2)),
 			ts: None,
@@ -206,30 +173,24 @@ mod tests {
 		let err = resolve_source_time(&unknown).unwrap_err();
 		assert_eq!(err.fragment.text(), "wallclock");
 		assert_eq!(err.fragment.line().0, 9);
-
-		let err = resolve_flow_time(&unknown).unwrap_err();
-		assert_eq!(err.fragment.text(), "wallclock");
 	}
 
 	#[test]
-	fn the_time_value_is_matched_case_insensitively_at_both_levels() {
-		// `time: Event` must not be legal in one declaration form and a hard error in the other.
+	fn the_time_value_is_matched_case_insensitively() {
+		// Case is not part of the declaration's meaning, so `time: Event` and `time: event` must
+		// resolve identically rather than one of them falling through to the Processing default.
 		assert_eq!(resolve_source_time(&declaration(Some("EVENT"), Some("at"))).unwrap(), event("at"));
 		assert_eq!(
 			resolve_source_time(&declaration(Some("Processing"), None)).unwrap(),
 			TimeSource::Processing
 		);
-		assert_eq!(resolve_flow_time(&declaration(Some("EVENT"), None)).unwrap(), Some(TimeDomain::Event));
-		assert_eq!(
-			resolve_flow_time(&declaration(Some("Processing"), None)).unwrap(),
-			Some(TimeDomain::Processing)
-		);
 	}
 
 	#[test]
-	fn the_full_declaration_matrix_is_pinned_for_both_levels() {
-		// The two levels have different legal cells - ts is required for an event source and forbidden on
-		// every flow - so writing them as two tables side by side is what makes a convergence visible.
+	fn the_full_source_declaration_matrix_is_pinned() {
+		// Every cell matters because the accepted ones decide what #time a row gets, and #time is now
+		// the only clock anything downstream reads. A cell that quietly flips from rejected to
+		// Processing is a whole pipeline bucketing by ingest time with nothing to notice it.
 		let source: [((Option<&str>, Option<&str>), Option<TimeSource>); 8] = [
 			((None, None), Some(TimeSource::Processing)),
 			((None, Some("at")), Some(event("at"))),
@@ -256,30 +217,5 @@ mod tests {
 			}
 		}
 
-		// The inner Option is what the flow declared, the outer whether it is accepted at all. Registration
-		// rejects an undeclared flow over an event-time source and accepts an explicitly processing one.
-		let flow: [((Option<&str>, Option<&str>), Option<Option<TimeDomain>>); 8] = [
-			((None, None), Some(None)),
-			((None, Some("at")), None),
-			((Some("event"), None), Some(Some(TimeDomain::Event))),
-			((Some("event"), Some("at")), None),
-			((Some("processing"), None), Some(Some(TimeDomain::Processing))),
-			((Some("processing"), Some("at")), None),
-			((Some("wallclock"), None), None),
-			((Some("wallclock"), Some("at")), None),
-		];
-
-		for ((time, ts), want) in flow {
-			match (resolve_flow_time(&declaration(time, ts)), want) {
-				(Ok(got), Some(want)) => assert_eq!(got, want, "flow time={time:?} ts={ts:?}"),
-				(Err(_), None) => {}
-				(Ok(got), None) => {
-					panic!("flow time={time:?} ts={ts:?} must be rejected, resolved {got:?}")
-				}
-				(Err(err), Some(want)) => {
-					panic!("flow time={time:?} ts={ts:?} must resolve {want:?}, rejected: {err:?}")
-				}
-			}
-		}
 	}
 }

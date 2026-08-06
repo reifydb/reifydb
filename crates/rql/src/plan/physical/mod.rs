@@ -11,7 +11,7 @@ use std::{collections, fmt, iter::once, marker};
 use bumpalo::Bump;
 use reifydb_catalog::catalog::{Catalog, table::TableColumnToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
-	common::{JoinType, TimeDomain, TimeSource, WindowKind},
+	common::{JoinType, TimeSource, WindowKind},
 	error::diagnostic::catalog::{
 		dictionary_not_found, namespace_not_found, queue_not_found, queue_reserved_column_collision,
 		ringbuffer_not_found, series_not_found, table_not_found,
@@ -211,7 +211,6 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub storage_kind: AstViewStorageKind,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
-	pub time: Option<TimeDomain>,
 }
 
 #[derive(Debug)]
@@ -224,7 +223,6 @@ pub struct CreateTransactionalViewNode<'bump> {
 	pub storage_kind: AstViewStorageKind,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
-	pub time: Option<TimeDomain>,
 }
 
 #[derive(Debug)]

@@ -18,7 +18,7 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_engine::flow::time_domain::check_time_domain;
+use reifydb_engine::flow::time_domain::check_window_time_requirements;
 use reifydb_rql::{
 	expression::{ColumnExpression, Expression},
 	flow::{
@@ -81,7 +81,7 @@ impl FlowEngineInner {
 			assert!(!self.flows.contains_key(&flow.id), "Flow already registered");
 		}
 
-		check_time_domain(&self.catalog, txn, &flow)?;
+		check_window_time_requirements(&self.catalog, txn, &flow)?;
 
 		let mut added: Vec<OperatorId> = Vec::new();
 		let ctx = Arc::new(FlowContext::default());

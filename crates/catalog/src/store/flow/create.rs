@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	common::TimeDomain,
 	interface::catalog::{
 		flow::{Flow, FlowId, FlowStatus},
 		id::NamespaceId,
@@ -26,7 +25,6 @@ pub struct FlowToCreate {
 	pub name: Fragment,
 	pub namespace: NamespaceId,
 	pub status: FlowStatus,
-	pub time: Option<TimeDomain>,
 }
 
 impl CatalogStore {
@@ -88,7 +86,6 @@ impl CatalogStore {
 		flow::SHAPE.set::<u64>(&mut row, flow::NAMESPACE, u64::from(namespace));
 		flow::SHAPE.set_utf8(&mut row, flow::NAME, to_create.name.text());
 		flow::SHAPE.set::<u8>(&mut row, flow::STATUS, to_create.status.to_u8());
-		flow::SHAPE.set::<u8>(&mut row, flow::TIME, TimeDomain::declared_to_u8(to_create.time));
 
 		let key = FlowKey::encoded(flow);
 		txn.set(&key, row.freeze())?;
@@ -114,8 +111,7 @@ impl CatalogStore {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		common::TimeDomain,
-		interface::catalog::{
+			interface::catalog::{
 			flow::{FlowId, FlowStatus},
 			id::NamespaceId,
 		},
@@ -140,7 +136,6 @@ pub mod tests {
 			name: Fragment::internal("test_flow"),
 			namespace: test_namespace.id(),
 			status: FlowStatus::Active,
-			time: Some(TimeDomain::Processing),
 		};
 
 		let result = CatalogStore::create_flow(&mut txn, to_create.clone()).unwrap();
@@ -162,7 +157,6 @@ pub mod tests {
 			name: Fragment::internal("flow_one"),
 			namespace: test_namespace.id(),
 			status: FlowStatus::Active,
-			time: Some(TimeDomain::Processing),
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
 
@@ -170,7 +164,6 @@ pub mod tests {
 			name: Fragment::internal("flow_two"),
 			namespace: test_namespace.id(),
 			status: FlowStatus::Paused,
-			time: Some(TimeDomain::Processing),
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
 
@@ -216,7 +209,6 @@ pub mod tests {
 			name: Fragment::internal("shared_name"),
 			namespace: namespace_one.id(),
 			status: FlowStatus::Active,
-			time: Some(TimeDomain::Processing),
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
 
@@ -224,7 +216,6 @@ pub mod tests {
 			name: Fragment::internal("shared_name"),
 			namespace: namespace_two.id(),
 			status: FlowStatus::Active,
-			time: Some(TimeDomain::Processing),
 		};
 		let result = CatalogStore::create_flow(&mut txn, to_create).unwrap();
 		assert_eq!(result.name, "shared_name");

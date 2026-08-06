@@ -4,7 +4,6 @@
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_core::{
-	common::TimeDomain,
 	interface::catalog::flow::{FlowId, OperatorId},
 	internal,
 };
@@ -24,7 +23,6 @@ pub struct FlowDag {
 pub struct Inner {
 	pub id: FlowId,
 	pub graph: DirectedGraph<FlowNode>,
-	pub time: Option<TimeDomain>,
 }
 
 impl Deref for FlowDag {
@@ -39,7 +37,6 @@ impl Deref for FlowDag {
 pub struct FlowBuilder {
 	id: FlowId,
 	graph: DirectedGraph<FlowNode>,
-	time: Option<TimeDomain>,
 }
 
 impl FlowBuilder {
@@ -47,17 +44,11 @@ impl FlowBuilder {
 		Self {
 			id: id.into(),
 			graph: DirectedGraph::new(),
-			time: None,
 		}
 	}
 
 	pub fn id(&self) -> FlowId {
 		self.id
-	}
-
-	pub fn time(mut self, time: Option<TimeDomain>) -> Self {
-		self.time = time;
-		self
 	}
 
 	pub fn add_node(&mut self, node: FlowNode) -> OperatorId {
@@ -101,7 +92,6 @@ impl FlowBuilder {
 			inner: Arc::new(Inner {
 				id: self.id,
 				graph: self.graph,
-				time: self.time,
 			}),
 		}
 	}
@@ -114,10 +104,6 @@ impl FlowDag {
 
 	pub fn id(&self) -> FlowId {
 		self.inner.id
-	}
-
-	pub fn time_domain(&self) -> TimeDomain {
-		self.inner.time.unwrap_or(TimeDomain::Processing)
 	}
 
 	pub fn topological_order(&self) -> Result<Vec<OperatorId>> {

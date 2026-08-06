@@ -3,7 +3,6 @@
 
 use reifydb_catalog::catalog::{Catalog, flow::FlowToCreate, view::ViewColumnToCreate};
 use reifydb_core::{
-	common::TimeDomain,
 	interface::catalog::{
 		column::ColumnIndex,
 		flow::FlowStatus,
@@ -18,7 +17,7 @@ use reifydb_value::fragment::Fragment;
 
 use crate::{
 	Result,
-	flow::{compiler::compile_flow, span::check_declared_spans, time_domain::check_time_domain},
+	flow::{compiler::compile_flow, span::check_declared_spans, time_domain::check_window_time_requirements},
 };
 
 fn outermost_sort(plan: &QueryPlan) -> Option<&Vec<SortKey>> {
@@ -86,7 +85,6 @@ pub(crate) fn create_deferred_view_flow(
 	txn: &mut AdminTransaction,
 	view: &View,
 	plan: QueryPlan,
-	time: Option<TimeDomain>,
 ) -> Result<()> {
 	let flow = catalog.create_flow(
 		txn,
@@ -94,11 +92,10 @@ pub(crate) fn create_deferred_view_flow(
 			name: Fragment::internal(view.name()),
 			namespace: view.namespace(),
 			status: FlowStatus::Active,
-			time,
 		},
 	)?;
 
-	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow.id, time)?;
-	check_time_domain(catalog, &mut Transaction::Admin(txn), &dag)?;
+	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow.id)?;
+	check_window_time_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
 	check_declared_spans(catalog, &mut Transaction::Admin(txn), &dag)
 }

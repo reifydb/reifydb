@@ -17,6 +17,7 @@ pub struct TestRowBuilder {
 	row_number: RowNumber,
 	values: Vec<Value>,
 	shape: Option<RowShape>,
+	time: Option<DateTime>,
 }
 
 impl TestRowBuilder {
@@ -25,7 +26,13 @@ impl TestRowBuilder {
 			row_number: row_number.into(),
 			values: Vec::new(),
 			shape: None,
+			time: None,
 		}
+	}
+
+	pub fn with_time(mut self, time: DateTime) -> Self {
+		self.time = Some(time);
+		self
 	}
 
 	pub fn with_values(mut self, values: Vec<Value>) -> Self {
@@ -58,6 +65,9 @@ impl TestRowBuilder {
 
 		let mut encoded = shape.allocate();
 		shape.set_values(&mut encoded, &self.values);
+		if let Some(time) = self.time {
+			encoded.set_time(time);
+		}
 
 		Row {
 			number: self.row_number,

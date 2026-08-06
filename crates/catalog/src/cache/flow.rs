@@ -60,7 +60,7 @@ impl CatalogCache {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{common::TimeDomain, interface::catalog::flow::FlowStatus};
+	use reifydb_core::interface::catalog::flow::FlowStatus;
 
 	use super::*;
 
@@ -70,7 +70,6 @@ pub mod tests {
 			namespace,
 			name: name.to_string(),
 			status: FlowStatus::Active,
-			time: Some(TimeDomain::Processing),
 		}
 	}
 
