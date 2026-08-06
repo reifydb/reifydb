@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Differential chaos for the rolling driver. The window_start range is deliberately wider
-//! than the buffer capacity so eviction is reached on most seeds, and events share window
-//! coordinates so within-window accumulation and partial removal are reached too.
+//! Differential chaos for the rolling driver. The ts range floors to more buckets than the
+//! buffer capacity so eviction is reached on most seeds, and many event times land in the same
+//! bucket so within-bucket accumulation and partial removal are reached too.
 
 use reifydb_sdk::operator::{FFIOperatorAdapter, windowed::rolling::RollingDriver};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
@@ -35,9 +35,10 @@ fn run(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 		.with_output_shape(common::rolling_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
 		.with_output_key(["group"])
+		.with_time_column("ts")
 		.with_column("group", samplers::utf8_choices(&["BTC", "ETH", "SOL"]))
-		// More distinct window coordinates than capacity, so eviction is reachable.
-		.with_column("window_start", samplers::u64_range(0..10))
+		// Floors to more distinct buckets than capacity, so eviction is reachable.
+		.with_column("ts", samplers::u64_range(0..100))
 		.with_column("value", value_sampler(none_values))
 		.with_scenario(scenario)
 		.with_oracle(move |ctx, batches| {

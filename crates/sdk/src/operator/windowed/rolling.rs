@@ -26,7 +26,7 @@ use reifydb_flow::{
 			rolling::{RollingBuckets, RollingEngine},
 		},
 		ledger::FiredAt,
-		span::{Slot, WindowCoord},
+		span::WindowCoord,
 	},
 };
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
@@ -46,7 +46,8 @@ use crate::{
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			WindowedBudget, advance_seal_frontier, arm_seal_timer, bridge::OperatorContextStore, group_of,
+			WindowedBudget, advance_seal_frontier, arm_seal_timer, bridge::OperatorContextStore, bucket_of,
+			group_of,
 			intern_window_groups, seal_frontier, seal_horizon_of, window_engine_config,
 		},
 	},
@@ -57,24 +58,24 @@ type AccumulatorContribution<A> = <<A as RollingOperator>::Accumulator as Window
 pub trait RollingOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + ArchiveState;
 
-	type WindowSlot: Slot + Hash + ArchiveState + HeapSize;
-
 	type Accumulator: WindowAccumulator;
 
 	type Output: Clone + Debug + PartialEq;
 
 	fn capacity(&self) -> usize;
 
+	fn bucket_size(&self) -> Duration;
+
 	fn extract(
 		&self,
 		ctx: &mut impl OperatorContext,
 		row: &impl RowView,
-	) -> Option<(Self::GroupKey, Self::WindowSlot, AccumulatorContribution<Self>)>;
+	) -> Option<(Self::GroupKey, AccumulatorContribution<Self>)>;
 
 	fn combine(
 		&self,
 		group: &Self::GroupKey,
-		buffer: &BTreeMap<Self::WindowSlot, Self::Accumulator>,
+		buffer: &BTreeMap<DateTime, Self::Accumulator>,
 	) -> Option<Self::Output>;
 }
 
@@ -99,13 +100,9 @@ where
 	}
 }
 
-pub type RollingBuffer<A> = BTreeMap<<A as RollingOperator>::WindowSlot, <A as RollingOperator>::Accumulator>;
+pub type RollingBuffer<A> = BTreeMap<DateTime, <A as RollingOperator>::Accumulator>;
 
-type Buckets<A> = RollingBuckets<
-	<A as RollingOperator>::GroupKey,
-	<A as RollingOperator>::WindowSlot,
-	AccumulatorContribution<A>,
->;
+type Buckets<A> = RollingBuckets<<A as RollingOperator>::GroupKey, DateTime, AccumulatorContribution<A>>;
 
 pub struct RollingDriver<A>
 where
@@ -114,7 +111,7 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	aggregator: A,
-	engine: RollingEngine<A::GroupKey, A::WindowSlot, A::Accumulator>,
+	engine: RollingEngine<A::GroupKey, DateTime, A::Accumulator>,
 	budget: WindowedBudget,
 }
 
@@ -163,15 +160,19 @@ where
 			let Some(row) = cols.row(i) else {
 				continue;
 			};
-			let Some((group, coord, contribution)) = self.aggregator.extract(ctx, &row) else {
+			let Some(coord) = row.row_time() else {
 				continue;
 			};
+			let Some((group, contribution)) = self.aggregator.extract(ctx, &row) else {
+				continue;
+			};
+			let bucket = bucket_of(coord, self.aggregator.bucket_size());
 			let event = if is_add {
 				AccumulatorEvent::Add(contribution)
 			} else {
 				AccumulatorEvent::Remove(contribution)
 			};
-			buckets.entry((group, coord)).or_default().push(event);
+			buckets.entry((group, bucket)).or_default().push(event);
 		}
 	}
 
@@ -185,14 +186,20 @@ where
 		let n = pre.row_count().min(post.row_count());
 		for i in 0..n {
 			if let Some(pre_row) = pre.row(i)
-				&& let Some((group, coord, contribution)) = self.aggregator.extract(ctx, &pre_row)
+				&& let Some(coord) = pre_row.row_time()
+				&& let Some((group, contribution)) = self.aggregator.extract(ctx, &pre_row)
 			{
-				buckets.entry((group, coord)).or_default().push(AccumulatorEvent::Remove(contribution));
+				buckets.entry((group, bucket_of(coord, self.aggregator.bucket_size())))
+					.or_default()
+					.push(AccumulatorEvent::Remove(contribution));
 			}
 			if let Some(post_row) = post.row(i)
-				&& let Some((group, coord, contribution)) = self.aggregator.extract(ctx, &post_row)
+				&& let Some(coord) = post_row.row_time()
+				&& let Some((group, contribution)) = self.aggregator.extract(ctx, &post_row)
 			{
-				buckets.entry((group, coord)).or_default().push(AccumulatorEvent::Add(contribution));
+				buckets.entry((group, bucket_of(coord, self.aggregator.bucket_size())))
+					.or_default()
+					.push(AccumulatorEvent::Add(contribution));
 			}
 		}
 	}
@@ -234,17 +241,16 @@ where
 	A: RollingRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
-	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync + HeapSize,
 	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	fn expire_through<C: OperatorContext>(
-		engine: &mut RollingEngine<A::GroupKey, A::WindowSlot, A::Accumulator>,
+		engine: &mut RollingEngine<A::GroupKey, DateTime, A::Accumulator>,
 		store: &mut OperatorContextStore<'_, C>,
-		horizon: <A::WindowSlot as Slot>::Coord,
+		horizon: DateTime,
 	) -> Result<()> {
-		if horizon > <<A::WindowSlot as Slot>::Coord as WindowCoord>::from_order(0) {
+		if horizon > <DateTime as WindowCoord>::from_order(0) {
 			engine.expire_meta(store, horizon.to_order())?;
 		}
 		Ok(())
@@ -271,7 +277,6 @@ where
 	A: RollingRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
-	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync + HeapSize,
 	AccumulatorContribution<A>: Send + Sync,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
@@ -305,7 +310,7 @@ where
 			kind: timer.kind,
 			key: EncodedKey::new(timer.key),
 		});
-		let frontier: <A::WindowSlot as Slot>::Coord = advance_seal_frontier(&mut store, fired)?;
+		let frontier: DateTime = advance_seal_frontier(&mut store, fired)?;
 		Self::expire_through(&mut self.engine, &mut store, seal_horizon_of(frontier, seal_after))
 	}
 
@@ -323,16 +328,16 @@ where
 		let seal_after = self.aggregator.seal_after();
 		if let Some(seal_after) = seal_after {
 			let mut store = OperatorContextStore(ctx);
-			let newest = buckets.keys().map(|(_, coord)| coord.order_key()).max();
+			let newest = buckets.keys().map(|(_, coord)| *coord).max();
 			if let Some(newest) = newest {
 				arm_seal_timer(&mut store, newest, seal_after)?;
 			}
-			let watermark: <<A as RollingOperator>::WindowSlot as Slot>::Coord = seal_frontier(&mut store)?;
+			let watermark: DateTime = seal_frontier(&mut store)?;
 			let horizon = seal_horizon_of(watermark, seal_after);
 			Self::expire_through(&mut self.engine, &mut store, horizon)?;
 			let mut dropped = 0u64;
 			buckets.retain(|(_, coord), events| {
-				if is_sealed(coord.order_key(), horizon) {
+				if is_sealed(*coord, horizon) {
 					dropped += events.len() as u64;
 					false
 				} else {

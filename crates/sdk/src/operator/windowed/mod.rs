@@ -24,7 +24,7 @@ use reifydb_core::{
 use reifydb_flow::window::{
 	engine::config::WindowEngineConfig,
 	ledger::{FiredAt, SealLedger},
-	span::WindowCoord,
+	span::{WindowCoord, WindowSpan},
 };
 use reifydb_value::{
 	Result,
@@ -43,6 +43,10 @@ pub(crate) fn seal_frontier<C: WindowCoord>(store: &mut impl StateStore) -> Resu
 pub(crate) fn advance_seal_frontier<C: WindowCoord>(store: &mut impl StateStore, fired: FiredAt) -> Result<C> {
 	SealLedger::advance(store, fired)?;
 	seal_frontier(store)
+}
+
+pub(crate) fn bucket_of(coord: DateTime, size: Duration) -> DateTime {
+	WindowSpan::for_coord(coord, size).start
 }
 
 pub(crate) fn seal_horizon_of<C: WindowCoord>(frontier: C, seal_after: Duration) -> C {

@@ -53,6 +53,9 @@ pub const WINDOW: u64 = 60;
 pub const OHLCV_GRACE: u64 = 20;
 pub const ROLLING_CAPACITY: usize = 3;
 
+/// Event times are sampled far finer than this, so flooring genuinely collapses rows into buckets.
+pub const ROLLING_BUCKET: u64 = 10;
+
 /// Replayed for every config so a failure names a reproducible run.
 pub const SEEDS: [u64; 6] = [1, 7, 42, 99, 12_345, 2_024];
 
@@ -465,7 +468,6 @@ pub fn rolling_sum() -> RollingSum {
 
 impl RollingOperator for RollingSum {
 	type GroupKey = String;
-	type WindowSlot = u64;
 	type Accumulator = WindowSum;
 	type Output = RollingOut;
 
@@ -473,14 +475,17 @@ impl RollingOperator for RollingSum {
 		self.capacity
 	}
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, f64)> {
-		let group = row.utf8("group")?.to_string();
-		let window_start = row.u64("window_start")?;
-		let value = row.f64("value")?;
-		Some((group, window_start, value))
+	fn bucket_size(&self) -> Duration {
+		millis(ROLLING_BUCKET)
 	}
 
-	fn combine(&self, group: &String, buffer: &BTreeMap<u64, WindowSum>) -> Option<RollingOut> {
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, f64)> {
+		let group = row.utf8("group")?.to_string();
+		let value = row.f64("value")?;
+		Some((group, value))
+	}
+
+	fn combine(&self, group: &String, buffer: &BTreeMap<DateTime, WindowSum>) -> Option<RollingOut> {
 		if buffer.is_empty() {
 			return None;
 		}
@@ -718,7 +723,6 @@ pub fn velocity_incremental() -> VelocityIncremental {
 
 impl RollingOperator for VelocityIncremental {
 	type GroupKey = String;
-	type WindowSlot = u64;
 	type Accumulator = LastValue<f64>;
 	type Output = VelocityOut;
 
@@ -726,14 +730,17 @@ impl RollingOperator for VelocityIncremental {
 		self.capacity
 	}
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, f64)> {
-		let group = row.utf8("group")?.to_string();
-		let window_start = row.u64("window_start")?;
-		let value = row.f64("value")?;
-		Some((group, window_start, value))
+	fn bucket_size(&self) -> Duration {
+		millis(ROLLING_BUCKET)
 	}
 
-	fn combine(&self, group: &String, buffer: &BTreeMap<u64, LastValue<f64>>) -> Option<VelocityOut> {
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, f64)> {
+		let group = row.utf8("group")?.to_string();
+		let value = row.f64("value")?;
+		Some((group, value))
+	}
+
+	fn combine(&self, group: &String, buffer: &BTreeMap<DateTime, LastValue<f64>>) -> Option<VelocityOut> {
 		let (_, newest) = buffer.iter().next_back()?;
 		let newest = *newest.get()?;
 		let total = buffer.len();
@@ -774,7 +781,7 @@ impl RollingIncrementalOperator for VelocityIncremental {
 		group: &String,
 		running: &Moments,
 		newest_value: &f64,
-		_newest_coord: u64,
+		_newest_coord: DateTime,
 	) -> Option<VelocityOut> {
 		let total_count = running.count();
 		let baseline_count = total_count.saturating_sub(1);
@@ -828,7 +835,7 @@ pub fn ohlcv_shape() -> RowShape {
 pub fn rolling_shape() -> RowShape {
 	RowShape::new(vec![
 		RowShapeField::unconstrained("group", ValueType::Utf8),
-		RowShapeField::unconstrained("window_start", ValueType::Uint8),
+		RowShapeField::unconstrained("ts", ValueType::Uint8),
 		RowShapeField::unconstrained("value", ValueType::Float8),
 	])
 }

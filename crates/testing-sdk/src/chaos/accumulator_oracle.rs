@@ -177,11 +177,11 @@ fn materialize_outputs<O: Row>(
 	materialize_history(&[change], output_key_columns)
 }
 
-type RollingCoord<A> = <A as RollingOperator>::WindowSlot;
+type RollingCoord = DateTime;
 type RollingGroup<A> = <A as RollingOperator>::GroupKey;
 
 type RollingContribution<A> = <<A as RollingOperator>::Accumulator as WindowAccumulator>::Contribution;
-type RollingBuckets<A> = BTreeMap<(RollingGroup<A>, RollingCoord<A>), Vec<Leg<RollingContribution<A>>>>;
+type RollingBuckets<A> = BTreeMap<(RollingGroup<A>, RollingCoord), Vec<Leg<RollingContribution<A>>>>;
 
 enum Leg<C> {
 	Add(C),
@@ -237,10 +237,10 @@ where
 #[allow(clippy::type_complexity)]
 fn apply_rolling_buckets<A>(
 	capacity: usize,
-	snapshot: &HashMap<RollingGroup<A>, RollingCoord<A>>,
+	snapshot: &HashMap<RollingGroup<A>, RollingCoord>,
 	buckets: RollingBuckets<A>,
-	buffers: &mut HashMap<RollingGroup<A>, BTreeMap<RollingCoord<A>, A::Accumulator>>,
-	high_water: &mut HashMap<RollingGroup<A>, RollingCoord<A>>,
+	buffers: &mut HashMap<RollingGroup<A>, BTreeMap<RollingCoord, A::Accumulator>>,
+	high_water: &mut HashMap<RollingGroup<A>, RollingCoord>,
 ) -> BTreeSet<RollingGroup<A>>
 where
 	A: RollingOperator,
@@ -304,8 +304,8 @@ where
 	A::Output: Row,
 {
 	let capacity = aggregate.capacity();
-	let mut buffers: HashMap<RollingGroup<A>, BTreeMap<RollingCoord<A>, A::Accumulator>> = HashMap::new();
-	let mut high_water: HashMap<RollingGroup<A>, RollingCoord<A>> = HashMap::new();
+	let mut buffers: HashMap<RollingGroup<A>, BTreeMap<RollingCoord, A::Accumulator>> = HashMap::new();
+	let mut high_water: HashMap<RollingGroup<A>, RollingCoord> = HashMap::new();
 	let mut last_visible: HashMap<RollingGroup<A>, A::Output> = HashMap::new();
 
 	for batch in batches {
@@ -331,14 +331,16 @@ where
 fn extract_rolling<A>(
 	aggregate: &A,
 	row: &CoreRow,
-) -> Option<(RollingGroup<A>, RollingCoord<A>, <A::Accumulator as WindowAccumulator>::Contribution)>
+) -> Option<(RollingGroup<A>, RollingCoord, <A::Accumulator as WindowAccumulator>::Contribution)>
 where
 	A: RollingOperator,
 {
 	let columns = Columns::from_row(row);
 	let view = NativeColumnsView::new(&columns);
 	let row_view = view.row(0)?;
-	with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
+	let coord = row_view.row_time()?;
+	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;
+	Some((group, coord.floor_to(aggregate.bucket_size()), contribution))
 }
 
 type CarryCoord = DateTime;

@@ -75,7 +75,6 @@ struct TestRollingSum {
 
 impl RollingOperator for TestRollingSum {
 	type GroupKey = String;
-	type WindowSlot = u64;
 	type Accumulator = WindowSum;
 	type Output = TestOut;
 
@@ -83,14 +82,17 @@ impl RollingOperator for TestRollingSum {
 		self.capacity
 	}
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, f64)> {
-		let group = row.utf8("group")?.to_string();
-		let window_start = row.u64("window_start")?;
-		let value = row.f64("value")?;
-		Some((group, window_start, value))
+	fn bucket_size(&self) -> Duration {
+		millis(1)
 	}
 
-	fn combine(&self, group: &String, buffer: &BTreeMap<u64, WindowSum>) -> Option<TestOut> {
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, f64)> {
+		let group = row.utf8("group")?.to_string();
+		let value = row.f64("value")?;
+		Some((group, value))
+	}
+
+	fn combine(&self, group: &String, buffer: &BTreeMap<DateTime, WindowSum>) -> Option<TestOut> {
 		if buffer.is_empty() {
 			return None;
 		}
@@ -274,7 +276,6 @@ struct SealedRollingSum;
 
 impl RollingOperator for SealedRollingSum {
 	type GroupKey = String;
-	type WindowSlot = DateTime;
 	type Accumulator = WindowSum;
 	type Output = TestOut;
 
@@ -282,12 +283,15 @@ impl RollingOperator for SealedRollingSum {
 		3
 	}
 
-	fn extract(&self, ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, DateTime, f64)> {
-		let (group, window_start, value) = TestRollingSum {
+	fn bucket_size(&self) -> Duration {
+		millis(1)
+	}
+
+	fn extract(&self, ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, f64)> {
+		TestRollingSum {
 			capacity: 3,
 		}
-		.extract(ctx, row)?;
-		Some((group, DateTime::from_millis(window_start), value))
+		.extract(ctx, row)
 	}
 
 	fn combine(&self, group: &String, buffer: &BTreeMap<DateTime, WindowSum>) -> Option<TestOut> {

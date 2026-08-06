@@ -9,10 +9,7 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{interface::catalog::flow::OperatorId, row::Row as CoreRow};
-use reifydb_flow::window::{
-	accumulator::invertible::{LastValue, Moments},
-	span::WindowCoord,
-};
+use reifydb_flow::window::accumulator::invertible::{LastValue, Moments};
 use reifydb_sdk::{
 	config::Config,
 	error::Result,
@@ -59,7 +56,6 @@ struct TestVelocity {
 
 impl RollingOperator for TestVelocity {
 	type GroupKey = String;
-	type WindowSlot = u64;
 	type Accumulator = LastValue<f64>;
 	type Output = TestOut;
 
@@ -67,14 +63,17 @@ impl RollingOperator for TestVelocity {
 		self.capacity
 	}
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, f64)> {
-		let group = row.utf8("group")?.to_string();
-		let window_start = row.u64("window_start")?;
-		let value = row.f64("value")?;
-		Some((group, window_start, value))
+	fn bucket_size(&self) -> Duration {
+		millis(1)
 	}
 
-	fn combine(&self, group: &String, buffer: &BTreeMap<u64, LastValue<f64>>) -> Option<TestOut> {
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, f64)> {
+		let group = row.utf8("group")?.to_string();
+		let value = row.f64("value")?;
+		Some((group, value))
+	}
+
+	fn combine(&self, group: &String, buffer: &BTreeMap<DateTime, LastValue<f64>>) -> Option<TestOut> {
 		// The reference fold the incremental path below has to reproduce exactly.
 		let (_, newest) = buffer.iter().next_back()?;
 		let newest = (*newest.get()?) as f64;
@@ -116,7 +115,7 @@ impl RollingIncrementalOperator for TestVelocity {
 		group: &String,
 		running: &Moments,
 		newest_value: &f64,
-		_newest_coord: u64,
+		_newest_coord: DateTime,
 	) -> Option<TestOut> {
 		let total_count = running.count();
 		let baseline_count = total_count.saturating_sub(1);
@@ -254,7 +253,6 @@ struct SealedVelocity;
 
 impl RollingOperator for SealedVelocity {
 	type GroupKey = String;
-	type WindowSlot = DateTime;
 	type Accumulator = LastValue<f64>;
 	type Output = TestOut;
 
@@ -262,21 +260,22 @@ impl RollingOperator for SealedVelocity {
 		3
 	}
 
-	fn extract(&self, ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, DateTime, f64)> {
-		let (group, window_start, value) = TestVelocity {
-			capacity: 3,
-		}
-		.extract(ctx, row)?;
-		Some((group, DateTime::from_millis(window_start), value))
+	fn bucket_size(&self) -> Duration {
+		millis(1)
 	}
 
-	fn combine(&self, group: &String, buffer: &BTreeMap<DateTime, LastValue<f64>>) -> Option<TestOut> {
-		let reindexed: BTreeMap<u64, LastValue<f64>> =
-			buffer.iter().map(|(coord, a)| (coord.to_order(), a.clone())).collect();
+	fn extract(&self, ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, f64)> {
 		TestVelocity {
 			capacity: 3,
 		}
-		.combine(group, &reindexed)
+		.extract(ctx, row)
+	}
+
+	fn combine(&self, group: &String, buffer: &BTreeMap<DateTime, LastValue<f64>>) -> Option<TestOut> {
+		TestVelocity {
+			capacity: 3,
+		}
+		.combine(group, buffer)
 	}
 }
 
@@ -297,7 +296,7 @@ impl RollingIncrementalOperator for SealedVelocity {
 		TestVelocity {
 			capacity: 3,
 		}
-		.combine_running(group, running, newest_value, newest_coord.to_order())
+		.combine_running(group, running, newest_value, newest_coord)
 	}
 }
 

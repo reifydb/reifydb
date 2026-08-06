@@ -10,6 +10,9 @@ mod tumbling;
 #[path = "operator/rolling.rs"]
 mod rolling;
 
+#[path = "operator/rolling_incremental.rs"]
+mod rolling_incremental;
+
 #[path = "operator/multi_rolling.rs"]
 mod multi_rolling;
 
