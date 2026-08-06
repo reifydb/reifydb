@@ -183,7 +183,10 @@ impl SubscriptionSubsystem {
 			let bus = engine.event_bus().clone();
 			let rc = RuntimeContext::with_clock(clock.clone());
 			let co = custom_operators.clone();
-			let substrate = FlowSubstrate::with_dictionary(engine.dictionary_allocators());
+			let substrate = FlowSubstrate::with_dictionary(
+				engine.dictionary_allocators(),
+				engine.operator_state(),
+			);
 			let state_budget = state_budget.clone();
 			let factory = move || {
 				FlowEngineInner::new(

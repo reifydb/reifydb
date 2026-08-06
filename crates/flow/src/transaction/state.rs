@@ -274,12 +274,18 @@ impl FlowTransaction {
 		} else {
 			let inner = self.inner_mut();
 			inner.store_reads += to_batch.len() as u64;
-			let found = inner.state_query.as_ref().unwrap().get_many(to_batch)?;
+			let version = inner.version;
 			for encoded_key in to_batch {
-				match found.get(encoded_key) {
-					Some(multi) => {
-						inner.memoize_prefetch(encoded_key, Some(multi.row.clone()));
-						items.push(multi.clone());
+				let (operator, inner_key) = super::substrate::operator_state_coordinates(encoded_key)
+					.expect("state_get_many keys must carry an operator id");
+				match inner.substrate.operators.get(operator, &inner_key) {
+					Some(row) => {
+						inner.memoize_prefetch(encoded_key, Some(row.clone()));
+						items.push(MultiVersionRow {
+							key: encoded_key.clone(),
+							row,
+							version,
+						});
 					}
 					None => {
 						inner.memoize_prefetch(encoded_key, None);
@@ -314,7 +320,7 @@ pub mod tests {
 			row::{EncodedRow, SHAPE_HEADER_SIZE},
 			shape::RowShape,
 		},
-		key::encoded::EncodedKeyRange,
+		key::encoded::{EncodedKey, EncodedKeyRange},
 	};
 	use reifydb_core::{
 		actors::pending::{Pending, PendingLayers},
@@ -341,16 +347,31 @@ pub mod tests {
 		transaction::{DeferredParams, read::PREFETCH_MEMO_BYTE_CAP, substrate::FlowSubstrate},
 	};
 
-	fn commit_state_row(
-		engine: &TestEngine,
-		operator: OperatorId,
-		key: &GroupStateKey,
-		row: EncodedRow,
-	) -> CommitVersion {
-		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
-		cmd.disable_conflict_tracking().unwrap();
-		cmd.set(&OperatorStateKey::encoded(operator, key.as_slice()), row).unwrap();
-		cmd.commit_unchecked().unwrap()
+	fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey, row: EncodedRow) {
+		// Stands in for a prior slice's success-side arena apply.
+		engine.inner().operator_state().set(operator, EncodedKey::new(key.as_slice()), row);
+	}
+
+	fn deferred_shared(engine: &TestEngine) -> FlowTransaction {
+		// Shares the engine's operator arena like every production deferred txn.
+		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let version = parent.version();
+		FlowTransaction::deferred_from_parts(DeferredParams {
+			version,
+			pending: Pending::new(),
+			base_pending: PendingLayers::empty(),
+			query: parent.multi.begin_query().unwrap(),
+			state_query: parent.multi.begin_query().unwrap(),
+			single: parent.single.clone(),
+			catalog: Catalog::testing(),
+			interceptors: Interceptors::new(),
+			clock: Clock::Mock(MockClock::from_millis(1000)),
+			substrate: FlowSubstrate {
+				operators: engine.inner().operator_state(),
+				..FlowSubstrate::default()
+			},
+			state_budget: OperatorStateBudgetHandle::default(),
+		})
 	}
 
 	fn make_key(s: &str) -> GroupStateKey {
@@ -745,17 +766,9 @@ pub mod tests {
 		let engine = TestEngine::new();
 		let operator_id = OperatorId(1);
 		let committed_key = make_key("committed");
-		commit_state_row(&engine, operator_id, &committed_key, make_value("v"));
+		seed_state_row(&engine, operator_id, &committed_key, make_value("v"));
 
-		let parent = engine.begin_admin(IdentityId::system()).unwrap();
-		let version = parent.version();
-		let mut txn = FlowTransaction::deferred(
-			&parent,
-			version,
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut txn = deferred_shared(&engine);
 		assert_eq!(txn.store_reads(), 0);
 
 		// A write is a pure overlay operation: neither it nor its overlay-served read-back counts.
@@ -789,17 +802,9 @@ pub mod tests {
 		let engine = TestEngine::new();
 		let operator_id = OperatorId(1);
 		let committed_key = make_key("committed");
-		commit_state_row(&engine, operator_id, &committed_key, make_value("v"));
+		seed_state_row(&engine, operator_id, &committed_key, make_value("v"));
 
-		let parent = engine.begin_admin(IdentityId::system()).unwrap();
-		let version = parent.version();
-		let mut txn = FlowTransaction::deferred(
-			&parent,
-			version,
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut txn = deferred_shared(&engine);
 
 		assert_eq!(txn.state_get(operator_id, &committed_key).unwrap(), Some(make_value("v")));
 		assert_eq!(txn.store_reads(), 1);
@@ -834,17 +839,9 @@ pub mod tests {
 		let engine = TestEngine::new();
 		let operator_id = OperatorId(1);
 		let key = make_key("k");
-		commit_state_row(&engine, operator_id, &key, make_value("old"));
+		seed_state_row(&engine, operator_id, &key, make_value("old"));
 
-		let parent = engine.begin_admin(IdentityId::system()).unwrap();
-		let version = parent.version();
-		let mut txn = FlowTransaction::deferred(
-			&parent,
-			version,
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut txn = deferred_shared(&engine);
 
 		assert_eq!(txn.state_get(operator_id, &key).unwrap(), Some(make_value("old")));
 		txn.state_set(operator_id, &key, make_value("new")).unwrap();
@@ -870,17 +867,9 @@ pub mod tests {
 		let engine = TestEngine::new();
 		let operator_id = OperatorId(1);
 		let key = make_key("acc");
-		commit_state_row(&engine, operator_id, &key, anchored_row(b"v0", 1_000, 1_000));
+		seed_state_row(&engine, operator_id, &key, anchored_row(b"v0", 1_000, 1_000));
 
-		let parent = engine.begin_admin(IdentityId::system()).unwrap();
-		let version = parent.version();
-		let mut txn = FlowTransaction::deferred(
-			&parent,
-			version,
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut txn = deferred_shared(&engine);
 
 		assert!(txn.state_get(operator_id, &key).unwrap().is_some());
 		assert_eq!(txn.store_reads(), 1);
@@ -898,40 +887,32 @@ pub mod tests {
 
 	#[test]
 	fn deferred_read_sees_state_committed_above_object_version() {
-		// A prior consume commits its join state at that consume's commit version, strictly above
-		// any input data version. Bounding operator-state reads to the later consume's own object
-		// version would hide the other side of the join and emit an unmatched none result.
+		// State reads resolve read-latest from the arena; bounding them to the pinned object
+		// version would hide the other side of a join.
 		let engine = TestEngine::new();
 		let operator_id = OperatorId(1);
 		let inner_key = make_key("late_right_side");
 		let value = make_value("matched_row");
 
-		// Two further commits push the operator-state write more than one version above the object
-		// version, so the read bound (object_version + 1) cannot reach it on its own.
-		let object_version = commit_state_row(&engine, operator_id, &make_key("warmup_a"), make_value("a"));
-		commit_state_row(&engine, operator_id, &make_key("warmup_b"), make_value("b"));
-		let committed_at = commit_state_row(&engine, operator_id, &inner_key, value.clone());
-		assert!(
-			committed_at.0 >= object_version.0 + 2,
-			"operator state must commit at least two versions above the object version: committed_at={committed_at:?} object_version={object_version:?}"
-		);
+		// Pinned before the state is applied, so a version-bounded read could not see it.
+		let object_version = engine.inner().current_version().unwrap();
+		seed_state_row(&engine, operator_id, &make_key("warmup_a"), make_value("a"));
+		seed_state_row(&engine, operator_id, &inner_key, value.clone());
 
-		let (state_version, lease) = engine.acquire_current_snapshot_lease().unwrap();
-		assert!(state_version >= committed_at);
-
-		let query = engine.multi().begin_query_at_version(&lease).unwrap();
-		let state_query = engine.multi().begin_query_at_version(&lease).unwrap();
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version: object_version,
 			pending: Pending::new(),
 			base_pending: PendingLayers::empty(),
-			query,
-			state_query,
+			query: engine.multi().begin_query().unwrap(),
+			state_query: engine.multi().begin_query().unwrap(),
 			single: engine.single().clone(),
 			catalog: Catalog::testing(),
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
-			substrate: FlowSubstrate::new(),
+			substrate: FlowSubstrate {
+				operators: engine.inner().operator_state(),
+				..FlowSubstrate::default()
+			},
 			state_budget: OperatorStateBudgetHandle::default(),
 		});
 
@@ -939,22 +920,21 @@ pub mod tests {
 		assert_eq!(
 			batch.items.len(),
 			1,
-			"operator state committed at {committed_at:?} (above object_version {object_version:?}) must be visible to a deferred read"
+			"operator state applied above object_version {object_version:?} must be visible to a deferred read"
 		);
 		assert_eq!(batch.items[0].row, value);
 	}
 
 	#[test]
 	fn deferred_read_sees_base_pending_overlay() {
-		// The pinned query snapshot cannot see the flow's last commit, so a deferred slice reads its
-		// own prior writes through the base_pending overlay.
+		// base_pending must shadow whatever the arena already holds.
 		let engine = TestEngine::new();
 		let operator_id = OperatorId(1);
 
 		let committed_key = make_key("committed");
 		let committed_value = make_value("committed_value");
-		let low_version = commit_state_row(&engine, operator_id, &make_key("warmup"), make_value("w"));
-		commit_state_row(&engine, operator_id, &committed_key, committed_value.clone());
+		let low_version = engine.inner().current_version().unwrap();
+		seed_state_row(&engine, operator_id, &committed_key, committed_value.clone());
 
 		let overlaid_key = make_key("overlaid");
 		let overlaid_value = make_value("overlaid_value");
@@ -975,7 +955,10 @@ pub mod tests {
 			catalog: Catalog::testing(),
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
-			substrate: FlowSubstrate::new(),
+			substrate: FlowSubstrate {
+				operators: engine.inner().operator_state(),
+				..FlowSubstrate::default()
+			},
 			state_budget: OperatorStateBudgetHandle::default(),
 		});
 
@@ -1102,17 +1085,9 @@ pub mod tests {
 		let engine = TestEngine::new();
 		let operator_id = OperatorId(1);
 		let key = make_key("k1");
-		commit_state_row(&engine, operator_id, &key, make_value("v"));
+		seed_state_row(&engine, operator_id, &key, make_value("v"));
 
-		let parent = engine.begin_admin(IdentityId::system()).unwrap();
-		let version = parent.version();
-		let mut txn = FlowTransaction::deferred(
-			&parent,
-			version,
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut txn = deferred_shared(&engine);
 
 		// Fill the counter to the cap so the next memoization cannot fit.
 		txn.inner_mut().prefetch_bytes = PREFETCH_MEMO_BYTE_CAP;
@@ -1137,31 +1112,16 @@ pub mod tests {
 		let operator_id = OperatorId(1);
 		let hit = make_key("hit");
 		let miss = make_key("miss");
-		commit_state_row(&engine, operator_id, &hit, make_value("v"));
+		seed_state_row(&engine, operator_id, &hit, make_value("v"));
 
-		let parent = engine.begin_admin(IdentityId::system()).unwrap();
-		let version = parent.version();
-
-		let mut batch_txn = FlowTransaction::deferred(
-			&parent,
-			version,
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut batch_txn = deferred_shared(&engine);
 		let fetched = batch_txn.state_get_many(operator_id, &[hit.clone(), miss.clone()]).unwrap();
 		assert_eq!(fetched.items.len(), 1);
 		let batch_bytes = batch_txn.inner().prefetch_bytes;
 		assert!(batch_bytes > 0, "batch memoization must be counted");
 		assert_eq!(batch_txn.inner().prefetch_rejections, 0);
 
-		let mut point_txn = FlowTransaction::deferred(
-			&parent,
-			version,
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
+		let mut point_txn = deferred_shared(&engine);
 		assert!(point_txn.state_get(operator_id, &hit).unwrap().is_some());
 		assert!(point_txn.state_get(operator_id, &miss).unwrap().is_none());
 		assert_eq!(

@@ -15,6 +15,7 @@ default = []
 runtime = [
     "dep:reifydb-catalog",
     "dep:reifydb-runtime",
+    "dep:reifydb-store-operator",
     "dep:reifydb-transaction",
     "dep:dashmap",
     "dep:postcard",
@@ -26,6 +27,7 @@ reifydb-catalog = { workspace = true, optional = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true, optional = true }
+reifydb-store-operator = { workspace = true, optional = true }
 reifydb-transaction = { workspace = true, optional = true }
 reifydb-value = { workspace = true }
 reifydb-macro = { workspace = true }

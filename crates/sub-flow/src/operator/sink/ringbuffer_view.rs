@@ -996,6 +996,7 @@ mod tests {
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		common::CommitVersion,
+		key::{Key, kind::KeyKind},
 		interface::{
 			catalog::{
 				column::{Column as CatalogColumn, ColumnIndex},
@@ -1007,6 +1008,7 @@ mod tests {
 		},
 	};
 	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_flow::transaction::substrate::apply_operator_state;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 	use reifydb_value::value::{constraint::TypeConstraint, datetime::DateTime, identity::IdentityId};
 
@@ -1081,9 +1083,13 @@ mod tests {
 	}
 
 	fn commit_flow_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
+		// Mirrors the committer split: state to the arena, everything else to the multi store.
 		let pending = txn.take_pending();
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 		for (key, pw) in pending.iter_sorted() {
+			if matches!(Key::kind(key), Some(KeyKind::OperatorState)) {
+				continue;
+			}
 			match pw {
 				PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
 				PendingWrite::Remove {
@@ -1094,7 +1100,8 @@ mod tests {
 				} => cmd.remove_silent(key).unwrap(),
 			};
 		}
-		cmd.commit().unwrap();
+		let version = cmd.commit().unwrap();
+		apply_operator_state(&engine.inner().operator_state(), version, &pending);
 	}
 
 	fn columns_at(partitioned: bool, rows: &[(&str, i32)], first_source_rn: u64, time: u64) -> Columns {

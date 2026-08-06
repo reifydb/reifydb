@@ -232,7 +232,6 @@ mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{encoded::row::EncodedRow, state::OperatorState};
 	use reifydb_core::{
-		actors::pending::PendingWrite,
 		common::CommitVersion,
 		key::operator_group_state::{Keyspace, OperatorGroupStateKey, group_inner_range, keyspace_inner_range},
 		state::horizon::Cutoff,
@@ -243,6 +242,14 @@ mod tests {
 	use reifydb_value::value::{datetime::DateTime, duration::Duration, identity::IdentityId};
 
 	use super::*;
+	use reifydb_core::{
+		actors::pending::{Pending, PendingLayers},
+		state::budget::OperatorStateBudgetHandle,
+	};
+	use crate::transaction::{
+		DeferredParams,
+		substrate::{FlowSubstrate, apply_operator_state},
+	};
 	use crate::transaction::ChangeCoordinate;
 
 	const NODE: OperatorId = OperatorId(1);
@@ -270,13 +277,22 @@ mod tests {
 	fn deferred(engine: &TestEngine) -> FlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		let mut txn = FlowTransaction::deferred(
-			&parent,
+		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version,
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(0)),
-		);
+			pending: Pending::new(),
+			base_pending: PendingLayers::empty(),
+			query: parent.multi.begin_query().unwrap(),
+			state_query: parent.multi.begin_query().unwrap(),
+			single: parent.single.clone(),
+			catalog: Catalog::testing(),
+			interceptors: Interceptors::new(),
+			clock: Clock::Mock(MockClock::from_millis(0)),
+			substrate: FlowSubstrate {
+				operators: engine.inner().operator_state(),
+				..FlowSubstrate::default()
+			},
+			state_budget: OperatorStateBudgetHandle::default(),
+		});
 		// The substrate derives an intern's position from the change coordinate, so it is set here.
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: DateTime::from_millis(0),
@@ -306,20 +322,7 @@ mod tests {
 		// Expresses a crash point: what committed before it survives, what came after never
 		// happened, and nothing in RAM carries over into the cold interner that follows.
 		let pending = txn.take_pending();
-		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
-		cmd.disable_conflict_tracking().unwrap();
-		for (k, pw) in pending.iter_sorted() {
-			match pw {
-				PendingWrite::Set(v) => cmd.set(k, v.clone()).unwrap(),
-				PendingWrite::Remove {
-					announce: true,
-				} => cmd.remove(k).unwrap(),
-				PendingWrite::Remove {
-					announce: false,
-				} => cmd.remove_silent(k).unwrap(),
-			};
-		}
-		cmd.commit_unchecked().unwrap();
+		apply_operator_state(&engine.inner().operator_state(), txn.version(), &pending);
 	}
 
 	fn restarted(engine: &TestEngine) -> FlowTransaction {

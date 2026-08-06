@@ -105,7 +105,7 @@ impl FlowSubsystem {
 		let clock = ioc.resolve::<Clock>().expect("Clock must be registered");
 		let spawner = ioc.resolve::<ActorSpawner>().expect("ActorSpawner must be registered");
 		let custom_operators = config.custom_operators;
-		let substrate = FlowSubstrate::with_dictionary(engine.dictionary_allocators());
+		let substrate = FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state());
 		let object_tracker = ObjectVersionTracker::new();
 		let flow_tracker = FlowPositionTracker::new();
 		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
@@ -129,7 +129,12 @@ impl FlowSubsystem {
 		}
 		let poll_frontier = CdcConsumerWatermark::default();
 		let materialization = FlowMaterialization::new(poll_frontier.clone(), flow_tracker.clone());
-		let committer = Committer::new(flow_catalog.clone(), flow_tracker.clone(), materialization.clone());
+		let committer = Committer::new(
+			flow_catalog.clone(),
+			flow_tracker.clone(),
+			materialization.clone(),
+			substrate.operators.clone(),
+		);
 		let committer_handle = flow_scope.spawn_flow(
 			"flow-committer",
 			CommitterActor::new(committer, group_commit, state_budget.clone()),

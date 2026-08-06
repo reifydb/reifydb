@@ -96,7 +96,7 @@ mod tests {
 			catalog: Catalog::testing(),
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(0)),
-			substrate: FlowSubstrate::with_dictionary(registry),
+			substrate: FlowSubstrate::with_dictionary(registry, engine.inner().operator_state()),
 			state_budget: OperatorStateBudgetHandle::default(),
 		})
 	}

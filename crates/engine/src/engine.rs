@@ -49,6 +49,7 @@ use reifydb_runtime::{
 	shutdown::Shutdown,
 	version_epoch::VersionEpoch,
 };
+use reifydb_store_operator::OperatorStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
@@ -461,6 +462,7 @@ pub struct Inner {
 	interceptors: Arc<InterceptorFactory>,
 	catalog: Catalog,
 	operator_store: OperatorLibraryStore,
+	operator_state: OperatorStore,
 	dictionary_allocators: DictionaryAllocatorRegistry,
 	read_only: AtomicBool,
 	shutting_down: AtomicBool,
@@ -503,6 +505,7 @@ impl StandardEngine {
 			interceptors,
 			catalog,
 			operator_store,
+			operator_state: OperatorStore::default(),
 			dictionary_allocators,
 			read_only: AtomicBool::new(false),
 			shutting_down: AtomicBool::new(false),
@@ -587,6 +590,10 @@ impl StandardEngine {
 	#[inline]
 	pub fn operator_store(&self) -> &OperatorLibraryStore {
 		&self.operator_store
+	}
+
+	pub fn operator_state(&self) -> OperatorStore {
+		self.operator_state.clone()
 	}
 
 	#[inline]

@@ -18,11 +18,13 @@ use reifydb_core::{
 };
 #[cfg(test)]
 use reifydb_engine::engine::StandardEngine;
+use reifydb_flow::transaction::substrate::apply_operator_state;
 use reifydb_runtime::actor::{
 	context::Context,
 	system::{ActorConfig, ActorHandle},
 	traits::{Actor, Directive},
 };
+use reifydb_store_operator::OperatorStore;
 use reifydb_transaction::{
 	group::{GroupCommitApply, GroupCommitCompletion, GroupCommitHandle, GroupCommitSubmission},
 	transaction::{Transaction, command::CommandTransaction},
@@ -111,6 +113,7 @@ impl CommitterActor {
 			completion_budget.release_in_flight(in_flight);
 			match result {
 				Ok(version) => {
+					apply_operator_state(&completion_committer.operators, version, &combined);
 					if produced_output {
 						completion_committer.materialization.record_output(version);
 					}
@@ -157,6 +160,7 @@ impl CommitterActor {
 			completion_budget.release_in_flight(in_flight);
 			match result {
 				Ok(version) => {
+					apply_operator_state(&completion_committer.operators, version, &pending);
 					completion_committer.materialization.record_output(version);
 					let pending =
 						Arc::try_unwrap(pending).unwrap_or_else(|shared| (*shared).clone());
@@ -238,6 +242,7 @@ pub struct Committer {
 	catalog: FlowCatalog,
 	flow_tracker: FlowPositionTracker,
 	materialization: FlowMaterialization,
+	operators: OperatorStore,
 }
 
 impl Committer {
@@ -245,11 +250,13 @@ impl Committer {
 		catalog: FlowCatalog,
 		flow_tracker: FlowPositionTracker,
 		materialization: FlowMaterialization,
+		operators: OperatorStore,
 	) -> Self {
 		Self {
 			catalog,
 			flow_tracker,
 			materialization,
+			operators,
 		}
 	}
 
@@ -348,6 +355,7 @@ impl Committer {
 
 		let commit_version = transaction.commit_unchecked()?;
 
+		apply_operator_state(&self.operators, commit_version, &combined);
 		self.post_commit_slice(&checkpoints, &positions, &checkpoint_deletes);
 		Ok((commit_version, combined))
 	}
@@ -367,6 +375,9 @@ fn pending_bytes(pending: &Pending) -> ByteSize {
 #[instrument(name = "flow::committer::apply_pending", level = "debug", skip_all)]
 fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending) -> Result<()> {
 	for (key, pw) in combined.iter_sorted() {
+		if matches!(Key::kind(key), Some(KeyKind::OperatorState)) {
+			continue;
+		}
 		match pw {
 			PendingWrite::Set(value) => transaction.set(key, value.clone())?,
 			PendingWrite::Remove {
@@ -399,7 +410,14 @@ mod group_commit_integration {
 
 	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
-	use reifydb_core::interface::cdc::SystemChange;
+	use reifydb_core::{
+		interface::{catalog::flow::OperatorId, cdc::SystemChange},
+		internal_error,
+		key::{
+			operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
+			operator_state::OperatorStateKey,
+		},
+	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::sync::{mutex::Mutex, waiter::WaiterHandle};
 	use reifydb_transaction::group::GroupCommitBegin;
@@ -466,6 +484,7 @@ mod group_commit_integration {
 			FlowCatalog::new(engine.catalog()),
 			tracker.clone(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+			engine.operator_state(),
 		);
 		let handle = engine.spawner().spawn_flow(
 			"group-commit-test-committer",
@@ -578,5 +597,135 @@ mod group_commit_integration {
 		for i in 1..=2u64 {
 			assert_eq!(tracked.get(&FlowId(i)).copied(), Some(CommitVersion(100 + i)));
 		}
+	}
+
+	fn state_inner(suffix: &[u8]) -> GroupStateKey {
+		OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, suffix)
+	}
+
+	fn state_slice(entries: &[(OperatorId, &GroupStateKey, u8)]) -> FlowSlice {
+		let mut combined = Pending::new();
+		for (operator, inner, tag) in entries {
+			combined.insert(
+				OperatorStateKey::encoded(*operator, inner.as_slice()),
+				EncodedRow(CowVec::new(vec![*tag; 4])),
+			);
+		}
+		let mut slice = FlowSlice::empty();
+		slice.combined = combined;
+		slice.checkpoints = vec![(FlowId(1), CommitVersion(10))];
+		slice
+	}
+
+	#[test]
+	fn a_failed_group_commit_leaves_the_arena_untouched() {
+		// A rolled-back group must leave no arena state: otherwise flows read versions that
+		// never became durable. Falsified by applying arena writes on the failure side or
+		// inside the apply closure.
+		let te = TestEngine::builder().with_cdc().build();
+		let engine = te.inner().clone();
+		let begin_engine = engine.clone();
+		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		// max_entries = 2 flushes when the poison joins the slice; slice first so its apply
+		// runs before the sibling fails the group.
+		let group =
+			GroupCommitHandle::spawn(&engine.spawner(), begin, Duration::from_seconds(5).unwrap(), 2);
+		let (handle, committer) = build_committer_actor(&engine, group.clone());
+		let store = committer.operators.clone();
+
+		let operator = OperatorId(9);
+		let inner = state_inner(b"k");
+		let slice = state_slice(&[(operator, &inner, 7)]);
+
+		let replies = SliceReplies::new(1);
+		assert!(handle
+			.actor_ref()
+			.send(CommitterMessage::Slice {
+				slice,
+				reply: replies.reply(0),
+			})
+			.is_ok());
+		sleep(StdDuration::from_millis(200));
+
+		group.submit(GroupCommitSubmission {
+			apply: Box::new(|_| Err(internal_error!("poisoned sibling"))),
+			completion: Box::new(|_| {}),
+		});
+		replies.wait();
+
+		{
+			let results = replies.results.lock();
+			assert!(results[0].1.is_err(), "the poisoned group must fail the slice commit");
+		}
+		assert_eq!(
+			store.get(operator, &EncodedKey::new(inner.as_slice())),
+			None,
+			"a failed commit must not leak its operator-state writes into the arena"
+		);
+		assert_eq!(store.upper(operator), CommitVersion(0), "a failed commit must not move upper");
+		assert_eq!(store.total_bytes(), 0, "the arena must be byte-for-byte untouched");
+	}
+
+	#[test]
+	fn arena_state_becomes_visible_only_with_the_commit_and_carries_upper() {
+		// Arena state must not appear before the commit completes (falsified by applying at
+		// submission time) and upper must equal the commit version for touched operators only
+		// (falsified by skipping set_upper).
+		let te = TestEngine::builder().with_cdc().build();
+		let engine = te.inner().clone();
+		let begin_engine = engine.clone();
+		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let group = GroupCommitHandle::spawn(
+			&engine.spawner(),
+			begin,
+			Duration::from_milliseconds(2000).unwrap(),
+			16,
+		);
+		let (handle, committer) = build_committer_actor(&engine, group);
+		let store = committer.operators.clone();
+
+		let op_a = OperatorId(3);
+		let op_b = OperatorId(4);
+		let inner_a = state_inner(b"a");
+		let inner_b = state_inner(b"b");
+		let slice = state_slice(&[(op_a, &inner_a, 1), (op_b, &inner_b, 2)]);
+
+		let replies = SliceReplies::new(1);
+		assert!(handle
+			.actor_ref()
+			.send(CommitterMessage::Slice {
+				slice,
+				reply: replies.reply(0),
+			})
+			.is_ok());
+
+		sleep(StdDuration::from_millis(300));
+		assert_eq!(
+			store.total_bytes(),
+			0,
+			"operator state must not become visible in the arena before the group flushes and \
+			 the commit completes"
+		);
+
+		replies.wait();
+		let version = replies.versions()[0].1;
+		assert!(version > CommitVersion(0));
+
+		assert_eq!(
+			store.get(op_a, &EncodedKey::new(inner_a.as_slice())),
+			Some(EncodedRow(CowVec::new(vec![1; 4]))),
+			"the committed slice's state must be readable from the arena"
+		);
+		assert_eq!(
+			store.get(op_b, &EncodedKey::new(inner_b.as_slice())),
+			Some(EncodedRow(CowVec::new(vec![2; 4])))
+		);
+		assert_eq!(store.upper(op_a), version, "upper must track the commit version for touched operators");
+		assert_eq!(store.upper(op_b), version);
+		assert_eq!(
+			store.upper(OperatorId(5)),
+			CommitVersion(0),
+			"an operator this slice never touched must keep its previous upper"
+		);
 	}
 }

@@ -239,13 +239,20 @@ impl TimerWheel {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::actors::pending::PendingWrite;
+	use reifydb_core::{
+		actors::pending::{Pending, PendingLayers},
+		state::budget::OperatorStateBudgetHandle,
+	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_value::value::identity::IdentityId;
 
 	use super::*;
+	use crate::transaction::{
+		DeferredParams,
+		substrate::{FlowSubstrate, apply_operator_state},
+	};
 
 	const NODE: OperatorId = OperatorId(1);
 	const NO_LIMIT: usize = usize::MAX;
@@ -257,26 +264,28 @@ mod tests {
 	fn deferred_with_clock(engine: &TestEngine, clock: MockClock) -> FlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		FlowTransaction::deferred(&parent, version, Catalog::testing(), Interceptors::new(), Clock::Mock(clock))
+		FlowTransaction::deferred_from_parts(DeferredParams {
+			version,
+			pending: Pending::new(),
+			base_pending: PendingLayers::empty(),
+			query: parent.multi.begin_query().unwrap(),
+			state_query: parent.multi.begin_query().unwrap(),
+			single: parent.single.clone(),
+			catalog: Catalog::testing(),
+			interceptors: Interceptors::new(),
+			clock: Clock::Mock(clock),
+			substrate: FlowSubstrate {
+				operators: engine.inner().operator_state(),
+				..FlowSubstrate::default()
+			},
+			state_budget: OperatorStateBudgetHandle::default(),
+		})
 	}
 
 	fn commit_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
-		// Persists the pending writes so a cold wheel resolves them as a restarted process would.
+		// Persists into the operator arena so a cold wheel resolves them from the store.
 		let pending = txn.take_pending();
-		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
-		cmd.disable_conflict_tracking().unwrap();
-		for (k, pw) in pending.iter_sorted() {
-			match pw {
-				PendingWrite::Set(v) => cmd.set(k, v.clone()).unwrap(),
-				PendingWrite::Remove {
-					announce: true,
-				} => cmd.remove(k).unwrap(),
-				PendingWrite::Remove {
-					announce: false,
-				} => cmd.remove_silent(k).unwrap(),
-			};
-		}
-		cmd.commit_unchecked().unwrap();
+		apply_operator_state(&engine.inner().operator_state(), txn.version(), &pending);
 	}
 
 	fn at(millis: u64) -> DateTime {

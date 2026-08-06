@@ -12,10 +12,10 @@ use reifydb_abi::flow::diff::DiffType;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, state::OperatorState};
 use reifydb_core::{
-	actors::pending::{Pending, PendingLayers},
+	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, change::Change},
-	key::operator_group_state::GroupStateKey,
+	key::{Key, kind::KeyKind, operator_group_state::GroupStateKey},
 	row::Row,
 	state::budget::OperatorStateBudgetHandle,
 	value::column::columns::Columns,
@@ -23,7 +23,10 @@ use reifydb_core::{
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_flow::{
 	operator::Operator,
-	transaction::{ChangeCoordinate, DeferredParams, FlowTransaction, substrate::FlowSubstrate},
+	transaction::{
+		ChangeCoordinate, DeferredParams, FlowTransaction,
+		substrate::{FlowSubstrate, apply_operator_state},
+	},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::{
@@ -85,7 +88,24 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 	}
 
 	fn end_txn(&mut self, mut txn: FlowTransaction) {
-		self.pending = txn.take_pending();
+		let pending = txn.take_pending();
+		apply_operator_state(&self.substrate.operators, CommitVersion(self.version), &pending);
+		let mut rest = Pending::new();
+		for (key, write) in pending.iter_sorted() {
+			if matches!(Key::kind(key), Some(KeyKind::OperatorState)) {
+				continue;
+			}
+			match write {
+				PendingWrite::Set(row) => rest.insert(key.clone(), row.clone()),
+				PendingWrite::Remove {
+					announce: true,
+				} => rest.remove(key.clone()),
+				PendingWrite::Remove {
+					announce: false,
+				} => rest.remove_silent(key.clone()),
+			}
+		}
+		self.pending = rest;
 		self.version += 1;
 	}
 
@@ -257,13 +277,17 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarnessBuilder
 		let adapter = NativeOperatorAdapter::new(core, self.operator_id, capabilities);
 		let operator = NativeBridgedOperator::new(Box::new(adapter), self.operator_id, capabilities);
 
+		let substrate = FlowSubstrate {
+			operators: engine.inner().operator_state(),
+			..FlowSubstrate::default()
+		};
 		Ok(NativeOperatorHarness {
 			engine,
 			operator,
 			operator_id: self.operator_id,
 			version: self.version.0,
 			pending: Pending::new(),
-			substrate: FlowSubstrate::new(),
+			substrate,
 			current: None,
 			history: Vec::new(),
 			_phantom: PhantomData,

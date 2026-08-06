@@ -400,7 +400,7 @@ mod integration {
 			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
 			CustomOperators::new(HashMap::new()),
-			FlowSubstrate::with_dictionary(engine.dictionary_allocators()),
+			FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state()),
 			OperatorSampleRegistry::new(),
 			OperatorStateBudgetHandle::default(),
 		)
@@ -570,6 +570,7 @@ mod integration {
 			flow_catalog,
 			FlowPositionTracker::new(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+			engine.operator_state(),
 		);
 		let config = SliceConfig {
 			checkpoint_lag: 10_000,
@@ -677,6 +678,7 @@ mod integration {
 			flow_catalog,
 			FlowPositionTracker::new(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+			engine.operator_state(),
 		);
 		let config = SliceConfig {
 			checkpoint_lag: 10_000,
@@ -822,6 +824,7 @@ mod integration {
 			flow_catalog,
 			FlowPositionTracker::new(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+			engine.operator_state(),
 		);
 		let config = SliceConfig {
 			checkpoint_lag: 10_000,

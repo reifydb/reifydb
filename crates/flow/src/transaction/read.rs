@@ -20,17 +20,23 @@ use reifydb_codec::{
 use reifydb_core::{
 	actors::pending::PendingWrite,
 	common::CommitVersion,
-	interface::store::{MultiVersionBatch, MultiVersionRow},
-	key::{Key, kind::KeyKind},
+	interface::{
+		catalog::flow::OperatorId,
+		store::{MultiVersionBatch, MultiVersionRow},
+	},
+	key::{Key, kind::KeyKind, operator_state::OperatorStateKey},
 };
+use reifydb_store_operator::OperatorStore;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
 use vec::IntoIter;
 
-use super::{FlowTransaction, FlowTransactionInner};
+use super::{FlowTransaction, FlowTransactionInner, substrate::operator_state_coordinates};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadFrom {
+	OperatorState,
+
 	StateQuery,
 
 	Query,
@@ -74,7 +80,7 @@ impl FlowTransaction {
 		} = self
 		{
 			return match Self::read_from(key) {
-				ReadFrom::StateQuery => Ok(state.get(key).cloned()),
+				ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(state.get(key).cloned()),
 				ReadFrom::Query | ReadFrom::OwnedRow => match inner.query.get(key)? {
 					Some(multi) => Ok(Some(multi.row().clone())),
 					None => Ok(None),
@@ -89,10 +95,18 @@ impl FlowTransaction {
 		let inner = self.inner_mut();
 		inner.store_reads += 1;
 		let route = Self::read_from(key);
+		if matches!(route, ReadFrom::OperatorState) {
+			let (operator, inner_key) = operator_state_coordinates(key)
+				.expect("an OperatorState-routed key must carry an operator id");
+			let result = inner.substrate.operators.get(operator, &inner_key);
+			inner.memoize_prefetch(key, result.clone());
+			return Ok(result);
+		}
 		let query = match route {
 			ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 			ReadFrom::Query => &inner.query,
 			ReadFrom::OwnedRow => inner.state_query.as_ref().unwrap_or(&inner.query),
+			ReadFrom::OperatorState => unreachable!(),
 		};
 		let result = query.get(key)?.map(|multi| multi.row().clone());
 		if matches!(route, ReadFrom::StateQuery) {
@@ -122,13 +136,18 @@ impl FlowTransaction {
 		} = self
 		{
 			return match Self::read_from(key) {
-				ReadFrom::StateQuery => Ok(state.contains_key(key)),
+				ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(state.contains_key(key)),
 				ReadFrom::Query | ReadFrom::OwnedRow => inner.query.contains_key(key),
 			};
 		}
 
 		let inner = self.inner_mut();
 		let query = match Self::read_from(key) {
+			ReadFrom::OperatorState => {
+				let (operator, inner_key) = operator_state_coordinates(key)
+					.expect("an OperatorState-routed key must carry an operator id");
+				return Ok(inner.substrate.operators.contains(operator, &inner_key));
+			}
 			ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 			ReadFrom::Query => &inner.query,
 			ReadFrom::OwnedRow => inner.state_query.as_ref().unwrap_or(&inner.query),
@@ -149,7 +168,7 @@ impl FlowTransaction {
 		match Key::kind(key) {
 			None => ReadFrom::Query,
 			Some(kind) => match kind {
-				KeyKind::OperatorState => ReadFrom::StateQuery,
+				KeyKind::OperatorState => ReadFrom::OperatorState,
 				KeyKind::RingBufferMetadata => ReadFrom::StateQuery,
 				KeyKind::SeriesMetadata => ReadFrom::StateQuery,
 
@@ -255,8 +274,26 @@ impl FlowTransaction {
 				}
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
 
+				if let Some((operator, inner_range)) = arena_scope(&range) {
+					let storage_iter = ArenaRangeIter::new(
+						inner.substrate.operators.clone(),
+						operator,
+						inner_range,
+						batch_size,
+						inner.version,
+					);
+					return Box::new(flow_merge_pending_iterator(
+						pending_vec,
+						storage_iter,
+						inner.version,
+					));
+				}
+
 				let query = match range.start.as_ref() {
 					Included(start) | Excluded(start) => match Self::read_from(start) {
+						ReadFrom::OperatorState => {
+							unreachable!("operator-state ranges take the arena path")
+						}
 						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 						ReadFrom::Query => &inner.query,
 						ReadFrom::OwnedRow => {
@@ -276,7 +313,10 @@ impl FlowTransaction {
 			} => {
 				let is_state_range = match range.start.as_ref() {
 					Included(start) | Excluded(start) => {
-						matches!(Self::read_from(start), ReadFrom::StateQuery)
+						matches!(
+							Self::read_from(start),
+							ReadFrom::OperatorState | ReadFrom::StateQuery
+						)
 					}
 					Unbounded => false,
 				};
@@ -336,8 +376,28 @@ impl FlowTransaction {
 				}
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
 
+				if let Some((operator, inner_range)) = arena_scope(&range) {
+					let mut items = ArenaRangeIter::new(
+						inner.substrate.operators.clone(),
+						operator,
+						inner_range,
+						batch_size,
+						inner.version,
+					)
+					.collect::<Vec<_>>();
+					items.reverse();
+					return Box::new(flow_merge_pending_iterator_rev(
+						pending_vec,
+						items.into_iter(),
+						inner.version,
+					));
+				}
+
 				let query = match range.start.as_ref() {
 					Included(start) | Excluded(start) => match Self::read_from(start) {
+						ReadFrom::OperatorState => {
+							unreachable!("operator-state ranges take the arena path")
+						}
 						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 						ReadFrom::Query => &inner.query,
 						ReadFrom::OwnedRow => {
@@ -357,7 +417,10 @@ impl FlowTransaction {
 			} => {
 				let is_state_range = match range.start.as_ref() {
 					Included(start) | Excluded(start) => {
-						matches!(Self::read_from(start), ReadFrom::StateQuery)
+						matches!(
+							Self::read_from(start),
+							ReadFrom::OperatorState | ReadFrom::StateQuery
+						)
 					}
 					Unbounded => false,
 				};
@@ -398,6 +461,88 @@ impl FlowTransaction {
 					Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
 				}
 			}
+		}
+	}
+}
+
+fn arena_scope(range: &EncodedKeyRange) -> Option<(OperatorId, EncodedKeyRange)> {
+	let start_key = match range.start.as_ref() {
+		Included(key) | Excluded(key) => key,
+		Unbounded => return None,
+	};
+	if Key::kind(start_key) != Some(KeyKind::OperatorState) {
+		return None;
+	}
+	let (operator, _) =
+		operator_state_coordinates(start_key).expect("an OperatorState-routed key must carry an operator id");
+	let prefix = OperatorStateKey::encoded(operator, Vec::<u8>::new());
+	let strip = |bound: std::ops::Bound<&EncodedKey>| match bound {
+		Included(key) if key.as_slice().starts_with(prefix.as_slice()) => {
+			Included(EncodedKey::new(&key.as_slice()[prefix.len()..]))
+		}
+		Excluded(key) if key.as_slice().starts_with(prefix.as_slice()) => {
+			Excluded(EncodedKey::new(&key.as_slice()[prefix.len()..]))
+		}
+		_ => Unbounded,
+	};
+	Some((operator, EncodedKeyRange::new(strip(range.start.as_ref()), strip(range.end.as_ref()))))
+}
+
+struct ArenaRangeIter {
+	store: OperatorStore,
+	operator: OperatorId,
+	end: std::ops::Bound<EncodedKey>,
+	cursor: std::ops::Bound<EncodedKey>,
+	batch_size: u64,
+	buffered: IntoIter<(EncodedKey, EncodedRow)>,
+	exhausted: bool,
+	version: CommitVersion,
+}
+
+impl ArenaRangeIter {
+	fn new(
+		store: OperatorStore,
+		operator: OperatorId,
+		range: EncodedKeyRange,
+		batch_size: usize,
+		version: CommitVersion,
+	) -> Self {
+		Self {
+			store,
+			operator,
+			cursor: range.start,
+			end: range.end,
+			batch_size: batch_size.max(1) as u64,
+			buffered: Vec::new().into_iter(),
+			exhausted: false,
+			version,
+		}
+	}
+}
+
+impl Iterator for ArenaRangeIter {
+	type Item = Result<MultiVersionRow>;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		loop {
+			if let Some((inner_key, row)) = self.buffered.next() {
+				self.cursor = std::ops::Bound::Excluded(inner_key.clone());
+				return Some(Ok(MultiVersionRow {
+					key: OperatorStateKey::encoded(self.operator, inner_key.as_slice()),
+					row,
+					version: self.version,
+				}));
+			}
+			if self.exhausted {
+				return None;
+			}
+			let range = EncodedKeyRange::new(self.cursor.clone(), self.end.clone());
+			let batch = self.store.range_batch(self.operator, range, self.batch_size);
+			self.exhausted = !batch.has_more;
+			if batch.items.is_empty() {
+				return None;
+			}
+			self.buffered = batch.items.into_iter();
 		}
 	}
 }

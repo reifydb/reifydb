@@ -19,6 +19,7 @@ use reifydb_core::{
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_runtime::context::clock::Clock;
+use reifydb_store_operator::OperatorStore;
 use reifydb_transaction::{
 	change_accumulator::ChangeAccumulator,
 	dictionary::DictionaryAllocatorRegistry,
@@ -306,6 +307,10 @@ impl FlowTransaction {
 		self.inner().substrate.timers.clone()
 	}
 
+	pub fn operator_store(&self) -> OperatorStore {
+		self.inner().substrate.operators.clone()
+	}
+
 	pub fn arm_timer(&mut self, operator: OperatorId, timer: &Timer) -> Result<()> {
 		self.timer_wheel().arm(operator, self, timer)
 	}
@@ -387,7 +392,7 @@ impl FlowTransaction {
 		} = self
 		{
 			for (key, write) in inner.pending.iter_sorted() {
-				if matches!(Self::read_from(key), ReadFrom::StateQuery) {
+				if matches!(Self::read_from(key), ReadFrom::OperatorState | ReadFrom::StateQuery) {
 					match write {
 						PendingWrite::Set(row) => {
 							state.insert(key.clone(), row.clone());

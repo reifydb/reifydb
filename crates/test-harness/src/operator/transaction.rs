@@ -6,14 +6,20 @@ use std::collections::HashMap;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::encoded::row::{EncodedRow, SHAPE_HEADER_SIZE};
 use reifydb_core::{
-	actors::pending::PendingWrite,
+	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,
 	interface::catalog::flow::OperatorId,
-	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
+	key::{
+		Key, kind::KeyKind,
+		operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
+	},
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::test_harness::TestEngine;
-use reifydb_flow::transaction::{ChangeCoordinate, FlowTransaction};
+use reifydb_flow::transaction::{
+	ChangeCoordinate, DeferredParams, FlowTransaction,
+	substrate::{FlowSubstrate, apply_operator_state},
+};
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
@@ -67,10 +73,24 @@ impl<'a> FlowTxnBuilder<'a> {
 	}
 
 	pub fn deferred(self) -> FlowTransaction {
-		let parent = self.engine.begin_admin(IdentityId::system()).unwrap();
-		let mut txn =
-			FlowTransaction::deferred(&parent, self.version, self.catalog, Interceptors::new(), self.clock);
-		txn.set_change_coordinate(default_coordinate(self.version));
+		let version = self.version;
+		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+			version,
+			pending: Pending::new(),
+			base_pending: PendingLayers::empty(),
+			query: self.engine.multi().begin_query().unwrap(),
+			state_query: self.engine.multi().begin_query().unwrap(),
+			single: self.engine.inner().single().clone(),
+			catalog: self.catalog,
+			interceptors: Interceptors::new(),
+			clock: self.clock,
+			substrate: FlowSubstrate {
+				operators: self.engine.inner().operator_state(),
+				..FlowSubstrate::default()
+			},
+			state_budget: OperatorStateBudgetHandle::default(),
+		});
+		txn.set_change_coordinate(default_coordinate(version));
 		txn
 	}
 
@@ -119,6 +139,9 @@ impl FlowTxn for TestEngine {
 		let mut cmd = self.begin_command(IdentityId::system()).unwrap();
 		cmd.disable_conflict_tracking().unwrap();
 		for (key, pw) in pending.iter_sorted() {
+			if matches!(Key::kind(key), Some(KeyKind::OperatorState)) {
+				continue;
+			}
 			match pw {
 				PendingWrite::Set(v) => cmd.set(key, v.clone()).unwrap(),
 				PendingWrite::Remove {
@@ -129,6 +152,7 @@ impl FlowTxn for TestEngine {
 				} => cmd.remove_silent(key).unwrap(),
 			};
 		}
-		cmd.commit_unchecked().unwrap();
+		let version = cmd.commit_unchecked().unwrap();
+		apply_operator_state(&self.inner().operator_state(), version, &pending);
 	}
 }

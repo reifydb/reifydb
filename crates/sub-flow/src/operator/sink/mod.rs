@@ -239,7 +239,7 @@ mod tests {
 			catalog: engine.inner().catalog().clone(),
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(0)),
-			substrate: FlowSubstrate::with_dictionary(registry.clone()),
+			substrate: FlowSubstrate::with_dictionary(registry.clone(), engine.inner().operator_state()),
 			state_budget: OperatorStateBudgetHandle::default(),
 		})
 	}

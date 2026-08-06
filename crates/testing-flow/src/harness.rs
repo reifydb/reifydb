@@ -10,20 +10,26 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
-	actors::pending::{Pending, PendingLayers},
+	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,
 	interface::{
 		catalog::{flow::OperatorId, object::ObjectId},
 		change::{Change, Diff},
 	},
-	key::{EncodableKey, operator_group_state::OperatorGroupStateKey, operator_state::OperatorStateKey},
+	key::{
+		EncodableKey, Key, kind::KeyKind, operator_group_state::OperatorGroupStateKey,
+		operator_state::OperatorStateKey,
+	},
 	state::{budget::OperatorStateBudgetHandle, group::ActivityBuckets, horizon::Cutoff},
 };
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_flow::{
 	operator::Operator,
 	timer::Timer,
-	transaction::{ChangeCoordinate, DeferredParams, FlowTransaction, substrate::FlowSubstrate},
+	transaction::{
+		ChangeCoordinate, DeferredParams, FlowTransaction,
+		substrate::{FlowSubstrate, apply_operator_state},
+	},
 };
 use reifydb_runtime::context::{
 	RuntimeContext,
@@ -82,13 +88,17 @@ impl<O: Operator> Harness<O> {
 			engine.inner().version_epoch().clone(),
 		);
 		let operator = build(&engine, runtime);
+		let substrate = FlowSubstrate {
+			operators: engine.inner().operator_state(),
+			..FlowSubstrate::default()
+		};
 		Self {
 			engine,
 			operator,
 			clock,
 			version: 1,
 			pending: Pending::new(),
-			substrate: FlowSubstrate::new(),
+			substrate,
 			catalog: Catalog::testing(),
 			sink_row_ttl: None,
 			reclaim_budget: ReclaimBudget {
@@ -144,7 +154,7 @@ impl<O: Operator> Harness<O> {
 		self.catalog = self.engine.inner().catalog().clone();
 		let single = self.engine.begin_admin(IdentityId::system()).expect("begin admin").single.clone();
 		let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single)));
-		self.substrate = FlowSubstrate::with_dictionary(registry);
+		self.substrate = FlowSubstrate::with_dictionary(registry, self.engine.inner().operator_state());
 		self
 	}
 
@@ -222,7 +232,24 @@ impl<O: Operator> Harness<O> {
 	}
 
 	fn end(&mut self, mut txn: FlowTransaction) {
-		self.pending = txn.take_pending();
+		let pending = txn.take_pending();
+		apply_operator_state(&self.substrate.operators, CommitVersion(self.version), &pending);
+		let mut rest = Pending::new();
+		for (key, write) in pending.iter_sorted() {
+			if matches!(Key::kind(key), Some(KeyKind::OperatorState)) {
+				continue;
+			}
+			match write {
+				PendingWrite::Set(row) => rest.insert(key.clone(), row.clone()),
+				PendingWrite::Remove {
+					announce: true,
+				} => rest.remove(key.clone()),
+				PendingWrite::Remove {
+					announce: false,
+				} => rest.remove_silent(key.clone()),
+			}
+		}
+		self.pending = rest;
 		self.version += 1;
 	}
 

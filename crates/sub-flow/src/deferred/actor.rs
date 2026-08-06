@@ -665,6 +665,7 @@ mod pull_protocol {
 		consume::{checkpoint::CdcCheckpoint, watermark::CdcConsumerWatermark},
 		produce::watermark::CdcProducerWatermark,
 	};
+	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::{
 		actors::{flow::FlowActorHandle, pending::PendingLayers},
 		interface::{
@@ -672,12 +673,15 @@ mod pull_protocol {
 			cdc::SystemChange,
 			change::{ChangeOrigin, Diff},
 		},
-		key::{Key, kind::KeyKind},
+		key::{Key, kind::KeyKind, operator_state::OperatorStateKey},
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::{DeferredParams, FlowTransaction};
+	use reifydb_runtime::sync::waiter::WaiterHandle;
+	use reifydb_store_operator::OperatorStore;
 	use reifydb_transaction::{
 		group::{GroupCommitBegin, GroupCommitHandle},
+		multi::RangeScope,
 		transaction::Transaction,
 	};
 	use reifydb_value::value::Value;
@@ -704,6 +708,8 @@ mod pull_protocol {
 		flow: FlowDag,
 		flow_id: FlowId,
 		source_objects: Arc<BTreeSet<ObjectId>>,
+		substrate: FlowSubstrate,
+		health: FlowHealthRegistry,
 	}
 
 	fn harness() -> Harness {
@@ -738,13 +744,14 @@ mod pull_protocol {
 		let flow_id = flows.first().expect("one flow").id;
 		drop(query);
 
+		let substrate = FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state());
 		let mut probe = FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor(),
 			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
 			CustomOperators::new(HashMap::new()),
-			FlowSubstrate::with_dictionary(engine.dictionary_allocators()),
+			substrate.clone(),
 			OperatorSampleRegistry::new(),
 			OperatorStateBudgetHandle::default(),
 		);
@@ -771,6 +778,7 @@ mod pull_protocol {
 			flow_catalog,
 			tracker.clone(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+			substrate.operators.clone(),
 		);
 		let begin_engine = engine.clone();
 		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
@@ -804,6 +812,8 @@ mod pull_protocol {
 			flow,
 			flow_id,
 			source_objects,
+			substrate,
+			health: FlowHealthRegistry::new(),
 		}
 	}
 
@@ -816,8 +826,7 @@ mod pull_protocol {
 		}
 
 		fn spawn_actor_with_bounded_control(&self, cursor: CommitVersion) -> FlowActorHandle {
-			let substrate = FlowSubstrate::with_dictionary(self.engine.dictionary_allocators());
-			self.spawn_actor_with_substrate(cursor, substrate)
+			self.spawn_actor_with_substrate(cursor, self.substrate.clone())
 		}
 
 		fn spawn_actor_with_substrate(&self, cursor: CommitVersion, substrate: FlowSubstrate) -> FlowActorHandle {
@@ -837,7 +846,7 @@ mod pull_protocol {
 					state_budget: OperatorStateBudgetHandle::default(),
 					retention_metrics: RetentionMetrics::new(),
 					clock: self.engine.clock().clone(),
-					health: FlowHealthRegistry::new(),
+					health: self.health.clone(),
 					flow_tracker: self.tracker.clone(),
 					flow: self.flow.clone(),
 					source_objects: self.source_objects.clone(),
@@ -1255,15 +1264,20 @@ mod pull_protocol {
 		h.await_safe_watermark(gap);
 		assert!(gap > target, "the test needs unconsumed safe versions above the settled cursor");
 
-		let pre_tick = h.engine.current_version().expect("current version");
+		// A reclaim-only tick writes only to the arena, so arena shrinkage is the proof it
+		// reached a commit.
+		let arena_before = h.substrate.operators.total_bytes();
+		assert!(arena_before > 0, "precondition: the sealed window groups must hold arena state to retire");
 		assert!(actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
 
 		assert!(
-			h.await_version_beyond(pre_tick, seconds(10)).is_some(),
+			h.poll_until(seconds(10), || (h.substrate.operators.total_bytes() < arena_before)
+				.then_some(()))
+				.is_some(),
 			"precondition: the tick must actually reach a commit - its reclaim must retire \
-			 the sealed window groups. A tick that produces no output leaves `committing` \
-			 false and falls straight through to on_tick's own trailing Drain, which would \
-			 satisfy the assertion below for the wrong reason"
+			 the sealed window groups from the arena. A tick that produces no output leaves \
+			 `committing` false and falls straight through to on_tick's own trailing Drain, \
+			 which would satisfy the assertion below for the wrong reason"
 		);
 
 		assert!(
@@ -1371,7 +1385,7 @@ mod pull_protocol {
 		// and only then carries the watermark to 120s without a batch. The tick sent last is
 		// therefore the only thing that can fire the eviction, and pre_tick bounds its commit.
 		assert!(h.flow.ticks(), "a ring buffer sink with a row ttl must tick, or on_tick never runs");
-		let substrate = FlowSubstrate::with_dictionary(h.engine.dictionary_allocators());
+		let substrate = h.substrate.clone();
 		let v0 = h.engine.current_version().expect("current version");
 		h.control.store(CommitVersion(u64::MAX));
 		let actor = h.spawn_actor_with_substrate(v0, substrate.clone());
@@ -1502,5 +1516,139 @@ mod pull_protocol {
 			Some(inserted_post),
 			"a tick-path Row remove must announce the same pre-image the slice path stored"
 		);
+	}
+
+	#[test]
+	fn operator_state_lives_in_the_arena_and_never_reaches_the_multi_store() {
+		// State must land in the arena with zero OperatorState keys in the multi store or
+		// CDC (falsified by reverting the split in apply_pending_writes), and a restart with
+		// an empty arena must not wedge the actor.
+		let h = harness_with(
+			"CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }",
+			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } with { time: event } \
+			 AS { FROM app::t AGGREGATE { total: math::count(id) } BY { g } }",
+		);
+		let v0 = h.engine.current_version().expect("current version");
+		let actor = h.spawn_actor(v0);
+
+		h.te.command(
+			r#"INSERT app::t [{id: 1, g: 1, ts: "1970-01-01T00:00:00Z"},
+			                   {id: 2, g: 1, ts: "1970-01-01T00:01:00Z"},
+			                   {id: 3, g: 2, ts: "1970-01-01T00:02:00Z"}]"#,
+		);
+		let target = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(target);
+		h.wake(&actor);
+		assert_eq!(
+			h.await_view_rows(2, StdDuration::from_secs(10)),
+			2,
+			"the aggregate must materialize its two groups"
+		);
+		assert_eq!(h.await_position(target, StdDuration::from_secs(5)), Some(target));
+
+		assert!(
+			h.substrate.operators.total_bytes() > 0,
+			"the aggregate's operator state must land in the shared arena"
+		);
+
+		// State shards per operator; a whole-keyspace scan never routes there.
+		let mut query = h.engine.multi().begin_query().expect("query");
+		for operator in h.flow.get_operator_ids() {
+			let leaked = query
+				.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024)
+				.collect::<Result<Vec<_>>>()
+				.expect("scan the operator's state range");
+			assert!(
+				leaked.is_empty(),
+				"the multi store must receive ZERO operator-state writes, operator {} has {}",
+				operator.0,
+				leaked.len()
+			);
+		}
+		drop(query);
+
+		let cdc_state_keys = h
+			.cdc_records()
+			.into_iter()
+			.flat_map(|cdc| cdc.system_changes)
+			.filter(|change| matches!(Key::kind(change.key()), Some(KeyKind::OperatorState)))
+			.count();
+		assert_eq!(cdc_state_keys, 0, "no CDC record may carry an OperatorState key either");
+
+		let stopped = Arc::new(WaiterHandle::new());
+		let notify = Arc::clone(&stopped);
+		assert!(actor.actor_ref()
+			.send(FlowActorMessage::Stop {
+				delete_checkpoint: false,
+				reply: Box::new(move || notify.notify()),
+			})
+			.is_ok());
+		assert!(stopped.wait_timeout(seconds(10)), "the first actor must stop before the restart");
+
+		let substrate2 =
+			FlowSubstrate::with_dictionary(h.engine.dictionary_allocators(), OperatorStore::default());
+		assert_eq!(substrate2.operators.total_bytes(), 0, "the restarted arena starts empty");
+		let committer2 = Committer::new(
+			FlowCatalog::new(h.engine.catalog()),
+			h.tracker.clone(),
+			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+			substrate2.operators.clone(),
+		);
+		let begin_engine = h.engine.clone();
+		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let committer2_handle = h.engine.spawner().spawn_flow(
+			"pull-protocol-committer-restart",
+			CommitterActor::new(committer2, GroupCommitHandle::inline(begin), OperatorStateBudgetHandle::default()),
+		);
+		let health2 = FlowHealthRegistry::new();
+		let actor2 = h.engine.spawner().spawn_flow(
+			"pull-protocol-flow-restart",
+			FlowActor::new(FlowActorParams {
+				engine: h.engine.clone(),
+				committer: committer2_handle.actor_ref().clone(),
+				backlog: h.backlog.clone(),
+				loader: h.loader_handle.actor_ref().clone(),
+				control: h.control.clone(),
+				custom_operators: CustomOperators::new(HashMap::new()),
+				substrate: substrate2.clone(),
+				operator_samples: OperatorSampleRegistry::new(),
+				state_budget: OperatorStateBudgetHandle::default(),
+				retention_metrics: RetentionMetrics::new(),
+				clock: h.engine.clock().clone(),
+				health: health2.clone(),
+				flow_tracker: h.tracker.clone(),
+				flow: h.flow.clone(),
+				source_objects: h.source_objects.clone(),
+				cursor: target,
+				pull_batch_bytes: ByteSize::from_mib(8),
+				load_batch_bytes: ByteSize::from_mib(8),
+				checkpoint_lag: 10_000,
+				checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
+				retry_limit: 3,
+				retry_backoff: Duration::from_milliseconds(50).unwrap(),
+			}),
+		);
+
+		h.te.command(r#"INSERT app::t [{id: 4, g: 3, ts: "1970-01-01T00:03:00Z"}]"#);
+		let after_restart = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(after_restart);
+		h.wake(&actor2);
+
+		assert!(
+			h.await_position_at_least(after_restart, seconds(10)).is_some(),
+			"the restarted actor must boot against an empty arena and keep consuming \
+			 (position is {:?})",
+			h.tracker.all().get(&h.flow_id).copied()
+		);
+		assert!(
+			health2.poisoned().is_empty(),
+			"an empty arena at boot must not poison the flow: {:?}",
+			health2.poisoned()
+		);
+		assert!(
+			substrate2.operators.total_bytes() > 0,
+			"the restarted flow must rebuild its state in its own arena"
+		);
+		drop(actor2);
 	}
 }
