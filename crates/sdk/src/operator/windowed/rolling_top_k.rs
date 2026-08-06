@@ -18,11 +18,11 @@ use reifydb_flow::{
 		accumulator::WindowAccumulator,
 		engine::{
 			AccumulatorEvent, is_sealed,
-			multi_rolling::{MultiEmit, MultiRollingEngine},
+			rolling_top_k::{TopKEmit, RollingTopKEngine},
 			rolling::RollingBuckets,
 		},
 		ledger::FiredAt,
-		span::{Slot, WindowCoord},
+		span::WindowCoord,
 	},
 };
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
@@ -42,24 +42,18 @@ use crate::{
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			WindowedBudget, advance_seal_frontier, arm_seal_timer, bridge::OperatorContextStore,
+			WindowedBudget, advance_seal_frontier, arm_seal_timer, bridge::OperatorContextStore, bucket_of,
 			seal_frontier, seal_horizon_of, window_engine_config,
 		},
 	},
 };
 
-type AccumulatorContribution<A> = <<A as MultiRollingOperator>::Accumulator as WindowAccumulator>::Contribution;
+type AccumulatorContribution<A> = <<A as RollingTopKOperator>::Accumulator as WindowAccumulator>::Contribution;
 
-type Buckets<A> = RollingBuckets<
-	<A as MultiRollingOperator>::GroupKey,
-	<A as MultiRollingOperator>::WindowSlot,
-	AccumulatorContribution<A>,
->;
+type Buckets<A> = RollingBuckets<<A as RollingTopKOperator>::GroupKey, DateTime, AccumulatorContribution<A>>;
 
-pub trait MultiRollingOperator {
+pub trait RollingTopKOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + ArchiveState;
-
-	type WindowSlot: Slot + Hash + ArchiveState + HeapSize;
 
 	type Accumulator: WindowAccumulator;
 
@@ -72,20 +66,22 @@ pub trait MultiRollingOperator {
 	}
 	fn capacity(&self) -> usize;
 
+	fn bucket_size(&self) -> Duration;
+
 	fn extract(
 		&self,
 		ctx: &mut impl OperatorContext,
 		row: &impl RowView,
-	) -> Option<(Self::GroupKey, Self::WindowSlot, AccumulatorContribution<Self>)>;
+	) -> Option<(Self::GroupKey, AccumulatorContribution<Self>)>;
 
 	fn combine(
 		&self,
 		group: &Self::GroupKey,
-		buffer: &BTreeMap<Self::WindowSlot, Self::Accumulator>,
+		buffer: &BTreeMap<DateTime, Self::Accumulator>,
 	) -> BTreeMap<Self::SecondaryKey, Self::Output>;
 }
 
-pub trait MultiRollingRegistration: MultiRollingOperator + Sized
+pub trait RollingTopKRegistration: RollingTopKOperator + Sized
 where
 	Self::Output: Row,
 	for<'a> &'a Self::GroupKey: IntoEncodedKey,
@@ -104,29 +100,27 @@ where
 	fn encode_row_key(&self, group: &Self::GroupKey, secondary: &Self::SecondaryKey) -> EncodedKey;
 }
 
-pub type MultiRollingBuffer<A> =
-	BTreeMap<<A as MultiRollingOperator>::WindowSlot, <A as MultiRollingOperator>::Accumulator>;
+pub type RollingTopKBuffer<A> = BTreeMap<DateTime, <A as RollingTopKOperator>::Accumulator>;
 
-pub type MultiRollingEmit<A> = BTreeMap<<A as MultiRollingOperator>::SecondaryKey, <A as MultiRollingOperator>::Output>;
+pub type RollingTopKEmit<A> = BTreeMap<<A as RollingTopKOperator>::SecondaryKey, <A as RollingTopKOperator>::Output>;
 
-pub struct MultiRollingDriver<A>
+pub struct RollingTopKDriver<A>
 where
-	A: MultiRollingRegistration,
+	A: RollingTopKRegistration,
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	aggregator: A,
 	#[allow(clippy::type_complexity)]
-	engine: MultiRollingEngine<A::GroupKey, A::WindowSlot, A::Accumulator, A::SecondaryKey, A::Output>,
+	engine: RollingTopKEngine<A::GroupKey, DateTime, A::Accumulator, A::SecondaryKey, A::Output>,
 	budget: WindowedBudget,
 }
 
-impl<A> MultiRollingDriver<A>
+impl<A> RollingTopKDriver<A>
 where
-	A: MultiRollingRegistration + Send + Sync + 'static,
+	A: RollingTopKRegistration + Send + Sync + 'static,
 	A::Output: Row + Send + Sync + HeapSize,
 	A::GroupKey: Send + Sync,
-	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync,
 	A::SecondaryKey: Send + Sync + HeapSize,
 	AccumulatorContribution<A>: Send + Sync,
@@ -134,20 +128,20 @@ where
 {
 	#[allow(clippy::type_complexity)]
 	fn expire_through<C: OperatorContext>(
-		engine: &mut MultiRollingEngine<A::GroupKey, A::WindowSlot, A::Accumulator, A::SecondaryKey, A::Output>,
+		engine: &mut RollingTopKEngine<A::GroupKey, DateTime, A::Accumulator, A::SecondaryKey, A::Output>,
 		store: &mut OperatorContextStore<'_, C>,
-		horizon: <A::WindowSlot as Slot>::Coord,
+		horizon: DateTime,
 	) -> Result<()> {
-		if horizon > <<A::WindowSlot as Slot>::Coord as WindowCoord>::from_order(0) {
+		if horizon > <DateTime as WindowCoord>::from_order(0) {
 			engine.expire_meta(store, horizon.to_order())?;
 		}
 		Ok(())
 	}
 }
 
-impl<A> OperatorMetadata for MultiRollingDriver<A>
+impl<A> OperatorMetadata for RollingTopKDriver<A>
 where
-	A: MultiRollingRegistration + 'static,
+	A: RollingTopKRegistration + 'static,
 	A::Output: Row,
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
@@ -160,12 +154,11 @@ where
 	const CAPABILITIES: &'static [OperatorCapability] = A::CAPABILITIES;
 }
 
-impl<A> OperatorLogic for MultiRollingDriver<A>
+impl<A> OperatorLogic for RollingTopKDriver<A>
 where
-	A: MultiRollingRegistration + Send + Sync + 'static,
+	A: RollingTopKRegistration + Send + Sync + 'static,
 	A::Output: Row + Send + Sync + HeapSize,
 	A::GroupKey: Send + Sync,
-	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync,
 	A::SecondaryKey: Send + Sync + HeapSize,
 	AccumulatorContribution<A>: Send + Sync,
@@ -185,7 +178,7 @@ where
 		let budget = WindowedBudget::new(config, &engine_config);
 		Ok(Self {
 			aggregator,
-			engine: MultiRollingEngine::new(engine_config),
+			engine: RollingTopKEngine::new(engine_config),
 			budget,
 		})
 	}
@@ -200,7 +193,7 @@ where
 			kind: timer.kind,
 			key: EncodedKey::new(timer.key),
 		});
-		let frontier: <A::WindowSlot as Slot>::Coord = advance_seal_frontier(&mut store, fired)?;
+		let frontier: DateTime = advance_seal_frontier(&mut store, fired)?;
 		Self::expire_through(&mut self.engine, &mut store, seal_horizon_of(frontier, seal_after))
 	}
 
@@ -218,17 +211,16 @@ where
 		let seal_after = self.aggregator.seal_after();
 		if let Some(seal_after) = seal_after {
 			let mut store = OperatorContextStore(ctx);
-			let newest = buckets.keys().map(|(_, coord)| coord.order_key()).max();
+			let newest = buckets.keys().map(|(_, coord)| *coord).max();
 			if let Some(newest) = newest {
 				arm_seal_timer(&mut store, newest, seal_after)?;
 			}
-			let watermark: <<A as MultiRollingOperator>::WindowSlot as Slot>::Coord =
-				seal_frontier(&mut store)?;
+			let watermark: DateTime = seal_frontier(&mut store)?;
 			let horizon = seal_horizon_of(watermark, seal_after);
 			Self::expire_through(&mut self.engine, &mut store, horizon)?;
 			let mut dropped = 0u64;
 			buckets.retain(|(_, coord), events| {
-				if is_sealed(coord.order_key(), horizon) {
+				if is_sealed(*coord, horizon) {
 					dropped += events.len() as u64;
 					false
 				} else {
@@ -266,16 +258,16 @@ where
 		let mut removes: Vec<(RowNumber, A::Output)> = Vec::new();
 		for emit in emits {
 			match emit {
-				MultiEmit::Insert {
+				TopKEmit::Insert {
 					row_number,
 					value,
 				} => inserts.push((row_number, value)),
-				MultiEmit::Update {
+				TopKEmit::Update {
 					row_number,
 					prior,
 					value,
 				} => updates.push((row_number, prior, value)),
-				MultiEmit::Remove {
+				TopKEmit::Remove {
 					row_number,
 					value,
 				} => removes.push((row_number, value)),
@@ -293,12 +285,11 @@ where
 	}
 }
 
-impl<A> MultiRollingDriver<A>
+impl<A> RollingTopKDriver<A>
 where
-	A: MultiRollingRegistration + Send + Sync + 'static,
+	A: RollingTopKRegistration + Send + Sync + 'static,
 	A::Output: Row + Send + Sync,
 	A::GroupKey: Send + Sync,
-	A::WindowSlot: Send + Sync,
 	A::Accumulator: Send + Sync,
 	A::SecondaryKey: Send + Sync,
 	AccumulatorContribution<A>: Send + Sync,
@@ -320,10 +311,12 @@ where
 							let Some(row) = cols.row(i) else {
 								continue;
 							};
-							if let Some((group, coord, contribution)) =
-								self.aggregator.extract(ctx, &row)
-							{
-								buckets.entry((group, coord))
+							let Some(coord) = row.row_time() else {
+								continue;
+							};
+							if let Some((group, contribution)) = self.aggregator.extract(ctx, &row) {
+								let bucket = bucket_of(coord, self.aggregator.bucket_size());
+								buckets.entry((group, bucket))
 									.or_default()
 									.push(AccumulatorEvent::Add(contribution));
 							}
@@ -335,18 +328,22 @@ where
 						let n = pre.row_count().min(post.row_count());
 						for i in 0..n {
 							if let Some(pre_row) = pre.row(i)
-								&& let Some((group, coord, contribution)) =
+								&& let Some(coord) = pre_row.row_time()
+								&& let Some((group, contribution)) =
 									self.aggregator.extract(ctx, &pre_row)
 							{
-								buckets.entry((group, coord))
+								let bucket = bucket_of(coord, self.aggregator.bucket_size());
+								buckets.entry((group, bucket))
 									.or_default()
 									.push(AccumulatorEvent::Remove(contribution));
 							}
 							if let Some(post_row) = post.row(i)
-								&& let Some((group, coord, contribution)) =
+								&& let Some(coord) = post_row.row_time()
+								&& let Some((group, contribution)) =
 									self.aggregator.extract(ctx, &post_row)
 							{
-								buckets.entry((group, coord))
+								let bucket = bucket_of(coord, self.aggregator.bucket_size());
+								buckets.entry((group, bucket))
 									.or_default()
 									.push(AccumulatorEvent::Add(contribution));
 							}
@@ -359,10 +356,12 @@ where
 							let Some(row) = cols.row(i) else {
 								continue;
 							};
-							if let Some((group, coord, contribution)) =
-								self.aggregator.extract(ctx, &row)
-							{
-								buckets.entry((group, coord))
+							let Some(coord) = row.row_time() else {
+								continue;
+							};
+							if let Some((group, contribution)) = self.aggregator.extract(ctx, &row) {
+								let bucket = bucket_of(coord, self.aggregator.bucket_size());
+								buckets.entry((group, bucket))
 									.or_default()
 									.push(AccumulatorEvent::Remove(contribution));
 							}

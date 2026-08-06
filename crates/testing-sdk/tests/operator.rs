@@ -13,8 +13,8 @@ mod rolling;
 #[path = "operator/rolling_incremental.rs"]
 mod rolling_incremental;
 
-#[path = "operator/multi_rolling.rs"]
-mod multi_rolling;
+#[path = "operator/rolling_top_k.rs"]
+mod rolling_top_k;
 
 #[path = "operator/tumbling_carry.rs"]
 mod tumbling_carry;

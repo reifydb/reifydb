@@ -9,19 +9,16 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize, row::Row as CoreRow};
-use reifydb_flow::window::{
-	accumulator::{
-		WindowAccumulator,
-		invertible::{KeyedInvertibleAccumulator, Moments},
-	},
-	span::WindowCoord,
+use reifydb_flow::window::accumulator::{
+	WindowAccumulator,
+	invertible::{KeyedInvertibleAccumulator, Moments},
 };
 use reifydb_sdk::{
 	config::Config,
 	error::Result,
 	operator::{
 		FFIOperatorAdapter, column::operator::OperatorColumn, context::OperatorContext, view::RowView,
-		windowed::multi_rolling::*,
+		windowed::rolling_top_k::*,
 	},
 	row,
 };
@@ -53,9 +50,8 @@ row!(TopOut {
 
 struct TestTopVolume;
 
-impl MultiRollingOperator for TestTopVolume {
+impl RollingTopKOperator for TestTopVolume {
 	type GroupKey = String;
-	type WindowSlot = u64;
 	type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
 	type SecondaryKey = u32;
 	type Output = TopOut;
@@ -64,18 +60,21 @@ impl MultiRollingOperator for TestTopVolume {
 		3
 	}
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, (u64, f64))> {
+	fn bucket_size(&self) -> Duration {
+		millis(1)
+	}
+
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
 		let group = row.utf8("group")?.to_string();
-		let window_start = row.u64("window_start")?;
 		let trader = row.u64("trader")?;
 		let volume = row.f64("volume")?;
-		Some((group, window_start, (trader, volume)))
+		Some((group, (trader, volume)))
 	}
 
 	fn combine(
 		&self,
 		group: &String,
-		buffer: &BTreeMap<u64, KeyedInvertibleAccumulator<u64, Moments>>,
+		buffer: &BTreeMap<DateTime, KeyedInvertibleAccumulator<u64, Moments>>,
 	) -> BTreeMap<u32, TopOut> {
 		let mut totals: BTreeMap<u64, f64> = BTreeMap::new();
 		for window in buffer.values() {
@@ -104,7 +103,7 @@ impl MultiRollingOperator for TestTopVolume {
 	}
 }
 
-impl MultiRollingRegistration for TestTopVolume {
+impl RollingTopKRegistration for TestTopVolume {
 	const NAME: &'static str = "test_top_volume";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "test fixture";
@@ -152,7 +151,7 @@ fn input_row(rn: u64, group: &str, window_start: u64, trader: u64, volume: f64) 
 
 #[test]
 fn same_window_volume_accumulates_per_trader() {
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
+	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
 		.build()
 		.expect("harness");
 	// Two trades for the same trader in one window must sum, not overwrite each other.
@@ -176,7 +175,7 @@ fn same_window_volume_accumulates_per_trader() {
 
 #[test]
 fn update_subtracts_old_volume_no_double_count() {
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
+	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
 		.build()
 		.expect("harness");
 	let _ = h
@@ -205,7 +204,7 @@ fn update_subtracts_old_volume_no_double_count() {
 
 #[test]
 fn top_2_across_three_windows() {
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
+	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
 		.build()
 		.expect("harness");
 	let out = h
@@ -229,7 +228,7 @@ fn top_2_across_three_windows() {
 
 #[test]
 fn vanishing_rank_emits_remove_at_high_water() {
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
+	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
 		.build()
 		.expect("harness");
 	let _ = h
@@ -248,13 +247,17 @@ fn vanishing_rank_emits_remove_at_high_water() {
 
 #[test]
 fn capacity_eviction_drops_oldest_window() {
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
+	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
 		.build()
 		.expect("harness");
 	// A fourth window exceeds the capacity of 3, so window 0 and trader 100 with it must go.
+	// Trader 100 carries the largest volume of the four on purpose: it outranks everyone while
+	// window 0 is still buffered, so the assertions below can only hold once eviction has run.
+	// With a smaller volume the expected top-2 would be identical whether or not anything was
+	// evicted, and the test would pass against a driver that never buckets or never evicts.
 	let out = h
 		.apply(TestChangeBuilder::new()
-			.insert(input_row(1, "BTC", 0, 100, 1.0))
+			.insert(input_row(1, "BTC", 0, 100, 9.0))
 			.insert(input_row(2, "BTC", 60, 200, 8.0))
 			.insert(input_row(3, "BTC", 120, 300, 2.0))
 			.insert(input_row(4, "BTC", 180, 400, 5.0))
@@ -275,19 +278,18 @@ fn capacity_eviction_drops_oldest_window() {
 fn buried_window_insert_accepted_without_sealing() {
 	// Without a seal envelope there is no implicit high-water drop, so an insert into an older
 	// coordinate merges rather than being discarded.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
+	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 100, 5.0)).build()).expect("apply");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 999, 999.0)).build()).expect("apply");
-	assert!(!out.diffs.is_empty(), "ungated multi-rolling driver accepts late events");
+	assert!(!out.diffs.is_empty(), "ungated rolling-top-k driver accepts late events");
 }
 
 struct SealedTopVolume;
 
-impl MultiRollingOperator for SealedTopVolume {
+impl RollingTopKOperator for SealedTopVolume {
 	type GroupKey = String;
-	type WindowSlot = DateTime;
 	type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
 	type SecondaryKey = u32;
 	type Output = TopOut;
@@ -296,17 +298,16 @@ impl MultiRollingOperator for SealedTopVolume {
 		3
 	}
 
+	fn bucket_size(&self) -> Duration {
+		TestTopVolume.bucket_size()
+	}
+
 	fn seal_after(&self) -> Option<Duration> {
 		Some(millis(120))
 	}
 
-	fn extract(
-		&self,
-		ctx: &mut impl OperatorContext,
-		row: &impl RowView,
-	) -> Option<(String, DateTime, (u64, f64))> {
-		let (group, window_start, contribution) = TestTopVolume.extract(ctx, row)?;
-		Some((group, DateTime::from_millis(window_start), contribution))
+	fn extract(&self, ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
+		TestTopVolume.extract(ctx, row)
 	}
 
 	fn combine(
@@ -314,13 +315,11 @@ impl MultiRollingOperator for SealedTopVolume {
 		group: &String,
 		buffer: &BTreeMap<DateTime, KeyedInvertibleAccumulator<u64, Moments>>,
 	) -> BTreeMap<u32, TopOut> {
-		let reindexed: BTreeMap<u64, KeyedInvertibleAccumulator<u64, Moments>> =
-			buffer.iter().map(|(coord, acc)| (coord.to_order(), acc.clone())).collect();
-		TestTopVolume.combine(group, &reindexed)
+		TestTopVolume.combine(group, buffer)
 	}
 }
 
-impl MultiRollingRegistration for SealedTopVolume {
+impl RollingTopKRegistration for SealedTopVolume {
 	const NAME: &'static str = "sealed_top_volume";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "test fixture";
@@ -345,7 +344,7 @@ impl MultiRollingRegistration for SealedTopVolume {
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	// A group that stops reporting must still be reclaimed, or a high-cardinality group key
 	// grows without bound; nothing moves here after the initial batch except the watermark.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<SealedTopVolume>>>::new()
+	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingTopKDriver<SealedTopVolume>>>::new()
 		.build()
 		.expect("harness");
 	let _ = h
@@ -368,9 +367,9 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 }
 
 #[test]
-fn an_ungated_multi_rolling_operator_arms_no_seal_timer() {
+fn an_ungated_rolling_top_k_operator_arms_no_seal_timer() {
 	// An operator that never opted into sealing must not acquire a retention policy.
-	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<MultiRollingDriver<TestTopVolume>>>::new()
+	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<RollingTopKDriver<TestTopVolume>>>::new()
 		.build()
 		.expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 7, 10.0)).build()).expect("apply");

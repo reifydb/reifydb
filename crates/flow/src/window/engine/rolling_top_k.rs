@@ -29,11 +29,11 @@ use crate::window::{
 	span::Slot,
 };
 
-pub type MultiRollingBuffer<C, Accumulator> = BTreeMap<C, Accumulator>;
+pub type RollingTopKBuffer<C, Accumulator> = BTreeMap<C, Accumulator>;
 
-pub type MultiRollingEmit<SK, Output> = PersistedMap<SK, Output>;
+pub type RollingTopKEmit<SK, Output> = PersistedMap<SK, Output>;
 
-pub enum MultiEmit<Output> {
+pub enum TopKEmit<Output> {
 	Insert {
 		row_number: RowNumber,
 		value: Output,
@@ -56,20 +56,20 @@ struct GroupSlot<C, Accumulator, SK, Output> {
 	group_id: GroupId,
 	state_row_number: RowNumber,
 	buffer: PersistedMap<C, Accumulator>,
-	prior_emit: MultiRollingEmit<SK, Output>,
+	prior_emit: RollingTopKEmit<SK, Output>,
 	buffer_changed: bool,
 }
 
-pub struct MultiRollingEngine<G, C, Accumulator, SK, Output> {
+pub struct RollingTopKEngine<G, C, Accumulator, SK, Output> {
 	buffers: StateCache<BufferKey, PersistedMap<C, Accumulator>>,
-	last_emit: StateCache<EmitKey, MultiRollingEmit<SK, Output>>,
+	last_emit: StateCache<EmitKey, RollingTopKEmit<SK, Output>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	meta_low_water: Option<u64>,
 	hydrated: bool,
 	_pd: PhantomData<(G, C, Accumulator)>,
 }
 
-impl<G, C, Accumulator, SK, Output> MultiRollingEngine<G, C, Accumulator, SK, Output>
+impl<G, C, Accumulator, SK, Output> RollingTopKEngine<G, C, Accumulator, SK, Output>
 where
 	G: Clone + Eq + Ord + Hash + Debug,
 	C: Slot + Hash,
@@ -81,13 +81,13 @@ where
 	SK: HeapSize,
 	Output: HeapSize,
 	GroupMeta<C>: OperatorState,
-	MultiRollingEmit<SK, Output>: OperatorState,
+	RollingTopKEmit<SK, Output>: OperatorState,
 	PersistedMap<C, Accumulator>: OperatorState,
 {
 	pub fn new(config: WindowEngineConfig) -> Self {
 		Self {
 			buffers: StateCache::<BufferKey, PersistedMap<C, Accumulator>>::new(config.budget()),
-			last_emit: StateCache::<EmitKey, MultiRollingEmit<SK, Output>>::new(config.budget()),
+			last_emit: StateCache::<EmitKey, RollingTopKEmit<SK, Output>>::new(config.budget()),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new(config.budget()),
 			meta_low_water: None,
 			hydrated: false,
@@ -133,12 +133,12 @@ where
 		state_key: SKF,
 		row_key: RKF,
 		combine: CB,
-	) -> Result<Vec<MultiEmit<Output>>>
+	) -> Result<Vec<TopKEmit<Output>>>
 	where
 		S: StateStore,
 		SKF: Fn(&G) -> EncodedKey,
 		RKF: Fn(&G, &SK) -> EncodedKey,
-		CB: Fn(&G, &MultiRollingBuffer<C, Accumulator>) -> MultiRollingEmit<SK, Output>,
+		CB: Fn(&G, &RollingTopKBuffer<C, Accumulator>) -> RollingTopKEmit<SK, Output>,
 	{
 		if buckets.is_empty() {
 			return Ok(Vec::new());
@@ -353,13 +353,13 @@ where
 		group_slots: BTreeMap<G, GroupSlot<C, Accumulator, SK, Output>>,
 		row_key: &RKF,
 		combine: &CB,
-	) -> Result<Vec<MultiEmit<Output>>>
+	) -> Result<Vec<TopKEmit<Output>>>
 	where
 		S: StateStore,
 		RKF: Fn(&G, &SK) -> EncodedKey,
-		CB: Fn(&G, &MultiRollingBuffer<C, Accumulator>) -> MultiRollingEmit<SK, Output>,
+		CB: Fn(&G, &RollingTopKBuffer<C, Accumulator>) -> RollingTopKEmit<SK, Output>,
 	{
-		let mut emits: Vec<MultiEmit<Output>> = Vec::new();
+		let mut emits: Vec<TopKEmit<Output>> = Vec::new();
 
 		for (group, slot) in group_slots {
 			if !slot.buffer_changed {
@@ -372,14 +372,14 @@ where
 				let (rn, is_new) = store.get_or_create_row_number(slot.group_id, &key)?;
 				match (is_new, slot.prior_emit.get(sk)) {
 					(true, _) => {
-						emits.push(MultiEmit::Insert {
+						emits.push(TopKEmit::Insert {
 							row_number: rn,
 							value: new_out.clone(),
 						});
 					}
 					(false, Some(prior_out)) => {
 						if prior_out != new_out {
-							emits.push(MultiEmit::Update {
+							emits.push(TopKEmit::Update {
 								row_number: rn,
 								prior: prior_out.clone(),
 								value: new_out.clone(),
@@ -387,7 +387,7 @@ where
 						}
 					}
 					(false, None) => {
-						emits.push(MultiEmit::Update {
+						emits.push(TopKEmit::Update {
 							row_number: rn,
 							prior: new_out.clone(),
 							value: new_out.clone(),
@@ -400,7 +400,7 @@ where
 					let key = row_key(&group, sk);
 					let (rn, _is_new_alloc) =
 						store.get_or_create_row_number(slot.group_id, &key)?;
-					emits.push(MultiEmit::Remove {
+					emits.push(TopKEmit::Remove {
 						row_number: rn,
 						value: prior_out.clone(),
 					});
@@ -443,7 +443,7 @@ mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::state::{budget::OperatorStateBudgetHandle, store::StateStore};
 
-	use super::{MultiEmit, MultiRollingBuffer, MultiRollingEmit, MultiRollingEngine};
+	use super::{TopKEmit, RollingTopKBuffer, RollingTopKEmit, RollingTopKEngine};
 	use crate::window::engine::{
 		AccumulatorEvent,
 		config::WindowEngineConfig,
@@ -463,7 +463,7 @@ mod tests {
 		EncodedKey::builder().u32(*group).u32(*sk).build()
 	}
 
-	fn combine(_group: &u32, buffer: &MultiRollingBuffer<u64, SumAccumulator>) -> MultiRollingEmit<u32, i64> {
+	fn combine(_group: &u32, buffer: &RollingTopKBuffer<u64, SumAccumulator>) -> RollingTopKEmit<u32, i64> {
 		let mut out = BTreeMap::new();
 		if !buffer.is_empty() {
 			out.insert(0u32, buffer.values().map(|a| a.sum).sum());
@@ -478,14 +478,14 @@ mod tests {
 		// back through the store. It fails on a serialization break or an unpersisted last_emit.
 		let mut store = MockStore::default();
 
-		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
+		let mut engine = RollingTopKEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
 		let published = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(published.len(), 1);
 		let published_row = match &published[0] {
-			MultiEmit::Insert {
+			TopKEmit::Insert {
 				row_number,
 				value,
 			} => {
@@ -496,7 +496,7 @@ mod tests {
 		};
 
 		// A brand new engine with empty caches, forced to reload the persisted GroupState.
-		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
+		let mut engine = RollingTopKEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Remove(5)]);
 		let withdrawn = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
@@ -504,7 +504,7 @@ mod tests {
 
 		assert_eq!(withdrawn.len(), 1, "emptying the group emits exactly one terminal diff");
 		match &withdrawn[0] {
-			MultiEmit::Remove {
+			TopKEmit::Remove {
 				row_number,
 				value,
 			} => {
@@ -529,13 +529,13 @@ mod tests {
 		let mut store = MockStore::default();
 		let ranked_key = row_key(&1, &0);
 
-		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
+		let mut engine = RollingTopKEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
 		let published = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
 		let published_row = match &published[0] {
-			MultiEmit::Insert {
+			TopKEmit::Insert {
 				row_number,
 				..
 			} => *row_number,
@@ -549,14 +549,14 @@ mod tests {
 			"precondition: the identity half must survive the data phase"
 		);
 
-		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
+		let mut engine = RollingTopKEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(3)]);
 		let republished = engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 
 		assert_eq!(republished.len(), 1);
 		match &republished[0] {
-			MultiEmit::Update {
+			TopKEmit::Update {
 				row_number,
 				..
 			} => assert_eq!(
@@ -577,7 +577,7 @@ mod tests {
 		// row_key(group=1, sk=0), distinct from the rolling coord (10).
 		let ranked_key = row_key(&1, &0);
 
-		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
+		let mut engine = RollingTopKEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, u64, i64> = BTreeMap::new();
 		buckets.insert((1u32, 10u64), vec![AccumulatorEvent::Add(5)]);
 		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
@@ -603,7 +603,7 @@ mod tests {
 		// The other way the GroupState is read back is LRU eviction, with no restart: the cache
 		// holds 8 groups, so tracking more evicts the oldest and the next access re-reads it.
 		let mut store = MockStore::default();
-		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
+		let mut engine = RollingTopKEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
 
 		let mut published_row_1 = None;
 		for group in 1u32..=11u32 {
@@ -613,7 +613,7 @@ mod tests {
 			if group == 1 {
 				assert_eq!(out.len(), 1);
 				published_row_1 = match &out[0] {
-					MultiEmit::Insert {
+					TopKEmit::Insert {
 						row_number,
 						value,
 					} => {
@@ -636,7 +636,7 @@ mod tests {
 
 		assert_eq!(withdrawn.len(), 1, "emptying the evicted group emits exactly one terminal diff");
 		match &withdrawn[0] {
-			MultiEmit::Remove {
+			TopKEmit::Remove {
 				row_number,
 				value,
 			} => {
@@ -656,7 +656,7 @@ mod tests {
 		// reduces the visible state to one value, checked against a live-buffer oracle each batch.
 		const CAP: usize = 4;
 		let mut store = MockStore::default();
-		let mut engine = MultiRollingEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
+		let mut engine = RollingTopKEngine::<u32, u64, SumAccumulator, u32, i64>::new(test_config());
 
 		let mut state = 0x1234_5678_9abc_def0u64;
 		let mut roll = |bound: u64| {
@@ -715,15 +715,15 @@ mod tests {
 			engine.flush(&mut store).unwrap();
 			for e in &emits {
 				match e {
-					MultiEmit::Insert {
+					TopKEmit::Insert {
 						value,
 						..
 					}
-					| MultiEmit::Update {
+					| TopKEmit::Update {
 						value,
 						..
 					} => visible = Some(*value),
-					MultiEmit::Remove {
+					TopKEmit::Remove {
 						..
 					} => visible = None,
 				}

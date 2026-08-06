@@ -34,9 +34,9 @@ use reifydb_sdk::{
 		context::OperatorContext,
 		view::RowView,
 		windowed::{
-			multi_rolling::{MultiRollingOperator, MultiRollingRegistration},
 			rolling::{RollingOperator, RollingRegistration},
 			rolling_incremental::RollingIncrementalOperator,
+			rolling_top_k::{RollingTopKOperator, RollingTopKRegistration},
 			tumbling::{TumblingOperator, TumblingRegistration},
 			tumbling_carry::{TumblingCarryOperator, TumblingCarryRegistration},
 		},
@@ -531,11 +531,10 @@ row!(TopOut {
 	volume: f64
 });
 
-pub struct TopVolumeMultiRolling;
+pub struct TopVolumeRollingTopK;
 
-impl MultiRollingOperator for TopVolumeMultiRolling {
+impl RollingTopKOperator for TopVolumeRollingTopK {
 	type GroupKey = String;
-	type WindowSlot = u64;
 	type Accumulator = KeyedInvertibleAccumulator<u64, Moments>;
 	type SecondaryKey = u32;
 	type Output = TopOut;
@@ -544,18 +543,21 @@ impl MultiRollingOperator for TopVolumeMultiRolling {
 		ROLLING_CAPACITY
 	}
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, (u64, f64))> {
+	fn bucket_size(&self) -> Duration {
+		millis(ROLLING_BUCKET)
+	}
+
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
 		let group = row.utf8("group")?.to_string();
-		let window_start = row.u64("window_start")?;
 		let trader = row.u64("trader")?;
 		let volume = row.f64("volume")?;
-		Some((group, window_start, (trader, volume)))
+		Some((group, (trader, volume)))
 	}
 
 	fn combine(
 		&self,
 		group: &String,
-		buffer: &BTreeMap<u64, KeyedInvertibleAccumulator<u64, Moments>>,
+		buffer: &BTreeMap<DateTime, KeyedInvertibleAccumulator<u64, Moments>>,
 	) -> BTreeMap<u32, TopOut> {
 		let mut totals: BTreeMap<u64, f64> = BTreeMap::new();
 		for window in buffer.values() {
@@ -586,7 +588,7 @@ impl MultiRollingOperator for TopVolumeMultiRolling {
 	}
 }
 
-impl MultiRollingRegistration for TopVolumeMultiRolling {
+impl RollingTopKRegistration for TopVolumeRollingTopK {
 	const NAME: &'static str = "operator_test_top_volume";
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "chaos fixture: rolling top-2 volume by trader";
@@ -840,10 +842,10 @@ pub fn rolling_shape() -> RowShape {
 	])
 }
 
-pub fn multi_rolling_shape() -> RowShape {
+pub fn rolling_top_k_shape() -> RowShape {
 	RowShape::new(vec![
 		RowShapeField::unconstrained("group", ValueType::Utf8),
-		RowShapeField::unconstrained("window_start", ValueType::Uint8),
+		RowShapeField::unconstrained("ts", ValueType::Uint8),
 		RowShapeField::unconstrained("trader", ValueType::Uint8),
 		RowShapeField::unconstrained("volume", ValueType::Float8),
 	])

@@ -6,9 +6,9 @@
 //! only describes its accumulator and how to build an output row.
 
 pub mod bridge;
-pub mod multi_rolling;
 pub mod rolling;
 pub mod rolling_incremental;
+pub mod rolling_top_k;
 pub mod tumbling;
 pub mod tumbling_carry;
 

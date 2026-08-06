@@ -26,7 +26,7 @@ use reifydb_sdk::operator::{
 	context::ffi::FFIOperatorContext,
 	view::{ColumnsView, RowView, native::NativeColumnsView},
 	windowed::{
-		multi_rolling::MultiRollingOperator, rolling::RollingOperator, tumbling::TumblingOperator,
+		rolling::RollingOperator, rolling_top_k::RollingTopKOperator, tumbling::TumblingOperator,
 		tumbling_carry::TumblingCarryOperator,
 	},
 };
@@ -520,25 +520,25 @@ where
 	materialize_outputs(last_visible.into_values(), ctx.now(), output_key_columns)
 }
 
-type MultiCoord<A> = <A as MultiRollingOperator>::WindowSlot;
-type MultiGroup<A> = <A as MultiRollingOperator>::GroupKey;
-type MultiContribution<A> = <<A as MultiRollingOperator>::Accumulator as WindowAccumulator>::Contribution;
-type MultiBuckets<A> = BTreeMap<(MultiGroup<A>, MultiCoord<A>), Vec<Leg<MultiContribution<A>>>>;
+type TopKCoord = DateTime;
+type TopKGroup<A> = <A as RollingTopKOperator>::GroupKey;
+type TopKContribution<A> = <<A as RollingTopKOperator>::Accumulator as WindowAccumulator>::Contribution;
+type TopKBuckets<A> = BTreeMap<(TopKGroup<A>, TopKCoord), Vec<Leg<TopKContribution<A>>>>;
 
-fn bucket_multi<A>(aggregate: &A, batch: &ChaosBatch) -> MultiBuckets<A>
+fn bucket_top_k<A>(aggregate: &A, batch: &ChaosBatch) -> TopKBuckets<A>
 where
-	A: MultiRollingOperator,
+	A: RollingTopKOperator,
 {
-	let mut buckets: MultiBuckets<A> = BTreeMap::new();
-	fan_out(batch, |row, is_add| push_multi(aggregate, row, is_add, &mut buckets));
+	let mut buckets: TopKBuckets<A> = BTreeMap::new();
+	fan_out(batch, |row, is_add| push_top_k(aggregate, row, is_add, &mut buckets));
 	buckets
 }
 
-fn push_multi<A>(aggregate: &A, row: &CoreRow, is_add: bool, buckets: &mut MultiBuckets<A>)
+fn push_top_k<A>(aggregate: &A, row: &CoreRow, is_add: bool, buckets: &mut TopKBuckets<A>)
 where
-	A: MultiRollingOperator,
+	A: RollingTopKOperator,
 {
-	if let Some((group, coord, contribution)) = extract_multi(aggregate, row) {
+	if let Some((group, coord, contribution)) = extract_top_k(aggregate, row) {
 		let leg = if is_add {
 			Leg::Add(contribution)
 		} else {
@@ -549,17 +549,17 @@ where
 }
 
 #[allow(clippy::type_complexity)]
-fn apply_multi_buckets<A>(
+fn apply_top_k_buckets<A>(
 	capacity: usize,
-	snapshot: &HashMap<MultiGroup<A>, MultiCoord<A>>,
-	buckets: MultiBuckets<A>,
-	buffers: &mut HashMap<MultiGroup<A>, BTreeMap<MultiCoord<A>, A::Accumulator>>,
-	high_water: &mut HashMap<MultiGroup<A>, MultiCoord<A>>,
-) -> BTreeSet<MultiGroup<A>>
+	snapshot: &HashMap<TopKGroup<A>, TopKCoord>,
+	buckets: TopKBuckets<A>,
+	buffers: &mut HashMap<TopKGroup<A>, BTreeMap<TopKCoord, A::Accumulator>>,
+	high_water: &mut HashMap<TopKGroup<A>, TopKCoord>,
+) -> BTreeSet<TopKGroup<A>>
 where
-	A: MultiRollingOperator,
+	A: RollingTopKOperator,
 {
-	let mut touched: BTreeSet<MultiGroup<A>> = BTreeSet::new();
+	let mut touched: BTreeSet<TopKGroup<A>> = BTreeSet::new();
 	for ((group, coord), legs) in buckets {
 		let buffer = buffers.entry(group.clone()).or_default();
 
@@ -606,25 +606,25 @@ where
 	touched
 }
 
-pub fn multi_rolling_accumulator_oracle<A>(
+pub fn rolling_top_k_accumulator_oracle<A>(
 	aggregate: &A,
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
 ) -> MaterializedView
 where
-	A: MultiRollingOperator,
+	A: RollingTopKOperator,
 	A::Output: Row,
 {
 	let capacity = aggregate.capacity();
-	let mut buffers: HashMap<MultiGroup<A>, BTreeMap<MultiCoord<A>, A::Accumulator>> = HashMap::new();
-	let mut high_water: HashMap<MultiGroup<A>, MultiCoord<A>> = HashMap::new();
-	let mut last_visible: HashMap<MultiGroup<A>, Vec<A::Output>> = HashMap::new();
+	let mut buffers: HashMap<TopKGroup<A>, BTreeMap<TopKCoord, A::Accumulator>> = HashMap::new();
+	let mut high_water: HashMap<TopKGroup<A>, TopKCoord> = HashMap::new();
+	let mut last_visible: HashMap<TopKGroup<A>, Vec<A::Output>> = HashMap::new();
 
 	for batch in batches {
 		let snapshot = HashMap::new();
-		let buckets = bucket_multi(aggregate, batch);
-		let touched = apply_multi_buckets::<A>(capacity, &snapshot, buckets, &mut buffers, &mut high_water);
+		let buckets = bucket_top_k(aggregate, batch);
+		let touched = apply_top_k_buckets::<A>(capacity, &snapshot, buckets, &mut buffers, &mut high_water);
 		for group in touched {
 			if let Some(buffer) = buffers.get(&group) {
 				let emit = aggregate.combine(&group, buffer);
@@ -638,17 +638,19 @@ where
 }
 
 #[allow(clippy::type_complexity)]
-fn extract_multi<A>(
+fn extract_top_k<A>(
 	aggregate: &A,
 	row: &CoreRow,
-) -> Option<(MultiGroup<A>, MultiCoord<A>, <A::Accumulator as WindowAccumulator>::Contribution)>
+) -> Option<(TopKGroup<A>, TopKCoord, <A::Accumulator as WindowAccumulator>::Contribution)>
 where
-	A: MultiRollingOperator,
+	A: RollingTopKOperator,
 {
 	let columns = Columns::from_row(row);
 	let view = NativeColumnsView::new(&columns);
 	let row_view = view.row(0)?;
-	with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
+	let coord = row_view.row_time()?;
+	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;
+	Some((group, coord.floor_to(aggregate.bucket_size()), contribution))
 }
 
 #[allow(clippy::type_complexity)]

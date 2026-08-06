@@ -16,8 +16,8 @@ mod tumbling;
 #[path = "sdk/rolling.rs"]
 mod rolling;
 
-#[path = "sdk/multi_rolling.rs"]
-mod multi_rolling;
+#[path = "sdk/rolling_top_k.rs"]
+mod rolling_top_k;
 
 #[path = "sdk/tumbling_carry.rs"]
 mod tumbling_carry;

@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Differential chaos for the multi-rolling driver. A small trader space against a wide
+//! Differential chaos for the rolling-top-k driver. A small trader space against a wide
 //! window space makes ranks appear, change and vanish across batches, which is what reaches
 //! the per-secondary-key emission and the high-water-driven Remove path.
 
-use reifydb_sdk::operator::{FFIOperatorAdapter, windowed::multi_rolling::MultiRollingDriver};
+use reifydb_sdk::operator::{FFIOperatorAdapter, windowed::rolling_top_k::RollingTopKDriver};
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,
-	accumulator_oracle::multi_rolling_accumulator_oracle,
+	accumulator_oracle::rolling_top_k_accumulator_oracle,
 	runner::ChaosOutcome,
 	schema::KeyStrategy,
 	strategy::{ColumnSampler, samplers},
 };
 
-use super::common::{self, TopVolumeMultiRolling};
+use super::common::{self, TopVolumeRollingTopK};
 
 fn rank_key() -> Vec<String> {
 	vec!["group".to_string(), "rank".to_string()]
@@ -30,23 +30,24 @@ fn volume_sampler(none_values: bool) -> ColumnSampler {
 }
 
 fn run(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<FFIOperatorAdapter<MultiRollingDriver<TopVolumeMultiRolling>>>::builder()
-		.with_input_shape(common::multi_rolling_shape())
+	ChaosHarness::<FFIOperatorAdapter<RollingTopKDriver<TopVolumeRollingTopK>>>::builder()
+		.with_input_shape(common::rolling_top_k_shape())
 		.with_output_shape(common::top_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
 		.with_output_key(["group", "rank"])
+		.with_time_column("ts")
 		.with_column("group", samplers::utf8_choices(&["BTC", "ETH"]))
-		.with_column("window_start", samplers::u64_range(0..10))
+		.with_column("ts", samplers::u64_range(0..100))
 		// Small trader space so the top-2 set churns and ranks vanish.
 		.with_column("trader", samplers::u64_range(0..5))
 		.with_column("volume", volume_sampler(none_values))
 		.with_scenario(scenario)
 		.with_oracle(move |ctx, batches| {
-			multi_rolling_accumulator_oracle(&TopVolumeMultiRolling, ctx, batches, &rank_key())
+			rolling_top_k_accumulator_oracle(&TopVolumeRollingTopK, ctx, batches, &rank_key())
 		})
 		.seed(seed)
 		.build()
-		.expect("build multi-rolling harness")
+		.expect("build rolling-top-k harness")
 		.run()
 }
 
