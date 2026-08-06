@@ -17,6 +17,7 @@ pub mod clock;
 pub mod count;
 pub mod encoding;
 pub mod error;
+pub mod factory;
 pub mod fragment;
 pub mod params;
 pub mod util;

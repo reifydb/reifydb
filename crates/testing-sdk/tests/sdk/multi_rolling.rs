@@ -29,6 +29,7 @@ use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestRowBuilder},
 	harness::FFIOperatorHarnessBuilder,
 };
+use reifydb_value::factory::millis;
 use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
 
 // Rolling top-2 traders by summed volume. Each window cell is keyed and invertible so an
@@ -280,10 +281,6 @@ fn buried_window_insert_accepted_without_sealing() {
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 60, 100, 5.0)).build()).expect("apply");
 	let out = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 999, 999.0)).build()).expect("apply");
 	assert!(!out.diffs.is_empty(), "ungated multi-rolling driver accepts late events");
-}
-
-fn millis(value: u64) -> Duration {
-	Duration::from_milliseconds_const(value as i64)
 }
 
 struct SealedTopVolume;

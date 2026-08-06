@@ -26,6 +26,7 @@ use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestRowBuilder},
 	harness::FFIOperatorHarnessBuilder,
 };
+use reifydb_value::factory::millis;
 use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
 
 // A TWAP-shaped fixture that isolates the carry rotation. `carry_in` echoes the prior
@@ -54,32 +55,31 @@ struct TestCarry;
 
 impl TumblingCarryOperator for TestCarry {
 	type GroupKey = String;
-	type WindowSlot = u64;
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = CarryOut;
 	type Carry = f64;
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, (u64, f64))> {
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
 		let group = row.utf8("group")?.to_string();
 		let ts = row.u64("ts")?;
 		let price = row.f64("price")?;
-		Some((group, ts, (ts, price)))
+		Some((group, (ts, price)))
 	}
 
-	fn window_for(&self, coord: u64) -> WindowSpan<u64> {
-		WindowSpan::for_coord(coord, 60)
+	fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime> {
+		WindowSpan::for_coord(coord, millis(60))
 	}
 
 	fn build_output(
 		&self,
 		group: &String,
-		span: WindowSpan<u64>,
+		span: WindowSpan<DateTime>,
 		value: &BTreeMap<u64, f64>,
 		prev_carry: Option<&f64>,
 	) -> Option<CarryOut> {
 		(!value.is_empty()).then(|| CarryOut {
 			group: group.clone(),
-			window_start: span.start,
+			window_start: span.start.to_order(),
 			sum: value.values().sum(),
 			carry_in: prev_carry.copied().unwrap_or(0.0),
 			has_carry: prev_carry.is_some(),
@@ -103,8 +103,8 @@ impl TumblingCarryRegistration for TestCarry {
 		Ok(Self)
 	}
 
-	fn encode_row_key(&self, group: &String, window_start: u64) -> EncodedKey {
-		EncodedKey::builder().str(group).u64(window_start).build()
+	fn encode_row_key(&self, group: &String, window_start: DateTime) -> EncodedKey {
+		EncodedKey::builder().str(group).u64(window_start.to_order()).build()
 	}
 }
 
@@ -117,10 +117,10 @@ fn input_shape() -> RowShape {
 }
 
 fn input_row(rn: u64, group: &str, ts: u64, price: f64) -> CoreRow {
-	// #time is stamped from the same `ts` the fixture buckets on. The window coordinate is
-	// moving off the named column and onto #time, so keeping the two in agreement is what lets
-	// these tests keep asserting the same thing across that move. An unstamped row would sit at
-	// the epoch, and every window here would silently collapse into one bucket.
+	// The window coordinate IS #time now - the operator no longer returns one - so `ts` is
+	// stamped as the row's time and kept as a column only because the accumulator keys its
+	// retained observations by it. An unstamped row would sit at the epoch and every window
+	// here would silently collapse into one bucket.
 	TestRowBuilder::new(rn)
 		.with_values(vec![Value::Utf8(group.into()), Value::Uint8(ts), Value::float8(price)])
 		.with_shape(input_shape())
@@ -239,30 +239,20 @@ fn late_event_accepted_without_sealing() {
 	assert!(!out.diffs.is_empty(), "ungated carry driver accepts late events");
 }
 
-fn millis(value: u64) -> Duration {
-	Duration::from_milliseconds_const(value as i64)
-}
-
 struct SealedCarry;
 
 impl TumblingCarryOperator for SealedCarry {
 	type GroupKey = String;
-	type WindowSlot = DateTime;
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = CarryOut;
 	type Carry = f64;
 
-	fn extract(
-		&self,
-		ctx: &mut impl OperatorContext,
-		row: &impl RowView,
-	) -> Option<(String, DateTime, (u64, f64))> {
-		let (group, ts, contribution) = TestCarry.extract(ctx, row)?;
-		Some((group, DateTime::from_millis(ts), contribution))
+	fn extract(&self, ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
+		TestCarry.extract(ctx, row)
 	}
 
 	fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime> {
-		WindowSpan::for_coord(coord, millis(60))
+		TestCarry.window_for(coord)
 	}
 
 	fn build_output(
@@ -272,13 +262,7 @@ impl TumblingCarryOperator for SealedCarry {
 		value: &BTreeMap<u64, f64>,
 		prev_carry: Option<&f64>,
 	) -> Option<CarryOut> {
-		(!value.is_empty()).then(|| CarryOut {
-			group: group.clone(),
-			window_start: span.start.to_order(),
-			sum: value.values().sum(),
-			carry_in: prev_carry.copied().unwrap_or(0.0),
-			has_carry: prev_carry.is_some(),
-		})
+		TestCarry.build_output(group, span, value, prev_carry)
 	}
 
 	fn carry_forward(&self, value: &BTreeMap<u64, f64>, prev_carry: Option<&f64>) -> Option<f64> {
@@ -303,7 +287,7 @@ impl TumblingCarryRegistration for SealedCarry {
 	}
 
 	fn encode_row_key(&self, group: &String, window_start: DateTime) -> EncodedKey {
-		EncodedKey::builder().str(group).u64(window_start.to_order()).build()
+		TestCarry.encode_row_key(group, window_start)
 	}
 }
 
@@ -334,33 +318,61 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 }
 
 #[test]
-fn a_seal_gated_operator_keeps_emitting_when_the_flow_watermark_runs_on_processing_time() {
-	// Production freeze: solana::market::{twap,vwap,volume,ohlcv}::* published rows for the very
-	// first block of a replayed corpus and then never again, while their source view kept
-	// advancing. The corpus carries July event timestamps but the flow watermark advances on
-	// processing time (these views declare no `ts:` time domain), so from the second batch on the
-	// seal horizon sits weeks ahead of every event-time window and `seal` discards every bucket.
+fn a_ladder_advancing_on_its_own_event_time_keeps_publishing_every_window() {
+	// Production freeze this pins: solana::market::{twap,vwap,volume,ohlcv}::* published rows for
+	// the very first block of a replayed corpus and then never again. The corpus carries event
+	// timestamps but the watermark advanced on arrival, so from the second batch on the seal
+	// horizon sat weeks ahead of every window and `seal` discarded each bucket before it emitted.
 	//
-	// The window coordinate and the seal horizon must be read on the same clock. An operator whose
-	// windows are event-time must not have its buckets sealed by a processing-time watermark.
+	// The window coordinate and the seal horizon must be read on the same clock. Here the
+	// watermark advances exactly as the feed does - from the rows' own #time, which is what
+	// `max_input_time` feeds it in production - so a ladder that keeps receiving must keep
+	// publishing, however many windows it has crossed.
 	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<SealedCarry>>>::new()
 		.build()
 		.expect("harness");
 
-	let first = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
-	println!("[win-probe] batch@event_ts=0 diffs={}", first.diffs.len());
-	assert!(!first.diffs.is_empty(), "precondition: the first event-time window publishes");
+	let mut published = 0usize;
+	for (rn, ts) in [(1u64, 0u64), (2, 60), (3, 120), (4, 180), (5, 240)] {
+		let out = h
+			.apply(TestChangeBuilder::new().insert(input_row(rn, "BTC", ts, 10.0 + ts as f64)).build())
+			.expect("apply");
+		println!("[win-probe] event_ts={ts} diffs={}", out.diffs.len());
+		assert!(
+			!out.diffs.is_empty(),
+			"the window at event_ts={ts} published nothing; a ladder whose watermark tracks its \
+			 own feed must never seal the window it is currently filling"
+		);
+		published += 1;
+		h.advance_watermark(DateTime::from_millis(ts)).expect("advance watermark");
+	}
 
-	// The flow watermark is processing time: far beyond any event-time coordinate in the feed.
-	h.advance_watermark(DateTime::from_millis(1_500_000_000_000)).expect("advance watermark");
+	assert_eq!(published, 5, "every window in the ladder must publish, not just the first");
+}
 
-	let second = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 60, 20.0)).build()).expect("apply");
-	println!("[win-probe] batch@event_ts=60 diffs={}", second.diffs.len());
+#[test]
+fn a_watermark_genuinely_past_the_seal_envelope_does_seal_the_window() {
+	// The mirror of the freeze above, and the reason that one cannot simply be "never seal".
+	// Sealing is what bounds operator state: once the watermark is truly past window + seal_after,
+	// late mutations for that window have to be refused, or a stalled group's buckets accumulate
+	// without limit. SealedCarry seals 120ms after a 60ms window, so a watermark at 10_000ms is
+	// far outside the envelope of the window starting at 0.
+	let mut h = FFIOperatorHarnessBuilder::<FFIOperatorAdapter<TumblingCarryDriver<SealedCarry>>>::new()
+		.build()
+		.expect("harness");
+
+	let opened = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 0, 10.0)).build()).expect("apply");
+	assert!(!opened.diffs.is_empty(), "precondition: the window at 0 opened and published");
+
+	h.advance_watermark(DateTime::from_millis(10_000)).expect("advance watermark");
+
+	let late = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 0, 99.0)).build()).expect("apply");
+	println!("[win-probe] late row into sealed window diffs={}", late.diffs.len());
 
 	assert!(
-		!second.diffs.is_empty(),
-		"a later event-time window must still publish; a processing-time watermark sealed it \
-		 away, which is the production ladder freezing after its first block"
+		late.diffs.is_empty(),
+		"a row landing in a window the watermark has already sealed must be dropped, not merged; \
+		 accepting it reopens a closed window and unbounds the operator's state"
 	);
 }
 

@@ -14,6 +14,7 @@ use reifydb_testing_sdk::chaos::{
 	schema::KeyStrategy,
 	strategy::{ColumnSampler, samplers},
 };
+use reifydb_value::factory::millis;
 use reifydb_value::value::Value;
 
 use super::common::{self, TwapCarry};
@@ -40,6 +41,7 @@ fn run(none_values: bool, scenario: Scenario, seed: u64, retention: Option<u64>)
 		.with_output_shape(common::carry_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
 		.with_output_key(["group", "window_start"])
+		.with_time_column("ts")
 		.with_column("group", samplers::utf8_choices(&["BTC", "ETH", "SOL"]))
 		.with_column("ts", samplers::u64_range(0..300))
 		.with_column("price", price_sampler(none_values))
@@ -51,7 +53,7 @@ fn run(none_values: bool, scenario: Scenario, seed: u64, retention: Option<u64>)
 				ctx,
 				batches,
 				&window_key(),
-				retention,
+				retention.map(millis),
 			)
 		})
 		.seed(seed)

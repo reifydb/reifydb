@@ -21,7 +21,7 @@ use reifydb_flow::{
 			tumbling::TumblingBuckets, tumbling_carry::TumblingCarryEngine,
 		},
 		ledger::FiredAt,
-		span::{Slot, SlotCoord, SlotSpan, WindowAnchor, WindowCoord, WindowSpan},
+		span::{WindowCoord, WindowSpan},
 	},
 };
 use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
@@ -51,31 +51,18 @@ type AccumulatorContribution<A> = <<A as TumblingCarryOperator>::Accumulator as 
 type AccumulatorValue<A> = <<A as TumblingCarryOperator>::Accumulator as WindowAccumulator>::Output;
 type CarryEngine<A> = TumblingCarryEngine<
 	<A as TumblingCarryOperator>::GroupKey,
-	SlotCoord<<A as TumblingCarryOperator>::WindowSlot>,
+	DateTime,
 	<A as TumblingCarryOperator>::Accumulator,
 	<A as TumblingCarryOperator>::Carry,
 	<A as TumblingCarryOperator>::Output,
 >;
-type Buckets<A> = TumblingBuckets<
-	<A as TumblingCarryOperator>::GroupKey,
-	SlotCoord<<A as TumblingCarryOperator>::WindowSlot>,
-	AccumulatorContribution<A>,
->;
-type WindowResults<A> = Vec<
-	WindowResult<
-		<A as TumblingCarryOperator>::GroupKey,
-		SlotCoord<<A as TumblingCarryOperator>::WindowSlot>,
-		<A as TumblingCarryOperator>::Output,
-	>,
->;
+type Buckets<A> =
+	TumblingBuckets<<A as TumblingCarryOperator>::GroupKey, DateTime, AccumulatorContribution<A>>;
+type WindowResults<A> =
+	Vec<WindowResult<<A as TumblingCarryOperator>::GroupKey, DateTime, <A as TumblingCarryOperator>::Output>>;
 
 pub trait TumblingCarryOperator {
 	type GroupKey: Clone + Eq + Ord + Hash + Debug + ArchiveState;
-
-	type WindowSlot: Slot<Coord: WindowAnchor + Hash + ArchiveState + HeapSize + Send + Sync>
-		+ Hash
-		+ ArchiveState
-		+ HeapSize;
 
 	type Accumulator: WindowAccumulator;
 
@@ -87,9 +74,9 @@ pub trait TumblingCarryOperator {
 		&self,
 		ctx: &mut impl OperatorContext,
 		row: &impl RowView,
-	) -> Option<(Self::GroupKey, Self::WindowSlot, AccumulatorContribution<Self>)>;
+	) -> Option<(Self::GroupKey, AccumulatorContribution<Self>)>;
 
-	fn window_for(&self, coord: Self::WindowSlot) -> WindowSpan<SlotCoord<Self::WindowSlot>>;
+	fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime>;
 
 	fn seal_after(&self) -> Option<Duration> {
 		None
@@ -98,7 +85,7 @@ pub trait TumblingCarryOperator {
 	fn build_output(
 		&self,
 		group: &Self::GroupKey,
-		span: WindowSpan<SlotCoord<Self::WindowSlot>>,
+		span: WindowSpan<DateTime>,
 		value: &AccumulatorValue<Self>,
 		prev_carry: Option<&Self::Carry>,
 	) -> Option<Self::Output>;
@@ -113,7 +100,7 @@ pub trait TumblingCarryOperator {
 		Self::Accumulator::default()
 	}
 
-	fn retention(&self) -> Option<SlotSpan<Self::WindowSlot>> {
+	fn retention(&self) -> Option<Duration> {
 		None
 	}
 }
@@ -132,7 +119,7 @@ where
 
 	fn from_config(operator_id: OperatorId, config: &Config) -> Result<Self>;
 
-	fn encode_row_key(&self, group: &Self::GroupKey, window_start: SlotCoord<Self::WindowSlot>) -> EncodedKey;
+	fn encode_row_key(&self, group: &Self::GroupKey, window_start: DateTime) -> EncodedKey;
 }
 
 pub struct TumblingCarryDriver<A>
@@ -193,7 +180,10 @@ where
 			let Some(row) = cols.row(i) else {
 				continue;
 			};
-			let Some((group, coord, contribution)) = self.aggregator.extract(ctx, &row) else {
+			let Some(coord) = row.row_time() else {
+				continue;
+			};
+			let Some((group, contribution)) = self.aggregator.extract(ctx, &row) else {
 				continue;
 			};
 			let span = self.aggregator.window_for(coord);
@@ -245,8 +235,6 @@ where
 	A: TumblingCarryRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
-	A::WindowSlot: Send + Sync + HeapSize,
-	SlotSpan<A::WindowSlot>: Send + Sync,
 	A::Accumulator: Send + Sync + HeapSize,
 	A::Carry: Send + Sync + HeapSize,
 	A::Output: Send + Sync + HeapSize,
@@ -256,9 +244,9 @@ where
 	fn expire_through<C: OperatorContext>(
 		engine: &mut CarryEngine<A>,
 		store: &mut OperatorContextStore<'_, C>,
-		horizon: SlotCoord<A::WindowSlot>,
+		horizon: DateTime,
 	) -> Result<()> {
-		if horizon > <SlotCoord<A::WindowSlot> as WindowCoord>::from_order(0) {
+		if horizon > <DateTime as WindowCoord>::from_order(0) {
 			engine.expire_meta(store, horizon.to_order())?;
 		}
 		Ok(())
@@ -272,16 +260,16 @@ where
 		seal_after: Duration,
 	) -> Result<()> {
 		let mut store = OperatorContextStore(ctx);
-		let newest = buckets.keys().map(|(_, span)| span.start.order_key()).max();
+		let newest = buckets.keys().map(|(_, span)| span.start).max();
 		if let Some(newest) = newest {
 			arm_seal_timer(&mut store, newest, seal_after)?;
 		}
-		let watermark = seal_frontier(&mut store)?;
+		let watermark: DateTime = seal_frontier(&mut store)?;
 		let horizon = seal_horizon_of(watermark, seal_after);
 		Self::expire_through(&mut self.engine, &mut store, horizon)?;
 		let mut dropped = 0u64;
 		buckets.retain(|(_, span), events| {
-			if is_sealed(span.start.order_key(), horizon) {
+			if is_sealed(span.start, horizon) {
 				dropped += events.len() as u64;
 				false
 			} else {
@@ -333,8 +321,6 @@ where
 	A: TumblingCarryRegistration + Send + Sync + 'static,
 	A::Output: Row,
 	A::GroupKey: Send + Sync,
-	A::WindowSlot: Send + Sync + HeapSize,
-	SlotSpan<A::WindowSlot>: Send + Sync,
 	A::Accumulator: Send + Sync + HeapSize,
 	A::Carry: Send + Sync + HeapSize,
 	A::Output: Send + Sync + HeapSize,
@@ -373,7 +359,7 @@ where
 			kind: timer.kind,
 			key: EncodedKey::new(timer.key),
 		});
-		let frontier: SlotCoord<A::WindowSlot> = advance_seal_frontier(&mut store, fired)?;
+		let frontier: DateTime = advance_seal_frontier(&mut store, fired)?;
 		Self::expire_through(&mut self.engine, &mut store, seal_horizon_of(frontier, seal_after))
 	}
 

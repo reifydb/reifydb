@@ -23,6 +23,7 @@ use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestRowBuilder},
 	harness::FFIOperatorHarnessBuilder,
 };
+use reifydb_value::factory::millis;
 use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
 
 // Rolling sum where each window is itself an invertible accumulator, so rows can share a
@@ -267,10 +268,6 @@ fn multiple_groups_isolate_buffers() {
 	assert_eq!(post.row_ref(0).expect("r0").f64("rolling_sum"), Some(10.0));
 	assert_eq!(post.row_ref(1).expect("r1").utf8("group").as_deref(), Some("ETH"));
 	assert_eq!(post.row_ref(1).expect("r1").f64("rolling_sum"), Some(50.0));
-}
-
-fn millis(value: u64) -> Duration {
-	Duration::from_milliseconds_const(value as i64)
 }
 
 struct SealedRollingSum;

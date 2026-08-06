@@ -19,12 +19,12 @@ use reifydb_core::{
 };
 use reifydb_flow::window::{
 	accumulator::WindowAccumulator,
-	span::{Slot, SlotCoord, SlotSpan, WindowCoord, WindowSpan},
+	span::{SlotCoord, WindowCoord, WindowSpan},
 };
 use reifydb_sdk::operator::{
 	column::{row::Row, sink::native::NativeRowSink},
 	context::ffi::FFIOperatorContext,
-	view::{ColumnsView, native::NativeColumnsView},
+	view::{ColumnsView, RowView, native::NativeColumnsView},
 	windowed::{
 		multi_rolling::MultiRollingOperator, rolling::RollingOperator, tumbling::TumblingOperator,
 		tumbling_carry::TumblingCarryOperator,
@@ -34,7 +34,7 @@ use reifydb_testing_chaos::operator::{
 	event::{ChaosBatch, ChaosEvent},
 	view::MaterializedView,
 };
-use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 
 use super::{context::ChaosContext, materialize::materialize_history};
 use crate::{callbacks::create_test_callbacks, context::TestContext};
@@ -340,13 +340,12 @@ where
 	with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
 }
 
-type CarryEventSlot<A> = <A as TumblingCarryOperator>::WindowSlot;
-type CarryCoord<A> = SlotCoord<<A as TumblingCarryOperator>::WindowSlot>;
+type CarryCoord = DateTime;
 type CarryGroup<A> = <A as TumblingCarryOperator>::GroupKey;
-type CarryWindowKey<A> = (CarryGroup<A>, CarryCoord<A>);
+type CarryWindowKey<A> = (CarryGroup<A>, CarryCoord);
 
 type CarryContribution<A> = <<A as TumblingCarryOperator>::Accumulator as WindowAccumulator>::Contribution;
-type CarryBuckets<A> = BTreeMap<CarryWindowKey<A>, (WindowSpan<CarryCoord<A>>, Vec<Leg<CarryContribution<A>>>)>;
+type CarryBuckets<A> = BTreeMap<CarryWindowKey<A>, (WindowSpan<CarryCoord>, Vec<Leg<CarryContribution<A>>>)>;
 
 struct CarryGroupState<C, Carry> {
 	high_water: Option<C>,
@@ -395,22 +394,22 @@ pub fn tumbling_carry_accumulator_oracle<A>(
 	ctx: &ChaosContext,
 	batches: &[ChaosBatch],
 	output_key_columns: &[String],
-	retention: Option<SlotSpan<CarryCoord<A>>>,
+	retention: Option<Duration>,
 ) -> MaterializedView
 where
 	A: TumblingCarryOperator,
 	A::Output: Row,
 {
 	let mut accumulators: HashMap<CarryWindowKey<A>, A::Accumulator> = HashMap::new();
-	let mut spans: HashMap<CarryWindowKey<A>, WindowSpan<CarryCoord<A>>> = HashMap::new();
-	let mut metas: HashMap<CarryGroup<A>, CarryGroupState<CarryCoord<A>, A::Carry>> = HashMap::new();
+	let mut spans: HashMap<CarryWindowKey<A>, WindowSpan<CarryCoord>> = HashMap::new();
+	let mut metas: HashMap<CarryGroup<A>, CarryGroupState<CarryCoord, A::Carry>> = HashMap::new();
 	let mut last_visible: HashMap<CarryWindowKey<A>, A::Output> = HashMap::new();
 
 	for batch in batches {
-		let snapshot: HashMap<CarryGroup<A>, CarryCoord<A>> = HashMap::new();
+		let snapshot: HashMap<CarryGroup<A>, CarryCoord> = HashMap::new();
 		let buckets = bucket_carry(aggregate, batch);
 
-		let mut earliest_affected: HashMap<CarryGroup<A>, CarryCoord<A>> = HashMap::new();
+		let mut earliest_affected: HashMap<CarryGroup<A>, CarryCoord> = HashMap::new();
 		for ((group, start), (span, legs)) in buckets {
 			let meta = metas.entry(group.clone()).or_default();
 			if matches!(meta.sealed_up_to, Some(s) if start <= s) {
@@ -465,8 +464,8 @@ where
 				Some((_, c)) => c.clone(),
 				None => meta.sealed_carry.clone(),
 			};
-			let coords: Vec<CarryCoord<A>> = meta.windows.range(start..).map(|(c, _)| *c).collect();
-			let mut emptied: Vec<CarryCoord<A>> = Vec::new();
+			let coords: Vec<CarryCoord> = meta.windows.range(start..).map(|(c, _)| *c).collect();
+			let mut emptied: Vec<CarryCoord> = Vec::new();
 			for coord in coords {
 				let key = (group.clone(), coord);
 				let span = *spans.get(&key).expect("span recorded for tracked window");
@@ -501,7 +500,7 @@ where
 					let Some((&first, carry_out)) = meta.windows.iter().next() else {
 						break;
 					};
-					if hw.order_key().span_since(first.order_key()) <= retention {
+					if hw.span_since(first) <= retention {
 						break;
 					}
 					let carry_out = carry_out.clone();
@@ -653,12 +652,14 @@ where
 fn extract_carry<A>(
 	aggregate: &A,
 	row: &CoreRow,
-) -> Option<(CarryGroup<A>, CarryEventSlot<A>, <A::Accumulator as WindowAccumulator>::Contribution)>
+) -> Option<(CarryGroup<A>, CarryCoord, <A::Accumulator as WindowAccumulator>::Contribution)>
 where
 	A: TumblingCarryOperator,
 {
 	let columns = Columns::from_row(row);
 	let view = NativeColumnsView::new(&columns);
 	let row_view = view.row(0)?;
-	with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))
+	let coord = row_view.row_time()?;
+	let (group, contribution) = with_oracle_ctx(|ctx| aggregate.extract(ctx, &row_view))?;
+	Some((group, coord, contribution))
 }

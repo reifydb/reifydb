@@ -32,6 +32,7 @@ use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestRowBuilder},
 	harness::FFIOperatorHarnessBuilder,
 };
+use reifydb_value::factory::millis;
 use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
 
 // Velocity-style operator. The baseline is the running moments minus the newest window, which
@@ -247,10 +248,6 @@ fn eviction_drops_oldest_from_running() {
 	assert_eq!(r.f64("recent"), Some(4.0));
 	assert_eq!(r.f64("baseline"), Some(2.5), "evicted window 0 removed from running");
 	assert_eq!(r.u32("windows"), Some(3));
-}
-
-fn millis(value: u64) -> Duration {
-	Duration::from_milliseconds_const(value as i64)
 }
 
 struct SealedVelocity;

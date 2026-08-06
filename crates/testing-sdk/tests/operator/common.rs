@@ -24,7 +24,7 @@ use reifydb_flow::window::{
 		invertible::{KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64, RetainedAccumulator},
 		sealing::{SealingEndpoint, SealingMax, SealingMin},
 	},
-	span::WindowSpan,
+	span::{WindowCoord, WindowSpan},
 };
 use reifydb_sdk::{
 	config::Config,
@@ -45,7 +45,8 @@ use reifydb_sdk::{
 };
 use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::strategy::{ColumnSampler, samplers};
-use reifydb_value::value::{Value, value_type::ValueType};
+use reifydb_value::factory::millis;
+use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
 
 pub const WINDOW: u64 = 60;
 /// Held below WINDOW so aging is reachable inside a single window.
@@ -636,32 +637,31 @@ pub fn twap_carry(retention: Option<u64>) -> TwapCarry {
 
 impl TumblingCarryOperator for TwapCarry {
 	type GroupKey = String;
-	type WindowSlot = u64;
 	type Accumulator = RetainedAccumulator<u64, f64>;
 	type Output = CarryOut;
 	type Carry = f64;
 
-	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, u64, (u64, f64))> {
+	fn extract(&self, _ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, (u64, f64))> {
 		let group = row.utf8("group")?.to_string();
 		let ts = row.u64("ts")?;
 		let price = row.f64("price")?;
-		Some((group, ts, (ts, price)))
+		Some((group, (ts, price)))
 	}
 
-	fn window_for(&self, coord: u64) -> WindowSpan<u64> {
-		WindowSpan::for_coord(coord, WINDOW)
+	fn window_for(&self, coord: DateTime) -> WindowSpan<DateTime> {
+		WindowSpan::for_coord(coord, millis(WINDOW))
 	}
 
 	fn build_output(
 		&self,
 		group: &String,
-		span: WindowSpan<u64>,
+		span: WindowSpan<DateTime>,
 		value: &BTreeMap<u64, f64>,
 		prev_carry: Option<&f64>,
 	) -> Option<CarryOut> {
 		(!value.is_empty()).then(|| CarryOut {
 			group: group.clone(),
-			window_start: span.start,
+			window_start: span.start.to_order(),
 			sum: value.values().sum(),
 			carry_in: prev_carry.copied().unwrap_or(0.0),
 			has_carry: prev_carry.is_some(),
@@ -672,8 +672,8 @@ impl TumblingCarryOperator for TwapCarry {
 		value.last_key_value().map(|(_, v)| *v)
 	}
 
-	fn retention(&self) -> Option<u64> {
-		self.retention
+	fn retention(&self) -> Option<Duration> {
+		self.retention.map(millis)
 	}
 }
 
@@ -691,8 +691,8 @@ impl TumblingCarryRegistration for TwapCarry {
 		})
 	}
 
-	fn encode_row_key(&self, group: &String, window_start: u64) -> EncodedKey {
-		EncodedKey::builder().str(group).u64(window_start).build()
+	fn encode_row_key(&self, group: &String, window_start: DateTime) -> EncodedKey {
+		EncodedKey::builder().str(group).u64(window_start.to_order()).build()
 	}
 }
 

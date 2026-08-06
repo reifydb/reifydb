@@ -31,6 +31,7 @@ use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestRowBuilder},
 	harness::FFIOperatorHarnessBuilder,
 };
+use reifydb_value::factory::millis;
 use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType};
 
 #[test]
@@ -133,10 +134,6 @@ impl TumblingRegistration for TestVolume {
 	fn encode_row_key(&self, group: &String, window_start: u64) -> EncodedKey {
 		EncodedKey::builder().str(group).u64(window_start).build()
 	}
-}
-
-fn millis(value: u64) -> Duration {
-	Duration::from_milliseconds_const(value as i64)
 }
 
 // Sealing variant: 60ms windows plus 60ms grace. The coordinate is a DateTime because the

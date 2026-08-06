@@ -165,7 +165,25 @@ pub fn encode_row(schema: &ChaosSchema, content: &RowContent, row_number: RowNum
 		.map(|f| content.get(&f.name).cloned().unwrap_or_else(|| Value::none_of(f.constraint.get_type())))
 		.collect();
 
-	TestRowBuilder::new(row_number).with_values(values).with_shape(schema.input_shape.clone()).build()
+	let mut builder = TestRowBuilder::new(row_number).with_values(values).with_shape(schema.input_shape.clone());
+	if let Some(column) = &schema.time_column {
+		builder = builder.with_time(row_time(schema, content, column));
+	}
+	builder.build()
+}
+
+fn row_time(schema: &ChaosSchema, content: &RowContent, column: &str) -> DateTime {
+	let field = schema
+		.input_shape
+		.find_field(column)
+		.unwrap_or_else(|| panic!("time column `{column}` is absent from the scenario's input shape"));
+	match content.get(&field.name) {
+		Some(Value::Uint8(millis)) => DateTime::from_millis(*millis),
+		Some(Value::DateTime(at)) => *at,
+		other => panic!(
+			"time column `{column}` must sample to Uint8 milliseconds or DateTime, but yielded {other:?}"
+		),
+	}
 }
 
 pub mod samplers {
