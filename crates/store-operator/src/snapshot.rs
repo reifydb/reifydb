@@ -22,6 +22,7 @@ pub struct SnapshotManifest {
 	pub operator: OperatorId,
 	pub generation: u64,
 	pub upper: CommitVersion,
+	pub flow_cursor: CommitVersion,
 	pub content_hash: u64,
 	pub dictionary_max: Vec<(u64, u128)>,
 	pub chunk_count: u64,
@@ -37,6 +38,7 @@ pub struct LoadedSnapshot {
 pub struct SnapshotWrite<'a> {
 	pub operator: OperatorId,
 	pub upper: CommitVersion,
+	pub flow_cursor: CommitVersion,
 	pub dictionary_max: &'a [(u64, u128)],
 	pub chunk_bytes: usize,
 }
@@ -105,12 +107,13 @@ impl SnapshotStore {
 
 		txn.execute(
 			r#"INSERT INTO "snapshot_manifest"
-			   (operator, generation, upper, content_hash, dictionary_max, chunk_count, created_at)
-			   VALUES (?1, ?2, ?3, ?4, ?5, ?6, CAST(strftime('%s', 'now') AS INTEGER))"#,
+			   (operator, generation, upper, flow_cursor, content_hash, dictionary_max, chunk_count, created_at)
+			   VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, CAST(strftime('%s', 'now') AS INTEGER))"#,
 			params![
 				operator,
 				generation as i64,
 				write.upper.0 as i64,
+				write.flow_cursor.0 as i64,
 				hasher.digest().to_be_bytes().as_slice(),
 				encode_dictionary_max(write.dictionary_max),
 				seq as i64,
@@ -151,6 +154,41 @@ impl SnapshotStore {
 		Ok(generations.into_iter().map(|generation| generation as u64).collect())
 	}
 
+	pub fn generation_cursors(&self, operator: OperatorId) -> Result<Vec<(u64, CommitVersion)>> {
+		let guard = self.inner.conn.lock();
+		let conn = guard
+			.as_ref()
+			.ok_or_else(|| internal_error!("operator snapshot connection is closed"))?;
+		let mut stmt = conn
+			.prepare_cached(
+				r#"SELECT generation, flow_cursor FROM "snapshot_manifest"
+				   WHERE operator = ?1 ORDER BY generation DESC"#,
+			)
+			.map_err(|e| internal_error!("snapshot cursor query failed: {}", e))?;
+		let rows = stmt
+			.query_map(params![operator.0 as i64], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))
+			.and_then(|rows| rows.collect::<rusqlite::Result<Vec<(i64, i64)>>>())
+			.map_err(|e| internal_error!("snapshot cursor scan failed: {}", e))?;
+		Ok(rows.into_iter()
+			.map(|(generation, cursor)| (generation as u64, CommitVersion(cursor as u64)))
+			.collect())
+	}
+
+	pub fn operators(&self) -> Result<Vec<OperatorId>> {
+		let guard = self.inner.conn.lock();
+		let conn = guard
+			.as_ref()
+			.ok_or_else(|| internal_error!("operator snapshot connection is closed"))?;
+		let mut stmt = conn
+			.prepare_cached(r#"SELECT DISTINCT operator FROM "snapshot_manifest" ORDER BY operator ASC"#)
+			.map_err(|e| internal_error!("snapshot operator query failed: {}", e))?;
+		let operators = stmt
+			.query_map([], |row| row.get::<_, i64>(0))
+			.and_then(|rows| rows.collect::<rusqlite::Result<Vec<i64>>>())
+			.map_err(|e| internal_error!("snapshot operator scan failed: {}", e))?;
+		Ok(operators.into_iter().map(|operator| OperatorId(operator as u64)).collect())
+	}
+
 	pub fn load(&self, operator: OperatorId, generation: u64) -> Result<LoadedSnapshot> {
 		let guard = self.inner.conn.lock();
 		let conn = guard
@@ -159,21 +197,22 @@ impl SnapshotStore {
 
 		let manifest = conn
 			.query_row(
-				r#"SELECT upper, content_hash, dictionary_max, chunk_count FROM "snapshot_manifest"
+				r#"SELECT upper, flow_cursor, content_hash, dictionary_max, chunk_count FROM "snapshot_manifest"
 				   WHERE operator = ?1 AND generation = ?2"#,
 				params![operator.0 as i64, generation as i64],
 				|row| {
 					Ok((
 						row.get::<_, i64>(0)?,
-						row.get::<_, Vec<u8>>(1)?,
+						row.get::<_, i64>(1)?,
 						row.get::<_, Vec<u8>>(2)?,
-						row.get::<_, i64>(3)?,
+						row.get::<_, Vec<u8>>(3)?,
+						row.get::<_, i64>(4)?,
 					))
 				},
 			)
 			.optional()
 			.map_err(|e| internal_error!("snapshot manifest read failed: {}", e))?;
-		let Some((upper, content_hash, dictionary_max, chunk_count)) = manifest else {
+		let Some((upper, flow_cursor, content_hash, dictionary_max, chunk_count)) = manifest else {
 			return Err(internal_error!(
 				"snapshot manifest missing for operator {} generation {}",
 				operator.0,
@@ -245,6 +284,7 @@ impl SnapshotStore {
 				operator,
 				generation,
 				upper: CommitVersion(upper as u64),
+				flow_cursor: CommitVersion(flow_cursor as u64),
 				content_hash,
 				dictionary_max,
 				chunk_count: chunk_count as u64,
@@ -279,6 +319,7 @@ fn ensure_schema(conn: &Connection) {
 			operator INTEGER NOT NULL,
 			generation INTEGER NOT NULL,
 			upper INTEGER NOT NULL,
+			flow_cursor INTEGER NOT NULL,
 			content_hash BLOB NOT NULL,
 			dictionary_max BLOB NOT NULL,
 			chunk_count INTEGER NOT NULL,

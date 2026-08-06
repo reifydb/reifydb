@@ -129,6 +129,24 @@ impl SliceComputer {
 		}
 	}
 
+	pub fn replay(
+		&self,
+		flow_engine: &mut FlowEngineInner,
+		flow_id: FlowId,
+		items: &[Arc<Cdc>],
+		source_objects: &BTreeSet<ObjectId>,
+		upto: CommitVersion,
+	) -> Result<Pending> {
+		let refs: Vec<&Cdc> = items.iter().map(Arc::as_ref).collect();
+		let changes = collect_flow_changes(&refs, source_objects);
+		if changes.is_empty() {
+			return Ok(Pending::new());
+		}
+		let (pending, _shapes, _view_changes) =
+			self.compute(flow_engine, flow_id, upto, changes, PendingLayers::empty())?;
+		Ok(pending)
+	}
+
 	fn compute(
 		&self,
 		flow_engine: &mut FlowEngineInner,
@@ -216,7 +234,7 @@ impl SliceComputer {
 	}
 }
 
-fn collect_flow_changes(cdcs: &[&Cdc], source_objects: &BTreeSet<ObjectId>) -> Vec<Change> {
+pub(crate) fn collect_flow_changes(cdcs: &[&Cdc], source_objects: &BTreeSet<ObjectId>) -> Vec<Change> {
 	let mut out = Vec::new();
 	for cdc in cdcs {
 		for change in &cdc.changes {

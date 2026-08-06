@@ -26,6 +26,10 @@ pub enum FlowActorMessage {
 		outcome: Result<(Vec<Arc<Cdc>>, CommitVersion)>,
 	},
 
+	CatchUp {
+		outcome: Result<(Vec<Arc<Cdc>>, CommitVersion)>,
+	},
+
 	Tick,
 
 	Sample,

@@ -11,12 +11,14 @@
 //! - Clock axis: byte-identical everything - keys, value bodies, AND row header stamps - across
 //!   every operator keyspace, data and control. No allowlist. This is what tasks "no clock read
 //!   is ever encoded into operator state" buys.
-//! - Batch axis: keys and value BODIES must match everywhere; the named allowlists below carve
-//!   out exactly the state that is arrival-derived by design, and nothing else.
+//! - Batch axis: keys and value BODIES must match everywhere; the named allowlists carve out
+//!   exactly the state that is arrival-derived by design, and nothing else.
+//!
+//! Both comparators live in `reifydb_testing_flow::state` so the catch-up suites hold flows to
+//! the same contract this one does.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, state::StateBytes};
 use reifydb_core::{
 	common::{CommitVersion, JoinType, WindowKind, WindowSize},
 	interface::{
@@ -24,12 +26,8 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		consolidate::consolidate_diffs,
 	},
-	key::{
-		EncodableKey,
-		operator_group_state::{Keyspace, OperatorGroupStateKey},
-		operator_state::OperatorStateKey,
-	},
-	state::{budget::OperatorStateBudgetHandle, group::GroupRecord},
+	key::operator_group_state::Keyspace,
+	state::budget::OperatorStateBudgetHandle,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_flow::operator::Operator;
@@ -48,7 +46,11 @@ use reifydb_sub_flow::{
 		window::operator::{WindowConfig, WindowOperator},
 	},
 };
-use reifydb_testing_flow::{generator, harness::Harness};
+use reifydb_testing_flow::{
+	generator,
+	harness::Harness,
+	state::{State, assert_batch_equivalent, assert_identical_bytes, keyspace_of},
+};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
@@ -65,22 +67,6 @@ const SUBJECT: OperatorId = OperatorId(1);
 const CLOCK_LIVE_MS: u64 = 1_000_000_000;
 const CLOCK_REPLAY_MS: u64 = 4_102_444_800_000;
 
-/// Keyspaces whose KEYS embed the arrival-time activity bucket of the dispatch that stamped them.
-/// Arrival granularity is exactly what the batch axis varies, so their keys legitimately differ
-/// across slicings; the entry COUNT still must not (one live entry per group at quiescence).
-const ARRIVAL_KEYED: &[Keyspace] = &[Keyspace::ACTIVITY_INDEX, Keyspace::SIDE_ACTIVITY_INDEX];
-
-/// Keyspaces whose value BODIES embed an arrival position or bucket: the group record carries its
-/// activity bucket, the side record carries a bucket, and the node watermark IS the last persisted
-/// arrival position. Their key sets must still match; for GROUP_RECORD the decoded id-to-group
-/// mapping must too, since that mapping is what the allocation-order fix pins.
-const ARRIVAL_VALUED: &[Keyspace] = &[Keyspace::GROUP_RECORD, Keyspace::SIDE_ACTIVITY_RECORD, Keyspace::NODE_WATERMARK];
-
-/// Keyspaces whose row header stamps are carried mutation times derived from row event time, not
-/// from the dispatch coordinate: these must be byte-identical INCLUDING headers even across batch
-/// boundaries. This pins the distinct flush-stamp mechanism.
-const ROW_STAMPED: &[Keyspace] = &[Keyspace::DISTINCT_ENTRY, Keyspace::DISTINCT_LAYOUT];
-
 fn routines() -> Routines {
 	let b = Routines::builder();
 	let b = default_native_functions(b);
@@ -92,101 +78,12 @@ fn at(ms: u64) -> DateTime {
 	DateTime::from_timestamp_millis(ms).expect("a test stamp is representable")
 }
 
-fn keyspace_of(key: &EncodedKey) -> Option<Keyspace> {
-	OperatorStateKey::decode(key)
-		.and_then(|state| OperatorGroupStateKey::decode_inner(&state.key))
-		.map(|(_, keyspace, _)| keyspace)
-}
-
-fn body_of(row: &EncodedRow) -> Vec<u8> {
-	match StateBytes::from_row(row.clone()) {
-		Ok(bytes) => bytes.body().to_vec(),
-		Err(_) => row.to_vec(),
-	}
-}
-
-type State = Vec<(EncodedKey, EncodedRow)>;
-
 fn count_keyspace(state: &State, keyspace: Keyspace) -> usize {
 	state.iter().filter(|(key, _)| keyspace_of(key) == Some(keyspace)).count()
 }
 
 fn render(diffs: Vec<Diff>) -> Vec<String> {
 	consolidate_diffs(diffs).expect("emitted diffs consolidate").iter().map(|diff| format!("{diff:?}")).collect()
-}
-
-fn assert_identical_bytes(label: &str, a: &State, b: &State) {
-	// The clock-axis contract: raw key and raw row bytes, headers included, across EVERY
-	// keyspace. Any clock read encoded anywhere in operator state shows up here.
-	let a: Vec<(Vec<u8>, Vec<u8>)> = a.iter().map(|(k, r)| (k.to_vec(), r.to_vec())).collect();
-	let b: Vec<(Vec<u8>, Vec<u8>)> = b.iter().map(|(k, r)| (k.to_vec(), r.to_vec())).collect();
-	assert_eq!(a, b, "{label}: state must be byte-identical (headers included) across wall clocks");
-}
-
-fn assert_batch_equivalent(label: &str, a: &State, b: &State) {
-	// The batch-axis contract, keyspace by keyspace, with the named allowlists above and
-	// nothing excluded silently.
-	let mut a_strict: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
-	let mut b_strict: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
-	let mut a_bodies: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
-	let mut b_bodies: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
-	let mut a_counts: BTreeMap<u8, usize> = BTreeMap::new();
-	let mut b_counts: BTreeMap<u8, usize> = BTreeMap::new();
-	let mut a_arrival: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
-	let mut b_arrival: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
-
-	let classify = |state: &State,
-	                    strict: &mut BTreeMap<Vec<u8>, Vec<u8>>,
-	                    bodies: &mut BTreeMap<Vec<u8>, Vec<u8>>,
-	                    counts: &mut BTreeMap<u8, usize>,
-	                    arrival: &mut BTreeMap<Vec<u8>, Vec<u8>>| {
-		for (key, row) in state {
-			let Some(keyspace) = keyspace_of(key) else {
-				strict.insert(key.to_vec(), row.to_vec());
-				continue;
-			};
-			if ARRIVAL_KEYED.contains(&keyspace) {
-				*counts.entry(keyspace.0).or_insert(0) += 1;
-			} else if ARRIVAL_VALUED.contains(&keyspace) {
-				// The group record body still names the group bytes the id resolves
-				// to; only its activity bucket is arrival-derived, so compare the
-				// mapping and drop the bucket.
-				let group = if keyspace == Keyspace::GROUP_RECORD {
-					reifydb_codec::state::decode_state::<GroupRecord>(
-						&StateBytes::from_row(row.clone()).expect("a group record decodes"),
-					)
-					.expect("a group record decodes")
-					.group
-				} else {
-					Vec::new()
-				};
-				arrival.insert(key.to_vec(), group);
-			} else if ROW_STAMPED.contains(&keyspace) {
-				strict.insert(key.to_vec(), row.to_vec());
-			} else {
-				bodies.insert(key.to_vec(), body_of(row));
-			}
-		}
-	};
-	classify(a, &mut a_strict, &mut a_bodies, &mut a_counts, &mut a_arrival);
-	classify(b, &mut b_strict, &mut b_bodies, &mut b_counts, &mut b_arrival);
-
-	assert_eq!(
-		a_strict, b_strict,
-		"{label}: row-stamped keyspaces must be byte-identical (headers included) across batch boundaries"
-	);
-	assert_eq!(
-		a_bodies, b_bodies,
-		"{label}: every non-allowlisted keyspace must agree on keys and value bodies across batch boundaries"
-	);
-	assert_eq!(
-		a_counts, b_counts,
-		"{label}: arrival-keyed index keyspaces must hold one live entry per group either way"
-	);
-	assert_eq!(
-		a_arrival, b_arrival,
-		"{label}: arrival-valued keyspaces must agree on their key sets and id-to-group mappings"
-	);
 }
 
 struct Run {

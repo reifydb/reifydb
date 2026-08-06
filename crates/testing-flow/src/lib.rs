@@ -15,6 +15,7 @@
 pub mod generator;
 pub mod harness;
 pub mod native;
+pub mod state;
 
 pub use native::assert_backend_parity;
 

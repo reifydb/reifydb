@@ -7,6 +7,7 @@ use std::{
 	panic::{AssertUnwindSafe, catch_unwind},
 	process,
 	sync::Arc,
+	time::Instant,
 };
 
 use reifydb_cdc::consume::backlog::{BacklogPull, FlowBacklog};
@@ -27,7 +28,7 @@ use reifydb_core::{
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_flow::transaction::substrate::FlowSubstrate;
+use reifydb_flow::transaction::substrate::{FlowSubstrate, apply_operator_state};
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
 	actor::{
@@ -44,7 +45,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 
 use crate::{
 	builder::CustomOperators,
@@ -55,7 +56,7 @@ use crate::{
 		loader::{LoaderMessage, LoaderReply},
 		overlay::FlowWriteOverlay,
 		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep},
-		snapshot::FlowSnapshots,
+		snapshot::{FlowSnapshotLoad, FlowSnapshots},
 		tracker::FlowPositionTracker,
 	},
 	engine::FlowEngineInner,
@@ -85,6 +86,7 @@ pub struct FlowActorParams {
 	pub retry_limit: u32,
 	pub retry_backoff: Duration,
 	pub snapshots: Option<FlowSnapshots>,
+	pub snapshot_load: FlowSnapshotLoad,
 }
 
 pub struct FlowActor {
@@ -113,6 +115,7 @@ pub struct FlowActor {
 	initial_source_objects: Arc<BTreeSet<ObjectId>>,
 	initial_cursor: CommitVersion,
 	snapshots: Option<FlowSnapshots>,
+	snapshot_load: FlowSnapshotLoad,
 }
 
 pub struct FlowActorState {
@@ -123,6 +126,9 @@ pub struct FlowActorState {
 	committing: bool,
 	awaiting_load: bool,
 	poisoned: bool,
+	catching_up: bool,
+	replay_cursor: CommitVersion,
+	replay_started_at: Instant,
 	retry_count: u32,
 	overlay: FlowWriteOverlay,
 	drain_after_commit: bool,
@@ -162,6 +168,7 @@ impl FlowActor {
 			initial_source_objects: params.source_objects,
 			initial_cursor: params.cursor,
 			snapshots: params.snapshots,
+			snapshot_load: params.snapshot_load,
 		}
 	}
 
@@ -250,8 +257,136 @@ impl FlowActor {
 		self.engine.cdc_producer_watermark().min(self.engine.done_until()).min(self.control.get())
 	}
 
+	fn begin_catch_up(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) -> bool {
+		let cursor = match self.snapshot_load {
+			FlowSnapshotLoad::Empty => return false,
+			FlowSnapshotLoad::Inconsistent => {
+				self.poison(
+					state,
+					"the flow's operator snapshots carry no cursor every operator agrees on; \
+					 resuming would mix state from different versions"
+						.to_string(),
+				);
+				return false;
+			}
+			FlowSnapshotLoad::Restored(cursor) => cursor,
+		};
+		if cursor >= self.initial_cursor {
+			return false;
+		}
+		let truncated_before = self.engine.cdc_store().truncated_before().unwrap_or(CommitVersion(0));
+		if truncated_before > cursor {
+			self.poison(
+				state,
+				format!(
+					"the operator snapshot resumes at {} but cdc is truncated before {}; the \
+					 versions needed to rebuild the gap are gone",
+					cursor.0, truncated_before.0
+				),
+			);
+			return false;
+		}
+		info!(
+			flow_id = self.flow_id.0,
+			from = cursor.0,
+			to = self.initial_cursor.0,
+			versions = self.initial_cursor.0.saturating_sub(cursor.0),
+			"flow catch-up replay starting"
+		);
+		state.catching_up = true;
+		state.replay_cursor = cursor;
+		state.replay_started_at = Instant::now();
+		self.request_catch_up(state, ctx);
+		true
+	}
+
+	fn request_catch_up(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
+		let self_ref = ctx.self_ref().clone();
+		let reply: LoaderReply = Box::new(move |outcome| {
+			let _ = self_ref.send(FlowActorMessage::CatchUp {
+				outcome,
+			});
+		});
+		if self.loader
+			.send(LoaderMessage::Fetch {
+				from: state.replay_cursor,
+				up_to: self.initial_cursor,
+				budget: self.load_batch_bytes,
+				reply,
+			})
+			.is_err()
+		{
+			state.catching_up = false;
+			self.poison(state, "loader stopped during catch-up replay".to_string());
+		}
+	}
+
+	fn on_catch_up(
+		&self,
+		state: &mut FlowActorState,
+		ctx: &Context<FlowActorMessage>,
+		outcome: Result<(Vec<Arc<Cdc>>, CommitVersion)>,
+	) {
+		if state.poisoned {
+			return;
+		}
+		let (items, advance_to) = match outcome {
+			Ok(batch) => batch,
+			Err(e) => {
+				state.catching_up = false;
+				self.poison(state, format!("flow catch-up replay could not read cdc: {e}"));
+				return;
+			}
+		};
+		match self.computer.replay(
+			&mut state.flow_engine,
+			self.flow_id,
+			&items,
+			&state.source_objects,
+			advance_to,
+		) {
+			Ok(pending) => apply_operator_state(&self.substrate.operators, advance_to, &pending),
+			Err(e) => {
+				state.catching_up = false;
+				self.poison(state, format!("flow catch-up replay failed: {e}"));
+				return;
+			}
+		}
+		if advance_to <= state.replay_cursor {
+			state.catching_up = false;
+			self.poison(
+				state,
+				format!("flow catch-up replay made no progress past {}", state.replay_cursor.0),
+			);
+			return;
+		}
+		state.replay_cursor = advance_to;
+		if state.replay_cursor < self.initial_cursor {
+			self.request_catch_up(state, ctx);
+			return;
+		}
+		self.finish_catch_up(state, ctx);
+	}
+
+	fn finish_catch_up(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
+		state.catching_up = false;
+		info!(
+			flow_id = self.flow_id.0,
+			through = state.replay_cursor.0,
+			elapsed_ms = state.replay_started_at.elapsed().as_millis() as u64,
+			arena_bytes = self.substrate.operators.total_bytes(),
+			"flow catch-up replay complete"
+		);
+		self.snapshot_now(state, ctx);
+		if state.committing {
+			state.drain_after_commit = true;
+		} else {
+			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
+		}
+	}
+
 	fn on_drain(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
-		if state.poisoned || state.committing || state.awaiting_load {
+		if state.poisoned || state.committing || state.awaiting_load || state.catching_up {
 			return;
 		}
 		let safe = self.safe_bound();
@@ -462,7 +597,7 @@ impl FlowActor {
 	}
 
 	fn on_tick(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
-		if self.ticks_enabled && !state.poisoned && !state.committing {
+		if self.ticks_enabled && !state.poisoned && !state.committing && !state.catching_up {
 			let timestamp = DateTime::from_millis(self.clock.now().to_millis());
 			match self.computer.tick(&mut state.flow_engine, self.flow_id, timestamp, state.durable_cursor)
 			{
@@ -484,29 +619,32 @@ impl FlowActor {
 
 		self.maybe_snapshot(state, ctx);
 
-		if !state.poisoned && !state.committing {
+		if !state.poisoned && !state.committing && !state.catching_up {
 			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 		}
 	}
 
 	fn maybe_snapshot(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
-		let Some(snapshots) = &self.snapshots else {
-			return;
-		};
-		if state.poisoned || state.committing {
+		if self.snapshots.is_none() || state.poisoned || state.committing || state.catching_up {
 			return;
 		}
 		let Some(interval) = self.snapshot_interval() else {
 			return;
 		};
-		let now = self.clock.now();
-		if now - state.last_snapshot_at < interval {
+		if self.clock.now() - state.last_snapshot_at < interval {
 			return;
 		}
-		state.last_snapshot_at = now;
+		self.snapshot_now(state, ctx);
+	}
+
+	fn snapshot_now(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
+		let Some(snapshots) = &self.snapshots else {
+			return;
+		};
+		state.last_snapshot_at = self.clock.now();
 
 		let ids: Vec<_> = self.flow.get_operator_ids().collect();
-		let Some(pin) = snapshots.write_flow(&self.substrate.operators, &ids) else {
+		let Some(pin) = snapshots.write_flow(&self.substrate.operators, &ids, state.cursor) else {
 			return;
 		};
 
@@ -591,11 +729,8 @@ impl Actor for FlowActor {
 		if let Some(interval) = self.sample_interval() {
 			ctx.schedule_once(interval, || FlowActorMessage::Sample);
 		}
-		if !poisoned {
-			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
-		}
 
-		FlowActorState {
+		let mut state = FlowActorState {
 			flow_engine,
 			source_objects: self.initial_source_objects.clone(),
 			cursor: self.initial_cursor,
@@ -603,12 +738,21 @@ impl Actor for FlowActor {
 			committing: false,
 			awaiting_load: false,
 			poisoned,
+			catching_up: false,
+			replay_cursor: self.initial_cursor,
+			replay_started_at: Instant::now(),
 			retry_count: 0,
 			overlay: FlowWriteOverlay::new(),
 			drain_after_commit: false,
 			last_checkpoint_at: self.clock.now(),
 			last_snapshot_at: self.clock.now(),
+		};
+
+		if !state.poisoned && !self.begin_catch_up(&mut state, ctx) && !state.poisoned {
+			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 		}
+
+		state
 	}
 
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
@@ -619,7 +763,7 @@ impl Actor for FlowActor {
 			}
 			FlowActorMessage::Wake => {
 				if !state.poisoned {
-					if state.committing || state.awaiting_load {
+					if state.committing || state.awaiting_load || state.catching_up {
 						state.drain_after_commit = true;
 					} else {
 						let _ = ctx.self_ref().send(FlowActorMessage::Drain);
@@ -631,6 +775,12 @@ impl Actor for FlowActor {
 				outcome,
 			} => {
 				self.on_loaded(state, ctx, outcome);
+				Directive::Continue
+			}
+			FlowActorMessage::CatchUp {
+				outcome,
+			} => {
+				self.on_catch_up(state, ctx, outcome);
 				Directive::Continue
 			}
 			FlowActorMessage::Tick => {
@@ -699,27 +849,40 @@ mod pull_protocol {
 	use reifydb_cdc::{
 		consume::{checkpoint::CdcCheckpoint, watermark::CdcConsumerWatermark},
 		produce::watermark::CdcProducerWatermark,
+		storage::CdcStorage,
 	};
 	use reifydb_core::{
 		actors::{flow::FlowActorHandle, pending::PendingLayers},
 		interface::{
-			catalog::flow::OperatorId,
+			catalog::{
+				flow::OperatorId,
+				ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata},
+			},
 			cdc::{ConsumerClass, SystemChange},
 			change::{ChangeOrigin, Diff},
 		},
-		key::{Key, cdc_consumer::FlowSnapshotPin, kind::KeyKind, operator_state::OperatorStateKey},
+		key::{
+			Key, cdc_consumer::FlowSnapshotPin, kind::KeyKind,
+			operator_group_state::{Keyspace, OperatorGroupStateKey},
+			operator_state::OperatorStateKey,
+		},
+	};
+	use reifydb_codec::{
+		encoded::row::EncodedRow,
+		key::encoded::{EncodedKey, EncodedKeyRange},
 	};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::{DeferredParams, FlowTransaction};
 	use reifydb_runtime::sync::waiter::WaiterHandle;
 	use reifydb_sqlite::SqliteConfig;
 	use reifydb_store_operator::{OperatorStore, snapshot::SnapshotStore};
+	use reifydb_testing_flow::state::{State, assert_batch_equivalent};
 	use reifydb_transaction::{
 		group::{GroupCommitBegin, GroupCommitHandle},
 		multi::RangeScope,
 		transaction::Transaction,
 	};
-	use reifydb_value::value::Value;
+	use reifydb_value::{util::cowvec::CowVec, value::Value};
 
 	use super::*;
 	use crate::{
@@ -747,6 +910,7 @@ mod pull_protocol {
 		substrate: FlowSubstrate,
 		health: FlowHealthRegistry,
 		snapshots: Option<FlowSnapshots>,
+		snapshot_guard: Option<reifydb_sqlite::SqliteTempPathGuard>,
 	}
 
 	fn harness() -> Harness {
@@ -853,7 +1017,36 @@ mod pull_protocol {
 			substrate,
 			health: FlowHealthRegistry::new(),
 			snapshots: None,
+			snapshot_guard: None,
 		}
+	}
+
+	fn snapshotting_harness(table_rql: &str, view_rql: &str) -> (Harness, SnapshotStore) {
+		let mut h = harness_with(table_rql, view_rql);
+		{
+			let catalog = h.engine.catalog();
+			let mut admin = h.engine.begin_admin(IdentityId::system()).expect("begin admin");
+			catalog.set_config(&mut admin, ConfigKey::OperatorSnapshotInterval, Value::duration_seconds(1))
+				.expect("set snapshot interval");
+			admin.commit().expect("commit config");
+		}
+		let (config, guard) = SqliteConfig::test();
+		let store = SnapshotStore::sqlite(config);
+		h.snapshots = Some(FlowSnapshots::new(
+			store.clone(),
+			h.engine.single().read_store(),
+			h.engine.dictionary_allocators(),
+		));
+		h.snapshot_guard = Some(guard);
+		(h, store)
+	}
+
+	fn aggregate_harness() -> (Harness, SnapshotStore) {
+		snapshotting_harness(
+			"CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }",
+			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } with { time: event } \
+			 AS { FROM app::t AGGREGATE { total: math::count(id) } BY { g } }",
+		)
 	}
 
 	impl Harness {
@@ -896,6 +1089,7 @@ mod pull_protocol {
 					retry_limit: 3,
 					retry_backoff: Duration::from_milliseconds(50).unwrap(),
 					snapshots: self.snapshots.clone(),
+					snapshot_load: FlowSnapshotLoad::Empty,
 				}),
 			);
 
@@ -1055,6 +1249,145 @@ mod pull_protocol {
 				.flat_map(|cdc| cdc.changes)
 				.find(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
 		}
+
+		fn arena_state(&self, substrate: &FlowSubstrate) -> State {
+			// Full keys, not the arena's inner form: the shared comparator decodes the operator
+			// prefix to name the keyspace a difference lives in.
+			let mut out = State::new();
+			for operator in self.flow.get_operator_ids() {
+				let prefix = OperatorStateKey::encoded(operator, vec![]);
+				let batch = substrate.operators.range_batch(
+					operator,
+					EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded),
+					u64::MAX,
+				);
+				for (key, row) in batch.items {
+					let mut full = prefix.as_slice().to_vec();
+					full.extend_from_slice(key.as_slice());
+					out.push((EncodedKey::new(full), row));
+				}
+			}
+			out
+		}
+
+		/// Blocks until catch-up has COMPLETED, using the only unambiguous signal there is: the
+		/// snapshot it publishes on completion, stamped at the cursor it caught up to. Waiting on
+		/// arena size instead would race a replay that is merely partway there.
+		fn await_catch_up(&self, store: &SnapshotStore, upto: CommitVersion) {
+			let probe = self.flow.get_operator_ids().next().expect("the flow must have an operator");
+			assert!(
+				self.poll_until(seconds(20), || {
+					store.generation_cursors(probe)
+						.expect("generation cursors")
+						.first()
+						.filter(|(_, cursor)| *cursor == upto)
+						.map(|_| ())
+				})
+				.is_some(),
+				"catch-up never completed: no snapshot generation was published at cursor {}, \
+				 newest is {:?}",
+				upto.0,
+				store.generation_cursors(probe).expect("generation cursors").first()
+			);
+		}
+
+		fn write_snapshot(&self, at: CommitVersion) -> CommitVersion {
+			let snapshots = self.snapshots.as_ref().expect("the harness must carry a snapshot store");
+			let ids: Vec<OperatorId> = self.flow.get_operator_ids().collect();
+			snapshots
+				.write_flow(&self.substrate.operators, &ids, at)
+				.expect("the flow must hold state worth snapshotting")
+		}
+
+		fn stop(&self, actor: &FlowActorHandle) {
+			let stopped = Arc::new(WaiterHandle::new());
+			let notify = Arc::clone(&stopped);
+			assert!(actor.actor_ref()
+				.send(FlowActorMessage::Stop {
+					delete_checkpoint: false,
+					reply: Box::new(move || notify.notify()),
+				})
+				.is_ok());
+			assert!(stopped.wait_timeout(seconds(10)), "the actor must stop before the restart");
+		}
+
+		/// The supervisor's bootstrap in miniature: a FRESH arena, `load_flow` into it, and an
+		/// actor spawned at the durable checkpoint carrying whatever the load reported. This is
+		/// the only shape a real restart takes, so catch-up must be driven through it.
+		fn restart(&self, cursor: CommitVersion, load_batch_bytes: ByteSize) -> Restart {
+			let substrate =
+				FlowSubstrate::with_dictionary(self.engine.dictionary_allocators(), OperatorStore::default());
+			let snapshot_load = match &self.snapshots {
+				Some(snapshots) => snapshots.load_flow(
+					&substrate.operators,
+					self.flow.get_operator_ids(),
+					self.engine.cdc_store().truncated_before().unwrap_or(CommitVersion(0)),
+				),
+				None => FlowSnapshotLoad::Empty,
+			};
+
+			let committer = Committer::new(
+				FlowCatalog::new(self.engine.catalog()),
+				self.tracker.clone(),
+				FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+				substrate.operators.clone(),
+				SnapshotPinTracker::new(),
+			);
+			let begin_engine = self.engine.clone();
+			let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+			let committer_handle = self.engine.spawner().spawn_flow(
+				"pull-protocol-committer-restart",
+				CommitterActor::new(
+					committer,
+					GroupCommitHandle::inline(begin),
+					OperatorStateBudgetHandle::default(),
+				),
+			);
+			let health = FlowHealthRegistry::new();
+			let actor = self.engine.spawner().spawn_flow(
+				"pull-protocol-flow-restart",
+				FlowActor::new(FlowActorParams {
+					engine: self.engine.clone(),
+					committer: committer_handle.actor_ref().clone(),
+					backlog: self.backlog.clone(),
+					loader: self.loader_handle.actor_ref().clone(),
+					control: self.control.clone(),
+					custom_operators: CustomOperators::new(HashMap::new()),
+					substrate: substrate.clone(),
+					operator_samples: OperatorSampleRegistry::new(),
+					state_budget: OperatorStateBudgetHandle::default(),
+					clock: self.engine.clock().clone(),
+					health: health.clone(),
+					flow_tracker: self.tracker.clone(),
+					flow: self.flow.clone(),
+					source_objects: self.source_objects.clone(),
+					cursor,
+					pull_batch_bytes: ByteSize::from_mib(8),
+					load_batch_bytes,
+					checkpoint_lag: 10_000,
+					checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
+					retry_limit: 3,
+					retry_backoff: Duration::from_milliseconds(50).unwrap(),
+					snapshots: self.snapshots.clone(),
+					snapshot_load,
+				}),
+			);
+			Restart {
+				substrate,
+				health,
+				snapshot_load,
+				actor,
+				_committer: committer_handle,
+			}
+		}
+	}
+
+	struct Restart {
+		substrate: FlowSubstrate,
+		health: FlowHealthRegistry,
+		snapshot_load: FlowSnapshotLoad,
+		actor: FlowActorHandle,
+		_committer: CommitterHandle,
 	}
 
 	fn seconds(seconds: i64) -> Duration {
@@ -1666,6 +1999,7 @@ mod pull_protocol {
 				retry_limit: 3,
 				retry_backoff: Duration::from_milliseconds(50).unwrap(),
 				snapshots: None,
+				snapshot_load: FlowSnapshotLoad::Empty,
 			}),
 		);
 
@@ -1697,9 +2031,12 @@ mod pull_protocol {
 		// End-to-end trigger wiring: once OperatorSnapshotInterval elapses on the actor's
 		// clock, the next tick with no commit in flight must write a snapshot generation for
 		// every stateful operator of the flow and ride a slice commit that advances the
-		// flow's snapshot pin to min(upper). Falsified by never calling maybe_snapshot from
-		// the tick path, by gating it on ticks_enabled, by not dispatching the pin commit,
-		// or by reading the interval from the wrong config key.
+		// flow's snapshot pin to the FLOW CURSOR every manifest was stamped with. Falsified by
+		// never calling maybe_snapshot from the tick path, by gating it on ticks_enabled, by
+		// not dispatching the pin commit, by reading the interval from the wrong config key,
+		// or by pinning at min(upper): an arena upper is the flow's own commit version, which
+		// always sits ABOVE the cursor, so pinning there lets CDC truncate the very records
+		// catch-up needs.
 		let mut h = harness_with(
 			"CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }",
 			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } with { time: event } \
@@ -1759,8 +2096,6 @@ mod pull_protocol {
 			"every stateful operator must gain a snapshot generation once the interval elapses"
 		);
 
-		let expected_pin =
-			stateful.iter().map(|id| h.substrate.operators.upper(*id)).min().expect("stateful is non-empty");
 		let pin = h
 			.poll_until(seconds(10), || {
 				let mut query = h.engine.begin_query(IdentityId::system()).expect("query");
@@ -1768,8 +2103,402 @@ mod pull_protocol {
 					.expect("fetch pin")
 			})
 			.expect("the completed snapshot must advance the flow's pin through a slice commit");
-		assert_eq!(pin.version, expected_pin, "the pin must be min(upper) across the flow's snapshots");
+		for id in &stateful {
+			let cursors = snapshot_store.generation_cursors(*id).expect("generation cursors");
+			assert!(
+				cursors.iter().all(|(_, cursor)| *cursor == pin.version),
+				"operator {} recorded cursors {:?}, but the pin sits at {}: pin and manifest must be \
+				 the same flow cursor or catch-up resumes from a version CDC no longer covers",
+				id.0,
+				cursors,
+				pin.version.0
+			);
+			assert_ne!(
+				h.substrate.operators.upper(*id),
+				pin.version,
+				"the arena upper is the flow's own commit version and must not be what the pin \
+				 records, or this test could not tell the two version spaces apart"
+			);
+		}
+		assert!(
+			h.tracker.all().get(&h.flow_id).is_some_and(|position| *position >= pin.version),
+			"the pin must be a CDC position the flow has actually consumed"
+		);
 		assert_eq!(pin.class, ConsumerClass::Pinning, "an Ephemeral pin would not bound CDC truncation");
 		drop(actor);
+	}
+
+	/// Runs the shared catch-up scenario: fill state, snapshot at S, keep committing to C, stop,
+	/// then restart against a fresh arena so the gap (S, C] can only be closed by replay.
+	/// Returns the reference state of the uninterrupted run and the checkpoint it reached.
+	fn drive_to_snapshot_and_gap(
+		h: &Harness,
+		fill: &[&str],
+		gap: &[&str],
+	) -> (State, CommitVersion, FlowActorHandle) {
+		let v0 = h.engine.current_version().expect("current version");
+		let actor = h.spawn_actor(v0);
+
+		for rql in fill {
+			h.te.command(rql);
+		}
+		let snapshot_at = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(snapshot_at);
+		h.wake(&actor);
+		assert_eq!(
+			h.await_position(snapshot_at, StdDuration::from_secs(10)),
+			Some(snapshot_at),
+			"the fill must settle before the snapshot, or the snapshot records a cursor the arena \
+			 has not caught up to"
+		);
+		let pin = h.write_snapshot(snapshot_at);
+		assert_eq!(pin, snapshot_at);
+
+		for rql in gap {
+			h.te.command(rql);
+		}
+		let checkpoint = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(checkpoint);
+		h.wake(&actor);
+		assert_eq!(
+			h.await_position(checkpoint, StdDuration::from_secs(10)),
+			Some(checkpoint),
+			"the uninterrupted run must consume the whole gap; it is the reference every replay \
+			 is compared against"
+		);
+
+		let reference = h.arena_state(&h.substrate);
+		assert!(!reference.is_empty(), "precondition: the reference run must have built arena state");
+		(reference, checkpoint, actor)
+	}
+
+	fn aggregate_rows(ids: std::ops::RangeInclusive<u32>) -> Vec<String> {
+		ids.map(|id| {
+			format!(
+				r#"INSERT app::t [{{id: {id}, g: {}, ts: "1970-01-01T00:{id:02}:00Z"}}]"#,
+				id % 3
+			)
+		})
+		.collect()
+	}
+
+	fn aggregate_fill() -> Vec<String> {
+		aggregate_rows(1..=4)
+	}
+
+	fn aggregate_gap() -> Vec<String> {
+		aggregate_rows(5..=12)
+	}
+
+	fn as_rql(owned: &[String]) -> Vec<&str> {
+		owned.iter().map(String::as_str).collect()
+	}
+
+	#[test]
+	fn catch_up_rebuilds_state_byte_identically() {
+		// The whole point of the chunk: a flow that boots from a snapshot taken at S while its
+		// durable checkpoint sits at C must replay (S, C] into the arena, and land where an
+		// uninterrupted run landed. Booting at C with state from S is silent corruption - the
+		// aggregate would be missing every row in the gap and no error would ever surface.
+		// Falsified by skipping the replay loop (returning false from begin_catch_up): the
+		// restarted arena then holds only the four fill rows' state.
+		let (h, store) = aggregate_harness();
+		let fill = aggregate_fill();
+		let gap = aggregate_gap();
+		let (reference, checkpoint, actor) =
+			drive_to_snapshot_and_gap(&h, &as_rql(&fill), &as_rql(&gap));
+		h.stop(&actor);
+
+		let restart = h.restart(checkpoint, ByteSize::from_mib(8));
+		assert!(
+			matches!(restart.snapshot_load, FlowSnapshotLoad::Restored(_)),
+			"precondition: the restart must load the snapshot, not boot empty ({:?})",
+			restart.snapshot_load
+		);
+		h.await_catch_up(&store, checkpoint);
+		assert!(restart.health.poisoned().is_empty(), "a covered gap must not poison: {:?}", restart.health.poisoned());
+
+		assert_batch_equivalent("aggregate catch-up", &reference, &h.arena_state(&restart.substrate));
+		drop(restart);
+	}
+
+	#[test]
+	fn the_ring_sink_metadata_mirror_tracks_the_mvcc_row() {
+		// The ringbuffer metadata row is routed to an UNPINNED state handle, so during a replay
+		// it would answer with the post-crash head/tail and the sink would assign storage row
+		// numbers the live run never assigned. The arena mirror is what makes that read
+		// replayable, and it is only worth anything if it holds the SAME numbers the mvcc row
+		// does - through inserts and through the capacity evictions that move head. Falsified by
+		// dropping the mirror write from write_metadata (nothing to find in the arena) or by
+		// writing it only on the insert path and not on the eviction path (head drifts apart).
+		let h = harness_with(
+			"CREATE TABLE app::t { id: int4, v: int4, ts: datetime } with { ts: ts }",
+			"CREATE DEFERRED RINGBUFFER VIEW app::v { id: int4, v: int4 } \
+			 WITH { capacity: 3, time: event } AS { FROM app::t map { id, v } }",
+		);
+		let v0 = h.engine.current_version().expect("current version");
+		let actor = h.spawn_actor(v0);
+
+		// More rows than the capacity, one wake each, so head moves under real evictions rather
+		// than sitting at its initial value.
+		for id in 1..=6u32 {
+			h.te.command(&format!(
+				r#"INSERT app::t [{{ id: {id}, v: {id}, ts: "1970-01-01T00:{id:02}:00Z" }}]"#
+			));
+			let target = h.engine.current_version().expect("current version");
+			h.await_safe_watermark(target);
+			h.wake(&actor);
+			assert_eq!(
+				h.await_position(target, StdDuration::from_secs(10)),
+				Some(target),
+				"each row must settle, or the eviction it triggers has not run yet"
+			);
+		}
+		assert_eq!(h.view_rows(), 3, "precondition: the ring must be at capacity, so head has moved");
+
+		let stored = {
+			let query = h.engine.multi().begin_query().expect("query");
+			let rows: Vec<_> = query
+				.range(EncodedKeyRange::all(), RangeScope::All, 100_000)
+				.collect::<Result<Vec<_>>>()
+				.expect("scan for the ringbuffer metadata row")
+				.into_iter()
+				.filter(|row| Key::kind(&row.key) == Some(KeyKind::RingBufferMetadata))
+				.collect();
+			assert_eq!(rows.len(), 1, "the test view owns exactly one unpartitioned metadata row");
+			decode_ringbuffer_metadata(&rows[0].row)
+		};
+
+		let shape = RowShape::operator_state();
+		let mirrored: Vec<RingBufferMetadata> = h
+			.flow
+			.get_operator_ids()
+			.flat_map(|operator| {
+				h.substrate
+					.operators
+					.range_batch(
+						operator,
+						EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded),
+						u64::MAX,
+					)
+					.items
+					.into_iter()
+					.filter(|(key, _)| {
+						OperatorGroupStateKey::decode_inner(key.as_slice())
+							.is_some_and(|(_, ks, _)| ks == Keyspace::RINGBUFFER_META)
+					})
+					.map(|(_, row)| {
+						let blob = shape.get_blob(&row, 0);
+						decode_ringbuffer_metadata(&EncodedRow(CowVec::new(
+							blob.as_bytes().to_vec(),
+						)))
+					})
+					.collect::<Vec<_>>()
+			})
+			.collect();
+
+		assert_eq!(mirrored.len(), 1, "the sink must keep exactly one mirror for its global metadata");
+		assert_eq!(
+			mirrored[0], stored,
+			"the arena mirror and the mvcc row must carry the same capacity, count, head and tail: \
+			 the mirror is what a replay reads, so any drift makes the replay assign different \
+			 storage row numbers than the live run did"
+		);
+		assert!(mirrored[0].head > 1, "precondition: evictions must have moved head off its initial value");
+		drop(actor);
+	}
+
+	#[test]
+	fn catch_up_writes_no_view_rows_and_no_change_records() {
+		// Replay recomputes state from input the flow already committed for, so its view rows and
+		// change records are already durable. Re-emitting them would double-write every row in
+		// the gap and hand every CDC and subscription consumer a second copy of changes they
+		// already saw. Falsified by dropping the suppression (committing the replay's pending
+		// instead of applying only its operator-state keys).
+		let (h, store) = aggregate_harness();
+		let fill = aggregate_fill();
+		let gap = aggregate_gap();
+		let (reference, checkpoint, actor) = drive_to_snapshot_and_gap(&h, &as_rql(&fill), &as_rql(&gap));
+		let rows_before = h.view_rows();
+		let version_before = h.engine.current_version().expect("current version");
+		h.stop(&actor);
+
+		let restart = h.restart(checkpoint, ByteSize::from_mib(8));
+		h.await_catch_up(&store, checkpoint);
+		assert_batch_equivalent(
+			"precondition: the replay must have rebuilt the arena, so the silence below is about \
+			 view output and not about doing nothing at all",
+			&reference,
+			&h.arena_state(&restart.substrate),
+		);
+
+		// Actively hunt for a violation rather than sampling once: a replay that did commit its
+		// output would land asynchronously, and a single sample right after completion could miss
+		// it. Finding nothing over the whole window is the assertion.
+		let offender = h.poll_until(seconds(2), || {
+			h.cdc_records()
+				.into_iter()
+				.filter(|cdc| cdc.version > version_before)
+				.find(|cdc| {
+					!cdc.changes.is_empty()
+						|| cdc.system_changes.iter().any(|change| {
+							matches!(Key::kind(change.key()), Some(KeyKind::Row))
+						})
+				})
+				.map(|cdc| (cdc.version, cdc.changes.len(), cdc.system_changes.len()))
+		});
+		assert!(
+			offender.is_none(),
+			"catch-up must write no view rows and emit no flow change records - every version in \
+			 the gap was already committed once, and a second copy re-writes rows and re-notifies \
+			 every cdc and subscription consumer. Offending commit: {offender:?}"
+		);
+		assert_eq!(h.view_rows(), rows_before, "and the view itself must be untouched");
+		drop(restart);
+	}
+
+	#[test]
+	fn a_crash_during_catch_up_leaves_the_snapshot_alone_and_the_retry_still_lands() {
+		// Catch-up must never publish a snapshot of half-replayed state: a snapshot written mid
+		// replay would be stamped with the flow's CHECKPOINT while the arena only holds state
+		// through the replay cursor, so the next boot would replay nothing and keep the hole
+		// forever. A crash mid catch-up must therefore leave the old generation newest, and a
+		// fresh attempt must still land on the reference. Falsified by removing `catching_up`
+		// from maybe_snapshot's guard: the tick sent below then publishes the partial arena at
+		// the checkpoint, the second restart loads THAT and replays nothing, and the comparison
+		// at the end fails.
+		let (h, store) = aggregate_harness();
+		let fill = aggregate_fill();
+		let gap = aggregate_gap();
+		let (reference, checkpoint, actor) = drive_to_snapshot_and_gap(&h, &as_rql(&fill), &as_rql(&gap));
+		let snapshot_cursor = match h.snapshots.as_ref().map(|_| ()) {
+			Some(()) => {
+				let ids: Vec<OperatorId> = h.flow.get_operator_ids().collect();
+				store.generation_cursors(ids[0]).expect("cursors").first().expect("a generation").1
+			}
+			None => unreachable!("the harness installs snapshots"),
+		};
+		h.stop(&actor);
+
+		let Clock::Mock(clock) = h.engine.clock() else {
+			panic!("this test ages the snapshot interval by hand and needs the mock clock")
+		};
+
+		// One CDC record per loader chunk, so the gap takes many round trips and a tick can land
+		// while the replay is still in flight.
+		let interrupted = h.restart(checkpoint, ByteSize::from_bytes(1));
+		assert!(
+			matches!(interrupted.snapshot_load, FlowSnapshotLoad::Restored(_)),
+			"precondition: the interrupted attempt must have had a snapshot to resume from"
+		);
+		// After the spawn, never before: the actor stamps last_snapshot_at in init, so a clock
+		// advance made earlier is erased and the tick below would skip the interval check for a
+		// reason that has nothing to do with catching up.
+		clock.advance_secs(5);
+		h.poll_until(seconds(10), || (interrupted.substrate.operators.total_bytes() > 0).then_some(()));
+		assert!(interrupted.actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
+		h.stop(&interrupted.actor);
+		drop(interrupted);
+
+		// Checked per operator, not just through the load: a mid-replay snapshot may cover only
+		// the operators the partial replay happened to touch, and the consistent-set load would
+		// then quietly fall back and hide it. The gate is what must stop it being written at all.
+		for id in h.flow.get_operator_ids() {
+			let cursors = store.generation_cursors(id).expect("generation cursors");
+			assert!(
+				cursors.iter().all(|(_, cursor)| *cursor <= snapshot_cursor),
+				"operator {} gained a generation past {} during catch-up ({:?}): a snapshot taken \
+				 mid-replay is stamped with the flow's CHECKPOINT while the arena only holds state \
+				 through the replay cursor, so the next boot would replay nothing and keep the hole",
+				id.0,
+				snapshot_cursor.0,
+				cursors
+			);
+		}
+
+		let retry = h.restart(checkpoint, ByteSize::from_mib(8));
+		assert_eq!(
+			retry.snapshot_load,
+			FlowSnapshotLoad::Restored(snapshot_cursor),
+			"the interrupted attempt must have published nothing: the newest generation must still \
+			 be the one taken before the crash, or the retry resumes from a cursor whose state was \
+			 never fully rebuilt"
+		);
+		h.await_catch_up(&store, checkpoint);
+		assert_batch_equivalent("catch-up retry after a crash", &reference, &h.arena_state(&retry.substrate));
+		drop(retry);
+	}
+
+	#[test]
+	fn an_unrecoverable_gap_poisons_the_flow() {
+		// If CDC no longer covers the snapshot's cursor there is no way to rebuild the gap. The
+		// flow must freeze loudly with its views still readable rather than resume from state
+		// that is missing every version in the hole. Falsified by falling through to a normal
+		// boot when the truncation floor is above the snapshot cursor.
+		let (h, _store) = aggregate_harness();
+		let fill = aggregate_fill();
+		let gap = aggregate_gap();
+		let (_reference, checkpoint, actor) = drive_to_snapshot_and_gap(&h, &as_rql(&fill), &as_rql(&gap));
+		let rows_before = h.view_rows();
+		h.stop(&actor);
+
+		h.engine.cdc_store()
+			.drop_before(checkpoint, usize::MAX)
+			.expect("truncate cdc past the snapshot cursor");
+
+		let restart = h.restart(checkpoint, ByteSize::from_mib(8));
+		assert!(
+			h.poll_until(seconds(10), || (!restart.health.poisoned().is_empty()).then_some(())).is_some(),
+			"a flow whose catch-up window has been truncated away must poison, not resume"
+		);
+		assert_eq!(
+			h.view_rows(),
+			rows_before,
+			"a poisoned flow keeps serving what it already materialized; nothing may be rebuilt or lost"
+		);
+		drop(restart);
+	}
+
+	#[test]
+	fn catch_up_snapshots_immediately_on_completion() {
+		// A crash loop must not replay the same window on every boot: the moment catch-up
+		// finishes, the rebuilt arena has to become the newest generation, stamped at the cursor
+		// it is now caught up to. Falsified by removing the snapshot_now call from
+		// finish_catch_up: the second restart below then reports the OLD cursor and replays the
+		// whole gap again.
+		let (h, store) = aggregate_harness();
+		let fill = aggregate_fill();
+		let gap = aggregate_gap();
+		let (reference, checkpoint, actor) = drive_to_snapshot_and_gap(&h, &as_rql(&fill), &as_rql(&gap));
+		h.stop(&actor);
+
+		let first = h.restart(checkpoint, ByteSize::from_mib(8));
+		let FlowSnapshotLoad::Restored(before) = first.snapshot_load else {
+			panic!("precondition: the first restart must resume from a snapshot")
+		};
+		let ids: Vec<OperatorId> = h.flow.get_operator_ids().collect();
+		assert!(
+			h.poll_until(seconds(15), || {
+				let cursors = store.generation_cursors(ids[0]).expect("cursors");
+				cursors.first().filter(|(_, cursor)| *cursor > before).map(|_| ())
+			})
+			.is_some(),
+			"a completed catch-up must publish a snapshot at the cursor it caught up to"
+		);
+		h.stop(&first.actor);
+		drop(first);
+
+		let second = h.restart(checkpoint, ByteSize::from_mib(8));
+		assert_eq!(
+			second.snapshot_load,
+			FlowSnapshotLoad::Restored(checkpoint),
+			"the second boot must resume at the checkpoint itself, with nothing left to replay"
+		);
+		assert_batch_equivalent(
+			"post-catch-up snapshot",
+			&reference,
+			&h.arena_state(&second.substrate),
+		);
+		drop(second);
 	}
 }

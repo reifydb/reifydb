@@ -37,10 +37,24 @@ fn write(
 	chunk_bytes: usize,
 	entries: &[(EncodedKey, EncodedRow)],
 ) -> Result<u64> {
+	write_at(store, operator, upper, upper.saturating_sub(1), dictionary_max, chunk_bytes, entries)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_at(
+	store: &SnapshotStore,
+	operator: OperatorId,
+	upper: u64,
+	flow_cursor: u64,
+	dictionary_max: &[(u64, u128)],
+	chunk_bytes: usize,
+	entries: &[(EncodedKey, EncodedRow)],
+) -> Result<u64> {
 	store.write(
 		SnapshotWrite {
 			operator,
 			upper: CommitVersion(upper),
+			flow_cursor: CommitVersion(flow_cursor),
 			dictionary_max,
 			chunk_bytes,
 		},
@@ -142,6 +156,7 @@ fn aborted_generation_leaves_the_previous_one_untouched() {
 				SnapshotWrite {
 					operator: OP,
 					upper: CommitVersion(20),
+					flow_cursor: CommitVersion(19),
 					dictionary_max: &[],
 					chunk_bytes: 64,
 				},
@@ -211,6 +226,50 @@ fn an_empty_snapshot_round_trips_its_upper() {
 		assert_eq!(loaded.manifest.chunk_count, 0);
 		assert!(loaded.entries.is_empty());
 		assert_eq!(loaded.manifest.upper, CommitVersion(44));
+		Ok(())
+	})
+	.expect("test failed");
+}
+
+#[test]
+fn the_flow_cursor_round_trips_independently_of_the_upper() {
+	// The two versions live in different spaces: `upper` is the flow's OWN commit that last wrote
+	// this operator, `flow_cursor` is how far the flow had CONSUMED the CDC log when the snapshot
+	// was taken, and the latter is always strictly lower. Resuming replay from `upper` would skip
+	// the window (cursor, upper], so a manifest that loses the distinction is a silent data loss.
+	// Falsified by binding flow_cursor to the upper column in the INSERT or by decoding the same
+	// column twice on load.
+	temp_dir(|dir| {
+		let store = store_at(dir);
+		write_at(&store, OP, 90, 42, &[], 64, &entries(4)).expect("write snapshot");
+
+		let loaded = store.load(OP, 1).expect("load snapshot");
+		assert_eq!(loaded.manifest.upper, CommitVersion(90));
+		assert_eq!(
+			loaded.manifest.flow_cursor,
+			CommitVersion(42),
+			"the flow cursor must survive the round trip as its own value, not as a copy of the upper"
+		);
+		Ok(())
+	})
+	.expect("test failed");
+}
+
+#[test]
+fn operators_lists_every_operator_that_holds_a_generation_once() {
+	// The orphan sweep enumerates what operator.db still holds so it can drop generations of
+	// operators the catalog no longer knows; an operator missing from this list keeps its
+	// generations forever, and a duplicated one makes the sweep do the work twice. Falsified by
+	// dropping the DISTINCT (op 7 appears twice) or by filtering on a single operator.
+	temp_dir(|dir| {
+		let store = store_at(dir);
+		assert!(store.operators().expect("operators").is_empty(), "an empty database lists nothing");
+
+		write(&store, OP, 10, &[], 64, &entries(2)).expect("generation 1");
+		write(&store, OP, 20, &[], 64, &entries(2)).expect("generation 2");
+		write(&store, OperatorId(3), 5, &[], 64, &entries(1)).expect("sibling generation");
+
+		assert_eq!(store.operators().expect("operators"), vec![OperatorId(3), OP]);
 		Ok(())
 	})
 	.expect("test failed");

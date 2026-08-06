@@ -55,7 +55,7 @@ use crate::{
 		health::FlowHealthRegistry,
 		loader::LoaderMessage,
 		routing::{self, ViewRoute},
-		snapshot::FlowSnapshots,
+		snapshot::{FlowSnapshotLoad, FlowSnapshots},
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
 	},
 	operator::metrics::OperatorSampleRegistry,
@@ -169,7 +169,7 @@ impl FlowSupervisor {
 			self.engine.cdc_store().truncated_before().unwrap_or(CommitVersion(0))
 		});
 
-		let mut to_spawn: Vec<(FlowDag, CommitVersion)> = Vec::new();
+		let mut to_spawn: Vec<(FlowDag, CommitVersion, FlowSnapshotLoad)> = Vec::new();
 		let mut seeds: Vec<(FlowId, CommitVersion)> = Vec::new();
 		let mut pins: Vec<(FlowId, CommitVersion)> = Vec::new();
 		for flow_id in flows {
@@ -188,8 +188,13 @@ impl FlowSupervisor {
 			let seed = CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut query), &flow_id)
 				.unwrap_or(None)
 				.unwrap_or(migration_base);
+			let mut snapshot_load = FlowSnapshotLoad::Empty;
 			if let (Some(snapshots), Some(truncated_before)) = (&self.snapshots, truncated_before) {
-				snapshots.load_flow(&self.substrate.operators, flow.get_operator_ids(), truncated_before);
+				snapshot_load = snapshots.load_flow(
+					&self.substrate.operators,
+					flow.get_operator_ids(),
+					truncated_before,
+				);
 				let existing_pin = CdcCheckpoint::fetch_opt(
 					&mut Transaction::Query(&mut query),
 					&FlowSnapshotPin(flow_id),
@@ -200,7 +205,7 @@ impl FlowSupervisor {
 				}
 			}
 			seeds.push((flow_id, seed));
-			to_spawn.push((flow, seed));
+			to_spawn.push((flow, seed, snapshot_load));
 		}
 		drop(query);
 		self.publish_lineage(state);
@@ -214,12 +219,12 @@ impl FlowSupervisor {
 
 		self.commit_control(seeds, pins, None);
 
-		let registered: BTreeSet<FlowId> = to_spawn.iter().map(|(f, _)| f.id).collect();
-		for (flow, seed) in to_spawn {
+		let registered: BTreeSet<FlowId> = to_spawn.iter().map(|(f, _, _)| f.id).collect();
+		for (flow, seed, snapshot_load) in to_spawn {
 			let flow_id = flow.id;
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
 			state.sources.insert(flow_id, source_objects.clone());
-			let handle = self.spawn_flow(flow, source_objects, seed);
+			let handle = self.spawn_flow(flow, source_objects, seed, snapshot_load);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned deferred flow actor");
 		}
@@ -358,7 +363,7 @@ impl FlowSupervisor {
 			let flow_id = flow.id;
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
 			state.sources.insert(flow_id, source_objects.clone());
-			let handle = self.spawn_flow(flow, source_objects, seed);
+			let handle = self.spawn_flow(flow, source_objects, seed, FlowSnapshotLoad::Empty);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned new deferred flow actor");
 		}
@@ -463,6 +468,7 @@ impl FlowSupervisor {
 		flow: FlowDag,
 		source_objects: Arc<BTreeSet<ObjectId>>,
 		cursor: CommitVersion,
+		snapshot_load: FlowSnapshotLoad,
 	) -> FlowActorHandle {
 		let flow_id = flow.id;
 
@@ -490,6 +496,7 @@ impl FlowSupervisor {
 			retry_limit: FLOW_RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(FLOW_RETRY_BACKOFF_MS as i64).unwrap(),
 			snapshots: self.snapshots.clone(),
+			snapshot_load,
 		};
 		self.spawner.spawn_flow(&format!("flow-{}", flow_id.0), FlowActor::new(params))
 	}

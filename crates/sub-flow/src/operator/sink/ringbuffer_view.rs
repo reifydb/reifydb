@@ -40,6 +40,8 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	fragment::Fragment,
+	reifydb_assertions,
+	util::cowvec::CowVec,
 	value::{
 		Value, blob::Blob, datetime::DateTime, duration::Duration, partition::Partition, row_number::RowNumber,
 		system_columns::SystemColumns, value_type::ValueType,
@@ -165,18 +167,78 @@ impl SinkRingBufferViewOperator {
 		}
 	}
 
-	fn read_metadata(&self, txn: &mut FlowTransaction) -> Result<RingBufferMetadata> {
-		let key = RingBufferMetadataKey::encoded(self.ringbuffer_id);
-		match txn.get(&key)? {
-			Some(row) => Ok(decode_ringbuffer_metadata(&row)),
-			None => Ok(RingBufferMetadata::new(self.ringbuffer_id, self.capacity)),
+	fn meta_key(&self, partition: Option<Partition>) -> GroupStateKey {
+		OperatorGroupStateKey::inner_encoded(
+			GroupId::NODE_SCOPE,
+			Keyspace::RINGBUFFER_META,
+			partition_suffix(partition),
+		)
+	}
+
+	fn read_meta_mirror(
+		&self,
+		txn: &mut FlowTransaction,
+		partition: Option<Partition>,
+	) -> Result<Option<RingBufferMetadata>> {
+		let key = self.meta_key(partition);
+		let Some(row) = self.state_get(txn, &key)? else {
+			return Ok(None);
+		};
+		let blob = self.state_shape.get_blob(&row, 0);
+		Ok(Some(decode_ringbuffer_metadata(&EncodedRow(CowVec::new(blob.as_bytes().to_vec())))))
+	}
+
+	fn write_meta_mirror(
+		&self,
+		txn: &mut FlowTransaction,
+		partition: Option<Partition>,
+		metadata: &RingBufferMetadata,
+	) -> Result<()> {
+		let key = self.meta_key(partition);
+		let mut row = self.state_shape.allocate();
+		self.state_shape.set_blob(&mut row, 0, &Blob::from(encode_ringbuffer_metadata(metadata).to_vec()));
+		self.state_set(txn, &key, row.freeze())
+	}
+
+	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
+	fn assert_mirrors_mvcc(
+		&self,
+		txn: &mut FlowTransaction,
+		partition: Option<Partition>,
+		mvcc: &EncodedKey,
+	) -> Result<()> {
+		reifydb_assertions! {
+			let mirrored = self.read_meta_mirror(txn, partition)?;
+			let stored = txn.get(mvcc)?.map(|row| decode_ringbuffer_metadata(&row));
+			assert_eq!(
+				mirrored, stored,
+				"the ringbuffer metadata mirror and its mvcc row disagree right after a write; the \
+				 mirror is what replay reads, so any drift hands catch-up a different tail than the \
+				 live run assigned and the arena forward map diverges silently"
+			);
 		}
+		Ok(())
+	}
+
+	fn read_metadata(&self, txn: &mut FlowTransaction) -> Result<RingBufferMetadata> {
+		if let Some(metadata) = self.read_meta_mirror(txn, None)? {
+			return Ok(metadata);
+		}
+		let key = RingBufferMetadataKey::encoded(self.ringbuffer_id);
+		let metadata = match txn.get(&key)? {
+			Some(row) => decode_ringbuffer_metadata(&row),
+			None => RingBufferMetadata::new(self.ringbuffer_id, self.capacity),
+		};
+		self.write_meta_mirror(txn, None, &metadata)?;
+		Ok(metadata)
 	}
 
 	fn write_metadata(&self, txn: &mut FlowTransaction, metadata: &RingBufferMetadata) -> Result<()> {
 		let key = RingBufferMetadataKey::encoded(self.ringbuffer_id);
 		let row = encode_ringbuffer_metadata(metadata);
-		txn.set(&key, row)
+		txn.set(&key, row)?;
+		self.write_meta_mirror(txn, None, metadata)?;
+		self.assert_mirrors_mvcc(txn, None, &key)
 	}
 
 	fn read_partition_metadata(
@@ -184,11 +246,17 @@ impl SinkRingBufferViewOperator {
 		txn: &mut FlowTransaction,
 		partition_values: &[Value],
 	) -> Result<RingBufferMetadata> {
-		let key = RingBufferMetadataKey::encoded_partition(self.ringbuffer_id, partition_values.to_vec());
-		match txn.get(&key)? {
-			Some(row) => Ok(decode_ringbuffer_metadata(&row)),
-			None => Ok(RingBufferMetadata::new(self.ringbuffer_id, self.capacity)),
+		let partition = partition_of_values(partition_values);
+		if let Some(metadata) = self.read_meta_mirror(txn, partition)? {
+			return Ok(metadata);
 		}
+		let key = RingBufferMetadataKey::encoded_partition(self.ringbuffer_id, partition_values.to_vec());
+		let metadata = match txn.get(&key)? {
+			Some(row) => decode_ringbuffer_metadata(&row),
+			None => RingBufferMetadata::new(self.ringbuffer_id, self.capacity),
+		};
+		self.write_meta_mirror(txn, partition, &metadata)?;
+		Ok(metadata)
 	}
 
 	fn write_partition_metadata(
@@ -199,12 +267,18 @@ impl SinkRingBufferViewOperator {
 	) -> Result<()> {
 		let key = RingBufferMetadataKey::encoded_partition(self.ringbuffer_id, partition_values.to_vec());
 		let row = encode_ringbuffer_metadata(metadata);
-		txn.set(&key, row)
+		txn.set(&key, row)?;
+		let partition = partition_of_values(partition_values);
+		self.write_meta_mirror(txn, partition, metadata)?;
+		self.assert_mirrors_mvcc(txn, partition, &key)
 	}
 
 	fn remove_partition_metadata(&self, txn: &mut FlowTransaction, partition_values: &[Value]) -> Result<()> {
 		let key = RingBufferMetadataKey::encoded_partition(self.ringbuffer_id, partition_values.to_vec());
-		txn.remove(&key)
+		txn.remove(&key)?;
+		let partition = partition_of_values(partition_values);
+		self.state_remove(txn, &self.meta_key(partition))?;
+		self.assert_mirrors_mvcc(txn, partition, &key)
 	}
 
 	fn forward_key(&self, source_rn: RowNumber) -> GroupStateKey {
