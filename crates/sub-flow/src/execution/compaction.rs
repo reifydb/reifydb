@@ -288,11 +288,13 @@ mod mapping_cutoff_tests {
 
 #[cfg(test)]
 mod sink_storage_tests {
-	use reifydb_core::common::TimeDomain;
-	use reifydb_core::interface::catalog::{
-		id::{RingBufferId, SeriesId, TableId, ViewId},
-		series::{SeriesKey, TimestampPrecision},
-		storage::StorageId,
+	use reifydb_core::{
+		common::TimeDomain,
+		interface::catalog::{
+			id::{RingBufferId, SeriesId, TableId, ViewId},
+			series::{SeriesKey, TimestampPrecision},
+			storage::StorageId,
+		},
 	};
 	use reifydb_rql::flow::operator::OperatorDef;
 
@@ -349,11 +351,13 @@ mod sink_storage_tests {
 
 #[cfg(test)]
 mod identity_span_tests {
-	use reifydb_core::common::TimeDomain;
-	use reifydb_core::interface::catalog::{
-		flow::{FlowId, OperatorId},
-		id::{SubscriptionId, TableId, ViewId},
-		storage::StorageId,
+	use reifydb_core::{
+		common::TimeDomain,
+		interface::catalog::{
+			flow::{FlowId, OperatorId},
+			id::{SubscriptionId, TableId, ViewId},
+			storage::StorageId,
+		},
 	};
 	use reifydb_rql::flow::{
 		flow::FlowDag,

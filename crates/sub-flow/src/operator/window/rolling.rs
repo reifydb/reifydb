@@ -17,8 +17,8 @@ use reifydb_flow::{
 	transaction::FlowTransaction,
 	window::{
 		accumulator::WindowAccumulator,
-		driver::gate::EvictionGate,
 		coord::{OrdinalCoord, RowSpan},
+		driver::gate::EvictionGate,
 		engine::{
 			AccumulatorEvent, EmitKind, is_sealed,
 			rolling::{
@@ -646,7 +646,10 @@ mod tests {
 		// A count window's coordinate is a row number, not an instant, and nothing errors if one
 		// is fed to duration arithmetic: the timer lands just past the epoch, fires at once and
 		// rearms forever. A count window evicts on capacity and has no notion of closed.
-		assert!(!<OrdinalCoord as RollingDomain>::seals_on_timer(), "a row number is not an instant to arm a timer at");
+		assert!(
+			!<OrdinalCoord as RollingDomain>::seals_on_timer(),
+			"a row number is not an instant to arm a timer at"
+		);
 		assert!(<DateTime as RollingDomain>::seals_on_timer(), "an event-time window does seal on the wheel");
 
 		assert!(
@@ -686,7 +689,11 @@ mod tests {
 		// in the domain rather than in whoever remembers to check the count case first.
 		let declared = Duration::from_seconds(30).expect("representable span");
 
-		assert_eq!(<OrdinalCoord as RollingDomain>::lag(declared), RowSpan::ZERO, "a row count has no millisecond lag");
+		assert_eq!(
+			<OrdinalCoord as RollingDomain>::lag(declared),
+			RowSpan::ZERO,
+			"a row count has no millisecond lag"
+		);
 		assert_eq!(
 			<DateTime as RollingDomain>::lag(declared),
 			declared,
@@ -934,7 +941,8 @@ mod tests {
 						combine_rolling(buffer, &sk, RowSpan::ZERO, Duration::default())
 					})
 					.unwrap();
-				let runnable_exp = runnable.expire_before_running(&mut runnable_store, ordinal(cutoff)).unwrap();
+				let runnable_exp =
+					runnable.expire_before_running(&mut runnable_store, ordinal(cutoff)).unwrap();
 				assert_eq!(
 					legacy_exp.len(),
 					runnable_exp.len(),
@@ -985,7 +993,8 @@ mod tests {
 				combine_rolling(buffer, &sk, RowSpan::ZERO, Duration::default())
 			})
 			.unwrap();
-		let runnable_final = runnable.expire_before_running(&mut runnable_store, ordinal(u64::MAX - 1)).unwrap();
+		let runnable_final =
+			runnable.expire_before_running(&mut runnable_store, ordinal(u64::MAX - 1)).unwrap();
 		assert_eq!(legacy_final.len(), runnable_final.len(), "terminal drain cardinality diverged");
 		assert!(
 			runnable_final.iter().all(|e| matches!(e, RollingExpiry::Remove { .. })),

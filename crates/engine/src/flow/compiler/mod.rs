@@ -7,7 +7,7 @@ use reifydb_core::{
 		flow::{
 			flow_dictionary_source_unsupported, flow_ephemeral_id_capacity_exceeded,
 			flow_queue_source_unsupported, flow_remote_source_unsupported, flow_sort_must_be_terminal,
-			flow_source_required,
+			flow_source_required, flow_window_requires_a_timed_source,
 		},
 		subscription::subscription_operation_unsupported,
 	},
@@ -281,6 +281,7 @@ impl FlowCompiler {
 		if !has_real_source(&flow) {
 			return Err(Error(Box::new(flow_source_required())));
 		}
+		validate_temporal_operators(&flow)?;
 
 		Ok(flow)
 	}
@@ -308,6 +309,7 @@ impl FlowCompiler {
 		if !has_real_source(&flow) {
 			return Err(Error(Box::new(flow_source_required())));
 		}
+		validate_temporal_operators(&flow)?;
 
 		Ok(flow)
 	}
@@ -461,6 +463,20 @@ fn child_plans(plan: &QueryPlan) -> Vec<&QueryPlan> {
 		| QueryPlan::RunTests(_)
 		| QueryPlan::CallFunction(_) => vec![],
 	}
+}
+
+fn has_window(flow: &FlowDag) -> bool {
+	flow.get_operator_ids().any(|operator_id| {
+		flow.get_operator(&operator_id)
+			.is_some_and(|operator| matches!(operator.ty, OperatorDef::Window { .. }))
+	})
+}
+
+fn validate_temporal_operators(flow: &FlowDag) -> Result<()> {
+	if has_window(flow) && !flow.has_timed_source() {
+		return Err(Error(Box::new(flow_window_requires_a_timed_source())));
+	}
+	Ok(())
 }
 
 fn has_real_source(flow: &FlowDag) -> bool {

@@ -25,7 +25,7 @@ pub(crate) fn overwrite_right_slot(
 	right.set_row_shape(txn, &shape)?;
 	let mut stored: Option<EncodedRow> = None;
 	for &idx in indices {
-		let encoded = encode_row(&shape, columns, idx);
+		let encoded = encode_row(&shape, columns, idx, txn.written_at());
 		right.put_row(txn, key_hash, RowNumber::MAX, &encoded)?;
 		stored = Some(encoded);
 	}

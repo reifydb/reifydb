@@ -9,6 +9,7 @@ use reifydb_core::{
 	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
 };
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
+use tracing::warn;
 
 use super::{
 	FlowTransaction,
@@ -16,6 +17,8 @@ use super::{
 };
 
 const PERSIST_BUCKET_MS: u64 = 1_000;
+
+const IMPLAUSIBLE_JUMP_MS: u64 = 3_600_000;
 
 fn source_watermark_key() -> GroupStateKey {
 	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SOURCE_WATERMARK, vec![])
@@ -47,14 +50,16 @@ impl SourceWatermarks {
 			None => true,
 		};
 		if let Some(previous) = state.value
-			&& coordinate > previous.saturating_add(3_600_000)
+			&& coordinate > previous.saturating_add(IMPLAUSIBLE_JUMP_MS)
 		{
-			println!(
-				"[wmjump] source=op{} {} -> {} (+{} ms)",
-				source.0,
-				previous,
-				coordinate,
-				coordinate - previous
+			warn!(
+				source = source.0,
+				from_ms = previous,
+				to_ms = coordinate,
+				delta_ms = coordinate - previous,
+				"source watermark jumped by more than an hour in one step; a row stamped from a \
+				 clock rather than from its own event time moves the watermark to now and can seal \
+				 every open window at once"
 			);
 		}
 		state.value = Some(coordinate);
@@ -78,14 +83,30 @@ impl SourceWatermarks {
 			);
 		}
 		let mut merged: Option<u64> = None;
+		let mut per_source: Vec<(OperatorId, u64)> = Vec::with_capacity(sources.len());
 		for source in sources {
 			let value = self.raw(*source, txn)?;
+			per_source.push((*source, value));
 			merged = Some(match merged {
 				Some(current) => current.min(value),
 				None => value,
 			});
 		}
-		Ok(DateTime::from_millis(merged.unwrap_or(0)))
+		let merged = merged.unwrap_or(0);
+		if merged == 0 && per_source.iter().any(|(_, value)| *value > 0) {
+			let pinning: Vec<u64> = per_source
+				.iter()
+				.filter(|(_, value)| *value == 0)
+				.map(|(source, _)| source.0)
+				.collect();
+			warn!(
+				sources = sources.len(),
+				pinned_by = ?pinning,
+				"flow watermark merged to the epoch while other sources have advanced; the min-merge \
+				 holds every horizon open until each listed source reports, so no window can seal"
+			);
+		}
+		Ok(DateTime::from_millis(merged))
 	}
 
 	fn raw(&self, source: OperatorId, txn: &mut FlowTransaction) -> Result<u64> {
@@ -270,10 +291,9 @@ mod tests {
 	}
 
 	#[test]
-	fn the_watermark_key_round_trips_beside_the_node_watermark() {
+	fn the_source_watermark_key_round_trips() {
 		// A drifted encoding would make hydration read an absent key and silently restart every
-		// watermark at zero; a tag collision with NODE_WATERMARK would let the two overwrite each
-		// other on operator-scope state.
+		// watermark at zero, which reads as a healthy cold start rather than as lost state.
 		let key = source_watermark_key();
 		let (group, keyspace, suffix) = OperatorGroupStateKey::decode_inner(key.as_slice())
 			.expect("the key must decode as inner state");
@@ -281,6 +301,5 @@ mod tests {
 		assert_eq!(group, GroupId::NODE_SCOPE);
 		assert_eq!(keyspace, Keyspace::SOURCE_WATERMARK);
 		assert!(suffix.is_empty());
-		assert_ne!(Keyspace::SOURCE_WATERMARK, Keyspace::NODE_WATERMARK);
 	}
 }

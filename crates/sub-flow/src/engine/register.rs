@@ -37,7 +37,7 @@ use reifydb_rql::{
 use reifydb_sdk::config::Config;
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{Result, error::Error, fragment::Fragment, reifydb_assertions, value::duration::Duration};
-use tracing::instrument;
+use tracing::{info, instrument};
 
 use super::eval::evaluate_operator_config;
 use crate::{
@@ -82,6 +82,14 @@ impl FlowEngineInner {
 		}
 
 		check_window_time_requirements(&self.catalog, txn, &flow)?;
+
+		if !flow.has_timed_source() {
+			info!(
+				flow_id = flow.id.0,
+				"no temporal sources; no timers will fire and no window can seal in this flow, so its \
+				 rows propagate but never age"
+			);
+		}
 
 		let mut added: Vec<OperatorId> = Vec::new();
 		let ctx = Arc::new(FlowContext::default());
@@ -134,7 +142,6 @@ impl FlowEngineInner {
 
 	fn adopt_horizon(&self, operator: &FlowNode) {
 		let scale = self.node_retention_scale(operator);
-		self.substrate.group.set_activity_grid(operator.id, scale);
 		self.executor.services().node_retention_store.set(NodeRetentionInfo {
 			operator: operator.id,
 			stateful: operator.ty.holds_state(),

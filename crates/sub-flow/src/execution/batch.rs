@@ -113,31 +113,7 @@ impl FlowEngineInner {
 				None => continue,
 			};
 
-			let from_rows = inbox.iter().filter_map(max_input_time).max();
-			let at = match from_rows {
-				Some(at) => at,
-				None if !flow.has_timed_source() => {
-					self.dispatch_node(txn, &operator, inbox)?;
-					nodes_processed += 1;
-					continue;
-				}
-				None => panic!(
-					"operator {} received {} change(s) carrying no #time even though this flow \
-					 has a source that declares one; a row's time is set once at its source \
-					 and must never be substituted by a clock read",
-					operator_id.0,
-					inbox.len()
-				),
-			};
-			if at.to_millis() > 1_785_000_000_000 {
-				println!(
-					"[wallclock] op={} at_ms={} from_rows={:?} changed_at={:?}",
-					operator_id.0,
-					at.to_millis(),
-					from_rows.map(|d| d.to_millis()),
-					inbox.iter().map(|change| change.changed_at.to_millis()).max()
-				);
-			}
+			let at = inbox.iter().filter_map(max_input_time).max();
 			let version = inbox
 				.iter()
 				.map(|change| change.version)

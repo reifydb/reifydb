@@ -162,6 +162,27 @@ pub fn flow_source_required() -> Diagnostic {
 	}
 }
 
+pub fn flow_window_requires_a_timed_source() -> Diagnostic {
+	Diagnostic {
+		code: "FLOW_014".to_string(),
+		rql: None,
+		message: "a windowed view requires a source that declares a time domain".to_string(),
+		column: None,
+		fragment: Fragment::None,
+		label: None,
+		help: Some("declare `time: event(<column>)` or `time: processing` on the source, \
+			or drop the window from the view"
+			.to_string()),
+		notes: vec![
+			"an undeclared source is `time: none`, whose rows carry no #time".to_string(),
+			"a window buckets and seals on #time, so it can never fire over rows that have none"
+				.to_string(),
+		],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn flow_sort_must_be_terminal() -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_012".to_string(),

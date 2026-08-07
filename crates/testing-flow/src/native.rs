@@ -81,7 +81,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 			state_budget: OperatorStateBudgetHandle::default(),
 		});
 		txn.set_change_coordinate(ChangeCoordinate {
-			at: DateTime::from_millis(self.version),
+			at: Some(DateTime::from_millis(self.version)),
 			version: CommitVersion(self.version),
 		});
 		txn

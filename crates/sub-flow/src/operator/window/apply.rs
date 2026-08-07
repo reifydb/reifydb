@@ -1069,8 +1069,15 @@ mod tests {
 		// The epoch is the domain floor; wrapping past it declares every window sealed.
 		let seal_after = Duration::from_milliseconds_const(10);
 
-		assert_eq!(seal_horizon(at_millis(3), seal_after), at_millis(0), "young watermark saturates to the epoch");
-		assert!(!is_sealed(at_millis(0), seal_horizon(at_millis(3), seal_after)), "the epoch is not below itself");
+		assert_eq!(
+			seal_horizon(at_millis(3), seal_after),
+			at_millis(0),
+			"young watermark saturates to the epoch"
+		);
+		assert!(
+			!is_sealed(at_millis(0), seal_horizon(at_millis(3), seal_after)),
+			"the epoch is not below itself"
+		);
 		assert!(
 			is_sealed(at_millis(4), seal_horizon(at_millis(20), seal_after)),
 			"anchor below watermark - seal_after is sealed"

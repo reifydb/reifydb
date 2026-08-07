@@ -1234,7 +1234,7 @@ mod tests {
 		test.admin("create namespace test;");
 		for name in ["t1", "t2", "t3", "t4"] {
 			test.admin(&format!(
-				"create table test::{name} {{ v: int4 }} with {{ row: {{ ttl: {{ duration: \"1h\", announce: true }} }} }}"
+				"create table test::{name} {{ v: int4 }} with {{ time: processing, row: {{ ttl: {{ duration: \"1h\", announce: true }} }} }}"
 			));
 		}
 		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
@@ -1271,7 +1271,7 @@ mod tests {
 		test.admin("create namespace test;");
 		for name in ["t1", "t2", "t3", "t4"] {
 			test.admin(&format!(
-				"create table test::{name} {{ v: int4 }} with {{ row: {{ ttl: {{ duration: \"1h\", announce: true }} }} }}"
+				"create table test::{name} {{ v: int4 }} with {{ time: processing, row: {{ ttl: {{ duration: \"1h\", announce: true }} }} }}"
 			));
 			test.command(&format!(
 				"INSERT test::{name} [{{ v: 1 }}, {{ v: 2 }}, {{ v: 3 }}, {{ v: 4 }}, {{ v: 5 }}, {{ v: 6 }}]"

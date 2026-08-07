@@ -1067,7 +1067,7 @@ mod span_tests {
 		// Mappings are stamped from the change coordinate, not the clock, so a write is placed in
 		// event time by setting it rather than by advancing a mock clock.
 		txn.set_change_coordinate(ChangeCoordinate {
-			at: DateTime::from_millis(BASE_MS + millis),
+			at: Some(DateTime::from_millis(BASE_MS + millis)),
 			version: CommitVersion(0),
 		});
 	}

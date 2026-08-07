@@ -1233,7 +1233,7 @@ mod tests {
 
 		let mut first = deferred(&engine);
 		first.set_change_coordinate(ChangeCoordinate {
-			at: DateTime::from_millis(0),
+			at: Some(DateTime::from_millis(0)),
 			version: CommitVersion(0),
 		});
 		let (minted_old, _) = provider.get_or_create_row_number(NODE, GROUP, &mut first, &key("old")).unwrap();
@@ -1241,7 +1241,7 @@ mod tests {
 
 		let mut second = deferred(&engine);
 		second.set_change_coordinate(ChangeCoordinate {
-			at: DateTime::from_millis(100),
+			at: Some(DateTime::from_millis(100)),
 			version: CommitVersion(0),
 		});
 		let (minted_young, _) =

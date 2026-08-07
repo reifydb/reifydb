@@ -114,7 +114,7 @@ impl<'a> FlowTxnBuilder<'a> {
 
 fn default_coordinate(version: CommitVersion) -> ChangeCoordinate {
 	ChangeCoordinate {
-		at: DateTime::from_millis(0),
+		at: Some(DateTime::from_millis(0)),
 		version,
 	}
 }

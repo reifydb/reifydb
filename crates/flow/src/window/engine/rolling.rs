@@ -1495,9 +1495,11 @@ mod tests {
 
 			if round % 5 == 4 {
 				cutoff = coord_base.saturating_sub(30);
-				let recombine_exp =
-					recombine.expire_before(&mut recombine_store, at_millis(cutoff), sum_combine).unwrap();
-				let runnable_exp = runnable.expire_before_running(&mut runnable_store, at_millis(cutoff)).unwrap();
+				let recombine_exp = recombine
+					.expire_before(&mut recombine_store, at_millis(cutoff), sum_combine)
+					.unwrap();
+				let runnable_exp =
+					runnable.expire_before_running(&mut runnable_store, at_millis(cutoff)).unwrap();
 				assert_eq!(
 					describe_expiries(&recombine_exp),
 					describe_expiries(&runnable_exp),
@@ -1517,7 +1519,8 @@ mod tests {
 		);
 
 		// Drain everything: terminal removes must match group-for-group.
-		let recombine_final = recombine.expire_before(&mut recombine_store, past_every_coord(), sum_combine).unwrap();
+		let recombine_final =
+			recombine.expire_before(&mut recombine_store, past_every_coord(), sum_combine).unwrap();
 		let runnable_final = runnable.expire_before_running(&mut runnable_store, past_every_coord()).unwrap();
 		assert_eq!(
 			describe_expiries(&recombine_final),
@@ -1649,7 +1652,8 @@ mod tests {
 		// independent oracle each round, so an early merge, missed crossing or double count shows up.
 		const LAG: u64 = 5;
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config()).with_lag(millis(LAG));
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config())
+			.with_lag(millis(LAG));
 
 		let mut state = 0xFEED_FACE_0123_4567u64;
 		let mut roll = |bound: u64| {
@@ -1835,7 +1839,8 @@ mod tests {
 		// first event emits nothing, later events pull older coords across the frontier, a
 		// retraction of a pending coord is invisible, and only-pending eviction withdraws the row.
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config()).with_lag(millis(10));
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config())
+			.with_lag(millis(10));
 
 		let apply = |engine: &mut RollingEngine<u32, DateTime, SumAccumulator>,
 		             store: &mut MockStore,
@@ -1905,7 +1910,8 @@ mod tests {
 		// newest - lag, losing pending coords that would have slid into the window later. The fast
 		// path withdraws the visible row but keeps them for a later event to surface.
 		let mut store = MockStore::default();
-		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config()).with_lag(millis(10));
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config())
+			.with_lag(millis(10));
 
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(100)), vec![AccumulatorEvent::Add(5)]);

@@ -101,7 +101,8 @@ mod tests {
 	}
 
 	fn counted() -> SlidingOverRows {
-		SlidingOverRows::by_count(RowSpan::of(4), RowSpan::of(2)).expect("a slide of 2 fits inside a window of 4")
+		SlidingOverRows::by_count(RowSpan::of(4), RowSpan::of(2))
+			.expect("a slide of 2 fits inside a window of 4")
 	}
 
 	#[test]
@@ -176,5 +177,4 @@ mod tests {
 		assert_eq!(span.start, DateTime::from_millis(4_250));
 		assert_eq!(span.end, DateTime::from_millis(5_250));
 	}
-
 }

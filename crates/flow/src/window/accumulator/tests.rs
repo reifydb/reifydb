@@ -420,7 +420,10 @@ fn sealing_min_seals_aged_extreme() {
 
 #[test]
 fn sealing_max_default_never_seals_and_is_fully_invertible() {
-	assert_add_remove_is_inverse::<SealingMax<DateTime, i64>>(&[(at_millis(1), 10i64), (at_millis(2), 20)], (at_millis(3), 30i64));
+	assert_add_remove_is_inverse::<SealingMax<DateTime, i64>>(
+		&[(at_millis(1), 10i64), (at_millis(2), 20)],
+		(at_millis(3), 30i64),
+	);
 	let mut accumulator: SealingMax<DateTime, i64> = SealingMax::default();
 	accumulator.add(&(at_millis(0), 5));
 	accumulator.add(&(at_millis(100), 8));
@@ -450,7 +453,10 @@ fn sealing_endpoint_freezes_open_and_tracks_live_close() {
 
 #[test]
 fn sealing_endpoint_default_is_fully_invertible() {
-	assert_add_remove_is_inverse::<SealingEndpoint<DateTime, i64>>(&[(at_millis(1), 10i64), (at_millis(3), 30)], (at_millis(2), 20i64));
+	assert_add_remove_is_inverse::<SealingEndpoint<DateTime, i64>>(
+		&[(at_millis(1), 10i64), (at_millis(3), 30)],
+		(at_millis(2), 20i64),
+	);
 }
 
 #[test]
@@ -523,7 +529,10 @@ fn sealing_fold_aged_removal_is_dropped_no_op_but_live_removal_is_safe() {
 
 #[test]
 fn sealing_fold_default_add_remove_is_inverse() {
-	assert_add_remove_is_inverse::<SealingFold<DateTime, AbsPathFold>>(&[(at_millis(0), 10.0f64), (at_millis(1), 20.0)], (at_millis(2), 30.0f64));
+	assert_add_remove_is_inverse::<SealingFold<DateTime, AbsPathFold>>(
+		&[(at_millis(0), 10.0f64), (at_millis(1), 20.0)],
+		(at_millis(2), 30.0f64),
+	);
 }
 
 #[test]
@@ -581,7 +590,10 @@ fn tail_acc_no_grace_retains_whole_window_like_retained_acc() {
 
 #[test]
 fn tail_acc_default_add_remove_is_inverse() {
-	assert_add_remove_is_inverse::<TailAccumulator<DateTime, i64>>(&[(at_millis(0), 10i64), (at_millis(1), 20)], (at_millis(2), 30i64));
+	assert_add_remove_is_inverse::<TailAccumulator<DateTime, i64>>(
+		&[(at_millis(0), 10i64), (at_millis(1), 20)],
+		(at_millis(2), 30i64),
+	);
 }
 
 #[test]
@@ -591,7 +603,11 @@ fn tail_acc_with_grace_drops_aged_from_finalize() {
 	accumulator.add(&(at_millis(5), 20));
 	accumulator.add(&(at_millis(12), 30));
 	let map = accumulator.finalize().expect("non-empty");
-	assert_eq!(map.keys().copied().collect::<Vec<_>>(), vec![at_millis(5), at_millis(12)], "aged prefix dropped from the emitted map");
+	assert_eq!(
+		map.keys().copied().collect::<Vec<_>>(),
+		vec![at_millis(5), at_millis(12)],
+		"aged prefix dropped from the emitted map"
+	);
 }
 
 #[test]

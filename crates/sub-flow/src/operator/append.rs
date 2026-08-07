@@ -296,10 +296,7 @@ mod tests {
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::ChangeCoordinate;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
-	use reifydb_value::{
-		count::Count,
-		value::{datetime::DateTime, duration::Duration},
-	};
+	use reifydb_value::{count::Count, value::datetime::DateTime};
 
 	use super::*;
 
@@ -307,13 +304,10 @@ mod tests {
 		AppendOperator::new_for_state_tests(OperatorId(operator))
 	}
 
-	fn txn_at(engine: &TestEngine, operator: OperatorId, coordinate: u64) -> FlowTransaction {
-		// Registering the horizon mirrors what register.rs does in production; without it the
-		// operator falls back to the interner's default bucket width and stamps in no domain.
+	fn txn_at(engine: &TestEngine, _operator: OperatorId, coordinate: u64) -> FlowTransaction {
 		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
-		txn.group_interner().set_activity_grid(operator, Some(Duration::from_seconds(60).unwrap()));
 		txn.set_change_coordinate(ChangeCoordinate {
-			at: DateTime::from_nanos(coordinate),
+			at: Some(DateTime::from_nanos(coordinate)),
 			version: CommitVersion(coordinate),
 		});
 		txn

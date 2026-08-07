@@ -131,7 +131,7 @@ mod tests {
 		});
 		// The substrate derives an intern's position from the change coordinate, so it is set here.
 		txn.set_change_coordinate(ChangeCoordinate {
-			at: DateTime::from_millis(0),
+			at: Some(DateTime::from_millis(0)),
 			version: CommitVersion(0),
 		});
 		txn

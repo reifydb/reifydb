@@ -474,7 +474,11 @@ mod tests {
 		)
 	}
 
-	fn seed_window(store: &mut MockStore, window_start: u64, contribution: i64) -> WindowResult<u32, DateTime, i64> {
+	fn seed_window(
+		store: &mut MockStore,
+		window_start: u64,
+		contribution: i64,
+	) -> WindowResult<u32, DateTime, i64> {
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert(
@@ -489,7 +493,10 @@ mod tests {
 	fn apply_event(store: &mut MockStore, window_start: u64, event: AccumulatorEvent<i64>) {
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
-		buckets.insert((1u32, WindowSpan::new(at_millis(window_start), at_millis(window_start + 1))), vec![event]);
+		buckets.insert(
+			(1u32, WindowSpan::new(at_millis(window_start), at_millis(window_start + 1))),
+			vec![event],
+		);
 		apply_sums(&mut engine, store, buckets).expect("apply");
 		engine.flush(store).expect("flush");
 	}
@@ -588,7 +595,10 @@ mod tests {
 
 		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		for group in 1u32..=3 {
-			buckets.insert((group, WindowSpan::new(at_millis(0), at_millis(1))), vec![AccumulatorEvent::Add(1)]);
+			buckets.insert(
+				(group, WindowSpan::new(at_millis(0), at_millis(1))),
+				vec![AccumulatorEvent::Add(1)],
+			);
 		}
 		apply_group_scoped(&mut engine, &mut store, buckets);
 		assert_eq!(
@@ -859,7 +869,8 @@ mod tests {
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, WindowSpan::new(at_millis(0), at_millis(1))), vec![AccumulatorEvent::Add(5)]);
-		let published: Vec<WindowResult<u32, DateTime, i64>> = apply_sums(&mut engine, &mut store, buckets).unwrap();
+		let published: Vec<WindowResult<u32, DateTime, i64>> =
+			apply_sums(&mut engine, &mut store, buckets).unwrap();
 		engine.flush(&mut store).unwrap();
 		assert_eq!(published.len(), 1);
 		assert!(matches!(published[0].kind, EmitKind::Insert));
@@ -869,7 +880,8 @@ mod tests {
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, WindowSpan::new(at_millis(0), at_millis(1))), vec![AccumulatorEvent::Remove(5)]);
-		let withdrawn: Vec<WindowResult<u32, DateTime, i64>> = apply_sums(&mut engine, &mut store, buckets).unwrap();
+		let withdrawn: Vec<WindowResult<u32, DateTime, i64>> =
+			apply_sums(&mut engine, &mut store, buckets).unwrap();
 		engine.flush(&mut store).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the window emits exactly one terminal diff");
@@ -894,7 +906,10 @@ mod tests {
 		let mut published_group_1: Vec<WindowResult<u32, DateTime, i64>> = Vec::new();
 		for group in 1u32..=11u32 {
 			let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
-			buckets.insert((group, WindowSpan::new(at_millis(0), at_millis(1))), vec![AccumulatorEvent::Add(i64::from(group))]);
+			buckets.insert(
+				(group, WindowSpan::new(at_millis(0), at_millis(1))),
+				vec![AccumulatorEvent::Add(i64::from(group))],
+			);
 			let out: Vec<WindowResult<u32, DateTime, i64>> =
 				apply_sums(&mut engine, &mut store, buckets).unwrap();
 			if group == 1 {
@@ -910,7 +925,8 @@ mod tests {
 		// engine must re-read its accumulator from the store to apply this retraction.
 		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, WindowSpan::new(at_millis(0), at_millis(1))), vec![AccumulatorEvent::Remove(1)]);
-		let withdrawn: Vec<WindowResult<u32, DateTime, i64>> = apply_sums(&mut engine, &mut store, buckets).unwrap();
+		let withdrawn: Vec<WindowResult<u32, DateTime, i64>> =
+			apply_sums(&mut engine, &mut store, buckets).unwrap();
 		engine.flush(&mut store).unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the evicted window emits exactly one terminal diff");

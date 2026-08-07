@@ -1646,7 +1646,7 @@ mod pull_protocol {
 	#[test]
 	fn a_tick_that_commits_must_still_drain_afterwards() {
 		let h = harness_with(
-			"CREATE TABLE app::t { id: int4, g: int4, v: int4 }",
+			"CREATE TABLE app::t { id: int4, g: int4, v: int4 } with { time: processing }",
 			r#"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } AS {
 				FROM app::t
 					| window tumbling { total: math::sum(v) }
@@ -1719,7 +1719,7 @@ mod pull_protocol {
 	#[test]
 	fn a_tick_commit_must_not_pass_itself_off_as_a_checkpoint() {
 		let h = harness_with(
-			"CREATE TABLE app::t { id: int4, g: int4, v: int4 }",
+			"CREATE TABLE app::t { id: int4, g: int4, v: int4 } with { time: processing }",
 			r#"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } AS {
 				FROM app::t
 					| window tumbling { total: math::sum(v) }

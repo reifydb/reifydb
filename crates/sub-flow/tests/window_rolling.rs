@@ -72,7 +72,7 @@ fn a_processing_domain_rolling_window_rolls_up_over_the_rows_own_times() {
 	// coverage, so a carry-over or double-merge fault there would otherwise surface in production.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { g: int4, v: float8 }");
+	db.admin("CREATE TABLE app::t { g: int4, v: float8 } with { time: processing }");
 	db.admin(r#"CREATE DEFERRED VIEW app::p { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
@@ -165,7 +165,7 @@ fn a_processing_view_over_a_processing_source_keeps_its_rows_live() {
 	// assertion that the rows stay live.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { g: int4, v: float8 }");
+	db.admin("CREATE TABLE app::t { g: int4, v: float8 } with { time: processing }");
 	db.admin(r#"CREATE DEFERRED VIEW app::p { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }

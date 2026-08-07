@@ -59,7 +59,7 @@ fn a_processing_time_source_propagates_its_arrival_stamp_unchanged() {
 	// coordinate and a watermark taken from the same row can never disagree.
 	let db = setup();
 	db.admin("CREATE NAMESPACE cv");
-	db.admin("CREATE TABLE cv::src { id: int4, at: datetime }");
+	db.admin("CREATE TABLE cv::src { id: int4, at: datetime } with { time: processing }");
 	db.admin("CREATE DEFERRED VIEW cv::upstream { id: int4, at: datetime } AS { FROM cv::src }");
 	db.admin("CREATE DEFERRED VIEW cv::downstream { id: int4, at: datetime } AS { FROM cv::upstream }");
 

@@ -112,7 +112,7 @@ use crate::{
 
 #[derive(Clone, Copy)]
 pub struct ChangeCoordinate {
-	pub at: DateTime,
+	pub at: Option<DateTime>,
 	pub version: CommitVersion,
 }
 
@@ -325,8 +325,8 @@ impl FlowTransaction {
 	/// group buckets are derived from, so a row stamped from the wall clock would expire on a
 	/// different timeline during a replay.
 	pub fn written_at(&self) -> DateTime {
-		match self.change_coordinate() {
-			Some(coordinate) => coordinate.at,
+		match self.change_coordinate().and_then(|coordinate| coordinate.at) {
+			Some(at) => at,
 			None => self.clock().now(),
 		}
 	}

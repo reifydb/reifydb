@@ -35,7 +35,10 @@ fn last_value_roundtrip() {
 fn sealing_min_default_is_fully_invertible() {
 	// With no lateness bound nothing seals, so add/remove stays a pure inverse even when the
 	// probe is a new minimum.
-	assert_add_remove_is_inverse::<SealingMin<DateTime, i64>>(&[(at_millis(1), 10i64), (at_millis(2), 20), (at_millis(3), 30)], (at_millis(4), -5i64));
+	assert_add_remove_is_inverse::<SealingMin<DateTime, i64>>(
+		&[(at_millis(1), 10i64), (at_millis(2), 20), (at_millis(3), 30)],
+		(at_millis(4), -5i64),
+	);
 
 	let mut accumulator: SealingMin<DateTime, i64> = SealingMin::default();
 	accumulator.add(&(at_millis(0), 5));

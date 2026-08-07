@@ -44,13 +44,7 @@ pub(crate) fn resolve_time_for_update(
 	}
 }
 
-fn resolve_populator(
-	object: &str,
-	columns: &[Column],
-	ts: &str,
-	shape: &RowShape,
-	row: &[u8],
-) -> Result<DateTime> {
+fn resolve_populator(object: &str, columns: &[Column], ts: &str, shape: &RowShape, row: &[u8]) -> Result<DateTime> {
 	let index = columns.iter().position(|c| c.name == ts).ok_or_else(|| EngineError::TimePopulatorMissing {
 		object: object.to_string(),
 		column: ts.to_string(),
@@ -141,13 +135,18 @@ mod tests {
 		// the age of the corpus.
 		let shape = shape();
 
-		let resolved =
-			resolve_time("tokens", &columns(), &TimeSource::None, &shape, &row(&shape, BLOCK_TIME), at_nanos(ARRIVAL))
-				.expect("resolution must succeed");
+		let resolved = resolve_time(
+			"tokens",
+			&columns(),
+			&TimeSource::None,
+			&shape,
+			&row(&shape, BLOCK_TIME),
+			at_nanos(ARRIVAL),
+		)
+		.expect("resolution must succeed");
 
 		assert_eq!(resolved, None, "a time-less object must withhold #time rather than borrow the wall clock");
 	}
-
 
 	#[test]
 	fn an_event_time_object_stamps_time_from_the_declared_populator() {

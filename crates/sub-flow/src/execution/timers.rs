@@ -44,22 +44,6 @@ impl FlowEngineInner {
 		loop {
 			let watermark = watermarks.flow_watermark(&sources, txn)?;
 			txn.set_flow_watermark(watermark);
-			let trace = rounds < 3 || rounds % 512 == 0;
-			if trace {
-				let mut per_source = String::new();
-				for source in &sources {
-					let value = watermarks.source_watermark(*source, txn)?;
-					per_source.push_str(&format!("op{}={} ", source.0, value.to_millis()));
-				}
-				println!(
-					"[timerprobe] flow={} round={} watermark_ms={} sources[{}]: {}",
-					flow.id.0,
-					rounds,
-					watermark.to_millis(),
-					sources.len(),
-					per_source.trim_end()
-				);
-			}
 			let mut due: Vec<(OperatorId, Timer)> = Vec::new();
 			for operator_id in topo {
 				if budget == 0 {
@@ -72,18 +56,6 @@ impl FlowEngineInner {
 			}
 			if due.is_empty() {
 				return Ok(fired_total);
-			}
-			if trace {
-				for (operator_id, timer) in due.iter().take(4) {
-					println!(
-						"[timerprobe]   due op={} at_ms={} kind={:?} lag_ms={}",
-						operator_id.0,
-						timer.at.to_millis(),
-						timer.kind,
-						watermark.to_millis() as i64 - timer.at.to_millis() as i64
-					);
-				}
-				println!("[timerprobe]   due_count={} fired_total={}", due.len(), fired_total);
 			}
 			rounds += 1;
 			if rounds > MAX_TIMER_ROUNDS {
@@ -120,7 +92,7 @@ impl FlowEngineInner {
 					continue;
 				};
 				txn.set_change_coordinate(ChangeCoordinate {
-					at: timer.at,
+					at: Some(timer.at),
 					version,
 				});
 				let Some(result) = operator.on_timer(txn, timer)? else {

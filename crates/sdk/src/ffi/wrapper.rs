@@ -22,8 +22,8 @@ use reifydb_abi::{
 	},
 	operator::{timer::TimerKind, vtable::OperatorVTableFFI},
 };
-use reifydb_flow::window::span::WindowCoord;
 use reifydb_core::metrics::heap::OperatorSample;
+use reifydb_flow::window::span::WindowCoord;
 use reifydb_value::value::datetime::DateTime;
 use tracing::{error, instrument, warn};
 

@@ -426,8 +426,9 @@ impl SinkRingBufferViewOperator {
 				cause: format!("expected 8 or 16 bytes, got {}", bytes.len()),
 			}));
 		}
-		let source_rn =
-			u64::from_be_bytes(bytes[..8].try_into().expect("a row entry opens with an 8-byte source row number"));
+		let source_rn = u64::from_be_bytes(
+			bytes[..8].try_into().expect("a row entry opens with an 8-byte source row number"),
+		);
 		let time = (bytes.len() == 16).then(|| {
 			DateTime::from_millis(u64::from_be_bytes(
 				bytes[8..].try_into().expect("a 16-byte row entry closes with an 8-byte instant"),
@@ -885,7 +886,13 @@ impl SinkRingBufferViewOperator {
 			let assigned_rn = RowNumber(meta.tail);
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, assigned_rn, field_columns)?;
 			self.set_forward(txn, source_rn, assigned_rn)?;
-			self.set_row_entry(txn, partition, assigned_rn, source_rn, source.time().get(row_idx).copied())?;
+			self.set_row_entry(
+				txn,
+				partition,
+				assigned_rn,
+				source_rn,
+				source.time().get(row_idx).copied(),
+			)?;
 			row_keys.push(self.rb_key(object_id, assigned_rn, partition));
 			row_values.push(encoded);
 			if meta.is_empty() {

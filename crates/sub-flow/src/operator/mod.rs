@@ -151,6 +151,22 @@ mod substrate_stamping_tests {
 		)
 	}
 
+	fn untimed_columns(n: usize) -> Columns {
+		Columns::with_system(
+			vec![ColumnWithName::new(
+				Fragment::internal("v"),
+				ColumnBuffer::int4((0..n as i32).collect::<Vec<_>>()),
+			)],
+			SystemColumns::new(
+				(1..=n as u64).map(RowNumber).collect(),
+				Vec::new(),
+				vec![at_millis(0); n],
+				vec![at_millis(0); n],
+				Vec::new(),
+			),
+		)
+	}
+
 	fn change(diffs: Diffs) -> Change {
 		Change::from_flow(OperatorId(1), CommitVersion(1), diffs, at_millis(0))
 	}
@@ -167,20 +183,20 @@ mod substrate_stamping_tests {
 
 	#[test]
 	fn an_operator_cannot_influence_its_own_output_time() {
-		// An operator that stamped above its inputs would advance the flow watermark and seal
-		// another operator's state early; the epoch row is replaced too, or an unstamped row would
-		// read as 1970 and retention would evict it at once.
+		// Stamping above the inputs would advance the flow watermark and seal another operator's
+		// state early, so the clamp is one-directional: it pulls a row down to the inherited instant
+		// and leaves a genuinely earlier row where it is. Clamping both directions would drag a
+		// backfilled row forward into a window it does not belong to.
 		let mut produced = Diffs::new();
-		produced.push(Diff::insert(columns(&[at_millis(999_999), at_millis(0)])));
+		produced.push(Diff::insert(columns(&[at_millis(999_999), at_millis(1_000)])));
 		let mut out = change(produced);
 
 		stamp_output_time(&mut out, Some(at_millis(4_000)));
 
-		let stamped = out.diffs[0].post().unwrap();
 		assert_eq!(
-			stamped.time().to_vec(),
-			vec![at_millis(4_000), at_millis(4_000)],
-			"every output row takes the substrate's stamp, not the operator's"
+			out.diffs[0].post().unwrap().time().to_vec(),
+			vec![at_millis(4_000), at_millis(1_000)],
+			"a row above the inherited instant is pulled down; one below keeps its own"
 		);
 	}
 
@@ -270,17 +286,31 @@ mod substrate_stamping_tests {
 	}
 
 	#[test]
-	fn a_row_with_no_time_is_stamped_from_the_inherited_instant() {
-		// #time has no none at this layer, so an unstamped row carries the epoch. Comparing only
-		// against the inherited instant would keep it as "deliberately stamped early", and every
-		// operator that never touches #time would emit rows retention evicts on sight.
+	fn a_row_stamped_at_the_epoch_keeps_its_own_instant() {
+		// The epoch is an ordinary coordinate here, not a marker for "unstamped". Substituting the
+		// inherited instant for it would silently re-date every row a source legitimately placed in
+		// 1970, and the two cases are already distinguishable without inspecting the value.
 		let mut produced = Diffs::new();
 		produced.push(Diff::insert(columns(&[DateTime::default()])));
 		let mut out = change(produced);
 
 		stamp_output_time(&mut out, Some(at_millis(6_000)));
 
-		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![at_millis(6_000)]);
+		assert_eq!(out.diffs[0].post().unwrap().time().to_vec(), vec![DateTime::default()]);
+	}
+
+	#[test]
+	fn a_time_less_batch_stays_time_less_through_stamping() {
+		// A source with no time domain emits rows carrying no #time, and stamping must not invent
+		// one for them. Filling the sidecar here would give a time-less object a clock it never
+		// declared and let its rows start moving watermarks.
+		let mut produced = Diffs::new();
+		produced.push(Diff::insert(untimed_columns(3)));
+		let mut out = change(produced);
+
+		stamp_output_time(&mut out, Some(at_millis(6_000)));
+
+		assert!(out.diffs[0].post().unwrap().time().is_empty(), "#time must stay absent");
 	}
 
 	#[test]

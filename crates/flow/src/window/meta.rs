@@ -368,14 +368,16 @@ mod tests {
 	use std::ops::Bound::{Excluded, Included, Unbounded};
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
-	use reifydb_value::factory::at_millis;
 	use reifydb_core::{
 		key::operator_group_state::{
 			GroupId, IntoGroupStateKey, OperatorGroupStateKey, group_data_inner_range,
 		},
 		state::budget::OperatorStateBudgetHandle,
 	};
-	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+	use reifydb_value::{
+		factory::at_millis,
+		value::{datetime::DateTime, row_number::RowNumber},
+	};
 
 	use super::{CountKey, RowIndexKey, SealLedgerKey, SessionKey, WindowMeta, decode_seal_ledger_key};
 	use crate::window::{engine::test_support::MockStore, kind::session::SessionTracker, ledger::SealLedger};
@@ -473,7 +475,10 @@ mod tests {
 		meta.save_session(&mut store, GROUP, &SessionTracker::resumed(0, at_millis(0), at_millis(0))).unwrap();
 		meta.flush(&mut store).unwrap();
 
-		assert_eq!(meta.load_session(&mut store, GROUP).unwrap(), SessionTracker::resumed(0, at_millis(0), at_millis(0)));
+		assert_eq!(
+			meta.load_session(&mut store, GROUP).unwrap(),
+			SessionTracker::resumed(0, at_millis(0), at_millis(0))
+		);
 	}
 
 	#[test]

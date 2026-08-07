@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, state::StateBytes};
 use reifydb_core::key::{
@@ -9,8 +9,6 @@ use reifydb_core::key::{
 	operator_group_state::{Keyspace, OperatorGroupStateKey},
 	operator_state::OperatorStateKey,
 };
-
-pub const ARRIVAL_VALUED: &[Keyspace] = &[Keyspace::NODE_WATERMARK];
 
 pub const ROW_STAMPED: &[Keyspace] = &[Keyspace::DISTINCT_ENTRY, Keyspace::DISTINCT_LAYOUT];
 
@@ -53,29 +51,23 @@ pub fn assert_batch_equivalent(label: &str, a: &State, b: &State) {
 	let mut b_strict: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
 	let mut a_bodies: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
 	let mut b_bodies: BTreeMap<Vec<u8>, Vec<u8>> = BTreeMap::new();
-	let mut a_arrival: BTreeSet<Vec<u8>> = BTreeSet::new();
-	let mut b_arrival: BTreeSet<Vec<u8>> = BTreeSet::new();
 
-	let classify = |state: &State,
-	                strict: &mut BTreeMap<Vec<u8>, Vec<u8>>,
-	                bodies: &mut BTreeMap<Vec<u8>, Vec<u8>>,
-	                arrival: &mut BTreeSet<Vec<u8>>| {
-		for (key, row) in state {
-			let Some(keyspace) = keyspace_of(key) else {
-				strict.insert(key.to_vec(), row.to_vec());
-				continue;
-			};
-			if ARRIVAL_VALUED.contains(&keyspace) {
-				arrival.insert(key.to_vec());
-			} else if ROW_STAMPED.contains(&keyspace) {
-				strict.insert(key.to_vec(), row.to_vec());
-			} else {
-				bodies.insert(key.to_vec(), body_of(row));
+	let classify =
+		|state: &State, strict: &mut BTreeMap<Vec<u8>, Vec<u8>>, bodies: &mut BTreeMap<Vec<u8>, Vec<u8>>| {
+			for (key, row) in state {
+				let Some(keyspace) = keyspace_of(key) else {
+					strict.insert(key.to_vec(), row.to_vec());
+					continue;
+				};
+				if ROW_STAMPED.contains(&keyspace) {
+					strict.insert(key.to_vec(), row.to_vec());
+				} else {
+					bodies.insert(key.to_vec(), body_of(row));
+				}
 			}
-		}
-	};
-	classify(a, &mut a_strict, &mut a_bodies, &mut a_arrival);
-	classify(b, &mut b_strict, &mut b_bodies, &mut b_arrival);
+		};
+	classify(a, &mut a_strict, &mut a_bodies);
+	classify(b, &mut b_strict, &mut b_bodies);
 
 	assert_eq!(
 		a_strict, b_strict,
@@ -85,5 +77,4 @@ pub fn assert_batch_equivalent(label: &str, a: &State, b: &State) {
 		a_bodies, b_bodies,
 		"{label}: every non-allowlisted keyspace must agree on keys and value bodies across batch boundaries"
 	);
-	assert_eq!(a_arrival, b_arrival, "{label}: arrival-valued keyspaces must agree on their key sets");
 }

@@ -20,7 +20,7 @@ use reifydb_core::{
 		EncodableKey, Key, kind::KeyKind, operator_group_state::OperatorGroupStateKey,
 		operator_state::OperatorStateKey,
 	},
-	state::{budget::OperatorStateBudgetHandle, group::ActivityBuckets},
+	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::test_harness::TestEngine;
 use reifydb_flow::{
@@ -133,11 +133,6 @@ impl Harness<ApplyOperator> {
 }
 
 impl<O: Operator> Harness<O> {
-	pub fn with_activity_grid(self) -> Self {
-		self.substrate.group.set_activity_grid(self.operator.id(), self.operator.retention_scale());
-		self
-	}
-
 	pub fn with_dictionaries(mut self) -> Self {
 		self.catalog = self.engine.inner().catalog().clone();
 		let single = self.engine.begin_admin(IdentityId::system()).expect("begin admin").single.clone();
@@ -158,10 +153,6 @@ impl<O: Operator> Harness<O> {
 	pub fn with_sink_row_ttl(mut self, ttl: Duration) -> Self {
 		self.sink_row_ttl = Some(ttl);
 		self
-	}
-
-	pub fn activity_grid(&self) -> ActivityBuckets {
-		self.substrate.group.buckets(self.operator.id())
 	}
 
 	pub fn footprint(&mut self) -> Result<StateFootprint> {
@@ -208,7 +199,7 @@ impl<O: Operator> Harness<O> {
 			state_budget: OperatorStateBudgetHandle::default(),
 		});
 		txn.set_change_coordinate(ChangeCoordinate {
-			at,
+			at: Some(at),
 			version: CommitVersion(self.version),
 		});
 		txn
@@ -286,7 +277,7 @@ impl<O: Operator> Harness<O> {
 			);
 			for timer in due {
 				txn.set_change_coordinate(ChangeCoordinate {
-					at: timer.at,
+					at: Some(timer.at),
 					version: CommitVersion(self.version),
 				});
 				if let Some(change) = self.operator.on_timer(&mut txn, timer)? {
@@ -331,9 +322,8 @@ mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::{catalog::flow::OperatorId, change::Change},
-		state::horizon::activity_buckets,
 	};
-	use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
+	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 	use super::coordinate_of;
 	use crate::generator;
@@ -354,36 +344,6 @@ mod tests {
 		let stamped = DateTime::from_timestamp_millis(4_242).unwrap();
 		let timeless = Change::from_flow(OperatorId(1), CommitVersion(1), Vec::new(), stamped);
 		assert_eq!(coordinate_of(&timeless), stamped);
-	}
-
-	#[test]
-	fn a_group_falls_due_one_grid_width_after_its_span_elapses() {
-		// Three unit systems meet here and none is visible at the call site: horizons are declared
-		// as Durations, the grid divides nanoseconds, the chaos driver speaks milliseconds. A suite
-		// that guessed wrong would never make a group due and would pass asserting nothing.
-		let span = Duration::from_seconds(16).expect("16s is representable");
-		let grid = activity_buckets(Some(span)).event_grid().expect("a declared span buckets in event time");
-
-		// Sixteen buckets per horizon, so a 16s span grids at 1s.
-		assert_eq!(grid.width(), Duration::from_seconds(1).unwrap());
-
-		let at = |ms: u64| DateTime::from_timestamp_millis(ms).unwrap();
-
-		// A group stamped anywhere inside the first second reads as active at the bucket start, which is
-		// the whole reason the sweep subtracts a width of slack before trusting a cutoff.
-		assert_eq!(grid.of(at(0)), 0);
-		assert_eq!(grid.of(at(999)), 0);
-		assert_eq!(grid.of(at(1_000)), 1);
-
-		// A group is due when its bucket is strictly below the cutoff's. The data phase cuts at
-		// watermark - span, so a group in bucket 0 survives until the watermark passes 17s.
-		assert_eq!(grid.first_live(at(16_999 - 16_000)), 0, "bucket 0 is not yet behind the cutoff");
-		assert_eq!(grid.first_live(at(17_000 - 16_000)), 1, "at 17s the cutoff has moved past bucket 0");
-
-		// The keyspace and mapping phases additionally subtract one width of slack, so they reach the
-		// same group one full bucket later.
-		assert_eq!(grid.first_live(at(17_999 - 16_000 - 1_000)), 0);
-		assert_eq!(grid.first_live(at(18_000 - 16_000 - 1_000)), 1);
 	}
 
 	fn change_at(times: &[DateTime]) -> Change {

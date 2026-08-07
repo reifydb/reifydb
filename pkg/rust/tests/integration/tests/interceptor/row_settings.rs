@@ -9,7 +9,9 @@ fn create_table_with_row_settings_propagates_to_materialized_cache() {
 	let db = TestDb::memory();
 
 	db.admin("create namespace demo");
-	db.admin("create table demo::t { id: uint8 } with { time: processing, row: { ttl: { duration: '1m', announce: false } } }");
+	db.admin(
+		"create table demo::t { id: uint8 } with { time: processing, row: { ttl: { duration: '1m', announce: false } } }",
+	);
 
 	let cat = db.catalog();
 	let mat = cat.cache();

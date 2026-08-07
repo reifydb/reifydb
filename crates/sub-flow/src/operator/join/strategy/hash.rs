@@ -122,15 +122,16 @@ pub(crate) fn build_shape(columns: &Columns) -> RowShape {
 	RowShape::new(fields)
 }
 
-pub(crate) fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize) -> EncodedRow {
+pub(crate) fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize, now: DateTime) -> EncodedRow {
 	let values: Vec<Value> = columns.columns.iter().map(|buf| buf.get_value(row_idx)).collect();
 	let mut encoded = shape.allocate();
 	shape.set_values(&mut encoded, &values);
-	let at = columns.time().get(row_idx).copied().unwrap_or_else(|| {
-		panic!("a join state row at index {row_idx} carries no #time; a row's time is set once at its source")
-	});
-	encoded.set_timestamps(at, at);
-	encoded.set_time(at);
+	let at = columns.time().get(row_idx).copied();
+	let stamp = at.unwrap_or(now);
+	encoded.set_timestamps(stamp, stamp);
+	if let Some(at) = at {
+		encoded.set_time(at);
+	}
 	encoded.freeze()
 }
 
@@ -149,7 +150,7 @@ pub(crate) fn add_to_state_entry_batch(
 	store.set_row_shape(txn, &shape)?;
 	let group = store.group_for(txn, key_hash)?;
 	for &idx in indices {
-		let encoded = encode_row(&shape, columns, idx);
+		let encoded = encode_row(&shape, columns, idx, txn.written_at());
 		store.write_row(txn, group, columns.row_numbers()[idx], &encoded)?;
 	}
 	Ok(())
@@ -185,7 +186,7 @@ pub(crate) fn update_row_in_entry(
 	post: &Columns,
 	row_idx: usize,
 ) -> Result<bool> {
-	let encoded = encode_row(&prepared.shape, post, row_idx);
+	let encoded = encode_row(&prepared.shape, post, row_idx, txn.written_at());
 	let post_row_number = post.row_numbers()[row_idx];
 	if pre_row_number == post_row_number {
 		store.update_row_in(txn, prepared.group, post_row_number, &encoded)
@@ -209,7 +210,7 @@ pub(crate) fn update_single_row_in_entry(
 ) -> Result<bool> {
 	let shape = build_shape(post);
 	store.set_row_shape(txn, &shape)?;
-	let encoded = encode_row(&shape, post, row_idx);
+	let encoded = encode_row(&shape, post, row_idx, txn.written_at());
 	let post_row_number = post.row_numbers()[row_idx];
 	if pre_row_number == post_row_number {
 		store.update_row(txn, key_hash, post_row_number, &encoded)

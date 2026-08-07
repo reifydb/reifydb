@@ -54,11 +54,7 @@ pub(crate) fn seal_horizon_of(frontier: DateTime, seal_after: Duration) -> DateT
 	frontier.saturating_sub(seal_after)
 }
 
-pub(crate) fn arm_seal_timer(
-	store: &mut impl StateStore,
-	newest_window: DateTime,
-	seal_after: Duration,
-) -> Result<()> {
+pub(crate) fn arm_seal_timer(store: &mut impl StateStore, newest_window: DateTime, seal_after: Duration) -> Result<()> {
 	let at = newest_window.saturating_add(seal_after).saturating_add(SEAL_GATE_STEP);
 	store.arm_timer(at, TimerKind::Seal, &EncodedKey::new(Vec::new()))
 }

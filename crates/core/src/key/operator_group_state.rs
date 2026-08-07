@@ -83,13 +83,11 @@ impl Keyspace {
 
 	pub const GROUP_RECORD: Self = Self(0xFB);
 
-	pub const NODE_WATERMARK: Self = Self(0xF8);
+	pub const SOURCE_WATERMARK: Self = Self(0xFA);
 
-	pub const SOURCE_WATERMARK: Self = Self(0xF7);
+	pub const TIMER_WHEEL: Self = Self(0xF9);
 
-	pub const TIMER_WHEEL: Self = Self(0xF6);
-
-	pub const TIMER_INDEX: Self = Self(0xF3);
+	pub const TIMER_INDEX: Self = Self(0xF8);
 
 	pub const ACCUMULATOR: Self = Self(0x10);
 
@@ -149,7 +147,6 @@ impl Keyspace {
 			Self::GROUP_DICTIONARY => "GROUP_DICTIONARY",
 			Self::NODE_COUNTER => "NODE_COUNTER",
 			Self::GROUP_RECORD => "GROUP_RECORD",
-			Self::NODE_WATERMARK => "NODE_WATERMARK",
 			Self::SOURCE_WATERMARK => "SOURCE_WATERMARK",
 			Self::TIMER_WHEEL => "TIMER_WHEEL",
 			Self::TIMER_INDEX => "TIMER_INDEX",
@@ -197,9 +194,8 @@ impl Keyspace {
 				*self,
 				Self::ROW_NUMBER_MAPPING
 					| Self::GROUP_DICTIONARY | Self::NODE_COUNTER
-					| Self::GROUP_RECORD | Self::NODE_WATERMARK
-					| Self::SOURCE_WATERMARK | Self::TIMER_WHEEL
-					| Self::TIMER_INDEX
+					| Self::GROUP_RECORD | Self::SOURCE_WATERMARK
+					| Self::TIMER_WHEEL | Self::TIMER_INDEX
 			)
 	}
 }
@@ -468,12 +464,11 @@ mod tests {
 
 	/// Every keyspace the substrate declares, with the phase allowed to erase it. The phase is written
 	/// down rather than read back from `is_data`, or a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, Keyspace, Phase); 34] = [
+	const CENSUS: [(&str, Keyspace, Phase); 33] = [
 		("ROW_NUMBER_MAPPING", Keyspace::ROW_NUMBER_MAPPING, Phase::Identity),
 		("GROUP_DICTIONARY", Keyspace::GROUP_DICTIONARY, Phase::Identity),
 		("NODE_COUNTER", Keyspace::NODE_COUNTER, Phase::Identity),
 		("GROUP_RECORD", Keyspace::GROUP_RECORD, Phase::Identity),
-		("NODE_WATERMARK", Keyspace::NODE_WATERMARK, Phase::Identity),
 		("SOURCE_WATERMARK", Keyspace::SOURCE_WATERMARK, Phase::Identity),
 		("TIMER_WHEEL", Keyspace::TIMER_WHEEL, Phase::Identity),
 		("TIMER_INDEX", Keyspace::TIMER_INDEX, Phase::Identity),

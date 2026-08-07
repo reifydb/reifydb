@@ -614,10 +614,7 @@ impl Operator for NativeBridgedOperator {
 #[cfg(test)]
 mod tests {
 	use reifydb_abi::constants::OPERATOR_ABI_TAG;
-	use reifydb_core::{
-		common::CommitVersion, interface::change::Change, key::operator_group_state::GroupId,
-		state::horizon::Position,
-	};
+	use reifydb_core::{common::CommitVersion, interface::change::Change, key::operator_group_state::GroupId};
 	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_extension::operator::ffi_loader::check_operator_abi_tag;
 	use reifydb_flow::{operator::Operator, transaction::ChangeCoordinate};
@@ -646,7 +643,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().at(CommitVersion(7)).deferred();
 		txn.set_change_coordinate(ChangeCoordinate {
-			at: DateTime::from_millis(0),
+			at: Some(DateTime::from_millis(0)),
 			version: CommitVersion(7),
 		});
 		let mut bridge = FlowNativeBridge::new(&mut txn, NODE);
@@ -659,35 +656,6 @@ mod tests {
 			vec![GroupId::FIRST],
 			"the earlier read must not have consumed an id from the counter"
 		);
-	}
-
-	#[test]
-	fn the_substrate_stamps_what_a_driver_can_no_longer_supply() {
-		// A stamp from a driver value or a clock reading would run the bucket arithmetic against
-		// a different scale, so a group would come due instantly or never. The coordinate version
-		// differs from the transaction's on purpose: the stamp follows the change, not the txn.
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().at(CommitVersion(42)).deferred();
-		let at = DateTime::from_millis(1_700_000_000_123);
-		txn.set_change_coordinate(ChangeCoordinate {
-			at,
-			version: CommitVersion(41),
-		});
-
-		let mut bridge = FlowNativeBridge::new(&mut txn, NODE);
-		bridge.intern_groups(&[key("undeclared")]).unwrap();
-		assert_eq!(
-			txn.node_position(NODE).unwrap(),
-			Position(at),
-			"a operator with no declared horizon stamps the same substrate coordinate as one that seals; \
-			 there is no second domain for it to fall back to"
-		);
-
-		let sealed = OperatorId(8);
-		txn.group_interner().set_activity_grid(sealed, Some(Duration::from_milliseconds(1_000).unwrap()));
-		let mut bridge = FlowNativeBridge::new(&mut txn, sealed);
-		bridge.intern_groups(&[key("sealed")]).unwrap();
-		assert_eq!(txn.node_position(sealed).unwrap(), Position(at));
 	}
 
 	#[test]
