@@ -87,6 +87,7 @@ use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
 
 pub mod dictionary;
+pub mod frontier;
 pub mod group;
 pub mod read;
 pub mod reclaim;

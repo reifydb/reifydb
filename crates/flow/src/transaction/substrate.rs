@@ -12,7 +12,8 @@ use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
 
 use crate::transaction::{
-	group::GroupInterner, row_number::RowNumberProvider, timer::TimerWheel, watermark::SourceWatermarks,
+	frontier::OutputFrontiers, group::GroupInterner, row_number::RowNumberProvider, timer::TimerWheel,
+	watermark::SourceWatermarks,
 };
 
 #[derive(Clone, Default)]
@@ -21,6 +22,7 @@ pub struct FlowSubstrate {
 	pub group: GroupInterner,
 	pub dictionary: DictionaryAllocatorRegistry,
 	pub watermarks: SourceWatermarks,
+	pub frontiers: OutputFrontiers,
 	pub timers: TimerWheel,
 	pub operators: OperatorStore,
 }

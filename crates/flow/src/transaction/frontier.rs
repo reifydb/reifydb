@@ -1,0 +1,228 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use std::sync::Arc;
+
+use dashmap::DashMap;
+use reifydb_core::{common::CommitVersion, interface::catalog::object::ObjectId};
+use reifydb_value::{reifydb_assertions, value::datetime::DateTime};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Published {
+	frontier_ms: u64,
+	at: CommitVersion,
+	persisted_at: CommitVersion,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Frontier {
+	Unpublished,
+	Withheld,
+	Visible(DateTime),
+}
+
+#[derive(Clone, Default)]
+pub struct OutputFrontiers {
+	inner: Arc<DashMap<ObjectId, Published>>,
+}
+
+impl OutputFrontiers {
+	pub fn publish(&self, output: ObjectId, frontier: DateTime, at: CommitVersion) {
+		reifydb_assertions! {
+			assert!(
+				at > CommitVersion(0),
+				"an output frontier was published at version zero; every consumer past version \
+				 zero would resolve it as visible while it never becomes dirty, so it never \
+				 reaches disk and the claim vanishes on the next restart"
+			);
+		}
+		let frontier_ms = frontier.to_millis();
+		self.inner
+			.entry(output)
+			.and_modify(|current| {
+				if frontier_ms > current.frontier_ms {
+					current.frontier_ms = frontier_ms;
+					current.at = at;
+				}
+			})
+			.or_insert(Published {
+				frontier_ms,
+				at,
+				persisted_at: CommitVersion(0),
+			});
+	}
+
+	pub fn resolve(&self, output: ObjectId, version: CommitVersion) -> Frontier {
+		match self.inner.get(&output) {
+			None => Frontier::Unpublished,
+			Some(published) if published.at < version => {
+				Frontier::Visible(DateTime::from_millis(published.frontier_ms))
+			}
+			Some(_) => Frontier::Withheld,
+		}
+	}
+
+	pub fn dirty(&self) -> Vec<(ObjectId, u64, CommitVersion)> {
+		self.inner
+			.iter()
+			.filter(|entry| entry.at > entry.persisted_at)
+			.map(|entry| (*entry.key(), entry.frontier_ms, entry.at))
+			.collect()
+	}
+
+	pub fn mark_persisted(&self, output: ObjectId, at: CommitVersion) {
+		if let Some(mut entry) = self.inner.get_mut(&output)
+			&& at > entry.persisted_at
+		{
+			entry.persisted_at = at;
+		}
+	}
+
+	pub fn hydrate(&self, entries: Vec<(ObjectId, u64, CommitVersion)>) {
+		for (output, frontier_ms, at) in entries {
+			self.inner
+				.entry(output)
+				.and_modify(|current| {
+					if frontier_ms > current.frontier_ms {
+						*current = Published {
+							frontier_ms,
+							at,
+							persisted_at: at,
+						};
+					}
+				})
+				.or_insert(Published {
+					frontier_ms,
+					at,
+					persisted_at: at,
+				});
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::interface::catalog::id::ViewId;
+	use reifydb_value::factory::time::at_millis;
+
+	use super::*;
+
+	const OUTPUT: ObjectId = ObjectId::View(ViewId(42));
+
+	#[test]
+	fn a_lower_publish_never_regresses_the_frontier_or_its_stamp() {
+		// A regression re-opens a sealed horizon, and a rejected publish must never raise the stamp.
+		let frontiers = OutputFrontiers::default();
+
+		frontiers.publish(OUTPUT, at_millis(5_000), CommitVersion(10));
+		frontiers.publish(OUTPUT, at_millis(3_000), CommitVersion(20));
+
+		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(30)), Frontier::Visible(at_millis(5_000)));
+		assert_eq!(
+			frontiers.resolve(OUTPUT, CommitVersion(15)),
+			Frontier::Visible(at_millis(5_000)),
+			"the rejected publish must not have carried its stamp forward"
+		);
+	}
+
+	#[test]
+	fn a_frontier_published_at_the_readers_own_version_is_withheld() {
+		// At an equal version nothing orders producer before consumer, so folding it seals early.
+		let frontiers = OutputFrontiers::default();
+
+		frontiers.publish(OUTPUT, at_millis(5_000), CommitVersion(10));
+
+		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(10)), Frontier::Withheld);
+		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(11)), Frontier::Visible(at_millis(5_000)));
+	}
+
+	#[test]
+	fn a_withheld_frontier_never_reads_as_one_that_was_never_published() {
+		// A tie is routine, so conflating the two makes the unpublished-source warning pure noise.
+		let frontiers = OutputFrontiers::default();
+
+		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(10)), Frontier::Unpublished);
+
+		frontiers.publish(OUTPUT, at_millis(5_000), CommitVersion(10));
+
+		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(10)), Frontier::Withheld);
+	}
+
+	#[test]
+	fn an_object_that_never_published_stays_distinguishable_from_one_that_published_the_epoch() {
+		// Collapsing the two into zero is exactly why the pin warning cannot fire when stale.
+		let frontiers = OutputFrontiers::default();
+
+		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(10)), Frontier::Unpublished);
+
+		frontiers.publish(OUTPUT, at_millis(0), CommitVersion(1));
+
+		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(10)), Frontier::Visible(at_millis(0)));
+	}
+
+	#[test]
+	fn only_a_publish_ahead_of_what_was_written_is_dirty() {
+		// A quiet interval must write nothing, otherwise every object pays a disk write forever.
+		let frontiers = OutputFrontiers::default();
+
+		assert!(frontiers.dirty().is_empty());
+
+		frontiers.publish(OUTPUT, at_millis(5_000), CommitVersion(10));
+		assert_eq!(frontiers.dirty(), vec![(OUTPUT, 5_000, CommitVersion(10))]);
+
+		frontiers.mark_persisted(OUTPUT, CommitVersion(10));
+		assert!(frontiers.dirty().is_empty());
+	}
+
+	#[test]
+	fn a_publish_racing_the_sweep_stays_dirty() {
+		// A publish between snapshot and mark must survive; a quiet producer may never publish again.
+		let frontiers = OutputFrontiers::default();
+
+		frontiers.publish(OUTPUT, at_millis(5_000), CommitVersion(10));
+		let swept = frontiers.dirty();
+
+		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(20));
+
+		for (output, _, at) in swept {
+			frontiers.mark_persisted(output, at);
+		}
+
+		assert_eq!(frontiers.dirty(), vec![(OUTPUT, 9_000, CommitVersion(20))]);
+	}
+
+	#[test]
+	fn a_late_mark_from_an_earlier_sweep_never_lowers_what_was_written() {
+		// A stale mark must never re-dirty a newer write, otherwise overlapping sweeps never converge.
+		let frontiers = OutputFrontiers::default();
+
+		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(20));
+		frontiers.mark_persisted(OUTPUT, CommitVersion(20));
+		frontiers.mark_persisted(OUTPUT, CommitVersion(10));
+
+		assert!(frontiers.dirty().is_empty());
+	}
+
+	#[test]
+	fn a_hydrated_entry_is_not_dirty() {
+		// Hydrated entries must not be dirty, otherwise every restart rewrites everything unchanged.
+		let frontiers = OutputFrontiers::default();
+
+		frontiers.hydrate(vec![(OUTPUT, 5_000, CommitVersion(10))]);
+
+		assert!(frontiers.dirty().is_empty());
+		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(11)), Frontier::Visible(at_millis(5_000)));
+	}
+
+	#[test]
+	fn a_hydrated_frontier_stays_withheld_until_the_reader_passes_its_stamp() {
+		// A hydrated stamp must stay withheld until the flow replays past it, or the restart seals early.
+		let frontiers = OutputFrontiers::default();
+
+		frontiers.hydrate(vec![(OUTPUT, 5_000, CommitVersion(500))]);
+
+		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(499)), Frontier::Withheld);
+		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(500)), Frontier::Withheld);
+		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(501)), Frontier::Visible(at_millis(5_000)));
+	}
+}
