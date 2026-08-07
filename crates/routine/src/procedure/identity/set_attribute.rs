@@ -11,14 +11,13 @@ use reifydb_core::{
 	interface::catalog::identity::{Identity, IdentityAttribute},
 	value::column::{cast::cast_value, columns::Columns},
 };
+use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	value::{Value, value_type::ValueType},
 };
-
-use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("identity::set_attribute"));
 

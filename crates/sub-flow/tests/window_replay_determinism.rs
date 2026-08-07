@@ -26,8 +26,8 @@ use reifydb_core::{
 use reifydb_flow::{timer::Timer, window::meta::EngineMeta};
 use reifydb_routine::{
 	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
-	routine::registry::Routines,
 };
+use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::parse_expression;
 use reifydb_sub_flow::{
 	context::FlowContext,

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{Value, value_type::input_types::InputTypes};
-
-use crate::{
+use reifydb_routine_abi::{
+	RoutineInfo,
+	error::RoutineError,
 	monoid::{Monoid, MonoidState},
-	routine::{RoutineInfo, error::RoutineError},
 };
+use reifydb_value::value::{Value, value_type::input_types::InputTypes};
 
 pub struct Count {
 	info: RoutineInfo,

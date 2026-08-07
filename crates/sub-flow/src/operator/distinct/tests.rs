@@ -23,8 +23,7 @@ use reifydb_core::{
 };
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_test_harness::engine::TestEngine;
-use reifydb_test_harness::operator::transaction::FlowTxn;
+use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{

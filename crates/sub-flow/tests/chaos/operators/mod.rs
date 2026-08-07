@@ -15,8 +15,8 @@ pub mod window;
 
 use reifydb_routine::{
 	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
-	routine::registry::Routines,
 };
+use reifydb_routine_abi::registry::Routines;
 
 /// The registry every operator that evaluates an expression is built against. Shared so two suites
 /// cannot end up driving their operators against different sets of monoids and disagreeing for a

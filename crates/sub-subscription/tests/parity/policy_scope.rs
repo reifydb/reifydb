@@ -7,8 +7,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb::Params;
-use reifydb::testing::db::TestDb;
+use reifydb::{Params, testing::db::TestDb};
 use reifydb_core::value::column::columns::Columns;
 use reifydb_value::value::{Value, identity::IdentityId};
 

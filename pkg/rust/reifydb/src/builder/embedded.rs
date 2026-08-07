@@ -7,7 +7,7 @@ use reifydb_auth::service::AuthConfigurator;
 use reifydb_catalog::{bootstrap::read_configs, cache::CatalogCache};
 use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_extension::transform::registry::TransformsConfigurator;
-use reifydb_routine::routine::registry::RoutinesConfigurator;
+use reifydb_routine_abi::registry::RoutinesConfigurator;
 use reifydb_runtime::{Runtime, RuntimeConfig, pool::PoolConfig, version_epoch::VersionEpoch};
 use reifydb_store_multi::tier::commit::buffer::MultiCommitBufferTier;
 use reifydb_sub_api::subsystem::SubsystemFactory;

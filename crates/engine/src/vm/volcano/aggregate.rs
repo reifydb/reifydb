@@ -13,7 +13,7 @@ use reifydb_core::{
 		view::group_by::{GroupId, GroupKeyDict},
 	},
 };
-use reifydb_routine::routine::{
+use reifydb_routine_abi::{
 	Accumulator, FunctionKind, context::FunctionContext, error::RoutineError, registry::Routines,
 };
 use reifydb_rql::expression::{Expression, name::display_label};

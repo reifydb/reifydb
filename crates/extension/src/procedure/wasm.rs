@@ -3,7 +3,7 @@
 
 use postcard::to_stdvec;
 use reifydb_core::value::column::columns::Columns;
-use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
+use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_sdk::{error::SdkError, marshal::wasm::unmarshal_columns_from_bytes};
 use reifydb_value::{error::Error, value::value_type::ValueType};
 

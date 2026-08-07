@@ -3,8 +3,7 @@
 
 use std::time::Duration;
 
-use reifydb::testing::db::TestDb;
-use reifydb::{Value, WithSubsystem, embedded};
+use reifydb::{Value, WithSubsystem, embedded, testing::db::TestDb};
 
 const SETTLE: Duration = Duration::from_secs(5);
 

@@ -314,8 +314,7 @@ fn decode_pin(row: &EncodedRow) -> Result<Pin> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_test_harness::operator::transaction::FlowTxn;
+	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 
 	use super::*;
 

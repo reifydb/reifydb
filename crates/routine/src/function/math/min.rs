@@ -9,6 +9,9 @@ use reifydb_core::value::column::{
 	columns::Columns,
 	view::group_by::{GroupId, GroupRows, GroupSlots},
 };
+use reifydb_routine_abi::{
+	Accumulator, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
@@ -18,10 +21,6 @@ use reifydb_value::{
 		uint::Uint,
 		value_type::{ValueType, input_types::InputTypes},
 	},
-};
-
-use crate::routine::{
-	Accumulator, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 
 pub struct Min {

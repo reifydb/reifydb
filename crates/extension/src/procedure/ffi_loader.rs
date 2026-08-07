@@ -13,7 +13,7 @@ use reifydb_abi::procedure::{
 	descriptor::ProcedureDescriptorFFI,
 	types::{PROCEDURE_MAGIC, ProcedureCreateFnFFI},
 };
-use reifydb_routine::routine::registry::RoutinesConfigurator;
+use reifydb_routine_abi::registry::RoutinesConfigurator;
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::error::{Result as FFIResult, SdkError};
 

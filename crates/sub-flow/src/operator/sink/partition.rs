@@ -81,8 +81,7 @@ pub(crate) fn resolve_partition_flow(
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::catalog::id::TableId;
-	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_test_harness::operator::transaction::FlowTxn;
+	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 
 	use super::*;
 

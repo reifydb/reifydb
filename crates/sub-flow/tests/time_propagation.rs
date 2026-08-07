@@ -12,8 +12,7 @@
 
 use std::time::Duration as StdDuration;
 
-use reifydb::testing::db::TestDb;
-use reifydb::{WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 
 const TIMEOUT: StdDuration = StdDuration::from_secs(5);
 const BLOCK_TIME: &str = "2020-01-01T00:00:00Z";

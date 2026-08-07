@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::testing::db::TestDb;
-use reifydb::{Clock, MockClock, RuntimeConfig, embedded, value::value::duration::Duration};
+use reifydb::{Clock, MockClock, RuntimeConfig, embedded, testing::db::TestDb, value::value::duration::Duration};
 use reifydb_test_harness::auth::{AuthResponseAssert, password_credentials};
 
 fn create_db_with_mock_clock(mock: &MockClock, session_ttl: Duration) -> TestDb {

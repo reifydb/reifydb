@@ -5,8 +5,7 @@
 // must fail with TXN_015: a view still holds its pre-request contents during the transaction, so
 // such a read is silently stale. Reading before writing, and separate requests, stay legal.
 
-use reifydb::testing::db::TestDb;
-use reifydb::{WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 
 fn make_db() -> TestDb {
 	let db = TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"));

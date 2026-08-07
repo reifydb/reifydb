@@ -26,10 +26,9 @@ pub mod uuid;
 
 use std::sync::Arc;
 
-use crate::{
-	function::uuid::{v4::UuidV4, v7::UuidV7},
-	routine::registry::RoutinesConfigurator,
-};
+use reifydb_routine_abi::registry::RoutinesConfigurator;
+
+use crate::function::uuid::{v4::UuidV4, v7::UuidV7};
 
 pub fn default_native_functions(builder: RoutinesConfigurator) -> RoutinesConfigurator {
 	builder.register_builtin_function(Arc::new(math::sum::Sum::new()))

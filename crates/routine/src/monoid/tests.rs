@@ -2,15 +2,13 @@
 // Copyright (c) 2026 ReifyDB
 
 use postcard::{from_bytes, to_stdvec};
+use reifydb_routine_abi::monoid::{Monoid, MonoidState};
 use reifydb_value::value::{
 	Value, date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, int::Int, time::Time, uint::Uint,
 	value_type::ValueType,
 };
 
-use super::{
-	Monoid, MonoidState,
-	math::{count::Count, max::Max, min::Min, sum::Sum},
-};
+use super::math::{count::Count, max::Max, min::Min, sum::Sum};
 
 fn int1() -> Vec<Value> {
 	vec![Value::Int1(1), Value::Int1(-2), Value::Int1(3), Value::Int1(0)]

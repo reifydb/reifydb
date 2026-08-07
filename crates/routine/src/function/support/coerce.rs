@@ -10,6 +10,7 @@ use reifydb_core::value::column::{
 		convert::{Convert, TargetConvert},
 	},
 };
+use reifydb_routine_abi::{context::FunctionContext, error::RoutineError};
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
@@ -18,8 +19,6 @@ use reifydb_value::{
 		value_type::{ValueType, get::GetType},
 	},
 };
-
-use crate::routine::{context::FunctionContext, error::RoutineError};
 
 #[derive(Clone, Copy)]
 pub(crate) enum CoercePolicy {
@@ -86,6 +85,7 @@ mod tests {
 		buffer::ColumnBuffer,
 		cast::convert::{Convert, TargetConvert},
 	};
+	use reifydb_routine_abi::context::FunctionContext;
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_value::{
 		error::IntoDiagnostic,
@@ -95,7 +95,6 @@ mod tests {
 	};
 
 	use super::{CoercePolicy, NonePolicyConvert, coerce_column, promote_all};
-	use crate::routine::context::FunctionContext;
 
 	fn ctx() -> FunctionContext<'static> {
 		static RUNTIME: LazyLock<RuntimeContext> = LazyLock::new(|| RuntimeContext::testing(0, 0));

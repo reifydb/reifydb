@@ -4,8 +4,7 @@
 // A retention span the substrate cannot honor is refused at registration: accepted in silence, the
 // node keeps every row it ever saw while the catalog claims it has a ttl.
 
-use reifydb::testing::db::TestDb;
-use reifydb::{WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{

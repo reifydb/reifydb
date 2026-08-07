@@ -18,7 +18,7 @@ pub mod set;
 
 use std::sync::Arc;
 
-use crate::routine::registry::RoutinesConfigurator;
+use reifydb_routine_abi::registry::RoutinesConfigurator;
 
 pub fn default_native_procedures(builder: RoutinesConfigurator) -> RoutinesConfigurator {
 	let builder = builder

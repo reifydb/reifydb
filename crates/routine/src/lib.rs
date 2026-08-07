@@ -15,4 +15,3 @@
 pub mod function;
 pub mod monoid;
 pub mod procedure;
-pub mod routine;

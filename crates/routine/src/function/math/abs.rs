@@ -3,11 +3,12 @@
 
 use num_traits::sign::Signed;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_routine_abi::{
+	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+};
 use reifydb_value::value::{
 	container::number::NumberContainer, decimal::Decimal, int::Int, uint::Uint, value_type::ValueType,
 };
-
-use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct Abs {
 	info: RoutineInfo,

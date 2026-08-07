@@ -10,8 +10,7 @@ use std::sync::Arc;
 use changed::TestingChanged;
 use event::TestingEventsDispatched;
 use handler::TestingHandlersInvoked;
-
-use crate::routine::registry::RoutinesConfigurator;
+use reifydb_routine_abi::registry::RoutinesConfigurator;
 
 pub fn register_testing_native_procedures(builder: RoutinesConfigurator) -> RoutinesConfigurator {
 	builder.register_builtin_procedure(Arc::new(TestingEventsDispatched::new()))

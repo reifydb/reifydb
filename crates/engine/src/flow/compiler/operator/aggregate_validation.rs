@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::error::diagnostic::flow::flow_unsupported_aggregate_expression;
-use reifydb_routine::routine::registry::Routines;
+use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_value::{Result, error::Error};
 

@@ -617,8 +617,7 @@ mod tests {
 	use reifydb_core::{common::CommitVersion, interface::change::Change, key::operator_group_state::GroupId};
 	use reifydb_extension::operator::ffi_loader::check_operator_abi_tag;
 	use reifydb_flow::{operator::Operator, transaction::ChangeCoordinate};
-	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_test_harness::operator::transaction::FlowTxn;
+	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 	use reifydb_value::{
 		Result,
 		value::{datetime::DateTime, duration::Duration},

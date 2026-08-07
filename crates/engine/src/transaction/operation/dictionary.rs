@@ -198,6 +198,7 @@ impl DictionaryOperations for Transaction<'_> {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::{dictionary::Dictionary, id::NamespaceId};
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_value::value::{
 		Value,
 		dictionary::{DictionaryEntryId, DictionaryId},
@@ -205,7 +206,6 @@ pub mod tests {
 	};
 
 	use super::DictionaryOperations;
-	use reifydb_test_harness::engine::create_test_admin_transaction;
 
 	fn test_dictionary() -> Dictionary {
 		Dictionary {

@@ -5,8 +5,10 @@
 
 use std::sync::Arc;
 
-use reifydb::testing::db::{TestDb, poll_until};
-use reifydb::{WithSubsystem, embedded as db_embedded};
+use reifydb::{
+	WithSubsystem, embedded as db_embedded,
+	testing::db::{TestDb, poll_until},
+};
 use reifydb_column::reader::SnapshotReader;
 use reifydb_core::common::CommitVersion;
 use reifydb_sub_store::{

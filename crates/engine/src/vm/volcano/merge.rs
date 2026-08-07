@@ -54,6 +54,7 @@ mod tests {
 	use std::collections::VecDeque;
 
 	use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, headers::ColumnHeaders};
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_value::{
 		fragment::Fragment,
 		params::Params,
@@ -62,7 +63,6 @@ mod tests {
 
 	use super::*;
 	use crate::vm::{services::Services, stack::SymbolTable, volcano::query::query_budget};
-	use reifydb_test_harness::engine::create_test_admin_transaction;
 
 	struct StubNode {
 		batches: VecDeque<Columns>,

@@ -9,6 +9,7 @@ use reifydb_core::{
 	interface::resolved::ResolvedObject,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_rql::{
 	ast::parse_str,
 	nodes::AlterSequenceNode,
@@ -24,10 +25,7 @@ use reifydb_rql::{
 };
 use reifydb_value::value::value_type::ValueType;
 
-use crate::{
-	procedure::rql::extract_query,
-	routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError},
-};
+use crate::procedure::rql::extract_query;
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("rql::explain"));
 

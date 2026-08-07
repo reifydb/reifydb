@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{cast::convert::TargetConvert, columns::Columns},
 };
 use reifydb_extension::transform::context::TransformContext;
-use reifydb_routine::routine::registry::Routines;
+use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_value::{params::Params, value::identity::IdentityId};
 

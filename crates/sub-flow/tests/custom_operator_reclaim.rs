@@ -7,8 +7,7 @@
 
 use std::time::Duration as StdDuration;
 
-use reifydb::testing::db::TestDb;
-use reifydb::{ConfigKey, Value, WithSubsystem, embedded};
+use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{

@@ -9,6 +9,7 @@ members = [
     "crates/auth",
     "crates/build",
     "crates/routine",
+    "crates/routine-abi",
     "crates/catalog",
     "crates/cdc",
     "crates/codec",
@@ -241,6 +242,7 @@ reifydb-testing-flow = { version = "0.8.1", path = "crates/testing-flow" }
 reifydb-testing-sdk = { version = "0.8.1", path = "crates/testing-sdk" }
 reifydb-testing-scenario = { version = "0.8.1", path = "crates/testing-scenario" }
 reifydb-testing-macro = { version = "0.8.1", path = "crates/testing-macro" }
+reifydb-routine-abi = { version = "0.8.1", path = "crates/routine-abi" }
 reifydb-test-harness = { version = "0.8.1", path = "crates/test-harness" }
 reifydb-transaction = { version = "0.8.1", path = "crates/transaction" }
 reifydb-value = { version = "0.8.1", path = "crates/value" }

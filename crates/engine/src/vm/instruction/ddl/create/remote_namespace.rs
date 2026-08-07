@@ -75,6 +75,7 @@ pub(crate) fn create_remote_namespace(
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::query::QueryTransaction;
 	use reifydb_value::{
 		params::Params,
@@ -82,7 +83,6 @@ pub mod tests {
 	};
 
 	use crate::vm::{Admin, Query, executor::Executor};
-	use reifydb_test_harness::engine::create_test_admin_transaction;
 
 	#[test]
 	fn test_create_remote_namespace() {

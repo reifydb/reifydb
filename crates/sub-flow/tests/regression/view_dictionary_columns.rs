@@ -7,8 +7,7 @@
 
 use std::{thread, time::Instant};
 
-use reifydb::testing::db::TestDb;
-use reifydb::{WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_value::value::{Value, duration::Duration};
 
 fn make_db() -> TestDb {

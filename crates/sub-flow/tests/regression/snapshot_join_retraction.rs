@@ -24,8 +24,7 @@ use reifydb_sub_flow::{
 	context::FlowContext,
 	operator::join::operator::{JoinOperator, JoinSideConfig},
 };
-use reifydb_test_harness::engine::TestEngine;
-use reifydb_test_harness::operator::transaction::FlowTxn;
+use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{

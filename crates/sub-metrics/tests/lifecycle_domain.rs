@@ -9,8 +9,7 @@
 
 use std::time::Duration;
 
-use reifydb::testing::db::TestDb;
-use reifydb::{ConfigKey, SqliteConfig, Value, embedded as db_embedded};
+use reifydb::{ConfigKey, SqliteConfig, Value, embedded as db_embedded, testing::db::TestDb};
 use reifydb_core::lifecycle::class::RetentionClass;
 use reifydb_testing::tempdir::temp_dir;
 

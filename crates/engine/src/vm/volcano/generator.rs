@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders};
-use reifydb_routine::routine::{
+use reifydb_routine_abi::{
 	Function, Procedure,
 	context::{FunctionContext, ProcedureContext},
 };

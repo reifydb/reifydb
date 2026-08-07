@@ -1,0 +1,22 @@
+[package]
+name = "reifydb-routine-abi"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Trait contract for ReifyDB routines, shared by callers and implementations"
+
+[build-dependencies]
+reifydb-build = { workspace = true }
+
+[dependencies]
+reifydb-catalog = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-transaction = { workspace = true }
+reifydb-value = { workspace = true }
+
+indexmap = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }

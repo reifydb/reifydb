@@ -2,14 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::columns::Columns;
+use reifydb_routine_abi::{
+	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+};
 use reifydb_value::value::value_type::ValueType;
 
-use crate::{
-	function::{
-		math::arith::{dispatch::dispatch_fallback, op::Div as DivOp},
-		support::coerce::promote_pair,
-	},
-	routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError},
+use crate::function::{
+	math::arith::{dispatch::dispatch_fallback, op::Div as DivOp},
+	support::coerce::promote_pair,
 };
 
 pub struct DivDefault {

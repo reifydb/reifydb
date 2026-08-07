@@ -7,8 +7,7 @@
 
 use std::time::Duration;
 
-use reifydb::testing::db::TestDb;
-use reifydb::{ConfigKey, Value, WithSubsystem, embedded as db_embedded};
+use reifydb::{ConfigKey, Value, WithSubsystem, embedded as db_embedded, testing::db::TestDb};
 use reifydb_profiler::category::ALL_CATEGORIES;
 
 const TIMEOUT: Duration = Duration::from_secs(5);

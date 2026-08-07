@@ -24,7 +24,7 @@ use reifydb_flow::{
 		span::{WindowCoord, WindowSpan},
 	},
 };
-use reifydb_routine::routine::registry::Routines;
+use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_store_operator::{CompactionOutcome, FloorSpec};

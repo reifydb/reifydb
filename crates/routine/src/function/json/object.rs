@@ -2,12 +2,13 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_routine_abi::{
+	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+};
 use reifydb_value::{
 	util::bitvec::BitVec,
 	value::{Value, value_type::ValueType},
 };
-
-use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct JsonObject {
 	info: RoutineInfo,

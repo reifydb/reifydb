@@ -4,6 +4,7 @@
 use std::sync::LazyLock;
 
 use reifydb_core::value::column::columns::Columns;
+use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_runtime::context::clock::Clock;
 use reifydb_value::{
 	fragment::Fragment,
@@ -12,7 +13,6 @@ use reifydb_value::{
 };
 
 use super::set::extract_millis;
-use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("clock::advance"));
 

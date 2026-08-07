@@ -5,8 +5,10 @@
 
 use std::{collections::BTreeSet, sync::Arc};
 
-use reifydb::testing::db::{TestDb, poll_until};
-use reifydb::{WithSubsystem, embedded as db_embedded};
+use reifydb::{
+	WithSubsystem, embedded as db_embedded,
+	testing::db::{TestDb, poll_until},
+};
 use reifydb_column::reader::SnapshotReader;
 use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,

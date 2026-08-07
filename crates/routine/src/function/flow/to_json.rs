@@ -8,12 +8,13 @@ use reifydb_core::{
 	sort::SortKey,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_routine_abi::{
+	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+};
 use reifydb_rql::{expression::json::JsonExpression, flow::operator::OperatorDef};
 use reifydb_value::{error::Error, value::value_type::ValueType};
 use serde::Serialize;
 use serde_json::{Value as JsonValue, to_string, to_value};
-
-use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]

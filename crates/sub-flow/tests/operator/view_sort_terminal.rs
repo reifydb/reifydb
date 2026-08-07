@@ -4,8 +4,7 @@
 // A sort whose output is consumed by a downstream operator cannot be maintained incrementally, so
 // it is refused at CREATE VIEW time; a terminal sort, with nothing consuming it, is allowed.
 
-use reifydb::testing::db::TestDb;
-use reifydb::{WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 
 fn setup() -> TestDb {
 	let db = TestDb::from(embedded::memory().with_flow(|c| c).build().expect("build memory db with flow"));

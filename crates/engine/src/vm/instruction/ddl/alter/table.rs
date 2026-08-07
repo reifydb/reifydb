@@ -150,11 +150,11 @@ pub(crate) fn execute_alter_table(
 
 #[cfg(test)]
 mod tests {
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_value::{params::Params, value::Value};
 
 	use crate::vm::{Admin, executor::Executor};
-	use reifydb_test_harness::engine::create_test_admin_transaction;
 
 	fn setup() -> (Executor, AdminTransaction) {
 		let instance = Executor::testing();

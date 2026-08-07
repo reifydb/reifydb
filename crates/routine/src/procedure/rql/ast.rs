@@ -5,6 +5,7 @@ use std::sync::LazyLock;
 
 use bumpalo::Bump;
 use reifydb_core::value::column::{ColumnWithName, columns::Columns};
+use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_rql::{
 	ast::{
 		ast::{Ast, AstAlter, AstCreate, AstFrom, AstJoin},
@@ -16,10 +17,7 @@ use reifydb_rql::{
 };
 use reifydb_value::value::value_type::ValueType;
 
-use crate::{
-	procedure::rql::extract_query,
-	routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError},
-};
+use crate::procedure::rql::extract_query;
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("rql::ast"));
 

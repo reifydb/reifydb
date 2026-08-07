@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::testing::db::TestDb;
-use reifydb::{ConfigKey, value::value::Value};
+use reifydb::{ConfigKey, testing::db::TestDb, value::value::Value};
 
 #[test]
 fn set_config_propagates_to_materialized_cache() {

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnObject};
-use reifydb_routine::routine::registry::Routines;
+use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::{ColumnExpression, Expression};
 use reifydb_value::fragment::Fragment;
 

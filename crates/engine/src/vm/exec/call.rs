@@ -12,7 +12,7 @@ use reifydb_core::{
 	internal_error,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
 };
-use reifydb_routine::routine::{
+use reifydb_routine_abi::{
 	Function as RoutineFunction, Procedure as RoutineProcedure,
 	context::{FunctionContext as RoutineFunctionContext, ProcedureContext as RoutineProcedureContext},
 };

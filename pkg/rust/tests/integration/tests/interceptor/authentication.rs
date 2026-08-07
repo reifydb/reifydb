@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::core::common::CommitVersion;
-use reifydb::testing::db::TestDb;
+use reifydb::{core::common::CommitVersion, testing::db::TestDb};
 
 #[test]
 fn create_authentication_propagates_to_materialized_cache() {

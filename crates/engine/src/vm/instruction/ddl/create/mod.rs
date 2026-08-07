@@ -10,7 +10,7 @@ use reifydb_core::{
 	},
 	sort::SortKey,
 };
-use reifydb_routine::routine::registry::Routines;
+use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::fragment::Fragment;

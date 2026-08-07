@@ -60,8 +60,7 @@ pub mod tests {
 
 	use reifydb_codec::key::serializer::KeySerializer;
 	use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_group_state::Keyspace};
-	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_test_harness::operator::transaction::FlowTxn;
+	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::*;

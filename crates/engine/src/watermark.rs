@@ -42,7 +42,6 @@ impl StandardEngine {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{common::CommitVersion, lifecycle::watermark::QueryWatermark};
-
 	use reifydb_test_harness::engine::TestEngine;
 
 	#[test]

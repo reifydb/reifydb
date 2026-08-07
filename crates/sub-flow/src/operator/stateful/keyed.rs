@@ -69,8 +69,7 @@ pub trait KeyedStateful: RawStatefulOperator {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::flow::OperatorId;
-	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_test_harness::operator::transaction::FlowTxn;
+	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 	use reifydb_value::value::{Value, value_type::ValueType};
 
 	use super::*;

@@ -19,7 +19,7 @@ reifydb-build = { workspace = true }
 reifydb-abi = { workspace = true }
 reifydb-auth = { workspace = true }
 reifydb-cdc = { workspace = true }
-reifydb-routine = { workspace = true }
+reifydb-routine-abi = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
@@ -41,6 +41,7 @@ tracing = { workspace = true }
 postcard = { workspace = true }
 
 [dev-dependencies]
+reifydb-routine = { workspace = true }
 reifydb-test-harness = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

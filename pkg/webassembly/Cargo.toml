@@ -21,6 +21,7 @@ reifydb-codec = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-extension = { workspace = true }
 reifydb-routine = {workspace = true}
+reifydb-routine-abi = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-value = { workspace = true }

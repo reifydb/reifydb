@@ -15,7 +15,7 @@ use reifydb_profiler::{
 	layer::ProfilerLayer,
 	sink::{NoopSink, ProfilerSink},
 };
-use reifydb_routine::routine::registry::RoutinesConfigurator;
+use reifydb_routine_abi::registry::RoutinesConfigurator;
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_runtime::context::clock::Clock;
 #[cfg(feature = "sub_metric_profiler")]

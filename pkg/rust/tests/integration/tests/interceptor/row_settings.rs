@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::testing::db::TestDb;
-use reifydb::{Params, core::interface::catalog::storage::StorageId, value::value::duration::Duration};
+use reifydb::{
+	Params, core::interface::catalog::storage::StorageId, testing::db::TestDb, value::value::duration::Duration,
+};
 
 #[test]
 fn create_table_with_row_settings_propagates_to_materialized_cache() {

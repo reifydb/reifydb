@@ -5,6 +5,7 @@ use std::sync::LazyLock;
 
 use bumpalo::Bump;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_rql::ast::ast::{
 	Ast, AstAppend, AstAppendSource, AstFor, AstFrom, AstInline, AstJoin, AstLet, AstList, AstLiteral, AstSkip,
 	AstTake, AstTakeValue, InfixOperator, LetValue,
@@ -15,8 +16,6 @@ use reifydb_value::{
 	params::Params,
 	value::{Value, value_type::ValueType},
 };
-
-use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("graphql::explain"));
 

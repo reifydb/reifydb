@@ -19,7 +19,7 @@ use reifydb_core::{
 	internal,
 	row::{JoinTtl, OperatorSettings, OperatorTtl},
 };
-use reifydb_routine::routine::registry::Routines;
+use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::{
 	flow::{
 		flow::{FlowBuilder, FlowDag},

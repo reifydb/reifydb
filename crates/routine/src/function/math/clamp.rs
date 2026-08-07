@@ -4,17 +4,17 @@
 use std::fmt::Display;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_routine_abi::{
+	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+};
 use reifydb_value::{
 	util::bitvec::BitVec,
 	value::{container::number::NumberContainer, is::IsNumber, value_type::ValueType},
 };
 
-use crate::{
-	function::{
-		math::arith::dispatch::{ensure_arity, ensure_numeric},
-		support::coerce::{CoercePolicy, all_rows_none, coerce_column, promote_all},
-	},
-	routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError},
+use crate::function::{
+	math::arith::dispatch::{ensure_arity, ensure_numeric},
+	support::coerce::{CoercePolicy, all_rows_none, coerce_column, promote_all},
 };
 
 pub struct Clamp {

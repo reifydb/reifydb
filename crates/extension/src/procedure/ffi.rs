@@ -13,7 +13,7 @@ use reifydb_abi::{
 };
 use reifydb_codec::value::encode_params;
 use reifydb_core::value::column::columns::Columns;
-use reifydb_routine::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
+use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sdk::{error::SdkError, ffi::arena::Arena};
 use reifydb_transaction::transaction::Transaction;

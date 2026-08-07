@@ -7,8 +7,7 @@
 
 use std::time::Duration as StdDuration;
 
-use reifydb::testing::db::TestDb;
-use reifydb::{WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 
 const TIMEOUT: StdDuration = StdDuration::from_secs(5);
 

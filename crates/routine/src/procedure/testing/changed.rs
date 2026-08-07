@@ -7,14 +7,13 @@ use reifydb_core::{
 	internal_error,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::Error,
 	params::Params,
 	value::{Value, value_type::ValueType},
 };
-
-use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 
 pub struct TestingChanged {
 	pub object_type: &'static str,

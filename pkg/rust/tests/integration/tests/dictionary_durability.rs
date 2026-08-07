@@ -6,8 +6,12 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use reifydb::testing::db::{TempDbPath, TestDb};
-use reifydb::{Frame, SqliteConfig, Value, WithSubsystem, core::key::kind::KeyKind, embedded};
+use reifydb::{
+	Frame, SqliteConfig, Value, WithSubsystem,
+	core::key::kind::KeyKind,
+	embedded,
+	testing::db::{TempDbPath, TestDb},
+};
 use reifydb_codec::key::serializer::KeySerializer;
 use reifydb_test_harness::assert::column_values;
 

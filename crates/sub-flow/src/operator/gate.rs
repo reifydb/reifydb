@@ -26,7 +26,7 @@ use reifydb_engine::expression::{
 };
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_macro::operator_state;
-use reifydb_routine::routine::registry::Routines;
+use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{

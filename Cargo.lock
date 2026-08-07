@@ -2798,6 +2798,7 @@ dependencies = [
  "reifydb-profiler",
  "reifydb-remote-proxy",
  "reifydb-routine",
+ "reifydb-routine-abi",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-sdk",
@@ -3079,6 +3080,7 @@ dependencies = [
  "reifydb-extension",
  "reifydb-policy",
  "reifydb-routine",
+ "reifydb-routine-abi",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-sqlite",
@@ -3113,7 +3115,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-codec",
  "reifydb-core",
- "reifydb-routine",
+ "reifydb-routine-abi",
  "reifydb-runtime",
  "reifydb-sdk",
  "reifydb-transaction",
@@ -3221,6 +3223,7 @@ dependencies = [
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-routine-abi",
  "reifydb-rql",
  "reifydb-rql-graphql",
  "reifydb-runtime",
@@ -3231,6 +3234,21 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "uuid",
+]
+
+[[package]]
+name = "reifydb-routine-abi"
+version = "0.8.1"
+dependencies = [
+ "indexmap",
+ "reifydb-build",
+ "reifydb-catalog",
+ "reifydb-core",
+ "reifydb-runtime",
+ "reifydb-transaction",
+ "reifydb-value",
+ "serde",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -3427,6 +3445,7 @@ dependencies = [
  "reifydb-flow",
  "reifydb-macro",
  "reifydb-routine",
+ "reifydb-routine-abi",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-sdk",
@@ -3785,6 +3804,7 @@ dependencies = [
  "reifydb-extension",
  "reifydb-flow",
  "reifydb-routine",
+ "reifydb-routine-abi",
  "reifydb-runtime",
  "reifydb-sdk",
  "reifydb-sqlite",
@@ -3951,6 +3971,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-extension",
  "reifydb-routine",
+ "reifydb-routine-abi",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-store-multi",
@@ -3986,6 +4007,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-extension",
  "reifydb-routine",
+ "reifydb-routine-abi",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-store-multi",

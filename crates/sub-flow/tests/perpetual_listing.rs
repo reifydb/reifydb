@@ -7,8 +7,10 @@
 
 use std::time::Duration as StdDuration;
 
-use reifydb::testing::db::{TestDb, await_value};
-use reifydb::{ConfigKey, WithSubsystem, embedded};
+use reifydb::{
+	ConfigKey, WithSubsystem, embedded,
+	testing::db::{TestDb, await_value},
+};
 use reifydb_test_harness::assert::{FrameAssert, column_values};
 use reifydb_value::value::{Value, datetime::DateTime, duration::Duration};
 

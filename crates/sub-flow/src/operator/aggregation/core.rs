@@ -23,7 +23,7 @@ use reifydb_flow::window::{
 	engine::tumbling::TumblingEngine,
 	meta::{EngineMeta, EngineMetaKey},
 };
-use reifydb_routine::routine::registry::Routines;
+use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{

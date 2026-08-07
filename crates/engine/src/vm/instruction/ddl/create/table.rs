@@ -127,10 +127,10 @@ fn expand_sumtype_columns(
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_value::{params::Params, value::Value};
 
 	use crate::vm::{Admin, executor::Executor};
-	use reifydb_test_harness::engine::create_test_admin_transaction;
 
 	#[test]
 	fn test_create_table() {

@@ -3,7 +3,6 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb::testing::db::TestDb;
 use reifydb::{
 	IdentityId,
 	auth::{
@@ -11,6 +10,7 @@ use reifydb::{
 		github::{GithubApi, GithubConfig, GithubUser},
 		service::{AuthResponse, AuthService},
 	},
+	testing::db::TestDb,
 	value::{Result, value::Value},
 };
 use reifydb_test_harness::{

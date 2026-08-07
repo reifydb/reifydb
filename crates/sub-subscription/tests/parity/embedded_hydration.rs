@@ -3,8 +3,7 @@
 
 use std::{thread, time::Instant};
 
-use reifydb::testing::db::TestDb;
-use reifydb::{HydrationConfig, Params, Subscription};
+use reifydb::{HydrationConfig, Params, Subscription, testing::db::TestDb};
 use reifydb_core::value::column::columns::Columns;
 use reifydb_value::value::{duration::Duration, frame::frame::Frame};
 

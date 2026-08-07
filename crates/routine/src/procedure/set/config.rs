@@ -8,6 +8,7 @@ use reifydb_core::{
 	interface::catalog::config::ConfigKey,
 	value::column::{cast::cast_value, columns::Columns},
 };
+use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::Error as TypeError,
@@ -15,8 +16,6 @@ use reifydb_value::{
 	params::Params,
 	value::{Value, value_type::ValueType},
 };
-
-use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("system::config::set"));
 

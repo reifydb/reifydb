@@ -8,7 +8,7 @@ use reifydb_core::{
 	testing::CapturedInvocation,
 	value::column::{ColumnWithName, columns::Columns},
 };
-use reifydb_routine::routine::context::ProcedureContext;
+use reifydb_routine_abi::context::ProcedureContext;
 use reifydb_rql::{compiler::CompilationResult, instruction::ScopeType, nodes::DispatchNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{

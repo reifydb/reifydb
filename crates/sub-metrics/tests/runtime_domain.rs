@@ -9,8 +9,7 @@
 
 use std::time::Duration;
 
-use reifydb::testing::db::TestDb;
-use reifydb::{ConfigKey, Value, embedded as db_embedded};
+use reifydb::{ConfigKey, Value, embedded as db_embedded, testing::db::TestDb};
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 

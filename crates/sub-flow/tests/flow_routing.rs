@@ -10,8 +10,7 @@ use std::{
 	time::{Duration as StdDuration, Instant},
 };
 
-use reifydb::testing::db::TestDb;
-use reifydb::{WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_value::value::Value;
 

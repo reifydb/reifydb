@@ -7,7 +7,7 @@ use reifydb_core::value::column::{
 	columns::Columns,
 	view::group_by::{GroupId, GroupRows},
 };
-use reifydb_routine::routine::{FunctionKind, context::FunctionContext, error::RoutineError};
+use reifydb_routine_abi::{FunctionKind, context::FunctionContext, error::RoutineError};
 use reifydb_rql::expression::{CallExpression, Expression, name::display_label};
 use reifydb_value::{error::Error, fragment::Fragment, value::value_type::ValueType};
 

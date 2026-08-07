@@ -476,8 +476,7 @@ mod tests {
 		key::dictionary::DictionaryEntryIndexKey,
 		value::column::ColumnWithName,
 	};
-	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_test_harness::operator::transaction::FlowTxn;
+	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 	use reifydb_transaction::dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore};
 	use reifydb_value::{
 		fragment::Fragment,

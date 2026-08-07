@@ -11,7 +11,7 @@ use reifydb_engine::{
 	},
 	vm::stack::SymbolTable,
 };
-use reifydb_routine::routine::registry::Routines;
+use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -71,7 +71,7 @@ pub fn evaluate_operator_config(
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_routine::routine::registry::Routines;
+	use reifydb_routine_abi::registry::Routines;
 	use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
 	use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 	use reifydb_value::{fragment::Fragment, value::Value};

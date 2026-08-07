@@ -1098,8 +1098,7 @@ mod tests {
 		key::{Key, kind::KeyKind},
 	};
 	use reifydb_flow::transaction::substrate::apply_operator_state;
-	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_test_harness::operator::transaction::FlowTxn;
+	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 	use reifydb_value::value::{constraint::TypeConstraint, datetime::DateTime, identity::IdentityId};
 
 	use super::*;

@@ -27,6 +27,7 @@ reifydb-flow = { workspace = true, optional = true, features = ["runtime"] }
 reifydb-cdc = { workspace = true, optional = true }
 reifydb-extension = { workspace = true, optional = true }
 reifydb-routine = { workspace = true, optional = true }
+reifydb-routine-abi = { workspace = true, optional = true }
 reifydb-store-multi = { workspace = true, optional = true }
 reifydb-store-single = { workspace = true, optional = true }
 
@@ -39,6 +40,7 @@ engine = [
     "dep:reifydb-core",
     "dep:reifydb-extension",
     "dep:reifydb-routine",
+    "dep:reifydb-routine-abi",
     "dep:reifydb-runtime",
     "dep:reifydb-sqlite",
     "dep:reifydb-store-multi",

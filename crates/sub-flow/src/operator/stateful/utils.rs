@@ -102,8 +102,7 @@ pub fn empty_key() -> EncodedKey {
 pub mod tests {
 	use std::ops::Bound::{Excluded, Included, Unbounded};
 
-	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_test_harness::operator::transaction::FlowTxn;
+	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 	use reifydb_value::{util::cowvec::CowVec, value::value_type::ValueType};
 
 	use super::*;

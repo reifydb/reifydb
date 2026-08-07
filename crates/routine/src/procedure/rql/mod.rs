@@ -6,13 +6,12 @@ pub mod explain;
 pub mod logical;
 pub mod tokenize;
 
+use reifydb_routine_abi::error::RoutineError;
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	value::{Value, value_type::ValueType},
 };
-
-use crate::routine::error::RoutineError;
 
 pub(super) fn extract_query(params: &Params, procedure: &'static str) -> Result<String, RoutineError> {
 	match params {

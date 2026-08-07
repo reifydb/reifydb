@@ -4,14 +4,13 @@
 use std::sync::LazyLock;
 
 use reifydb_core::value::column::columns::Columns;
+use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_runtime::context::clock::Clock;
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	value::{Value, datetime::DateTime, value_type::ValueType},
 };
-
-use crate::routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("clock::set"));
 

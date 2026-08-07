@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_routine_abi::{context::FunctionContext, error::RoutineError};
 use reifydb_value::{
 	error::TypeError,
 	util::bitvec::BitVec,
@@ -13,12 +14,9 @@ use reifydb_value::{
 	},
 };
 
-use crate::{
-	function::{
-		math::arith::op::{ArithOp, SafeNum},
-		support::coerce::{CoercePolicy, all_rows_none, coerce_column, promote_pair},
-	},
-	routine::{context::FunctionContext, error::RoutineError},
+use crate::function::{
+	math::arith::op::{ArithOp, SafeNum},
+	support::coerce::{CoercePolicy, all_rows_none, coerce_column, promote_pair},
 };
 
 #[derive(Debug, Clone, Copy)]

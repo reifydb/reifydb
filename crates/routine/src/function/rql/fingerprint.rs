@@ -3,13 +3,14 @@
 
 use bumpalo::Bump;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_routine_abi::{
+	Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+};
 use reifydb_rql::{
 	ast::parse_str,
 	fingerprint::{request::fingerprint_request, statement::fingerprint_statement},
 };
 use reifydb_value::value::value_type::ValueType;
-
-use crate::routine::{Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError};
 
 pub struct RqlFingerprint {
 	info: RoutineInfo,

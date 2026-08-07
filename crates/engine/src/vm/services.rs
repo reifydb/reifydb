@@ -14,7 +14,7 @@ use reifydb_catalog::{
 };
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_extension::transform::registry::Transforms;
-use reifydb_routine::routine::{Procedure, registry::Routines};
+use reifydb_routine_abi::{Procedure, registry::Routines};
 use reifydb_rql::compiler::Compiler;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_store_single::SingleStore;

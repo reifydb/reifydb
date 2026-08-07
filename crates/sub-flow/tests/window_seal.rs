@@ -5,8 +5,7 @@
 
 use std::{thread::sleep, time::Duration as StdDuration};
 
-use reifydb::testing::db::TestDb;
-use reifydb::{WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_test_harness::assert::{assert_same_timed_rows, timed_rows};
 
 const TIMEOUT: StdDuration = StdDuration::from_secs(5);

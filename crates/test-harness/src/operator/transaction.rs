@@ -3,7 +3,6 @@
 
 use std::collections::HashMap;
 
-use crate::engine::TestEngine;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::encoded::row::{EncodedRow, SHAPE_HEADER_SIZE};
 use reifydb_core::{
@@ -27,6 +26,8 @@ use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{datetime::DateTime, identity::IdentityId},
 };
+
+use crate::engine::TestEngine;
 
 pub const OPERATOR_ID: OperatorId = OperatorId(1);
 

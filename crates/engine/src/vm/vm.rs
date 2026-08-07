@@ -4,7 +4,7 @@
 use std::sync::{Arc, LazyLock};
 
 use reifydb_core::{internal_error, value::column::columns::Columns};
-use reifydb_routine::routine::registry::Routines;
+use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::instruction::{Instruction, ScopeType};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_transaction::transaction::Transaction;

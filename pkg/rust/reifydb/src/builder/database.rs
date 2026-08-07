@@ -50,11 +50,9 @@ use reifydb_extension::{
 	transform::registry::{Transforms, TransformsConfigurator},
 };
 use reifydb_routine::{
-	function::default_native_functions,
-	monoid::default_native_monoids,
-	procedure::default_native_procedures,
-	routine::registry::{Routines, RoutinesConfigurator},
+	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
 };
+use reifydb_routine_abi::registry::{Routines, RoutinesConfigurator};
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{Runtime, context::RuntimeContext, version_epoch::VersionEpoch};
 #[cfg(not(target_arch = "wasm32"))]

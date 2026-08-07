@@ -7,8 +7,7 @@
 
 use std::time::Duration as StdDuration;
 
-use reifydb::testing::db::TestDb;
-use reifydb::{WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_test_harness::assert::{column_values, timed_rows};
 use reifydb_value::value::Value;
 

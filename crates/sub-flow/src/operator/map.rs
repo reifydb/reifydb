@@ -16,7 +16,7 @@ use reifydb_engine::expression::{
 	context::{CompileContext, EvalContext},
 };
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
-use reifydb_routine::routine::registry::Routines;
+use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{Result, fragment::Fragment, value::system_columns::SystemColumns};

@@ -5,16 +5,14 @@ use std::sync::LazyLock;
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::value::column::columns::Columns;
+use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{Value, value_type::ValueType},
 };
 
-use crate::{
-	procedure::identity::set_attribute::{extract_args, extract_utf8_arg, resolve_attribute, resolve_identity},
-	routine::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError},
-};
+use crate::procedure::identity::set_attribute::{extract_args, extract_utf8_arg, resolve_attribute, resolve_identity};
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("identity::remove_attribute"));
 

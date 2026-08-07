@@ -7,8 +7,7 @@
 
 use std::{thread, time::Duration as StdDuration};
 
-use reifydb::testing::db::TestDb;
-use reifydb::{WithSubsystem, embedded};
+use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_sdk::{

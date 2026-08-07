@@ -23,7 +23,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{expression::context::EvalContext, vm::stack::SymbolTable};
 use reifydb_flow::transaction::FlowTransaction;
-use reifydb_routine::routine::registry::Routines;
+use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_value::{
 	Result,

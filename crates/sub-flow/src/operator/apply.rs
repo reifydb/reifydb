@@ -240,8 +240,7 @@ mod tests {
 		// preferred the ttl would floor a sealing guest's live windows.
 		// Mutation falsified against: swapping the precedence (ttl would win, floor != anchor) and
 		// dropping the fallback (declared-only guest would return an empty spec).
-		use reifydb_test_harness::engine::TestEngine;
-		use reifydb_test_harness::operator::transaction::FlowTxn;
+		use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();

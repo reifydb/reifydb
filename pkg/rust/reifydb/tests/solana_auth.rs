@@ -5,9 +5,9 @@ use std::collections::HashMap;
 
 use bs58::encode as bs58_encode;
 use ed25519_dalek::{Signer, SigningKey};
-use reifydb::testing::db::TestDb;
 use reifydb::{
 	auth::service::{AuthResponse, AuthService},
+	testing::db::TestDb,
 	value::value::Value,
 };
 use reifydb_test_harness::{
