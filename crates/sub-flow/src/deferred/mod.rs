@@ -7,6 +7,7 @@ pub(crate) mod ddl;
 pub(crate) mod frontier;
 pub(crate) mod health;
 pub(crate) mod loader;
+pub(crate) mod output_frontier;
 pub(crate) mod overlay;
 pub(crate) mod quiescence;
 pub(crate) mod routing;

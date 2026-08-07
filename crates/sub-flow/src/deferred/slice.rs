@@ -150,6 +150,39 @@ impl SliceComputer {
 		Ok(computed.0)
 	}
 
+	pub(crate) fn restored_holds(
+		&self,
+		flow_engine: &mut FlowEngineInner,
+		flow_id: FlowId,
+		state_version: CommitVersion,
+	) -> Result<WatermarkHolds> {
+		let catalog: Catalog = self.engine.catalog();
+		let interceptors = self.engine.create_interceptors();
+
+		let (_current, state_lease) = self.engine.acquire_current_snapshot_lease()?;
+		let base_query = self.engine.multi().begin_query_at_version(&state_lease)?;
+		let state_query = self.engine.multi().begin_query_at_version(&state_lease)?;
+
+		let mut query = base_query;
+		query.read_as_of_version_inclusive(state_version);
+
+		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+			version: state_version,
+			pending: Pending::new(),
+			base_pending: PendingLayers::empty(),
+			query,
+			state_query,
+			single: self.engine.single().clone(),
+			catalog,
+			interceptors,
+			clock: self.engine.clock().clone(),
+			substrate: flow_engine.substrate.clone(),
+			state_budget: flow_engine.state_budget.clone(),
+		});
+
+		flow_engine.holds(&mut txn, flow_id)
+	}
+
 	fn compute(
 		&self,
 		flow_engine: &mut FlowEngineInner,
@@ -389,15 +422,26 @@ mod integration {
 	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
 	use reifydb_core::{
 		actors::pending::PendingWrite,
-		interface::WithEventBus,
+		common::TimeDomain,
+		interface::{
+			WithEventBus,
+			catalog::{
+				flow::OperatorId,
+				id::{SeriesId, TableId, ViewId},
+			},
+		},
 		key::{Key, kind::KeyKind},
 		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_flow::transaction::{read::ReadFrom, substrate::FlowSubstrate};
+	use reifydb_rql::flow::{
+		flow::FlowDag,
+		operator::{FlowEdge, FlowNode, OperatorDef},
+	};
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_value::{util::cowvec::CowVec, value::identity::IdentityId};
+	use reifydb_value::{factory::time::at_millis, util::cowvec::CowVec, value::identity::IdentityId};
 
 	use super::*;
 	use crate::{
@@ -407,6 +451,7 @@ mod integration {
 			committer::Committer, quiescence::FlowMaterialization, routing, snapshot::SnapshotPinTracker,
 			tracker::FlowPositionTracker,
 		},
+		execution::frontier::WatermarkHold,
 		operator::metrics::OperatorSampleRegistry,
 	};
 
@@ -455,6 +500,78 @@ mod integration {
 			OperatorSampleRegistry::new(),
 			OperatorStateBudgetHandle::default(),
 		)
+	}
+
+	fn seeding_txn(
+		engine: &StandardEngine,
+		flow_engine: &FlowEngineInner,
+		version: CommitVersion,
+	) -> FlowTransaction {
+		let (_current, lease) = engine.acquire_current_snapshot_lease().unwrap();
+		let mut query = engine.multi().begin_query_at_version(&lease).unwrap();
+		let state_query = engine.multi().begin_query_at_version(&lease).unwrap();
+		query.read_as_of_version_inclusive(version);
+
+		FlowTransaction::deferred_from_parts(DeferredParams {
+			version,
+			pending: Pending::new(),
+			base_pending: PendingLayers::empty(),
+			query,
+			state_query,
+			single: engine.single().clone(),
+			catalog: engine.catalog(),
+			interceptors: engine.create_interceptors(),
+			clock: engine.clock().clone(),
+			substrate: flow_engine.substrate.clone(),
+			state_budget: flow_engine.state_budget.clone(),
+		})
+	}
+
+	#[test]
+	fn a_quiet_flow_still_holds_a_frontier_from_state_restored_before_any_change_arrives() {
+		// A producer with no incoming rows must still claim its frontier at startup, or its consumer stays
+		// pinned at the epoch forever.
+		let te = TestEngine::builder().with_cdc().build();
+		let engine = te.inner().clone();
+		let mut flow_engine = build_flow_engine(&engine);
+		let flow = FlowId(1);
+		let version = CommitVersion(5);
+
+		let mut builder = FlowDag::builder(flow);
+		builder.add_node(FlowNode::new(
+			OperatorId(1),
+			OperatorDef::SourceSeries {
+				series: SeriesId(1),
+				time_domain: TimeDomain::Event,
+			},
+		));
+		builder.add_node(FlowNode::new(
+			OperatorId(3),
+			OperatorDef::SinkTableView {
+				view: ViewId(3),
+				table: TableId(3),
+			},
+		));
+		builder.add_edge(FlowEdge::new(1, OperatorId(1), OperatorId(3))).unwrap();
+		flow_engine.register_flow_dag(builder.build());
+		flow_engine.sinks.insert(ObjectId::View(ViewId(3)), vec![(flow, OperatorId(3))]);
+
+		let mut seed = seeding_txn(&engine, &flow_engine, version);
+		let watermarks = seed.source_watermarks();
+		watermarks.advance(OperatorId(1), &mut seed, at_millis(30_000)).unwrap();
+		seed.flush_operator_states().unwrap();
+
+		let computer = SliceComputer::new(engine.clone());
+		let held = computer.restored_holds(&mut flow_engine, flow, version).unwrap();
+
+		assert_eq!(
+			held,
+			vec![WatermarkHold {
+				object: ObjectId::View(ViewId(3)),
+				frontier: at_millis(30_000)
+			}],
+			"restored_holds must read the seeded watermark through the shared substrate"
+		);
 	}
 
 	#[test]

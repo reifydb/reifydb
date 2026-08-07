@@ -606,6 +606,28 @@ impl FlowActor {
 		}
 	}
 
+	fn on_publish_restored_frontiers(&self, state: &mut FlowActorState) {
+		if state.poisoned {
+			return;
+		}
+		match self.computer.restored_holds(&mut state.flow_engine, self.flow_id, self.initial_cursor) {
+			Ok(holds) => {
+				for hold in holds {
+					self.substrate.frontiers.publish(
+						hold.object,
+						hold.frontier,
+						self.initial_cursor,
+					);
+				}
+			}
+			Err(e) => warn!(
+				flow_id = self.flow_id.0,
+				error = %e,
+				"failed to republish restored output frontiers; consumers stay at the epoch until this flow commits a slice"
+			),
+		}
+	}
+
 	fn resume_after_commit(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, more: bool) {
 		if more || take(&mut state.drain_after_commit) {
 			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
@@ -753,6 +775,9 @@ impl Actor for FlowActor {
 		if let Some(interval) = self.sample_interval() {
 			ctx.schedule_once(interval, || FlowActorMessage::Sample);
 		}
+		if self.initial_cursor > CommitVersion(0) {
+			let _ = ctx.self_ref().send(FlowActorMessage::PublishRestoredFrontiers);
+		}
 
 		let mut state = FlowActorState {
 			flow_engine,
@@ -815,6 +840,10 @@ impl Actor for FlowActor {
 			}
 			FlowActorMessage::Sample => {
 				self.on_sample(state, ctx);
+				Directive::Continue
+			}
+			FlowActorMessage::PublishRestoredFrontiers => {
+				self.on_publish_restored_frontiers(state);
 				Directive::Continue
 			}
 			FlowActorMessage::UpdateSources {

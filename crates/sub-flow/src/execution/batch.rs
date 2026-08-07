@@ -13,13 +13,16 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin},
 	},
 };
-use reifydb_flow::transaction::{ChangeCoordinate, FlowTransaction};
+use reifydb_flow::transaction::{
+	ChangeCoordinate, FlowTransaction,
+	frontier::{Frontier, OutputFrontiers},
+};
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::{
 	Result, reifydb_assertions,
 	value::{Value, datetime::DateTime},
 };
-use tracing::{Span, field, instrument};
+use tracing::{Span, field, instrument, warn};
 
 use crate::{engine::FlowEngineInner, execution::COMPLETENESS_OBJECT, operator::max_input_time};
 
@@ -110,6 +113,13 @@ impl FlowEngineInner {
 			})
 			.collect();
 		arrivals.extend(completeness_arrivals(&self.sources, flow_id, &asserted));
+		arrivals.extend(published_arrivals(
+			&self.sources,
+			&self.sinks,
+			&self.substrate.frontiers,
+			flow_id,
+			version,
+		));
 		freeze_arrival_frontier(txn, &sources, &arrivals)?;
 
 		let mut nodes_processed = self.run_topology(txn, flow, pending, topo)?;
@@ -200,6 +210,44 @@ fn completeness_arrivals(
 	out
 }
 
+fn published_arrivals(
+	sources: &BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
+	sinks: &BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
+	frontiers: &OutputFrontiers,
+	flow_id: FlowId,
+	version: CommitVersion,
+) -> SourceArrivals {
+	let mut out = Vec::new();
+	for (object, registrations) in sources {
+		if !sinks.contains_key(object) {
+			continue;
+		}
+
+		let readers: Vec<OperatorId> = registrations
+			.iter()
+			.filter_map(|(registered, operator)| (*registered == flow_id).then_some(*operator))
+			.collect();
+		if readers.is_empty() {
+			continue;
+		}
+
+		match frontiers.resolve(*object, version) {
+			Frontier::Visible(at) => out.extend(readers.into_iter().map(|source| SourceArrival {
+				source,
+				at,
+			})),
+			Frontier::Unpublished => warn!(
+				flow_id = ?flow_id,
+				object = ?object,
+				"a source object has never published an output frontier; every window below it \
+				 stays open until its producing flow publishes"
+			),
+			Frontier::Withheld => {}
+		}
+	}
+	out
+}
+
 fn collect_completeness(change: &Change, asserted: &mut BTreeMap<u64, DateTime>) {
 	for diff in change.diffs.iter() {
 		let Some(columns) = diff.post() else {
@@ -253,7 +301,7 @@ mod tests {
 		common::TimeDomain,
 		interface::{
 			WithEventBus,
-			catalog::id::{SeriesId, TableId},
+			catalog::id::{SeriesId, TableId, ViewId},
 			change::Diff,
 		},
 		state::budget::OperatorStateBudgetHandle,
@@ -357,6 +405,103 @@ mod tests {
 		let arrivals = completeness_arrivals(&sources, FlowId(1), &asserted);
 
 		assert!(arrivals.is_empty());
+	}
+
+	#[test]
+	fn a_visible_frontier_arrives_only_for_the_operators_of_the_reading_flow() {
+		// A sibling flow's reader must never be advanced by rows it never saw.
+		let object = ObjectId::View(ViewId(5));
+		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3)), (FlowId(2), OperatorId(4))])]);
+		let sinks = BTreeMap::from([(object, vec![(FlowId(7), OperatorId(9))])]);
+		let frontiers = OutputFrontiers::default();
+		frontiers.publish(object, at_millis(9_000), CommitVersion(10));
+
+		let arrivals = published_arrivals(&sources, &sinks, &frontiers, FlowId(1), CommitVersion(20));
+
+		assert_eq!(
+			arrivals,
+			vec![SourceArrival {
+				source: OperatorId(3),
+				at: at_millis(9_000)
+			}]
+		);
+	}
+
+	#[test]
+	fn a_frontier_stamped_at_the_readers_own_version_yields_no_arrival() {
+		// At an equal version nothing orders producer before consumer, so folding seals a window whose own rows
+		// are still in flight.
+		let object = ObjectId::View(ViewId(5));
+		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3))])]);
+		let sinks = BTreeMap::from([(object, vec![(FlowId(7), OperatorId(9))])]);
+		let frontiers = OutputFrontiers::default();
+		frontiers.publish(object, at_millis(9_000), CommitVersion(10));
+
+		assert!(published_arrivals(&sources, &sinks, &frontiers, FlowId(1), CommitVersion(10)).is_empty());
+		assert_eq!(
+			published_arrivals(&sources, &sinks, &frontiers, FlowId(1), CommitVersion(11)),
+			vec![SourceArrival {
+				source: OperatorId(3),
+				at: at_millis(9_000)
+			}],
+			"one version past the stamp the same frontier must fold, or nothing is ever folded at all"
+		);
+	}
+
+	#[test]
+	fn an_object_no_flow_produces_is_skipped_rather_than_resolved() {
+		// An ingestor-written table can never publish, so consulting it warns every version and drowns the one
+		// signal the warning exists for.
+		let object = ObjectId::Table(TableId(5));
+		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3))])]);
+		let frontiers = OutputFrontiers::default();
+		frontiers.publish(object, at_millis(9_000), CommitVersion(10));
+
+		let arrivals = published_arrivals(&sources, &BTreeMap::new(), &frontiers, FlowId(1), CommitVersion(20));
+
+		assert!(arrivals.is_empty());
+	}
+
+	#[test]
+	fn process_version_folds_a_published_frontier_into_the_source_watermark() {
+		// A producer that emits no rows this version pins its reader at the epoch unless the published frontier
+		// reaches the watermark here.
+		let engine = TestEngine::new();
+		let mut inner = FlowEngineInner::new(
+			engine.catalog(),
+			engine.executor(),
+			engine.event_bus().clone(),
+			RuntimeContext::with_clock(engine.clock().clone()),
+			CustomOperators::new(HashMap::new()),
+			FlowSubstrate::default(),
+			OperatorSampleRegistry::new(),
+			OperatorStateBudgetHandle::default(),
+		);
+		let object = ObjectId::View(ViewId(9));
+		let mut builder = FlowDag::builder(FlowId(1));
+		builder.add_node(FlowNode::new(
+			SOURCE,
+			OperatorDef::SourceView {
+				view: ViewId(9),
+			},
+		));
+		let flow = builder.build();
+		inner.register_flow_dag(flow.clone());
+		inner.sources.insert(object, vec![(FlowId(1), SOURCE)]);
+		inner.sinks.insert(object, vec![(FlowId(2), OperatorId(4))]);
+		inner.substrate.frontiers.publish(object, at_millis(30_000), CommitVersion(1));
+
+		let mut txn = deferred(&engine);
+		let topo = flow.topological_order().unwrap();
+		inner.process_version(&mut txn, &flow, FlowId(1), CommitVersion(5), vec![], &topo).unwrap();
+
+		let watermarks = txn.source_watermarks();
+		assert_eq!(
+			watermarks.source_watermark(SOURCE, &mut txn).unwrap(),
+			at_millis(30_000),
+			"the published frontier must reach the watermark through process_version, not only the \
+			 helper"
+		);
 	}
 
 	#[test]

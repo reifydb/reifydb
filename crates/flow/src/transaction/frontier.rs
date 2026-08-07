@@ -12,6 +12,7 @@ struct Published {
 	frontier_ms: u64,
 	at: CommitVersion,
 	persisted_at: CommitVersion,
+	clamped: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,7 +50,11 @@ impl OutputFrontiers {
 		self.inner
 			.entry(output)
 			.and_modify(|current| {
-				if frontier_ms > current.frontier_ms {
+				if !current.clamped {
+					current.frontier_ms = frontier_ms;
+					current.at = at;
+					current.clamped = true;
+				} else if frontier_ms > current.frontier_ms {
 					current.frontier_ms = frontier_ms;
 					current.at = at;
 				}
@@ -58,12 +63,14 @@ impl OutputFrontiers {
 				frontier_ms,
 				at,
 				persisted_at: CommitVersion(0),
+				clamped: true,
 			});
 	}
 
 	pub fn resolve(&self, output: ObjectId, version: CommitVersion) -> Frontier {
 		match self.inner.get(&output) {
 			None => Frontier::Unpublished,
+			Some(published) if !published.clamped => Frontier::Withheld,
 			Some(published) if published.at < version => {
 				Frontier::Visible(DateTime::from_millis(published.frontier_ms))
 			}
@@ -102,6 +109,7 @@ impl OutputFrontiers {
 							frontier_ms,
 							at: entry.at,
 							persisted_at: entry.at,
+							clamped: false,
 						};
 					}
 				})
@@ -109,6 +117,7 @@ impl OutputFrontiers {
 					frontier_ms,
 					at: entry.at,
 					persisted_at: entry.at,
+					clamped: false,
 				});
 		}
 	}
@@ -233,7 +242,46 @@ mod tests {
 		frontiers.hydrate(vec![entry(5_000, 10)]);
 
 		assert!(frontiers.dirty().is_empty());
-		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(11)), Frontier::Visible(at_millis(5_000)));
+		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(11)), Frontier::Withheld);
+	}
+
+	#[test]
+	fn a_hydrated_frontier_is_never_foldable_before_its_producer_publishes() {
+		// The rows justifying a persisted frontier can be lost with the commit buffer, so folding it
+		// unpublished seals a window early.
+		let frontiers = OutputFrontiers::default();
+
+		frontiers.hydrate(vec![entry(9_000, 10)]);
+
+		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(u64::MAX)), Frontier::Withheld);
+	}
+
+	#[test]
+	fn max_wins_resumes_once_a_hydrated_entry_has_been_superseded() {
+		// Superseding must apply exactly once, otherwise every later publish overwrites a higher live frontier.
+		let frontiers = OutputFrontiers::default();
+
+		frontiers.hydrate(vec![entry(9_000, 10)]);
+		frontiers.publish(OUTPUT, at_millis(3_000), CommitVersion(20));
+		frontiers.publish(OUTPUT, at_millis(1_000), CommitVersion(30));
+
+		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(31)), Frontier::Visible(at_millis(3_000)));
+	}
+
+	#[test]
+	fn a_live_publish_supersedes_an_unclamped_hydrated_value_rather_than_maxing_against_it() {
+		// A live publish is justified and the hydrated value is not, so max-wins here would keep an unjustified
+		// frontier forever.
+		let frontiers = OutputFrontiers::default();
+
+		frontiers.hydrate(vec![entry(9_000, 10)]);
+		frontiers.publish(OUTPUT, at_millis(3_000), CommitVersion(20));
+
+		assert_eq!(
+			frontiers.resolve(OUTPUT, CommitVersion(21)),
+			Frontier::Visible(at_millis(3_000)),
+			"the untrusted hydrated value must not survive a live publish"
+		);
 	}
 
 	#[test]
@@ -242,6 +290,7 @@ mod tests {
 		let frontiers = OutputFrontiers::default();
 
 		frontiers.hydrate(vec![entry(5_000, 500)]);
+		frontiers.publish(OUTPUT, at_millis(5_000), CommitVersion(500));
 
 		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(499)), Frontier::Withheld);
 		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(500)), Frontier::Withheld);

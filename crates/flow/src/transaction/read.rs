@@ -191,6 +191,7 @@ impl FlowTransaction {
 				KeyKind::IndexEntry => ReadFrom::Query,
 				KeyKind::ColumnSequence => ReadFrom::Query,
 				KeyKind::CdcConsumer => ReadFrom::Query,
+				KeyKind::OutputFrontier => ReadFrom::Query,
 				KeyKind::View => ReadFrom::Query,
 				KeyKind::NamespaceView => ReadFrom::Query,
 				KeyKind::PrimaryKey => ReadFrom::Query,

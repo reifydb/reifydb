@@ -57,6 +57,7 @@ use crate::{
 		frontier::ControlFrontier,
 		health::FlowHealthRegistry,
 		loader::LoaderMessage,
+		output_frontier,
 		routing::{self, ViewRoute},
 		snapshot::FlowSnapshotLoad,
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
@@ -91,6 +92,7 @@ pub struct FlowSupervisorParams {
 	pub load_batch_bytes: ByteSize,
 	pub checkpoint_lag: u64,
 	pub checkpoint_max_age: Duration,
+	pub frontier_persist: Duration,
 	#[cfg(not(target_arch = "wasm32"))]
 	pub snapshots: Option<FlowSnapshots>,
 }
@@ -118,6 +120,7 @@ pub struct FlowSupervisor {
 	load_batch_bytes: ByteSize,
 	checkpoint_lag: u64,
 	checkpoint_max_age: Duration,
+	frontier_persist: Duration,
 	#[cfg(not(target_arch = "wasm32"))]
 	snapshots: Option<FlowSnapshots>,
 }
@@ -155,6 +158,7 @@ impl FlowSupervisor {
 			load_batch_bytes: params.load_batch_bytes,
 			checkpoint_lag: params.checkpoint_lag,
 			checkpoint_max_age: params.checkpoint_max_age,
+			frontier_persist: params.frontier_persist,
 			#[cfg(not(target_arch = "wasm32"))]
 			snapshots: params.snapshots,
 		}
@@ -234,6 +238,8 @@ impl FlowSupervisor {
 			snapshots.sweep_orphans(&live);
 		}
 
+		self.hydrate_frontiers();
+
 		let scan_cursor = scan_from.unwrap_or(migration_base);
 		state.scan_cursor = scan_cursor;
 		state.last_control_commit_at = self.clock.now();
@@ -252,6 +258,37 @@ impl FlowSupervisor {
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned deferred flow actor");
 		}
+	}
+
+	fn hydrate_frontiers(&self) {
+		match output_frontier::hydrate(&self.engine.single().read_store()) {
+			Ok(entries) => {
+				if !entries.is_empty() {
+					debug!(count = entries.len(), "hydrated output frontiers");
+				}
+				self.substrate.frontiers.hydrate(entries);
+			}
+			Err(e) => {
+				warn!(error = %e, "failed to hydrate output frontiers; every consumer stays at the epoch until its producer republishes")
+			}
+		}
+	}
+
+	fn handle_persist_frontiers(&self, ctx: &Context<FlowSupervisorMessage>) {
+		let dirty = self.substrate.frontiers.dirty();
+		if !dirty.is_empty() {
+			match output_frontier::persist(self.engine.single(), &dirty) {
+				Ok(()) => {
+					for entry in &dirty {
+						self.substrate.frontiers.mark_persisted(entry.output, entry.at);
+					}
+				}
+				Err(e) => {
+					warn!(error = %e, "failed to persist output frontiers; they stay dirty and retry next sweep")
+				}
+			}
+		}
+		ctx.schedule_once(self.frontier_persist, || FlowSupervisorMessage::PersistFrontiers);
 	}
 
 	fn handle_wake(&self, state: &mut SupervisorState, ctx: &Context<FlowSupervisorMessage>) {
@@ -571,7 +608,8 @@ impl Actor for FlowSupervisor {
 	type State = SupervisorState;
 	type Message = FlowSupervisorMessage;
 
-	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {
+	fn init(&self, ctx: &Context<Self::Message>) -> Self::State {
+		ctx.schedule_once(self.frontier_persist, || FlowSupervisorMessage::PersistFrontiers);
 		SupervisorState {
 			analyzer: FlowGraphAnalyzer::new(),
 			flows: BTreeMap::new(),
@@ -588,6 +626,7 @@ impl Actor for FlowSupervisor {
 				scan_from,
 			} => self.handle_bootstrap(state, flows, scan_from),
 			FlowSupervisorMessage::Wake => self.handle_wake(state, ctx),
+			FlowSupervisorMessage::PersistFrontiers => self.handle_persist_frontiers(ctx),
 		}))
 		.unwrap_or_else(|_| {
 			error!("panic in flow supervisor, aborting");

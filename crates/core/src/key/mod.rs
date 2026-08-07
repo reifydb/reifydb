@@ -33,6 +33,7 @@ use namespace_sumtype::NamespaceSumTypeKey;
 use namespace_table::NamespaceTableKey;
 use namespace_view::NamespaceViewKey;
 use operator_state::OperatorStateKey;
+use output_frontier::OutputFrontierKey;
 use partition::PartitionKey;
 use partitioned_row::PartitionedRowKey;
 use policy::PolicyKey;
@@ -106,6 +107,7 @@ pub mod operator;
 pub mod operator_group_state;
 pub mod operator_settings;
 pub mod operator_state;
+pub mod output_frontier;
 pub mod partition;
 pub mod partitioned_row;
 pub mod policy;
@@ -151,6 +153,7 @@ pub enum Key {
 	Index(IndexKey),
 	IndexEntry(IndexEntryKey),
 	OperatorState(OperatorStateKey),
+	OutputFrontier(OutputFrontierKey),
 	PrimaryKey(PrimaryKeyKey),
 	Row(RowKey),
 	PartitionedRow(PartitionedRowKey),
@@ -219,6 +222,7 @@ impl Key {
 			Key::Index(key) => key.encode(),
 			Key::IndexEntry(key) => key.encode(),
 			Key::OperatorState(key) => key.encode(),
+			Key::OutputFrontier(key) => key.encode(),
 			Key::PrimaryKey(key) => key.encode(),
 			Key::Row(key) => key.encode(),
 			Key::PartitionedRow(key) => key.encode(),
@@ -325,6 +329,7 @@ impl Key {
 			KeyKind::Index => IndexKey::decode(key).map(Self::Index),
 			KeyKind::IndexEntry => IndexEntryKey::decode(key).map(Self::IndexEntry),
 			KeyKind::OperatorState => OperatorStateKey::decode(key).map(Self::OperatorState),
+			KeyKind::OutputFrontier => OutputFrontierKey::decode(key).map(Self::OutputFrontier),
 			KeyKind::Row => RowKey::decode(key).map(Self::Row),
 			KeyKind::PartitionedRow => PartitionedRowKey::decode(key).map(Self::PartitionedRow),
 			KeyKind::Partition => PartitionKey::decode(key).map(Self::Partition),

@@ -63,6 +63,7 @@ pub mod tests {
 			KeyKind::OperatorByFlow => {}
 			KeyKind::FlowEdge => {}
 			KeyKind::FlowEdgeByFlow => {}
+			KeyKind::OutputFrontier => {}
 			KeyKind::Dictionary => {}
 			KeyKind::DictionaryEntry => {}
 			KeyKind::DictionaryEntryIndex => {}

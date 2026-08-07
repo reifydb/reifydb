@@ -34,6 +34,8 @@ pub enum FlowActorMessage {
 
 	Sample,
 
+	PublishRestoredFrontiers,
+
 	UpdateSources {
 		source_objects: Arc<BTreeSet<ObjectId>>,
 	},
@@ -64,4 +66,6 @@ pub enum FlowSupervisorMessage {
 	},
 
 	Wake,
+
+	PersistFrontiers,
 }

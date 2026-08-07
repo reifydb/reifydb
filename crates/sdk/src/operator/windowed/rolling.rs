@@ -65,6 +65,10 @@ pub trait RollingOperator {
 
 	fn bucket_size(&self) -> Duration;
 
+	fn seal_after(&self) -> Option<Duration> {
+		None
+	}
+
 	fn extract(
 		&self,
 		ctx: &mut impl OperatorContext,
@@ -93,10 +97,6 @@ where
 	fn from_config(operator_id: OperatorId, config: &Config) -> Result<Self>;
 
 	fn encode_row_key(&self, group: &Self::GroupKey) -> EncodedKey;
-
-	fn seal_after(&self) -> Option<Duration> {
-		None
-	}
 }
 
 pub type RollingBuffer<A> = BTreeMap<DateTime, <A as RollingOperator>::Accumulator>;
