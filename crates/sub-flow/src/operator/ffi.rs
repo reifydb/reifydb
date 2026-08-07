@@ -255,6 +255,12 @@ impl Operator for FFIOperatorHandle {
 		scale_from_millis(Some(unsafe { (self.vtable.seal_after_ms)(self.instance) }))
 	}
 
+	fn seal_span(&self) -> Option<Duration> {
+		// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
+		// Drop calls destroy; the call passes no host pointers.
+		scale_from_millis(Some(unsafe { (self.vtable.seal_after_ms)(self.instance) }))
+	}
+
 	fn floors(&self, txn: &mut FlowTransaction, watermark: DateTime) -> Result<FloorSpec> {
 		sealed_or_idle_floor(txn, self.operator_id, watermark, self.retention_scale())
 	}

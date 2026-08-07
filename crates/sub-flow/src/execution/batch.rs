@@ -23,6 +23,14 @@ use tracing::{Span, field, instrument};
 
 use crate::{engine::FlowEngineInner, execution::COMPLETENESS_OBJECT, operator::max_input_time};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SourceArrival {
+	pub source: OperatorId,
+	pub at: DateTime,
+}
+
+pub(crate) type SourceArrivals = Vec<SourceArrival>;
+
 impl FlowEngineInner {
 	#[instrument(name = "flow::engine::process", level = "debug", skip(self, txn, change), fields(
 		flow_id = ?flow_id,
@@ -92,10 +100,13 @@ impl FlowEngineInner {
 			.copied()
 			.filter(|id| flow.get_operator(id).is_some_and(|operator| operator.ty.declares_time()))
 			.collect();
-		let mut arrivals: Vec<(OperatorId, DateTime)> = pending
+		let mut arrivals: SourceArrivals = pending
 			.iter()
 			.filter_map(|(operator_id, changes)| {
-				changes.iter().filter_map(max_input_time).max().map(|at| (*operator_id, at))
+				changes.iter().filter_map(max_input_time).max().map(|at| SourceArrival {
+					source: *operator_id,
+					at,
+				})
 			})
 			.collect();
 		arrivals.extend(completeness_arrivals(&self.sources, flow_id, &asserted));
@@ -159,7 +170,7 @@ fn completeness_arrivals(
 	sources: &BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
 	flow_id: FlowId,
 	asserted: &BTreeMap<u64, DateTime>,
-) -> Vec<(OperatorId, DateTime)> {
+) -> SourceArrivals {
 	let mut out = Vec::new();
 	for (object, at) in asserted {
 		let resolved: Vec<&Vec<(FlowId, OperatorId)>> = sources
@@ -178,7 +189,10 @@ fn completeness_arrivals(
 		for registrations in resolved {
 			for (registered_flow_id, operator_id) in registrations {
 				if *registered_flow_id == flow_id {
-					out.push((*operator_id, *at));
+					out.push(SourceArrival {
+						source: *operator_id,
+						at: *at,
+					});
 				}
 			}
 		}
@@ -219,15 +233,15 @@ fn collect_completeness(change: &Change, asserted: &mut BTreeMap<u64, DateTime>)
 fn freeze_arrival_frontier(
 	txn: &mut FlowTransaction,
 	sources: &[OperatorId],
-	arrivals: &[(OperatorId, DateTime)],
+	arrivals: &[SourceArrival],
 ) -> Result<()> {
 	let watermarks = txn.source_watermarks();
 	if !sources.is_empty() {
 		let frontier = watermarks.flow_watermark(sources, txn)?;
 		txn.set_flow_watermark(frontier);
 	}
-	for (operator, at) in arrivals {
-		watermarks.advance(*operator, txn, *at)?;
+	for arrival in arrivals {
+		watermarks.advance(arrival.source, txn, arrival.at)?;
 	}
 	Ok(())
 }
@@ -326,7 +340,13 @@ mod tests {
 
 		let arrivals = completeness_arrivals(&sources, FlowId(1), &asserted);
 
-		assert_eq!(arrivals, vec![(OperatorId(3), at_millis(9_000))]);
+		assert_eq!(
+			arrivals,
+			vec![SourceArrival {
+				source: OperatorId(3),
+				at: at_millis(9_000)
+			}]
+		);
 	}
 
 	#[test]
@@ -412,8 +432,24 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = deferred(&engine);
 
-		freeze_arrival_frontier(&mut txn, &[SOURCE], &[(SOURCE, at_millis(5_000))]).unwrap();
-		freeze_arrival_frontier(&mut txn, &[SOURCE], &[(SOURCE, at_millis(20_000))]).unwrap();
+		freeze_arrival_frontier(
+			&mut txn,
+			&[SOURCE],
+			&[SourceArrival {
+				source: SOURCE,
+				at: at_millis(5_000),
+			}],
+		)
+		.unwrap();
+		freeze_arrival_frontier(
+			&mut txn,
+			&[SOURCE],
+			&[SourceArrival {
+				source: SOURCE,
+				at: at_millis(20_000),
+			}],
+		)
+		.unwrap();
 
 		assert_eq!(
 			txn.flow_watermark(),

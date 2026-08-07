@@ -30,6 +30,10 @@ pub trait Operator: Send {
 		None
 	}
 
+	fn seal_span(&self) -> Option<Duration> {
+		None
+	}
+
 	fn floors(&self, _txn: &mut FlowTransaction, _watermark: DateTime) -> Result<FloorSpec> {
 		Ok(FloorSpec::default())
 	}

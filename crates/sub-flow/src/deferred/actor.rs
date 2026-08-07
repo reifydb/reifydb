@@ -62,6 +62,7 @@ use crate::{
 		tracker::FlowPositionTracker,
 	},
 	engine::FlowEngineInner,
+	execution::frontier::WatermarkHolds,
 	operator::metrics::OperatorSampleRegistry,
 };
 
@@ -135,6 +136,7 @@ pub struct FlowActorState {
 	replay_started_at: Instant,
 	retry_count: u32,
 	overlay: FlowWriteOverlay,
+	pending_holds: WatermarkHolds,
 	drain_after_commit: bool,
 	last_checkpoint_at: DateTime,
 	#[cfg(not(target_arch = "wasm32"))]
@@ -256,7 +258,7 @@ impl FlowActor {
 		let advance_to = state.cursor;
 		let mut slice = FlowSlice::empty();
 		slice.checkpoints.push((self.flow_id, advance_to));
-		self.dispatch_commit(state, ctx, slice, advance_to, false);
+		self.dispatch_commit(state, ctx, slice, advance_to, false, WatermarkHolds::new());
 	}
 
 	fn safe_bound(&self) -> CommitVersion {
@@ -448,8 +450,9 @@ impl FlowActor {
 				slice,
 				advance_to,
 				more,
+				holds,
 			}) => {
-				self.dispatch_commit(state, ctx, slice, advance_to, more);
+				self.dispatch_commit(state, ctx, slice, advance_to, more, holds);
 			}
 			Err(e) => {
 				self.retry_or_poison(state, ctx, format!("flow step failed: {e}"));
@@ -514,6 +517,7 @@ impl FlowActor {
 		slice: FlowSlice,
 		advance_to: CommitVersion,
 		more: bool,
+		holds: WatermarkHolds,
 	) {
 		reifydb_assertions! {
 			assert!(
@@ -524,6 +528,7 @@ impl FlowActor {
 			);
 		}
 		state.committing = true;
+		state.pending_holds = holds;
 		let self_ref = ctx.self_ref().clone();
 		let reply: SliceCommitReply = Box::new(move |result| {
 			let (result, committed) = match result {
@@ -558,7 +563,16 @@ impl FlowActor {
 		result: Result<()>,
 		committed: Option<(CommitVersion, Pending)>,
 	) {
+		let commit_version = committed.as_ref().map(|(version, _)| *version);
 		self.settle_commit(state, committed);
+		let holds = take(&mut state.pending_holds);
+		if result.is_ok()
+			&& let Some(version) = commit_version
+		{
+			for hold in holds {
+				self.substrate.frontiers.publish(hold.object, hold.frontier, version);
+			}
+		}
 		match result {
 			Ok(()) => {
 				state.retry_count = 0;
@@ -662,7 +676,7 @@ impl FlowActor {
 		let mut slice = FlowSlice::empty();
 		slice.checkpoints.push((self.flow_id, advance_to));
 		slice.snapshot_pins.push((self.flow_id, pin));
-		self.dispatch_commit(state, ctx, slice, advance_to, false);
+		self.dispatch_commit(state, ctx, slice, advance_to, false, WatermarkHolds::new());
 	}
 
 	fn on_sample(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
@@ -753,6 +767,7 @@ impl Actor for FlowActor {
 			replay_started_at: Instant::now(),
 			retry_count: 0,
 			overlay: FlowWriteOverlay::new(),
+			pending_holds: WatermarkHolds::new(),
 			drain_after_commit: false,
 			last_checkpoint_at: self.clock.now(),
 			#[cfg(not(target_arch = "wasm32"))]

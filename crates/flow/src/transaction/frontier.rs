@@ -21,6 +21,15 @@ pub enum Frontier {
 	Visible(DateTime),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrontierEntry {
+	pub output: ObjectId,
+	pub frontier: DateTime,
+	pub at: CommitVersion,
+}
+
+pub type FrontierEntries = Vec<FrontierEntry>;
+
 #[derive(Clone, Default)]
 pub struct OutputFrontiers {
 	inner: Arc<DashMap<ObjectId, Published>>,
@@ -62,11 +71,15 @@ impl OutputFrontiers {
 		}
 	}
 
-	pub fn dirty(&self) -> Vec<(ObjectId, u64, CommitVersion)> {
+	pub fn dirty(&self) -> FrontierEntries {
 		self.inner
 			.iter()
 			.filter(|entry| entry.at > entry.persisted_at)
-			.map(|entry| (*entry.key(), entry.frontier_ms, entry.at))
+			.map(|entry| FrontierEntry {
+				output: *entry.key(),
+				frontier: DateTime::from_millis(entry.frontier_ms),
+				at: entry.at,
+			})
 			.collect()
 	}
 
@@ -78,23 +91,24 @@ impl OutputFrontiers {
 		}
 	}
 
-	pub fn hydrate(&self, entries: Vec<(ObjectId, u64, CommitVersion)>) {
-		for (output, frontier_ms, at) in entries {
+	pub fn hydrate(&self, entries: FrontierEntries) {
+		for entry in entries {
+			let frontier_ms = entry.frontier.to_millis();
 			self.inner
-				.entry(output)
+				.entry(entry.output)
 				.and_modify(|current| {
 					if frontier_ms > current.frontier_ms {
 						*current = Published {
 							frontier_ms,
-							at,
-							persisted_at: at,
+							at: entry.at,
+							persisted_at: entry.at,
 						};
 					}
 				})
 				.or_insert(Published {
 					frontier_ms,
-					at,
-					persisted_at: at,
+					at: entry.at,
+					persisted_at: entry.at,
 				});
 		}
 	}
@@ -108,6 +122,14 @@ mod tests {
 	use super::*;
 
 	const OUTPUT: ObjectId = ObjectId::View(ViewId(42));
+
+	fn entry(frontier: u64, at: u64) -> FrontierEntry {
+		FrontierEntry {
+			output: OUTPUT,
+			frontier: at_millis(frontier),
+			at: CommitVersion(at),
+		}
+	}
 
 	#[test]
 	fn a_lower_publish_never_regresses_the_frontier_or_its_stamp() {
@@ -168,7 +190,7 @@ mod tests {
 		assert!(frontiers.dirty().is_empty());
 
 		frontiers.publish(OUTPUT, at_millis(5_000), CommitVersion(10));
-		assert_eq!(frontiers.dirty(), vec![(OUTPUT, 5_000, CommitVersion(10))]);
+		assert_eq!(frontiers.dirty(), vec![entry(5_000, 10)]);
 
 		frontiers.mark_persisted(OUTPUT, CommitVersion(10));
 		assert!(frontiers.dirty().is_empty());
@@ -184,11 +206,11 @@ mod tests {
 
 		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(20));
 
-		for (output, _, at) in swept {
-			frontiers.mark_persisted(output, at);
+		for snapshot in swept {
+			frontiers.mark_persisted(snapshot.output, snapshot.at);
 		}
 
-		assert_eq!(frontiers.dirty(), vec![(OUTPUT, 9_000, CommitVersion(20))]);
+		assert_eq!(frontiers.dirty(), vec![entry(9_000, 20)]);
 	}
 
 	#[test]
@@ -208,7 +230,7 @@ mod tests {
 		// Hydrated entries must not be dirty, otherwise every restart rewrites everything unchanged.
 		let frontiers = OutputFrontiers::default();
 
-		frontiers.hydrate(vec![(OUTPUT, 5_000, CommitVersion(10))]);
+		frontiers.hydrate(vec![entry(5_000, 10)]);
 
 		assert!(frontiers.dirty().is_empty());
 		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(11)), Frontier::Visible(at_millis(5_000)));
@@ -219,7 +241,7 @@ mod tests {
 		// A hydrated stamp must stay withheld until the flow replays past it, or the restart seals early.
 		let frontiers = OutputFrontiers::default();
 
-		frontiers.hydrate(vec![(OUTPUT, 5_000, CommitVersion(500))]);
+		frontiers.hydrate(vec![entry(5_000, 500)]);
 
 		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(499)), Frontier::Withheld);
 		assert_eq!(frontiers.resolve(OUTPUT, CommitVersion(500)), Frontier::Withheld);

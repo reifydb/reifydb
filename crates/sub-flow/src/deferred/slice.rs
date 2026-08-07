@@ -22,7 +22,7 @@ use reifydb_value::{Result, value::datetime::DateTime};
 use crate::{
 	deferred::{committer::FlowSlice, overlay::FlowWriteOverlay},
 	engine::FlowEngineInner,
-	execution::COMPLETENESS_OBJECT,
+	execution::{COMPLETENESS_OBJECT, frontier::WatermarkHolds},
 };
 
 pub struct SliceConfig {
@@ -41,6 +41,7 @@ pub enum SliceStep {
 		slice: FlowSlice,
 		advance_to: CommitVersion,
 		more: bool,
+		holds: WatermarkHolds,
 	},
 
 	Skip {
@@ -87,7 +88,7 @@ impl SliceComputer {
 		}
 
 		overlay.prune_through(advance_to);
-		let (combined, pending_shapes, view_changes) =
+		let (combined, pending_shapes, view_changes, holds) =
 			self.compute(flow_engine, cursor.flow_id, advance_to, changes, overlay.merged())?;
 
 		Ok(SliceStep::Commit {
@@ -103,6 +104,7 @@ impl SliceComputer {
 			},
 			advance_to,
 			more,
+			holds,
 		})
 	}
 
@@ -121,6 +123,7 @@ impl SliceComputer {
 				slice,
 				advance_to,
 				more,
+				holds: WatermarkHolds::new(),
 			}
 		} else {
 			SliceStep::Skip {
@@ -143,9 +146,8 @@ impl SliceComputer {
 		if changes.is_empty() {
 			return Ok(Pending::new());
 		}
-		let (pending, _shapes, _view_changes) =
-			self.compute(flow_engine, flow_id, upto, changes, PendingLayers::empty())?;
-		Ok(pending)
+		let computed = self.compute(flow_engine, flow_id, upto, changes, PendingLayers::empty())?;
+		Ok(computed.0)
 	}
 
 	fn compute(
@@ -155,7 +157,7 @@ impl SliceComputer {
 		state_version: CommitVersion,
 		changes: Vec<Change>,
 		base_pending: PendingLayers,
-	) -> Result<(Pending, Vec<RowShape>, Vec<Change>)> {
+	) -> Result<(Pending, Vec<RowShape>, Vec<Change>, WatermarkHolds)> {
 		let catalog: Catalog = self.engine.catalog();
 		let interceptors = self.engine.create_interceptors();
 
@@ -181,13 +183,14 @@ impl SliceComputer {
 		});
 
 		flow_engine.process_batch(&mut txn, changes, flow_id)?;
+		let holds = flow_engine.holds(&mut txn, flow_id)?;
 		txn.flush_operator_states()?;
 
 		let view_changes = self.consolidated_view_changes(&mut txn, state_version)?;
 
 		let pending_shapes = txn.take_pending_shapes();
 		let pending = txn.take_pending();
-		Ok((pending, pending_shapes, view_changes))
+		Ok((pending, pending_shapes, view_changes, holds))
 	}
 
 	fn consolidated_view_changes(
@@ -481,6 +484,7 @@ mod integration {
 				slice,
 				advance_to,
 				more,
+				holds: _,
 			} => {
 				assert_eq!(advance_to, CommitVersion(26));
 				assert!(more);

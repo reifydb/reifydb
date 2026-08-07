@@ -596,6 +596,10 @@ impl Operator for NativeBridgedOperator {
 		self.inner.seal_after().filter(|span| !span.is_zero())
 	}
 
+	fn seal_span(&self) -> Option<Duration> {
+		self.inner.seal_after().filter(|span| !span.is_zero())
+	}
+
 	fn floors(&self, txn: &mut FlowTransaction, watermark: DateTime) -> Result<FloorSpec> {
 		sealed_or_idle_floor(txn, self.operator, watermark, self.retention_scale())
 	}
@@ -708,5 +712,14 @@ mod tests {
 		let wrapper = NativeBridgedOperator::new(Box::new(RecordingBridged), NODE, &[]);
 
 		assert_eq!(Operator::retention_scale(&wrapper), Some(Duration::from_milliseconds(65_000).unwrap()));
+	}
+
+	#[test]
+	fn the_host_wrapper_forwards_the_seal_span_to_the_frontier_walk() {
+		// The walk subtracts this span, so a wrapper that swallowed it would claim a frontier covering buckets
+		// the operator can still amend.
+		let wrapper = NativeBridgedOperator::new(Box::new(RecordingBridged), NODE, &[]);
+
+		assert_eq!(Operator::seal_span(&wrapper), Some(Duration::from_milliseconds(65_000).unwrap()));
 	}
 }

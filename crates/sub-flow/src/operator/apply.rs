@@ -57,6 +57,10 @@ impl Operator for ApplyOperator {
 		self.inner.retention_scale().or(self.ttl)
 	}
 
+	fn seal_span(&self) -> Option<Duration> {
+		self.inner.seal_span()
+	}
+
 	fn floors(&self, txn: &mut FlowTransaction, watermark: DateTime) -> Result<FloorSpec> {
 		let inner = self.inner.floors(txn, watermark)?;
 		if !inner.is_empty() {
@@ -269,5 +273,57 @@ mod tests {
 		let neither =
 			ApplyOperator::new(noop_parent(), OperatorId(7), Box::new(RecordingInner::new(None)), None);
 		assert!(neither.floors(&mut txn, watermark).unwrap().is_empty());
+	}
+
+	struct SealingInner {
+		seal: Option<Duration>,
+	}
+
+	impl Operator for SealingInner {
+		fn id(&self) -> OperatorId {
+			OperatorId(7)
+		}
+
+		fn capabilities(&self) -> &[OperatorCapability] {
+			&[]
+		}
+
+		fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+			Ok(change)
+		}
+
+		fn seal_span(&self) -> Option<Duration> {
+			self.seal
+		}
+	}
+
+	#[test]
+	fn a_declared_row_ttl_never_becomes_a_seal_span() {
+		// A ttl says how long rows are kept, not how long a window stays amendable, so folding it in here would
+		// hold every published frontier back by the whole retention window.
+		let ttl_only = ApplyOperator::new(
+			noop_parent(),
+			OperatorId(7),
+			Box::new(SealingInner {
+				seal: None,
+			}),
+			Some(ms(3_600_000)),
+		);
+		assert_eq!(ttl_only.seal_span(), None);
+		assert_eq!(
+			ttl_only.retention_scale(),
+			Some(ms(3_600_000)),
+			"the ttl must still reach the retention scale it was declared for"
+		);
+
+		let sealing = ApplyOperator::new(
+			noop_parent(),
+			OperatorId(7),
+			Box::new(SealingInner {
+				seal: Some(ms(65_000)),
+			}),
+			Some(ms(3_600_000)),
+		);
+		assert_eq!(sealing.seal_span(), Some(ms(65_000)));
 	}
 }
