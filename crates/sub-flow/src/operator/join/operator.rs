@@ -853,8 +853,8 @@ impl JoinOperator {
 #[cfg(test)]
 mod span_tests {
 	use reifydb_core::{common::CommitVersion, state::horizon::Cutoff};
-	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::ChangeCoordinate;
+	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 
 	use super::*;

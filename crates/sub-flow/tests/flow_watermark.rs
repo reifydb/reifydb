@@ -7,8 +7,8 @@
 
 use std::time::{Duration as StdDuration, Instant};
 
+use reifydb::testing::db::TestDb;
 use reifydb::{WithSubsystem, embedded};
-use reifydb_test_harness::db::TestDb;
 
 fn setup() -> TestDb {
 	// `.with_flow(...)` installs the subsystem that registers the caught-up watermark.

@@ -8,6 +8,7 @@ use reifydb_value::Result;
 pub mod keyed;
 pub mod raw;
 pub mod single;
+#[cfg(test)]
 pub mod test_utils;
 pub mod utils;
 pub mod window;

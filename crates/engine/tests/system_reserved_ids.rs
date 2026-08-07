@@ -18,8 +18,8 @@ use reifydb_core::{
 	event::EventBus,
 	interface::catalog::id::{ColumnId, NamespaceId, SeriesId, TableId},
 };
-use reifydb_engine::test_harness::TestEngine;
 use reifydb_runtime::context::clock::Clock;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
 	transaction::{Transaction, admin::AdminTransaction},

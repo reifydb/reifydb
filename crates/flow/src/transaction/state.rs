@@ -333,8 +333,8 @@ pub mod tests {
 		},
 		state::budget::OperatorStateBudgetHandle,
 	};
-	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
+	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_value::{
 		util::cowvec::CowVec,

@@ -500,7 +500,7 @@ mod tests {
 		use std::collections::HashMap;
 
 		use reifydb_core::{common::CommitVersion, interface::WithEventBus};
-		use reifydb_engine::test_harness::TestEngine;
+		use reifydb_test_harness::engine::TestEngine;
 		use reifydb_value::value::Value;
 
 		let compiled_in = match ConfigKey::OperatorStateLeaseDefault.default_value() {
@@ -537,7 +537,7 @@ mod tests {
 		use std::collections::HashMap;
 
 		use reifydb_core::interface::WithEventBus;
-		use reifydb_engine::test_harness::TestEngine;
+		use reifydb_test_harness::engine::TestEngine;
 		use reifydb_value::value::Value;
 
 		let compiled_in = match ConfigKey::OperatorStateLeaseDefault.default_value() {
@@ -570,11 +570,11 @@ mod tests {
 
 		use reifydb_codec::encoded::row::EncodedRow;
 		use reifydb_core::interface::{WithEventBus, catalog::flow::FlowId};
-		use reifydb_engine::test_harness::TestEngine;
 		use reifydb_rql::flow::{
 			flow::FlowDag,
 			operator::{FlowNode, OperatorDef},
 		};
+		use reifydb_test_harness::engine::TestEngine;
 		use reifydb_value::util::cowvec::CowVec;
 
 		use crate::operator::scan::series::SourceSeriesOperator;

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{common::CommitVersion, interface::catalog::config::ConfigKey};
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::value::Value;
 
 fn insert_wide_rows(t: &TestEngine, count: usize) {

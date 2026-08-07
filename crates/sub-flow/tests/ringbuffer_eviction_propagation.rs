@@ -7,8 +7,8 @@
 
 use std::time::Duration as StdDuration;
 
+use reifydb::testing::db::{TestDb, await_value};
 use reifydb::{WithSubsystem, embedded};
-use reifydb_test_harness::db::{TestDb, await_value};
 
 fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|c| c).build().expect("build memory db with flow"))

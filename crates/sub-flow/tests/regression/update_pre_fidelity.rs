@@ -306,12 +306,12 @@ mod join {
 		},
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
-	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_rql::expression::parse_expression;
 	use reifydb_sub_flow::{
 		context::FlowContext,
 		operator::join::operator::{JoinOperator, JoinSideConfig},
 	};
+	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_testing_flow::harness::Harness;
 	use reifydb_value::{
 		fragment::Fragment,
@@ -552,12 +552,12 @@ mod source {
 		},
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
-	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::operator::Operator;
 	use reifydb_sub_flow::operator::scan::{
 		ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator, table::SourceTableOperator,
 		view::SourceViewOperator,
 	};
+	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_testing_flow::harness::Harness;
 	use reifydb_value::{
 		fragment::Fragment,

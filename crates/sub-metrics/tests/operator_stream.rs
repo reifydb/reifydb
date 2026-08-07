@@ -10,8 +10,8 @@
 use std::sync::Arc;
 
 use reifydb_core::metrics::{collect::MetricsCollector, registry::MetricsRegistry, sample::MetricsSample};
-use reifydb_engine::test_harness::TestEngine;
 use reifydb_sub_metrics::domains::runtime::{Domain, SampleReader, collect::Collectors};
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::byte_size::ByteSize;
 
 struct OperatorState;

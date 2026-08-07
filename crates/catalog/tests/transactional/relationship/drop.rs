@@ -3,7 +3,7 @@
 
 use reifydb_catalog::catalog::relationship::RelationshipToCreate;
 use reifydb_core::interface::catalog::relationship::RelationshipCardinality;
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{change::TransactionalRelationshipChanges, transaction::Transaction};
 use reifydb_value::{fragment::Fragment, value::identity::IdentityId};
 

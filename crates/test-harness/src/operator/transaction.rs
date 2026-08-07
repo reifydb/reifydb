@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 
+use crate::engine::TestEngine;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::encoded::row::{EncodedRow, SHAPE_HEADER_SIZE};
 use reifydb_core::{
@@ -16,7 +17,6 @@ use reifydb_core::{
 	},
 	state::budget::OperatorStateBudgetHandle,
 };
-use reifydb_engine::test_harness::TestEngine;
 use reifydb_flow::transaction::{
 	ChangeCoordinate, DeferredParams, FlowTransaction,
 	substrate::{FlowSubstrate, apply_operator_state},

@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::CatalogStore;
-use reifydb_engine::test_harness::TestEngine;
 use reifydb_rql::flow::loader::load_flow_dag;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::identity::IdentityId;
 

@@ -43,7 +43,7 @@ impl StandardEngine {
 mod tests {
 	use reifydb_core::{common::CommitVersion, lifecycle::watermark::QueryWatermark};
 
-	use crate::test_harness::TestEngine;
+	use reifydb_test_harness::engine::TestEngine;
 
 	#[test]
 	fn effective_gc_cutoff_is_lowered_by_a_held_lease_and_nothing_else() {

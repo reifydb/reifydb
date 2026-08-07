@@ -26,7 +26,6 @@ pub mod remote;
 pub mod run_tests;
 pub mod session;
 pub mod subscription;
-pub mod test_harness;
 pub mod transaction;
 pub mod vm;
 pub mod watermark;

@@ -362,9 +362,9 @@ mod integration {
 		key::{Key, kind::KeyKind},
 		state::budget::OperatorStateBudgetHandle,
 	};
-	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::{read::ReadFrom, substrate::FlowSubstrate};
 	use reifydb_runtime::context::RuntimeContext;
+	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{util::cowvec::CowVec, value::identity::IdentityId};
 

@@ -93,7 +93,7 @@ impl CatalogStore {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::catalog::policy::{PolicyOpToCreate, PolicyTargetType, PolicyToCreate};
-	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 
 	use crate::CatalogStore;
 

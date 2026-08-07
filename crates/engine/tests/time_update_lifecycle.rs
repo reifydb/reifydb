@@ -5,7 +5,7 @@
 // already holds for `updated_at`. Reaching for the wrong local is invisible to the resolver's own
 // tests and re-dates every updated row to now, so it is pinned here against a clock that moves.
 
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::value::datetime::DateTime;
 
 const BLOCK_TIME: &str = "@2020-01-01T00:00:00Z";

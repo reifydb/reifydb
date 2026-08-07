@@ -9,7 +9,7 @@ publish = false
 
 [dev-dependencies]
 reifydb-codec = { workspace = true }
-reifydb = { workspace = true }
+reifydb = { workspace = true, features = ["testing"] }
 reifydb-sub-metrics = { workspace = true }
 reifydb-value = { workspace = true }
-reifydb-test-harness = { workspace = true, features = ["database", "auth"] }
+reifydb-test-harness = { workspace = true, features = ["auth"] }

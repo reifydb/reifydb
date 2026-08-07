@@ -3,7 +3,7 @@
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{params::Params, value::identity::IdentityId};
 
 #[test]

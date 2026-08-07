@@ -19,7 +19,7 @@
 // assertions: a lagged rolling window over a processing-time source is rejected, and over an
 // event-time source is accepted.
 
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 
 #[test]
 #[should_panic(expected = "walking to its sources")]

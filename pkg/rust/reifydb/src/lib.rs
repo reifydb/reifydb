@@ -125,6 +125,8 @@ pub mod testing {
 	//! crate kept separate from the production `reifydb::sdk` so the harness is not a dependency
 	//! of every production build.
 
+	pub mod db;
+
 	pub use reifydb_testing::*;
 	pub use reifydb_testing_chaos as chaos;
 	#[cfg(feature = "flow_testing")]

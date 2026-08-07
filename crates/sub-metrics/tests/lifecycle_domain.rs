@@ -9,9 +9,9 @@
 
 use std::time::Duration;
 
+use reifydb::testing::db::TestDb;
 use reifydb::{ConfigKey, SqliteConfig, Value, embedded as db_embedded};
 use reifydb_core::lifecycle::class::RetentionClass;
-use reifydb_test_harness::db::TestDb;
 use reifydb_testing::tempdir::temp_dir;
 
 const TIMEOUT: Duration = Duration::from_secs(10);

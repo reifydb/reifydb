@@ -6,12 +6,10 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use reifydb::testing::db::{TempDbPath, TestDb};
 use reifydb::{Frame, SqliteConfig, Value, WithSubsystem, core::key::kind::KeyKind, embedded};
 use reifydb_codec::key::serializer::KeySerializer;
-use reifydb_test_harness::{
-	assert::column_values,
-	db::{TempDbPath, TestDb},
-};
+use reifydb_test_harness::assert::column_values;
 
 fn sorted_syms(frames: &[Frame]) -> Vec<Value> {
 	let mut values = column_values(&frames[0], "sym");

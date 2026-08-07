@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb::testing::db::TestDb;
 use reifydb::{RuntimeConfig, embedded as db_embedded};
-use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::Value;
 
 fn seeded_db() -> TestDb {

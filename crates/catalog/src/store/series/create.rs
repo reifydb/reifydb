@@ -244,7 +244,7 @@ impl CatalogStore {
 #[cfg(test)]
 mod time_declaration_tests {
 	use reifydb_core::{common::TimeSource, interface::catalog::series::TimestampPrecision};
-	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::fragment::Fragment;
 

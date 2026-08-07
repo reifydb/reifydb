@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-#![cfg(feature = "database")]
 
+use reifydb::testing::db::TestDb;
 use reifydb_test_harness::{
 	assert::FrameAssert,
-	db::TestDb,
 	fixture::{identity::identity, table, view},
 	lookup::{find_identity_by_attribute, identity_attribute},
 };

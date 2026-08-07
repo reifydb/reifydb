@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-#![cfg(feature = "database")]
 
 use std::collections::HashMap;
 
+use reifydb::testing::db::TestDb;
 use reifydb_test_harness::{
 	auth::{AuthResponseAssert, auth_service},
-	db::TestDb,
 	fixture::identity::identity,
 };
 

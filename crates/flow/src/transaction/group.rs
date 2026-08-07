@@ -468,8 +468,8 @@ mod tests {
 		key::operator_group_state::group_data_inner_range,
 		state::budget::OperatorStateBudgetHandle,
 	};
-	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
+	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_value::value::identity::IdentityId;
 

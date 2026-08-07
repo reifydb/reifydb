@@ -9,7 +9,7 @@ use reifydb_core::{
 		cdc::SystemChange,
 	},
 };
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, replica::ReplicaTransaction};
 use reifydb_value::value::{duration::Duration, identity::IdentityId};
 

@@ -26,10 +26,8 @@ pub(crate) fn alter_remote_namespace(
 pub mod tests {
 	use reifydb_value::{params::Params, value::Value};
 
-	use crate::{
-		test_harness::create_test_admin_transaction,
-		vm::{Admin, executor::Executor},
-	};
+	use crate::vm::{Admin, executor::Executor};
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 
 	#[test]
 	fn test_alter_remote_namespace() {

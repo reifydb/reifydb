@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_test_harness::{
-	assert::rows,
-	db::{TempDbPath, TestDb},
-};
+use reifydb::testing::db::{TempDbPath, TestDb};
+use reifydb_test_harness::assert::rows;
 
 #[test]
 fn ringbuffer_scans_after_sqlite_reopen() {

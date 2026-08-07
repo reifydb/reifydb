@@ -5,6 +5,7 @@
 
 use std::sync::Arc;
 
+use reifydb::testing::db::{TestDb, poll_until};
 use reifydb::{WithSubsystem, embedded as db_embedded};
 use reifydb_column::reader::SnapshotReader;
 use reifydb_sqlite::SqliteConfig;
@@ -13,7 +14,6 @@ use reifydb_sub_store::{
 	factory::StorageSubsystemFactory,
 	subsystem::{StorageConfig, StorageSubsystem},
 };
-use reifydb_test_harness::db::{TestDb, poll_until};
 use reifydb_value::value::{Value, duration::Duration};
 
 #[test]

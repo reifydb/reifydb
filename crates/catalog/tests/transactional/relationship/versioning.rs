@@ -6,7 +6,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::relationship::{Relationship, RelationshipCardinality},
 };
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{fragment::Fragment, value::identity::IdentityId};
 
 use super::common::SourceFixture;

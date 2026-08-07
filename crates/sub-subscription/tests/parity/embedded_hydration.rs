@@ -3,9 +3,9 @@
 
 use std::{thread, time::Instant};
 
+use reifydb::testing::db::TestDb;
 use reifydb::{HydrationConfig, Params, Subscription};
 use reifydb_core::value::column::columns::Columns;
-use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::{duration::Duration, frame::frame::Frame};
 
 use crate::common::{Row, insert_all_at_once, make_db, normalize};

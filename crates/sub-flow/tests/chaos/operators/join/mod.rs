@@ -8,12 +8,12 @@ use std::sync::Arc;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_core::common::JoinType;
-use reifydb_engine::test_harness::TestEngine;
 use reifydb_rql::expression::parse_expression;
 use reifydb_sub_flow::{
 	context::FlowContext,
 	operator::join::operator::{JoinOperator, JoinSideConfig},
 };
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{pick, run_reported, split},

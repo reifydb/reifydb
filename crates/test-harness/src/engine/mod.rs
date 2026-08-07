@@ -28,6 +28,7 @@ use reifydb_core::{
 	interface::catalog::{config::ConfigKey, id::NamespaceId},
 	util::ioc::IocContainer,
 };
+use reifydb_engine::{engine::StandardEngine, vm::services::EngineConfig};
 use reifydb_extension::transform::registry::Transforms;
 use reifydb_routine::{
 	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
@@ -60,8 +61,6 @@ use reifydb_value::{
 	params::Params,
 	value::{Value, constraint::TypeConstraint, frame::frame::Frame, identity::IdentityId, value_type::ValueType},
 };
-
-use crate::{engine::StandardEngine, vm::services::EngineConfig};
 
 pub struct TestEngine {
 	engine: StandardEngine,
@@ -178,6 +177,22 @@ impl Deref for TestEngine {
 
 	fn deref(&self) -> &StandardEngine {
 		&self.engine
+	}
+}
+
+pub trait AsEngine {
+	fn engine(&self) -> &StandardEngine;
+}
+
+impl AsEngine for StandardEngine {
+	fn engine(&self) -> &StandardEngine {
+		self
+	}
+}
+
+impl AsEngine for TestEngine {
+	fn engine(&self) -> &StandardEngine {
+		self.inner()
 	}
 }
 

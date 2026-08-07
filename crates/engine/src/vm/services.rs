@@ -14,14 +14,9 @@ use reifydb_catalog::{
 };
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_extension::transform::registry::Transforms;
-use reifydb_routine::{
-	function::default_native_functions,
-	monoid::default_native_monoids,
-	procedure::default_native_procedures,
-	routine::{Procedure, registry::Routines},
-};
+use reifydb_routine::routine::{Procedure, registry::Routines};
 use reifydb_rql::compiler::Compiler;
-use reifydb_runtime::context::{RuntimeContext, clock::Clock};
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::sumtype::VariantRef;
@@ -90,8 +85,14 @@ impl Services {
 		self.routines.get_procedure(name)
 	}
 
-	#[allow(dead_code)]
+	#[cfg(test)]
 	pub fn testing() -> Arc<Self> {
+		use reifydb_routine::{
+			function::default_native_functions, monoid::default_native_monoids,
+			procedure::default_native_procedures,
+		};
+		use reifydb_runtime::context::clock::Clock;
+
 		let store = SingleStore::testing_memory();
 
 		let routines_builder = Routines::builder();

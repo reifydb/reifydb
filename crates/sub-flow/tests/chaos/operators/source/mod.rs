@@ -31,12 +31,12 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_engine::test_harness::TestEngine;
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_sub_flow::operator::scan::{
 	ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator, table::SourceTableOperator,
 	view::SourceViewOperator,
 };
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{run_reported, split},

@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-#![cfg(feature = "database")]
 
-use reifydb_test_harness::{
-	assert::{FrameAssert, assert_frames_eq},
-	db::TestDb,
-};
+use reifydb::testing::db::TestDb;
+use reifydb_test_harness::assert::{FrameAssert, assert_frames_eq};
 
 fn seeded() -> TestDb {
 	let db = TestDb::memory();

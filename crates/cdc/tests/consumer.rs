@@ -27,12 +27,13 @@ use reifydb_core::{
 	},
 	key::{EncodableKey, Key, Key::Row, cdc_consumer::CdcConsumerKey, row::RowKey},
 };
-use reifydb_engine::{engine::StandardEngine, test_harness::TestEngine};
+use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 };
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::error::TransactionError;
 use reifydb_value::{
 	error::{Diagnostic, Error},

@@ -56,8 +56,8 @@ reifydb-core = { workspace = true }
 reifydb-value = { workspace = true }
 reifydb-abi = { workspace = true }
 reifydb-rql = { workspace = true }
-reifydb = { workspace = true }
-reifydb-test-harness = { workspace = true, features = ["database", "operator"] }
+reifydb = { workspace = true, features = ["testing"] }
+reifydb-test-harness = { workspace = true, features = ["operator"] }
 reifydb-testing-chaos = { workspace = true, features = ["operator"] }
 reifydb-testing-flow = { workspace = true }
 reifydb-testing-macro = { workspace = true }

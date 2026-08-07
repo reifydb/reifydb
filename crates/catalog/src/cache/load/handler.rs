@@ -32,7 +32,7 @@ pub(crate) fn load_handlers(rx: &mut Transaction<'_>, catalog: &CatalogCache) ->
 #[cfg(test)]
 mod tests {
 	use reifydb_core::common::CommitVersion;
-	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_value::value::sumtype::{SumTypeId, VariantRef};
 
 	use super::*;

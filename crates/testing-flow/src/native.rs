@@ -20,7 +20,6 @@ use reifydb_core::{
 	state::budget::OperatorStateBudgetHandle,
 	value::column::columns::Columns,
 };
-use reifydb_engine::test_harness::TestEngine;
 use reifydb_flow::{
 	operator::Operator,
 	transaction::{
@@ -40,6 +39,7 @@ use reifydb_sub_flow::operator::{
 	context::native::NativeOperatorContext,
 	native::{FlowNativeBridge, NativeBridgedOperator, NativeOperatorAdapter},
 };
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::FFIOperatorHarness};
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{

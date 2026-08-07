@@ -6,7 +6,7 @@
 
 use reifydb_catalog::vtable::user::{UserVTable, UserVTableColumn};
 use reifydb_core::{interface::catalog::id::NamespaceId, metrics::sample::MetricKind, value::column::columns::Columns};
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::value::value_type::ValueType;
 
 #[derive(Clone)]

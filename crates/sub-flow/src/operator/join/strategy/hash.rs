@@ -31,7 +31,7 @@ use crate::operator::join::{Identity, operator::JoinOperator, state::JoinSide, s
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::catalog::flow::OperatorId;
-	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 
 	use super::*;

@@ -217,10 +217,8 @@ fn create_underlying_storage(
 pub mod tests {
 	use reifydb_value::{params::Params, value::Value};
 
-	use crate::{
-		test_harness::create_test_admin_transaction_with_internal_shape,
-		vm::{Admin, executor::Executor},
-	};
+	use crate::vm::{Admin, executor::Executor};
+	use reifydb_test_harness::engine::create_test_admin_transaction_with_internal_shape;
 
 	#[test]
 	fn test_create_view() {

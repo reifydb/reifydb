@@ -8,7 +8,7 @@ use reifydb_core::{
 	delta::{Delta, RemoveAnnounce},
 	interface::cdc::SystemChange,
 };
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing::testscript::{
 	command::Command,
 	runner::{Runner, run_path},

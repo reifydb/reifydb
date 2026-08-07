@@ -4,7 +4,7 @@
 // Policies are named globally, not namespace-scoped. `list_all_policies` bypasses the
 // admin-transaction change log, so only `find_policy_by_name` sees uncommitted state.
 
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
 

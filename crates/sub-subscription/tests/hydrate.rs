@@ -3,12 +3,12 @@
 
 use std::thread;
 
+use reifydb::testing::db::TestDb;
 use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_engine::{
 	engine::StandardEngine,
 	subscription::{HydrateError, SubscriptionServiceRef},
 };
-use reifydb_test_harness::db::TestDb;
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
 use reifydb_value::value::{Value, duration::Duration, frame::frame::Frame, identity::IdentityId};
 

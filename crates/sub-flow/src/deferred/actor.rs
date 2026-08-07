@@ -885,7 +885,6 @@ mod pull_protocol {
 			operator_state::OperatorStateKey,
 		},
 	};
-	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::{DeferredParams, FlowTransaction};
 	use reifydb_runtime::{
 		actor::system::ActorHandle,
@@ -893,6 +892,7 @@ mod pull_protocol {
 	};
 	use reifydb_sqlite::SqliteConfig;
 	use reifydb_store_operator::{OperatorStore, snapshot::SnapshotStore};
+	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_testing_flow::state::{State, assert_batch_equivalent};
 	use reifydb_transaction::{
 		group::{GroupCommitBegin, GroupCommitHandle},

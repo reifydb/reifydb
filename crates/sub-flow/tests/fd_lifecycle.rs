@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_test_harness::db::TestDb;
+use reifydb::testing::db::TestDb;
 use reifydb_testing_chaos::fd::assert_returns_every_fd;
 
 #[test]

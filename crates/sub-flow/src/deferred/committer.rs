@@ -451,8 +451,8 @@ mod group_commit_integration {
 			operator_state::OperatorStateKey,
 		},
 	};
-	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::sync::{mutex::Mutex, waiter::WaiterHandle};
+	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::group::GroupCommitBegin;
 	use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
 

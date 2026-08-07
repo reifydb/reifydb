@@ -77,7 +77,7 @@ impl IdentityBuilder {
 	}
 
 	pub fn create(self, engine: &impl AsEngine) -> Identity {
-		let engine = engine.standard_engine();
+		let engine = engine.engine();
 		let catalog = engine.catalog();
 		let clock = Clock::Real;
 		let rng = Rng::seeded(42);

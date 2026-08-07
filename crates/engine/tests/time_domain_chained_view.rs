@@ -10,7 +10,7 @@
 // reifydb-sub-flow's time_propagation.rs. What stays here is the definition-time half: a chain of
 // views must be creatable without any declaration anywhere.
 
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{params::Params, value::identity::IdentityId};
 
 fn event_source_chain() -> TestEngine {

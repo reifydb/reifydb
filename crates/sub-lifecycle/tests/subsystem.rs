@@ -10,9 +10,10 @@ use reifydb_core::{
 	interface::version::ComponentType,
 	lifecycle::{metrics::RetentionMetrics, registry::LifecycleRegistry},
 };
-use reifydb_engine::{engine::StandardEngine, test_harness::TestEngine};
+use reifydb_engine::engine::StandardEngine;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
 use reifydb_sub_lifecycle::{factory::LifecycleSubsystemFactory, subsystem::LifecycleSubsystem};
+use reifydb_test_harness::engine::TestEngine;
 
 fn boot() -> (TestEngine, Box<dyn Subsystem>) {
 	let test_engine = TestEngine::new();

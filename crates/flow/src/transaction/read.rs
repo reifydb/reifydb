@@ -728,8 +728,8 @@ pub mod tests {
 		encoded::row::EncodedRow,
 		key::encoded::{EncodedKey, EncodedKeyRange},
 	};
-	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
+	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
 	use reifydb_value::{util::cowvec::CowVec, value::identity::IdentityId};
 

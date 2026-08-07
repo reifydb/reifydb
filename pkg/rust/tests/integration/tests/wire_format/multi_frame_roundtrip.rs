@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb::testing::db::TestDb;
 use reifydb::{RuntimeConfig, embedded as db_embedded};
 use reifydb_codec::frame::{decode::decode_frames, encode::encode_frames, options::EncodeOptions};
-use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::frame::{data::FrameColumnData, frame::Frame};
 
 fn new_db() -> TestDb {

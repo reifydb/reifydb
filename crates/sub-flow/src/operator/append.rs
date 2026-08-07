@@ -293,8 +293,8 @@ mod tests {
 	use reifydb_core::{
 		common::CommitVersion, key::operator_group_state::group_inner_range, value::column::columns::Columns,
 	};
-	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::ChangeCoordinate;
+	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 	use reifydb_value::{count::Count, value::datetime::DateTime};
 

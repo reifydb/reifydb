@@ -16,12 +16,13 @@ use reifydb_core::{
 	},
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{engine::StandardEngine, test_harness::TestEngine};
+use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{actor::system::ActorSpawner, sync::waiter::WaiterHandle};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_sub_lifecycle::{
 	actor::LifecycleMessage, factory::LifecycleSubsystemFactory, subsystem::LifecycleSubsystem,
 };
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::value::duration::Duration;
 
 /// Classes that must register on EVERY boot, under every store configuration. If one of these ever becomes

@@ -83,7 +83,7 @@ impl Executor {
 		Self(services)
 	}
 
-	#[allow(dead_code)]
+	#[cfg(test)]
 	pub fn testing() -> Self {
 		Self(Services::testing())
 	}

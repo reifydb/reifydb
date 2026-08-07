@@ -61,10 +61,8 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::{
-		test_harness::create_test_admin_transaction,
-		vm::{services::Services, stack::SymbolTable, volcano::query::query_budget},
-	};
+	use crate::vm::{services::Services, stack::SymbolTable, volcano::query::query_budget};
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 
 	struct StubNode {
 		batches: VecDeque<Columns>,

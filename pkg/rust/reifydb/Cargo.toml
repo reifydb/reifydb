@@ -59,6 +59,7 @@ reifydb-testing = { workspace = true, optional = true }
 reifydb-testing-chaos = { workspace = true, optional = true, features = ["operator"] }
 reifydb-testing-flow = { workspace = true, optional = true }
 reifydb-testing-sdk = { workspace = true, optional = true }
+reifydb-test-harness = { workspace = true, optional = true }
 
 rayon = { workspace = true }
 tokio = { workspace = true }
@@ -69,7 +70,7 @@ tracing-opentelemetry = { workspace = true, optional = true }
 libc = { workspace = true }
 
 [dev-dependencies]
-reifydb-test-harness = { workspace = true, features = ["database"] }
+reifydb = { path = ".", features = ["testing"] }
 reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }
 bs58 = { workspace = true }
@@ -98,7 +99,7 @@ sub_server_otel = ["dep:reifydb-sub-server-otel", "dep:opentelemetry", "dep:trac
 sub_raft = ["dep:reifydb-sub-raft"]
 sub_server_ws = ["dep:reifydb-sub-server-ws", "sub_server"]
 sub_replication = ["dep:reifydb-sub-replication"]
-testing = ["dep:reifydb-testing", "dep:reifydb-testing-chaos", "dep:reifydb-testing-sdk"]
+testing = ["dep:reifydb-testing", "dep:reifydb-testing-chaos", "dep:reifydb-testing-sdk", "dep:reifydb-test-harness"]
 
 [[test]]
 name = "testing_surface"

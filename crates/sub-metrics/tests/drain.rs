@@ -15,11 +15,11 @@ use reifydb_core::{
 	fingerprint::{RequestFingerprint, StatementFingerprint},
 	metrics::execution::StatementMetrics,
 };
-use reifydb_engine::test_harness::TestEngine;
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 use reifydb_sub_metrics::{
 	accumulator::StatementMetricsAccumulator, actor::MetricsFlushActor, listener::RequestMetricsEventListener,
 };
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 #[test]

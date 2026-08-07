@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb::testing::db::TestDb;
 use reifydb::value::value::value_type::ValueType;
-use reifydb_test_harness::db::TestDb;
 
 #[test]
 fn create_dictionary_propagates_to_materialized_cache() {

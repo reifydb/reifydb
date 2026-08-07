@@ -67,7 +67,7 @@ pub mod tests {
 		id::{ColumnId, TableId},
 		property::{ColumnPropertyKind, ColumnSaturationStrategy},
 	};
-	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 	use crate::{

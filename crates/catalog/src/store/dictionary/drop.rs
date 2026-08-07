@@ -62,7 +62,7 @@ fn remove_dictionary_entries(single: &SingleTransaction, dictionary: DictionaryI
 pub mod tests {
 	use reifydb_codec::encoded::row::EncodedRow;
 	use reifydb_core::key::dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey};
-	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{
 		fragment::Fragment,

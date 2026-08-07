@@ -10,10 +10,10 @@
 use std::collections::BTreeMap;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
+use reifydb::testing::db::TestDb;
 use reifydb_core::{interface::catalog::id::SubscriptionId, value::column::columns::Columns};
 use reifydb_engine::subscription::SubscriptionServiceRef;
 use reifydb_sub_subscription::subsystem::SubscriptionSubsystem;
-use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, row_number::RowNumber};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

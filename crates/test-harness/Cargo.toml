@@ -7,6 +7,9 @@ license.workspace = true
 repository.workspace = true
 description = "Test factories, builders, and assertions for the ReifyDB workspace"
 
+[build-dependencies]
+reifydb-build = { workspace = true }
+
 [dependencies]
 reifydb-value = { workspace = true }
 reifydb-catalog = { workspace = true, optional = true }
@@ -15,19 +18,34 @@ reifydb-transaction = { workspace = true, optional = true }
 reifydb-runtime = { workspace = true, optional = true }
 reifydb-engine = { workspace = true, optional = true }
 reifydb-auth = { workspace = true, optional = true }
-reifydb = { workspace = true, optional = true }
 reifydb-sqlite = { workspace = true, optional = true }
 reifydb-abi = { workspace = true, optional = true }
 reifydb-codec = { workspace = true, optional = true }
 reifydb-sdk = { workspace = true, optional = true }
 reifydb-testing-sdk = { workspace = true, optional = true }
 reifydb-flow = { workspace = true, optional = true, features = ["runtime"] }
+reifydb-cdc = { workspace = true, optional = true }
+reifydb-extension = { workspace = true, optional = true }
+reifydb-routine = { workspace = true, optional = true }
+reifydb-store-multi = { workspace = true, optional = true }
+reifydb-store-single = { workspace = true, optional = true }
 
 [features]
 default = ["engine", "auth"]
-engine = ["dep:reifydb-engine", "dep:reifydb-catalog", "dep:reifydb-core", "dep:reifydb-transaction"]
+engine = [
+    "dep:reifydb-engine",
+    "dep:reifydb-catalog",
+    "dep:reifydb-cdc",
+    "dep:reifydb-core",
+    "dep:reifydb-extension",
+    "dep:reifydb-routine",
+    "dep:reifydb-runtime",
+    "dep:reifydb-sqlite",
+    "dep:reifydb-store-multi",
+    "dep:reifydb-store-single",
+    "dep:reifydb-transaction",
+]
 auth = ["engine", "dep:reifydb-auth", "dep:reifydb-runtime"]
-database = ["engine", "dep:reifydb", "dep:reifydb-sqlite"]
 operator = [
     "engine",
     "dep:reifydb-runtime",
@@ -36,3 +54,6 @@ operator = [
     "dep:reifydb-testing-sdk",
     "dep:reifydb-flow",
 ]
+
+[dev-dependencies]
+reifydb = { workspace = true, features = ["testing"] }

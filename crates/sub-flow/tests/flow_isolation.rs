@@ -7,6 +7,7 @@
 
 use std::{thread, time::Duration as StdDuration};
 
+use reifydb::testing::db::TestDb;
 use reifydb::{WithSubsystem, embedded};
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::interface::catalog::flow::OperatorId;
@@ -22,7 +23,6 @@ use reifydb_sdk::{
 	row,
 	state::{RawStatefulOperator, single::SingleStateful},
 };
-use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::{constraint::TypeConstraint, row_number::RowNumber, value_type::ValueType};
 
 const SLOW_APPLY: StdDuration = StdDuration::from_secs(5);

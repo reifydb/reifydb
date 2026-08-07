@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::value::{Value, frame::frame::Frame, identity::IdentityId};
 
 fn run_script(rql: &str) -> Vec<Frame> {

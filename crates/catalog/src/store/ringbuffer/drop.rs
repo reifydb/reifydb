@@ -46,7 +46,7 @@ pub mod tests {
 		interface::catalog::{id::RingBufferId, ringbuffer::RingBufferMetadata},
 		key::ringbuffer::RingBufferMetadataKey,
 	};
-	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 	use reifydb_value::{
 		fragment::Fragment,

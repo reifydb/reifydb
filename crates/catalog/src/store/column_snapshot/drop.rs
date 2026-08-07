@@ -43,7 +43,7 @@ pub mod tests {
 		},
 		key::column_snapshot::{SeriesColumnSnapshotKey, TableColumnSnapshotKey},
 	};
-	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
 	use crate::{CatalogStore, store::column_snapshot::create::ColumnSnapshotToCreate};

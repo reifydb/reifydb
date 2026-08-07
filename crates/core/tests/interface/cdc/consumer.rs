@@ -5,7 +5,7 @@
 //
 // use reifydb_cdc::{CdcCheckpoint, get_all_consumer_states};
 // use reifydb_core::{common::CommitVersion, Result, interface::CdcConsumerId};
-// use reifydb_engine::test_harness::TestEngine;
+// use reifydb_test_harness::engine::TestEngine;
 //
 // #[test]
 // fn test_get_all_consumer_states_with_single_consumer() -> reifydb_value::Result<()> {

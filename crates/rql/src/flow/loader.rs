@@ -43,7 +43,7 @@ pub fn load_flow_dag(txn: &mut Transaction<'_>, flow_id: FlowId) -> Result<FlowD
 mod tests {
 	use postcard::to_allocvec;
 	use reifydb_catalog::test_utils::{create_flow, create_namespace, create_operator};
-	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 
 	use super::*;
 

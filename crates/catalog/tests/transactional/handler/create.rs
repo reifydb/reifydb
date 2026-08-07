@@ -5,7 +5,7 @@
 // `RqlTrigger::Event { variant }`, so a handler is only reachable through the
 // procedure-for-variant index. The DROP side lives in `drop.rs`.
 
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	params::Params,

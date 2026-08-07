@@ -205,7 +205,7 @@ pub mod tests {
 		interface::catalog::id::{NamespaceId, TableId},
 		key::namespace_table::NamespaceTableKey,
 	};
-	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::multi::RangeScope;
 	use reifydb_value::fragment::Fragment;
 
@@ -288,7 +288,7 @@ pub mod tests {
 #[cfg(test)]
 mod time_declaration_tests {
 	use reifydb_core::common::{TimeDomain, TimeSource};
-	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::fragment::Fragment;
 

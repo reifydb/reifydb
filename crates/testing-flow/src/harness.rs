@@ -22,7 +22,6 @@ use reifydb_core::{
 	},
 	state::budget::OperatorStateBudgetHandle,
 };
-use reifydb_engine::test_harness::TestEngine;
 use reifydb_flow::{
 	operator::Operator,
 	timer::Timer,
@@ -45,6 +44,7 @@ use reifydb_sub_flow::{
 		scan::series::SourceSeriesOperator,
 	},
 };
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject};
 use reifydb_transaction::{
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},

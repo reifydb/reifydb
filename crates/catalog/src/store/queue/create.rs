@@ -212,7 +212,7 @@ pub mod tests {
 			queue::{Queue, QueueDispatch, QueueRetention, QueueRetry},
 		},
 	};
-	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::{
 		fragment::Fragment,
@@ -357,7 +357,7 @@ mod time_declaration_tests {
 		common::TimeSource,
 		interface::catalog::queue::{Queue, QueueDispatch, QueueRetention, QueueRetry},
 	};
-	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 	use reifydb_value::fragment::Fragment;
 

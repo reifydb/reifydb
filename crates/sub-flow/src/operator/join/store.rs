@@ -308,7 +308,7 @@ fn row_number_from_key(bytes: &[u8]) -> Option<RowNumber> {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::encoded::row::EncodedRow;
-	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_test_harness::operator::transaction::FlowTxn;
 	use reifydb_value::value::value_type::ValueType;
 

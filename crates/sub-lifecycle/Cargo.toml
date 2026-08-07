@@ -28,6 +28,7 @@ default = ["sqlite"]
 sqlite = ["reifydb-store-multi/sqlite"]
 
 [dev-dependencies]
+reifydb-test-harness = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-testing = { workspace = true }

@@ -55,7 +55,7 @@ pub struct NamespaceBuilder {
 
 impl NamespaceBuilder {
 	pub fn create(self, engine: &impl AsEngine) -> Namespace {
-		let engine = engine.standard_engine();
+		let engine = engine.engine();
 		let catalog = engine.catalog();
 		let mut admin = engine.begin_admin(IdentityId::root()).unwrap();
 		let namespace = ensure_namespace(&catalog, &mut admin, &self.name);
@@ -89,7 +89,7 @@ impl TableBuilder {
 	}
 
 	pub fn create(self, engine: &impl AsEngine) -> Table {
-		let engine = engine.standard_engine();
+		let engine = engine.engine();
 		let catalog = engine.catalog();
 		let mut admin = engine.begin_admin(IdentityId::root()).unwrap();
 		let namespace = ensure_namespace(&catalog, &mut admin, &self.namespace);
@@ -130,7 +130,7 @@ impl ViewBuilder {
 	}
 
 	pub fn create(self, engine: &impl AsEngine) -> View {
-		let engine = engine.standard_engine();
+		let engine = engine.engine();
 		let catalog = engine.catalog();
 		let mut admin = engine.begin_admin(IdentityId::root()).unwrap();
 		let namespace = ensure_namespace(&catalog, &mut admin, &self.namespace);

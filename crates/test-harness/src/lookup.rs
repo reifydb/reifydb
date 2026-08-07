@@ -8,7 +8,7 @@ use reifydb_value::value::{Value, identity::IdentityId};
 use crate::engine::AsEngine;
 
 pub fn find_identity_by_attribute(engine: &impl AsEngine, attribute_name: &str, value: &Value) -> Option<Identity> {
-	let engine = engine.standard_engine();
+	let engine = engine.engine();
 	let mut txn = engine.begin_query(IdentityId::root()).unwrap();
 	engine.catalog()
 		.find_identity_by_attribute_value(&mut Transaction::Query(&mut txn), attribute_name, value)
@@ -16,7 +16,7 @@ pub fn find_identity_by_attribute(engine: &impl AsEngine, attribute_name: &str, 
 }
 
 pub fn identity_attribute(engine: &impl AsEngine, identity: IdentityId, name: &str) -> Option<Value> {
-	let engine = engine.standard_engine();
+	let engine = engine.engine();
 	let mut txn = engine.begin_query(IdentityId::root()).unwrap();
 	let catalog = engine.catalog();
 	let attribute = catalog.find_identity_attribute_by_name(&mut Transaction::Query(&mut txn), name).unwrap()?;

@@ -39,4 +39,5 @@ rkyv = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]
+reifydb-test-harness = { workspace = true }
 reifydb-engine = { workspace = true }

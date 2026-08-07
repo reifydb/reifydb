@@ -7,8 +7,8 @@
 
 use std::time::{Duration as StdDuration, Instant};
 
+use reifydb::testing::db::TestDb;
 use reifydb::{ConfigKey, Value, WithSubsystem, embedded};
-use reifydb_test_harness::db::TestDb;
 
 const BARRIER_TIMEOUT: StdDuration = StdDuration::from_secs(10);
 const ROUNDS: usize = 40;

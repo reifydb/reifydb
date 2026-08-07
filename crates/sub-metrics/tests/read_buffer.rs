@@ -7,9 +7,9 @@
 //! must be queryable by their RQL paths and empty rather than error. The column layout is pinned against the
 //! DomainSpec so the published surface cannot drift from the declared one silently.
 
+use reifydb::testing::db::TestDb;
 use reifydb_core::metrics::sample::MetricKind;
 use reifydb_sub_metrics::framework::spec::{MetricsDomain, Surface};
-use reifydb_test_harness::db::TestDb;
 
 #[test]
 fn read_buffer_current_and_total_are_queryable_after_bootstrap() {

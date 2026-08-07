@@ -81,10 +81,8 @@ pub mod tests {
 		value::{Value, identity::IdentityId},
 	};
 
-	use crate::{
-		test_harness::create_test_admin_transaction,
-		vm::{Admin, Query, executor::Executor},
-	};
+	use crate::vm::{Admin, Query, executor::Executor};
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 
 	#[test]
 	fn test_create_remote_namespace() {

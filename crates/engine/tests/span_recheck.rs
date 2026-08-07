@@ -10,8 +10,9 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	row::{OperatorSettings, OperatorTtl},
 };
-use reifydb_engine::{flow::span::check_declared_spans, test_harness::TestEngine};
+use reifydb_engine::flow::span::check_declared_spans;
 use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag, operator::OperatorDef};
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::{duration::Duration, identity::IdentityId};
 

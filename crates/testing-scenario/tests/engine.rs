@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use rand::{SeedableRng, rngs::StdRng};
-use reifydb_test_harness::db::TestDb;
+use reifydb::testing::db::TestDb;
 use reifydb_testing_scenario::{
 	query::OperationKind,
 	registry::{all, by_name},

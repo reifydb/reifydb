@@ -15,6 +15,3 @@ pub mod auth;
 
 #[cfg(feature = "operator")]
 pub mod operator;
-
-#[cfg(feature = "database")]
-pub mod db;

@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
+use reifydb::testing::db::TestDb;
 use reifydb::{
 	IdentityId,
 	auth::{
@@ -14,7 +15,6 @@ use reifydb::{
 };
 use reifydb_test_harness::{
 	auth::{AuthResponseAssert, auth_service},
-	db::TestDb,
 	lookup::{find_identity_by_attribute, identity_attribute},
 };
 

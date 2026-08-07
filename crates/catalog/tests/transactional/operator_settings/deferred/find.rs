@@ -4,7 +4,7 @@
 // Deferred views write their operator TTL into the same create-view commit as transactional
 // views, but register through a separate path, so the read contract is covered twice.
 
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{duration::Duration, identity::IdentityId};
 

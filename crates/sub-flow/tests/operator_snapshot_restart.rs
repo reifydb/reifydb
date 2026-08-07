@@ -14,11 +14,9 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use reifydb::testing::db::{TempDbPath, TestDb};
 use reifydb::{Frame, SqliteConfig, Value, WithSubsystem, core::interface::catalog::config::ConfigKey, embedded};
-use reifydb_test_harness::{
-	assert::column_values,
-	db::{TempDbPath, TestDb},
-};
+use reifydb_test_harness::assert::column_values;
 
 fn open(path: &TempDbPath) -> TestDb {
 	TestDb::from(

@@ -8,8 +8,8 @@ pub mod test {
 		interface::{catalog::flow::OperatorId, change::Change},
 		key::operator_group_state::{GroupStateKey, Keyspace},
 	};
-	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_flow::transaction::FlowTransaction;
+	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_value::{
 		Result,

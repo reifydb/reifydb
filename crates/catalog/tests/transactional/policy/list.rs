@@ -4,7 +4,7 @@
 // `list_all_policies` bypasses the admin-transaction change log, so each policy is
 // tracked individually through `find_policy_by_name`.
 
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{params::Params, value::{identity::IdentityId}};
 use reifydb_transaction::transaction::Transaction;
 

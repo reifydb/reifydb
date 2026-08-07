@@ -92,7 +92,7 @@ pub mod tests {
 			queue::{QueueDispatch, QueueRetention, QueueRetry},
 		},
 	};
-	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 	use reifydb_value::fragment::Fragment;
 

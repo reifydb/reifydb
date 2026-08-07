@@ -105,7 +105,7 @@ pub mod tests {
 		interface::catalog::id::{NamespaceId, SinkId},
 		key::namespace_sink::NamespaceSinkKey,
 	};
-	use reifydb_engine::test_harness::create_test_admin_transaction;
+	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::multi::RangeScope;
 	use reifydb_value::fragment::Fragment;
 

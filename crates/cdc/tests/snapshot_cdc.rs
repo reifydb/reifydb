@@ -3,8 +3,8 @@
 
 use std::path::Path;
 
-use reifydb_engine::test_harness::TestEngine;
 use reifydb_sqlite::SqliteConfig;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing::testscript::runner::run_path;
 use test_each_file::test_each_path;
 

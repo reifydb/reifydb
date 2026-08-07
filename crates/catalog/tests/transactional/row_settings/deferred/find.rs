@@ -4,7 +4,7 @@
 // A deferred view persists its row TTL in the same create-view commit, so the read contract
 // must hold there too.
 
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{duration::Duration, identity::IdentityId};
 

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb::testing::db::TestDb;
 use reifydb::{RuntimeConfig, embedded};
-use reifydb_test_harness::{assert::FrameAssert, db::TestDb};
+use reifydb_test_harness::assert::FrameAssert;
 
 fn new_db() -> TestDb {
 	TestDb::from(embedded::memory().with_runtime_config(RuntimeConfig::default().seeded(0)).build().expect("build"))

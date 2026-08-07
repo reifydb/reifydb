@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb::core::interface::catalog::binding::{BindingFormat, BindingProtocol, HttpMethod};
-use reifydb_test_harness::db::TestDb;
+use reifydb::testing::db::TestDb;
 
 #[test]
 fn create_binding_propagates_to_materialized_cache() {

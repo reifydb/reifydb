@@ -54,8 +54,8 @@ mod tests {
 		interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 		state::budget::OperatorStateBudgetHandle,
 	};
-	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
+	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::{
 		dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
 		interceptor::interceptors::Interceptors,

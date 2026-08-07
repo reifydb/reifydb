@@ -31,6 +31,7 @@ subtle = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+reifydb-test-harness = { workspace = true }
 reifydb-engine = { workspace = true, features = ["tokio"] }
 reifydb-testing = { workspace = true }
 test_each_file = { workspace = true }

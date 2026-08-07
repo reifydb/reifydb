@@ -3,9 +3,9 @@
 
 use std::{sync::Arc, time::Duration};
 
+use reifydb::testing::db::TestDb;
 use reifydb::{ConfigKey, RuntimeConfig, Value, embedded as db_embedded};
 use reifydb_sub_metrics::accumulator::StatementMetricsAccumulator;
-use reifydb_test_harness::db::TestDb;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 

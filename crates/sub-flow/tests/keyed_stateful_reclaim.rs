@@ -7,6 +7,7 @@
 
 use std::time::Duration as StdDuration;
 
+use reifydb::testing::db::TestDb;
 use reifydb::{ConfigKey, Value, WithSubsystem, embedded};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_core::interface::catalog::flow::OperatorId;
@@ -22,7 +23,6 @@ use reifydb_sdk::{
 	row,
 	state::{RawStatefulOperator, keyed::KeyedStateful},
 };
-use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::{constraint::TypeConstraint, duration::Duration, value_type::ValueType};
 
 const TIMEOUT: StdDuration = StdDuration::from_secs(20);

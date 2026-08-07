@@ -18,7 +18,7 @@ use reifydb_core::{
 	key::{EncodableKey, version_epoch::VersionEpochKey},
 	lifecycle::{gate::RetentionStartupGate, progress::Progress, task::LifecycleTask},
 };
-use reifydb_engine::{engine::StandardEngine, test_harness::TestEngine};
+use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
 	context::clock::Clock,
 	version_epoch::{EpochSeconds, VersionEpoch},
@@ -27,6 +27,7 @@ use reifydb_sub_lifecycle::gc::epoch::{
 	durable::{EpochLogTask, hydrate, hydrate_into},
 	log::EpochLog,
 };
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::value::{duration::Duration, identity::IdentityId, value_type::ValueType};
 

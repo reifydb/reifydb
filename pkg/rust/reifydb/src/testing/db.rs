@@ -11,12 +11,12 @@ use std::{
 	time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use reifydb::{Database, Frame, Result, SqliteConfig, embedded};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_sqlite::SqliteTempPathGuard;
+use reifydb_test_harness::engine::AsEngine;
 use reifydb_value::value::duration::Duration as ValueDuration;
 
-use crate::engine::AsEngine;
+use crate::{Database, Frame, Result, SqliteConfig, embedded};
 
 pub struct TestDb {
 	db: Database,
@@ -125,13 +125,13 @@ impl DerefMut for TestDb {
 }
 
 impl AsEngine for TestDb {
-	fn standard_engine(&self) -> &StandardEngine {
+	fn engine(&self) -> &StandardEngine {
 		self.db.engine()
 	}
 }
 
 impl AsEngine for Database {
-	fn standard_engine(&self) -> &StandardEngine {
+	fn engine(&self) -> &StandardEngine {
 		self.engine()
 	}
 }

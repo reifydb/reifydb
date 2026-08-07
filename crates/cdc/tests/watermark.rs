@@ -13,7 +13,7 @@ use reifydb_core::{
 		cdc::{Cdc, CdcConsumerId, ConsumerClass, SystemChange},
 	},
 };
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	count::Count,

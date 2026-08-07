@@ -8,8 +8,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb::Params;
+use reifydb::testing::db::TestDb;
 use reifydb_core::value::column::columns::Columns;
-use reifydb_test_harness::db::TestDb;
 use reifydb_value::value::{Value, identity::IdentityId};
 
 use crate::common::{drain_after_consumer_caught_up, extract_sub_id};

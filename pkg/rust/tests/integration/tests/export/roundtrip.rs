@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb::testing::db::TestDb;
 use reifydb::{ExportOptions, ObjectKind};
-use reifydb_test_harness::{
-	assert::{assert_same_rows, rows},
-	db::TestDb,
-};
+use reifydb_test_harness::assert::{assert_same_rows, rows};
 
 fn prepare(setup: &str) -> (TestDb, TestDb, String) {
 	let a = TestDb::memory();

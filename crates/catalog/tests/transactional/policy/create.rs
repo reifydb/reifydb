@@ -5,7 +5,7 @@
 // admin-transaction change log, so uncommitted state is cross-checked through
 // `find_policy_by_name` instead.
 
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
 

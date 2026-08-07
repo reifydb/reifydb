@@ -3,8 +3,8 @@
 
 use std::time::Duration as StdDuration;
 
+use reifydb::testing::db::TestDb;
 use reifydb::{WithSubsystem, embedded};
-use reifydb_test_harness::db::TestDb;
 
 const TIMEOUT: StdDuration = StdDuration::from_secs(5);
 const EPOCH: &str = "1970-01-01T00:00:00Z";

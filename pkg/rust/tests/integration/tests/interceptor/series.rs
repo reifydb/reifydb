@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_test_harness::db::TestDb;
+use reifydb::testing::db::TestDb;
 
 #[test]
 fn create_series_propagates_to_materialized_cache() {

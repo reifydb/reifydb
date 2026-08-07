@@ -699,8 +699,8 @@ mod tests {
 		},
 		key::ringbuffer::RingBufferMetadataKey,
 	};
-	use reifydb_engine::test_harness::TestEngine;
 	use reifydb_runtime::version_epoch::EpochSpan;
+	use reifydb_test_harness::engine::TestEngine;
 
 	use super::*;
 

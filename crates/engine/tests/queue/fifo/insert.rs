@@ -3,7 +3,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use reifydb_engine::test_harness::TestEngine;
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
 	change::RowChange,
 	interceptor::{interceptors::Interceptors, transaction::post_commit},

@@ -17,4 +17,5 @@ reifydb-value = { workspace = true }
 rand = { workspace = true }
 
 [dev-dependencies]
-reifydb-test-harness = { workspace = true, features = ["database"] }
+reifydb = { workspace = true, features = ["testing"] }
+reifydb-test-harness = { workspace = true }

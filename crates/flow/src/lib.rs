@@ -23,7 +23,7 @@ pub mod transaction;
 
 #[cfg(all(test, feature = "runtime"))]
 pub(crate) mod test_util {
-	use reifydb_engine::test_harness::TestEngine;
+	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::transaction::admin::AdminTransaction;
 	use reifydb_value::value::identity::IdentityId;
 

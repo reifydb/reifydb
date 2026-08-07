@@ -22,7 +22,7 @@ pub fn password_credentials(identifier: &str, password: &str) -> HashMap<String,
 
 pub fn auth_service(engine: &impl AsEngine) -> AuthServiceFactory {
 	AuthServiceFactory {
-		engine: Arc::new(engine.standard_engine().clone()),
+		engine: Arc::new(engine.engine().clone()),
 		configurator: AuthConfigurator::new(),
 		github_api: None,
 	}
