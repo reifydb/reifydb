@@ -224,7 +224,7 @@ impl FlowActor {
 	}
 
 	fn build_flow_engine(&self) -> FlowEngineInner {
-		let engine = FlowEngineInner::new(
+		FlowEngineInner::new(
 			self.engine.catalog(),
 			self.engine.executor(),
 			self.engine.event_bus().clone(),
@@ -233,8 +233,7 @@ impl FlowActor {
 			self.substrate.clone(),
 			self.operator_samples.clone(),
 			self.state_budget.clone(),
-		);
-		engine
+		)
 	}
 
 	fn register_flow(&self, flow_engine: &mut FlowEngineInner) -> Result<()> {
@@ -853,7 +852,7 @@ impl Actor for FlowActor {
 mod pull_protocol {
 	use std::{
 		collections::{HashMap, VecDeque},
-		ops::Bound,
+		ops::{Bound, RangeInclusive},
 		thread::sleep,
 		time::{Duration as StdDuration, Instant},
 	};
@@ -890,8 +889,8 @@ mod pull_protocol {
 		actor::system::ActorHandle,
 		sync::{mutex::Mutex, waiter::WaiterHandle},
 	};
-	use reifydb_sqlite::SqliteConfig;
-	use reifydb_store_operator::{OperatorStore, snapshot::SnapshotStore};
+	use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
+	use reifydb_store_operator::{snapshot::SnapshotStore, store::OperatorStore};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_testing_flow::state::{State, assert_batch_equivalent};
 	use reifydb_transaction::{
@@ -927,7 +926,7 @@ mod pull_protocol {
 		substrate: FlowSubstrate,
 		health: FlowHealthRegistry,
 		snapshots: Option<FlowSnapshots>,
-		snapshot_guard: Option<reifydb_sqlite::SqliteTempPathGuard>,
+		snapshot_guard: Option<SqliteTempPathGuard>,
 	}
 
 	fn harness() -> Harness {
@@ -2179,7 +2178,7 @@ mod pull_protocol {
 		(reference, checkpoint, actor)
 	}
 
-	fn aggregate_rows(ids: std::ops::RangeInclusive<u32>) -> Vec<String> {
+	fn aggregate_rows(ids: RangeInclusive<u32>) -> Vec<String> {
 		ids.map(|id| format!(r#"INSERT app::t [{{id: {id}, g: {}, ts: "1970-01-01T00:{id:02}:00Z"}}]"#, id % 3))
 			.collect()
 	}

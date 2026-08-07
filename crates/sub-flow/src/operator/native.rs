@@ -41,7 +41,7 @@ use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	operator::{OperatorLogic, timer::Timer as SdkTimer, view::native::NativeChangeView},
 };
-use reifydb_store_operator::FloorSpec;
+use reifydb_store_operator::floor::FloorSpec;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,

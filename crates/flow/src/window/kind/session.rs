@@ -116,10 +116,10 @@ impl SessionKind {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::factory::at_millis;
+	use reifydb_value::factory::time::at_millis;
 
 	use super::*;
-	use crate::factory::event_coord_at_millis;
+	use crate::factory::coord::event_coord_at_millis;
 
 	fn ms(millis: u64) -> Duration {
 		Duration::from_milliseconds_const(millis as i64)

@@ -468,12 +468,12 @@ mod tests {
 	#[test]
 	fn samplers_datetime_range_is_in_bounds() {
 		let s = samplers::datetime_range(
-			DateTime::from_timestamp(1_000).unwrap()..DateTime::from_timestamp(2_000).unwrap(),
+			DateTime::from_epoch_secs(1_000).unwrap()..DateTime::from_epoch_secs(2_000).unwrap(),
 		);
 		let mut rng = StdRng::seed_from_u64(0);
 		for _ in 0..1000 {
 			let secs = match s(&mut rng) {
-				Value::DateTime(dt) => dt.timestamp(),
+				Value::DateTime(dt) => dt.to_epoch_secs(),
 				other => panic!("expected DateTime, got {other:?}"),
 			};
 			assert!((1_000..2_000).contains(&secs), "out of range: {secs}");

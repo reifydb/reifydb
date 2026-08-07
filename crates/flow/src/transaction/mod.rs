@@ -19,7 +19,7 @@ use reifydb_core::{
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_runtime::context::clock::Clock;
-use reifydb_store_operator::OperatorStore;
+use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
 	change_accumulator::ChangeAccumulator,
 	dictionary::DictionaryAllocatorRegistry,

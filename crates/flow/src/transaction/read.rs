@@ -5,6 +5,7 @@ use std::{
 	cmp::Ordering,
 	collections, iter,
 	ops::{
+		Bound,
 		Bound::{Excluded, Included, Unbounded},
 		RangeBounds,
 	},
@@ -26,7 +27,7 @@ use reifydb_core::{
 	},
 	key::{Key, kind::KeyKind, operator_state::OperatorStateKey},
 };
-use reifydb_store_operator::OperatorStore;
+use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
 use vec::IntoIter;
@@ -476,7 +477,7 @@ fn arena_scope(range: &EncodedKeyRange) -> Option<(OperatorId, EncodedKeyRange)>
 	let (operator, _) =
 		operator_state_coordinates(start_key).expect("an OperatorState-routed key must carry an operator id");
 	let prefix = OperatorStateKey::encoded(operator, Vec::<u8>::new());
-	let strip = |bound: std::ops::Bound<&EncodedKey>| match bound {
+	let strip = |bound: Bound<&EncodedKey>| match bound {
 		Included(key) if key.as_slice().starts_with(prefix.as_slice()) => {
 			Included(EncodedKey::new(&key.as_slice()[prefix.len()..]))
 		}
@@ -491,8 +492,8 @@ fn arena_scope(range: &EncodedKeyRange) -> Option<(OperatorId, EncodedKeyRange)>
 struct ArenaRangeIter {
 	store: OperatorStore,
 	operator: OperatorId,
-	end: std::ops::Bound<EncodedKey>,
-	cursor: std::ops::Bound<EncodedKey>,
+	end: Bound<EncodedKey>,
+	cursor: Bound<EncodedKey>,
 	batch_size: u64,
 	buffered: IntoIter<(EncodedKey, EncodedRow)>,
 	exhausted: bool,
@@ -526,7 +527,7 @@ impl Iterator for ArenaRangeIter {
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
 			if let Some((inner_key, row)) = self.buffered.next() {
-				self.cursor = std::ops::Bound::Excluded(inner_key.clone());
+				self.cursor = Bound::Excluded(inner_key.clone());
 				return Some(Ok(MultiVersionRow {
 					key: OperatorStateKey::encoded(self.operator, inner_key.as_slice()),
 					row,

@@ -7,7 +7,7 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
-use reifydb_store_operator::{CompactionOutcome, FloorSpec};
+use reifydb_store_operator::{floor::FloorSpec, store::CompactionOutcome};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},

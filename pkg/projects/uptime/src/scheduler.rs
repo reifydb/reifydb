@@ -94,7 +94,7 @@ fn due(last_checked_at: Option<&DateTime>, interval: &Duration, now_nanos: u64) 
 	let Some(last) = last_checked_at else {
 		return true;
 	};
-	let Ok(last_nanos) = last.timestamp_nanos() else {
+	let Ok(last_nanos) = last.to_epoch_nanos() else {
 		return true;
 	};
 	let interval_nanos = interval.as_nanos().unwrap_or(i64::MAX);

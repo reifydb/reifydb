@@ -296,13 +296,6 @@ impl FlushEngine {
 					read.invalidate(key);
 				}
 			}
-		} else if persistent_object {
-			for (key, _, _) in to_persist {
-				read.invalidate(key);
-			}
-			for evicted in to_drop {
-				read.invalidate(&evicted.key);
-			}
 		} else {
 			for evicted in to_drop {
 				read.invalidate(&evicted.key);

@@ -12,7 +12,7 @@ use reifydb_sqlite::{
 	pragma,
 };
 use reifydb_value::{Result, util::cowvec::CowVec};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, Result as SqliteResult, Transaction as SqliteTransaction, params};
 use xxhash_rust::xxh3::Xxh3;
 
 pub const DEFAULT_SNAPSHOT_CHUNK_BYTES: usize = 1024 * 1024;
@@ -145,7 +145,7 @@ impl SnapshotStore {
 			.map_err(|e| internal_error!("snapshot generation query failed: {}", e))?;
 		let generations = stmt
 			.query_map(params![operator.0 as i64], |row| row.get::<_, i64>(0))
-			.and_then(|rows| rows.collect::<rusqlite::Result<Vec<i64>>>())
+			.and_then(|rows| rows.collect::<SqliteResult<Vec<i64>>>())
 			.map_err(|e| internal_error!("snapshot generation scan failed: {}", e))?;
 		Ok(generations.into_iter().map(|generation| generation as u64).collect())
 	}
@@ -161,7 +161,7 @@ impl SnapshotStore {
 			.map_err(|e| internal_error!("snapshot cursor query failed: {}", e))?;
 		let rows = stmt
 			.query_map(params![operator.0 as i64], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))
-			.and_then(|rows| rows.collect::<rusqlite::Result<Vec<(i64, i64)>>>())
+			.and_then(|rows| rows.collect::<SqliteResult<Vec<(i64, i64)>>>())
 			.map_err(|e| internal_error!("snapshot cursor scan failed: {}", e))?;
 		Ok(rows.into_iter()
 			.map(|(generation, cursor)| (generation as u64, CommitVersion(cursor as u64)))
@@ -176,7 +176,7 @@ impl SnapshotStore {
 			.map_err(|e| internal_error!("snapshot operator query failed: {}", e))?;
 		let operators = stmt
 			.query_map([], |row| row.get::<_, i64>(0))
-			.and_then(|rows| rows.collect::<rusqlite::Result<Vec<i64>>>())
+			.and_then(|rows| rows.collect::<SqliteResult<Vec<i64>>>())
 			.map_err(|e| internal_error!("snapshot operator scan failed: {}", e))?;
 		Ok(operators.into_iter().map(|operator| OperatorId(operator as u64)).collect())
 	}
@@ -226,7 +226,7 @@ impl SnapshotStore {
 			.query_map(params![operator.0 as i64, generation as i64], |row| {
 				Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?))
 			})
-			.and_then(|rows| rows.collect::<rusqlite::Result<Vec<(i64, Vec<u8>)>>>())
+			.and_then(|rows| rows.collect::<SqliteResult<Vec<(i64, Vec<u8>)>>>())
 			.map_err(|e| internal_error!("snapshot chunk scan failed: {}", e))?;
 
 		if chunks.len() as u64 != chunk_count as u64 {
@@ -331,7 +331,7 @@ fn ensure_schema(conn: &Connection) {
 }
 
 fn insert_chunk(
-	txn: &rusqlite::Transaction<'_>,
+	txn: &SqliteTransaction<'_>,
 	operator: i64,
 	generation: u64,
 	seq: u64,

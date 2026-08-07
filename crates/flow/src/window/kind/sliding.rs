@@ -90,7 +90,7 @@ impl SlidingOverRows {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::factory::event_coord_at_millis;
+	use crate::factory::coord::event_coord_at_millis;
 
 	fn ms(millis: u64) -> Duration {
 		Duration::from_milliseconds_const(millis as i64)

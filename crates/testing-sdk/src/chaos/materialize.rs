@@ -317,7 +317,7 @@ mod tests {
 			RowShapeField::unconstrained("window_duration", ValueType::Duration),
 			RowShapeField::unconstrained("v", ValueType::Float8),
 		]);
-		let window_start = DateTime::from_timestamp(1_700_000_000).unwrap();
+		let window_start = DateTime::from_epoch_secs(1_700_000_000).unwrap();
 		let window_duration = Duration::from_seconds(60).unwrap();
 		let row = TestRowBuilder::new(RowNumber(1))
 			.with_shape(s.clone())

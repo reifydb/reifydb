@@ -31,7 +31,7 @@ pub struct TakeRow {
 
 impl TakeRow {
 	fn at(&self) -> DateTime {
-		DateTime::from_timestamp_millis(BASE_MS + self.number.0).expect("a row stamp is representable")
+		DateTime::from_epoch_millis(BASE_MS + self.number.0).expect("a row stamp is representable")
 	}
 
 	/// The row number as it is carried in the identity column. i32 is wide enough: a sweep runs tens

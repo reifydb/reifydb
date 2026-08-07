@@ -66,6 +66,18 @@ impl ObjectId {
 	pub fn queue(id: impl Into<QueueId>) -> Self {
 		Self::Queue(id.into())
 	}
+
+	pub fn to_u64(self) -> u64 {
+		match self {
+			ObjectId::Table(id) => id.0,
+			ObjectId::View(id) => id.0,
+			ObjectId::TableVirtual(id) => id.0,
+			ObjectId::RingBuffer(id) => id.0,
+			ObjectId::Dictionary(id) => id.0,
+			ObjectId::Series(id) => id.0,
+			ObjectId::Queue(id) => id.0,
+		}
+	}
 }
 
 impl From<TableId> for ObjectId {

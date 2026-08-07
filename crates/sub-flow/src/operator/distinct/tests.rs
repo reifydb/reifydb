@@ -3,7 +3,7 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use reifydb_codec::key::encoded::EncodedKeyRange;
+use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -16,7 +16,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
+		operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
 		operator_state::OperatorStateKey,
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -140,10 +140,8 @@ fn erase_group_data(op: &DistinctOperator, txn: &mut FlowTransaction, group: Gro
 		if let Some((found, keyspace, _)) = OperatorGroupStateKey::decode_inner(&inner.key)
 			&& found == group && keyspace.is_data()
 		{
-			let key = reifydb_core::key::operator_group_state::GroupStateKey::from_framed(
-				reifydb_codec::key::encoded::EncodedKey::new(inner.key.clone()),
-			)
-			.expect("distinct state rows carry a framed inner key");
+			let key = GroupStateKey::from_framed(EncodedKey::new(inner.key.clone()))
+				.expect("distinct state rows carry a framed inner key");
 			txn.state_remove(op.id(), &key).unwrap();
 			erased += 1;
 		}

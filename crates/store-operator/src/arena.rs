@@ -267,10 +267,10 @@ impl ArenaInner {
 		loop {
 			let mut min_key: Option<&EncodedKey> = None;
 			for cursor in cursors.iter_mut() {
-				if let Some(key) = cursor.peek().map(|(key, _)| *key) {
-					if min_key.is_none_or(|current| key < current) {
-						min_key = Some(key);
-					}
+				if let Some(key) = cursor.peek().map(|(key, _)| *key)
+					&& min_key.is_none_or(|current| key < current)
+				{
+					min_key = Some(key);
 				}
 			}
 			let Some(key) = min_key else {
@@ -312,10 +312,10 @@ fn merge(inputs: Vec<Batch>, merging_oldest: bool, floor: &FloorSpec) -> (Batch,
 	loop {
 		let mut min_key: Option<EncodedKey> = None;
 		for cursor in cursors.iter_mut() {
-			if let Some((key, _)) = cursor.peek() {
-				if min_key.as_ref().is_none_or(|current| key < current) {
-					min_key = Some(key.clone());
-				}
+			if let Some((key, _)) = cursor.peek()
+				&& min_key.as_ref().is_none_or(|current| key < current)
+			{
+				min_key = Some(key.clone());
 			}
 		}
 		let Some(key) = min_key else {

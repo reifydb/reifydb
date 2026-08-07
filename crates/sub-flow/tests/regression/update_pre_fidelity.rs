@@ -65,7 +65,7 @@ fn source() -> OperatorCell {
 }
 
 fn row(number: u64, group: i32, value: i64) -> reifydb_core::row::Row {
-	let at = DateTime::from_timestamp_millis(BASE_MS + number).expect("a row stamp is representable");
+	let at = DateTime::from_epoch_millis(BASE_MS + number).expect("a row stamp is representable");
 	generator::row(RowNumber(number), group, value, at)
 }
 

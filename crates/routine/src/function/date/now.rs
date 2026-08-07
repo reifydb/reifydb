@@ -46,7 +46,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateNow {
 		let row_count = args.row_count().max(1);
 
 		let millis = ctx.runtime_context.clock.now().to_millis();
-		let dt = DateTime::from_timestamp_millis(millis)?;
+		let dt = DateTime::from_epoch_millis(millis)?;
 		let date = dt.date();
 
 		let mut container = TemporalContainer::with_capacity(row_count);

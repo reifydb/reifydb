@@ -50,7 +50,7 @@ impl EpochSeconds {
 	}
 
 	pub fn from_datetime(at: DateTime) -> Self {
-		Self(at.timestamp().max(0) as u64)
+		Self(at.to_epoch_secs().max(0) as u64)
 	}
 
 	pub fn to_datetime(self) -> DateTime {

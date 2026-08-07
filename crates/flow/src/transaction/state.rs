@@ -17,7 +17,7 @@ use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
-use super::FlowTransaction;
+use super::{FlowTransaction, substrate::operator_state_coordinates};
 
 impl FlowTransaction {
 	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
@@ -276,7 +276,7 @@ impl FlowTransaction {
 			inner.store_reads += to_batch.len() as u64;
 			let version = inner.version;
 			for encoded_key in to_batch {
-				let (operator, inner_key) = super::substrate::operator_state_coordinates(encoded_key)
+				let (operator, inner_key) = operator_state_coordinates(encoded_key)
 					.expect("state_get_many keys must carry an operator id");
 				match inner.substrate.operators.get(operator, &inner_key) {
 					Some(row) => {

@@ -576,7 +576,7 @@ struct WithDateTime {
 
 #[test]
 fn test_datetime_type() {
-	let dt = DateTime::from_timestamp(1700000000).unwrap();
+	let dt = DateTime::from_epoch_secs(1700000000).unwrap();
 	let frame = frame(vec![int8_column("id", vec![1]), datetime_column("timestamp", vec![dt])]);
 
 	let items: Vec<WithDateTime> = WithDateTime::from_frame(&frame).unwrap();

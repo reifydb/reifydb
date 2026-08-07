@@ -1037,7 +1037,7 @@ mod tests {
 		engine::{is_sealed, seal_horizon},
 		span::WindowCoord,
 	};
-	use reifydb_value::{factory::at_millis, value::duration::Duration};
+	use reifydb_value::{factory::time::at_millis, value::duration::Duration};
 
 	use super::SealPolicy;
 

@@ -199,6 +199,29 @@ pub fn bootstrap_system_procedures(
 			native_name: "system::config::set".to_string(),
 		},
 		EphemeralProcedureDescriptor::Native {
+			namespace: ensure_namespace(
+				&catalog_api,
+				&mut admin,
+				NamespaceId::SYSTEM_SOURCE,
+				"system::source",
+				"source",
+				NamespaceId::SYSTEM,
+			)?,
+			name: "complete_through".to_string(),
+			params: vec![
+				ProcedureParam {
+					name: "objects".to_string(),
+					param_type: TypeConstraint::unconstrained(ValueType::Any),
+				},
+				ProcedureParam {
+					name: "complete_through".to_string(),
+					param_type: TypeConstraint::unconstrained(ValueType::DateTime),
+				},
+			],
+			return_type: None,
+			native_name: "system::source::complete_through".to_string(),
+		},
+		EphemeralProcedureDescriptor::Native {
 			namespace: rql_namespace,
 			name: "tokenize".to_string(),
 			params: vec![rql_query_param()],

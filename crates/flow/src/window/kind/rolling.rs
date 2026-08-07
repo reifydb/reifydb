@@ -61,7 +61,7 @@ impl RollingOverRows {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::factory::at_millis;
+	use reifydb_value::factory::time::at_millis;
 
 	use super::*;
 

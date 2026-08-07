@@ -112,7 +112,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFromEpoch {
 						),
 					});
 				}
-				match DateTime::from_timestamp(ts) {
+				match DateTime::from_epoch_secs(ts) {
 					Ok(dt) => container.push(dt),
 					Err(_) => container.push_default(),
 				}

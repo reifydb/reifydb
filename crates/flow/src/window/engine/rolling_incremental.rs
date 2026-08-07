@@ -355,7 +355,7 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::state::{budget::OperatorStateBudgetHandle, store::StateStore};
-	use reifydb_value::{factory::at_millis, value::datetime::DateTime};
+	use reifydb_value::{factory::time::at_millis, value::datetime::DateTime};
 
 	use crate::window::{
 		accumulator::WindowAccumulator,

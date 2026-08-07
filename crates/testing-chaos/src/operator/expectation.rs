@@ -268,7 +268,7 @@ mod tests {
 					("g".to_string(), Value::Int4(*g)),
 					("total".to_string(), Value::Int4(*total)),
 				])
-				.at(DateTime::from_timestamp_millis(*at).ok()),
+				.at(DateTime::from_epoch_millis(*at).ok()),
 			);
 		}
 		v

@@ -261,7 +261,7 @@ mod tests {
 	use super::*;
 
 	fn datetime() -> DateTime {
-		DateTime::from_timestamp(1_700_000_000).unwrap()
+		DateTime::from_epoch_secs(1_700_000_000).unwrap()
 	}
 
 	#[test]

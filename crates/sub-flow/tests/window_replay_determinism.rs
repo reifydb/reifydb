@@ -39,7 +39,7 @@ use reifydb_sub_flow::{
 };
 use reifydb_testing_flow::{generator, harness::Harness};
 use reifydb_value::{
-	factory::at_millis,
+	factory::time::at_millis,
 	value::{duration::Duration, row_number::RowNumber},
 };
 

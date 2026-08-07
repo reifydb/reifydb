@@ -48,7 +48,7 @@ pub struct SourceRow {
 
 impl SourceRow {
 	fn at(&self) -> DateTime {
-		DateTime::from_timestamp_millis(BASE_MS + self.number.0).expect("a row stamp is representable")
+		DateTime::from_epoch_millis(BASE_MS + self.number.0).expect("a row stamp is representable")
 	}
 }
 

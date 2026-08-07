@@ -670,8 +670,8 @@ pub mod tests {
 
 	#[test]
 	fn test_datetime() {
-		let dt1 = DateTime::from_timestamp(1672531200).unwrap(); // 2023-01-01 00:00:00 SVTC
-		let dt2 = DateTime::from_timestamp(1704067200).unwrap(); // 2024-01-01 00:00:00 SVTC
+		let dt1 = DateTime::from_epoch_secs(1672531200).unwrap(); // 2023-01-01 00:00:00 SVTC
+		let dt2 = DateTime::from_epoch_secs(1704067200).unwrap(); // 2024-01-01 00:00:00 SVTC
 		let mut col = ColumnBuffer::datetime(vec![dt1]);
 		col.push_value(Value::DateTime(dt2));
 		let ColumnBuffer::DateTime(container) = col else {
@@ -682,7 +682,7 @@ pub mod tests {
 
 	#[test]
 	fn test_undefined_datetime() {
-		let dt1 = DateTime::from_timestamp(1672531200).unwrap();
+		let dt1 = DateTime::from_epoch_secs(1672531200).unwrap();
 		let mut col = ColumnBuffer::datetime(vec![dt1]);
 		col.push_value(Value::none());
 		assert_eq!(col.len(), 2);
@@ -692,7 +692,7 @@ pub mod tests {
 
 	#[test]
 	fn test_push_value_to_none_datetime() {
-		let dt = DateTime::from_timestamp(1672531200).unwrap();
+		let dt = DateTime::from_epoch_secs(1672531200).unwrap();
 		let mut col = ColumnBuffer::none_typed(ValueType::Boolean, 1);
 		col.push_value(Value::DateTime(dt));
 		assert_eq!(col.len(), 2);

@@ -14,7 +14,7 @@ use reifydb_testing_sdk::chaos::{
 	schema::KeyStrategy,
 	strategy::{ColumnSampler, samplers},
 };
-use reifydb_value::{factory::millis, value::Value};
+use reifydb_value::{factory::time::millis, value::Value};
 
 use super::common::{self, TwapCarry};
 

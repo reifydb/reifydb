@@ -14,9 +14,15 @@ use reifydb_catalog::{
 };
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_extension::transform::registry::Transforms;
+#[cfg(test)]
+use reifydb_routine::{
+	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
+};
 use reifydb_routine_abi::{Procedure, registry::Routines};
 use reifydb_rql::compiler::Compiler;
 use reifydb_runtime::context::RuntimeContext;
+#[cfg(test)]
+use reifydb_runtime::context::clock::Clock;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::sumtype::VariantRef;
@@ -87,12 +93,6 @@ impl Services {
 
 	#[cfg(test)]
 	pub fn testing() -> Arc<Self> {
-		use reifydb_routine::{
-			function::default_native_functions, monoid::default_native_monoids,
-			procedure::default_native_procedures,
-		};
-		use reifydb_runtime::context::clock::Clock;
-
 		let store = SingleStore::testing_memory();
 
 		let routines_builder = Routines::builder();

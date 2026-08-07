@@ -375,7 +375,7 @@ mod tests {
 		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_value::{
-		factory::at_millis,
+		factory::time::at_millis,
 		value::{datetime::DateTime, row_number::RowNumber},
 	};
 

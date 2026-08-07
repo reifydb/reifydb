@@ -78,7 +78,7 @@ fn test_mixed_type_stress() {
 	shape.set_utf8(&mut row, 13, "stress test 🎭");
 	shape.set_blob(&mut row, 14, &Blob::from(vec![0, 255, 127, 128]));
 	shape.set::<Date>(&mut row, 15, Date::from_ymd(2024, 12, 25).unwrap());
-	shape.set::<DateTime>(&mut row, 16, DateTime::from_timestamp(0).unwrap());
+	shape.set::<DateTime>(&mut row, 16, DateTime::from_epoch_secs(0).unwrap());
 	shape.set::<Time>(&mut row, 17, Time::from_hms(23, 59, 59).unwrap());
 	shape.set::<Duration>(&mut row, 18, Duration::from_days(365).unwrap());
 	shape.set::<Uuid4>(&mut row, 19, Uuid4::generate());
@@ -104,7 +104,7 @@ fn test_mixed_type_stress() {
 	assert_eq!(shape.get_utf8(&row, 13), "stress test 🎭");
 	assert_eq!(shape.get_blob(&row, 14), Blob::from(vec![0, 255, 127, 128]));
 	assert_eq!(shape.get::<Date>(&row, 15), Date::from_ymd(2024, 12, 25).unwrap());
-	assert_eq!(shape.get::<DateTime>(&row, 16), DateTime::from_timestamp(0).unwrap());
+	assert_eq!(shape.get::<DateTime>(&row, 16), DateTime::from_epoch_secs(0).unwrap());
 	assert_eq!(shape.get::<Time>(&row, 17), Time::from_hms(23, 59, 59).unwrap());
 	assert_eq!(shape.get::<Duration>(&row, 18), Duration::from_days(365).unwrap());
 	// The uuid values are generated, so only their presence can be asserted.

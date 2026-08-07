@@ -254,7 +254,7 @@ impl EncodedRow {
 mod tests {
 	use reifydb_value::{
 		encoding::LeBytes,
-		factory::at_nanos,
+		factory::time::at_nanos,
 		value::{datetime::DateTime, value_type::ValueType},
 	};
 

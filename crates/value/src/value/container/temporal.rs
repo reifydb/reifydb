@@ -269,8 +269,8 @@ pub mod tests {
 	#[test]
 	fn test_datetime_container() {
 		let datetimes = vec![
-			DateTime::from_timestamp(1000000000).unwrap(),
-			DateTime::from_timestamp(2000000000).unwrap(),
+			DateTime::from_epoch_secs(1000000000).unwrap(),
+			DateTime::from_epoch_secs(2000000000).unwrap(),
 		];
 		let container = TemporalContainer::from_vec(datetimes.clone());
 

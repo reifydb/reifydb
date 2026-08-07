@@ -6,5 +6,3 @@
 //! the type cannot carry it.
 
 pub mod time;
-
-pub use time::{at_millis, at_nanos, millis, secs};

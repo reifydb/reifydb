@@ -34,7 +34,7 @@ use reifydb_sub_flow::{
 };
 use reifydb_testing_flow::{generator, harness::Harness};
 use reifydb_value::{
-	factory::at_millis,
+	factory::time::at_millis,
 	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
 
@@ -72,7 +72,7 @@ fn harness(kind: WindowKind) -> Harness<WindowOperator> {
 }
 
 fn row(number: u64) -> reifydb_core::row::Row {
-	let at = DateTime::from_timestamp_millis(BASE_MS + number).expect("a row stamp is representable");
+	let at = DateTime::from_epoch_millis(BASE_MS + number).expect("a row stamp is representable");
 	generator::row(RowNumber(number), GROUP, 1, at)
 }
 

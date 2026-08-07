@@ -106,6 +106,6 @@ mod tests {
 		assert_eq!(clock.now().to_nanos(), 1_234_567_890_123_456_789);
 		assert_eq!(clock.now().to_micros(), 1_234_567_890_123_456);
 		assert_eq!(clock.now().to_millis(), 1_234_567_890_123);
-		assert_eq!(clock.now().timestamp(), 1_234_567_890);
+		assert_eq!(clock.now().to_epoch_secs(), 1_234_567_890);
 	}
 }

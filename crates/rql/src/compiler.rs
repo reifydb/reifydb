@@ -855,8 +855,19 @@ impl InstructionCompiler {
 				}
 			}
 
-			Expression::List(_) => {
-				self.emit(Instruction::PushNone);
+			Expression::List(l) => {
+				let constants: Option<Vec<Value>> = l
+					.expressions
+					.iter()
+					.map(|expression| match expression {
+						Expression::Constant(c) => Some(c.to_value()),
+						_ => None,
+					})
+					.collect();
+				match constants {
+					Some(values) => self.emit(Instruction::PushConst(Value::List(values))),
+					None => self.emit(Instruction::PushNone),
+				};
 			}
 			Expression::Map(m) => {
 				if m.expressions.len() == 1 {

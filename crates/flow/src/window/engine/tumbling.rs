@@ -405,7 +405,7 @@ mod tests {
 		state::{budget::OperatorStateBudgetHandle, cache::StateView},
 	};
 	use reifydb_macro::operator_state;
-	use reifydb_value::{Result, count::Count, factory::at_millis, value::datetime::DateTime};
+	use reifydb_value::{Result, count::Count, factory::time::at_millis, value::datetime::DateTime};
 
 	use crate::window::{
 		accumulator::WindowAccumulator,

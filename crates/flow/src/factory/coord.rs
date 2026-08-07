@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::factory::at_millis;
+use reifydb_value::factory::time::at_millis;
 
 use crate::window::coord::EventCoord;
 
@@ -11,7 +11,7 @@ pub fn event_coord_at_millis(value: u64) -> EventCoord {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::factory::at_nanos;
+	use reifydb_value::factory::time::at_nanos;
 
 	use super::*;
 

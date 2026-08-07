@@ -286,7 +286,7 @@ fn marshal_column_data_bytes_to_buf(buf: &mut Vec<u8>, data: &ColumnBuffer) -> (
 		}
 		ColumnBuffer::DateTime(container) => {
 			let datetimes: &[DateTime] = container;
-			let encoded: Vec<i64> = datetimes.iter().map(|dt| dt.timestamp()).collect();
+			let encoded: Vec<i64> = datetimes.iter().map(|dt| dt.to_epoch_secs()).collect();
 			marshal_numeric_to_buf(buf, &encoded)
 		}
 		ColumnBuffer::Time(container) => {
@@ -615,7 +615,8 @@ fn unmarshal_datetime(data: &[u8], row_count: usize) -> TemporalContainer<DateTi
 	unsafe {
 		ptr::copy_nonoverlapping(data.as_ptr(), raw.as_mut_ptr() as *mut u8, count * size_of::<i64>());
 	}
-	let datetimes: Vec<DateTime> = raw.iter().map(|&ts| DateTime::from_timestamp(ts).unwrap_or_default()).collect();
+	let datetimes: Vec<DateTime> =
+		raw.iter().map(|&ts| DateTime::from_epoch_secs(ts).unwrap_or_default()).collect();
 	TemporalContainer::new(datetimes)
 }
 

@@ -29,7 +29,7 @@ use reifydb_flow::{
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_store_operator::FloorSpec;
+use reifydb_store_operator::floor::FloorSpec;
 use reifydb_value::{
 	Result, reifydb_assertions,
 	util::hash::Hash128,
@@ -201,7 +201,7 @@ impl WindowOperator {
 		Ok((0..row_count)
 			.map(|i| {
 				columns.time().get(i).map_or(DateTime::default(), |dt| {
-					<DateTime as WindowCoord>::from_order(dt.timestamp_millis() as u64)
+					<DateTime as WindowCoord>::from_order(dt.to_epoch_millis() as u64)
 				})
 			})
 			.collect())

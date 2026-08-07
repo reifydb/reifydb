@@ -24,7 +24,7 @@ pub mod tests {
 
 		assert_eq!(shape.try_get::<DateTime>(&row, 0), None);
 
-		let test_datetime = DateTime::from_timestamp(1642694400).unwrap();
+		let test_datetime = DateTime::from_epoch_secs(1642694400).unwrap();
 		shape.set::<DateTime>(&mut row, 0, test_datetime.clone());
 		assert_eq!(shape.try_get::<DateTime>(&row, 0), Some(test_datetime));
 	}
@@ -54,10 +54,10 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::DateTime]);
 
 		let test_datetimes = [
-			DateTime::from_timestamp(0).unwrap(),          // Unix epoch
-			DateTime::from_timestamp(946684800).unwrap(),  // 2000-01-01
-			DateTime::from_timestamp(1640995200).unwrap(), // 2022-01-01
-			DateTime::from_timestamp(1735689600).unwrap(), // 2025-01-01
+			DateTime::from_epoch_secs(0).unwrap(),          // Unix epoch
+			DateTime::from_epoch_secs(946684800).unwrap(),  // 2000-01-01
+			DateTime::from_epoch_secs(1640995200).unwrap(), // 2022-01-01
+			DateTime::from_epoch_secs(1735689600).unwrap(), // 2025-01-01
 		];
 
 		for datetime in test_datetimes {
@@ -129,7 +129,7 @@ pub mod tests {
 		let mut row = shape.allocate();
 
 		// Past i32 seconds since the epoch, which is where a 32-bit timestamp would wrap.
-		let post_2038 = DateTime::from_timestamp(2147483648).unwrap(); // 2038-01-19
+		let post_2038 = DateTime::from_epoch_secs(2147483648).unwrap(); // 2038-01-19
 		shape.set::<DateTime>(&mut row, 0, post_2038.clone());
 		assert_eq!(shape.get::<DateTime>(&row, 0), post_2038);
 	}
@@ -139,7 +139,7 @@ pub mod tests {
 		let shape = RowShape::testing(&[ValueType::DateTime]);
 		let mut row = shape.allocate();
 
-		let far_future = DateTime::from_timestamp(4102444800).unwrap(); // 2100-01-01
+		let far_future = DateTime::from_epoch_secs(4102444800).unwrap(); // 2100-01-01
 		shape.set::<DateTime>(&mut row, 0, far_future.clone());
 		assert_eq!(shape.get::<DateTime>(&row, 0), far_future);
 	}

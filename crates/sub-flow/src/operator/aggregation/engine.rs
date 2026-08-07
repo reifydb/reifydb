@@ -266,10 +266,7 @@ mod bucket_start_tests {
 		// max-contributor stamp would vary with arrival and change retention decisions.
 		let bucket = 1_700_000_000_000u64;
 
-		assert_eq!(
-			<DateTime as WindowCoord>::from_order(bucket),
-			DateTime::from_timestamp_millis(bucket).unwrap()
-		);
+		assert_eq!(<DateTime as WindowCoord>::from_order(bucket), DateTime::from_epoch_millis(bucket).unwrap());
 		assert_eq!(
 			<DateTime as WindowCoord>::from_order(bucket),
 			<DateTime as WindowCoord>::from_order(bucket),

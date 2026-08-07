@@ -631,6 +631,13 @@ impl Value {
 			Value::Tuple(items) => ValueType::Tuple(items.iter().map(|v| v.get_type()).collect()),
 		}
 	}
+
+	pub fn unwrap_any(&self) -> &Value {
+		match self {
+			Value::Any(inner) => inner.unwrap_any(),
+			other => other,
+		}
+	}
 }
 
 #[cfg(test)]

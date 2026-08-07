@@ -30,7 +30,7 @@ use reifydb_testing_sdk::{
 	harness::FFIOperatorHarnessBuilder,
 };
 use reifydb_value::{
-	factory::millis,
+	factory::time::millis,
 	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
 };
 

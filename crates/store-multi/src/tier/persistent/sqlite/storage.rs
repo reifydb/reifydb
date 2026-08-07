@@ -12,7 +12,12 @@ use std::{
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{common::CommitVersion, error::diagnostic::internal::internal, interface::store::EntryKind};
+#[cfg(test)]
+use reifydb_core::metrics::scan::ScanCounters;
+use reifydb_core::{
+	common::CommitVersion, error::diagnostic::internal::internal, interface::store::EntryKind,
+	metrics::scan::record_page,
+};
 use reifydb_runtime::{
 	shutdown::Shutdown,
 	sync::{
@@ -643,10 +648,7 @@ impl SqlitePersistentStorage {
 		};
 		let page_was_full = raw.len() >= req.batch_size;
 		let last_scanned = raw.last().map(|e| e.key.clone());
-		reifydb_core::metrics::scan::record_page(
-			raw.len() as u64,
-			raw.iter().filter(|e| e.value.is_none()).count() as u64,
-		);
+		record_page(raw.len() as u64, raw.iter().filter(|e| e.value.is_none()).count() as u64);
 		let entries: Vec<RawEntry> = raw.into_iter().filter(|e| req.scope.contains(e.version)).collect();
 
 		if !page_was_full {
@@ -1112,7 +1114,7 @@ mod tests {
 		s.set(CommitVersion(3), HashMap::from([(table(), vec![(key(200), Some(row(b"alive")))])])).unwrap();
 		assert_eq!(s.count_current(table()).unwrap(), 51, "precondition: 50 tombstones are physically present");
 
-		let before = reifydb_core::metrics::scan::ScanCounters::sample();
+		let before = ScanCounters::sample();
 		let mut cursor = RangeCursor::default();
 		let batch = s
 			.range_next(

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{Arc, atomic::AtomicU64};
+use std::sync::{
+	Arc,
+	atomic::{AtomicU64, Ordering},
+};
 
 use reifydb_codec::{
 	encoded::row::EncodedRow,
@@ -156,7 +159,7 @@ impl OperatorStore {
 	}
 
 	pub fn total_bytes(&self) -> u64 {
-		self.inner.total_bytes.load(std::sync::atomic::Ordering::Relaxed)
+		self.inner.total_bytes.load(Ordering::Relaxed)
 	}
 
 	pub fn drop_arena(&self, operator: OperatorId) {

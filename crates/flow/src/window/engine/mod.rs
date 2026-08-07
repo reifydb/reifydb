@@ -878,7 +878,7 @@ mod archived_projection_tests {
 		// rather than derived, so the archive is checked against meaning, not another implementation.
 		let millis = 1_700_000_000_123u64;
 		let datetime_meta = GroupMeta {
-			high_water: Some(DateTime::from_timestamp_millis(millis).unwrap()),
+			high_water: Some(DateTime::from_epoch_millis(millis).unwrap()),
 		};
 		assert_eq!(
 			via_archive(&datetime_meta),

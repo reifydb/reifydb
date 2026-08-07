@@ -27,7 +27,7 @@ use reifydb_flow::{
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_store_operator::{CompactionOutcome, FloorSpec};
+use reifydb_store_operator::{floor::FloorSpec, store::CompactionOutcome};
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,

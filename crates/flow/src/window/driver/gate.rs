@@ -92,7 +92,7 @@ impl EvictionGate {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::factory::at_millis;
+	use reifydb_value::factory::time::at_millis;
 
 	use super::*;
 	use crate::window::engine::test_support::{MockStore, RecordedTimer};

@@ -1040,7 +1040,7 @@ mod tests {
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{key::operator_group_state::GroupId, state::budget::OperatorStateBudgetHandle};
 	use reifydb_value::{
-		factory::{at_millis, millis},
+		factory::time::{at_millis, millis},
 		value::datetime::DateTime,
 	};
 

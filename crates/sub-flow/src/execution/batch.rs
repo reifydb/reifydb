@@ -6,16 +6,22 @@ use std::collections::{BTreeMap, HashMap};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::flow::{FlowId, OperatorId},
-		change::Change,
+		catalog::{
+			flow::{FlowId, OperatorId},
+			object::ObjectId,
+		},
+		change::{Change, ChangeOrigin},
 	},
 };
 use reifydb_flow::transaction::{ChangeCoordinate, FlowTransaction};
 use reifydb_rql::flow::flow::FlowDag;
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{
+	Result, reifydb_assertions,
+	value::{Value, datetime::DateTime},
+};
 use tracing::{Span, field, instrument};
 
-use crate::{engine::FlowEngineInner, operator::max_input_time};
+use crate::{engine::FlowEngineInner, execution::COMPLETENESS_OBJECT, operator::max_input_time};
 
 impl FlowEngineInner {
 	#[instrument(name = "flow::engine::process", level = "debug", skip(self, txn, change), fields(
@@ -72,7 +78,12 @@ impl FlowEngineInner {
 		topo: &[OperatorId],
 	) -> Result<u32> {
 		let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
+		let mut asserted: BTreeMap<u64, DateTime> = BTreeMap::new();
 		for change in version_changes {
+			if change.origin == ChangeOrigin::Object(COMPLETENESS_OBJECT) {
+				collect_completeness(&change, &mut asserted);
+				continue;
+			}
 			self.seed_entry_nodes(flow, flow_id, change, &mut pending);
 		}
 
@@ -81,12 +92,13 @@ impl FlowEngineInner {
 			.copied()
 			.filter(|id| flow.get_operator(id).is_some_and(|operator| operator.ty.declares_time()))
 			.collect();
-		let arrivals: Vec<(OperatorId, DateTime)> = pending
+		let mut arrivals: Vec<(OperatorId, DateTime)> = pending
 			.iter()
 			.filter_map(|(operator_id, changes)| {
 				changes.iter().filter_map(max_input_time).max().map(|at| (*operator_id, at))
 			})
 			.collect();
+		arrivals.extend(completeness_arrivals(&self.sources, flow_id, &asserted));
 		freeze_arrival_frontier(txn, &sources, &arrivals)?;
 
 		let mut nodes_processed = self.run_topology(txn, flow, pending, topo)?;
@@ -143,6 +155,67 @@ impl FlowEngineInner {
 	}
 }
 
+fn completeness_arrivals(
+	sources: &BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
+	flow_id: FlowId,
+	asserted: &BTreeMap<u64, DateTime>,
+) -> Vec<(OperatorId, DateTime)> {
+	let mut out = Vec::new();
+	for (object, at) in asserted {
+		let resolved: Vec<&Vec<(FlowId, OperatorId)>> = sources
+			.iter()
+			.filter_map(|(source, registrations)| (*source == *object).then_some(registrations))
+			.collect();
+
+		reifydb_assertions! {
+			assert!(
+				resolved.len() <= 1,
+				"every source id is drawn from one sequence, so {object} must name at most \
+				 one object; advancing the wrong source is irreversible"
+			);
+		}
+
+		for registrations in resolved {
+			for (registered_flow_id, operator_id) in registrations {
+				if *registered_flow_id == flow_id {
+					out.push((*operator_id, *at));
+				}
+			}
+		}
+	}
+	out
+}
+
+fn collect_completeness(change: &Change, asserted: &mut BTreeMap<u64, DateTime>) {
+	for diff in change.diffs.iter() {
+		let Some(columns) = diff.post() else {
+			continue;
+		};
+		let (Some(objects), Some(instants)) = (columns.column("object_id"), columns.column("complete_through"))
+		else {
+			continue;
+		};
+		for row in 0..columns.row_count() {
+			let (Value::Uint8(object), Value::DateTime(at)) =
+				(objects.data().get_value(row), instants.data().get_value(row))
+			else {
+				continue;
+			};
+
+			reifydb_assertions! {
+				assert!(
+					!asserted.contains_key(&object),
+					"the table holds one row per object, so {object} must not assert twice \
+					 in one version"
+				);
+			}
+
+			let slot = asserted.entry(object).or_insert(at);
+			*slot = (*slot).max(at);
+		}
+	}
+}
+
 fn freeze_arrival_frontier(
 	txn: &mut FlowTransaction,
 	sources: &[OperatorId],
@@ -162,14 +235,44 @@ fn freeze_arrival_frontier(
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_runtime::context::clock::{Clock, MockClock};
+	use reifydb_core::{
+		common::TimeDomain,
+		interface::{
+			WithEventBus,
+			catalog::id::{SeriesId, TableId},
+			change::Diff,
+		},
+		state::budget::OperatorStateBudgetHandle,
+		value::column::columns::Columns,
+	};
+	use reifydb_flow::transaction::substrate::FlowSubstrate;
+	use reifydb_rql::flow::operator::{FlowNode, OperatorDef};
+	use reifydb_runtime::context::{
+		RuntimeContext,
+		clock::{Clock, MockClock},
+	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_value::{factory::at_millis, value::identity::IdentityId};
+	use reifydb_value::{factory::time::at_millis, value::identity::IdentityId};
+	use smallvec::smallvec;
 
 	use super::*;
+	use crate::{builder::CustomOperators, operator::metrics::OperatorSampleRegistry};
 
 	const SOURCE: OperatorId = OperatorId(1);
+
+	fn completeness_change(rows: &[(u64, DateTime)]) -> Change {
+		let post = Columns::from_rows(
+			&["object_id", "complete_through"],
+			&rows.iter().map(|(o, at)| vec![Value::Uint8(*o), Value::DateTime(*at)]).collect::<Vec<_>>(),
+		);
+		Change {
+			origin: ChangeOrigin::Object(COMPLETENESS_OBJECT),
+			version: CommitVersion(1),
+			diffs: smallvec![Diff::insert(post)],
+			changed_at: DateTime::default(),
+		}
+	}
 
 	fn deferred(engine: &TestEngine) -> FlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
@@ -181,6 +284,124 @@ mod tests {
 			Interceptors::new(),
 			Clock::Mock(MockClock::from_millis(0)),
 		)
+	}
+
+	#[test]
+	fn an_assertion_is_read_from_the_post_image() {
+		let mut asserted = BTreeMap::new();
+
+		collect_completeness(&completeness_change(&[(7, at_millis(9_000))]), &mut asserted);
+
+		assert_eq!(asserted, BTreeMap::from([(7u64, at_millis(9_000))]));
+	}
+
+	#[test]
+	fn a_deleted_completeness_row_asserts_nothing() {
+		// A watermark never retracts, so a delete must not be read as an assertion of its old value.
+		let pre = Columns::from_rows(
+			&["object_id", "complete_through"],
+			&[vec![Value::Uint8(7), Value::DateTime(at_millis(9_000))]],
+		);
+		let change = Change {
+			origin: ChangeOrigin::Object(COMPLETENESS_OBJECT),
+			version: CommitVersion(1),
+			diffs: smallvec![Diff::remove(pre)],
+			changed_at: DateTime::default(),
+		};
+		let mut asserted = BTreeMap::new();
+
+		collect_completeness(&change, &mut asserted);
+
+		assert!(asserted.is_empty());
+	}
+
+	#[test]
+	fn an_assertion_resolves_across_object_kinds_and_only_for_the_asserting_flow() {
+		// The column carries no kind, so a resolver keyed on TableId alone never finds a Series.
+		let sources = BTreeMap::from([(
+			ObjectId::Series(SeriesId(9)),
+			vec![(FlowId(1), OperatorId(3)), (FlowId(2), OperatorId(4))],
+		)]);
+		let asserted = BTreeMap::from([(9u64, at_millis(9_000))]);
+
+		let arrivals = completeness_arrivals(&sources, FlowId(1), &asserted);
+
+		assert_eq!(arrivals, vec![(OperatorId(3), at_millis(9_000))]);
+	}
+
+	#[test]
+	fn an_assertion_for_an_object_this_flow_does_not_read_yields_no_arrival() {
+		let sources = BTreeMap::from([(ObjectId::Table(TableId(5)), vec![(FlowId(2), OperatorId(4))])]);
+		let asserted = BTreeMap::from([(5u64, at_millis(9_000))]);
+
+		let arrivals = completeness_arrivals(&sources, FlowId(1), &asserted);
+
+		assert!(arrivals.is_empty());
+	}
+
+	#[test]
+	fn process_version_folds_an_assertion_into_the_frontier() {
+		// Without the fold reaching freeze_arrival_frontier the assertion is decoded and discarded.
+		let engine = TestEngine::new();
+		let mut inner = FlowEngineInner::new(
+			engine.catalog(),
+			engine.executor(),
+			engine.event_bus().clone(),
+			RuntimeContext::with_clock(engine.clock().clone()),
+			CustomOperators::new(HashMap::new()),
+			FlowSubstrate::default(),
+			OperatorSampleRegistry::new(),
+			OperatorStateBudgetHandle::default(),
+		);
+		let mut builder = FlowDag::builder(FlowId(1));
+		builder.add_node(FlowNode::new(
+			SOURCE,
+			OperatorDef::SourceSeries {
+				series: SeriesId(9),
+				time_domain: TimeDomain::None,
+			},
+		));
+		let flow = builder.build();
+		inner.register_flow_dag(flow.clone());
+		inner.sources.insert(ObjectId::Series(SeriesId(9)), vec![(FlowId(1), SOURCE)]);
+
+		let mut txn = deferred(&engine);
+		let topo = flow.topological_order().unwrap();
+		inner.process_version(
+			&mut txn,
+			&flow,
+			FlowId(1),
+			CommitVersion(1),
+			vec![completeness_change(&[(9, at_millis(30_000))])],
+			&topo,
+		)
+		.unwrap();
+
+		let watermarks = txn.source_watermarks();
+		assert_eq!(
+			watermarks.source_watermark(SOURCE, &mut txn).unwrap(),
+			at_millis(30_000),
+			"the assertion must reach the frontier through process_version, not only the helper"
+		);
+	}
+
+	#[test]
+	fn an_assertion_advances_a_source_that_produced_no_rows_in_the_commit() {
+		// A silent source pins the min-merged frontier at the epoch forever without an assertion.
+		let engine = TestEngine::new();
+		let mut txn = deferred(&engine);
+		let sources = BTreeMap::from([(ObjectId::Series(SeriesId(9)), vec![(FlowId(1), SOURCE)])]);
+		let asserted = BTreeMap::from([(9u64, at_millis(30_000))]);
+
+		let arrivals = completeness_arrivals(&sources, FlowId(1), &asserted);
+		freeze_arrival_frontier(&mut txn, &[SOURCE], &arrivals).unwrap();
+
+		let watermarks = txn.source_watermarks();
+		assert_eq!(
+			watermarks.source_watermark(SOURCE, &mut txn).unwrap(),
+			at_millis(30_000),
+			"an assertion with no rows in the commit must still advance the source"
+		);
 	}
 
 	#[test]

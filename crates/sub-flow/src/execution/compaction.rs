@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
-use reifydb_store_operator::{CompactionOutcome, OperatorStore};
+use reifydb_store_operator::store::{CompactionOutcome, OperatorStore};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
@@ -191,7 +191,7 @@ impl FlowEngineInner {
 
 #[cfg(test)]
 mod cadence_tests {
-	use reifydb_value::factory::at_nanos;
+	use reifydb_value::factory::time::at_nanos;
 
 	use super::*;
 

@@ -9,7 +9,7 @@ use reifydb_flow::transaction::FlowTransaction;
 #[cfg(reifydb_target = "native")]
 use reifydb_flow::window::{ledger::read_sealed_through, policy::SealPolicy};
 #[cfg(reifydb_target = "native")]
-use reifydb_store_operator::FloorSpec;
+use reifydb_store_operator::floor::FloorSpec;
 #[cfg(reifydb_target = "native")]
 use reifydb_value::value::duration::Duration;
 use reifydb_value::{Result, value::datetime::DateTime};
@@ -127,7 +127,7 @@ mod substrate_stamping_tests {
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
 	use reifydb_value::{
-		factory::at_millis,
+		factory::time::at_millis,
 		fragment::Fragment,
 		value::{row_number::RowNumber, system_columns::SystemColumns},
 	};

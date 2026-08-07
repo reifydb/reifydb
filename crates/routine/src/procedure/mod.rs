@@ -15,6 +15,7 @@ pub mod clock;
 pub mod graphql;
 pub mod rql;
 pub mod set;
+pub mod source;
 
 use std::sync::Arc;
 
@@ -23,6 +24,7 @@ use reifydb_routine_abi::registry::RoutinesConfigurator;
 pub fn default_native_procedures(builder: RoutinesConfigurator) -> RoutinesConfigurator {
 	let builder = builder
 		.register_builtin_procedure(Arc::new(set::config::SetConfigProcedure::new()))
+		.register_builtin_procedure(Arc::new(source::complete_through::CompleteThroughProcedure::new()))
 		.register_builtin_procedure(Arc::new(clock::set::ClockSetProcedure::new()))
 		.register_builtin_procedure(Arc::new(clock::advance::ClockAdvanceProcedure::new()))
 		.register_builtin_procedure(Arc::new(identity::inject::IdentityInject::new()))

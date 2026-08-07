@@ -22,6 +22,7 @@ use reifydb_value::{Result, value::datetime::DateTime};
 use crate::{
 	deferred::{committer::FlowSlice, overlay::FlowWriteOverlay},
 	engine::FlowEngineInner,
+	execution::COMPLETENESS_OBJECT,
 };
 
 pub struct SliceConfig {
@@ -239,7 +240,9 @@ pub(crate) fn collect_flow_changes(cdcs: &[&Cdc], source_objects: &BTreeSet<Obje
 	for cdc in cdcs {
 		for change in &cdc.changes {
 			let relevant = match change.origin {
-				ChangeOrigin::Object(object) => source_objects.contains(&object),
+				ChangeOrigin::Object(object) => {
+					object == COMPLETENESS_OBJECT || source_objects.contains(&object)
+				}
 				ChangeOrigin::Flow(_) => true,
 			};
 			if relevant {
@@ -327,6 +330,31 @@ mod tests {
 		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources);
 
 		assert!(out.is_empty());
+	}
+
+	#[test]
+	fn completeness_changes_survive_a_source_set_that_excludes_them() {
+		// In no flow's source set, so without the carve-out the slice is empty and short-circuits.
+		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
+		assert!(
+			!sources.contains(&COMPLETENESS_OBJECT),
+			"the fixture must exclude the completeness table or nothing is proven"
+		);
+		let cdcs = vec![cdc(
+			5,
+			vec![
+				change(ChangeOrigin::Object(COMPLETENESS_OBJECT), 5),
+				change(ChangeOrigin::Object(ObjectId::Table(TableId(2))), 5),
+			],
+		)];
+
+		let out = collect_flow_changes(&cdcs.iter().collect::<Vec<_>>(), &sources);
+
+		assert!(
+			out.iter().any(|c| matches!(c.origin, ChangeOrigin::Object(o) if o == COMPLETENESS_OBJECT)),
+			"the completeness change must survive a source set that excludes it"
+		);
+		assert_eq!(out.len(), 1, "the unrelated table must still be filtered out");
 	}
 
 	#[test]

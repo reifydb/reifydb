@@ -823,10 +823,10 @@ pub mod tests {
 	#[test]
 	fn extract_by_indices_preserves_datetime_values() {
 		let data = [
-			DateTime::from_timestamp(1000).unwrap(),
-			DateTime::from_timestamp(2000).unwrap(),
-			DateTime::from_timestamp(3000).unwrap(),
-			DateTime::from_timestamp(4000).unwrap(),
+			DateTime::from_epoch_secs(1000).unwrap(),
+			DateTime::from_epoch_secs(2000).unwrap(),
+			DateTime::from_epoch_secs(3000).unwrap(),
+			DateTime::from_epoch_secs(4000).unwrap(),
 		];
 		assert_extract_preserves_values(ColumnBuffer::datetime(data), &[3, 1, 2]);
 	}
@@ -1013,16 +1013,16 @@ pub mod tests {
 		let columns = vec![ColumnWithName::int4("id", [10, 20, 30, 40])];
 		let row_numbers = vec![RowNumber::from(1), RowNumber::from(2), RowNumber::from(3), RowNumber::from(4)];
 		let created_at = vec![
-			DateTime::from_timestamp(1000).unwrap(),
-			DateTime::from_timestamp(2000).unwrap(),
-			DateTime::from_timestamp(3000).unwrap(),
-			DateTime::from_timestamp(4000).unwrap(),
+			DateTime::from_epoch_secs(1000).unwrap(),
+			DateTime::from_epoch_secs(2000).unwrap(),
+			DateTime::from_epoch_secs(3000).unwrap(),
+			DateTime::from_epoch_secs(4000).unwrap(),
 		];
 		let updated_at = vec![
-			DateTime::from_timestamp(1100).unwrap(),
-			DateTime::from_timestamp(2200).unwrap(),
-			DateTime::from_timestamp(3300).unwrap(),
-			DateTime::from_timestamp(4400).unwrap(),
+			DateTime::from_epoch_secs(1100).unwrap(),
+			DateTime::from_epoch_secs(2200).unwrap(),
+			DateTime::from_epoch_secs(3300).unwrap(),
+			DateTime::from_epoch_secs(4400).unwrap(),
 		];
 		let time = created_at.clone();
 		let original = Columns::with_system(
@@ -1036,12 +1036,12 @@ pub mod tests {
 		assert_eq!(rns, vec![RowNumber::from(4), RowNumber::from(1)], "row_numbers must follow indices");
 		assert_eq!(
 			extracted.created_at().iter().cloned().collect::<Vec<_>>(),
-			vec![DateTime::from_timestamp(4000).unwrap(), DateTime::from_timestamp(1000).unwrap()],
+			vec![DateTime::from_epoch_secs(4000).unwrap(), DateTime::from_epoch_secs(1000).unwrap()],
 			"created_at must follow indices"
 		);
 		assert_eq!(
 			extracted.updated_at().iter().cloned().collect::<Vec<_>>(),
-			vec![DateTime::from_timestamp(4400).unwrap(), DateTime::from_timestamp(1100).unwrap()],
+			vec![DateTime::from_epoch_secs(4400).unwrap(), DateTime::from_epoch_secs(1100).unwrap()],
 			"updated_at must follow indices"
 		);
 	}
@@ -1208,7 +1208,7 @@ pub mod tests {
 	#[test]
 	fn test_single_row_temporal_types() {
 		let date = Date::from_ymd(2025, 1, 15).unwrap();
-		let datetime = DateTime::from_timestamp(1642694400).unwrap();
+		let datetime = DateTime::from_epoch_secs(1642694400).unwrap();
 		let time = Time::from_hms(14, 30, 45).unwrap();
 		let duration = Duration::from_days(30).unwrap();
 

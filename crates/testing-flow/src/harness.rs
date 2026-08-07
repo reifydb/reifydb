@@ -256,8 +256,7 @@ impl<O: Operator> Harness<O> {
 
 	pub fn settle_timers(&mut self, watermark_ms: u64) -> Result<Vec<Change>> {
 		const MAX_ROUNDS: u32 = 4_096;
-		let watermark =
-			DateTime::from_timestamp_millis(watermark_ms).expect("a settle watermark is representable");
+		let watermark = DateTime::from_epoch_millis(watermark_ms).expect("a settle watermark is representable");
 		let operator = self.operator.id();
 		let wheel = self.substrate.timers.clone();
 		let mut emitted = Vec::new();
@@ -294,7 +293,7 @@ impl<O: Operator> Harness<O> {
 	}
 
 	pub fn compact(&mut self, at_ms: u64) -> Result<OperatorCompaction> {
-		let watermark = DateTime::from_timestamp_millis(at_ms)?;
+		let watermark = DateTime::from_epoch_millis(at_ms)?;
 		let identity = identity_cutoff(self.sink_row_ttl, watermark);
 		let store = self.substrate.operators.clone();
 
@@ -333,15 +332,15 @@ mod tests {
 		// A batch is one arrival, so its position is the latest event time it carries - matching what
 		// the batch path freezes as the arrival frontier. Taking the first row's time instead would make
 		// a group's due-ness depend on how the driver happened to order rows inside a change.
-		let early = DateTime::from_timestamp_millis(1_000).unwrap();
-		let late = DateTime::from_timestamp_millis(9_000).unwrap();
+		let early = DateTime::from_epoch_millis(1_000).unwrap();
+		let late = DateTime::from_epoch_millis(9_000).unwrap();
 
 		let change = change_at(&[early, late, early]);
 		assert_eq!(coordinate_of(&change), late);
 
 		// No row time is not the same as time zero: it means the workload declared no position, and the
 		// change's own stamp is the only honest answer left.
-		let stamped = DateTime::from_timestamp_millis(4_242).unwrap();
+		let stamped = DateTime::from_epoch_millis(4_242).unwrap();
 		let timeless = Change::from_flow(OperatorId(1), CommitVersion(1), Vec::new(), stamped);
 		assert_eq!(coordinate_of(&timeless), stamped);
 	}
@@ -371,7 +370,7 @@ impl<O: Operator> Subject for Harness<O> {
 		Harness::on_timer(
 			self,
 			Timer {
-				at: DateTime::from_timestamp_millis(at_ms).unwrap(),
+				at: DateTime::from_epoch_millis(at_ms).unwrap(),
 				kind: TimerKind::Seal,
 				key: EncodedKey::new(Vec::new()),
 			},

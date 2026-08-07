@@ -11,7 +11,7 @@ use reifydb_flow::window::accumulator::{
 	sealing::{SealingEndpoint, SealingMin},
 };
 use reifydb_value::{
-	factory::{at_millis, millis},
+	factory::time::{at_millis, millis},
 	value::datetime::DateTime,
 };
 

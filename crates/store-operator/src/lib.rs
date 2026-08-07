@@ -15,10 +15,6 @@ pub mod floor;
 pub mod snapshot;
 pub mod store;
 
-pub use config::OperatorStoreConfig;
-pub use floor::FloorSpec;
-pub use store::{CompactionOutcome, OperatorBatch, OperatorStore};
-
 pub struct OperatorStoreVersion;
 
 impl HasVersion for OperatorStoreVersion {

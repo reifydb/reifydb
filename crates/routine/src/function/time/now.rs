@@ -44,7 +44,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNow {
 		}
 
 		let millis = ctx.runtime_context.clock.now().to_millis();
-		let dt = DateTime::from_timestamp_millis(millis)?;
+		let dt = DateTime::from_epoch_millis(millis)?;
 		let time = dt.time();
 
 		let mut container = TemporalContainer::with_capacity(1);

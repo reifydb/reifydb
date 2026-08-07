@@ -142,6 +142,8 @@ impl ColumnId {
 	pub const CDC_SNAPSHOTS_VALUE_BYTES: ColumnId = ColumnId(1129);
 	pub const CDC_SNAPSHOTS_TOTAL_BYTES: ColumnId = ColumnId(1130);
 	pub const CDC_SNAPSHOTS_COUNT: ColumnId = ColumnId(1131);
+	pub const SOURCE_COMPLETENESS_OBJECT_ID: ColumnId = ColumnId(1132);
+	pub const SOURCE_COMPLETENESS_COMPLETE_THROUGH: ColumnId = ColumnId(1133);
 
 	pub const RUNTIME_MEMORY_SNAPSHOTS_COLUMNS: [ColumnId; 6] = [
 		Self::RUNTIME_MEMORY_SNAPSHOTS_TS,
@@ -280,6 +282,9 @@ impl ColumnId {
 		Self::CDC_SNAPSHOTS_TOTAL_BYTES,
 		Self::CDC_SNAPSHOTS_COUNT,
 	];
+
+	pub const SOURCE_COMPLETENESS_COLUMNS: [ColumnId; 2] =
+		[Self::SOURCE_COMPLETENESS_OBJECT_ID, Self::SOURCE_COMPLETENESS_COMPLETE_THROUGH];
 }
 
 impl Deref for ColumnId {
@@ -566,6 +571,8 @@ impl From<TableId> for u64 {
 }
 
 impl TableId {
+	pub const SOURCE_COMPLETENESS: TableId = TableId(1034);
+
 	#[inline]
 	pub fn to_u64(self) -> u64 {
 		self.0
@@ -1955,7 +1962,7 @@ impl<'de> Deserialize<'de> for SinkId {
 
 pub(crate) const RESERVED_USER_ID_START: u64 = 16385;
 
-const RESERVED_NAMESPACE_IDS: [u64; 20] = [
+const RESERVED_NAMESPACE_IDS: [u64; 21] = [
 	NamespaceId::ROOT.0,
 	NamespaceId::SYSTEM.0,
 	NamespaceId::DEFAULT.0,
@@ -1976,9 +1983,10 @@ const RESERVED_NAMESPACE_IDS: [u64; 20] = [
 	NamespaceId::SYSTEM_METRICS_INSTRUMENTS.0,
 	NamespaceId::SYSTEM_METRICS_EPOCH.0,
 	NamespaceId::SYSTEM_METRICS_LIFECYCLE.0,
+	NamespaceId::SYSTEM_SOURCE.0,
 ];
 
-const RESERVED_SOURCE_IDS: [u64; 12] = [
+const RESERVED_SOURCE_IDS: [u64; 13] = [
 	RingBufferId::REQUEST_HISTORY.0,
 	RingBufferId::STATEMENT_STATS.0,
 	SeriesId::RUNTIME_MEMORY_SNAPSHOTS.0,
@@ -1991,6 +1999,7 @@ const RESERVED_SOURCE_IDS: [u64; 12] = [
 	SeriesId::LIFECYCLE_SNAPSHOTS.0,
 	SeriesId::STORAGE_SNAPSHOTS.0,
 	SeriesId::CDC_SNAPSHOTS.0,
+	TableId::SOURCE_COMPLETENESS.0,
 ];
 
 const RESERVED_RINGBUFFER_COLUMNS: [ColumnId; 18] = [
@@ -2014,7 +2023,7 @@ const RESERVED_RINGBUFFER_COLUMNS: [ColumnId; 18] = [
 	ColumnId::STATEMENT_STATS_ERRORS,
 ];
 
-const RESERVED_COLUMN_GROUPS: [&[ColumnId]; 11] = [
+const RESERVED_COLUMN_GROUPS: [&[ColumnId]; 12] = [
 	&RESERVED_RINGBUFFER_COLUMNS,
 	&ColumnId::RUNTIME_MEMORY_SNAPSHOTS_COLUMNS,
 	&ColumnId::RUNTIME_WATERMARKS_SNAPSHOTS_COLUMNS,
@@ -2026,6 +2035,7 @@ const RESERVED_COLUMN_GROUPS: [&[ColumnId]; 11] = [
 	&ColumnId::LIFECYCLE_SNAPSHOTS_COLUMNS,
 	&ColumnId::STORAGE_SNAPSHOTS_COLUMNS,
 	&ColumnId::CDC_SNAPSHOTS_COLUMNS,
+	&ColumnId::SOURCE_COMPLETENESS_COLUMNS,
 ];
 
 const fn reserved_u64_all_below(values: &[u64], limit: u64) -> bool {

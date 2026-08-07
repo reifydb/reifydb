@@ -131,7 +131,7 @@ mod tests {
 			render_value(&Value::Time(Time::from_hms_nano(14, 30, 15, 123_456_789).unwrap())).unwrap(),
 			"@14:30:15.123456789"
 		);
-		let dt = render_value(&Value::DateTime(DateTime::from_timestamp(1_700_000_000).unwrap())).unwrap();
+		let dt = render_value(&Value::DateTime(DateTime::from_epoch_secs(1_700_000_000).unwrap())).unwrap();
 		assert!(dt.starts_with("@") && dt.contains('T') && dt.ends_with('Z'), "got {dt}");
 	}
 

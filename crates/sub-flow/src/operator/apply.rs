@@ -12,7 +12,7 @@ use reifydb_flow::{
 	timer::Timer,
 	transaction::FlowTransaction,
 };
-use reifydb_store_operator::{CompactionOutcome, FloorSpec};
+use reifydb_store_operator::{floor::FloorSpec, store::CompactionOutcome};
 use reifydb_value::{
 	Result,
 	value::{datetime::DateTime, duration::Duration},
@@ -106,7 +106,8 @@ mod tests {
 		change::Change,
 	};
 	use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
-	use reifydb_store_operator::FloorSpec;
+	use reifydb_store_operator::floor::FloorSpec;
+	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 	use reifydb_value::{
 		Result,
 		value::{datetime::DateTime, duration::Duration},
@@ -240,8 +241,6 @@ mod tests {
 		// preferred the ttl would floor a sealing guest's live windows.
 		// Mutation falsified against: swapping the precedence (ttl would win, floor != anchor) and
 		// dropping the fallback (declared-only guest would return an empty spec).
-		use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
-
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let watermark = DateTime::from_millis(1_000_000);

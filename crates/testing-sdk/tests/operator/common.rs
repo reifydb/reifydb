@@ -46,7 +46,7 @@ use reifydb_sdk::{
 use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::strategy::{ColumnSampler, samplers};
 use reifydb_value::{
-	factory::{at_millis, millis},
+	factory::time::{at_millis, millis},
 	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
 };
 

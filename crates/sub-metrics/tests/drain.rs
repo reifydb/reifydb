@@ -72,7 +72,7 @@ fn executed_requests_drain_into_both_ringbuffers() {
 		Duration::from_microseconds(120).unwrap(),
 		Duration::from_microseconds(80).unwrap(),
 		true,
-		DateTime::from_timestamp_millis(1000).unwrap(),
+		DateTime::from_epoch_millis(1000).unwrap(),
 	));
 
 	thread::sleep(Duration::from_milliseconds(300).unwrap().to_std());

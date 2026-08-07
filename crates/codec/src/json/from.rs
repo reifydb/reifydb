@@ -289,14 +289,14 @@ pub fn convert_column_to_data(target: ValueType, data: Vec<String>) -> FrameColu
 				.into_iter()
 				.map(|s| {
 					if s == "⟪none⟫" {
-						DateTime::from_timestamp(0).unwrap()
+						DateTime::from_epoch_secs(0).unwrap()
 					} else if let Ok(dt) = parse_datetime(Fragment::testing(&s)) {
 						dt
 					} else if let Ok(timestamp) = s.parse::<i64>() {
-						DateTime::from_timestamp(timestamp)
-							.unwrap_or(DateTime::from_timestamp(0).unwrap())
+						DateTime::from_epoch_secs(timestamp)
+							.unwrap_or(DateTime::from_epoch_secs(0).unwrap())
 					} else {
-						DateTime::from_timestamp(0).unwrap()
+						DateTime::from_epoch_secs(0).unwrap()
 					}
 				})
 				.collect();

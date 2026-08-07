@@ -4,11 +4,17 @@
 use crate::{
 	Result,
 	ast::{
-		ast::{AstCall, AstCallFunction},
+		ast::{Ast, AstCall, AstCallFunction, AstList, AstLiteral, AstLiteralText, AstTuple},
 		identifier::MaybeQualifiedFunctionIdentifier,
-		parse::Parser,
+		parse::{Parser, Precedence},
 	},
-	token::{keyword::Keyword, operator::Operator},
+	bump::BumpFragment,
+	token::{
+		keyword::Keyword,
+		operator::Operator,
+		separator::Separator::Comma,
+		token::{Literal, Token, TokenKind},
+	},
 };
 
 impl<'bump> Parser<'bump> {
@@ -31,13 +37,96 @@ impl<'bump> Parser<'bump> {
 			MaybeQualifiedFunctionIdentifier::new(current.fragment).with_namespaces(namespace_fragments)
 		};
 
-		let arguments = self.parse_tuple()?;
+		let arguments = self.parse_call_arguments()?;
 
 		Ok(AstCall {
 			token,
 			function,
 			arguments,
 		})
+	}
+
+	fn parse_call_arguments(&mut self) -> Result<AstTuple<'bump>> {
+		let token = self.consume_operator(Operator::OpenParen)?;
+
+		let mut nodes = Vec::with_capacity(4);
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseParen) {
+				break;
+			}
+			nodes.push(self.parse_call_argument()?);
+			if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
+				break;
+			};
+		}
+
+		self.consume_operator(Operator::CloseParen)?;
+		Ok(AstTuple {
+			token,
+			nodes,
+		})
+	}
+
+	fn parse_call_argument(&mut self) -> Result<Ast<'bump>> {
+		if self.current()?.is_operator(Operator::OpenBracket) {
+			let token = self.consume_operator(Operator::OpenBracket)?;
+
+			let mut nodes = Vec::with_capacity(4);
+			loop {
+				self.skip_new_line()?;
+
+				if self.is_eof() || self.current()?.is_operator(Operator::CloseBracket) {
+					break;
+				}
+				nodes.push(self.parse_call_argument()?);
+				if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
+					break;
+				};
+			}
+
+			self.consume_operator(Operator::CloseBracket)?;
+			return Ok(Ast::List(AstList {
+				token,
+				nodes,
+			}));
+		}
+
+		if self.current()?.is_identifier() && !self.is_function_call_pattern() {
+			return self.parse_qualified_name_argument();
+		}
+
+		self.parse_node(Precedence::None)
+	}
+
+	fn parse_qualified_name_argument(&mut self) -> Result<Ast<'bump>> {
+		let start = self.current()?.fragment;
+		let line = start.line();
+		let column = start.column();
+
+		let segments = self.parse_double_colon_separated_identifiers()?;
+		let mut joined = String::new();
+		for segment in &segments {
+			if !joined.is_empty() {
+				joined.push_str("::");
+			}
+			joined.push_str(segment.text());
+		}
+
+		let text = self.bump().alloc_str(&joined);
+		let fragment = BumpFragment::Statement {
+			text,
+			offset: 0,
+			source_end: 0,
+			line,
+			column,
+		};
+
+		Ok(Ast::Literal(AstLiteral::Text(AstLiteralText(Token {
+			kind: TokenKind::Literal(Literal::Text),
+			fragment,
+		}))))
 	}
 
 	pub(crate) fn parse_function_call(&mut self) -> Result<AstCallFunction<'bump>> {

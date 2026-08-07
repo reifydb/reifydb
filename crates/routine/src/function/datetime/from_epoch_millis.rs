@@ -112,7 +112,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFromEpochMillis {
 						),
 					});
 				}
-				container.push(DateTime::from_timestamp_millis(millis as u64)?);
+				container.push(DateTime::from_epoch_millis(millis as u64)?);
 			} else {
 				container.push_default();
 			}

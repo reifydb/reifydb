@@ -37,11 +37,12 @@ use crate::{
 		CatalogCache,
 		load::{CatalogCacheLoader, config::load_configs},
 	},
-	catalog::{Catalog, namespace::NamespaceToCreate, series::SeriesColumnToCreate},
+	catalog::{Catalog, namespace::NamespaceToCreate, series::SeriesColumnToCreate, table::TableColumnToCreate},
 	store::config::convert_config,
 };
 
 pub mod binding;
+pub mod completeness;
 pub mod epoch;
 pub mod identity;
 pub mod instruments;
@@ -68,6 +69,7 @@ pub fn bootstrap_system_objects(
 	instruments::bootstrap_instruments(multi, single, catalog, eventbus)?;
 	epoch::bootstrap_epoch(multi, single, catalog, eventbus)?;
 	lifecycle::bootstrap_lifecycle(multi, single, catalog, eventbus)?;
+	completeness::bootstrap_completeness(multi, single, catalog, eventbus)?;
 	load_catalog_cache(multi, single, catalog)?;
 	Ok(())
 }
@@ -303,6 +305,17 @@ mod read_configs_tests {
 
 pub(crate) fn series_col(name: &str, ty: ValueType) -> SeriesColumnToCreate {
 	SeriesColumnToCreate {
+		name: Fragment::internal(name),
+		fragment: Fragment::internal(name),
+		constraint: TypeConstraint::unconstrained(ty),
+		properties: vec![],
+		auto_increment: false,
+		dictionary_id: None,
+	}
+}
+
+pub(crate) fn table_col(name: &str, ty: ValueType) -> TableColumnToCreate {
+	TableColumnToCreate {
 		name: Fragment::internal(name),
 		fragment: Fragment::internal(name),
 		constraint: TypeConstraint::unconstrained(ty),

@@ -6,5 +6,3 @@
 //! type cannot carry it.
 
 pub mod coord;
-
-pub use coord::event_coord_at_millis;

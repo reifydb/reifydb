@@ -834,7 +834,7 @@ mod tests {
 	}
 
 	fn contribution(seq: u64, dollars: [f64; 3]) -> (WindowSlotKey, Vec<Option<Value>>) {
-		let coord = WindowSlotKey::new(DateTime::from_timestamp(seq as i64).unwrap(), seq);
+		let coord = WindowSlotKey::new(DateTime::from_epoch_secs(seq as i64).unwrap(), seq);
 		(coord, dollars.iter().map(|d| Some(Value::float8(*d))).collect())
 	}
 

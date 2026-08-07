@@ -595,7 +595,7 @@ mod tests {
 			Duration::from_microseconds(100).unwrap(),
 			Duration::from_microseconds(50).unwrap(),
 			true,
-			DateTime::from_timestamp_millis(1000).unwrap(),
+			DateTime::from_epoch_millis(1000).unwrap(),
 		);
 
 		let _tick = MetricsMessage::Tick(DateTime::from_nanos(0));

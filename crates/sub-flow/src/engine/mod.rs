@@ -432,10 +432,25 @@ pub(crate) fn lease_demand(report: &LeaseReport) -> ByteSize {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::common::TimeDomain;
-	use reifydb_value::{byte_size::ByteSize, count::Count};
+	use std::collections::HashMap;
+
+	use reifydb_codec::encoded::row::EncodedRow;
+	use reifydb_core::{
+		common::TimeDomain,
+		interface::{
+			WithEventBus,
+			catalog::{flow::FlowId, id::SeriesId},
+		},
+	};
+	use reifydb_rql::flow::{
+		flow::FlowDag,
+		operator::{FlowNode, OperatorDef},
+	};
+	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_value::{byte_size::ByteSize, count::Count, util::cowvec::CowVec, value::Value};
 
 	use super::*;
+	use crate::operator::scan::series::SourceSeriesOperator;
 
 	fn memory(entries: u64, bytes: u64) -> StateMemory {
 		StateMemory::new(Count::new(entries), ByteSize::from_bytes(bytes))
@@ -497,12 +512,6 @@ mod tests {
 		// false), so every lease grant has to resolve it through the engine's catalog. Resolving
 		// ConfigKey::default_value() instead pins every operator at the compiled-in 64 MiB and no
 		// configured value can ever be observed.
-		use std::collections::HashMap;
-
-		use reifydb_core::{common::CommitVersion, interface::WithEventBus};
-		use reifydb_test_harness::engine::TestEngine;
-		use reifydb_value::value::Value;
-
 		let compiled_in = match ConfigKey::OperatorStateLeaseDefault.default_value() {
 			Value::Uint8(bytes) => bytes,
 			other => panic!("OPERATOR_STATE_LEASE_DEFAULT default must be Uint8 bytes, got {other:?}"),
@@ -534,12 +543,6 @@ mod tests {
 	fn state_lease_default_falls_back_to_the_compiled_in_default_when_unconfigured() {
 		// The catalog read must not change the out-of-the-box grant size: an unconfigured engine
 		// still has to lease the declared default rather than zero or the lease floor.
-		use std::collections::HashMap;
-
-		use reifydb_core::interface::WithEventBus;
-		use reifydb_test_harness::engine::TestEngine;
-		use reifydb_value::value::Value;
-
 		let compiled_in = match ConfigKey::OperatorStateLeaseDefault.default_value() {
 			Value::Uint8(bytes) => bytes,
 			other => panic!("OPERATOR_STATE_LEASE_DEFAULT default must be Uint8 bytes, got {other:?}"),
@@ -566,19 +569,6 @@ mod tests {
 		// operators' state stays resident (and counted in total_bytes) until the process restarts.
 		// Mutation falsified against: removing the drop_arena call from remove_flow (per-operator
 		// bytes and the process-wide total both stay non-zero).
-		use std::collections::HashMap;
-
-		use reifydb_codec::encoded::row::EncodedRow;
-		use reifydb_core::interface::{WithEventBus, catalog::flow::FlowId};
-		use reifydb_rql::flow::{
-			flow::FlowDag,
-			operator::{FlowNode, OperatorDef},
-		};
-		use reifydb_test_harness::engine::TestEngine;
-		use reifydb_value::util::cowvec::CowVec;
-
-		use crate::operator::scan::series::SourceSeriesOperator;
-
 		let engine = TestEngine::new();
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
@@ -599,7 +589,7 @@ mod tests {
 		builder.add_node(FlowNode::new(
 			operator,
 			OperatorDef::SourceSeries {
-				series: reifydb_core::interface::catalog::id::SeriesId(1),
+				series: SeriesId(1),
 				time_domain: TimeDomain::None,
 			},
 		));
@@ -607,11 +597,7 @@ mod tests {
 		inner.insert_operator(operator, OperatorCell::new(SourceSeriesOperator::new(operator)));
 
 		let store = inner.substrate.operators.clone();
-		store.set(
-			operator,
-			reifydb_codec::key::encoded::EncodedKey::new(b"k"),
-			EncodedRow(CowVec::new(vec![1u8; 64])),
-		);
+		store.set(operator, EncodedKey::new(b"k"), EncodedRow(CowVec::new(vec![1u8; 64])));
 		assert!(store.bytes(operator) > 0, "precondition: the operator's arena holds state");
 
 		inner.remove_flow(FlowId(1));

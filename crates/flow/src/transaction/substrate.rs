@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{EncodableKey, operator_state::OperatorStateKey},
 };
-use reifydb_store_operator::OperatorStore;
+use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
 
 use crate::transaction::{

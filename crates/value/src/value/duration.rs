@@ -68,11 +68,11 @@ impl Duration {
 
 	fn normalized(months: i32, days: i32, nanos: i64) -> Result<Self, Box<TypeError>> {
 		let extra_days = i32::try_from(nanos / NANOS_PER_DAY)
-			.map_err(|_| Box::new(Self::overflow_err("days overflow during normalization")))?;
+			.map_err(|_| Box::new(Self::overflow_err("the days component overflows Duration range")))?;
 		let nanos = nanos % NANOS_PER_DAY;
 		let days = days
 			.checked_add(extra_days)
-			.ok_or_else(|| Box::new(Self::overflow_err("days overflow during normalization")))?;
+			.ok_or_else(|| Box::new(Self::overflow_err("the days component overflows Duration range")))?;
 
 		if (days > 0 && nanos < 0) || (days < 0 && nanos > 0) {
 			return Err(Box::new(Self::mixed_sign_err(days, nanos)));
@@ -138,7 +138,7 @@ impl Duration {
 			let day_count = nanoseconds / NANOS_PER_DAY;
 			assert!(
 				day_count >= i32::MIN as i64 && day_count <= i32::MAX as i64,
-				"from_nanoseconds_const: whole-day count does not fit in i32 days"
+				"nanoseconds overflows Duration range"
 			);
 		}
 		Self {
@@ -152,7 +152,7 @@ impl Duration {
 		reifydb_assertions! {
 			assert!(
 				microseconds.checked_mul(1_000).is_some(),
-				"from_microseconds_const: microseconds * 1_000 overflows i64 nanoseconds"
+				"microseconds overflows Duration range"
 			);
 		}
 		Self::from_nanoseconds_const(microseconds * 1_000)
@@ -162,7 +162,7 @@ impl Duration {
 		reifydb_assertions! {
 			assert!(
 				milliseconds.checked_mul(1_000_000).is_some(),
-				"from_milliseconds_const: milliseconds * 1_000_000 overflows i64 nanoseconds"
+				"milliseconds overflows Duration range"
 			);
 		}
 		Self::from_nanoseconds_const(milliseconds * 1_000_000)
@@ -172,7 +172,7 @@ impl Duration {
 		reifydb_assertions! {
 			assert!(
 				seconds.checked_mul(1_000_000_000).is_some(),
-				"from_seconds_const: seconds * 1_000_000_000 overflows i64 nanoseconds"
+				"seconds overflows Duration range"
 			);
 		}
 		Self::from_nanoseconds_const(seconds * 1_000_000_000)
@@ -182,7 +182,7 @@ impl Duration {
 		reifydb_assertions! {
 			assert!(
 				minutes.checked_mul(60_000_000_000).is_some(),
-				"from_minutes_const: minutes * 60_000_000_000 overflows i64 nanoseconds"
+				"minutes overflows Duration range"
 			);
 		}
 		Self::from_nanoseconds_const(minutes * 60_000_000_000)
@@ -192,7 +192,7 @@ impl Duration {
 		reifydb_assertions! {
 			assert!(
 				hours.checked_mul(3_600_000_000_000).is_some(),
-				"from_hours_const: hours * 3_600_000_000_000 overflows i64 nanoseconds"
+				"hours overflows Duration range"
 			);
 		}
 		Self::from_nanoseconds_const(hours * 3_600_000_000_000)
@@ -211,28 +211,35 @@ impl Duration {
 	}
 
 	pub fn from_days(days: i64) -> Result<Self, Box<TypeError>> {
-		let days =
-			i32::try_from(days).map_err(|_| Box::new(Self::overflow_err("days value out of i32 range")))?;
+		let days = i32::try_from(days)
+			.map_err(|_| Box::new(Self::overflow_err(format!("{} days overflows Duration range", days))))?;
 		Self::normalized(0, days, 0)
 	}
 
 	pub fn from_weeks(weeks: i64) -> Result<Self, Box<TypeError>> {
-		let days = weeks.checked_mul(7).ok_or_else(|| Box::new(Self::overflow_err("weeks overflow")))?;
-		let days =
-			i32::try_from(days).map_err(|_| Box::new(Self::overflow_err("days value out of i32 range")))?;
+		let days = weeks.checked_mul(7).ok_or_else(|| {
+			Box::new(Self::overflow_err(format!("{} weeks overflows Duration range", weeks)))
+		})?;
+		let days = i32::try_from(days).map_err(|_| {
+			Box::new(Self::overflow_err(format!("{} weeks overflows Duration range", weeks)))
+		})?;
 		Self::normalized(0, days, 0)
 	}
 
 	pub fn from_months(months: i64) -> Result<Self, Box<TypeError>> {
-		let months = i32::try_from(months)
-			.map_err(|_| Box::new(Self::overflow_err("months value out of i32 range")))?;
+		let months = i32::try_from(months).map_err(|_| {
+			Box::new(Self::overflow_err(format!("{} months overflows Duration range", months)))
+		})?;
 		Self::normalized(months, 0, 0)
 	}
 
 	pub fn from_years(years: i64) -> Result<Self, Box<TypeError>> {
-		let months = years.checked_mul(12).ok_or_else(|| Box::new(Self::overflow_err("years overflow")))?;
-		let months = i32::try_from(months)
-			.map_err(|_| Box::new(Self::overflow_err("months value out of i32 range")))?;
+		let months = years.checked_mul(12).ok_or_else(|| {
+			Box::new(Self::overflow_err(format!("{} years overflows Duration range", years)))
+		})?;
+		let months = i32::try_from(months).map_err(|_| {
+			Box::new(Self::overflow_err(format!("{} years overflows Duration range", years)))
+		})?;
 		Self::normalized(months, 0, 0)
 	}
 
@@ -256,6 +263,7 @@ impl Duration {
 		per_month: i64,
 		per_day: i64,
 		sub_day: i64,
+		unit: &str,
 	) -> Result<i64, Box<TypeError>> {
 		let years = (self.months / 12) as i64;
 		let rem_months = (self.months % 12) as i64;
@@ -263,7 +271,7 @@ impl Duration {
 			.and_then(|a| rem_months.checked_mul(per_month).and_then(|b| a.checked_add(b)))
 			.and_then(|a| (self.days as i64).checked_mul(per_day).and_then(|b| a.checked_add(b)))
 			.and_then(|a| a.checked_add(sub_day))
-			.ok_or_else(|| Box::new(Self::overflow_err("duration total overflows i64")))
+			.ok_or_else(|| Box::new(Self::overflow_err(format!("Duration overflows {} range", unit))))
 	}
 
 	pub fn seconds(&self) -> Result<i64, Box<TypeError>> {
@@ -272,6 +280,7 @@ impl Duration {
 			DAYS_PER_MONTH * SECONDS_PER_DAY,
 			SECONDS_PER_DAY,
 			self.nanos / 1_000_000_000,
+			"seconds",
 		)
 	}
 
@@ -281,6 +290,7 @@ impl Duration {
 			DAYS_PER_MONTH * SECONDS_PER_DAY * 1_000,
 			SECONDS_PER_DAY * 1_000,
 			self.nanos / 1_000_000,
+			"milliseconds",
 		)
 	}
 
@@ -290,6 +300,7 @@ impl Duration {
 			DAYS_PER_MONTH * SECONDS_PER_DAY * 1_000_000,
 			SECONDS_PER_DAY * 1_000_000,
 			self.nanos / 1_000,
+			"microseconds",
 		)
 	}
 
@@ -299,6 +310,7 @@ impl Duration {
 			NANOS_PER_DAY * DAYS_PER_MONTH,
 			NANOS_PER_DAY,
 			self.nanos,
+			"nanoseconds",
 		)
 	}
 
@@ -443,15 +455,14 @@ impl Duration {
 		let months = self
 			.months
 			.checked_add(rhs.months)
-			.ok_or_else(|| Box::new(Self::overflow_err("months overflow in add")))?;
+			.ok_or_else(|| Box::new(Self::overflow_err("the months component overflows Duration range")))?;
 		let days = self
 			.days
 			.checked_add(rhs.days)
-			.ok_or_else(|| Box::new(Self::overflow_err("days overflow in add")))?;
-		let nanos = self
-			.nanos
-			.checked_add(rhs.nanos)
-			.ok_or_else(|| Box::new(Self::overflow_err("nanos overflow in add")))?;
+			.ok_or_else(|| Box::new(Self::overflow_err("the days component overflows Duration range")))?;
+		let nanos = self.nanos.checked_add(rhs.nanos).ok_or_else(|| {
+			Box::new(Self::overflow_err("the nanoseconds component overflows Duration range"))
+		})?;
 		Self::normalized(months, days, nanos)
 	}
 
@@ -459,33 +470,32 @@ impl Duration {
 		let months = self
 			.months
 			.checked_sub(rhs.months)
-			.ok_or_else(|| Box::new(Self::overflow_err("months overflow in sub")))?;
+			.ok_or_else(|| Box::new(Self::overflow_err("the months component overflows Duration range")))?;
 		let days = self
 			.days
 			.checked_sub(rhs.days)
-			.ok_or_else(|| Box::new(Self::overflow_err("days overflow in sub")))?;
-		let nanos = self
-			.nanos
-			.checked_sub(rhs.nanos)
-			.ok_or_else(|| Box::new(Self::overflow_err("nanos overflow in sub")))?;
+			.ok_or_else(|| Box::new(Self::overflow_err("the days component overflows Duration range")))?;
+		let nanos = self.nanos.checked_sub(rhs.nanos).ok_or_else(|| {
+			Box::new(Self::overflow_err("the nanoseconds component overflows Duration range"))
+		})?;
 		Self::normalized(months, days, nanos)
 	}
 
 	pub fn try_mul(self, rhs: i64) -> Result<Self, Box<TypeError>> {
-		let rhs_i32 = i32::try_from(rhs)
-			.map_err(|_| Box::new(Self::overflow_err("multiplier out of i32 range for months/days")))?;
+		let rhs_i32 = i32::try_from(rhs).map_err(|_| {
+			Box::new(Self::overflow_err(format!("multiplier {} overflows Duration range", rhs)))
+		})?;
 		let months = self
 			.months
 			.checked_mul(rhs_i32)
-			.ok_or_else(|| Box::new(Self::overflow_err("months overflow in mul")))?;
+			.ok_or_else(|| Box::new(Self::overflow_err("the months component overflows Duration range")))?;
 		let days = self
 			.days
 			.checked_mul(rhs_i32)
-			.ok_or_else(|| Box::new(Self::overflow_err("days overflow in mul")))?;
-		let nanos = self
-			.nanos
-			.checked_mul(rhs)
-			.ok_or_else(|| Box::new(Self::overflow_err("nanos overflow in mul")))?;
+			.ok_or_else(|| Box::new(Self::overflow_err("the days component overflows Duration range")))?;
+		let nanos = self.nanos.checked_mul(rhs).ok_or_else(|| {
+			Box::new(Self::overflow_err("the nanoseconds component overflows Duration range"))
+		})?;
 		Self::normalized(months, days, nanos)
 	}
 

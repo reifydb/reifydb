@@ -24,7 +24,7 @@ use reifydb_runtime::actor::{
 	system::{ActorConfig, ActorHandle},
 	traits::{Actor, Directive},
 };
-use reifydb_store_operator::OperatorStore;
+use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
 	group::{GroupCommitApply, GroupCommitCompletion, GroupCommitHandle, GroupCommitSubmission},
 	transaction::{Transaction, command::CommandTransaction},

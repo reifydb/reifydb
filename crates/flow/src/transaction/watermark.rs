@@ -137,7 +137,7 @@ mod tests {
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_value::{factory::at_millis, value::identity::IdentityId};
+	use reifydb_value::{factory::time::at_millis, value::identity::IdentityId};
 
 	use super::*;
 	use crate::transaction::{

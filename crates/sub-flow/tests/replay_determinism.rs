@@ -52,7 +52,7 @@ use reifydb_testing_flow::{
 	state::{State, assert_batch_equivalent, assert_identical_bytes, keyspace_of},
 };
 use reifydb_value::{
-	factory::at_millis,
+	factory::time::at_millis,
 	fragment::Fragment,
 	value::{
 		Value, datetime::DateTime, duration::Duration, row_number::RowNumber, system_columns::SystemColumns,

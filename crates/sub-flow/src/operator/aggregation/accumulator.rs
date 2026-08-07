@@ -52,7 +52,7 @@ impl Slot for WindowSlotKey {
 	type Coord = DateTime;
 
 	fn order_key(&self) -> DateTime {
-		<DateTime as WindowCoord>::from_order(self.timestamp.timestamp_millis() as u64)
+		<DateTime as WindowCoord>::from_order(self.timestamp.to_epoch_millis() as u64)
 	}
 
 	fn from_order_key(coord: DateTime) -> Self {
@@ -63,7 +63,7 @@ impl Slot for WindowSlotKey {
 	}
 
 	fn archived_order_key(archived: &<Self as Archive>::Archived) -> DateTime {
-		DateTime::from_timestamp_millis(archived.timestamp.timestamp_millis() as u64).unwrap_or_default()
+		DateTime::from_epoch_millis(archived.timestamp.to_epoch_millis() as u64).unwrap_or_default()
 	}
 }
 
@@ -738,9 +738,9 @@ mod tests {
 		let duration = Duration::from_seconds(60).expect("representable span");
 		let base = 1_700_000_040_000u64;
 
-		let early = WindowSlotKey::new(DateTime::from_timestamp_millis(base).expect("representable"), 0);
+		let early = WindowSlotKey::new(DateTime::from_epoch_millis(base).expect("representable"), 0);
 		let late = WindowSlotKey::new(
-			DateTime::from_timestamp_millis(base + 59_999).expect("representable"),
+			DateTime::from_epoch_millis(base + 59_999).expect("representable"),
 			u64::MAX,
 		);
 
@@ -756,7 +756,7 @@ mod tests {
 		assert!(
 			!early_span.contains(
 				WindowSlotKey::new(
-					DateTime::from_timestamp_millis(base + 60_000).expect("representable"),
+					DateTime::from_epoch_millis(base + 60_000).expect("representable"),
 					0,
 				)
 				.order_key()
@@ -801,7 +801,7 @@ mod tests {
 	}
 
 	fn coord(secs: u64) -> WindowSlotKey {
-		WindowSlotKey::new(DateTime::from_timestamp(secs as i64).unwrap(), secs)
+		WindowSlotKey::new(DateTime::from_epoch_secs(secs as i64).unwrap(), secs)
 	}
 
 	fn add(a: &mut RowAccumulator, seq: u64, values: Vec<Option<Value>>) {

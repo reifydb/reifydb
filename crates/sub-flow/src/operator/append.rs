@@ -13,7 +13,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
-use reifydb_store_operator::FloorSpec;
+use reifydb_store_operator::floor::FloorSpec;
 use reifydb_value::{
 	Result,
 	error::Error,

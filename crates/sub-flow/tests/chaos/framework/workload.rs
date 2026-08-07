@@ -20,7 +20,7 @@ pub struct WindowRow {
 
 impl WindowRow {
 	pub fn at(&self) -> DateTime {
-		DateTime::from_timestamp_millis(self.coord_ms).unwrap()
+		DateTime::from_epoch_millis(self.coord_ms).unwrap()
 	}
 }
 

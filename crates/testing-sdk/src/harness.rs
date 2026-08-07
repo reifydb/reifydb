@@ -959,14 +959,14 @@ pub mod tests {
 		let mut harness = FFIOperatorHarness::<SealEmittingOperator>::builder().build().unwrap();
 
 		let change = harness
-			.on_timer(DateTime::from_timestamp_millis(7_000).unwrap(), TimerKind::Seal, &[])
+			.on_timer(DateTime::from_epoch_millis(7_000).unwrap(), TimerKind::Seal, &[])
 			.expect("firing a seal must succeed")
 			.expect("an operator that emits from on_timer must hand its change back");
 
 		assert_eq!(change.diffs.len(), 1, "the seal emitted exactly one diff, so exactly one must arrive");
 		assert_eq!(
 			change.changed_at,
-			DateTime::from_timestamp_millis(7_000).unwrap(),
+			DateTime::from_epoch_millis(7_000).unwrap(),
 			"a timer's change carries the instant it fired at, not the last input's timestamp; \
 			 stamping it from an input change is what the host wrapper deliberately avoids"
 		);
@@ -979,7 +979,7 @@ pub mod tests {
 		let mut harness = FFIOperatorHarness::<TimerTestOperator>::builder().build().unwrap();
 
 		let change = harness
-			.on_timer(DateTime::from_timestamp_millis(1).unwrap(), TimerKind::Seal, &[])
+			.on_timer(DateTime::from_epoch_millis(1).unwrap(), TimerKind::Seal, &[])
 			.expect("firing a seal must succeed");
 
 		assert!(change.is_none(), "an operator that only touches state must not manufacture a change");
@@ -1174,6 +1174,6 @@ impl<T: FFIOperator> Subject for FFIOperatorHarness<T> {
 	}
 
 	fn tick(&mut self, at_ms: u64) -> ValueResult<Option<Change>> {
-		self.on_timer(DateTime::from_timestamp_millis(at_ms).unwrap(), TimerKind::Seal, &[]).map_err(Into::into)
+		self.on_timer(DateTime::from_epoch_millis(at_ms).unwrap(), TimerKind::Seal, &[]).map_err(Into::into)
 	}
 }

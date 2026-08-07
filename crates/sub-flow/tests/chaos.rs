@@ -71,7 +71,7 @@ fn a_window_operator_can_be_built_and_driven() {
 	let spec = tumbling_sum();
 	let mut harness = Harness::new(|runtime| build(&spec, runtime));
 
-	let at = DateTime::from_timestamp_millis(60_000).unwrap();
+	let at = DateTime::from_epoch_millis(60_000).unwrap();
 	let change = generator::insert(vec![
 		generator::row(RowNumber(1), 1, 10, at),
 		generator::row(RowNumber(2), 1, 5, at),
@@ -1952,7 +1952,7 @@ fn group_data_rows_stamped_below(
 	use reifydb_core::key::{
 		EncodableKey, operator_group_state::OperatorGroupStateKey, operator_state::OperatorStateKey,
 	};
-	let cutoff = DateTime::from_timestamp_millis(cutoff_ms).unwrap();
+	let cutoff = DateTime::from_epoch_millis(cutoff_ms).unwrap();
 	harness.state_items()
 		.expect("state scan must succeed")
 		.into_iter()
@@ -1997,7 +1997,7 @@ fn tick_compaction_reclaims_a_sealed_window_and_the_gate_still_refuses_late_rows
 	// Mutation falsified against: the window operator returning an empty FloorSpec after sealing
 	// (dropped would be 0 and the stamped-below scan non-empty).
 	let mut harness = Harness::new(|runtime| build(&tumbling_sum(), runtime));
-	let at = |ms: u64| DateTime::from_timestamp_millis(ms).unwrap();
+	let at = |ms: u64| DateTime::from_epoch_millis(ms).unwrap();
 
 	// 1_200_000 is a multiple of the 60s window size, so the row anchors its own window; the base
 	// is far from zero because an epoch-stamped state row is indistinguishable from an unstamped one.

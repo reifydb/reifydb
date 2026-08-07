@@ -54,7 +54,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeEpochMillis {
 
 				for i in 0..row_count {
 					if let Some(dt) = container.get(i) {
-						result.push(dt.timestamp_millis());
+						result.push(dt.to_epoch_millis());
 						res_bitvec.push(true);
 					} else {
 						result.push(0);

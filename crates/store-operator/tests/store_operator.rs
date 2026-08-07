@@ -14,7 +14,7 @@ use reifydb_core::{
 		GroupId, Keyspace, OperatorGroupStateKey, group_data_of_inner, keyspace_inner_range,
 	},
 };
-use reifydb_store_operator::{FloorSpec, OperatorStore, OperatorStoreConfig};
+use reifydb_store_operator::{config::OperatorStoreConfig, floor::FloorSpec, store::OperatorStore};
 use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
 fn store_with(freeze_bytes: u64, max_frozen: usize) -> OperatorStore {

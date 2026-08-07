@@ -458,7 +458,7 @@ mod tests {
 	use crate::framework::spec::{MetricsDomain, Surface};
 
 	fn now(millis: u64) -> DateTime {
-		DateTime::from_timestamp_millis(millis).unwrap()
+		DateTime::from_epoch_millis(millis).unwrap()
 	}
 
 	fn counter_row(scope: &str, metric: &'static str, value: u64) -> MetricsRow {

@@ -42,7 +42,7 @@ use reifydb_flow::{
 	},
 };
 use reifydb_sdk::{error::SdkError, ffi::arena::Arena};
-use reifydb_store_operator::FloorSpec;
+use reifydb_store_operator::floor::FloorSpec;
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,

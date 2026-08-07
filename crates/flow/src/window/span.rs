@@ -63,11 +63,11 @@ impl WindowCoord for DateTime {
 	}
 
 	fn to_order(self) -> u64 {
-		self.timestamp_millis() as u64
+		self.to_epoch_millis() as u64
 	}
 
 	fn from_order(order: u64) -> Self {
-		DateTime::from_timestamp_millis(order).unwrap_or(DateTime::MAX)
+		DateTime::from_epoch_millis(order).unwrap_or(DateTime::MAX)
 	}
 
 	fn span_millis(span: Duration) -> Option<u64> {
@@ -141,7 +141,7 @@ impl Slot for DateTime {
 	type Coord = DateTime;
 
 	fn order_key(&self) -> DateTime {
-		<DateTime as WindowCoord>::from_order(self.timestamp_millis() as u64)
+		<DateTime as WindowCoord>::from_order(self.to_epoch_millis() as u64)
 	}
 
 	fn from_order_key(coord: DateTime) -> Self {
@@ -149,7 +149,7 @@ impl Slot for DateTime {
 	}
 
 	fn archived_order_key(archived: &<Self as Archive>::Archived) -> DateTime {
-		DateTime::from_timestamp_millis(archived.timestamp_millis() as u64).unwrap_or_default()
+		DateTime::from_epoch_millis(archived.to_epoch_millis() as u64).unwrap_or_default()
 	}
 
 	fn seal_write(archived: Seal<'_, <Self as Archive>::Archived>, value: Self) -> bool {
@@ -216,7 +216,7 @@ where
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::factory::{at_millis, millis};
+	use reifydb_value::factory::time::{at_millis, millis};
 
 	use super::*;
 	use crate::window::engine::{is_sealed, seal_horizon};
@@ -277,12 +277,12 @@ mod tests {
 		// A seal horizon is watermark - seal_after; with both sides a bare u64 nothing stopped a
 		// millisecond span reaching a nanosecond coordinate, yielding a horizon a million times too
 		// small. Pairing a coordinate with its own Span makes the wrong subtraction fail to compile.
-		let watermark = DateTime::from_timestamp_millis(6_060_000).expect("representable instant");
+		let watermark = DateTime::from_epoch_millis(6_060_000).expect("representable instant");
 		let one_minute = Duration::from_seconds(60).expect("representable span");
 
 		assert_eq!(
 			watermark.saturating_sub_span(one_minute),
-			DateTime::from_timestamp_millis(6_000_000).expect("representable"),
+			DateTime::from_epoch_millis(6_000_000).expect("representable"),
 			"a minute behind the watermark is a minute, not a million times less"
 		);
 		assert_eq!(<DateTime as WindowCoord>::span_millis(one_minute), Some(60_000));
@@ -292,7 +292,7 @@ mod tests {
 	fn a_coordinate_survives_the_round_trip_through_its_storage_encoding() {
 		// to_order/from_order are the persisted expiry-index encoding. They must be exact inverses:
 		// a lossy round trip would move a window's anchor and either seal it early or strand it.
-		let coord = DateTime::from_timestamp_millis(1_234_567).expect("representable");
+		let coord = DateTime::from_epoch_millis(1_234_567).expect("representable");
 		assert_eq!(<DateTime as WindowCoord>::from_order(coord.to_order()), coord);
 	}
 
@@ -301,11 +301,11 @@ mod tests {
 		// The boundary is load-bearing in both directions. A window whose start sits exactly one seal
 		// span behind the watermark is still reachable by a late event, so sealing it would discard a
 		// legitimate retraction; sealing nothing would let state grow without bound.
-		let watermark = DateTime::from_timestamp_millis(6_060_000).expect("representable");
+		let watermark = DateTime::from_epoch_millis(6_060_000).expect("representable");
 		let horizon = seal_horizon(watermark, Duration::from_seconds(60).expect("representable"));
 
-		let at_boundary = DateTime::from_timestamp_millis(6_000_000).expect("representable");
-		let before_boundary = DateTime::from_timestamp_millis(5_999_999).expect("representable");
+		let at_boundary = DateTime::from_epoch_millis(6_000_000).expect("representable");
+		let before_boundary = DateTime::from_epoch_millis(5_999_999).expect("representable");
 
 		assert!(!is_sealed(at_boundary, horizon), "the boundary window is still live");
 		assert!(is_sealed(before_boundary, horizon), "anything older is sealed");

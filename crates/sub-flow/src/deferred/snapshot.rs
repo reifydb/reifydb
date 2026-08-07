@@ -3,7 +3,7 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 #[cfg(not(target_arch = "wasm32"))]
-use std::{collections::BTreeSet, ops::Bound};
+use std::{collections::BTreeSet, ops::Bound, result::Result as StdResult, vec::IntoIter};
 
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_codec::{
@@ -20,8 +20,8 @@ use reifydb_core::{
 use reifydb_runtime::sync::mutex::Mutex;
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_store_operator::{
-	OperatorStore,
 	snapshot::{DEFAULT_SNAPSHOT_CHUNK_BYTES, LoadedSnapshot, SnapshotStore, SnapshotWrite},
+	store::OperatorStore,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_store_single::SingleStore;
@@ -233,10 +233,10 @@ impl FlowSnapshots {
 					loaded.push(*id);
 				}
 				Err(rejection) => {
-					if rejection.is_undecodable() {
-						if let Err(e) = self.store.discard(*id, *generation) {
-							error!(operator = id.0, generation, error = %e, "failed to discard an undecodable snapshot generation");
-						}
+					if rejection.is_undecodable()
+						&& let Err(e) = self.store.discard(*id, *generation)
+					{
+						error!(operator = id.0, generation, error = %e, "failed to discard an undecodable snapshot generation");
 					}
 					for id in loaded {
 						operators.drop_arena(id);
@@ -254,7 +254,7 @@ impl FlowSnapshots {
 		generation: u64,
 		cursor: CommitVersion,
 		truncated_before: CommitVersion,
-	) -> std::result::Result<LoadedSnapshot, SnapshotRejection> {
+	) -> StdResult<LoadedSnapshot, SnapshotRejection> {
 		let loaded = match self.store.load(id, generation) {
 			Ok(loaded) => loaded,
 			Err(e) => {
@@ -398,7 +398,7 @@ fn consistent_set(
 struct ArenaScan<'a> {
 	operators: &'a OperatorStore,
 	id: OperatorId,
-	pending: std::vec::IntoIter<(EncodedKey, EncodedRow)>,
+	pending: IntoIter<(EncodedKey, EncodedRow)>,
 	resume: Option<Bound<EncodedKey>>,
 }
 
@@ -507,7 +507,7 @@ mod tests {
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::{delta::Delta, interface::store::SingleVersionCommit};
 	use reifydb_runtime::shutdown::Shutdown;
-	use reifydb_sqlite::SqliteConfig;
+	use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 	use reifydb_store_operator::snapshot::SnapshotWrite;
 	use reifydb_value::util::cowvec::CowVec;
 
@@ -516,7 +516,7 @@ mod tests {
 	const OP_A: OperatorId = OperatorId(1);
 	const OP_B: OperatorId = OperatorId(2);
 
-	fn snapshot_fixture() -> (FlowSnapshots, SnapshotStore, reifydb_sqlite::SqliteTempPathGuard) {
+	fn snapshot_fixture() -> (FlowSnapshots, SnapshotStore, SqliteTempPathGuard) {
 		let (config, guard) = SqliteConfig::test();
 		let store = SnapshotStore::sqlite(config);
 		let snapshots = FlowSnapshots::new(

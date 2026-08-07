@@ -5,7 +5,7 @@ use reifydb_codec::state::{OperatorState, decode_state};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 use reifydb_value::{
-	factory::{at_millis, millis},
+	factory::time::{at_millis, millis},
 	value::datetime::DateTime,
 };
 

@@ -65,7 +65,10 @@ pub use reifydb_macro as r#macro;
 pub use reifydb_policy as policy;
 pub use reifydb_profiler as profiler;
 pub use reifydb_remote_proxy as remote_proxy;
-pub use reifydb_routine as routine;
+pub mod routine {
+	pub use reifydb_routine::{function, monoid, procedure};
+	pub use reifydb_routine_abi as abi;
+}
 pub use reifydb_routine::{function, procedure};
 pub use reifydb_rql as rql;
 pub use reifydb_runtime as runtime;

@@ -69,7 +69,7 @@ mod tests {
 		id::ColumnId,
 	};
 	use reifydb_value::{
-		factory::at_nanos,
+		factory::time::at_nanos,
 		value::{constraint::TypeConstraint, datetime::DateTime, value_type::ValueType},
 	};
 
