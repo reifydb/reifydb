@@ -122,7 +122,13 @@ impl CatalogStore {
 			},
 		);
 
-		write_time_source(&ringbuffer::SHAPE, &mut row, ringbuffer::TIME_DOMAIN, ringbuffer::TS, &to_create.time);
+		write_time_source(
+			&ringbuffer::SHAPE,
+			&mut row,
+			ringbuffer::TIME_DOMAIN,
+			ringbuffer::TS,
+			&to_create.time,
+		);
 
 		txn.set(&RingBufferKey::encoded(ringbuffer), row.freeze())?;
 

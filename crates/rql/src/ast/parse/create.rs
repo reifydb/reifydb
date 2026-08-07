@@ -51,7 +51,8 @@ use crate::{
 	},
 };
 
-const QUEUE_OPTION_KEYS: &str = "'fifo', 'deduplicate', 'retention', 'retry', 'time', or 'ts'";
+const QUEUE_OPTION_KEYS: &str = "'fifo', 'deduplicate', 'retention', 'retry', or 'time'";
+const TIME_VALUES: &str = "'none', 'event(<column>)', or 'processing'";
 const QUEUE_FIFO_KEYS: &str = "'partitions' or 'ordered_by'";
 const QUEUE_DEDUPLICATE_KEYS: &str = "'by' or 'ttl'";
 const QUEUE_RETENTION_KEYS: &str = "'done'";
@@ -761,21 +762,18 @@ impl<'bump> Parser<'bump> {
 						partition_by = self.parse_partition_config()?;
 					}
 					"time" => {
-						time_declaration.time = Some(self.consume_identifier()?);
-					}
-					"ts" => {
-						time_declaration.ts = Some(self.consume_identifier()?);
+						time_declaration = self.parse_time_declaration()?;
 					}
 					_other => {
 						let fragment = with_key.fragment.to_owned();
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'key', 'tag', 'precision', 'partition', 'row', 'time', or 'ts'"
+								expected: "'key', 'tag', 'precision', 'partition', 'row', or 'time'"
 									.to_string(),
 							},
 							message: format!(
 								"Unexpected token: expected {}, got {}",
-								"'key', 'tag', 'precision', 'partition', 'row', 'time', or 'ts'",
+								"'key', 'tag', 'precision', 'partition', 'row', or 'time'",
 								fragment.text()
 							),
 							fragment,
@@ -1188,20 +1186,16 @@ impl<'bump> Parser<'bump> {
 						partition_by = self.parse_partition_config()?;
 					}
 					"time" => {
-						time_declaration.time = Some(self.consume_identifier()?);
-					}
-					"ts" => {
-						time_declaration.ts = Some(self.consume_identifier()?);
+						time_declaration = self.parse_time_declaration()?;
 					}
 					_other => {
 						let fragment = key.fragment.to_owned();
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'row', 'partition', 'time', or 'ts'"
-									.to_string(),
+								expected: "'row', 'partition', or 'time'".to_string(),
 							},
 							message: format!(
-								"expected 'row', 'partition', 'time', or 'ts', found `{}`",
+								"expected 'row', 'partition', or 'time', found `{}`",
 								fragment.text()
 							),
 							fragment,
@@ -1309,21 +1303,18 @@ impl<'bump> Parser<'bump> {
 					settings = Some(self.parse_row_config()?);
 				}
 				"time" => {
-					time_declaration.time = Some(self.consume_identifier()?);
-				}
-				"ts" => {
-					time_declaration.ts = Some(self.consume_identifier()?);
+					time_declaration = self.parse_time_declaration()?;
 				}
 				_other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'capacity', 'partition', 'row', 'time', or 'ts'"
+							expected: "'capacity', 'partition', 'row', or 'time'"
 								.to_string(),
 						},
 						message: format!(
 							"Unexpected token: expected {}, got {}",
-							"'capacity', 'partition', 'row', 'time', or 'ts'",
+							"'capacity', 'partition', 'row', or 'time'",
 							fragment.text()
 						),
 						fragment,
@@ -1418,10 +1409,7 @@ impl<'bump> Parser<'bump> {
 						retry = Some(self.parse_queue_retry()?);
 					}
 					"time" => {
-						time_declaration.time = Some(self.consume_identifier()?);
-					}
-					"ts" => {
-						time_declaration.ts = Some(self.consume_identifier()?);
+						time_declaration = self.parse_time_declaration()?;
 					}
 					_other => return Err(unexpected_queue_option(&key, QUEUE_OPTION_KEYS)),
 				}
@@ -1656,6 +1644,37 @@ impl<'bump> Parser<'bump> {
 		match current.kind {
 			TokenKind::Identifier => self.consume_identifier(),
 			_ => Err(unexpected_queue_option(&current, expected)),
+		}
+	}
+
+	fn parse_time_declaration(&mut self) -> Result<AstTimeDeclaration<'bump>> {
+		if let Some(token) = self.consume_if(TokenKind::Literal(Literal::None))? {
+			return Ok(AstTimeDeclaration::None(token));
+		}
+
+		let keyword = self.consume_identifier()?;
+
+		match keyword.fragment.text().to_ascii_lowercase().as_str() {
+			"processing" => Ok(AstTimeDeclaration::Processing(keyword)),
+			"event" => {
+				self.consume_operator(Operator::OpenParen)?;
+				let column = self.consume_identifier()?;
+				self.consume_operator(Operator::CloseParen)?;
+				Ok(AstTimeDeclaration::Event {
+					keyword,
+					column,
+				})
+			}
+			_ => {
+				let fragment = keyword.fragment.to_owned();
+				Err(Error::from(TypeError::Ast {
+					kind: AstErrorKind::UnexpectedToken {
+						expected: TIME_VALUES.to_string(),
+					},
+					message: format!("expected {}, found `{}`", TIME_VALUES, fragment.text()),
+					fragment,
+				}))
+			}
 		}
 	}
 
@@ -5020,14 +5039,14 @@ mod time_declaration_tests {
 	use crate::{
 		Result,
 		ast::{
-			ast::{Ast, AstCreate},
+			ast::{Ast, AstCreate, AstTimeDeclaration},
 			parse::Parser,
 		},
 		bump::Bump,
 		token::tokenize,
 	};
 
-	fn declared_in(bump: &Bump, source: &str) -> Result<(Option<String>, Option<String>)> {
+	fn declared_in(bump: &Bump, source: &str) -> Result<String> {
 		let tokens = tokenize(bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(bump, source, tokens);
 		let mut result = parser.parse()?;
@@ -5042,24 +5061,34 @@ mod time_declaration_tests {
 			AstCreate::Queue(q) => &q.time_declaration,
 			other => panic!("statement carries no time declaration: {other:?}"),
 		};
-		Ok((
-			decl.time.as_ref().map(|t| t.fragment.text().to_string()),
-			decl.ts.as_ref().map(|t| t.fragment.text().to_string()),
-		))
+		Ok(match decl {
+			AstTimeDeclaration::Undeclared => "undeclared".to_string(),
+			AstTimeDeclaration::None(_) => "none".to_string(),
+			AstTimeDeclaration::Processing(_) => "processing".to_string(),
+			AstTimeDeclaration::Event {
+				column,
+				..
+			} => format!("event({})", column.fragment.text()),
+		})
 	}
 
-	fn declared(source: &str) -> (Option<String>, Option<String>) {
+	fn declared(source: &str) -> String {
 		let bump = Bump::new();
 		declared_in(&bump, source).expect("statement must parse")
 	}
 
+	fn rejected(source: &str) {
+		let bump = Bump::new();
+		assert!(declared_in(&bump, source).is_err(), "must be rejected: {source}");
+	}
+
 	#[test]
-	fn the_event_keyword_is_accepted_as_a_time_value() {
+	fn the_event_keyword_carries_its_column_inside_the_parens() {
 		// `event` is a reserved keyword in RQL, so the `time:` value cannot be consumed as a plain
 		// identifier. Every resolver test builds its declaration by hand and proves nothing about the grammar.
 		assert_eq!(
-			declared(r#"create table ns::trades { a: int4 } with { time: event, ts: block_time }"#),
-			(Some("event".to_string()), Some("block_time".to_string()))
+			declared(r#"create table ns::trades { a: int4 } with { time: event(block_time) }"#),
+			"event(block_time)"
 		);
 	}
 
@@ -5067,30 +5096,63 @@ mod time_declaration_tests {
 	fn the_processing_value_parses_through_the_same_key() {
 		// `processing` is not reserved today; pinning it means a future reservation cannot break one half of
 		// the declaration surface while the other keeps working.
-		assert_eq!(
-			declared(r#"create table ns::audit { a: int4 } with { time: processing }"#),
-			(Some("processing".to_string()), None)
-		);
+		assert_eq!(declared(r#"create table ns::audit { a: int4 } with { time: processing }"#), "processing");
+	}
+
+	#[test]
+	fn the_none_value_parses_through_the_same_key() {
+		// `none` is the new third value and the one an author writes to say "this is reference data".
+		// If it failed to parse they would have to fall back to silence, which reads as an omission.
+		assert_eq!(declared(r#"create table ns::token { a: int4 } with { time: none }"#), "none");
 	}
 
 	#[test]
 	fn a_populator_column_may_be_named_with_a_keyword() {
-		// `ts` takes a column name, which may itself be a reserved word, so it has the same keyword hazard as
-		// `time`.
-		assert_eq!(
-			declared(r#"create table ns::t { a: int4 } with { time: event, ts: event }"#),
-			(Some("event".to_string()), Some("event".to_string()))
-		);
+		// The column inside `event(..)` may itself be a reserved word, so it has the same keyword hazard as
+		// the `time` value.
+		assert_eq!(declared(r#"create table ns::t { a: int4 } with { time: event(event) }"#), "event(event)");
+	}
+
+	#[test]
+	fn event_without_a_column_does_not_parse() {
+		// The arity is structural: folding the column into `event(..)` is what makes an event-time
+		// object that names no column unrepresentable rather than something a later pass has to catch.
+		rejected(r#"create table ns::t { a: int4 } with { time: event }"#);
+		rejected(r#"create table ns::t { a: int4 } with { time: event() }"#);
+	}
+
+	#[test]
+	fn a_column_may_not_be_attached_to_none_or_processing() {
+		// The mirror of the rule above. Neither value reads a column, so accepting one would leave a
+		// declaration whose populator is silently discarded.
+		rejected(r#"create table ns::t { a: int4 } with { time: processing(at) }"#);
+		rejected(r#"create table ns::t { a: int4 } with { time: none(at) }"#);
+	}
+
+	#[test]
+	fn the_retired_ts_key_is_no_longer_accepted() {
+		// `ts:` was the separate populator key. Leaving it parseable would let an old definition keep
+		// declaring event time through a path that no longer resolves one.
+		rejected(r#"create table ns::t { a: int4 } with { ts: block_time }"#);
+		rejected(r#"create table ns::t { a: int4 } with { time: event(at), ts: at }"#);
+	}
+
+	#[test]
+	fn an_unknown_time_value_is_rejected() {
+		// An unrecognised value must fault at the text the author typed rather than fall through to a
+		// default, because the default is now `none` and an object that silently stops carrying #time
+		// leaves its views empty with nothing to notice it.
+		rejected(r#"create table ns::t { a: int4 } with { time: wallclock }"#);
 	}
 
 	#[test]
 	fn a_source_object_may_omit_the_declaration_entirely() {
-		// An undeclared source object is processing time by definition, so silence has to parse to an empty
-		// declaration rather than a parse error.
-		assert_eq!(declared(r#"create table ns::t { a: int4 }"#), (None, None));
+		// Silence is a legitimate declaration meaning `none`, not an omission to fault, so it has to
+		// parse to the Undeclared variant rather than a parse error.
+		assert_eq!(declared(r#"create table ns::t { a: int4 }"#), "undeclared");
 		assert_eq!(
 			declared(r#"create table ns::t { a: int4 } with { partition: { by: { a } } }"#),
-			(None, None),
+			"undeclared",
 			"a WITH block that declares only other keys still leaves the time declaration empty"
 		);
 	}
@@ -5100,40 +5162,36 @@ mod time_declaration_tests {
 		// Table, series, ringbuffer and queue each have their own WITH loop, so a key added to one is not
 		// added to the others; naming all four is what keeps them from drifting apart.
 		assert_eq!(
-			declared(r#"create table ns::t { a: int4 } with { time: event, ts: at }"#),
-			(Some("event".to_string()), Some("at".to_string())),
+			declared(r#"create table ns::t { a: int4 } with { time: event(at) }"#),
+			"event(at)",
 			"table"
 		);
 		assert_eq!(
-			declared(r#"create series ns::s { a: int4 } with { key: a, time: event, ts: at }"#),
-			(Some("event".to_string()), Some("at".to_string())),
+			declared(r#"create series ns::s { a: int4 } with { key: a, time: event(at) }"#),
+			"event(at)",
 			"series"
 		);
 		assert_eq!(
-			declared(r#"create ringbuffer ns::r { a: int4 } with { capacity: 10, time: event, ts: at }"#),
-			(Some("event".to_string()), Some("at".to_string())),
+			declared(r#"create ringbuffer ns::r { a: int4 } with { capacity: 10, time: event(at) }"#),
+			"event(at)",
 			"ringbuffer"
 		);
 		assert_eq!(
-			declared(r#"create queue ns::q { a: int4 } with { fifo: {}, time: event, ts: at }"#),
-			(Some("event".to_string()), Some("at".to_string())),
+			declared(r#"create queue ns::q { a: int4 } with { fifo: {}, time: event(at) }"#),
+			"event(at)",
 			"queue"
 		);
 	}
 
 	#[test]
 	fn a_view_rejects_a_time_declaration_outright() {
-		// A view has no time declaration any more: #time is stamped once at the source and every
-		// downstream operator reads it. Accepting `time:` here and ignoring it would put the author
-		// back in the exact trap this change removed - a view that looks event-time while its rows
-		// carry whatever the source stamped.
-		let bump = Bump::new();
+		// A view is always event time inherited from its source, so there is nothing for it to declare.
 		for source in [
-			r#"create deferred view ns::v { a: int4 } with { time: event } as { from ns::t }"#,
-			r#"create deferred view ns::v { a: int4 } with { ts: at } as { from ns::t }"#,
-			r#"create transactional view ns::v { a: int4 } with { time: event } as { from ns::t }"#,
+			r#"create deferred view ns::v { a: int4 } with { time: event(at) } as { from ns::t }"#,
+			r#"create deferred view ns::v { a: int4 } with { time: none } as { from ns::t }"#,
+			r#"create transactional view ns::v { a: int4 } with { time: processing } as { from ns::t }"#,
 		] {
-			assert!(declared_in(&bump, source).is_err(), "a view must reject a time declaration: {source}");
+			rejected(source);
 		}
 	}
 
@@ -5142,27 +5200,24 @@ mod time_declaration_tests {
 		// Ringbuffer- and series-backed views parse their WITH block in a separate function with its
 		// own copy of the key arms, so removing the keys from the plain-view loop does not remove
 		// them here. Naming all four is what keeps the two loops from drifting apart.
-		let bump = Bump::new();
 		for source in [
-			r#"create deferred ringbuffer view ns::v { a: int4 } with { capacity: 10, time: event } as { from ns::t }"#,
-			r#"create transactional ringbuffer view ns::v { a: int4 } with { capacity: 10, ts: at } as { from ns::t }"#,
-			r#"create deferred series view ns::v { a: int4 } with { key: a, time: event } as { from ns::t }"#,
-			r#"create transactional series view ns::v { a: int4 } with { key: a, ts: at } as { from ns::t }"#,
+			r#"create deferred ringbuffer view ns::v { a: int4 } with { capacity: 10, time: event(at) } as { from ns::t }"#,
+			r#"create transactional ringbuffer view ns::v { a: int4 } with { capacity: 10, time: none } as { from ns::t }"#,
+			r#"create deferred series view ns::v { a: int4 } with { key: a, time: event(at) } as { from ns::t }"#,
+			r#"create transactional series view ns::v { a: int4 } with { key: a, time: processing } as { from ns::t }"#,
 		] {
-			assert!(
-				declared_in(&bump, source).is_err(),
-				"a storage-backed view must reject a time declaration: {source}"
-			);
+			rejected(source);
 		}
 	}
 
 	#[test]
-	fn an_unknown_with_key_is_still_rejected_and_lists_the_time_keys() {
-		// The diagnostic has to name the accepted keys, or the author never learns `time`/`ts` are options.
+	fn an_unknown_with_key_is_still_rejected_and_lists_the_time_key() {
+		// The diagnostic has to name the accepted keys, or the author never learns `time` is an option.
 		let bump = Bump::new();
 		let err = declared_in(&bump, r#"create table ns::t { a: int4 } with { bogus: 1 }"#).unwrap_err();
 		let message = format!("{:?}", err.diagnostic());
+
 		assert!(message.contains("time"), "the diagnostic must offer `time`: {message}");
-		assert!(message.contains("ts"), "the diagnostic must offer `ts`: {message}");
+		assert!(!message.contains("'ts'"), "the diagnostic must not still offer the retired `ts`: {message}");
 	}
 }

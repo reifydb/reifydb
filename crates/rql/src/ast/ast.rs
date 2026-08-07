@@ -899,9 +899,15 @@ pub struct AstRowSettings<'bump> {
 }
 
 #[derive(Debug, Default)]
-pub struct AstTimeDeclaration<'bump> {
-	pub time: Option<Token<'bump>>,
-	pub ts: Option<Token<'bump>>,
+pub enum AstTimeDeclaration<'bump> {
+	#[default]
+	Undeclared,
+	None(Token<'bump>),
+	Event {
+		keyword: Token<'bump>,
+		column: Token<'bump>,
+	},
+	Processing(Token<'bump>),
 }
 
 #[derive(Debug, Default)]

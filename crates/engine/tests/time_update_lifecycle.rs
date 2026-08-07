@@ -65,7 +65,7 @@ fn an_event_time_update_re_reads_the_populator_rather_than_the_clock() {
 	// The correction points backwards, an instant neither the arrival clock nor the previous
 	// #time can produce, so only a genuine re-read of the row satisfies this.
 	let t = engine();
-	t.admin("CREATE TABLE test::trades { id: int4, at: datetime } WITH { time: event, ts: at }");
+	t.admin("CREATE TABLE test::trades { id: int4, at: datetime } WITH { time: event(at) }");
 	t.command(&format!(r#"INSERT test::trades [{{ id: 1, at: {BLOCK_TIME} }}]"#));
 
 	assert_eq!(only_time(&t, "FROM test::trades"), block_time());
@@ -85,7 +85,7 @@ fn an_event_time_update_of_an_unrelated_column_leaves_time_alone() {
 	// A re-stamp on every update breaks only here: where the populator is edited, the populator
 	// and the new #time agree by construction and hide it.
 	let t = engine();
-	t.admin("CREATE TABLE test::trades { id: int4, qty: int4, at: datetime } WITH { time: event, ts: at }");
+	t.admin("CREATE TABLE test::trades { id: int4, qty: int4, at: datetime } WITH { time: event(at) }");
 	t.command(&format!(r#"INSERT test::trades [{{ id: 1, qty: 10, at: {BLOCK_TIME} }}]"#));
 
 	t.mock_clock().advance_secs(365 * 24 * 60 * 60);
@@ -112,7 +112,7 @@ fn a_ringbuffer_update_follows_the_same_lifecycle_as_a_table() {
 	assert_eq!(only_time(&t, "FROM test::recent"), inserted_time, "processing-time ringbuffer");
 
 	let t = engine();
-	t.admin("CREATE RINGBUFFER test::events { id: int4, at: datetime } WITH { capacity: 8, time: event, ts: at }");
+	t.admin("CREATE RINGBUFFER test::events { id: int4, at: datetime } WITH { capacity: 8, time: event(at) }");
 	t.command(&format!(r#"INSERT test::events [{{ id: 1, at: {BLOCK_TIME} }}]"#));
 
 	t.mock_clock().advance_secs(365 * 24 * 60 * 60);
@@ -134,7 +134,7 @@ fn a_series_update_follows_the_same_lifecycle_as_a_table() {
 	assert_eq!(only_time(&t, "FROM test::metrics"), inserted_time, "processing-time series");
 
 	let t = engine();
-	t.admin("CREATE SERIES test::readings { ts: int8, at: datetime } WITH { key: ts, time: event, ts: at }");
+	t.admin("CREATE SERIES test::readings { ts: int8, at: datetime } WITH { key: ts, time: event(at) }");
 	t.command(&format!(r#"INSERT test::readings [{{ ts: 1000, at: {BLOCK_TIME} }}]"#));
 
 	t.mock_clock().advance_secs(365 * 24 * 60 * 60);

@@ -135,6 +135,9 @@ impl<'bump> Compiler<'bump> {
 		}
 
 		let ringbuffer = ast.ringbuffer;
+		let row_ttl =
+			ast.settings.as_ref().and_then(|s| s.ttl.as_ref()).map(|t| t.duration.fragment.to_owned());
+
 		let (ttl, persistent) = match ast.settings {
 			Some(settings) => (
 				settings.ttl.map(Self::compile_ttl).transpose()?,
@@ -146,6 +149,7 @@ impl<'bump> Compiler<'bump> {
 		let time = resolve_declared_source_time(
 			&TimeDeclaration::from(&ast.time_declaration),
 			columns.iter().map(|c| (c.name.text(), c.constraint.get_type())),
+			row_ttl,
 		)?;
 
 		Ok(LogicalPlan::CreateRingBuffer(CreateRingBufferNode {

@@ -121,6 +121,7 @@ impl<'bump> Compiler<'bump> {
 		let time = resolve_declared_source_time(
 			&TimeDeclaration::from(&ast.time_declaration),
 			columns.iter().map(|c| (c.name.text(), c.constraint.get_type())),
+			None,
 		)?;
 
 		Ok(LogicalPlan::CreateQueue(CreateQueueNode {

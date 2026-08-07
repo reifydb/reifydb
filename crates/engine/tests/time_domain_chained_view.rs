@@ -16,7 +16,7 @@ use reifydb_value::{params::Params, value::identity::IdentityId};
 fn event_source_chain() -> TestEngine {
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE cv");
-	t.admin("CREATE TABLE cv::src { id: int4, at: datetime } WITH { time: event, ts: at }");
+	t.admin("CREATE TABLE cv::src { id: int4, at: datetime } WITH { time: event(at) }");
 	t.admin("CREATE DEFERRED VIEW cv::upstream { id: int4, at: datetime } AS { FROM cv::src }");
 	t.admin("CREATE DEFERRED VIEW cv::downstream { id: int4, at: datetime } AS { FROM cv::upstream }");
 	t

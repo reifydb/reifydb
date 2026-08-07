@@ -417,7 +417,7 @@ pub fn flow_rolling_lag_requires_event_time(flow: &str) -> Diagnostic {
 		label: None,
 		help: Some(
 			"lag holds a rolling window open for out-of-order arrivals, which only has meaning against a \
-			 source-supplied event time. Declare `with { time: event, ts: <column> }` on the source \
+			 source-supplied event time. Declare `with { time: event(<column>) }` on the source \
 			 object this flow reads, or remove the lag."
 				.to_string(),
 		),

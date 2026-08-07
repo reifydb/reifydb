@@ -237,6 +237,11 @@ pub enum RqlError {
 		found: ValueType,
 		fragment: Fragment,
 	},
+
+	#[error("an object without a time domain must not declare a row ttl")]
+	RowTtlWithoutTimeDomain {
+		fragment: Fragment,
+	},
 }
 
 impl IntoDiagnostic for RqlError {
@@ -1026,6 +1031,23 @@ impl IntoDiagnostic for RqlError {
 						.to_string(),
 				),
 				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			RqlError::RowTtlWithoutTimeDomain { fragment } => Diagnostic {
+				code: "TIME_005".to_string(),
+				rql: None,
+				message: "an object without a time domain must not declare a row ttl".to_string(),
+				column: None,
+				fragment,
+				label: Some("row ttl on a time-less object".to_string()),
+				help: Some(
+					"declare `time: event(<column>)` or `time: processing`, or drop the row ttl"
+						.to_string(),
+				),
+				notes: vec![
+					"an undeclared object is `time: none`, which carries no #time at all".to_string(),
+				],
 				cause: None,
 				operator_chain: None,
 			},
