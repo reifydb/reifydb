@@ -164,7 +164,7 @@ fn setup() -> TestDb {
 
 fn declare(db: &TestDb) {
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
 	db.admin("CREATE DEFERRED VIEW app::v { g: int4, fired_at: int8 } AS { FROM app::t APPLY alarm{} }");
 }
 
@@ -260,7 +260,7 @@ fn interning_inside_a_callback_stamps_the_firing_instant_not_the_change_that_wok
 	// row and outlive its horizon forever - a leak no view query can reveal.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(
 		"CREATE DEFERRED VIEW app::v { g: int4, fired_at: int8 } AS { FROM app::t APPLY alarm{ seal: 1000 } }",
 	);
@@ -383,7 +383,7 @@ fn setup_snooze() -> TestDb {
 
 fn declare_snooze(db: &TestDb, config: &str) {
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(&format!(
 		"CREATE DEFERRED VIEW app::v {{ g: int4, fired_at: int8 }} AS {{ FROM app::t APPLY snooze{{{}}} }}",
 		config

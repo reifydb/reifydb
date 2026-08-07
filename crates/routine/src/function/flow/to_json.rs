@@ -21,15 +21,18 @@ pub enum JsonOperatorDef {
 	SourceInlineData {},
 	SourceTable {
 		table: u64,
+		time_domain: &'static str,
 	},
 	SourceView {
 		view: u64,
 	},
 	SourceRingBuffer {
 		ringbuffer: u64,
+		time_domain: &'static str,
 	},
 	SourceSeries {
 		series: u64,
+		time_domain: &'static str,
 	},
 	Filter {
 		conditions: Vec<JsonExpression>,
@@ -86,8 +89,10 @@ impl From<&OperatorDef> for JsonOperatorDef {
 			OperatorDef::SourceInlineData {} => JsonOperatorDef::SourceInlineData {},
 			OperatorDef::SourceTable {
 				table,
+				time_domain,
 			} => JsonOperatorDef::SourceTable {
 				table: table.0,
+				time_domain: time_domain.as_str(),
 			},
 			OperatorDef::SourceView {
 				view,
@@ -96,13 +101,17 @@ impl From<&OperatorDef> for JsonOperatorDef {
 			},
 			OperatorDef::SourceRingBuffer {
 				ringbuffer,
+				time_domain,
 			} => JsonOperatorDef::SourceRingBuffer {
 				ringbuffer: ringbuffer.0,
+				time_domain: time_domain.as_str(),
 			},
 			OperatorDef::SourceSeries {
 				series,
+				time_domain,
 			} => JsonOperatorDef::SourceSeries {
 				series: series.0,
+				time_domain: time_domain.as_str(),
 			},
 			OperatorDef::Filter {
 				conditions,

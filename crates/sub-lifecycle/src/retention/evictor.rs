@@ -821,7 +821,7 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"create table test::t { v: int4 } with { row: { ttl: { duration: \"1h\", announce: true } } }",
+			"create table test::t { v: int4 } with { time: processing, row: { ttl: { duration: \"1h\", announce: true } } }",
 		);
 
 		test.command("INSERT test::t [{ v: 1 }]");
@@ -857,7 +857,7 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"create table test::t { v: int4 } with { row: { ttl: { duration: \"1h\", announce: true } } }",
+			"create table test::t { v: int4 } with { time: processing, row: { ttl: { duration: \"1h\", announce: true } } }",
 		);
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }, { v: 3 }]");
 		age_past_ttl(&test);
@@ -885,7 +885,7 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"create table test::t { v: int4 } with { row: { ttl: { duration: \"1h\", announce: false } } }",
+			"create table test::t { v: int4 } with { time: processing, row: { ttl: { duration: \"1h\", announce: false } } }",
 		);
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }]");
 		age_past_ttl(&test);
@@ -915,7 +915,7 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"CREATE RINGBUFFER test::rb { a: utf8, v: int4 } WITH { capacity: 100, row: { ttl: { duration: \"1h\", announce: true } }, partition: { by: { a } } }",
+			"CREATE RINGBUFFER test::rb { a: utf8, v: int4 } WITH { time: processing, capacity: 100, row: { ttl: { duration: \"1h\", announce: true } }, partition: { by: { a } } }",
 		);
 		test.command("INSERT test::rb [{ a: \"us\", v: 1 }, { a: \"us\", v: 2 }, { a: \"us\", v: 3 }]");
 		test.command("INSERT test::rb [{ a: \"eu\", v: 10 }, { a: \"eu\", v: 20 }]");
@@ -949,7 +949,7 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"CREATE RINGBUFFER test::rb { v: int4 } WITH { capacity: 100, row: { ttl: { duration: \"1h\", announce: true } } }",
+			"CREATE RINGBUFFER test::rb { v: int4 } WITH { time: processing, capacity: 100, row: { ttl: { duration: \"1h\", announce: true } } }",
 		);
 		test.command("INSERT test::rb [{ v: 1 }, { v: 2 }]");
 		age_past_ttl(&test);
@@ -980,7 +980,7 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"CREATE RINGBUFFER test::rb { v: int4 } WITH { capacity: 100, row: { ttl: { duration: \"1h\", announce: false } } }",
+			"CREATE RINGBUFFER test::rb { v: int4 } WITH { time: processing, capacity: 100, row: { ttl: { duration: \"1h\", announce: false } } }",
 		);
 		test.command("INSERT test::rb [{ v: 1 }, { v: 2 }]");
 		age_past_ttl(&test);
@@ -1003,7 +1003,7 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"create table test::t { v: int4 } with { row: { ttl: { duration: \"1h\", announce: true } } }",
+			"create table test::t { v: int4 } with { time: processing, row: { ttl: { duration: \"1h\", announce: true } } }",
 		);
 		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
 		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
@@ -1029,7 +1029,7 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"create table test::t { v: int4 } with { row: { ttl: { duration: \"1h\", announce: true } } }",
+			"create table test::t { v: int4 } with { time: processing, row: { ttl: { duration: \"1h\", announce: true } } }",
 		);
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }]");
 
@@ -1052,7 +1052,7 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"create series test::s { ts: datetime, v: int4 } WITH { key: ts, row: { ttl: { duration: \"1h\", announce: true } } }",
+			"create series test::s { ts: datetime, v: int4 } WITH { time: processing, key: ts, row: { ttl: { duration: \"1h\", announce: true } } }",
 		);
 		test.command(
 			"INSERT test::s [{ ts: datetime::from_epoch_millis(1000), v: 1 }, { ts: datetime::from_epoch_millis(2000), v: 2 }]",
@@ -1082,7 +1082,7 @@ mod tests {
 			"CREATE RINGBUFFER test::dml { a: utf8, v: int4 } WITH { capacity: 100, partition: { by: { a } } }",
 		);
 		test.admin(
-			"CREATE RINGBUFFER test::evicted { a: utf8, v: int4 } WITH { capacity: 100, row: { ttl: { duration: \"1h\", announce: true } }, partition: { by: { a } } }",
+			"CREATE RINGBUFFER test::evicted { a: utf8, v: int4 } WITH { time: processing, capacity: 100, row: { ttl: { duration: \"1h\", announce: true } }, partition: { by: { a } } }",
 		);
 		for rql in [
 			"INSERT test::dml [{ a: \"us\", v: 0 }, { a: \"us\", v: 1 }, { a: \"us\", v: 2 }]",
@@ -1130,7 +1130,7 @@ mod tests {
 			"create deferred ringbuffer view test::rb { base: utf8, n: int4 } WITH { capacity: 100, row: { ttl: { duration: \"1h\", announce: false } }, partition: { by: { base } } } as { from test::src }",
 		);
 		test.admin(
-			"CREATE RINGBUFFER test::standalone { base: utf8, n: int4 } WITH { capacity: 100, row: { ttl: { duration: \"1h\", announce: true } }, partition: { by: { base } } }",
+			"CREATE RINGBUFFER test::standalone { base: utf8, n: int4 } WITH { time: processing, capacity: 100, row: { ttl: { duration: \"1h\", announce: true } }, partition: { by: { base } } }",
 		);
 		test.command("INSERT test::standalone [{ base: \"us\", n: 1 }]");
 
@@ -1166,7 +1166,7 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"create table test::t { v: int4 } with { row: { ttl: { duration: \"1h\", announce: true } } }",
+			"create table test::t { v: int4 } with { time: processing, row: { ttl: { duration: \"1h\", announce: true } } }",
 		);
 		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
 		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(2));
@@ -1199,10 +1199,10 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"create table test::t1 { v: int4 } with { row: { ttl: { duration: \"1h\", announce: true } } }",
+			"create table test::t1 { v: int4 } with { time: processing, row: { ttl: { duration: \"1h\", announce: true } } }",
 		);
 		test.admin(
-			"create table test::t2 { v: int4 } with { row: { ttl: { duration: \"1h\", announce: true } } }",
+			"create table test::t2 { v: int4 } with { time: processing, row: { ttl: { duration: \"1h\", announce: true } } }",
 		);
 		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
 		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1));
@@ -1305,10 +1305,10 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"create table test::short { v: int4 } with { row: { ttl: { duration: \"1h\", announce: false } } }",
+			"create table test::short { v: int4 } with { time: processing, row: { ttl: { duration: \"1h\", announce: false } } }",
 		);
 		test.admin(
-			"create table test::long { v: int4 } with { row: { ttl: { duration: \"4h\", announce: false } } }",
+			"create table test::long { v: int4 } with { time: processing, row: { ttl: { duration: \"4h\", announce: false } } }",
 		);
 		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
 		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1));
@@ -1347,10 +1347,10 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"create table test::short { v: int4 } with { row: { ttl: { duration: \"1h\", announce: false } } }",
+			"create table test::short { v: int4 } with { time: processing, row: { ttl: { duration: \"1h\", announce: false } } }",
 		);
 		test.admin(
-			"create table test::long { v: int4 } with { row: { ttl: { duration: \"4h\", announce: false } } }",
+			"create table test::long { v: int4 } with { time: processing, row: { ttl: { duration: \"4h\", announce: false } } }",
 		);
 		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(2));
 		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1));
@@ -1401,7 +1401,7 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"create table test::t { v: int4 } with { row: { ttl: { duration: \"1h\", announce: true } } }",
+			"create table test::t { v: int4 } with { time: processing, row: { ttl: { duration: \"1h\", announce: true } } }",
 		);
 		test.command("INSERT test::t [{ v: 1 }, { v: 2 }]");
 
@@ -1425,10 +1425,10 @@ mod tests {
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin(
-			"create table test::silent { v: int4 } with { row: { ttl: { duration: \"1h\", announce: false } } }",
+			"create table test::silent { v: int4 } with { time: processing, row: { ttl: { duration: \"1h\", announce: false } } }",
 		);
 		test.admin(
-			"create table test::announced { v: int4 } with { row: { ttl: { duration: \"1h\", announce: true } } }",
+			"create table test::announced { v: int4 } with { time: processing, row: { ttl: { duration: \"1h\", announce: true } } }",
 		);
 		test.command("INSERT test::silent [{ v: 1 }, { v: 2 }]");
 		test.command("INSERT test::announced [{ v: 1 }, { v: 2 }]");

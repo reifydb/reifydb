@@ -38,7 +38,7 @@ fn create_flow(db: &TestDb) {
 	db.admin("CREATE NAMESPACE app");
 	// The ts populator makes the row's #time its event time, which is the coordinate the intern is
 	// stamped with; without it both inserts land in the same wall-clock activity bucket.
-	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(&format!("CREATE DEFERRED VIEW app::v {{ g: int4, total: int8 }} \
 		 AS {{ FROM app::t AGGREGATE {{ total: math::count(id) }} BY {{ g }} \
 		 WITH {{ ttl: {{ duration: \"{TTL}\" }} }} }}"));
@@ -75,7 +75,7 @@ fn an_aggregate_without_a_ttl_reclaims_nothing() {
 	// lose all discriminating power.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
 	db.admin("CREATE DEFERRED VIEW app::v { g: int4, total: int8 } \
 		 AS { FROM app::t AGGREGATE { total: math::count(id) } BY { g } }");
 

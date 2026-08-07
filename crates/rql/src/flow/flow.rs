@@ -135,4 +135,8 @@ impl FlowDag {
 	pub fn ticks(&self) -> bool {
 		self.get_operator_ids().any(|id| self.get_operator(&id).is_some_and(|n| n.ty.ticks()))
 	}
+
+	pub fn has_timed_source(&self) -> bool {
+		self.get_operator_ids().any(|id| self.get_operator(&id).is_some_and(|n| n.ty.declares_time()))
+	}
 }

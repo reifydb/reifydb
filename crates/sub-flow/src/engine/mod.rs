@@ -432,6 +432,7 @@ pub(crate) fn lease_demand(report: &LeaseReport) -> ByteSize {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::common::TimeDomain;
 	use reifydb_value::{byte_size::ByteSize, count::Count};
 
 	use super::*;
@@ -599,6 +600,7 @@ mod tests {
 			operator,
 			OperatorDef::SourceSeries {
 				series: reifydb_core::interface::catalog::id::SeriesId(1),
+				time_domain: TimeDomain::None,
 			},
 		));
 		inner.register_flow_dag(builder.build());

@@ -20,7 +20,7 @@ fn setup() -> TestDb {
 fn rolling_sum_accumulates_correctly_across_separate_commits() {
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { g: int4, v: float8, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::t { g: int4, v: float8, ts: datetime } with { time: event(ts) }");
 	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
@@ -127,7 +127,7 @@ fn an_event_view_over_an_event_source_buckets_by_the_declared_column_not_by_arri
 	// while asserting something false. A green test that cannot fail is worse than none.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { g: int4, v: float8, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::t { g: int4, v: float8, ts: datetime } with { time: event(ts) }");
 	db.admin(r#"CREATE DEFERRED VIEW app::e { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
@@ -198,7 +198,7 @@ fn a_row_too_late_to_admit_does_not_delete_the_group_it_belongs_to() {
 	// padding: without it nothing can be late and the refusal path is never entered.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: float8, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: float8, ts: datetime } with { time: event(ts) }");
 	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }
@@ -237,7 +237,7 @@ fn retracting_a_row_that_has_already_left_the_window_leaves_the_group_intact() {
 	// window. Retracting one changes nothing, and that silence must not withdraw the group.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: float8, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: float8, ts: datetime } with { time: event(ts) }");
 	db.admin(r#"CREATE DEFERRED VIEW app::r { g: int4, total: float8 } AS {
 			FROM app::t
 				| window rolling { total: math::sum(v) }

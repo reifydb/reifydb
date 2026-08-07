@@ -281,7 +281,11 @@ fn build_insert_table_row(
 	}
 	let now = services.runtime_context.clock.now();
 	row.set_timestamps(now, now);
-	row.set_time(resolve_time(&target.table.name, &target.table.columns, &target.table.time, shape, &row, now)?);
+	if let Some(time) =
+		resolve_time(&target.table.name, &target.table.columns, &target.table.time, shape, &row, now)?
+	{
+		row.set_time(time);
+	}
 	Ok(row.freeze())
 }
 

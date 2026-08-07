@@ -20,7 +20,7 @@ fn setup() -> TestDb {
 /// eviction observed here is the row TTL and never the capacity bound.
 fn event_ring(db: &TestDb, ttl: &str) {
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::events { id: int4, v: int4, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::events { id: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(&format!("CREATE DEFERRED RINGBUFFER VIEW app::rb {{ id: int4, v: int4 }} \
 		 WITH {{ capacity: 1000, row: {{ ttl: {{ duration: '{ttl}', announce: true }} }} }} \
 		 AS {{ FROM app::events map {{ id, v }} }}"));
@@ -87,7 +87,7 @@ fn an_idle_ring_buffer_holds_and_drains_on_the_next_arrival() {
 	// ttl, which is what makes the short one drain while the long one holds.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::events { id: int4, v: int4, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::events { id: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin("CREATE DEFERRED RINGBUFFER VIEW app::held { id: int4, v: int4 } \
 		 WITH { capacity: 1000, row: { ttl: { duration: '1h', announce: true } } } \
 		 AS { FROM app::events map { id, v } }");

@@ -117,14 +117,16 @@ pub(crate) fn update_series(
 			let now = services.runtime_context.clock.now();
 			row.set_timestamps(old_created_at, now);
 			let update_shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
-			row.set_time(resolve_time_for_update(
+			if let Some(time) = resolve_time_for_update(
 				&series.name,
 				&series.columns,
 				&series.time,
 				&update_shape,
 				&row,
 				old_time,
-			)?);
+			)? {
+				row.set_time(time);
+			}
 
 			let key_value = extract_series_update_key_value(&columns, &series, row_idx);
 			let row_number = RowNumber::from(u64::from(row_numbers[row_idx]));
@@ -401,7 +403,7 @@ fn track_series_update_flow_change(
 			Vec::new(),
 			vec![event.pre.created_at()],
 			vec![event.pre.updated_at()],
-			vec![event.pre.time()],
+			event.pre.time().into_iter().collect(),
 		),
 	);
 	let post = Columns::with_system(
@@ -411,7 +413,7 @@ fn track_series_update_flow_change(
 			Vec::new(),
 			vec![event.post.created_at()],
 			vec![event.post.updated_at()],
-			vec![event.post.time()],
+			event.post.time().into_iter().collect(),
 		),
 	);
 	txn.track_flow_change(Change {

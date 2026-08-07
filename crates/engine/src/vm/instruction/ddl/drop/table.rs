@@ -28,7 +28,7 @@ pub(crate) fn drop_table(services: &Services, txn: &mut AdminTransaction, plan: 
 		txn,
 		&operators,
 		&flows,
-		|node_type| matches!(node_type, OperatorDef::SourceTable { table } if *table == table_id),
+		|node_type| matches!(node_type, OperatorDef::SourceTable { table, .. } if *table == table_id),
 	)?;
 	if !dependents.is_empty() {
 		let dependents_str = dependents.join(", ");

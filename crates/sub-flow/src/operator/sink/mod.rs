@@ -150,14 +150,10 @@ pub(crate) fn encode_row_at_index(
 			row_idx,
 		})
 	})?;
-	let time = columns.time().get(row_idx).copied().ok_or_else(|| {
-		Error::from(FlowSinkError::MissingSystemColumn {
-			column: "time",
-			row_idx,
-		})
-	})?;
 	encoded.set_timestamps(created_at, updated_at);
-	encoded.set_time(time);
+	if let Some(time) = columns.time().get(row_idx).copied() {
+		encoded.set_time(time);
+	}
 
 	Ok((row_number, encoded.freeze()))
 }
@@ -294,7 +290,7 @@ mod tests {
 
 		assert_eq!(
 			encoded.time(),
-			DateTime::from_nanos(300),
+			Some(DateTime::from_nanos(300)),
 			"#time must come from the source row's own sidecar"
 		);
 		assert_eq!(encoded.created_at(), DateTime::from_nanos(100));
@@ -302,17 +298,20 @@ mod tests {
 	}
 
 	#[test]
-	fn a_sink_row_without_a_time_sidecar_is_rejected() {
-		// A row without #time is unrepresentable, so a sink input that lost the sidecar is a
-		// broken pipeline rather than a row to write with a default.
+	fn a_sink_row_without_a_time_sidecar_is_written_without_one() {
+		// A source with no time domain produces rows with no #time, so a sink must materialise them
+		// rather than reject them. Substituting a stamp here would give a time-less table's rows a
+		// clock they never had, and rejecting them would make the view permanently empty.
 		let shape = single_field_shape();
 		let mut columns = columns_with_stamps(100, 200, 300);
 		columns.system.set_time(Vec::new());
 		let field_columns = shape_field_columns(&columns, &shape);
 
-		let err = encode_row_at_index(&columns, 0, &shape, RowNumber(1), &field_columns).unwrap_err();
+		let (_, encoded) = encode_row_at_index(&columns, 0, &shape, RowNumber(1), &field_columns).unwrap();
 
-		assert!(err.to_string().contains("time"), "the diagnostic must name the missing column: {err}");
+		assert_eq!(encoded.time(), None, "the sink row must carry no #time");
+		assert_eq!(encoded.created_at(), DateTime::from_nanos(100), "the wall stamps are still required");
+		assert_eq!(encoded.updated_at(), DateTime::from_nanos(200));
 	}
 
 	#[test]

@@ -802,7 +802,7 @@ mod integration {
 		// commits one, the overlay is not needed at all.
 		let te = TestEngine::builder().with_cdc().build();
 		te.admin("CREATE NAMESPACE app");
-		te.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
+		te.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
 		te.admin("CREATE DEFERRED VIEW app::v { g: int4, total: int8 } \
 			 AS { FROM app::t AGGREGATE { total: math::count(id) } BY { g } }");
 		te.command(

@@ -137,14 +137,16 @@ pub(crate) fn update_ringbuffer(
 			let old_time = old_row.time();
 			let now = services.runtime_context.clock.now();
 			row.set_timestamps(old_created_at, now);
-			row.set_time(resolve_time_for_update(
+			if let Some(time) = resolve_time_for_update(
 				&ringbuffer.name,
 				&ringbuffer.columns,
 				&ringbuffer.time,
 				&shape,
 				&row,
 				old_time,
-			)?);
+			)? {
+				row.set_time(time);
+			}
 
 			if !row_belongs_to_any_partition(&partitions, row_number) {
 				continue;

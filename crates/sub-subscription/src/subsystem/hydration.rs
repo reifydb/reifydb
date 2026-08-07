@@ -64,6 +64,7 @@ pub(crate) fn collect_source_descriptors(
 		match &operator.ty {
 			OperatorDef::SourceTable {
 				table,
+				..
 			} => {
 				let t = catalog.get_table(&mut txn, *table)?;
 				let ns = catalog.get_namespace(&mut txn, t.namespace)?;
@@ -82,6 +83,7 @@ pub(crate) fn collect_source_descriptors(
 			}
 			OperatorDef::SourceRingBuffer {
 				ringbuffer,
+				..
 			} => {
 				let r = catalog.get_ringbuffer(&mut txn, *ringbuffer)?;
 				let ns = catalog.get_namespace(&mut txn, r.namespace)?;

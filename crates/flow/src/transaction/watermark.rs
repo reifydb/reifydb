@@ -46,6 +46,17 @@ impl SourceWatermarks {
 			}
 			None => true,
 		};
+		if let Some(previous) = state.value
+			&& coordinate > previous.saturating_add(3_600_000)
+		{
+			println!(
+				"[wmjump] source=op{} {} -> {} (+{} ms)",
+				source.0,
+				previous,
+				coordinate,
+				coordinate - previous
+			);
+		}
 		state.value = Some(coordinate);
 		if persist {
 			txn.state_set(source, &source_watermark_key(), encode_payload(&coordinate, at)?)?;

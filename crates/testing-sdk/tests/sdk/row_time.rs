@@ -41,26 +41,31 @@ fn a_stamped_row_reports_its_stamp_as_row_time() {
 }
 
 #[test]
-fn an_unstamped_row_reads_as_the_epoch_not_as_absent() {
-	// This is the trap that makes the migration dangerous. TestRowBuilder leaves #time at the
-	// epoch when nothing stamps it, and the epoch is a LEGAL coordinate rather than a missing
-	// one. So a windowed fixture that forgets to stamp does not fail loudly: every row buckets
-	// at zero and the suite reports plausible single-bucket output. Pinning the behaviour here
-	// means the next person meets it as a documented fact instead of as a green test that
-	// checks nothing.
+fn an_unstamped_row_reads_as_absent_not_as_the_epoch() {
+	// The epoch is a legal coordinate, so reporting it for an unstamped row makes a forgotten
+	// stamp indistinguishable from a row genuinely dated 1970: every row buckets at zero and a
+	// windowed fixture reports plausible single-bucket output instead of failing. Reporting none
+	// makes the driver skip the row.
 	let built = row(1, "BTC", 10.0).build();
+
+	let columns = Columns::from_row(&built);
+	let view = NativeColumnsView::new(&columns);
+
+	assert_eq!(view.row(0).expect("row 0").row_time(), None, "an unstamped row must report no #time at all");
+}
+
+#[test]
+fn a_row_stamped_at_the_epoch_is_present_not_absent() {
+	// The epoch must stay a usable coordinate. If absence collapses onto it, a row legitimately
+	// dated 1970 silently stops reaching any window.
+	let built = row(1, "BTC", 10.0).with_time(DateTime::default()).build();
 
 	let columns = Columns::from_row(&built);
 	let view = NativeColumnsView::new(&columns);
 	let seen = view.row(0).expect("row 0").row_time();
 
-	assert_eq!(
-		seen,
-		Some(DateTime::default()),
-		"an unstamped row must read as the epoch; if this ever becomes none, the windowed \
-		 drivers get a missing-value path they do not have today"
-	);
-	assert!(seen.expect("row time").is_epoch(), "the epoch stamp is what makes the trap silent");
+	assert_eq!(seen, Some(DateTime::default()), "an explicit epoch stamp must survive as a value");
+	assert!(seen.expect("row time").is_epoch());
 }
 
 #[test]

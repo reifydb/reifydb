@@ -333,8 +333,9 @@ impl SinkRingBufferViewOperator {
 		)
 	}
 
-	fn expires_at(&self, time: DateTime) -> Option<u64> {
+	fn expires_at(&self, time: Option<DateTime>) -> Option<u64> {
 		let ttl = self.ttl?;
+		let time = time?;
 		let ttl_ms = u64::try_from(ttl.milliseconds().ok()?).ok()?;
 		Some(time.to_millis().saturating_add(ttl_ms))
 	}
@@ -345,13 +346,15 @@ impl SinkRingBufferViewOperator {
 		partition: Option<Partition>,
 		storage_rn: RowNumber,
 		source_rn: RowNumber,
-		time: DateTime,
+		time: Option<DateTime>,
 	) -> Result<()> {
 		let key = self.row_entry_key(partition, storage_rn);
 		let mut row = self.state_shape.allocate();
 		let mut payload = Vec::with_capacity(16);
-		payload.extend_from_slice(&time.to_millis().to_be_bytes());
 		payload.extend_from_slice(&source_rn.0.to_be_bytes());
+		if let Some(time) = time {
+			payload.extend_from_slice(&time.to_millis().to_be_bytes());
+		}
 		self.state_shape.set_blob(&mut row, 0, &Blob::from(payload));
 		self.state_set(txn, &key, row.freeze())?;
 		if let Some(expires_at) = self.expires_at(time) {
@@ -414,17 +417,23 @@ impl SinkRingBufferViewOperator {
 		}
 	}
 
-	fn decode_row_entry(&self, row: &EncodedRow) -> Result<(DateTime, RowNumber)> {
+	fn decode_row_entry(&self, row: &EncodedRow) -> Result<(Option<DateTime>, RowNumber)> {
 		let blob = self.state_shape.get_blob(row, 0);
-		let bytes: [u8; 16] = blob.as_bytes().try_into().map_err(|_| {
-			Error::from(FlowStateError::Decode {
+		let bytes = blob.as_bytes();
+		if bytes.len() != 8 && bytes.len() != 16 {
+			return Err(Error::from(FlowStateError::Decode {
 				state: "RingBufferRowEntry",
-				cause: "expected 16 bytes".to_string(),
-			})
-		})?;
-		let millis = u64::from_be_bytes(bytes[..8].try_into().expect("a 16-byte entry has an 8-byte head"));
-		let source_rn = u64::from_be_bytes(bytes[8..].try_into().expect("a 16-byte entry has an 8-byte tail"));
-		Ok((DateTime::from_millis(millis), RowNumber(source_rn)))
+				cause: format!("expected 8 or 16 bytes, got {}", bytes.len()),
+			}));
+		}
+		let source_rn =
+			u64::from_be_bytes(bytes[..8].try_into().expect("a row entry opens with an 8-byte source row number"));
+		let time = (bytes.len() == 16).then(|| {
+			DateTime::from_millis(u64::from_be_bytes(
+				bytes[8..].try_into().expect("a 16-byte row entry closes with an 8-byte instant"),
+			))
+		});
+		Ok((time, RowNumber(source_rn)))
 	}
 
 	fn decode_row_number(&self, row: &EncodedRow, state: &'static str) -> Result<RowNumber> {
@@ -876,7 +885,7 @@ impl SinkRingBufferViewOperator {
 			let assigned_rn = RowNumber(meta.tail);
 			let (_, encoded) = encode_row_at_index(source, row_idx, shape, assigned_rn, field_columns)?;
 			self.set_forward(txn, source_rn, assigned_rn)?;
-			self.set_row_entry(txn, partition, assigned_rn, source_rn, source.time()[row_idx])?;
+			self.set_row_entry(txn, partition, assigned_rn, source_rn, source.time().get(row_idx).copied())?;
 			row_keys.push(self.rb_key(object_id, assigned_rn, partition));
 			row_values.push(encoded);
 			if meta.is_empty() {

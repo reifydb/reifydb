@@ -164,7 +164,7 @@ fn a_custom_operators_idle_group_is_reclaimed_through_the_flow_tick() {
 	// anywhere leaves the group retained with the ledger silent, hence asserting on work_done.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
 	db.admin("CREATE DEFERRED VIEW app::v { g: int4, ts: int8, total: int8 } AS { FROM app::t APPLY tally{} }");
 
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);
@@ -190,7 +190,7 @@ fn a_group_that_wakes_after_reclamation_publishes_under_its_original_row() {
 	// group mints a second row number and the view carries two rows for one key.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
 	db.admin("CREATE DEFERRED VIEW app::v { g: int4, ts: int8, total: int8 } AS { FROM app::t APPLY tally{} }");
 
 	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "2026-01-01T00:00:00Z" }]"#);

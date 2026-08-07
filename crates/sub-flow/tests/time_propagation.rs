@@ -36,7 +36,7 @@ fn an_event_time_source_propagates_its_stamp_through_a_chain_of_views() {
 	// buckets by wall clock while looking perfectly healthy.
 	let db = setup();
 	db.admin("CREATE NAMESPACE cv");
-	db.admin("CREATE TABLE cv::src { id: int4, at: datetime } with { ts: at }");
+	db.admin("CREATE TABLE cv::src { id: int4, at: datetime } with { time: event(at) }");
 	db.admin("CREATE DEFERRED VIEW cv::upstream { id: int4, at: datetime } AS { FROM cv::src }");
 	db.admin("CREATE DEFERRED VIEW cv::downstream { id: int4, at: datetime } AS { FROM cv::upstream }");
 

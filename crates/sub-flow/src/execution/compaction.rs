@@ -288,6 +288,7 @@ mod mapping_cutoff_tests {
 
 #[cfg(test)]
 mod sink_storage_tests {
+	use reifydb_core::common::TimeDomain;
 	use reifydb_core::interface::catalog::{
 		id::{RingBufferId, SeriesId, TableId, ViewId},
 		series::{SeriesKey, TimestampPrecision},
@@ -338,7 +339,8 @@ mod sink_storage_tests {
 		// never writes rows.
 		assert_eq!(
 			sink_storage(&OperatorDef::SourceTable {
-				table: TableId(9)
+				table: TableId(9),
+				time_domain: TimeDomain::None,
 			}),
 			None
 		);
@@ -347,6 +349,7 @@ mod sink_storage_tests {
 
 #[cfg(test)]
 mod identity_span_tests {
+	use reifydb_core::common::TimeDomain;
 	use reifydb_core::interface::catalog::{
 		flow::{FlowId, OperatorId},
 		id::{SubscriptionId, TableId, ViewId},
@@ -380,6 +383,7 @@ mod identity_span_tests {
 	fn source() -> OperatorDef {
 		OperatorDef::SourceTable {
 			table: TableId(1),
+			time_domain: TimeDomain::None,
 		}
 	}
 

@@ -173,8 +173,7 @@ impl ReplayModel {
 	}
 
 	fn observe(&mut self, row: &Row) {
-		let at = row.encoded.time().timestamp_millis();
-		if at > 0 {
+		if let Some(at) = row.encoded.time().map(|time| time.timestamp_millis()).filter(|&ms| ms > 0) {
 			self.drain_floor_ms = self.drain_floor_ms.max(at as u64);
 		}
 	}

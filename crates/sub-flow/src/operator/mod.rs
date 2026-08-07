@@ -110,17 +110,7 @@ pub(crate) fn stamp_output_time(change: &mut Change, inherited: Option<DateTime>
 	};
 	for diff in change.diffs.iter_mut() {
 		for columns in diff.columns_mut() {
-			let stamped: Vec<DateTime> = columns
-				.time()
-				.iter()
-				.map(|own| {
-					if own.is_epoch() || *own > inherited {
-						inherited
-					} else {
-						*own
-					}
-				})
-				.collect();
+			let stamped: Vec<DateTime> = columns.time().iter().map(|own| (*own).min(inherited)).collect();
 			columns.system.set_time(stamped);
 		}
 	}

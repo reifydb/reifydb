@@ -28,18 +28,21 @@ impl UpdateTarget {
 				UpdateTarget::Table(id),
 				OperatorDef::SourceTable {
 					table,
+					..
 				},
 			) => table == id,
 			(
 				UpdateTarget::RingBuffer(id),
 				OperatorDef::SourceRingBuffer {
 					ringbuffer,
+					..
 				},
 			) => ringbuffer == id,
 			(
 				UpdateTarget::Series(id),
 				OperatorDef::SourceSeries {
 					series,
+					..
 				},
 			) => series == id,
 			_ => false,

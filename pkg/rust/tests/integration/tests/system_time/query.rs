@@ -10,7 +10,7 @@ fn seeded_db() -> TestDb {
 		db_embedded::memory().with_runtime_config(RuntimeConfig::default().seeded(0)).build().expect("build"),
 	);
 	db.admin("CREATE NAMESPACE st");
-	db.admin("CREATE TABLE st::t { id: int4, at: datetime } with { ts: at }");
+	db.admin("CREATE TABLE st::t { id: int4, at: datetime } with { time: event(at) }");
 	db.command(
 		r#"INSERT st::t [
 			{ id: 5, at: "2026-01-01T00:00:05Z" },

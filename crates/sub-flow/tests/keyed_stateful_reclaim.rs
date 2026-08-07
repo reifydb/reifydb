@@ -163,7 +163,7 @@ fn a_keyed_stateful_guests_idle_group_is_reclaimed() {
 	// it never is, and it fails silently: the node is reported bounded while its state grows.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
 	db.admin("CREATE DEFERRED VIEW app::v { g: int4, ts: int8, total: int8 } \
 		 AS { FROM app::t APPLY counter{} }");
 
@@ -188,7 +188,7 @@ fn a_woken_keys_state_restarted_because_the_sweep_actually_erased_it() {
 	// own value is the honest witness - erased state restarts at 1, surviving state reaches 2.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
 	db.admin("CREATE DEFERRED VIEW app::v { g: int4, ts: int8, total: int8 } \
 		 AS { FROM app::t APPLY counter{} }");
 

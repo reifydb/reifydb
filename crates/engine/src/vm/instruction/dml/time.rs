@@ -17,25 +17,13 @@ pub(crate) fn resolve_time(
 	shape: &RowShape,
 	row: &[u8],
 	arrival: DateTime,
-) -> Result<DateTime> {
-	let Some(ts_column) = time.ts() else {
-		return Ok(arrival);
-	};
-
-	let index =
-		columns.iter().position(|c| c.name == ts_column).ok_or_else(|| EngineError::TimePopulatorMissing {
-			object: object.to_string(),
-			column: ts_column.to_string(),
-		})?;
-
-	match shape.get_value(row, index) {
-		Value::DateTime(dt) => Ok(dt),
-		found => Err(EngineError::TimePopulatorNotDateTime {
-			object: object.to_string(),
-			column: ts_column.to_string(),
-			found: format!("{found:?}"),
-		}
-		.into()),
+) -> Result<Option<DateTime>> {
+	match time {
+		TimeSource::None => Ok(None),
+		TimeSource::Processing => Ok(Some(arrival)),
+		TimeSource::Event {
+			ts,
+		} => resolve_populator(object, columns, ts, shape, row).map(Some),
 	}
 }
 
@@ -45,13 +33,37 @@ pub(crate) fn resolve_time_for_update(
 	time: &TimeSource,
 	shape: &RowShape,
 	row: &[u8],
-	previous_time: DateTime,
-) -> Result<DateTime> {
+	previous_time: Option<DateTime>,
+) -> Result<Option<DateTime>> {
 	match time {
-		TimeSource::None | TimeSource::Processing => Ok(previous_time),
+		TimeSource::None => Ok(None),
+		TimeSource::Processing => Ok(previous_time),
 		TimeSource::Event {
-			..
-		} => resolve_time(object, columns, time, shape, row, previous_time),
+			ts,
+		} => resolve_populator(object, columns, ts, shape, row).map(Some),
+	}
+}
+
+fn resolve_populator(
+	object: &str,
+	columns: &[Column],
+	ts: &str,
+	shape: &RowShape,
+	row: &[u8],
+) -> Result<DateTime> {
+	let index = columns.iter().position(|c| c.name == ts).ok_or_else(|| EngineError::TimePopulatorMissing {
+		object: object.to_string(),
+		column: ts.to_string(),
+	})?;
+
+	match shape.get_value(row, index) {
+		Value::DateTime(dt) => Ok(dt),
+		found => Err(EngineError::TimePopulatorNotDateTime {
+			object: object.to_string(),
+			column: ts.to_string(),
+			found: format!("{found:?}"),
+		}
+		.into()),
 	}
 }
 
@@ -118,8 +130,24 @@ mod tests {
 	) -> u64 {
 		resolve_time(object, columns, time, shape, row, at_nanos(arrival_nanos))
 			.expect("resolution must succeed")
+			.expect("a timed object must produce a #time")
 			.to_nanos()
 	}
+
+	#[test]
+	fn a_time_less_object_stamps_no_time_at_all() {
+		// Falling back to the arrival clock stamps a reference row with the instant it was loaded, so
+		// a join against an old event row drags the result forward to now and jumps the watermark by
+		// the age of the corpus.
+		let shape = shape();
+
+		let resolved =
+			resolve_time("tokens", &columns(), &TimeSource::None, &shape, &row(&shape, BLOCK_TIME), at_nanos(ARRIVAL))
+				.expect("resolution must succeed");
+
+		assert_eq!(resolved, None, "a time-less object must withhold #time rather than borrow the wall clock");
+	}
+
 
 	#[test]
 	fn an_event_time_object_stamps_time_from_the_declared_populator() {
@@ -133,7 +161,8 @@ mod tests {
 
 	#[test]
 	fn a_processing_time_object_stamps_time_from_arrival() {
-		// Declaring nothing is a legitimate declaration; a row without a #time is unrepresentable.
+		// An object that declares processing time wants ingest time as its clock, so the arrival
+		// instant is the stamp rather than a fallback for having found no populator.
 		let shape = shape();
 
 		let stamped = unwrapped(
@@ -251,9 +280,31 @@ mod tests {
 		row: &[u8],
 		previous_time_nanos: u64,
 	) -> u64 {
-		resolve_time_for_update(object, columns, time, shape, row, at_nanos(previous_time_nanos))
+		resolve_time_for_update(object, columns, time, shape, row, Some(at_nanos(previous_time_nanos)))
 			.expect("resolution must succeed")
+			.expect("a timed object must keep a #time across an update")
 			.to_nanos()
+	}
+
+	#[test]
+	fn a_time_less_update_stays_time_less() {
+		// An update must not be a back door into acquiring a clock. Carrying the previous instant
+		// forward would be harmless only if there were one; on a time-less object it would mean
+		// inventing one on first edit.
+		let shape = shape();
+
+		assert_eq!(
+			resolve_time_for_update(
+				"tokens",
+				&columns(),
+				&TimeSource::None,
+				&shape,
+				&row(&shape, CORRECTED_TIME),
+				None
+			)
+			.unwrap(),
+			None
+		);
 	}
 
 	#[test]
@@ -321,7 +372,7 @@ mod tests {
 			&absent,
 			&shape,
 			&row(&shape, CORRECTED_TIME),
-			at_nanos(BLOCK_TIME),
+			Some(at_nanos(BLOCK_TIME)),
 		)
 		.expect_err("an absent populator must not resolve on update");
 		assert_eq!(err.diagnostic().code, "TIME_001");
@@ -335,7 +386,7 @@ mod tests {
 			&event(),
 			&shape,
 			&none_row,
-			at_nanos(BLOCK_TIME),
+			Some(at_nanos(BLOCK_TIME)),
 		)
 		.expect_err("a none populator must not resolve on update");
 		assert_eq!(err.diagnostic().code, "TIME_002");

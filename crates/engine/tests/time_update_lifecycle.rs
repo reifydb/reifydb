@@ -44,7 +44,7 @@ fn a_processing_time_update_keeps_the_arrival_time_while_updated_at_moves() {
 	// The clock advances a year between insert and update so the two stamps cannot coincide;
 	// that is what makes a caller passing the arrival clock visible.
 	let t = engine();
-	t.admin("CREATE TABLE test::audit { id: int4, note: utf8 }");
+	t.admin("CREATE TABLE test::audit { id: int4, note: utf8 } WITH { time: processing }");
 	t.command(r#"INSERT test::audit [{ id: 1, note: "before" }]"#);
 
 	let inserted_time = only_time(&t, "FROM test::audit");
@@ -103,7 +103,7 @@ fn a_ringbuffer_update_follows_the_same_lifecycle_as_a_table() {
 	// The ringbuffer is wired to the resolver separately, so the semantics can be honoured for
 	// tables and dropped here. Both domains are checked because the two arms fail independently.
 	let t = engine();
-	t.admin("CREATE RINGBUFFER test::recent { id: int4, note: utf8 } WITH { capacity: 8 }");
+	t.admin("CREATE RINGBUFFER test::recent { id: int4, note: utf8 } WITH { capacity: 8, time: processing }");
 	t.command(r#"INSERT test::recent [{ id: 1, note: "before" }]"#);
 	let inserted_time = only_time(&t, "FROM test::recent");
 
@@ -125,7 +125,7 @@ fn a_series_update_follows_the_same_lifecycle_as_a_table() {
 	// A series carries a temporal key of its own, a different declaration from the #time
 	// populator, so an update must move #time with the populator and not with the key.
 	let t = engine();
-	t.admin("CREATE SERIES test::metrics { ts: int8, note: utf8 } WITH { key: ts }");
+	t.admin("CREATE SERIES test::metrics { ts: int8, note: utf8 } WITH { key: ts, time: processing }");
 	t.command(r#"INSERT test::metrics [{ ts: 1000, note: "before" }]"#);
 	let inserted_time = only_time(&t, "FROM test::metrics");
 

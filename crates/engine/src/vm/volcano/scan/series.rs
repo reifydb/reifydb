@@ -138,7 +138,9 @@ impl SeriesScanNode {
 					batch.partitions.push(p);
 				}
 				batch.created_at_values.push(entry.row.created_at());
-				batch.time_values.push(entry.row.time());
+				if let Some(time) = entry.row.time() {
+					batch.time_values.push(time);
+				}
 				batch.updated_at_values.push(entry.row.updated_at());
 				if has_tag {
 					batch.tags.push(variant_tag.unwrap_or(0));

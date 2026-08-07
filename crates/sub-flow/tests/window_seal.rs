@@ -21,8 +21,8 @@ fn setup() -> TestDb {
 /// min-merge rather than a single source's own progress.
 fn two_source_window(db: &TestDb) {
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::fast { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
-	db.admin("CREATE TABLE app::slow { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::fast { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
+	db.admin("CREATE TABLE app::slow { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } AS {
 			FROM app::fast APPEND { FROM app::slow }
 				| window tumbling { total: math::sum(v) }
@@ -105,7 +105,7 @@ fn ordering_pair(grace: &str) -> (TestDb, TestDb) {
 	let pair = (setup(), setup());
 	for db in [&pair.0, &pair.1] {
 		db.admin("CREATE NAMESPACE app");
-		db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
+		db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
 		db.admin(&format!(r#"CREATE DEFERRED VIEW app::w {{ g: int4, total: int8 }} AS {{
 				FROM app::t
 					| window tumbling {{ total: math::sum(v) }}
@@ -259,7 +259,7 @@ fn a_window_stays_open_while_the_wall_clock_runs_past_it() {
 	// declare one, so the processing half became a byte-identical copy of this one.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(r#"CREATE DEFERRED VIEW app::e { g: int4, total: int8 } AS {
 			FROM app::t
 				| window tumbling { total: math::sum(v) }
@@ -305,7 +305,7 @@ fn a_session_that_keeps_extending_seals_only_after_its_final_gap() {
 	// lands inside the previous row's 2s gap, so all four must survive as one window.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(r#"CREATE DEFERRED VIEW app::s { g: int4, total: int8 } AS {
 			FROM app::t
 				| window session { total: math::sum(v) }
@@ -335,7 +335,7 @@ fn a_row_at_the_epoch_is_refused_once_its_window_has_sealed() {
 	// a zero-means-unknown shortcut. Its window [0s, 1s) sealed at 4.001s, long before it arrives.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(r#"CREATE DEFERRED VIEW app::w { g: int4, total: int8 } AS {
 			FROM app::t
 				| window tumbling { total: math::sum(v) }

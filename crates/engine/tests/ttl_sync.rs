@@ -21,6 +21,7 @@ fn test_row_settings_sync_to_catalog_cache() {
 	engine.admin("CREATE NAMESPACE test");
 	engine.admin(r#"
 		CREATE TABLE test::users { id: int4 } WITH {
+			time: processing,
 			row: { ttl: { duration: '1h', announce: false } }
 		};
 	"#);
@@ -54,7 +55,7 @@ fn test_row_settings_replication_sync() {
 		panic!("{e:?}");
 	}
 	let r = txn.rql(
-		"CREATE TABLE test::users { id: int4 } WITH { row: { ttl: { duration: '1m', announce: false } } }",
+		"CREATE TABLE test::users { id: int4 } WITH { time: processing, row: { ttl: { duration: '1m', announce: false } } }",
 		Default::default(),
 	);
 	if let Some(e) = r.error {

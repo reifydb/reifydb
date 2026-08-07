@@ -22,11 +22,14 @@ impl From<SeriesScanNode> for SeriesScanCompiler {
 
 impl CompileOperator for SeriesScanCompiler {
 	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
-		let series_id = self.series_scan.source.def().id;
+		let series = self.series_scan.source.def();
+		let time_domain = series.time.domain();
+		let series_id = series.id;
 		compiler.add_node(
 			txn,
 			SourceSeries {
 				series: series_id,
+				time_domain,
 			},
 		)
 	}

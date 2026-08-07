@@ -25,7 +25,7 @@ pub struct RowStamps {
 	pub partition: Option<Partition>,
 	pub created_at: DateTime,
 	pub updated_at: DateTime,
-	pub time: DateTime,
+	pub time: Option<DateTime>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -312,7 +312,9 @@ impl SystemColumns {
 		}
 		self.created_at.push(created_at);
 		self.updated_at.push(updated_at);
-		self.time.push(time);
+		if let Some(time) = time {
+			self.time.push(time);
+		}
 	}
 
 	pub fn clear(&mut self) {
@@ -571,7 +573,7 @@ mod tests {
 			partition: Some(partition(2)),
 			created_at: dt(10),
 			updated_at: dt(20),
-			time: dt(30),
+			time: Some(dt(30)),
 		});
 
 		assert_eq!(acc.row_count(), Some(1));
@@ -580,6 +582,59 @@ mod tests {
 		assert_eq!(acc.created_at(), &[dt(10)]);
 		assert_eq!(acc.updated_at(), &[dt(20)]);
 		assert_eq!(acc.time(), &[dt(30)]);
+	}
+
+	#[test]
+	fn pushing_rows_without_a_time_leaves_the_time_sidecar_absent() {
+		// A time-less object's rows must produce an empty #time vector, not a vector of sentinels.
+		// Absence is what downstream reads as "this source has no clock"; a filled vector of epochs
+		// would instead read as a source whose every row happened in 1970.
+		let mut acc = SystemColumns::empty();
+		for i in 0..3 {
+			acc.push(RowStamps {
+				row_number: Some(RowNumber::from(i + 1)),
+				partition: None,
+				created_at: dt(10),
+				updated_at: dt(20),
+				time: None,
+			});
+		}
+
+		assert_eq!(acc.row_count(), Some(3));
+		assert!(acc.time().is_empty(), "#time must stay absent rather than fill with sentinels");
+		acc.assert_invariants(3, "time-less push");
+	}
+
+	#[test]
+	fn a_time_less_batch_may_not_be_extended_by_a_timed_one() {
+		// Mixing the two would leave #time shorter than the row count, so every later positional read
+		// would silently attribute one row's time to a different row.
+		let mut untimed = SystemColumns::empty();
+		untimed.push(RowStamps {
+			row_number: Some(RowNumber::from(1)),
+			partition: None,
+			created_at: dt(10),
+			updated_at: dt(20),
+			time: None,
+		});
+
+		let mut timed = SystemColumns::empty();
+		timed.push(RowStamps {
+			row_number: Some(RowNumber::from(2)),
+			partition: None,
+			created_at: dt(10),
+			updated_at: dt(20),
+			time: Some(dt(30)),
+		});
+
+		assert_eq!(
+			untimed.extend(&timed).unwrap_err(),
+			SystemColumnsError::PresenceMismatch {
+				column: SystemColumn::Time,
+				target_present: false,
+				source_present: true,
+			}
+		);
 	}
 
 	#[test]

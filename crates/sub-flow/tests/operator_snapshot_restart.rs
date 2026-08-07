@@ -72,7 +72,7 @@ fn operator_state_survives_a_real_restart() {
 	{
 		let mut db = open(&path);
 		db.admin("create namespace app");
-		db.admin("create table app::t { id: int4, g: int4, ts: datetime } with { ts: ts }");
+		db.admin("create table app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
 		db.admin("create deferred view app::v { g: int4, total: int8 } \
 			 as { from app::t aggregate { total: math::count(id) } by { g } }");
 

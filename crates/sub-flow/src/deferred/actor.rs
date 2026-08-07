@@ -1058,7 +1058,7 @@ mod pull_protocol {
 
 	fn aggregate_harness() -> (Harness, SnapshotStore) {
 		snapshotting_harness(
-			"CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }",
+			"CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }",
 			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } \
 			 AS { FROM app::t AGGREGATE { total: math::count(id) } BY { g } }",
 		)
@@ -1788,7 +1788,7 @@ mod pull_protocol {
 
 	fn ring_harness(announce: bool) -> Harness {
 		harness_with(
-			"CREATE TABLE app::t { id: int4, v: int4, ts: datetime } with { ts: ts }",
+			"CREATE TABLE app::t { id: int4, v: int4, ts: datetime } with { time: event(ts) }",
 			&format!("CREATE DEFERRED RINGBUFFER VIEW app::v {{ id: int4, v: int4 }} \
 				 WITH {{ capacity: 1000, row: {{ ttl: {{ duration: '1s', announce: {announce} }} }} }} \
 				 AS {{ FROM app::t map {{ id, v }} }}"),
@@ -1911,7 +1911,7 @@ mod pull_protocol {
 	#[test]
 	fn operator_state_lives_in_the_arena_and_never_reaches_the_multi_store() {
 		let h = harness_with(
-			"CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }",
+			"CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }",
 			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } \
 			 AS { FROM app::t AGGREGATE { total: math::count(id) } BY { g } }",
 		);
@@ -2048,7 +2048,7 @@ mod pull_protocol {
 	#[test]
 	fn an_elapsed_snapshot_interval_persists_generations_and_advances_the_pin() {
 		let mut h = harness_with(
-			"CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { ts: ts }",
+			"CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }",
 			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } \
 			 AS { FROM app::t AGGREGATE { total: math::count(id) } BY { g } }",
 		);
@@ -2224,7 +2224,7 @@ mod pull_protocol {
 	#[test]
 	fn the_ring_sink_metadata_mirror_tracks_the_mvcc_row() {
 		let h = harness_with(
-			"CREATE TABLE app::t { id: int4, v: int4, ts: datetime } with { ts: ts }",
+			"CREATE TABLE app::t { id: int4, v: int4, ts: datetime } with { time: event(ts) }",
 			"CREATE DEFERRED RINGBUFFER VIEW app::v { id: int4, v: int4 } \
 			 WITH { capacity: 3 } AS { FROM app::t map { id, v } }",
 		);

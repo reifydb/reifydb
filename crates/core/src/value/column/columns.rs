@@ -450,7 +450,7 @@ impl Columns {
 		let row_numbers: Vec<RowNumber> = ids.to_vec();
 		let created_at: Vec<DateTime> = rows.iter().map(|r| r.created_at()).collect();
 		let updated_at: Vec<DateTime> = rows.iter().map(|r| r.updated_at()).collect();
-		let time: Vec<DateTime> = rows.iter().map(|r| r.time()).collect();
+		let time: Vec<DateTime> = rows.iter().filter_map(|r| r.time()).collect();
 
 		Self::with_system(
 			columns_vec,

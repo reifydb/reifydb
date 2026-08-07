@@ -168,15 +168,18 @@ impl FlowEngineInner {
 			} => unimplemented!(),
 			SourceTable {
 				table,
+				..
 			} => self.add_source_table(txn, flow, operator_id, table)?,
 			SourceView {
 				view,
 			} => self.register_source_view(txn, flow, operator_id, view)?,
 			SourceRingBuffer {
 				ringbuffer,
+				..
 			} => self.add_source_ringbuffer(txn, flow, operator_id, ringbuffer)?,
 			SourceSeries {
 				series,
+				..
 			} => self.add_source_series(txn, flow, operator_id, series)?,
 			SinkTableView {
 				view,

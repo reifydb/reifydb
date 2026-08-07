@@ -314,14 +314,16 @@ fn build_insert_ringbuffer_row(
 
 	let now = services.runtime_context.clock.now();
 	row.set_timestamps(now, now);
-	row.set_time(resolve_time(
+	if let Some(time) = resolve_time(
 		&target.ringbuffer.name,
 		&target.ringbuffer.columns,
 		&target.ringbuffer.time,
 		shape,
 		&row,
 		now,
-	)?);
+	)? {
+		row.set_time(time);
+	}
 	Ok((row.freeze(), row_values))
 }
 

@@ -44,7 +44,9 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 		row_numbers.push(*row_number);
 		created_at.push(encoded.created_at());
 		updated_at.push(encoded.updated_at());
-		time.push(encoded.time());
+		if let Some(t) = encoded.time() {
+			time.push(t);
+		}
 		for (i, _) in fields.iter().enumerate() {
 			columns_vec[i].data.push_value(shape.get_value(encoded, i));
 		}

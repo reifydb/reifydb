@@ -22,11 +22,14 @@ impl From<RingBufferScanNode> for RingBufferScanCompiler {
 
 impl CompileOperator for RingBufferScanCompiler {
 	fn compile(self, compiler: &mut FlowCompiler, txn: &mut Transaction<'_>) -> Result<OperatorId> {
-		let ringbuffer_id = self.ringbuffer_scan.source.def().id;
+		let ringbuffer = self.ringbuffer_scan.source.def();
+		let time_domain = ringbuffer.time.domain();
+		let ringbuffer_id = ringbuffer.id;
 		compiler.add_node(
 			txn,
 			SourceRingBuffer {
 				ringbuffer: ringbuffer_id,
+				time_domain,
 			},
 		)
 	}

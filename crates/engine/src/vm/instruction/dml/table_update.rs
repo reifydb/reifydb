@@ -216,14 +216,16 @@ fn run_table_update(
 			let old_time = old_row.time();
 			let now = exec.services.runtime_context.clock.now();
 			row.set_timestamps(old_created_at, now);
-			row.set_time(resolve_time_for_update(
+			if let Some(time) = resolve_time_for_update(
 				&target.table.name,
 				&target.table.columns,
 				&target.table.time,
 				shape,
 				&row,
 				old_time,
-			)?);
+			)? {
+				row.set_time(time);
+			}
 
 			prepared_rows.push(row);
 			if let Some(p) = partition {

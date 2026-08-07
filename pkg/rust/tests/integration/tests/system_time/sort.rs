@@ -14,7 +14,7 @@ fn seeded_db() -> TestDb {
 		db_embedded::memory().with_runtime_config(RuntimeConfig::default().seeded(0)).build().expect("build"),
 	);
 	db.admin("CREATE NAMESPACE st");
-	db.admin("CREATE TABLE st::t { id: int4, at: datetime } with { ts: at }");
+	db.admin("CREATE TABLE st::t { id: int4, at: datetime } with { time: event(at) }");
 	// Inserted in neither id nor at order, so every ordering below is a real permutation. Rows that
 	// arrive already sorted would let an unpermuted #time vector pass by coincidence.
 	db.command(

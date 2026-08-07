@@ -118,7 +118,7 @@ pub(crate) fn drop_namespace(
 			txn,
 			&external_operators,
 			&flows,
-			|node_type| matches!(node_type, OperatorDef::SourceTable { table } if table_ids.contains(table)),
+			|node_type| matches!(node_type, OperatorDef::SourceTable { table, .. } if table_ids.contains(table)),
 		)?);
 
 		dependents.extend(find_flow_dependents(
@@ -137,7 +137,7 @@ pub(crate) fn drop_namespace(
 			txn,
 			&external_operators,
 			&flows,
-			|node_type| matches!(node_type, OperatorDef::SourceRingBuffer { ringbuffer } if ringbuffer_ids.contains(ringbuffer)),
+			|node_type| matches!(node_type, OperatorDef::SourceRingBuffer { ringbuffer, .. } if ringbuffer_ids.contains(ringbuffer)),
 		)?);
 	}
 

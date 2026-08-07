@@ -25,7 +25,7 @@ fn setup() -> TestDb {
 /// absolute epoch millis, so a row early in a day is still covered by windows from the previous one.
 fn sliding_window(db: &TestDb, size: &str, slide: &str, grace: &str) {
 	db.admin("CREATE NAMESPACE app");
-	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { ts: ts }");
+	db.admin("CREATE TABLE app::t { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin(&format!(r#"CREATE DEFERRED VIEW app::w {{ g: int4, total: int8 }} AS {{
 				FROM app::t
 					| window sliding {{ total: math::sum(v) }}

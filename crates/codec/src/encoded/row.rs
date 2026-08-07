@@ -18,8 +18,11 @@ const FINGERPRINT_SIZE: usize = 8;
 const CREATED_AT_OFFSET: usize = FINGERPRINT_SIZE;
 const UPDATED_AT_OFFSET: usize = CREATED_AT_OFFSET + DateTime::ENCODED_SIZE;
 const TIME_OFFSET: usize = UPDATED_AT_OFFSET + DateTime::ENCODED_SIZE;
+const FLAGS_OFFSET: usize = TIME_OFFSET + DateTime::ENCODED_SIZE;
 
-pub const SHAPE_HEADER_SIZE: usize = TIME_OFFSET + DateTime::ENCODED_SIZE;
+pub const SHAPE_HEADER_SIZE: usize = FLAGS_OFFSET + 1;
+
+const HAS_TIME: u8 = 1 << 0;
 
 pub type EncodedRowIter = Box<dyn EncodedRowIterator>;
 
@@ -126,8 +129,8 @@ impl EncodedRowBuilder {
 	}
 
 	#[inline]
-	pub fn time(&self) -> DateTime {
-		read_stamp(&self.0, TIME_OFFSET)
+	pub fn time(&self) -> Option<DateTime> {
+		read_time(&self.0)
 	}
 
 	pub fn set_timestamps(&mut self, created_at: DateTime, updated_at: DateTime) {
@@ -139,6 +142,7 @@ impl EncodedRowBuilder {
 
 	pub fn set_time(&mut self, time: DateTime) {
 		self.0[TIME_OFFSET..TIME_OFFSET + DateTime::ENCODED_SIZE].copy_from_slice(&time.to_le_bytes());
+		self.0[FLAGS_OFFSET] |= HAS_TIME;
 	}
 
 	pub fn freeze(self) -> EncodedRow {
@@ -176,6 +180,11 @@ fn read_fingerprint(buf: &[u8]) -> RowShapeFingerprint {
 #[inline]
 fn read_stamp(buf: &[u8], offset: usize) -> DateTime {
 	DateTime::from_le_bytes(buf[offset..offset + DateTime::ENCODED_SIZE].try_into().unwrap())
+}
+
+#[inline]
+fn read_time(buf: &[u8]) -> Option<DateTime> {
+	(buf[FLAGS_OFFSET] & HAS_TIME != 0).then(|| read_stamp(buf, TIME_OFFSET))
 }
 
 impl EncodedRow {
@@ -230,13 +239,14 @@ impl EncodedRow {
 	}
 
 	#[inline]
-	pub fn time(&self) -> DateTime {
-		self.stamp(TIME_OFFSET)
+	pub fn time(&self) -> Option<DateTime> {
+		read_time(&self.0)
 	}
 
 	pub fn set_time(&mut self, time: DateTime) {
-		self.0.make_mut()[TIME_OFFSET..TIME_OFFSET + DateTime::ENCODED_SIZE]
-			.copy_from_slice(&time.to_le_bytes());
+		let buf = self.0.make_mut();
+		buf[TIME_OFFSET..TIME_OFFSET + DateTime::ENCODED_SIZE].copy_from_slice(&time.to_le_bytes());
+		buf[FLAGS_OFFSET] |= HAS_TIME;
 	}
 }
 
@@ -249,7 +259,10 @@ mod tests {
 	};
 
 	use crate::encoded::{
-		row::{CREATED_AT_OFFSET, FINGERPRINT_SIZE, SHAPE_HEADER_SIZE, TIME_OFFSET, UPDATED_AT_OFFSET},
+		row::{
+			CREATED_AT_OFFSET, FINGERPRINT_SIZE, FLAGS_OFFSET, HAS_TIME, SHAPE_HEADER_SIZE, TIME_OFFSET,
+			UPDATED_AT_OFFSET,
+		},
 		shape::{RowShape, RowShapeField},
 	};
 
@@ -272,15 +285,15 @@ mod tests {
 
 		assert_eq!(row.created_at(), at_nanos(11));
 		assert_eq!(row.updated_at(), at_nanos(22));
-		assert_eq!(row.time(), at_nanos(33));
+		assert_eq!(row.time(), Some(at_nanos(33)));
 
 		row.set_time(at_nanos(44));
 		assert_eq!(row.created_at(), at_nanos(11), "writing #time must not disturb created_at");
 		assert_eq!(row.updated_at(), at_nanos(22), "writing #time must not disturb updated_at");
-		assert_eq!(row.time(), at_nanos(44));
+		assert_eq!(row.time(), Some(at_nanos(44)));
 
 		row.set_timestamps(at_nanos(55), at_nanos(66));
-		assert_eq!(row.time(), at_nanos(44), "writing the wall stamps must not disturb #time");
+		assert_eq!(row.time(), Some(at_nanos(44)), "writing the wall stamps must not disturb #time");
 	}
 
 	#[test]
@@ -296,7 +309,7 @@ mod tests {
 
 		assert_eq!(row.created_at(), at_nanos(7));
 		assert_eq!(row.updated_at(), at_nanos(99), "the rewrite refreshes updated_at");
-		assert_eq!(row.time(), at_nanos(1_000), "#time is propagated, never re-stamped locally");
+		assert_eq!(row.time(), Some(at_nanos(1_000)), "#time is propagated, never re-stamped locally");
 	}
 
 	#[test]
@@ -308,10 +321,11 @@ mod tests {
 		assert_eq!(UPDATED_AT_OFFSET, CREATED_AT_OFFSET + DateTime::ENCODED_SIZE);
 		assert_eq!(TIME_OFFSET, UPDATED_AT_OFFSET + DateTime::ENCODED_SIZE);
 		assert_eq!(
-			SHAPE_HEADER_SIZE,
+			FLAGS_OFFSET,
 			TIME_OFFSET + DateTime::ENCODED_SIZE,
-			"the bitvec must start after the last stamp, whatever a DateTime is worth"
+			"the flags byte sits after the last stamp, whatever a DateTime is worth"
 		);
+		assert_eq!(SHAPE_HEADER_SIZE, FLAGS_OFFSET + 1, "the bitvec must start after the flags byte");
 
 		let shape = shape(9);
 		let mut row = shape.allocate();
@@ -328,13 +342,77 @@ mod tests {
 		}
 		assert_eq!(row.created_at(), at_nanos(1));
 		assert_eq!(row.updated_at(), at_nanos(2));
-		assert_eq!(row.time(), DateTime::MAX);
+		assert_eq!(row.time(), Some(DateTime::MAX));
+	}
+
+	#[test]
+	fn a_row_that_was_never_stamped_carries_no_time() {
+		// A zeroed slot is indistinguishable from a stamp of zero, so without a presence bit a
+		// time-less object cannot withhold #time and downstream resolves the ambiguity by
+		// substituting a wall clock.
+		let shape = shape(3);
+		let mut row = shape.allocate();
+
+		assert_eq!(row.time(), None, "a freshly allocated row carries no #time");
+
+		shape.set::<u64>(&mut row, 0, 7u64);
+		row.set_timestamps(at_nanos(1), at_nanos(2));
+
+		assert_eq!(row.time(), None, "writing fields and wall stamps must not conjure a #time");
+		assert_eq!(row.clone().freeze().time(), None, "absence must survive the freeze");
+	}
+
+	#[test]
+	fn an_epoch_stamp_is_a_real_time_not_an_absence() {
+		// Presence is decided by the flag, never by the value, so the epoch stays an ordinary
+		// coordinate. Treating it as a sentinel would make a row genuinely dated 1970 unreadable.
+		let mut row = shape(1).allocate();
+		row.set_time(DateTime::EPOCH);
+
+		assert_eq!(row.time(), Some(DateTime::EPOCH));
+		assert_ne!(row.time(), None, "an explicitly stamped epoch is present, not absent");
+	}
+
+	#[test]
+	fn stamping_time_leaves_every_other_flag_bit_clear() {
+		// Bits 1..7 are unassigned. Holding them at zero is what lets a future flag be introduced
+		// without a format migration: every row written today already reads as "that flag is off".
+		let shape = shape(4);
+		let mut row = shape.allocate();
+
+		assert_eq!(row.0[FLAGS_OFFSET], 0, "allocation must leave the flags byte clear");
+
+		row.set_time(at_nanos(5));
+		assert_eq!(row.0[FLAGS_OFFSET], HAS_TIME, "set_time must touch only its own bit");
+
+		row.set_timestamps(at_nanos(1), at_nanos(2));
+		row.set_fingerprint(shape.fingerprint());
+		shape.set::<u64>(&mut row, 3, 42u64);
+		assert_eq!(row.0[FLAGS_OFFSET], HAS_TIME, "no other header or field write may reach the flags byte");
+	}
+
+	#[test]
+	fn the_flags_byte_is_not_the_first_bitvec_byte() {
+		// Both live at the tail of the header and are bit-addressed, so an off-by-one in
+		// SHAPE_HEADER_SIZE would silently alias field 0's definedness onto HAS_TIME.
+		let shape = shape(8);
+		let mut row = shape.allocate();
+
+		shape.set::<u64>(&mut row, 0, 1u64);
+		assert!(row.is_defined(0));
+		assert_eq!(row.time(), None, "defining field 0 must not set HAS_TIME");
+
+		let mut row = shape.allocate();
+		row.set_time(at_nanos(9));
+		for i in 0..8 {
+			assert!(!row.is_defined(i), "stamping #time must not define field {i}");
+		}
 	}
 
 	#[test]
 	fn time_consumes_no_definedness_bit() {
-		// Every row is timed, so #time must not be representable as an absent field: it lives
-		// outside user field space, costing no definedness bit and shifting no field index.
+		// #time is absent-representable, but through the header flag rather than the field bitvec: it
+		// lives outside user field space, costing no definedness bit and shifting no field index.
 		let shape = shape(9);
 		let mut row = shape.allocate();
 		row.set_time(DateTime::MAX);
@@ -349,7 +427,7 @@ mod tests {
 			assert!(!row.is_defined(i), "defining field 3 must not define field {i}");
 		}
 
-		assert_eq!(row.time(), DateTime::MAX, "#time is unaffected by definedness writes");
+		assert_eq!(row.time(), Some(DateTime::MAX), "#time is unaffected by definedness writes");
 		assert_eq!(shape.bitvec_size(), 2, "9 fields still need exactly 2 bitvec bytes");
 		assert_eq!(shape.data_offset(), SHAPE_HEADER_SIZE + 2);
 	}

@@ -566,7 +566,11 @@ fn build_insert_queue_row(
 
 	let now = services.runtime_context.clock.now();
 	row.set_timestamps(now, now);
-	row.set_time(resolve_time(&target.queue.name, &target.queue.columns, &target.queue.time, shape, &row, now)?);
+	if let Some(time) =
+		resolve_time(&target.queue.name, &target.queue.columns, &target.queue.time, shape, &row, now)?
+	{
+		row.set_time(time);
+	}
 
 	Ok(row.freeze())
 }

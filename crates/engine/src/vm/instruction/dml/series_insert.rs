@@ -409,7 +409,9 @@ fn build_encoded_series_row(
 	}
 	let now = services.runtime_context.clock.now();
 	row.set_timestamps(now, now);
-	row.set_time(resolve_time(&series.name, &series.columns, &series.time, shape, &row, now)?);
+	if let Some(time) = resolve_time(&series.name, &series.columns, &series.time, shape, &row, now)? {
+		row.set_time(time);
+	}
 	Ok(row.freeze())
 }
 
@@ -435,7 +437,7 @@ fn track_series_insert_flow_change(txn: &mut Transaction<'_>, series: &Series, s
 			Vec::new(),
 			vec![snapshot.row.created_at()],
 			vec![snapshot.row.updated_at()],
-			vec![snapshot.row.time()],
+			snapshot.row.time().into_iter().collect(),
 		),
 	);
 	txn.track_flow_change(Change {

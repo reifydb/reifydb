@@ -382,7 +382,7 @@ fn build_series_delete_pre_columns_from_input(
 			Vec::new(),
 			vec![encoded_row.created_at()],
 			vec![encoded_row.updated_at()],
-			vec![encoded_row.time()],
+			encoded_row.time().into_iter().collect(),
 		),
 	)
 }

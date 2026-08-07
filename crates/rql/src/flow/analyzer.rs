@@ -169,6 +169,7 @@ impl FlowGraphAnalyzer {
 				match &node.ty {
 					OperatorDef::SourceTable {
 						table,
+						..
 					} => {
 						sources.push(ObjectReference::Table(*table));
 					}
@@ -179,11 +180,13 @@ impl FlowGraphAnalyzer {
 					}
 					OperatorDef::SourceRingBuffer {
 						ringbuffer,
+						..
 					} => {
 						sources.push(ObjectReference::RingBuffer(*ringbuffer));
 					}
 					OperatorDef::SourceSeries {
 						series,
+						..
 					} => {
 						sources.push(ObjectReference::Series(*series));
 					}
@@ -423,7 +426,7 @@ impl Default for FlowGraphAnalyzer {
 pub mod tests {
 	use OperatorDef::{Filter, SinkTableView, SourceTable, SourceView};
 	use reifydb_core::{
-		common::JoinType,
+		common::{JoinType, TimeDomain},
 		interface::catalog::{
 			flow::{FlowId, OperatorId},
 			id::{TableId, ViewId},
@@ -456,6 +459,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(200),
@@ -511,6 +515,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(500),
+					time_domain: TimeDomain::None,
 				},
 				SourceView {
 					view: ViewId(600),
@@ -553,6 +558,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				SourceView {
 					view: ViewId(200),
@@ -578,6 +584,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(200),
@@ -606,6 +613,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(200),
@@ -654,6 +662,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(200),
@@ -667,6 +676,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(101),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(201),
@@ -743,6 +753,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(200),
@@ -756,6 +767,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(201),
@@ -769,6 +781,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(101),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(202),
@@ -801,6 +814,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(200),
@@ -857,6 +871,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(200),
@@ -929,6 +944,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(200),
@@ -942,6 +958,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(101),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(201),
@@ -971,6 +988,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(200),
@@ -1030,6 +1048,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(200),
@@ -1103,6 +1122,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(200),
@@ -1116,6 +1136,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(101),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(201),
@@ -1147,6 +1168,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(200),
@@ -1190,6 +1212,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(200),
@@ -1330,6 +1353,7 @@ pub mod tests {
 			vec![
 				SourceTable {
 					table: TableId(100),
+					time_domain: TimeDomain::None,
 				},
 				SinkTableView {
 					view: ViewId(200),

@@ -79,7 +79,7 @@ impl FlowEngineInner {
 		let sources: Vec<OperatorId> = topo
 			.iter()
 			.copied()
-			.filter(|id| flow.get_operator(id).is_some_and(|operator| operator.ty.is_source()))
+			.filter(|id| flow.get_operator(id).is_some_and(|operator| operator.ty.declares_time()))
 			.collect();
 		let arrivals: Vec<(OperatorId, DateTime)> = pending
 			.iter()
@@ -113,12 +113,31 @@ impl FlowEngineInner {
 				None => continue,
 			};
 
-			let at = inbox
-				.iter()
-				.filter_map(max_input_time)
-				.max()
-				.or_else(|| inbox.iter().map(|change| change.changed_at).max())
-				.expect("a non-empty inbox carries a time");
+			let from_rows = inbox.iter().filter_map(max_input_time).max();
+			let at = match from_rows {
+				Some(at) => at,
+				None if !flow.has_timed_source() => {
+					self.dispatch_node(txn, &operator, inbox)?;
+					nodes_processed += 1;
+					continue;
+				}
+				None => panic!(
+					"operator {} received {} change(s) carrying no #time even though this flow \
+					 has a source that declares one; a row's time is set once at its source \
+					 and must never be substituted by a clock read",
+					operator_id.0,
+					inbox.len()
+				),
+			};
+			if at.to_millis() > 1_785_000_000_000 {
+				println!(
+					"[wallclock] op={} at_ms={} from_rows={:?} changed_at={:?}",
+					operator_id.0,
+					at.to_millis(),
+					from_rows.map(|d| d.to_millis()),
+					inbox.iter().map(|change| change.changed_at.to_millis()).max()
+				);
+			}
 			let version = inbox
 				.iter()
 				.map(|change| change.version)

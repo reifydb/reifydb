@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	common::{JoinType, WindowKind},
+	common::{JoinType, TimeDomain, WindowKind},
 	interface::catalog::{
 		flow::{FlowEdgeId, OperatorId},
 		id::{RingBufferId, SeriesId, SubscriptionId, TableId, ViewId},
@@ -21,15 +21,18 @@ pub enum OperatorDef {
 	SourceInlineData {},
 	SourceTable {
 		table: TableId,
+		time_domain: TimeDomain,
 	},
 	SourceView {
 		view: ViewId,
 	},
 	SourceRingBuffer {
 		ringbuffer: RingBufferId,
+		time_domain: TimeDomain,
 	},
 	SourceSeries {
 		series: SeriesId,
+		time_domain: TimeDomain,
 	},
 	Filter {
 		conditions: Vec<Expression>,
@@ -108,6 +111,24 @@ impl OperatorDef {
 				| OperatorDef::SourceRingBuffer { .. }
 				| OperatorDef::SourceSeries { .. }
 		)
+	}
+
+	pub fn declares_time(&self) -> bool {
+		match self {
+			OperatorDef::SourceTable {
+				time_domain,
+				..
+			}
+			| OperatorDef::SourceRingBuffer {
+				time_domain,
+				..
+			}
+			| OperatorDef::SourceSeries {
+				time_domain,
+				..
+			} => *time_domain != TimeDomain::None,
+			_ => false,
+		}
 	}
 
 	pub fn ticks(&self) -> bool {
@@ -283,12 +304,15 @@ impl OperatorDef {
 		match self {
 			OperatorDef::SourceTable {
 				table,
+				..
 			} => Some(ObjectId::table(*table)),
 			OperatorDef::SourceRingBuffer {
 				ringbuffer,
+				..
 			} => Some(ObjectId::ringbuffer(*ringbuffer)),
 			OperatorDef::SourceSeries {
 				series,
+				..
 			} => Some(ObjectId::series(*series)),
 			OperatorDef::SourceInlineData {
 				..

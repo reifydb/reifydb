@@ -401,7 +401,9 @@ fn encode_row(table: &Table, shape: &RowShape, values: &[Value], clock: &Clock) 
 	}
 	let now = clock.now();
 	row.set_timestamps(now, now);
-	row.set_time(resolve_time(&table.name, &table.columns, &table.time, shape, &row, now)?);
+	if let Some(time) = resolve_time(&table.name, &table.columns, &table.time, shape, &row, now)? {
+		row.set_time(time);
+	}
 	Ok(row)
 }
 
@@ -523,7 +525,11 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 		}
 		let now = clock.now();
 		row.set_timestamps(now, now);
-		row.set_time(resolve_time(&ringbuffer.name, &ringbuffer.columns, &ringbuffer.time, shape, &row, now)?);
+		if let Some(time) =
+			resolve_time(&ringbuffer.name, &ringbuffer.columns, &ringbuffer.time, shape, &row, now)?
+		{
+			row.set_time(time);
+		}
 
 		ensure_ringbuffer_partition_metadata(catalog, txn, ringbuffer, &partition_key, &mut cache)?;
 		let metadata = cache.get_mut(&partition_key).unwrap();
@@ -820,7 +826,9 @@ fn encode_series_row(
 	}
 	let now = clock.now();
 	row.set_timestamps(now, now);
-	row.set_time(resolve_time(&series.name, &series.columns, &series.time, shape, &row, now)?);
+	if let Some(time) = resolve_time(&series.name, &series.columns, &series.time, shape, &row, now)? {
+		row.set_time(time);
+	}
 	Ok(row)
 }
 
