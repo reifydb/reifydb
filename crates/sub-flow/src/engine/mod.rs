@@ -4,7 +4,6 @@
 //! Flow execution engine: registers compiled flow definitions and evaluates each flow's operator
 //! graph against incoming change deltas, writing the outputs back through the catalog.
 
-pub mod cache;
 pub mod eval;
 pub mod register;
 
@@ -37,7 +36,7 @@ use reifydb_extension::operator::ffi_loader::ffi_operator_loader;
 use reifydb_flow::operator::BoxedOperator;
 use reifydb_flow::transaction::substrate::FlowSubstrate;
 use reifydb_rql::flow::{
-	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer, FlowSchedule},
+	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
 	flow::FlowDag,
 };
 use reifydb_runtime::{
@@ -59,7 +58,6 @@ use crate::operator::ffi::FFIOperatorHandle;
 use crate::operator::native::native_operator_loader;
 use crate::{
 	builder::CustomOperators,
-	engine::cache::{ExecutionLevelCache, ScheduleCache},
 	operator::{OperatorCell, metrics::OperatorSampleRegistry},
 };
 
@@ -71,8 +69,6 @@ pub struct FlowEngineInner {
 	pub(crate) sources: BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
 	pub(crate) sinks: BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
 	pub(crate) analyzer: FlowGraphAnalyzer,
-	pub(crate) execution_level_cache: ExecutionLevelCache,
-	pub(crate) schedule_cache: ScheduleCache,
 	#[allow(dead_code)]
 	pub(crate) event_bus: EventBus,
 	pub(crate) flow_creation_versions: BTreeMap<FlowId, CommitVersion>,
@@ -164,8 +160,6 @@ impl FlowEngineInner {
 			sources: BTreeMap::new(),
 			sinks: BTreeMap::new(),
 			analyzer: FlowGraphAnalyzer::new(),
-			execution_level_cache: ExecutionLevelCache::new(),
-			schedule_cache: ScheduleCache::new(),
 			event_bus,
 			flow_creation_versions: BTreeMap::new(),
 			runtime_context,
@@ -336,8 +330,6 @@ impl FlowEngineInner {
 		self.sinks.clear();
 		self.analyzer.clear();
 		self.flow_creation_versions.clear();
-		self.execution_level_cache.invalidate();
-		self.schedule_cache.invalidate();
 	}
 
 	pub fn remove_flow(&mut self, flow_id: FlowId) {
@@ -367,8 +359,6 @@ impl FlowEngineInner {
 		self.flows.remove(&flow_id);
 
 		self.analyzer.remove(flow_id);
-		self.execution_level_cache.invalidate();
-		self.schedule_cache.invalidate();
 	}
 
 	pub fn get_dependency_graph(&self) -> FlowDependencyGraph {
@@ -388,28 +378,6 @@ impl FlowEngineInner {
 	pub fn get_flow_producing_view(&self, view_id: ViewId) -> Option<FlowId> {
 		let dependency_graph = self.analyzer.get_dependency_graph();
 		self.analyzer.get_flow_producing_view(dependency_graph, view_id)
-	}
-
-	pub fn calculate_execution_levels(&self) -> Vec<Vec<FlowId>> {
-		if let Some(levels) = self.execution_level_cache.get() {
-			return levels;
-		}
-
-		let dependency_graph = self.analyzer.get_dependency_graph();
-		let levels = self.analyzer.calculate_execution_levels(dependency_graph);
-		self.execution_level_cache.set(levels.clone());
-		levels
-	}
-
-	pub fn calculate_schedule(&self) -> FlowSchedule {
-		if let Some(schedule) = self.schedule_cache.get() {
-			return schedule;
-		}
-
-		let dependency_graph = self.analyzer.get_dependency_graph();
-		let schedule = self.analyzer.calculate_schedule(dependency_graph);
-		self.schedule_cache.set(schedule.clone());
-		schedule
 	}
 
 	pub(crate) fn state_lease_default(&self) -> ByteSize {

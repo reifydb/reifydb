@@ -249,8 +249,12 @@ fn assert_one(ctx: &mut ProcedureContext<'_, '_>, object: ObjectId, at: DateTime
 		.check()
 		.map_err(RoutineError::from)?;
 
-	if rows_updated(&advanced.frames) > 0 {
-		return Ok(());
+	match rows_updated(&advanced.frames) {
+		0 => {}
+		1 => return Ok(()),
+		updated => unreachable!(
+			"{COMPLETENESS} advanced {updated} rows for object {key}; one row per object is an invariant"
+		),
 	}
 
 	let current =
@@ -258,7 +262,7 @@ fn assert_one(ctx: &mut ProcedureContext<'_, '_>, object: ObjectId, at: DateTime
 			.check()
 			.map_err(RoutineError::from)?;
 
-	if let Some(previous) = single_complete_through(&current.frames) {
+	if let Some(previous) = single_complete_through(&current.frames, key) {
 		return Err(failed(&format!(
 			"object {key} is already asserted complete through {previous}; {at} is a \
 			 regression and a monotone watermark would swallow it without a signal"
@@ -292,11 +296,15 @@ fn named(object_id: u64, at: DateTime) -> Params {
 	Params::Named(Arc::new(map))
 }
 
-fn single_complete_through(frames: &[Frame]) -> Option<DateTime> {
+fn single_complete_through(frames: &[Frame], key: u64) -> Option<DateTime> {
 	let frame = frames.first()?;
 	let column = frame.columns.iter().find(|c| c.name.as_str() == "complete_through")?;
-	if column.data.len() != 1 {
-		return None;
+	match column.data.len() {
+		0 => return None,
+		1 => {}
+		recorded => unreachable!(
+			"{COMPLETENESS} holds {recorded} rows for object {key}; one row per object is an invariant"
+		),
 	}
 	match column.data.get_value(0) {
 		Value::DateTime(at) => Some(at),

@@ -117,8 +117,6 @@ impl FlowEngineInner {
 
 		self.analyzer.add(flow.clone());
 		self.flows.insert(flow.id, flow.clone());
-		self.execution_level_cache.invalidate();
-		self.schedule_cache.invalidate();
 
 		Ok(())
 	}
