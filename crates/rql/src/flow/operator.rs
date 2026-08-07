@@ -127,6 +127,9 @@ impl OperatorDef {
 				time_domain,
 				..
 			} => *time_domain != TimeDomain::None,
+			OperatorDef::SourceView {
+				..
+			} => true,
 			_ => false,
 		}
 	}

@@ -176,8 +176,11 @@ impl FlowEngineInner {
 	fn flow_watermark(&self, txn: &mut FlowTransaction, flow: &FlowDag) -> Result<DateTime> {
 		let sources: Vec<OperatorId> = flow
 			.get_operator_ids()
-			.filter(|id| flow.get_operator(id).is_some_and(|operator| operator.ty.is_source()))
+			.filter(|id| flow.get_operator(id).is_some_and(|operator| operator.ty.declares_time()))
 			.collect();
+		if sources.is_empty() {
+			return Ok(DateTime::default());
+		}
 		txn.source_watermarks().flow_watermark(&sources, txn)
 	}
 

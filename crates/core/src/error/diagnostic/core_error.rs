@@ -8,7 +8,13 @@ use reifydb_value::{
 	fragment::Fragment,
 };
 
-use crate::error::CoreError;
+use crate::error::{
+	CoreError,
+	diagnostic::flow::{
+		flow_already_registered, flow_backfill_timeout, flow_dispatcher_unavailable, flow_error,
+		flow_version_corrupted,
+	},
+};
 
 impl IntoDiagnostic for CoreError {
 	fn into_diagnostic(self) -> Diagnostic {
@@ -64,18 +70,7 @@ impl IntoDiagnostic for CoreError {
 
 			CoreError::FlowError {
 				message,
-			} => Diagnostic {
-				code: "FLOW_001".to_string(),
-				rql: None,
-				message: format!("Flow processing error: {}", message),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: Some("Check view flow configuration".to_string()),
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
+			} => flow_error(message),
 
 			CoreError::FlowTransactionKeyspaceOverlap {
 				key,
@@ -99,81 +94,19 @@ impl IntoDiagnostic for CoreError {
 
 			CoreError::FlowAlreadyRegistered {
 				flow_id,
-			} => Diagnostic {
-				code: "FLOW_003".to_string(),
-				rql: None,
-				message: format!("Flow {} is already registered", flow_id),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: Some(
-					"Each flow can only be registered once. Check if the flow is already active."
-						.to_string(),
-				),
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
+			} => flow_already_registered(flow_id),
 
 			CoreError::FlowVersionCorrupted {
 				flow_id,
 				byte_count,
-			} => Diagnostic {
-				code: "FLOW_004".to_string(),
-				rql: None,
-				message: format!(
-					"Flow {} version data is corrupted: expected 8 bytes, found {} bytes",
-					flow_id, byte_count
-				),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: Some("The flow version stored in the catalog is corrupted. \
-					This may indicate data corruption or a shape migration issue. \
-					Try dropping and recreating the flow."
-					.to_string()),
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
+			} => flow_version_corrupted(flow_id, byte_count),
 
 			CoreError::FlowBackfillTimeout {
 				flow_id,
 				timeout_secs,
-			} => Diagnostic {
-				code: "FLOW_005".to_string(),
-				rql: None,
-				message: format!(
-					"Timeout waiting for flow {} backfill to complete after {} seconds",
-					flow_id, timeout_secs
-				),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: Some("The flow backfill operation did not complete within the timeout period. \
-					This may indicate a large dataset, slow queries, or resource constraints. \
-					Try increasing the timeout or check for performance issues."
-					.to_string()),
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
+			} => flow_backfill_timeout(flow_id, timeout_secs),
 
-			CoreError::FlowDispatcherUnavailable => Diagnostic {
-				code: "FLOW_006".to_string(),
-				rql: None,
-				message: "Flow dispatcher is unavailable (channel closed)".to_string(),
-				column: None,
-				fragment: Fragment::None,
-				label: None,
-				help: Some("The flow dispatcher task has stopped or crashed. \
-					This may occur during shutdown or if the dispatcher encountered a fatal error. \
-					Check dispatcher logs for details."
-					.to_string()),
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
+			CoreError::FlowDispatcherUnavailable => flow_dispatcher_unavailable(),
 
 			CoreError::PrimaryKeyViolation {
 				fragment,
