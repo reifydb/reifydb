@@ -96,7 +96,8 @@ impl FlowEngineInner {
 			.filter(|id| flow.get_operator(id).is_some_and(|operator| operator.ty.declares_time()))
 			.collect();
 
-		let arrivals = published_arrivals(&self.sources, &self.substrate.frontiers, flow_id, version);
+		let (arrivals, silent) = published_arrivals(&self.sources, &self.substrate.frontiers, flow_id, version);
+		warn_unpublished(flow_id, &silent);
 		freeze_arrival_frontier(txn, &sources, &arrivals)
 	}
 
@@ -135,7 +136,9 @@ impl FlowEngineInner {
 			})
 			.collect();
 		arrivals.extend(completeness_arrivals(&self.sources, flow_id, &asserted));
-		arrivals.extend(published_arrivals(&self.sources, &self.substrate.frontiers, flow_id, version));
+		let (published, silent) = published_arrivals(&self.sources, &self.substrate.frontiers, flow_id, version);
+		warn_unpublished(flow_id, &silent);
+		arrivals.extend(published);
 		freeze_arrival_frontier(txn, &sources, &arrivals)?;
 
 		let mut nodes_processed = self.run_topology(txn, flow, pending, topo)?;
@@ -231,8 +234,9 @@ fn published_arrivals(
 	frontiers: &OutputFrontiers,
 	flow_id: FlowId,
 	version: CommitVersion,
-) -> SourceArrivals {
+) -> (SourceArrivals, Vec<ObjectId>) {
 	let mut out = Vec::new();
+	let mut silent = Vec::new();
 	for (object, registrations) in sources {
 		let readers: Vec<OperatorId> = registrations
 			.iter()
@@ -247,17 +251,26 @@ fn published_arrivals(
 				source,
 				at,
 			})),
-			Frontier::Unpublished if matches!(object, ObjectId::View(_)) => warn!(
-				flow_id = ?flow_id,
-				object = ?object,
-				"a source object has never published an output frontier; every window below it \
-				 stays open until its producing flow publishes"
-			),
+			Frontier::Unpublished if matches!(object, ObjectId::View(_)) => silent.push(*object),
 			Frontier::Unpublished => {}
 			Frontier::Withheld => {}
 		}
 	}
-	out
+	if out.is_empty() {
+		silent.clear();
+	}
+	(out, silent)
+}
+
+fn warn_unpublished(flow_id: FlowId, silent: &[ObjectId]) {
+	for object in silent {
+		warn!(
+			flow_id = ?flow_id,
+			object = ?object,
+			"a source object has never published an output frontier; every window below it \
+			 stays open until its producing flow publishes"
+		);
+	}
 }
 
 fn collect_completeness(change: &Change, asserted: &mut BTreeMap<u64, DateTime>) {
@@ -427,7 +440,7 @@ mod tests {
 		let frontiers = OutputFrontiers::default();
 		frontiers.publish(object, at_millis(9_000), CommitVersion(10));
 
-		let arrivals = published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20));
+		let (arrivals, _) = published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20));
 
 		assert_eq!(
 			arrivals,
@@ -447,9 +460,9 @@ mod tests {
 		let frontiers = OutputFrontiers::default();
 		frontiers.publish(object, at_millis(9_000), CommitVersion(10));
 
-		assert!(published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(10)).is_empty());
+		assert!(published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(10)).0.is_empty());
 		assert_eq!(
-			published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(11)),
+			published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(11)).0,
 			vec![SourceArrival {
 				source: OperatorId(3),
 				at: at_millis(9_000)
@@ -466,9 +479,78 @@ mod tests {
 		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3))])]);
 		let frontiers = OutputFrontiers::default();
 
-		let arrivals = published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20));
+		let (arrivals, _) = published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20));
 
 		assert!(arrivals.is_empty());
+	}
+
+	#[test]
+	fn an_unpublished_view_is_reported_when_a_sibling_source_is_already_visible() {
+		// A live sibling proves the flow is past its cold start, so this producer is genuinely behind and must be named.
+		let stuck = ObjectId::View(ViewId(5));
+		let live = ObjectId::View(ViewId(6));
+		let sources = BTreeMap::from([
+			(stuck, vec![(FlowId(1), OperatorId(3))]),
+			(live, vec![(FlowId(1), OperatorId(4))]),
+		]);
+		let frontiers = OutputFrontiers::default();
+		frontiers.publish(live, at_millis(9_000), CommitVersion(10));
+
+		let (_, silent) = published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20));
+
+		assert_eq!(silent, vec![stuck]);
+	}
+
+	#[test]
+	fn an_unpublished_view_is_not_reported_while_no_source_is_visible_yet() {
+		// Before any source has ever published there is nothing to distinguish a stuck producer from a cold boot, and naming every one of them buries the signal.
+		let stuck = ObjectId::View(ViewId(5));
+		let other = ObjectId::View(ViewId(6));
+		let sources = BTreeMap::from([
+			(stuck, vec![(FlowId(1), OperatorId(3))]),
+			(other, vec![(FlowId(1), OperatorId(4))]),
+		]);
+		let frontiers = OutputFrontiers::default();
+
+		let (arrivals, silent) = published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20));
+
+		assert!(arrivals.is_empty());
+		assert!(silent.is_empty(), "a cold flow must name nothing; found {silent:?}");
+	}
+
+	#[test]
+	fn a_withheld_sibling_does_not_count_as_visible_and_keeps_the_report_silent() {
+		// Withheld means published-but-not-yet-orderable, which is still the cold case; counting it would restore the boot burst.
+		let stuck = ObjectId::View(ViewId(5));
+		let withheld = ObjectId::View(ViewId(6));
+		let sources = BTreeMap::from([
+			(stuck, vec![(FlowId(1), OperatorId(3))]),
+			(withheld, vec![(FlowId(1), OperatorId(4))]),
+		]);
+		let frontiers = OutputFrontiers::default();
+		frontiers.publish(withheld, at_millis(9_000), CommitVersion(20));
+
+		let (arrivals, silent) = published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20));
+
+		assert!(arrivals.is_empty(), "a frontier stamped at the reader's own version must not fold");
+		assert!(silent.is_empty());
+	}
+
+	#[test]
+	fn an_unpublished_table_is_never_reported_even_beside_a_visible_source() {
+		// Only a view has a producing flow that owes a frontier; naming a table would report a fault nothing can fix.
+		let table = ObjectId::Table(TableId(5));
+		let live = ObjectId::View(ViewId(6));
+		let sources = BTreeMap::from([
+			(table, vec![(FlowId(1), OperatorId(3))]),
+			(live, vec![(FlowId(1), OperatorId(4))]),
+		]);
+		let frontiers = OutputFrontiers::default();
+		frontiers.publish(live, at_millis(9_000), CommitVersion(10));
+
+		let (_, silent) = published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20));
+
+		assert!(silent.is_empty());
 	}
 
 	#[test]

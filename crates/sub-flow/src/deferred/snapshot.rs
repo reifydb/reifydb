@@ -56,9 +56,7 @@ impl FlowSnapshots {
 		ids: &[OperatorId],
 		flow_cursor: CommitVersion,
 	) -> Option<CommitVersion> {
-		let stateful: Vec<OperatorId> =
-			ids.iter().copied().filter(|id| operators.upper(*id) > CommitVersion(0)).collect();
-		if stateful.is_empty() {
+		if ids.is_empty() {
 			return None;
 		}
 
@@ -74,8 +72,8 @@ impl FlowSnapshots {
 			}
 		};
 
-		let mut written: Vec<(OperatorId, u64)> = Vec::with_capacity(stateful.len());
-		for id in stateful {
+		let mut written: Vec<(OperatorId, u64)> = Vec::with_capacity(ids.len());
+		for id in ids.iter().copied() {
 			let upper = operators.upper(id);
 			operators.freeze(id);
 			match self.write_operator(operators, id, upper, flow_cursor, &dictionary_max) {
@@ -594,14 +592,53 @@ mod tests {
 	}
 
 	#[test]
-	fn a_stateless_flow_writes_nothing_and_returns_no_pin() {
+	fn an_operator_that_never_accumulated_state_still_yields_a_pin() {
+		// Without a pin here the flow's row stays frozen and caps compute_pinning_watermark for every database.
 		let (snapshots, store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
-		source.set(OP_A, key(b"a"), row(b"v"));
 
-		assert_eq!(snapshots.write_flow(&source, &[OP_A, OP_B], CommitVersion(7)), None);
-		assert!(store.generations(OP_A).expect("generations").is_empty());
-		assert!(store.generations(OP_B).expect("generations").is_empty());
+		assert_eq!(
+			snapshots.write_flow(&source, &[OP_A, OP_B], CommitVersion(7)),
+			Some(CommitVersion(7)),
+			"an empty operator set must still pin at the flow cursor"
+		);
+		assert_eq!(store.generations(OP_A), Ok(vec![1]), "the empty operator must still have a generation");
+		assert_eq!(store.generations(OP_B), Ok(vec![1]), "the empty operator must still have a generation");
+	}
+
+	#[test]
+	fn repeated_snapshots_of_an_idle_flow_keep_advancing_the_pin() {
+		// A pin that stops advancing while the flow idles is exactly what makes the CDC log unbounded.
+		let (snapshots, _store, _guard) = snapshot_fixture();
+		let source = OperatorStore::default();
+
+		assert_eq!(snapshots.write_flow(&source, &[OP_A], CommitVersion(10)), Some(CommitVersion(10)));
+		assert_eq!(snapshots.write_flow(&source, &[OP_A], CommitVersion(20)), Some(CommitVersion(20)));
+		assert_eq!(snapshots.write_flow(&source, &[OP_A], CommitVersion(30)), Some(CommitVersion(30)));
+	}
+
+	#[test]
+	fn an_empty_snapshot_round_trips_without_inventing_state() {
+		// An empty snapshot must restore as empty, otherwise the retention fix buys a recovery bug.
+		let (snapshots, _store, _guard) = snapshot_fixture();
+		let source = OperatorStore::default();
+		assert_eq!(snapshots.write_flow(&source, &[OP_A], CommitVersion(6)), Some(CommitVersion(6)));
+
+		let target = OperatorStore::default();
+		let loaded = snapshots.load_flow(&target, [OP_A].into_iter(), CommitVersion(0));
+
+		assert_eq!(loaded, FlowSnapshotLoad::Restored(CommitVersion(6)));
+		assert!(scan(&target, OP_A).is_empty(), "an empty snapshot must restore no rows");
+		assert_eq!(target.upper(OP_A), CommitVersion(0), "an empty snapshot must restore the zero upper");
+	}
+
+	#[test]
+	fn a_flow_with_no_operators_at_all_yields_no_pin() {
+		// An empty id list is a caller error, never an idle flow.
+		let (snapshots, _store, _guard) = snapshot_fixture();
+		let source = OperatorStore::default();
+
+		assert_eq!(snapshots.write_flow(&source, &[], CommitVersion(7)), None);
 	}
 
 	#[test]
