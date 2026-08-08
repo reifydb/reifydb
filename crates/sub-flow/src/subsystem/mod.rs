@@ -4,6 +4,7 @@
 pub mod factory;
 #[cfg(reifydb_target = "native")]
 pub mod ffi;
+pub mod shutdown;
 
 use std::{
 	any::Any,
@@ -80,6 +81,7 @@ use crate::{
 		GroupInternerMetricsCollector, OperatorSampleCollector, OperatorSampleRegistry,
 		OperatorStateBudgetCollector, RowNumberMetricsCollector,
 	},
+	subsystem::shutdown::FlowShutdownState,
 };
 
 /// Versions of in-memory skip-ahead a flow tolerates before forcing a checkpoint-only commit.
@@ -94,6 +96,7 @@ pub struct FlowSubsystem {
 	supervisor_handle: Mutex<Option<FlowSupervisorHandle>>,
 	view_lineage: ViewLineage,
 	health: FlowHealthRegistry,
+	shutdown_state: FlowShutdownState,
 	running: AtomicBool,
 }
 
@@ -243,8 +246,15 @@ impl FlowSubsystem {
 			supervisor_handle: Mutex::new(Some(supervisor_handle)),
 			view_lineage,
 			health,
+			shutdown_state: FlowShutdownState::new(engine, substrate),
 			running: AtomicBool::new(true),
 		})
+	}
+
+	pub fn persist_frontiers(&self) {
+		if self.is_running() {
+			self.shutdown_state.persist_frontiers();
+		}
 	}
 
 	#[inline]

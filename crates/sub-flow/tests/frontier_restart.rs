@@ -14,7 +14,9 @@
 use std::{thread::sleep, time::Duration};
 
 use reifydb::{
-	SqliteConfig, Value, WithSubsystem, core::interface::catalog::config::ConfigKey, embedded,
+	SqliteConfig, Value, WithSubsystem,
+	core::interface::catalog::config::ConfigKey,
+	embedded,
 	testing::db::{TempDbPath, TestDb},
 };
 
@@ -42,8 +44,12 @@ fn declare(db: &TestDb) {
 	db.admin("CREATE NAMESPACE rst");
 	db.admin("CREATE TABLE rst::busy { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
 	db.admin("CREATE TABLE rst::quiet { id: int4, g: int4, v: int4, ts: datetime } with { time: event(ts) }");
-	db.admin("CREATE DEFERRED VIEW rst::mid_quiet { id: int4, g: int4, v: int4, ts: datetime } AS { FROM rst::quiet }");
-	db.admin("CREATE DEFERRED VIEW rst::mid_busy { id: int4, g: int4, v: int4, ts: datetime } AS { FROM rst::busy }");
+	db.admin(
+		"CREATE DEFERRED VIEW rst::mid_quiet { id: int4, g: int4, v: int4, ts: datetime } AS { FROM rst::quiet }",
+	);
+	db.admin(
+		"CREATE DEFERRED VIEW rst::mid_busy { id: int4, g: int4, v: int4, ts: datetime } AS { FROM rst::busy }",
+	);
 	db.admin(r#"CREATE DEFERRED VIEW rst::w { g: int4, total: int8 } AS {
 			FROM rst::mid_busy APPEND { FROM rst::mid_quiet }
 				| window tumbling { total: math::sum(v) }
@@ -60,7 +66,9 @@ fn bucket_zero_total(db: &TestDb, want: i64) -> usize {
 
 #[test]
 fn a_seal_won_through_a_view_hop_survives_a_restart() {
-	// Bucket 0 can only seal here because rst::mid_quiet's frontier crossed the hop, and that seal must still hold after a reopen, otherwise the restarted consumer folds in rows the first lifetime already refused and the aggregate silently disagrees with itself across the restart.
+	// Bucket 0 can only seal here because rst::mid_quiet's frontier crossed the hop, and that seal must still hold
+	// after a reopen, otherwise the restarted consumer folds in rows the first lifetime already refused and the
+	// aggregate silently disagrees with itself across the restart.
 	let path = TempDbPath::new("frontier_restart");
 
 	{
@@ -86,7 +94,8 @@ fn a_seal_won_through_a_view_hop_survives_a_restart() {
 			db.query("FROM rst::w")
 		);
 
-		// Operator state reaches disk only on a snapshot generation, so nothing here is durable until one lands.
+		// Operator state reaches disk only on a snapshot generation, so nothing here is durable until one
+		// lands.
 		sleep(Duration::from_secs(7));
 		db.stop();
 	}

@@ -277,19 +277,7 @@ impl FlowSupervisor {
 	}
 
 	fn handle_persist_frontiers(&self, ctx: &Context<FlowSupervisorMessage>) {
-		let dirty = self.substrate.frontiers.dirty();
-		if !dirty.is_empty() {
-			match output_frontier::persist(self.engine.single(), &dirty) {
-				Ok(()) => {
-					for entry in &dirty {
-						self.substrate.frontiers.mark_persisted(entry.output, entry.at);
-					}
-				}
-				Err(e) => {
-					warn!(error = %e, "failed to persist output frontiers; they stay dirty and retry next sweep")
-				}
-			}
-		}
+		output_frontier::sweep(self.engine.single(), &self.substrate.frontiers);
 		ctx.schedule_once(self.frontier_persist, || FlowSupervisorMessage::PersistFrontiers);
 	}
 
@@ -431,8 +419,13 @@ impl FlowSupervisor {
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
 			let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 			state.sources.insert(flow_id, source_objects.clone());
-			let handle =
-				self.spawn_flow(flow, source_objects, completeness_objects, seed, FlowSnapshotLoad::Empty);
+			let handle = self.spawn_flow(
+				flow,
+				source_objects,
+				completeness_objects,
+				seed,
+				FlowSnapshotLoad::Empty,
+			);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned new deferred flow actor");
 		}

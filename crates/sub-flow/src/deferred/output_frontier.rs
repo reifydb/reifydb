@@ -7,10 +7,11 @@ use reifydb_core::{
 	interface::store::SingleVersionRange,
 	key::{EncodableKey, output_frontier::OutputFrontierKey},
 };
-use reifydb_flow::transaction::frontier::{FrontierEntries, FrontierEntry};
+use reifydb_flow::transaction::frontier::{FrontierEntries, FrontierEntry, OutputFrontiers};
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::single::SingleTransaction;
 use reifydb_value::{Result, util::cowvec::CowVec, value::datetime::DateTime};
+use tracing::warn;
 
 const HYDRATE_BATCH: u64 = 1024;
 
@@ -45,6 +46,20 @@ pub fn persist(single: &SingleTransaction, entries: &FrontierEntries) -> Result<
 	}
 	txn.commit()?;
 	Ok(())
+}
+
+pub fn sweep(single: &SingleTransaction, frontiers: &OutputFrontiers) {
+	let dirty = frontiers.dirty();
+	match persist(single, &dirty) {
+		Ok(()) => {
+			for entry in &dirty {
+				frontiers.mark_persisted(entry.output, entry.at);
+			}
+		}
+		Err(e) => {
+			warn!(error = %e, "failed to persist output frontiers; they stay dirty and retry next sweep")
+		}
+	}
 }
 
 pub fn hydrate(store: &SingleStore) -> Result<FrontierEntries> {
@@ -160,6 +175,35 @@ mod tests {
 		persist(&single, &Vec::new()).unwrap();
 
 		assert!(hydrate(&single.read_store()).unwrap().is_empty());
+	}
+
+	#[test]
+	fn a_sweep_persists_what_is_dirty_and_leaves_nothing_dirty_behind() {
+		// Without the mark the same entry is rewritten on every later sweep, so an idle server writes forever.
+		let single = SingleTransaction::testing();
+		let frontiers = OutputFrontiers::default();
+		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(10));
+
+		sweep(&single, &frontiers);
+
+		assert_eq!(hydrate(&single.read_store()).unwrap().len(), 1);
+		assert!(frontiers.dirty().is_empty(), "a persisted frontier must not stay dirty");
+	}
+
+	#[test]
+	fn a_sweep_persists_a_republish_that_lands_after_the_previous_one() {
+		// The mark is per-stamp, not a flag; marking the object outright would swallow every later publish.
+		let single = SingleTransaction::testing();
+		let frontiers = OutputFrontiers::default();
+		frontiers.publish(OUTPUT, at_millis(4_000), CommitVersion(10));
+		sweep(&single, &frontiers);
+
+		frontiers.publish(OUTPUT, at_millis(9_000), CommitVersion(20));
+		sweep(&single, &frontiers);
+
+		let read = hydrate(&single.read_store()).unwrap();
+		assert_eq!(read[0].frontier, at_millis(9_000));
+		assert_eq!(read[0].at, CommitVersion(20));
 	}
 
 	#[test]

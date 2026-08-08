@@ -241,7 +241,8 @@ mod tests {
 
 	#[test]
 	fn the_admission_set_unions_every_sink_view_the_flow_owns() {
-		// Intersecting, or taking only the first sink, would leave the other sink's ancestors unable to wake the flow.
+		// Intersecting, or taking only the first sink, would leave the other sink's ancestors unable to wake
+		// the flow.
 		let mut graph = empty_graph();
 		graph.sink_views.insert(ViewId(5), FlowId(10));
 		graph.sink_views.insert(ViewId(6), FlowId(10));
@@ -259,7 +260,8 @@ mod tests {
 
 	#[test]
 	fn a_sink_view_missing_from_the_closure_admits_everything() {
-		// Filtering on a partial closure would silently stop waking the flow, so a missing sink must forfeit the filter.
+		// Filtering on a partial closure would silently stop waking the flow, so a missing sink must forfeit
+		// the filter.
 		let mut graph = empty_graph();
 		graph.sink_views.insert(ViewId(5), FlowId(10));
 		graph.sink_views.insert(ViewId(6), FlowId(10));
@@ -274,7 +276,8 @@ mod tests {
 
 	#[test]
 	fn a_flow_that_sinks_nowhere_near_a_view_admits_everything() {
-		// The closure is keyed by sink view, so a flow sinking to a table or ring buffer must keep its unconditional wake.
+		// The closure is keyed by sink view, so a flow sinking to a table or ring buffer must keep its
+		// unconditional wake.
 		let mut graph = empty_graph();
 		graph.source_tables.insert(TableId(1), vec![FlowId(10)]);
 

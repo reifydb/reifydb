@@ -444,8 +444,7 @@ mod tests {
 			version: CommitVersion(5),
 			diffs: smallvec![Diff::insert(Columns::from_rows(
 				&["object_id", "complete_through"],
-				&objects
-					.iter()
+				&objects.iter()
 					.map(|o| vec![Value::Uint8(*o), Value::DateTime(DateTime::default())])
 					.collect::<Vec<_>>(),
 			))],
@@ -491,7 +490,8 @@ mod tests {
 
 	#[test]
 	fn an_absent_admission_set_keeps_the_unconditional_wake() {
-		// A flow whose closure could not be resolved must degrade to waking on every assertion, never to silence.
+		// A flow whose closure could not be resolved must degrade to waking on every assertion, never to
+		// silence.
 		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
 		let cdcs = vec![cdc(5, vec![completeness_change(&[77])])];
 
@@ -502,7 +502,8 @@ mod tests {
 
 	#[test]
 	fn a_retracted_assertion_carries_no_post_image_and_wakes_nothing() {
-		// A delete has no post image to read an id from, and admitting it blindly would restore the full fan-out.
+		// A delete has no post image to read an id from, and admitting it blindly would restore the full
+		// fan-out.
 		let sources: BTreeSet<ObjectId> = [ObjectId::Table(TableId(1))].into_iter().collect();
 		let admitted: BTreeSet<u64> = [1].into_iter().collect();
 		let pre = Columns::from_rows(

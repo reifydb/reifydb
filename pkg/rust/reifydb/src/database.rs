@@ -243,6 +243,7 @@ impl Database {
 	#[inline]
 	fn drain_and_flush_stores(&self) {
 		self.drain_cdc_consumers(Duration::from_seconds(10).unwrap());
+		self.persist_flow_frontiers();
 
 		if let Some(multi_store) = self.engine.ioc().try_resolve::<MultiStore>() {
 			multi_store.flush_all_blocking();
@@ -327,6 +328,16 @@ impl Database {
 
 	#[cfg(not(all(feature = "sub_flow", not(reifydb_single_threaded))))]
 	fn drain_cdc_consumers(&self, _timeout: Duration) {}
+
+	#[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
+	fn persist_flow_frontiers(&self) {
+		if let Some(sub_flow) = self.sub_flow() {
+			sub_flow.persist_frontiers();
+		}
+	}
+
+	#[cfg(not(all(feature = "sub_flow", not(reifydb_single_threaded))))]
+	fn persist_flow_frontiers(&self) {}
 
 	pub fn health_status(&self) -> HealthStatus {
 		self.health_monitor.get_system_health()
