@@ -44,3 +44,6 @@ pub(crate) mod table;
 pub(crate) mod time_source;
 pub(crate) mod token;
 pub mod view;
+
+#[cfg(test)]
+mod shape_fingerprints;
