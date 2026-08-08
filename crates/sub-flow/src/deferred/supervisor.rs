@@ -17,7 +17,7 @@ use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage, FlowSupervisorMessage},
 	common::CommitVersion,
 	interface::{
-		catalog::{flow::FlowId, object::ObjectId, view::ViewKind},
+		catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::ViewKind},
 		cdc::{Cdc, CdcConsumerId},
 		change::ChangeOrigin,
 	},
@@ -250,11 +250,13 @@ impl FlowSupervisor {
 		self.commit_control(seeds, pins, None);
 
 		let registered: BTreeSet<FlowId> = to_spawn.iter().map(|(f, _, _)| f.id).collect();
+		let closure = state.analyzer.get_dependency_graph().upstream_closure();
 		for (flow, seed, snapshot_load) in to_spawn {
 			let flow_id = flow.id;
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
+			let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 			state.sources.insert(flow_id, source_objects.clone());
-			let handle = self.spawn_flow(flow, source_objects, seed, snapshot_load);
+			let handle = self.spawn_flow(flow, source_objects, completeness_objects, seed, snapshot_load);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned deferred flow actor");
 		}
@@ -423,11 +425,14 @@ impl FlowSupervisor {
 
 		let registered: BTreeSet<FlowId> =
 			state.flows.keys().copied().chain(to_spawn.iter().map(|(f, _)| f.id)).collect();
+		let closure = state.analyzer.get_dependency_graph().upstream_closure();
 		for (flow, seed) in to_spawn {
 			let flow_id = flow.id;
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
+			let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 			state.sources.insert(flow_id, source_objects.clone());
-			let handle = self.spawn_flow(flow, source_objects, seed, FlowSnapshotLoad::Empty);
+			let handle =
+				self.spawn_flow(flow, source_objects, completeness_objects, seed, FlowSnapshotLoad::Empty);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned new deferred flow actor");
 		}
@@ -437,10 +442,12 @@ impl FlowSupervisor {
 			let flow_ids: Vec<FlowId> = state.flows.keys().copied().collect();
 			for flow_id in flow_ids {
 				let source_objects = self.compute_source_objects(state, flow_id, &registered);
+				let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 				state.sources.insert(flow_id, source_objects.clone());
 				if let Some(handle) = state.flows.get(&flow_id) {
 					let _ = handle.actor_ref().send(FlowActorMessage::UpdateSources {
 						source_objects,
+						completeness_objects,
 					});
 				}
 			}
@@ -510,6 +517,16 @@ impl FlowSupervisor {
 		self.view_lineage.publish(state.analyzer.get_dependency_graph().upstream_closure());
 	}
 
+	fn compute_completeness_objects(
+		&self,
+		state: &SupervisorState,
+		flow_id: FlowId,
+		closure: &BTreeMap<ViewId, BTreeSet<ObjectId>>,
+	) -> Option<Arc<BTreeSet<u64>>> {
+		let graph = state.analyzer.get_dependency_graph();
+		routing::flow_completeness_objects(graph, flow_id, closure).map(Arc::new)
+	}
+
 	fn compute_source_objects(
 		&self,
 		state: &SupervisorState,
@@ -531,6 +548,7 @@ impl FlowSupervisor {
 		&self,
 		flow: FlowDag,
 		source_objects: Arc<BTreeSet<ObjectId>>,
+		completeness_objects: Option<Arc<BTreeSet<u64>>>,
 		cursor: CommitVersion,
 		snapshot_load: FlowSnapshotLoad,
 	) -> FlowActorHandle {
@@ -552,6 +570,7 @@ impl FlowSupervisor {
 			flow_tracker: self.flow_tracker.clone(),
 			flow,
 			source_objects,
+			completeness_objects,
 			cursor,
 			pull_batch_bytes: self.pull_batch_bytes,
 			load_batch_bytes: self.load_batch_bytes,

@@ -1,12 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use reifydb_core::interface::catalog::{
 	flow::FlowId, id::ViewId, object::ObjectId, storage::StorageId, view::ViewKind,
 };
 use reifydb_rql::flow::analyzer::FlowDependencyGraph;
+
+pub fn flow_completeness_objects(
+	graph: &FlowDependencyGraph,
+	flow: FlowId,
+	closure: &BTreeMap<ViewId, BTreeSet<ObjectId>>,
+) -> Option<BTreeSet<u64>> {
+	let mut admitted: Option<BTreeSet<u64>> = None;
+	for (view_id, producer) in &graph.sink_views {
+		if *producer != flow {
+			continue;
+		}
+		let objects = closure.get(view_id)?;
+		admitted.get_or_insert_with(BTreeSet::new).extend(objects.iter().map(|object| object.to_u64()));
+	}
+	admitted
+}
 
 pub struct ViewRoute {
 	pub kind: ViewKind,
@@ -83,7 +99,7 @@ pub fn flow_source_objects(
 mod tests {
 	use std::collections::BTreeMap;
 
-	use reifydb_core::interface::catalog::id::{RingBufferId, TableId};
+	use reifydb_core::interface::catalog::id::{RingBufferId, SeriesId, TableId};
 
 	use super::*;
 
@@ -221,5 +237,57 @@ mod tests {
 		let objects = flow_source_objects(&graph, FlowId(20), &none_registered, &view_route);
 
 		assert_eq!(objects.into_iter().collect::<Vec<_>>(), vec![ObjectId::View(ViewId(5))]);
+	}
+
+	#[test]
+	fn the_admission_set_unions_every_sink_view_the_flow_owns() {
+		// Intersecting, or taking only the first sink, would leave the other sink's ancestors unable to wake the flow.
+		let mut graph = empty_graph();
+		graph.sink_views.insert(ViewId(5), FlowId(10));
+		graph.sink_views.insert(ViewId(6), FlowId(10));
+		graph.sink_views.insert(ViewId(7), FlowId(99));
+		let closure = BTreeMap::from([
+			(ViewId(5), BTreeSet::from([ObjectId::Table(TableId(1))])),
+			(ViewId(6), BTreeSet::from([ObjectId::Table(TableId(2))])),
+			(ViewId(7), BTreeSet::from([ObjectId::Table(TableId(3))])),
+		]);
+
+		let admitted = flow_completeness_objects(&graph, FlowId(10), &closure);
+
+		assert_eq!(admitted, Some(BTreeSet::from([1, 2])), "another flow's closure must not leak in");
+	}
+
+	#[test]
+	fn a_sink_view_missing_from_the_closure_admits_everything() {
+		// Filtering on a partial closure would silently stop waking the flow, so a missing sink must forfeit the filter.
+		let mut graph = empty_graph();
+		graph.sink_views.insert(ViewId(5), FlowId(10));
+		graph.sink_views.insert(ViewId(6), FlowId(10));
+		let closure = BTreeMap::from([(ViewId(5), BTreeSet::from([ObjectId::Table(TableId(1))]))]);
+
+		assert_eq!(
+			flow_completeness_objects(&graph, FlowId(10), &closure),
+			None,
+			"one missing sink must forfeit the filter for the whole flow, not just for that sink"
+		);
+	}
+
+	#[test]
+	fn a_flow_that_sinks_nowhere_near_a_view_admits_everything() {
+		// The closure is keyed by sink view, so a flow sinking to a table or ring buffer must keep its unconditional wake.
+		let mut graph = empty_graph();
+		graph.source_tables.insert(TableId(1), vec![FlowId(10)]);
+
+		assert_eq!(flow_completeness_objects(&graph, FlowId(10), &BTreeMap::new()), None);
+	}
+
+	#[test]
+	fn the_admission_set_is_kind_agnostic_because_an_assertion_carries_only_a_raw_id() {
+		// A set holding ObjectId would never match a series asserting the same numeric id as a table.
+		let mut graph = empty_graph();
+		graph.sink_views.insert(ViewId(5), FlowId(10));
+		let closure = BTreeMap::from([(ViewId(5), BTreeSet::from([ObjectId::Series(SeriesId(9))]))]);
+
+		assert_eq!(flow_completeness_objects(&graph, FlowId(10), &closure), Some(BTreeSet::from([9])));
 	}
 }

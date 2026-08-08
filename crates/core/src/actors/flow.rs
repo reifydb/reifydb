@@ -38,6 +38,7 @@ pub enum FlowActorMessage {
 
 	UpdateSources {
 		source_objects: Arc<BTreeSet<ObjectId>>,
+		completeness_objects: Option<Arc<BTreeSet<u64>>>,
 	},
 
 	SliceCommitted {

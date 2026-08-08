@@ -81,6 +81,7 @@ pub struct FlowActorParams {
 	pub flow_tracker: FlowPositionTracker,
 	pub flow: FlowDag,
 	pub source_objects: Arc<BTreeSet<ObjectId>>,
+	pub completeness_objects: Option<Arc<BTreeSet<u64>>>,
 	pub cursor: CommitVersion,
 	pub pull_batch_bytes: ByteSize,
 	pub load_batch_bytes: ByteSize,
@@ -117,6 +118,7 @@ pub struct FlowActor {
 	retry_backoff: Duration,
 	checkpoint_max_age: Duration,
 	initial_source_objects: Arc<BTreeSet<ObjectId>>,
+	initial_completeness_objects: Option<Arc<BTreeSet<u64>>>,
 	initial_cursor: CommitVersion,
 	#[cfg(not(target_arch = "wasm32"))]
 	snapshots: Option<FlowSnapshots>,
@@ -126,6 +128,7 @@ pub struct FlowActor {
 pub struct FlowActorState {
 	flow_engine: FlowEngineInner,
 	source_objects: Arc<BTreeSet<ObjectId>>,
+	completeness_objects: Option<Arc<BTreeSet<u64>>>,
 	cursor: CommitVersion,
 	durable_cursor: CommitVersion,
 	committing: bool,
@@ -173,6 +176,7 @@ impl FlowActor {
 			retry_backoff: params.retry_backoff,
 			checkpoint_max_age: params.checkpoint_max_age,
 			initial_source_objects: params.source_objects,
+			initial_completeness_objects: params.completeness_objects,
 			initial_cursor: params.cursor,
 			#[cfg(not(target_arch = "wasm32"))]
 			snapshots: params.snapshots,
@@ -346,6 +350,7 @@ impl FlowActor {
 			self.flow_id,
 			&items,
 			&state.source_objects,
+			state.completeness_objects.as_deref(),
 			advance_to,
 		) {
 			Ok(pending) => apply_operator_state(&self.substrate.operators, advance_to, &pending),
@@ -424,6 +429,7 @@ impl FlowActor {
 			SliceCursor {
 				flow_id: self.flow_id,
 				source_objects: &state.source_objects,
+				completeness_objects: state.completeness_objects.as_deref(),
 				cursor: state.cursor,
 				durable_cursor: state.durable_cursor,
 			},
@@ -786,6 +792,7 @@ impl Actor for FlowActor {
 		let mut state = FlowActorState {
 			flow_engine,
 			source_objects: self.initial_source_objects.clone(),
+			completeness_objects: self.initial_completeness_objects.clone(),
 			cursor: self.initial_cursor,
 			durable_cursor: self.initial_cursor,
 			committing: false,
@@ -852,8 +859,10 @@ impl Actor for FlowActor {
 			}
 			FlowActorMessage::UpdateSources {
 				source_objects,
+				completeness_objects,
 			} => {
 				state.source_objects = source_objects;
+				state.completeness_objects = completeness_objects;
 				if !state.poisoned && !state.committing {
 					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 				}
@@ -1145,6 +1154,7 @@ mod pull_protocol {
 					flow_tracker: self.tracker.clone(),
 					flow: self.flow.clone(),
 					source_objects: self.source_objects.clone(),
+					completeness_objects: None,
 					cursor: CommitVersion(cursor.0 - 1),
 					pull_batch_bytes: ByteSize::from_mib(8),
 					load_batch_bytes: ByteSize::from_mib(8),
@@ -1428,6 +1438,7 @@ mod pull_protocol {
 					flow_tracker: self.tracker.clone(),
 					flow: self.flow.clone(),
 					source_objects: self.source_objects.clone(),
+					completeness_objects: None,
 					cursor,
 					pull_batch_bytes: ByteSize::from_mib(8),
 					load_batch_bytes,
@@ -2057,6 +2068,7 @@ mod pull_protocol {
 				flow_tracker: h.tracker.clone(),
 				flow: h.flow.clone(),
 				source_objects: h.source_objects.clone(),
+				completeness_objects: None,
 				cursor: target,
 				pull_batch_bytes: ByteSize::from_mib(8),
 				load_batch_bytes: ByteSize::from_mib(8),
