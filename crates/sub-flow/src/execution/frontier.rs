@@ -388,7 +388,8 @@ mod tests {
 
 	#[test]
 	fn an_untimed_source_is_excluded_from_the_merge_rather_than_pinning_it_at_the_epoch() {
-		// A source declaring no time carries no event instant, so counting it as the epoch pins every downstream window open forever.
+		// A source declaring no time carries no event instant, so counting it as the epoch pins every
+		// downstream window open forever.
 		let held = Harness::new()
 			.node(source(1))
 			.node(untimed_source(2))
@@ -405,7 +406,8 @@ mod tests {
 
 	#[test]
 	fn a_flow_whose_every_source_is_untimed_claims_nothing() {
-		// With no timed input there is nothing to justify a frontier, so claiming one would seal windows on rows never seen.
+		// With no timed input there is nothing to justify a frontier, so claiming one would seal windows on
+		// rows never seen.
 		let held = Harness::new()
 			.node(untimed_source(1))
 			.node(stage(3))

@@ -78,6 +78,28 @@ impl FlowEngineInner {
 		Ok(())
 	}
 
+	pub(crate) fn fold_published_arrivals(
+		&self,
+		txn: &mut FlowTransaction,
+		flow_id: FlowId,
+		version: CommitVersion,
+	) -> Result<()> {
+		let flow = match self.flows.get(&flow_id) {
+			Some(f) => f.clone(),
+			None => return Ok(()),
+		};
+
+		let topo = flow.topological_order()?;
+		let sources: Vec<OperatorId> = topo
+			.iter()
+			.copied()
+			.filter(|id| flow.get_operator(id).is_some_and(|operator| operator.ty.declares_time()))
+			.collect();
+
+		let arrivals = published_arrivals(&self.sources, &self.substrate.frontiers, flow_id, version);
+		freeze_arrival_frontier(txn, &sources, &arrivals)
+	}
+
 	#[inline]
 	fn process_version(
 		&self,
@@ -113,12 +135,7 @@ impl FlowEngineInner {
 			})
 			.collect();
 		arrivals.extend(completeness_arrivals(&self.sources, flow_id, &asserted));
-		arrivals.extend(published_arrivals(
-			&self.sources,
-			&self.substrate.frontiers,
-			flow_id,
-			version,
-		));
+		arrivals.extend(published_arrivals(&self.sources, &self.substrate.frontiers, flow_id, version));
 		freeze_arrival_frontier(txn, &sources, &arrivals)?;
 
 		let mut nodes_processed = self.run_topology(txn, flow, pending, topo)?;
@@ -443,7 +460,8 @@ mod tests {
 
 	#[test]
 	fn a_table_source_no_flow_publishes_for_yields_no_arrival() {
-		// An unpublished object must fold nothing; folding it as the epoch drags the reader's watermark to zero.
+		// An unpublished object must fold nothing; folding it as the epoch drags the reader's watermark to
+		// zero.
 		let object = ObjectId::Table(TableId(5));
 		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3))])]);
 		let frontiers = OutputFrontiers::default();

@@ -436,9 +436,13 @@ impl FlowActor {
 			Ok(SliceStep::Skip {
 				advance_to,
 				more,
+				holds,
 			}) => {
 				state.retry_count = 0;
 				state.cursor = advance_to;
+				for hold in holds {
+					self.substrate.frontiers.publish(hold.object, hold.frontier, advance_to);
+				}
 				self.publish_position(advance_to);
 				if more {
 					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
@@ -610,7 +614,7 @@ impl FlowActor {
 		if state.poisoned {
 			return;
 		}
-		match self.computer.restored_holds(&mut state.flow_engine, self.flow_id, self.initial_cursor) {
+		match self.computer.resolved_holds(&mut state.flow_engine, self.flow_id, self.initial_cursor) {
 			Ok(holds) => {
 				for hold in holds {
 					self.substrate.frontiers.publish(

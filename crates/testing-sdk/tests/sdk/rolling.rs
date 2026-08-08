@@ -289,6 +289,10 @@ impl RollingOperator for SealedRollingSum {
 		millis(1)
 	}
 
+	fn seal_after(&self) -> Option<Duration> {
+		Some(millis(120))
+	}
+
 	fn extract(&self, ctx: &mut impl OperatorContext, row: &impl RowView) -> Option<(String, f64)> {
 		TestRollingSum {
 			capacity: 3,
@@ -322,10 +326,6 @@ impl RollingRegistration for SealedRollingSum {
 
 	fn encode_row_key(&self, group: &String) -> EncodedKey {
 		EncodedKey::builder().str(group).build()
-	}
-
-	fn seal_after(&self) -> Option<Duration> {
-		Some(millis(120))
 	}
 }
 

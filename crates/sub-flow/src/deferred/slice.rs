@@ -47,6 +47,7 @@ pub enum SliceStep {
 	Skip {
 		advance_to: CommitVersion,
 		more: bool,
+		holds: WatermarkHolds,
 	},
 }
 
@@ -78,13 +79,14 @@ impl SliceComputer {
 		let refs: Vec<&Cdc> = items[start..].iter().map(Arc::as_ref).collect();
 		let changes = collect_flow_changes(&refs, cursor.source_objects);
 		if changes.is_empty() {
-			return Ok(self.skip_or_checkpoint(
+			return self.skip_or_checkpoint(
+				flow_engine,
 				cursor.flow_id,
 				advance_to,
 				cursor.durable_cursor,
 				more,
 				config,
-			));
+			);
 		}
 
 		overlay.prune_through(advance_to);
@@ -110,27 +112,29 @@ impl SliceComputer {
 
 	fn skip_or_checkpoint(
 		&self,
+		flow_engine: &mut FlowEngineInner,
 		flow_id: FlowId,
 		advance_to: CommitVersion,
 		durable_cursor: CommitVersion,
 		more: bool,
 		config: &SliceConfig,
-	) -> SliceStep {
+	) -> Result<SliceStep> {
+		let holds = self.resolved_holds(flow_engine, flow_id, advance_to)?;
 		if advance_to.0.saturating_sub(durable_cursor.0) > config.checkpoint_lag {
 			let mut slice = FlowSlice::empty();
 			slice.checkpoints.push((flow_id, advance_to));
-			SliceStep::Commit {
+			return Ok(SliceStep::Commit {
 				slice,
 				advance_to,
 				more,
-				holds: WatermarkHolds::new(),
-			}
-		} else {
-			SliceStep::Skip {
-				advance_to,
-				more,
-			}
+				holds,
+			});
 		}
+		Ok(SliceStep::Skip {
+			advance_to,
+			more,
+			holds,
+		})
 	}
 
 	pub fn replay(
@@ -150,7 +154,7 @@ impl SliceComputer {
 		Ok(computed.0)
 	}
 
-	pub(crate) fn restored_holds(
+	pub(crate) fn resolved_holds(
 		&self,
 		flow_engine: &mut FlowEngineInner,
 		flow_id: FlowId,
@@ -180,6 +184,7 @@ impl SliceComputer {
 			state_budget: flow_engine.state_budget.clone(),
 		});
 
+		flow_engine.fold_published_arrivals(&mut txn, flow_id, state_version)?;
 		flow_engine.holds(&mut txn, flow_id)
 	}
 
@@ -562,7 +567,7 @@ mod integration {
 		seed.flush_operator_states().unwrap();
 
 		let computer = SliceComputer::new(engine.clone());
-		let held = computer.restored_holds(&mut flow_engine, flow, version).unwrap();
+		let held = computer.resolved_holds(&mut flow_engine, flow, version).unwrap();
 
 		assert_eq!(
 			held,
@@ -570,7 +575,7 @@ mod integration {
 				object: ObjectId::View(ViewId(3)),
 				frontier: at_millis(30_000)
 			}],
-			"restored_holds must read the seeded watermark through the shared substrate"
+			"resolved_holds must read the seeded watermark through the shared substrate"
 		);
 	}
 
@@ -580,15 +585,28 @@ mod integration {
 		// commit on every batch, and beyond it its durable checkpoint must move, because CDC
 		// compaction is gated on the minimum durable checkpoint across flows.
 		let te = TestEngine::builder().with_cdc().build();
-		let computer = SliceComputer::new(te.inner().clone());
+		let engine = te.inner().clone();
+		let mut flow_engine = build_flow_engine(&engine);
+		let computer = SliceComputer::new(engine.clone());
 		let config = SliceConfig {
 			checkpoint_lag: 10,
 		};
 
-		match computer.skip_or_checkpoint(FlowId(7), CommitVersion(25), CommitVersion(15), false, &config) {
+		match computer
+			.skip_or_checkpoint(
+				&mut flow_engine,
+				FlowId(7),
+				CommitVersion(25),
+				CommitVersion(15),
+				false,
+				&config,
+			)
+			.unwrap()
+		{
 			SliceStep::Skip {
 				advance_to,
 				more,
+				holds: _,
 			} => {
 				assert_eq!(advance_to, CommitVersion(25));
 				assert!(!more);
@@ -596,7 +614,17 @@ mod integration {
 			_ => panic!("an advance of exactly checkpoint_lag must stay in memory, not commit"),
 		}
 
-		match computer.skip_or_checkpoint(FlowId(7), CommitVersion(26), CommitVersion(15), true, &config) {
+		match computer
+			.skip_or_checkpoint(
+				&mut flow_engine,
+				FlowId(7),
+				CommitVersion(26),
+				CommitVersion(15),
+				true,
+				&config,
+			)
+			.unwrap()
+		{
 			SliceStep::Commit {
 				slice,
 				advance_to,
