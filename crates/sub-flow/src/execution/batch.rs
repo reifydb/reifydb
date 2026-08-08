@@ -136,7 +136,8 @@ impl FlowEngineInner {
 			})
 			.collect();
 		arrivals.extend(completeness_arrivals(&self.sources, flow_id, &asserted));
-		let (published, silent) = published_arrivals(&self.sources, &self.substrate.frontiers, flow_id, version);
+		let (published, silent) =
+			published_arrivals(&self.sources, &self.substrate.frontiers, flow_id, version);
 		warn_unpublished(flow_id, &silent);
 		arrivals.extend(published);
 		freeze_arrival_frontier(txn, &sources, &arrivals)?;
@@ -486,7 +487,8 @@ mod tests {
 
 	#[test]
 	fn an_unpublished_view_is_reported_when_a_sibling_source_is_already_visible() {
-		// A live sibling proves the flow is past its cold start, so this producer is genuinely behind and must be named.
+		// A live sibling proves the flow is past its cold start, so this producer is genuinely behind and must
+		// be named.
 		let stuck = ObjectId::View(ViewId(5));
 		let live = ObjectId::View(ViewId(6));
 		let sources = BTreeMap::from([
@@ -503,7 +505,8 @@ mod tests {
 
 	#[test]
 	fn an_unpublished_view_is_not_reported_while_no_source_is_visible_yet() {
-		// Before any source has ever published there is nothing to distinguish a stuck producer from a cold boot, and naming every one of them buries the signal.
+		// Before any source has ever published there is nothing to distinguish a stuck producer from a cold
+		// boot, and naming every one of them buries the signal.
 		let stuck = ObjectId::View(ViewId(5));
 		let other = ObjectId::View(ViewId(6));
 		let sources = BTreeMap::from([
@@ -520,7 +523,8 @@ mod tests {
 
 	#[test]
 	fn a_withheld_sibling_does_not_count_as_visible_and_keeps_the_report_silent() {
-		// Withheld means published-but-not-yet-orderable, which is still the cold case; counting it would restore the boot burst.
+		// Withheld means published-but-not-yet-orderable, which is still the cold case; counting it would
+		// restore the boot burst.
 		let stuck = ObjectId::View(ViewId(5));
 		let withheld = ObjectId::View(ViewId(6));
 		let sources = BTreeMap::from([
@@ -538,7 +542,8 @@ mod tests {
 
 	#[test]
 	fn an_unpublished_table_is_never_reported_even_beside_a_visible_source() {
-		// Only a view has a producing flow that owes a frontier; naming a table would report a fault nothing can fix.
+		// Only a view has a producing flow that owes a frontier; naming a table would report a fault nothing
+		// can fix.
 		let table = ObjectId::Table(TableId(5));
 		let live = ObjectId::View(ViewId(6));
 		let sources = BTreeMap::from([

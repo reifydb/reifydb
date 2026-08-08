@@ -152,7 +152,9 @@ impl OperatorDef {
 				| OperatorDef::Distinct { .. }
 				| OperatorDef::Append { .. } | OperatorDef::Apply { .. }
 				| OperatorDef::Aggregate { .. }
-				| OperatorDef::Window { .. }
+				| OperatorDef::Window { .. } | OperatorDef::Gate { .. }
+				| OperatorDef::Take { .. } | OperatorDef::SinkRingBufferView { .. }
+				| OperatorDef::SinkSubscription { .. }
 		)
 	}
 
@@ -415,7 +417,7 @@ impl FlowEdge {
 mod tests {
 	use reifydb_core::{
 		common::{JoinType, WindowKind, WindowSize},
-		interface::catalog::id::{RingBufferId, ViewId},
+		interface::catalog::id::{RingBufferId, SubscriptionId, ViewId},
 		row::{JoinTtl, OperatorSettings, OperatorTtl},
 	};
 	use reifydb_value::value::duration::Duration;
@@ -691,6 +693,42 @@ mod tests {
 			}
 			.holds_state(),
 			"a map keeps nothing between rows and must never appear in the retention listing"
+		);
+	}
+
+	#[test]
+	fn a_node_that_persists_state_without_a_reclaim_path_is_still_listed_as_stateful() {
+		// These keep state no declared span can ever age, so a false here hides the only retention the listing
+		// cannot otherwise reach.
+		assert!(
+			OperatorDef::Gate {
+				conditions: vec![],
+			}
+			.holds_state(),
+			"a gate keeps per-row visibility markers between changes"
+		);
+		assert!(
+			OperatorDef::Take {
+				limit: 1,
+			}
+			.holds_state(),
+			"a take keeps the retained rows and their candidates between changes"
+		);
+		assert!(
+			OperatorDef::SinkRingBufferView {
+				view: ViewId(1),
+				ringbuffer: RingBufferId(1),
+				capacity: 1,
+			}
+			.holds_state(),
+			"a ring buffer sink keeps per-partition occupancy between changes"
+		);
+		assert!(
+			OperatorDef::SinkSubscription {
+				subscription: SubscriptionId(1),
+			}
+			.holds_state(),
+			"a subscription sink keeps every delivered row number for the life of the subscription"
 		);
 	}
 }

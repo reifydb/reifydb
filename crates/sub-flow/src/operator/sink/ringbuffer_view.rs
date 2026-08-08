@@ -460,6 +460,10 @@ impl Operator for SinkRingBufferViewOperator {
 		OperatorCapability::STANDARD
 	}
 
+	fn retention_scale(&self) -> Option<Duration> {
+		self.ttl
+	}
+
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
 		let shape = row_shape_from_columns(view.columns());
@@ -1450,5 +1454,21 @@ mod tests {
 		assert_eq!(after.count, 1, "only the row whose own time already expired is evicted");
 		assert_eq!(after.head, head_before, "head stays at the surviving row, the true min survivor");
 		assert_eq!(row_entry_count(&engine, &op, &base("us")), 1);
+	}
+
+	#[test]
+	fn the_declared_row_ttl_is_reported_as_the_retention_scale() {
+		// retains_forever is derived from a none scale, so withholding the ttl here lists a ring that does age
+		// as perpetual.
+		assert_eq!(
+			build_op(true, true, Some(hour_ttl())).retention_scale(),
+			Some(hour_ttl()),
+			"a ring that evicts on its row ttl must report that ttl as its horizon"
+		);
+		assert_eq!(
+			build_op(true, true, None).retention_scale(),
+			None,
+			"a ttl-less ring is bounded by capacity alone and has no time horizon to report"
+		);
 	}
 }

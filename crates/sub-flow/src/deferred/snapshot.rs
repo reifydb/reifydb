@@ -593,7 +593,6 @@ mod tests {
 
 	#[test]
 	fn an_operator_that_never_accumulated_state_still_yields_a_pin() {
-		// Without a pin here the flow's row stays frozen and caps compute_pinning_watermark for every database.
 		let (snapshots, store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
 
@@ -608,7 +607,6 @@ mod tests {
 
 	#[test]
 	fn repeated_snapshots_of_an_idle_flow_keep_advancing_the_pin() {
-		// A pin that stops advancing while the flow idles is exactly what makes the CDC log unbounded.
 		let (snapshots, _store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
 
@@ -619,7 +617,6 @@ mod tests {
 
 	#[test]
 	fn an_empty_snapshot_round_trips_without_inventing_state() {
-		// An empty snapshot must restore as empty, otherwise the retention fix buys a recovery bug.
 		let (snapshots, _store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
 		assert_eq!(snapshots.write_flow(&source, &[OP_A], CommitVersion(6)), Some(CommitVersion(6)));
@@ -634,7 +631,6 @@ mod tests {
 
 	#[test]
 	fn a_flow_with_no_operators_at_all_yields_no_pin() {
-		// An empty id list is a caller error, never an idle flow.
 		let (snapshots, _store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
 
