@@ -9,7 +9,7 @@ pub mod view;
 use std::sync::LazyLock;
 
 use postcard::from_bytes;
-use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -131,7 +131,7 @@ pub(crate) fn encode_row_at_index(
 	shape: &RowShape,
 	row_number: RowNumber,
 	field_columns: &[usize],
-) -> Result<(RowNumber, EncodedRow)> {
+) -> Result<(RowNumber, EncodedBytes)> {
 	let values: Vec<Value> =
 		field_columns.iter().map(|&col_idx| columns.data_at(col_idx).get_value(row_idx)).collect();
 

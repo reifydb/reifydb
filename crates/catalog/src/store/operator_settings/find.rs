@@ -15,7 +15,7 @@ impl CatalogStore {
 		operator: OperatorId,
 	) -> Result<Option<OperatorSettings>> {
 		let value = rx.get(&OperatorSettingsKey::encoded(operator))?;
-		Ok(value.and_then(|v| decode_operator_settings(&v.row)))
+		Ok(value.and_then(|v| decode_operator_settings(&v.bytes)))
 	}
 }
 

@@ -17,7 +17,7 @@ impl CatalogStore {
 		for entry in stream {
 			let entry = entry?;
 			if let Some(Key::Binding(_)) = Key::decode(&entry.key) {
-				out.push(decode_binding(&entry.row));
+				out.push(decode_binding(&entry.bytes));
 			}
 		}
 		Ok(out)

@@ -29,11 +29,11 @@ pub fn load_primary_keys(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 
 	for multi in entries {
 		let version = multi.version;
-		let row = multi.row;
+		let bytes = multi.bytes;
 
-		let pk_id = PrimaryKeyId(primary_key::SHAPE.get::<u64>(&row, ID));
+		let pk_id = PrimaryKeyId(primary_key::SHAPE.get::<u64>(&bytes, ID));
 
-		let column_ids_blob = primary_key::SHAPE.get_blob(&row, COLUMN_IDS);
+		let column_ids_blob = primary_key::SHAPE.get_blob(&bytes, COLUMN_IDS);
 		let column_ids = deserialize_column_ids(&column_ids_blob);
 
 		let mut columns = Vec::new();

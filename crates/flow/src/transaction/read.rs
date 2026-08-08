@@ -15,7 +15,7 @@ use std::{
 use collections::BTreeMap;
 use iter::Peekable;
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -48,11 +48,11 @@ pub enum ReadFrom {
 pub(crate) const PREFETCH_MEMO_BYTE_CAP: u64 = 64 * 1024 * 1024;
 
 impl FlowTransactionInner {
-	pub(crate) fn memoize_prefetch(&mut self, key: &EncodedKey, row: Option<EncodedRow>) {
-		let entry_bytes = (key.as_bytes().len() + row.as_ref().map_or(0, |row| row.len())) as u64;
+	pub(crate) fn memoize_prefetch(&mut self, key: &EncodedKey, bytes: Option<EncodedBytes>) {
+		let entry_bytes = (key.as_bytes().len() + bytes.as_ref().map_or(0, |bytes| bytes.len())) as u64;
 		if self.prefetch_bytes.saturating_add(entry_bytes) <= PREFETCH_MEMO_BYTE_CAP {
 			self.prefetch_bytes += entry_bytes;
-			self.prefetch.insert(key.clone(), row);
+			self.prefetch.insert(key.clone(), bytes);
 		} else {
 			self.prefetch_rejections += 1;
 		}
@@ -60,7 +60,7 @@ impl FlowTransactionInner {
 }
 
 impl FlowTransaction {
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		let inner = self.inner();
 		if inner.pending.is_removed(key) {
 			return Ok(None);
@@ -83,7 +83,7 @@ impl FlowTransaction {
 			return match Self::read_from(key) {
 				ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(state.get(key).cloned()),
 				ReadFrom::Query | ReadFrom::OwnedRow => match inner.query.get(key)? {
-					Some(multi) => Ok(Some(multi.row().clone())),
+					Some(multi) => Ok(Some(multi.bytes().clone())),
 					None => Ok(None),
 				},
 			};
@@ -109,7 +109,7 @@ impl FlowTransaction {
 			ReadFrom::OwnedRow => inner.state_query.as_ref().unwrap_or(&inner.query),
 			ReadFrom::OperatorState => unreachable!(),
 		};
-		let result = query.get(key)?.map(|multi| multi.row().clone());
+		let result = query.get(key)?.map(|multi| multi.bytes().clone());
 		if matches!(route, ReadFrom::StateQuery) {
 			inner.memoize_prefetch(key, result.clone());
 		}
@@ -337,7 +337,7 @@ impl FlowTransaction {
 						.map(|(k, v)| {
 							Ok(MultiVersionRow {
 								key: k.clone(),
-								row: v.clone(),
+								bytes: v.clone(),
 								version: inner.version,
 							})
 						})
@@ -441,7 +441,7 @@ impl FlowTransaction {
 						.map(|(k, v)| {
 							Ok(MultiVersionRow {
 								key: k.clone(),
-								row: v.clone(),
+								bytes: v.clone(),
 								version: inner.version,
 							})
 						})
@@ -496,7 +496,7 @@ struct ArenaRangeIter {
 	end: Bound<EncodedKey>,
 	cursor: Bound<EncodedKey>,
 	batch_size: u64,
-	buffered: IntoIter<(EncodedKey, EncodedRow)>,
+	buffered: IntoIter<(EncodedKey, EncodedBytes)>,
 	exhausted: bool,
 	version: CommitVersion,
 }
@@ -527,11 +527,11 @@ impl Iterator for ArenaRangeIter {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
-			if let Some((inner_key, row)) = self.buffered.next() {
+			if let Some((inner_key, bytes)) = self.buffered.next() {
 				self.cursor = Bound::Excluded(inner_key.clone());
 				return Some(Ok(MultiVersionRow {
 					key: OperatorStateKey::encoded(self.operator, inner_key.as_slice()),
-					row,
+					bytes,
 					version: self.version,
 				}));
 			}
@@ -581,20 +581,20 @@ where
 
 					if matches!(cmp, Ordering::Less) {
 						let (key, value) = self.pending_iter.next().unwrap();
-						if let PendingWrite::Set(row) = value {
+						if let PendingWrite::Set(bytes) = value {
 							return Some(Ok(MultiVersionRow {
 								key,
-								row,
+								bytes,
 								version: self.version,
 							}));
 						}
 					} else if matches!(cmp, Ordering::Equal) {
 						let (key, value) = self.pending_iter.next().unwrap();
 						self.storage_iter.next();
-						if let PendingWrite::Set(row) = value {
+						if let PendingWrite::Set(bytes) = value {
 							return Some(Ok(MultiVersionRow {
 								key,
-								row,
+								bytes,
 								version: self.version,
 							}));
 						}
@@ -604,10 +604,10 @@ where
 				}
 				(Some(_), None) => {
 					let (key, value) = self.pending_iter.next().unwrap();
-					if let PendingWrite::Set(row) = value {
+					if let PendingWrite::Set(bytes) = value {
 						return Some(Ok(MultiVersionRow {
 							key,
-							row,
+							bytes,
 							version: self.version,
 						}));
 					}
@@ -668,20 +668,20 @@ where
 
 					if matches!(cmp, Ordering::Greater) {
 						let (key, value) = self.pending_iter.next().unwrap();
-						if let PendingWrite::Set(row) = value {
+						if let PendingWrite::Set(bytes) = value {
 							return Some(Ok(MultiVersionRow {
 								key,
-								row,
+								bytes,
 								version: self.version,
 							}));
 						}
 					} else if matches!(cmp, Ordering::Equal) {
 						let (key, value) = self.pending_iter.next().unwrap();
 						self.storage_iter.next();
-						if let PendingWrite::Set(row) = value {
+						if let PendingWrite::Set(bytes) = value {
 							return Some(Ok(MultiVersionRow {
 								key,
-								row,
+								bytes,
 								version: self.version,
 							}));
 						}
@@ -691,10 +691,10 @@ where
 				}
 				(Some(_), None) => {
 					let (key, value) = self.pending_iter.next().unwrap();
-					if let PendingWrite::Set(row) = value {
+					if let PendingWrite::Set(bytes) = value {
 						return Some(Ok(MultiVersionRow {
 							key,
-							row,
+							bytes,
 							version: self.version,
 						}));
 					}
@@ -727,7 +727,7 @@ where
 pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{
-		encoded::row::EncodedRow,
+		encoded::bytes::EncodedBytes,
 		key::encoded::{EncodedKey, EncodedKeyRange},
 	};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -742,8 +742,8 @@ pub mod tests {
 		EncodedKey::new(s.as_bytes())
 	}
 
-	fn make_value(s: &str) -> EncodedRow {
-		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
+	fn make_value(s: &str) -> EncodedBytes {
+		EncodedBytes(CowVec::new(s.as_bytes().to_vec()))
 	}
 
 	#[test]

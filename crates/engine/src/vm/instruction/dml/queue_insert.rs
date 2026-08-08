@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use postcard::to_stdvec;
-use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
 	error::diagnostic::catalog::{
 		namespace_not_found, queue_deduplication_key_not_utf8, queue_not_before_not_datetime, queue_not_found,
@@ -170,7 +170,7 @@ pub(crate) fn insert_queue(
 }
 
 struct PendingItem {
-	encoded: EncodedRow,
+	encoded: EncodedBytes,
 	deduplication_key: Option<Vec<u8>>,
 	not_before: Option<DateTime>,
 }
@@ -179,14 +179,14 @@ enum Outcome {
 	Fresh,
 	Duplicate {
 		row_number: RowNumber,
-		encoded: Option<EncodedRow>,
+		encoded: Option<EncodedBytes>,
 	},
 }
 
 struct ReturnedRow {
 	created: bool,
 	row_number: RowNumber,
-	encoded: EncodedRow,
+	encoded: EncodedBytes,
 }
 
 fn deduplication_record_shape() -> RowShape {
@@ -236,10 +236,10 @@ fn resolve_duplicates(
 
 		let stored = txn.get(&QueueDeduplicationKey::encoded(queue.id, key.clone()))?;
 		if let Some(stored) = stored {
-			let row_number = RowNumber(record_shape.get::<u64>(&stored.row, 0));
-			let expires_at = record_shape.get_value(&stored.row, 1);
+			let row_number = RowNumber(record_shape.get::<u64>(&stored.bytes, 0));
+			let expires_at = record_shape.get_value(&stored.bytes, 1);
 			if !has_expired(&expires_at, now) {
-				let encoded = txn.get(&RowKey::encoded(queue.id, row_number))?.map(|item| item.row);
+				let encoded = txn.get(&RowKey::encoded(queue.id, row_number))?.map(|item| item.bytes);
 				outcomes.push(Outcome::Duplicate {
 					row_number,
 					encoded,
@@ -273,7 +273,7 @@ fn project_returning(
 	returning_exprs: &[Expression],
 	returned: &[ReturnedRow],
 ) -> Result<Columns> {
-	let rows: Vec<(RowNumber, EncodedRow)> =
+	let rows: Vec<(RowNumber, EncodedBytes)> =
 		returned.iter().map(|row| (row.row_number, row.encoded.clone())).collect();
 	let mut columns = decode_rows_to_columns(shape, &rows);
 	truncate_to_declared(&mut columns, queue.columns.len());
@@ -303,7 +303,7 @@ fn declared_key_indices(queue: &Queue) -> Result<Option<Vec<usize>>> {
 	Ok(Some(indices))
 }
 
-fn declared_key_bytes(shape: &RowShape, row: &EncodedRow, indices: &[usize]) -> Vec<u8> {
+fn declared_key_bytes(shape: &RowShape, row: &EncodedBytes, indices: &[usize]) -> Vec<u8> {
 	let values: Vec<Value> = indices.iter().map(|&index| shape.get_value(row, index)).collect();
 	to_stdvec(&values).expect("postcard serialization of a Value list is total")
 }
@@ -323,7 +323,7 @@ fn ordered_by_index(queue: &Queue) -> Result<Option<usize>> {
 fn partition_of(
 	queue: &Queue,
 	shape: &RowShape,
-	row: &EncodedRow,
+	row: &EncodedBytes,
 	ordered_by_index: Option<usize>,
 	row_number: RowNumber,
 ) -> u16 {
@@ -504,7 +504,7 @@ fn build_insert_queue_row(
 	context: &Arc<QueryContext>,
 	row_idx: usize,
 	not_before: Option<DateTime>,
-) -> Result<EncodedRow> {
+) -> Result<EncodedBytes> {
 	let mut row = shape.allocate();
 
 	for (queue_idx, queue_column) in target.queue.columns.iter().enumerate() {

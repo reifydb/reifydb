@@ -47,11 +47,11 @@ pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 }
 
 fn convert_view(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Result<View> {
-	decode_view(&multi.row, vec![], primary_key)
+	decode_view(&multi.bytes, vec![], primary_key)
 }
 
 fn get_view_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
-	let pk_id_raw = SHAPE.get::<u64>(&multi.row, PRIMARY_KEY);
+	let pk_id_raw = SHAPE.get::<u64>(&multi.bytes, PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

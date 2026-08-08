@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	interface::catalog::id::PrimaryKeyId,
 	key::{EncodableKey, kind::KeyKind, view::ViewKey},
@@ -22,7 +22,7 @@ use crate::{
 pub(super) struct ViewApplier;
 
 impl CatalogChangeApplier for ViewApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let pk_raw = SHAPE.get::<u64>(row, PRIMARY_KEY);
 		let primary_key = if pk_raw > 0 {

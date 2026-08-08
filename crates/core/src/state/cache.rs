@@ -587,7 +587,7 @@ where
 		if let Some(slot) = self.dirty.get_mut(key) {
 			match slot {
 				DirtyEntry::LiveArchived(bytes) => {
-					if bytes.row().0.is_shared() {
+					if bytes.bytes().0.is_shared() {
 						self.seal_copies += 1;
 					}
 					// SAFETY: LiveArchived bytes were validated at insertion.
@@ -632,7 +632,7 @@ where
 			self.release_clean_entry(key_charge(key), &entry);
 			match entry {
 				CleanEntry::Archived(mut bytes) => {
-					if bytes.row().0.is_shared() {
+					if bytes.bytes().0.is_shared() {
 						self.seal_copies += 1;
 					}
 					// SAFETY: every Archived entry was validated by V::archived at insertion.
@@ -679,7 +679,7 @@ where
 		match loaded {
 			Some(mut bytes) => {
 				V::archived(&bytes)?;
-				if bytes.row().0.is_shared() {
+				if bytes.bytes().0.is_shared() {
 					self.seal_copies += 1;
 				}
 				// SAFETY: bytes passed V::archived validation above.
@@ -1836,11 +1836,11 @@ mod tests {
 
 		let stored = store.data.values().next().unwrap();
 		assert_eq!(
-			stored.row().updated_at(),
+			stored.bytes().updated_at(),
 			DateTime::from_nanos(99),
 			"the verbatim write refreshes updated_at"
 		);
-		assert_eq!(stored.row().created_at(), DateTime::EPOCH, "created_at survives the verbatim rewrite");
+		assert_eq!(stored.bytes().created_at(), DateTime::EPOCH, "created_at survives the verbatim rewrite");
 		let expected = SealCell {
 			value: 7,
 		}

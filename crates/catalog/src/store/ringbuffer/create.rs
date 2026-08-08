@@ -382,16 +382,16 @@ pub mod tests {
 
 		// Keys are descending, so the later ring buffer comes first.
 		let link = &links[0];
-		let row = &link.row;
-		let id2 = ringbuffer_namespace::SHAPE.get::<u64>(row, ringbuffer_namespace::ID);
+		let bytes = &link.bytes;
+		let id2 = ringbuffer_namespace::SHAPE.get::<u64>(bytes, ringbuffer_namespace::ID);
 		assert!(id2 > 0);
-		assert_eq!(ringbuffer_namespace::SHAPE.get_utf8(row, ringbuffer_namespace::NAME), "buffer2");
+		assert_eq!(ringbuffer_namespace::SHAPE.get_utf8(bytes, ringbuffer_namespace::NAME), "buffer2");
 
 		let link = &links[1];
-		let row = &link.row;
-		let id1 = ringbuffer_namespace::SHAPE.get::<u64>(row, ringbuffer_namespace::ID);
+		let bytes = &link.bytes;
+		let id1 = ringbuffer_namespace::SHAPE.get::<u64>(bytes, ringbuffer_namespace::ID);
 		assert!(id2 > id1);
-		assert_eq!(ringbuffer_namespace::SHAPE.get_utf8(row, ringbuffer_namespace::NAME), "buffer1");
+		assert_eq!(ringbuffer_namespace::SHAPE.get_utf8(bytes, ringbuffer_namespace::NAME), "buffer1");
 	}
 
 	#[test]

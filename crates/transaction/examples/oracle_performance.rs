@@ -3,7 +3,7 @@
 
 use std::{sync::Arc, thread::spawn, time::Instant};
 
-use reifydb_codec::{encoded::row::EncodedRow, key as keycode, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key as keycode, key::encoded::EncodedKey};
 use reifydb_transaction::multi::transaction::MultiTransaction;
 use reifydb_value::util::cowvec::CowVec;
 
@@ -12,7 +12,7 @@ macro_rules! as_key {
 }
 
 macro_rules! as_values {
-	($val:expr) => {{ EncodedRow(CowVec::new(keycode::serialize(&$val))) }};
+	($val:expr) => {{ EncodedBytes(CowVec::new(keycode::serialize(&$val))) }};
 }
 
 pub fn oracle_performance_benchmark() {

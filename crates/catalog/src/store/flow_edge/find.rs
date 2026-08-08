@@ -16,11 +16,11 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.row;
-		let id = FlowEdgeId(SHAPE.get::<u64>(&row, flow_edge::ID));
-		let flow = FlowId(SHAPE.get::<u64>(&row, flow_edge::FLOW));
-		let source = OperatorId(SHAPE.get::<u64>(&row, flow_edge::SOURCE));
-		let target = OperatorId(SHAPE.get::<u64>(&row, flow_edge::TARGET));
+		let bytes = multi.bytes;
+		let id = FlowEdgeId(SHAPE.get::<u64>(&bytes, flow_edge::ID));
+		let flow = FlowId(SHAPE.get::<u64>(&bytes, flow_edge::FLOW));
+		let source = OperatorId(SHAPE.get::<u64>(&bytes, flow_edge::SOURCE));
+		let target = OperatorId(SHAPE.get::<u64>(&bytes, flow_edge::TARGET));
 
 		Ok(Some(FlowEdge {
 			id,

@@ -11,7 +11,7 @@ use std::{
 use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::encoded::{
-	row::EncodedRow,
+	bytes::EncodedBytes,
 	shape::{RowShape, RowShapeField},
 };
 use reifydb_core::{
@@ -52,7 +52,7 @@ struct TakeState {
 	candidates_by_seq: BTreeMap<u64, RowNumber>,
 	candidates_by_row: HashMap<RowNumber, (u64, usize)>,
 	next_seq: u64,
-	row_data: HashMap<RowNumber, EncodedRow>,
+	row_data: HashMap<RowNumber, EncodedBytes>,
 }
 
 pub struct TakeOperator {
@@ -72,15 +72,15 @@ fn row_shape_from_columns(cols: &Columns) -> RowShape {
 	RowShape::new(fields)
 }
 
-fn encode_take_row(shape: &RowShape, columns: &Columns, row_idx: usize) -> EncodedRow {
+fn encode_take_bytes(shape: &RowShape, columns: &Columns, row_idx: usize) -> EncodedBytes {
 	let values: Vec<Value> = columns.columns.iter().map(|buf| buf.get_value(row_idx)).collect();
 	let mut encoded = shape.allocate();
 	shape.set_values(&mut encoded, &values);
 	encoded.freeze()
 }
 
-fn decode_take_row(shape: &RowShape, row_number: RowNumber, encoded: &EncodedRow) -> Columns {
-	Columns::from_encoded_rows(shape, &[row_number], from_ref(encoded))
+fn decode_take_bytes(shape: &RowShape, row_number: RowNumber, encoded: &EncodedBytes) -> Columns {
+	Columns::from_encoded_bytes(shape, &[row_number], from_ref(encoded))
 }
 
 impl TakeOperator {
@@ -174,7 +174,7 @@ impl TakeOperator {
 		state.by_row.insert(row_number, (seq, count));
 
 		if let Some(encoded) = state.row_data.get(&row_number) {
-			let cols = decode_take_row(schema, row_number, encoded);
+			let cols = decode_take_bytes(schema, row_number, encoded);
 			if !cols.is_empty() {
 				output_diffs.push(Diff::insert(cols));
 			}
@@ -196,7 +196,7 @@ impl TakeOperator {
 
 		let seq = state.next_seq;
 		state.next_seq += 1;
-		state.row_data.insert(row_number, encode_take_row(schema, &single_row, 0));
+		state.row_data.insert(row_number, encode_take_bytes(schema, &single_row, 0));
 		state.by_seq.insert(seq, row_number);
 		state.by_row.insert(row_number, (seq, 1));
 		output_diffs.push(Diff::insert(single_row));
@@ -210,7 +210,7 @@ impl TakeOperator {
 				state.candidates_by_seq.insert(oldest_seq, oldest_row);
 				state.candidates_by_row.insert(oldest_row, (oldest_seq, count));
 				if let Some(encoded) = state.row_data.get(&oldest_row) {
-					let cols = decode_take_row(schema, oldest_row, encoded);
+					let cols = decode_take_bytes(schema, oldest_row, encoded);
 					if !cols.is_empty() {
 						output_diffs.push(Diff::remove(cols));
 					}
@@ -256,12 +256,12 @@ impl TakeOperator {
 
 			if state.by_row.contains_key(&row_number) {
 				update_indices.push(row_idx);
-				state.row_data.insert(row_number, encode_take_row(&schema, &post, row_idx));
+				state.row_data.insert(row_number, encode_take_bytes(&schema, &post, row_idx));
 				continue;
 			}
 
 			if state.candidates_by_row.contains_key(&row_number) {
-				state.row_data.insert(row_number, encode_take_row(&schema, &post, row_idx));
+				state.row_data.insert(row_number, encode_take_bytes(&schema, &post, row_idx));
 				continue;
 			}
 

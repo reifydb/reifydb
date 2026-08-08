@@ -6,7 +6,7 @@ use reifydb_value::value::value_type::ValueType;
 use reifydb_value::{reifydb_assertions, value::Value};
 
 use crate::{
-	encoded::{row::EncodedRowBuilder, shape::RowShape},
+	encoded::{bytes::EncodedRowBuilder, shape::RowShape},
 	value::{decode_value, encode_value},
 };
 

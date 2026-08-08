@@ -5,7 +5,7 @@
 //! mutation, folding it into the materialised catalog view, and emitting the catalog change event
 //! the rest of the workspace listens for.
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	interface::cdc::SystemChange,
 	key::{Key, kind::KeyKind},
@@ -82,7 +82,7 @@ use table::TableApplier;
 use view::ViewApplier;
 
 pub trait CatalogChangeApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()>;
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()>;
 
 	fn remove(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey) -> Result<()>;
 }

@@ -18,7 +18,7 @@ struct BatchIterator {
 
 impl BatchIterator {
 	fn new(batch: MultiVersionBatch) -> Self {
-		let items = batch.items.into_iter().map(|multi| (multi.key.to_vec(), multi.row.to_vec())).collect();
+		let items = batch.items.into_iter().map(|multi| (multi.key.to_vec(), multi.bytes.to_vec())).collect();
 
 		Self {
 			items,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::row::{EncodedRow, EncodedRowBuilder};
+use reifydb_codec::encoded::bytes::{EncodedBytes, EncodedRowBuilder};
 use reifydb_core::interface::catalog::ringbuffer::RingBuffer;
 use reifydb_value::{Result, value::row_number::RowNumber};
 
@@ -85,11 +85,11 @@ where
 pub struct RingBufferRowPostInsertContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
 	pub ids: &'a [RowNumber],
-	pub rows: &'a [EncodedRow],
+	pub rows: &'a [EncodedBytes],
 }
 
 impl<'a> RingBufferRowPostInsertContext<'a> {
-	pub fn new(ringbuffer: &'a RingBuffer, ids: &'a [RowNumber], rows: &'a [EncodedRow]) -> Self {
+	pub fn new(ringbuffer: &'a RingBuffer, ids: &'a [RowNumber], rows: &'a [EncodedBytes]) -> Self {
 		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		Self {
 			ringbuffer,
@@ -237,16 +237,16 @@ where
 pub struct RingBufferRowPostUpdateContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
 	pub ids: &'a [RowNumber],
-	pub posts: &'a [EncodedRow],
-	pub pres: &'a [EncodedRow],
+	pub posts: &'a [EncodedBytes],
+	pub pres: &'a [EncodedBytes],
 }
 
 impl<'a> RingBufferRowPostUpdateContext<'a> {
 	pub fn new(
 		ringbuffer: &'a RingBuffer,
 		ids: &'a [RowNumber],
-		posts: &'a [EncodedRow],
-		pres: &'a [EncodedRow],
+		posts: &'a [EncodedBytes],
+		pres: &'a [EncodedBytes],
 	) -> Self {
 		assert_eq!(ids.len(), posts.len(), "ids/posts length mismatch");
 		assert_eq!(ids.len(), pres.len(), "ids/pres length mismatch");
@@ -392,11 +392,11 @@ where
 pub struct RingBufferRowPostDeleteContext<'a> {
 	pub ringbuffer: &'a RingBuffer,
 	pub ids: &'a [RowNumber],
-	pub deleted_rows: &'a [EncodedRow],
+	pub deleted_rows: &'a [EncodedBytes],
 }
 
 impl<'a> RingBufferRowPostDeleteContext<'a> {
-	pub fn new(ringbuffer: &'a RingBuffer, ids: &'a [RowNumber], deleted_rows: &'a [EncodedRow]) -> Self {
+	pub fn new(ringbuffer: &'a RingBuffer, ids: &'a [RowNumber], deleted_rows: &'a [EncodedBytes]) -> Self {
 		assert_eq!(ids.len(), deleted_rows.len(), "ids/deleted_rows length mismatch");
 		Self {
 			ringbuffer,
@@ -480,7 +480,7 @@ impl RingBufferRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBuffer,
 		ids: &[RowNumber],
-		rows: &[EncodedRow],
+		rows: &[EncodedBytes],
 	) -> Result<()> {
 		let ctx = RingBufferRowPostInsertContext::new(ringbuffer, ids, rows);
 		txn.ringbuffer_row_post_insert_interceptors().execute(ctx)
@@ -500,8 +500,8 @@ impl RingBufferRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBuffer,
 		ids: &[RowNumber],
-		posts: &[EncodedRow],
-		pres: &[EncodedRow],
+		posts: &[EncodedBytes],
+		pres: &[EncodedBytes],
 	) -> Result<()> {
 		let ctx = RingBufferRowPostUpdateContext::new(ringbuffer, ids, posts, pres);
 		txn.ringbuffer_row_post_update_interceptors().execute(ctx)
@@ -516,7 +516,7 @@ impl RingBufferRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBuffer,
 		ids: &[RowNumber],
-		deleted_rows: &[EncodedRow],
+		deleted_rows: &[EncodedBytes],
 	) -> Result<()> {
 		let ctx = RingBufferRowPostDeleteContext::new(ringbuffer, ids, deleted_rows);
 		txn.ringbuffer_row_post_delete_interceptors().execute(ctx)

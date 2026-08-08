@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
 	error::diagnostic::catalog::{namespace_not_found, ringbuffer_not_found},
 	interface::{
@@ -123,12 +123,12 @@ fn drive_ringbuffer_insert(
 	input_node: &mut dyn QueryNode,
 	has_returning: bool,
 	partition_metadata_cache: &mut HashMap<Vec<Value>, RingBufferMetadata>,
-) -> Result<(u64, Vec<(RowNumber, EncodedRow)>)> {
+) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
 	let namespace = target_data.namespace;
 	let ringbuffer = target_data.ringbuffer;
 	let partition_col_indices = compute_partition_col_indices(ringbuffer);
 	let mut inserted_count = 0u64;
-	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();
+	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 
 	let mut mutable_context = (**context).clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
@@ -195,7 +195,7 @@ fn finalize_ringbuffer_insert(
 	symbols: &SymbolTable,
 	returning: &Option<Vec<Expression>>,
 	partition_metadata_cache: &HashMap<Vec<Value>, RingBufferMetadata>,
-	returned_rows: &[(RowNumber, EncodedRow)],
+	returned_rows: &[(RowNumber, EncodedBytes)],
 	inserted_count: u64,
 ) -> Result<Columns> {
 	let ringbuffer = target_data.ringbuffer;
@@ -269,7 +269,7 @@ fn build_insert_ringbuffer_row(
 	columns: &Columns,
 	context: &Arc<QueryContext>,
 	row_idx: usize,
-) -> Result<(EncodedRow, Vec<Value>)> {
+) -> Result<(EncodedBytes, Vec<Value>)> {
 	let mut row = shape.allocate();
 	let mut row_values: Vec<Value> = Vec::with_capacity(target.ringbuffer.columns.len());
 

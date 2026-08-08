@@ -13,9 +13,9 @@ pub mod list;
 pub mod shape;
 
 pub(crate) fn convert_granted_role(multi: MultiVersionRow) -> GrantedRole {
-	let row = multi.row;
-	let identity = granted_role::SHAPE.get::<IdentityId>(&row, granted_role::IDENTITY);
-	let role_id = granted_role::SHAPE.get::<u64>(&row, granted_role::ROLE_ID);
+	let bytes = multi.bytes;
+	let identity = granted_role::SHAPE.get::<IdentityId>(&bytes, granted_role::IDENTITY);
+	let role_id = granted_role::SHAPE.get::<u64>(&bytes, granted_role::ROLE_ID);
 
 	GrantedRole {
 		identity,

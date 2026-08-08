@@ -6,7 +6,7 @@ use std::{collections::HashMap, mem, sync::Arc};
 use read::ReadFrom;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
@@ -149,7 +149,7 @@ pub struct FlowTransactionInner {
 
 	pub operator_states: HashMap<OperatorId, OperatorStateSlot>,
 
-	pub prefetch: HashMap<EncodedKey, Option<EncodedRow>>,
+	pub prefetch: HashMap<EncodedKey, Option<EncodedBytes>>,
 	pub prefetch_bytes: u64,
 	pub prefetch_rejections: u64,
 
@@ -180,7 +180,7 @@ pub enum FlowTransaction {
 	Ephemeral {
 		inner: FlowTransactionInner,
 
-		state: HashMap<EncodedKey, EncodedRow>,
+		state: HashMap<EncodedKey, EncodedBytes>,
 	},
 }
 
@@ -345,7 +345,7 @@ impl FlowTransaction {
 		query: MultiReadTransaction,
 		single: SingleTransaction,
 		catalog: Catalog,
-		state: HashMap<EncodedKey, EncodedRow>,
+		state: HashMap<EncodedKey, EncodedBytes>,
 		clock: Clock,
 		state_budget: OperatorStateBudgetHandle,
 	) -> Self {
@@ -404,7 +404,7 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn take_state(&mut self) -> HashMap<EncodedKey, EncodedRow> {
+	pub fn take_state(&mut self) -> HashMap<EncodedKey, EncodedBytes> {
 		if let Self::Ephemeral {
 			state,
 			..

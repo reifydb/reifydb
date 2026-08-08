@@ -24,16 +24,16 @@ pub const SHAPE_HEADER_SIZE: usize = FLAGS_OFFSET + 1;
 
 const HAS_TIME: u8 = 1 << 0;
 
-pub type EncodedRowIter = Box<dyn EncodedRowIterator>;
+pub type EncodedBytesIter = Box<dyn EncodedBytesIterator>;
 
-pub trait EncodedRowIterator: Iterator<Item = EncodedRow> {}
+pub trait EncodedBytesIterator: Iterator<Item = EncodedBytes> {}
 
-impl<I: Iterator<Item = EncodedRow>> EncodedRowIterator for I {}
+impl<I: Iterator<Item = EncodedBytes>> EncodedBytesIterator for I {}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct EncodedRow(pub CowVec<u8>);
+pub struct EncodedBytes(pub CowVec<u8>);
 
-impl Deref for EncodedRow {
+impl Deref for EncodedBytes {
 	type Target = CowVec<u8>;
 
 	fn deref(&self) -> &Self::Target {
@@ -41,7 +41,7 @@ impl Deref for EncodedRow {
 	}
 }
 
-impl Archive for EncodedRow {
+impl Archive for EncodedBytes {
 	type Archived = ArchivedVec<u8>;
 	type Resolver = VecResolver;
 
@@ -50,15 +50,15 @@ impl Archive for EncodedRow {
 	}
 }
 
-impl<S: Fallible + Writer + Allocator + ?Sized> RkyvSerialize<S> for EncodedRow {
+impl<S: Fallible + Writer + Allocator + ?Sized> RkyvSerialize<S> for EncodedBytes {
 	fn serialize(&self, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
 		ArchivedVec::serialize_from_slice(self.0.as_slice(), serializer)
 	}
 }
 
-impl<D: Fallible + ?Sized> RkyvDeserialize<EncodedRow, D> for ArchivedVec<u8> {
-	fn deserialize(&self, _: &mut D) -> Result<EncodedRow, D::Error> {
-		Ok(EncodedRow(CowVec::new(self.as_slice().to_vec())))
+impl<D: Fallible + ?Sized> RkyvDeserialize<EncodedBytes, D> for ArchivedVec<u8> {
+	fn deserialize(&self, _: &mut D) -> Result<EncodedBytes, D::Error> {
+		Ok(EncodedBytes(CowVec::new(self.as_slice().to_vec())))
 	}
 }
 
@@ -145,8 +145,8 @@ impl EncodedRowBuilder {
 		self.0[FLAGS_OFFSET] |= HAS_TIME;
 	}
 
-	pub fn freeze(self) -> EncodedRow {
-		EncodedRow(CowVec::new(self.0))
+	pub fn freeze(self) -> EncodedBytes {
+		EncodedBytes(CowVec::new(self.0))
 	}
 }
 
@@ -158,7 +158,7 @@ impl Deref for EncodedRowBuilder {
 	}
 }
 
-impl From<EncodedRowBuilder> for EncodedRow {
+impl From<EncodedRowBuilder> for EncodedBytes {
 	fn from(builder: EncodedRowBuilder) -> Self {
 		builder.freeze()
 	}
@@ -187,13 +187,13 @@ fn read_time(buf: &[u8]) -> Option<DateTime> {
 	(buf[FLAGS_OFFSET] & HAS_TIME != 0).then(|| read_stamp(buf, TIME_OFFSET))
 }
 
-impl EncodedRow {
+impl EncodedBytes {
 	pub fn thaw(self) -> EncodedRowBuilder {
 		EncodedRowBuilder(self.0.into_inner())
 	}
 }
 
-impl EncodedRow {
+impl EncodedBytes {
 	pub fn make_mut(&mut self) -> &mut [u8] {
 		self.0.make_mut()
 	}
@@ -259,7 +259,7 @@ mod tests {
 	};
 
 	use crate::encoded::{
-		row::{
+		bytes::{
 			CREATED_AT_OFFSET, FINGERPRINT_SIZE, FLAGS_OFFSET, HAS_TIME, SHAPE_HEADER_SIZE, TIME_OFFSET,
 			UPDATED_AT_OFFSET,
 		},

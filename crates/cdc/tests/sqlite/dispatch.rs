@@ -4,7 +4,7 @@
 use std::collections::Bound;
 
 use reifydb_cdc::storage::CdcStore;
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::{Cdc, SystemChange},
@@ -19,7 +19,7 @@ fn cdc_at(version: u64) -> Cdc {
 		Vec::new(),
 		vec![SystemChange::Insert {
 			key: EncodedKey::new(vec![1, 2, 3]),
-			post: EncodedRow(CowVec::new(vec![10, 20, 30])),
+			post: EncodedBytes(CowVec::new(vec![10, 20, 30])),
 		}],
 	)
 }

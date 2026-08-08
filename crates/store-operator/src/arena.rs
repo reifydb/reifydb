@@ -12,7 +12,7 @@ use std::{
 };
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::common::CommitVersion;
@@ -25,7 +25,7 @@ use crate::{
 };
 
 enum PointEntry {
-	Row(EncodedRow),
+	Row(EncodedBytes),
 	Tombstone,
 }
 
@@ -141,7 +141,7 @@ impl ArenaInner {
 		self.active.bytes + self.frozen.iter().map(|batch| batch.bytes).sum::<u64>()
 	}
 
-	pub(crate) fn set(&mut self, key: EncodedKey, value: EncodedRow, config: &OperatorStoreConfig) {
+	pub(crate) fn set(&mut self, key: EncodedKey, value: EncodedBytes, config: &OperatorStoreConfig) {
 		self.active.put(key, PointEntry::Row(value));
 		self.roll(config);
 	}
@@ -223,7 +223,7 @@ impl ArenaInner {
 		once(&self.active).chain(self.frozen.iter().rev())
 	}
 
-	pub(crate) fn get(&self, key: &EncodedKey) -> Option<EncodedRow> {
+	pub(crate) fn get(&self, key: &EncodedKey) -> Option<EncodedBytes> {
 		for batch in self.batches_newest_first() {
 			if let Some(entry) = batch.entries.get(key) {
 				return match entry {
@@ -250,7 +250,7 @@ impl ArenaInner {
 		false
 	}
 
-	pub(crate) fn scan(&self, range: &EncodedKeyRange, limit: usize) -> (Vec<(EncodedKey, EncodedRow)>, bool) {
+	pub(crate) fn scan(&self, range: &EncodedKeyRange, limit: usize) -> (Vec<(EncodedKey, EncodedBytes)>, bool) {
 		let mut items = Vec::new();
 		if range_is_empty(range) {
 			return (items, false);

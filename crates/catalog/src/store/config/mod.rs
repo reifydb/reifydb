@@ -22,7 +22,7 @@ pub(crate) fn convert_config(multi: MultiVersionRow) -> Option<(ConfigKey, Value
 		}
 	};
 
-	let value = match SHAPE.get_value(&multi.row, VALUE) {
+	let value = match SHAPE.get_value(&multi.bytes, VALUE) {
 		Value::Any(inner) => *inner,
 		other => other,
 	};

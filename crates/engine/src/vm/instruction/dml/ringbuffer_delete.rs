@@ -3,7 +3,7 @@
 
 use std::{collections::HashSet, sync::Arc};
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::{
 	error::diagnostic::{
 		catalog::{namespace_not_found, ringbuffer_not_found},
@@ -205,10 +205,10 @@ fn delete_ringbuffer_partitions(
 	partition_col_indices: &[usize],
 	row_numbers_filter: Option<&HashSet<RowNumber>>,
 	has_returning: bool,
-) -> Result<(u64, Vec<(RowNumber, EncodedRow)>)> {
+) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
 	let ringbuffer = target.ringbuffer;
 	let mut deleted_count = 0u64;
-	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();
+	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 	let partitions = services.catalog.list_ringbuffer_partitions(txn, ringbuffer)?;
 
 	for partition_info in partitions {

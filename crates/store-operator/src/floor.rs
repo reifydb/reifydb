@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use reifydb_codec::{
-	encoded::row::{EncodedRow, SHAPE_HEADER_SIZE},
+	encoded::bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
 	key::encoded::EncodedKey,
 };
 use reifydb_core::key::operator_group_state::{Keyspace, OperatorGroupStateKey, group_data_of_inner};
@@ -61,7 +61,7 @@ impl FloorSpec {
 	}
 }
 
-pub(crate) fn floor_expired(floor: &FloorSpec, key: &EncodedKey, row: &EncodedRow) -> bool {
+pub(crate) fn floor_expired(floor: &FloorSpec, key: &EncodedKey, row: &EncodedBytes) -> bool {
 	if floor.is_empty() {
 		return false;
 	}

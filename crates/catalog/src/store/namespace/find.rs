@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::{
 	interface::catalog::{id::NamespaceId, namespace::Namespace},
 	key::namespace::NamespaceKey,
@@ -32,8 +32,8 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			let row: &EncodedRow = &multi.row;
-			let namespace_name = namespace::SHAPE.get_utf8(row, namespace::NAME);
+			let bytes: &EncodedBytes = &multi.bytes;
+			let namespace_name = namespace::SHAPE.get_utf8(bytes, namespace::NAME);
 			if name == namespace_name {
 				return Ok(Some(convert_namespace(multi)));
 			}

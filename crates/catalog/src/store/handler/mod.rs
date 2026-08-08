@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::interface::catalog::{
 	handler::Handler,
 	id::{HandlerId, NamespaceId},
@@ -15,7 +15,7 @@ pub mod find;
 pub mod get;
 pub(crate) mod shape;
 
-pub(crate) fn handler_from_row(row: &EncodedRow) -> Handler {
+pub(crate) fn handler_from_row(row: &EncodedBytes) -> Handler {
 	let id = HandlerId(handler::SHAPE.get::<u64>(row, handler::ID));
 	let namespace = NamespaceId(handler::SHAPE.get::<u64>(row, handler::NAMESPACE));
 	let name = handler::SHAPE.get_utf8(row, handler::NAME).to_string();

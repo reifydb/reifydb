@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -46,7 +46,7 @@ fn commit(store: &StandardMultiStore, n: u64, version: u64, value: &str) {
 		store,
 		cow_vec![Delta::Set {
 			key: RowKey::encoded(STORAGE, n),
-			row: EncodedRow(CowVec::new(value.as_bytes().to_vec())),
+			bytes: EncodedBytes(CowVec::new(value.as_bytes().to_vec())),
 		}],
 		CommitVersion(version),
 	)
@@ -104,7 +104,7 @@ fn scan_scope(
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
-		.map(|r| (r.key.to_vec(), r.row.to_vec(), r.version))
+		.map(|r| (r.key.to_vec(), r.bytes.to_vec(), r.version))
 		.collect()
 }
 
@@ -336,7 +336,7 @@ fn non_source_range_reads_through_with_warm_cache() {
 			&store,
 			cow_vec![Delta::Set {
 				key: key.clone(),
-				row: EncodedRow(CowVec::new(format!("m{i}").into_bytes())),
+				bytes: EncodedBytes(CowVec::new(format!("m{i}").into_bytes())),
 			}],
 			CommitVersion(1),
 		)
@@ -456,7 +456,7 @@ fn multi_batch_cold_merge_keeps_sparse_commit_reverse() {
 		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
 		.into_iter()
-		.map(|r| (r.key.to_vec(), r.row.to_vec(), r.version))
+		.map(|r| (r.key.to_vec(), r.bytes.to_vec(), r.version))
 		.collect();
 	let by_key: HashMap<Vec<u8>, (Vec<u8>, CommitVersion)> =
 		rows.iter().map(|(k, v, ver)| (k.clone(), (v.clone(), *ver))).collect();

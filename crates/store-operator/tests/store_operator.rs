@@ -4,7 +4,7 @@
 use std::{collections::BTreeMap, ops::Bound};
 
 use reifydb_codec::{
-	encoded::row::{EncodedRow, SHAPE_HEADER_SIZE},
+	encoded::bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -37,28 +37,28 @@ fn data_key(group: u64, keyspace: Keyspace, suffix: &[u8]) -> EncodedKey {
 	OperatorGroupStateKey::inner_encoded(GroupId(group), keyspace, suffix).into_encoded()
 }
 
-fn value(payload: &[u8]) -> EncodedRow {
-	EncodedRow(CowVec::new(payload.to_vec()))
+fn value(payload: &[u8]) -> EncodedBytes {
+	EncodedBytes(CowVec::new(payload.to_vec()))
 }
 
-fn stamped(payload: &[u8], updated_at: u64) -> EncodedRow {
+fn stamped(payload: &[u8], updated_at: u64) -> EncodedBytes {
 	// Row header layout: fingerprint(8) | created_at(8) | updated_at(8) | time(8), stamps little-endian,
-	// matching what EncodedRow::updated_at reads back. The floor only ever consults updated_at.
+	// matching what EncodedBytes::updated_at reads back. The floor only ever consults updated_at.
 	let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
 	buf[8..16].copy_from_slice(&updated_at.to_le_bytes());
 	buf[16..24].copy_from_slice(&updated_at.to_le_bytes());
 	buf[SHAPE_HEADER_SIZE..].copy_from_slice(payload);
-	EncodedRow(CowVec::new(buf))
+	EncodedBytes(CowVec::new(buf))
 }
 
 fn all_range() -> EncodedKeyRange {
 	EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded)
 }
 
-fn scan_all(store: &OperatorStore, operator: OperatorId) -> Vec<(EncodedKey, EncodedRow)> {
+fn scan_all(store: &OperatorStore, operator: OperatorId) -> Vec<(EncodedKey, EncodedBytes)> {
 	// Batched continuation with a tiny batch size so every multi-item scan also exercises has_more
 	// and the resume-from-last-key path across batch boundaries.
-	let mut items: Vec<(EncodedKey, EncodedRow)> = Vec::new();
+	let mut items: Vec<(EncodedKey, EncodedBytes)> = Vec::new();
 	let mut start = Bound::Unbounded;
 	loop {
 		let batch = store.range_batch(operator, EncodedKeyRange::new(start, Bound::Unbounded), 3);
@@ -634,7 +634,7 @@ fn model_range_contains(range: &EncodedKeyRange, key: &EncodedKey) -> bool {
 	after_start && before_end
 }
 
-fn model_floor_expired(floor: &[(Keyspace, u64)], key: &EncodedKey, row: &EncodedRow) -> bool {
+fn model_floor_expired(floor: &[(Keyspace, u64)], key: &EncodedKey, row: &EncodedBytes) -> bool {
 	// The model applies the documented floor semantics directly on the visible map, using the same
 	// core decode helpers as the trusted classification oracle: only real-group data keyspaces with
 	// a cutoff in the spec expire, strictly below the cutoff.
@@ -662,7 +662,7 @@ fn randomized_operations_match_a_naive_model() {
 	// both sides and the full scan is compared after every one.
 	let mut rng = Xorshift(0x9E3779B97F4A7C15);
 	let store = store_with(400, 3);
-	let mut model: BTreeMap<EncodedKey, EncodedRow> = BTreeMap::new();
+	let mut model: BTreeMap<EncodedKey, EncodedBytes> = BTreeMap::new();
 
 	let keyspaces = [Keyspace::ACCUMULATOR, Keyspace::BUFFER, Keyspace::NODE_COUNTER, Keyspace::FIRST_CUSTOM];
 
@@ -733,7 +733,7 @@ fn randomized_operations_match_a_naive_model() {
 				compacts += 1;
 
 				let scanned = scan_all(&store, OP);
-				let expected: Vec<(EncodedKey, EncodedRow)> =
+				let expected: Vec<(EncodedKey, EncodedBytes)> =
 					model.iter().map(|(key, row)| (key.clone(), row.clone())).collect();
 				assert_eq!(
 					scanned, expected,
@@ -746,7 +746,7 @@ fn randomized_operations_match_a_naive_model() {
 
 	store.compact(OP, &FloorSpec::new());
 	let scanned = scan_all(&store, OP);
-	let expected: Vec<(EncodedKey, EncodedRow)> =
+	let expected: Vec<(EncodedKey, EncodedBytes)> =
 		model.iter().map(|(key, row)| (key.clone(), row.clone())).collect();
 	assert_eq!(scanned, expected, "final visible state diverged from the model");
 

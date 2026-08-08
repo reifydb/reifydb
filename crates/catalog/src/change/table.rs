@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, PrimaryKeyId, TableId},
@@ -25,7 +25,7 @@ use crate::{
 pub(super) struct TableApplier;
 
 impl CatalogChangeApplier for TableApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let mut table = decode_table(row, &catalog.cache, txn.version());
 		table.columns = CatalogStore::list_columns(txn, table.id)?;
@@ -47,7 +47,7 @@ use reifydb_core::common::CommitVersion;
 
 use crate::cache::CatalogCache;
 
-fn decode_table(row: &EncodedRow, materialized: &CatalogCache, version: CommitVersion) -> Table {
+fn decode_table(row: &EncodedBytes, materialized: &CatalogCache, version: CommitVersion) -> Table {
 	let id = TableId(table::SHAPE.get::<u64>(row, ID));
 	let namespace = NamespaceId(table::SHAPE.get::<u64>(row, NAMESPACE));
 	let name = table::SHAPE.get_utf8(row, NAME).to_string();

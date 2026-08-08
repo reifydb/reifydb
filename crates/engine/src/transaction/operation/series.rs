@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
@@ -53,12 +53,12 @@ pub fn decode_series_storage_key(series: &Series, key: &EncodedKey, partitioned:
 pub fn build_series_delete_pre_columns_from_storage(
 	series: &Series,
 	shape: &RowShape,
-	encoded_row: &EncodedRow,
+	encoded_bytes: &EncodedBytes,
 	decoded_key: &SeriesRowKey,
 ) -> Columns {
 	let row_number = RowNumber::from(decoded_key.sequence);
 	let data_values: Vec<Value> =
-		series.data_columns().enumerate().map(|(i, _)| shape.get_value(encoded_row, i + 1)).collect();
+		series.data_columns().enumerate().map(|(i, _)| shape.get_value(encoded_bytes, i + 1)).collect();
 	let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
 	pre_col_vec.push(ColumnWithName::new(
 		Fragment::internal(series.key.column()),
@@ -77,9 +77,9 @@ pub fn build_series_delete_pre_columns_from_storage(
 		SystemColumns::new(
 			vec![row_number],
 			Vec::new(),
-			vec![encoded_row.created_at()],
-			vec![encoded_row.updated_at()],
-			encoded_row.time().into_iter().collect(),
+			vec![encoded_bytes.created_at()],
+			vec![encoded_bytes.updated_at()],
+			encoded_bytes.time().into_iter().collect(),
 		),
 	)
 }
@@ -97,7 +97,7 @@ pub fn remove_series_row(
 	txn: &mut Transaction<'_>,
 	series: &Series,
 	key: &EncodedKey,
-	pre_for_cdc: EncodedRow,
+	pre_for_cdc: EncodedBytes,
 	was_committed: bool,
 	pre: Option<Columns>,
 ) -> Result<()> {

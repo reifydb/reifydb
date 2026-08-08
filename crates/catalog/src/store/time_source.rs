@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::{row::EncodedRowBuilder, shape::RowShape};
+use reifydb_codec::encoded::{bytes::EncodedRowBuilder, shape::RowShape};
 use reifydb_core::common::{TimeDomain, TimeSource};
 
 pub(crate) fn write_time_source(

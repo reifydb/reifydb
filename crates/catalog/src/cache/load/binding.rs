@@ -13,7 +13,7 @@ pub(crate) fn load_bindings(rx: &mut Transaction<'_>, catalog: &CatalogCache) ->
 		let multi = entry?;
 		let version = multi.version;
 		if let Some(k) = BindingKey::decode(&multi.key) {
-			let binding = decode_binding(&multi.row);
+			let binding = decode_binding(&multi.bytes);
 			catalog.set_binding(k.binding, version, Some(binding));
 		}
 	}

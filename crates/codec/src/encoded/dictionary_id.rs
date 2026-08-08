@@ -9,7 +9,7 @@ use reifydb_value::{
 };
 
 use crate::encoded::{
-	row::{EncodedRowBuilder, read_defined},
+	bytes::{EncodedRowBuilder, read_defined},
 	shape::RowShape,
 };
 

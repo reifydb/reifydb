@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -94,7 +94,7 @@ fn seed_freelist(store: &StandardMultiStore) -> (u64, u64) {
 			store,
 			CowVec::new(vec![Delta::Set {
 				key: opkey(n),
-				row: EncodedRow(CowVec::new(vec![0u8; 200])),
+				bytes: EncodedBytes(CowVec::new(vec![0u8; 200])),
 			}]),
 			CommitVersion(n),
 		)

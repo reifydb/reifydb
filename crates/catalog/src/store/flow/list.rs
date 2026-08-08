@@ -20,7 +20,7 @@ impl CatalogStore {
 			if let Some(key) = Key::decode(&entry.key)
 				&& let Key::Flow(flow_key) = key
 			{
-				let mut flow = decode_flow(&entry.row);
+				let mut flow = decode_flow(&entry.bytes);
 				flow.id = flow_key.flow;
 
 				result.push(flow);

@@ -181,7 +181,7 @@ impl MetricsFlushActor {
 				match self.resolver.get_many(&lookup_keys, CommitVersion(version.0 - 1)) {
 					Ok(rows) => {
 						for (key, row) in rows {
-							pre_sizes.insert(key, row.row.len() as u64);
+							pre_sizes.insert(key, row.bytes.len() as u64);
 						}
 					}
 					Err(e) => error!("Failed to read previous versions for write metrics: {}", e),

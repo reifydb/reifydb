@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, tag::value_type_from_tag_byte};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey, tag::value_type_from_tag_byte};
 use reifydb_core::{
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 	key::{EncodableKey, dictionary::DictionaryKey, kind::KeyKind},
@@ -20,7 +20,7 @@ use crate::{
 pub(super) struct DictionaryApplier;
 
 impl CatalogChangeApplier for DictionaryApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let dict = decode_dictionary(row);
 		catalog.cache.set_dictionary(dict.id, txn.version(), Some(dict));
@@ -39,7 +39,7 @@ impl CatalogChangeApplier for DictionaryApplier {
 	}
 }
 
-fn decode_dictionary(row: &EncodedRow) -> Dictionary {
+fn decode_dictionary(row: &EncodedBytes) -> Dictionary {
 	let id = DictionaryId(SHAPE.get::<u64>(row, ID));
 	let namespace = NamespaceId(SHAPE.get::<u64>(row, NAMESPACE));
 	let name = SHAPE.get_utf8(row, NAME).to_string();

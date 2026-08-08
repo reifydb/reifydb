@@ -5,7 +5,7 @@ use core::mem;
 use std::{collections::HashSet, ops::RangeBounds, sync::Arc};
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -171,22 +171,22 @@ impl MultiReplicaTransaction {
 }
 
 impl MultiReplicaTransaction {
-	#[instrument(name = "transaction::replica::set", level = "trace", skip(self, row))]
-	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+	#[instrument(name = "transaction::replica::set", level = "trace", skip(self, bytes))]
+	pub fn set(&mut self, key: &EncodedKey, bytes: EncodedBytes) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		self.modify(DeltaEntry {
 			delta: Delta::Set {
 				key: key.clone(),
-				row,
+				bytes,
 			},
 			version: self.base_version(),
 		})
 	}
 
 	#[instrument(name = "transaction::replica::remove_with_pre", level = "trace", skip(self, pre))]
-	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
+	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -245,11 +245,11 @@ impl MultiReplicaTransaction {
 		}
 		let version = self.version();
 		if let Some(v) = self.pending_writes.get(key) {
-			if let Some(row) = v.row() {
+			if let Some(bytes) = v.bytes() {
 				return Ok(Some(DeltaEntry {
 					delta: Delta::Set {
 						key: key.clone(),
-						row: row.clone(),
+						bytes: bytes.clone(),
 					},
 					version: v.version,
 				}
@@ -288,11 +288,11 @@ impl MultiReplicaTransaction {
 			self.duplicates.push(DeltaEntry {
 				delta: match &pending.delta {
 					Delta::Set {
-						row,
+						bytes,
 						..
 					} => Delta::Set {
 						key: old_key,
-						row: row.clone(),
+						bytes: bytes.clone(),
 					},
 					Delta::Remove {
 						announce,

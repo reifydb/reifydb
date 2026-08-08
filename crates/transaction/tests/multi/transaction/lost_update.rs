@@ -10,14 +10,14 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_transaction::multi::transaction::write::MultiWriteTransaction;
 
 use super::test_multi;
-use crate::{as_key, as_values, from_row, multi::transaction::FromRow};
+use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
 
 const COUNTER: u64 = 1;
 
 fn read_counter(txn: &mut MultiWriteTransaction, key: &EncodedKey) -> u64 {
 	let sv = txn.get(key).unwrap().unwrap();
-	let row = sv.row();
-	from_row!(u64, row)
+	let row = sv.bytes();
+	from_bytes!(u64, row)
 }
 
 #[test]

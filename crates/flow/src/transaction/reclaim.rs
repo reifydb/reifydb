@@ -88,7 +88,7 @@ impl FlowTransaction {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_codec::{encoded::row::EncodedRow, state::OperatorState};
+	use reifydb_codec::{encoded::bytes::EncodedBytes, state::OperatorState};
 	use reifydb_core::{
 		actors::pending::{Pending, PendingLayers},
 		common::CommitVersion,
@@ -106,8 +106,8 @@ mod tests {
 
 	const NODE: OperatorId = OperatorId(1);
 
-	fn payload() -> EncodedRow {
-		1u64.encode_state(DateTime::EPOCH).unwrap().into_row()
+	fn payload() -> EncodedBytes {
+		1u64.encode_state(DateTime::EPOCH).unwrap().into_bytes()
 	}
 
 	fn deferred(engine: &TestEngine) -> FlowTransaction {

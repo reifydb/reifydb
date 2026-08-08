@@ -78,7 +78,7 @@ impl StandardVersionProvider {
 		let mut tx = single.begin_query([&key])?;
 		match tx.get(&key)? {
 			None => Ok(0),
-			Some(single) => Ok(shape.get::<u64>(&single.row, 0)),
+			Some(single) => Ok(shape.get::<u64>(&single.bytes, 0)),
 		}
 	}
 

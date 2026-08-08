@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::encoded::{
-	row::EncodedRow,
+	bytes::EncodedBytes,
 	shape::{RowShape, RowShapeField},
 };
 use reifydb_value::value::{
@@ -17,7 +17,7 @@ use crate::interface::catalog::column::Column;
 #[derive(Debug, Clone)]
 pub struct Row {
 	pub number: RowNumber,
-	pub encoded: EncodedRow,
+	pub encoded: EncodedBytes,
 	pub shape: RowShape,
 }
 

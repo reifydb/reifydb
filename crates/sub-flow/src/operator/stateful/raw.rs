@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::key::operator_group_state::GroupStateKey;
@@ -12,11 +12,11 @@ use reifydb_value::Result;
 use super::{StateIterator, utils};
 
 pub trait RawStatefulOperator: Operator {
-	fn state_get(&self, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<Option<EncodedRow>> {
+	fn state_get(&self, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<Option<EncodedBytes>> {
 		utils::state_get(self.id(), txn, key)
 	}
 
-	fn state_set(&self, txn: &mut FlowTransaction, key: &GroupStateKey, value: EncodedRow) -> Result<()> {
+	fn state_set(&self, txn: &mut FlowTransaction, key: &GroupStateKey, value: EncodedBytes) -> Result<()> {
 		utils::state_set(self.id(), txn, key, value)
 	}
 
@@ -24,7 +24,7 @@ pub trait RawStatefulOperator: Operator {
 		utils::state_remove(self.id(), txn, key)
 	}
 
-	fn state_scan_all(&self, txn: &mut FlowTransaction) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+	fn state_scan_all(&self, txn: &mut FlowTransaction) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 		utils::state_scan_all(self.id(), txn)
 	}
 
@@ -56,7 +56,7 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(OperatorId(1));
 		let key = test_key("simple_test");
-		let value = test_row();
+		let value = test_bytes();
 
 		assert!(operator.state_get(&mut txn, &key).unwrap().is_none());
 
@@ -72,7 +72,7 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = TestOperator::simple(OperatorId(1));
 		let key = test_key("remove_test");
-		let value = test_row();
+		let value = test_bytes();
 
 		operator.state_set(&mut txn, &key, value).unwrap();
 		assert!(operator.state_get(&mut txn, &key).unwrap().is_some());
@@ -90,7 +90,7 @@ pub mod tests {
 		let entries = vec![("key_a", vec![1, 2]), ("key_b", vec![3, 4]), ("key_c", vec![5, 6])];
 		for (key_suffix, data) in &entries {
 			let key = test_key(key_suffix);
-			let value = EncodedRow(CowVec::new(data.clone()));
+			let value = EncodedBytes(CowVec::new(data.clone()));
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 
@@ -106,7 +106,7 @@ pub mod tests {
 
 		for i in 0..10 {
 			let key = test_key(&format!("{:02}", i)); // padded so the keys sort numerically
-			let value = EncodedRow(CowVec::new(vec![i as u8]));
+			let value = EncodedBytes(CowVec::new(vec![i as u8]));
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 
@@ -131,7 +131,7 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("clear_{}", i));
-			let value = EncodedRow(CowVec::new(vec![i as u8]));
+			let value = EncodedBytes(CowVec::new(vec![i as u8]));
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 
@@ -152,8 +152,8 @@ pub mod tests {
 		let operator2 = TestOperator::simple(OperatorId(20));
 		let shared_key = test_key("shared");
 
-		let value1 = EncodedRow(CowVec::new(vec![1]));
-		let value2 = EncodedRow(CowVec::new(vec![2]));
+		let value1 = EncodedBytes(CowVec::new(vec![1]));
+		let value2 = EncodedBytes(CowVec::new(vec![2]));
 
 		operator1.state_set(&mut txn, &shared_key, value1.clone()).unwrap();
 		operator2.state_set(&mut txn, &shared_key, value2.clone()).unwrap();
@@ -173,7 +173,7 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("item_{}", i));
-			let value = test_row();
+			let value = test_bytes();
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 
@@ -194,8 +194,8 @@ pub mod tests {
 		let operator = TestOperator::simple(OperatorId(5));
 		let key = test_key("overwrite");
 
-		let value1 = EncodedRow(CowVec::new(vec![1, 1, 1]));
-		let value2 = EncodedRow(CowVec::new(vec![2, 2, 2]));
+		let value1 = EncodedBytes(CowVec::new(vec![1, 1, 1]));
+		let value2 = EncodedBytes(CowVec::new(vec![2, 2, 2]));
 
 		operator.state_set(&mut txn, &key, value1).unwrap();
 		operator.state_set(&mut txn, &key, value2.clone()).unwrap();
@@ -224,7 +224,7 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("partial_{}", i));
-			let value = EncodedRow(CowVec::new(vec![i as u8]));
+			let value = EncodedBytes(CowVec::new(vec![i as u8]));
 			operator.state_set(&mut txn, &key, value).unwrap();
 		}
 

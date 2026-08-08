@@ -67,13 +67,13 @@ pub fn compute_pinning_watermark(txn: &mut Transaction<'_>) -> Result<Option<Com
 		if CdcConsumerKey::decode(&multi.key).is_none() {
 			continue;
 		}
-		let Some(row) = CheckpointRow::decode(&multi.row) else {
+		let Some(bytes) = CheckpointRow::decode(&multi.bytes) else {
 			continue;
 		};
-		if row.class != ConsumerClass::Pinning {
+		if bytes.class != ConsumerClass::Pinning {
 			continue;
 		}
-		min_version = Some(min_version.map_or(row.version, |m| m.min(row.version)));
+		min_version = Some(min_version.map_or(bytes.version, |m| m.min(bytes.version)));
 	}
 
 	Ok(min_version)

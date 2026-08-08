@@ -23,7 +23,7 @@ fn test_read_after_write() {
 
 				let txn = db.begin_query().unwrap();
 				let sv = txn.get(&k).unwrap().unwrap();
-				assert_eq!(*sv.row(), v);
+				assert_eq!(*sv.bytes(), v);
 			})
 		})
 		.collect::<Vec<_>>();

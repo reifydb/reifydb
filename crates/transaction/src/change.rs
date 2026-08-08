@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use OperationType::Delete;
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::{
 	interface::catalog::{
 		authentication::{Authentication, AuthenticationId},
@@ -1292,7 +1292,7 @@ impl TransactionalCatalogChanges {
 pub struct TableRowInsertion {
 	pub table_id: TableId,
 	pub row_number: RowNumber,
-	pub encoded: EncodedRow,
+	pub encoded: EncodedBytes,
 }
 
 #[derive(Debug, Clone)]
@@ -1301,7 +1301,7 @@ pub struct QueueRowInsertion {
 	pub partition: u16,
 	pub row_number: RowNumber,
 	pub not_before: Option<DateTime>,
-	pub encoded: EncodedRow,
+	pub encoded: EncodedBytes,
 }
 
 #[derive(Debug, Clone)]

@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -105,13 +105,13 @@ pub mod write;
 use crate::multi::{pending::PendingWrites, transaction::write::MultiWriteTransaction};
 
 #[inline]
-pub(super) fn collect_transaction_writes(pending: &PendingWrites) -> Vec<(EncodedKey, Option<EncodedRow>)> {
+pub(super) fn collect_transaction_writes(pending: &PendingWrites) -> Vec<(EncodedKey, Option<EncodedBytes>)> {
 	pending.iter()
 		.map(|(key, p)| match &p.delta {
 			Delta::Set {
-				row,
+				bytes,
 				..
-			} => (key.clone(), Some(row.clone())),
+			} => (key.clone(), Some(bytes.clone())),
 			_ => (key.clone(), None),
 		})
 		.collect()
@@ -226,15 +226,15 @@ impl<'a> TestTransaction<'a> {
 		}
 
 		let offset = self.baseline;
-		let transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)> = self
+		let transaction_writes: Vec<(EncodedKey, Option<EncodedBytes>)> = self
 			.inner
 			.pending_writes()
 			.iter()
 			.map(|(key, pending)| match &pending.delta {
 				Delta::Set {
-					row,
+					bytes,
 					..
-				} => (key.clone(), Some(row.clone())),
+				} => (key.clone(), Some(bytes.clone())),
 				_ => (key.clone(), None),
 			})
 			.collect();
@@ -609,11 +609,11 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
-		Write::set(self.write_ops(), key, row)
+	pub fn set(&mut self, key: &EncodedKey, bytes: EncodedBytes) -> Result<()> {
+		Write::set(self.write_ops(), key, bytes)
 	}
 
-	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
+	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
 		Write::remove_with_pre(self.write_ops(), key, pre)
 	}
 

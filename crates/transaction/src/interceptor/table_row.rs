@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::row::{EncodedRow, EncodedRowBuilder};
+use reifydb_codec::encoded::bytes::{EncodedBytes, EncodedRowBuilder};
 use reifydb_core::interface::catalog::table::Table;
 use reifydb_value::{Result, value::row_number::RowNumber};
 
@@ -88,11 +88,11 @@ where
 pub struct TableRowPostInsertContext<'a> {
 	pub table: &'a Table,
 	pub ids: &'a [RowNumber],
-	pub rows: &'a [EncodedRow],
+	pub rows: &'a [EncodedBytes],
 }
 
 impl<'a> TableRowPostInsertContext<'a> {
-	pub fn new(table: &'a Table, ids: &'a [RowNumber], rows: &'a [EncodedRow]) -> Self {
+	pub fn new(table: &'a Table, ids: &'a [RowNumber], rows: &'a [EncodedBytes]) -> Self {
 		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		Self {
 			table,
@@ -240,12 +240,17 @@ where
 pub struct TableRowPostUpdateContext<'a> {
 	pub table: &'a Table,
 	pub ids: &'a [RowNumber],
-	pub posts: &'a [EncodedRow],
-	pub pres: &'a [EncodedRow],
+	pub posts: &'a [EncodedBytes],
+	pub pres: &'a [EncodedBytes],
 }
 
 impl<'a> TableRowPostUpdateContext<'a> {
-	pub fn new(table: &'a Table, ids: &'a [RowNumber], posts: &'a [EncodedRow], pres: &'a [EncodedRow]) -> Self {
+	pub fn new(
+		table: &'a Table,
+		ids: &'a [RowNumber],
+		posts: &'a [EncodedBytes],
+		pres: &'a [EncodedBytes],
+	) -> Self {
 		assert_eq!(ids.len(), posts.len(), "ids/posts length mismatch");
 		assert_eq!(ids.len(), pres.len(), "ids/pres length mismatch");
 		Self {
@@ -390,11 +395,11 @@ where
 pub struct TableRowPostDeleteContext<'a> {
 	pub table: &'a Table,
 	pub ids: &'a [RowNumber],
-	pub deleted_rows: &'a [EncodedRow],
+	pub deleted_rows: &'a [EncodedBytes],
 }
 
 impl<'a> TableRowPostDeleteContext<'a> {
-	pub fn new(table: &'a Table, ids: &'a [RowNumber], deleted_rows: &'a [EncodedRow]) -> Self {
+	pub fn new(table: &'a Table, ids: &'a [RowNumber], deleted_rows: &'a [EncodedBytes]) -> Self {
 		assert_eq!(ids.len(), deleted_rows.len(), "ids/deleted_rows length mismatch");
 		Self {
 			table,
@@ -479,7 +484,7 @@ impl TableRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		table: &Table,
 		ids: &[RowNumber],
-		rows: &[EncodedRow],
+		rows: &[EncodedBytes],
 	) -> Result<()> {
 		let ctx = TableRowPostInsertContext::new(table, ids, rows);
 		txn.table_row_post_insert_interceptors().execute(ctx)
@@ -499,8 +504,8 @@ impl TableRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		table: &Table,
 		ids: &[RowNumber],
-		posts: &[EncodedRow],
-		pres: &[EncodedRow],
+		posts: &[EncodedBytes],
+		pres: &[EncodedBytes],
 	) -> Result<()> {
 		let ctx = TableRowPostUpdateContext::new(table, ids, posts, pres);
 		txn.table_row_post_update_interceptors().execute(ctx)
@@ -515,7 +520,7 @@ impl TableRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		table: &Table,
 		ids: &[RowNumber],
-		deleted_rows: &[EncodedRow],
+		deleted_rows: &[EncodedBytes],
 	) -> Result<()> {
 		let ctx = TableRowPostDeleteContext::new(table, ids, deleted_rows);
 		txn.table_row_post_delete_interceptors().execute(ctx)

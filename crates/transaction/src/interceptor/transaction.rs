@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
@@ -28,7 +28,7 @@ pub struct PreCommitContext {
 
 	pub pending_shapes: Vec<RowShape>,
 
-	pub transaction_writes: Vec<(EncodedKey, Option<EncodedRow>)>,
+	pub transaction_writes: Vec<(EncodedKey, Option<EncodedBytes>)>,
 
 	pub view_entries: Vec<(ObjectId, Diff)>,
 }

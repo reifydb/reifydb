@@ -5,7 +5,7 @@ use reifydb_abi::data::constraint::FFITypeConstraint;
 use reifydb_codec::{
 	constraint::type_constraint_from_ffi,
 	encoded::{
-		row::EncodedRow,
+		bytes::EncodedBytes,
 		shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 	},
 	key::encoded::EncodedKey,
@@ -28,7 +28,7 @@ use crate::{
 pub(super) struct RowShapeHeaderApplier;
 
 impl CatalogChangeApplier for RowShapeHeaderApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())?;
 
 		let shape_key = RowShapeKey::decode(key).ok_or(CatalogChangeError::KeyDecodeFailed {
@@ -47,7 +47,7 @@ impl CatalogChangeApplier for RowShapeHeaderApplier {
 pub(super) struct RowShapeFieldApplier;
 
 impl CatalogChangeApplier for RowShapeFieldApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())?;
 
 		let field_key = RowShapeFieldKey::decode(key).ok_or(CatalogChangeError::KeyDecodeFailed {
@@ -60,7 +60,7 @@ impl CatalogChangeApplier for RowShapeFieldApplier {
 			Some(entry) => entry,
 			None => return Ok(()),
 		};
-		let field_count = shape_header::SHAPE.get::<u16>(&header_entry.row, shape_header::FIELD_COUNT);
+		let field_count = shape_header::SHAPE.get::<u16>(&header_entry.bytes, shape_header::FIELD_COUNT);
 
 		try_reconstruct(catalog, txn, fingerprint, field_count)
 	}
@@ -85,12 +85,14 @@ fn try_reconstruct(
 		let field_key = RowShapeFieldKey::encoded(fingerprint, i);
 		match txn.get(&field_key)? {
 			Some(entry) => {
-				let row = &entry.row;
-				let name = shape_field::SHAPE.get_utf8(row, shape_field::NAME).to_string();
-				let base_type = shape_field::SHAPE.get::<u8>(row, shape_field::TYPE);
-				let constraint_type = shape_field::SHAPE.get::<u8>(row, shape_field::CONSTRAINT_TYPE);
-				let constraint_param1 = shape_field::SHAPE.get::<u32>(row, shape_field::CONSTRAINT_P1);
-				let constraint_param2 = shape_field::SHAPE.get::<u32>(row, shape_field::CONSTRAINT_P2);
+				let bytes = &entry.bytes;
+				let name = shape_field::SHAPE.get_utf8(bytes, shape_field::NAME).to_string();
+				let base_type = shape_field::SHAPE.get::<u8>(bytes, shape_field::TYPE);
+				let constraint_type = shape_field::SHAPE.get::<u8>(bytes, shape_field::CONSTRAINT_TYPE);
+				let constraint_param1 =
+					shape_field::SHAPE.get::<u32>(bytes, shape_field::CONSTRAINT_P1);
+				let constraint_param2 =
+					shape_field::SHAPE.get::<u32>(bytes, shape_field::CONSTRAINT_P2);
 				let constraint = type_constraint_from_ffi(&FFITypeConstraint {
 					base_type,
 					constraint_type,
@@ -98,9 +100,9 @@ fn try_reconstruct(
 					constraint_param2,
 				})
 				.expect("invalid persisted type constraint tag");
-				let offset = shape_field::SHAPE.get::<u32>(row, shape_field::OFFSET);
-				let size = shape_field::SHAPE.get::<u32>(row, shape_field::SIZE);
-				let align = shape_field::SHAPE.get::<u8>(row, shape_field::ALIGN);
+				let offset = shape_field::SHAPE.get::<u32>(bytes, shape_field::OFFSET);
+				let size = shape_field::SHAPE.get::<u32>(bytes, shape_field::SIZE);
+				let align = shape_field::SHAPE.get::<u8>(bytes, shape_field::ALIGN);
 
 				fields.push(RowShapeField {
 					name,

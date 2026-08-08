@@ -12,12 +12,12 @@ pub mod find;
 pub mod shape;
 
 pub(crate) fn convert_token(multi: MultiVersionRow) -> Token {
-	let row = multi.row;
-	let id = token::SHAPE.get::<u64>(&row, token::ID);
-	let token_value = token::SHAPE.get_utf8(&row, token::TOKEN).to_string();
-	let identity = token::SHAPE.get::<IdentityId>(&row, token::IDENTITY);
-	let expires_at = token::SHAPE.try_get::<DateTime>(&row, token::EXPIRES_AT);
-	let created_at = token::SHAPE.get::<DateTime>(&row, token::CREATED_AT);
+	let bytes = multi.bytes;
+	let id = token::SHAPE.get::<u64>(&bytes, token::ID);
+	let token_value = token::SHAPE.get_utf8(&bytes, token::TOKEN).to_string();
+	let identity = token::SHAPE.get::<IdentityId>(&bytes, token::IDENTITY);
+	let expires_at = token::SHAPE.try_get::<DateTime>(&bytes, token::EXPIRES_AT);
+	let created_at = token::SHAPE.get::<DateTime>(&bytes, token::CREATED_AT);
 
 	Token {
 		id,

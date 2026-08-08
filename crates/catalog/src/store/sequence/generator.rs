@@ -92,7 +92,7 @@ macro_rules! impl_generator {
 					let mut tx = txn.begin_single_command([key])?;
 					let result = match tx.get(key)? {
 						Some(row) => {
-							let mut row = row.row.thaw();
+							let mut row = row.bytes.thaw();
 							let current_value = SHAPE.get::<$prim>(&row, 0);
 							let next_value = current_value.saturating_add(incr);
 
@@ -143,7 +143,7 @@ macro_rules! impl_generator {
 				) -> Result<()> {
 					let mut tx = txn.begin_single_command([key])?;
 					let mut row = match tx.get(key)? {
-						Some(row) => row.row.thaw(),
+						Some(bytes) => bytes.bytes.thaw(),
 						None => SHAPE.allocate(),
 					};
 					SHAPE.set::<$prim>(&mut row, 0, value);
@@ -181,7 +181,7 @@ macro_rules! impl_generator {
 					let final_val = ($start as u128)
 						.saturating_add((iterations.saturating_sub(1)) as u128)
 						as $prim;
-					assert_eq!(SHAPE.get::<$prim>(&single.row, 0), final_val);
+					assert_eq!(SHAPE.get::<$prim>(&single.bytes, 0), final_val);
 				}
 
 				#[test]
@@ -275,7 +275,7 @@ macro_rules! impl_generator {
 					let final_val = ($start as u128)
 						.saturating_add((batch_size_1 as u128) * (iterations_1 as u128))
 						.saturating_sub(1) as $prim;
-					assert_eq!(SHAPE.get::<$prim>(&single.row, 0), final_val);
+					assert_eq!(SHAPE.get::<$prim>(&single.bytes, 0), final_val);
 
 					for i in 0..iterations_2 {
 						let expected = ($start as u128)

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	interface::catalog::id::NamespaceId,
 	key::{EncodableKey, kind::KeyKind, namespace::NamespaceKey},
@@ -14,7 +14,7 @@ use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::namespac
 pub(super) struct NamespaceApplier;
 
 impl CatalogChangeApplier for NamespaceApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let ns = decode_namespace(row);
 		catalog.cache.set_namespace(ns.id(), txn.version(), Some(ns));
@@ -33,7 +33,7 @@ impl CatalogChangeApplier for NamespaceApplier {
 
 use reifydb_core::interface::catalog::namespace::Namespace;
 
-fn decode_namespace(row: &EncodedRow) -> Namespace {
+fn decode_namespace(row: &EncodedBytes) -> Namespace {
 	let id = NamespaceId(namespace::SHAPE.get::<u64>(row, namespace::ID));
 	let name = namespace::SHAPE.get_utf8(row, namespace::NAME).to_string();
 	let parent_id = NamespaceId(namespace::SHAPE.get::<u64>(row, namespace::PARENT_ID));

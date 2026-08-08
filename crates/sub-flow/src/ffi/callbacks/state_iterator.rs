@@ -27,7 +27,7 @@ impl BatchIterator {
 			.into_iter()
 			.filter_map(|multi| {
 				let state_key = OperatorStateKey::decode(&multi.key)?;
-				Some((state_key.key, multi.row.to_vec()))
+				Some((state_key.key, multi.bytes.to_vec()))
 			})
 			.collect();
 
@@ -90,7 +90,7 @@ pub(crate) fn free_iterator(handle: StateIteratorHandle) -> bool {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+	use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::{
@@ -107,15 +107,15 @@ pub mod tests {
 		OperatorStateKey::new(OperatorId(operator_id), key.to_vec()).encode()
 	}
 
-	fn make_value(data: &[u8]) -> EncodedRow {
-		EncodedRow(CowVec::new(data.to_vec()))
+	fn make_value(data: &[u8]) -> EncodedBytes {
+		EncodedBytes(CowVec::new(data.to_vec()))
 	}
 
 	#[test]
 	fn test_create_and_free_iterator() {
 		let items = vec![MultiVersionRow {
 			key: make_state_key(1, b"key1"),
-			row: make_value(b"value1"),
+			bytes: make_value(b"value1"),
 			version: CommitVersion(1),
 		}];
 
@@ -151,12 +151,12 @@ pub mod tests {
 		let items = vec![
 			MultiVersionRow {
 				key: make_state_key(1, b"key1"),
-				row: make_value(b"value1"),
+				bytes: make_value(b"value1"),
 				version: CommitVersion(1),
 			},
 			MultiVersionRow {
 				key: make_state_key(1, b"key2"),
-				row: make_value(b"value2"),
+				bytes: make_value(b"value2"),
 				version: CommitVersion(1),
 			},
 		];
@@ -186,7 +186,7 @@ pub mod tests {
 		let items = (0u8..5)
 			.map(|n| MultiVersionRow {
 				key: make_state_key(1, &[b'k', n]),
-				row: make_value(&[b'v', n]),
+				bytes: make_value(&[b'v', n]),
 				version: CommitVersion(1),
 			})
 			.collect();
@@ -219,13 +219,13 @@ pub mod tests {
 	fn test_multiple_iterators() {
 		let items1 = vec![MultiVersionRow {
 			key: make_state_key(1, b"iter1"),
-			row: make_value(b"value1"),
+			bytes: make_value(b"value1"),
 			version: CommitVersion(1),
 		}];
 
 		let items2 = vec![MultiVersionRow {
 			key: make_state_key(2, b"iter2"),
-			row: make_value(b"value2"),
+			bytes: make_value(b"value2"),
 			version: CommitVersion(1),
 		}];
 

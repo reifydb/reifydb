@@ -27,7 +27,7 @@ pub(crate) fn drop_object_metadata(
 	let mut col_entries = Vec::new();
 	for entry in stream.by_ref() {
 		let entry = entry?;
-		let col_id = object_column::SHAPE.get::<u64>(&entry.row, object_column::ID);
+		let col_id = object_column::SHAPE.get::<u64>(&entry.bytes, object_column::ID);
 		col_entries.push((entry.key.clone(), ColumnId(col_id)));
 	}
 	drop(stream);

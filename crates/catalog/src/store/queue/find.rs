@@ -25,31 +25,31 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.row;
-		let id = QueueId(queue::SHAPE.get::<u64>(&row, queue::ID));
-		let namespace = NamespaceId(queue::SHAPE.get::<u64>(&row, queue::NAMESPACE));
-		let name = queue::SHAPE.get_utf8(&row, queue::NAME).to_string();
+		let bytes = multi.bytes;
+		let id = QueueId(queue::SHAPE.get::<u64>(&bytes, queue::ID));
+		let namespace = NamespaceId(queue::SHAPE.get::<u64>(&bytes, queue::NAMESPACE));
+		let name = queue::SHAPE.get_utf8(&bytes, queue::NAME).to_string();
 
 		let retention = QueueRetention {
-			done: queue::SHAPE.try_get::<Duration>(&row, queue::RETENTION_DONE),
+			done: queue::SHAPE.try_get::<Duration>(&bytes, queue::RETENTION_DONE),
 		};
 		let retry = QueueRetry {
-			attempts: queue::SHAPE.get::<u32>(&row, queue::RETRY_ATTEMPTS),
-			backoff: queue::SHAPE.get::<Duration>(&row, queue::RETRY_BACKOFF),
+			attempts: queue::SHAPE.get::<u32>(&bytes, queue::RETRY_ATTEMPTS),
+			backoff: queue::SHAPE.get::<Duration>(&bytes, queue::RETRY_BACKOFF),
 		};
-		let underlying = queue::SHAPE.get::<u8>(&row, queue::UNDERLYING) != 0;
+		let underlying = queue::SHAPE.get::<u8>(&bytes, queue::UNDERLYING) != 0;
 
 		Ok(Some(Queue {
 			id,
 			namespace,
 			name,
 			columns: Self::list_columns(rx, id)?,
-			dispatch: decode_dispatch(&row),
+			dispatch: decode_dispatch(&bytes),
 			retention,
 			retry,
 			underlying,
-			deduplicate: decode_deduplicate(&row),
-			time: decode_queue_time(&row),
+			deduplicate: decode_deduplicate(&bytes),
+			time: decode_queue_time(&bytes),
 		}))
 	}
 
@@ -64,11 +64,11 @@ impl CatalogStore {
 		let mut found_queue = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let row = &multi.row;
-			let queue_name = queue_namespace::SHAPE.get_utf8(row, queue_namespace::NAME);
+			let bytes = &multi.bytes;
+			let queue_name = queue_namespace::SHAPE.get_utf8(bytes, queue_namespace::NAME);
 			if name == queue_name {
 				found_queue =
-					Some(QueueId(queue_namespace::SHAPE.get::<u64>(row, queue_namespace::ID)));
+					Some(QueueId(queue_namespace::SHAPE.get::<u64>(bytes, queue_namespace::ID)));
 				break;
 			}
 		}

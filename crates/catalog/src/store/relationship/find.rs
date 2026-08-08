@@ -15,6 +15,6 @@ impl CatalogStore {
 			Some(multi) => multi,
 			None => return Ok(None),
 		};
-		Ok(Some(decode_relationship_row(&multi.row)?))
+		Ok(Some(decode_relationship_row(&multi.bytes)?))
 	}
 }

@@ -12,7 +12,7 @@
 use std::{error::Error as StdError, fmt::Write};
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -128,7 +128,7 @@ impl testscript::runner::Runner for Runner {
 					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 				let value: Option<SingleVersionRow> = self.store.get(&key)?.into();
-				let value = value.map(|sv| sv.row.to_vec());
+				let value = value.map(|sv| sv.bytes.to_vec());
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
 			"contains" => {
@@ -193,13 +193,13 @@ impl testscript::runner::Runner for Runner {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
+				let bytes = EncodedBytes(CowVec::new(decode_binary(&kv.value)));
 				args.reject_rest()?;
 
 				self.store.commit(cow_vec![
 					(Delta::Set {
 						key,
-						row
+						bytes
 					})
 				])?;
 				self.maybe_flush();
@@ -269,7 +269,7 @@ impl testscript::runner::Runner for Runner {
 
 fn print<I: Iterator<Item = SingleVersionRow>>(output: &mut String, iter: I) {
 	for item in iter {
-		let fmtkv = Raw::key_value(&item.key, item.row.as_slice());
+		let fmtkv = Raw::key_value(&item.key, item.bytes.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

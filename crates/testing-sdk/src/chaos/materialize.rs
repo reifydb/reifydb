@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::row::SHAPE_HEADER_SIZE;
+use reifydb_codec::encoded::bytes::SHAPE_HEADER_SIZE;
 use reifydb_core::{interface::change::Change, row::Row};
 use reifydb_testing_chaos::operator::{
 	event::{ChaosBatch, ChaosEvent},

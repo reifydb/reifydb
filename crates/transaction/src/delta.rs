@@ -7,13 +7,13 @@ use indexmap::{
 	IndexMap,
 	map::Entry::{Occupied, Vacant},
 };
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::delta::{Delta, RemoveAnnounce};
 
 #[derive(Debug, Clone)]
 enum OptimizedDeltaState {
 	Set {
-		row: EncodedRow,
+		bytes: EncodedBytes,
 	},
 
 	Remove {
@@ -30,7 +30,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 		match delta {
 			Delta::Set {
 				key,
-				row,
+				bytes,
 			} => {
 				let entry = key_states.entry(key);
 				match entry {
@@ -38,20 +38,20 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 						let (state, _) = occ.get_mut();
 						match state {
 							OptimizedDeltaState::Set {
-								row: old_row,
+								bytes: old_bytes,
 							} => {
-								*old_row = row;
+								*old_bytes = bytes;
 							}
 							OptimizedDeltaState::Remove {
 								..
 							} => {
 								*state = OptimizedDeltaState::Set {
-									row,
+									bytes,
 								};
 							}
 							OptimizedDeltaState::Cancelled => {
 								*state = OptimizedDeltaState::Set {
-									row,
+									bytes,
 								};
 							}
 						}
@@ -59,7 +59,7 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 					Vacant(vac) => {
 						vac.insert((
 							OptimizedDeltaState::Set {
-								row,
+								bytes,
 							},
 							idx,
 						));
@@ -115,13 +115,13 @@ pub fn optimize_deltas(deltas: impl IntoIterator<Item = Delta>, preexisting_keys
 	for (key, (state, idx)) in key_states {
 		match state {
 			OptimizedDeltaState::Set {
-				row,
+				bytes,
 			} => {
 				result.push((
 					idx,
 					Delta::Set {
 						key,
-						row,
+						bytes,
 					},
 				));
 			}
@@ -155,8 +155,8 @@ pub mod tests {
 		EncodedKey::new(s.as_bytes())
 	}
 
-	fn make_row(s: &str) -> EncodedRow {
-		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
+	fn make_bytes(s: &str) -> EncodedBytes {
+		EncodedBytes(CowVec::new(s.as_bytes().to_vec()))
 	}
 
 	#[test]
@@ -167,9 +167,9 @@ pub mod tests {
 		let from_delta_log = vec![
 			Delta::Set {
 				key: make_key("key_a"),
-				row: make_row("value1"),
+				bytes: make_bytes("value1"),
 			},
-			Delta::remove_announced(make_key("key_a"), make_row("value1")),
+			Delta::remove_announced(make_key("key_a"), make_bytes("value1")),
 		];
 
 		let optimized = optimize_deltas(from_delta_log, &HashSet::new());
@@ -179,7 +179,7 @@ pub mod tests {
 
 	#[test]
 	fn pending_writes_sourcing_emits_a_tombstone_for_the_same_transaction() {
-		let from_pending_writes = vec![Delta::remove_announced(make_key("key_a"), make_row("value1"))];
+		let from_pending_writes = vec![Delta::remove_announced(make_key("key_a"), make_bytes("value1"))];
 
 		let optimized = optimize_deltas(from_pending_writes, &HashSet::new());
 
@@ -197,9 +197,9 @@ pub mod tests {
 		let deltas = vec![
 			Delta::Set {
 				key: make_key("key_a"),
-				row: make_row("value1"),
+				bytes: make_bytes("value1"),
 			},
-			Delta::remove_announced(make_key("key_a"), make_row("value1")),
+			Delta::remove_announced(make_key("key_a"), make_bytes("value1")),
 		];
 
 		let optimized = optimize_deltas(deltas, &HashSet::new());
@@ -212,9 +212,9 @@ pub mod tests {
 		let deltas = vec![
 			Delta::Set {
 				key: make_key("key_a"),
-				row: make_row("value1"),
+				bytes: make_bytes("value1"),
 			},
-			Delta::remove_announced(make_key("key_a"), make_row("value1")),
+			Delta::remove_announced(make_key("key_a"), make_bytes("value1")),
 		];
 
 		let mut preexisting = HashSet::new();
@@ -243,12 +243,12 @@ pub mod tests {
 
 	#[test]
 	fn test_update_silent_remove_keeps_tombstone_and_stays_silent() {
-		// Silence controls only whether CDC hears about the removal, never whether the row is
+		// Silence controls only whether CDC hears about the removal, never whether the bytes is
 		// gone; collapsing it away would leave the prior version readable.
 		let deltas = vec![
 			Delta::Set {
 				key: make_key("key_a"),
-				row: make_row("value1"),
+				bytes: make_bytes("value1"),
 			},
 			Delta::remove_silent(make_key("key_a")),
 		];
@@ -279,15 +279,15 @@ pub mod tests {
 		let deltas = vec![
 			Delta::Set {
 				key: make_key("key_a"),
-				row: make_row("value1"),
+				bytes: make_bytes("value1"),
 			},
 			Delta::Set {
 				key: make_key("key_a"),
-				row: make_row("value2"),
+				bytes: make_bytes("value2"),
 			},
 			Delta::Set {
 				key: make_key("key_a"),
-				row: make_row("value3"),
+				bytes: make_bytes("value3"),
 			},
 		];
 
@@ -297,10 +297,10 @@ pub mod tests {
 		match &optimized[0] {
 			Delta::Set {
 				key,
-				row,
+				bytes,
 			} => {
 				assert_eq!(key.as_ref(), b"key_a");
-				assert_eq!(row.0.as_slice(), b"value3");
+				assert_eq!(bytes.0.as_slice(), b"value3");
 			}
 			_ => panic!("Expected Set delta"),
 		}
@@ -311,13 +311,13 @@ pub mod tests {
 		let deltas = vec![
 			Delta::Set {
 				key: make_key("key_a"),
-				row: make_row("value1"),
+				bytes: make_bytes("value1"),
 			},
 			Delta::Set {
 				key: make_key("key_a"),
-				row: make_row("value2"),
+				bytes: make_bytes("value2"),
 			},
-			Delta::remove_announced(make_key("key_a"), make_row("value2")),
+			Delta::remove_announced(make_key("key_a"), make_bytes("value2")),
 		];
 
 		let optimized = optimize_deltas(deltas, &HashSet::new());
@@ -330,16 +330,16 @@ pub mod tests {
 		let deltas = vec![
 			Delta::Set {
 				key: make_key("key_a"),
-				row: make_row("value1"),
+				bytes: make_bytes("value1"),
 			},
 			Delta::Set {
 				key: make_key("key_b"),
-				row: make_row("value2"),
+				bytes: make_bytes("value2"),
 			},
-			Delta::remove_announced(make_key("key_a"), make_row("value1")),
+			Delta::remove_announced(make_key("key_a"), make_bytes("value1")),
 			Delta::Set {
 				key: make_key("key_c"),
-				row: make_row("value3"),
+				bytes: make_bytes("value3"),
 			},
 		];
 

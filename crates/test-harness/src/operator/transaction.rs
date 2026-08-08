@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::encoded::row::{EncodedRow, SHAPE_HEADER_SIZE};
+use reifydb_codec::encoded::bytes::{EncodedBytes, SHAPE_HEADER_SIZE};
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,
@@ -31,12 +31,12 @@ use crate::engine::TestEngine;
 
 pub const OPERATOR_ID: OperatorId = OperatorId(1);
 
-pub fn make_row(payload: &str, created_at: u64, updated_at: u64) -> EncodedRow {
+pub fn make_bytes(payload: &str, created_at: u64, updated_at: u64) -> EncodedBytes {
 	let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
 	buf[8..16].copy_from_slice(&created_at.to_le_bytes());
 	buf[16..24].copy_from_slice(&updated_at.to_le_bytes());
 	buf[SHAPE_HEADER_SIZE..].copy_from_slice(payload.as_bytes());
-	EncodedRow(CowVec::new(buf))
+	EncodedBytes(CowVec::new(buf))
 }
 
 pub fn key(s: &str) -> GroupStateKey {
@@ -47,7 +47,7 @@ pub fn engine() -> TestEngine {
 	TestEngine::new()
 }
 
-pub fn payload(stored: &EncodedRow) -> &[u8] {
+pub fn payload(stored: &EncodedBytes) -> &[u8] {
 	&stored.0[SHAPE_HEADER_SIZE..]
 }
 

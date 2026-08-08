@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, state::StateBytes};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey, state::StateBytes};
 use reifydb_core::key::{
 	EncodableKey,
 	operator_group_state::{Keyspace, OperatorGroupStateKey},
@@ -12,7 +12,7 @@ use reifydb_core::key::{
 
 pub const ROW_STAMPED: &[Keyspace] = &[Keyspace::DISTINCT_ENTRY, Keyspace::DISTINCT_LAYOUT];
 
-pub type State = Vec<(EncodedKey, EncodedRow)>;
+pub type State = Vec<(EncodedKey, EncodedBytes)>;
 
 pub fn keyspace_of(key: &EncodedKey) -> Option<Keyspace> {
 	OperatorStateKey::decode(key)
@@ -20,8 +20,8 @@ pub fn keyspace_of(key: &EncodedKey) -> Option<Keyspace> {
 		.map(|(_, keyspace, _)| keyspace)
 }
 
-pub fn body_of(row: &EncodedRow) -> Vec<u8> {
-	match StateBytes::from_row(row.clone()) {
+pub fn body_of(row: &EncodedBytes) -> Vec<u8> {
+	match StateBytes::from_bytes(row.clone()) {
 		Ok(bytes) => bytes.body().to_vec(),
 		Err(_) => row.to_vec(),
 	}

@@ -23,16 +23,16 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.row;
-		let id = SourceId(source::SHAPE.get::<u64>(&row, source::ID));
-		let namespace = NamespaceId(source::SHAPE.get::<u64>(&row, source::NAMESPACE));
-		let name = source::SHAPE.get_utf8(&row, source::NAME).to_string();
-		let connector = source::SHAPE.get_utf8(&row, source::CONNECTOR).to_string();
-		let config_json = source::SHAPE.get_utf8(&row, source::CONFIG);
+		let bytes = multi.bytes;
+		let id = SourceId(source::SHAPE.get::<u64>(&bytes, source::ID));
+		let namespace = NamespaceId(source::SHAPE.get::<u64>(&bytes, source::NAMESPACE));
+		let name = source::SHAPE.get_utf8(&bytes, source::NAME).to_string();
+		let connector = source::SHAPE.get_utf8(&bytes, source::CONNECTOR).to_string();
+		let config_json = source::SHAPE.get_utf8(&bytes, source::CONFIG);
 		let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
-		let target_namespace = NamespaceId(source::SHAPE.get::<u64>(&row, source::TARGET_NAMESPACE));
-		let target_name = source::SHAPE.get_utf8(&row, source::TARGET_NAME).to_string();
-		let status_u8 = source::SHAPE.get::<u8>(&row, source::STATUS);
+		let target_namespace = NamespaceId(source::SHAPE.get::<u64>(&bytes, source::TARGET_NAMESPACE));
+		let target_name = source::SHAPE.get_utf8(&bytes, source::TARGET_NAME).to_string();
+		let status_u8 = source::SHAPE.get::<u8>(&bytes, source::STATUS);
 		let status = FlowStatus::from_u8(status_u8);
 
 		Ok(Some(Source {
@@ -58,11 +58,11 @@ impl CatalogStore {
 		let mut found_source = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let row = &multi.row;
-			let source_name = source_namespace::SHAPE.get_utf8(row, source_namespace::NAME);
+			let bytes = &multi.bytes;
+			let source_name = source_namespace::SHAPE.get_utf8(bytes, source_namespace::NAME);
 			if name == source_name {
 				found_source =
-					Some(SourceId(source_namespace::SHAPE.get::<u64>(row, source_namespace::ID)));
+					Some(SourceId(source_namespace::SHAPE.get::<u64>(bytes, source_namespace::ID)));
 				break;
 			}
 		}

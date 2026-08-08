@@ -536,7 +536,7 @@ mod integration {
 	};
 
 	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
-	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+	use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		common::TimeDomain,
@@ -816,7 +816,7 @@ mod integration {
 		let mut cursor = CommitVersion(0);
 		drive(&mut cursor, &mut overlay);
 		let mut pending = Pending::new();
-		pending.insert(EncodedKey::new(b"own-write"), EncodedRow(CowVec::new(vec![1, 2, 3])));
+		pending.insert(EncodedKey::new(b"own-write"), EncodedBytes(CowVec::new(vec![1, 2, 3])));
 		overlay.promote(cursor, pending);
 		assert_eq!(overlay.generations_len(), 1, "precondition: one unpruned write set");
 

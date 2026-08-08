@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
 	interface::catalog::{column::Column, dictionary::Dictionary},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
@@ -25,7 +25,7 @@ use crate::{
 	vm::{services::Services, stack::SymbolTable, volcano::decode_dictionary_columns},
 };
 
-pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, EncodedRow)]) -> Columns {
+pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, EncodedBytes)]) -> Columns {
 	let fields = shape.fields();
 
 	let mut columns_vec: Vec<ColumnWithName> = Vec::with_capacity(fields.len());

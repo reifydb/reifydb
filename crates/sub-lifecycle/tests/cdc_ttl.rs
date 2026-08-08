@@ -8,7 +8,7 @@ use reifydb_cdc::{
 	storage::{CdcStorage, memory::MemoryCdcStorage},
 	testing::TestCdcHost,
 };
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	event::{Event, EventBus, EventListener, metric::CdcEvictedEvent},
@@ -82,7 +82,7 @@ fn write_cdc(storage: &MemoryCdcStorage, version: u64, timestamp_nanos: u64) {
 		Vec::new(),
 		vec![SystemChange::Insert {
 			key: EncodedKey::new(vec![version as u8]),
-			post: EncodedRow(CowVec::new(vec![version as u8])),
+			post: EncodedBytes(CowVec::new(vec![version as u8])),
 		}],
 	);
 	storage.write(&cdc).expect("write CDC entry");

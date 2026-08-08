@@ -72,11 +72,11 @@ impl<'a> SingleWriteTransaction<'a> {
 		if let Some(delta) = self.pending.get(key) {
 			return match delta {
 				Delta::Set {
-					row,
+					bytes,
 					..
 				} => Ok(Some(SingleVersionRow {
 					key: key.clone(),
-					row: row.clone(),
+					bytes: bytes.clone(),
 				})),
 				Delta::Remove {
 					..
@@ -106,18 +106,18 @@ impl<'a> SingleWriteTransaction<'a> {
 		SingleVersionContains::contains(&store, key)
 	}
 
-	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, bytes: EncodedBytes) -> Result<()> {
 		self.check_key_allowed(key)?;
 
 		let delta = Delta::Set {
 			key: key.clone(),
-			row,
+			bytes,
 		};
 		self.pending.insert(key.clone(), delta);
 		Ok(())
 	}
 
-	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
+	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
 		self.check_key_allowed(key)?;
 
 		self.pending.insert(key.clone(), Delta::remove_announced(key.clone(), pre));

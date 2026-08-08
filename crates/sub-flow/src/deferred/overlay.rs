@@ -44,7 +44,7 @@ impl FlowWriteOverlay {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+	use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
@@ -53,14 +53,14 @@ mod tests {
 		EncodedKey::new(s.as_bytes())
 	}
 
-	fn row(s: &str) -> EncodedRow {
-		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
+	fn encoded_bytes(s: &str) -> EncodedBytes {
+		EncodedBytes(CowVec::new(s.as_bytes().to_vec()))
 	}
 
 	fn pending_set(entries: &[(&str, &str)]) -> Pending {
 		let mut p = Pending::new();
 		for (k, v) in entries {
-			p.insert(key(k), row(v));
+			p.insert(key(k), encoded_bytes(v));
 		}
 		p
 	}
@@ -72,8 +72,8 @@ mod tests {
 		overlay.promote(CommitVersion(12), pending_set(&[("a", "v12")]));
 
 		let merged = overlay.merged();
-		assert_eq!(merged.get(&key("a")), Some(&row("v12")));
-		assert_eq!(merged.get(&key("b")), Some(&row("v10")));
+		assert_eq!(merged.get(&key("a")), Some(&encoded_bytes("v12")));
+		assert_eq!(merged.get(&key("b")), Some(&encoded_bytes("v10")));
 	}
 
 	#[test]
@@ -107,7 +107,7 @@ mod tests {
 		overlay.prune_through(CommitVersion(10));
 		let merged = overlay.merged();
 		assert_eq!(merged.get(&key("a")), None);
-		assert_eq!(merged.get(&key("b")), Some(&row("v12")));
+		assert_eq!(merged.get(&key("b")), Some(&encoded_bytes("v12")));
 
 		overlay.prune_through(CommitVersion(12));
 		assert!(overlay.merged().is_empty());
@@ -123,7 +123,7 @@ mod tests {
 		let after = overlay.merged();
 		assert_eq!(before.depth(), 1, "precondition: the promoted generation is the only layer");
 		assert_eq!(after.depth(), 1, "a prune below the front must not drop a generation");
-		assert_eq!(after.get(&key("a")), Some(&row("v10")));
+		assert_eq!(after.get(&key("a")), Some(&encoded_bytes("v10")));
 	}
 
 	#[test]
@@ -134,7 +134,7 @@ mod tests {
 
 		overlay.promote(CommitVersion(12), pending_set(&[("a", "v12")]));
 
-		assert_eq!(reader.get(&key("a")), Some(&row("v10")));
-		assert_eq!(overlay.merged().get(&key("a")), Some(&row("v12")));
+		assert_eq!(reader.get(&key("a")), Some(&encoded_bytes("v10")));
+		assert_eq!(overlay.merged().get(&key("a")), Some(&encoded_bytes("v12")));
 	}
 }

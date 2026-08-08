@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, tag::value_type_from_tag_byte};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey, tag::value_type_from_tag_byte};
 use reifydb_core::{
 	interface::catalog::identity::IdentityAttribute,
 	key::{EncodableKey, identity_attribute::IdentityAttributeKey, kind::KeyKind},
@@ -16,7 +16,7 @@ use crate::{
 pub(super) struct IdentityAttributeApplier;
 
 impl CatalogChangeApplier for IdentityAttributeApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let attribute = decode_identity_attribute(row);
 		catalog.cache.set_identity_attribute(attribute.id, txn.version(), Some(attribute));
@@ -33,7 +33,7 @@ impl CatalogChangeApplier for IdentityAttributeApplier {
 	}
 }
 
-fn decode_identity_attribute(row: &EncodedRow) -> IdentityAttribute {
+fn decode_identity_attribute(row: &EncodedBytes) -> IdentityAttribute {
 	let id = identity_attribute::SHAPE.get::<u64>(row, identity_attribute::ID);
 	let name = identity_attribute::SHAPE.get_utf8(row, identity_attribute::NAME).to_string();
 	let value_type =

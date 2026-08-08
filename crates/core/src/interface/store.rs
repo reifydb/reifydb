@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_value::{Result, util::cowvec::CowVec};
@@ -52,14 +52,14 @@ pub fn classify_range(range: &EncodedKeyRange) -> Option<EntryKind> {
 #[derive(Debug, Clone)]
 pub struct MultiVersionRow {
 	pub key: EncodedKey,
-	pub row: EncodedRow,
+	pub bytes: EncodedBytes,
 	pub version: CommitVersion,
 }
 
 #[derive(Debug, Clone)]
 pub struct SingleVersionRow {
 	pub key: EncodedKey,
-	pub row: EncodedRow,
+	pub bytes: EncodedBytes,
 }
 
 #[derive(Debug, Clone)]
@@ -140,12 +140,12 @@ pub trait SingleVersionContains: Send + Sync {
 }
 
 pub trait SingleVersionSet: SingleVersionCommit {
-	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+	fn set(&mut self, key: &EncodedKey, bytes: EncodedBytes) -> Result<()> {
 		Self::commit(
 			self,
 			CowVec::new(vec![Delta::Set {
 				key: key.clone(),
-				row: row.clone(),
+				bytes: bytes.clone(),
 			}]),
 		)
 	}

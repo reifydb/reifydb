@@ -19,7 +19,7 @@ pub fn load_relationships(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 	}
 
 	for multi in entries {
-		let rel = decode_relationship_row(&multi.row)?;
+		let rel = decode_relationship_row(&multi.bytes)?;
 		catalog.set_relationship(rel.id, multi.version, Some(rel));
 	}
 

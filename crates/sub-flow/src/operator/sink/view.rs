@@ -6,7 +6,7 @@ use std::{cell::UnsafeCell, collections::HashMap};
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
 	encoded::{
-		row::{EncodedRow, SHAPE_HEADER_SIZE},
+		bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
 		shape::RowShape,
 	},
 	key::{encode_u8, encode_u64_varint, encoded::EncodedKey, serializer::KeySerializer},
@@ -213,7 +213,7 @@ impl SinkTableViewOperator {
 		let row_count = source.row_count();
 		let field_columns = shape_field_columns(source, shape);
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
+		let mut encoded_bytes_list: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 
 		let verified = self.verified_partitions();
 		let cache = self.created_at_cache();
@@ -235,10 +235,10 @@ impl SinkTableViewOperator {
 			};
 			remember_created_at(cache, row_number, encoded.created_at());
 			keys.push(key);
-			encoded_rows.push(encoded);
+			encoded_bytes_list.push(encoded);
 		}
 
-		txn.set_batch(&keys, &encoded_rows)?;
+		txn.set_batch(&keys, &encoded_bytes_list)?;
 
 		emit_view_change(txn, view, Diff::insert(coerced));
 		Ok(())
@@ -264,7 +264,7 @@ impl SinkTableViewOperator {
 		let field_columns = shape_field_columns(source_post, shape);
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut post_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
+		let mut post_encoded_rows: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 		let verified = self.verified_partitions();
 		let cache = self.created_at_cache();
 		for row_idx in 0..row_count {
@@ -547,10 +547,10 @@ mod tests {
 		cmd.commit().unwrap();
 	}
 
-	fn stored_view_row(engine: &TestEngine, sink: &SinkTableViewOperator, rn: u64) -> EncodedRow {
+	fn stored_view_bytes(engine: &TestEngine, sink: &SinkTableViewOperator, rn: u64) -> EncodedBytes {
 		let key = sink.row_key(RowNumber(rn));
 		let query = engine.inner().multi().begin_query().unwrap();
-		query.get(&key).unwrap().expect("the view row must exist").row().clone()
+		query.get(&key).unwrap().expect("the view row must exist").bytes().clone()
 	}
 
 	#[test]
@@ -573,7 +573,7 @@ mod tests {
 		)
 		.unwrap();
 		commit_flow_pending(&engine, &mut txn);
-		assert_eq!(stored_view_row(&engine, &sink, 1).created_at(), DateTime::from_nanos(1_000));
+		assert_eq!(stored_view_bytes(&engine, &sink, 1).created_at(), DateTime::from_nanos(1_000));
 
 		let mut txn = engine.flow_txn().clock_millis(0).deferred();
 		let before = txn.store_reads();
@@ -593,7 +593,7 @@ mod tests {
 			"an update on a warm operator must preserve created_at without any store read"
 		);
 		commit_flow_pending(&engine, &mut txn);
-		let stored = stored_view_row(&engine, &sink, 1);
+		let stored = stored_view_bytes(&engine, &sink, 1);
 		assert_eq!(
 			stored.created_at(),
 			DateTime::from_nanos(1_000),
@@ -619,7 +619,7 @@ mod tests {
 			"a rebuilt operator has a cold cache and must fall back to the store"
 		);
 		commit_flow_pending(&engine, &mut txn);
-		let stored = stored_view_row(&engine, &rebuilt, 1);
+		let stored = stored_view_bytes(&engine, &rebuilt, 1);
 		assert_eq!(
 			stored.created_at(),
 			DateTime::from_nanos(1_000),
@@ -663,7 +663,7 @@ mod tests {
 			let key = DictionaryEntryIndexKey::encoded(dictionary.id, id);
 			let store = engine.single().read_store();
 			let row = SingleVersionGet::get(&store, &key).unwrap().expect("index entry present");
-			match from_bytes::<Value>(&row.row).unwrap() {
+			match from_bytes::<Value>(&row.bytes).unwrap() {
 				Value::Utf8(s) => s,
 				other => panic!("expected Utf8, got {:?}", other),
 			}

@@ -8,7 +8,7 @@ use reifydb_core::{
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::sumtype::SumTypeId;
 
-use super::sumtype_from_row;
+use super::sumtype_from_bytes;
 use crate::{CatalogStore, Result, store::sumtype::shape::sumtype_namespace};
 
 impl CatalogStore {
@@ -17,7 +17,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(sumtype_from_row(&multi.row)))
+		Ok(Some(sumtype_from_bytes(&multi.bytes)))
 	}
 
 	pub(crate) fn find_sumtype_by_name(
@@ -31,11 +31,11 @@ impl CatalogStore {
 		let mut found_id = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let row = &multi.row;
-			let entry_name = sumtype_namespace::SHAPE.get_utf8(row, sumtype_namespace::NAME);
+			let bytes = &multi.bytes;
+			let entry_name = sumtype_namespace::SHAPE.get_utf8(bytes, sumtype_namespace::NAME);
 			if name == entry_name {
 				found_id = Some(SumTypeId(
-					sumtype_namespace::SHAPE.get::<u64>(row, sumtype_namespace::ID),
+					sumtype_namespace::SHAPE.get::<u64>(bytes, sumtype_namespace::ID),
 				));
 				break;
 			}

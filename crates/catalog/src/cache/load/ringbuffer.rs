@@ -56,20 +56,20 @@ pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &CatalogCache)
 }
 
 fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> RingBuffer {
-	let row = multi.row;
-	let id = RingBufferId(ringbuffer::SHAPE.get::<u64>(&row, ID));
-	let namespace = NamespaceId(ringbuffer::SHAPE.get::<u64>(&row, NAMESPACE));
-	let name = ringbuffer::SHAPE.get_utf8(&row, NAME).to_string();
-	let capacity = ringbuffer::SHAPE.get::<u64>(&row, CAPACITY);
+	let bytes = multi.bytes;
+	let id = RingBufferId(ringbuffer::SHAPE.get::<u64>(&bytes, ID));
+	let namespace = NamespaceId(ringbuffer::SHAPE.get::<u64>(&bytes, NAMESPACE));
+	let name = ringbuffer::SHAPE.get_utf8(&bytes, NAME).to_string();
+	let capacity = ringbuffer::SHAPE.get::<u64>(&bytes, CAPACITY);
 
-	let partition_by_str = ringbuffer::SHAPE.get_utf8(&row, ringbuffer::PARTITION_BY);
+	let partition_by_str = ringbuffer::SHAPE.get_utf8(&bytes, ringbuffer::PARTITION_BY);
 	let partition_by = if partition_by_str.is_empty() {
 		vec![]
 	} else {
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
 
-	let underlying = ringbuffer::SHAPE.get::<u8>(&row, ringbuffer::UNDERLYING) != 0;
+	let underlying = ringbuffer::SHAPE.get::<u8>(&bytes, ringbuffer::UNDERLYING) != 0;
 	RingBuffer {
 		id,
 		name,
@@ -79,12 +79,12 @@ fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -
 		primary_key,
 		partition_by,
 		underlying,
-		time: decode_ringbuffer_time(&row),
+		time: decode_ringbuffer_time(&bytes),
 	}
 }
 
 fn get_ringbuffer_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
-	let pk_id_raw = ringbuffer::SHAPE.get::<u64>(&multi.row, PRIMARY_KEY);
+	let pk_id_raw = ringbuffer::SHAPE.get::<u64>(&multi.bytes, PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

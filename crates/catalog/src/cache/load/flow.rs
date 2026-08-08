@@ -25,5 +25,5 @@ pub(crate) fn load_flows(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 }
 
 fn convert_flow(multi: MultiVersionRow) -> Flow {
-	decode_flow(&multi.row)
+	decode_flow(&multi.bytes)
 }

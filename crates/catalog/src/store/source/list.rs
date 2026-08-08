@@ -22,17 +22,17 @@ impl CatalogStore {
 
 		for entry in stream {
 			let entry = entry?;
-			let row = &entry.row;
+			let bytes = &entry.bytes;
 
-			let id = SourceId(source::SHAPE.get::<u64>(row, source::ID));
-			let namespace = NamespaceId(source::SHAPE.get::<u64>(row, source::NAMESPACE));
-			let name = source::SHAPE.get_utf8(row, source::NAME).to_string();
-			let connector = source::SHAPE.get_utf8(row, source::CONNECTOR).to_string();
-			let config_json = source::SHAPE.get_utf8(row, source::CONFIG);
+			let id = SourceId(source::SHAPE.get::<u64>(bytes, source::ID));
+			let namespace = NamespaceId(source::SHAPE.get::<u64>(bytes, source::NAMESPACE));
+			let name = source::SHAPE.get_utf8(bytes, source::NAME).to_string();
+			let connector = source::SHAPE.get_utf8(bytes, source::CONNECTOR).to_string();
+			let config_json = source::SHAPE.get_utf8(bytes, source::CONFIG);
 			let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
-			let target_namespace = NamespaceId(source::SHAPE.get::<u64>(row, source::TARGET_NAMESPACE));
-			let target_name = source::SHAPE.get_utf8(row, source::TARGET_NAME).to_string();
-			let status_u8 = source::SHAPE.get::<u8>(row, source::STATUS);
+			let target_namespace = NamespaceId(source::SHAPE.get::<u64>(bytes, source::TARGET_NAMESPACE));
+			let target_name = source::SHAPE.get_utf8(bytes, source::TARGET_NAME).to_string();
+			let status_u8 = source::SHAPE.get::<u8>(bytes, source::STATUS);
 			let status = FlowStatus::from_u8(status_u8);
 
 			result.push(Source {

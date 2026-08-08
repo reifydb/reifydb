@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId, internal_error};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sqlite::{
@@ -31,7 +31,7 @@ pub struct SnapshotManifest {
 #[derive(Debug, Clone)]
 pub struct LoadedSnapshot {
 	pub manifest: SnapshotManifest,
-	pub entries: Vec<(EncodedKey, EncodedRow)>,
+	pub entries: Vec<(EncodedKey, EncodedBytes)>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -69,7 +69,7 @@ impl SnapshotStore {
 	pub fn write(
 		&self,
 		write: SnapshotWrite<'_>,
-		entries: &mut dyn Iterator<Item = Result<(EncodedKey, EncodedRow)>>,
+		entries: &mut dyn Iterator<Item = Result<(EncodedKey, EncodedBytes)>>,
 	) -> Result<u64> {
 		let chunk_bytes = write.chunk_bytes.max(1);
 		let mut guard = self.inner.conn.lock();
@@ -240,7 +240,7 @@ impl SnapshotStore {
 		}
 
 		let mut hasher = Xxh3::new();
-		let mut entries: Vec<(EncodedKey, EncodedRow)> = Vec::new();
+		let mut entries: Vec<(EncodedKey, EncodedBytes)> = Vec::new();
 		for (expected_seq, (seq, bytes)) in chunks.iter().enumerate() {
 			if *seq as u64 != expected_seq as u64 {
 				return Err(internal_error!(
@@ -347,19 +347,19 @@ fn insert_chunk(
 	Ok(())
 }
 
-fn encode_entry(buffer: &mut Vec<u8>, key: &EncodedKey, row: &EncodedRow) {
+fn encode_entry(buffer: &mut Vec<u8>, key: &EncodedKey, row: &EncodedBytes) {
 	buffer.extend_from_slice(&(key.as_slice().len() as u32).to_le_bytes());
 	buffer.extend_from_slice(key.as_slice());
 	buffer.extend_from_slice(&(row.as_slice().len() as u32).to_le_bytes());
 	buffer.extend_from_slice(row.as_slice());
 }
 
-fn decode_entries(bytes: &[u8], entries: &mut Vec<(EncodedKey, EncodedRow)>) -> Option<()> {
+fn decode_entries(bytes: &[u8], entries: &mut Vec<(EncodedKey, EncodedBytes)>) -> Option<()> {
 	let mut offset = 0usize;
 	while offset < bytes.len() {
 		let key = decode_field(bytes, &mut offset)?;
 		let row = decode_field(bytes, &mut offset)?;
-		entries.push((EncodedKey::new(key), EncodedRow(CowVec::new(row.to_vec()))));
+		entries.push((EncodedKey::new(key), EncodedBytes(CowVec::new(row.to_vec()))));
 	}
 	Some(())
 }

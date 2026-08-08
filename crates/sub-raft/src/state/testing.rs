@@ -3,7 +3,7 @@
 
 use std::{any::Any, collections::BTreeMap};
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{common::CommitVersion, delta::Delta};
 use reifydb_value::util::cowvec::CowVec;
 
@@ -17,7 +17,7 @@ pub fn write(key: &str, value: &str, version: u64) -> Command {
 	Command::WriteMulti {
 		deltas: vec![Delta::Set {
 			key: EncodedKey::new(key.as_bytes()),
-			row: EncodedRow(CowVec::new(value.as_bytes().to_vec())),
+			bytes: EncodedBytes(CowVec::new(value.as_bytes().to_vec())),
 		}],
 		version: CommitVersion(version),
 		changes: vec![],
@@ -71,10 +71,10 @@ impl State for KV {
 					match delta {
 						Delta::Set {
 							key,
-							row,
+							bytes,
 						} => {
 							let k = String::from_utf8_lossy(key.as_ref()).to_string();
-							let v = String::from_utf8_lossy(row.as_ref()).to_string();
+							let v = String::from_utf8_lossy(bytes.as_ref()).to_string();
 							self.data.insert(k, v);
 						}
 						Delta::Remove {

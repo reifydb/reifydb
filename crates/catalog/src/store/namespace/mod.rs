@@ -17,21 +17,21 @@ pub mod shape;
 pub mod update;
 
 pub(crate) fn convert_namespace(multi: MultiVersionRow) -> Namespace {
-	let row = multi.row;
-	let id = NamespaceId(namespace::SHAPE.get::<u64>(&row, namespace::ID));
-	let name = namespace::SHAPE.get_utf8(&row, namespace::NAME).to_string();
-	let parent_id = NamespaceId(namespace::SHAPE.get::<u64>(&row, namespace::PARENT_ID));
+	let bytes = multi.bytes;
+	let id = NamespaceId(namespace::SHAPE.get::<u64>(&bytes, namespace::ID));
+	let name = namespace::SHAPE.get_utf8(&bytes, namespace::NAME).to_string();
+	let parent_id = NamespaceId(namespace::SHAPE.get::<u64>(&bytes, namespace::PARENT_ID));
 	let grpc =
-		namespace::SHAPE.try_get_utf8(&row, namespace::GRPC).map(|s| s.to_string()).filter(|s| !s.is_empty());
+		namespace::SHAPE.try_get_utf8(&bytes, namespace::GRPC).map(|s| s.to_string()).filter(|s| !s.is_empty());
 	let local_name = namespace::SHAPE
-		.try_get_utf8(&row, namespace::LOCAL_NAME)
+		.try_get_utf8(&bytes, namespace::LOCAL_NAME)
 		.filter(|s| !s.is_empty())
 		.unwrap_or_else(|| name.rsplit_once("::").map(|(_, s)| s).unwrap_or(&name))
 		.to_string();
 
 	if let Some(address) = grpc {
 		let token = namespace::SHAPE
-			.try_get_utf8(&row, namespace::TOKEN)
+			.try_get_utf8(&bytes, namespace::TOKEN)
 			.map(|s| s.to_string())
 			.filter(|s| !s.is_empty());
 		Namespace::Remote {

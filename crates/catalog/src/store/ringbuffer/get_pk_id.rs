@@ -19,7 +19,7 @@ impl CatalogStore {
 			None => return Ok(None),
 		};
 
-		let pk_id = ringbuffer::SHAPE.get::<u64>(&multi.row, ringbuffer::PRIMARY_KEY);
+		let pk_id = ringbuffer::SHAPE.get::<u64>(&multi.bytes, ringbuffer::PRIMARY_KEY);
 
 		if pk_id == 0 {
 			Ok(None)

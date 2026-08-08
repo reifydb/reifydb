@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -23,7 +23,7 @@ use reifydb_testing_chaos::fuzz::pick;
 use reifydb_value::util::cowvec::CowVec;
 
 use crate::{
-	fixtures::{build_row, flush, sync_persistent_store},
+	fixtures::{build_bytes, flush, sync_persistent_store},
 	workload::distinct_rows,
 };
 
@@ -128,7 +128,7 @@ fn check_get_ms(configs: &[(&str, StandardMultiStore)], oracle: &MsOracle, s: us
 	let key = RowKey::encoded(storage(s), row);
 	let expected = oracle.get(s, row);
 	for (name, store) in configs {
-		let got = store.get(&key, CommitVersion(read)).unwrap().map(|r| (r.row.to_vec(), r.version.0));
+		let got = store.get(&key, CommitVersion(read)).unwrap().map(|r| (r.bytes.to_vec(), r.version.0));
 		assert_eq!(
 			got, expected,
 			"MS GET mismatch: config={name} step={step} object={s} row={row} read={read} store={got:?} oracle={expected:?}"
@@ -151,7 +151,7 @@ fn collect_range_ms(
 	} else {
 		store.range(RowKey::full_scan(storage(s)), scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
 	};
-	rows.into_iter().map(|r| (r.key.to_vec(), r.row.to_vec(), r.version.0)).collect()
+	rows.into_iter().map(|r| (r.key.to_vec(), r.bytes.to_vec(), r.version.0)).collect()
 }
 
 fn check_range_ms(
@@ -236,7 +236,7 @@ pub fn drive(seed: u64, p: Params) {
 					values.push((row, None));
 				} else {
 					let payload = format!("s{s}r{row}@v{version}").into_bytes();
-					let bytes = build_row(&payload).0.to_vec();
+					let bytes = build_bytes(&payload).0.to_vec();
 					oracle.set(s, row, bytes.clone(), version);
 					values.push((row, Some(bytes)));
 				}
@@ -247,7 +247,7 @@ pub fn drive(seed: u64, p: Params) {
 					.map(|(row, value)| match value {
 						Some(bytes) => Delta::Set {
 							key: RowKey::encoded(storage(s), *row),
-							row: EncodedRow(CowVec::new(bytes.clone())),
+							bytes: EncodedBytes(CowVec::new(bytes.clone())),
 						},
 						None => Delta::remove_silent(RowKey::encoded(storage(s), *row)),
 					})

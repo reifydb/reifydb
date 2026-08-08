@@ -42,7 +42,7 @@ fn persisted_stamps(db: &TestDb) -> Vec<CommitVersion> {
 	batch.items
 		.iter()
 		.filter_map(|row| {
-			let bytes = row.row.as_slice();
+			let bytes = row.bytes.as_slice();
 			(bytes.len() == 16).then(|| CommitVersion(u64::from_be_bytes(bytes[8..].try_into().unwrap())))
 		})
 		.collect()

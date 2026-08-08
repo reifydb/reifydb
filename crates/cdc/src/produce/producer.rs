@@ -166,19 +166,19 @@ fn delta_to_raw_system_change(
 	match delta {
 		Delta::Set {
 			key,
-			row,
+			bytes,
 		} => {
 			let pre = transaction_store.get_previous_version(key, version).ok().flatten();
 			Some(if let Some(prev) = pre {
 				SystemChange::Update {
 					key: key.clone(),
-					pre: prev.row,
-					post: row.clone(),
+					pre: prev.bytes,
+					post: bytes.clone(),
 				}
 			} else {
 				SystemChange::Insert {
 					key: key.clone(),
-					post: row.clone(),
+					post: bytes.clone(),
 				}
 			})
 		}
@@ -310,7 +310,7 @@ pub mod tests {
 	use crate::{
 		consume::backlog::BacklogPull,
 		storage::memory::MemoryCdcStorage,
-		testing::{make_key, make_row},
+		testing::{make_bytes, make_key},
 	};
 
 	fn test_backlog() -> FlowBacklog {
@@ -337,7 +337,7 @@ pub mod tests {
 
 		let deltas = vec![Delta::Set {
 			key: make_key("test_key"),
-			row: make_row("test_value"),
+			bytes: make_bytes("test_value"),
 		}];
 
 		handle.actor_ref()
@@ -390,7 +390,7 @@ pub mod tests {
 		let deltas = vec![
 			Delta::Set {
 				key: make_key("key1"),
-				row: make_row("value1"),
+				bytes: make_bytes("value1"),
 			},
 			Delta::remove_silent(make_key("key2")),
 		];
@@ -462,7 +462,7 @@ pub mod tests {
 				changed_at: DateTime::from_nanos(2),
 				deltas: vec![Delta::Set {
 					key: make_key("unknown_kind_key"),
-					row: make_row("value"),
+					bytes: make_bytes("value"),
 				}],
 				flow_changes: vec![],
 			})

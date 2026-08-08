@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::key::{EncodableKey, kind::KeyKind, procedure::ProcedureKey};
 use reifydb_transaction::transaction::Transaction;
 
@@ -16,7 +16,7 @@ use crate::{
 pub(super) struct ProcedureApplier;
 
 impl CatalogChangeApplier for ProcedureApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let id = ProcedureKey::decode(key).map(|k| k.procedure).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Procedure,

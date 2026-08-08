@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_value::value::datetime::DateTime;
 use serde::{Deserialize, Serialize};
 
@@ -87,16 +87,16 @@ impl AsRef<str> for CdcConsumerId {
 pub enum SystemChange {
 	Insert {
 		key: EncodedKey,
-		post: EncodedRow,
+		post: EncodedBytes,
 	},
 	Update {
 		key: EncodedKey,
-		pre: EncodedRow,
-		post: EncodedRow,
+		pre: EncodedBytes,
+		post: EncodedBytes,
 	},
 	Delete {
 		key: EncodedKey,
-		pre: Option<EncodedRow>,
+		pre: Option<EncodedBytes>,
 	},
 }
 

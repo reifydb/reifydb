@@ -16,11 +16,11 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.row;
-		let id = OperatorId(SHAPE.get::<u64>(&row, operator::ID));
-		let flow = FlowId(SHAPE.get::<u64>(&row, operator::FLOW));
-		let node_type = SHAPE.get::<u8>(&row, operator::TYPE);
-		let data = SHAPE.get_blob(&row, operator::DATA).clone();
+		let bytes = multi.bytes;
+		let id = OperatorId(SHAPE.get::<u64>(&bytes, operator::ID));
+		let flow = FlowId(SHAPE.get::<u64>(&bytes, operator::FLOW));
+		let node_type = SHAPE.get::<u8>(&bytes, operator::TYPE);
+		let data = SHAPE.get_blob(&bytes, operator::DATA).clone();
 
 		Ok(Some(Operator {
 			id,

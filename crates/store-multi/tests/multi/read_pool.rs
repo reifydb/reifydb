@@ -3,7 +3,7 @@
 
 use std::thread;
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -12,8 +12,8 @@ use reifydb_core::{
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::util::cowvec::CowVec;
 
-fn row(bytes: &[u8]) -> EncodedRow {
-	EncodedRow(CowVec::new(bytes.to_vec()))
+fn encoded_bytes(bytes: &[u8]) -> EncodedBytes {
+	EncodedBytes(CowVec::new(bytes.to_vec()))
 }
 
 #[test]
@@ -27,7 +27,7 @@ fn concurrent_reads_during_writes_no_deadlock() {
 		&store,
 		CowVec::new(vec![Delta::Set {
 			key: key.clone(),
-			row: row(b"v0"),
+			bytes: encoded_bytes(b"v0"),
 		}]),
 		CommitVersion(1),
 	)
@@ -54,7 +54,7 @@ fn concurrent_reads_during_writes_no_deadlock() {
 			&store,
 			CowVec::new(vec![Delta::Set {
 				key: key.clone(),
-				row: row(format!("v{v}").as_bytes()),
+				bytes: encoded_bytes(format!("v{v}").as_bytes()),
 			}]),
 			CommitVersion(v),
 		)
@@ -66,5 +66,5 @@ fn concurrent_reads_during_writes_no_deadlock() {
 	}
 
 	let final_value = store.get(&key, CommitVersion(u64::MAX)).unwrap().unwrap();
-	assert_eq!(final_value.row.as_slice(), format!("v{last}").as_bytes());
+	assert_eq!(final_value.bytes.as_slice(), format!("v{last}").as_bytes());
 }

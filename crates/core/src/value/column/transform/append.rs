@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_value::{
 	Result, reifydb_assertions,
 	util::bitvec::BitVec,
@@ -64,12 +64,12 @@ impl Columns {
 	pub fn append_rows(
 		&mut self,
 		shape: &RowShape,
-		rows: impl IntoIterator<Item = EncodedRow>,
+		rows: impl IntoIterator<Item = EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
 		self.validate_append_shape(shape)?;
 
-		let rows: Vec<EncodedRow> = rows.into_iter().collect();
+		let rows: Vec<EncodedBytes> = rows.into_iter().collect();
 		Self::validate_row_numbers(&row_numbers, rows.len())?;
 
 		reifydb_assertions! {
@@ -85,7 +85,7 @@ impl Columns {
 
 		self.push_system_columns(&rows, &row_numbers);
 		self.retype_all_none_columns(shape);
-		self.append_each_row(shape, &rows)
+		self.append_each_bytes(shape, &rows)
 	}
 
 	#[inline]
@@ -119,7 +119,7 @@ impl Columns {
 	}
 
 	#[inline]
-	fn push_system_columns(&mut self, rows: &[EncodedRow], row_numbers: &[RowNumber]) {
+	fn push_system_columns(&mut self, rows: &[EncodedBytes], row_numbers: &[RowNumber]) {
 		for (index, row) in rows.iter().enumerate() {
 			self.system.push(RowStamps {
 				row_number: row_numbers.get(index).copied(),
@@ -284,7 +284,7 @@ impl Columns {
 	}
 
 	#[inline]
-	fn append_each_row(&mut self, shape: &RowShape, rows: &[EncodedRow]) -> Result<()> {
+	fn append_each_bytes(&mut self, shape: &RowShape, rows: &[EncodedBytes]) -> Result<()> {
 		for row in rows {
 			let all_defined = (0..shape.field_count()).all(|i| row.is_defined(i));
 
@@ -298,7 +298,7 @@ impl Columns {
 		Ok(())
 	}
 
-	fn append_all_defined_from_shape(&mut self, shape: &RowShape, row: &EncodedRow) -> Result<()> {
+	fn append_all_defined_from_shape(&mut self, shape: &RowShape, row: &EncodedBytes) -> Result<()> {
 		let names = &self.names;
 		let columns = &mut self.columns;
 		for (index, column) in columns.iter_mut().enumerate() {
@@ -447,7 +447,7 @@ impl Columns {
 		Ok(())
 	}
 
-	fn append_fallback_from_shape(&mut self, shape: &RowShape, row: &EncodedRow) -> Result<()> {
+	fn append_fallback_from_shape(&mut self, shape: &RowShape, row: &EncodedBytes) -> Result<()> {
 		let columns = &mut self.columns;
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = shape.get_field(index).unwrap();

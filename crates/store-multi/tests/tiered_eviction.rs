@@ -7,7 +7,7 @@
 
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -72,7 +72,7 @@ fn commit(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str)
 		store,
 		cow_vec![Delta::Set {
 			key: k.clone(),
-			row: EncodedRow(CowVec::new(value.as_bytes().to_vec())),
+			bytes: EncodedBytes(CowVec::new(value.as_bytes().to_vec())),
 		}],
 		CommitVersion(version),
 	)
@@ -80,7 +80,7 @@ fn commit(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str)
 }
 
 fn get(store: &StandardMultiStore, k: &EncodedKey, version: u64) -> Option<Vec<u8>> {
-	store.get(k, CommitVersion(version)).unwrap().map(|r| r.row.to_vec())
+	store.get(k, CommitVersion(version)).unwrap().map(|r| r.bytes.to_vec())
 }
 
 fn scan_keys(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)> {
@@ -94,7 +94,7 @@ fn scan_keys(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)
 	.collect::<Result<Vec<_>, _>>()
 	.unwrap()
 	.into_iter()
-	.map(|r| (r.key.to_vec(), r.row.to_vec()))
+	.map(|r| (r.key.to_vec(), r.bytes.to_vec()))
 	.collect()
 }
 

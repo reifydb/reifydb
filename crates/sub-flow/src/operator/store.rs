@@ -67,7 +67,7 @@ impl StateStore for OperatorStateStore<'_> {
 
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<StateBytes>> {
 		match self.txn.state_get(self.operator, key)? {
-			Some(row) => Ok(Some(StateBytes::from_row(row)?)),
+			Some(row) => Ok(Some(StateBytes::from_bytes(row)?)),
 			None => Ok(None),
 		}
 	}
@@ -85,13 +85,13 @@ impl StateStore for OperatorStateStore<'_> {
 			let Some(inner) = GroupStateKey::from_framed(EncodedKey::new(decoded.key)) else {
 				continue;
 			};
-			visit(inner, StateBytes::from_row(r.row)?)?;
+			visit(inner, StateBytes::from_bytes(r.bytes)?)?;
 		}
 		Ok(())
 	}
 
 	fn state_set(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()> {
-		self.txn.state_set(self.operator, key, payload.into_row())
+		self.txn.state_set(self.operator, key, payload.into_bytes())
 	}
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
@@ -109,7 +109,7 @@ impl StateStore for OperatorStateStore<'_> {
 			if let Some(decoded) = OperatorStateKey::decode(&r.key)
 				&& let Some(inner) = GroupStateKey::from_framed(EncodedKey::new(decoded.key))
 			{
-				visit(inner, StateBytes::from_row(r.row)?)?;
+				visit(inner, StateBytes::from_bytes(r.bytes)?)?;
 			}
 		}
 		Ok(())

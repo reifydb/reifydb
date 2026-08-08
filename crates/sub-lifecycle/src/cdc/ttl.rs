@@ -123,7 +123,7 @@ mod tests {
 	use reifydb_cdc::{
 		consume::checkpoint::CdcCheckpoint,
 		storage::memory::MemoryCdcStorage,
-		testing::{TestCdcHost, make_key, make_row},
+		testing::{TestCdcHost, make_bytes, make_key},
 	};
 	use reifydb_core::{
 		common::CommitVersion,
@@ -165,7 +165,7 @@ mod tests {
 				vec![],
 				vec![SystemChange::Insert {
 					key: make_key(&format!("k{v}")),
-					post: make_row("v"),
+					post: make_bytes("v"),
 				}],
 			);
 			storage.write(&cdc).unwrap();

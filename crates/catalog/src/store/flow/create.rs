@@ -178,9 +178,9 @@ pub mod tests {
 		let mut found_flow_two = false;
 
 		for link in &links {
-			let row = &link.row;
-			let id = flow_namespace::SHAPE.get::<u64>(row, flow_namespace::ID);
-			let name = flow_namespace::SHAPE.get_utf8(row, flow_namespace::NAME);
+			let bytes = &link.bytes;
+			let id = flow_namespace::SHAPE.get::<u64>(bytes, flow_namespace::ID);
+			let name = flow_namespace::SHAPE.get_utf8(bytes, flow_namespace::NAME);
 
 			match name {
 				"flow_one" => {

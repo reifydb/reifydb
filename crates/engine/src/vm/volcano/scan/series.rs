@@ -137,18 +137,18 @@ impl SeriesScanNode {
 				if let Some(p) = partition {
 					batch.partitions.push(p);
 				}
-				batch.created_at_values.push(entry.row.created_at());
-				if let Some(time) = entry.row.time() {
+				batch.created_at_values.push(entry.bytes.created_at());
+				if let Some(time) = entry.bytes.time() {
 					batch.time_values.push(time);
 				}
-				batch.updated_at_values.push(entry.row.updated_at());
+				batch.updated_at_values.push(entry.bytes.updated_at());
 				if has_tag {
 					batch.tags.push(variant_tag.unwrap_or(0));
 				}
 
 				let mut values = Vec::with_capacity(data_column_count);
 				for i in 0..data_column_count {
-					values.push(read_shape.get_value(&entry.row, i + 1));
+					values.push(read_shape.get_value(&entry.bytes, i + 1));
 				}
 				batch.data_rows.push(values);
 

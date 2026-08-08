@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::encoded::{
-	row::EncodedRow,
+	bytes::EncodedBytes,
 	shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 };
 use reifydb_core::{
@@ -121,7 +121,7 @@ pub(crate) fn build_shape(columns: &Columns) -> RowShape {
 	RowShape::new(fields)
 }
 
-pub(crate) fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize, now: DateTime) -> EncodedRow {
+pub(crate) fn encode_bytes(shape: &RowShape, columns: &Columns, row_idx: usize, now: DateTime) -> EncodedBytes {
 	let values: Vec<Value> = columns.columns.iter().map(|buf| buf.get_value(row_idx)).collect();
 	let mut encoded = shape.allocate();
 	shape.set_values(&mut encoded, &values);
@@ -149,7 +149,7 @@ pub(crate) fn add_to_state_entry_batch(
 	store.set_row_shape(txn, &shape)?;
 	let group = store.group_for(txn, key_hash)?;
 	for &idx in indices {
-		let encoded = encode_row(&shape, columns, idx, txn.written_at());
+		let encoded = encode_bytes(&shape, columns, idx, txn.written_at());
 		store.write_row(txn, group, columns.row_numbers()[idx], &encoded)?;
 	}
 	Ok(())
@@ -185,7 +185,7 @@ pub(crate) fn update_row_in_entry(
 	post: &Columns,
 	row_idx: usize,
 ) -> Result<bool> {
-	let encoded = encode_row(&prepared.shape, post, row_idx, txn.written_at());
+	let encoded = encode_bytes(&prepared.shape, post, row_idx, txn.written_at());
 	let post_row_number = post.row_numbers()[row_idx];
 	if pre_row_number == post_row_number {
 		store.update_row_in(txn, prepared.group, post_row_number, &encoded)
@@ -209,7 +209,7 @@ pub(crate) fn update_single_row_in_entry(
 ) -> Result<bool> {
 	let shape = build_shape(post);
 	store.set_row_shape(txn, &shape)?;
-	let encoded = encode_row(&shape, post, row_idx, txn.written_at());
+	let encoded = encode_bytes(&shape, post, row_idx, txn.written_at());
 	let post_row_number = post.row_numbers()[row_idx];
 	if pre_row_number == post_row_number {
 		store.update_row(txn, key_hash, post_row_number, &encoded)
@@ -232,12 +232,12 @@ fn decode_run(
 	store: &Store,
 	fingerprint: RowShapeFingerprint,
 	ids: &[RowNumber],
-	rows: &[EncodedRow],
+	rows: &[EncodedBytes],
 ) -> Result<Columns> {
 	let shape = store
 		.get_row_shape(txn, fingerprint)?
 		.ok_or_else(|| Error(Box::new(internal!("Row shape not found in store"))))?;
-	Ok(Columns::from_encoded_rows(&shape, ids, rows))
+	Ok(Columns::from_encoded_bytes(&shape, ids, rows))
 }
 
 #[instrument(name = "flow::operator::join::merge_runs", level = "trace", skip_all, fields(runs = runs.len()))]
@@ -289,12 +289,12 @@ fn merge_runs(runs: Vec<Columns>) -> Columns {
 pub(crate) fn columns_from_block(
 	txn: &mut FlowTransaction,
 	store: &Store,
-	block: Vec<(RowNumber, EncodedRow)>,
+	block: Vec<(RowNumber, EncodedBytes)>,
 ) -> Result<Columns> {
 	let mut runs: Vec<Columns> = Vec::new();
 	let mut run_fingerprint: Option<RowShapeFingerprint> = None;
 	let mut run_ids: Vec<RowNumber> = Vec::new();
-	let mut run_rows: Vec<EncodedRow> = Vec::new();
+	let mut run_rows: Vec<EncodedBytes> = Vec::new();
 
 	for (id, row) in block {
 		let fingerprint = row.fingerprint();
@@ -339,7 +339,7 @@ pub(crate) fn stream_join_blocks_encoded<F>(
 	mut join_block: F,
 ) -> Result<Vec<Diff>>
 where
-	F: FnMut(&mut FlowTransaction, &Columns, &[(RowNumber, EncodedRow)]) -> Result<Vec<Diff>>,
+	F: FnMut(&mut FlowTransaction, &Columns, &[(RowNumber, EncodedBytes)]) -> Result<Vec<Diff>>,
 {
 	let limit = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
 	let mut out = Vec::new();

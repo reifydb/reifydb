@@ -22,12 +22,12 @@ use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_transaction::multi::{RangeScope, transaction::write::MultiWriteTransaction};
 
 use super::test_multi;
-use crate::{as_key, as_values, from_row, multi::transaction::FromRow};
+use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
 
 fn read_u64(txn: &mut MultiWriteTransaction, key: &EncodedKey) -> Option<u64> {
 	txn.get(key).unwrap().map(|sv| {
-		let row = sv.row();
-		from_row!(u64, row)
+		let row = sv.bytes();
+		from_bytes!(u64, row)
 	})
 }
 

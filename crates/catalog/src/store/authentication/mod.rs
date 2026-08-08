@@ -16,11 +16,11 @@ pub mod list;
 pub mod shape;
 
 pub(crate) fn convert_authentication(multi: MultiVersionRow) -> Authentication {
-	let row = multi.row;
-	let id = authentication::SHAPE.get::<u64>(&row, authentication::ID);
-	let identity = authentication::SHAPE.get::<IdentityId>(&row, authentication::IDENTITY);
-	let method = authentication::SHAPE.get_utf8(&row, authentication::METHOD).to_string();
-	let properties_json = authentication::SHAPE.get_utf8(&row, authentication::PROPERTIES).to_string();
+	let bytes = multi.bytes;
+	let id = authentication::SHAPE.get::<u64>(&bytes, authentication::ID);
+	let identity = authentication::SHAPE.get::<IdentityId>(&bytes, authentication::IDENTITY);
+	let method = authentication::SHAPE.get_utf8(&bytes, authentication::METHOD).to_string();
+	let properties_json = authentication::SHAPE.get_utf8(&bytes, authentication::PROPERTIES).to_string();
 
 	let properties: HashMap<String, String> = from_str(&properties_json).unwrap_or_default();
 

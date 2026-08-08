@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -26,20 +26,20 @@ fn key(label: &[u8]) -> EncodedKey {
 	EncodedKey::new(bytes)
 }
 
-fn row(label: &[u8]) -> EncodedRow {
+fn encoded_bytes(label: &[u8]) -> EncodedBytes {
 	let mut bytes = Vec::with_capacity(1 + label.len());
 	bytes.push(b'v');
 	bytes.extend_from_slice(label);
-	EncodedRow(CowVec::new(bytes))
+	EncodedBytes(CowVec::new(bytes))
 }
 
 fn write(store: &MultiStore, k: &EncodedKey, payload: &[u8], version: CommitVersion) {
-	let row = row(payload);
+	let bytes = encoded_bytes(payload);
 	MultiVersionCommit::commit(
 		store,
 		cow_vec![Delta::Set {
 			key: k.clone(),
-			row
+			bytes
 		}],
 		version,
 	)

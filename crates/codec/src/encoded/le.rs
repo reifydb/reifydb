@@ -4,7 +4,7 @@
 use reifydb_value::{encoding::RowField, reifydb_assertions};
 
 use crate::encoded::{
-	row::{EncodedRowBuilder, read_defined},
+	bytes::{EncodedRowBuilder, read_defined},
 	shape::RowShape,
 };
 
@@ -59,7 +59,7 @@ mod tests {
 		value::{date::Date, datetime::DateTime, duration::Duration, value_type::ValueType},
 	};
 
-	use crate::encoded::{row::SHAPE_HEADER_SIZE, shape::RowShape};
+	use crate::encoded::{bytes::SHAPE_HEADER_SIZE, shape::RowShape};
 
 	#[test]
 	fn one_generic_path_writes_every_width_into_its_own_slot() {

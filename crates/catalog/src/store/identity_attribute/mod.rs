@@ -13,11 +13,11 @@ pub mod list;
 pub mod shape;
 
 pub(crate) fn convert_identity_attribute(multi: MultiVersionRow) -> IdentityAttribute {
-	let row = multi.row;
-	let id = identity_attribute::SHAPE.get::<u64>(&row, identity_attribute::ID);
-	let name = identity_attribute::SHAPE.get_utf8(&row, identity_attribute::NAME).to_string();
+	let bytes = multi.bytes;
+	let id = identity_attribute::SHAPE.get::<u64>(&bytes, identity_attribute::ID);
+	let name = identity_attribute::SHAPE.get_utf8(&bytes, identity_attribute::NAME).to_string();
 	let value_type =
-		value_type_from_tag_byte(identity_attribute::SHAPE.get::<u8>(&row, identity_attribute::VALUE_TYPE));
+		value_type_from_tag_byte(identity_attribute::SHAPE.get::<u8>(&bytes, identity_attribute::VALUE_TYPE));
 
 	IdentityAttribute {
 		id,

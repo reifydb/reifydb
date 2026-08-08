@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	interface::catalog::identity::Role,
 	key::{EncodableKey, kind::KeyKind, role::RoleKey},
@@ -14,7 +14,7 @@ use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::role::sh
 pub(super) struct RoleApplier;
 
 impl CatalogChangeApplier for RoleApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let r = decode_role(row);
 		catalog.cache.set_role(r.id, txn.version(), Some(r));
@@ -31,7 +31,7 @@ impl CatalogChangeApplier for RoleApplier {
 	}
 }
 
-fn decode_role(row: &EncodedRow) -> Role {
+fn decode_role(row: &EncodedBytes) -> Role {
 	let id = role::SHAPE.get::<u64>(row, role::ID);
 	let name = role::SHAPE.get_utf8(row, role::NAME).to_string();
 

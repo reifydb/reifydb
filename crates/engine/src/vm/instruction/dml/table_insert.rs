@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_codec::encoded::{
-	row::{EncodedRow, EncodedRowBuilder},
+	bytes::{EncodedBytes, EncodedRowBuilder},
 	shape::RowShape,
 };
 use reifydb_core::{
@@ -195,8 +195,8 @@ fn validate_and_encode_input_rows(
 	context: &Arc<QueryContext>,
 	symbols: &SymbolTable,
 	input_node: &mut Box<dyn QueryNode>,
-) -> Result<Vec<EncodedRow>> {
-	let mut validated_rows: Vec<EncodedRow> = Vec::new();
+) -> Result<Vec<EncodedBytes>> {
+	let mut validated_rows: Vec<EncodedBytes> = Vec::new();
 	let mut mutable_context = (**context).clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		PolicyEvaluator::new(services, symbols).enforce_write_policies(
@@ -233,7 +233,7 @@ fn build_insert_table_row(
 	view: &ColumnView<'_>,
 	context: &Arc<QueryContext>,
 	row_idx: usize,
-) -> Result<EncodedRow> {
+) -> Result<EncodedBytes> {
 	let mut row = shape.allocate();
 	for (table_idx, table_column) in target.table.columns.iter().enumerate() {
 		let mut value = if let Some(&input_idx) = view.column_map.get(table_column.name.as_str()) {
@@ -293,11 +293,11 @@ fn insert_validated_table_rows(
 	txn: &mut Transaction<'_>,
 	target: &TableTarget<'_>,
 	shape: &RowShape,
-	validated_rows: &[EncodedRow],
+	validated_rows: &[EncodedBytes],
 	row_numbers: &[RowNumber],
 	has_returning: bool,
 	pk: Option<&PkContext<'_>>,
-) -> Result<Vec<(RowNumber, EncodedRow)>> {
+) -> Result<Vec<(RowNumber, EncodedBytes)>> {
 	let mut owned_rows: Vec<EncodedRowBuilder> = validated_rows.iter().map(|r| r.clone().thaw()).collect();
 	txn.insert_table(target.table, shape, row_numbers, &mut owned_rows)?;
 

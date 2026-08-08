@@ -104,7 +104,7 @@ fn persisted_rows(op: &DistinctOperator, txn: &mut FlowTransaction) -> BTreeMap<
 		let inner = OperatorStateKey::decode(&item.key).expect("internal state key");
 		if let Some((_, keyspace, _)) = OperatorGroupStateKey::decode_inner(&inner.key) {
 			if keyspace == Keyspace::DISTINCT_ENTRY {
-				out.insert(inner.key.clone(), item.row.to_vec());
+				out.insert(inner.key.clone(), item.bytes.to_vec());
 			}
 		}
 	}

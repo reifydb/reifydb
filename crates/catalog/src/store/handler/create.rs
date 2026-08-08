@@ -172,13 +172,13 @@ pub mod tests {
 
 		// Keys are descending, so the higher id sorts first.
 		let link = &links[0];
-		let row = &link.row;
-		assert_eq!(handler_namespace::SHAPE.get::<u64>(row, handler_namespace::ID), 16386);
-		assert_eq!(handler_namespace::SHAPE.get_utf8(row, handler_namespace::NAME), "another_handler");
+		let bytes = &link.bytes;
+		assert_eq!(handler_namespace::SHAPE.get::<u64>(bytes, handler_namespace::ID), 16386);
+		assert_eq!(handler_namespace::SHAPE.get_utf8(bytes, handler_namespace::NAME), "another_handler");
 
 		let link = &links[1];
-		let row = &link.row;
-		assert_eq!(handler_namespace::SHAPE.get::<u64>(row, handler_namespace::ID), 16385);
-		assert_eq!(handler_namespace::SHAPE.get_utf8(row, handler_namespace::NAME), "test_handler");
+		let bytes = &link.bytes;
+		assert_eq!(handler_namespace::SHAPE.get::<u64>(bytes, handler_namespace::ID), 16385);
+		assert_eq!(handler_namespace::SHAPE.get_utf8(bytes, handler_namespace::NAME), "test_handler");
 	}
 }

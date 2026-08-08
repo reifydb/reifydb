@@ -402,7 +402,7 @@ pub(crate) fn lease_demand(report: &LeaseReport) -> ByteSize {
 mod tests {
 	use std::collections::HashMap;
 
-	use reifydb_codec::encoded::row::EncodedRow;
+	use reifydb_codec::encoded::bytes::EncodedBytes;
 	use reifydb_core::{
 		common::TimeDomain,
 		interface::{
@@ -565,7 +565,7 @@ mod tests {
 		inner.insert_operator(operator, OperatorCell::new(SourceSeriesOperator::new(operator)));
 
 		let store = inner.substrate.operators.clone();
-		store.set(operator, EncodedKey::new(b"k"), EncodedRow(CowVec::new(vec![1u8; 64])));
+		store.set(operator, EncodedKey::new(b"k"), EncodedBytes(CowVec::new(vec![1u8; 64])));
 		assert!(store.bytes(operator) > 0, "precondition: the operator's arena holds state");
 
 		inner.remove_flow(FlowId(1));

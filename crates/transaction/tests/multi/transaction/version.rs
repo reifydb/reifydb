@@ -14,7 +14,7 @@ use reifydb_core::common::CommitVersion;
 use reifydb_transaction::multi::RangeScope;
 
 use super::test_multi;
-use crate::{as_key, as_values, from_row, multi::transaction::FromRow};
+use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
 
 #[test]
 fn test_versions() {
@@ -36,7 +36,7 @@ fn test_versions() {
 		let v = idx;
 		{
 			let tv = txn.get(&k0).unwrap().unwrap();
-			assert_eq!(v, from_row!(i32, tv.row()));
+			assert_eq!(v, from_bytes!(i32, tv.bytes()));
 		}
 
 		// A range at this read version must collapse to one row, not every historical version.
@@ -47,7 +47,7 @@ fn test_versions() {
 		let mut count = 0;
 		for sv in items {
 			assert_eq!(&sv.key, &k0);
-			let value = from_row!(i32, &sv.row);
+			let value = from_bytes!(i32, &sv.bytes);
 			assert_eq!(value, idx, "{idx} {:?}", value);
 			count += 1;
 		}
@@ -59,7 +59,7 @@ fn test_versions() {
 			.unwrap();
 		let mut count = 0;
 		for sv in items {
-			let value = from_row!(i32, &sv.row);
+			let value = from_bytes!(i32, &sv.bytes);
 			assert_eq!(value, idx, "{idx} {:?}", value);
 			count += 1;
 		}
@@ -68,7 +68,7 @@ fn test_versions() {
 
 	let mut txn = engine.begin_command().unwrap();
 	let sv = txn.get(&k0).unwrap().unwrap();
-	let val = from_row!(i32, sv.row());
+	let val = from_bytes!(i32, sv.bytes());
 	assert_eq!(9, val)
 }
 
@@ -87,7 +87,7 @@ fn test_as_of_version_bounds() {
 
 	let mut rx = engine.begin_query().unwrap();
 	rx.read_as_of_version_inclusive(committed_at);
-	assert_eq!(1, from_row!(i32, rx.get(&k0).unwrap().unwrap().row()));
+	assert_eq!(1, from_bytes!(i32, rx.get(&k0).unwrap().unwrap().bytes()));
 
 	let mut rx = engine.begin_query().unwrap();
 	rx.read_as_of_version_inclusive(CommitVersion(committed_at.0 - 1));
@@ -99,11 +99,11 @@ fn test_as_of_version_bounds() {
 
 	let mut rx = engine.begin_query().unwrap();
 	rx.read_as_of_version_exclusive(CommitVersion(committed_at.0 + 1));
-	assert_eq!(1, from_row!(i32, rx.get(&k0).unwrap().unwrap().row()));
+	assert_eq!(1, from_bytes!(i32, rx.get(&k0).unwrap().unwrap().bytes()));
 
 	let mut wx = engine.begin_command().unwrap();
 	wx.read_as_of_version_inclusive(committed_at).unwrap();
-	assert_eq!(1, from_row!(i32, wx.get(&k0).unwrap().unwrap().row()));
+	assert_eq!(1, from_bytes!(i32, wx.get(&k0).unwrap().unwrap().bytes()));
 
 	let mut wx = engine.begin_command().unwrap();
 	wx.read_as_of_version_exclusive(committed_at);

@@ -3,7 +3,7 @@
 
 use reifydb_codec::{
 	encoded::{
-		row::{EncodedRow, EncodedRowBuilder},
+		bytes::{EncodedBytes, EncodedRowBuilder},
 		shape::RowShape,
 	},
 	key::serializer::KeySerializer,
@@ -38,17 +38,17 @@ pub trait KeyedStateful: RawStatefulOperator {
 		layout.allocate()
 	}
 
-	fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> Result<EncodedRow> {
+	fn load_state(&self, txn: &mut FlowTransaction, key_values: &[Value]) -> Result<EncodedBytes> {
 		let key = self.encode_state_key(key_values);
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
-	fn save_state(&self, txn: &mut FlowTransaction, key_values: &[Value], row: EncodedRow) -> Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, key_values: &[Value], row: EncodedBytes) -> Result<()> {
 		let key = self.encode_state_key(key_values);
 		utils::save_row(self.id(), txn, &key, row)
 	}
 
-	fn update_state<F>(&self, txn: &mut FlowTransaction, key_values: &[Value], f: F) -> Result<EncodedRow>
+	fn update_state<F>(&self, txn: &mut FlowTransaction, key_values: &[Value], f: F) -> Result<EncodedBytes>
 	where
 		F: FnOnce(&RowShape, &mut EncodedRowBuilder) -> Result<()>,
 	{

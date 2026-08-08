@@ -60,7 +60,7 @@ fn remove_dictionary_entries(single: &SingleTransaction, dictionary: DictionaryI
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_codec::encoded::row::EncodedRow;
+	use reifydb_codec::encoded::bytes::EncodedBytes;
 	use reifydb_core::key::dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
@@ -134,8 +134,8 @@ pub mod tests {
 		let index_key = DictionaryEntryIndexKey::encoded(dict_def.id, next_id);
 		txn.single
 			.with_command([&entry_key, &index_key], |tx| {
-				tx.set(&entry_key, EncodedRow(CowVec::new(entry_value.clone())))?;
-				tx.set(&index_key, EncodedRow(CowVec::new(dummy_value.clone())))
+				tx.set(&entry_key, EncodedBytes(CowVec::new(entry_value.clone())))?;
+				tx.set(&index_key, EncodedBytes(CowVec::new(dummy_value.clone())))
 			})
 			.unwrap();
 

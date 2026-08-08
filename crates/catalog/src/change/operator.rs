@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	interface::catalog::flow::{FlowId, Operator, OperatorId},
 	key::{EncodableKey, kind::KeyKind, operator::OperatorKey},
@@ -19,7 +19,7 @@ use crate::{
 pub(super) struct OperatorApplier;
 
 impl CatalogChangeApplier for OperatorApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let operator = decode_operator(row);
 		catalog.cache.set_operator(operator.id, txn.version(), Some(operator));
@@ -36,7 +36,7 @@ impl CatalogChangeApplier for OperatorApplier {
 	}
 }
 
-fn decode_operator(row: &EncodedRow) -> Operator {
+fn decode_operator(row: &EncodedBytes) -> Operator {
 	let id = OperatorId(operator::SHAPE.get::<u64>(row, ID));
 	let flow = FlowId(operator::SHAPE.get::<u64>(row, FLOW));
 	let node_type = operator::SHAPE.get::<u8>(row, TYPE);

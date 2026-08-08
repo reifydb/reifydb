@@ -6,7 +6,7 @@ use reifydb_core::common::CommitVersion;
 use reifydb_transaction::{multi::RangeScope, transaction::replica::ReplicaTransaction};
 
 use super::test_multi;
-use crate::{as_key, as_values, from_row, multi::transaction::FromRow};
+use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
 
 #[test]
 fn test_replica_write() {
@@ -22,7 +22,7 @@ fn test_replica_write() {
 	{
 		let rx = engine.begin_query().unwrap();
 		assert_eq!(rx.version(), CommitVersion(100));
-		let value: String = from_row!(String, rx.get(&as_key!("foo")).unwrap().unwrap().row());
+		let value: String = from_bytes!(String, rx.get(&as_key!("foo")).unwrap().unwrap().bytes());
 		assert_eq!(value.as_str(), "foo1");
 	}
 }
@@ -37,7 +37,7 @@ fn test_replica_multiple_write() {
 		}
 
 		let sv = tx.get(&as_key!(8)).unwrap().unwrap();
-		assert_eq!(from_row!(i32, *sv.row()), 8);
+		assert_eq!(from_bytes!(i32, *sv.bytes()), 8);
 		drop(sv);
 
 		assert!(tx.contains_key(&as_key!(8)).unwrap());
@@ -47,7 +47,7 @@ fn test_replica_multiple_write() {
 	let rx = engine.begin_query().unwrap();
 	assert!(rx.contains_key(&as_key!(8)).unwrap());
 	let sv = rx.get(&as_key!(8)).unwrap().unwrap();
-	assert_eq!(from_row!(i32, *sv.row()), 8);
+	assert_eq!(from_bytes!(i32, *sv.bytes()), 8);
 }
 
 #[test]
@@ -65,7 +65,7 @@ fn test_replica_read_after_write() {
 
 		let rx = engine.begin_query().unwrap();
 		let sv = rx.get(&k).unwrap().unwrap();
-		assert_eq!(*sv.row(), v);
+		assert_eq!(*sv.bytes(), v);
 	}
 }
 
@@ -90,12 +90,12 @@ fn test_replica_versions() {
 		txn.read_as_of_version_exclusive(read_version);
 
 		let tv = txn.get(&k0).unwrap().unwrap();
-		assert_eq!(idx, from_row!(i32, tv.row()));
+		assert_eq!(idx, from_bytes!(i32, tv.bytes()));
 	}
 
 	let rx = engine.begin_query().unwrap();
 	let sv = rx.get(&k0).unwrap().unwrap();
-	assert_eq!(9, from_row!(i32, sv.row()));
+	assert_eq!(9, from_bytes!(i32, sv.bytes()));
 }
 
 #[test]
@@ -116,14 +116,14 @@ fn test_replica_range() {
 		rx.range(four_to_one.clone(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=3).rev().zip(items) {
 		assert_eq!(v.key, as_key!(expected));
-		assert_eq!(v.row, as_values!(expected));
+		assert_eq!(v.bytes, as_values!(expected));
 		assert_eq!(v.version, CommitVersion(100));
 	}
 
 	let items: Vec<_> = rx.range_rev(four_to_one, RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, v) in (1..=3).zip(items) {
 		assert_eq!(v.key, as_key!(expected));
-		assert_eq!(v.row, as_values!(expected));
+		assert_eq!(v.bytes, as_values!(expected));
 		assert_eq!(v.version, CommitVersion(100));
 	}
 }
@@ -155,7 +155,7 @@ fn test_replica_range_multiple_commits() {
 	assert_eq!(items.len(), 6);
 	for (expected, v) in (1..=6).rev().zip(items) {
 		assert_eq!(v.key, as_key!(expected));
-		assert_eq!(v.row, as_values!(expected));
+		assert_eq!(v.bytes, as_values!(expected));
 	}
 }
 
@@ -209,8 +209,8 @@ fn test_advance_version_for_replica() {
 	assert_eq!(engine.version().unwrap(), CommitVersion(300));
 
 	let rx = engine.begin_query().unwrap();
-	let a: String = from_row!(String, rx.get(&as_key!("a")).unwrap().unwrap().row());
-	let b: String = from_row!(String, rx.get(&as_key!("b")).unwrap().unwrap().row());
+	let a: String = from_bytes!(String, rx.get(&as_key!("a")).unwrap().unwrap().bytes());
+	let b: String = from_bytes!(String, rx.get(&as_key!("b")).unwrap().unwrap().bytes());
 	assert_eq!(a, "v1");
 	assert_eq!(b, "v2");
 }
@@ -222,7 +222,7 @@ fn test_replica_read_your_writes() {
 
 	tx.set(&as_key!("a"), as_values!("val_a".to_string())).unwrap();
 	let sv = tx.get(&as_key!("a")).unwrap().unwrap();
-	assert_eq!(from_row!(String, *sv.row()), "val_a");
+	assert_eq!(from_bytes!(String, *sv.bytes()), "val_a");
 	drop(sv);
 
 	tx.set(&as_key!("b"), as_values!("val_b".to_string())).unwrap();
@@ -258,12 +258,12 @@ fn test_replica_sequential_commits() {
 	}
 
 	let rx = engine.begin_query().unwrap();
-	assert_eq!(from_row!(i32, rx.get(&k).unwrap().unwrap().row()), 3);
+	assert_eq!(from_bytes!(i32, rx.get(&k).unwrap().unwrap().bytes()), 3);
 
 	// Exclusive read at 21 must land on the version-20 write, not the later one.
 	let mut txn = engine.begin_command().unwrap();
 	txn.read_as_of_version_exclusive(CommitVersion(21));
-	assert_eq!(from_row!(i32, txn.get(&k).unwrap().unwrap().row()), 2);
+	assert_eq!(from_bytes!(i32, txn.get(&k).unwrap().unwrap().bytes()), 2);
 }
 
 #[test]
@@ -283,11 +283,11 @@ fn test_replica_overwrite() {
 	}
 
 	let rx = engine.begin_query().unwrap();
-	assert_eq!(from_row!(String, rx.get(&k).unwrap().unwrap().row()), "v2");
+	assert_eq!(from_bytes!(String, rx.get(&k).unwrap().unwrap().bytes()), "v2");
 
 	let mut txn = engine.begin_command().unwrap();
 	txn.read_as_of_version_exclusive(CommitVersion(101));
-	assert_eq!(from_row!(String, txn.get(&k).unwrap().unwrap().row()), "v1");
+	assert_eq!(from_bytes!(String, txn.get(&k).unwrap().unwrap().bytes()), "v1");
 }
 
 #[test]
@@ -314,7 +314,7 @@ fn test_replica_remove() {
 	let mut txn = engine.begin_command().unwrap();
 	txn.read_as_of_version_exclusive(CommitVersion(101));
 	let sv = txn.get(&k).unwrap().unwrap();
-	assert_eq!(from_row!(i32, sv.row()), 42);
+	assert_eq!(from_bytes!(i32, sv.bytes()), 42);
 }
 
 #[test]
@@ -328,7 +328,7 @@ fn test_replica_transaction_write() {
 	}
 
 	let rx = engine.begin_query().unwrap();
-	let v: String = from_row!(String, rx.get(&as_key!("x")).unwrap().unwrap().row());
+	let v: String = from_bytes!(String, rx.get(&as_key!("x")).unwrap().unwrap().bytes());
 	assert_eq!(v, "y");
 }
 
@@ -421,7 +421,7 @@ fn test_replica_unset() {
 	let mut txn = engine.begin_command().unwrap();
 	txn.read_as_of_version_exclusive(CommitVersion(101));
 	let sv = txn.get(&as_key!(1)).unwrap().unwrap();
-	assert_eq!(from_row!(i32, sv.row()), 42);
+	assert_eq!(from_bytes!(i32, sv.bytes()), 42);
 }
 
 #[test]

@@ -20,9 +20,9 @@ impl CatalogStore {
 		let mut found_id = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let row = multi.row;
-			let column = ColumnId(object_column::SHAPE.get::<u64>(&row, object_column::ID));
-			let name = object_column::SHAPE.get_utf8(&row, object_column::NAME);
+			let bytes = multi.bytes;
+			let column = ColumnId(object_column::SHAPE.get::<u64>(&bytes, object_column::ID));
+			let name = object_column::SHAPE.get_utf8(&bytes, object_column::NAME);
 
 			if name == column_name {
 				found_id = Some(column);

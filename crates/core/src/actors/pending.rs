@@ -10,11 +10,11 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 
 #[derive(Debug, Clone)]
 pub enum PendingWrite {
-	Set(EncodedRow),
+	Set(EncodedBytes),
 	Remove {
 		announce: bool,
 	},
@@ -32,7 +32,7 @@ impl Pending {
 		}
 	}
 
-	pub fn insert(&mut self, key: EncodedKey, value: EncodedRow) {
+	pub fn insert(&mut self, key: EncodedKey, value: EncodedBytes) {
 		self.writes.insert(key, PendingWrite::Set(value));
 	}
 
@@ -45,7 +45,7 @@ impl Pending {
 		);
 	}
 
-	pub fn insert_batch(&mut self, keys: &[EncodedKey], values: &[EncodedRow]) {
+	pub fn insert_batch(&mut self, keys: &[EncodedKey], values: &[EncodedBytes]) {
 		assert_eq!(keys.len(), values.len(), "Pending::insert_batch keys/values length mismatch");
 		self.writes
 			.extend(keys.iter().zip(values.iter()).map(|(k, v)| (k.clone(), PendingWrite::Set(v.clone()))));
@@ -71,7 +71,7 @@ impl Pending {
 		);
 	}
 
-	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedRow> {
+	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedBytes> {
 		match self.writes.get(key) {
 			Some(PendingWrite::Set(value)) => Some(value),
 			_ => None,
@@ -150,7 +150,7 @@ impl PendingLayers {
 		self.layers.iter().rev().map(|layer| layer.as_ref()).find(|layer| layer.contains_key(key))
 	}
 
-	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedRow> {
+	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedBytes> {
 		self.newest_containing(key).and_then(|layer| layer.get(key))
 	}
 
@@ -186,8 +186,8 @@ pub mod tests {
 		EncodedKey::new(s.as_bytes())
 	}
 
-	fn make_value(s: &str) -> EncodedRow {
-		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
+	fn make_value(s: &str) -> EncodedBytes {
+		EncodedBytes(CowVec::new(s.as_bytes().to_vec()))
 	}
 
 	#[test]

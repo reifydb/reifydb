@@ -13,10 +13,10 @@ pub mod list;
 pub mod shape;
 
 pub(crate) fn convert_identity(multi: MultiVersionRow) -> Identity {
-	let row = multi.row;
-	let id = identity::SHAPE.get::<IdentityId>(&row, identity::IDENTITY);
-	let name = identity::SHAPE.get_utf8(&row, identity::NAME).to_string();
-	let enabled = identity::SHAPE.get::<bool>(&row, identity::ENABLED);
+	let bytes = multi.bytes;
+	let id = identity::SHAPE.get::<IdentityId>(&bytes, identity::IDENTITY);
+	let name = identity::SHAPE.get_utf8(&bytes, identity::NAME).to_string();
+	let enabled = identity::SHAPE.get::<bool>(&bytes, identity::ENABLED);
 
 	Identity {
 		id,

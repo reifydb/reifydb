@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	interface::catalog::object::ObjectId,
 	key::{EncodableKey, column::ColumnKey, columns::ColumnsKey},
@@ -14,7 +14,7 @@ use crate::{CatalogStore, Result, catalog::Catalog};
 pub(super) struct ColumnApplier;
 
 impl CatalogChangeApplier for ColumnApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())?;
 		reload_parent_columns(catalog, txn, key)
 	}

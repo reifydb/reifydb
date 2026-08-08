@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::key::{EncodableKey, row_settings::RowSettingsKey};
 use reifydb_transaction::transaction::Transaction;
 
@@ -11,7 +11,7 @@ use crate::{Result, catalog::Catalog, store::row_settings::decode_row_settings};
 pub(super) struct RowSettingsApplier;
 
 impl CatalogChangeApplier for RowSettingsApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())?;
 		if let Some(k) = RowSettingsKey::decode(key)
 			&& let Some(config) = decode_row_settings(row)

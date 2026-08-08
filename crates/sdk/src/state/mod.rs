@@ -10,7 +10,7 @@ pub mod window;
 use std::ops::Bound;
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::EncodedKey,
 	state::{OperatorState, StateBytes, decode_state},
 };
@@ -95,13 +95,13 @@ impl<'a> State<'a> {
 
 	pub fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<StateBytes>> {
 		match ffi::get(self.ctx, key.as_encoded())? {
-			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(ValueError::from)?)),
+			Some(row) => Ok(Some(StateBytes::from_bytes(row).map_err(ValueError::from)?)),
 			None => Ok(None),
 		}
 	}
 
 	pub fn set_bytes(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()> {
-		ffi::set(self.ctx, key.as_encoded(), &payload.into_row())
+		ffi::set(self.ctx, key.as_encoded(), &payload.into_bytes())
 	}
 
 	pub fn get_many_bytes_visit(
@@ -114,7 +114,7 @@ impl<'a> State<'a> {
 			let Some(k) = GroupStateKey::from_framed(k) else {
 				continue;
 			};
-			visit(k, StateBytes::from_row(row).map_err(ValueError::from)?)?;
+			visit(k, StateBytes::from_bytes(row).map_err(ValueError::from)?)?;
 		}
 		Ok(())
 	}
@@ -131,7 +131,7 @@ impl<'a> State<'a> {
 			let Some(k) = GroupStateKey::from_framed(k) else {
 				continue;
 			};
-			visit(k, StateBytes::from_row(row).map_err(ValueError::from)?)?;
+			visit(k, StateBytes::from_bytes(row).map_err(ValueError::from)?)?;
 		}
 		Ok(())
 	}
@@ -145,14 +145,14 @@ impl<'a> State<'a> {
 }
 
 #[inline]
-pub fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedRow> {
+pub fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedBytes> {
 	let bytes = value.encode_state(now).map_err(ValueError::from)?;
-	Ok(bytes.into_row())
+	Ok(bytes.into_bytes())
 }
 
 #[inline]
-pub fn decode_payload<T: OperatorState>(row: &EncodedRow) -> Result<T> {
-	let bytes = StateBytes::from_row(row.clone()).map_err(ValueError::from)?;
+pub fn decode_payload<T: OperatorState>(row: &EncodedBytes) -> Result<T> {
+	let bytes = StateBytes::from_bytes(row.clone()).map_err(ValueError::from)?;
 	Ok(decode_state(&bytes).map_err(ValueError::from)?)
 }
 

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{Result, util::hash::Hash128, value::row_number::RowNumber};
 use tracing::instrument;
 
-use super::hash::{build_shape, columns_from_block, encode_row};
+use super::hash::{build_shape, columns_from_block, encode_bytes};
 use crate::operator::join::store::Store;
 
 #[instrument(name = "flow::operator::join::latest::overwrite_right_slot", level = "trace", skip_all, fields(rows = indices.len()))]
@@ -23,9 +23,9 @@ pub(crate) fn overwrite_right_slot(
 	}
 	let shape = build_shape(columns);
 	right.set_row_shape(txn, &shape)?;
-	let mut stored: Option<EncodedRow> = None;
+	let mut stored: Option<EncodedBytes> = None;
 	for &idx in indices {
-		let encoded = encode_row(&shape, columns, idx, txn.written_at());
+		let encoded = encode_bytes(&shape, columns, idx, txn.written_at());
 		right.put_row(txn, key_hash, RowNumber::MAX, &encoded)?;
 		stored = Some(encoded);
 	}

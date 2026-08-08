@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::{CheckpointState, ConsumerClass},
@@ -31,12 +31,12 @@ impl CheckpointRow {
 		})
 	}
 
-	fn encode(&self) -> EncodedRow {
+	fn encode(&self) -> EncodedBytes {
 		let mut bytes = Vec::with_capacity(10);
 		bytes.extend_from_slice(&self.version.0.to_be_bytes());
 		bytes.push(self.class.encode());
 		bytes.push(self.state.encode());
-		EncodedRow(CowVec::new(bytes))
+		EncodedBytes(CowVec::new(bytes))
 	}
 }
 
@@ -53,7 +53,7 @@ impl CdcCheckpoint {
 
 	pub fn fetch_row<K: ToConsumerKey>(txn: &mut Transaction<'_>, consumer: &K) -> Result<Option<CheckpointRow>> {
 		let key = consumer.to_consumer_key();
-		Ok(txn.get(&key)?.and_then(|multi| CheckpointRow::decode(&multi.row)))
+		Ok(txn.get(&key)?.and_then(|multi| CheckpointRow::decode(&multi.bytes)))
 	}
 
 	pub fn persist<K: ToConsumerKey>(
@@ -76,16 +76,16 @@ impl CdcCheckpoint {
 		let Some(multi) = txn.get(&key)? else {
 			return Ok(());
 		};
-		let Some(mut row) = CheckpointRow::decode(&multi.row) else {
+		let Some(mut bytes) = CheckpointRow::decode(&multi.bytes) else {
 			return Ok(());
 		};
 		assert_ne!(
-			row.class,
+			bytes.class,
 			ConsumerClass::Pinning,
 			"a Pinning consumer checkpoint can never be invalidated: retention must never overtake it"
 		);
-		row.state = CheckpointState::Invalidated;
-		txn.set(&key, row.encode())
+		bytes.state = CheckpointState::Invalidated;
+		txn.set(&key, bytes.encode())
 	}
 
 	pub fn delete<K: ToConsumerKey>(txn: &mut CommandTransaction, consumer: &K) -> Result<()> {

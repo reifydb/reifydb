@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -24,7 +24,7 @@ use reifydb_value::util::cowvec::CowVec;
 
 use crate::{
 	STORAGE,
-	fixtures::{build_row, flush, sync_persistent_store},
+	fixtures::{build_bytes, flush, sync_persistent_store},
 	oracle::{Oracle, Scope},
 	workload::{check_get, check_get_many, check_range, distinct_rows},
 };
@@ -154,7 +154,7 @@ pub fn drive(seed: u64, p: Params) {
 				} else {
 					row_version.insert(row, version);
 					let payload = format!("r{row}@v{version}").into_bytes();
-					deltas.push((row, Some(build_row(&payload).0.to_vec())));
+					deltas.push((row, Some(build_bytes(&payload).0.to_vec())));
 				}
 			}
 			oracle.apply(version, &deltas);
@@ -164,7 +164,7 @@ pub fn drive(seed: u64, p: Params) {
 					.map(|(row, value)| match value {
 						Some(bytes) => Delta::Set {
 							key: RowKey::encoded(STORAGE, *row),
-							row: EncodedRow(CowVec::new(bytes.clone())),
+							bytes: EncodedBytes(CowVec::new(bytes.clone())),
 						},
 						None => Delta::remove_silent(RowKey::encoded(STORAGE, *row)),
 					})

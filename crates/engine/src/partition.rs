@@ -77,7 +77,7 @@ pub fn resolve_partition(
 	let candidate = Value::Blob(Blob::from(encoded));
 	match txn.get(&key)? {
 		Some(multi) => {
-			if REGISTRY_SHAPE.get_value(&multi.row, 0) != candidate {
+			if REGISTRY_SHAPE.get_value(&multi.bytes, 0) != candidate {
 				return Err(EngineError::PartitionHashCollision {
 					object,
 					hash: partition.0,

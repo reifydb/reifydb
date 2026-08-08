@@ -145,7 +145,7 @@ impl DictionaryOperations for Transaction<'_> {
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, id.to_u128());
 		match SingleVersionGet::get(&store, &index_key)? {
 			Some(v) => {
-				let value: Value = from_bytes(&v.row)
+				let value: Value = from_bytes(&v.bytes)
 					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
 				Ok(Some(value))
 			}
@@ -176,14 +176,14 @@ impl DictionaryOperations for Transaction<'_> {
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 		match SingleVersionGet::get(&store, &entry_key)? {
 			Some(v) => {
-				if v.row.len() < 16 {
+				if v.bytes.len() < 16 {
 					return Err(internal_error!(
 						"dictionary entry row is truncated: {} bytes",
-						v.row.len()
+						v.bytes.len()
 					));
 				}
 				let mut id_bytes = [0u8; 16];
-				id_bytes.copy_from_slice(&v.row[..16]);
+				id_bytes.copy_from_slice(&v.bytes[..16]);
 				let entry_id = DictionaryEntryId::from_u128(
 					u128::from_be_bytes(id_bytes),
 					dictionary.id_type.clone(),

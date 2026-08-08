@@ -31,11 +31,11 @@ pub(crate) fn load_flow_edges(rx: &mut Transaction<'_>, catalog: &CatalogCache) 
 }
 
 fn convert_flow_edge(multi: MultiVersionRow) -> FlowEdge {
-	let row = multi.row;
-	let id = FlowEdgeId(flow_edge::SHAPE.get::<u64>(&row, ID));
-	let flow = FlowId(flow_edge::SHAPE.get::<u64>(&row, FLOW));
-	let source = OperatorId(flow_edge::SHAPE.get::<u64>(&row, SOURCE));
-	let target = OperatorId(flow_edge::SHAPE.get::<u64>(&row, TARGET));
+	let bytes = multi.bytes;
+	let id = FlowEdgeId(flow_edge::SHAPE.get::<u64>(&bytes, ID));
+	let flow = FlowId(flow_edge::SHAPE.get::<u64>(&bytes, FLOW));
+	let source = OperatorId(flow_edge::SHAPE.get::<u64>(&bytes, SOURCE));
+	let target = OperatorId(flow_edge::SHAPE.get::<u64>(&bytes, TARGET));
 
 	FlowEdge {
 		id,

@@ -24,17 +24,17 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.row;
-		let id = TableId(table::SHAPE.get::<u64>(&row, table::ID));
-		let namespace = NamespaceId(table::SHAPE.get::<u64>(&row, table::NAMESPACE));
-		let name = table::SHAPE.get_utf8(&row, table::NAME).to_string();
-		let partition_by_str = table::SHAPE.get_utf8(&row, table::PARTITION_BY);
+		let bytes = multi.bytes;
+		let id = TableId(table::SHAPE.get::<u64>(&bytes, table::ID));
+		let namespace = NamespaceId(table::SHAPE.get::<u64>(&bytes, table::NAMESPACE));
+		let name = table::SHAPE.get_utf8(&bytes, table::NAME).to_string();
+		let partition_by_str = table::SHAPE.get_utf8(&bytes, table::PARTITION_BY);
 		let partition_by = if partition_by_str.is_empty() {
 			vec![]
 		} else {
 			partition_by_str.split(',').map(|s| s.to_string()).collect()
 		};
-		let underlying = table::SHAPE.get::<u8>(&row, table::UNDERLYING) != 0;
+		let underlying = table::SHAPE.get::<u8>(&bytes, table::UNDERLYING) != 0;
 
 		Ok(Some(Table {
 			id,
@@ -44,7 +44,7 @@ impl CatalogStore {
 			primary_key: Self::find_primary_key(rx, id)?,
 			partition_by,
 			underlying,
-			time: decode_table_time(&row),
+			time: decode_table_time(&bytes),
 		}))
 	}
 
@@ -59,11 +59,11 @@ impl CatalogStore {
 		let mut found_table = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let row = &multi.row;
-			let table_name = table_namespace::SHAPE.get_utf8(row, table_namespace::NAME);
+			let bytes = &multi.bytes;
+			let table_name = table_namespace::SHAPE.get_utf8(bytes, table_namespace::NAME);
 			if name == table_name {
 				found_table =
-					Some(TableId(table_namespace::SHAPE.get::<u64>(row, table_namespace::ID)));
+					Some(TableId(table_namespace::SHAPE.get::<u64>(bytes, table_namespace::ID)));
 				break;
 			}
 		}

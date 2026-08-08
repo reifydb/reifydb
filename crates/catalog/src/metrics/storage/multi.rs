@@ -8,7 +8,7 @@ use std::{
 	ops::AddAssign,
 };
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::interface::{
 	catalog::metrics::MetricsId,
 	store::{SingleVersionStore, Tier},
@@ -187,7 +187,7 @@ impl<S: SingleVersionStore> StorageMetricsWriter<S> {
 		if let Ok(batch) = storage.prefix(&storage_stats_key_prefix()) {
 			for item in batch.items {
 				if let Some((tier, id)) = decode_storage_stats_key(item.key.as_slice())
-					&& let Some(s) = decode_storage_stats(item.row.as_slice())
+					&& let Some(s) = decode_storage_stats(item.bytes.as_slice())
 				{
 					stats.insert((tier, id), s);
 				}
@@ -262,7 +262,8 @@ impl<S: SingleVersionStore> StorageMetricsWriter<S> {
 		for (tier, id) in dirty {
 			if let Some(stats) = self.stats.get(&(tier, id)) {
 				let storage_key = encode_storage_stats_key(tier, id);
-				self.storage.set(&storage_key, EncodedRow(CowVec::new(encode_storage_stats(stats))))?;
+				self.storage
+					.set(&storage_key, EncodedBytes(CowVec::new(encode_storage_stats(stats))))?;
 			}
 		}
 		Ok(())
@@ -283,7 +284,7 @@ impl<S: SingleVersionStore> StorageMetricsReader<S> {
 
 	pub fn get(&self, tier: Tier, id: MetricsId) -> Result<Option<MultiStorageMetrics>> {
 		let key = encode_storage_stats_key(tier, id);
-		Ok(self.storage.get(&key)?.and_then(|v| decode_storage_stats(v.row.as_slice())))
+		Ok(self.storage.get(&key)?.and_then(|v| decode_storage_stats(v.bytes.as_slice())))
 	}
 
 	pub fn scan_all(&self) -> Result<Vec<((Tier, MetricsId), MultiStorageMetrics)>> {
@@ -293,7 +294,7 @@ impl<S: SingleVersionStore> StorageMetricsReader<S> {
 		let mut results = Vec::new();
 		for item in batch.items {
 			if let Some((tier, id)) = decode_storage_stats_key(item.key.as_slice())
-				&& let Some(stats) = decode_storage_stats(item.row.as_slice())
+				&& let Some(stats) = decode_storage_stats(item.bytes.as_slice())
 			{
 				results.push(((tier, id), stats));
 			}

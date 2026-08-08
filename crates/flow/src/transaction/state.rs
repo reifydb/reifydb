@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -25,7 +25,7 @@ impl FlowTransaction {
 		key_len = key.as_slice().len(),
 		found = field::Empty
 	))]
-	pub fn state_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedRow>> {
+	pub fn state_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedBytes>> {
 		let result = self.scoped_get(id, key)?;
 		Span::current().record("found", result.is_some());
 		Ok(result)
@@ -47,7 +47,7 @@ impl FlowTransaction {
 		key_len = key.as_slice().len(),
 		value_len = value.len()
 	))]
-	pub fn state_set(&mut self, id: OperatorId, key: &GroupStateKey, value: EncodedRow) -> Result<()> {
+	pub fn state_set(&mut self, id: OperatorId, key: &GroupStateKey, value: EncodedBytes) -> Result<()> {
 		self.scoped_set(id, key, value)
 	}
 
@@ -174,7 +174,7 @@ impl FlowTransaction {
 		id: OperatorId,
 		key: &GroupStateKey,
 		shape: &RowShape,
-	) -> Result<EncodedRow> {
+	) -> Result<EncodedBytes> {
 		match self.state_get(id, key)? {
 			Some(row) => {
 				Span::current().record("created", false);
@@ -191,11 +191,11 @@ impl FlowTransaction {
 		operator_id = id.0,
 		key_len = key.as_slice().len()
 	))]
-	pub fn save_row(&mut self, id: OperatorId, key: &GroupStateKey, row: EncodedRow) -> Result<()> {
+	pub fn save_row(&mut self, id: OperatorId, key: &GroupStateKey, row: EncodedBytes) -> Result<()> {
 		self.state_set(id, key, row)
 	}
 
-	fn scoped_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedRow>> {
+	fn scoped_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedBytes>> {
 		let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
 		self.get(&encoded_key)
 	}
@@ -211,9 +211,9 @@ impl FlowTransaction {
 		for encoded_key in &encoded {
 			match self.lookup_overlays(encoded_key) {
 				Some(None) => continue,
-				Some(Some(row)) => items.push(MultiVersionRow {
+				Some(Some(bytes)) => items.push(MultiVersionRow {
 					key: encoded_key.clone(),
-					row,
+					bytes,
 					version,
 				}),
 				None => to_batch.push(encoded_key.clone()),
@@ -229,7 +229,7 @@ impl FlowTransaction {
 	}
 
 	#[inline]
-	fn lookup_overlays(&self, encoded_key: &EncodedKey) -> Option<Option<EncodedRow>> {
+	fn lookup_overlays(&self, encoded_key: &EncodedKey) -> Option<Option<EncodedBytes>> {
 		let inner = self.inner();
 		let pending = if inner.pending.is_removed(encoded_key) {
 			Some(None)
@@ -263,10 +263,10 @@ impl FlowTransaction {
 		{
 			let version = inner.version;
 			for encoded_key in to_batch {
-				if let Some(row) = state.get(encoded_key) {
+				if let Some(bytes) = state.get(encoded_key) {
 					items.push(MultiVersionRow {
 						key: encoded_key.clone(),
-						row: row.clone(),
+						bytes: bytes.clone(),
 						version,
 					});
 				}
@@ -279,11 +279,11 @@ impl FlowTransaction {
 				let (operator, inner_key) = operator_state_coordinates(encoded_key)
 					.expect("state_get_many keys must carry an operator id");
 				match inner.substrate.operators.get(operator, &inner_key) {
-					Some(row) => {
-						inner.memoize_prefetch(encoded_key, Some(row.clone()));
+					Some(bytes) => {
+						inner.memoize_prefetch(encoded_key, Some(bytes.clone()));
 						items.push(MultiVersionRow {
 							key: encoded_key.clone(),
-							row,
+							bytes,
 							version,
 						});
 					}
@@ -297,7 +297,7 @@ impl FlowTransaction {
 		Ok(())
 	}
 
-	fn scoped_set(&mut self, id: OperatorId, key: &GroupStateKey, value: EncodedRow) -> Result<()> {
+	fn scoped_set(&mut self, id: OperatorId, key: &GroupStateKey, value: EncodedBytes) -> Result<()> {
 		self.set(&OperatorStateKey::encoded(id, key.as_slice()), value)
 	}
 
@@ -317,7 +317,7 @@ pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{
 		encoded::{
-			row::{EncodedRow, SHAPE_HEADER_SIZE},
+			bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
 			shape::RowShape,
 		},
 		key::encoded::{EncodedKey, EncodedKeyRange},
@@ -347,7 +347,7 @@ pub mod tests {
 		transaction::{DeferredParams, read::PREFETCH_MEMO_BYTE_CAP, substrate::FlowSubstrate},
 	};
 
-	fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey, row: EncodedRow) {
+	fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey, row: EncodedBytes) {
 		// Stands in for a prior slice's success-side arena apply.
 		engine.inner().operator_state().set(operator, EncodedKey::new(key.as_slice()), row);
 	}
@@ -380,16 +380,16 @@ pub mod tests {
 		OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, s.as_bytes())
 	}
 
-	fn make_value(s: &str) -> EncodedRow {
-		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
+	fn make_value(s: &str) -> EncodedBytes {
+		EncodedBytes(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	fn anchored_row(payload: &[u8], created_at: u64, updated_at: u64) -> EncodedRow {
+	fn anchored_row(payload: &[u8], created_at: u64, updated_at: u64) -> EncodedBytes {
 		let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
 		buf[8..16].copy_from_slice(&created_at.to_le_bytes());
 		buf[16..24].copy_from_slice(&updated_at.to_le_bytes());
 		buf[SHAPE_HEADER_SIZE..].copy_from_slice(payload);
-		EncodedRow(CowVec::new(buf))
+		EncodedBytes(CowVec::new(buf))
 	}
 
 	#[test]
@@ -437,10 +437,10 @@ pub mod tests {
 
 		// A key with no value is omitted rather than returned empty.
 		assert_eq!(batch.items.len(), 2);
-		let mut decoded: Vec<(Vec<u8>, EncodedRow)> = batch
+		let mut decoded: Vec<(Vec<u8>, EncodedBytes)> = batch
 			.items
 			.iter()
-			.map(|item| (OperatorStateKey::decode(&item.key).unwrap().key, item.row.clone()))
+			.map(|item| (OperatorStateKey::decode(&item.key).unwrap().key, item.bytes.clone()))
 			.collect();
 		decoded.sort_by(|a, b| a.0.cmp(&b.0));
 		assert_eq!(decoded[0], (make_key("a").as_slice().to_vec(), make_value("data")));
@@ -790,7 +790,7 @@ pub mod tests {
 
 		// State writes carry their own anchors, so no write ever reads the prior row back.
 		let wide_key = make_key("wide");
-		txn.state_set(operator_id, &wide_key, EncodedRow(CowVec::new(vec![0u8; 32]))).unwrap();
+		txn.state_set(operator_id, &wide_key, EncodedBytes(CowVec::new(vec![0u8; 32]))).unwrap();
 		assert_eq!(txn.store_reads(), 4, "a state write must never reach the store");
 	}
 
@@ -825,7 +825,7 @@ pub mod tests {
 			)
 			.unwrap();
 		assert_eq!(batch.items.len(), 1);
-		assert_eq!(batch.items[0].row, make_value("v"));
+		assert_eq!(batch.items[0].bytes, make_value("v"));
 		assert_eq!(txn.store_reads(), 3, "only the never-read key may reach the store");
 		assert_eq!(txn.state_get(operator_id, &make_key("batch_only")).unwrap(), None);
 		assert_eq!(txn.store_reads(), 3);
@@ -922,7 +922,7 @@ pub mod tests {
 			1,
 			"operator state applied above object_version {object_version:?} must be visible to a deferred read"
 		);
-		assert_eq!(batch.items[0].row, value);
+		assert_eq!(batch.items[0].bytes, value);
 	}
 
 	#[test]
@@ -975,10 +975,10 @@ pub mod tests {
 
 		let batch = txn.state_get_many(operator_id, &[overlaid_key.clone(), committed_key.clone()]).unwrap();
 		assert_eq!(batch.items.len(), 1);
-		assert_eq!(batch.items[0].row, overlaid_value);
+		assert_eq!(batch.items[0].bytes, overlaid_value);
 
 		let scan = txn.state_scan_all(operator_id).unwrap();
-		let scanned: Vec<_> = scan.items.iter().map(|item| item.row.clone()).collect();
+		let scanned: Vec<_> = scan.items.iter().map(|item| item.bytes.clone()).collect();
 		assert!(scanned.contains(&overlaid_value), "range merge must surface base_pending Sets");
 		assert!(!scanned.contains(&committed_value), "range merge must shadow base_pending Removes");
 
@@ -1067,14 +1067,14 @@ pub mod tests {
 
 		let seeded = txn.state_get_many(operator_id, &[seeded_key]).unwrap();
 		assert_eq!(seeded.items.len(), 1, "seeded ephemeral state must be readable");
-		assert_eq!(seeded.items[0].row, seeded_value);
+		assert_eq!(seeded.items[0].bytes, seeded_value);
 
 		let live_key = make_key("live");
 		let live_value = make_value("live_value");
 		txn.state_set(operator_id, &live_key, live_value.clone()).unwrap();
 		let live = txn.state_get_many(operator_id, &[live_key]).unwrap();
 		assert_eq!(live.items.len(), 1);
-		assert_eq!(live.items[0].row, live_value);
+		assert_eq!(live.items[0].bytes, live_value);
 	}
 
 	#[test]

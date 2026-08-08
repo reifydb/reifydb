@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
@@ -25,7 +25,7 @@ impl CatalogStore {
 		let Some(multi) = rx.get(&ColumnSnapshotKey::encoded(id))? else {
 			return Ok(None);
 		};
-		Ok(Some(decode_column_snapshot(&multi.row)))
+		Ok(Some(decode_column_snapshot(&multi.bytes)))
 	}
 
 	pub(crate) fn find_column_snapshot_for_series_bucket(
@@ -72,7 +72,7 @@ pub(crate) fn collect_series_snapshot_ids(
 	for entry in stream.by_ref() {
 		let multi = entry?;
 		ids.push(ColumnSnapshotId(
-			column_snapshot_link::SHAPE.get::<u64>(&multi.row, column_snapshot_link::ID),
+			column_snapshot_link::SHAPE.get::<u64>(&multi.bytes, column_snapshot_link::ID),
 		));
 	}
 	drop(stream);
@@ -85,14 +85,14 @@ pub(crate) fn collect_table_snapshot_ids(rx: &mut Transaction<'_>, table_id: Tab
 	for entry in stream.by_ref() {
 		let multi = entry?;
 		ids.push(ColumnSnapshotId(
-			column_snapshot_link::SHAPE.get::<u64>(&multi.row, column_snapshot_link::ID),
+			column_snapshot_link::SHAPE.get::<u64>(&multi.bytes, column_snapshot_link::ID),
 		));
 	}
 	drop(stream);
 	Ok(ids)
 }
 
-pub(crate) fn decode_column_snapshot(row: &EncodedRow) -> ColumnSnapshot {
+pub(crate) fn decode_column_snapshot(row: &EncodedBytes) -> ColumnSnapshot {
 	let id = ColumnSnapshotId(column_snapshot::SHAPE.get::<u64>(row, column_snapshot::ID));
 	let namespace = NamespaceId(column_snapshot::SHAPE.get::<u64>(row, column_snapshot::NAMESPACE));
 	let kind_byte = column_snapshot::SHAPE.get::<u8>(row, column_snapshot::KIND);

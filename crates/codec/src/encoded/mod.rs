@@ -8,6 +8,7 @@
 pub mod any;
 pub mod blob;
 pub mod boolean;
+pub mod bytes;
 pub mod date;
 pub mod datetime;
 pub mod decimal;
@@ -23,7 +24,6 @@ pub mod i8;
 pub mod identity;
 pub mod int;
 pub mod le;
-pub mod row;
 pub mod shape;
 pub mod time;
 pub mod u128;

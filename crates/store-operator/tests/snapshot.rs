@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId, internal_error};
 use reifydb_sqlite::SqliteConfig;
 use reifydb_store_operator::snapshot::{SnapshotStore, SnapshotWrite};
@@ -21,11 +21,11 @@ fn raw_connection(dir: &Path) -> Connection {
 	Connection::open(dir.join("operator.db")).expect("open raw connection")
 }
 
-fn entry(index: u8) -> (EncodedKey, EncodedRow) {
-	(EncodedKey::new(vec![0x10, index]), EncodedRow(CowVec::new(vec![index; 24])))
+fn entry(index: u8) -> (EncodedKey, EncodedBytes) {
+	(EncodedKey::new(vec![0x10, index]), EncodedBytes(CowVec::new(vec![index; 24])))
 }
 
-fn entries(count: u8) -> Vec<(EncodedKey, EncodedRow)> {
+fn entries(count: u8) -> Vec<(EncodedKey, EncodedBytes)> {
 	(0..count).map(entry).collect()
 }
 
@@ -35,7 +35,7 @@ fn write(
 	upper: u64,
 	dictionary_max: &[(u64, u128)],
 	chunk_bytes: usize,
-	entries: &[(EncodedKey, EncodedRow)],
+	entries: &[(EncodedKey, EncodedBytes)],
 ) -> Result<u64> {
 	write_at(store, operator, upper, upper.saturating_sub(1), dictionary_max, chunk_bytes, entries)
 }
@@ -48,7 +48,7 @@ fn write_at(
 	flow_cursor: u64,
 	dictionary_max: &[(u64, u128)],
 	chunk_bytes: usize,
-	entries: &[(EncodedKey, EncodedRow)],
+	entries: &[(EncodedKey, EncodedBytes)],
 ) -> Result<u64> {
 	store.write(
 		SnapshotWrite {

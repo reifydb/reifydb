@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -15,8 +15,8 @@ fn fns(node: u64, payload: &[u8]) -> EncodedKey {
 	OperatorStateKey::new(OperatorId(node), payload.to_vec()).encode()
 }
 
-fn row(bytes: &[u8]) -> EncodedRow {
-	EncodedRow(CowVec::new(bytes.to_vec()))
+fn encoded_bytes(bytes: &[u8]) -> EncodedBytes {
+	EncodedBytes(CowVec::new(bytes.to_vec()))
 }
 
 fn check_get_many_across_tables(store: &StandardMultiStore, flush: bool) {
@@ -34,15 +34,15 @@ fn check_get_many_across_tables(store: &StandardMultiStore, flush: bool) {
 		CowVec::new(vec![
 			Delta::Set {
 				key: k1.clone(),
-				row: row(b"n1"),
+				bytes: encoded_bytes(b"n1"),
 			},
 			Delta::Set {
 				key: k2.clone(),
-				row: row(b"n2"),
+				bytes: encoded_bytes(b"n2"),
 			},
 			Delta::Set {
 				key: p.clone(),
-				row: row(b"pp"),
+				bytes: encoded_bytes(b"pp"),
 			},
 		]),
 		CommitVersion(1),
@@ -61,9 +61,9 @@ fn check_get_many_across_tables(store: &StandardMultiStore, flush: bool) {
 		.unwrap();
 
 	assert_eq!(found.len(), 3);
-	assert_eq!(found.get(&k1).map(|r| r.row.to_vec()), Some(b"n1".to_vec()));
-	assert_eq!(found.get(&k2).map(|r| r.row.to_vec()), Some(b"n2".to_vec()));
-	assert_eq!(found.get(&p).map(|r| r.row.to_vec()), Some(b"pp".to_vec()));
+	assert_eq!(found.get(&k1).map(|r| r.bytes.to_vec()), Some(b"n1".to_vec()));
+	assert_eq!(found.get(&k2).map(|r| r.bytes.to_vec()), Some(b"n2".to_vec()));
+	assert_eq!(found.get(&p).map(|r| r.bytes.to_vec()), Some(b"pp".to_vec()));
 	assert!(!found.contains_key(&absent_op));
 	assert!(!found.contains_key(&absent_multi));
 }
@@ -78,7 +78,7 @@ fn check_get_many_bucket_boundaries(store: &StandardMultiStore) {
 		let key = fns(7, format!("k{:04}", i).as_bytes());
 		deltas.push(Delta::Set {
 			key: key.clone(),
-			row: row(format!("v{}", i).as_bytes()),
+			bytes: encoded_bytes(format!("v{}", i).as_bytes()),
 		});
 		present.push(key);
 	}
@@ -96,7 +96,7 @@ fn check_get_many_bucket_boundaries(store: &StandardMultiStore) {
 		assert!(!found.contains_key(&absent), "count={}: absent key must not resolve via padding", count);
 		for (i, key) in present[..count].iter().enumerate() {
 			assert_eq!(
-				found.get(key).map(|r| r.row.to_vec()),
+				found.get(key).map(|r| r.bytes.to_vec()),
 				Some(format!("v{}", i).into_bytes()),
 				"count={}: key index {} returned wrong value",
 				count,

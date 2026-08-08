@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
@@ -243,11 +243,11 @@ fn drive_series_delete_input(
 			let Some(pre_entry) = txn.get(&encoded_key)? else {
 				continue;
 			};
-			let encoded_row = pre_entry.row;
+			let encoded_bytes = pre_entry.bytes;
 			let row_number = RowNumber::from(sequence);
 
-			let committed = txn.get_committed(&encoded_key)?.map(|v| v.row);
-			let pre_for_cdc = committed.clone().unwrap_or_else(|| encoded_row.clone());
+			let committed = txn.get_committed(&encoded_key)?.map(|v| v.bytes);
+			let pre_for_cdc = committed.clone().unwrap_or_else(|| encoded_bytes.clone());
 
 			let pre = build_series_delete_pre_columns_from_input(
 				series,
@@ -291,21 +291,21 @@ fn run_series_delete_all(
 	} else {
 		SeriesRowKeyRange::full_scan(series.id, None)
 	};
-	let mut entries_to_delete: Vec<(EncodedKey, EncodedRow)> = Vec::new();
+	let mut entries_to_delete: Vec<(EncodedKey, EncodedBytes)> = Vec::new();
 
 	let mut stream = txn.range(range, RangeScope::All, 32)?;
 	for entry in stream.by_ref() {
 		let entry = entry?;
-		entries_to_delete.push((entry.key, entry.row));
+		entries_to_delete.push((entry.key, entry.bytes));
 	}
 	drop(stream);
 
 	let delete_all_shape = get_or_create_series_shape(&services.catalog, series, txn)?;
 	let mut deleted_count = 0u64;
 
-	for (key, encoded_row) in entries_to_delete.iter() {
-		let committed = txn.get_committed(key)?.map(|v| v.row);
-		let pre_for_cdc = committed.clone().unwrap_or_else(|| encoded_row.clone());
+	for (key, encoded_bytes) in entries_to_delete.iter() {
+		let committed = txn.get_committed(key)?.map(|v| v.bytes);
+		let pre_for_cdc = committed.clone().unwrap_or_else(|| encoded_bytes.clone());
 
 		let pre = decode_series_storage_key(series, key, partitioned).map(|decoded_key| {
 			build_series_delete_pre_columns_from_storage(
@@ -320,7 +320,7 @@ fn run_series_delete_all(
 	}
 
 	let returning_columns = if has_returning {
-		let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();
+		let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 		for (key, encoded) in entries_to_delete.iter() {
 			if let Some(decoded_key) = decode_series_storage_key(series, key, partitioned) {
 				returned_rows.push((RowNumber::from(decoded_key.sequence), encoded.clone()));
@@ -355,7 +355,7 @@ fn extract_series_delete_variant_tag(columns: &Columns, has_tag: bool, row_idx: 
 fn build_series_delete_pre_columns_from_input(
 	series: &Series,
 	columns: &Columns,
-	encoded_row: &EncodedRow,
+	encoded_bytes: &EncodedBytes,
 	key_value: u64,
 	row_number: RowNumber,
 	row_idx: usize,
@@ -380,9 +380,9 @@ fn build_series_delete_pre_columns_from_input(
 		SystemColumns::new(
 			vec![row_number],
 			Vec::new(),
-			vec![encoded_row.created_at()],
-			vec![encoded_row.updated_at()],
-			encoded_row.time().into_iter().collect(),
+			vec![encoded_bytes.created_at()],
+			vec![encoded_bytes.updated_at()],
+			encoded_bytes.time().into_iter().collect(),
 		),
 	)
 }

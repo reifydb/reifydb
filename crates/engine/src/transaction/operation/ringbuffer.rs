@@ -3,7 +3,7 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
@@ -53,14 +53,14 @@ fn build_ringbuffer_insert_change(
 	rb: &RingBuffer,
 	shape: &RowShape,
 	row_number: RowNumber,
-	encoded: &EncodedRow,
+	encoded: &EncodedBytes,
 ) -> Change {
 	let ids = [row_number];
 	let rows = [encoded.clone()];
 	Change {
 		origin: ChangeOrigin::Object(ObjectId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
-		diffs: smallvec![Diff::insert(Columns::from_encoded_rows(shape, &ids, &rows))],
+		diffs: smallvec![Diff::insert(Columns::from_encoded_bytes(shape, &ids, &rows))],
 		changed_at: DateTime::default(),
 	}
 }
@@ -68,8 +68,8 @@ fn build_ringbuffer_insert_change(
 fn build_ringbuffer_update_change(
 	rb: &RingBuffer,
 	row_number: RowNumber,
-	pre: &EncodedRow,
-	post: &EncodedRow,
+	pre: &EncodedBytes,
+	post: &EncodedBytes,
 ) -> Change {
 	let shape = row_shape_from_columns(&rb.columns);
 	let ids = [row_number];
@@ -79,21 +79,21 @@ fn build_ringbuffer_update_change(
 		origin: ChangeOrigin::Object(ObjectId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
 		diffs: smallvec![Diff::update(
-			Columns::from_encoded_rows(&shape, &ids, &pres),
-			Columns::from_encoded_rows(&shape, &ids, &posts),
+			Columns::from_encoded_bytes(&shape, &ids, &pres),
+			Columns::from_encoded_bytes(&shape, &ids, &posts),
 		)],
 		changed_at: DateTime::default(),
 	}
 }
 
-fn build_ringbuffer_remove_change(rb: &RingBuffer, row_number: RowNumber, encoded: &EncodedRow) -> Change {
+fn build_ringbuffer_remove_change(rb: &RingBuffer, row_number: RowNumber, encoded: &EncodedBytes) -> Change {
 	let shape = row_shape_from_columns(&rb.columns);
 	let ids = [row_number];
 	let rows = [encoded.clone()];
 	Change {
 		origin: ChangeOrigin::Object(ObjectId::ringbuffer(rb.id)),
 		version: CommitVersion(0),
-		diffs: smallvec![Diff::remove(Columns::from_encoded_rows(&shape, &ids, &rows))],
+		diffs: smallvec![Diff::remove(Columns::from_encoded_bytes(&shape, &ids, &rows))],
 		changed_at: DateTime::default(),
 	}
 }
@@ -121,7 +121,7 @@ pub fn apply_ringbuffer_partition_metadata_after_delete(
 }
 
 pub trait RingBufferOperations {
-	fn insert_ringbuffer(&mut self, ringbuffer: RingBuffer, row: EncodedRow) -> Result<RowNumber>;
+	fn insert_ringbuffer(&mut self, ringbuffer: RingBuffer, row: EncodedBytes) -> Result<RowNumber>;
 
 	fn insert_ringbuffer_at(
 		&mut self,
@@ -129,27 +129,27 @@ pub trait RingBufferOperations {
 		shape: &RowShape,
 		partition: Option<Partition>,
 		row_number: RowNumber,
-		row: EncodedRow,
-	) -> Result<EncodedRow>;
+		row: EncodedBytes,
+	) -> Result<EncodedBytes>;
 
 	fn update_ringbuffer(
 		&mut self,
 		ringbuffer: RingBuffer,
 		partition: Option<Partition>,
 		id: RowNumber,
-		row: EncodedRow,
-	) -> Result<EncodedRow>;
+		row: EncodedBytes,
+	) -> Result<EncodedBytes>;
 
 	fn remove_from_ringbuffer(
 		&mut self,
 		ringbuffer: &RingBuffer,
 		partition: Option<Partition>,
 		id: RowNumber,
-	) -> Result<EncodedRow>;
+	) -> Result<EncodedBytes>;
 }
 
 impl RingBufferOperations for CommandTransaction {
-	fn insert_ringbuffer(&mut self, _ringbuffer: RingBuffer, _row: EncodedRow) -> Result<RowNumber> {
+	fn insert_ringbuffer(&mut self, _ringbuffer: RingBuffer, _row: EncodedBytes) -> Result<RowNumber> {
 		unimplemented!(
 			"Ring buffer insert must be called with explicit row_number through insert_ringbuffer_at"
 		)
@@ -161,11 +161,11 @@ impl RingBufferOperations for CommandTransaction {
 		shape: &RowShape,
 		partition: Option<Partition>,
 		row_number: RowNumber,
-		row: EncodedRow,
-	) -> Result<EncodedRow> {
+		row: EncodedBytes,
+	) -> Result<EncodedBytes> {
 		let key = ringbuffer_key(ringbuffer, partition, row_number);
 
-		let pre = self.get(&key)?.map(|v| v.row);
+		let pre = self.get(&key)?.map(|v| v.bytes);
 
 		if let Some(ref existing) = pre {
 			let ids = [row_number];
@@ -199,12 +199,12 @@ impl RingBufferOperations for CommandTransaction {
 		ringbuffer: RingBuffer,
 		partition: Option<Partition>,
 		id: RowNumber,
-		row: EncodedRow,
-	) -> Result<EncodedRow> {
+		row: EncodedBytes,
+	) -> Result<EncodedBytes> {
 		let key = ringbuffer_key(&ringbuffer, partition, id);
 
 		let pre = match self.get(&key)? {
-			Some(v) => v.row,
+			Some(v) => v.bytes,
 			None => return Ok(row),
 		};
 
@@ -244,14 +244,14 @@ impl RingBufferOperations for CommandTransaction {
 		ringbuffer: &RingBuffer,
 		partition: Option<Partition>,
 		id: RowNumber,
-	) -> Result<EncodedRow> {
+	) -> Result<EncodedBytes> {
 		let key = ringbuffer_key(ringbuffer, partition, id);
 
 		let displayed = match self.get(&key)? {
-			Some(v) => v.row,
-			None => return Ok(EncodedRow(CowVec::new(vec![]))),
+			Some(v) => v.bytes,
+			None => return Ok(EncodedBytes(CowVec::new(vec![]))),
 		};
-		let committed = self.get_committed(&key)?.map(|v| v.row);
+		let committed = self.get_committed(&key)?.map(|v| v.bytes);
 
 		let ids = [id];
 		RingBufferRowInterceptor::pre_delete(self, ringbuffer, &ids)?;
@@ -273,7 +273,7 @@ impl RingBufferOperations for CommandTransaction {
 }
 
 impl RingBufferOperations for AdminTransaction {
-	fn insert_ringbuffer(&mut self, _ringbuffer: RingBuffer, _row: EncodedRow) -> Result<RowNumber> {
+	fn insert_ringbuffer(&mut self, _ringbuffer: RingBuffer, _row: EncodedBytes) -> Result<RowNumber> {
 		unimplemented!(
 			"Ring buffer insert must be called with explicit row_number through insert_ringbuffer_at"
 		)
@@ -285,11 +285,11 @@ impl RingBufferOperations for AdminTransaction {
 		shape: &RowShape,
 		partition: Option<Partition>,
 		row_number: RowNumber,
-		row: EncodedRow,
-	) -> Result<EncodedRow> {
+		row: EncodedBytes,
+	) -> Result<EncodedBytes> {
 		let key = ringbuffer_key(ringbuffer, partition, row_number);
 
-		let pre = self.get(&key)?.map(|v| v.row);
+		let pre = self.get(&key)?.map(|v| v.bytes);
 
 		if let Some(ref existing) = pre {
 			let ids = [row_number];
@@ -323,12 +323,12 @@ impl RingBufferOperations for AdminTransaction {
 		ringbuffer: RingBuffer,
 		partition: Option<Partition>,
 		id: RowNumber,
-		row: EncodedRow,
-	) -> Result<EncodedRow> {
+		row: EncodedBytes,
+	) -> Result<EncodedBytes> {
 		let key = ringbuffer_key(&ringbuffer, partition, id);
 
 		let pre = match self.get(&key)? {
-			Some(v) => v.row,
+			Some(v) => v.bytes,
 			None => return Ok(row),
 		};
 
@@ -368,14 +368,14 @@ impl RingBufferOperations for AdminTransaction {
 		ringbuffer: &RingBuffer,
 		partition: Option<Partition>,
 		id: RowNumber,
-	) -> Result<EncodedRow> {
+	) -> Result<EncodedBytes> {
 		let key = ringbuffer_key(ringbuffer, partition, id);
 
 		let displayed = match self.get(&key)? {
-			Some(v) => v.row,
-			None => return Ok(EncodedRow(CowVec::new(vec![]))),
+			Some(v) => v.bytes,
+			None => return Ok(EncodedBytes(CowVec::new(vec![]))),
 		};
-		let committed = self.get_committed(&key)?.map(|v| v.row);
+		let committed = self.get_committed(&key)?.map(|v| v.bytes);
 
 		let ids = [id];
 		RingBufferRowInterceptor::pre_delete(self, ringbuffer, &ids)?;
@@ -397,7 +397,7 @@ impl RingBufferOperations for AdminTransaction {
 }
 
 impl RingBufferOperations for Transaction<'_> {
-	fn insert_ringbuffer(&mut self, _ringbuffer: RingBuffer, _row: EncodedRow) -> Result<RowNumber> {
+	fn insert_ringbuffer(&mut self, _ringbuffer: RingBuffer, _row: EncodedBytes) -> Result<RowNumber> {
 		unimplemented!(
 			"Ring buffer insert must be called with explicit row_number through insert_ringbuffer_at"
 		)
@@ -409,8 +409,8 @@ impl RingBufferOperations for Transaction<'_> {
 		shape: &RowShape,
 		partition: Option<Partition>,
 		row_number: RowNumber,
-		row: EncodedRow,
-	) -> Result<EncodedRow> {
+		row: EncodedBytes,
+	) -> Result<EncodedBytes> {
 		match self {
 			Transaction::Command(txn) => {
 				txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row)
@@ -431,8 +431,8 @@ impl RingBufferOperations for Transaction<'_> {
 		ringbuffer: RingBuffer,
 		partition: Option<Partition>,
 		id: RowNumber,
-		row: EncodedRow,
-	) -> Result<EncodedRow> {
+		row: EncodedBytes,
+	) -> Result<EncodedBytes> {
 		match self {
 			Transaction::Command(txn) => txn.update_ringbuffer(ringbuffer, partition, id, row),
 			Transaction::Admin(txn) => txn.update_ringbuffer(ringbuffer, partition, id, row),
@@ -447,7 +447,7 @@ impl RingBufferOperations for Transaction<'_> {
 		ringbuffer: &RingBuffer,
 		partition: Option<Partition>,
 		id: RowNumber,
-	) -> Result<EncodedRow> {
+	) -> Result<EncodedBytes> {
 		match self {
 			Transaction::Command(txn) => txn.remove_from_ringbuffer(ringbuffer, partition, id),
 			Transaction::Admin(txn) => txn.remove_from_ringbuffer(ringbuffer, partition, id),

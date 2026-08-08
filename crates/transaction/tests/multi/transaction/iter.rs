@@ -14,7 +14,7 @@ use reifydb_core::common::CommitVersion;
 use reifydb_transaction::multi::RangeScope;
 
 use super::test_multi;
-use crate::{as_key, as_values, from_row, multi::transaction::FromRow};
+use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
 
 #[test]
 fn test_iter() {
@@ -31,14 +31,14 @@ fn test_iter() {
 
 	for (expected, tv) in (1..=3).rev().zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
-		assert_eq!(tv.row, as_values!(expected));
+		assert_eq!(tv.bytes, as_values!(expected));
 	}
 
 	let items: Vec<_> =
 		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (1..=3).zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
-		assert_eq!(tv.row, as_values!(expected));
+		assert_eq!(tv.bytes, as_values!(expected));
 	}
 }
 
@@ -54,7 +54,7 @@ fn test_iter2() {
 		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (1..=3).rev().zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
-		assert_eq!(tv.row, as_values!(expected));
+		assert_eq!(tv.bytes, as_values!(expected));
 		assert_eq!(tv.version, 1);
 	}
 
@@ -62,7 +62,7 @@ fn test_iter2() {
 		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (1..=3).zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
-		assert_eq!(tv.row, as_values!(expected));
+		assert_eq!(tv.bytes, as_values!(expected));
 		assert_eq!(tv.version, 1);
 	}
 	txn.commit(vec![]).unwrap();
@@ -76,7 +76,7 @@ fn test_iter2() {
 		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (1..=6).rev().zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
-		assert_eq!(tv.row, as_values!(expected));
+		assert_eq!(tv.bytes, as_values!(expected));
 		assert_eq!(tv.version, 2);
 	}
 
@@ -84,7 +84,7 @@ fn test_iter2() {
 		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (1..=6).zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
-		assert_eq!(tv.row, as_values!(expected));
+		assert_eq!(tv.bytes, as_values!(expected));
 		assert_eq!(tv.version, 2);
 	}
 }
@@ -101,7 +101,7 @@ fn test_iter3() {
 		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (4..=6).rev().zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
-		assert_eq!(tv.row, as_values!(expected));
+		assert_eq!(tv.bytes, as_values!(expected));
 		assert_eq!(tv.version, 1);
 	}
 
@@ -109,7 +109,7 @@ fn test_iter3() {
 		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (4..=6).zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
-		assert_eq!(tv.row, as_values!(expected));
+		assert_eq!(tv.bytes, as_values!(expected));
 		assert_eq!(tv.version, 1);
 	}
 
@@ -124,7 +124,7 @@ fn test_iter3() {
 		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (1..=6).rev().zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
-		assert_eq!(tv.row, as_values!(expected));
+		assert_eq!(tv.bytes, as_values!(expected));
 		assert_eq!(tv.version, 2);
 	}
 
@@ -132,7 +132,7 @@ fn test_iter3() {
 		txn.range_rev(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
 	for (expected, tv) in (1..=6).zip(items) {
 		assert_eq!(tv.key, as_key!(expected));
-		assert_eq!(tv.row, as_values!(expected));
+		assert_eq!(tv.bytes, as_values!(expected));
 		assert_eq!(tv.version, 2);
 	}
 }
@@ -185,7 +185,7 @@ fn test_iter_edge_case() {
 	let check_iter = |items: Vec<reifydb_core::interface::store::MultiVersionRow>, expected: &[u64]| {
 		let mut i = 0;
 		for r in items {
-			assert_eq!(expected[i], from_row!(u64, &r.row), "read_vs={}", r.version);
+			assert_eq!(expected[i], from_bytes!(u64, &r.bytes), "read_vs={}", r.version);
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);
@@ -194,7 +194,7 @@ fn test_iter_edge_case() {
 	let check_rev_iter = |items: Vec<reifydb_core::interface::store::MultiVersionRow>, expected: &[u64]| {
 		let mut i = 0;
 		for r in items {
-			assert_eq!(expected[i], from_row!(u64, &r.row), "read_vs={}", r.version);
+			assert_eq!(expected[i], from_bytes!(u64, &r.bytes), "read_vs={}", r.version);
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);
@@ -282,7 +282,7 @@ fn test_iter_edge_case2() {
 	let check_iter = |items: Vec<reifydb_core::interface::store::MultiVersionRow>, expected: &[u64]| {
 		let mut i = 0;
 		for r in items {
-			assert_eq!(expected[i], from_row!(u64, &r.row));
+			assert_eq!(expected[i], from_bytes!(u64, &r.bytes));
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);
@@ -291,7 +291,7 @@ fn test_iter_edge_case2() {
 	let check_rev_iter = |items: Vec<reifydb_core::interface::store::MultiVersionRow>, expected: &[u64]| {
 		let mut i = 0;
 		for r in items {
-			assert_eq!(expected[i], from_row!(u64, &r.row));
+			assert_eq!(expected[i], from_bytes!(u64, &r.bytes));
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);

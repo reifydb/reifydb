@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
 	error::diagnostic::{
 		catalog::{namespace_not_found, ringbuffer_not_found},
@@ -83,7 +83,7 @@ pub(crate) fn update_ringbuffer(
 	input_node.initialize(txn, &context)?;
 
 	let mut updated_count = 0u64;
-	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();
+	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 	let has_returning = returning.is_some();
 
 	let mut mutable_context = context.clone();
@@ -132,7 +132,7 @@ pub(crate) fn update_ringbuffer(
 					RowLocator::Row(row_number),
 				),
 			};
-			let old_row = txn.get(&old_row_key)?.expect("row must exist for update").row;
+			let old_row = txn.get(&old_row_key)?.expect("bytes must exist for update").bytes;
 			let old_created_at = old_row.created_at();
 			let old_time = old_row.time();
 			let now = services.runtime_context.clock.now();
@@ -232,7 +232,7 @@ fn build_updated_ringbuffer_row(
 	view: &ColumnView<'_>,
 	context: &QueryContext,
 	row_idx: usize,
-) -> Result<EncodedRow> {
+) -> Result<EncodedBytes> {
 	let mut row = shape.allocate();
 	for (rb_idx, rb_column) in target.ringbuffer.columns.iter().enumerate() {
 		let mut value = if let Some(&input_idx) = view.column_map.get(rb_column.name.as_str()) {

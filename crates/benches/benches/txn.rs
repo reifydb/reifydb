@@ -14,7 +14,7 @@ use reifydb_benches::{
 	BenchReport, env_flag, env_list_usize, env_opt, env_select, env_u64, env_usize, latency_histogram,
 	median_by_throughput, merge,
 };
-use reifydb_codec::{encoded::row::EncodedRow, key as keycode, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key as keycode, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
@@ -108,8 +108,8 @@ fn encoded_key(layout: TableLayout, thread_id: u64, index: u64) -> EncodedKey {
 	.encode()
 }
 
-fn encoded_row(value: u64) -> EncodedRow {
-	EncodedRow(CowVec::new(keycode::serialize(&value)))
+fn encoded_bytes(value: u64) -> EncodedBytes {
+	EncodedBytes(CowVec::new(keycode::serialize(&value)))
 }
 
 struct Sample {
@@ -136,7 +136,7 @@ fn run_once(threads: usize, layout: TableLayout, iterations: u64) -> Sample {
 				begin_histogram
 					.record(begin_start.elapsed().as_nanos() as u64)
 					.expect("latency within bounds");
-				txn.set(&encoded_key(layout, thread_id, index), encoded_row(index))
+				txn.set(&encoded_key(layout, thread_id, index), encoded_bytes(index))
 					.expect("set must succeed");
 				let commit_start = Instant::now();
 				txn.commit(vec![]).expect("disjoint keys must not conflict");

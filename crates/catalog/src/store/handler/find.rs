@@ -21,7 +21,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(handler_from_row(&multi.row)))
+		Ok(Some(handler_from_row(&multi.bytes)))
 	}
 
 	pub(crate) fn find_handler_by_name(
@@ -35,11 +35,11 @@ impl CatalogStore {
 		let mut found_id = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let row = &multi.row;
-			let entry_name = handler_namespace::SHAPE.get_utf8(row, handler_namespace::NAME);
+			let bytes = &multi.bytes;
+			let entry_name = handler_namespace::SHAPE.get_utf8(bytes, handler_namespace::NAME);
 			if name == entry_name {
 				found_id = Some(HandlerId(
-					handler_namespace::SHAPE.get::<u64>(row, handler_namespace::ID),
+					handler_namespace::SHAPE.get::<u64>(bytes, handler_namespace::ID),
 				));
 				break;
 			}

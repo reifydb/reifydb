@@ -3,14 +3,14 @@
 
 use std::{collections::BTreeMap, mem::size_of, ops::RangeBounds, vec::IntoIter as VecIntoIter};
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::multi::types::DeltaEntry;
 
 const SLOT_COPIES_PER_ENTRY: usize = 2;
 
-const ENTRY_OVERHEAD: usize = SLOT_COPIES_PER_ENTRY * (size_of::<EncodedKey>() + size_of::<EncodedRow>());
+const ENTRY_OVERHEAD: usize = SLOT_COPIES_PER_ENTRY * (size_of::<EncodedKey>() + size_of::<EncodedBytes>());
 
 #[derive(Debug, Default, Clone)]
 pub struct PendingWrites {
@@ -52,7 +52,7 @@ impl PendingWrites {
 
 	#[inline]
 	pub fn estimate_size(&self, entry: &DeltaEntry) -> ByteSize {
-		let payload = entry.key().heap_bytes() + entry.row().map_or(0, |row| row.len());
+		let payload = entry.key().heap_bytes() + entry.bytes().map_or(0, |row| row.len());
 		ByteSize::from_bytes((ENTRY_OVERHEAD + payload) as u64)
 	}
 
@@ -156,15 +156,15 @@ pub mod tests {
 		EncodedKey::new(s.as_bytes())
 	}
 
-	fn create_test_row(s: &str) -> EncodedRow {
-		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
+	fn create_test_bytes(s: &str) -> EncodedBytes {
+		EncodedBytes(CowVec::new(s.as_bytes().to_vec()))
 	}
 
 	fn create_test_pending(version: CommitVersion, key: &str, values_data: &str) -> DeltaEntry {
 		DeltaEntry {
 			delta: Delta::Set {
 				key: create_test_key(key),
-				row: create_test_row(values_data),
+				bytes: create_test_bytes(values_data),
 			},
 			version,
 		}
@@ -331,8 +331,8 @@ pub mod tests {
 		assert_eq!(insertion_keys(&pw), vec!["a", "b", "c"], "a must hold its first position after a re-write");
 		assert_eq!(pw.len(), 3, "a re-write must not add an entry");
 		assert_eq!(
-			pw.get(&create_test_key("a")).expect("a is present").row().expect("a is a set"),
-			&create_test_row("v2"),
+			pw.get(&create_test_key("a")).expect("a is present").bytes().expect("a is a set"),
+			&create_test_bytes("v2"),
 			"the re-write must win on value even though it keeps the old position"
 		);
 	}

@@ -128,10 +128,10 @@ fn deltas_to_system_changes(txn: &AdminTransaction) -> Vec<SystemChange> {
 		.filter_map(|(_, pending)| match pending.delta {
 			Delta::Set {
 				key,
-				row,
+				bytes,
 			} => Some(SystemChange::Insert {
 				key,
-				post: row,
+				post: bytes,
 			}),
 			Delta::Remove {
 				key,

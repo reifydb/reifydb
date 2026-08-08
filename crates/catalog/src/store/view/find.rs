@@ -23,10 +23,10 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.row;
+		let bytes = multi.bytes;
 		let columns = Self::list_columns(rx, id)?;
 		let primary_key = Self::find_view_primary_key(rx, id)?;
-		let view = decode_view(&row, columns, primary_key)?;
+		let view = decode_view(&bytes, columns, primary_key)?;
 
 		Ok(Some(view))
 	}
@@ -42,10 +42,10 @@ impl CatalogStore {
 		let mut found_view = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let row = &multi.row;
-			let view_name = view_namespace::SHAPE.get_utf8(row, view_namespace::NAME);
+			let bytes = &multi.bytes;
+			let view_name = view_namespace::SHAPE.get_utf8(bytes, view_namespace::NAME);
 			if name == view_name {
-				found_view = Some(ViewId(view_namespace::SHAPE.get::<u64>(row, view_namespace::ID)));
+				found_view = Some(ViewId(view_namespace::SHAPE.get::<u64>(bytes, view_namespace::ID)));
 				break;
 			}
 		}
@@ -60,7 +60,7 @@ impl CatalogStore {
 	}
 }
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::interface::catalog::{column::Column, key::PrimaryKey};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
@@ -68,7 +68,7 @@ use reifydb_value::{
 	fragment::Fragment,
 };
 
-pub(crate) fn decode_view(row: &EncodedRow, columns: Vec<Column>, primary_key: Option<PrimaryKey>) -> Result<View> {
+pub(crate) fn decode_view(row: &EncodedBytes, columns: Vec<Column>, primary_key: Option<PrimaryKey>) -> Result<View> {
 	let id = ViewId(view::SHAPE.get::<u64>(row, view::ID));
 	let namespace = NamespaceId(view::SHAPE.get::<u64>(row, view::NAMESPACE));
 	let name = view::SHAPE.get_utf8(row, view::NAME).to_string();

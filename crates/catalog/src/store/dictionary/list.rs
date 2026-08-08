@@ -21,9 +21,9 @@ impl CatalogStore {
 			let stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
-				let row = &multi.row;
+				let bytes = &multi.bytes;
 				dictionary_ids.push(DictionaryId(
-					dictionary_namespace::SHAPE.get::<u64>(row, dictionary_namespace::ID),
+					dictionary_namespace::SHAPE.get::<u64>(bytes, dictionary_namespace::ID),
 				));
 			}
 		}
@@ -44,12 +44,12 @@ impl CatalogStore {
 		let stream = rx.range(DictionaryKey::full_scan(), RangeScope::All, 1024)?;
 		for entry in stream {
 			let multi = entry?;
-			let row = &multi.row;
-			let id = DictionaryId(dictionary::SHAPE.get::<u64>(row, dictionary::ID));
-			let namespace = NamespaceId(dictionary::SHAPE.get::<u64>(row, dictionary::NAMESPACE));
-			let name = dictionary::SHAPE.get_utf8(row, dictionary::NAME).to_string();
-			let value_type_ordinal = dictionary::SHAPE.get::<u8>(row, dictionary::VALUE_TYPE);
-			let id_type_ordinal = dictionary::SHAPE.get::<u8>(row, dictionary::ID_TYPE);
+			let bytes = &multi.bytes;
+			let id = DictionaryId(dictionary::SHAPE.get::<u64>(bytes, dictionary::ID));
+			let namespace = NamespaceId(dictionary::SHAPE.get::<u64>(bytes, dictionary::NAMESPACE));
+			let name = dictionary::SHAPE.get_utf8(bytes, dictionary::NAME).to_string();
+			let value_type_ordinal = dictionary::SHAPE.get::<u8>(bytes, dictionary::VALUE_TYPE);
+			let id_type_ordinal = dictionary::SHAPE.get::<u8>(bytes, dictionary::ID_TYPE);
 
 			dictionaries.push(Dictionary {
 				id,

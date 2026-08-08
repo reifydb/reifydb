@@ -299,7 +299,7 @@ fn diff_bytes(diff: &Diff) -> usize {
 mod tests {
 	use std::sync::atomic::AtomicUsize;
 
-	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+	use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 	use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
 	use super::*;
@@ -315,7 +315,7 @@ mod tests {
 			Vec::new(),
 			vec![SystemChange::Insert {
 				key: EncodedKey::new(vec![0xAB; 4]),
-				post: EncodedRow(CowVec::new(vec![0u8; payload])),
+				post: EncodedBytes(CowVec::new(vec![0u8; payload])),
 			}],
 		))
 	}

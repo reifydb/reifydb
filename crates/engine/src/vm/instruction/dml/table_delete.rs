@@ -4,7 +4,7 @@
 use std::{collections::Bound::Included, sync::Arc};
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKeyRange};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKeyRange};
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -149,7 +149,7 @@ fn run_table_delete_with_input(
 	resolved_source: &Option<ResolvedObject>,
 	params: &Params,
 	has_returning: bool,
-) -> Result<(u64, Vec<(RowNumber, EncodedRow)>)> {
+) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
 	let context = QueryContext {
 		services: exec.services.clone(),
 		source: resolved_source.clone(),
@@ -181,7 +181,7 @@ fn run_table_delete_with_input(
 		let partition = partitions_to_delete.get(idx).copied();
 		let row_key = row_key_from_partition(target.table.id, partition, row_number);
 		let row_values = match txn.get(&row_key)? {
-			Some(v) => v.row,
+			Some(v) => v.bytes,
 			None => continue,
 		};
 		if let Some(ref pk_def) = pk_def {
@@ -195,7 +195,7 @@ fn run_table_delete_with_input(
 
 	let removed = txn.remove_from_table(target.table, &filtered_ids, &filtered_partitions)?;
 	let deleted_count = removed.len() as u64;
-	let returned_rows: Vec<(RowNumber, EncodedRow)> = if has_returning {
+	let returned_rows: Vec<(RowNumber, EncodedBytes)> = if has_returning {
 		removed
 	} else {
 		Vec::new()
@@ -241,7 +241,7 @@ fn run_table_delete_all(
 	txn: &mut Transaction<'_>,
 	table: &Table,
 	has_returning: bool,
-) -> Result<(u64, Vec<(RowNumber, EncodedRow)>)> {
+) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
 	let partitioned = !table.partition_by.is_empty();
 	let range = if partitioned {
 		PartitionedRowKey::full_scan(table.id)
@@ -258,7 +258,7 @@ fn run_table_delete_all(
 	let mut filtered_partitions: Vec<Partition> = Vec::with_capacity(rows.len());
 	for multi in rows {
 		if let Some(ref pk_def) = pk_def {
-			remove_table_pk_index_for(services, txn, table, pk_def, &multi.row)?;
+			remove_table_pk_index_for(services, txn, table, pk_def, &multi.bytes)?;
 		}
 		if partitioned {
 			let key = PartitionedRowKey::decode(&multi.key).expect("valid PartitionedRowKey encoding");
@@ -274,7 +274,7 @@ fn run_table_delete_all(
 
 	let removed = txn.remove_from_table(table, &filtered_ids, &filtered_partitions)?;
 	let deleted_count = removed.len() as u64;
-	let returned_rows: Vec<(RowNumber, EncodedRow)> = if has_returning {
+	let returned_rows: Vec<(RowNumber, EncodedBytes)> = if has_returning {
 		removed
 	} else {
 		Vec::new()
@@ -288,7 +288,7 @@ fn remove_table_pk_index_for(
 	txn: &mut Transaction<'_>,
 	table: &Table,
 	pk_def: &PrimaryKey,
-	row_values: &EncodedRow,
+	row_values: &EncodedBytes,
 ) -> Result<()> {
 	let fingerprint = row_values.fingerprint();
 	let shape = services.catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {

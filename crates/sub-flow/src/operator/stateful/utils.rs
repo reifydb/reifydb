@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -15,7 +15,7 @@ use reifydb_value::Result;
 
 use super::StateIterator;
 
-pub fn state_get(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<Option<EncodedRow>> {
+pub fn state_get(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<Option<EncodedBytes>> {
 	let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
 
 	match txn.get(&encoded_key)? {
@@ -24,7 +24,7 @@ pub fn state_get(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey)
 	}
 }
 
-pub fn state_set(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey, value: EncodedRow) -> Result<()> {
+pub fn state_set(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey, value: EncodedBytes) -> Result<()> {
 	let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
 	txn.set(&encoded_key, value)?;
 	Ok(())
@@ -36,16 +36,16 @@ pub fn state_remove(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateK
 	Ok(())
 }
 
-pub fn state_scan_all(id: OperatorId, txn: &mut FlowTransaction) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+pub fn state_scan_all(id: OperatorId, txn: &mut FlowTransaction) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	let range = OperatorStateKey::node_range(id);
 	let stream = txn.range(range, RangeScope::All, 1024);
 	let mut items = Vec::new();
 	for result in stream {
 		let multi = result?;
 		if let Some(state_key) = OperatorStateKey::decode(&multi.key) {
-			items.push((EncodedKey::new(state_key.key), multi.row));
+			items.push((EncodedKey::new(state_key.key), multi.bytes));
 		} else {
-			items.push((multi.key, multi.row));
+			items.push((multi.key, multi.bytes));
 		}
 	}
 	Ok(items)
@@ -79,14 +79,14 @@ pub fn load_or_create_row(
 	txn: &mut FlowTransaction,
 	key: &GroupStateKey,
 	shape: &RowShape,
-) -> Result<EncodedRow> {
+) -> Result<EncodedBytes> {
 	match state_get(id, txn, key)? {
 		Some(row) => Ok(row),
 		None => Ok(shape.allocate().freeze()),
 	}
 }
 
-pub fn save_row(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey, row: EncodedRow) -> Result<()> {
+pub fn save_row(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey, row: EncodedBytes) -> Result<()> {
 	state_set(id, txn, key, row)
 }
 
@@ -114,7 +114,7 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator_id = OperatorId(1);
 		let key = test_key("get");
-		let value = test_row();
+		let value = test_bytes();
 
 		state_set(operator_id, &mut txn, &key, value.clone()).unwrap();
 
@@ -140,8 +140,8 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator_id = OperatorId(1);
 		let key = test_key("set");
-		let value1 = EncodedRow(CowVec::new(vec![1, 2, 3]));
-		let value2 = EncodedRow(CowVec::new(vec![4, 5, 6]));
+		let value1 = EncodedBytes(CowVec::new(vec![1, 2, 3]));
+		let value2 = EncodedBytes(CowVec::new(vec![4, 5, 6]));
 
 		state_set(operator_id, &mut txn, &key, value1.clone()).unwrap();
 		let result = state_get(operator_id, &mut txn, &key).unwrap().unwrap();
@@ -158,7 +158,7 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator_id = OperatorId(1);
 		let key = test_key("remove");
-		let value = test_row();
+		let value = test_bytes();
 
 		state_set(operator_id, &mut txn, &key, value.clone()).unwrap();
 		assert!(state_get(operator_id, &mut txn, &key).unwrap().is_some());
@@ -175,7 +175,7 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("scan_{:02}", i)); // padded so the keys sort numerically
-			let value = EncodedRow(CowVec::new(vec![i as u8]));
+			let value = EncodedBytes(CowVec::new(vec![i as u8]));
 			state_set(operator_id, &mut txn, &key, value).unwrap();
 		}
 
@@ -196,7 +196,7 @@ pub mod tests {
 		let keys = vec!["a", "b", "c", "d", "e"];
 		for key_suffix in &keys {
 			let key = test_key(key_suffix);
-			let value = test_row();
+			let value = test_bytes();
 			state_set(operator_id, &mut txn, &key, value).unwrap();
 		}
 
@@ -218,7 +218,7 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("range_{}", i));
-			let value = test_row();
+			let value = test_bytes();
 			state_set(operator_id, &mut txn, &key, value).unwrap();
 		}
 
@@ -255,7 +255,7 @@ pub mod tests {
 
 		for i in 0..3 {
 			let key = test_key(&format!("clear_{}", i));
-			let value = test_row();
+			let value = test_bytes();
 			state_set(operator_id, &mut txn, &key, value).unwrap();
 		}
 
@@ -292,7 +292,7 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator_id = OperatorId(1);
 		let key = test_key("load_existing");
-		let value = test_row();
+		let value = test_bytes();
 		let layout = TestOperator::simple(operator_id).layout;
 
 		state_set(operator_id, &mut txn, &key, value.clone()).unwrap();
@@ -319,7 +319,7 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator_id = OperatorId(1);
 		let key = test_key("save");
-		let value = test_row();
+		let value = test_bytes();
 
 		save_row(operator_id, &mut txn, &key, value.clone()).unwrap();
 
@@ -342,8 +342,8 @@ pub mod tests {
 		let node1 = OperatorId(1);
 		let node2 = OperatorId(2);
 		let key = test_key("shared");
-		let value1 = EncodedRow(CowVec::new(vec![1]));
-		let value2 = EncodedRow(CowVec::new(vec![2]));
+		let value1 = EncodedBytes(CowVec::new(vec![1]));
+		let value2 = EncodedBytes(CowVec::new(vec![2]));
 
 		state_set(node1, &mut txn, &key, value1.clone()).unwrap();
 		state_set(node2, &mut txn, &key, value2.clone()).unwrap();
@@ -366,7 +366,7 @@ pub mod tests {
 		let operator_id = OperatorId(1);
 		let key = test_key("large");
 
-		let large_value = EncodedRow(CowVec::new(vec![0xAB; 10240]));
+		let large_value = EncodedBytes(CowVec::new(vec![0xAB; 10240]));
 
 		state_set(operator_id, &mut txn, &key, large_value.clone()).unwrap();
 		let result = state_get(operator_id, &mut txn, &key).unwrap().unwrap();

@@ -920,7 +920,7 @@ mod pull_protocol {
 		storage::CdcStorage,
 	};
 	use reifydb_codec::{
-		encoded::row::EncodedRow,
+		encoded::bytes::EncodedBytes,
 		key::encoded::{EncodedKey, EncodedKeyRange},
 	};
 	use reifydb_core::{
@@ -2315,7 +2315,7 @@ mod pull_protocol {
 				.filter(|row| Key::kind(&row.key) == Some(KeyKind::RingBufferMetadata))
 				.collect();
 			assert_eq!(rows.len(), 1, "the test view owns exactly one unpartitioned metadata row");
-			decode_ringbuffer_metadata(&rows[0].row)
+			decode_ringbuffer_metadata(&rows[0].bytes)
 		};
 
 		let shape = RowShape::operator_state();
@@ -2338,7 +2338,7 @@ mod pull_protocol {
 					})
 					.map(|(_, row)| {
 						let blob = shape.get_blob(&row, 0);
-						decode_ringbuffer_metadata(&EncodedRow(CowVec::new(
+						decode_ringbuffer_metadata(&EncodedBytes(CowVec::new(
 							blob.as_bytes().to_vec(),
 						)))
 					})

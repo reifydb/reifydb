@@ -274,14 +274,14 @@ pub mod tests {
 		assert_eq!(links.len(), 2);
 
 		let link = &links[1];
-		let row = &link.row;
-		assert_eq!(table_namespace::SHAPE.get::<u64>(row, table_namespace::ID), 16385);
-		assert_eq!(table_namespace::SHAPE.get_utf8(row, table_namespace::NAME), "test_table");
+		let bytes = &link.bytes;
+		assert_eq!(table_namespace::SHAPE.get::<u64>(bytes, table_namespace::ID), 16385);
+		assert_eq!(table_namespace::SHAPE.get_utf8(bytes, table_namespace::NAME), "test_table");
 
 		let link = &links[0];
-		let row = &link.row;
-		assert_eq!(table_namespace::SHAPE.get::<u64>(row, table_namespace::ID), 16386);
-		assert_eq!(table_namespace::SHAPE.get_utf8(row, table_namespace::NAME), "another_table");
+		let bytes = &link.bytes;
+		assert_eq!(table_namespace::SHAPE.get::<u64>(bytes, table_namespace::ID), 16386);
+		assert_eq!(table_namespace::SHAPE.get_utf8(bytes, table_namespace::NAME), "another_table");
 	}
 }
 

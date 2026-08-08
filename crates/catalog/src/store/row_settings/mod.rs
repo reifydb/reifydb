@@ -8,13 +8,13 @@ pub mod get;
 pub mod list;
 pub(crate) mod shape;
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::row::{RowSettings, Ttl};
 use reifydb_value::value::duration::Duration;
 
 use self::shape::row_settings;
 
-pub(crate) fn encode_row_settings(settings: &RowSettings) -> EncodedRow {
+pub(crate) fn encode_row_settings(settings: &RowSettings) -> EncodedBytes {
 	let mut row = row_settings::SHAPE.allocate();
 
 	match &settings.ttl {
@@ -32,7 +32,7 @@ pub(crate) fn encode_row_settings(settings: &RowSettings) -> EncodedRow {
 	row.freeze()
 }
 
-pub(crate) fn decode_row_settings(row: &EncodedRow) -> Option<RowSettings> {
+pub(crate) fn decode_row_settings(row: &EncodedBytes) -> Option<RowSettings> {
 	let duration = row_settings::SHAPE.get::<Duration>(row, row_settings::DURATION);
 
 	let ttl = if duration.is_zero() {

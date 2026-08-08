@@ -8,7 +8,7 @@ use reifydb_core::{
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::sumtype::SumTypeId;
 
-use super::sumtype_from_row;
+use super::sumtype_from_bytes;
 use crate::{CatalogStore, Result, store::sumtype::shape::sumtype_namespace};
 
 impl CatalogStore {
@@ -18,8 +18,8 @@ impl CatalogStore {
 			let stream = rx.range(NamespaceSumTypeKey::full_scan(namespace), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
-				let row = &multi.row;
-				ids.push(SumTypeId(sumtype_namespace::SHAPE.get::<u64>(row, sumtype_namespace::ID)));
+				let bytes = &multi.bytes;
+				ids.push(SumTypeId(sumtype_namespace::SHAPE.get::<u64>(bytes, sumtype_namespace::ID)));
 			}
 		}
 
@@ -39,7 +39,7 @@ impl CatalogStore {
 		let stream = rx.range(SumTypeKey::full_scan(), RangeScope::All, 1024)?;
 		for entry in stream {
 			let multi = entry?;
-			results.push(sumtype_from_row(&multi.row));
+			results.push(sumtype_from_bytes(&multi.bytes));
 		}
 
 		Ok(results)

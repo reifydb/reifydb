@@ -14,7 +14,7 @@ use std::{
 };
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -48,7 +48,7 @@ fn scan_op_rows(store: &StandardMultiStore, read: u64, batch: usize, reverse: bo
 	rows.into_iter()
 		.map(|r| {
 			let decoded = OperatorStateKey::decode(&r.key).unwrap();
-			(u64::from_be_bytes(decoded.key.as_slice().try_into().unwrap()), r.row.to_vec())
+			(u64::from_be_bytes(decoded.key.as_slice().try_into().unwrap()), r.bytes.to_vec())
 		})
 		.collect()
 }
@@ -107,7 +107,7 @@ fn scan_rows(store: &StandardMultiStore, read: u64, batch: usize, reverse: bool)
 	} else {
 		store.range(range, scope, batch).collect::<Result<Vec<_>, _>>().unwrap()
 	};
-	rows.into_iter().map(|r| (RowKey::decode(&r.key).unwrap().row.0, r.row.to_vec())).collect()
+	rows.into_iter().map(|r| (RowKey::decode(&r.key).unwrap().row.0, r.bytes.to_vec())).collect()
 }
 
 pub struct Config {
@@ -174,7 +174,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 								&store,
 								CowVec::new(vec![Delta::Set {
 									key: conc_op_key(row),
-									row: EncodedRow(CowVec::new(value.clone())),
+									bytes: EncodedBytes(CowVec::new(value.clone())),
 								}]),
 								CommitVersion(v),
 							)
@@ -198,7 +198,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 								&store,
 								CowVec::new(vec![Delta::Set {
 									key: RowKey::encoded(STORAGE, row),
-									row: EncodedRow(CowVec::new(value.clone())),
+									bytes: EncodedBytes(CowVec::new(value.clone())),
 								}]),
 								CommitVersion(v),
 							)
@@ -237,7 +237,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 								.unwrap()
 							{
 								check_structural(
-									&[(row, r.row.to_vec())],
+									&[(row, r.bytes.to_vec())],
 									cfg.writers,
 									"reader-get",
 								);
@@ -251,7 +251,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 								.unwrap()
 							{
 								check_structural(
-									&[(row, r.row.to_vec())],
+									&[(row, r.bytes.to_vec())],
 									cfg.writers,
 									"reader-op-get",
 								);

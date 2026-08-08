@@ -6,7 +6,7 @@
 use std::{collections::Bound, error::Error as StdError, fmt::Write as _, thread::sleep, time::Instant};
 
 use reifydb_cdc::storage::{CdcStorage as _, CdcStore};
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::{Cdc, SystemChange},
@@ -122,7 +122,7 @@ impl TsRunner for Runner {
 				self.note_pending_version(v);
 				let kv = args.next_key().ok_or("expected KEY=VALUE")?;
 				let key = encoded_key(kv.key.as_deref().unwrap());
-				let row = encoded_row(&kv.value);
+				let row = encoded_bytes(&kv.value);
 				args.reject_rest()?;
 				let txn = self.ensure_txn()?;
 				txn.set(&key, row)?;
@@ -138,7 +138,7 @@ impl TsRunner for Runner {
 				args.reject_rest()?;
 				let txn = self.ensure_txn()?;
 				match txn.get(&key)? {
-					Some(prev) => txn.remove_with_pre(&key, prev.row)?,
+					Some(prev) => txn.remove_with_pre(&key, prev.bytes)?,
 					None => txn.remove(&key)?,
 				}
 			}
@@ -179,7 +179,7 @@ impl TsRunner for Runner {
 					let txn = self.ensure_txn()?;
 					for i in 0..count {
 						let key = encoded_key(&format!("bulk_{}", i));
-						let row = encoded_row(&format!("{}", i));
+						let row = encoded_bytes(&format!("{}", i));
 						txn.set(&key, row)?;
 					}
 				}
@@ -299,8 +299,8 @@ fn encoded_key(s: &str) -> EncodedKey {
 	EncodedKey::new(s.as_bytes())
 }
 
-fn encoded_row(s: &str) -> EncodedRow {
-	EncodedRow(CowVec::new(s.as_bytes().to_vec()))
+fn encoded_bytes(s: &str) -> EncodedBytes {
+	EncodedBytes(CowVec::new(s.as_bytes().to_vec()))
 }
 
 fn render_bytes(b: &[u8]) -> String {

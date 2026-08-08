@@ -17,10 +17,10 @@ pub mod list;
 pub mod shape;
 
 pub(crate) fn convert_identity_attribute_value(multi: MultiVersionRow) -> Result<IdentityAttributeValue> {
-	let row = multi.row;
-	let identity = identity_attribute_value::SHAPE.get::<IdentityId>(&row, identity_attribute_value::IDENTITY);
-	let attribute = identity_attribute_value::SHAPE.get::<u64>(&row, identity_attribute_value::ATTRIBUTE);
-	let blob = identity_attribute_value::SHAPE.get_blob(&row, identity_attribute_value::VALUE);
+	let bytes = multi.bytes;
+	let identity = identity_attribute_value::SHAPE.get::<IdentityId>(&bytes, identity_attribute_value::IDENTITY);
+	let attribute = identity_attribute_value::SHAPE.get::<u64>(&bytes, identity_attribute_value::ATTRIBUTE);
+	let blob = identity_attribute_value::SHAPE.get_blob(&bytes, identity_attribute_value::VALUE);
 	let value = match decode_value(blob.as_bytes()) {
 		Ok(value) => value,
 		Err(e) => return_internal_error!("failed to decode identity attribute value: {}", e),

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_codec::{
 	encoded::{
-		row::{EncodedRow, EncodedRowBuilder},
+		bytes::{EncodedBytes, EncodedRowBuilder},
 		shape::RowShape,
 	},
 	key::encoded::EncodedKey,
@@ -149,9 +149,9 @@ fn run_table_update(
 	shape: &RowShape,
 	context: &QueryContext,
 	has_returning: bool,
-) -> Result<(u64, Vec<(RowNumber, EncodedRow)>)> {
+) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
 	let mut updated_count = 0u64;
-	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = Vec::new();
+	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 	let mut mutable_context = context.clone();
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
@@ -211,7 +211,7 @@ fn run_table_update(
 				rotate_table_pk_index(txn, target.table, shape, &pk_def, &row_key, &row, row_number)?;
 			}
 
-			let old_row = txn.get(&row_key)?.expect("row must exist for update").row;
+			let old_row = txn.get(&row_key)?.expect("bytes must exist for update").bytes;
 			let old_created_at = old_row.created_at();
 			let old_time = old_row.time();
 			let now = exec.services.runtime_context.clock.now();
@@ -308,7 +308,7 @@ fn rotate_table_pk_index(
 	row_number: RowNumber,
 ) -> Result<()> {
 	if let Some(pre_row_data) = txn.get(row_key)? {
-		let pre_row = pre_row_data.row;
+		let pre_row = pre_row_data.bytes;
 		let pre_key = primary_key::encode_primary_key(pk_def, &pre_row, table, shape)?;
 		txn.remove(&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), pre_key).encode())?;
 	}

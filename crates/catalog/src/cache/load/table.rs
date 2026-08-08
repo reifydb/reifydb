@@ -55,19 +55,19 @@ pub(crate) fn load_tables(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 }
 
 fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Table {
-	let row = multi.row;
-	let id = TableId(table::SHAPE.get::<u64>(&row, ID));
-	let namespace = NamespaceId(table::SHAPE.get::<u64>(&row, NAMESPACE));
-	let name = table::SHAPE.get_utf8(&row, NAME).to_string();
+	let bytes = multi.bytes;
+	let id = TableId(table::SHAPE.get::<u64>(&bytes, ID));
+	let namespace = NamespaceId(table::SHAPE.get::<u64>(&bytes, NAMESPACE));
+	let name = table::SHAPE.get_utf8(&bytes, NAME).to_string();
 
-	let partition_by_str = table::SHAPE.get_utf8(&row, table::PARTITION_BY);
+	let partition_by_str = table::SHAPE.get_utf8(&bytes, table::PARTITION_BY);
 	let partition_by = if partition_by_str.is_empty() {
 		vec![]
 	} else {
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
-	let underlying = table::SHAPE.get::<u8>(&row, table::UNDERLYING) != 0;
-	let time = decode_table_time(&row);
+	let underlying = table::SHAPE.get::<u8>(&bytes, table::UNDERLYING) != 0;
+	let time = decode_table_time(&bytes);
 	Table {
 		id,
 		name,
@@ -81,7 +81,7 @@ fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Tab
 }
 
 fn get_table_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
-	let pk_id_raw = table::SHAPE.get::<u64>(&multi.row, PRIMARY_KEY);
+	let pk_id_raw = table::SHAPE.get::<u64>(&multi.bytes, PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

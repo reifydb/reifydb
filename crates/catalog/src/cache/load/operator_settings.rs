@@ -23,7 +23,7 @@ pub(crate) fn load_operator_settings(rx: &mut Transaction<'_>, catalog: &Catalog
 			warn!("Failed to decode OperatorSettingsKey from catalog entry, skipping");
 			continue;
 		};
-		let Some(config) = decode_operator_settings(&multi.row) else {
+		let Some(config) = decode_operator_settings(&multi.bytes) else {
 			warn!(?key.operator, "Failed to decode operator settings from catalog entry, skipping");
 			continue;
 		};

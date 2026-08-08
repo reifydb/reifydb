@@ -13,7 +13,7 @@ use reifydb_abi::{
 	},
 	operator::timer::TimerKind,
 };
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::key::operator_group_state::GroupId;
 use reifydb_value::{
 	util::cowvec::CowVec,
@@ -31,7 +31,7 @@ use crate::{
 	key_len = key.as_bytes().len(),
 	found
 ))]
-pub(crate) fn get(ctx: &FFIOperatorContext, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+pub(crate) fn get(ctx: &FFIOperatorContext, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 	let key_bytes = key.as_bytes();
 	let mut output = BufferFFI {
 		ptr: null_mut(),
@@ -60,7 +60,7 @@ pub(crate) fn get(ctx: &FFIOperatorContext, key: &EncodedKey) -> Result<Option<E
 
 				((*ctx.ctx).callbacks.memory.free)(output.ptr as *mut u8, output.len);
 				Span::current().record("found", true);
-				Ok(Some(EncodedRow(CowVec::new(value_bytes))))
+				Ok(Some(EncodedBytes(CowVec::new(value_bytes))))
 			}
 		} else if result == FFI_NOT_FOUND {
 			Span::current().record("found", false);
@@ -76,7 +76,7 @@ pub(crate) fn get(ctx: &FFIOperatorContext, key: &EncodedKey) -> Result<Option<E
 	key_len = key.as_bytes().len(),
 	value_len = value.as_ref().len()
 ))]
-pub(crate) fn set(ctx: &mut FFIOperatorContext, key: &EncodedKey, value: &EncodedRow) -> Result<()> {
+pub(crate) fn set(ctx: &mut FFIOperatorContext, key: &EncodedKey, value: &EncodedBytes) -> Result<()> {
 	let key_bytes = key.as_bytes();
 	let value_bytes = value.as_ref();
 
@@ -131,7 +131,7 @@ pub(crate) fn remove(ctx: &mut FFIOperatorContext, key: &EncodedKey) -> Result<(
 	key_count = keys.len(),
 	result_count
 ))]
-pub(crate) fn get_many(ctx: &FFIOperatorContext, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+pub(crate) fn get_many(ctx: &FFIOperatorContext, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	if keys.is_empty() {
 		Span::current().record("result_count", 0);
 		return Ok(Vec::new());
@@ -175,7 +175,7 @@ pub(crate) fn get_many(ctx: &FFIOperatorContext, keys: &[EncodedKey]) -> Result<
 	prefix_len = prefix.as_bytes().len(),
 	result_count
 ))]
-pub(crate) fn prefix(ctx: &FFIOperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+pub(crate) fn prefix(ctx: &FFIOperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	let prefix_bytes = prefix.as_bytes();
 	let mut iterator: *mut StateIteratorFFI = null_mut();
 
@@ -211,7 +211,7 @@ pub(crate) fn range(
 	ctx: &FFIOperatorContext,
 	start: Bound<&EncodedKey>,
 	end: Bound<&EncodedKey>,
-) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	let mut iterator: *mut StateIteratorFFI = null_mut();
 
 	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
@@ -259,7 +259,7 @@ pub(crate) fn range(
 unsafe fn collect_iterator_results(
 	ctx: &FFIOperatorContext,
 	iterator: *mut StateIteratorFFI,
-) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	if iterator.is_null() {
 		Span::current().record("result_count", 0);
 		return Ok(Vec::new());
@@ -311,9 +311,9 @@ unsafe fn collect_iterator_results(
 			let value = if !entry.value.ptr.is_null() && entry.value.len > 0 {
 				// SAFETY: same iterator-owned lifetime contract as the key slice.
 				let value_bytes = unsafe { from_raw_parts(entry.value.ptr, entry.value.len) }.to_vec();
-				EncodedRow(CowVec::new(value_bytes))
+				EncodedBytes(CowVec::new(value_bytes))
 			} else {
-				EncodedRow(CowVec::new(Vec::new()))
+				EncodedBytes(CowVec::new(Vec::new()))
 			};
 			results.push((EncodedKey::new(key_bytes), value));
 		}

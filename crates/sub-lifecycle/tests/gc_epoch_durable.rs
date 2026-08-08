@@ -51,7 +51,11 @@ fn durable_samples(engine: &StandardEngine) -> Vec<(u64, u64, u64)> {
 		.filter_map(|entry| {
 			let entry = entry.ok()?;
 			let key = VersionEpochKey::decode(&entry.key)?;
-			Some((key.bucket.seconds(), shape.get::<u64>(&entry.row, 0), shape.get::<u64>(&entry.row, 1)))
+			Some((
+				key.bucket.seconds(),
+				shape.get::<u64>(&entry.bytes, 0),
+				shape.get::<u64>(&entry.bytes, 1),
+			))
 		})
 		.collect();
 	samples.sort_unstable();

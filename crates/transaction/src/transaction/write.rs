@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::interface::change::Change;
 use reifydb_value::Result;
 
 use crate::change::RowChange;
 
 pub trait Write {
-	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()>;
-	fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()>;
+	fn set(&mut self, key: &EncodedKey, row: EncodedBytes) -> Result<()>;
+	fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()>;
 	fn remove(&mut self, key: &EncodedKey) -> Result<()>;
 	fn mark_preexisting(&mut self, key: &EncodedKey) -> Result<()>;
 

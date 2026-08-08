@@ -32,8 +32,8 @@ impl CatalogStore {
 			let stream = rx.range(ColumnKey::full_scan(object), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
-				let row = multi.row;
-				ids.push(ColumnId(object_column::SHAPE.get::<u64>(&row, object_column::ID)));
+				let bytes = multi.bytes;
+				ids.push(ColumnId(object_column::SHAPE.get::<u64>(&bytes, object_column::ID)));
 			}
 		}
 

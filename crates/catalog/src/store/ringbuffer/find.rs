@@ -32,19 +32,19 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.row;
-		let id = RingBufferId(ringbuffer::SHAPE.get::<u64>(&row, ringbuffer::ID));
-		let namespace = NamespaceId(ringbuffer::SHAPE.get::<u64>(&row, ringbuffer::NAMESPACE));
-		let name = ringbuffer::SHAPE.get_utf8(&row, ringbuffer::NAME).to_string();
-		let capacity = ringbuffer::SHAPE.get::<u64>(&row, ringbuffer::CAPACITY);
+		let bytes = multi.bytes;
+		let id = RingBufferId(ringbuffer::SHAPE.get::<u64>(&bytes, ringbuffer::ID));
+		let namespace = NamespaceId(ringbuffer::SHAPE.get::<u64>(&bytes, ringbuffer::NAMESPACE));
+		let name = ringbuffer::SHAPE.get_utf8(&bytes, ringbuffer::NAME).to_string();
+		let capacity = ringbuffer::SHAPE.get::<u64>(&bytes, ringbuffer::CAPACITY);
 
-		let partition_by_str = ringbuffer::SHAPE.get_utf8(&row, ringbuffer::PARTITION_BY);
+		let partition_by_str = ringbuffer::SHAPE.get_utf8(&bytes, ringbuffer::PARTITION_BY);
 		let partition_by = if partition_by_str.is_empty() {
 			vec![]
 		} else {
 			partition_by_str.split(',').map(|s| s.to_string()).collect()
 		};
-		let underlying = ringbuffer::SHAPE.get::<u8>(&row, ringbuffer::UNDERLYING) != 0;
+		let underlying = ringbuffer::SHAPE.get::<u8>(&bytes, ringbuffer::UNDERLYING) != 0;
 
 		Ok(Some(RingBuffer {
 			id,
@@ -55,7 +55,7 @@ impl CatalogStore {
 			primary_key: Self::find_primary_key(rx, id)?,
 			partition_by,
 			underlying,
-			time: decode_ringbuffer_time(&row),
+			time: decode_ringbuffer_time(&bytes),
 		}))
 	}
 
@@ -67,7 +67,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(decode_ringbuffer_metadata(&multi.row)))
+		Ok(Some(decode_ringbuffer_metadata(&multi.bytes)))
 	}
 
 	pub(crate) fn find_ringbuffer_partition_metadata(
@@ -80,7 +80,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(decode_ringbuffer_metadata(&multi.row)))
+		Ok(Some(decode_ringbuffer_metadata(&multi.bytes)))
 	}
 
 	pub(crate) fn list_ringbuffer_partition_metadata(
@@ -93,7 +93,7 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			let metadata = decode_ringbuffer_metadata(&multi.row);
+			let metadata = decode_ringbuffer_metadata(&multi.bytes);
 			let mut de = KeyDeserializer::from_bytes(multi.key.as_slice());
 
 			let _ = (de.read_u8(), de.read_u64());
@@ -154,11 +154,11 @@ impl CatalogStore {
 		let mut found_ringbuffer = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let row = &multi.row;
-			let ringbuffer_name = ringbuffer_namespace::SHAPE.get_utf8(row, ringbuffer_namespace::NAME);
+			let bytes = &multi.bytes;
+			let ringbuffer_name = ringbuffer_namespace::SHAPE.get_utf8(bytes, ringbuffer_namespace::NAME);
 			if name == ringbuffer_name {
 				found_ringbuffer = Some(RingBufferId(
-					ringbuffer_namespace::SHAPE.get::<u64>(row, ringbuffer_namespace::ID),
+					ringbuffer_namespace::SHAPE.get::<u64>(bytes, ringbuffer_namespace::ID),
 				));
 				break;
 			}

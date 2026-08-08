@@ -12,7 +12,7 @@ use std::{
 use ptr::null;
 use reifydb_abi::{context::context::ContextFFI, operator::timer::TimerKind};
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
 	state::OperatorState,
 };
@@ -280,7 +280,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		ctx.state().get::<V>(key).expect("state get")
 	}
 
-	pub fn seed_store(&mut self, rows: &[(EncodedKey, EncodedRow)]) {
+	pub fn seed_store(&mut self, rows: &[(EncodedKey, EncodedBytes)]) {
 		for (key, value) in rows {
 			self.context.set_store(key.clone(), value.clone());
 		}
@@ -290,7 +290,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		&mut self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
-	) -> Vec<(EncodedKey, EncodedRow)> {
+	) -> Vec<(EncodedKey, EncodedBytes)> {
 		let mut ctx = self.create_operator_context();
 		ctx.store().range(start, end).expect("store range")
 	}
@@ -362,11 +362,11 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 		(*self.context).clear_logs()
 	}
 
-	pub fn snapshot_state(&self) -> HashMap<EncodedKey, EncodedRow> {
+	pub fn snapshot_state(&self) -> HashMap<EncodedKey, EncodedBytes> {
 		self.state().snapshot()
 	}
 
-	pub fn restore_state(&mut self, snapshot: HashMap<EncodedKey, EncodedRow>) {
+	pub fn restore_state(&mut self, snapshot: HashMap<EncodedKey, EncodedBytes>) {
 		(*self.context).clear_state();
 		for (k, v) in snapshot {
 			(*self.context).set_state(k, v.0.to_vec());
@@ -415,7 +415,7 @@ pub struct FFIOperatorHarnessBuilder<T: FFIOperator> {
 	operator_id: OperatorId,
 	version: CommitVersion,
 	clock: Clock,
-	initial_state: HashMap<EncodedKey, EncodedRow>,
+	initial_state: HashMap<EncodedKey, EncodedBytes>,
 	dictionaries: Vec<DictionarySeed>,
 	_phantom: PhantomData<T>,
 }
@@ -472,7 +472,7 @@ impl<T: FFIOperator> FFIOperatorHarnessBuilder<T> {
 	where
 		K: EncodableKey,
 	{
-		self.initial_state.insert(key.encode(), EncodedRow(CowVec::new(value)));
+		self.initial_state.insert(key.encode(), EncodedBytes(CowVec::new(value)));
 		self
 	}
 

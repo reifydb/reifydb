@@ -14,7 +14,7 @@ pub(crate) fn load_column_snapshots(rx: &mut Transaction<'_>, catalog: &CatalogC
 	for entry in stream {
 		let multi = entry?;
 		let version = multi.version;
-		let snapshot = decode_column_snapshot(&multi.row);
+		let snapshot = decode_column_snapshot(&multi.bytes);
 		catalog.set_column_snapshot(snapshot.id, version, Some(snapshot));
 	}
 

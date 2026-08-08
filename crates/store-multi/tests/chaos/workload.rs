@@ -7,7 +7,7 @@ use std::ops::Bound;
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -60,7 +60,7 @@ pub fn check_get(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: u
 		},
 	);
 	for (name, store) in configs {
-		let got = store.get(&key, CommitVersion(read)).unwrap().map(|r| (r.row.to_vec(), r.version.0));
+		let got = store.get(&key, CommitVersion(read)).unwrap().map(|r| (r.bytes.to_vec(), r.version.0));
 		assert_eq!(
 			got, expected,
 			"GET mismatch: config={name} step={step} row={row} read={read} store={got:?} oracle={expected:?}"
@@ -102,7 +102,7 @@ pub fn check_get_many(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, r
 					read,
 				},
 			);
-			let got = found.get(&key).map(|r| (r.row.to_vec(), r.version.0));
+			let got = found.get(&key).map(|r| (r.bytes.to_vec(), r.version.0));
 			assert_eq!(
 				got, expected,
 				"GET_MANY mismatch: config={name} step={step} row={row} read={read} store={got:?} oracle={expected:?}"
@@ -123,7 +123,7 @@ fn collect_range(
 	} else {
 		store.range(range, scope.store(), batch).collect::<Result<Vec<_>, _>>().unwrap()
 	};
-	rows.into_iter().map(|r| (r.key.to_vec(), r.row.to_vec(), r.version.0)).collect()
+	rows.into_iter().map(|r| (r.key.to_vec(), r.bytes.to_vec(), r.version.0)).collect()
 }
 
 pub fn check_range(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, scope: Scope, batch: usize, step: u32) {
@@ -249,7 +249,7 @@ pub fn check_prev(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: 
 		let got = store
 			.get_previous_version(&key, CommitVersion(before))
 			.unwrap()
-			.map(|r| (r.row.to_vec(), r.version.0));
+			.map(|r| (r.bytes.to_vec(), r.version.0));
 		assert_eq!(
 			got, expected,
 			"PREV mismatch: config={name} step={step} row={row} before={before} store={got:?} oracle={expected:?}"
@@ -298,7 +298,7 @@ pub fn drive(seed: u64, p: Params) {
 					.map(|(row, value)| match value {
 						Some(bytes) => Delta::Set {
 							key: RowKey::encoded(STORAGE, *row),
-							row: EncodedRow(CowVec::new(bytes.clone())),
+							bytes: EncodedBytes(CowVec::new(bytes.clone())),
 						},
 						None => Delta::remove_silent(RowKey::encoded(STORAGE, *row)),
 					})

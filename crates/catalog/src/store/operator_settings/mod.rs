@@ -5,13 +5,13 @@ pub mod create;
 mod find;
 pub(crate) mod shape;
 
-use reifydb_codec::encoded::row::{EncodedRow, EncodedRowBuilder};
+use reifydb_codec::encoded::bytes::{EncodedBytes, EncodedRowBuilder};
 use reifydb_core::row::{JoinTtl, OperatorSettings, OperatorTtl};
 use reifydb_value::value::duration::Duration;
 
 use self::shape::operator_settings;
 
-pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedRow {
+pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedBytes {
 	let mut row = operator_settings::SHAPE.allocate();
 
 	match &settings.join {
@@ -29,7 +29,7 @@ pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedRo
 	row.freeze()
 }
 
-pub(crate) fn decode_operator_settings(row: &EncodedRow) -> Option<OperatorSettings> {
+pub(crate) fn decode_operator_settings(row: &EncodedBytes) -> Option<OperatorSettings> {
 	if operator_settings::SHAPE.get::<bool>(row, operator_settings::IS_JOIN) {
 		let left = decode_side(row, operator_settings::LEFT_DURATION);
 		let right = decode_side(row, operator_settings::RIGHT_DURATION);
@@ -53,7 +53,7 @@ fn encode_side(row: &mut EncodedRowBuilder, ttl: &Option<OperatorTtl>, duration_
 	operator_settings::SHAPE.set::<Duration>(row, duration_idx, duration);
 }
 
-fn decode_side(row: &EncodedRow, duration_idx: usize) -> Option<OperatorTtl> {
+fn decode_side(row: &EncodedBytes, duration_idx: usize) -> Option<OperatorTtl> {
 	let duration = operator_settings::SHAPE.get::<Duration>(row, duration_idx);
 	if duration.is_zero() {
 		return None;

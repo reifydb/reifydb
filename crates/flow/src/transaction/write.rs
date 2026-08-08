@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_value::Result;
 
 use super::FlowTransaction;
 
 impl FlowTransaction {
-	pub fn set(&mut self, key: &EncodedKey, value: EncodedRow) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, value: EncodedBytes) -> Result<()> {
 		self.inner_mut().pending.insert(key.clone(), value);
 		Ok(())
 	}
@@ -22,7 +22,7 @@ impl FlowTransaction {
 		Ok(())
 	}
 
-	pub fn set_batch(&mut self, keys: &[EncodedKey], values: &[EncodedRow]) -> Result<()> {
+	pub fn set_batch(&mut self, keys: &[EncodedKey], values: &[EncodedBytes]) -> Result<()> {
 		self.inner_mut().pending.insert_batch(keys, values);
 		Ok(())
 	}
@@ -36,7 +36,7 @@ impl FlowTransaction {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+	use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 	use reifydb_core::common::CommitVersion;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::{interceptor::interceptors::Interceptors, transaction::admin::AdminTransaction};
@@ -49,12 +49,12 @@ pub mod tests {
 		EncodedKey::new(s.as_bytes())
 	}
 
-	fn make_value(s: &str) -> EncodedRow {
-		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
+	fn make_value(s: &str) -> EncodedBytes {
+		EncodedBytes(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	fn get_row(parent: &mut AdminTransaction, key: &EncodedKey) -> Option<EncodedRow> {
-		parent.get(key).unwrap().map(|m| m.row.clone())
+	fn get_row(parent: &mut AdminTransaction, key: &EncodedKey) -> Option<EncodedBytes> {
+		parent.get(key).unwrap().map(|m| m.bytes.clone())
 	}
 
 	#[test]

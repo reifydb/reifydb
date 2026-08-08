@@ -7,7 +7,7 @@ use std::sync::{
 };
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId};
@@ -33,7 +33,7 @@ impl CompactionOutcome {
 
 #[derive(Debug, Clone)]
 pub struct OperatorBatch {
-	pub items: Vec<(EncodedKey, EncodedRow)>,
+	pub items: Vec<(EncodedKey, EncodedBytes)>,
 	pub has_more: bool,
 }
 
@@ -78,7 +78,7 @@ impl OperatorStore {
 		self.inner.arenas.get_or_insert_with(operator, || Arc::new(Arena::new()))
 	}
 
-	pub fn set(&self, operator: OperatorId, key: EncodedKey, value: EncodedRow) {
+	pub fn set(&self, operator: OperatorId, key: EncodedKey, value: EncodedBytes) {
 		let arena = self.arena(operator);
 		arena.mutate(&self.inner.total_bytes, |inner| inner.set(key, value, &self.inner.config));
 	}
@@ -123,7 +123,7 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedRow> {
+	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedBytes> {
 		self.inner.arenas.get(&operator)?.read(|inner| inner.get(key))
 	}
 

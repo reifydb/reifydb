@@ -2,13 +2,13 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::{EncodedKey, IntoEncodedKey},
 };
 use reifydb_core::key::operator_group_state::{GroupStateKey, Keyspace};
 use reifydb_value::value::Value;
 
-pub fn get_values(shape: &RowShape, row: &EncodedRow) -> Vec<Value> {
+pub fn get_values(shape: &RowShape, row: &EncodedBytes) -> Vec<Value> {
 	(0..shape.field_count()).map(|i| shape.get_value(row, i)).collect()
 }
 

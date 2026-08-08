@@ -14,7 +14,7 @@ use reifydb_catalog::metrics::storage::{
 	parser::parse_id,
 };
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -177,8 +177,10 @@ impl TestRunner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
-				let value =
-					self.multi_store.get(&key, version)?.map(|sv: MultiVersionRow| sv.row.to_vec());
+				let value = self
+					.multi_store
+					.get(&key, version)?
+					.map(|sv: MultiVersionRow| sv.bytes.to_vec());
 
 				writeln!(output, "{}", format::raw::Raw::key_maybe_value(&key, value))?;
 			}
@@ -222,7 +224,7 @@ impl TestRunner for Runner {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
+				let bytes = EncodedBytes(CowVec::new(decode_binary(&kv.value)));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					let v = CommitVersion(v);
 					if v > self.version {
@@ -240,7 +242,7 @@ impl TestRunner for Runner {
 					cow_vec![
 						(Delta::Set {
 							key,
-							row
+							bytes
 						})
 					],
 					version,
@@ -267,8 +269,8 @@ impl TestRunner for Runner {
 				let current_values = self
 					.multi_store
 					.get(&key, prev_version)?
-					.map(|mv| mv.row)
-					.unwrap_or_else(|| EncodedRow(cow_vec![]));
+					.map(|mv| mv.bytes)
+					.unwrap_or_else(|| EncodedBytes(cow_vec![]));
 
 				MultiVersionCommit::commit(
 					&self.multi_store,
@@ -478,7 +480,7 @@ impl TestRunner for Runner {
 
 fn print<I: Iterator<Item = MultiVersionRow>>(output: &mut String, iter: I) {
 	for item in iter {
-		let fmtkv = format::raw::Raw::key_value(&item.key, item.row.as_slice());
+		let fmtkv = format::raw::Raw::key_value(&item.key, item.bytes.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

@@ -11,7 +11,7 @@ use std::{
 use indexmap::IndexMap;
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
 	state::{OperatorState, StateBytes, decode_state},
 };
@@ -143,8 +143,8 @@ impl DistinctOperator {
 		GroupStateKey::node_scoped(Keyspace::DISTINCT_LAYOUT, vec![LAYOUT_KEY_PREFIX])
 	}
 
-	pub(super) fn state_bytes(row: EncodedRow, state: &'static str) -> Result<StateBytes> {
-		StateBytes::from_row(row).map_err(|e| {
+	pub(super) fn state_bytes(row: EncodedBytes, state: &'static str) -> Result<StateBytes> {
+		StateBytes::from_bytes(row).map_err(|e| {
 			Error::from(FlowStateError::Decode {
 				state,
 				cause: e.to_string(),
@@ -280,7 +280,7 @@ impl Operator for DistinctOperator {
 									cause: e.to_string(),
 								})
 							})?;
-							utils::state_set(operator_id, txn, &key, bytes.into_row())?;
+							utils::state_set(operator_id, txn, &key, bytes.into_bytes())?;
 						}
 						None => utils::state_remove(operator_id, txn, &key)?,
 					}
@@ -296,7 +296,7 @@ impl Operator for DistinctOperator {
 						operator_id,
 						txn,
 						&Self::layout_storage_key(),
-						layout_bytes.into_row(),
+						layout_bytes.into_bytes(),
 					)?;
 				}
 				Ok(())

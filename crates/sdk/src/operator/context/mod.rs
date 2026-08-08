@@ -8,7 +8,7 @@ use std::{ops::Bound, slice::from_ref};
 use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	encoded::{
-		row::EncodedRow,
+		bytes::EncodedBytes,
 		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
 	key::encoded::EncodedKey,
@@ -78,10 +78,10 @@ pub trait StateApi {
 /// Reads the data store - table and view rows addressed by `RowKey`. That is a different keyspace
 /// from operator state, so these keys are plain `EncodedKey` and never `GroupStateKey`.
 pub trait StoreApi {
-	fn get(&self, key: &EncodedKey) -> Result<Option<EncodedRow>>;
+	fn get(&self, key: &EncodedKey) -> Result<Option<EncodedBytes>>;
 	fn contains(&self, key: &EncodedKey) -> Result<bool>;
-	fn prefix(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>>;
-	fn range(&self, start: Bound<&EncodedKey>, end: Bound<&EncodedKey>) -> Result<Vec<(EncodedKey, EncodedRow)>>;
+	fn prefix(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedBytes)>>;
+	fn range(&self, start: Bound<&EncodedKey>, end: Bound<&EncodedKey>) -> Result<Vec<(EncodedKey, EncodedBytes)>>;
 }
 
 pub trait RowShapeApi {
@@ -126,7 +126,7 @@ pub trait OperatorContext {
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
-	fn shape_for_row(&mut self, row: &EncodedRow) -> Result<RowShape>;
+	fn shape_for_bytes(&mut self, row: &EncodedBytes) -> Result<RowShape>;
 	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>>;

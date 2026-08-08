@@ -11,7 +11,7 @@ use std::{
 };
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{delta::Delta, interface::store::SingleVersionRow, metrics::collect::MetricsCollector};
@@ -199,7 +199,7 @@ impl SingleVersionGet for StandardSingleStore {
 				Some(Some(value)) => {
 					return Ok(Some(SingleVersionRow {
 						key: key.clone(),
-						row: EncodedRow(value),
+						bytes: EncodedBytes(value),
 					}));
 				}
 				Some(None) => return Ok(None),
@@ -212,7 +212,7 @@ impl SingleVersionGet for StandardSingleStore {
 		{
 			return Ok(Some(SingleVersionRow {
 				key: key.clone(),
-				row: EncodedRow(value),
+				bytes: EncodedBytes(value),
 			}));
 		}
 
@@ -256,8 +256,8 @@ impl StandardSingleStore {
 			.map(|delta| match delta {
 				Delta::Set {
 					key,
-					row,
-				} => (key.clone(), Some(CowVec::new(row.as_ref().to_vec()))),
+					bytes,
+				} => (key.clone(), Some(CowVec::new(bytes.as_ref().to_vec()))),
 				Delta::Remove {
 					key,
 					..
@@ -355,7 +355,7 @@ impl StandardSingleStore {
 			.filter_map(|(key_bytes, value)| {
 				value.map(|val| SingleVersionRow {
 					key: EncodedKey::new(key_bytes),
-					row: EncodedRow(val),
+					bytes: EncodedBytes(val),
 				})
 			})
 			.take(batch_size as usize)
@@ -449,7 +449,7 @@ impl StandardSingleStore {
 			.filter_map(|(key_bytes, value)| {
 				value.map(|val| SingleVersionRow {
 					key: EncodedKey::new(key_bytes),
-					row: EncodedRow(val),
+					bytes: EncodedBytes(val),
 				})
 			})
 			.take(batch_size as usize)
@@ -518,7 +518,7 @@ mod tests {
 			&mut store,
 			CowVec::new(vec![Delta::Set {
 				key: k.clone(),
-				row: EncodedRow(CowVec::new(b"7".to_vec())),
+				bytes: EncodedBytes(CowVec::new(b"7".to_vec())),
 			}]),
 		)
 		.unwrap();
@@ -548,7 +548,7 @@ mod tests {
 			&mut store,
 			CowVec::new(vec![Delta::Set {
 				key: k.clone(),
-				row: EncodedRow(CowVec::new(b"1".to_vec())),
+				bytes: EncodedBytes(CowVec::new(b"1".to_vec())),
 			}]),
 		)
 		.unwrap();
@@ -559,7 +559,7 @@ mod tests {
 			&mut store,
 			CowVec::new(vec![Delta::Set {
 				key: key("lost"),
-				row: EncodedRow(CowVec::new(b"2".to_vec())),
+				bytes: EncodedBytes(CowVec::new(b"2".to_vec())),
 			}]),
 		)
 		.unwrap();

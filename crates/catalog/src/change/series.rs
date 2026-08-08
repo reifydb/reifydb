@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
@@ -28,7 +28,7 @@ use crate::{
 pub(super) struct SeriesApplier;
 
 impl CatalogChangeApplier for SeriesApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let mut s = decode_series(row, &catalog.cache, txn.version());
 		s.columns = CatalogStore::list_columns(txn, s.id)?;
@@ -46,7 +46,7 @@ impl CatalogChangeApplier for SeriesApplier {
 	}
 }
 
-fn decode_series(row: &EncodedRow, materialized: &CatalogCache, version: CommitVersion) -> Series {
+fn decode_series(row: &EncodedBytes, materialized: &CatalogCache, version: CommitVersion) -> Series {
 	let id = SeriesId(series::SHAPE.get::<u64>(row, ID));
 	let namespace = NamespaceId(series::SHAPE.get::<u64>(row, NAMESPACE));
 	let name = series::SHAPE.get_utf8(row, NAME).to_string();

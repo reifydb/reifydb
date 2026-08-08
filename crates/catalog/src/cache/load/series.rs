@@ -51,31 +51,31 @@ pub(crate) fn load_series(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 }
 
 fn convert_series(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Series {
-	let row = multi.row;
-	let id = SeriesId(series::SHAPE.get::<u64>(&row, series::ID));
-	let namespace = NamespaceId(series::SHAPE.get::<u64>(&row, series::NAMESPACE));
-	let name = series::SHAPE.get_utf8(&row, series::NAME).to_string();
+	let bytes = multi.bytes;
+	let id = SeriesId(series::SHAPE.get::<u64>(&bytes, series::ID));
+	let namespace = NamespaceId(series::SHAPE.get::<u64>(&bytes, series::NAMESPACE));
+	let name = series::SHAPE.get_utf8(&bytes, series::NAME).to_string();
 
-	let tag_raw = series::SHAPE.get::<u64>(&row, series::TAG);
+	let tag_raw = series::SHAPE.get::<u64>(&bytes, series::TAG);
 	let tag = if tag_raw == 0 {
 		None
 	} else {
 		Some(SumTypeId(tag_raw))
 	};
 
-	let key_column = series::SHAPE.get_utf8(&row, series::KEY_COLUMN).to_string();
-	let key_kind_raw = series::SHAPE.get::<u8>(&row, series::KEY_KIND);
-	let precision_raw = series::SHAPE.get::<u8>(&row, series::PRECISION);
+	let key_column = series::SHAPE.get_utf8(&bytes, series::KEY_COLUMN).to_string();
+	let key_kind_raw = series::SHAPE.get::<u8>(&bytes, series::KEY_KIND);
+	let precision_raw = series::SHAPE.get::<u8>(&bytes, series::PRECISION);
 	let key = SeriesKey::decode(key_kind_raw, precision_raw, key_column);
 
-	let partition_by_str = series::SHAPE.get_utf8(&row, series::PARTITION_BY);
+	let partition_by_str = series::SHAPE.get_utf8(&bytes, series::PARTITION_BY);
 	let partition_by = if partition_by_str.is_empty() {
 		vec![]
 	} else {
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
 
-	let underlying = series::SHAPE.get::<u8>(&row, series::UNDERLYING) != 0;
+	let underlying = series::SHAPE.get::<u8>(&bytes, series::UNDERLYING) != 0;
 
 	Series {
 		id,
@@ -87,12 +87,12 @@ fn convert_series(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Se
 		primary_key,
 		partition_by,
 		underlying,
-		time: decode_series_time(&row),
+		time: decode_series_time(&bytes),
 	}
 }
 
 fn get_series_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
-	let pk_id_raw = series::SHAPE.get::<u64>(&multi.row, series::PRIMARY_KEY);
+	let pk_id_raw = series::SHAPE.get::<u64>(&multi.bytes, series::PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

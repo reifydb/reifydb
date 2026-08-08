@@ -60,7 +60,7 @@ impl CatalogStore {
 			)),
 		};
 
-		let column_ids_blob = primary_key::SHAPE.get_blob(&primary_key_multi.row, primary_key::COLUMN_IDS);
+		let column_ids_blob = primary_key::SHAPE.get_blob(&primary_key_multi.bytes, primary_key::COLUMN_IDS);
 		let column_ids = deserialize_column_ids(&column_ids_blob);
 
 		let mut columns = Vec::new();

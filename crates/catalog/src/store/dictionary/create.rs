@@ -177,16 +177,16 @@ pub mod tests {
 
 		// Keys are descending, so the later dictionary comes first.
 		let link = &links[0];
-		let row = &link.row;
-		let id2 = dictionary_namespace::SHAPE.get::<u64>(row, dictionary_namespace::ID);
+		let bytes = &link.bytes;
+		let id2 = dictionary_namespace::SHAPE.get::<u64>(bytes, dictionary_namespace::ID);
 		assert!(id2 > 0);
-		assert_eq!(dictionary_namespace::SHAPE.get_utf8(row, dictionary_namespace::NAME), "dict2");
+		assert_eq!(dictionary_namespace::SHAPE.get_utf8(bytes, dictionary_namespace::NAME), "dict2");
 
 		let link = &links[1];
-		let row = &link.row;
-		let id1 = dictionary_namespace::SHAPE.get::<u64>(row, dictionary_namespace::ID);
+		let bytes = &link.bytes;
+		let id1 = dictionary_namespace::SHAPE.get::<u64>(bytes, dictionary_namespace::ID);
 		assert!(id2 > id1);
-		assert_eq!(dictionary_namespace::SHAPE.get_utf8(row, dictionary_namespace::NAME), "dict1");
+		assert_eq!(dictionary_namespace::SHAPE.get_utf8(bytes, dictionary_namespace::NAME), "dict1");
 	}
 
 	#[test]

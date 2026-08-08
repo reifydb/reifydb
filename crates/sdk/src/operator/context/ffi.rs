@@ -6,7 +6,7 @@ use std::{ops::Bound, slice::from_ref};
 use reifydb_abi::{context::context::ContextFFI, operator::timer::TimerKind};
 use reifydb_codec::{
 	encoded::{
-		row::EncodedRow,
+		bytes::EncodedBytes,
 		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
 	key::encoded::EncodedKey,
@@ -137,7 +137,7 @@ impl FFIOperatorContext {
 		Dictionary::new(self)
 	}
 
-	pub fn shape_for_row(&mut self, row: &EncodedRow) -> Result<RowShape> {
+	pub fn shape_for_bytes(&mut self, row: &EncodedBytes) -> Result<RowShape> {
 		let fingerprint = row.fingerprint();
 		match self.row_shape().find_row_shape(fingerprint)? {
 			Some(shape) => Ok(shape),
@@ -261,16 +261,16 @@ impl StateApi for State<'_> {
 }
 
 impl StoreApi for Store<'_> {
-	fn get(&self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+	fn get(&self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		Store::get(self, key)
 	}
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
 		Store::contains(self, key)
 	}
-	fn prefix(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+	fn prefix(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 		Store::prefix(self, prefix)
 	}
-	fn range(&self, start: Bound<&EncodedKey>, end: Bound<&EncodedKey>) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+	fn range(&self, start: Bound<&EncodedKey>, end: Bound<&EncodedKey>) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 		Store::range(self, start, end)
 	}
 }
@@ -351,8 +351,8 @@ impl OperatorContext for FFIOperatorContext {
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
 		FFIOperatorContext::remove_row_numbers_below(self, group, upper)
 	}
-	fn shape_for_row(&mut self, row: &EncodedRow) -> Result<RowShape> {
-		FFIOperatorContext::shape_for_row(self, row)
+	fn shape_for_bytes(&mut self, row: &EncodedBytes) -> Result<RowShape> {
+		FFIOperatorContext::shape_for_bytes(self, row)
 	}
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<FFIRowEmit<'_>> {
 		let mut builder = self.builder();

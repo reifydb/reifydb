@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 use reifydb_codec::encoded::{
-	row::{EncodedRow, EncodedRowBuilder},
+	bytes::{EncodedBytes, EncodedRowBuilder},
 	shape::RowShape,
 };
 use reifydb_core::key::operator_group_state::GroupStateKey;
@@ -23,17 +23,17 @@ pub trait SingleStateful: RawStatefulOperator {
 		layout.allocate()
 	}
 
-	fn load_state(&self, txn: &mut FlowTransaction) -> Result<EncodedRow> {
+	fn load_state(&self, txn: &mut FlowTransaction) -> Result<EncodedBytes> {
 		let key = self.key();
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
-	fn save_state(&self, txn: &mut FlowTransaction, row: EncodedRow) -> Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, row: EncodedBytes) -> Result<()> {
 		let key = self.key();
 		utils::save_row(self.id(), txn, &key, row)
 	}
 
-	fn update_state<F>(&self, txn: &mut FlowTransaction, f: F) -> Result<EncodedRow>
+	fn update_state<F>(&self, txn: &mut FlowTransaction, f: F) -> Result<EncodedBytes>
 	where
 		F: FnOnce(&RowShape, &mut EncodedRowBuilder) -> Result<()>,
 	{

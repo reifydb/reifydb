@@ -63,7 +63,7 @@ fn resolve_populator(object: &str, columns: &[Column], ts: &str, shape: &RowShap
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::encoded::{row::EncodedRow, shape::RowShapeField};
+	use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShapeField};
 	use reifydb_core::interface::catalog::{
 		column::{Column, ColumnIndex},
 		id::ColumnId,
@@ -101,7 +101,7 @@ mod tests {
 		])
 	}
 
-	fn row(shape: &RowShape, block_time_nanos: u64) -> EncodedRow {
+	fn encoded_bytes(shape: &RowShape, block_time_nanos: u64) -> EncodedBytes {
 		let mut row = shape.allocate();
 		shape.set_value(&mut row, 0, &Value::Utf8("sig".to_string()));
 		shape.set_value(&mut row, 1, &Value::DateTime(DateTime::from_nanos(block_time_nanos)));
@@ -140,7 +140,7 @@ mod tests {
 			&columns(),
 			&TimeSource::None,
 			&shape,
-			&row(&shape, BLOCK_TIME),
+			&encoded_bytes(&shape, BLOCK_TIME),
 			at_nanos(ARRIVAL),
 		)
 		.expect("resolution must succeed");
@@ -153,7 +153,8 @@ mod tests {
 		// Stamping from the clock would make a replay of an old corpus re-date every row to now.
 		let shape = shape();
 
-		let stamped = unwrapped("trades", &columns(), &event(), &shape, &row(&shape, BLOCK_TIME), ARRIVAL);
+		let stamped =
+			unwrapped("trades", &columns(), &event(), &shape, &encoded_bytes(&shape, BLOCK_TIME), ARRIVAL);
 
 		assert_eq!(stamped, BLOCK_TIME, "#time must come from block_time, not from the write clock");
 	}
@@ -169,7 +170,7 @@ mod tests {
 			&columns(),
 			&TimeSource::Processing,
 			&shape,
-			&row(&shape, BLOCK_TIME),
+			&encoded_bytes(&shape, BLOCK_TIME),
 			ARRIVAL,
 		);
 
@@ -182,7 +183,8 @@ mod tests {
 		// rollup over it buckets into today.
 		let shape = shape();
 
-		let stamped = unwrapped("trades", &columns(), &event(), &shape, &row(&shape, BLOCK_TIME), ARRIVAL);
+		let stamped =
+			unwrapped("trades", &columns(), &event(), &shape, &encoded_bytes(&shape, BLOCK_TIME), ARRIVAL);
 
 		assert!(stamped < ARRIVAL, "a backfilled row's #time must predate its arrival");
 		assert_eq!(ARRIVAL - stamped, 200_000_000_000_000_000);
@@ -212,7 +214,7 @@ mod tests {
 		// Table, series, ringbuffer and queue share this resolver so a declaration cannot be
 		// honoured for one object kind and dropped for another.
 		let shape = shape();
-		let r = row(&shape, BLOCK_TIME);
+		let r = encoded_bytes(&shape, BLOCK_TIME);
 
 		for object in ["trades", "prices", "recent", "jobs"] {
 			assert_eq!(
@@ -232,9 +234,15 @@ mod tests {
 			ts: "no_such_column".to_string(),
 		};
 
-		let err =
-			resolve_time("trades", &columns(), &time, &shape, &row(&shape, BLOCK_TIME), at_nanos(ARRIVAL))
-				.expect_err("an absent populator must not resolve");
+		let err = resolve_time(
+			"trades",
+			&columns(),
+			&time,
+			&shape,
+			&encoded_bytes(&shape, BLOCK_TIME),
+			at_nanos(ARRIVAL),
+		)
+		.expect_err("an absent populator must not resolve");
 
 		assert_eq!(err.diagnostic().code, "TIME_001");
 	}
@@ -247,9 +255,15 @@ mod tests {
 			ts: "signature".to_string(),
 		};
 
-		let err =
-			resolve_time("trades", &columns(), &time, &shape, &row(&shape, BLOCK_TIME), at_nanos(ARRIVAL))
-				.expect_err("a utf8 populator must not resolve");
+		let err = resolve_time(
+			"trades",
+			&columns(),
+			&time,
+			&shape,
+			&encoded_bytes(&shape, BLOCK_TIME),
+			at_nanos(ARRIVAL),
+		)
+		.expect_err("a utf8 populator must not resolve");
 
 		assert_eq!(err.diagnostic().code, "TIME_002");
 	}
@@ -298,7 +312,7 @@ mod tests {
 				&columns(),
 				&TimeSource::None,
 				&shape,
-				&row(&shape, CORRECTED_TIME),
+				&encoded_bytes(&shape, CORRECTED_TIME),
 				None
 			)
 			.unwrap(),
@@ -312,7 +326,7 @@ mod tests {
 		// on event time the update must re-read what the author just changed. The row carries a
 		// populator value unequal to the previous instant so the two arms cannot agree by accident.
 		let shape = shape();
-		let corrected = row(&shape, CORRECTED_TIME);
+		let corrected = encoded_bytes(&shape, CORRECTED_TIME);
 
 		assert_eq!(
 			unwrapped_update("audit", &columns(), &TimeSource::Processing, &shape, &corrected, BLOCK_TIME),
@@ -330,7 +344,7 @@ mod tests {
 	fn an_event_time_update_may_move_time_backwards() {
 		// A row wrongly dated to next year has to be draggable back into the window it belongs to.
 		let shape = shape();
-		let earlier = row(&shape, BLOCK_TIME);
+		let earlier = encoded_bytes(&shape, BLOCK_TIME);
 
 		assert_eq!(
 			unwrapped_update("trades", &columns(), &event(), &shape, &earlier, ARRIVAL),
@@ -345,7 +359,7 @@ mod tests {
 		// A routine edit to an unrelated column must not walk a row across window boundaries;
 		// the two domains may part ways only when the populator itself moved.
 		let shape = shape();
-		let untouched = row(&shape, BLOCK_TIME);
+		let untouched = encoded_bytes(&shape, BLOCK_TIME);
 
 		for (label, time) in [("processing", TimeSource::Processing), ("event", event())] {
 			assert_eq!(
@@ -370,7 +384,7 @@ mod tests {
 			&columns(),
 			&absent,
 			&shape,
-			&row(&shape, CORRECTED_TIME),
+			&encoded_bytes(&shape, CORRECTED_TIME),
 			Some(at_nanos(BLOCK_TIME)),
 		)
 		.expect_err("an absent populator must not resolve on update");
@@ -396,7 +410,7 @@ mod tests {
 		// Table, series and ringbuffer share the update resolver, so a domain's update semantics
 		// cannot be honoured for one object kind and dropped for another.
 		let shape = shape();
-		let r = row(&shape, CORRECTED_TIME);
+		let r = encoded_bytes(&shape, CORRECTED_TIME);
 
 		for object in ["trades", "prices", "recent"] {
 			assert_eq!(

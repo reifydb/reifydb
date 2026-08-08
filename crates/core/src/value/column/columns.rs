@@ -8,7 +8,7 @@ use std::{
 
 use indexmap::IndexMap;
 use reifydb_codec::encoded::{
-	row::EncodedRow,
+	bytes::EncodedBytes,
 	shape::{RowShape, RowShapeField},
 };
 use reifydb_value::{
@@ -421,7 +421,7 @@ impl Columns {
 		}
 	}
 
-	pub fn from_encoded_rows(shape: &RowShape, ids: &[RowNumber], rows: &[EncodedRow]) -> Self {
+	pub fn from_encoded_bytes(shape: &RowShape, ids: &[RowNumber], rows: &[EncodedBytes]) -> Self {
 		assert_eq!(ids.len(), rows.len(), "ids length must match rows length");
 		let fields = shape.fields();
 		let row_count = rows.len();

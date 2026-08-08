@@ -5,7 +5,7 @@ use std::{cell::UnsafeCell, collections::HashMap, ops::Bound};
 
 use reifydb_abi::operator::{capabilities::OperatorCapability, timer::TimerKind};
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::{
 		decode_u64_asc, encode_u64_asc, encode_u128_asc,
 		encoded::{EncodedKey, EncodedKeyRange},
@@ -185,7 +185,7 @@ impl SinkRingBufferViewOperator {
 			return Ok(None);
 		};
 		let blob = self.state_shape.get_blob(&row, 0);
-		Ok(Some(decode_ringbuffer_metadata(&EncodedRow(CowVec::new(blob.as_bytes().to_vec())))))
+		Ok(Some(decode_ringbuffer_metadata(&EncodedBytes(CowVec::new(blob.as_bytes().to_vec())))))
 	}
 
 	fn write_meta_mirror(
@@ -417,7 +417,7 @@ impl SinkRingBufferViewOperator {
 		}
 	}
 
-	fn decode_row_entry(&self, row: &EncodedRow) -> Result<(Option<DateTime>, RowNumber)> {
+	fn decode_row_entry(&self, row: &EncodedBytes) -> Result<(Option<DateTime>, RowNumber)> {
 		let blob = self.state_shape.get_blob(row, 0);
 		let bytes = blob.as_bytes();
 		if bytes.len() != 8 && bytes.len() != 16 {
@@ -437,7 +437,7 @@ impl SinkRingBufferViewOperator {
 		Ok((time, RowNumber(source_rn)))
 	}
 
-	fn decode_row_number(&self, row: &EncodedRow, state: &'static str) -> Result<RowNumber> {
+	fn decode_row_number(&self, row: &EncodedBytes, state: &'static str) -> Result<RowNumber> {
 		let blob = self.state_shape.get_blob(row, 0);
 		let bytes: [u8; 8] = blob.as_bytes().try_into().map_err(|_| {
 			Error::from(FlowStateError::Decode {
@@ -547,7 +547,7 @@ impl Operator for SinkRingBufferViewOperator {
 		let shape = row_shape_from_columns(view.columns());
 		let object_id = StorageId::ringbuffer(self.ringbuffer_id);
 		let mut evicted_rns: Vec<RowNumber> = Vec::new();
-		let mut evicted_rows: Vec<EncodedRow> = Vec::new();
+		let mut evicted_rows: Vec<EncodedBytes> = Vec::new();
 
 		self.evict_due(
 			txn,
@@ -691,7 +691,7 @@ impl SinkRingBufferViewOperator {
 		partition_values: &[Value],
 		at: u64,
 		evicted_rns: &mut Vec<RowNumber>,
-		evicted_rows: &mut Vec<EncodedRow>,
+		evicted_rows: &mut Vec<EncodedBytes>,
 	) -> Result<()> {
 		let partition = partition_of_values(partition_values);
 
@@ -763,9 +763,9 @@ impl SinkRingBufferViewOperator {
 		let row_count = source.row_count();
 		let field_columns = shape_field_columns(source, shape);
 		let mut evicted_rns: Vec<RowNumber> = Vec::new();
-		let mut evicted_rows: Vec<EncodedRow> = Vec::new();
+		let mut evicted_rows: Vec<EncodedBytes> = Vec::new();
 		let mut row_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut row_values: Vec<EncodedRow> = Vec::with_capacity(row_count);
+		let mut row_values: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 
 		if self.is_partitioned() {
 			let verified = self.verified_partitions();
@@ -847,9 +847,9 @@ impl SinkRingBufferViewOperator {
 		field_columns: &[usize],
 		rows: &[usize],
 		evicted_rns: &mut Vec<RowNumber>,
-		evicted_rows: &mut Vec<EncodedRow>,
+		evicted_rows: &mut Vec<EncodedBytes>,
 		row_keys: &mut Vec<EncodedKey>,
-		row_values: &mut Vec<EncodedRow>,
+		row_values: &mut Vec<EncodedBytes>,
 	) -> Result<()> {
 		let incoming = rows.len() as u64;
 		let mut evict_needed = (meta.count + incoming).saturating_sub(meta.capacity);
@@ -914,7 +914,7 @@ impl SinkRingBufferViewOperator {
 		view: &View,
 		shape: &RowShape,
 		evicted_rns: Vec<RowNumber>,
-		evicted_rows: Vec<EncodedRow>,
+		evicted_rows: Vec<EncodedBytes>,
 	) -> Result<Option<Diff>> {
 		if !self.announce_evictions || evicted_rows.is_empty() {
 			return Ok(None);

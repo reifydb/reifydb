@@ -20,7 +20,7 @@ impl CatalogStore {
 		new_name: &str,
 	) -> Result<()> {
 		if let Some(multi) = txn.get(&ColumnsKey::encoded(column_id))? {
-			let old = multi.row;
+			let old = multi.bytes;
 			let mut row = column::SHAPE.allocate();
 			column::SHAPE.set::<u64>(&mut row, column::ID, column::SHAPE.get::<u64>(&old, column::ID));
 			column::SHAPE.set::<u64>(
@@ -50,7 +50,7 @@ impl CatalogStore {
 		}
 
 		if let Some(multi) = txn.get(&ColumnKey::encoded(object, column_id))? {
-			let old = multi.row;
+			let old = multi.bytes;
 			let mut row = object_column::SHAPE.allocate();
 			object_column::SHAPE.set::<u64>(
 				&mut row,

@@ -4,7 +4,7 @@
 use std::{collections::Bound, sync::Arc};
 
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -29,7 +29,7 @@ use crate::{
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
-type DrainedBatch = (Vec<EncodedRow>, Vec<RowNumber>, Option<EncodedKey>, bool);
+type DrainedBatch = (Vec<EncodedBytes>, Vec<RowNumber>, Option<EncodedKey>, bool);
 
 pub struct QueueScan {
 	queue: ResolvedQueue,
@@ -75,7 +75,7 @@ impl QueueScan {
 		})
 	}
 
-	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowShape> {
+	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedBytes) -> Result<RowShape> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
@@ -109,7 +109,7 @@ impl QueueScan {
 		stream: &mut dyn Iterator<Item = Result<MultiVersionRow>>,
 		batch_size: u64,
 	) -> Result<DrainedBatch> {
-		let mut batch_rows: Vec<EncodedRow> = Vec::new();
+		let mut batch_rows: Vec<EncodedBytes> = Vec::new();
 		let mut row_numbers: Vec<RowNumber> = Vec::new();
 		let mut new_last_key = None;
 		let mut drained = false;
@@ -118,7 +118,7 @@ impl QueueScan {
 			match stream.next() {
 				Some(Ok(multi)) => {
 					if let Some(key) = RowKey::decode(&multi.key) {
-						batch_rows.push(multi.row);
+						batch_rows.push(multi.bytes);
 						row_numbers.push(key.row);
 						new_last_key = Some(multi.key);
 					}
@@ -164,7 +164,7 @@ impl QueueScan {
 	fn append_batch(
 		shape: &RowShape,
 		columns: &mut Columns,
-		rows: Vec<EncodedRow>,
+		rows: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
 		columns.append_rows(shape, rows.into_iter(), row_numbers)?;

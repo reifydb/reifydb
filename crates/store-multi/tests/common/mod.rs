@@ -12,7 +12,7 @@
 use std::{collections::HashMap, error::Error as StdError, fmt::Write, sync::Arc};
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -115,7 +115,7 @@ impl testscript::runner::Runner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
-				let value = self.store.get(&key, version)?.map(|sv: MultiVersionRow| sv.row.to_vec());
+				let value = self.store.get(&key, version)?.map(|sv: MultiVersionRow| sv.bytes.to_vec());
 
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
@@ -132,7 +132,7 @@ impl testscript::runner::Runner for Runner {
 
 				let found = self.store.get_many(&keys, version)?;
 				for key in &keys {
-					let value = found.get(key).map(|row| row.row.to_vec());
+					let value = found.get(key).map(|bytes| bytes.bytes.to_vec());
 					writeln!(output, "{}", Raw::key_maybe_value(key, value))?;
 				}
 			}
@@ -255,7 +255,7 @@ impl testscript::runner::Runner for Runner {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
+				let bytes = EncodedBytes(CowVec::new(decode_binary(&kv.value)));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					v
 				} else {
@@ -269,7 +269,7 @@ impl testscript::runner::Runner for Runner {
 					cow_vec![
 						(Delta::Set {
 							key,
-							row
+							bytes
 						})
 					],
 					version,
@@ -297,7 +297,7 @@ impl testscript::runner::Runner for Runner {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey::new(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
+				let bytes = EncodedBytes(CowVec::new(decode_binary(&kv.value)));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					v
 				} else {
@@ -308,7 +308,7 @@ impl testscript::runner::Runner for Runner {
 
 				MultiVersionCommit::commit(
 					&self.store,
-					cow_vec![Delta::remove_announced(key, row)],
+					cow_vec![Delta::remove_announced(key, bytes)],
 					version,
 				)?;
 				self.maybe_flush();
@@ -465,7 +465,7 @@ impl EvictionWatermark for FixedWatermark {
 
 fn print<I: Iterator<Item = MultiVersionRow>>(output: &mut String, iter: I) {
 	for item in iter {
-		let fmtkv = Raw::key_value(&item.key, item.row.as_slice());
+		let fmtkv = Raw::key_value(&item.key, item.bytes.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

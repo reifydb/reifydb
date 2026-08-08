@@ -3,7 +3,7 @@
 
 use once_cell::sync::Lazy;
 use reifydb_codec::encoded::{
-	row::{EncodedRow, EncodedRowBuilder},
+	bytes::{EncodedBytes, EncodedRowBuilder},
 	shape::{RowShape, RowShapeField},
 };
 use reifydb_core::interface::catalog::queue::{QueueDeduplicate, QueueDispatch};
@@ -47,7 +47,7 @@ pub(crate) mod queue {
 	});
 }
 
-pub(crate) fn decode_dispatch(row: &EncodedRow) -> QueueDispatch {
+pub(crate) fn decode_dispatch(row: &EncodedBytes) -> QueueDispatch {
 	let partitions = queue::SHAPE.get::<u16>(row, queue::PARTITIONS);
 	let ordered_by = match queue::SHAPE.get_utf8(row, queue::ORDERED_BY) {
 		"" => None,
@@ -65,7 +65,7 @@ pub(crate) fn encode_dispatch(row: &mut EncodedRowBuilder, dispatch: &QueueDispa
 	queue::SHAPE.set_utf8(row, queue::ORDERED_BY, dispatch.ordered_by().unwrap_or(""));
 }
 
-pub(crate) fn decode_deduplicate(row: &EncodedRow) -> Option<QueueDeduplicate> {
+pub(crate) fn decode_deduplicate(row: &EncodedBytes) -> Option<QueueDeduplicate> {
 	let by = queue::SHAPE.get_utf8(row, queue::DEDUPLICATE_BY);
 	if by.is_empty() {
 		return None;

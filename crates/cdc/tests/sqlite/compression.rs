@@ -7,7 +7,7 @@ use reifydb_cdc::{
 	compact::block,
 	storage::{CdcStorage, sqlite::storage::SqliteCdcStorage},
 };
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::{Cdc, SystemChange},
@@ -21,7 +21,7 @@ fn cdc_diverse(version: u64) -> Cdc {
 	let changes: Vec<SystemChange> = (0..n_changes)
 		.map(|i| SystemChange::Insert {
 			key: EncodedKey::new(format!("k-{}-{}", version, i).into_bytes()),
-			post: EncodedRow(CowVec::new(
+			post: EncodedBytes(CowVec::new(
 				format!("v-{}-{}-{}", version, i, "x".repeat((version as usize) % 17)).into_bytes(),
 			)),
 		})

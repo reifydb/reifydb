@@ -6,7 +6,7 @@ use std::{
 	sync::atomic::{AtomicU64, Ordering},
 };
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	interface::store::{SingleVersionGet, SingleVersionRange},
 	internal_error,
@@ -24,7 +24,7 @@ use reifydb_value::{Result, value::dictionary::DictionaryId};
 use crate::single::SingleTransaction;
 
 pub trait DictionaryStore: Send + Sync {
-	fn read_committed(&self, key: &EncodedKey) -> Result<Option<EncodedRow>>;
+	fn read_committed(&self, key: &EncodedKey) -> Result<Option<EncodedBytes>>;
 
 	fn max_index_id(&self, dictionary: DictionaryId) -> Result<Option<u128>>;
 
@@ -33,9 +33,9 @@ pub trait DictionaryStore: Send + Sync {
 
 pub struct DictEntryWrite {
 	pub entry_key: EncodedKey,
-	pub entry_value: EncodedRow,
+	pub entry_value: EncodedBytes,
 	pub index_key: EncodedKey,
-	pub index_value: EncodedRow,
+	pub index_value: EncodedBytes,
 }
 
 pub fn durable_max_index_id(store: &SingleStore, dictionary: DictionaryId) -> Result<Option<u128>> {
@@ -73,7 +73,7 @@ fn bound_as_slice(bound: &Bound<EncodedKey>) -> Bound<&[u8]> {
 pub struct UnconfiguredDictionaryStore;
 
 impl DictionaryStore for UnconfiguredDictionaryStore {
-	fn read_committed(&self, _key: &EncodedKey) -> Result<Option<EncodedRow>> {
+	fn read_committed(&self, _key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		Err(internal_error!("dictionary store is not configured"))
 	}
 
@@ -105,10 +105,10 @@ impl SingleDictionaryStore {
 }
 
 impl DictionaryStore for SingleDictionaryStore {
-	fn read_committed(&self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+	fn read_committed(&self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		self.reads.fetch_add(1, Ordering::Relaxed);
 		let store = self.single.read_store();
-		Ok(SingleVersionGet::get(&store, key)?.map(|row| row.row))
+		Ok(SingleVersionGet::get(&store, key)?.map(|bytes| bytes.bytes))
 	}
 
 	fn max_index_id(&self, dictionary: DictionaryId) -> Result<Option<u128>> {

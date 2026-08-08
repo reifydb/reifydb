@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_catalog::{cache::CatalogCache, catalog::Catalog};
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{common::CommitVersion, event::EventBus};
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -128,6 +128,6 @@ pub fn make_key(s: &str) -> EncodedKey {
 	EncodedKey::new(s.as_bytes())
 }
 
-pub fn make_row(s: &str) -> EncodedRow {
-	EncodedRow(CowVec::new(s.as_bytes().to_vec()))
+pub fn make_bytes(s: &str) -> EncodedBytes {
+	EncodedBytes(CowVec::new(s.as_bytes().to_vec()))
 }

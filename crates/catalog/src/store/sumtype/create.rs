@@ -214,15 +214,15 @@ pub mod tests {
 		assert_eq!(links.len(), 2);
 
 		let link = &links[0];
-		let row = &link.row;
-		let id2 = sumtype_namespace::SHAPE.get::<u64>(row, sumtype_namespace::ID);
+		let bytes = &link.bytes;
+		let id2 = sumtype_namespace::SHAPE.get::<u64>(bytes, sumtype_namespace::ID);
 		assert!(id2 > 0);
-		assert_eq!(sumtype_namespace::SHAPE.get_utf8(row, sumtype_namespace::NAME), "Object");
+		assert_eq!(sumtype_namespace::SHAPE.get_utf8(bytes, sumtype_namespace::NAME), "Object");
 
 		let link = &links[1];
-		let row = &link.row;
-		let id1 = sumtype_namespace::SHAPE.get::<u64>(row, sumtype_namespace::ID);
+		let bytes = &link.bytes;
+		let id1 = sumtype_namespace::SHAPE.get::<u64>(bytes, sumtype_namespace::ID);
 		assert!(id2 > id1);
-		assert_eq!(sumtype_namespace::SHAPE.get_utf8(row, sumtype_namespace::NAME), "Color");
+		assert_eq!(sumtype_namespace::SHAPE.get_utf8(bytes, sumtype_namespace::NAME), "Color");
 	}
 }

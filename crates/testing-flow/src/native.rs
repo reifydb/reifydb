@@ -10,7 +10,7 @@ use std::{
 
 use reifydb_abi::flow::diff::DiffType;
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, state::OperatorState};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey, state::OperatorState};
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,
@@ -153,9 +153,9 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 		value
 	}
 
-	pub fn seed_store(&mut self, rows: &[(EncodedKey, EncodedRow)]) {
+	pub fn seed_store(&mut self, rows: &[(EncodedKey, EncodedBytes)]) {
 		let keys: Vec<EncodedKey> = rows.iter().map(|(k, _)| k.clone()).collect();
-		let values: Vec<EncodedRow> = rows.iter().map(|(_, v)| v.clone()).collect();
+		let values: Vec<EncodedBytes> = rows.iter().map(|(_, v)| v.clone()).collect();
 		let mut txn = self.begin_txn();
 		txn.set_batch(&keys, &values).expect("seed_store set_batch");
 		self.end_txn(txn);
@@ -165,7 +165,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 		&mut self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
-	) -> Vec<(EncodedKey, EncodedRow)> {
+	) -> Vec<(EncodedKey, EncodedBytes)> {
 		let operator = self.operator_id;
 		let mut txn = self.begin_txn();
 		let rows = {

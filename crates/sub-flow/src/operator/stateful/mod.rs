@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::interface::store::MultiVersionRow;
 use reifydb_value::Result;
 
@@ -28,17 +28,17 @@ impl<'a> StateIterator<'a> {
 }
 
 impl Iterator for StateIterator<'_> {
-	type Item = Result<(EncodedKey, EncodedRow)>;
+	type Item = Result<(EncodedKey, EncodedBytes)>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		match self.inner.next()? {
 			Ok(multi) => {
 				let pair = if let Some(state_key) = OperatorStateKey::decode(&multi.key) {
-					(EncodedKey::new(state_key.key), multi.row)
+					(EncodedKey::new(state_key.key), multi.bytes)
 				} else if let Some(internal_key) = OperatorStateKey::decode(&multi.key) {
-					(EncodedKey::new(internal_key.key), multi.row)
+					(EncodedKey::new(internal_key.key), multi.bytes)
 				} else {
-					(multi.key, multi.row)
+					(multi.key, multi.bytes)
 				};
 				Some(Ok(pair))
 			}

@@ -6,7 +6,7 @@ use std::{marker::PhantomData, mem, ops::Bound, slice::from_ref};
 use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	encoded::{
-		row::EncodedRow,
+		bytes::EncodedBytes,
 		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -42,12 +42,12 @@ pub trait NativeBridge {
 	fn version(&self) -> CommitVersion;
 	fn state_lease_bytes(&self) -> u64;
 
-	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedRow>>;
-	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedRow)>>;
-	fn state_set(&mut self, key: &GroupStateKey, value: EncodedRow) -> Result<()>;
+	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedBytes>>;
+	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedBytes)>>;
+	fn state_set(&mut self, key: &GroupStateKey, value: EncodedBytes) -> Result<()>;
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()>;
 	fn state_clear(&mut self) -> Result<()>;
-	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedRow)>>;
+	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedBytes)>>;
 
 	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>>;
 	fn lookup_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<Option<GroupId>>>;
@@ -58,10 +58,10 @@ pub trait NativeBridge {
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
 
-	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>>;
+	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>>;
 	fn store_contains(&mut self, key: &EncodedKey) -> Result<bool>;
-	fn store_prefix(&mut self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>>;
-	fn store_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>>;
+	fn store_prefix(&mut self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedBytes)>>;
+	fn store_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedBytes)>>;
 
 	fn catalog_find_row_shape(&mut self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>>;
 
@@ -72,7 +72,7 @@ pub trait NativeBridge {
 	fn state_get_many_visit(
 		&mut self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(&GroupStateKey, &EncodedRow) -> SdkResult<()>,
+		visit: &mut dyn FnMut(&GroupStateKey, &EncodedBytes) -> SdkResult<()>,
 	) -> SdkResult<()>;
 }
 
@@ -80,11 +80,11 @@ fn to_sdk_err<E: ToString>(e: E) -> SdkError {
 	SdkError::Other(e.to_string())
 }
 
-fn decode<T: OperatorState>(row: &EncodedRow) -> SdkResult<T> {
+fn decode<T: OperatorState>(row: &EncodedBytes) -> SdkResult<T> {
 	decode_payload(row)
 }
 
-fn encode<T: OperatorState>(value: &T, now: DateTime) -> SdkResult<EncodedRow> {
+fn encode<T: OperatorState>(value: &T, now: DateTime) -> SdkResult<EncodedBytes> {
 	encode_payload(value, now)
 }
 
@@ -235,7 +235,7 @@ impl StateApi for NativeState<'_> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		match unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)? {
-			Some(row) => Ok(Some(StateBytes::from_row(row).map_err(ValueError::from)?)),
+			Some(row) => Ok(Some(StateBytes::from_bytes(row).map_err(ValueError::from)?)),
 			None => Ok(None),
 		}
 	}
@@ -243,7 +243,7 @@ impl StateApi for NativeState<'_> {
 	fn set_bytes(&mut self, key: &GroupStateKey, payload: StateBytes) -> SdkResult<()> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.bridge).state_set(key, payload.into_row()) }.map_err(to_sdk_err)
+		unsafe { (*self.bridge).state_set(key, payload.into_bytes()) }.map_err(to_sdk_err)
 	}
 
 	fn get_many_bytes_visit(
@@ -256,7 +256,7 @@ impl StateApi for NativeState<'_> {
 		// cannot reach the context, so it cannot re-enter the bridge while this borrow is live.
 		unsafe {
 			(*self.bridge).state_get_many_visit(keys, &mut |k, row| {
-				let bytes = StateBytes::from_row(row.clone()).map_err(ValueError::from)?;
+				let bytes = StateBytes::from_bytes(row.clone()).map_err(ValueError::from)?;
 				visit(k.clone(), bytes)
 			})
 		}
@@ -276,7 +276,7 @@ impl StateApi for NativeState<'_> {
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		let rows = unsafe { (*self.bridge).state_range(range) }.map_err(to_sdk_err)?;
 		for (k, row) in rows {
-			let bytes = StateBytes::from_row(row).map_err(ValueError::from)?;
+			let bytes = StateBytes::from_bytes(row).map_err(ValueError::from)?;
 			visit(k, bytes)?;
 		}
 		Ok(())
@@ -289,7 +289,7 @@ pub struct NativeStore<'a> {
 }
 
 impl StoreApi for NativeStore<'_> {
-	fn get(&self, key: &EncodedKey) -> SdkResult<Option<EncodedRow>> {
+	fn get(&self, key: &EncodedKey) -> SdkResult<Option<EncodedBytes>> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).store_get(key) }.map_err(to_sdk_err)
@@ -299,7 +299,7 @@ impl StoreApi for NativeStore<'_> {
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).store_contains(key) }.map_err(to_sdk_err)
 	}
-	fn prefix(&self, prefix: &EncodedKey) -> SdkResult<Vec<(EncodedKey, EncodedRow)>> {
+	fn prefix(&self, prefix: &EncodedKey) -> SdkResult<Vec<(EncodedKey, EncodedBytes)>> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).store_prefix(prefix) }.map_err(to_sdk_err)
@@ -308,7 +308,7 @@ impl StoreApi for NativeStore<'_> {
 		&self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
-	) -> SdkResult<Vec<(EncodedKey, EncodedRow)>> {
+	) -> SdkResult<Vec<(EncodedKey, EncodedBytes)>> {
 		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
@@ -454,7 +454,7 @@ impl OperatorContext for NativeOperatorContext<'_> {
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.bridge).remove_row_numbers_below(group, upper) }.map_err(to_sdk_err)
 	}
-	fn shape_for_row(&mut self, row: &EncodedRow) -> SdkResult<RowShape> {
+	fn shape_for_bytes(&mut self, row: &EncodedBytes) -> SdkResult<RowShape> {
 		let fingerprint = row.fingerprint();
 		match self.row_shape().find_row_shape(fingerprint)? {
 			Some(shape) => Ok(shape),

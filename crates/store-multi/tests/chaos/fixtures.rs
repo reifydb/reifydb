@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use reifydb_codec::{
-	encoded::row::{EncodedRow, SHAPE_HEADER_SIZE},
+	encoded::bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{common::CommitVersion, event::EventBus, interface::store::EntryKind};
@@ -81,8 +81,8 @@ pub fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
 
 /// TTL eviction is version-anchored, so a key's age is controlled purely by the version it commits at
 /// and the row body is opaque to eviction.
-pub fn build_row(payload: &[u8]) -> EncodedRow {
+pub fn build_bytes(payload: &[u8]) -> EncodedBytes {
 	let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
 	buf[SHAPE_HEADER_SIZE..].copy_from_slice(payload);
-	EncodedRow(CowVec::new(buf))
+	EncodedBytes(CowVec::new(buf))
 }

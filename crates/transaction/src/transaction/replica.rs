@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -119,13 +119,13 @@ impl ReplicaTransaction {
 	}
 
 	#[inline]
-	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, row: EncodedBytes) -> Result<()> {
 		self.check_active()?;
 		self.rpl.as_mut().unwrap().set(key, row)
 	}
 
 	#[inline]
-	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
+	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
 		self.check_active()?;
 		self.rpl.as_mut().unwrap().remove_with_pre(key, pre)
 	}
@@ -178,11 +178,11 @@ impl Drop for ReplicaTransaction {
 
 impl Write for ReplicaTransaction {
 	#[inline]
-	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+	fn set(&mut self, key: &EncodedKey, row: EncodedBytes) -> Result<()> {
 		ReplicaTransaction::set(self, key, row)
 	}
 	#[inline]
-	fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
+	fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
 		ReplicaTransaction::remove_with_pre(self, key, pre)
 	}
 	#[inline]

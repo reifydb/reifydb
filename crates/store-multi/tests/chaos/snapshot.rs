@@ -6,7 +6,7 @@
 //! interleaved (commits get versions > V, flushes use cutoff <= V), so any divergence is a real bug.
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::{common::CommitVersion, delta::Delta, interface::store::MultiVersionCommit, key::row::RowKey};
 use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore};
 use reifydb_testing_chaos::fuzz::pick;
@@ -41,7 +41,7 @@ fn commit_rows(
 			.map(|(row, value)| match value {
 				Some(bytes) => Delta::Set {
 					key: RowKey::encoded(STORAGE, *row),
-					row: EncodedRow(CowVec::new(bytes.clone())),
+					bytes: EncodedBytes(CowVec::new(bytes.clone())),
 				},
 				None => Delta::remove_silent(RowKey::encoded(STORAGE, *row)),
 			})
@@ -102,7 +102,7 @@ fn drain_with_interleave(
 		match iter.next() {
 			Some(item) => {
 				let r = item.unwrap();
-				drained.push((r.key.to_vec(), r.row.to_vec(), r.version.0));
+				drained.push((r.key.to_vec(), r.bytes.to_vec(), r.version.0));
 			}
 			None => break,
 		}
@@ -205,7 +205,7 @@ pub fn drive(seed: u64, p: Params) {
 			.collect::<Result<Vec<_>, _>>()
 			.unwrap()
 			.into_iter()
-			.map(|r| (r.key.to_vec(), r.row.to_vec(), r.version.0))
+			.map(|r| (r.key.to_vec(), r.bytes.to_vec(), r.version.0))
 			.collect();
 		assert_eq!(
 			got, expected_fwd,

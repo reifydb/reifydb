@@ -104,7 +104,7 @@ fn snapshot(h: &mut Harness<WindowOperator>) -> Snapshot {
 		}
 		if keyspace == Keyspace::ENGINE_META {
 			let meta: EngineMeta =
-				decode_state(&StateBytes::from_row(row.clone()).expect("engine meta state bytes"))
+				decode_state(&StateBytes::from_bytes(row.clone()).expect("engine meta state bytes"))
 					.expect("engine meta decodes");
 			metas.push(meta.last_event_time);
 		}

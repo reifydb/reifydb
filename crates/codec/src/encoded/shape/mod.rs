@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 //! Row-shape descriptor: the schema-of-bytes that lets storage, replication and CDC address an
-//! `EncodedRow`'s fields without consulting the catalog. `SHAPE_HEADER_SIZE` and the packed-mode bit
+//! `EncodedBytes`'s fields without consulting the catalog. `SHAPE_HEADER_SIZE` and the packed-mode bit
 //! layout are part of the wire format; resizing either breaks every row written under the old one.
 
 pub mod cache;
@@ -26,7 +26,7 @@ use reifydb_value::{
 use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 
-use super::row::{EncodedRowBuilder, SHAPE_HEADER_SIZE, read_defined};
+use super::bytes::{EncodedRowBuilder, SHAPE_HEADER_SIZE, read_defined};
 use crate::encoded::shape::fingerprint::{RowShapeFingerprint, compute_fingerprint};
 
 const PACKED_MODE_DYNAMIC: u128 = 0x80000000000000000000000000000000;

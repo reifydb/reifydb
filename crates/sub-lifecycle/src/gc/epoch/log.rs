@@ -3,7 +3,7 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
@@ -83,7 +83,7 @@ impl EpochLog {
 			if key.bucket.plus(bucket) <= oldest {
 				break;
 			}
-			let sample = self.decode(&entry.row);
+			let sample = self.decode(&entry.bytes);
 			if sample.at >= oldest {
 				samples.push(sample);
 			}
@@ -99,7 +99,7 @@ impl EpochLog {
 		let txn = self.engine.begin_query(IdentityId::system())?;
 		for entry in txn.range(VersionEpochKey::older_than(oldest), RangeScope::All, RANGE_BATCH) {
 			let entry = entry?;
-			if self.decode(&entry.row).at >= oldest {
+			if self.decode(&entry.bytes).at >= oldest {
 				continue;
 			}
 			expired.push(entry.key.clone());
@@ -141,14 +141,14 @@ impl EpochLog {
 		EpochSeconds::new(at.seconds() - (at.seconds() % bucket))
 	}
 
-	fn encode(&self, at: EpochSeconds, version: CommitVersion) -> EncodedRow {
+	fn encode(&self, at: EpochSeconds, version: CommitVersion) -> EncodedBytes {
 		let mut row = self.shape.allocate();
 		self.shape.set::<u64>(&mut row, AT_SECS, at.seconds());
 		self.shape.set::<u64>(&mut row, VERSION, version.0);
 		row.freeze()
 	}
 
-	fn decode(&self, row: &EncodedRow) -> Sample {
+	fn decode(&self, row: &EncodedBytes) -> Sample {
 		Sample {
 			at: EpochSeconds::new(self.shape.get::<u64>(row, AT_SECS)),
 			version: self.shape.get::<u64>(row, VERSION),

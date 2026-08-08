@@ -85,7 +85,7 @@ pub fn read_sealed_through(txn: &mut FlowTransaction, operator: OperatorId) -> R
 	let Some(row) = txn.state_get(operator, &seal_ledger_key())? else {
 		return Ok(None);
 	};
-	let state: SealLedgerState = decode_state(&StateBytes::from_row(row)?)?;
+	let state: SealLedgerState = decode_state(&StateBytes::from_bytes(row)?)?;
 	Ok(Some(SealedThrough::from_order(state.sealed_through)))
 }
 

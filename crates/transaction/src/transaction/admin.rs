@@ -4,7 +4,7 @@
 use std::{mem::take, sync::Arc};
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -411,13 +411,13 @@ impl AdminTransaction {
 	}
 
 	#[inline]
-	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, row: EncodedBytes) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set(key, row)
 	}
 
 	#[inline]
-	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
+	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove_with_pre(key, pre)
 	}
@@ -466,11 +466,11 @@ impl WithEventBus for AdminTransaction {
 
 impl Write for AdminTransaction {
 	#[inline]
-	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+	fn set(&mut self, key: &EncodedKey, row: EncodedBytes) -> Result<()> {
 		AdminTransaction::set(self, key, row)
 	}
 	#[inline]
-	fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
+	fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
 		AdminTransaction::remove_with_pre(self, key, pre)
 	}
 	#[inline]

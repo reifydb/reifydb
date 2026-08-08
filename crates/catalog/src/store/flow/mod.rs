@@ -9,7 +9,7 @@ pub mod list;
 pub(crate) mod shape;
 pub mod update;
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::interface::catalog::{
 	flow::{Flow, FlowId, FlowStatus},
 	id::NamespaceId,
@@ -17,7 +17,7 @@ use reifydb_core::interface::catalog::{
 
 use crate::store::flow::shape::flow;
 
-pub(crate) fn decode_flow(row: &EncodedRow) -> Flow {
+pub(crate) fn decode_flow(row: &EncodedBytes) -> Flow {
 	Flow {
 		id: FlowId(flow::SHAPE.get::<u64>(row, flow::ID)),
 		namespace: NamespaceId(flow::SHAPE.get::<u64>(row, flow::NAMESPACE)),

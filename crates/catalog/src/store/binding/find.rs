@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::{
 	interface::catalog::{
 		binding::{Binding, BindingFormat, BindingProtocol, HttpMethod},
@@ -21,7 +21,7 @@ impl CatalogStore {
 		let Some(multi) = rx.get(&BindingKey::encoded(id))? else {
 			return Ok(None);
 		};
-		Ok(Some(decode_binding(&multi.row)))
+		Ok(Some(decode_binding(&multi.bytes)))
 	}
 
 	pub(crate) fn find_binding_by_name(
@@ -35,11 +35,11 @@ impl CatalogStore {
 		let mut found_id = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let row = &multi.row;
-			let bound_name = binding_namespace::SHAPE.get_utf8(row, binding_namespace::NAME);
+			let bytes = &multi.bytes;
+			let bound_name = binding_namespace::SHAPE.get_utf8(bytes, binding_namespace::NAME);
 			if name == bound_name {
 				found_id = Some(BindingId(
-					binding_namespace::SHAPE.get::<u64>(row, binding_namespace::ID),
+					binding_namespace::SHAPE.get::<u64>(bytes, binding_namespace::ID),
 				));
 				break;
 			}
@@ -55,7 +55,7 @@ impl CatalogStore {
 	}
 }
 
-pub(crate) fn decode_binding(row: &EncodedRow) -> Binding {
+pub(crate) fn decode_binding(row: &EncodedBytes) -> Binding {
 	let id = BindingId(binding::SHAPE.get::<u64>(row, binding::ID));
 	let namespace = NamespaceId(binding::SHAPE.get::<u64>(row, binding::NAMESPACE));
 	let name = binding::SHAPE.get_utf8(row, binding::NAME).to_string();

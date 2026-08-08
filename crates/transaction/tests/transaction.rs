@@ -12,7 +12,7 @@
 use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path::Path, sync::Arc};
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -248,7 +248,7 @@ impl<'a> Runner for MvccRunner {
 				let mut args = command.consume_args();
 				for kv in args.rest_key() {
 					let key = EncodedKey::new(decode_binary(kv.key.as_ref().unwrap()));
-					let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
+					let row = EncodedBytes(CowVec::new(decode_binary(&kv.value)));
 					match t {
 						TransactionHandle::Read(_) => {
 							unreachable!("can not call unset on rx")
@@ -287,13 +287,13 @@ impl<'a> Runner for MvccRunner {
 
 					let value = match &mut t {
 						TransactionHandle::Read(rx) => {
-							rx.get(&key).map(|r| r.and_then(|tv| Some(tv.row().to_vec())))
+							rx.get(&key).map(|r| r.and_then(|tv| Some(tv.bytes().to_vec())))
 						}
 						TransactionHandle::Write(tx) => {
-							tx.get(&key).map(|r| r.and_then(|tv| Some(tv.row().to_vec())))
+							tx.get(&key).map(|r| r.and_then(|tv| Some(tv.bytes().to_vec())))
 						}
 						TransactionHandle::Replica(tx) => {
-							tx.get(&key).map(|r| r.and_then(|tv| Some(tv.row().to_vec())))
+							tx.get(&key).map(|r| r.and_then(|tv| Some(tv.bytes().to_vec())))
 						}
 					}
 					.unwrap();
@@ -314,7 +314,7 @@ impl<'a> Runner for MvccRunner {
 
 				for kv in args.rest_key() {
 					let key = EncodedKey::new(decode_binary(kv.key.as_ref().unwrap()));
-					let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
+					let row = EncodedBytes(CowVec::new(decode_binary(&kv.value)));
 					if row.is_empty() {
 						tx.remove(&key).unwrap();
 					} else {
@@ -360,7 +360,7 @@ impl<'a> Runner for MvccRunner {
 							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for multi in items {
-							kvs.push((multi.key.clone(), multi.row.to_vec()));
+							kvs.push((multi.key.clone(), multi.bytes.to_vec()));
 						}
 					}
 					TransactionHandle::Write(tx) => {
@@ -369,7 +369,7 @@ impl<'a> Runner for MvccRunner {
 							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for item in items {
-							kvs.push((item.key.clone(), item.row.to_vec()));
+							kvs.push((item.key.clone(), item.bytes.to_vec()));
 						}
 					}
 					TransactionHandle::Replica(tx) => {
@@ -378,7 +378,7 @@ impl<'a> Runner for MvccRunner {
 							.collect::<Result<Vec<_>, _>>()
 							.unwrap();
 						for item in items {
-							kvs.push((item.key.clone(), item.row.to_vec()));
+							kvs.push((item.key.clone(), item.bytes.to_vec()));
 						}
 					}
 				}
@@ -503,7 +503,7 @@ impl<'a> Runner for MvccRunner {
 				let mut args = command.consume_args();
 				for kv in args.rest_key() {
 					let key = EncodedKey::new(decode_binary(kv.key.as_ref().unwrap()));
-					let row = EncodedRow(CowVec::new(decode_binary(&kv.value)));
+					let row = EncodedBytes(CowVec::new(decode_binary(&kv.value)));
 					match t {
 						TransactionHandle::Read(_) => {
 							unreachable!("can not call set on rx")
@@ -591,7 +591,7 @@ where
 	I: Iterator<Item = MultiVersionRow>,
 {
 	while let Some(sv) = iter.next() {
-		let fmtkv = Raw::key_value(&sv.key, sv.row.as_slice());
+		let fmtkv = Raw::key_value(&sv.key, sv.bytes.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

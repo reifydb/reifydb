@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -35,7 +35,7 @@ use crate::{
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 
-type DrainedBatch = (Vec<EncodedRow>, Vec<RowNumber>, Option<EncodedKey>, bool);
+type DrainedBatch = (Vec<EncodedBytes>, Vec<RowNumber>, Option<EncodedKey>, bool);
 
 pub(crate) struct ViewScanNode {
 	view: ResolvedView,
@@ -106,7 +106,7 @@ impl ViewScanNode {
 		})
 	}
 
-	fn get_or_load_shape<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedRow) -> Result<RowShape> {
+	fn get_or_load_shape<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedBytes) -> Result<RowShape> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
@@ -171,7 +171,7 @@ impl ViewScanNode {
 					} else {
 						continue;
 					};
-					batch_rows.push(multi.row);
+					batch_rows.push(multi.bytes);
 					row_numbers.push(row);
 					new_last_key = Some(multi.key);
 				}
@@ -204,7 +204,7 @@ impl ViewScanNode {
 		&mut self,
 		rx: &mut Transaction<'a>,
 		columns: &mut Columns,
-		rows: Vec<EncodedRow>,
+		rows: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
 		let shape = self.get_or_load_shape(rx, &rows[0])?;

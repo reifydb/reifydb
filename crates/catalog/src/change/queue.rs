@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, QueueId},
@@ -26,7 +26,7 @@ use crate::{
 pub(super) struct QueueApplier;
 
 impl CatalogChangeApplier for QueueApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let mut decoded = decode_queue(row);
 		decoded.columns = CatalogStore::list_columns(txn, decoded.id)?;
@@ -44,7 +44,7 @@ impl CatalogChangeApplier for QueueApplier {
 	}
 }
 
-fn decode_queue(row: &EncodedRow) -> Queue {
+fn decode_queue(row: &EncodedBytes) -> Queue {
 	let id = QueueId(queue::SHAPE.get::<u64>(row, queue::ID));
 	let namespace = NamespaceId(queue::SHAPE.get::<u64>(row, queue::NAMESPACE));
 	let name = queue::SHAPE.get_utf8(row, queue::NAME).to_string();
@@ -87,10 +87,10 @@ mod tests {
 		test_utils::ensure_test_namespace,
 	};
 
-	fn stored_row(txn: &mut AdminTransaction, to_create: QueueToCreate) -> EncodedRow {
+	fn stored_row(txn: &mut AdminTransaction, to_create: QueueToCreate) -> EncodedBytes {
 		let created = CatalogStore::create_queue(txn, to_create).unwrap();
 		let key = QueueKey::encoded(created.id);
-		Transaction::Admin(txn).get(&key).unwrap().unwrap().row
+		Transaction::Admin(txn).get(&key).unwrap().unwrap().bytes
 	}
 
 	#[test]
@@ -201,8 +201,8 @@ mod tests {
 		)
 		.unwrap();
 
-		let row = Transaction::Admin(&mut txn).get(&QueueKey::encoded(created.id)).unwrap().unwrap().row;
-		let decoded = decode_queue(&row);
+		let bytes = Transaction::Admin(&mut txn).get(&QueueKey::encoded(created.id)).unwrap().unwrap().bytes;
+		let decoded = decode_queue(&bytes);
 
 		assert_eq!(decoded.id, created.id);
 		assert_ne!(decoded.namespace, NamespaceId(0));

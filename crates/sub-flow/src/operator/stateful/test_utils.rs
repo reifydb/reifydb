@@ -3,7 +3,7 @@
 
 pub mod test {
 	use reifydb_abi::operator::capabilities::OperatorCapability;
-	use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+	use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShape};
 	use reifydb_core::{
 		interface::{catalog::flow::OperatorId, change::Change},
 		key::operator_group_state::{GroupStateKey, Keyspace},
@@ -65,15 +65,15 @@ pub mod test {
 		}
 	}
 
-	pub fn test_row() -> EncodedRow {
-		EncodedRow(CowVec::new(vec![1, 2, 3, 4, 5]))
+	pub fn test_bytes() -> EncodedBytes {
+		EncodedBytes(CowVec::new(vec![1, 2, 3, 4, 5]))
 	}
 
 	pub fn test_key(suffix: &str) -> GroupStateKey {
 		GroupStateKey::node_scoped(Keyspace::FIRST_CUSTOM, format!("test_{}", suffix).into_bytes())
 	}
 
-	pub fn assert_row_eq(actual: &EncodedRow, expected: &EncodedRow) {
+	pub fn assert_row_eq(actual: &EncodedBytes, expected: &EncodedBytes) {
 		assert_eq!(actual.to_vec(), expected.to_vec(), "Rows do not match");
 	}
 

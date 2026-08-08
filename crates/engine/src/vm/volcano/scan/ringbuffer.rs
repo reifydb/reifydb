@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
 	interface::{
 		catalog::{dictionary::Dictionary, object::ObjectId, ringbuffer::PartitionedMetadata},
@@ -43,7 +43,7 @@ pub struct RingBufferScan {
 	dictionaries: Vec<Option<Dictionary>>,
 
 	partition_col_indices: Vec<usize>,
-	current_partition_rows: Vec<(RowNumber, EncodedRow)>,
+	current_partition_rows: Vec<(RowNumber, EncodedBytes)>,
 	current_partition_cursor: usize,
 	current_partition_loaded: bool,
 	finished: bool,
@@ -104,7 +104,7 @@ impl RingBufferScan {
 		})
 	}
 
-	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowShape> {
+	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedBytes) -> Result<RowShape> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
@@ -131,8 +131,8 @@ impl RingBufferScan {
 		txn: &mut Transaction<'_>,
 		batch_size: usize,
 		partitioned: bool,
-	) -> Result<(Vec<EncodedRow>, Vec<RowNumber>, Vec<Partition>)> {
-		let mut batch_rows: Vec<EncodedRow> = Vec::new();
+	) -> Result<(Vec<EncodedBytes>, Vec<RowNumber>, Vec<Partition>)> {
+		let mut batch_rows: Vec<EncodedBytes> = Vec::new();
 		let mut row_numbers: Vec<RowNumber> = Vec::new();
 		let mut partitions_sidecar: Vec<Partition> = Vec::new();
 
@@ -201,7 +201,7 @@ impl RingBufferScan {
 		&mut self,
 		txn: &mut Transaction<'_>,
 		columns: &mut Columns,
-		rows: Vec<EncodedRow>,
+		rows: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
 		let shape = self.get_or_load_shape(txn, &rows[0])?;
@@ -214,7 +214,7 @@ impl RingBufferScan {
 		&self,
 		txn: &mut Transaction<'_>,
 		partition_index: usize,
-	) -> Result<Vec<(RowNumber, EncodedRow)>> {
+	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
 		let pm = &self.partitions[partition_index];
 		let rb_id = self.ringbuffer.def().id;
 
@@ -223,7 +223,7 @@ impl RingBufferScan {
 			for rn_value in pm.metadata.head..pm.metadata.tail {
 				let rn = RowNumber(rn_value);
 				if let Some(multi) = txn.get(&RowKey::encoded(rb_id, rn))? {
-					out.push((rn, multi.row));
+					out.push((rn, multi.bytes));
 				}
 			}
 			return Ok(out);
@@ -252,7 +252,7 @@ impl RingBufferScan {
 				if let Some(RowLocator::Row(rn)) =
 					PartitionedRowKey::decode(&entry.key).map(|pk| pk.locator)
 				{
-					out.push((rn, entry.row));
+					out.push((rn, entry.bytes));
 				}
 				last_key = Some(entry.key);
 			}

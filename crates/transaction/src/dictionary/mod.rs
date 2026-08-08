@@ -15,7 +15,7 @@ use std::{
 
 use dashmap::{DashMap, DashSet};
 use postcard::to_stdvec;
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::{
 	interface::catalog::dictionary::Dictionary,
 	key::dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey},
@@ -366,7 +366,12 @@ fn outcomes(dictionary: &Dictionary, resolved: Vec<Option<u128>>, created_ids: &
 		.collect()
 }
 
-fn decode_entry_id(dictionary: &Dictionary, value_bytes: &[u8], hash: [u8; 16], existing: &EncodedRow) -> Result<u128> {
+fn decode_entry_id(
+	dictionary: &Dictionary,
+	value_bytes: &[u8],
+	hash: [u8; 16],
+	existing: &EncodedBytes,
+) -> Result<u128> {
 	if existing.len() < 16 {
 		return Err(DictionaryError::TruncatedEntry {
 			dictionary: dictionary.id,
@@ -392,9 +397,9 @@ fn entry_write(dictionary: &Dictionary, value_bytes: &[u8], hash: [u8; 16], id: 
 
 	DictEntryWrite {
 		entry_key: DictionaryEntryKey::encoded(dictionary.id, hash),
-		entry_value: EncodedRow(CowVec::new(entry_value)),
+		entry_value: EncodedBytes(CowVec::new(entry_value)),
 		index_key: DictionaryEntryIndexKey::encoded(dictionary.id, id),
-		index_value: EncodedRow(CowVec::new(value_bytes.to_vec())),
+		index_value: EncodedBytes(CowVec::new(value_bytes.to_vec())),
 	}
 }
 
@@ -409,7 +414,7 @@ mod tests {
 
 	#[derive(Default)]
 	struct MockStoreInner {
-		rows: BTreeMap<EncodedKey, EncodedRow>,
+		rows: BTreeMap<EncodedKey, EncodedBytes>,
 		commits: usize,
 	}
 
@@ -429,7 +434,7 @@ mod tests {
 	}
 
 	impl DictionaryStore for MockStore {
-		fn read_committed(&self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+		fn read_committed(&self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 			Ok(self.inner.lock().rows.get(key).cloned())
 		}
 
@@ -630,7 +635,7 @@ mod tests {
 		store.inner
 			.lock()
 			.rows
-			.insert(DictionaryEntryKey::encoded(d.id, hash), EncodedRow(CowVec::new(poisoned)));
+			.insert(DictionaryEntryKey::encoded(d.id, hash), EncodedBytes(CowVec::new(poisoned)));
 
 		let err = registry.intern(&d, &value).unwrap_err();
 		assert!(

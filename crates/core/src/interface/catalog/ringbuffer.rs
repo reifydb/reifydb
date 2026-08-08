@@ -4,7 +4,7 @@
 use std::sync::LazyLock;
 
 use reifydb_codec::encoded::{
-	row::EncodedRow,
+	bytes::EncodedBytes,
 	shape::{RowShape, RowShapeField},
 };
 use reifydb_value::value::{Value, value_type::ValueType};
@@ -93,7 +93,7 @@ mod metadata_shape {
 	});
 }
 
-pub fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedRow {
+pub fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedBytes {
 	let mut row = metadata_shape::SHAPE.allocate();
 	metadata_shape::SHAPE.set::<u64>(&mut row, metadata_shape::ID, u64::from(metadata.id));
 	metadata_shape::SHAPE.set::<u64>(&mut row, metadata_shape::CAPACITY, metadata.capacity);
@@ -103,7 +103,7 @@ pub fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedRow {
 	row.freeze()
 }
 
-pub fn decode_ringbuffer_metadata(row: &EncodedRow) -> RingBufferMetadata {
+pub fn decode_ringbuffer_metadata(row: &EncodedBytes) -> RingBufferMetadata {
 	RingBufferMetadata {
 		id: RingBufferId(metadata_shape::SHAPE.get::<u64>(row, metadata_shape::ID)),
 		capacity: metadata_shape::SHAPE.get::<u64>(row, metadata_shape::CAPACITY),

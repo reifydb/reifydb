@@ -44,26 +44,26 @@ pub(crate) fn load_queues(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 }
 
 fn convert_queue(multi: MultiVersionRow) -> Queue {
-	let row = multi.row;
-	let id = QueueId(queue::SHAPE.get::<u64>(&row, queue::ID));
-	let namespace = NamespaceId(queue::SHAPE.get::<u64>(&row, queue::NAMESPACE));
-	let name = queue::SHAPE.get_utf8(&row, queue::NAME).to_string();
+	let bytes = multi.bytes;
+	let id = QueueId(queue::SHAPE.get::<u64>(&bytes, queue::ID));
+	let namespace = NamespaceId(queue::SHAPE.get::<u64>(&bytes, queue::NAMESPACE));
+	let name = queue::SHAPE.get_utf8(&bytes, queue::NAME).to_string();
 
 	Queue {
 		id,
 		namespace,
 		name,
 		columns: vec![],
-		dispatch: decode_dispatch(&row),
+		dispatch: decode_dispatch(&bytes),
 		retention: QueueRetention {
-			done: queue::SHAPE.try_get::<Duration>(&row, queue::RETENTION_DONE),
+			done: queue::SHAPE.try_get::<Duration>(&bytes, queue::RETENTION_DONE),
 		},
 		retry: QueueRetry {
-			attempts: queue::SHAPE.get::<u32>(&row, queue::RETRY_ATTEMPTS),
-			backoff: queue::SHAPE.get::<Duration>(&row, queue::RETRY_BACKOFF),
+			attempts: queue::SHAPE.get::<u32>(&bytes, queue::RETRY_ATTEMPTS),
+			backoff: queue::SHAPE.get::<Duration>(&bytes, queue::RETRY_BACKOFF),
 		},
-		underlying: queue::SHAPE.get::<u8>(&row, queue::UNDERLYING) != 0,
-		deduplicate: decode_deduplicate(&row),
-		time: decode_queue_time(&row),
+		underlying: queue::SHAPE.get::<u8>(&bytes, queue::UNDERLYING) != 0,
+		deduplicate: decode_deduplicate(&bytes),
+		time: decode_queue_time(&bytes),
 	}
 }

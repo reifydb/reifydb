@@ -37,17 +37,17 @@ pub(crate) fn load_sumtypes(rx: &mut Transaction<'_>, catalog: &CatalogCache) ->
 }
 
 fn convert_sumtype(multi: MultiVersionRow) -> SumType {
-	let row = multi.row;
-	let id = SumTypeId(SHAPE.get::<u64>(&row, ID));
-	let namespace = NamespaceId(SHAPE.get::<u64>(&row, NAMESPACE));
-	let name = SHAPE.get_utf8(&row, NAME).to_string();
-	let variants_json = SHAPE.get_utf8(&row, VARIANTS_JSON);
+	let bytes = multi.bytes;
+	let id = SumTypeId(SHAPE.get::<u64>(&bytes, ID));
+	let namespace = NamespaceId(SHAPE.get::<u64>(&bytes, NAMESPACE));
+	let name = SHAPE.get_utf8(&bytes, NAME).to_string();
+	let variants_json = SHAPE.get_utf8(&bytes, VARIANTS_JSON);
 	let variants: Vec<Variant> = from_str(variants_json).unwrap_or_else(|e| {
 		warn!("Failed to deserialize sumtype variants for {:?}: {}", id, e);
 		vec![]
 	});
 
-	let kind = if SHAPE.get::<u8>(&row, KIND) != 0 {
+	let kind = if SHAPE.get::<u8>(&bytes, KIND) != 0 {
 		SumTypeKind::Event
 	} else {
 		SumTypeKind::Enum

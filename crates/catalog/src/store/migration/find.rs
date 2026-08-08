@@ -11,7 +11,7 @@ impl CatalogStore {
 		let range = MigrationKey::full_scan();
 		for entry in txn.range(range, RangeScope::All, 1024)? {
 			let entry = entry?;
-			let def = migration_from_row(&entry.row);
+			let def = migration_from_row(&entry.bytes);
 			if def.name == name {
 				return Ok(Some(def));
 			}

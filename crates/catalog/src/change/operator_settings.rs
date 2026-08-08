@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::key::{EncodableKey, operator_settings::OperatorSettingsKey};
 use reifydb_transaction::transaction::Transaction;
 
@@ -11,7 +11,7 @@ use crate::{Result, catalog::Catalog, store::operator_settings::decode_operator_
 pub(super) struct OperatorSettingsApplier;
 
 impl CatalogChangeApplier for OperatorSettingsApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())?;
 		if let Some(k) = OperatorSettingsKey::decode(key)
 			&& let Some(config) = decode_operator_settings(row)

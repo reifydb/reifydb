@@ -8,7 +8,7 @@ use std::{
 };
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -94,7 +94,7 @@ impl StandardMultiStore {
 				version: v,
 			} => Some(Some(MultiVersionRow {
 				key: key.clone(),
-				row: EncodedRow(value),
+				bytes: EncodedBytes(value),
 				version: v,
 			})),
 			VersionedGetResult::Tombstone => Some(None),
@@ -111,7 +111,7 @@ impl StandardMultiStore {
 				version: v,
 			} => Some(Some(MultiVersionRow {
 				key: key.clone(),
-				row: EncodedRow(value),
+				bytes: EncodedBytes(value),
 				version: v,
 			})),
 			VersionedGetResult::Tombstone => Some(None),
@@ -139,7 +139,7 @@ impl StandardMultiStore {
 				}
 				Some(Some(MultiVersionRow {
 					key: key.clone(),
-					row: EncodedRow(value),
+					bytes: EncodedBytes(value),
 					version: v,
 				}))
 			}
@@ -190,13 +190,13 @@ fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 		match delta {
 			Delta::Set {
 				key,
-				row,
+				bytes,
 			} => {
 				writes.push(MultiWrite {
 					key: key.clone(),
-					value_bytes: row.len() as u64,
+					value_bytes: bytes.len() as u64,
 				});
-				batches.entry(table).or_default().push((key.clone(), Some(row.0.clone())));
+				batches.entry(table).or_default().push((key.clone(), Some(bytes.0.clone())));
 			}
 			Delta::Remove {
 				key,
@@ -383,7 +383,7 @@ impl StandardMultiStore {
 					(*key).clone(),
 					MultiVersionRow {
 						key: (*key).clone(),
-						row: EncodedRow(value),
+						bytes: EncodedBytes(value),
 						version: v,
 					},
 				);
@@ -534,7 +534,7 @@ pub fn collected_to_batch(
 		.filter_map(|(key, (v, value))| {
 			value.map(|val| MultiVersionRow {
 				key,
-				row: EncodedRow(val),
+				bytes: EncodedBytes(val),
 				version: v,
 			})
 		})
@@ -664,7 +664,7 @@ impl StandardMultiStore {
 			.filter_map(|(key_bytes, (v, value))| {
 				value.map(|val| MultiVersionRow {
 					key: EncodedKey::new(key_bytes),
-					row: EncodedRow(val),
+					bytes: EncodedBytes(val),
 					version: v,
 				})
 			})
@@ -765,7 +765,7 @@ impl StandardMultiStore {
 			.filter_map(|(key_bytes, (v, value))| {
 				value.map(|val| MultiVersionRow {
 					key: EncodedKey::new(key_bytes),
-					row: EncodedRow(val),
+					bytes: EncodedBytes(val),
 					version: v,
 				})
 			})
@@ -1094,7 +1094,7 @@ impl StandardMultiStore {
 				version,
 			} => Some(Some(MultiVersionRow {
 				key: key.clone(),
-				row: EncodedRow(CowVec::new(value.to_vec())),
+				bytes: EncodedBytes(CowVec::new(value.to_vec())),
 				version,
 			})),
 			VersionedGetResult::Tombstone => Some(None),
@@ -1115,7 +1115,7 @@ impl StandardMultiStore {
 				version,
 			} => Some(Some(MultiVersionRow {
 				key: key.clone(),
-				row: EncodedRow(CowVec::new(value.to_vec())),
+				bytes: EncodedBytes(CowVec::new(value.to_vec())),
 				version,
 			})),
 			VersionedGetResult::Tombstone => Some(None),
@@ -1143,7 +1143,7 @@ impl StandardMultiStore {
 				}
 				Some(Some(MultiVersionRow {
 					key: key.clone(),
-					row: EncodedRow(CowVec::new(value.to_vec())),
+					bytes: EncodedBytes(CowVec::new(value.to_vec())),
 					version,
 				}))
 			}
@@ -1258,7 +1258,7 @@ fn make_range_bounds(range: &EncodedKeyRange) -> (Vec<u8>, Vec<u8>) {
 mod cache_tests {
 	use std::collections::HashMap;
 
-	use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+	use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 	use reifydb_core::{
 		common::CommitVersion,
 		delta::Delta,
@@ -1283,7 +1283,7 @@ mod cache_tests {
 			store,
 			cow_vec![Delta::Set {
 				key: RowKey::encoded(STORAGE, n),
-				row: EncodedRow(CowVec::new(format!("v{n}").into_bytes())),
+				bytes: EncodedBytes(CowVec::new(format!("v{n}").into_bytes())),
 			}],
 			CommitVersion(version),
 		)
@@ -1377,7 +1377,7 @@ mod cache_tests {
 			&store,
 			cow_vec![Delta::Set {
 				key: opkey.clone(),
-				row: EncodedRow(CowVec::new(b"state-v10".to_vec())),
+				bytes: EncodedBytes(CowVec::new(b"state-v10".to_vec())),
 			}],
 			CommitVersion(10),
 		)
@@ -1392,7 +1392,7 @@ mod cache_tests {
 		let row = MultiVersionGet::get(&store, &opkey, CommitVersion(10))
 			.unwrap()
 			.expect("the committed operator state must still be readable through the store");
-		assert_eq!(row.row.as_slice(), b"state-v10");
+		assert_eq!(row.bytes.as_slice(), b"state-v10");
 		assert_eq!(row.version, CommitVersion(10));
 
 		assert!(

@@ -193,9 +193,9 @@ pub mod tests {
 		let mut found_sink_two = false;
 
 		for link in &links {
-			let row = &link.row;
-			let id = sink_namespace::SHAPE.get::<u64>(row, sink_namespace::ID);
-			let name = sink_namespace::SHAPE.get_utf8(row, sink_namespace::NAME);
+			let bytes = &link.bytes;
+			let id = sink_namespace::SHAPE.get::<u64>(bytes, sink_namespace::ID);
+			let name = sink_namespace::SHAPE.get_utf8(bytes, sink_namespace::NAME);
 
 			match name {
 				"sink_one" => {

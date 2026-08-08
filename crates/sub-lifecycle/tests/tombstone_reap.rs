@@ -12,7 +12,7 @@ use std::sync::{
 	atomic::{AtomicU64, Ordering},
 };
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -90,7 +90,7 @@ fn commit_set(store: &StandardMultiStore, n: u8, version: u64) {
 		store,
 		CowVec::new(vec![Delta::Set {
 			key: opkey(n),
-			row: EncodedRow(CowVec::new(b"live".to_vec())),
+			bytes: EncodedBytes(CowVec::new(b"live".to_vec())),
 		}]),
 		CommitVersion(version),
 	)

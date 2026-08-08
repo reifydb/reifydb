@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
@@ -108,7 +108,7 @@ pub(crate) fn update_series(
 
 		for (encoded_key, mut row, row_idx) in updates_to_apply {
 			let pre_values = match txn.get(&encoded_key)? {
-				Some(v) => v.row,
+				Some(v) => v.bytes,
 				None => continue,
 			};
 
@@ -138,7 +138,7 @@ pub(crate) fn update_series(
 			if !series.partition_by.is_empty() {
 				let expected = columns.partitions()[row_idx];
 				let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
-				if series_partition_of_row(&series, &shape, &row) != expected {
+				if series_partition_of_bytes(&series, &shape, &row) != expected {
 					return Err(EngineError::ImmutablePartitionColumn {
 						object: ObjectId::series(series.id),
 					}
@@ -180,8 +180,8 @@ pub(crate) fn update_series(
 
 struct SeriesUpdateEvent<'a> {
 	columns: &'a Columns,
-	pre: &'a EncodedRow,
-	post: &'a EncodedRow,
+	pre: &'a EncodedBytes,
+	post: &'a EncodedBytes,
 	key_value: u64,
 	row_number: RowNumber,
 	row_idx: usize,
@@ -234,7 +234,7 @@ fn build_series_updates_to_apply(
 	columns: &Columns,
 	row_numbers: &[RowNumber],
 	has_tag: bool,
-) -> Result<Vec<(EncodedKey, EncodedRow, usize)>> {
+) -> Result<Vec<(EncodedKey, EncodedBytes, usize)>> {
 	let row_count = columns.row_count();
 	let partitioned = !series.partition_by.is_empty();
 	if partitioned && columns.partitions().len() != row_count {
@@ -244,7 +244,7 @@ fn build_series_updates_to_apply(
 		}
 		.into());
 	}
-	let mut updates_to_apply: Vec<(EncodedKey, EncodedRow, usize)> = Vec::with_capacity(row_count);
+	let mut updates_to_apply: Vec<(EncodedKey, EncodedBytes, usize)> = Vec::with_capacity(row_count);
 	for (row_idx, row_number) in row_numbers.iter().enumerate().take(row_count) {
 		let sequence = u64::from(*row_number);
 		let key_value = extract_series_update_key_value(columns, series, row_idx);
@@ -279,14 +279,14 @@ fn build_series_updates_to_apply(
 		};
 
 		let shape = get_or_create_series_shape(&services.catalog, series, txn)?;
-		let row = build_series_update_row(series, columns, &shape, row_idx);
+		let row = build_series_update_bytes(series, columns, &shape, row_idx);
 		updates_to_apply.push((encoded_key, row, row_idx));
 	}
 	Ok(updates_to_apply)
 }
 
 #[inline]
-fn series_partition_of_row(series: &Series, shape: &RowShape, row: &EncodedRow) -> Partition {
+fn series_partition_of_bytes(series: &Series, shape: &RowShape, row: &EncodedBytes) -> Partition {
 	let key_column = series.key.column();
 	let indices: Vec<usize> = series
 		.partition_by
@@ -338,7 +338,7 @@ fn extract_series_update_variant_tag(columns: &Columns, has_tag: bool, row_idx: 
 }
 
 #[inline]
-fn build_series_update_row(series: &Series, columns: &Columns, shape: &RowShape, row_idx: usize) -> EncodedRow {
+fn build_series_update_bytes(series: &Series, columns: &Columns, shape: &RowShape, row_idx: usize) -> EncodedBytes {
 	let mut row = shape.allocate();
 	let key_col_value = columns
 		.iter()

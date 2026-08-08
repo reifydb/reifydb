@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -60,7 +60,7 @@ fn persistent_row(store: &StandardMultiStore, k: &EncodedKey) -> Option<(u64, Ve
 }
 
 fn get(store: &StandardMultiStore, k: &EncodedKey, version: u64) -> Option<Vec<u8>> {
-	store.get(k, CommitVersion(version)).unwrap().map(|r| r.row.to_vec())
+	store.get(k, CommitVersion(version)).unwrap().map(|r| r.bytes.to_vec())
 }
 
 fn range_keys(store: &StandardMultiStore, range: EncodedKeyRange, read: u64) -> Vec<EncodedKey> {
@@ -133,7 +133,7 @@ fn source_removal_then_reinsert_resolves_per_read_version() {
 		&store,
 		cow_vec![Delta::Set {
 			key: k.clone(),
-			row: EncodedRow(CowVec::new(b"new".to_vec())),
+			bytes: EncodedBytes(CowVec::new(b"new".to_vec())),
 		}],
 		CommitVersion(10),
 	)
@@ -187,7 +187,7 @@ fn memory_only_source_removal_keeps_every_version_below_the_tombstone() {
 		&store,
 		cow_vec![Delta::Set {
 			key: k.clone(),
-			row: EncodedRow(CowVec::new(b"v1".to_vec())),
+			bytes: EncodedBytes(CowVec::new(b"v1".to_vec())),
 		}],
 		CommitVersion(1),
 	)
@@ -196,7 +196,7 @@ fn memory_only_source_removal_keeps_every_version_below_the_tombstone() {
 		&store,
 		cow_vec![Delta::Set {
 			key: k.clone(),
-			row: EncodedRow(CowVec::new(b"v2".to_vec())),
+			bytes: EncodedBytes(CowVec::new(b"v2".to_vec())),
 		}],
 		CommitVersion(2),
 	)
@@ -221,7 +221,7 @@ fn repeated_removal_of_an_already_removed_key_is_accepted_and_stays_removed() {
 		&store,
 		cow_vec![Delta::Set {
 			key: k.clone(),
-			row: EncodedRow(CowVec::new(b"v1".to_vec())),
+			bytes: EncodedBytes(CowVec::new(b"v1".to_vec())),
 		}],
 		CommitVersion(1),
 	)

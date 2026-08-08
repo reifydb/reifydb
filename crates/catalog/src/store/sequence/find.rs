@@ -30,7 +30,7 @@ impl CatalogStore {
 		let sequence_key = SystemSequenceKey::encoded(sequence_id);
 
 		let value = match rx.get(&sequence_key)? {
-			Some(row) => SHAPE.get::<u64>(&row.row, VALUE),
+			Some(bytes) => SHAPE.get::<u64>(&bytes.bytes, VALUE),
 			None => 0,
 		};
 

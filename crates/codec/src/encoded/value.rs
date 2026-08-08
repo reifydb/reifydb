@@ -18,7 +18,7 @@ use reifydb_value::{
 };
 
 use super::shape::RowShape;
-use crate::encoded::row::{EncodedRowBuilder, read_defined};
+use crate::encoded::bytes::{EncodedRowBuilder, read_defined};
 
 impl RowShape {
 	pub fn set_values(&self, row: &mut EncodedRowBuilder, values: &[Value]) {

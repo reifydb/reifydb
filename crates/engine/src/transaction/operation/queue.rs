@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::{interface::catalog::queue::Queue, key::row::RowKey};
 use reifydb_transaction::{
 	change::{QueueRowInsertion, RowChange},
@@ -16,7 +16,7 @@ pub struct QueueInsertRow {
 	pub row_number: RowNumber,
 	pub partition: u16,
 	pub not_before: Option<DateTime>,
-	pub encoded: EncodedRow,
+	pub encoded: EncodedBytes,
 }
 
 pub trait QueueOperations {

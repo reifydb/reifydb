@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, ProcedureId},
@@ -29,7 +29,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 		let params = load_params(rx, id)?;
-		Ok(Some(decode_procedure(&multi.row, params)))
+		Ok(Some(decode_procedure(&multi.bytes, params)))
 	}
 
 	pub(crate) fn find_procedure_by_name(
@@ -41,11 +41,11 @@ impl CatalogStore {
 		let mut stream = rx.range(NamespaceProcedureKey::full_scan(namespace), RangeScope::All, 1024)?;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let row = &multi.row;
-			let candidate = namespace_procedure::SHAPE.get_utf8(row, namespace_procedure::NAME);
+			let bytes = &multi.bytes;
+			let candidate = namespace_procedure::SHAPE.get_utf8(bytes, namespace_procedure::NAME);
 			if candidate == name {
 				found_id = Some(ProcedureId::from_raw(
-					namespace_procedure::SHAPE.get::<u64>(row, namespace_procedure::ID),
+					namespace_procedure::SHAPE.get::<u64>(bytes, namespace_procedure::ID),
 				));
 				break;
 			}
@@ -64,10 +64,10 @@ pub(crate) fn load_params(rx: &mut Transaction<'_>, procedure_id: ProcedureId) -
 	let mut stream = rx.range(ProcedureParamKey::full_scan(procedure_id), RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {
 		let multi = entry?;
-		let row = &multi.row;
-		let index = procedure_param::SHAPE.get::<u16>(row, procedure_param::INDEX);
-		let name = procedure_param::SHAPE.get_utf8(row, procedure_param::NAME).to_string();
-		let json = procedure_param::SHAPE.get_utf8(row, procedure_param::TYPE_CONSTRAINT);
+		let bytes = &multi.bytes;
+		let index = procedure_param::SHAPE.get::<u16>(bytes, procedure_param::INDEX);
+		let name = procedure_param::SHAPE.get_utf8(bytes, procedure_param::NAME).to_string();
+		let json = procedure_param::SHAPE.get_utf8(bytes, procedure_param::TYPE_CONSTRAINT);
 		let param_type: TypeConstraint = from_str(json).expect("TypeConstraint deserializes from stored JSON");
 		entries.push((
 			index,
@@ -82,7 +82,7 @@ pub(crate) fn load_params(rx: &mut Transaction<'_>, procedure_id: ProcedureId) -
 	Ok(entries.into_iter().map(|(_, p)| p).collect())
 }
 
-pub(crate) fn decode_procedure(row: &EncodedRow, params: Vec<ProcedureParam>) -> Procedure {
+pub(crate) fn decode_procedure(row: &EncodedBytes, params: Vec<ProcedureParam>) -> Procedure {
 	let id = ProcedureId::from_raw(procedure::SHAPE.get::<u64>(row, procedure::ID));
 	let namespace = NamespaceId(procedure::SHAPE.get::<u64>(row, procedure::NAMESPACE));
 	let name = procedure::SHAPE.get_utf8(row, procedure::NAME).to_string();

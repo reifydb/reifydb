@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 use reifydb_codec::{
 	encoded::{
-		row::{EncodedRow, EncodedRowBuilder},
+		bytes::{EncodedBytes, EncodedRowBuilder},
 		shape::RowShape,
 	},
 	key::encoded::EncodedKeyRange,
@@ -23,11 +23,11 @@ pub trait WindowStateful: RawStatefulOperator {
 		layout.allocate()
 	}
 
-	fn load_state(&self, txn: &mut FlowTransaction, window_key: &GroupStateKey) -> Result<EncodedRow> {
+	fn load_state(&self, txn: &mut FlowTransaction, window_key: &GroupStateKey) -> Result<EncodedBytes> {
 		utils::load_or_create_row(self.id(), txn, window_key, &self.layout())
 	}
 
-	fn save_state(&self, txn: &mut FlowTransaction, window_key: &GroupStateKey, row: EncodedRow) -> Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, window_key: &GroupStateKey, row: EncodedBytes) -> Result<()> {
 		utils::save_row(self.id(), txn, window_key, row)
 	}
 

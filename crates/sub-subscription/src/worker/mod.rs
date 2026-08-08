@@ -10,7 +10,7 @@ use std::{
 };
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -83,7 +83,7 @@ pub enum SubscriptionWorkerMessage {
 
 struct SubscriptionFlowState {
 	operator_states: HashMap<OperatorId, CarriedOperatorState>,
-	keyed_state: HashMap<EncodedKey, EncodedRow>,
+	keyed_state: HashMap<EncodedKey, EncodedBytes>,
 	gate: Option<CommitVersion>,
 }
 

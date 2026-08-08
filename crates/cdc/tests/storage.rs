@@ -4,7 +4,7 @@
 use std::collections::Bound;
 
 use reifydb_cdc::storage::{CdcStorage, DropBeforeResult, memory::MemoryCdcStorage, sqlite::storage::SqliteCdcStorage};
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::cdc::{Cdc, SystemChange},
@@ -19,7 +19,7 @@ fn cdc_minimal(version: u64) -> Cdc {
 		Vec::new(),
 		vec![SystemChange::Insert {
 			key: EncodedKey::new(vec![1, 2, 3]),
-			post: EncodedRow(CowVec::new(vec![10, 20, 30])),
+			post: EncodedBytes(CowVec::new(vec![10, 20, 30])),
 		}],
 	)
 }
@@ -81,7 +81,7 @@ fn assert_count<S: CdcStorage>(storage: S) {
 		Vec::new(),
 		(0..5).map(|i| SystemChange::Insert {
 			key: EncodedKey::new(vec![i as u8]),
-			post: EncodedRow(CowVec::new(vec![])),
+			post: EncodedBytes(CowVec::new(vec![])),
 		})
 		.collect(),
 	);
@@ -109,7 +109,7 @@ fn assert_overwrite<S: CdcStorage>(storage: S) {
 		Vec::new(),
 		vec![SystemChange::Insert {
 			key: EncodedKey::new(vec![1]),
-			post: EncodedRow(CowVec::new(vec![])),
+			post: EncodedBytes(CowVec::new(vec![])),
 		}],
 	);
 	let cdc2 = Cdc::new(
@@ -119,11 +119,11 @@ fn assert_overwrite<S: CdcStorage>(storage: S) {
 		vec![
 			SystemChange::Insert {
 				key: EncodedKey::new(vec![2]),
-				post: EncodedRow(CowVec::new(vec![])),
+				post: EncodedBytes(CowVec::new(vec![])),
 			},
 			SystemChange::Insert {
 				key: EncodedKey::new(vec![3]),
-				post: EncodedRow(CowVec::new(vec![])),
+				post: EncodedBytes(CowVec::new(vec![])),
 			},
 		],
 	);
@@ -193,7 +193,7 @@ fn assert_drop_before_entry_stats<S: CdcStorage>(storage: S) {
 		Vec::new(),
 		vec![SystemChange::Insert {
 			key: EncodedKey::new(vec![1, 2, 3]),
-			post: EncodedRow(CowVec::new(vec![10, 20, 30, 40, 50])),
+			post: EncodedBytes(CowVec::new(vec![10, 20, 30, 40, 50])),
 		}],
 	);
 	storage.write(&cdc).unwrap();

@@ -21,7 +21,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(decode_flow(&multi.row)))
+		Ok(Some(decode_flow(&multi.bytes)))
 	}
 
 	pub(crate) fn find_flow_by_name(
@@ -35,10 +35,10 @@ impl CatalogStore {
 		let mut found_flow = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let row = &multi.row;
-			let flow_name = flow_namespace::SHAPE.get_utf8(row, flow_namespace::NAME);
+			let bytes = &multi.bytes;
+			let flow_name = flow_namespace::SHAPE.get_utf8(bytes, flow_namespace::NAME);
 			if name == flow_name {
-				found_flow = Some(FlowId(flow_namespace::SHAPE.get::<u64>(row, flow_namespace::ID)));
+				found_flow = Some(FlowId(flow_namespace::SHAPE.get::<u64>(bytes, flow_namespace::ID)));
 				break;
 			}
 		}

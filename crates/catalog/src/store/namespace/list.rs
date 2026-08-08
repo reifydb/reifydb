@@ -24,21 +24,21 @@ impl CatalogStore {
 			{
 				let namespace_id = namespace_key.namespace;
 
-				let name = namespace::SHAPE.get_utf8(&entry.row, namespace::NAME).to_string();
+				let name = namespace::SHAPE.get_utf8(&entry.bytes, namespace::NAME).to_string();
 				let parent_id =
-					NamespaceId(namespace::SHAPE.get::<u64>(&entry.row, namespace::PARENT_ID));
+					NamespaceId(namespace::SHAPE.get::<u64>(&entry.bytes, namespace::PARENT_ID));
 				let grpc = namespace::SHAPE
-					.try_get_utf8(&entry.row, namespace::GRPC)
+					.try_get_utf8(&entry.bytes, namespace::GRPC)
 					.map(|s| s.to_string())
 					.filter(|s| !s.is_empty());
 				let local_name = namespace::SHAPE
-					.try_get_utf8(&entry.row, namespace::LOCAL_NAME)
+					.try_get_utf8(&entry.bytes, namespace::LOCAL_NAME)
 					.filter(|s| !s.is_empty())
 					.unwrap_or_else(|| name.rsplit_once("::").map(|(_, s)| s).unwrap_or(&name))
 					.to_string();
 				let namespace = if let Some(address) = grpc {
 					let token = namespace::SHAPE
-						.try_get_utf8(&entry.row, namespace::TOKEN)
+						.try_get_utf8(&entry.bytes, namespace::TOKEN)
 						.map(|s| s.to_string())
 						.filter(|s| !s.is_empty());
 					Namespace::Remote {

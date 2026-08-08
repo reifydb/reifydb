@@ -5,7 +5,7 @@
 //! next commit onward, with no reclamation in between: window engines delete range-scanned bookkeeping
 //! and re-read it on the next apply, and a resurrected entry double-unmerges a running accumulator.
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -59,8 +59,8 @@ fn node_range(node: u64) -> reifydb_codec::key::encoded::EncodedKeyRange {
 	OperatorStateKey::node_range(OperatorId(node))
 }
 
-fn row(bytes: &[u8]) -> EncodedRow {
-	EncodedRow(CowVec::new(bytes.to_vec()))
+fn encoded_bytes(bytes: &[u8]) -> EncodedBytes {
+	EncodedBytes(CowVec::new(bytes.to_vec()))
 }
 
 fn range_keys(store: &StandardMultiStore, node: u64, version: u64) -> Vec<EncodedKey> {
@@ -87,7 +87,7 @@ fn committed_drop_is_invisible_to_next_transaction_get_and_range() {
 		cow_vec![
 			(Delta::Set {
 				key: key_a.clone(),
-				row: row(b"one"),
+				bytes: encoded_bytes(b"one"),
 			})
 		],
 		CommitVersion(1),
@@ -98,7 +98,7 @@ fn committed_drop_is_invisible_to_next_transaction_get_and_range() {
 		cow_vec![
 			(Delta::Set {
 				key: key_b.clone(),
-				row: row(b"two"),
+				bytes: encoded_bytes(b"two"),
 			})
 		],
 		CommitVersion(2),

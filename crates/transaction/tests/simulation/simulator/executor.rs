@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key as keycode,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
@@ -65,8 +65,8 @@ fn encode_key(key: &str) -> EncodedKey {
 	EncodedKey::new(keycode::serialize(&key.to_string()))
 }
 
-fn encode_row(value: &str) -> EncodedRow {
-	EncodedRow(CowVec::new(keycode::serialize(&value.to_string())))
+fn encode_bytes(value: &str) -> EncodedBytes {
+	EncodedBytes(CowVec::new(keycode::serialize(&value.to_string())))
 }
 
 fn decode_key(bytes: &[u8]) -> String {
@@ -122,7 +122,7 @@ impl Executor {
 					value,
 				} => match handles.get_mut(&tx_id) {
 					Some(TxHandle::Write(tx)) => {
-						match tx.set(&encode_key(key), encode_row(value)) {
+						match tx.set(&encode_key(key), encode_bytes(value)) {
 							Ok(()) => OpResult::Ok,
 							Err(e) => {
 								handles.remove(&tx_id);
@@ -139,7 +139,7 @@ impl Executor {
 					key,
 				} => match handles.get_mut(&tx_id) {
 					Some(TxHandle::Write(tx)) => match tx.get(&encode_key(key)) {
-						Ok(Some(tv)) => OpResult::Value(Some(tv.row().to_vec())),
+						Ok(Some(tv)) => OpResult::Value(Some(tv.bytes().to_vec())),
 						Ok(None) => OpResult::Value(None),
 						Err(e) => {
 							handles.remove(&tx_id);
@@ -147,7 +147,7 @@ impl Executor {
 						}
 					},
 					Some(TxHandle::Read(rx)) => match rx.get(&encode_key(key)) {
-						Ok(Some(tv)) => OpResult::Value(Some(tv.row().to_vec())),
+						Ok(Some(tv)) => OpResult::Value(Some(tv.bytes().to_vec())),
 						Ok(None) => OpResult::Value(None),
 						Err(e) => {
 							handles.remove(&tx_id);
@@ -182,7 +182,7 @@ impl Executor {
 									.map(|mv| {
 										(
 											mv.key.as_ref().to_vec(),
-											mv.row.to_vec(),
+											mv.bytes.to_vec(),
 										)
 									})
 									.collect();
@@ -204,7 +204,7 @@ impl Executor {
 									.map(|mv| {
 										(
 											mv.key.as_ref().to_vec(),
-											mv.row.to_vec(),
+											mv.bytes.to_vec(),
 										)
 									})
 									.collect();
@@ -270,7 +270,7 @@ impl Executor {
 		let mut state = BTreeMap::new();
 		for mv in items {
 			let key = decode_key(mv.key.as_ref());
-			let value = decode_values(mv.row.as_ref());
+			let value = decode_values(mv.bytes.as_ref());
 			state.insert(key, value);
 		}
 		state

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::store::SingleVersionRange,
@@ -15,14 +15,14 @@ use tracing::warn;
 
 const HYDRATE_BATCH: u64 = 1024;
 
-fn encode(entry: &FrontierEntry) -> EncodedRow {
+fn encode(entry: &FrontierEntry) -> EncodedBytes {
 	let mut bytes = Vec::with_capacity(16);
 	bytes.extend_from_slice(&entry.frontier.to_millis().to_be_bytes());
 	bytes.extend_from_slice(&entry.at.0.to_be_bytes());
-	EncodedRow(CowVec::new(bytes))
+	EncodedBytes(CowVec::new(bytes))
 }
 
-fn decode(object: reifydb_core::interface::catalog::object::ObjectId, row: &EncodedRow) -> Option<FrontierEntry> {
+fn decode(object: reifydb_core::interface::catalog::object::ObjectId, row: &EncodedBytes) -> Option<FrontierEntry> {
 	let bytes = row.as_slice();
 	if bytes.len() != 16 {
 		return None;
@@ -69,7 +69,7 @@ pub fn hydrate(store: &SingleStore) -> Result<FrontierEntries> {
 		let Some(key) = OutputFrontierKey::decode(&row.key) else {
 			continue;
 		};
-		if let Some(entry) = decode(key.object, &row.row) {
+		if let Some(entry) = decode(key.object, &row.bytes) {
 			out.push(entry);
 		}
 	}
@@ -100,8 +100,8 @@ mod tests {
 	#[test]
 	fn a_value_of_the_wrong_width_is_rejected_rather_than_misread() {
 		// 0x1D once held FlowNodeInternalState, so a stale row must never decode as a plausible frontier.
-		assert!(decode(OUTPUT, &EncodedRow(CowVec::new(vec![0u8; 8]))).is_none());
-		assert!(decode(OUTPUT, &EncodedRow(CowVec::new(vec![0u8; 24]))).is_none());
+		assert!(decode(OUTPUT, &EncodedBytes(CowVec::new(vec![0u8; 8]))).is_none());
+		assert!(decode(OUTPUT, &EncodedBytes(CowVec::new(vec![0u8; 24]))).is_none());
 	}
 
 	#[test]

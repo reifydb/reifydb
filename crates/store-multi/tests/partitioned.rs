@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -35,8 +35,8 @@ use reifydb_value::{
 	value::{Value, partition::Partition, row_number::RowNumber},
 };
 
-fn row(bytes: &[u8]) -> EncodedRow {
-	EncodedRow(CowVec::new(bytes.to_vec()))
+fn encoded_bytes(bytes: &[u8]) -> EncodedBytes {
+	EncodedBytes(CowVec::new(bytes.to_vec()))
 }
 
 struct FixedWatermark(CommitVersion);
@@ -82,11 +82,11 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 		CowVec::new(vec![
 			Delta::Set {
 				key: k_us1.clone(),
-				row: row(b"a"),
+				bytes: encoded_bytes(b"a"),
 			},
 			Delta::Set {
 				key: k_eu2.clone(),
-				row: row(b"b"),
+				bytes: encoded_bytes(b"b"),
 			},
 		]),
 		CommitVersion(1),
@@ -101,7 +101,7 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 		&store,
 		CowVec::new(vec![Delta::Set {
 			key: k_us3.clone(),
-			row: row(b"c"),
+			bytes: encoded_bytes(b"c"),
 		}]),
 		CommitVersion(2),
 	)

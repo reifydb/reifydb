@@ -23,7 +23,7 @@ use rkyv::{
 use thiserror::Error;
 
 use crate::encoded::{
-	row::EncodedRow,
+	bytes::EncodedBytes,
 	shape::{OPERATOR_STATE_SHAPE, RowShape, fingerprint::RowShapeFingerprint},
 };
 
@@ -63,7 +63,7 @@ pub enum StateError {
 	#[error("operator state deserialization failed: {0}")]
 	Deserialization(String),
 
-	#[error("operator state row carries shape fingerprint {actual:?} instead of the operator state shape")]
+	#[error("operator state bytes carries shape fingerprint {actual:?} instead of the operator state shape")]
 	UnexpectedObject {
 		actual: RowShapeFingerprint,
 	},
@@ -74,64 +74,64 @@ pub enum StateError {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StateBytes {
-	row: EncodedRow,
+	bytes: EncodedBytes,
 }
 
 impl StateBytes {
-	pub fn from_row(row: EncodedRow) -> Result<Self, StateError> {
+	pub fn from_bytes(bytes: EncodedBytes) -> Result<Self, StateError> {
 		let shape = &*OPERATOR_STATE_SHAPE;
-		if row.fingerprint() != shape.fingerprint() {
+		if bytes.fingerprint() != shape.fingerprint() {
 			return Err(StateError::UnexpectedObject {
-				actual: row.fingerprint(),
+				actual: bytes.fingerprint(),
 			});
 		}
-		let format = shape.get::<u8>(&row, FORMAT_FIELD);
+		let format = shape.get::<u8>(&bytes, FORMAT_FIELD);
 		if format != StateFormatVersion::CURRENT.0 {
 			return Err(StateError::UnsupportedFormat(format));
 		}
 		Ok(Self {
-			row,
+			bytes,
 		})
 	}
 
 	pub fn from_archive(body: &[u8], now: DateTime) -> Self {
 		let shape = &*OPERATOR_STATE_SHAPE;
-		let mut row = shape.allocate();
-		shape.set::<u8>(&mut row, FORMAT_FIELD, StateFormatVersion::CURRENT.0);
-		shape.set_blob_from_slice(&mut row, STATE_FIELD, body);
-		row.set_timestamps(now, now);
+		let mut bytes = shape.allocate();
+		shape.set::<u8>(&mut bytes, FORMAT_FIELD, StateFormatVersion::CURRENT.0);
+		shape.set_blob_from_slice(&mut bytes, STATE_FIELD, body);
+		bytes.set_timestamps(now, now);
 		Self {
-			row: row.freeze(),
+			bytes: bytes.freeze(),
 		}
 	}
 
-	pub fn into_row(self) -> EncodedRow {
-		self.row
+	pub fn into_bytes(self) -> EncodedBytes {
+		self.bytes
 	}
 
-	pub fn row(&self) -> &EncodedRow {
-		&self.row
+	pub fn bytes(&self) -> &EncodedBytes {
+		&self.bytes
 	}
 
 	pub fn format(&self) -> StateFormatVersion {
-		StateFormatVersion(OPERATOR_STATE_SHAPE.get::<u8>(&self.row, FORMAT_FIELD))
+		StateFormatVersion(OPERATOR_STATE_SHAPE.get::<u8>(&self.bytes, FORMAT_FIELD))
 	}
 
 	pub fn body(&self) -> &[u8] {
-		OPERATOR_STATE_SHAPE.get_blob_slice(&self.row, STATE_FIELD)
+		OPERATOR_STATE_SHAPE.get_blob_slice(&self.bytes, STATE_FIELD)
 	}
 
 	pub fn body_mut(&mut self) -> &mut [u8] {
-		OPERATOR_STATE_SHAPE.get_blob_slice_mut(self.row.make_mut(), STATE_FIELD)
+		OPERATOR_STATE_SHAPE.get_blob_slice_mut(self.bytes.make_mut(), STATE_FIELD)
 	}
 
 	pub fn refresh_updated_at(&mut self, now: DateTime) {
-		let created_at = self.row.created_at();
-		self.row.set_timestamps(created_at, now);
+		let created_at = self.bytes.created_at();
+		self.bytes.set_timestamps(created_at, now);
 	}
 
 	pub fn byte_size(&self) -> ByteSize {
-		ByteSize::from(self.row.len() as u64)
+		ByteSize::from(self.bytes.len() as u64)
 	}
 }
 
@@ -394,12 +394,12 @@ mod tests {
 		// clobbering it would corrupt TTL semantics for sealed entries.
 		let value = probe();
 		let mut bytes = encode_archive(&value, at_nanos(7)).unwrap();
-		assert_eq!(bytes.row().created_at(), at_nanos(7));
-		assert_eq!(bytes.row().updated_at(), at_nanos(7));
+		assert_eq!(bytes.bytes().created_at(), at_nanos(7));
+		assert_eq!(bytes.bytes().updated_at(), at_nanos(7));
 
 		bytes.refresh_updated_at(at_nanos(99));
-		assert_eq!(bytes.row().created_at(), at_nanos(7), "refresh must not clobber created_at");
-		assert_eq!(bytes.row().updated_at(), at_nanos(99));
+		assert_eq!(bytes.bytes().created_at(), at_nanos(7), "refresh must not clobber created_at");
+		assert_eq!(bytes.bytes().updated_at(), at_nanos(99));
 		assert_eq!(access_archive::<Probe>(&bytes).unwrap().total, 42, "the body must stay untouched");
 	}
 
@@ -416,7 +416,7 @@ mod tests {
 
 	#[test]
 	fn test_archived_access_is_alignment_free() {
-		// The archive body sits at an arbitrary byte offset inside plain Vec<u8> row buffers,
+		// The archive body sits at an arbitrary byte offset inside plain Vec<u8> bytes buffers,
 		// so soundness rests entirely on rkyv's "unaligned" feature. The const asserts stop
 		// compiling if an rkyv bump drops it and archived primitives regain alignment > 1.
 		const _: () = assert!(align_of::<ArchivedU64>() == 1);
@@ -441,38 +441,38 @@ mod tests {
 
 	#[test]
 	fn test_row_round_trip_preserves_timestamps() {
-		// The into_row/from_row boundary is crossed on every store write and read, and TTL
-		// semantics depend on the row header timestamps surviving it.
+		// The into_bytes/from_bytes boundary is crossed on every store write and read, and TTL
+		// semantics depend on the header timestamps surviving it.
 		let bytes = encode_archive(&probe(), at_nanos(1234)).unwrap();
-		let row = bytes.clone().into_row();
-		assert_eq!(row.created_at(), at_nanos(1234));
+		let encoded = bytes.clone().into_bytes();
+		assert_eq!(encoded.created_at(), at_nanos(1234));
 
-		let reloaded = StateBytes::from_row(row).unwrap();
+		let reloaded = StateBytes::from_bytes(encoded).unwrap();
 		assert_eq!(reloaded, bytes);
 		let archived = access_archive::<Probe>(&reloaded).unwrap();
 		assert_eq!(archived.total, 42);
 	}
 
 	#[test]
-	fn test_from_row_rejects_foreign_shape() {
+	fn test_from_bytes_rejects_foreign_shape() {
 		// A foreign shape must be rejected by fingerprint, not misread as state bytes.
 		let foreign = RowShape::testing(&[ValueType::Int8]).allocate();
-		let err = StateBytes::from_row(foreign.freeze()).unwrap_err();
+		let err = StateBytes::from_bytes(foreign.freeze()).unwrap_err();
 		assert!(matches!(err, StateError::UnexpectedObject { .. }));
 	}
 
 	#[test]
-	fn test_from_row_rejects_unknown_format() {
+	fn test_from_bytes_rejects_unknown_format() {
 		// A zeroed format byte (what a legacy writer leaves) and a future one must both fail
 		// loudly rather than be read as the current format.
 		let shape = operator_state_shape();
-		let row = shape.allocate();
-		let err = StateBytes::from_row(row.freeze()).unwrap_err();
+		let bytes = shape.allocate();
+		let err = StateBytes::from_bytes(bytes.freeze()).unwrap_err();
 		assert_eq!(err, StateError::UnsupportedFormat(0));
 
 		let mut future = shape.allocate();
 		shape.set::<u8>(&mut future, 1, 9u8);
-		let err = StateBytes::from_row(future.freeze()).unwrap_err();
+		let err = StateBytes::from_bytes(future.freeze()).unwrap_err();
 		assert_eq!(err, StateError::UnsupportedFormat(9));
 	}
 
@@ -488,7 +488,7 @@ mod tests {
 	#[test]
 	fn test_byte_size_covers_whole_row() {
 		let bytes = encode_archive(&probe(), DateTime::EPOCH).unwrap();
-		assert_eq!(bytes.byte_size().as_bytes(), bytes.row().len() as u64);
+		assert_eq!(bytes.byte_size().as_bytes(), bytes.bytes().len() as u64);
 		assert!(bytes.byte_size().as_bytes() > bytes.body().len() as u64);
 	}
 

@@ -5,7 +5,7 @@ use std::{collections::HashMap, ops::Bound, slice::from_ref, sync::Arc};
 
 use dashmap::DashMap;
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	state::{OperatorState, StateBytes, decode_state},
 };
@@ -52,12 +52,12 @@ fn counter_key() -> GroupStateKey {
 	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![])
 }
 
-pub(super) fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedRow> {
-	Ok(value.encode_state(now)?.into_row())
+pub(super) fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedBytes> {
+	Ok(value.encode_state(now)?.into_bytes())
 }
 
-pub(super) fn decode_payload<T: OperatorState>(row: &EncodedRow) -> Result<T> {
-	Ok(decode_state(&StateBytes::from_row(row.clone())?)?)
+pub(super) fn decode_payload<T: OperatorState>(row: &EncodedBytes) -> Result<T> {
+	Ok(decode_state(&StateBytes::from_bytes(row.clone())?)?)
 }
 
 struct NodeState {
@@ -206,7 +206,7 @@ impl GroupInterner {
 			to_resolve.iter().map(|i| dictionary_key(&groups[*i])).collect();
 
 		let mut consulted_store: Vec<bool> = Vec::new();
-		let found: HashMap<Vec<u8>, EncodedRow> = if state.complete {
+		let found: HashMap<Vec<u8>, EncodedBytes> = if state.complete {
 			HashMap::new()
 		} else {
 			let mut lookup: Vec<GroupStateKey> = Vec::new();
@@ -227,7 +227,7 @@ impl GroupInterner {
 				for item in batch.items {
 					let decoded = OperatorStateKey::decode(&item.key)
 						.expect("state_get_many must return OperatorState keys");
-					found.insert(decoded.key, item.row);
+					found.insert(decoded.key, item.bytes);
 				}
 				found
 			}
@@ -419,7 +419,7 @@ impl GroupInterner {
 				}
 				let group = EncodedKey::new(inner.2);
 				hashes.push(membership_hash(&group));
-				let id = GroupId(decode_payload::<u64>(&item.row)?);
+				let id = GroupId(decode_payload::<u64>(&item.bytes)?);
 				state.remember(&group, id);
 				last_inner = Some(EncodedKey::new(decoded.key.clone()));
 			}

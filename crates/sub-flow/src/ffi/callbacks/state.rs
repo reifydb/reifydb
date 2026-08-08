@@ -26,7 +26,7 @@ use reifydb_flow::timer::Timer;
 use reifydb_value::value::datetime::DateTime;
 
 use super::{
-	marshal::{encoded_key, encoded_keys, encoded_row, state_key, write_buffer},
+	marshal::{encoded_bytes, encoded_key, encoded_keys, state_key, write_buffer},
 	state_iterator::{self, StateIteratorHandle},
 };
 use crate::ffi::context::get_transaction_mut;
@@ -84,7 +84,7 @@ pub(super) extern "C" fn host_state_set(
 
 	// SAFETY: `ctx`, `key_ptr` and `value_ptr` are null-checked above; the guest must pass back the
 	// ContextFFI the host handed it for this call, a `key_ptr` valid for `key_len` reads (discharging
-	// state_key) and a `value_ptr` valid for `value_len` reads (discharging encoded_row).
+	// state_key) and a `value_ptr` valid for `value_len` reads (discharging encoded_bytes).
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -93,7 +93,7 @@ pub(super) extern "C" fn host_state_set(
 			return FFI_ERROR_INTERNAL;
 		};
 
-		let value = encoded_row(value_ptr, value_len);
+		let value = encoded_bytes(value_ptr, value_len);
 
 		match flow_txn.state_set(OperatorId(operator_id), &key, value) {
 			Ok(_) => FFI_OK,

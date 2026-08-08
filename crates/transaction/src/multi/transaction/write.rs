@@ -5,7 +5,7 @@ use core::mem;
 use std::{cmp::Ordering, collections::HashSet, iter, ops::RangeBounds, sync::Arc, vec};
 
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 #[cfg(reifydb_assertions)]
@@ -241,19 +241,19 @@ impl MultiWriteTransaction {
 }
 
 impl MultiWriteTransaction {
-	#[instrument(name = "transaction::command::set", level = "trace", skip(self, row), fields(
+	#[instrument(name = "transaction::command::set", level = "trace", skip(self, bytes), fields(
 		txn_id = %self.id,
 		key_hex = %hex_display(key.as_ref()),
-		value_len = row.len()
+		value_len = bytes.len()
 	))]
-	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, bytes: EncodedBytes) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		self.modify(DeltaEntry {
 			delta: Delta::Set {
 				key: key.clone(),
-				row,
+				bytes,
 			},
 			version: self.base_version(),
 		})
@@ -264,7 +264,7 @@ impl MultiWriteTransaction {
 		key_hex = %hex_display(key.as_ref()),
 		value_len = pre.len()
 	))]
-	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedRow) -> Result<()> {
+	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -284,7 +284,7 @@ impl MultiWriteTransaction {
 		}
 		let announce = match self.get(key)? {
 			Some(found) => RemoveAnnounce::Announced {
-				pre: found.row().clone(),
+				pre: found.bytes().clone(),
 			},
 			None => RemoveAnnounce::Silent,
 		};
@@ -359,11 +359,11 @@ impl MultiWriteTransaction {
 
 		let version = self.version();
 		if let Some(v) = self.pending_writes.get(key) {
-			if let Some(row) = v.row() {
+			if let Some(bytes) = v.bytes() {
 				return Ok(Some(DeltaEntry {
 					delta: Delta::Set {
 						key: key.clone(),
-						row: row.clone(),
+						bytes: bytes.clone(),
 					},
 					version: v.version,
 				}
@@ -429,11 +429,11 @@ impl MultiWriteTransaction {
 			self.duplicates.push(DeltaEntry {
 				delta: match &pending.delta {
 					Delta::Set {
-						row,
+						bytes,
 						..
 					} => Delta::Set {
 						key: old_key,
-						row: row.clone(),
+						bytes: bytes.clone(),
 					},
 					Delta::Remove {
 						announce,
@@ -767,8 +767,8 @@ mod tests {
 		EncodedKey::new(serialize(&s))
 	}
 
-	fn test_row(s: &str) -> EncodedRow {
-		EncodedRow(CowVec::new(serialize(&s.to_string())))
+	fn test_bytes(s: &str) -> EncodedBytes {
+		EncodedBytes(CowVec::new(serialize(&s.to_string())))
 	}
 
 	#[test]
@@ -778,7 +778,7 @@ mod tests {
 		// a commit version whose own post-commit hooks have not run.
 		let engine = MultiTransaction::testing();
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&test_key("race-key"), test_row("race-value")).unwrap();
+		txn.set(&test_key("race-key"), test_bytes("race-value")).unwrap();
 
 		// Allocate commit_version exactly as commit() would, without finalizing it yet.
 		let (commit_version, entries) = txn.commit_pending().unwrap();
@@ -857,20 +857,20 @@ where
 
 					if should_yield_pending {
 						let (key, value) = self.pending_iter.next().unwrap();
-						if let Some(row) = value.row() {
+						if let Some(bytes) = value.bytes() {
 							return Some(Ok(MultiVersionRow {
 								key,
-								row: row.clone(),
+								bytes: bytes.clone(),
 								version: value.version,
 							}));
 						}
 					} else if matches!(cmp, Ordering::Equal) {
 						let (key, value) = self.pending_iter.next().unwrap();
 						self.next_storage = None;
-						if let Some(row) = value.row() {
+						if let Some(bytes) = value.bytes() {
 							return Some(Ok(MultiVersionRow {
 								key,
-								row: row.clone(),
+								bytes: bytes.clone(),
 								version: value.version,
 							}));
 						}
@@ -880,10 +880,10 @@ where
 				}
 				(Some(_), None) => {
 					let (key, value) = self.pending_iter.next().unwrap();
-					if let Some(row) = value.row() {
+					if let Some(bytes) = value.bytes() {
 						return Some(Ok(MultiVersionRow {
 							key,
-							row: row.clone(),
+							bytes: bytes.clone(),
 							version: value.version,
 						}));
 					}

@@ -4,7 +4,7 @@
 use reifydb_abi::flow::diff::DiffType;
 use reifydb_codec::{
 	encoded::{
-		row::{EncodedRow, SHAPE_HEADER_SIZE},
+		bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
 		shape::{RowShape, RowShapeField},
 	},
 	key::encoded::EncodedKey,
@@ -43,13 +43,13 @@ pub fn trigger() -> Change {
 	TestChangeBuilder::new().insert_row(1u64, vec![Value::Int8(0)]).build()
 }
 
-fn store_value(payload: &str) -> EncodedRow {
+fn store_value(payload: &str) -> EncodedBytes {
 	let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
 	buf[SHAPE_HEADER_SIZE..].copy_from_slice(payload.as_bytes());
-	EncodedRow(CowVec::new(buf))
+	EncodedBytes(CowVec::new(buf))
 }
 
-pub fn store_seed() -> Vec<(EncodedKey, EncodedRow)> {
+pub fn store_seed() -> Vec<(EncodedKey, EncodedBytes)> {
 	(1..=STORE_ROW_COUNT)
 		.map(|n| {
 			let key = RowKey {

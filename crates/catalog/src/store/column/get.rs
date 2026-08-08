@@ -67,18 +67,18 @@ impl CatalogStore {
 			)))
 		})?;
 
-		let row = multi.row;
+		let bytes = multi.bytes;
 
-		let id = ColumnId(SHAPE.get::<u64>(&row, ID));
-		let name = SHAPE.get_utf8(&row, NAME).to_string();
-		let base_type = value_type_from_tag_byte(SHAPE.get::<u8>(&row, VALUE));
-		let index = ColumnIndex(SHAPE.get::<u8>(&row, INDEX));
-		let auto_increment = SHAPE.get::<bool>(&row, AUTO_INCREMENT);
+		let id = ColumnId(SHAPE.get::<u64>(&bytes, ID));
+		let name = SHAPE.get_utf8(&bytes, NAME).to_string();
+		let base_type = value_type_from_tag_byte(SHAPE.get::<u8>(&bytes, VALUE));
+		let index = ColumnIndex(SHAPE.get::<u8>(&bytes, INDEX));
+		let auto_increment = SHAPE.get::<bool>(&bytes, AUTO_INCREMENT);
 
-		let constraint_bytes = SHAPE.get_blob(&row, CONSTRAINT);
+		let constraint_bytes = SHAPE.get_blob(&bytes, CONSTRAINT);
 		let decoded_constraint = decode_constraint(constraint_bytes.as_bytes());
 
-		let dict_id_raw = SHAPE.get::<u64>(&row, DICTIONARY_ID);
+		let dict_id_raw = SHAPE.get::<u64>(&bytes, DICTIONARY_ID);
 		let dictionary_id = if dict_id_raw == 0 {
 			None
 		} else {

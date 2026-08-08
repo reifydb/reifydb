@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
@@ -92,8 +92,8 @@ fn committed_drop_is_invisible_to_later_range_scan() {
 	let key_b = coord_key(node, 2);
 
 	let mut tx = MultiWriteTransaction::new(engine.clone()).unwrap();
-	tx.set(&key_a, EncodedRow(CowVec::new(b"one".to_vec()))).unwrap();
-	tx.set(&key_b, EncodedRow(CowVec::new(b"two".to_vec()))).unwrap();
+	tx.set(&key_a, EncodedBytes(CowVec::new(b"one".to_vec()))).unwrap();
+	tx.set(&key_b, EncodedBytes(CowVec::new(b"two".to_vec()))).unwrap();
 	tx.commit(vec![]).unwrap();
 
 	// Row keys are keycode-encoded, so a scan returns them by descending row number.

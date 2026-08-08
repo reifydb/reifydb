@@ -5,7 +5,7 @@ use std::{collections::HashMap, ops::Bound, slice::from_ref, sync::Arc};
 
 use dashmap::DashMap;
 use reifydb_codec::{
-	encoded::row::EncodedRow,
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	state::{OperatorState, StateBytes, decode_state},
 };
@@ -52,12 +52,12 @@ fn counter_key() -> GroupStateKey {
 	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, ROW_NUMBER_COUNTER_SUFFIX)
 }
 
-fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedRow> {
-	Ok(value.encode_state(now)?.into_row())
+fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedBytes> {
+	Ok(value.encode_state(now)?.into_bytes())
 }
 
-fn decode_payload<T: OperatorState>(row: &EncodedRow) -> Result<T> {
-	Ok(decode_state(&StateBytes::from_row(row.clone())?)?)
+fn decode_payload<T: OperatorState>(row: &EncodedBytes) -> Result<T> {
+	Ok(decode_state(&StateBytes::from_bytes(row.clone())?)?)
 }
 
 #[derive(Clone, Copy)]
@@ -233,7 +233,7 @@ impl RowNumberProvider {
 
 		let map_keys: Vec<GroupStateKey> = to_resolve.iter().map(|i| mapping_key(group, &keys[*i])).collect();
 
-		let found: HashMap<EncodedKey, EncodedRow> = if complete {
+		let found: HashMap<EncodedKey, EncodedBytes> = if complete {
 			state.absences_served += to_resolve.len() as u64;
 			HashMap::new()
 		} else {
@@ -242,7 +242,7 @@ impl RowNumberProvider {
 			for item in batch.items {
 				let decoded = OperatorStateKey::decode(&item.key)
 					.expect("state_get_many must return OperatorState keys");
-				found.insert(EncodedKey::new(decoded.key), item.row);
+				found.insert(EncodedKey::new(decoded.key), item.bytes);
 			}
 			found
 		};
@@ -326,11 +326,11 @@ impl RowNumberProvider {
 
 		let map_keys: Vec<GroupStateKey> = to_resolve.iter().map(|i| mapping_key(group, &keys[*i])).collect();
 		let batch = txn.state_get_many(operator, &map_keys)?;
-		let mut found: HashMap<EncodedKey, EncodedRow> = HashMap::with_capacity(batch.items.len());
+		let mut found: HashMap<EncodedKey, EncodedBytes> = HashMap::with_capacity(batch.items.len());
 		for item in batch.items {
 			let decoded = OperatorStateKey::decode(&item.key)
 				.expect("state_get_many must return OperatorState keys");
-			found.insert(EncodedKey::new(decoded.key), item.row);
+			found.insert(EncodedKey::new(decoded.key), item.bytes);
 		}
 		for (slot, map_key) in map_keys.iter().enumerate() {
 			let i = to_resolve[slot];
@@ -422,7 +422,7 @@ impl RowNumberProvider {
 			let (_, _, suffix) = OperatorGroupStateKey::decode_inner(inner.as_slice())
 				.expect("the mapping range must yield structured operator state keys");
 			let original = EncodedKey::new(suffix);
-			let row_number = RowNumber(decode_payload::<u64>(&item.row)?);
+			let row_number = RowNumber(decode_payload::<u64>(&item.bytes)?);
 			txn.state_remove(operator, &inner)?;
 			state.forget(group, &original);
 			dropped.push(row_number);
@@ -487,7 +487,7 @@ impl RowNumberProvider {
 		let state = &mut *guard;
 		let mut removed = 0;
 		for item in batch.items {
-			if item.row.updated_at() > cutoff.instant() {
+			if item.bytes.updated_at() > cutoff.instant() {
 				continue;
 			}
 			let inner = GroupStateKey::from_framed(EncodedKey::new(
@@ -613,7 +613,7 @@ impl RowNumberProvider {
 					);
 				}
 				let original = EncodedKey::new(inner.2);
-				state.remember(group, &original, RowNumber(decode_payload::<u64>(&item.row)?));
+				state.remember(group, &original, RowNumber(decode_payload::<u64>(&item.bytes)?));
 				last_inner = Some(EncodedKey::new(decoded.key.clone()));
 			}
 			state.evict_to_budget(budget);

@@ -16,7 +16,7 @@ impl CatalogStore {
 			None => return Ok(None),
 		};
 
-		let pk_id = view::SHAPE.get::<u64>(&multi.row, view::PRIMARY_KEY);
+		let pk_id = view::SHAPE.get::<u64>(&multi.bytes, view::PRIMARY_KEY);
 
 		if pk_id == 0 {
 			Ok(None)

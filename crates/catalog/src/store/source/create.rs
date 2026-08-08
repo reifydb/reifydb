@@ -191,9 +191,9 @@ pub mod tests {
 		let mut found_source_two = false;
 
 		for link in &links {
-			let row = &link.row;
-			let id = source_namespace::SHAPE.get::<u64>(row, source_namespace::ID);
-			let name = source_namespace::SHAPE.get_utf8(row, source_namespace::NAME);
+			let bytes = &link.bytes;
+			let id = source_namespace::SHAPE.get::<u64>(bytes, source_namespace::ID);
+			let name = source_namespace::SHAPE.get_utf8(bytes, source_namespace::NAME);
 
 			match name {
 				"source_one" => {

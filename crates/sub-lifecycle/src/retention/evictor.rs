@@ -560,8 +560,8 @@ impl Evictor {
 					&mut Transaction::Command(&mut txn),
 				)?;
 				for row in &result.expired {
-					let committed = txn.get_committed(&row.key)?.map(|v| v.row);
-					let pre_for_cdc = committed.clone().unwrap_or_else(|| row.row.clone());
+					let committed = txn.get_committed(&row.key)?.map(|v| v.bytes);
+					let pre_for_cdc = committed.clone().unwrap_or_else(|| row.bytes.clone());
 					let pre = decode_series_storage_key(&series, &row.key, partitioned).map(
 						|decoded| {
 							build_series_delete_pre_columns_from_storage(

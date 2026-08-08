@@ -3,7 +3,7 @@
 
 use std::{iter, sync::Arc};
 
-use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
 	interface::{catalog::storage::StorageId, resolved::ResolvedObject},
 	internal_err, internal_error,
@@ -62,7 +62,7 @@ impl RowPointLookupNode {
 		})
 	}
 
-	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowShape> {
+	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedBytes) -> Result<RowShape> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
@@ -81,7 +81,12 @@ impl RowPointLookupNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::lookup::point::append_rows")]
-	fn append_batch<'a>(&mut self, rx: &mut Transaction<'a>, columns: &mut Columns, row: EncodedRow) -> Result<()> {
+	fn append_batch<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		columns: &mut Columns,
+		row: EncodedBytes,
+	) -> Result<()> {
 		let shape = self.get_or_load_shape(rx, &row)?;
 		columns.append_rows(&shape, iter::once(row), vec![RowNumber(self.row_number)])?;
 		Ok(())
@@ -106,7 +111,7 @@ impl QueryNode for RowPointLookupNode {
 
 		if let Some(multi_values) = rx.get(&encoded_key)? {
 			let mut columns = columns_from_object(&self.source);
-			self.append_batch(rx, &mut columns, multi_values.row)?;
+			self.append_batch(rx, &mut columns, multi_values.bytes)?;
 
 			Ok(Some(columns))
 		} else {
@@ -142,7 +147,7 @@ impl RowListLookupNode {
 		})
 	}
 
-	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowShape> {
+	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedBytes) -> Result<RowShape> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
@@ -167,7 +172,7 @@ impl RowListLookupNode {
 		object_id: StorageId,
 		start: usize,
 		end: usize,
-	) -> Result<(Vec<EncodedRow>, Vec<RowNumber>)> {
+	) -> Result<(Vec<EncodedBytes>, Vec<RowNumber>)> {
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
@@ -175,7 +180,7 @@ impl RowListLookupNode {
 			let encoded_key = RowKey::encoded(object_id, RowNumber(row_num));
 
 			if let Some(multi_values) = rx.get(&encoded_key)? {
-				batch_rows.push(multi_values.row);
+				batch_rows.push(multi_values.bytes);
 				found_row_numbers.push(RowNumber(row_num));
 			}
 		}
@@ -188,7 +193,7 @@ impl RowListLookupNode {
 		&mut self,
 		rx: &mut Transaction<'a>,
 		columns: &mut Columns,
-		rows: Vec<EncodedRow>,
+		rows: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
 		let shape = self.get_or_load_shape(rx, &rows[0])?;
@@ -266,7 +271,7 @@ impl RowRangeScanNode {
 		})
 	}
 
-	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedRow) -> Result<RowShape> {
+	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedBytes) -> Result<RowShape> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
@@ -291,7 +296,7 @@ impl RowRangeScanNode {
 		object_id: StorageId,
 		start: u64,
 		end: u64,
-	) -> Result<(Vec<EncodedRow>, Vec<RowNumber>)> {
+	) -> Result<(Vec<EncodedBytes>, Vec<RowNumber>)> {
 		let mut batch_rows = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
@@ -299,7 +304,7 @@ impl RowRangeScanNode {
 			let encoded_key = RowKey::encoded(object_id, RowNumber(row_num));
 
 			if let Some(multi_values) = rx.get(&encoded_key)? {
-				batch_rows.push(multi_values.row);
+				batch_rows.push(multi_values.bytes);
 				found_row_numbers.push(RowNumber(row_num));
 			}
 		}
@@ -312,7 +317,7 @@ impl RowRangeScanNode {
 		&mut self,
 		rx: &mut Transaction<'a>,
 		columns: &mut Columns,
-		rows: Vec<EncodedRow>,
+		rows: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
 		let shape = self.get_or_load_shape(rx, &rows[0])?;

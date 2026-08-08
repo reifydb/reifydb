@@ -31,11 +31,11 @@ pub(crate) fn load_operators(rx: &mut Transaction<'_>, catalog: &CatalogCache) -
 }
 
 fn convert_operator(multi: MultiVersionRow) -> Operator {
-	let row = multi.row;
-	let id = OperatorId(operator::SHAPE.get::<u64>(&row, ID));
-	let flow = FlowId(operator::SHAPE.get::<u64>(&row, FLOW));
-	let node_type = operator::SHAPE.get::<u8>(&row, TYPE);
-	let data = operator::SHAPE.get_blob(&row, DATA).clone();
+	let bytes = multi.bytes;
+	let id = OperatorId(operator::SHAPE.get::<u64>(&bytes, ID));
+	let flow = FlowId(operator::SHAPE.get::<u64>(&bytes, FLOW));
+	let node_type = operator::SHAPE.get::<u8>(&bytes, TYPE);
+	let data = operator::SHAPE.get_blob(&bytes, DATA).clone();
 
 	Operator {
 		id,

@@ -30,7 +30,7 @@ impl CatalogStore {
 		for entry in stream {
 			let entry = entry?;
 			if let Some(key) = RowSettingsKey::decode(&entry.key)
-				&& let Some(settings) = decode_row_settings(&entry.row)
+				&& let Some(settings) = decode_row_settings(&entry.bytes)
 			{
 				result.push(RowSettingsEntry {
 					storage: key.storage,

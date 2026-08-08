@@ -5,7 +5,7 @@ use std::{cell::UnsafeCell, collections::HashMap};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
 };
 use reifydb_core::{
@@ -140,7 +140,7 @@ impl SinkSeriesViewOperator {
 		let row_count = source.row_count();
 		let field_columns = shape_field_columns(source, shape);
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
+		let mut encoded_bytes_list: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 		let verified = self.verified_partitions();
 		for row_idx in 0..row_count {
 			let row_number = source.row_numbers()[row_idx];
@@ -161,9 +161,9 @@ impl SinkSeriesViewOperator {
 				RowKey::encoded(object_id, row_number)
 			};
 			keys.push(key);
-			encoded_rows.push(encoded);
+			encoded_bytes_list.push(encoded);
 		}
-		for (key, encoded) in keys.iter().zip(encoded_rows.iter()) {
+		for (key, encoded) in keys.iter().zip(encoded_bytes_list.iter()) {
 			txn.set(key, encoded.clone())?;
 		}
 		emit_view_change(txn, view, Diff::insert(coerced));
@@ -191,7 +191,7 @@ impl SinkSeriesViewOperator {
 		let field_columns = shape_field_columns(source_post, shape);
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut post_encoded_rows: Vec<EncodedRow> = Vec::with_capacity(row_count);
+		let mut post_encoded_rows: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 		let verified = self.verified_partitions();
 		for row_idx in 0..row_count {
 			let pre_row_number = source_pre.row_numbers()[row_idx];

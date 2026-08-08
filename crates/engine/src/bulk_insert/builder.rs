@@ -7,7 +7,7 @@ use reifydb_catalog::{
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
 };
-use reifydb_codec::encoded::{row::EncodedRowBuilder, shape::RowShape};
+use reifydb_codec::encoded::{bytes::EncodedRowBuilder, shape::RowShape};
 use reifydb_core::{
 	error::CoreError,
 	interface::catalog::{
@@ -232,11 +232,11 @@ fn execute_table_insert<V: ValidationMode>(
 ) -> Result<TableInsertResult> {
 	let table = resolve_table(catalog, txn, pending)?;
 	let shape = get_or_create_table_shape(catalog, &table, &mut Transaction::Command(txn))?;
-	let encoded_rows = encode_table_rows::<V>(catalog, txn, pending, &table, &shape, clock)?;
-	if encoded_rows.is_empty() {
+	let encoded_bytes_list = encode_table_rows::<V>(catalog, txn, pending, &table, &shape, clock)?;
+	if encoded_bytes_list.is_empty() {
 		return Ok(empty_table_result(pending));
 	}
-	write_table_rows(catalog, txn, &table, &shape, pending, encoded_rows)
+	write_table_rows(catalog, txn, &table, &shape, pending, encoded_bytes_list)
 }
 
 #[inline]
@@ -255,14 +255,14 @@ fn write_table_rows(
 	table: &Table,
 	shape: &RowShape,
 	pending: &PendingTableInsert,
-	encoded_rows: Vec<EncodedRowBuilder>,
+	encoded_bytes_list: Vec<EncodedRowBuilder>,
 ) -> Result<TableInsertResult> {
-	let total_rows = encoded_rows.len();
+	let total_rows = encoded_bytes_list.len();
 	let row_numbers = catalog.next_row_number_batch(txn, table.id, total_rows as u64)?;
 	let pk_def = primary_key::get_primary_key(catalog, &mut Transaction::Command(txn), table)?;
 	let row_number_shape = pk_def.as_ref().map(|_| RowShape::testing(&[ValueType::Uint8]));
 
-	let mut owned_rows = encoded_rows;
+	let mut owned_rows = encoded_bytes_list;
 	txn.insert_table(table, shape, &row_numbers, &mut owned_rows)?;
 
 	if let Some(ref pk_def) = pk_def {
@@ -316,11 +316,11 @@ fn encode_table_rows<V: ValidationMode>(
 	clock: &Clock,
 ) -> Result<Vec<EncodedRowBuilder>> {
 	let coerced_rows = coerce_table_rows::<V>(&pending.rows, table)?;
-	let mut encoded_rows = Vec::with_capacity(coerced_rows.len());
+	let mut encoded_bytes_list = Vec::with_capacity(coerced_rows.len());
 	for values in coerced_rows {
-		encoded_rows.push(prepare_table_row::<V>(catalog, txn, table, shape, clock, values)?);
+		encoded_bytes_list.push(prepare_table_row::<V>(catalog, txn, table, shape, clock, values)?);
 	}
-	Ok(encoded_rows)
+	Ok(encoded_bytes_list)
 }
 
 #[inline]

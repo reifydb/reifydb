@@ -3,7 +3,7 @@
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::{decode_u64_asc, encode_u64_asc, encoded::EncodedKeyRange},
 };
 use reifydb_core::{
@@ -62,7 +62,7 @@ pub(crate) fn snapshot_ledger_keyspaces(snapshot: bool) -> Vec<Keyspace> {
 pub(crate) struct ContentVersion(u64);
 
 impl ContentVersion {
-	pub(crate) fn of(encoded: &EncodedRow) -> Self {
+	pub(crate) fn of(encoded: &EncodedBytes) -> Self {
 		Self(xxh3_64(&encoded.0).0)
 	}
 }
@@ -120,7 +120,7 @@ impl SnapshotLedger {
 		group: GroupId,
 		left: RowNumber,
 		right: RowNumber,
-		content: &EncodedRow,
+		content: &EncodedBytes,
 	) -> Result<()> {
 		let version = ContentVersion::of(content);
 		let key = self.published_key(group, left, right);
@@ -180,7 +180,7 @@ impl SnapshotLedger {
 		group: GroupId,
 		left: RowNumber,
 		right: RowNumber,
-	) -> Result<Option<EncodedRow>> {
+	) -> Result<Option<EncodedBytes>> {
 		let key = self.published_key(group, left, right);
 		let Some(row) = state_get(self.operator_id, txn, &key)? else {
 			return Ok(None);
@@ -195,7 +195,7 @@ impl SnapshotLedger {
 		txn: &mut FlowTransaction,
 		group: GroupId,
 		right: RowNumber,
-		content: &EncodedRow,
+		content: &EncodedBytes,
 	) -> Result<()> {
 		let version = ContentVersion::of(content);
 		let key = self.pin_key(group, right, version);
@@ -235,14 +235,14 @@ impl SnapshotLedger {
 		group: GroupId,
 		right: RowNumber,
 		version: ContentVersion,
-	) -> Result<Option<EncodedRow>> {
+	) -> Result<Option<EncodedBytes>> {
 		let key = self.pin_key(group, right, version);
 		let Some(existing) = state_get(self.operator_id, txn, &key)? else {
 			return Ok(None);
 		};
 		let mut pin = decode_pin(&existing)?;
 		pin.refs = pin.refs.saturating_sub(1);
-		let content = pin.retired.clone().map(|bytes| EncodedRow(CowVec::new(bytes)));
+		let content = pin.retired.clone().map(|bytes| EncodedBytes(CowVec::new(bytes)));
 		match pin.refs {
 			0 => state_remove(self.operator_id, txn, &key)?,
 			_ => state_set(self.operator_id, txn, &key, encode_pin(txn, &pin)?)?,
@@ -265,7 +265,7 @@ fn decode_published(bytes: &[u8]) -> Option<PublishedRight> {
 	}
 }
 
-fn encode_version(txn: &FlowTransaction, version: ContentVersion) -> EncodedRow {
+fn encode_version(txn: &FlowTransaction, version: ContentVersion) -> EncodedBytes {
 	let shape = RowShape::operator_state();
 	let mut row = shape.allocate();
 	shape.set_blob(&mut row, 0, &Blob::from(version.0.to_le_bytes().to_vec()));
@@ -274,7 +274,7 @@ fn encode_version(txn: &FlowTransaction, version: ContentVersion) -> EncodedRow 
 	row.freeze()
 }
 
-fn decode_version(row: &EncodedRow) -> Result<ContentVersion> {
+fn decode_version(row: &EncodedBytes) -> Result<ContentVersion> {
 	let shape = RowShape::operator_state();
 	let blob = shape.get_blob(row, 0);
 	let bytes: [u8; 8] = blob.as_bytes().try_into().map_err(|_| {
@@ -286,7 +286,7 @@ fn decode_version(row: &EncodedRow) -> Result<ContentVersion> {
 	Ok(ContentVersion(u64::from_le_bytes(bytes)))
 }
 
-fn encode_pin(txn: &FlowTransaction, pin: &Pin) -> Result<EncodedRow> {
+fn encode_pin(txn: &FlowTransaction, pin: &Pin) -> Result<EncodedBytes> {
 	let serialized = to_stdvec(pin).map_err(|e| {
 		Error::from(FlowStateError::Encode {
 			state: "snapshot pin",
@@ -301,7 +301,7 @@ fn encode_pin(txn: &FlowTransaction, pin: &Pin) -> Result<EncodedRow> {
 	Ok(row.freeze())
 }
 
-fn decode_pin(row: &EncodedRow) -> Result<Pin> {
+fn decode_pin(row: &EncodedBytes) -> Result<Pin> {
 	let shape = RowShape::operator_state();
 	let blob = shape.get_blob(row, 0);
 	from_bytes(blob.as_ref()).map_err(|e| {
@@ -325,7 +325,7 @@ mod tests {
 		SnapshotLedger::new(NODE)
 	}
 
-	fn row(payload: &[u8]) -> EncodedRow {
+	fn encoded_bytes(payload: &[u8]) -> EncodedBytes {
 		let shape = RowShape::operator_state();
 		let mut r = shape.allocate();
 		shape.set_blob(&mut r, 0, &Blob::from(payload.to_vec()));
@@ -350,7 +350,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
-		let published_against = row(b"v1");
+		let published_against = encoded_bytes(b"v1");
 
 		ledger.publish(&mut txn, GROUP, rn(1), rn(7), &published_against).unwrap();
 		ledger.retire(&mut txn, GROUP, rn(7), &published_against).unwrap();
@@ -367,7 +367,7 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
 
-		ledger.publish(&mut txn, GROUP, rn(1), rn(7), &row(b"v1")).unwrap();
+		ledger.publish(&mut txn, GROUP, rn(1), rn(7), &encoded_bytes(b"v1")).unwrap();
 
 		assert_eq!(
 			ledger.release(&mut txn, GROUP, rn(1), rn(7)).unwrap(),
@@ -383,7 +383,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
-		let shared = row(b"shared");
+		let shared = encoded_bytes(b"shared");
 
 		for left in 1..=3u64 {
 			ledger.publish(&mut txn, GROUP, rn(left), rn(7), &shared).unwrap();
@@ -406,7 +406,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
-		let content = row(b"v1");
+		let content = encoded_bytes(b"v1");
 		let version = ContentVersion::of(&content);
 
 		ledger.publish(&mut txn, GROUP, rn(1), rn(7), &content).unwrap();
@@ -435,8 +435,8 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
-		let first = row(b"v1");
-		let second = row(b"v2");
+		let first = encoded_bytes(b"v1");
+		let second = encoded_bytes(b"v2");
 
 		ledger.publish(&mut txn, GROUP, rn(1), rn(7), &first).unwrap();
 		ledger.retire(&mut txn, GROUP, rn(7), &first).unwrap();
@@ -454,8 +454,8 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
-		let first = row(b"v1");
-		let second = row(b"v2");
+		let first = encoded_bytes(b"v1");
+		let second = encoded_bytes(b"v2");
 		let stale = ledger.pin_key(GROUP, rn(7), ContentVersion::of(&first));
 
 		ledger.publish(&mut txn, GROUP, rn(1), rn(7), &first).unwrap();
@@ -480,9 +480,9 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
 
-		ledger.publish(&mut txn, GROUP, rn(1), rn(7), &row(b"a")).unwrap();
-		ledger.publish(&mut txn, GROUP, rn(1), rn(8), &row(b"b")).unwrap();
-		ledger.publish(&mut txn, GROUP, rn(2), rn(9), &row(b"c")).unwrap();
+		ledger.publish(&mut txn, GROUP, rn(1), rn(7), &encoded_bytes(b"a")).unwrap();
+		ledger.publish(&mut txn, GROUP, rn(1), rn(8), &encoded_bytes(b"b")).unwrap();
+		ledger.publish(&mut txn, GROUP, rn(2), rn(9), &encoded_bytes(b"c")).unwrap();
 
 		let mut rights: Vec<PublishedRight> =
 			ledger.published(&mut txn, GROUP, rn(1)).unwrap().into_iter().map(|(r, _)| r).collect();
@@ -517,7 +517,7 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let ledger = ledger();
-		let content = row(b"v1");
+		let content = encoded_bytes(b"v1");
 
 		ledger.retire(&mut txn, GROUP, rn(7), &content).unwrap();
 

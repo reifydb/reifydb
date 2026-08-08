@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_codec::{
-	encoded::{row::EncodedRow, shape::RowShape},
+	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::{EncodedKey, EncodedKeyRange},
 };
 use reifydb_core::{
@@ -99,7 +99,7 @@ impl TableScanNode {
 		})
 	}
 
-	fn get_or_load_shape<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedRow) -> Result<RowShape> {
+	fn get_or_load_shape<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedBytes) -> Result<RowShape> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
@@ -150,7 +150,7 @@ impl TableScanNode {
 						RowKey::decode(&multi.key).map(|k| (k.row, None))
 					};
 					if let Some((rn, partition)) = decoded {
-						batch.rows.push(multi.row);
+						batch.rows.push(multi.bytes);
 						batch.row_numbers.push(rn);
 						if let Some(p) = partition {
 							batch.partitions.push(p);
@@ -199,7 +199,7 @@ impl TableScanNode {
 		&mut self,
 		rx: &mut Transaction<'a>,
 		columns: &mut Columns,
-		rows: Vec<EncodedRow>,
+		rows: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
 		let shape = self.get_or_load_shape(rx, &rows[0])?;
@@ -210,7 +210,7 @@ impl TableScanNode {
 
 #[derive(Default)]
 struct ScannedBatch {
-	rows: Vec<EncodedRow>,
+	rows: Vec<EncodedBytes>,
 	row_numbers: Vec<RowNumber>,
 	partitions: Vec<Partition>,
 	last_key: Option<EncodedKey>,

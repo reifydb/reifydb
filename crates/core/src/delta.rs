@@ -3,14 +3,14 @@
 
 use std::cmp;
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Delta {
 	Set {
 		key: EncodedKey,
-		row: EncodedRow,
+		bytes: EncodedBytes,
 	},
 
 	Remove {
@@ -24,7 +24,7 @@ pub enum RemoveAnnounce {
 	Silent,
 
 	Announced {
-		pre: EncodedRow,
+		pre: EncodedBytes,
 	},
 }
 
@@ -33,7 +33,7 @@ impl RemoveAnnounce {
 		matches!(self, Self::Announced { .. })
 	}
 
-	pub fn pre(&self) -> Option<&EncodedRow> {
+	pub fn pre(&self) -> Option<&EncodedBytes> {
 		match self {
 			Self::Silent => None,
 			Self::Announced {
@@ -63,7 +63,7 @@ impl Delta {
 		}
 	}
 
-	pub fn remove_announced(key: EncodedKey, pre: EncodedRow) -> Self {
+	pub fn remove_announced(key: EncodedKey, pre: EncodedBytes) -> Self {
 		Self::Remove {
 			key,
 			announce: RemoveAnnounce::Announced {
@@ -85,12 +85,12 @@ impl Delta {
 		}
 	}
 
-	pub fn row(&self) -> Option<&EncodedRow> {
+	pub fn bytes(&self) -> Option<&EncodedBytes> {
 		match self {
 			Self::Set {
-				row,
+				bytes,
 				..
-			} => Some(row),
+			} => Some(bytes),
 			Self::Remove {
 				..
 			} => None,

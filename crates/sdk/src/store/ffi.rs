@@ -8,7 +8,7 @@ use reifydb_abi::{
 	context::iterators::StoreIteratorFFI,
 	data::buffer::BufferFFI,
 };
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_value::util::cowvec::CowVec;
 use tracing::{Span, instrument};
 
@@ -17,7 +17,7 @@ use crate::{
 	operator::context::ffi::FFIOperatorContext,
 };
 
-pub(super) fn raw_store_get(ctx: &FFIOperatorContext, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+pub(super) fn raw_store_get(ctx: &FFIOperatorContext, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 	let key_bytes = key.as_bytes();
 	let mut output = BufferFFI {
 		ptr: null_mut(),
@@ -39,7 +39,7 @@ pub(super) fn raw_store_get(ctx: &FFIOperatorContext, key: &EncodedKey) -> Resul
 				let value_bytes = from_raw_parts(output.ptr, output.len).to_vec();
 
 				((*ctx.ctx).callbacks.memory.free)(output.ptr as *mut u8, output.len);
-				Ok(Some(EncodedRow(CowVec::new(value_bytes))))
+				Ok(Some(EncodedBytes(CowVec::new(value_bytes))))
 			}
 		} else if result == FFI_NOT_FOUND {
 			Ok(None)
@@ -77,7 +77,10 @@ pub(super) fn raw_store_contains_key(ctx: &FFIOperatorContext, key: &EncodedKey)
 #[instrument(name = "flow::operator::store::raw::prefix", level = "debug", skip(ctx), fields(
 	prefix_len = prefix.as_bytes().len()
 ))]
-pub(super) fn raw_store_prefix(ctx: &FFIOperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+pub(super) fn raw_store_prefix(
+	ctx: &FFIOperatorContext,
+	prefix: &EncodedKey,
+) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	let prefix_bytes = prefix.as_bytes();
 	let mut iterator: *mut StoreIteratorFFI = null_mut();
 
@@ -109,7 +112,7 @@ pub(super) fn raw_store_range(
 	ctx: &FFIOperatorContext,
 	start: Bound<&EncodedKey>,
 	end: Bound<&EncodedKey>,
-) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	let mut iterator: *mut StoreIteratorFFI = null_mut();
 
 	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
@@ -163,7 +166,7 @@ pub(super) fn raw_store_range(
 pub(super) unsafe fn collect_iterator_results(
 	ctx: &FFIOperatorContext,
 	iterator: *mut StoreIteratorFFI,
-) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	if iterator.is_null() {
 		Span::current().record("result_count", 0);
 		return Ok(Vec::new());
@@ -210,9 +213,9 @@ pub(super) unsafe fn collect_iterator_results(
 				// SAFETY: same host-allocated buffer contract as the key slice, with ptr and len
 				// checked in this branch's condition.
 				let value_bytes = unsafe { from_raw_parts(value_buf.ptr, value_buf.len) }.to_vec();
-				EncodedRow(CowVec::new(value_bytes))
+				EncodedBytes(CowVec::new(value_bytes))
 			} else {
-				EncodedRow(CowVec::new(Vec::new()))
+				EncodedBytes(CowVec::new(Vec::new()))
 			};
 
 			// SAFETY: key_buf was allocated by the host with cap == len, so len is the size the free

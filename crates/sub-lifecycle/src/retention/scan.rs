@@ -94,7 +94,7 @@ fn classify(
 	expired: &mut Vec<MultiVersionRow>,
 	min_survivor_row: &mut Option<u64>,
 ) {
-	if row.row.updated_at() <= cutoff.instant() {
+	if row.bytes.updated_at() <= cutoff.instant() {
 		expired.push(row);
 	} else if let Some(row_number) = row_number_of(&row.key) {
 		*min_survivor_row = fold_min(*min_survivor_row, row_number);

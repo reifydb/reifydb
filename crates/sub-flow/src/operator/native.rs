@@ -15,7 +15,7 @@ use libloading::Symbol;
 use reifydb_abi::operator::{capabilities::OperatorCapability, timer::TimerKind};
 use reifydb_codec::{
 	encoded::{
-		row::EncodedRow,
+		bytes::EncodedBytes,
 		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -175,18 +175,18 @@ impl NativeBridge for FlowNativeBridge<'_> {
 			.map(|lease| lease.grant.bytes().as_bytes())
 			.unwrap_or(0)
 	}
-	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedRow>> {
+	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedBytes>> {
 		self.txn.state_get(self.operator, key)
 	}
-	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedRow)>> {
+	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedBytes)>> {
 		Ok(self.txn
 			.state_get_many(self.operator, keys)?
 			.items
 			.into_iter()
-			.filter_map(|r| GroupStateKey::from_framed(r.key).map(|k| (k, r.row)))
+			.filter_map(|r| GroupStateKey::from_framed(r.key).map(|k| (k, r.bytes)))
 			.collect())
 	}
-	fn state_set(&mut self, key: &GroupStateKey, value: EncodedRow) -> Result<()> {
+	fn state_set(&mut self, key: &GroupStateKey, value: EncodedBytes) -> Result<()> {
 		self.txn.state_set(self.operator, key, value)
 	}
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
@@ -195,12 +195,12 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	fn state_clear(&mut self) -> Result<()> {
 		self.txn.state_clear(self.operator)
 	}
-	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedRow)>> {
+	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedBytes)>> {
 		Ok(self.txn
 			.state_range_all(self.operator, range)?
 			.items
 			.into_iter()
-			.filter_map(|r| GroupStateKey::from_framed(r.key).map(|k| (k, r.row)))
+			.filter_map(|r| GroupStateKey::from_framed(r.key).map(|k| (k, r.bytes)))
 			.collect())
 	}
 	fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>> {
@@ -242,18 +242,18 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
 		self.txn.remove_row_numbers_below(self.operator, group, upper)
 	}
-	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedRow>> {
+	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		self.txn.get(key)
 	}
 	fn store_contains(&mut self, key: &EncodedKey) -> Result<bool> {
 		self.txn.contains_key(key)
 	}
-	fn store_prefix(&mut self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedRow)>> {
-		Ok(self.txn.prefix(prefix)?.items.into_iter().map(|r| (r.key, r.row)).collect())
+	fn store_prefix(&mut self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
+		Ok(self.txn.prefix(prefix)?.items.into_iter().map(|r| (r.key, r.bytes)).collect())
 	}
-	fn store_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedRow)>> {
+	fn store_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 		let rows = self.txn.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>>>()?;
-		Ok(rows.into_iter().map(|r| (r.key, r.row)).collect())
+		Ok(rows.into_iter().map(|r| (r.key, r.bytes)).collect())
 	}
 	fn catalog_find_row_shape(&mut self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>> {
 		Ok(self.txn.host_row_shape().find_row_shape(fingerprint))
@@ -276,14 +276,14 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	fn state_get_many_visit(
 		&mut self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(&GroupStateKey, &EncodedRow) -> SdkResult<()>,
+		visit: &mut dyn FnMut(&GroupStateKey, &EncodedBytes) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		let batch = self.txn.state_get_many(self.operator, keys).map_err(|e| SdkError::Other(e.to_string()))?;
 		for r in &batch.items {
 			let Some(key) = GroupStateKey::from_framed(r.key.clone()) else {
 				continue;
 			};
-			visit(&key, &r.row)?;
+			visit(&key, &r.bytes)?;
 		}
 		Ok(())
 	}

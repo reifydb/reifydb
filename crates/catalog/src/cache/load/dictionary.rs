@@ -33,12 +33,12 @@ pub(crate) fn load_dictionaries(rx: &mut Transaction<'_>, catalog: &CatalogCache
 }
 
 fn convert_dictionary(multi: MultiVersionRow) -> Dictionary {
-	let row = multi.row;
-	let id = DictionaryId(SHAPE.get::<u64>(&row, ID));
-	let namespace = NamespaceId(SHAPE.get::<u64>(&row, NAMESPACE));
-	let name = SHAPE.get_utf8(&row, NAME).to_string();
-	let value_type_ordinal = SHAPE.get::<u8>(&row, VALUE_TYPE);
-	let id_type_ordinal = SHAPE.get::<u8>(&row, ID_TYPE);
+	let bytes = multi.bytes;
+	let id = DictionaryId(SHAPE.get::<u64>(&bytes, ID));
+	let namespace = NamespaceId(SHAPE.get::<u64>(&bytes, NAMESPACE));
+	let name = SHAPE.get_utf8(&bytes, NAME).to_string();
+	let value_type_ordinal = SHAPE.get::<u8>(&bytes, VALUE_TYPE);
+	let id_type_ordinal = SHAPE.get::<u8>(&bytes, ID_TYPE);
 
 	Dictionary {
 		id,

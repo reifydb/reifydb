@@ -6,7 +6,7 @@ use std::sync::{
 	atomic::{AtomicUsize, Ordering},
 };
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
@@ -97,8 +97,8 @@ fn key(name: &str) -> EncodedKey {
 	EncodedKey::new(name.as_bytes())
 }
 
-fn row(value: &str) -> EncodedRow {
-	EncodedRow(CowVec::new(value.as_bytes().to_vec()))
+fn encoded_bytes(value: &str) -> EncodedBytes {
+	EncodedBytes(CowVec::new(value.as_bytes().to_vec()))
 }
 
 struct Recorder {
@@ -139,7 +139,7 @@ impl Recorder {
 	}
 }
 
-fn write_submission(recorder: &Arc<Recorder>, index: usize, k: EncodedKey, v: EncodedRow) -> GroupCommitSubmission {
+fn write_submission(recorder: &Arc<Recorder>, index: usize, k: EncodedKey, v: EncodedBytes) -> GroupCommitSubmission {
 	GroupCommitSubmission {
 		apply: Box::new(move |txn| txn.set(&k, v)),
 		completion: recorder.completion(index),
@@ -148,7 +148,7 @@ fn write_submission(recorder: &Arc<Recorder>, index: usize, k: EncodedKey, v: En
 
 fn read_back(begin: &GroupCommitBegin, k: &EncodedKey) -> Option<Vec<u8>> {
 	let mut txn = begin().expect("begin read-back transaction");
-	let result = txn.get(k).expect("get").map(|row| row.row.to_vec());
+	let result = txn.get(k).expect("get").map(|bytes| bytes.bytes.to_vec());
 	txn.rollback().expect("rollback read-back transaction");
 	result
 }
@@ -162,10 +162,14 @@ fn grouped_submissions_share_one_version_in_arrival_order() {
 	let recorder = Recorder::new(3);
 	let shared = key("shared");
 	for i in 0..3 {
-		let mut submission =
-			write_submission(&recorder, i, key(&format!("grouped-{i}")), row(&format!("value-{i}")));
+		let mut submission = write_submission(
+			&recorder,
+			i,
+			key(&format!("grouped-{i}")),
+			encoded_bytes(&format!("value-{i}")),
+		);
 		let shared_key = shared.clone();
-		let shared_row = row(&format!("writer-{i}"));
+		let shared_row = encoded_bytes(&format!("writer-{i}"));
 		let apply = submission.apply;
 		submission.apply = Box::new(move |txn| {
 			apply(txn)?;
@@ -198,11 +202,11 @@ fn single_submission_commits_after_linger_expiry() {
 		GroupCommitHandle::spawn(&h.spawner, h.begin.clone(), Duration::from_milliseconds(20).unwrap(), 16);
 
 	let first = Recorder::new(1);
-	handle.submit(write_submission(&first, 0, key("lone-1"), row("a")));
+	handle.submit(write_submission(&first, 0, key("lone-1"), encoded_bytes("a")));
 	first.wait();
 
 	let second = Recorder::new(1);
-	handle.submit(write_submission(&second, 0, key("lone-2"), row("b")));
+	handle.submit(write_submission(&second, 0, key("lone-2"), encoded_bytes("b")));
 	second.wait();
 
 	let v1 = first.versions()[0].1;
@@ -217,7 +221,7 @@ fn max_entries_flushes_before_linger_deadline() {
 
 	let recorder = Recorder::new(3);
 	for i in 0..3 {
-		handle.submit(write_submission(&recorder, i, key(&format!("bound-{i}")), row("x")));
+		handle.submit(write_submission(&recorder, i, key(&format!("bound-{i}")), encoded_bytes("x")));
 	}
 	recorder.wait();
 
@@ -233,7 +237,7 @@ fn inline_handle_commits_each_submission_in_its_own_version() {
 
 	let recorder = Recorder::new(3);
 	for i in 0..3 {
-		handle.submit(write_submission(&recorder, i, key(&format!("inline-{i}")), row("y")));
+		handle.submit(write_submission(&recorder, i, key(&format!("inline-{i}")), encoded_bytes("y")));
 	}
 	recorder.wait();
 
@@ -270,7 +274,7 @@ fn failing_apply_fails_the_whole_group_and_recovers() {
 	});
 	let k0_apply = k0.clone();
 	handle.submit(GroupCommitSubmission {
-		apply: Box::new(move |txn| txn.set(&k0_apply, row("should-roll-back"))),
+		apply: Box::new(move |txn| txn.set(&k0_apply, encoded_bytes("should-roll-back"))),
 		completion,
 	});
 
@@ -281,7 +285,7 @@ fn failing_apply_fails_the_whole_group_and_recovers() {
 			Box::new(move |_txn| internal_err!("boom"))
 		} else {
 			let k = key("poisoned-2");
-			Box::new(move |txn| txn.set(&k, row("also-rolled-back")))
+			Box::new(move |txn| txn.set(&k, encoded_bytes("also-rolled-back")))
 		};
 		handle.submit(GroupCommitSubmission {
 			apply,
@@ -313,7 +317,7 @@ fn failing_apply_fails_the_whole_group_and_recovers() {
 
 impl Recorder {
 	fn submit_ok(self: &Arc<Self>, handle: &GroupCommitHandle, index: usize) {
-		handle.submit(write_submission(self, index, key(&format!("retry-{index}")), row("z")));
+		handle.submit(write_submission(self, index, key(&format!("retry-{index}")), encoded_bytes("z")));
 	}
 }
 
@@ -324,7 +328,7 @@ fn shutdown_flushes_pending_group() {
 
 	let recorder = Recorder::new(2);
 	for i in 0..2 {
-		handle.submit(write_submission(&recorder, i, key(&format!("drain-{i}")), row("d")));
+		handle.submit(write_submission(&recorder, i, key(&format!("drain-{i}")), encoded_bytes("d")));
 	}
 	handle.shutdown();
 	recorder.wait();

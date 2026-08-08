@@ -5,7 +5,7 @@ use reifydb_cdc::{
 	consume::{checkpoint::CdcCheckpoint, watermark::compute_pinning_watermark},
 	storage::{CdcStorage, memory::MemoryCdcStorage},
 };
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -28,7 +28,7 @@ fn make_cdc(version: u64) -> Cdc {
 		Vec::new(),
 		vec![SystemChange::Insert {
 			key: EncodedKey::new(vec![version as u8]),
-			post: EncodedRow(CowVec::new(vec![version as u8])),
+			post: EncodedBytes(CowVec::new(vec![version as u8])),
 		}],
 	)
 }

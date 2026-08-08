@@ -3,7 +3,7 @@
 
 use std::{collections::HashSet, sync::Arc};
 
-use reifydb_codec::encoded::{row::EncodedRow, shape::RowShape};
+use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
 	common::CommitVersion,
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
@@ -91,7 +91,7 @@ pub(crate) fn insert_series(
 	let key_column_name = series.key.column();
 	let has_returning = returning.is_some();
 	let mut inserted_count = 0u64;
-	let mut returned_rows: Vec<(RowNumber, EncodedRow)> = if has_returning {
+	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = if has_returning {
 		Vec::with_capacity(16)
 	} else {
 		Vec::new()
@@ -177,7 +177,7 @@ fn insert_series_row(
 	key_column_name: &str,
 	has_tag: bool,
 	has_returning: bool,
-	returned_rows: &mut Vec<(RowNumber, EncodedRow)>,
+	returned_rows: &mut Vec<(RowNumber, EncodedBytes)>,
 	verified: &mut HashSet<Partition>,
 ) -> Result<()> {
 	let key_value = extract_or_generate_series_key(services, columns, series, metadata, row_idx, key_column_name);
@@ -270,7 +270,7 @@ fn finalize_series_insert(
 	metadata: SeriesMetadata,
 	inserted_count: u64,
 	returning: &Option<Vec<Expression>>,
-	returned_rows: &[(RowNumber, EncodedRow)],
+	returned_rows: &[(RowNumber, EncodedBytes)],
 ) -> Result<Columns> {
 	if inserted_count > 0 {
 		services.catalog.update_series_metadata_txn(txn, metadata)?;
@@ -290,7 +290,7 @@ struct SeriesRowSnapshot<'a> {
 	data_columns: &'a [&'a Column],
 	data_values: &'a [Value],
 	sequence: u64,
-	row: &'a EncodedRow,
+	row: &'a EncodedBytes,
 }
 
 #[inline]
@@ -400,7 +400,7 @@ fn build_encoded_series_row(
 	shape: &RowShape,
 	key_value: u64,
 	data_values: &[Value],
-) -> Result<EncodedRow> {
+) -> Result<EncodedBytes> {
 	let key_value_encoded = series.key_from_u64(key_value);
 	let mut row = shape.allocate();
 	shape.set_value(&mut row, 0, &key_value_encoded);

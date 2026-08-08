@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::key::{EncodableKey, procedure::ProcedureKey, procedure_param::ProcedureParamKey};
 use reifydb_transaction::transaction::Transaction;
 
@@ -15,7 +15,7 @@ use crate::{
 pub(super) struct ProcedureParamApplier;
 
 impl CatalogChangeApplier for ProcedureParamApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())?;
 		reload_parent_procedure(catalog, txn, key)
 	}
@@ -37,7 +37,7 @@ fn reload_parent_procedure(catalog: &Catalog, txn: &mut Transaction<'_>, key: &E
 	};
 
 	let params = load_params(txn, procedure_id)?;
-	let procedure = decode_procedure(&entry.row, params);
+	let procedure = decode_procedure(&entry.bytes, params);
 	catalog.cache.set_procedure(procedure_id, txn.version(), Some(procedure));
 	Ok(())
 }

@@ -9,7 +9,7 @@ use std::{
 };
 
 use reifydb_abi::operator::timer::TimerKind;
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey, tag::type_tag_byte, value::encode_value};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey, tag::type_tag_byte, value::encode_value};
 use reifydb_core::common::CommitVersion;
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
@@ -94,8 +94,8 @@ pub struct ArmedTimer {
 
 #[derive(Clone)]
 pub struct TestContext {
-	state_store: Arc<Mutex<HashMap<EncodedKey, EncodedRow>>>,
-	store: Arc<Mutex<BTreeMap<EncodedKey, EncodedRow>>>,
+	state_store: Arc<Mutex<HashMap<EncodedKey, EncodedBytes>>>,
+	store: Arc<Mutex<BTreeMap<EncodedKey, EncodedBytes>>>,
 	dictionaries: Arc<Mutex<DictionaryData>>,
 	version: CommitVersion,
 	logs: Arc<Mutex<Vec<String>>>,
@@ -147,7 +147,7 @@ impl TestContext {
 		self.dictionaries.lock().get.get(&(dictionary, id)).cloned()
 	}
 
-	pub fn state_store(&self) -> &Arc<Mutex<HashMap<EncodedKey, EncodedRow>>> {
+	pub fn state_store(&self) -> &Arc<Mutex<HashMap<EncodedKey, EncodedBytes>>> {
 		&self.state_store
 	}
 
@@ -201,7 +201,7 @@ impl TestContext {
 	}
 
 	pub fn set_state(&self, key: EncodedKey, value: Vec<u8>) {
-		self.state_store.lock().insert(key, EncodedRow(CowVec::new(value)));
+		self.state_store.lock().insert(key, EncodedBytes(CowVec::new(value)));
 	}
 
 	pub fn remove_state(&self, key: &EncodedKey) -> Option<Vec<u8>> {
@@ -224,23 +224,23 @@ impl TestContext {
 		self.state_store.lock().keys().cloned().collect()
 	}
 
-	pub fn store(&self) -> &Arc<Mutex<BTreeMap<EncodedKey, EncodedRow>>> {
+	pub fn store(&self) -> &Arc<Mutex<BTreeMap<EncodedKey, EncodedBytes>>> {
 		&self.store
 	}
 
-	pub fn get_store(&self, key: &EncodedKey) -> Option<EncodedRow> {
+	pub fn get_store(&self, key: &EncodedKey) -> Option<EncodedBytes> {
 		self.store.lock().get(key).cloned()
 	}
 
-	pub fn set_store(&self, key: EncodedKey, value: EncodedRow) {
+	pub fn set_store(&self, key: EncodedKey, value: EncodedBytes) {
 		self.store.lock().insert(key, value);
 	}
 
-	pub fn store_range(&self, start: Bound<EncodedKey>, end: Bound<EncodedKey>) -> Vec<(EncodedKey, EncodedRow)> {
+	pub fn store_range(&self, start: Bound<EncodedKey>, end: Bound<EncodedKey>) -> Vec<(EncodedKey, EncodedBytes)> {
 		self.store.lock().range((start, end)).map(|(k, v)| (k.clone(), v.clone())).collect()
 	}
 
-	pub fn store_prefix(&self, prefix: &EncodedKey) -> Vec<(EncodedKey, EncodedRow)> {
+	pub fn store_prefix(&self, prefix: &EncodedKey) -> Vec<(EncodedKey, EncodedBytes)> {
 		self.store
 			.lock()
 			.iter()

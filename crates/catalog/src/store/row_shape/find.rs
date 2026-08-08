@@ -44,7 +44,7 @@ pub(crate) fn find_row_shape_by_fingerprint(
 		}
 	};
 
-	let field_count = shape_header::SHAPE.get::<u16>(&header_entry.row, shape_header::FIELD_COUNT) as usize;
+	let field_count = shape_header::SHAPE.get::<u16>(&header_entry.bytes, shape_header::FIELD_COUNT) as usize;
 
 	let mut fields = Vec::with_capacity(field_count);
 	for i in 0..field_count {
@@ -56,11 +56,11 @@ pub(crate) fn find_row_shape_by_fingerprint(
 			))))
 		})?;
 
-		let name = shape_field::SHAPE.get_utf8(&field_entry.row, shape_field::NAME).to_string();
-		let base_type = shape_field::SHAPE.get::<u8>(&field_entry.row, shape_field::TYPE);
-		let constraint_type = shape_field::SHAPE.get::<u8>(&field_entry.row, shape_field::CONSTRAINT_TYPE);
-		let constraint_param1 = shape_field::SHAPE.get::<u32>(&field_entry.row, shape_field::CONSTRAINT_P1);
-		let constraint_param2 = shape_field::SHAPE.get::<u32>(&field_entry.row, shape_field::CONSTRAINT_P2);
+		let name = shape_field::SHAPE.get_utf8(&field_entry.bytes, shape_field::NAME).to_string();
+		let base_type = shape_field::SHAPE.get::<u8>(&field_entry.bytes, shape_field::TYPE);
+		let constraint_type = shape_field::SHAPE.get::<u8>(&field_entry.bytes, shape_field::CONSTRAINT_TYPE);
+		let constraint_param1 = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::CONSTRAINT_P1);
+		let constraint_param2 = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::CONSTRAINT_P2);
 		let constraint = type_constraint_from_ffi(&FFITypeConstraint {
 			base_type,
 			constraint_type,
@@ -68,9 +68,9 @@ pub(crate) fn find_row_shape_by_fingerprint(
 			constraint_param2,
 		})
 		.expect("invalid persisted type constraint tag");
-		let offset = shape_field::SHAPE.get::<u32>(&field_entry.row, shape_field::OFFSET);
-		let size = shape_field::SHAPE.get::<u32>(&field_entry.row, shape_field::SIZE);
-		let align = shape_field::SHAPE.get::<u8>(&field_entry.row, shape_field::ALIGN);
+		let offset = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::OFFSET);
+		let size = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::SIZE);
+		let align = shape_field::SHAPE.get::<u8>(&field_entry.bytes, shape_field::ALIGN);
 
 		fields.push(RowShapeField {
 			name,
@@ -109,7 +109,7 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 				.ok_or_else(|| Error(Box::new(internal("Failed to decode shape key"))))?;
 
 			let field_count =
-				shape_header::SHAPE.get::<u16>(&entry.row, shape_header::FIELD_COUNT) as usize;
+				shape_header::SHAPE.get::<u16>(&entry.bytes, shape_header::FIELD_COUNT) as usize;
 
 			shape_headers.push((shape_key.fingerprint, field_count));
 		}
@@ -129,14 +129,14 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 				))))
 			})?;
 
-			let name = shape_field::SHAPE.get_utf8(&field_entry.row, shape_field::NAME).to_string();
-			let base_type = shape_field::SHAPE.get::<u8>(&field_entry.row, shape_field::TYPE);
+			let name = shape_field::SHAPE.get_utf8(&field_entry.bytes, shape_field::NAME).to_string();
+			let base_type = shape_field::SHAPE.get::<u8>(&field_entry.bytes, shape_field::TYPE);
 			let constraint_type =
-				shape_field::SHAPE.get::<u8>(&field_entry.row, shape_field::CONSTRAINT_TYPE);
+				shape_field::SHAPE.get::<u8>(&field_entry.bytes, shape_field::CONSTRAINT_TYPE);
 			let constraint_param1 =
-				shape_field::SHAPE.get::<u32>(&field_entry.row, shape_field::CONSTRAINT_P1);
+				shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::CONSTRAINT_P1);
 			let constraint_param2 =
-				shape_field::SHAPE.get::<u32>(&field_entry.row, shape_field::CONSTRAINT_P2);
+				shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::CONSTRAINT_P2);
 			let constraint = type_constraint_from_ffi(&FFITypeConstraint {
 				base_type,
 				constraint_type,
@@ -144,9 +144,9 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 				constraint_param2,
 			})
 			.expect("invalid persisted type constraint tag");
-			let offset = shape_field::SHAPE.get::<u32>(&field_entry.row, shape_field::OFFSET);
-			let size = shape_field::SHAPE.get::<u32>(&field_entry.row, shape_field::SIZE);
-			let align = shape_field::SHAPE.get::<u8>(&field_entry.row, shape_field::ALIGN);
+			let offset = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::OFFSET);
+			let size = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::SIZE);
+			let align = shape_field::SHAPE.get::<u8>(&field_entry.bytes, shape_field::ALIGN);
 
 			fields.push(RowShapeField {
 				name,

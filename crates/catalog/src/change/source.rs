@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	interface::catalog::{
 		flow::FlowStatus,
@@ -26,7 +26,7 @@ use crate::{
 pub(super) struct SourceApplier;
 
 impl CatalogChangeApplier for SourceApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())?;
 		let src = decode_source(row);
 		catalog.cache.set_source(src.id, txn.version(), Some(src));
@@ -43,7 +43,7 @@ impl CatalogChangeApplier for SourceApplier {
 	}
 }
 
-fn decode_source(row: &EncodedRow) -> Source {
+fn decode_source(row: &EncodedBytes) -> Source {
 	let id = SourceId(source::SHAPE.get::<u64>(row, ID));
 	let namespace = NamespaceId(source::SHAPE.get::<u64>(row, NAMESPACE));
 	let name = source::SHAPE.get_utf8(row, NAME).to_string();

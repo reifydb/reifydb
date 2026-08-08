@@ -6,7 +6,7 @@ use std::{
 	ops::AddAssign,
 };
 
-use reifydb_codec::encoded::row::EncodedRow;
+use reifydb_codec::encoded::bytes::EncodedBytes;
 use reifydb_core::interface::{catalog::metrics::MetricsId, store::SingleVersionStore};
 use reifydb_value::{Result, byte_size::ByteSize, count::Count, util::cowvec::CowVec};
 
@@ -69,7 +69,7 @@ impl<S: SingleVersionStore> CdcMetricsWriter<S> {
 		if let Ok(batch) = storage.prefix(&cdc_stats_key_prefix()) {
 			for item in batch.items {
 				if let Some(id) = decode_cdc_stats_key(item.key.as_slice())
-					&& let Some(s) = decode_cdc_stats(item.row.as_slice())
+					&& let Some(s) = decode_cdc_stats(item.bytes.as_slice())
 				{
 					stats.insert(id, s);
 				}
@@ -110,7 +110,7 @@ impl<S: SingleVersionStore> CdcMetricsWriter<S> {
 		for id in dirty {
 			if let Some(stats) = self.stats.get(&id) {
 				let storage_key = encode_cdc_stats_key(id);
-				self.storage.set(&storage_key, EncodedRow(CowVec::new(encode_cdc_stats(stats))))?;
+				self.storage.set(&storage_key, EncodedBytes(CowVec::new(encode_cdc_stats(stats))))?;
 			}
 		}
 		Ok(())
@@ -131,7 +131,7 @@ impl<S: SingleVersionStore> CdcMetricsReader<S> {
 
 	pub fn get(&self, id: MetricsId) -> Result<Option<CdcMetrics>> {
 		let key = encode_cdc_stats_key(id);
-		Ok(self.storage.get(&key)?.and_then(|v| decode_cdc_stats(v.row.as_slice())))
+		Ok(self.storage.get(&key)?.and_then(|v| decode_cdc_stats(v.bytes.as_slice())))
 	}
 
 	pub fn scan_all(&self) -> Result<Vec<(MetricsId, CdcMetrics)>> {
@@ -141,7 +141,7 @@ impl<S: SingleVersionStore> CdcMetricsReader<S> {
 		let mut results = Vec::new();
 		for item in batch.items {
 			if let Some(id) = decode_cdc_stats_key(item.key.as_slice())
-				&& let Some(stats) = decode_cdc_stats(item.row.as_slice())
+				&& let Some(stats) = decode_cdc_stats(item.bytes.as_slice())
 			{
 				results.push((id, stats));
 			}

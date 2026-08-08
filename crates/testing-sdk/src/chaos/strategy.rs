@@ -332,7 +332,7 @@ mod tests {
 
 		assert_eq!(row_a.number, row_b.number);
 		assert_eq!(row_a.shape, row_b.shape);
-		// EncodedRow has no PartialEq, so the comparison has to go through bytes.
+		// EncodedBytes has no PartialEq, so the comparison has to go through bytes.
 		assert_eq!(row_a.encoded.as_slice(), row_b.encoded.as_slice());
 	}
 

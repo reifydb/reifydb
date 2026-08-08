@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_transaction::transaction::Transaction;
 
 use super::CatalogChangeApplier;
@@ -10,7 +10,7 @@ use crate::{Result, catalog::Catalog};
 pub(super) struct PassthroughApplier;
 
 impl CatalogChangeApplier for PassthroughApplier {
-	fn set(_catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedRow) -> Result<()> {
+	fn set(_catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
 		txn.set(key, row.clone())
 	}
 

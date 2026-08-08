@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::row::EncodedRow, key::encoded::EncodedKey};
+use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
@@ -63,16 +63,16 @@ pub fn proto_to_system_change(proto: &SystemChangeProto) -> Option<SystemChange>
 	match proto.change.as_ref()? {
 		Change::Insert(ic) => Some(SystemChange::Insert {
 			key: EncodedKey::new(ic.key.clone()),
-			post: EncodedRow(CowVec::new(ic.post.clone())),
+			post: EncodedBytes(CowVec::new(ic.post.clone())),
 		}),
 		Change::Update(uc) => Some(SystemChange::Update {
 			key: EncodedKey::new(uc.key.clone()),
-			pre: EncodedRow(CowVec::new(uc.pre.clone())),
-			post: EncodedRow(CowVec::new(uc.post.clone())),
+			pre: EncodedBytes(CowVec::new(uc.pre.clone())),
+			post: EncodedBytes(CowVec::new(uc.post.clone())),
 		}),
 		Change::Delete(dc) => {
 			let pre = if dc.has_pre {
-				Some(EncodedRow(CowVec::new(dc.pre.clone())))
+				Some(EncodedBytes(CowVec::new(dc.pre.clone())))
 			} else {
 				None
 			};
@@ -91,7 +91,7 @@ pub fn system_change_to_delta(sc: &SystemChange) -> Delta {
 			post,
 		} => Delta::Set {
 			key: key.clone(),
-			row: post.clone(),
+			bytes: post.clone(),
 		},
 		SystemChange::Update {
 			key,
@@ -99,7 +99,7 @@ pub fn system_change_to_delta(sc: &SystemChange) -> Delta {
 			..
 		} => Delta::Set {
 			key: key.clone(),
-			row: post.clone(),
+			bytes: post.clone(),
 		},
 		SystemChange::Delete {
 			key,
@@ -140,7 +140,7 @@ mod tests {
 	fn test_insert_roundtrip() {
 		let sc = SystemChange::Insert {
 			key: EncodedKey::new(vec![1, 2, 3]),
-			post: EncodedRow(CowVec::new(vec![10, 20, 30])),
+			post: EncodedBytes(CowVec::new(vec![10, 20, 30])),
 		};
 		let proto = system_change_to_proto(&sc);
 		let back = proto_to_system_change(&proto).unwrap();
@@ -151,8 +151,8 @@ mod tests {
 	fn test_update_roundtrip() {
 		let sc = SystemChange::Update {
 			key: EncodedKey::new(vec![4, 5]),
-			pre: EncodedRow(CowVec::new(vec![10])),
-			post: EncodedRow(CowVec::new(vec![20])),
+			pre: EncodedBytes(CowVec::new(vec![10])),
+			post: EncodedBytes(CowVec::new(vec![20])),
 		};
 		let proto = system_change_to_proto(&sc);
 		let back = proto_to_system_change(&proto).unwrap();
@@ -163,7 +163,7 @@ mod tests {
 	fn test_delete_with_pre_roundtrip() {
 		let sc = SystemChange::Delete {
 			key: EncodedKey::new(vec![6]),
-			pre: Some(EncodedRow(CowVec::new(vec![99]))),
+			pre: Some(EncodedBytes(CowVec::new(vec![99]))),
 		};
 		let proto = system_change_to_proto(&sc);
 		let back = proto_to_system_change(&proto).unwrap();
@@ -185,16 +185,16 @@ mod tests {
 	fn test_insert_to_delta() {
 		let sc = SystemChange::Insert {
 			key: EncodedKey::new(vec![1]),
-			post: EncodedRow(CowVec::new(vec![2])),
+			post: EncodedBytes(CowVec::new(vec![2])),
 		};
 		let delta = system_change_to_delta(&sc);
 		match delta {
 			Delta::Set {
 				key,
-				row,
+				bytes,
 			} => {
 				assert_eq!(key.as_ref(), &[1]);
-				assert_eq!(row.as_slice(), &[2]);
+				assert_eq!(bytes.as_slice(), &[2]);
 			}
 			_ => panic!("Expected Delta::Set"),
 		}
@@ -204,17 +204,17 @@ mod tests {
 	fn test_update_to_delta() {
 		let sc = SystemChange::Update {
 			key: EncodedKey::new(vec![1]),
-			pre: EncodedRow(CowVec::new(vec![2])),
-			post: EncodedRow(CowVec::new(vec![3])),
+			pre: EncodedBytes(CowVec::new(vec![2])),
+			post: EncodedBytes(CowVec::new(vec![3])),
 		};
 		let delta = system_change_to_delta(&sc);
 		match delta {
 			Delta::Set {
 				key,
-				row,
+				bytes,
 			} => {
 				assert_eq!(key.as_ref(), &[1]);
-				assert_eq!(row.as_slice(), &[3]); // post value
+				assert_eq!(bytes.as_slice(), &[3]); // post value
 			}
 			_ => panic!("Expected Delta::Set"),
 		}
@@ -226,7 +226,7 @@ mod tests {
 		// subscribers, and the primary's pre-image rides along.
 		let sc = SystemChange::Delete {
 			key: EncodedKey::new(vec![1]),
-			pre: Some(EncodedRow(CowVec::new(vec![2]))),
+			pre: Some(EncodedBytes(CowVec::new(vec![2]))),
 		};
 		match system_change_to_delta(&sc) {
 			Delta::Remove {
