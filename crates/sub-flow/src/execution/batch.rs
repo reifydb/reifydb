@@ -115,7 +115,6 @@ impl FlowEngineInner {
 		arrivals.extend(completeness_arrivals(&self.sources, flow_id, &asserted));
 		arrivals.extend(published_arrivals(
 			&self.sources,
-			&self.sinks,
 			&self.substrate.frontiers,
 			flow_id,
 			version,
@@ -212,17 +211,12 @@ fn completeness_arrivals(
 
 fn published_arrivals(
 	sources: &BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
-	sinks: &BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
 	frontiers: &OutputFrontiers,
 	flow_id: FlowId,
 	version: CommitVersion,
 ) -> SourceArrivals {
 	let mut out = Vec::new();
 	for (object, registrations) in sources {
-		if !sinks.contains_key(object) {
-			continue;
-		}
-
 		let readers: Vec<OperatorId> = registrations
 			.iter()
 			.filter_map(|(registered, operator)| (*registered == flow_id).then_some(*operator))
@@ -236,12 +230,13 @@ fn published_arrivals(
 				source,
 				at,
 			})),
-			Frontier::Unpublished => warn!(
+			Frontier::Unpublished if matches!(object, ObjectId::View(_)) => warn!(
 				flow_id = ?flow_id,
 				object = ?object,
 				"a source object has never published an output frontier; every window below it \
 				 stays open until its producing flow publishes"
 			),
+			Frontier::Unpublished => {}
 			Frontier::Withheld => {}
 		}
 	}
@@ -412,11 +407,10 @@ mod tests {
 		// A sibling flow's reader must never be advanced by rows it never saw.
 		let object = ObjectId::View(ViewId(5));
 		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3)), (FlowId(2), OperatorId(4))])]);
-		let sinks = BTreeMap::from([(object, vec![(FlowId(7), OperatorId(9))])]);
 		let frontiers = OutputFrontiers::default();
 		frontiers.publish(object, at_millis(9_000), CommitVersion(10));
 
-		let arrivals = published_arrivals(&sources, &sinks, &frontiers, FlowId(1), CommitVersion(20));
+		let arrivals = published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20));
 
 		assert_eq!(
 			arrivals,
@@ -433,13 +427,12 @@ mod tests {
 		// are still in flight.
 		let object = ObjectId::View(ViewId(5));
 		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3))])]);
-		let sinks = BTreeMap::from([(object, vec![(FlowId(7), OperatorId(9))])]);
 		let frontiers = OutputFrontiers::default();
 		frontiers.publish(object, at_millis(9_000), CommitVersion(10));
 
-		assert!(published_arrivals(&sources, &sinks, &frontiers, FlowId(1), CommitVersion(10)).is_empty());
+		assert!(published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(10)).is_empty());
 		assert_eq!(
-			published_arrivals(&sources, &sinks, &frontiers, FlowId(1), CommitVersion(11)),
+			published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(11)),
 			vec![SourceArrival {
 				source: OperatorId(3),
 				at: at_millis(9_000)
@@ -449,15 +442,13 @@ mod tests {
 	}
 
 	#[test]
-	fn an_object_no_flow_produces_is_skipped_rather_than_resolved() {
-		// An ingestor-written table can never publish, so consulting it warns every version and drowns the one
-		// signal the warning exists for.
+	fn a_table_source_no_flow_publishes_for_yields_no_arrival() {
+		// An unpublished object must fold nothing; folding it as the epoch drags the reader's watermark to zero.
 		let object = ObjectId::Table(TableId(5));
 		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3))])]);
 		let frontiers = OutputFrontiers::default();
-		frontiers.publish(object, at_millis(9_000), CommitVersion(10));
 
-		let arrivals = published_arrivals(&sources, &BTreeMap::new(), &frontiers, FlowId(1), CommitVersion(20));
+		let arrivals = published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20));
 
 		assert!(arrivals.is_empty());
 	}
