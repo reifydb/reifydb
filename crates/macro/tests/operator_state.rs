@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_codec::state::{OperatorState, SealMutableState};
+use reifydb_codec::operator::{OperatorState, SealMutableState};
 use reifydb_macro::operator_state;
 use reifydb_value::value::datetime::DateTime;
 use rkyv::{munge::munge, primitive::ArchivedU64};

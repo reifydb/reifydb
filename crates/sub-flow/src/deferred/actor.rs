@@ -1322,7 +1322,7 @@ mod pull_protocol {
 				for (key, row) in batch.items {
 					let mut full = prefix.as_slice().to_vec();
 					full.extend_from_slice(key.as_slice());
-					out.push((EncodedKey::new(full), row));
+					out.push((EncodedKey::new(full), row.into_bytes()));
 				}
 			}
 			out
@@ -2318,7 +2318,6 @@ mod pull_protocol {
 			decode_ringbuffer_metadata(&rows[0].bytes)
 		};
 
-		let shape = RowShape::operator_state();
 		let mirrored: Vec<RingBufferMetadata> = h
 			.flow
 			.get_operator_ids()
@@ -2337,9 +2336,8 @@ mod pull_protocol {
 							.is_some_and(|(_, ks, _)| ks == Keyspace::RINGBUFFER_META)
 					})
 					.map(|(_, row)| {
-						let blob = shape.get_blob(&row, 0);
 						decode_ringbuffer_metadata(&EncodedBytes(CowVec::new(
-							blob.as_bytes().to_vec(),
+							row.body().to_vec(),
 						)))
 					})
 					.collect::<Vec<_>>()

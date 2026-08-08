@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, mem::size_of};
 
 use reifydb_codec::{
 	key::{decode_u64, encode_u64, encoded::EncodedKeyRange},
-	state::{OperatorState, decode_state},
+	operator::{OperatorState, decode},
 };
 use reifydb_core::{
 	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
@@ -45,7 +45,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 			let mut bytes = 0u64;
 			store.state_range_visit(expiry_all_range(), None, &mut |key, payload| {
 				bytes += entry_bytes::<E>(&key);
-				map.insert(key, decode_state::<E>(&payload)?);
+				map.insert(key, decode::<E>(&payload)?);
 				Ok(())
 			})?;
 			self.entries = Some(map);

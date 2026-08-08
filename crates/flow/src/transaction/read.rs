@@ -17,6 +17,7 @@ use iter::Peekable;
 use reifydb_codec::{
 	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	operator::EncodedOperatorRow,
 };
 use reifydb_core::{
 	actors::pending::PendingWrite,
@@ -99,7 +100,8 @@ impl FlowTransaction {
 		if matches!(route, ReadFrom::OperatorState) {
 			let (operator, inner_key) = operator_state_coordinates(key)
 				.expect("an OperatorState-routed key must carry an operator id");
-			let result = inner.substrate.operators.get(operator, &inner_key);
+			let result =
+				inner.substrate.operators.get(operator, &inner_key).map(EncodedOperatorRow::into_bytes);
 			inner.memoize_prefetch(key, result.clone());
 			return Ok(result);
 		}
@@ -544,7 +546,12 @@ impl Iterator for ArenaRangeIter {
 			if batch.items.is_empty() {
 				return None;
 			}
-			self.buffered = batch.items.into_iter();
+			self.buffered = batch
+				.items
+				.into_iter()
+				.map(|(key, row)| (key, row.into_bytes()))
+				.collect::<Vec<_>>()
+				.into_iter();
 		}
 	}
 }

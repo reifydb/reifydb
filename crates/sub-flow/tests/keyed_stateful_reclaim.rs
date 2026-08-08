@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 //
-//! `KeyedStateful` is the ergonomic way an SDK operator keeps per-key state, and it is what the
-//! chaindex operators are written against. State addressed under node scope is unreachable by every
-//! reclaim path, so these assert on the state rows themselves rather than only on a metrics row.
+//! Per-key guest state addressed under an interned group is what the chaindex operators keep, and
+//! state addressed under node scope is unreachable by every reclaim path, so these assert on the
+//! state rows themselves rather than only on a metrics row.
 
 use std::time::Duration as StdDuration;
 
 use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
-use reifydb_core::interface::catalog::flow::OperatorId;
+use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
+use reifydb_core::{
+	interface::catalog::flow::OperatorId,
+	key::operator_group_state::{GroupStateKey, Keyspace, OperatorGroupStateKey},
+};
 use reifydb_sdk::{
 	config::Config,
 	error::Result as SdkResult,
@@ -20,7 +24,7 @@ use reifydb_sdk::{
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 	},
 	row,
-	state::{RawStatefulOperator, keyed::KeyedStateful},
+	state::RawStatefulOperator,
 };
 use reifydb_value::value::{constraint::TypeConstraint, duration::Duration, value_type::ValueType};
 
@@ -64,17 +68,20 @@ const COUNTER_COLUMNS: &[OperatorColumn] = &[
 	},
 ];
 
-// Written the way a chaindex operator is: `type State` plus `key_types`, taking the default
-// `encode_state_key`. Nothing here mentions groups; that default alone decides reclaimability.
+// Written the way a chaindex operator is: the state key is interned from the serialized key values,
+// so it lands under a group rather than node scope. That addressing alone decides reclaimability.
 struct Counter;
 
 impl RawStatefulOperator for Counter {}
 
-impl KeyedStateful for Counter {
-	type State = i64;
-
-	fn key_types(&self) -> &[ValueType] {
-		&[ValueType::Int4]
+impl Counter {
+	fn state_key(&self, ctx: &mut impl OperatorContext, key_values: &[Value]) -> SdkResult<GroupStateKey> {
+		let mut serializer = KeySerializer::new();
+		for value in key_values.iter() {
+			serializer.extend_value(value);
+		}
+		let group = ctx.intern_group(&EncodedKey::new(serializer.finish().as_ref()))?;
+		Ok(OperatorGroupStateKey::inner_encoded(group, Keyspace::FIRST_CUSTOM, []))
 	}
 }
 
@@ -82,7 +89,7 @@ impl OperatorMetadata for Counter {
 	const NAME: &'static str = "counter";
 	const API: u32 = 1;
 	const VERSION: &'static str = "0.0.1";
-	const DESCRIPTION: &'static str = "test-only KeyedStateful counter with an operator-declared seal horizon";
+	const DESCRIPTION: &'static str = "test-only group-keyed counter with an operator-declared seal horizon";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = COUNTER_COLUMNS;
 	const OUTPUT_COLUMNS: &'static [OperatorColumn] = COUNTER_COLUMNS;
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
@@ -116,12 +123,12 @@ impl OperatorLogic for Counter {
 				let g = row.i32("g").expect("g");
 				let ts = row.datetime("ts").expect("ts").to_millis() as i64;
 
-				let keys = [Value::Int4(g)];
-				let total = self.load_state(ctx, &keys)?.unwrap_or(0) + 1;
-				self.save_state(ctx, &keys, &total)?;
+				let state_key = self.state_key(ctx, &[Value::Int4(g)])?;
+				let total = self.state_get::<i64>(ctx, &state_key)?.unwrap_or(0) + 1;
+				self.state_set(ctx, &state_key, &total)?;
 
-				// Interned from the raw key bytes rather than the serialized key values
-				// KeyedStateful uses, so this is its own group; the point is only that the
+				// Interned from the raw key bytes rather than the serialized key values the
+				// state key uses, so this is its own group; the point is only that the
 				// output row number is group-scoped rather than node-scoped.
 				let group = ctx.intern_group(&group_key(g))?;
 				let (row_number, _is_new) = ctx.get_or_create_row_number(group, &group_key(g))?;
@@ -176,7 +183,7 @@ fn a_keyed_stateful_guests_idle_group_is_reclaimed() {
 	assert_eq!(
 		db.await_row_count(RECLAIMED_A_GROUP, 1, TIMEOUT),
 		1,
-		"a KeyedStateful guest's per-key state must be addressable by the group sweep"
+		"a guest's group-keyed per-key state must be addressable by the group sweep"
 	);
 }
 

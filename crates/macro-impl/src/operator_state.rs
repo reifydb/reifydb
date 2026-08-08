@@ -36,7 +36,7 @@ pub fn operator_state_impl(attr: TokenStream, item: TokenStream, crate_path: &st
 	let name = &input.ident;
 	let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 	let extra_bounds = quote! {
-		Self: #root::state::ArchiveState,
+		Self: #root::operator::ArchiveState,
 	};
 	let merged_where = match where_clause {
 		Some(existing) => {
@@ -49,7 +49,7 @@ pub fn operator_state_impl(attr: TokenStream, item: TokenStream, crate_path: &st
 	let seal_impl = if seal {
 		quote! {
 			#[automatically_derived]
-			impl #impl_generics #root::state::SealMutableState for #name #ty_generics #merged_where {}
+			impl #impl_generics #root::operator::SealMutableState for #name #ty_generics #merged_where {}
 		}
 	} else {
 		quote! {}
@@ -57,48 +57,48 @@ pub fn operator_state_impl(attr: TokenStream, item: TokenStream, crate_path: &st
 
 	quote! {
 		#[derive(
-			#root::state::archive::Archive,
-			#root::state::archive::Serialize,
-			#root::state::archive::Deserialize,
+			#root::operator::archive::Archive,
+			#root::operator::archive::Serialize,
+			#root::operator::archive::Deserialize,
 		)]
-		#[rkyv(crate = #root::state::archive::rkyv)]
+		#[rkyv(crate = #root::operator::archive::rkyv)]
 		#item
 
 		#seal_impl
 
 		#[automatically_derived]
-		impl #impl_generics #root::state::OperatorState for #name #ty_generics #merged_where {
-			type Archived = <Self as #root::state::archive::Archive>::Archived;
+		impl #impl_generics #root::operator::OperatorState for #name #ty_generics #merged_where {
+			type Archived = <Self as #root::operator::archive::Archive>::Archived;
 
 			fn encode_state(
 				&self,
 				now: #value_root::value::datetime::DateTime,
-			) -> ::core::result::Result<#root::state::StateBytes, #root::state::StateError> {
-				#root::state::encode_archive(self, now)
+			) -> ::core::result::Result<#root::operator::EncodedOperatorRow, #root::operator::OperatorError> {
+				#root::operator::encode_archive(self, now)
 			}
 
 			fn archived(
-				bytes: &#root::state::StateBytes,
-			) -> ::core::result::Result<&Self::Archived, #root::state::StateError> {
-				#root::state::access_archive::<Self>(bytes)
+				bytes: &#root::operator::EncodedOperatorRow,
+			) -> ::core::result::Result<&Self::Archived, #root::operator::OperatorError> {
+				#root::operator::access_archive::<Self>(bytes)
 			}
 
-			unsafe fn archived_trusted(bytes: &#root::state::StateBytes) -> &Self::Archived {
+			unsafe fn archived_trusted(bytes: &#root::operator::EncodedOperatorRow) -> &Self::Archived {
 				// SAFETY: forwarded contract; see OperatorState::archived_trusted.
-				unsafe { #root::state::access_archive_trusted::<Self>(bytes) }
+				unsafe { #root::operator::access_archive_trusted::<Self>(bytes) }
 			}
 
 			unsafe fn archived_seal_trusted(
-				bytes: &mut #root::state::StateBytes,
-			) -> #root::state::archive::rkyv::seal::Seal<'_, Self::Archived> {
+				bytes: &mut #root::operator::EncodedOperatorRow,
+			) -> #root::operator::archive::rkyv::seal::Seal<'_, Self::Archived> {
 				// SAFETY: forwarded contract; see OperatorState::archived_seal_trusted.
-				unsafe { #root::state::access_archive_seal_trusted::<Self>(bytes) }
+				unsafe { #root::operator::access_archive_seal_trusted::<Self>(bytes) }
 			}
 
 			fn materialize(
 				archived: &Self::Archived,
-			) -> ::core::result::Result<Self, #root::state::StateError> {
-				#root::state::materialize_archive::<Self>(archived)
+			) -> ::core::result::Result<Self, #root::operator::OperatorError> {
+				#root::operator::materialize_archive::<Self>(archived)
 			}
 		}
 	}

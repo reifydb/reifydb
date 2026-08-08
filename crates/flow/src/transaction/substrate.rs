@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_codec::{key::encoded::EncodedKey, operator::EncodedOperatorRow};
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
@@ -52,7 +52,12 @@ pub fn apply_operator_state(store: &OperatorStore, version: CommitVersion, pendi
 			continue;
 		};
 		match write {
-			PendingWrite::Set(row) => store.set(operator, inner, row.clone()),
+			PendingWrite::Set(row) => store.set(
+				operator,
+				inner,
+				EncodedOperatorRow::try_from(row.clone())
+					.expect("operator state is written only through state_set, which types it"),
+			),
 			PendingWrite::Remove {
 				..
 			} => store.remove(operator, &inner),

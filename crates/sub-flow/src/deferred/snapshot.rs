@@ -7,8 +7,8 @@ use std::{collections::BTreeSet, ops::Bound, result::Result as StdResult, vec::I
 
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	operator::EncodedOperatorRow,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_core::interface::catalog::flow::OperatorId;
@@ -396,7 +396,7 @@ fn consistent_set(
 struct ArenaScan<'a> {
 	operators: &'a OperatorStore,
 	id: OperatorId,
-	pending: IntoIter<(EncodedKey, EncodedBytes)>,
+	pending: IntoIter<(EncodedKey, EncodedOperatorRow)>,
 	resume: Option<Bound<EncodedKey>>,
 }
 
@@ -417,7 +417,7 @@ impl<'a> ArenaScan<'a> {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl Iterator for ArenaScan<'_> {
-	type Item = Result<(EncodedKey, EncodedBytes)>;
+	type Item = Result<(EncodedKey, EncodedOperatorRow)>;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -502,7 +502,7 @@ impl MetricsCollector for SnapshotPinTracker {
 mod tests {
 	use std::ops::Bound;
 
-	use reifydb_codec::key::encoded::EncodedKeyRange;
+	use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKeyRange};
 	use reifydb_core::{delta::Delta, interface::store::SingleVersionCommit};
 	use reifydb_runtime::shutdown::Shutdown;
 	use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
@@ -529,11 +529,11 @@ mod tests {
 		EncodedKey::new(bytes)
 	}
 
-	fn encoded_bytes(bytes: &[u8]) -> EncodedBytes {
-		EncodedBytes(CowVec::new(bytes.to_vec()))
+	fn row(bytes: &[u8]) -> EncodedOperatorRow {
+		EncodedOperatorRow::timeless(bytes)
 	}
 
-	fn scan(operators: &OperatorStore, id: OperatorId) -> Vec<(EncodedKey, EncodedBytes)> {
+	fn scan(operators: &OperatorStore, id: OperatorId) -> Vec<(EncodedKey, EncodedOperatorRow)> {
 		operators.range_batch(id, EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded), 1024).items
 	}
 
@@ -541,10 +541,10 @@ mod tests {
 	fn write_then_load_restores_arena_content_and_upper_and_pins_at_the_flow_cursor() {
 		let (snapshots, _store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
-		source.set(OP_A, key(b"a1"), encoded_bytes(b"va1"));
-		source.set(OP_A, key(b"a2"), encoded_bytes(b"va2"));
+		source.set(OP_A, key(b"a1"), row(b"va1"));
+		source.set(OP_A, key(b"a2"), row(b"va2"));
 		source.set_upper(OP_A, CommitVersion(9));
-		source.set(OP_B, key(b"b1"), encoded_bytes(b"vb1"));
+		source.set(OP_B, key(b"b1"), row(b"vb1"));
 		source.set_upper(OP_B, CommitVersion(5));
 
 		let pin = snapshots.write_flow(&source, &[OP_A, OP_B, OperatorId(99)], CommitVersion(4));
@@ -566,9 +566,9 @@ mod tests {
 	fn the_sweep_discards_generations_no_live_flow_owns() {
 		let (snapshots, store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
-		source.set(OP_A, key(b"a"), encoded_bytes(b"live"));
+		source.set(OP_A, key(b"a"), row(b"live"));
 		source.set_upper(OP_A, CommitVersion(9));
-		source.set(OP_B, key(b"b"), encoded_bytes(b"orphan"));
+		source.set(OP_B, key(b"b"), row(b"orphan"));
 		source.set_upper(OP_B, CommitVersion(9));
 		snapshots.write_flow(&source, &[OP_A, OP_B], CommitVersion(4));
 
@@ -582,7 +582,7 @@ mod tests {
 	fn an_empty_live_set_sweeps_nothing() {
 		let (snapshots, store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
-		source.set(OP_A, key(b"a"), encoded_bytes(b"live"));
+		source.set(OP_A, key(b"a"), row(b"live"));
 		source.set_upper(OP_A, CommitVersion(9));
 		snapshots.write_flow(&source, &[OP_A], CommitVersion(4));
 
@@ -641,7 +641,7 @@ mod tests {
 	fn load_refuses_a_snapshot_behind_the_cdc_truncation_floor() {
 		let (snapshots, store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
-		source.set(OP_A, key(b"a"), encoded_bytes(b"v"));
+		source.set(OP_A, key(b"a"), row(b"v"));
 		source.set_upper(OP_A, CommitVersion(9));
 		assert_eq!(snapshots.write_flow(&source, &[OP_A], CommitVersion(5)), Some(CommitVersion(5)));
 
@@ -675,7 +675,7 @@ mod tests {
 	fn a_snapshot_the_cdc_floor_outran_stays_on_disk_for_recovery() {
 		let (snapshots, store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
-		source.set(OP_A, key(b"a"), encoded_bytes(b"survivor"));
+		source.set(OP_A, key(b"a"), row(b"survivor"));
 		source.set_upper(OP_A, CommitVersion(9));
 		assert_eq!(snapshots.write_flow(&source, &[OP_A], CommitVersion(5)), Some(CommitVersion(5)));
 
@@ -696,7 +696,7 @@ mod tests {
 		assert_eq!(recovered.manifest.upper, CommitVersion(9));
 		assert_eq!(
 			recovered.entries,
-			vec![(key(b"a"), encoded_bytes(b"survivor"))],
+			vec![(key(b"a"), row(b"survivor"))],
 			"the state itself was never in question and must come back byte for byte"
 		);
 	}
@@ -716,14 +716,14 @@ mod tests {
 	fn a_crash_between_two_operators_falls_back_to_the_older_consistent_set() {
 		let (snapshots, store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
-		source.set(OP_A, key(b"a"), encoded_bytes(b"first"));
+		source.set(OP_A, key(b"a"), row(b"first"));
 		source.set_upper(OP_A, CommitVersion(5));
-		source.set(OP_B, key(b"b"), encoded_bytes(b"first"));
+		source.set(OP_B, key(b"b"), row(b"first"));
 		source.set_upper(OP_B, CommitVersion(5));
 		assert_eq!(snapshots.write_flow(&source, &[OP_A, OP_B], CommitVersion(4)), Some(CommitVersion(4)));
 
 		let ahead = OperatorStore::default();
-		ahead.set(OP_A, key(b"a"), encoded_bytes(b"second"));
+		ahead.set(OP_A, key(b"a"), row(b"second"));
 		ahead.set_upper(OP_A, CommitVersion(9));
 		assert_eq!(snapshots.write_flow(&ahead, &[OP_A], CommitVersion(8)), Some(CommitVersion(8)));
 		assert_eq!(store.generations(OP_A).expect("generations"), vec![2, 1]);
@@ -743,11 +743,11 @@ mod tests {
 	fn a_flow_with_no_shared_cursor_left_reports_inconsistent() {
 		let (snapshots, _store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
-		source.set(OP_A, key(b"a"), encoded_bytes(b"v"));
+		source.set(OP_A, key(b"a"), row(b"v"));
 		source.set_upper(OP_A, CommitVersion(5));
 		assert_eq!(snapshots.write_flow(&source, &[OP_A], CommitVersion(4)), Some(CommitVersion(4)));
 		let other = OperatorStore::default();
-		other.set(OP_B, key(b"b"), encoded_bytes(b"v"));
+		other.set(OP_B, key(b"b"), row(b"v"));
 		other.set_upper(OP_B, CommitVersion(5));
 		assert_eq!(snapshots.write_flow(&other, &[OP_B], CommitVersion(6)), Some(CommitVersion(6)));
 
@@ -770,7 +770,7 @@ mod tests {
 				dictionary_max: &[(7, 100)],
 				chunk_bytes: 1024,
 			},
-			&mut vec![Ok((key(b"a"), encoded_bytes(b"v")))].into_iter(),
+			&mut vec![Ok((key(b"a"), row(b"v")))].into_iter(),
 		)
 		.expect("write a generation referencing undurable interns");
 
@@ -785,7 +785,7 @@ mod tests {
 	fn load_refuses_a_dictionary_regression_and_falls_back_to_the_previous_generation() {
 		let (snapshots, store, _guard) = snapshot_fixture();
 		let source = OperatorStore::default();
-		source.set(OP_A, key(b"old"), encoded_bytes(b"generation-1"));
+		source.set(OP_A, key(b"old"), row(b"generation-1"));
 		source.set_upper(OP_A, CommitVersion(5));
 		assert_eq!(snapshots.write_flow(&source, &[OP_A], CommitVersion(4)), Some(CommitVersion(4)));
 
@@ -797,7 +797,7 @@ mod tests {
 				dictionary_max: &[(7, 100)],
 				chunk_bytes: 1024,
 			},
-			&mut vec![Ok((key(b"new"), encoded_bytes(b"generation-2")))].into_iter(),
+			&mut vec![Ok((key(b"new"), row(b"generation-2")))].into_iter(),
 		)
 		.expect("write a generation referencing undurable interns");
 		assert_eq!(store.generations(OP_A).expect("generations"), vec![2, 1]);
@@ -829,7 +829,7 @@ mod tests {
 			&mut single,
 			CowVec::new(vec![Delta::Set {
 				key: key(b"pending-intern"),
-				bytes: encoded_bytes(b"v"),
+				bytes: EncodedBytes(CowVec::new(b"v".to_vec())),
 			}]),
 		)
 		.expect("commit a pending single-store write");
@@ -837,7 +837,7 @@ mod tests {
 
 		let snapshots = FlowSnapshots::new(store.clone(), single, DictionaryAllocatorRegistry::default());
 		let source = OperatorStore::default();
-		source.set(OP_A, key(b"a"), encoded_bytes(b"v"));
+		source.set(OP_A, key(b"a"), row(b"v"));
 		source.set_upper(OP_A, CommitVersion(5));
 
 		assert_eq!(

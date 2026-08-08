@@ -23,7 +23,7 @@ use reifydb_sdk::{
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 	},
 	row,
-	state::{RawStatefulOperator, window::WindowStateful},
+	state::RawStatefulOperator,
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -68,10 +68,6 @@ pub struct ParityWindow;
 
 impl RawStatefulOperator for ParityWindow {}
 
-impl WindowStateful for ParityWindow {
-	type State = i64;
-}
-
 impl OperatorMetadata for ParityWindow {
 	const NAME: &'static str = "parity_window";
 	const API: u32 = 1;
@@ -113,8 +109,8 @@ impl OperatorLogic for ParityWindow {
 					Keyspace::FIRST_CUSTOM,
 					window_bucket.to_be_bytes(),
 				);
-				let new_count = self.load_state(ctx, &key)?.unwrap_or(0i64) + 1;
-				self.save_state(ctx, &key, &new_count)?;
+				let new_count = self.state_get::<i64>(ctx, &key)?.unwrap_or(0) + 1;
+				self.state_set(ctx, &key, &new_count)?;
 				emissions.push((window_bucket, new_count));
 			}
 		}

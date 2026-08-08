@@ -10,7 +10,7 @@ use std::{
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
-	state::OperatorState,
+	operator::OperatorState,
 };
 use reifydb_core::{
 	key::operator_group_state::GroupId,
@@ -453,7 +453,7 @@ mod tests {
 	};
 
 	use reifydb_abi::operator::timer::TimerKind;
-	use reifydb_codec::{key::encoded::EncodedKeyRange, state::StateBytes};
+	use reifydb_codec::{key::encoded::EncodedKeyRange, operator::EncodedOperatorRow};
 	use reifydb_core::{
 		key::operator_group_state::{GroupStateKey, Keyspace, OperatorGroupStateKey},
 		state::budget::OperatorStateBudgetHandle,
@@ -472,7 +472,7 @@ mod tests {
 	// which would alias all window accumulators and defeat a storage-bound test.
 	#[derive(Default)]
 	struct CountingStore {
-		data: HashMap<Vec<u8>, StateBytes>,
+		data: HashMap<Vec<u8>, EncodedOperatorRow>,
 		groups: HashMap<Vec<u8>, GroupId>,
 		rows: HashMap<(GroupId, Vec<u8>), RowNumber>,
 		next_row: u64,
@@ -547,13 +547,13 @@ mod tests {
 			Ok(self.groups.get(group.as_bytes()).copied())
 		}
 
-		fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<StateBytes>> {
+		fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
 			Ok(self.data.get(key.as_slice()).cloned())
 		}
 		fn state_get_many_visit(
 			&mut self,
 			keys: &[GroupStateKey],
-			visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
+			visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 		) -> Result<()> {
 			for key in keys {
 				if let Some(b) = self.data.get(key.as_slice()) {
@@ -562,7 +562,7 @@ mod tests {
 			}
 			Ok(())
 		}
-		fn state_set(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()> {
+		fn state_set(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()> {
 			self.data.insert(key.as_slice().to_vec(), payload);
 			Ok(())
 		}
@@ -574,7 +574,7 @@ mod tests {
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
+			visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 		) -> Result<()> {
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
@@ -586,7 +586,7 @@ mod tests {
 				Bound::Excluded(e) => k < e.as_bytes(),
 				Bound::Unbounded => true,
 			};
-			let mut matched: Vec<(Vec<u8>, StateBytes)> = self
+			let mut matched: Vec<(Vec<u8>, EncodedOperatorRow)> = self
 				.data
 				.iter()
 				.filter(|(k, _)| after_start(k) && before_end(k))

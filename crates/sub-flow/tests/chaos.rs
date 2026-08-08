@@ -1948,7 +1948,7 @@ fn group_data_rows_stamped_below(
 ) -> usize {
 	// Counts group-scoped data rows whose write stamp sits strictly below the cutoff; those are
 	// exactly the rows a floor at `cutoff_ms` must have cancelled at merge time.
-	use reifydb_codec::encoded::bytes::SHAPE_HEADER_SIZE;
+	use reifydb_codec::operator::EncodedOperatorRow;
 	use reifydb_core::key::{
 		EncodableKey, operator_group_state::OperatorGroupStateKey, operator_state::OperatorStateKey,
 	};
@@ -1966,7 +1966,7 @@ fn group_data_rows_stamped_below(
 			if group.is_node_scope() || !keyspace.is_data() {
 				return false;
 			}
-			row.as_slice().len() >= SHAPE_HEADER_SIZE && row.updated_at() < cutoff
+			EncodedOperatorRow::try_from(row.clone()).map(|row| row.time() < cutoff).unwrap_or(false)
 		})
 		.count()
 }

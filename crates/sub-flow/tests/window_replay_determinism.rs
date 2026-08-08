@@ -11,7 +11,7 @@ use std::sync::Arc;
 use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	state::{StateBytes, decode_state},
+	operator::{EncodedOperatorRow, decode},
 };
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
@@ -104,7 +104,7 @@ fn snapshot(h: &mut Harness<WindowOperator>) -> Snapshot {
 		}
 		if keyspace == Keyspace::ENGINE_META {
 			let meta: EngineMeta =
-				decode_state(&StateBytes::from_bytes(row.clone()).expect("engine meta state bytes"))
+				decode(&EncodedOperatorRow::try_from(row.clone()).expect("engine meta state bytes"))
 					.expect("engine meta decodes");
 			metas.push(meta.last_event_time);
 		}

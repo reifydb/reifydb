@@ -8,7 +8,7 @@ use std::{
 	marker::PhantomData,
 };
 
-use reifydb_codec::state::{ArchiveState, OperatorState};
+use reifydb_codec::operator::{ArchiveState, OperatorState};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 use rkyv::with::AsVec;

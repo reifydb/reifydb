@@ -11,9 +11,8 @@ use std::{
 use indexmap::IndexMap;
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
-	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
-	state::{OperatorState, StateBytes, decode_state},
+	operator::{OperatorState, decode},
 };
 use reifydb_core::{
 	interface::{
@@ -52,7 +51,7 @@ use crate::{
 		OperatorCell,
 		distinct::state::{DistinctEntry, DistinctLayout, DistinctState},
 		drops::SealedDrops,
-		stateful::{raw::RawStatefulOperator, single::SingleStateful, utils},
+		stateful::{raw::RawStatefulOperator, utils},
 	},
 };
 
@@ -87,7 +86,6 @@ pub struct DistinctOperator {
 	parent: OperatorCell,
 	pub(super) operator: OperatorId,
 	pub(super) compiled_expressions: Vec<CompiledExpr>,
-	pub(super) shape: RowShape,
 	pub(super) routines: Routines,
 	pub(super) runtime_context: RuntimeContext,
 	pub(super) ctx: Arc<FlowContext>,
@@ -118,7 +116,6 @@ impl DistinctOperator {
 			parent,
 			operator,
 			compiled_expressions,
-			shape: RowShape::operator_state(),
 			routines,
 			runtime_context,
 			ctx,
@@ -143,24 +140,14 @@ impl DistinctOperator {
 		GroupStateKey::node_scoped(Keyspace::DISTINCT_LAYOUT, vec![LAYOUT_KEY_PREFIX])
 	}
 
-	pub(super) fn state_bytes(bytes: EncodedBytes, state: &'static str) -> Result<StateBytes> {
-		StateBytes::from_bytes(bytes).map_err(|e| {
-			Error::from(FlowStateError::Decode {
-				state,
-				cause: e.to_string(),
-			})
-		})
-	}
-
 	#[instrument(name = "flow::operator::distinct::load_entry", level = "trace", skip_all)]
 	fn load_entry(&self, txn: &mut FlowTransaction, group: GroupId) -> Result<LoadedEntry> {
 		match utils::state_get(self.operator, txn, &Self::entry_key(group))? {
 			Some(row) => {
-				let bytes = Self::state_bytes(row, "DistinctEntry")?;
-				if bytes.body().is_empty() {
+				if row.is_empty() {
 					return Ok(LoadedEntry::Empty);
 				}
-				let entry: DistinctEntry = decode_state(&bytes).map_err(|e| {
+				let entry: DistinctEntry = decode(&row).map_err(|e| {
 					Error::from(FlowStateError::Decode {
 						state: "DistinctEntry",
 						cause: e.to_string(),
@@ -176,11 +163,10 @@ impl DistinctOperator {
 	fn load_layout(&self, txn: &mut FlowTransaction) -> Result<DistinctLayout> {
 		match utils::state_get(self.operator, txn, &Self::layout_storage_key())? {
 			Some(row) => {
-				let bytes = Self::state_bytes(row, "DistinctLayout")?;
-				if bytes.body().is_empty() {
+				if row.is_empty() {
 					return Ok(DistinctLayout::new());
 				}
-				decode_state(&bytes).map_err(|e| {
+				decode(&row).map_err(|e| {
 					Error::from(FlowStateError::Decode {
 						state: "DistinctLayout",
 						cause: e.to_string(),
@@ -228,12 +214,6 @@ impl DistinctOperator {
 
 impl RawStatefulOperator for DistinctOperator {}
 
-impl SingleStateful for DistinctOperator {
-	fn layout(&self) -> RowShape {
-		self.shape.clone()
-	}
-}
-
 impl Operator for DistinctOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
@@ -274,30 +254,25 @@ impl Operator for DistinctOperator {
 					let key = Self::entry_key(working.groups[hash]);
 					match working.state.entries.get(hash) {
 						Some(entry) => {
-							let bytes = entry.encode_state(*at).map_err(|e| {
+							let row = entry.encode_state(*at).map_err(|e| {
 								Error::from(FlowStateError::Encode {
 									state: "DistinctEntry",
 									cause: e.to_string(),
 								})
 							})?;
-							utils::state_set(operator_id, txn, &key, bytes.into_bytes())?;
+							utils::state_set(operator_id, txn, &key, row)?;
 						}
 						None => utils::state_remove(operator_id, txn, &key)?,
 					}
 				}
 				if let Some(at) = working.state.layout_changed_at {
-					let layout_bytes = working.state.layout.encode_state(at).map_err(|e| {
+					let layout_row = working.state.layout.encode_state(at).map_err(|e| {
 						Error::from(FlowStateError::Encode {
 							state: "DistinctLayout",
 							cause: e.to_string(),
 						})
 					})?;
-					utils::state_set(
-						operator_id,
-						txn,
-						&Self::layout_storage_key(),
-						layout_bytes.into_bytes(),
-					)?;
+					utils::state_set(operator_id, txn, &Self::layout_storage_key(), layout_row)?;
 				}
 				Ok(())
 			});

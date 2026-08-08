@@ -20,7 +20,7 @@ use reifydb_codec::{
 		encode_u64, encode_u64_asc,
 		encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
 	},
-	state::OperatorState,
+	operator::OperatorState,
 };
 use reifydb_core::{
 	key::operator_group_state::{
@@ -514,7 +514,7 @@ pub(crate) mod test_support {
 
 	use reifydb_codec::{
 		key::encoded::{EncodedKey, EncodedKeyRange},
-		state::{StateBytes, decode_state},
+		operator::{EncodedOperatorRow, decode},
 	};
 	use reifydb_core::{
 		key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
@@ -557,7 +557,7 @@ pub(crate) mod test_support {
 
 	#[derive(Default)]
 	pub(crate) struct MockStore {
-		data: HashMap<Vec<u8>, StateBytes>,
+		data: HashMap<Vec<u8>, EncodedOperatorRow>,
 		groups: HashMap<Vec<u8>, GroupId>,
 		rows: HashMap<(GroupId, Vec<u8>), u64>,
 		next_row: u64,
@@ -630,7 +630,7 @@ pub(crate) mod test_support {
 						.is_some_and(|(_, found, _)| found == Keyspace::BUFFER)
 				})
 				.map(|(_, bytes)| {
-					decode_state::<PersistedMap<u64, A>>(bytes)
+					decode::<PersistedMap<u64, A>>(bytes)
 						.expect("persisted window buffer must decode")
 						.len()
 				})
@@ -696,7 +696,7 @@ pub(crate) mod test_support {
 				)
 				.as_slice()
 				.to_vec(),
-				StateBytes::from_archive(&[0u8], DateTime::EPOCH),
+				EncodedOperatorRow::new(&[0u8], DateTime::EPOCH),
 			);
 		}
 
@@ -729,13 +729,13 @@ pub(crate) mod test_support {
 			Ok(self.groups.get(group.as_bytes()).copied())
 		}
 
-		fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<StateBytes>> {
+		fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
 			Ok(self.data.get(key.as_slice()).cloned())
 		}
 		fn state_get_many_visit(
 			&mut self,
 			keys: &[GroupStateKey],
-			visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
+			visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 		) -> Result<()> {
 			self.note_reads(keys);
 			for key in keys {
@@ -745,7 +745,7 @@ pub(crate) mod test_support {
 			}
 			Ok(())
 		}
-		fn state_set(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()> {
+		fn state_set(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()> {
 			self.data.insert(key.as_slice().to_vec(), payload);
 			Ok(())
 		}
@@ -757,7 +757,7 @@ pub(crate) mod test_support {
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
+			visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 		) -> Result<()> {
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
@@ -769,7 +769,7 @@ pub(crate) mod test_support {
 				Bound::Excluded(e) => k < e.as_bytes(),
 				Bound::Unbounded => true,
 			};
-			let mut matched: Vec<(Vec<u8>, StateBytes)> = self
+			let mut matched: Vec<(Vec<u8>, EncodedOperatorRow)> = self
 				.data
 				.iter()
 				.filter(|(k, _)| after_start(k) && before_end(k))

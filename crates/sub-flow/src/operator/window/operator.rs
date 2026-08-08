@@ -4,7 +4,6 @@
 use std::{cell::UnsafeCell, sync::Arc};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_codec::encoded::shape::RowShape;
 use reifydb_core::{
 	common::{CommitVersion, WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, change::Change},
@@ -49,7 +48,7 @@ use crate::{
 		OperatorCell,
 		aggregation::{accumulator::RowAccumulator, core::Aggregation},
 		drops::SealedDrops,
-		stateful::{raw::RawStatefulOperator, window::WindowStateful},
+		stateful::raw::RawStatefulOperator,
 		store::OperatorStateStore,
 	},
 };
@@ -80,7 +79,6 @@ pub struct WindowOperator {
 
 	pub grace: Duration,
 	pub state_budget: OperatorStateBudgetHandle,
-	pub layout: RowShape,
 	sealed_drops: SealedDrops,
 	rolling_engine: UnsafeCell<Option<RollingEngineSlot>>,
 	meta: UnsafeCell<WindowMeta>,
@@ -103,7 +101,6 @@ impl WindowOperator {
 			kind: config.kind,
 			grace: config.grace,
 			state_budget: config.state_budget.clone(),
-			layout: RowShape::operator_state(),
 			sealed_drops: SealedDrops::new(config.operator, "mutations targeting sealed windows"),
 			rolling_engine: UnsafeCell::new(None),
 			meta: UnsafeCell::new(WindowMeta::new(config.state_budget)),
@@ -209,12 +206,6 @@ impl WindowOperator {
 }
 
 impl RawStatefulOperator for WindowOperator {}
-
-impl WindowStateful for WindowOperator {
-	fn layout(&self) -> RowShape {
-		self.layout.clone()
-	}
-}
 
 impl Operator for WindowOperator {
 	fn id(&self) -> OperatorId {

@@ -15,7 +15,7 @@ pub enum SdkError {
 		key: &'static str,
 	},
 
-	StateError(String),
+	OperatorError(String),
 
 	Serialization(String),
 
@@ -40,7 +40,7 @@ impl fmt::Display for SdkError {
 			} => {
 				write!(f, "{operator} requires '{key}' configuration")
 			}
-			SdkError::StateError(msg) => write!(f, "State error: {}", msg),
+			SdkError::OperatorError(msg) => write!(f, "State error: {}", msg),
 			SdkError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
 			SdkError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
 			SdkError::MemoryError(msg) => write!(f, "Memory error: {}", msg),

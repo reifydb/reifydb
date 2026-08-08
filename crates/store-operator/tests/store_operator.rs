@@ -4,8 +4,8 @@
 use std::{collections::BTreeMap, ops::Bound};
 
 use reifydb_codec::{
-	encoded::bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	operator::EncodedOperatorRow,
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -15,7 +15,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_store_operator::{config::OperatorStoreConfig, floor::FloorSpec, store::OperatorStore};
-use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
+use reifydb_value::value::datetime::DateTime;
 
 fn store_with(freeze_bytes: u64, max_frozen: usize) -> OperatorStore {
 	OperatorStore::new(OperatorStoreConfig {
@@ -37,28 +37,23 @@ fn data_key(group: u64, keyspace: Keyspace, suffix: &[u8]) -> EncodedKey {
 	OperatorGroupStateKey::inner_encoded(GroupId(group), keyspace, suffix).into_encoded()
 }
 
-fn value(payload: &[u8]) -> EncodedBytes {
-	EncodedBytes(CowVec::new(payload.to_vec()))
+fn value(payload: &[u8]) -> EncodedOperatorRow {
+	// No declared time domain, so the row must carry MAX and never expire under any cutoff.
+	EncodedOperatorRow::timeless(payload)
 }
 
-fn stamped(payload: &[u8], updated_at: u64) -> EncodedBytes {
-	// Row header layout: fingerprint(8) | created_at(8) | updated_at(8) | time(8), stamps little-endian,
-	// matching what EncodedBytes::updated_at reads back. The floor only ever consults updated_at.
-	let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
-	buf[8..16].copy_from_slice(&updated_at.to_le_bytes());
-	buf[16..24].copy_from_slice(&updated_at.to_le_bytes());
-	buf[SHAPE_HEADER_SIZE..].copy_from_slice(payload);
-	EncodedBytes(CowVec::new(buf))
+fn stamped(payload: &[u8], time: u64) -> EncodedOperatorRow {
+	EncodedOperatorRow::new(payload, DateTime::from_nanos(time))
 }
 
 fn all_range() -> EncodedKeyRange {
 	EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded)
 }
 
-fn scan_all(store: &OperatorStore, operator: OperatorId) -> Vec<(EncodedKey, EncodedBytes)> {
+fn scan_all(store: &OperatorStore, operator: OperatorId) -> Vec<(EncodedKey, EncodedOperatorRow)> {
 	// Batched continuation with a tiny batch size so every multi-item scan also exercises has_more
 	// and the resume-from-last-key path across batch boundaries.
-	let mut items: Vec<(EncodedKey, EncodedBytes)> = Vec::new();
+	let mut items: Vec<(EncodedKey, EncodedOperatorRow)> = Vec::new();
 	let mut start = Bound::Unbounded;
 	loop {
 		let batch = store.range_batch(operator, EncodedKeyRange::new(start, Bound::Unbounded), 3);
@@ -463,21 +458,19 @@ fn a_data_wide_floor_reaches_every_data_keyspace_but_an_explicit_entry_outranks_
 }
 
 #[test]
-fn an_epoch_stamped_row_is_never_floor_dropped() {
-	// An unstamped row is byte-identical to one written at the epoch, so the floor refuses both:
-	// the writer-stamp contract fails safe as retention (a visible leak) rather than as silent
-	// deletion of live state. A legitimate event AT the epoch is retained for the same reason.
-	// Mutation falsified against: removing the epoch guard (the row dies under any positive cutoff).
+fn a_timeless_row_is_never_floor_dropped_but_an_epoch_stamped_one_is() {
+	// Unstamped is MAX so it must outrank every cutoff, and epoch is no longer indistinguishable from it and so
+	// must never be exempted.
 	let store = manual_store();
-	store.set(OP, data_key(1, Keyspace::ACCUMULATOR, b"unstamped"), stamped(b"v", 0));
+	let timeless = data_key(1, Keyspace::ACCUMULATOR, b"timeless");
+	let epoch = data_key(1, Keyspace::ACCUMULATOR, b"epoch");
+	store.set(OP, timeless.clone(), value(b"v"));
+	store.set(OP, epoch.clone(), stamped(b"v", 0));
 
 	store.compact(OP, &FloorSpec::data(DateTime::from_nanos(u64::MAX)));
 
-	assert_eq!(
-		store.get(OP, &data_key(1, Keyspace::ACCUMULATOR, b"unstamped")),
-		Some(stamped(b"v", 0)),
-		"an epoch-stamped row must survive every floor"
-	);
+	assert_eq!(store.get(OP, &timeless), Some(value(b"v")), "a timeless row must survive every floor");
+	assert_eq!(store.get(OP, &epoch), None, "an epoch stamp expires like any other past instant");
 }
 
 #[test]
@@ -634,7 +627,7 @@ fn model_range_contains(range: &EncodedKeyRange, key: &EncodedKey) -> bool {
 	after_start && before_end
 }
 
-fn model_floor_expired(floor: &[(Keyspace, u64)], key: &EncodedKey, bytes: &EncodedBytes) -> bool {
+fn model_floor_expired(floor: &[(Keyspace, u64)], key: &EncodedKey, row: &EncodedOperatorRow) -> bool {
 	// The model applies the documented floor semantics directly on the visible map, using the same
 	// core decode helpers as the trusted classification oracle: only real-group data keyspaces with
 	// a cutoff in the spec expire, strictly below the cutoff.
@@ -650,7 +643,7 @@ fn model_floor_expired(floor: &[(Keyspace, u64)], key: &EncodedKey, bytes: &Enco
 	let Some((_, cutoff)) = floor.iter().find(|(candidate, _)| *candidate == keyspace) else {
 		return false;
 	};
-	bytes.updated_at() < DateTime::from_nanos(*cutoff)
+	row.time() < DateTime::from_nanos(*cutoff)
 }
 
 #[test]
@@ -662,7 +655,7 @@ fn randomized_operations_match_a_naive_model() {
 	// both sides and the full scan is compared after every one.
 	let mut rng = Xorshift(0x9E3779B97F4A7C15);
 	let store = store_with(400, 3);
-	let mut model: BTreeMap<EncodedKey, EncodedBytes> = BTreeMap::new();
+	let mut model: BTreeMap<EncodedKey, EncodedOperatorRow> = BTreeMap::new();
 
 	let keyspaces = [Keyspace::ACCUMULATOR, Keyspace::BUFFER, Keyspace::NODE_COUNTER, Keyspace::FIRST_CUSTOM];
 
@@ -733,7 +726,7 @@ fn randomized_operations_match_a_naive_model() {
 				compacts += 1;
 
 				let scanned = scan_all(&store, OP);
-				let expected: Vec<(EncodedKey, EncodedBytes)> =
+				let expected: Vec<(EncodedKey, EncodedOperatorRow)> =
 					model.iter().map(|(key, row)| (key.clone(), row.clone())).collect();
 				assert_eq!(
 					scanned, expected,
@@ -746,7 +739,7 @@ fn randomized_operations_match_a_naive_model() {
 
 	store.compact(OP, &FloorSpec::new());
 	let scanned = scan_all(&store, OP);
-	let expected: Vec<(EncodedKey, EncodedBytes)> =
+	let expected: Vec<(EncodedKey, EncodedOperatorRow)> =
 		model.iter().map(|(key, row)| (key.clone(), row.clone())).collect();
 	assert_eq!(scanned, expected, "final visible state diverged from the model");
 

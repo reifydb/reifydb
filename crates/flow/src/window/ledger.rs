@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[cfg(feature = "runtime")]
-use reifydb_codec::state::StateBytes;
-use reifydb_codec::state::{OperatorState, decode_state};
+use reifydb_codec::operator::{OperatorState, decode};
 #[cfg(feature = "runtime")]
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_core::{
@@ -75,7 +73,7 @@ impl SealLedger {
 		let Some(bytes) = store.state_get(&seal_ledger_key())? else {
 			return Ok(None);
 		};
-		let state: SealLedgerState = decode_state(&bytes)?;
+		let state: SealLedgerState = decode(&bytes)?;
 		Ok(Some(state.sealed_through))
 	}
 }
@@ -85,7 +83,7 @@ pub fn read_sealed_through(txn: &mut FlowTransaction, operator: OperatorId) -> R
 	let Some(row) = txn.state_get(operator, &seal_ledger_key())? else {
 		return Ok(None);
 	};
-	let state: SealLedgerState = decode_state(&StateBytes::from_bytes(row)?)?;
+	let state: SealLedgerState = decode(&row)?;
 	Ok(Some(SealedThrough::from_order(state.sealed_through)))
 }
 

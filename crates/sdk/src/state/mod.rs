@@ -2,17 +2,13 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod ffi;
-pub mod keyed;
-pub mod single;
 pub mod utils;
-pub mod window;
 
 use std::ops::Bound;
 
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::EncodedKey,
-	state::{OperatorState, StateBytes, decode_state},
+	operator::{EncodedOperatorRow, OperatorState, decode},
 };
 use reifydb_core::key::operator_group_state::GroupStateKey;
 use reifydb_value::{error::Error as ValueError, value::datetime::DateTime};
@@ -34,7 +30,7 @@ impl<'a> State<'a> {
 	}
 
 	pub fn get<T: OperatorState>(&self, key: &GroupStateKey) -> Result<Option<T>> {
-		match ffi::get(self.ctx, key.as_encoded())? {
+		match self.get_bytes(key)? {
 			Some(row) => decode_payload(&row).map(Some),
 			None => Ok(None),
 		}
@@ -42,7 +38,7 @@ impl<'a> State<'a> {
 
 	pub fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> Result<()> {
 		let row = encode_payload(value, self.written_at())?;
-		ffi::set(self.ctx, key.as_encoded(), &row)
+		ffi::set(self.ctx, key.as_encoded(), &row.into_bytes())
 	}
 
 	pub fn remove(&mut self, key: &GroupStateKey) -> Result<()> {
@@ -61,7 +57,9 @@ impl<'a> State<'a> {
 		ffi::prefix(self.ctx, prefix.as_encoded())?
 			.into_iter()
 			.filter_map(|(k, row)| GroupStateKey::from_framed(k).map(|k| (k, row)))
-			.map(|(k, row)| Ok((k, decode_payload(&row)?)))
+			.map(|(k, row)| {
+				Ok((k, decode_payload(&EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?))
+			})
 			.collect()
 	}
 
@@ -70,7 +68,9 @@ impl<'a> State<'a> {
 		ffi::get_many(self.ctx, &raw)?
 			.into_iter()
 			.filter_map(|(k, row)| GroupStateKey::from_framed(k).map(|k| (k, row)))
-			.map(|(k, row)| Ok((k, decode_payload(&row)?)))
+			.map(|(k, row)| {
+				Ok((k, decode_payload(&EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?))
+			})
 			.collect()
 	}
 
@@ -89,32 +89,34 @@ impl<'a> State<'a> {
 		ffi::range(self.ctx, start.map(GroupStateKey::as_encoded), end.map(GroupStateKey::as_encoded))?
 			.into_iter()
 			.filter_map(|(k, row)| GroupStateKey::from_framed(k).map(|k| (k, row)))
-			.map(|(k, row)| Ok((k, decode_payload(&row)?)))
+			.map(|(k, row)| {
+				Ok((k, decode_payload(&EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?))
+			})
 			.collect()
 	}
 
-	pub fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<StateBytes>> {
+	pub fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
 		match ffi::get(self.ctx, key.as_encoded())? {
-			Some(row) => Ok(Some(StateBytes::from_bytes(row).map_err(ValueError::from)?)),
+			Some(row) => Ok(Some(EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)),
 			None => Ok(None),
 		}
 	}
 
-	pub fn set_bytes(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()> {
+	pub fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()> {
 		ffi::set(self.ctx, key.as_encoded(), &payload.into_bytes())
 	}
 
 	pub fn get_many_bytes_visit(
 		&self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 	) -> Result<()> {
 		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
 		for (k, row) in ffi::get_many(self.ctx, &raw)? {
 			let Some(k) = GroupStateKey::from_framed(k) else {
 				continue;
 			};
-			visit(k, StateBytes::from_bytes(row).map_err(ValueError::from)?)?;
+			visit(k, EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?;
 		}
 		Ok(())
 	}
@@ -123,7 +125,7 @@ impl<'a> State<'a> {
 		&self,
 		start: Bound<&GroupStateKey>,
 		end: Bound<&GroupStateKey>,
-		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 	) -> Result<()> {
 		for (k, row) in
 			ffi::range(self.ctx, start.map(GroupStateKey::as_encoded), end.map(GroupStateKey::as_encoded))?
@@ -131,7 +133,7 @@ impl<'a> State<'a> {
 			let Some(k) = GroupStateKey::from_framed(k) else {
 				continue;
 			};
-			visit(k, StateBytes::from_bytes(row).map_err(ValueError::from)?)?;
+			visit(k, EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)?;
 		}
 		Ok(())
 	}
@@ -145,15 +147,13 @@ impl<'a> State<'a> {
 }
 
 #[inline]
-pub fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedBytes> {
-	let bytes = value.encode_state(now).map_err(ValueError::from)?;
-	Ok(bytes.into_bytes())
+pub fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedOperatorRow> {
+	Ok(value.encode_state(now).map_err(ValueError::from)?)
 }
 
 #[inline]
-pub fn decode_payload<T: OperatorState>(row: &EncodedBytes) -> Result<T> {
-	let bytes = StateBytes::from_bytes(row.clone()).map_err(ValueError::from)?;
-	Ok(decode_state(&bytes).map_err(ValueError::from)?)
+pub fn decode_payload<T: OperatorState>(row: &EncodedOperatorRow) -> Result<T> {
+	Ok(decode(row).map_err(ValueError::from)?)
 }
 
 pub trait RawStatefulOperator {

@@ -5,10 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use postcard::to_extend;
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_codec::{
-	encoded::shape::RowShape,
-	key::{encoded::EncodedKey, serializer::KeySerializer},
-};
+use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_core::{
 	common::JoinType,
 	interface::{
@@ -50,7 +47,7 @@ use crate::{
 	error::{FlowGraphError, FlowStateError},
 	operator::{
 		join::{Emitted, Identity},
-		stateful::{raw::RawStatefulOperator, single::SingleStateful},
+		stateful::raw::RawStatefulOperator,
 	},
 };
 
@@ -136,7 +133,6 @@ pub struct JoinOperator {
 	compiled_left_exprs: Vec<CompiledExpr>,
 	compiled_right_exprs: Vec<CompiledExpr>,
 	alias: Option<String>,
-	shape: RowShape,
 	right_schema: Columns,
 	routines: Routines,
 	runtime_context: RuntimeContext,
@@ -170,7 +166,6 @@ impl JoinOperator {
 		let right_exprs = right.exprs;
 		let right_schema = right.schema;
 		let strategy = JoinStrategy::from(join_type, latest);
-		let shape = Self::state_shape();
 
 		let compile_ctx = CompileContext {
 			symbols: &ctx.symbols,
@@ -199,7 +194,6 @@ impl JoinOperator {
 			compiled_left_exprs,
 			compiled_right_exprs,
 			alias,
-			shape,
 			right_schema,
 			routines,
 			runtime_context,
@@ -210,10 +204,6 @@ impl JoinOperator {
 			right_ttl,
 			ctx,
 		}
-	}
-
-	fn state_shape() -> RowShape {
-		RowShape::operator_state()
 	}
 
 	#[cfg(test)]
@@ -233,7 +223,6 @@ impl JoinOperator {
 			compiled_left_exprs: Vec::new(),
 			compiled_right_exprs: Vec::new(),
 			alias: None,
-			shape: Self::state_shape(),
 			right_schema: Columns::empty(),
 			routines,
 			runtime_context,
@@ -555,12 +544,6 @@ impl JoinOperator {
 }
 
 impl RawStatefulOperator for JoinOperator {}
-
-impl SingleStateful for JoinOperator {
-	fn layout(&self) -> RowShape {
-		self.shape.clone()
-	}
-}
 
 impl Operator for JoinOperator {
 	fn id(&self) -> OperatorId {

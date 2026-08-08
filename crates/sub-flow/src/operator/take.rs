@@ -8,11 +8,13 @@ use std::{
 	slice::from_ref,
 };
 
-use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_codec::encoded::{
-	bytes::EncodedBytes,
-	shape::{RowShape, RowShapeField},
+use reifydb_codec::{
+	encoded::{
+		bytes::EncodedBytes,
+		shape::{RowShape, RowShapeField},
+	},
+	operator::{decode, encode_archive},
 };
 use reifydb_core::{
 	interface::{
@@ -31,7 +33,7 @@ use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
 	error::Error,
-	value::{Value, blob::Blob, row_number::RowNumber},
+	value::{Value, datetime::DateTime, row_number::RowNumber},
 };
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
@@ -40,7 +42,7 @@ use crate::{
 	error::FlowStateError,
 	operator::{
 		OperatorCell,
-		stateful::{raw::RawStatefulOperator, single::SingleStateful, utils},
+		stateful::{raw::RawStatefulOperator, utils},
 	},
 };
 
@@ -59,7 +61,6 @@ pub struct TakeOperator {
 	parent: OperatorCell,
 	operator: OperatorId,
 	limit: usize,
-	shape: RowShape,
 }
 
 fn row_shape_from_columns(cols: &Columns) -> RowShape {
@@ -89,23 +90,18 @@ impl TakeOperator {
 			parent,
 			operator,
 			limit,
-			shape: RowShape::operator_state(),
 		}
 	}
 
 	fn load_take_state(&self, txn: &mut FlowTransaction) -> Result<TakeState> {
-		let state_row = self.load_state(txn)?;
-
-		if state_row.is_empty() || !state_row.is_defined(0) {
+		let key = utils::empty_state_key();
+		let Some(row) = utils::state_get(self.operator, txn, &key)? else {
+			return Ok(TakeState::default());
+		};
+		if row.is_empty() {
 			return Ok(TakeState::default());
 		}
-
-		let blob = self.shape.get_blob(&state_row, 0);
-		if blob.is_empty() {
-			return Ok(TakeState::default());
-		}
-
-		from_bytes(blob.as_ref()).map_err(|e| {
+		decode::<TakeState>(&row).map_err(|e| {
 			Error::from(FlowStateError::Decode {
 				state: "TakeState",
 				cause: e.to_string(),
@@ -122,23 +118,17 @@ impl TakeOperator {
 	#[inline]
 	fn acquire_take_state(&self, txn: &mut FlowTransaction) -> Result<(TakeState, PersistFn)> {
 		let operator_id = self.operator;
-		let shape_for_persist = self.shape.clone();
 		txn.take_operator_state::<TakeState, _>(operator_id, |txn| {
 			let s = self.load_take_state(txn)?;
-			let shape = shape_for_persist.clone();
 			let persist: PersistFn = Box::new(move |txn, value| {
 				let state = value.downcast::<TakeState>().expect("TakeState slot type");
-				let serialized = to_stdvec(&*state).map_err(|e| {
+				let row = encode_archive(&*state, DateTime::MAX).map_err(|e| {
 					Error::from(FlowStateError::Encode {
 						state: "TakeState",
 						cause: e.to_string(),
 					})
 				})?;
-				let blob = Blob::from(serialized);
-				let key = utils::empty_state_key();
-				let mut row = utils::load_or_create_row(operator_id, txn, &key, &shape)?.thaw();
-				shape.set_blob(&mut row, 0, &blob);
-				utils::save_row(operator_id, txn, &key, row.freeze())?;
+				utils::state_set(operator_id, txn, &utils::empty_state_key(), row)?;
 				Ok(())
 			});
 			Ok((s, persist))
@@ -317,12 +307,6 @@ impl TakeOperator {
 }
 
 impl RawStatefulOperator for TakeOperator {}
-
-impl SingleStateful for TakeOperator {
-	fn layout(&self) -> RowShape {
-		self.shape.clone()
-	}
-}
 
 impl Operator for TakeOperator {
 	fn id(&self) -> OperatorId {

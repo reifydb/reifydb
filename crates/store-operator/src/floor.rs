@@ -3,10 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_codec::{
-	encoded::bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
-	key::encoded::EncodedKey,
-};
+use reifydb_codec::{key::encoded::EncodedKey, operator::EncodedOperatorRow};
 use reifydb_core::key::operator_group_state::{Keyspace, OperatorGroupStateKey, group_data_of_inner};
 use reifydb_value::value::datetime::DateTime;
 
@@ -61,7 +58,7 @@ impl FloorSpec {
 	}
 }
 
-pub(crate) fn floor_expired(floor: &FloorSpec, key: &EncodedKey, bytes: &EncodedBytes) -> bool {
+pub(crate) fn floor_expired(floor: &FloorSpec, key: &EncodedKey, row: &EncodedOperatorRow) -> bool {
 	if floor.is_empty() {
 		return false;
 	}
@@ -77,12 +74,5 @@ pub(crate) fn floor_expired(floor: &FloorSpec, key: &EncodedKey, bytes: &Encoded
 	let Some(cutoff) = floor.cutoff(keyspace) else {
 		return false;
 	};
-	if bytes.as_slice().len() < SHAPE_HEADER_SIZE {
-		return false;
-	}
-	let written = bytes.updated_at();
-	if written.is_epoch() {
-		return false;
-	}
-	written < cutoff
+	row.time() < cutoff
 }

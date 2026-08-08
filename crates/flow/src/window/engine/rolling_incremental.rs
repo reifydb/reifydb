@@ -10,7 +10,7 @@ use std::{
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
-	state::OperatorState,
+	operator::OperatorState,
 };
 use reifydb_core::{
 	key::operator_group_state::GroupId,

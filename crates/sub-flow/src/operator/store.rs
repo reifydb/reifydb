@@ -4,7 +4,7 @@
 use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	state::StateBytes,
+	operator::EncodedOperatorRow,
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -65,17 +65,14 @@ impl StateStore for OperatorStateStore<'_> {
 		Ok(self.txn.flow_watermark())
 	}
 
-	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<StateBytes>> {
-		match self.txn.state_get(self.operator, key)? {
-			Some(row) => Ok(Some(StateBytes::from_bytes(row)?)),
-			None => Ok(None),
-		}
+	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+		self.txn.state_get(self.operator, key)
 	}
 
 	fn state_get_many_visit(
 		&mut self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 	) -> Result<()> {
 		let batch = self.txn.state_get_many(self.operator, keys)?;
 		for r in batch.items {
@@ -85,13 +82,13 @@ impl StateStore for OperatorStateStore<'_> {
 			let Some(inner) = GroupStateKey::from_framed(EncodedKey::new(decoded.key)) else {
 				continue;
 			};
-			visit(inner, StateBytes::from_bytes(r.bytes)?)?;
+			visit(inner, EncodedOperatorRow::try_from(r.bytes)?)?;
 		}
 		Ok(())
 	}
 
-	fn state_set(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()> {
-		self.txn.state_set(self.operator, key, payload.into_bytes())
+	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()> {
+		self.txn.state_set(self.operator, key, payload)
 	}
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
@@ -102,14 +99,14 @@ impl StateStore for OperatorStateStore<'_> {
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 	) -> Result<()> {
 		let batch = self.txn.state_range(self.operator, range, limit, "operator::store_visit")?;
 		for r in batch.items {
 			if let Some(decoded) = OperatorStateKey::decode(&r.key)
 				&& let Some(inner) = GroupStateKey::from_framed(EncodedKey::new(decoded.key))
 			{
-				visit(inner, StateBytes::from_bytes(r.bytes)?)?;
+				visit(inner, EncodedOperatorRow::try_from(r.bytes)?)?;
 			}
 		}
 		Ok(())

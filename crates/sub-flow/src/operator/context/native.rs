@@ -10,7 +10,7 @@ use reifydb_codec::{
 		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	state::{OperatorState, StateBytes},
+	operator::{EncodedOperatorRow, OperatorState},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -81,11 +81,11 @@ fn to_sdk_err<E: ToString>(e: E) -> SdkError {
 }
 
 fn decode<T: OperatorState>(bytes: &EncodedBytes) -> SdkResult<T> {
-	decode_payload(bytes)
+	decode_payload(&EncodedOperatorRow::try_from(bytes.clone()).map_err(ValueError::from)?)
 }
 
 fn encode<T: OperatorState>(value: &T, now: DateTime) -> SdkResult<EncodedBytes> {
-	encode_payload(value, now)
+	Ok(encode_payload(value, now)?.into_bytes())
 }
 
 pub struct NativeOperatorContext<'a> {
@@ -231,16 +231,16 @@ impl StateApi for NativeState<'_> {
 		let rows = unsafe { (*self.bridge).state_range(range) }.map_err(to_sdk_err)?;
 		rows.into_iter().map(|(k, r)| Ok((k, decode(&r)?))).collect()
 	}
-	fn get_bytes(&self, key: &GroupStateKey) -> SdkResult<Option<StateBytes>> {
+	fn get_bytes(&self, key: &GroupStateKey) -> SdkResult<Option<EncodedOperatorRow>> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		match unsafe { (*self.bridge).state_get(key) }.map_err(to_sdk_err)? {
-			Some(row) => Ok(Some(StateBytes::from_bytes(row).map_err(ValueError::from)?)),
+			Some(row) => Ok(Some(EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)),
 			None => Ok(None),
 		}
 	}
 
-	fn set_bytes(&mut self, key: &GroupStateKey, payload: StateBytes) -> SdkResult<()> {
+	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> SdkResult<()> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.bridge).state_set(key, payload.into_bytes()) }.map_err(to_sdk_err)
@@ -249,14 +249,14 @@ impl StateApi for NativeState<'_> {
 	fn get_many_bytes_visit(
 		&self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> SdkResult<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		// SAFETY: bridge is the &'a mut dyn NativeBridge NativeOperatorContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
 		// cannot reach the context, so it cannot re-enter the bridge while this borrow is live.
 		unsafe {
 			(*self.bridge).state_get_many_visit(keys, &mut |k, row| {
-				let bytes = StateBytes::from_bytes(row.clone()).map_err(ValueError::from)?;
+				let bytes = EncodedOperatorRow::try_from(row.clone()).map_err(ValueError::from)?;
 				visit(k.clone(), bytes)
 			})
 		}
@@ -266,7 +266,7 @@ impl StateApi for NativeState<'_> {
 		&self,
 		start: Bound<&GroupStateKey>,
 		end: Bound<&GroupStateKey>,
-		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> SdkResult<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		let range = EncodedKeyRange::new(
 			start.map(|k| k.as_encoded().clone()),
@@ -276,7 +276,7 @@ impl StateApi for NativeState<'_> {
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		let rows = unsafe { (*self.bridge).state_range(range) }.map_err(to_sdk_err)?;
 		for (k, row) in rows {
-			let bytes = StateBytes::from_bytes(row).map_err(ValueError::from)?;
+			let bytes = EncodedOperatorRow::try_from(row).map_err(ValueError::from)?;
 			visit(k, bytes)?;
 		}
 		Ok(())

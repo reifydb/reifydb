@@ -3731,6 +3731,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-flow",
+ "reifydb-macro",
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-sub-api",

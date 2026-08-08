@@ -20,7 +20,7 @@ use reifydb_sdk::{
 		view::{ChangeView, ColumnsView, DiffView},
 	},
 	row,
-	state::{RawStatefulOperator, single::SingleStateful},
+	state::{RawStatefulOperator, utils::empty_state_key},
 };
 use reifydb_value::value::{constraint::TypeConstraint, row_number::RowNumber, value_type::ValueType};
 
@@ -31,10 +31,6 @@ const SLOW_APPLY: StdDuration = StdDuration::from_secs(5);
 struct SlowCounter;
 
 impl RawStatefulOperator for SlowCounter {}
-
-impl SingleStateful for SlowCounter {
-	type State = i64;
-}
 
 struct CountRow {
 	seen: i64,
@@ -75,8 +71,9 @@ impl OperatorLogic for SlowCounter {
 			}
 		}
 
-		let total = self.load_state(ctx)?.unwrap_or(0) + seen;
-		self.save_state(ctx, &total)?;
+		let key = empty_state_key();
+		let total = self.state_get::<i64>(ctx, &key)?.unwrap_or(0) + seen;
+		self.state_set(ctx, &key, &total)?;
 		ctx.emit_insert(
 			&[CountRow {
 				seen: total,

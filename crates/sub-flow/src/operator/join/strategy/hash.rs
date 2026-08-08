@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::{
-	bytes::EncodedBytes,
-	shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
+use reifydb_codec::{
+	encoded::{
+		bytes::EncodedBytes,
+		shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
+	},
+	operator::EncodedOperatorRow,
 };
 use reifydb_core::{
 	interface::{
@@ -121,7 +124,7 @@ pub(crate) fn build_shape(columns: &Columns) -> RowShape {
 	RowShape::new(fields)
 }
 
-pub(crate) fn encode_bytes(shape: &RowShape, columns: &Columns, row_idx: usize, now: DateTime) -> EncodedBytes {
+pub(crate) fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize, now: DateTime) -> EncodedOperatorRow {
 	let values: Vec<Value> = columns.columns.iter().map(|buf| buf.get_value(row_idx)).collect();
 	let mut encoded = shape.allocate();
 	shape.set_values(&mut encoded, &values);
@@ -131,7 +134,7 @@ pub(crate) fn encode_bytes(shape: &RowShape, columns: &Columns, row_idx: usize, 
 	if let Some(at) = at {
 		encoded.set_time(at);
 	}
-	encoded.freeze()
+	EncodedOperatorRow::new(encoded.freeze().as_slice(), stamp)
 }
 
 #[instrument(name = "flow::operator::join::add_state_entry", level = "trace", skip_all)]
@@ -149,8 +152,8 @@ pub(crate) fn add_to_state_entry_batch(
 	store.set_row_shape(txn, &shape)?;
 	let group = store.group_for(txn, key_hash)?;
 	for &idx in indices {
-		let encoded = encode_bytes(&shape, columns, idx, txn.written_at());
-		store.write_row(txn, group, columns.row_numbers()[idx], &encoded)?;
+		let row = encode_row(&shape, columns, idx, txn.written_at());
+		store.write_row(txn, group, columns.row_numbers()[idx], &row)?;
 	}
 	Ok(())
 }
@@ -185,16 +188,16 @@ pub(crate) fn update_row_in_entry(
 	post: &Columns,
 	row_idx: usize,
 ) -> Result<bool> {
-	let encoded = encode_bytes(&prepared.shape, post, row_idx, txn.written_at());
+	let row = encode_row(&prepared.shape, post, row_idx, txn.written_at());
 	let post_row_number = post.row_numbers()[row_idx];
 	if pre_row_number == post_row_number {
-		store.update_row_in(txn, prepared.group, post_row_number, &encoded)
+		store.update_row_in(txn, prepared.group, post_row_number, &row)
 	} else {
 		if store.get_row_in(txn, prepared.group, pre_row_number)?.is_none() {
 			return Ok(false);
 		}
 		store.remove_row_in(txn, prepared.group, pre_row_number)?;
-		store.write_row(txn, prepared.group, post_row_number, &encoded)?;
+		store.write_row(txn, prepared.group, post_row_number, &row)?;
 		Ok(true)
 	}
 }
@@ -209,15 +212,15 @@ pub(crate) fn update_single_row_in_entry(
 ) -> Result<bool> {
 	let shape = build_shape(post);
 	store.set_row_shape(txn, &shape)?;
-	let encoded = encode_bytes(&shape, post, row_idx, txn.written_at());
+	let row = encode_row(&shape, post, row_idx, txn.written_at());
 	let post_row_number = post.row_numbers()[row_idx];
 	if pre_row_number == post_row_number {
-		store.update_row(txn, key_hash, post_row_number, &encoded)
+		store.update_row(txn, key_hash, post_row_number, &row)
 	} else {
 		if !store.remove_row(txn, key_hash, pre_row_number)? {
 			return Ok(false);
 		}
-		store.put_row(txn, key_hash, post_row_number, &encoded)?;
+		store.put_row(txn, key_hash, post_row_number, &row)?;
 		Ok(true)
 	}
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::state::{OperatorState, decode_state};
+use reifydb_codec::operator::{OperatorState, decode};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 use reifydb_value::{
@@ -271,7 +271,7 @@ fn moments_roundtrip() {
 	m.add(1.5);
 	m.add(2.5);
 	let bytes = m.encode_state(DateTime::EPOCH).expect("encode");
-	let restored: Moments = decode_state(&bytes).expect("decode");
+	let restored: Moments = decode(&bytes).expect("decode");
 	assert_eq!(restored, m);
 }
 
@@ -282,7 +282,7 @@ fn multiset_roundtrip() {
 	ms.add(of64(1.0));
 	ms.add(of64(2.0));
 	let bytes = ms.encode_state(DateTime::EPOCH).expect("encode");
-	let restored: Multiset<OrdF64> = decode_state(&bytes).expect("decode");
+	let restored: Multiset<OrdF64> = decode(&bytes).expect("decode");
 	assert_eq!(restored, ms);
 	assert_eq!(restored.min(), Some(&of64(1.0)));
 	assert_eq!(restored.total(), 3);
@@ -294,7 +294,7 @@ fn retained_map_roundtrip() {
 	rm.insert(1, 10);
 	rm.insert(2, 20);
 	let bytes = rm.encode_state(DateTime::EPOCH).expect("encode");
-	let restored: RetainedMap<u64, i64> = decode_state(&bytes).expect("decode");
+	let restored: RetainedMap<u64, i64> = decode(&bytes).expect("decode");
 	assert_eq!(restored, rm);
 	assert_eq!(restored.len(), 2);
 }
@@ -350,7 +350,7 @@ fn retained_acc_roundtrip() {
 	accumulator.add(&(1, 10));
 	accumulator.add(&(2, 20));
 	let bytes = accumulator.encode_state(DateTime::EPOCH).expect("encode");
-	let restored: RetainedAccumulator<u64, i64> = decode_state(&bytes).expect("decode");
+	let restored: RetainedAccumulator<u64, i64> = decode(&bytes).expect("decode");
 	assert_eq!(restored, accumulator);
 }
 
@@ -388,7 +388,7 @@ fn keyed_invertible_roundtrip() {
 	accumulator.add(&(1, 10.0));
 	accumulator.add(&(2, 20.0));
 	let bytes = accumulator.encode_state(DateTime::EPOCH).expect("encode");
-	let restored: KeyedInvertibleAccumulator<u64, Moments> = decode_state(&bytes).expect("decode");
+	let restored: KeyedInvertibleAccumulator<u64, Moments> = decode(&bytes).expect("decode");
 	assert_eq!(restored, accumulator);
 }
 
@@ -465,14 +465,14 @@ fn sealing_primitives_roundtrip() {
 	mx.add(&(at_millis(0), 5));
 	mx.add(&(at_millis(12), 8));
 	let bytes = mx.encode_state(DateTime::EPOCH).expect("encode");
-	let restored: SealingMax<DateTime, i64> = decode_state(&bytes).expect("decode");
+	let restored: SealingMax<DateTime, i64> = decode(&bytes).expect("decode");
 	assert_eq!(restored, mx);
 
 	let mut ep: SealingEndpoint<DateTime, i64> = SealingEndpoint::with_grace(millis(10));
 	ep.add(&(at_millis(0), 100));
 	ep.add(&(at_millis(12), 300));
 	let bytes = ep.encode_state(DateTime::EPOCH).expect("encode");
-	let restored: SealingEndpoint<DateTime, i64> = decode_state(&bytes).expect("decode");
+	let restored: SealingEndpoint<DateTime, i64> = decode(&bytes).expect("decode");
 	assert_eq!(restored, ep);
 }
 
@@ -542,7 +542,7 @@ fn sealing_fold_roundtrip() {
 	accumulator.add(&(at_millis(1), 20.0));
 	accumulator.add(&(at_millis(2), 15.0));
 	let bytes = accumulator.encode_state(DateTime::EPOCH).expect("encode");
-	let restored: SealingFold<DateTime, AbsPathFold> = decode_state(&bytes).expect("decode");
+	let restored: SealingFold<DateTime, AbsPathFold> = decode(&bytes).expect("decode");
 	assert_eq!(restored.finalize(), accumulator.finalize());
 }
 
@@ -573,7 +573,7 @@ fn sealing_tail_roundtrip() {
 	tail.add(at_millis(0), 1);
 	tail.add(at_millis(12), 3);
 	let bytes = tail.encode_state(DateTime::EPOCH).expect("encode");
-	let restored: SealingTail<DateTime, i64> = decode_state(&bytes).expect("decode");
+	let restored: SealingTail<DateTime, i64> = decode(&bytes).expect("decode");
 	assert_eq!(restored, tail);
 }
 
@@ -616,6 +616,6 @@ fn tail_acc_roundtrip() {
 	accumulator.add(&(at_millis(0), 1));
 	accumulator.add(&(at_millis(12), 3));
 	let bytes = accumulator.encode_state(DateTime::EPOCH).expect("encode");
-	let restored: TailAccumulator<DateTime, i64> = decode_state(&bytes).expect("decode");
+	let restored: TailAccumulator<DateTime, i64> = decode(&bytes).expect("decode");
 	assert_eq!(restored, accumulator);
 }

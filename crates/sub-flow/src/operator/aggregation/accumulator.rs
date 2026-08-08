@@ -691,7 +691,7 @@ fn finalize_compensated(accumulator: &Value, compensation: f64, seen_negative: b
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::state::OperatorState;
+	use reifydb_codec::operator::OperatorState;
 	use reifydb_flow::window::span::WindowSpan;
 
 	use super::*;

@@ -622,7 +622,7 @@ mod tests {
 	use reifydb_abi::operator::timer::TimerKind;
 	use reifydb_codec::{
 		key::encoded::{EncodedKey, EncodedKeyRange},
-		state::StateBytes,
+		operator::EncodedOperatorRow,
 	};
 	use reifydb_core::{
 		key::operator_group_state::{GroupId, GroupStateKey},
@@ -705,7 +705,7 @@ mod tests {
 	/// FlowTransaction.
 	#[derive(Default)]
 	struct MockStore {
-		state: TestHashMap<Vec<u8>, StateBytes>,
+		state: TestHashMap<Vec<u8>, EncodedOperatorRow>,
 		groups: TestHashMap<Vec<u8>, GroupId>,
 		rows: TestHashMap<(GroupId, Vec<u8>), u64>,
 		next_row: u64,
@@ -733,13 +733,13 @@ mod tests {
 			Ok(self.groups.get(group.as_bytes()).copied())
 		}
 
-		fn state_get(&mut self, key: &GroupStateKey) -> ValueResult<Option<StateBytes>> {
+		fn state_get(&mut self, key: &GroupStateKey) -> ValueResult<Option<EncodedOperatorRow>> {
 			Ok(self.state.get(key.as_slice()).cloned())
 		}
 		fn state_get_many_visit(
 			&mut self,
 			keys: &[GroupStateKey],
-			visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> ValueResult<()>,
+			visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> ValueResult<()>,
 		) -> ValueResult<()> {
 			for key in keys {
 				if let Some(b) = self.state.get(key.as_slice()) {
@@ -748,7 +748,7 @@ mod tests {
 			}
 			Ok(())
 		}
-		fn state_set(&mut self, key: &GroupStateKey, payload: StateBytes) -> ValueResult<()> {
+		fn state_set(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> ValueResult<()> {
 			self.state.insert(key.as_slice().to_vec(), payload);
 			Ok(())
 		}
@@ -760,10 +760,10 @@ mod tests {
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> ValueResult<()>,
+			visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> ValueResult<()>,
 		) -> ValueResult<()> {
 			let mut seen = 0usize;
-			let entries: Vec<(Vec<u8>, StateBytes)> = self
+			let entries: Vec<(Vec<u8>, EncodedOperatorRow)> = self
 				.state
 				.iter()
 				.filter(|(k, _)| {

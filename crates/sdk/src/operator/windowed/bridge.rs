@@ -6,7 +6,7 @@ use std::ops::Bound;
 use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	state::StateBytes,
+	operator::EncodedOperatorRow,
 };
 use reifydb_core::{
 	key::operator_group_state::{GroupId, GroupStateKey},
@@ -36,20 +36,20 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 		Ok(self.0.flow_watermark()?)
 	}
 
-	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<StateBytes>> {
+	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
 		Ok(self.0.state().get_bytes(key)?)
 	}
 
 	fn state_get_many_visit(
 		&mut self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 	) -> Result<()> {
 		self.0.state().get_many_bytes_visit(keys, &mut |k, v| visit(k, v).map_err(Into::into))?;
 		Ok(())
 	}
 
-	fn state_set(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()> {
+	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()> {
 		self.0.state().set_bytes(key, payload)?;
 		Ok(())
 	}
@@ -63,7 +63,7 @@ impl<C: OperatorContext> StateStore for OperatorContextStore<'_, C> {
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 	) -> Result<()> {
 		let bound = |b: &Bound<EncodedKey>| match b {
 			Bound::Included(k) => GroupStateKey::from_framed(k.clone()).map(Bound::Included),

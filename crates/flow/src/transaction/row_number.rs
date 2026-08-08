@@ -7,7 +7,7 @@ use dashmap::DashMap;
 use reifydb_codec::{
 	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	state::{OperatorState, StateBytes, decode_state},
+	operator::{EncodedOperatorRow, OperatorState, decode},
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -52,12 +52,16 @@ fn counter_key() -> GroupStateKey {
 	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, ROW_NUMBER_COUNTER_SUFFIX)
 }
 
-fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedBytes> {
-	Ok(value.encode_state(now)?.into_bytes())
+fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedOperatorRow> {
+	Ok(value.encode_state(now)?)
 }
 
-fn decode_payload<T: OperatorState>(bytes: &EncodedBytes) -> Result<T> {
-	Ok(decode_state(&StateBytes::from_bytes(bytes.clone())?)?)
+fn decode_payload<T: OperatorState>(row: &EncodedOperatorRow) -> Result<T> {
+	Ok(decode(row)?)
+}
+
+fn decode_bytes<T: OperatorState>(bytes: &EncodedBytes) -> Result<T> {
+	decode_payload(&EncodedOperatorRow::try_from(bytes.clone())?)
 }
 
 #[derive(Clone, Copy)]
@@ -254,7 +258,7 @@ impl RowNumberProvider {
 			let i = to_resolve[slot];
 			match found.get(map_key.as_slice()) {
 				Some(existing_row) => {
-					let row_number = RowNumber(decode_payload::<u64>(existing_row)?);
+					let row_number = RowNumber(decode_bytes::<u64>(existing_row)?);
 					state.remember(group, &keys[i], row_number);
 					results[i] = Some((row_number, false));
 				}
@@ -335,7 +339,7 @@ impl RowNumberProvider {
 		for (slot, map_key) in map_keys.iter().enumerate() {
 			let i = to_resolve[slot];
 			if let Some(existing_row) = found.get(map_key.as_slice()) {
-				let row_number = RowNumber(decode_payload::<u64>(existing_row)?);
+				let row_number = RowNumber(decode_bytes::<u64>(existing_row)?);
 				state.remember(group, &keys[i], row_number);
 				results[i] = Some(row_number);
 			}
@@ -422,7 +426,7 @@ impl RowNumberProvider {
 			let (_, _, suffix) = OperatorGroupStateKey::decode_inner(inner.as_slice())
 				.expect("the mapping range must yield structured operator state keys");
 			let original = EncodedKey::new(suffix);
-			let row_number = RowNumber(decode_payload::<u64>(&item.bytes)?);
+			let row_number = RowNumber(decode_bytes::<u64>(&item.bytes)?);
 			txn.state_remove(operator, &inner)?;
 			state.forget(group, &original);
 			dropped.push(row_number);
@@ -487,7 +491,8 @@ impl RowNumberProvider {
 		let state = &mut *guard;
 		let mut removed = 0;
 		for item in batch.items {
-			if item.bytes.updated_at() > cutoff.instant() {
+			let row = EncodedOperatorRow::try_from(item.bytes.clone())?;
+			if row.time() > cutoff.instant() {
 				continue;
 			}
 			let inner = GroupStateKey::from_framed(EncodedKey::new(
@@ -613,7 +618,7 @@ impl RowNumberProvider {
 					);
 				}
 				let original = EncodedKey::new(inner.2);
-				state.remember(group, &original, RowNumber(decode_payload::<u64>(&item.bytes)?));
+				state.remember(group, &original, RowNumber(decode_bytes::<u64>(&item.bytes)?));
 				last_inner = Some(EncodedKey::new(decoded.key.clone()));
 			}
 			state.evict_to_budget(budget);

@@ -14,7 +14,7 @@ use reifydb_abi::{context::context::ContextFFI, operator::timer::TimerKind};
 use reifydb_codec::{
 	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
-	state::OperatorState,
+	operator::OperatorState,
 };
 use reifydb_core::{
 	common::CommitVersion,

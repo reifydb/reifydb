@@ -2,8 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	encoded::{bytes::EncodedBytes, shape::RowShape},
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	operator::EncodedOperatorRow,
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -15,19 +16,17 @@ use reifydb_value::Result;
 
 use super::StateIterator;
 
-pub fn state_get(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<Option<EncodedBytes>> {
-	let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
-
-	match txn.get(&encoded_key)? {
-		Some(multi) => Ok(Some(multi)),
-		None => Ok(None),
-	}
+pub fn state_get(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+	txn.state_get(id, key)
 }
 
-pub fn state_set(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey, value: EncodedBytes) -> Result<()> {
-	let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
-	txn.set(&encoded_key, value)?;
-	Ok(())
+pub fn state_set(
+	id: OperatorId,
+	txn: &mut FlowTransaction,
+	key: &GroupStateKey,
+	row: EncodedOperatorRow,
+) -> Result<()> {
+	txn.state_set(id, key, row)
 }
 
 pub fn state_remove(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<()> {
@@ -74,22 +73,6 @@ pub fn state_clear(id: OperatorId, txn: &mut FlowTransaction) -> Result<()> {
 	Ok(())
 }
 
-pub fn load_or_create_row(
-	id: OperatorId,
-	txn: &mut FlowTransaction,
-	key: &GroupStateKey,
-	shape: &RowShape,
-) -> Result<EncodedBytes> {
-	match state_get(id, txn, key)? {
-		Some(row) => Ok(row),
-		None => Ok(shape.allocate().freeze()),
-	}
-}
-
-pub fn save_row(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey, bytes: EncodedBytes) -> Result<()> {
-	state_set(id, txn, key, bytes)
-}
-
 pub fn empty_state_key() -> GroupStateKey {
 	GroupStateKey::from_framed(empty_key()).expect("the empty key is framing-valid")
 }
@@ -103,7 +86,6 @@ pub mod tests {
 	use std::ops::Bound::{Excluded, Included, Unbounded};
 
 	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
-	use reifydb_value::{util::cowvec::CowVec, value::value_type::ValueType};
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::*;
@@ -114,13 +96,13 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator_id = OperatorId(1);
 		let key = test_key("get");
-		let value = test_bytes();
+		let row = test_row();
 
-		state_set(operator_id, &mut txn, &key, value.clone()).unwrap();
+		state_set(operator_id, &mut txn, &key, row.clone()).unwrap();
 
 		let result = state_get(operator_id, &mut txn, &key).unwrap();
 		assert!(result.is_some());
-		assert_row_eq(&result.unwrap(), &value);
+		assert_row_eq(&result.unwrap(), &row);
 	}
 
 	#[test]
@@ -140,16 +122,16 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator_id = OperatorId(1);
 		let key = test_key("set");
-		let value1 = EncodedBytes(CowVec::new(vec![1, 2, 3]));
-		let value2 = EncodedBytes(CowVec::new(vec![4, 5, 6]));
+		let row1 = EncodedOperatorRow::timeless(&[1, 2, 3]);
+		let row2 = EncodedOperatorRow::timeless(&[4, 5, 6]);
 
-		state_set(operator_id, &mut txn, &key, value1.clone()).unwrap();
+		state_set(operator_id, &mut txn, &key, row1.clone()).unwrap();
 		let result = state_get(operator_id, &mut txn, &key).unwrap().unwrap();
-		assert_row_eq(&result, &value1);
+		assert_row_eq(&result, &row1);
 
-		state_set(operator_id, &mut txn, &key, value2.clone()).unwrap();
+		state_set(operator_id, &mut txn, &key, row2.clone()).unwrap();
 		let result = state_get(operator_id, &mut txn, &key).unwrap().unwrap();
-		assert_row_eq(&result, &value2);
+		assert_row_eq(&result, &row2);
 	}
 
 	#[test]
@@ -158,9 +140,7 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator_id = OperatorId(1);
 		let key = test_key("remove");
-		let value = test_bytes();
-
-		state_set(operator_id, &mut txn, &key, value.clone()).unwrap();
+		state_set(operator_id, &mut txn, &key, test_row()).unwrap();
 		assert!(state_get(operator_id, &mut txn, &key).unwrap().is_some());
 
 		state_remove(operator_id, &mut txn, &key).unwrap();
@@ -175,15 +155,16 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("scan_{:02}", i)); // padded so the keys sort numerically
-			let value = EncodedBytes(CowVec::new(vec![i as u8]));
-			state_set(operator_id, &mut txn, &key, value).unwrap();
+			state_set(operator_id, &mut txn, &key, EncodedOperatorRow::timeless(&[i as u8])).unwrap();
 		}
 
 		let entries: Vec<_> = state_scan_all(operator_id, &mut txn).unwrap();
 		assert_eq!(entries.len(), 5);
 
+		// The scan path is untyped, so the payload only surfaces once the row header is stripped.
 		for i in 0..5 {
-			assert_eq!(entries[i].1.as_slice()[0], i as u8);
+			let row = EncodedOperatorRow::try_from(entries[i].1.clone()).unwrap();
+			assert_eq!(row.body()[0], i as u8);
 		}
 	}
 
@@ -196,8 +177,7 @@ pub mod tests {
 		let keys = vec!["a", "b", "c", "d", "e"];
 		for key_suffix in &keys {
 			let key = test_key(key_suffix);
-			let value = test_bytes();
-			state_set(operator_id, &mut txn, &key, value).unwrap();
+			state_set(operator_id, &mut txn, &key, test_row()).unwrap();
 		}
 
 		let range = EncodedKeyRange::new(
@@ -218,8 +198,7 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("range_{}", i));
-			let value = test_bytes();
-			state_set(operator_id, &mut txn, &key, value).unwrap();
+			state_set(operator_id, &mut txn, &key, test_row()).unwrap();
 		}
 
 		let entries = {
@@ -255,8 +234,7 @@ pub mod tests {
 
 		for i in 0..3 {
 			let key = test_key(&format!("clear_{}", i));
-			let value = test_bytes();
-			state_set(operator_id, &mut txn, &key, value).unwrap();
+			state_set(operator_id, &mut txn, &key, test_row()).unwrap();
 		}
 
 		let count = {
@@ -287,48 +265,6 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_load_or_create_row_existing() {
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let operator_id = OperatorId(1);
-		let key = test_key("load_existing");
-		let value = test_bytes();
-		let layout = TestOperator::simple(operator_id).layout;
-
-		state_set(operator_id, &mut txn, &key, value.clone()).unwrap();
-
-		let result = load_or_create_row(operator_id, &mut txn, &key, &layout).unwrap();
-		assert_row_eq(&result, &value);
-	}
-
-	#[test]
-	fn test_load_or_create_row_new() {
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let operator_id = OperatorId(1);
-		let key = test_key("load_new");
-		let shape = RowShape::testing(&[ValueType::Int4]);
-
-		let result = load_or_create_row(operator_id, &mut txn, &key, &shape).unwrap();
-		assert!(result.len() > 0);
-	}
-
-	#[test]
-	fn test_save_row() {
-		let engine = TestEngine::new();
-		let mut txn = engine.flow_txn().deferred();
-		let operator_id = OperatorId(1);
-		let key = test_key("save");
-		let value = test_bytes();
-
-		save_row(operator_id, &mut txn, &key, value.clone()).unwrap();
-
-		let result = state_get(operator_id, &mut txn, &key).unwrap();
-		assert!(result.is_some());
-		assert_row_eq(&result.unwrap(), &value);
-	}
-
-	#[test]
 	fn test_empty_key() {
 		let key = empty_key();
 		assert_eq!(key.len(), 0);
@@ -342,17 +278,17 @@ pub mod tests {
 		let node1 = OperatorId(1);
 		let node2 = OperatorId(2);
 		let key = test_key("shared");
-		let value1 = EncodedBytes(CowVec::new(vec![1]));
-		let value2 = EncodedBytes(CowVec::new(vec![2]));
+		let row1 = EncodedOperatorRow::timeless(&[1]);
+		let row2 = EncodedOperatorRow::timeless(&[2]);
 
-		state_set(node1, &mut txn, &key, value1.clone()).unwrap();
-		state_set(node2, &mut txn, &key, value2.clone()).unwrap();
+		state_set(node1, &mut txn, &key, row1.clone()).unwrap();
+		state_set(node2, &mut txn, &key, row2.clone()).unwrap();
 
 		let result1 = state_get(node1, &mut txn, &key).unwrap().unwrap();
 		let result2 = state_get(node2, &mut txn, &key).unwrap().unwrap();
 
-		assert_row_eq(&result1, &value1);
-		assert_row_eq(&result2, &value2);
+		assert_row_eq(&result1, &row1);
+		assert_row_eq(&result2, &row2);
 
 		state_clear(node1, &mut txn).unwrap();
 		assert!(state_get(node1, &mut txn, &key).unwrap().is_none());
@@ -366,11 +302,11 @@ pub mod tests {
 		let operator_id = OperatorId(1);
 		let key = test_key("large");
 
-		let large_value = EncodedBytes(CowVec::new(vec![0xAB; 10240]));
+		let large_row = EncodedOperatorRow::timeless(&[0xAB; 10240]);
 
-		state_set(operator_id, &mut txn, &key, large_value.clone()).unwrap();
+		state_set(operator_id, &mut txn, &key, large_row.clone()).unwrap();
 		let result = state_get(operator_id, &mut txn, &key).unwrap().unwrap();
 
-		assert_row_eq(&result, &large_value);
+		assert_row_eq(&result, &large_row);
 	}
 }

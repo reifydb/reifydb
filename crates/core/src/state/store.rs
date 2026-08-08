@@ -4,7 +4,7 @@
 use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	state::StateBytes,
+	operator::EncodedOperatorRow,
 };
 use reifydb_value::{
 	Result,
@@ -14,15 +14,15 @@ use reifydb_value::{
 use crate::key::operator_group_state::{GroupId, GroupStateKey};
 
 pub trait StateStore {
-	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<StateBytes>>;
+	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>>;
 
 	fn state_get_many_visit(
 		&mut self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 	) -> Result<()>;
 
-	fn state_set(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()>;
+	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()>;
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()>;
 
@@ -30,7 +30,7 @@ pub trait StateStore {
 		&mut self,
 		range: EncodedKeyRange,
 		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 	) -> Result<()>;
 
 	fn intern_group(&mut self, group: &EncodedKey) -> Result<GroupId>;

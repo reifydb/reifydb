@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use postcard::{from_bytes, to_stdvec};
 use reifydb_codec::{
-	encoded::{bytes::EncodedBytes, shape::RowShape},
+	encoded::bytes::EncodedBytes,
 	key::{decode_u64_asc, encode_u64_asc, encoded::EncodedKeyRange},
+	operator::{EncodedOperatorRow, decode, encode_archive},
 };
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Diff},
@@ -12,6 +12,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_flow::transaction::FlowTransaction;
+use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -19,7 +20,7 @@ use reifydb_value::{
 		cowvec::CowVec,
 		hash::{Hash128, xxh3_64},
 	},
-	value::{blob::Blob, row_number::RowNumber},
+	value::row_number::RowNumber,
 };
 use serde::{Deserialize, Serialize};
 
@@ -67,6 +68,7 @@ impl ContentVersion {
 	}
 }
 
+#[operator_state]
 #[derive(Serialize, Deserialize)]
 struct Pin {
 	refs: u64,
@@ -131,7 +133,7 @@ impl SnapshotLedger {
 			}
 			self.unpin(txn, group, right, previous)?;
 		}
-		state_set(self.operator_id, txn, &key, encode_version(txn, version))?;
+		state_set(self.operator_id, txn, &key, encode_version(txn, version)?)?;
 		self.pin(txn, group, right, version)
 	}
 
@@ -147,7 +149,7 @@ impl SnapshotLedger {
 			let Some(right) = decode_published(key.as_slice()) else {
 				continue;
 			};
-			out.push((right, decode_version(&row)?));
+			out.push((right, decode_version(&EncodedOperatorRow::try_from(row)?)?));
 		}
 		Ok(out)
 	}
@@ -162,7 +164,7 @@ impl SnapshotLedger {
 		if state_get(self.operator_id, txn, &key)?.is_some() {
 			return Ok(());
 		}
-		state_set(self.operator_id, txn, &key, encode_version(txn, ContentVersion(0)))
+		state_set(self.operator_id, txn, &key, encode_version(txn, ContentVersion(0))?)
 	}
 
 	pub(crate) fn release_unmatched(
@@ -265,46 +267,35 @@ fn decode_published(bytes: &[u8]) -> Option<PublishedRight> {
 	}
 }
 
-fn encode_version(txn: &FlowTransaction, version: ContentVersion) -> EncodedBytes {
-	let shape = RowShape::operator_state();
-	let mut row = shape.allocate();
-	shape.set_blob(&mut row, 0, &Blob::from(version.0.to_le_bytes().to_vec()));
-	let at = txn.written_at();
-	row.set_timestamps(at, at);
-	row.freeze()
+fn encode_version(txn: &FlowTransaction, version: ContentVersion) -> Result<EncodedOperatorRow> {
+	encode_archive(&version.0, txn.written_at()).map_err(|e| {
+		Error::from(FlowStateError::Encode {
+			state: "snapshot published version",
+			cause: e.to_string(),
+		})
+	})
 }
 
-fn decode_version(row: &EncodedBytes) -> Result<ContentVersion> {
-	let shape = RowShape::operator_state();
-	let blob = shape.get_blob(row, 0);
-	let bytes: [u8; 8] = blob.as_bytes().try_into().map_err(|_| {
+fn decode_version(row: &EncodedOperatorRow) -> Result<ContentVersion> {
+	decode::<u64>(row).map(ContentVersion).map_err(|e| {
 		Error::from(FlowStateError::Decode {
 			state: "snapshot published version",
-			cause: "expected eight bytes".to_string(),
+			cause: e.to_string(),
 		})
-	})?;
-	Ok(ContentVersion(u64::from_le_bytes(bytes)))
+	})
 }
 
-fn encode_pin(txn: &FlowTransaction, pin: &Pin) -> Result<EncodedBytes> {
-	let serialized = to_stdvec(pin).map_err(|e| {
+fn encode_pin(txn: &FlowTransaction, pin: &Pin) -> Result<EncodedOperatorRow> {
+	encode_archive(pin, txn.written_at()).map_err(|e| {
 		Error::from(FlowStateError::Encode {
 			state: "snapshot pin",
 			cause: e.to_string(),
 		})
-	})?;
-	let shape = RowShape::operator_state();
-	let mut row = shape.allocate();
-	shape.set_blob(&mut row, 0, &Blob::from(serialized));
-	let at = txn.written_at();
-	row.set_timestamps(at, at);
-	Ok(row.freeze())
+	})
 }
 
-fn decode_pin(bytes: &EncodedBytes) -> Result<Pin> {
-	let shape = RowShape::operator_state();
-	let blob = shape.get_blob(bytes, 0);
-	from_bytes(blob.as_ref()).map_err(|e| {
+fn decode_pin(row: &EncodedOperatorRow) -> Result<Pin> {
+	decode::<Pin>(row).map_err(|e| {
 		Error::from(FlowStateError::Decode {
 			state: "snapshot pin",
 			cause: e.to_string(),
@@ -326,10 +317,7 @@ mod tests {
 	}
 
 	fn encoded_bytes(payload: &[u8]) -> EncodedBytes {
-		let shape = RowShape::operator_state();
-		let mut r = shape.allocate();
-		shape.set_blob(&mut r, 0, &Blob::from(payload.to_vec()));
-		r.freeze()
+		EncodedBytes(CowVec::new(payload.to_vec()))
 	}
 
 	fn rn(v: u64) -> RowNumber {

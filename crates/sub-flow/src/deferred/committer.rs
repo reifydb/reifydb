@@ -442,7 +442,7 @@ mod group_commit_integration {
 	};
 
 	use reifydb_cdc::consume::watermark::{CdcConsumerWatermark, compute_pinning_watermark};
-	use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+	use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey, operator::EncodedOperatorRow};
 	use reifydb_core::{
 		interface::{catalog::flow::OperatorId, cdc::SystemChange},
 		internal_error,
@@ -642,7 +642,7 @@ mod group_commit_integration {
 		for (operator, inner, tag) in entries {
 			combined.insert(
 				OperatorStateKey::encoded(*operator, inner.as_slice()),
-				EncodedBytes(CowVec::new(vec![*tag; 4])),
+				EncodedOperatorRow::timeless(&[*tag; 4]).into_bytes(),
 			);
 		}
 		let mut slice = FlowSlice::empty();
@@ -746,12 +746,12 @@ mod group_commit_integration {
 
 		assert_eq!(
 			store.get(op_a, &EncodedKey::new(inner_a.as_slice())),
-			Some(EncodedBytes(CowVec::new(vec![1; 4]))),
+			Some(EncodedOperatorRow::timeless(&[1; 4])),
 			"the committed slice's state must be readable from the arena"
 		);
 		assert_eq!(
 			store.get(op_b, &EncodedKey::new(inner_b.as_slice())),
-			Some(EncodedBytes(CowVec::new(vec![2; 4])))
+			Some(EncodedOperatorRow::timeless(&[2; 4]))
 		);
 		assert_eq!(store.upper(op_a), version, "upper must track the commit version for touched operators");
 		assert_eq!(store.upper(op_b), version);

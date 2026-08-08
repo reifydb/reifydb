@@ -7,7 +7,7 @@ use dashmap::DashMap;
 use reifydb_codec::{
 	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	state::{OperatorState, StateBytes, decode_state},
+	operator::{EncodedOperatorRow, OperatorState, decode},
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -52,12 +52,16 @@ fn counter_key() -> GroupStateKey {
 	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![])
 }
 
-pub(super) fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedBytes> {
-	Ok(value.encode_state(now)?.into_bytes())
+pub(super) fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedOperatorRow> {
+	Ok(value.encode_state(now)?)
 }
 
-pub(super) fn decode_payload<T: OperatorState>(bytes: &EncodedBytes) -> Result<T> {
-	Ok(decode_state(&StateBytes::from_bytes(bytes.clone())?)?)
+pub(super) fn decode_payload<T: OperatorState>(row: &EncodedOperatorRow) -> Result<T> {
+	Ok(decode(row)?)
+}
+
+pub(super) fn decode_bytes<T: OperatorState>(bytes: &EncodedBytes) -> Result<T> {
+	decode_payload(&EncodedOperatorRow::try_from(bytes.clone())?)
 }
 
 struct NodeState {
@@ -241,7 +245,7 @@ impl GroupInterner {
 			let i = to_resolve[slot];
 			match found.get(dictionary.as_slice()) {
 				Some(existing) => {
-					let id = GroupId(decode_payload::<u64>(existing)?);
+					let id = GroupId(decode_bytes::<u64>(existing)?);
 					resolved_from_store.push((i, id));
 					results[i] = Some((id, false));
 				}
@@ -419,7 +423,7 @@ impl GroupInterner {
 				}
 				let group = EncodedKey::new(inner.2);
 				hashes.push(membership_hash(&group));
-				let id = GroupId(decode_payload::<u64>(&item.bytes)?);
+				let id = GroupId(decode_bytes::<u64>(&item.bytes)?);
 				state.remember(&group, id);
 				last_inner = Some(EncodedKey::new(decoded.key.clone()));
 			}

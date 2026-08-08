@@ -19,6 +19,7 @@ use reifydb_codec::{
 		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	operator::EncodedOperatorRow,
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -176,7 +177,7 @@ impl NativeBridge for FlowNativeBridge<'_> {
 			.unwrap_or(0)
 	}
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedBytes>> {
-		self.txn.state_get(self.operator, key)
+		Ok(self.txn.state_get(self.operator, key)?.map(EncodedOperatorRow::into_bytes))
 	}
 	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedBytes)>> {
 		Ok(self.txn
@@ -186,8 +187,8 @@ impl NativeBridge for FlowNativeBridge<'_> {
 			.filter_map(|r| GroupStateKey::from_framed(r.key).map(|k| (k, r.bytes)))
 			.collect())
 	}
-	fn state_set(&mut self, key: &GroupStateKey, value: EncodedBytes) -> Result<()> {
-		self.txn.state_set(self.operator, key, value)
+	fn state_set(&mut self, key: &GroupStateKey, row: EncodedBytes) -> Result<()> {
+		self.txn.state_set(self.operator, key, EncodedOperatorRow::try_from(row)?)
 	}
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
 		self.txn.state_remove(self.operator, key)

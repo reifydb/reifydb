@@ -13,7 +13,7 @@ use reifydb_codec::{
 		encode_u64,
 		encoded::{EncodedKey, IntoEncodedKey},
 	},
-	state::OperatorState,
+	operator::OperatorState,
 };
 use reifydb_core::{
 	key::operator_group_state::GroupId,

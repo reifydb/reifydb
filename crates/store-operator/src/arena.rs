@@ -12,8 +12,8 @@ use std::{
 };
 
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	operator::EncodedOperatorRow,
 };
 use reifydb_core::common::CommitVersion;
 use reifydb_runtime::sync::rwlock::RwLock;
@@ -25,7 +25,7 @@ use crate::{
 };
 
 enum PointEntry {
-	Row(EncodedBytes),
+	Row(EncodedOperatorRow),
 	Tombstone,
 }
 
@@ -35,7 +35,7 @@ const ENTRY_OVERHEAD: usize = NODE_FILL_DIVISOR * (size_of::<EncodedKey>() + siz
 
 fn point_bytes(key: &EncodedKey, entry: &PointEntry) -> u64 {
 	let value_len = match entry {
-		PointEntry::Row(row) => row.as_slice().len(),
+		PointEntry::Row(row) => row.len(),
 		PointEntry::Tombstone => 0,
 	};
 	(ENTRY_OVERHEAD + key.heap_bytes() + value_len) as u64
@@ -141,8 +141,8 @@ impl ArenaInner {
 		self.active.bytes + self.frozen.iter().map(|batch| batch.bytes).sum::<u64>()
 	}
 
-	pub(crate) fn set(&mut self, key: EncodedKey, value: EncodedBytes, config: &OperatorStoreConfig) {
-		self.active.put(key, PointEntry::Row(value));
+	pub(crate) fn set(&mut self, key: EncodedKey, row: EncodedOperatorRow, config: &OperatorStoreConfig) {
+		self.active.put(key, PointEntry::Row(row));
 		self.roll(config);
 	}
 
@@ -223,7 +223,7 @@ impl ArenaInner {
 		once(&self.active).chain(self.frozen.iter().rev())
 	}
 
-	pub(crate) fn get(&self, key: &EncodedKey) -> Option<EncodedBytes> {
+	pub(crate) fn get(&self, key: &EncodedKey) -> Option<EncodedOperatorRow> {
 		for batch in self.batches_newest_first() {
 			if let Some(entry) = batch.entries.get(key) {
 				return match entry {
@@ -250,7 +250,11 @@ impl ArenaInner {
 		false
 	}
 
-	pub(crate) fn scan(&self, range: &EncodedKeyRange, limit: usize) -> (Vec<(EncodedKey, EncodedBytes)>, bool) {
+	pub(crate) fn scan(
+		&self,
+		range: &EncodedKeyRange,
+		limit: usize,
+	) -> (Vec<(EncodedKey, EncodedOperatorRow)>, bool) {
 		let mut items = Vec::new();
 		if range_is_empty(range) {
 			return (items, false);

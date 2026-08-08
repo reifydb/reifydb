@@ -4,7 +4,7 @@
 //! Primitive-level gap tests for the public accumulators: the cases the in-crate
 //! `#[cfg(test)]` suite does not already cover.
 
-use reifydb_codec::state::{OperatorState, decode_state};
+use reifydb_codec::operator::{OperatorState, decode};
 use reifydb_flow::window::accumulator::{
 	WindowAccumulator,
 	invertible::{KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64},
@@ -26,7 +26,7 @@ fn last_value_roundtrip() {
 	let mut lv: LastValue<i64> = LastValue::default();
 	lv.add(&42);
 	let bytes = lv.encode_state(DateTime::EPOCH).expect("encode");
-	let restored: LastValue<i64> = decode_state(&bytes).expect("decode");
+	let restored: LastValue<i64> = decode(&bytes).expect("decode");
 	assert_eq!(restored, lv);
 	assert_eq!(restored.finalize(), Some(42), "retained value survives roundtrip");
 }

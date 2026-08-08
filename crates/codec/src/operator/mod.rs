@@ -5,7 +5,9 @@ use std::{cell::RefCell, collections::BTreeMap, mem};
 
 use reifydb_value::{
 	byte_size::ByteSize,
+	encoding::LeBytes,
 	error::{Error as ValueError, TypeError},
+	util::cowvec::CowVec,
 	value::datetime::DateTime,
 };
 use rkyv::{
@@ -22,25 +24,16 @@ use rkyv::{
 };
 use thiserror::Error;
 
-use crate::encoded::{
-	bytes::EncodedBytes,
-	shape::{OPERATOR_STATE_SHAPE, RowShape, fingerprint::RowShapeFingerprint},
-};
+use crate::encoded::bytes::EncodedBytes;
 
-const STATE_FIELD: usize = 0;
-const FORMAT_FIELD: usize = 1;
+const TIME_OFFSET: usize = 0;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StateFormatVersion(pub u8);
+pub const OPERATOR_HEADER_SIZE: usize = TIME_OFFSET + DateTime::ENCODED_SIZE;
 
-impl StateFormatVersion {
-	pub const CURRENT: Self = Self(1);
-}
-
-impl From<StateError> for ValueError {
-	fn from(err: StateError) -> Self {
+impl From<OperatorError> for ValueError {
+	fn from(err: OperatorError) -> Self {
 		match err {
-			StateError::Serialization(_) => TypeError::SerdeSerialize {
+			OperatorError::Serialization(_) => TypeError::SerdeSerialize {
 				message: err.to_string(),
 			}
 			.into(),
@@ -53,7 +46,7 @@ impl From<StateError> for ValueError {
 }
 
 #[derive(Debug, Error, PartialEq)]
-pub enum StateError {
+pub enum OperatorError {
 	#[error("operator state serialization failed: {0}")]
 	Serialization(String),
 
@@ -63,101 +56,103 @@ pub enum StateError {
 	#[error("operator state deserialization failed: {0}")]
 	Deserialization(String),
 
-	#[error("operator state bytes carries shape fingerprint {actual:?} instead of the operator state shape")]
-	UnexpectedObject {
-		actual: RowShapeFingerprint,
+	#[error("operator row is {len} bytes, too short to carry the time header")]
+	Truncated {
+		len: usize,
 	},
-
-	#[error("operator state payload format {0} is newer than this build supports")]
-	UnsupportedFormat(u8),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct StateBytes {
-	bytes: EncodedBytes,
-}
+pub struct EncodedOperatorRow(EncodedBytes);
 
-impl StateBytes {
-	pub fn from_bytes(bytes: EncodedBytes) -> Result<Self, StateError> {
-		let shape = &*OPERATOR_STATE_SHAPE;
-		if bytes.fingerprint() != shape.fingerprint() {
-			return Err(StateError::UnexpectedObject {
-				actual: bytes.fingerprint(),
-			});
-		}
-		let format = shape.get::<u8>(&bytes, FORMAT_FIELD);
-		if format != StateFormatVersion::CURRENT.0 {
-			return Err(StateError::UnsupportedFormat(format));
-		}
-		Ok(Self {
-			bytes,
-		})
+impl EncodedOperatorRow {
+	pub fn new(body: &[u8], time: DateTime) -> Self {
+		let mut buffer = Vec::with_capacity(OPERATOR_HEADER_SIZE + body.len());
+		buffer.extend_from_slice(&time.to_le_bytes());
+		buffer.extend_from_slice(body);
+		Self(EncodedBytes(CowVec::new(buffer)))
 	}
 
-	pub fn from_archive(body: &[u8], now: DateTime) -> Self {
-		let shape = &*OPERATOR_STATE_SHAPE;
-		let mut bytes = shape.allocate();
-		shape.set::<u8>(&mut bytes, FORMAT_FIELD, StateFormatVersion::CURRENT.0);
-		shape.set_blob_from_slice(&mut bytes, STATE_FIELD, body);
-		bytes.set_timestamps(now, now);
-		Self {
-			bytes: bytes.freeze(),
-		}
+	pub fn timeless(body: &[u8]) -> Self {
+		Self::new(body, DateTime::MAX)
 	}
 
 	pub fn into_bytes(self) -> EncodedBytes {
-		self.bytes
+		self.0
 	}
 
 	pub fn bytes(&self) -> &EncodedBytes {
-		&self.bytes
+		&self.0
 	}
 
-	pub fn format(&self) -> StateFormatVersion {
-		StateFormatVersion(OPERATOR_STATE_SHAPE.get::<u8>(&self.bytes, FORMAT_FIELD))
+	#[inline]
+	pub fn time(&self) -> DateTime {
+		DateTime::from_le_bytes(
+			self.0[TIME_OFFSET..OPERATOR_HEADER_SIZE].try_into().expect("the header is length-checked"),
+		)
+	}
+
+	pub fn set_time(&mut self, time: DateTime) {
+		self.0.make_mut()[TIME_OFFSET..OPERATOR_HEADER_SIZE].copy_from_slice(&time.to_le_bytes());
 	}
 
 	pub fn body(&self) -> &[u8] {
-		OPERATOR_STATE_SHAPE.get_blob_slice(&self.bytes, STATE_FIELD)
+		&self.0[OPERATOR_HEADER_SIZE..]
 	}
 
 	pub fn body_mut(&mut self) -> &mut [u8] {
-		OPERATOR_STATE_SHAPE.get_blob_slice_mut(self.bytes.make_mut(), STATE_FIELD)
+		&mut self.0.make_mut()[OPERATOR_HEADER_SIZE..]
 	}
 
-	pub fn refresh_updated_at(&mut self, now: DateTime) {
-		let created_at = self.bytes.created_at();
-		self.bytes.set_timestamps(created_at, now);
+	pub fn len(&self) -> usize {
+		self.0.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.body().is_empty()
 	}
 
 	pub fn byte_size(&self) -> ByteSize {
-		ByteSize::from(self.bytes.len() as u64)
+		ByteSize::from(self.0.len() as u64)
+	}
+}
+
+impl TryFrom<EncodedBytes> for EncodedOperatorRow {
+	type Error = OperatorError;
+
+	fn try_from(bytes: EncodedBytes) -> Result<Self, Self::Error> {
+		if bytes.len() < OPERATOR_HEADER_SIZE {
+			return Err(OperatorError::Truncated {
+				len: bytes.len(),
+			});
+		}
+		Ok(Self(bytes))
 	}
 }
 
 pub trait OperatorState: Sized + Send + 'static {
 	type Archived;
 
-	fn encode_state(&self, now: DateTime) -> Result<StateBytes, StateError>;
+	fn encode_state(&self, now: DateTime) -> Result<EncodedOperatorRow, OperatorError>;
 
-	fn archived(bytes: &StateBytes) -> Result<&Self::Archived, StateError>;
+	fn archived(row: &EncodedOperatorRow) -> Result<&Self::Archived, OperatorError>;
 
 	/// # Safety
 	///
-	/// `bytes` must previously have passed [`OperatorState::archived`]
+	/// `row` must previously have passed [`OperatorState::archived`]
 	/// validation, or have been produced by [`OperatorState::encode_state`]
 	/// for exactly `Self`; otherwise the archived access reads
 	/// unvalidated memory through mismatched layout.
-	unsafe fn archived_trusted(bytes: &StateBytes) -> &Self::Archived;
+	unsafe fn archived_trusted(row: &EncodedOperatorRow) -> &Self::Archived;
 
 	/// # Safety
 	///
-	/// Same contract as [`OperatorState::archived_trusted`]; `bytes` must
+	/// Same contract as [`OperatorState::archived_trusted`]; `row` must
 	/// hold a validated archive of exactly `Self`. Writes through the
 	/// returned [`Seal`] cannot invalidate the archive.
-	unsafe fn archived_seal_trusted(bytes: &mut StateBytes) -> Seal<'_, Self::Archived>;
+	unsafe fn archived_seal_trusted(row: &mut EncodedOperatorRow) -> Seal<'_, Self::Archived>;
 
-	fn materialize(archived: &Self::Archived) -> Result<Self, StateError>;
+	fn materialize(archived: &Self::Archived) -> Result<Self, OperatorError>;
 }
 
 pub trait SealMutableState: OperatorState {}
@@ -166,67 +161,67 @@ thread_local! {
 	static ENCODE_BUFFER: RefCell<AlignedVec> = RefCell::new(AlignedVec::new());
 }
 
-pub fn encode_archive<T>(value: &T, now: DateTime) -> Result<StateBytes, StateError>
+pub fn encode_archive<T>(value: &T, now: DateTime) -> Result<EncodedOperatorRow, OperatorError>
 where
 	T: for<'a> RkyvSerialize<HighSerializer<AlignedVec, ArenaHandle<'a>, RancorError>>,
 {
 	let buffer = ENCODE_BUFFER.with(|cell| mem::take(&mut *cell.borrow_mut()));
-	let mut filled =
-		to_bytes_in::<_, RancorError>(value, buffer).map_err(|e| StateError::Serialization(e.to_string()))?;
-	let result = StateBytes::from_archive(filled.as_slice(), now);
+	let mut filled = to_bytes_in::<_, RancorError>(value, buffer)
+		.map_err(|e| OperatorError::Serialization(e.to_string()))?;
+	let result = EncodedOperatorRow::new(filled.as_slice(), now);
 	filled.clear();
 	ENCODE_BUFFER.with(|cell| *cell.borrow_mut() = filled);
 	Ok(result)
 }
 
-pub fn access_archive<T>(bytes: &StateBytes) -> Result<&T::Archived, StateError>
+pub fn access_archive<T>(row: &EncodedOperatorRow) -> Result<&T::Archived, OperatorError>
 where
 	T: Archive,
 	T::Archived: Portable + for<'a> CheckBytes<HighValidator<'a, RancorError>>,
 {
-	access::<T::Archived, RancorError>(bytes.body()).map_err(|e| StateError::Validation(e.to_string()))
+	access::<T::Archived, RancorError>(row.body()).map_err(|e| OperatorError::Validation(e.to_string()))
 }
 
 /// # Safety
 ///
-/// `bytes` must hold an archive of exactly `T` that has either been produced
+/// `row` must hold an archive of exactly `T` that has either been produced
 /// by [`encode_archive`] in this process or passed [`access_archive`]
 /// validation; the unchecked access relies on that for pointer and layout
 /// validity.
-pub unsafe fn access_archive_trusted<T>(bytes: &StateBytes) -> &T::Archived
+pub unsafe fn access_archive_trusted<T>(row: &EncodedOperatorRow) -> &T::Archived
 where
 	T: Archive,
 	T::Archived: Portable,
 {
-	// SAFETY: the caller guarantees `bytes` holds a validated archive of exactly `T`, so the
+	// SAFETY: the caller guarantees `row` holds a validated archive of exactly `T`, so the
 	// body is a well-formed `T::Archived` with valid relative pointers.
-	unsafe { access_unchecked::<T::Archived>(bytes.body()) }
+	unsafe { access_unchecked::<T::Archived>(row.body()) }
 }
 
 /// # Safety
 ///
-/// Same contract as [`access_archive_trusted`]; `bytes` must hold a validated
+/// Same contract as [`access_archive_trusted`]; `row` must hold a validated
 /// archive of exactly `T`. Seal writes cannot invalidate the archive.
-pub unsafe fn access_archive_seal_trusted<T>(bytes: &mut StateBytes) -> Seal<'_, T::Archived>
+pub unsafe fn access_archive_seal_trusted<T>(row: &mut EncodedOperatorRow) -> Seal<'_, T::Archived>
 where
 	T: Archive,
 	T::Archived: Portable,
 {
-	// SAFETY: the caller guarantees `bytes` holds a validated archive of exactly `T`, and the
+	// SAFETY: the caller guarantees `row` holds a validated archive of exactly `T`, and the
 	// exclusive borrow makes the sealed mutable access non-aliasing.
-	unsafe { access_unchecked_mut::<T::Archived>(bytes.body_mut()) }
+	unsafe { access_unchecked_mut::<T::Archived>(row.body_mut()) }
 }
 
-pub fn materialize_archive<T>(archived: &T::Archived) -> Result<T, StateError>
+pub fn materialize_archive<T>(archived: &T::Archived) -> Result<T, OperatorError>
 where
 	T: Archive,
 	T::Archived: RkyvDeserialize<T, Strategy<Pool, RancorError>>,
 {
-	deserialize::<T, RancorError>(archived).map_err(|e| StateError::Deserialization(e.to_string()))
+	deserialize::<T, RancorError>(archived).map_err(|e| OperatorError::Deserialization(e.to_string()))
 }
 
-pub fn decode_state<T: OperatorState>(bytes: &StateBytes) -> Result<T, StateError> {
-	T::materialize(T::archived(bytes)?)
+pub fn decode<T: OperatorState>(row: &EncodedOperatorRow) -> Result<T, OperatorError> {
+	T::materialize(T::archived(row)?)
 }
 
 pub mod archive {
@@ -263,27 +258,27 @@ macro_rules! leaf_operator_state {
 		$(impl OperatorState for $ty {
 			type Archived = <$ty as Archive>::Archived;
 
-			fn encode_state(&self, now: DateTime) -> Result<StateBytes, StateError> {
+			fn encode_state(&self, now: DateTime) -> Result<EncodedOperatorRow, OperatorError> {
 				encode_archive(self, now)
 			}
 
-			fn archived(bytes: &StateBytes) -> Result<&Self::Archived, StateError> {
-				access_archive::<Self>(bytes)
+			fn archived(row: &EncodedOperatorRow) -> Result<&Self::Archived, OperatorError> {
+				access_archive::<Self>(row)
 			}
 
-			unsafe fn archived_trusted(bytes: &StateBytes) -> &Self::Archived {
-				// SAFETY: the caller of archived_trusted guarantees `bytes` holds a
+			unsafe fn archived_trusted(row: &EncodedOperatorRow) -> &Self::Archived {
+				// SAFETY: the caller of archived_trusted guarantees `row` holds a
 				// validated archive of exactly `Self`, which is what the callee needs.
-				unsafe { access_archive_trusted::<Self>(bytes) }
+				unsafe { access_archive_trusted::<Self>(row) }
 			}
 
-			unsafe fn archived_seal_trusted(bytes: &mut StateBytes) -> Seal<'_, Self::Archived> {
-				// SAFETY: the caller of archived_seal_trusted guarantees `bytes` holds a
+			unsafe fn archived_seal_trusted(row: &mut EncodedOperatorRow) -> Seal<'_, Self::Archived> {
+				// SAFETY: the caller of archived_seal_trusted guarantees `row` holds a
 				// validated archive of exactly `Self`, which is what the callee needs.
-				unsafe { access_archive_seal_trusted::<Self>(bytes) }
+				unsafe { access_archive_seal_trusted::<Self>(row) }
 			}
 
-			fn materialize(archived: &Self::Archived) -> Result<Self, StateError> {
+			fn materialize(archived: &Self::Archived) -> Result<Self, OperatorError> {
 				materialize_archive::<Self>(archived)
 			}
 		})*
@@ -304,43 +299,36 @@ where
 {
 	type Archived = <Self as Archive>::Archived;
 
-	fn encode_state(&self, now: DateTime) -> Result<StateBytes, StateError> {
+	fn encode_state(&self, now: DateTime) -> Result<EncodedOperatorRow, OperatorError> {
 		encode_archive(self, now)
 	}
 
-	fn archived(bytes: &StateBytes) -> Result<&Self::Archived, StateError> {
-		access_archive::<Self>(bytes)
+	fn archived(row: &EncodedOperatorRow) -> Result<&Self::Archived, OperatorError> {
+		access_archive::<Self>(row)
 	}
 
-	unsafe fn archived_trusted(bytes: &StateBytes) -> &Self::Archived {
-		// SAFETY: the caller of archived_trusted guarantees `bytes` holds a validated archive
+	unsafe fn archived_trusted(row: &EncodedOperatorRow) -> &Self::Archived {
+		// SAFETY: the caller of archived_trusted guarantees `row` holds a validated archive
 		// of exactly `Self`, which is what the callee needs.
-		unsafe { access_archive_trusted::<Self>(bytes) }
+		unsafe { access_archive_trusted::<Self>(row) }
 	}
 
-	unsafe fn archived_seal_trusted(bytes: &mut StateBytes) -> Seal<'_, Self::Archived> {
-		// SAFETY: the caller of archived_seal_trusted guarantees `bytes` holds a validated
+	unsafe fn archived_seal_trusted(row: &mut EncodedOperatorRow) -> Seal<'_, Self::Archived> {
+		// SAFETY: the caller of archived_seal_trusted guarantees `row` holds a validated
 		// archive of exactly `Self`, which is what the callee needs.
-		unsafe { access_archive_seal_trusted::<Self>(bytes) }
+		unsafe { access_archive_seal_trusted::<Self>(row) }
 	}
 
-	fn materialize(archived: &Self::Archived) -> Result<Self, StateError> {
+	fn materialize(archived: &Self::Archived) -> Result<Self, OperatorError> {
 		materialize_archive::<Self>(archived)
 	}
-}
-
-pub fn operator_state_shape() -> &'static RowShape {
-	&OPERATOR_STATE_SHAPE
 }
 
 #[cfg(test)]
 mod tests {
 	use std::mem::align_of;
 
-	use reifydb_value::{
-		factory::time::at_nanos,
-		value::{datetime::DateTime, value_type::ValueType},
-	};
+	use reifydb_value::{factory::time::at_nanos, util::cowvec::CowVec, value::datetime::DateTime};
 	use rkyv::{
 		Archive, Deserialize, Serialize, access,
 		primitive::{ArchivedF64, ArchivedI64, ArchivedU64},
@@ -348,10 +336,10 @@ mod tests {
 	};
 
 	use super::{
-		StateBytes, StateError, StateFormatVersion, access_archive, access_archive_trusted, encode_archive,
-		materialize_archive, operator_state_shape,
+		EncodedOperatorRow, OPERATOR_HEADER_SIZE, OperatorError, access_archive, access_archive_trusted,
+		encode_archive, materialize_archive,
 	};
-	use crate::encoded::shape::RowShape;
+	use crate::encoded::bytes::EncodedBytes;
 
 	#[derive(Archive, Serialize, Deserialize, Debug, PartialEq)]
 	struct Probe {
@@ -368,14 +356,11 @@ mod tests {
 
 	#[test]
 	fn test_encode_access_materialize_round_trip() {
-		// Encode, validate once at the trust boundary, read archived, materialize; every step
-		// must be lossless.
+		// Encode -> validate -> read archived -> materialize must be lossless at every step.
 		let value = probe();
-		let bytes = encode_archive(&value, at_nanos(7)).unwrap();
+		let row = encode_archive(&value, at_nanos(7)).unwrap();
 
-		assert_eq!(bytes.format(), StateFormatVersion::CURRENT);
-
-		let archived = access_archive::<Probe>(&bytes).unwrap();
+		let archived = access_archive::<Probe>(&row).unwrap();
 		assert_eq!(archived.total, 42);
 		assert_eq!(archived.names.len(), 2);
 		assert_eq!(archived.names[1].as_str(), "bb");
@@ -383,49 +368,45 @@ mod tests {
 		let restored: Probe = materialize_archive(archived).unwrap();
 		assert_eq!(restored, value);
 
-		// SAFETY: bytes passed access_archive validation above.
-		let trusted = unsafe { access_archive_trusted::<Probe>(&bytes) };
+		// SAFETY: row passed access_archive validation above.
+		let trusted = unsafe { access_archive_trusted::<Probe>(&row) };
 		assert_eq!(trusted.total, 42);
 	}
 
 	#[test]
-	fn test_refresh_updated_at_preserves_created_at_and_body() {
-		// set_timestamps writes both header timestamps, so refresh must re-read created_at;
-		// clobbering it would corrupt TTL semantics for sealed entries.
+	fn test_set_time_preserves_body() {
+		// set_time must write exactly the header window, never the first byte of the archive.
 		let value = probe();
-		let mut bytes = encode_archive(&value, at_nanos(7)).unwrap();
-		assert_eq!(bytes.bytes().created_at(), at_nanos(7));
-		assert_eq!(bytes.bytes().updated_at(), at_nanos(7));
+		let mut row = encode_archive(&value, at_nanos(7)).unwrap();
+		assert_eq!(row.time(), at_nanos(7));
+		let body = row.body().to_vec();
 
-		bytes.refresh_updated_at(at_nanos(99));
-		assert_eq!(bytes.bytes().created_at(), at_nanos(7), "refresh must not clobber created_at");
-		assert_eq!(bytes.bytes().updated_at(), at_nanos(99));
-		assert_eq!(access_archive::<Probe>(&bytes).unwrap().total, 42, "the body must stay untouched");
+		row.set_time(at_nanos(99));
+		assert_eq!(row.time(), at_nanos(99));
+		assert_eq!(row.body(), &body[..], "the body must stay untouched");
+		assert_eq!(access_archive::<Probe>(&row).unwrap().total, 42);
 	}
 
 	#[test]
 	fn test_body_mut_windows_the_same_bytes_as_body() {
-		// body_mut is the seal path's write window; if its offset or length differed from
-		// body(), sealed writes would land outside the archive.
+		// body_mut must window exactly body(), otherwise sealed writes land outside the archive.
 		let value = probe();
-		let mut bytes = encode_archive(&value, DateTime::EPOCH).unwrap();
-		let body = bytes.body().to_vec();
-		assert_eq!(bytes.body_mut(), &body[..]);
-		assert_eq!(bytes.body(), &body[..]);
+		let mut row = encode_archive(&value, DateTime::EPOCH).unwrap();
+		let body = row.body().to_vec();
+		assert_eq!(row.body_mut(), &body[..]);
+		assert_eq!(row.body(), &body[..]);
 	}
 
 	#[test]
 	fn test_archived_access_is_alignment_free() {
-		// The archive body sits at an arbitrary byte offset inside plain Vec<u8> bytes buffers,
-		// so soundness rests entirely on rkyv's "unaligned" feature. The const asserts stop
-		// compiling if an rkyv bump drops it and archived primitives regain alignment > 1.
+		// The body starts at byte 8 of a plain Vec, so archived primitives must stay align-1.
 		const _: () = assert!(align_of::<ArchivedU64>() == 1);
 		const _: () = assert!(align_of::<ArchivedI64>() == 1);
 		const _: () = assert!(align_of::<ArchivedF64>() == 1);
 
 		let value = probe();
-		let bytes = encode_archive(&value, at_nanos(7)).unwrap();
-		let body = bytes.body().to_vec();
+		let row = encode_archive(&value, at_nanos(7)).unwrap();
+		let body = row.body().to_vec();
 		for offset in 1..8usize {
 			let mut buffer = vec![0u8; offset];
 			buffer.extend_from_slice(&body);
@@ -440,64 +421,69 @@ mod tests {
 	}
 
 	#[test]
-	fn test_row_round_trip_preserves_timestamps() {
-		// The into_bytes/from_bytes boundary is crossed on every store write and read, and TTL
-		// semantics depend on the header timestamps surviving it.
-		let bytes = encode_archive(&probe(), at_nanos(1234)).unwrap();
-		let encoded = bytes.clone().into_bytes();
-		assert_eq!(encoded.created_at(), at_nanos(1234));
+	fn test_row_round_trip_preserves_time() {
+		// The store boundary must preserve the time header, otherwise floor expiry reads garbage.
+		let row = encode_archive(&probe(), at_nanos(1234)).unwrap();
+		let encoded = row.clone().into_bytes();
 
-		let reloaded = StateBytes::from_bytes(encoded).unwrap();
-		assert_eq!(reloaded, bytes);
-		let archived = access_archive::<Probe>(&reloaded).unwrap();
-		assert_eq!(archived.total, 42);
+		let reloaded = EncodedOperatorRow::try_from(encoded).unwrap();
+		assert_eq!(reloaded, row);
+		assert_eq!(reloaded.time(), at_nanos(1234));
+		assert_eq!(access_archive::<Probe>(&reloaded).unwrap().total, 42);
 	}
 
 	#[test]
-	fn test_from_bytes_rejects_foreign_shape() {
-		// A foreign shape must be rejected by fingerprint, not misread as state bytes.
-		let foreign = RowShape::testing(&[ValueType::Int8]).allocate();
-		let err = StateBytes::from_bytes(foreign.freeze()).unwrap_err();
-		assert!(matches!(err, StateError::UnexpectedObject { .. }));
+	fn test_try_from_rejects_a_row_too_short_to_hold_the_header() {
+		// A short row must error here, otherwise time() indexes out of bounds downstream.
+		for len in 0..OPERATOR_HEADER_SIZE {
+			let short = EncodedBytes(CowVec::new(vec![0u8; len]));
+			assert_eq!(
+				EncodedOperatorRow::try_from(short).unwrap_err(),
+				OperatorError::Truncated {
+					len,
+				}
+			);
+		}
 	}
 
 	#[test]
-	fn test_from_bytes_rejects_unknown_format() {
-		// A zeroed format byte (what a legacy writer leaves) and a future one must both fail
-		// loudly rather than be read as the current format.
-		let shape = operator_state_shape();
-		let bytes = shape.allocate();
-		let err = StateBytes::from_bytes(bytes.freeze()).unwrap_err();
-		assert_eq!(err, StateError::UnsupportedFormat(0));
-
-		let mut future = shape.allocate();
-		shape.set::<u8>(&mut future, 1, 9u8);
-		let err = StateBytes::from_bytes(future.freeze()).unwrap_err();
-		assert_eq!(err, StateError::UnsupportedFormat(9));
+	fn test_zeroed_row_fails_archive_validation() {
+		// A zeroed body must fail bytecheck rather than be read as a valid archive.
+		let zeroed = EncodedOperatorRow::new(&[0u8; 16], DateTime::EPOCH);
+		assert!(matches!(access_archive::<Probe>(&zeroed), Err(OperatorError::Validation(_))));
 	}
 
 	#[test]
 	fn test_truncated_body_fails_validation() {
 		// This is the disk-corruption trust boundary: bytecheck must error, not panic.
-		let bytes = encode_archive(&probe(), DateTime::EPOCH).unwrap();
-		let body = bytes.body();
-		let truncated = StateBytes::from_archive(&body[..body.len() / 2], DateTime::EPOCH);
-		assert!(matches!(access_archive::<Probe>(&truncated), Err(StateError::Validation(_))));
+		let row = encode_archive(&probe(), DateTime::EPOCH).unwrap();
+		let body = row.body();
+		let truncated = EncodedOperatorRow::new(&body[..body.len() / 2], DateTime::EPOCH);
+		assert!(matches!(access_archive::<Probe>(&truncated), Err(OperatorError::Validation(_))));
 	}
 
 	#[test]
-	fn test_byte_size_covers_whole_row() {
-		let bytes = encode_archive(&probe(), DateTime::EPOCH).unwrap();
-		assert_eq!(bytes.byte_size().as_bytes(), bytes.bytes().len() as u64);
-		assert!(bytes.byte_size().as_bytes() > bytes.body().len() as u64);
+	fn test_timeless_rows_sort_above_every_cutoff() {
+		// Absence is DateTime::MAX, which must outrank any cutoff a floor sweep can propose.
+		let row = EncodedOperatorRow::timeless(&[]);
+		assert_eq!(row.time(), DateTime::MAX);
+		assert!(row.time() > at_nanos(u64::MAX - 1));
+		assert!(row.body().is_empty());
 	}
 
 	#[test]
-	fn test_from_archive_body_round_trips_exactly() {
+	fn test_byte_size_covers_header_and_body() {
+		let row = encode_archive(&probe(), DateTime::EPOCH).unwrap();
+		assert_eq!(row.byte_size().as_bytes(), row.len() as u64);
+		assert_eq!(row.len(), OPERATOR_HEADER_SIZE + row.body().len());
+	}
+
+	#[test]
+	fn test_new_body_round_trips_exactly() {
 		let payload: Vec<u8> = (0..=255).collect();
-		let bytes = StateBytes::from_archive(&payload, at_nanos(7));
-		assert_eq!(bytes.body(), payload.as_slice());
-		assert_eq!(bytes.format(), StateFormatVersion::CURRENT);
+		let row = EncodedOperatorRow::new(&payload, at_nanos(7));
+		assert_eq!(row.body(), payload.as_slice());
+		assert_eq!(row.time(), at_nanos(7));
 	}
 
 	#[test]
@@ -510,14 +496,14 @@ mod tests {
 			total: 2,
 			names: vec!["x".to_string()],
 		};
-		let big_bytes = encode_archive(&big, DateTime::EPOCH).unwrap();
-		let small_bytes = encode_archive(&small, DateTime::EPOCH).unwrap();
-		assert!(small_bytes.body().len() < big_bytes.body().len());
+		let big_row = encode_archive(&big, DateTime::EPOCH).unwrap();
+		let small_row = encode_archive(&small, DateTime::EPOCH).unwrap();
+		assert!(small_row.body().len() < big_row.body().len());
 		let restored: Probe =
-			materialize_archive::<Probe>(access_archive::<Probe>(&small_bytes).unwrap()).unwrap();
+			materialize_archive::<Probe>(access_archive::<Probe>(&small_row).unwrap()).unwrap();
 		assert_eq!(restored, small);
 		let restored_big: Probe =
-			materialize_archive::<Probe>(access_archive::<Probe>(&big_bytes).unwrap()).unwrap();
+			materialize_archive::<Probe>(access_archive::<Probe>(&big_row).unwrap()).unwrap();
 		assert_eq!(restored_big, big);
 	}
 }

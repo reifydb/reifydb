@@ -5,13 +5,10 @@ use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
 use reifydb_core::interface::store::MultiVersionRow;
 use reifydb_value::Result;
 
-pub mod keyed;
 pub mod raw;
-pub mod single;
 #[cfg(test)]
 pub mod test_utils;
 pub mod utils;
-pub mod window;
 
 use reifydb_core::key::{EncodableKey, operator_state::OperatorStateKey};
 

@@ -16,7 +16,10 @@ use reifydb_abi::{
 	},
 	operator::timer::TimerKind,
 };
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	operator::EncodedOperatorRow,
+};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator_group_state::{GroupId, GroupStateKey},
@@ -62,7 +65,7 @@ pub(super) extern "C" fn host_state_get(
 		let result = flow_txn.state_get(OperatorId(operator_id), &key);
 
 		match result {
-			Ok(Some(value)) => write_buffer(output, value.as_slice()),
+			Ok(Some(row)) => write_buffer(output, row.bytes().as_slice()),
 			Ok(None) => FFI_NOT_FOUND,
 			Err(_) => FFI_ERROR_INTERNAL,
 		}
@@ -93,9 +96,11 @@ pub(super) extern "C" fn host_state_set(
 			return FFI_ERROR_INTERNAL;
 		};
 
-		let value = encoded_bytes(value_ptr, value_len);
+		let Ok(row) = EncodedOperatorRow::try_from(encoded_bytes(value_ptr, value_len)) else {
+			return FFI_ERROR_INTERNAL;
+		};
 
-		match flow_txn.state_set(OperatorId(operator_id), &key, value) {
+		match flow_txn.state_set(OperatorId(operator_id), &key, row) {
 			Ok(_) => FFI_OK,
 			Err(_) => FFI_ERROR_INTERNAL,
 		}

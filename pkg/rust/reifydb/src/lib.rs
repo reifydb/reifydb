@@ -91,9 +91,7 @@ pub use reifydb_sub_api as sub;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;
 #[cfg(feature = "sub_flow")]
-pub use reifydb_sub_flow::operator::stateful::{
-	keyed::KeyedStateful, raw::RawStatefulOperator, single::SingleStateful,
-};
+pub use reifydb_sub_flow::operator::stateful::raw::RawStatefulOperator;
 pub use reifydb_sub_metrics as sub_metrics;
 #[cfg(feature = "sub_raft")]
 pub use reifydb_sub_raft as sub_raft;

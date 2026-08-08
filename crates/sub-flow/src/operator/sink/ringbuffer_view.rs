@@ -10,6 +10,7 @@ use reifydb_codec::{
 		decode_u64_asc, encode_u64_asc, encode_u128_asc,
 		encoded::{EncodedKey, EncodedKeyRange},
 	},
+	operator::{EncodedOperatorRow, decode, encode_archive},
 };
 use reifydb_core::{
 	interface::{
@@ -36,6 +37,7 @@ use reifydb_core::{
 };
 use reifydb_engine::partition::partition_col_indices;
 use reifydb_flow::{operator::Operator, timer::Timer, transaction::FlowTransaction};
+use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -43,7 +45,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	util::cowvec::CowVec,
 	value::{
-		Value, blob::Blob, datetime::DateTime, duration::Duration, partition::Partition, row_number::RowNumber,
+		Value, datetime::DateTime, duration::Duration, partition::Partition, row_number::RowNumber,
 		system_columns::SystemColumns, value_type::ValueType,
 	},
 };
@@ -115,7 +117,6 @@ pub struct SinkRingBufferViewOperator {
 	capacity: u64,
 	announce_evictions: bool,
 	ttl: Option<Duration>,
-	state_shape: RowShape,
 	partition_indices: Vec<usize>,
 	verified_partitions: UnsafeCell<HashMap<Partition, Vec<Value>>>,
 }
@@ -141,7 +142,6 @@ impl SinkRingBufferViewOperator {
 			capacity,
 			announce_evictions,
 			ttl,
-			state_shape: RowShape::operator_state(),
 			partition_indices,
 			verified_partitions: UnsafeCell::new(HashMap::new()),
 		}
@@ -184,8 +184,7 @@ impl SinkRingBufferViewOperator {
 		let Some(row) = self.state_get(txn, &key)? else {
 			return Ok(None);
 		};
-		let blob = self.state_shape.get_blob(&row, 0);
-		Ok(Some(decode_ringbuffer_metadata(&EncodedBytes(CowVec::new(blob.as_bytes().to_vec())))))
+		Ok(Some(decode_ringbuffer_metadata(&EncodedBytes(CowVec::new(row.body().to_vec())))))
 	}
 
 	fn write_meta_mirror(
@@ -195,9 +194,8 @@ impl SinkRingBufferViewOperator {
 		metadata: &RingBufferMetadata,
 	) -> Result<()> {
 		let key = self.meta_key(partition);
-		let mut row = self.state_shape.allocate();
-		self.state_shape.set_blob(&mut row, 0, &Blob::from(encode_ringbuffer_metadata(metadata).to_vec()));
-		self.state_set(txn, &key, row.freeze())
+		let row = EncodedOperatorRow::timeless(encode_ringbuffer_metadata(metadata).as_slice());
+		self.state_set(txn, &key, row)
 	}
 
 	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
@@ -292,16 +290,14 @@ impl SinkRingBufferViewOperator {
 	fn get_forward(&self, txn: &mut FlowTransaction, source_rn: RowNumber) -> Result<Option<RowNumber>> {
 		let key = self.forward_key(source_rn);
 		match self.state_get(txn, &key)? {
-			Some(row) => Ok(Some(self.decode_row_number(&row, "RingBufferForward")?)),
+			Some(row) => Ok(Some(RowNumber(decode_u64(&row, "RingBufferForward")?))),
 			None => Ok(None),
 		}
 	}
 
 	fn set_forward(&self, txn: &mut FlowTransaction, source_rn: RowNumber, storage_rn: RowNumber) -> Result<()> {
 		let key = self.forward_key(source_rn);
-		let mut row = self.state_shape.allocate();
-		self.state_shape.set_blob(&mut row, 0, &Blob::from(storage_rn.0.to_be_bytes().to_vec()));
-		self.state_set(txn, &key, row.freeze())
+		self.state_set(txn, &key, encode_u64(storage_rn.0, "RingBufferForward")?)
 	}
 
 	fn drop_forward(&self, txn: &mut FlowTransaction, source_rn: RowNumber) -> Result<()> {
@@ -349,17 +345,20 @@ impl SinkRingBufferViewOperator {
 		time: Option<DateTime>,
 	) -> Result<()> {
 		let key = self.row_entry_key(partition, storage_rn);
-		let mut row = self.state_shape.allocate();
-		let mut payload = Vec::with_capacity(16);
-		payload.extend_from_slice(&source_rn.0.to_be_bytes());
-		if let Some(time) = time {
-			payload.extend_from_slice(&time.to_millis().to_be_bytes());
-		}
-		self.state_shape.set_blob(&mut row, 0, &Blob::from(payload));
-		self.state_set(txn, &key, row.freeze())?;
+		let entry = RowEntry {
+			source_rn,
+			time,
+		};
+		let row = encode_archive(&entry, DateTime::MAX).map_err(|e| {
+			Error::from(FlowStateError::Encode {
+				state: "RingBufferRowEntry",
+				cause: e.to_string(),
+			})
+		})?;
+		self.state_set(txn, &key, row)?;
 		if let Some(expires_at) = self.expires_at(time) {
 			let key = self.expiry_key(partition, expires_at, storage_rn);
-			self.state_set(txn, &key, self.state_shape.allocate().freeze())?;
+			self.state_set(txn, &key, EncodedOperatorRow::timeless(&[]))?;
 		}
 		Ok(())
 	}
@@ -417,36 +416,39 @@ impl SinkRingBufferViewOperator {
 		}
 	}
 
-	fn decode_row_entry(&self, row: &EncodedBytes) -> Result<(Option<DateTime>, RowNumber)> {
-		let blob = self.state_shape.get_blob(row, 0);
-		let bytes = blob.as_bytes();
-		if bytes.len() != 8 && bytes.len() != 16 {
-			return Err(Error::from(FlowStateError::Decode {
-				state: "RingBufferRowEntry",
-				cause: format!("expected 8 or 16 bytes, got {}", bytes.len()),
-			}));
-		}
-		let source_rn = u64::from_be_bytes(
-			bytes[..8].try_into().expect("a row entry opens with an 8-byte source row number"),
-		);
-		let time = (bytes.len() == 16).then(|| {
-			DateTime::from_millis(u64::from_be_bytes(
-				bytes[8..].try_into().expect("a 16-byte row entry closes with an 8-byte instant"),
-			))
-		});
-		Ok((time, RowNumber(source_rn)))
-	}
-
-	fn decode_row_number(&self, row: &EncodedBytes, state: &'static str) -> Result<RowNumber> {
-		let blob = self.state_shape.get_blob(row, 0);
-		let bytes: [u8; 8] = blob.as_bytes().try_into().map_err(|_| {
+	fn decode_row_entry(&self, row: &EncodedOperatorRow) -> Result<(Option<DateTime>, RowNumber)> {
+		let entry: RowEntry = decode(row).map_err(|e| {
 			Error::from(FlowStateError::Decode {
-				state,
-				cause: "expected 8 bytes".to_string(),
+				state: "RingBufferRowEntry",
+				cause: e.to_string(),
 			})
 		})?;
-		Ok(RowNumber(u64::from_be_bytes(bytes)))
+		Ok((entry.time, entry.source_rn))
 	}
+}
+
+#[operator_state]
+struct RowEntry {
+	source_rn: RowNumber,
+	time: Option<DateTime>,
+}
+
+fn encode_u64(value: u64, state: &'static str) -> Result<EncodedOperatorRow> {
+	encode_archive(&value, DateTime::MAX).map_err(|e| {
+		Error::from(FlowStateError::Encode {
+			state,
+			cause: e.to_string(),
+		})
+	})
+}
+
+fn decode_u64(row: &EncodedOperatorRow, state: &'static str) -> Result<u64> {
+	decode(row).map_err(|e| {
+		Error::from(FlowStateError::Decode {
+			state,
+			cause: e.to_string(),
+		})
+	})
 }
 
 impl RawStatefulOperator for SinkRingBufferViewOperator {}
@@ -639,7 +641,7 @@ impl SinkRingBufferViewOperator {
 
 	fn read_armed(&self, txn: &mut FlowTransaction, partition: Option<Partition>) -> Result<Option<u64>> {
 		match self.state_get(txn, &self.arm_key(partition))? {
-			Some(row) => Ok(Some(self.decode_row_number(&row, "RingBufferTtlArm")?.0)),
+			Some(row) => Ok(Some(decode_u64(&row, "RingBufferTtlArm")?)),
 			None => Ok(None),
 		}
 	}
@@ -676,9 +678,7 @@ impl SinkRingBufferViewOperator {
 						key,
 					},
 				)?;
-				let mut row = self.state_shape.allocate();
-				self.state_shape.set_blob(&mut row, 0, &Blob::from(at.to_be_bytes().to_vec()));
-				self.state_set(txn, &arm_key, row.freeze())
+				self.state_set(txn, &arm_key, encode_u64(at, "RingBufferTtlArm")?)
 			}
 			None => self.state_remove(txn, &arm_key),
 		}

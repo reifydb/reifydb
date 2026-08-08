@@ -10,7 +10,7 @@ use std::{
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	state::{OperatorState, SealMutableState, StateBytes, decode_state},
+	operator::{EncodedOperatorRow, OperatorState, SealMutableState, decode},
 };
 use reifydb_runtime::cache::slab::SlabLru;
 use reifydb_value::{
@@ -44,7 +44,7 @@ enum Presence {
 }
 
 enum CleanEntry<V> {
-	Archived(StateBytes),
+	Archived(EncodedOperatorRow),
 	Native(Arc<V>),
 }
 
@@ -59,7 +59,7 @@ impl<V> Clone for CleanEntry<V> {
 
 enum DirtyEntry<V> {
 	Live(Arc<V>),
-	LiveArchived(StateBytes),
+	LiveArchived(EncodedOperatorRow),
 	Removed,
 }
 
@@ -125,7 +125,7 @@ fn native_charge<V: HeapSize>(value: &V) -> u64 {
 	(mem::size_of::<V>() + value.heap_size()) as u64 + ENTRY_OVERHEAD
 }
 
-fn archived_charge(bytes: &StateBytes) -> u64 {
+fn archived_charge(bytes: &EncodedOperatorRow) -> u64 {
 	bytes.byte_size().as_bytes() + ENTRY_OVERHEAD
 }
 
@@ -255,7 +255,7 @@ where
 		let loaded = store.state_get(&encoded_key)?;
 		match loaded {
 			Some(bytes) => {
-				let value = decode_state::<V>(&bytes)?;
+				let value = decode::<V>(&bytes)?;
 				let arc = Arc::new(value);
 				self.insert_clean_native(key.clone(), arc.clone());
 				self.evict_to_budget();
@@ -295,7 +295,7 @@ where
 		self.pool.charge_clean(ByteSize::from_bytes(charge));
 	}
 
-	fn insert_clean_archived(&mut self, key: K, bytes: StateBytes) {
+	fn insert_clean_archived(&mut self, key: K, bytes: EncodedOperatorRow) {
 		let key_bytes = key_charge(&key);
 		let charge = archived_charge(&bytes) + key_bytes;
 		if let Some(old) = self.clean.put(key, CleanEntry::Archived(bytes)) {
@@ -450,7 +450,7 @@ where
 		let encoded_key = key.into_group_state_key();
 		let loaded = store.state_get(&encoded_key)?;
 		match loaded {
-			Some(bytes) => Ok(Some(decode_state::<V>(&bytes)?)),
+			Some(bytes) => Ok(Some(decode::<V>(&bytes)?)),
 			None => {
 				self.record_store_miss();
 				Ok(None)
@@ -486,8 +486,8 @@ where
 			encoded_keys.push(encoded);
 		}
 
-		let mut loaded: Vec<(K, StateBytes)> = Vec::new();
-		let mut visit = |encoded: GroupStateKey, bytes: StateBytes| -> Result<()> {
+		let mut loaded: Vec<(K, EncodedOperatorRow)> = Vec::new();
+		let mut visit = |encoded: GroupStateKey, bytes: EncodedOperatorRow| -> Result<()> {
 			if let Some(key) = by_encoded.get(encoded.as_slice()) {
 				V::archived(&bytes)?;
 				loaded.push((key.clone(), bytes));
@@ -513,7 +513,7 @@ where
 		if self.values_complete {
 			return Ok(());
 		}
-		let mut loaded: Vec<(K, StateBytes)> = Vec::new();
+		let mut loaded: Vec<(K, EncodedOperatorRow)> = Vec::new();
 		store.state_range_visit(range, None, &mut |encoded, bytes| {
 			if let Some(key) = decode_key(encoded.as_encoded()) {
 				V::archived(&bytes)?;
@@ -766,7 +766,7 @@ where
 				store.state_set(encoded_key, payload)
 			}
 			DirtyEntry::LiveArchived(bytes) => {
-				bytes.refresh_updated_at(now);
+				bytes.set_time(now);
 				store.state_set(encoded_key, bytes.clone())
 			}
 			DirtyEntry::Removed => store.state_remove(encoded_key),
@@ -955,7 +955,7 @@ mod tests {
 
 	#[derive(Default)]
 	struct MockStore {
-		data: HashMap<Vec<u8>, StateBytes>,
+		data: HashMap<Vec<u8>, EncodedOperatorRow>,
 		groups: HashMap<Vec<u8>, GroupId>,
 		removes: usize,
 		// The Nth state_set attempt (1-based) errors instead of writing; set_attempts
@@ -990,14 +990,14 @@ mod tests {
 			Ok(self.groups.get(group.as_bytes()).copied())
 		}
 
-		fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<StateBytes>> {
+		fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
 			self.gets += 1;
 			Ok(self.data.get(key.as_slice()).cloned())
 		}
 		fn state_get_many_visit(
 			&mut self,
 			keys: &[GroupStateKey],
-			visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
+			visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 		) -> Result<()> {
 			for key in keys {
 				if let Some(b) = self.data.get(key.as_slice()) {
@@ -1006,7 +1006,7 @@ mod tests {
 			}
 			Ok(())
 		}
-		fn state_set(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()> {
+		fn state_set(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()> {
 			self.sets += 1;
 			self.set_attempts.push(key.as_slice().to_vec());
 			if self.fail_state_set_at == Some(self.sets) {
@@ -1024,7 +1024,7 @@ mod tests {
 			&mut self,
 			range: EncodedKeyRange,
 			limit: Option<usize>,
-			visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
+			visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 		) -> Result<()> {
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
@@ -1036,7 +1036,7 @@ mod tests {
 				Bound::Excluded(e) => k < e.as_bytes(),
 				Bound::Unbounded => true,
 			};
-			let mut matched: Vec<(Vec<u8>, StateBytes)> = self
+			let mut matched: Vec<(Vec<u8>, EncodedOperatorRow)> = self
 				.data
 				.iter()
 				.filter(|(k, _)| after_start(k) && before_end(k))
@@ -1813,10 +1813,9 @@ mod tests {
 	}
 
 	#[test]
-	fn seal_flush_writes_bytes_verbatim_with_refreshed_updated_at() {
-		// A LiveArchived flush skips the encoder: the stored body is byte-identical to
-		// an encode of the sealed value, updated_at carries the flush clock, and
-		// created_at survives (clobbering it would break TTL).
+	fn seal_flush_writes_bytes_verbatim_with_refreshed_time() {
+		// A LiveArchived flush must skip the encoder, so the body stays byte-identical while the
+		// row's time picks up the flush clock.
 		let mut store = MockStore::default();
 		let pool = big_pool();
 		let mut cache = warmed_seal_cache(&mut store, pool.clone(), 1);
@@ -1835,12 +1834,7 @@ mod tests {
 		cache.flush(&mut store).unwrap();
 
 		let stored = store.data.values().next().unwrap();
-		assert_eq!(
-			stored.bytes().updated_at(),
-			DateTime::from_nanos(99),
-			"the verbatim write refreshes updated_at"
-		);
-		assert_eq!(stored.bytes().created_at(), DateTime::EPOCH, "created_at survives the verbatim rewrite");
+		assert_eq!(stored.time(), DateTime::from_nanos(99), "the verbatim write refreshes the row's time");
 		let expected = SealCell {
 			value: 7,
 		}

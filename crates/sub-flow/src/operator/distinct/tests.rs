@@ -115,7 +115,7 @@ fn persisted_rows(op: &DistinctOperator, txn: &mut FlowTransaction) -> BTreeMap<
 }
 
 fn layout_row(op: &DistinctOperator, txn: &mut FlowTransaction) -> Option<Vec<u8>> {
-	utils::state_get(op.id(), txn, &DistinctOperator::layout_storage_key()).unwrap().map(|row| row.to_vec())
+	utils::state_get(op.id(), txn, &DistinctOperator::layout_storage_key()).unwrap().map(|row| row.body().to_vec())
 }
 
 fn entry_groups(op: &DistinctOperator, txn: &mut FlowTransaction) -> Vec<GroupId> {

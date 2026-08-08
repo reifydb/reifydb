@@ -88,7 +88,7 @@ impl<K: HeapSize, V: HeapSize> HeapSize for PersistedMap<K, V> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::state::{OperatorState, decode_state};
+	use reifydb_codec::operator::{OperatorState, decode};
 	use reifydb_value::value::datetime::DateTime;
 
 	use super::PersistedMap;
@@ -101,7 +101,7 @@ mod tests {
 		let map: PersistedMap<u64, i64> = [(3u64, 30i64), (1, 10), (2, 20)].into_iter().collect();
 
 		let bytes = map.encode_state(DateTime::EPOCH).expect("encode");
-		let restored: PersistedMap<u64, i64> = decode_state(&bytes).expect("decode");
+		let restored: PersistedMap<u64, i64> = decode(&bytes).expect("decode");
 
 		assert_eq!(restored, map);
 		assert_eq!(
@@ -126,7 +126,7 @@ mod tests {
 		// write would have to special-case a missing entry.
 		let map: PersistedMap<u64, i64> = PersistedMap::default();
 		let bytes = map.encode_state(DateTime::EPOCH).expect("encode");
-		let restored: PersistedMap<u64, i64> = decode_state(&bytes).expect("decode");
+		let restored: PersistedMap<u64, i64> = decode(&bytes).expect("decode");
 
 		assert!(restored.is_empty());
 	}

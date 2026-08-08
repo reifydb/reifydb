@@ -13,8 +13,8 @@ pub mod frame;
 #[cfg(feature = "json")]
 pub mod json;
 pub mod key;
+pub mod operator;
 pub mod reader;
-pub mod state;
 pub mod tag;
 pub mod typeinfo;
 pub mod value;

@@ -6,7 +6,7 @@ use std::{collections::HashMap, fmt::Debug};
 use reifydb_codec::{
 	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
-	state::{OperatorState, StateBytes, decode_state},
+	operator::{EncodedOperatorRow, OperatorState, decode},
 };
 use reifydb_value::value::Value;
 
@@ -86,8 +86,8 @@ impl TestStateStore {
 
 	pub fn decode_typed<T: OperatorState>(&self, key: &EncodedKey) -> Option<T> {
 		let row = self.get(key)?;
-		let bytes = StateBytes::from_bytes(row.clone()).ok()?;
-		decode_state(&bytes).ok()
+		let bytes = EncodedOperatorRow::try_from(row.clone()).ok()?;
+		decode(&bytes).ok()
 	}
 
 	pub fn assert_typed_value<T: OperatorState + PartialEq + Debug>(&self, key: &EncodedKey, expected: &T) {

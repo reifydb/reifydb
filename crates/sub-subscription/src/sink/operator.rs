@@ -3,9 +3,8 @@
 
 use std::{any::Any, collections::BTreeSet, mem::size_of, sync::Arc};
 
-use postcard::{from_bytes, to_stdvec};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
-use reifydb_codec::encoded::shape::RowShape;
+use reifydb_codec::operator::{decode, encode_archive};
 use reifydb_core::{
 	interface::{
 		catalog::{flow::OperatorId, id::SubscriptionId, subscription::IMPLICIT_COLUMN_OP},
@@ -19,9 +18,10 @@ use reifydb_flow::{
 	operator::Operator,
 	transaction::{FlowTransaction, slot::PersistFn},
 };
+use reifydb_macro::operator_state;
 use reifydb_sub_flow::operator::{
 	OperatorCell,
-	stateful::{raw::RawStatefulOperator, single::SingleStateful, utils},
+	stateful::{raw::RawStatefulOperator, utils},
 };
 use reifydb_value::{
 	Result,
@@ -29,12 +29,13 @@ use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{blob::Blob, row_number::RowNumber, system_columns::SystemColumns, value_type::ValueType},
+	value::{datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
 };
 use serde::{Deserialize, Serialize};
 
 use crate::sink::DeliveryBuffer;
 
+#[operator_state]
 #[derive(Debug, Clone, Serialize, Deserialize, Default, HeapSize)]
 struct DeliveredState {
 	rows: BTreeSet<RowNumber>,
@@ -51,7 +52,6 @@ pub struct EphemeralSinkSubscriptionOperator {
 	operator: OperatorId,
 	subscription_id: SubscriptionId,
 	delivery: Arc<DeliveryBuffer>,
-	shape: RowShape,
 }
 
 impl EphemeralSinkSubscriptionOperator {
@@ -66,23 +66,18 @@ impl EphemeralSinkSubscriptionOperator {
 			operator,
 			subscription_id,
 			delivery,
-			shape: RowShape::testing(&[ValueType::Blob]),
 		}
 	}
 
 	fn load_delivered_state(&self, txn: &mut FlowTransaction) -> Result<DeliveredState> {
-		let state_row = self.load_state(txn)?;
-
-		if state_row.is_empty() || !state_row.is_defined(0) {
+		let key = utils::empty_state_key();
+		let Some(row) = utils::state_get(self.operator, txn, &key)? else {
+			return Ok(DeliveredState::default());
+		};
+		if row.is_empty() {
 			return Ok(DeliveredState::default());
 		}
-
-		let blob = self.shape.get_blob(&state_row, 0);
-		if blob.is_empty() {
-			return Ok(DeliveredState::default());
-		}
-
-		from_bytes(blob.as_ref())
+		decode::<DeliveredState>(&row)
 			.map_err(|e| Error(Box::new(internal!("Failed to deserialize DeliveredState: {}", e))))
 	}
 
@@ -116,12 +111,6 @@ impl EphemeralSinkSubscriptionOperator {
 }
 
 impl RawStatefulOperator for EphemeralSinkSubscriptionOperator {}
-
-impl SingleStateful for EphemeralSinkSubscriptionOperator {
-	fn layout(&self) -> RowShape {
-		self.shape.clone()
-	}
-}
 
 impl Operator for EphemeralSinkSubscriptionOperator {
 	fn id(&self) -> OperatorId {
@@ -163,21 +152,15 @@ impl EphemeralSinkSubscriptionOperator {
 	#[inline]
 	fn take_delivered_state(&self, txn: &mut FlowTransaction) -> Result<(DeliveredState, PersistFn)> {
 		let operator_id = self.operator;
-		let shape_for_persist = self.shape.clone();
 
 		txn.take_operator_state::<DeliveredState, _>(operator_id, |txn| {
 			let s = self.load_delivered_state(txn)?;
-			let shape = shape_for_persist.clone();
 			let persist: PersistFn = Box::new(move |txn, value| {
 				let state = value.downcast::<DeliveredState>().expect("DeliveredState slot type");
-				let serialized = to_stdvec(&*state).map_err(|e| {
+				let row = encode_archive(&*state, DateTime::MAX).map_err(|e| {
 					Error(Box::new(internal!("Failed to serialize DeliveredState: {}", e)))
 				})?;
-				let blob = Blob::from(serialized);
-				let key = utils::empty_state_key();
-				let mut row = utils::load_or_create_row(operator_id, txn, &key, &shape)?.thaw();
-				shape.set_blob(&mut row, 0, &blob);
-				utils::save_row(operator_id, txn, &key, row.freeze())?;
+				utils::state_set(operator_id, txn, &utils::empty_state_key(), row)?;
 				Ok(())
 			});
 			Ok((s, persist))

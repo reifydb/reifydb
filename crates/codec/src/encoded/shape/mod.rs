@@ -16,7 +16,7 @@ use std::{
 	iter,
 	ops::Deref,
 	ptr,
-	sync::{Arc, LazyLock, OnceLock},
+	sync::{Arc, OnceLock},
 };
 
 use reifydb_value::{
@@ -387,18 +387,7 @@ impl RowShape {
 				.collect(),
 		)
 	}
-
-	pub fn operator_state() -> Self {
-		OPERATOR_STATE_SHAPE.clone()
-	}
 }
-
-pub(crate) static OPERATOR_STATE_SHAPE: LazyLock<RowShape> = LazyLock::new(|| {
-	RowShape::new(vec![
-		RowShapeField::unconstrained("state", ValueType::Blob),
-		RowShapeField::unconstrained("format", ValueType::Uint1),
-	])
-});
 
 #[cfg(test)]
 mod tests {

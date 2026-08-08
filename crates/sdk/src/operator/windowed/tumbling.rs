@@ -6,7 +6,7 @@ use std::{collections::BTreeMap, fmt::Debug, hash::Hash};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
-	state::ArchiveState,
+	operator::ArchiveState,
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,

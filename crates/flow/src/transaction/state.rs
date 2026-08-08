@@ -2,8 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	encoded::{bytes::EncodedBytes, shape::RowShape},
+	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	operator::EncodedOperatorRow,
 };
 use reifydb_core::{
 	interface::{
@@ -14,7 +15,7 @@ use reifydb_core::{
 	metrics::scan::ScanCounters,
 };
 use reifydb_transaction::multi::RangeScope;
-use reifydb_value::Result;
+use reifydb_value::{Result, error::Error as ValueError};
 use tracing::{Span, field, instrument};
 
 use super::{FlowTransaction, substrate::operator_state_coordinates};
@@ -25,8 +26,11 @@ impl FlowTransaction {
 		key_len = key.as_slice().len(),
 		found = field::Empty
 	))]
-	pub fn state_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedBytes>> {
-		let result = self.scoped_get(id, key)?;
+	pub fn state_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+		let result = match self.scoped_get(id, key)? {
+			Some(bytes) => Some(EncodedOperatorRow::try_from(bytes).map_err(ValueError::from)?),
+			None => None,
+		};
 		Span::current().record("found", result.is_some());
 		Ok(result)
 	}
@@ -42,13 +46,13 @@ impl FlowTransaction {
 		Ok(batch)
 	}
 
-	#[instrument(name = "flow::state::set", level = "trace", skip(self, value), fields(
+	#[instrument(name = "flow::state::set", level = "trace", skip(self, row), fields(
 		operator_id = id.0,
 		key_len = key.as_slice().len(),
-		value_len = value.len()
+		value_len = row.len()
 	))]
-	pub fn state_set(&mut self, id: OperatorId, key: &GroupStateKey, value: EncodedBytes) -> Result<()> {
-		self.scoped_set(id, key, value)
+	pub fn state_set(&mut self, id: OperatorId, key: &GroupStateKey, row: EncodedOperatorRow) -> Result<()> {
+		self.scoped_set(id, key, row.into_bytes())
 	}
 
 	#[instrument(name = "flow::state::remove", level = "trace", skip(self), fields(
@@ -164,37 +168,6 @@ impl FlowTransaction {
 		Ok(())
 	}
 
-	#[instrument(name = "flow::state::load_or_create", level = "debug", skip(self, shape), fields(
-		operator_id = id.0,
-		key_len = key.as_slice().len(),
-		created
-	))]
-	pub fn load_or_create_row(
-		&mut self,
-		id: OperatorId,
-		key: &GroupStateKey,
-		shape: &RowShape,
-	) -> Result<EncodedBytes> {
-		match self.state_get(id, key)? {
-			Some(row) => {
-				Span::current().record("created", false);
-				Ok(row)
-			}
-			None => {
-				Span::current().record("created", true);
-				Ok(shape.allocate().freeze())
-			}
-		}
-	}
-
-	#[instrument(name = "flow::state::save", level = "trace", skip(self, bytes), fields(
-		operator_id = id.0,
-		key_len = key.as_slice().len()
-	))]
-	pub fn save_row(&mut self, id: OperatorId, key: &GroupStateKey, bytes: EncodedBytes) -> Result<()> {
-		self.state_set(id, key, bytes)
-	}
-
 	fn scoped_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedBytes>> {
 		let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
 		self.get(&encoded_key)
@@ -279,7 +252,8 @@ impl FlowTransaction {
 				let (operator, inner_key) = operator_state_coordinates(encoded_key)
 					.expect("state_get_many keys must carry an operator id");
 				match inner.substrate.operators.get(operator, &inner_key) {
-					Some(bytes) => {
+					Some(row) => {
+						let bytes = row.into_bytes();
 						inner.memoize_prefetch(encoded_key, Some(bytes.clone()));
 						items.push(MultiVersionRow {
 							key: encoded_key.clone(),
@@ -316,10 +290,7 @@ pub mod tests {
 
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{
-		encoded::{
-			bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
-			shape::RowShape,
-		},
+		encoded::bytes::EncodedBytes,
 		key::encoded::{EncodedKey, EncodedKeyRange},
 	};
 	use reifydb_core::{
@@ -336,10 +307,7 @@ pub mod tests {
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
-	use reifydb_value::{
-		util::cowvec::CowVec,
-		value::{datetime::DateTime, identity::IdentityId, row_number::RowNumber, value_type::ValueType},
-	};
+	use reifydb_value::value::{datetime::DateTime, identity::IdentityId, row_number::RowNumber};
 
 	use super::*;
 	use crate::{
@@ -347,9 +315,9 @@ pub mod tests {
 		transaction::{DeferredParams, read::PREFETCH_MEMO_BYTE_CAP, substrate::FlowSubstrate},
 	};
 
-	fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey, bytes: EncodedBytes) {
+	fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey, row: EncodedOperatorRow) {
 		// Stands in for a prior slice's success-side arena apply.
-		engine.inner().operator_state().set(operator, EncodedKey::new(key.as_slice()), bytes);
+		engine.inner().operator_state().set(operator, EncodedKey::new(key.as_slice()), row);
 	}
 
 	fn deferred_shared(engine: &TestEngine) -> FlowTransaction {
@@ -380,16 +348,12 @@ pub mod tests {
 		OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, s.as_bytes())
 	}
 
-	fn make_value(s: &str) -> EncodedBytes {
-		EncodedBytes(CowVec::new(s.as_bytes().to_vec()))
+	fn make_value(s: &str) -> EncodedOperatorRow {
+		EncodedOperatorRow::timeless(s.as_bytes())
 	}
 
-	fn anchored_row(payload: &[u8], created_at: u64, updated_at: u64) -> EncodedBytes {
-		let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
-		buf[8..16].copy_from_slice(&created_at.to_le_bytes());
-		buf[16..24].copy_from_slice(&updated_at.to_le_bytes());
-		buf[SHAPE_HEADER_SIZE..].copy_from_slice(payload);
-		EncodedBytes(CowVec::new(buf))
+	fn stamped_row(payload: &[u8], time: u64) -> EncodedOperatorRow {
+		EncodedOperatorRow::new(payload, DateTime::from_nanos(time))
 	}
 
 	#[test]
@@ -443,8 +407,8 @@ pub mod tests {
 			.map(|item| (OperatorStateKey::decode(&item.key).unwrap().key, item.bytes.clone()))
 			.collect();
 		decoded.sort_by(|a, b| a.0.cmp(&b.0));
-		assert_eq!(decoded[0], (make_key("a").as_slice().to_vec(), make_value("data")));
-		assert_eq!(decoded[1], (make_key("b").as_slice().to_vec(), make_value("2")));
+		assert_eq!(decoded[0], (make_key("a").as_slice().to_vec(), make_value("data").into_bytes()));
+		assert_eq!(decoded[1], (make_key("b").as_slice().to_vec(), make_value("2").into_bytes()));
 	}
 
 	#[test]
@@ -667,69 +631,6 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_load_or_create_existing() {
-		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&parent,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
-
-		let operator_id = OperatorId(1);
-		let key = make_key("key1");
-		let value = make_value("existing");
-		let shape = RowShape::testing(&[ValueType::Int8, ValueType::Float8]);
-
-		txn.state_set(operator_id, &key, value.clone()).unwrap();
-
-		let result = txn.load_or_create_row(operator_id, &key, &shape).unwrap();
-		assert_eq!(result, value);
-	}
-
-	#[test]
-	fn test_load_or_create_new() {
-		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&parent,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
-
-		let operator_id = OperatorId(1);
-		let key = make_key("key1");
-		let shape = RowShape::testing(&[ValueType::Int8, ValueType::Float8]);
-
-		let result = txn.load_or_create_row(operator_id, &key, &shape).unwrap();
-
-		assert!(!result.is_empty());
-	}
-
-	#[test]
-	fn test_save_row() {
-		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
-			&parent,
-			CommitVersion(1),
-			Catalog::testing(),
-			Interceptors::new(),
-			Clock::Mock(MockClock::from_millis(1000)),
-		);
-
-		let operator_id = OperatorId(1);
-		let key = make_key("key1");
-		let row = make_value("row_data");
-
-		txn.save_row(operator_id, &key, row.clone()).unwrap();
-
-		let result = txn.state_get(operator_id, &key).unwrap();
-		assert_eq!(result, Some(row));
-	}
-
-	#[test]
 	fn test_state_multiple_nodes() {
 		let parent = create_test_transaction();
 		let mut txn = FlowTransaction::deferred(
@@ -788,9 +689,9 @@ pub mod tests {
 		assert!(batch.items.is_empty());
 		assert_eq!(txn.store_reads(), 4);
 
-		// State writes carry their own anchors, so no write ever reads the prior row back.
+		// State writes carry their own time, so no write ever reads the prior row back.
 		let wide_key = make_key("wide");
-		txn.state_set(operator_id, &wide_key, EncodedBytes(CowVec::new(vec![0u8; 32]))).unwrap();
+		txn.state_set(operator_id, &wide_key, EncodedOperatorRow::timeless(&[0u8; 32])).unwrap();
 		assert_eq!(txn.store_reads(), 4, "a state write must never reach the store");
 	}
 
@@ -825,7 +726,7 @@ pub mod tests {
 			)
 			.unwrap();
 		assert_eq!(batch.items.len(), 1);
-		assert_eq!(batch.items[0].bytes, make_value("v"));
+		assert_eq!(batch.items[0].bytes, make_value("v").into_bytes());
 		assert_eq!(txn.store_reads(), 3, "only the never-read key may reach the store");
 		assert_eq!(txn.state_get(operator_id, &make_key("batch_only")).unwrap(), None);
 		assert_eq!(txn.store_reads(), 3);
@@ -860,29 +761,27 @@ pub mod tests {
 	}
 
 	#[test]
-	fn a_state_write_keeps_the_callers_anchors_without_reading_the_prior_row() {
-		// Operator state rows carry the anchors their writer stamped, so a save is a pure overlay
-		// op. Reading the prior row back to carry created_at forward costs a store read per written
-		// key per flush, and defeats the caches above once one of them serves the load.
+	fn a_state_write_keeps_the_callers_time_without_reading_the_prior_row() {
+		// A row carries the time its writer stamped, so a save must never read the prior row back.
 		let engine = TestEngine::new();
 		let operator_id = OperatorId(1);
 		let key = make_key("acc");
-		seed_state_row(&engine, operator_id, &key, anchored_row(b"v0", 1_000, 1_000));
+		seed_state_row(&engine, operator_id, &key, stamped_row(b"v0", 1_000));
 
 		let mut txn = deferred_shared(&engine);
 
 		assert!(txn.state_get(operator_id, &key).unwrap().is_some());
 		assert_eq!(txn.store_reads(), 1);
-		txn.state_set(operator_id, &key, anchored_row(b"v1", 5_000, 5_000)).unwrap();
+		txn.state_set(operator_id, &key, stamped_row(b"v1", 5_000)).unwrap();
 		assert_eq!(txn.store_reads(), 1, "a save must not read the prior row back");
 
 		let stored = txn.state_get(operator_id, &key).unwrap().unwrap();
 		assert_eq!(
-			stored.created_at(),
+			stored.time(),
 			DateTime::from_nanos(5_000),
-			"the write's own created_at stands: nothing is carried over from the prior row"
+			"the write's own time stands: nothing is carried over from the prior row"
 		);
-		assert_eq!(stored.updated_at(), DateTime::from_nanos(5_000));
+		assert_eq!(stored.body(), b"v1");
 	}
 
 	#[test]
@@ -922,7 +821,7 @@ pub mod tests {
 			1,
 			"operator state applied above object_version {object_version:?} must be visible to a deferred read"
 		);
-		assert_eq!(batch.items[0].bytes, value);
+		assert_eq!(batch.items[0].bytes, value.into_bytes());
 	}
 
 	#[test]
@@ -941,7 +840,7 @@ pub mod tests {
 		let mut base_pending = Pending::new();
 		base_pending.insert(
 			OperatorStateKey::encoded(operator_id, overlaid_key.as_slice()),
-			overlaid_value.clone(),
+			overlaid_value.clone().into_bytes(),
 		);
 		base_pending.remove(OperatorStateKey::encoded(operator_id, committed_key.as_slice()));
 
@@ -975,12 +874,18 @@ pub mod tests {
 
 		let batch = txn.state_get_many(operator_id, &[overlaid_key.clone(), committed_key.clone()]).unwrap();
 		assert_eq!(batch.items.len(), 1);
-		assert_eq!(batch.items[0].bytes, overlaid_value);
+		assert_eq!(batch.items[0].bytes, overlaid_value.clone().into_bytes());
 
 		let scan = txn.state_scan_all(operator_id).unwrap();
 		let scanned: Vec<_> = scan.items.iter().map(|item| item.bytes.clone()).collect();
-		assert!(scanned.contains(&overlaid_value), "range merge must surface base_pending Sets");
-		assert!(!scanned.contains(&committed_value), "range merge must shadow base_pending Removes");
+		assert!(
+			scanned.contains(&overlaid_value.clone().into_bytes()),
+			"range merge must surface base_pending Sets"
+		);
+		assert!(
+			!scanned.contains(&committed_value.into_bytes()),
+			"range merge must shadow base_pending Removes"
+		);
 
 		let shadow_value = make_value("shadow");
 		txn.state_set(operator_id, &overlaid_key, shadow_value.clone()).unwrap();
@@ -994,11 +899,11 @@ pub mod tests {
 		// the lease. Ephemeral stays pinned because subscription hydration reads as-of a version.
 		let engine = TestEngine::new();
 		let row_key = RowKey::encoded(StorageId::table(TableId(7)), RowNumber(1));
-		let row_value = make_value("own_row");
+		let row_value = make_value("own_row").into_bytes();
 
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 		cmd.disable_conflict_tracking().unwrap();
-		cmd.set(&make_key("warmup").into_encoded(), make_value("w")).unwrap();
+		cmd.set(&make_key("warmup").into_encoded(), make_value("w").into_bytes()).unwrap();
 		let low_version = cmd.commit_unchecked().unwrap();
 
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
@@ -1053,7 +958,10 @@ pub mod tests {
 		let seeded_value = make_value("seeded_value");
 
 		let mut state = HashMap::new();
-		state.insert(OperatorStateKey::encoded(operator_id, seeded_key.as_slice()), seeded_value.clone());
+		state.insert(
+			OperatorStateKey::encoded(operator_id, seeded_key.as_slice()),
+			seeded_value.clone().into_bytes(),
+		);
 
 		let mut txn = FlowTransaction::ephemeral(
 			CommitVersion(1),
@@ -1067,14 +975,14 @@ pub mod tests {
 
 		let seeded = txn.state_get_many(operator_id, &[seeded_key]).unwrap();
 		assert_eq!(seeded.items.len(), 1, "seeded ephemeral state must be readable");
-		assert_eq!(seeded.items[0].bytes, seeded_value);
+		assert_eq!(seeded.items[0].bytes, seeded_value.into_bytes());
 
 		let live_key = make_key("live");
 		let live_value = make_value("live_value");
 		txn.state_set(operator_id, &live_key, live_value.clone()).unwrap();
 		let live = txn.state_get_many(operator_id, &[live_key]).unwrap();
 		assert_eq!(live.items.len(), 1);
-		assert_eq!(live.items[0].bytes, live_value);
+		assert_eq!(live.items[0].bytes, live_value.into_bytes());
 	}
 
 	#[test]

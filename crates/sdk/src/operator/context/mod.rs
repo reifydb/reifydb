@@ -12,7 +12,7 @@ use reifydb_codec::{
 		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
 	key::encoded::EncodedKey,
-	state::{OperatorState, StateBytes},
+	operator::{EncodedOperatorRow, OperatorState},
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -57,21 +57,21 @@ pub trait StateApi {
 		start: Bound<&GroupStateKey>,
 		end: Bound<&GroupStateKey>,
 	) -> Result<Vec<(GroupStateKey, T)>>;
-	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<StateBytes>>;
+	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>>;
 
-	fn set_bytes(&mut self, key: &GroupStateKey, payload: StateBytes) -> Result<()>;
+	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()>;
 
 	fn get_many_bytes_visit(
 		&self,
 		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 	) -> Result<()>;
 
 	fn range_bytes_visit(
 		&self,
 		start: Bound<&GroupStateKey>,
 		end: Bound<&GroupStateKey>,
-		visit: &mut dyn FnMut(GroupStateKey, StateBytes) -> Result<()>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 	) -> Result<()>;
 }
 
