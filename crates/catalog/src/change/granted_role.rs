@@ -15,9 +15,9 @@ use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::granted_
 pub(super) struct GrantedRoleApplier;
 
 impl CatalogChangeApplier for GrantedRoleApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let gr = decode_granted_role(row);
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let gr = decode_granted_role(bytes);
 		catalog.cache.set_granted_role(gr.identity, gr.role_id, txn.version(), Some(gr));
 		Ok(())
 	}
@@ -32,9 +32,9 @@ impl CatalogChangeApplier for GrantedRoleApplier {
 	}
 }
 
-fn decode_granted_role(row: &EncodedBytes) -> GrantedRole {
-	let identity = granted_role::SHAPE.get::<IdentityId>(row, granted_role::IDENTITY);
-	let role_id = granted_role::SHAPE.get::<u64>(row, granted_role::ROLE_ID);
+fn decode_granted_role(bytes: &EncodedBytes) -> GrantedRole {
+	let identity = granted_role::SHAPE.get::<IdentityId>(bytes, granted_role::IDENTITY);
+	let role_id = granted_role::SHAPE.get::<u64>(bytes, granted_role::ROLE_ID);
 
 	GrantedRole {
 		identity,

@@ -420,9 +420,9 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn set(&mut self, key: &EncodedKey, row: EncodedBytes) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, bytes: EncodedBytes) -> Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().set(key, row)
+		self.cmd.as_mut().unwrap().set(key, bytes)
 	}
 
 	#[inline]
@@ -495,8 +495,8 @@ impl WithEventBus for CommandTransaction {
 
 impl Write for CommandTransaction {
 	#[inline]
-	fn set(&mut self, key: &EncodedKey, row: EncodedBytes) -> Result<()> {
-		CommandTransaction::set(self, key, row)
+	fn set(&mut self, key: &EncodedKey, bytes: EncodedBytes) -> Result<()> {
+		CommandTransaction::set(self, key, bytes)
 	}
 	#[inline]
 	fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {

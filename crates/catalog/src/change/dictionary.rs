@@ -20,9 +20,9 @@ use crate::{
 pub(super) struct DictionaryApplier;
 
 impl CatalogChangeApplier for DictionaryApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let dict = decode_dictionary(row);
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let dict = decode_dictionary(bytes);
 		catalog.cache.set_dictionary(dict.id, txn.version(), Some(dict));
 		Ok(())
 	}
@@ -39,12 +39,12 @@ impl CatalogChangeApplier for DictionaryApplier {
 	}
 }
 
-fn decode_dictionary(row: &EncodedBytes) -> Dictionary {
-	let id = DictionaryId(SHAPE.get::<u64>(row, ID));
-	let namespace = NamespaceId(SHAPE.get::<u64>(row, NAMESPACE));
-	let name = SHAPE.get_utf8(row, NAME).to_string();
-	let value_type = value_type_from_tag_byte(SHAPE.get::<u8>(row, VALUE_TYPE));
-	let id_type = value_type_from_tag_byte(SHAPE.get::<u8>(row, ID_TYPE));
+fn decode_dictionary(bytes: &EncodedBytes) -> Dictionary {
+	let id = DictionaryId(SHAPE.get::<u64>(bytes, ID));
+	let namespace = NamespaceId(SHAPE.get::<u64>(bytes, NAMESPACE));
+	let name = SHAPE.get_utf8(bytes, NAME).to_string();
+	let value_type = value_type_from_tag_byte(SHAPE.get::<u8>(bytes, VALUE_TYPE));
+	let id_type = value_type_from_tag_byte(SHAPE.get::<u8>(bytes, ID_TYPE));
 
 	Dictionary {
 		id,

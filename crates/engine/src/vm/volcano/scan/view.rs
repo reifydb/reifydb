@@ -106,12 +106,12 @@ impl ViewScanNode {
 		})
 	}
 
-	fn get_or_load_shape<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedBytes) -> Result<RowShape> {
+	fn get_or_load_shape<'a>(&mut self, rx: &mut Transaction<'a>, first: &EncodedBytes) -> Result<RowShape> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
 
-		let fingerprint = first_row.fingerprint();
+		let fingerprint = first.fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("ViewScanNode context not set");
 		let shape = stored_ctx.services.catalog.get_or_load_row_shape(fingerprint, rx)?.ok_or_else(|| {
@@ -142,7 +142,7 @@ impl ViewScanNode {
 		stream: &mut dyn Iterator<Item = Result<MultiVersionRow>>,
 		batch_size: u64,
 	) -> Result<DrainedBatch> {
-		let mut batch_rows = Vec::new();
+		let mut batch = Vec::new();
 		let mut row_numbers = Vec::new();
 		let mut new_last_key = None;
 		let mut drained = false;
@@ -171,7 +171,7 @@ impl ViewScanNode {
 					} else {
 						continue;
 					};
-					batch_rows.push(multi.bytes);
+					batch.push(multi.bytes);
 					row_numbers.push(row);
 					new_last_key = Some(multi.key);
 				}
@@ -183,7 +183,7 @@ impl ViewScanNode {
 			}
 		}
 
-		Ok((batch_rows, row_numbers, new_last_key, drained))
+		Ok((batch, row_numbers, new_last_key, drained))
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::view::column_alloc")]
@@ -204,11 +204,11 @@ impl ViewScanNode {
 		&mut self,
 		rx: &mut Transaction<'a>,
 		columns: &mut Columns,
-		rows: Vec<EncodedBytes>,
+		bytes_vec: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
-		let shape = self.get_or_load_shape(rx, &rows[0])?;
-		columns.append_rows(&shape, rows.into_iter(), row_numbers)?;
+		let shape = self.get_or_load_shape(rx, &bytes_vec[0])?;
+		columns.append_rows(&shape, bytes_vec.into_iter(), row_numbers)?;
 		Ok(())
 	}
 }
@@ -245,7 +245,7 @@ impl QueryNode for ViewScanNode {
 			RowKeyRange::scan_range(underlying, self.last_key.as_ref())
 		};
 
-		let (batch_rows, row_numbers, new_last_key, drained) = {
+		let (batch, row_numbers, new_last_key, drained) = {
 			let mut stream = Self::open_range(rx, range, batch_size)?;
 			self.drain_batch(&mut stream, batch_size)?
 		};
@@ -254,7 +254,7 @@ impl QueryNode for ViewScanNode {
 			self.exhausted = true;
 		}
 
-		if batch_rows.is_empty() {
+		if batch.is_empty() {
 			self.exhausted = true;
 			if self.last_key.is_none() {
 				return Ok(Some(Columns::from_catalog_columns(self.view.columns())));
@@ -265,7 +265,7 @@ impl QueryNode for ViewScanNode {
 		self.last_key = new_last_key;
 
 		let mut columns = Columns::with_system(self.storage_columns(), SystemColumns::default());
-		self.append_batch(rx, &mut columns, batch_rows, row_numbers)?;
+		self.append_batch(rx, &mut columns, batch, row_numbers)?;
 
 		decode_dictionary_columns(&mut columns, &self.dictionaries, rx)?;
 

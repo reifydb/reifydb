@@ -634,7 +634,7 @@ fn model_range_contains(range: &EncodedKeyRange, key: &EncodedKey) -> bool {
 	after_start && before_end
 }
 
-fn model_floor_expired(floor: &[(Keyspace, u64)], key: &EncodedKey, row: &EncodedBytes) -> bool {
+fn model_floor_expired(floor: &[(Keyspace, u64)], key: &EncodedKey, bytes: &EncodedBytes) -> bool {
 	// The model applies the documented floor semantics directly on the visible map, using the same
 	// core decode helpers as the trusted classification oracle: only real-group data keyspaces with
 	// a cutoff in the spec expire, strictly below the cutoff.
@@ -650,7 +650,7 @@ fn model_floor_expired(floor: &[(Keyspace, u64)], key: &EncodedKey, row: &Encode
 	let Some((_, cutoff)) = floor.iter().find(|(candidate, _)| *candidate == keyspace) else {
 		return false;
 	};
-	row.updated_at() < DateTime::from_nanos(*cutoff)
+	bytes.updated_at() < DateTime::from_nanos(*cutoff)
 }
 
 #[test]

@@ -56,8 +56,8 @@ pub(super) fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Resu
 	Ok(value.encode_state(now)?.into_bytes())
 }
 
-pub(super) fn decode_payload<T: OperatorState>(row: &EncodedBytes) -> Result<T> {
-	Ok(decode_state(&StateBytes::from_bytes(row.clone())?)?)
+pub(super) fn decode_payload<T: OperatorState>(bytes: &EncodedBytes) -> Result<T> {
+	Ok(decode_state(&StateBytes::from_bytes(bytes.clone())?)?)
 }
 
 struct NodeState {

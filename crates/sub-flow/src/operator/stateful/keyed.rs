@@ -43,9 +43,9 @@ pub trait KeyedStateful: RawStatefulOperator {
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
-	fn save_state(&self, txn: &mut FlowTransaction, key_values: &[Value], row: EncodedBytes) -> Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, key_values: &[Value], bytes: EncodedBytes) -> Result<()> {
 		let key = self.encode_state_key(key_values);
-		utils::save_row(self.id(), txn, &key, row)
+		utils::save_row(self.id(), txn, &key, bytes)
 	}
 
 	fn update_state<F>(&self, txn: &mut FlowTransaction, key_values: &[Value], f: F) -> Result<EncodedBytes>

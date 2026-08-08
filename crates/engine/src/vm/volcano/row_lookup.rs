@@ -62,12 +62,12 @@ impl RowPointLookupNode {
 		})
 	}
 
-	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedBytes) -> Result<RowShape> {
+	fn get_or_load_shape(&mut self, rx: &mut Transaction, first: &EncodedBytes) -> Result<RowShape> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
 
-		let fingerprint = first_row.fingerprint();
+		let fingerprint = first.fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("RowPointLookupNode context not set");
 		let shape =
@@ -85,10 +85,10 @@ impl RowPointLookupNode {
 		&mut self,
 		rx: &mut Transaction<'a>,
 		columns: &mut Columns,
-		row: EncodedBytes,
+		bytes: EncodedBytes,
 	) -> Result<()> {
-		let shape = self.get_or_load_shape(rx, &row)?;
-		columns.append_rows(&shape, iter::once(row), vec![RowNumber(self.row_number)])?;
+		let shape = self.get_or_load_shape(rx, &bytes)?;
+		columns.append_rows(&shape, iter::once(bytes), vec![RowNumber(self.row_number)])?;
 		Ok(())
 	}
 }
@@ -147,12 +147,12 @@ impl RowListLookupNode {
 		})
 	}
 
-	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedBytes) -> Result<RowShape> {
+	fn get_or_load_shape(&mut self, rx: &mut Transaction, first: &EncodedBytes) -> Result<RowShape> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
 
-		let fingerprint = first_row.fingerprint();
+		let fingerprint = first.fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("RowListLookupNode context not set");
 		let shape =
@@ -173,19 +173,19 @@ impl RowListLookupNode {
 		start: usize,
 		end: usize,
 	) -> Result<(Vec<EncodedBytes>, Vec<RowNumber>)> {
-		let mut batch_rows = Vec::new();
+		let mut batch = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
 		for &row_num in &self.row_numbers[start..end] {
 			let encoded_key = RowKey::encoded(object_id, RowNumber(row_num));
 
 			if let Some(multi_values) = rx.get(&encoded_key)? {
-				batch_rows.push(multi_values.bytes);
+				batch.push(multi_values.bytes);
 				found_row_numbers.push(RowNumber(row_num));
 			}
 		}
 
-		Ok((batch_rows, found_row_numbers))
+		Ok((batch, found_row_numbers))
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::lookup::list::append_rows")]
@@ -193,11 +193,11 @@ impl RowListLookupNode {
 		&mut self,
 		rx: &mut Transaction<'a>,
 		columns: &mut Columns,
-		rows: Vec<EncodedBytes>,
+		bytes_vec: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
-		let shape = self.get_or_load_shape(rx, &rows[0])?;
-		columns.append_rows(&shape, rows.into_iter(), row_numbers)?;
+		let shape = self.get_or_load_shape(rx, &bytes_vec[0])?;
+		columns.append_rows(&shape, bytes_vec.into_iter(), row_numbers)?;
 		Ok(())
 	}
 }
@@ -221,11 +221,11 @@ impl QueryNode for RowListLookupNode {
 		let object_id = get_object_id(&self.source)?;
 		let end_index = (self.current_index + batch_size).min(self.row_numbers.len());
 
-		let (batch_rows, found_row_numbers) = self.fetch_batch(rx, object_id, self.current_index, end_index)?;
+		let (batch, found_row_numbers) = self.fetch_batch(rx, object_id, self.current_index, end_index)?;
 
 		self.current_index = end_index;
 
-		if batch_rows.is_empty() {
+		if batch.is_empty() {
 			if self.current_index < self.row_numbers.len() {
 				return self.next(rx, ctx);
 			}
@@ -233,7 +233,7 @@ impl QueryNode for RowListLookupNode {
 		}
 
 		let mut columns = columns_from_object(&self.source);
-		self.append_batch(rx, &mut columns, batch_rows, found_row_numbers)?;
+		self.append_batch(rx, &mut columns, batch, found_row_numbers)?;
 
 		Ok(Some(columns))
 	}
@@ -271,12 +271,12 @@ impl RowRangeScanNode {
 		})
 	}
 
-	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedBytes) -> Result<RowShape> {
+	fn get_or_load_shape(&mut self, rx: &mut Transaction, first: &EncodedBytes) -> Result<RowShape> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
 
-		let fingerprint = first_row.fingerprint();
+		let fingerprint = first.fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("RowRangeScanNode context not set");
 		let shape =
@@ -297,19 +297,19 @@ impl RowRangeScanNode {
 		start: u64,
 		end: u64,
 	) -> Result<(Vec<EncodedBytes>, Vec<RowNumber>)> {
-		let mut batch_rows = Vec::new();
+		let mut batch = Vec::new();
 		let mut found_row_numbers = Vec::new();
 
 		for row_num in start..=end {
 			let encoded_key = RowKey::encoded(object_id, RowNumber(row_num));
 
 			if let Some(multi_values) = rx.get(&encoded_key)? {
-				batch_rows.push(multi_values.bytes);
+				batch.push(multi_values.bytes);
 				found_row_numbers.push(RowNumber(row_num));
 			}
 		}
 
-		Ok((batch_rows, found_row_numbers))
+		Ok((batch, found_row_numbers))
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::range::append_rows")]
@@ -317,11 +317,11 @@ impl RowRangeScanNode {
 		&mut self,
 		rx: &mut Transaction<'a>,
 		columns: &mut Columns,
-		rows: Vec<EncodedBytes>,
+		bytes_vec: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
-		let shape = self.get_or_load_shape(rx, &rows[0])?;
-		columns.append_rows(&shape, rows.into_iter(), row_numbers)?;
+		let shape = self.get_or_load_shape(rx, &bytes_vec[0])?;
+		columns.append_rows(&shape, bytes_vec.into_iter(), row_numbers)?;
 		Ok(())
 	}
 }
@@ -345,14 +345,14 @@ impl QueryNode for RowRangeScanNode {
 		let object_id = get_object_id(&self.source)?;
 		let batch_end = (self.current_row + batch_size as u64 - 1).min(self.end);
 
-		let (batch_rows, found_row_numbers) = self.fetch_batch(rx, object_id, self.current_row, batch_end)?;
+		let (batch, found_row_numbers) = self.fetch_batch(rx, object_id, self.current_row, batch_end)?;
 
 		self.current_row = batch_end + 1;
 		if self.current_row > self.end {
 			self.exhausted = true;
 		}
 
-		if batch_rows.is_empty() {
+		if batch.is_empty() {
 			if !self.exhausted {
 				return self.next(rx, ctx);
 			}
@@ -360,7 +360,7 @@ impl QueryNode for RowRangeScanNode {
 		}
 
 		let mut columns = columns_from_object(&self.source);
-		self.append_batch(rx, &mut columns, batch_rows, found_row_numbers)?;
+		self.append_batch(rx, &mut columns, batch, found_row_numbers)?;
 
 		Ok(Some(columns))
 	}

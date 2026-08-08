@@ -226,18 +226,18 @@ pub(crate) fn is_first_right_row(txn: &mut FlowTransaction, right_store: &Store,
 	Ok(!right_store.contains_key(txn, key_hash)?)
 }
 
-#[instrument(name = "flow::operator::join::decode_run", level = "trace", skip_all, fields(rows = rows.len()))]
+#[instrument(name = "flow::operator::join::decode_run", level = "trace", skip_all, fields(rows = bytes_slice.len()))]
 fn decode_run(
 	txn: &mut FlowTransaction,
 	store: &Store,
 	fingerprint: RowShapeFingerprint,
 	ids: &[RowNumber],
-	rows: &[EncodedBytes],
+	bytes_slice: &[EncodedBytes],
 ) -> Result<Columns> {
 	let shape = store
 		.get_row_shape(txn, fingerprint)?
 		.ok_or_else(|| Error(Box::new(internal!("Row shape not found in store"))))?;
-	Ok(Columns::from_encoded_bytes(&shape, ids, rows))
+	Ok(Columns::from_encoded_bytes(&shape, ids, bytes_slice))
 }
 
 #[instrument(name = "flow::operator::join::merge_runs", level = "trace", skip_all, fields(runs = runs.len()))]
@@ -294,21 +294,21 @@ pub(crate) fn columns_from_block(
 	let mut runs: Vec<Columns> = Vec::new();
 	let mut run_fingerprint: Option<RowShapeFingerprint> = None;
 	let mut run_ids: Vec<RowNumber> = Vec::new();
-	let mut run_rows: Vec<EncodedBytes> = Vec::new();
+	let mut run: Vec<EncodedBytes> = Vec::new();
 
 	for (id, row) in block {
 		let fingerprint = row.fingerprint();
 		if run_fingerprint.is_some_and(|current| current != fingerprint) {
-			runs.push(decode_run(txn, store, run_fingerprint.unwrap(), &run_ids, &run_rows)?);
+			runs.push(decode_run(txn, store, run_fingerprint.unwrap(), &run_ids, &run)?);
 			run_ids.clear();
-			run_rows.clear();
+			run.clear();
 		}
 		run_fingerprint = Some(fingerprint);
 		run_ids.push(id);
-		run_rows.push(row);
+		run.push(row);
 	}
 	if let Some(fingerprint) = run_fingerprint {
-		runs.push(decode_run(txn, store, fingerprint, &run_ids, &run_rows)?);
+		runs.push(decode_run(txn, store, fingerprint, &run_ids, &run)?);
 	}
 
 	if runs.len() == 1 {

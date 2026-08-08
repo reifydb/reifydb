@@ -286,7 +286,7 @@ fn build_series_updates_to_apply(
 }
 
 #[inline]
-fn series_partition_of_bytes(series: &Series, shape: &RowShape, row: &EncodedBytes) -> Partition {
+fn series_partition_of_bytes(series: &Series, shape: &RowShape, bytes: &EncodedBytes) -> Partition {
 	let key_column = series.key.column();
 	let indices: Vec<usize> = series
 		.partition_by
@@ -302,7 +302,7 @@ fn series_partition_of_bytes(series: &Series, shape: &RowShape, row: &EncodedByt
 			}
 		})
 		.collect();
-	Partition::of(&partition_values(shape, row, &indices))
+	Partition::of(&partition_values(shape, bytes, &indices))
 }
 
 #[inline]

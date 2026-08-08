@@ -26,9 +26,9 @@ use crate::{
 pub(super) struct QueueApplier;
 
 impl CatalogChangeApplier for QueueApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let mut decoded = decode_queue(row);
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let mut decoded = decode_queue(bytes);
 		decoded.columns = CatalogStore::list_columns(txn, decoded.id)?;
 		catalog.cache.set_queue(decoded.id, txn.version(), Some(decoded));
 		Ok(())
@@ -44,27 +44,27 @@ impl CatalogChangeApplier for QueueApplier {
 	}
 }
 
-fn decode_queue(row: &EncodedBytes) -> Queue {
-	let id = QueueId(queue::SHAPE.get::<u64>(row, queue::ID));
-	let namespace = NamespaceId(queue::SHAPE.get::<u64>(row, queue::NAMESPACE));
-	let name = queue::SHAPE.get_utf8(row, queue::NAME).to_string();
+fn decode_queue(bytes: &EncodedBytes) -> Queue {
+	let id = QueueId(queue::SHAPE.get::<u64>(bytes, queue::ID));
+	let namespace = NamespaceId(queue::SHAPE.get::<u64>(bytes, queue::NAMESPACE));
+	let name = queue::SHAPE.get_utf8(bytes, queue::NAME).to_string();
 
 	Queue {
 		id,
 		namespace,
 		name,
 		columns: vec![],
-		dispatch: decode_dispatch(row),
+		dispatch: decode_dispatch(bytes),
 		retention: QueueRetention {
-			done: queue::SHAPE.try_get::<Duration>(row, queue::RETENTION_DONE),
+			done: queue::SHAPE.try_get::<Duration>(bytes, queue::RETENTION_DONE),
 		},
 		retry: QueueRetry {
-			attempts: queue::SHAPE.get::<u32>(row, queue::RETRY_ATTEMPTS),
-			backoff: queue::SHAPE.get::<Duration>(row, queue::RETRY_BACKOFF),
+			attempts: queue::SHAPE.get::<u32>(bytes, queue::RETRY_ATTEMPTS),
+			backoff: queue::SHAPE.get::<Duration>(bytes, queue::RETRY_BACKOFF),
 		},
-		underlying: queue::SHAPE.get::<u8>(row, queue::UNDERLYING) != 0,
-		deduplicate: decode_deduplicate(row),
-		time: decode_queue_time(row),
+		underlying: queue::SHAPE.get::<u8>(bytes, queue::UNDERLYING) != 0,
+		deduplicate: decode_deduplicate(bytes),
+		time: decode_queue_time(bytes),
 	}
 }
 

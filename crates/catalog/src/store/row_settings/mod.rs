@@ -32,19 +32,19 @@ pub(crate) fn encode_row_settings(settings: &RowSettings) -> EncodedBytes {
 	row.freeze()
 }
 
-pub(crate) fn decode_row_settings(row: &EncodedBytes) -> Option<RowSettings> {
-	let duration = row_settings::SHAPE.get::<Duration>(row, row_settings::DURATION);
+pub(crate) fn decode_row_settings(bytes: &EncodedBytes) -> Option<RowSettings> {
+	let duration = row_settings::SHAPE.get::<Duration>(bytes, row_settings::DURATION);
 
 	let ttl = if duration.is_zero() {
 		None
 	} else {
 		Some(Ttl {
 			duration,
-			announce: row_settings::SHAPE.get::<bool>(row, row_settings::ANNOUNCE),
+			announce: row_settings::SHAPE.get::<bool>(bytes, row_settings::ANNOUNCE),
 		})
 	};
 
-	let persistent = row_settings::SHAPE.get::<u8>(row, row_settings::PERSISTENT) != 0;
+	let persistent = row_settings::SHAPE.get::<u8>(bytes, row_settings::PERSISTENT) != 0;
 
 	Some(RowSettings {
 		ttl,

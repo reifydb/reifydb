@@ -61,7 +61,7 @@ impl FloorSpec {
 	}
 }
 
-pub(crate) fn floor_expired(floor: &FloorSpec, key: &EncodedKey, row: &EncodedBytes) -> bool {
+pub(crate) fn floor_expired(floor: &FloorSpec, key: &EncodedKey, bytes: &EncodedBytes) -> bool {
 	if floor.is_empty() {
 		return false;
 	}
@@ -77,10 +77,10 @@ pub(crate) fn floor_expired(floor: &FloorSpec, key: &EncodedKey, row: &EncodedBy
 	let Some(cutoff) = floor.cutoff(keyspace) else {
 		return false;
 	};
-	if row.as_slice().len() < SHAPE_HEADER_SIZE {
+	if bytes.as_slice().len() < SHAPE_HEADER_SIZE {
 		return false;
 	}
-	let written = row.updated_at();
+	let written = bytes.updated_at();
 	if written.is_epoch() {
 		return false;
 	}

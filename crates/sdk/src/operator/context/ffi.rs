@@ -137,8 +137,8 @@ impl FFIOperatorContext {
 		Dictionary::new(self)
 	}
 
-	pub fn shape_for_bytes(&mut self, row: &EncodedBytes) -> Result<RowShape> {
-		let fingerprint = row.fingerprint();
+	pub fn shape_for_bytes(&mut self, bytes: &EncodedBytes) -> Result<RowShape> {
+		let fingerprint = bytes.fingerprint();
 		match self.row_shape().find_row_shape(fingerprint)? {
 			Some(shape) => Ok(shape),
 			None => Err(SdkError::Other(format!(
@@ -351,8 +351,8 @@ impl OperatorContext for FFIOperatorContext {
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
 		FFIOperatorContext::remove_row_numbers_below(self, group, upper)
 	}
-	fn shape_for_bytes(&mut self, row: &EncodedBytes) -> Result<RowShape> {
-		FFIOperatorContext::shape_for_bytes(self, row)
+	fn shape_for_bytes(&mut self, bytes: &EncodedBytes) -> Result<RowShape> {
+		FFIOperatorContext::shape_for_bytes(self, bytes)
 	}
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<FFIRowEmit<'_>> {
 		let mut builder = self.builder();

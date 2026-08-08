@@ -11,12 +11,12 @@ use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::binding:
 pub(super) struct BindingApplier;
 
 impl CatalogChangeApplier for BindingApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
 		let id = BindingKey::decode(key).map(|k| k.binding).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Binding,
 		})?;
-		let binding = decode_binding(row);
+		let binding = decode_binding(bytes);
 		catalog.cache.set_binding(id, txn.version(), Some(binding));
 		Ok(())
 	}

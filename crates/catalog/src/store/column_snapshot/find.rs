@@ -92,17 +92,17 @@ pub(crate) fn collect_table_snapshot_ids(rx: &mut Transaction<'_>, table_id: Tab
 	Ok(ids)
 }
 
-pub(crate) fn decode_column_snapshot(row: &EncodedBytes) -> ColumnSnapshot {
-	let id = ColumnSnapshotId(column_snapshot::SHAPE.get::<u64>(row, column_snapshot::ID));
-	let namespace = NamespaceId(column_snapshot::SHAPE.get::<u64>(row, column_snapshot::NAMESPACE));
-	let kind_byte = column_snapshot::SHAPE.get::<u8>(row, column_snapshot::KIND);
+pub(crate) fn decode_column_snapshot(bytes: &EncodedBytes) -> ColumnSnapshot {
+	let id = ColumnSnapshotId(column_snapshot::SHAPE.get::<u64>(bytes, column_snapshot::ID));
+	let namespace = NamespaceId(column_snapshot::SHAPE.get::<u64>(bytes, column_snapshot::NAMESPACE));
+	let kind_byte = column_snapshot::SHAPE.get::<u8>(bytes, column_snapshot::KIND);
 	let kind = ColumnSnapshotKind::try_from(kind_byte).expect("invalid stored ColumnSnapshotKind");
-	let source_id = column_snapshot::SHAPE.get::<u64>(row, column_snapshot::SOURCE_ID);
-	let bucket_start = column_snapshot::SHAPE.get::<u64>(row, column_snapshot::BUCKET_START);
-	let bucket_width = column_snapshot::SHAPE.get::<u64>(row, column_snapshot::BUCKET_WIDTH);
-	let sequence_counter = column_snapshot::SHAPE.get::<u64>(row, column_snapshot::SEQUENCE_COUNTER);
-	let read_version = CommitVersion(column_snapshot::SHAPE.get::<u64>(row, column_snapshot::READ_VERSION));
-	let row_count = column_snapshot::SHAPE.get::<u64>(row, column_snapshot::ROW_COUNT);
+	let source_id = column_snapshot::SHAPE.get::<u64>(bytes, column_snapshot::SOURCE_ID);
+	let bucket_start = column_snapshot::SHAPE.get::<u64>(bytes, column_snapshot::BUCKET_START);
+	let bucket_width = column_snapshot::SHAPE.get::<u64>(bytes, column_snapshot::BUCKET_WIDTH);
+	let sequence_counter = column_snapshot::SHAPE.get::<u64>(bytes, column_snapshot::SEQUENCE_COUNTER);
+	let read_version = CommitVersion(column_snapshot::SHAPE.get::<u64>(bytes, column_snapshot::READ_VERSION));
+	let row_count = column_snapshot::SHAPE.get::<u64>(bytes, column_snapshot::ROW_COUNT);
 
 	let source = match kind {
 		ColumnSnapshotKind::Table => ColumnSnapshotSource::Table {

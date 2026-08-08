@@ -104,12 +104,12 @@ impl RingBufferScan {
 		})
 	}
 
-	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedBytes) -> Result<RowShape> {
+	fn get_or_load_shape(&mut self, rx: &mut Transaction, first: &EncodedBytes) -> Result<RowShape> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
 
-		let fingerprint = first_row.fingerprint();
+		let fingerprint = first.fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("RingBufferScan context not set");
 		let shape = stored_ctx.services.catalog.get_or_load_row_shape(fingerprint, rx)?.ok_or_else(|| {
@@ -132,11 +132,11 @@ impl RingBufferScan {
 		batch_size: usize,
 		partitioned: bool,
 	) -> Result<(Vec<EncodedBytes>, Vec<RowNumber>, Vec<Partition>)> {
-		let mut batch_rows: Vec<EncodedBytes> = Vec::new();
+		let mut batch: Vec<EncodedBytes> = Vec::new();
 		let mut row_numbers: Vec<RowNumber> = Vec::new();
 		let mut partitions_sidecar: Vec<Partition> = Vec::new();
 
-		while batch_rows.len() < batch_size && self.current_partition_index < self.partitions.len() {
+		while batch.len() < batch_size && self.current_partition_index < self.partitions.len() {
 			if !self.current_partition_loaded {
 				self.current_partition_rows =
 					self.load_partition_rows(txn, self.current_partition_index)?;
@@ -150,11 +150,11 @@ impl RingBufferScan {
 				None
 			};
 
-			while batch_rows.len() < batch_size
+			while batch.len() < batch_size
 				&& self.current_partition_cursor < self.current_partition_rows.len()
 			{
 				let (rn, row) = self.current_partition_rows[self.current_partition_cursor].clone();
-				batch_rows.push(row);
+				batch.push(row);
 				row_numbers.push(rn);
 				if let Some(h) = hash {
 					partitions_sidecar.push(h);
@@ -168,7 +168,7 @@ impl RingBufferScan {
 			}
 		}
 
-		Ok((batch_rows, row_numbers, partitions_sidecar))
+		Ok((batch, row_numbers, partitions_sidecar))
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::ringbuffer::column_alloc")]
@@ -201,11 +201,11 @@ impl RingBufferScan {
 		&mut self,
 		txn: &mut Transaction<'_>,
 		columns: &mut Columns,
-		rows: Vec<EncodedBytes>,
+		bytes_vec: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
-		let shape = self.get_or_load_shape(txn, &rows[0])?;
-		columns.append_rows(&shape, rows.into_iter(), row_numbers.clone())?;
+		let shape = self.get_or_load_shape(txn, &bytes_vec[0])?;
+		columns.append_rows(&shape, bytes_vec.into_iter(), row_numbers.clone())?;
 		Ok(())
 	}
 

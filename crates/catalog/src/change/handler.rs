@@ -23,9 +23,9 @@ use crate::{
 pub(super) struct HandlerApplier;
 
 impl CatalogChangeApplier for HandlerApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let handler = decode_handler(row);
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let handler = decode_handler(bytes);
 		catalog.cache.set_handler(handler.id, txn.version(), Some(handler));
 		Ok(())
 	}
@@ -40,13 +40,13 @@ impl CatalogChangeApplier for HandlerApplier {
 	}
 }
 
-fn decode_handler(row: &EncodedBytes) -> Handler {
-	let id = HandlerId(handler::SHAPE.get::<u64>(row, ID));
-	let namespace = NamespaceId(handler::SHAPE.get::<u64>(row, NAMESPACE));
-	let name = handler::SHAPE.get_utf8(row, NAME).to_string();
-	let sumtype_id = SumTypeId(handler::SHAPE.get::<u64>(row, ON_SUMTYPE_ID));
-	let variant_tag = handler::SHAPE.get::<u8>(row, ON_VARIANT_TAG);
-	let body_source = handler::SHAPE.get_utf8(row, BODY_SOURCE).to_string();
+fn decode_handler(bytes: &EncodedBytes) -> Handler {
+	let id = HandlerId(handler::SHAPE.get::<u64>(bytes, ID));
+	let namespace = NamespaceId(handler::SHAPE.get::<u64>(bytes, NAMESPACE));
+	let name = handler::SHAPE.get_utf8(bytes, NAME).to_string();
+	let sumtype_id = SumTypeId(handler::SHAPE.get::<u64>(bytes, ON_SUMTYPE_ID));
+	let variant_tag = handler::SHAPE.get::<u8>(bytes, ON_VARIANT_TAG);
+	let body_source = handler::SHAPE.get_utf8(bytes, BODY_SOURCE).to_string();
 
 	Handler {
 		id,

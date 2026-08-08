@@ -28,9 +28,9 @@ use crate::{
 pub(super) struct SeriesApplier;
 
 impl CatalogChangeApplier for SeriesApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let mut s = decode_series(row, &catalog.cache, txn.version());
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let mut s = decode_series(bytes, &catalog.cache, txn.version());
 		s.columns = CatalogStore::list_columns(txn, s.id)?;
 		catalog.cache.set_series(s.id, txn.version(), Some(s));
 		Ok(())
@@ -46,35 +46,35 @@ impl CatalogChangeApplier for SeriesApplier {
 	}
 }
 
-fn decode_series(row: &EncodedBytes, materialized: &CatalogCache, version: CommitVersion) -> Series {
-	let id = SeriesId(series::SHAPE.get::<u64>(row, ID));
-	let namespace = NamespaceId(series::SHAPE.get::<u64>(row, NAMESPACE));
-	let name = series::SHAPE.get_utf8(row, NAME).to_string();
-	let tag_raw = series::SHAPE.get::<u64>(row, TAG);
+fn decode_series(bytes: &EncodedBytes, materialized: &CatalogCache, version: CommitVersion) -> Series {
+	let id = SeriesId(series::SHAPE.get::<u64>(bytes, ID));
+	let namespace = NamespaceId(series::SHAPE.get::<u64>(bytes, NAMESPACE));
+	let name = series::SHAPE.get_utf8(bytes, NAME).to_string();
+	let tag_raw = series::SHAPE.get::<u64>(bytes, TAG);
 	let tag = if tag_raw > 0 {
 		Some(SumTypeId(tag_raw))
 	} else {
 		None
 	};
 
-	let key_column = series::SHAPE.get_utf8(row, KEY_COLUMN).to_string();
-	let key_kind = series::SHAPE.get::<u8>(row, KEY_KIND);
-	let precision = series::SHAPE.get::<u8>(row, PRECISION);
+	let key_column = series::SHAPE.get_utf8(bytes, KEY_COLUMN).to_string();
+	let key_kind = series::SHAPE.get::<u8>(bytes, KEY_KIND);
+	let precision = series::SHAPE.get::<u8>(bytes, PRECISION);
 	let key = CatalogSeriesKey::decode(key_kind, precision, key_column);
 
-	let pk_raw = series::SHAPE.get::<u64>(row, PRIMARY_KEY);
+	let pk_raw = series::SHAPE.get::<u64>(bytes, PRIMARY_KEY);
 	let primary_key = if pk_raw > 0 {
 		materialized.find_primary_key_at(PrimaryKeyId(pk_raw), version)
 	} else {
 		None
 	};
-	let partition_by_str = series::SHAPE.get_utf8(row, series::PARTITION_BY);
+	let partition_by_str = series::SHAPE.get_utf8(bytes, series::PARTITION_BY);
 	let partition_by = if partition_by_str.is_empty() {
 		vec![]
 	} else {
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
-	let underlying = series::SHAPE.get::<u8>(row, series::UNDERLYING) != 0;
+	let underlying = series::SHAPE.get::<u8>(bytes, series::UNDERLYING) != 0;
 
 	Series {
 		id,
@@ -86,6 +86,6 @@ fn decode_series(row: &EncodedBytes, materialized: &CatalogCache, version: Commi
 		primary_key,
 		partition_by,
 		underlying,
-		time: decode_series_time(row),
+		time: decode_series_time(bytes),
 	}
 }

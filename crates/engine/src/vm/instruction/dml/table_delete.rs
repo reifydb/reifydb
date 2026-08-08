@@ -180,12 +180,12 @@ fn run_table_delete_with_input(
 	for (idx, row_number) in row_numbers_to_delete.into_iter().enumerate() {
 		let partition = partitions_to_delete.get(idx).copied();
 		let row_key = row_key_from_partition(target.table.id, partition, row_number);
-		let row_values = match txn.get(&row_key)? {
+		let bytes = match txn.get(&row_key)? {
 			Some(v) => v.bytes,
 			None => continue,
 		};
 		if let Some(ref pk_def) = pk_def {
-			remove_table_pk_index_for(exec.services, txn, target.table, pk_def, &row_values)?;
+			remove_table_pk_index_for(exec.services, txn, target.table, pk_def, &bytes)?;
 		}
 		filtered_ids.push(row_number);
 		if let Some(p) = partition {
@@ -288,13 +288,13 @@ fn remove_table_pk_index_for(
 	txn: &mut Transaction<'_>,
 	table: &Table,
 	pk_def: &PrimaryKey,
-	row_values: &EncodedBytes,
+	values: &EncodedBytes,
 ) -> Result<()> {
-	let fingerprint = row_values.fingerprint();
+	let fingerprint = values.fingerprint();
 	let shape = services.catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
 		internal_error!("Row shape with fingerprint {:?} not found for table {}", fingerprint, table.name)
 	})?;
-	let index_key = primary_key::encode_primary_key(pk_def, row_values, table, &shape)?;
+	let index_key = primary_key::encode_primary_key(pk_def, values, table, &shape)?;
 	txn.remove(&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key).encode())?;
 	Ok(())
 }

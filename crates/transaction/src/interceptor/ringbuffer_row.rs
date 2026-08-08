@@ -480,9 +480,9 @@ impl RingBufferRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBuffer,
 		ids: &[RowNumber],
-		rows: &[EncodedBytes],
+		bytes_slice: &[EncodedBytes],
 	) -> Result<()> {
-		let ctx = RingBufferRowPostInsertContext::new(ringbuffer, ids, rows);
+		let ctx = RingBufferRowPostInsertContext::new(ringbuffer, ids, bytes_slice);
 		txn.ringbuffer_row_post_insert_interceptors().execute(ctx)
 	}
 
@@ -516,9 +516,9 @@ impl RingBufferRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		ringbuffer: &RingBuffer,
 		ids: &[RowNumber],
-		deleted_rows: &[EncodedBytes],
+		deleted: &[EncodedBytes],
 	) -> Result<()> {
-		let ctx = RingBufferRowPostDeleteContext::new(ringbuffer, ids, deleted_rows);
+		let ctx = RingBufferRowPostDeleteContext::new(ringbuffer, ids, deleted);
 		txn.ringbuffer_row_post_delete_interceptors().execute(ctx)
 	}
 }

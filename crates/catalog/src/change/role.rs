@@ -14,9 +14,9 @@ use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::role::sh
 pub(super) struct RoleApplier;
 
 impl CatalogChangeApplier for RoleApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let r = decode_role(row);
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let r = decode_role(bytes);
 		catalog.cache.set_role(r.id, txn.version(), Some(r));
 		Ok(())
 	}
@@ -31,9 +31,9 @@ impl CatalogChangeApplier for RoleApplier {
 	}
 }
 
-fn decode_role(row: &EncodedBytes) -> Role {
-	let id = role::SHAPE.get::<u64>(row, role::ID);
-	let name = role::SHAPE.get_utf8(row, role::NAME).to_string();
+fn decode_role(bytes: &EncodedBytes) -> Role {
+	let id = role::SHAPE.get::<u64>(bytes, role::ID);
+	let name = role::SHAPE.get_utf8(bytes, role::NAME).to_string();
 
 	Role {
 		id,

@@ -19,9 +19,9 @@ use crate::{
 pub(super) struct FlowEdgeApplier;
 
 impl CatalogChangeApplier for FlowEdgeApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let edge = decode_flow_edge(row);
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let edge = decode_flow_edge(bytes);
 		catalog.cache.set_flow_edge(edge.id, txn.version(), Some(edge));
 		Ok(())
 	}
@@ -36,11 +36,11 @@ impl CatalogChangeApplier for FlowEdgeApplier {
 	}
 }
 
-fn decode_flow_edge(row: &EncodedBytes) -> FlowEdge {
-	let id = FlowEdgeId(flow_edge::SHAPE.get::<u64>(row, ID));
-	let flow = FlowId(flow_edge::SHAPE.get::<u64>(row, FLOW));
-	let source = OperatorId(flow_edge::SHAPE.get::<u64>(row, SOURCE));
-	let target = OperatorId(flow_edge::SHAPE.get::<u64>(row, TARGET));
+fn decode_flow_edge(bytes: &EncodedBytes) -> FlowEdge {
+	let id = FlowEdgeId(flow_edge::SHAPE.get::<u64>(bytes, ID));
+	let flow = FlowId(flow_edge::SHAPE.get::<u64>(bytes, FLOW));
+	let source = OperatorId(flow_edge::SHAPE.get::<u64>(bytes, SOURCE));
+	let target = OperatorId(flow_edge::SHAPE.get::<u64>(bytes, TARGET));
 
 	FlowEdge {
 		id,

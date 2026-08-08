@@ -15,8 +15,8 @@ use crate::{
 pub(super) struct ProcedureParamApplier;
 
 impl CatalogChangeApplier for ProcedureParamApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
 		reload_parent_procedure(catalog, txn, key)
 	}
 

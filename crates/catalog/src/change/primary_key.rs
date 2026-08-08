@@ -19,9 +19,9 @@ use crate::{
 pub(super) struct PrimaryKeyApplier;
 
 impl CatalogChangeApplier for PrimaryKeyApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let pk = decode_primary_key(row, txn)?;
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let pk = decode_primary_key(bytes, txn)?;
 		catalog.cache.set_primary_key(pk.id, txn.version(), Some(pk));
 		Ok(())
 	}
@@ -38,9 +38,9 @@ impl CatalogChangeApplier for PrimaryKeyApplier {
 	}
 }
 
-fn decode_primary_key(row: &EncodedBytes, txn: &mut Transaction<'_>) -> Result<PrimaryKey> {
-	let pk_id = PrimaryKeyId(primary_key::SHAPE.get::<u64>(row, ID));
-	let column_ids_blob = primary_key::SHAPE.get_blob(row, COLUMN_IDS);
+fn decode_primary_key(bytes: &EncodedBytes, txn: &mut Transaction<'_>) -> Result<PrimaryKey> {
+	let pk_id = PrimaryKeyId(primary_key::SHAPE.get::<u64>(bytes, ID));
+	let column_ids_blob = primary_key::SHAPE.get_blob(bytes, COLUMN_IDS);
 	let column_ids = deserialize_column_ids(&column_ids_blob);
 
 	let mut columns = Vec::new();

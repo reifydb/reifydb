@@ -16,9 +16,9 @@ use crate::{
 pub(super) struct ConfigApplier;
 
 impl CatalogChangeApplier for ConfigApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		apply_config(catalog, key, row, txn.version())?;
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		apply_config(catalog, key, bytes, txn.version())?;
 		Ok(())
 	}
 
@@ -29,11 +29,11 @@ impl CatalogChangeApplier for ConfigApplier {
 
 use reifydb_core::common::CommitVersion;
 
-fn apply_config(catalog: &Catalog, key: &EncodedKey, row: &EncodedBytes, version: CommitVersion) -> Result<()> {
+fn apply_config(catalog: &Catalog, key: &EncodedKey, bytes: &EncodedBytes, version: CommitVersion) -> Result<()> {
 	let Some(config_key) = ConfigStorageKey::decode(key).map(|k| k.key) else {
 		return Ok(());
 	};
-	let value = match SHAPE.get_value(row, VALUE) {
+	let value = match SHAPE.get_value(bytes, VALUE) {
 		Value::Any(inner) => *inner,
 		other => other,
 	};

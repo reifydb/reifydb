@@ -17,11 +17,11 @@ use reifydb_core::interface::catalog::{
 
 use crate::store::flow::shape::flow;
 
-pub(crate) fn decode_flow(row: &EncodedBytes) -> Flow {
+pub(crate) fn decode_flow(bytes: &EncodedBytes) -> Flow {
 	Flow {
-		id: FlowId(flow::SHAPE.get::<u64>(row, flow::ID)),
-		namespace: NamespaceId(flow::SHAPE.get::<u64>(row, flow::NAMESPACE)),
-		name: flow::SHAPE.get_utf8(row, flow::NAME).to_string(),
-		status: FlowStatus::from_u8(flow::SHAPE.get::<u8>(row, flow::STATUS)),
+		id: FlowId(flow::SHAPE.get::<u64>(bytes, flow::ID)),
+		namespace: NamespaceId(flow::SHAPE.get::<u64>(bytes, flow::NAMESPACE)),
+		name: flow::SHAPE.get_utf8(bytes, flow::NAME).to_string(),
+		status: FlowStatus::from_u8(flow::SHAPE.get::<u8>(bytes, flow::STATUS)),
 	}
 }

@@ -55,31 +55,31 @@ impl CatalogStore {
 	}
 }
 
-pub(crate) fn decode_binding(row: &EncodedBytes) -> Binding {
-	let id = BindingId(binding::SHAPE.get::<u64>(row, binding::ID));
-	let namespace = NamespaceId(binding::SHAPE.get::<u64>(row, binding::NAMESPACE));
-	let name = binding::SHAPE.get_utf8(row, binding::NAME).to_string();
-	let procedure_id = ProcedureId::from_raw(binding::SHAPE.get::<u64>(row, binding::PROCEDURE_ID));
-	let protocol_str = binding::SHAPE.get_utf8(row, binding::PROTOCOL);
-	let format_str = binding::SHAPE.get_utf8(row, binding::FORMAT);
+pub(crate) fn decode_binding(bytes: &EncodedBytes) -> Binding {
+	let id = BindingId(binding::SHAPE.get::<u64>(bytes, binding::ID));
+	let namespace = NamespaceId(binding::SHAPE.get::<u64>(bytes, binding::NAMESPACE));
+	let name = binding::SHAPE.get_utf8(bytes, binding::NAME).to_string();
+	let procedure_id = ProcedureId::from_raw(binding::SHAPE.get::<u64>(bytes, binding::PROCEDURE_ID));
+	let protocol_str = binding::SHAPE.get_utf8(bytes, binding::PROTOCOL);
+	let format_str = binding::SHAPE.get_utf8(bytes, binding::FORMAT);
 
 	let protocol = match protocol_str {
 		"http" => {
-			let method_str = binding::SHAPE.get_utf8(row, binding::HTTP_METHOD);
-			let path = binding::SHAPE.get_utf8(row, binding::HTTP_PATH).to_string();
+			let method_str = binding::SHAPE.get_utf8(bytes, binding::HTTP_METHOD);
+			let path = binding::SHAPE.get_utf8(bytes, binding::HTTP_PATH).to_string();
 			BindingProtocol::Http {
 				method: HttpMethod::parse(method_str).unwrap_or(HttpMethod::Get),
 				path,
 			}
 		}
 		"grpc" => {
-			let rpc_name = binding::SHAPE.get_utf8(row, binding::RPC_NAME).to_string();
+			let rpc_name = binding::SHAPE.get_utf8(bytes, binding::RPC_NAME).to_string();
 			BindingProtocol::Grpc {
 				name: rpc_name,
 			}
 		}
 		_ => {
-			let rpc_name = binding::SHAPE.get_utf8(row, binding::RPC_NAME).to_string();
+			let rpc_name = binding::SHAPE.get_utf8(bytes, binding::RPC_NAME).to_string();
 			BindingProtocol::Ws {
 				name: rpc_name,
 			}

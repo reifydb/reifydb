@@ -25,9 +25,9 @@ use crate::{
 pub(super) struct TableApplier;
 
 impl CatalogChangeApplier for TableApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let mut table = decode_table(row, &catalog.cache, txn.version());
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let mut table = decode_table(bytes, &catalog.cache, txn.version());
 		table.columns = CatalogStore::list_columns(txn, table.id)?;
 		catalog.cache.set_table(table.id, txn.version(), Some(table));
 		Ok(())
@@ -47,24 +47,24 @@ use reifydb_core::common::CommitVersion;
 
 use crate::cache::CatalogCache;
 
-fn decode_table(row: &EncodedBytes, materialized: &CatalogCache, version: CommitVersion) -> Table {
-	let id = TableId(table::SHAPE.get::<u64>(row, ID));
-	let namespace = NamespaceId(table::SHAPE.get::<u64>(row, NAMESPACE));
-	let name = table::SHAPE.get_utf8(row, NAME).to_string();
-	let pk_raw = table::SHAPE.get::<u64>(row, PRIMARY_KEY);
+fn decode_table(bytes: &EncodedBytes, materialized: &CatalogCache, version: CommitVersion) -> Table {
+	let id = TableId(table::SHAPE.get::<u64>(bytes, ID));
+	let namespace = NamespaceId(table::SHAPE.get::<u64>(bytes, NAMESPACE));
+	let name = table::SHAPE.get_utf8(bytes, NAME).to_string();
+	let pk_raw = table::SHAPE.get::<u64>(bytes, PRIMARY_KEY);
 	let primary_key = if pk_raw > 0 {
 		materialized.find_primary_key_at(PrimaryKeyId(pk_raw), version)
 	} else {
 		None
 	};
-	let partition_by_str = table::SHAPE.get_utf8(row, table::PARTITION_BY);
+	let partition_by_str = table::SHAPE.get_utf8(bytes, table::PARTITION_BY);
 	let partition_by = if partition_by_str.is_empty() {
 		vec![]
 	} else {
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
-	let underlying = table::SHAPE.get::<u8>(row, table::UNDERLYING) != 0;
-	let time = decode_table_time(row);
+	let underlying = table::SHAPE.get::<u8>(bytes, table::UNDERLYING) != 0;
+	let time = decode_table_time(bytes);
 	Table {
 		id,
 		name,

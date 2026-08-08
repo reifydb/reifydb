@@ -15,9 +15,9 @@ use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::identity
 pub(super) struct IdentityApplier;
 
 impl CatalogChangeApplier for IdentityApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let id_entity = decode_identity(row);
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let id_entity = decode_identity(bytes);
 		catalog.cache.set_identity(id_entity.id, txn.version(), Some(id_entity));
 		Ok(())
 	}
@@ -32,10 +32,10 @@ impl CatalogChangeApplier for IdentityApplier {
 	}
 }
 
-fn decode_identity(row: &EncodedBytes) -> Identity {
-	let id = identity::SHAPE.get::<IdentityId>(row, identity::IDENTITY);
-	let name = identity::SHAPE.get_utf8(row, identity::NAME).to_string();
-	let enabled = identity::SHAPE.get::<bool>(row, identity::ENABLED);
+fn decode_identity(bytes: &EncodedBytes) -> Identity {
+	let id = identity::SHAPE.get::<IdentityId>(bytes, identity::IDENTITY);
+	let name = identity::SHAPE.get_utf8(bytes, identity::NAME).to_string();
+	let enabled = identity::SHAPE.get::<bool>(bytes, identity::ENABLED);
 
 	Identity {
 		id,

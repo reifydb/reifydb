@@ -86,8 +86,8 @@ pub fn load_or_create_row(
 	}
 }
 
-pub fn save_row(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey, row: EncodedBytes) -> Result<()> {
-	state_set(id, txn, key, row)
+pub fn save_row(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey, bytes: EncodedBytes) -> Result<()> {
+	state_set(id, txn, key, bytes)
 }
 
 pub fn empty_state_key() -> GroupStateKey {

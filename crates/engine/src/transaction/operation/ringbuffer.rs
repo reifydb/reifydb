@@ -121,7 +121,7 @@ pub fn apply_ringbuffer_partition_metadata_after_delete(
 }
 
 pub trait RingBufferOperations {
-	fn insert_ringbuffer(&mut self, ringbuffer: RingBuffer, row: EncodedBytes) -> Result<RowNumber>;
+	fn insert_ringbuffer(&mut self, ringbuffer: RingBuffer, bytes: EncodedBytes) -> Result<RowNumber>;
 
 	fn insert_ringbuffer_at(
 		&mut self,
@@ -129,7 +129,7 @@ pub trait RingBufferOperations {
 		shape: &RowShape,
 		partition: Option<Partition>,
 		row_number: RowNumber,
-		row: EncodedBytes,
+		bytes: EncodedBytes,
 	) -> Result<EncodedBytes>;
 
 	fn update_ringbuffer(
@@ -137,7 +137,7 @@ pub trait RingBufferOperations {
 		ringbuffer: RingBuffer,
 		partition: Option<Partition>,
 		id: RowNumber,
-		row: EncodedBytes,
+		bytes: EncodedBytes,
 	) -> Result<EncodedBytes>;
 
 	fn remove_from_ringbuffer(
@@ -161,7 +161,7 @@ impl RingBufferOperations for CommandTransaction {
 		shape: &RowShape,
 		partition: Option<Partition>,
 		row_number: RowNumber,
-		row: EncodedBytes,
+		bytes: EncodedBytes,
 	) -> Result<EncodedBytes> {
 		let key = ringbuffer_key(ringbuffer, partition, row_number);
 
@@ -174,24 +174,24 @@ impl RingBufferOperations for CommandTransaction {
 			RingBufferRowInterceptor::post_delete(self, ringbuffer, &ids, &existing_rows)?;
 		}
 
-		let mut rows_buf = [row.thaw()];
+		let mut rows_buf = [bytes.thaw()];
 		RingBufferRowInterceptor::pre_insert(self, ringbuffer, &mut rows_buf)?;
-		let [row] = rows_buf;
-		let row = row.freeze();
+		let [bytes] = rows_buf;
+		let bytes = bytes.freeze();
 
-		self.set(&key, row.clone())?;
+		self.set(&key, bytes.clone())?;
 
 		let ids = [row_number];
-		let rows = [row.clone()];
+		let rows = [bytes.clone()];
 		RingBufferRowInterceptor::post_insert(self, ringbuffer, &ids, &rows)?;
 
 		if let Some(pre_row) = pre.as_ref() {
-			self.track_flow_change(build_ringbuffer_update_change(ringbuffer, row_number, pre_row, &row));
+			self.track_flow_change(build_ringbuffer_update_change(ringbuffer, row_number, pre_row, &bytes));
 		} else {
-			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, shape, row_number, &row));
+			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, shape, row_number, &bytes));
 		}
 
-		Ok(row)
+		Ok(bytes)
 	}
 
 	fn update_ringbuffer(
@@ -199,25 +199,25 @@ impl RingBufferOperations for CommandTransaction {
 		ringbuffer: RingBuffer,
 		partition: Option<Partition>,
 		id: RowNumber,
-		row: EncodedBytes,
+		bytes: EncodedBytes,
 	) -> Result<EncodedBytes> {
 		let key = ringbuffer_key(&ringbuffer, partition, id);
 
 		let pre = match self.get(&key)? {
 			Some(v) => v.bytes,
-			None => return Ok(row),
+			None => return Ok(bytes),
 		};
 
-		let mut rows_buf = [row.thaw()];
+		let mut rows_buf = [bytes.thaw()];
 		let ids = [id];
 		RingBufferRowInterceptor::pre_update(self, &ringbuffer, &ids, &mut rows_buf)?;
-		let [row] = rows_buf;
-		let row = row.freeze();
+		let [bytes] = rows_buf;
+		let bytes = bytes.freeze();
 
 		if let Some(expected) = partition {
 			let shape = row_shape_from_columns(&ringbuffer.columns);
 			let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
-			if Partition::of(&partition_values(&shape, &row, &indices)) != expected {
+			if Partition::of(&partition_values(&shape, &bytes, &indices)) != expected {
 				return Err(EngineError::ImmutablePartitionColumn {
 					object: ObjectId::ringbuffer(ringbuffer.id),
 				}
@@ -228,15 +228,15 @@ impl RingBufferOperations for CommandTransaction {
 		if self.get_committed(&key)?.is_some() {
 			self.mark_preexisting(&key)?;
 		}
-		self.set(&key, row.clone())?;
+		self.set(&key, bytes.clone())?;
 
-		let posts = [row.clone()];
+		let posts = [bytes.clone()];
 		let pres = [pre.clone()];
 		RingBufferRowInterceptor::post_update(self, &ringbuffer, &ids, &posts, &pres)?;
 
-		self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, &pre, &row));
+		self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, &pre, &bytes));
 
-		Ok(row)
+		Ok(bytes)
 	}
 
 	fn remove_from_ringbuffer(
@@ -285,7 +285,7 @@ impl RingBufferOperations for AdminTransaction {
 		shape: &RowShape,
 		partition: Option<Partition>,
 		row_number: RowNumber,
-		row: EncodedBytes,
+		bytes: EncodedBytes,
 	) -> Result<EncodedBytes> {
 		let key = ringbuffer_key(ringbuffer, partition, row_number);
 
@@ -298,24 +298,24 @@ impl RingBufferOperations for AdminTransaction {
 			RingBufferRowInterceptor::post_delete(self, ringbuffer, &ids, &existing_rows)?;
 		}
 
-		let mut rows_buf = [row.thaw()];
+		let mut rows_buf = [bytes.thaw()];
 		RingBufferRowInterceptor::pre_insert(self, ringbuffer, &mut rows_buf)?;
-		let [row] = rows_buf;
-		let row = row.freeze();
+		let [bytes] = rows_buf;
+		let bytes = bytes.freeze();
 
-		self.set(&key, row.clone())?;
+		self.set(&key, bytes.clone())?;
 
 		let ids = [row_number];
-		let rows = [row.clone()];
+		let rows = [bytes.clone()];
 		RingBufferRowInterceptor::post_insert(self, ringbuffer, &ids, &rows)?;
 
 		if let Some(pre_row) = pre.as_ref() {
-			self.track_flow_change(build_ringbuffer_update_change(ringbuffer, row_number, pre_row, &row));
+			self.track_flow_change(build_ringbuffer_update_change(ringbuffer, row_number, pre_row, &bytes));
 		} else {
-			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, shape, row_number, &row));
+			self.track_flow_change(build_ringbuffer_insert_change(ringbuffer, shape, row_number, &bytes));
 		}
 
-		Ok(row)
+		Ok(bytes)
 	}
 
 	fn update_ringbuffer(
@@ -323,25 +323,25 @@ impl RingBufferOperations for AdminTransaction {
 		ringbuffer: RingBuffer,
 		partition: Option<Partition>,
 		id: RowNumber,
-		row: EncodedBytes,
+		bytes: EncodedBytes,
 	) -> Result<EncodedBytes> {
 		let key = ringbuffer_key(&ringbuffer, partition, id);
 
 		let pre = match self.get(&key)? {
 			Some(v) => v.bytes,
-			None => return Ok(row),
+			None => return Ok(bytes),
 		};
 
-		let mut rows_buf = [row.thaw()];
+		let mut rows_buf = [bytes.thaw()];
 		let ids = [id];
 		RingBufferRowInterceptor::pre_update(self, &ringbuffer, &ids, &mut rows_buf)?;
-		let [row] = rows_buf;
-		let row = row.freeze();
+		let [bytes] = rows_buf;
+		let bytes = bytes.freeze();
 
 		if let Some(expected) = partition {
 			let shape = row_shape_from_columns(&ringbuffer.columns);
 			let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
-			if Partition::of(&partition_values(&shape, &row, &indices)) != expected {
+			if Partition::of(&partition_values(&shape, &bytes, &indices)) != expected {
 				return Err(EngineError::ImmutablePartitionColumn {
 					object: ObjectId::ringbuffer(ringbuffer.id),
 				}
@@ -352,15 +352,15 @@ impl RingBufferOperations for AdminTransaction {
 		if self.get_committed(&key)?.is_some() {
 			self.mark_preexisting(&key)?;
 		}
-		self.set(&key, row.clone())?;
+		self.set(&key, bytes.clone())?;
 
-		let posts = [row.clone()];
+		let posts = [bytes.clone()];
 		let pres = [pre.clone()];
 		RingBufferRowInterceptor::post_update(self, &ringbuffer, &ids, &posts, &pres)?;
 
-		self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, &pre, &row));
+		self.track_flow_change(build_ringbuffer_update_change(&ringbuffer, id, &pre, &bytes));
 
-		Ok(row)
+		Ok(bytes)
 	}
 
 	fn remove_from_ringbuffer(
@@ -409,17 +409,17 @@ impl RingBufferOperations for Transaction<'_> {
 		shape: &RowShape,
 		partition: Option<Partition>,
 		row_number: RowNumber,
-		row: EncodedBytes,
+		bytes: EncodedBytes,
 	) -> Result<EncodedBytes> {
 		match self {
 			Transaction::Command(txn) => {
-				txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row)
+				txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, bytes)
 			}
 			Transaction::Admin(txn) => {
-				txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row)
+				txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, bytes)
 			}
 			Transaction::Test(t) => {
-				t.inner.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row)
+				t.inner.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, bytes)
 			}
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
@@ -431,12 +431,12 @@ impl RingBufferOperations for Transaction<'_> {
 		ringbuffer: RingBuffer,
 		partition: Option<Partition>,
 		id: RowNumber,
-		row: EncodedBytes,
+		bytes: EncodedBytes,
 	) -> Result<EncodedBytes> {
 		match self {
-			Transaction::Command(txn) => txn.update_ringbuffer(ringbuffer, partition, id, row),
-			Transaction::Admin(txn) => txn.update_ringbuffer(ringbuffer, partition, id, row),
-			Transaction::Test(t) => t.inner.update_ringbuffer(ringbuffer, partition, id, row),
+			Transaction::Command(txn) => txn.update_ringbuffer(ringbuffer, partition, id, bytes),
+			Transaction::Admin(txn) => txn.update_ringbuffer(ringbuffer, partition, id, bytes),
+			Transaction::Test(t) => t.inner.update_ringbuffer(ringbuffer, partition, id, bytes),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 			Transaction::Replica(_) => panic!("Write operations not supported on Replica transaction"),
 		}

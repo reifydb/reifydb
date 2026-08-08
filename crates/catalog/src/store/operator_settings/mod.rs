@@ -29,10 +29,10 @@ pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedBy
 	row.freeze()
 }
 
-pub(crate) fn decode_operator_settings(row: &EncodedBytes) -> Option<OperatorSettings> {
-	if operator_settings::SHAPE.get::<bool>(row, operator_settings::IS_JOIN) {
-		let left = decode_side(row, operator_settings::LEFT_DURATION);
-		let right = decode_side(row, operator_settings::RIGHT_DURATION);
+pub(crate) fn decode_operator_settings(bytes: &EncodedBytes) -> Option<OperatorSettings> {
+	if operator_settings::SHAPE.get::<bool>(bytes, operator_settings::IS_JOIN) {
+		let left = decode_side(bytes, operator_settings::LEFT_DURATION);
+		let right = decode_side(bytes, operator_settings::RIGHT_DURATION);
 		Some(OperatorSettings {
 			ttl: None,
 			join: Some(JoinTtl {
@@ -42,7 +42,7 @@ pub(crate) fn decode_operator_settings(row: &EncodedBytes) -> Option<OperatorSet
 		})
 	} else {
 		Some(OperatorSettings {
-			ttl: decode_side(row, operator_settings::DURATION),
+			ttl: decode_side(bytes, operator_settings::DURATION),
 			join: None,
 		})
 	}
@@ -53,8 +53,8 @@ fn encode_side(row: &mut EncodedRowBuilder, ttl: &Option<OperatorTtl>, duration_
 	operator_settings::SHAPE.set::<Duration>(row, duration_idx, duration);
 }
 
-fn decode_side(row: &EncodedBytes, duration_idx: usize) -> Option<OperatorTtl> {
-	let duration = operator_settings::SHAPE.get::<Duration>(row, duration_idx);
+fn decode_side(bytes: &EncodedBytes, duration_idx: usize) -> Option<OperatorTtl> {
+	let duration = operator_settings::SHAPE.get::<Duration>(bytes, duration_idx);
 	if duration.is_zero() {
 		return None;
 	}

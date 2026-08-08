@@ -68,12 +68,12 @@ use reifydb_value::{
 	fragment::Fragment,
 };
 
-pub(crate) fn decode_view(row: &EncodedBytes, columns: Vec<Column>, primary_key: Option<PrimaryKey>) -> Result<View> {
-	let id = ViewId(view::SHAPE.get::<u64>(row, view::ID));
-	let namespace = NamespaceId(view::SHAPE.get::<u64>(row, view::NAMESPACE));
-	let name = view::SHAPE.get_utf8(row, view::NAME).to_string();
+pub(crate) fn decode_view(bytes: &EncodedBytes, columns: Vec<Column>, primary_key: Option<PrimaryKey>) -> Result<View> {
+	let id = ViewId(view::SHAPE.get::<u64>(bytes, view::ID));
+	let namespace = NamespaceId(view::SHAPE.get::<u64>(bytes, view::NAMESPACE));
+	let name = view::SHAPE.get_utf8(bytes, view::NAME).to_string();
 
-	let kind_raw = view::SHAPE.get::<u8>(row, view::KIND);
+	let kind_raw = view::SHAPE.get::<u8>(bytes, view::KIND);
 	let kind = match kind_raw {
 		0 => ViewKind::Deferred,
 		1 => ViewKind::Transactional,
@@ -93,9 +93,9 @@ pub(crate) fn decode_view(row: &EncodedBytes, columns: Vec<Column>, primary_key:
 		}
 	};
 
-	let storage_kind = view::SHAPE.get::<u8>(row, view::STORAGE_KIND);
-	let storage_id = view::SHAPE.get::<u64>(row, view::STORAGE_ID);
-	let sort = view::parse_view_sort(view::SHAPE.get_utf8(row, view::SORT));
+	let storage_kind = view::SHAPE.get::<u8>(bytes, view::STORAGE_KIND);
+	let storage_id = view::SHAPE.get::<u64>(bytes, view::STORAGE_ID);
+	let sort = view::parse_view_sort(view::SHAPE.get_utf8(bytes, view::SORT));
 
 	Ok(match storage_kind {
 		x if x == ViewStorageKind::Table as u8 => View::Table(TableView {
@@ -109,7 +109,7 @@ pub(crate) fn decode_view(row: &EncodedBytes, columns: Vec<Column>, primary_key:
 			sort,
 		}),
 		x if x == ViewStorageKind::RingBuffer as u8 => {
-			let capacity = view::SHAPE.get::<u64>(row, view::CAPACITY);
+			let capacity = view::SHAPE.get::<u64>(bytes, view::CAPACITY);
 			View::RingBuffer(RingBufferView {
 				id,
 				name,
@@ -123,11 +123,11 @@ pub(crate) fn decode_view(row: &EncodedBytes, columns: Vec<Column>, primary_key:
 			})
 		}
 		x if x == ViewStorageKind::Series as u8 => {
-			let key_column = view::SHAPE.get_utf8(row, view::KEY_COLUMN).to_string();
-			let key_kind_raw = view::SHAPE.get::<u8>(row, view::KEY_KIND);
-			let precision_raw = view::SHAPE.get::<u8>(row, view::PRECISION);
+			let key_column = view::SHAPE.get_utf8(bytes, view::KEY_COLUMN).to_string();
+			let key_kind_raw = view::SHAPE.get::<u8>(bytes, view::KEY_KIND);
+			let precision_raw = view::SHAPE.get::<u8>(bytes, view::PRECISION);
 			let key = SeriesKey::decode(key_kind_raw, precision_raw, key_column);
-			let tag_raw = view::SHAPE.get::<u64>(row, view::TAG_ID);
+			let tag_raw = view::SHAPE.get::<u64>(bytes, view::TAG_ID);
 			let tag = if tag_raw == 0 {
 				None
 			} else {

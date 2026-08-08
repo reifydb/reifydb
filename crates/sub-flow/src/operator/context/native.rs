@@ -80,8 +80,8 @@ fn to_sdk_err<E: ToString>(e: E) -> SdkError {
 	SdkError::Other(e.to_string())
 }
 
-fn decode<T: OperatorState>(row: &EncodedBytes) -> SdkResult<T> {
-	decode_payload(row)
+fn decode<T: OperatorState>(bytes: &EncodedBytes) -> SdkResult<T> {
+	decode_payload(bytes)
 }
 
 fn encode<T: OperatorState>(value: &T, now: DateTime) -> SdkResult<EncodedBytes> {
@@ -454,8 +454,8 @@ impl OperatorContext for NativeOperatorContext<'_> {
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.bridge).remove_row_numbers_below(group, upper) }.map_err(to_sdk_err)
 	}
-	fn shape_for_bytes(&mut self, row: &EncodedBytes) -> SdkResult<RowShape> {
-		let fingerprint = row.fingerprint();
+	fn shape_for_bytes(&mut self, bytes: &EncodedBytes) -> SdkResult<RowShape> {
+		let fingerprint = bytes.fingerprint();
 		match self.row_shape().find_row_shape(fingerprint)? {
 			Some(shape) => Ok(shape),
 			None => Err(SdkError::Other(format!(

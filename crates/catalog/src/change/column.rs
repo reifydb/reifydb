@@ -14,8 +14,8 @@ use crate::{CatalogStore, Result, catalog::Catalog};
 pub(super) struct ColumnApplier;
 
 impl CatalogChangeApplier for ColumnApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
 		reload_parent_columns(catalog, txn, key)
 	}
 

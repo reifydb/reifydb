@@ -11,9 +11,9 @@ use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::flow::de
 pub(super) struct FlowApplier;
 
 impl CatalogChangeApplier for FlowApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let flow = decode_flow(row);
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let flow = decode_flow(bytes);
 		catalog.cache.set_flow(flow.id, txn.version(), Some(flow));
 		Ok(())
 	}

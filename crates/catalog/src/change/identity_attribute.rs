@@ -16,9 +16,9 @@ use crate::{
 pub(super) struct IdentityAttributeApplier;
 
 impl CatalogChangeApplier for IdentityAttributeApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let attribute = decode_identity_attribute(row);
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let attribute = decode_identity_attribute(bytes);
 		catalog.cache.set_identity_attribute(attribute.id, txn.version(), Some(attribute));
 		Ok(())
 	}
@@ -33,11 +33,11 @@ impl CatalogChangeApplier for IdentityAttributeApplier {
 	}
 }
 
-fn decode_identity_attribute(row: &EncodedBytes) -> IdentityAttribute {
-	let id = identity_attribute::SHAPE.get::<u64>(row, identity_attribute::ID);
-	let name = identity_attribute::SHAPE.get_utf8(row, identity_attribute::NAME).to_string();
+fn decode_identity_attribute(bytes: &EncodedBytes) -> IdentityAttribute {
+	let id = identity_attribute::SHAPE.get::<u64>(bytes, identity_attribute::ID);
+	let name = identity_attribute::SHAPE.get_utf8(bytes, identity_attribute::NAME).to_string();
 	let value_type =
-		value_type_from_tag_byte(identity_attribute::SHAPE.get::<u8>(row, identity_attribute::VALUE_TYPE));
+		value_type_from_tag_byte(identity_attribute::SHAPE.get::<u8>(bytes, identity_attribute::VALUE_TYPE));
 
 	IdentityAttribute {
 		id,

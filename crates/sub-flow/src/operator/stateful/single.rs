@@ -28,9 +28,9 @@ pub trait SingleStateful: RawStatefulOperator {
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
-	fn save_state(&self, txn: &mut FlowTransaction, row: EncodedBytes) -> Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, bytes: EncodedBytes) -> Result<()> {
 		let key = self.key();
-		utils::save_row(self.id(), txn, &key, row)
+		utils::save_row(self.id(), txn, &key, bytes)
 	}
 
 	fn update_state<F>(&self, txn: &mut FlowTransaction, f: F) -> Result<EncodedBytes>

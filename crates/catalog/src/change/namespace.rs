@@ -14,9 +14,9 @@ use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::namespac
 pub(super) struct NamespaceApplier;
 
 impl CatalogChangeApplier for NamespaceApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let ns = decode_namespace(row);
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let ns = decode_namespace(bytes);
 		catalog.cache.set_namespace(ns.id(), txn.version(), Some(ns));
 		Ok(())
 	}
@@ -33,20 +33,21 @@ impl CatalogChangeApplier for NamespaceApplier {
 
 use reifydb_core::interface::catalog::namespace::Namespace;
 
-fn decode_namespace(row: &EncodedBytes) -> Namespace {
-	let id = NamespaceId(namespace::SHAPE.get::<u64>(row, namespace::ID));
-	let name = namespace::SHAPE.get_utf8(row, namespace::NAME).to_string();
-	let parent_id = NamespaceId(namespace::SHAPE.get::<u64>(row, namespace::PARENT_ID));
-	let grpc = namespace::SHAPE.try_get_utf8(row, namespace::GRPC).map(|s| s.to_string()).filter(|s| !s.is_empty());
+fn decode_namespace(bytes: &EncodedBytes) -> Namespace {
+	let id = NamespaceId(namespace::SHAPE.get::<u64>(bytes, namespace::ID));
+	let name = namespace::SHAPE.get_utf8(bytes, namespace::NAME).to_string();
+	let parent_id = NamespaceId(namespace::SHAPE.get::<u64>(bytes, namespace::PARENT_ID));
+	let grpc =
+		namespace::SHAPE.try_get_utf8(bytes, namespace::GRPC).map(|s| s.to_string()).filter(|s| !s.is_empty());
 	let local_name = namespace::SHAPE
-		.try_get_utf8(row, namespace::LOCAL_NAME)
+		.try_get_utf8(bytes, namespace::LOCAL_NAME)
 		.filter(|s| !s.is_empty())
 		.unwrap_or_else(|| name.rsplit_once("::").map(|(_, s)| s).unwrap_or(&name))
 		.to_string();
 
 	if let Some(address) = grpc {
 		let token = namespace::SHAPE
-			.try_get_utf8(row, namespace::TOKEN)
+			.try_get_utf8(bytes, namespace::TOKEN)
 			.map(|s| s.to_string())
 			.filter(|s| !s.is_empty());
 		Namespace::Remote {

@@ -264,7 +264,7 @@ impl SinkTableViewOperator {
 		let field_columns = shape_field_columns(source_post, shape);
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut post_encoded_rows: Vec<EncodedBytes> = Vec::with_capacity(row_count);
+		let mut post_encoded_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 		let verified = self.verified_partitions();
 		let cache = self.created_at_cache();
 		for row_idx in 0..row_count {
@@ -345,11 +345,11 @@ impl SinkTableViewOperator {
 
 			pre_keys.push(pre_key);
 			post_keys.push(post_key);
-			post_encoded_rows.push(post_encoded);
+			post_encoded_bytes_vec.push(post_encoded);
 		}
 
 		txn.remove_batch(&pre_keys)?;
-		txn.set_batch(&post_keys, &post_encoded_rows)?;
+		txn.set_batch(&post_keys, &post_encoded_bytes_vec)?;
 
 		emit_view_change(txn, view, Diff::update(coerced_pre, coerced_post));
 		Ok(())

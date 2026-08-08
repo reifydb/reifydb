@@ -86,7 +86,7 @@ pub(crate) fn insert_table(
 	let mut input_node = compile(*input, txn, context.clone());
 	input_node.initialize(txn, &context)?;
 
-	let validated_rows = validate_and_encode_input_rows(
+	let validated = validate_and_encode_input_rows(
 		services,
 		txn,
 		&target_data,
@@ -99,20 +99,20 @@ pub(crate) fn insert_table(
 	if !table.partition_by.is_empty() {
 		let indices = partition_col_indices(&table.columns, &table.partition_by);
 		let mut verified = HashSet::new();
-		for row in &validated_rows {
+		for row in &validated {
 			let values = partition_values(&shape, row, &indices);
 			let partition = Partition::of(&values);
 			resolve_partition(txn, ObjectId::Table(table.id), partition, &values, &mut verified)?;
 		}
 	}
 
-	let total_rows = validated_rows.len();
+	let total_rows = validated.len();
 	if total_rows == 0 {
 		return Ok(insert_table_result(namespace.name(), &table.name, 0));
 	}
 
 	let row_numbers = services.catalog.next_row_number_batch(txn, table.id, total_rows as u64)?;
-	assert_eq!(row_numbers.len(), validated_rows.len());
+	assert_eq!(row_numbers.len(), validated.len());
 
 	let pk_def = primary_key::get_primary_key(&services.catalog, txn, &table)?;
 	let row_number_shape = pk_def.as_ref().map(|_| RowShape::testing(&[ValueType::Uint8]));
@@ -124,7 +124,7 @@ pub(crate) fn insert_table(
 		txn,
 		&target_data,
 		&shape,
-		&validated_rows,
+		&validated,
 		&row_numbers,
 		returning.is_some(),
 		pk_ctx.as_ref(),
@@ -196,7 +196,7 @@ fn validate_and_encode_input_rows(
 	symbols: &SymbolTable,
 	input_node: &mut Box<dyn QueryNode>,
 ) -> Result<Vec<EncodedBytes>> {
-	let mut validated_rows: Vec<EncodedBytes> = Vec::new();
+	let mut validated: Vec<EncodedBytes> = Vec::new();
 	let mut mutable_context = (**context).clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		PolicyEvaluator::new(services, symbols).enforce_write_policies(
@@ -217,11 +217,10 @@ fn validate_and_encode_input_rows(
 		};
 		let row_count = columns.row_count();
 		for row_idx in 0..row_count {
-			validated_rows
-				.push(build_insert_table_row(services, txn, target, shape, &view, context, row_idx)?);
+			validated.push(build_insert_table_row(services, txn, target, shape, &view, context, row_idx)?);
 		}
 	}
-	Ok(validated_rows)
+	Ok(validated)
 }
 
 #[inline]
@@ -293,12 +292,12 @@ fn insert_validated_table_rows(
 	txn: &mut Transaction<'_>,
 	target: &TableTarget<'_>,
 	shape: &RowShape,
-	validated_rows: &[EncodedBytes],
+	validated: &[EncodedBytes],
 	row_numbers: &[RowNumber],
 	has_returning: bool,
 	pk: Option<&PkContext<'_>>,
 ) -> Result<Vec<(RowNumber, EncodedBytes)>> {
-	let mut owned_rows: Vec<EncodedRowBuilder> = validated_rows.iter().map(|r| r.clone().thaw()).collect();
+	let mut owned_rows: Vec<EncodedRowBuilder> = validated.iter().map(|r| r.clone().thaw()).collect();
 	txn.insert_table(target.table, shape, row_numbers, &mut owned_rows)?;
 
 	if let Some(pk) = pk {

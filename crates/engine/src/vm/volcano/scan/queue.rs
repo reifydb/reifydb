@@ -75,12 +75,12 @@ impl QueueScan {
 		})
 	}
 
-	fn get_or_load_shape(&mut self, rx: &mut Transaction, first_row: &EncodedBytes) -> Result<RowShape> {
+	fn get_or_load_shape(&mut self, rx: &mut Transaction, first: &EncodedBytes) -> Result<RowShape> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
 
-		let fingerprint = first_row.fingerprint();
+		let fingerprint = first.fingerprint();
 		let stored_ctx = self.context.as_ref().expect("QueueScan context not set");
 		let shape = stored_ctx.services.catalog.get_or_load_row_shape(fingerprint, rx)?.ok_or_else(|| {
 			internal_error!(
@@ -109,7 +109,7 @@ impl QueueScan {
 		stream: &mut dyn Iterator<Item = Result<MultiVersionRow>>,
 		batch_size: u64,
 	) -> Result<DrainedBatch> {
-		let mut batch_rows: Vec<EncodedBytes> = Vec::new();
+		let mut batch: Vec<EncodedBytes> = Vec::new();
 		let mut row_numbers: Vec<RowNumber> = Vec::new();
 		let mut new_last_key = None;
 		let mut drained = false;
@@ -118,7 +118,7 @@ impl QueueScan {
 			match stream.next() {
 				Some(Ok(multi)) => {
 					if let Some(key) = RowKey::decode(&multi.key) {
-						batch_rows.push(multi.bytes);
+						batch.push(multi.bytes);
 						row_numbers.push(key.row);
 						new_last_key = Some(multi.key);
 					}
@@ -131,7 +131,7 @@ impl QueueScan {
 			}
 		}
 
-		Ok((batch_rows, row_numbers, new_last_key, drained))
+		Ok((batch, row_numbers, new_last_key, drained))
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::queue::column_alloc")]
@@ -164,10 +164,10 @@ impl QueueScan {
 	fn append_batch(
 		shape: &RowShape,
 		columns: &mut Columns,
-		rows: Vec<EncodedBytes>,
+		bytes_vec: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
-		columns.append_rows(shape, rows.into_iter(), row_numbers)?;
+		columns.append_rows(shape, bytes_vec.into_iter(), row_numbers)?;
 		Ok(())
 	}
 

@@ -421,10 +421,10 @@ impl Columns {
 		}
 	}
 
-	pub fn from_encoded_bytes(shape: &RowShape, ids: &[RowNumber], rows: &[EncodedBytes]) -> Self {
-		assert_eq!(ids.len(), rows.len(), "ids length must match rows length");
+	pub fn from_encoded_bytes(shape: &RowShape, ids: &[RowNumber], bytes_slice: &[EncodedBytes]) -> Self {
+		assert_eq!(ids.len(), bytes_slice.len(), "ids length must match rows length");
 		let fields = shape.fields();
-		let row_count = rows.len();
+		let row_count = bytes_slice.len();
 
 		let mut columns_vec: Vec<ColumnWithName> = Vec::with_capacity(fields.len());
 		for field in fields.iter() {
@@ -441,16 +441,16 @@ impl Columns {
 			});
 		}
 
-		for encoded in rows {
+		for encoded in bytes_slice {
 			for (i, _) in fields.iter().enumerate() {
 				columns_vec[i].data.push_value(shape.get_value(encoded, i));
 			}
 		}
 
 		let row_numbers: Vec<RowNumber> = ids.to_vec();
-		let created_at: Vec<DateTime> = rows.iter().map(|r| r.created_at()).collect();
-		let updated_at: Vec<DateTime> = rows.iter().map(|r| r.updated_at()).collect();
-		let time: Vec<DateTime> = rows.iter().filter_map(|r| r.time()).collect();
+		let created_at: Vec<DateTime> = bytes_slice.iter().map(|r| r.created_at()).collect();
+		let updated_at: Vec<DateTime> = bytes_slice.iter().map(|r| r.updated_at()).collect();
+		let time: Vec<DateTime> = bytes_slice.iter().filter_map(|r| r.time()).collect();
 
 		Self::with_system(
 			columns_vec,

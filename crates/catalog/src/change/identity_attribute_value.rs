@@ -19,9 +19,9 @@ use crate::{
 pub(super) struct IdentityAttributeValueApplier;
 
 impl CatalogChangeApplier for IdentityAttributeValueApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let value = decode_identity_attribute_value(row)?;
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let value = decode_identity_attribute_value(bytes)?;
 		let version = txn.version();
 		let Some(attribute) = catalog.cache.find_identity_attribute_at(value.attribute, version) else {
 			return_internal_error!(
@@ -51,10 +51,10 @@ impl CatalogChangeApplier for IdentityAttributeValueApplier {
 	}
 }
 
-fn decode_identity_attribute_value(row: &EncodedBytes) -> Result<IdentityAttributeValue> {
-	let identity = identity_attribute_value::SHAPE.get::<IdentityId>(row, identity_attribute_value::IDENTITY);
-	let attribute = identity_attribute_value::SHAPE.get::<u64>(row, identity_attribute_value::ATTRIBUTE);
-	let blob = identity_attribute_value::SHAPE.get_blob(row, identity_attribute_value::VALUE);
+fn decode_identity_attribute_value(bytes: &EncodedBytes) -> Result<IdentityAttributeValue> {
+	let identity = identity_attribute_value::SHAPE.get::<IdentityId>(bytes, identity_attribute_value::IDENTITY);
+	let attribute = identity_attribute_value::SHAPE.get::<u64>(bytes, identity_attribute_value::ATTRIBUTE);
+	let blob = identity_attribute_value::SHAPE.get_blob(bytes, identity_attribute_value::VALUE);
 	let value = match decode_value(blob.as_bytes()) {
 		Ok(value) => value,
 		Err(e) => return_internal_error!("failed to decode replicated identity attribute value: {}", e),

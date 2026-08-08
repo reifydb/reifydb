@@ -10,8 +10,8 @@ use crate::{Result, catalog::Catalog};
 pub(super) struct PassthroughApplier;
 
 impl CatalogChangeApplier for PassthroughApplier {
-	fn set(_catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())
+	fn set(_catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())
 	}
 
 	fn remove(_catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey) -> Result<()> {

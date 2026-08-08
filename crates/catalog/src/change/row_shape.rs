@@ -28,13 +28,13 @@ use crate::{
 pub(super) struct RowShapeHeaderApplier;
 
 impl CatalogChangeApplier for RowShapeHeaderApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
 
 		let shape_key = RowShapeKey::decode(key).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::RowShape,
 		})?;
-		let field_count = shape_header::SHAPE.get::<u16>(row, shape_header::FIELD_COUNT);
+		let field_count = shape_header::SHAPE.get::<u16>(bytes, shape_header::FIELD_COUNT);
 
 		try_reconstruct(catalog, txn, shape_key.fingerprint, field_count)
 	}
@@ -47,8 +47,8 @@ impl CatalogChangeApplier for RowShapeHeaderApplier {
 pub(super) struct RowShapeFieldApplier;
 
 impl CatalogChangeApplier for RowShapeFieldApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
 
 		let field_key = RowShapeFieldKey::decode(key).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::RowShapeField,

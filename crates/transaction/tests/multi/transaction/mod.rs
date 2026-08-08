@@ -27,7 +27,7 @@ pub trait IntoValues {
 }
 
 pub trait FromRow: Sized {
-	fn from_bytes(row: &EncodedBytes) -> Option<Self>;
+	fn from_bytes(bytes: &EncodedBytes) -> Option<Self>;
 }
 
 pub trait FromKey: Sized {
@@ -71,8 +71,8 @@ macro_rules! impl_kv_for {
 			}
 		}
 		impl FromRow for $t {
-			fn from_bytes(row: &EncodedBytes) -> Option<Self> {
-				keycode::deserialize(&row.0).ok()
+			fn from_bytes(bytes: &EncodedBytes) -> Option<Self> {
+				keycode::deserialize(&bytes.0).ok()
 			}
 		}
 	};

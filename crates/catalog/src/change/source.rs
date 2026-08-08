@@ -26,9 +26,9 @@ use crate::{
 pub(super) struct SourceApplier;
 
 impl CatalogChangeApplier for SourceApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let src = decode_source(row);
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let src = decode_source(bytes);
 		catalog.cache.set_source(src.id, txn.version(), Some(src));
 		Ok(())
 	}
@@ -43,16 +43,16 @@ impl CatalogChangeApplier for SourceApplier {
 	}
 }
 
-fn decode_source(row: &EncodedBytes) -> Source {
-	let id = SourceId(source::SHAPE.get::<u64>(row, ID));
-	let namespace = NamespaceId(source::SHAPE.get::<u64>(row, NAMESPACE));
-	let name = source::SHAPE.get_utf8(row, NAME).to_string();
-	let connector = source::SHAPE.get_utf8(row, CONNECTOR).to_string();
-	let config_json = source::SHAPE.get_utf8(row, CONFIG);
+fn decode_source(bytes: &EncodedBytes) -> Source {
+	let id = SourceId(source::SHAPE.get::<u64>(bytes, ID));
+	let namespace = NamespaceId(source::SHAPE.get::<u64>(bytes, NAMESPACE));
+	let name = source::SHAPE.get_utf8(bytes, NAME).to_string();
+	let connector = source::SHAPE.get_utf8(bytes, CONNECTOR).to_string();
+	let config_json = source::SHAPE.get_utf8(bytes, CONFIG);
 	let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
-	let target_namespace = NamespaceId(source::SHAPE.get::<u64>(row, TARGET_NAMESPACE));
-	let target_name = source::SHAPE.get_utf8(row, TARGET_NAME).to_string();
-	let status = FlowStatus::from_u8(source::SHAPE.get::<u8>(row, STATUS));
+	let target_namespace = NamespaceId(source::SHAPE.get::<u64>(bytes, TARGET_NAMESPACE));
+	let target_name = source::SHAPE.get_utf8(bytes, TARGET_NAME).to_string();
+	let status = FlowStatus::from_u8(source::SHAPE.get::<u8>(bytes, STATUS));
 
 	Source {
 		id,

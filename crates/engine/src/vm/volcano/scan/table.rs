@@ -99,12 +99,12 @@ impl TableScanNode {
 		})
 	}
 
-	fn get_or_load_shape<'a>(&mut self, rx: &mut Transaction<'a>, first_row: &EncodedBytes) -> Result<RowShape> {
+	fn get_or_load_shape<'a>(&mut self, rx: &mut Transaction<'a>, first: &EncodedBytes) -> Result<RowShape> {
 		if let Some(shape) = &self.shape {
 			return Ok(shape.clone());
 		}
 
-		let fingerprint = first_row.fingerprint();
+		let fingerprint = first.fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("TableScanNode context not set");
 		let shape = stored_ctx.services.catalog.get_or_load_row_shape(fingerprint, rx)?.ok_or_else(|| {
@@ -199,11 +199,11 @@ impl TableScanNode {
 		&mut self,
 		rx: &mut Transaction<'a>,
 		columns: &mut Columns,
-		rows: Vec<EncodedBytes>,
+		bytes_vec: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
-		let shape = self.get_or_load_shape(rx, &rows[0])?;
-		columns.append_rows(&shape, rows.into_iter(), row_numbers)?;
+		let shape = self.get_or_load_shape(rx, &bytes_vec[0])?;
+		columns.append_rows(&shape, bytes_vec.into_iter(), row_numbers)?;
 		Ok(())
 	}
 }

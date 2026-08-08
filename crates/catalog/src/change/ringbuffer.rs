@@ -25,9 +25,9 @@ use crate::{
 pub(super) struct RingBufferApplier;
 
 impl CatalogChangeApplier for RingBufferApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let mut rb = decode_ringbuffer(row, &catalog.cache, txn.version());
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let mut rb = decode_ringbuffer(bytes, &catalog.cache, txn.version());
 		rb.columns = CatalogStore::list_columns(txn, rb.id)?;
 		catalog.cache.set_ringbuffer(rb.id, txn.version(), Some(rb));
 		Ok(())
@@ -49,26 +49,26 @@ use reifydb_core::common::CommitVersion;
 
 use crate::cache::CatalogCache;
 
-fn decode_ringbuffer(row: &EncodedBytes, materialized: &CatalogCache, version: CommitVersion) -> RingBuffer {
-	let id = RingBufferId(ringbuffer::SHAPE.get::<u64>(row, ID));
-	let namespace = NamespaceId(ringbuffer::SHAPE.get::<u64>(row, NAMESPACE));
-	let name = ringbuffer::SHAPE.get_utf8(row, NAME).to_string();
-	let capacity = ringbuffer::SHAPE.get::<u64>(row, CAPACITY);
-	let pk_raw = ringbuffer::SHAPE.get::<u64>(row, PRIMARY_KEY);
+fn decode_ringbuffer(bytes: &EncodedBytes, materialized: &CatalogCache, version: CommitVersion) -> RingBuffer {
+	let id = RingBufferId(ringbuffer::SHAPE.get::<u64>(bytes, ID));
+	let namespace = NamespaceId(ringbuffer::SHAPE.get::<u64>(bytes, NAMESPACE));
+	let name = ringbuffer::SHAPE.get_utf8(bytes, NAME).to_string();
+	let capacity = ringbuffer::SHAPE.get::<u64>(bytes, CAPACITY);
+	let pk_raw = ringbuffer::SHAPE.get::<u64>(bytes, PRIMARY_KEY);
 	let primary_key = if pk_raw > 0 {
 		materialized.find_primary_key_at(PrimaryKeyId(pk_raw), version)
 	} else {
 		None
 	};
 
-	let partition_by_str = ringbuffer::SHAPE.get_utf8(row, ringbuffer::PARTITION_BY);
+	let partition_by_str = ringbuffer::SHAPE.get_utf8(bytes, ringbuffer::PARTITION_BY);
 	let partition_by = if partition_by_str.is_empty() {
 		vec![]
 	} else {
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
 
-	let underlying = ringbuffer::SHAPE.get::<u8>(row, ringbuffer::UNDERLYING) != 0;
+	let underlying = ringbuffer::SHAPE.get::<u8>(bytes, ringbuffer::UNDERLYING) != 0;
 	RingBuffer {
 		id,
 		name,
@@ -78,6 +78,6 @@ fn decode_ringbuffer(row: &EncodedBytes, materialized: &CatalogCache, version: C
 		primary_key,
 		partition_by,
 		underlying,
-		time: decode_ringbuffer_time(row),
+		time: decode_ringbuffer_time(bytes),
 	}
 }

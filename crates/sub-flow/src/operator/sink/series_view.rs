@@ -191,7 +191,7 @@ impl SinkSeriesViewOperator {
 		let field_columns = shape_field_columns(source_post, shape);
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut post_encoded_rows: Vec<EncodedBytes> = Vec::with_capacity(row_count);
+		let mut post_encoded_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 		let verified = self.verified_partitions();
 		for row_idx in 0..row_count {
 			let pre_row_number = source_pre.row_numbers()[row_idx];
@@ -234,10 +234,10 @@ impl SinkSeriesViewOperator {
 			};
 			pre_keys.push(pre_key);
 			post_keys.push(post_key);
-			post_encoded_rows.push(post_encoded);
+			post_encoded_bytes_vec.push(post_encoded);
 		}
 		for ((pre_key, post_key), post_encoded) in
-			pre_keys.iter().zip(post_keys.iter()).zip(post_encoded_rows.iter())
+			pre_keys.iter().zip(post_keys.iter()).zip(post_encoded_bytes_vec.iter())
 		{
 			txn.remove(pre_key)?;
 			txn.set(post_key, post_encoded.clone())?;

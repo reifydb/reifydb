@@ -11,10 +11,10 @@ use crate::{Result, catalog::Catalog, store::row_settings::decode_row_settings};
 pub(super) struct RowSettingsApplier;
 
 impl CatalogChangeApplier for RowSettingsApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
 		if let Some(k) = RowSettingsKey::decode(key)
-			&& let Some(config) = decode_row_settings(row)
+			&& let Some(config) = decode_row_settings(bytes)
 		{
 			catalog.cache.set_row_settings(k.storage, txn.version(), Some(config));
 		}

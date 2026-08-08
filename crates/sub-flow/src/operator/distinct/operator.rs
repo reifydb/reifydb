@@ -143,8 +143,8 @@ impl DistinctOperator {
 		GroupStateKey::node_scoped(Keyspace::DISTINCT_LAYOUT, vec![LAYOUT_KEY_PREFIX])
 	}
 
-	pub(super) fn state_bytes(row: EncodedBytes, state: &'static str) -> Result<StateBytes> {
-		StateBytes::from_bytes(row).map_err(|e| {
+	pub(super) fn state_bytes(bytes: EncodedBytes, state: &'static str) -> Result<StateBytes> {
+		StateBytes::from_bytes(bytes).map_err(|e| {
 			Error::from(FlowStateError::Decode {
 				state,
 				cause: e.to_string(),

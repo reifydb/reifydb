@@ -126,7 +126,7 @@ pub trait OperatorContext {
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
-	fn shape_for_bytes(&mut self, row: &EncodedBytes) -> Result<RowShape>;
+	fn shape_for_bytes(&mut self, bytes: &EncodedBytes) -> Result<RowShape>;
 	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn disarm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>>;
@@ -140,8 +140,8 @@ pub trait OperatorContext {
 			return Ok(());
 		}
 		let mut emit = self.insert_emit::<R>(rows.len())?;
-		for row in rows {
-			row.encode_into(emit.sink())?;
+		for bytes in rows {
+			bytes.encode_into(emit.sink())?;
 		}
 		emit.finish(row_numbers)
 	}

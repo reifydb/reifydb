@@ -16,9 +16,9 @@ use crate::{
 pub(super) struct MigrationApplier;
 
 impl CatalogChangeApplier for MigrationApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let m = migration_from_row(row);
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let m = migration_from_row(bytes);
 		catalog.cache.set_migration(m.id, txn.version(), Some(m));
 		Ok(())
 	}
@@ -36,9 +36,9 @@ impl CatalogChangeApplier for MigrationApplier {
 pub(super) struct MigrationEventApplier;
 
 impl CatalogChangeApplier for MigrationEventApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let evt = migration_event_from_row(row);
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let evt = migration_event_from_row(bytes);
 		catalog.cache.set_migration_event(evt.id, txn.version(), Some(evt));
 		Ok(())
 	}

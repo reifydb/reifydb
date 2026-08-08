@@ -56,8 +56,8 @@ fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedB
 	Ok(value.encode_state(now)?.into_bytes())
 }
 
-fn decode_payload<T: OperatorState>(row: &EncodedBytes) -> Result<T> {
-	Ok(decode_state(&StateBytes::from_bytes(row.clone())?)?)
+fn decode_payload<T: OperatorState>(bytes: &EncodedBytes) -> Result<T> {
+	Ok(decode_state(&StateBytes::from_bytes(bytes.clone())?)?)
 }
 
 #[derive(Clone, Copy)]

@@ -457,8 +457,12 @@ impl SeriesRowInterceptor {
 		txn.series_row_pre_insert_interceptors().execute(ctx)
 	}
 
-	pub fn post_insert(txn: &mut impl WithInterceptors, series: &Series, rows: &[EncodedBytes]) -> Result<()> {
-		let ctx = SeriesRowPostInsertContext::new(series, rows);
+	pub fn post_insert(
+		txn: &mut impl WithInterceptors,
+		series: &Series,
+		bytes_slice: &[EncodedBytes],
+	) -> Result<()> {
+		let ctx = SeriesRowPostInsertContext::new(series, bytes_slice);
 		txn.series_row_post_insert_interceptors().execute(ctx)
 	}
 
@@ -486,12 +490,8 @@ impl SeriesRowInterceptor {
 		txn.series_row_pre_delete_interceptors().execute(ctx)
 	}
 
-	pub fn post_delete(
-		txn: &mut impl WithInterceptors,
-		series: &Series,
-		deleted_rows: &[EncodedBytes],
-	) -> Result<()> {
-		let ctx = SeriesRowPostDeleteContext::new(series, deleted_rows);
+	pub fn post_delete(txn: &mut impl WithInterceptors, series: &Series, deleted: &[EncodedBytes]) -> Result<()> {
+		let ctx = SeriesRowPostDeleteContext::new(series, deleted);
 		txn.series_row_post_delete_interceptors().execute(ctx)
 	}
 }

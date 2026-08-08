@@ -148,10 +148,10 @@ impl EpochLog {
 		row.freeze()
 	}
 
-	fn decode(&self, row: &EncodedBytes) -> Sample {
+	fn decode(&self, bytes: &EncodedBytes) -> Sample {
 		Sample {
-			at: EpochSeconds::new(self.shape.get::<u64>(row, AT_SECS)),
-			version: self.shape.get::<u64>(row, VERSION),
+			at: EpochSeconds::new(self.shape.get::<u64>(bytes, AT_SECS)),
+			version: self.shape.get::<u64>(bytes, VERSION),
 		}
 	}
 }

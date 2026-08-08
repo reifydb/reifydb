@@ -27,8 +27,8 @@ pub trait WindowStateful: RawStatefulOperator {
 		utils::load_or_create_row(self.id(), txn, window_key, &self.layout())
 	}
 
-	fn save_state(&self, txn: &mut FlowTransaction, window_key: &GroupStateKey, row: EncodedBytes) -> Result<()> {
-		utils::save_row(self.id(), txn, window_key, row)
+	fn save_state(&self, txn: &mut FlowTransaction, window_key: &GroupStateKey, bytes: EncodedBytes) -> Result<()> {
+		utils::save_row(self.id(), txn, window_key, bytes)
 	}
 
 	fn expire_range(&self, txn: &mut FlowTransaction, range: EncodedKeyRange) -> Result<u32> {

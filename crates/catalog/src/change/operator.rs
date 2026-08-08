@@ -19,9 +19,9 @@ use crate::{
 pub(super) struct OperatorApplier;
 
 impl CatalogChangeApplier for OperatorApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let operator = decode_operator(row);
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let operator = decode_operator(bytes);
 		catalog.cache.set_operator(operator.id, txn.version(), Some(operator));
 		Ok(())
 	}
@@ -36,11 +36,11 @@ impl CatalogChangeApplier for OperatorApplier {
 	}
 }
 
-fn decode_operator(row: &EncodedBytes) -> Operator {
-	let id = OperatorId(operator::SHAPE.get::<u64>(row, ID));
-	let flow = FlowId(operator::SHAPE.get::<u64>(row, FLOW));
-	let node_type = operator::SHAPE.get::<u8>(row, TYPE);
-	let data = operator::SHAPE.get_blob(row, DATA).clone();
+fn decode_operator(bytes: &EncodedBytes) -> Operator {
+	let id = OperatorId(operator::SHAPE.get::<u64>(bytes, ID));
+	let flow = FlowId(operator::SHAPE.get::<u64>(bytes, FLOW));
+	let node_type = operator::SHAPE.get::<u8>(bytes, TYPE);
+	let data = operator::SHAPE.get_blob(bytes, DATA).clone();
 
 	Operator {
 		id,

@@ -47,9 +47,9 @@ pub(crate) mod queue {
 	});
 }
 
-pub(crate) fn decode_dispatch(row: &EncodedBytes) -> QueueDispatch {
-	let partitions = queue::SHAPE.get::<u16>(row, queue::PARTITIONS);
-	let ordered_by = match queue::SHAPE.get_utf8(row, queue::ORDERED_BY) {
+pub(crate) fn decode_dispatch(bytes: &EncodedBytes) -> QueueDispatch {
+	let partitions = queue::SHAPE.get::<u16>(bytes, queue::PARTITIONS);
+	let ordered_by = match queue::SHAPE.get_utf8(bytes, queue::ORDERED_BY) {
 		"" => None,
 		column => Some(column.to_string()),
 	};
@@ -65,14 +65,14 @@ pub(crate) fn encode_dispatch(row: &mut EncodedRowBuilder, dispatch: &QueueDispa
 	queue::SHAPE.set_utf8(row, queue::ORDERED_BY, dispatch.ordered_by().unwrap_or(""));
 }
 
-pub(crate) fn decode_deduplicate(row: &EncodedBytes) -> Option<QueueDeduplicate> {
-	let by = queue::SHAPE.get_utf8(row, queue::DEDUPLICATE_BY);
+pub(crate) fn decode_deduplicate(bytes: &EncodedBytes) -> Option<QueueDeduplicate> {
+	let by = queue::SHAPE.get_utf8(bytes, queue::DEDUPLICATE_BY);
 	if by.is_empty() {
 		return None;
 	}
 	Some(QueueDeduplicate {
 		by: by.split(',').map(|column| column.to_string()).collect(),
-		ttl: queue::SHAPE.get::<Duration>(row, queue::DEDUPLICATE_TTL),
+		ttl: queue::SHAPE.get::<Duration>(bytes, queue::DEDUPLICATE_TTL),
 	})
 }
 

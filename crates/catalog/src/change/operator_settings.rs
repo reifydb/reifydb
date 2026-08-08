@@ -11,10 +11,10 @@ use crate::{Result, catalog::Catalog, store::operator_settings::decode_operator_
 pub(super) struct OperatorSettingsApplier;
 
 impl CatalogChangeApplier for OperatorSettingsApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
 		if let Some(k) = OperatorSettingsKey::decode(key)
-			&& let Some(config) = decode_operator_settings(row)
+			&& let Some(config) = decode_operator_settings(bytes)
 		{
 			catalog.cache.set_operator_settings(k.operator, txn.version(), Some(config));
 		}

@@ -16,13 +16,13 @@ use crate::{
 pub(super) struct ProcedureApplier;
 
 impl CatalogChangeApplier for ProcedureApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
 		let id = ProcedureKey::decode(key).map(|k| k.procedure).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Procedure,
 		})?;
 		let params = load_params(txn, id)?;
-		let procedure = decode_procedure(row, params);
+		let procedure = decode_procedure(bytes, params);
 		catalog.cache.set_procedure(id, txn.version(), Some(procedure));
 		Ok(())
 	}

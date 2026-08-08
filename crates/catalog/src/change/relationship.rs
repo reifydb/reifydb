@@ -11,9 +11,9 @@ use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::relation
 pub(super) struct RelationshipApplier;
 
 impl CatalogChangeApplier for RelationshipApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let rel = decode_relationship_row(row)?;
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let rel = decode_relationship_row(bytes)?;
 		catalog.cache.set_relationship(rel.id, txn.version(), Some(rel));
 		Ok(())
 	}

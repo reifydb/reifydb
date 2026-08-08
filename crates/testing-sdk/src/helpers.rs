@@ -8,8 +8,8 @@ use reifydb_codec::{
 use reifydb_core::key::operator_group_state::{GroupStateKey, Keyspace};
 use reifydb_value::value::Value;
 
-pub fn get_values(shape: &RowShape, row: &EncodedBytes) -> Vec<Value> {
-	(0..shape.field_count()).map(|i| shape.get_value(row, i)).collect()
+pub fn get_values(shape: &RowShape, bytes: &EncodedBytes) -> Vec<Value> {
+	(0..shape.field_count()).map(|i| shape.get_value(bytes, i)).collect()
 }
 
 pub fn encode_key<K: IntoEncodedKey>(key: K) -> EncodedKey {

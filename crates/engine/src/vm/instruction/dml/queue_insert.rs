@@ -303,8 +303,8 @@ fn declared_key_indices(queue: &Queue) -> Result<Option<Vec<usize>>> {
 	Ok(Some(indices))
 }
 
-fn declared_key_bytes(shape: &RowShape, row: &EncodedBytes, indices: &[usize]) -> Vec<u8> {
-	let values: Vec<Value> = indices.iter().map(|&index| shape.get_value(row, index)).collect();
+fn declared_key_bytes(shape: &RowShape, bytes: &EncodedBytes, indices: &[usize]) -> Vec<u8> {
+	let values: Vec<Value> = indices.iter().map(|&index| shape.get_value(bytes, index)).collect();
 	to_stdvec(&values).expect("postcard serialization of a Value list is total")
 }
 
@@ -323,12 +323,12 @@ fn ordered_by_index(queue: &Queue) -> Result<Option<usize>> {
 fn partition_of(
 	queue: &Queue,
 	shape: &RowShape,
-	row: &EncodedBytes,
+	bytes: &EncodedBytes,
 	ordered_by_index: Option<usize>,
 	row_number: RowNumber,
 ) -> u16 {
 	let hash = match ordered_by_index {
-		Some(index) => Partition::of(&[shape.get_value(row, index)]),
+		Some(index) => Partition::of(&[shape.get_value(bytes, index)]),
 		None => Partition::of(&[Value::Uint8(row_number.0)]),
 	};
 	(hash.0 % queue.partitions() as u128) as u16

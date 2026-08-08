@@ -301,9 +301,9 @@ fn encode_pin(txn: &FlowTransaction, pin: &Pin) -> Result<EncodedBytes> {
 	Ok(row.freeze())
 }
 
-fn decode_pin(row: &EncodedBytes) -> Result<Pin> {
+fn decode_pin(bytes: &EncodedBytes) -> Result<Pin> {
 	let shape = RowShape::operator_state();
-	let blob = shape.get_blob(row, 0);
+	let blob = shape.get_blob(bytes, 0);
 	from_bytes(blob.as_ref()).map_err(|e| {
 		Error::from(FlowStateError::Decode {
 			state: "snapshot pin",

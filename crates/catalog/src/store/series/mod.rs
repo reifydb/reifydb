@@ -14,6 +14,6 @@ use reifydb_core::common::TimeSource;
 
 use crate::store::{series::shape::series, time_source::read_time_source};
 
-pub(crate) fn decode_series_time(row: &EncodedBytes) -> TimeSource {
-	read_time_source(&series::SHAPE, row, series::TIME_DOMAIN, series::TS)
+pub(crate) fn decode_series_time(bytes: &EncodedBytes) -> TimeSource {
+	read_time_source(&series::SHAPE, bytes, series::TIME_DOMAIN, series::TS)
 }

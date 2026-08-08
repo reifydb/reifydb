@@ -28,11 +28,16 @@ use crate::{
 	partition::{row_key_from_partition, table_partition_of_row, table_row_key},
 };
 
-fn build_table_insert_change(table: &Table, shape: &RowShape, ids: &[RowNumber], rows: &[EncodedBytes]) -> Change {
+fn build_table_insert_change(
+	table: &Table,
+	shape: &RowShape,
+	ids: &[RowNumber],
+	bytes_slice: &[EncodedBytes],
+) -> Change {
 	Change {
 		origin: ChangeOrigin::Object(ObjectId::Table(table.id)),
 		version: CommitVersion(0),
-		diffs: smallvec![Diff::insert(Columns::from_encoded_bytes(shape, ids, rows))],
+		diffs: smallvec![Diff::insert(Columns::from_encoded_bytes(shape, ids, bytes_slice))],
 		changed_at: DateTime::default(),
 	}
 }
@@ -55,11 +60,16 @@ fn build_table_update_change(
 	}
 }
 
-fn build_table_remove_change(table: &Table, shape: &RowShape, ids: &[RowNumber], rows: &[EncodedBytes]) -> Change {
+fn build_table_remove_change(
+	table: &Table,
+	shape: &RowShape,
+	ids: &[RowNumber],
+	bytes_slice: &[EncodedBytes],
+) -> Change {
 	Change {
 		origin: ChangeOrigin::Object(ObjectId::Table(table.id)),
 		version: CommitVersion(0),
-		diffs: smallvec![Diff::remove(Columns::from_encoded_bytes(shape, ids, rows))],
+		diffs: smallvec![Diff::remove(Columns::from_encoded_bytes(shape, ids, bytes_slice))],
 		changed_at: DateTime::default(),
 	}
 }
@@ -202,8 +212,8 @@ impl TableOperations for CommandTransaction {
 
 		let mut matched_ids: Vec<RowNumber> = Vec::with_capacity(ids.len());
 		let mut matched_partitions: Vec<Option<Partition>> = Vec::with_capacity(ids.len());
-		let mut displayed_rows: Vec<EncodedBytes> = Vec::with_capacity(ids.len());
-		let mut pre_for_cdc_rows: Vec<EncodedBytes> = Vec::with_capacity(ids.len());
+		let mut displayed_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(ids.len());
+		let mut pre_for_cdc_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(ids.len());
 		for (idx, &row_number) in ids.iter().enumerate() {
 			let partition = partitions.get(idx).copied();
 			let key = row_key_from_partition(table.id, partition, row_number);
@@ -215,8 +225,8 @@ impl TableOperations for CommandTransaction {
 			let pre_for_cdc = committed.clone().unwrap_or_else(|| displayed.clone());
 			matched_ids.push(row_number);
 			matched_partitions.push(partition);
-			displayed_rows.push(displayed);
-			pre_for_cdc_rows.push(pre_for_cdc);
+			displayed_bytes_vec.push(displayed);
+			pre_for_cdc_bytes_vec.push(pre_for_cdc);
 		}
 
 		if matched_ids.is_empty() {
@@ -230,15 +240,15 @@ impl TableOperations for CommandTransaction {
 			if self.get_committed(&key)?.is_some() {
 				self.mark_preexisting(&key)?;
 			}
-			self.remove_with_pre(&key, pre_for_cdc_rows[i].clone())?;
+			self.remove_with_pre(&key, pre_for_cdc_bytes_vec[i].clone())?;
 		}
 
-		TableRowInterceptor::post_delete(self, table, &matched_ids, &pre_for_cdc_rows)?;
+		TableRowInterceptor::post_delete(self, table, &matched_ids, &pre_for_cdc_bytes_vec)?;
 
 		let shape = row_shape_from_columns(&table.columns);
-		self.track_flow_change(build_table_remove_change(table, &shape, &matched_ids, &pre_for_cdc_rows));
+		self.track_flow_change(build_table_remove_change(table, &shape, &matched_ids, &pre_for_cdc_bytes_vec));
 
-		Ok(matched_ids.into_iter().zip(displayed_rows).collect())
+		Ok(matched_ids.into_iter().zip(displayed_bytes_vec).collect())
 	}
 }
 
@@ -355,8 +365,8 @@ impl TableOperations for AdminTransaction {
 
 		let mut matched_ids: Vec<RowNumber> = Vec::with_capacity(ids.len());
 		let mut matched_partitions: Vec<Option<Partition>> = Vec::with_capacity(ids.len());
-		let mut displayed_rows: Vec<EncodedBytes> = Vec::with_capacity(ids.len());
-		let mut pre_for_cdc_rows: Vec<EncodedBytes> = Vec::with_capacity(ids.len());
+		let mut displayed_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(ids.len());
+		let mut pre_for_cdc_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(ids.len());
 		for (idx, &row_number) in ids.iter().enumerate() {
 			let partition = partitions.get(idx).copied();
 			let key = row_key_from_partition(table.id, partition, row_number);
@@ -368,8 +378,8 @@ impl TableOperations for AdminTransaction {
 			let pre_for_cdc = committed.clone().unwrap_or_else(|| displayed.clone());
 			matched_ids.push(row_number);
 			matched_partitions.push(partition);
-			displayed_rows.push(displayed);
-			pre_for_cdc_rows.push(pre_for_cdc);
+			displayed_bytes_vec.push(displayed);
+			pre_for_cdc_bytes_vec.push(pre_for_cdc);
 		}
 
 		if matched_ids.is_empty() {
@@ -383,15 +393,15 @@ impl TableOperations for AdminTransaction {
 			if self.get_committed(&key)?.is_some() {
 				self.mark_preexisting(&key)?;
 			}
-			self.remove_with_pre(&key, pre_for_cdc_rows[i].clone())?;
+			self.remove_with_pre(&key, pre_for_cdc_bytes_vec[i].clone())?;
 		}
 
-		TableRowInterceptor::post_delete(self, table, &matched_ids, &pre_for_cdc_rows)?;
+		TableRowInterceptor::post_delete(self, table, &matched_ids, &pre_for_cdc_bytes_vec)?;
 
 		let shape = row_shape_from_columns(&table.columns);
-		self.track_flow_change(build_table_remove_change(table, &shape, &matched_ids, &pre_for_cdc_rows));
+		self.track_flow_change(build_table_remove_change(table, &shape, &matched_ids, &pre_for_cdc_bytes_vec));
 
-		Ok(matched_ids.into_iter().zip(displayed_rows).collect())
+		Ok(matched_ids.into_iter().zip(displayed_bytes_vec).collect())
 	}
 }
 

@@ -347,11 +347,11 @@ fn insert_chunk(
 	Ok(())
 }
 
-fn encode_entry(buffer: &mut Vec<u8>, key: &EncodedKey, row: &EncodedBytes) {
+fn encode_entry(buffer: &mut Vec<u8>, key: &EncodedKey, bytes: &EncodedBytes) {
 	buffer.extend_from_slice(&(key.as_slice().len() as u32).to_le_bytes());
 	buffer.extend_from_slice(key.as_slice());
-	buffer.extend_from_slice(&(row.as_slice().len() as u32).to_le_bytes());
-	buffer.extend_from_slice(row.as_slice());
+	buffer.extend_from_slice(&(bytes.as_slice().len() as u32).to_le_bytes());
+	buffer.extend_from_slice(bytes.as_slice());
 }
 
 fn decode_entries(bytes: &[u8], entries: &mut Vec<(EncodedKey, EncodedBytes)>) -> Option<()> {

@@ -8,17 +8,17 @@ use tracing::warn;
 
 use crate::catalog::Catalog;
 
-pub fn decode_bytes(catalog: &Catalog, row_number: RowNumber, row: EncodedBytes) -> Option<Row> {
-	if row.len() < SHAPE_HEADER_SIZE {
-		warn!("EncodedBytes too short for shape fingerprint ({} < {})", row.len(), SHAPE_HEADER_SIZE);
+pub fn decode_bytes(catalog: &Catalog, row_number: RowNumber, bytes: EncodedBytes) -> Option<Row> {
+	if bytes.len() < SHAPE_HEADER_SIZE {
+		warn!("EncodedBytes too short for shape fingerprint ({} < {})", bytes.len(), SHAPE_HEADER_SIZE);
 		return None;
 	}
-	let fingerprint = row.fingerprint();
+	let fingerprint = bytes.fingerprint();
 	let shape = catalog.find_row_shape(fingerprint);
 	match shape {
 		Some(shape) => Some(Row {
 			number: row_number,
-			encoded: row,
+			encoded: bytes,
 			shape,
 		}),
 		None => {

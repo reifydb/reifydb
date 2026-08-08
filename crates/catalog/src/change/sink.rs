@@ -26,9 +26,9 @@ use crate::{
 pub(super) struct SinkApplier;
 
 impl CatalogChangeApplier for SinkApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let s = decode_sink(row);
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let s = decode_sink(bytes);
 		catalog.cache.set_sink(s.id, txn.version(), Some(s));
 		Ok(())
 	}
@@ -43,16 +43,16 @@ impl CatalogChangeApplier for SinkApplier {
 	}
 }
 
-fn decode_sink(row: &EncodedBytes) -> Sink {
-	let id = SinkId(sink::SHAPE.get::<u64>(row, ID));
-	let namespace = NamespaceId(sink::SHAPE.get::<u64>(row, NAMESPACE));
-	let name = sink::SHAPE.get_utf8(row, NAME).to_string();
-	let source_namespace = NamespaceId(sink::SHAPE.get::<u64>(row, SOURCE_NAMESPACE));
-	let source_name = sink::SHAPE.get_utf8(row, SOURCE_NAME).to_string();
-	let connector = sink::SHAPE.get_utf8(row, CONNECTOR).to_string();
-	let config_json = sink::SHAPE.get_utf8(row, CONFIG);
+fn decode_sink(bytes: &EncodedBytes) -> Sink {
+	let id = SinkId(sink::SHAPE.get::<u64>(bytes, ID));
+	let namespace = NamespaceId(sink::SHAPE.get::<u64>(bytes, NAMESPACE));
+	let name = sink::SHAPE.get_utf8(bytes, NAME).to_string();
+	let source_namespace = NamespaceId(sink::SHAPE.get::<u64>(bytes, SOURCE_NAMESPACE));
+	let source_name = sink::SHAPE.get_utf8(bytes, SOURCE_NAME).to_string();
+	let connector = sink::SHAPE.get_utf8(bytes, CONNECTOR).to_string();
+	let config_json = sink::SHAPE.get_utf8(bytes, CONFIG);
 	let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
-	let status = FlowStatus::from_u8(sink::SHAPE.get::<u8>(row, STATUS));
+	let status = FlowStatus::from_u8(sink::SHAPE.get::<u8>(bytes, STATUS));
 
 	Sink {
 		id,

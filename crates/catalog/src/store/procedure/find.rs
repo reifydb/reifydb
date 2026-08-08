@@ -82,14 +82,14 @@ pub(crate) fn load_params(rx: &mut Transaction<'_>, procedure_id: ProcedureId) -
 	Ok(entries.into_iter().map(|(_, p)| p).collect())
 }
 
-pub(crate) fn decode_procedure(row: &EncodedBytes, params: Vec<ProcedureParam>) -> Procedure {
-	let id = ProcedureId::from_raw(procedure::SHAPE.get::<u64>(row, procedure::ID));
-	let namespace = NamespaceId(procedure::SHAPE.get::<u64>(row, procedure::NAMESPACE));
-	let name = procedure::SHAPE.get_utf8(row, procedure::NAME).to_string();
-	let variant = procedure::SHAPE.get::<u8>(row, procedure::VARIANT);
-	let body = procedure::SHAPE.get_utf8(row, procedure::BODY).to_string();
+pub(crate) fn decode_procedure(bytes: &EncodedBytes, params: Vec<ProcedureParam>) -> Procedure {
+	let id = ProcedureId::from_raw(procedure::SHAPE.get::<u64>(bytes, procedure::ID));
+	let namespace = NamespaceId(procedure::SHAPE.get::<u64>(bytes, procedure::NAMESPACE));
+	let name = procedure::SHAPE.get_utf8(bytes, procedure::NAME).to_string();
+	let variant = procedure::SHAPE.get::<u8>(bytes, procedure::VARIANT);
+	let body = procedure::SHAPE.get_utf8(bytes, procedure::BODY).to_string();
 
-	let return_type_json = procedure::SHAPE.get_utf8(row, procedure::RETURN_TYPE);
+	let return_type_json = procedure::SHAPE.get_utf8(bytes, procedure::RETURN_TYPE);
 	let return_type: Option<TypeConstraint> = if return_type_json.is_empty() {
 		None
 	} else {
@@ -106,10 +106,10 @@ pub(crate) fn decode_procedure(row: &EncodedBytes, params: Vec<ProcedureParam>) 
 			body,
 		}
 	} else {
-		let trigger_kind = procedure::SHAPE.get::<u8>(row, procedure::TRIGGER_KIND);
+		let trigger_kind = procedure::SHAPE.get::<u8>(bytes, procedure::TRIGGER_KIND);
 		let trigger = if trigger_kind == procedure::TRIGGER_EVENT {
-			let sumtype = procedure::SHAPE.get::<u64>(row, procedure::TRIGGER_VARIANT_SUMTYPE);
-			let vidx = procedure::SHAPE.get::<u16>(row, procedure::TRIGGER_VARIANT_INDEX);
+			let sumtype = procedure::SHAPE.get::<u64>(bytes, procedure::TRIGGER_VARIANT_SUMTYPE);
+			let vidx = procedure::SHAPE.get::<u16>(bytes, procedure::TRIGGER_VARIANT_INDEX);
 			RqlTrigger::Event {
 				variant: VariantRef {
 					sumtype_id: SumTypeId(sumtype),

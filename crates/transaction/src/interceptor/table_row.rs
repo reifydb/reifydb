@@ -484,9 +484,9 @@ impl TableRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		table: &Table,
 		ids: &[RowNumber],
-		rows: &[EncodedBytes],
+		bytes_slice: &[EncodedBytes],
 	) -> Result<()> {
-		let ctx = TableRowPostInsertContext::new(table, ids, rows);
+		let ctx = TableRowPostInsertContext::new(table, ids, bytes_slice);
 		txn.table_row_post_insert_interceptors().execute(ctx)
 	}
 
@@ -520,9 +520,9 @@ impl TableRowInterceptor {
 		txn: &mut impl WithInterceptors,
 		table: &Table,
 		ids: &[RowNumber],
-		deleted_rows: &[EncodedBytes],
+		deleted: &[EncodedBytes],
 	) -> Result<()> {
-		let ctx = TableRowPostDeleteContext::new(table, ids, deleted_rows);
+		let ctx = TableRowPostDeleteContext::new(table, ids, deleted);
 		txn.table_row_post_delete_interceptors().execute(ctx)
 	}
 }

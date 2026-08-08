@@ -64,13 +64,13 @@ impl Columns {
 	pub fn append_rows(
 		&mut self,
 		shape: &RowShape,
-		rows: impl IntoIterator<Item = EncodedBytes>,
+		bytes_vec: impl IntoIterator<Item = EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
 		self.validate_append_shape(shape)?;
 
-		let rows: Vec<EncodedBytes> = rows.into_iter().collect();
-		Self::validate_row_numbers(&row_numbers, rows.len())?;
+		let bytes_vec: Vec<EncodedBytes> = bytes_vec.into_iter().collect();
+		Self::validate_row_numbers(&row_numbers, bytes_vec.len())?;
 
 		reifydb_assertions! {
 			let columns = self.len();
@@ -83,9 +83,9 @@ impl Columns {
 			);
 		}
 
-		self.push_system_columns(&rows, &row_numbers);
+		self.push_system_columns(&bytes_vec, &row_numbers);
 		self.retype_all_none_columns(shape);
-		self.append_each_bytes(shape, &rows)
+		self.append_each_bytes(shape, &bytes_vec)
 	}
 
 	#[inline]
@@ -119,8 +119,8 @@ impl Columns {
 	}
 
 	#[inline]
-	fn push_system_columns(&mut self, rows: &[EncodedBytes], row_numbers: &[RowNumber]) {
-		for (index, row) in rows.iter().enumerate() {
+	fn push_system_columns(&mut self, bytes_slice: &[EncodedBytes], row_numbers: &[RowNumber]) {
+		for (index, row) in bytes_slice.iter().enumerate() {
 			self.system.push(RowStamps {
 				row_number: row_numbers.get(index).copied(),
 				partition: None,
@@ -284,8 +284,8 @@ impl Columns {
 	}
 
 	#[inline]
-	fn append_each_bytes(&mut self, shape: &RowShape, rows: &[EncodedBytes]) -> Result<()> {
-		for row in rows {
+	fn append_each_bytes(&mut self, shape: &RowShape, bytes_slice: &[EncodedBytes]) -> Result<()> {
+		for row in bytes_slice {
 			let all_defined = (0..shape.field_count()).all(|i| row.is_defined(i));
 
 			if all_defined {
@@ -298,7 +298,7 @@ impl Columns {
 		Ok(())
 	}
 
-	fn append_all_defined_from_shape(&mut self, shape: &RowShape, row: &EncodedBytes) -> Result<()> {
+	fn append_all_defined_from_shape(&mut self, shape: &RowShape, bytes: &EncodedBytes) -> Result<()> {
 		let names = &self.names;
 		let columns = &mut self.columns;
 		for (index, column) in columns.iter_mut().enumerate() {
@@ -311,7 +311,7 @@ impl Columns {
 					},
 					_ty,
 				) => {
-					let value = shape.get_value(row, index);
+					let value = shape.get_value(bytes, index);
 					if matches!(value, Value::None { .. }) {
 						inner.push_none();
 						bitvec.push(false);
@@ -321,28 +321,28 @@ impl Columns {
 					}
 				}
 				(ColumnBuffer::Bool(container), ValueType::Boolean) => {
-					container.push(shape.get::<bool>(row, index));
+					container.push(shape.get::<bool>(bytes, index));
 				}
 				(ColumnBuffer::Float4(container), ValueType::Float4) => {
-					container.push(shape.get::<f32>(row, index));
+					container.push(shape.get::<f32>(bytes, index));
 				}
 				(ColumnBuffer::Float8(container), ValueType::Float8) => {
-					container.push(shape.get::<f64>(row, index));
+					container.push(shape.get::<f64>(bytes, index));
 				}
 				(ColumnBuffer::Int1(container), ValueType::Int1) => {
-					container.push(shape.get::<i8>(row, index));
+					container.push(shape.get::<i8>(bytes, index));
 				}
 				(ColumnBuffer::Int2(container), ValueType::Int2) => {
-					container.push(shape.get::<i16>(row, index));
+					container.push(shape.get::<i16>(bytes, index));
 				}
 				(ColumnBuffer::Int4(container), ValueType::Int4) => {
-					container.push(shape.get::<i32>(row, index));
+					container.push(shape.get::<i32>(bytes, index));
 				}
 				(ColumnBuffer::Int8(container), ValueType::Int8) => {
-					container.push(shape.get::<i64>(row, index));
+					container.push(shape.get::<i64>(bytes, index));
 				}
 				(ColumnBuffer::Int16(container), ValueType::Int16) => {
-					container.push(shape.get::<i128>(row, index));
+					container.push(shape.get::<i128>(bytes, index));
 				}
 				(
 					ColumnBuffer::Utf8 {
@@ -351,43 +351,43 @@ impl Columns {
 					},
 					ValueType::Utf8,
 				) => {
-					container.push(shape.get_utf8(row, index).to_string());
+					container.push(shape.get_utf8(bytes, index).to_string());
 				}
 				(ColumnBuffer::Uint1(container), ValueType::Uint1) => {
-					container.push(shape.get::<u8>(row, index));
+					container.push(shape.get::<u8>(bytes, index));
 				}
 				(ColumnBuffer::Uint2(container), ValueType::Uint2) => {
-					container.push(shape.get::<u16>(row, index));
+					container.push(shape.get::<u16>(bytes, index));
 				}
 				(ColumnBuffer::Uint4(container), ValueType::Uint4) => {
-					container.push(shape.get::<u32>(row, index));
+					container.push(shape.get::<u32>(bytes, index));
 				}
 				(ColumnBuffer::Uint8(container), ValueType::Uint8) => {
-					container.push(shape.get::<u64>(row, index));
+					container.push(shape.get::<u64>(bytes, index));
 				}
 				(ColumnBuffer::Uint16(container), ValueType::Uint16) => {
-					container.push(shape.get::<u128>(row, index));
+					container.push(shape.get::<u128>(bytes, index));
 				}
 				(ColumnBuffer::Date(container), ValueType::Date) => {
-					container.push(shape.get::<Date>(row, index));
+					container.push(shape.get::<Date>(bytes, index));
 				}
 				(ColumnBuffer::DateTime(container), ValueType::DateTime) => {
-					container.push(shape.get::<DateTime>(row, index));
+					container.push(shape.get::<DateTime>(bytes, index));
 				}
 				(ColumnBuffer::Time(container), ValueType::Time) => {
-					container.push(shape.get::<Time>(row, index));
+					container.push(shape.get::<Time>(bytes, index));
 				}
 				(ColumnBuffer::Duration(container), ValueType::Duration) => {
-					container.push(shape.get::<Duration>(row, index));
+					container.push(shape.get::<Duration>(bytes, index));
 				}
 				(ColumnBuffer::Uuid4(container), ValueType::Uuid4) => {
-					container.push(shape.get::<Uuid4>(row, index));
+					container.push(shape.get::<Uuid4>(bytes, index));
 				}
 				(ColumnBuffer::Uuid7(container), ValueType::Uuid7) => {
-					container.push(shape.get::<Uuid7>(row, index));
+					container.push(shape.get::<Uuid7>(bytes, index));
 				}
 				(ColumnBuffer::IdentityId(container), ValueType::IdentityId) => {
-					container.push(shape.get::<IdentityId>(row, index));
+					container.push(shape.get::<IdentityId>(bytes, index));
 				}
 				(
 					ColumnBuffer::Blob {
@@ -396,7 +396,7 @@ impl Columns {
 					},
 					ValueType::Blob,
 				) => {
-					container.push(shape.get_blob(row, index));
+					container.push(shape.get_blob(bytes, index));
 				}
 				(
 					ColumnBuffer::Int {
@@ -405,7 +405,7 @@ impl Columns {
 					},
 					ValueType::Int,
 				) => {
-					container.push(shape.get_int(row, index));
+					container.push(shape.get_int(bytes, index));
 				}
 				(
 					ColumnBuffer::Uint {
@@ -414,7 +414,7 @@ impl Columns {
 					},
 					ValueType::Uint,
 				) => {
-					container.push(shape.get_uint(row, index));
+					container.push(shape.get_uint(bytes, index));
 				}
 				(
 					ColumnBuffer::Decimal {
@@ -423,10 +423,10 @@ impl Columns {
 					},
 					ValueType::Decimal,
 				) => {
-					container.push(shape.get_decimal(row, index));
+					container.push(shape.get_decimal(bytes, index));
 				}
 				(ColumnBuffer::DictionaryId(container), ValueType::DictionaryId) => {
-					match shape.get_value(row, index) {
+					match shape.get_value(bytes, index) {
 						Value::DictionaryId(id) => container.push(id),
 						_ => container.push_default(),
 					}
@@ -447,12 +447,12 @@ impl Columns {
 		Ok(())
 	}
 
-	fn append_fallback_from_shape(&mut self, shape: &RowShape, row: &EncodedBytes) -> Result<()> {
+	fn append_fallback_from_shape(&mut self, shape: &RowShape, bytes: &EncodedBytes) -> Result<()> {
 		let columns = &mut self.columns;
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = shape.get_field(index).unwrap();
 
-			if !row.is_defined(index) {
+			if !bytes.is_defined(index) {
 				column.push_none();
 				continue;
 			}
@@ -465,33 +465,33 @@ impl Columns {
 					},
 					_ty,
 				) => {
-					let value = shape.get_value(row, index);
+					let value = shape.get_value(bytes, index);
 					inner.push_value(value);
 					bitvec.push(true);
 				}
 				(ColumnBuffer::Bool(container), ValueType::Boolean) => {
-					container.push(shape.get::<bool>(row, index));
+					container.push(shape.get::<bool>(bytes, index));
 				}
 				(ColumnBuffer::Float4(container), ValueType::Float4) => {
-					container.push(shape.get::<f32>(row, index));
+					container.push(shape.get::<f32>(bytes, index));
 				}
 				(ColumnBuffer::Float8(container), ValueType::Float8) => {
-					container.push(shape.get::<f64>(row, index));
+					container.push(shape.get::<f64>(bytes, index));
 				}
 				(ColumnBuffer::Int1(container), ValueType::Int1) => {
-					container.push(shape.get::<i8>(row, index));
+					container.push(shape.get::<i8>(bytes, index));
 				}
 				(ColumnBuffer::Int2(container), ValueType::Int2) => {
-					container.push(shape.get::<i16>(row, index));
+					container.push(shape.get::<i16>(bytes, index));
 				}
 				(ColumnBuffer::Int4(container), ValueType::Int4) => {
-					container.push(shape.get::<i32>(row, index));
+					container.push(shape.get::<i32>(bytes, index));
 				}
 				(ColumnBuffer::Int8(container), ValueType::Int8) => {
-					container.push(shape.get::<i64>(row, index));
+					container.push(shape.get::<i64>(bytes, index));
 				}
 				(ColumnBuffer::Int16(container), ValueType::Int16) => {
-					container.push(shape.get::<i128>(row, index));
+					container.push(shape.get::<i128>(bytes, index));
 				}
 				(
 					ColumnBuffer::Utf8 {
@@ -500,43 +500,43 @@ impl Columns {
 					},
 					ValueType::Utf8,
 				) => {
-					container.push(shape.get_utf8(row, index).to_string());
+					container.push(shape.get_utf8(bytes, index).to_string());
 				}
 				(ColumnBuffer::Uint1(container), ValueType::Uint1) => {
-					container.push(shape.get::<u8>(row, index));
+					container.push(shape.get::<u8>(bytes, index));
 				}
 				(ColumnBuffer::Uint2(container), ValueType::Uint2) => {
-					container.push(shape.get::<u16>(row, index));
+					container.push(shape.get::<u16>(bytes, index));
 				}
 				(ColumnBuffer::Uint4(container), ValueType::Uint4) => {
-					container.push(shape.get::<u32>(row, index));
+					container.push(shape.get::<u32>(bytes, index));
 				}
 				(ColumnBuffer::Uint8(container), ValueType::Uint8) => {
-					container.push(shape.get::<u64>(row, index));
+					container.push(shape.get::<u64>(bytes, index));
 				}
 				(ColumnBuffer::Uint16(container), ValueType::Uint16) => {
-					container.push(shape.get::<u128>(row, index));
+					container.push(shape.get::<u128>(bytes, index));
 				}
 				(ColumnBuffer::Date(container), ValueType::Date) => {
-					container.push(shape.get::<Date>(row, index));
+					container.push(shape.get::<Date>(bytes, index));
 				}
 				(ColumnBuffer::DateTime(container), ValueType::DateTime) => {
-					container.push(shape.get::<DateTime>(row, index));
+					container.push(shape.get::<DateTime>(bytes, index));
 				}
 				(ColumnBuffer::Time(container), ValueType::Time) => {
-					container.push(shape.get::<Time>(row, index));
+					container.push(shape.get::<Time>(bytes, index));
 				}
 				(ColumnBuffer::Duration(container), ValueType::Duration) => {
-					container.push(shape.get::<Duration>(row, index));
+					container.push(shape.get::<Duration>(bytes, index));
 				}
 				(ColumnBuffer::Uuid4(container), ValueType::Uuid4) => {
-					container.push(shape.get::<Uuid4>(row, index));
+					container.push(shape.get::<Uuid4>(bytes, index));
 				}
 				(ColumnBuffer::Uuid7(container), ValueType::Uuid7) => {
-					container.push(shape.get::<Uuid7>(row, index));
+					container.push(shape.get::<Uuid7>(bytes, index));
 				}
 				(ColumnBuffer::IdentityId(container), ValueType::IdentityId) => {
-					container.push(shape.get::<IdentityId>(row, index));
+					container.push(shape.get::<IdentityId>(bytes, index));
 				}
 				(
 					ColumnBuffer::Blob {
@@ -545,7 +545,7 @@ impl Columns {
 					},
 					ValueType::Blob,
 				) => {
-					container.push(shape.get_blob(row, index));
+					container.push(shape.get_blob(bytes, index));
 				}
 				(
 					ColumnBuffer::Int {
@@ -554,7 +554,7 @@ impl Columns {
 					},
 					ValueType::Int,
 				) => {
-					container.push(shape.get_int(row, index));
+					container.push(shape.get_int(bytes, index));
 				}
 				(
 					ColumnBuffer::Uint {
@@ -563,7 +563,7 @@ impl Columns {
 					},
 					ValueType::Uint,
 				) => {
-					container.push(shape.get_uint(row, index));
+					container.push(shape.get_uint(bytes, index));
 				}
 				(
 					ColumnBuffer::Decimal {
@@ -572,10 +572,10 @@ impl Columns {
 					},
 					ValueType::Decimal,
 				) => {
-					container.push(shape.get_decimal(row, index));
+					container.push(shape.get_decimal(bytes, index));
 				}
 				(ColumnBuffer::DictionaryId(container), ValueType::DictionaryId) => {
-					match shape.get_value(row, index) {
+					match shape.get_value(bytes, index) {
 						Value::DictionaryId(id) => container.push(id),
 						_ => container.push_default(),
 					}

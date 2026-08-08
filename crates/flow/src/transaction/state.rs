@@ -187,12 +187,12 @@ impl FlowTransaction {
 		}
 	}
 
-	#[instrument(name = "flow::state::save", level = "trace", skip(self, row), fields(
+	#[instrument(name = "flow::state::save", level = "trace", skip(self, bytes), fields(
 		operator_id = id.0,
 		key_len = key.as_slice().len()
 	))]
-	pub fn save_row(&mut self, id: OperatorId, key: &GroupStateKey, row: EncodedBytes) -> Result<()> {
-		self.state_set(id, key, row)
+	pub fn save_row(&mut self, id: OperatorId, key: &GroupStateKey, bytes: EncodedBytes) -> Result<()> {
+		self.state_set(id, key, bytes)
 	}
 
 	fn scoped_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedBytes>> {
@@ -347,9 +347,9 @@ pub mod tests {
 		transaction::{DeferredParams, read::PREFETCH_MEMO_BYTE_CAP, substrate::FlowSubstrate},
 	};
 
-	fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey, row: EncodedBytes) {
+	fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey, bytes: EncodedBytes) {
 		// Stands in for a prior slice's success-side arena apply.
-		engine.inner().operator_state().set(operator, EncodedKey::new(key.as_slice()), row);
+		engine.inner().operator_state().set(operator, EncodedKey::new(key.as_slice()), bytes);
 	}
 
 	fn deferred_shared(engine: &TestEngine) -> FlowTransaction {

@@ -103,12 +103,12 @@ pub fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedBytes
 	row.freeze()
 }
 
-pub fn decode_ringbuffer_metadata(row: &EncodedBytes) -> RingBufferMetadata {
+pub fn decode_ringbuffer_metadata(bytes: &EncodedBytes) -> RingBufferMetadata {
 	RingBufferMetadata {
-		id: RingBufferId(metadata_shape::SHAPE.get::<u64>(row, metadata_shape::ID)),
-		capacity: metadata_shape::SHAPE.get::<u64>(row, metadata_shape::CAPACITY),
-		count: metadata_shape::SHAPE.get::<u64>(row, metadata_shape::COUNT),
-		head: metadata_shape::SHAPE.get::<u64>(row, metadata_shape::HEAD),
-		tail: metadata_shape::SHAPE.get::<u64>(row, metadata_shape::TAIL),
+		id: RingBufferId(metadata_shape::SHAPE.get::<u64>(bytes, metadata_shape::ID)),
+		capacity: metadata_shape::SHAPE.get::<u64>(bytes, metadata_shape::CAPACITY),
+		count: metadata_shape::SHAPE.get::<u64>(bytes, metadata_shape::COUNT),
+		head: metadata_shape::SHAPE.get::<u64>(bytes, metadata_shape::HEAD),
+		tail: metadata_shape::SHAPE.get::<u64>(bytes, metadata_shape::TAIL),
 	}
 }

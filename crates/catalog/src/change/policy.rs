@@ -14,9 +14,9 @@ use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::policy::
 pub(super) struct PolicyApplier;
 
 impl CatalogChangeApplier for PolicyApplier {
-	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, row: &EncodedBytes) -> Result<()> {
-		txn.set(key, row.clone())?;
-		let p = decode_policy(row);
+	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
+		txn.set(key, bytes.clone())?;
+		let p = decode_policy(bytes);
 		catalog.cache.set_policy(p.id, txn.version(), Some(p));
 		Ok(())
 	}
@@ -31,15 +31,15 @@ impl CatalogChangeApplier for PolicyApplier {
 	}
 }
 
-fn decode_policy(row: &EncodedBytes) -> Policy {
-	let id = policy::SHAPE.get::<u64>(row, policy::ID);
-	let name_str = policy::SHAPE.get_utf8(row, policy::NAME).to_string();
+fn decode_policy(bytes: &EncodedBytes) -> Policy {
+	let id = policy::SHAPE.get::<u64>(bytes, policy::ID);
+	let name_str = policy::SHAPE.get_utf8(bytes, policy::NAME).to_string();
 	let name = if name_str.is_empty() {
 		None
 	} else {
 		Some(name_str)
 	};
-	let target_type_str = policy::SHAPE.get_utf8(row, policy::TARGET_TYPE);
+	let target_type_str = policy::SHAPE.get_utf8(bytes, policy::TARGET_TYPE);
 	let target_type = match target_type_str {
 		"table" => PolicyTargetType::Table,
 		"column" => PolicyTargetType::Column,
@@ -55,19 +55,19 @@ fn decode_policy(row: &EncodedBytes) -> Policy {
 		"ringbuffer" => PolicyTargetType::RingBuffer,
 		_ => PolicyTargetType::Table,
 	};
-	let target_ns_str = policy::SHAPE.get_utf8(row, policy::TARGET_NAMESPACE).to_string();
+	let target_ns_str = policy::SHAPE.get_utf8(bytes, policy::TARGET_NAMESPACE).to_string();
 	let target_namespace = if target_ns_str.is_empty() {
 		None
 	} else {
 		Some(target_ns_str)
 	};
-	let target_object_str = policy::SHAPE.get_utf8(row, policy::TARGET_OBJECT).to_string();
+	let target_object_str = policy::SHAPE.get_utf8(bytes, policy::TARGET_OBJECT).to_string();
 	let target_object = if target_object_str.is_empty() {
 		None
 	} else {
 		Some(target_object_str)
 	};
-	let enabled = policy::SHAPE.get::<bool>(row, policy::ENABLED);
+	let enabled = policy::SHAPE.get::<bool>(bytes, policy::ENABLED);
 
 	Policy {
 		id,

@@ -15,15 +15,15 @@ pub mod find;
 pub mod get;
 pub(crate) mod shape;
 
-pub(crate) fn handler_from_row(row: &EncodedBytes) -> Handler {
-	let id = HandlerId(handler::SHAPE.get::<u64>(row, handler::ID));
-	let namespace = NamespaceId(handler::SHAPE.get::<u64>(row, handler::NAMESPACE));
-	let name = handler::SHAPE.get_utf8(row, handler::NAME).to_string();
+pub(crate) fn handler_from_row(bytes: &EncodedBytes) -> Handler {
+	let id = HandlerId(handler::SHAPE.get::<u64>(bytes, handler::ID));
+	let namespace = NamespaceId(handler::SHAPE.get::<u64>(bytes, handler::NAMESPACE));
+	let name = handler::SHAPE.get_utf8(bytes, handler::NAME).to_string();
 	let variant = VariantRef {
-		sumtype_id: SumTypeId(handler::SHAPE.get::<u64>(row, handler::ON_SUMTYPE_ID)),
-		variant_tag: handler::SHAPE.get::<u8>(row, handler::ON_VARIANT_TAG),
+		sumtype_id: SumTypeId(handler::SHAPE.get::<u64>(bytes, handler::ON_SUMTYPE_ID)),
+		variant_tag: handler::SHAPE.get::<u8>(bytes, handler::ON_VARIANT_TAG),
 	};
-	let body_source = handler::SHAPE.get_utf8(row, handler::BODY_SOURCE).to_string();
+	let body_source = handler::SHAPE.get_utf8(bytes, handler::BODY_SOURCE).to_string();
 
 	Handler {
 		id,

@@ -547,7 +547,7 @@ impl Operator for SinkRingBufferViewOperator {
 		let shape = row_shape_from_columns(view.columns());
 		let object_id = StorageId::ringbuffer(self.ringbuffer_id);
 		let mut evicted_rns: Vec<RowNumber> = Vec::new();
-		let mut evicted_rows: Vec<EncodedBytes> = Vec::new();
+		let mut evicted: Vec<EncodedBytes> = Vec::new();
 
 		self.evict_due(
 			txn,
@@ -555,11 +555,11 @@ impl Operator for SinkRingBufferViewOperator {
 			&partition_values,
 			timer.at.to_millis(),
 			&mut evicted_rns,
-			&mut evicted_rows,
+			&mut evicted,
 		)?;
 		self.sync_row_ttl_timer(txn, &partition_values)?;
 
-		if let Some(diff) = self.build_evicted_diff(txn, &view, &shape, evicted_rns, evicted_rows)? {
+		if let Some(diff) = self.build_evicted_diff(txn, &view, &shape, evicted_rns, evicted)? {
 			emit_view_change(txn, &view, diff);
 			let version = txn.version();
 			return Ok(Some(Change::from_flow(self.operator, version, Vec::new(), timer.at)));
@@ -691,7 +691,7 @@ impl SinkRingBufferViewOperator {
 		partition_values: &[Value],
 		at: u64,
 		evicted_rns: &mut Vec<RowNumber>,
-		evicted_rows: &mut Vec<EncodedBytes>,
+		evicted: &mut Vec<EncodedBytes>,
 	) -> Result<()> {
 		let partition = partition_of_values(partition_values);
 
@@ -709,7 +709,7 @@ impl SinkRingBufferViewOperator {
 			if self.announce_evictions {
 				if let Some(row) = row {
 					evicted_rns.push(source_rn.unwrap_or(rn));
-					evicted_rows.push(row);
+					evicted.push(row);
 				}
 				txn.remove(&pre_key)?;
 			} else {
@@ -763,9 +763,9 @@ impl SinkRingBufferViewOperator {
 		let row_count = source.row_count();
 		let field_columns = shape_field_columns(source, shape);
 		let mut evicted_rns: Vec<RowNumber> = Vec::new();
-		let mut evicted_rows: Vec<EncodedBytes> = Vec::new();
+		let mut evicted: Vec<EncodedBytes> = Vec::new();
 		let mut row_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut row_values: Vec<EncodedBytes> = Vec::with_capacity(row_count);
+		let mut values_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 
 		if self.is_partitioned() {
 			let verified = self.verified_partitions();
@@ -799,9 +799,9 @@ impl SinkRingBufferViewOperator {
 					&field_columns,
 					&rows,
 					&mut evicted_rns,
-					&mut evicted_rows,
+					&mut evicted,
 					&mut row_keys,
-					&mut row_values,
+					&mut values_bytes_vec,
 				)?;
 			}
 		} else {
@@ -820,16 +820,16 @@ impl SinkRingBufferViewOperator {
 				&field_columns,
 				&rows,
 				&mut evicted_rns,
-				&mut evicted_rows,
+				&mut evicted,
 				&mut row_keys,
-				&mut row_values,
+				&mut values_bytes_vec,
 			)?;
 		}
 
-		txn.set_batch(&row_keys, &row_values)?;
+		txn.set_batch(&row_keys, &values_bytes_vec)?;
 		emit_view_change(txn, view, Diff::insert(coerced));
 
-		if let Some(diff) = self.build_evicted_diff(txn, view, shape, evicted_rns, evicted_rows)? {
+		if let Some(diff) = self.build_evicted_diff(txn, view, shape, evicted_rns, evicted)? {
 			emit_view_change(txn, view, diff);
 		}
 		Ok(())
@@ -847,9 +847,9 @@ impl SinkRingBufferViewOperator {
 		field_columns: &[usize],
 		rows: &[usize],
 		evicted_rns: &mut Vec<RowNumber>,
-		evicted_rows: &mut Vec<EncodedBytes>,
+		evicted: &mut Vec<EncodedBytes>,
 		row_keys: &mut Vec<EncodedKey>,
-		row_values: &mut Vec<EncodedBytes>,
+		values: &mut Vec<EncodedBytes>,
 	) -> Result<()> {
 		let incoming = rows.len() as u64;
 		let mut evict_needed = (meta.count + incoming).saturating_sub(meta.capacity);
@@ -864,7 +864,7 @@ impl SinkRingBufferViewOperator {
 			};
 			if self.announce_evictions {
 				evicted_rns.push(source_rn.unwrap_or(oldest_rn));
-				evicted_rows.push(row);
+				evicted.push(row);
 				txn.remove(&pre_key)?;
 			} else {
 				txn.remove_silent(&pre_key)?;
@@ -881,7 +881,7 @@ impl SinkRingBufferViewOperator {
 				let (_, encoded) =
 					encode_row_at_index(source, row_idx, shape, source_rn, field_columns)?;
 				evicted_rns.push(source_rn);
-				evicted_rows.push(encoded);
+				evicted.push(encoded);
 			}
 		}
 
@@ -898,7 +898,7 @@ impl SinkRingBufferViewOperator {
 				source.time().get(row_idx).copied(),
 			)?;
 			row_keys.push(self.rb_key(object_id, assigned_rn, partition));
-			row_values.push(encoded);
+			values.push(encoded);
 			if meta.is_empty() {
 				meta.head = assigned_rn.0;
 			}
@@ -914,9 +914,9 @@ impl SinkRingBufferViewOperator {
 		view: &View,
 		shape: &RowShape,
 		evicted_rns: Vec<RowNumber>,
-		evicted_rows: Vec<EncodedBytes>,
+		evicted_bytes_vec: Vec<EncodedBytes>,
 	) -> Result<Option<Diff>> {
-		if !self.announce_evictions || evicted_rows.is_empty() {
+		if !self.announce_evictions || evicted_bytes_vec.is_empty() {
 			return Ok(None);
 		}
 		let storage_columns: Vec<ColumnWithName> = view
@@ -935,7 +935,7 @@ impl SinkRingBufferViewOperator {
 			})
 			.collect();
 		let mut evicted = Columns::with_system(storage_columns, SystemColumns::default());
-		evicted.append_rows(shape, evicted_rows, evicted_rns)?;
+		evicted.append_rows(shape, evicted_bytes_vec, evicted_rns)?;
 		decode_dictionary_columns(&mut evicted, txn)?;
 		Ok(Some(Diff::remove(evicted)))
 	}
