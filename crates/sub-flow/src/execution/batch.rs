@@ -22,7 +22,7 @@ use reifydb_value::{
 	Result, reifydb_assertions,
 	value::{Value, datetime::DateTime},
 };
-use tracing::{Span, field, instrument, warn};
+use tracing::{Span, field, info, instrument};
 
 use crate::{engine::FlowEngineInner, execution::COMPLETENESS_OBJECT, operator::max_input_time};
 
@@ -265,7 +265,7 @@ fn published_arrivals(
 
 fn warn_unpublished(flow_id: FlowId, silent: &[ObjectId]) {
 	for object in silent {
-		warn!(
+		info!(
 			flow_id = ?flow_id,
 			object = ?object,
 			"a source object has never published an output frontier; every window below it \

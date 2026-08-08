@@ -9,7 +9,7 @@ use reifydb_core::{
 	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
 };
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
-use tracing::warn;
+use tracing::{info, warn};
 
 use super::{
 	FlowTransaction,
@@ -99,7 +99,7 @@ impl SourceWatermarks {
 				.filter(|(_, value)| *value == 0)
 				.map(|(source, _)| source.0)
 				.collect();
-			warn!(
+			info!(
 				sources = sources.len(),
 				pinned_by = ?pinning,
 				"flow watermark merged to the epoch while other sources have advanced; the min-merge \
