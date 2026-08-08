@@ -68,7 +68,6 @@ fn output_frontiers(
 	topo: &[OperatorId],
 ) -> Result<BTreeMap<OperatorId, DateTime>> {
 	let watermarks = txn.source_watermarks();
-	let epoch = DateTime::from_millis(0);
 	let mut computed: BTreeMap<OperatorId, DateTime> = BTreeMap::new();
 
 	for operator_id in topo {
@@ -77,14 +76,20 @@ fn output_frontiers(
 		};
 
 		let input = if node.ty.declares_time() {
-			watermarks.source_watermark(*operator_id, txn)?
+			Some(watermarks.source_watermark(*operator_id, txn)?)
 		} else {
 			let mut merged: Option<DateTime> = None;
 			for source in &node.inputs {
-				let frontier = computed.get(source).copied().unwrap_or(epoch);
+				let Some(frontier) = computed.get(source).copied() else {
+					continue;
+				};
 				merged = Some(merged.map_or(frontier, |current: DateTime| current.min(frontier)));
 			}
-			merged.unwrap_or(epoch)
+			merged
+		};
+
+		let Some(input) = input else {
+			continue;
 		};
 
 		let frontier = operators
@@ -214,6 +219,16 @@ mod tests {
 			OperatorDef::SourceSeries {
 				series: SeriesId(id),
 				time_domain: TimeDomain::Event,
+			},
+		)
+	}
+
+	fn untimed_source(id: u64) -> FlowNode {
+		FlowNode::new(
+			OperatorId(id),
+			OperatorDef::SourceTable {
+				table: TableId(id),
+				time_domain: TimeDomain::None,
 			},
 		)
 	}
@@ -369,6 +384,38 @@ mod tests {
 			.holds(vec![advance(1, 30_000), advance(2, 10_000)]);
 
 		assert_eq!(held, vec![hold(4, 10_000)]);
+	}
+
+	#[test]
+	fn an_untimed_source_is_excluded_from_the_merge_rather_than_pinning_it_at_the_epoch() {
+		// A source declaring no time carries no event instant, so counting it as the epoch pins every downstream window open forever.
+		let held = Harness::new()
+			.node(source(1))
+			.node(untimed_source(2))
+			.node(stage(3))
+			.node(sink(4))
+			.edge(1, 3)
+			.edge(2, 3)
+			.edge(3, 4)
+			.registered_sink(4, FLOW)
+			.holds(vec![advance(1, 30_000)]);
+
+		assert_eq!(held, vec![hold(4, 30_000)]);
+	}
+
+	#[test]
+	fn a_flow_whose_every_source_is_untimed_claims_nothing() {
+		// With no timed input there is nothing to justify a frontier, so claiming one would seal windows on rows never seen.
+		let held = Harness::new()
+			.node(untimed_source(1))
+			.node(stage(3))
+			.node(sink(4))
+			.edge(1, 3)
+			.edge(3, 4)
+			.registered_sink(4, FLOW)
+			.holds(vec![]);
+
+		assert!(held.is_empty());
 	}
 
 	#[test]
