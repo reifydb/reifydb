@@ -14,14 +14,7 @@ use reifydb_transaction::transaction::Transaction;
 use serde_json::from_str;
 
 use super::CatalogChangeApplier;
-use crate::{
-	Result,
-	catalog::Catalog,
-	error::CatalogChangeError,
-	store::sink::shape::sink::{
-		self, CONFIG, CONNECTOR, ID, NAME, NAMESPACE, SOURCE_NAME, SOURCE_NAMESPACE, STATUS,
-	},
-};
+use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::sink::shape::sink};
 
 pub(super) struct SinkApplier;
 
@@ -44,15 +37,15 @@ impl CatalogChangeApplier for SinkApplier {
 }
 
 fn decode_sink(bytes: &EncodedBytes) -> Sink {
-	let id = SinkId(sink::SHAPE.get::<u64>(bytes, ID));
-	let namespace = NamespaceId(sink::SHAPE.get::<u64>(bytes, NAMESPACE));
-	let name = sink::SHAPE.get_utf8(bytes, NAME).to_string();
-	let source_namespace = NamespaceId(sink::SHAPE.get::<u64>(bytes, SOURCE_NAMESPACE));
-	let source_name = sink::SHAPE.get_utf8(bytes, SOURCE_NAME).to_string();
-	let connector = sink::SHAPE.get_utf8(bytes, CONNECTOR).to_string();
-	let config_json = sink::SHAPE.get_utf8(bytes, CONFIG);
+	let id = SinkId(sink::get_id(bytes));
+	let namespace = NamespaceId(sink::get_namespace(bytes));
+	let name = sink::get_name(bytes).to_string();
+	let source_namespace = NamespaceId(sink::get_source_namespace(bytes));
+	let source_name = sink::get_source_name(bytes).to_string();
+	let connector = sink::get_connector(bytes).to_string();
+	let config_json = sink::get_config(bytes);
 	let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
-	let status = FlowStatus::from_u8(sink::SHAPE.get::<u8>(bytes, STATUS));
+	let status = FlowStatus::from_u8(sink::get_status(bytes));
 
 	Sink {
 		id,

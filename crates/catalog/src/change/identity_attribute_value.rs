@@ -8,7 +8,6 @@ use reifydb_core::{
 	return_internal_error,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::identity::IdentityId;
 
 use super::CatalogChangeApplier;
 use crate::{
@@ -52,9 +51,9 @@ impl CatalogChangeApplier for IdentityAttributeValueApplier {
 }
 
 fn decode_identity_attribute_value(bytes: &EncodedBytes) -> Result<IdentityAttributeValue> {
-	let identity = identity_attribute_value::SHAPE.get::<IdentityId>(bytes, identity_attribute_value::IDENTITY);
-	let attribute = identity_attribute_value::SHAPE.get::<u64>(bytes, identity_attribute_value::ATTRIBUTE);
-	let blob = identity_attribute_value::SHAPE.get_blob(bytes, identity_attribute_value::VALUE);
+	let identity = identity_attribute_value::get_identity(bytes);
+	let attribute = identity_attribute_value::get_attribute(bytes);
+	let blob = identity_attribute_value::get_value(bytes);
 	let value = match decode_value(blob.as_bytes()) {
 		Ok(value) => value,
 		Err(e) => return_internal_error!("failed to decode replicated identity attribute value: {}", e),

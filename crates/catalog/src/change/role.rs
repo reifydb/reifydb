@@ -32,8 +32,8 @@ impl CatalogChangeApplier for RoleApplier {
 }
 
 fn decode_role(bytes: &EncodedBytes) -> Role {
-	let id = role::SHAPE.get::<u64>(bytes, role::ID);
-	let name = role::SHAPE.get_utf8(bytes, role::NAME).to_string();
+	let id = role::get_id(bytes);
+	let name = role::get_name(bytes).to_string();
 
 	Role {
 		id,

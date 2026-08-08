@@ -26,7 +26,7 @@ use crate::{
 	store::{
 		column::create::ColumnToCreate,
 		sequence::system::SystemSequence,
-		view::shape::{view, view_namespace},
+		view::shape::{encode_view_sort, view, view_namespace},
 	},
 };
 
@@ -117,54 +117,53 @@ impl CatalogStore {
 		to_create: &ViewToCreate,
 		kind: ViewKind,
 	) -> Result<()> {
-		let mut row = view::SHAPE.allocate();
-		view::SHAPE.set::<u64>(&mut row, view::ID, u64::from(view));
-		view::SHAPE.set::<u64>(&mut row, view::NAMESPACE, u64::from(namespace));
-		view::SHAPE.set_utf8(&mut row, view::NAME, to_create.name.text());
-		view::SHAPE.set::<u8>(
+		let mut row = view::allocate();
+		view::set_id(&mut row, u64::from(view));
+		view::set_namespace(&mut row, u64::from(namespace));
+		view::set_name(&mut row, to_create.name.text());
+		view::set_kind(
 			&mut row,
-			view::KIND,
 			match kind {
 				Deferred => 0,
 				Transactional => 1,
 			},
 		);
-		view::SHAPE.set::<u64>(&mut row, view::PRIMARY_KEY, 0u64);
-		view::SHAPE.set_utf8(&mut row, view::SORT, view::encode_view_sort(&to_create.sort));
+		view::set_primary_key(&mut row, 0u64);
+		view::set_sort(&mut row, encode_view_sort(&to_create.sort));
 
 		match &to_create.storage {
 			ViewStorageConfig::Table {
 				storage,
 			} => {
-				view::SHAPE.set::<u8>(&mut row, view::STORAGE_KIND, ViewStorageKind::Table as u8);
-				view::SHAPE.set::<u64>(&mut row, view::STORAGE_ID, u64::from(*storage));
-				view::SHAPE.set::<u64>(&mut row, view::CAPACITY, 0u64);
-				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, "");
-				view::SHAPE.set::<u8>(&mut row, view::KEY_KIND, 0u8);
-				view::SHAPE.set::<u8>(&mut row, view::PRECISION, 0u8);
-				view::SHAPE.set::<u64>(&mut row, view::TAG_ID, 0u64);
+				view::set_storage_kind(&mut row, ViewStorageKind::Table as u8);
+				view::set_storage_id(&mut row, u64::from(*storage));
+				view::set_capacity(&mut row, 0u64);
+				view::set_key_column(&mut row, "");
+				view::set_key_kind(&mut row, 0u8);
+				view::set_precision(&mut row, 0u8);
+				view::set_tag_id(&mut row, 0u64);
 			}
 			ViewStorageConfig::RingBuffer {
 				storage,
 				capacity,
 			} => {
-				view::SHAPE.set::<u8>(&mut row, view::STORAGE_KIND, ViewStorageKind::RingBuffer as u8);
-				view::SHAPE.set::<u64>(&mut row, view::STORAGE_ID, u64::from(*storage));
-				view::SHAPE.set::<u64>(&mut row, view::CAPACITY, *capacity);
-				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, "");
-				view::SHAPE.set::<u8>(&mut row, view::KEY_KIND, 0u8);
-				view::SHAPE.set::<u8>(&mut row, view::PRECISION, 0u8);
-				view::SHAPE.set::<u64>(&mut row, view::TAG_ID, 0u64);
+				view::set_storage_kind(&mut row, ViewStorageKind::RingBuffer as u8);
+				view::set_storage_id(&mut row, u64::from(*storage));
+				view::set_capacity(&mut row, *capacity);
+				view::set_key_column(&mut row, "");
+				view::set_key_kind(&mut row, 0u8);
+				view::set_precision(&mut row, 0u8);
+				view::set_tag_id(&mut row, 0u64);
 			}
 			ViewStorageConfig::Series {
 				storage,
 				key,
 				tag,
 			} => {
-				view::SHAPE.set::<u8>(&mut row, view::STORAGE_KIND, ViewStorageKind::Series as u8);
-				view::SHAPE.set::<u64>(&mut row, view::STORAGE_ID, u64::from(*storage));
-				view::SHAPE.set::<u64>(&mut row, view::CAPACITY, 0u64);
-				view::SHAPE.set_utf8(&mut row, view::KEY_COLUMN, key.column());
+				view::set_storage_kind(&mut row, ViewStorageKind::Series as u8);
+				view::set_storage_id(&mut row, u64::from(*storage));
+				view::set_capacity(&mut row, 0u64);
+				view::set_key_column(&mut row, key.column());
 				let (key_kind_u8, precision_u8) = match key {
 					SeriesKey::DateTime {
 						precision,
@@ -174,9 +173,9 @@ impl CatalogStore {
 						..
 					} => (1u8, 0u8),
 				};
-				view::SHAPE.set::<u8>(&mut row, view::KEY_KIND, key_kind_u8);
-				view::SHAPE.set::<u8>(&mut row, view::PRECISION, precision_u8);
-				view::SHAPE.set::<u64>(&mut row, view::TAG_ID, tag.map(|t| t.0).unwrap_or(0));
+				view::set_key_kind(&mut row, key_kind_u8);
+				view::set_precision(&mut row, precision_u8);
+				view::set_tag_id(&mut row, tag.map(|t| t.0).unwrap_or(0));
 			}
 		}
 
@@ -191,9 +190,9 @@ impl CatalogStore {
 		view: ViewId,
 		name: &str,
 	) -> Result<()> {
-		let mut row = view_namespace::SHAPE.allocate();
-		view_namespace::SHAPE.set::<u64>(&mut row, view_namespace::ID, u64::from(view));
-		view_namespace::SHAPE.set_utf8(&mut row, view_namespace::NAME, name);
+		let mut row = view_namespace::allocate();
+		view_namespace::set_id(&mut row, u64::from(view));
+		view_namespace::set_name(&mut row, name);
 		txn.set(&NamespaceViewKey::encoded(namespace, view), row.freeze())?;
 		Ok(())
 	}
@@ -296,13 +295,13 @@ pub mod tests {
 
 		let link = &links[1];
 		let bytes = &link.bytes;
-		assert_eq!(view_namespace::SHAPE.get::<u64>(bytes, view_namespace::ID), 16385);
-		assert_eq!(view_namespace::SHAPE.get_utf8(bytes, view_namespace::NAME), "test_view");
+		assert_eq!(view_namespace::get_id(bytes), 16385);
+		assert_eq!(view_namespace::get_name(bytes), "test_view");
 
 		let link = &links[0];
 		let bytes = &link.bytes;
-		assert_eq!(view_namespace::SHAPE.get::<u64>(bytes, view_namespace::ID), 16386);
-		assert_eq!(view_namespace::SHAPE.get_utf8(bytes, view_namespace::NAME), "another_view");
+		assert_eq!(view_namespace::get_id(bytes), 16386);
+		assert_eq!(view_namespace::get_name(bytes), "another_view");
 	}
 
 	#[test]

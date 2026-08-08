@@ -43,22 +43,22 @@ impl CatalogStore {
 			} => ("ws", "", "", name.as_str()),
 		};
 
-		let mut row = binding::SHAPE.allocate();
-		binding::SHAPE.set::<u64>(&mut row, binding::ID, u64::from(id));
-		binding::SHAPE.set::<u64>(&mut row, binding::NAMESPACE, u64::from(to_create.namespace));
-		binding::SHAPE.set_utf8(&mut row, binding::NAME, &to_create.name);
-		binding::SHAPE.set::<u64>(&mut row, binding::PROCEDURE_ID, *to_create.procedure);
-		binding::SHAPE.set_utf8(&mut row, binding::PROTOCOL, protocol_str);
-		binding::SHAPE.set_utf8(&mut row, binding::HTTP_METHOD, http_method);
-		binding::SHAPE.set_utf8(&mut row, binding::HTTP_PATH, http_path);
-		binding::SHAPE.set_utf8(&mut row, binding::RPC_NAME, rpc_name);
-		binding::SHAPE.set_utf8(&mut row, binding::FORMAT, to_create.format.as_str());
+		let mut row = binding::allocate();
+		binding::set_id(&mut row, u64::from(id));
+		binding::set_namespace(&mut row, u64::from(to_create.namespace));
+		binding::set_name(&mut row, &to_create.name);
+		binding::set_procedure_id(&mut row, *to_create.procedure);
+		binding::set_protocol(&mut row, protocol_str);
+		binding::set_http_method(&mut row, http_method);
+		binding::set_http_path(&mut row, http_path);
+		binding::set_rpc_name(&mut row, rpc_name);
+		binding::set_format(&mut row, to_create.format.as_str());
 
 		txn.set(&BindingKey::encoded(id), row.freeze())?;
 
-		let mut ns_row = binding_namespace::SHAPE.allocate();
-		binding_namespace::SHAPE.set::<u64>(&mut ns_row, binding_namespace::ID, u64::from(id));
-		binding_namespace::SHAPE.set_utf8(&mut ns_row, binding_namespace::NAME, &to_create.name);
+		let mut ns_row = binding_namespace::allocate();
+		binding_namespace::set_id(&mut ns_row, u64::from(id));
+		binding_namespace::set_name(&mut ns_row, &to_create.name);
 		txn.set(&NamespaceBindingKey::encoded(to_create.namespace, id), ns_row.freeze())?;
 
 		Ok(Binding {

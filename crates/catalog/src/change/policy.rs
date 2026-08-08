@@ -32,14 +32,14 @@ impl CatalogChangeApplier for PolicyApplier {
 }
 
 fn decode_policy(bytes: &EncodedBytes) -> Policy {
-	let id = policy::SHAPE.get::<u64>(bytes, policy::ID);
-	let name_str = policy::SHAPE.get_utf8(bytes, policy::NAME).to_string();
+	let id = policy::get_id(bytes);
+	let name_str = policy::get_name(bytes).to_string();
 	let name = if name_str.is_empty() {
 		None
 	} else {
 		Some(name_str)
 	};
-	let target_type_str = policy::SHAPE.get_utf8(bytes, policy::TARGET_TYPE);
+	let target_type_str = policy::get_target_type(bytes);
 	let target_type = match target_type_str {
 		"table" => PolicyTargetType::Table,
 		"column" => PolicyTargetType::Column,
@@ -55,19 +55,19 @@ fn decode_policy(bytes: &EncodedBytes) -> Policy {
 		"ringbuffer" => PolicyTargetType::RingBuffer,
 		_ => PolicyTargetType::Table,
 	};
-	let target_ns_str = policy::SHAPE.get_utf8(bytes, policy::TARGET_NAMESPACE).to_string();
+	let target_ns_str = policy::get_target_namespace(bytes).to_string();
 	let target_namespace = if target_ns_str.is_empty() {
 		None
 	} else {
 		Some(target_ns_str)
 	};
-	let target_object_str = policy::SHAPE.get_utf8(bytes, policy::TARGET_OBJECT).to_string();
+	let target_object_str = policy::get_target_object(bytes).to_string();
 	let target_object = if target_object_str.is_empty() {
 		None
 	} else {
 		Some(target_object_str)
 	};
-	let enabled = policy::SHAPE.get::<bool>(bytes, policy::ENABLED);
+	let enabled = policy::get_enabled(bytes);
 
 	Policy {
 		id,

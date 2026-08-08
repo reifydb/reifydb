@@ -16,13 +16,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use serde_json::from_str;
 
 use super::CatalogCache;
-use crate::{
-	Result,
-	store::source::shape::{
-		source,
-		source::{CONFIG, CONNECTOR, ID, NAME, NAMESPACE, STATUS, TARGET_NAME, TARGET_NAMESPACE},
-	},
-};
+use crate::{Result, store::source::shape::source};
 
 pub(crate) fn load_sources(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = SourceKey::full_scan();
@@ -44,15 +38,15 @@ pub(crate) fn load_sources(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> 
 
 fn convert_source(multi: MultiVersionRow) -> Source {
 	let bytes = multi.bytes;
-	let id = SourceId(source::SHAPE.get::<u64>(&bytes, ID));
-	let namespace = NamespaceId(source::SHAPE.get::<u64>(&bytes, NAMESPACE));
-	let name = source::SHAPE.get_utf8(&bytes, NAME).to_string();
-	let connector = source::SHAPE.get_utf8(&bytes, CONNECTOR).to_string();
-	let config_json = source::SHAPE.get_utf8(&bytes, CONFIG);
+	let id = SourceId(source::get_id(&bytes));
+	let namespace = NamespaceId(source::get_namespace(&bytes));
+	let name = source::get_name(&bytes).to_string();
+	let connector = source::get_connector(&bytes).to_string();
+	let config_json = source::get_config(&bytes);
 	let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
-	let target_namespace = NamespaceId(source::SHAPE.get::<u64>(&bytes, TARGET_NAMESPACE));
-	let target_name = source::SHAPE.get_utf8(&bytes, TARGET_NAME).to_string();
-	let status = FlowStatus::from_u8(source::SHAPE.get::<u8>(&bytes, STATUS));
+	let target_namespace = NamespaceId(source::get_target_namespace(&bytes));
+	let target_name = source::get_target_name(&bytes).to_string();
+	let status = FlowStatus::from_u8(source::get_status(&bytes));
 
 	Source {
 		id,

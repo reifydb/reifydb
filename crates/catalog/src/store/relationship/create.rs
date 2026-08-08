@@ -62,51 +62,23 @@ impl CatalogStore {
 
 		let id = SystemSequence::next_relationship_id(txn)?;
 
-		let mut row = relationship_shape::SHAPE.allocate();
-		relationship_shape::SHAPE.set::<u64>(&mut row, relationship_shape::ID, id.0);
-		relationship_shape::SHAPE.set::<u64>(&mut row, relationship_shape::NAMESPACE_ID, to_create.namespace.0);
-		relationship_shape::SHAPE.set_utf8(&mut row, relationship_shape::NAME, to_create.name.text());
-		relationship_shape::SHAPE.set::<u64>(
-			&mut row,
-			relationship_shape::SOURCE_TABLE_ID,
-			to_create.source_table.0,
-		);
-		relationship_shape::SHAPE.set::<u64>(
-			&mut row,
-			relationship_shape::SOURCE_COLUMN_ID,
-			to_create.source_column.0,
-		);
-		relationship_shape::SHAPE.set::<u64>(
-			&mut row,
-			relationship_shape::TARGET_TABLE_ID,
-			to_create.target_table.0,
-		);
-		relationship_shape::SHAPE.set::<u64>(
-			&mut row,
-			relationship_shape::TARGET_COLUMN_ID,
-			to_create.target_column.0,
-		);
+		let mut row = relationship_shape::allocate();
+		relationship_shape::set_id(&mut row, id.0);
+		relationship_shape::set_namespace_id(&mut row, to_create.namespace.0);
+		relationship_shape::set_name(&mut row, to_create.name.text());
+		relationship_shape::set_source_table_id(&mut row, to_create.source_table.0);
+		relationship_shape::set_source_column_id(&mut row, to_create.source_column.0);
+		relationship_shape::set_target_table_id(&mut row, to_create.target_table.0);
+		relationship_shape::set_target_column_id(&mut row, to_create.target_column.0);
 
 		let (junction_table, junction_source_col, junction_target_col) = match &to_create.junction {
 			Some(j) => (j.table.0, j.source_column.0, j.target_column.0),
 			None => (0, 0, 0),
 		};
-		relationship_shape::SHAPE.set::<u64>(&mut row, relationship_shape::JUNCTION_TABLE_ID, junction_table);
-		relationship_shape::SHAPE.set::<u64>(
-			&mut row,
-			relationship_shape::JUNCTION_SOURCE_COLUMN_ID,
-			junction_source_col,
-		);
-		relationship_shape::SHAPE.set::<u64>(
-			&mut row,
-			relationship_shape::JUNCTION_TARGET_COLUMN_ID,
-			junction_target_col,
-		);
-		relationship_shape::SHAPE.set::<u8>(
-			&mut row,
-			relationship_shape::CARDINALITY,
-			to_create.cardinality.as_code(),
-		);
+		relationship_shape::set_junction_table_id(&mut row, junction_table);
+		relationship_shape::set_junction_source_column_id(&mut row, junction_source_col);
+		relationship_shape::set_junction_target_column_id(&mut row, junction_target_col);
+		relationship_shape::set_cardinality(&mut row, to_create.cardinality.as_code());
 
 		txn.set(&RelationshipKey::encoded(id), row.freeze())?;
 

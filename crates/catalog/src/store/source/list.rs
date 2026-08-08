@@ -24,15 +24,15 @@ impl CatalogStore {
 			let entry = entry?;
 			let bytes = &entry.bytes;
 
-			let id = SourceId(source::SHAPE.get::<u64>(bytes, source::ID));
-			let namespace = NamespaceId(source::SHAPE.get::<u64>(bytes, source::NAMESPACE));
-			let name = source::SHAPE.get_utf8(bytes, source::NAME).to_string();
-			let connector = source::SHAPE.get_utf8(bytes, source::CONNECTOR).to_string();
-			let config_json = source::SHAPE.get_utf8(bytes, source::CONFIG);
+			let id = SourceId(source::get_id(bytes));
+			let namespace = NamespaceId(source::get_namespace(bytes));
+			let name = source::get_name(bytes).to_string();
+			let connector = source::get_connector(bytes).to_string();
+			let config_json = source::get_config(bytes);
 			let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
-			let target_namespace = NamespaceId(source::SHAPE.get::<u64>(bytes, source::TARGET_NAMESPACE));
-			let target_name = source::SHAPE.get_utf8(bytes, source::TARGET_NAME).to_string();
-			let status_u8 = source::SHAPE.get::<u8>(bytes, source::STATUS);
+			let target_namespace = NamespaceId(source::get_target_namespace(bytes));
+			let target_name = source::get_target_name(bytes).to_string();
+			let status_u8 = source::get_status(bytes);
 			let status = FlowStatus::from_u8(status_u8);
 
 			result.push(Source {

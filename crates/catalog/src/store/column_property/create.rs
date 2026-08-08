@@ -38,14 +38,14 @@ impl CatalogStore {
 
 		let id = SystemSequence::next_column_property_id(txn)?;
 
-		let mut row = column_property::SHAPE.allocate();
-		column_property::SHAPE.set::<u64>(&mut row, column_property::ID, u64::from(id));
-		column_property::SHAPE.set::<u64>(&mut row, column_property::COLUMN, u64::from(column));
+		let mut row = column_property::allocate();
+		column_property::set_id(&mut row, u64::from(id));
+		column_property::set_column(&mut row, u64::from(column));
 
 		{
 			let (kind, value) = property.to_u8();
-			column_property::SHAPE.set::<u8>(&mut row, column_property::POLICY, kind);
-			column_property::SHAPE.set::<u8>(&mut row, column_property::VALUE, value);
+			column_property::set_policy(&mut row, kind);
+			column_property::set_value(&mut row, value);
 		}
 
 		txn.set(&ColumnPropertyKey::encoded(column, id), row.freeze())?;

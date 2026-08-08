@@ -9,12 +9,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use super::CatalogChangeApplier;
-use crate::{
-	Result,
-	catalog::Catalog,
-	error::CatalogChangeError,
-	store::operator::shape::operator::{self, DATA, FLOW, ID, TYPE},
-};
+use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::operator::shape::operator};
 
 pub(super) struct OperatorApplier;
 
@@ -37,10 +32,10 @@ impl CatalogChangeApplier for OperatorApplier {
 }
 
 fn decode_operator(bytes: &EncodedBytes) -> Operator {
-	let id = OperatorId(operator::SHAPE.get::<u64>(bytes, ID));
-	let flow = FlowId(operator::SHAPE.get::<u64>(bytes, FLOW));
-	let node_type = operator::SHAPE.get::<u8>(bytes, TYPE);
-	let data = operator::SHAPE.get_blob(bytes, DATA).clone();
+	let id = OperatorId(operator::get_id(bytes));
+	let flow = FlowId(operator::get_flow(bytes));
+	let node_type = operator::get_type(bytes);
+	let data = operator::get_data(bytes).clone();
 
 	Operator {
 		id,

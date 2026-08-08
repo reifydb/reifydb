@@ -10,10 +10,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::value::{Value, blob::Blob, identity::IdentityId};
 
-use crate::{
-	CatalogStore, Result,
-	store::identity_attribute_value::shape::identity_attribute_value::{ATTRIBUTE, IDENTITY, SHAPE, VALUE},
-};
+use crate::{CatalogStore, Result, store::identity_attribute_value::shape::identity_attribute_value};
 
 impl CatalogStore {
 	pub(crate) fn set_identity_attribute_value(
@@ -26,10 +23,10 @@ impl CatalogStore {
 			Ok(bytes) => bytes,
 			Err(e) => return_internal_error!("failed to encode identity attribute value: {}", e),
 		};
-		let mut row = SHAPE.allocate();
-		SHAPE.set::<IdentityId>(&mut row, IDENTITY, identity);
-		SHAPE.set::<u64>(&mut row, ATTRIBUTE, attribute);
-		SHAPE.set_blob(&mut row, VALUE, &Blob::new(encoded));
+		let mut row = identity_attribute_value::allocate();
+		identity_attribute_value::set_identity(&mut row, identity);
+		identity_attribute_value::set_attribute(&mut row, attribute);
+		identity_attribute_value::set_value(&mut row, &Blob::new(encoded));
 
 		txn.set(&IdentityAttributeValueKey::encoded(identity, attribute), row.freeze())?;
 

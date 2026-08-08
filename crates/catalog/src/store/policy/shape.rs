@@ -1,44 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub(crate) mod policy {
-	use once_cell::sync::Lazy;
-	use reifydb_codec::row::shape::{RowShape, RowShapeField};
-	use reifydb_value::value::value_type::ValueType;
+use reifydb_macro::catalog_shape;
 
-	pub(crate) const ID: usize = 0;
-	pub(crate) const NAME: usize = 1;
-	pub(crate) const TARGET_TYPE: usize = 2;
-	pub(crate) const TARGET_NAMESPACE: usize = 3;
-	pub(crate) const TARGET_OBJECT: usize = 4;
-	pub(crate) const ENABLED: usize = 5;
+catalog_shape! {
+	pub(crate) policy {
+		id: u64,
+		name: utf8,
+		target_type: utf8,
+		target_namespace: utf8,
+		target_object: utf8,
+		enabled: bool,
+	}
 
-	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("id", ValueType::Uint8),
-			RowShapeField::unconstrained("name", ValueType::Utf8),
-			RowShapeField::unconstrained("target_type", ValueType::Utf8),
-			RowShapeField::unconstrained("target_namespace", ValueType::Utf8),
-			RowShapeField::unconstrained("target_object", ValueType::Utf8),
-			RowShapeField::unconstrained("enabled", ValueType::Boolean),
-		])
-	});
-}
-
-pub(crate) mod policy_op {
-	use once_cell::sync::Lazy;
-	use reifydb_codec::row::shape::{RowShape, RowShapeField};
-	use reifydb_value::value::value_type::ValueType;
-
-	pub(crate) const POLICY_ID: usize = 0;
-	pub(crate) const OPERATION: usize = 1;
-	pub(crate) const BODY_SOURCE: usize = 2;
-
-	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("policy_id", ValueType::Uint8),
-			RowShapeField::unconstrained("operation", ValueType::Utf8),
-			RowShapeField::unconstrained("body_source", ValueType::Utf8),
-		])
-	});
+	pub(crate) policy_op {
+		policy_id: u64,
+		operation: utf8,
+		body_source: utf8,
+	}
 }

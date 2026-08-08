@@ -22,9 +22,7 @@ impl CatalogStore {
 			for entry in stream {
 				let multi = entry?;
 				let bytes = &multi.bytes;
-				dictionary_ids.push(DictionaryId(
-					dictionary_namespace::SHAPE.get::<u64>(bytes, dictionary_namespace::ID),
-				));
+				dictionary_ids.push(DictionaryId(dictionary_namespace::get_id(bytes)));
 			}
 		}
 
@@ -45,11 +43,11 @@ impl CatalogStore {
 		for entry in stream {
 			let multi = entry?;
 			let bytes = &multi.bytes;
-			let id = DictionaryId(dictionary::SHAPE.get::<u64>(bytes, dictionary::ID));
-			let namespace = NamespaceId(dictionary::SHAPE.get::<u64>(bytes, dictionary::NAMESPACE));
-			let name = dictionary::SHAPE.get_utf8(bytes, dictionary::NAME).to_string();
-			let value_type_ordinal = dictionary::SHAPE.get::<u8>(bytes, dictionary::VALUE_TYPE);
-			let id_type_ordinal = dictionary::SHAPE.get::<u8>(bytes, dictionary::ID_TYPE);
+			let id = DictionaryId(dictionary::get_id(bytes));
+			let namespace = NamespaceId(dictionary::get_namespace(bytes));
+			let name = dictionary::get_name(bytes).to_string();
+			let value_type_ordinal = dictionary::get_value_type(bytes);
+			let id_type_ordinal = dictionary::get_id_type(bytes);
 
 			dictionaries.push(Dictionary {
 				id,

@@ -24,15 +24,15 @@ impl CatalogStore {
 		};
 
 		let bytes = multi.bytes;
-		let id = SourceId(source::SHAPE.get::<u64>(&bytes, source::ID));
-		let namespace = NamespaceId(source::SHAPE.get::<u64>(&bytes, source::NAMESPACE));
-		let name = source::SHAPE.get_utf8(&bytes, source::NAME).to_string();
-		let connector = source::SHAPE.get_utf8(&bytes, source::CONNECTOR).to_string();
-		let config_json = source::SHAPE.get_utf8(&bytes, source::CONFIG);
+		let id = SourceId(source::get_id(&bytes));
+		let namespace = NamespaceId(source::get_namespace(&bytes));
+		let name = source::get_name(&bytes).to_string();
+		let connector = source::get_connector(&bytes).to_string();
+		let config_json = source::get_config(&bytes);
 		let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
-		let target_namespace = NamespaceId(source::SHAPE.get::<u64>(&bytes, source::TARGET_NAMESPACE));
-		let target_name = source::SHAPE.get_utf8(&bytes, source::TARGET_NAME).to_string();
-		let status_u8 = source::SHAPE.get::<u8>(&bytes, source::STATUS);
+		let target_namespace = NamespaceId(source::get_target_namespace(&bytes));
+		let target_name = source::get_target_name(&bytes).to_string();
+		let status_u8 = source::get_status(&bytes);
 		let status = FlowStatus::from_u8(status_u8);
 
 		Ok(Some(Source {
@@ -59,10 +59,9 @@ impl CatalogStore {
 		for entry in stream.by_ref() {
 			let multi = entry?;
 			let bytes = &multi.bytes;
-			let source_name = source_namespace::SHAPE.get_utf8(bytes, source_namespace::NAME);
+			let source_name = source_namespace::get_name(bytes);
 			if name == source_name {
-				found_source =
-					Some(SourceId(source_namespace::SHAPE.get::<u64>(bytes, source_namespace::ID)));
+				found_source = Some(SourceId(source_namespace::get_id(bytes)));
 				break;
 			}
 		}

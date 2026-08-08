@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use operator::SHAPE;
 use reifydb_core::{
 	interface::catalog::flow::{FlowId, Operator, OperatorId},
 	key::operator::OperatorKey,
@@ -17,10 +16,10 @@ impl CatalogStore {
 		};
 
 		let bytes = multi.bytes;
-		let id = OperatorId(SHAPE.get::<u64>(&bytes, operator::ID));
-		let flow = FlowId(SHAPE.get::<u64>(&bytes, operator::FLOW));
-		let node_type = SHAPE.get::<u8>(&bytes, operator::TYPE);
-		let data = SHAPE.get_blob(&bytes, operator::DATA).clone();
+		let id = OperatorId(operator::get_id(&bytes));
+		let flow = FlowId(operator::get_flow(&bytes));
+		let node_type = operator::get_type(&bytes);
+		let data = operator::get_data(&bytes).clone();
 
 		Ok(Some(Operator {
 			id,

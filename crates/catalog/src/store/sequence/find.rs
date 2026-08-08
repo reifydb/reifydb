@@ -10,10 +10,7 @@ use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore, Result,
-	store::sequence::{
-		Sequence,
-		shape::sequence::{SHAPE, VALUE},
-	},
+	store::sequence::{Sequence, shape::sequence},
 	system::ids::sequences::ALL,
 };
 
@@ -30,7 +27,7 @@ impl CatalogStore {
 		let sequence_key = SystemSequenceKey::encoded(sequence_id);
 
 		let value = match rx.get(&sequence_key)? {
-			Some(bytes) => SHAPE.get::<u64>(&bytes.bytes, VALUE),
+			Some(bytes) => sequence::get_value(&bytes.bytes),
 			None => 0,
 		};
 

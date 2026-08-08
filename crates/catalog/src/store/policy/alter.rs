@@ -4,10 +4,7 @@
 use reifydb_core::{interface::catalog::policy::PolicyId, key::policy::PolicyKey};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 
-use crate::{
-	CatalogStore, Result,
-	store::policy::shape::policy::{ENABLED, ID, NAME, SHAPE, TARGET_NAMESPACE, TARGET_OBJECT, TARGET_TYPE},
-};
+use crate::{CatalogStore, Result, store::policy::shape::policy};
 
 impl CatalogStore {
 	pub(crate) fn alter_policy_enabled(
@@ -16,13 +13,13 @@ impl CatalogStore {
 		enabled: bool,
 	) -> Result<()> {
 		if let Some(def) = Self::find_policy(&mut Transaction::Admin(&mut *txn), policy_id)? {
-			let mut row = SHAPE.allocate();
-			SHAPE.set::<u64>(&mut row, ID, def.id);
-			SHAPE.set_utf8(&mut row, NAME, def.name.as_deref().unwrap_or(""));
-			SHAPE.set_utf8(&mut row, TARGET_TYPE, def.target_type.as_str());
-			SHAPE.set_utf8(&mut row, TARGET_NAMESPACE, def.target_namespace.as_deref().unwrap_or(""));
-			SHAPE.set_utf8(&mut row, TARGET_OBJECT, def.target_object.as_deref().unwrap_or(""));
-			SHAPE.set::<bool>(&mut row, ENABLED, enabled);
+			let mut row = policy::allocate();
+			policy::set_id(&mut row, def.id);
+			policy::set_name(&mut row, def.name.as_deref().unwrap_or(""));
+			policy::set_target_type(&mut row, def.target_type.as_str());
+			policy::set_target_namespace(&mut row, def.target_namespace.as_deref().unwrap_or(""));
+			policy::set_target_object(&mut row, def.target_object.as_deref().unwrap_or(""));
+			policy::set_enabled(&mut row, enabled);
 
 			txn.set(&PolicyKey::encoded(policy_id), row.freeze())?;
 		}

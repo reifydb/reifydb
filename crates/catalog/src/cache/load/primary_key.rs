@@ -10,10 +10,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use super::CatalogCache;
 use crate::{
 	CatalogStore, Result,
-	store::primary_key::shape::{
-		primary_key,
-		primary_key::{COLUMN_IDS, ID, deserialize_column_ids},
-	},
+	store::primary_key::shape::{deserialize_column_ids, primary_key},
 };
 
 pub fn load_primary_keys(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
@@ -31,9 +28,9 @@ pub fn load_primary_keys(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 		let version = multi.version;
 		let bytes = multi.bytes;
 
-		let pk_id = PrimaryKeyId(primary_key::SHAPE.get::<u64>(&bytes, ID));
+		let pk_id = PrimaryKeyId(primary_key::get_id(&bytes));
 
-		let column_ids_blob = primary_key::SHAPE.get_blob(&bytes, COLUMN_IDS);
+		let column_ids_blob = primary_key::get_column_ids(&bytes);
 		let column_ids = deserialize_column_ids(&column_ids_blob);
 
 		let mut columns = Vec::new();

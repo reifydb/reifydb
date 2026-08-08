@@ -28,7 +28,7 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			let attribute_name = identity_attribute::SHAPE.get_utf8(&multi.bytes, identity_attribute::NAME);
+			let attribute_name = identity_attribute::get_name(&multi.bytes);
 			if name == attribute_name {
 				return Ok(Some(convert_identity_attribute(multi)));
 			}

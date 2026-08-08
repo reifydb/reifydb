@@ -71,9 +71,7 @@ pub(crate) fn collect_series_snapshot_ids(
 	let mut stream = rx.range(SeriesColumnSnapshotKey::full_scan(series_id), RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {
 		let multi = entry?;
-		ids.push(ColumnSnapshotId(
-			column_snapshot_link::SHAPE.get::<u64>(&multi.bytes, column_snapshot_link::ID),
-		));
+		ids.push(ColumnSnapshotId(column_snapshot_link::get_id(&multi.bytes)));
 	}
 	drop(stream);
 	Ok(ids)
@@ -84,25 +82,23 @@ pub(crate) fn collect_table_snapshot_ids(rx: &mut Transaction<'_>, table_id: Tab
 	let mut stream = rx.range(TableColumnSnapshotKey::full_scan(table_id), RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {
 		let multi = entry?;
-		ids.push(ColumnSnapshotId(
-			column_snapshot_link::SHAPE.get::<u64>(&multi.bytes, column_snapshot_link::ID),
-		));
+		ids.push(ColumnSnapshotId(column_snapshot_link::get_id(&multi.bytes)));
 	}
 	drop(stream);
 	Ok(ids)
 }
 
 pub(crate) fn decode_column_snapshot(bytes: &EncodedBytes) -> ColumnSnapshot {
-	let id = ColumnSnapshotId(column_snapshot::SHAPE.get::<u64>(bytes, column_snapshot::ID));
-	let namespace = NamespaceId(column_snapshot::SHAPE.get::<u64>(bytes, column_snapshot::NAMESPACE));
-	let kind_byte = column_snapshot::SHAPE.get::<u8>(bytes, column_snapshot::KIND);
+	let id = ColumnSnapshotId(column_snapshot::get_id(bytes));
+	let namespace = NamespaceId(column_snapshot::get_namespace(bytes));
+	let kind_byte = column_snapshot::get_kind(bytes);
 	let kind = ColumnSnapshotKind::try_from(kind_byte).expect("invalid stored ColumnSnapshotKind");
-	let source_id = column_snapshot::SHAPE.get::<u64>(bytes, column_snapshot::SOURCE_ID);
-	let bucket_start = column_snapshot::SHAPE.get::<u64>(bytes, column_snapshot::BUCKET_START);
-	let bucket_width = column_snapshot::SHAPE.get::<u64>(bytes, column_snapshot::BUCKET_WIDTH);
-	let sequence_counter = column_snapshot::SHAPE.get::<u64>(bytes, column_snapshot::SEQUENCE_COUNTER);
-	let read_version = CommitVersion(column_snapshot::SHAPE.get::<u64>(bytes, column_snapshot::READ_VERSION));
-	let row_count = column_snapshot::SHAPE.get::<u64>(bytes, column_snapshot::ROW_COUNT);
+	let source_id = column_snapshot::get_source_id(bytes);
+	let bucket_start = column_snapshot::get_bucket_start(bytes);
+	let bucket_width = column_snapshot::get_bucket_width(bytes);
+	let sequence_counter = column_snapshot::get_sequence_counter(bytes);
+	let read_version = CommitVersion(column_snapshot::get_read_version(bytes));
+	let row_count = column_snapshot::get_row_count(bytes);
 
 	let source = match kind {
 		ColumnSnapshotKind::Table => ColumnSnapshotSource::Table {

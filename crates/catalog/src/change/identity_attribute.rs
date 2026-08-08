@@ -34,10 +34,9 @@ impl CatalogChangeApplier for IdentityAttributeApplier {
 }
 
 fn decode_identity_attribute(bytes: &EncodedBytes) -> IdentityAttribute {
-	let id = identity_attribute::SHAPE.get::<u64>(bytes, identity_attribute::ID);
-	let name = identity_attribute::SHAPE.get_utf8(bytes, identity_attribute::NAME).to_string();
-	let value_type =
-		value_type_from_tag_byte(identity_attribute::SHAPE.get::<u8>(bytes, identity_attribute::VALUE_TYPE));
+	let id = identity_attribute::get_id(bytes);
+	let name = identity_attribute::get_name(bytes).to_string();
+	let value_type = value_type_from_tag_byte(identity_attribute::get_value_type(bytes));
 
 	IdentityAttribute {
 		id,

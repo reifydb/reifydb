@@ -12,10 +12,7 @@ use crate::{
 	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
-		policy::shape::{
-			policy::{ENABLED, ID, NAME, SHAPE, TARGET_NAMESPACE, TARGET_OBJECT, TARGET_TYPE},
-			policy_op,
-		},
+		policy::shape::{policy, policy_op},
 		sequence::system::SystemSequence,
 	},
 };
@@ -51,22 +48,22 @@ impl CatalogStore {
 
 		let policy_id = SystemSequence::next_policy_id(txn)?;
 
-		let mut row = SHAPE.allocate();
-		SHAPE.set::<u64>(&mut row, ID, policy_id);
-		SHAPE.set_utf8(&mut row, NAME, to_create.name.as_deref().unwrap_or(""));
-		SHAPE.set_utf8(&mut row, TARGET_TYPE, to_create.target_type.as_str());
-		SHAPE.set_utf8(&mut row, TARGET_NAMESPACE, to_create.target_namespace.as_deref().unwrap_or(""));
-		SHAPE.set_utf8(&mut row, TARGET_OBJECT, to_create.target_object.as_deref().unwrap_or(""));
-		SHAPE.set::<bool>(&mut row, ENABLED, true);
+		let mut row = policy::allocate();
+		policy::set_id(&mut row, policy_id);
+		policy::set_name(&mut row, to_create.name.as_deref().unwrap_or(""));
+		policy::set_target_type(&mut row, to_create.target_type.as_str());
+		policy::set_target_namespace(&mut row, to_create.target_namespace.as_deref().unwrap_or(""));
+		policy::set_target_object(&mut row, to_create.target_object.as_deref().unwrap_or(""));
+		policy::set_enabled(&mut row, true);
 
 		txn.set(&PolicyKey::encoded(policy_id), row.freeze())?;
 
 		let mut ops = Vec::new();
 		for (i, op) in to_create.operations.iter().enumerate() {
-			let mut op_row = policy_op::SHAPE.allocate();
-			policy_op::SHAPE.set::<u64>(&mut op_row, policy_op::POLICY_ID, policy_id);
-			policy_op::SHAPE.set_utf8(&mut op_row, policy_op::OPERATION, &op.operation);
-			policy_op::SHAPE.set_utf8(&mut op_row, policy_op::BODY_SOURCE, &op.body_source);
+			let mut op_row = policy_op::allocate();
+			policy_op::set_policy_id(&mut op_row, policy_id);
+			policy_op::set_operation(&mut op_row, &op.operation);
+			policy_op::set_body_source(&mut op_row, &op.body_source);
 
 			txn.set(&PolicyOpKey::encoded(policy_id, i as u64), op_row.freeze())?;
 

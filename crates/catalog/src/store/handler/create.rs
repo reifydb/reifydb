@@ -46,29 +46,25 @@ impl CatalogStore {
 
 		let handler_id = SystemSequence::next_handler_id(txn)?;
 
-		let mut row = handler_shape::SHAPE.allocate();
-		handler_shape::SHAPE.set::<u64>(&mut row, handler_shape::ID, u64::from(handler_id));
-		handler_shape::SHAPE.set::<u64>(&mut row, handler_shape::NAMESPACE, u64::from(namespace_id));
-		handler_shape::SHAPE.set_utf8(&mut row, handler_shape::NAME, to_create.name.text());
-		handler_shape::SHAPE.set::<u64>(
-			&mut row,
-			handler_shape::ON_SUMTYPE_ID,
-			u64::from(to_create.variant.sumtype_id),
-		);
-		handler_shape::SHAPE.set::<u8>(&mut row, handler_shape::ON_VARIANT_TAG, to_create.variant.variant_tag);
-		handler_shape::SHAPE.set_utf8(&mut row, handler_shape::BODY_SOURCE, &to_create.body_source);
+		let mut row = handler_shape::allocate();
+		handler_shape::set_id(&mut row, u64::from(handler_id));
+		handler_shape::set_namespace(&mut row, u64::from(namespace_id));
+		handler_shape::set_name(&mut row, to_create.name.text());
+		handler_shape::set_on_sumtype_id(&mut row, u64::from(to_create.variant.sumtype_id));
+		handler_shape::set_on_variant_tag(&mut row, to_create.variant.variant_tag);
+		handler_shape::set_body_source(&mut row, &to_create.body_source);
 
 		txn.set(&HandlerKey::encoded(handler_id), row.freeze())?;
 
-		let mut ns_row = handler_namespace::SHAPE.allocate();
-		handler_namespace::SHAPE.set::<u64>(&mut ns_row, handler_namespace::ID, u64::from(handler_id));
-		handler_namespace::SHAPE.set_utf8(&mut ns_row, handler_namespace::NAME, to_create.name.text());
+		let mut ns_row = handler_namespace::allocate();
+		handler_namespace::set_id(&mut ns_row, u64::from(handler_id));
+		handler_namespace::set_name(&mut ns_row, to_create.name.text());
 
 		txn.set(&NamespaceHandlerKey::encoded(namespace_id, handler_id), ns_row.freeze())?;
 
-		let mut var_row = handler_namespace::SHAPE.allocate();
-		handler_namespace::SHAPE.set::<u64>(&mut var_row, handler_namespace::ID, u64::from(handler_id));
-		handler_namespace::SHAPE.set_utf8(&mut var_row, handler_namespace::NAME, to_create.name.text());
+		let mut var_row = handler_namespace::allocate();
+		handler_namespace::set_id(&mut var_row, u64::from(handler_id));
+		handler_namespace::set_name(&mut var_row, to_create.name.text());
 
 		txn.set(
 			&VariantHandlerKey::encoded(
@@ -173,12 +169,12 @@ pub mod tests {
 		// Keys are descending, so the higher id sorts first.
 		let link = &links[0];
 		let bytes = &link.bytes;
-		assert_eq!(handler_namespace::SHAPE.get::<u64>(bytes, handler_namespace::ID), 16386);
-		assert_eq!(handler_namespace::SHAPE.get_utf8(bytes, handler_namespace::NAME), "another_handler");
+		assert_eq!(handler_namespace::get_id(bytes), 16386);
+		assert_eq!(handler_namespace::get_name(bytes), "another_handler");
 
 		let link = &links[1];
 		let bytes = &link.bytes;
-		assert_eq!(handler_namespace::SHAPE.get::<u64>(bytes, handler_namespace::ID), 16385);
-		assert_eq!(handler_namespace::SHAPE.get_utf8(bytes, handler_namespace::NAME), "test_handler");
+		assert_eq!(handler_namespace::get_id(bytes), 16385);
+		assert_eq!(handler_namespace::get_name(bytes), "test_handler");
 	}
 }

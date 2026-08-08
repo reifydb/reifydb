@@ -33,7 +33,7 @@ impl CatalogStore {
 			for entry in stream {
 				let multi = entry?;
 				let bytes = multi.bytes;
-				ids.push(ColumnId(object_column::SHAPE.get::<u64>(&bytes, object_column::ID)));
+				ids.push(ColumnId(object_column::get_id(&bytes)));
 			}
 		}
 

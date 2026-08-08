@@ -12,7 +12,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use crate::{
 	CatalogStore, Result,
-	store::primary_key::shape::{primary_key, primary_key::deserialize_column_ids},
+	store::primary_key::shape::{deserialize_column_ids, primary_key},
 };
 
 pub struct PrimaryKeyInfo {
@@ -43,10 +43,9 @@ impl CatalogStore {
 			if let Some(key) = Key::decode(&entry.key)
 				&& let Key::PrimaryKey(pk_key) = key
 			{
-				let object_id = primary_key::SHAPE.get::<u64>(&entry.bytes, primary_key::SOURCE);
+				let object_id = primary_key::get_source(&entry.bytes);
 
-				let column_ids_blob =
-					primary_key::SHAPE.get_blob(&entry.bytes, primary_key::COLUMN_IDS);
+				let column_ids_blob = primary_key::get_column_ids(&entry.bytes);
 				let column_ids = deserialize_column_ids(&column_ids_blob);
 
 				let mut columns = Vec::new();
@@ -96,8 +95,7 @@ impl CatalogStore {
 			if let Some(key) = Key::decode(&entry.key)
 				&& let Key::PrimaryKey(pk_key) = key
 			{
-				let column_ids_blob =
-					primary_key::SHAPE.get_blob(&entry.bytes, primary_key::COLUMN_IDS);
+				let column_ids_blob = primary_key::get_column_ids(&entry.bytes);
 				let column_ids = deserialize_column_ids(&column_ids_blob);
 
 				for (position, column_id) in column_ids.iter().enumerate() {

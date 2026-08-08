@@ -19,10 +19,7 @@ use crate::{
 	cache::CatalogCache,
 	catalog::Catalog,
 	error::CatalogChangeError,
-	store::series::{
-		decode_series_time,
-		shape::series::{self, ID, KEY_COLUMN, KEY_KIND, NAME, NAMESPACE, PRECISION, PRIMARY_KEY, TAG},
-	},
+	store::series::{decode_series_time, shape::series},
 };
 
 pub(super) struct SeriesApplier;
@@ -47,34 +44,34 @@ impl CatalogChangeApplier for SeriesApplier {
 }
 
 fn decode_series(bytes: &EncodedBytes, materialized: &CatalogCache, version: CommitVersion) -> Series {
-	let id = SeriesId(series::SHAPE.get::<u64>(bytes, ID));
-	let namespace = NamespaceId(series::SHAPE.get::<u64>(bytes, NAMESPACE));
-	let name = series::SHAPE.get_utf8(bytes, NAME).to_string();
-	let tag_raw = series::SHAPE.get::<u64>(bytes, TAG);
+	let id = SeriesId(series::get_id(bytes));
+	let namespace = NamespaceId(series::get_namespace(bytes));
+	let name = series::get_name(bytes).to_string();
+	let tag_raw = series::get_tag(bytes);
 	let tag = if tag_raw > 0 {
 		Some(SumTypeId(tag_raw))
 	} else {
 		None
 	};
 
-	let key_column = series::SHAPE.get_utf8(bytes, KEY_COLUMN).to_string();
-	let key_kind = series::SHAPE.get::<u8>(bytes, KEY_KIND);
-	let precision = series::SHAPE.get::<u8>(bytes, PRECISION);
+	let key_column = series::get_key_column(bytes).to_string();
+	let key_kind = series::get_key_kind(bytes);
+	let precision = series::get_precision(bytes);
 	let key = CatalogSeriesKey::decode(key_kind, precision, key_column);
 
-	let pk_raw = series::SHAPE.get::<u64>(bytes, PRIMARY_KEY);
+	let pk_raw = series::get_primary_key(bytes);
 	let primary_key = if pk_raw > 0 {
 		materialized.find_primary_key_at(PrimaryKeyId(pk_raw), version)
 	} else {
 		None
 	};
-	let partition_by_str = series::SHAPE.get_utf8(bytes, series::PARTITION_BY);
+	let partition_by_str = series::get_partition_by(bytes);
 	let partition_by = if partition_by_str.is_empty() {
 		vec![]
 	} else {
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
-	let underlying = series::SHAPE.get::<u8>(bytes, series::UNDERLYING) != 0;
+	let underlying = series::get_underlying(bytes) != 0;
 
 	Series {
 		id,

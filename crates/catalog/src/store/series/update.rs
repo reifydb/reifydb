@@ -8,12 +8,12 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{CatalogStore, Result, store::series::shape::series_metadata};
 
 fn encode_series_metadata(metadata: &SeriesMetadata) -> EncodedBytes {
-	let mut row = series_metadata::SHAPE.allocate();
-	series_metadata::SHAPE.set::<u64>(&mut row, series_metadata::ID, metadata.id.0);
-	series_metadata::SHAPE.set::<u64>(&mut row, series_metadata::ROW_COUNT, metadata.row_count);
-	series_metadata::SHAPE.set::<u64>(&mut row, series_metadata::OLDEST_KEY, metadata.oldest_key);
-	series_metadata::SHAPE.set::<u64>(&mut row, series_metadata::NEWEST_KEY, metadata.newest_key);
-	series_metadata::SHAPE.set::<u64>(&mut row, series_metadata::SEQUENCE_COUNTER, metadata.sequence_counter);
+	let mut row = series_metadata::allocate();
+	series_metadata::set_id(&mut row, metadata.id.0);
+	series_metadata::set_row_count(&mut row, metadata.row_count);
+	series_metadata::set_oldest_key(&mut row, metadata.oldest_key);
+	series_metadata::set_newest_key(&mut row, metadata.newest_key);
+	series_metadata::set_sequence_counter(&mut row, metadata.sequence_counter);
 	row.freeze()
 }
 

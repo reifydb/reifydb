@@ -25,16 +25,16 @@ impl CatalogStore {
 		};
 
 		let bytes = multi.bytes;
-		let id = TableId(table::SHAPE.get::<u64>(&bytes, table::ID));
-		let namespace = NamespaceId(table::SHAPE.get::<u64>(&bytes, table::NAMESPACE));
-		let name = table::SHAPE.get_utf8(&bytes, table::NAME).to_string();
-		let partition_by_str = table::SHAPE.get_utf8(&bytes, table::PARTITION_BY);
+		let id = TableId(table::get_id(&bytes));
+		let namespace = NamespaceId(table::get_namespace(&bytes));
+		let name = table::get_name(&bytes).to_string();
+		let partition_by_str = table::get_partition_by(&bytes);
 		let partition_by = if partition_by_str.is_empty() {
 			vec![]
 		} else {
 			partition_by_str.split(',').map(|s| s.to_string()).collect()
 		};
-		let underlying = table::SHAPE.get::<u8>(&bytes, table::UNDERLYING) != 0;
+		let underlying = table::get_underlying(&bytes) != 0;
 
 		Ok(Some(Table {
 			id,
@@ -60,10 +60,9 @@ impl CatalogStore {
 		for entry in stream.by_ref() {
 			let multi = entry?;
 			let bytes = &multi.bytes;
-			let table_name = table_namespace::SHAPE.get_utf8(bytes, table_namespace::NAME);
+			let table_name = table_namespace::get_name(bytes);
 			if name == table_name {
-				found_table =
-					Some(TableId(table_namespace::SHAPE.get::<u64>(bytes, table_namespace::ID)));
+				found_table = Some(TableId(table_namespace::get_id(bytes)));
 				break;
 			}
 		}

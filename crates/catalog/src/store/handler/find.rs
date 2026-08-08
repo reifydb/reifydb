@@ -36,11 +36,9 @@ impl CatalogStore {
 		for entry in stream.by_ref() {
 			let multi = entry?;
 			let bytes = &multi.bytes;
-			let entry_name = handler_namespace::SHAPE.get_utf8(bytes, handler_namespace::NAME);
+			let entry_name = handler_namespace::get_name(bytes);
 			if name == entry_name {
-				found_id = Some(HandlerId(
-					handler_namespace::SHAPE.get::<u64>(bytes, handler_namespace::ID),
-				));
+				found_id = Some(HandlerId(handler_namespace::get_id(bytes)));
 				break;
 			}
 		}

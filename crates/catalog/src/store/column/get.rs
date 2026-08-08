@@ -13,8 +13,6 @@ use reifydb_value::{
 	},
 };
 
-use crate::store::column::shape::column::SHAPE;
-
 fn decode_constraint(bytes: &[u8]) -> Option<Constraint> {
 	if bytes.is_empty() {
 		return None;
@@ -53,10 +51,7 @@ use reifydb_core::interface::catalog::{
 	id::ColumnId,
 };
 
-use crate::{
-	CatalogStore, Result,
-	store::column::shape::column::{AUTO_INCREMENT, CONSTRAINT, DICTIONARY_ID, ID, INDEX, NAME, VALUE},
-};
+use crate::{CatalogStore, Result, store::column::shape::column};
 
 impl CatalogStore {
 	pub(crate) fn get_column(rx: &mut Transaction<'_>, column: ColumnId) -> Result<Column> {
@@ -69,16 +64,16 @@ impl CatalogStore {
 
 		let bytes = multi.bytes;
 
-		let id = ColumnId(SHAPE.get::<u64>(&bytes, ID));
-		let name = SHAPE.get_utf8(&bytes, NAME).to_string();
-		let base_type = value_type_from_tag_byte(SHAPE.get::<u8>(&bytes, VALUE));
-		let index = ColumnIndex(SHAPE.get::<u8>(&bytes, INDEX));
-		let auto_increment = SHAPE.get::<bool>(&bytes, AUTO_INCREMENT);
+		let id = ColumnId(column::get_id(&bytes));
+		let name = column::get_name(&bytes).to_string();
+		let base_type = value_type_from_tag_byte(column::get_value(&bytes));
+		let index = ColumnIndex(column::get_index(&bytes));
+		let auto_increment = column::get_auto_increment(&bytes);
 
-		let constraint_bytes = SHAPE.get_blob(&bytes, CONSTRAINT);
+		let constraint_bytes = column::get_constraint(&bytes);
 		let decoded_constraint = decode_constraint(constraint_bytes.as_bytes());
 
-		let dict_id_raw = SHAPE.get::<u64>(&bytes, DICTIONARY_ID);
+		let dict_id_raw = column::get_dictionary_id(&bytes);
 		let dictionary_id = if dict_id_raw == 0 {
 			None
 		} else {

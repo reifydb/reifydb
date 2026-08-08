@@ -15,7 +15,7 @@ use reifydb_transaction::transaction::Transaction;
 
 use crate::{
 	CatalogStore, Result,
-	store::primary_key::shape::{primary_key, primary_key::deserialize_column_ids},
+	store::primary_key::shape::{deserialize_column_ids, primary_key},
 };
 
 impl CatalogStore {
@@ -60,7 +60,7 @@ impl CatalogStore {
 			)),
 		};
 
-		let column_ids_blob = primary_key::SHAPE.get_blob(&primary_key_multi.bytes, primary_key::COLUMN_IDS);
+		let column_ids_blob = primary_key::get_column_ids(&primary_key_multi.bytes);
 		let column_ids = deserialize_column_ids(&column_ids_blob);
 
 		let mut columns = Vec::new();

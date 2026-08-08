@@ -17,10 +17,7 @@ use serde_json::from_str;
 use tracing::warn;
 
 use super::CatalogCache;
-use crate::{
-	Result,
-	store::sumtype::shape::sumtype::{ID, KIND, NAME, NAMESPACE, SHAPE, VARIANTS_JSON},
-};
+use crate::{Result, store::sumtype::shape::sumtype};
 
 pub(crate) fn load_sumtypes(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = SumTypeKey::full_scan();
@@ -38,16 +35,16 @@ pub(crate) fn load_sumtypes(rx: &mut Transaction<'_>, catalog: &CatalogCache) ->
 
 fn convert_sumtype(multi: MultiVersionRow) -> SumType {
 	let bytes = multi.bytes;
-	let id = SumTypeId(SHAPE.get::<u64>(&bytes, ID));
-	let namespace = NamespaceId(SHAPE.get::<u64>(&bytes, NAMESPACE));
-	let name = SHAPE.get_utf8(&bytes, NAME).to_string();
-	let variants_json = SHAPE.get_utf8(&bytes, VARIANTS_JSON);
+	let id = SumTypeId(sumtype::get_id(&bytes));
+	let namespace = NamespaceId(sumtype::get_namespace(&bytes));
+	let name = sumtype::get_name(&bytes).to_string();
+	let variants_json = sumtype::get_variants_json(&bytes);
 	let variants: Vec<Variant> = from_str(variants_json).unwrap_or_else(|e| {
 		warn!("Failed to deserialize sumtype variants for {:?}: {}", id, e);
 		vec![]
 	});
 
-	let kind = if SHAPE.get::<u8>(&bytes, KIND) != 0 {
+	let kind = if sumtype::get_kind(&bytes) != 0 {
 		SumTypeKind::Event
 	} else {
 		SumTypeKind::Enum

@@ -53,18 +53,18 @@ impl CatalogStore {
 
 		let variants_json = to_string(&to_create.def.variants).expect("failed to serialize variants");
 
-		let mut row = sumtype_shape::SHAPE.allocate();
-		sumtype_shape::SHAPE.set::<u64>(&mut row, sumtype_shape::ID, u64::from(sumtype_id));
-		sumtype_shape::SHAPE.set::<u64>(&mut row, sumtype_shape::NAMESPACE, u64::from(namespace_id));
-		sumtype_shape::SHAPE.set_utf8(&mut row, sumtype_shape::NAME, to_create.name.text());
-		sumtype_shape::SHAPE.set_utf8(&mut row, sumtype_shape::VARIANTS_JSON, &variants_json);
-		sumtype_shape::SHAPE.set::<u8>(&mut row, sumtype_shape::KIND, to_create.def.kind as u8);
+		let mut row = sumtype_shape::allocate();
+		sumtype_shape::set_id(&mut row, u64::from(sumtype_id));
+		sumtype_shape::set_namespace(&mut row, u64::from(namespace_id));
+		sumtype_shape::set_name(&mut row, to_create.name.text());
+		sumtype_shape::set_variants_json(&mut row, &variants_json);
+		sumtype_shape::set_kind(&mut row, to_create.def.kind as u8);
 
 		txn.set(&SumTypeKey::encoded(sumtype_id), row.freeze())?;
 
-		let mut ns_row = sumtype_namespace::SHAPE.allocate();
-		sumtype_namespace::SHAPE.set::<u64>(&mut ns_row, sumtype_namespace::ID, u64::from(sumtype_id));
-		sumtype_namespace::SHAPE.set_utf8(&mut ns_row, sumtype_namespace::NAME, to_create.name.text());
+		let mut ns_row = sumtype_namespace::allocate();
+		sumtype_namespace::set_id(&mut ns_row, u64::from(sumtype_id));
+		sumtype_namespace::set_name(&mut ns_row, to_create.name.text());
 
 		txn.set(&NamespaceSumTypeKey::encoded(namespace_id, sumtype_id), ns_row.freeze())?;
 
@@ -215,14 +215,14 @@ pub mod tests {
 
 		let link = &links[0];
 		let bytes = &link.bytes;
-		let id2 = sumtype_namespace::SHAPE.get::<u64>(bytes, sumtype_namespace::ID);
+		let id2 = sumtype_namespace::get_id(bytes);
 		assert!(id2 > 0);
-		assert_eq!(sumtype_namespace::SHAPE.get_utf8(bytes, sumtype_namespace::NAME), "Object");
+		assert_eq!(sumtype_namespace::get_name(bytes), "Object");
 
 		let link = &links[1];
 		let bytes = &link.bytes;
-		let id1 = sumtype_namespace::SHAPE.get::<u64>(bytes, sumtype_namespace::ID);
+		let id1 = sumtype_namespace::get_id(bytes);
 		assert!(id2 > id1);
-		assert_eq!(sumtype_namespace::SHAPE.get_utf8(bytes, sumtype_namespace::NAME), "Color");
+		assert_eq!(sumtype_namespace::get_name(bytes), "Color");
 	}
 }

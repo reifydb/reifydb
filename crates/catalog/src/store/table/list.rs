@@ -25,16 +25,15 @@ impl CatalogStore {
 					&& let Key::Table(table_key) = key
 				{
 					let table_id = table_key.table;
-					let namespace_id =
-						NamespaceId(table::SHAPE.get::<u64>(&entry.bytes, table::NAMESPACE));
-					let name = table::SHAPE.get_utf8(&entry.bytes, table::NAME).to_string();
-					let partition_by_str = table::SHAPE.get_utf8(&entry.bytes, table::PARTITION_BY);
+					let namespace_id = NamespaceId(table::get_namespace(&entry.bytes));
+					let name = table::get_name(&entry.bytes).to_string();
+					let partition_by_str = table::get_partition_by(&entry.bytes);
 					let partition_by: Vec<String> = if partition_by_str.is_empty() {
 						vec![]
 					} else {
 						partition_by_str.split(',').map(|s| s.to_string()).collect()
 					};
-					let underlying = table::SHAPE.get::<u8>(&entry.bytes, table::UNDERLYING) != 0;
+					let underlying = table::get_underlying(&entry.bytes) != 0;
 					let time = decode_table_time(&entry.bytes);
 					table_ids.push((table_id, namespace_id, name, partition_by, underlying, time));
 				}

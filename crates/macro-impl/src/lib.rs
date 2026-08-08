@@ -9,6 +9,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
+pub mod catalog_shape;
 pub mod from_frame;
 pub mod generate;
 pub mod heap_size;
@@ -19,6 +20,10 @@ use proc_macro2::TokenStream;
 
 pub fn derive_from_frame(input: TokenStream) -> TokenStream {
 	derive_from_frame_with_crate(input, "reifydb_value")
+}
+
+pub fn expand_catalog_shape(input: TokenStream) -> TokenStream {
+	catalog_shape::catalog_shape(input)
 }
 
 pub fn derive_heap_size(input: TokenStream) -> TokenStream {

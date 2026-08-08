@@ -11,10 +11,7 @@ use reifydb_core::{
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
 use super::CatalogCache;
-use crate::{
-	Result,
-	store::operator::shape::operator::{self, DATA, FLOW, ID, TYPE},
-};
+use crate::{Result, store::operator::shape::operator};
 
 pub(crate) fn load_operators(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = OperatorKey::full_scan();
@@ -32,10 +29,10 @@ pub(crate) fn load_operators(rx: &mut Transaction<'_>, catalog: &CatalogCache) -
 
 fn convert_operator(multi: MultiVersionRow) -> Operator {
 	let bytes = multi.bytes;
-	let id = OperatorId(operator::SHAPE.get::<u64>(&bytes, ID));
-	let flow = FlowId(operator::SHAPE.get::<u64>(&bytes, FLOW));
-	let node_type = operator::SHAPE.get::<u8>(&bytes, TYPE);
-	let data = operator::SHAPE.get_blob(&bytes, DATA).clone();
+	let id = OperatorId(operator::get_id(&bytes));
+	let flow = FlowId(operator::get_flow(&bytes));
+	let node_type = operator::get_type(&bytes);
+	let data = operator::get_data(&bytes).clone();
 
 	Operator {
 		id,

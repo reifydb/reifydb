@@ -36,11 +36,9 @@ impl CatalogStore {
 		for entry in stream.by_ref() {
 			let multi = entry?;
 			let bytes = &multi.bytes;
-			let bound_name = binding_namespace::SHAPE.get_utf8(bytes, binding_namespace::NAME);
+			let bound_name = binding_namespace::get_name(bytes);
 			if name == bound_name {
-				found_id = Some(BindingId(
-					binding_namespace::SHAPE.get::<u64>(bytes, binding_namespace::ID),
-				));
+				found_id = Some(BindingId(binding_namespace::get_id(bytes)));
 				break;
 			}
 		}
@@ -56,30 +54,30 @@ impl CatalogStore {
 }
 
 pub(crate) fn decode_binding(bytes: &EncodedBytes) -> Binding {
-	let id = BindingId(binding::SHAPE.get::<u64>(bytes, binding::ID));
-	let namespace = NamespaceId(binding::SHAPE.get::<u64>(bytes, binding::NAMESPACE));
-	let name = binding::SHAPE.get_utf8(bytes, binding::NAME).to_string();
-	let procedure_id = ProcedureId::from_raw(binding::SHAPE.get::<u64>(bytes, binding::PROCEDURE_ID));
-	let protocol_str = binding::SHAPE.get_utf8(bytes, binding::PROTOCOL);
-	let format_str = binding::SHAPE.get_utf8(bytes, binding::FORMAT);
+	let id = BindingId(binding::get_id(bytes));
+	let namespace = NamespaceId(binding::get_namespace(bytes));
+	let name = binding::get_name(bytes).to_string();
+	let procedure_id = ProcedureId::from_raw(binding::get_procedure_id(bytes));
+	let protocol_str = binding::get_protocol(bytes);
+	let format_str = binding::get_format(bytes);
 
 	let protocol = match protocol_str {
 		"http" => {
-			let method_str = binding::SHAPE.get_utf8(bytes, binding::HTTP_METHOD);
-			let path = binding::SHAPE.get_utf8(bytes, binding::HTTP_PATH).to_string();
+			let method_str = binding::get_http_method(bytes);
+			let path = binding::get_http_path(bytes).to_string();
 			BindingProtocol::Http {
 				method: HttpMethod::parse(method_str).unwrap_or(HttpMethod::Get),
 				path,
 			}
 		}
 		"grpc" => {
-			let rpc_name = binding::SHAPE.get_utf8(bytes, binding::RPC_NAME).to_string();
+			let rpc_name = binding::get_rpc_name(bytes).to_string();
 			BindingProtocol::Grpc {
 				name: rpc_name,
 			}
 		}
 		_ => {
-			let rpc_name = binding::SHAPE.get_utf8(bytes, binding::RPC_NAME).to_string();
+			let rpc_name = binding::get_rpc_name(bytes).to_string();
 			BindingProtocol::Ws {
 				name: rpc_name,
 			}

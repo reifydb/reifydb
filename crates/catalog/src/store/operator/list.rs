@@ -22,9 +22,7 @@ impl CatalogStore {
 			let stream = rx.range(OperatorByFlowKey::full_scan(flow_id), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
-				node_ids.push(OperatorId(
-					operator_by_flow::SHAPE.get::<u64>(&multi.bytes, operator_by_flow::ID),
-				));
+				node_ids.push(OperatorId(operator_by_flow::get_id(&multi.bytes)));
 			}
 		}
 
@@ -47,9 +45,9 @@ impl CatalogStore {
 			let entry = entry?;
 			if let Some(operator_key) = OperatorKey::decode(&entry.key) {
 				let operator_id = operator_key.operator;
-				let flow_id = FlowId(operator::SHAPE.get::<u64>(&entry.bytes, operator::FLOW));
-				let node_type = operator::SHAPE.get::<u8>(&entry.bytes, operator::TYPE);
-				let data = operator::SHAPE.get_blob(&entry.bytes, operator::DATA).clone();
+				let flow_id = FlowId(operator::get_flow(&entry.bytes));
+				let node_type = operator::get_type(&entry.bytes);
+				let data = operator::get_data(&entry.bytes).clone();
 
 				let node_def = Operator {
 					id: operator_id,

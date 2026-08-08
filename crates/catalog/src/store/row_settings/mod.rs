@@ -15,36 +15,36 @@ use reifydb_value::value::duration::Duration;
 use self::shape::row_settings;
 
 pub(crate) fn encode_row_settings(settings: &RowSettings) -> EncodedBytes {
-	let mut row = row_settings::SHAPE.allocate();
+	let mut row = row_settings::allocate();
 
 	match &settings.ttl {
 		Some(ttl) => {
-			row_settings::SHAPE.set::<bool>(&mut row, row_settings::ANNOUNCE, ttl.announce);
-			row_settings::SHAPE.set::<Duration>(&mut row, row_settings::DURATION, ttl.duration);
+			row_settings::set_announce(&mut row, ttl.announce);
+			row_settings::set_duration(&mut row, ttl.duration);
 		}
 		None => {
-			row_settings::SHAPE.set::<Duration>(&mut row, row_settings::DURATION, Duration::zero());
+			row_settings::set_duration(&mut row, Duration::zero());
 		}
 	}
 
-	row_settings::SHAPE.set::<u8>(&mut row, row_settings::PERSISTENT, u8::from(settings.persistent));
+	row_settings::set_persistent(&mut row, u8::from(settings.persistent));
 
 	row.freeze()
 }
 
 pub(crate) fn decode_row_settings(bytes: &EncodedBytes) -> Option<RowSettings> {
-	let duration = row_settings::SHAPE.get::<Duration>(bytes, row_settings::DURATION);
+	let duration = row_settings::get_duration(bytes);
 
 	let ttl = if duration.is_zero() {
 		None
 	} else {
 		Some(Ttl {
 			duration,
-			announce: row_settings::SHAPE.get::<bool>(bytes, row_settings::ANNOUNCE),
+			announce: row_settings::get_announce(bytes),
 		})
 	};
 
-	let persistent = row_settings::SHAPE.get::<u8>(bytes, row_settings::PERSISTENT) != 0;
+	let persistent = row_settings::get_persistent(bytes) != 0;
 
 	Some(RowSettings {
 		ttl,

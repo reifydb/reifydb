@@ -10,7 +10,6 @@ use reifydb_core::{
 	key::{EncodableKey, kind::KeyKind, queue::QueueKey},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::duration::Duration;
 
 use super::CatalogChangeApplier;
 use crate::{
@@ -45,9 +44,9 @@ impl CatalogChangeApplier for QueueApplier {
 }
 
 fn decode_queue(bytes: &EncodedBytes) -> Queue {
-	let id = QueueId(queue::SHAPE.get::<u64>(bytes, queue::ID));
-	let namespace = NamespaceId(queue::SHAPE.get::<u64>(bytes, queue::NAMESPACE));
-	let name = queue::SHAPE.get_utf8(bytes, queue::NAME).to_string();
+	let id = QueueId(queue::get_id(bytes));
+	let namespace = NamespaceId(queue::get_namespace(bytes));
+	let name = queue::get_name(bytes).to_string();
 
 	Queue {
 		id,
@@ -56,13 +55,13 @@ fn decode_queue(bytes: &EncodedBytes) -> Queue {
 		columns: vec![],
 		dispatch: decode_dispatch(bytes),
 		retention: QueueRetention {
-			done: queue::SHAPE.try_get::<Duration>(bytes, queue::RETENTION_DONE),
+			done: queue::try_get_retention_done(bytes),
 		},
 		retry: QueueRetry {
-			attempts: queue::SHAPE.get::<u32>(bytes, queue::RETRY_ATTEMPTS),
-			backoff: queue::SHAPE.get::<Duration>(bytes, queue::RETRY_BACKOFF),
+			attempts: queue::get_retry_attempts(bytes),
+			backoff: queue::get_retry_backoff(bytes),
 		},
-		underlying: queue::SHAPE.get::<u8>(bytes, queue::UNDERLYING) != 0,
+		underlying: queue::get_underlying(bytes) != 0,
 		deduplicate: decode_deduplicate(bytes),
 		time: decode_queue_time(bytes),
 	}

@@ -33,25 +33,20 @@ impl CatalogStore {
 				{
 					let ringbuffer_id = ringbuffer_key.ringbuffer;
 
-					let namespace_id = NamespaceId(
-						ringbuffer::SHAPE.get::<u64>(&entry.bytes, ringbuffer::NAMESPACE),
-					);
+					let namespace_id = NamespaceId(ringbuffer::get_namespace(&entry.bytes));
 
-					let name =
-						ringbuffer::SHAPE.get_utf8(&entry.bytes, ringbuffer::NAME).to_string();
+					let name = ringbuffer::get_name(&entry.bytes).to_string();
 
-					let capacity = ringbuffer::SHAPE.get::<u64>(&entry.bytes, ringbuffer::CAPACITY);
+					let capacity = ringbuffer::get_capacity(&entry.bytes);
 
-					let partition_by_str =
-						ringbuffer::SHAPE.get_utf8(&entry.bytes, ringbuffer::PARTITION_BY);
+					let partition_by_str = ringbuffer::get_partition_by(&entry.bytes);
 					let partition_by = if partition_by_str.is_empty() {
 						vec![]
 					} else {
 						partition_by_str.split(',').map(|s| s.to_string()).collect()
 					};
 
-					let underlying =
-						ringbuffer::SHAPE.get::<u8>(&entry.bytes, ringbuffer::UNDERLYING) != 0;
+					let underlying = ringbuffer::get_underlying(&entry.bytes) != 0;
 
 					let time = decode_ringbuffer_time(&entry.bytes);
 

@@ -9,12 +9,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 
 use super::CatalogChangeApplier;
-use crate::{
-	Result,
-	catalog::Catalog,
-	error::CatalogChangeError,
-	store::flow_edge::shape::flow_edge::{self, FLOW, ID, SOURCE, TARGET},
-};
+use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::flow_edge::shape::flow_edge};
 
 pub(super) struct FlowEdgeApplier;
 
@@ -37,10 +32,10 @@ impl CatalogChangeApplier for FlowEdgeApplier {
 }
 
 fn decode_flow_edge(bytes: &EncodedBytes) -> FlowEdge {
-	let id = FlowEdgeId(flow_edge::SHAPE.get::<u64>(bytes, ID));
-	let flow = FlowId(flow_edge::SHAPE.get::<u64>(bytes, FLOW));
-	let source = OperatorId(flow_edge::SHAPE.get::<u64>(bytes, SOURCE));
-	let target = OperatorId(flow_edge::SHAPE.get::<u64>(bytes, TARGET));
+	let id = FlowEdgeId(flow_edge::get_id(bytes));
+	let flow = FlowId(flow_edge::get_flow(bytes));
+	let source = OperatorId(flow_edge::get_source(bytes));
+	let target = OperatorId(flow_edge::get_target(bytes));
 
 	FlowEdge {
 		id,

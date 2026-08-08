@@ -23,7 +23,7 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			let role_name = role::SHAPE.get_utf8(&multi.bytes, role::NAME);
+			let role_name = role::get_name(&multi.bytes);
 			if name == role_name {
 				return Ok(Some(convert_role(multi)));
 			}

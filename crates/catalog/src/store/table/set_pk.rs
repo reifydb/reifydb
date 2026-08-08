@@ -25,7 +25,7 @@ impl CatalogStore {
 		};
 
 		let mut updated_row = multi.bytes.clone().thaw();
-		table::SHAPE.set::<u64>(&mut updated_row, table::PRIMARY_KEY, primary_key_id.0);
+		table::set_primary_key(&mut updated_row, primary_key_id.0);
 
 		txn.set(&TableKey::encoded(table_id), updated_row.freeze())?;
 

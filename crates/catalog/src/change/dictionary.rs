@@ -10,12 +10,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::dictionary::DictionaryId;
 
 use super::CatalogChangeApplier;
-use crate::{
-	Result,
-	catalog::Catalog,
-	error::CatalogChangeError,
-	store::dictionary::shape::dictionary::{ID, ID_TYPE, NAME, NAMESPACE, SHAPE, VALUE_TYPE},
-};
+use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::dictionary::shape::dictionary};
 
 pub(super) struct DictionaryApplier;
 
@@ -40,11 +35,11 @@ impl CatalogChangeApplier for DictionaryApplier {
 }
 
 fn decode_dictionary(bytes: &EncodedBytes) -> Dictionary {
-	let id = DictionaryId(SHAPE.get::<u64>(bytes, ID));
-	let namespace = NamespaceId(SHAPE.get::<u64>(bytes, NAMESPACE));
-	let name = SHAPE.get_utf8(bytes, NAME).to_string();
-	let value_type = value_type_from_tag_byte(SHAPE.get::<u8>(bytes, VALUE_TYPE));
-	let id_type = value_type_from_tag_byte(SHAPE.get::<u8>(bytes, ID_TYPE));
+	let id = DictionaryId(dictionary::get_id(bytes));
+	let namespace = NamespaceId(dictionary::get_namespace(bytes));
+	let name = dictionary::get_name(bytes).to_string();
+	let value_type = value_type_from_tag_byte(dictionary::get_value_type(bytes));
+	let id_type = value_type_from_tag_byte(dictionary::get_id_type(bytes));
 
 	Dictionary {
 		id,

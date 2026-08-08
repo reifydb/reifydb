@@ -7,11 +7,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::Value;
 
 use super::CatalogChangeApplier;
-use crate::{
-	Result,
-	catalog::Catalog,
-	store::config::shape::config::{SHAPE, VALUE},
-};
+use crate::{Result, catalog::Catalog, store::config::shape::config};
 
 pub(super) struct ConfigApplier;
 
@@ -33,7 +29,7 @@ fn apply_config(catalog: &Catalog, key: &EncodedKey, bytes: &EncodedBytes, versi
 	let Some(config_key) = ConfigStorageKey::decode(key).map(|k| k.key) else {
 		return Ok(());
 	};
-	let value = match SHAPE.get_value(bytes, VALUE) {
+	let value = match config::get_value(bytes) {
 		Value::Any(inner) => *inner,
 		other => other,
 	};

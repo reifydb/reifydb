@@ -89,16 +89,15 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &TableToCreate,
 	) -> Result<()> {
-		let mut row = table::SHAPE.allocate();
-		table::SHAPE.set::<u64>(&mut row, table::ID, u64::from(table));
-		table::SHAPE.set::<u64>(&mut row, table::NAMESPACE, u64::from(namespace));
-		table::SHAPE.set_utf8(&mut row, table::NAME, to_create.name.text());
+		let mut row = table::allocate();
+		table::set_id(&mut row, u64::from(table));
+		table::set_namespace(&mut row, u64::from(namespace));
+		table::set_name(&mut row, to_create.name.text());
 
-		table::SHAPE.set::<u64>(&mut row, table::PRIMARY_KEY, 0u64);
-		table::SHAPE.set_utf8(&mut row, table::PARTITION_BY, to_create.partition_by.join(","));
-		table::SHAPE.set::<u8>(
+		table::set_primary_key(&mut row, 0u64);
+		table::set_partition_by(&mut row, to_create.partition_by.join(","));
+		table::set_underlying(
 			&mut row,
-			table::UNDERLYING,
 			if to_create.underlying {
 				1
 			} else {
@@ -118,9 +117,9 @@ impl CatalogStore {
 		table: TableId,
 		name: &str,
 	) -> Result<()> {
-		let mut row = table_namespace::SHAPE.allocate();
-		table_namespace::SHAPE.set::<u64>(&mut row, table_namespace::ID, u64::from(table));
-		table_namespace::SHAPE.set_utf8(&mut row, table_namespace::NAME, name);
+		let mut row = table_namespace::allocate();
+		table_namespace::set_id(&mut row, u64::from(table));
+		table_namespace::set_name(&mut row, name);
 		txn.set(&NamespaceTableKey::encoded(namespace, table), row.freeze())?;
 		Ok(())
 	}
@@ -275,13 +274,13 @@ pub mod tests {
 
 		let link = &links[1];
 		let bytes = &link.bytes;
-		assert_eq!(table_namespace::SHAPE.get::<u64>(bytes, table_namespace::ID), 16385);
-		assert_eq!(table_namespace::SHAPE.get_utf8(bytes, table_namespace::NAME), "test_table");
+		assert_eq!(table_namespace::get_id(bytes), 16385);
+		assert_eq!(table_namespace::get_name(bytes), "test_table");
 
 		let link = &links[0];
 		let bytes = &link.bytes;
-		assert_eq!(table_namespace::SHAPE.get::<u64>(bytes, table_namespace::ID), 16386);
-		assert_eq!(table_namespace::SHAPE.get_utf8(bytes, table_namespace::NAME), "another_table");
+		assert_eq!(table_namespace::get_id(bytes), 16386);
+		assert_eq!(table_namespace::get_name(bytes), "another_table");
 	}
 }
 

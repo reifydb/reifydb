@@ -19,7 +19,7 @@ impl CatalogStore {
 			for entry in stream {
 				let multi = entry?;
 				let bytes = &multi.bytes;
-				ids.push(SumTypeId(sumtype_namespace::SHAPE.get::<u64>(bytes, sumtype_namespace::ID)));
+				ids.push(SumTypeId(sumtype_namespace::get_id(bytes)));
 			}
 		}
 

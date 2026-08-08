@@ -16,7 +16,7 @@ impl CatalogStore {
 			None => return Ok(None),
 		};
 
-		let pk_id = table::SHAPE.get::<u64>(&multi.bytes, table::PRIMARY_KEY);
+		let pk_id = table::get_primary_key(&multi.bytes);
 
 		if pk_id == 0 {
 			Ok(None)

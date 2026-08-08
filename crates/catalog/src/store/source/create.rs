@@ -66,15 +66,15 @@ impl CatalogStore {
 	) -> Result<()> {
 		let config_json = to_string(&to_create.config).unwrap_or_default();
 
-		let mut row = source::SHAPE.allocate();
-		source::SHAPE.set::<u64>(&mut row, source::ID, u64::from(source));
-		source::SHAPE.set::<u64>(&mut row, source::NAMESPACE, u64::from(namespace));
-		source::SHAPE.set_utf8(&mut row, source::NAME, to_create.name.text());
-		source::SHAPE.set_utf8(&mut row, source::CONNECTOR, &to_create.connector);
-		source::SHAPE.set_utf8(&mut row, source::CONFIG, &config_json);
-		source::SHAPE.set::<u64>(&mut row, source::TARGET_NAMESPACE, u64::from(to_create.target_namespace));
-		source::SHAPE.set_utf8(&mut row, source::TARGET_NAME, &to_create.target_name);
-		source::SHAPE.set::<u8>(&mut row, source::STATUS, FlowStatus::Active.to_u8());
+		let mut row = source::allocate();
+		source::set_id(&mut row, u64::from(source));
+		source::set_namespace(&mut row, u64::from(namespace));
+		source::set_name(&mut row, to_create.name.text());
+		source::set_connector(&mut row, &to_create.connector);
+		source::set_config(&mut row, &config_json);
+		source::set_target_namespace(&mut row, u64::from(to_create.target_namespace));
+		source::set_target_name(&mut row, &to_create.target_name);
+		source::set_status(&mut row, FlowStatus::Active.to_u8());
 
 		let key = SourceKey::encoded(source);
 		txn.set(&key, row.freeze())?;
@@ -88,9 +88,9 @@ impl CatalogStore {
 		source: SourceId,
 		name: &str,
 	) -> Result<()> {
-		let mut row = source_namespace::SHAPE.allocate();
-		source_namespace::SHAPE.set::<u64>(&mut row, source_namespace::ID, u64::from(source));
-		source_namespace::SHAPE.set_utf8(&mut row, source_namespace::NAME, name);
+		let mut row = source_namespace::allocate();
+		source_namespace::set_id(&mut row, u64::from(source));
+		source_namespace::set_name(&mut row, name);
 		let key = NamespaceSourceKey::encoded(namespace, source);
 		txn.set(&key, row.freeze())?;
 		Ok(())
@@ -192,8 +192,8 @@ pub mod tests {
 
 		for link in &links {
 			let bytes = &link.bytes;
-			let id = source_namespace::SHAPE.get::<u64>(bytes, source_namespace::ID);
-			let name = source_namespace::SHAPE.get_utf8(bytes, source_namespace::NAME);
+			let id = source_namespace::get_id(bytes);
+			let name = source_namespace::get_name(bytes);
 
 			match name {
 				"source_one" => {

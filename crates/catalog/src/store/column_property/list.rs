@@ -23,12 +23,12 @@ impl CatalogStore {
 		for entry in stream {
 			let multi = entry?;
 			let bytes = multi.bytes;
-			let id = ColumnPropertyId(column_property::SHAPE.get::<u64>(&bytes, column_property::ID));
-			let column = ColumnId(column_property::SHAPE.get::<u64>(&bytes, column_property::COLUMN));
+			let id = ColumnPropertyId(column_property::get_id(&bytes));
+			let column = ColumnId(column_property::get_column(&bytes));
 
 			let property = ColumnPropertyKind::from_u8(
-				column_property::SHAPE.get::<u8>(&bytes, column_property::POLICY),
-				column_property::SHAPE.get::<u8>(&bytes, column_property::VALUE),
+				column_property::get_policy(&bytes),
+				column_property::get_value(&bytes),
 			);
 
 			result.push(ColumnProperty {

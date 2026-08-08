@@ -13,10 +13,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::dictionary::DictionaryId;
 
 use super::CatalogCache;
-use crate::{
-	Result,
-	store::dictionary::shape::dictionary::{ID, ID_TYPE, NAME, NAMESPACE, SHAPE, VALUE_TYPE},
-};
+use crate::{Result, store::dictionary::shape::dictionary};
 
 pub(crate) fn load_dictionaries(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = DictionaryKey::full_scan();
@@ -34,11 +31,11 @@ pub(crate) fn load_dictionaries(rx: &mut Transaction<'_>, catalog: &CatalogCache
 
 fn convert_dictionary(multi: MultiVersionRow) -> Dictionary {
 	let bytes = multi.bytes;
-	let id = DictionaryId(SHAPE.get::<u64>(&bytes, ID));
-	let namespace = NamespaceId(SHAPE.get::<u64>(&bytes, NAMESPACE));
-	let name = SHAPE.get_utf8(&bytes, NAME).to_string();
-	let value_type_ordinal = SHAPE.get::<u8>(&bytes, VALUE_TYPE);
-	let id_type_ordinal = SHAPE.get::<u8>(&bytes, ID_TYPE);
+	let id = DictionaryId(dictionary::get_id(&bytes));
+	let namespace = NamespaceId(dictionary::get_namespace(&bytes));
+	let name = dictionary::get_name(&bytes).to_string();
+	let value_type_ordinal = dictionary::get_value_type(&bytes);
+	let id_type_ordinal = dictionary::get_id_type(&bytes);
 
 	Dictionary {
 		id,

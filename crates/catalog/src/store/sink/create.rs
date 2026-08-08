@@ -68,15 +68,15 @@ impl CatalogStore {
 	) -> Result<()> {
 		let config_json = to_string(&to_create.config).unwrap_or_default();
 
-		let mut row = sink::SHAPE.allocate();
-		sink::SHAPE.set::<u64>(&mut row, sink::ID, u64::from(sink));
-		sink::SHAPE.set::<u64>(&mut row, sink::NAMESPACE, u64::from(namespace));
-		sink::SHAPE.set_utf8(&mut row, sink::NAME, to_create.name.text());
-		sink::SHAPE.set::<u64>(&mut row, sink::SOURCE_NAMESPACE, u64::from(to_create.source_namespace));
-		sink::SHAPE.set_utf8(&mut row, sink::SOURCE_NAME, &to_create.source_name);
-		sink::SHAPE.set_utf8(&mut row, sink::CONNECTOR, &to_create.connector);
-		sink::SHAPE.set_utf8(&mut row, sink::CONFIG, &config_json);
-		sink::SHAPE.set::<u8>(&mut row, sink::STATUS, FlowStatus::Active.to_u8());
+		let mut row = sink::allocate();
+		sink::set_id(&mut row, u64::from(sink));
+		sink::set_namespace(&mut row, u64::from(namespace));
+		sink::set_name(&mut row, to_create.name.text());
+		sink::set_source_namespace(&mut row, u64::from(to_create.source_namespace));
+		sink::set_source_name(&mut row, &to_create.source_name);
+		sink::set_connector(&mut row, &to_create.connector);
+		sink::set_config(&mut row, &config_json);
+		sink::set_status(&mut row, FlowStatus::Active.to_u8());
 
 		let key = SinkKey::encoded(sink);
 		txn.set(&key, row.freeze())?;
@@ -90,9 +90,9 @@ impl CatalogStore {
 		sink: SinkId,
 		name: &str,
 	) -> Result<()> {
-		let mut row = sink_namespace::SHAPE.allocate();
-		sink_namespace::SHAPE.set::<u64>(&mut row, sink_namespace::ID, u64::from(sink));
-		sink_namespace::SHAPE.set_utf8(&mut row, sink_namespace::NAME, name);
+		let mut row = sink_namespace::allocate();
+		sink_namespace::set_id(&mut row, u64::from(sink));
+		sink_namespace::set_name(&mut row, name);
 		let key = NamespaceSinkKey::encoded(namespace, sink);
 		txn.set(&key, row.freeze())?;
 		Ok(())
@@ -194,8 +194,8 @@ pub mod tests {
 
 		for link in &links {
 			let bytes = &link.bytes;
-			let id = sink_namespace::SHAPE.get::<u64>(bytes, sink_namespace::ID);
-			let name = sink_namespace::SHAPE.get_utf8(bytes, sink_namespace::NAME);
+			let id = sink_namespace::get_id(bytes);
+			let name = sink_namespace::get_name(bytes);
 
 			match name {
 				"sink_one" => {

@@ -16,13 +16,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use serde_json::from_str;
 
 use super::CatalogCache;
-use crate::{
-	Result,
-	store::sink::shape::{
-		sink,
-		sink::{CONFIG, CONNECTOR, ID, NAME, NAMESPACE, SOURCE_NAME, SOURCE_NAMESPACE, STATUS},
-	},
-};
+use crate::{Result, store::sink::shape::sink};
 
 pub(crate) fn load_sinks(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = SinkKey::full_scan();
@@ -40,15 +34,15 @@ pub(crate) fn load_sinks(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 
 fn convert_sink(multi: MultiVersionRow) -> Sink {
 	let bytes = multi.bytes;
-	let id = SinkId(sink::SHAPE.get::<u64>(&bytes, ID));
-	let namespace = NamespaceId(sink::SHAPE.get::<u64>(&bytes, NAMESPACE));
-	let name = sink::SHAPE.get_utf8(&bytes, NAME).to_string();
-	let source_namespace = NamespaceId(sink::SHAPE.get::<u64>(&bytes, SOURCE_NAMESPACE));
-	let source_name = sink::SHAPE.get_utf8(&bytes, SOURCE_NAME).to_string();
-	let connector = sink::SHAPE.get_utf8(&bytes, CONNECTOR).to_string();
-	let config_json = sink::SHAPE.get_utf8(&bytes, CONFIG);
+	let id = SinkId(sink::get_id(&bytes));
+	let namespace = NamespaceId(sink::get_namespace(&bytes));
+	let name = sink::get_name(&bytes).to_string();
+	let source_namespace = NamespaceId(sink::get_source_namespace(&bytes));
+	let source_name = sink::get_source_name(&bytes).to_string();
+	let connector = sink::get_connector(&bytes).to_string();
+	let config_json = sink::get_config(&bytes);
 	let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
-	let status = FlowStatus::from_u8(sink::SHAPE.get::<u8>(&bytes, STATUS));
+	let status = FlowStatus::from_u8(sink::get_status(&bytes));
 
 	Sink {
 		id,

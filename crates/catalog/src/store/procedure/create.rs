@@ -19,7 +19,10 @@ use crate::{
 	catalog::procedure::ProcedureToCreate,
 	error::{CatalogError, CatalogObjectKind},
 	store::{
-		procedure::shape::{namespace_procedure, procedure, procedure_param},
+		procedure::shape::{
+			TRIGGER_CALL, TRIGGER_EVENT, VARIANT_RQL, VARIANT_TEST, namespace_procedure, procedure,
+			procedure_param,
+		},
 		sequence::system::SystemSequence,
 	},
 };
@@ -72,7 +75,7 @@ impl CatalogStore {
 					id,
 					namespace,
 					&name_text,
-					procedure::VARIANT_RQL,
+					VARIANT_RQL,
 					&body,
 					&trigger,
 					&return_type,
@@ -102,7 +105,7 @@ impl CatalogStore {
 					id,
 					namespace,
 					&name_text,
-					procedure::VARIANT_TEST,
+					VARIANT_TEST,
 					&body,
 					&RqlTrigger::Call,
 					&return_type,
@@ -133,28 +136,28 @@ fn store_procedure_row(
 	trigger: &RqlTrigger,
 	return_type: &Option<TypeConstraint>,
 ) -> Result<()> {
-	let mut row = procedure::SHAPE.allocate();
-	procedure::SHAPE.set::<u64>(&mut row, procedure::ID, u64::from(id));
-	procedure::SHAPE.set::<u64>(&mut row, procedure::NAMESPACE, u64::from(namespace));
-	procedure::SHAPE.set_utf8(&mut row, procedure::NAME, name);
-	procedure::SHAPE.set::<u8>(&mut row, procedure::VARIANT, variant);
-	procedure::SHAPE.set_utf8(&mut row, procedure::BODY, body);
+	let mut row = procedure::allocate();
+	procedure::set_id(&mut row, u64::from(id));
+	procedure::set_namespace(&mut row, u64::from(namespace));
+	procedure::set_name(&mut row, name);
+	procedure::set_variant(&mut row, variant);
+	procedure::set_body(&mut row, body);
 
 	let (trigger_kind, sumtype, vidx) = match trigger {
-		RqlTrigger::Call => (procedure::TRIGGER_CALL, 0u64, 0u16),
+		RqlTrigger::Call => (TRIGGER_CALL, 0u64, 0u16),
 		RqlTrigger::Event {
 			variant: v,
-		} => (procedure::TRIGGER_EVENT, v.sumtype_id.0, v.variant_tag as u16),
+		} => (TRIGGER_EVENT, v.sumtype_id.0, v.variant_tag as u16),
 	};
-	procedure::SHAPE.set::<u8>(&mut row, procedure::TRIGGER_KIND, trigger_kind);
-	procedure::SHAPE.set::<u64>(&mut row, procedure::TRIGGER_VARIANT_SUMTYPE, sumtype);
-	procedure::SHAPE.set::<u16>(&mut row, procedure::TRIGGER_VARIANT_INDEX, vidx);
+	procedure::set_trigger_kind(&mut row, trigger_kind);
+	procedure::set_trigger_variant_sumtype(&mut row, sumtype);
+	procedure::set_trigger_variant_index(&mut row, vidx);
 
 	let return_type_json = match return_type {
 		Some(rt) => to_string(rt).expect("TypeConstraint serializes"),
 		None => String::new(),
 	};
-	procedure::SHAPE.set_utf8(&mut row, procedure::RETURN_TYPE, &return_type_json);
+	procedure::set_return_type(&mut row, &return_type_json);
 
 	txn.set(&ProcedureKey::encoded(id), row.freeze())?;
 	Ok(())
@@ -166,21 +169,21 @@ fn link_procedure_to_namespace(
 	procedure: ProcedureId,
 	name: &str,
 ) -> Result<()> {
-	let mut row = namespace_procedure::SHAPE.allocate();
-	namespace_procedure::SHAPE.set::<u64>(&mut row, namespace_procedure::ID, u64::from(procedure));
-	namespace_procedure::SHAPE.set_utf8(&mut row, namespace_procedure::NAME, name);
+	let mut row = namespace_procedure::allocate();
+	namespace_procedure::set_id(&mut row, u64::from(procedure));
+	namespace_procedure::set_name(&mut row, name);
 	txn.set(&NamespaceProcedureKey::encoded(namespace, procedure), row.freeze())?;
 	Ok(())
 }
 
 fn insert_params(txn: &mut AdminTransaction, procedure: ProcedureId, params: &[ProcedureParam]) -> Result<()> {
 	for (index, param) in params.iter().enumerate() {
-		let mut row = procedure_param::SHAPE.allocate();
-		procedure_param::SHAPE.set::<u64>(&mut row, procedure_param::PROCEDURE_ID, u64::from(procedure));
-		procedure_param::SHAPE.set::<u16>(&mut row, procedure_param::INDEX, index as u16);
-		procedure_param::SHAPE.set_utf8(&mut row, procedure_param::NAME, &param.name);
+		let mut row = procedure_param::allocate();
+		procedure_param::set_procedure_id(&mut row, u64::from(procedure));
+		procedure_param::set_index(&mut row, index as u16);
+		procedure_param::set_name(&mut row, &param.name);
 		let json = to_string(&param.param_type).expect("TypeConstraint serializes");
-		procedure_param::SHAPE.set_utf8(&mut row, procedure_param::TYPE_CONSTRAINT, &json);
+		procedure_param::set_type_constraint(&mut row, &json);
 		txn.set(&ProcedureParamKey::encoded(procedure, index as u16), row.freeze())?;
 	}
 	Ok(())

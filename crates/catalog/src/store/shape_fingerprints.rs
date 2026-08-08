@@ -17,8 +17,24 @@ fn shapes_declared_on_disk() -> usize {
 		})
 		.filter_map(|line| line.strip_suffix(';'))
 		.filter_map(|module| fs::read_to_string(root.join(module).join("shape.rs")).ok())
-		.map(|source| source.matches("static SHAPE").count())
+		.map(|source| source.matches("static SHAPE").count() + macro_authored_shapes(&source))
 		.sum()
+}
+
+fn macro_authored_shapes(source: &str) -> usize {
+	source.lines()
+		.filter_map(|line| {
+			let line = line.trim();
+			line.strip_prefix("pub ").or_else(|| line.strip_prefix("pub(crate) "))
+		})
+		.filter(|rest| {
+			let mut parts = rest.split_whitespace();
+			let (Some(name), Some("{"), None) = (parts.next(), parts.next(), parts.next()) else {
+				return false;
+			};
+			name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+		})
+		.count()
 }
 
 fn pinned() -> Vec<Pin> {

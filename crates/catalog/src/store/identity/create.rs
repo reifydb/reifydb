@@ -9,7 +9,7 @@ use reifydb_value::{fragment::Fragment, value::identity::IdentityId};
 use crate::{
 	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
-	store::identity::shape::identity::{ENABLED, IDENTITY, NAME, SHAPE},
+	store::identity::shape::identity,
 };
 
 impl CatalogStore {
@@ -18,10 +18,10 @@ impl CatalogStore {
 		name: &str,
 		id: IdentityId,
 	) -> Result<Identity> {
-		let mut row = SHAPE.allocate();
-		SHAPE.set::<IdentityId>(&mut row, IDENTITY, id);
-		SHAPE.set_utf8(&mut row, NAME, name);
-		SHAPE.set::<bool>(&mut row, ENABLED, true);
+		let mut row = identity::allocate();
+		identity::set_identity(&mut row, id);
+		identity::set_name(&mut row, name);
+		identity::set_enabled(&mut row, true);
 
 		txn.set(&IdentityKey::encoded(id), row.freeze())?;
 
@@ -50,10 +50,10 @@ impl CatalogStore {
 
 		let id = IdentityId::generate(clock, rng);
 
-		let mut row = SHAPE.allocate();
-		SHAPE.set::<IdentityId>(&mut row, IDENTITY, id);
-		SHAPE.set_utf8(&mut row, NAME, name);
-		SHAPE.set::<bool>(&mut row, ENABLED, true);
+		let mut row = identity::allocate();
+		identity::set_identity(&mut row, id);
+		identity::set_name(&mut row, name);
+		identity::set_enabled(&mut row, true);
 
 		txn.set(&IdentityKey::encoded(id), row.freeze())?;
 

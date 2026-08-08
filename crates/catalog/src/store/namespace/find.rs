@@ -33,7 +33,7 @@ impl CatalogStore {
 		for entry in stream {
 			let multi = entry?;
 			let bytes: &EncodedBytes = &multi.bytes;
-			let namespace_name = namespace::SHAPE.get_utf8(bytes, namespace::NAME);
+			let namespace_name = namespace::get_name(bytes);
 			if name == namespace_name {
 				return Ok(Some(convert_namespace(multi)));
 			}

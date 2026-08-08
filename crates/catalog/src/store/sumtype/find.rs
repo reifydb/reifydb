@@ -32,11 +32,9 @@ impl CatalogStore {
 		for entry in stream.by_ref() {
 			let multi = entry?;
 			let bytes = &multi.bytes;
-			let entry_name = sumtype_namespace::SHAPE.get_utf8(bytes, sumtype_namespace::NAME);
+			let entry_name = sumtype_namespace::get_name(bytes);
 			if name == entry_name {
-				found_id = Some(SumTypeId(
-					sumtype_namespace::SHAPE.get::<u64>(bytes, sumtype_namespace::ID),
-				));
+				found_id = Some(SumTypeId(sumtype_namespace::get_id(bytes)));
 				break;
 			}
 		}

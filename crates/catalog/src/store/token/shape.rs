@@ -1,24 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub(crate) mod token {
-	use once_cell::sync::Lazy;
-	use reifydb_codec::row::shape::{RowShape, RowShapeField};
-	use reifydb_value::value::value_type::ValueType;
+use reifydb_macro::catalog_shape;
+use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 
-	pub(crate) const ID: usize = 0;
-	pub(crate) const TOKEN: usize = 1;
-	pub(crate) const IDENTITY: usize = 2;
-	pub(crate) const EXPIRES_AT: usize = 3;
-	pub(crate) const CREATED_AT: usize = 4;
-
-	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("id", ValueType::Uint8),
-			RowShapeField::unconstrained("token", ValueType::Utf8),
-			RowShapeField::unconstrained("identity", ValueType::IdentityId),
-			RowShapeField::unconstrained("expires_at", ValueType::DateTime),
-			RowShapeField::unconstrained("created_at", ValueType::DateTime),
-		])
-	});
+catalog_shape! {
+	pub(crate) token {
+		id: u64,
+		token: utf8,
+		identity: IdentityId,
+		expires_at: DateTime?,
+		created_at: DateTime,
+	}
 }

@@ -7,7 +7,6 @@ use reifydb_core::{
 	key::{EncodableKey, granted_role::GrantedRoleKey, kind::KeyKind},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::identity::IdentityId;
 
 use super::CatalogChangeApplier;
 use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::granted_role::shape::granted_role};
@@ -33,8 +32,8 @@ impl CatalogChangeApplier for GrantedRoleApplier {
 }
 
 fn decode_granted_role(bytes: &EncodedBytes) -> GrantedRole {
-	let identity = granted_role::SHAPE.get::<IdentityId>(bytes, granted_role::IDENTITY);
-	let role_id = granted_role::SHAPE.get::<u64>(bytes, granted_role::ROLE_ID);
+	let identity = granted_role::get_identity(bytes);
+	let role_id = granted_role::get_role_id(bytes);
 
 	GrantedRole {
 		identity,

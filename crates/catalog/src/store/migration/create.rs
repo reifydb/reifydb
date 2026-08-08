@@ -27,16 +27,12 @@ impl CatalogStore {
 	pub(crate) fn create_migration(txn: &mut AdminTransaction, to_create: MigrationToCreate) -> Result<Migration> {
 		let migration_id = SystemSequence::next_migration_id(txn)?;
 
-		let mut row = migration_shape::SHAPE.allocate();
-		migration_shape::SHAPE.set::<u64>(&mut row, migration_shape::ID, u64::from(migration_id));
-		migration_shape::SHAPE.set_utf8(&mut row, migration_shape::NAME, &to_create.name);
-		migration_shape::SHAPE.set_utf8(&mut row, migration_shape::BODY, &to_create.body);
-		migration_shape::SHAPE.set_utf8(
-			&mut row,
-			migration_shape::ROLLBACK_BODY,
-			to_create.rollback_body.as_deref().unwrap_or(""),
-		);
-		migration_shape::SHAPE.set::<u128>(&mut row, migration_shape::HASH, to_create.hash.0);
+		let mut row = migration_shape::allocate();
+		migration_shape::set_id(&mut row, u64::from(migration_id));
+		migration_shape::set_name(&mut row, &to_create.name);
+		migration_shape::set_body(&mut row, &to_create.body);
+		migration_shape::set_rollback_body(&mut row, to_create.rollback_body.as_deref().unwrap_or(""));
+		migration_shape::set_hash(&mut row, to_create.hash.0);
 
 		txn.set(&MigrationKey::encoded(migration_id), row.freeze())?;
 
@@ -56,12 +52,11 @@ impl CatalogStore {
 	) -> Result<MigrationEvent> {
 		let event_id = SystemSequence::next_migration_event_id(txn)?;
 
-		let mut row = event_shape::SHAPE.allocate();
-		event_shape::SHAPE.set::<u64>(&mut row, event_shape::ID, u64::from(event_id));
-		event_shape::SHAPE.set::<u64>(&mut row, event_shape::MIGRATION_ID, u64::from(migration.id));
-		event_shape::SHAPE.set::<u8>(
+		let mut row = event_shape::allocate();
+		event_shape::set_id(&mut row, u64::from(event_id));
+		event_shape::set_migration_id(&mut row, u64::from(migration.id));
+		event_shape::set_action(
 			&mut row,
-			event_shape::ACTION,
 			match action {
 				MigrationAction::Applied => 0,
 				MigrationAction::Rollback => 1,

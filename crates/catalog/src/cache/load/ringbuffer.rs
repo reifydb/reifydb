@@ -18,13 +18,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use super::CatalogCache;
 use crate::{
 	CatalogStore, Result,
-	store::ringbuffer::{
-		decode_ringbuffer_time,
-		shape::{
-			ringbuffer,
-			ringbuffer::{CAPACITY, ID, NAME, NAMESPACE, PRIMARY_KEY},
-		},
-	},
+	store::ringbuffer::{decode_ringbuffer_time, shape::ringbuffer},
 };
 
 pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
@@ -57,19 +51,19 @@ pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &CatalogCache)
 
 fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> RingBuffer {
 	let bytes = multi.bytes;
-	let id = RingBufferId(ringbuffer::SHAPE.get::<u64>(&bytes, ID));
-	let namespace = NamespaceId(ringbuffer::SHAPE.get::<u64>(&bytes, NAMESPACE));
-	let name = ringbuffer::SHAPE.get_utf8(&bytes, NAME).to_string();
-	let capacity = ringbuffer::SHAPE.get::<u64>(&bytes, CAPACITY);
+	let id = RingBufferId(ringbuffer::get_id(&bytes));
+	let namespace = NamespaceId(ringbuffer::get_namespace(&bytes));
+	let name = ringbuffer::get_name(&bytes).to_string();
+	let capacity = ringbuffer::get_capacity(&bytes);
 
-	let partition_by_str = ringbuffer::SHAPE.get_utf8(&bytes, ringbuffer::PARTITION_BY);
+	let partition_by_str = ringbuffer::get_partition_by(&bytes);
 	let partition_by = if partition_by_str.is_empty() {
 		vec![]
 	} else {
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
 
-	let underlying = ringbuffer::SHAPE.get::<u8>(&bytes, ringbuffer::UNDERLYING) != 0;
+	let underlying = ringbuffer::get_underlying(&bytes) != 0;
 	RingBuffer {
 		id,
 		name,
@@ -84,7 +78,7 @@ fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -
 }
 
 fn get_ringbuffer_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
-	let pk_id_raw = ringbuffer::SHAPE.get::<u64>(&multi.bytes, PRIMARY_KEY);
+	let pk_id_raw = ringbuffer::get_primary_key(&multi.bytes);
 	if pk_id_raw == 0 {
 		None
 	} else {

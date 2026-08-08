@@ -104,17 +104,16 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &RingBufferToCreate,
 	) -> Result<()> {
-		let mut row = ringbuffer::SHAPE.allocate();
-		ringbuffer::SHAPE.set::<u64>(&mut row, ringbuffer::ID, u64::from(ringbuffer));
-		ringbuffer::SHAPE.set::<u64>(&mut row, ringbuffer::NAMESPACE, u64::from(namespace));
-		ringbuffer::SHAPE.set_utf8(&mut row, ringbuffer::NAME, to_create.name.text());
-		ringbuffer::SHAPE.set::<u64>(&mut row, ringbuffer::CAPACITY, to_create.capacity);
+		let mut row = ringbuffer::allocate();
+		ringbuffer::set_id(&mut row, u64::from(ringbuffer));
+		ringbuffer::set_namespace(&mut row, u64::from(namespace));
+		ringbuffer::set_name(&mut row, to_create.name.text());
+		ringbuffer::set_capacity(&mut row, to_create.capacity);
 
-		ringbuffer::SHAPE.set::<u64>(&mut row, ringbuffer::PRIMARY_KEY, 0u64);
-		ringbuffer::SHAPE.set_utf8(&mut row, ringbuffer::PARTITION_BY, to_create.partition_by.join(","));
-		ringbuffer::SHAPE.set::<u8>(
+		ringbuffer::set_primary_key(&mut row, 0u64);
+		ringbuffer::set_partition_by(&mut row, to_create.partition_by.join(","));
+		ringbuffer::set_underlying(
 			&mut row,
-			ringbuffer::UNDERLYING,
 			if to_create.underlying {
 				1
 			} else {
@@ -141,9 +140,9 @@ impl CatalogStore {
 		ringbuffer: RingBufferId,
 		name: &str,
 	) -> Result<()> {
-		let mut row = ringbuffer_namespace::SHAPE.allocate();
-		ringbuffer_namespace::SHAPE.set::<u64>(&mut row, ringbuffer_namespace::ID, u64::from(ringbuffer));
-		ringbuffer_namespace::SHAPE.set_utf8(&mut row, ringbuffer_namespace::NAME, name);
+		let mut row = ringbuffer_namespace::allocate();
+		ringbuffer_namespace::set_id(&mut row, u64::from(ringbuffer));
+		ringbuffer_namespace::set_name(&mut row, name);
 
 		txn.set(&NamespaceRingBufferKey::encoded(namespace, ringbuffer), row.freeze())?;
 
@@ -383,15 +382,15 @@ pub mod tests {
 		// Keys are descending, so the later ring buffer comes first.
 		let link = &links[0];
 		let bytes = &link.bytes;
-		let id2 = ringbuffer_namespace::SHAPE.get::<u64>(bytes, ringbuffer_namespace::ID);
+		let id2 = ringbuffer_namespace::get_id(bytes);
 		assert!(id2 > 0);
-		assert_eq!(ringbuffer_namespace::SHAPE.get_utf8(bytes, ringbuffer_namespace::NAME), "buffer2");
+		assert_eq!(ringbuffer_namespace::get_name(bytes), "buffer2");
 
 		let link = &links[1];
 		let bytes = &link.bytes;
-		let id1 = ringbuffer_namespace::SHAPE.get::<u64>(bytes, ringbuffer_namespace::ID);
+		let id1 = ringbuffer_namespace::get_id(bytes);
 		assert!(id2 > id1);
-		assert_eq!(ringbuffer_namespace::SHAPE.get_utf8(bytes, ringbuffer_namespace::NAME), "buffer1");
+		assert_eq!(ringbuffer_namespace::get_name(bytes), "buffer1");
 	}
 
 	#[test]

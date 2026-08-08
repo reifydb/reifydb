@@ -8,7 +8,7 @@ use reifydb_core::{
 use reifydb_value::value::Value;
 use tracing::warn;
 
-use crate::store::config::shape::config::{SHAPE, VALUE};
+use crate::store::config::shape::config;
 
 pub mod set;
 pub mod shape;
@@ -22,7 +22,7 @@ pub(crate) fn convert_config(multi: MultiVersionRow) -> Option<(ConfigKey, Value
 		}
 	};
 
-	let value = match SHAPE.get_value(&multi.bytes, VALUE) {
+	let value = match config::get_value(&multi.bytes) {
 		Value::Any(inner) => *inner,
 		other => other,
 	};

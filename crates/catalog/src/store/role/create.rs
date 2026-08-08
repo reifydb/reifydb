@@ -8,10 +8,7 @@ use reifydb_value::fragment::Fragment;
 use crate::{
 	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
-	store::{
-		role::shape::role::{ID, NAME, SHAPE},
-		sequence::system::SystemSequence,
-	},
+	store::{role::shape::role, sequence::system::SystemSequence},
 };
 
 impl CatalogStore {
@@ -28,9 +25,9 @@ impl CatalogStore {
 
 		let role_id = SystemSequence::next_role_id(txn)?;
 
-		let mut row = SHAPE.allocate();
-		SHAPE.set::<u64>(&mut row, ID, role_id);
-		SHAPE.set_utf8(&mut row, NAME, name);
+		let mut row = role::allocate();
+		role::set_id(&mut row, role_id);
+		role::set_name(&mut row, name);
 
 		txn.set(&RoleKey::encoded(role_id), row.freeze())?;
 

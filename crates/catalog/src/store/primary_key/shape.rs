@@ -1,57 +1,50 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub(crate) mod primary_key {
-	use once_cell::sync::Lazy;
-	use reifydb_codec::row::shape::{RowShape, RowShapeField};
-	use reifydb_core::interface::catalog::id::ColumnId;
-	use reifydb_value::value::{blob::Blob, value_type::ValueType};
+use reifydb_core::interface::catalog::id::ColumnId;
+use reifydb_macro::catalog_shape;
+use reifydb_value::value::blob::Blob;
 
-	pub(crate) const ID: usize = 0;
-	pub(crate) const SOURCE: usize = 1;
-	pub(crate) const COLUMN_IDS: usize = 2;
+catalog_shape! {
+	pub(crate) primary_key {
+		id: u64,
+		source: u64,
+		column_ids: blob,
+	}
+}
 
-	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("id", ValueType::Uint8),
-			RowShapeField::unconstrained("source", ValueType::Uint8),
-			RowShapeField::unconstrained("column_ids", ValueType::Blob),
-		])
-	});
+pub(crate) fn serialize_column_ids(column_ids: &[ColumnId]) -> Blob {
+	let mut bytes = Vec::new();
 
-	pub(crate) fn serialize_column_ids(column_ids: &[ColumnId]) -> Blob {
-		let mut bytes = Vec::new();
+	bytes.extend_from_slice(&(column_ids.len() as u64).to_le_bytes());
 
-		bytes.extend_from_slice(&(column_ids.len() as u64).to_le_bytes());
-
-		for col_id in column_ids {
-			bytes.extend_from_slice(&col_id.0.to_le_bytes());
-		}
-
-		Blob::from(bytes)
+	for col_id in column_ids {
+		bytes.extend_from_slice(&col_id.0.to_le_bytes());
 	}
 
-	pub(crate) fn deserialize_column_ids(blob: &Blob) -> Vec<ColumnId> {
-		let bytes = blob.as_bytes();
+	Blob::from(bytes)
+}
 
-		let count = u64::from_le_bytes(bytes[0..8].try_into().unwrap()) as usize;
+pub(crate) fn deserialize_column_ids(blob: &Blob) -> Vec<ColumnId> {
+	let bytes = blob.as_bytes();
 
-		let mut column_ids = Vec::with_capacity(count);
-		for i in 0..count {
-			let start = 8 + i * 8;
-			let id = u64::from_le_bytes(bytes[start..start + 8].try_into().unwrap());
-			column_ids.push(ColumnId(id));
-		}
+	let count = u64::from_le_bytes(bytes[0..8].try_into().unwrap()) as usize;
 
-		column_ids
+	let mut column_ids = Vec::with_capacity(count);
+	for i in 0..count {
+		let start = 8 + i * 8;
+		let id = u64::from_le_bytes(bytes[start..start + 8].try_into().unwrap());
+		column_ids.push(ColumnId(id));
 	}
+
+	column_ids
 }
 
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::interface::catalog::id::ColumnId;
 
-	use super::primary_key::{deserialize_column_ids, serialize_column_ids};
+	use super::{deserialize_column_ids, serialize_column_ids};
 
 	#[test]
 	fn test_serialize_deserialize_column_ids() {

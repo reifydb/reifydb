@@ -7,10 +7,7 @@ use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 
 use crate::{
 	CatalogStore, Result,
-	store::{
-		sequence::system::SystemSequence,
-		token::shape::token::{CREATED_AT, EXPIRES_AT, ID, IDENTITY, SHAPE, TOKEN},
-	},
+	store::{sequence::system::SystemSequence, token::shape::token},
 };
 
 impl CatalogStore {
@@ -23,16 +20,16 @@ impl CatalogStore {
 	) -> Result<Token> {
 		let id = SystemSequence::next_token_id(txn)?;
 
-		let mut row = SHAPE.allocate();
-		SHAPE.set::<u64>(&mut row, ID, id);
-		SHAPE.set_utf8(&mut row, TOKEN, token);
-		SHAPE.set::<IdentityId>(&mut row, IDENTITY, identity);
+		let mut row = token::allocate();
+		token::set_id(&mut row, id);
+		token::set_token(&mut row, token);
+		token::set_identity(&mut row, identity);
 		if let Some(expires) = expires_at {
-			SHAPE.set::<DateTime>(&mut row, EXPIRES_AT, expires);
+			token::set_expires_at(&mut row, expires);
 		} else {
-			SHAPE.set_none(&mut row, EXPIRES_AT);
+			token::set_expires_at_none(&mut row);
 		}
-		SHAPE.set::<DateTime>(&mut row, CREATED_AT, created_at);
+		token::set_created_at(&mut row, created_at);
 
 		txn.set(&TokenKey::encoded(id), row.freeze())?;
 

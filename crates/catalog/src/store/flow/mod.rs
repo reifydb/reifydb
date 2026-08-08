@@ -19,9 +19,9 @@ use crate::store::flow::shape::flow;
 
 pub(crate) fn decode_flow(bytes: &EncodedBytes) -> Flow {
 	Flow {
-		id: FlowId(flow::SHAPE.get::<u64>(bytes, flow::ID)),
-		namespace: NamespaceId(flow::SHAPE.get::<u64>(bytes, flow::NAMESPACE)),
-		name: flow::SHAPE.get_utf8(bytes, flow::NAME).to_string(),
-		status: FlowStatus::from_u8(flow::SHAPE.get::<u8>(bytes, flow::STATUS)),
+		id: FlowId(flow::get_id(bytes)),
+		namespace: NamespaceId(flow::get_namespace(bytes)),
+		name: flow::get_name(bytes).to_string(),
+		status: FlowStatus::from_u8(flow::get_status(bytes)),
 	}
 }

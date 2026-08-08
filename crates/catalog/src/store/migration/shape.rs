@@ -1,42 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use once_cell::sync::Lazy;
-use reifydb_codec::row::shape::{RowShape, RowShapeField};
-use reifydb_value::value::value_type::ValueType;
+use reifydb_macro::catalog_shape;
 
-pub(crate) mod migration {
-	use super::*;
+catalog_shape! {
+	pub(crate) migration {
+		id: u64,
+		name: utf8,
+		body: utf8,
+		rollback_body: utf8,
+		hash: u128,
+	}
 
-	pub(crate) const ID: usize = 0;
-	pub(crate) const NAME: usize = 1;
-	pub(crate) const BODY: usize = 2;
-	pub(crate) const ROLLBACK_BODY: usize = 3;
-	pub(crate) const HASH: usize = 4;
-
-	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("id", ValueType::Uint8),
-			RowShapeField::unconstrained("name", ValueType::Utf8),
-			RowShapeField::unconstrained("body", ValueType::Utf8),
-			RowShapeField::unconstrained("rollback_body", ValueType::Utf8),
-			RowShapeField::unconstrained("hash", ValueType::Uint16),
-		])
-	});
-}
-
-pub(crate) mod migration_event {
-	use super::*;
-
-	pub(crate) const ID: usize = 0;
-	pub(crate) const MIGRATION_ID: usize = 1;
-	pub(crate) const ACTION: usize = 2;
-
-	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("id", ValueType::Uint8),
-			RowShapeField::unconstrained("migration_id", ValueType::Uint8),
-			RowShapeField::unconstrained("action", ValueType::Uint1),
-		])
-	});
+	pub(crate) migration_event {
+		id: u64,
+		migration_id: u64,
+		action: u8,
+	}
 }

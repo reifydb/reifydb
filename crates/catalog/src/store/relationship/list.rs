@@ -33,24 +33,20 @@ impl CatalogStore {
 }
 
 pub(crate) fn decode_relationship_row(bytes: &EncodedBytes) -> Result<Relationship> {
-	let id = RelationshipId(relationship_shape::SHAPE.get::<u64>(bytes, relationship_shape::ID));
-	let namespace = NamespaceId(relationship_shape::SHAPE.get::<u64>(bytes, relationship_shape::NAMESPACE_ID));
-	let name = relationship_shape::SHAPE.get_utf8(bytes, relationship_shape::NAME).to_string();
-	let source_table = TableId(relationship_shape::SHAPE.get::<u64>(bytes, relationship_shape::SOURCE_TABLE_ID));
-	let source_column = ColumnId(relationship_shape::SHAPE.get::<u64>(bytes, relationship_shape::SOURCE_COLUMN_ID));
-	let target_table = TableId(relationship_shape::SHAPE.get::<u64>(bytes, relationship_shape::TARGET_TABLE_ID));
-	let target_column = ColumnId(relationship_shape::SHAPE.get::<u64>(bytes, relationship_shape::TARGET_COLUMN_ID));
+	let id = RelationshipId(relationship_shape::get_id(bytes));
+	let namespace = NamespaceId(relationship_shape::get_namespace_id(bytes));
+	let name = relationship_shape::get_name(bytes).to_string();
+	let source_table = TableId(relationship_shape::get_source_table_id(bytes));
+	let source_column = ColumnId(relationship_shape::get_source_column_id(bytes));
+	let target_table = TableId(relationship_shape::get_target_table_id(bytes));
+	let target_column = ColumnId(relationship_shape::get_target_column_id(bytes));
 
-	let junction_table_raw = relationship_shape::SHAPE.get::<u64>(bytes, relationship_shape::JUNCTION_TABLE_ID);
+	let junction_table_raw = relationship_shape::get_junction_table_id(bytes);
 	let junction = if junction_table_raw == 0 {
 		None
 	} else {
-		let source_column = ColumnId(
-			relationship_shape::SHAPE.get::<u64>(bytes, relationship_shape::JUNCTION_SOURCE_COLUMN_ID),
-		);
-		let target_column = ColumnId(
-			relationship_shape::SHAPE.get::<u64>(bytes, relationship_shape::JUNCTION_TARGET_COLUMN_ID),
-		);
+		let source_column = ColumnId(relationship_shape::get_junction_source_column_id(bytes));
+		let target_column = ColumnId(relationship_shape::get_junction_target_column_id(bytes));
 		Some(RelationshipJunction {
 			table: TableId(junction_table_raw),
 			source_column,
@@ -58,7 +54,7 @@ pub(crate) fn decode_relationship_row(bytes: &EncodedBytes) -> Result<Relationsh
 		})
 	};
 
-	let cardinality_code = relationship_shape::SHAPE.get::<u8>(bytes, relationship_shape::CARDINALITY);
+	let cardinality_code = relationship_shape::get_cardinality(bytes);
 	let cardinality = match RelationshipCardinality::from_code(cardinality_code) {
 		Some(c) => c,
 		None => return_internal_error!(format!("invalid relationship cardinality code: {}", cardinality_code)),

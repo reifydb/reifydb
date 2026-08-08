@@ -20,7 +20,7 @@ use serde_json::from_str;
 
 use crate::{
 	CatalogStore, Result,
-	store::procedure::shape::{namespace_procedure, procedure, procedure_param},
+	store::procedure::shape::{TRIGGER_EVENT, VARIANT_TEST, namespace_procedure, procedure, procedure_param},
 };
 
 impl CatalogStore {
@@ -42,11 +42,9 @@ impl CatalogStore {
 		for entry in stream.by_ref() {
 			let multi = entry?;
 			let bytes = &multi.bytes;
-			let candidate = namespace_procedure::SHAPE.get_utf8(bytes, namespace_procedure::NAME);
+			let candidate = namespace_procedure::get_name(bytes);
 			if candidate == name {
-				found_id = Some(ProcedureId::from_raw(
-					namespace_procedure::SHAPE.get::<u64>(bytes, namespace_procedure::ID),
-				));
+				found_id = Some(ProcedureId::from_raw(namespace_procedure::get_id(bytes)));
 				break;
 			}
 		}
@@ -65,9 +63,9 @@ pub(crate) fn load_params(rx: &mut Transaction<'_>, procedure_id: ProcedureId) -
 	for entry in stream.by_ref() {
 		let multi = entry?;
 		let bytes = &multi.bytes;
-		let index = procedure_param::SHAPE.get::<u16>(bytes, procedure_param::INDEX);
-		let name = procedure_param::SHAPE.get_utf8(bytes, procedure_param::NAME).to_string();
-		let json = procedure_param::SHAPE.get_utf8(bytes, procedure_param::TYPE_CONSTRAINT);
+		let index = procedure_param::get_index(bytes);
+		let name = procedure_param::get_name(bytes).to_string();
+		let json = procedure_param::get_type_constraint(bytes);
 		let param_type: TypeConstraint = from_str(json).expect("TypeConstraint deserializes from stored JSON");
 		entries.push((
 			index,
@@ -83,20 +81,20 @@ pub(crate) fn load_params(rx: &mut Transaction<'_>, procedure_id: ProcedureId) -
 }
 
 pub(crate) fn decode_procedure(bytes: &EncodedBytes, params: Vec<ProcedureParam>) -> Procedure {
-	let id = ProcedureId::from_raw(procedure::SHAPE.get::<u64>(bytes, procedure::ID));
-	let namespace = NamespaceId(procedure::SHAPE.get::<u64>(bytes, procedure::NAMESPACE));
-	let name = procedure::SHAPE.get_utf8(bytes, procedure::NAME).to_string();
-	let variant = procedure::SHAPE.get::<u8>(bytes, procedure::VARIANT);
-	let body = procedure::SHAPE.get_utf8(bytes, procedure::BODY).to_string();
+	let id = ProcedureId::from_raw(procedure::get_id(bytes));
+	let namespace = NamespaceId(procedure::get_namespace(bytes));
+	let name = procedure::get_name(bytes).to_string();
+	let variant = procedure::get_variant(bytes);
+	let body = procedure::get_body(bytes).to_string();
 
-	let return_type_json = procedure::SHAPE.get_utf8(bytes, procedure::RETURN_TYPE);
+	let return_type_json = procedure::get_return_type(bytes);
 	let return_type: Option<TypeConstraint> = if return_type_json.is_empty() {
 		None
 	} else {
 		Some(from_str(return_type_json).expect("TypeConstraint deserializes from stored JSON"))
 	};
 
-	if variant == procedure::VARIANT_TEST {
+	if variant == VARIANT_TEST {
 		Procedure::Test {
 			id,
 			namespace,
@@ -106,10 +104,10 @@ pub(crate) fn decode_procedure(bytes: &EncodedBytes, params: Vec<ProcedureParam>
 			body,
 		}
 	} else {
-		let trigger_kind = procedure::SHAPE.get::<u8>(bytes, procedure::TRIGGER_KIND);
-		let trigger = if trigger_kind == procedure::TRIGGER_EVENT {
-			let sumtype = procedure::SHAPE.get::<u64>(bytes, procedure::TRIGGER_VARIANT_SUMTYPE);
-			let vidx = procedure::SHAPE.get::<u16>(bytes, procedure::TRIGGER_VARIANT_INDEX);
+		let trigger_kind = procedure::get_trigger_kind(bytes);
+		let trigger = if trigger_kind == TRIGGER_EVENT {
+			let sumtype = procedure::get_trigger_variant_sumtype(bytes);
+			let vidx = procedure::get_trigger_variant_index(bytes);
 			RqlTrigger::Event {
 				variant: VariantRef {
 					sumtype_id: SumTypeId(sumtype),

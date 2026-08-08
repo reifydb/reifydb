@@ -16,10 +16,7 @@ use crate::{
 	CatalogStore, Result,
 	catalog::Catalog,
 	error::CatalogChangeError,
-	store::table::{
-		decode_table_time,
-		shape::table::{self, ID, NAME, NAMESPACE, PRIMARY_KEY},
-	},
+	store::table::{decode_table_time, shape::table},
 };
 
 pub(super) struct TableApplier;
@@ -48,22 +45,22 @@ use reifydb_core::common::CommitVersion;
 use crate::cache::CatalogCache;
 
 fn decode_table(bytes: &EncodedBytes, materialized: &CatalogCache, version: CommitVersion) -> Table {
-	let id = TableId(table::SHAPE.get::<u64>(bytes, ID));
-	let namespace = NamespaceId(table::SHAPE.get::<u64>(bytes, NAMESPACE));
-	let name = table::SHAPE.get_utf8(bytes, NAME).to_string();
-	let pk_raw = table::SHAPE.get::<u64>(bytes, PRIMARY_KEY);
+	let id = TableId(table::get_id(bytes));
+	let namespace = NamespaceId(table::get_namespace(bytes));
+	let name = table::get_name(bytes).to_string();
+	let pk_raw = table::get_primary_key(bytes);
 	let primary_key = if pk_raw > 0 {
 		materialized.find_primary_key_at(PrimaryKeyId(pk_raw), version)
 	} else {
 		None
 	};
-	let partition_by_str = table::SHAPE.get_utf8(bytes, table::PARTITION_BY);
+	let partition_by_str = table::get_partition_by(bytes);
 	let partition_by = if partition_by_str.is_empty() {
 		vec![]
 	} else {
 		partition_by_str.split(',').map(|s| s.to_string()).collect()
 	};
-	let underlying = table::SHAPE.get::<u8>(bytes, table::UNDERLYING) != 0;
+	let underlying = table::get_underlying(bytes) != 0;
 	let time = decode_table_time(bytes);
 	Table {
 		id,

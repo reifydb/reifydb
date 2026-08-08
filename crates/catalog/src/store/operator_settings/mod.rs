@@ -12,16 +12,16 @@ use reifydb_value::value::duration::Duration;
 use self::shape::operator_settings;
 
 pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedBytes {
-	let mut row = operator_settings::SHAPE.allocate();
+	let mut row = operator_settings::allocate();
 
 	match &settings.join {
 		Some(join) => {
-			operator_settings::SHAPE.set::<bool>(&mut row, operator_settings::IS_JOIN, true);
+			operator_settings::set_is_join(&mut row, true);
 			encode_side(&mut row, &join.left, operator_settings::LEFT_DURATION);
 			encode_side(&mut row, &join.right, operator_settings::RIGHT_DURATION);
 		}
 		None => {
-			operator_settings::SHAPE.set::<bool>(&mut row, operator_settings::IS_JOIN, false);
+			operator_settings::set_is_join(&mut row, false);
 			encode_side(&mut row, &settings.ttl, operator_settings::DURATION);
 		}
 	}
@@ -30,7 +30,7 @@ pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedBy
 }
 
 pub(crate) fn decode_operator_settings(bytes: &EncodedBytes) -> Option<OperatorSettings> {
-	if operator_settings::SHAPE.get::<bool>(bytes, operator_settings::IS_JOIN) {
+	if operator_settings::get_is_join(bytes) {
 		let left = decode_side(bytes, operator_settings::LEFT_DURATION);
 		let right = decode_side(bytes, operator_settings::RIGHT_DURATION);
 		Some(OperatorSettings {

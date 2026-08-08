@@ -13,10 +13,7 @@ use crate::{
 	CatalogStore, Result,
 	catalog::Catalog,
 	error::CatalogChangeError,
-	store::view::{
-		find::decode_view,
-		shape::view::{PRIMARY_KEY, SHAPE},
-	},
+	store::view::{find::decode_view, shape::view},
 };
 
 pub(super) struct ViewApplier;
@@ -24,7 +21,7 @@ pub(super) struct ViewApplier;
 impl CatalogChangeApplier for ViewApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let pk_raw = SHAPE.get::<u64>(bytes, PRIMARY_KEY);
+		let pk_raw = view::get_primary_key(bytes);
 		let primary_key = if pk_raw > 0 {
 			catalog.cache.find_primary_key_at(PrimaryKeyId(pk_raw), txn.version())
 		} else {

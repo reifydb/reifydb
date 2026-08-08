@@ -14,7 +14,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, dictionary::DictionaryId, duration::Duration},
+	value::{constraint::TypeConstraint, dictionary::DictionaryId},
 };
 
 use crate::{
@@ -109,19 +109,18 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &QueueToCreate,
 	) -> Result<()> {
-		let mut row = queue::SHAPE.allocate();
-		queue::SHAPE.set::<u64>(&mut row, queue::ID, u64::from(queue_id));
-		queue::SHAPE.set::<u64>(&mut row, queue::NAMESPACE, u64::from(namespace));
-		queue::SHAPE.set_utf8(&mut row, queue::NAME, to_create.name.text());
+		let mut row = queue::allocate();
+		queue::set_id(&mut row, u64::from(queue_id));
+		queue::set_namespace(&mut row, u64::from(namespace));
+		queue::set_name(&mut row, to_create.name.text());
 		encode_dispatch(&mut row, &to_create.dispatch);
 		if let Some(done) = to_create.retention.done {
-			queue::SHAPE.set::<Duration>(&mut row, queue::RETENTION_DONE, done);
+			queue::set_retention_done(&mut row, done);
 		}
-		queue::SHAPE.set::<u32>(&mut row, queue::RETRY_ATTEMPTS, to_create.retry.attempts);
-		queue::SHAPE.set::<Duration>(&mut row, queue::RETRY_BACKOFF, to_create.retry.backoff);
-		queue::SHAPE.set::<u8>(
+		queue::set_retry_attempts(&mut row, to_create.retry.attempts);
+		queue::set_retry_backoff(&mut row, to_create.retry.backoff);
+		queue::set_underlying(
 			&mut row,
-			queue::UNDERLYING,
 			if to_create.underlying {
 				1
 			} else {
@@ -143,9 +142,9 @@ impl CatalogStore {
 		queue_id: QueueId,
 		name: &str,
 	) -> Result<()> {
-		let mut row = queue_namespace::SHAPE.allocate();
-		queue_namespace::SHAPE.set::<u64>(&mut row, queue_namespace::ID, u64::from(queue_id));
-		queue_namespace::SHAPE.set_utf8(&mut row, queue_namespace::NAME, name);
+		let mut row = queue_namespace::allocate();
+		queue_namespace::set_id(&mut row, u64::from(queue_id));
+		queue_namespace::set_name(&mut row, name);
 
 		txn.set(&NamespaceQueueKey::encoded(namespace, queue_id), row.freeze())?;
 

@@ -21,8 +21,8 @@ impl CatalogStore {
 		for entry in stream.by_ref() {
 			let multi = entry?;
 			let bytes = multi.bytes;
-			let column = ColumnId(object_column::SHAPE.get::<u64>(&bytes, object_column::ID));
-			let name = object_column::SHAPE.get_utf8(&bytes, object_column::NAME);
+			let column = ColumnId(object_column::get_id(&bytes));
+			let name = object_column::get_name(&bytes);
 
 			if name == column_name {
 				found_id = Some(column);

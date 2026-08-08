@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::{catalog::token::Token, store::MultiVersionRow};
-use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 
 use crate::store::token::shape::token;
 
@@ -13,11 +12,11 @@ pub mod shape;
 
 pub(crate) fn convert_token(multi: MultiVersionRow) -> Token {
 	let bytes = multi.bytes;
-	let id = token::SHAPE.get::<u64>(&bytes, token::ID);
-	let token_value = token::SHAPE.get_utf8(&bytes, token::TOKEN).to_string();
-	let identity = token::SHAPE.get::<IdentityId>(&bytes, token::IDENTITY);
-	let expires_at = token::SHAPE.try_get::<DateTime>(&bytes, token::EXPIRES_AT);
-	let created_at = token::SHAPE.get::<DateTime>(&bytes, token::CREATED_AT);
+	let id = token::get_id(&bytes);
+	let token_value = token::get_token(&bytes).to_string();
+	let identity = token::get_identity(&bytes);
+	let expires_at = token::try_get_expires_at(&bytes);
+	let created_at = token::get_created_at(&bytes);
 
 	Token {
 		id,

@@ -13,10 +13,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use crate::{
 	CatalogStore, Result,
 	cache::CatalogCache,
-	store::view::{
-		find::decode_view,
-		shape::view::{PRIMARY_KEY, SHAPE},
-	},
+	store::view::{find::decode_view, shape::view},
 };
 
 pub(crate) fn load_views(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
@@ -51,7 +48,7 @@ fn convert_view(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Resu
 }
 
 fn get_view_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
-	let pk_id_raw = SHAPE.get::<u64>(&multi.bytes, PRIMARY_KEY);
+	let pk_id_raw = view::get_primary_key(&multi.bytes);
 	if pk_id_raw == 0 {
 		None
 	} else {

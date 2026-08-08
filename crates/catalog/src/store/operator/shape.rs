@@ -1,38 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub(crate) mod operator {
-	use once_cell::sync::Lazy;
-	use reifydb_codec::row::shape::{RowShape, RowShapeField};
-	use reifydb_value::value::value_type::ValueType;
+use reifydb_macro::catalog_shape;
 
-	pub(crate) const ID: usize = 0;
-	pub(crate) const FLOW: usize = 1;
-	pub(crate) const TYPE: usize = 2;
-	pub(crate) const DATA: usize = 3;
+catalog_shape! {
+	pub(crate) operator {
+		id: u64,
+		flow: u64,
+		r#type: u8,
+		data: blob,
+	}
 
-	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("id", ValueType::Uint8),
-			RowShapeField::unconstrained("flow", ValueType::Uint8),
-			RowShapeField::unconstrained("type", ValueType::Uint1),
-			RowShapeField::unconstrained("data", ValueType::Blob),
-		])
-	});
-}
-
-pub(crate) mod operator_by_flow {
-	use once_cell::sync::Lazy;
-	use reifydb_codec::row::shape::{RowShape, RowShapeField};
-	use reifydb_value::value::value_type::ValueType;
-
-	pub(crate) const FLOW: usize = 0;
-	pub(crate) const ID: usize = 1;
-
-	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("flow", ValueType::Uint8),
-			RowShapeField::unconstrained("id", ValueType::Uint8),
-		])
-	});
+	pub(crate) operator_by_flow {
+		flow: u64,
+		id: u64,
+	}
 }

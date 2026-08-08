@@ -9,8 +9,8 @@ use crate::{CatalogStore, Result, store::config::shape::config};
 
 impl CatalogStore {
 	pub(crate) fn set_config(txn: &mut AdminTransaction, key: ConfigKey, value: &Value) -> Result<()> {
-		let mut row = config::SHAPE.allocate();
-		config::SHAPE.set_value(&mut row, config::VALUE, &Value::any(value.clone()));
+		let mut row = config::allocate();
+		config::set_value(&mut row, &Value::any(value.clone()));
 		txn.set(&ConfigStorageKey::for_key(key), row.freeze())?;
 		Ok(())
 	}

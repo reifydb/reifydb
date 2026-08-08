@@ -15,18 +15,18 @@ pub mod list;
 pub(crate) mod shape;
 
 pub(crate) fn migration_from_row(bytes: &EncodedBytes) -> Migration {
-	let id = MigrationId(migration::SHAPE.get::<u64>(bytes, migration::ID));
-	let name = migration::SHAPE.get_utf8(bytes, migration::NAME).to_string();
-	let body = migration::SHAPE.get_utf8(bytes, migration::BODY).to_string();
+	let id = MigrationId(migration::get_id(bytes));
+	let name = migration::get_name(bytes).to_string();
+	let body = migration::get_body(bytes).to_string();
 	let rollback_body = {
-		let s = migration::SHAPE.get_utf8(bytes, migration::ROLLBACK_BODY);
+		let s = migration::get_rollback_body(bytes);
 		if s.is_empty() {
 			None
 		} else {
 			Some(s.to_string())
 		}
 	};
-	let hash = Hash128(migration::SHAPE.get::<u128>(bytes, migration::HASH));
+	let hash = Hash128(migration::get_hash(bytes));
 
 	Migration {
 		id,
@@ -38,9 +38,9 @@ pub(crate) fn migration_from_row(bytes: &EncodedBytes) -> Migration {
 }
 
 pub(crate) fn migration_event_from_row(bytes: &EncodedBytes) -> MigrationEvent {
-	let id = MigrationEventId(migration_event::SHAPE.get::<u64>(bytes, migration_event::ID));
-	let migration_id = MigrationId(migration_event::SHAPE.get::<u64>(bytes, migration_event::MIGRATION_ID));
-	let action = match migration_event::SHAPE.get::<u8>(bytes, migration_event::ACTION) {
+	let id = MigrationEventId(migration_event::get_id(bytes));
+	let migration_id = MigrationId(migration_event::get_migration_id(bytes));
+	let action = match migration_event::get_action(bytes) {
 		0 => MigrationAction::Applied,
 		_ => MigrationAction::Rollback,
 	};

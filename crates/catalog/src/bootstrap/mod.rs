@@ -184,11 +184,11 @@ mod read_configs_tests {
 	use reifydb_value::value::Value;
 
 	use super::read_configs;
-	use crate::store::config::shape::config::{SHAPE, VALUE};
+	use crate::store::config::shape::config;
 
 	fn write_config(buffer: &MultiCommitBufferTier, key: ConfigKey, value: Value, version: CommitVersion) {
-		let mut row = SHAPE.allocate();
-		SHAPE.set_value(&mut row, VALUE, &Value::any(value));
+		let mut row = config::allocate();
+		config::set_value(&mut row, &Value::any(value));
 		let key_bytes = ConfigStorageKey::for_key(key);
 		let mut batches = HashMap::new();
 		batches.insert(EntryKind::Multi, vec![(key_bytes, Some(row.freeze().0))]);
@@ -290,8 +290,8 @@ mod read_configs_tests {
 	#[test]
 	fn shape_stays_in_sync_with_set_config_path() {
 		let buffer = MultiCommitBufferTier::memory();
-		let mut row = SHAPE.allocate();
-		SHAPE.set_value(&mut row, VALUE, &Value::any(Value::Uint2(5)));
+		let mut row = config::allocate();
+		config::set_value(&mut row, &Value::any(Value::Uint2(5)));
 
 		let key_bytes = ConfigStorageKey::for_key(ConfigKey::ThreadsCoordination);
 		let mut batches = HashMap::new();

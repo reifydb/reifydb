@@ -11,10 +11,7 @@ use reifydb_value::fragment::Fragment;
 use crate::{
 	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
-	store::{
-		namespace::shape::namespace::{GRPC, ID, LOCAL_NAME, NAME, PARENT_ID, SHAPE, TOKEN},
-		sequence::system::SystemSequence,
-	},
+	store::{namespace::shape::namespace, sequence::system::SystemSequence},
 };
 
 #[derive(Debug, Clone)]
@@ -43,17 +40,17 @@ impl CatalogStore {
 
 		let namespace_id = SystemSequence::next_namespace_id(txn)?;
 
-		let mut row = SHAPE.allocate();
-		SHAPE.set::<u64>(&mut row, ID, u64::from(namespace_id));
-		SHAPE.set_utf8(&mut row, NAME, &to_create.name);
-		SHAPE.set::<u64>(&mut row, PARENT_ID, to_create.parent_id.0);
+		let mut row = namespace::allocate();
+		namespace::set_id(&mut row, u64::from(namespace_id));
+		namespace::set_name(&mut row, &to_create.name);
+		namespace::set_parent_id(&mut row, to_create.parent_id.0);
 		if let Some(ref grpc) = to_create.grpc {
-			SHAPE.set_utf8(&mut row, GRPC, grpc);
+			namespace::set_grpc(&mut row, grpc);
 		}
 		if let Some(ref token) = to_create.token {
-			SHAPE.set_utf8(&mut row, TOKEN, token);
+			namespace::set_token(&mut row, token);
 		}
-		SHAPE.set_utf8(&mut row, LOCAL_NAME, &to_create.local_name);
+		namespace::set_local_name(&mut row, &to_create.local_name);
 
 		txn.set(&NamespaceKey::encoded(namespace_id), row.freeze())?;
 
@@ -65,17 +62,17 @@ impl CatalogStore {
 		namespace_id: NamespaceId,
 		to_create: NamespaceToCreate,
 	) -> Result<Namespace> {
-		let mut row = SHAPE.allocate();
-		SHAPE.set::<u64>(&mut row, ID, u64::from(namespace_id));
-		SHAPE.set_utf8(&mut row, NAME, &to_create.name);
-		SHAPE.set::<u64>(&mut row, PARENT_ID, to_create.parent_id.0);
+		let mut row = namespace::allocate();
+		namespace::set_id(&mut row, u64::from(namespace_id));
+		namespace::set_name(&mut row, &to_create.name);
+		namespace::set_parent_id(&mut row, to_create.parent_id.0);
 		if let Some(ref grpc) = to_create.grpc {
-			SHAPE.set_utf8(&mut row, GRPC, grpc);
+			namespace::set_grpc(&mut row, grpc);
 		}
 		if let Some(ref token) = to_create.token {
-			SHAPE.set_utf8(&mut row, TOKEN, token);
+			namespace::set_token(&mut row, token);
 		}
-		SHAPE.set_utf8(&mut row, LOCAL_NAME, &to_create.local_name);
+		namespace::set_local_name(&mut row, &to_create.local_name);
 
 		txn.set(&NamespaceKey::encoded(namespace_id), row.freeze())?;
 

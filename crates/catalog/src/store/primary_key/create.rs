@@ -20,10 +20,7 @@ use crate::{
 	CatalogStore, Result,
 	error::CatalogError,
 	store::{
-		primary_key::shape::{
-			primary_key,
-			primary_key::{SHAPE, serialize_column_ids},
-		},
+		primary_key::shape::{primary_key, serialize_column_ids},
 		sequence::system::SystemSequence,
 	},
 };
@@ -84,10 +81,10 @@ impl CatalogStore {
 	) -> Result<PrimaryKeyId> {
 		let id = SystemSequence::next_primary_key_id(txn)?;
 
-		let mut row = SHAPE.allocate();
-		SHAPE.set::<u64>(&mut row, primary_key::ID, id.0);
-		SHAPE.set::<u64>(&mut row, primary_key::SOURCE, to_create.object.as_u64());
-		SHAPE.set_blob(&mut row, primary_key::COLUMN_IDS, &serialize_column_ids(&to_create.column_ids));
+		let mut row = primary_key::allocate();
+		primary_key::set_id(&mut row, id.0);
+		primary_key::set_source(&mut row, to_create.object.as_u64());
+		primary_key::set_column_ids(&mut row, &serialize_column_ids(&to_create.column_ids));
 
 		txn.set(&PrimaryKeyKey::encoded(id), row.freeze())?;
 		Ok(id)

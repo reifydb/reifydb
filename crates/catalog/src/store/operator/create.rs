@@ -14,17 +14,17 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn create_operator(txn: &mut AdminTransaction, node_def: &Operator) -> Result<()> {
-		let mut row = operator::SHAPE.allocate();
-		operator::SHAPE.set::<u64>(&mut row, operator::ID, u64::from(node_def.id));
-		operator::SHAPE.set::<u64>(&mut row, operator::FLOW, u64::from(node_def.flow));
-		operator::SHAPE.set::<u8>(&mut row, operator::TYPE, node_def.node_type);
-		operator::SHAPE.set_blob(&mut row, operator::DATA, &node_def.data);
+		let mut row = operator::allocate();
+		operator::set_id(&mut row, u64::from(node_def.id));
+		operator::set_flow(&mut row, u64::from(node_def.flow));
+		operator::set_type(&mut row, node_def.node_type);
+		operator::set_data(&mut row, &node_def.data);
 
 		txn.set(&OperatorKey::encoded(node_def.id), row.freeze())?;
 
-		let mut index_row = operator_by_flow::SHAPE.allocate();
-		operator_by_flow::SHAPE.set::<u64>(&mut index_row, operator_by_flow::FLOW, u64::from(node_def.flow));
-		operator_by_flow::SHAPE.set::<u64>(&mut index_row, operator_by_flow::ID, u64::from(node_def.id));
+		let mut index_row = operator_by_flow::allocate();
+		operator_by_flow::set_flow(&mut index_row, u64::from(node_def.flow));
+		operator_by_flow::set_id(&mut index_row, u64::from(node_def.id));
 
 		txn.set(&OperatorByFlowKey::encoded(node_def.flow, node_def.id), index_row.freeze())?;
 

@@ -8,10 +8,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::value::identity::IdentityId;
 
-use crate::{
-	CatalogStore, Result,
-	store::granted_role::shape::granted_role::{IDENTITY, ROLE_ID, SHAPE},
-};
+use crate::{CatalogStore, Result, store::granted_role::shape::granted_role};
 
 impl CatalogStore {
 	pub(crate) fn grant_role(
@@ -19,9 +16,9 @@ impl CatalogStore {
 		identity: IdentityId,
 		role: RoleId,
 	) -> Result<GrantedRole> {
-		let mut row = SHAPE.allocate();
-		SHAPE.set::<IdentityId>(&mut row, IDENTITY, identity);
-		SHAPE.set::<u64>(&mut row, ROLE_ID, role);
+		let mut row = granted_role::allocate();
+		granted_role::set_identity(&mut row, identity);
+		granted_role::set_role_id(&mut row, role);
 
 		txn.set(&GrantedRoleKey::encoded(identity, role), row.freeze())?;
 

@@ -1,18 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub(crate) mod granted_role {
-	use once_cell::sync::Lazy;
-	use reifydb_codec::row::shape::{RowShape, RowShapeField};
-	use reifydb_value::value::value_type::ValueType;
+use reifydb_macro::catalog_shape;
+use reifydb_value::value::identity::IdentityId;
 
-	pub(crate) const IDENTITY: usize = 0;
-	pub(crate) const ROLE_ID: usize = 1;
-
-	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("identity", ValueType::IdentityId),
-			RowShapeField::unconstrained("role_id", ValueType::Uint8),
-		])
-	});
+catalog_shape! {
+	pub(crate) granted_role {
+		identity: IdentityId,
+		role_id: u64,
+	}
 }

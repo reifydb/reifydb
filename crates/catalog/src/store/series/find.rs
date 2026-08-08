@@ -29,26 +29,26 @@ impl CatalogStore {
 		};
 
 		let bytes = multi.bytes;
-		let id = SeriesId(series::SHAPE.get::<u64>(&bytes, series::ID));
-		let namespace = NamespaceId(series::SHAPE.get::<u64>(&bytes, series::NAMESPACE));
-		let name = series::SHAPE.get_utf8(&bytes, series::NAME).to_string();
-		let tag_raw = series::SHAPE.get::<u64>(&bytes, series::TAG);
+		let id = SeriesId(series::get_id(&bytes));
+		let namespace = NamespaceId(series::get_namespace(&bytes));
+		let name = series::get_name(&bytes).to_string();
+		let tag_raw = series::get_tag(&bytes);
 		let tag = if tag_raw == 0 {
 			None
 		} else {
 			Some(SumTypeId(tag_raw))
 		};
-		let key_column = series::SHAPE.get_utf8(&bytes, series::KEY_COLUMN).to_string();
-		let key_kind_raw = series::SHAPE.get::<u8>(&bytes, series::KEY_KIND);
-		let precision_raw = series::SHAPE.get::<u8>(&bytes, series::PRECISION);
+		let key_column = series::get_key_column(&bytes).to_string();
+		let key_kind_raw = series::get_key_kind(&bytes);
+		let precision_raw = series::get_precision(&bytes);
 		let key = SeriesKey::decode(key_kind_raw, precision_raw, key_column);
-		let partition_by_str = series::SHAPE.get_utf8(&bytes, series::PARTITION_BY);
+		let partition_by_str = series::get_partition_by(&bytes);
 		let partition_by = if partition_by_str.is_empty() {
 			vec![]
 		} else {
 			partition_by_str.split(',').map(|s| s.to_string()).collect()
 		};
-		let underlying = series::SHAPE.get::<u8>(&bytes, series::UNDERLYING) != 0;
+		let underlying = series::get_underlying(&bytes) != 0;
 
 		Ok(Some(Series {
 			id,
@@ -73,11 +73,11 @@ impl CatalogStore {
 		};
 
 		let bytes = multi.bytes;
-		let id = SeriesId(series_metadata::SHAPE.get::<u64>(&bytes, series_metadata::ID));
-		let row_count = series_metadata::SHAPE.get::<u64>(&bytes, series_metadata::ROW_COUNT);
-		let oldest_key = series_metadata::SHAPE.get::<u64>(&bytes, series_metadata::OLDEST_KEY);
-		let newest_key = series_metadata::SHAPE.get::<u64>(&bytes, series_metadata::NEWEST_KEY);
-		let sequence_counter = series_metadata::SHAPE.get::<u64>(&bytes, series_metadata::SEQUENCE_COUNTER);
+		let id = SeriesId(series_metadata::get_id(&bytes));
+		let row_count = series_metadata::get_row_count(&bytes);
+		let oldest_key = series_metadata::get_oldest_key(&bytes);
+		let newest_key = series_metadata::get_newest_key(&bytes);
+		let sequence_counter = series_metadata::get_sequence_counter(&bytes);
 
 		Ok(Some(SeriesMetadata {
 			id,
@@ -100,10 +100,9 @@ impl CatalogStore {
 		for entry in stream.by_ref() {
 			let multi = entry?;
 			let bytes = &multi.bytes;
-			let series_name = series_namespace::SHAPE.get_utf8(bytes, series_namespace::NAME);
+			let series_name = series_namespace::get_name(bytes);
 			if name == series_name {
-				found_series =
-					Some(SeriesId(series_namespace::SHAPE.get::<u64>(bytes, series_namespace::ID)));
+				found_series = Some(SeriesId(series_namespace::get_id(bytes)));
 				break;
 			}
 		}

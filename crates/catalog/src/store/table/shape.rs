@@ -1,46 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub(crate) mod table {
-	use once_cell::sync::Lazy;
-	use reifydb_codec::row::shape::{RowShape, RowShapeField};
-	use reifydb_value::value::value_type::ValueType;
+use reifydb_macro::catalog_shape;
 
-	pub(crate) const ID: usize = 0;
-	pub(crate) const NAMESPACE: usize = 1;
-	pub(crate) const NAME: usize = 2;
-	pub(crate) const PRIMARY_KEY: usize = 3;
-	pub(crate) const PARTITION_BY: usize = 4;
-	pub(crate) const UNDERLYING: usize = 5;
-	pub(crate) const TS: usize = 6;
-	pub(crate) const TIME_DOMAIN: usize = 7;
+catalog_shape! {
+	pub(crate) table {
+		id: u64,
+		namespace: u64,
+		name: utf8,
+		primary_key: u64,
+		partition_by: utf8,
+		underlying: u8,
+		ts: utf8,
+		time_domain: u8,
+	}
 
-	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("id", ValueType::Uint8),
-			RowShapeField::unconstrained("namespace", ValueType::Uint8),
-			RowShapeField::unconstrained("name", ValueType::Utf8),
-			RowShapeField::unconstrained("primary_key", ValueType::Uint8),
-			RowShapeField::unconstrained("partition_by", ValueType::Utf8),
-			RowShapeField::unconstrained("underlying", ValueType::Uint1),
-			RowShapeField::unconstrained("ts", ValueType::Utf8),
-			RowShapeField::unconstrained("time_domain", ValueType::Uint1),
-		])
-	});
-}
-
-pub(crate) mod table_namespace {
-	use once_cell::sync::Lazy;
-	use reifydb_codec::row::shape::{RowShape, RowShapeField};
-	use reifydb_value::value::value_type::ValueType;
-
-	pub(crate) const ID: usize = 0;
-	pub(crate) const NAME: usize = 1;
-
-	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("id", ValueType::Uint8),
-			RowShapeField::unconstrained("name", ValueType::Utf8),
-		])
-	});
+	pub(crate) table_namespace {
+		id: u64,
+		name: utf8,
+	}
 }

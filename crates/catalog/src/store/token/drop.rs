@@ -19,9 +19,9 @@ impl CatalogStore {
 			let stream = txn.range(TokenKey::full_scan(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
-				let token_identity = token::SHAPE.get::<IdentityId>(&multi.bytes, token::IDENTITY);
+				let token_identity = token::get_identity(&multi.bytes);
 				if token_identity == identity {
-					let id = token::SHAPE.get::<u64>(&multi.bytes, token::ID);
+					let id = token::get_id(&multi.bytes);
 					to_remove.push(id);
 				}
 			}
@@ -40,11 +40,10 @@ impl CatalogStore {
 			let stream = txn.range(TokenKey::full_scan(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
-				if let Some(expires_at) =
-					token::SHAPE.try_get::<DateTime>(&multi.bytes, token::EXPIRES_AT)
+				if let Some(expires_at) = token::try_get_expires_at(&multi.bytes)
 					&& expires_at < now
 				{
-					let id = token::SHAPE.get::<u64>(&multi.bytes, token::ID);
+					let id = token::get_id(&multi.bytes);
 					to_remove.push(id);
 				}
 			}

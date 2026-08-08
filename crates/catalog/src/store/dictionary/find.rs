@@ -24,11 +24,11 @@ impl CatalogStore {
 		};
 
 		let bytes = multi.bytes;
-		let id = DictionaryId(dictionary::SHAPE.get::<u64>(&bytes, dictionary::ID));
-		let namespace = NamespaceId(dictionary::SHAPE.get::<u64>(&bytes, dictionary::NAMESPACE));
-		let name = dictionary::SHAPE.get_utf8(&bytes, dictionary::NAME).to_string();
-		let value_type_ordinal = dictionary::SHAPE.get::<u8>(&bytes, dictionary::VALUE_TYPE);
-		let id_type_ordinal = dictionary::SHAPE.get::<u8>(&bytes, dictionary::ID_TYPE);
+		let id = DictionaryId(dictionary::get_id(&bytes));
+		let namespace = NamespaceId(dictionary::get_namespace(&bytes));
+		let name = dictionary::get_name(&bytes).to_string();
+		let value_type_ordinal = dictionary::get_value_type(&bytes);
+		let id_type_ordinal = dictionary::get_id_type(&bytes);
 
 		Ok(Some(Dictionary {
 			id,
@@ -51,11 +51,9 @@ impl CatalogStore {
 		for entry in stream.by_ref() {
 			let multi = entry?;
 			let bytes = &multi.bytes;
-			let dictionary_name = dictionary_namespace::SHAPE.get_utf8(bytes, dictionary_namespace::NAME);
+			let dictionary_name = dictionary_namespace::get_name(bytes);
 			if name == dictionary_name {
-				found_dictionary_id = Some(DictionaryId(
-					dictionary_namespace::SHAPE.get::<u64>(bytes, dictionary_namespace::ID),
-				));
+				found_dictionary_id = Some(DictionaryId(dictionary_namespace::get_id(bytes)));
 				break;
 			}
 		}

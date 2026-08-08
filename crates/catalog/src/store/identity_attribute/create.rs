@@ -9,10 +9,7 @@ use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 use crate::{
 	CatalogStore, Result,
 	error::{CatalogError, CatalogObjectKind},
-	store::{
-		identity_attribute::shape::identity_attribute::{ID, NAME, SHAPE, VALUE_TYPE},
-		sequence::system::SystemSequence,
-	},
+	store::{identity_attribute::shape::identity_attribute, sequence::system::SystemSequence},
 };
 
 impl CatalogStore {
@@ -33,10 +30,10 @@ impl CatalogStore {
 
 		let attribute_id = SystemSequence::next_identity_attribute_id(txn)?;
 
-		let mut row = SHAPE.allocate();
-		SHAPE.set::<u64>(&mut row, ID, attribute_id);
-		SHAPE.set_utf8(&mut row, NAME, name);
-		SHAPE.set::<u8>(&mut row, VALUE_TYPE, type_tag_byte(&value_type));
+		let mut row = identity_attribute::allocate();
+		identity_attribute::set_id(&mut row, attribute_id);
+		identity_attribute::set_name(&mut row, name);
+		identity_attribute::set_value_type(&mut row, type_tag_byte(&value_type));
 
 		txn.set(&IdentityAttributeKey::encoded(attribute_id), row.freeze())?;
 

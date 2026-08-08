@@ -13,11 +13,11 @@ impl CatalogStore {
 	pub(crate) fn update_flow_name(txn: &mut AdminTransaction, flow_id: FlowId, new_name: String) -> Result<()> {
 		let flow = Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 
-		let mut row = flow::SHAPE.allocate();
-		flow::SHAPE.set::<u64>(&mut row, flow::ID, flow_id.0);
-		flow::SHAPE.set::<u64>(&mut row, flow::NAMESPACE, flow.namespace.0);
-		flow::SHAPE.set_utf8(&mut row, flow::NAME, &new_name);
-		flow::SHAPE.set::<u8>(&mut row, flow::STATUS, flow.status as u8);
+		let mut row = flow::allocate();
+		flow::set_id(&mut row, flow_id.0);
+		flow::set_namespace(&mut row, flow.namespace.0);
+		flow::set_name(&mut row, &new_name);
+		flow::set_status(&mut row, flow.status as u8);
 
 		txn.set(&FlowKey::encoded(flow_id), row.freeze())?;
 
@@ -31,11 +31,11 @@ impl CatalogStore {
 	) -> Result<()> {
 		let flow = Self::get_flow(&mut Transaction::Admin(&mut *txn), flow_id)?;
 
-		let mut row = flow::SHAPE.allocate();
-		flow::SHAPE.set::<u64>(&mut row, flow::ID, flow_id.0);
-		flow::SHAPE.set::<u64>(&mut row, flow::NAMESPACE, flow.namespace.0);
-		flow::SHAPE.set_utf8(&mut row, flow::NAME, &flow.name);
-		flow::SHAPE.set::<u8>(&mut row, flow::STATUS, status as u8);
+		let mut row = flow::allocate();
+		flow::set_id(&mut row, flow_id.0);
+		flow::set_namespace(&mut row, flow.namespace.0);
+		flow::set_name(&mut row, &flow.name);
+		flow::set_status(&mut row, status as u8);
 
 		txn.set(&FlowKey::encoded(flow_id), row.freeze())?;
 

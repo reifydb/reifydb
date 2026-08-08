@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use flow_edge_by_flow::SHAPE;
 use reifydb_core::{
 	interface::catalog::flow::{FlowEdge, FlowEdgeId, FlowId, OperatorId},
 	key::{
@@ -23,7 +22,7 @@ impl CatalogStore {
 			let stream = rx.range(FlowEdgeByFlowKey::full_scan(flow_id), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
-				edge_ids.push(FlowEdgeId(SHAPE.get::<u64>(&multi.bytes, flow_edge_by_flow::ID)));
+				edge_ids.push(FlowEdgeId(flow_edge_by_flow::get_id(&multi.bytes)));
 			}
 		}
 
@@ -48,9 +47,9 @@ impl CatalogStore {
 			let entry = entry?;
 			if let Some(flow_edge_key) = FlowEdgeKey::decode(&entry.key) {
 				let edge_id = flow_edge_key.edge;
-				let flow_id = FlowId(flow_edge::SHAPE.get::<u64>(&entry.bytes, flow_edge::FLOW));
-				let source = OperatorId(flow_edge::SHAPE.get::<u64>(&entry.bytes, flow_edge::SOURCE));
-				let target = OperatorId(flow_edge::SHAPE.get::<u64>(&entry.bytes, flow_edge::TARGET));
+				let flow_id = FlowId(flow_edge::get_flow(&entry.bytes));
+				let source = OperatorId(flow_edge::get_source(&entry.bytes));
+				let target = OperatorId(flow_edge::get_target(&entry.bytes));
 
 				let edge_def = FlowEdge {
 					id: edge_id,

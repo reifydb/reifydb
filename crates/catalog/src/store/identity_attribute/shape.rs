@@ -1,20 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub(crate) mod identity_attribute {
-	use once_cell::sync::Lazy;
-	use reifydb_codec::row::shape::{RowShape, RowShapeField};
-	use reifydb_value::value::value_type::ValueType;
+use reifydb_macro::catalog_shape;
 
-	pub(crate) const ID: usize = 0;
-	pub(crate) const NAME: usize = 1;
-	pub(crate) const VALUE_TYPE: usize = 2;
-
-	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("id", ValueType::Uint8),
-			RowShapeField::unconstrained("name", ValueType::Utf8),
-			RowShapeField::unconstrained("value_type", ValueType::Uint1),
-		])
-	});
+catalog_shape! {
+	pub(crate) identity_attribute {
+		id: u64,
+		name: utf8,
+		value_type: u8,
+	}
 }

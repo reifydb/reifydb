@@ -13,12 +13,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::sumtype::{SumTypeId, VariantRef};
 
 use super::CatalogChangeApplier;
-use crate::{
-	Result,
-	catalog::Catalog,
-	error::CatalogChangeError,
-	store::handler::shape::handler::{self, BODY_SOURCE, ID, NAME, NAMESPACE, ON_SUMTYPE_ID, ON_VARIANT_TAG},
-};
+use crate::{Result, catalog::Catalog, error::CatalogChangeError, store::handler::shape::handler};
 
 pub(super) struct HandlerApplier;
 
@@ -41,12 +36,12 @@ impl CatalogChangeApplier for HandlerApplier {
 }
 
 fn decode_handler(bytes: &EncodedBytes) -> Handler {
-	let id = HandlerId(handler::SHAPE.get::<u64>(bytes, ID));
-	let namespace = NamespaceId(handler::SHAPE.get::<u64>(bytes, NAMESPACE));
-	let name = handler::SHAPE.get_utf8(bytes, NAME).to_string();
-	let sumtype_id = SumTypeId(handler::SHAPE.get::<u64>(bytes, ON_SUMTYPE_ID));
-	let variant_tag = handler::SHAPE.get::<u8>(bytes, ON_VARIANT_TAG);
-	let body_source = handler::SHAPE.get_utf8(bytes, BODY_SOURCE).to_string();
+	let id = HandlerId(handler::get_id(bytes));
+	let namespace = NamespaceId(handler::get_namespace(bytes));
+	let name = handler::get_name(bytes).to_string();
+	let sumtype_id = SumTypeId(handler::get_on_sumtype_id(bytes));
+	let variant_tag = handler::get_on_variant_tag(bytes);
+	let body_source = handler::get_body_source(bytes).to_string();
 
 	Handler {
 		id,

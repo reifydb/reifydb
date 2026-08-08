@@ -9,7 +9,6 @@ use reifydb_core::{
 	key::{namespace_queue::NamespaceQueueKey, queue::QueueKey},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::duration::Duration;
 
 use crate::{
 	CatalogStore, Result,
@@ -26,18 +25,18 @@ impl CatalogStore {
 		};
 
 		let bytes = multi.bytes;
-		let id = QueueId(queue::SHAPE.get::<u64>(&bytes, queue::ID));
-		let namespace = NamespaceId(queue::SHAPE.get::<u64>(&bytes, queue::NAMESPACE));
-		let name = queue::SHAPE.get_utf8(&bytes, queue::NAME).to_string();
+		let id = QueueId(queue::get_id(&bytes));
+		let namespace = NamespaceId(queue::get_namespace(&bytes));
+		let name = queue::get_name(&bytes).to_string();
 
 		let retention = QueueRetention {
-			done: queue::SHAPE.try_get::<Duration>(&bytes, queue::RETENTION_DONE),
+			done: queue::try_get_retention_done(&bytes),
 		};
 		let retry = QueueRetry {
-			attempts: queue::SHAPE.get::<u32>(&bytes, queue::RETRY_ATTEMPTS),
-			backoff: queue::SHAPE.get::<Duration>(&bytes, queue::RETRY_BACKOFF),
+			attempts: queue::get_retry_attempts(&bytes),
+			backoff: queue::get_retry_backoff(&bytes),
 		};
-		let underlying = queue::SHAPE.get::<u8>(&bytes, queue::UNDERLYING) != 0;
+		let underlying = queue::get_underlying(&bytes) != 0;
 
 		Ok(Some(Queue {
 			id,
@@ -65,10 +64,9 @@ impl CatalogStore {
 		for entry in stream.by_ref() {
 			let multi = entry?;
 			let bytes = &multi.bytes;
-			let queue_name = queue_namespace::SHAPE.get_utf8(bytes, queue_namespace::NAME);
+			let queue_name = queue_namespace::get_name(bytes);
 			if name == queue_name {
-				found_queue =
-					Some(QueueId(queue_namespace::SHAPE.get::<u64>(bytes, queue_namespace::ID)));
+				found_queue = Some(QueueId(queue_namespace::get_id(bytes)));
 				break;
 			}
 		}

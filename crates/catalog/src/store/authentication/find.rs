@@ -30,9 +30,8 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			let auth_identity =
-				authentication::SHAPE.get::<IdentityId>(&multi.bytes, authentication::IDENTITY);
-			let auth_method = authentication::SHAPE.get_utf8(&multi.bytes, authentication::METHOD);
+			let auth_identity = authentication::get_identity(&multi.bytes);
+			let auth_method = authentication::get_method(&multi.bytes);
 			if auth_identity == identity && auth_method == method {
 				return Ok(Some(convert_authentication(multi)));
 			}

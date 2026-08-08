@@ -1,20 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub(crate) mod row_settings {
-	use once_cell::sync::Lazy;
-	use reifydb_codec::row::shape::{RowShape, RowShapeField};
-	use reifydb_value::value::value_type::ValueType;
+use reifydb_macro::catalog_shape;
+use reifydb_value::value::duration::Duration;
 
-	pub(crate) const ANNOUNCE: usize = 0;
-	pub(crate) const DURATION: usize = 1;
-	pub(crate) const PERSISTENT: usize = 2;
-
-	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("announce", ValueType::Boolean),
-			RowShapeField::unconstrained("duration", ValueType::Duration),
-			RowShapeField::unconstrained("persistent", ValueType::Uint1),
-		])
-	});
+catalog_shape! {
+	pub(crate) row_settings {
+		announce: bool,
+		duration: Duration,
+		persistent: u8,
+	}
 }

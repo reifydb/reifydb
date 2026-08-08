@@ -16,7 +16,7 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			let stored_token = token::SHAPE.get_utf8(&multi.bytes, token::TOKEN);
+			let stored_token = token::get_token(&multi.bytes);
 			if stored_token.as_bytes().ct_eq(value.as_bytes()).into() {
 				return Ok(Some(convert_token(multi)));
 			}
