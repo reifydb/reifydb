@@ -6,6 +6,7 @@
 //! layout of its own. A family's carve lands here as its own submodule.
 
 pub mod bytes;
+pub mod catalog;
 pub mod le;
 pub mod operator;
 pub mod shape;
