@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use postcard::to_stdvec;
-use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShape};
+use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
 	error::diagnostic::catalog::{
 		namespace_not_found, queue_deduplication_key_not_utf8, queue_not_before_not_datetime, queue_not_found,

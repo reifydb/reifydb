@@ -5,8 +5,8 @@ use std::{cmp::Ordering, collections::BTreeMap};
 
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::{
-	encoded::shape::{RowShape, RowShapeField},
 	key::encoded::EncodedKey,
+	row::shape::{RowShape, RowShapeField},
 };
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize, row::Row as CoreRow};
 use reifydb_flow::window::accumulator::{

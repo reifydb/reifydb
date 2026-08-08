@@ -5,7 +5,7 @@ pub mod create;
 mod find;
 pub(crate) mod shape;
 
-use reifydb_codec::encoded::bytes::{EncodedBytes, EncodedRowBuilder};
+use reifydb_codec::row::bytes::{EncodedBytes, EncodedRowBuilder};
 use reifydb_core::row::{JoinTtl, OperatorSettings, OperatorTtl};
 use reifydb_value::value::duration::Duration;
 

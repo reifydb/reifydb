@@ -12,7 +12,7 @@ use indexmap::IndexMap;
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	operator::{OperatorState, decode},
+	row::operator::{OperatorState, decode},
 };
 use reifydb_core::{
 	interface::{

@@ -8,7 +8,7 @@ use std::sync::{
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	operator::EncodedOperatorRow,
+	row::operator::EncodedOperatorRow,
 };
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId};
 use reifydb_runtime::sync::map::Map;

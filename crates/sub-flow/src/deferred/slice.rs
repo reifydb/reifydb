@@ -4,7 +4,7 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::encoded::shape::RowShape;
+use reifydb_codec::row::shape::RowShape;
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers},
 	common::CommitVersion,
@@ -536,7 +536,7 @@ mod integration {
 	};
 
 	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
-	use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		common::TimeDomain,

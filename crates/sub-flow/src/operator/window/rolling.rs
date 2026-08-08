@@ -622,7 +622,7 @@ mod tests {
 	use reifydb_abi::operator::timer::TimerKind;
 	use reifydb_codec::{
 		key::encoded::{EncodedKey, EncodedKeyRange},
-		operator::EncodedOperatorRow,
+		row::operator::EncodedOperatorRow,
 	};
 	use reifydb_core::{
 		key::operator_group_state::{GroupId, GroupStateKey},

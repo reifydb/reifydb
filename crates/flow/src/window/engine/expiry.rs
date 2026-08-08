@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, mem::size_of};
 
 use reifydb_codec::{
 	key::{decode_u64, encode_u64, encoded::EncodedKeyRange},
-	operator::{OperatorState, decode},
+	row::operator::{OperatorState, decode},
 };
 use reifydb_core::{
 	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},

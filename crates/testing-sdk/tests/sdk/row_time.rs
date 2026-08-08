@@ -8,7 +8,7 @@
 //! whatever the source stamped. Every assertion here is about the substrate, not about any
 //! particular operator.
 
-use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+use reifydb_codec::row::shape::{RowShape, RowShapeField};
 use reifydb_core::value::column::columns::Columns;
 use reifydb_sdk::operator::view::{ColumnsView, RowView, native::NativeColumnsView};
 use reifydb_testing_sdk::builders::TestRowBuilder;

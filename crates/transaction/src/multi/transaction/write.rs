@@ -5,8 +5,8 @@ use core::mem;
 use std::{cmp::Ordering, collections::HashSet, iter, ops::RangeBounds, sync::Arc, vec};
 
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::bytes::EncodedBytes,
 };
 #[cfg(reifydb_assertions)]
 use reifydb_core::key::{EncodableKey, operator_state::OperatorStateKey};

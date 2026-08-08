@@ -15,9 +15,8 @@ use std::{
 use collections::BTreeMap;
 use iter::Peekable;
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	operator::EncodedOperatorRow,
+	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
 };
 use reifydb_core::{
 	actors::pending::PendingWrite,
@@ -734,8 +733,8 @@ where
 pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{
-		encoded::bytes::EncodedBytes,
 		key::encoded::{EncodedKey, EncodedKeyRange},
+		row::bytes::EncodedBytes,
 	};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;

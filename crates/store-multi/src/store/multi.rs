@@ -8,8 +8,8 @@ use std::{
 };
 
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::bytes::EncodedBytes,
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -1258,7 +1258,7 @@ fn make_range_bounds(range: &EncodedKeyRange) -> (Vec<u8>, Vec<u8>) {
 mod cache_tests {
 	use std::collections::HashMap;
 
-	use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 	use reifydb_core::{
 		common::CommitVersion,
 		delta::Delta,

@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{
-	encoded::{
-		bytes::EncodedBytes,
-		shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
-	},
+use reifydb_codec::row::{
+	bytes::EncodedBytes,
 	operator::EncodedOperatorRow,
+	shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 };
 use reifydb_core::{
 	interface::{

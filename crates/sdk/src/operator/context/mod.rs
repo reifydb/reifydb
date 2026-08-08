@@ -7,12 +7,12 @@ use std::{ops::Bound, slice::from_ref};
 
 use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
-	encoded::{
+	key::encoded::EncodedKey,
+	row::{
 		bytes::EncodedBytes,
+		operator::{EncodedOperatorRow, OperatorState},
 		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
-	key::encoded::EncodedKey,
-	operator::{EncodedOperatorRow, OperatorState},
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,

@@ -12,7 +12,7 @@ use std::sync::{
 	atomic::{AtomicU64, Ordering},
 };
 
-use reifydb_codec::encoded::bytes::EncodedBytes;
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,

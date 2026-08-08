@@ -18,7 +18,7 @@ use reifydb_abi::{
 };
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	operator::EncodedOperatorRow,
+	row::operator::EncodedOperatorRow,
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,

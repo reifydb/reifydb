@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, operator::EncodedOperatorRow};
+use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,

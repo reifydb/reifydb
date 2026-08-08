@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use OperationType::Delete;
-use reifydb_codec::encoded::bytes::EncodedBytes;
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	interface::catalog::{
 		authentication::{Authentication, AuthenticationId},

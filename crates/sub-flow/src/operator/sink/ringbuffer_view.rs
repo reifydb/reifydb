@@ -5,12 +5,15 @@ use std::{cell::UnsafeCell, collections::HashMap, ops::Bound};
 
 use reifydb_abi::operator::{capabilities::OperatorCapability, timer::TimerKind};
 use reifydb_codec::{
-	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::{
 		decode_u64_asc, encode_u64_asc, encode_u128_asc,
 		encoded::{EncodedKey, EncodedKeyRange},
 	},
-	operator::{EncodedOperatorRow, decode, encode_archive},
+	row::{
+		bytes::EncodedBytes,
+		operator::{EncodedOperatorRow, decode, encode_archive},
+		shape::RowShape,
+	},
 };
 use reifydb_core::{
 	interface::{

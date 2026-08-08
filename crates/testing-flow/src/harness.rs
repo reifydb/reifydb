@@ -6,8 +6,8 @@ use std::{mem, sync::Arc};
 use reifydb_abi::operator::{capabilities::OperatorCapability, timer::TimerKind};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::bytes::EncodedBytes,
 };
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers, PendingWrite},

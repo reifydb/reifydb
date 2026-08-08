@@ -12,8 +12,8 @@
 use std::{collections::HashMap, error::Error as StdError, fmt::Write, sync::Arc};
 
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::bytes::EncodedBytes,
 };
 use reifydb_core::{
 	common::CommitVersion,

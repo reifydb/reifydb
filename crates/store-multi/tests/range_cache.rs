@@ -8,8 +8,8 @@
 use std::collections::HashMap;
 
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::bytes::EncodedBytes,
 };
 use reifydb_core::{
 	common::CommitVersion,

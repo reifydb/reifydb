@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey, tag::value_type_from_tag_byte};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes, tag::value_type_from_tag_byte};
 use reifydb_core::{
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 	key::{EncodableKey, dictionary::DictionaryKey, kind::KeyKind},

@@ -3,7 +3,7 @@
 
 pub(crate) mod row_settings {
 	use once_cell::sync::Lazy;
-	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::row::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ANNOUNCE: usize = 0;

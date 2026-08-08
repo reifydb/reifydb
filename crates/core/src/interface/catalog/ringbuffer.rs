@@ -3,7 +3,7 @@
 
 use std::sync::LazyLock;
 
-use reifydb_codec::encoded::{
+use reifydb_codec::row::{
 	bytes::EncodedBytes,
 	shape::{RowShape, RowShapeField},
 };

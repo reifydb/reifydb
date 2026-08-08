@@ -33,25 +33,29 @@ serde_bytes = { workspace = true }
 num-bigint = { workspace = true }
 
 [[test]]
-name = "plain"
-path = "tests/plain/mod.rs"
+name = "primitive"
+path = "tests/primitive/mod.rs"
 
 [[test]]
-name = "dict"
-path = "tests/dict/mod.rs"
+name = "frame"
+path = "tests/frame/mod.rs"
 
 [[test]]
-name = "rle"
-path = "tests/rle/mod.rs"
+name = "key"
+path = "tests/key/mod.rs"
 
 [[test]]
-name = "delta"
-path = "tests/delta/mod.rs"
+name = "row"
+path = "tests/row/mod.rs"
 
 [[test]]
-name = "delta_rle"
-path = "tests/delta_rle/mod.rs"
+name = "value"
+path = "tests/value/mod.rs"
 
 [[test]]
-name = "nones"
-path = "tests/nones/mod.rs"
+name = "json"
+path = "tests/json/mod.rs"
+
+[[test]]
+name = "tag"
+path = "tests/tag/mod.rs"

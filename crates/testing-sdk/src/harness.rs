@@ -12,9 +12,8 @@ use std::{
 use ptr::null;
 use reifydb_abi::{context::context::ContextFFI, operator::timer::TimerKind};
 use reifydb_codec::{
-	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
-	operator::OperatorState,
+	row::{bytes::EncodedBytes, operator::OperatorState, shape::RowShape},
 };
 use reifydb_core::{
 	common::CommitVersion,

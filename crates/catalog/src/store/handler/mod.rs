@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::bytes::EncodedBytes;
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::interface::catalog::{
 	handler::Handler,
 	id::{HandlerId, NamespaceId},

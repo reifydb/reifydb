@@ -6,15 +6,15 @@
 //! cells. Both halves live here and share one tag scheme, so no consumer hand-rolls these bytes.
 
 pub mod constraint;
-pub mod encoded;
 pub mod error;
 pub mod ffi;
 pub mod frame;
 #[cfg(feature = "json")]
 pub mod json;
 pub mod key;
-pub mod operator;
+pub mod primitive;
 pub mod reader;
+pub mod row;
 pub mod tag;
 pub mod typeinfo;
 pub mod value;

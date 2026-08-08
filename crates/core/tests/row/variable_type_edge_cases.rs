@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use num_bigint::BigInt;
-use reifydb_codec::encoded::shape::RowShape;
+use reifydb_codec::row::shape::RowShape;
 use reifydb_value::value::{int::Int, value_type::ValueType};
 
 #[test]

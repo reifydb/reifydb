@@ -3,7 +3,7 @@
 
 use std::{iter, sync::Arc};
 
-use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShape};
+use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
 	interface::{catalog::storage::StorageId, resolved::ResolvedObject},
 	internal_err, internal_error,

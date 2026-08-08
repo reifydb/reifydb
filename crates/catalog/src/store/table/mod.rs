@@ -10,7 +10,7 @@ pub mod list;
 pub mod set_pk;
 pub(crate) mod shape;
 
-use reifydb_codec::encoded::bytes::EncodedBytes;
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::common::TimeSource;
 
 use crate::store::{table::shape::table, time_source::read_time_source};

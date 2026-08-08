@@ -2,9 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	operator::EncodedOperatorRow,
+	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,

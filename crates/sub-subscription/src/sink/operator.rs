@@ -4,7 +4,7 @@
 use std::{any::Any, collections::BTreeSet, mem::size_of, sync::Arc};
 
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
-use reifydb_codec::operator::{decode, encode_archive};
+use reifydb_codec::row::operator::{decode, encode_archive};
 use reifydb_core::{
 	interface::{
 		catalog::{flow::OperatorId, id::SubscriptionId, subscription::IMPLICIT_COLUMN_OP},

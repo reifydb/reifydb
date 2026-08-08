@@ -6,8 +6,8 @@
 use std::collections::HashMap;
 
 use reifydb_codec::{
-	encoded::bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
 	key::encoded::EncodedKey,
+	row::bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
 };
 use reifydb_core::{common::CommitVersion, event::EventBus, interface::store::EntryKind};
 use reifydb_runtime::{

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_value::Result;
 
 use super::FlowTransaction;
@@ -36,7 +36,7 @@ impl FlowTransaction {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 	use reifydb_core::common::CommitVersion;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_transaction::{interceptor::interceptors::Interceptors, transaction::admin::AdminTransaction};

@@ -14,7 +14,7 @@ mod version;
 mod write;
 mod write_skew;
 
-use reifydb_codec::{encoded::bytes::EncodedBytes, key as keycode, key::encoded::EncodedKey};
+use reifydb_codec::{key as keycode, key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_transaction::multi::transaction::MultiTransaction;
 use reifydb_value::util::cowvec::CowVec;
 

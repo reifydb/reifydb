@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 
-use reifydb_codec::encoded::shape::RowShape;
+use reifydb_codec::row::shape::RowShape;
 use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 	rng::Rng,

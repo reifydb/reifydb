@@ -11,7 +11,7 @@ pub mod set_pk;
 pub(crate) mod shape;
 pub mod update;
 
-use reifydb_codec::encoded::bytes::EncodedBytes;
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::common::TimeSource;
 
 use crate::store::{ringbuffer::shape::ringbuffer, time_source::read_time_source};

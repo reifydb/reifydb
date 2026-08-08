@@ -3,7 +3,7 @@
 
 use std::fmt::Debug;
 
-use reifydb_codec::operator::{ArchiveState, OperatorState};
+use reifydb_codec::row::operator::{ArchiveState, OperatorState};
 use reifydb_core::metrics::heap::HeapSize;
 
 pub mod invertible;

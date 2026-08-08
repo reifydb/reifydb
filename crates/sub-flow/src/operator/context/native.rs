@@ -5,12 +5,12 @@ use std::{marker::PhantomData, mem, ops::Bound, slice::from_ref};
 
 use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
-	encoded::{
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::{
 		bytes::EncodedBytes,
+		operator::{EncodedOperatorRow, OperatorState},
 		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	operator::{EncodedOperatorRow, OperatorState},
 };
 use reifydb_core::{
 	common::CommitVersion,

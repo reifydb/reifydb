@@ -3,7 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey, operator::EncodedOperatorRow};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
+};
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId, internal_error};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sqlite::{

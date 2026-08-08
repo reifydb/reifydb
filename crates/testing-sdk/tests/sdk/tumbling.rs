@@ -6,8 +6,8 @@ use reifydb_abi::{
 	operator::capabilities::{OperatorCapability, from_bitmask},
 };
 use reifydb_codec::{
-	encoded::shape::{RowShape, RowShapeField},
 	key::encoded::EncodedKey,
+	row::shape::{RowShape, RowShapeField},
 };
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize, row::Row as CoreRow};
 use reifydb_flow::window::{

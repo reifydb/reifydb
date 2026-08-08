@@ -10,7 +10,10 @@ use std::{
 
 use reifydb_abi::flow::diff::DiffType;
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey, operator::OperatorState};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, operator::OperatorState},
+};
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,

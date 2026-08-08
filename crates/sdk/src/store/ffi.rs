@@ -8,7 +8,7 @@ use reifydb_abi::{
 	context::iterators::StoreIteratorFFI,
 	data::buffer::BufferFFI,
 };
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_value::util::cowvec::CowVec;
 use tracing::{Span, instrument};
 

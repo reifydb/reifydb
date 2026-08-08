@@ -10,7 +10,7 @@ use std::{
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
-	operator::OperatorState,
+	row::operator::OperatorState,
 };
 use reifydb_core::{
 	key::operator_group_state::GroupId,
@@ -453,7 +453,7 @@ mod tests {
 	};
 
 	use reifydb_abi::operator::timer::TimerKind;
-	use reifydb_codec::{key::encoded::EncodedKeyRange, operator::EncodedOperatorRow};
+	use reifydb_codec::{key::encoded::EncodedKeyRange, row::operator::EncodedOperatorRow};
 	use reifydb_core::{
 		key::operator_group_state::{GroupStateKey, Keyspace, OperatorGroupStateKey},
 		state::budget::OperatorStateBudgetHandle,

@@ -10,7 +10,7 @@ use std::{
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	operator::{EncodedOperatorRow, OperatorState, SealMutableState, decode},
+	row::operator::{EncodedOperatorRow, OperatorState, SealMutableState, decode},
 };
 use reifydb_runtime::cache::slab::SlabLru;
 use reifydb_value::{

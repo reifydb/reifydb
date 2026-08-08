@@ -7,7 +7,7 @@ use std::{
 };
 
 use indexmap::IndexMap;
-use reifydb_codec::encoded::{
+use reifydb_codec::row::{
 	bytes::EncodedBytes,
 	shape::{RowShape, RowShapeField},
 };

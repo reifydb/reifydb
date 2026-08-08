@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::bytes::SHAPE_HEADER_SIZE;
+use reifydb_codec::row::bytes::SHAPE_HEADER_SIZE;
 use reifydb_core::{interface::change::Change, row::Row};
 use reifydb_testing_chaos::operator::{
 	event::{ChaosBatch, ChaosEvent},
@@ -158,7 +158,7 @@ fn row_to_materialized(row: &Row) -> MaterializedRow {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::row::shape::{RowShape, RowShapeField};
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::{

@@ -10,7 +10,7 @@ use std::{
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
-	operator::ArchiveState,
+	row::operator::ArchiveState,
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,

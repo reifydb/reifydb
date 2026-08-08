@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{constraint::type_constraint_to_ffi, encoded::shape::RowShape};
+use reifydb_codec::{constraint::type_constraint_to_ffi, row::shape::RowShape};
 use reifydb_core::key::row_shape::{RowShapeFieldKey, RowShapeKey};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::reifydb_assertions;

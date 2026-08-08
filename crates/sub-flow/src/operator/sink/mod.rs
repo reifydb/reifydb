@@ -9,7 +9,7 @@ pub mod view;
 use std::sync::LazyLock;
 
 use postcard::from_bytes;
-use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShape};
+use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -203,7 +203,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_codec::encoded::shape::RowShapeField;
+	use reifydb_codec::row::shape::RowShapeField;
 	use reifydb_core::{
 		actors::pending::{Pending, PendingLayers},
 		interface::catalog::dictionary::Dictionary,

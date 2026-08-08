@@ -5,7 +5,7 @@
 //! mutation, folding it into the materialised catalog view, and emitting the catalog change event
 //! the rest of the workspace listens for.
 
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	interface::cdc::SystemChange,
 	key::{Key, kind::KeyKind},

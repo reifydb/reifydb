@@ -4,7 +4,7 @@
 use reifydb_abi::data::constraint::FFITypeConstraint;
 use reifydb_codec::{
 	constraint::type_constraint_from_ffi,
-	encoded::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
+	row::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 };
 use reifydb_core::{
 	error::diagnostic::internal::internal,

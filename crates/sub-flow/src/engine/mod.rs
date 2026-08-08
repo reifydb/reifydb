@@ -402,7 +402,7 @@ pub(crate) fn lease_demand(report: &LeaseReport) -> ByteSize {
 mod tests {
 	use std::collections::HashMap;
 
-	use reifydb_codec::operator::EncodedOperatorRow;
+	use reifydb_codec::row::operator::EncodedOperatorRow;
 	use reifydb_core::{
 		common::TimeDomain,
 		interface::{

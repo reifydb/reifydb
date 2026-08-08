@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::encoded::bytes::EncodedBytes;
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
-use reifydb_codec::encoded::shape::RowShape;
+use reifydb_codec::row::shape::RowShape;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
@@ -442,7 +442,10 @@ mod group_commit_integration {
 	};
 
 	use reifydb_cdc::consume::watermark::{CdcConsumerWatermark, compute_pinning_watermark};
-	use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey, operator::EncodedOperatorRow};
+	use reifydb_codec::{
+		key::encoded::EncodedKey,
+		row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
+	};
 	use reifydb_core::{
 		interface::{catalog::flow::OperatorId, cdc::SystemChange},
 		internal_error,

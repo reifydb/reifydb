@@ -3,7 +3,7 @@
 
 pub(crate) mod view {
 	use once_cell::sync::Lazy;
-	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::row::shape::{RowShape, RowShapeField};
 	use reifydb_core::{
 		interface::catalog::{column::ColumnIndex, view::ViewSortKey},
 		sort::SortDirection,
@@ -79,7 +79,7 @@ pub(crate) mod view {
 
 pub(crate) mod view_namespace {
 	use once_cell::sync::Lazy;
-	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::row::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;

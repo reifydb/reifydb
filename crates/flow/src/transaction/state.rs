@@ -2,9 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	operator::EncodedOperatorRow,
+	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
 };
 use reifydb_core::{
 	interface::{
@@ -290,8 +289,8 @@ pub mod tests {
 
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{
-		encoded::bytes::EncodedBytes,
 		key::encoded::{EncodedKey, EncodedKeyRange},
+		row::bytes::EncodedBytes,
 	};
 	use reifydb_core::{
 		actors::pending::{Pending, PendingLayers},

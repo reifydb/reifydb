@@ -8,7 +8,7 @@ use std::{
 	ops::AddAssign,
 };
 
-use reifydb_codec::encoded::bytes::EncodedBytes;
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::interface::{
 	catalog::metrics::MetricsId,
 	store::{SingleVersionStore, Tier},

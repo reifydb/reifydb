@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use once_cell::sync::Lazy;
-use reifydb_codec::encoded::{
+use reifydb_codec::row::{
 	bytes::{EncodedBytes, EncodedRowBuilder},
 	shape::{RowShape, RowShapeField},
 };

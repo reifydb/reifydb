@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShape};
+use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_value::{
 	Result, reifydb_assertions,
 	util::bitvec::BitVec,
@@ -941,7 +941,7 @@ pub mod tests {
 	}
 
 	mod row {
-		use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+		use reifydb_codec::row::shape::{RowShape, RowShapeField};
 		use reifydb_value::{
 			fragment::Fragment,
 			util::bitvec::BitVec,

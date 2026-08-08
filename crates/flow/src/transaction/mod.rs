@@ -6,8 +6,8 @@ use std::{collections::HashMap, mem, sync::Arc};
 use read::ReadFrom;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
-	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, shape::RowShape},
 };
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers, PendingWrite},

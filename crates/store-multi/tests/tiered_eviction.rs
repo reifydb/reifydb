@@ -7,7 +7,7 @@
 
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,

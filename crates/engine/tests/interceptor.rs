@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+use reifydb_codec::row::shape::{RowShape, RowShapeField};
 use reifydb_core::row::row_shape_from_columns;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::{

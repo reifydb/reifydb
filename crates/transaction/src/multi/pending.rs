@@ -3,7 +3,7 @@
 
 use std::{collections::BTreeMap, mem::size_of, ops::RangeBounds, vec::IntoIter as VecIntoIter};
 
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_value::byte_size::ByteSize;
 
 use crate::multi::types::DeltaEntry;

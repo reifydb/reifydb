@@ -8,7 +8,7 @@ use std::{
 	hash::{Hash, Hasher},
 };
 
-use reifydb_codec::operator::{ArchiveState, OperatorState};
+use reifydb_codec::row::operator::{ArchiveState, OperatorState};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 use reifydb_value::reifydb_assertions;

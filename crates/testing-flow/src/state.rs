@@ -3,7 +3,10 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey, operator::EncodedOperatorRow};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
+};
 use reifydb_core::key::{
 	EncodableKey,
 	operator_group_state::{Keyspace, OperatorGroupStateKey},

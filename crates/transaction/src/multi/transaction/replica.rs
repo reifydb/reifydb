@@ -5,8 +5,8 @@ use core::mem;
 use std::{collections::HashSet, ops::RangeBounds, sync::Arc};
 
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::bytes::EncodedBytes,
 };
 use reifydb_core::{
 	common::CommitVersion,

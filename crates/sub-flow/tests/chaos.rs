@@ -1948,7 +1948,7 @@ fn group_data_rows_stamped_below(
 ) -> usize {
 	// Counts group-scoped data rows whose write stamp sits strictly below the cutoff; those are
 	// exactly the rows a floor at `cutoff_ms` must have cancelled at merge time.
-	use reifydb_codec::operator::EncodedOperatorRow;
+	use reifydb_codec::row::operator::EncodedOperatorRow;
 	use reifydb_core::key::{
 		EncodableKey, operator_group_state::OperatorGroupStateKey, operator_state::OperatorStateKey,
 	};

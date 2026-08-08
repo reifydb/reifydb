@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_codec::{key::encoded::EncodedKey, operator::EncodedOperatorRow};
+use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
 use reifydb_core::key::operator_group_state::{Keyspace, OperatorGroupStateKey, group_data_of_inner};
 use reifydb_value::value::datetime::DateTime;
 

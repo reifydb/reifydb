@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use once_cell::sync::Lazy;
-use reifydb_codec::{encoded::shape::RowShape, key::encoded::EncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowShape};
 use reifydb_core::error::CoreError;
 use reifydb_transaction::{
 	single::write::SingleWriteTransaction,

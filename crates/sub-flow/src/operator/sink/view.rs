@@ -5,11 +5,11 @@ use std::{cell::UnsafeCell, collections::HashMap};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
-	encoded::{
+	key::{encode_u8, encode_u64_varint, encoded::EncodedKey, serializer::KeySerializer},
+	row::{
 		bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
 		shape::RowShape,
 	},
-	key::{encode_u8, encode_u64_varint, encoded::EncodedKey, serializer::KeySerializer},
 };
 use reifydb_core::{
 	interface::{

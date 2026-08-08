@@ -5,8 +5,8 @@ use std::{cell::UnsafeCell, collections::HashMap};
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
-	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, shape::RowShape},
 };
 use reifydb_core::{
 	interface::{

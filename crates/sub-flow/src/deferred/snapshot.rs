@@ -8,7 +8,7 @@ use std::{collections::BTreeSet, ops::Bound, result::Result as StdResult, vec::I
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	operator::EncodedOperatorRow,
+	row::operator::EncodedOperatorRow,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_core::interface::catalog::flow::OperatorId;
@@ -502,7 +502,7 @@ impl MetricsCollector for SnapshotPinTracker {
 mod tests {
 	use std::ops::Bound;
 
-	use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKeyRange};
+	use reifydb_codec::{key::encoded::EncodedKeyRange, row::bytes::EncodedBytes};
 	use reifydb_core::{delta::Delta, interface::store::SingleVersionCommit};
 	use reifydb_runtime::shutdown::Shutdown;
 	use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};

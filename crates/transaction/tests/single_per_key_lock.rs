@@ -6,7 +6,7 @@ use std::{
 	thread,
 };
 
-use reifydb_codec::{encoded::shape::RowShape, key::encoded::EncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowShape};
 use reifydb_core::event::EventBus;
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 use reifydb_store_single::SingleStore;

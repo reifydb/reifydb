@@ -88,7 +88,7 @@ impl FlowTransaction {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_codec::operator::{EncodedOperatorRow, OperatorState};
+	use reifydb_codec::row::operator::{EncodedOperatorRow, OperatorState};
 	use reifydb_core::{
 		actors::pending::{Pending, PendingLayers},
 		common::CommitVersion,

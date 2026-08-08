@@ -4,8 +4,8 @@
 use std::{collections::Bound, sync::Arc};
 
 use reifydb_codec::{
-	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::{bytes::EncodedBytes, shape::RowShape},
 };
 use reifydb_core::{
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedQueue, store::MultiVersionRow},

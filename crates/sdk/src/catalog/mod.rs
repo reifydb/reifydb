@@ -4,7 +4,7 @@
 pub mod row_shape;
 
 use reifydb_codec::{
-	encoded::shape::{RowShape, fingerprint::RowShapeFingerprint},
+	row::shape::{RowShape, fingerprint::RowShapeFingerprint},
 	tag::value_type_from_tag_byte,
 };
 use reifydb_value::value::constraint::{

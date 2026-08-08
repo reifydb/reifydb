@@ -3,11 +3,11 @@
 
 use reifydb_abi::flow::diff::DiffType;
 use reifydb_codec::{
-	encoded::{
+	key::encoded::EncodedKey,
+	row::{
 		bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
 		shape::{RowShape, RowShapeField},
 	},
-	key::encoded::EncodedKey,
 };
 use reifydb_core::{
 	interface::{catalog::storage::StorageId, change::Change},

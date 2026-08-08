@@ -8,7 +8,7 @@ pub mod get;
 pub mod list;
 pub(crate) mod shape;
 
-use reifydb_codec::encoded::bytes::EncodedBytes;
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::common::TimeSource;
 
 use crate::store::{queue::shape::queue, time_source::read_time_source};

@@ -15,7 +15,7 @@ use std::{
 
 use dashmap::{DashMap, DashSet};
 use postcard::to_stdvec;
-use reifydb_codec::encoded::bytes::EncodedBytes;
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	interface::catalog::dictionary::Dictionary,
 	key::dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey},

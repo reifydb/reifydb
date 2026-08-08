@@ -14,7 +14,7 @@ use std::{
 };
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb_codec::encoded::bytes::EncodedBytes;
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,

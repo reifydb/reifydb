@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::shape::RowShape;
+use reifydb_codec::row::shape::RowShape;
 use reifydb_core::{common::TimeSource, interface::catalog::column::Column};
 use reifydb_value::{
 	Result,
@@ -63,7 +63,7 @@ fn resolve_populator(object: &str, columns: &[Column], ts: &str, shape: &RowShap
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShapeField};
+	use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShapeField};
 	use reifydb_core::interface::catalog::{
 		column::{Column, ColumnIndex},
 		id::ColumnId,

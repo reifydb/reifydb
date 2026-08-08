@@ -12,8 +12,8 @@
 use std::{error::Error as StdError, fmt::Write};
 
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::bytes::EncodedBytes,
 };
 use reifydb_core::{
 	delta::Delta,

@@ -4,9 +4,12 @@
 use std::{collections::HashMap, fmt::Debug};
 
 use reifydb_codec::{
-	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
-	operator::{EncodedOperatorRow, OperatorState, decode},
+	row::{
+		bytes::EncodedBytes,
+		operator::{EncodedOperatorRow, OperatorState, decode},
+		shape::RowShape,
+	},
 };
 use reifydb_value::value::Value;
 
@@ -110,7 +113,7 @@ impl TestStateStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShape};
+	use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
 	use reifydb_value::{util::cowvec::CowVec, value::value_type::ValueType};
 
 	use super::*;

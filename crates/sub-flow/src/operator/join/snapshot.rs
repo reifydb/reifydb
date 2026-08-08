@@ -2,9 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::{decode_u64_asc, encode_u64_asc, encoded::EncodedKeyRange},
-	operator::{EncodedOperatorRow, decode, encode_archive},
+	row::{
+		bytes::EncodedBytes,
+		operator::{EncodedOperatorRow, decode, encode_archive},
+	},
 };
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Diff},

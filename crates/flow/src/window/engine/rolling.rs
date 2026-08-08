@@ -11,7 +11,7 @@ use std::{
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
-	operator::OperatorState,
+	row::operator::OperatorState,
 };
 use reifydb_core::{
 	key::operator_group_state::GroupId,

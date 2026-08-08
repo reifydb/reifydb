@@ -14,7 +14,7 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_codec::encoded::shape::RowShape;
+use reifydb_codec::row::shape::RowShape;
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId};
 use reifydb_value::value::Value;
 
@@ -327,7 +327,7 @@ impl IntoColumnSampler for Range<f64> {
 #[cfg(test)]
 mod tests {
 	use reifydb_abi::operator::capabilities::OperatorCapability;
-	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::row::shape::{RowShape, RowShapeField};
 	use reifydb_sdk::{
 		config::Config,
 		error::Result,

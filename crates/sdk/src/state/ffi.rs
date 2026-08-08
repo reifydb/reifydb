@@ -13,7 +13,7 @@ use reifydb_abi::{
 	},
 	operator::timer::TimerKind,
 };
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::key::operator_group_state::GroupId;
 use reifydb_value::{
 	util::cowvec::CowVec,

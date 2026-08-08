@@ -6,7 +6,7 @@ pub mod ffi;
 use std::ops::Bound;
 
 use ffi::{raw_store_contains_key, raw_store_get, raw_store_prefix, raw_store_range};
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use tracing::{Span, instrument};
 
 use crate::{error::Result, operator::context::ffi::FFIOperatorContext};

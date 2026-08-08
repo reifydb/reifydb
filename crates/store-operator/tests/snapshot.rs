@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use reifydb_codec::{key::encoded::EncodedKey, operator::EncodedOperatorRow};
+use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId, internal_error};
 use reifydb_sqlite::SqliteConfig;
 use reifydb_store_operator::snapshot::{SnapshotStore, SnapshotWrite};

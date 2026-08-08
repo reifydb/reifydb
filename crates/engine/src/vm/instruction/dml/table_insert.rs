@@ -6,7 +6,7 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_codec::encoded::{
+use reifydb_codec::row::{
 	bytes::{EncodedBytes, EncodedRowBuilder},
 	shape::RowShape,
 };

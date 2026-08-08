@@ -3,7 +3,7 @@
 
 pub(crate) mod policy {
 	use once_cell::sync::Lazy;
-	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::row::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const ID: usize = 0;
@@ -27,7 +27,7 @@ pub(crate) mod policy {
 
 pub(crate) mod policy_op {
 	use once_cell::sync::Lazy;
-	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::row::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	pub(crate) const POLICY_ID: usize = 0;

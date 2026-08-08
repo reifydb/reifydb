@@ -9,8 +9,8 @@ use std::sync::Arc;
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::bytes::EncodedBytes,
 };
 use reifydb_core::{delta::Delta, event::EventBus, interface::WithEventBus};
 use reifydb_runtime::sync::rwlock::{ArcRwLock, RwLock};

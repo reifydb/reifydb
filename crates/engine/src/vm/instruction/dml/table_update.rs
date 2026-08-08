@@ -4,11 +4,11 @@
 use std::sync::Arc;
 
 use reifydb_codec::{
-	encoded::{
+	key::encoded::EncodedKey,
+	row::{
 		bytes::{EncodedBytes, EncodedRowBuilder},
 		shape::RowShape,
 	},
-	key::encoded::EncodedKey,
 };
 use reifydb_core::{
 	error::diagnostic::{

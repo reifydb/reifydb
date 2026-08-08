@@ -14,8 +14,8 @@ use reifydb_catalog::metrics::storage::{
 	parser::parse_id,
 };
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::bytes::EncodedBytes,
 };
 use reifydb_core::{
 	common::CommitVersion,

@@ -10,7 +10,7 @@ use reifydb_abi::{
 	data::buffer::BufferFFI,
 };
 use reifydb_codec::{
-	encoded::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
+	row::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 	tag::type_tag_byte,
 };
 use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};

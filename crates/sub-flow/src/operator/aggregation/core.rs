@@ -4,7 +4,7 @@
 use std::{cell::UnsafeCell, sync::Arc};
 
 use postcard::to_stdvec;
-use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+use reifydb_codec::row::shape::{RowShape, RowShapeField};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	metrics::heap::{StateCompleteness, StateMemory},

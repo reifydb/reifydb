@@ -5,7 +5,7 @@ use reifydb_cdc::{
 	consume::{checkpoint::CdcCheckpoint, watermark::compute_pinning_watermark},
 	storage::{CdcStorage, memory::MemoryCdcStorage},
 };
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{

@@ -88,7 +88,7 @@ impl<K: HeapSize, V: HeapSize> HeapSize for PersistedMap<K, V> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::operator::{OperatorState, decode};
+	use reifydb_codec::row::operator::{OperatorState, decode};
 	use reifydb_value::value::datetime::DateTime;
 
 	use super::PersistedMap;

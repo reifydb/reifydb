@@ -3,7 +3,7 @@
 
 use std::{collections::HashSet, sync::Arc};
 
-use reifydb_codec::encoded::bytes::EncodedBytes;
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	error::diagnostic::{
 		catalog::{namespace_not_found, ringbuffer_not_found},

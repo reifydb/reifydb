@@ -4,15 +4,15 @@
 use std::{cell::RefCell, collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
-	encoded::{
-		bytes::EncodedBytes,
-		shape::{RowShape, RowShapeField, cache::RowShapeCacheCell, fingerprint::RowShapeFingerprint},
-	},
 	key::{
 		decode_u64_asc, encode_u64_asc, encode_u128_asc,
 		encoded::{EncodedKey, EncodedKeyRange},
 	},
-	operator::{EncodedOperatorRow, access_archive, encode_archive, materialize_archive},
+	row::{
+		bytes::EncodedBytes,
+		operator::{EncodedOperatorRow, access_archive, encode_archive, materialize_archive},
+		shape::{RowShape, RowShapeField, cache::RowShapeCacheCell, fingerprint::RowShapeFingerprint},
+	},
 };
 #[cfg(test)]
 use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
@@ -312,7 +312,7 @@ fn row_number_from_key(bytes: &[u8]) -> Option<RowNumber> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::encoded::bytes::EncodedBytes;
+	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 	use reifydb_value::value::value_type::ValueType;
 

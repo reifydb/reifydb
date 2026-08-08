@@ -6,7 +6,7 @@ use std::{
 	sync::atomic::{AtomicU64, Ordering},
 };
 
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	interface::store::{SingleVersionGet, SingleVersionRange},
 	internal_error,

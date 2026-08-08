@@ -8,7 +8,7 @@
 //! process, and pruning bounded by the longest declared ttl rather than by a buffer size.
 
 use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
-use reifydb_codec::encoded::shape::RowShape;
+use reifydb_codec::row::shape::RowShape;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{

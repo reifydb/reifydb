@@ -11,8 +11,8 @@ use std::{
 };
 
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::bytes::EncodedBytes,
 };
 use reifydb_core::{delta::Delta, interface::store::SingleVersionRow, metrics::collect::MetricsCollector};
 use reifydb_runtime::{

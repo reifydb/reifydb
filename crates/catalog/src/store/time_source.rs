@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::{bytes::EncodedRowBuilder, shape::RowShape};
+use reifydb_codec::row::{bytes::EncodedRowBuilder, shape::RowShape};
 use reifydb_core::common::{TimeDomain, TimeSource};
 
 pub(crate) fn write_time_source(
@@ -33,7 +33,7 @@ pub(crate) fn read_time_source(shape: &RowShape, row: &[u8], domain_index: usize
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::encoded::shape::RowShapeField;
+	use reifydb_codec::row::shape::RowShapeField;
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;

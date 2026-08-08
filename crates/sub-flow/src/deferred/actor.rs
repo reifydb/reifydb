@@ -11,7 +11,7 @@ use std::{
 };
 
 use reifydb_cdc::consume::backlog::{BacklogPull, FlowBacklog};
-use reifydb_codec::encoded::shape::RowShape;
+use reifydb_codec::row::shape::RowShape;
 use reifydb_core::{
 	actors::{flow::FlowActorMessage, pending::Pending},
 	common::CommitVersion,
@@ -920,8 +920,8 @@ mod pull_protocol {
 		storage::CdcStorage,
 	};
 	use reifydb_codec::{
-		encoded::bytes::EncodedBytes,
 		key::encoded::{EncodedKey, EncodedKeyRange},
+		row::bytes::EncodedBytes,
 	};
 	use reifydb_core::{
 		actors::{flow::FlowActorHandle, pending::PendingLayers},

@@ -4,7 +4,7 @@
 //! Primitive-level gap tests for the public accumulators: the cases the in-crate
 //! `#[cfg(test)]` suite does not already cover.
 
-use reifydb_codec::operator::{OperatorState, decode};
+use reifydb_codec::row::operator::{OperatorState, decode};
 use reifydb_flow::window::accumulator::{
 	WindowAccumulator,
 	invertible::{KeyedInvertibleAccumulator, LastValue, Moments, Multiset, OrdF64},

@@ -4,7 +4,7 @@
 use std::{collections::HashMap, ops::Range, sync::Arc};
 
 use rand::{RngExt, rngs::StdRng};
-use reifydb_codec::encoded::shape::RowShape;
+use reifydb_codec::row::shape::RowShape;
 use reifydb_core::row::Row;
 use reifydb_value::value::{
 	Value, date::Date, datetime::DateTime, duration::Duration, row_number::RowNumber, time::Time,
@@ -284,7 +284,7 @@ mod tests {
 	use std::collections::HashSet;
 
 	use rand::SeedableRng;
-	use reifydb_codec::encoded::shape::RowShapeField;
+	use reifydb_codec::row::shape::RowShapeField;
 
 	use super::*;
 

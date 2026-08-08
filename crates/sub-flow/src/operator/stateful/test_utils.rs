@@ -3,7 +3,7 @@
 
 pub mod test {
 	use reifydb_abi::operator::capabilities::OperatorCapability;
-	use reifydb_codec::{encoded::shape::RowShape, operator::EncodedOperatorRow};
+	use reifydb_codec::row::{operator::EncodedOperatorRow, shape::RowShape};
 	use reifydb_core::{
 		interface::{catalog::flow::OperatorId, change::Change},
 		key::operator_group_state::{GroupStateKey, Keyspace},

@@ -4,8 +4,8 @@
 use std::{mem::take, sync::Arc};
 
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::bytes::EncodedBytes,
 };
 use reifydb_core::{
 	actors::pending::PendingWrite,

@@ -87,7 +87,7 @@ fn value_codec_and_rbcf_any_column_round_trip_identically() {
 
 #[test]
 fn value_codec_and_row_any_field_round_trip_identically() {
-	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::row::shape::{RowShape, RowShapeField};
 
 	let shape = RowShape::new(vec![RowShapeField::unconstrained("v", ValueType::Any)]);
 	for value in cross_codec_values() {

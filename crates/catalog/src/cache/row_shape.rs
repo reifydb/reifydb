@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::shape::{RowShape, fingerprint::RowShapeFingerprint};
+use reifydb_codec::row::shape::{RowShape, fingerprint::RowShapeFingerprint};
 
 use super::CatalogCache;
 

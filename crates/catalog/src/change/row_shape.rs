@@ -4,11 +4,11 @@
 use reifydb_abi::data::constraint::FFITypeConstraint;
 use reifydb_codec::{
 	constraint::type_constraint_from_ffi,
-	encoded::{
+	key::encoded::EncodedKey,
+	row::{
 		bytes::EncodedBytes,
 		shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 	},
-	key::encoded::EncodedKey,
 };
 use reifydb_core::key::{
 	EncodableKey,

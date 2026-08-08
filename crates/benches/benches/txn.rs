@@ -14,7 +14,7 @@ use reifydb_benches::{
 	BenchReport, env_flag, env_list_usize, env_opt, env_select, env_u64, env_usize, latency_histogram,
 	median_by_throughput, merge,
 };
-use reifydb_codec::{encoded::bytes::EncodedBytes, key as keycode, key::encoded::EncodedKey};
+use reifydb_codec::{key as keycode, key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,

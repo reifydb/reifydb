@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	encoded::{bytes::EncodedBytes, shape::RowShape},
 	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, shape::RowShape},
 };
 use reifydb_core::{
 	actors::pending::PendingWrite,

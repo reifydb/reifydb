@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::encoded::shape::{RowShape, fingerprint::RowShapeFingerprint};
+use reifydb_codec::row::shape::{RowShape, fingerprint::RowShapeFingerprint};
 
 pub trait HostRowShape: Send + Sync {
 	fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> Option<RowShape>;

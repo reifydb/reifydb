@@ -7,7 +7,7 @@ use reifydb_catalog::{
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
 };
-use reifydb_codec::encoded::{bytes::EncodedRowBuilder, shape::RowShape};
+use reifydb_codec::row::{bytes::EncodedRowBuilder, shape::RowShape};
 use reifydb_core::{
 	error::CoreError,
 	interface::catalog::{

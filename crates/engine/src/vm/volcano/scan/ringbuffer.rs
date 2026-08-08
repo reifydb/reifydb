@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::encoded::{bytes::EncodedBytes, shape::RowShape};
+use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_core::{
 	interface::{
 		catalog::{dictionary::Dictionary, object::ObjectId, ringbuffer::PartitionedMetadata},

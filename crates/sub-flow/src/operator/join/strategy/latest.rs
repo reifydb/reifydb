@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::operator::EncodedOperatorRow;
+use reifydb_codec::row::operator::EncodedOperatorRow;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{Result, util::hash::Hash128, value::row_number::RowNumber};

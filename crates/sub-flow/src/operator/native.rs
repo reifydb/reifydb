@@ -14,12 +14,12 @@ use std::{
 use libloading::Symbol;
 use reifydb_abi::operator::{capabilities::OperatorCapability, timer::TimerKind};
 use reifydb_codec::{
-	encoded::{
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::{
 		bytes::EncodedBytes,
+		operator::EncodedOperatorRow,
 		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	operator::EncodedOperatorRow,
 };
 use reifydb_core::{
 	common::CommitVersion,

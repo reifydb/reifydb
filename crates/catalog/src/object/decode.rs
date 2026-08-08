@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::bytes::{EncodedBytes, SHAPE_HEADER_SIZE};
+use reifydb_codec::row::bytes::{EncodedBytes, SHAPE_HEADER_SIZE};
 use reifydb_core::row::Row;
 use reifydb_value::value::row_number::RowNumber;
 use tracing::warn;

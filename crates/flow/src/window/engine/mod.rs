@@ -20,7 +20,7 @@ use reifydb_codec::{
 		encode_u64, encode_u64_asc,
 		encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
 	},
-	operator::OperatorState,
+	row::operator::OperatorState,
 };
 use reifydb_core::{
 	key::operator_group_state::{
@@ -514,7 +514,7 @@ pub(crate) mod test_support {
 
 	use reifydb_codec::{
 		key::encoded::{EncodedKey, EncodedKeyRange},
-		operator::{EncodedOperatorRow, decode},
+		row::operator::{EncodedOperatorRow, decode},
 	};
 	use reifydb_core::{
 		key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},

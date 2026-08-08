@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::bytes::{EncodedBytes, EncodedRowBuilder};
+use reifydb_codec::row::bytes::{EncodedBytes, EncodedRowBuilder};
 use reifydb_core::interface::catalog::table::Table;
 use reifydb_value::{Result, value::row_number::RowNumber};
 

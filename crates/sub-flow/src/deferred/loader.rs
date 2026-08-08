@@ -204,7 +204,7 @@ mod tests {
 	};
 
 	use reifydb_cdc::storage::{CdcStorage, CdcStore, memory::MemoryCdcStorage};
-	use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 	use reifydb_core::interface::cdc::SystemChange;
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 	use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};

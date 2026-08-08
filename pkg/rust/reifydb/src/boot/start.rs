@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_cdc::storage::CdcStore;
-use reifydb_codec::encoded::shape::RowShape;
+use reifydb_codec::row::shape::RowShape;
 use reifydb_core::{
 	interface::catalog::config::{ConfigKey, GetConfig},
 	key::{

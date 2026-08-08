@@ -5,7 +5,7 @@
 //! next commit onward, with no reclamation in between: window engines delete range-scanned bookkeeping
 //! and re-read it on the next apply, and a resurrected entry double-unmerges a running accumulator.
 
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,

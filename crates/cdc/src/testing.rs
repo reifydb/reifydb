@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_catalog::{cache::CatalogCache, catalog::Catalog};
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{common::CommitVersion, event::EventBus};
 use reifydb_runtime::{
 	actor::system::ActorSystem,

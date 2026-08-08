@@ -3,7 +3,7 @@
 
 use std::{cmp, cmp::Reverse};
 
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{common::CommitVersion, delta::Delta, interface::store::MultiVersionRow};
 use reifydb_value::util::cowvec::CowVec;
 

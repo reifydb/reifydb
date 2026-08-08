@@ -5,8 +5,8 @@ use std::{collections::HashSet, sync::LazyLock};
 
 use postcard::to_stdvec;
 use reifydb_codec::{
-	encoded::shape::{RowShape, RowShapeField},
 	key::encoded::EncodedKey,
+	row::shape::{RowShape, RowShapeField},
 };
 use reifydb_core::{
 	interface::catalog::{column::Column, id::TableId, object::ObjectId, table::Table},

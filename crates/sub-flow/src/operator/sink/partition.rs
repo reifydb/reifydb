@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::LazyLock};
 
 use postcard::to_stdvec;
-use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+use reifydb_codec::row::shape::{RowShape, RowShapeField};
 use reifydb_core::{
 	interface::catalog::object::ObjectId, key::partition::PartitionKey, value::column::columns::Columns,
 };

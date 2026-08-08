@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::operator::{OperatorState, decode};
+use reifydb_codec::row::operator::{OperatorState, decode};
 #[cfg(feature = "runtime")]
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_core::{

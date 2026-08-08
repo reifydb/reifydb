@@ -11,7 +11,7 @@ use std::sync::Arc;
 use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	operator::{EncodedOperatorRow, decode},
+	row::operator::{EncodedOperatorRow, decode},
 };
 use reifydb_core::{
 	common::{WindowKind, WindowSize},

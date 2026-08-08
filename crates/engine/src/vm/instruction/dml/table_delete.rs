@@ -4,7 +4,7 @@
 use std::{collections::Bound::Included, sync::Arc};
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKeyRange};
+use reifydb_codec::{key::encoded::EncodedKeyRange, row::bytes::EncodedBytes};
 use reifydb_core::{
 	interface::{
 		catalog::{

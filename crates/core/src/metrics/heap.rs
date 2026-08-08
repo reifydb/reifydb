@@ -8,7 +8,7 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 pub use reifydb_macro::HeapSize;
 use reifydb_value::{
 	byte_size::ByteSize,

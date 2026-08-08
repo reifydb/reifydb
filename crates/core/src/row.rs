@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::{
+use reifydb_codec::row::{
 	bytes::EncodedBytes,
 	shape::{RowShape, RowShapeField},
 };
@@ -86,7 +86,7 @@ mod tests {
 	}
 
 	mod from_column {
-		use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+		use reifydb_codec::row::shape::{RowShape, RowShapeField};
 		use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 		use crate::{

@@ -4,9 +4,9 @@
 use std::collections::{BTreeMap, HashMap};
 
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key as keycode,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::bytes::EncodedBytes,
 };
 use reifydb_core::common::CommitVersion;
 use reifydb_transaction::multi::{

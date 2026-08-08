@@ -4,8 +4,8 @@
 use std::sync::Arc;
 
 use reifydb_codec::{
-	encoded::shape::RowShape,
 	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::shape::RowShape,
 };
 use reifydb_core::{
 	common::CommitVersion,

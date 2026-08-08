@@ -2,12 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{
-	encoded::shape::fingerprint::RowShapeFingerprint,
 	key::{
 		deserializer::KeyDeserializer,
 		encoded::{EncodedKey, EncodedKeyRange},
 		serializer::KeySerializer,
 	},
+	row::shape::fingerprint::RowShapeFingerprint,
 };
 
 use super::{EncodableKey, KeyKind};

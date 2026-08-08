@@ -5,9 +5,11 @@ use std::{collections::HashMap, ops::Bound, slice::from_ref, sync::Arc};
 
 use dashmap::DashMap;
 use reifydb_codec::{
-	encoded::bytes::EncodedBytes,
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	operator::{EncodedOperatorRow, OperatorState, decode},
+	row::{
+		bytes::EncodedBytes,
+		operator::{EncodedOperatorRow, OperatorState, decode},
+	},
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,

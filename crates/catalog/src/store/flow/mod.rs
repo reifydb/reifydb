@@ -9,7 +9,7 @@ pub mod list;
 pub(crate) mod shape;
 pub mod update;
 
-use reifydb_codec::encoded::bytes::EncodedBytes;
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::interface::catalog::{
 	flow::{Flow, FlowId, FlowStatus},
 	id::NamespaceId,

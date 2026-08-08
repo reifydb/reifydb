@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{

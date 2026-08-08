@@ -9,12 +9,10 @@ use std::{
 };
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
-use reifydb_codec::{
-	encoded::{
-		bytes::EncodedBytes,
-		shape::{RowShape, RowShapeField},
-	},
+use reifydb_codec::row::{
+	bytes::EncodedBytes,
 	operator::{decode, encode_archive},
+	shape::{RowShape, RowShapeField},
 };
 use reifydb_core::{
 	interface::{

@@ -299,7 +299,7 @@ fn diff_bytes(diff: &Diff) -> usize {
 mod tests {
 	use std::sync::atomic::AtomicUsize;
 
-	use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 	use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
 	use super::*;

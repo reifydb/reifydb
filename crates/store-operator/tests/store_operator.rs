@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	operator::EncodedOperatorRow,
+	row::operator::EncodedOperatorRow,
 };
 use reifydb_core::{
 	common::CommitVersion,

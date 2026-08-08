@@ -60,7 +60,7 @@ impl CatalogStore {
 	}
 }
 
-use reifydb_codec::encoded::bytes::EncodedBytes;
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::interface::catalog::{column::Column, key::PrimaryKey};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{

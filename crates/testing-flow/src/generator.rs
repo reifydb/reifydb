@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+use reifydb_codec::row::shape::{RowShape, RowShapeField};
 use reifydb_core::{interface::change::Change, row::Row};
 use reifydb_testing_sdk::builders::{TestChangeBuilder, TestRowBuilder};
 use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType};

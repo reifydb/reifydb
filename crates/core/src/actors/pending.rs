@@ -10,7 +10,7 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_codec::{encoded::bytes::EncodedBytes, key::encoded::EncodedKey};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 
 #[derive(Debug, Clone)]
 pub enum PendingWrite {

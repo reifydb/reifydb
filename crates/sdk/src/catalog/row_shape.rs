@@ -7,7 +7,7 @@ use reifydb_abi::{
 	catalog::row_shape::{RowShapeFFI, RowShapeFieldFFI},
 	constants::{FFI_NOT_FOUND, FFI_OK},
 };
-use reifydb_codec::encoded::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint};
+use reifydb_codec::row::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint};
 #[cfg(test)]
 use reifydb_codec::tag::type_tag_byte;
 
@@ -106,7 +106,7 @@ mod tests {
 	use std::ptr;
 
 	use reifydb_abi::data::buffer::BufferFFI;
-	use reifydb_codec::encoded::shape::{RowShape, RowShapeField};
+	use reifydb_codec::row::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 	use super::*;

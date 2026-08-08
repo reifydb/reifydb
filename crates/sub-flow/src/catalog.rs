@@ -4,7 +4,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::encoded::shape::RowShape;
+use reifydb_codec::row::shape::RowShape;
 use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId, view::View};
 use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag};
 use reifydb_runtime::sync::rwlock::RwLock;

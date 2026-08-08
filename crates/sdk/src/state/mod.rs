@@ -8,7 +8,7 @@ use std::ops::Bound;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	operator::{EncodedOperatorRow, OperatorState, decode},
+	row::operator::{EncodedOperatorRow, OperatorState, decode},
 };
 use reifydb_core::key::operator_group_state::GroupStateKey;
 use reifydb_value::{error::Error as ValueError, value::datetime::DateTime};
