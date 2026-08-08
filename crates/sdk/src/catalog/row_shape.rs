@@ -97,7 +97,6 @@ unsafe fn unmarshal_row_shape_field(ffi_field: &RowShapeFieldFFI) -> Result<RowS
 		constraint,
 		offset: ffi_field.offset,
 		size: ffi_field.size,
-		align: ffi_field.align,
 	})
 }
 
@@ -149,7 +148,6 @@ mod tests {
 				constraint_param2: 0,
 				offset: f.offset,
 				size: f.size,
-				align: f.align,
 			})
 			.collect();
 
@@ -177,7 +175,6 @@ mod tests {
 			);
 			assert_eq!(a.offset, b.offset, "offset drift breaks every subsequent get_utf8 read");
 			assert_eq!(a.size, b.size);
-			assert_eq!(a.align, b.align);
 		}
 	}
 

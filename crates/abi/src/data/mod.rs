@@ -8,6 +8,5 @@ pub mod buffer;
 pub mod column;
 pub mod constraint;
 pub mod key_ref;
-pub mod layout;
 pub mod state;
 pub mod wasm;

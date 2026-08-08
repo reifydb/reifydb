@@ -20,7 +20,6 @@
 | Target               | What it tests                                              |
 |----------------------|------------------------------------------------------------|
 | `abi_buffer`         | `BufferFFI::from_slice` roundtrip and invariants           |
-| `abi_layout`         | `LayoutFFI::is_defined` with arbitrary field/buffer combos |
 | `keycode_deserialize`| `keycode::deserialize` on raw bytes for all scalar types   |
 | `keycode_roundtrip`  | serialize-then-deserialize identity for all scalar types   |
 | `rql_gen`            | (support module) Arbitrary RQL statement generator         |

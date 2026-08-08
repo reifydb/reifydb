@@ -102,15 +102,6 @@ pub fn row_shape_fields() -> Arc<VTable> {
 					auto_increment: false,
 					dictionary_id: None,
 				},
-				Column {
-					id: ALIGN,
-					name: "align".to_string(),
-					constraint: TypeConstraint::unconstrained(ValueType::Uint1),
-					properties: vec![],
-					index: ColumnIndex(9),
-					auto_increment: false,
-					dictionary_id: None,
-				},
 			],
 		})
 	})

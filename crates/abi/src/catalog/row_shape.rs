@@ -19,8 +19,6 @@ pub struct RowShapeFieldFFI {
 	pub offset: u32,
 
 	pub size: u32,
-
-	pub align: u8,
 }
 
 #[repr(C)]

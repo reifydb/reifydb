@@ -191,7 +191,6 @@ mod tests {
 				);
 				assert_eq!(from_columns.offset, direct.offset, "offset mismatch at field {}", i);
 				assert_eq!(from_columns.size, direct.size, "size mismatch at field {}", i);
-				assert_eq!(from_columns.align, direct.align, "align mismatch at field {}", i);
 			}
 		}
 

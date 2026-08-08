@@ -102,14 +102,12 @@ fn try_reconstruct(
 				.expect("invalid persisted type constraint tag");
 				let offset = shape_field::SHAPE.get::<u32>(bytes, shape_field::OFFSET);
 				let size = shape_field::SHAPE.get::<u32>(bytes, shape_field::SIZE);
-				let align = shape_field::SHAPE.get::<u8>(bytes, shape_field::ALIGN);
 
 				fields.push(RowShapeField {
 					name,
 					constraint,
 					offset,
 					size,
-					align,
 				});
 			}
 			None => return Ok(()),

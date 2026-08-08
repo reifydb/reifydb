@@ -35,11 +35,6 @@ path = "fuzz_targets/abi_buffer.rs"
 doc = false
 
 [[bin]]
-name = "abi_layout"
-path = "fuzz_targets/abi_layout.rs"
-doc = false
-
-[[bin]]
 name = "rql_parse"
 path = "fuzz_targets/rql_parse.rs"
 doc = false

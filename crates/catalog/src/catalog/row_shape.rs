@@ -121,14 +121,12 @@ impl Catalog {
 			.expect("invalid persisted type constraint tag");
 			let offset = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::OFFSET);
 			let size = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::SIZE);
-			let align = shape_field::SHAPE.get::<u8>(&field_entry.bytes, shape_field::ALIGN);
 
 			fields.push(RowShapeField {
 				name,
 				constraint,
 				offset,
 				size,
-				align,
 			});
 		}
 

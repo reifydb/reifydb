@@ -41,7 +41,6 @@ pub(crate) fn create_row_shape(txn: &mut Transaction<'_>, shape: &RowShape) -> R
 		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::CONSTRAINT_P2, ffi.constraint_param2);
 		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::OFFSET, field.offset);
 		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::SIZE, field.size);
-		shape_field::SHAPE.set::<u8>(&mut field_row, shape_field::ALIGN, field.align);
 
 		txn.set(&RowShapeFieldKey::encoded(fingerprint, idx as u16), field_row.freeze())?;
 	}

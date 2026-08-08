@@ -31,8 +31,6 @@ pub(crate) mod shape_field {
 
 	pub(crate) const SIZE: usize = 6;
 
-	pub(crate) const ALIGN: usize = 7;
-
 	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
 		RowShape::new(vec![
 			RowShapeField::unconstrained("name", ValueType::Utf8),
@@ -42,7 +40,6 @@ pub(crate) mod shape_field {
 			RowShapeField::unconstrained("constraint_p2", ValueType::Uint4),
 			RowShapeField::unconstrained("offset", ValueType::Uint4),
 			RowShapeField::unconstrained("size", ValueType::Uint4),
-			RowShapeField::unconstrained("align", ValueType::Uint1),
 		])
 	});
 }

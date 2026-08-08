@@ -42,8 +42,6 @@ pub struct RowShapeField {
 	pub offset: u32,
 
 	pub size: u32,
-
-	pub align: u8,
 }
 
 impl RowShapeField {
@@ -54,7 +52,6 @@ impl RowShapeField {
 			constraint,
 			offset: 0,
 			size: storage_type.size() as u32,
-			align: storage_type.alignment() as u8,
 		}
 	}
 
@@ -72,7 +69,7 @@ pub struct Inner {
 	pub fields: Vec<RowShapeField>,
 
 	#[serde(skip)]
-	cached_layout: OnceLock<(usize, usize)>,
+	cached_layout: OnceLock<usize>,
 }
 
 impl PartialEq for Inner {
@@ -168,15 +165,7 @@ impl RowShape {
 		let mut offset: u32 = (SHAPE_HEADER_SIZE + bitvec_size) as u32;
 
 		for field in fields.iter_mut() {
-			let storage_type = field.constraint.storage_type();
-			field.size = storage_type.size() as u32;
-			field.align = storage_type.alignment() as u8;
-
-			let align = field.align as u32;
-			if align > 0 {
-				offset = (offset + align - 1) & !(align - 1);
-			}
-
+			field.size = field.constraint.storage_type().size() as u32;
 			field.offset = offset;
 			offset += field.size;
 		}
@@ -192,25 +181,15 @@ impl RowShape {
 		SHAPE_HEADER_SIZE + self.bitvec_size()
 	}
 
-	fn get_cached_layout(&self) -> (usize, usize) {
-		*self.cached_layout.get_or_init(|| {
-			let max_align = self.fields.iter().map(|f| f.align as usize).max().unwrap_or(1);
-
-			let total_size = if self.fields.is_empty() {
-				SHAPE_HEADER_SIZE + self.bitvec_size()
-			} else {
-				let last_field = &self.fields[self.fields.len() - 1];
-				let end = last_field.offset as usize + last_field.size as usize;
-
-				Self::align_up(end, max_align)
-			};
-
-			(total_size, max_align)
+	fn get_cached_layout(&self) -> usize {
+		*self.cached_layout.get_or_init(|| match self.fields.last() {
+			Some(last) => last.offset as usize + last.size as usize,
+			None => SHAPE_HEADER_SIZE + self.bitvec_size(),
 		})
 	}
 
 	pub fn total_static_size(&self) -> usize {
-		self.get_cached_layout().0
+		self.get_cached_layout()
 	}
 
 	pub fn dynamic_section_start(&self) -> usize {
@@ -355,7 +334,7 @@ impl RowShape {
 	}
 
 	pub fn allocate(&self) -> EncodedRowBuilder {
-		let (total_size, _) = self.get_cached_layout();
+		let total_size = self.get_cached_layout();
 		let mut row = EncodedRowBuilder::zeroed(total_size);
 		row.set_fingerprint(self.fingerprint);
 		reifydb_assertions! {
@@ -367,10 +346,6 @@ impl RowShape {
 			);
 		}
 		row
-	}
-
-	fn align_up(offset: usize, align: usize) -> usize {
-		(offset + align).saturating_sub(1) & !(align.saturating_sub(1))
 	}
 
 	pub fn set_none(&self, row: &mut EncodedRowBuilder, index: usize) {

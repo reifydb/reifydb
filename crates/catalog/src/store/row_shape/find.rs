@@ -70,14 +70,12 @@ pub(crate) fn find_row_shape_by_fingerprint(
 		.expect("invalid persisted type constraint tag");
 		let offset = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::OFFSET);
 		let size = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::SIZE);
-		let align = shape_field::SHAPE.get::<u8>(&field_entry.bytes, shape_field::ALIGN);
 
 		fields.push(RowShapeField {
 			name,
 			constraint,
 			offset,
 			size,
-			align,
 		});
 	}
 
@@ -146,14 +144,12 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 			.expect("invalid persisted type constraint tag");
 			let offset = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::OFFSET);
 			let size = shape_field::SHAPE.get::<u32>(&field_entry.bytes, shape_field::SIZE);
-			let align = shape_field::SHAPE.get::<u8>(&field_entry.bytes, shape_field::ALIGN);
 
 			fields.push(RowShapeField {
 				name,
 				constraint,
 				offset,
 				size,
-				align,
 			});
 		}
 

@@ -157,7 +157,6 @@ fn marshal_row_shape_field(field: &RowShapeField) -> Result<RowShapeFieldFFI, &'
 		constraint_param2: param2,
 		offset: field.offset,
 		size: field.size,
-		align: field.align,
 	})
 }
 
@@ -223,7 +222,6 @@ mod tests {
 				"offset divergence is the root cause of the 240-vs-120 utf8 panic"
 			);
 			assert_eq!(ffi_field.size, shape_field.size);
-			assert_eq!(ffi_field.align, shape_field.align);
 			assert_eq!(ffi_field.base_type, type_tag_byte(&shape_field.constraint.get_type()));
 		}
 

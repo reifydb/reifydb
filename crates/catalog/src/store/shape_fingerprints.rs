@@ -345,17 +345,8 @@ fn pinned() -> Vec<Pin> {
 		(
 			"row_shape::shape_field",
 			&*crate::store::row_shape::shape::shape_field::SHAPE,
-			0x3188ba30e87320b6,
-			&[
-				"name",
-				"base_type",
-				"constraint_type",
-				"constraint_p1",
-				"constraint_p2",
-				"offset",
-				"size",
-				"align",
-			],
+			0x85505715107de223,
+			&["name", "base_type", "constraint_type", "constraint_p1", "constraint_p2", "offset", "size"],
 		),
 		(
 			"sequence::sequence",

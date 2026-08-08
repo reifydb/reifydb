@@ -58,7 +58,6 @@ impl BaseVTable for SystemRowShapeFields {
 		let mut constraint_p2s = ColumnBuffer::uint4_with_capacity(total_fields);
 		let mut offsets = ColumnBuffer::uint4_with_capacity(total_fields);
 		let mut sizes = ColumnBuffer::uint4_with_capacity(total_fields);
-		let mut aligns = ColumnBuffer::uint1_with_capacity(total_fields);
 
 		for shape in shapes {
 			let fingerprint = *shape.fingerprint();
@@ -76,7 +75,6 @@ impl BaseVTable for SystemRowShapeFields {
 				constraint_p2s.push(ffi.constraint_param2);
 				offsets.push(field.offset);
 				sizes.push(field.size);
-				aligns.push(field.align);
 			}
 		}
 
@@ -90,7 +88,6 @@ impl BaseVTable for SystemRowShapeFields {
 			ColumnWithName::new(Fragment::internal("constraint_p2"), constraint_p2s),
 			ColumnWithName::new(Fragment::internal("offset"), offsets),
 			ColumnWithName::new(Fragment::internal("size"), sizes),
-			ColumnWithName::new(Fragment::internal("align"), aligns),
 		];
 
 		self.exhausted = true;

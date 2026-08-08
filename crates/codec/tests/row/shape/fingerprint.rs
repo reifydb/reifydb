@@ -13,7 +13,6 @@ fn make_field(name: &str, field_type: ValueType) -> RowShapeField {
 		constraint: TypeConstraint::unconstrained(field_type),
 		offset: 0,
 		size: 0,
-		align: 0,
 	}
 }
 
@@ -23,7 +22,6 @@ fn make_constrained_field(name: &str, constraint: TypeConstraint) -> RowShapeFie
 		constraint,
 		offset: 0,
 		size: 0,
-		align: 0,
 	}
 }
 

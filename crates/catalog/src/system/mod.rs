@@ -694,9 +694,8 @@ pub mod ids {
 			pub const CONSTRAINT_P2: ColumnId = ColumnId(7);
 			pub const OFFSET: ColumnId = ColumnId(8);
 			pub const SIZE: ColumnId = ColumnId(9);
-			pub const ALIGN: ColumnId = ColumnId(10);
 
-			pub const ALL: [ColumnId; 10] = [
+			pub const ALL: [ColumnId; 9] = [
 				SHAPE_FINGERPRINT,
 				FIELD_INDEX,
 				NAME,
@@ -706,7 +705,6 @@ pub mod ids {
 				CONSTRAINT_P2,
 				OFFSET,
 				SIZE,
-				ALIGN,
 			];
 		}
 
