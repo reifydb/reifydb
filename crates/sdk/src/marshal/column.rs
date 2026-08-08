@@ -52,16 +52,6 @@ impl Arena {
 			ptr::null()
 		};
 
-		let created_at_ptr = if !columns.created_at().is_empty() {
-			columns.created_at().as_ptr() as *const u64
-		} else {
-			ptr::null()
-		};
-		let updated_at_ptr = if !columns.updated_at().is_empty() {
-			columns.updated_at().as_ptr() as *const u64
-		} else {
-			ptr::null()
-		};
 		let time_ptr = if !columns.time().is_empty() {
 			columns.time().as_ptr() as *const u64
 		} else {
@@ -88,8 +78,6 @@ impl Arena {
 			column_count,
 			row_numbers: row_numbers_ptr,
 			columns: columns_ptr as *const ColumnFFI,
-			created_at: created_at_ptr,
-			updated_at: updated_at_ptr,
 			time: time_ptr,
 		}
 	}
@@ -106,30 +94,6 @@ impl Arena {
 			unsafe {
 				let slice = slice::from_raw_parts(ffi.row_numbers, ffi.row_count);
 				slice.iter().map(|&n| RowNumber(n)).collect()
-			}
-		} else {
-			Vec::new()
-		};
-
-		let created_at: Vec<DateTime> = if !ffi.created_at.is_null() && ffi.row_count > 0 {
-			// SAFETY: guarded non-null with `row_count > 0`; `marshal_columns` sets this field from a
-			// live `&[DateTime]` (repr(transparent) u64), so it is aligned and covers `row_count`
-			// initialised elements.
-			unsafe {
-				let slice = slice::from_raw_parts(ffi.created_at, ffi.row_count);
-				slice.iter().map(|&n| DateTime::from_nanos(n)).collect()
-			}
-		} else {
-			Vec::new()
-		};
-
-		let updated_at: Vec<DateTime> = if !ffi.updated_at.is_null() && ffi.row_count > 0 {
-			// SAFETY: guarded non-null with `row_count > 0`; `marshal_columns` sets this field from a
-			// live `&[DateTime]` (repr(transparent) u64), so it is aligned and covers `row_count`
-			// initialised elements.
-			unsafe {
-				let slice = slice::from_raw_parts(ffi.updated_at, ffi.row_count);
-				slice.iter().map(|&n| DateTime::from_nanos(n)).collect()
 			}
 		} else {
 			Vec::new()
@@ -162,7 +126,7 @@ impl Arena {
 		} else {
 			Columns::with_system(
 				columns,
-				SystemColumns::new(row_numbers, Vec::new(), created_at, updated_at, time),
+				SystemColumns::new(row_numbers, Vec::new(), Vec::new(), Vec::new(), time),
 			)
 		}
 	}

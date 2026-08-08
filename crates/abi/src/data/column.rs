@@ -131,10 +131,6 @@ pub struct ColumnsFFI {
 
 	pub columns: *const ColumnFFI,
 
-	pub created_at: *const u64,
-
-	pub updated_at: *const u64,
-
 	pub time: *const u64,
 }
 
@@ -145,8 +141,6 @@ impl ColumnsFFI {
 			column_count: 0,
 			row_numbers: core::ptr::null(),
 			columns: core::ptr::null(),
-			created_at: core::ptr::null(),
-			updated_at: core::ptr::null(),
 			time: core::ptr::null(),
 		}
 	}

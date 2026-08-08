@@ -33,8 +33,6 @@ pub trait RowView {
 	fn duration(&self, name: &str) -> Option<Duration>;
 	fn value(&self, name: &str) -> Option<Value>;
 	fn row_number(&self) -> Option<RowNumber>;
-	fn created_at(&self) -> Option<DateTime>;
-	fn updated_at(&self) -> Option<DateTime>;
 	fn row_time(&self) -> Option<DateTime>;
 }
 

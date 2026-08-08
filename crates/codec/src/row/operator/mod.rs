@@ -62,6 +62,20 @@ pub enum OperatorError {
 	},
 }
 
+#[inline]
+pub fn read_time(buf: &[u8]) -> Option<DateTime> {
+	let time = DateTime::from_le_bytes(
+		buf[TIME_OFFSET..OPERATOR_HEADER_SIZE].try_into().expect("the operator header is length-checked"),
+	);
+	(time != DateTime::MAX).then_some(time)
+}
+
+#[inline]
+pub fn write_time(buf: &mut [u8], time: DateTime) {
+	buf[TIME_OFFSET..OPERATOR_HEADER_SIZE].copy_from_slice(&time.to_le_bytes());
+}
+
+#[repr(transparent)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct EncodedOperatorRow(EncodedBytes);
 
@@ -83,6 +97,17 @@ impl EncodedOperatorRow {
 
 	pub fn bytes(&self) -> &EncodedBytes {
 		&self.0
+	}
+
+	pub fn view(bytes: &EncodedBytes) -> &Self {
+		// SAFETY: EncodedOperatorRow is repr(transparent) over EncodedBytes, so the pointer cast
+		// preserves layout, and the returned reference borrows the same allocation for the same lifetime.
+		unsafe { &*(bytes as *const EncodedBytes as *const Self) }
+	}
+
+	#[inline]
+	pub fn row_time(&self) -> Option<DateTime> {
+		read_time(&self.0)
 	}
 
 	#[inline]

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::bytes::SHAPE_HEADER_SIZE;
 use reifydb_core::{interface::change::Change, row::Row};
 use reifydb_testing_chaos::operator::{
 	event::{ChaosBatch, ChaosEvent},
@@ -57,7 +56,7 @@ fn identity_key(row_number: RowNumber) -> OutputKey {
 fn row_to_materialized(row: &Row) -> MaterializedRow {
 	let mut mat = MaterializedRow::new();
 	let bitvec_size = row.shape.fields().len().div_ceil(8);
-	let bitvec_start = SHAPE_HEADER_SIZE;
+	let bitvec_start = row.shape.header_size();
 	let bitvec_end = bitvec_start + bitvec_size;
 	let bitvec = if row.encoded.as_slice().len() >= bitvec_end {
 		Some(&row.encoded.as_slice()[bitvec_start..bitvec_end])
@@ -158,7 +157,7 @@ fn row_to_materialized(row: &Row) -> MaterializedRow {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
+	use reifydb_codec::row::shape::RowShapeField;
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::{
@@ -174,21 +173,18 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::builders::TestRowBuilder;
+	use crate::builders::TestOperatorRowBuilder;
 
-	fn shape() -> RowShape {
-		RowShape::new(
-			RowFamily::Deprecated,
-			vec![
-				RowShapeField::unconstrained("k", ValueType::Uint8),
-				RowShapeField::unconstrained("v", ValueType::Float8),
-			],
-		)
+	fn fields() -> Vec<RowShapeField> {
+		vec![
+			RowShapeField::unconstrained("k", ValueType::Uint8),
+			RowShapeField::unconstrained("v", ValueType::Float8),
+		]
 	}
 
 	fn build_row(rn: u64, k: u64, v: f64) -> Row {
-		TestRowBuilder::new(RowNumber(rn))
-			.with_shape(shape())
+		TestOperatorRowBuilder::new(RowNumber(rn))
+			.with_fields(fields())
 			.with_values(vec![Value::uint8(k), Value::float8(v)])
 			.build()
 	}
@@ -253,17 +249,14 @@ mod tests {
 
 	#[test]
 	fn multi_column_output_key() {
-		let s = RowShape::new(
-			RowFamily::Deprecated,
-			vec![
-				RowShapeField::unconstrained("base", ValueType::Uint8),
-				RowShapeField::unconstrained("quote", ValueType::Uint8),
-				RowShapeField::unconstrained("v", ValueType::Float8),
-			],
-		);
-		fn r(s: &RowShape, rn: u64, base: u64, quote: u64, v: f64) -> Row {
-			TestRowBuilder::new(RowNumber(rn))
-				.with_shape(s.clone())
+		let s = vec![
+			RowShapeField::unconstrained("base", ValueType::Uint8),
+			RowShapeField::unconstrained("quote", ValueType::Uint8),
+			RowShapeField::unconstrained("v", ValueType::Float8),
+		];
+		fn r(s: &[RowShapeField], rn: u64, base: u64, quote: u64, v: f64) -> Row {
+			TestOperatorRowBuilder::new(RowNumber(rn))
+				.with_fields(s.to_vec())
 				.with_values(vec![Value::uint8(base), Value::uint8(quote), Value::float8(v)])
 				.build()
 		}
@@ -281,7 +274,7 @@ mod tests {
 
 	#[test]
 	fn materialize_batches_inserts_updates_removes() {
-		let s = shape();
+		let s = fields();
 		let row1 = build_row(1, 7, 1.0);
 		let row2 = build_row(1, 7, 2.5);
 		let events = vec![
@@ -318,18 +311,15 @@ mod tests {
 	fn datetime_and_duration_columns_survive_materialization() {
 		// A temporal column that falls through to Value::none_of turns the operator's emitted
 		// window_start into none, and output-key comparison then misses the row entirely.
-		let s = RowShape::new(
-			RowFamily::Deprecated,
-			vec![
-				RowShapeField::unconstrained("window_start", ValueType::DateTime),
-				RowShapeField::unconstrained("window_duration", ValueType::Duration),
-				RowShapeField::unconstrained("v", ValueType::Float8),
-			],
-		);
+		let s = vec![
+			RowShapeField::unconstrained("window_start", ValueType::DateTime),
+			RowShapeField::unconstrained("window_duration", ValueType::Duration),
+			RowShapeField::unconstrained("v", ValueType::Float8),
+		];
 		let window_start = DateTime::from_epoch_secs(1_700_000_000).unwrap();
 		let window_duration = Duration::from_seconds(60).unwrap();
-		let row = TestRowBuilder::new(RowNumber(1))
-			.with_shape(s.clone())
+		let row = TestOperatorRowBuilder::new(RowNumber(1))
+			.with_fields(s.clone())
 			.with_values(vec![
 				Value::datetime(window_start),
 				Value::duration(window_duration),
@@ -356,18 +346,15 @@ mod tests {
 	fn date_and_time_columns_survive_materialization() {
 		// Same round-trip requirement for Date and Time: falling through to Value::none_of
 		// erases the emitted column and output-key comparison misses the row.
-		let s = RowShape::new(
-			RowFamily::Deprecated,
-			vec![
-				RowShapeField::unconstrained("window_date", ValueType::Date),
-				RowShapeField::unconstrained("window_time", ValueType::Time),
-				RowShapeField::unconstrained("v", ValueType::Float8),
-			],
-		);
+		let s = vec![
+			RowShapeField::unconstrained("window_date", ValueType::Date),
+			RowShapeField::unconstrained("window_time", ValueType::Time),
+			RowShapeField::unconstrained("v", ValueType::Float8),
+		];
 		let window_date = Date::new(2024, 3, 15).unwrap();
 		let window_time = Time::new(14, 30, 45, 0).unwrap();
-		let row = TestRowBuilder::new(RowNumber(1))
-			.with_shape(s.clone())
+		let row = TestOperatorRowBuilder::new(RowNumber(1))
+			.with_fields(s.clone())
 			.with_values(vec![Value::date(window_date), Value::time(window_time), Value::float8(1.5_f64)])
 			.build();
 		let events = vec![ChaosEvent::Insert {

@@ -448,9 +448,14 @@ impl Columns {
 		}
 
 		let row_numbers: Vec<RowNumber> = ids.to_vec();
-		let created_at: Vec<DateTime> = bytes_slice.iter().map(|r| r.created_at()).collect();
-		let updated_at: Vec<DateTime> = bytes_slice.iter().map(|r| r.updated_at()).collect();
-		let time: Vec<DateTime> = bytes_slice.iter().filter_map(|r| r.time()).collect();
+		let (created_at, updated_at): (Vec<DateTime>, Vec<DateTime>) = match shape.family() {
+			RowFamily::Operator => (Vec::new(), Vec::new()),
+			_ => (
+				bytes_slice.iter().map(|r| shape.created_at(r)).collect(),
+				bytes_slice.iter().map(|r| shape.updated_at(r)).collect(),
+			),
+		};
+		let time: Vec<DateTime> = bytes_slice.iter().filter_map(|r| shape.time(r)).collect();
 
 		Self::with_system(
 			columns_vec,
@@ -622,12 +627,17 @@ impl Columns {
 		self.columns.reserve(field_count);
 		self.names.reserve(field_count);
 
+		let (created_at, updated_at) = match row.shape.family() {
+			RowFamily::Operator => (None, None),
+			_ => (Some(row.shape.created_at(&row.encoded)), Some(row.shape.updated_at(&row.encoded))),
+		};
+
 		self.system.push(RowStamps {
 			row_number: Some(row.number),
 			partition: None,
-			created_at: row.encoded.created_at(),
-			updated_at: row.encoded.updated_at(),
-			time: row.encoded.time(),
+			created_at,
+			updated_at,
+			time: row.shape.time(&row.encoded),
 		});
 
 		for (idx, field) in row.shape.fields().iter().enumerate() {

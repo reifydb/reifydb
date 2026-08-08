@@ -600,7 +600,7 @@ pub mod tests {
 		super::helpers::{encode_key, probe_row_key},
 		*,
 	};
-	use crate::builders::{TestChangeBuilder, TestRowBuilder};
+	use crate::builders::{TestChangeBuilder, TestOperatorRowBuilder};
 
 	struct TestOperator {
 		_node_id: OperatorId,
@@ -823,7 +823,7 @@ pub mod tests {
 		assert_eq!(harness[0].diffs.len(), 1);
 		assert_eq!(harness[1].diffs.len(), 1);
 
-		harness.insert(TestRowBuilder::new(3).add_value(Value::Int8(3i64)).build());
+		harness.insert(TestOperatorRowBuilder::new(3).add_value(Value::Int8(3i64)).build());
 		assert_eq!(harness.history_len(), 3);
 
 		assert!(harness.last_change().is_some());

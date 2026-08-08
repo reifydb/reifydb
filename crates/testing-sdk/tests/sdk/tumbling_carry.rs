@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::shape::{RowFamily, RowShape, RowShapeField},
+	row::shape::RowShapeField,
 };
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize, row::Row as CoreRow};
 use reifydb_flow::window::{
@@ -23,7 +23,7 @@ use reifydb_sdk::{
 	row,
 };
 use reifydb_testing_sdk::{
-	builders::{TestChangeBuilder, TestRowBuilder},
+	builders::{TestChangeBuilder, TestOperatorRowBuilder},
 	harness::FFIOperatorHarnessBuilder,
 };
 use reifydb_value::{
@@ -110,15 +110,12 @@ impl TumblingCarryRegistration for TestCarry {
 	}
 }
 
-fn input_shape() -> RowShape {
-	RowShape::new(
-		RowFamily::Deprecated,
-		vec![
-			RowShapeField::unconstrained("group", ValueType::Utf8),
-			RowShapeField::unconstrained("ts", ValueType::Uint8),
-			RowShapeField::unconstrained("price", ValueType::Float8),
-		],
-	)
+fn input_fields() -> Vec<RowShapeField> {
+	vec![
+		RowShapeField::unconstrained("group", ValueType::Utf8),
+		RowShapeField::unconstrained("ts", ValueType::Uint8),
+		RowShapeField::unconstrained("price", ValueType::Float8),
+	]
 }
 
 fn input_row(rn: u64, group: &str, ts: u64, price: f64) -> CoreRow {
@@ -126,9 +123,9 @@ fn input_row(rn: u64, group: &str, ts: u64, price: f64) -> CoreRow {
 	// stamped as the row's time and kept as a column only because the accumulator keys its
 	// retained observations by it. An unstamped row would sit at the epoch and every window
 	// here would silently collapse into one bucket.
-	TestRowBuilder::new(rn)
+	TestOperatorRowBuilder::new(rn)
 		.with_values(vec![Value::Utf8(group.into()), Value::Uint8(ts), Value::float8(price)])
-		.with_shape(input_shape())
+		.with_fields(input_fields())
 		.with_time(DateTime::from_millis(ts))
 		.build()
 }

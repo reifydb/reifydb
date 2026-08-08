@@ -20,14 +20,17 @@ use std::{
 
 use reifydb_value::{
 	reifydb_assertions,
-	value::{constraint::TypeConstraint, value_type::ValueType},
+	value::{constraint::TypeConstraint, datetime::DateTime, value_type::ValueType},
 };
 use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 
-use super::bytes::{CATALOG_HEADER_SIZE, EncodedRowBuilder, SHAPE_HEADER_SIZE, read_defined_at};
+use super::bytes::{
+	CATALOG_HEADER_SIZE, EncodedRowBuilder, SHAPE_HEADER_SIZE, read_created_at, read_defined_at, read_storage_time,
+	read_updated_at,
+};
 use crate::row::{
-	operator::OPERATOR_HEADER_SIZE,
+	operator::{OPERATOR_HEADER_SIZE, read_time as read_operator_time, write_time as write_operator_time},
 	shape::fingerprint::{RowShapeFingerprint, compute_fingerprint},
 };
 
@@ -223,6 +226,38 @@ impl RowShape {
 		row.set_valid_at(self.header_size(), index, valid);
 	}
 
+	#[inline]
+	pub fn time(&self, row: &[u8]) -> Option<DateTime> {
+		match self.family {
+			RowFamily::Operator => read_operator_time(row),
+			_ => read_storage_time(row),
+		}
+	}
+
+	#[inline]
+	pub fn set_time(&self, row: &mut EncodedRowBuilder, time: DateTime) {
+		match self.family {
+			RowFamily::Operator => write_operator_time(row.as_mut_slice(), time),
+			_ => row.set_time(time),
+		}
+	}
+
+	#[inline]
+	pub fn created_at(&self, row: &[u8]) -> DateTime {
+		match self.family {
+			RowFamily::Operator => panic!("operator rows carry no created_at"),
+			_ => read_created_at(row),
+		}
+	}
+
+	#[inline]
+	pub fn updated_at(&self, row: &[u8]) -> DateTime {
+		match self.family {
+			RowFamily::Operator => panic!("operator rows carry no updated_at"),
+			_ => read_updated_at(row),
+		}
+	}
+
 	fn get_cached_layout(&self) -> usize {
 		*self.cached_layout.get_or_init(|| match self.fields.last() {
 			Some(last) => last.offset as usize + last.size as usize,
@@ -378,7 +413,10 @@ impl RowShape {
 	pub fn allocate(&self) -> EncodedRowBuilder {
 		let total_size = self.get_cached_layout();
 		let mut row = EncodedRowBuilder::zeroed(total_size);
-		row.set_fingerprint(self.fingerprint);
+		match self.family {
+			RowFamily::Operator => write_operator_time(row.as_mut_slice(), DateTime::MAX),
+			_ => row.set_fingerprint(self.fingerprint),
+		}
 		reifydb_assertions! {
 			assert!(
 				row.len() == total_size,

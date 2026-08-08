@@ -66,7 +66,68 @@ impl TestRowBuilder {
 		let mut encoded = shape.allocate();
 		shape.set_values(&mut encoded, &self.values);
 		if let Some(time) = self.time {
-			encoded.set_time(time);
+			shape.set_time(&mut encoded, time);
+		}
+
+		Row {
+			number: self.row_number,
+			encoded: encoded.freeze(),
+			shape,
+		}
+	}
+}
+
+pub struct TestOperatorRowBuilder {
+	row_number: RowNumber,
+	values: Vec<Value>,
+	fields: Option<Vec<RowShapeField>>,
+	time: Option<DateTime>,
+}
+
+impl TestOperatorRowBuilder {
+	pub fn new(row_number: impl Into<RowNumber>) -> Self {
+		Self {
+			row_number: row_number.into(),
+			values: Vec::new(),
+			fields: None,
+			time: None,
+		}
+	}
+
+	pub fn with_time(mut self, time: DateTime) -> Self {
+		self.time = Some(time);
+		self
+	}
+
+	pub fn with_values(mut self, values: Vec<Value>) -> Self {
+		self.values = values;
+		self
+	}
+
+	pub fn add_value(mut self, value: Value) -> Self {
+		self.values.push(value);
+		self
+	}
+
+	pub fn with_fields(mut self, fields: Vec<RowShapeField>) -> Self {
+		self.fields = Some(fields);
+		self
+	}
+
+	pub fn build(self) -> Row {
+		let fields = self.fields.unwrap_or_else(|| {
+			self.values
+				.iter()
+				.enumerate()
+				.map(|(i, v)| RowShapeField::unconstrained(format!("field{}", i), v.get_type()))
+				.collect()
+		});
+		let shape = RowShape::new(RowFamily::Operator, fields);
+
+		let mut encoded = shape.allocate();
+		shape.set_values(&mut encoded, &self.values);
+		if let Some(time) = self.time {
+			shape.set_time(&mut encoded, time);
 		}
 
 		Row {
@@ -126,7 +187,7 @@ impl TestChangeBuilder {
 	}
 
 	pub fn insert_row(self, row_number: impl Into<RowNumber>, values: Vec<Value>) -> Self {
-		let row = TestRowBuilder::new(row_number).with_values(values).build();
+		let row = TestOperatorRowBuilder::new(row_number).with_values(values).build();
 		self.insert(row)
 	}
 
@@ -142,8 +203,8 @@ impl TestChangeBuilder {
 		post_values: Vec<Value>,
 	) -> Self {
 		let row_number = row_number.into();
-		let pre = TestRowBuilder::new(row_number).with_values(pre_values).build();
-		let post = TestRowBuilder::new(row_number).with_values(post_values).build();
+		let pre = TestOperatorRowBuilder::new(row_number).with_values(pre_values).build();
+		let post = TestOperatorRowBuilder::new(row_number).with_values(post_values).build();
 		self.update(pre, post)
 	}
 
@@ -153,7 +214,7 @@ impl TestChangeBuilder {
 	}
 
 	pub fn remove_row(self, row_number: impl Into<RowNumber>, values: Vec<Value>) -> Self {
-		let row = TestRowBuilder::new(row_number).with_values(values).build();
+		let row = TestOperatorRowBuilder::new(row_number).with_values(values).build();
 		self.remove(row)
 	}
 

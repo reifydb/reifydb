@@ -8,24 +8,23 @@
 //! whatever the source stamped. Every assertion here is about the substrate, not about any
 //! particular operator.
 
-use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
+use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::value::column::columns::Columns;
 use reifydb_sdk::operator::view::{ColumnsView, RowView, native::NativeColumnsView};
-use reifydb_testing_sdk::builders::TestRowBuilder;
+use reifydb_testing_sdk::builders::TestOperatorRowBuilder;
 use reifydb_value::value::{Value, datetime::DateTime, value_type::ValueType};
 
-fn shape() -> RowShape {
-	RowShape::new(
-		RowFamily::Deprecated,
-		vec![
-			RowShapeField::unconstrained("group", ValueType::Utf8),
-			RowShapeField::unconstrained("price", ValueType::Float8),
-		],
-	)
+fn fields() -> Vec<RowShapeField> {
+	vec![
+		RowShapeField::unconstrained("group", ValueType::Utf8),
+		RowShapeField::unconstrained("price", ValueType::Float8),
+	]
 }
 
-fn row(rn: u64, group: &str, price: f64) -> TestRowBuilder {
-	TestRowBuilder::new(rn).with_values(vec![Value::Utf8(group.into()), Value::float8(price)]).with_shape(shape())
+fn row(rn: u64, group: &str, price: f64) -> TestOperatorRowBuilder {
+	TestOperatorRowBuilder::new(rn)
+		.with_values(vec![Value::Utf8(group.into()), Value::float8(price)])
+		.with_fields(fields())
 }
 
 #[test]

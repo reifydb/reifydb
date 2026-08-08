@@ -6,7 +6,7 @@ use std::{cmp::Ordering, collections::BTreeMap};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::shape::{RowFamily, RowShape, RowShapeField},
+	row::shape::RowShapeField,
 };
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize, row::Row as CoreRow};
 use reifydb_flow::window::accumulator::{
@@ -23,7 +23,7 @@ use reifydb_sdk::{
 	row,
 };
 use reifydb_testing_sdk::{
-	builders::{TestChangeBuilder, TestRowBuilder},
+	builders::{TestChangeBuilder, TestOperatorRowBuilder},
 	harness::FFIOperatorHarnessBuilder,
 };
 use reifydb_value::{
@@ -126,30 +126,27 @@ impl RollingTopKRegistration for TestTopVolume {
 	}
 }
 
-fn input_shape() -> RowShape {
-	RowShape::new(
-		RowFamily::Deprecated,
-		vec![
-			RowShapeField::unconstrained("group", ValueType::Utf8),
-			RowShapeField::unconstrained("window_start", ValueType::Uint8),
-			RowShapeField::unconstrained("trader", ValueType::Uint8),
-			RowShapeField::unconstrained("volume", ValueType::Float8),
-		],
-	)
+fn input_fields() -> Vec<RowShapeField> {
+	vec![
+		RowShapeField::unconstrained("group", ValueType::Utf8),
+		RowShapeField::unconstrained("window_start", ValueType::Uint8),
+		RowShapeField::unconstrained("trader", ValueType::Uint8),
+		RowShapeField::unconstrained("volume", ValueType::Float8),
+	]
 }
 
 fn input_row(rn: u64, group: &str, window_start: u64, trader: u64, volume: f64) -> CoreRow {
 	// #time is stamped from the same coordinate the fixture buckets on, so these tests assert
 	// the same thing before and after the window coordinate moves onto #time. Leaving it
 	// unstamped would park every row at the epoch and collapse all windows into one bucket.
-	TestRowBuilder::new(rn)
+	TestOperatorRowBuilder::new(rn)
 		.with_values(vec![
 			Value::Utf8(group.into()),
 			Value::Uint8(window_start),
 			Value::Uint8(trader),
 			Value::float8(volume),
 		])
-		.with_shape(input_shape())
+		.with_fields(input_fields())
 		.with_time(DateTime::from_millis(window_start))
 		.build()
 }

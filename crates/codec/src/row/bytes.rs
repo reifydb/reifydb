@@ -194,6 +194,21 @@ fn read_time(buf: &[u8]) -> Option<DateTime> {
 	(buf[FLAGS_OFFSET] & HAS_TIME != 0).then(|| read_stamp(buf, TIME_OFFSET))
 }
 
+#[inline]
+pub fn read_storage_time(buf: &[u8]) -> Option<DateTime> {
+	read_time(buf)
+}
+
+#[inline]
+pub fn read_created_at(buf: &[u8]) -> DateTime {
+	read_stamp(buf, CREATED_AT_OFFSET)
+}
+
+#[inline]
+pub fn read_updated_at(buf: &[u8]) -> DateTime {
+	read_stamp(buf, UPDATED_AT_OFFSET)
+}
+
 impl EncodedBytes {
 	pub fn thaw(self) -> EncodedRowBuilder {
 		EncodedRowBuilder(self.0.into_inner())

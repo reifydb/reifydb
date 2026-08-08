@@ -14,7 +14,7 @@ use reifydb_value::value::{
 use super::schema::ChaosSchema;
 #[cfg(test)]
 use super::schema::KeyStrategy;
-use crate::builders::TestRowBuilder;
+use crate::builders::TestOperatorRowBuilder;
 
 pub type ColumnSampler = Arc<dyn Fn(&mut StdRng) -> Value + Send + Sync>;
 
@@ -165,7 +165,8 @@ pub fn encode_row(schema: &ChaosSchema, content: &RowContent, row_number: RowNum
 		.map(|f| content.get(&f.name).cloned().unwrap_or_else(|| Value::none_of(f.constraint.get_type())))
 		.collect();
 
-	let mut builder = TestRowBuilder::new(row_number).with_values(values).with_shape(schema.input_shape.clone());
+	let mut builder =
+		TestOperatorRowBuilder::new(row_number).with_values(values).with_fields(schema.input_shape.fields().to_vec());
 	if let Some(column) = &schema.time_column {
 		builder = builder.with_time(row_time(schema, content, column));
 	}

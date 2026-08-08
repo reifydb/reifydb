@@ -138,14 +138,6 @@ impl<'a> RowView for NativeRowView<'a> {
 		self.columns.row_numbers().get(self.index).copied()
 	}
 
-	fn created_at(&self) -> Option<DateTime> {
-		self.columns.created_at().get(self.index).copied()
-	}
-
-	fn updated_at(&self) -> Option<DateTime> {
-		self.columns.updated_at().get(self.index).copied()
-	}
-
 	fn row_time(&self) -> Option<DateTime> {
 		self.columns.time().get(self.index).copied()
 	}

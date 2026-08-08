@@ -6,7 +6,7 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
 		bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
-		shape::{RowFamily, RowShape, RowShapeField},
+		shape::RowShapeField,
 	},
 };
 use reifydb_core::{
@@ -14,7 +14,7 @@ use reifydb_core::{
 	key::{EncodableKey, row::RowKey},
 	row::Row,
 };
-use reifydb_testing_sdk::builders::TestChangeBuilder;
+use reifydb_testing_sdk::builders::{TestChangeBuilder, TestOperatorRowBuilder};
 use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{Value, row_number::RowNumber, value_type::ValueType},
@@ -25,15 +25,10 @@ pub const STORE_TABLE: u64 = 4096;
 pub const STORE_ROW_COUNT: u64 = 1500;
 
 pub fn ts_row(row_number: u64, timestamp: i64) -> Row {
-	let shape =
-		RowShape::new(RowFamily::Deprecated, vec![RowShapeField::unconstrained("timestamp", ValueType::Int8)]);
-	let mut encoded = shape.allocate();
-	shape.set_values(&mut encoded, &[Value::Int8(timestamp)]);
-	Row {
-		number: RowNumber(row_number),
-		encoded: encoded.freeze(),
-		shape,
-	}
+	TestOperatorRowBuilder::new(RowNumber(row_number))
+		.with_fields(vec![RowShapeField::unconstrained("timestamp", ValueType::Int8)])
+		.with_values(vec![Value::Int8(timestamp)])
+		.build()
 }
 
 pub fn window_change(row_number: u64, timestamp: i64) -> Change {

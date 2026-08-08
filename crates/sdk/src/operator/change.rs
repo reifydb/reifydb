@@ -134,28 +134,6 @@ impl<'a> BorrowedColumns<'a> {
 		}
 	}
 
-	pub fn created_at(&self) -> &'a [u64] {
-		if self.ffi.created_at.is_null() || self.ffi.row_count == 0 {
-			&[]
-		} else {
-			// SAFETY: `created_at` is non-null here and a non-empty system sidecar holds exactly
-			// `row_count` entries (`Columns::with_system` asserts it); `DateTime` is
-			// `repr(transparent)` over `u64`.
-			unsafe { slice::from_raw_parts(self.ffi.created_at, self.ffi.row_count) }
-		}
-	}
-
-	pub fn updated_at(&self) -> &'a [u64] {
-		if self.ffi.updated_at.is_null() || self.ffi.row_count == 0 {
-			&[]
-		} else {
-			// SAFETY: `updated_at` is non-null here and a non-empty system sidecar holds exactly
-			// `row_count` entries (`Columns::with_system` asserts it); `DateTime` is
-			// `repr(transparent)` over `u64`.
-			unsafe { slice::from_raw_parts(self.ffi.updated_at, self.ffi.row_count) }
-		}
-	}
-
 	pub fn time(&self) -> &'a [u64] {
 		if self.ffi.time.is_null() || self.ffi.row_count == 0 {
 			&[]

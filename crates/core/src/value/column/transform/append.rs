@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
+use reifydb_codec::row::{
+	bytes::EncodedBytes,
+	shape::{RowFamily, RowShape},
+};
 use reifydb_value::{
 	Result, reifydb_assertions,
 	util::bitvec::BitVec,
@@ -83,7 +86,7 @@ impl Columns {
 			);
 		}
 
-		self.push_system_columns(&bytes_vec, &row_numbers);
+		self.push_system_columns(shape, &bytes_vec, &row_numbers);
 		self.retype_all_none_columns(shape);
 		self.append_each_bytes(shape, &bytes_vec)
 	}
@@ -119,14 +122,19 @@ impl Columns {
 	}
 
 	#[inline]
-	fn push_system_columns(&mut self, bytes_slice: &[EncodedBytes], row_numbers: &[RowNumber]) {
+	fn push_system_columns(&mut self, shape: &RowShape, bytes_slice: &[EncodedBytes], row_numbers: &[RowNumber]) {
 		for (index, row) in bytes_slice.iter().enumerate() {
+			let (created_at, updated_at) = match shape.family() {
+				RowFamily::Operator => (None, None),
+				_ => (Some(shape.created_at(row)), Some(shape.updated_at(row))),
+			};
+
 			self.system.push(RowStamps {
 				row_number: row_numbers.get(index).copied(),
 				partition: None,
-				created_at: row.created_at(),
-				updated_at: row.updated_at(),
-				time: row.time(),
+				created_at,
+				updated_at,
+				time: shape.time(row),
 			});
 		}
 	}

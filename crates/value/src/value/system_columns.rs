@@ -23,8 +23,8 @@ pub struct SystemColumns {
 pub struct RowStamps {
 	pub row_number: Option<RowNumber>,
 	pub partition: Option<Partition>,
-	pub created_at: DateTime,
-	pub updated_at: DateTime,
+	pub created_at: Option<DateTime>,
+	pub updated_at: Option<DateTime>,
 	pub time: Option<DateTime>,
 }
 
@@ -310,8 +310,12 @@ impl SystemColumns {
 		if let Some(partition) = partition {
 			self.partitions.push(partition);
 		}
-		self.created_at.push(created_at);
-		self.updated_at.push(updated_at);
+		if let Some(created_at) = created_at {
+			self.created_at.push(created_at);
+		}
+		if let Some(updated_at) = updated_at {
+			self.updated_at.push(updated_at);
+		}
 		if let Some(time) = time {
 			self.time.push(time);
 		}
@@ -571,8 +575,8 @@ mod tests {
 		acc.push(RowStamps {
 			row_number: Some(RowNumber::from(7)),
 			partition: Some(partition(2)),
-			created_at: dt(10),
-			updated_at: dt(20),
+			created_at: Some(dt(10)),
+			updated_at: Some(dt(20)),
 			time: Some(dt(30)),
 		});
 
@@ -594,8 +598,8 @@ mod tests {
 			acc.push(RowStamps {
 				row_number: Some(RowNumber::from(i + 1)),
 				partition: None,
-				created_at: dt(10),
-				updated_at: dt(20),
+				created_at: Some(dt(10)),
+				updated_at: Some(dt(20)),
 				time: None,
 			});
 		}
@@ -613,8 +617,8 @@ mod tests {
 		untimed.push(RowStamps {
 			row_number: Some(RowNumber::from(1)),
 			partition: None,
-			created_at: dt(10),
-			updated_at: dt(20),
+			created_at: Some(dt(10)),
+			updated_at: Some(dt(20)),
 			time: None,
 		});
 
@@ -622,8 +626,8 @@ mod tests {
 		timed.push(RowStamps {
 			row_number: Some(RowNumber::from(2)),
 			partition: None,
-			created_at: dt(10),
-			updated_at: dt(20),
+			created_at: Some(dt(10)),
+			updated_at: Some(dt(20)),
 			time: Some(dt(30)),
 		});
 
