@@ -178,20 +178,23 @@ fn encode_type_constraint(constraint: &TypeConstraint) -> (u8, u8, u32, u32) {
 mod tests {
 	use std::{slice::from_raw_parts, str::from_utf8};
 
+	use reifydb_codec::row::shape::RowFamily;
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 
 	#[test]
 	fn marshal_row_shape_emits_fingerprint_field_count_and_per_field_layout() {
-		// The wire format the SDK reads back: dropping the fingerprint or reordering the
-		// (offset, size, align) triple makes every downstream FFI operator decode into the
-		// wrong slots, silently.
-		let shape = RowShape::new(vec![
-			RowShapeField::new("id", TypeConstraint::unconstrained(ValueType::Uint8)),
-			RowShapeField::new("mint", TypeConstraint::unconstrained(ValueType::Utf8)),
-			RowShapeField::new("decimals", TypeConstraint::unconstrained(ValueType::Uint1)),
-		]);
+		// Dropping the fingerprint or reordering the (offset, size) pair makes every downstream FFI operator
+		// decode into the wrong slots, silently.
+		let shape = RowShape::new(
+			RowFamily::Deprecated,
+			vec![
+				RowShapeField::new("id", TypeConstraint::unconstrained(ValueType::Uint8)),
+				RowShapeField::new("mint", TypeConstraint::unconstrained(ValueType::Utf8)),
+				RowShapeField::new("decimals", TypeConstraint::unconstrained(ValueType::Uint1)),
+			],
+		);
 
 		let ffi = marshal_row_shape(&shape).expect("marshal must not allocate-fail for a 3-field shape");
 

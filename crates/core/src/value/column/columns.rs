@@ -9,7 +9,7 @@ use std::{
 use indexmap::IndexMap;
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
-	shape::{RowShape, RowShapeField},
+	shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_value::{
 	Result,
@@ -678,7 +678,7 @@ impl Columns {
 			.map(|(name, data)| RowShapeField::unconstrained(name.text().to_string(), data.get_type()))
 			.collect();
 
-		let layout = RowShape::new(fields);
+		let layout = RowShape::new(RowFamily::Deprecated, fields);
 		let mut encoded = layout.allocate();
 
 		let values: Vec<Value> = self.columns.iter().map(|col| col.get_value(0)).collect();

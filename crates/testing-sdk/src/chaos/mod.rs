@@ -327,7 +327,7 @@ impl IntoColumnSampler for Range<f64> {
 #[cfg(test)]
 mod tests {
 	use reifydb_abi::operator::capabilities::OperatorCapability;
-	use reifydb_codec::row::shape::{RowShape, RowShapeField};
+	use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 	use reifydb_sdk::{
 		config::Config,
 		error::Result,
@@ -366,7 +366,10 @@ mod tests {
 	}
 
 	fn shape(fields: &[(&str, ValueType)]) -> RowShape {
-		RowShape::new(fields.iter().map(|(n, t)| RowShapeField::unconstrained(*n, t.clone())).collect())
+		RowShape::new(
+			RowFamily::Deprecated,
+			fields.iter().map(|(n, t)| RowShapeField::unconstrained(*n, t.clone())).collect(),
+		)
 	}
 
 	#[test]

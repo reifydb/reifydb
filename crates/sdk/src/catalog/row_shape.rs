@@ -7,7 +7,7 @@ use reifydb_abi::{
 	catalog::row_shape::{RowShapeFFI, RowShapeFieldFFI},
 	constants::{FFI_NOT_FOUND, FFI_OK},
 };
-use reifydb_codec::row::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint};
+use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint};
 #[cfg(test)]
 use reifydb_codec::tag::type_tag_byte;
 
@@ -65,7 +65,7 @@ unsafe fn unmarshal_row_shape(ffi_shape: &RowShapeFFI) -> Result<RowShape, SdkEr
 		Vec::new()
 	};
 
-	Ok(RowShape::from_parts(RowShapeFingerprint::new(ffi_shape.fingerprint), fields))
+	Ok(RowShape::from_parts(RowFamily::Deprecated, RowShapeFingerprint::new(ffi_shape.fingerprint), fields))
 }
 
 /// # Safety
@@ -126,11 +126,14 @@ mod tests {
 	fn unmarshal_round_trips_a_three_field_shape() {
 		// Misreading a type constraint or offset here has downstream operators silently reading the wrong
 		// bytes, which is the failure mode the shape exists to prevent.
-		let original = RowShape::new(vec![
-			RowShapeField::new("id", TypeConstraint::unconstrained(ValueType::Uint8)),
-			RowShapeField::new("mint", TypeConstraint::unconstrained(ValueType::Utf8)),
-			RowShapeField::new("decimals", TypeConstraint::unconstrained(ValueType::Uint1)),
-		]);
+		let original = RowShape::new(
+			RowFamily::Deprecated,
+			vec![
+				RowShapeField::new("id", TypeConstraint::unconstrained(ValueType::Uint8)),
+				RowShapeField::new("mint", TypeConstraint::unconstrained(ValueType::Utf8)),
+				RowShapeField::new("decimals", TypeConstraint::unconstrained(ValueType::Uint1)),
+			],
+		);
 
 		let (id_name, _id_keep) = make_name_buffer("id");
 		let (mint_name, _mint_keep) = make_name_buffer("mint");

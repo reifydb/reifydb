@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::{RowShape, RowShapeField};
+use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::{interface::change::Change, row::Row};
 use reifydb_testing_sdk::builders::{TestChangeBuilder, TestRowBuilder};
 use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType};
 
 pub fn shape() -> RowShape {
-	RowShape::new(vec![
-		RowShapeField::unconstrained("g".to_string(), ValueType::Int4),
-		RowShapeField::unconstrained("v".to_string(), ValueType::Int8),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			RowShapeField::unconstrained("g".to_string(), ValueType::Int4),
+			RowShapeField::unconstrained("v".to_string(), ValueType::Int8),
+		],
+	)
 }
 
 pub fn row(number: RowNumber, group: i32, value: i64, at: DateTime) -> Row {

@@ -8,10 +8,7 @@ use reifydb_value::{
 	value::{constraint::Constraint, dictionary::DictionaryEntryId, value_type::ValueType},
 };
 
-use crate::row::{
-	bytes::{EncodedRowBuilder, read_defined},
-	shape::RowShape,
-};
+use crate::row::{bytes::EncodedRowBuilder, shape::RowShape};
 
 impl RowShape {
 	pub fn set_dictionary_id(&self, row: &mut EncodedRowBuilder, index: usize, entry: &DictionaryEntryId) {
@@ -25,7 +22,7 @@ impl RowShape {
 			);
 			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::DictionaryId);
 		}
-		row.set_valid(index, true);
+		self.set_valid(row, index, true);
 		// SAFETY: row.len() >= total_static_size() puts the slot at field.offset inside the uniquely-owned
 		// buffer and it is at least as wide as the widest arm; write_unaligned needs no alignment.
 		unsafe {
@@ -72,7 +69,8 @@ impl RowShape {
 	}
 
 	pub fn try_get_dictionary_id(&self, row: &[u8], index: usize) -> Option<DictionaryEntryId> {
-		if read_defined(row, index) && self.fields()[index].constraint.get_type() == ValueType::DictionaryId {
+		if self.is_defined(row, index) && self.fields()[index].constraint.get_type() == ValueType::DictionaryId
+		{
 			Some(self.get_dictionary_id(row, index))
 		} else {
 			None

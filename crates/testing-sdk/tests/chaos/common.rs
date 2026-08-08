@@ -4,7 +4,7 @@
 #![allow(dead_code)]
 
 use reifydb_abi::{data::column::ColumnTypeCode, flow::diff::DiffType, operator::capabilities::OperatorCapability};
-use reifydb_codec::row::shape::{RowShape, RowShapeField};
+use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_sdk::{
 	config::Config,
@@ -211,20 +211,26 @@ fn byte_clone_columns(
 }
 
 pub fn simple_kv_shape() -> RowShape {
-	RowShape::new(vec![
-		RowShapeField::unconstrained("k", ValueType::Uint8),
-		RowShapeField::unconstrained("v", ValueType::Float8),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			RowShapeField::unconstrained("k", ValueType::Uint8),
+			RowShapeField::unconstrained("v", ValueType::Float8),
+		],
+	)
 }
 
 pub fn wide_shape() -> RowShape {
-	RowShape::new(vec![
-		RowShapeField::unconstrained("base", ValueType::Utf8),
-		RowShapeField::unconstrained("quote", ValueType::Utf8),
-		RowShapeField::unconstrained("slot", ValueType::Uint8),
-		RowShapeField::unconstrained("vol", ValueType::Float8),
-		RowShapeField::unconstrained("price", ValueType::Float8),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			RowShapeField::unconstrained("base", ValueType::Utf8),
+			RowShapeField::unconstrained("quote", ValueType::Utf8),
+			RowShapeField::unconstrained("slot", ValueType::Uint8),
+			RowShapeField::unconstrained("vol", ValueType::Float8),
+			RowShapeField::unconstrained("price", ValueType::Float8),
+		],
+	)
 }
 
 /// Identity oracle: the materialized state is exactly the events that came in.

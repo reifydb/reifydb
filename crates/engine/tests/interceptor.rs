@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::row::shape::{RowShape, RowShapeField};
+use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::row::row_shape_from_columns;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::{
@@ -124,10 +124,13 @@ fn test_dictionary_row_pre_insert_mutates_value() {
 }
 
 fn series_shape() -> RowShape {
-	RowShape::new(vec![
-		RowShapeField::new("ts", TypeConstraint::unconstrained(ValueType::Int8)),
-		RowShapeField::new("val", TypeConstraint::unconstrained(ValueType::Int8)),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			RowShapeField::new("ts", TypeConstraint::unconstrained(ValueType::Int8)),
+			RowShapeField::new("val", TypeConstraint::unconstrained(ValueType::Int8)),
+		],
+	)
 }
 
 #[test]
@@ -222,11 +225,14 @@ fn test_ringbuffer_row_pre_update_partition_change_rejected() {
 fn partitioned_series_shape() -> RowShape {
 	// Series storage is [key, ...data], not the declared column order, so a lookup by index
 	// within the declared columns would land on the key instead of the partition column.
-	RowShape::new(vec![
-		RowShapeField::new("ts", TypeConstraint::unconstrained(ValueType::Int8)),
-		RowShapeField::new("region", TypeConstraint::unconstrained(ValueType::Utf8)),
-		RowShapeField::new("n", TypeConstraint::unconstrained(ValueType::Int8)),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			RowShapeField::new("ts", TypeConstraint::unconstrained(ValueType::Int8)),
+			RowShapeField::new("region", TypeConstraint::unconstrained(ValueType::Utf8)),
+			RowShapeField::new("n", TypeConstraint::unconstrained(ValueType::Int8)),
+		],
+	)
 }
 
 #[test]

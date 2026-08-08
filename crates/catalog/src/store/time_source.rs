@@ -33,7 +33,7 @@ pub(crate) fn read_time_source(shape: &RowShape, row: &[u8], domain_index: usize
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::shape::RowShapeField;
+	use reifydb_codec::row::shape::{RowFamily, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
@@ -42,11 +42,14 @@ mod tests {
 	const TS: usize = 2;
 
 	fn shape() -> RowShape {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("name", ValueType::Utf8),
-			RowShapeField::unconstrained("time_domain", ValueType::Uint1),
-			RowShapeField::unconstrained("ts", ValueType::Utf8),
-		])
+		RowShape::new(
+			RowFamily::Catalog,
+			vec![
+				RowShapeField::unconstrained("name", ValueType::Utf8),
+				RowShapeField::unconstrained("time_domain", ValueType::Uint1),
+				RowShapeField::unconstrained("ts", ValueType::Utf8),
+			],
+		)
 	}
 
 	fn round_trip(time: &TimeSource) -> TimeSource {

@@ -8,10 +8,7 @@ use reifydb_value::{
 	value::{decimal::Decimal, value_type::ValueType},
 };
 
-use crate::row::{
-	bytes::{EncodedRowBuilder, read_defined},
-	shape::RowShape,
-};
+use crate::row::{bytes::EncodedRowBuilder, shape::RowShape};
 
 #[cfg(reifydb_assertions)]
 const MODE_DYNAMIC: u128 = 0x80000000000000000000000000000000;
@@ -80,7 +77,7 @@ impl RowShape {
 	}
 
 	pub fn try_get_decimal(&self, row: &[u8], index: usize) -> Option<Decimal> {
-		if read_defined(row, index)
+		if self.is_defined(row, index)
 			&& matches!(self.fields()[index].constraint.get_type().inner_type(), ValueType::Decimal)
 		{
 			Some(self.get_decimal(row, index))

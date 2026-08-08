@@ -63,7 +63,10 @@ fn resolve_populator(object: &str, columns: &[Column], ts: &str, shape: &RowShap
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShapeField};
+	use reifydb_codec::row::{
+		bytes::EncodedBytes,
+		shape::{RowFamily, RowShapeField},
+	};
 	use reifydb_core::interface::catalog::{
 		column::{Column, ColumnIndex},
 		id::ColumnId,
@@ -95,10 +98,13 @@ mod tests {
 	}
 
 	fn shape() -> RowShape {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("signature", ValueType::Utf8),
-			RowShapeField::unconstrained("block_time", ValueType::DateTime),
-		])
+		RowShape::new(
+			RowFamily::Deprecated,
+			vec![
+				RowShapeField::unconstrained("signature", ValueType::Utf8),
+				RowShapeField::unconstrained("block_time", ValueType::DateTime),
+			],
+		)
 	}
 
 	fn encoded_bytes(shape: &RowShape, block_time_nanos: u64) -> EncodedBytes {
@@ -193,10 +199,13 @@ mod tests {
 	#[test]
 	fn the_populator_is_resolved_by_name_not_by_position() {
 		// Resolving by position would pick the wrong column once another shares its type.
-		let shape = RowShape::new(vec![
-			RowShapeField::unconstrained("block_time", ValueType::DateTime),
-			RowShapeField::unconstrained("recorded_at", ValueType::DateTime),
-		]);
+		let shape = RowShape::new(
+			RowFamily::Deprecated,
+			vec![
+				RowShapeField::unconstrained("block_time", ValueType::DateTime),
+				RowShapeField::unconstrained("recorded_at", ValueType::DateTime),
+			],
+		);
 		let columns = vec![
 			column("block_time", ValueType::DateTime, 0),
 			column("recorded_at", ValueType::DateTime, 1),

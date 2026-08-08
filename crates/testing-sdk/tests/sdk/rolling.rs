@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::shape::{RowShape, RowShapeField},
+	row::shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize, row::Row as CoreRow};
 use reifydb_flow::window::accumulator::{WindowAccumulator, invertible::Moments};
@@ -127,11 +127,14 @@ impl RollingRegistration for TestRollingSum {
 }
 
 fn input_shape() -> RowShape {
-	RowShape::new(vec![
-		RowShapeField::unconstrained("group", ValueType::Utf8),
-		RowShapeField::unconstrained("window_start", ValueType::Uint8),
-		RowShapeField::unconstrained("value", ValueType::Float8),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			RowShapeField::unconstrained("group", ValueType::Utf8),
+			RowShapeField::unconstrained("window_start", ValueType::Uint8),
+			RowShapeField::unconstrained("value", ValueType::Float8),
+		],
+	)
 }
 
 fn input_row(rn: u64, group: &str, window_start: u64, value: f64) -> CoreRow {

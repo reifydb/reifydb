@@ -6,7 +6,7 @@ use std::{collections::HashSet, sync::LazyLock};
 use postcard::to_stdvec;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::shape::{RowShape, RowShapeField},
+	row::shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_core::{
 	interface::catalog::{column::Column, id::TableId, object::ObjectId, table::Table},
@@ -21,8 +21,9 @@ use reifydb_value::value::{Value, blob::Blob, partition::Partition, row_number::
 
 use crate::{Result, error::EngineError};
 
-static REGISTRY_SHAPE: LazyLock<RowShape> =
-	LazyLock::new(|| RowShape::new(vec![RowShapeField::unconstrained("values", ValueType::Blob)]));
+static REGISTRY_SHAPE: LazyLock<RowShape> = LazyLock::new(|| {
+	RowShape::new(RowFamily::Deprecated, vec![RowShapeField::unconstrained("values", ValueType::Blob)])
+});
 
 pub fn partition_col_indices(columns: &[Column], partition_by: &[String]) -> Vec<usize> {
 	partition_by

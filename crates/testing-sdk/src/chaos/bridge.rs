@@ -242,7 +242,7 @@ mod tests {
 	use std::ops::Range;
 
 	use reifydb_abi::flow::diff::DiffType;
-	use reifydb_codec::row::shape::{RowShape, RowShapeField};
+	use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 	use reifydb_testing_chaos::operator::{
 		drive::drive,
 		scenario::{BatchSize, Scenario, SupportedOps},
@@ -341,7 +341,10 @@ mod tests {
 	}
 
 	fn shape(fields: &[(&str, ValueType)]) -> RowShape {
-		RowShape::new(fields.iter().map(|(n, t)| RowShapeField::unconstrained(*n, t.clone())).collect())
+		RowShape::new(
+			RowFamily::Deprecated,
+			fields.iter().map(|(n, t)| RowShapeField::unconstrained(*n, t.clone())).collect(),
+		)
 	}
 
 	fn schema_with(key_strategy: KeyStrategy) -> Arc<ChaosSchema> {

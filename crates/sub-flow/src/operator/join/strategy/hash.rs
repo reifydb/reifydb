@@ -4,7 +4,7 @@
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
 	operator::EncodedOperatorRow,
-	shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
+	shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 };
 use reifydb_core::{
 	interface::{
@@ -119,7 +119,7 @@ pub(crate) fn build_shape(columns: &Columns) -> RowShape {
 		.zip(columns.columns.iter())
 		.map(|(name, buf)| RowShapeField::unconstrained(name.text().to_string(), buf.get_type()))
 		.collect();
-	RowShape::new(fields)
+	RowShape::new(RowFamily::Deprecated, fields)
 }
 
 pub(crate) fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize, now: DateTime) -> EncodedOperatorRow {

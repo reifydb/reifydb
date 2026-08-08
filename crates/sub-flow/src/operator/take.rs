@@ -12,7 +12,7 @@ use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
 	operator::{decode, encode_archive},
-	shape::{RowShape, RowShapeField},
+	shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_core::{
 	interface::{
@@ -68,7 +68,7 @@ fn row_shape_from_columns(cols: &Columns) -> RowShape {
 		.zip(cols.columns.iter())
 		.map(|(name, buf)| RowShapeField::unconstrained(name.text().to_string(), buf.get_type()))
 		.collect();
-	RowShape::new(fields)
+	RowShape::new(RowFamily::Deprecated, fields)
 }
 
 fn encode_take_bytes(shape: &RowShape, columns: &Columns, row_idx: usize) -> EncodedBytes {

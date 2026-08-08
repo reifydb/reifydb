@@ -11,7 +11,9 @@ use reifydb_codec::{
 	row::{
 		bytes::EncodedBytes,
 		operator::{EncodedOperatorRow, access_archive, encode_archive, materialize_archive},
-		shape::{RowShape, RowShapeField, cache::RowShapeCacheCell, fingerprint::RowShapeFingerprint},
+		shape::{
+			RowFamily, RowShape, RowShapeField, cache::RowShapeCacheCell, fingerprint::RowShapeFingerprint,
+		},
 	},
 };
 #[cfg(test)]
@@ -272,7 +274,7 @@ impl Store {
 							cause: e.to_string(),
 						})
 					})?;
-				let shape = RowShape::new(fields);
+				let shape = RowShape::new(RowFamily::Deprecated, fields);
 				self.shape_cache.insert(shape.clone());
 				Ok(Some(shape))
 			}

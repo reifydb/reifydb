@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::shape::{RowShape, RowShapeField},
+	row::shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize};
 use reifydb_flow::window::{
@@ -821,44 +821,59 @@ impl RollingRegistration for VelocityIncremental {
 }
 
 pub fn tumbling_shape() -> RowShape {
-	RowShape::new(vec![
-		RowShapeField::unconstrained("group", ValueType::Utf8),
-		RowShapeField::unconstrained("slot", ValueType::Uint8),
-		RowShapeField::unconstrained("size", ValueType::Float8),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			RowShapeField::unconstrained("group", ValueType::Utf8),
+			RowShapeField::unconstrained("slot", ValueType::Uint8),
+			RowShapeField::unconstrained("size", ValueType::Float8),
+		],
+	)
 }
 
 pub fn ohlcv_shape() -> RowShape {
-	RowShape::new(vec![
-		RowShapeField::unconstrained("group", ValueType::Utf8),
-		RowShapeField::unconstrained("slot", ValueType::Uint8),
-		RowShapeField::unconstrained("price", ValueType::Float8),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			RowShapeField::unconstrained("group", ValueType::Utf8),
+			RowShapeField::unconstrained("slot", ValueType::Uint8),
+			RowShapeField::unconstrained("price", ValueType::Float8),
+		],
+	)
 }
 
 pub fn rolling_shape() -> RowShape {
-	RowShape::new(vec![
-		RowShapeField::unconstrained("group", ValueType::Utf8),
-		RowShapeField::unconstrained("ts", ValueType::Uint8),
-		RowShapeField::unconstrained("value", ValueType::Float8),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			RowShapeField::unconstrained("group", ValueType::Utf8),
+			RowShapeField::unconstrained("ts", ValueType::Uint8),
+			RowShapeField::unconstrained("value", ValueType::Float8),
+		],
+	)
 }
 
 pub fn rolling_top_k_shape() -> RowShape {
-	RowShape::new(vec![
-		RowShapeField::unconstrained("group", ValueType::Utf8),
-		RowShapeField::unconstrained("ts", ValueType::Uint8),
-		RowShapeField::unconstrained("trader", ValueType::Uint8),
-		RowShapeField::unconstrained("volume", ValueType::Float8),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			RowShapeField::unconstrained("group", ValueType::Utf8),
+			RowShapeField::unconstrained("ts", ValueType::Uint8),
+			RowShapeField::unconstrained("trader", ValueType::Uint8),
+			RowShapeField::unconstrained("volume", ValueType::Float8),
+		],
+	)
 }
 
 pub fn carry_shape() -> RowShape {
-	RowShape::new(vec![
-		RowShapeField::unconstrained("group", ValueType::Utf8),
-		RowShapeField::unconstrained("ts", ValueType::Uint8),
-		RowShapeField::unconstrained("price", ValueType::Float8),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			RowShapeField::unconstrained("group", ValueType::Utf8),
+			RowShapeField::unconstrained("ts", ValueType::Uint8),
+			RowShapeField::unconstrained("price", ValueType::Float8),
+		],
+	)
 }
 
 fn field(name: &str, ty: ValueType) -> RowShapeField {
@@ -868,64 +883,85 @@ fn field(name: &str, ty: ValueType) -> RowShapeField {
 /// Output shapes only need to carry the `output_key` columns; the harness materializes the
 /// operator's real emitted columns. The rest is spelled out here for the reader.
 pub fn volume_out_shape() -> RowShape {
-	RowShape::new(vec![
-		field("group", ValueType::Utf8),
-		field("window_start", ValueType::Uint8),
-		field("volume", ValueType::Float8),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			field("group", ValueType::Utf8),
+			field("window_start", ValueType::Uint8),
+			field("volume", ValueType::Float8),
+		],
+	)
 }
 
 pub fn min_out_shape() -> RowShape {
-	RowShape::new(vec![
-		field("group", ValueType::Utf8),
-		field("window_start", ValueType::Uint8),
-		field("min", ValueType::Float8),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			field("group", ValueType::Utf8),
+			field("window_start", ValueType::Uint8),
+			field("min", ValueType::Float8),
+		],
+	)
 }
 
 pub fn ohlcv_out_shape() -> RowShape {
-	RowShape::new(vec![
-		field("group", ValueType::Utf8),
-		field("window_start", ValueType::Uint8),
-		field("open", ValueType::Float8),
-		field("high", ValueType::Float8),
-		field("low", ValueType::Float8),
-		field("close", ValueType::Float8),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			field("group", ValueType::Utf8),
+			field("window_start", ValueType::Uint8),
+			field("open", ValueType::Float8),
+			field("high", ValueType::Float8),
+			field("low", ValueType::Float8),
+			field("close", ValueType::Float8),
+		],
+	)
 }
 
 pub fn rolling_out_shape() -> RowShape {
-	RowShape::new(vec![
-		field("group", ValueType::Utf8),
-		field("rolling_sum", ValueType::Float8),
-		field("windows", ValueType::Uint4),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			field("group", ValueType::Utf8),
+			field("rolling_sum", ValueType::Float8),
+			field("windows", ValueType::Uint4),
+		],
+	)
 }
 
 pub fn top_out_shape() -> RowShape {
-	RowShape::new(vec![
-		field("group", ValueType::Utf8),
-		field("rank", ValueType::Uint4),
-		field("trader", ValueType::Uint8),
-		field("volume", ValueType::Float8),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			field("group", ValueType::Utf8),
+			field("rank", ValueType::Uint4),
+			field("trader", ValueType::Uint8),
+			field("volume", ValueType::Float8),
+		],
+	)
 }
 
 pub fn carry_out_shape() -> RowShape {
-	RowShape::new(vec![
-		field("group", ValueType::Utf8),
-		field("window_start", ValueType::Uint8),
-		field("sum", ValueType::Float8),
-		field("carry_in", ValueType::Float8),
-		field("has_carry", ValueType::Boolean),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			field("group", ValueType::Utf8),
+			field("window_start", ValueType::Uint8),
+			field("sum", ValueType::Float8),
+			field("carry_in", ValueType::Float8),
+			field("has_carry", ValueType::Boolean),
+		],
+	)
 }
 
 pub fn velocity_out_shape() -> RowShape {
-	RowShape::new(vec![
-		field("group", ValueType::Utf8),
-		field("recent", ValueType::Float8),
-		field("baseline", ValueType::Float8),
-		field("windows", ValueType::Uint4),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			field("group", ValueType::Utf8),
+			field("recent", ValueType::Float8),
+			field("baseline", ValueType::Float8),
+			field("windows", ValueType::Uint4),
+		],
+	)
 }

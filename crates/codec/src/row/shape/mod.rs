@@ -25,13 +25,33 @@ use reifydb_value::{
 use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 
-use super::bytes::{EncodedRowBuilder, SHAPE_HEADER_SIZE, read_defined};
-use crate::row::shape::fingerprint::{RowShapeFingerprint, compute_fingerprint};
+use super::bytes::{CATALOG_HEADER_SIZE, EncodedRowBuilder, SHAPE_HEADER_SIZE, read_defined_at};
+use crate::row::{
+	operator::OPERATOR_HEADER_SIZE,
+	shape::fingerprint::{RowShapeFingerprint, compute_fingerprint},
+};
 
 const PACKED_MODE_DYNAMIC: u128 = 0x80000000000000000000000000000000;
 const PACKED_MODE_MASK: u128 = 0x80000000000000000000000000000000;
 const PACKED_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF;
 const PACKED_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, RkyvArchive, RkyvSerialize, RkyvDeserialize)]
+pub enum RowFamily {
+	Deprecated,
+	Catalog,
+	Operator,
+}
+
+impl RowFamily {
+	pub const fn header_size(self) -> usize {
+		match self {
+			Self::Deprecated => SHAPE_HEADER_SIZE,
+			Self::Catalog => CATALOG_HEADER_SIZE,
+			Self::Operator => OPERATOR_HEADER_SIZE,
+		}
+	}
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RkyvArchive, RkyvSerialize, RkyvDeserialize)]
 pub struct RowShapeField {
@@ -66,6 +86,8 @@ pub struct RowShape(Arc<Inner>);
 pub struct Inner {
 	pub fingerprint: RowShapeFingerprint,
 
+	pub family: RowFamily,
+
 	pub fields: Vec<RowShapeField>,
 
 	#[serde(skip)]
@@ -74,7 +96,7 @@ pub struct Inner {
 
 impl PartialEq for Inner {
 	fn eq(&self, other: &Self) -> bool {
-		self.fingerprint == other.fingerprint && self.fields == other.fields
+		self.fingerprint == other.fingerprint && self.family == other.family && self.fields == other.fields
 	}
 }
 
@@ -109,23 +131,33 @@ impl PartialEq for RowShape {
 impl Eq for RowShape {}
 
 impl RowShape {
-	pub fn new(fields: Vec<RowShapeField>) -> Self {
-		let fields = Self::compute_layout(fields);
+	pub fn new(family: RowFamily, fields: Vec<RowShapeField>) -> Self {
+		let fields = Self::compute_layout(family, fields);
 		let fingerprint = compute_fingerprint(&fields);
 
 		Self(Arc::new(Inner {
 			fingerprint,
+			family,
 			fields,
 			cached_layout: OnceLock::new(),
 		}))
 	}
 
-	pub fn from_parts(fingerprint: RowShapeFingerprint, fields: Vec<RowShapeField>) -> Self {
+	pub fn from_parts(family: RowFamily, fingerprint: RowShapeFingerprint, fields: Vec<RowShapeField>) -> Self {
 		Self(Arc::new(Inner {
 			fingerprint,
+			family,
 			fields,
 			cached_layout: OnceLock::new(),
 		}))
+	}
+
+	pub fn family(&self) -> RowFamily {
+		self.family
+	}
+
+	pub fn header_size(&self) -> usize {
+		self.family.header_size()
 	}
 
 	pub fn fingerprint(&self) -> RowShapeFingerprint {
@@ -160,9 +192,9 @@ impl RowShape {
 		self.fields.iter().map(|f| f.name.as_str())
 	}
 
-	fn compute_layout(mut fields: Vec<RowShapeField>) -> Vec<RowShapeField> {
+	fn compute_layout(family: RowFamily, mut fields: Vec<RowShapeField>) -> Vec<RowShapeField> {
 		let bitvec_size = fields.len().div_ceil(8);
-		let mut offset: u32 = (SHAPE_HEADER_SIZE + bitvec_size) as u32;
+		let mut offset: u32 = (family.header_size() + bitvec_size) as u32;
 
 		for field in fields.iter_mut() {
 			field.size = field.constraint.storage_type().size() as u32;
@@ -178,13 +210,23 @@ impl RowShape {
 	}
 
 	pub fn data_offset(&self) -> usize {
-		SHAPE_HEADER_SIZE + self.bitvec_size()
+		self.header_size() + self.bitvec_size()
+	}
+
+	#[inline]
+	pub fn is_defined(&self, row: &[u8], index: usize) -> bool {
+		read_defined_at(row, self.header_size(), index)
+	}
+
+	#[inline]
+	pub(crate) fn set_valid(&self, row: &mut EncodedRowBuilder, index: usize, valid: bool) {
+		row.set_valid_at(self.header_size(), index, valid);
 	}
 
 	fn get_cached_layout(&self) -> usize {
 		*self.cached_layout.get_or_init(|| match self.fields.last() {
 			Some(last) => last.offset as usize + last.size as usize,
-			None => SHAPE_HEADER_SIZE + self.bitvec_size(),
+			None => self.header_size() + self.bitvec_size(),
 		})
 	}
 
@@ -201,7 +243,7 @@ impl RowShape {
 	}
 
 	pub(crate) fn read_dynamic_ref(&self, row: &[u8], index: usize) -> Option<(usize, usize)> {
-		if !read_defined(row, index) {
+		if !self.is_defined(row, index) {
 			return None;
 		}
 		let field = &self.fields()[index];
@@ -277,7 +319,7 @@ impl RowShape {
 				self.fields()
 					.iter()
 					.enumerate()
-					.filter(|(i, _)| *i != index && read_defined(row, *i))
+					.filter(|(i, _)| *i != index && self.is_defined(row, *i))
 					.filter_map(|(i, _)| {
 						self.read_dynamic_ref(&row[..], i)
 							.filter(|(off, _)| *off > old_offset)
@@ -304,7 +346,7 @@ impl RowShape {
 			row.extend_from_slice(new_data);
 			self.write_dynamic_ref(row, index, dynamic_offset, new_data.len());
 		}
-		row.set_valid(index, true);
+		self.set_valid(row, index, true);
 	}
 
 	pub(crate) fn remove_dynamic_data(&self, row: &mut EncodedRowBuilder, index: usize) {
@@ -313,7 +355,7 @@ impl RowShape {
 				.fields()
 				.iter()
 				.enumerate()
-				.filter(|(i, _)| *i != index && read_defined(row, *i))
+				.filter(|(i, _)| *i != index && self.is_defined(row, *i))
 				.filter_map(|(i, _)| {
 					self.read_dynamic_ref(&row[..], i)
 						.filter(|(off, _)| *off > old_offset)
@@ -350,11 +392,12 @@ impl RowShape {
 
 	pub fn set_none(&self, row: &mut EncodedRowBuilder, index: usize) {
 		self.remove_dynamic_data(row, index);
-		row.set_valid(index, false);
+		self.set_valid(row, index, false);
 	}
 
 	pub fn testing(types: &[ValueType]) -> Self {
 		RowShape::new(
+			RowFamily::Deprecated,
 			types.iter()
 				.enumerate()
 				.map(|(i, t)| RowShapeField::unconstrained(format!("f{}", i), t.clone()))

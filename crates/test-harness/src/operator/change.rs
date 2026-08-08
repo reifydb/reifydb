@@ -6,7 +6,7 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
 		bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
-		shape::{RowShape, RowShapeField},
+		shape::{RowFamily, RowShape, RowShapeField},
 	},
 };
 use reifydb_core::{
@@ -25,7 +25,8 @@ pub const STORE_TABLE: u64 = 4096;
 pub const STORE_ROW_COUNT: u64 = 1500;
 
 pub fn ts_row(row_number: u64, timestamp: i64) -> Row {
-	let shape = RowShape::new(vec![RowShapeField::unconstrained("timestamp", ValueType::Int8)]);
+	let shape =
+		RowShape::new(RowFamily::Deprecated, vec![RowShapeField::unconstrained("timestamp", ValueType::Int8)]);
 	let mut encoded = shape.allocate();
 	shape.set_values(&mut encoded, &[Value::Int8(timestamp)]);
 	Row {

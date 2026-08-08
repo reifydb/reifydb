@@ -158,7 +158,7 @@ fn row_to_materialized(row: &Row) -> MaterializedRow {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::shape::{RowShape, RowShapeField};
+	use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::{
@@ -177,10 +177,13 @@ mod tests {
 	use crate::builders::TestRowBuilder;
 
 	fn shape() -> RowShape {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("k", ValueType::Uint8),
-			RowShapeField::unconstrained("v", ValueType::Float8),
-		])
+		RowShape::new(
+			RowFamily::Deprecated,
+			vec![
+				RowShapeField::unconstrained("k", ValueType::Uint8),
+				RowShapeField::unconstrained("v", ValueType::Float8),
+			],
+		)
 	}
 
 	fn build_row(rn: u64, k: u64, v: f64) -> Row {
@@ -250,11 +253,14 @@ mod tests {
 
 	#[test]
 	fn multi_column_output_key() {
-		let s = RowShape::new(vec![
-			RowShapeField::unconstrained("base", ValueType::Uint8),
-			RowShapeField::unconstrained("quote", ValueType::Uint8),
-			RowShapeField::unconstrained("v", ValueType::Float8),
-		]);
+		let s = RowShape::new(
+			RowFamily::Deprecated,
+			vec![
+				RowShapeField::unconstrained("base", ValueType::Uint8),
+				RowShapeField::unconstrained("quote", ValueType::Uint8),
+				RowShapeField::unconstrained("v", ValueType::Float8),
+			],
+		);
 		fn r(s: &RowShape, rn: u64, base: u64, quote: u64, v: f64) -> Row {
 			TestRowBuilder::new(RowNumber(rn))
 				.with_shape(s.clone())
@@ -312,11 +318,14 @@ mod tests {
 	fn datetime_and_duration_columns_survive_materialization() {
 		// A temporal column that falls through to Value::none_of turns the operator's emitted
 		// window_start into none, and output-key comparison then misses the row entirely.
-		let s = RowShape::new(vec![
-			RowShapeField::unconstrained("window_start", ValueType::DateTime),
-			RowShapeField::unconstrained("window_duration", ValueType::Duration),
-			RowShapeField::unconstrained("v", ValueType::Float8),
-		]);
+		let s = RowShape::new(
+			RowFamily::Deprecated,
+			vec![
+				RowShapeField::unconstrained("window_start", ValueType::DateTime),
+				RowShapeField::unconstrained("window_duration", ValueType::Duration),
+				RowShapeField::unconstrained("v", ValueType::Float8),
+			],
+		);
 		let window_start = DateTime::from_epoch_secs(1_700_000_000).unwrap();
 		let window_duration = Duration::from_seconds(60).unwrap();
 		let row = TestRowBuilder::new(RowNumber(1))
@@ -347,11 +356,14 @@ mod tests {
 	fn date_and_time_columns_survive_materialization() {
 		// Same round-trip requirement for Date and Time: falling through to Value::none_of
 		// erases the emitted column and output-key comparison misses the row.
-		let s = RowShape::new(vec![
-			RowShapeField::unconstrained("window_date", ValueType::Date),
-			RowShapeField::unconstrained("window_time", ValueType::Time),
-			RowShapeField::unconstrained("v", ValueType::Float8),
-		]);
+		let s = RowShape::new(
+			RowFamily::Deprecated,
+			vec![
+				RowShapeField::unconstrained("window_date", ValueType::Date),
+				RowShapeField::unconstrained("window_time", ValueType::Time),
+				RowShapeField::unconstrained("v", ValueType::Float8),
+			],
+		);
 		let window_date = Date::new(2024, 3, 15).unwrap();
 		let window_time = Time::new(14, 30, 45, 0).unwrap();
 		let row = TestRowBuilder::new(RowNumber(1))

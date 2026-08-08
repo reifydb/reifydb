@@ -18,7 +18,7 @@ use reifydb_value::{
 };
 
 use super::RowShape;
-use crate::row::bytes::{EncodedRowBuilder, read_defined};
+use crate::row::bytes::EncodedRowBuilder;
 
 impl RowShape {
 	pub fn set_values(&self, row: &mut EncodedRowBuilder, values: &[Value]) {
@@ -270,7 +270,7 @@ impl RowShape {
 
 	pub fn get_value(&self, row: &[u8], index: usize) -> Value {
 		let field = &self.fields()[index];
-		if !read_defined(row, index) {
+		if !self.is_defined(row, index) {
 			return Value::none();
 		}
 		let field_type = match field.constraint.get_type() {

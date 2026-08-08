@@ -3,7 +3,7 @@
 
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
-	shape::{RowShape, RowShapeField},
+	shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_value::value::{
 	constraint::{Constraint, TypeConstraint},
@@ -74,7 +74,7 @@ pub fn row_shape_from_columns(value: &[Column]) -> RowShape {
 				RowShapeField::new(col.name.clone(), constraint)
 			})
 			.collect();
-		RowShape::new(fields)
+		RowShape::new(RowFamily::Deprecated, fields)
 	}
 }
 
@@ -86,7 +86,7 @@ mod tests {
 	}
 
 	mod from_column {
-		use reifydb_codec::row::shape::{RowShape, RowShapeField};
+		use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 		use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 		use crate::{
@@ -168,13 +168,16 @@ mod tests {
 			];
 
 			let shape_from_columns = row_shape_from_columns(columns.as_slice());
-			let shape_direct = RowShape::new(vec![
-				RowShapeField::unconstrained("f0", ValueType::Uint1),
-				RowShapeField::unconstrained("f1", ValueType::Uint2),
-				RowShapeField::unconstrained("f2", ValueType::Uint4),
-				RowShapeField::unconstrained("f3", ValueType::Uint8),
-				RowShapeField::unconstrained("f4", ValueType::Uint16),
-			]);
+			let shape_direct = RowShape::new(
+				RowFamily::Deprecated,
+				vec![
+					RowShapeField::unconstrained("f0", ValueType::Uint1),
+					RowShapeField::unconstrained("f1", ValueType::Uint2),
+					RowShapeField::unconstrained("f2", ValueType::Uint4),
+					RowShapeField::unconstrained("f3", ValueType::Uint8),
+					RowShapeField::unconstrained("f4", ValueType::Uint16),
+				],
+			);
 
 			// Full equivalence check
 			assert_eq!(shape_from_columns.fields().len(), shape_direct.fields().len());

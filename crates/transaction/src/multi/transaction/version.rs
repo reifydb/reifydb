@@ -6,7 +6,7 @@ use std::sync::{
 	atomic::{AtomicU64, Ordering},
 };
 
-use reifydb_codec::row::shape::{RowShape, RowShapeField};
+use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::{
 	common::CommitVersion,
 	key::{EncodableKey, transaction_version::TransactionVersionKey},
@@ -56,7 +56,10 @@ pub struct StandardVersionProvider {
 
 impl StandardVersionProvider {
 	pub fn new(single: SingleTransaction) -> Result<Self> {
-		let shape = RowShape::new(vec![RowShapeField::unconstrained("version", ValueType::Uint8)]);
+		let shape = RowShape::new(
+			RowFamily::Deprecated,
+			vec![RowShapeField::unconstrained("version", ValueType::Uint8)],
+		);
 
 		let current_version = Self::load_current_version(&shape, &single)?;
 		let first_block = VersionBlock::new(current_version);

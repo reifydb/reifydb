@@ -10,10 +10,7 @@ use reifydb_value::{
 	value::{uint::Uint, value_type::ValueType},
 };
 
-use crate::row::{
-	bytes::{EncodedRowBuilder, read_defined},
-	shape::RowShape,
-};
+use crate::row::{bytes::EncodedRowBuilder, shape::RowShape};
 
 const MODE_INLINE: u128 = 0x00000000000000000000000000000000;
 const MODE_MASK: u128 = 0x80000000000000000000000000000000;
@@ -52,7 +49,7 @@ impl RowShape {
 					packed.to_le(),
 				);
 			}
-			row.set_valid(index, true);
+			self.set_valid(row, index, true);
 			return;
 		}
 
@@ -97,7 +94,7 @@ impl RowShape {
 	}
 
 	pub fn try_get_uint(&self, row: &[u8], index: usize) -> Option<Uint> {
-		if read_defined(row, index) && self.fields()[index].constraint.get_type() == ValueType::Uint {
+		if self.is_defined(row, index) && self.fields()[index].constraint.get_type() == ValueType::Uint {
 			Some(self.get_uint(row, index))
 		} else {
 			None

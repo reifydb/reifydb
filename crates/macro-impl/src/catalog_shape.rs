@@ -223,10 +223,10 @@ pub fn catalog_shape(input: TokenStream) -> TokenStream {
 				#[allow(unused_imports)]
 				use super::*;
 				use ::once_cell::sync::Lazy;
-				use ::reifydb_codec::row::shape::RowShape;
+				use ::reifydb_codec::row::shape::{RowFamily, RowShape};
 
 				#vis static SHAPE: Lazy<RowShape> = Lazy::new(|| {
-					RowShape::new(vec![#(#declarations),*])
+					RowShape::new(RowFamily::Catalog, vec![#(#declarations),*])
 				});
 
 				#(#indices)*

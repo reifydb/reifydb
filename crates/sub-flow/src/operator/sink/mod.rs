@@ -203,7 +203,7 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_codec::row::shape::RowShapeField;
+	use reifydb_codec::row::shape::{RowFamily, RowShapeField};
 	use reifydb_core::{
 		actors::pending::{Pending, PendingLayers},
 		interface::catalog::dictionary::Dictionary,
@@ -259,7 +259,10 @@ mod tests {
 	}
 
 	fn single_field_shape() -> RowShape {
-		RowShape::new(vec![RowShapeField::unconstrained("n".to_string(), ValueType::Int4)])
+		RowShape::new(
+			RowFamily::Deprecated,
+			vec![RowShapeField::unconstrained("n".to_string(), ValueType::Int4)],
+		)
 	}
 
 	fn columns_with_stamps(created_at: u64, updated_at: u64, time: u64) -> Columns {

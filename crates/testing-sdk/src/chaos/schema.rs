@@ -186,13 +186,16 @@ impl ChaosSchema {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::shape::RowShapeField;
+	use reifydb_codec::row::shape::{RowFamily, RowShapeField};
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 
 	fn shape(fields: &[(&str, ValueType)]) -> RowShape {
-		RowShape::new(fields.iter().map(|(n, t)| RowShapeField::unconstrained(*n, t.clone())).collect())
+		RowShape::new(
+			RowFamily::Deprecated,
+			fields.iter().map(|(n, t)| RowShapeField::unconstrained(*n, t.clone())).collect(),
+		)
 	}
 
 	fn content(values: &[(&str, Value)]) -> RowContent {

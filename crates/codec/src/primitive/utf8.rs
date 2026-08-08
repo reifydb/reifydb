@@ -5,10 +5,7 @@ use std::str;
 
 use reifydb_value::{reifydb_assertions, value::value_type::ValueType};
 
-use crate::row::{
-	bytes::{EncodedRowBuilder, read_defined},
-	shape::RowShape,
-};
+use crate::row::{bytes::EncodedRowBuilder, shape::RowShape};
 
 impl RowShape {
 	pub fn set_utf8(&self, row: &mut EncodedRowBuilder, index: usize, value: impl AsRef<str>) {
@@ -50,7 +47,7 @@ impl RowShape {
 	}
 
 	pub fn try_get_utf8<'a>(&'a self, row: &'a [u8], index: usize) -> Option<&'a str> {
-		if read_defined(row, index) && self.fields()[index].constraint.get_type() == ValueType::Utf8 {
+		if self.is_defined(row, index) && self.fields()[index].constraint.get_type() == ValueType::Utf8 {
 			Some(self.get_utf8(row, index))
 		} else {
 			None

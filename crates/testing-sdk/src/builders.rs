@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::{RowShape, RowShapeField};
+use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -60,7 +60,7 @@ impl TestRowBuilder {
 				.enumerate()
 				.map(|(i, v)| RowShapeField::unconstrained(format!("field{}", i), v.get_type()))
 				.collect();
-			RowShape::new(fields)
+			RowShape::new(RowFamily::Deprecated, fields)
 		};
 
 		let mut encoded = shape.allocate();
@@ -196,7 +196,7 @@ impl TestLayoutBuilder {
 	}
 
 	pub fn build(self) -> RowShape {
-		RowShape::new(self.fields)
+		RowShape::new(RowFamily::Deprecated, self.fields)
 	}
 
 	pub fn build_named(self) -> RowShape {

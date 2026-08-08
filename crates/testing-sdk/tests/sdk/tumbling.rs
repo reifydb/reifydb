@@ -7,7 +7,7 @@ use reifydb_abi::{
 };
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::shape::{RowShape, RowShapeField},
+	row::shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize, row::Row as CoreRow};
 use reifydb_flow::window::{
@@ -272,11 +272,14 @@ impl TumblingRegistration for TestMin {
 }
 
 fn input_shape() -> RowShape {
-	RowShape::new(vec![
-		RowShapeField::unconstrained("group", ValueType::Utf8),
-		RowShapeField::unconstrained("slot", ValueType::Uint8),
-		RowShapeField::unconstrained("size", ValueType::Float8),
-	])
+	RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			RowShapeField::unconstrained("group", ValueType::Utf8),
+			RowShapeField::unconstrained("slot", ValueType::Uint8),
+			RowShapeField::unconstrained("size", ValueType::Float8),
+		],
+	)
 }
 
 fn input_row(rn: u64, group: &str, slot: u64, size: f64) -> CoreRow {

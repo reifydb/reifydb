@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
-	shape::{RowShape, RowShapeField},
+	shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_value::value::{Value, value_type::ValueType};
 use serde::{Deserialize, Serialize};
@@ -83,13 +83,16 @@ mod metadata_shape {
 	pub(super) const COUNT: usize = 4;
 
 	pub(super) static SHAPE: LazyLock<RowShape> = LazyLock::new(|| {
-		RowShape::new(vec![
-			RowShapeField::unconstrained("id", ValueType::Uint8),
-			RowShapeField::unconstrained("capacity", ValueType::Uint8),
-			RowShapeField::unconstrained("head", ValueType::Uint8),
-			RowShapeField::unconstrained("tail", ValueType::Uint8),
-			RowShapeField::unconstrained("count", ValueType::Uint8),
-		])
+		RowShape::new(
+			RowFamily::Deprecated,
+			vec![
+				RowShapeField::unconstrained("id", ValueType::Uint8),
+				RowShapeField::unconstrained("capacity", ValueType::Uint8),
+				RowShapeField::unconstrained("head", ValueType::Uint8),
+				RowShapeField::unconstrained("tail", ValueType::Uint8),
+				RowShapeField::unconstrained("count", ValueType::Uint8),
+			],
+		)
 	});
 }
 

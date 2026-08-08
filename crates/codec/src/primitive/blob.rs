@@ -6,10 +6,7 @@ use reifydb_value::{
 	value::{blob::Blob, value_type::ValueType},
 };
 
-use crate::row::{
-	bytes::{EncodedRowBuilder, read_defined},
-	shape::RowShape,
-};
+use crate::row::{bytes::EncodedRowBuilder, shape::RowShape};
 
 impl RowShape {
 	pub fn set_blob(&self, row: &mut EncodedRowBuilder, index: usize, value: &Blob) {
@@ -84,7 +81,7 @@ impl RowShape {
 	}
 
 	pub fn try_get_blob(&self, row: &[u8], index: usize) -> Option<Blob> {
-		if read_defined(row, index) && self.fields()[index].constraint.get_type() == ValueType::Blob {
+		if self.is_defined(row, index) && self.fields()[index].constraint.get_type() == ValueType::Blob {
 			Some(self.get_blob(row, index))
 		} else {
 			None

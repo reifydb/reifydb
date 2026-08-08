@@ -7,7 +7,7 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
 		bytes::EncodedBytes,
-		shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
+		shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 	},
 };
 use reifydb_core::key::{
@@ -114,7 +114,7 @@ fn try_reconstruct(
 		}
 	}
 
-	let shape = RowShape::from_parts(fingerprint, fields);
+	let shape = RowShape::from_parts(RowFamily::Deprecated, fingerprint, fields);
 	catalog.cache.set_row_shape(shape);
 	Ok(())
 }

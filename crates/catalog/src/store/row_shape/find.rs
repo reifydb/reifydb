@@ -4,7 +4,7 @@
 use reifydb_abi::data::constraint::FFITypeConstraint;
 use reifydb_codec::{
 	constraint::type_constraint_from_ffi,
-	row::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
+	row::shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 };
 use reifydb_core::{
 	error::diagnostic::internal::internal,
@@ -81,7 +81,7 @@ pub(crate) fn find_row_shape_by_fingerprint(
 
 	Span::current().record("found", true);
 	Span::current().record("field_count", field_count);
-	Ok(Some(RowShape::from_parts(fingerprint, fields)))
+	Ok(Some(RowShape::from_parts(RowFamily::Deprecated, fingerprint, fields)))
 }
 
 #[instrument(
@@ -153,7 +153,7 @@ pub fn load_all_row_shapes(rx: &mut Transaction<'_>) -> Result<Vec<RowShape>> {
 			});
 		}
 
-		shapes.push(RowShape::from_parts(fingerprint, fields));
+		shapes.push(RowShape::from_parts(RowFamily::Deprecated, fingerprint, fields));
 	}
 
 	let total_fields: usize = shapes.iter().map(|s| s.field_count()).sum();

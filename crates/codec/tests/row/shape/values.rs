@@ -4,7 +4,7 @@
 #[allow(clippy::approx_constant)]
 use std::f64::consts::E;
 
-use reifydb_codec::row::shape::{RowShape, RowShapeField};
+use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 	rng::Rng,
@@ -524,7 +524,7 @@ fn test_all_types_comprehensive() {
 #[test]
 fn test_dictionary_id_roundtrip_u4() {
 	let constraint = TypeConstraint::dictionary(DictionaryId::from(42u64), ValueType::Uint4);
-	let shape = RowShape::new(vec![RowShapeField::new("status", constraint)]);
+	let shape = RowShape::new(RowFamily::Deprecated, vec![RowShapeField::new("status", constraint)]);
 
 	let mut row = shape.allocate();
 	let entry = DictionaryEntryId::U4(7);
@@ -538,7 +538,7 @@ fn test_dictionary_id_roundtrip_u4() {
 #[test]
 fn test_dictionary_id_roundtrip_u2() {
 	let constraint = TypeConstraint::dictionary(DictionaryId::from(10u64), ValueType::Uint2);
-	let shape = RowShape::new(vec![RowShapeField::new("category", constraint)]);
+	let shape = RowShape::new(RowFamily::Deprecated, vec![RowShapeField::new("category", constraint)]);
 
 	let mut row = shape.allocate();
 	let entry = DictionaryEntryId::U2(500);
@@ -552,7 +552,7 @@ fn test_dictionary_id_roundtrip_u2() {
 #[test]
 fn test_dictionary_id_roundtrip_u8() {
 	let constraint = TypeConstraint::dictionary(DictionaryId::from(99u64), ValueType::Uint8);
-	let shape = RowShape::new(vec![RowShapeField::new("tag", constraint)]);
+	let shape = RowShape::new(RowFamily::Deprecated, vec![RowShapeField::new("tag", constraint)]);
 
 	let mut row = shape.allocate();
 	let entry = DictionaryEntryId::U8(123456789);
@@ -566,10 +566,13 @@ fn test_dictionary_id_roundtrip_u8() {
 #[test]
 fn test_dictionary_id_with_undefined() {
 	let constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), ValueType::Uint4);
-	let shape = RowShape::new(vec![
-		RowShapeField::new("dict_col", constraint),
-		RowShapeField::unconstrained("int_col", ValueType::Int4),
-	]);
+	let shape = RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			RowShapeField::new("dict_col", constraint),
+			RowShapeField::unconstrained("int_col", ValueType::Int4),
+		],
+	);
 
 	let mut row = shape.allocate();
 	shape.set_value(&mut row, 0, &Value::none());
@@ -585,11 +588,14 @@ fn test_dictionary_id_with_undefined() {
 #[test]
 fn test_dictionary_id_mixed_with_other_types() {
 	let dict_constraint = TypeConstraint::dictionary(DictionaryId::from(5u64), ValueType::Uint4);
-	let shape = RowShape::new(vec![
-		RowShapeField::unconstrained("id", ValueType::Int4),
-		RowShapeField::new("status", dict_constraint),
-		RowShapeField::unconstrained("name", ValueType::Utf8),
-	]);
+	let shape = RowShape::new(
+		RowFamily::Deprecated,
+		vec![
+			RowShapeField::unconstrained("id", ValueType::Int4),
+			RowShapeField::new("status", dict_constraint),
+			RowShapeField::unconstrained("name", ValueType::Utf8),
+		],
+	);
 
 	let mut row = shape.allocate();
 	let values =

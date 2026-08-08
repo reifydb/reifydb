@@ -22,6 +22,8 @@ const FLAGS_OFFSET: usize = TIME_OFFSET + DateTime::ENCODED_SIZE;
 
 pub const SHAPE_HEADER_SIZE: usize = FLAGS_OFFSET + 1;
 
+pub const CATALOG_HEADER_SIZE: usize = FINGERPRINT_SIZE;
+
 const HAS_TIME: u8 = 1 << 0;
 
 pub type EncodedBytesIter = Box<dyn EncodedBytesIterator>;
@@ -99,8 +101,8 @@ impl EncodedRowBuilder {
 		read_defined(&self.0, index)
 	}
 
-	pub(crate) fn set_valid(&mut self, index: usize, valid: bool) {
-		let byte = SHAPE_HEADER_SIZE + index / 8;
+	pub(crate) fn set_valid_at(&mut self, header_size: usize, index: usize, valid: bool) {
+		let byte = header_size + index / 8;
 		let bit = index % 8;
 		if valid {
 			self.0[byte] |= 1 << bit;
@@ -165,10 +167,15 @@ impl From<EncodedRowBuilder> for EncodedBytes {
 }
 
 #[inline]
-pub fn read_defined(buf: &[u8], index: usize) -> bool {
-	let byte = SHAPE_HEADER_SIZE + index / 8;
+pub fn read_defined_at(buf: &[u8], header_size: usize, index: usize) -> bool {
+	let byte = header_size + index / 8;
 	let bit = index % 8;
 	(buf[byte] & (1 << bit)) != 0
+}
+
+#[inline]
+pub fn read_defined(buf: &[u8], index: usize) -> bool {
+	read_defined_at(buf, SHAPE_HEADER_SIZE, index)
 }
 
 #[inline]
@@ -263,11 +270,12 @@ mod tests {
 			CREATED_AT_OFFSET, FINGERPRINT_SIZE, FLAGS_OFFSET, HAS_TIME, SHAPE_HEADER_SIZE, TIME_OFFSET,
 			UPDATED_AT_OFFSET,
 		},
-		shape::{RowShape, RowShapeField},
+		shape::{RowFamily, RowShape, RowShapeField},
 	};
 
 	fn shape(field_count: usize) -> RowShape {
 		RowShape::new(
+			RowFamily::Deprecated,
 			(0..field_count)
 				.map(|i| RowShapeField::unconstrained(format!("f{i}"), ValueType::Uint8))
 				.collect(),

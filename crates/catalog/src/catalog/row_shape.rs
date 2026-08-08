@@ -4,7 +4,7 @@
 use reifydb_abi::data::constraint::FFITypeConstraint;
 use reifydb_codec::{
 	constraint::type_constraint_from_ffi,
-	row::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
+	row::shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 };
 use reifydb_core::{
 	error::diagnostic::internal::internal,
@@ -36,7 +36,7 @@ impl Catalog {
 		txn: &mut Transaction<'_>,
 		fields: Vec<RowShapeField>,
 	) -> Result<RowShape> {
-		let shape = RowShape::new(fields);
+		let shape = RowShape::new(RowFamily::Deprecated, fields);
 		let fingerprint = shape.fingerprint();
 		Span::current().record("fingerprint", field::debug(&fingerprint));
 
@@ -130,7 +130,7 @@ impl Catalog {
 			});
 		}
 
-		let shape = RowShape::from_parts(fingerprint, fields);
+		let shape = RowShape::from_parts(RowFamily::Deprecated, fingerprint, fields);
 		Span::current().record("cache_hit", false);
 		Span::current().record("field_count", shape.field_count());
 		self.cache.set_row_shape(shape.clone());
@@ -147,7 +147,7 @@ impl Catalog {
 		pending: &mut Vec<RowShape>,
 		fields: Vec<RowShapeField>,
 	) -> RowShape {
-		let shape = RowShape::new(fields);
+		let shape = RowShape::new(RowFamily::Deprecated, fields);
 		let fingerprint = shape.fingerprint();
 
 		if let Some(cached) = self.cache.find_row_shape(fingerprint) {

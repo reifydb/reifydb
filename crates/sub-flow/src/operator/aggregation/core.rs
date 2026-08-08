@@ -4,7 +4,7 @@
 use std::{cell::UnsafeCell, sync::Arc};
 
 use postcard::to_stdvec;
-use reifydb_codec::row::shape::{RowShape, RowShapeField};
+use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	metrics::heap::{StateCompleteness, StateMemory},
@@ -53,7 +53,7 @@ fn build_aggregation_shape(names: &[String], types: &[ValueType]) -> RowShape {
 		.zip(types.iter())
 		.map(|(name, ty)| RowShapeField::unconstrained(name.clone(), ty.clone()))
 		.collect();
-	RowShape::new(fields)
+	RowShape::new(RowFamily::Deprecated, fields)
 }
 
 pub struct Aggregation {

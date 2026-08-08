@@ -3,10 +3,7 @@
 
 use reifydb_value::{encoding::RowField, reifydb_assertions};
 
-use crate::row::{
-	bytes::{EncodedRowBuilder, read_defined},
-	shape::RowShape,
-};
+use crate::row::{bytes::EncodedRowBuilder, shape::RowShape};
 
 impl RowShape {
 	#[inline]
@@ -22,7 +19,7 @@ impl RowShape {
 			assert_eq!(*field.constraint.get_type().inner_type(), T::VALUE_TYPE);
 		}
 		let offset = field.offset as usize;
-		row.set_valid(index, true);
+		self.set_valid(row, index, true);
 		value.write_le(&mut row.as_mut_slice()[offset..offset + T::ENCODED_SIZE]);
 	}
 
@@ -44,7 +41,7 @@ impl RowShape {
 
 	#[inline]
 	pub fn try_get<T: RowField>(&self, row: &[u8], index: usize) -> Option<T> {
-		if read_defined(row, index) && self.fields()[index].constraint.get_type() == T::VALUE_TYPE {
+		if self.is_defined(row, index) && self.fields()[index].constraint.get_type() == T::VALUE_TYPE {
 			Some(self.get(row, index))
 		} else {
 			None

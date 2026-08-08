@@ -941,7 +941,7 @@ pub mod tests {
 	}
 
 	mod row {
-		use reifydb_codec::row::shape::{RowShape, RowShapeField};
+		use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 		use reifydb_value::{
 			fragment::Fragment,
 			util::bitvec::BitVec,
@@ -1756,7 +1756,8 @@ pub mod tests {
 		#[test]
 		fn test_all_defined_dictionary_id() {
 			let constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), ValueType::Uint4);
-			let shape = RowShape::new(vec![RowShapeField::new("status", constraint)]);
+			let shape =
+				RowShape::new(RowFamily::Deprecated, vec![RowShapeField::new("status", constraint)]);
 
 			let mut test_instance = Columns::new(vec![ColumnWithName::dictionary_id(
 				"status",
@@ -1777,10 +1778,13 @@ pub mod tests {
 		#[test]
 		fn test_fallback_dictionary_id() {
 			let dict_constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), ValueType::Uint4);
-			let shape = RowShape::new(vec![
-				RowShapeField::new("dict_col", dict_constraint),
-				RowShapeField::unconstrained("bool_col", ValueType::Boolean),
-			]);
+			let shape = RowShape::new(
+				RowFamily::Deprecated,
+				vec![
+					RowShapeField::new("dict_col", dict_constraint),
+					RowShapeField::unconstrained("bool_col", ValueType::Boolean),
+				],
+			);
 
 			let mut test_instance = Columns::new(vec![
 				ColumnWithName::dictionary_id("dict_col", Vec::<DictionaryEntryId>::new()),
@@ -1799,7 +1803,7 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_dictionary_id() {
 			let constraint = TypeConstraint::dictionary(DictionaryId::from(2u64), ValueType::Uint4);
-			let shape = RowShape::new(vec![RowShapeField::new("tag", constraint)]);
+			let shape = RowShape::new(RowFamily::Deprecated, vec![RowShapeField::new("tag", constraint)]);
 
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::undefined_typed("tag", ValueType::Boolean, 2)]);

@@ -284,12 +284,15 @@ mod tests {
 	use std::collections::HashSet;
 
 	use rand::SeedableRng;
-	use reifydb_codec::row::shape::RowShapeField;
+	use reifydb_codec::row::shape::{RowFamily, RowShapeField};
 
 	use super::*;
 
 	fn shape(fields: &[(&str, ValueType)]) -> RowShape {
-		RowShape::new(fields.iter().map(|(n, t)| RowShapeField::unconstrained(*n, t.clone())).collect())
+		RowShape::new(
+			RowFamily::Deprecated,
+			fields.iter().map(|(n, t)| RowShapeField::unconstrained(*n, t.clone())).collect(),
+		)
 	}
 
 	fn schema_basic() -> ChaosSchema {
