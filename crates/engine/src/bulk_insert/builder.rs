@@ -522,7 +522,7 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 		ensure_ringbuffer_partition_metadata(catalog, txn, ringbuffer, &partition_key, &mut cache)?;
 		let metadata = cache.get_mut(&partition_key).unwrap();
 
-		if metadata.is_full() {
+		if metadata.is_full(ringbuffer.capacity) {
 			evict_oldest_for_partition(txn, ringbuffer, partition, metadata)?;
 		}
 
@@ -574,7 +574,7 @@ fn ensure_ringbuffer_partition_metadata(
 	if !cache.contains_key(partition_key) {
 		let existing =
 			catalog.find_partition_metadata(&mut Transaction::Command(txn), ringbuffer, partition_key)?;
-		let m = existing.unwrap_or_else(|| RingBufferMetadata::new(ringbuffer.id, ringbuffer.capacity));
+		let m = existing.unwrap_or_else(|| RingBufferMetadata::new());
 		cache.insert(partition_key.to_vec(), m);
 	}
 	Ok(())
@@ -682,7 +682,7 @@ fn execute_series_insert<V: ValidationMode>(
 	let shape = get_or_create_series_shape(catalog, &series, &mut Transaction::Command(txn))?;
 	let coerced_rows = coerce_series_rows::<V>(pending, &series)?;
 	let inserted = insert_series_rows::<V>(catalog, txn, &series, &shape, coerced_rows, &mut metadata, clock)?;
-	catalog.update_series_metadata_txn(&mut Transaction::Command(txn), metadata)?;
+	catalog.update_series_metadata_txn(&mut Transaction::Command(txn), series.id, metadata)?;
 	Ok(SeriesInsertResult {
 		namespace: pending.namespace.clone(),
 		series: pending.series.clone(),

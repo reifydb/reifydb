@@ -362,12 +362,6 @@ fn pinned() -> Vec<Pin> {
 			&["id", "name"],
 		),
 		(
-			"series::series_metadata",
-			&*crate::store::series::shape::series_metadata::SHAPE,
-			0xbc08badca0dd4421,
-			&["id", "row_count", "oldest_key", "newest_key", "sequence_counter"],
-		),
-		(
 			"sink::sink",
 			&*crate::store::sink::shape::sink::SHAPE,
 			0xe40347f64ac0fafb,

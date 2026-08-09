@@ -320,7 +320,12 @@ impl Catalog {
 	}
 
 	#[instrument(name = "catalog::series::update_metadata_txn", level = "debug", skip(self, txn))]
-	pub fn update_series_metadata_txn(&self, txn: &mut Transaction<'_>, metadata: SeriesMetadata) -> Result<()> {
-		CatalogStore::update_series_metadata_txn(txn, metadata)
+	pub fn update_series_metadata_txn(
+		&self,
+		txn: &mut Transaction<'_>,
+		series_id: SeriesId,
+		metadata: SeriesMetadata,
+	) -> Result<()> {
+		CatalogStore::update_series_metadata_txn(txn, series_id, metadata)
 	}
 }

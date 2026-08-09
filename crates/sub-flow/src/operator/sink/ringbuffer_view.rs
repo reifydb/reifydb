@@ -12,6 +12,7 @@ use reifydb_codec::{
 	row::{
 		bytes::EncodedBytes,
 		operator::{EncodedOperatorRow, decode, encode_archive},
+		pod::EncodedPodRow,
 		shape::RowShape,
 	},
 };
@@ -46,7 +47,6 @@ use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	reifydb_assertions,
-	util::cowvec::CowVec,
 	value::{
 		Value, datetime::DateTime, duration::Duration, partition::Partition, row_number::RowNumber,
 		system_columns::SystemColumns, value_type::ValueType,
@@ -187,7 +187,7 @@ impl SinkRingBufferViewOperator {
 		let Some(row) = self.state_get(txn, &key)? else {
 			return Ok(None);
 		};
-		Ok(Some(decode_ringbuffer_metadata(&EncodedBytes(CowVec::new(row.body().to_vec())))))
+		Ok(Some(decode_ringbuffer_metadata(&EncodedPodRow::new(row.body()))?))
 	}
 
 	fn write_meta_mirror(
@@ -210,7 +210,7 @@ impl SinkRingBufferViewOperator {
 	) -> Result<()> {
 		reifydb_assertions! {
 			let mirrored = self.read_meta_mirror(txn, partition)?;
-			let stored = txn.get(mvcc)?.map(|row| decode_ringbuffer_metadata(&row));
+			let stored = txn.get(mvcc)?.map(|row| decode_ringbuffer_metadata(EncodedPodRow::view(&row))).transpose()?;
 			assert_eq!(
 				mirrored, stored,
 				"the ringbuffer metadata mirror and its mvcc row disagree right after a write; the \
@@ -227,8 +227,8 @@ impl SinkRingBufferViewOperator {
 		}
 		let key = RingBufferMetadataKey::encoded(self.ringbuffer_id);
 		let metadata = match txn.get(&key)? {
-			Some(row) => decode_ringbuffer_metadata(&row),
-			None => RingBufferMetadata::new(self.ringbuffer_id, self.capacity),
+			Some(row) => decode_ringbuffer_metadata(EncodedPodRow::view(&row))?,
+			None => RingBufferMetadata::new(),
 		};
 		self.write_meta_mirror(txn, None, &metadata)?;
 		Ok(metadata)
@@ -237,7 +237,7 @@ impl SinkRingBufferViewOperator {
 	fn write_metadata(&self, txn: &mut FlowTransaction, metadata: &RingBufferMetadata) -> Result<()> {
 		let key = RingBufferMetadataKey::encoded(self.ringbuffer_id);
 		let row = encode_ringbuffer_metadata(metadata);
-		txn.set(&key, row)?;
+		txn.set(&key, row.into_bytes())?;
 		self.write_meta_mirror(txn, None, metadata)?;
 		self.assert_mirrors_mvcc(txn, None, &key)
 	}
@@ -253,8 +253,8 @@ impl SinkRingBufferViewOperator {
 		}
 		let key = RingBufferMetadataKey::encoded_partition(self.ringbuffer_id, partition_values.to_vec());
 		let metadata = match txn.get(&key)? {
-			Some(row) => decode_ringbuffer_metadata(&row),
-			None => RingBufferMetadata::new(self.ringbuffer_id, self.capacity),
+			Some(row) => decode_ringbuffer_metadata(EncodedPodRow::view(&row))?,
+			None => RingBufferMetadata::new(),
 		};
 		self.write_meta_mirror(txn, partition, &metadata)?;
 		Ok(metadata)
@@ -268,7 +268,7 @@ impl SinkRingBufferViewOperator {
 	) -> Result<()> {
 		let key = RingBufferMetadataKey::encoded_partition(self.ringbuffer_id, partition_values.to_vec());
 		let row = encode_ringbuffer_metadata(metadata);
-		txn.set(&key, row)?;
+		txn.set(&key, row.into_bytes())?;
 		let partition = partition_of_values(partition_values);
 		self.write_meta_mirror(txn, partition, metadata)?;
 		self.assert_mirrors_mvcc(txn, partition, &key)
@@ -855,7 +855,7 @@ impl SinkRingBufferViewOperator {
 		values: &mut Vec<EncodedBytes>,
 	) -> Result<()> {
 		let incoming = rows.len() as u64;
-		let mut evict_needed = (meta.count + incoming).saturating_sub(meta.capacity);
+		let mut evict_needed = (meta.count + incoming).saturating_sub(self.capacity);
 
 		while evict_needed > 0 && meta.head < meta.tail {
 			let oldest_rn = RowNumber(meta.head);
@@ -1320,7 +1320,7 @@ mod tests {
 		} else {
 			RingBufferMetadataKey::encoded_partition(RB, values.to_vec())
 		};
-		txn.get(&key).unwrap().map(|row| decode_ringbuffer_metadata(&row))
+		txn.get(&key).unwrap().map(|row| decode_ringbuffer_metadata(EncodedPodRow::view(&row)).unwrap())
 	}
 
 	fn base(value: &str) -> Vec<Value> {

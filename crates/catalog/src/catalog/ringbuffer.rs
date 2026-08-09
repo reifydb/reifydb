@@ -347,27 +347,30 @@ impl Catalog {
 	pub fn update_ringbuffer_metadata(
 		&self,
 		txn: &mut CommandTransaction,
+		ringbuffer_id: RingBufferId,
 		metadata: RingBufferMetadata,
 	) -> Result<()> {
-		CatalogStore::update_ringbuffer_metadata(txn, metadata)
+		CatalogStore::update_ringbuffer_metadata(txn, ringbuffer_id, metadata)
 	}
 
 	#[instrument(name = "catalog::ringbuffer::update_metadata_admin", level = "debug", skip(self, txn))]
 	pub fn update_ringbuffer_metadata_admin(
 		&self,
 		txn: &mut AdminTransaction,
+		ringbuffer_id: RingBufferId,
 		metadata: RingBufferMetadata,
 	) -> Result<()> {
-		CatalogStore::update_ringbuffer_metadata_admin(txn, metadata)
+		CatalogStore::update_ringbuffer_metadata_admin(txn, ringbuffer_id, metadata)
 	}
 
 	#[instrument(name = "catalog::ringbuffer::update_metadata_txn", level = "debug", skip(self, txn))]
 	pub fn update_ringbuffer_metadata_txn(
 		&self,
 		txn: &mut Transaction<'_>,
+		ringbuffer_id: RingBufferId,
 		metadata: RingBufferMetadata,
 	) -> Result<()> {
-		CatalogStore::update_ringbuffer_metadata_txn(txn, metadata)
+		CatalogStore::update_ringbuffer_metadata_txn(txn, ringbuffer_id, metadata)
 	}
 
 	#[instrument(name = "catalog::ringbuffer::find_partition_metadata", level = "trace", skip(self, txn))]

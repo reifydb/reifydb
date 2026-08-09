@@ -23,12 +23,4 @@ catalog_shape! {
 		id: u64,
 		name: utf8,
 	}
-
-	pub(crate) series_metadata {
-		id: u64,
-		row_count: u64,
-		oldest_key: u64,
-		newest_key: u64,
-		sequence_counter: u64,
-	}
 }

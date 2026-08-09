@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::catalog::EncodedCatalogRow;
+use reifydb_codec::row::{catalog::EncodedCatalogRow, pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, SeriesId},
-		series::{Series, SeriesKey, SeriesMetadata},
+		series::{Series, SeriesKey, SeriesMetadata, decode_series_metadata},
 	},
 	key::{
 		namespace_series::NamespaceSeriesKey,
@@ -19,7 +19,7 @@ use crate::{
 	CatalogStore, Result,
 	store::series::{
 		decode_series_time,
-		shape::{series, series_metadata, series_namespace},
+		shape::{series, series_namespace},
 	},
 };
 
@@ -73,20 +73,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
-		let id = SeriesId(series_metadata::get_id(&bytes));
-		let row_count = series_metadata::get_row_count(&bytes);
-		let oldest_key = series_metadata::get_oldest_key(&bytes);
-		let newest_key = series_metadata::get_newest_key(&bytes);
-		let sequence_counter = series_metadata::get_sequence_counter(&bytes);
-
-		Ok(Some(SeriesMetadata {
-			id,
-			row_count,
-			oldest_key,
-			newest_key,
-			sequence_counter,
-		}))
+		Ok(Some(decode_series_metadata(EncodedPodRow::view(&multi.bytes))?))
 	}
 
 	pub(crate) fn find_series_by_name(

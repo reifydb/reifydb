@@ -921,7 +921,7 @@ mod pull_protocol {
 	};
 	use reifydb_codec::{
 		key::encoded::{EncodedKey, EncodedKeyRange},
-		row::bytes::EncodedBytes,
+		row::pod::EncodedPodRow,
 	};
 	use reifydb_core::{
 		actors::{flow::FlowActorHandle, pending::PendingLayers},
@@ -955,7 +955,7 @@ mod pull_protocol {
 		multi::RangeScope,
 		transaction::Transaction,
 	};
-	use reifydb_value::{util::cowvec::CowVec, value::Value};
+	use reifydb_value::value::Value;
 
 	use super::{super::snapshot::SnapshotRejection, *};
 	use crate::{
@@ -2315,7 +2315,7 @@ mod pull_protocol {
 				.filter(|row| Key::kind(&row.key) == Some(KeyKind::RingBufferMetadata))
 				.collect();
 			assert_eq!(rows.len(), 1, "the test view owns exactly one unpartitioned metadata row");
-			decode_ringbuffer_metadata(&rows[0].bytes)
+			decode_ringbuffer_metadata(EncodedPodRow::view(&rows[0].bytes)).expect("decode the metadata row")
 		};
 
 		let mirrored: Vec<RingBufferMetadata> = h
@@ -2336,9 +2336,8 @@ mod pull_protocol {
 							.is_some_and(|(_, ks, _)| ks == Keyspace::RINGBUFFER_META)
 					})
 					.map(|(_, row)| {
-						decode_ringbuffer_metadata(&EncodedBytes(CowVec::new(
-							row.body().to_vec(),
-						)))
+						decode_ringbuffer_metadata(&EncodedPodRow::new(row.body()))
+							.expect("decode the mirrored metadata row")
 					})
 					.collect::<Vec<_>>()
 			})
@@ -2347,7 +2346,7 @@ mod pull_protocol {
 		assert_eq!(mirrored.len(), 1, "the sink must keep exactly one mirror for its global metadata");
 		assert_eq!(
 			mirrored[0], stored,
-			"the arena mirror and the mvcc row must carry the same capacity, count, head and tail: \
+			"the arena mirror and the mvcc row must carry the same count, head and tail: \
 			 the mirror is what a replay reads, so any drift makes the replay assign different \
 			 storage row numbers than the live run did"
 		);

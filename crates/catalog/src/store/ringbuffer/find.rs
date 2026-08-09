@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::deserializer::KeyDeserializer, row::catalog::EncodedCatalogRow};
+use reifydb_codec::{
+	key::deserializer::KeyDeserializer,
+	row::{catalog::EncodedCatalogRow, pod::EncodedPodRow},
+};
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, RingBufferId},
@@ -67,7 +70,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(decode_ringbuffer_metadata(&multi.bytes)))
+		Ok(Some(decode_ringbuffer_metadata(EncodedPodRow::view(&multi.bytes))?))
 	}
 
 	pub(crate) fn find_ringbuffer_partition_metadata(
@@ -80,7 +83,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(decode_ringbuffer_metadata(&multi.bytes)))
+		Ok(Some(decode_ringbuffer_metadata(EncodedPodRow::view(&multi.bytes))?))
 	}
 
 	pub(crate) fn list_ringbuffer_partition_metadata(
@@ -93,7 +96,7 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			let metadata = decode_ringbuffer_metadata(&multi.bytes);
+			let metadata = decode_ringbuffer_metadata(EncodedPodRow::view(&multi.bytes))?;
 			let mut de = KeyDeserializer::from_bytes(multi.key.as_slice());
 
 			let _ = (de.read_u8(), de.read_u64());
@@ -229,8 +232,6 @@ pub mod tests {
 			.unwrap()
 			.expect("Metadata should exist");
 
-		assert_eq!(metadata.id, ringbuffer.id);
-		assert_eq!(metadata.capacity, ringbuffer.capacity);
 		assert_eq!(metadata.count, 0);
 		assert_eq!(metadata.head, 1);
 		assert_eq!(metadata.tail, 1);

@@ -39,8 +39,7 @@ pub(super) fn ensure_partition_metadata(
 ) -> Result<()> {
 	if !cache.contains_key(partition_key) {
 		let existing = services.catalog.find_partition_metadata(txn, target.ringbuffer, partition_key)?;
-		let m = existing
-			.unwrap_or_else(|| RingBufferMetadata::new(target.ringbuffer.id, target.ringbuffer.capacity));
+		let m = existing.unwrap_or_else(RingBufferMetadata::new);
 		cache.insert(partition_key.to_vec(), m);
 	}
 	Ok(())

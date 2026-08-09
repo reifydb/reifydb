@@ -273,7 +273,7 @@ fn finalize_series_insert(
 	returned_rows: &[(RowNumber, EncodedBytes)],
 ) -> Result<Columns> {
 	if inserted_count > 0 {
-		services.catalog.update_series_metadata_txn(txn, metadata)?;
+		services.catalog.update_series_metadata_txn(txn, series.id, metadata)?;
 	}
 
 	if let Some(returning_exprs) = returning {

@@ -168,7 +168,7 @@ fn drive_ringbuffer_insert(
 			)?;
 			let current_metadata = partition_metadata_cache.get_mut(&partition_key).unwrap();
 
-			if current_metadata.is_full() {
+			if current_metadata.is_full(ringbuffer.capacity) {
 				evict_oldest_for_partition(txn, target_data, partition, current_metadata)?;
 			}
 

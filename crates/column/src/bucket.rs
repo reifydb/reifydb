@@ -112,7 +112,7 @@ mod tests {
 			end: 100,
 			width: 100,
 		};
-		let mut meta = SeriesMetadata::new(s.id);
+		let mut meta = SeriesMetadata::new();
 		meta.newest_key = 99;
 		assert!(!is_closed(&b, &s, &meta, DateTime::from_nanos(0), Duration::zero()));
 		meta.newest_key = 100;
@@ -131,7 +131,7 @@ mod tests {
 			end: 1000,
 			width: 1000,
 		};
-		let meta = SeriesMetadata::new(s.id);
+		let meta = SeriesMetadata::new();
 		let bucket_end = DateTime::from_nanos(1_000_000_000);
 		assert!(!is_closed(&b, &s, &meta, bucket_end, Duration::from_milliseconds(100).unwrap()));
 		let past_grace = DateTime::from_nanos(1_000_000_000 + 250_000_000);

@@ -76,8 +76,9 @@ pub mod tests {
 		let result = CatalogStore::get_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), ringbuffer.id)
 			.unwrap();
 
-		assert_eq!(result.id, ringbuffer.id);
-		assert_eq!(result.capacity, ringbuffer.capacity);
+		assert_eq!(result.count, 0);
+		assert_eq!(result.head, 1);
+		assert_eq!(result.tail, 1);
 	}
 
 	#[test]

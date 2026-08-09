@@ -154,8 +154,6 @@ pub mod tests {
 		for region in ["us", "eu"] {
 			let partition_key = vec![Value::Utf8(region.to_string())];
 			let metadata = RingBufferMetadata {
-				id: rb.id,
-				capacity: rb.capacity,
 				count: 3,
 				head: 1,
 				tail: 4,

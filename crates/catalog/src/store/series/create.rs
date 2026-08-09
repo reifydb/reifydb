@@ -7,7 +7,7 @@ use reifydb_core::{
 		column::ColumnIndex,
 		id::{ColumnId, NamespaceId, SeriesId},
 		property::ColumnPropertyKind,
-		series::{Series, SeriesKey},
+		series::{Series, SeriesKey, SeriesMetadata, encode_series_metadata},
 	},
 	key::{
 		namespace_series::NamespaceSeriesKey,
@@ -26,7 +26,7 @@ use crate::{
 	store::{
 		column::create::ColumnToCreate,
 		sequence::system::SystemSequence,
-		series::shape::{series, series_metadata, series_namespace},
+		series::shape::{series, series_namespace},
 	},
 };
 
@@ -184,15 +184,8 @@ impl CatalogStore {
 	}
 
 	fn initialize_series_metadata(txn: &mut AdminTransaction, series_id: SeriesId) -> Result<()> {
-		let mut row = series_metadata::allocate();
-		series_metadata::set_id(&mut row, u64::from(series_id));
-		series_metadata::set_row_count(&mut row, 0u64);
-		series_metadata::set_oldest_key(&mut row, 0u64);
-		series_metadata::set_newest_key(&mut row, 0u64);
-		series_metadata::set_sequence_counter(&mut row, 0u64);
-
-		txn.set(&SeriesMetadataKey::encoded(series_id), row.freeze())?;
-
+		let row = encode_series_metadata(&SeriesMetadata::new());
+		txn.set(&SeriesMetadataKey::encoded(series_id), row.into_bytes())?;
 		Ok(())
 	}
 

@@ -62,14 +62,13 @@ impl CatalogStore {
 		Self::reject_existing_ringbuffer(txn, namespace_id, &to_create.name)?;
 
 		let ringbuffer_id = SystemSequence::next_ringbuffer_id(txn)?;
-		let capacity = to_create.capacity;
 		let is_partitioned = !to_create.partition_by.is_empty();
 
 		Self::store_ringbuffer(txn, ringbuffer_id, namespace_id, &to_create)?;
 		Self::link_ringbuffer_to_namespace(txn, namespace_id, ringbuffer_id, to_create.name.text())?;
 		Self::insert_ringbuffer_columns(txn, ringbuffer_id, to_create)?;
 		if !is_partitioned {
-			Self::initialize_ringbuffer_metadata(txn, ringbuffer_id, capacity)?;
+			Self::initialize_ringbuffer_metadata(txn, ringbuffer_id)?;
 		}
 		Self::get_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer_id)
 	}
@@ -175,13 +174,9 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	fn initialize_ringbuffer_metadata(
-		txn: &mut AdminTransaction,
-		ringbuffer_id: RingBufferId,
-		capacity: u64,
-	) -> Result<()> {
-		let row = encode_ringbuffer_metadata(&RingBufferMetadata::new(ringbuffer_id, capacity));
-		txn.set(&RingBufferMetadataKey::encoded(ringbuffer_id), row)?;
+	fn initialize_ringbuffer_metadata(txn: &mut AdminTransaction, ringbuffer_id: RingBufferId) -> Result<()> {
+		let row = encode_ringbuffer_metadata(&RingBufferMetadata::new());
+		txn.set(&RingBufferMetadataKey::encoded(ringbuffer_id), row.into_bytes())?;
 		Ok(())
 	}
 
@@ -198,12 +193,11 @@ impl CatalogStore {
 		Self::store_ringbuffer(txn, ringbuffer_id, namespace_id, &to_create)?;
 		Self::link_ringbuffer_to_namespace(txn, namespace_id, ringbuffer_id, to_create.name.text())?;
 
-		let capacity = to_create.capacity;
 		let is_partitioned = !to_create.partition_by.is_empty();
 
 		Self::insert_ringbuffer_columns_with_ids(txn, ringbuffer_id, to_create, column_ids)?;
 		if !is_partitioned {
-			Self::initialize_ringbuffer_metadata(txn, ringbuffer_id, capacity)?;
+			Self::initialize_ringbuffer_metadata(txn, ringbuffer_id)?;
 		}
 
 		Self::get_ringbuffer(&mut Transaction::Admin(&mut *txn), ringbuffer_id)
@@ -415,8 +409,6 @@ pub mod tests {
 			.unwrap()
 			.expect("Metadata should exist");
 
-		assert_eq!(metadata.id, result.id);
-		assert_eq!(metadata.capacity, 500);
 		assert_eq!(metadata.count, 0);
 		assert_eq!(metadata.head, 1);
 		assert_eq!(metadata.tail, 1);

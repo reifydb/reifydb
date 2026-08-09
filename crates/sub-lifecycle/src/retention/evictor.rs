@@ -589,7 +589,7 @@ impl Evictor {
 			}
 		}
 		apply_series_metadata_after_delete(&mut metadata, deleted);
-		catalog.update_series_metadata_txn(&mut Transaction::Command(&mut txn), metadata)?;
+		catalog.update_series_metadata_txn(&mut Transaction::Command(&mut txn), series.id, metadata)?;
 		txn.commit()?;
 		Ok((deleted, advance_cursor(state, cursor_key, result.next_cursor)))
 	}
@@ -781,10 +781,10 @@ mod tests {
 
 	fn seed_partition(engine: &StandardEngine, id: RingBufferId, values: Vec<Value>) {
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
-		let mut metadata = RingBufferMetadata::new(id, 100);
+		let mut metadata = RingBufferMetadata::new();
 		metadata.count = 1;
 		metadata.tail = 2;
-		txn.set(&RingBufferMetadataKey::encoded_partition(id, values), encode_ringbuffer_metadata(&metadata))
+		txn.set(&RingBufferMetadataKey::encoded_partition(id, values), encode_ringbuffer_metadata(&metadata).into_bytes())
 			.unwrap();
 		txn.commit().unwrap();
 	}

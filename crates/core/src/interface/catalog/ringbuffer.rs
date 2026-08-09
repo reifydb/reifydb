@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::LazyLock;
-
-use reifydb_codec::row::{
-	bytes::EncodedBytes,
-	shape::{RowFamily, RowShape, RowShapeField},
-};
-use reifydb_value::value::{Value, value_type::ValueType};
+use reifydb_codec::row::pod::EncodedPodRow;
+use reifydb_value::{Result, value::Value};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -17,6 +12,7 @@ use crate::{
 		id::{NamespaceId, RingBufferId},
 		key::PrimaryKey,
 	},
+	return_internal_error,
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -40,8 +36,6 @@ impl RingBuffer {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RingBufferMetadata {
-	pub id: RingBufferId,
-	pub capacity: u64,
 	pub count: u64,
 	pub head: u64,
 	pub tail: u64,
@@ -54,18 +48,16 @@ pub struct PartitionedMetadata {
 }
 
 impl RingBufferMetadata {
-	pub fn new(buffer_id: RingBufferId, capacity: u64) -> Self {
+	pub fn new() -> Self {
 		Self {
-			id: buffer_id,
-			capacity,
 			count: 0,
 			head: 1,
 			tail: 1,
 		}
 	}
 
-	pub fn is_full(&self) -> bool {
-		self.count >= self.capacity
+	pub fn is_full(&self, capacity: u64) -> bool {
+		self.count >= capacity
 	}
 
 	pub fn is_empty(&self) -> bool {
@@ -73,45 +65,71 @@ impl RingBufferMetadata {
 	}
 }
 
-mod metadata_shape {
+impl Default for RingBufferMetadata {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+const RINGBUFFER_METADATA_WIDTH: usize = 24;
+
+pub fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedPodRow {
+	let mut bytes = Vec::with_capacity(RINGBUFFER_METADATA_WIDTH);
+	bytes.extend_from_slice(&metadata.count.to_be_bytes());
+	bytes.extend_from_slice(&metadata.head.to_be_bytes());
+	bytes.extend_from_slice(&metadata.tail.to_be_bytes());
+	EncodedPodRow::new(&bytes)
+}
+
+pub fn decode_ringbuffer_metadata(row: &EncodedPodRow) -> Result<RingBufferMetadata> {
+	let bytes = row.body();
+	if bytes.len() != RINGBUFFER_METADATA_WIDTH {
+		return_internal_error!(
+			"Ring buffer metadata is {} bytes wide, expected {}. This indicates a corrupt metadata row.",
+			bytes.len(),
+			RINGBUFFER_METADATA_WIDTH
+		)
+	}
+	Ok(RingBufferMetadata {
+		count: u64::from_be_bytes(bytes[0..8].try_into().unwrap()),
+		head: u64::from_be_bytes(bytes[8..16].try_into().unwrap()),
+		tail: u64::from_be_bytes(bytes[16..24].try_into().unwrap()),
+	})
+}
+
+#[cfg(test)]
+mod tests {
 	use super::*;
 
-	pub(super) const ID: usize = 0;
-	pub(super) const CAPACITY: usize = 1;
-	pub(super) const HEAD: usize = 2;
-	pub(super) const TAIL: usize = 3;
-	pub(super) const COUNT: usize = 4;
+	#[test]
+	fn head_and_tail_survive_a_round_trip_because_they_are_the_scan_range() {
+		let metadata = RingBufferMetadata {
+			count: 7,
+			head: 3,
+			tail: 11,
+		};
 
-	pub(super) static SHAPE: LazyLock<RowShape> = LazyLock::new(|| {
-		RowShape::new(
-			RowFamily::Deprecated,
-			vec![
-				RowShapeField::unconstrained("id", ValueType::Uint8),
-				RowShapeField::unconstrained("capacity", ValueType::Uint8),
-				RowShapeField::unconstrained("head", ValueType::Uint8),
-				RowShapeField::unconstrained("tail", ValueType::Uint8),
-				RowShapeField::unconstrained("count", ValueType::Uint8),
-			],
-		)
-	});
-}
+		let row = encode_ringbuffer_metadata(&metadata);
 
-pub fn encode_ringbuffer_metadata(metadata: &RingBufferMetadata) -> EncodedBytes {
-	let mut row = metadata_shape::SHAPE.allocate();
-	metadata_shape::SHAPE.set::<u64>(&mut row, metadata_shape::ID, u64::from(metadata.id));
-	metadata_shape::SHAPE.set::<u64>(&mut row, metadata_shape::CAPACITY, metadata.capacity);
-	metadata_shape::SHAPE.set::<u64>(&mut row, metadata_shape::HEAD, metadata.head);
-	metadata_shape::SHAPE.set::<u64>(&mut row, metadata_shape::TAIL, metadata.tail);
-	metadata_shape::SHAPE.set::<u64>(&mut row, metadata_shape::COUNT, metadata.count);
-	row.freeze()
-}
+		assert_eq!(row.len(), RINGBUFFER_METADATA_WIDTH);
+		assert_eq!(decode_ringbuffer_metadata(&row).unwrap(), metadata);
+	}
 
-pub fn decode_ringbuffer_metadata(bytes: &EncodedBytes) -> RingBufferMetadata {
-	RingBufferMetadata {
-		id: RingBufferId(metadata_shape::SHAPE.get::<u64>(bytes, metadata_shape::ID)),
-		capacity: metadata_shape::SHAPE.get::<u64>(bytes, metadata_shape::CAPACITY),
-		count: metadata_shape::SHAPE.get::<u64>(bytes, metadata_shape::COUNT),
-		head: metadata_shape::SHAPE.get::<u64>(bytes, metadata_shape::HEAD),
-		tail: metadata_shape::SHAPE.get::<u64>(bytes, metadata_shape::TAIL),
+	#[test]
+	fn a_wrapped_buffer_keeps_head_ahead_of_tail_rather_than_being_normalised() {
+		let metadata = RingBufferMetadata {
+			count: u64::MAX,
+			head: 99,
+			tail: 0,
+		};
+
+		assert_eq!(decode_ringbuffer_metadata(&encode_ringbuffer_metadata(&metadata)).unwrap(), metadata);
+	}
+
+	#[test]
+	fn a_row_of_the_wrong_width_is_rejected_rather_than_misread_as_eviction_bounds() {
+		assert!(decode_ringbuffer_metadata(&EncodedPodRow::new(&[0u8; 23])).is_err());
+		assert!(decode_ringbuffer_metadata(&EncodedPodRow::new(&[0u8; 25])).is_err());
+		assert!(decode_ringbuffer_metadata(&EncodedPodRow::new(&[0u8; 40])).is_err());
 	}
 }

@@ -16,28 +16,31 @@ use crate::{CatalogStore, Result};
 impl CatalogStore {
 	pub(crate) fn update_ringbuffer_metadata(
 		txn: &mut CommandTransaction,
+		ringbuffer_id: RingBufferId,
 		metadata: RingBufferMetadata,
 	) -> Result<()> {
 		let row = encode_ringbuffer_metadata(&metadata);
-		txn.set(&RingBufferMetadataKey::encoded(metadata.id), row)?;
+		txn.set(&RingBufferMetadataKey::encoded(ringbuffer_id), row.into_bytes())?;
 		Ok(())
 	}
 
 	pub(crate) fn update_ringbuffer_metadata_admin(
 		txn: &mut AdminTransaction,
+		ringbuffer_id: RingBufferId,
 		metadata: RingBufferMetadata,
 	) -> Result<()> {
 		let row = encode_ringbuffer_metadata(&metadata);
-		txn.set(&RingBufferMetadataKey::encoded(metadata.id), row)?;
+		txn.set(&RingBufferMetadataKey::encoded(ringbuffer_id), row.into_bytes())?;
 		Ok(())
 	}
 
 	pub(crate) fn update_ringbuffer_metadata_txn(
 		txn: &mut Transaction<'_>,
+		ringbuffer_id: RingBufferId,
 		metadata: RingBufferMetadata,
 	) -> Result<()> {
 		let row = encode_ringbuffer_metadata(&metadata);
-		txn.set(&RingBufferMetadataKey::encoded(metadata.id), row)?;
+		txn.set(&RingBufferMetadataKey::encoded(ringbuffer_id), row.into_bytes())?;
 		Ok(())
 	}
 
@@ -48,7 +51,7 @@ impl CatalogStore {
 		metadata: &RingBufferMetadata,
 	) -> Result<()> {
 		if ringbuffer.partition_by.is_empty() {
-			Self::update_ringbuffer_metadata_txn(txn, metadata.clone())
+			Self::update_ringbuffer_metadata_txn(txn, ringbuffer.id, metadata.clone())
 		} else {
 			Self::update_ringbuffer_partition_metadata_txn(txn, ringbuffer.id, partition_key, metadata)
 		}
@@ -74,7 +77,7 @@ impl CatalogStore {
 	) -> Result<()> {
 		let row = encode_ringbuffer_metadata(metadata);
 		let key = RingBufferMetadataKey::encoded_partition(ringbuffer, partition_values.to_vec());
-		txn.set(&key, row)?;
+		txn.set(&key, row.into_bytes())?;
 		Ok(())
 	}
 }
@@ -105,7 +108,7 @@ pub mod tests {
 		metadata.head = 2;
 		metadata.tail = 7;
 
-		CatalogStore::update_ringbuffer_metadata_admin(&mut txn, metadata.clone()).unwrap();
+		CatalogStore::update_ringbuffer_metadata_admin(&mut txn, ringbuffer.id, metadata.clone()).unwrap();
 
 		let updated = CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), ringbuffer.id)
 			.unwrap()
@@ -114,7 +117,6 @@ pub mod tests {
 		assert_eq!(updated.count, 5);
 		assert_eq!(updated.head, 2);
 		assert_eq!(updated.tail, 7);
-		assert_eq!(updated.capacity, metadata.capacity);
 	}
 
 	#[test]
@@ -128,18 +130,18 @@ pub mod tests {
 				.unwrap()
 				.expect("Metadata should exist");
 
-		metadata.count = metadata.capacity;
-		metadata.head = metadata.capacity - 1;
+		metadata.count = ringbuffer.capacity;
+		metadata.head = ringbuffer.capacity - 1;
 		metadata.tail = 0;
 
-		CatalogStore::update_ringbuffer_metadata_admin(&mut txn, metadata.clone()).unwrap();
+		CatalogStore::update_ringbuffer_metadata_admin(&mut txn, ringbuffer.id, metadata.clone()).unwrap();
 
 		let updated = CatalogStore::find_ringbuffer_metadata(&mut Transaction::Admin(&mut txn), ringbuffer.id)
 			.unwrap()
 			.expect("Metadata should exist");
 
-		assert_eq!(updated.count, metadata.capacity);
-		assert_eq!(updated.head, metadata.capacity - 1);
+		assert_eq!(updated.count, ringbuffer.capacity);
+		assert_eq!(updated.head, ringbuffer.capacity - 1);
 		assert_eq!(updated.tail, 0);
 	}
 }

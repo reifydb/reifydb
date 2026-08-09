@@ -89,7 +89,7 @@ pub(crate) fn delete_series(
 
 	if deleted_count > 0 {
 		apply_series_metadata_after_delete(&mut metadata, deleted_count);
-		services.catalog.update_series_metadata_txn(txn, metadata)?;
+		services.catalog.update_series_metadata_txn(txn, series.id, metadata)?;
 	}
 
 	if let Some(returning_exprs) = &returning {

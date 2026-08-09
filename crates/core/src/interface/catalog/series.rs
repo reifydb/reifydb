@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::{Value, datetime::DateTime, sumtype::SumTypeId, value_type::ValueType};
+use reifydb_codec::row::pod::EncodedPodRow;
+use reifydb_value::{
+	Result,
+	value::{Value, datetime::DateTime, sumtype::SumTypeId, value_type::ValueType},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -11,6 +15,7 @@ use crate::{
 		id::{NamespaceId, SeriesId},
 		key::PrimaryKey,
 	},
+	return_internal_error,
 	value::column::buffer::ColumnBuffer,
 };
 
@@ -179,7 +184,6 @@ impl Series {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SeriesMetadata {
-	pub id: SeriesId,
 	pub row_count: u64,
 	pub oldest_key: u64,
 	pub newest_key: u64,
@@ -187,13 +191,88 @@ pub struct SeriesMetadata {
 }
 
 impl SeriesMetadata {
-	pub fn new(series_id: SeriesId) -> Self {
+	pub fn new() -> Self {
 		Self {
-			id: series_id,
 			row_count: 0,
 			oldest_key: 0,
 			newest_key: 0,
 			sequence_counter: 0,
 		}
+	}
+}
+
+impl Default for SeriesMetadata {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
+const SERIES_METADATA_WIDTH: usize = 32;
+
+pub fn encode_series_metadata(metadata: &SeriesMetadata) -> EncodedPodRow {
+	let mut bytes = Vec::with_capacity(SERIES_METADATA_WIDTH);
+	bytes.extend_from_slice(&metadata.row_count.to_be_bytes());
+	bytes.extend_from_slice(&metadata.oldest_key.to_be_bytes());
+	bytes.extend_from_slice(&metadata.newest_key.to_be_bytes());
+	bytes.extend_from_slice(&metadata.sequence_counter.to_be_bytes());
+	EncodedPodRow::new(&bytes)
+}
+
+pub fn decode_series_metadata(row: &EncodedPodRow) -> Result<SeriesMetadata> {
+	let bytes = row.body();
+	if bytes.len() != SERIES_METADATA_WIDTH {
+		return_internal_error!(
+			"Series metadata is {} bytes wide, expected {}. This indicates a corrupt metadata row.",
+			bytes.len(),
+			SERIES_METADATA_WIDTH
+		)
+	}
+	Ok(SeriesMetadata {
+		row_count: u64::from_be_bytes(bytes[0..8].try_into().unwrap()),
+		oldest_key: u64::from_be_bytes(bytes[8..16].try_into().unwrap()),
+		newest_key: u64::from_be_bytes(bytes[16..24].try_into().unwrap()),
+		sequence_counter: u64::from_be_bytes(bytes[24..32].try_into().unwrap()),
+	})
+}
+
+#[cfg(test)]
+mod series_metadata_tests {
+	use super::*;
+
+	#[test]
+	fn every_field_survives_a_round_trip_at_the_declared_width() {
+		let metadata = SeriesMetadata {
+			row_count: 42,
+			oldest_key: 100,
+			newest_key: 900,
+			sequence_counter: 7,
+		};
+
+		let row = encode_series_metadata(&metadata);
+
+		assert_eq!(row.len(), SERIES_METADATA_WIDTH);
+		assert_eq!(decode_series_metadata(&row).unwrap(), metadata);
+	}
+
+	#[test]
+	fn the_key_bounds_do_not_swap_because_they_select_which_buckets_materialise() {
+		let metadata = SeriesMetadata {
+			row_count: 1,
+			oldest_key: 1,
+			newest_key: u64::MAX,
+			sequence_counter: 0,
+		};
+
+		let decoded = decode_series_metadata(&encode_series_metadata(&metadata)).unwrap();
+
+		assert_eq!(decoded.oldest_key, 1);
+		assert_eq!(decoded.newest_key, u64::MAX);
+	}
+
+	#[test]
+	fn a_row_of_the_wrong_width_is_rejected_rather_than_rewinding_the_sequence_counter() {
+		assert!(decode_series_metadata(&EncodedPodRow::new(&[0u8; 31])).is_err());
+		assert!(decode_series_metadata(&EncodedPodRow::new(&[0u8; 33])).is_err());
+		assert!(decode_series_metadata(&EncodedPodRow::new(&[0u8; 40])).is_err());
 	}
 }
