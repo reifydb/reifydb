@@ -86,7 +86,7 @@ fn run_or_abort<R>(operator: OperatorId, stage: &'static str, f: impl FnOnce() -
 
 pub const NATIVE_OPERATOR_MAGIC: u32 = 0x5244_424E;
 
-pub const NATIVE_ABI_TAG: u32 = 0x030A;
+pub const NATIVE_ABI_TAG: u32 = 0x0308;
 
 pub type NativeOperatorCreateFn = fn(OperatorId, &Config) -> Result<BoxedBridgedOperator>;
 
