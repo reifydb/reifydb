@@ -101,12 +101,6 @@ fn pinned() -> Vec<Pin> {
 				"row_count",
 			],
 		),
-		(
-			"column_snapshot::column_snapshot_link",
-			&*crate::store::column_snapshot::shape::column_snapshot_link::SHAPE,
-			0x1d9677b49fb39c2c,
-			&["id"],
-		),
 		("config::config", &*crate::store::config::shape::config::SHAPE, 0x968426172f0419b7, &["value"]),
 		(
 			"dictionary::dictionary",
@@ -337,22 +331,10 @@ fn pinned() -> Vec<Pin> {
 			&["announce", "duration", "persistent"],
 		),
 		(
-			"row_shape::shape_header",
-			&*crate::store::row_shape::shape::shape_header::SHAPE,
-			0x57677554e4d3694e,
-			&["field_count"],
-		),
-		(
 			"row_shape::shape_field",
 			&*crate::store::row_shape::shape::shape_field::SHAPE,
 			0x85505715107de223,
 			&["name", "base_type", "constraint_type", "constraint_p1", "constraint_p2", "offset", "size"],
-		),
-		(
-			"sequence::sequence",
-			&*crate::store::sequence::shape::sequence::SHAPE,
-			0xf6bcd29d9797c44a,
-			&["value"],
 		),
 		(
 			"series::series",

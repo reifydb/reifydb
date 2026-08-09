@@ -2,15 +2,24 @@
 // Copyright (c) 2026 ReifyDB
 
 pub(crate) mod shape_header {
-	use once_cell::sync::Lazy;
-	use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
-	use reifydb_value::value::value_type::ValueType;
+	use reifydb_codec::row::pod::EncodedPodRow;
+	use reifydb_core::return_internal_error;
 
-	pub(crate) const FIELD_COUNT: usize = 0;
+	use crate::Result;
 
-	pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| {
-		RowShape::new(RowFamily::Catalog, vec![RowShapeField::unconstrained("field_count", ValueType::Uint2)])
-	});
+	pub(crate) fn encode(field_count: u16) -> EncodedPodRow {
+		EncodedPodRow::new(&field_count.to_be_bytes())
+	}
+
+	pub(crate) fn decode(row: &EncodedPodRow) -> Result<u16> {
+		let Ok(bytes) = <[u8; 2]>::try_from(row.body()) else {
+			return_internal_error!(
+				"Row-shape header is {} bytes wide, expected 2. This indicates a corrupt shape header.",
+				row.len()
+			)
+		};
+		Ok(u16::from_be_bytes(bytes))
+	}
 }
 
 pub(crate) mod shape_field {

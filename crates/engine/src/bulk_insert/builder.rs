@@ -7,7 +7,7 @@ use reifydb_catalog::{
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
 };
-use reifydb_codec::row::{bytes::EncodedRowBuilder, shape::RowShape};
+use reifydb_codec::row::{bytes::EncodedRowBuilder, pod::EncodedPodRow, shape::RowShape};
 use reifydb_core::{
 	error::CoreError,
 	interface::catalog::{
@@ -36,7 +36,7 @@ use reifydb_transaction::{
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
-	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber, value_type::ValueType},
+	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber},
 };
 
 use super::{
@@ -260,22 +260,13 @@ fn write_table_rows(
 	let total_rows = encoded_bytes_list.len();
 	let row_numbers = catalog.next_row_number_batch(txn, table.id, total_rows as u64)?;
 	let pk_def = primary_key::get_primary_key(catalog, &mut Transaction::Command(txn), table)?;
-	let row_number_shape = pk_def.as_ref().map(|_| RowShape::testing(&[ValueType::Uint8]));
 
 	let mut owned_rows = encoded_bytes_list;
 	txn.insert_table(table, shape, &row_numbers, &mut owned_rows)?;
 
 	if let Some(ref pk_def) = pk_def {
 		for (row, &row_number) in owned_rows.iter().zip(row_numbers.iter()) {
-			write_primary_key_index(
-				txn,
-				table,
-				shape,
-				pk_def,
-				row,
-				row_number,
-				row_number_shape.as_ref().unwrap(),
-			)?;
+			write_primary_key_index(txn, table, shape, pk_def, row, row_number)?;
 		}
 	}
 
@@ -414,7 +405,6 @@ fn write_primary_key_index(
 	pk_def: &PrimaryKey,
 	row: &[u8],
 	row_number: RowNumber,
-	row_number_shape: &RowShape,
 ) -> Result<()> {
 	let index_key = primary_key::encode_primary_key(pk_def, row, table, shape)?;
 	let index_entry_key = IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key);
@@ -429,9 +419,7 @@ fn write_primary_key_index(
 		.into());
 	}
 
-	let mut row_number_encoded = row_number_shape.allocate();
-	row_number_shape.set::<u64>(&mut row_number_encoded, 0, u64::from(row_number));
-	txn.set(&index_entry_key.encode(), row_number_encoded.freeze())?;
+	txn.set(&index_entry_key.encode(), EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes())?;
 	Ok(())
 }
 

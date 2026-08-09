@@ -4,7 +4,10 @@
 use reifydb_abi::data::constraint::FFITypeConstraint;
 use reifydb_codec::{
 	constraint::type_constraint_from_ffi,
-	row::shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
+	row::{
+		pod::EncodedPodRow,
+		shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
+	},
 };
 use reifydb_core::{
 	error::diagnostic::internal::internal,
@@ -91,8 +94,7 @@ impl Catalog {
 			}
 		};
 
-		let field_count =
-			shape_header::SHAPE.get::<u16>(&header_entry.bytes, shape_header::FIELD_COUNT) as usize;
+		let field_count = shape_header::decode(EncodedPodRow::view(&header_entry.bytes))? as usize;
 
 		let mut fields = Vec::with_capacity(field_count);
 		for i in 0..field_count {

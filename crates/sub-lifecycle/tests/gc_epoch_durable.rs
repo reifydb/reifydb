@@ -8,7 +8,6 @@
 //! process, and pruning bounded by the longest declared ttl rather than by a buffer size.
 
 use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
-use reifydb_codec::row::shape::RowShape;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -29,7 +28,7 @@ use reifydb_sub_lifecycle::gc::epoch::{
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::multi::RangeScope;
-use reifydb_value::value::{duration::Duration, identity::IdentityId, value_type::ValueType};
+use reifydb_value::value::{duration::Duration, identity::IdentityId};
 
 const MINUTE_SECS: u64 = 60;
 
@@ -44,17 +43,17 @@ fn commit_a_version(engine: &StandardEngine, consumer: &str, at: u64) {
 /// Reads the durable keyspace directly, so a test asserts what reached storage rather than what the RAM map
 /// still holds. Returns (bucket, sample instant, version); bucket and instant diverging is the thing under test.
 fn durable_samples(engine: &StandardEngine) -> Vec<(u64, u64, u64)> {
-	let shape = RowShape::testing(&[ValueType::Uint8, ValueType::Uint8]);
 	let txn = engine.begin_query(IdentityId::system()).expect("system query transaction");
 	let mut samples: Vec<(u64, u64, u64)> = txn
 		.range(VersionEpochKey::floor_scan(EpochSeconds::new(u64::MAX)), RangeScope::All, 256)
 		.filter_map(|entry| {
 			let entry = entry.ok()?;
 			let key = VersionEpochKey::decode(&entry.key)?;
+			let bytes = entry.bytes.as_slice();
 			Some((
 				key.bucket.seconds(),
-				shape.get::<u64>(&entry.bytes, 0),
-				shape.get::<u64>(&entry.bytes, 1),
+				u64::from_be_bytes(bytes[..8].try_into().ok()?),
+				u64::from_be_bytes(bytes[8..16].try_into().ok()?),
 			))
 		})
 		.collect();

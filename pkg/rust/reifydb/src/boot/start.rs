@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_cdc::storage::CdcStore;
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::catalog::config::{ConfigKey, GetConfig},
 	key::{
@@ -17,16 +17,15 @@ use reifydb_store_multi::MultiStore;
 use reifydb_transaction::single::SingleTransaction;
 use reifydb_value::{
 	params::Params,
-	value::{duration::Duration, identity::IdentityId, value_type::ValueType},
+	value::{duration::Duration, identity::IdentityId},
 };
 use tracing::info;
 
 use crate::{MigrationStatement, Result};
 
-const CURRENT_STORAGE_VERSION: u8 = 0x01;
+const CURRENT_STORAGE_VERSION: u8 = 0x02;
 
 pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> Result<()> {
-	let shape = RowShape::testing(&[ValueType::Uint1]);
 	let key = SystemVersionKey {
 		version: SystemVersion::Storage,
 	}
@@ -36,13 +35,11 @@ pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> Result<()> {
 
 	match tx.get(&key)? {
 		None => {
-			let mut row = shape.allocate();
-			shape.set::<u8>(&mut row, 0, CURRENT_STORAGE_VERSION);
-			tx.set(&key, row.freeze())?;
+			tx.set(&key, EncodedPodRow::new(&[CURRENT_STORAGE_VERSION]).into_bytes())?;
 		}
 		Some(single) => {
-			let version = shape.get::<u8>(&single.bytes, 0);
-			assert_eq!(CURRENT_STORAGE_VERSION, version, "Storage version mismatch");
+			let version = EncodedPodRow::view(&single.bytes).body();
+			assert_eq!([CURRENT_STORAGE_VERSION], version, "Storage version mismatch");
 		}
 	};
 

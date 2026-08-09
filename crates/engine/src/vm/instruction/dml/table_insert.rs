@@ -8,6 +8,7 @@ use std::{
 
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, EncodedRowBuilder},
+	pod::EncodedPodRow,
 	shape::RowShape,
 };
 use reifydb_core::{
@@ -37,7 +38,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber, value_type::ValueType},
+	value::{Value, identity::IdentityId, partition::Partition, row_number::RowNumber},
 };
 use tracing::instrument;
 
@@ -115,10 +116,8 @@ pub(crate) fn insert_table(
 	assert_eq!(row_numbers.len(), validated.len());
 
 	let pk_def = primary_key::get_primary_key(&services.catalog, txn, &table)?;
-	let row_number_shape = pk_def.as_ref().map(|_| RowShape::testing(&[ValueType::Uint8]));
 	let pk_ctx = pk_def.as_ref().map(|pk| PkContext {
 		pk_def: pk,
-		row_number_shape: row_number_shape.as_ref().unwrap(),
 	});
 	let returned_rows = insert_validated_table_rows(
 		txn,
@@ -140,7 +139,6 @@ pub(crate) fn insert_table(
 
 struct PkContext<'a> {
 	pk_def: &'a PrimaryKey,
-	row_number_shape: &'a RowShape,
 }
 
 struct ColumnView<'a> {
@@ -328,9 +326,7 @@ fn write_insert_table_pk_index(
 		let key_columns = pk.pk_def.columns.iter().map(|c| c.name.clone()).collect();
 		return_error!(primary_key_violation(target.fragment.clone(), target.table.name.clone(), key_columns,));
 	}
-	let mut row_number_encoded = pk.row_number_shape.allocate();
-	pk.row_number_shape.set::<u64>(&mut row_number_encoded, 0, u64::from(row_number));
-	txn.set(&index_entry_key.encode(), row_number_encoded.freeze())?;
+	txn.set(&index_entry_key.encode(), EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes())?;
 	Ok(())
 }
 

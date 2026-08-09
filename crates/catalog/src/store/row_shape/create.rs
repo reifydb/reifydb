@@ -26,9 +26,7 @@ pub(crate) fn create_row_shape(txn: &mut Transaction<'_>, shape: &RowShape) -> R
 			shape.field_count()
 		);
 	}
-	let mut header_row = shape_header::SHAPE.allocate();
-	shape_header::SHAPE.set::<u16>(&mut header_row, shape_header::FIELD_COUNT, shape.field_count() as u16);
-	txn.set(&RowShapeKey::encoded(fingerprint), header_row.freeze())?;
+	txn.set(&RowShapeKey::encoded(fingerprint), shape_header::encode(shape.field_count() as u16).into_bytes())?;
 
 	for (idx, field) in shape.fields().iter().enumerate() {
 		let ffi = type_constraint_to_ffi(&field.constraint).expect("constraint exceeds tag capacity");

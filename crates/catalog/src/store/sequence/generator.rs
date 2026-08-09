@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use once_cell::sync::Lazy;
-use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowShape};
-use reifydb_core::error::CoreError;
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use reifydb_core::{error::CoreError, return_internal_error};
 use reifydb_transaction::{
 	single::write::SingleWriteTransaction,
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
@@ -70,7 +69,22 @@ macro_rules! impl_generator {
 			use super::*;
 			use crate::Result;
 
-			pub(crate) static SHAPE: Lazy<RowShape> = Lazy::new(|| RowShape::testing(&[$type_enum]));
+			pub(crate) const WIDTH: usize = size_of::<$prim>();
+
+			pub(crate) fn encode(value: $prim) -> EncodedPodRow {
+				EncodedPodRow::new(&value.to_be_bytes())
+			}
+
+			pub(crate) fn decode(row: &EncodedPodRow) -> Result<$prim> {
+				let Ok(bytes) = <[u8; WIDTH]>::try_from(row.body()) else {
+					return_internal_error!(
+						"Sequence counter is {} bytes wide, expected {}. This indicates a corrupt or foreign sequence row.",
+						row.len(),
+						WIDTH
+					)
+				};
+				Ok(<$prim>::from_be_bytes(bytes))
+			}
 
 			pub(crate) struct $generator {}
 
@@ -92,8 +106,7 @@ macro_rules! impl_generator {
 					let mut tx = txn.begin_single_command([key])?;
 					let result = match tx.get(key)? {
 						Some(row) => {
-							let mut row = row.bytes.thaw();
-							let current_value = SHAPE.get::<$prim>(&row, 0);
+							let current_value = decode(EncodedPodRow::view(&row.bytes))?;
 							let next_value = current_value.saturating_add(incr);
 
 							if current_value == next_value {
@@ -103,15 +116,12 @@ macro_rules! impl_generator {
 								.into());
 							}
 
-							SHAPE.set::<$prim>(&mut row, 0, next_value);
-							tx.set(key, row.freeze())?;
+							tx.set(key, encode(next_value).into_bytes())?;
 							next_value
 						}
 						None => match default {
 							Some(value) => {
-								let mut new_row = SHAPE.allocate();
-								SHAPE.set::<$prim>(&mut new_row, 0, value);
-								tx.set(key, new_row.freeze())?;
+								tx.set(key, encode(value).into_bytes())?;
 								value
 							}
 							None => {
@@ -125,9 +135,7 @@ macro_rules! impl_generator {
 									.into());
 								}
 
-								let mut new_row = SHAPE.allocate();
-								SHAPE.set::<$prim>(&mut new_row, 0, last);
-								tx.set(key, new_row.freeze())?;
+								tx.set(key, encode(last).into_bytes())?;
 								last
 							}
 						},
@@ -142,12 +150,7 @@ macro_rules! impl_generator {
 					value: $prim,
 				) -> Result<()> {
 					let mut tx = txn.begin_single_command([key])?;
-					let mut row = match tx.get(key)? {
-						Some(bytes) => bytes.bytes.thaw(),
-						None => SHAPE.allocate(),
-					};
-					SHAPE.set::<$prim>(&mut row, 0, value);
-					tx.set(key, row.freeze())?;
+					tx.set(key, encode(value).into_bytes())?;
 					tx.commit()?;
 					Ok(())
 				}
@@ -155,12 +158,31 @@ macro_rules! impl_generator {
 
 			#[cfg(test)]
 			mod tests {
-				use reifydb_codec::key::encoded::EncodedKey;
+				use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 				use reifydb_core::error::CoreError;
 				use reifydb_test_harness::engine::create_test_admin_transaction;
 				use reifydb_value::{error::IntoDiagnostic, value::value_type::ValueType};
 
-				use super::{SHAPE, $generator};
+				use super::{WIDTH, decode, encode, $generator};
+
+				#[test]
+				fn a_counter_round_trips_at_exactly_the_type_width() {
+					// Encoder and decoder disagreeing on width or endianness re-issues ids that
+					// were already handed out.
+					let row = encode($max);
+					assert_eq!(row.len(), WIDTH);
+					assert_eq!(decode(&row).unwrap(), $max);
+					assert_eq!(decode(&encode($start)).unwrap(), $start);
+				}
+
+				#[test]
+				fn a_row_of_the_wrong_width_is_rejected_rather_than_misread() {
+					// The 33-byte shape row this replaced decodes as a plausible counter and
+					// silently rewinds id issuance.
+					assert!(decode(&EncodedPodRow::new(&vec![0u8; WIDTH + 1])).is_err());
+					assert!(decode(&EncodedPodRow::new(&vec![0u8; WIDTH - 1])).is_err());
+					assert!(decode(&EncodedPodRow::new(&vec![0u8; 33])).is_err());
+				}
 
 				#[test]
 				fn test_ok() {
@@ -181,18 +203,16 @@ macro_rules! impl_generator {
 					let final_val = ($start as u128)
 						.saturating_add((iterations.saturating_sub(1)) as u128)
 						as $prim;
-					assert_eq!(SHAPE.get::<$prim>(&single.bytes, 0), final_val);
+					assert_eq!(decode(EncodedPodRow::view(&single.bytes)).unwrap(), final_val);
 				}
 
 				#[test]
 				fn test_exhaustion() {
 					let mut txn = create_test_admin_transaction();
 
-					let mut row = SHAPE.allocate();
-					SHAPE.set::<$prim>(&mut row, 0, $max);
-
 					let key = EncodedKey::new("sequence");
-					txn.with_single_command([&key], |tx| tx.set(&key, row.freeze())).unwrap();
+					txn.with_single_command([&key], |tx| tx.set(&key, encode($max).into_bytes()))
+						.unwrap();
 
 					let err = $generator::next(&mut txn, &EncodedKey::new("sequence"), None)
 						.unwrap_err();
@@ -275,7 +295,7 @@ macro_rules! impl_generator {
 					let final_val = ($start as u128)
 						.saturating_add((batch_size_1 as u128) * (iterations_1 as u128))
 						.saturating_sub(1) as $prim;
-					assert_eq!(SHAPE.get::<$prim>(&single.bytes, 0), final_val);
+					assert_eq!(decode(EncodedPodRow::view(&single.bytes)).unwrap(), final_val);
 
 					for i in 0..iterations_2 {
 						let expected = ($start as u128)
@@ -296,16 +316,17 @@ macro_rules! impl_generator {
 				fn test_batched_exhaustion() {
 					let mut txn = create_test_admin_transaction();
 
-					let mut row = SHAPE.allocate();
 					let batch_size_val =
 						5000u32.min((($max as u128).saturating_sub($start as u128) / 2) as u32);
 					let batch_size = batch_size_val as $prim;
 					let initial_val =
 						(($max as u128).saturating_sub((batch_size_val * 2) as u128)) as $prim;
-					SHAPE.set::<$prim>(&mut row, 0, initial_val);
 
 					let key = EncodedKey::new("sequence");
-					txn.with_single_command([&key], |tx| tx.set(&key, row.freeze())).unwrap();
+					txn.with_single_command([&key], |tx| {
+						tx.set(&key, encode(initial_val).into_bytes())
+					})
+					.unwrap();
 
 					let result = $generator::next_batched(
 						&mut txn,

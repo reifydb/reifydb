@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::catalog::EncodedCatalogRow;
+use reifydb_codec::row::{catalog::EncodedCatalogRow, pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
@@ -9,13 +9,21 @@ use reifydb_core::{
 		id::{ColumnSnapshotId, NamespaceId, SeriesId, TableId},
 	},
 	key::column_snapshot::{ColumnSnapshotKey, SeriesColumnSnapshotKey, TableColumnSnapshotKey},
+	return_internal_error,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
-use crate::{
-	CatalogStore, Result,
-	store::column_snapshot::shape::{column_snapshot, column_snapshot_link},
-};
+use crate::{CatalogStore, Result, store::column_snapshot::shape::column_snapshot};
+
+fn decode_snapshot_link(row: &EncodedPodRow) -> Result<u64> {
+	let Ok(bytes) = <[u8; 8]>::try_from(row.body()) else {
+		return_internal_error!(
+			"Column snapshot link is {} bytes wide, expected 8. This indicates a corrupt link row.",
+			row.len()
+		)
+	};
+	Ok(u64::from_be_bytes(bytes))
+}
 
 impl CatalogStore {
 	pub(crate) fn find_column_snapshot(
@@ -71,7 +79,7 @@ pub(crate) fn collect_series_snapshot_ids(
 	let mut stream = rx.range(SeriesColumnSnapshotKey::full_scan(series_id), RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {
 		let multi = entry?;
-		ids.push(ColumnSnapshotId(column_snapshot_link::get_id(EncodedCatalogRow::view(&multi.bytes))));
+		ids.push(ColumnSnapshotId(decode_snapshot_link(EncodedPodRow::view(&multi.bytes))?));
 	}
 	drop(stream);
 	Ok(ids)
@@ -82,7 +90,7 @@ pub(crate) fn collect_table_snapshot_ids(rx: &mut Transaction<'_>, table_id: Tab
 	let mut stream = rx.range(TableColumnSnapshotKey::full_scan(table_id), RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {
 		let multi = entry?;
-		ids.push(ColumnSnapshotId(column_snapshot_link::get_id(EncodedCatalogRow::view(&multi.bytes))));
+		ids.push(ColumnSnapshotId(decode_snapshot_link(EncodedPodRow::view(&multi.bytes))?));
 	}
 	drop(stream);
 	Ok(ids)

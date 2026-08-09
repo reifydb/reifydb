@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::catalog::{
 		column_snapshot::{ColumnSnapshot, ColumnSnapshotKind, ColumnSnapshotSource},
@@ -12,10 +13,7 @@ use reifydb_transaction::transaction::admin::AdminTransaction;
 
 use crate::{
 	CatalogStore, Result,
-	store::{
-		column_snapshot::shape::{column_snapshot, column_snapshot_link},
-		sequence::system::SystemSequence,
-	},
+	store::{column_snapshot::shape::column_snapshot, sequence::system::SystemSequence},
 };
 
 #[derive(Debug, Clone)]
@@ -89,21 +87,20 @@ impl CatalogStore {
 		id: ColumnSnapshotId,
 		source: &ColumnSnapshotSource,
 	) -> Result<()> {
-		let mut row = column_snapshot_link::allocate();
-		column_snapshot_link::set_id(&mut row, u64::from(id));
+		let row = EncodedPodRow::new(&u64::from(id).to_be_bytes());
 
 		match source {
 			ColumnSnapshotSource::Table {
 				table_id,
 				..
 			} => {
-				txn.set(&TableColumnSnapshotKey::encoded(*table_id, id), row.freeze())?;
+				txn.set(&TableColumnSnapshotKey::encoded(*table_id, id), row.into_bytes())?;
 			}
 			ColumnSnapshotSource::SeriesBucket {
 				series_id,
 				..
 			} => {
-				txn.set(&SeriesColumnSnapshotKey::encoded(*series_id, id), row.freeze())?;
+				txn.set(&SeriesColumnSnapshotKey::encoded(*series_id, id), row.into_bytes())?;
 			}
 		}
 

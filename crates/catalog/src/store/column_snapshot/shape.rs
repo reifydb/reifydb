@@ -15,8 +15,4 @@ catalog_shape! {
 		read_version: u64,
 		row_count: u64,
 	}
-
-	pub(crate) column_snapshot_link {
-		id: u64,
-	}
 }

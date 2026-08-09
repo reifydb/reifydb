@@ -2,10 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, shape::RowShape},
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::config::{ConfigKey, GetConfig},
@@ -14,16 +11,11 @@ use reifydb_core::{
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::version_epoch::{BUCKET_WIDTH, EpochSeconds, EpochSpan};
 use reifydb_transaction::multi::RangeScope;
-use reifydb_value::{
-	Result,
-	value::{identity::IdentityId, value_type::ValueType},
-};
+use reifydb_value::{Result, value::identity::IdentityId};
 
 const RANGE_BATCH: usize = 256;
 
-const AT_SECS: usize = 0;
-
-const VERSION: usize = 1;
+const SAMPLE_WIDTH: usize = 16;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Sample {
@@ -34,7 +26,6 @@ pub struct Sample {
 pub struct EpochLog {
 	engine: StandardEngine,
 	catalog: Catalog,
-	shape: RowShape,
 	last: Option<(EpochSeconds, u64)>,
 }
 
@@ -44,7 +35,6 @@ impl EpochLog {
 		Self {
 			engine,
 			catalog,
-			shape: sample_shape(),
 			last: None,
 		}
 	}
@@ -63,7 +53,7 @@ impl EpochLog {
 		}
 
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
-		txn.set(&VersionEpochKey::encoded(period), self.encode(at, version))?;
+		txn.set(&VersionEpochKey::encoded(period), encode(at, version).into_bytes())?;
 		let written_at = txn.commit_unchecked()?;
 
 		self.last = Some((period, written_at.0.max(version.0)));
@@ -83,7 +73,9 @@ impl EpochLog {
 			if key.bucket.plus(bucket) <= oldest {
 				break;
 			}
-			let sample = self.decode(&entry.bytes);
+			let Some(sample) = decode(EncodedPodRow::view(&entry.bytes)) else {
+				continue;
+			};
 			if sample.at >= oldest {
 				samples.push(sample);
 			}
@@ -99,7 +91,10 @@ impl EpochLog {
 		let txn = self.engine.begin_query(IdentityId::system())?;
 		for entry in txn.range(VersionEpochKey::older_than(oldest), RangeScope::All, RANGE_BATCH) {
 			let entry = entry?;
-			if self.decode(&entry.bytes).at >= oldest {
+			let Some(sample) = decode(EncodedPodRow::view(&entry.bytes)) else {
+				continue;
+			};
+			if sample.at >= oldest {
 				continue;
 			}
 			expired.push(entry.key.clone());
@@ -140,22 +135,22 @@ impl EpochLog {
 		let bucket = self.bucket().seconds();
 		EpochSeconds::new(at.seconds() - (at.seconds() % bucket))
 	}
-
-	fn encode(&self, at: EpochSeconds, version: CommitVersion) -> EncodedBytes {
-		let mut row = self.shape.allocate();
-		self.shape.set::<u64>(&mut row, AT_SECS, at.seconds());
-		self.shape.set::<u64>(&mut row, VERSION, version.0);
-		row.freeze()
-	}
-
-	fn decode(&self, bytes: &EncodedBytes) -> Sample {
-		Sample {
-			at: EpochSeconds::new(self.shape.get::<u64>(bytes, AT_SECS)),
-			version: self.shape.get::<u64>(bytes, VERSION),
-		}
-	}
 }
 
-fn sample_shape() -> RowShape {
-	RowShape::testing(&[ValueType::Uint8, ValueType::Uint8])
+fn encode(at: EpochSeconds, version: CommitVersion) -> EncodedPodRow {
+	let mut bytes = Vec::with_capacity(SAMPLE_WIDTH);
+	bytes.extend_from_slice(&at.seconds().to_be_bytes());
+	bytes.extend_from_slice(&version.0.to_be_bytes());
+	EncodedPodRow::new(&bytes)
+}
+
+fn decode(row: &EncodedPodRow) -> Option<Sample> {
+	let bytes = row.body();
+	if bytes.len() != SAMPLE_WIDTH {
+		return None;
+	}
+	Some(Sample {
+		at: EpochSeconds::new(u64::from_be_bytes(bytes[..8].try_into().ok()?)),
+		version: u64::from_be_bytes(bytes[8..].try_into().ok()?),
+	})
 }

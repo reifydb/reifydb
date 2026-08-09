@@ -632,10 +632,10 @@ mod tests {
 		let mut poisoned = Vec::with_capacity(16 + 4);
 		poisoned.extend_from_slice(&7u128.to_be_bytes());
 		poisoned.extend_from_slice(b"other");
-		store.inner.lock().rows.insert(
-			DictionaryEntryKey::encoded(d.id, hash),
-			EncodedPodRow::new(&poisoned).into_bytes(),
-		);
+		store.inner
+			.lock()
+			.rows
+			.insert(DictionaryEntryKey::encoded(d.id, hash), EncodedPodRow::new(&poisoned).into_bytes());
 
 		let err = registry.intern(&d, &value).unwrap_err();
 		assert!(

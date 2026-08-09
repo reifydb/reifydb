@@ -8,6 +8,7 @@ use reifydb_codec::{
 	row::{
 		bytes::EncodedBytes,
 		catalog::EncodedCatalogRow,
+		pod::EncodedPodRow,
 		shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 	},
 };
@@ -35,7 +36,7 @@ impl CatalogChangeApplier for RowShapeHeaderApplier {
 		let shape_key = RowShapeKey::decode(key).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::RowShape,
 		})?;
-		let field_count = shape_header::SHAPE.get::<u16>(bytes, shape_header::FIELD_COUNT);
+		let field_count = shape_header::decode(EncodedPodRow::view(bytes))?;
 
 		try_reconstruct(catalog, txn, shape_key.fingerprint, field_count)
 	}
@@ -61,7 +62,7 @@ impl CatalogChangeApplier for RowShapeFieldApplier {
 			Some(entry) => entry,
 			None => return Ok(()),
 		};
-		let field_count = shape_header::SHAPE.get::<u16>(&header_entry.bytes, shape_header::FIELD_COUNT);
+		let field_count = shape_header::decode(EncodedPodRow::view(&header_entry.bytes))?;
 
 		try_reconstruct(catalog, txn, fingerprint, field_count)
 	}

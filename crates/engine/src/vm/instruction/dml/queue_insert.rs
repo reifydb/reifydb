@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use postcard::to_stdvec;
-use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
+use reifydb_codec::row::{bytes::EncodedBytes, pod::EncodedPodRow, shape::RowShape};
 use reifydb_core::{
 	error::diagnostic::catalog::{
 		namespace_not_found, queue_deduplication_key_not_utf8, queue_not_before_not_datetime, queue_not_found,
@@ -20,6 +20,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{queue_deduplication::QueueDeduplicationKey, row::RowKey},
+	return_internal_error,
 	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_rql::{
@@ -33,7 +34,7 @@ use reifydb_value::{
 	return_error,
 	value::{
 		Value, datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
-		row_number::RowNumber, value_type::ValueType,
+		row_number::RowNumber,
 	},
 };
 use tracing::instrument;
@@ -189,8 +190,24 @@ struct ReturnedRow {
 	encoded: EncodedBytes,
 }
 
-fn deduplication_record_shape() -> RowShape {
-	RowShape::testing(&[ValueType::Uint8, ValueType::DateTime])
+const DEDUPLICATION_RECORD_WIDTH: usize = 16;
+
+fn encode_deduplication_record(row_number: RowNumber, expires_at: DateTime) -> EncodedPodRow {
+	let mut bytes = Vec::with_capacity(DEDUPLICATION_RECORD_WIDTH);
+	bytes.extend_from_slice(&row_number.0.to_be_bytes());
+	bytes.extend_from_slice(&expires_at.to_millis().to_be_bytes());
+	EncodedPodRow::new(&bytes)
+}
+
+fn decode_deduplication_record(row: &EncodedPodRow) -> Option<(RowNumber, DateTime)> {
+	let bytes = row.body();
+	if bytes.len() != DEDUPLICATION_RECORD_WIDTH {
+		return None;
+	}
+	Some((
+		RowNumber(u64::from_be_bytes(bytes[..8].try_into().ok()?)),
+		DateTime::from_millis(u64::from_be_bytes(bytes[8..].try_into().ok()?)),
+	))
 }
 
 fn write_deduplication_record(
@@ -201,11 +218,8 @@ fn write_deduplication_record(
 	now: DateTime,
 ) -> Result<()> {
 	let ttl = queue.deduplicate.as_ref().map(|d| d.ttl).unwrap_or(Duration::MAX);
-	let shape = deduplication_record_shape();
-	let mut record = shape.allocate();
-	shape.set::<u64>(&mut record, 0, row_number.0);
-	shape.set_value(&mut record, 1, &Value::DateTime(now.saturating_add(ttl)));
-	txn.set(&QueueDeduplicationKey::encoded(queue.id, key.to_vec()), record.freeze())?;
+	let record = encode_deduplication_record(row_number, now.saturating_add(ttl));
+	txn.set(&QueueDeduplicationKey::encoded(queue.id, key.to_vec()), record.into_bytes())?;
 	Ok(())
 }
 
@@ -216,7 +230,6 @@ fn resolve_duplicates(
 	pending: &[PendingItem],
 	now: DateTime,
 ) -> Result<Vec<Outcome>> {
-	let record_shape = deduplication_record_shape();
 	let mut outcomes = Vec::with_capacity(pending.len());
 	let mut seen: HashMap<Vec<u8>, RowNumber> = HashMap::new();
 
@@ -236,9 +249,17 @@ fn resolve_duplicates(
 
 		let stored = txn.get(&QueueDeduplicationKey::encoded(queue.id, key.clone()))?;
 		if let Some(stored) = stored {
-			let row_number = RowNumber(record_shape.get::<u64>(&stored.bytes, 0));
-			let expires_at = record_shape.get_value(&stored.bytes, 1);
-			if !has_expired(&expires_at, now) {
+			let Some((row_number, expires_at)) =
+				decode_deduplication_record(EncodedPodRow::view(&stored.bytes))
+			else {
+				return_internal_error!(
+					"Queue {} deduplication record is {} bytes wide, expected {}. This indicates a corrupt record.",
+					queue.name,
+					stored.bytes.len(),
+					DEDUPLICATION_RECORD_WIDTH
+				)
+			};
+			if expires_at > now {
 				let encoded = txn.get(&RowKey::encoded(queue.id, row_number))?.map(|item| item.bytes);
 				outcomes.push(Outcome::Duplicate {
 					row_number,
@@ -254,14 +275,6 @@ fn resolve_duplicates(
 
 	let _ = shape;
 	Ok(outcomes)
-}
-
-#[inline]
-fn has_expired(expires_at: &Value, now: DateTime) -> bool {
-	match expires_at {
-		Value::DateTime(instant) => *instant <= now,
-		_ => false,
-	}
 }
 
 fn project_returning(
