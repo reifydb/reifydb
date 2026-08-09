@@ -37,9 +37,10 @@ impl Catalog {
 	pub fn get_or_create_row_shape(
 		&self,
 		txn: &mut Transaction<'_>,
+		family: RowFamily,
 		fields: Vec<RowShapeField>,
 	) -> Result<RowShape> {
-		let shape = RowShape::new(RowFamily::Deprecated, fields);
+		let shape = RowShape::new(family, fields);
 		let fingerprint = shape.fingerprint();
 		Span::current().record("fingerprint", field::debug(&fingerprint));
 
@@ -94,7 +95,8 @@ impl Catalog {
 			}
 		};
 
-		let field_count = shape_header::decode(EncodedPodRow::view(&header_entry.bytes))? as usize;
+		let (family, field_count) = shape_header::decode(EncodedPodRow::view(&header_entry.bytes))?;
+		let field_count = field_count as usize;
 
 		let mut fields = Vec::with_capacity(field_count);
 		for i in 0..field_count {
@@ -132,7 +134,7 @@ impl Catalog {
 			});
 		}
 
-		let shape = RowShape::from_parts(RowFamily::Deprecated, fingerprint, fields);
+		let shape = RowShape::from_parts(family, fingerprint, fields);
 		Span::current().record("cache_hit", false);
 		Span::current().record("field_count", shape.field_count());
 		self.cache.set_row_shape(shape.clone());

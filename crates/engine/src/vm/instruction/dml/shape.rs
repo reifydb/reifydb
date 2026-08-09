@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::row::shape::{RowShape, RowShapeField};
+use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::interface::catalog::{queue::Queue, ringbuffer::RingBuffer, series::Series, table::Table};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
@@ -26,7 +26,7 @@ pub fn get_or_create_table_shape(catalog: &Catalog, table: &Table, txn: &mut Tra
 		fields.push(RowShapeField::new(col.name.clone(), constraint));
 	}
 
-	catalog.get_or_create_row_shape(txn, fields)
+	catalog.get_or_create_row_shape(txn, RowFamily::Table, fields)
 }
 
 pub fn get_or_create_ringbuffer_shape(
@@ -50,7 +50,7 @@ pub fn get_or_create_ringbuffer_shape(
 		fields.push(RowShapeField::new(col.name.clone(), constraint));
 	}
 
-	catalog.get_or_create_row_shape(txn, fields)
+	catalog.get_or_create_row_shape(txn, RowFamily::RingBuffer, fields)
 }
 
 pub const QUEUE_NOT_BEFORE_FIELD: &str = "__queue_not_before";
@@ -77,7 +77,7 @@ pub fn get_or_create_queue_shape(catalog: &Catalog, queue: &Queue, txn: &mut Tra
 		TypeConstraint::unconstrained(ValueType::DateTime),
 	));
 
-	catalog.get_or_create_row_shape(txn, fields)
+	catalog.get_or_create_row_shape(txn, RowFamily::Deprecated, fields)
 }
 
 pub fn get_or_create_series_shape(catalog: &Catalog, series: &Series, txn: &mut Transaction<'_>) -> Result<RowShape> {
@@ -100,5 +100,5 @@ pub fn get_or_create_series_shape(catalog: &Catalog, series: &Series, txn: &mut 
 		};
 		fields.push(RowShapeField::new(col.name.clone(), constraint));
 	}
-	catalog.get_or_create_row_shape(txn, fields)
+	catalog.get_or_create_row_shape(txn, RowFamily::Series, fields)
 }

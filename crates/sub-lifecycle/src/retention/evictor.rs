@@ -784,8 +784,11 @@ mod tests {
 		let mut metadata = RingBufferMetadata::new();
 		metadata.count = 1;
 		metadata.tail = 2;
-		txn.set(&RingBufferMetadataKey::encoded_partition(id, values), encode_ringbuffer_metadata(&metadata).into_bytes())
-			.unwrap();
+		txn.set(
+			&RingBufferMetadataKey::encoded_partition(id, values),
+			encode_ringbuffer_metadata(&metadata).into_bytes(),
+		)
+		.unwrap();
 		txn.commit().unwrap();
 	}
 

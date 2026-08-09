@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::shape::RowFamily;
 use reifydb_core::{
 	common::TimeSource,
 	interface::catalog::{
@@ -343,7 +344,11 @@ impl Catalog {
 	) -> Result<Table> {
 		txn.track_table_created(table.clone())?;
 		let shape = row_shape_from_columns(table.columns.as_slice());
-		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
+		self.get_or_create_row_shape(
+			&mut Transaction::Admin(&mut *txn),
+			RowFamily::Table,
+			shape.fields().to_vec(),
+		)?;
 
 		let Some(pk_columns) = pk_columns else {
 			return Ok(table);

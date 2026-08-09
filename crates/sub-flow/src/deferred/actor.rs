@@ -2315,7 +2315,8 @@ mod pull_protocol {
 				.filter(|row| Key::kind(&row.key) == Some(KeyKind::RingBufferMetadata))
 				.collect();
 			assert_eq!(rows.len(), 1, "the test view owns exactly one unpartitioned metadata row");
-			decode_ringbuffer_metadata(EncodedPodRow::view(&rows[0].bytes)).expect("decode the metadata row")
+			decode_ringbuffer_metadata(EncodedPodRow::view(&rows[0].bytes))
+				.expect("decode the metadata row")
 		};
 
 		let mirrored: Vec<RingBufferMetadata> = h

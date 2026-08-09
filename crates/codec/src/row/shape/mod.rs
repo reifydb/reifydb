@@ -44,12 +44,16 @@ const PACKED_MODE_MASK: u128 = 0x80000000000000000000000000000000;
 const PACKED_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF;
 const PACKED_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 
+#[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, RkyvArchive, RkyvSerialize, RkyvDeserialize)]
 pub enum RowFamily {
-	Deprecated,
-	Catalog,
-	Operator,
-	Pod,
+	Deprecated = 0x00,
+	Catalog = 0x01,
+	Operator = 0x02,
+	Pod = 0x03,
+	Table = 0x04,
+	Series = 0x05,
+	RingBuffer = 0x06,
 }
 
 impl RowFamily {
@@ -59,6 +63,22 @@ impl RowFamily {
 			Self::Catalog => CATALOG_HEADER_SIZE,
 			Self::Operator => OPERATOR_HEADER_SIZE,
 			Self::Pod => POD_HEADER_SIZE,
+			Self::Table => SHAPE_HEADER_SIZE,
+			Self::Series => SHAPE_HEADER_SIZE,
+			Self::RingBuffer => SHAPE_HEADER_SIZE,
+		}
+	}
+
+	pub const fn from_u8(value: u8) -> Option<Self> {
+		match value {
+			0x00 => Some(Self::Deprecated),
+			0x01 => Some(Self::Catalog),
+			0x02 => Some(Self::Operator),
+			0x03 => Some(Self::Pod),
+			0x04 => Some(Self::Table),
+			0x05 => Some(Self::Series),
+			0x06 => Some(Self::RingBuffer),
+			_ => None,
 		}
 	}
 }
@@ -143,7 +163,7 @@ impl Eq for RowShape {}
 impl RowShape {
 	pub fn new(family: RowFamily, fields: Vec<RowShapeField>) -> Self {
 		let fields = Self::compute_layout(family, fields);
-		let fingerprint = compute_fingerprint(&fields);
+		let fingerprint = compute_fingerprint(family, &fields);
 
 		Self(Arc::new(Inner {
 			fingerprint,

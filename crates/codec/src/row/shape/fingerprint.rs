@@ -6,7 +6,10 @@ use std::ops::Deref;
 use reifydb_value::util::hash::{Hash64, xxh3_64};
 use serde::{Deserialize, Serialize};
 
-use crate::{constraint::type_constraint_to_ffi, row::shape::RowShapeField};
+use crate::{
+	constraint::type_constraint_to_ffi,
+	row::shape::{RowFamily, RowShapeField},
+};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -65,9 +68,11 @@ impl From<u64> for RowShapeFingerprint {
 	}
 }
 
-pub fn compute_fingerprint(fields: &[RowShapeField]) -> RowShapeFingerprint {
-	let estimated_size = 2 + fields.len() * 42;
+pub fn compute_fingerprint(family: RowFamily, fields: &[RowShapeField]) -> RowShapeFingerprint {
+	let estimated_size = 3 + fields.len() * 42;
 	let mut buffer = Vec::with_capacity(estimated_size);
+
+	buffer.push(family as u8);
 
 	let field_count = fields.len() as u16;
 	buffer.extend_from_slice(&field_count.to_le_bytes());

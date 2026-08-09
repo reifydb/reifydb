@@ -36,9 +36,9 @@ impl CatalogChangeApplier for RowShapeHeaderApplier {
 		let shape_key = RowShapeKey::decode(key).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::RowShape,
 		})?;
-		let field_count = shape_header::decode(EncodedPodRow::view(bytes))?;
+		let (family, field_count) = shape_header::decode(EncodedPodRow::view(bytes))?;
 
-		try_reconstruct(catalog, txn, shape_key.fingerprint, field_count)
+		try_reconstruct(catalog, txn, shape_key.fingerprint, family, field_count)
 	}
 
 	fn remove(_catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey) -> Result<()> {
@@ -62,9 +62,9 @@ impl CatalogChangeApplier for RowShapeFieldApplier {
 			Some(entry) => entry,
 			None => return Ok(()),
 		};
-		let field_count = shape_header::decode(EncodedPodRow::view(&header_entry.bytes))?;
+		let (family, field_count) = shape_header::decode(EncodedPodRow::view(&header_entry.bytes))?;
 
-		try_reconstruct(catalog, txn, fingerprint, field_count)
+		try_reconstruct(catalog, txn, fingerprint, family, field_count)
 	}
 
 	fn remove(_catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey) -> Result<()> {
@@ -76,6 +76,7 @@ fn try_reconstruct(
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	fingerprint: RowShapeFingerprint,
+	family: RowFamily,
 	field_count: u16,
 ) -> Result<()> {
 	if catalog.cache.find_row_shape(fingerprint).is_some() {
@@ -117,7 +118,7 @@ fn try_reconstruct(
 		}
 	}
 
-	let shape = RowShape::from_parts(RowFamily::Deprecated, fingerprint, fields);
+	let shape = RowShape::from_parts(family, fingerprint, fields);
 	catalog.cache.set_row_shape(shape);
 	Ok(())
 }

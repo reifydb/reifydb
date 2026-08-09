@@ -49,12 +49,13 @@ fn the_catalog_family_saves_exactly_the_dead_header_bytes_on_every_row() {
 }
 
 #[test]
-fn family_does_not_participate_in_the_fingerprint() {
-	// Resolve-by-fingerprint requires one field list to fingerprint identically in every family.
+fn the_family_participates_in_the_fingerprint_so_two_layouts_cannot_collide() {
+	// The fingerprint is the shape registry's only key, so a shared one would read a catalog row at offset 33.
 	let catalog = RowShape::new(RowFamily::Catalog, fields());
 	let deprecated = RowShape::new(RowFamily::Deprecated, fields());
 
-	assert_eq!(catalog.fingerprint(), deprecated.fingerprint());
+	assert_ne!(catalog.header_size(), deprecated.header_size());
+	assert_ne!(catalog.fingerprint(), deprecated.fingerprint());
 }
 
 #[test]

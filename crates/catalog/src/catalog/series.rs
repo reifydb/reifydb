@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::shape::RowFamily;
 use reifydb_core::{
 	common::TimeSource,
 	interface::catalog::{
@@ -281,7 +282,11 @@ impl Catalog {
 		txn.track_series_created(series.clone())?;
 
 		let shape = row_shape_from_columns(series.columns.as_slice());
-		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
+		self.get_or_create_row_shape(
+			&mut Transaction::Admin(&mut *txn),
+			RowFamily::Series,
+			shape.fields().to_vec(),
+		)?;
 
 		Ok(series)
 	}
@@ -297,7 +302,11 @@ impl Catalog {
 		txn.track_series_created(series.clone())?;
 
 		let shape = row_shape_from_columns(series.columns.as_slice());
-		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), shape.fields().to_vec())?;
+		self.get_or_create_row_shape(
+			&mut Transaction::Admin(&mut *txn),
+			RowFamily::Series,
+			shape.fields().to_vec(),
+		)?;
 
 		Ok(series)
 	}
