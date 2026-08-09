@@ -3,15 +3,15 @@
 
 use std::str::FromStr;
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::{blob::Blob, decimal::Decimal, int::Int, value_type::ValueType};
 
 #[test]
 fn test_massive_field_count() {
 	let field_count = 10000;
 	let types: Vec<ValueType> = vec![ValueType::Int4; field_count];
-	let shape = RowShape::testing(&types);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &types);
+	let mut row = shape.allocate_pod();
 
 	for i in (0..field_count).step_by(100) {
 		shape.set::<i32>(&mut row, i, i as i32);
@@ -34,9 +34,9 @@ fn test_mixed_static_dynamic_stress() {
 		})
 		.collect();
 
-	let shape = RowShape::testing(&types);
+	let shape = RowShape::testing(RowFamily::Pod, &types);
 
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_pod();
 
 	// A dynamic field can only be set once, so the odd (Utf8) indices are written up front and the
 	// loop below only rewrites the even (Int8) static ones.
@@ -64,7 +64,7 @@ fn test_mixed_static_dynamic_stress() {
 
 	let mut test_rows = Vec::new();
 	for row_idx in 0..10 {
-		let mut test_row = shape.allocate();
+		let mut test_row = shape.allocate_pod();
 
 		for i in (0..100).step_by(2) {
 			shape.set::<i64>(&mut test_row, i, row_idx as i64);
@@ -95,9 +95,12 @@ fn test_mixed_static_dynamic_stress() {
 #[test]
 fn test_repeated_clone_stability() {
 	// Test that cloning doesn't degrade or corrupt data
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob, ValueType::Int, ValueType::Decimal]);
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Utf8, ValueType::Blob, ValueType::Int, ValueType::Decimal],
+	);
 
-	let mut original = shape.allocate();
+	let mut original = shape.allocate_pod();
 	shape.set_utf8(&mut original, 0, &"x".repeat(1000));
 	shape.set_blob(&mut original, 1, &Blob::from(vec![42u8; 1000]));
 	shape.set_int(&mut original, 2, &Int::from(i128::MAX));
@@ -123,8 +126,8 @@ fn test_validity_bit_stress() {
 	// Test validity bit handling under stress
 	let field_count = 1000;
 	let types: Vec<ValueType> = vec![ValueType::Int4; field_count];
-	let shape = RowShape::testing(&types);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &types);
+	let mut row = shape.allocate_pod();
 
 	// Set every other field as undefined
 	for i in 0..field_count {
@@ -170,14 +173,14 @@ fn test_validity_bit_stress() {
 #[test]
 fn test_extreme_string_sizes() {
 	// Test handling of very large strings
-	let shape = RowShape::testing(&[ValueType::Utf8]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8]);
 
 	// Test various string sizes - use separate rows since dynamic fields
 	// can only be set once
 	let sizes = [0, 1, 100, 1000, 10000, 100000, 1000000];
 
 	for size in sizes {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		let large_string = "a".repeat(size);
 		shape.set_utf8(&mut row, 0, &large_string);
 		let retrieved = shape.get_utf8(&row, 0);
@@ -198,14 +201,17 @@ fn test_extreme_string_sizes() {
 fn test_concurrent_field_updates() {
 	// Simulate concurrent-like updates - test rapid field setting across
 	// different rows since dynamic fields can only be set once per encoded
-	let shape = RowShape::testing(&[ValueType::Int8, ValueType::Utf8, ValueType::Int8, ValueType::Utf8]);
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Int8, ValueType::Utf8, ValueType::Int8, ValueType::Utf8],
+	);
 
 	let iterations = 1000;
 	let mut rows = Vec::with_capacity(iterations);
 
 	// Create many rows with rapid field setting
 	for i in 0..iterations {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 
 		// Set all fields for this encoded
 		shape.set::<i64>(&mut row, 0, (i * 4) as i64);
@@ -226,7 +232,7 @@ fn test_concurrent_field_updates() {
 
 	// Test that static fields can still be updated repeatedly on a single
 	// encoded
-	let mut static_test_row = shape.allocate();
+	let mut static_test_row = shape.allocate_pod();
 
 	for i in 0..1000 {
 		shape.set::<i64>(&mut static_test_row, 0, i as i64);
@@ -251,14 +257,14 @@ fn test_concurrent_field_updates() {
 #[test]
 fn test_row_size_stability() {
 	// Ensure encoded sizes are stable and predictable for dynamic fields
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Blob]);
 
 	// Test that rows with similar sized content have similar sizes
 	let sizes = [10, 100, 1000];
 	let mut row_sizes = Vec::new();
 
 	for size in sizes {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set_utf8(&mut row, 0, &"x".repeat(size));
 		shape.set_blob(&mut row, 1, &Blob::from(vec![0u8; size]));
 
@@ -278,7 +284,7 @@ fn test_row_size_stability() {
 	// Test size consistency - rows with same content should have same size
 	let mut same_size_rows = Vec::new();
 	for _ in 0..10 {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set_utf8(&mut row, 0, &"x".repeat(50));
 		shape.set_blob(&mut row, 1, &Blob::from(vec![0u8; 50]));
 		same_size_rows.push(row.len());

@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::value_type::ValueType;
 
 #[test]
 fn test_set_get_u128() {
-	let shape = RowShape::testing(&[ValueType::Uint16]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint16]);
+	let mut row = shape.allocate_pod();
 	shape.set::<u128>(&mut row, 0, 340282366920938463463374607431768211455u128);
 	assert_eq!(shape.get::<u128>(&row, 0), 340282366920938463463374607431768211455u128);
 }
 
 #[test]
 fn test_try_get_u128() {
-	let shape = RowShape::testing(&[ValueType::Uint16]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint16]);
+	let mut row = shape.allocate_pod();
 
 	assert_eq!(shape.try_get::<u128>(&row, 0), None);
 
@@ -25,24 +25,24 @@ fn test_try_get_u128() {
 
 #[test]
 fn test_extremes() {
-	let shape = RowShape::testing(&[ValueType::Uint16]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint16]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<u128>(&mut row, 0, u128::MAX);
 	assert_eq!(shape.get::<u128>(&row, 0), u128::MAX);
 
-	let mut row2 = shape.allocate();
+	let mut row2 = shape.allocate_pod();
 	shape.set::<u128>(&mut row2, 0, u128::MIN);
 	assert_eq!(shape.get::<u128>(&row2, 0), u128::MIN);
 
-	let mut row3 = shape.allocate();
+	let mut row3 = shape.allocate_pod();
 	shape.set::<u128>(&mut row3, 0, 0u128);
 	assert_eq!(shape.get::<u128>(&row3, 0), 0u128);
 }
 
 #[test]
 fn test_very_large_values() {
-	let shape = RowShape::testing(&[ValueType::Uint16]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint16]);
 
 	let test_values = [
 		0u128,
@@ -56,7 +56,7 @@ fn test_very_large_values() {
 	];
 
 	for value in test_values {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<u128>(&mut row, 0, value);
 		assert_eq!(shape.get::<u128>(&row, 0), value);
 	}
@@ -64,7 +64,7 @@ fn test_very_large_values() {
 
 #[test]
 fn test_powers_of_two() {
-	let shape = RowShape::testing(&[ValueType::Uint16]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint16]);
 
 	let powers = [
 		1u128, 2u128, 4u128, 8u128, 16u128, 32u128, 64u128, 128u128, 256u128, 512u128, 1024u128, 2048u128,
@@ -72,7 +72,7 @@ fn test_powers_of_two() {
 	];
 
 	for power in powers {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<u128>(&mut row, 0, power);
 		assert_eq!(shape.get::<u128>(&row, 0), power);
 	}
@@ -80,7 +80,7 @@ fn test_powers_of_two() {
 
 #[test]
 fn test_ipv6_addresses() {
-	let shape = RowShape::testing(&[ValueType::Uint16]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint16]);
 
 	let ipv6_values = [
 		0u128,                                       // ::0
@@ -90,7 +90,7 @@ fn test_ipv6_addresses() {
 	];
 
 	for ipv6 in ipv6_values {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<u128>(&mut row, 0, ipv6);
 		assert_eq!(shape.get::<u128>(&row, 0), ipv6);
 	}
@@ -98,7 +98,7 @@ fn test_ipv6_addresses() {
 
 #[test]
 fn test_uuid_values() {
-	let shape = RowShape::testing(&[ValueType::Uint16]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint16]);
 
 	let uuid_values = [
 		123456789012345678901234567890123456789u128,
@@ -107,7 +107,7 @@ fn test_uuid_values() {
 	];
 
 	for uuid_val in uuid_values {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<u128>(&mut row, 0, uuid_val);
 		assert_eq!(shape.get::<u128>(&row, 0), uuid_val);
 	}
@@ -115,8 +115,8 @@ fn test_uuid_values() {
 
 #[test]
 fn test_mixed_with_other_types() {
-	let shape = RowShape::testing(&[ValueType::Uint16, ValueType::Boolean, ValueType::Uint16]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint16, ValueType::Boolean, ValueType::Uint16]);
+	let mut row = shape.allocate_pod();
 
 	let large_value1 = 200000000000000000000000000000000000000u128;
 	let large_value2 = 150000000000000000000000000000000000000u128;
@@ -132,8 +132,8 @@ fn test_mixed_with_other_types() {
 
 #[test]
 fn test_undefined_handling() {
-	let shape = RowShape::testing(&[ValueType::Uint16, ValueType::Uint16]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint16, ValueType::Uint16]);
+	let mut row = shape.allocate_pod();
 
 	let value = 340282366920938463463374607431768211455u128;
 	shape.set::<u128>(&mut row, 0, value);
@@ -147,8 +147,8 @@ fn test_undefined_handling() {
 
 #[test]
 fn test_try_get_u128_wrong_type() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 

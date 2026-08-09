@@ -3,7 +3,11 @@
 
 use std::{collections::HashSet, sync::Arc};
 
-use reifydb_codec::row::{bytes::EncodedBytes, series::EncodedSeriesRow, shape::RowShape};
+use reifydb_codec::row::{
+	bytes::{EncodedBytes, RowBuilder},
+	series::EncodedSeriesRow,
+	shape::RowShape,
+};
 use reifydb_core::{
 	common::CommitVersion,
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
@@ -232,10 +236,10 @@ fn insert_series_row(
 	}
 	let row = build_encoded_series_row(services, series, shape, key_value, &encoded_values)?;
 
-	let mut rows_buf = [row.thaw()];
+	let mut rows_buf = [EncodedSeriesRow::from(row).thaw()];
 	SeriesRowInterceptor::pre_insert(txn, series, &mut rows_buf)?;
 	let [row] = rows_buf;
-	let row = row.freeze();
+	let row = row.freeze_bytes();
 	txn.set(&encoded_key, row.clone())?;
 	let rows = [row.clone()];
 	SeriesRowInterceptor::post_insert(txn, series, &rows)?;
@@ -402,7 +406,7 @@ fn build_encoded_series_row(
 	data_values: &[Value],
 ) -> Result<EncodedBytes> {
 	let key_value_encoded = series.key_from_u64(key_value);
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_series();
 	shape.set_value(&mut row, 0, &key_value_encoded);
 	for (i, value) in data_values.iter().enumerate() {
 		shape.set_value(&mut row, i + 1, value);
@@ -412,7 +416,7 @@ fn build_encoded_series_row(
 	if let Some(time) = resolve_time(&series.name, &series.columns, &series.time, shape, &row, now)? {
 		row.set_time(time);
 	}
-	Ok(row.freeze())
+	Ok(row.freeze_bytes())
 }
 
 fn track_series_insert_flow_change(txn: &mut Transaction<'_>, series: &Series, snapshot: &SeriesRowSnapshot<'_>) {

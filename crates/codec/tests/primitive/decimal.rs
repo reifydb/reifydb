@@ -4,13 +4,13 @@
 use std::str::FromStr;
 
 use num_traits::Zero;
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::{decimal::Decimal, value_type::ValueType};
 
 #[test]
 fn test_compact_inline() {
-	let shape = RowShape::testing(&[ValueType::Decimal]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal]);
+	let mut row = shape.allocate_pod();
 
 	let decimal = Decimal::from_str("123.45").unwrap();
 	shape.set_decimal(&mut row, 0, &decimal);
@@ -19,7 +19,7 @@ fn test_compact_inline() {
 	let retrieved = shape.get_decimal(&row, 0);
 	assert_eq!(retrieved.to_string(), "123.45");
 
-	let mut row2 = shape.allocate();
+	let mut row2 = shape.allocate_pod();
 	let negative = Decimal::from_str("-999.99").unwrap();
 	shape.set_decimal(&mut row2, 0, &negative);
 	assert_eq!(shape.get_decimal(&row2, 0).to_string(), "-999.99");
@@ -29,15 +29,15 @@ fn test_compact_inline() {
 fn test_compact_boundaries() {
 	// Scale and mantissa are stored separately, so a high scale and a scale-0 integer of
 	// the same digit count encode to the same length.
-	let shape1 = RowShape::testing(&[ValueType::Decimal]);
-	let mut row1 = shape1.allocate();
+	let shape1 = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal]);
+	let mut row1 = shape1.allocate_pod();
 	let high_precision = Decimal::from_str("1.0000000000000000000000000000001").unwrap();
 	shape1.set_decimal(&mut row1, 0, &high_precision);
 	let retrieved = shape1.get_decimal(&row1, 0);
 	assert_eq!(retrieved.to_string(), "1.0000000000000000000000000000001");
 
-	let shape2 = RowShape::testing(&[ValueType::Decimal]);
-	let mut row2 = shape2.allocate();
+	let shape2 = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal]);
+	let mut row2 = shape2.allocate_pod();
 	let large_int = Decimal::from_str("100000000000000000000000000000000").unwrap();
 	shape2.set_decimal(&mut row2, 0, &large_int);
 	assert_eq!(shape2.get_decimal(&row2, 0).to_string(), "100000000000000000000000000000000");
@@ -45,8 +45,8 @@ fn test_compact_boundaries() {
 
 #[test]
 fn test_extended_i128() {
-	let shape = RowShape::testing(&[ValueType::Decimal]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal]);
+	let mut row = shape.allocate_pod();
 
 	// The mantissa is written as length-prefixed signed bytes, so it is not capped at i128.
 	let large = Decimal::from_str("999999999999999999999.123456789").unwrap();
@@ -61,8 +61,8 @@ fn test_extended_i128() {
 fn test_dynamic_storage() {
 	// Every decimal lives in the dynamic section regardless of magnitude; a mantissa past
 	// i128 only makes the stored slice longer.
-	let shape = RowShape::testing(&[ValueType::Decimal]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal]);
+	let mut row = shape.allocate_pod();
 
 	let huge = Decimal::from_str("99999999999999999999999999999.123456789").unwrap();
 
@@ -75,8 +75,8 @@ fn test_dynamic_storage() {
 
 #[test]
 fn test_zero() {
-	let shape = RowShape::testing(&[ValueType::Decimal]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal]);
+	let mut row = shape.allocate_pod();
 
 	let zero = Decimal::from_str("0.0").unwrap();
 	shape.set_decimal(&mut row, 0, &zero);
@@ -88,19 +88,19 @@ fn test_zero() {
 
 #[test]
 fn test_currency_values() {
-	let shape = RowShape::testing(&[ValueType::Decimal]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal]);
 
-	let mut row1 = shape.allocate();
+	let mut row1 = shape.allocate_pod();
 	let price = Decimal::from_str("19.99").unwrap();
 	shape.set_decimal(&mut row1, 0, &price);
 	assert_eq!(shape.get_decimal(&row1, 0).to_string(), "19.99");
 
-	let mut row2 = shape.allocate();
+	let mut row2 = shape.allocate_pod();
 	let large_price = Decimal::from_str("999999999.99").unwrap();
 	shape.set_decimal(&mut row2, 0, &large_price);
 	assert_eq!(shape.get_decimal(&row2, 0).to_string(), "999999999.99");
 
-	let mut row3 = shape.allocate();
+	let mut row3 = shape.allocate_pod();
 	let fraction = Decimal::from_str("0.00000001").unwrap();
 	shape.set_decimal(&mut row3, 0, &fraction);
 	assert_eq!(shape.get_decimal(&row3, 0), fraction);
@@ -108,8 +108,8 @@ fn test_currency_values() {
 
 #[test]
 fn test_scientific_notation() {
-	let shape = RowShape::testing(&[ValueType::Decimal]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal]);
+	let mut row = shape.allocate_pod();
 
 	let scientific = Decimal::from_str("1.23456e10").unwrap();
 	shape.set_decimal(&mut row, 0, &scientific);
@@ -120,8 +120,8 @@ fn test_scientific_notation() {
 
 #[test]
 fn test_try_get() {
-	let shape = RowShape::testing(&[ValueType::Decimal]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal]);
+	let mut row = shape.allocate_pod();
 
 	assert_eq!(shape.try_get_decimal(&row, 0), None);
 
@@ -135,8 +135,8 @@ fn test_try_get() {
 
 #[test]
 fn test_clone_on_write() {
-	let shape = RowShape::testing(&[ValueType::Decimal]);
-	let row1 = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal]);
+	let row1 = shape.allocate_pod();
 	let mut row2 = row1.clone();
 
 	let value = Decimal::from_str("3.14159").unwrap();
@@ -150,14 +150,11 @@ fn test_clone_on_write() {
 
 #[test]
 fn test_mixed_with_other_types() {
-	let shape = RowShape::testing(&[
-		ValueType::Boolean,
-		ValueType::Decimal,
-		ValueType::Utf8,
-		ValueType::Decimal,
-		ValueType::Int4,
-	]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Boolean, ValueType::Decimal, ValueType::Utf8, ValueType::Decimal, ValueType::Int4],
+	);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 
@@ -182,21 +179,21 @@ fn test_mixed_with_other_types() {
 fn test_negative_values() {
 	// The mantissa is stored as signed little-endian bytes, so the sign has to survive at
 	// every mantissa width.
-	let shape1 = RowShape::testing(&[ValueType::Decimal]);
+	let shape1 = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal]);
 
-	let mut row1 = shape1.allocate();
+	let mut row1 = shape1.allocate_pod();
 	let small_neg = Decimal::from_str("-0.01").unwrap();
 	shape1.set_decimal(&mut row1, 0, &small_neg);
 	assert_eq!(shape1.get_decimal(&row1, 0).to_string(), "-0.01");
 
-	let shape2 = RowShape::testing(&[ValueType::Decimal]);
-	let mut row2 = shape2.allocate();
+	let shape2 = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal]);
+	let mut row2 = shape2.allocate_pod();
 	let large_neg = Decimal::from_str("-999999999999999999.999").unwrap();
 	shape2.set_decimal(&mut row2, 0, &large_neg);
 	assert_eq!(shape2.get_decimal(&row2, 0).to_string(), "-999999999999999999.999");
 
-	let shape3 = RowShape::testing(&[ValueType::Decimal]);
-	let mut row3 = shape3.allocate();
+	let shape3 = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal]);
+	let mut row3 = shape3.allocate_pod();
 	let huge_neg = Decimal::from_str("-99999999999999999999999999999.999999999").unwrap();
 	shape3.set_decimal(&mut row3, 0, &huge_neg);
 	assert_eq!(shape3.get_decimal(&row3, 0).to_string(), "-99999999999999999999999999999.999999999");
@@ -204,8 +201,8 @@ fn test_negative_values() {
 
 #[test]
 fn test_try_get_decimal_wrong_type() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 
@@ -214,8 +211,8 @@ fn test_try_get_decimal_wrong_type() {
 
 #[test]
 fn test_update_decimal() {
-	let shape = RowShape::testing(&[ValueType::Decimal]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal]);
+	let mut row = shape.allocate_pod();
 
 	let d1 = Decimal::from_str("123.45").unwrap();
 	shape.set_decimal(&mut row, 0, &d1);
@@ -234,8 +231,8 @@ fn test_update_decimal() {
 
 #[test]
 fn test_update_decimal_with_other_dynamic_fields() {
-	let shape = RowShape::testing(&[ValueType::Decimal, ValueType::Utf8, ValueType::Decimal]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal, ValueType::Utf8, ValueType::Decimal]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_decimal(&mut row, 0, &Decimal::from_str("1.0").unwrap());
 	shape.set_utf8(&mut row, 1, "test");

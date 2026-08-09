@@ -4,7 +4,7 @@
 use std::{f64::consts::E, str::FromStr};
 
 use num_bigint::BigInt;
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 	rng::Rng,
@@ -35,8 +35,8 @@ fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 
 #[test]
 fn test_utf8_update_same_size() {
-	let shape = RowShape::testing(&[ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 	shape.set_utf8(&mut row, 0, "abcde");
 	let size = row.len();
 
@@ -44,57 +44,57 @@ fn test_utf8_update_same_size() {
 	assert_eq!(shape.get_utf8(&row, 0), "12345");
 	assert_eq!(row.len(), size);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "12345");
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_utf8_update_larger() {
-	let shape = RowShape::testing(&[ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 	shape.set_utf8(&mut row, 0, "hi");
 	shape.set_utf8(&mut row, 0, "hello world");
 	assert_eq!(shape.get_utf8(&row, 0), "hello world");
 	assert_eq!(row.len(), shape.total_static_size() + 11);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "hello world");
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_utf8_update_smaller() {
-	let shape = RowShape::testing(&[ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 	shape.set_utf8(&mut row, 0, "hello world");
 	shape.set_utf8(&mut row, 0, "hi");
 	assert_eq!(shape.get_utf8(&row, 0), "hi");
 	assert_eq!(row.len(), shape.total_static_size() + 2);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "hi");
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_utf8_update_to_empty() {
-	let shape = RowShape::testing(&[ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 	shape.set_utf8(&mut row, 0, "hello");
 	shape.set_utf8(&mut row, 0, "");
 	assert_eq!(shape.get_utf8(&row, 0), "");
 	assert_eq!(row.len(), shape.total_static_size());
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "");
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_utf8_update_from_empty() {
-	let shape = RowShape::testing(&[ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 	shape.set_utf8(&mut row, 0, "");
 	assert_eq!(row.len(), shape.total_static_size());
 
@@ -102,15 +102,15 @@ fn test_utf8_update_from_empty() {
 	assert_eq!(shape.get_utf8(&row, 0), "now has content");
 	assert_eq!(row.len(), shape.total_static_size() + 15);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "now has content");
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_utf8_alternating_sizes() {
-	let shape = RowShape::testing(&[ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 
 	let values = ["a", "hello world this is long", "xy", "medium string", "z"];
 	for &v in &values {
@@ -118,7 +118,7 @@ fn test_utf8_alternating_sizes() {
 		assert_eq!(shape.get_utf8(&row, 0), v);
 		assert_eq!(row.len(), shape.total_static_size() + v.len());
 
-		let mut fresh = shape.allocate();
+		let mut fresh = shape.allocate_pod();
 		shape.set_utf8(&mut fresh, 0, v);
 		assert_eq!(row.len(), fresh.len());
 	}
@@ -126,8 +126,8 @@ fn test_utf8_alternating_sizes() {
 
 #[test]
 fn test_blob_update_same_size() {
-	let shape = RowShape::testing(&[ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 	shape.set_blob(&mut row, 0, &Blob::from_slice(&[1, 2, 3]));
 	let size = row.len();
 
@@ -135,57 +135,57 @@ fn test_blob_update_same_size() {
 	assert_eq!(shape.get_blob(&row, 0), Blob::from_slice(&[4, 5, 6]));
 	assert_eq!(row.len(), size);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_blob(&mut fresh, 0, &Blob::from_slice(&[4, 5, 6]));
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_blob_update_larger() {
-	let shape = RowShape::testing(&[ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 	shape.set_blob(&mut row, 0, &Blob::from_slice(&[1]));
 	shape.set_blob(&mut row, 0, &Blob::from_slice(&[1, 2, 3, 4, 5]));
 	assert_eq!(shape.get_blob(&row, 0), Blob::from_slice(&[1, 2, 3, 4, 5]));
 	assert_eq!(row.len(), shape.total_static_size() + 5);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_blob(&mut fresh, 0, &Blob::from_slice(&[1, 2, 3, 4, 5]));
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_blob_update_smaller() {
-	let shape = RowShape::testing(&[ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 	shape.set_blob(&mut row, 0, &Blob::from_slice(&[1, 2, 3, 4, 5]));
 	shape.set_blob(&mut row, 0, &Blob::from_slice(&[9]));
 	assert_eq!(shape.get_blob(&row, 0), Blob::from_slice(&[9]));
 	assert_eq!(row.len(), shape.total_static_size() + 1);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_blob(&mut fresh, 0, &Blob::from_slice(&[9]));
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_blob_update_to_empty() {
-	let shape = RowShape::testing(&[ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 	shape.set_blob(&mut row, 0, &Blob::from_slice(&[1, 2, 3]));
 	shape.set_blob(&mut row, 0, &Blob::from_slice(&[]));
 	assert_eq!(shape.get_blob(&row, 0), Blob::from_slice(&[]));
 	assert_eq!(row.len(), shape.total_static_size());
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_blob(&mut fresh, 0, &Blob::from_slice(&[]));
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_blob_alternating_sizes() {
-	let shape = RowShape::testing(&[ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	let values: Vec<Vec<u8>> = vec![vec![1], vec![0; 100], vec![2, 3], vec![0; 50], vec![4]];
 	for v in &values {
@@ -194,7 +194,7 @@ fn test_blob_alternating_sizes() {
 		assert_eq!(shape.get_blob(&row, 0), blob);
 		assert_eq!(row.len(), shape.total_static_size() + v.len());
 
-		let mut fresh = shape.allocate();
+		let mut fresh = shape.allocate_pod();
 		shape.set_blob(&mut fresh, 0, &Blob::from_slice(v));
 		assert_eq!(row.len(), fresh.len());
 	}
@@ -202,8 +202,8 @@ fn test_blob_alternating_sizes() {
 
 #[test]
 fn test_update_first_of_three_dynamic_fields() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob, ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Blob, ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "aaa");
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[1, 2, 3, 4, 5]));
@@ -217,7 +217,7 @@ fn test_update_first_of_three_dynamic_fields() {
 	assert_eq!(shape.get_utf8(&row, 2), "ccc");
 	assert_eq!(row.len(), shape.total_static_size() + 10 + 5 + 3);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "aaaaaaaaaa");
 	shape.set_blob(&mut fresh, 1, &Blob::from_slice(&[1, 2, 3, 4, 5]));
 	shape.set_utf8(&mut fresh, 2, "ccc");
@@ -226,8 +226,11 @@ fn test_update_first_of_three_dynamic_fields() {
 
 #[test]
 fn test_update_middle_of_four_dynamic_fields() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob, ValueType::Utf8, ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Utf8, ValueType::Blob, ValueType::Utf8, ValueType::Blob],
+	);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "first");
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[10, 20, 30]));
@@ -242,7 +245,7 @@ fn test_update_middle_of_four_dynamic_fields() {
 	assert_eq!(shape.get_blob(&row, 3), Blob::from_slice(&[40, 50]));
 	assert_eq!(row.len(), shape.total_static_size() + 5 + 1 + 5 + 2);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "first");
 	shape.set_blob(&mut fresh, 1, &Blob::from_slice(&[99]));
 	shape.set_utf8(&mut fresh, 2, "third");
@@ -252,8 +255,11 @@ fn test_update_middle_of_four_dynamic_fields() {
 
 #[test]
 fn test_update_mixed_dynamic_types_each_in_turn() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob, ValueType::Decimal, ValueType::Any]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Utf8, ValueType::Blob, ValueType::Decimal, ValueType::Any],
+	);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "text");
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[1, 2, 3]));
@@ -284,7 +290,7 @@ fn test_update_mixed_dynamic_types_each_in_turn() {
 	assert_eq!(shape.get_decimal(&row, 2).to_string(), "99999.12345");
 	assert_eq!(shape.get_any(&row, 3), Value::Utf8("now a string".to_string()));
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "longer text value");
 	shape.set_blob(&mut fresh, 1, &Blob::from_slice(&[10]));
 	shape.set_decimal(&mut fresh, 2, &Decimal::from_str("99999.12345").unwrap());
@@ -294,8 +300,8 @@ fn test_update_mixed_dynamic_types_each_in_turn() {
 
 #[test]
 fn test_update_fields_forward_order() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "aaa");
 	shape.set_utf8(&mut row, 1, "bbb");
@@ -310,7 +316,7 @@ fn test_update_fields_forward_order() {
 	assert_eq!(shape.get_utf8(&row, 2), "CCCCC");
 	assert_eq!(row.len(), shape.total_static_size() + 7 + 2 + 5);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "AAAAAAA");
 	shape.set_utf8(&mut fresh, 1, "BB");
 	shape.set_utf8(&mut fresh, 2, "CCCCC");
@@ -319,8 +325,8 @@ fn test_update_fields_forward_order() {
 
 #[test]
 fn test_update_fields_reverse_order() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "aaa");
 	shape.set_utf8(&mut row, 1, "bbb");
@@ -335,7 +341,7 @@ fn test_update_fields_reverse_order() {
 	assert_eq!(shape.get_utf8(&row, 2), "CCCCC");
 	assert_eq!(row.len(), shape.total_static_size() + 7 + 2 + 5);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "AAAAAAA");
 	shape.set_utf8(&mut fresh, 1, "BB");
 	shape.set_utf8(&mut fresh, 2, "CCCCC");
@@ -344,8 +350,8 @@ fn test_update_fields_reverse_order() {
 
 #[test]
 fn test_update_fields_interleaved_order() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "aaa");
 	shape.set_utf8(&mut row, 1, "bbb");
@@ -360,7 +366,7 @@ fn test_update_fields_interleaved_order() {
 	assert_eq!(shape.get_utf8(&row, 2), "CCCCC");
 	assert_eq!(row.len(), shape.total_static_size() + 7 + 2 + 5);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "AAAAAAA");
 	shape.set_utf8(&mut fresh, 1, "BB");
 	shape.set_utf8(&mut fresh, 2, "CCCCC");
@@ -381,8 +387,8 @@ fn huge_uint() -> Uint {
 
 #[test]
 fn test_int_multiple_transitions() {
-	let shape = RowShape::testing(&[ValueType::Int]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int]);
+	let mut row = shape.allocate_pod();
 
 	// inline
 	shape.set_int(&mut row, 0, &Int::from(1));
@@ -404,15 +410,15 @@ fn test_int_multiple_transitions() {
 	assert_eq!(shape.get_int(&row, 0), huge_int2());
 	assert!(row.len() > shape.total_static_size());
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_int(&mut fresh, 0, &huge_int2());
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_uint_multiple_transitions() {
-	let shape = RowShape::testing(&[ValueType::Uint]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+	let mut row = shape.allocate_pod();
 
 	// inline
 	shape.set_uint(&mut row, 0, &Uint::from(1u64));
@@ -429,15 +435,15 @@ fn test_uint_multiple_transitions() {
 	assert_eq!(shape.get_uint(&row, 0), Uint::from(99u64));
 	assert_eq!(row.len(), shape.total_static_size());
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_uint(&mut fresh, 0, &Uint::from(99u64));
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_int_transition_with_other_dynamic_fields() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Int, ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Int, ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "hello");
 	shape.set_int(&mut row, 1, &huge_int());
@@ -459,7 +465,7 @@ fn test_int_transition_with_other_dynamic_fields() {
 	assert_eq!(shape.get_int(&row, 1), huge_int());
 	assert_eq!(shape.get_blob(&row, 2), Blob::from_slice(&[1, 2, 3]));
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "hello");
 	shape.set_int(&mut fresh, 1, &huge_int());
 	shape.set_blob(&mut fresh, 2, &Blob::from_slice(&[1, 2, 3]));
@@ -468,8 +474,8 @@ fn test_int_transition_with_other_dynamic_fields() {
 
 #[test]
 fn test_int_dynamic_to_dynamic() {
-	let shape = RowShape::testing(&[ValueType::Int]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_int(&mut row, 0, &huge_int());
 	shape.set_int(&mut row, 0, &huge_int2());
@@ -477,15 +483,15 @@ fn test_int_dynamic_to_dynamic() {
 	// Both huge values have similar serialized sizes
 	let size2 = row.len();
 	assert!(size2 > shape.total_static_size());
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_int(&mut fresh, 0, &huge_int2());
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_decimal_update_different_sizes() {
-	let shape = RowShape::testing(&[ValueType::Decimal]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_decimal(&mut row, 0, &Decimal::from_str("1.5").unwrap());
 	assert_eq!(shape.get_decimal(&row, 0).to_string(), "1.5");
@@ -496,15 +502,15 @@ fn test_decimal_update_different_sizes() {
 	shape.set_decimal(&mut row, 0, &Decimal::from_str("0.01").unwrap());
 	assert_eq!(shape.get_decimal(&row, 0).to_string(), "0.01");
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_decimal(&mut fresh, 0, &Decimal::from_str("0.01").unwrap());
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_decimal_multiple_sequential_updates() {
-	let shape = RowShape::testing(&[ValueType::Decimal]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal]);
+	let mut row = shape.allocate_pod();
 
 	let values = ["1.0", "2.5", "100.001", "0.000001", "9999.99", "3.14159"];
 	for v in &values {
@@ -512,7 +518,7 @@ fn test_decimal_multiple_sequential_updates() {
 		shape.set_decimal(&mut row, 0, &d);
 		assert_eq!(shape.get_decimal(&row, 0).to_string(), *v);
 
-		let mut fresh = shape.allocate();
+		let mut fresh = shape.allocate_pod();
 		shape.set_decimal(&mut fresh, 0, &Decimal::from_str(v).unwrap());
 		assert_eq!(row.len(), fresh.len());
 	}
@@ -520,8 +526,8 @@ fn test_decimal_multiple_sequential_updates() {
 
 #[test]
 fn test_decimal_update_with_other_dynamic_fields() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Decimal, ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Decimal, ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "price");
 	shape.set_decimal(&mut row, 1, &Decimal::from_str("19.99").unwrap());
@@ -533,7 +539,7 @@ fn test_decimal_update_with_other_dynamic_fields() {
 	assert_eq!(shape.get_decimal(&row, 1).to_string(), "123456789.987654321");
 	assert_eq!(shape.get_blob(&row, 2), Blob::from_slice(&[0xFF; 10]));
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "price");
 	shape.set_decimal(&mut fresh, 1, &Decimal::from_str("123456789.987654321").unwrap());
 	shape.set_blob(&mut fresh, 2, &Blob::from_slice(&[0xFF; 10]));
@@ -543,8 +549,8 @@ fn test_decimal_update_with_other_dynamic_fields() {
 #[test]
 fn test_any_cycle_all_types() {
 	let (_, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Any]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Any]);
+	let mut row = shape.allocate_pod();
 
 	let values: Vec<Value> = vec![
 		Value::Boolean(true),
@@ -575,7 +581,7 @@ fn test_any_cycle_all_types() {
 		shape.set_any(&mut row, 0, val);
 		assert_eq!(shape.get_any(&row, 0), *val);
 
-		let mut fresh = shape.allocate();
+		let mut fresh = shape.allocate_pod();
 		shape.set_any(&mut fresh, 0, val);
 		assert_eq!(row.len(), fresh.len());
 	}
@@ -583,8 +589,8 @@ fn test_any_cycle_all_types() {
 
 #[test]
 fn test_any_small_to_large_encoding() {
-	let shape = RowShape::testing(&[ValueType::Any]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Any]);
+	let mut row = shape.allocate_pod();
 
 	// Boolean = 2 bytes encoded
 	shape.set_any(&mut row, 0, &Value::Boolean(true));
@@ -595,15 +601,15 @@ fn test_any_small_to_large_encoding() {
 	shape.set_any(&mut row, 0, &long_str);
 	assert_eq!(shape.get_any(&row, 0), long_str);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_any(&mut fresh, 0, &long_str);
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_any_large_to_small_encoding() {
-	let shape = RowShape::testing(&[ValueType::Any]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Any]);
+	let mut row = shape.allocate_pod();
 
 	let long_str = Value::Utf8("x".repeat(1000));
 	shape.set_any(&mut row, 0, &long_str);
@@ -614,15 +620,15 @@ fn test_any_large_to_small_encoding() {
 	// Dynamic section should have shrunk
 	assert_eq!(row.len(), shape.total_static_size() + 2);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_any(&mut fresh, 0, &Value::Boolean(false));
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_any_same_size_encoding() {
-	let shape = RowShape::testing(&[ValueType::Any]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Any]);
+	let mut row = shape.allocate_pod();
 
 	// Int4 = 5 bytes (1 type + 4 data)
 	shape.set_any(&mut row, 0, &Value::Int4(42));
@@ -638,15 +644,15 @@ fn test_any_same_size_encoding() {
 	assert_eq!(shape.get_any(&row, 0), Value::Float4(OrderedF32::try_from(1.5f32).unwrap()));
 	assert_eq!(row.len(), size);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_any(&mut fresh, 0, &Value::Float4(OrderedF32::try_from(1.5f32).unwrap()));
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_any_update_with_other_dynamic_fields() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Any, ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Any, ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "prefix");
 	shape.set_any(&mut row, 1, &Value::Int4(1));
@@ -663,7 +669,7 @@ fn test_any_update_with_other_dynamic_fields() {
 	assert_eq!(shape.get_any(&row, 1), Value::Boolean(true));
 	assert_eq!(shape.get_blob(&row, 2), Blob::from_slice(&[1, 2, 3]));
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "prefix");
 	shape.set_any(&mut fresh, 1, &Value::Boolean(true));
 	shape.set_blob(&mut fresh, 2, &Blob::from_slice(&[1, 2, 3]));
@@ -672,14 +678,11 @@ fn test_any_update_with_other_dynamic_fields() {
 
 #[test]
 fn test_update_dynamic_preserves_static() {
-	let shape = RowShape::testing(&[
-		ValueType::Boolean,
-		ValueType::Int4,
-		ValueType::Utf8,
-		ValueType::Float8,
-		ValueType::Blob,
-	]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Boolean, ValueType::Int4, ValueType::Utf8, ValueType::Float8, ValueType::Blob],
+	);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 	shape.set::<i32>(&mut row, 1, 42i32);
@@ -700,7 +703,7 @@ fn test_update_dynamic_preserves_static() {
 	assert_eq!(shape.get_utf8(&row, 2), "iteration_9");
 	assert_eq!(shape.get_blob(&row, 4), Blob::from_slice(&[9; 10]));
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set::<bool>(&mut fresh, 0, true);
 	shape.set::<i32>(&mut fresh, 1, 42i32);
 	shape.set_utf8(&mut fresh, 2, "iteration_9");
@@ -711,17 +714,20 @@ fn test_update_dynamic_preserves_static() {
 
 #[test]
 fn test_all_dynamic_types_in_one_row() {
-	let shape = RowShape::testing(&[
-		ValueType::Utf8,
-		ValueType::Blob,
-		ValueType::Decimal,
-		ValueType::Int,
-		ValueType::Uint,
-		ValueType::Any,
-		ValueType::Boolean, // static
-		ValueType::Int4,    // static
-	]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[
+			ValueType::Utf8,
+			ValueType::Blob,
+			ValueType::Decimal,
+			ValueType::Int,
+			ValueType::Uint,
+			ValueType::Any,
+			ValueType::Boolean, // static
+			ValueType::Int4,    // static
+		],
+	);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "text");
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[1, 2, 3]));
@@ -748,7 +754,7 @@ fn test_all_dynamic_types_in_one_row() {
 	assert_eq!(shape.get::<bool>(&row, 6), true);
 	assert_eq!(shape.get::<i32>(&row, 7), 999);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "updated text that is longer");
 	shape.set_blob(&mut fresh, 1, &Blob::from_slice(&[10, 20]));
 	shape.set_decimal(&mut fresh, 2, &Decimal::from_str("99999.99").unwrap());
@@ -762,8 +768,8 @@ fn test_all_dynamic_types_in_one_row() {
 
 #[test]
 fn test_set_value_update_utf8() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Int4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Int4]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_value(&mut row, 0, &Value::Utf8("first".to_string()));
 	shape.set_value(&mut row, 1, &Value::Int4(10));
@@ -773,7 +779,7 @@ fn test_set_value_update_utf8() {
 	assert_eq!(shape.get_value(&row, 0), Value::Utf8("updated".to_string()));
 	assert_eq!(shape.get_value(&row, 1), Value::Int4(10));
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "updated");
 	shape.set::<i32>(&mut fresh, 1, 10i32);
 	assert_eq!(row.len(), fresh.len());
@@ -781,8 +787,8 @@ fn test_set_value_update_utf8() {
 
 #[test]
 fn test_set_values_overwrite_entire_row() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Int4, ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Int4, ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	let values1 =
 		vec![Value::Utf8("first".to_string()), Value::Int4(10), Value::Blob(Blob::from_slice(&[1, 2, 3]))];
@@ -803,7 +809,7 @@ fn test_set_values_overwrite_entire_row() {
 	assert_eq!(shape.get_value(&row, 1), Value::Int4(20));
 	assert_eq!(shape.get_value(&row, 2), Value::Blob(Blob::from_slice(&[4])));
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "second, much longer");
 	shape.set::<i32>(&mut fresh, 1, 20i32);
 	shape.set_blob(&mut fresh, 2, &Blob::from_slice(&[4]));
@@ -812,8 +818,8 @@ fn test_set_values_overwrite_entire_row() {
 
 #[test]
 fn testined_undefined_defined_cycle() {
-	let shape = RowShape::testing(&[ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "hello");
 	assert!(row.is_defined(0));
@@ -826,15 +832,15 @@ fn testined_undefined_defined_cycle() {
 	assert!(row.is_defined(0));
 	assert_eq!(shape.get_utf8(&row, 0), "world");
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "world");
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_set_none_then_set_different_dynamic_field() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "hello");
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[1, 2, 3]));
@@ -845,15 +851,15 @@ fn test_set_none_then_set_different_dynamic_field() {
 	assert!(!row.is_defined(0));
 	assert_eq!(shape.get_blob(&row, 1), Blob::from_slice(&[4, 5, 6, 7, 8]));
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_blob(&mut fresh, 1, &Blob::from_slice(&[4, 5, 6, 7, 8]));
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_interleaved_none_and_set() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "aaa");
 	shape.set_utf8(&mut row, 1, "bbb");
@@ -871,7 +877,7 @@ fn test_interleaved_none_and_set() {
 	assert_eq!(shape.get_utf8(&row, 1), "BBBB");
 	assert_eq!(shape.get_utf8(&row, 2), "ccc");
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "AAAA");
 	shape.set_utf8(&mut fresh, 1, "BBBB");
 	shape.set_utf8(&mut fresh, 2, "ccc");
@@ -880,8 +886,8 @@ fn test_interleaved_none_and_set() {
 
 #[test]
 fn test_clone_update_clone_original_unchanged() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 	shape.set_utf8(&mut row, 0, "original");
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[1, 2, 3]));
 
@@ -896,12 +902,12 @@ fn test_clone_update_clone_original_unchanged() {
 	assert_eq!(shape.get_utf8(&cloned, 0), "modified in clone");
 	assert_eq!(shape.get_blob(&cloned, 1), Blob::from_slice(&[4, 5, 6, 7, 8]));
 
-	let mut fresh_orig = shape.allocate();
+	let mut fresh_orig = shape.allocate_pod();
 	shape.set_utf8(&mut fresh_orig, 0, "original");
 	shape.set_blob(&mut fresh_orig, 1, &Blob::from_slice(&[1, 2, 3]));
 	assert_eq!(row.len(), fresh_orig.len());
 
-	let mut fresh_clone = shape.allocate();
+	let mut fresh_clone = shape.allocate_pod();
 	shape.set_utf8(&mut fresh_clone, 0, "modified in clone");
 	shape.set_blob(&mut fresh_clone, 1, &Blob::from_slice(&[4, 5, 6, 7, 8]));
 	assert_eq!(cloned.len(), fresh_clone.len());
@@ -909,8 +915,8 @@ fn test_clone_update_clone_original_unchanged() {
 
 #[test]
 fn test_clone_update_original_clone_unchanged() {
-	let shape = RowShape::testing(&[ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 	shape.set_utf8(&mut row, 0, "original");
 
 	let cloned = row.clone();
@@ -920,19 +926,19 @@ fn test_clone_update_original_clone_unchanged() {
 	assert_eq!(shape.get_utf8(&cloned, 0), "original");
 	assert_eq!(shape.get_utf8(&row, 0), "modified in original");
 
-	let mut fresh_orig = shape.allocate();
+	let mut fresh_orig = shape.allocate_pod();
 	shape.set_utf8(&mut fresh_orig, 0, "modified in original");
 	assert_eq!(row.len(), fresh_orig.len());
 
-	let mut fresh_clone = shape.allocate();
+	let mut fresh_clone = shape.allocate_pod();
 	shape.set_utf8(&mut fresh_clone, 0, "original");
 	assert_eq!(cloned.len(), fresh_clone.len());
 }
 
 #[test]
 fn test_no_orphan_data_after_many_updates() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	for i in 0..100 {
 		let s = format!("iter_{}", i);
@@ -951,7 +957,7 @@ fn test_no_orphan_data_after_many_updates() {
 			expected
 		);
 
-		let mut fresh = shape.allocate();
+		let mut fresh = shape.allocate_pod();
 		shape.set_utf8(&mut fresh, 0, &s);
 		shape.set_blob(&mut fresh, 1, &b);
 		assert_eq!(row.len(), fresh.len());
@@ -960,8 +966,8 @@ fn test_no_orphan_data_after_many_updates() {
 
 #[test]
 fn test_no_orphan_data_three_dynamic_fields() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "aaaa");
 	shape.set_utf8(&mut row, 1, "bb");
@@ -977,7 +983,7 @@ fn test_no_orphan_data_three_dynamic_fields() {
 	shape.set_utf8(&mut row, 2, "c");
 	assert_eq!(row.len(), shape.total_static_size() + 1 + 5 + 1);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "a");
 	shape.set_utf8(&mut fresh, 1, "bbbbb");
 	shape.set_utf8(&mut fresh, 2, "c");
@@ -986,8 +992,8 @@ fn test_no_orphan_data_three_dynamic_fields() {
 
 #[test]
 fn test_no_orphan_data_mixed_types() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob, ValueType::Any]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Blob, ValueType::Any]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "hello"); // 5 bytes
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[1, 2, 3])); // 3 bytes
@@ -1008,7 +1014,7 @@ fn test_no_orphan_data_mixed_types() {
 	let expected = shape.total_static_size() + 2 + 7 + 2;
 	assert_eq!(row.len(), expected);
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "hi");
 	shape.set_blob(&mut fresh, 1, &Blob::from_slice(&[1, 2, 3, 4, 5, 6, 7]));
 	shape.set_any(&mut fresh, 2, &Value::Boolean(true));
@@ -1017,15 +1023,15 @@ fn test_no_orphan_data_mixed_types() {
 
 #[test]
 fn test_repeated_set_unset_utf8() {
-	let shape = RowShape::testing(&[ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 
 	for i in 0..10 {
 		let val = format!("value_{}", i);
 		shape.set_utf8(&mut row, 0, &val);
 		assert_eq!(shape.get_utf8(&row, 0), val);
 
-		let mut fresh = shape.allocate();
+		let mut fresh = shape.allocate_pod();
 		shape.set_utf8(&mut fresh, 0, &val);
 		assert_eq!(row.len(), fresh.len());
 
@@ -1035,15 +1041,15 @@ fn test_repeated_set_unset_utf8() {
 	}
 
 	shape.set_utf8(&mut row, 0, "final");
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "final");
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_repeated_set_unset_blob() {
-	let shape = RowShape::testing(&[ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	for i in 0..10 {
 		let data = vec![i as u8; (i % 5) + 1];
@@ -1051,7 +1057,7 @@ fn test_repeated_set_unset_blob() {
 		shape.set_blob(&mut row, 0, &blob);
 		assert_eq!(shape.get_blob(&row, 0), blob);
 
-		let mut fresh = shape.allocate();
+		let mut fresh = shape.allocate_pod();
 		shape.set_blob(&mut fresh, 0, &blob);
 		assert_eq!(row.len(), fresh.len());
 
@@ -1062,15 +1068,18 @@ fn test_repeated_set_unset_blob() {
 
 	let final_blob = Blob::from_slice(&[0xFF; 8]);
 	shape.set_blob(&mut row, 0, &final_blob);
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_blob(&mut fresh, 0, &final_blob);
 	assert_eq!(row.len(), fresh.len());
 }
 
 #[test]
 fn test_repeated_set_unset_mixed_dynamic() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob, ValueType::Decimal, ValueType::Any]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Utf8, ValueType::Blob, ValueType::Decimal, ValueType::Any],
+	);
+	let mut row = shape.allocate_pod();
 
 	for i in 0..5 {
 		let text = format!("round_{}", i);
@@ -1087,7 +1096,7 @@ fn test_repeated_set_unset_mixed_dynamic() {
 		assert_eq!(shape.get_blob(&row, 1), blob);
 		assert_eq!(shape.get_any(&row, 3), any_val);
 
-		let mut fresh = shape.allocate();
+		let mut fresh = shape.allocate_pod();
 		shape.set_utf8(&mut fresh, 0, &text);
 		shape.set_blob(&mut fresh, 1, &blob);
 		shape.set_decimal(&mut fresh, 2, &decimal);
@@ -1131,14 +1140,11 @@ fn test_repeated_set_unset_mixed_dynamic() {
 
 #[test]
 fn test_set_unset_all_fields_then_reset() {
-	let shape = RowShape::testing(&[
-		ValueType::Utf8,
-		ValueType::Blob,
-		ValueType::Any,
-		ValueType::Int,
-		ValueType::Decimal,
-	]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Utf8, ValueType::Blob, ValueType::Any, ValueType::Int, ValueType::Decimal],
+	);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "first");
 	shape.set_blob(&mut row, 1, &Blob::from_slice(&[1, 2, 3]));
@@ -1166,7 +1172,7 @@ fn test_set_unset_all_fields_then_reset() {
 	assert_eq!(shape.get_any(&row, 2), Value::Boolean(true));
 	assert_eq!(shape.get_int(&row, 3), Int::from(42));
 
-	let mut fresh = shape.allocate();
+	let mut fresh = shape.allocate_pod();
 	shape.set_utf8(&mut fresh, 0, "second, much longer text");
 	shape.set_blob(&mut fresh, 1, &Blob::from_slice(&[10, 20]));
 	shape.set_any(&mut fresh, 2, &Value::Boolean(true));

@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::value_type::ValueType;
 
 #[test]
 fn test_set_get_u64() {
-	let shape = RowShape::testing(&[ValueType::Uint8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint8]);
+	let mut row = shape.allocate_pod();
 	shape.set::<u64>(&mut row, 0, 18446744073709551615u64);
 	assert_eq!(shape.get::<u64>(&row, 0), 18446744073709551615u64);
 }
 
 #[test]
 fn test_try_get_u64() {
-	let shape = RowShape::testing(&[ValueType::Uint8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint8]);
+	let mut row = shape.allocate_pod();
 
 	assert_eq!(shape.try_get::<u64>(&row, 0), None);
 
@@ -25,24 +25,24 @@ fn test_try_get_u64() {
 
 #[test]
 fn test_extremes() {
-	let shape = RowShape::testing(&[ValueType::Uint8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<u64>(&mut row, 0, u64::MAX);
 	assert_eq!(shape.get::<u64>(&row, 0), u64::MAX);
 
-	let mut row2 = shape.allocate();
+	let mut row2 = shape.allocate_pod();
 	shape.set::<u64>(&mut row2, 0, u64::MIN);
 	assert_eq!(shape.get::<u64>(&row2, 0), u64::MIN);
 
-	let mut row3 = shape.allocate();
+	let mut row3 = shape.allocate_pod();
 	shape.set::<u64>(&mut row3, 0, 0u64);
 	assert_eq!(shape.get::<u64>(&row3, 0), 0u64);
 }
 
 #[test]
 fn test_large_values() {
-	let shape = RowShape::testing(&[ValueType::Uint8]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint8]);
 
 	let test_values = [
 		0u64,
@@ -57,7 +57,7 @@ fn test_large_values() {
 	];
 
 	for value in test_values {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<u64>(&mut row, 0, value);
 		assert_eq!(shape.get::<u64>(&row, 0), value);
 	}
@@ -65,7 +65,7 @@ fn test_large_values() {
 
 #[test]
 fn test_memory_sizes() {
-	let shape = RowShape::testing(&[ValueType::Uint8]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint8]);
 
 	let memory_sizes = [
 		1024u64,                // 1 KB
@@ -77,7 +77,7 @@ fn test_memory_sizes() {
 	];
 
 	for size in memory_sizes {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<u64>(&mut row, 0, size);
 		assert_eq!(shape.get::<u64>(&row, 0), size);
 	}
@@ -85,7 +85,7 @@ fn test_memory_sizes() {
 
 #[test]
 fn test_nanosecond_timestamps() {
-	let shape = RowShape::testing(&[ValueType::Uint8]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint8]);
 
 	let ns_timestamps = [
 		0u64,                   // Unix epoch in ns
@@ -95,7 +95,7 @@ fn test_nanosecond_timestamps() {
 	];
 
 	for timestamp in ns_timestamps {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<u64>(&mut row, 0, timestamp);
 		assert_eq!(shape.get::<u64>(&row, 0), timestamp);
 	}
@@ -103,8 +103,8 @@ fn test_nanosecond_timestamps() {
 
 #[test]
 fn test_mixed_with_other_types() {
-	let shape = RowShape::testing(&[ValueType::Uint8, ValueType::Float8, ValueType::Uint8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint8, ValueType::Float8, ValueType::Uint8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<u64>(&mut row, 0, 15_000_000_000_000_000_000u64);
 	shape.set::<f64>(&mut row, 1, 3.14159265359f64);
@@ -117,8 +117,8 @@ fn test_mixed_with_other_types() {
 
 #[test]
 fn test_undefined_handling() {
-	let shape = RowShape::testing(&[ValueType::Uint8, ValueType::Uint8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint8, ValueType::Uint8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<u64>(&mut row, 0, 1234567890123456789u64);
 
@@ -131,8 +131,8 @@ fn test_undefined_handling() {
 
 #[test]
 fn test_try_get_u64_wrong_type() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 

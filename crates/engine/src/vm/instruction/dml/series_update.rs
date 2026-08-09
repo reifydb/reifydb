@@ -5,7 +5,11 @@ use std::sync::Arc;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, series::EncodedSeriesRow, shape::RowShape},
+	row::{
+		bytes::{EncodedBytes, RowBuilder},
+		series::EncodedSeriesRow,
+		shape::RowShape,
+	},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -106,7 +110,7 @@ pub(crate) fn update_series(
 		let updates_to_apply =
 			build_series_updates_to_apply(services, txn, &series, &columns, row_numbers, has_tag)?;
 
-		for (encoded_key, mut row, row_idx) in updates_to_apply {
+		for (encoded_key, row, row_idx) in updates_to_apply {
 			let pre_values = match txn.get(&encoded_key)? {
 				Some(v) => v.bytes,
 				None => continue,
@@ -115,26 +119,27 @@ pub(crate) fn update_series(
 			let old_created_at = EncodedSeriesRow::view(&pre_values).created_at();
 			let old_time = EncodedSeriesRow::view(&pre_values).time();
 			let now = services.runtime_context.clock.now();
-			row.set_timestamps(old_created_at, now);
 			let update_shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
+			let mut builder = EncodedSeriesRow::from(row).thaw();
+			builder.set_timestamps(old_created_at, now);
 			if let Some(time) = resolve_time_for_update(
 				&series.name,
 				&series.columns,
 				&series.time,
 				&update_shape,
-				&row,
+				builder.as_slice(),
 				old_time,
 			)? {
-				row.set_time(time);
+				builder.set_time(time);
 			}
 
 			let key_value = extract_series_update_key_value(&columns, &series, row_idx);
 			let row_number = RowNumber::from(u64::from(row_numbers[row_idx]));
 
-			let mut rows_buf = [row.thaw()];
+			let mut rows_buf = [builder];
 			SeriesRowInterceptor::pre_update(txn, &series, &mut rows_buf)?;
 			let [row] = rows_buf;
-			let row = row.freeze();
+			let row = row.freeze_bytes();
 			if !series.partition_by.is_empty() {
 				let expected = columns.partitions()[row_idx];
 				let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
@@ -339,7 +344,7 @@ fn extract_series_update_variant_tag(columns: &Columns, has_tag: bool, row_idx: 
 
 #[inline]
 fn build_series_update_bytes(series: &Series, columns: &Columns, shape: &RowShape, row_idx: usize) -> EncodedBytes {
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_series();
 	let key_col_value = columns
 		.iter()
 		.find(|c| c.name().text() == series.key.column())
@@ -355,7 +360,7 @@ fn build_series_update_bytes(series: &Series, columns: &Columns, shape: &RowShap
 			.unwrap_or(Value::none());
 		shape.set_value(&mut row, i + 1, &value);
 	}
-	row.freeze()
+	row.freeze_bytes()
 }
 
 fn track_series_update_flow_change(

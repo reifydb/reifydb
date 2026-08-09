@@ -10,7 +10,7 @@ use reifydb_value::{
 	value::{int::Int, value_type::ValueType},
 };
 
-use crate::row::{bytes::EncodedRowBuilder, shape::RowShape};
+use crate::row::{bytes::RowBuilder, shape::RowShape};
 
 const MODE_INLINE: u128 = 0x00000000000000000000000000000000;
 const MODE_MASK: u128 = 0x80000000000000000000000000000000;
@@ -21,7 +21,7 @@ const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF;
 const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 
 impl RowShape {
-	pub fn set_int(&self, row: &mut EncodedRowBuilder, index: usize, value: &Int) {
+	pub fn set_int(&self, row: &mut impl RowBuilder, index: usize, value: &Int) {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(

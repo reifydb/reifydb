@@ -822,7 +822,7 @@ impl RollingRegistration for VelocityIncremental {
 
 pub fn tumbling_shape() -> RowShape {
 	RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			RowShapeField::unconstrained("group", ValueType::Utf8),
 			RowShapeField::unconstrained("slot", ValueType::Uint8),
@@ -833,7 +833,7 @@ pub fn tumbling_shape() -> RowShape {
 
 pub fn ohlcv_shape() -> RowShape {
 	RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			RowShapeField::unconstrained("group", ValueType::Utf8),
 			RowShapeField::unconstrained("slot", ValueType::Uint8),
@@ -844,7 +844,7 @@ pub fn ohlcv_shape() -> RowShape {
 
 pub fn rolling_shape() -> RowShape {
 	RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			RowShapeField::unconstrained("group", ValueType::Utf8),
 			RowShapeField::unconstrained("ts", ValueType::Uint8),
@@ -855,7 +855,7 @@ pub fn rolling_shape() -> RowShape {
 
 pub fn rolling_top_k_shape() -> RowShape {
 	RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			RowShapeField::unconstrained("group", ValueType::Utf8),
 			RowShapeField::unconstrained("ts", ValueType::Uint8),
@@ -867,7 +867,7 @@ pub fn rolling_top_k_shape() -> RowShape {
 
 pub fn carry_shape() -> RowShape {
 	RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			RowShapeField::unconstrained("group", ValueType::Utf8),
 			RowShapeField::unconstrained("ts", ValueType::Uint8),
@@ -884,7 +884,7 @@ fn field(name: &str, ty: ValueType) -> RowShapeField {
 /// operator's real emitted columns. The rest is spelled out here for the reader.
 pub fn volume_out_shape() -> RowShape {
 	RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			field("group", ValueType::Utf8),
 			field("window_start", ValueType::Uint8),
@@ -895,7 +895,7 @@ pub fn volume_out_shape() -> RowShape {
 
 pub fn min_out_shape() -> RowShape {
 	RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			field("group", ValueType::Utf8),
 			field("window_start", ValueType::Uint8),
@@ -906,7 +906,7 @@ pub fn min_out_shape() -> RowShape {
 
 pub fn ohlcv_out_shape() -> RowShape {
 	RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			field("group", ValueType::Utf8),
 			field("window_start", ValueType::Uint8),
@@ -920,7 +920,7 @@ pub fn ohlcv_out_shape() -> RowShape {
 
 pub fn rolling_out_shape() -> RowShape {
 	RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			field("group", ValueType::Utf8),
 			field("rolling_sum", ValueType::Float8),
@@ -931,7 +931,7 @@ pub fn rolling_out_shape() -> RowShape {
 
 pub fn top_out_shape() -> RowShape {
 	RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			field("group", ValueType::Utf8),
 			field("rank", ValueType::Uint4),
@@ -943,7 +943,7 @@ pub fn top_out_shape() -> RowShape {
 
 pub fn carry_out_shape() -> RowShape {
 	RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			field("group", ValueType::Utf8),
 			field("window_start", ValueType::Uint8),
@@ -956,7 +956,7 @@ pub fn carry_out_shape() -> RowShape {
 
 pub fn velocity_out_shape() -> RowShape {
 	RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			field("group", ValueType::Utf8),
 			field("recent", ValueType::Float8),

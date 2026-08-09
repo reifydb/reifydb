@@ -4,7 +4,11 @@
 use std::{collections::HashMap, sync::Arc};
 
 use postcard::to_stdvec;
-use reifydb_codec::row::{bytes::EncodedBytes, pod::EncodedPodRow, shape::RowShape};
+use reifydb_codec::row::{
+	bytes::{EncodedBytes, RowBuilder},
+	pod::EncodedPodRow,
+	shape::RowShape,
+};
 use reifydb_core::{
 	error::diagnostic::catalog::{
 		namespace_not_found, queue_deduplication_key_not_utf8, queue_not_before_not_datetime, queue_not_found,
@@ -156,7 +160,7 @@ pub(crate) fn insert_queue(
 			} => returned.push(ReturnedRow {
 				created: false,
 				row_number,
-				encoded: encoded.unwrap_or_else(|| shape.allocate().freeze()),
+				encoded: encoded.unwrap_or_else(|| shape.allocate_queue().freeze_bytes()),
 			}),
 		}
 	}
@@ -518,7 +522,7 @@ fn build_insert_queue_row(
 	row_idx: usize,
 	not_before: Option<DateTime>,
 ) -> Result<EncodedBytes> {
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_queue();
 
 	for (queue_idx, queue_column) in target.queue.columns.iter().enumerate() {
 		let mut value = if let Some(&input_idx) = column_map.get(queue_column.name.as_str()) {
@@ -583,7 +587,7 @@ fn build_insert_queue_row(
 		row.set_time(time);
 	}
 
-	Ok(row.freeze())
+	Ok(row.freeze_bytes())
 }
 
 #[inline]

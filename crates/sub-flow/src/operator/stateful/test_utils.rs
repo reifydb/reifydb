@@ -3,7 +3,10 @@
 
 pub mod test {
 	use reifydb_abi::operator::capabilities::OperatorCapability;
-	use reifydb_codec::row::{operator::EncodedOperatorRow, shape::RowShape};
+	use reifydb_codec::row::{
+		operator::EncodedOperatorRow,
+		shape::{RowFamily, RowShape},
+	};
 	use reifydb_core::{
 		interface::{catalog::flow::OperatorId, change::Change},
 		key::operator_group_state::{GroupStateKey, Keyspace},
@@ -28,7 +31,10 @@ pub mod test {
 		pub fn new(id: OperatorId) -> Self {
 			Self {
 				id,
-				layout: RowShape::testing(&[ValueType::Int8, ValueType::Float8, ValueType::Utf8]),
+				layout: RowShape::testing(
+					RowFamily::Pod,
+					&[ValueType::Int8, ValueType::Float8, ValueType::Utf8],
+				),
 				key_types: vec![ValueType::Utf8, ValueType::Int4],
 			}
 		}
@@ -36,7 +42,7 @@ pub mod test {
 		pub fn simple(id: OperatorId) -> Self {
 			Self {
 				id,
-				layout: RowShape::testing(&[ValueType::Int8]),
+				layout: RowShape::testing(RowFamily::Pod, &[ValueType::Int8]),
 				key_types: vec![],
 			}
 		}
@@ -44,7 +50,7 @@ pub mod test {
 		pub fn with_key_types(id: OperatorId, key_types: Vec<ValueType>) -> Self {
 			Self {
 				id,
-				layout: RowShape::testing(&[ValueType::Blob, ValueType::Int4]),
+				layout: RowShape::testing(RowFamily::Pod, &[ValueType::Blob, ValueType::Int4]),
 				key_types,
 			}
 		}

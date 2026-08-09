@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::{blob::Blob, int::Int, value_type::ValueType};
 
 #[test]
 fn test_utf8_special_sequences() {
-	let shape = RowShape::testing(&[ValueType::Utf8]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8]);
 
 	let test_strings = [
 		"",                 // Empty string
@@ -24,7 +24,7 @@ fn test_utf8_special_sequences() {
 	];
 
 	for &test_str in &test_strings {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set_utf8(&mut row, 0, test_str);
 		let retrieved = shape.get_utf8(&row, 0);
 		assert_eq!(retrieved, test_str, "Failed for string: {:?}", test_str);
@@ -33,9 +33,9 @@ fn test_utf8_special_sequences() {
 
 #[test]
 fn test_blob_all_byte_values() {
-	let shape = RowShape::testing(&[ValueType::Blob]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob]);
 
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_pod();
 	let all_bytes: Vec<u8> = (0..=255).collect();
 	shape.set_blob(&mut row, 0, &Blob::from(all_bytes.clone()));
 	assert_eq!(shape.get_blob(&row, 0), Blob::from(all_bytes));
@@ -50,7 +50,7 @@ fn test_blob_all_byte_values() {
 
 	// A dynamic field can only be set once, so each pattern needs its own row.
 	for pattern in patterns {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set_blob(&mut row, 0, &Blob::from(pattern.clone()));
 		assert_eq!(shape.get_blob(&row, 0), Blob::from(pattern));
 	}
@@ -59,9 +59,10 @@ fn test_blob_all_byte_values() {
 #[test]
 fn test_dynamic_field_interleaving() {
 	// Adjacent dynamic fields share one growable section, so a bad offset shift corrupts a neighbour.
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob, ValueType::Utf8, ValueType::Int]);
+	let shape =
+		RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Blob, ValueType::Utf8, ValueType::Int]);
 
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_pod();
 	shape.set_utf8(&mut row, 0, "first");
 	shape.set_blob(&mut row, 1, &Blob::from(&b"second"[..]));
 	shape.set_utf8(&mut row, 2, "third");
@@ -72,7 +73,7 @@ fn test_dynamic_field_interleaving() {
 	assert_eq!(shape.get_utf8(&row, 2), "third");
 	assert_eq!(shape.get_int(&row, 3), Int::from(999999999999i64));
 
-	let mut row2 = shape.allocate();
+	let mut row2 = shape.allocate_pod();
 	shape.set_utf8(&mut row2, 0, "much longer string than before");
 	shape.set_blob(&mut row2, 1, &Blob::from(&b"x"[..]));
 	shape.set_utf8(&mut row2, 2, "");

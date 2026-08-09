@@ -4,21 +4,21 @@
 #[allow(clippy::approx_constant)]
 use std::f32::consts::{E, PI};
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::value_type::ValueType;
 
 #[test]
 fn test_set_get_f32() {
-	let shape = RowShape::testing(&[ValueType::Float4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Float4]);
+	let mut row = shape.allocate_pod();
 	shape.set::<f32>(&mut row, 0, 1.25f32);
 	assert_eq!(shape.get::<f32>(&row, 0), 1.25f32);
 }
 
 #[test]
 fn test_try_get_f32() {
-	let shape = RowShape::testing(&[ValueType::Float4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Float4]);
+	let mut row = shape.allocate_pod();
 
 	assert_eq!(shape.try_get::<f32>(&row, 0), None);
 
@@ -28,50 +28,50 @@ fn test_try_get_f32() {
 
 #[test]
 fn test_special_values() {
-	let shape = RowShape::testing(&[ValueType::Float4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Float4]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<f32>(&mut row, 0, 0.0f32);
 	assert_eq!(shape.get::<f32>(&row, 0), 0.0f32);
 
-	let mut row2 = shape.allocate();
+	let mut row2 = shape.allocate_pod();
 	shape.set::<f32>(&mut row2, 0, -0.0f32);
 	assert_eq!(shape.get::<f32>(&row2, 0), -0.0f32);
 
-	let mut row3 = shape.allocate();
+	let mut row3 = shape.allocate_pod();
 	shape.set::<f32>(&mut row3, 0, f32::INFINITY);
 	assert_eq!(shape.get::<f32>(&row3, 0), f32::INFINITY);
 
-	let mut row4 = shape.allocate();
+	let mut row4 = shape.allocate_pod();
 	shape.set::<f32>(&mut row4, 0, f32::NEG_INFINITY);
 	assert_eq!(shape.get::<f32>(&row4, 0), f32::NEG_INFINITY);
 
-	let mut row5 = shape.allocate();
+	let mut row5 = shape.allocate_pod();
 	shape.set::<f32>(&mut row5, 0, f32::NAN);
 	assert!(shape.get::<f32>(&row5, 0).is_nan());
 }
 
 #[test]
 fn test_extreme_values() {
-	let shape = RowShape::testing(&[ValueType::Float4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Float4]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<f32>(&mut row, 0, f32::MAX);
 	assert_eq!(shape.get::<f32>(&row, 0), f32::MAX);
 
-	let mut row2 = shape.allocate();
+	let mut row2 = shape.allocate_pod();
 	shape.set::<f32>(&mut row2, 0, f32::MIN);
 	assert_eq!(shape.get::<f32>(&row2, 0), f32::MIN);
 
-	let mut row3 = shape.allocate();
+	let mut row3 = shape.allocate_pod();
 	shape.set::<f32>(&mut row3, 0, f32::MIN_POSITIVE);
 	assert_eq!(shape.get::<f32>(&row3, 0), f32::MIN_POSITIVE);
 }
 
 #[test]
 fn test_mixed_with_other_types() {
-	let shape = RowShape::testing(&[ValueType::Float4, ValueType::Int4, ValueType::Float4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Float4, ValueType::Int4, ValueType::Float4]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<f32>(&mut row, 0, 3.14f32);
 	shape.set::<i32>(&mut row, 1, 42i32);
@@ -84,8 +84,8 @@ fn test_mixed_with_other_types() {
 
 #[test]
 fn test_undefined_handling() {
-	let shape = RowShape::testing(&[ValueType::Float4, ValueType::Float4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Float4, ValueType::Float4]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<f32>(&mut row, 0, 3.14f32);
 
@@ -98,8 +98,8 @@ fn test_undefined_handling() {
 
 #[test]
 fn test_try_get_f32_wrong_type() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 
@@ -108,8 +108,8 @@ fn test_try_get_f32_wrong_type() {
 
 #[test]
 fn test_subnormal_values() {
-	let shape = RowShape::testing(&[ValueType::Float4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Float4]);
+	let mut row = shape.allocate_pod();
 
 	// Bit comparison, not value comparison: subnormals must survive the slot bit-exact.
 	let min_subnormal = f32::from_bits(0x00000001);
@@ -127,8 +127,8 @@ fn test_subnormal_values() {
 
 #[test]
 fn test_nan_payload_preservation() {
-	let shape = RowShape::testing(&[ValueType::Float4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Float4]);
+	let mut row = shape.allocate_pod();
 
 	// The slot stores raw bits, so the NaN payload and sign must come back unchanged.
 	let quiet_nan = f32::NAN;
@@ -146,8 +146,8 @@ fn test_nan_payload_preservation() {
 
 #[test]
 fn test_repeated_operations() {
-	let shape = RowShape::testing(&[ValueType::Float4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Float4]);
+	let mut row = shape.allocate_pod();
 	let initial_len = row.len();
 
 	for i in 0..1000 {
@@ -163,7 +163,7 @@ fn test_repeated_operations() {
 #[test]
 fn test_unaligned_access() {
 	let shape = create_unaligned_layout(ValueType::Float4);
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_pod();
 
 	shape.set::<f32>(&mut row, 1, PI);
 	assert_eq!(shape.get::<f32>(&row, 1), PI);
@@ -177,8 +177,8 @@ fn test_unaligned_access() {
 
 #[test]
 fn test_denormalized_transitions() {
-	let shape = RowShape::testing(&[ValueType::Float4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Float4]);
+	let mut row = shape.allocate_pod();
 
 	let values = [
 		f32::MIN_POSITIVE,       // Smallest normal
@@ -200,11 +200,14 @@ fn test_denormalized_transitions() {
 
 /// Interleaves 1-byte fields so the target type never lands on its natural alignment.
 pub fn create_unaligned_layout(target_type: ValueType) -> RowShape {
-	RowShape::testing(&[
-		ValueType::Int1,     // 1 byte offset
-		target_type.clone(), // Now at odd offset
-		ValueType::Int1,     // Another odd-sized field
-		target_type,         /* Another instance at different odd
-		                      * offset */
-	])
+	RowShape::testing(
+		RowFamily::Pod,
+		&[
+			ValueType::Int1,     // 1 byte offset
+			target_type.clone(), // Now at odd offset
+			ValueType::Int1,     // Another odd-sized field
+			target_type,         /* Another instance at different odd
+			                      * offset */
+		],
+	)
 }

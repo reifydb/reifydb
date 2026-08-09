@@ -5,7 +5,7 @@ use std::{collections::Bound, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, shape::RowShape},
+	row::{bytes::EncodedBytes, queue::EncodedQueueRow, shape::RowShape},
 };
 use reifydb_core::{
 	interface::{catalog::dictionary::Dictionary, resolved::ResolvedQueue, store::MultiVersionRow},
@@ -80,7 +80,7 @@ impl QueueScan {
 			return Ok(shape.clone());
 		}
 
-		let fingerprint = first.fingerprint();
+		let fingerprint = EncodedQueueRow::view(first).fingerprint();
 		let stored_ctx = self.context.as_ref().expect("QueueScan context not set");
 		let shape = stored_ctx.services.catalog.get_or_load_row_shape(fingerprint, rx)?.ok_or_else(|| {
 			internal_error!(

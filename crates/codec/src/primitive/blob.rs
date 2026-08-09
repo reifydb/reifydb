@@ -6,14 +6,14 @@ use reifydb_value::{
 	value::{blob::Blob, value_type::ValueType},
 };
 
-use crate::row::{bytes::EncodedRowBuilder, shape::RowShape};
+use crate::row::{bytes::RowBuilder, shape::RowShape};
 
 impl RowShape {
-	pub fn set_blob(&self, row: &mut EncodedRowBuilder, index: usize, value: &Blob) {
+	pub fn set_blob(&self, row: &mut impl RowBuilder, index: usize, value: &Blob) {
 		self.set_blob_from_slice(row, index, value.as_bytes());
 	}
 
-	pub fn set_blob_from_slice(&self, row: &mut EncodedRowBuilder, index: usize, bytes: &[u8]) {
+	pub fn set_blob_from_slice(&self, row: &mut impl RowBuilder, index: usize, bytes: &[u8]) {
 		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),
@@ -51,13 +51,14 @@ impl RowShape {
 		&row[blob_start..blob_start + length]
 	}
 
-	pub fn get_blob_slice_builder<'a>(&self, row: &'a EncodedRowBuilder, index: usize) -> &'a [u8] {
+	pub fn get_blob_slice_builder<'a>(&self, row: &'a impl RowBuilder, index: usize) -> &'a [u8] {
 		let field = &self.fields()[index];
-		let ref_slice = &row[field.offset as usize..field.offset as usize + 8];
+		let buffer = row.as_slice();
+		let ref_slice = &buffer[field.offset as usize..field.offset as usize + 8];
 		let offset = u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]]) as usize;
 		let length = u32::from_le_bytes([ref_slice[4], ref_slice[5], ref_slice[6], ref_slice[7]]) as usize;
 		let blob_start = self.dynamic_section_start() + offset;
-		&row[blob_start..blob_start + length]
+		&buffer[blob_start..blob_start + length]
 	}
 
 	pub fn get_blob_slice_mut<'a>(&self, row: &'a mut [u8], index: usize) -> &'a mut [u8] {

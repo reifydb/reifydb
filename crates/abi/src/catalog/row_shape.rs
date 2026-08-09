@@ -26,6 +26,8 @@ pub struct RowShapeFieldFFI {
 pub struct RowShapeFFI {
 	pub fingerprint: u64,
 
+	pub family: u8,
+
 	pub fields: *const RowShapeFieldFFI,
 
 	pub field_count: usize,

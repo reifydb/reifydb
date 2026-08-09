@@ -60,7 +60,7 @@ pub struct JoinTtl {
 	pub right: Option<OperatorTtl>,
 }
 
-pub fn row_shape_from_columns(value: &[Column]) -> RowShape {
+pub fn row_shape_from_columns(family: RowFamily, value: &[Column]) -> RowShape {
 	{
 		let fields = value
 			.iter()
@@ -74,7 +74,7 @@ pub fn row_shape_from_columns(value: &[Column]) -> RowShape {
 				RowShapeField::new(col.name.clone(), constraint)
 			})
 			.collect();
-		RowShape::new(RowFamily::Deprecated, fields)
+		RowShape::new(family, fields)
 	}
 }
 
@@ -113,7 +113,7 @@ mod tests {
 		fn test_from_column_single_field() {
 			let columns = vec![make_column(1, "id", ValueType::Int8, 0)];
 
-			let shape = row_shape_from_columns(columns.as_slice());
+			let shape = row_shape_from_columns(RowFamily::Table, columns.as_slice());
 
 			assert_eq!(shape.fields().len(), 1);
 			assert_eq!(shape.fields()[0].name, "id");
@@ -128,7 +128,7 @@ mod tests {
 				make_column(3, "c", ValueType::Int4, 2),
 			];
 
-			let shape = row_shape_from_columns(columns.as_slice());
+			let shape = row_shape_from_columns(RowFamily::Table, columns.as_slice());
 
 			assert_eq!(shape.fields().len(), 3);
 			assert_eq!(shape.fields()[0].name, "a");
@@ -147,7 +147,7 @@ mod tests {
 				make_column(3, "third", ValueType::Boolean, 2),
 			];
 
-			let shape = row_shape_from_columns(columns.as_slice());
+			let shape = row_shape_from_columns(RowFamily::Table, columns.as_slice());
 
 			assert_eq!(shape.fields()[0].name, "first");
 			assert_eq!(shape.fields()[0].constraint.get_type(), ValueType::Utf8);
@@ -167,9 +167,9 @@ mod tests {
 				make_column(5, "f4", ValueType::Uint16, 4),
 			];
 
-			let shape_from_columns = row_shape_from_columns(columns.as_slice());
+			let shape_from_columns = row_shape_from_columns(RowFamily::Table, columns.as_slice());
 			let shape_direct = RowShape::new(
-				RowFamily::Deprecated,
+				RowFamily::Table,
 				vec![
 					RowShapeField::unconstrained("f0", ValueType::Uint1),
 					RowShapeField::unconstrained("f1", ValueType::Uint2),
@@ -201,7 +201,7 @@ mod tests {
 		fn test_from_column_empty() {
 			let columns: Vec<Column> = vec![];
 
-			let shape = row_shape_from_columns(columns.as_slice());
+			let shape = row_shape_from_columns(RowFamily::Table, columns.as_slice());
 
 			assert_eq!(shape.fields().len(), 0);
 		}
@@ -220,7 +220,7 @@ mod tests {
 				make_column(9, "f8", ValueType::Uint8, 8),
 			];
 
-			let shape = row_shape_from_columns(columns.as_slice());
+			let shape = row_shape_from_columns(RowFamily::Table, columns.as_slice());
 
 			assert_eq!(shape.fields().len(), 9);
 			for (i, field) in shape.fields().iter().enumerate() {

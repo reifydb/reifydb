@@ -135,7 +135,7 @@ impl CatalogStore {
 			},
 		);
 
-		write_time_source(&series::SHAPE, row.builder_mut(), series::TIME_DOMAIN, series::TS, &to_create.time);
+		write_time_source(&series::SHAPE, &mut row, series::TIME_DOMAIN, series::TS, &to_create.time);
 
 		txn.set(&SeriesStorageKey::encoded(series_id), row.freeze())?;
 

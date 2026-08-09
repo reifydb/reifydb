@@ -410,6 +410,15 @@ pub fn flow_sink_dictionary_not_found(dictionary_id: String, column: &str) -> Di
 	)
 }
 
+pub fn flow_sink_not_a_source_family(family: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_047",
+		format!("a view sink cannot encode a row of the {} family", family),
+		"Only the table, series and ring buffer families reserve the created_at, updated_at and #time \
+		 slots a view sink stamps. This indicates the sink was built over the wrong shape.",
+	)
+}
+
 pub fn flow_dictionary_source_unsupported() -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_038",

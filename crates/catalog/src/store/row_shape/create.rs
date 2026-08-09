@@ -34,7 +34,7 @@ pub(crate) fn create_row_shape(txn: &mut Transaction<'_>, shape: &RowShape) -> R
 	for (idx, field) in shape.fields().iter().enumerate() {
 		let ffi = type_constraint_to_ffi(&field.constraint).expect("constraint exceeds tag capacity");
 
-		let mut field_row = shape_field::SHAPE.allocate();
+		let mut field_row = shape_field::SHAPE.allocate_catalog();
 		shape_field::SHAPE.set_utf8(&mut field_row, shape_field::NAME, &field.name);
 		shape_field::SHAPE.set::<u8>(&mut field_row, shape_field::TYPE, ffi.base_type);
 		shape_field::SHAPE.set::<u8>(&mut field_row, shape_field::CONSTRAINT_TYPE, ffi.constraint_type);

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::{
-	bytes::SHAPE_HEADER_SIZE,
+	bytes::{RowBuilder, SHAPE_HEADER_SIZE},
 	ringbuffer::EncodedRingBufferRow,
 	shape::{RowFamily, RowShape, RowShapeField},
 };
@@ -29,11 +29,11 @@ fn the_ringbuffer_header_is_the_full_source_header() {
 fn the_typed_view_reads_the_stamps_the_builder_wrote() {
 	// The stamps are adjacent 8-byte slots, so swapped offsets round trip undetected unless the values differ.
 	let shape = shape();
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_ringbuffer();
 	row.set_timestamps(DateTime::from_millis(111), DateTime::from_millis(222));
 	row.set_time(DateTime::from_millis(333));
 
-	let frozen = row.freeze();
+	let frozen = row.freeze_bytes();
 	let typed = EncodedRingBufferRow::view(&frozen);
 
 	assert_eq!(typed.created_at(), DateTime::from_millis(111));
@@ -46,13 +46,13 @@ fn the_typed_view_reads_the_stamps_the_builder_wrote() {
 fn a_slot_rewrite_moves_updated_at_and_never_created_at() {
 	// Eviction rewrites a slot in place, so one shared stamp slot makes an overwritten row look freshly inserted.
 	let shape = shape();
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_ringbuffer();
 	row.set_timestamps(DateTime::from_millis(10), DateTime::from_millis(10));
 
 	let created_at = row.created_at();
 	row.set_timestamps(created_at, DateTime::from_millis(99));
 
-	let frozen = row.freeze();
+	let frozen = row.freeze_bytes();
 	let typed = EncodedRingBufferRow::view(&frozen);
 
 	assert_eq!(typed.created_at(), DateTime::from_millis(10));
@@ -63,10 +63,10 @@ fn a_slot_rewrite_moves_updated_at_and_never_created_at() {
 fn the_typed_definedness_agrees_with_the_shape() {
 	// A header width disagreeing with the shape's reads a field byte as a validity bit.
 	let shape = shape();
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_ringbuffer();
 	shape.set::<i32>(&mut row, 1, 9);
 
-	let frozen = row.freeze();
+	let frozen = row.freeze_bytes();
 	let typed = EncodedRingBufferRow::view(&frozen);
 
 	for index in 0..shape.field_count() {
@@ -80,10 +80,10 @@ fn the_typed_definedness_agrees_with_the_shape() {
 fn the_body_begins_where_the_bitvec_begins() {
 	// body() slices at its own constant, so a wrong one hands out header bytes as row content.
 	let shape = shape();
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_ringbuffer();
 	shape.set::<i32>(&mut row, 0, 7);
 
-	let frozen = row.freeze();
+	let frozen = row.freeze_bytes();
 	let typed = EncodedRingBufferRow::view(&frozen);
 
 	assert_eq!(typed.body().len(), frozen.len() - SHAPE_HEADER_SIZE);

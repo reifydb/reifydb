@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::shape::RowFamily;
 use reifydb_value::value::sumtype::SumTypeId;
 use serde::{Deserialize, Serialize};
 
@@ -33,6 +34,16 @@ pub enum ViewStorageKind {
 	Table = 1,
 	RingBuffer = 2,
 	Series = 3,
+}
+
+impl ViewStorageKind {
+	pub fn row_family(self) -> RowFamily {
+		match self {
+			Self::Table => RowFamily::Table,
+			Self::RingBuffer => RowFamily::RingBuffer,
+			Self::Series => RowFamily::Series,
+		}
+	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

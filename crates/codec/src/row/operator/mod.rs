@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::RefCell, collections::BTreeMap, mem};
+use std::{cell::RefCell, collections::BTreeMap, mem, ops::Deref};
 
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -24,7 +24,7 @@ use rkyv::{
 };
 use thiserror::Error;
 
-use crate::row::bytes::{EncodedBytes, EncodedRowBuilder, read_defined_at};
+use crate::row::bytes::{EncodedBytes, EncodedRowBuilder, RowBuilder, read_defined_at, sealed::Sealed};
 
 const TIME_OFFSET: usize = 0;
 
@@ -172,50 +172,46 @@ impl EncodedOperatorRowBuilder {
 		Self(builder)
 	}
 
-	pub fn builder(&self) -> &EncodedRowBuilder {
-		&self.0
-	}
-
-	pub fn builder_mut(&mut self) -> &mut EncodedRowBuilder {
-		&mut self.0
-	}
-
-	pub fn as_slice(&self) -> &[u8] {
-		self.0.as_slice()
-	}
-
-	pub fn as_mut_slice(&mut self) -> &mut [u8] {
-		self.0.as_mut_slice()
-	}
-
 	#[inline]
 	pub fn row_time(&self) -> Option<DateTime> {
-		read_time(self.0.as_slice())
+		read_time(self.as_slice())
 	}
 
 	pub fn set_time(&mut self, time: DateTime) {
-		write_time(self.0.as_mut_slice(), time);
+		write_time(self.as_mut_slice(), time);
 	}
 
 	#[inline]
 	pub fn is_defined(&self, index: usize) -> bool {
-		read_defined_at(self.0.as_slice(), OPERATOR_HEADER_SIZE, index)
+		read_defined_at(self.as_slice(), OPERATOR_HEADER_SIZE, index)
 	}
 
 	pub fn body(&self) -> &[u8] {
-		&self.0.as_slice()[OPERATOR_HEADER_SIZE..]
-	}
-
-	pub fn len(&self) -> usize {
-		self.0.len()
-	}
-
-	pub fn is_empty(&self) -> bool {
-		self.body().is_empty()
+		&self.as_slice()[OPERATOR_HEADER_SIZE..]
 	}
 
 	pub fn freeze(self) -> EncodedOperatorRow {
 		EncodedOperatorRow(self.0.freeze())
+	}
+}
+
+impl Sealed for EncodedOperatorRowBuilder {
+	fn buffer(&self) -> &Vec<u8> {
+		self.0.buffer()
+	}
+
+	fn buffer_mut(&mut self) -> &mut Vec<u8> {
+		self.0.buffer_mut()
+	}
+
+	fn take_buffer(self) -> Vec<u8> {
+		self.0.take_buffer()
+	}
+}
+
+impl EncodedOperatorRow {
+	pub fn thaw(self) -> EncodedOperatorRowBuilder {
+		EncodedOperatorRowBuilder(self.0.thaw())
 	}
 }
 
@@ -410,5 +406,13 @@ where
 
 	fn materialize(archived: &Self::Archived) -> Result<Self, OperatorError> {
 		materialize_archive::<Self>(archived)
+	}
+}
+
+impl Deref for EncodedOperatorRowBuilder {
+	type Target = [u8];
+
+	fn deref(&self) -> &Self::Target {
+		self.as_slice()
 	}
 }

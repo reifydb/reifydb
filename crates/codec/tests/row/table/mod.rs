@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::{
-	bytes::SHAPE_HEADER_SIZE,
+	bytes::{RowBuilder, SHAPE_HEADER_SIZE},
 	shape::{RowFamily, RowShape, RowShapeField},
 	table::EncodedTableRow,
 };
@@ -29,11 +29,11 @@ fn the_table_header_is_the_full_source_header() {
 fn the_typed_view_reads_the_stamps_the_builder_wrote() {
 	// The stamps are adjacent 8-byte slots, so swapped offsets round trip undetected unless the values differ.
 	let shape = shape();
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_table();
 	row.set_timestamps(DateTime::from_millis(111), DateTime::from_millis(222));
 	row.set_time(DateTime::from_millis(333));
 
-	let frozen = row.freeze();
+	let frozen = row.freeze_bytes();
 	let typed = EncodedTableRow::view(&frozen);
 
 	assert_eq!(typed.created_at(), DateTime::from_millis(111));
@@ -45,7 +45,7 @@ fn the_typed_view_reads_the_stamps_the_builder_wrote() {
 #[test]
 fn an_unstamped_row_reports_no_time() {
 	// Absence must be the flags bit, never a zero value, or a time-less table reports an epoch it never wrote.
-	let frozen = shape().allocate().freeze();
+	let frozen = shape().allocate_table().freeze_bytes();
 
 	assert_eq!(EncodedTableRow::view(&frozen).time(), None);
 }
@@ -54,10 +54,10 @@ fn an_unstamped_row_reports_no_time() {
 fn the_typed_definedness_agrees_with_the_shape() {
 	// A header width disagreeing with the shape's reads a field byte as a validity bit.
 	let shape = shape();
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_table();
 	shape.set::<i32>(&mut row, 1, 9);
 
-	let frozen = row.freeze();
+	let frozen = row.freeze_bytes();
 	let typed = EncodedTableRow::view(&frozen);
 
 	for index in 0..shape.field_count() {
@@ -71,10 +71,10 @@ fn the_typed_definedness_agrees_with_the_shape() {
 fn the_body_begins_where_the_bitvec_begins() {
 	// body() slices at its own constant, so a wrong one hands out header bytes as row content.
 	let shape = shape();
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_table();
 	shape.set::<i32>(&mut row, 0, 7);
 
-	let frozen = row.freeze();
+	let frozen = row.freeze_bytes();
 	let typed = EncodedTableRow::view(&frozen);
 
 	assert_eq!(typed.body().len(), frozen.len() - SHAPE_HEADER_SIZE);
@@ -85,11 +85,11 @@ fn the_body_begins_where_the_bitvec_begins() {
 fn viewing_and_converting_preserve_the_bytes() {
 	// view() must be a pointer cast and From a move, otherwise a typed read disagrees with the bytes it borrowed.
 	let shape = shape();
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_table();
 	shape.set::<i32>(&mut row, 0, 42);
 	row.set_timestamps(DateTime::from_millis(5), DateTime::from_millis(6));
 
-	let frozen = row.freeze();
+	let frozen = row.freeze_bytes();
 	let expected = frozen.as_slice().to_vec();
 
 	assert_eq!(EncodedTableRow::view(&frozen).as_slice(), expected.as_slice());

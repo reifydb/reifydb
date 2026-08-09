@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::{RowShape, cache::RowShapeCacheCell};
+use reifydb_codec::row::shape::{RowFamily, RowShape, cache::RowShapeCacheCell};
 use reifydb_value::value::value_type::ValueType;
 
 fn shape(types: &[ValueType]) -> RowShape {
-	RowShape::testing(types)
+	RowShape::testing(RowFamily::Pod, types)
 }
 
 #[test]

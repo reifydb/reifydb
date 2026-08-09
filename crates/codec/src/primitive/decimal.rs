@@ -8,7 +8,7 @@ use reifydb_value::{
 	value::{decimal::Decimal, value_type::ValueType},
 };
 
-use crate::row::{bytes::EncodedRowBuilder, shape::RowShape};
+use crate::row::{bytes::RowBuilder, shape::RowShape};
 
 #[cfg(reifydb_assertions)]
 const MODE_DYNAMIC: u128 = 0x80000000000000000000000000000000;
@@ -19,7 +19,7 @@ const DYNAMIC_OFFSET_MASK: u128 = 0x0000000000000000FFFFFFFFFFFFFFFF;
 const DYNAMIC_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 
 impl RowShape {
-	pub fn set_decimal(&self, row: &mut EncodedRowBuilder, index: usize, value: &Decimal) {
+	pub fn set_decimal(&self, row: &mut impl RowBuilder, index: usize, value: &Decimal) {
 		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),

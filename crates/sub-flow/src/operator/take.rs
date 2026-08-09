@@ -10,7 +10,7 @@ use std::{
 
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::row::{
-	bytes::EncodedBytes,
+	bytes::{EncodedBytes, RowBuilder},
 	operator::{decode, encode_archive},
 	shape::{RowFamily, RowShape, RowShapeField},
 };
@@ -68,14 +68,14 @@ fn row_shape_from_columns(cols: &Columns) -> RowShape {
 		.zip(cols.columns.iter())
 		.map(|(name, buf)| RowShapeField::unconstrained(name.text().to_string(), buf.get_type()))
 		.collect();
-	RowShape::new(RowFamily::Deprecated, fields)
+	RowShape::new(RowFamily::Pod, fields)
 }
 
 fn encode_take_bytes(shape: &RowShape, columns: &Columns, row_idx: usize) -> EncodedBytes {
 	let values: Vec<Value> = columns.columns.iter().map(|buf| buf.get_value(row_idx)).collect();
-	let mut encoded = shape.allocate();
+	let mut encoded = shape.allocate_pod();
 	shape.set_values(&mut encoded, &values);
-	encoded.freeze()
+	encoded.freeze_bytes()
 }
 
 fn decode_take_bytes(shape: &RowShape, row_number: RowNumber, encoded: &EncodedBytes) -> Columns {

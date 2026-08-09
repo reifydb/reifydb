@@ -13,7 +13,7 @@ use reifydb_codec::{
 		bytes::EncodedBytes,
 		operator::{EncodedOperatorRow, decode, encode_archive},
 		pod::EncodedPodRow,
-		shape::RowShape,
+		shape::{RowFamily, RowShape},
 	},
 };
 use reifydb_core::{
@@ -471,7 +471,7 @@ impl Operator for SinkRingBufferViewOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
-		let shape = row_shape_from_columns(view.columns());
+		let shape = row_shape_from_columns(RowFamily::RingBuffer, view.columns());
 		let object_id = StorageId::ringbuffer(self.ringbuffer_id);
 		let mut metadata = if self.is_partitioned() {
 			None
@@ -549,7 +549,7 @@ impl Operator for SinkRingBufferViewOperator {
 		let partition_values = self.timer_partition_values(&timer.key)?;
 
 		let view = self.view.def().clone();
-		let shape = row_shape_from_columns(view.columns());
+		let shape = row_shape_from_columns(RowFamily::RingBuffer, view.columns());
 		let object_id = StorageId::ringbuffer(self.ringbuffer_id);
 		let mut evicted_rns: Vec<RowNumber> = Vec::new();
 		let mut evicted: Vec<EncodedBytes> = Vec::new();

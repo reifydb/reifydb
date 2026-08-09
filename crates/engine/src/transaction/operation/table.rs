@@ -2,8 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::{
-	bytes::{EncodedBytes, EncodedRowBuilder},
-	shape::RowShape,
+	bytes::{EncodedBytes, RowBuilder},
+	shape::{RowFamily, RowShape},
+	table::EncodedTableRowBuilder,
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -80,7 +81,7 @@ pub trait TableOperations {
 		table: &Table,
 		shape: &RowShape,
 		ids: &[RowNumber],
-		rows: &mut [EncodedRowBuilder],
+		rows: &mut [EncodedTableRowBuilder],
 	) -> Result<()>;
 
 	fn update_table(
@@ -88,7 +89,7 @@ pub trait TableOperations {
 		table: &Table,
 		ids: &[RowNumber],
 		partitions: &[Partition],
-		rows: &mut [EncodedRowBuilder],
+		rows: &mut [EncodedTableRowBuilder],
 	) -> Result<Vec<(RowNumber, EncodedBytes)>>;
 
 	fn remove_from_table(
@@ -105,7 +106,7 @@ impl TableOperations for CommandTransaction {
 		table: &Table,
 		shape: &RowShape,
 		ids: &[RowNumber],
-		rows: &mut [EncodedRowBuilder],
+		rows: &mut [EncodedTableRowBuilder],
 	) -> Result<()> {
 		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		if ids.is_empty() {
@@ -114,7 +115,7 @@ impl TableOperations for CommandTransaction {
 
 		TableRowInterceptor::pre_insert(self, table, ids, rows)?;
 
-		let frozen: Vec<EncodedBytes> = rows.iter().map(|row| row.clone().freeze()).collect();
+		let frozen: Vec<EncodedBytes> = rows.iter().map(|row| row.clone().freeze_bytes()).collect();
 
 		for (row, &row_number) in frozen.iter().zip(ids.iter()) {
 			self.set(&table_row_key(table, shape, row, row_number), row.clone())?;
@@ -145,14 +146,14 @@ impl TableOperations for CommandTransaction {
 		table: &Table,
 		ids: &[RowNumber],
 		partitions: &[Partition],
-		rows: &mut [EncodedRowBuilder],
+		rows: &mut [EncodedTableRowBuilder],
 	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
 		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		if ids.is_empty() {
 			return Ok(Vec::new());
 		}
 
-		let shape = row_shape_from_columns(&table.columns);
+		let shape = row_shape_from_columns(RowFamily::Table, &table.columns);
 
 		TableRowInterceptor::pre_update(self, table, ids, rows)?;
 
@@ -191,7 +192,7 @@ impl TableOperations for CommandTransaction {
 
 		let matched_ids: Vec<RowNumber> = matched_indices.iter().map(|&i| ids[i]).collect();
 		let matched_posts: Vec<EncodedBytes> =
-			matched_indices.iter().map(|&i| rows[i].clone().freeze()).collect();
+			matched_indices.iter().map(|&i| rows[i].clone().freeze_bytes()).collect();
 
 		TableRowInterceptor::post_update(self, table, &matched_ids, &matched_posts, &pres)?;
 
@@ -245,7 +246,7 @@ impl TableOperations for CommandTransaction {
 
 		TableRowInterceptor::post_delete(self, table, &matched_ids, &pre_for_cdc_bytes_vec)?;
 
-		let shape = row_shape_from_columns(&table.columns);
+		let shape = row_shape_from_columns(RowFamily::Table, &table.columns);
 		self.track_flow_change(build_table_remove_change(table, &shape, &matched_ids, &pre_for_cdc_bytes_vec));
 
 		Ok(matched_ids.into_iter().zip(displayed_bytes_vec).collect())
@@ -258,7 +259,7 @@ impl TableOperations for AdminTransaction {
 		table: &Table,
 		shape: &RowShape,
 		ids: &[RowNumber],
-		rows: &mut [EncodedRowBuilder],
+		rows: &mut [EncodedTableRowBuilder],
 	) -> Result<()> {
 		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		if ids.is_empty() {
@@ -267,7 +268,7 @@ impl TableOperations for AdminTransaction {
 
 		TableRowInterceptor::pre_insert(self, table, ids, rows)?;
 
-		let frozen: Vec<EncodedBytes> = rows.iter().map(|row| row.clone().freeze()).collect();
+		let frozen: Vec<EncodedBytes> = rows.iter().map(|row| row.clone().freeze_bytes()).collect();
 
 		for (row, &row_number) in frozen.iter().zip(ids.iter()) {
 			self.set(&table_row_key(table, shape, row, row_number), row.clone())?;
@@ -298,14 +299,14 @@ impl TableOperations for AdminTransaction {
 		table: &Table,
 		ids: &[RowNumber],
 		partitions: &[Partition],
-		rows: &mut [EncodedRowBuilder],
+		rows: &mut [EncodedTableRowBuilder],
 	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
 		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		if ids.is_empty() {
 			return Ok(Vec::new());
 		}
 
-		let shape = row_shape_from_columns(&table.columns);
+		let shape = row_shape_from_columns(RowFamily::Table, &table.columns);
 
 		TableRowInterceptor::pre_update(self, table, ids, rows)?;
 
@@ -344,7 +345,7 @@ impl TableOperations for AdminTransaction {
 
 		let matched_ids: Vec<RowNumber> = matched_indices.iter().map(|&i| ids[i]).collect();
 		let matched_posts: Vec<EncodedBytes> =
-			matched_indices.iter().map(|&i| rows[i].clone().freeze()).collect();
+			matched_indices.iter().map(|&i| rows[i].clone().freeze_bytes()).collect();
 
 		TableRowInterceptor::post_update(self, table, &matched_ids, &matched_posts, &pres)?;
 
@@ -398,7 +399,7 @@ impl TableOperations for AdminTransaction {
 
 		TableRowInterceptor::post_delete(self, table, &matched_ids, &pre_for_cdc_bytes_vec)?;
 
-		let shape = row_shape_from_columns(&table.columns);
+		let shape = row_shape_from_columns(RowFamily::Table, &table.columns);
 		self.track_flow_change(build_table_remove_change(table, &shape, &matched_ids, &pre_for_cdc_bytes_vec));
 
 		Ok(matched_ids.into_iter().zip(displayed_bytes_vec).collect())
@@ -411,7 +412,7 @@ impl TableOperations for Transaction<'_> {
 		table: &Table,
 		shape: &RowShape,
 		ids: &[RowNumber],
-		rows: &mut [EncodedRowBuilder],
+		rows: &mut [EncodedTableRowBuilder],
 	) -> Result<()> {
 		match self {
 			Transaction::Command(txn) => txn.insert_table(table, shape, ids, rows),
@@ -427,7 +428,7 @@ impl TableOperations for Transaction<'_> {
 		table: &Table,
 		ids: &[RowNumber],
 		partitions: &[Partition],
-		rows: &mut [EncodedRowBuilder],
+		rows: &mut [EncodedTableRowBuilder],
 	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
 		match self {
 			Transaction::Command(txn) => txn.update_table(table, ids, partitions, rows),

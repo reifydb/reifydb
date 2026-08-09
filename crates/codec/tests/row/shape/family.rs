@@ -30,9 +30,9 @@ fn a_catalog_shape_starts_its_bitvec_directly_after_the_fingerprint() {
 }
 
 #[test]
-fn a_deprecated_shape_keeps_the_full_source_row_header() {
+fn a_table_shape_keeps_the_full_source_row_header() {
 	// Storage rows still carry created_at/updated_at/time/flags; shrinking this reinterprets every stored row.
-	let shape = RowShape::new(RowFamily::Deprecated, fields());
+	let shape = RowShape::new(RowFamily::Table, fields());
 
 	assert_eq!(shape.header_size(), SHAPE_HEADER_SIZE);
 	assert_eq!(shape.header_size(), 33);
@@ -43,19 +43,19 @@ fn a_deprecated_shape_keeps_the_full_source_row_header() {
 fn the_catalog_family_saves_exactly_the_dead_header_bytes_on_every_row() {
 	// Drift here means a family gained a header field or the catalog family stopped being fingerprint-only.
 	let catalog = RowShape::new(RowFamily::Catalog, fields());
-	let deprecated = RowShape::new(RowFamily::Deprecated, fields());
+	let table = RowShape::new(RowFamily::Table, fields());
 
-	assert_eq!(deprecated.total_static_size() - catalog.total_static_size(), 25);
+	assert_eq!(table.total_static_size() - catalog.total_static_size(), 25);
 }
 
 #[test]
 fn the_family_participates_in_the_fingerprint_so_two_layouts_cannot_collide() {
 	// The fingerprint is the shape registry's only key, so a shared one would read a catalog row at offset 33.
 	let catalog = RowShape::new(RowFamily::Catalog, fields());
-	let deprecated = RowShape::new(RowFamily::Deprecated, fields());
+	let table = RowShape::new(RowFamily::Table, fields());
 
-	assert_ne!(catalog.header_size(), deprecated.header_size());
-	assert_ne!(catalog.fingerprint(), deprecated.fingerprint());
+	assert_ne!(catalog.header_size(), table.header_size());
+	assert_ne!(catalog.fingerprint(), table.fingerprint());
 }
 
 #[test]
@@ -93,7 +93,7 @@ fn the_three_thirty_three_byte_source_families_lay_their_fields_out_identically(
 fn a_catalog_row_reads_back_the_values_it_wrote() {
 	// A shape allocating an 8-byte header but probing the bitvec at 33 would read a field byte as a validity bit.
 	let shape = RowShape::new(RowFamily::Catalog, fields());
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_catalog();
 
 	shape.set::<u64>(&mut row, 0, 7);
 	shape.set_utf8(&mut row, 1, "catalog");

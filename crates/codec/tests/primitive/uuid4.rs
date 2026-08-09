@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::{uuid::Uuid4, value_type::ValueType};
 
 #[test]
 fn test_set_get_uuid4() {
-	let shape = RowShape::testing(&[ValueType::Uuid4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid4]);
+	let mut row = shape.allocate_pod();
 
 	let uuid = Uuid4::generate();
 	shape.set::<Uuid4>(&mut row, 0, uuid.clone());
@@ -16,8 +16,8 @@ fn test_set_get_uuid4() {
 
 #[test]
 fn test_try_get_uuid4() {
-	let shape = RowShape::testing(&[ValueType::Uuid4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid4]);
+	let mut row = shape.allocate_pod();
 
 	assert_eq!(shape.try_get::<Uuid4>(&row, 0), None);
 
@@ -28,11 +28,11 @@ fn test_try_get_uuid4() {
 
 #[test]
 fn test_multiple_generations() {
-	let shape = RowShape::testing(&[ValueType::Uuid4]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid4]);
 
 	let mut uuids = Vec::new();
 	for _ in 0..10 {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		let uuid = Uuid4::generate();
 		shape.set::<Uuid4>(&mut row, 0, uuid.clone());
 		let retrieved = shape.get::<Uuid4>(&row, 0);
@@ -49,8 +49,8 @@ fn test_multiple_generations() {
 
 #[test]
 fn test_version_check() {
-	let shape = RowShape::testing(&[ValueType::Uuid4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid4]);
+	let mut row = shape.allocate_pod();
 
 	let uuid = Uuid4::generate();
 	shape.set::<Uuid4>(&mut row, 0, uuid.clone());
@@ -62,8 +62,11 @@ fn test_version_check() {
 
 #[test]
 fn test_mixed_with_other_types() {
-	let shape = RowShape::testing(&[ValueType::Uuid4, ValueType::Boolean, ValueType::Uuid4, ValueType::Int4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Uuid4, ValueType::Boolean, ValueType::Uuid4, ValueType::Int4],
+	);
+	let mut row = shape.allocate_pod();
 
 	let uuid1 = Uuid4::generate();
 	let uuid2 = Uuid4::generate();
@@ -81,8 +84,8 @@ fn test_mixed_with_other_types() {
 
 #[test]
 fn test_undefined_handling() {
-	let shape = RowShape::testing(&[ValueType::Uuid4, ValueType::Uuid4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid4, ValueType::Uuid4]);
+	let mut row = shape.allocate_pod();
 
 	let uuid = Uuid4::generate();
 	shape.set::<Uuid4>(&mut row, 0, uuid.clone());
@@ -96,8 +99,8 @@ fn test_undefined_handling() {
 
 #[test]
 fn test_persistence() {
-	let shape = RowShape::testing(&[ValueType::Uuid4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid4]);
+	let mut row = shape.allocate_pod();
 
 	let uuid = Uuid4::generate();
 	let uuid_string = uuid.to_string();
@@ -112,8 +115,8 @@ fn test_persistence() {
 
 #[test]
 fn test_clone_consistency() {
-	let shape = RowShape::testing(&[ValueType::Uuid4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid4]);
+	let mut row = shape.allocate_pod();
 
 	let original_uuid = Uuid4::generate();
 	shape.set::<Uuid4>(&mut row, 0, original_uuid.clone());
@@ -126,8 +129,8 @@ fn test_clone_consistency() {
 
 #[test]
 fn test_multiple_fields() {
-	let shape = RowShape::testing(&[ValueType::Uuid4, ValueType::Uuid4, ValueType::Uuid4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid4, ValueType::Uuid4, ValueType::Uuid4]);
+	let mut row = shape.allocate_pod();
 
 	let uuid1 = Uuid4::generate();
 	let uuid2 = Uuid4::generate();
@@ -148,8 +151,8 @@ fn test_multiple_fields() {
 
 #[test]
 fn test_format_consistency() {
-	let shape = RowShape::testing(&[ValueType::Uuid4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid4]);
+	let mut row = shape.allocate_pod();
 
 	let uuid = Uuid4::generate();
 	let original_string = uuid.to_string();
@@ -167,8 +170,8 @@ fn test_format_consistency() {
 
 #[test]
 fn test_byte_level_storage() {
-	let shape = RowShape::testing(&[ValueType::Uuid4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid4]);
+	let mut row = shape.allocate_pod();
 
 	let uuid = Uuid4::generate();
 	let original_bytes = *uuid.as_bytes();
@@ -185,8 +188,8 @@ fn test_byte_level_storage() {
 
 #[test]
 fn test_try_get_uuid4_wrong_type() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 

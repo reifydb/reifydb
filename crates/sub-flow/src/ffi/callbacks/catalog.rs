@@ -123,6 +123,7 @@ fn marshal_row_shape(shape: &RowShape) -> Result<RowShapeFFI, &'static str> {
 
 	Ok(RowShapeFFI {
 		fingerprint: shape.fingerprint().as_u64(),
+		family: shape.family() as u8,
 		fields: fields_ptr,
 		field_count,
 	})
@@ -188,7 +189,7 @@ mod tests {
 		// Dropping the fingerprint or reordering the (offset, size) pair makes every downstream FFI operator
 		// decode into the wrong slots, silently.
 		let shape = RowShape::new(
-			RowFamily::Deprecated,
+			RowFamily::Table,
 			vec![
 				RowShapeField::new("id", TypeConstraint::unconstrained(ValueType::Uint8)),
 				RowShapeField::new("mint", TypeConstraint::unconstrained(ValueType::Utf8)),

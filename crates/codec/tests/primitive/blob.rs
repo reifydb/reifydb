@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::{blob::Blob, value_type::ValueType};
 
 #[test]
 fn test_set_get_blob() {
-	let shape = RowShape::testing(&[ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	let blob = Blob::from_slice(&[1, 2, 3, 4, 5]);
 	shape.set_blob(&mut row, 0, &blob);
@@ -16,8 +16,8 @@ fn test_set_get_blob() {
 
 #[test]
 fn test_try_get_blob() {
-	let shape = RowShape::testing(&[ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	assert_eq!(shape.try_get_blob(&row, 0), None);
 
@@ -28,8 +28,8 @@ fn test_try_get_blob() {
 
 #[test]
 fn test_empty() {
-	let shape = RowShape::testing(&[ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	let empty_blob = Blob::from_slice(&[]);
 	shape.set_blob(&mut row, 0, &empty_blob);
@@ -39,8 +39,8 @@ fn test_empty() {
 
 #[test]
 fn test_binary_data() {
-	let shape = RowShape::testing(&[ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	// Blobs are stored raw, so no byte value is special and none needs escaping.
 	let binary_data =
@@ -52,8 +52,8 @@ fn test_binary_data() {
 
 #[test]
 fn test_large_data() {
-	let shape = RowShape::testing(&[ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	let large_data: Vec<u8> = (0..1024).map(|i| (i % 256) as u8).collect();
 	let large_blob = Blob::from_slice(&large_data);
@@ -63,8 +63,8 @@ fn test_large_data() {
 
 #[test]
 fn test_multiple_fields() {
-	let shape = RowShape::testing(&[ValueType::Blob, ValueType::Blob, ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob, ValueType::Blob, ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	let blob1 = Blob::from_slice(&[1, 2, 3]);
 	let blob2 = Blob::from_slice(&[4, 5, 6, 7, 8]);
@@ -81,8 +81,11 @@ fn test_multiple_fields() {
 
 #[test]
 fn test_mixed_with_static_fields() {
-	let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Blob, ValueType::Int4, ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Boolean, ValueType::Blob, ValueType::Int4, ValueType::Blob],
+	);
+	let mut row = shape.allocate_pod();
 
 	let blob1 = Blob::from_slice(&[0xFF, 0x00, 0xAA]);
 	let blob2 = Blob::from_slice(&[0x11, 0x22, 0x33, 0x44]);
@@ -100,8 +103,8 @@ fn test_mixed_with_static_fields() {
 
 #[test]
 fn test_different_sizes() {
-	let shape = RowShape::testing(&[ValueType::Blob, ValueType::Blob, ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob, ValueType::Blob, ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	let empty_blob = Blob::from_slice(&[]);
 	let medium_blob = Blob::from_slice(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
@@ -118,8 +121,11 @@ fn test_different_sizes() {
 
 #[test]
 fn test_arbitrary_setting_order() {
-	let shape = RowShape::testing(&[ValueType::Blob, ValueType::Blob, ValueType::Blob, ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Blob, ValueType::Blob, ValueType::Blob, ValueType::Blob],
+	);
+	let mut row = shape.allocate_pod();
 
 	let blob0 = Blob::from_slice(&[10, 20]);
 	let blob1 = Blob::from_slice(&[30, 40, 50]);
@@ -140,8 +146,8 @@ fn test_arbitrary_setting_order() {
 
 #[test]
 fn test_undefined_handling() {
-	let shape = RowShape::testing(&[ValueType::Blob, ValueType::Blob, ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob, ValueType::Blob, ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	let blob = Blob::from_slice(&[1, 2, 3, 4]);
 
@@ -160,8 +166,8 @@ fn test_undefined_handling() {
 
 #[test]
 fn test_all_byte_values() {
-	let shape = RowShape::testing(&[ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	let all_bytes: Vec<u8> = (0..=255).collect();
 	let full_range_blob = Blob::from_slice(&all_bytes);
@@ -171,8 +177,8 @@ fn test_all_byte_values() {
 
 #[test]
 fn test_try_get_blob_wrong_type() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 
@@ -181,8 +187,8 @@ fn test_try_get_blob_wrong_type() {
 
 #[test]
 fn test_update_blob() {
-	let shape = RowShape::testing(&[ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	let blob1 = Blob::from_slice(&[1, 2, 3]);
 	shape.set_blob(&mut row, 0, &blob1);
@@ -207,8 +213,8 @@ fn test_update_blob() {
 
 #[test]
 fn test_update_blob_with_other_dynamic_fields() {
-	let shape = RowShape::testing(&[ValueType::Blob, ValueType::Utf8, ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob, ValueType::Utf8, ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_blob(&mut row, 0, &Blob::from_slice(&[1, 2, 3]));
 	shape.set_utf8(&mut row, 1, "hello");

@@ -6,7 +6,10 @@ use std::{cell::UnsafeCell, collections::HashMap};
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, shape::RowShape},
+	row::{
+		bytes::EncodedBytes,
+		shape::{RowFamily, RowShape},
+	},
 };
 use reifydb_core::{
 	interface::{
@@ -98,7 +101,7 @@ impl Operator for SinkSeriesViewOperator {
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
-		let shape = row_shape_from_columns(view.columns());
+		let shape = row_shape_from_columns(RowFamily::Series, view.columns());
 		let object_id = StorageId::series(self.series_id);
 
 		for diff in change.diffs.iter() {

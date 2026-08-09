@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::{blob::Blob, int::Int, value_type::ValueType};
 
 #[test]
@@ -39,14 +39,17 @@ fn test_unaligned_access_all_types() {
 
 	for target_type in types_to_test {
 		// A leading Int1 pushes the target type to an odd offset.
-		let shape = RowShape::testing(&[
-			ValueType::Int1,     // 1 byte - creates odd alignment
-			target_type.clone(), // At offset 1 (odd)
-			ValueType::Int1,     // Another 1 byte
-			target_type.clone(), // At another odd offset
-		]);
+		let shape = RowShape::testing(
+			RowFamily::Pod,
+			&[
+				ValueType::Int1,     // 1 byte - creates odd alignment
+				target_type.clone(), // At offset 1 (odd)
+				ValueType::Int1,     // Another 1 byte
+				target_type.clone(), // At another odd offset
+			],
+		);
 
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 
 		match target_type {
 			ValueType::Boolean => {
@@ -96,15 +99,18 @@ fn test_repeated_overwrites_no_memory_leak() {
 	// Overwriting a static field must not grow the row; dynamic fields grow once and then stay
 	// stable across rows holding the same content.
 
-	let shape = RowShape::testing(&[
-		ValueType::Int4,   // Static
-		ValueType::Float8, // Static
-		ValueType::Utf8,   // Dynamic
-		ValueType::Blob,   // Dynamic
-		ValueType::Int,    // Dynamic/Static depending on value
-	]);
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[
+			ValueType::Int4,   // Static
+			ValueType::Float8, // Static
+			ValueType::Utf8,   // Dynamic
+			ValueType::Blob,   // Dynamic
+			ValueType::Int,    // Dynamic/Static depending on value
+		],
+	);
 
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_pod();
 	let initial_size = row.len();
 
 	for i in 0..10000 {
@@ -124,7 +130,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 
 	let rows: Vec<_> = (0..100)
 		.map(|_| {
-			let mut r = shape.allocate();
+			let mut r = shape.allocate_pod();
 			shape.set::<i32>(&mut r, 0, 42i32);
 			shape.set::<f64>(&mut r, 1, 3.14f64);
 			shape.set_utf8(&mut r, 2, "constant");
@@ -141,8 +147,8 @@ fn test_repeated_overwrites_no_memory_leak() {
 
 #[test]
 fn test_minimal_row_handling() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let row = shape.allocate_pod();
 	assert!(row.len() > 0, "Row should have validity bits and data");
 }
 
@@ -158,8 +164,8 @@ fn test_maximum_field_count() {
 		})
 		.collect();
 
-	let shape = RowShape::testing(&types);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &types);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 	assert_eq!(shape.get::<bool>(&row, 0), true);

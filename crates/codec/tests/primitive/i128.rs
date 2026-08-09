@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::value_type::ValueType;
 
 #[test]
 fn test_set_get_i128() {
-	let shape = RowShape::testing(&[ValueType::Int16]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int16]);
+	let mut row = shape.allocate_pod();
 	shape.set::<i128>(&mut row, 0, 123456789012345678901234567890i128);
 	assert_eq!(shape.get::<i128>(&row, 0), 123456789012345678901234567890i128);
 }
 
 #[test]
 fn test_try_get_i128() {
-	let shape = RowShape::testing(&[ValueType::Int16]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int16]);
+	let mut row = shape.allocate_pod();
 
 	assert_eq!(shape.try_get::<i128>(&row, 0), None);
 
@@ -25,24 +25,24 @@ fn test_try_get_i128() {
 
 #[test]
 fn test_extremes() {
-	let shape = RowShape::testing(&[ValueType::Int16]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int16]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<i128>(&mut row, 0, i128::MAX);
 	assert_eq!(shape.get::<i128>(&row, 0), i128::MAX);
 
-	let mut row2 = shape.allocate();
+	let mut row2 = shape.allocate_pod();
 	shape.set::<i128>(&mut row2, 0, i128::MIN);
 	assert_eq!(shape.get::<i128>(&row2, 0), i128::MIN);
 
-	let mut row3 = shape.allocate();
+	let mut row3 = shape.allocate_pod();
 	shape.set::<i128>(&mut row3, 0, 0i128);
 	assert_eq!(shape.get::<i128>(&row3, 0), 0i128);
 }
 
 #[test]
 fn test_very_large_values() {
-	let shape = RowShape::testing(&[ValueType::Int16]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int16]);
 
 	let test_values = [
 		-170141183460469231731687303715884105728i128, // i128::MIN
@@ -55,7 +55,7 @@ fn test_very_large_values() {
 	];
 
 	for value in test_values {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<i128>(&mut row, 0, value);
 		assert_eq!(shape.get::<i128>(&row, 0), value);
 	}
@@ -63,7 +63,7 @@ fn test_very_large_values() {
 
 #[test]
 fn test_powers_of_ten() {
-	let shape = RowShape::testing(&[ValueType::Int16]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int16]);
 
 	let powers = [
 		1i128,
@@ -81,11 +81,11 @@ fn test_powers_of_ten() {
 	];
 
 	for power in powers {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<i128>(&mut row, 0, power);
 		assert_eq!(shape.get::<i128>(&row, 0), power);
 
-		let mut row2 = shape.allocate();
+		let mut row2 = shape.allocate_pod();
 		shape.set::<i128>(&mut row2, 0, -power);
 		assert_eq!(shape.get::<i128>(&row2, 0), -power);
 	}
@@ -93,8 +93,8 @@ fn test_powers_of_ten() {
 
 #[test]
 fn test_mixed_with_other_types() {
-	let shape = RowShape::testing(&[ValueType::Int16, ValueType::Boolean, ValueType::Int16]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int16, ValueType::Boolean, ValueType::Int16]);
+	let mut row = shape.allocate_pod();
 
 	let large_negative = -12345678901234567890123456789012345i128;
 	let large_positive = 98765432109876543210987654321098765i128;
@@ -110,8 +110,8 @@ fn test_mixed_with_other_types() {
 
 #[test]
 fn test_undefined_handling() {
-	let shape = RowShape::testing(&[ValueType::Int16, ValueType::Int16]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int16, ValueType::Int16]);
+	let mut row = shape.allocate_pod();
 
 	let value = 170141183460469231731687303715884105727i128; // Max i128
 	shape.set::<i128>(&mut row, 0, value);
@@ -125,8 +125,8 @@ fn test_undefined_handling() {
 
 #[test]
 fn test_try_get_i128_wrong_type() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 

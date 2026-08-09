@@ -5,10 +5,10 @@ use std::str;
 
 use reifydb_value::{reifydb_assertions, value::value_type::ValueType};
 
-use crate::row::{bytes::EncodedRowBuilder, shape::RowShape};
+use crate::row::{bytes::RowBuilder, shape::RowShape};
 
 impl RowShape {
-	pub fn set_utf8(&self, row: &mut EncodedRowBuilder, index: usize, value: impl AsRef<str>) {
+	pub fn set_utf8(&self, row: &mut impl RowBuilder, index: usize, value: impl AsRef<str>) {
 		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),

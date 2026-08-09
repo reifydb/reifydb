@@ -4,7 +4,10 @@
 use std::{collections::Bound::Included, sync::Arc};
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_codec::{key::encoded::EncodedKeyRange, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKeyRange,
+	row::bytes::{EncodedBytes, read_fingerprint},
+};
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -290,7 +293,7 @@ fn remove_table_pk_index_for(
 	pk_def: &PrimaryKey,
 	values: &EncodedBytes,
 ) -> Result<()> {
-	let fingerprint = values.fingerprint();
+	let fingerprint = read_fingerprint(values);
 	let shape = services.catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
 		internal_error!("Row shape with fingerprint {:?} not found for table {}", fingerprint, table.name)
 	})?;

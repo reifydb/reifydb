@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::{bytes::SHAPE_HEADER_SIZE, shape::RowShape};
+use reifydb_codec::row::{
+	bytes::{RowBuilder, SHAPE_HEADER_SIZE},
+	shape::{RowFamily, RowShape},
+};
 use reifydb_value::{
 	encoding::LeBytes,
 	value::{date::Date, datetime::DateTime, duration::Duration, value_type::ValueType},
@@ -12,15 +15,18 @@ fn one_generic_path_writes_every_width_into_its_own_slot() {
 	// Every fixed-width accessor funnels through set_le, so one wrong bound corrupts all of
 	// them at once. The four widths sit at non-zero field indices because a slot written at
 	// the data section start still round-trips as field 0, hiding a dropped offset.
-	let shape = RowShape::testing(&[
-		ValueType::Uint8,
-		ValueType::Boolean,
-		ValueType::Date,
-		ValueType::DateTime,
-		ValueType::Duration,
-		ValueType::Uint8,
-	]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Table,
+		&[
+			ValueType::Uint8,
+			ValueType::Boolean,
+			ValueType::Date,
+			ValueType::DateTime,
+			ValueType::Duration,
+			ValueType::Uint8,
+		],
+	);
+	let mut row = shape.allocate_table();
 
 	let date = Date::from_days_since_epoch(19_000).unwrap();
 	let datetime = DateTime::from_nanos(0x0102_0304_0506_0708);

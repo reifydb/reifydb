@@ -3,7 +3,10 @@
 
 use std::{iter, sync::Arc};
 
-use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
+use reifydb_codec::row::{
+	bytes::{EncodedBytes, read_fingerprint},
+	shape::RowShape,
+};
 use reifydb_core::{
 	interface::{catalog::storage::StorageId, resolved::ResolvedObject},
 	internal_err, internal_error,
@@ -67,7 +70,7 @@ impl RowPointLookupNode {
 			return Ok(shape.clone());
 		}
 
-		let fingerprint = first.fingerprint();
+		let fingerprint = read_fingerprint(first);
 
 		let stored_ctx = self.context.as_ref().expect("RowPointLookupNode context not set");
 		let shape =
@@ -152,7 +155,7 @@ impl RowListLookupNode {
 			return Ok(shape.clone());
 		}
 
-		let fingerprint = first.fingerprint();
+		let fingerprint = read_fingerprint(first);
 
 		let stored_ctx = self.context.as_ref().expect("RowListLookupNode context not set");
 		let shape =
@@ -276,7 +279,7 @@ impl RowRangeScanNode {
 			return Ok(shape.clone());
 		}
 
-		let fingerprint = first.fingerprint();
+		let fingerprint = read_fingerprint(first);
 
 		let stored_ctx = self.context.as_ref().expect("RowRangeScanNode context not set");
 		let shape =

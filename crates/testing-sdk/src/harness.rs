@@ -13,7 +13,11 @@ use ptr::null;
 use reifydb_abi::{context::context::ContextFFI, operator::timer::TimerKind};
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, operator::OperatorState, shape::RowShape},
+	row::{
+		bytes::EncodedBytes,
+		operator::OperatorState,
+		shape::{RowFamily, RowShape},
+	},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -348,7 +352,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 	{
 		let encoded_key = key.encode();
 		let store = self.state();
-		let shape = RowShape::testing(&[expected.get_type()]);
+		let shape = RowShape::testing(RowFamily::Pod, &[expected.get_type()]);
 
 		store.assert_value(&encoded_key, &[expected], &shape);
 	}

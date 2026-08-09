@@ -65,7 +65,10 @@ unsafe fn unmarshal_row_shape(ffi_shape: &RowShapeFFI) -> Result<RowShape, SdkEr
 		Vec::new()
 	};
 
-	Ok(RowShape::from_parts(RowFamily::Deprecated, RowShapeFingerprint::new(ffi_shape.fingerprint), fields))
+	let family = RowFamily::from_u8(ffi_shape.family)
+		.ok_or_else(|| SdkError::Other(format!("Unknown row family {} in row shape", ffi_shape.family)))?;
+
+	Ok(RowShape::from_parts(family, RowShapeFingerprint::new(ffi_shape.fingerprint), fields))
 }
 
 /// # Safety
@@ -127,7 +130,7 @@ mod tests {
 		// Misreading a type constraint or offset here has downstream operators silently reading the wrong
 		// bytes, which is the failure mode the shape exists to prevent.
 		let original = RowShape::new(
-			RowFamily::Deprecated,
+			RowFamily::Table,
 			vec![
 				RowShapeField::new("id", TypeConstraint::unconstrained(ValueType::Uint8)),
 				RowShapeField::new("mint", TypeConstraint::unconstrained(ValueType::Utf8)),
@@ -156,6 +159,7 @@ mod tests {
 
 		let ffi = RowShapeFFI {
 			fingerprint: original.fingerprint().as_u64(),
+			family: original.family() as u8,
 			fields: fields.as_ptr(),
 			field_count: fields.len(),
 		};
@@ -187,6 +191,7 @@ mod tests {
 		// fields pointer when field_count is 0.
 		let ffi = RowShapeFFI {
 			fingerprint: 0,
+			family: RowFamily::Table as u8,
 			fields: ptr::null(),
 			field_count: 0,
 		};
@@ -195,5 +200,39 @@ mod tests {
 		let decoded = unsafe { unmarshal_row_shape(&ffi).expect("empty shape must unmarshal cleanly") };
 		assert!(decoded.fields().is_empty());
 		assert_eq!(decoded.fingerprint().as_u64(), 0);
+	}
+
+	#[test]
+	fn unmarshal_takes_the_family_from_the_wire_and_not_a_default() {
+		// The family sets header_size, so a shape defaulted to the wrong one reads every field at a shifted
+		// offset.
+		for family in [RowFamily::Pod, RowFamily::Catalog, RowFamily::Series, RowFamily::Queue] {
+			let ffi = RowShapeFFI {
+				fingerprint: 0,
+				family: family as u8,
+				fields: ptr::null(),
+				field_count: 0,
+			};
+
+			// SAFETY: `fields` is null with `field_count` 0, which the contract admits.
+			let decoded = unsafe { unmarshal_row_shape(&ffi).expect("shape must unmarshal cleanly") };
+
+			assert_eq!(decoded.family(), family);
+			assert_eq!(decoded.header_size(), family.header_size(), "{family:?} header width drifted");
+		}
+	}
+
+	#[test]
+	fn unmarshal_rejects_a_family_byte_it_does_not_know() {
+		// A host one version ahead must fail loudly here, never silently decode rows at the wrong offsets.
+		let ffi = RowShapeFFI {
+			fingerprint: 0,
+			family: 0xEE,
+			fields: ptr::null(),
+			field_count: 0,
+		};
+
+		// SAFETY: `fields` is null with `field_count` 0, which the contract admits.
+		assert!(unsafe { unmarshal_row_shape(&ffi) }.is_err());
 	}
 }

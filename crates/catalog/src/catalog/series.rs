@@ -281,7 +281,7 @@ impl Catalog {
 		let series = CatalogStore::create_series(txn, to_create.into())?;
 		txn.track_series_created(series.clone())?;
 
-		let shape = row_shape_from_columns(series.columns.as_slice());
+		let shape = row_shape_from_columns(RowFamily::Series, series.columns.as_slice());
 		self.get_or_create_row_shape(
 			&mut Transaction::Admin(&mut *txn),
 			RowFamily::Series,
@@ -301,7 +301,7 @@ impl Catalog {
 		let series = CatalogStore::create_series_with_id(txn, series_id, to_create.into(), column_ids)?;
 		txn.track_series_created(series.clone())?;
 
-		let shape = row_shape_from_columns(series.columns.as_slice());
+		let shape = row_shape_from_columns(RowFamily::Series, series.columns.as_slice());
 		self.get_or_create_row_shape(
 			&mut Transaction::Admin(&mut *txn),
 			RowFamily::Series,

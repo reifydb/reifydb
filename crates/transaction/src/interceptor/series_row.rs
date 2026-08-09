@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::bytes::{EncodedBytes, EncodedRowBuilder};
+use reifydb_codec::row::{bytes::EncodedBytes, series::EncodedSeriesRowBuilder};
 use reifydb_core::interface::catalog::series::Series;
 use reifydb_value::Result;
 
@@ -10,11 +10,11 @@ use crate::interceptor::chain::InterceptorChain;
 
 pub struct SeriesRowPreInsertContext<'a> {
 	pub series: &'a Series,
-	pub rows: &'a mut [EncodedRowBuilder],
+	pub rows: &'a mut [EncodedSeriesRowBuilder],
 }
 
 impl<'a> SeriesRowPreInsertContext<'a> {
-	pub fn new(series: &'a Series, rows: &'a mut [EncodedRowBuilder]) -> Self {
+	pub fn new(series: &'a Series, rows: &'a mut [EncodedSeriesRowBuilder]) -> Self {
 		Self {
 			series,
 			rows,
@@ -156,11 +156,11 @@ where
 
 pub struct SeriesRowPreUpdateContext<'a> {
 	pub series: &'a Series,
-	pub rows: &'a mut [EncodedRowBuilder],
+	pub rows: &'a mut [EncodedSeriesRowBuilder],
 }
 
 impl<'a> SeriesRowPreUpdateContext<'a> {
-	pub fn new(series: &'a Series, rows: &'a mut [EncodedRowBuilder]) -> Self {
+	pub fn new(series: &'a Series, rows: &'a mut [EncodedSeriesRowBuilder]) -> Self {
 		Self {
 			series,
 			rows,
@@ -451,7 +451,7 @@ impl SeriesRowInterceptor {
 	pub fn pre_insert(
 		txn: &mut impl WithInterceptors,
 		series: &Series,
-		rows: &mut [EncodedRowBuilder],
+		rows: &mut [EncodedSeriesRowBuilder],
 	) -> Result<()> {
 		let ctx = SeriesRowPreInsertContext::new(series, rows);
 		txn.series_row_pre_insert_interceptors().execute(ctx)
@@ -469,7 +469,7 @@ impl SeriesRowInterceptor {
 	pub fn pre_update(
 		txn: &mut impl WithInterceptors,
 		series: &Series,
-		rows: &mut [EncodedRowBuilder],
+		rows: &mut [EncodedSeriesRowBuilder],
 	) -> Result<()> {
 		let ctx = SeriesRowPreUpdateContext::new(series, rows);
 		txn.series_row_pre_update_interceptors().execute(ctx)

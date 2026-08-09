@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 	rng::Rng,
@@ -18,8 +18,8 @@ fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 #[test]
 fn test_set_get_uuid7() {
 	let (_mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Uuid7]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid7]);
+	let mut row = shape.allocate_pod();
 
 	let uuid = Uuid7::generate(&clock, &rng);
 	shape.set::<Uuid7>(&mut row, 0, uuid.clone());
@@ -29,8 +29,8 @@ fn test_set_get_uuid7() {
 #[test]
 fn test_try_get_uuid7() {
 	let (_mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Uuid7]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid7]);
+	let mut row = shape.allocate_pod();
 
 	assert_eq!(shape.try_get::<Uuid7>(&row, 0), None);
 
@@ -42,11 +42,11 @@ fn test_try_get_uuid7() {
 #[test]
 fn test_multiple_generations() {
 	let (mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Uuid7]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid7]);
 
 	let mut uuids = Vec::new();
 	for _ in 0..10 {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		let uuid = Uuid7::generate(&clock, &rng);
 		shape.set::<Uuid7>(&mut row, 0, uuid.clone());
 		let retrieved = shape.get::<Uuid7>(&row, 0);
@@ -65,8 +65,8 @@ fn test_multiple_generations() {
 #[test]
 fn test_version_check() {
 	let (_mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Uuid7]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid7]);
+	let mut row = shape.allocate_pod();
 
 	let uuid = Uuid7::generate(&clock, &rng);
 	shape.set::<Uuid7>(&mut row, 0, uuid.clone());
@@ -79,13 +79,13 @@ fn test_version_check() {
 #[test]
 fn test_timestamp_ordering() {
 	let (mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Uuid7]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid7]);
 
 	// UUID7 puts the timestamp in the leading bytes, so byte order has to match generation
 	// order for these to be usable as sortable keys.
 	let mut uuids = Vec::new();
 	for _ in 0..5 {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		let uuid = Uuid7::generate(&clock, &rng);
 		shape.set::<Uuid7>(&mut row, 0, uuid.clone());
 		let retrieved = shape.get::<Uuid7>(&row, 0);
@@ -103,8 +103,11 @@ fn test_timestamp_ordering() {
 #[test]
 fn test_mixed_with_other_types() {
 	let (mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Uuid7, ValueType::Boolean, ValueType::Uuid7, ValueType::Int4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Uuid7, ValueType::Boolean, ValueType::Uuid7, ValueType::Int4],
+	);
+	let mut row = shape.allocate_pod();
 
 	let uuid1 = Uuid7::generate(&clock, &rng);
 	mock.advance_millis(1);
@@ -124,8 +127,8 @@ fn test_mixed_with_other_types() {
 #[test]
 fn test_undefined_handling() {
 	let (_mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Uuid7, ValueType::Uuid7]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid7, ValueType::Uuid7]);
+	let mut row = shape.allocate_pod();
 
 	let uuid = Uuid7::generate(&clock, &rng);
 	shape.set::<Uuid7>(&mut row, 0, uuid.clone());
@@ -140,8 +143,8 @@ fn test_undefined_handling() {
 #[test]
 fn test_persistence() {
 	let (_mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Uuid7]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid7]);
+	let mut row = shape.allocate_pod();
 
 	let uuid = Uuid7::generate(&clock, &rng);
 	let uuid_string = uuid.to_string();
@@ -157,8 +160,8 @@ fn test_persistence() {
 #[test]
 fn test_clone_consistency() {
 	let (_mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Uuid7]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid7]);
+	let mut row = shape.allocate_pod();
 
 	let original_uuid = Uuid7::generate(&clock, &rng);
 	shape.set::<Uuid7>(&mut row, 0, original_uuid.clone());
@@ -172,8 +175,8 @@ fn test_clone_consistency() {
 #[test]
 fn test_multiple_fields() {
 	let (mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Uuid7, ValueType::Uuid7, ValueType::Uuid7]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid7, ValueType::Uuid7, ValueType::Uuid7]);
+	let mut row = shape.allocate_pod();
 
 	let uuid1 = Uuid7::generate(&clock, &rng);
 	mock.advance_millis(1);
@@ -197,8 +200,8 @@ fn test_multiple_fields() {
 #[test]
 fn test_format_consistency() {
 	let (_mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Uuid7]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid7]);
+	let mut row = shape.allocate_pod();
 
 	let uuid = Uuid7::generate(&clock, &rng);
 	let original_string = uuid.to_string();
@@ -217,8 +220,8 @@ fn test_format_consistency() {
 #[test]
 fn test_byte_level_storage() {
 	let (_mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Uuid7]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid7]);
+	let mut row = shape.allocate_pod();
 
 	let uuid = Uuid7::generate(&clock, &rng);
 	let original_bytes = *uuid.as_bytes();
@@ -236,14 +239,14 @@ fn test_byte_level_storage() {
 #[test]
 fn test_time_based_properties() {
 	let (mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Uuid7]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid7]);
 
 	let uuid1 = Uuid7::generate(&clock, &rng);
 	mock.advance_millis(2);
 	let uuid2 = Uuid7::generate(&clock, &rng);
 
-	let mut row1 = shape.allocate();
-	let mut row2 = shape.allocate();
+	let mut row1 = shape.allocate_pod();
+	let mut row2 = shape.allocate_pod();
 
 	shape.set::<Uuid7>(&mut row1, 0, uuid1.clone());
 	shape.set::<Uuid7>(&mut row2, 0, uuid2.clone());
@@ -257,8 +260,8 @@ fn test_time_based_properties() {
 
 #[test]
 fn test_try_get_uuid7_wrong_type() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::value_type::ValueType;
 
 #[test]
 fn test_boolean_bit_patterns() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 	assert_eq!(shape.get::<bool>(&row, 0), true);
@@ -23,17 +23,20 @@ fn test_boolean_bit_patterns() {
 #[test]
 fn test_boolean_field_independence() {
 	// Booleans pack into shared bytes, so a write to one field must not disturb its neighbours.
-	let shape = RowShape::testing(&[
-		ValueType::Boolean,
-		ValueType::Boolean,
-		ValueType::Boolean,
-		ValueType::Boolean,
-		ValueType::Boolean,
-		ValueType::Boolean,
-		ValueType::Boolean,
-		ValueType::Boolean,
-	]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[
+			ValueType::Boolean,
+			ValueType::Boolean,
+			ValueType::Boolean,
+			ValueType::Boolean,
+			ValueType::Boolean,
+			ValueType::Boolean,
+			ValueType::Boolean,
+			ValueType::Boolean,
+		],
+	);
+	let mut row = shape.allocate_pod();
 
 	for i in 0..8 {
 		shape.set::<bool>(&mut row, i, i % 2 == 0);

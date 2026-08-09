@@ -212,7 +212,7 @@ fn byte_clone_columns(
 
 pub fn simple_kv_shape() -> RowShape {
 	RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			RowShapeField::unconstrained("k", ValueType::Uint8),
 			RowShapeField::unconstrained("v", ValueType::Float8),
@@ -222,7 +222,7 @@ pub fn simple_kv_shape() -> RowShape {
 
 pub fn wide_shape() -> RowShape {
 	RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			RowShapeField::unconstrained("base", ValueType::Utf8),
 			RowShapeField::unconstrained("quote", ValueType::Utf8),

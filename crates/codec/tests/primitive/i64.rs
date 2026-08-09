@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::value_type::ValueType;
 
 #[test]
 fn test_set_get_i64() {
-	let shape = RowShape::testing(&[ValueType::Int8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int8]);
+	let mut row = shape.allocate_pod();
 	shape.set::<i64>(&mut row, 0, -987654321i64);
 	assert_eq!(shape.get::<i64>(&row, 0), -987654321i64);
 }
 
 #[test]
 fn test_try_get_i64() {
-	let shape = RowShape::testing(&[ValueType::Int8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int8]);
+	let mut row = shape.allocate_pod();
 
 	assert_eq!(shape.try_get::<i64>(&row, 0), None);
 
@@ -25,24 +25,24 @@ fn test_try_get_i64() {
 
 #[test]
 fn test_extremes() {
-	let shape = RowShape::testing(&[ValueType::Int8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<i64>(&mut row, 0, i64::MAX);
 	assert_eq!(shape.get::<i64>(&row, 0), i64::MAX);
 
-	let mut row2 = shape.allocate();
+	let mut row2 = shape.allocate_pod();
 	shape.set::<i64>(&mut row2, 0, i64::MIN);
 	assert_eq!(shape.get::<i64>(&row2, 0), i64::MIN);
 
-	let mut row3 = shape.allocate();
+	let mut row3 = shape.allocate_pod();
 	shape.set::<i64>(&mut row3, 0, 0i64);
 	assert_eq!(shape.get::<i64>(&row3, 0), 0i64);
 }
 
 #[test]
 fn test_large_values() {
-	let shape = RowShape::testing(&[ValueType::Int8]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int8]);
 
 	let test_values = [
 		-9_223_372_036_854_775_808i64,
@@ -55,7 +55,7 @@ fn test_large_values() {
 	];
 
 	for value in test_values {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<i64>(&mut row, 0, value);
 		assert_eq!(shape.get::<i64>(&row, 0), value);
 	}
@@ -63,7 +63,7 @@ fn test_large_values() {
 
 #[test]
 fn test_timestamp_values() {
-	let shape = RowShape::testing(&[ValueType::Int8]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int8]);
 
 	let timestamps = [
 		0i64,           // Unix epoch
@@ -73,7 +73,7 @@ fn test_timestamp_values() {
 	];
 
 	for timestamp in timestamps {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<i64>(&mut row, 0, timestamp);
 		assert_eq!(shape.get::<i64>(&row, 0), timestamp);
 	}
@@ -81,8 +81,8 @@ fn test_timestamp_values() {
 
 #[test]
 fn test_mixed_with_other_types() {
-	let shape = RowShape::testing(&[ValueType::Int8, ValueType::Float8, ValueType::Int8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int8, ValueType::Float8, ValueType::Int8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<i64>(&mut row, 0, -9_000_000_000_000_000i64);
 	shape.set::<f64>(&mut row, 1, 3.14159265359f64);
@@ -95,8 +95,8 @@ fn test_mixed_with_other_types() {
 
 #[test]
 fn test_undefined_handling() {
-	let shape = RowShape::testing(&[ValueType::Int8, ValueType::Int8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int8, ValueType::Int8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<i64>(&mut row, 0, 1234567890123456789i64);
 
@@ -109,8 +109,8 @@ fn test_undefined_handling() {
 
 #[test]
 fn test_try_get_i64_wrong_type() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::{blob::Blob, date::Date, int::Int, uuid::Uuid4, value_type::ValueType};
 
 #[test]
@@ -24,8 +24,8 @@ fn test_large_row() {
 			})
 			.collect();
 
-		let shape = RowShape::testing(&types);
-		let mut row = shape.allocate();
+		let shape = RowShape::testing(RowFamily::Pod, &types);
+		let mut row = shape.allocate_pod();
 
 		for i in 0..count {
 			match i % 10 {
@@ -81,7 +81,7 @@ fn test_large_row() {
 
 #[test]
 fn test_dynamic_field_reallocation() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Blob, ValueType::Int]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Blob, ValueType::Int]);
 
 	let iterations = 1000;
 
@@ -89,7 +89,7 @@ fn test_dynamic_field_reallocation() {
 	let mut rows = Vec::with_capacity(iterations);
 
 	for i in 0..iterations {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		let size = (i % 100) + 1;
 		let string = "x".repeat(size);
 		let bytes = vec![0u8; size];
@@ -115,26 +115,29 @@ fn test_dynamic_field_reallocation() {
 
 #[test]
 fn test_memory_efficiency() {
-	let shape = RowShape::testing(&[
-		ValueType::Boolean, // 1 bit validity + 1 byte
-		ValueType::Int4,    // 1 bit validity + 4 bytes
-		ValueType::Float8,  // 1 bit validity + 8 bytes
-	]);
-	let row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[
+			ValueType::Boolean, // 1 bit validity + 1 byte
+			ValueType::Int4,    // 1 bit validity + 4 bytes
+			ValueType::Float8,  // 1 bit validity + 8 bytes
+		],
+	);
+	let row = shape.allocate_pod();
 
 	// 32-byte header + 3 validity bits rounded to 1 byte + 13 bytes of data, plus alignment padding.
 	assert!(row.len() < 56, "Static row too large: {} bytes", row.len());
 
 	// A dynamic field can only be set once, so each size gets its own row.
-	let shape = RowShape::testing(&[ValueType::Utf8]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8]);
 
-	let initial_size = shape.allocate().len();
+	let initial_size = shape.allocate_pod().len();
 
-	let mut row1 = shape.allocate();
+	let mut row1 = shape.allocate_pod();
 	shape.set_utf8(&mut row1, 0, "short");
 	let small_size = row1.len();
 
-	let mut row2 = shape.allocate();
+	let mut row2 = shape.allocate_pod();
 	shape.set_utf8(&mut row2, 0, &"x".repeat(1000));
 	let large_size = row2.len();
 
@@ -146,7 +149,7 @@ fn test_memory_efficiency() {
 	let mut row_sizes = Vec::new();
 
 	for size in sizes {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set_utf8(&mut row, 0, &"x".repeat(size));
 		row_sizes.push(row.len());
 	}

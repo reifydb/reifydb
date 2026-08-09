@@ -64,7 +64,7 @@ fn resolve_populator(object: &str, columns: &[Column], ts: &str, shape: &RowShap
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::row::{
-		bytes::EncodedBytes,
+		bytes::{EncodedBytes, RowBuilder},
 		shape::{RowFamily, RowShapeField},
 	};
 	use reifydb_core::interface::catalog::{
@@ -99,7 +99,7 @@ mod tests {
 
 	fn shape() -> RowShape {
 		RowShape::new(
-			RowFamily::Deprecated,
+			RowFamily::Table,
 			vec![
 				RowShapeField::unconstrained("signature", ValueType::Utf8),
 				RowShapeField::unconstrained("block_time", ValueType::DateTime),
@@ -108,10 +108,10 @@ mod tests {
 	}
 
 	fn encoded_bytes(shape: &RowShape, block_time_nanos: u64) -> EncodedBytes {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_table();
 		shape.set_value(&mut row, 0, &Value::Utf8("sig".to_string()));
 		shape.set_value(&mut row, 1, &Value::DateTime(DateTime::from_nanos(block_time_nanos)));
-		row.freeze()
+		row.freeze_bytes()
 	}
 
 	fn event() -> TimeSource {
@@ -200,7 +200,7 @@ mod tests {
 	fn the_populator_is_resolved_by_name_not_by_position() {
 		// Resolving by position would pick the wrong column once another shares its type.
 		let shape = RowShape::new(
-			RowFamily::Deprecated,
+			RowFamily::Table,
 			vec![
 				RowShapeField::unconstrained("block_time", ValueType::DateTime),
 				RowShapeField::unconstrained("recorded_at", ValueType::DateTime),
@@ -211,7 +211,7 @@ mod tests {
 			column("recorded_at", ValueType::DateTime, 1),
 		];
 
-		let mut r = shape.allocate();
+		let mut r = shape.allocate_table();
 		shape.set_value(&mut r, 0, &Value::DateTime(DateTime::from_nanos(BLOCK_TIME)));
 		shape.set_value(&mut r, 1, &Value::DateTime(DateTime::from_nanos(ARRIVAL)));
 
@@ -282,7 +282,7 @@ mod tests {
 		// Pinned separately because none travels a different path through get_value than a
 		// wrong-typed value does.
 		let shape = shape();
-		let mut r = shape.allocate();
+		let mut r = shape.allocate_table();
 		shape.set_value(&mut r, 0, &Value::Utf8("sig".to_string()));
 		shape.set_none(&mut r, 1);
 
@@ -399,7 +399,7 @@ mod tests {
 		.expect_err("an absent populator must not resolve on update");
 		assert_eq!(err.diagnostic().code, "TIME_001");
 
-		let mut none_row = shape.allocate();
+		let mut none_row = shape.allocate_table();
 		shape.set_value(&mut none_row, 0, &Value::Utf8("sig".to_string()));
 		shape.set_none(&mut none_row, 1);
 		let err = resolve_time_for_update(

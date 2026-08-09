@@ -26,8 +26,8 @@ use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as 
 use serde::{Deserialize, Serialize};
 
 use super::bytes::{
-	CATALOG_HEADER_SIZE, EncodedRowBuilder, QUEUE_HEADER_SIZE, SHAPE_HEADER_SIZE, read_created_at, read_defined_at,
-	read_storage_time, read_updated_at,
+	CATALOG_HEADER_SIZE, EncodedRowBuilder, QUEUE_HEADER_SIZE, RowBuilder, SHAPE_HEADER_SIZE, read_created_at,
+	read_defined_at, read_storage_time, read_updated_at, write_fingerprint,
 };
 use crate::row::{
 	catalog::EncodedCatalogRowBuilder,
@@ -35,8 +35,12 @@ use crate::row::{
 		EncodedOperatorRowBuilder, OPERATOR_HEADER_SIZE, read_time as read_operator_time,
 		write_time as write_operator_time,
 	},
-	pod::POD_HEADER_SIZE,
+	pod::{EncodedPodRowBuilder, POD_HEADER_SIZE},
+	queue::EncodedQueueRowBuilder,
+	ringbuffer::EncodedRingBufferRowBuilder,
+	series::EncodedSeriesRowBuilder,
 	shape::fingerprint::{RowShapeFingerprint, compute_fingerprint},
+	table::EncodedTableRowBuilder,
 };
 
 const PACKED_MODE_DYNAMIC: u128 = 0x80000000000000000000000000000000;
@@ -47,7 +51,6 @@ const PACKED_LENGTH_MASK: u128 = 0x7FFFFFFFFFFFFFFF0000000000000000;
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, RkyvArchive, RkyvSerialize, RkyvDeserialize)]
 pub enum RowFamily {
-	Deprecated = 0x00,
 	Catalog = 0x01,
 	Operator = 0x02,
 	Pod = 0x03,
@@ -60,7 +63,6 @@ pub enum RowFamily {
 impl RowFamily {
 	pub const fn header_size(self) -> usize {
 		match self {
-			Self::Deprecated => SHAPE_HEADER_SIZE,
 			Self::Catalog => CATALOG_HEADER_SIZE,
 			Self::Operator => OPERATOR_HEADER_SIZE,
 			Self::Pod => POD_HEADER_SIZE,
@@ -71,9 +73,16 @@ impl RowFamily {
 		}
 	}
 
+	#[inline]
+	pub fn updated_at(self, row: &[u8]) -> DateTime {
+		match self {
+			Self::Table | Self::Series | Self::RingBuffer | Self::Queue => read_updated_at(row),
+			_ => panic!("{self:?} rows carry no updated_at"),
+		}
+	}
+
 	pub const fn from_u8(value: u8) -> Option<Self> {
 		match value {
-			0x00 => Some(Self::Deprecated),
 			0x01 => Some(Self::Catalog),
 			0x02 => Some(Self::Operator),
 			0x03 => Some(Self::Pod),
@@ -252,29 +261,23 @@ impl RowShape {
 	}
 
 	#[inline]
-	pub(crate) fn set_valid(&self, row: &mut EncodedRowBuilder, index: usize, valid: bool) {
+	pub(crate) fn set_valid(&self, row: &mut impl RowBuilder, index: usize, valid: bool) {
 		row.set_valid_at(self.header_size(), index, valid);
 	}
 
 	#[inline]
 	pub fn time(&self, row: &[u8]) -> Option<DateTime> {
 		match self.family {
+			RowFamily::Pod => None,
 			RowFamily::Operator => read_operator_time(row),
 			_ => read_storage_time(row),
 		}
 	}
 
 	#[inline]
-	pub fn set_time(&self, row: &mut EncodedRowBuilder, time: DateTime) {
-		match self.family {
-			RowFamily::Operator => write_operator_time(row.as_mut_slice(), time),
-			_ => row.set_time(time),
-		}
-	}
-
-	#[inline]
 	pub fn created_at(&self, row: &[u8]) -> DateTime {
 		match self.family {
+			RowFamily::Pod => panic!("pod rows carry no created_at"),
 			RowFamily::Operator => panic!("operator rows carry no created_at"),
 			_ => read_created_at(row),
 		}
@@ -283,6 +286,7 @@ impl RowShape {
 	#[inline]
 	pub fn updated_at(&self, row: &[u8]) -> DateTime {
 		match self.family {
+			RowFamily::Pod => panic!("pod rows carry no updated_at"),
 			RowFamily::Operator => panic!("operator rows carry no updated_at"),
 			_ => read_updated_at(row),
 		}
@@ -343,13 +347,7 @@ impl RowShape {
 		}
 	}
 
-	pub(crate) fn write_dynamic_ref(
-		&self,
-		row: &mut EncodedRowBuilder,
-		index: usize,
-		offset: usize,
-		length: usize,
-	) {
+	pub(crate) fn write_dynamic_ref(&self, row: &mut impl RowBuilder, index: usize, offset: usize, length: usize) {
 		let field = &self.fields()[index];
 		match field.constraint.get_type().inner_type() {
 			ValueType::Utf8 | ValueType::Blob | ValueType::Any => {
@@ -376,17 +374,17 @@ impl RowShape {
 		}
 	}
 
-	pub(crate) fn replace_dynamic_data(&self, row: &mut EncodedRowBuilder, index: usize, new_data: &[u8]) {
-		if let Some((old_offset, old_length)) = self.read_dynamic_ref(&row[..], index) {
+	pub(crate) fn replace_dynamic_data(&self, row: &mut impl RowBuilder, index: usize, new_data: &[u8]) {
+		if let Some((old_offset, old_length)) = self.read_dynamic_ref(row.as_slice(), index) {
 			let delta = new_data.len() as isize - old_length as isize;
 
 			let refs_to_update: Vec<(usize, usize, usize)> = if delta != 0 {
 				self.fields()
 					.iter()
 					.enumerate()
-					.filter(|(i, _)| *i != index && self.is_defined(row, *i))
+					.filter(|(i, _)| *i != index && self.is_defined(row.as_slice(), *i))
 					.filter_map(|(i, _)| {
-						self.read_dynamic_ref(&row[..], i)
+						self.read_dynamic_ref(row.as_slice(), i)
 							.filter(|(off, _)| *off > old_offset)
 							.map(|(off, len)| (i, off, len))
 					})
@@ -398,7 +396,7 @@ impl RowShape {
 			let dynamic_start = self.dynamic_section_start();
 			let abs_start = dynamic_start + old_offset;
 			let abs_end = abs_start + old_length;
-			row.vec_mut().splice(abs_start..abs_end, new_data.iter().copied());
+			row.splice(abs_start..abs_end, new_data.iter().copied());
 
 			self.write_dynamic_ref(row, index, old_offset, new_data.len());
 
@@ -407,22 +405,22 @@ impl RowShape {
 				self.write_dynamic_ref(row, i, new_off, len);
 			}
 		} else {
-			let dynamic_offset = self.dynamic_section_size(&row[..]);
+			let dynamic_offset = self.dynamic_section_size(row.as_slice());
 			row.extend_from_slice(new_data);
 			self.write_dynamic_ref(row, index, dynamic_offset, new_data.len());
 		}
 		self.set_valid(row, index, true);
 	}
 
-	pub(crate) fn remove_dynamic_data(&self, row: &mut EncodedRowBuilder, index: usize) {
-		if let Some((old_offset, old_length)) = self.read_dynamic_ref(&row[..], index) {
+	pub(crate) fn remove_dynamic_data(&self, row: &mut impl RowBuilder, index: usize) {
+		if let Some((old_offset, old_length)) = self.read_dynamic_ref(row.as_slice(), index) {
 			let refs_to_update: Vec<(usize, usize, usize)> = self
 				.fields()
 				.iter()
 				.enumerate()
-				.filter(|(i, _)| *i != index && self.is_defined(row, *i))
+				.filter(|(i, _)| *i != index && self.is_defined(row.as_slice(), *i))
 				.filter_map(|(i, _)| {
-					self.read_dynamic_ref(&row[..], i)
+					self.read_dynamic_ref(row.as_slice(), i)
 						.filter(|(off, _)| *off > old_offset)
 						.map(|(off, len)| (i, off, len))
 				})
@@ -431,7 +429,7 @@ impl RowShape {
 			let dynamic_start = self.dynamic_section_start();
 			let abs_start = dynamic_start + old_offset;
 			let abs_end = abs_start + old_length;
-			row.vec_mut().splice(abs_start..abs_end, iter::empty());
+			row.splice(abs_start..abs_end, iter::empty());
 
 			for (i, off, len) in refs_to_update {
 				let new_off = off - old_length;
@@ -440,12 +438,13 @@ impl RowShape {
 		}
 	}
 
-	pub fn allocate(&self) -> EncodedRowBuilder {
+	fn allocate(&self) -> EncodedRowBuilder {
 		let total_size = self.get_cached_layout();
 		let mut row = EncodedRowBuilder::zeroed(total_size);
 		match self.family {
+			RowFamily::Pod => {}
 			RowFamily::Operator => write_operator_time(row.as_mut_slice(), DateTime::MAX),
-			_ => row.set_fingerprint(self.fingerprint),
+			_ => write_fingerprint(row.as_mut_slice(), self.fingerprint),
 		}
 		reifydb_assertions! {
 			assert!(
@@ -468,14 +467,39 @@ impl RowShape {
 		EncodedOperatorRowBuilder::wrap(self.allocate())
 	}
 
-	pub fn set_none(&self, row: &mut EncodedRowBuilder, index: usize) {
+	pub fn allocate_pod(&self) -> EncodedPodRowBuilder {
+		assert_eq!(self.family, RowFamily::Pod, "allocate_pod on a shape of another family");
+		EncodedPodRowBuilder::wrap(self.allocate())
+	}
+
+	pub fn allocate_table(&self) -> EncodedTableRowBuilder {
+		assert_eq!(self.family, RowFamily::Table, "allocate_table on a shape of another family");
+		EncodedTableRowBuilder::wrap(self.allocate())
+	}
+
+	pub fn allocate_series(&self) -> EncodedSeriesRowBuilder {
+		assert_eq!(self.family, RowFamily::Series, "allocate_series on a shape of another family");
+		EncodedSeriesRowBuilder::wrap(self.allocate())
+	}
+
+	pub fn allocate_ringbuffer(&self) -> EncodedRingBufferRowBuilder {
+		assert_eq!(self.family, RowFamily::RingBuffer, "allocate_ringbuffer on a shape of another family");
+		EncodedRingBufferRowBuilder::wrap(self.allocate())
+	}
+
+	pub fn allocate_queue(&self) -> EncodedQueueRowBuilder {
+		assert_eq!(self.family, RowFamily::Queue, "allocate_queue on a shape of another family");
+		EncodedQueueRowBuilder::wrap(self.allocate())
+	}
+
+	pub fn set_none(&self, row: &mut impl RowBuilder, index: usize) {
 		self.remove_dynamic_data(row, index);
 		self.set_valid(row, index, false);
 	}
 
-	pub fn testing(types: &[ValueType]) -> Self {
+	pub fn testing(family: RowFamily, types: &[ValueType]) -> Self {
 		RowShape::new(
-			RowFamily::Deprecated,
+			family,
 			types.iter()
 				.enumerate()
 				.map(|(i, t)| RowShapeField::unconstrained(format!("f{}", i), t.clone()))

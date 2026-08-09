@@ -31,10 +31,7 @@ fn test_fingerprint_deterministic() {
 
 	let fields2 = vec![make_field("a", ValueType::Int4), make_field("b", ValueType::Utf8)];
 
-	assert_eq!(
-		compute_fingerprint(RowFamily::Deprecated, &fields1),
-		compute_fingerprint(RowFamily::Deprecated, &fields2)
-	);
+	assert_eq!(compute_fingerprint(RowFamily::Table, &fields1), compute_fingerprint(RowFamily::Table, &fields2));
 }
 
 #[test]
@@ -42,10 +39,7 @@ fn test_fingerprint_different_names() {
 	let fields1 = vec![make_field("a", ValueType::Int4)];
 	let fields2 = vec![make_field("b", ValueType::Int4)];
 
-	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &fields1),
-		compute_fingerprint(RowFamily::Deprecated, &fields2)
-	);
+	assert_ne!(compute_fingerprint(RowFamily::Table, &fields1), compute_fingerprint(RowFamily::Table, &fields2));
 }
 
 #[test]
@@ -53,10 +47,7 @@ fn test_fingerprint_different_types() {
 	let fields1 = vec![make_field("a", ValueType::Int4)];
 	let fields2 = vec![make_field("a", ValueType::Int8)];
 
-	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &fields1),
-		compute_fingerprint(RowFamily::Deprecated, &fields2)
-	);
+	assert_ne!(compute_fingerprint(RowFamily::Table, &fields1), compute_fingerprint(RowFamily::Table, &fields2));
 }
 
 #[test]
@@ -65,17 +56,14 @@ fn test_fingerprint_different_order() {
 
 	let fields2 = vec![make_field("b", ValueType::Utf8), make_field("a", ValueType::Int4)];
 
-	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &fields1),
-		compute_fingerprint(RowFamily::Deprecated, &fields2)
-	);
+	assert_ne!(compute_fingerprint(RowFamily::Table, &fields1), compute_fingerprint(RowFamily::Table, &fields2));
 }
 
 #[test]
 fn test_fingerprint_empty_shape() {
 	let fields: Vec<RowShapeField> = vec![];
 	// Should not panic and should produce a valid hash
-	let fp = compute_fingerprint(RowFamily::Deprecated, &fields);
+	let fp = compute_fingerprint(RowFamily::Table, &fields);
 	assert_ne!(*fp, 0);
 }
 
@@ -88,8 +76,8 @@ fn test_fingerprint_utf8_constrained_vs_unconstrained() {
 	)];
 
 	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &unconstrained),
-		compute_fingerprint(RowFamily::Deprecated, &constrained),
+		compute_fingerprint(RowFamily::Table, &unconstrained),
+		compute_fingerprint(RowFamily::Table, &constrained),
 		"Utf8 unconstrained should differ from Utf8(255)"
 	);
 }
@@ -106,8 +94,8 @@ fn test_fingerprint_utf8_same_constraint_deterministic() {
 	)];
 
 	assert_eq!(
-		compute_fingerprint(RowFamily::Deprecated, &fields1),
-		compute_fingerprint(RowFamily::Deprecated, &fields2),
+		compute_fingerprint(RowFamily::Table, &fields1),
+		compute_fingerprint(RowFamily::Table, &fields2),
 		"Utf8(100) should produce same fingerprint"
 	);
 }
@@ -124,8 +112,8 @@ fn test_fingerprint_utf8_different_max_bytes() {
 	)];
 
 	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &small),
-		compute_fingerprint(RowFamily::Deprecated, &large),
+		compute_fingerprint(RowFamily::Table, &small),
+		compute_fingerprint(RowFamily::Table, &large),
 		"Utf8(50) should differ from Utf8(500)"
 	);
 }
@@ -139,8 +127,8 @@ fn test_fingerprint_int_constrained_vs_unconstrained() {
 	)];
 
 	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &unconstrained),
-		compute_fingerprint(RowFamily::Deprecated, &constrained),
+		compute_fingerprint(RowFamily::Table, &unconstrained),
+		compute_fingerprint(RowFamily::Table, &constrained),
 		"Int unconstrained should differ from Int(8)"
 	);
 }
@@ -157,8 +145,8 @@ fn test_fingerprint_int_same_constraint_deterministic() {
 	)];
 
 	assert_eq!(
-		compute_fingerprint(RowFamily::Deprecated, &fields1),
-		compute_fingerprint(RowFamily::Deprecated, &fields2),
+		compute_fingerprint(RowFamily::Table, &fields1),
+		compute_fingerprint(RowFamily::Table, &fields2),
 		"Int(16) should produce same fingerprint"
 	);
 }
@@ -175,8 +163,8 @@ fn test_fingerprint_int_different_max_bytes() {
 	)];
 
 	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &small),
-		compute_fingerprint(RowFamily::Deprecated, &large),
+		compute_fingerprint(RowFamily::Table, &small),
+		compute_fingerprint(RowFamily::Table, &large),
 		"Int(4) should differ from Int(32)"
 	);
 }
@@ -190,8 +178,8 @@ fn test_fingerprint_uint_constrained_vs_unconstrained() {
 	)];
 
 	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &unconstrained),
-		compute_fingerprint(RowFamily::Deprecated, &constrained),
+		compute_fingerprint(RowFamily::Table, &unconstrained),
+		compute_fingerprint(RowFamily::Table, &constrained),
 		"Uint unconstrained should differ from Uint(8)"
 	);
 }
@@ -208,8 +196,8 @@ fn test_fingerprint_uint_same_constraint_deterministic() {
 	)];
 
 	assert_eq!(
-		compute_fingerprint(RowFamily::Deprecated, &fields1),
-		compute_fingerprint(RowFamily::Deprecated, &fields2),
+		compute_fingerprint(RowFamily::Table, &fields1),
+		compute_fingerprint(RowFamily::Table, &fields2),
 		"Uint(64) should produce same fingerprint"
 	);
 }
@@ -226,8 +214,8 @@ fn test_fingerprint_uint_different_max_bytes() {
 	)];
 
 	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &small),
-		compute_fingerprint(RowFamily::Deprecated, &large),
+		compute_fingerprint(RowFamily::Table, &small),
+		compute_fingerprint(RowFamily::Table, &large),
 		"Uint(2) should differ from Uint(128)"
 	);
 }
@@ -241,8 +229,8 @@ fn test_fingerprint_blob_constrained_vs_unconstrained() {
 	)];
 
 	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &unconstrained),
-		compute_fingerprint(RowFamily::Deprecated, &constrained),
+		compute_fingerprint(RowFamily::Table, &unconstrained),
+		compute_fingerprint(RowFamily::Table, &constrained),
 		"Blob unconstrained should differ from Blob(1024)"
 	);
 }
@@ -259,8 +247,8 @@ fn test_fingerprint_blob_same_constraint_deterministic() {
 	)];
 
 	assert_eq!(
-		compute_fingerprint(RowFamily::Deprecated, &fields1),
-		compute_fingerprint(RowFamily::Deprecated, &fields2),
+		compute_fingerprint(RowFamily::Table, &fields1),
+		compute_fingerprint(RowFamily::Table, &fields2),
 		"Blob(4096) should produce same fingerprint"
 	);
 }
@@ -277,8 +265,8 @@ fn test_fingerprint_blob_different_max_bytes() {
 	)];
 
 	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &small),
-		compute_fingerprint(RowFamily::Deprecated, &large),
+		compute_fingerprint(RowFamily::Table, &small),
+		compute_fingerprint(RowFamily::Table, &large),
 		"Blob(256) should differ from Blob(65536)"
 	);
 }
@@ -295,8 +283,8 @@ fn test_fingerprint_decimal_constrained_vs_unconstrained() {
 	)];
 
 	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &unconstrained),
-		compute_fingerprint(RowFamily::Deprecated, &constrained),
+		compute_fingerprint(RowFamily::Table, &unconstrained),
+		compute_fingerprint(RowFamily::Table, &constrained),
 		"Decimal unconstrained should differ from Decimal(10,2)"
 	);
 }
@@ -319,8 +307,8 @@ fn test_fingerprint_decimal_same_constraint_deterministic() {
 	)];
 
 	assert_eq!(
-		compute_fingerprint(RowFamily::Deprecated, &fields1),
-		compute_fingerprint(RowFamily::Deprecated, &fields2),
+		compute_fingerprint(RowFamily::Table, &fields1),
+		compute_fingerprint(RowFamily::Table, &fields2),
 		"Decimal(18,6) should produce same fingerprint"
 	);
 }
@@ -343,8 +331,8 @@ fn test_fingerprint_decimal_different_precision() {
 	)];
 
 	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &low_precision),
-		compute_fingerprint(RowFamily::Deprecated, &high_precision),
+		compute_fingerprint(RowFamily::Table, &low_precision),
+		compute_fingerprint(RowFamily::Table, &high_precision),
 		"Decimal(5,2) should differ from Decimal(38,2)"
 	);
 }
@@ -367,8 +355,8 @@ fn test_fingerprint_decimal_different_scale() {
 	)];
 
 	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &low_scale),
-		compute_fingerprint(RowFamily::Deprecated, &high_scale),
+		compute_fingerprint(RowFamily::Table, &low_scale),
+		compute_fingerprint(RowFamily::Table, &high_scale),
 		"Decimal(10,0) should differ from Decimal(10,8)"
 	);
 }
@@ -391,8 +379,8 @@ fn test_fingerprint_decimal_different_precision_and_scale() {
 	)];
 
 	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &fields1),
-		compute_fingerprint(RowFamily::Deprecated, &fields2),
+		compute_fingerprint(RowFamily::Table, &fields1),
+		compute_fingerprint(RowFamily::Table, &fields2),
 		"Decimal(10,2) should differ from Decimal(15,4)"
 	);
 }
@@ -417,10 +405,10 @@ fn test_fingerprint_different_types_same_max_bytes() {
 		TypeConstraint::with_constraint(ValueType::Uint, Constraint::MaxBytes(MaxBytes::new(100))),
 	)];
 
-	let fp_utf8 = compute_fingerprint(RowFamily::Deprecated, &utf8);
-	let fp_blob = compute_fingerprint(RowFamily::Deprecated, &blob);
-	let fp_int = compute_fingerprint(RowFamily::Deprecated, &int);
-	let fp_uint = compute_fingerprint(RowFamily::Deprecated, &uint);
+	let fp_utf8 = compute_fingerprint(RowFamily::Table, &utf8);
+	let fp_blob = compute_fingerprint(RowFamily::Table, &blob);
+	let fp_int = compute_fingerprint(RowFamily::Table, &int);
+	let fp_uint = compute_fingerprint(RowFamily::Table, &uint);
 
 	assert_ne!(fp_utf8, fp_blob, "Utf8(100) should differ from Blob(100)");
 	assert_ne!(fp_utf8, fp_int, "Utf8(100) should differ from Int(100)");
@@ -469,8 +457,8 @@ fn test_fingerprint_multiple_constrained_fields() {
 	];
 
 	assert_eq!(
-		compute_fingerprint(RowFamily::Deprecated, &fields1),
-		compute_fingerprint(RowFamily::Deprecated, &fields2),
+		compute_fingerprint(RowFamily::Table, &fields1),
+		compute_fingerprint(RowFamily::Table, &fields2),
 		"Identical multi-field constrained shapes should produce same fingerprint"
 	);
 }
@@ -506,8 +494,8 @@ fn test_fingerprint_multiple_fields_one_constraint_differs() {
 	];
 
 	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &fields1),
-		compute_fingerprint(RowFamily::Deprecated, &fields2),
+		compute_fingerprint(RowFamily::Table, &fields1),
+		compute_fingerprint(RowFamily::Table, &fields2),
 		"Shapes differing only in one constraint should have different fingerprints"
 	);
 }
@@ -530,8 +518,8 @@ fn test_fingerprint_mixed_constrained_and_unconstrained() {
 	];
 
 	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &fields1),
-		compute_fingerprint(RowFamily::Deprecated, &fields2),
+		compute_fingerprint(RowFamily::Table, &fields1),
+		compute_fingerprint(RowFamily::Table, &fields2),
 		"Mixed constrained/unconstrained should differ from all unconstrained"
 	);
 }
@@ -548,8 +536,8 @@ fn test_fingerprint_max_bytes_edge_values() {
 	)];
 
 	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &min_value),
-		compute_fingerprint(RowFamily::Deprecated, &max_value),
+		compute_fingerprint(RowFamily::Table, &min_value),
+		compute_fingerprint(RowFamily::Table, &max_value),
 		"Blob(1) should differ from Blob(MAX)"
 	);
 }
@@ -572,8 +560,8 @@ fn test_fingerprint_decimal_edge_precision_scale() {
 	)];
 
 	assert_ne!(
-		compute_fingerprint(RowFamily::Deprecated, &min_precision),
-		compute_fingerprint(RowFamily::Deprecated, &max_precision),
+		compute_fingerprint(RowFamily::Table, &min_precision),
+		compute_fingerprint(RowFamily::Table, &max_precision),
 		"Decimal(1,0) should differ from Decimal(255,255)"
 	);
 }
@@ -594,9 +582,9 @@ fn test_fingerprint_adjacent_max_bytes_values() {
 		TypeConstraint::with_constraint(ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(101))),
 	)];
 
-	let fp_99 = compute_fingerprint(RowFamily::Deprecated, &value_99);
-	let fp_100 = compute_fingerprint(RowFamily::Deprecated, &value_100);
-	let fp_101 = compute_fingerprint(RowFamily::Deprecated, &value_101);
+	let fp_99 = compute_fingerprint(RowFamily::Table, &value_99);
+	let fp_100 = compute_fingerprint(RowFamily::Table, &value_100);
+	let fp_101 = compute_fingerprint(RowFamily::Table, &value_101);
 
 	assert_ne!(fp_99, fp_100, "Utf8(99) should differ from Utf8(100)");
 	assert_ne!(fp_100, fp_101, "Utf8(100) should differ from Utf8(101)");

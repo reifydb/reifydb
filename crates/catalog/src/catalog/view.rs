@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowFamily;
 use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackViewChangeOperations,
@@ -276,12 +275,9 @@ impl Catalog {
 		let view = CatalogStore::create_deferred_view(txn, to_create.into())?;
 		txn.track_view_created(view.clone())?;
 
-		let shape = row_shape_from_columns(view.columns());
-		self.get_or_create_row_shape(
-			&mut Transaction::Admin(&mut *txn),
-			RowFamily::Deprecated,
-			shape.fields().to_vec(),
-		)?;
+		let family = view.storage_kind().row_family();
+		let shape = row_shape_from_columns(family, view.columns());
+		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), family, shape.fields().to_vec())?;
 
 		Ok(view)
 	}
@@ -291,12 +287,9 @@ impl Catalog {
 		let view = CatalogStore::create_transactional_view(txn, to_create.into())?;
 		txn.track_view_created(view.clone())?;
 
-		let shape = row_shape_from_columns(view.columns());
-		self.get_or_create_row_shape(
-			&mut Transaction::Admin(&mut *txn),
-			RowFamily::Deprecated,
-			shape.fields().to_vec(),
-		)?;
+		let family = view.storage_kind().row_family();
+		let shape = row_shape_from_columns(family, view.columns());
+		self.get_or_create_row_shape(&mut Transaction::Admin(&mut *txn), family, shape.fields().to_vec())?;
 
 		Ok(view)
 	}

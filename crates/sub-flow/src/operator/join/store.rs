@@ -274,7 +274,7 @@ impl Store {
 							cause: e.to_string(),
 						})
 					})?;
-				let shape = RowShape::new(RowFamily::Deprecated, fields);
+				let shape = RowShape::new(RowFamily::Pod, fields);
 				self.shape_cache.insert(shape.clone());
 				Ok(Some(shape))
 			}
@@ -528,7 +528,7 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(OperatorId(20), JoinSide::Left);
 
-		let shape = RowShape::testing(&[ValueType::Int4, ValueType::Utf8]);
+		let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int4, ValueType::Utf8]);
 		store.set_row_shape(&mut txn, &shape).unwrap();
 
 		let got = store.get_row_shape(&mut txn, shape.fingerprint()).unwrap();
@@ -537,10 +537,12 @@ mod tests {
 
 	#[test]
 	fn get_row_shape_loads_from_state_when_cache_is_cold() {
+		// Only fields are persisted and the shape is rebuilt as a pod, so any other family loses its round
+		// trip.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(21);
-		let shape = RowShape::testing(&[ValueType::Int4]);
+		let shape = RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("f0", ValueType::Int4)]);
 
 		let writer = Store::new(operator, JoinSide::Left);
 		writer.set_row_shape(&mut txn, &shape).unwrap();
@@ -560,7 +562,7 @@ mod tests {
 		let left = Store::new(operator, JoinSide::Left);
 		let right = Store::new(operator, JoinSide::Right);
 
-		let shape = RowShape::testing(&[ValueType::Int4]);
+		let shape = RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("f0", ValueType::Int4)]);
 		left.set_row_shape(&mut txn, &shape).unwrap();
 
 		let cold_right = Store::new(operator, JoinSide::Right);
@@ -635,7 +637,7 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(OperatorId(22), JoinSide::Right);
 
-		let fp = RowShape::testing(&[ValueType::Int4]).fingerprint();
+		let fp = RowShape::testing(RowFamily::Pod, &[ValueType::Int4]).fingerprint();
 		assert_eq!(store.get_row_shape(&mut txn, fp).unwrap(), None);
 	}
 
@@ -648,8 +650,8 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let store = Store::new(OperatorId(23), JoinSide::Right);
 
-		let narrow = RowShape::testing(&[ValueType::Int4]);
-		let wide = RowShape::testing(&[ValueType::Int4, ValueType::Utf8]);
+		let narrow = RowShape::testing(RowFamily::Pod, &[ValueType::Int4]);
+		let wide = RowShape::testing(RowFamily::Pod, &[ValueType::Int4, ValueType::Utf8]);
 
 		store.set_row_shape(&mut txn, &narrow).unwrap();
 		store.set_row_shape(&mut txn, &wide).unwrap();
@@ -673,8 +675,14 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(24);
-		let narrow = RowShape::testing(&[ValueType::Int4]);
-		let wide = RowShape::testing(&[ValueType::Int4, ValueType::Utf8]);
+		let narrow = RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("f0", ValueType::Int4)]);
+		let wide = RowShape::new(
+			RowFamily::Pod,
+			vec![
+				RowShapeField::unconstrained("f0", ValueType::Int4),
+				RowShapeField::unconstrained("f1", ValueType::Utf8),
+			],
+		);
 
 		let writer = Store::new(operator, JoinSide::Right);
 		writer.set_row_shape(&mut txn, &narrow).unwrap();

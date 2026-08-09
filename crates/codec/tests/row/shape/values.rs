@@ -32,8 +32,8 @@ fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 
 #[test]
 fn test_set_utf8_with_dynamic_content() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Int4, ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Int4, ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 
 	let value1 = Value::Utf8("hello".to_string());
 	let value2 = Value::Int4(42);
@@ -50,14 +50,11 @@ fn test_set_utf8_with_dynamic_content() {
 
 #[test]
 fn test_set_values_with_mixed_dynamic_content() {
-	let shape = RowShape::testing(&[
-		ValueType::Boolean,
-		ValueType::Utf8,
-		ValueType::Float4,
-		ValueType::Utf8,
-		ValueType::Int2,
-	]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Boolean, ValueType::Utf8, ValueType::Float4, ValueType::Utf8, ValueType::Int2],
+	);
+	let mut row = shape.allocate_pod();
 
 	let values = vec![
 		Value::Boolean(true),
@@ -78,8 +75,8 @@ fn test_set_values_with_mixed_dynamic_content() {
 
 #[test]
 fn test_set_with_empty_and_large_utf8() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 
 	let large_string = "X".repeat(2000);
 	let values =
@@ -95,8 +92,8 @@ fn test_set_with_empty_and_large_utf8() {
 
 #[test]
 fn test_get_from_dynamic_content() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Int8, ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Int8, ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "test_string");
 	shape.set::<i64>(&mut row, 1, 9876543210i64);
@@ -124,8 +121,8 @@ fn test_get_from_dynamic_content() {
 
 #[test]
 fn test_set_none_with_utf8_fields() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Boolean, ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Boolean, ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_value(&mut row, 0, &Value::Utf8("hello".to_string()));
 	shape.set_value(&mut row, 1, &Value::Boolean(true));
@@ -147,21 +144,24 @@ fn test_set_none_with_utf8_fields() {
 
 #[test]
 fn test_get_all_types_including_utf8() {
-	let shape = RowShape::testing(&[
-		ValueType::Boolean,
-		ValueType::Int1,
-		ValueType::Int2,
-		ValueType::Int4,
-		ValueType::Int8,
-		ValueType::Uint1,
-		ValueType::Uint2,
-		ValueType::Uint4,
-		ValueType::Uint8,
-		ValueType::Float4,
-		ValueType::Float8,
-		ValueType::Utf8,
-	]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[
+			ValueType::Boolean,
+			ValueType::Int1,
+			ValueType::Int2,
+			ValueType::Int4,
+			ValueType::Int8,
+			ValueType::Uint1,
+			ValueType::Uint2,
+			ValueType::Uint4,
+			ValueType::Uint8,
+			ValueType::Float4,
+			ValueType::Float8,
+			ValueType::Utf8,
+		],
+	);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 	shape.set::<i8>(&mut row, 1, -42i8);
@@ -194,8 +194,11 @@ fn test_get_all_types_including_utf8() {
 
 #[test]
 fn test_set_values_sparse_with_utf8() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8, ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Utf8, ValueType::Utf8, ValueType::Utf8, ValueType::Utf8],
+	);
+	let mut row = shape.allocate_pod();
 
 	let values =
 		vec![Value::Utf8("first".to_string()), Value::none(), Value::Utf8("third".to_string()), Value::none()];
@@ -213,8 +216,8 @@ fn test_set_values_sparse_with_utf8() {
 
 #[test]
 fn test_set_values_unicode_strings() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Int4, ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8, ValueType::Int4, ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 
 	let values = vec![Value::Utf8("🎉🚀✨".to_string()), Value::Int4(123), Value::Utf8("Hello 世界".to_string())];
 
@@ -227,8 +230,8 @@ fn test_set_values_unicode_strings() {
 
 #[test]
 fn test_static_fields_only_no_dynamic_with_values() {
-	let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Int4, ValueType::Float8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean, ValueType::Int4, ValueType::Float8]);
+	let mut row = shape.allocate_pod();
 
 	let values = vec![Value::Boolean(false), Value::Int4(999), Value::Float8(OrderedF64::try_from(E).unwrap())];
 
@@ -245,8 +248,11 @@ fn test_static_fields_only_no_dynamic_with_values() {
 
 #[test]
 fn test_temporal_types_roundtrip() {
-	let shape = RowShape::testing(&[ValueType::Date, ValueType::DateTime, ValueType::Time, ValueType::Duration]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Date, ValueType::DateTime, ValueType::Time, ValueType::Duration],
+	);
+	let mut row = shape.allocate_pod();
 
 	let original_values = vec![
 		Value::Date(Date::new(2025, 7, 15).unwrap()),
@@ -264,8 +270,11 @@ fn test_temporal_types_roundtrip() {
 
 #[test]
 fn test_temporal_types_with_undefined() {
-	let shape = RowShape::testing(&[ValueType::Date, ValueType::DateTime, ValueType::Time, ValueType::Duration]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Date, ValueType::DateTime, ValueType::Time, ValueType::Duration],
+	);
+	let mut row = shape.allocate_pod();
 
 	let values = vec![
 		Value::Date(Date::new(2000, 1, 1).unwrap()),
@@ -291,16 +300,19 @@ fn test_temporal_types_with_undefined() {
 
 #[test]
 fn test_mixed_temporal_and_regular_types() {
-	let shape = RowShape::testing(&[
-		ValueType::Boolean,
-		ValueType::Date,
-		ValueType::Utf8,
-		ValueType::DateTime,
-		ValueType::Int4,
-		ValueType::Time,
-		ValueType::Duration,
-	]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[
+			ValueType::Boolean,
+			ValueType::Date,
+			ValueType::Utf8,
+			ValueType::DateTime,
+			ValueType::Int4,
+			ValueType::Time,
+			ValueType::Duration,
+		],
+	);
+	let mut row = shape.allocate_pod();
 
 	let values = vec![
 		Value::Boolean(true),
@@ -321,8 +333,11 @@ fn test_mixed_temporal_and_regular_types() {
 
 #[test]
 fn test_roundtrip_with_dynamic_content() {
-	let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Int2, ValueType::Utf8, ValueType::Float4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Utf8, ValueType::Int2, ValueType::Utf8, ValueType::Float4],
+	);
+	let mut row = shape.allocate_pod();
 
 	let original_values = vec![
 		Value::Utf8("roundtrip_test".to_string()),
@@ -340,8 +355,8 @@ fn test_roundtrip_with_dynamic_content() {
 
 #[test]
 fn test_blob_roundtrip() {
-	let shape = RowShape::testing(&[ValueType::Blob, ValueType::Int4, ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob, ValueType::Int4, ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	let blob1 = Blob::new(vec![0xDE, 0xAD, 0xBE, 0xEF]);
 	let blob2 = Blob::new(vec![]);
@@ -366,8 +381,8 @@ fn test_blob_roundtrip() {
 
 #[test]
 fn test_blob_with_undefined() {
-	let shape = RowShape::testing(&[ValueType::Blob, ValueType::Blob, ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob, ValueType::Blob, ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	let values = vec![
 		Value::Blob(Blob::new(vec![0x00, 0x01, 0x02])),
@@ -391,8 +406,8 @@ fn test_blob_with_undefined() {
 #[test]
 fn test_uuid_roundtrip() {
 	let (_, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Uuid4, ValueType::Uuid7, ValueType::Int4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid4, ValueType::Uuid7, ValueType::Int4]);
+	let mut row = shape.allocate_pod();
 
 	let uuid4 = Uuid4::generate();
 	let uuid7 = Uuid7::generate(&clock, &rng);
@@ -408,8 +423,8 @@ fn test_uuid_roundtrip() {
 #[test]
 fn test_uuid_with_undefined() {
 	let (_, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Uuid4, ValueType::Uuid7]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid4, ValueType::Uuid7]);
+	let mut row = shape.allocate_pod();
 
 	let values = vec![Value::none(), Value::Uuid7(Uuid7::generate(&clock, &rng))];
 
@@ -427,15 +442,18 @@ fn test_uuid_with_undefined() {
 #[test]
 fn test_mixed_blob_row_number_uuid_types() {
 	let (_, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[
-		ValueType::Blob,
-		ValueType::Int16,
-		ValueType::Uuid4,
-		ValueType::Utf8,
-		ValueType::Uuid7,
-		ValueType::Int4,
-	]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[
+			ValueType::Blob,
+			ValueType::Int16,
+			ValueType::Uuid4,
+			ValueType::Utf8,
+			ValueType::Uuid7,
+			ValueType::Int4,
+		],
+	);
+	let mut row = shape.allocate_pod();
 
 	let values = vec![
 		Value::Blob(Blob::new(vec![0xCA, 0xFE, 0xBA, 0xBE])),
@@ -459,30 +477,33 @@ fn test_mixed_blob_row_number_uuid_types() {
 fn test_all_types_comprehensive() {
 	let (_, clock, rng) = test_clock_and_rng();
 
-	let shape = RowShape::testing(&[
-		ValueType::Boolean,
-		ValueType::Int1,
-		ValueType::Int2,
-		ValueType::Int4,
-		ValueType::Int8,
-		ValueType::Int16,
-		ValueType::Uint1,
-		ValueType::Uint2,
-		ValueType::Uint4,
-		ValueType::Uint8,
-		ValueType::Uint16,
-		ValueType::Float4,
-		ValueType::Float8,
-		ValueType::Utf8,
-		ValueType::Date,
-		ValueType::DateTime,
-		ValueType::Time,
-		ValueType::Duration,
-		ValueType::Uuid4,
-		ValueType::Uuid7,
-		ValueType::Blob,
-	]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[
+			ValueType::Boolean,
+			ValueType::Int1,
+			ValueType::Int2,
+			ValueType::Int4,
+			ValueType::Int8,
+			ValueType::Int16,
+			ValueType::Uint1,
+			ValueType::Uint2,
+			ValueType::Uint4,
+			ValueType::Uint8,
+			ValueType::Uint16,
+			ValueType::Float4,
+			ValueType::Float8,
+			ValueType::Utf8,
+			ValueType::Date,
+			ValueType::DateTime,
+			ValueType::Time,
+			ValueType::Duration,
+			ValueType::Uuid4,
+			ValueType::Uuid7,
+			ValueType::Blob,
+		],
+	);
+	let mut row = shape.allocate_pod();
 
 	let values = vec![
 		Value::Boolean(true),
@@ -524,9 +545,9 @@ fn test_all_types_comprehensive() {
 #[test]
 fn test_dictionary_id_roundtrip_u4() {
 	let constraint = TypeConstraint::dictionary(DictionaryId::from(42u64), ValueType::Uint4);
-	let shape = RowShape::new(RowFamily::Deprecated, vec![RowShapeField::new("status", constraint)]);
+	let shape = RowShape::new(RowFamily::Table, vec![RowShapeField::new("status", constraint)]);
 
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_table();
 	let entry = DictionaryEntryId::U4(7);
 	shape.set_value(&mut row, 0, &Value::DictionaryId(entry));
 
@@ -538,9 +559,9 @@ fn test_dictionary_id_roundtrip_u4() {
 #[test]
 fn test_dictionary_id_roundtrip_u2() {
 	let constraint = TypeConstraint::dictionary(DictionaryId::from(10u64), ValueType::Uint2);
-	let shape = RowShape::new(RowFamily::Deprecated, vec![RowShapeField::new("category", constraint)]);
+	let shape = RowShape::new(RowFamily::Table, vec![RowShapeField::new("category", constraint)]);
 
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_table();
 	let entry = DictionaryEntryId::U2(500);
 	shape.set_value(&mut row, 0, &Value::DictionaryId(entry));
 
@@ -552,9 +573,9 @@ fn test_dictionary_id_roundtrip_u2() {
 #[test]
 fn test_dictionary_id_roundtrip_u8() {
 	let constraint = TypeConstraint::dictionary(DictionaryId::from(99u64), ValueType::Uint8);
-	let shape = RowShape::new(RowFamily::Deprecated, vec![RowShapeField::new("tag", constraint)]);
+	let shape = RowShape::new(RowFamily::Table, vec![RowShapeField::new("tag", constraint)]);
 
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_table();
 	let entry = DictionaryEntryId::U8(123456789);
 	shape.set_value(&mut row, 0, &Value::DictionaryId(entry));
 
@@ -567,14 +588,14 @@ fn test_dictionary_id_roundtrip_u8() {
 fn test_dictionary_id_with_undefined() {
 	let constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), ValueType::Uint4);
 	let shape = RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			RowShapeField::new("dict_col", constraint),
 			RowShapeField::unconstrained("int_col", ValueType::Int4),
 		],
 	);
 
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_table();
 	shape.set_value(&mut row, 0, &Value::none());
 	shape.set_value(&mut row, 1, &Value::Int4(42));
 
@@ -589,7 +610,7 @@ fn test_dictionary_id_with_undefined() {
 fn test_dictionary_id_mixed_with_other_types() {
 	let dict_constraint = TypeConstraint::dictionary(DictionaryId::from(5u64), ValueType::Uint4);
 	let shape = RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			RowShapeField::unconstrained("id", ValueType::Int4),
 			RowShapeField::new("status", dict_constraint),
@@ -597,7 +618,7 @@ fn test_dictionary_id_mixed_with_other_types() {
 		],
 	);
 
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_table();
 	let values =
 		vec![Value::Int4(100), Value::DictionaryId(DictionaryEntryId::U4(3)), Value::Utf8("test".to_string())];
 	shape.set_values(&mut row, &values);
@@ -610,8 +631,8 @@ fn test_dictionary_id_mixed_with_other_types() {
 fn test_any_field_stores_wrapped_none_duration() {
 	// Config values are stored wrapped in Value::any even when the value is itself a none,
 	// so the Any encoding must keep both the wrapper and the none's inner type.
-	let shape = RowShape::testing(&[ValueType::Any]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Any]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_value(&mut row, 0, &Value::any(Value::none_of(ValueType::Duration)));
 
@@ -629,8 +650,8 @@ fn test_any_field_stores_wrapped_none_duration() {
 
 #[test]
 fn test_any_field_stores_wrapped_none_nested_option_duration() {
-	let shape = RowShape::testing(&[ValueType::Any]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Any]);
+	let mut row = shape.allocate_pod();
 
 	let inner_ty = ValueType::Option(Box::new(ValueType::Duration));
 	shape.set_value(&mut row, 0, &Value::any(Value::none_of(inner_ty.clone())));

@@ -273,7 +273,7 @@ impl Catalog {
 		let queue = CatalogStore::create_queue(txn, to_create.into())?;
 		txn.track_queue_created(queue.clone())?;
 
-		let shape = row_shape_from_columns(queue.columns.as_slice());
+		let shape = row_shape_from_columns(RowFamily::Queue, queue.columns.as_slice());
 		self.get_or_create_row_shape(
 			&mut Transaction::Admin(&mut *txn),
 			RowFamily::Queue,
@@ -293,7 +293,7 @@ impl Catalog {
 		let queue = CatalogStore::create_queue_with_id(txn, queue_id, to_create.into(), column_ids)?;
 		txn.track_queue_created(queue.clone())?;
 
-		let shape = row_shape_from_columns(queue.columns.as_slice());
+		let shape = row_shape_from_columns(RowFamily::Queue, queue.columns.as_slice());
 		self.get_or_create_row_shape(
 			&mut Transaction::Admin(&mut *txn),
 			RowFamily::Queue,

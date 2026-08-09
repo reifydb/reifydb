@@ -4,7 +4,11 @@
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, shape::RowShape},
+	row::{
+		bytes::{EncodedBytes, RowBuilder},
+		ringbuffer::EncodedRingBufferRow,
+		shape::{RowFamily, RowShape},
+	},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -71,7 +75,7 @@ fn build_ringbuffer_update_change(
 	pre: &EncodedBytes,
 	post: &EncodedBytes,
 ) -> Change {
-	let shape = row_shape_from_columns(&rb.columns);
+	let shape = row_shape_from_columns(RowFamily::RingBuffer, &rb.columns);
 	let ids = [row_number];
 	let pres = [pre.clone()];
 	let posts = [post.clone()];
@@ -87,7 +91,7 @@ fn build_ringbuffer_update_change(
 }
 
 fn build_ringbuffer_remove_change(rb: &RingBuffer, row_number: RowNumber, encoded: &EncodedBytes) -> Change {
-	let shape = row_shape_from_columns(&rb.columns);
+	let shape = row_shape_from_columns(RowFamily::RingBuffer, &rb.columns);
 	let ids = [row_number];
 	let rows = [encoded.clone()];
 	Change {
@@ -174,10 +178,10 @@ impl RingBufferOperations for CommandTransaction {
 			RingBufferRowInterceptor::post_delete(self, ringbuffer, &ids, &existing_rows)?;
 		}
 
-		let mut rows_buf = [bytes.thaw()];
+		let mut rows_buf = [EncodedRingBufferRow::from(bytes.clone()).thaw()];
 		RingBufferRowInterceptor::pre_insert(self, ringbuffer, &mut rows_buf)?;
 		let [bytes] = rows_buf;
-		let bytes = bytes.freeze();
+		let bytes = bytes.freeze_bytes();
 
 		self.set(&key, bytes.clone())?;
 
@@ -208,14 +212,14 @@ impl RingBufferOperations for CommandTransaction {
 			None => return Ok(bytes),
 		};
 
-		let mut rows_buf = [bytes.thaw()];
+		let mut rows_buf = [EncodedRingBufferRow::from(bytes.clone()).thaw()];
 		let ids = [id];
 		RingBufferRowInterceptor::pre_update(self, &ringbuffer, &ids, &mut rows_buf)?;
 		let [bytes] = rows_buf;
-		let bytes = bytes.freeze();
+		let bytes = bytes.freeze_bytes();
 
 		if let Some(expected) = partition {
-			let shape = row_shape_from_columns(&ringbuffer.columns);
+			let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns);
 			let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
 			if Partition::of(&partition_values(&shape, &bytes, &indices)) != expected {
 				return Err(EngineError::ImmutablePartitionColumn {
@@ -298,10 +302,10 @@ impl RingBufferOperations for AdminTransaction {
 			RingBufferRowInterceptor::post_delete(self, ringbuffer, &ids, &existing_rows)?;
 		}
 
-		let mut rows_buf = [bytes.thaw()];
+		let mut rows_buf = [EncodedRingBufferRow::from(bytes.clone()).thaw()];
 		RingBufferRowInterceptor::pre_insert(self, ringbuffer, &mut rows_buf)?;
 		let [bytes] = rows_buf;
-		let bytes = bytes.freeze();
+		let bytes = bytes.freeze_bytes();
 
 		self.set(&key, bytes.clone())?;
 
@@ -332,14 +336,14 @@ impl RingBufferOperations for AdminTransaction {
 			None => return Ok(bytes),
 		};
 
-		let mut rows_buf = [bytes.thaw()];
+		let mut rows_buf = [EncodedRingBufferRow::from(bytes.clone()).thaw()];
 		let ids = [id];
 		RingBufferRowInterceptor::pre_update(self, &ringbuffer, &ids, &mut rows_buf)?;
 		let [bytes] = rows_buf;
-		let bytes = bytes.freeze();
+		let bytes = bytes.freeze_bytes();
 
 		if let Some(expected) = partition {
-			let shape = row_shape_from_columns(&ringbuffer.columns);
+			let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns);
 			let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
 			if Partition::of(&partition_values(&shape, &bytes, &indices)) != expected {
 				return Err(EngineError::ImmutablePartitionColumn {

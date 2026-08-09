@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::value_type::ValueType;
 
 #[test]
 fn test_set_get_u8() {
-	let shape = RowShape::testing(&[ValueType::Uint1]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint1]);
+	let mut row = shape.allocate_pod();
 	shape.set::<u8>(&mut row, 0, 255u8);
 	assert_eq!(shape.get::<u8>(&row, 0), 255u8);
 }
 
 #[test]
 fn test_try_get_u8() {
-	let shape = RowShape::testing(&[ValueType::Uint1]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint1]);
+	let mut row = shape.allocate_pod();
 
 	assert_eq!(shape.try_get::<u8>(&row, 0), None);
 
@@ -25,29 +25,29 @@ fn test_try_get_u8() {
 
 #[test]
 fn test_extremes() {
-	let shape = RowShape::testing(&[ValueType::Uint1]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint1]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<u8>(&mut row, 0, u8::MAX);
 	assert_eq!(shape.get::<u8>(&row, 0), u8::MAX);
 
-	let mut row2 = shape.allocate();
+	let mut row2 = shape.allocate_pod();
 	shape.set::<u8>(&mut row2, 0, u8::MIN);
 	assert_eq!(shape.get::<u8>(&row2, 0), u8::MIN);
 
-	let mut row3 = shape.allocate();
+	let mut row3 = shape.allocate_pod();
 	shape.set::<u8>(&mut row3, 0, 0u8);
 	assert_eq!(shape.get::<u8>(&row3, 0), 0u8);
 }
 
 #[test]
 fn test_various_values() {
-	let shape = RowShape::testing(&[ValueType::Uint1]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint1]);
 
 	let test_values = [0u8, 1u8, 127u8, 128u8, 254u8, 255u8];
 
 	for value in test_values {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<u8>(&mut row, 0, value);
 		assert_eq!(shape.get::<u8>(&row, 0), value);
 	}
@@ -55,8 +55,8 @@ fn test_various_values() {
 
 #[test]
 fn test_mixed_with_other_types() {
-	let shape = RowShape::testing(&[ValueType::Uint1, ValueType::Boolean, ValueType::Uint1]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint1, ValueType::Boolean, ValueType::Uint1]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<u8>(&mut row, 0, 200u8);
 	shape.set::<bool>(&mut row, 1, true);
@@ -69,8 +69,8 @@ fn test_mixed_with_other_types() {
 
 #[test]
 fn test_undefined_handling() {
-	let shape = RowShape::testing(&[ValueType::Uint1, ValueType::Uint1]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint1, ValueType::Uint1]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<u8>(&mut row, 0, 42u8);
 
@@ -83,8 +83,8 @@ fn test_undefined_handling() {
 
 #[test]
 fn test_try_get_u8_wrong_type() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 

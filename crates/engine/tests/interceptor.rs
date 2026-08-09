@@ -23,7 +23,7 @@ fn test_table_row_pre_insert_mutates_row() {
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.table_row_pre_insert.add(Arc::new(table_row_pre_insert(|ctx| {
-			let shape = row_shape_from_columns(&ctx.table.columns);
+			let shape = row_shape_from_columns(RowFamily::Table, &ctx.table.columns);
 			shape.set_value(&mut ctx.rows[0], 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));
@@ -44,7 +44,7 @@ fn test_table_row_pre_update_mutates_row() {
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.table_row_pre_update.add(Arc::new(table_row_pre_update(|ctx| {
-			let shape = row_shape_from_columns(&ctx.table.columns);
+			let shape = row_shape_from_columns(RowFamily::Table, &ctx.table.columns);
 			shape.set_value(&mut ctx.rows[0], 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));
@@ -66,7 +66,7 @@ fn test_ringbuffer_row_pre_insert_mutates_row() {
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.ringbuffer_row_pre_insert.add(Arc::new(ringbuffer_row_pre_insert(|ctx| {
-			let shape = row_shape_from_columns(&ctx.ringbuffer.columns);
+			let shape = row_shape_from_columns(RowFamily::RingBuffer, &ctx.ringbuffer.columns);
 			shape.set_value(&mut ctx.rows[0], 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));
@@ -87,7 +87,7 @@ fn test_ringbuffer_row_pre_update_mutates_row() {
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.ringbuffer_row_pre_update.add(Arc::new(ringbuffer_row_pre_update(|ctx| {
-			let shape = row_shape_from_columns(&ctx.ringbuffer.columns);
+			let shape = row_shape_from_columns(RowFamily::RingBuffer, &ctx.ringbuffer.columns);
 			shape.set_value(&mut ctx.rows[0], 1, &Value::Int8(MUTATED_VALUE));
 			Ok(())
 		})));
@@ -125,7 +125,7 @@ fn test_dictionary_row_pre_insert_mutates_value() {
 
 fn series_shape() -> RowShape {
 	RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			RowShapeField::new("ts", TypeConstraint::unconstrained(ValueType::Int8)),
 			RowShapeField::new("val", TypeConstraint::unconstrained(ValueType::Int8)),
@@ -185,7 +185,7 @@ fn test_table_row_pre_update_partition_change_rejected() {
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.table_row_pre_update.add(Arc::new(table_row_pre_update(|ctx| {
-			let shape = row_shape_from_columns(&ctx.table.columns);
+			let shape = row_shape_from_columns(RowFamily::Table, &ctx.table.columns);
 			shape.set_value(&mut ctx.rows[0], 1, &Value::Utf8("eu".into()));
 			Ok(())
 		})));
@@ -206,7 +206,7 @@ fn test_ringbuffer_row_pre_update_partition_change_rejected() {
 
 	t.add_interceptor_factory(Arc::new(|interceptors: &mut Interceptors| {
 		interceptors.ringbuffer_row_pre_update.add(Arc::new(ringbuffer_row_pre_update(|ctx| {
-			let shape = row_shape_from_columns(&ctx.ringbuffer.columns);
+			let shape = row_shape_from_columns(RowFamily::RingBuffer, &ctx.ringbuffer.columns);
 			shape.set_value(&mut ctx.rows[0], 1, &Value::Utf8("eu".into()));
 			Ok(())
 		})));
@@ -226,7 +226,7 @@ fn partitioned_series_shape() -> RowShape {
 	// Series storage is [key, ...data], not the declared column order, so a lookup by index
 	// within the declared columns would land on the key instead of the partition column.
 	RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			RowShapeField::new("ts", TypeConstraint::unconstrained(ValueType::Int8)),
 			RowShapeField::new("region", TypeConstraint::unconstrained(ValueType::Utf8)),

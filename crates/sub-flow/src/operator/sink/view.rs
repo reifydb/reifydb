@@ -7,8 +7,9 @@ use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::{
 	key::{encode_u8, encode_u64_varint, encoded::EncodedKey, serializer::KeySerializer},
 	row::{
-		bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
-		shape::RowShape,
+		bytes::{EncodedBytes, RowBuilder, SHAPE_HEADER_SIZE, read_created_at},
+		shape::{RowFamily, RowShape},
+		table::EncodedTableRow,
 	},
 };
 use reifydb_core::{
@@ -81,7 +82,7 @@ impl SinkTableViewOperator {
 		let mut partitioned_prefix: Vec<u8> = Vec::with_capacity(10);
 		partitioned_prefix.push(encode_u8(KeyKind::PartitionedRow as u8));
 		serialize_object_id(&ObjectId::table(storage), &mut partitioned_prefix);
-		let shape = row_shape_from_columns(view.def().columns());
+		let shape = row_shape_from_columns(RowFamily::Table, view.def().columns());
 		let sort = view.def().sort().to_vec();
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
 		Self {
@@ -233,7 +234,7 @@ impl SinkTableViewOperator {
 			} else {
 				self.clustered_key(source, row_idx, row_number)
 			};
-			remember_created_at(cache, row_number, encoded.created_at());
+			remember_created_at(cache, row_number, read_created_at(&encoded));
 			keys.push(key);
 			encoded_bytes_list.push(encoded);
 		}
@@ -308,7 +309,7 @@ impl SinkTableViewOperator {
 			if prior_created.is_none() {
 				prior_created = match txn.get(&post_key)? {
 					Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
-						let c = prior.created_at();
+						let c = read_created_at(&prior);
 						if !c.is_epoch() {
 							Some(c)
 						} else {
@@ -320,7 +321,7 @@ impl SinkTableViewOperator {
 				if prior_created.is_none() && pre_key.as_slice() != post_key.as_slice() {
 					prior_created = match txn.get(&pre_key)? {
 						Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
-							let c = prior.created_at();
+							let c = read_created_at(&prior);
 							if !c.is_epoch() {
 								Some(c)
 							} else {
@@ -334,14 +335,16 @@ impl SinkTableViewOperator {
 			if let Some(c) = prior_created
 				&& post_encoded.len() >= SHAPE_HEADER_SIZE
 			{
-				let updated = post_encoded.updated_at();
-				post_encoded.set_timestamps(c, updated);
+				let updated = shape.updated_at(&post_encoded);
+				let mut builder = EncodedTableRow::from(post_encoded).thaw();
+				builder.set_timestamps(c, updated);
+				post_encoded = builder.freeze_bytes();
 			}
 
 			if pre_row_number != post_row_number {
 				cache.remove(&pre_row_number);
 			}
-			remember_created_at(cache, post_row_number, post_encoded.created_at());
+			remember_created_at(cache, post_row_number, read_created_at(&post_encoded));
 
 			pre_keys.push(pre_key);
 			post_keys.push(post_key);
@@ -547,10 +550,10 @@ mod tests {
 		cmd.commit().unwrap();
 	}
 
-	fn stored_view_bytes(engine: &TestEngine, sink: &SinkTableViewOperator, rn: u64) -> EncodedBytes {
+	fn stored_view_bytes(engine: &TestEngine, sink: &SinkTableViewOperator, rn: u64) -> EncodedTableRow {
 		let key = sink.row_key(RowNumber(rn));
 		let query = engine.inner().multi().begin_query().unwrap();
-		query.get(&key).unwrap().expect("the view row must exist").bytes().clone()
+		EncodedTableRow::from(query.get(&key).unwrap().expect("the view row must exist").bytes().clone())
 	}
 
 	#[test]

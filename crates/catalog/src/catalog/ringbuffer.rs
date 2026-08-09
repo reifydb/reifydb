@@ -291,7 +291,7 @@ impl Catalog {
 		let ringbuffer = CatalogStore::create_ringbuffer(txn, to_create.into())?;
 		txn.track_ringbuffer_created(ringbuffer.clone())?;
 
-		let shape = row_shape_from_columns(ringbuffer.columns.as_slice());
+		let shape = row_shape_from_columns(RowFamily::RingBuffer, ringbuffer.columns.as_slice());
 		self.get_or_create_row_shape(
 			&mut Transaction::Admin(&mut *txn),
 			RowFamily::RingBuffer,
@@ -312,7 +312,7 @@ impl Catalog {
 			CatalogStore::create_ringbuffer_with_id(txn, ringbuffer_id, to_create.into(), column_ids)?;
 		txn.track_ringbuffer_created(ringbuffer.clone())?;
 
-		let shape = row_shape_from_columns(ringbuffer.columns.as_slice());
+		let shape = row_shape_from_columns(RowFamily::RingBuffer, ringbuffer.columns.as_slice());
 		self.get_or_create_row_shape(
 			&mut Transaction::Admin(&mut *txn),
 			RowFamily::RingBuffer,

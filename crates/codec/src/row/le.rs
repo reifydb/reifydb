@@ -3,11 +3,11 @@
 
 use reifydb_value::{encoding::RowField, reifydb_assertions};
 
-use crate::row::{bytes::EncodedRowBuilder, shape::RowShape};
+use crate::row::{bytes::RowBuilder, shape::RowShape};
 
 impl RowShape {
 	#[inline]
-	pub fn set<T: RowField>(&self, row: &mut EncodedRowBuilder, index: usize, value: T) {
+	pub fn set<T: RowField>(&self, row: &mut impl RowBuilder, index: usize, value: T) {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(

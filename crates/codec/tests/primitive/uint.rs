@@ -3,13 +3,13 @@
 
 use num_bigint::BigInt;
 use num_traits::Zero;
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::{uint::Uint, value_type::ValueType};
 
 #[test]
 fn test_u64_inline() {
-	let shape = RowShape::testing(&[ValueType::Uint]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+	let mut row = shape.allocate_pod();
 
 	let small = Uint::from(42u64);
 	shape.set_uint(&mut row, 0, &small);
@@ -18,7 +18,7 @@ fn test_u64_inline() {
 	let retrieved = shape.get_uint(&row, 0);
 	assert_eq!(retrieved, small);
 
-	let mut row2 = shape.allocate();
+	let mut row2 = shape.allocate_pod();
 	let large = Uint::from(999999999999u64);
 	shape.set_uint(&mut row2, 0, &large);
 	assert_eq!(shape.get_uint(&row2, 0), large);
@@ -26,8 +26,8 @@ fn test_u64_inline() {
 
 #[test]
 fn test_u128_boundary() {
-	let shape = RowShape::testing(&[ValueType::Uint]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+	let mut row = shape.allocate_pod();
 
 	// The top bit of the slot is the mode flag, so 2^127 - 1 is the largest value that can
 	// still be stored inline.
@@ -38,7 +38,7 @@ fn test_u128_boundary() {
 	let retrieved = shape.get_uint(&row, 0);
 	assert_eq!(retrieved, large);
 
-	let mut row2 = shape.allocate();
+	let mut row2 = shape.allocate_pod();
 	let max_u127 = Uint::from(u128::MAX >> 1); // 127 bits
 	shape.set_uint(&mut row2, 0, &max_u127);
 	assert_eq!(shape.get_uint(&row2, 0), max_u127);
@@ -46,8 +46,8 @@ fn test_u128_boundary() {
 
 #[test]
 fn test_dynamic_storage() {
-	let shape = RowShape::testing(&[ValueType::Uint]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+	let mut row = shape.allocate_pod();
 
 	// Past 2^127, so the value is stored as little-endian magnitude bytes in the dynamic
 	// section instead of the fixed slot.
@@ -64,8 +64,8 @@ fn test_dynamic_storage() {
 
 #[test]
 fn test_zero() {
-	let shape = RowShape::testing(&[ValueType::Uint]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+	let mut row = shape.allocate_pod();
 
 	let zero = Uint::from(0);
 	shape.set_uint(&mut row, 0, &zero);
@@ -77,8 +77,8 @@ fn test_zero() {
 
 #[test]
 fn test_try_get() {
-	let shape = RowShape::testing(&[ValueType::Uint]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+	let mut row = shape.allocate_pod();
 
 	assert_eq!(shape.try_get_uint(&row, 0), None);
 
@@ -89,8 +89,8 @@ fn test_try_get() {
 
 #[test]
 fn test_clone_on_write() {
-	let shape = RowShape::testing(&[ValueType::Uint]);
-	let row1 = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+	let row1 = shape.allocate_pod();
 	let mut row2 = row1.clone();
 
 	let value = Uint::from(999999999999999u64);
@@ -104,14 +104,11 @@ fn test_clone_on_write() {
 
 #[test]
 fn test_multiple_fields() {
-	let shape = RowShape::testing(&[
-		ValueType::Boolean,
-		ValueType::Uint,
-		ValueType::Utf8,
-		ValueType::Uint,
-		ValueType::Int4,
-	]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Boolean, ValueType::Uint, ValueType::Utf8, ValueType::Uint, ValueType::Int4],
+	);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 
@@ -134,11 +131,11 @@ fn test_multiple_fields() {
 
 #[test]
 fn test_negative_input_handling() {
-	let shape = RowShape::testing(&[ValueType::Uint]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
 
 	// Uint wraps a signed BigInt, so a negative can be constructed; the encoder converts it
 	// to zero rather than failing or storing a wrapped magnitude.
-	let mut row1 = shape.allocate();
+	let mut row1 = shape.allocate_pod();
 	let negative = Uint::from(-42);
 	shape.set_uint(&mut row1, 0, &negative);
 
@@ -148,8 +145,8 @@ fn test_negative_input_handling() {
 
 #[test]
 fn test_try_get_uint_wrong_type() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 
@@ -158,8 +155,8 @@ fn test_try_get_uint_wrong_type() {
 
 #[test]
 fn test_update_uint_inline_to_inline() {
-	let shape = RowShape::testing(&[ValueType::Uint]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_uint(&mut row, 0, &Uint::from(42u64));
 	assert_eq!(shape.get_uint(&row, 0), Uint::from(42u64));
@@ -170,8 +167,8 @@ fn test_update_uint_inline_to_inline() {
 
 #[test]
 fn test_update_uint_inline_to_dynamic() {
-	let shape = RowShape::testing(&[ValueType::Uint]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_uint(&mut row, 0, &Uint::from(42u64));
 
@@ -182,8 +179,8 @@ fn test_update_uint_inline_to_dynamic() {
 
 #[test]
 fn test_update_uint_dynamic_to_inline() {
-	let shape = RowShape::testing(&[ValueType::Uint]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint]);
+	let mut row = shape.allocate_pod();
 
 	let huge = Uint::from(BigInt::parse_bytes(b"999999999999999999999999999999999999999999999999", 10).unwrap());
 	shape.set_uint(&mut row, 0, &huge);
@@ -195,8 +192,8 @@ fn test_update_uint_dynamic_to_inline() {
 
 #[test]
 fn test_update_uint_with_other_dynamic_fields() {
-	let shape = RowShape::testing(&[ValueType::Uint, ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uint, ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 
 	let huge = Uint::from(BigInt::parse_bytes(b"999999999999999999999999999999999999999999999999", 10).unwrap());
 	shape.set_uint(&mut row, 0, &huge);

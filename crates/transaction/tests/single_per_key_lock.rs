@@ -6,7 +6,10 @@ use std::{
 	thread,
 };
 
-use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowShape};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::shape::{RowFamily, RowShape},
+};
 use reifydb_core::event::EventBus;
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 use reifydb_store_single::SingleStore;
@@ -14,7 +17,7 @@ use reifydb_transaction::single::SingleTransaction;
 use reifydb_value::value::value_type::ValueType;
 
 fn u64_shape() -> RowShape {
-	RowShape::testing(&[ValueType::Uint8])
+	RowShape::testing(RowFamily::Pod, &[ValueType::Uint8])
 }
 
 #[test]
@@ -48,7 +51,7 @@ fn concurrent_read_modify_write_on_a_fresh_key_is_serialized() {
 							Some(existing) => shape.get::<u64>(&existing.bytes, 0),
 							None => 0,
 						};
-						let mut row = shape.allocate();
+						let mut row = shape.allocate_pod();
 						shape.set::<u64>(&mut row, 0, current + 1);
 						tx.set(&key, row.freeze())
 					})

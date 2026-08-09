@@ -104,7 +104,7 @@ impl CatalogStore {
 				0
 			},
 		);
-		write_time_source(&table::SHAPE, row.builder_mut(), table::TIME_DOMAIN, table::TS, &to_create.time);
+		write_time_source(&table::SHAPE, &mut row, table::TIME_DOMAIN, table::TS, &to_create.time);
 
 		txn.set(&TableKey::encoded(table), row.freeze())?;
 

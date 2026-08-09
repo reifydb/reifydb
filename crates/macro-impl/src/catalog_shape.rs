@@ -153,7 +153,7 @@ pub fn catalog_shape(input: TokenStream) -> TokenStream {
 						SHAPE.get::<#ty>(row.as_slice(), #index)
 					}
 					#vis fn #setter(row: &mut ::reifydb_codec::row::catalog::EncodedCatalogRowBuilder, value: #ty) {
-						SHAPE.set::<#ty>(row.builder_mut(), #index, value)
+						SHAPE.set::<#ty>(row, #index, value)
 					}
 				},
 				FieldKind::Utf8 => quote! {
@@ -164,7 +164,7 @@ pub fn catalog_shape(input: TokenStream) -> TokenStream {
 						row: &mut ::reifydb_codec::row::catalog::EncodedCatalogRowBuilder,
 						value: impl AsRef<str>,
 					) {
-						SHAPE.set_utf8(row.builder_mut(), #index, value)
+						SHAPE.set_utf8(row, #index, value)
 					}
 				},
 				FieldKind::Blob => quote! {
@@ -175,7 +175,7 @@ pub fn catalog_shape(input: TokenStream) -> TokenStream {
 						row: &mut ::reifydb_codec::row::catalog::EncodedCatalogRowBuilder,
 						value: &::reifydb_value::value::blob::Blob,
 					) {
-						SHAPE.set_blob(row.builder_mut(), #index, value)
+						SHAPE.set_blob(row, #index, value)
 					}
 				},
 				FieldKind::Any => quote! {
@@ -186,7 +186,7 @@ pub fn catalog_shape(input: TokenStream) -> TokenStream {
 						row: &mut ::reifydb_codec::row::catalog::EncodedCatalogRowBuilder,
 						value: &::reifydb_value::value::Value,
 					) {
-						SHAPE.set_value(row.builder_mut(), #index, value)
+						SHAPE.set_value(row, #index, value)
 					}
 				},
 			};
@@ -213,7 +213,7 @@ pub fn catalog_shape(input: TokenStream) -> TokenStream {
 				#core
 				#optional_reads
 				#vis fn #none_setter(row: &mut ::reifydb_codec::row::catalog::EncodedCatalogRowBuilder) {
-					SHAPE.set_none(row.builder_mut(), #index)
+					SHAPE.set_none(row, #index)
 				}
 			}
 		});

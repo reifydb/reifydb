@@ -3,7 +3,10 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
+use reifydb_codec::row::{
+	bytes::{EncodedBytes, RowBuilder},
+	shape::RowShape,
+};
 use reifydb_core::{
 	error::diagnostic::catalog::{namespace_not_found, ringbuffer_not_found},
 	interface::{
@@ -270,7 +273,7 @@ fn build_insert_ringbuffer_row(
 	context: &Arc<QueryContext>,
 	row_idx: usize,
 ) -> Result<(EncodedBytes, Vec<Value>)> {
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_ringbuffer();
 	let mut row_values: Vec<Value> = Vec::with_capacity(target.ringbuffer.columns.len());
 
 	for (rb_idx, rb_column) in target.ringbuffer.columns.iter().enumerate() {
@@ -324,7 +327,7 @@ fn build_insert_ringbuffer_row(
 	)? {
 		row.set_time(time);
 	}
-	Ok((row.freeze(), row_values))
+	Ok((row.freeze_bytes(), row_values))
 }
 
 #[inline]

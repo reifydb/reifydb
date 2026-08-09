@@ -7,7 +7,7 @@ use reifydb_abi::{context::context::ContextFFI, operator::timer::TimerKind};
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
-		bytes::EncodedBytes,
+		bytes::{EncodedBytes, read_fingerprint},
 		operator::{EncodedOperatorRow, OperatorState},
 		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
@@ -138,7 +138,7 @@ impl FFIOperatorContext {
 	}
 
 	pub fn shape_for_bytes(&mut self, bytes: &EncodedBytes) -> Result<RowShape> {
-		let fingerprint = bytes.fingerprint();
+		let fingerprint = read_fingerprint(bytes);
 		match self.row_shape().find_row_shape(fingerprint)? {
 			Some(shape) => Ok(shape),
 			None => Err(SdkError::Other(format!(

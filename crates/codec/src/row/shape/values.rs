@@ -18,10 +18,10 @@ use reifydb_value::{
 };
 
 use super::RowShape;
-use crate::row::bytes::EncodedRowBuilder;
+use crate::row::bytes::RowBuilder;
 
 impl RowShape {
-	pub fn set_values(&self, row: &mut EncodedRowBuilder, values: &[Value]) {
+	pub fn set_values(&self, row: &mut impl RowBuilder, values: &[Value]) {
 		reifydb_assertions! {
 			assert!(values.len() == self.fields().len());
 		}
@@ -30,7 +30,7 @@ impl RowShape {
 		}
 	}
 
-	pub fn set_value(&self, row: &mut EncodedRowBuilder, index: usize, val: &Value) {
+	pub fn set_value(&self, row: &mut impl RowBuilder, index: usize, val: &Value) {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(

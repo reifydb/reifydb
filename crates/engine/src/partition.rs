@@ -21,9 +21,8 @@ use reifydb_value::value::{Value, blob::Blob, partition::Partition, row_number::
 
 use crate::{Result, error::EngineError};
 
-static REGISTRY_SHAPE: LazyLock<RowShape> = LazyLock::new(|| {
-	RowShape::new(RowFamily::Deprecated, vec![RowShapeField::unconstrained("values", ValueType::Blob)])
-});
+static REGISTRY_SHAPE: LazyLock<RowShape> =
+	LazyLock::new(|| RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("values", ValueType::Blob)]));
 
 pub fn partition_col_indices(columns: &[Column], partition_by: &[String]) -> Vec<usize> {
 	partition_by
@@ -87,7 +86,7 @@ pub fn resolve_partition(
 			}
 		}
 		None => {
-			let mut row = REGISTRY_SHAPE.allocate();
+			let mut row = REGISTRY_SHAPE.allocate_pod();
 			REGISTRY_SHAPE.set_value(&mut row, 0, &candidate);
 			txn.set(&key, row.freeze())?;
 		}

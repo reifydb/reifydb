@@ -173,7 +173,7 @@ impl ReplayModel {
 	}
 
 	fn observe(&mut self, row: &Row) {
-		if let Some(at) = row.encoded.time().map(|time| time.to_epoch_millis()).filter(|&ms| ms > 0) {
+		if let Some(at) = row.shape.time(&row.encoded).map(|time| time.to_epoch_millis()).filter(|&ms| ms > 0) {
 			self.drain_floor_ms = self.drain_floor_ms.max(at as u64);
 		}
 	}
@@ -342,7 +342,7 @@ mod tests {
 
 	fn shape(fields: &[(&str, ValueType)]) -> RowShape {
 		RowShape::new(
-			RowFamily::Deprecated,
+			RowFamily::Table,
 			fields.iter().map(|(n, t)| RowShapeField::unconstrained(*n, t.clone())).collect(),
 		)
 	}

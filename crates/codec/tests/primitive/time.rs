@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::{time::Time, value_type::ValueType};
 
 #[test]
 fn test_set_get_time() {
-	let shape = RowShape::testing(&[ValueType::Time]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Time]);
+	let mut row = shape.allocate_pod();
 
 	let value = Time::new(20, 50, 0, 0).unwrap();
 	shape.set::<Time>(&mut row, 0, value.clone());
@@ -16,8 +16,8 @@ fn test_set_get_time() {
 
 #[test]
 fn test_try_get_time() {
-	let shape = RowShape::testing(&[ValueType::Time]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Time]);
+	let mut row = shape.allocate_pod();
 
 	assert_eq!(shape.try_get::<Time>(&row, 0), None);
 
@@ -28,8 +28,8 @@ fn test_try_get_time() {
 
 #[test]
 fn test_time_midnight() {
-	let shape = RowShape::testing(&[ValueType::Time]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Time]);
+	let mut row = shape.allocate_pod();
 
 	let midnight = Time::default(); // 00:00:00
 	shape.set::<Time>(&mut row, 0, midnight.clone());
@@ -38,8 +38,8 @@ fn test_time_midnight() {
 
 #[test]
 fn test_time_with_nanoseconds() {
-	let shape = RowShape::testing(&[ValueType::Time]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Time]);
+	let mut row = shape.allocate_pod();
 
 	let precise_time = Time::new(15, 30, 45, 123456789).unwrap();
 	shape.set::<Time>(&mut row, 0, precise_time.clone());
@@ -48,7 +48,7 @@ fn test_time_with_nanoseconds() {
 
 #[test]
 fn test_time_various_times() {
-	let shape = RowShape::testing(&[ValueType::Time]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Time]);
 
 	let test_times = [
 		Time::new(0, 0, 0, 0).unwrap(),            // Midnight
@@ -59,7 +59,7 @@ fn test_time_various_times() {
 	];
 
 	for time in test_times {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<Time>(&mut row, 0, time.clone());
 		assert_eq!(shape.get::<Time>(&row, 0), time);
 	}
@@ -67,7 +67,7 @@ fn test_time_various_times() {
 
 #[test]
 fn test_time_boundary_cases() {
-	let shape = RowShape::testing(&[ValueType::Time]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Time]);
 
 	let boundary_times = [
 		Time::new(0, 0, 0, 0).unwrap(), // Start of day
@@ -78,7 +78,7 @@ fn test_time_boundary_cases() {
 	];
 
 	for time in boundary_times {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<Time>(&mut row, 0, time.clone());
 		assert_eq!(shape.get::<Time>(&row, 0), time);
 	}
@@ -86,8 +86,11 @@ fn test_time_boundary_cases() {
 
 #[test]
 fn test_time_mixed_with_other_types() {
-	let shape = RowShape::testing(&[ValueType::Time, ValueType::Boolean, ValueType::Time, ValueType::Int4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Time, ValueType::Boolean, ValueType::Time, ValueType::Int4],
+	);
+	let mut row = shape.allocate_pod();
 
 	let time1 = Time::new(9, 15, 30, 0).unwrap();
 	let time2 = Time::new(21, 45, 0, 250000000).unwrap();
@@ -105,8 +108,8 @@ fn test_time_mixed_with_other_types() {
 
 #[test]
 fn test_time_undefined_handling() {
-	let shape = RowShape::testing(&[ValueType::Time, ValueType::Time]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Time, ValueType::Time]);
+	let mut row = shape.allocate_pod();
 
 	let time = Time::new(16, 20, 45, 333000000).unwrap();
 	shape.set::<Time>(&mut row, 0, time.clone());
@@ -120,8 +123,8 @@ fn test_time_undefined_handling() {
 
 #[test]
 fn test_time_precision_preservation() {
-	let shape = RowShape::testing(&[ValueType::Time]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Time]);
+	let mut row = shape.allocate_pod();
 
 	// The slot holds nanos since midnight, so no sub-second digit may be rounded away.
 	let high_precision = Time::new(12, 34, 56, 987654321).unwrap();
@@ -134,8 +137,8 @@ fn test_time_precision_preservation() {
 
 #[test]
 fn test_time_microsecond_precision() {
-	let shape = RowShape::testing(&[ValueType::Time]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Time]);
+	let mut row = shape.allocate_pod();
 
 	let microsecond_precision = Time::new(14, 25, 30, 123456000).unwrap();
 	shape.set::<Time>(&mut row, 0, microsecond_precision.clone());
@@ -144,8 +147,8 @@ fn test_time_microsecond_precision() {
 
 #[test]
 fn test_time_millisecond_precision() {
-	let shape = RowShape::testing(&[ValueType::Time]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Time]);
+	let mut row = shape.allocate_pod();
 
 	let millisecond_precision = Time::new(8, 15, 42, 123000000).unwrap();
 	shape.set::<Time>(&mut row, 0, millisecond_precision.clone());
@@ -154,7 +157,7 @@ fn test_time_millisecond_precision() {
 
 #[test]
 fn test_time_common_times() {
-	let shape = RowShape::testing(&[ValueType::Time]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Time]);
 
 	let common_times = [
 		Time::new(9, 0, 0, 0).unwrap(),   // 9 AM start of work
@@ -165,7 +168,7 @@ fn test_time_common_times() {
 	];
 
 	for time in common_times {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<Time>(&mut row, 0, time.clone());
 		assert_eq!(shape.get::<Time>(&row, 0), time);
 	}
@@ -173,8 +176,8 @@ fn test_time_common_times() {
 
 #[test]
 fn test_try_get_time_wrong_type() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 

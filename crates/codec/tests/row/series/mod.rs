@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::{
-	bytes::SHAPE_HEADER_SIZE,
+	bytes::{RowBuilder, SHAPE_HEADER_SIZE},
 	series::EncodedSeriesRow,
 	shape::{RowFamily, RowShape, RowShapeField},
 };
@@ -29,11 +29,11 @@ fn the_series_header_is_the_full_source_header() {
 fn the_typed_view_reads_the_stamps_the_builder_wrote() {
 	// The stamps are adjacent 8-byte slots, so swapped offsets round trip undetected unless the values differ.
 	let shape = shape();
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_series();
 	row.set_timestamps(DateTime::from_millis(111), DateTime::from_millis(222));
 	row.set_time(DateTime::from_millis(333));
 
-	let frozen = row.freeze();
+	let frozen = row.freeze_bytes();
 	let typed = EncodedSeriesRow::view(&frozen);
 
 	assert_eq!(typed.created_at(), DateTime::from_millis(111));
@@ -46,11 +46,11 @@ fn the_typed_view_reads_the_stamps_the_builder_wrote() {
 fn the_key_in_field_zero_and_the_same_instant_in_time_stay_independent() {
 	// A series writes its key into field 0 and again into #time, which must never share a slot.
 	let shape = shape();
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_series();
 	shape.set::<i64>(&mut row, 0, 1_700_000_000_000);
 	row.set_time(DateTime::from_millis(1_700_000_000_000));
 
-	let frozen = row.freeze();
+	let frozen = row.freeze_bytes();
 
 	assert_eq!(shape.get::<i64>(&frozen, 0), 1_700_000_000_000);
 	assert_eq!(EncodedSeriesRow::view(&frozen).time(), Some(DateTime::from_millis(1_700_000_000_000)));
@@ -60,10 +60,10 @@ fn the_key_in_field_zero_and_the_same_instant_in_time_stay_independent() {
 fn the_typed_definedness_agrees_with_the_shape() {
 	// A header width disagreeing with the shape's reads a field byte as a validity bit.
 	let shape = shape();
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_series();
 	shape.set::<i32>(&mut row, 1, 9);
 
-	let frozen = row.freeze();
+	let frozen = row.freeze_bytes();
 	let typed = EncodedSeriesRow::view(&frozen);
 
 	for index in 0..shape.field_count() {
@@ -77,10 +77,10 @@ fn the_typed_definedness_agrees_with_the_shape() {
 fn the_body_begins_where_the_bitvec_begins() {
 	// body() slices at its own constant, so a wrong one hands out header bytes as row content.
 	let shape = shape();
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_series();
 	shape.set::<i64>(&mut row, 0, 7);
 
-	let frozen = row.freeze();
+	let frozen = row.freeze_bytes();
 	let typed = EncodedSeriesRow::view(&frozen);
 
 	assert_eq!(typed.body().len(), frozen.len() - SHAPE_HEADER_SIZE);

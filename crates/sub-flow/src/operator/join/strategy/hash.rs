@@ -27,7 +27,7 @@ use reifydb_value::{
 };
 use tracing::{Span, instrument};
 
-use crate::operator::join::{Identity, operator::JoinOperator, state::JoinSide, store::Store};
+use crate::operator::join::{Identity, operator::JoinOperator, row::JoinStateRow, state::JoinSide, store::Store};
 
 #[cfg(test)]
 mod tests {
@@ -119,20 +119,17 @@ pub(crate) fn build_shape(columns: &Columns) -> RowShape {
 		.zip(columns.columns.iter())
 		.map(|(name, buf)| RowShapeField::unconstrained(name.text().to_string(), buf.get_type()))
 		.collect();
-	RowShape::new(RowFamily::Deprecated, fields)
+	RowShape::new(RowFamily::Pod, fields)
 }
 
 pub(crate) fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize, now: DateTime) -> EncodedOperatorRow {
 	let values: Vec<Value> = columns.columns.iter().map(|buf| buf.get_value(row_idx)).collect();
-	let mut encoded = shape.allocate();
+	let mut encoded = shape.allocate_pod();
 	shape.set_values(&mut encoded, &values);
 	let at = columns.time().get(row_idx).copied();
 	let stamp = at.unwrap_or(now);
-	encoded.set_timestamps(stamp, stamp);
-	if let Some(at) = at {
-		encoded.set_time(at);
-	}
-	EncodedOperatorRow::new(encoded.freeze().as_slice(), stamp)
+	let body = JoinStateRow::new(encoded.freeze().as_slice(), shape.fingerprint(), stamp, at);
+	EncodedOperatorRow::new(body.as_slice(), stamp)
 }
 
 #[instrument(name = "flow::operator::join::add_state_entry", level = "trace", skip_all)]
@@ -238,7 +235,15 @@ fn decode_run(
 	let shape = store
 		.get_row_shape(txn, fingerprint)?
 		.ok_or_else(|| Error(Box::new(internal!("Row shape not found in store"))))?;
-	Ok(Columns::from_encoded_bytes(&shape, ids, bytes_slice))
+	let rows: Vec<&JoinStateRow> = bytes_slice.iter().map(JoinStateRow::view).collect();
+	let bodies: Vec<EncodedBytes> = rows.iter().map(|row| row.body_bytes()).collect();
+
+	let mut decoded = Columns::from_encoded_bytes(&shape, ids, &bodies);
+	let stamps: Vec<DateTime> = rows.iter().map(|row| row.stamp()).collect();
+	let time: Vec<DateTime> = rows.iter().filter_map(|row| row.time()).collect();
+	decoded.system = SystemColumns::new(ids.to_vec(), Vec::new(), stamps.clone(), stamps, time);
+
+	Ok(decoded)
 }
 
 #[instrument(name = "flow::operator::join::merge_runs", level = "trace", skip_all, fields(runs = runs.len()))]
@@ -298,7 +303,7 @@ pub(crate) fn columns_from_block(
 	let mut run: Vec<EncodedBytes> = Vec::new();
 
 	for (id, row) in block {
-		let fingerprint = row.fingerprint();
+		let fingerprint = JoinStateRow::view(&row).fingerprint();
 		if run_fingerprint.is_some_and(|current| current != fingerprint) {
 			runs.push(decode_run(txn, store, run_fingerprint.unwrap(), &run_ids, &run)?);
 			run_ids.clear();

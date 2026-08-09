@@ -89,9 +89,9 @@ fn value_codec_and_rbcf_any_column_round_trip_identically() {
 fn value_codec_and_row_any_field_round_trip_identically() {
 	use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 
-	let shape = RowShape::new(RowFamily::Deprecated, vec![RowShapeField::unconstrained("v", ValueType::Any)]);
+	let shape = RowShape::new(RowFamily::Table, vec![RowShapeField::unconstrained("v", ValueType::Any)]);
 	for value in cross_codec_values() {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_table();
 		let wrapped = Value::Any(Box::new(value.clone()));
 		shape.set_value(&mut row, 0, &wrapped);
 		let read = shape.get_value(&row, 0);

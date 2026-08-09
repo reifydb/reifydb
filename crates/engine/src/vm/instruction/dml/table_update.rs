@@ -6,10 +6,10 @@ use std::sync::Arc;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
-		bytes::{EncodedBytes, EncodedRowBuilder},
+		bytes::EncodedBytes,
 		pod::EncodedPodRow,
 		shape::RowShape,
-		table::EncodedTableRow,
+		table::{EncodedTableRow, EncodedTableRowBuilder},
 	},
 };
 use reifydb_core::{
@@ -183,7 +183,7 @@ fn run_table_update(
 		let sidecar_partitions: Vec<Partition> = columns.partitions().to_vec();
 		let row_count = columns.row_count();
 
-		let mut prepared_rows: Vec<EncodedRowBuilder> = Vec::with_capacity(row_count);
+		let mut prepared_rows: Vec<EncodedTableRowBuilder> = Vec::with_capacity(row_count);
 		let mut partitions_out: Vec<Partition> = Vec::with_capacity(row_count);
 		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
 			let mut row = build_updated_table_row(
@@ -254,8 +254,8 @@ fn build_updated_table_row(
 	columns: &Columns,
 	context: &QueryContext,
 	row_idx: usize,
-) -> Result<EncodedRowBuilder> {
-	let mut row = shape.allocate();
+) -> Result<EncodedTableRowBuilder> {
+	let mut row = shape.allocate_table();
 	for (table_idx, table_column) in table.columns.iter().enumerate() {
 		let mut value = if let Some(input_column) = columns.iter().find(|col| col.name() == table_column.name) {
 			input_column.data().get_value(row_idx)

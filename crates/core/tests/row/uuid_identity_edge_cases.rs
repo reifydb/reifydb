@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 	rng::Rng,
@@ -24,14 +24,14 @@ fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 #[test]
 fn test_uuid_uniqueness() {
 	let (mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Uuid4, ValueType::Uuid7, ValueType::IdentityId]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid4, ValueType::Uuid7, ValueType::IdentityId]);
 
 	let mut uuid4_set = HashSet::new();
 	let mut uuid7_set = HashSet::new();
 	let mut identity_set = HashSet::new();
 
 	for _ in 0..1000 {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 
 		let uuid4 = Uuid4::generate();
 		let uuid7 = Uuid7::generate(&clock, &rng);
@@ -55,11 +55,11 @@ fn test_uuid_uniqueness() {
 #[test]
 fn test_uuid7_timestamp_ordering() {
 	let (mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::Uuid7]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid7]);
 
 	let mut uuids = Vec::new();
 	for _ in 0..10 {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		let uuid = Uuid7::generate(&clock, &rng);
 		shape.set::<Uuid7>(&mut row, 0, uuid);
 		uuids.push(shape.get::<Uuid7>(&row, 0));

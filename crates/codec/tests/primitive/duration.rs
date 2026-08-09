@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::{duration::Duration, value_type::ValueType};
 
 #[test]
 fn test_set_get_duration() {
-	let shape = RowShape::testing(&[ValueType::Duration]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Duration]);
+	let mut row = shape.allocate_pod();
 
 	let value = Duration::from_seconds(-7200).unwrap();
 	shape.set::<Duration>(&mut row, 0, value.clone());
@@ -16,8 +16,8 @@ fn test_set_get_duration() {
 
 #[test]
 fn test_try_get_duration() {
-	let shape = RowShape::testing(&[ValueType::Duration]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Duration]);
+	let mut row = shape.allocate_pod();
 
 	assert_eq!(shape.try_get::<Duration>(&row, 0), None);
 
@@ -28,8 +28,8 @@ fn test_try_get_duration() {
 
 #[test]
 fn test_zero() {
-	let shape = RowShape::testing(&[ValueType::Duration]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Duration]);
+	let mut row = shape.allocate_pod();
 
 	let zero = Duration::default(); // Zero duration
 	shape.set::<Duration>(&mut row, 0, zero.clone());
@@ -38,7 +38,7 @@ fn test_zero() {
 
 #[test]
 fn test_various_durations() {
-	let shape = RowShape::testing(&[ValueType::Duration]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Duration]);
 
 	let test_durations = [
 		Duration::from_seconds(0).unwrap(),     // Zero
@@ -51,7 +51,7 @@ fn test_various_durations() {
 	];
 
 	for duration in test_durations {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<Duration>(&mut row, 0, duration.clone());
 		assert_eq!(shape.get::<Duration>(&row, 0), duration);
 	}
@@ -59,7 +59,7 @@ fn test_various_durations() {
 
 #[test]
 fn test_negative_durations() {
-	let shape = RowShape::testing(&[ValueType::Duration]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Duration]);
 
 	let negative_durations = [
 		Duration::from_seconds(-60).unwrap(),    // -1 minute
@@ -70,7 +70,7 @@ fn test_negative_durations() {
 	];
 
 	for duration in negative_durations {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<Duration>(&mut row, 0, duration.clone());
 		assert_eq!(shape.get::<Duration>(&row, 0), duration);
 	}
@@ -78,8 +78,8 @@ fn test_negative_durations() {
 
 #[test]
 fn test_complex_parts() {
-	let shape = RowShape::testing(&[ValueType::Duration]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Duration]);
+	let mut row = shape.allocate_pod();
 
 	// All three components non-zero, so a wrong field offset shows up as a swap.
 	let complex_duration = Duration::new(
@@ -94,8 +94,11 @@ fn test_complex_parts() {
 
 #[test]
 fn test_mixed_with_other_types() {
-	let shape = RowShape::testing(&[ValueType::Duration, ValueType::Boolean, ValueType::Duration, ValueType::Int8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Duration, ValueType::Boolean, ValueType::Duration, ValueType::Int8],
+	);
+	let mut row = shape.allocate_pod();
 
 	let duration1 = Duration::from_hours(24).unwrap();
 	let duration2 = Duration::from_minutes(-30).unwrap();
@@ -113,8 +116,8 @@ fn test_mixed_with_other_types() {
 
 #[test]
 fn test_undefined_handling() {
-	let shape = RowShape::testing(&[ValueType::Duration, ValueType::Duration]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Duration, ValueType::Duration]);
+	let mut row = shape.allocate_pod();
 
 	let duration = Duration::from_days(100).unwrap();
 	shape.set::<Duration>(&mut row, 0, duration.clone());
@@ -128,8 +131,8 @@ fn test_undefined_handling() {
 
 #[test]
 fn test_large_values() {
-	let shape = RowShape::testing(&[ValueType::Duration]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Duration]);
+	let mut row = shape.allocate_pod();
 
 	let large_duration = Duration::new(
 		120,             // 10 years in months
@@ -143,8 +146,8 @@ fn test_large_values() {
 
 #[test]
 fn test_precision_preservation() {
-	let shape = RowShape::testing(&[ValueType::Duration]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Duration]);
+	let mut row = shape.allocate_pod();
 
 	let precise_duration = Duration::new(
 		5,         // 5 months
@@ -170,7 +173,7 @@ fn test_precision_preservation() {
 
 #[test]
 fn test_common_durations() {
-	let shape = RowShape::testing(&[ValueType::Duration]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Duration]);
 
 	let common_durations = [
 		Duration::from_seconds(1).unwrap(),  // 1 second
@@ -185,7 +188,7 @@ fn test_common_durations() {
 	];
 
 	for duration in common_durations {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<Duration>(&mut row, 0, duration.clone());
 		assert_eq!(shape.get::<Duration>(&row, 0), duration);
 	}
@@ -193,7 +196,7 @@ fn test_common_durations() {
 
 #[test]
 fn test_boundary_values() {
-	let shape = RowShape::testing(&[ValueType::Duration]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Duration]);
 
 	// The extremes of each component's own width, which is where a narrowed field truncates.
 	let boundary_durations = [
@@ -206,7 +209,7 @@ fn test_boundary_values() {
 	];
 
 	for duration in boundary_durations {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<Duration>(&mut row, 0, duration.clone());
 		assert_eq!(shape.get::<Duration>(&row, 0), duration);
 	}
@@ -214,8 +217,8 @@ fn test_boundary_values() {
 
 #[test]
 fn test_try_get_duration_wrong_type() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 

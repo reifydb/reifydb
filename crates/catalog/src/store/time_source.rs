@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::{bytes::EncodedRowBuilder, shape::RowShape};
+use reifydb_codec::row::{bytes::RowBuilder, shape::RowShape};
 use reifydb_core::common::{TimeDomain, TimeSource};
 
 pub(crate) fn write_time_source(
 	shape: &RowShape,
-	row: &mut EncodedRowBuilder,
+	row: &mut impl RowBuilder,
 	domain_index: usize,
 	ts_index: usize,
 	time: &TimeSource,
@@ -54,7 +54,7 @@ mod tests {
 
 	fn round_trip(time: &TimeSource) -> TimeSource {
 		let shape = shape();
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_catalog();
 		write_time_source(&shape, &mut row, DOMAIN, TS, time);
 		read_time_source(&shape, &row, DOMAIN, TS)
 	}
@@ -89,7 +89,7 @@ mod tests {
 		// undeclared object is none. Reading it as Processing instead would resurrect the wall
 		// clock stamping this redesign removes.
 		let shape = shape();
-		let row = shape.allocate();
+		let row = shape.allocate_catalog();
 
 		assert_eq!(read_time_source(&shape, &row, DOMAIN, TS), TimeSource::None);
 	}
@@ -100,7 +100,7 @@ mod tests {
 		// the arrival clock. None withholds #time instead, which is the failure this design
 		// prefers: a missing stamp is visible, a wall-clock stamp is not.
 		let shape = shape();
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_catalog();
 		shape.set::<u8>(&mut row, DOMAIN, TimeDomain::Event.to_u8());
 		shape.set_none(&mut row, TS);
 
@@ -134,7 +134,7 @@ mod tests {
 		// The domain and ts fields are appended after every existing field of each object's shape,
 		// so an encoding that overran would corrupt the column immediately before them.
 		let shape = shape();
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_catalog();
 		shape.set_utf8(&mut row, 0, "trades");
 
 		write_time_source(

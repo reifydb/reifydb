@@ -30,7 +30,6 @@ pub mod change;
 pub mod error;
 pub mod interceptor;
 pub mod metrics;
-pub mod object;
 pub mod store;
 pub mod system;
 pub mod test_utils;

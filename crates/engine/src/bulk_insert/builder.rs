@@ -7,7 +7,10 @@ use reifydb_catalog::{
 	catalog::Catalog,
 	error::{CatalogError, CatalogObjectKind},
 };
-use reifydb_codec::row::{bytes::EncodedRowBuilder, pod::EncodedPodRow, shape::RowShape};
+use reifydb_codec::row::{
+	bytes::RowBuilder, pod::EncodedPodRow, series::EncodedSeriesRowBuilder, shape::RowShape,
+	table::EncodedTableRowBuilder,
+};
 use reifydb_core::{
 	error::CoreError,
 	interface::catalog::{
@@ -255,7 +258,7 @@ fn write_table_rows(
 	table: &Table,
 	shape: &RowShape,
 	pending: &PendingTableInsert,
-	encoded_bytes_list: Vec<EncodedRowBuilder>,
+	encoded_bytes_list: Vec<EncodedTableRowBuilder>,
 ) -> Result<TableInsertResult> {
 	let total_rows = encoded_bytes_list.len();
 	let row_numbers = catalog.next_row_number_batch(txn, table.id, total_rows as u64)?;
@@ -305,7 +308,7 @@ fn encode_table_rows<V: ValidationMode>(
 	table: &Table,
 	shape: &RowShape,
 	clock: &Clock,
-) -> Result<Vec<EncodedRowBuilder>> {
+) -> Result<Vec<EncodedTableRowBuilder>> {
 	let coerced_rows = coerce_table_rows::<V>(&pending.rows, table)?;
 	let mut encoded_bytes_list = Vec::with_capacity(coerced_rows.len());
 	for values in coerced_rows {
@@ -331,7 +334,7 @@ fn prepare_table_row<V: ValidationMode>(
 	shape: &RowShape,
 	clock: &Clock,
 	mut values: Vec<Value>,
-) -> Result<EncodedRowBuilder> {
+) -> Result<EncodedTableRowBuilder> {
 	fill_auto_increment_table(catalog, txn, table, &mut values)?;
 	dictionary_encode_table(catalog, txn, table, &mut values)?;
 	if V::VALIDATED {
@@ -385,8 +388,8 @@ fn dictionary_encode_table(
 	Ok(())
 }
 
-fn encode_row(table: &Table, shape: &RowShape, values: &[Value], clock: &Clock) -> Result<EncodedRowBuilder> {
-	let mut row = shape.allocate();
+fn encode_row(table: &Table, shape: &RowShape, values: &[Value], clock: &Clock) -> Result<EncodedTableRowBuilder> {
+	let mut row = shape.allocate_table();
 	for (idx, value) in values.iter().enumerate() {
 		shape.set_value(&mut row, idx, value);
 	}
@@ -507,7 +510,7 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 			Some(Partition::of(&partition_key))
 		};
 
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_ringbuffer();
 		for (idx, value) in values.iter().enumerate() {
 			shape.set_value(&mut row, idx, value);
 		}
@@ -527,7 +530,7 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 		}
 
 		let row_number = catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
-		txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row.freeze())?;
+		txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row.freeze_bytes())?;
 
 		if metadata.is_empty() {
 			metadata.head = row_number.0;
@@ -781,7 +784,7 @@ fn insert_series_rows<V: ValidationMode>(
 		let mut rows_buf = [row];
 		SeriesRowInterceptor::pre_insert(txn, series, &mut rows_buf)?;
 		let [row] = rows_buf;
-		let row = row.freeze();
+		let row = row.freeze_bytes();
 		txn.set(&encoded_key, row.clone())?;
 		let rows = [row.clone()];
 		SeriesRowInterceptor::post_insert(txn, series, &rows)?;
@@ -800,9 +803,9 @@ fn encode_series_row(
 	values: &[Value],
 	key_col_idx: usize,
 	clock: &Clock,
-) -> Result<EncodedRowBuilder> {
+) -> Result<EncodedSeriesRowBuilder> {
 	let key_value_encoded = series.key_from_u64(key_value);
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_series();
 	shape.set_value(&mut row, 0, &key_value_encoded);
 	let mut shape_idx = 1;
 	for (col_idx, value) in values.iter().enumerate() {

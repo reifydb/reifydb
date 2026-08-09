@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time, value_type::ValueType};
 
 #[test]
 fn test_date_boundaries() {
-	let shape = RowShape::testing(&[ValueType::Date]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Date]);
+	let mut row = shape.allocate_pod();
 
 	let dates = [
 		Date::from_ymd(1, 1, 1).unwrap(),      // Minimum reasonable date
@@ -25,8 +25,8 @@ fn test_date_boundaries() {
 
 #[test]
 fn test_datetime_precision_limits() {
-	let shape = RowShape::testing(&[ValueType::DateTime]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::DateTime]);
+	let mut row = shape.allocate_pod();
 
 	// A DateTime carries nanoseconds, so the sub-second field must survive the round trip.
 	let dt = DateTime::new(2024, 12, 25, 12, 34, 56, 123456789).unwrap();
@@ -39,8 +39,8 @@ fn test_datetime_precision_limits() {
 
 #[test]
 fn test_time_edge_values() {
-	let shape = RowShape::testing(&[ValueType::Time]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Time]);
+	let mut row = shape.allocate_pod();
 
 	let times = [
 		Time::new(0, 0, 0, 0).unwrap(),            // Midnight
@@ -58,8 +58,8 @@ fn test_time_edge_values() {
 
 #[test]
 fn test_interval_combinations() {
-	let shape = RowShape::testing(&[ValueType::Duration]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Duration]);
+	let mut row = shape.allocate_pod();
 
 	let intervals = [
 		Duration::from_seconds(0).unwrap(),

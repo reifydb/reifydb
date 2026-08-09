@@ -343,7 +343,7 @@ impl Catalog {
 		pk_columns: Option<Vec<String>>,
 	) -> Result<Table> {
 		txn.track_table_created(table.clone())?;
-		let shape = row_shape_from_columns(table.columns.as_slice());
+		let shape = row_shape_from_columns(RowFamily::Table, table.columns.as_slice());
 		self.get_or_create_row_shape(
 			&mut Transaction::Admin(&mut *txn),
 			RowFamily::Table,

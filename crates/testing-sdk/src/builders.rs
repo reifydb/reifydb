@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
+use reifydb_codec::row::{
+	bytes::RowBuilder,
+	shape::{RowFamily, RowShape, RowShapeField},
+};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -60,18 +63,18 @@ impl TestRowBuilder {
 				.enumerate()
 				.map(|(i, v)| RowShapeField::unconstrained(format!("field{}", i), v.get_type()))
 				.collect();
-			RowShape::new(RowFamily::Deprecated, fields)
+			RowShape::new(RowFamily::Table, fields)
 		};
 
-		let mut encoded = shape.allocate();
+		let mut encoded = shape.allocate_table();
 		shape.set_values(&mut encoded, &self.values);
 		if let Some(time) = self.time {
-			shape.set_time(&mut encoded, time);
+			encoded.set_time(time);
 		}
 
 		Row {
 			number: self.row_number,
-			encoded: encoded.freeze(),
+			encoded: encoded.freeze_bytes(),
 			shape,
 		}
 	}
@@ -124,15 +127,15 @@ impl TestOperatorRowBuilder {
 		});
 		let shape = RowShape::new(RowFamily::Operator, fields);
 
-		let mut encoded = shape.allocate();
+		let mut encoded = shape.allocate_operator();
 		shape.set_values(&mut encoded, &self.values);
 		if let Some(time) = self.time {
-			shape.set_time(&mut encoded, time);
+			encoded.set_time(time);
 		}
 
 		Row {
 			number: self.row_number,
-			encoded: encoded.freeze(),
+			encoded: encoded.freeze_bytes(),
 			shape,
 		}
 	}
@@ -257,7 +260,7 @@ impl TestLayoutBuilder {
 	}
 
 	pub fn build(self) -> RowShape {
-		RowShape::new(RowFamily::Deprecated, self.fields)
+		RowShape::new(RowFamily::Table, self.fields)
 	}
 
 	pub fn build_named(self) -> RowShape {

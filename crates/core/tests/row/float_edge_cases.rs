@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::value_type::ValueType;
 
 #[test]
 fn test_float_special_values_preservation() {
-	let shape = RowShape::testing(&[ValueType::Float4, ValueType::Float8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Float4, ValueType::Float8]);
+	let mut row = shape.allocate_pod();
 
 	let f32_values = [
 		f32::NAN,
@@ -70,8 +70,8 @@ fn test_float_special_values_preservation() {
 
 #[test]
 fn test_float_precision_boundaries() {
-	let shape = RowShape::testing(&[ValueType::Float4, ValueType::Float8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Float4, ValueType::Float8]);
+	let mut row = shape.allocate_pod();
 
 	// f32 holds about 7 decimal digits, so the 9-digit literal is already rounded before it is
 	// stored; the round trip itself is bit-exact either way.

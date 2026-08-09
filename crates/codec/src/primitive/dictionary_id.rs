@@ -8,10 +8,10 @@ use reifydb_value::{
 	value::{constraint::Constraint, dictionary::DictionaryEntryId, value_type::ValueType},
 };
 
-use crate::row::{bytes::EncodedRowBuilder, shape::RowShape};
+use crate::row::{bytes::RowBuilder, shape::RowShape};
 
 impl RowShape {
-	pub fn set_dictionary_id(&self, row: &mut EncodedRowBuilder, index: usize, entry: &DictionaryEntryId) {
+	pub fn set_dictionary_id(&self, row: &mut impl RowBuilder, index: usize, entry: &DictionaryEntryId) {
 		let field = &self.fields()[index];
 		reifydb_assertions! {
 			assert!(

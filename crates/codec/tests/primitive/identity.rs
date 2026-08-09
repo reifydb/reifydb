@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 	rng::Rng,
@@ -18,8 +18,8 @@ fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 #[test]
 fn test_set_get_identity_id() {
 	let (_mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::IdentityId]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::IdentityId]);
+	let mut row = shape.allocate_pod();
 
 	let id = IdentityId::generate(&clock, &rng);
 	shape.set::<IdentityId>(&mut row, 0, id.clone());
@@ -29,8 +29,8 @@ fn test_set_get_identity_id() {
 #[test]
 fn test_try_get_identity_id() {
 	let (_mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::IdentityId]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::IdentityId]);
+	let mut row = shape.allocate_pod();
 
 	assert_eq!(shape.try_get::<IdentityId>(&row, 0), None);
 
@@ -42,11 +42,11 @@ fn test_try_get_identity_id() {
 #[test]
 fn test_multiple_generations() {
 	let (mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::IdentityId]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::IdentityId]);
 
 	let mut ids = Vec::new();
 	for _ in 0..10 {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		let id = IdentityId::generate(&clock, &rng);
 		shape.set::<IdentityId>(&mut row, 0, id.clone());
 		let retrieved = shape.get::<IdentityId>(&row, 0);
@@ -65,8 +65,8 @@ fn test_multiple_generations() {
 #[test]
 fn test_uuid7_properties() {
 	let (_mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::IdentityId]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::IdentityId]);
+	let mut row = shape.allocate_pod();
 
 	let id = IdentityId::generate(&clock, &rng);
 	shape.set::<IdentityId>(&mut row, 0, id.clone());
@@ -80,13 +80,13 @@ fn test_uuid7_properties() {
 #[test]
 fn test_timestamp_ordering() {
 	let (mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::IdentityId]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::IdentityId]);
 
 	// UUID7 puts the timestamp in the leading bytes, so byte order has to match generation
 	// order for these ids to be usable as sortable keys.
 	let mut ids = Vec::new();
 	for _ in 0..5 {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		let id = IdentityId::generate(&clock, &rng);
 		shape.set::<IdentityId>(&mut row, 0, id.clone());
 		let retrieved = shape.get::<IdentityId>(&row, 0);
@@ -104,9 +104,11 @@ fn test_timestamp_ordering() {
 #[test]
 fn test_mixed_with_other_types() {
 	let (mock, clock, rng) = test_clock_and_rng();
-	let shape =
-		RowShape::testing(&[ValueType::IdentityId, ValueType::Boolean, ValueType::IdentityId, ValueType::Int4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::IdentityId, ValueType::Boolean, ValueType::IdentityId, ValueType::Int4],
+	);
+	let mut row = shape.allocate_pod();
 
 	let id1 = IdentityId::generate(&clock, &rng);
 	mock.advance_millis(1);
@@ -126,8 +128,8 @@ fn test_mixed_with_other_types() {
 #[test]
 fn test_undefined_handling() {
 	let (_mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::IdentityId, ValueType::IdentityId]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::IdentityId, ValueType::IdentityId]);
+	let mut row = shape.allocate_pod();
 
 	let id = IdentityId::generate(&clock, &rng);
 	shape.set::<IdentityId>(&mut row, 0, id.clone());
@@ -142,8 +144,8 @@ fn test_undefined_handling() {
 #[test]
 fn test_persistence() {
 	let (_mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::IdentityId]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::IdentityId]);
+	let mut row = shape.allocate_pod();
 
 	let id = IdentityId::generate(&clock, &rng);
 	let id_string = id.to_string();
@@ -159,8 +161,8 @@ fn test_persistence() {
 #[test]
 fn test_clone_consistency() {
 	let (_mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::IdentityId]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::IdentityId]);
+	let mut row = shape.allocate_pod();
 
 	let original_id = IdentityId::generate(&clock, &rng);
 	shape.set::<IdentityId>(&mut row, 0, original_id.clone());
@@ -174,8 +176,11 @@ fn test_clone_consistency() {
 #[test]
 fn test_multiple_fields() {
 	let (mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::IdentityId, ValueType::IdentityId, ValueType::IdentityId]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::IdentityId, ValueType::IdentityId, ValueType::IdentityId],
+	);
+	let mut row = shape.allocate_pod();
 
 	let id1 = IdentityId::generate(&clock, &rng);
 	mock.advance_millis(1);
@@ -199,8 +204,8 @@ fn test_multiple_fields() {
 #[test]
 fn test_format_consistency() {
 	let (_mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::IdentityId]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::IdentityId]);
+	let mut row = shape.allocate_pod();
 
 	let id = IdentityId::generate(&clock, &rng);
 	let original_string = id.to_string();
@@ -219,8 +224,8 @@ fn test_format_consistency() {
 #[test]
 fn test_byte_level_storage() {
 	let (_mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::IdentityId]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::IdentityId]);
+	let mut row = shape.allocate_pod();
 
 	let id = IdentityId::generate(&clock, &rng);
 	let original_bytes = *id.as_bytes();
@@ -238,14 +243,14 @@ fn test_byte_level_storage() {
 #[test]
 fn test_time_based_properties() {
 	let (mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[ValueType::IdentityId]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::IdentityId]);
 
 	let id1 = IdentityId::generate(&clock, &rng);
 	mock.advance_millis(2);
 	let id2 = IdentityId::generate(&clock, &rng);
 
-	let mut row1 = shape.allocate();
-	let mut row2 = shape.allocate();
+	let mut row1 = shape.allocate_pod();
+	let mut row2 = shape.allocate_pod();
 
 	shape.set::<IdentityId>(&mut row1, 0, id1.clone());
 	shape.set::<IdentityId>(&mut row2, 0, id2.clone());
@@ -260,12 +265,15 @@ fn test_time_based_properties() {
 #[test]
 fn test_as_primary_key() {
 	let (_mock, clock, rng) = test_clock_and_rng();
-	let shape = RowShape::testing(&[
-		ValueType::IdentityId, // Primary key
-		ValueType::Utf8,       // Name field
-		ValueType::Int4,       // Age field
-	]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[
+			ValueType::IdentityId, // Primary key
+			ValueType::Utf8,       // Name field
+			ValueType::Int4,       // Age field
+		],
+	);
+	let mut row = shape.allocate_pod();
 
 	let primary_key = IdentityId::generate(&clock, &rng);
 	shape.set::<IdentityId>(&mut row, 0, primary_key.clone());
@@ -281,8 +289,8 @@ fn test_as_primary_key() {
 
 #[test]
 fn test_try_get_identity_id_wrong_type() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 

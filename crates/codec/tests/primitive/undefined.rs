@@ -3,7 +3,7 @@
 
 use std::str::FromStr;
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 	rng::Rng,
@@ -31,8 +31,8 @@ fn test_clock_and_rng() -> (MockClock, Clock, Rng) {
 
 #[test]
 fn test_set_bool() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 	assert!(row.is_defined(0));
@@ -45,8 +45,8 @@ fn test_set_bool() {
 
 #[test]
 fn test_set_integer() {
-	let shape = RowShape::testing(&[ValueType::Int4]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int4]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<i32>(&mut row, 0, 12345i32);
 	assert!(row.is_defined(0));
@@ -59,8 +59,8 @@ fn test_set_integer() {
 
 #[test]
 fn test_set_dynamic_type() {
-	let shape = RowShape::testing(&[ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set_utf8(&mut row, 0, "hello world");
 	assert!(row.is_defined(0));
@@ -73,8 +73,8 @@ fn test_set_dynamic_type() {
 
 #[test]
 fn test_set_multiple_fields() {
-	let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Int4, ValueType::Utf8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean, ValueType::Int4, ValueType::Utf8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 	shape.set::<i32>(&mut row, 1, 42i32);
@@ -97,8 +97,8 @@ fn test_set_multiple_fields() {
 
 #[test]
 fn test_set_all_fields() {
-	let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Int4, ValueType::Float8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean, ValueType::Int4, ValueType::Float8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, false);
 	shape.set::<i32>(&mut row, 1, -999i32);
@@ -120,8 +120,8 @@ fn test_set_all_fields() {
 
 #[test]
 fn test_set_reuse_field() {
-	let shape = RowShape::testing(&[ValueType::Int8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int8]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<i64>(&mut row, 0, 100i64);
 	assert_eq!(shape.try_get::<i64>(&row, 0), Some(100));
@@ -135,8 +135,11 @@ fn test_set_reuse_field() {
 
 #[test]
 fn test_set_temporal_types() {
-	let shape = RowShape::testing(&[ValueType::Date, ValueType::DateTime, ValueType::Time, ValueType::Duration]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Date, ValueType::DateTime, ValueType::Time, ValueType::Duration],
+	);
+	let mut row = shape.allocate_pod();
 
 	let date = Date::new(2025, 1, 15).unwrap();
 	let datetime = DateTime::from_epoch_secs(1642694400).unwrap();
@@ -169,8 +172,8 @@ fn test_set_temporal_types() {
 
 #[test]
 fn test_set_uuid_types() {
-	let shape = RowShape::testing(&[ValueType::Uuid4, ValueType::Uuid7, ValueType::IdentityId]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Uuid4, ValueType::Uuid7, ValueType::IdentityId]);
+	let mut row = shape.allocate_pod();
 	let (_mock, clock, rng) = test_clock_and_rng();
 
 	let uuid4 = Uuid4::generate();
@@ -198,8 +201,8 @@ fn test_set_uuid_types() {
 
 #[test]
 fn test_set_decimal_int_uint() {
-	let shape = RowShape::testing(&[ValueType::Decimal, ValueType::Int, ValueType::Uint]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Decimal, ValueType::Int, ValueType::Uint]);
+	let mut row = shape.allocate_pod();
 
 	let decimal = Decimal::from_str("123.45").unwrap();
 	let int = Int::from(i64::MAX);
@@ -227,8 +230,8 @@ fn test_set_decimal_int_uint() {
 
 #[test]
 fn test_set_blob() {
-	let shape = RowShape::testing(&[ValueType::Blob]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob]);
+	let mut row = shape.allocate_pod();
 
 	let blob = Blob::from_slice(&[1, 2, 3, 4, 5]);
 	shape.set_blob(&mut row, 0, &blob);
@@ -247,14 +250,11 @@ fn test_set_blob() {
 
 #[test]
 fn test_set_pattern() {
-	let shape = RowShape::testing(&[
-		ValueType::Boolean,
-		ValueType::Boolean,
-		ValueType::Boolean,
-		ValueType::Boolean,
-		ValueType::Boolean,
-	]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::Boolean, ValueType::Boolean, ValueType::Boolean, ValueType::Boolean, ValueType::Boolean],
+	);
+	let mut row = shape.allocate_pod();
 
 	for i in 0..5 {
 		shape.set::<bool>(&mut row, i, true);

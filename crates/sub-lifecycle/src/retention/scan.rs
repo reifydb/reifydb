@@ -3,7 +3,10 @@
 
 use std::ops::Bound;
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::shape::RowFamily,
+};
 use reifydb_core::{interface::store::MultiVersionRow, state::horizon::Cutoff};
 use reifydb_transaction::{multi::RangeScope, transaction::command::CommandTransaction};
 use reifydb_value::Result;
@@ -31,6 +34,7 @@ pub fn resume_range(base: &EncodedKeyRange, cursor: Option<&EncodedKey>) -> Enco
 pub fn scan_expired(
 	txn: &mut CommandTransaction,
 	range: EncodedKeyRange,
+	family: RowFamily,
 	cutoff: Cutoff,
 	limit: usize,
 	row_number_of: &dyn Fn(&EncodedKey) -> Option<u64>,
@@ -62,7 +66,7 @@ pub fn scan_expired(
 			}
 			let finished = current.take().unwrap();
 			let finished_key = finished.key.clone();
-			classify(finished, cutoff, row_number_of, &mut expired, &mut min_survivor_row);
+			classify(finished, family, cutoff, row_number_of, &mut expired, &mut min_survivor_row);
 			examined += 1;
 			if examined >= limit {
 				if let Some(row_number) = row_number_of(&entry.key) {
@@ -77,7 +81,7 @@ pub fn scan_expired(
 	drop(stream);
 
 	if let Some(finished) = current.take() {
-		classify(finished, cutoff, row_number_of, &mut expired, &mut min_survivor_row);
+		classify(finished, family, cutoff, row_number_of, &mut expired, &mut min_survivor_row);
 	}
 
 	Ok(ExpiredScan {
@@ -89,12 +93,13 @@ pub fn scan_expired(
 
 fn classify(
 	row: MultiVersionRow,
+	family: RowFamily,
 	cutoff: Cutoff,
 	row_number_of: &dyn Fn(&EncodedKey) -> Option<u64>,
 	expired: &mut Vec<MultiVersionRow>,
 	min_survivor_row: &mut Option<u64>,
 ) {
-	if row.bytes.updated_at() <= cutoff.instant() {
+	if family.updated_at(&row.bytes) <= cutoff.instant() {
 		expired.push(row);
 	} else if let Some(row_number) = row_number_of(&row.key) {
 		*min_survivor_row = fold_min(*min_survivor_row, row_number);

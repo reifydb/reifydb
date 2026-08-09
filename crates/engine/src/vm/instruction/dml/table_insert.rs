@@ -7,9 +7,10 @@ use std::{
 };
 
 use reifydb_codec::row::{
-	bytes::{EncodedBytes, EncodedRowBuilder},
+	bytes::{EncodedBytes, RowBuilder},
 	pod::EncodedPodRow,
 	shape::RowShape,
+	table::{EncodedTableRow, EncodedTableRowBuilder},
 };
 use reifydb_core::{
 	error::diagnostic::{
@@ -231,7 +232,7 @@ fn build_insert_table_row(
 	context: &Arc<QueryContext>,
 	row_idx: usize,
 ) -> Result<EncodedBytes> {
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_table();
 	for (table_idx, table_column) in target.table.columns.iter().enumerate() {
 		let mut value = if let Some(&input_idx) = view.column_map.get(table_column.name.as_str()) {
 			view.columns[input_idx].get_value(row_idx)
@@ -283,7 +284,7 @@ fn build_insert_table_row(
 	{
 		row.set_time(time);
 	}
-	Ok(row.freeze())
+	Ok(row.freeze_bytes())
 }
 
 fn insert_validated_table_rows(
@@ -295,7 +296,8 @@ fn insert_validated_table_rows(
 	has_returning: bool,
 	pk: Option<&PkContext<'_>>,
 ) -> Result<Vec<(RowNumber, EncodedBytes)>> {
-	let mut owned_rows: Vec<EncodedRowBuilder> = validated.iter().map(|r| r.clone().thaw()).collect();
+	let mut owned_rows: Vec<EncodedTableRowBuilder> =
+		validated.iter().map(|r| EncodedTableRow::from(r.clone()).thaw()).collect();
 	txn.insert_table(target.table, shape, row_numbers, &mut owned_rows)?;
 
 	if let Some(pk) = pk {
@@ -305,7 +307,7 @@ fn insert_validated_table_rows(
 	}
 
 	if has_returning {
-		Ok(row_numbers.iter().copied().zip(owned_rows.into_iter().map(|r| r.freeze())).collect())
+		Ok(row_numbers.iter().copied().zip(owned_rows.into_iter().map(|r| r.freeze_bytes())).collect())
 	} else {
 		Ok(Vec::new())
 	}

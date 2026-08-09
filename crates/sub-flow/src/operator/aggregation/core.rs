@@ -4,7 +4,10 @@
 use std::{cell::UnsafeCell, sync::Arc};
 
 use postcard::to_stdvec;
-use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
+use reifydb_codec::row::{
+	bytes::RowBuilder,
+	shape::{RowFamily, RowShape, RowShapeField},
+};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	metrics::heap::{StateCompleteness, StateMemory},
@@ -53,7 +56,7 @@ fn build_aggregation_shape(names: &[String], types: &[ValueType]) -> RowShape {
 		.zip(types.iter())
 		.map(|(name, ty)| RowShapeField::unconstrained(name.clone(), ty.clone()))
 		.collect();
-	RowShape::new(RowFamily::Deprecated, fields)
+	RowShape::new(RowFamily::Table, fields)
 }
 
 pub struct Aggregation {
@@ -292,11 +295,11 @@ impl Aggregation {
 		let names: Vec<String> = (0..slot_values.len()).map(synthetic_aggregate_column_name).collect();
 		let types: Vec<_> = slot_values.iter().map(Value::get_type).collect();
 		let layout = build_aggregation_shape(&names, &types);
-		let mut encoded = layout.allocate();
+		let mut encoded = layout.allocate_table();
 		layout.set_values(&mut encoded, slot_values);
 		let row = Row {
 			number: RowNumber(0),
-			encoded: encoded.freeze(),
+			encoded: encoded.freeze_bytes(),
 			shape: layout,
 		};
 		let columns = Columns::from_row(&row);
@@ -332,13 +335,13 @@ impl Aggregation {
 			names.push(name.clone());
 		}
 		let layout = build_aggregation_shape(&names, &types);
-		let mut encoded = layout.allocate();
+		let mut encoded = layout.allocate_table();
 		layout.set_values(&mut encoded, &values);
 		encoded.set_timestamps(ts, ts);
 		encoded.set_time(time);
 		Ok(Row {
 			number: row_number,
-			encoded: encoded.freeze(),
+			encoded: encoded.freeze_bytes(),
 			shape: layout,
 		})
 	}

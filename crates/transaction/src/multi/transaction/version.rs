@@ -56,10 +56,8 @@ pub struct StandardVersionProvider {
 
 impl StandardVersionProvider {
 	pub fn new(single: SingleTransaction) -> Result<Self> {
-		let shape = RowShape::new(
-			RowFamily::Deprecated,
-			vec![RowShapeField::unconstrained("version", ValueType::Uint8)],
-		);
+		let shape =
+			RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("version", ValueType::Uint8)]);
 
 		let current_version = Self::load_current_version(&shape, &single)?;
 		let first_block = VersionBlock::new(current_version);
@@ -87,7 +85,7 @@ impl StandardVersionProvider {
 
 	fn persist_version(shape: &RowShape, single: &SingleTransaction, version: u64) -> Result<()> {
 		let key = TransactionVersionKey {}.encode();
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<u64>(&mut row, 0, version);
 
 		let mut tx = single.begin_command([&key])?;
@@ -320,11 +318,13 @@ pub mod tests {
 
 	#[test]
 	fn test_load_existing_version() {
+		// Must be the provider's own pod: a wider header writes the version past the offset it reads.
 		let single = SingleTransaction::testing();
 
-		let shape = RowShape::testing(&[ValueType::Uint8]);
+		let shape =
+			RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("version", ValueType::Uint8)]);
 		let key = TransactionVersionKey {}.encode();
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<u64>(&mut row, 0, 500u64);
 
 		{

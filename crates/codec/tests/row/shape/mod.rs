@@ -17,7 +17,7 @@ fn test_shape_creation() {
 		RowShapeField::unconstrained("active", ValueType::Boolean),
 	];
 
-	let shape = RowShape::new(RowFamily::Deprecated, fields);
+	let shape = RowShape::new(RowFamily::Table, fields);
 
 	assert_eq!(shape.field_count(), 3);
 	assert_eq!(shape.fields()[0].name, "id");
@@ -37,8 +37,8 @@ fn test_shape_fingerprint_deterministic() {
 		RowShapeField::unconstrained("b", ValueType::Utf8),
 	];
 
-	let shape1 = RowShape::new(RowFamily::Deprecated, fields1);
-	let shape2 = RowShape::new(RowFamily::Deprecated, fields2);
+	let shape1 = RowShape::new(RowFamily::Table, fields1);
+	let shape2 = RowShape::new(RowFamily::Table, fields2);
 
 	assert_eq!(shape1.fingerprint(), shape2.fingerprint());
 }
@@ -48,8 +48,8 @@ fn test_shape_fingerprint_different_for_different_shapes() {
 	let fields1 = vec![RowShapeField::unconstrained("a", ValueType::Int4)];
 	let fields2 = vec![RowShapeField::unconstrained("a", ValueType::Int8)];
 
-	let shape1 = RowShape::new(RowFamily::Deprecated, fields1);
-	let shape2 = RowShape::new(RowFamily::Deprecated, fields2);
+	let shape1 = RowShape::new(RowFamily::Table, fields1);
+	let shape2 = RowShape::new(RowFamily::Table, fields2);
 
 	assert_ne!(shape1.fingerprint(), shape2.fingerprint());
 }
@@ -61,7 +61,7 @@ fn test_find_field() {
 		RowShapeField::unconstrained("name", ValueType::Utf8),
 	];
 
-	let shape = RowShape::new(RowFamily::Deprecated, fields);
+	let shape = RowShape::new(RowFamily::Table, fields);
 
 	assert!(shape.find_field("id").is_some());
 	assert!(shape.find_field("name").is_some());

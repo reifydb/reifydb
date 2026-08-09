@@ -31,8 +31,8 @@ impl TestStateStore {
 		self.data.get(key)
 	}
 
-	pub fn set(&mut self, key: EncodedKey, value: EncodedBytes) {
-		self.data.insert(key, value);
+	pub fn set(&mut self, key: EncodedKey, value: impl Into<EncodedBytes>) {
+		self.data.insert(key, value.into());
 	}
 
 	pub fn remove(&mut self, key: &EncodedKey) -> Option<EncodedBytes> {
@@ -68,7 +68,7 @@ impl TestStateStore {
 	}
 
 	pub fn set_value(&mut self, key: EncodedKey, values: &[Value], shape: &RowShape) {
-		let mut encoded = shape.allocate();
+		let mut encoded = shape.allocate_pod();
 		shape.set_values(&mut encoded, values);
 		self.set(key, encoded.freeze());
 	}
@@ -113,7 +113,10 @@ impl TestStateStore {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
+	use reifydb_codec::row::{
+		bytes::EncodedBytes,
+		shape::{RowFamily, RowShape},
+	};
 	use reifydb_value::{util::cowvec::CowVec, value::value_type::ValueType};
 
 	use super::*;
@@ -140,7 +143,7 @@ pub mod tests {
 	#[test]
 	fn test_state_store_with_shape() {
 		let mut store = TestStateStore::new();
-		let shape = RowShape::testing(&[ValueType::Int8, ValueType::Utf8]);
+		let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int8, ValueType::Utf8]);
 		let key = encode_key("test_key");
 		let values = vec![Value::Int8(42i64), Value::Utf8("hello".into())];
 
@@ -174,7 +177,7 @@ pub mod tests {
 	#[test]
 	fn test_state_store_assertions() {
 		let mut store = TestStateStore::new();
-		let shape = RowShape::testing(&[ValueType::Int8]);
+		let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Int8]);
 		let key = encode_key("test_key");
 		let values = vec![Value::Int8(100i64)];
 

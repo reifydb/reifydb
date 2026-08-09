@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_value::value::{datetime::DateTime, value_type::ValueType};
 
 #[test]
 fn test_set_get_datetime() {
-	let shape = RowShape::testing(&[ValueType::DateTime]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::DateTime]);
+	let mut row = shape.allocate_pod();
 
 	let value = DateTime::new(2024, 9, 9, 08, 17, 0, 1234).unwrap();
 	shape.set::<DateTime>(&mut row, 0, value.clone());
@@ -16,8 +16,8 @@ fn test_set_get_datetime() {
 
 #[test]
 fn test_try_get_datetime() {
-	let shape = RowShape::testing(&[ValueType::DateTime]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::DateTime]);
+	let mut row = shape.allocate_pod();
 
 	assert_eq!(shape.try_get::<DateTime>(&row, 0), None);
 
@@ -28,8 +28,8 @@ fn test_try_get_datetime() {
 
 #[test]
 fn test_epoch() {
-	let shape = RowShape::testing(&[ValueType::DateTime]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::DateTime]);
+	let mut row = shape.allocate_pod();
 
 	let epoch = DateTime::default(); // Unix epoch
 	shape.set::<DateTime>(&mut row, 0, epoch.clone());
@@ -38,8 +38,8 @@ fn test_epoch() {
 
 #[test]
 fn test_with_nanoseconds() {
-	let shape = RowShape::testing(&[ValueType::DateTime]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::DateTime]);
+	let mut row = shape.allocate_pod();
 
 	let precise_datetime = DateTime::new(2024, 12, 25, 15, 30, 45, 123456789).unwrap();
 	shape.set::<DateTime>(&mut row, 0, precise_datetime.clone());
@@ -48,7 +48,7 @@ fn test_with_nanoseconds() {
 
 #[test]
 fn test_various_timestamps() {
-	let shape = RowShape::testing(&[ValueType::DateTime]);
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::DateTime]);
 
 	let test_datetimes = [
 		DateTime::from_epoch_secs(0).unwrap(),          // Unix epoch
@@ -58,7 +58,7 @@ fn test_various_timestamps() {
 	];
 
 	for datetime in test_datetimes {
-		let mut row = shape.allocate();
+		let mut row = shape.allocate_pod();
 		shape.set::<DateTime>(&mut row, 0, datetime.clone());
 		assert_eq!(shape.get::<DateTime>(&row, 0), datetime);
 	}
@@ -66,8 +66,11 @@ fn test_various_timestamps() {
 
 #[test]
 fn test_mixed_with_other_types() {
-	let shape = RowShape::testing(&[ValueType::DateTime, ValueType::Boolean, ValueType::DateTime, ValueType::Int8]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(
+		RowFamily::Pod,
+		&[ValueType::DateTime, ValueType::Boolean, ValueType::DateTime, ValueType::Int8],
+	);
+	let mut row = shape.allocate_pod();
 
 	let datetime1 = DateTime::new(2025, 6, 15, 12, 0, 0, 0).unwrap();
 	let datetime2 = DateTime::new(1995, 3, 22, 18, 30, 45, 500000000).unwrap();
@@ -85,8 +88,8 @@ fn test_mixed_with_other_types() {
 
 #[test]
 fn test_undefined_handling() {
-	let shape = RowShape::testing(&[ValueType::DateTime, ValueType::DateTime]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::DateTime, ValueType::DateTime]);
+	let mut row = shape.allocate_pod();
 
 	let datetime = DateTime::new(2025, 7, 4, 16, 20, 15, 750000000).unwrap();
 	shape.set::<DateTime>(&mut row, 0, datetime.clone());
@@ -100,8 +103,8 @@ fn test_undefined_handling() {
 
 #[test]
 fn test_precision_preservation() {
-	let shape = RowShape::testing(&[ValueType::DateTime]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::DateTime]);
+	let mut row = shape.allocate_pod();
 
 	// The slot holds u64 nanos, so no sub-second digit may be rounded away.
 	let high_precision = DateTime::new(2024, 1, 1, 0, 0, 0, 999999999).unwrap();
@@ -117,8 +120,8 @@ fn test_precision_preservation() {
 
 #[test]
 fn test_year_2038_problem() {
-	let shape = RowShape::testing(&[ValueType::DateTime]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::DateTime]);
+	let mut row = shape.allocate_pod();
 
 	// Past i32 seconds since the epoch, which is where a 32-bit timestamp would wrap.
 	let post_2038 = DateTime::from_epoch_secs(2147483648).unwrap(); // 2038-01-19
@@ -128,8 +131,8 @@ fn test_year_2038_problem() {
 
 #[test]
 fn test_far_future() {
-	let shape = RowShape::testing(&[ValueType::DateTime]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::DateTime]);
+	let mut row = shape.allocate_pod();
 
 	let far_future = DateTime::from_epoch_secs(4102444800).unwrap(); // 2100-01-01
 	shape.set::<DateTime>(&mut row, 0, far_future.clone());
@@ -138,8 +141,8 @@ fn test_far_future() {
 
 #[test]
 fn test_microsecond_precision() {
-	let shape = RowShape::testing(&[ValueType::DateTime]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::DateTime]);
+	let mut row = shape.allocate_pod();
 
 	let microsecond_precision = DateTime::new(2024, 6, 15, 14, 30, 25, 123456000).unwrap();
 	shape.set::<DateTime>(&mut row, 0, microsecond_precision.clone());
@@ -148,8 +151,8 @@ fn test_microsecond_precision() {
 
 #[test]
 fn test_try_get_datetime_wrong_type() {
-	let shape = RowShape::testing(&[ValueType::Boolean]);
-	let mut row = shape.allocate();
+	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
+	let mut row = shape.allocate_pod();
 
 	shape.set::<bool>(&mut row, 0, true);
 

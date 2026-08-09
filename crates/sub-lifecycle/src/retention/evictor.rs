@@ -3,7 +3,10 @@
 
 use std::collections::HashMap;
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::shape::RowFamily,
+};
 use reifydb_core::{
 	event::row::RowsExpiredEvent,
 	interface::{
@@ -305,7 +308,7 @@ impl Evictor {
 		};
 
 		let range = scan::resume_range(keyspace, state.cursors.get(&cursor_key));
-		let result = scan::scan_expired(&mut txn, range, cutoff, batch_size, &|_| None)?;
+		let result = scan::scan_expired(&mut txn, range, RowFamily::Table, cutoff, batch_size, &|_| None)?;
 		if result.expired.is_empty() {
 			txn.rollback()?;
 			return Ok((0, advance_cursor(state, cursor_key, result.next_cursor)));
@@ -445,7 +448,7 @@ impl Evictor {
 
 		let partitioned = partition.is_some();
 		let range = scan::resume_range(&keyspace, state.cursors.get(&cursor_key));
-		let result = scan::scan_expired(&mut txn, range, cutoff, batch_size, &|key| {
+		let result = scan::scan_expired(&mut txn, range, RowFamily::RingBuffer, cutoff, batch_size, &|key| {
 			decode_ringbuffer_row_number(key, partitioned)
 		})?;
 		if result.expired.is_empty() {
@@ -545,7 +548,7 @@ impl Evictor {
 		let cursor_key = (storage, scan::keyspace_start(&keyspace));
 
 		let range = scan::resume_range(&keyspace, state.cursors.get(&cursor_key));
-		let result = scan::scan_expired(&mut txn, range, cutoff, batch_size, &|_| None)?;
+		let result = scan::scan_expired(&mut txn, range, RowFamily::Series, cutoff, batch_size, &|_| None)?;
 		if result.expired.is_empty() {
 			txn.rollback()?;
 			return Ok((0, advance_cursor(state, cursor_key, result.next_cursor)));

@@ -67,12 +67,12 @@ impl Columns {
 	pub fn append_rows(
 		&mut self,
 		shape: &RowShape,
-		bytes_vec: impl IntoIterator<Item = EncodedBytes>,
+		bytes_vec: impl IntoIterator<Item = impl Into<EncodedBytes>>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<()> {
 		self.validate_append_shape(shape)?;
 
-		let bytes_vec: Vec<EncodedBytes> = bytes_vec.into_iter().collect();
+		let bytes_vec: Vec<EncodedBytes> = bytes_vec.into_iter().map(Into::into).collect();
 		Self::validate_row_numbers(&row_numbers, bytes_vec.len())?;
 
 		reifydb_assertions! {
@@ -125,7 +125,7 @@ impl Columns {
 	fn push_system_columns(&mut self, shape: &RowShape, bytes_slice: &[EncodedBytes], row_numbers: &[RowNumber]) {
 		for (index, row) in bytes_slice.iter().enumerate() {
 			let (created_at, updated_at) = match shape.family() {
-				RowFamily::Operator => (None, None),
+				RowFamily::Pod | RowFamily::Operator => (None, None),
 				_ => (Some(shape.created_at(row)), Some(shape.updated_at(row))),
 			};
 
@@ -972,8 +972,8 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
 
-			let shape = RowShape::testing(&[ValueType::Boolean]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Boolean]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Boolean(true)]);
 
 			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
@@ -991,8 +991,8 @@ pub mod tests {
 		fn test_before_undefined_float4() {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
-			let shape = RowShape::testing(&[ValueType::Float4]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Float4]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Float4(OrderedF32::try_from(1.5).unwrap())]);
 			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
@@ -1009,8 +1009,8 @@ pub mod tests {
 		fn test_before_undefined_float8() {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
-			let shape = RowShape::testing(&[ValueType::Float8]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Float8]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Float8(OrderedF64::try_from(2.25).unwrap())]);
 			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
@@ -1027,8 +1027,8 @@ pub mod tests {
 		fn test_before_undefined_int1() {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
-			let shape = RowShape::testing(&[ValueType::Int1]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int1]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Int1(42)]);
 			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
@@ -1042,8 +1042,8 @@ pub mod tests {
 		fn test_before_undefined_int2() {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
-			let shape = RowShape::testing(&[ValueType::Int2]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int2]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Int2(-1234)]);
 			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
@@ -1060,8 +1060,8 @@ pub mod tests {
 		fn test_before_undefined_int4() {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
-			let shape = RowShape::testing(&[ValueType::Int4]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int4]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Int4(56789)]);
 			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
@@ -1078,8 +1078,8 @@ pub mod tests {
 		fn test_before_undefined_int8() {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
-			let shape = RowShape::testing(&[ValueType::Int8]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int8]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Int8(-987654321)]);
 			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
@@ -1096,8 +1096,8 @@ pub mod tests {
 		fn test_before_undefined_int16() {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
-			let shape = RowShape::testing(&[ValueType::Int16]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int16]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Int16(123456789012345678901234567890i128)]);
 			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
@@ -1114,8 +1114,8 @@ pub mod tests {
 		fn test_before_undefined_string() {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
-			let shape = RowShape::testing(&[ValueType::Utf8]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Utf8]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Utf8("reifydb".into())]);
 			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
@@ -1132,8 +1132,8 @@ pub mod tests {
 		fn test_before_undefined_uint1() {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
-			let shape = RowShape::testing(&[ValueType::Uint1]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint1]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Uint1(255)]);
 			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
@@ -1147,8 +1147,8 @@ pub mod tests {
 		fn test_before_undefined_uint2() {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
-			let shape = RowShape::testing(&[ValueType::Uint2]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint2]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Uint2(65535)]);
 			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
@@ -1165,8 +1165,8 @@ pub mod tests {
 		fn test_before_undefined_uint4() {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
-			let shape = RowShape::testing(&[ValueType::Uint4]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint4]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Uint4(4294967295)]);
 			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
@@ -1183,8 +1183,8 @@ pub mod tests {
 		fn test_before_undefined_uint8() {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
-			let shape = RowShape::testing(&[ValueType::Uint8]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint8]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Uint8(18446744073709551615)]);
 			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
@@ -1201,8 +1201,8 @@ pub mod tests {
 		fn test_before_undefined_uint16() {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::undefined_typed("test_col", ValueType::Boolean, 2)]);
-			let shape = RowShape::testing(&[ValueType::Uint16]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint16]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Uint16(340282366920938463463374607431768211455u128)]);
 			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
 
@@ -1219,8 +1219,8 @@ pub mod tests {
 		fn test_mismatched_columns() {
 			let mut test_instance = Columns::new(vec![]);
 
-			let shape = RowShape::testing(&[ValueType::Int2]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int2]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Int2(2)]);
 
 			let err = test_instance.append_rows(&shape, [row.freeze()], vec![]).err().unwrap();
@@ -1231,10 +1231,10 @@ pub mod tests {
 		fn test_ok() {
 			let mut test_instance = test_instance_with_columns();
 
-			let shape = RowShape::testing(&[ValueType::Int2, ValueType::Boolean]);
-			let mut row_one = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int2, ValueType::Boolean]);
+			let mut row_one = shape.allocate_table();
 			shape.set_values(&mut row_one, &[Value::Int2(2), Value::Boolean(true)]);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set_values(&mut row_two, &[Value::Int2(3), Value::Boolean(false)]);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1248,10 +1248,10 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::bool("test_col", Vec::<bool>::new())]);
 
-			let shape = RowShape::testing(&[ValueType::Boolean]);
-			let mut row_one = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Boolean]);
+			let mut row_one = shape.allocate_table();
 			shape.set::<bool>(&mut row_one, 0, true);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set::<bool>(&mut row_two, 0, false);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1264,10 +1264,10 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::float4("test_col", Vec::<f32>::new())]);
 
-			let shape = RowShape::testing(&[ValueType::Float4]);
-			let mut row_one = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Float4]);
+			let mut row_one = shape.allocate_table();
 			shape.set_values(&mut row_one, &[Value::Float4(OrderedF32::try_from(1.0).unwrap())]);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set_values(&mut row_two, &[Value::Float4(OrderedF32::try_from(2.0).unwrap())]);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1280,10 +1280,10 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::float8("test_col", Vec::<f64>::new())]);
 
-			let shape = RowShape::testing(&[ValueType::Float8]);
-			let mut row_one = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Float8]);
+			let mut row_one = shape.allocate_table();
 			shape.set_values(&mut row_one, &[Value::Float8(OrderedF64::try_from(1.0).unwrap())]);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set_values(&mut row_two, &[Value::Float8(OrderedF64::try_from(2.0).unwrap())]);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1295,10 +1295,10 @@ pub mod tests {
 		fn test_all_defined_int1() {
 			let mut test_instance = Columns::new(vec![ColumnWithName::int1("test_col", Vec::<i8>::new())]);
 
-			let shape = RowShape::testing(&[ValueType::Int1]);
-			let mut row_one = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int1]);
+			let mut row_one = shape.allocate_table();
 			shape.set_values(&mut row_one, &[Value::Int1(1)]);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set_values(&mut row_two, &[Value::Int1(2)]);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1310,10 +1310,10 @@ pub mod tests {
 		fn test_all_defined_int2() {
 			let mut test_instance = Columns::new(vec![ColumnWithName::int2("test_col", Vec::<i16>::new())]);
 
-			let shape = RowShape::testing(&[ValueType::Int2]);
-			let mut row_one = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int2]);
+			let mut row_one = shape.allocate_table();
 			shape.set_values(&mut row_one, &[Value::Int2(100)]);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set_values(&mut row_two, &[Value::Int2(200)]);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1325,10 +1325,10 @@ pub mod tests {
 		fn test_all_defined_int4() {
 			let mut test_instance = Columns::new(vec![ColumnWithName::int4("test_col", Vec::<i32>::new())]);
 
-			let shape = RowShape::testing(&[ValueType::Int4]);
-			let mut row_one = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int4]);
+			let mut row_one = shape.allocate_table();
 			shape.set_values(&mut row_one, &[Value::Int4(1000)]);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set_values(&mut row_two, &[Value::Int4(2000)]);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1340,10 +1340,10 @@ pub mod tests {
 		fn test_all_defined_int8() {
 			let mut test_instance = Columns::new(vec![ColumnWithName::int8("test_col", Vec::<i64>::new())]);
 
-			let shape = RowShape::testing(&[ValueType::Int8]);
-			let mut row_one = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int8]);
+			let mut row_one = shape.allocate_table();
 			shape.set_values(&mut row_one, &[Value::Int8(10000)]);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set_values(&mut row_two, &[Value::Int8(20000)]);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1356,10 +1356,10 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::int16("test_col", Vec::<i128>::new())]);
 
-			let shape = RowShape::testing(&[ValueType::Int16]);
-			let mut row_one = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int16]);
+			let mut row_one = shape.allocate_table();
 			shape.set_values(&mut row_one, &[Value::Int16(1000)]);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set_values(&mut row_two, &[Value::Int16(2000)]);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1372,10 +1372,10 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::utf8("test_col", Vec::<String>::new())]);
 
-			let shape = RowShape::testing(&[ValueType::Utf8]);
-			let mut row_one = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Utf8]);
+			let mut row_one = shape.allocate_table();
 			shape.set_values(&mut row_one, &[Value::Utf8("a".into())]);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set_values(&mut row_two, &[Value::Utf8("b".into())]);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1387,10 +1387,10 @@ pub mod tests {
 		fn test_all_defined_uint1() {
 			let mut test_instance = Columns::new(vec![ColumnWithName::uint1("test_col", Vec::<u8>::new())]);
 
-			let shape = RowShape::testing(&[ValueType::Uint1]);
-			let mut row_one = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint1]);
+			let mut row_one = shape.allocate_table();
 			shape.set_values(&mut row_one, &[Value::Uint1(1)]);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set_values(&mut row_two, &[Value::Uint1(2)]);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1403,10 +1403,10 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::uint2("test_col", Vec::<u16>::new())]);
 
-			let shape = RowShape::testing(&[ValueType::Uint2]);
-			let mut row_one = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint2]);
+			let mut row_one = shape.allocate_table();
 			shape.set_values(&mut row_one, &[Value::Uint2(100)]);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set_values(&mut row_two, &[Value::Uint2(200)]);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1419,10 +1419,10 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::uint4("test_col", Vec::<u32>::new())]);
 
-			let shape = RowShape::testing(&[ValueType::Uint4]);
-			let mut row_one = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint4]);
+			let mut row_one = shape.allocate_table();
 			shape.set_values(&mut row_one, &[Value::Uint4(1000)]);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set_values(&mut row_two, &[Value::Uint4(2000)]);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1435,10 +1435,10 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::uint8("test_col", Vec::<u64>::new())]);
 
-			let shape = RowShape::testing(&[ValueType::Uint8]);
-			let mut row_one = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint8]);
+			let mut row_one = shape.allocate_table();
 			shape.set_values(&mut row_one, &[Value::Uint8(10000)]);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set_values(&mut row_two, &[Value::Uint8(20000)]);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1451,10 +1451,10 @@ pub mod tests {
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::uint16("test_col", Vec::<u128>::new())]);
 
-			let shape = RowShape::testing(&[ValueType::Uint16]);
-			let mut row_one = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint16]);
+			let mut row_one = shape.allocate_table();
 			shape.set_values(&mut row_one, &[Value::Uint16(1000)]);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set_values(&mut row_two, &[Value::Uint16(2000)]);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1466,8 +1466,8 @@ pub mod tests {
 		fn test_row_with_undefined() {
 			let mut test_instance = test_instance_with_columns();
 
-			let shape = RowShape::testing(&[ValueType::Int2, ValueType::Boolean]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int2, ValueType::Boolean]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::none(), Value::Boolean(false)]);
 
 			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
@@ -1480,8 +1480,8 @@ pub mod tests {
 		fn test_row_with_type_mismatch_fails() {
 			let mut test_instance = test_instance_with_columns();
 
-			let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Boolean]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Boolean, ValueType::Boolean]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Boolean(true), Value::Boolean(true)]);
 
 			let result = test_instance.append_rows(&shape, [row.freeze()], vec![]);
@@ -1493,8 +1493,8 @@ pub mod tests {
 		fn test_row_wrong_length_fails() {
 			let mut test_instance = test_instance_with_columns();
 
-			let shape = RowShape::testing(&[ValueType::Int2]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int2]);
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::Int2(2)]);
 
 			let result = test_instance.append_rows(&shape, [row.freeze()], vec![]);
@@ -1509,8 +1509,8 @@ pub mod tests {
 				ColumnWithName::bool("none", Vec::<bool>::new()),
 			]);
 
-			let shape = RowShape::testing(&[ValueType::Boolean, ValueType::Boolean]);
-			let mut row_one = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Boolean, ValueType::Boolean]);
+			let mut row_one = shape.allocate_table();
 			shape.set::<bool>(&mut row_one, 0, true);
 			shape.set_none(&mut row_one, 1);
 
@@ -1528,8 +1528,8 @@ pub mod tests {
 				ColumnWithName::float4("none", Vec::<f32>::new()),
 			]);
 
-			let shape = RowShape::testing(&[ValueType::Float4, ValueType::Float4]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Float4, ValueType::Float4]);
+			let mut row = shape.allocate_table();
 			shape.set::<f32>(&mut row, 0, 1.5f32);
 			shape.set_none(&mut row, 1);
 
@@ -1546,8 +1546,8 @@ pub mod tests {
 				ColumnWithName::float8("none", Vec::<f64>::new()),
 			]);
 
-			let shape = RowShape::testing(&[ValueType::Float8, ValueType::Float8]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Float8, ValueType::Float8]);
+			let mut row = shape.allocate_table();
 			shape.set::<f64>(&mut row, 0, 2.5f64);
 			shape.set_none(&mut row, 1);
 
@@ -1564,8 +1564,8 @@ pub mod tests {
 				ColumnWithName::int1("none", Vec::<i8>::new()),
 			]);
 
-			let shape = RowShape::testing(&[ValueType::Int1, ValueType::Int1]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int1, ValueType::Int1]);
+			let mut row = shape.allocate_table();
 			shape.set::<i8>(&mut row, 0, 42i8);
 			shape.set_none(&mut row, 1);
 
@@ -1582,8 +1582,8 @@ pub mod tests {
 				ColumnWithName::int2("none", Vec::<i16>::new()),
 			]);
 
-			let shape = RowShape::testing(&[ValueType::Int2, ValueType::Int2]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int2, ValueType::Int2]);
+			let mut row = shape.allocate_table();
 			shape.set::<i16>(&mut row, 0, -1234i16);
 			shape.set_none(&mut row, 1);
 
@@ -1600,8 +1600,8 @@ pub mod tests {
 				ColumnWithName::int4("none", Vec::<i32>::new()),
 			]);
 
-			let shape = RowShape::testing(&[ValueType::Int4, ValueType::Int4]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int4, ValueType::Int4]);
+			let mut row = shape.allocate_table();
 			shape.set::<i32>(&mut row, 0, 56789i32);
 			shape.set_none(&mut row, 1);
 
@@ -1618,8 +1618,8 @@ pub mod tests {
 				ColumnWithName::int8("none", Vec::<i64>::new()),
 			]);
 
-			let shape = RowShape::testing(&[ValueType::Int8, ValueType::Int8]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int8, ValueType::Int8]);
+			let mut row = shape.allocate_table();
 			shape.set::<i64>(&mut row, 0, -987654321i64);
 			shape.set_none(&mut row, 1);
 
@@ -1636,8 +1636,8 @@ pub mod tests {
 				ColumnWithName::int16("none", Vec::<i128>::new()),
 			]);
 
-			let shape = RowShape::testing(&[ValueType::Int16, ValueType::Int16]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Int16, ValueType::Int16]);
+			let mut row = shape.allocate_table();
 			shape.set::<i128>(&mut row, 0, 123456789012345678901234567890i128);
 			shape.set_none(&mut row, 1);
 
@@ -1657,8 +1657,8 @@ pub mod tests {
 				ColumnWithName::utf8("none", Vec::<String>::new()),
 			]);
 
-			let shape = RowShape::testing(&[ValueType::Utf8, ValueType::Utf8]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Utf8, ValueType::Utf8]);
+			let mut row = shape.allocate_table();
 			shape.set_utf8(&mut row, 0, "reifydb");
 			shape.set_none(&mut row, 1);
 
@@ -1675,8 +1675,8 @@ pub mod tests {
 				ColumnWithName::uint1("none", Vec::<u8>::new()),
 			]);
 
-			let shape = RowShape::testing(&[ValueType::Uint1, ValueType::Uint1]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint1, ValueType::Uint1]);
+			let mut row = shape.allocate_table();
 			shape.set::<u8>(&mut row, 0, 255u8);
 			shape.set_none(&mut row, 1);
 
@@ -1693,8 +1693,8 @@ pub mod tests {
 				ColumnWithName::uint2("none", Vec::<u16>::new()),
 			]);
 
-			let shape = RowShape::testing(&[ValueType::Uint2, ValueType::Uint2]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint2, ValueType::Uint2]);
+			let mut row = shape.allocate_table();
 			shape.set::<u16>(&mut row, 0, 65535u16);
 			shape.set_none(&mut row, 1);
 
@@ -1711,8 +1711,8 @@ pub mod tests {
 				ColumnWithName::uint4("none", Vec::<u32>::new()),
 			]);
 
-			let shape = RowShape::testing(&[ValueType::Uint4, ValueType::Uint4]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint4, ValueType::Uint4]);
+			let mut row = shape.allocate_table();
 			shape.set::<u32>(&mut row, 0, 4294967295u32);
 			shape.set_none(&mut row, 1);
 
@@ -1729,8 +1729,8 @@ pub mod tests {
 				ColumnWithName::uint8("none", Vec::<u64>::new()),
 			]);
 
-			let shape = RowShape::testing(&[ValueType::Uint8, ValueType::Uint8]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint8, ValueType::Uint8]);
+			let mut row = shape.allocate_table();
 			shape.set::<u64>(&mut row, 0, 18446744073709551615u64);
 			shape.set_none(&mut row, 1);
 
@@ -1747,8 +1747,8 @@ pub mod tests {
 				ColumnWithName::uint16("none", Vec::<u128>::new()),
 			]);
 
-			let shape = RowShape::testing(&[ValueType::Uint16, ValueType::Uint16]);
-			let mut row = shape.allocate();
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Uint16, ValueType::Uint16]);
+			let mut row = shape.allocate_table();
 			shape.set::<u128>(&mut row, 0, 340282366920938463463374607431768211455u128);
 			shape.set_none(&mut row, 1);
 
@@ -1764,17 +1764,16 @@ pub mod tests {
 		#[test]
 		fn test_all_defined_dictionary_id() {
 			let constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), ValueType::Uint4);
-			let shape =
-				RowShape::new(RowFamily::Deprecated, vec![RowShapeField::new("status", constraint)]);
+			let shape = RowShape::new(RowFamily::Table, vec![RowShapeField::new("status", constraint)]);
 
 			let mut test_instance = Columns::new(vec![ColumnWithName::dictionary_id(
 				"status",
 				Vec::<DictionaryEntryId>::new(),
 			)]);
 
-			let mut row_one = shape.allocate();
+			let mut row_one = shape.allocate_table();
 			shape.set_values(&mut row_one, &[Value::DictionaryId(DictionaryEntryId::U4(10))]);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set_values(&mut row_two, &[Value::DictionaryId(DictionaryEntryId::U4(20))]);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1787,7 +1786,7 @@ pub mod tests {
 		fn test_fallback_dictionary_id() {
 			let dict_constraint = TypeConstraint::dictionary(DictionaryId::from(1u64), ValueType::Uint4);
 			let shape = RowShape::new(
-				RowFamily::Deprecated,
+				RowFamily::Table,
 				vec![
 					RowShapeField::new("dict_col", dict_constraint),
 					RowShapeField::unconstrained("bool_col", ValueType::Boolean),
@@ -1799,7 +1798,7 @@ pub mod tests {
 				ColumnWithName::bool("bool_col", Vec::<bool>::new()),
 			]);
 
-			let mut row = shape.allocate();
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::none(), Value::Boolean(true)]);
 
 			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
@@ -1811,12 +1810,12 @@ pub mod tests {
 		#[test]
 		fn test_before_undefined_dictionary_id() {
 			let constraint = TypeConstraint::dictionary(DictionaryId::from(2u64), ValueType::Uint4);
-			let shape = RowShape::new(RowFamily::Deprecated, vec![RowShapeField::new("tag", constraint)]);
+			let shape = RowShape::new(RowFamily::Table, vec![RowShapeField::new("tag", constraint)]);
 
 			let mut test_instance =
 				Columns::new(vec![ColumnWithName::undefined_typed("tag", ValueType::Boolean, 2)]);
 
-			let mut row = shape.allocate();
+			let mut row = shape.allocate_table();
 			shape.set_values(&mut row, &[Value::DictionaryId(DictionaryEntryId::U4(5))]);
 
 			test_instance.append_rows(&shape, [row.freeze()], vec![]).unwrap();
@@ -1833,15 +1832,15 @@ pub mod tests {
 			let id1 = IdentityId::anonymous();
 			let id2 = IdentityId::root();
 
-			let shape = RowShape::testing(&[ValueType::IdentityId]);
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::IdentityId]);
 			let mut test_instance = Columns::new(vec![ColumnWithName::new(
 				Fragment::internal("id_col"),
 				ColumnBuffer::identity_id(Vec::<IdentityId>::new()),
 			)]);
 
-			let mut row_one = shape.allocate();
+			let mut row_one = shape.allocate_table();
 			shape.set::<IdentityId>(&mut row_one, 0, id1);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set::<IdentityId>(&mut row_two, 0, id2);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1854,7 +1853,7 @@ pub mod tests {
 		fn test_fallback_identity_id() {
 			let id = IdentityId::anonymous();
 
-			let shape = RowShape::testing(&[ValueType::IdentityId, ValueType::Boolean]);
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::IdentityId, ValueType::Boolean]);
 			let mut test_instance = Columns::new(vec![
 				ColumnWithName::new(
 					Fragment::internal("id_col"),
@@ -1863,7 +1862,7 @@ pub mod tests {
 				ColumnWithName::bool("bool_col", Vec::<bool>::new()),
 			]);
 
-			let mut row = shape.allocate();
+			let mut row = shape.allocate_table();
 			shape.set::<IdentityId>(&mut row, 0, id);
 			shape.set_none(&mut row, 1);
 
@@ -1879,15 +1878,15 @@ pub mod tests {
 			let blob1 = Blob::new(vec![1, 2, 3]);
 			let blob2 = Blob::new(vec![4, 5]);
 
-			let shape = RowShape::testing(&[ValueType::Blob]);
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Blob]);
 			let mut test_instance = Columns::new(vec![ColumnWithName::new(
 				Fragment::internal("blob_col"),
 				ColumnBuffer::blob(Vec::<Blob>::new()),
 			)]);
 
-			let mut row_one = shape.allocate();
+			let mut row_one = shape.allocate_table();
 			shape.set_blob(&mut row_one, 0, &blob1);
-			let mut row_two = shape.allocate();
+			let mut row_two = shape.allocate_table();
 			shape.set_blob(&mut row_two, 0, &blob2);
 
 			test_instance.append_rows(&shape, [row_one.freeze(), row_two.freeze()], vec![]).unwrap();
@@ -1900,7 +1899,7 @@ pub mod tests {
 		fn test_fallback_blob() {
 			let blob = Blob::new(vec![10, 20, 30]);
 
-			let shape = RowShape::testing(&[ValueType::Blob, ValueType::Boolean]);
+			let shape = RowShape::testing(RowFamily::Table, &[ValueType::Blob, ValueType::Boolean]);
 			let mut test_instance = Columns::new(vec![
 				ColumnWithName::new(
 					Fragment::internal("blob_col"),
@@ -1909,7 +1908,7 @@ pub mod tests {
 				ColumnWithName::bool("bool_col", Vec::<bool>::new()),
 			]);
 
-			let mut row = shape.allocate();
+			let mut row = shape.allocate_table();
 			shape.set_blob(&mut row, 0, &blob);
 			shape.set_none(&mut row, 1);
 

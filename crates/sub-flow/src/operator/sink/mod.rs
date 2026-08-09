@@ -9,7 +9,10 @@ pub mod view;
 use std::sync::LazyLock;
 
 use postcard::from_bytes;
-use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
+use reifydb_codec::row::{
+	bytes::{EncodedBytes, SourceRowBuilder},
+	shape::{RowFamily, RowShape},
+};
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -132,10 +135,38 @@ pub(crate) fn encode_row_at_index(
 	row_number: RowNumber,
 	field_columns: &[usize],
 ) -> Result<(RowNumber, EncodedBytes)> {
+	match shape.family() {
+		RowFamily::Table => {
+			stamp_source_row(shape.allocate_table(), columns, row_idx, shape, row_number, field_columns)
+		}
+		RowFamily::Series => {
+			stamp_source_row(shape.allocate_series(), columns, row_idx, shape, row_number, field_columns)
+		}
+		RowFamily::RingBuffer => stamp_source_row(
+			shape.allocate_ringbuffer(),
+			columns,
+			row_idx,
+			shape,
+			row_number,
+			field_columns,
+		),
+		other => Err(Error::from(FlowSinkError::NotASourceFamily {
+			family: format!("{:?}", other),
+		})),
+	}
+}
+
+fn stamp_source_row<B: SourceRowBuilder>(
+	mut encoded: B,
+	columns: &Columns,
+	row_idx: usize,
+	shape: &RowShape,
+	row_number: RowNumber,
+	field_columns: &[usize],
+) -> Result<(RowNumber, EncodedBytes)> {
 	let values: Vec<Value> =
 		field_columns.iter().map(|&col_idx| columns.data_at(col_idx).get_value(row_idx)).collect();
 
-	let mut encoded = shape.allocate();
 	shape.set_values(&mut encoded, &values);
 
 	let created_at = columns.created_at().get(row_idx).copied().ok_or_else(|| {
@@ -155,7 +186,7 @@ pub(crate) fn encode_row_at_index(
 		encoded.set_time(time);
 	}
 
-	Ok((row_number, encoded.freeze()))
+	Ok((row_number, encoded.freeze_bytes()))
 }
 
 pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTransaction) -> Result<()> {
@@ -203,7 +234,10 @@ pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut FlowTra
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_codec::row::shape::{RowFamily, RowShapeField};
+	use reifydb_codec::row::{
+		shape::{RowFamily, RowShapeField},
+		table::EncodedTableRow,
+	};
 	use reifydb_core::{
 		actors::pending::{Pending, PendingLayers},
 		interface::catalog::dictionary::Dictionary,
@@ -259,10 +293,7 @@ mod tests {
 	}
 
 	fn single_field_shape() -> RowShape {
-		RowShape::new(
-			RowFamily::Deprecated,
-			vec![RowShapeField::unconstrained("n".to_string(), ValueType::Int4)],
-		)
+		RowShape::new(RowFamily::Table, vec![RowShapeField::unconstrained("n".to_string(), ValueType::Int4)])
 	}
 
 	fn columns_with_stamps(created_at: u64, updated_at: u64, time: u64) -> Columns {
@@ -290,6 +321,7 @@ mod tests {
 		let field_columns = shape_field_columns(&columns, &shape);
 
 		let (_, encoded) = encode_row_at_index(&columns, 0, &shape, RowNumber(1), &field_columns).unwrap();
+		let encoded = EncodedTableRow::view(&encoded);
 
 		assert_eq!(
 			encoded.time(),
@@ -311,6 +343,7 @@ mod tests {
 		let field_columns = shape_field_columns(&columns, &shape);
 
 		let (_, encoded) = encode_row_at_index(&columns, 0, &shape, RowNumber(1), &field_columns).unwrap();
+		let encoded = EncodedTableRow::view(&encoded);
 
 		assert_eq!(encoded.time(), None, "the sink row must carry no #time");
 		assert_eq!(encoded.created_at(), DateTime::from_nanos(100), "the wall stamps are still required");

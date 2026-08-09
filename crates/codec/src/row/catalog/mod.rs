@@ -3,6 +3,8 @@
 
 //! The catalog storage family: a row whose header is the shape fingerprint and nothing else.
 
+use std::ops::Deref;
+
 use reifydb_value::{
 	byte_size::ByteSize,
 	error::{Error as ValueError, TypeError},
@@ -11,7 +13,7 @@ use reifydb_value::{
 use thiserror::Error;
 
 use crate::row::{
-	bytes::{CATALOG_HEADER_SIZE, EncodedBytes, EncodedRowBuilder, read_defined_at},
+	bytes::{CATALOG_HEADER_SIZE, EncodedBytes, EncodedRowBuilder, RowBuilder, read_defined_at, sealed::Sealed},
 	shape::fingerprint::RowShapeFingerprint,
 };
 
@@ -145,49 +147,47 @@ impl EncodedCatalogRowBuilder {
 		Self(builder)
 	}
 
-	pub fn builder(&self) -> &EncodedRowBuilder {
-		&self.0
-	}
-
-	pub fn builder_mut(&mut self) -> &mut EncodedRowBuilder {
-		&mut self.0
-	}
-
-	pub fn as_slice(&self) -> &[u8] {
-		self.0.as_slice()
-	}
-
-	pub fn as_mut_slice(&mut self) -> &mut [u8] {
-		self.0.as_mut_slice()
-	}
-
 	#[inline]
 	pub fn fingerprint(&self) -> RowShapeFingerprint {
-		read_fingerprint(self.0.as_slice())
+		read_fingerprint(self.as_slice())
 	}
 
 	pub fn set_fingerprint(&mut self, fingerprint: RowShapeFingerprint) {
-		write_fingerprint(self.0.as_mut_slice(), fingerprint);
+		write_fingerprint(self.as_mut_slice(), fingerprint);
 	}
 
 	#[inline]
 	pub fn is_defined(&self, index: usize) -> bool {
-		read_defined_at(self.0.as_slice(), CATALOG_HEADER_SIZE, index)
+		read_defined_at(self.as_slice(), CATALOG_HEADER_SIZE, index)
 	}
 
 	pub fn body(&self) -> &[u8] {
-		&self.0.as_slice()[CATALOG_HEADER_SIZE..]
-	}
-
-	pub fn len(&self) -> usize {
-		self.0.len()
-	}
-
-	pub fn is_empty(&self) -> bool {
-		self.body().is_empty()
+		&self.as_slice()[CATALOG_HEADER_SIZE..]
 	}
 
 	pub fn freeze(self) -> EncodedCatalogRow {
 		EncodedCatalogRow(self.0.freeze())
+	}
+}
+
+impl Sealed for EncodedCatalogRowBuilder {
+	fn buffer(&self) -> &Vec<u8> {
+		self.0.buffer()
+	}
+
+	fn buffer_mut(&mut self) -> &mut Vec<u8> {
+		self.0.buffer_mut()
+	}
+
+	fn take_buffer(self) -> Vec<u8> {
+		self.0.take_buffer()
+	}
+}
+
+impl Deref for EncodedCatalogRowBuilder {
+	type Target = [u8];
+
+	fn deref(&self) -> &Self::Target {
+		self.as_slice()
 	}
 }

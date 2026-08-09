@@ -7,7 +7,7 @@ use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{
-		bytes::EncodedBytes,
+		bytes::{EncodedBytes, read_fingerprint},
 		operator::{EncodedOperatorRow, OperatorState},
 		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
@@ -455,7 +455,7 @@ impl OperatorContext for NativeOperatorContext<'_> {
 		unsafe { (*self.bridge).remove_row_numbers_below(group, upper) }.map_err(to_sdk_err)
 	}
 	fn shape_for_bytes(&mut self, bytes: &EncodedBytes) -> SdkResult<RowShape> {
-		let fingerprint = bytes.fingerprint();
+		let fingerprint = read_fingerprint(bytes);
 		match self.row_shape().find_row_shape(fingerprint)? {
 			Some(shape) => Ok(shape),
 			None => Err(SdkError::Other(format!(

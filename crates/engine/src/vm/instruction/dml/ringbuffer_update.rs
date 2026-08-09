@@ -3,7 +3,11 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_codec::row::{bytes::EncodedBytes, ringbuffer::EncodedRingBufferRow, shape::RowShape};
+use reifydb_codec::row::{
+	bytes::{EncodedBytes, RowBuilder},
+	ringbuffer::EncodedRingBufferRow,
+	shape::RowShape,
+};
 use reifydb_core::{
 	error::diagnostic::{
 		catalog::{namespace_not_found, ringbuffer_not_found},
@@ -110,7 +114,7 @@ pub(crate) fn update_ringbuffer(
 		};
 
 		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
-			let mut row = build_updated_ringbuffer_row(
+			let row = build_updated_ringbuffer_row(
 				services,
 				txn,
 				&target_data,
@@ -137,17 +141,19 @@ pub(crate) fn update_ringbuffer(
 			let old_created_at = old_row.created_at();
 			let old_time = old_row.time();
 			let now = services.runtime_context.clock.now();
-			row.set_timestamps(old_created_at, now);
+			let mut builder = EncodedRingBufferRow::from(row).thaw();
+			builder.set_timestamps(old_created_at, now);
 			if let Some(time) = resolve_time_for_update(
 				&ringbuffer.name,
 				&ringbuffer.columns,
 				&ringbuffer.time,
 				&shape,
-				&row,
+				builder.as_slice(),
 				old_time,
 			)? {
-				row.set_time(time);
+				builder.set_time(time);
 			}
+			let row = builder.freeze_bytes();
 
 			if !row_belongs_to_any_partition(&partitions, row_number) {
 				continue;
@@ -234,7 +240,7 @@ fn build_updated_ringbuffer_row(
 	context: &QueryContext,
 	row_idx: usize,
 ) -> Result<EncodedBytes> {
-	let mut row = shape.allocate();
+	let mut row = shape.allocate_ringbuffer();
 	for (rb_idx, rb_column) in target.ringbuffer.columns.iter().enumerate() {
 		let mut value = if let Some(&input_idx) = view.column_map.get(rb_column.name.as_str()) {
 			view.columns[input_idx].get_value(row_idx)
@@ -269,7 +275,7 @@ fn build_updated_ringbuffer_row(
 
 		shape.set_value(&mut row, rb_idx, &value);
 	}
-	Ok(row.freeze())
+	Ok(row.freeze_bytes())
 }
 
 #[inline]

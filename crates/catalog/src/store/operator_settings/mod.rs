@@ -50,7 +50,7 @@ pub(crate) fn decode_operator_settings(bytes: &EncodedCatalogRow) -> Option<Oper
 
 fn encode_side(row: &mut EncodedCatalogRowBuilder, ttl: &Option<OperatorTtl>, duration_idx: usize) {
 	let duration = ttl.as_ref().map(|ttl| ttl.duration).unwrap_or_else(Duration::zero);
-	operator_settings::SHAPE.set::<Duration>(row.builder_mut(), duration_idx, duration);
+	operator_settings::SHAPE.set::<Duration>(row, duration_idx, duration);
 }
 
 fn decode_side(bytes: &EncodedCatalogRow, duration_idx: usize) -> Option<OperatorTtl> {

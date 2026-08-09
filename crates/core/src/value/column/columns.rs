@@ -9,7 +9,7 @@ use std::{
 use indexmap::IndexMap;
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
-	shape::{RowFamily, RowShape, RowShapeField},
+	shape::{RowFamily, RowShape},
 };
 use reifydb_value::{
 	Result,
@@ -449,7 +449,7 @@ impl Columns {
 
 		let row_numbers: Vec<RowNumber> = ids.to_vec();
 		let (created_at, updated_at): (Vec<DateTime>, Vec<DateTime>) = match shape.family() {
-			RowFamily::Operator => (Vec::new(), Vec::new()),
+			RowFamily::Pod | RowFamily::Operator => (Vec::new(), Vec::new()),
 			_ => (
 				bytes_slice.iter().map(|r| shape.created_at(r)).collect(),
 				bytes_slice.iter().map(|r| shape.updated_at(r)).collect(),
@@ -628,7 +628,7 @@ impl Columns {
 		self.names.reserve(field_count);
 
 		let (created_at, updated_at) = match row.shape.family() {
-			RowFamily::Operator => (None, None),
+			RowFamily::Pod | RowFamily::Operator => (None, None),
 			_ => (Some(row.shape.created_at(&row.encoded)), Some(row.shape.updated_at(&row.encoded))),
 		};
 
@@ -667,37 +667,6 @@ impl Columns {
 
 			self.names.push(Fragment::internal(name));
 			self.columns.push(data);
-		}
-	}
-
-	pub fn to_single_row(&self) -> Row {
-		assert_eq!(self.row_count(), 1, "to_row() requires exactly 1 row, got {}", self.row_count());
-		assert_eq!(
-			self.row_numbers().len(),
-			1,
-			"to_row() requires exactly 1 row number, got {}",
-			self.row_numbers().len()
-		);
-
-		let row_number = *self.row_numbers().first().unwrap();
-
-		let fields: Vec<RowShapeField> = self
-			.names
-			.iter()
-			.zip(self.columns.iter())
-			.map(|(name, data)| RowShapeField::unconstrained(name.text().to_string(), data.get_type()))
-			.collect();
-
-		let layout = RowShape::new(RowFamily::Deprecated, fields);
-		let mut encoded = layout.allocate();
-
-		let values: Vec<Value> = self.columns.iter().map(|col| col.get_value(0)).collect();
-		layout.set_values(&mut encoded, &values);
-
-		Row {
-			number: row_number,
-			encoded: encoded.freeze(),
-			shape: layout,
 		}
 	}
 }

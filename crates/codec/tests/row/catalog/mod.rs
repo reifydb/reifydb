@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::{
-	bytes::{CATALOG_HEADER_SIZE, EncodedBytes},
+	bytes::{CATALOG_HEADER_SIZE, EncodedBytes, RowBuilder},
 	catalog::{CatalogError, EncodedCatalogRow},
 	shape::{RowFamily, RowShape, RowShapeField},
 };
@@ -20,10 +20,10 @@ fn shape() -> RowShape {
 
 fn row(id: u64, name: &str) -> EncodedBytes {
 	let shape = shape();
-	let mut builder = shape.allocate();
+	let mut builder = shape.allocate_catalog();
 	shape.set::<u64>(&mut builder, 0, id);
 	shape.set_utf8(&mut builder, 1, name);
-	builder.freeze()
+	builder.freeze_bytes()
 }
 
 #[test]
@@ -41,10 +41,10 @@ fn a_viewed_row_reports_the_fingerprint_the_shape_stamped() {
 fn definedness_is_read_at_the_catalog_header_not_the_source_header() {
 	// Probing byte 33 on a catalog row answers from field data, never from a validity bit.
 	let shape = shape();
-	let mut builder = shape.allocate();
+	let mut builder = shape.allocate_catalog();
 	shape.set::<u64>(&mut builder, 0, 7);
 	shape.set_none(&mut builder, 1);
-	let bytes = builder.freeze();
+	let bytes = builder.freeze_bytes();
 
 	let view = EncodedCatalogRow::view(&bytes);
 

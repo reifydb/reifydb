@@ -193,7 +193,7 @@ mod tests {
 
 	fn shape(fields: &[(&str, ValueType)]) -> RowShape {
 		RowShape::new(
-			RowFamily::Deprecated,
+			RowFamily::Table,
 			fields.iter().map(|(n, t)| RowShapeField::unconstrained(*n, t.clone())).collect(),
 		)
 	}

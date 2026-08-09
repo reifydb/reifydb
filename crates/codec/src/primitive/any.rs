@@ -6,12 +6,12 @@ use reifydb_value::value::value_type::ValueType;
 use reifydb_value::{reifydb_assertions, value::Value};
 
 use crate::{
-	row::{bytes::EncodedRowBuilder, shape::RowShape},
+	row::{bytes::RowBuilder, shape::RowShape},
 	value::{decode_value, encode_value},
 };
 
 impl RowShape {
-	pub fn set_any(&self, row: &mut EncodedRowBuilder, index: usize, value: &Value) {
+	pub fn set_any(&self, row: &mut impl RowBuilder, index: usize, value: &Value) {
 		reifydb_assertions! {
 			assert!(
 				row.len() >= self.total_static_size(),

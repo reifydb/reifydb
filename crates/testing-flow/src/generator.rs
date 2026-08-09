@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
+use reifydb_codec::row::{
+	bytes::RowBuilder,
+	shape::{RowFamily, RowShape, RowShapeField},
+	table::EncodedTableRow,
+};
 use reifydb_core::{interface::change::Change, row::Row};
 use reifydb_testing_sdk::builders::{TestChangeBuilder, TestRowBuilder};
 use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType};
 
 pub fn shape() -> RowShape {
 	RowShape::new(
-		RowFamily::Deprecated,
+		RowFamily::Table,
 		vec![
 			RowShapeField::unconstrained("g".to_string(), ValueType::Int4),
 			RowShapeField::unconstrained("v".to_string(), ValueType::Int8),
@@ -21,8 +25,10 @@ pub fn row(number: RowNumber, group: i32, value: i64, at: DateTime) -> Row {
 		.with_shape(shape())
 		.with_values(vec![Value::Int4(group), Value::Int8(value)])
 		.build();
-	row.encoded.set_timestamps(at, at);
-	row.encoded.set_time(at);
+	let mut builder = EncodedTableRow::from(row.encoded).thaw();
+	builder.set_timestamps(at, at);
+	builder.set_time(at);
+	row.encoded = builder.freeze_bytes();
 	row
 }
 
