@@ -254,7 +254,6 @@ impl<'a> TestTransaction<'a> {
 		let mut ctx = PreCommitContext {
 			flow_changes,
 			pending_writes: Vec::new(),
-			pending_shapes: Vec::new(),
 			transaction_writes,
 			view_entries: Vec::new(),
 		};

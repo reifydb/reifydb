@@ -5,10 +5,7 @@ use std::{collections::HashMap, mem, sync::Arc};
 
 use read::ReadFrom;
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, shape::RowShape},
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,
@@ -137,7 +134,6 @@ pub struct FlowTransactionInner {
 	pub version: CommitVersion,
 	pub pending: Pending,
 	pub base_pending: PendingLayers,
-	pub pending_shapes: Vec<RowShape>,
 	pub query: MultiReadTransaction,
 	pub state_query: Option<MultiReadTransaction>,
 	pub single: SingleTransaction,
@@ -228,7 +224,6 @@ impl FlowTransaction {
 				version,
 				pending: Pending::new(),
 				base_pending: PendingLayers::empty(),
-				pending_shapes: Vec::new(),
 				query,
 				state_query: Some(state_query),
 				single: parent.single.clone(),
@@ -260,7 +255,6 @@ impl FlowTransaction {
 				version: params.version,
 				pending: params.pending,
 				base_pending: params.base_pending,
-				pending_shapes: Vec::new(),
 				query,
 				state_query: Some(state_query),
 				single: params.single,
@@ -357,7 +351,6 @@ impl FlowTransaction {
 				version,
 				pending: Pending::new(),
 				base_pending: PendingLayers::empty(),
-				pending_shapes: Vec::new(),
 				query: pq,
 				state_query: None,
 				single,
@@ -426,10 +419,6 @@ impl FlowTransaction {
 
 	pub fn take_pending(&mut self) -> Pending {
 		mem::take(&mut self.inner_mut().pending)
-	}
-
-	pub fn take_pending_shapes(&mut self) -> Vec<RowShape> {
-		mem::take(&mut self.inner_mut().pending_shapes)
 	}
 
 	pub fn track_flow_change(&mut self, change: Change) {

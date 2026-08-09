@@ -48,10 +48,6 @@ impl Catalog {
 			return Ok(cached);
 		}
 
-		if let Some(cached) = self.cache.find_row_shape(fingerprint) {
-			return Ok(cached);
-		}
-
 		if let Some(stored_shape) = find_row_shape_by_fingerprint(txn, fingerprint)? {
 			self.cache.set_row_shape(stored_shape.clone());
 			return Ok(stored_shape);
@@ -144,36 +140,5 @@ impl Catalog {
 
 	pub fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> Option<RowShape> {
 		self.cache.find_row_shape(fingerprint)
-	}
-
-	pub fn get_or_create_row_shape_pending(
-		&self,
-		pending: &mut Vec<RowShape>,
-		fields: Vec<RowShapeField>,
-	) -> RowShape {
-		let shape = RowShape::new(RowFamily::Deprecated, fields);
-		let fingerprint = shape.fingerprint();
-
-		if let Some(cached) = self.cache.find_row_shape(fingerprint) {
-			return cached;
-		}
-
-		self.cache.set_row_shape(shape.clone());
-		pending.push(shape.clone());
-
-		shape
-	}
-
-	pub fn persist_pending_shapes(&self, txn: &mut Transaction<'_>, shapes: Vec<RowShape>) -> Result<()> {
-		for shape in shapes {
-			let fingerprint = shape.fingerprint();
-
-			if find_row_shape_by_fingerprint(txn, fingerprint)?.is_some() {
-				continue;
-			}
-
-			create_row_shape(txn, &shape)?;
-		}
-		Ok(())
 	}
 }

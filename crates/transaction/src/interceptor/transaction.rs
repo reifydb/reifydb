@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, shape::RowShape},
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	actors::pending::PendingWrite,
 	common::CommitVersion,
@@ -26,8 +23,6 @@ pub struct PreCommitContext {
 
 	pub pending_writes: Vec<(EncodedKey, PendingWrite)>,
 
-	pub pending_shapes: Vec<RowShape>,
-
 	pub transaction_writes: Vec<(EncodedKey, Option<EncodedBytes>)>,
 
 	pub view_entries: Vec<(ObjectId, Diff)>,
@@ -38,7 +33,6 @@ impl PreCommitContext {
 		Self {
 			flow_changes: Vec::new(),
 			pending_writes: Vec::new(),
-			pending_shapes: Vec::new(),
 			transaction_writes: Vec::new(),
 			view_entries: Vec::new(),
 		}

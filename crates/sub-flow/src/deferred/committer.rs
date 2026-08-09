@@ -4,7 +4,6 @@
 use std::sync::Arc;
 
 use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
-use reifydb_codec::row::shape::RowShape;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
@@ -25,19 +24,18 @@ use reifydb_runtime::actor::{
 	traits::{Actor, Directive},
 };
 use reifydb_store_operator::store::OperatorStore;
+#[cfg(test)]
+use reifydb_transaction::transaction::Transaction;
 use reifydb_transaction::{
 	group::{GroupCommitApply, GroupCommitCompletion, GroupCommitHandle, GroupCommitSubmission},
-	transaction::{Transaction, command::CommandTransaction},
+	transaction::command::CommandTransaction,
 };
 #[cfg(test)]
 use reifydb_value::value::identity::IdentityId;
 use reifydb_value::{Result, byte_size::ByteSize};
 use tracing::{instrument, warn};
 
-use crate::{
-	catalog::FlowCatalog,
-	deferred::{quiescence::FlowMaterialization, snapshot::SnapshotPinTracker, tracker::FlowPositionTracker},
-};
+use crate::deferred::{quiescence::FlowMaterialization, snapshot::SnapshotPinTracker, tracker::FlowPositionTracker};
 
 pub type CommitterHandle = ActorHandle<CommitterMessage>;
 
@@ -52,7 +50,6 @@ pub enum CommitterMessage {
 
 	Tick {
 		pending: Pending,
-		pending_shapes: Vec<RowShape>,
 		view_changes: Vec<Change>,
 		reply: TickCommitReply,
 	},
@@ -76,17 +73,13 @@ impl CommitterActor {
 	fn submit_slice(&self, slice: FlowSlice, reply: SliceCommitReply) {
 		let FlowSlice {
 			combined,
-			pending_shapes,
 			checkpoints,
-			positions,
 			checkpoint_deletes,
 			view_changes,
 			control_cursor,
 			snapshot_pins,
 		} = slice;
-		let produced_output = combined.iter_sorted().next().is_some()
-			|| !view_changes.is_empty()
-			|| !pending_shapes.is_empty();
+		let produced_output = combined.iter_sorted().next().is_some() || !view_changes.is_empty();
 		let combined = Arc::new(combined);
 
 		let in_flight = pending_bytes(&combined);
@@ -102,7 +95,6 @@ impl CommitterActor {
 			apply_committer.apply_slice(
 				transaction,
 				&apply_combined,
-				pending_shapes,
 				&apply_checkpoints,
 				&apply_deletes,
 				view_changes,
@@ -122,7 +114,6 @@ impl CommitterActor {
 					}
 					completion_committer.post_commit_slice(
 						&checkpoints,
-						&positions,
 						&checkpoint_deletes,
 						&snapshot_pins,
 					);
@@ -140,13 +131,7 @@ impl CommitterActor {
 		});
 	}
 
-	fn submit_tick(
-		&self,
-		pending: Pending,
-		pending_shapes: Vec<RowShape>,
-		view_changes: Vec<Change>,
-		reply: TickCommitReply,
-	) {
+	fn submit_tick(&self, pending: Pending, view_changes: Vec<Change>, reply: TickCommitReply) {
 		let pending = Arc::new(pending);
 
 		let in_flight = pending_bytes(&pending);
@@ -156,7 +141,7 @@ impl CommitterActor {
 		let apply_committer = self.committer.clone();
 		let apply_pending = Arc::clone(&pending);
 		let apply: GroupCommitApply = Box::new(move |transaction| {
-			apply_committer.apply_tick(transaction, &apply_pending, pending_shapes, view_changes)
+			apply_committer.apply_tick(transaction, &apply_pending, view_changes)
 		});
 
 		let completion_committer = self.committer.clone();
@@ -198,10 +183,9 @@ impl Actor for CommitterActor {
 			} => self.submit_slice(slice, reply),
 			CommitterMessage::Tick {
 				pending,
-				pending_shapes,
 				view_changes,
 				reply,
-			} => self.submit_tick(pending, pending_shapes, view_changes, reply),
+			} => self.submit_tick(pending, view_changes, reply),
 		}
 		Directive::Continue
 	}
@@ -214,11 +198,7 @@ impl Actor for CommitterActor {
 pub struct FlowSlice {
 	pub combined: Pending,
 
-	pub pending_shapes: Vec<RowShape>,
-
 	pub checkpoints: Vec<(FlowId, CommitVersion)>,
-
-	pub positions: Vec<(FlowId, CommitVersion)>,
 
 	pub checkpoint_deletes: Vec<FlowId>,
 
@@ -233,9 +213,7 @@ impl FlowSlice {
 	pub fn empty() -> Self {
 		Self {
 			combined: Pending::new(),
-			pending_shapes: Vec::new(),
 			checkpoints: Vec::new(),
-			positions: Vec::new(),
 			checkpoint_deletes: Vec::new(),
 			view_changes: Vec::new(),
 			control_cursor: None,
@@ -246,7 +224,6 @@ impl FlowSlice {
 
 #[derive(Clone)]
 pub struct Committer {
-	catalog: FlowCatalog,
 	flow_tracker: FlowPositionTracker,
 	materialization: FlowMaterialization,
 	operators: OperatorStore,
@@ -255,14 +232,12 @@ pub struct Committer {
 
 impl Committer {
 	pub fn new(
-		catalog: FlowCatalog,
 		flow_tracker: FlowPositionTracker,
 		materialization: FlowMaterialization,
 		operators: OperatorStore,
 		snapshot_pins: SnapshotPinTracker,
 	) -> Self {
 		Self {
-			catalog,
 			flow_tracker,
 			materialization,
 			operators,
@@ -276,7 +251,6 @@ impl Committer {
 		&self,
 		transaction: &mut CommandTransaction,
 		combined: &Pending,
-		pending_shapes: Vec<RowShape>,
 		checkpoints: &[(FlowId, CommitVersion)],
 		checkpoint_deletes: &[FlowId],
 		view_changes: Vec<Change>,
@@ -311,17 +285,16 @@ impl Committer {
 			CdcCheckpoint::persist(transaction, consumer_id, *version, ConsumerClass::Pinning)?;
 		}
 
-		self.catalog.persist_pending_shapes(&mut Transaction::Command(transaction), pending_shapes)
+		Ok(())
 	}
 
 	fn post_commit_slice(
 		&self,
 		checkpoints: &[(FlowId, CommitVersion)],
-		positions: &[(FlowId, CommitVersion)],
 		checkpoint_deletes: &[FlowId],
 		snapshot_pins: &[(FlowId, CommitVersion)],
 	) {
-		for (flow_id, version) in checkpoints.iter().chain(positions.iter()) {
+		for (flow_id, version) in checkpoints {
 			self.flow_tracker.update(*flow_id, *version);
 		}
 
@@ -344,7 +317,6 @@ impl Committer {
 		&self,
 		transaction: &mut CommandTransaction,
 		pending: &Pending,
-		pending_shapes: Vec<RowShape>,
 		view_changes: Vec<Change>,
 	) -> Result<()> {
 		apply_pending_writes(transaction, pending)?;
@@ -353,7 +325,7 @@ impl Committer {
 			transaction.track_flow_change(change);
 		}
 
-		self.catalog.persist_pending_shapes(&mut Transaction::Command(transaction), pending_shapes)
+		Ok(())
 	}
 }
 
@@ -363,9 +335,7 @@ impl Committer {
 	pub fn commit_slice(&self, engine: &StandardEngine, slice: FlowSlice) -> Result<(CommitVersion, Pending)> {
 		let FlowSlice {
 			combined,
-			pending_shapes,
 			checkpoints,
-			positions,
 			checkpoint_deletes,
 			view_changes,
 			control_cursor,
@@ -378,7 +348,6 @@ impl Committer {
 		self.apply_slice(
 			&mut transaction,
 			&combined,
-			pending_shapes,
 			&checkpoints,
 			&checkpoint_deletes,
 			view_changes,
@@ -389,7 +358,7 @@ impl Committer {
 		let commit_version = transaction.commit_unchecked()?;
 
 		apply_operator_state(&self.operators, commit_version, &combined);
-		self.post_commit_slice(&checkpoints, &positions, &checkpoint_deletes, &snapshot_pins);
+		self.post_commit_slice(&checkpoints, &checkpoint_deletes, &snapshot_pins);
 		Ok((commit_version, combined))
 	}
 }
@@ -517,7 +486,6 @@ mod group_commit_integration {
 	fn build_committer_actor(engine: &StandardEngine, group: GroupCommitHandle) -> (CommitterHandle, Committer) {
 		let tracker = FlowPositionTracker::new();
 		let committer = Committer::new(
-			FlowCatalog::new(engine.catalog()),
 			tracker.clone(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
@@ -776,7 +744,6 @@ mod group_commit_integration {
 		let te = TestEngine::builder().with_cdc().build();
 		let engine = te.inner().clone();
 		let committer = Committer::new(
-			FlowCatalog::new(engine.catalog()),
 			FlowPositionTracker::new(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
@@ -818,7 +785,6 @@ mod group_commit_integration {
 		let engine = te.inner().clone();
 		let pins = SnapshotPinTracker::new();
 		let committer = Committer::new(
-			FlowCatalog::new(engine.catalog()),
 			FlowPositionTracker::new(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),

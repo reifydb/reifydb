@@ -4,7 +4,6 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::row::shape::RowShape;
 use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId, view::View};
 use reifydb_rql::flow::{flow::FlowDag, loader::load_flow_dag};
 use reifydb_runtime::sync::rwlock::RwLock;
@@ -52,10 +51,6 @@ impl FlowCatalog {
 
 	pub fn get_flow_ids(&self) -> Vec<FlowId> {
 		self.flows.read().keys().copied().collect()
-	}
-
-	pub fn persist_pending_shapes(&self, txn: &mut Transaction<'_>, shapes: Vec<RowShape>) -> Result<()> {
-		self.catalog.persist_pending_shapes(txn, shapes)
 	}
 }
 

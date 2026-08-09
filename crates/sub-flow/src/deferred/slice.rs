@@ -4,7 +4,6 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::row::shape::RowShape;
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers},
 	common::CommitVersion,
@@ -94,15 +93,13 @@ impl SliceComputer {
 		}
 
 		overlay.prune_through(advance_to);
-		let (combined, pending_shapes, view_changes, holds) =
+		let (combined, view_changes, holds) =
 			self.compute(flow_engine, cursor.flow_id, advance_to, changes, overlay.merged())?;
 
 		Ok(SliceStep::Commit {
 			slice: FlowSlice {
 				combined,
-				pending_shapes,
 				checkpoints: vec![(cursor.flow_id, advance_to)],
-				positions: Vec::new(),
 				checkpoint_deletes: Vec::new(),
 				view_changes,
 				control_cursor: None,
@@ -200,7 +197,7 @@ impl SliceComputer {
 		state_version: CommitVersion,
 		changes: Vec<Change>,
 		base_pending: PendingLayers,
-	) -> Result<(Pending, Vec<RowShape>, Vec<Change>, WatermarkHolds)> {
+	) -> Result<(Pending, Vec<Change>, WatermarkHolds)> {
 		let catalog: Catalog = self.engine.catalog();
 		let interceptors = self.engine.create_interceptors();
 
@@ -231,9 +228,8 @@ impl SliceComputer {
 
 		let view_changes = self.consolidated_view_changes(&mut txn, state_version)?;
 
-		let pending_shapes = txn.take_pending_shapes();
 		let pending = txn.take_pending();
-		Ok((pending, pending_shapes, view_changes, holds))
+		Ok((pending, view_changes, holds))
 	}
 
 	fn consolidated_view_changes(
@@ -254,7 +250,7 @@ impl SliceComputer {
 		flow_id: FlowId,
 		timestamp: DateTime,
 		checkpoint: CommitVersion,
-	) -> Result<(Pending, Vec<RowShape>, Vec<Change>)> {
+	) -> Result<(Pending, Vec<Change>)> {
 		let (state_version, lease) = self.engine.acquire_current_snapshot_lease()?;
 		let query = self.engine.multi().begin_query_at_version(&lease)?;
 		let state_query = self.engine.multi().begin_query_at_version(&lease)?;
@@ -277,7 +273,7 @@ impl SliceComputer {
 		txn.flush_operator_states()?;
 
 		let view_changes = self.consolidated_view_changes(&mut txn, state_version)?;
-		Ok((txn.take_pending(), txn.take_pending_shapes(), view_changes))
+		Ok((txn.take_pending(), view_changes))
 	}
 }
 
@@ -877,7 +873,6 @@ mod integration {
 
 		let computer = SliceComputer::new(engine.clone());
 		let committer = Committer::new(
-			flow_catalog,
 			FlowPositionTracker::new(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
@@ -987,7 +982,6 @@ mod integration {
 
 		let computer = SliceComputer::new(engine.clone());
 		let committer = Committer::new(
-			flow_catalog,
 			FlowPositionTracker::new(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
@@ -1135,7 +1129,6 @@ mod integration {
 
 		let computer = SliceComputer::new(engine.clone());
 		let committer = Committer::new(
-			flow_catalog,
 			FlowPositionTracker::new(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),

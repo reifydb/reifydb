@@ -11,7 +11,6 @@ use std::{
 };
 
 use reifydb_cdc::consume::backlog::{BacklogPull, FlowBacklog};
-use reifydb_codec::row::shape::RowShape;
 use reifydb_core::{
 	actors::{flow::FlowActorMessage, pending::Pending},
 	common::CommitVersion,
@@ -649,17 +648,11 @@ impl FlowActor {
 			let timestamp = DateTime::from_millis(self.clock.now().to_millis());
 			match self.computer.tick(&mut state.flow_engine, self.flow_id, timestamp, state.durable_cursor)
 			{
-				Ok((pending, pending_shapes, view_changes)) => {
-					let has_output = pending.iter_sorted().next().is_some()
-						|| !pending_shapes.is_empty() || !view_changes.is_empty();
+				Ok((pending, view_changes)) => {
+					let has_output =
+						pending.iter_sorted().next().is_some() || !view_changes.is_empty();
 					if has_output {
-						self.dispatch_tick_commit(
-							state,
-							ctx,
-							pending,
-							pending_shapes,
-							view_changes,
-						);
+						self.dispatch_tick_commit(state, ctx, pending, view_changes);
 					}
 				}
 				Err(e) => {
@@ -726,7 +719,6 @@ impl FlowActor {
 		state: &mut FlowActorState,
 		ctx: &Context<FlowActorMessage>,
 		pending: Pending,
-		pending_shapes: Vec<RowShape>,
 		view_changes: Vec<Change>,
 	) {
 		state.committing = true;
@@ -740,7 +732,6 @@ impl FlowActor {
 		if self.committer
 			.send(CommitterMessage::Tick {
 				pending,
-				pending_shapes,
 				view_changes,
 				reply,
 			})
@@ -1047,7 +1038,6 @@ mod pull_protocol {
 
 		let tracker = FlowPositionTracker::new();
 		let committer = Committer::new(
-			flow_catalog,
 			tracker.clone(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			substrate.operators.clone(),
@@ -1403,7 +1393,6 @@ mod pull_protocol {
 			loader: ActorRef<LoaderMessage>,
 		) -> Restart {
 			let committer = Committer::new(
-				FlowCatalog::new(self.engine.catalog()),
 				self.tracker.clone(),
 				FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 				substrate.operators.clone(),
@@ -2034,7 +2023,6 @@ mod pull_protocol {
 			FlowSubstrate::with_dictionary(h.engine.dictionary_allocators(), OperatorStore::default());
 		assert_eq!(substrate2.operators.total_bytes(), 0, "the restarted arena starts empty");
 		let committer2 = Committer::new(
-			FlowCatalog::new(h.engine.catalog()),
 			h.tracker.clone(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			substrate2.operators.clone(),

@@ -217,7 +217,6 @@ impl CommandTransaction {
 		Ok(PreCommitContext {
 			flow_changes: self.accumulator.take_changes(CommitVersion(0), self.clock.now())?,
 			pending_writes: Vec::new(),
-			pending_shapes: Vec::new(),
 			transaction_writes,
 			view_entries: Vec::new(),
 		})

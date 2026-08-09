@@ -140,7 +140,6 @@ impl FlowSubsystem {
 		let poll_frontier = CdcConsumerWatermark::default();
 		let materialization = FlowMaterialization::new(poll_frontier.clone(), flow_tracker.clone());
 		let committer = Committer::new(
-			flow_catalog.clone(),
 			flow_tracker.clone(),
 			materialization.clone(),
 			substrate.operators.clone(),
