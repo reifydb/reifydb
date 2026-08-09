@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::shape::RowShape,
+	row::{series::EncodedSeriesRow, shape::RowShape},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -137,11 +137,12 @@ impl SeriesScanNode {
 				if let Some(p) = partition {
 					batch.partitions.push(p);
 				}
-				batch.created_at_values.push(entry.bytes.created_at());
-				if let Some(time) = entry.bytes.time() {
+				let row = EncodedSeriesRow::view(&entry.bytes);
+				batch.created_at_values.push(row.created_at());
+				if let Some(time) = row.time() {
 					batch.time_values.push(time);
 				}
-				batch.updated_at_values.push(entry.bytes.updated_at());
+				batch.updated_at_values.push(row.updated_at());
 				if has_tag {
 					batch.tags.push(variant_tag.unwrap_or(0));
 				}

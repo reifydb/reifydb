@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, shape::RowShape},
+	row::{bytes::EncodedBytes, shape::RowShape, table::EncodedTableRow},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -104,7 +104,7 @@ impl TableScanNode {
 			return Ok(shape.clone());
 		}
 
-		let fingerprint = first.fingerprint();
+		let fingerprint = EncodedTableRow::view(first).fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("TableScanNode context not set");
 		let shape = stored_ctx.services.catalog.get_or_load_row_shape(fingerprint, rx)?.ok_or_else(|| {

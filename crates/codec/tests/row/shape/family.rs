@@ -59,6 +59,37 @@ fn the_family_participates_in_the_fingerprint_so_two_layouts_cannot_collide() {
 }
 
 #[test]
+fn the_four_source_families_never_share_a_fingerprint_for_the_same_columns() {
+	// The fingerprint is the registry's only key, so a shared one lets a series row resolve to a table's shape.
+	let families = [RowFamily::Table, RowFamily::Series, RowFamily::RingBuffer, RowFamily::Queue];
+
+	for (i, left) in families.iter().enumerate() {
+		for right in families.iter().skip(i + 1) {
+			assert_ne!(
+				RowShape::new(*left, fields()).fingerprint(),
+				RowShape::new(*right, fields()).fingerprint(),
+				"{left:?} and {right:?} collide"
+			);
+		}
+	}
+}
+
+#[test]
+fn the_three_thirty_three_byte_source_families_lay_their_fields_out_identically() {
+	// Table, series and ring buffer differ only in type, so a header-width drift in one silently reframes its rows.
+	let table = RowShape::new(RowFamily::Table, fields());
+	let series = RowShape::new(RowFamily::Series, fields());
+	let ringbuffer = RowShape::new(RowFamily::RingBuffer, fields());
+
+	for shape in [&series, &ringbuffer] {
+		assert_eq!(shape.header_size(), table.header_size());
+		assert_eq!(shape.data_offset(), table.data_offset());
+		assert_eq!(shape.fields()[0].offset, table.fields()[0].offset);
+		assert_eq!(shape.total_static_size(), table.total_static_size());
+	}
+}
+
+#[test]
 fn a_catalog_row_reads_back_the_values_it_wrote() {
 	// A shape allocating an 8-byte header but probing the bitvec at 33 would read a field byte as a validity bit.
 	let shape = RowShape::new(RowFamily::Catalog, fields());

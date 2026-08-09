@@ -42,9 +42,9 @@ pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, Encod
 	let mut time = Vec::with_capacity(rows.len());
 	for (row_number, encoded) in rows {
 		row_numbers.push(*row_number);
-		created_at.push(encoded.created_at());
-		updated_at.push(encoded.updated_at());
-		if let Some(t) = encoded.time() {
+		created_at.push(shape.created_at(encoded));
+		updated_at.push(shape.updated_at(encoded));
+		if let Some(t) = shape.time(encoded) {
 			time.push(t);
 		}
 		for (i, _) in fields.iter().enumerate() {

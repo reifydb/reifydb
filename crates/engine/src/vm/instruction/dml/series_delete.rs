@@ -3,7 +3,10 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, series::EncodedSeriesRow},
+};
 use reifydb_core::{
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
 	interface::{
@@ -380,9 +383,9 @@ fn build_series_delete_pre_columns_from_input(
 		SystemColumns::new(
 			vec![row_number],
 			Vec::new(),
-			vec![encoded_bytes.created_at()],
-			vec![encoded_bytes.updated_at()],
-			encoded_bytes.time().into_iter().collect(),
+			vec![EncodedSeriesRow::view(encoded_bytes).created_at()],
+			vec![EncodedSeriesRow::view(encoded_bytes).updated_at()],
+			EncodedSeriesRow::view(encoded_bytes).time().into_iter().collect(),
 		),
 	)
 }

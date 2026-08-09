@@ -11,4 +11,7 @@ pub mod le;
 pub mod operator;
 pub mod pod;
 pub mod queue;
+pub mod ringbuffer;
+pub mod series;
 pub mod shape;
+pub mod table;

@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
+use reifydb_codec::row::{bytes::EncodedBytes, ringbuffer::EncodedRingBufferRow, shape::RowShape};
 use reifydb_core::{
 	error::diagnostic::{
 		catalog::{namespace_not_found, ringbuffer_not_found},
@@ -133,6 +133,7 @@ pub(crate) fn update_ringbuffer(
 				),
 			};
 			let old_row = txn.get(&old_row_key)?.expect("bytes must exist for update").bytes;
+			let old_row = EncodedRingBufferRow::view(&old_row);
 			let old_created_at = old_row.created_at();
 			let old_time = old_row.time();
 			let now = services.runtime_context.clock.now();

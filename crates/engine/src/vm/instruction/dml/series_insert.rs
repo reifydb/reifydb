@@ -3,7 +3,7 @@
 
 use std::{collections::HashSet, sync::Arc};
 
-use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
+use reifydb_codec::row::{bytes::EncodedBytes, series::EncodedSeriesRow, shape::RowShape};
 use reifydb_core::{
 	common::CommitVersion,
 	error::diagnostic::catalog::{namespace_not_found, series_not_found},
@@ -435,9 +435,9 @@ fn track_series_insert_flow_change(txn: &mut Transaction<'_>, series: &Series, s
 		SystemColumns::new(
 			vec![row_number],
 			Vec::new(),
-			vec![snapshot.row.created_at()],
-			vec![snapshot.row.updated_at()],
-			snapshot.row.time().into_iter().collect(),
+			vec![EncodedSeriesRow::view(&snapshot.row).created_at()],
+			vec![EncodedSeriesRow::view(&snapshot.row).updated_at()],
+			EncodedSeriesRow::view(&snapshot.row).time().into_iter().collect(),
 		),
 	);
 	txn.track_flow_change(Change {

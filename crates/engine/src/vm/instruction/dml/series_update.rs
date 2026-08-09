@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, shape::RowShape},
+	row::{bytes::EncodedBytes, series::EncodedSeriesRow, shape::RowShape},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -112,8 +112,8 @@ pub(crate) fn update_series(
 				None => continue,
 			};
 
-			let old_created_at = pre_values.created_at();
-			let old_time = pre_values.time();
+			let old_created_at = EncodedSeriesRow::view(&pre_values).created_at();
+			let old_time = EncodedSeriesRow::view(&pre_values).time();
 			let now = services.runtime_context.clock.now();
 			row.set_timestamps(old_created_at, now);
 			let update_shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
@@ -401,9 +401,9 @@ fn track_series_update_flow_change(
 		SystemColumns::new(
 			vec![event.row_number],
 			Vec::new(),
-			vec![event.pre.created_at()],
-			vec![event.pre.updated_at()],
-			event.pre.time().into_iter().collect(),
+			vec![EncodedSeriesRow::view(&event.pre).created_at()],
+			vec![EncodedSeriesRow::view(&event.pre).updated_at()],
+			EncodedSeriesRow::view(&event.pre).time().into_iter().collect(),
 		),
 	);
 	let post = Columns::with_system(
@@ -411,9 +411,9 @@ fn track_series_update_flow_change(
 		SystemColumns::new(
 			vec![event.row_number],
 			Vec::new(),
-			vec![event.post.created_at()],
-			vec![event.post.updated_at()],
-			event.post.time().into_iter().collect(),
+			vec![EncodedSeriesRow::view(&event.post).created_at()],
+			vec![EncodedSeriesRow::view(&event.post).updated_at()],
+			EncodedSeriesRow::view(&event.post).time().into_iter().collect(),
 		),
 	);
 	txn.track_flow_change(Change {

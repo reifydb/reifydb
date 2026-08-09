@@ -6,4 +6,7 @@ mod le;
 mod operator;
 mod pod;
 mod queue;
+mod ringbuffer;
+mod series;
 mod shape;
+mod table;

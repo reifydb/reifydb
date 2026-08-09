@@ -3,7 +3,7 @@
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, shape::RowShape},
+	row::{bytes::EncodedBytes, series::EncodedSeriesRow, shape::RowShape},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -77,9 +77,9 @@ pub fn build_series_delete_pre_columns_from_storage(
 		SystemColumns::new(
 			vec![row_number],
 			Vec::new(),
-			vec![encoded_bytes.created_at()],
-			vec![encoded_bytes.updated_at()],
-			encoded_bytes.time().into_iter().collect(),
+			vec![EncodedSeriesRow::view(encoded_bytes).created_at()],
+			vec![EncodedSeriesRow::view(encoded_bytes).updated_at()],
+			EncodedSeriesRow::view(encoded_bytes).time().into_iter().collect(),
 		),
 	)
 }

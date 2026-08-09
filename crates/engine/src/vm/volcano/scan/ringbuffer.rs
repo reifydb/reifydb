@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
+use reifydb_codec::row::{bytes::EncodedBytes, ringbuffer::EncodedRingBufferRow, shape::RowShape};
 use reifydb_core::{
 	interface::{
 		catalog::{dictionary::Dictionary, object::ObjectId, ringbuffer::PartitionedMetadata},
@@ -109,7 +109,7 @@ impl RingBufferScan {
 			return Ok(shape.clone());
 		}
 
-		let fingerprint = first.fingerprint();
+		let fingerprint = EncodedRingBufferRow::view(first).fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("RingBufferScan context not set");
 		let shape = stored_ctx.services.catalog.get_or_load_row_shape(fingerprint, rx)?.ok_or_else(|| {

@@ -9,6 +9,7 @@ use reifydb_codec::{
 		bytes::{EncodedBytes, EncodedRowBuilder},
 		pod::EncodedPodRow,
 		shape::RowShape,
+		table::EncodedTableRow,
 	},
 };
 use reifydb_core::{
@@ -213,6 +214,7 @@ fn run_table_update(
 			}
 
 			let old_row = txn.get(&row_key)?.expect("bytes must exist for update").bytes;
+			let old_row = EncodedTableRow::view(&old_row);
 			let old_created_at = old_row.created_at();
 			let old_time = old_row.time();
 			let now = exec.services.runtime_context.clock.now();
