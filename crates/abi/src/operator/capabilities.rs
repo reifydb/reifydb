@@ -7,14 +7,19 @@ pub enum OperatorCapability {
 	Insert = 1 << 0,
 	Update = 1 << 1,
 	Delete = 1 << 2,
+	Expire = 1 << 5,
 }
 
 impl OperatorCapability {
 	pub const STANDARD: &'static [OperatorCapability] =
 		&[OperatorCapability::Insert, OperatorCapability::Update, OperatorCapability::Delete];
 
-	pub const ALL: &'static [OperatorCapability] =
-		&[OperatorCapability::Insert, OperatorCapability::Update, OperatorCapability::Delete];
+	pub const ALL: &'static [OperatorCapability] = &[
+		OperatorCapability::Insert,
+		OperatorCapability::Update,
+		OperatorCapability::Delete,
+		OperatorCapability::Expire,
+	];
 
 	pub const fn bit(self) -> u32 {
 		self as u32
@@ -53,11 +58,17 @@ mod tests {
 		// from_bitmask filters over ALL, so a variant missing from ALL is dropped on every
 		// descriptor round trip and the operator loses that capability with no error anywhere. The
 		// match is exhaustive so a new variant fails to compile here rather than vanishing at runtime.
-		for capability in [OperatorCapability::Insert, OperatorCapability::Update, OperatorCapability::Delete] {
+		for capability in [
+			OperatorCapability::Insert,
+			OperatorCapability::Update,
+			OperatorCapability::Delete,
+			OperatorCapability::Expire,
+		] {
 			match capability {
 				OperatorCapability::Insert
 				| OperatorCapability::Update
-				| OperatorCapability::Delete => {}
+				| OperatorCapability::Delete
+				| OperatorCapability::Expire => {}
 			}
 			assert!(
 				OperatorCapability::ALL.contains(&capability),
@@ -76,6 +87,21 @@ mod tests {
 		assert!(restored.contains(&OperatorCapability::Insert));
 		assert!(restored.contains(&OperatorCapability::Update));
 		assert!(restored.contains(&OperatorCapability::Delete));
+	}
+
+	#[test]
+	fn expire_is_reachable_through_all_but_never_through_standard() {
+		// STANDARD must never carry Expire, or every in-tree operator silently opts into rows it has no arm for.
+		assert!(!OperatorCapability::STANDARD.contains(&OperatorCapability::Expire));
+		assert!(OperatorCapability::ALL.contains(&OperatorCapability::Expire));
+		assert!(from_bitmask(to_bitmask(&[OperatorCapability::Expire])).contains(&OperatorCapability::Expire));
+	}
+
+	#[test]
+	fn expire_does_not_claim_the_retired_reclaim_bit() {
+		// Expire must never take the retired Reclaim bit, or a stale guest still setting it reads as opted in.
+		assert_ne!(OperatorCapability::Expire.bit(), 1 << 4);
+		assert!(!from_bitmask(1 << 4).contains(&OperatorCapability::Expire));
 	}
 
 	#[test]
