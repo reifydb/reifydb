@@ -577,7 +577,7 @@ fn ensure_ringbuffer_partition_metadata(
 	if !cache.contains_key(partition_key) {
 		let existing =
 			catalog.find_partition_metadata(&mut Transaction::Command(txn), ringbuffer, partition_key)?;
-		let m = existing.unwrap_or_else(|| RingBufferMetadata::new());
+		let m = existing.unwrap_or_else(RingBufferMetadata::new);
 		cache.insert(partition_key.to_vec(), m);
 	}
 	Ok(())

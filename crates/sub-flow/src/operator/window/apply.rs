@@ -84,6 +84,7 @@ fn intern_window_group(
 	Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn push_count_event(
 	buckets: &mut EngineBuckets,
 	group_values: &mut HashMap<Hash128, Vec<Value>>,

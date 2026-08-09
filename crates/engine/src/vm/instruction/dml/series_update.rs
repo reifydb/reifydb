@@ -406,9 +406,9 @@ fn track_series_update_flow_change(
 		SystemColumns::new(
 			vec![event.row_number],
 			Vec::new(),
-			vec![EncodedSeriesRow::view(&event.pre).created_at()],
-			vec![EncodedSeriesRow::view(&event.pre).updated_at()],
-			EncodedSeriesRow::view(&event.pre).time().into_iter().collect(),
+			vec![EncodedSeriesRow::view(event.pre).created_at()],
+			vec![EncodedSeriesRow::view(event.pre).updated_at()],
+			EncodedSeriesRow::view(event.pre).time().into_iter().collect(),
 		),
 	);
 	let post = Columns::with_system(
@@ -416,9 +416,9 @@ fn track_series_update_flow_change(
 		SystemColumns::new(
 			vec![event.row_number],
 			Vec::new(),
-			vec![EncodedSeriesRow::view(&event.post).created_at()],
-			vec![EncodedSeriesRow::view(&event.post).updated_at()],
-			EncodedSeriesRow::view(&event.post).time().into_iter().collect(),
+			vec![EncodedSeriesRow::view(event.post).created_at()],
+			vec![EncodedSeriesRow::view(event.post).updated_at()],
+			EncodedSeriesRow::view(event.post).time().into_iter().collect(),
 		),
 	);
 	txn.track_flow_change(Change {

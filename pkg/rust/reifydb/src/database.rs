@@ -249,10 +249,10 @@ impl Database {
 			multi_store.flush_all_blocking();
 		}
 
-		if let Some(single_store) = self.engine.ioc().try_resolve::<SingleStore>() {
-			if !single_store.flush_pending_blocking() {
-				warn!("single store flush did not complete during shutdown");
-			}
+		if let Some(single_store) = self.engine.ioc().try_resolve::<SingleStore>()
+			&& !single_store.flush_pending_blocking()
+		{
+			warn!("single store flush did not complete during shutdown");
 		}
 	}
 

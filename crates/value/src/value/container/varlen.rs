@@ -112,7 +112,7 @@ impl VarlenContainer {
 	pub fn from_storage_parts(data: Vec<u8>, offsets: Vec<u64>) -> Self {
 		reifydb_assertions! {
 			assert!(
-				offsets.len() >= 1,
+				!offsets.is_empty(),
 				"offsets must always include the leading 0; got empty offsets"
 			);
 		}

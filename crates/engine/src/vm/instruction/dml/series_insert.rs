@@ -439,9 +439,9 @@ fn track_series_insert_flow_change(txn: &mut Transaction<'_>, series: &Series, s
 		SystemColumns::new(
 			vec![row_number],
 			Vec::new(),
-			vec![EncodedSeriesRow::view(&snapshot.row).created_at()],
-			vec![EncodedSeriesRow::view(&snapshot.row).updated_at()],
-			EncodedSeriesRow::view(&snapshot.row).time().into_iter().collect(),
+			vec![EncodedSeriesRow::view(snapshot.row).created_at()],
+			vec![EncodedSeriesRow::view(snapshot.row).updated_at()],
+			EncodedSeriesRow::view(snapshot.row).time().into_iter().collect(),
 		),
 	);
 	txn.track_flow_change(Change {

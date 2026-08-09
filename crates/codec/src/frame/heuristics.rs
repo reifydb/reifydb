@@ -274,16 +274,20 @@ fn count_runs_generic<T: PartialEq>(slice: &[T]) -> usize {
 #[cfg(test)]
 mod tests {
 	use num_bigint::BigInt;
-	use reifydb_value::value::{
-		container::{
-			bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer, utf8::Utf8Container,
+	use reifydb_value::{
+		util::bitvec::BitVec,
+		value::{
+			container::{
+				bool::BoolContainer, number::NumberContainer, temporal::TemporalContainer,
+				utf8::Utf8Container,
+			},
+			date::Date,
+			datetime::DateTime,
+			decimal::Decimal,
+			int::Int,
+			time::Time,
+			uint::Uint,
 		},
-		date::Date,
-		datetime::DateTime,
-		decimal::Decimal,
-		int::Int,
-		time::Time,
-		uint::Uint,
 	};
 
 	use super::*;
@@ -420,7 +424,7 @@ mod tests {
 			FrameColumnData::Utf8(Utf8Container::new((0..100).map(|i| format!("v{}", i % 5)).collect()));
 		let wrapped = FrameColumnData::Option {
 			inner: Box::new(inner),
-			bitvec: reifydb_value::util::bitvec::BitVec::from_slice(&vec![true; 100]),
+			bitvec: BitVec::from_slice(&vec![true; 100]),
 		};
 		assert_eq!(choose_encoding(&wrapped, CompressionLevel::Fast), Encoding::Dict);
 	}

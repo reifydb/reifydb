@@ -91,7 +91,7 @@ pub fn keyspace(multi_db: &str, cat: Option<&Catalog>, opts: Options) -> Result<
 }
 
 fn classify(key: &[u8]) -> (String, Option<u64>) {
-	let Some(decoded) = OperatorStateKey::decode(&EncodedKey::new(key.to_vec())) else {
+	let Some(decoded) = OperatorStateKey::decode(&EncodedKey::new(key)) else {
 		return (UNDECODABLE.to_string(), None);
 	};
 	if !is_framed_inner(&decoded.key) {
@@ -158,7 +158,7 @@ fn render(
 	}
 
 	println!(
-		"{:>12}  {:<22} {:>12} {:>12} {:>10} {:>7} {:>10} {:>6}{}  {}",
+		"{:>12}  {:<22} {:>12} {:>12} {:>10} {:>7} {:>10} {:>6}{}  LOGICAL",
 		"PHYSICAL",
 		"KEYSPACE",
 		"ROWS",
@@ -171,8 +171,7 @@ fn render(
 			format!(" {:>9}", "GROUPS")
 		} else {
 			String::new()
-		},
-		"LOGICAL"
+		}
 	);
 	let limit = shown(rows.len(), opts.top);
 	for ((operator, label), census) in rows.iter().take(limit) {

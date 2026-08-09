@@ -98,6 +98,8 @@ impl sealed::Sealed for EncodedRowBuilder {
 }
 
 pub(crate) mod sealed {
+	use std::ops::Range;
+
 	pub trait Sealed {
 		fn buffer(&self) -> &Vec<u8>;
 
@@ -120,7 +122,7 @@ pub(crate) mod sealed {
 		}
 
 		#[inline]
-		fn splice(&mut self, range: std::ops::Range<usize>, data: impl IntoIterator<Item = u8>) {
+		fn splice(&mut self, range: Range<usize>, data: impl IntoIterator<Item = u8>) {
 			self.buffer_mut().splice(range, data);
 		}
 	}

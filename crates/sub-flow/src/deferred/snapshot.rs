@@ -41,6 +41,9 @@ pub struct FlowSnapshots {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+type GenerationCursors = Vec<(u64, CommitVersion)>;
+
+#[cfg(not(target_arch = "wasm32"))]
 impl FlowSnapshots {
 	pub fn new(store: SnapshotStore, single: SingleStore, dictionaries: DictionaryAllocatorRegistry) -> Self {
 		Self {
@@ -202,7 +205,7 @@ impl FlowSnapshots {
 		}
 	}
 
-	fn generation_catalog(&self, ids: &[OperatorId]) -> Result<Vec<(OperatorId, Vec<(u64, CommitVersion)>)>> {
+	fn generation_catalog(&self, ids: &[OperatorId]) -> Result<Vec<(OperatorId, GenerationCursors)>> {
 		let mut catalog = Vec::new();
 		for id in ids {
 			let generations = self.store.generation_cursors(*id)?;

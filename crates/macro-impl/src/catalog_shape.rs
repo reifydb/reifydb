@@ -11,7 +11,7 @@ use syn::{
 };
 
 enum FieldKind {
-	Row(Type),
+	Row(Box<Type>),
 	Utf8,
 	Blob,
 	Any,
@@ -33,7 +33,7 @@ impl Parse for Field {
 			Some("utf8") => FieldKind::Utf8,
 			Some("blob") => FieldKind::Blob,
 			Some("any") => FieldKind::Any,
-			_ => FieldKind::Row(ty),
+			_ => FieldKind::Row(Box::new(ty)),
 		};
 		Ok(Field {
 			name,

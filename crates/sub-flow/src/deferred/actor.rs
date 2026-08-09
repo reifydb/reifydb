@@ -7,7 +7,6 @@ use std::{
 	panic::{AssertUnwindSafe, catch_unwind},
 	process,
 	sync::Arc,
-	time::Instant,
 };
 
 use reifydb_cdc::consume::backlog::{BacklogPull, FlowBacklog};
@@ -36,7 +35,10 @@ use reifydb_runtime::{
 		system::ActorConfig,
 		traits::{Actor, Directive},
 	},
-	context::{RuntimeContext, clock::Clock},
+	context::{
+		RuntimeContext,
+		clock::{Clock, Instant},
+	},
 };
 use reifydb_value::{
 	Result,
@@ -301,7 +303,7 @@ impl FlowActor {
 		);
 		state.catching_up = true;
 		state.replay_cursor = cursor;
-		state.replay_started_at = Instant::now();
+		state.replay_started_at = self.clock.instant();
 		self.request_catch_up(state, ctx);
 		true
 	}
@@ -791,7 +793,7 @@ impl Actor for FlowActor {
 			poisoned,
 			catching_up: false,
 			replay_cursor: self.initial_cursor,
-			replay_started_at: Instant::now(),
+			replay_started_at: self.clock.instant(),
 			retry_count: 0,
 			overlay: FlowWriteOverlay::new(),
 			pending_holds: WatermarkHolds::new(),
@@ -801,7 +803,8 @@ impl Actor for FlowActor {
 			last_snapshot_at: self.clock.now(),
 		};
 
-		if !state.poisoned && !self.begin_catch_up(&mut state, ctx) && !state.poisoned {
+		let started_catch_up = !state.poisoned && self.begin_catch_up(&mut state, ctx);
+		if !started_catch_up && !state.poisoned {
 			let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 		}
 

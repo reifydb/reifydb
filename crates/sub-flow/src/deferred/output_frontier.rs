@@ -4,7 +4,7 @@
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	common::CommitVersion,
-	interface::store::SingleVersionRange,
+	interface::{catalog::object::ObjectId, store::SingleVersionRange},
 	key::{EncodableKey, output_frontier::OutputFrontierKey},
 };
 use reifydb_flow::transaction::frontier::{FrontierEntries, FrontierEntry, OutputFrontiers};
@@ -22,7 +22,7 @@ fn encode(entry: &FrontierEntry) -> EncodedPodRow {
 	EncodedPodRow::new(&bytes)
 }
 
-fn decode(object: reifydb_core::interface::catalog::object::ObjectId, row: &EncodedPodRow) -> Option<FrontierEntry> {
+fn decode(object: ObjectId, row: &EncodedPodRow) -> Option<FrontierEntry> {
 	let bytes = row.body();
 	if bytes.len() != 16 {
 		return None;
