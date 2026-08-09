@@ -26,8 +26,8 @@ use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as 
 use serde::{Deserialize, Serialize};
 
 use super::bytes::{
-	CATALOG_HEADER_SIZE, EncodedRowBuilder, SHAPE_HEADER_SIZE, read_created_at, read_defined_at, read_storage_time,
-	read_updated_at,
+	CATALOG_HEADER_SIZE, EncodedRowBuilder, QUEUE_HEADER_SIZE, SHAPE_HEADER_SIZE, read_created_at, read_defined_at,
+	read_storage_time, read_updated_at,
 };
 use crate::row::{
 	catalog::EncodedCatalogRowBuilder,
@@ -54,6 +54,7 @@ pub enum RowFamily {
 	Table = 0x04,
 	Series = 0x05,
 	RingBuffer = 0x06,
+	Queue = 0x07,
 }
 
 impl RowFamily {
@@ -66,6 +67,7 @@ impl RowFamily {
 			Self::Table => SHAPE_HEADER_SIZE,
 			Self::Series => SHAPE_HEADER_SIZE,
 			Self::RingBuffer => SHAPE_HEADER_SIZE,
+			Self::Queue => QUEUE_HEADER_SIZE,
 		}
 	}
 
@@ -78,6 +80,7 @@ impl RowFamily {
 			0x04 => Some(Self::Table),
 			0x05 => Some(Self::Series),
 			0x06 => Some(Self::RingBuffer),
+			0x07 => Some(Self::Queue),
 			_ => None,
 		}
 	}

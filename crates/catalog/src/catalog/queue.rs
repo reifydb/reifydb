@@ -276,7 +276,7 @@ impl Catalog {
 		let shape = row_shape_from_columns(queue.columns.as_slice());
 		self.get_or_create_row_shape(
 			&mut Transaction::Admin(&mut *txn),
-			RowFamily::Deprecated,
+			RowFamily::Queue,
 			shape.fields().to_vec(),
 		)?;
 
@@ -296,7 +296,7 @@ impl Catalog {
 		let shape = row_shape_from_columns(queue.columns.as_slice());
 		self.get_or_create_row_shape(
 			&mut Transaction::Admin(&mut *txn),
-			RowFamily::Deprecated,
+			RowFamily::Queue,
 			shape.fields().to_vec(),
 		)?;
 

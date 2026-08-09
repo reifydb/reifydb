@@ -571,11 +571,9 @@ fn build_insert_queue_row(
 		shape.set_value(&mut row, queue_idx, &value);
 	}
 
-	let not_before_value = match not_before {
-		Some(instant) => Value::DateTime(instant),
-		None => Value::none(),
-	};
-	shape.set_value(&mut row, target.queue.columns.len(), &not_before_value);
+	if let Some(instant) = not_before {
+		row.set_not_before(instant);
+	}
 
 	let now = services.runtime_context.clock.now();
 	row.set_timestamps(now, now);

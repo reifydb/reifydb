@@ -53,10 +53,8 @@ pub fn get_or_create_ringbuffer_shape(
 	catalog.get_or_create_row_shape(txn, RowFamily::RingBuffer, fields)
 }
 
-pub const QUEUE_NOT_BEFORE_FIELD: &str = "__queue_not_before";
-
 pub fn get_or_create_queue_shape(catalog: &Catalog, queue: &Queue, txn: &mut Transaction<'_>) -> Result<RowShape> {
-	let mut fields = Vec::with_capacity(queue.columns.len() + 1);
+	let mut fields = Vec::with_capacity(queue.columns.len());
 
 	for col in &queue.columns {
 		let constraint = if let Some(dict_id) = col.dictionary_id {
@@ -72,12 +70,7 @@ pub fn get_or_create_queue_shape(catalog: &Catalog, queue: &Queue, txn: &mut Tra
 		fields.push(RowShapeField::new(col.name.clone(), constraint));
 	}
 
-	fields.push(RowShapeField::new(
-		QUEUE_NOT_BEFORE_FIELD.to_string(),
-		TypeConstraint::unconstrained(ValueType::DateTime),
-	));
-
-	catalog.get_or_create_row_shape(txn, RowFamily::Deprecated, fields)
+	catalog.get_or_create_row_shape(txn, RowFamily::Queue, fields)
 }
 
 pub fn get_or_create_series_shape(catalog: &Catalog, series: &Series, txn: &mut Transaction<'_>) -> Result<RowShape> {

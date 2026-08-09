@@ -10,4 +10,5 @@ pub mod catalog;
 pub mod le;
 pub mod operator;
 pub mod pod;
+pub mod queue;
 pub mod shape;

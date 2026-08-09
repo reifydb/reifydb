@@ -5,4 +5,5 @@ mod catalog;
 mod le;
 mod operator;
 mod pod;
+mod queue;
 mod shape;

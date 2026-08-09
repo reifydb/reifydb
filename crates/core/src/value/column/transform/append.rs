@@ -294,7 +294,7 @@ impl Columns {
 	#[inline]
 	fn append_each_bytes(&mut self, shape: &RowShape, bytes_slice: &[EncodedBytes]) -> Result<()> {
 		for row in bytes_slice {
-			let all_defined = (0..shape.field_count()).all(|i| row.is_defined(i));
+			let all_defined = (0..shape.field_count()).all(|i| shape.is_defined(row, i));
 
 			if all_defined {
 				self.append_all_defined_from_shape(shape, row)?;
@@ -460,7 +460,7 @@ impl Columns {
 		for (index, column) in columns.iter_mut().enumerate() {
 			let field = shape.get_field(index).unwrap();
 
-			if !bytes.is_defined(index) {
+			if !shape.is_defined(bytes, index) {
 				column.push_none();
 				continue;
 			}

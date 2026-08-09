@@ -24,7 +24,13 @@ pub const SHAPE_HEADER_SIZE: usize = FLAGS_OFFSET + 1;
 
 pub const CATALOG_HEADER_SIZE: usize = FINGERPRINT_SIZE;
 
+const NOT_BEFORE_OFFSET: usize = SHAPE_HEADER_SIZE;
+
+pub const QUEUE_HEADER_SIZE: usize = NOT_BEFORE_OFFSET + DateTime::ENCODED_SIZE;
+
 const HAS_TIME: u8 = 1 << 0;
+
+const HAS_NOT_BEFORE: u8 = 1 << 1;
 
 pub type EncodedBytesIter = Box<dyn EncodedBytesIterator>;
 
@@ -147,6 +153,12 @@ impl EncodedRowBuilder {
 		self.0[FLAGS_OFFSET] |= HAS_TIME;
 	}
 
+	pub fn set_not_before(&mut self, not_before: DateTime) {
+		self.0[NOT_BEFORE_OFFSET..NOT_BEFORE_OFFSET + DateTime::ENCODED_SIZE]
+			.copy_from_slice(&not_before.to_le_bytes());
+		self.0[FLAGS_OFFSET] |= HAS_NOT_BEFORE;
+	}
+
 	pub fn freeze(self) -> EncodedBytes {
 		EncodedBytes(CowVec::new(self.0))
 	}
@@ -207,6 +219,11 @@ pub fn read_created_at(buf: &[u8]) -> DateTime {
 #[inline]
 pub fn read_updated_at(buf: &[u8]) -> DateTime {
 	read_stamp(buf, UPDATED_AT_OFFSET)
+}
+
+#[inline]
+pub fn read_not_before(buf: &[u8]) -> Option<DateTime> {
+	(buf[FLAGS_OFFSET] & HAS_NOT_BEFORE != 0).then(|| read_stamp(buf, NOT_BEFORE_OFFSET))
 }
 
 impl EncodedBytes {
