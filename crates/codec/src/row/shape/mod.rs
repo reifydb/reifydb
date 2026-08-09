@@ -31,11 +31,11 @@ use super::bytes::{
 };
 use crate::row::{
 	catalog::EncodedCatalogRowBuilder,
-	dictionary::DICTIONARY_HEADER_SIZE,
 	operator::{
 		EncodedOperatorRowBuilder, OPERATOR_HEADER_SIZE, read_time as read_operator_time,
 		write_time as write_operator_time,
 	},
+	pod::POD_HEADER_SIZE,
 	shape::fingerprint::{RowShapeFingerprint, compute_fingerprint},
 };
 
@@ -49,7 +49,7 @@ pub enum RowFamily {
 	Deprecated,
 	Catalog,
 	Operator,
-	Dictionary,
+	Pod,
 }
 
 impl RowFamily {
@@ -58,7 +58,7 @@ impl RowFamily {
 			Self::Deprecated => SHAPE_HEADER_SIZE,
 			Self::Catalog => CATALOG_HEADER_SIZE,
 			Self::Operator => OPERATOR_HEADER_SIZE,
-			Self::Dictionary => DICTIONARY_HEADER_SIZE,
+			Self::Pod => POD_HEADER_SIZE,
 		}
 	}
 }

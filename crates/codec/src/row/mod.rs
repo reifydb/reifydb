@@ -7,7 +7,7 @@
 
 pub mod bytes;
 pub mod catalog;
-pub mod dictionary;
 pub mod le;
 pub mod operator;
+pub mod pod;
 pub mod shape;

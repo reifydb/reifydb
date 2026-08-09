@@ -15,7 +15,7 @@ use std::{
 
 use dashmap::{DashMap, DashSet};
 use postcard::to_stdvec;
-use reifydb_codec::row::{bytes::EncodedBytes, dictionary::EncodedDictionaryRow};
+use reifydb_codec::row::{bytes::EncodedBytes, pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::dictionary::Dictionary,
 	key::dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey},
@@ -397,9 +397,9 @@ fn entry_write(dictionary: &Dictionary, value_bytes: &[u8], hash: [u8; 16], id: 
 
 	DictEntryWrite {
 		entry_key: DictionaryEntryKey::encoded(dictionary.id, hash),
-		entry_value: EncodedDictionaryRow::new(&entry_value),
+		entry_value: EncodedPodRow::new(&entry_value),
 		index_key: DictionaryEntryIndexKey::encoded(dictionary.id, id),
-		index_value: EncodedDictionaryRow::new(value_bytes),
+		index_value: EncodedPodRow::new(value_bytes),
 	}
 }
 
@@ -634,7 +634,7 @@ mod tests {
 		poisoned.extend_from_slice(b"other");
 		store.inner.lock().rows.insert(
 			DictionaryEntryKey::encoded(d.id, hash),
-			EncodedDictionaryRow::new(&poisoned).into_bytes(),
+			EncodedPodRow::new(&poisoned).into_bytes(),
 		);
 
 		let err = registry.intern(&d, &value).unwrap_err();

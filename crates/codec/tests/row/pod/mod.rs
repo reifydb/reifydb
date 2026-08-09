@@ -3,7 +3,7 @@
 
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
-	dictionary::{DICTIONARY_HEADER_SIZE, EncodedDictionaryRow},
+	pod::{EncodedPodRow, POD_HEADER_SIZE},
 	shape::RowFamily,
 };
 use reifydb_value::util::cowvec::CowVec;
@@ -17,16 +17,16 @@ fn entry(id: u128, value: &[u8]) -> Vec<u8> {
 
 #[test]
 fn the_family_reserves_no_header_so_offset_zero_is_payload() {
-	// A non-zero header here shifts every dictionary read, and the id at offset 0 would decode short.
-	assert_eq!(DICTIONARY_HEADER_SIZE, 0);
-	assert_eq!(RowFamily::Dictionary.header_size(), 0);
+	// A non-zero header here shifts every pod read, and the id at offset 0 would decode short.
+	assert_eq!(POD_HEADER_SIZE, 0);
+	assert_eq!(RowFamily::Pod.header_size(), 0);
 }
 
 #[test]
 fn the_body_is_the_whole_row() {
 	// Any byte withheld from the body is a byte of the interned id or value that a reader never sees.
 	let raw = entry(7, b"reifydb");
-	let row = EncodedDictionaryRow::new(&raw);
+	let row = EncodedPodRow::new(&raw);
 
 	assert_eq!(row.body(), raw.as_slice());
 	assert_eq!(row.len(), raw.len());
@@ -39,7 +39,7 @@ fn a_viewed_entry_yields_the_id_written_at_offset_zero() {
 	let raw = entry(0x0123_4567_89ab_cdef, b"value");
 	let bytes = EncodedBytes(CowVec::new(raw));
 
-	let row = EncodedDictionaryRow::view(&bytes);
+	let row = EncodedPodRow::view(&bytes);
 
 	let id = u128::from_be_bytes(row.body()[..16].try_into().unwrap());
 	assert_eq!(id, 0x0123_4567_89ab_cdef);
@@ -52,7 +52,7 @@ fn conversion_to_bytes_and_back_preserves_every_byte() {
 	let raw = entry(42, b"payload");
 	let original = EncodedBytes(CowVec::new(raw.clone()));
 
-	let round_tripped: EncodedBytes = EncodedDictionaryRow::from(original).into();
+	let round_tripped: EncodedBytes = EncodedPodRow::from(original).into();
 
 	assert_eq!(round_tripped.as_slice(), raw.as_slice());
 }
@@ -60,7 +60,7 @@ fn conversion_to_bytes_and_back_preserves_every_byte() {
 #[test]
 fn an_empty_row_is_accepted_because_no_header_is_required() {
 	// The header-bearing families reject short buffers; a dictionary index value may legitimately be empty.
-	let row = EncodedDictionaryRow::new(&[]);
+	let row = EncodedPodRow::new(&[]);
 
 	assert!(row.is_empty());
 	assert_eq!(row.len(), 0);
@@ -71,7 +71,7 @@ fn an_empty_row_is_accepted_because_no_header_is_required() {
 fn body_mut_edits_in_place_without_resizing() {
 	// An in-place edit that shifts length would desynchronise the entry from its index key.
 	let raw = entry(1, b"before");
-	let mut row = EncodedDictionaryRow::new(&raw);
+	let mut row = EncodedPodRow::new(&raw);
 	let before = row.len();
 
 	row.body_mut()[..16].copy_from_slice(&2u128.to_be_bytes());

@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, dictionary::EncodedDictionaryRow},
+	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::{
 	interface::store::{SingleVersionGet, SingleVersionRange},
@@ -36,9 +36,9 @@ pub trait DictionaryStore: Send + Sync {
 
 pub struct DictEntryWrite {
 	pub entry_key: EncodedKey,
-	pub entry_value: EncodedDictionaryRow,
+	pub entry_value: EncodedPodRow,
 	pub index_key: EncodedKey,
-	pub index_value: EncodedDictionaryRow,
+	pub index_value: EncodedPodRow,
 }
 
 pub fn durable_max_index_id(store: &SingleStore, dictionary: DictionaryId) -> Result<Option<u128>> {

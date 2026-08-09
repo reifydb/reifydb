@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 mod catalog;
-mod dictionary;
 mod le;
 mod operator;
+mod pod;
 mod shape;
