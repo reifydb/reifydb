@@ -15,7 +15,7 @@ use std::{
 
 use dashmap::{DashMap, DashSet};
 use postcard::to_stdvec;
-use reifydb_codec::row::bytes::EncodedBytes;
+use reifydb_codec::row::{bytes::EncodedBytes, dictionary::EncodedDictionaryRow};
 use reifydb_core::{
 	interface::catalog::dictionary::Dictionary,
 	key::dictionary::{DictionaryEntryIndexKey, DictionaryEntryKey},
@@ -23,7 +23,7 @@ use reifydb_core::{
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
 	Result,
-	util::{cowvec::CowVec, hash::xxh3_128},
+	util::hash::xxh3_128,
 	value::{
 		Value,
 		dictionary::{DictionaryEntryId, DictionaryId},
@@ -397,9 +397,9 @@ fn entry_write(dictionary: &Dictionary, value_bytes: &[u8], hash: [u8; 16], id: 
 
 	DictEntryWrite {
 		entry_key: DictionaryEntryKey::encoded(dictionary.id, hash),
-		entry_value: EncodedBytes(CowVec::new(entry_value)),
+		entry_value: EncodedDictionaryRow::new(&entry_value),
 		index_key: DictionaryEntryIndexKey::encoded(dictionary.id, id),
-		index_value: EncodedBytes(CowVec::new(value_bytes.to_vec())),
+		index_value: EncodedDictionaryRow::new(value_bytes),
 	}
 }
 
@@ -454,8 +454,8 @@ mod tests {
 		fn commit_entries(&self, _dictionary: DictionaryId, writes: &[DictEntryWrite]) -> Result<()> {
 			let mut inner = self.inner.lock();
 			for write in writes {
-				inner.rows.insert(write.entry_key.clone(), write.entry_value.clone());
-				inner.rows.insert(write.index_key.clone(), write.index_value.clone());
+				inner.rows.insert(write.entry_key.clone(), write.entry_value.clone().into_bytes());
+				inner.rows.insert(write.index_key.clone(), write.index_value.clone().into_bytes());
 			}
 			inner.commits += 1;
 			Ok(())
@@ -632,10 +632,10 @@ mod tests {
 		let mut poisoned = Vec::with_capacity(16 + 4);
 		poisoned.extend_from_slice(&7u128.to_be_bytes());
 		poisoned.extend_from_slice(b"other");
-		store.inner
-			.lock()
-			.rows
-			.insert(DictionaryEntryKey::encoded(d.id, hash), EncodedBytes(CowVec::new(poisoned)));
+		store.inner.lock().rows.insert(
+			DictionaryEntryKey::encoded(d.id, hash),
+			EncodedDictionaryRow::new(&poisoned).into_bytes(),
+		);
 
 		let err = registry.intern(&d, &value).unwrap_err();
 		assert!(

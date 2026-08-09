@@ -3,7 +3,7 @@
 
 use std::ops::Bound;
 
-use reifydb_codec::key::encoded::EncodedKeyRange;
+use reifydb_codec::{key::encoded::EncodedKeyRange, row::catalog::EncodedCatalogRow};
 use reifydb_core::{
 	interface::catalog::{column::Column, id::PrimaryKeyId, key::PrimaryKey},
 	key::{Key, primary_key::PrimaryKeyKey},
@@ -43,9 +43,10 @@ impl CatalogStore {
 			if let Some(key) = Key::decode(&entry.key)
 				&& let Key::PrimaryKey(pk_key) = key
 			{
-				let object_id = primary_key::get_source(&entry.bytes);
+				let object_id = primary_key::get_source(EncodedCatalogRow::view(&entry.bytes));
 
-				let column_ids_blob = primary_key::get_column_ids(&entry.bytes);
+				let column_ids_blob =
+					primary_key::get_column_ids(EncodedCatalogRow::view(&entry.bytes));
 				let column_ids = deserialize_column_ids(&column_ids_blob);
 
 				let mut columns = Vec::new();
@@ -95,7 +96,8 @@ impl CatalogStore {
 			if let Some(key) = Key::decode(&entry.key)
 				&& let Key::PrimaryKey(pk_key) = key
 			{
-				let column_ids_blob = primary_key::get_column_ids(&entry.bytes);
+				let column_ids_blob =
+					primary_key::get_column_ids(EncodedCatalogRow::view(&entry.bytes));
 				let column_ids = deserialize_column_ids(&column_ids_blob);
 
 				for (position, column_id) in column_ids.iter().enumerate() {

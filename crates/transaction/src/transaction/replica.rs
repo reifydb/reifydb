@@ -119,9 +119,9 @@ impl ReplicaTransaction {
 	}
 
 	#[inline]
-	pub fn set(&mut self, key: &EncodedKey, bytes: EncodedBytes) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, bytes: impl Into<EncodedBytes>) -> Result<()> {
 		self.check_active()?;
-		self.rpl.as_mut().unwrap().set(key, bytes)
+		self.rpl.as_mut().unwrap().set(key, bytes.into())
 	}
 
 	#[inline]

@@ -3,11 +3,15 @@
 
 //! The catalog storage family: a row whose header is the shape fingerprint and nothing else.
 
-use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
+use reifydb_value::{
+	byte_size::ByteSize,
+	error::{Error as ValueError, TypeError},
+	util::cowvec::CowVec,
+};
 use thiserror::Error;
 
 use crate::row::{
-	bytes::{CATALOG_HEADER_SIZE, EncodedBytes, read_defined_at},
+	bytes::{CATALOG_HEADER_SIZE, EncodedBytes, EncodedRowBuilder, read_defined_at},
 	shape::fingerprint::RowShapeFingerprint,
 };
 
@@ -19,6 +23,15 @@ pub enum CatalogError {
 	Truncated {
 		len: usize,
 	},
+}
+
+impl From<CatalogError> for ValueError {
+	fn from(err: CatalogError) -> Self {
+		TypeError::SerdeDeserialize {
+			message: err.to_string(),
+		}
+		.into()
+	}
 }
 
 #[inline]
@@ -53,6 +66,10 @@ impl EncodedCatalogRow {
 
 	pub fn bytes(&self) -> &EncodedBytes {
 		&self.0
+	}
+
+	pub fn as_slice(&self) -> &[u8] {
+		self.0.as_slice()
 	}
 
 	pub fn into_bytes(self) -> EncodedBytes {
@@ -92,6 +109,10 @@ impl EncodedCatalogRow {
 	pub fn byte_size(&self) -> ByteSize {
 		ByteSize::from(self.0.len() as u64)
 	}
+
+	pub fn thaw(self) -> EncodedCatalogRowBuilder {
+		EncodedCatalogRowBuilder(self.0.thaw())
+	}
 }
 
 impl TryFrom<EncodedBytes> for EncodedCatalogRow {
@@ -110,5 +131,63 @@ impl TryFrom<EncodedBytes> for EncodedCatalogRow {
 impl From<EncodedCatalogRow> for EncodedBytes {
 	fn from(row: EncodedCatalogRow) -> Self {
 		row.0
+	}
+}
+
+/// The write side of the catalog family: a buffer already carrying a fingerprint header, which
+/// freezes into an [`EncodedCatalogRow`] and never into a row of another family.
+#[repr(transparent)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncodedCatalogRowBuilder(EncodedRowBuilder);
+
+impl EncodedCatalogRowBuilder {
+	pub(crate) fn wrap(builder: EncodedRowBuilder) -> Self {
+		Self(builder)
+	}
+
+	pub fn builder(&self) -> &EncodedRowBuilder {
+		&self.0
+	}
+
+	pub fn builder_mut(&mut self) -> &mut EncodedRowBuilder {
+		&mut self.0
+	}
+
+	pub fn as_slice(&self) -> &[u8] {
+		self.0.as_slice()
+	}
+
+	pub fn as_mut_slice(&mut self) -> &mut [u8] {
+		self.0.as_mut_slice()
+	}
+
+	#[inline]
+	pub fn fingerprint(&self) -> RowShapeFingerprint {
+		read_fingerprint(self.0.as_slice())
+	}
+
+	pub fn set_fingerprint(&mut self, fingerprint: RowShapeFingerprint) {
+		write_fingerprint(self.0.as_mut_slice(), fingerprint);
+	}
+
+	#[inline]
+	pub fn is_defined(&self, index: usize) -> bool {
+		read_defined_at(self.0.as_slice(), CATALOG_HEADER_SIZE, index)
+	}
+
+	pub fn body(&self) -> &[u8] {
+		&self.0.as_slice()[CATALOG_HEADER_SIZE..]
+	}
+
+	pub fn len(&self) -> usize {
+		self.0.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.body().is_empty()
+	}
+
+	pub fn freeze(self) -> EncodedCatalogRow {
+		EncodedCatalogRow(self.0.freeze())
 	}
 }

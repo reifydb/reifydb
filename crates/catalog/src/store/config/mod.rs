@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::{catalog::config::ConfigKey, store::MultiVersionRow},
 	key::{EncodableKey, config::ConfigStorageKey},
@@ -22,7 +23,7 @@ pub(crate) fn convert_config(multi: MultiVersionRow) -> Option<(ConfigKey, Value
 		}
 	};
 
-	let value = match config::get_value(&multi.bytes) {
+	let value = match config::get_value(EncodedCatalogRow::view(&multi.bytes)) {
 		Value::Any(inner) => *inner,
 		other => other,
 	};

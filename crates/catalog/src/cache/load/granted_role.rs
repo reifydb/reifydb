@@ -14,7 +14,7 @@ pub(crate) fn load_granted_roles(rx: &mut Transaction<'_>, catalog: &CatalogCach
 	for entry in stream {
 		let multi = entry?;
 		let version = multi.version;
-		let ir_def = convert_granted_role(multi);
+		let ir_def = convert_granted_role(multi)?;
 		catalog.set_granted_role(ir_def.identity, ir_def.role_id, version, Some(ir_def));
 	}
 

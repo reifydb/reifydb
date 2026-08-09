@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{
 		flow::{Flow, FlowId},
@@ -21,7 +22,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(decode_flow(&multi.bytes)))
+		Ok(Some(decode_flow(EncodedCatalogRow::view(&multi.bytes))))
 	}
 
 	pub(crate) fn find_flow_by_name(
@@ -35,7 +36,7 @@ impl CatalogStore {
 		let mut found_flow = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let bytes = &multi.bytes;
+			let bytes = EncodedCatalogRow::view(&multi.bytes);
 			let flow_name = flow_namespace::get_name(bytes);
 			if name == flow_name {
 				found_flow = Some(FlowId(flow_namespace::get_id(bytes)));

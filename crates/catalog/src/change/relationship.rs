@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::key::{EncodableKey, kind::KeyKind, relationship::RelationshipKey};
 use reifydb_transaction::transaction::Transaction;
 
@@ -13,7 +16,7 @@ pub(super) struct RelationshipApplier;
 impl CatalogChangeApplier for RelationshipApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let rel = decode_relationship_row(bytes)?;
+		let rel = decode_relationship_row(EncodedCatalogRow::view(bytes))?;
 		catalog.cache.set_relationship(rel.id, txn.version(), Some(rel));
 		Ok(())
 	}

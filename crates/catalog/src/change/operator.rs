@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::{
 	interface::catalog::flow::{FlowId, Operator, OperatorId},
 	key::{EncodableKey, kind::KeyKind, operator::OperatorKey},
@@ -16,7 +19,7 @@ pub(super) struct OperatorApplier;
 impl CatalogChangeApplier for OperatorApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let operator = decode_operator(bytes);
+		let operator = decode_operator(EncodedCatalogRow::view(bytes));
 		catalog.cache.set_operator(operator.id, txn.version(), Some(operator));
 		Ok(())
 	}
@@ -31,7 +34,7 @@ impl CatalogChangeApplier for OperatorApplier {
 	}
 }
 
-fn decode_operator(bytes: &EncodedBytes) -> Operator {
+fn decode_operator(bytes: &EncodedCatalogRow) -> Operator {
 	let id = OperatorId(operator::get_id(bytes));
 	let flow = FlowId(operator::get_flow(bytes));
 	let node_type = operator::get_type(bytes);

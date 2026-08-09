@@ -106,12 +106,12 @@ impl<'a> SingleWriteTransaction<'a> {
 		SingleVersionContains::contains(&store, key)
 	}
 
-	pub fn set(&mut self, key: &EncodedKey, bytes: EncodedBytes) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, bytes: impl Into<EncodedBytes>) -> Result<()> {
 		self.check_key_allowed(key)?;
 
 		let delta = Delta::Set {
 			key: key.clone(),
-			bytes,
+			bytes: bytes.into(),
 		};
 		self.pending.insert(key.clone(), delta);
 		Ok(())

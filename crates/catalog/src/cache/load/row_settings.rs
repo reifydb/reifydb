@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::key::{
 	EncodableKey,
 	row_settings::{RowSettingsKey, RowSettingsKeyRange},
@@ -23,7 +24,7 @@ pub(crate) fn load_row_settings(rx: &mut Transaction<'_>, catalog: &CatalogCache
 			warn!("Failed to decode RowSettingsKey from catalog entry, skipping");
 			continue;
 		};
-		let Some(config) = decode_row_settings(&multi.bytes) else {
+		let Some(config) = decode_row_settings(EncodedCatalogRow::view(&multi.bytes)) else {
 			warn!(?key.storage, "Failed to decode TTL config from catalog entry, skipping");
 			continue;
 		};

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, SeriesId},
@@ -28,7 +29,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let bytes = multi.bytes;
+		let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 		let id = SeriesId(series::get_id(&bytes));
 		let namespace = NamespaceId(series::get_namespace(&bytes));
 		let name = series::get_name(&bytes).to_string();
@@ -72,7 +73,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let bytes = multi.bytes;
+		let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 		let id = SeriesId(series_metadata::get_id(&bytes));
 		let row_count = series_metadata::get_row_count(&bytes);
 		let oldest_key = series_metadata::get_oldest_key(&bytes);
@@ -99,7 +100,7 @@ impl CatalogStore {
 		let mut found_series = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let bytes = &multi.bytes;
+			let bytes = EncodedCatalogRow::view(&multi.bytes);
 			let series_name = series_namespace::get_name(bytes);
 			if name == series_name {
 				found_series = Some(SeriesId(series_namespace::get_id(bytes)));

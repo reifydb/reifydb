@@ -74,6 +74,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_codec::row::catalog::EncodedCatalogRow;
 	use reifydb_core::{
 		interface::catalog::sumtype::{SumTypeKind, Variant},
 		key::namespace_sumtype::NamespaceSumTypeKey,
@@ -215,14 +216,14 @@ pub mod tests {
 
 		let link = &links[0];
 		let bytes = &link.bytes;
-		let id2 = sumtype_namespace::get_id(bytes);
+		let id2 = sumtype_namespace::get_id(EncodedCatalogRow::view(bytes));
 		assert!(id2 > 0);
-		assert_eq!(sumtype_namespace::get_name(bytes), "Object");
+		assert_eq!(sumtype_namespace::get_name(EncodedCatalogRow::view(bytes)), "Object");
 
 		let link = &links[1];
 		let bytes = &link.bytes;
-		let id1 = sumtype_namespace::get_id(bytes);
+		let id1 = sumtype_namespace::get_id(EncodedCatalogRow::view(bytes));
 		assert!(id2 > id1);
-		assert_eq!(sumtype_namespace::get_name(bytes), "Color");
+		assert_eq!(sumtype_namespace::get_name(EncodedCatalogRow::view(bytes)), "Color");
 	}
 }

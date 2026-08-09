@@ -5,13 +5,13 @@ pub mod create;
 mod find;
 pub(crate) mod shape;
 
-use reifydb_codec::row::bytes::{EncodedBytes, EncodedRowBuilder};
+use reifydb_codec::row::catalog::{EncodedCatalogRow, EncodedCatalogRowBuilder};
 use reifydb_core::row::{JoinTtl, OperatorSettings, OperatorTtl};
 use reifydb_value::value::duration::Duration;
 
 use self::shape::operator_settings;
 
-pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedBytes {
+pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedCatalogRow {
 	let mut row = operator_settings::allocate();
 
 	match &settings.join {
@@ -29,7 +29,7 @@ pub(crate) fn encode_operator_settings(settings: &OperatorSettings) -> EncodedBy
 	row.freeze()
 }
 
-pub(crate) fn decode_operator_settings(bytes: &EncodedBytes) -> Option<OperatorSettings> {
+pub(crate) fn decode_operator_settings(bytes: &EncodedCatalogRow) -> Option<OperatorSettings> {
 	if operator_settings::get_is_join(bytes) {
 		let left = decode_side(bytes, operator_settings::LEFT_DURATION);
 		let right = decode_side(bytes, operator_settings::RIGHT_DURATION);
@@ -48,13 +48,13 @@ pub(crate) fn decode_operator_settings(bytes: &EncodedBytes) -> Option<OperatorS
 	}
 }
 
-fn encode_side(row: &mut EncodedRowBuilder, ttl: &Option<OperatorTtl>, duration_idx: usize) {
+fn encode_side(row: &mut EncodedCatalogRowBuilder, ttl: &Option<OperatorTtl>, duration_idx: usize) {
 	let duration = ttl.as_ref().map(|ttl| ttl.duration).unwrap_or_else(Duration::zero);
-	operator_settings::SHAPE.set::<Duration>(row, duration_idx, duration);
+	operator_settings::SHAPE.set::<Duration>(row.builder_mut(), duration_idx, duration);
 }
 
-fn decode_side(bytes: &EncodedBytes, duration_idx: usize) -> Option<OperatorTtl> {
-	let duration = operator_settings::SHAPE.get::<Duration>(bytes, duration_idx);
+fn decode_side(bytes: &EncodedCatalogRow, duration_idx: usize) -> Option<OperatorTtl> {
+	let duration = operator_settings::SHAPE.get::<Duration>(bytes.as_slice(), duration_idx);
 	if duration.is_zero() {
 		return None;
 	}

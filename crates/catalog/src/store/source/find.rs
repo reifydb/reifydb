@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{
 		flow::FlowStatus,
@@ -23,7 +24,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let bytes = multi.bytes;
+		let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 		let id = SourceId(source::get_id(&bytes));
 		let namespace = NamespaceId(source::get_namespace(&bytes));
 		let name = source::get_name(&bytes).to_string();
@@ -58,7 +59,7 @@ impl CatalogStore {
 		let mut found_source = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let bytes = &multi.bytes;
+			let bytes = EncodedCatalogRow::view(&multi.bytes);
 			let source_name = source_namespace::get_name(bytes);
 			if name == source_name {
 				found_source = Some(SourceId(source_namespace::get_id(bytes)));

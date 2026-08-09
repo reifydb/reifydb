@@ -123,7 +123,7 @@ impl CatalogStore {
 
 		write_time_source(
 			&ringbuffer::SHAPE,
-			&mut row,
+			row.builder_mut(),
 			ringbuffer::TIME_DOMAIN,
 			ringbuffer::TS,
 			&to_create.time,
@@ -240,6 +240,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_codec::row::catalog::EncodedCatalogRow;
 	use reifydb_core::key::namespace_ringbuffer::NamespaceRingBufferKey;
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
@@ -382,15 +383,15 @@ pub mod tests {
 		// Keys are descending, so the later ring buffer comes first.
 		let link = &links[0];
 		let bytes = &link.bytes;
-		let id2 = ringbuffer_namespace::get_id(bytes);
+		let id2 = ringbuffer_namespace::get_id(EncodedCatalogRow::view(bytes));
 		assert!(id2 > 0);
-		assert_eq!(ringbuffer_namespace::get_name(bytes), "buffer2");
+		assert_eq!(ringbuffer_namespace::get_name(EncodedCatalogRow::view(bytes)), "buffer2");
 
 		let link = &links[1];
 		let bytes = &link.bytes;
-		let id1 = ringbuffer_namespace::get_id(bytes);
+		let id1 = ringbuffer_namespace::get_id(EncodedCatalogRow::view(bytes));
 		assert!(id2 > id1);
-		assert_eq!(ringbuffer_namespace::get_name(bytes), "buffer1");
+		assert_eq!(ringbuffer_namespace::get_name(EncodedCatalogRow::view(bytes)), "buffer1");
 	}
 
 	#[test]

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::interface::{
 	catalog::{id::NamespaceId, namespace::Namespace},
 	store::MultiVersionRow,
 };
+use reifydb_value::Result;
 
 use crate::store::namespace::shape::namespace;
 
@@ -16,8 +18,8 @@ pub mod list;
 pub mod shape;
 pub mod update;
 
-pub(crate) fn convert_namespace(multi: MultiVersionRow) -> Namespace {
-	let bytes = multi.bytes;
+pub(crate) fn convert_namespace(multi: MultiVersionRow) -> Result<Namespace> {
+	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = NamespaceId(namespace::get_id(&bytes));
 	let name = namespace::get_name(&bytes).to_string();
 	let parent_id = NamespaceId(namespace::get_parent_id(&bytes));
@@ -27,7 +29,7 @@ pub(crate) fn convert_namespace(multi: MultiVersionRow) -> Namespace {
 		.unwrap_or_else(|| name.rsplit_once("::").map(|(_, s)| s).unwrap_or(&name))
 		.to_string();
 
-	if let Some(address) = grpc {
+	Ok(if let Some(address) = grpc {
 		let token = namespace::try_get_token(&bytes).map(|s| s.to_string()).filter(|s| !s.is_empty());
 		Namespace::Remote {
 			id,
@@ -44,5 +46,5 @@ pub(crate) fn convert_namespace(multi: MultiVersionRow) -> Namespace {
 			local_name,
 			parent_id,
 		}
-	}
+	})
 }

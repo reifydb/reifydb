@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, QueueId},
@@ -27,7 +30,7 @@ pub(super) struct QueueApplier;
 impl CatalogChangeApplier for QueueApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let mut decoded = decode_queue(bytes);
+		let mut decoded = decode_queue(EncodedCatalogRow::view(bytes));
 		decoded.columns = CatalogStore::list_columns(txn, decoded.id)?;
 		catalog.cache.set_queue(decoded.id, txn.version(), Some(decoded));
 		Ok(())
@@ -43,7 +46,7 @@ impl CatalogChangeApplier for QueueApplier {
 	}
 }
 
-fn decode_queue(bytes: &EncodedBytes) -> Queue {
+fn decode_queue(bytes: &EncodedCatalogRow) -> Queue {
 	let id = QueueId(queue::get_id(bytes));
 	let namespace = NamespaceId(queue::get_namespace(bytes));
 	let name = queue::get_name(bytes).to_string();
@@ -130,7 +133,7 @@ mod tests {
 			},
 		);
 
-		let decoded = decode_queue(&row);
+		let decoded = decode_queue(EncodedCatalogRow::view(&row));
 
 		assert_eq!(decoded.namespace, namespace.id());
 		assert_eq!(decoded.name, "jobs");
@@ -168,7 +171,7 @@ mod tests {
 			},
 		);
 
-		let decoded = decode_queue(&row);
+		let decoded = decode_queue(EncodedCatalogRow::view(&row));
 
 		assert_eq!(decoded.ordered_by(), None);
 		assert_eq!(decoded.retention.done, None);
@@ -201,7 +204,7 @@ mod tests {
 		.unwrap();
 
 		let bytes = Transaction::Admin(&mut txn).get(&QueueKey::encoded(created.id)).unwrap().unwrap().bytes;
-		let decoded = decode_queue(&bytes);
+		let decoded = decode_queue(EncodedCatalogRow::view(&bytes));
 
 		assert_eq!(decoded.id, created.id);
 		assert_ne!(decoded.namespace, NamespaceId(0));

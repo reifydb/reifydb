@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::key::{EncodableKey, binding::BindingKey, kind::KeyKind};
 use reifydb_transaction::transaction::Transaction;
 
@@ -16,7 +19,7 @@ impl CatalogChangeApplier for BindingApplier {
 		let id = BindingKey::decode(key).map(|k| k.binding).ok_or(CatalogChangeError::KeyDecodeFailed {
 			kind: KeyKind::Binding,
 		})?;
-		let binding = decode_binding(bytes);
+		let binding = decode_binding(EncodedCatalogRow::view(bytes));
 		catalog.cache.set_binding(id, txn.version(), Some(binding));
 		Ok(())
 	}

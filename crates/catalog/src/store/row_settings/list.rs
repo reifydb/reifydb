@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::storage::StorageId,
 	key::{
@@ -30,7 +31,7 @@ impl CatalogStore {
 		for entry in stream {
 			let entry = entry?;
 			if let Some(key) = RowSettingsKey::decode(&entry.key)
-				&& let Some(settings) = decode_row_settings(&entry.bytes)
+				&& let Some(settings) = decode_row_settings(EncodedCatalogRow::view(&entry.bytes))
 			{
 				result.push(RowSettingsEntry {
 					storage: key.storage,

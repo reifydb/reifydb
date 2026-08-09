@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::{
 	interface::catalog::id::PrimaryKeyId,
 	key::{EncodableKey, kind::KeyKind, view::ViewKey},
@@ -21,7 +24,7 @@ pub(super) struct ViewApplier;
 impl CatalogChangeApplier for ViewApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let pk_raw = view::get_primary_key(bytes);
+		let pk_raw = view::get_primary_key(EncodedCatalogRow::view(bytes));
 		let primary_key = if pk_raw > 0 {
 			catalog.cache.find_primary_key_at(PrimaryKeyId(pk_raw), txn.version())
 		} else {
@@ -31,7 +34,7 @@ impl CatalogChangeApplier for ViewApplier {
 			kind: KeyKind::View,
 		})?;
 		let columns = CatalogStore::list_columns(txn, view_id)?;
-		let view = decode_view(bytes, columns, primary_key)?;
+		let view = decode_view(EncodedCatalogRow::view(bytes), columns, primary_key)?;
 		catalog.cache.set_view(view.id(), txn.version(), Some(view));
 		Ok(())
 	}

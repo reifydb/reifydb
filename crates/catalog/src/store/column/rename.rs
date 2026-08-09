@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{id::ColumnId, object::ObjectId},
 	key::{column::ColumnKey, columns::ColumnsKey},
@@ -20,7 +21,7 @@ impl CatalogStore {
 		new_name: &str,
 	) -> Result<()> {
 		if let Some(multi) = txn.get(&ColumnsKey::encoded(column_id))? {
-			let old = multi.bytes;
+			let old = EncodedCatalogRow::try_from(multi.bytes)?;
 			let mut row = column::allocate();
 			column::set_id(&mut row, column::get_id(&old));
 			column::set_object(&mut row, column::get_object(&old));
@@ -34,7 +35,7 @@ impl CatalogStore {
 		}
 
 		if let Some(multi) = txn.get(&ColumnKey::encoded(object, column_id))? {
-			let old = multi.bytes;
+			let old = EncodedCatalogRow::try_from(multi.bytes)?;
 			let mut row = object_column::allocate();
 			object_column::set_id(&mut row, object_column::get_id(&old));
 			object_column::set_name(&mut row, new_name);

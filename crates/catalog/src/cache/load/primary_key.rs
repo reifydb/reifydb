@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{column::Column, id::PrimaryKeyId, key::PrimaryKey},
 	key::primary_key::PrimaryKeyKey,
@@ -26,7 +27,7 @@ pub fn load_primary_keys(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 
 	for multi in entries {
 		let version = multi.version;
-		let bytes = multi.bytes;
+		let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 
 		let pk_id = PrimaryKeyId(primary_key::get_id(&bytes));
 

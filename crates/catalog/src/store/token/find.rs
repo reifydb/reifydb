@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{interface::catalog::token::Token, key::token::TokenKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use subtle::ConstantTimeEq;
@@ -16,9 +17,9 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			let stored_token = token::get_token(&multi.bytes);
+			let stored_token = token::get_token(EncodedCatalogRow::view(&multi.bytes));
 			if stored_token.as_bytes().ct_eq(value.as_bytes()).into() {
-				return Ok(Some(convert_token(multi)));
+				return Ok(Some(convert_token(multi)?));
 			}
 		}
 

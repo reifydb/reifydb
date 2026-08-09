@@ -30,7 +30,12 @@ use super::bytes::{
 	read_updated_at,
 };
 use crate::row::{
-	operator::{OPERATOR_HEADER_SIZE, read_time as read_operator_time, write_time as write_operator_time},
+	catalog::EncodedCatalogRowBuilder,
+	dictionary::DICTIONARY_HEADER_SIZE,
+	operator::{
+		EncodedOperatorRowBuilder, OPERATOR_HEADER_SIZE, read_time as read_operator_time,
+		write_time as write_operator_time,
+	},
 	shape::fingerprint::{RowShapeFingerprint, compute_fingerprint},
 };
 
@@ -44,6 +49,7 @@ pub enum RowFamily {
 	Deprecated,
 	Catalog,
 	Operator,
+	Dictionary,
 }
 
 impl RowFamily {
@@ -52,6 +58,7 @@ impl RowFamily {
 			Self::Deprecated => SHAPE_HEADER_SIZE,
 			Self::Catalog => CATALOG_HEADER_SIZE,
 			Self::Operator => OPERATOR_HEADER_SIZE,
+			Self::Dictionary => DICTIONARY_HEADER_SIZE,
 		}
 	}
 }
@@ -426,6 +433,16 @@ impl RowShape {
 			);
 		}
 		row
+	}
+
+	pub fn allocate_catalog(&self) -> EncodedCatalogRowBuilder {
+		assert_eq!(self.family, RowFamily::Catalog, "allocate_catalog on a shape of another family");
+		EncodedCatalogRowBuilder::wrap(self.allocate())
+	}
+
+	pub fn allocate_operator(&self) -> EncodedOperatorRowBuilder {
+		assert_eq!(self.family, RowFamily::Operator, "allocate_operator on a shape of another family");
+		EncodedOperatorRowBuilder::wrap(self.allocate())
 	}
 
 	pub fn set_none(&self, row: &mut EncodedRowBuilder, index: usize) {

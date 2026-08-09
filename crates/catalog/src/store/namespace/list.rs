@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{id::NamespaceId, namespace::Namespace},
 	key::{Key, namespace::NamespaceKey},
@@ -24,17 +25,18 @@ impl CatalogStore {
 			{
 				let namespace_id = namespace_key.namespace;
 
-				let name = namespace::get_name(&entry.bytes).to_string();
-				let parent_id = NamespaceId(namespace::get_parent_id(&entry.bytes));
-				let grpc = namespace::try_get_grpc(&entry.bytes)
+				let name = namespace::get_name(EncodedCatalogRow::view(&entry.bytes)).to_string();
+				let parent_id =
+					NamespaceId(namespace::get_parent_id(EncodedCatalogRow::view(&entry.bytes)));
+				let grpc = namespace::try_get_grpc(EncodedCatalogRow::view(&entry.bytes))
 					.map(|s| s.to_string())
 					.filter(|s| !s.is_empty());
-				let local_name = namespace::try_get_local_name(&entry.bytes)
+				let local_name = namespace::try_get_local_name(EncodedCatalogRow::view(&entry.bytes))
 					.filter(|s| !s.is_empty())
 					.unwrap_or_else(|| name.rsplit_once("::").map(|(_, s)| s).unwrap_or(&name))
 					.to_string();
 				let namespace = if let Some(address) = grpc {
-					let token = namespace::try_get_token(&entry.bytes)
+					let token = namespace::try_get_token(EncodedCatalogRow::view(&entry.bytes))
 						.map(|s| s.to_string())
 						.filter(|s| !s.is_empty());
 					Namespace::Remote {

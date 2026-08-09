@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::bytes::EncodedBytes;
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{
 		binding::{Binding, BindingFormat, BindingProtocol, HttpMethod},
@@ -21,7 +21,7 @@ impl CatalogStore {
 		let Some(multi) = rx.get(&BindingKey::encoded(id))? else {
 			return Ok(None);
 		};
-		Ok(Some(decode_binding(&multi.bytes)))
+		Ok(Some(decode_binding(EncodedCatalogRow::view(&multi.bytes))))
 	}
 
 	pub(crate) fn find_binding_by_name(
@@ -35,7 +35,7 @@ impl CatalogStore {
 		let mut found_id = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let bytes = &multi.bytes;
+			let bytes = EncodedCatalogRow::view(&multi.bytes);
 			let bound_name = binding_namespace::get_name(bytes);
 			if name == bound_name {
 				found_id = Some(BindingId(binding_namespace::get_id(bytes)));
@@ -53,7 +53,7 @@ impl CatalogStore {
 	}
 }
 
-pub(crate) fn decode_binding(bytes: &EncodedBytes) -> Binding {
+pub(crate) fn decode_binding(bytes: &EncodedCatalogRow) -> Binding {
 	let id = BindingId(binding::get_id(bytes));
 	let namespace = NamespaceId(binding::get_namespace(bytes));
 	let name = binding::get_name(bytes).to_string();

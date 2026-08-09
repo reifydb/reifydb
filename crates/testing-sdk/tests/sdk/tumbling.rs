@@ -5,10 +5,7 @@ use reifydb_abi::{
 	flow::diff::DiffType,
 	operator::capabilities::{OperatorCapability, from_bitmask},
 };
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::shape::RowShapeField,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowShapeField};
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::HeapSize, row::Row as CoreRow};
 use reifydb_flow::window::{
 	accumulator::{

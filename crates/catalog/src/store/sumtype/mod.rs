@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::bytes::EncodedBytes;
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::interface::catalog::{
 	id::NamespaceId,
 	sumtype::{SumType, SumTypeKind, Variant},
@@ -19,7 +19,7 @@ pub mod get;
 pub mod list;
 pub(crate) mod shape;
 
-pub(crate) fn sumtype_from_bytes(bytes: &EncodedBytes) -> SumType {
+pub(crate) fn sumtype_from_bytes(bytes: &EncodedCatalogRow) -> SumType {
 	let id = SumTypeId(sumtype::get_id(bytes));
 	let namespace = NamespaceId(sumtype::get_namespace(bytes));
 	let name = sumtype::get_name(bytes).to_string();

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{
 		column::Column,
@@ -60,7 +61,7 @@ impl CatalogStore {
 			)),
 		};
 
-		let column_ids_blob = primary_key::get_column_ids(&primary_key_multi.bytes);
+		let column_ids_blob = primary_key::get_column_ids(EncodedCatalogRow::view(&primary_key_multi.bytes));
 		let column_ids = deserialize_column_ids(&column_ids_blob);
 
 		let mut columns = Vec::new();

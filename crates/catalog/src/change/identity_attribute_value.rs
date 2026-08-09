@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes, value::decode_value};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+	value::decode_value,
+};
 use reifydb_core::{
 	interface::catalog::identity::IdentityAttributeValue,
 	key::{EncodableKey, identity_attribute_value::IdentityAttributeValueKey, kind::KeyKind},
@@ -20,7 +24,7 @@ pub(super) struct IdentityAttributeValueApplier;
 impl CatalogChangeApplier for IdentityAttributeValueApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let value = decode_identity_attribute_value(bytes)?;
+		let value = decode_identity_attribute_value(EncodedCatalogRow::view(bytes))?;
 		let version = txn.version();
 		let Some(attribute) = catalog.cache.find_identity_attribute_at(value.attribute, version) else {
 			return_internal_error!(
@@ -50,7 +54,7 @@ impl CatalogChangeApplier for IdentityAttributeValueApplier {
 	}
 }
 
-fn decode_identity_attribute_value(bytes: &EncodedBytes) -> Result<IdentityAttributeValue> {
+fn decode_identity_attribute_value(bytes: &EncodedCatalogRow) -> Result<IdentityAttributeValue> {
 	let identity = identity_attribute_value::get_identity(bytes);
 	let attribute = identity_attribute_value::get_attribute(bytes);
 	let blob = identity_attribute_value::get_value(bytes);

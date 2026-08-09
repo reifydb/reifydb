@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -25,15 +26,15 @@ pub(crate) fn load_sinks(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 	for entry in stream {
 		let multi = entry?;
 		let version = multi.version;
-		let sink = convert_sink(multi);
+		let sink = convert_sink(multi)?;
 		catalog.set_sink(sink.id, version, Some(sink));
 	}
 
 	Ok(())
 }
 
-fn convert_sink(multi: MultiVersionRow) -> Sink {
-	let bytes = multi.bytes;
+fn convert_sink(multi: MultiVersionRow) -> Result<Sink> {
+	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = SinkId(sink::get_id(&bytes));
 	let namespace = NamespaceId(sink::get_namespace(&bytes));
 	let name = sink::get_name(&bytes).to_string();
@@ -44,7 +45,7 @@ fn convert_sink(multi: MultiVersionRow) -> Sink {
 	let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
 	let status = FlowStatus::from_u8(sink::get_status(&bytes));
 
-	Sink {
+	Ok(Sink {
 		id,
 		namespace,
 		name,
@@ -53,5 +54,5 @@ fn convert_sink(multi: MultiVersionRow) -> Sink {
 		connector,
 		config,
 		status,
-	}
+	})
 }

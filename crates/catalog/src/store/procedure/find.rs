@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::bytes::EncodedBytes;
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, ProcedureId},
@@ -29,7 +29,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 		let params = load_params(rx, id)?;
-		Ok(Some(decode_procedure(&multi.bytes, params)))
+		Ok(Some(decode_procedure(EncodedCatalogRow::view(&multi.bytes), params)))
 	}
 
 	pub(crate) fn find_procedure_by_name(
@@ -41,7 +41,7 @@ impl CatalogStore {
 		let mut stream = rx.range(NamespaceProcedureKey::full_scan(namespace), RangeScope::All, 1024)?;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let bytes = &multi.bytes;
+			let bytes = EncodedCatalogRow::view(&multi.bytes);
 			let candidate = namespace_procedure::get_name(bytes);
 			if candidate == name {
 				found_id = Some(ProcedureId::from_raw(namespace_procedure::get_id(bytes)));
@@ -62,7 +62,7 @@ pub(crate) fn load_params(rx: &mut Transaction<'_>, procedure_id: ProcedureId) -
 	let mut stream = rx.range(ProcedureParamKey::full_scan(procedure_id), RangeScope::All, 1024)?;
 	for entry in stream.by_ref() {
 		let multi = entry?;
-		let bytes = &multi.bytes;
+		let bytes = EncodedCatalogRow::view(&multi.bytes);
 		let index = procedure_param::get_index(bytes);
 		let name = procedure_param::get_name(bytes).to_string();
 		let json = procedure_param::get_type_constraint(bytes);
@@ -80,7 +80,7 @@ pub(crate) fn load_params(rx: &mut Transaction<'_>, procedure_id: ProcedureId) -
 	Ok(entries.into_iter().map(|(_, p)| p).collect())
 }
 
-pub(crate) fn decode_procedure(bytes: &EncodedBytes, params: Vec<ProcedureParam>) -> Procedure {
+pub(crate) fn decode_procedure(bytes: &EncodedCatalogRow, params: Vec<ProcedureParam>) -> Procedure {
 	let id = ProcedureId::from_raw(procedure::get_id(bytes));
 	let namespace = NamespaceId(procedure::get_namespace(bytes));
 	let name = procedure::get_name(bytes).to_string();

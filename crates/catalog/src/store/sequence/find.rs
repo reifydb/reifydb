@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::id::{NamespaceId, SequenceId},
 	key::system_sequence::SystemSequenceKey,
@@ -27,7 +28,7 @@ impl CatalogStore {
 		let sequence_key = SystemSequenceKey::encoded(sequence_id);
 
 		let value = match rx.get(&sequence_key)? {
-			Some(bytes) => sequence::get_value(&bytes.bytes),
+			Some(bytes) => sequence::get_value(EncodedCatalogRow::view(&bytes.bytes)),
 			None => 0,
 		};
 

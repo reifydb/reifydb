@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::{
 	interface::catalog::identity::Identity,
 	key::{EncodableKey, identity::IdentityKey, kind::KeyKind},
@@ -16,7 +19,7 @@ pub(super) struct IdentityApplier;
 impl CatalogChangeApplier for IdentityApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let id_entity = decode_identity(bytes);
+		let id_entity = decode_identity(EncodedCatalogRow::view(bytes));
 		catalog.cache.set_identity(id_entity.id, txn.version(), Some(id_entity));
 		Ok(())
 	}
@@ -31,7 +34,7 @@ impl CatalogChangeApplier for IdentityApplier {
 	}
 }
 
-fn decode_identity(bytes: &EncodedBytes) -> Identity {
+fn decode_identity(bytes: &EncodedCatalogRow) -> Identity {
 	let id = identity::get_identity(bytes);
 	let name = identity::get_name(bytes).to_string();
 	let enabled = identity::get_enabled(bytes);

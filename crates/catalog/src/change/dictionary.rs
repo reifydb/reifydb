@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes, tag::value_type_from_tag_byte};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+	tag::value_type_from_tag_byte,
+};
 use reifydb_core::{
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 	key::{EncodableKey, dictionary::DictionaryKey, kind::KeyKind},
@@ -17,7 +21,7 @@ pub(super) struct DictionaryApplier;
 impl CatalogChangeApplier for DictionaryApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let dict = decode_dictionary(bytes);
+		let dict = decode_dictionary(EncodedCatalogRow::view(bytes));
 		catalog.cache.set_dictionary(dict.id, txn.version(), Some(dict));
 		Ok(())
 	}
@@ -34,7 +38,7 @@ impl CatalogChangeApplier for DictionaryApplier {
 	}
 }
 
-fn decode_dictionary(bytes: &EncodedBytes) -> Dictionary {
+fn decode_dictionary(bytes: &EncodedCatalogRow) -> Dictionary {
 	let id = DictionaryId(dictionary::get_id(bytes));
 	let namespace = NamespaceId(dictionary::get_namespace(bytes));
 	let name = dictionary::get_name(bytes).to_string();

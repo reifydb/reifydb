@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{id::NamespaceId, table::Table},
 	key::{Key, table::TableKey},
@@ -25,16 +26,20 @@ impl CatalogStore {
 					&& let Key::Table(table_key) = key
 				{
 					let table_id = table_key.table;
-					let namespace_id = NamespaceId(table::get_namespace(&entry.bytes));
-					let name = table::get_name(&entry.bytes).to_string();
-					let partition_by_str = table::get_partition_by(&entry.bytes);
+					let namespace_id = NamespaceId(table::get_namespace(EncodedCatalogRow::view(
+						&entry.bytes,
+					)));
+					let name = table::get_name(EncodedCatalogRow::view(&entry.bytes)).to_string();
+					let partition_by_str =
+						table::get_partition_by(EncodedCatalogRow::view(&entry.bytes));
 					let partition_by: Vec<String> = if partition_by_str.is_empty() {
 						vec![]
 					} else {
 						partition_by_str.split(',').map(|s| s.to_string()).collect()
 					};
-					let underlying = table::get_underlying(&entry.bytes) != 0;
-					let time = decode_table_time(&entry.bytes);
+					let underlying =
+						table::get_underlying(EncodedCatalogRow::view(&entry.bytes)) != 0;
+					let time = decode_table_time(EncodedCatalogRow::view(&entry.bytes));
 					table_ids.push((table_id, namespace_id, name, partition_by, underlying, time));
 				}
 			}

@@ -13,7 +13,7 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			result.push(convert_identity(multi));
+			result.push(convert_identity(multi)?);
 		}
 
 		Ok(result)

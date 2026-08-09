@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::key::column_snapshot::ColumnSnapshotKey;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
@@ -14,7 +15,7 @@ pub(crate) fn load_column_snapshots(rx: &mut Transaction<'_>, catalog: &CatalogC
 	for entry in stream {
 		let multi = entry?;
 		let version = multi.version;
-		let snapshot = decode_column_snapshot(&multi.bytes);
+		let snapshot = decode_column_snapshot(EncodedCatalogRow::view(&multi.bytes));
 		catalog.set_column_snapshot(snapshot.id, version, Some(snapshot));
 	}
 

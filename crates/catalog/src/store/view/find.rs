@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, RingBufferId, SeriesId, TableId, ViewId},
@@ -23,7 +24,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let bytes = multi.bytes;
+		let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 		let columns = Self::list_columns(rx, id)?;
 		let primary_key = Self::find_view_primary_key(rx, id)?;
 		let view = decode_view(&bytes, columns, primary_key)?;
@@ -42,7 +43,7 @@ impl CatalogStore {
 		let mut found_view = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let bytes = &multi.bytes;
+			let bytes = EncodedCatalogRow::view(&multi.bytes);
 			let view_name = view_namespace::get_name(bytes);
 			if name == view_name {
 				found_view = Some(ViewId(view_namespace::get_id(bytes)));
@@ -60,7 +61,6 @@ impl CatalogStore {
 	}
 }
 
-use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::interface::catalog::{column::Column, key::PrimaryKey};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
@@ -68,7 +68,11 @@ use reifydb_value::{
 	fragment::Fragment,
 };
 
-pub(crate) fn decode_view(bytes: &EncodedBytes, columns: Vec<Column>, primary_key: Option<PrimaryKey>) -> Result<View> {
+pub(crate) fn decode_view(
+	bytes: &EncodedCatalogRow,
+	columns: Vec<Column>,
+	primary_key: Option<PrimaryKey>,
+) -> Result<View> {
 	let id = ViewId(view::get_id(bytes));
 	let namespace = NamespaceId(view::get_namespace(bytes));
 	let name = view::get_name(bytes).to_string();

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::{
 	interface::catalog::{column::Column, id::PrimaryKeyId, key::PrimaryKey},
 	key::{EncodableKey, kind::KeyKind, primary_key::PrimaryKeyKey},
@@ -21,7 +24,7 @@ pub(super) struct PrimaryKeyApplier;
 impl CatalogChangeApplier for PrimaryKeyApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let pk = decode_primary_key(bytes, txn)?;
+		let pk = decode_primary_key(EncodedCatalogRow::view(bytes), txn)?;
 		catalog.cache.set_primary_key(pk.id, txn.version(), Some(pk));
 		Ok(())
 	}
@@ -38,7 +41,7 @@ impl CatalogChangeApplier for PrimaryKeyApplier {
 	}
 }
 
-fn decode_primary_key(bytes: &EncodedBytes, txn: &mut Transaction<'_>) -> Result<PrimaryKey> {
+fn decode_primary_key(bytes: &EncodedCatalogRow, txn: &mut Transaction<'_>) -> Result<PrimaryKey> {
 	let pk_id = PrimaryKeyId(primary_key::get_id(bytes));
 	let column_ids_blob = primary_key::get_column_ids(bytes);
 	let column_ids = deserialize_column_ids(&column_ids_blob);

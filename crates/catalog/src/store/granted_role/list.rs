@@ -13,7 +13,7 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			result.push(convert_granted_role(multi));
+			result.push(convert_granted_role(multi)?);
 		}
 
 		Ok(result)

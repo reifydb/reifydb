@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::bytes::{EncodedBytes, EncodedRowBuilder};
+use reifydb_codec::row::catalog::{EncodedCatalogRow, EncodedCatalogRowBuilder};
 use reifydb_core::interface::catalog::queue::{QueueDeduplicate, QueueDispatch};
 use reifydb_macro::catalog_shape;
 use reifydb_value::value::duration::Duration;
@@ -30,7 +30,7 @@ catalog_shape! {
 	}
 }
 
-pub(crate) fn decode_dispatch(bytes: &EncodedBytes) -> QueueDispatch {
+pub(crate) fn decode_dispatch(bytes: &EncodedCatalogRow) -> QueueDispatch {
 	let partitions = queue::get_partitions(bytes);
 	let ordered_by = match queue::get_ordered_by(bytes) {
 		"" => None,
@@ -42,13 +42,13 @@ pub(crate) fn decode_dispatch(bytes: &EncodedBytes) -> QueueDispatch {
 	}
 }
 
-pub(crate) fn encode_dispatch(row: &mut EncodedRowBuilder, dispatch: &QueueDispatch) {
+pub(crate) fn encode_dispatch(row: &mut EncodedCatalogRowBuilder, dispatch: &QueueDispatch) {
 	queue::set_dispatch(row, dispatch.tag());
 	queue::set_partitions(row, dispatch.partitions());
 	queue::set_ordered_by(row, dispatch.ordered_by().unwrap_or(""));
 }
 
-pub(crate) fn decode_deduplicate(bytes: &EncodedBytes) -> Option<QueueDeduplicate> {
+pub(crate) fn decode_deduplicate(bytes: &EncodedCatalogRow) -> Option<QueueDeduplicate> {
 	let by = queue::get_deduplicate_by(bytes);
 	if by.is_empty() {
 		return None;
@@ -59,7 +59,7 @@ pub(crate) fn decode_deduplicate(bytes: &EncodedBytes) -> Option<QueueDeduplicat
 	})
 }
 
-pub(crate) fn encode_deduplicate(row: &mut EncodedRowBuilder, deduplicate: Option<&QueueDeduplicate>) {
+pub(crate) fn encode_deduplicate(row: &mut EncodedCatalogRowBuilder, deduplicate: Option<&QueueDeduplicate>) {
 	match deduplicate {
 		Some(deduplicate) => {
 			queue::set_deduplicate_by(row, deduplicate.by.join(","));

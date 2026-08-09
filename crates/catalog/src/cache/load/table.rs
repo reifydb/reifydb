@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -32,7 +33,7 @@ pub(crate) fn load_tables(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 
 		let pk_id = get_table_primary_key_id(&multi);
 		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
-		let table = convert_table(multi, primary_key);
+		let table = convert_table(multi, primary_key)?;
 		if let Some(id) = pk_id {
 			catalog.set_primary_key_object(ObjectId::Table(table.id), id);
 		}
@@ -48,8 +49,8 @@ pub(crate) fn load_tables(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 	Ok(())
 }
 
-fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Table {
-	let bytes = multi.bytes;
+fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Result<Table> {
+	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = TableId(table::get_id(&bytes));
 	let namespace = NamespaceId(table::get_namespace(&bytes));
 	let name = table::get_name(&bytes).to_string();
@@ -62,7 +63,7 @@ fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Tab
 	};
 	let underlying = table::get_underlying(&bytes) != 0;
 	let time = decode_table_time(&bytes);
-	Table {
+	Ok(Table {
 		id,
 		name,
 		namespace,
@@ -71,11 +72,11 @@ fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Tab
 		partition_by,
 		underlying,
 		time,
-	}
+	})
 }
 
 fn get_table_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
-	let pk_id_raw = table::get_primary_key(&multi.bytes);
+	let pk_id_raw = table::get_primary_key(EncodedCatalogRow::view(&multi.bytes));
 	if pk_id_raw == 0 {
 		None
 	} else {

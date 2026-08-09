@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::tag::value_type_from_tag_byte;
+use reifydb_codec::{row::catalog::EncodedCatalogRow, tag::value_type_from_tag_byte};
 use reifydb_core::{internal, key::columns::ColumnsKey};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -62,7 +62,7 @@ impl CatalogStore {
 			)))
 		})?;
 
-		let bytes = multi.bytes;
+		let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 
 		let id = ColumnId(column::get_id(&bytes));
 		let name = column::get_name(&bytes).to_string();

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::bytes::EncodedBytes;
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::interface::catalog::{
 	id::{MigrationEventId, MigrationId},
 	migration::{Migration, MigrationAction, MigrationEvent},
@@ -14,7 +14,7 @@ pub mod find;
 pub mod list;
 pub(crate) mod shape;
 
-pub(crate) fn migration_from_row(bytes: &EncodedBytes) -> Migration {
+pub(crate) fn migration_from_row(bytes: &EncodedCatalogRow) -> Migration {
 	let id = MigrationId(migration::get_id(bytes));
 	let name = migration::get_name(bytes).to_string();
 	let body = migration::get_body(bytes).to_string();
@@ -37,7 +37,7 @@ pub(crate) fn migration_from_row(bytes: &EncodedBytes) -> Migration {
 	}
 }
 
-pub(crate) fn migration_event_from_row(bytes: &EncodedBytes) -> MigrationEvent {
+pub(crate) fn migration_event_from_row(bytes: &EncodedCatalogRow) -> MigrationEvent {
 	let id = MigrationEventId(migration_event::get_id(bytes));
 	let migration_id = MigrationId(migration_event::get_migration_id(bytes));
 	let action = match migration_event::get_action(bytes) {

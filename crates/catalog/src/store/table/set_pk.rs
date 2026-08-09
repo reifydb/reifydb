@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::id::{PrimaryKeyId, TableId},
 	key::table::TableKey,
@@ -24,7 +25,7 @@ impl CatalogStore {
 			)),
 		};
 
-		let mut updated_row = multi.bytes.clone().thaw();
+		let mut updated_row = EncodedCatalogRow::try_from(multi.bytes.clone())?.thaw();
 		table::set_primary_key(&mut updated_row, primary_key_id.0);
 
 		txn.set(&TableKey::encoded(table_id), updated_row.freeze())?;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::flow::{FlowId, Operator, OperatorId},
 	key::operator::OperatorKey,
@@ -15,7 +16,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let bytes = multi.bytes;
+		let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 		let id = OperatorId(operator::get_id(&bytes));
 		let flow = FlowId(operator::get_flow(&bytes));
 		let node_type = operator::get_type(&bytes);

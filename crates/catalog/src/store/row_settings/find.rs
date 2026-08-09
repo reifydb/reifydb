@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{interface::catalog::storage::StorageId, key::row_settings::RowSettingsKey, row::RowSettings};
 use reifydb_transaction::transaction::Transaction;
 
@@ -10,7 +11,7 @@ use crate::{CatalogStore, Result};
 impl CatalogStore {
 	pub fn find_row_settings(rx: &mut Transaction<'_>, storage: StorageId) -> Result<Option<RowSettings>> {
 		let value = rx.get(&RowSettingsKey::encoded(storage))?;
-		Ok(value.and_then(|v| decode_row_settings(&v.bytes)))
+		Ok(value.and_then(|v| decode_row_settings(EncodedCatalogRow::view(&v.bytes))))
 	}
 }
 

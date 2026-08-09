@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::{
 	interface::catalog::identity::GrantedRole,
 	key::{EncodableKey, granted_role::GrantedRoleKey, kind::KeyKind},
@@ -16,7 +19,7 @@ pub(super) struct GrantedRoleApplier;
 impl CatalogChangeApplier for GrantedRoleApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let gr = decode_granted_role(bytes);
+		let gr = decode_granted_role(EncodedCatalogRow::view(bytes));
 		catalog.cache.set_granted_role(gr.identity, gr.role_id, txn.version(), Some(gr));
 		Ok(())
 	}
@@ -31,7 +34,7 @@ impl CatalogChangeApplier for GrantedRoleApplier {
 	}
 }
 
-fn decode_granted_role(bytes: &EncodedBytes) -> GrantedRole {
+fn decode_granted_role(bytes: &EncodedCatalogRow) -> GrantedRole {
 	let identity = granted_role::get_identity(bytes);
 	let role_id = granted_role::get_role_id(bytes);
 

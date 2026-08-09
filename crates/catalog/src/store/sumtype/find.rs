@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{id::NamespaceId, sumtype::SumType},
 	key::{namespace_sumtype::NamespaceSumTypeKey, sumtype::SumTypeKey},
@@ -17,7 +18,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(sumtype_from_bytes(&multi.bytes)))
+		Ok(Some(sumtype_from_bytes(EncodedCatalogRow::view(&multi.bytes))))
 	}
 
 	pub(crate) fn find_sumtype_by_name(
@@ -31,7 +32,7 @@ impl CatalogStore {
 		let mut found_id = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let bytes = &multi.bytes;
+			let bytes = EncodedCatalogRow::view(&multi.bytes);
 			let entry_name = sumtype_namespace::get_name(bytes);
 			if name == entry_name {
 				found_id = Some(SumTypeId(sumtype_namespace::get_id(bytes)));

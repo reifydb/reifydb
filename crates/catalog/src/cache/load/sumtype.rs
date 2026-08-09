@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -26,15 +27,15 @@ pub(crate) fn load_sumtypes(rx: &mut Transaction<'_>, catalog: &CatalogCache) ->
 	for entry in stream {
 		let multi = entry?;
 		let version = multi.version;
-		let def = convert_sumtype(multi);
+		let def = convert_sumtype(multi)?;
 		catalog.set_sumtype(def.id, version, Some(def));
 	}
 
 	Ok(())
 }
 
-fn convert_sumtype(multi: MultiVersionRow) -> SumType {
-	let bytes = multi.bytes;
+fn convert_sumtype(multi: MultiVersionRow) -> Result<SumType> {
+	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = SumTypeId(sumtype::get_id(&bytes));
 	let namespace = NamespaceId(sumtype::get_namespace(&bytes));
 	let name = sumtype::get_name(&bytes).to_string();
@@ -50,11 +51,11 @@ fn convert_sumtype(multi: MultiVersionRow) -> SumType {
 		SumTypeKind::Enum
 	};
 
-	SumType {
+	Ok(SumType {
 		id,
 		namespace,
 		name,
 		variants,
 		kind,
-	}
+	})
 }

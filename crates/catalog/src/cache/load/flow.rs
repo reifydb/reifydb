@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::{catalog::flow::Flow, store::MultiVersionRow},
 	key::flow::FlowKey,
@@ -25,5 +26,5 @@ pub(crate) fn load_flows(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 }
 
 fn convert_flow(multi: MultiVersionRow) -> Flow {
-	decode_flow(&multi.bytes)
+	decode_flow(EncodedCatalogRow::view(&multi.bytes))
 }

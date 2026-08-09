@@ -7,6 +7,7 @@ use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
 		bytes::EncodedBytes,
+		catalog::EncodedCatalogRow,
 		shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 	},
 };
@@ -85,14 +86,15 @@ fn try_reconstruct(
 		let field_key = RowShapeFieldKey::encoded(fingerprint, i);
 		match txn.get(&field_key)? {
 			Some(entry) => {
-				let bytes = &entry.bytes;
-				let name = shape_field::SHAPE.get_utf8(bytes, shape_field::NAME).to_string();
-				let base_type = shape_field::SHAPE.get::<u8>(bytes, shape_field::TYPE);
-				let constraint_type = shape_field::SHAPE.get::<u8>(bytes, shape_field::CONSTRAINT_TYPE);
+				let bytes = EncodedCatalogRow::view(&entry.bytes);
+				let name = shape_field::SHAPE.get_utf8(bytes.as_slice(), shape_field::NAME).to_string();
+				let base_type = shape_field::SHAPE.get::<u8>(bytes.as_slice(), shape_field::TYPE);
+				let constraint_type =
+					shape_field::SHAPE.get::<u8>(bytes.as_slice(), shape_field::CONSTRAINT_TYPE);
 				let constraint_param1 =
-					shape_field::SHAPE.get::<u32>(bytes, shape_field::CONSTRAINT_P1);
+					shape_field::SHAPE.get::<u32>(bytes.as_slice(), shape_field::CONSTRAINT_P1);
 				let constraint_param2 =
-					shape_field::SHAPE.get::<u32>(bytes, shape_field::CONSTRAINT_P2);
+					shape_field::SHAPE.get::<u32>(bytes.as_slice(), shape_field::CONSTRAINT_P2);
 				let constraint = type_constraint_from_ffi(&FFITypeConstraint {
 					base_type,
 					constraint_type,
@@ -100,8 +102,8 @@ fn try_reconstruct(
 					constraint_param2,
 				})
 				.expect("invalid persisted type constraint tag");
-				let offset = shape_field::SHAPE.get::<u32>(bytes, shape_field::OFFSET);
-				let size = shape_field::SHAPE.get::<u32>(bytes, shape_field::SIZE);
+				let offset = shape_field::SHAPE.get::<u32>(bytes.as_slice(), shape_field::OFFSET);
+				let size = shape_field::SHAPE.get::<u32>(bytes.as_slice(), shape_field::SIZE);
 
 				fields.push(RowShapeField {
 					name,

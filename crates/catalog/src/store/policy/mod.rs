@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::interface::{
 	catalog::policy::{Policy, PolicyOperation, PolicyTargetType},
 	store::MultiVersionRow,
 };
+use reifydb_value::Result;
 
 use crate::store::policy::shape::{policy, policy_op};
 
@@ -15,8 +17,8 @@ pub mod find;
 pub mod list;
 pub mod shape;
 
-pub(crate) fn convert_policy(multi: MultiVersionRow) -> Policy {
-	let bytes = multi.bytes;
+pub(crate) fn convert_policy(multi: MultiVersionRow) -> Result<Policy> {
+	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = policy::get_id(&bytes);
 	let name_str = policy::get_name(&bytes).to_string();
 	let name = if name_str.is_empty() {
@@ -54,25 +56,25 @@ pub(crate) fn convert_policy(multi: MultiVersionRow) -> Policy {
 	};
 	let enabled = policy::get_enabled(&bytes);
 
-	Policy {
+	Ok(Policy {
 		id,
 		name,
 		target_type,
 		target_namespace,
 		target_object,
 		enabled,
-	}
+	})
 }
 
-pub(crate) fn convert_policy_op(multi: MultiVersionRow) -> PolicyOperation {
-	let bytes = multi.bytes;
+pub(crate) fn convert_policy_op(multi: MultiVersionRow) -> Result<PolicyOperation> {
+	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let policy_id = policy_op::get_policy_id(&bytes);
 	let operation = policy_op::get_operation(&bytes).to_string();
 	let body_source = policy_op::get_body_source(&bytes).to_string();
 
-	PolicyOperation {
+	Ok(PolicyOperation {
 		policy_id,
 		operation,
 		body_source,
-	}
+	})
 }

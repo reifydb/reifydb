@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{interface::catalog::migration::Migration, key::migration::MigrationKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
@@ -11,7 +12,7 @@ impl CatalogStore {
 		let range = MigrationKey::full_scan();
 		for entry in txn.range(range, RangeScope::All, 1024)? {
 			let entry = entry?;
-			let def = migration_from_row(&entry.bytes);
+			let def = migration_from_row(EncodedCatalogRow::view(&entry.bytes));
 			if def.name == name {
 				return Ok(Some(def));
 			}

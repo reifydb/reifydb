@@ -14,7 +14,7 @@ pub(crate) fn load_namespaces(rx: &mut Transaction<'_>, catalog: &CatalogCache) 
 	for entry in stream {
 		let multi = entry?;
 		let version = multi.version;
-		let namespace = namespace::convert_namespace(multi);
+		let namespace = namespace::convert_namespace(multi)?;
 		catalog.set_namespace(namespace.id(), version, Some(namespace));
 	}
 

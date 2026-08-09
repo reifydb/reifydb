@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::key::{EncodableKey, kind::KeyKind, migration::MigrationKey, migration_event::MigrationEventKey};
 use reifydb_transaction::transaction::Transaction;
 
@@ -18,7 +21,7 @@ pub(super) struct MigrationApplier;
 impl CatalogChangeApplier for MigrationApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let m = migration_from_row(bytes);
+		let m = migration_from_row(EncodedCatalogRow::view(bytes));
 		catalog.cache.set_migration(m.id, txn.version(), Some(m));
 		Ok(())
 	}
@@ -38,7 +41,7 @@ pub(super) struct MigrationEventApplier;
 impl CatalogChangeApplier for MigrationEventApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let evt = migration_event_from_row(bytes);
+		let evt = migration_event_from_row(EncodedCatalogRow::view(bytes));
 		catalog.cache.set_migration_event(evt.id, txn.version(), Some(evt));
 		Ok(())
 	}

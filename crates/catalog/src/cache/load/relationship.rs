@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::key::relationship::RelationshipKey;
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
@@ -19,7 +20,7 @@ pub fn load_relationships(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 	}
 
 	for multi in entries {
-		let rel = decode_relationship_row(&multi.bytes)?;
+		let rel = decode_relationship_row(EncodedCatalogRow::view(&multi.bytes))?;
 		catalog.set_relationship(rel.id, multi.version, Some(rel));
 	}
 

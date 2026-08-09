@@ -223,6 +223,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_codec::row::catalog::EncodedCatalogRow;
 	use reifydb_core::{
 		interface::catalog::id::{NamespaceId, ViewId},
 		key::namespace_view::NamespaceViewKey,
@@ -295,13 +296,13 @@ pub mod tests {
 
 		let link = &links[1];
 		let bytes = &link.bytes;
-		assert_eq!(view_namespace::get_id(bytes), 16385);
-		assert_eq!(view_namespace::get_name(bytes), "test_view");
+		assert_eq!(view_namespace::get_id(EncodedCatalogRow::view(bytes)), 16385);
+		assert_eq!(view_namespace::get_name(EncodedCatalogRow::view(bytes)), "test_view");
 
 		let link = &links[0];
 		let bytes = &link.bytes;
-		assert_eq!(view_namespace::get_id(bytes), 16386);
-		assert_eq!(view_namespace::get_name(bytes), "another_view");
+		assert_eq!(view_namespace::get_id(EncodedCatalogRow::view(bytes)), 16386);
+		assert_eq!(view_namespace::get_name(EncodedCatalogRow::view(bytes)), "another_view");
 	}
 
 	#[test]

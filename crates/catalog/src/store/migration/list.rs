@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::migration::{Migration, MigrationEvent},
 	key::{migration::MigrationKey, migration_event::MigrationEventKey},
@@ -16,7 +17,7 @@ impl CatalogStore {
 		let mut results = Vec::new();
 		for entry in txn.range(range, RangeScope::All, 1024)? {
 			let entry = entry?;
-			results.push(migration_from_row(&entry.bytes));
+			results.push(migration_from_row(EncodedCatalogRow::view(&entry.bytes)));
 		}
 		Ok(results)
 	}
@@ -26,7 +27,7 @@ impl CatalogStore {
 		let mut results = Vec::new();
 		for entry in txn.range(range, RangeScope::All, 1024)? {
 			let entry = entry?;
-			results.push(migration_event_from_row(&entry.bytes));
+			results.push(migration_event_from_row(EncodedCatalogRow::view(&entry.bytes)));
 		}
 		Ok(results)
 	}

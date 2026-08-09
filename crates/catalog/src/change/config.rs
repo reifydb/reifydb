@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::key::{EncodableKey, config::ConfigStorageKey};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::Value;
@@ -14,7 +17,7 @@ pub(super) struct ConfigApplier;
 impl CatalogChangeApplier for ConfigApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		apply_config(catalog, key, bytes, txn.version())?;
+		apply_config(catalog, key, EncodedCatalogRow::view(bytes), txn.version())?;
 		Ok(())
 	}
 
@@ -25,7 +28,7 @@ impl CatalogChangeApplier for ConfigApplier {
 
 use reifydb_core::common::CommitVersion;
 
-fn apply_config(catalog: &Catalog, key: &EncodedKey, bytes: &EncodedBytes, version: CommitVersion) -> Result<()> {
+fn apply_config(catalog: &Catalog, key: &EncodedKey, bytes: &EncodedCatalogRow, version: CommitVersion) -> Result<()> {
 	let Some(config_key) = ConfigStorageKey::decode(key).map(|k| k.key) else {
 		return Ok(());
 	};

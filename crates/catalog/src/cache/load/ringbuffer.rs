@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -32,7 +33,7 @@ pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &CatalogCache)
 
 		let pk_id = get_ringbuffer_primary_key_id(&multi);
 		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
-		let ringbuffer = convert_ringbuffer(multi, primary_key);
+		let ringbuffer = convert_ringbuffer(multi, primary_key)?;
 
 		if let Some(id) = pk_id {
 			catalog.set_primary_key_object(ObjectId::RingBuffer(ringbuffer.id), id);
@@ -49,8 +50,8 @@ pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &CatalogCache)
 	Ok(())
 }
 
-fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> RingBuffer {
-	let bytes = multi.bytes;
+fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Result<RingBuffer> {
+	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = RingBufferId(ringbuffer::get_id(&bytes));
 	let namespace = NamespaceId(ringbuffer::get_namespace(&bytes));
 	let name = ringbuffer::get_name(&bytes).to_string();
@@ -64,7 +65,7 @@ fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -
 	};
 
 	let underlying = ringbuffer::get_underlying(&bytes) != 0;
-	RingBuffer {
+	Ok(RingBuffer {
 		id,
 		name,
 		namespace,
@@ -74,11 +75,11 @@ fn convert_ringbuffer(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -
 		partition_by,
 		underlying,
 		time: decode_ringbuffer_time(&bytes),
-	}
+	})
 }
 
 fn get_ringbuffer_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
-	let pk_id_raw = ringbuffer::get_primary_key(&multi.bytes);
+	let pk_id_raw = ringbuffer::get_primary_key(EncodedCatalogRow::view(&multi.bytes));
 	if pk_id_raw == 0 {
 		None
 	} else {

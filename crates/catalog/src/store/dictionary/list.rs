@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::tag::value_type_from_tag_byte;
+use reifydb_codec::{row::catalog::EncodedCatalogRow, tag::value_type_from_tag_byte};
 use reifydb_core::{
 	interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 	key::{dictionary::DictionaryKey, namespace_dictionary::NamespaceDictionaryKey},
@@ -21,7 +21,7 @@ impl CatalogStore {
 			let stream = rx.range(NamespaceDictionaryKey::full_scan(namespace), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
-				let bytes = &multi.bytes;
+				let bytes = EncodedCatalogRow::view(&multi.bytes);
 				dictionary_ids.push(DictionaryId(dictionary_namespace::get_id(bytes)));
 			}
 		}
@@ -42,7 +42,7 @@ impl CatalogStore {
 		let stream = rx.range(DictionaryKey::full_scan(), RangeScope::All, 1024)?;
 		for entry in stream {
 			let multi = entry?;
-			let bytes = &multi.bytes;
+			let bytes = EncodedCatalogRow::view(&multi.bytes);
 			let id = DictionaryId(dictionary::get_id(bytes));
 			let namespace = NamespaceId(dictionary::get_namespace(bytes));
 			let name = dictionary::get_name(bytes).to_string();

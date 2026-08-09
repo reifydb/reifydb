@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -30,7 +31,7 @@ pub(crate) fn load_queues(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 	for entry in stream.by_ref() {
 		let multi = entry?;
 		let version = multi.version;
-		queues.push((convert_queue(multi), version));
+		queues.push((convert_queue(multi)?, version));
 	}
 	drop(stream);
 
@@ -42,13 +43,13 @@ pub(crate) fn load_queues(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 	Ok(())
 }
 
-fn convert_queue(multi: MultiVersionRow) -> Queue {
-	let bytes = multi.bytes;
+fn convert_queue(multi: MultiVersionRow) -> Result<Queue> {
+	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = QueueId(queue::get_id(&bytes));
 	let namespace = NamespaceId(queue::get_namespace(&bytes));
 	let name = queue::get_name(&bytes).to_string();
 
-	Queue {
+	Ok(Queue {
 		id,
 		namespace,
 		name,
@@ -64,5 +65,5 @@ fn convert_queue(multi: MultiVersionRow) -> Queue {
 		underlying: queue::get_underlying(&bytes) != 0,
 		deduplicate: decode_deduplicate(&bytes),
 		time: decode_queue_time(&bytes),
-	}
+	})
 }

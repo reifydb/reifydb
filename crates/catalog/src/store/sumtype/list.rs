@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{id::NamespaceId, sumtype::SumType},
 	key::{namespace_sumtype::NamespaceSumTypeKey, sumtype::SumTypeKey},
@@ -18,7 +19,7 @@ impl CatalogStore {
 			let stream = rx.range(NamespaceSumTypeKey::full_scan(namespace), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
-				let bytes = &multi.bytes;
+				let bytes = EncodedCatalogRow::view(&multi.bytes);
 				ids.push(SumTypeId(sumtype_namespace::get_id(bytes)));
 			}
 		}
@@ -39,7 +40,7 @@ impl CatalogStore {
 		let stream = rx.range(SumTypeKey::full_scan(), RangeScope::All, 1024)?;
 		for entry in stream {
 			let multi = entry?;
-			results.push(sumtype_from_bytes(&multi.bytes));
+			results.push(sumtype_from_bytes(EncodedCatalogRow::view(&multi.bytes)));
 		}
 
 		Ok(results)

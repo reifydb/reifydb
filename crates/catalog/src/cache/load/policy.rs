@@ -17,7 +17,7 @@ pub(crate) fn load_policies(rx: &mut Transaction<'_>, catalog: &CatalogCache) ->
 	for entry in stream.by_ref() {
 		let multi = entry?;
 		let version = multi.version;
-		let policy = convert_policy(multi);
+		let policy = convert_policy(multi)?;
 		catalog.set_policy(policy.id, version, Some(policy));
 	}
 	drop(stream);
@@ -27,7 +27,7 @@ pub(crate) fn load_policies(rx: &mut Transaction<'_>, catalog: &CatalogCache) ->
 
 	for entry in op_stream {
 		let multi = entry?;
-		let op_def = convert_policy_op(multi);
+		let op_def = convert_policy_op(multi)?;
 		let policy_id = op_def.policy_id;
 		if let Some(existing) = catalog.policy_operations.get(&policy_id) {
 			let mut ops = existing.value().clone();

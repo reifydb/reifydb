@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId, key::operator_settings::OperatorSettingsKey, row::OperatorSettings,
 };
@@ -15,7 +16,7 @@ impl CatalogStore {
 		operator: OperatorId,
 	) -> Result<Option<OperatorSettings>> {
 		let value = rx.get(&OperatorSettingsKey::encoded(operator))?;
-		Ok(value.and_then(|v| decode_operator_settings(&v.bytes)))
+		Ok(value.and_then(|v| decode_operator_settings(EncodedCatalogRow::view(&v.bytes))))
 	}
 }
 

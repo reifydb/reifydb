@@ -7,8 +7,8 @@ use reifydb_value::Result;
 use super::FlowTransaction;
 
 impl FlowTransaction {
-	pub fn set(&mut self, key: &EncodedKey, value: EncodedBytes) -> Result<()> {
-		self.inner_mut().pending.insert(key.clone(), value);
+	pub fn set(&mut self, key: &EncodedKey, value: impl Into<EncodedBytes>) -> Result<()> {
+		self.inner_mut().pending.insert(key.clone(), value.into());
 		Ok(())
 	}
 

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::{
 		catalog::flow::{FlowEdge, FlowEdgeId, FlowId, OperatorId},
@@ -20,24 +21,24 @@ pub(crate) fn load_flow_edges(rx: &mut Transaction<'_>, catalog: &CatalogCache) 
 	for entry in stream {
 		let multi = entry?;
 		let version = multi.version;
-		let edge = convert_flow_edge(multi);
+		let edge = convert_flow_edge(multi)?;
 		catalog.set_flow_edge(edge.id, version, Some(edge));
 	}
 
 	Ok(())
 }
 
-fn convert_flow_edge(multi: MultiVersionRow) -> FlowEdge {
-	let bytes = multi.bytes;
+fn convert_flow_edge(multi: MultiVersionRow) -> Result<FlowEdge> {
+	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = FlowEdgeId(flow_edge::get_id(&bytes));
 	let flow = FlowId(flow_edge::get_flow(&bytes));
 	let source = OperatorId(flow_edge::get_source(&bytes));
 	let target = OperatorId(flow_edge::get_target(&bytes));
 
-	FlowEdge {
+	Ok(FlowEdge {
 		id,
 		flow,
 		source,
 		target,
-	}
+	})
 }

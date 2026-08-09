@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::binding::Binding,
 	key::{Key, binding::BindingKey},
@@ -17,7 +18,7 @@ impl CatalogStore {
 		for entry in stream {
 			let entry = entry?;
 			if let Some(Key::Binding(_)) = Key::decode(&entry.key) {
-				out.push(decode_binding(&entry.bytes));
+				out.push(decode_binding(EncodedCatalogRow::view(&entry.bytes)));
 			}
 		}
 		Ok(out)

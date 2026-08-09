@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::{
 	interface::catalog::{
 		handler::Handler,
@@ -20,7 +23,7 @@ pub(super) struct HandlerApplier;
 impl CatalogChangeApplier for HandlerApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let handler = decode_handler(bytes);
+		let handler = decode_handler(EncodedCatalogRow::view(bytes));
 		catalog.cache.set_handler(handler.id, txn.version(), Some(handler));
 		Ok(())
 	}
@@ -35,7 +38,7 @@ impl CatalogChangeApplier for HandlerApplier {
 	}
 }
 
-fn decode_handler(bytes: &EncodedBytes) -> Handler {
+fn decode_handler(bytes: &EncodedCatalogRow) -> Handler {
 	let id = HandlerId(handler::get_id(bytes));
 	let namespace = NamespaceId(handler::get_namespace(bytes));
 	let name = handler::get_name(bytes).to_string();

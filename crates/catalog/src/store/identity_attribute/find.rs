@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::identity::{IdentityAttribute, IdentityAttributeId},
 	key::identity_attribute::IdentityAttributeKey,
@@ -17,7 +18,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		id: IdentityAttributeId,
 	) -> Result<Option<IdentityAttribute>> {
-		Ok(rx.get(&IdentityAttributeKey::encoded(id))?.map(convert_identity_attribute))
+		rx.get(&IdentityAttributeKey::encoded(id))?.map(convert_identity_attribute).transpose()
 	}
 
 	pub(crate) fn find_identity_attribute_by_name(
@@ -28,9 +29,9 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			let attribute_name = identity_attribute::get_name(&multi.bytes);
+			let attribute_name = identity_attribute::get_name(EncodedCatalogRow::view(&multi.bytes));
 			if name == attribute_name {
-				return Ok(Some(convert_identity_attribute(multi)));
+				return Ok(Some(convert_identity_attribute(multi)?));
 			}
 		}
 

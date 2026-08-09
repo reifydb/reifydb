@@ -6,7 +6,10 @@ use std::{
 	sync::atomic::{AtomicU64, Ordering},
 };
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, dictionary::EncodedDictionaryRow},
+};
 use reifydb_core::{
 	interface::store::{SingleVersionGet, SingleVersionRange},
 	internal_error,
@@ -33,9 +36,9 @@ pub trait DictionaryStore: Send + Sync {
 
 pub struct DictEntryWrite {
 	pub entry_key: EncodedKey,
-	pub entry_value: EncodedBytes,
+	pub entry_value: EncodedDictionaryRow,
 	pub index_key: EncodedKey,
-	pub index_value: EncodedBytes,
+	pub index_value: EncodedDictionaryRow,
 }
 
 pub fn durable_max_index_id(store: &SingleStore, dictionary: DictionaryId) -> Result<Option<u128>> {

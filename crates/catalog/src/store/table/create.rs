@@ -104,7 +104,7 @@ impl CatalogStore {
 				0
 			},
 		);
-		write_time_source(&table::SHAPE, &mut row, table::TIME_DOMAIN, table::TS, &to_create.time);
+		write_time_source(&table::SHAPE, row.builder_mut(), table::TIME_DOMAIN, table::TS, &to_create.time);
 
 		txn.set(&TableKey::encoded(table), row.freeze())?;
 
@@ -199,6 +199,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_codec::row::catalog::EncodedCatalogRow;
 	use reifydb_core::{
 		common::TimeSource,
 		interface::catalog::id::{NamespaceId, TableId},
@@ -274,13 +275,13 @@ pub mod tests {
 
 		let link = &links[1];
 		let bytes = &link.bytes;
-		assert_eq!(table_namespace::get_id(bytes), 16385);
-		assert_eq!(table_namespace::get_name(bytes), "test_table");
+		assert_eq!(table_namespace::get_id(EncodedCatalogRow::view(bytes)), 16385);
+		assert_eq!(table_namespace::get_name(EncodedCatalogRow::view(bytes)), "test_table");
 
 		let link = &links[0];
 		let bytes = &link.bytes;
-		assert_eq!(table_namespace::get_id(bytes), 16386);
-		assert_eq!(table_namespace::get_name(bytes), "another_table");
+		assert_eq!(table_namespace::get_id(EncodedCatalogRow::view(bytes)), 16386);
+		assert_eq!(table_namespace::get_name(EncodedCatalogRow::view(bytes)), "another_table");
 	}
 }
 

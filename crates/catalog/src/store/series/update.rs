@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::bytes::EncodedBytes;
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{interface::catalog::series::SeriesMetadata, key::series::SeriesMetadataKey};
 use reifydb_transaction::transaction::Transaction;
 
 use crate::{CatalogStore, Result, store::series::shape::series_metadata};
 
-fn encode_series_metadata(metadata: &SeriesMetadata) -> EncodedBytes {
+fn encode_series_metadata(metadata: &SeriesMetadata) -> EncodedCatalogRow {
 	let mut row = series_metadata::allocate();
 	series_metadata::set_id(&mut row, metadata.id.0);
 	series_metadata::set_row_count(&mut row, metadata.row_count);

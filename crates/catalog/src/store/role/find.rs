@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::identity::{Role, RoleId},
 	key::role::RoleKey,
@@ -15,7 +16,7 @@ use crate::{
 impl CatalogStore {
 	#[allow(dead_code)]
 	pub(crate) fn find_role(rx: &mut Transaction<'_>, id: RoleId) -> Result<Option<Role>> {
-		Ok(rx.get(&RoleKey::encoded(id))?.map(convert_role))
+		rx.get(&RoleKey::encoded(id))?.map(convert_role).transpose()
 	}
 
 	pub(crate) fn find_role_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Role>> {
@@ -23,9 +24,9 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			let role_name = role::get_name(&multi.bytes);
+			let role_name = role::get_name(EncodedCatalogRow::view(&multi.bytes));
 			if name == role_name {
-				return Ok(Some(convert_role(multi)));
+				return Ok(Some(convert_role(multi)?));
 			}
 		}
 

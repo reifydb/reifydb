@@ -99,6 +99,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_codec::row::catalog::EncodedCatalogRow;
 	use reifydb_core::{
 		interface::catalog::id::{NamespaceId, SourceId},
 		key::namespace_source::NamespaceSourceKey,
@@ -192,8 +193,8 @@ pub mod tests {
 
 		for link in &links {
 			let bytes = &link.bytes;
-			let id = source_namespace::get_id(bytes);
-			let name = source_namespace::get_name(bytes);
+			let id = source_namespace::get_id(EncodedCatalogRow::view(bytes));
+			let name = source_namespace::get_name(EncodedCatalogRow::view(bytes));
 
 			match name {
 				"source_one" => {

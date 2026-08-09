@@ -172,14 +172,14 @@ impl MultiReplicaTransaction {
 
 impl MultiReplicaTransaction {
 	#[instrument(name = "transaction::replica::set", level = "trace", skip(self, bytes))]
-	pub fn set(&mut self, key: &EncodedKey, bytes: EncodedBytes) -> Result<()> {
+	pub fn set(&mut self, key: &EncodedKey, bytes: impl Into<EncodedBytes>) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		self.modify(DeltaEntry {
 			delta: Delta::Set {
 				key: key.clone(),
-				bytes,
+				bytes: bytes.into(),
 			},
 			version: self.base_version(),
 		})

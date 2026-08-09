@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::key::{EncodableKey, procedure::ProcedureKey, procedure_param::ProcedureParamKey};
 use reifydb_transaction::transaction::Transaction;
 
@@ -37,7 +40,7 @@ fn reload_parent_procedure(catalog: &Catalog, txn: &mut Transaction<'_>, key: &E
 	};
 
 	let params = load_params(txn, procedure_id)?;
-	let procedure = decode_procedure(&entry.bytes, params);
+	let procedure = decode_procedure(EncodedCatalogRow::view(&entry.bytes), params);
 	catalog.cache.set_procedure(procedure_id, txn.version(), Some(procedure));
 	Ok(())
 }

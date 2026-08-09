@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{
 		handler::Handler,
@@ -21,7 +22,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		Ok(Some(handler_from_row(&multi.bytes)))
+		Ok(Some(handler_from_row(EncodedCatalogRow::view(&multi.bytes))))
 	}
 
 	pub(crate) fn find_handler_by_name(
@@ -35,7 +36,7 @@ impl CatalogStore {
 		let mut found_id = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let bytes = &multi.bytes;
+			let bytes = EncodedCatalogRow::view(&multi.bytes);
 			let entry_name = handler_namespace::get_name(bytes);
 			if name == entry_name {
 				found_id = Some(HandlerId(handler_namespace::get_id(bytes)));

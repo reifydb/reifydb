@@ -24,7 +24,7 @@ use rkyv::{
 };
 use thiserror::Error;
 
-use crate::row::bytes::EncodedBytes;
+use crate::row::bytes::{EncodedBytes, EncodedRowBuilder, read_defined_at};
 
 const TIME_OFFSET: usize = 0;
 
@@ -152,6 +152,70 @@ impl TryFrom<EncodedBytes> for EncodedOperatorRow {
 			});
 		}
 		Ok(Self(bytes))
+	}
+}
+
+impl From<EncodedOperatorRow> for EncodedBytes {
+	fn from(row: EncodedOperatorRow) -> Self {
+		row.0
+	}
+}
+
+/// The write side of the operator family: a buffer already carrying a time header, which freezes
+/// into an [`EncodedOperatorRow`] and never into a row of another family.
+#[repr(transparent)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncodedOperatorRowBuilder(EncodedRowBuilder);
+
+impl EncodedOperatorRowBuilder {
+	pub(crate) fn wrap(builder: EncodedRowBuilder) -> Self {
+		Self(builder)
+	}
+
+	pub fn builder(&self) -> &EncodedRowBuilder {
+		&self.0
+	}
+
+	pub fn builder_mut(&mut self) -> &mut EncodedRowBuilder {
+		&mut self.0
+	}
+
+	pub fn as_slice(&self) -> &[u8] {
+		self.0.as_slice()
+	}
+
+	pub fn as_mut_slice(&mut self) -> &mut [u8] {
+		self.0.as_mut_slice()
+	}
+
+	#[inline]
+	pub fn row_time(&self) -> Option<DateTime> {
+		read_time(self.0.as_slice())
+	}
+
+	pub fn set_time(&mut self, time: DateTime) {
+		write_time(self.0.as_mut_slice(), time);
+	}
+
+	#[inline]
+	pub fn is_defined(&self, index: usize) -> bool {
+		read_defined_at(self.0.as_slice(), OPERATOR_HEADER_SIZE, index)
+	}
+
+	pub fn body(&self) -> &[u8] {
+		&self.0.as_slice()[OPERATOR_HEADER_SIZE..]
+	}
+
+	pub fn len(&self) -> usize {
+		self.0.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.body().is_empty()
+	}
+
+	pub fn freeze(self) -> EncodedOperatorRow {
+		EncodedOperatorRow(self.0.freeze())
 	}
 }
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
-use reifydb_codec::row::bytes::EncodedBytes;
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{
 		id::{ColumnId, NamespaceId, RelationshipId, TableId},
@@ -26,13 +26,13 @@ impl CatalogStore {
 
 		let mut result = Vec::with_capacity(entries.len());
 		for entry in entries {
-			result.push(decode_relationship_row(&entry.bytes)?);
+			result.push(decode_relationship_row(EncodedCatalogRow::view(&entry.bytes))?);
 		}
 		Ok(result)
 	}
 }
 
-pub(crate) fn decode_relationship_row(bytes: &EncodedBytes) -> Result<Relationship> {
+pub(crate) fn decode_relationship_row(bytes: &EncodedCatalogRow) -> Result<Relationship> {
 	let id = RelationshipId(relationship_shape::get_id(bytes));
 	let namespace = NamespaceId(relationship_shape::get_namespace_id(bytes));
 	let name = relationship_shape::get_name(bytes).to_string();

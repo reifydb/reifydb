@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackPrimaryKeyChangeOperations,
@@ -27,7 +28,7 @@ pub(crate) fn drop_object_metadata(
 	let mut col_entries = Vec::new();
 	for entry in stream.by_ref() {
 		let entry = entry?;
-		let col_id = object_column::get_id(&entry.bytes);
+		let col_id = object_column::get_id(EncodedCatalogRow::view(&entry.bytes));
 		col_entries.push((entry.key.clone(), ColumnId(col_id)));
 	}
 	drop(stream);

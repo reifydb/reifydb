@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::{
 	interface::catalog::id::NamespaceId,
 	key::{EncodableKey, kind::KeyKind, namespace::NamespaceKey},
@@ -16,7 +19,7 @@ pub(super) struct NamespaceApplier;
 impl CatalogChangeApplier for NamespaceApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let ns = decode_namespace(bytes);
+		let ns = decode_namespace(EncodedCatalogRow::view(bytes));
 		catalog.cache.set_namespace(ns.id(), txn.version(), Some(ns));
 		Ok(())
 	}
@@ -33,7 +36,7 @@ impl CatalogChangeApplier for NamespaceApplier {
 
 use reifydb_core::interface::catalog::namespace::Namespace;
 
-fn decode_namespace(bytes: &EncodedBytes) -> Namespace {
+fn decode_namespace(bytes: &EncodedCatalogRow) -> Namespace {
 	let id = NamespaceId(namespace::get_id(bytes));
 	let name = namespace::get_name(bytes).to_string();
 	let parent_id = NamespaceId(namespace::get_parent_id(bytes));

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{interface::catalog::identity::Identity, key::identity::IdentityKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::identity::IdentityId;
@@ -13,7 +14,7 @@ use crate::{
 impl CatalogStore {
 	#[allow(dead_code)]
 	pub(crate) fn find_identity(rx: &mut Transaction<'_>, id: IdentityId) -> Result<Option<Identity>> {
-		Ok(rx.get(&IdentityKey::encoded(id))?.map(convert_identity))
+		rx.get(&IdentityKey::encoded(id))?.map(convert_identity).transpose()
 	}
 
 	pub(crate) fn find_identity_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Identity>> {
@@ -21,9 +22,9 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			let identity_name = identity::get_name(&multi.bytes);
+			let identity_name = identity::get_name(EncodedCatalogRow::view(&multi.bytes));
 			if name == identity_name {
-				return Ok(Some(convert_identity(multi)));
+				return Ok(Some(convert_identity(multi)?));
 			}
 		}
 

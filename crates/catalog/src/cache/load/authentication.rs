@@ -14,7 +14,7 @@ pub(crate) fn load_authentications(rx: &mut Transaction<'_>, catalog: &CatalogCa
 	for entry in stream {
 		let multi = entry?;
 		let version = multi.version;
-		let auth = convert_authentication(multi);
+		let auth = convert_authentication(multi)?;
 		catalog.set_authentication(auth.id, version, Some(auth));
 	}
 

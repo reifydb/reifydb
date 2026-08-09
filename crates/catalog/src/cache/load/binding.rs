@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::key::{EncodableKey, binding::BindingKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 
@@ -13,7 +14,7 @@ pub(crate) fn load_bindings(rx: &mut Transaction<'_>, catalog: &CatalogCache) ->
 		let multi = entry?;
 		let version = multi.version;
 		if let Some(k) = BindingKey::decode(&multi.key) {
-			let binding = decode_binding(&multi.bytes);
+			let binding = decode_binding(EncodedCatalogRow::view(&multi.bytes));
 			catalog.set_binding(k.binding, version, Some(binding));
 		}
 	}

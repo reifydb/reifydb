@@ -149,44 +149,44 @@ pub fn catalog_shape(input: TokenStream) -> TokenStream {
 
 			let core = match &f.kind {
 				FieldKind::Row(ty) => quote! {
-					#vis fn #getter(row: &[u8]) -> #ty {
-						SHAPE.get::<#ty>(row, #index)
+					#vis fn #getter(row: &::reifydb_codec::row::catalog::EncodedCatalogRow) -> #ty {
+						SHAPE.get::<#ty>(row.as_slice(), #index)
 					}
-					#vis fn #setter(row: &mut ::reifydb_codec::row::bytes::EncodedRowBuilder, value: #ty) {
-						SHAPE.set::<#ty>(row, #index, value)
+					#vis fn #setter(row: &mut ::reifydb_codec::row::catalog::EncodedCatalogRowBuilder, value: #ty) {
+						SHAPE.set::<#ty>(row.builder_mut(), #index, value)
 					}
 				},
 				FieldKind::Utf8 => quote! {
-					#vis fn #getter(row: &[u8]) -> &str {
-						SHAPE.get_utf8(row, #index)
+					#vis fn #getter(row: &::reifydb_codec::row::catalog::EncodedCatalogRow) -> &str {
+						SHAPE.get_utf8(row.as_slice(), #index)
 					}
 					#vis fn #setter(
-						row: &mut ::reifydb_codec::row::bytes::EncodedRowBuilder,
+						row: &mut ::reifydb_codec::row::catalog::EncodedCatalogRowBuilder,
 						value: impl AsRef<str>,
 					) {
-						SHAPE.set_utf8(row, #index, value)
+						SHAPE.set_utf8(row.builder_mut(), #index, value)
 					}
 				},
 				FieldKind::Blob => quote! {
-					#vis fn #getter(row: &[u8]) -> ::reifydb_value::value::blob::Blob {
-						SHAPE.get_blob(row, #index)
+					#vis fn #getter(row: &::reifydb_codec::row::catalog::EncodedCatalogRow) -> ::reifydb_value::value::blob::Blob {
+						SHAPE.get_blob(row.as_slice(), #index)
 					}
 					#vis fn #setter(
-						row: &mut ::reifydb_codec::row::bytes::EncodedRowBuilder,
+						row: &mut ::reifydb_codec::row::catalog::EncodedCatalogRowBuilder,
 						value: &::reifydb_value::value::blob::Blob,
 					) {
-						SHAPE.set_blob(row, #index, value)
+						SHAPE.set_blob(row.builder_mut(), #index, value)
 					}
 				},
 				FieldKind::Any => quote! {
-					#vis fn #getter(row: &[u8]) -> ::reifydb_value::value::Value {
-						SHAPE.get_value(row, #index)
+					#vis fn #getter(row: &::reifydb_codec::row::catalog::EncodedCatalogRow) -> ::reifydb_value::value::Value {
+						SHAPE.get_value(row.as_slice(), #index)
 					}
 					#vis fn #setter(
-						row: &mut ::reifydb_codec::row::bytes::EncodedRowBuilder,
+						row: &mut ::reifydb_codec::row::catalog::EncodedCatalogRowBuilder,
 						value: &::reifydb_value::value::Value,
 					) {
-						SHAPE.set_value(row, #index, value)
+						SHAPE.set_value(row.builder_mut(), #index, value)
 					}
 				},
 			};
@@ -197,13 +197,13 @@ pub fn catalog_shape(input: TokenStream) -> TokenStream {
 
 			let optional_reads = match &f.kind {
 				FieldKind::Row(ty) => quote! {
-					#vis fn #try_getter(row: &[u8]) -> Option<#ty> {
-						SHAPE.try_get::<#ty>(row, #index)
+					#vis fn #try_getter(row: &::reifydb_codec::row::catalog::EncodedCatalogRow) -> Option<#ty> {
+						SHAPE.try_get::<#ty>(row.as_slice(), #index)
 					}
 				},
 				FieldKind::Utf8 => quote! {
-					#vis fn #try_getter(row: &[u8]) -> Option<&str> {
-						SHAPE.try_get_utf8(row, #index)
+					#vis fn #try_getter(row: &::reifydb_codec::row::catalog::EncodedCatalogRow) -> Option<&str> {
+						SHAPE.try_get_utf8(row.as_slice(), #index)
 					}
 				},
 				FieldKind::Blob | FieldKind::Any => quote! {},
@@ -212,8 +212,8 @@ pub fn catalog_shape(input: TokenStream) -> TokenStream {
 			quote! {
 				#core
 				#optional_reads
-				#vis fn #none_setter(row: &mut ::reifydb_codec::row::bytes::EncodedRowBuilder) {
-					SHAPE.set_none(row, #index)
+				#vis fn #none_setter(row: &mut ::reifydb_codec::row::catalog::EncodedCatalogRowBuilder) {
+					SHAPE.set_none(row.builder_mut(), #index)
 				}
 			}
 		});
@@ -231,8 +231,8 @@ pub fn catalog_shape(input: TokenStream) -> TokenStream {
 
 				#(#indices)*
 
-				#vis fn allocate() -> ::reifydb_codec::row::bytes::EncodedRowBuilder {
-					SHAPE.allocate()
+				#vis fn allocate() -> ::reifydb_codec::row::catalog::EncodedCatalogRowBuilder {
+					SHAPE.allocate_catalog()
 				}
 
 				#(#accessors)*

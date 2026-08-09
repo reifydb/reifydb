@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{interface::catalog::token::TokenId, key::token::TokenKey};
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
 use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
@@ -19,9 +20,9 @@ impl CatalogStore {
 			let stream = txn.range(TokenKey::full_scan(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
-				let token_identity = token::get_identity(&multi.bytes);
+				let token_identity = token::get_identity(EncodedCatalogRow::view(&multi.bytes));
 				if token_identity == identity {
-					let id = token::get_id(&multi.bytes);
+					let id = token::get_id(EncodedCatalogRow::view(&multi.bytes));
 					to_remove.push(id);
 				}
 			}
@@ -40,10 +41,11 @@ impl CatalogStore {
 			let stream = txn.range(TokenKey::full_scan(), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
-				if let Some(expires_at) = token::try_get_expires_at(&multi.bytes)
+				if let Some(expires_at) =
+					token::try_get_expires_at(EncodedCatalogRow::view(&multi.bytes))
 					&& expires_at < now
 				{
-					let id = token::get_id(&multi.bytes);
+					let id = token::get_id(EncodedCatalogRow::view(&multi.bytes));
 					to_remove.push(id);
 				}
 			}

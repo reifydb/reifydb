@@ -19,7 +19,7 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			result.push(convert_policy(multi));
+			result.push(convert_policy(multi)?);
 		}
 
 		Ok(result)
@@ -36,7 +36,7 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			result.push(convert_policy_op(multi));
+			result.push(convert_policy_op(multi)?);
 		}
 
 		Ok(result)
@@ -48,7 +48,7 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			result.push(convert_policy_op(multi));
+			result.push(convert_policy_op(multi)?);
 		}
 
 		Ok(result)

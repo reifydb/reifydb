@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::{
 	interface::catalog::{
 		flow::FlowStatus,
@@ -21,7 +24,7 @@ pub(super) struct SinkApplier;
 impl CatalogChangeApplier for SinkApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let s = decode_sink(bytes);
+		let s = decode_sink(EncodedCatalogRow::view(bytes));
 		catalog.cache.set_sink(s.id, txn.version(), Some(s));
 		Ok(())
 	}
@@ -36,7 +39,7 @@ impl CatalogChangeApplier for SinkApplier {
 	}
 }
 
-fn decode_sink(bytes: &EncodedBytes) -> Sink {
+fn decode_sink(bytes: &EncodedCatalogRow) -> Sink {
 	let id = SinkId(sink::get_id(bytes));
 	let namespace = NamespaceId(sink::get_namespace(bytes));
 	let name = sink::get_name(bytes).to_string();

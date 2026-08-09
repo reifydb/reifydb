@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::flow::{FlowEdge, FlowEdgeId, FlowId, OperatorId},
 	key::flow_edge::FlowEdgeKey,
@@ -15,7 +16,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let bytes = multi.bytes;
+		let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 		let id = FlowEdgeId(flow_edge::get_id(&bytes));
 		let flow = FlowId(flow_edge::get_flow(&bytes));
 		let source = OperatorId(flow_edge::get_source(&bytes));

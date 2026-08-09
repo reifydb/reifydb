@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -29,15 +30,15 @@ pub(crate) fn load_sources(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> 
 			continue;
 		}
 		let version = multi.version;
-		let source = convert_source(multi);
+		let source = convert_source(multi)?;
 		catalog.set_source(source.id, version, Some(source));
 	}
 
 	Ok(())
 }
 
-fn convert_source(multi: MultiVersionRow) -> Source {
-	let bytes = multi.bytes;
+fn convert_source(multi: MultiVersionRow) -> Result<Source> {
+	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = SourceId(source::get_id(&bytes));
 	let namespace = NamespaceId(source::get_namespace(&bytes));
 	let name = source::get_name(&bytes).to_string();
@@ -48,7 +49,7 @@ fn convert_source(multi: MultiVersionRow) -> Source {
 	let target_name = source::get_target_name(&bytes).to_string();
 	let status = FlowStatus::from_u8(source::get_status(&bytes));
 
-	Source {
+	Ok(Source {
 		id,
 		namespace,
 		name,
@@ -57,5 +58,5 @@ fn convert_source(multi: MultiVersionRow) -> Source {
 		target_namespace,
 		target_name,
 		status,
-	}
+	})
 }

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, PrimaryKeyId, RingBufferId},
@@ -24,7 +27,7 @@ pub(super) struct RingBufferApplier;
 impl CatalogChangeApplier for RingBufferApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let mut rb = decode_ringbuffer(bytes, &catalog.cache, txn.version());
+		let mut rb = decode_ringbuffer(EncodedCatalogRow::view(bytes), &catalog.cache, txn.version());
 		rb.columns = CatalogStore::list_columns(txn, rb.id)?;
 		catalog.cache.set_ringbuffer(rb.id, txn.version(), Some(rb));
 		Ok(())
@@ -46,7 +49,7 @@ use reifydb_core::common::CommitVersion;
 
 use crate::cache::CatalogCache;
 
-fn decode_ringbuffer(bytes: &EncodedBytes, materialized: &CatalogCache, version: CommitVersion) -> RingBuffer {
+fn decode_ringbuffer(bytes: &EncodedCatalogRow, materialized: &CatalogCache, version: CommitVersion) -> RingBuffer {
 	let id = RingBufferId(ringbuffer::get_id(bytes));
 	let namespace = NamespaceId(ringbuffer::get_namespace(bytes));
 	let name = ringbuffer::get_name(bytes).to_string();

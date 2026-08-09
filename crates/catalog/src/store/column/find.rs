@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{column::Column, id::ColumnId, object::ObjectId},
 	key::column::ColumnKey,
@@ -20,7 +21,7 @@ impl CatalogStore {
 		let mut found_id = None;
 		for entry in stream.by_ref() {
 			let multi = entry?;
-			let bytes = multi.bytes;
+			let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 			let column = ColumnId(object_column::get_id(&bytes));
 			let name = object_column::get_name(&bytes);
 

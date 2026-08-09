@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::policy::{Policy, PolicyId},
 	key::policy::PolicyKey,
@@ -14,7 +15,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_policy(rx: &mut Transaction<'_>, id: PolicyId) -> Result<Option<Policy>> {
-		Ok(rx.get(&PolicyKey::encoded(id))?.map(convert_policy))
+		rx.get(&PolicyKey::encoded(id))?.map(convert_policy).transpose()
 	}
 
 	pub(crate) fn find_policy_by_name(rx: &mut Transaction<'_>, name: &str) -> Result<Option<Policy>> {
@@ -22,9 +23,9 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			let policy_name = policy::get_name(&multi.bytes);
+			let policy_name = policy::get_name(EncodedCatalogRow::view(&multi.bytes));
 			if !policy_name.is_empty() && name == policy_name {
-				return Ok(Some(convert_policy(multi)));
+				return Ok(Some(convert_policy(multi)?));
 			}
 		}
 

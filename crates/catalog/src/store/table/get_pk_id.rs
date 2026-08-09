@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::id::{PrimaryKeyId, TableId},
 	key::table::TableKey,
@@ -16,7 +17,7 @@ impl CatalogStore {
 			None => return Ok(None),
 		};
 
-		let pk_id = table::get_primary_key(&multi.bytes);
+		let pk_id = table::get_primary_key(EncodedCatalogRow::view(&multi.bytes));
 
 		if pk_id == 0 {
 			Ok(None)

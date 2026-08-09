@@ -96,6 +96,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_codec::row::catalog::EncodedCatalogRow;
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::multi::RangeScope;
 	use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
@@ -178,15 +179,15 @@ pub mod tests {
 		// Keys are descending, so the later dictionary comes first.
 		let link = &links[0];
 		let bytes = &link.bytes;
-		let id2 = dictionary_namespace::get_id(bytes);
+		let id2 = dictionary_namespace::get_id(EncodedCatalogRow::view(bytes));
 		assert!(id2 > 0);
-		assert_eq!(dictionary_namespace::get_name(bytes), "dict2");
+		assert_eq!(dictionary_namespace::get_name(EncodedCatalogRow::view(bytes)), "dict2");
 
 		let link = &links[1];
 		let bytes = &link.bytes;
-		let id1 = dictionary_namespace::get_id(bytes);
+		let id1 = dictionary_namespace::get_id(EncodedCatalogRow::view(bytes));
 		assert!(id2 > id1);
-		assert_eq!(dictionary_namespace::get_name(bytes), "dict1");
+		assert_eq!(dictionary_namespace::get_name(EncodedCatalogRow::view(bytes)), "dict1");
 	}
 
 	#[test]

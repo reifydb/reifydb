@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 pub mod create;
 pub mod drop;
 pub mod find;
@@ -9,7 +10,6 @@ pub mod list;
 pub(crate) mod shape;
 pub mod update;
 
-use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::interface::catalog::{
 	flow::{Flow, FlowId, FlowStatus},
 	id::NamespaceId,
@@ -17,7 +17,7 @@ use reifydb_core::interface::catalog::{
 
 use crate::store::flow::shape::flow;
 
-pub(crate) fn decode_flow(bytes: &EncodedBytes) -> Flow {
+pub(crate) fn decode_flow(bytes: &EncodedCatalogRow) -> Flow {
 	Flow {
 		id: FlowId(flow::get_id(bytes)),
 		namespace: NamespaceId(flow::get_namespace(bytes)),

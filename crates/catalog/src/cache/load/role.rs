@@ -14,7 +14,7 @@ pub(crate) fn load_roles(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Re
 	for entry in stream {
 		let multi = entry?;
 		let version = multi.version;
-		let role = convert_role(multi);
+		let role = convert_role(multi)?;
 		catalog.set_role(role.id, version, Some(role));
 	}
 

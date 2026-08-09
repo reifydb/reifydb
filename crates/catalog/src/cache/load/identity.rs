@@ -14,7 +14,7 @@ pub(crate) fn load_identities(rx: &mut Transaction<'_>, catalog: &CatalogCache) 
 	for entry in stream {
 		let multi = entry?;
 		let version = multi.version;
-		let identity = convert_identity(multi);
+		let identity = convert_identity(multi)?;
 		catalog.set_identity(identity.id, version, Some(identity));
 	}
 

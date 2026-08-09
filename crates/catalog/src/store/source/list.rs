@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{
 		flow::FlowStatus,
@@ -22,7 +23,7 @@ impl CatalogStore {
 
 		for entry in stream {
 			let entry = entry?;
-			let bytes = &entry.bytes;
+			let bytes = EncodedCatalogRow::view(&entry.bytes);
 
 			let id = SourceId(source::get_id(bytes));
 			let namespace = NamespaceId(source::get_namespace(bytes));

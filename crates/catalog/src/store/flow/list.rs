@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::flow::Flow,
 	key::{Key, flow::FlowKey},
@@ -20,7 +21,7 @@ impl CatalogStore {
 			if let Some(key) = Key::decode(&entry.key)
 				&& let Key::Flow(flow_key) = key
 			{
-				let mut flow = decode_flow(&entry.bytes);
+				let mut flow = decode_flow(EncodedCatalogRow::view(&entry.bytes));
 				flow.id = flow_key.flow;
 
 				result.push(flow);

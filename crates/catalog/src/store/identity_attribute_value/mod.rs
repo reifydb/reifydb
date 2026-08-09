@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::value::decode_value;
+use reifydb_codec::{row::catalog::EncodedCatalogRow, value::decode_value};
 use reifydb_core::{
 	interface::{catalog::identity::IdentityAttributeValue, store::MultiVersionRow},
 	return_internal_error,
@@ -16,7 +16,7 @@ pub mod list;
 pub mod shape;
 
 pub(crate) fn convert_identity_attribute_value(multi: MultiVersionRow) -> Result<IdentityAttributeValue> {
-	let bytes = multi.bytes;
+	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let identity = identity_attribute_value::get_identity(&bytes);
 	let attribute = identity_attribute_value::get_attribute(&bytes);
 	let blob = identity_attribute_value::get_value(&bytes);

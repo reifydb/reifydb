@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::{
 	interface::catalog::policy::{Policy, PolicyTargetType},
 	key::{EncodableKey, kind::KeyKind, policy::PolicyKey},
@@ -16,7 +19,7 @@ pub(super) struct PolicyApplier;
 impl CatalogChangeApplier for PolicyApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let p = decode_policy(bytes);
+		let p = decode_policy(EncodedCatalogRow::view(bytes));
 		catalog.cache.set_policy(p.id, txn.version(), Some(p));
 		Ok(())
 	}
@@ -31,7 +34,7 @@ impl CatalogChangeApplier for PolicyApplier {
 	}
 }
 
-fn decode_policy(bytes: &EncodedBytes) -> Policy {
+fn decode_policy(bytes: &EncodedCatalogRow) -> Policy {
 	let id = policy::get_id(bytes);
 	let name_str = policy::get_name(bytes).to_string();
 	let name = if name_str.is_empty() {

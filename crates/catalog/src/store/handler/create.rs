@@ -88,6 +88,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use reifydb_codec::row::catalog::EncodedCatalogRow;
 	use reifydb_core::{
 		interface::catalog::id::{HandlerId, NamespaceId},
 		key::namespace_handler::NamespaceHandlerKey,
@@ -169,12 +170,12 @@ pub mod tests {
 		// Keys are descending, so the higher id sorts first.
 		let link = &links[0];
 		let bytes = &link.bytes;
-		assert_eq!(handler_namespace::get_id(bytes), 16386);
-		assert_eq!(handler_namespace::get_name(bytes), "another_handler");
+		assert_eq!(handler_namespace::get_id(EncodedCatalogRow::view(bytes)), 16386);
+		assert_eq!(handler_namespace::get_name(EncodedCatalogRow::view(bytes)), "another_handler");
 
 		let link = &links[1];
 		let bytes = &link.bytes;
-		assert_eq!(handler_namespace::get_id(bytes), 16385);
-		assert_eq!(handler_namespace::get_name(bytes), "test_handler");
+		assert_eq!(handler_namespace::get_id(EncodedCatalogRow::view(bytes)), 16385);
+		assert_eq!(handler_namespace::get_name(EncodedCatalogRow::view(bytes)), "test_handler");
 	}
 }

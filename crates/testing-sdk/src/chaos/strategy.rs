@@ -165,8 +165,9 @@ pub fn encode_row(schema: &ChaosSchema, content: &RowContent, row_number: RowNum
 		.map(|f| content.get(&f.name).cloned().unwrap_or_else(|| Value::none_of(f.constraint.get_type())))
 		.collect();
 
-	let mut builder =
-		TestOperatorRowBuilder::new(row_number).with_values(values).with_fields(schema.input_shape.fields().to_vec());
+	let mut builder = TestOperatorRowBuilder::new(row_number)
+		.with_values(values)
+		.with_fields(schema.input_shape.fields().to_vec());
 	if let Some(column) = &schema.time_column {
 		builder = builder.with_time(row_time(schema, content, column));
 	}

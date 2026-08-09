@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 pub mod create;
 
 pub mod find;
@@ -8,13 +9,12 @@ pub mod get;
 pub mod list;
 pub(crate) mod shape;
 
-use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::row::{RowSettings, Ttl};
 use reifydb_value::value::duration::Duration;
 
 use self::shape::row_settings;
 
-pub(crate) fn encode_row_settings(settings: &RowSettings) -> EncodedBytes {
+pub(crate) fn encode_row_settings(settings: &RowSettings) -> EncodedCatalogRow {
 	let mut row = row_settings::allocate();
 
 	match &settings.ttl {
@@ -32,7 +32,7 @@ pub(crate) fn encode_row_settings(settings: &RowSettings) -> EncodedBytes {
 	row.freeze()
 }
 
-pub(crate) fn decode_row_settings(bytes: &EncodedBytes) -> Option<RowSettings> {
+pub(crate) fn decode_row_settings(bytes: &EncodedCatalogRow) -> Option<RowSettings> {
 	let duration = row_settings::get_duration(bytes);
 
 	let ttl = if duration.is_zero() {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::flow::{FlowId, Operator, OperatorId},
 	key::{
@@ -22,7 +23,9 @@ impl CatalogStore {
 			let stream = rx.range(OperatorByFlowKey::full_scan(flow_id), RangeScope::All, 1024)?;
 			for entry in stream {
 				let multi = entry?;
-				node_ids.push(OperatorId(operator_by_flow::get_id(&multi.bytes)));
+				node_ids.push(OperatorId(operator_by_flow::get_id(EncodedCatalogRow::view(
+					&multi.bytes,
+				))));
 			}
 		}
 
@@ -45,9 +48,9 @@ impl CatalogStore {
 			let entry = entry?;
 			if let Some(operator_key) = OperatorKey::decode(&entry.key) {
 				let operator_id = operator_key.operator;
-				let flow_id = FlowId(operator::get_flow(&entry.bytes));
-				let node_type = operator::get_type(&entry.bytes);
-				let data = operator::get_data(&entry.bytes).clone();
+				let flow_id = FlowId(operator::get_flow(EncodedCatalogRow::view(&entry.bytes)));
+				let node_type = operator::get_type(EncodedCatalogRow::view(&entry.bytes));
+				let data = operator::get_data(EncodedCatalogRow::view(&entry.bytes)).clone();
 
 				let node_def = Operator {
 					id: operator_id,

@@ -609,8 +609,8 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn set(&mut self, key: &EncodedKey, bytes: EncodedBytes) -> Result<()> {
-		Write::set(self.write_ops(), key, bytes)
+	pub fn set(&mut self, key: &EncodedKey, bytes: impl Into<EncodedBytes>) -> Result<()> {
+		Write::set(self.write_ops(), key, bytes.into())
 	}
 
 	pub fn remove_with_pre(&mut self, key: &EncodedKey, pre: EncodedBytes) -> Result<()> {

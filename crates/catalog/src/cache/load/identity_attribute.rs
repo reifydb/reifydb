@@ -14,7 +14,7 @@ pub(crate) fn load_identity_attributes(rx: &mut Transaction<'_>, catalog: &Catal
 	for entry in stream {
 		let multi = entry?;
 		let version = multi.version;
-		let attribute = convert_identity_attribute(multi);
+		let attribute = convert_identity_attribute(multi)?;
 		catalog.set_identity_attribute(attribute.id, version, Some(attribute));
 	}
 

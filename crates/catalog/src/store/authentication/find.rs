@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::authentication::{Authentication, AuthenticationId},
 	key::authentication::AuthenticationKey,
@@ -18,7 +19,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		id: AuthenticationId,
 	) -> Result<Option<Authentication>> {
-		Ok(rx.get(&AuthenticationKey::encoded(id))?.map(convert_authentication))
+		rx.get(&AuthenticationKey::encoded(id))?.map(convert_authentication).transpose()
 	}
 
 	pub(crate) fn find_authentication_by_identity_and_method(
@@ -30,10 +31,10 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			let auth_identity = authentication::get_identity(&multi.bytes);
-			let auth_method = authentication::get_method(&multi.bytes);
+			let auth_identity = authentication::get_identity(EncodedCatalogRow::view(&multi.bytes));
+			let auth_method = authentication::get_method(EncodedCatalogRow::view(&multi.bytes));
 			if auth_identity == identity && auth_method == method {
-				return Ok(Some(convert_authentication(multi)));
+				return Ok(Some(convert_authentication(multi)?));
 			}
 		}
 

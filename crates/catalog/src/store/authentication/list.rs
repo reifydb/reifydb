@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{interface::catalog::authentication::Authentication, key::authentication::AuthenticationKey};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::identity::IdentityId;
@@ -17,7 +18,7 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			result.push(convert_authentication(multi));
+			result.push(convert_authentication(multi)?);
 		}
 
 		Ok(result)
@@ -33,9 +34,9 @@ impl CatalogStore {
 
 		for entry in stream {
 			let multi = entry?;
-			let auth_identity = authentication::get_identity(&multi.bytes);
+			let auth_identity = authentication::get_identity(EncodedCatalogRow::view(&multi.bytes));
 			if auth_identity == identity {
-				result.push(convert_authentication(multi));
+				result.push(convert_authentication(multi)?);
 			}
 		}
 

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::key::{EncodableKey, kind::KeyKind, procedure::ProcedureKey};
 use reifydb_transaction::transaction::Transaction;
 
@@ -22,7 +25,7 @@ impl CatalogChangeApplier for ProcedureApplier {
 			kind: KeyKind::Procedure,
 		})?;
 		let params = load_params(txn, id)?;
-		let procedure = decode_procedure(bytes, params);
+		let procedure = decode_procedure(EncodedCatalogRow::view(bytes), params);
 		catalog.cache.set_procedure(id, txn.version(), Some(procedure));
 		Ok(())
 	}

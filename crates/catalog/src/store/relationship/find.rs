@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2025 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{id::RelationshipId, relationship::Relationship},
 	key::relationship::RelationshipKey,
@@ -15,6 +16,6 @@ impl CatalogStore {
 			Some(multi) => multi,
 			None => return Ok(None),
 		};
-		Ok(Some(decode_relationship_row(&multi.bytes)?))
+		Ok(Some(decode_relationship_row(EncodedCatalogRow::view(&multi.bytes))?))
 	}
 }

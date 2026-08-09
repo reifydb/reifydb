@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, catalog::EncodedCatalogRow},
+};
 use reifydb_core::{
 	interface::catalog::{
 		id::NamespaceId,
@@ -22,7 +25,7 @@ pub(super) struct SumTypeApplier;
 impl CatalogChangeApplier for SumTypeApplier {
 	fn set(catalog: &Catalog, txn: &mut Transaction<'_>, key: &EncodedKey, bytes: &EncodedBytes) -> Result<()> {
 		txn.set(key, bytes.clone())?;
-		let def = decode_sumtype(bytes);
+		let def = decode_sumtype(EncodedCatalogRow::view(bytes));
 		catalog.cache.set_sumtype(def.id, txn.version(), Some(def));
 		Ok(())
 	}
@@ -37,7 +40,7 @@ impl CatalogChangeApplier for SumTypeApplier {
 	}
 }
 
-fn decode_sumtype(bytes: &EncodedBytes) -> SumType {
+fn decode_sumtype(bytes: &EncodedCatalogRow) -> SumType {
 	let id = SumTypeId(sumtype::get_id(bytes));
 	let namespace = NamespaceId(sumtype::get_namespace(bytes));
 	let name = sumtype::get_name(bytes).to_string();

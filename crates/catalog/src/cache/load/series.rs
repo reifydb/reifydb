@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::{
 		catalog::{
@@ -33,7 +34,7 @@ pub(crate) fn load_series(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 
 		let pk_id = get_series_primary_key_id(&multi);
 		let primary_key = pk_id.and_then(|id| catalog.find_primary_key_at(id, version));
-		let series = convert_series(multi, primary_key);
+		let series = convert_series(multi, primary_key)?;
 
 		if let Some(id) = pk_id {
 			catalog.set_primary_key_object(ObjectId::Series(series.id), id);
@@ -50,8 +51,8 @@ pub(crate) fn load_series(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> R
 	Ok(())
 }
 
-fn convert_series(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Series {
-	let bytes = multi.bytes;
+fn convert_series(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Result<Series> {
+	let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 	let id = SeriesId(series::get_id(&bytes));
 	let namespace = NamespaceId(series::get_namespace(&bytes));
 	let name = series::get_name(&bytes).to_string();
@@ -77,7 +78,7 @@ fn convert_series(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Se
 
 	let underlying = series::get_underlying(&bytes) != 0;
 
-	Series {
+	Ok(Series {
 		id,
 		namespace,
 		name,
@@ -88,11 +89,11 @@ fn convert_series(multi: MultiVersionRow, primary_key: Option<PrimaryKey>) -> Se
 		partition_by,
 		underlying,
 		time: decode_series_time(&bytes),
-	}
+	})
 }
 
 fn get_series_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
-	let pk_id_raw = series::get_primary_key(&multi.bytes);
+	let pk_id_raw = series::get_primary_key(EncodedCatalogRow::view(&multi.bytes));
 	if pk_id_raw == 0 {
 		None
 	} else {

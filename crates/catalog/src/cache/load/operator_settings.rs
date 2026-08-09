@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::key::{
 	EncodableKey,
 	operator_settings::{OperatorSettingsKey, OperatorSettingsKeyRange},
@@ -23,7 +24,7 @@ pub(crate) fn load_operator_settings(rx: &mut Transaction<'_>, catalog: &Catalog
 			warn!("Failed to decode OperatorSettingsKey from catalog entry, skipping");
 			continue;
 		};
-		let Some(config) = decode_operator_settings(&multi.bytes) else {
+		let Some(config) = decode_operator_settings(EncodedCatalogRow::view(&multi.bytes)) else {
 			warn!(?key.operator, "Failed to decode operator settings from catalog entry, skipping");
 			continue;
 		};

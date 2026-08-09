@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	common::TimeSource,
 	interface::catalog::{
@@ -33,22 +34,27 @@ impl CatalogStore {
 				{
 					let ringbuffer_id = ringbuffer_key.ringbuffer;
 
-					let namespace_id = NamespaceId(ringbuffer::get_namespace(&entry.bytes));
+					let namespace_id = NamespaceId(ringbuffer::get_namespace(
+						EncodedCatalogRow::view(&entry.bytes),
+					));
 
-					let name = ringbuffer::get_name(&entry.bytes).to_string();
+					let name =
+						ringbuffer::get_name(EncodedCatalogRow::view(&entry.bytes)).to_string();
 
-					let capacity = ringbuffer::get_capacity(&entry.bytes);
+					let capacity = ringbuffer::get_capacity(EncodedCatalogRow::view(&entry.bytes));
 
-					let partition_by_str = ringbuffer::get_partition_by(&entry.bytes);
+					let partition_by_str =
+						ringbuffer::get_partition_by(EncodedCatalogRow::view(&entry.bytes));
 					let partition_by = if partition_by_str.is_empty() {
 						vec![]
 					} else {
 						partition_by_str.split(',').map(|s| s.to_string()).collect()
 					};
 
-					let underlying = ringbuffer::get_underlying(&entry.bytes) != 0;
+					let underlying =
+						ringbuffer::get_underlying(EncodedCatalogRow::view(&entry.bytes)) != 0;
 
-					let time = decode_ringbuffer_time(&entry.bytes);
+					let time = decode_ringbuffer_time(EncodedCatalogRow::view(&entry.bytes));
 
 					ringbuffer_data.push((
 						ringbuffer_id,
