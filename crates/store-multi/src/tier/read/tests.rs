@@ -46,10 +46,11 @@ fn row(storage: u64, n: u64) -> EncodedKey {
 fn buffer(resident_pages: usize, resident_bytes: ByteSize, shift: u8, shards: usize) -> MultiReadBufferTier {
 	MultiReadBufferTier::new(ReadBufferConfig {
 		resident_pages,
-		resident_bytes,
+		resident_bytes: Some(resident_bytes),
 		shards,
 		bucket_shift: shift,
 	})
+	.unwrap()
 }
 
 fn cache(resident_pages: usize) -> MultiReadBufferTier {

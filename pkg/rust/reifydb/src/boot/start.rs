@@ -16,6 +16,7 @@ use reifydb_engine::{engine::StandardEngine, session::RetryStrategy};
 use reifydb_store_multi::MultiStore;
 use reifydb_transaction::single::SingleTransaction;
 use reifydb_value::{
+	byte_size::ByteSize,
 	params::Params,
 	value::{duration::Duration, identity::IdentityId},
 };
@@ -60,6 +61,9 @@ pub(crate) fn configure_store(engine: &StandardEngine) -> Result<()> {
 	store.configure_read_buffer(
 		catalog.get_config_uint8(ConfigKey::MultiReadBufferPages) as usize,
 		catalog.get_config_uint8(ConfigKey::MultiReadBufferPageSize),
+	);
+	store.configure_read_buffer_budget(
+		catalog.get_config_uint8_opt(ConfigKey::MultiReadBufferBytes).map(ByteSize::from_bytes),
 	);
 	store.configure_wal_autocheckpoint(catalog.get_config_uint8(ConfigKey::MultiWalAutocheckpoint) as u32);
 	if let Some(cdc_store) = engine.ioc().try_resolve::<CdcStore>() {

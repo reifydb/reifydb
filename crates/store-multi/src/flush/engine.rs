@@ -669,7 +669,8 @@ mod tests {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
 			resident_pages: 16,
 			..Default::default()
-		});
+		})
+		.unwrap();
 		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(11)));
 		let key = ek("k");
@@ -698,7 +699,8 @@ mod tests {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
 			resident_pages: 16,
 			..Default::default()
-		});
+		})
+		.unwrap();
 		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(21)));
 		let key = ek("k");
@@ -719,7 +721,8 @@ mod tests {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
 			resident_pages: 16,
 			..Default::default()
-		});
+		})
+		.unwrap();
 		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(22)));
 		let rejected = ek("rejected");
@@ -755,7 +758,8 @@ mod tests {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
 			resident_pages: 16,
 			..Default::default()
-		});
+		})
+		.unwrap();
 		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(2), read.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(23)));
 		let key = ek("k");
@@ -783,7 +787,8 @@ mod tests {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
 			resident_pages: 16,
 			..Default::default()
-		});
+		})
+		.unwrap();
 		let (actor, _guard) = build_engine_with_read(Arc::new(NonePersistent), CommitVersion(2), read.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(24)));
 		let key = ek("k");
@@ -811,7 +816,8 @@ mod tests {
 		let read = MultiReadBufferTier::new(ReadBufferConfig {
 			resident_pages: 16,
 			..Default::default()
-		});
+		})
+		.unwrap();
 		let (actor, _guard) = build_engine_with_read(Arc::new(AllPersistent), CommitVersion(4), read.clone());
 		let kind = EntryKind::Source(StorageId::Table(TableId(25)));
 		let a = ek("a");

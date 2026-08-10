@@ -16,7 +16,10 @@ mod tests;
 use std::{
 	collections::{BTreeMap, HashMap},
 	mem::size_of,
-	sync::{Arc, atomic::AtomicU8},
+	sync::{
+		Arc,
+		atomic::{AtomicBool, AtomicU8},
+	},
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
@@ -30,7 +33,7 @@ use crate::tier::RangeBatch;
 #[derive(Clone, Copy, Debug)]
 pub struct ReadBufferConfig {
 	pub resident_pages: usize,
-	pub resident_bytes: ByteSize,
+	pub resident_bytes: Option<ByteSize>,
 	pub shards: usize,
 	pub bucket_shift: u8,
 }
@@ -39,7 +42,7 @@ impl Default for ReadBufferConfig {
 	fn default() -> Self {
 		Self {
 			resident_pages: 1024,
-			resident_bytes: ByteSize::from_gib(2),
+			resident_bytes: Some(ByteSize::from_gib(2)),
 			shards: 16,
 			bucket_shift: DEFAULT_BUCKET_SHIFT,
 		}
@@ -166,6 +169,7 @@ struct Shard {
 struct PoolInner {
 	shards: Box<[Mutex<Shard>]>,
 	bucket_shift: AtomicU8,
+	enabled: AtomicBool,
 }
 
 #[derive(Clone)]

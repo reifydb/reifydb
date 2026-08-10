@@ -57,6 +57,7 @@ pub enum ConfigKey {
 	CdcWalAutocheckpoint,
 	MultiReadBufferPages,
 	MultiReadBufferPageSize,
+	MultiReadBufferBytes,
 	MultiFlushInterval,
 	MultiFlushKeyBudget,
 	MultiWalAutocheckpoint,
@@ -111,6 +112,7 @@ impl ConfigKey {
 			Self::CdcWalAutocheckpoint,
 			Self::MultiReadBufferPages,
 			Self::MultiReadBufferPageSize,
+			Self::MultiReadBufferBytes,
 			Self::MultiFlushInterval,
 			Self::MultiFlushKeyBudget,
 			Self::MultiWalAutocheckpoint,
@@ -167,6 +169,7 @@ impl ConfigKey {
 			Self::CdcWalAutocheckpoint => Value::Uint8(10000),
 			Self::MultiReadBufferPages => Value::Uint8(1024),
 			Self::MultiReadBufferPageSize => Value::Uint8(65536),
+			Self::MultiReadBufferBytes => Value::Uint8(64 * 1024 * 1024),
 			Self::MultiFlushInterval => Value::duration_seconds(5),
 			Self::MultiFlushKeyBudget => Value::Uint8(2048),
 			Self::MultiWalAutocheckpoint => Value::Uint8(10000),
@@ -279,6 +282,11 @@ impl ConfigKey {
 			Self::MultiReadBufferPageSize => {
 				"Number of rows per cached page (bucket) in the multi-version read cache. Must be a \
 				 power of two; sets the granularity of whole-page read-ahead and completeness tracking."
+			}
+			Self::MultiReadBufferBytes => {
+				"Resident byte budget for the multi-version read cache, split evenly across its shards. \
+				 None disables the cache outright: no page is warmed or inserted, so reads always go to \
+				 the persistent tier. Read once at boot; changing it requires a restart."
 			}
 			Self::MultiFlushInterval => {
 				"How often the persistent-flush actor drains the in-memory commit buffer into the multi \
@@ -429,6 +437,7 @@ impl ConfigKey {
 			Self::CdcWalAutocheckpoint => true,
 			Self::MultiReadBufferPages => true,
 			Self::MultiReadBufferPageSize => true,
+			Self::MultiReadBufferBytes => true,
 			Self::MultiFlushInterval => true,
 			Self::MultiFlushKeyBudget => false,
 			Self::MultiWalAutocheckpoint => true,
@@ -483,6 +492,7 @@ impl ConfigKey {
 			Self::CdcWalAutocheckpoint => &[ValueType::Uint8],
 			Self::MultiReadBufferPages => &[ValueType::Uint8],
 			Self::MultiReadBufferPageSize => &[ValueType::Uint8],
+			Self::MultiReadBufferBytes => &[ValueType::Uint8],
 			Self::MultiFlushInterval => &[ValueType::Duration],
 			Self::MultiFlushKeyBudget => &[ValueType::Uint8],
 			Self::MultiWalAutocheckpoint => &[ValueType::Uint8],
@@ -537,6 +547,7 @@ impl ConfigKey {
 			Self::CdcWalAutocheckpoint => false,
 			Self::MultiReadBufferPages => false,
 			Self::MultiReadBufferPageSize => false,
+			Self::MultiReadBufferBytes => true,
 			Self::MultiFlushInterval => false,
 			Self::MultiFlushKeyBudget => false,
 			Self::MultiWalAutocheckpoint => false,
@@ -656,6 +667,13 @@ impl ConfigKey {
 				Value::Uint8(_) => {
 					Err("MULTI_READ_BUFFER_PAGE_SIZE must be a power of two".to_string())
 				}
+				_ => Ok(()),
+			},
+			Self::MultiReadBufferBytes => match value {
+				Value::Uint8(0) => Err(
+					"MULTI_READ_BUFFER_BYTES must be greater than zero; use none to disable the read cache"
+						.to_string(),
+				),
 				_ => Ok(()),
 			},
 			Self::MultiFlushInterval => match value {
@@ -867,6 +885,7 @@ impl fmt::Display for ConfigKey {
 			Self::CdcWalAutocheckpoint => write!(f, "CDC_WAL_AUTOCHECKPOINT"),
 			Self::MultiReadBufferPages => write!(f, "MULTI_READ_BUFFER_PAGES"),
 			Self::MultiReadBufferPageSize => write!(f, "MULTI_READ_BUFFER_PAGE_SIZE"),
+			Self::MultiReadBufferBytes => write!(f, "MULTI_READ_BUFFER_BYTES"),
 			Self::MultiFlushInterval => write!(f, "MULTI_FLUSH_INTERVAL"),
 			Self::MultiFlushKeyBudget => write!(f, "MULTI_FLUSH_KEY_BUDGET"),
 			Self::MultiWalAutocheckpoint => write!(f, "MULTI_WAL_AUTOCHECKPOINT"),
@@ -925,6 +944,7 @@ impl FromStr for ConfigKey {
 			"CDC_WAL_AUTOCHECKPOINT" => Ok(Self::CdcWalAutocheckpoint),
 			"MULTI_READ_BUFFER_PAGES" => Ok(Self::MultiReadBufferPages),
 			"MULTI_READ_BUFFER_PAGE_SIZE" => Ok(Self::MultiReadBufferPageSize),
+			"MULTI_READ_BUFFER_BYTES" => Ok(Self::MultiReadBufferBytes),
 			"MULTI_FLUSH_INTERVAL" => Ok(Self::MultiFlushInterval),
 			"MULTI_FLUSH_KEY_BUDGET" => Ok(Self::MultiFlushKeyBudget),
 			"MULTI_WAL_AUTOCHECKPOINT" => Ok(Self::MultiWalAutocheckpoint),
@@ -1013,6 +1033,16 @@ pub trait GetConfig: Send + Sync {
 			} => None,
 			Value::Duration(v) => Some(v),
 			v => panic!("config key '{}' expected Duration or None, got {:?}", key, v),
+		}
+	}
+
+	fn get_config_uint8_opt(&self, key: ConfigKey) -> Option<u64> {
+		match self.get_config(key) {
+			Value::None {
+				..
+			} => None,
+			Value::Uint8(v) => Some(v),
+			v => panic!("config key '{}' expected Uint8 or None, got {:?}", key, v),
 		}
 	}
 }

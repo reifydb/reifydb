@@ -91,6 +91,9 @@ impl MultiReadBufferTier {
 	}
 
 	pub fn insert(&self, key: EncodedKey, version: CommitVersion, value: Option<CowVec<u8>>) {
+		if !self.enabled() {
+			return;
+		}
 		let page_id = page_of(&key, self.bucket_shift());
 		let mut shard = self.shard_for(&page_id).lock();
 		let next = shard.next_tick;
@@ -301,6 +304,9 @@ impl MultiReadBufferTier {
 	}
 
 	pub fn begin_warm(&self, page: PageId) -> bool {
+		if !self.enabled() {
+			return false;
+		}
 		let mut shard = self.shard_for(&page).lock();
 		if shard.warming.contains_key(&page) {
 			return false;

@@ -16,7 +16,7 @@ use reifydb_core::{
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, shutdown::Shutdown, sync::rwlock::RwLock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
-use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 use tracing::instrument;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -86,7 +86,11 @@ impl StandardMultiStore {
 
 		let eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
 
-		let read = config.persistent.is_some().then(|| MultiReadBufferTier::new(ReadBufferConfig::default()));
+		let read = config
+			.persistent
+			.is_some()
+			.then(|| MultiReadBufferTier::new(ReadBufferConfig::default()))
+			.flatten();
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let (persistent, flush_engine) = {
@@ -136,6 +140,12 @@ impl StandardMultiStore {
 	pub fn configure_read_buffer(&self, resident_pages: usize, page_size_rows: u64) {
 		if let Some(read) = &self.read {
 			read.reconfigure(resident_pages, page_size_rows);
+		}
+	}
+
+	pub fn configure_read_buffer_budget(&self, budget: Option<ByteSize>) {
+		if let Some(read) = &self.read {
+			read.set_budget(budget);
 		}
 	}
 

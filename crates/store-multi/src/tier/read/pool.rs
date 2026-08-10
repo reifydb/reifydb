@@ -6,7 +6,7 @@ use std::{
 	hash::{Hash, Hasher},
 	sync::{
 		Arc,
-		atomic::{AtomicU8, Ordering},
+		atomic::{AtomicBool, AtomicU8, Ordering},
 	},
 };
 
@@ -26,12 +26,33 @@ use crate::tier::read::{
 const READ_BUFFER_SCOPE: &str = "read_buffer";
 
 impl MultiReadBufferTier {
-	pub fn new(config: ReadBufferConfig) -> Self {
-		Self {
+	pub fn new(config: ReadBufferConfig) -> Option<Self> {
+		let resident_bytes = config.resident_bytes?;
+		Some(Self {
 			inner: Arc::new(PoolInner {
-				shards: build_shards(config),
+				shards: build_shards(config, resident_bytes),
 				bucket_shift: AtomicU8::new(config.bucket_shift),
+				enabled: AtomicBool::new(true),
 			}),
+		})
+	}
+
+	pub(super) fn enabled(&self) -> bool {
+		self.inner.enabled.load(Ordering::Relaxed)
+	}
+
+	pub fn set_budget(&self, budget: Option<ByteSize>) {
+		let shards = &self.inner.shards;
+		let byte_cap = budget
+			.map(|bytes| ByteSize::from_bytes((bytes.as_bytes() / shards.len() as u64).max(1)))
+			.unwrap_or(ByteSize::from_bytes(1));
+		self.inner.enabled.store(budget.is_some(), Ordering::Relaxed);
+		for shard in shards.iter() {
+			let mut shard = shard.lock();
+			shard.pages = HashMap::new();
+			shard.warming = HashMap::new();
+			shard.next_tick = 0;
+			shard.budget = MemoryBudget::new(byte_cap);
 		}
 	}
 
@@ -152,10 +173,10 @@ fn total_resident_pages(shards: &[Mutex<Shard>]) -> usize {
 	shards.iter().map(|shard| shard.lock().pages.len()).sum()
 }
 
-fn build_shards(config: ReadBufferConfig) -> Box<[Mutex<Shard>]> {
+fn build_shards(config: ReadBufferConfig, resident_bytes: ByteSize) -> Box<[Mutex<Shard>]> {
 	let shard_count = config.shards.max(1);
 	let page_cap = (config.resident_pages / shard_count).max(1);
-	let byte_cap = ByteSize::from_bytes((config.resident_bytes.as_bytes() / shard_count as u64).max(1));
+	let byte_cap = ByteSize::from_bytes((resident_bytes.as_bytes() / shard_count as u64).max(1));
 	(0..shard_count)
 		.map(|_| {
 			Mutex::new(Shard {
