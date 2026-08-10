@@ -15,14 +15,11 @@ pub(crate) fn new_ffi_context(
 	callbacks: HostCallbacks,
 ) -> ContextFFI {
 	let written_at_nanos = txn.written_at().to_nanos();
-	let state_lease_bytes =
-		txn.state_budget().current_lease(operator_id).map(|lease| lease.grant.bytes().as_bytes()).unwrap_or(0);
 	ContextFFI {
 		txn_ptr: txn as *mut _ as *mut c_void,
 		executor_ptr: executor as *const _ as *const c_void,
 		operator_id: operator_id.0,
 		written_at_nanos,
-		state_lease_bytes,
 		callbacks,
 	}
 }

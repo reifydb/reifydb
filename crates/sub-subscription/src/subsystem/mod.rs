@@ -38,7 +38,6 @@ use reifydb_core::{
 		subscription::SubscriptionWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
-	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{engine::StandardEngine, subscription::SubscriptionServiceRef};
@@ -88,7 +87,6 @@ impl SubscriptionSubsystem {
 		consumer_watermark: CdcConsumerWatermark,
 		source_tracker: SubscriptionSourceTracker,
 		position_tracker: SubscriptionPositionTracker,
-		state_budget: OperatorStateBudgetHandle,
 	) -> Result<Self> {
 		let catalog = engine.catalog();
 		let multi = engine.multi_owned();
@@ -105,7 +103,6 @@ impl SubscriptionSubsystem {
 			&custom_operators,
 			&spawner,
 			num_workers,
-			&state_budget,
 		);
 
 		let state = Arc::new(SubscriptionState {
@@ -172,7 +169,6 @@ impl SubscriptionSubsystem {
 		custom_operators: &CustomOperators,
 		spawner: &ActorSpawner,
 		num_workers: usize,
-		state_budget: &OperatorStateBudgetHandle,
 	) -> (Vec<ActorRef<SubscriptionWorkerMessage>>, Vec<ActorHandle<SubscriptionWorkerMessage>>) {
 		let clock = engine.clock().clone();
 		let mut workers: Vec<ActorRef<SubscriptionWorkerMessage>> = Vec::with_capacity(num_workers);
@@ -185,18 +181,8 @@ impl SubscriptionSubsystem {
 			let co = custom_operators.clone();
 			let substrate =
 				FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state());
-			let state_budget = state_budget.clone();
 			let factory = move || {
-				FlowEngineInner::new(
-					cat,
-					exec,
-					bus,
-					rc,
-					co,
-					substrate,
-					OperatorSampleRegistry::new(),
-					state_budget,
-				)
+				FlowEngineInner::new(cat, exec, bus, rc, co, substrate, OperatorSampleRegistry::new())
 			};
 
 			let worker = SubscriptionWorkerActor::new(
@@ -270,7 +256,6 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let cdc_store = ioc.resolve::<CdcStore>()?;
 		let clock = ioc.resolve::<Clock>()?;
-		let state_budget = ioc.resolve::<OperatorStateBudgetHandle>()?;
 
 		let runtime_context = RuntimeContext::with_clock(clock);
 		let store = Arc::new(SubscriptionStore::new(1024));
@@ -298,7 +283,6 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 			consumer_watermark,
 			source_tracker,
 			position_tracker,
-			state_budget,
 		)?;
 
 		let service = subsystem.service_handle();

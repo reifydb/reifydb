@@ -330,7 +330,6 @@ mod tests {
 			catalog::id::{SeriesId, TableId, ViewId},
 			change::Diff,
 		},
-		state::budget::OperatorStateBudgetHandle,
 		value::column::columns::Columns,
 	};
 	use reifydb_flow::transaction::substrate::FlowSubstrate;
@@ -571,7 +570,6 @@ mod tests {
 			CustomOperators::new(HashMap::new()),
 			FlowSubstrate::default(),
 			OperatorSampleRegistry::new(),
-			OperatorStateBudgetHandle::default(),
 		);
 		let object = ObjectId::View(ViewId(9));
 		let mut builder = FlowDag::builder(FlowId(1));
@@ -612,7 +610,6 @@ mod tests {
 			CustomOperators::new(HashMap::new()),
 			FlowSubstrate::default(),
 			OperatorSampleRegistry::new(),
-			OperatorStateBudgetHandle::default(),
 		);
 		let mut builder = FlowDag::builder(FlowId(1));
 		builder.add_node(FlowNode::new(

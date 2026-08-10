@@ -17,7 +17,6 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	key::operator_state::GroupId,
-	metrics::heap::{StateCompleteness, StateMemory},
 	state::{cache::StateCache, store::StateStore},
 };
 use reifydb_macro::operator_state;
@@ -91,8 +90,8 @@ where
 
 	fn scoped(config: WindowEngineConfig, group_scoped: bool) -> Self {
 		Self {
-			accumulators: StateCache::<WindowStateKey, Accumulator>::new(config.budget()),
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new(config.budget()),
+			accumulators: StateCache::<WindowStateKey, Accumulator>::new(),
+			meta: StateCache::<MetaKey, GroupMeta<C>>::new(),
 			expiry: ExpiryIndex::new(),
 			meta_low_water: None,
 			expire_batch: config.expire_batch(),
@@ -142,24 +141,6 @@ where
 			self.expiry.set(store, expiry_key(new, group, &suffix), entry)?;
 		}
 		Ok(())
-	}
-
-	pub fn approximate_memory(&self) -> StateMemory {
-		self.accumulators.approximate_memory()
-			+ self.meta.approximate_memory()
-			+ self.expiry.approximate_memory()
-	}
-
-	pub fn dirty_memory(&self) -> StateMemory {
-		self.accumulators.dirty_memory() + self.meta.dirty_memory()
-	}
-
-	pub fn membership_memory(&self) -> StateMemory {
-		self.accumulators.membership_memory() + self.meta.membership_memory()
-	}
-
-	pub fn completeness(&self) -> StateCompleteness {
-		self.accumulators.completeness().merge(self.meta.completeness())
 	}
 
 	pub fn apply<S, K, NA>(
@@ -402,10 +383,10 @@ mod tests {
 	use reifydb_core::{
 		key::operator_state::GroupId,
 		metrics::heap::HeapSize,
-		state::{budget::OperatorStateBudgetHandle, cache::StateView},
+		state::cache::StateView,
 	};
 	use reifydb_macro::operator_state;
-	use reifydb_value::{Result, count::Count, factory::time::at_millis, value::datetime::DateTime};
+	use reifydb_value::{Result, factory::time::at_millis, value::datetime::DateTime};
 
 	use crate::window::{
 		accumulator::WindowAccumulator,
@@ -420,7 +401,7 @@ mod tests {
 	};
 
 	fn test_config() -> WindowEngineConfig {
-		WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).build()
+		WindowEngineConfig::builder().build()
 	}
 
 	fn row_key(group: &u32, window_start: DateTime) -> EncodedKey {
@@ -826,7 +807,7 @@ mod tests {
 		}
 		assert_eq!(store.index_entry_count(), 3);
 
-		let capped = WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).expire_batch(2).build();
+		let capped = WindowEngineConfig::builder().expire_batch(2).build();
 
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(capped.clone());
 		let first = engine.expire(&mut store, 1000).unwrap();
@@ -1069,11 +1050,6 @@ mod tests {
 		buckets.insert((1u32, WindowSpan::new(at_millis(200), at_millis(201))), vec![AccumulatorEvent::Add(7)]);
 		apply_sums(&mut fresh, &mut store, buckets).unwrap();
 
-		assert_eq!(
-			fresh.meta.seal_copies(),
-			Count::new(1),
-			"the bump seals the archived meta in place (one CoW for the store-shared row)"
-		);
 		let archived_resident = fresh
 			.meta
 			.read(&mut store, &meta_key_for(&1u32), |view| matches!(view, StateView::Archived(_)))

@@ -234,10 +234,7 @@ impl TimerWheel {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::{
-		actors::pending::{Pending, PendingLayers},
-		state::budget::OperatorStateBudgetHandle,
-	};
+	use reifydb_core::actors::pending::{Pending, PendingLayers};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
@@ -273,7 +270,6 @@ mod tests {
 				operators: engine.inner().operator_state(),
 				..FlowSubstrate::default()
 			},
-			state_budget: OperatorStateBudgetHandle::default(),
 		})
 	}
 

@@ -107,9 +107,6 @@ pub trait OperatorContext {
 
 	fn operator_id(&self) -> OperatorId;
 	fn written_at(&self) -> DateTime;
-	fn state_lease_bytes(&self) -> u64 {
-		0
-	}
 	fn state(&mut self) -> impl StateApi + '_;
 	fn store(&mut self) -> impl StoreApi + '_;
 	fn row_shape(&mut self) -> impl RowShapeApi + '_;

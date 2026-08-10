@@ -10,9 +10,7 @@ pub mod tumbling;
 
 use std::sync::Arc;
 
-use reifydb_core::{
-	common::WindowKind, interface::catalog::flow::OperatorId, state::budget::OperatorStateBudgetHandle,
-};
+use reifydb_core::{common::WindowKind, interface::catalog::flow::OperatorId};
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_sub_flow::{
@@ -47,7 +45,6 @@ pub fn build(spec: &WindowSpec, runtime: RuntimeContext) -> WindowOperator {
 		runtime_context: runtime,
 		routines: routines(),
 		grace: spec.grace,
-		state_budget: OperatorStateBudgetHandle::default(),
 		ctx: Arc::new(FlowContext::default()),
 	})
 }

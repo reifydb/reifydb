@@ -29,7 +29,6 @@ use reifydb_core::{
 		change::{Change, Diff, Diffs},
 	},
 	metrics::heap::{OperatorSample, StateCompleteness, StateMemory, StatePool},
-	state::budget::{LeaseGrant, LeaseReport, OperatorStateBudgetHandle},
 	value::column::columns::Columns,
 };
 use reifydb_engine::vm::executor::Executor;
@@ -51,7 +50,6 @@ use reifydb_value::{
 use tracing::{Span, error, field, instrument};
 
 use crate::{
-	engine::lease_demand,
 	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
 	operator::{Operator, scale_from_millis},
 };
@@ -81,8 +79,6 @@ pub struct FFIOperatorHandle {
 	last_registered_txn: Cell<u64>,
 
 	cached_ctx: UnsafeCell<ContextFFI>,
-
-	state_budget: OperatorStateBudgetHandle,
 }
 
 impl FFIOperatorHandle {
@@ -91,8 +87,6 @@ impl FFIOperatorHandle {
 		instance: *mut c_void,
 		operator_id: OperatorId,
 		executor: Executor,
-		state_budget: OperatorStateBudgetHandle,
-		lease: LeaseGrant,
 	) -> Self {
 		let vtable = descriptor.vtable;
 		let capabilities = from_bitmask(descriptor.capabilities).into_boxed_slice();
@@ -110,10 +104,8 @@ impl FFIOperatorHandle {
 				executor_ptr: ptr::null(),
 				operator_id: operator_id.0,
 				written_at_nanos: 0,
-				state_lease_bytes: lease.bytes().as_bytes(),
 				callbacks: create_host_callbacks(),
 			}),
-			state_budget,
 		}
 	}
 
@@ -127,11 +119,6 @@ impl FFIOperatorHandle {
 			self.last_registered_txn.set(txn_version);
 			ctx.txn_ptr = txn as *mut _ as *mut c_void;
 			ctx.executor_ptr = &self.executor as *const _ as *const c_void;
-			ctx.state_lease_bytes = self
-				.state_budget
-				.current_lease(self.operator_id)
-				.map(|lease| lease.grant.bytes().as_bytes())
-				.unwrap_or(0);
 		}
 		ctx.written_at_nanos = txn.written_at().to_nanos();
 		Ok(())
@@ -210,17 +197,7 @@ fn ensure_flush_slot(
 				(captured_vtable.flush_state)(inst.0, ffi_ctx_ptr, &mut usage)
 			}));
 			match result {
-				Ok(FFI_OK) => {
-					let report = lease_report_from_usage(&usage);
-					let budget = txn.state_budget();
-					budget.report_lease(captured_id, report);
-					budget.resize_lease_to_demand(captured_id, lease_demand(&report));
-					Ok(())
-				}
-				Ok(FFI_SAMPLE_NO_DATA) => {
-					txn.state_budget().report_lease_none(captured_id);
-					Ok(())
-				}
+				Ok(FFI_OK) | Ok(FFI_SAMPLE_NO_DATA) => Ok(()),
 				Ok(code) => Err(SdkError::Other(format!(
 					"FFI operator flush_state failed with code: {}",
 					code
@@ -350,19 +327,11 @@ impl Operator for FFIOperatorHandle {
 	}
 }
 
-fn lease_report_from_usage(usage: &StateUsageFFI) -> LeaseReport {
-	LeaseReport {
-		state: StateMemory::new(Count::new(usage.state_entries), ByteSize::from_bytes(usage.state_bytes)),
-		row_numbers: StateMemory::new(
-			Count::new(usage.row_number_entries),
-			ByteSize::from_bytes(usage.row_number_bytes),
-		),
-	}
-}
-
 fn sample_from_usage(usage: &StateUsageFFI) -> OperatorSample {
-	let report = lease_report_from_usage(usage);
-	let mut sample = OperatorSample::with_memory(report.state).with_row_number_cache(report.row_numbers);
+	let state = StateMemory::new(Count::new(usage.state_entries), ByteSize::from_bytes(usage.state_bytes));
+	let row_numbers =
+		StateMemory::new(Count::new(usage.row_number_entries), ByteSize::from_bytes(usage.row_number_bytes));
+	let mut sample = OperatorSample::with_memory(state).with_row_number_cache(row_numbers);
 	if usage.has_membership != 0 {
 		sample = sample.with_membership(StateMemory::new(
 			Count::new(usage.membership_entries),

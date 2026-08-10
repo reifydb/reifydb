@@ -17,7 +17,7 @@ use reifydb_core::{
 		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range,
 	},
 	metrics::heap::{HeapSize, OperatorSample},
-	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
+	state::{cache::StateCache, store::StateStore},
 	value::column::columns::Columns,
 };
 use reifydb_engine::expression::{
@@ -86,9 +86,9 @@ struct GateState {
 }
 
 impl GateState {
-	fn new(budget: OperatorStateBudgetHandle) -> Self {
+	fn new() -> Self {
 		Self {
-			visibility: StateCache::new(budget),
+			visibility: StateCache::new(),
 			hydrated: false,
 		}
 	}
@@ -125,13 +125,7 @@ impl GateState {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		if !self.hydrated {
-			return None;
-		}
-		Some(OperatorSample::with_memory(self.visibility.approximate_memory())
-			.with_dirty_memory(self.visibility.dirty_memory())
-			.with_membership(self.visibility.membership_memory())
-			.with_completeness(self.visibility.completeness()))
+		None
 	}
 }
 
@@ -152,7 +146,6 @@ impl GateOperator {
 		conditions: Vec<Expression>,
 		routines: Routines,
 		runtime_context: RuntimeContext,
-		state_budget: OperatorStateBudgetHandle,
 		ctx: Arc<FlowContext>,
 	) -> Self {
 		let compile_ctx = CompileContext {
@@ -170,7 +163,7 @@ impl GateOperator {
 			routines,
 			runtime_context,
 			ctx,
-			state: UnsafeCell::new(GateState::new(state_budget)),
+			state: UnsafeCell::new(GateState::new()),
 		}
 	}
 

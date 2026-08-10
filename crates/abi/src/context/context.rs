@@ -15,7 +15,5 @@ pub struct ContextFFI {
 
 	pub written_at_nanos: u64,
 
-	pub state_lease_bytes: u64,
-
 	pub callbacks: HostCallbacks,
 }

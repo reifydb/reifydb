@@ -10,9 +10,8 @@ use reifydb_codec::row::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	metrics::heap::{StateCompleteness, StateMemory},
 	row::Row,
-	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
+	state::{cache::StateCache, store::StateStore},
 	value::column::{ColumnWithName, columns::Columns},
 };
 use reifydb_engine::{
@@ -174,12 +173,12 @@ impl Aggregation {
 		unsafe { &mut *self.tumbling_engine.get() }
 	}
 
-	pub(crate) fn engine_meta_open(&self, budget: OperatorStateBudgetHandle) {
+	pub(crate) fn engine_meta_open(&self) {
 		// SAFETY: one actor owns this operator and apply/tick run single-threaded, so no other
 		// borrow of the UnsafeCell is live while this &mut exists.
 		let slot = unsafe { &mut *self.engine_meta.get() };
 		if slot.is_none() {
-			*slot = Some(StateCache::new(budget));
+			*slot = Some(StateCache::new());
 		}
 	}
 
@@ -196,20 +195,6 @@ impl Aggregation {
 			cache.flush(store)?;
 		}
 		Ok(())
-	}
-
-	pub(crate) fn engine_meta_sample_parts(
-		&self,
-	) -> Option<(StateMemory, StateMemory, StateMemory, StateCompleteness)> {
-		// SAFETY: single-threaded per actor and sample runs sequentially with apply/tick, so no
-		// aliasing borrow of the UnsafeCell is live.
-		let cache = unsafe { (*self.engine_meta.get()).as_ref() }?;
-		Some((
-			cache.approximate_memory(),
-			cache.dirty_memory(),
-			cache.membership_memory(),
-			cache.completeness(),
-		))
 	}
 
 	pub fn compute_groups(&self, columns: &Columns) -> Result<Vec<(Hash128, Vec<Value>)>> {

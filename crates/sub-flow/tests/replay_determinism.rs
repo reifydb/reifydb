@@ -27,7 +27,6 @@ use reifydb_core::{
 		consolidate::consolidate_diffs,
 	},
 	key::operator_state::Keyspace,
-	state::budget::OperatorStateBudgetHandle,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_flow::operator::Operator;
@@ -618,7 +617,6 @@ fn window_harness(kind: WindowKind, grace: Duration, clock_ms: u64) -> Harness<W
 			runtime_context: runtime,
 			routines: routines(),
 			grace,
-			state_budget: OperatorStateBudgetHandle::default(),
 			ctx: Arc::new(FlowContext::default()),
 		})
 	})

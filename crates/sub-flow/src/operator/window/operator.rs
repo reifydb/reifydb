@@ -8,7 +8,6 @@ use reifydb_core::{
 	common::{CommitVersion, WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, change::Change},
 	metrics::heap::OperatorSample,
-	state::budget::OperatorStateBudgetHandle,
 	value::column::columns::Columns,
 };
 use reifydb_engine::flow::aggregate::AggregateContext;
@@ -62,7 +61,6 @@ pub struct WindowConfig {
 	pub runtime_context: RuntimeContext,
 	pub routines: Routines,
 	pub grace: Duration,
-	pub state_budget: OperatorStateBudgetHandle,
 	pub ctx: Arc<FlowContext>,
 }
 
@@ -76,7 +74,6 @@ pub struct WindowOperator {
 	pub kind: WindowKind,
 
 	pub grace: Duration,
-	pub state_budget: OperatorStateBudgetHandle,
 	sealed_drops: SealedDrops,
 	rolling_engine: UnsafeCell<Option<RollingEngineSlot>>,
 	meta: UnsafeCell<WindowMeta>,
@@ -98,10 +95,9 @@ impl WindowOperator {
 			core,
 			kind: config.kind,
 			grace: config.grace,
-			state_budget: config.state_budget.clone(),
 			sealed_drops: SealedDrops::new(config.operator, "mutations targeting sealed windows"),
 			rolling_engine: UnsafeCell::new(None),
-			meta: UnsafeCell::new(WindowMeta::new(config.state_budget)),
+			meta: UnsafeCell::new(WindowMeta::new()),
 		}
 	}
 
@@ -118,9 +114,8 @@ impl WindowOperator {
 		f: impl FnOnce(&mut FlowTransaction) -> Result<R>,
 	) -> Result<R> {
 		let operator = self.core.operator;
-		let budget = txn.state_budget();
 		self.meta_slot().hydrate_once(&mut OperatorStateStore::new(txn, operator))?;
-		self.core.engine_meta_open(budget);
+		self.core.engine_meta_open();
 		let out = f(txn)?;
 		self.meta_slot().flush(&mut OperatorStateStore::new(txn, operator))?;
 		self.core.engine_meta_flush(&mut OperatorStateStore::new(txn, operator))?;
@@ -135,7 +130,7 @@ impl WindowOperator {
 	}
 
 	pub(crate) fn engine_config(&self) -> WindowEngineConfig {
-		WindowEngineConfig::builder(self.state_budget.clone()).build()
+		WindowEngineConfig::builder().build()
 	}
 
 	pub fn is_count_based(&self) -> bool {
@@ -215,51 +210,7 @@ impl Operator for WindowOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		let (mut memory, mut dirty, mut membership, mut completeness) =
-			if let Some(slot) = self.rolling_engine_slot().as_ref() {
-				match slot {
-					RollingEngineSlot::CountedRow(engine) => (
-						engine.approximate_memory(),
-						engine.dirty_memory(),
-						engine.membership_memory(),
-						engine.completeness(),
-					),
-					RollingEngineSlot::TimedRow(engine) => (
-						engine.approximate_memory(),
-						engine.dirty_memory(),
-						engine.membership_memory(),
-						engine.completeness(),
-					),
-				}
-			} else {
-				let engine = self.core.tumbling_engine_slot().as_ref()?;
-				(
-					engine.approximate_memory(),
-					engine.dirty_memory(),
-					engine.membership_memory(),
-					engine.completeness(),
-				)
-			};
-
-		let (meta_memory, meta_dirty, meta_membership, meta_completeness) = self.meta_slot().sample_parts();
-		memory = memory + meta_memory;
-		dirty = dirty + meta_dirty;
-		membership = membership + meta_membership;
-		completeness = completeness.merge(meta_completeness);
-
-		if let Some((em_memory, em_dirty, em_membership, em_completeness)) =
-			self.core.engine_meta_sample_parts()
-		{
-			memory = memory + em_memory;
-			dirty = dirty + em_dirty;
-			membership = membership + em_membership;
-			completeness = completeness.merge(em_completeness);
-		}
-
-		Some(OperatorSample::with_memory(memory)
-			.with_dirty_memory(dirty)
-			.with_membership(membership)
-			.with_completeness(completeness))
+		None
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {

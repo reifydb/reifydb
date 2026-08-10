@@ -23,7 +23,6 @@ use reifydb_core::{
 		cdc::Cdc,
 		change::Change,
 	},
-	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_flow::transaction::substrate::FlowSubstrate;
@@ -73,7 +72,6 @@ pub struct FlowActorParams {
 	pub custom_operators: CustomOperators,
 	pub substrate: FlowSubstrate,
 	pub operator_samples: OperatorSampleRegistry,
-	pub state_budget: OperatorStateBudgetHandle,
 	pub clock: Clock,
 	pub health: FlowHealthRegistry,
 	pub flow_tracker: FlowPositionTracker,
@@ -98,7 +96,6 @@ pub struct FlowActor {
 	custom_operators: CustomOperators,
 	substrate: FlowSubstrate,
 	operator_samples: OperatorSampleRegistry,
-	state_budget: OperatorStateBudgetHandle,
 	clock: Clock,
 	health: FlowHealthRegistry,
 	flow_tracker: FlowPositionTracker,
@@ -152,7 +149,6 @@ impl FlowActor {
 			custom_operators: params.custom_operators,
 			substrate: params.substrate,
 			operator_samples: params.operator_samples,
-			state_budget: params.state_budget,
 			clock: params.clock,
 			health: params.health,
 			flow_tracker: params.flow_tracker,
@@ -217,7 +213,6 @@ impl FlowActor {
 			self.custom_operators.clone(),
 			self.substrate.clone(),
 			self.operator_samples.clone(),
-			self.state_budget.clone(),
 		)
 	}
 
@@ -813,7 +808,6 @@ mod pull_protocol {
 			CustomOperators::new(HashMap::new()),
 			substrate.clone(),
 			OperatorSampleRegistry::new(),
-			OperatorStateBudgetHandle::default(),
 		);
 		let mut txn = engine.begin_command(IdentityId::system()).expect("command");
 		let (flow, _) =
@@ -849,7 +843,7 @@ mod pull_protocol {
 		);
 		let committer_handle = engine.spawner().spawn_flow(
 			"pull-protocol-committer",
-			CommitterActor::new(committer, group, OperatorStateBudgetHandle::default()),
+			CommitterActor::new(committer, group),
 		);
 
 		let loader_handle = engine.spawner().spawn_flow(
@@ -904,7 +898,6 @@ mod pull_protocol {
 					custom_operators: CustomOperators::new(HashMap::new()),
 					substrate,
 					operator_samples: OperatorSampleRegistry::new(),
-					state_budget: OperatorStateBudgetHandle::default(),
 					clock: self.engine.clock().clone(),
 					health: self.health.clone(),
 					flow_tracker: self.tracker.clone(),
@@ -1041,7 +1034,6 @@ mod pull_protocol {
 				interceptors: self.engine.create_interceptors(),
 				clock: self.engine.clock().clone(),
 				substrate: substrate.clone(),
-				state_budget: OperatorStateBudgetHandle::default(),
 			});
 			for source in sources {
 				substrate.watermarks.advance(source, &mut txn, at).expect("advance watermark");
@@ -1577,11 +1569,7 @@ mod pull_protocol {
 		let begin: GroupCommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 		let committer2_handle = h.engine.spawner().spawn_flow(
 			"pull-protocol-committer-restart",
-			CommitterActor::new(
-				committer2,
-				GroupCommitHandle::inline(begin),
-				OperatorStateBudgetHandle::default(),
-			),
+			CommitterActor::new(committer2, GroupCommitHandle::inline(begin)),
 		);
 		let health2 = FlowHealthRegistry::new();
 		let actor2 = h.engine.spawner().spawn_flow(
@@ -1595,7 +1583,6 @@ mod pull_protocol {
 				custom_operators: CustomOperators::new(HashMap::new()),
 				substrate: substrate2.clone(),
 				operator_samples: OperatorSampleRegistry::new(),
-				state_budget: OperatorStateBudgetHandle::default(),
 				clock: h.engine.clock().clone(),
 				health: health2.clone(),
 				flow_tracker: h.tracker.clone(),

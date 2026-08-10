@@ -37,8 +37,6 @@ pub enum ConfigKey {
 	OracleWindowSize,
 	QueryRowBatchSize,
 	QueryMemoryLimit,
-	OperatorStateMemoryLimit,
-	OperatorStateLeaseDefault,
 	RetentionEvictInterval,
 	RetentionEvictBatchSize,
 	RetentionEvictMaxBatchesPerTick,
@@ -93,8 +91,6 @@ impl ConfigKey {
 			Self::OracleWindowSize,
 			Self::QueryRowBatchSize,
 			Self::QueryMemoryLimit,
-			Self::OperatorStateMemoryLimit,
-			Self::OperatorStateLeaseDefault,
 			Self::RetentionEvictInterval,
 			Self::RetentionEvictBatchSize,
 			Self::RetentionEvictMaxBatchesPerTick,
@@ -149,8 +145,6 @@ impl ConfigKey {
 			Self::OracleWindowSize => Value::Uint8(500),
 			Self::QueryRowBatchSize => Value::Uint2(128),
 			Self::QueryMemoryLimit => Value::Uint8(1024 * 1024 * 1024),
-			Self::OperatorStateMemoryLimit => Value::Uint8(2 * 1024 * 1024 * 1024),
-			Self::OperatorStateLeaseDefault => Value::Uint8(64 * 1024 * 1024),
 			Self::RetentionEvictInterval => Value::duration_seconds(60),
 			Self::RetentionEvictBatchSize => Value::Uint8(1024),
 			Self::RetentionEvictMaxBatchesPerTick => Value::Uint8(8),
@@ -214,12 +208,6 @@ impl ConfigKey {
 			}
 			Self::QueryMemoryLimit => {
 				"Maximum bytes a single query may buffer in memory across its blocking operators (joins, sort, top k, distinct) and its accumulated result. A query that would exceed this fails with QUERY_006 instead of growing without bound. Read fresh for each query, so changes take effect immediately."
-			}
-			Self::OperatorStateMemoryLimit => {
-				"Global byte budget for the operator state pool: resident cached state, unflushed dirty state, and FFI/native lease grants all charge against it. Clean cached entries are evicted to stay under it; dirty and leased bytes may exceed it temporarily (soft overage), visible in metrics until the next flush or lease resize. Applied on change without restart."
-			}
-			Self::OperatorStateLeaseDefault => {
-				"Initial byte lease granted to an FFI or native operator at creation for its in-operator state cache. The grant is clamped to available pool headroom and counts against OPERATOR_STATE_MEMORY_LIMIT; the operator must report exact usage every sample, and each sampling tick resizes the grant to reported demand plus 25% headroom (never below the lease floor). Applied to operators created after the change."
 			}
 			Self::RetentionEvictInterval => {
 				"How often the retention evictor scans objects with a row TTL for expired rows."
@@ -421,8 +409,6 @@ impl ConfigKey {
 			Self::OracleWindowSize => false,
 			Self::QueryRowBatchSize => false,
 			Self::QueryMemoryLimit => false,
-			Self::OperatorStateMemoryLimit => false,
-			Self::OperatorStateLeaseDefault => false,
 			Self::RetentionEvictInterval => true,
 			Self::RetentionEvictBatchSize => false,
 			Self::RetentionEvictMaxBatchesPerTick => false,
@@ -477,8 +463,6 @@ impl ConfigKey {
 			Self::OracleWindowSize => &[ValueType::Uint8],
 			Self::QueryRowBatchSize => &[ValueType::Uint2],
 			Self::QueryMemoryLimit => &[ValueType::Uint8],
-			Self::OperatorStateMemoryLimit => &[ValueType::Uint8],
-			Self::OperatorStateLeaseDefault => &[ValueType::Uint8],
 			Self::RetentionEvictInterval => &[ValueType::Duration],
 			Self::RetentionEvictBatchSize => &[ValueType::Uint8],
 			Self::RetentionEvictMaxBatchesPerTick => &[ValueType::Uint8],
@@ -533,8 +517,6 @@ impl ConfigKey {
 			Self::OracleWindowSize => false,
 			Self::QueryRowBatchSize => false,
 			Self::QueryMemoryLimit => false,
-			Self::OperatorStateMemoryLimit => false,
-			Self::OperatorStateLeaseDefault => false,
 			Self::RetentionEvictInterval => false,
 			Self::RetentionEvictBatchSize => false,
 			Self::RetentionEvictMaxBatchesPerTick => false,
@@ -645,12 +627,6 @@ impl ConfigKey {
 				Value::Uint8(0) => Err("QUERY_MEMORY_LIMIT must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
-			Self::OperatorStateMemoryLimit => match value {
-				Value::Uint8(0) => {
-					Err("OPERATOR_STATE_MEMORY_LIMIT must be greater than zero".to_string())
-				}
-				_ => Ok(()),
-			},
 			Self::FlowBacklogMemoryLimit => match value {
 				Value::Uint8(0) => {
 					Err("FLOW_BACKLOG_MEMORY_LIMIT must be greater than zero".to_string())
@@ -663,12 +639,6 @@ impl ConfigKey {
 			},
 			Self::FlowLoadBatchBytes => match value {
 				Value::Uint8(0) => Err("FLOW_LOAD_BATCH_BYTES must be greater than zero".to_string()),
-				_ => Ok(()),
-			},
-			Self::OperatorStateLeaseDefault => match value {
-				Value::Uint8(0) => {
-					Err("OPERATOR_STATE_LEASE_DEFAULT must be greater than zero".to_string())
-				}
 				_ => Ok(()),
 			},
 			Self::CdcCompactBlockCacheCapacity => match value {
@@ -877,8 +847,6 @@ impl fmt::Display for ConfigKey {
 			Self::OracleWindowSize => write!(f, "ORACLE_WINDOW_SIZE"),
 			Self::QueryRowBatchSize => write!(f, "QUERY_ROW_BATCH_SIZE"),
 			Self::QueryMemoryLimit => write!(f, "QUERY_MEMORY_LIMIT"),
-			Self::OperatorStateMemoryLimit => write!(f, "OPERATOR_STATE_MEMORY_LIMIT"),
-			Self::OperatorStateLeaseDefault => write!(f, "OPERATOR_STATE_LEASE_DEFAULT"),
 			Self::RetentionEvictInterval => write!(f, "RETENTION_EVICT_INTERVAL"),
 			Self::RetentionEvictBatchSize => write!(f, "RETENTION_EVICT_BATCH_SIZE"),
 			Self::RetentionEvictMaxBatchesPerTick => write!(f, "RETENTION_EVICT_MAX_BATCHES_PER_TICK"),
@@ -937,8 +905,6 @@ impl FromStr for ConfigKey {
 			"ORACLE_WINDOW_SIZE" => Ok(Self::OracleWindowSize),
 			"QUERY_ROW_BATCH_SIZE" => Ok(Self::QueryRowBatchSize),
 			"QUERY_MEMORY_LIMIT" => Ok(Self::QueryMemoryLimit),
-			"OPERATOR_STATE_MEMORY_LIMIT" => Ok(Self::OperatorStateMemoryLimit),
-			"OPERATOR_STATE_LEASE_DEFAULT" => Ok(Self::OperatorStateLeaseDefault),
 			"RETENTION_EVICT_INTERVAL" => Ok(Self::RetentionEvictInterval),
 			"RETENTION_EVICT_BATCH_SIZE" => Ok(Self::RetentionEvictBatchSize),
 			"RETENTION_EVICT_MAX_BATCHES_PER_TICK" => Ok(Self::RetentionEvictMaxBatchesPerTick),
@@ -1126,28 +1092,6 @@ mod tests {
 		let key: ConfigKey = "QUERY_MEMORY_LIMIT".parse().unwrap();
 		assert_eq!(key, ConfigKey::QueryMemoryLimit);
 		assert_eq!(format!("{}", ConfigKey::QueryMemoryLimit), "QUERY_MEMORY_LIMIT");
-	}
-
-	#[test]
-	fn test_operator_state_keys_default_and_round_trip() {
-		// The pool budget and lease default must be present in every ConfigKey arm; a miss in any
-		// one of them silently disables the operator state bound.
-		assert_eq!(ConfigKey::OperatorStateMemoryLimit.default_value(), Value::Uint8(2 * 1024 * 1024 * 1024));
-		assert_eq!(ConfigKey::OperatorStateLeaseDefault.default_value(), Value::Uint8(64 * 1024 * 1024));
-		assert_eq!(ConfigKey::OperatorStateMemoryLimit.expected_types(), &[ValueType::Uint8]);
-		assert_eq!(ConfigKey::OperatorStateLeaseDefault.expected_types(), &[ValueType::Uint8]);
-
-		let key: ConfigKey = "OPERATOR_STATE_MEMORY_LIMIT".parse().unwrap();
-		assert_eq!(key, ConfigKey::OperatorStateMemoryLimit);
-		let key: ConfigKey = "OPERATOR_STATE_LEASE_DEFAULT".parse().unwrap();
-		assert_eq!(key, ConfigKey::OperatorStateLeaseDefault);
-		assert_eq!(format!("{}", ConfigKey::OperatorStateMemoryLimit), "OPERATOR_STATE_MEMORY_LIMIT");
-		assert_eq!(format!("{}", ConfigKey::OperatorStateLeaseDefault), "OPERATOR_STATE_LEASE_DEFAULT");
-
-		assert!(ConfigKey::OperatorStateMemoryLimit.validate_canonical(&Value::Uint8(0)).is_err());
-		assert!(ConfigKey::OperatorStateLeaseDefault.validate_canonical(&Value::Uint8(0)).is_err());
-		assert!(!ConfigKey::OperatorStateMemoryLimit.requires_restart());
-		assert!(!ConfigKey::OperatorStateLeaseDefault.requires_restart());
 	}
 
 	#[test]

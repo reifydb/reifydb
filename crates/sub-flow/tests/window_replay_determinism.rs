@@ -20,7 +20,6 @@ use reifydb_core::{
 		EncodableKey,
 		operator_state::{Keyspace, OperatorStateKey},
 	},
-	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_flow::{timer::Timer, window::meta::EngineMeta};
 use reifydb_routine::{
@@ -70,7 +69,6 @@ fn harness(kind: WindowKind, clock_ms: u64) -> Harness<WindowOperator> {
 			runtime_context: runtime,
 			routines: routines(),
 			grace: Duration::default(),
-			state_budget: OperatorStateBudgetHandle::default(),
 			ctx: Arc::new(FlowContext::default()),
 		})
 	})

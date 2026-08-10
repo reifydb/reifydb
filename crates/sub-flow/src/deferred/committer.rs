@@ -13,7 +13,6 @@ use reifydb_core::{
 		change::Change,
 	},
 	key::{Key, kind::KeyKind},
-	state::budget::OperatorStateBudgetHandle,
 };
 #[cfg(test)]
 use reifydb_engine::engine::StandardEngine;
@@ -30,7 +29,7 @@ use reifydb_transaction::{
 };
 #[cfg(test)]
 use reifydb_value::value::identity::IdentityId;
-use reifydb_value::{Result, byte_size::ByteSize};
+use reifydb_value::Result;
 use tracing::{instrument, warn};
 
 use crate::deferred::{quiescence::FlowMaterialization, tracker::FlowPositionTracker};
@@ -56,15 +55,13 @@ pub enum CommitterMessage {
 pub struct CommitterActor {
 	committer: Committer,
 	group: GroupCommitHandle,
-	state_budget: OperatorStateBudgetHandle,
 }
 
 impl CommitterActor {
-	pub fn new(committer: Committer, group: GroupCommitHandle, state_budget: OperatorStateBudgetHandle) -> Self {
+	pub fn new(committer: Committer, group: GroupCommitHandle) -> Self {
 		Self {
 			committer,
 			group,
-			state_budget,
 		}
 	}
 
@@ -78,10 +75,6 @@ impl CommitterActor {
 		} = slice;
 		let produced_output = combined.iter_sorted().next().is_some() || !view_changes.is_empty();
 		let combined = Arc::new(combined);
-
-		let in_flight = pending_bytes(&combined);
-		self.state_budget.charge_in_flight(in_flight);
-		let completion_budget = self.state_budget.clone();
 
 		let apply_committer = self.committer.clone();
 		let apply_combined = Arc::clone(&combined);
@@ -100,7 +93,6 @@ impl CommitterActor {
 
 		let completion_committer = self.committer.clone();
 		let completion: GroupCommitCompletion = Box::new(move |result| {
-			completion_budget.release_in_flight(in_flight);
 			match result {
 				Ok(version) => {
 					apply_operator_state(&completion_committer.operators, version, &combined);
@@ -125,10 +117,6 @@ impl CommitterActor {
 	fn submit_tick(&self, pending: Pending, view_changes: Vec<Change>, reply: TickCommitReply) {
 		let pending = Arc::new(pending);
 
-		let in_flight = pending_bytes(&pending);
-		self.state_budget.charge_in_flight(in_flight);
-		let completion_budget = self.state_budget.clone();
-
 		let apply_committer = self.committer.clone();
 		let apply_pending = Arc::clone(&pending);
 		let apply: GroupCommitApply = Box::new(move |transaction| {
@@ -137,7 +125,6 @@ impl CommitterActor {
 
 		let completion_committer = self.committer.clone();
 		let completion: GroupCommitCompletion = Box::new(move |result| {
-			completion_budget.release_in_flight(in_flight);
 			match result {
 				Ok(version) => {
 					apply_operator_state(&completion_committer.operators, version, &pending);
@@ -325,17 +312,6 @@ impl Committer {
 	}
 }
 
-fn pending_bytes(pending: &Pending) -> ByteSize {
-	let mut total = 0u64;
-	for (key, write) in pending.iter_sorted() {
-		total = total.saturating_add(key.len() as u64);
-		if let PendingWrite::Set(row) = write {
-			total = total.saturating_add(row.len() as u64);
-		}
-	}
-	ByteSize::from_bytes(total)
-}
-
 #[instrument(name = "flow::committer::apply_pending", level = "debug", skip_all)]
 fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending) -> Result<()> {
 	for (key, pw) in combined.iter_sorted() {
@@ -451,7 +427,7 @@ mod group_commit_integration {
 		);
 		let handle = engine.spawner().spawn_flow(
 			"group-commit-test-committer",
-			CommitterActor::new(committer.clone(), group, OperatorStateBudgetHandle::default()),
+			CommitterActor::new(committer.clone(), group),
 		);
 		(handle, committer)
 	}

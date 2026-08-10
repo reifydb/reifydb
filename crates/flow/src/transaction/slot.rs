@@ -20,7 +20,6 @@ pub struct OperatorStateSlot {
 	pub dirty: bool,
 	pub persist: PersistFn,
 	pub usage: UsageFn,
-	pub charged: ByteSize,
 }
 
 pub struct CarriedOperatorState {

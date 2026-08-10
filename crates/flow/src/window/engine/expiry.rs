@@ -9,10 +9,9 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
-	metrics::heap::StateMemory,
 	state::store::StateStore,
 };
-use reifydb_value::{Result, byte_size::ByteSize, count::Count};
+use reifydb_value::Result;
 use tracing::instrument;
 
 use crate::window::engine::expiry_range;
@@ -93,10 +92,6 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 		}))
 	}
 
-	pub(crate) fn approximate_memory(&self) -> StateMemory {
-		let entries = self.entries.as_ref().map_or(0, |map| map.len());
-		StateMemory::new(Count::new(entries as u64), ByteSize::from_bytes(self.bytes))
-	}
 }
 
 fn entry_bytes<E>(key: &GroupStateKey) -> u64 {

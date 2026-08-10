@@ -20,7 +20,6 @@ use rand::RngExt;
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change},
-	state::budget::OperatorStateBudgetHandle,
 	value::column::columns::Columns,
 };
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
@@ -224,7 +223,6 @@ pub fn build(chain: Chain, runtime: RuntimeContext) -> Pipeline {
 			expressions,
 			routines(),
 			runtime.clone(),
-			OperatorStateBudgetHandle::default(),
 			ctx.clone(),
 		)),
 	};

@@ -38,7 +38,7 @@ use crate::{
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			WindowedBudget, advance_seal_frontier, arm_seal_timer,
+			advance_seal_frontier, arm_seal_timer,
 			bridge::OperatorContextStore,
 			bucket_of,
 			rolling::{RollingOperator, RollingRegistration},
@@ -75,7 +75,6 @@ where
 {
 	aggregator: A,
 	engine: RollingIncrementalEngine<A::GroupKey, DateTime, A::Accumulator, A::Running>,
-	budget: WindowedBudget,
 }
 
 impl<A> RollingIncrementalDriver<A>
@@ -126,21 +125,15 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	fn sample(&self) -> Option<OperatorSample> {
-		Some(OperatorSample::with_memory(self.engine.approximate_memory())
-			.with_dirty_memory(self.engine.dirty_memory())
-			.with_membership(self.engine.membership_memory())
-			.with_completeness(self.engine.completeness())
-			.with_pool(self.budget.stat()))
+		None
 	}
 
 	fn create(operator_id: OperatorId, config: &Config) -> Result<Self> {
 		let aggregator = A::from_config(operator_id, config)?;
 		let engine_config = window_engine_config(config);
-		let budget = WindowedBudget::new(config, &engine_config);
 		Ok(Self {
 			aggregator,
 			engine: RollingIncrementalEngine::new(engine_config),
-			budget,
 		})
 	}
 
@@ -163,7 +156,6 @@ where
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
-		self.budget.sync_from_lease(ctx.state_lease_bytes());
 		let mut buckets = self.route_diffs_to_buckets(ctx, &change);
 		if buckets.is_empty() {
 			return Ok(());

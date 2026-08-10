@@ -13,7 +13,6 @@ use reifydb_core::{
 		catalog::{flow::OperatorId, object::ObjectId},
 		change::{Change, ChangeOrigin, Diff},
 	},
-	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
@@ -126,8 +125,6 @@ pub struct DeferredParams {
 	pub clock: Clock,
 
 	pub substrate: FlowSubstrate,
-
-	pub state_budget: OperatorStateBudgetHandle,
 }
 
 pub struct FlowTransactionInner {
@@ -156,16 +153,6 @@ pub struct FlowTransactionInner {
 	pub flow_watermark: Option<DateTime>,
 
 	pub substrate: FlowSubstrate,
-
-	pub state_budget: OperatorStateBudgetHandle,
-}
-
-impl Drop for FlowTransactionInner {
-	fn drop(&mut self) {
-		for slot in self.operator_states.values() {
-			self.state_budget.release_dirty(slot.charged);
-		}
-	}
 }
 
 pub enum FlowTransaction {
@@ -240,7 +227,6 @@ impl FlowTransaction {
 				change_coordinate: None,
 				flow_watermark: None,
 				substrate: FlowSubstrate::new(),
-				state_budget: OperatorStateBudgetHandle::default(),
 			},
 		}
 	}
@@ -271,7 +257,6 @@ impl FlowTransaction {
 				change_coordinate: None,
 				flow_watermark: None,
 				substrate: params.substrate,
-				state_budget: params.state_budget,
 			},
 		}
 	}
@@ -341,7 +326,6 @@ impl FlowTransaction {
 		catalog: Catalog,
 		state: HashMap<EncodedKey, EncodedBytes>,
 		clock: Clock,
-		state_budget: OperatorStateBudgetHandle,
 	) -> Self {
 		let mut pq = query;
 		pq.read_as_of_version_inclusive(version);
@@ -367,7 +351,6 @@ impl FlowTransaction {
 				change_coordinate: None,
 				flow_watermark: None,
 				substrate: FlowSubstrate::new(),
-				state_budget,
 			},
 			state,
 		}
@@ -457,10 +440,6 @@ impl FlowTransaction {
 		&self.inner().clock
 	}
 
-	pub fn state_budget(&self) -> OperatorStateBudgetHandle {
-		self.inner().state_budget.clone()
-	}
-
 	pub fn operator_state<S, F>(&mut self, operator: OperatorId, usage: UsageFn, load: F) -> Result<&mut S>
 	where
 		S: 'static + Send,
@@ -468,15 +447,12 @@ impl FlowTransaction {
 	{
 		if !self.inner().operator_states.contains_key(&operator) {
 			let (state, persist) = load(self)?;
-			let charged = usage(&state);
 			let inner = self.inner_mut();
-			inner.state_budget.charge_dirty(charged);
 			let slot = OperatorStateSlot {
 				value: Box::new(state),
 				dirty: false,
 				persist,
 				usage,
-				charged,
 			};
 			inner.operator_states.insert(operator, slot);
 		}
@@ -496,7 +472,6 @@ impl FlowTransaction {
 		F: FnOnce(&mut Self) -> Result<(S, PersistFn)>,
 	{
 		if let Some(slot) = self.inner_mut().operator_states.remove(&operator) {
-			self.inner().state_budget.release_dirty(slot.charged);
 			let value = slot.value.downcast::<S>().map_err(|_| ()).expect("operator state type mismatch");
 			Ok((*value, slot.persist))
 		} else {
@@ -508,39 +483,25 @@ impl FlowTransaction {
 	where
 		S: 'static + Send,
 	{
-		let charged = usage(&state);
 		let inner = self.inner_mut();
-		inner.state_budget.charge_dirty(charged);
-		let replaced = inner.operator_states.insert(
+		inner.operator_states.insert(
 			operator,
 			OperatorStateSlot {
 				value: Box::new(state),
 				dirty: true,
 				persist,
 				usage,
-				charged,
 			},
 		);
-		if let Some(replaced) = replaced {
-			inner.state_budget.release_dirty(replaced.charged);
-		}
 	}
 
 	#[instrument(name = "flow::actor::flush_state", level = "debug", skip_all)]
 	pub fn flush_operator_states(&mut self) -> Result<()> {
 		let states = mem::take(&mut self.inner_mut().operator_states);
-		let budget = self.inner().state_budget.clone();
 		for (_, slot) in states {
-			let current = (slot.usage)(&*slot.value);
-			budget.release_dirty(slot.charged);
-			budget.charge_dirty(current);
-			let outcome = if slot.dirty {
-				(slot.persist)(self, slot.value)
-			} else {
-				Ok(())
-			};
-			budget.release_dirty(current);
-			outcome?;
+			if slot.dirty {
+				(slot.persist)(self, slot.value)?;
+			}
 		}
 		Ok(())
 	}
@@ -551,8 +512,6 @@ impl FlowTransaction {
 			if inner.operator_states.contains_key(&operator) {
 				continue;
 			}
-			let charged = (carried.usage)(&*carried.value);
-			inner.state_budget.charge_dirty(charged);
 			inner.operator_states.insert(
 				operator,
 				OperatorStateSlot {
@@ -560,7 +519,6 @@ impl FlowTransaction {
 					dirty: false,
 					persist: Box::new(|_, _| Ok(())),
 					usage: carried.usage,
-					charged,
 				},
 			);
 		}
@@ -571,7 +529,6 @@ impl FlowTransaction {
 		mem::take(&mut inner.operator_states)
 			.into_iter()
 			.map(|(operator, slot)| {
-				inner.state_budget.release_dirty(slot.charged);
 				(
 					operator,
 					CarriedOperatorState {

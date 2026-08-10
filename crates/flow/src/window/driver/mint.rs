@@ -59,7 +59,6 @@ impl<'a> Mint<'a> {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::state::budget::OperatorStateBudgetHandle;
 	use reifydb_value::value::datetime::DateTime;
 
 	use super::*;
@@ -69,7 +68,7 @@ mod tests {
 	const OTHER: GroupId = GroupId(43);
 
 	fn meta() -> WindowMeta {
-		WindowMeta::new(OperatorStateBudgetHandle::default())
+		WindowMeta::new()
 	}
 
 	#[test]

@@ -304,7 +304,6 @@ pub mod tests {
 			operator_state::{GroupId, Keyspace, OperatorStateKey},
 			row::RowKey,
 		},
-		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
@@ -340,7 +339,6 @@ pub mod tests {
 				operators: engine.inner().operator_state(),
 				..FlowSubstrate::default()
 			},
-			state_budget: OperatorStateBudgetHandle::default(),
 		})
 	}
 
@@ -825,7 +823,6 @@ pub mod tests {
 				operators: engine.inner().operator_state(),
 				..FlowSubstrate::default()
 			},
-			state_budget: OperatorStateBudgetHandle::default(),
 		});
 
 		let batch = txn.state_get_many(operator_id, &[inner_key]).unwrap();
@@ -868,7 +865,6 @@ pub mod tests {
 				operators: engine.inner().operator_state(),
 				..FlowSubstrate::default()
 			},
-			state_budget: OperatorStateBudgetHandle::default(),
 		});
 
 		assert_eq!(
@@ -933,7 +929,6 @@ pub mod tests {
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
 			substrate: FlowSubstrate::new(),
-			state_budget: OperatorStateBudgetHandle::default(),
 		});
 		assert_eq!(
 			txn.get(&row_key).unwrap(),
@@ -949,7 +944,6 @@ pub mod tests {
 			Catalog::testing(),
 			HashMap::new(),
 			engine.clock().clone(),
-			OperatorStateBudgetHandle::default(),
 		);
 		assert_eq!(
 			ephemeral.get(&row_key).unwrap(),
@@ -977,7 +971,6 @@ pub mod tests {
 			Catalog::testing(),
 			state,
 			engine.clock().clone(),
-			OperatorStateBudgetHandle::default(),
 		);
 
 		let seeded = txn.state_get_many(operator_id, &[seeded_key]).unwrap();

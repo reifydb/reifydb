@@ -21,7 +21,6 @@ use reifydb_core::{
 		cdc::{Cdc, CdcConsumerId},
 		change::ChangeOrigin,
 	},
-	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
 use reifydb_flow::transaction::substrate::FlowSubstrate;
@@ -79,7 +78,6 @@ pub struct FlowSupervisorParams {
 	pub custom_operators: CustomOperators,
 	pub substrate: FlowSubstrate,
 	pub operator_samples: OperatorSampleRegistry,
-	pub state_budget: OperatorStateBudgetHandle,
 	pub clock: Clock,
 	pub spawner: ActorSpawner,
 	pub consumer_id: CdcConsumerId,
@@ -105,7 +103,6 @@ pub struct FlowSupervisor {
 	custom_operators: CustomOperators,
 	substrate: FlowSubstrate,
 	operator_samples: OperatorSampleRegistry,
-	state_budget: OperatorStateBudgetHandle,
 	clock: Clock,
 	spawner: ActorSpawner,
 	consumer_id: CdcConsumerId,
@@ -141,7 +138,6 @@ impl FlowSupervisor {
 			custom_operators: params.custom_operators,
 			substrate: params.substrate,
 			operator_samples: params.operator_samples,
-			state_budget: params.state_budget,
 			clock: params.clock,
 			spawner: params.spawner,
 			consumer_id: params.consumer_id,
@@ -492,7 +488,6 @@ impl FlowSupervisor {
 			custom_operators: self.custom_operators.clone(),
 			substrate: self.substrate.clone(),
 			operator_samples: self.operator_samples.clone(),
-			state_budget: self.state_budget.clone(),
 			clock: self.clock.clone(),
 			health: self.health.clone(),
 			flow_tracker: self.flow_tracker.clone(),

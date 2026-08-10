@@ -58,7 +58,6 @@ use reifydb_value::{
 use tracing::error;
 
 use crate::{
-	engine::{lease_demand, lease_report_from_sample},
 	error::NativeOperatorError,
 	operator::{
 		context::native::{NativeBridge, NativeOperatorContext},
@@ -167,12 +166,6 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	}
 	fn version(&self) -> CommitVersion {
 		self.txn.version()
-	}
-	fn state_lease_bytes(&self) -> u64 {
-		self.txn.state_budget()
-			.current_lease(self.operator)
-			.map(|lease| lease.grant.bytes().as_bytes())
-			.unwrap_or(0)
 	}
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedBytes>> {
 		Ok(self.txn.state_get(self.operator, key)?.map(EncodedOperatorRow::into_bytes))
@@ -555,15 +548,6 @@ impl NativeBridgedOperator {
 				let bridged = unsafe { &*captured.0 };
 				let mut bridge = FlowNativeBridge::new(txn, operator);
 				bridged.flush_state(&mut bridge)?;
-				let budget = txn.state_budget();
-				match bridged.sample() {
-					Some(sample) => {
-						let report = lease_report_from_sample(&sample);
-						budget.report_lease(operator, report);
-						budget.resize_lease_to_demand(operator, lease_demand(&report));
-					}
-					None => budget.report_lease_none(operator),
-				}
 				Ok(())
 			});
 			let _ = txn.operator_state::<(), _>(operator, zero_usage, move |_txn| Ok(((), persist)))?;

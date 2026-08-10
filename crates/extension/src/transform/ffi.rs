@@ -56,7 +56,6 @@ impl NativeTransformFFI {
 				executor_ptr: ptr::null(),
 				operator_id: 0,
 				written_at_nanos: 0,
-				state_lease_bytes: 0,
 				callbacks: pure_host_callbacks(),
 			}),
 		}

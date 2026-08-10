@@ -39,7 +39,6 @@ use reifydb_core::{
 	},
 	lifecycle::watermark::ConsumerPositions,
 	metrics::registry::MetricsRegistry,
-	state::budget::OperatorStateBudgetHandle,
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
@@ -70,10 +69,7 @@ use crate::{
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
 		watermark::compute_flow_watermarks,
 	},
-	operator::metrics::{
-		GroupInternerMetricsCollector, OperatorSampleCollector, OperatorSampleRegistry,
-		OperatorStateBudgetCollector, RowNumberMetricsCollector,
-	},
+	operator::metrics::{OperatorSampleCollector, OperatorSampleRegistry, RowNumberMetricsCollector},
 	subsystem::shutdown::FlowShutdownState,
 };
 
@@ -118,9 +114,6 @@ impl FlowSubsystem {
 				Arc::new(move || begin_engine.begin_command(IdentityId::system()));
 			GroupCommitHandle::inline(begin)
 		});
-		let state_budget = ioc
-			.resolve::<OperatorStateBudgetHandle>()
-			.expect("OperatorStateBudgetHandle must be registered");
 		let poll_frontier = CdcConsumerWatermark::default();
 		let materialization = FlowMaterialization::new(poll_frontier.clone(), flow_tracker.clone());
 		let committer = Committer::new(
@@ -130,7 +123,7 @@ impl FlowSubsystem {
 		);
 		let committer_handle = flow_scope.spawn_flow(
 			"flow-committer",
-			CommitterActor::new(committer, group_commit, state_budget.clone()),
+			CommitterActor::new(committer, group_commit),
 		);
 		let committer_ref = committer_handle.actor_ref().clone();
 
@@ -139,12 +132,8 @@ impl FlowSubsystem {
 		let metrics_registry = ioc.resolve::<MetricsRegistry>().expect("MetricsRegistry must be registered");
 		metrics_registry
 			.register_operator_collector(Arc::new(OperatorSampleCollector::new(operator_samples.clone())));
-		metrics_registry.register_collector(Arc::new(OperatorStateBudgetCollector::new(state_budget.clone())));
 		metrics_registry
 			.register_operator_collector(Arc::new(RowNumberMetricsCollector::new(substrate.row.clone())));
-		metrics_registry.register_operator_collector(Arc::new(GroupInternerMetricsCollector::new(
-			substrate.group.clone(),
-		)));
 		let view_lineage = engine.view_lineage();
 
 		let backlog = ioc.resolve::<FlowBacklog>().expect("FlowBacklog must be registered");
@@ -177,7 +166,6 @@ impl FlowSubsystem {
 				custom_operators: custom_operators.clone(),
 				substrate: substrate.clone(),
 				operator_samples: operator_samples.clone(),
-				state_budget: state_budget.clone(),
 				clock: clock.clone(),
 				spawner: flow_scope.clone(),
 				consumer_id: flow_consumer_id,

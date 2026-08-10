@@ -544,10 +544,6 @@ impl RowNumberProvider {
 		self.inner.operators.get(&operator).map_or(StateMemory::ZERO, |state| state.memory())
 	}
 
-	pub fn membership_memory(&self, _node: OperatorId) -> StateMemory {
-		StateMemory::ZERO
-	}
-
 	pub fn samples(&self) -> Vec<(OperatorId, RowNumberSample)> {
 		let mut out: Vec<(OperatorId, RowNumberSample)> = self
 			.inner
@@ -721,7 +717,6 @@ mod tests {
 	use reifydb_core::{
 		actors::pending::{Pending, PendingLayers},
 		common::CommitVersion,
-		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
@@ -764,7 +759,6 @@ mod tests {
 				operators: engine.inner().operator_state(),
 				..FlowSubstrate::default()
 			},
-			state_budget: OperatorStateBudgetHandle::default(),
 		})
 	}
 

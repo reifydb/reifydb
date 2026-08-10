@@ -17,7 +17,6 @@ use reifydb_core::{
 		change::{Change, Diff},
 	},
 	key::{EncodableKey, Key, kind::KeyKind, operator_state::OperatorStateKey},
-	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_flow::{
 	operator::Operator,
@@ -182,7 +181,6 @@ impl<O: Operator> Harness<O> {
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(self.clock.clone()),
 			substrate: self.substrate.clone(),
-			state_budget: OperatorStateBudgetHandle::default(),
 		});
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(at),

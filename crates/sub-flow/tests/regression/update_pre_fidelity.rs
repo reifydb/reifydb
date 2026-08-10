@@ -21,7 +21,6 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
-	state::budget::OperatorStateBudgetHandle,
 	value::column::columns::Columns,
 };
 use reifydb_routine::{
@@ -177,7 +176,6 @@ fn a_gate_update_retracts_the_row_it_previously_published() {
 			parse_expression("v > 50").expect("the gate condition parses"),
 			routines(),
 			runtime,
-			OperatorStateBudgetHandle::default(),
 			Arc::new(FlowContext::default()),
 		)
 	});
@@ -277,7 +275,6 @@ fn a_window_update_retracts_the_total_it_previously_published() {
 			runtime_context: runtime,
 			routines: routines(),
 			grace: Duration::default(),
-			state_budget: OperatorStateBudgetHandle::default(),
 			ctx: Arc::new(FlowContext::default()),
 		})
 	});

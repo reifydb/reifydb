@@ -14,7 +14,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	key::operator_state::GroupId,
-	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
+	metrics::heap::HeapSize,
 	state::{cache::StateCache, map::PersistedMap, store::StateStore},
 };
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
@@ -84,11 +84,11 @@ where
 	RollingTopKEmit<SK, Output>: OperatorState,
 	PersistedMap<C, Accumulator>: OperatorState,
 {
-	pub fn new(config: WindowEngineConfig) -> Self {
+	pub fn new(_config: WindowEngineConfig) -> Self {
 		Self {
-			buffers: StateCache::<BufferKey, PersistedMap<C, Accumulator>>::new(config.budget()),
-			last_emit: StateCache::<EmitKey, RollingTopKEmit<SK, Output>>::new(config.budget()),
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new(config.budget()),
+			buffers: StateCache::<BufferKey, PersistedMap<C, Accumulator>>::new(),
+			last_emit: StateCache::<EmitKey, RollingTopKEmit<SK, Output>>::new(),
+			meta: StateCache::<MetaKey, GroupMeta<C>>::new(),
 			meta_low_water: None,
 			hydrated: false,
 			_pd: PhantomData,
@@ -102,22 +102,6 @@ where
 		self.meta.hydrate(store, meta_range(), decode_meta_key)?;
 		self.hydrated = true;
 		Ok(())
-	}
-
-	pub fn approximate_memory(&self) -> StateMemory {
-		self.buffers.approximate_memory() + self.last_emit.approximate_memory() + self.meta.approximate_memory()
-	}
-
-	pub fn dirty_memory(&self) -> StateMemory {
-		self.buffers.dirty_memory() + self.last_emit.dirty_memory() + self.meta.dirty_memory()
-	}
-
-	pub fn membership_memory(&self) -> StateMemory {
-		self.buffers.membership_memory() + self.last_emit.membership_memory() + self.meta.membership_memory()
-	}
-
-	pub fn completeness(&self) -> StateCompleteness {
-		self.buffers.completeness().merge(self.last_emit.completeness()).merge(self.meta.completeness())
 	}
 
 	pub fn expire_meta<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
@@ -441,7 +425,7 @@ mod tests {
 	use std::collections::BTreeMap;
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::state::{budget::OperatorStateBudgetHandle, store::StateStore};
+	use reifydb_core::state::store::StateStore;
 	use reifydb_value::{factory::time::at_millis, value::datetime::DateTime};
 
 	use super::{RollingTopKBuffer, RollingTopKEmit, RollingTopKEngine, TopKEmit};
@@ -453,7 +437,7 @@ mod tests {
 	};
 
 	fn test_config() -> WindowEngineConfig {
-		WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).build()
+		WindowEngineConfig::builder().build()
 	}
 
 	fn state_key(group: &u32) -> EncodedKey {

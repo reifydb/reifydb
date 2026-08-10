@@ -14,7 +14,6 @@ use reifydb_core::{
 		kind::KeyKind,
 		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 	},
-	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_flow::transaction::{
 	ChangeCoordinate, DeferredParams, FlowTransaction,
@@ -79,7 +78,6 @@ impl<'a> FlowTxnBuilder<'a> {
 				operators: self.engine.inner().operator_state(),
 				..FlowSubstrate::default()
 			},
-			state_budget: OperatorStateBudgetHandle::default(),
 		});
 		txn.set_change_coordinate(default_coordinate(version));
 		txn
@@ -95,7 +93,6 @@ impl<'a> FlowTxnBuilder<'a> {
 			self.catalog,
 			HashMap::new(),
 			self.clock,
-			OperatorStateBudgetHandle::default(),
 		);
 		txn.set_change_coordinate(default_coordinate(version));
 		txn

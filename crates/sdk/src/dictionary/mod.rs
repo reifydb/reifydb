@@ -61,7 +61,6 @@ mod tests {
 			executor_ptr: null(),
 			operator_id: 1,
 			written_at_nanos: 0,
-			state_lease_bytes: 64 * 1024 * 1024,
 			callbacks: create_test_callbacks(),
 		};
 		let mut ctx = FFIOperatorContext::new(&mut ffi_context as *mut ContextFFI);

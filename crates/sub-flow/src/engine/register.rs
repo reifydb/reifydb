@@ -413,7 +413,6 @@ impl FlowEngineInner {
 				conditions,
 				self.executor.routines.clone(),
 				self.runtime_context.clone(),
-				self.state_budget.clone(),
 				Arc::clone(ctx),
 			)),
 		);
@@ -657,14 +656,7 @@ impl FlowEngineInner {
 
 		if let Some(factory) = self.custom_operators.get(operator.as_str()) {
 			let parent = self.parent(first_input(inputs)?)?;
-			let _lease = self.state_budget.grant_lease(operator_id, self.state_lease_default());
-			let inner = match factory(operator_id, &cfg) {
-				Ok(op) => op,
-				Err(e) => {
-					self.state_budget.release_lease(operator_id);
-					return Err(e);
-				}
-			};
+			let inner = factory(operator_id, &cfg)?;
 			self.operators.insert(
 				operator_id,
 				OperatorCell::new(ApplyOperator::new(parent, operator_id, inner, ttl)),
@@ -721,7 +713,6 @@ impl FlowEngineInner {
 			runtime_context: self.runtime_context.clone(),
 			routines: self.executor.routines.clone(),
 			grace,
-			state_budget: self.state_budget.clone(),
 			ctx: Arc::clone(ctx),
 		});
 		self.operators.insert(operator_id, OperatorCell::new(operator));

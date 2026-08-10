@@ -19,13 +19,10 @@ use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
 	interface::catalog::{
-		config::{ConfigKey, GetConfig},
 		flow::{FlowId, OperatorId},
 		id::{TableId, ViewId},
 		object::ObjectId,
 	},
-	metrics::heap::{OperatorSample, StateMemory},
-	state::budget::{LeaseReport, OperatorStateBudgetHandle},
 };
 use reifydb_engine::vm::executor::Executor;
 #[cfg(reifydb_target = "native")]
@@ -45,8 +42,7 @@ use reifydb_runtime::{
 use reifydb_sdk::config::Config;
 #[cfg(reifydb_target = "native")]
 use reifydb_value::{Result, error::Error, params::Params, value::Value};
-use reifydb_value::byte_size::ByteSize;
-use tracing::{debug, instrument};
+use tracing::instrument;
 
 #[cfg(reifydb_target = "native")]
 use crate::error::{FlowStateError, NativeOperatorError};
@@ -74,7 +70,6 @@ pub struct FlowEngineInner {
 	pub(crate) custom_operators: CustomOperators,
 	pub(crate) substrate: FlowSubstrate,
 	pub(crate) operator_samples: OperatorSampleRegistry,
-	pub(crate) state_budget: OperatorStateBudgetHandle,
 }
 
 #[derive(Clone)]
@@ -92,7 +87,6 @@ impl FlowEngine {
 		custom_operators: CustomOperators,
 		substrate: FlowSubstrate,
 		operator_samples: OperatorSampleRegistry,
-		state_budget: OperatorStateBudgetHandle,
 	) -> Self {
 		Self {
 			inner: Arc::new(RwLock::new(FlowEngineInner::new(
@@ -103,7 +97,6 @@ impl FlowEngine {
 				custom_operators,
 				substrate,
 				operator_samples,
-				state_budget,
 			))),
 		}
 	}
@@ -125,16 +118,7 @@ impl FlowEngineInner {
 	#[instrument(
 		name = "flow::engine::new",
 		level = "debug",
-		skip(
-			catalog,
-			executor,
-			event_bus,
-			runtime_context,
-			custom_operators,
-			substrate,
-			operator_samples,
-			state_budget
-		)
+		skip(catalog, executor, event_bus, runtime_context, custom_operators, substrate, operator_samples)
 	)]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
@@ -145,7 +129,6 @@ impl FlowEngineInner {
 		custom_operators: CustomOperators,
 		substrate: FlowSubstrate,
 		operator_samples: OperatorSampleRegistry,
-		state_budget: OperatorStateBudgetHandle,
 	) -> Self {
 		Self {
 			catalog,
@@ -161,30 +144,13 @@ impl FlowEngineInner {
 			custom_operators,
 			substrate,
 			operator_samples,
-			state_budget,
 		}
 	}
 
 	#[instrument(name = "flow::engine::sample", level = "debug", skip_all)]
 	pub fn sample_operators(&self) {
 		for (operator_id, operator) in &self.operators {
-			let sample = operator.sample();
-			if self.state_budget.current_lease(*operator_id).is_some() {
-				match &sample {
-					Some(sample) => {
-						self.state_budget
-							.report_lease(*operator_id, lease_report_from_sample(sample));
-					}
-					None => {
-						self.state_budget.report_lease_none(*operator_id);
-						debug!(
-							operator = operator_id.0,
-							"leased operator reported no state usage"
-						);
-					}
-				}
-			}
-			if let Some(sample) = sample {
+			if let Some(sample) = operator.sample() {
 				self.operator_samples.record(*operator_id, sample);
 			}
 		}
@@ -194,10 +160,6 @@ impl FlowEngineInner {
 		for operator in self.operators.keys() {
 			self.operator_samples.forget(*operator);
 		}
-	}
-
-	pub fn state_budget(&self) -> OperatorStateBudgetHandle {
-		self.state_budget.clone()
 	}
 
 	pub fn clock(&self) -> &Clock {
@@ -249,26 +211,17 @@ impl FlowEngineInner {
 			})
 		})?;
 
-		let lease = self.state_budget.grant_lease(operator_id, self.state_lease_default());
 		let created = loader_write.create_operator_by_name(operator, operator_id, &config_bytes);
 		let (descriptor, instance) = match created {
 			Ok(created) => created,
 			Err(e) => {
-				self.state_budget.release_lease(operator_id);
 				return Err(Error::from(NativeOperatorError::CreateFailed {
 					cause: format!("{:?}", e),
 				}));
 			}
 		};
 
-		Ok(Box::new(FFIOperatorHandle::new(
-			descriptor,
-			instance,
-			operator_id,
-			self.executor.clone(),
-			self.state_budget.clone(),
-			lease,
-		)))
+		Ok(Box::new(FFIOperatorHandle::new(descriptor, instance, operator_id, self.executor.clone())))
 	}
 
 	#[cfg(reifydb_target = "native")]
@@ -288,14 +241,7 @@ impl FlowEngineInner {
 	) -> Result<BoxedOperator> {
 		let loader = native_operator_loader();
 		let mut loader_write = loader.write();
-		let _lease = self.state_budget.grant_lease(operator_id, self.state_lease_default());
-		match loader_write.create_operator_by_name(operator, operator_id, config) {
-			Ok(op) => Ok(op),
-			Err(e) => {
-				self.state_budget.release_lease(operator_id);
-				Err(e)
-			}
-		}
+		loader_write.create_operator_by_name(operator, operator_id, config)
 	}
 
 	#[cfg(reifydb_target = "native")]
@@ -314,9 +260,6 @@ impl FlowEngineInner {
 	}
 
 	pub fn clear(&mut self) {
-		for operator_id in self.operators.keys() {
-			self.state_budget.release_lease(*operator_id);
-		}
 		self.operators.clear();
 		self.flows.clear();
 		self.sources.clear();
@@ -333,7 +276,6 @@ impl FlowEngineInner {
 			self.operators.remove(&operator_id);
 			self.substrate.row.evict(operator_id);
 			self.substrate.operators.drop_arena(operator_id);
-			self.state_budget.release_lease(operator_id);
 		}
 
 		for entries in self.sources.values_mut() {
@@ -370,22 +312,6 @@ impl FlowEngineInner {
 		self.analyzer.get_flow_producing_view(dependency_graph, view_id)
 	}
 
-	pub(crate) fn state_lease_default(&self) -> ByteSize {
-		ByteSize::from_bytes(self.catalog.get_config_uint8(ConfigKey::OperatorStateLeaseDefault))
-	}
-}
-
-pub(crate) fn lease_report_from_sample(sample: &OperatorSample) -> LeaseReport {
-	LeaseReport {
-		state: sample.memory.unwrap_or(StateMemory::ZERO),
-		row_numbers: sample.row_number_cache.unwrap_or(StateMemory::ZERO),
-	}
-}
-
-#[cfg(reifydb_target = "native")]
-pub(crate) fn lease_demand(report: &LeaseReport) -> ByteSize {
-	let reported = report.total_bytes().as_bytes();
-	ByteSize::from_bytes(reported.saturating_add(reported / 4))
 }
 
 #[cfg(test)]
@@ -405,121 +331,9 @@ mod tests {
 		operator::{FlowNode, OperatorDef},
 	};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_value::{byte_size::ByteSize, count::Count, value::Value};
 
 	use super::*;
 	use crate::operator::scan::series::SourceSeriesOperator;
-
-	fn memory(entries: u64, bytes: u64) -> StateMemory {
-		StateMemory::new(Count::new(entries), ByteSize::from_bytes(bytes))
-	}
-
-	#[test]
-	fn lease_charge_does_not_add_the_dirty_subset_on_top_of_the_total() {
-		// dirty_memory is a subset of memory, not an addition to it, so summing the two charges
-		// clean + 2 * dirty and trips a spurious overage exactly when pending writes peak.
-		let sample = OperatorSample::with_memory(memory(10, 4096)).with_dirty_memory(memory(4, 1024));
-
-		let report = lease_report_from_sample(&sample);
-
-		assert_eq!(report.state, memory(10, 4096), "the lease charges the reported total, once");
-	}
-
-	#[test]
-	fn lease_charge_falls_back_to_zero_when_an_operator_reports_no_memory() {
-		let report = lease_report_from_sample(&OperatorSample::default());
-
-		assert_eq!(report.state, StateMemory::ZERO);
-		assert_eq!(report.row_numbers, StateMemory::ZERO);
-	}
-
-	#[test]
-	fn lease_charge_keeps_row_number_cache_separate_from_state() {
-		// Distinct budget lines: folding one into the other hides which is actually growing.
-		let sample = OperatorSample::with_memory(memory(10, 4096)).with_row_number_cache(memory(2, 512));
-
-		let report = lease_report_from_sample(&sample);
-
-		assert_eq!(report.state, memory(10, 4096));
-		assert_eq!(report.row_numbers, memory(2, 512));
-	}
-
-	#[test]
-	fn lease_demand_adds_a_quarter_headroom_over_reported_usage() {
-		// Headroom keeps a steadily growing operator from being clamped by its own lease and
-		// forced into a resize on every sampling tick.
-		let report = lease_report_from_sample(&OperatorSample::with_memory(memory(10, 4096)));
-
-		assert_eq!(lease_demand(&report), ByteSize::from_bytes(5120));
-	}
-
-	#[test]
-	fn lease_demand_counts_row_numbers_alongside_state() {
-		// Both lines are guest memory, so sizing the grant from state alone under-leases exactly
-		// the operators with large row-number caches.
-		let report = lease_report_from_sample(
-			&OperatorSample::with_memory(memory(10, 4096)).with_row_number_cache(memory(2, 4096)),
-		);
-
-		assert_eq!(lease_demand(&report), ByteSize::from_bytes(10240));
-	}
-
-	#[test]
-	fn state_lease_default_reads_the_configured_value_not_the_compiled_in_default() {
-		// OPERATOR_STATE_LEASE_DEFAULT is declared live-reconfigurable (requires_restart() is
-		// false), so every lease grant has to resolve it through the engine's catalog. Resolving
-		// ConfigKey::default_value() instead pins every operator at the compiled-in 64 MiB and no
-		// configured value can ever be observed.
-		let compiled_in = match ConfigKey::OperatorStateLeaseDefault.default_value() {
-			Value::Uint8(bytes) => bytes,
-			other => panic!("OPERATOR_STATE_LEASE_DEFAULT default must be Uint8 bytes, got {other:?}"),
-		};
-		let configured = compiled_in / 4;
-		assert_ne!(configured, compiled_in, "the fixture must differ from the default or nothing is proven");
-
-		let engine = TestEngine::new();
-		engine.catalog()
-			.cache()
-			.set_config(ConfigKey::OperatorStateLeaseDefault, CommitVersion(1), Value::Uint8(configured))
-			.expect("a positive lease default must be accepted");
-
-		let inner = FlowEngineInner::new(
-			engine.catalog(),
-			engine.executor(),
-			engine.event_bus().clone(),
-			RuntimeContext::with_clock(engine.clock().clone()),
-			CustomOperators::new(HashMap::new()),
-			FlowSubstrate::default(),
-			OperatorSampleRegistry::new(),
-			OperatorStateBudgetHandle::default(),
-		);
-
-		assert_eq!(inner.state_lease_default(), ByteSize::from_bytes(configured));
-	}
-
-	#[test]
-	fn state_lease_default_falls_back_to_the_compiled_in_default_when_unconfigured() {
-		// The catalog read must not change the out-of-the-box grant size: an unconfigured engine
-		// still has to lease the declared default rather than zero or the lease floor.
-		let compiled_in = match ConfigKey::OperatorStateLeaseDefault.default_value() {
-			Value::Uint8(bytes) => bytes,
-			other => panic!("OPERATOR_STATE_LEASE_DEFAULT default must be Uint8 bytes, got {other:?}"),
-		};
-
-		let engine = TestEngine::new();
-		let inner = FlowEngineInner::new(
-			engine.catalog(),
-			engine.executor(),
-			engine.event_bus().clone(),
-			RuntimeContext::with_clock(engine.clock().clone()),
-			CustomOperators::new(HashMap::new()),
-			FlowSubstrate::default(),
-			OperatorSampleRegistry::new(),
-			OperatorStateBudgetHandle::default(),
-		);
-
-		assert_eq!(inner.state_lease_default(), ByteSize::from_bytes(compiled_in));
-	}
 
 	#[test]
 	fn removing_a_flow_drops_its_operators_arenas() {
@@ -539,7 +353,6 @@ mod tests {
 				..FlowSubstrate::default()
 			},
 			OperatorSampleRegistry::new(),
-			OperatorStateBudgetHandle::default(),
 		);
 
 		let operator = OperatorId(7);

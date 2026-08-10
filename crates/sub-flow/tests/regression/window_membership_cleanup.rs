@@ -17,7 +17,6 @@ use std::sync::Arc;
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::catalog::flow::OperatorId,
-	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_routine::{
 	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
@@ -65,7 +64,6 @@ fn harness(kind: WindowKind) -> Harness<WindowOperator> {
 			runtime_context: runtime,
 			routines: routines(),
 			grace: Duration::default(),
-			state_budget: OperatorStateBudgetHandle::default(),
 			ctx: Arc::new(FlowContext::default()),
 		})
 	})

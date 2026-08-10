@@ -17,16 +17,10 @@ use reifydb_core::{
 		EncodableKey,
 		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
 	},
-	metrics::heap::{StateCompleteness, StateMemory},
-	state::{
-		group::GroupRecord,
-		membership::{MEMBERSHIP_BYTE_CAP, MembershipTracker},
-	},
+	state::group::GroupRecord,
 };
 use reifydb_runtime::cache::slab::SlabLru;
-use reifydb_value::{
-	Result, byte_size::ByteSize, count::Count, reifydb_assertions, util::hash::xxh3_64, value::datetime::DateTime,
-};
+use reifydb_value::{Result, byte_size::ByteSize, reifydb_assertions, value::datetime::DateTime};
 
 use super::FlowTransaction;
 
@@ -35,10 +29,6 @@ const HYDRATE_CHUNK: usize = 8_192;
 
 fn entry_bytes(key: &EncodedKey) -> u64 {
 	SlabLru::<EncodedKey, GroupId>::entry_struct_bytes() as u64 + key.heap_bytes() as u64
-}
-
-fn membership_hash(key: &EncodedKey) -> u64 {
-	xxh3_64(key.as_ref()).0
 }
 
 fn dictionary_key(group: &EncodedKey) -> GroupStateKey {
@@ -68,11 +58,9 @@ pub(super) fn decode_bytes<T: OperatorState>(bytes: &EncodedBytes) -> Result<T> 
 struct NodeState {
 	cache: SlabLru<EncodedKey, GroupId>,
 	cache_size: ByteSize,
-	membership: MembershipTracker,
 	hydrated: bool,
 	complete: bool,
 	next: Option<u64>,
-	revocations: u64,
 }
 
 impl Default for NodeState {
@@ -80,11 +68,9 @@ impl Default for NodeState {
 		Self {
 			cache: SlabLru::unbounded(),
 			cache_size: ByteSize::ZERO,
-			membership: MembershipTracker::new(MEMBERSHIP_BYTE_CAP),
 			hydrated: false,
 			complete: false,
 			next: None,
-			revocations: 0,
 		}
 	}
 }
@@ -106,10 +92,7 @@ impl NodeState {
 	}
 
 	fn revoke_complete(&mut self) {
-		if self.complete {
-			self.complete = false;
-			self.revocations += 1;
-		}
+		self.complete = false;
 	}
 
 	fn evict_to_budget(&mut self, budget: ByteSize) {
@@ -122,30 +105,6 @@ impl NodeState {
 		}
 	}
 
-	fn completeness(&self) -> StateCompleteness {
-		if !self.hydrated {
-			return StateCompleteness::MERGE_IDENTITY;
-		}
-		StateCompleteness {
-			values_complete: self.complete,
-			membership_complete: self.membership.is_tracked(),
-			absences_served: Count::new(self.membership.absences_served()),
-			false_positives: Count::new(self.membership.false_positives()),
-			revocations: Count::new(self.revocations),
-		}
-	}
-
-	fn memory(&self) -> StateMemory {
-		let key_heap: u64 = self.cache.keys().map(|key| key.heap_bytes() as u64).sum();
-		let bytes = ByteSize::from_bytes(self.cache.struct_bytes() as u64 + key_heap);
-		StateMemory::new(Count::new(self.cache.len() as u64), bytes)
-	}
-}
-
-pub struct GroupInternerSample {
-	pub cache: StateMemory,
-	pub membership: StateMemory,
-	pub completeness: StateCompleteness,
 }
 
 #[derive(Clone)]
@@ -210,32 +169,17 @@ impl GroupInterner {
 		let dictionary_keys: Vec<GroupStateKey> =
 			to_resolve.iter().map(|i| dictionary_key(&groups[*i])).collect();
 
-		let mut consulted_store: Vec<bool> = Vec::new();
 		let found: HashMap<Vec<u8>, EncodedBytes> = if state.complete {
 			HashMap::new()
 		} else {
-			let mut lookup: Vec<GroupStateKey> = Vec::new();
-			for (slot, i) in to_resolve.iter().enumerate() {
-				let maybe = state.membership.contains(membership_hash(&groups[*i])).unwrap_or(true);
-				consulted_store.push(maybe);
-				if maybe {
-					lookup.push(dictionary_keys[slot].clone());
-				} else {
-					state.membership.count_absence();
-				}
+			let batch = txn.state_get_many(operator, &dictionary_keys)?;
+			let mut found = HashMap::with_capacity(batch.items.len());
+			for item in batch.items {
+				let decoded = OperatorStateKey::decode(&item.key)
+					.expect("state_get_many must return OperatorState keys");
+				found.insert(decoded.inner().as_slice().to_vec(), item.bytes);
 			}
-			if lookup.is_empty() {
-				HashMap::new()
-			} else {
-				let batch = txn.state_get_many(operator, &lookup)?;
-				let mut found = HashMap::with_capacity(batch.items.len());
-				for item in batch.items {
-					let decoded = OperatorStateKey::decode(&item.key)
-						.expect("state_get_many must return OperatorState keys");
-					found.insert(decoded.inner().as_slice().to_vec(), item.bytes);
-				}
-				found
-			}
+			found
 		};
 
 		let mut resolved_from_store: Vec<(usize, GroupId)> = Vec::new();
@@ -251,9 +195,6 @@ impl GroupInterner {
 					results[i] = Some((id, false));
 				}
 				None => {
-					if consulted_store.get(slot) == Some(&true) {
-						state.membership.record_store_miss();
-					}
 					new_slots[slot] = true;
 					if !first_new_slot.contains_key(dictionary.as_slice()) {
 						first_new_slot.insert(dictionary.as_slice().to_vec(), slot);
@@ -273,7 +214,6 @@ impl GroupInterner {
 				txn.state_set(operator, dictionary, encode_payload(&id.0, now)?)?;
 				Self::stamp(txn, operator, id, &groups[i], now)?;
 				state.remember(&groups[i], id);
-				state.membership.insert(membership_hash(&groups[i]));
 				assigned.insert(dictionary.as_slice().to_vec(), id);
 			}
 			for (slot, dictionary) in dictionary_keys.iter().enumerate() {
@@ -327,12 +267,7 @@ impl GroupInterner {
 		if state.complete {
 			return Ok(None);
 		}
-		if state.membership.contains(membership_hash(group)) == Some(false) {
-			state.membership.count_absence();
-			return Ok(None);
-		}
 		let Some(row) = txn.state_get(operator, &dictionary_key(group))? else {
-			state.membership.record_store_miss();
 			return Ok(None);
 		};
 		let id = GroupId(decode_payload::<u64>(&row)?);
@@ -349,7 +284,6 @@ impl GroupInterner {
 
 		let cached = state.cache.get(group);
 		state.forget(group);
-		state.membership.remove(membership_hash(group));
 		let existed = cached.is_some() || !state.complete;
 		txn.state_remove(operator, &dictionary_key(group))?;
 		Ok(existed)
@@ -367,27 +301,6 @@ impl GroupInterner {
 		Ok(Some(EncodedKey::new(decode_payload::<GroupRecord>(&row)?.group)))
 	}
 
-	pub fn samples(&self) -> Vec<(OperatorId, GroupInternerSample)> {
-		let mut out: Vec<(OperatorId, GroupInternerSample)> = self
-			.inner
-			.operators
-			.iter()
-			.map(|entry| {
-				let state = entry.value();
-				(
-					*entry.key(),
-					GroupInternerSample {
-						cache: state.memory(),
-						membership: state.membership.memory(),
-						completeness: state.completeness(),
-					},
-				)
-			})
-			.collect();
-		out.sort_by_key(|(operator, _)| *operator);
-		out
-	}
-
 	fn hydrate_once(
 		state: &mut NodeState,
 		operator: OperatorId,
@@ -400,7 +313,6 @@ impl GroupInterner {
 		state.hydrated = true;
 		state.complete = true;
 		let base = keyspace_inner_range(GroupId::ROOT, Keyspace::GROUP_DICTIONARY);
-		let mut hashes: Vec<u64> = Vec::new();
 		let mut start = base.start.clone();
 		loop {
 			let range = EncodedKeyRange::new(start, base.end.clone());
@@ -421,7 +333,6 @@ impl GroupInterner {
 					);
 				}
 				let group = EncodedKey::new(decoded.suffix.clone());
-				hashes.push(membership_hash(&group));
 				let id = GroupId(decode_bytes::<u64>(&item.bytes)?);
 				state.remember(&group, id);
 				last_inner = Some(decoded.inner());
@@ -435,7 +346,6 @@ impl GroupInterner {
 			};
 			start = Bound::Excluded(last);
 		}
-		state.membership.install(&hashes);
 		Ok(())
 	}
 
@@ -469,7 +379,6 @@ mod tests {
 	use reifydb_core::{
 		actors::pending::{Pending, PendingLayers},
 		key::operator_state::group_data_inner_range,
-		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
@@ -505,7 +414,6 @@ mod tests {
 				operators: engine.inner().operator_state(),
 				..FlowSubstrate::default()
 			},
-			state_budget: OperatorStateBudgetHandle::default(),
 		})
 	}
 
@@ -530,60 +438,6 @@ mod tests {
 		groups: &[EncodedKey],
 	) -> Result<Vec<(GroupId, bool)>> {
 		interner.intern_many(operator, txn, groups)
-	}
-
-	#[test]
-	fn reported_memory_counts_retained_containers_not_entry_bookkeeping() {
-		let mut state = NodeState::default();
-		for i in 0..64u64 {
-			state.remember(&group(&format!("g{i}")), GroupId(i + 1));
-		}
-
-		assert!(
-			state.cache.keys().all(|k| k.heap_bytes() == 0),
-			"short group keys must stay inline or this test proves nothing"
-		);
-		assert_eq!(state.memory().entries.as_u64(), 64);
-		assert_eq!(state.memory().bytes.as_bytes(), state.cache.struct_bytes() as u64);
-	}
-
-	#[test]
-	fn reported_memory_counts_a_shared_out_of_line_key_once() {
-		let long = EncodedKey::new(vec![7u8; 200]);
-		assert!(long.heap_bytes() > 0, "key must spill out of line or this test proves nothing");
-
-		let mut state = NodeState::default();
-		state.remember(&long, GroupId(1));
-
-		assert_eq!(
-			state.memory().bytes.as_bytes(),
-			state.cache.struct_bytes() as u64 + long.heap_bytes() as u64
-		);
-	}
-
-	#[test]
-	fn reported_memory_survives_eviction_of_every_entry() {
-		let mut state = NodeState::default();
-		for i in 0..64u64 {
-			state.remember(&group(&format!("g{i}")), GroupId(i + 1));
-		}
-		let full = state.memory().bytes.as_bytes();
-
-		state.evict_to_budget(ByteSize::ZERO);
-
-		assert_eq!(state.memory().entries.as_u64(), 0, "budget of zero must drain every entry");
-		assert_eq!(
-			state.memory().bytes.as_bytes(),
-			state.cache.struct_bytes() as u64,
-			"a drained cache holds no key payload, so it reports exactly its containers"
-		);
-
-		assert!(
-			state.memory().bytes.as_bytes() >= full,
-			"retained capacity must not shrink on eviction: {} < {}",
-			state.memory().bytes.as_bytes(),
-			full
-		);
 	}
 
 	#[test]
@@ -658,7 +512,7 @@ mod tests {
 		assert_eq!(
 			txn.store_reads(),
 			before,
-			"minting groups must not reach the store; the membership filter proves absence and the \
+			"minting groups must not reach the store; hydration left the dictionary complete and the \
 			 record cannot exist for an id the counter just handed out"
 		);
 	}

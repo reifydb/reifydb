@@ -40,7 +40,6 @@ use reifydb_value::{
 pub trait NativeBridge {
 	fn written_at(&self) -> DateTime;
 	fn version(&self) -> CommitVersion;
-	fn state_lease_bytes(&self) -> u64;
 
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedBytes>>;
 	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedBytes)>>;
@@ -92,7 +91,6 @@ pub struct NativeOperatorContext<'a> {
 	bridge: *mut (dyn NativeBridge + 'a),
 	operator: OperatorId,
 	now: DateTime,
-	state_lease_bytes: u64,
 	diffs: Vec<Diff>,
 	_marker: PhantomData<&'a mut (dyn NativeBridge + 'a)>,
 }
@@ -100,12 +98,10 @@ pub struct NativeOperatorContext<'a> {
 impl<'a> NativeOperatorContext<'a> {
 	pub fn new(bridge: &'a mut (dyn NativeBridge + 'a), operator: OperatorId) -> Self {
 		let now = bridge.written_at();
-		let state_lease_bytes = bridge.state_lease_bytes();
 		Self {
 			bridge: bridge as *mut (dyn NativeBridge + 'a),
 			operator,
 			now,
-			state_lease_bytes,
 			diffs: Vec::new(),
 			_marker: PhantomData,
 		}
@@ -371,9 +367,6 @@ impl OperatorContext for NativeOperatorContext<'_> {
 	}
 	fn written_at(&self) -> DateTime {
 		self.now
-	}
-	fn state_lease_bytes(&self) -> u64 {
-		self.state_lease_bytes
 	}
 	fn state(&mut self) -> impl StateApi + '_ {
 		NativeState {

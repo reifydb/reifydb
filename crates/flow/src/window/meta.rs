@@ -8,8 +8,8 @@ use reifydb_core::{
 	key::operator_state::{
 		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range,
 	},
-	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
-	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
+	metrics::heap::HeapSize,
+	state::{cache::StateCache, store::StateStore},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
@@ -204,13 +204,13 @@ pub struct WindowMeta {
 }
 
 impl WindowMeta {
-	pub fn new(budget: OperatorStateBudgetHandle) -> Self {
+	pub fn new() -> Self {
 		Self {
-			seal_ledger: StateCache::new(budget.clone()),
-			count: StateCache::new(budget.clone()),
-			row_index: StateCache::new(budget.clone()),
-			session: StateCache::new(budget.clone()),
-			rolling_meta: StateCache::new(budget),
+			seal_ledger: StateCache::new(),
+			count: StateCache::new(),
+			row_index: StateCache::new(),
+			session: StateCache::new(),
+			rolling_meta: StateCache::new(),
 			hydrated: false,
 		}
 	}
@@ -231,27 +231,6 @@ impl WindowMeta {
 		self.session.flush(store)?;
 		self.rolling_meta.flush(store)?;
 		Ok(())
-	}
-
-	pub fn sample_parts(&self) -> (StateMemory, StateMemory, StateMemory, StateCompleteness) {
-		let mut memory = StateMemory::ZERO;
-		let mut dirty = StateMemory::ZERO;
-		let mut membership = StateMemory::ZERO;
-		let mut completeness = StateCompleteness::MERGE_IDENTITY;
-		macro_rules! fold {
-			($cache:expr) => {{
-				memory = memory + $cache.approximate_memory();
-				dirty = dirty + $cache.dirty_memory();
-				membership = membership + $cache.membership_memory();
-				completeness = completeness.merge($cache.completeness());
-			}};
-		}
-		fold!(self.seal_ledger);
-		fold!(self.count);
-		fold!(self.row_index);
-		fold!(self.session);
-		fold!(self.rolling_meta);
-		(memory, dirty, membership, completeness)
 	}
 
 	pub fn seal_ledger<S: StateStore>(&mut self, store: &mut S) -> Result<u64> {
@@ -368,9 +347,8 @@ mod tests {
 	use std::ops::Bound::{Excluded, Included, Unbounded};
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
-	use reifydb_core::{
-		key::operator_state::{GroupId, IntoGroupStateKey, OperatorStateKey, group_data_inner_range},
-		state::budget::OperatorStateBudgetHandle,
+	use reifydb_core::key::operator_state::{
+		GroupId, IntoGroupStateKey, OperatorStateKey, group_data_inner_range,
 	};
 	use reifydb_value::{
 		factory::time::at_millis,
@@ -458,7 +436,7 @@ mod tests {
 		// A SessionState row exists only once a group has opened a session, so row presence IS the
 		// openness bit and load_session must read it as an Option. Defaulting an absent row would
 		// make an all-zero session, which is one opened at the epoch, read as never-seen.
-		let mut meta = WindowMeta::new(OperatorStateBudgetHandle::default());
+		let mut meta = WindowMeta::new();
 		let mut store = MockStore::default();
 
 		assert_eq!(
@@ -481,7 +459,7 @@ mod tests {
 		// Reclaim reads the ledger raw, but the ledger is written into a StateCache, so the raw read
 		// is correct only while something flushes that cache first. WindowOperator::with_meta
 		// flushes at the end of every call, making it a per-call invariant rather than a coincidence.
-		let mut meta = WindowMeta::new(OperatorStateBudgetHandle::default());
+		let mut meta = WindowMeta::new();
 		let mut store = MockStore::default();
 
 		meta.advance_seal_ledger(&mut store, 5_000).unwrap();

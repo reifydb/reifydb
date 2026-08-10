@@ -116,7 +116,6 @@ mod tests {
 			catalog::id::{SeriesId, TableId, ViewId},
 			change::Change,
 		},
-		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_flow::{operator::Operator, transaction::substrate::FlowSubstrate};
 	use reifydb_rql::flow::{
@@ -197,7 +196,6 @@ mod tests {
 			CustomOperators::new(HashMap::new()),
 			FlowSubstrate::default(),
 			OperatorSampleRegistry::new(),
-			OperatorStateBudgetHandle::default(),
 		)
 	}
 

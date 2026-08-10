@@ -15,7 +15,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	key::operator_state::GroupId,
-	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
+	metrics::heap::HeapSize,
 	state::{
 		cache::{StateCache, StateView},
 		map::PersistedMap,
@@ -173,9 +173,9 @@ where
 
 	fn scoped(config: WindowEngineConfig, group_scoped: bool) -> Self {
 		Self {
-			buffers: StateCache::<BufferKey, RollingBuffer<C, Accumulator>>::new(config.budget()),
+			buffers: StateCache::<BufferKey, RollingBuffer<C, Accumulator>>::new(),
 			running: None,
-			meta: StateCache::<MetaKey, GroupMeta<C>>::new(config.budget()),
+			meta: StateCache::<MetaKey, GroupMeta<C>>::new(),
 			expiry: ExpiryIndex::new(),
 			meta_low_water: None,
 			expire_batch: config.expire_batch(),
@@ -210,7 +210,7 @@ where
 	}
 
 	fn runnable(config: WindowEngineConfig, group_scoped: bool) -> Self {
-		let running = StateCache::<RunningKey, Accumulator>::new(config.budget());
+		let running = StateCache::<RunningKey, Accumulator>::new();
 		let mut engine = Self::scoped(config, group_scoped);
 		engine.running = Some(running);
 		engine
@@ -219,40 +219,6 @@ where
 	pub fn with_lag(mut self, lag: <C::Coord as WindowCoord>::Span) -> Self {
 		self.lag = lag;
 		self
-	}
-
-	pub fn approximate_memory(&self) -> StateMemory {
-		let mut memory = self.meta.approximate_memory()
-			+ self.buffers.approximate_memory()
-			+ self.expiry.approximate_memory();
-		if let Some(running) = &self.running {
-			memory = memory + running.approximate_memory();
-		}
-		memory
-	}
-
-	pub fn dirty_memory(&self) -> StateMemory {
-		let mut memory = self.meta.dirty_memory() + self.buffers.dirty_memory();
-		if let Some(running) = &self.running {
-			memory = memory + running.dirty_memory();
-		}
-		memory
-	}
-
-	pub fn membership_memory(&self) -> StateMemory {
-		let mut memory = self.meta.membership_memory() + self.buffers.membership_memory();
-		if let Some(running) = &self.running {
-			memory = memory + running.membership_memory();
-		}
-		memory
-	}
-
-	pub fn completeness(&self) -> StateCompleteness {
-		let mut completeness = self.meta.completeness().merge(self.buffers.completeness());
-		if let Some(running) = &self.running {
-			completeness = completeness.merge(running.completeness());
-		}
-		completeness
 	}
 
 	pub fn apply<S, K, CB, Output>(
@@ -1038,7 +1004,7 @@ mod tests {
 	use std::collections::{BTreeMap, BTreeSet};
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::{key::operator_state::GroupId, state::budget::OperatorStateBudgetHandle};
+	use reifydb_core::key::operator_state::GroupId;
 	use reifydb_value::{
 		factory::time::{at_millis, millis},
 		value::datetime::DateTime,
@@ -1054,7 +1020,7 @@ mod tests {
 	};
 
 	fn test_config() -> WindowEngineConfig {
-		WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).build()
+		WindowEngineConfig::builder().build()
 	}
 
 	fn row_key(group: &u32) -> (GroupId, EncodedKey) {
@@ -1299,7 +1265,7 @@ mod tests {
 		engine.flush(&mut store).unwrap();
 		assert_eq!(store.index_entry_count(), 3);
 
-		let capped = WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).expire_batch(2).build();
+		let capped = WindowEngineConfig::builder().expire_batch(2).build();
 
 		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new(capped.clone());
 		let first = engine.expire_before(&mut store, at_millis(1000), sum_combine).unwrap();

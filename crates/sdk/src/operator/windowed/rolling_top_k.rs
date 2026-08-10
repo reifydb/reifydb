@@ -42,8 +42,8 @@ use crate::{
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView, RowView},
 		windowed::{
-			WindowedBudget, advance_seal_frontier, arm_seal_timer, bridge::OperatorContextStore, bucket_of,
-			seal_frontier, seal_horizon_of, window_engine_config,
+			advance_seal_frontier, arm_seal_timer, bridge::OperatorContextStore, bucket_of, seal_frontier,
+			seal_horizon_of, window_engine_config,
 		},
 	},
 };
@@ -113,7 +113,6 @@ where
 	aggregator: A,
 	#[allow(clippy::type_complexity)]
 	engine: RollingTopKEngine<A::GroupKey, DateTime, A::Accumulator, A::SecondaryKey, A::Output>,
-	budget: WindowedBudget,
 }
 
 impl<A> RollingTopKDriver<A>
@@ -165,21 +164,15 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	fn sample(&self) -> Option<OperatorSample> {
-		Some(OperatorSample::with_memory(self.engine.approximate_memory())
-			.with_dirty_memory(self.engine.dirty_memory())
-			.with_membership(self.engine.membership_memory())
-			.with_completeness(self.engine.completeness())
-			.with_pool(self.budget.stat()))
+		None
 	}
 
 	fn create(operator_id: OperatorId, config: &Config) -> Result<Self> {
 		let aggregator = A::from_config(operator_id, config)?;
 		let engine_config = window_engine_config(config);
-		let budget = WindowedBudget::new(config, &engine_config);
 		Ok(Self {
 			aggregator,
 			engine: RollingTopKEngine::new(engine_config),
-			budget,
 		})
 	}
 
@@ -202,7 +195,6 @@ where
 	}
 
 	fn apply(&mut self, ctx: &mut impl OperatorContext, change: impl ChangeView) -> Result<()> {
-		self.budget.sync_from_lease(ctx.state_lease_bytes());
 		let mut buckets = self.route_diffs_to_buckets(ctx, &change);
 		if buckets.is_empty() {
 			return Ok(());

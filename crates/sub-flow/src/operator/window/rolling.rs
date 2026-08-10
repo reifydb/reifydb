@@ -626,7 +626,7 @@ mod tests {
 	};
 	use reifydb_core::{
 		key::operator_state::{GroupId, GroupStateKey},
-		state::{budget::OperatorStateBudgetHandle, store::StateStore},
+		state::store::StateStore,
 	};
 	use reifydb_flow::window::{engine::config::WindowEngineConfig, policy::EvictionPolicy, span::WindowCoord};
 	use reifydb_value::{Result as ValueResult, value::datetime::DateTime};
@@ -859,7 +859,7 @@ mod tests {
 	fn runnable_row_accumulator_matches_legacy_combine_on_float_churn() {
 		// Pure-sum rolling views run on the running-accumulator engine, so any divergence from
 		// the recombining engine on the same workload changes what those views publish.
-		let config = || WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).build();
+		let config = || WindowEngineConfig::builder().build();
 		let mut legacy_store = MockStore::default();
 		let mut runnable_store = MockStore::default();
 		let mut legacy = RollingEngine::<Hash128, OrdinalCoord, RowAccumulator>::new(config());

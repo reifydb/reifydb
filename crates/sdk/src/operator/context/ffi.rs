@@ -306,11 +306,6 @@ impl OperatorContext for FFIOperatorContext {
 		// alive and aligned for at least the lifetime of &self.
 		DateTime::from_nanos(unsafe { (*self.ctx).written_at_nanos })
 	}
-	fn state_lease_bytes(&self) -> u64 {
-		// SAFETY: FFIOperatorContext::new asserts self.ctx is non-null, and the host keeps the ContextFFI
-		// alive and aligned for at least the lifetime of &self.
-		unsafe { (*self.ctx).state_lease_bytes }
-	}
 	fn state(&mut self) -> impl StateApi + '_ {
 		FFIOperatorContext::state(self)
 	}

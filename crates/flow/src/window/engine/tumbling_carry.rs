@@ -14,7 +14,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	key::operator_state::GroupId,
-	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
+	metrics::heap::HeapSize,
 	state::{
 		cache::{StateCache, StateView},
 		store::StateStore,
@@ -116,10 +116,9 @@ where
 	CarryMeta<C, Carry, Output>: OperatorState<Archived = ArchivedCarryMeta<C, Carry, Output>>,
 {
 	pub fn new(config: TumblingCarryConfig<C>) -> Self {
-		let base = config.base();
 		Self {
-			accumulators: StateCache::<WindowStateKey, Accumulator>::new(base.budget()),
-			meta: StateCache::<MetaKey, CarryMeta<C, Carry, Output>>::new(base.budget()),
+			accumulators: StateCache::<WindowStateKey, Accumulator>::new(),
+			meta: StateCache::<MetaKey, CarryMeta<C, Carry, Output>>::new(),
 			meta_low_water: None,
 			retention: config.retention(),
 			hydrated: false,
@@ -135,22 +134,6 @@ where
 		self.meta.hydrate(store, meta_range(), decode_meta_key)?;
 		self.hydrated = true;
 		Ok(())
-	}
-
-	pub fn approximate_memory(&self) -> StateMemory {
-		self.accumulators.approximate_memory() + self.meta.approximate_memory()
-	}
-
-	pub fn dirty_memory(&self) -> StateMemory {
-		self.accumulators.dirty_memory() + self.meta.dirty_memory()
-	}
-
-	pub fn membership_memory(&self) -> StateMemory {
-		self.accumulators.membership_memory() + self.meta.membership_memory()
-	}
-
-	pub fn completeness(&self) -> StateCompleteness {
-		self.accumulators.completeness().merge(self.meta.completeness())
 	}
 
 	pub fn expire_meta<S: StateStore>(&mut self, store: &mut S, threshold: u64) -> Result<usize> {
@@ -454,10 +437,7 @@ mod tests {
 
 	use reifydb_abi::operator::timer::TimerKind;
 	use reifydb_codec::{key::encoded::EncodedKeyRange, row::operator::EncodedOperatorRow};
-	use reifydb_core::{
-		key::operator_state::{GroupStateKey, Keyspace, OperatorStateKey},
-		state::budget::OperatorStateBudgetHandle,
-	};
+	use reifydb_core::key::operator_state::{GroupStateKey, Keyspace, OperatorStateKey};
 	use reifydb_value::{
 		factory::time::{at_millis, millis},
 		value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
@@ -632,7 +612,7 @@ mod tests {
 	const WINDOW: u64 = 60;
 
 	fn carry_config(retention: Option<Duration>) -> TumblingCarryConfig<DateTime> {
-		TumblingCarryConfig::builder(WindowEngineConfig::builder(OperatorStateBudgetHandle::default()).build())
+		TumblingCarryConfig::builder(WindowEngineConfig::builder().build())
 			.retention(retention)
 			.build()
 	}

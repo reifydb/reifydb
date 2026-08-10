@@ -95,7 +95,6 @@ mod tests {
 		common::CommitVersion,
 		interface::catalog::flow::OperatorId,
 		key::operator_state::{Keyspace, OperatorStateKey, group_inner_range},
-		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
@@ -128,7 +127,6 @@ mod tests {
 				operators: engine.inner().operator_state(),
 				..FlowSubstrate::default()
 			},
-			state_budget: OperatorStateBudgetHandle::default(),
 		});
 		// The substrate derives an intern's position from the change coordinate, so it is set here.
 		txn.set_change_coordinate(ChangeCoordinate {

@@ -18,8 +18,7 @@ use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	key::operator_state::GroupId,
-	metrics::heap::StatePool,
-	state::{budget::OperatorStateBudgetHandle, store::StateStore},
+	state::store::StateStore,
 };
 use reifydb_flow::window::{
 	engine::config::WindowEngineConfig,
@@ -29,7 +28,6 @@ use reifydb_flow::window::{
 };
 use reifydb_value::{
 	Result,
-	byte_size::ByteSize,
 	value::{datetime::DateTime, duration::Duration},
 };
 
@@ -84,53 +82,15 @@ where
 	groups.get(&(group.clone(), coord)).copied().expect("every routed window is interned before the engine runs")
 }
 
-pub(crate) fn window_engine_config(config: &Config) -> WindowEngineConfig {
-	let budget = match config.usize("state_budget_bytes") {
-		Some(bytes) => OperatorStateBudgetHandle::new(ByteSize::from_bytes(bytes as u64)),
-		None => OperatorStateBudgetHandle::default(),
-	};
-	WindowEngineConfig::builder(budget).build()
-}
-
-pub(crate) struct WindowedBudget {
-	handle: OperatorStateBudgetHandle,
-	lease_governed: bool,
-}
-
-impl WindowedBudget {
-	pub(crate) fn new(config: &Config, engine_config: &WindowEngineConfig) -> Self {
-		Self {
-			handle: engine_config.budget(),
-			lease_governed: config.usize("state_budget_bytes").is_none(),
-		}
-	}
-
-	pub(crate) fn sync_from_lease(&self, lease_bytes: u64) {
-		if self.lease_governed && lease_bytes > 0 {
-			self.handle.set_budget(ByteSize::from_bytes(lease_bytes));
-		}
-	}
-
-	pub(crate) fn stat(&self) -> StatePool {
-		StatePool {
-			budget: self.handle.snapshot().budget,
-			evictions: self.handle.evictions(),
-		}
-	}
+pub(crate) fn window_engine_config(_config: &Config) -> WindowEngineConfig {
+	WindowEngineConfig::builder().build()
 }
 
 #[cfg(test)]
 mod tests {
-	use std::collections::BTreeMap;
-
 	use reifydb_core::key::operator_state::group_data_of_inner;
-	use reifydb_value::{byte_size::ByteSize, value::Value};
 
-	use crate::{
-		config::Config,
-		operator::windowed::{WindowedBudget, window_engine_config},
-		state::utils::empty_key,
-	};
+	use crate::state::utils::empty_key;
 
 	#[test]
 	fn state_a_driver_addresses_without_a_group_can_never_be_reclaimed() {
@@ -145,44 +105,4 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn lease_governs_the_budget_when_config_has_no_override() {
-		// Without an override the guest budget must follow the host lease, or every guest self-governs on a
-		// private 2 GiB pool and the shared pool bounds nothing.
-		let config = Config::new("test", BTreeMap::new());
-		let engine_config = window_engine_config(&config);
-		let budget = WindowedBudget::new(&config, &engine_config);
-
-		budget.sync_from_lease(64 * 1024 * 1024);
-
-		assert_eq!(engine_config.budget().snapshot().budget, ByteSize::from_bytes(64 * 1024 * 1024));
-	}
-
-	#[test]
-	fn missing_lease_keeps_the_default_budget() {
-		// Lease 0 means no lease arrived at all (standalone or harness hosts), and collapsing the budget to
-		// zero would evict everything on every apply.
-		let config = Config::new("test", BTreeMap::new());
-		let engine_config = window_engine_config(&config);
-		let default_budget = engine_config.budget().snapshot().budget;
-		let budget = WindowedBudget::new(&config, &engine_config);
-
-		budget.sync_from_lease(0);
-
-		assert_eq!(engine_config.budget().snapshot().budget, default_budget);
-	}
-
-	#[test]
-	fn explicit_config_override_wins_over_the_lease() {
-		// The apply config is the operator author's escape hatch, so the lease must never overwrite it.
-		let mut values = BTreeMap::new();
-		values.insert("state_budget_bytes".to_string(), Value::Uint8(512 * 1024));
-		let config = Config::new("test", values);
-		let engine_config = window_engine_config(&config);
-		let budget = WindowedBudget::new(&config, &engine_config);
-
-		budget.sync_from_lease(64 * 1024 * 1024);
-
-		assert_eq!(engine_config.budget().snapshot().budget, ByteSize::from_bytes(512 * 1024));
-	}
 }

@@ -94,12 +94,7 @@ impl Operator for AggregateOperator {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		self.core.tumbling_engine_slot().as_ref().map(|engine| {
-			OperatorSample::with_memory(engine.approximate_memory())
-				.with_dirty_memory(engine.dirty_memory())
-				.with_membership(engine.membership_memory())
-				.with_completeness(engine.completeness())
-		})
+		None
 	}
 
 	fn output_schema(&self) -> Option<Columns> {
@@ -108,8 +103,7 @@ impl Operator for AggregateOperator {
 }
 
 pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
-	let budget = txn.state_budget();
-	core.engine_meta_open(budget);
+	core.engine_meta_open();
 	let kinds = core.slot_kinds.clone().expect("aggregate requires representable slot kinds");
 
 	let mut buckets: EngineBuckets = BTreeMap::new();
@@ -184,7 +178,7 @@ pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, cha
 		}
 	}
 
-	let engine_config = WindowEngineConfig::builder(txn.state_budget()).build();
+	let engine_config = WindowEngineConfig::builder().build();
 
 	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start.to_order())).collect();
 	let groups = intern_window_groups(core.operator, txn, &windows)?;

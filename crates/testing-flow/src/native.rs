@@ -20,7 +20,6 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change},
 	key::{Key, kind::KeyKind, operator_state::GroupStateKey},
 	row::Row,
-	state::budget::OperatorStateBudgetHandle,
 	value::column::columns::Columns,
 };
 use reifydb_flow::{
@@ -81,7 +80,6 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(1000)),
 			substrate: self.substrate.clone(),
-			state_budget: OperatorStateBudgetHandle::default(),
 		});
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(DateTime::from_millis(self.version)),

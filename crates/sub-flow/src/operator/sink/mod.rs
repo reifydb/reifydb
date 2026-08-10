@@ -241,7 +241,6 @@ mod tests {
 	use reifydb_core::{
 		actors::pending::{Pending, PendingLayers},
 		interface::catalog::dictionary::Dictionary,
-		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_flow::transaction::{DeferredParams, substrate::FlowSubstrate};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -270,7 +269,6 @@ mod tests {
 			interceptors: Interceptors::new(),
 			clock: Clock::Mock(MockClock::from_millis(0)),
 			substrate: FlowSubstrate::with_dictionary(registry.clone(), engine.inner().operator_state()),
-			state_budget: OperatorStateBudgetHandle::default(),
 		})
 	}
 

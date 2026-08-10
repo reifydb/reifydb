@@ -7,7 +7,6 @@ pub mod workload;
 use std::sync::Arc;
 
 use rand::RngExt;
-use reifydb_core::state::budget::OperatorStateBudgetHandle;
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_sub_flow::{
@@ -46,7 +45,6 @@ pub fn build(threshold: i64, runtime: RuntimeContext) -> GateOperator {
 		parse_expression(&condition(threshold)).expect("the gate condition parses"),
 		routines(),
 		runtime,
-		OperatorStateBudgetHandle::default(),
 		Arc::new(FlowContext::default()),
 	)
 }
