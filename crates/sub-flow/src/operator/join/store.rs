@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::RefCell, collections::HashMap, ops::Bound};
+use std::ops::Bound;
 
 use reifydb_codec::{
 	key::{
@@ -32,7 +32,7 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use super::state::JoinSide;
+use super::{cache::GroupCache, state::JoinSide};
 use crate::{
 	error::FlowStateError,
 	operator::{
@@ -57,7 +57,7 @@ pub(crate) struct Store {
 	operator_id: OperatorId,
 	side: JoinSide,
 	shape_cache: RowShapeCacheCell,
-	slot_cache: RefCell<HashMap<GroupId, Option<(EncodedBytes, Columns)>>>,
+	cache: GroupCache<Option<(EncodedBytes, Columns)>>,
 }
 
 impl Store {
@@ -66,7 +66,7 @@ impl Store {
 			operator_id,
 			side,
 			shape_cache: RowShapeCacheCell::new(SHAPE_CACHE_CAPACITY),
-			slot_cache: RefCell::new(HashMap::new()),
+			cache: GroupCache::new(),
 		}
 	}
 
@@ -75,8 +75,8 @@ impl Store {
 		txn: &mut FlowTransaction,
 		group: GroupId,
 	) -> Result<Option<(EncodedBytes, Columns)>> {
-		if let Some(cached) = self.slot_cache.borrow().get(&group) {
-			return Ok(cached.clone());
+		if let Some(cached) = self.cache.get(group) {
+			return Ok(cached);
 		}
 		let entry = match self.get_row_in(txn, group, SLOT)? {
 			Some(row) => {
@@ -85,12 +85,12 @@ impl Store {
 			}
 			None => None,
 		};
-		self.slot_cache.borrow_mut().insert(group, entry.clone());
+		self.cache.insert(group, entry.clone());
 		Ok(entry)
 	}
 
 	fn forget_slot(&self, group: GroupId) {
-		self.slot_cache.borrow_mut().remove(&group);
+		self.cache.remove(group);
 	}
 
 	fn resolve(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<Option<GroupId>> {
