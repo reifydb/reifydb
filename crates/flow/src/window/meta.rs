@@ -347,9 +347,7 @@ mod tests {
 	use std::ops::Bound::{Excluded, Included, Unbounded};
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
-	use reifydb_core::key::operator_state::{
-		GroupId, IntoGroupStateKey, OperatorStateKey, group_data_inner_range,
-	};
+	use reifydb_core::key::operator_state::{GroupId, IntoGroupStateKey, OperatorStateKey, group_data_inner_range};
 	use reifydb_value::{
 		factory::time::at_millis,
 		value::{datetime::DateTime, row_number::RowNumber},

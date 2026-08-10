@@ -2,9 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	any::Any,
 	collections::{HashMap, HashSet},
-	mem::size_of,
 	sync::Arc,
 };
 
@@ -20,7 +18,6 @@ use reifydb_core::{
 		change::{Change, Diff},
 	},
 	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
-	metrics::heap::HeapSize,
 	value::column::columns::Columns,
 };
 use reifydb_engine::expression::{
@@ -36,7 +33,6 @@ use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
-	byte_size::ByteSize,
 	error::Error,
 	util::hash::Hash128,
 	value::{datetime::DateTime, duration::Duration},
@@ -70,15 +66,6 @@ enum LoadedEntry {
 	Absent,
 	Empty,
 	Present(DistinctEntry),
-}
-
-fn working_set_usage(value: &dyn Any) -> ByteSize {
-	let working = value.downcast_ref::<DistinctWorkingSet>().expect("DistinctWorkingSet slot type");
-	let groups = working.groups.capacity() * (size_of::<Hash128>() + size_of::<GroupId>());
-	ByteSize::from_bytes(
-		(size_of::<DistinctWorkingSet>() + working.state.heap_size() + working.loaded.heap_size() + groups)
-			as u64,
-	)
 }
 
 pub struct DistinctOperator {
@@ -331,7 +318,7 @@ impl Operator for DistinctOperator {
 			}
 		}
 
-		txn.put_operator_state(operator_id, working, persist, working_set_usage);
+		txn.put_operator_state(operator_id, working, persist);
 
 		Ok(Change::from_flow(self.operator, change.version, result, change.changed_at))
 	}

@@ -7,10 +7,7 @@ use reifydb_auth::registry::AuthenticationRegistry;
 use reifydb_catalog::{
 	catalog::Catalog,
 	metrics::storage::metrics::MetricsReader,
-	vtable::{
-		system::operator_libary::OperatorLibrary,
-		user::registry::UserVTableRegistry,
-	},
+	vtable::{system::operator_libary::OperatorLibrary, user::registry::UserVTableRegistry},
 };
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_extension::transform::registry::Transforms;
@@ -58,10 +55,10 @@ pub struct Services {
 
 impl Services {
 	pub fn new(
-        catalog: Catalog,
-        config: EngineConfig,
-        operator_store: OperatorLibrary,
-        metrics_reader: MetricsReader<SingleStore>,
+		catalog: Catalog,
+		config: EngineConfig,
+		operator_store: OperatorLibrary,
+		metrics_reader: MetricsReader<SingleStore>,
 	) -> Self {
 		let auth_registry = AuthenticationRegistry::new(config.runtime_context.clock.clone());
 		Self {
@@ -100,8 +97,8 @@ impl Services {
 		let routines = routines_builder.configure();
 
 		let mut services = Self::new(
-            Catalog::testing(),
-            EngineConfig {
+			Catalog::testing(),
+			EngineConfig {
 				runtime_context: RuntimeContext::with_clock(Clock::Real),
 				routines,
 				transforms: Transforms::empty(),
@@ -109,8 +106,8 @@ impl Services {
 				#[cfg(not(reifydb_single_threaded))]
 				remote_registry: None,
 			},
-            OperatorLibrary::new(),
-            MetricsReader::new(store),
+			OperatorLibrary::new(),
+			MetricsReader::new(store),
 		);
 		services.auth_registry = AuthenticationRegistry::default();
 		Arc::new(services)

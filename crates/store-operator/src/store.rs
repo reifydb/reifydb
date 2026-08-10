@@ -112,9 +112,8 @@ impl OperatorStore {
 		let mut stmt = conn
 			.prepare_cached(r#"SELECT "bytes" FROM "operator_state" WHERE "operator" = ?1 AND "key" = ?2"#)
 			.expect("operator state read could not be prepared");
-		let mut rows = stmt
-			.query(params![operator.0 as i64, key.as_slice()])
-			.expect("operator state read failed");
+		let mut rows =
+			stmt.query(params![operator.0 as i64, key.as_slice()]).expect("operator state read failed");
 		let row = rows.next().expect("operator state read failed")?;
 		let bytes: Vec<u8> = row.get(0).expect("operator state rows carry a blob payload");
 		Some(decode_row(bytes))
@@ -130,9 +129,8 @@ impl OperatorStore {
 				r#"SELECT 1 FROM "operator_state" WHERE "operator" = ?1 AND "key" = ?2 LIMIT 1"#,
 			)
 			.expect("operator state probe could not be prepared");
-		let mut rows = stmt
-			.query(params![operator.0 as i64, key.as_slice()])
-			.expect("operator state probe failed");
+		let mut rows =
+			stmt.query(params![operator.0 as i64, key.as_slice()]).expect("operator state probe failed");
 		rows.next().expect("operator state probe failed").is_some()
 	}
 
@@ -235,8 +233,22 @@ impl Shutdown for OperatorStore {
 
 fn push_bound(sql: &mut String, blobs: &mut Vec<Vec<u8>>, bound: Bound<&EncodedKey>, lower: bool) {
 	let (key, operator) = match bound {
-		Bound::Included(key) => (key, if lower { ">=" } else { "<=" }),
-		Bound::Excluded(key) => (key, if lower { ">" } else { "<" }),
+		Bound::Included(key) => (
+			key,
+			if lower {
+				">="
+			} else {
+				"<="
+			},
+		),
+		Bound::Excluded(key) => (
+			key,
+			if lower {
+				">"
+			} else {
+				"<"
+			},
+		),
 		Bound::Unbounded => return,
 	};
 	blobs.push(key.as_slice().to_vec());

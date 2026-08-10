@@ -116,15 +116,10 @@ impl FlowSubsystem {
 		});
 		let poll_frontier = CdcConsumerWatermark::default();
 		let materialization = FlowMaterialization::new(poll_frontier.clone(), flow_tracker.clone());
-		let committer = Committer::new(
-			flow_tracker.clone(),
-			materialization.clone(),
-			substrate.operators.clone(),
-		);
-		let committer_handle = flow_scope.spawn_flow(
-			"flow-committer",
-			CommitterActor::new(committer, group_commit),
-		);
+		let committer =
+			Committer::new(flow_tracker.clone(), materialization.clone(), substrate.operators.clone());
+		let committer_handle =
+			flow_scope.spawn_flow("flow-committer", CommitterActor::new(committer, group_commit));
 		let committer_ref = committer_handle.actor_ref().clone();
 
 		let health = FlowHealthRegistry::new();

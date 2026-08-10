@@ -7,9 +7,7 @@ use reifydb_core::{
 		cdc::CdcConsumerId,
 	},
 	key::{
-		cdc_consumer::CdcConsumerKey,
-		flow::FlowKey,
-		flow_version::FlowVersionKey,
+		cdc_consumer::CdcConsumerKey, flow::FlowKey, flow_version::FlowVersionKey,
 		namespace_flow::NamespaceFlowKey,
 	},
 };

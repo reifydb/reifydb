@@ -121,18 +121,18 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> VTables {
 		"column_properties" => VTables::ColumnProperties(SystemColumnProperties::new()),
 		"versions" => VTables::Versions(SystemVersions::new(context.services.ioc.clone())),
 		"cdc_consumers" => VTables::CdcConsumers(SystemCdcConsumers::new()),
-		"operator_libraries" => VTables::OperatorLibraries(SystemOperatorLibraries::new(
-            context.services.operators.clone(),
-		)),
+		"operator_libraries" => {
+			VTables::OperatorLibraries(SystemOperatorLibraries::new(context.services.operators.clone()))
+		}
 		"dictionaries" => VTables::Dictionaries(SystemDictionaries::new()),
 		"virtual_tables" => VTables::TablesVirtual(SystemTablesVirtual::new(context.services.catalog.clone())),
 		"types" => VTables::Types(SystemTypes::new()),
 		"operator_types" => VTables::OperatorTypes(SystemOperatorTypes::new()),
 		"operator_library_inputs" => VTables::OperatorLibraryInputs(SystemOperatorLibraryInputs::new(
-            context.services.operators.clone(),
+			context.services.operators.clone(),
 		)),
 		"operator_library_outputs" => VTables::OperatorLibraryOutputs(SystemOperatorLibraryOutputs::new(
-            context.services.operators.clone(),
+			context.services.operators.clone(),
 		)),
 		"ringbuffers" => VTables::RingBuffers(SystemRingBuffers::new()),
 		"queues" => VTables::Queues(SystemQueues::new()),

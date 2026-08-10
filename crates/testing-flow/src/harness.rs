@@ -31,13 +31,11 @@ use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 };
 use reifydb_sdk::{config::Config, operator::OperatorLogic};
-use reifydb_sub_flow::{
-	operator::{
-		OperatorCell,
-		apply::ApplyOperator,
-		native::{NativeBridgedOperator, NativeOperatorAdapter},
-		scan::series::SourceSeriesOperator,
-	},
+use reifydb_sub_flow::operator::{
+	OperatorCell,
+	apply::ApplyOperator,
+	native::{NativeBridgedOperator, NativeOperatorAdapter},
+	scan::series::SourceSeriesOperator,
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject};
@@ -275,7 +273,6 @@ impl<O: Operator> Harness<O> {
 	pub fn state_bytes(&self) -> u64 {
 		self.substrate.operators.bytes(self.operator.id())
 	}
-
 }
 
 fn coordinate_of(change: &Change) -> DateTime {

@@ -115,7 +115,8 @@ mod tests {
 
 	#[test]
 	fn an_unusable_guest_span_is_refused_rather_than_becoming_a_seal_span() {
-		// A guest answering 0 or an out-of-range span must yield no seal span; a wrapped value would hold the frontier back on a schedule nobody chose.
+		// A guest answering 0 or an out-of-range span must yield no seal span; a wrapped value would hold the
+		// frontier back on a schedule nobody chose.
 		assert_eq!(scale_from_millis(Some(0)), None, "zero is not a seal span");
 		assert_eq!(scale_from_millis(None), None);
 		assert_eq!(

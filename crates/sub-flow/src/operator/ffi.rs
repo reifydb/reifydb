@@ -28,17 +28,14 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff, Diffs},
 	},
-	metrics::heap::{OperatorSample, StateCompleteness, StateMemory, StatePool},
+	metrics::heap::{OperatorSample, StateMemory},
 	value::column::columns::Columns,
 };
 use reifydb_engine::vm::executor::Executor;
 use reifydb_extension::ffi_callbacks::builder::{BuilderRegistry, with_registry};
 use reifydb_flow::{
 	timer::Timer,
-	transaction::{
-		FlowTransaction,
-		slot::{PersistFn, zero_usage},
-	},
+	transaction::{FlowTransaction, slot::PersistFn},
 };
 use reifydb_sdk::{error::SdkError, ffi::arena::Arena};
 use reifydb_value::{
@@ -180,7 +177,7 @@ fn ensure_flush_slot(
 	executor: Executor,
 ) -> Result<()> {
 	let send_instance = SendableInstance(instance);
-	let _ = txn.operator_state(operator_id, zero_usage, move |_txn| {
+	let _ = txn.operator_state(operator_id, move |_txn| {
 		let captured_instance = send_instance;
 		let captured_vtable = vtable;
 		let captured_executor = executor;
@@ -331,29 +328,7 @@ fn sample_from_usage(usage: &StateUsageFFI) -> OperatorSample {
 	let state = StateMemory::new(Count::new(usage.state_entries), ByteSize::from_bytes(usage.state_bytes));
 	let row_numbers =
 		StateMemory::new(Count::new(usage.row_number_entries), ByteSize::from_bytes(usage.row_number_bytes));
-	let mut sample = OperatorSample::with_memory(state).with_row_number_cache(row_numbers);
-	if usage.has_membership != 0 {
-		sample = sample.with_membership(StateMemory::new(
-			Count::new(usage.membership_entries),
-			ByteSize::from_bytes(usage.membership_bytes),
-		));
-	}
-	if usage.has_completeness != 0 {
-		sample = sample.with_completeness(StateCompleteness {
-			values_complete: usage.values_complete != 0,
-			membership_complete: usage.membership_complete != 0,
-			absences_served: Count::new(usage.absences_served),
-			false_positives: Count::new(usage.false_positives),
-			revocations: Count::new(usage.revocations),
-		});
-	}
-	if usage.has_pool != 0 {
-		sample = sample.with_pool(StatePool {
-			budget: ByteSize::from_bytes(usage.pool_budget),
-			evictions: Count::new(usage.pool_evictions),
-		});
-	}
-	sample
+	OperatorSample::with_memory(state).with_row_number_cache(row_numbers)
 }
 
 impl FFIOperatorHandle {
@@ -413,58 +388,22 @@ mod tests {
 	use super::sample_from_usage;
 
 	#[test]
-	fn host_sample_decode_mirrors_the_guest_encoding_including_presence_flags() {
-		// Presence flags gate the optional slots, so a dylib that reported no membership data
-		// must not surface as a degraded operator.
-		let mut usage = StateUsageFFI {
+	fn host_sample_decode_keeps_the_row_number_cache_off_the_state_total() {
+		// The two pairs cross on separate fields; folding either into the other double-counts it.
+		let usage = StateUsageFFI {
 			state_entries: 3,
 			state_bytes: 128,
 			row_number_entries: 2,
 			row_number_bytes: 64,
-			..StateUsageFFI::default()
 		};
-		let bare = sample_from_usage(&usage);
-		assert!(bare.membership.is_none(), "flag zero must decode as not-reported, not as zeros");
-		assert!(bare.completeness.is_none());
-		assert_eq!(bare.memory.expect("state memory always ships").entries.as_u64(), 3);
 
-		usage.has_membership = 1;
-		usage.membership_entries = 7;
-		usage.membership_bytes = 320;
-		usage.has_completeness = 1;
-		usage.values_complete = 0;
-		usage.membership_complete = 1;
-		usage.absences_served = 9;
-		usage.false_positives = 1;
-		usage.revocations = 2;
-		let full = sample_from_usage(&usage);
-		let membership = full.membership.expect("flagged membership must decode");
-		assert_eq!(membership.entries.as_u64(), 7);
-		assert_eq!(membership.bytes.as_bytes(), 320);
-		let completeness = full.completeness.expect("flagged completeness must decode");
-		assert!(!completeness.values_complete);
-		assert!(completeness.membership_complete);
-		assert_eq!(completeness.absences_served.as_u64(), 9);
-		assert_eq!(completeness.false_positives.as_u64(), 1);
-		assert_eq!(completeness.revocations.as_u64(), 2);
-	}
+		let sample = sample_from_usage(&usage);
 
-	#[test]
-	fn host_sample_decode_surfaces_the_guest_pool_behind_its_presence_flag() {
-		// A guest's private pool is invisible to the host, so without this decode a dylib
-		// operator's revocations have no attributable budget in the memory log.
-		let mut usage = StateUsageFFI {
-			state_entries: 3,
-			state_bytes: 128,
-			..StateUsageFFI::default()
-		};
-		assert!(sample_from_usage(&usage).pool.is_none(), "flag zero must decode as not-reported");
-
-		usage.has_pool = 1;
-		usage.pool_budget = 8 * 1024 * 1024;
-		usage.pool_evictions = 5;
-		let pool = sample_from_usage(&usage).pool.expect("flagged pool must decode");
-		assert_eq!(pool.budget.as_bytes(), 8 * 1024 * 1024);
-		assert_eq!(pool.evictions.as_u64(), 5);
+		let memory = sample.memory.expect("state memory always ships");
+		assert_eq!(memory.entries.as_u64(), 3);
+		assert_eq!(memory.bytes.as_bytes(), 128);
+		let rows = sample.row_number_cache.expect("row number cache always ships");
+		assert_eq!(rows.entries.as_u64(), 2);
+		assert_eq!(rows.bytes.as_bytes(), 64);
 	}
 }

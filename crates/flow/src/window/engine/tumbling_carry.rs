@@ -612,9 +612,7 @@ mod tests {
 	const WINDOW: u64 = 60;
 
 	fn carry_config(retention: Option<Duration>) -> TumblingCarryConfig<DateTime> {
-		TumblingCarryConfig::builder(WindowEngineConfig::builder().build())
-			.retention(retention)
-			.build()
+		TumblingCarryConfig::builder(WindowEngineConfig::builder().build()).retention(retention).build()
 	}
 
 	fn feed(engine: &mut Engine, store: &mut CountingStore, ws: DateTime, price: f64) {

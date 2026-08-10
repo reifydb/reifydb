@@ -5,8 +5,7 @@ use std::{ops::Deref, result::Result as StdResult, sync::Arc};
 
 use bumpalo::Bump;
 use reifydb_catalog::{
-	catalog::Catalog, metrics::storage::metrics::MetricsReader,
-	vtable::system::operator_libary::OperatorLibrary,
+	catalog::Catalog, metrics::storage::metrics::MetricsReader, vtable::system::operator_libary::OperatorLibrary,
 };
 use reifydb_core::{
 	error::diagnostic::subscription,

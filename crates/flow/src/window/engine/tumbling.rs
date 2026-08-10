@@ -380,11 +380,7 @@ mod tests {
 	};
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::{
-		key::operator_state::GroupId,
-		metrics::heap::HeapSize,
-		state::cache::StateView,
-	};
+	use reifydb_core::{key::operator_state::GroupId, metrics::heap::HeapSize, state::cache::StateView};
 	use reifydb_macro::operator_state;
 	use reifydb_value::{Result, factory::time::at_millis, value::datetime::DateTime};
 

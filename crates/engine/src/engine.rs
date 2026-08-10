@@ -15,7 +15,7 @@ use reifydb_catalog::{
 	interceptor::CatalogCacheInterceptor,
 	metrics::storage::metrics::MetricsReader,
 	vtable::{
-		system::operator_libary::{OperatorLibraryEventListener, OperatorLibrary},
+		system::operator_libary::{OperatorLibrary, OperatorLibraryEventListener},
 		tables::UserVTableDataFunction,
 		user::{UserVTable, UserVTableColumn, registry::UserVTableEntry},
 	},
@@ -425,7 +425,7 @@ impl StandardEngine {
 		config: EngineConfig,
 	) -> Self {
 		let operator_library = OperatorLibrary::new();
-		
+
 		let listener = OperatorLibraryEventListener::new(operator_library.clone());
 		event_bus.register(listener);
 

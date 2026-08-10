@@ -439,24 +439,6 @@ fn usage_from_sample(sample: Option<OperatorSample>) -> StateUsageFFI {
 			usage.row_number_entries = rows.entries.as_u64();
 			usage.row_number_bytes = rows.bytes.as_bytes();
 		}
-		if let Some(membership) = sample.membership {
-			usage.has_membership = 1;
-			usage.membership_entries = membership.entries.as_u64();
-			usage.membership_bytes = membership.bytes.as_bytes();
-		}
-		if let Some(completeness) = sample.completeness {
-			usage.has_completeness = 1;
-			usage.values_complete = completeness.values_complete as u64;
-			usage.membership_complete = completeness.membership_complete as u64;
-			usage.absences_served = completeness.absences_served.as_u64();
-			usage.false_positives = completeness.false_positives.as_u64();
-			usage.revocations = completeness.revocations.as_u64();
-		}
-		if let Some(pool) = sample.pool {
-			usage.has_pool = 1;
-			usage.pool_budget = pool.budget.as_bytes();
-			usage.pool_evictions = pool.evictions.as_u64();
-		}
 	}
 	usage
 }
@@ -474,25 +456,13 @@ pub fn create_vtable<O: FFIOperator>() -> OperatorVTableFFI {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::metrics::heap::{StateCompleteness, StateMemory, StatePool};
+	use reifydb_core::metrics::heap::StateMemory;
 	use reifydb_value::{byte_size::ByteSize, count::Count};
 
 	use super::*;
 
 	fn memory(entries: u64, bytes: u64) -> StateMemory {
 		StateMemory::new(Count::new(entries), ByteSize::from_bytes(bytes))
-	}
-
-	#[test]
-	fn guest_usage_reports_the_total_once_and_never_adds_the_dirty_subset() {
-		// The reported total already contains the dirty subset, and the host charges whatever crosses the
-		// boundary straight to the lease, so folding dirty in again bills it twice.
-		let sample = OperatorSample::with_memory(memory(10, 4096)).with_dirty_memory(memory(4, 1024));
-
-		let usage = usage_from_sample(Some(sample));
-
-		assert_eq!(usage.state_bytes, 4096, "the guest ships the reported total, once");
-		assert_eq!(usage.state_entries, 10);
 	}
 
 	#[test]
@@ -508,35 +478,6 @@ mod tests {
 	}
 
 	#[test]
-	fn guest_usage_carries_membership_and_completeness_behind_presence_flags() {
-		// The flags separate "not reported" from "all zero": a pre-hydration operator ships neither, and
-		// without them the host renders every such operator as a degraded values_complete=0 gauge.
-		let bare = usage_from_sample(Some(OperatorSample::with_memory(memory(1, 64))));
-		assert_eq!(bare.has_membership, 0, "an unreported membership slot must not claim presence");
-		assert_eq!(bare.has_completeness, 0);
-
-		let sample = OperatorSample::with_memory(memory(1, 64))
-			.with_membership(memory(7, 320))
-			.with_completeness(StateCompleteness {
-				values_complete: false,
-				membership_complete: true,
-				absences_served: Count::new(9),
-				false_positives: Count::new(1),
-				revocations: Count::new(2),
-			});
-		let usage = usage_from_sample(Some(sample));
-		assert_eq!(usage.has_membership, 1);
-		assert_eq!(usage.membership_entries, 7);
-		assert_eq!(usage.membership_bytes, 320);
-		assert_eq!(usage.has_completeness, 1);
-		assert_eq!(usage.values_complete, 0);
-		assert_eq!(usage.membership_complete, 1);
-		assert_eq!(usage.absences_served, 9);
-		assert_eq!(usage.false_positives, 1);
-		assert_eq!(usage.revocations, 2);
-	}
-
-	#[test]
 	fn an_operator_reporting_nothing_yields_a_zeroed_usage() {
 		let usage = usage_from_sample(None);
 
@@ -544,22 +485,5 @@ mod tests {
 		assert_eq!(usage.state_entries, 0);
 		assert_eq!(usage.row_number_bytes, 0);
 		assert_eq!(usage.row_number_entries, 0);
-	}
-
-	#[test]
-	fn guest_usage_carries_the_private_pool_behind_a_presence_flag() {
-		// A guest's private pool is invisible to the host, so this is the only channel reporting the budget
-		// it actually enforced; the flag keeps an absent report from rendering as a real 0-byte budget.
-		let bare = usage_from_sample(Some(OperatorSample::with_memory(memory(1, 64))));
-		assert_eq!(bare.has_pool, 0, "an unreported pool must not claim presence");
-
-		let sample = OperatorSample::with_memory(memory(1, 64)).with_pool(StatePool {
-			budget: ByteSize::from_bytes(8 * 1024 * 1024),
-			evictions: Count::new(3),
-		});
-		let usage = usage_from_sample(Some(sample));
-		assert_eq!(usage.has_pool, 1);
-		assert_eq!(usage.pool_budget, 8 * 1024 * 1024);
-		assert_eq!(usage.pool_evictions, 3);
 	}
 }

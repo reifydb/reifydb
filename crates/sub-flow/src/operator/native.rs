@@ -31,10 +31,7 @@ use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_flow::{
 	operator::{BoxedOperator, Operator},
 	timer::Timer,
-	transaction::{
-		FlowTransaction,
-		slot::{PersistFn, zero_usage},
-	},
+	transaction::{FlowTransaction, slot::PersistFn},
 };
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::{
@@ -59,9 +56,7 @@ use tracing::error;
 
 use crate::{
 	error::NativeOperatorError,
-	operator::{
-		context::native::{NativeBridge, NativeOperatorContext},
-	},
+	operator::context::native::{NativeBridge, NativeOperatorContext},
 };
 
 fn run_or_abort<R>(operator: OperatorId, stage: &'static str, f: impl FnOnce() -> SdkResult<R>) -> R {
@@ -550,7 +545,7 @@ impl NativeBridgedOperator {
 				bridged.flush_state(&mut bridge)?;
 				Ok(())
 			});
-			let _ = txn.operator_state::<(), _>(operator, zero_usage, move |_txn| Ok(((), persist)))?;
+			let _ = txn.operator_state::<(), _>(operator, move |_txn| Ok(((), persist)))?;
 			txn.mark_state_dirty(operator);
 			self.last_registered_txn.set(txn_version);
 		}

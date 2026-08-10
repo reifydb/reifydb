@@ -311,7 +311,6 @@ impl FlowEngineInner {
 		let dependency_graph = self.analyzer.get_dependency_graph();
 		self.analyzer.get_flow_producing_view(dependency_graph, view_id)
 	}
-
 }
 
 #[cfg(test)]

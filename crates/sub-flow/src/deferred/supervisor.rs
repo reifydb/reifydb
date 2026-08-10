@@ -505,11 +505,7 @@ impl FlowSupervisor {
 		self.spawner.spawn_flow(&format!("flow-{}", flow_id.0), FlowActor::new(params))
 	}
 
-	fn commit_control(
-		&self,
-		seeds: Vec<(FlowId, CommitVersion)>,
-		cursor: Option<CommitVersion>,
-	) {
+	fn commit_control(&self, seeds: Vec<(FlowId, CommitVersion)>, cursor: Option<CommitVersion>) {
 		if seeds.is_empty() && cursor.is_none() {
 			return;
 		}

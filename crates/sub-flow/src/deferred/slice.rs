@@ -163,7 +163,8 @@ impl SliceComputer {
 			catalog,
 			interceptors,
 			clock: self.engine.clock().clone(),
-			substrate: flow_engine.substrate.clone(),		});
+			substrate: flow_engine.substrate.clone(),
+		});
 
 		flow_engine.fold_published_arrivals(&mut txn, flow_id, state_version)?;
 		flow_engine.holds(&mut txn, flow_id)
@@ -197,7 +198,8 @@ impl SliceComputer {
 			catalog,
 			interceptors,
 			clock: self.engine.clock().clone(),
-			substrate: flow_engine.substrate.clone(),		});
+			substrate: flow_engine.substrate.clone(),
+		});
 
 		flow_engine.process_batch(&mut txn, changes, flow_id)?;
 		let holds = flow_engine.holds(&mut txn, flow_id)?;
@@ -242,7 +244,8 @@ impl SliceComputer {
 			catalog: self.engine.catalog(),
 			interceptors: self.engine.create_interceptors(),
 			clock: self.engine.clock().clone(),
-			substrate: flow_engine.substrate.clone(),		});
+			substrate: flow_engine.substrate.clone(),
+		});
 
 		flow_engine.process_tick(&mut txn, flow_id, timestamp, checkpoint)?;
 		txn.flush_operator_states()?;
@@ -607,7 +610,8 @@ mod integration {
 			catalog: engine.catalog(),
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
-			substrate: flow_engine.substrate.clone(),		})
+			substrate: flow_engine.substrate.clone(),
+		})
 	}
 
 	#[test]
@@ -1016,7 +1020,8 @@ mod integration {
 							catalog: engine.catalog(),
 							interceptors: engine.create_interceptors(),
 							clock: engine.clock().clone(),
-							substrate: flow_engine.substrate.clone(),						})
+							substrate: flow_engine.substrate.clone(),
+						})
 					};
 
 					let mut with_overlay = pinned_txn(overlay.merged());
@@ -1155,7 +1160,8 @@ mod integration {
 						catalog: engine.catalog(),
 						interceptors: engine.create_interceptors(),
 						clock: engine.clock().clone(),
-						substrate: flow_engine.substrate.clone(),					});
+						substrate: flow_engine.substrate.clone(),
+					});
 					for key in &live_keys {
 						assert!(
 							empty_overlay.get(key).unwrap().is_some(),

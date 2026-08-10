@@ -91,7 +91,6 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 			suffix.get(..8).map(|bytes| decode_u64(bytes.try_into().expect("eight expiry bytes")))
 		}))
 	}
-
 }
 
 fn entry_bytes<E>(key: &GroupStateKey) -> u64 {

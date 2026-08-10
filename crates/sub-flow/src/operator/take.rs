@@ -2,9 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	any::Any,
 	collections::{BTreeMap, HashMap},
-	mem::size_of,
 	slice::from_ref,
 };
 
@@ -29,7 +27,6 @@ use reifydb_flow::{
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
-	byte_size::ByteSize,
 	error::Error,
 	value::{Value, datetime::DateTime, row_number::RowNumber},
 };
@@ -105,12 +102,6 @@ impl TakeOperator {
 				cause: e.to_string(),
 			})
 		})
-	}
-
-	#[inline]
-	fn take_state_usage(value: &dyn Any) -> ByteSize {
-		let state = value.downcast_ref::<TakeState>().expect("TakeState slot type");
-		ByteSize::from_bytes((size_of::<TakeState>() + state.heap_size()) as u64)
 	}
 
 	#[inline]
@@ -340,7 +331,7 @@ impl Operator for TakeOperator {
 			}
 		}
 
-		txn.put_operator_state(operator_id, state, persist, Self::take_state_usage);
+		txn.put_operator_state(operator_id, state, persist);
 
 		Ok(Change::from_flow(self.operator, version, output_diffs, change.changed_at))
 	}

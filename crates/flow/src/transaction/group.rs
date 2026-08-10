@@ -104,7 +104,6 @@ impl NodeState {
 			self.revoke_complete();
 		}
 	}
-
 }
 
 #[derive(Clone)]

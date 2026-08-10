@@ -34,10 +34,7 @@ use reifydb_runtime::{
 		system::ActorConfig,
 		traits::{Actor, Directive},
 	},
-	context::{
-		RuntimeContext,
-		clock::Clock,
-	},
+	context::{RuntimeContext, clock::Clock},
 };
 use reifydb_value::{
 	Result,
@@ -712,10 +709,7 @@ mod pull_protocol {
 		consume::{checkpoint::CdcCheckpoint, watermark::CdcConsumerWatermark},
 		produce::watermark::CdcProducerWatermark,
 	};
-	use reifydb_codec::{
-		key::encoded::EncodedKeyRange,
-		row::pod::EncodedPodRow,
-	};
+	use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		actors::{flow::FlowActorHandle, pending::PendingLayers},
 		interface::{
@@ -841,10 +835,8 @@ mod pull_protocol {
 			Duration::from_milliseconds(100).unwrap(),
 			256,
 		);
-		let committer_handle = engine.spawner().spawn_flow(
-			"pull-protocol-committer",
-			CommitterActor::new(committer, group),
-		);
+		let committer_handle =
+			engine.spawner().spawn_flow("pull-protocol-committer", CommitterActor::new(committer, group));
 
 		let loader_handle = engine.spawner().spawn_flow(
 			"pull-protocol-loader",
@@ -1055,7 +1047,6 @@ mod pull_protocol {
 				.flat_map(|cdc| cdc.changes)
 				.find(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
 		}
-
 	}
 
 	fn seconds(seconds: i64) -> Duration {

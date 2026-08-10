@@ -27,9 +27,9 @@ use reifydb_transaction::{
 	group::{GroupCommitApply, GroupCommitCompletion, GroupCommitHandle, GroupCommitSubmission},
 	transaction::command::CommandTransaction,
 };
+use reifydb_value::Result;
 #[cfg(test)]
 use reifydb_value::value::identity::IdentityId;
-use reifydb_value::Result;
 use tracing::{instrument, warn};
 
 use crate::deferred::{quiescence::FlowMaterialization, tracker::FlowPositionTracker};
@@ -92,20 +92,17 @@ impl CommitterActor {
 		});
 
 		let completion_committer = self.committer.clone();
-		let completion: GroupCommitCompletion = Box::new(move |result| {
-			match result {
-				Ok(version) => {
-					apply_operator_state(&completion_committer.operators, version, &combined);
-					if produced_output {
-						completion_committer.materialization.record_output(version);
-					}
-					completion_committer.post_commit_slice(&checkpoints, &checkpoint_deletes);
-					let combined =
-						Arc::try_unwrap(combined).unwrap_or_else(|shared| (*shared).clone());
-					(reply)(Ok((version, combined)));
+		let completion: GroupCommitCompletion = Box::new(move |result| match result {
+			Ok(version) => {
+				apply_operator_state(&completion_committer.operators, version, &combined);
+				if produced_output {
+					completion_committer.materialization.record_output(version);
 				}
-				Err(e) => (reply)(Err(e)),
+				completion_committer.post_commit_slice(&checkpoints, &checkpoint_deletes);
+				let combined = Arc::try_unwrap(combined).unwrap_or_else(|shared| (*shared).clone());
+				(reply)(Ok((version, combined)));
 			}
+			Err(e) => (reply)(Err(e)),
 		});
 
 		self.group.submit(GroupCommitSubmission {
@@ -124,19 +121,16 @@ impl CommitterActor {
 		});
 
 		let completion_committer = self.committer.clone();
-		let completion: GroupCommitCompletion = Box::new(move |result| {
-			match result {
-				Ok(version) => {
-					apply_operator_state(&completion_committer.operators, version, &pending);
-					completion_committer.materialization.record_output(version);
-					let pending =
-						Arc::try_unwrap(pending).unwrap_or_else(|shared| (*shared).clone());
-					(reply)(Some((version, pending)));
-				}
-				Err(e) => {
-					warn!(error = %e, "failed to commit tick writes");
-					(reply)(None);
-				}
+		let completion: GroupCommitCompletion = Box::new(move |result| match result {
+			Ok(version) => {
+				apply_operator_state(&completion_committer.operators, version, &pending);
+				completion_committer.materialization.record_output(version);
+				let pending = Arc::try_unwrap(pending).unwrap_or_else(|shared| (*shared).clone());
+				(reply)(Some((version, pending)));
+			}
+			Err(e) => {
+				warn!(error = %e, "failed to commit tick writes");
+				(reply)(None);
 			}
 		});
 
@@ -249,11 +243,7 @@ impl Committer {
 		Ok(())
 	}
 
-	fn post_commit_slice(
-		&self,
-		checkpoints: &[(FlowId, CommitVersion)],
-		checkpoint_deletes: &[FlowId],
-	) {
+	fn post_commit_slice(&self, checkpoints: &[(FlowId, CommitVersion)], checkpoint_deletes: &[FlowId]) {
 		for (flow_id, version) in checkpoints {
 			self.flow_tracker.update(*flow_id, *version);
 		}
@@ -425,10 +415,9 @@ mod group_commit_integration {
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
 		);
-		let handle = engine.spawner().spawn_flow(
-			"group-commit-test-committer",
-			CommitterActor::new(committer.clone(), group),
-		);
+		let handle = engine
+			.spawner()
+			.spawn_flow("group-commit-test-committer", CommitterActor::new(committer.clone(), group));
 		(handle, committer)
 	}
 
@@ -668,5 +657,4 @@ mod group_commit_integration {
 			"an operator this slice never touched must keep its previous upper"
 		);
 	}
-
 }

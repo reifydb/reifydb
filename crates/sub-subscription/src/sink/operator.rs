@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{any::Any, collections::BTreeSet, mem::size_of, sync::Arc};
+use std::{collections::BTreeSet, sync::Arc};
 
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::row::operator::{decode, encode_archive};
@@ -25,7 +25,6 @@ use reifydb_sub_flow::operator::{
 };
 use reifydb_value::{
 	Result,
-	byte_size::ByteSize,
 	error::Error,
 	fragment::Fragment,
 	reifydb_assertions,
@@ -39,11 +38,6 @@ use crate::sink::DeliveryBuffer;
 #[derive(Debug, Clone, Serialize, Deserialize, Default, HeapSize)]
 struct DeliveredState {
 	rows: BTreeSet<RowNumber>,
-}
-
-fn delivered_state_usage(value: &dyn Any) -> ByteSize {
-	let state = value.downcast_ref::<DeliveredState>().expect("DeliveredState slot type");
-	ByteSize::from_bytes((size_of::<DeliveredState>() + state.heap_size()) as u64)
 }
 
 pub struct EphemeralSinkSubscriptionOperator {
@@ -142,7 +136,7 @@ impl Operator for EphemeralSinkSubscriptionOperator {
 			}
 		}
 
-		txn.put_operator_state(self.operator, state, persist, delivered_state_usage);
+		txn.put_operator_state(self.operator, state, persist);
 
 		Ok(Change::from_flow(self.operator, change.version, Vec::new(), change.changed_at))
 	}

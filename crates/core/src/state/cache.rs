@@ -313,7 +313,11 @@ mod tests {
 			Ok(())
 		}
 
-		fn get_or_create_row_number(&mut self, _group: GroupId, _key: &EncodedKey) -> Result<(RowNumber, bool)> {
+		fn get_or_create_row_number(
+			&mut self,
+			_group: GroupId,
+			_key: &EncodedKey,
+		) -> Result<(RowNumber, bool)> {
 			Ok((RowNumber(1), true))
 		}
 
@@ -458,8 +462,9 @@ mod tests {
 		let mut store = MockStore::default();
 		let mut cache: StateCache<Key, Cell> = StateCache::new();
 
-		let seen =
-			cache.read(&mut store, &Key::new("gone"), |_| panic!("closure must not run on a miss")).unwrap();
+		let seen = cache
+			.read(&mut store, &Key::new("gone"), |_| panic!("closure must not run on a miss"))
+			.unwrap();
 
 		assert_eq!(seen, None::<()>);
 	}

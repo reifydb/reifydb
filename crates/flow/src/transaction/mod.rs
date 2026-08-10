@@ -97,7 +97,7 @@ pub mod write;
 
 use group::GroupInterner;
 use row_number::RowNumberProvider;
-use slot::{CarriedOperatorState, OperatorStateSlot, PersistFn, UsageFn};
+use slot::{CarriedOperatorState, OperatorStateSlot, PersistFn};
 use substrate::FlowSubstrate;
 use timer::TimerWheel;
 use watermark::SourceWatermarks;
@@ -440,7 +440,7 @@ impl FlowTransaction {
 		&self.inner().clock
 	}
 
-	pub fn operator_state<S, F>(&mut self, operator: OperatorId, usage: UsageFn, load: F) -> Result<&mut S>
+	pub fn operator_state<S, F>(&mut self, operator: OperatorId, load: F) -> Result<&mut S>
 	where
 		S: 'static + Send,
 		F: FnOnce(&mut Self) -> Result<(S, PersistFn)>,
@@ -452,7 +452,6 @@ impl FlowTransaction {
 				value: Box::new(state),
 				dirty: false,
 				persist,
-				usage,
 			};
 			inner.operator_states.insert(operator, slot);
 		}
@@ -479,7 +478,7 @@ impl FlowTransaction {
 		}
 	}
 
-	pub fn put_operator_state<S>(&mut self, operator: OperatorId, state: S, persist: PersistFn, usage: UsageFn)
+	pub fn put_operator_state<S>(&mut self, operator: OperatorId, state: S, persist: PersistFn)
 	where
 		S: 'static + Send,
 	{
@@ -490,7 +489,6 @@ impl FlowTransaction {
 				value: Box::new(state),
 				dirty: true,
 				persist,
-				usage,
 			},
 		);
 	}
@@ -518,7 +516,6 @@ impl FlowTransaction {
 					value: carried.value,
 					dirty: false,
 					persist: Box::new(|_, _| Ok(())),
-					usage: carried.usage,
 				},
 			);
 		}
@@ -533,7 +530,6 @@ impl FlowTransaction {
 					operator,
 					CarriedOperatorState {
 						value: slot.value,
-						usage: slot.usage,
 					},
 				)
 			})

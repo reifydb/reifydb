@@ -36,8 +36,7 @@ pub fn render(cat: &Catalog, phys: &dbstat::Map, opts: Options) {
 					.get(id)
 					.map(|(name, k)| format!("{name}  [{k}]"))
 					.unwrap_or_else(|| "(unmapped)".to_string()),
-				_ => cat
-					.operators
+				_ => cat.operators
 					.get(id)
 					.map(|(view, stage)| format!("{view}  {stage}"))
 					.unwrap_or_else(|| "(unmapped)".to_string()),

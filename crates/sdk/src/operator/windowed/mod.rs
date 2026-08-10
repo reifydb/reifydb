@@ -16,10 +16,7 @@ use std::{collections::HashMap, hash::Hash};
 
 use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{
-	key::operator_state::GroupId,
-	state::store::StateStore,
-};
+use reifydb_core::{key::operator_state::GroupId, state::store::StateStore};
 use reifydb_flow::window::{
 	engine::config::WindowEngineConfig,
 	ledger::{FiredAt, SealLedger},
@@ -104,5 +101,4 @@ mod tests {
 			"state addressed without a group must not be attributable to any group"
 		);
 	}
-
 }
