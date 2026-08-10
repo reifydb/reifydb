@@ -19,7 +19,6 @@ use reifydb_sdk::{
 };
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::FFIOperatorHarnessBuilder};
 use reifydb_value::value::Value;
-use serde::{Deserialize, Serialize};
 
 /// A bare `String` cannot be a cache key: `IntoGroupStateKey` exists to force every key through the operator-state
 /// framing, so this wrapper frames the test's keys exactly as an operator would.
@@ -65,7 +64,7 @@ impl IntoGroupStateKey for &TestKey {
 }
 
 #[operator_state]
-#[derive(Default, Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Default, Clone, Debug, PartialEq)]
 struct CounterState {
 	count: i64,
 }
@@ -77,7 +76,7 @@ impl HeapSize for CounterState {
 }
 
 #[operator_state]
-#[derive(Default, Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Default, Clone, Debug, PartialEq)]
 struct SumState {
 	total: i64,
 }

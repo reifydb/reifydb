@@ -35,7 +35,6 @@ reifydb-macro = { workspace = true }
 dashmap = { workspace = true, optional = true }
 postcard = { workspace = true, optional = true }
 tracing = { workspace = true }
-rkyv = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]

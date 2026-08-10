@@ -3,7 +3,6 @@
 
 use core::hash::{Hash, Hasher};
 
-use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 use xxhash_rust::xxh3;
 
@@ -42,11 +41,7 @@ impl Hash for Hash64 {
 	Ord,
 	Serialize,
 	Deserialize,
-	RkyvArchive,
-	RkyvSerialize,
-	RkyvDeserialize,
 )]
-#[rkyv(derive(Hash, PartialEq, Eq, PartialOrd, Ord))]
 #[serde(transparent)]
 pub struct Hash128(pub u128);
 

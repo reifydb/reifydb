@@ -3,26 +3,11 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, TypeError};
 
-#[derive(
-	Clone,
-	Copy,
-	Debug,
-	PartialEq,
-	Eq,
-	Hash,
-	PartialOrd,
-	Ord,
-	Serialize,
-	Deserialize,
-	RkyvArchive,
-	RkyvSerialize,
-	RkyvDeserialize,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct Precision(u8);
 

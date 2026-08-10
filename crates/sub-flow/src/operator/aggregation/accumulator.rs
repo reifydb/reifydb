@@ -26,7 +26,6 @@ use reifydb_value::{
 
 #[operator_state]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[rkyv(derive(Hash, PartialEq, Eq, PartialOrd, Ord))]
 pub struct WindowSlotKey {
 	pub timestamp: DateTime,
 	pub seq: u64,

@@ -37,7 +37,6 @@ reifydb-value = { workspace = true }
 serde = { workspace = true }
 serde_bytes = { workspace = true }
 postcard = { workspace = true }
-rkyv = { workspace = true }
 smallvec = { workspace = true }
 thiserror = { workspace = true }
 

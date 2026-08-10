@@ -10,16 +10,7 @@ use reifydb_value::{
 	util::cowvec::CowVec,
 	value::datetime::DateTime,
 };
-use rkyv::{
-	Archive, Deserialize as RkyvDeserialize, Portable, Serialize as RkyvSerialize, access,
-	api::high::{HighSerializer, HighValidator, to_bytes_in},
-	bytecheck::CheckBytes,
-	de::Pool,
-	deserialize,
-	rancor::{Error as RancorError, Strategy},
-	ser::allocator::ArenaHandle,
-	util::AlignedVec,
-};
+use serde::{Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
 use crate::row::bytes::{EncodedBytes, EncodedRowBuilder, RowBuilder, read_defined_at, sealed::Sealed};
@@ -47,9 +38,6 @@ impl From<OperatorError> for ValueError {
 pub enum OperatorError {
 	#[error("operator state serialization failed: {0}")]
 	Serialization(String),
-
-	#[error("operator state validation failed: {0}")]
-	Validation(String),
 
 	#[error("operator state deserialization failed: {0}")]
 	Deserialization(String),
@@ -220,76 +208,50 @@ pub trait OperatorState: Sized + Send + 'static {
 }
 
 thread_local! {
-	static ENCODE_BUFFER: RefCell<AlignedVec> = RefCell::new(AlignedVec::new());
+	static ENCODE_BUFFER: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
 }
 
-pub fn encode_archive<T>(value: &T, now: DateTime) -> Result<EncodedOperatorRow, OperatorError>
+pub fn encode<T>(value: &T, now: DateTime) -> Result<EncodedOperatorRow, OperatorError>
 where
-	T: for<'a> RkyvSerialize<HighSerializer<AlignedVec, ArenaHandle<'a>, RancorError>>,
+	T: Serialize + ?Sized,
 {
-	let buffer = ENCODE_BUFFER.with(|cell| mem::take(&mut *cell.borrow_mut()));
-	let mut filled = to_bytes_in::<_, RancorError>(value, buffer)
-		.map_err(|e| OperatorError::Serialization(e.to_string()))?;
-	let result = EncodedOperatorRow::new(filled.as_slice(), now);
+	let mut buffer = ENCODE_BUFFER.with(|cell| mem::take(&mut *cell.borrow_mut()));
+	buffer.clear();
+	let mut filled = postcard::to_extend(value, buffer).map_err(|e| OperatorError::Serialization(e.to_string()))?;
+	let result = EncodedOperatorRow::new(&filled, now);
 	filled.clear();
 	ENCODE_BUFFER.with(|cell| *cell.borrow_mut() = filled);
 	Ok(result)
 }
 
-pub fn decode_archive<T>(row: &EncodedOperatorRow) -> Result<T, OperatorError>
+pub fn decode_body<T>(row: &EncodedOperatorRow) -> Result<T, OperatorError>
 where
-	T: Archive,
-	T::Archived: Portable
-		+ for<'a> CheckBytes<HighValidator<'a, RancorError>>
-		+ RkyvDeserialize<T, Strategy<Pool, RancorError>>,
+	T: DeserializeOwned,
 {
-	let archived =
-		access::<T::Archived, RancorError>(row.body()).map_err(|e| OperatorError::Validation(e.to_string()))?;
-	deserialize::<T, RancorError>(archived).map_err(|e| OperatorError::Deserialization(e.to_string()))
+	postcard::from_bytes(row.body()).map_err(|e| OperatorError::Deserialization(e.to_string()))
 }
 
 pub fn decode<T: OperatorState>(row: &EncodedOperatorRow) -> Result<T, OperatorError> {
 	T::decode_state(row)
 }
 
-pub mod archive {
-	pub use rkyv::{self, Archive, Deserialize, Serialize};
+pub mod derive {
+	pub use serde::{self, Deserialize, Serialize};
 }
 
-pub trait ArchiveState:
-	Sized
-	+ Send
-	+ 'static
-	+ for<'a> RkyvSerialize<HighSerializer<AlignedVec, ArenaHandle<'a>, RancorError>>
-	+ Archive<
-		Archived: Portable
-		                  + for<'a> CheckBytes<HighValidator<'a, RancorError>>
-		                  + RkyvDeserialize<Self, Strategy<Pool, RancorError>>,
-	>
-{
-}
+pub trait StateCodec: Sized + Send + 'static + Serialize + DeserializeOwned {}
 
-impl<T> ArchiveState for T where
-	T: Send
-		+ 'static
-		+ for<'a> RkyvSerialize<HighSerializer<AlignedVec, ArenaHandle<'a>, RancorError>>
-		+ Archive<
-			Archived: Portable
-			                  + for<'a> CheckBytes<HighValidator<'a, RancorError>>
-			                  + RkyvDeserialize<T, Strategy<Pool, RancorError>>,
-		>
-{
-}
+impl<T> StateCodec for T where T: Sized + Send + 'static + Serialize + DeserializeOwned {}
 
 macro_rules! leaf_operator_state {
 	($($ty:ty),* $(,)?) => {
 		$(impl OperatorState for $ty {
 			fn encode_state(&self, now: DateTime) -> Result<EncodedOperatorRow, OperatorError> {
-				encode_archive(self, now)
+				encode(self, now)
 			}
 
 			fn decode_state(row: &EncodedOperatorRow) -> Result<Self, OperatorError> {
-				decode_archive::<Self>(row)
+				decode_body::<Self>(row)
 			}
 		})*
 	};
@@ -301,18 +263,14 @@ impl<K, V> OperatorState for BTreeMap<K, V>
 where
 	K: Send + 'static,
 	V: Send + 'static,
-	Self: for<'a> RkyvSerialize<HighSerializer<AlignedVec, ArenaHandle<'a>, RancorError>>,
-	Self: Archive,
-	<Self as Archive>::Archived: Portable
-		+ for<'a> CheckBytes<HighValidator<'a, RancorError>>
-		+ RkyvDeserialize<Self, Strategy<Pool, RancorError>>,
+	Self: Serialize + DeserializeOwned,
 {
 	fn encode_state(&self, now: DateTime) -> Result<EncodedOperatorRow, OperatorError> {
-		encode_archive(self, now)
+		encode(self, now)
 	}
 
 	fn decode_state(row: &EncodedOperatorRow) -> Result<Self, OperatorError> {
-		decode_archive::<Self>(row)
+		decode_body::<Self>(row)
 	}
 }
 

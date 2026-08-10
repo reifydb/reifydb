@@ -8,11 +8,10 @@ use std::{
 	hash::{Hash, Hasher},
 };
 
-use reifydb_codec::row::operator::{ArchiveState, OperatorState};
+use reifydb_codec::row::operator::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 use reifydb_value::reifydb_assertions;
-use rkyv::with::AsVec;
 
 use super::WindowAccumulator;
 
@@ -148,7 +147,6 @@ impl Hash for OrdF64 {
 #[operator_state]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Multiset<V: Ord> {
-	#[rkyv(with = AsVec)]
 	counts: BTreeMap<V, u64>,
 	total: u64,
 }
@@ -274,7 +272,6 @@ impl<V: Ord + Clone> Multiset<V> {
 #[operator_state]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RetainedMap<K: Ord, V> {
-	#[rkyv(with = AsVec)]
 	entries: BTreeMap<K, V>,
 }
 
@@ -343,7 +340,7 @@ impl<V: Clone> LastValue<V> {
 impl<V: Clone + Debug> WindowAccumulator for LastValue<V>
 where
 	V: PartialEq,
-	LastValue<V>: OperatorState + ArchiveState + HeapSize,
+	LastValue<V>: OperatorState + StateCodec + HeapSize,
 {
 	type Contribution = V;
 	type Output = V;
@@ -368,7 +365,6 @@ where
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
 pub struct KeyedInvertibleAccumulator<K: Ord, A> {
-	#[rkyv(with = AsVec)]
 	subs: BTreeMap<K, A>,
 }
 
@@ -390,7 +386,7 @@ impl<K, A> WindowAccumulator for KeyedInvertibleAccumulator<K, A>
 where
 	K: Ord + Clone + Debug,
 	A: WindowAccumulator,
-	KeyedInvertibleAccumulator<K, A>: OperatorState + ArchiveState + HeapSize,
+	KeyedInvertibleAccumulator<K, A>: OperatorState + StateCodec + HeapSize,
 {
 	type Contribution = (K, A::Contribution);
 	type Output = BTreeMap<K, A::Output>;
@@ -440,7 +436,7 @@ impl<K, V> WindowAccumulator for RetainedAccumulator<K, V>
 where
 	K: Ord + Clone + Debug,
 	V: Clone + Debug + PartialEq,
-	RetainedAccumulator<K, V>: OperatorState + ArchiveState + HeapSize,
+	RetainedAccumulator<K, V>: OperatorState + StateCodec + HeapSize,
 {
 	type Contribution = (K, V);
 	type Output = BTreeMap<K, V>;

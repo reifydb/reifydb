@@ -15,7 +15,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	key::operator_state::GroupId,
 	metrics::heap::HeapSize,
-	state::{cache::StateCache, map::PersistedMap, store::StateStore},
+	state::{cache::StateCache, store::StateStore},
 };
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
@@ -31,7 +31,7 @@ use crate::window::{
 
 pub type RollingTopKBuffer<C, Accumulator> = BTreeMap<C, Accumulator>;
 
-pub type RollingTopKEmit<SK, Output> = PersistedMap<SK, Output>;
+pub type RollingTopKEmit<SK, Output> = BTreeMap<SK, Output>;
 
 pub enum TopKEmit<Output> {
 	Insert {
@@ -55,13 +55,13 @@ type StateRows<G> = HashMap<G, (GroupId, RowNumber)>;
 struct GroupSlot<C, Accumulator, SK, Output> {
 	group_id: GroupId,
 	state_row_number: RowNumber,
-	buffer: PersistedMap<C, Accumulator>,
+	buffer: RollingTopKBuffer<C, Accumulator>,
 	prior_emit: RollingTopKEmit<SK, Output>,
 	buffer_changed: bool,
 }
 
 pub struct RollingTopKEngine<G, C, Accumulator, SK, Output> {
-	buffers: StateCache<BufferKey, PersistedMap<C, Accumulator>>,
+	buffers: StateCache<BufferKey, RollingTopKBuffer<C, Accumulator>>,
 	last_emit: StateCache<EmitKey, RollingTopKEmit<SK, Output>>,
 	meta: StateCache<MetaKey, GroupMeta<C>>,
 	meta_low_water: Option<u64>,
@@ -82,11 +82,11 @@ where
 	Output: HeapSize,
 	GroupMeta<C>: OperatorState,
 	RollingTopKEmit<SK, Output>: OperatorState,
-	PersistedMap<C, Accumulator>: OperatorState,
+	RollingTopKBuffer<C, Accumulator>: OperatorState,
 {
 	pub fn new(_config: WindowEngineConfig) -> Self {
 		Self {
-			buffers: StateCache::<BufferKey, PersistedMap<C, Accumulator>>::new(),
+			buffers: StateCache::<BufferKey, RollingTopKBuffer<C, Accumulator>>::new(),
 			last_emit: StateCache::<EmitKey, RollingTopKEmit<SK, Output>>::new(),
 			meta: StateCache::<MetaKey, GroupMeta<C>>::new(),
 			meta_low_water: None,
@@ -254,7 +254,7 @@ where
 							(group_id, rn)
 						}
 					};
-					let buffer: PersistedMap<C, Accumulator> = self
+					let buffer: RollingTopKBuffer<C, Accumulator> = self
 						.buffers
 						.get(store, &BufferKey::of_row(group_id, state_row_number))?
 						.unwrap_or_default();

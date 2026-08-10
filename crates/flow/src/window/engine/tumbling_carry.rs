@@ -19,7 +19,6 @@ use reifydb_core::{
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
-use rkyv::{Archive, with::AsVec};
 use tracing::instrument;
 
 use crate::window::{
@@ -52,7 +51,6 @@ pub struct CarryMeta<C, Carry, Output> {
 	high_water: Option<C>,
 	sealed_up_to: Option<C>,
 	sealed_carry: Option<Carry>,
-	#[rkyv(with = AsVec)]
 	windows: BTreeMap<C, WindowEntry<C, Carry, Output>>,
 }
 
@@ -76,7 +74,7 @@ impl<C, Carry, Output> Default for CarryMeta<C, Carry, Output> {
 	}
 }
 
-impl<C: WindowAnchor, Carry: Archive, Output: Archive> MetaHighWater for CarryMeta<C, Carry, Output>
+impl<C: WindowAnchor, Carry, Output> MetaHighWater for CarryMeta<C, Carry, Output>
 where
 	Self: OperatorState,
 {
@@ -108,8 +106,6 @@ where
 	C: HeapSize,
 	Carry: HeapSize,
 	Output: HeapSize,
-	Carry: Archive,
-	Output: Archive,
 	CarryMeta<C, Carry, Output>: OperatorState,
 {
 	pub fn new(config: TumblingCarryConfig<C>) -> Self {

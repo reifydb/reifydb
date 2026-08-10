@@ -9,7 +9,7 @@ use std::{
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
-	operator::{decode, encode_archive},
+	operator::{decode, encode},
 	shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_core::{
@@ -30,7 +30,6 @@ use reifydb_value::{
 	error::Error,
 	value::{Value, datetime::DateTime, row_number::RowNumber},
 };
-use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
 use crate::{
@@ -42,7 +41,7 @@ use crate::{
 };
 
 #[operator_state]
-#[derive(Debug, Clone, Serialize, Deserialize, Default, HeapSize)]
+#[derive(Debug, Clone, Default, HeapSize)]
 struct TakeState {
 	by_seq: BTreeMap<u64, RowNumber>,
 	by_row: HashMap<RowNumber, (u64, usize)>,
@@ -111,7 +110,7 @@ impl TakeOperator {
 			let s = self.load_take_state(txn)?;
 			let persist: PersistFn = Box::new(move |txn, value| {
 				let state = value.downcast::<TakeState>().expect("TakeState slot type");
-				let row = encode_archive(&*state, DateTime::MAX).map_err(|e| {
+				let row = encode(&*state, DateTime::MAX).map_err(|e| {
 					Error::from(FlowStateError::Encode {
 						state: "TakeState",
 						cause: e.to_string(),

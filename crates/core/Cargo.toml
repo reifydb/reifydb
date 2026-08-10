@@ -19,7 +19,6 @@ reifydb-runtime = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-macro = { workspace = true }
 reifydb-value = { workspace = true }
-rkyv = { workspace = true }
 thiserror = { workspace = true }
 crossbeam-skiplist = { workspace = true }
 serde = { workspace = true }

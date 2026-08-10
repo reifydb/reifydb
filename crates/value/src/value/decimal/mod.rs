@@ -12,7 +12,6 @@ use std::{
 
 use bigdecimal::{BigDecimal as BigDecimalInner, FromPrimitive};
 use num_traits::{One, Zero};
-use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{
 	Deserialize, Deserializer, Serialize, Serializer,
 	de::{self, Visitor},
@@ -22,15 +21,14 @@ use super::{int::Int, uint::Uint};
 use crate::{
 	error::{Error, TypeError},
 	fragment::Fragment,
-	value::{decimal::archive::BigDecimalBytes, value_type::ValueType},
+	value::value_type::ValueType,
 };
 
-pub mod archive;
 pub mod parse;
 
 #[repr(transparent)]
-#[derive(Clone, Debug, RkyvArchive, RkyvSerialize, RkyvDeserialize)]
-pub struct Decimal(#[rkyv(with = BigDecimalBytes)] pub BigDecimalInner);
+#[derive(Clone, Debug)]
+pub struct Decimal(pub BigDecimalInner);
 
 impl Decimal {
 	pub fn zero() -> Self {

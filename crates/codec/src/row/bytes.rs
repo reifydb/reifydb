@@ -4,12 +4,6 @@
 use std::ops::Deref;
 
 use reifydb_value::{encoding::LeBytes, util::cowvec::CowVec, value::datetime::DateTime};
-use rkyv::{
-	Archive, Deserialize as RkyvDeserialize, Place, Serialize as RkyvSerialize,
-	rancor::Fallible,
-	ser::{Allocator, Writer},
-	vec::{ArchivedVec, VecResolver},
-};
 use serde::{Deserialize, Serialize};
 
 use crate::row::shape::fingerprint::RowShapeFingerprint;
@@ -46,27 +40,6 @@ impl Deref for EncodedBytes {
 
 	fn deref(&self) -> &Self::Target {
 		&self.0
-	}
-}
-
-impl Archive for EncodedBytes {
-	type Archived = ArchivedVec<u8>;
-	type Resolver = VecResolver;
-
-	fn resolve(&self, resolver: Self::Resolver, out: Place<Self::Archived>) {
-		ArchivedVec::resolve_from_len(self.0.len(), resolver, out);
-	}
-}
-
-impl<S: Fallible + Writer + Allocator + ?Sized> RkyvSerialize<S> for EncodedBytes {
-	fn serialize(&self, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
-		ArchivedVec::serialize_from_slice(self.0.as_slice(), serializer)
-	}
-}
-
-impl<D: Fallible + ?Sized> RkyvDeserialize<EncodedBytes, D> for ArchivedVec<u8> {
-	fn deserialize(&self, _: &mut D) -> Result<EncodedBytes, D::Error> {
-		Ok(EncodedBytes(CowVec::new(self.as_slice().to_vec())))
 	}
 }
 

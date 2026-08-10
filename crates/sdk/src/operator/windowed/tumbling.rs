@@ -6,7 +6,7 @@ use std::{collections::BTreeMap, fmt::Debug, hash::Hash};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
-	row::operator::ArchiveState,
+	row::operator::StateCodec,
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -53,7 +53,7 @@ type Buckets<A> = TumblingBuckets<<A as TumblingOperator>::GroupKey, DateTime, A
 type WindowOrder<A> = Vec<(<A as TumblingOperator>::GroupKey, WindowSpan<DateTime>)>;
 
 pub trait TumblingOperator {
-	type GroupKey: Clone + Eq + Ord + Hash + Debug + ArchiveState;
+	type GroupKey: Clone + Eq + Ord + Hash + Debug + StateCodec;
 
 	type Accumulator: WindowAccumulator;
 

@@ -23,7 +23,7 @@ use reifydb_value::{
 use serde::{Deserialize, Serialize};
 
 #[operator_state]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub(super) struct DistinctLayout {
 	names: Vec<String>,
 	types: Vec<ValueType>,
@@ -36,7 +36,7 @@ impl HeapSize for DistinctLayout {
 }
 
 #[operator_state]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub(super) struct SerializedRow {
 	number: RowNumber,
 	created_at: DateTime,
@@ -151,7 +151,7 @@ impl DistinctLayout {
 }
 
 #[operator_state]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub(super) struct DistinctEntry {
 	pub(super) rows: BTreeMap<RowNumber, SerializedRow>,
 }

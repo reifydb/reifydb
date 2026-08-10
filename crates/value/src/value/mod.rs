@@ -11,12 +11,6 @@ use std::{
 };
 
 use num_traits::ToPrimitive;
-use rkyv::{
-	Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize,
-	rancor::Source,
-	ser::{Allocator, Writer},
-	validation::ArchiveContext,
-};
 use serde::{Deserialize, Serialize};
 pub mod as_string;
 pub mod blob;
@@ -68,13 +62,7 @@ use uint::Uint;
 use uuid::{Uuid4, Uuid7};
 use value_type::ValueType;
 
-#[derive(Clone, Debug, Serialize, Deserialize, RkyvArchive, RkyvSerialize, RkyvDeserialize)]
-#[rkyv(serialize_bounds(
-	__S: Writer + Allocator,
-	__S::Error: Source,
-))]
-#[rkyv(deserialize_bounds(__D::Error: Source))]
-#[rkyv(bytecheck(bounds(__C: ArchiveContext, __C::Error: Source)))]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Value {
 	None {
 		inner: ValueType,
@@ -130,17 +118,17 @@ pub enum Value {
 
 	Decimal(Decimal),
 
-	Any(#[rkyv(omit_bounds)] Box<Value>),
+	Any(Box<Value>),
 
 	DictionaryId(DictionaryEntryId),
 
 	Type(ValueType),
 
-	List(#[rkyv(omit_bounds)] Vec<Value>),
+	List(Vec<Value>),
 
-	Record(#[rkyv(omit_bounds)] Vec<(String, Value)>),
+	Record(Vec<(String, Value)>),
 
-	Tuple(#[rkyv(omit_bounds)] Vec<Value>),
+	Tuple(Vec<Value>),
 }
 
 impl Value {
@@ -647,7 +635,7 @@ mod tests {
 	use ::uuid::Uuid as StdUuid;
 	use bigdecimal::BigDecimal;
 	use num_bigint::BigInt;
-	use rkyv::{Archive, access, deserialize, rancor::Error, to_bytes};
+	use postcard::{from_bytes, to_allocvec};
 
 	use super::*;
 	use crate::value::{
@@ -905,7 +893,10 @@ mod tests {
 			Value::DateTime(DateTime::new(2026, 7, 20, 12, 34, 56, 789).unwrap()),
 			Value::Time(Time::new(23, 59, 59, 1).unwrap()),
 			Value::Duration(Duration::new(1, 2, 3).unwrap()),
-			Value::IdentityId(IdentityId(Uuid7(StdUuid::from_u128(7)))),
+			Value::IdentityId(IdentityId(Uuid7(StdUuid::from_bytes([
+				0x01, 0x8F, 0x2A, 0x3B, 0x4C, 0x5D, 0x70, 0x07, 0x80, 0x07, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x07,
+			])))),
 			Value::Uuid4(Uuid4(StdUuid::from_u128(4))),
 			Value::Uuid7(Uuid7(StdUuid::from_u128(77))),
 			Value::Blob(Blob::new(vec![1, 2, 3])),
@@ -925,9 +916,8 @@ mod tests {
 			]),
 		];
 
-		let bytes = to_bytes::<Error>(&values).unwrap();
-		let archived = access::<<Vec<Value> as Archive>::Archived, Error>(&bytes).unwrap();
-		let restored = deserialize::<Vec<Value>, Error>(archived).unwrap();
+		let bytes = to_allocvec(&values).unwrap();
+		let restored: Vec<Value> = from_bytes(&bytes).unwrap();
 		assert_eq!(restored, values);
 	}
 }

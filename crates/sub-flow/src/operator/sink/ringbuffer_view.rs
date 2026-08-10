@@ -11,7 +11,7 @@ use reifydb_codec::{
 	},
 	row::{
 		bytes::EncodedBytes,
-		operator::{EncodedOperatorRow, decode, encode_archive},
+		operator::{EncodedOperatorRow, decode, encode},
 		pod::EncodedPodRow,
 		shape::{RowFamily, RowShape},
 	},
@@ -346,7 +346,7 @@ impl SinkRingBufferViewOperator {
 			source_rn,
 			time,
 		};
-		let row = encode_archive(&entry, DateTime::MAX).map_err(|e| {
+		let row = encode(&entry, DateTime::MAX).map_err(|e| {
 			Error::from(FlowStateError::Encode {
 				state: "RingBufferRowEntry",
 				cause: e.to_string(),
@@ -431,7 +431,7 @@ struct RowEntry {
 }
 
 fn encode_u64(value: u64, state: &'static str) -> Result<EncodedOperatorRow> {
-	encode_archive(&value, DateTime::MAX).map_err(|e| {
+	encode(&value, DateTime::MAX).map_err(|e| {
 		Error::from(FlowStateError::Encode {
 			state,
 			cause: e.to_string(),

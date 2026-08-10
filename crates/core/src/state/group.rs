@@ -2,12 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_macro::operator_state;
-use serde::{Deserialize, Serialize};
 
 use crate::metrics::heap::HeapSize;
 
 #[operator_state]
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct GroupRecord {
 	pub group: Vec<u8>,
 }

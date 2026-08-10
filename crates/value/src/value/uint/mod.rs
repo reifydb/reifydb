@@ -11,16 +11,13 @@ use std::{
 
 use num_bigint::BigInt as StdBigInt;
 use num_traits::Signed;
-use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
-
-use crate::value::int::archive::BigIntBytes;
 
 pub mod parse;
 
 #[repr(transparent)]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RkyvArchive, RkyvSerialize, RkyvDeserialize)]
-pub struct Uint(#[rkyv(with = BigIntBytes)] pub StdBigInt);
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Uint(pub StdBigInt);
 
 impl Uint {
 	pub fn from_u64(value: u64) -> Self {

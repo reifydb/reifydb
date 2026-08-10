@@ -9,7 +9,6 @@ use std::{
 };
 
 use ::uuid::{Builder, Uuid as StdUuid};
-use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -21,9 +20,7 @@ use crate::{
 pub mod parse;
 
 #[repr(transparent)]
-#[derive(
-	Debug, Copy, Clone, Hash, PartialEq, Eq, Serialize, Deserialize, RkyvArchive, RkyvSerialize, RkyvDeserialize,
-)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Uuid4(pub StdUuid);
 
 impl Uuid4 {
@@ -80,9 +77,7 @@ impl Display for Uuid4 {
 }
 
 #[repr(transparent)]
-#[derive(
-	Debug, Copy, Clone, Hash, PartialEq, Eq, Serialize, Deserialize, RkyvArchive, RkyvSerialize, RkyvDeserialize,
-)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Uuid7(pub StdUuid);
 
 impl Default for Uuid7 {

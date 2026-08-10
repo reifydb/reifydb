@@ -10,7 +10,7 @@ use std::{
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
-	row::operator::ArchiveState,
+	row::operator::StateCodec,
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -55,7 +55,7 @@ use crate::{
 type AccumulatorContribution<A> = <<A as RollingOperator>::Accumulator as WindowAccumulator>::Contribution;
 
 pub trait RollingOperator {
-	type GroupKey: Clone + Eq + Ord + Hash + Debug + ArchiveState;
+	type GroupKey: Clone + Eq + Ord + Hash + Debug + StateCodec;
 
 	type Accumulator: WindowAccumulator;
 

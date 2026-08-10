@@ -4,7 +4,7 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
-use reifydb_codec::row::operator::{decode, encode_archive};
+use reifydb_codec::row::operator::{decode, encode};
 use reifydb_core::{
 	interface::{
 		catalog::{flow::OperatorId, id::SubscriptionId, subscription::IMPLICIT_COLUMN_OP},
@@ -30,12 +30,11 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
 };
-use serde::{Deserialize, Serialize};
 
 use crate::sink::DeliveryBuffer;
 
 #[operator_state]
-#[derive(Debug, Clone, Serialize, Deserialize, Default, HeapSize)]
+#[derive(Debug, Clone, Default, HeapSize)]
 struct DeliveredState {
 	rows: BTreeSet<RowNumber>,
 }
@@ -151,7 +150,7 @@ impl EphemeralSinkSubscriptionOperator {
 			let s = self.load_delivered_state(txn)?;
 			let persist: PersistFn = Box::new(move |txn, value| {
 				let state = value.downcast::<DeliveredState>().expect("DeliveredState slot type");
-				let row = encode_archive(&*state, DateTime::MAX).map_err(|e| {
+				let row = encode(&*state, DateTime::MAX).map_err(|e| {
 					Error(Box::new(internal!("Failed to serialize DeliveredState: {}", e)))
 				})?;
 				utils::state_set(operator_id, txn, &utils::empty_state_key(), row)?;

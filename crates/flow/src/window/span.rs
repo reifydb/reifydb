@@ -3,11 +3,10 @@
 
 use std::fmt::Debug;
 
-use reifydb_codec::row::operator::ArchiveState;
+use reifydb_codec::row::operator::StateCodec;
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
-use serde::{Deserialize, Serialize};
 
 pub trait WindowCoord: Copy + Ord + Debug {
 	type Span: Copy + Ord + Debug + IsZero + Default + Send + Sync;
@@ -77,7 +76,7 @@ impl<T> WindowAnchor for T where T: Slot<Coord = T> + WindowCoord {}
 
 pub type SlotSpan<S> = <<S as Slot>::Coord as WindowCoord>::Span;
 
-pub trait Slot: Copy + Ord + Debug + ArchiveState {
+pub trait Slot: Copy + Ord + Debug + StateCodec {
 	type Coord: WindowCoord;
 
 	fn order_key(&self) -> Self::Coord;
@@ -137,7 +136,7 @@ impl Slot for DateTime {
 }
 
 #[operator_state]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct WindowSpan<T> {
 	pub start: T,
 	pub end: T,

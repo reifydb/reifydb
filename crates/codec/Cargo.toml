@@ -20,7 +20,7 @@ num-bigint = { workspace = true }
 num-traits = { workspace = true }
 bigdecimal = { workspace = true }
 uuid = { workspace = true }
-rkyv = { workspace = true }
+postcard = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true }

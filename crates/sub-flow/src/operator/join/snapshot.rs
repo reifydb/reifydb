@@ -5,7 +5,7 @@ use reifydb_codec::{
 	key::{decode_u64_asc, encode_u64_asc, encoded::EncodedKeyRange},
 	row::{
 		bytes::EncodedBytes,
-		operator::{EncodedOperatorRow, decode, encode_archive},
+		operator::{EncodedOperatorRow, decode, encode},
 	},
 };
 use reifydb_core::{
@@ -24,7 +24,6 @@ use reifydb_value::{
 	},
 	value::row_number::RowNumber,
 };
-use serde::{Deserialize, Serialize};
 
 use crate::{
 	error::FlowStateError,
@@ -64,7 +63,6 @@ impl ContentVersion {
 }
 
 #[operator_state]
-#[derive(Serialize, Deserialize)]
 struct Pin {
 	refs: u64,
 
@@ -262,7 +260,7 @@ fn decode_published(bytes: &[u8]) -> Option<PublishedRight> {
 }
 
 fn encode_version(txn: &FlowTransaction, version: ContentVersion) -> Result<EncodedOperatorRow> {
-	encode_archive(&version.0, txn.written_at()).map_err(|e| {
+	encode(&version.0, txn.written_at()).map_err(|e| {
 		Error::from(FlowStateError::Encode {
 			state: "snapshot published version",
 			cause: e.to_string(),
@@ -280,7 +278,7 @@ fn decode_version(row: &EncodedOperatorRow) -> Result<ContentVersion> {
 }
 
 fn encode_pin(txn: &FlowTransaction, pin: &Pin) -> Result<EncodedOperatorRow> {
-	encode_archive(pin, txn.written_at()).map_err(|e| {
+	encode(pin, txn.written_at()).map_err(|e| {
 		Error::from(FlowStateError::Encode {
 			state: "snapshot pin",
 			cause: e.to_string(),

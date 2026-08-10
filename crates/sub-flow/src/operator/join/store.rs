@@ -10,7 +10,7 @@ use reifydb_codec::{
 	},
 	row::{
 		bytes::EncodedBytes,
-		operator::{EncodedOperatorRow, decode_archive, encode_archive},
+		operator::{EncodedOperatorRow, decode_body, encode},
 		shape::{
 			RowFamily, RowShape, RowShapeField, cache::RowShapeCacheCell, fingerprint::RowShapeFingerprint,
 		},
@@ -267,7 +267,7 @@ impl Store {
 					return Ok(None);
 				}
 				let fields: Vec<RowShapeField> =
-					decode_archive::<Vec<RowShapeField>>(&row).map_err(|e| {
+					decode_body::<Vec<RowShapeField>>(&row).map_err(|e| {
 						Error::from(FlowStateError::Decode {
 							state: "row shape",
 							cause: e.to_string(),
@@ -291,7 +291,7 @@ impl Store {
 			self.shape_cache.insert(shape.clone());
 			return Ok(());
 		}
-		let row = encode_archive(&shape.fields().to_vec(), DateTime::MAX).map_err(|e| {
+		let row = encode(&shape.fields().to_vec(), DateTime::MAX).map_err(|e| {
 			Error::from(FlowStateError::Encode {
 				state: "row shape",
 				cause: e.to_string(),

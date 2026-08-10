@@ -7,7 +7,6 @@ use std::{
 	str::FromStr,
 };
 
-use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{
 	Deserialize, Deserializer, Serialize, Serializer,
 	de::{self, Visitor},
@@ -29,10 +28,7 @@ pub static UPDATED_AT_COLUMN_NAME: &str = "updated_at";
 pub static TIME_COLUMN_NAME: &str = "time";
 
 #[repr(transparent)]
-#[derive(
-	Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default, RkyvArchive, RkyvSerialize, RkyvDeserialize,
-)]
-#[rkyv(derive(Hash, PartialEq, Eq, PartialOrd, Ord))]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct DateTime {
 	nanos: u64,
 }
@@ -320,16 +316,6 @@ impl DateTime {
 			return self;
 		}
 		DateTime::from_nanos(self.nanos - self.nanos % width)
-	}
-}
-
-impl ArchivedDateTime {
-	pub fn to_nanos(&self) -> u64 {
-		self.nanos.to_native()
-	}
-
-	pub fn to_epoch_millis(&self) -> i64 {
-		(self.to_nanos() / NANOS_PER_MILLI) as i64
 	}
 }
 

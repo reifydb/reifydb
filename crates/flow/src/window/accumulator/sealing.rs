@@ -8,10 +8,9 @@ use std::{
 	marker::PhantomData,
 };
 
-use reifydb_codec::row::operator::{ArchiveState, OperatorState};
+use reifydb_codec::row::operator::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
-use rkyv::with::AsVec;
 
 use super::WindowAccumulator;
 use crate::window::span::{Slot, SlotSpan, WindowCoord};
@@ -21,7 +20,6 @@ use crate::window::span::{Slot, SlotSpan, WindowCoord};
 struct SealingBase<C: Slot, V> {
 	grace: Option<SlotSpan<C>>,
 	high_water: Option<C>,
-	#[rkyv(with = AsVec)]
 	tail: BTreeMap<C, V>,
 }
 
@@ -134,7 +132,7 @@ impl<C, V> WindowAccumulator for SealingMax<C, V>
 where
 	C: Slot + Hash,
 	V: Ord + Clone + Debug,
-	SealingMax<C, V>: OperatorState + ArchiveState + HeapSize,
+	SealingMax<C, V>: OperatorState + StateCodec + HeapSize,
 {
 	type Contribution = (C, V);
 	type Output = V;
@@ -218,7 +216,7 @@ impl<C, V> WindowAccumulator for SealingMin<C, V>
 where
 	C: Slot + Hash,
 	V: Ord + Clone + Debug,
-	SealingMin<C, V>: OperatorState + ArchiveState + HeapSize,
+	SealingMin<C, V>: OperatorState + StateCodec + HeapSize,
 {
 	type Contribution = (C, V);
 	type Output = V;
@@ -306,7 +304,7 @@ impl<C, V> WindowAccumulator for SealingEndpoint<C, V>
 where
 	C: Slot + Hash,
 	V: Clone + Debug + PartialEq,
-	SealingEndpoint<C, V>: OperatorState + ArchiveState + HeapSize,
+	SealingEndpoint<C, V>: OperatorState + StateCodec + HeapSize,
 {
 	type Contribution = (C, V);
 	type Output = (V, V);
@@ -401,7 +399,7 @@ impl<C, F> WindowAccumulator for SealingFold<C, F>
 where
 	C: Slot + Hash,
 	F: SealFold,
-	SealingFold<C, F>: OperatorState + ArchiveState + HeapSize,
+	SealingFold<C, F>: OperatorState + StateCodec + HeapSize,
 {
 	type Contribution = (C, F::Value);
 	type Output = F::Output;
@@ -496,7 +494,7 @@ impl<C, V> WindowAccumulator for TailAccumulator<C, V>
 where
 	C: Slot,
 	V: Clone + Debug + PartialEq,
-	TailAccumulator<C, V>: OperatorState + ArchiveState + HeapSize,
+	TailAccumulator<C, V>: OperatorState + StateCodec + HeapSize,
 {
 	type Contribution = (C, V);
 	type Output = BTreeMap<C, V>;

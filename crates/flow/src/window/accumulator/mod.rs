@@ -3,13 +3,13 @@
 
 use std::fmt::Debug;
 
-use reifydb_codec::row::operator::{ArchiveState, OperatorState};
+use reifydb_codec::row::operator::{OperatorState, StateCodec};
 use reifydb_core::metrics::heap::HeapSize;
 
 pub mod invertible;
 pub mod sealing;
 
-pub trait WindowAccumulator: Clone + Debug + Default + OperatorState + ArchiveState + HeapSize {
+pub trait WindowAccumulator: Clone + Debug + Default + OperatorState + StateCodec + HeapSize {
 	type Contribution: Clone + Debug;
 	type Output: Clone + Debug + PartialEq;
 

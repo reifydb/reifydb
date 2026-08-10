@@ -16,7 +16,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	key::operator_state::GroupId,
 	metrics::heap::HeapSize,
-	state::{cache::StateCache, map::PersistedMap, store::StateStore},
+	state::{cache::StateCache, store::StateStore},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
@@ -32,7 +32,7 @@ use crate::window::{
 	span::{IsZero, Slot, WindowCoord},
 };
 
-pub type RollingBuffer<C, Accumulator> = PersistedMap<C, Accumulator>;
+pub type RollingBuffer<C, Accumulator> = BTreeMap<C, Accumulator>;
 
 pub type RollingBuckets<G, C, Contribution> = BTreeMap<(G, C), Vec<AccumulatorEvent<Contribution>>>;
 

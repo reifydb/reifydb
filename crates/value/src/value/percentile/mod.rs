@@ -6,26 +6,11 @@
 //! structurally rather than as an opaque blob. `min`/`max` are `Option` instead of `NaN`-on-empty
 //! and `sum`/`count` are [`OrderedF64`], so the whole type stays `Eq`/`Ord` and free of `NaN`.
 
-use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 
 use crate::value::ordered_f64::OrderedF64;
 
-#[derive(
-	Debug,
-	Copy,
-	Clone,
-	PartialEq,
-	Eq,
-	PartialOrd,
-	Ord,
-	Hash,
-	Serialize,
-	Deserialize,
-	RkyvArchive,
-	RkyvSerialize,
-	RkyvDeserialize,
-)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Centroid {
 	mean: OrderedF64,
 	weight: OrderedF64,
@@ -48,7 +33,7 @@ impl Centroid {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RkyvArchive, RkyvSerialize, RkyvDeserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Percentiles {
 	centroids: Vec<Centroid>,
 	max_size: usize,
@@ -136,11 +121,11 @@ pub const DEFAULT_MAX_SIZE: usize = 100;
 
 #[cfg(test)]
 mod tests {
-	use rkyv::{access, deserialize, rancor::Error, to_bytes};
+	use postcard::{from_bytes, to_allocvec};
 
 	use crate::value::{
 		ordered_f64::OrderedF64,
-		percentile::{ArchivedPercentiles, Centroid, Percentiles},
+		percentile::{Centroid, Percentiles},
 	};
 
 	fn f(v: f64) -> OrderedF64 {
@@ -173,14 +158,12 @@ mod tests {
 	}
 
 	#[test]
-	fn round_trips_through_the_archived_form() {
-		// Persistence goes through rkyv directly rather than a serialized blob, so every
-		// field including the centroid vector must survive archive -> access -> deserialize.
+	fn round_trips_through_the_persisted_form() {
+		// The digest persists structurally, so every field including the centroids must survive.
 		let p = sample();
 
-		let bytes = to_bytes::<Error>(&p).expect("archive");
-		let archived = access::<ArchivedPercentiles, Error>(&bytes).expect("access");
-		let restored: Percentiles = deserialize::<Percentiles, Error>(archived).expect("deserialize");
+		let bytes = to_allocvec(&p).expect("encode");
+		let restored: Percentiles = from_bytes(&bytes).expect("decode");
 
 		assert_eq!(restored, p);
 	}
@@ -206,9 +189,8 @@ mod tests {
 		// to every new group rather than showing up under load.
 		let p = Percentiles::empty(64);
 
-		let bytes = to_bytes::<Error>(&p).expect("archive");
-		let archived = access::<ArchivedPercentiles, Error>(&bytes).expect("access");
-		let restored: Percentiles = deserialize::<Percentiles, Error>(archived).expect("deserialize");
+		let bytes = to_allocvec(&p).expect("encode");
+		let restored: Percentiles = from_bytes(&bytes).expect("decode");
 
 		assert_eq!(restored, p);
 		assert_eq!(restored.max_size(), 64, "max_size must survive; it bounds later merges");
@@ -222,11 +204,11 @@ mod tests {
 
 	#[test]
 	fn truncated_bytes_are_rejected() {
-		// bytecheck must reject a short buffer rather than hand back a garbage digest.
+		// The centroid length prefix must outrun the buffer, never yield a garbage digest.
 		let p = sample();
-		let bytes = to_bytes::<Error>(&p).expect("archive");
+		let bytes = to_allocvec(&p).expect("encode");
 		let truncated = &bytes[..bytes.len() / 2];
 
-		assert!(access::<ArchivedPercentiles, Error>(truncated).is_err());
+		assert!(from_bytes::<Percentiles>(truncated).is_err());
 	}
 }

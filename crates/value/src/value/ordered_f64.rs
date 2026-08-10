@@ -9,7 +9,6 @@ use std::{
 	ops::Deref,
 };
 
-use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor};
 
 use crate::{
@@ -18,7 +17,7 @@ use crate::{
 };
 
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, Default, RkyvArchive, RkyvSerialize, RkyvDeserialize)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct OrderedF64(f64);
 
 impl Serialize for OrderedF64 {

@@ -62,7 +62,6 @@ impl IsZero for RowSpan {
 
 #[operator_state]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[rkyv(derive(Hash, PartialEq, Eq, PartialOrd, Ord))]
 pub struct OrdinalCoord {
 	ordinal: u64,
 }
@@ -157,7 +156,7 @@ impl Slot for OrdinalCoord {
 
 #[cfg(test)]
 mod tests {
-	use rkyv::{rancor::Error, to_bytes};
+	use reifydb_codec::row::operator::encode;
 
 	use super::*;
 
@@ -197,14 +196,14 @@ mod tests {
 	}
 
 	#[test]
-	fn an_ordinal_archives_to_the_same_bytes_as_the_bare_count_it_replaced() {
-		// A changed archived layout is silent: stored buffer keys get reinterpreted, not rejected.
+	fn an_ordinal_encodes_to_the_same_bytes_as_the_bare_count_it_replaced() {
+		// A changed persisted layout is silent: stored buffer keys get reinterpreted, not rejected.
 		let value = 0x0123_4567_89AB_CDEFu64;
 
-		let wrapped = to_bytes::<Error>(&OrdinalCoord::from_arrival_counter(value)).expect("archive");
-		let bare = to_bytes::<Error>(&value).expect("archive");
+		let wrapped = encode(&OrdinalCoord::from_arrival_counter(value), DateTime::EPOCH).expect("encode");
+		let bare = encode(&value, DateTime::EPOCH).expect("encode");
 
-		assert_eq!(wrapped.as_ref(), bare.as_ref(), "the newtype changed the persisted layout");
+		assert_eq!(wrapped.body(), bare.body(), "the newtype changed the persisted layout");
 	}
 
 	#[test]

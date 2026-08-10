@@ -10,17 +10,13 @@ use std::{
 };
 
 use num_bigint::BigInt as StdBigInt;
-use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{Deserialize, Serialize};
 
-use crate::value::int::archive::BigIntBytes;
-
-pub mod archive;
 pub mod parse;
 
 #[repr(transparent)]
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, RkyvArchive, RkyvSerialize, RkyvDeserialize)]
-pub struct Int(#[rkyv(with = BigIntBytes)] pub StdBigInt);
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Int(pub StdBigInt);
 
 impl Int {
 	pub fn from_i64(value: i64) -> Self {

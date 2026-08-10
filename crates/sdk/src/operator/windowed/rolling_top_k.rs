@@ -6,7 +6,7 @@ use std::{collections::BTreeMap, fmt::Debug, hash::Hash};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
-	row::operator::ArchiveState,
+	row::operator::StateCodec,
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -53,13 +53,13 @@ type AccumulatorContribution<A> = <<A as RollingTopKOperator>::Accumulator as Wi
 type Buckets<A> = RollingBuckets<<A as RollingTopKOperator>::GroupKey, DateTime, AccumulatorContribution<A>>;
 
 pub trait RollingTopKOperator {
-	type GroupKey: Clone + Eq + Ord + Hash + Debug + ArchiveState;
+	type GroupKey: Clone + Eq + Ord + Hash + Debug + StateCodec;
 
 	type Accumulator: WindowAccumulator;
 
-	type SecondaryKey: Clone + Eq + Ord + Hash + Debug + ArchiveState + HeapSize;
+	type SecondaryKey: Clone + Eq + Ord + Hash + Debug + StateCodec + HeapSize;
 
-	type Output: Clone + Debug + PartialEq + ArchiveState + HeapSize;
+	type Output: Clone + Debug + PartialEq + StateCodec + HeapSize;
 
 	fn seal_after(&self) -> Option<Duration> {
 		None

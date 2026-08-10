@@ -8,5 +8,4 @@
 pub mod cache;
 pub mod group;
 pub mod horizon;
-pub mod map;
 pub mod store;

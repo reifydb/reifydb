@@ -6,12 +6,6 @@ use std::{
 	str::FromStr,
 };
 
-use rkyv::{
-	Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize,
-	rancor::Source,
-	ser::{Allocator, Writer},
-	validation::ArchiveContext,
-};
 use serde::{Deserialize, Serialize};
 
 pub mod get;
@@ -35,26 +29,7 @@ use crate::{
 	},
 };
 
-#[derive(
-	Clone,
-	Debug,
-	Hash,
-	PartialEq,
-	Eq,
-	PartialOrd,
-	Ord,
-	Serialize,
-	Deserialize,
-	RkyvArchive,
-	RkyvSerialize,
-	RkyvDeserialize,
-)]
-#[rkyv(serialize_bounds(
-	__S: Writer + Allocator,
-	__S::Error: Source,
-))]
-#[rkyv(deserialize_bounds(__D::Error: Source))]
-#[rkyv(bytecheck(bounds(__C: ArchiveContext, __C::Error: Source)))]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ValueType {
 	Boolean,
 
@@ -106,17 +81,17 @@ pub enum ValueType {
 
 	Decimal,
 
-	Option(#[rkyv(omit_bounds)] Box<ValueType>),
+	Option(Box<ValueType>),
 
 	Any,
 
 	DictionaryId,
 
-	List(#[rkyv(omit_bounds)] Box<ValueType>),
+	List(Box<ValueType>),
 
-	Record(#[rkyv(omit_bounds)] Vec<(String, ValueType)>),
+	Record(Vec<(String, ValueType)>),
 
-	Tuple(#[rkyv(omit_bounds)] Vec<ValueType>),
+	Tuple(Vec<ValueType>),
 }
 
 impl ValueType {

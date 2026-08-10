@@ -6,7 +6,7 @@ use std::{collections::BTreeMap, fmt::Debug, hash::Hash};
 use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapability};
 use reifydb_codec::{
 	key::encoded::{EncodedKey, IntoEncodedKey},
-	row::operator::ArchiveState,
+	row::operator::StateCodec,
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -61,13 +61,13 @@ type WindowResults<A> =
 	Vec<WindowResult<<A as TumblingCarryOperator>::GroupKey, DateTime, <A as TumblingCarryOperator>::Output>>;
 
 pub trait TumblingCarryOperator {
-	type GroupKey: Clone + Eq + Ord + Hash + Debug + ArchiveState;
+	type GroupKey: Clone + Eq + Ord + Hash + Debug + StateCodec;
 
 	type Accumulator: WindowAccumulator;
 
-	type Output: Clone + Debug + PartialEq + ArchiveState + HeapSize;
+	type Output: Clone + Debug + PartialEq + StateCodec + HeapSize;
 
-	type Carry: Clone + Debug + ArchiveState + HeapSize;
+	type Carry: Clone + Debug + StateCodec + HeapSize;
 
 	fn extract(
 		&self,

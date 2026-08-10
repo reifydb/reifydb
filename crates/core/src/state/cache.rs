@@ -127,7 +127,6 @@ mod tests {
 	use reifydb_codec::row::operator::EncodedOperatorRow;
 	use reifydb_macro::operator_state;
 	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
-	use serde::{Deserialize, Serialize};
 
 	use super::*;
 	use crate::key::operator_state::{GroupId, GroupStateKey, Keyspace};
@@ -156,7 +155,7 @@ mod tests {
 	}
 
 	#[operator_state]
-	#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+	#[derive(Debug, Clone, Copy, Default, PartialEq)]
 	struct Cell {
 		value: i32,
 	}

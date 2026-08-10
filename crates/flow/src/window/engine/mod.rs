@@ -487,7 +487,10 @@ pub(crate) fn decode_meta_key(key: &EncodedKey) -> Option<MetaKey> {
 
 #[cfg(test)]
 pub(crate) mod test_support {
-	use std::{collections::HashMap, ops::Bound};
+	use std::{
+		collections::{BTreeMap, HashMap},
+		ops::Bound,
+	};
 
 	use reifydb_codec::{
 		key::encoded::{EncodedKey, EncodedKeyRange},
@@ -496,7 +499,7 @@ pub(crate) mod test_support {
 	use reifydb_core::{
 		key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 		metrics::heap::HeapSize,
-		state::{map::PersistedMap, store::StateStore},
+		state::store::StateStore,
 	};
 	use reifydb_macro::operator_state;
 	use reifydb_value::{
@@ -606,7 +609,7 @@ pub(crate) mod test_support {
 						.is_some_and(|(_, found, _)| found == Keyspace::BUFFER)
 				})
 				.map(|(_, bytes)| {
-					decode::<PersistedMap<u64, A>>(bytes)
+					decode::<BTreeMap<u64, A>>(bytes)
 						.expect("persisted window buffer must decode")
 						.len()
 				})

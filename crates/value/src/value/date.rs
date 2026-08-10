@@ -3,7 +3,6 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use rkyv::{Archive as RkyvArchive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use serde::{
 	Deserialize, Deserializer, Serialize, Serializer,
 	de::{self, Visitor},
@@ -16,10 +15,7 @@ use crate::{
 };
 
 #[repr(transparent)]
-#[derive(
-	Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default, RkyvArchive, RkyvSerialize, RkyvDeserialize,
-)]
-#[rkyv(derive(Hash, PartialEq, Eq, PartialOrd, Ord))]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct Date {
 	days_since_epoch: i32,
 }
