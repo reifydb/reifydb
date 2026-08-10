@@ -41,27 +41,11 @@ struct OperatorArgs {
 
 #[derive(Subcommand)]
 enum OperatorCommand {
-	Keyspace(KeyspaceArgs),
-	Snapshot(SnapshotArgs),
+	Current(CurrentArgs),
 }
 
 #[derive(Parser)]
-struct KeyspaceArgs {
-	dir: String,
-	#[arg(long)]
-	operator: Option<u64>,
-	#[arg(long, default_value_t = 40)]
-	top: usize,
-	#[arg(long)]
-	groups: bool,
-	#[arg(long)]
-	names: bool,
-	#[arg(long)]
-	json: bool,
-}
-
-#[derive(Parser)]
-struct SnapshotArgs {
+struct CurrentArgs {
 	dir: String,
 	#[arg(long)]
 	operator: Option<u64>,
@@ -71,6 +55,8 @@ struct SnapshotArgs {
 	names: bool,
 	#[arg(long)]
 	json: bool,
+	#[arg(long)]
+	global: bool,
 }
 
 #[derive(Parser)]
@@ -107,8 +93,7 @@ fn main() {
 		Command::Storage(args) => storage(&ctx, args),
 		Command::Catalog(args) => catalog_dump(args),
 		Command::Operator(args) => match args.command {
-			OperatorCommand::Keyspace(args) => operator_keyspace(args),
-			OperatorCommand::Snapshot(args) => operator_snapshot(args),
+			OperatorCommand::Current(args) => operator_current(args),
 		},
 	};
 	if let Err(e) = result {
@@ -146,27 +131,7 @@ fn storage(ctx: &Context, args: StorageArgs) -> Result<()> {
 	Ok(())
 }
 
-fn operator_keyspace(args: KeyspaceArgs) -> Result<()> {
-	let multi_db = require_multi_db(&args.dir)?;
-	let cat = if args.names {
-		eprintln!("opening {} via the embedded engine (this writes to the directory - use a copy)", args.dir);
-		Some(catalog::with_open(&args.dir, catalog::load)?)
-	} else {
-		None
-	};
-	operator::keyspace(
-		&multi_db,
-		cat.as_ref(),
-		operator::Options {
-			operator: args.operator,
-			top: args.top,
-			json: args.json,
-			groups: args.groups,
-		},
-	)
-}
-
-fn operator_snapshot(args: SnapshotArgs) -> Result<()> {
+fn operator_current(args: CurrentArgs) -> Result<()> {
 	let operator_db = require_operator_db(&args.dir)?;
 	let cat = if args.names {
 		eprintln!("opening {} via the embedded engine (this writes to the directory - use a copy)", args.dir);
@@ -181,6 +146,7 @@ fn operator_snapshot(args: SnapshotArgs) -> Result<()> {
 			operator: args.operator,
 			top: args.top,
 			json: args.json,
+			global: args.global,
 		},
 	)
 }

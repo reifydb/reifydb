@@ -36,7 +36,11 @@ pub fn render(cat: &Catalog, phys: &dbstat::Map, opts: Options) {
 					.get(id)
 					.map(|(name, k)| format!("{name}  [{k}]"))
 					.unwrap_or_else(|| "(unmapped)".to_string()),
-				_ => cat.operators.get(id).cloned().unwrap_or_else(|| "(unmapped)".to_string()),
+				_ => cat
+					.operators
+					.get(id)
+					.map(|(view, stage)| format!("{view}  {stage}"))
+					.unwrap_or_else(|| "(unmapped)".to_string()),
 			};
 			Obj {
 				phys: format!("{kind}_{id}"),
@@ -276,7 +280,7 @@ fn table(headers: &[&str], rows: &[Vec<String>]) {
 pub fn dump_catalog(cat: &Catalog, json: bool) {
 	let mut sources: Vec<(&u64, &(String, &str))> = cat.sources.iter().collect();
 	sources.sort_by_key(|(id, _)| **id);
-	let mut operators: Vec<(&u64, &String)> = cat.operators.iter().collect();
+	let mut operators: Vec<(&u64, &(String, String))> = cat.operators.iter().collect();
 	operators.sort_by_key(|(id, _)| **id);
 
 	if json {
@@ -287,8 +291,12 @@ pub fn dump_catalog(cat: &Catalog, json: bool) {
 				("kind", json_str(kind)),
 			]);
 		}
-		for (id, label) in &operators {
-			print_json(&[("operator_id", id.to_string()), ("view", json_str(label))]);
+		for (id, (view, stage)) in &operators {
+			print_json(&[
+				("operator_id", id.to_string()),
+				("view", json_str(view)),
+				("stage", json_str(stage)),
+			]);
 		}
 		return;
 	}
@@ -299,8 +307,8 @@ pub fn dump_catalog(cat: &Catalog, json: bool) {
 		println!("  source_{:<6} {}  [{}]", id, name, kind);
 	}
 	println!("\n## operator_<id> -> view [stage]{{operator}}");
-	for (id, label) in &operators {
-		println!("  operator_{:<5} {}", id, label);
+	for (id, (view, stage)) in &operators {
+		println!("  operator_{:<5} {}  {}", id, view, stage);
 	}
 }
 

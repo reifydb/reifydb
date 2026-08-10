@@ -7,7 +7,7 @@ use reifydb::{Database, Params, SqliteConfig, Value, embedded};
 
 pub struct Catalog {
 	pub sources: HashMap<u64, (String, &'static str)>,
-	pub operators: HashMap<u64, String>,
+	pub operators: HashMap<u64, (String, String)>,
 }
 
 pub fn with_open<T>(dir: &str, f: impl FnOnce(&Database) -> Result<T, String>) -> Result<T, String> {
@@ -51,12 +51,12 @@ pub fn load(db: &Database) -> Result<Catalog, String> {
 		}
 	}
 
-	let mut operators: HashMap<u64, String> = HashMap::new();
+	let mut operators: HashMap<u64, (String, String)> = HashMap::new();
 	for r in rows(db, "from system::operators")? {
 		if let Some(id) = u64c(&r, "id") {
 			let flow_id = u64c(&r, "flow_id").unwrap_or(0);
 			let view = flows.get(&flow_id).cloned().unwrap_or_else(|| format!("flow{flow_id}"));
-			operators.insert(id, format!("{view}  {}", operator_label(&blobc(&r, "data"))));
+			operators.insert(id, (view, operator_label(&blobc(&r, "data"))));
 		}
 	}
 
