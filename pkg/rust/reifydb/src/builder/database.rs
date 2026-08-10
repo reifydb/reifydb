@@ -58,6 +58,7 @@ use reifydb_runtime::{Runtime, context::RuntimeContext, version_epoch::VersionEp
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::{MultiStore, MultiStoreVersion};
+use reifydb_store_operator::{OperatorStoreVersion, store::OperatorStore};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
@@ -122,6 +123,7 @@ pub struct DatabaseBuilder {
 		Option<Box<dyn FnOnce(TransformsConfigurator) -> TransformsConfigurator + Send + 'static>>,
 	multi_store: Option<MultiStore>,
 	single_store: Option<SingleStore>,
+	operator_store: Option<OperatorStore>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_factory: Option<Box<dyn SubsystemFactory>>,
 	#[cfg(feature = "sub_flow")]
@@ -170,6 +172,7 @@ impl DatabaseBuilder {
 			transforms_configurator: None,
 			multi_store: None,
 			single_store: None,
+			operator_store: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_factory: None,
 			#[cfg(feature = "sub_flow")]
@@ -197,9 +200,10 @@ impl DatabaseBuilder {
 		self
 	}
 
-	pub fn with_stores(mut self, multi: MultiStore, single: SingleStore) -> Self {
+	pub fn with_stores(mut self, multi: MultiStore, single: SingleStore, operator: OperatorStore) -> Self {
 		self.multi_store = Some(multi);
 		self.single_store = Some(single);
+		self.operator_store = Some(operator);
 		self
 	}
 
@@ -456,9 +460,11 @@ impl DatabaseBuilder {
 
 		let multi_store = self.multi_store.clone().expect("MultiStore must be set via with_stores()");
 		let single_store = self.single_store.clone().expect("SingleStore must be set via with_stores()");
+		let operator_store = self.operator_store.clone().expect("OperatorStore must be set via with_stores()");
 
 		self.ioc = self.ioc.register(single_store.clone());
 		self.ioc = self.ioc.register(multi_store.clone());
+		self.ioc = self.ioc.register(operator_store);
 		self.ioc = self.ioc.register(RetentionMetrics::new());
 
 		let metrics_registry = self.ioc.resolve::<MetricsRegistry>()?;
@@ -597,6 +603,7 @@ impl DatabaseBuilder {
 			CatalogVersion.version(),
 			MultiStoreVersion.version(),
 			SingleStoreVersion.version(),
+			OperatorStoreVersion.version(),
 			TransactionVersion.version(),
 			AuthVersion.version(),
 			RqlVersion.version(),

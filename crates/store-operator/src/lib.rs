@@ -20,7 +20,7 @@ impl HasVersion for OperatorStoreVersion {
 				.unwrap_or(env!("CARGO_PKG_NAME"))
 				.to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
-			description: "In-memory single-version arena storage for flow operator state".to_string(),
+			description: "Single-version storage for flow operator state".to_string(),
 			r#type: ComponentType::Module,
 		}
 	}

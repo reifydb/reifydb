@@ -48,6 +48,7 @@ use reifydb_runtime::{
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::SqliteConfig;
 use reifydb_store_multi::MultiStore;
+use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
@@ -226,6 +227,7 @@ impl TestEngineBuilder {
 		let eventbus = EventBus::new(&spawner);
 		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 		let single_store = SingleStore::testing_memory();
+		let operator_store = OperatorStore::testing_memory();
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 		let catalog_cache = CatalogCache::new();
 		let version_epoch = VersionEpoch::new();
@@ -245,6 +247,7 @@ impl TestEngineBuilder {
 		ioc = ioc.register(catalog_cache.clone());
 		ioc = ioc.register(spawner.clone()).register(clock.clone()).register(rng.clone());
 		ioc = ioc.register(single_store.clone());
+		ioc = ioc.register(operator_store.clone());
 		ioc = ioc.register(eventbus.clone());
 
 		#[cfg(not(target_arch = "wasm32"))]

@@ -18,6 +18,7 @@ use reifydb_store_multi::{
 	},
 	tier::commit::buffer::MultiCommitBufferTier,
 };
+use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::{
 	SingleStore,
 	buffer::tier::SingleBufferTier,
@@ -45,7 +46,7 @@ impl StorageFactory {
 		&self,
 		multi_commit_buffer: MultiCommitBufferTier,
 		spawner: &ActorSpawner,
-	) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
+	) -> (MultiStore, SingleStore, OperatorStore, SingleTransaction, EventBus) {
 		match self {
 			StorageFactory::Memory => create_memory_store_with(multi_commit_buffer, spawner),
 			StorageFactory::Sqlite(config) => {
@@ -58,7 +59,7 @@ impl StorageFactory {
 fn create_memory_store_with(
 	multi_commit_buffer: MultiCommitBufferTier,
 	spawner: &ActorSpawner,
-) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
+) -> (MultiStore, SingleStore, OperatorStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(spawner);
 
 	let multi_store = MultiStore::standard(MultiStoreConfig {
@@ -82,15 +83,17 @@ fn create_memory_store_with(
 		clock: Clock::Real,
 	});
 
+	let operator_store = OperatorStore::memory();
+
 	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone());
-	(multi_store, single_store, transaction_single, eventbus)
+	(multi_store, single_store, operator_store, transaction_single, eventbus)
 }
 
 fn create_sqlite_store_with(
 	multi_commit_buffer: MultiCommitBufferTier,
 	config: SqliteConfig,
 	spawner: &ActorSpawner,
-) -> (MultiStore, SingleStore, SingleTransaction, EventBus) {
+) -> (MultiStore, SingleStore, OperatorStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(spawner);
 
 	let multi_path = match &config.path {
@@ -133,8 +136,18 @@ fn create_sqlite_store_with(
 		clock: Clock::Real,
 	});
 
+	let operator_path = match &config.path {
+		DbPath::File(p) => DbPath::File(p.with_extension("").join("operator.db")),
+		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("operator.db")),
+		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("operator.db")),
+	};
+	let operator_store = OperatorStore::sqlite(SqliteConfig {
+		path: operator_path,
+		..config.clone()
+	});
+
 	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone());
-	(multi_store, single_store, transaction_single, eventbus)
+	(multi_store, single_store, operator_store, transaction_single, eventbus)
 }
 
 pub(crate) fn transaction(

@@ -435,6 +435,11 @@ impl StandardEngine {
 			.expect("SingleStore must be registered in IocContainer for metrics");
 		let metrics_reader = MetricsReader::new(metrics_store);
 
+		let operator_state = config
+			.ioc
+			.resolve::<OperatorStore>()
+			.expect("OperatorStore must be registered in IocContainer");
+
 		let catalog_for_interceptor = catalog.clone();
 		interceptors.add_late(Arc::new(move |interceptors: &mut Interceptors| {
 			interceptors.post_commit.add(Arc::new(CatalogCacheInterceptor::new(&catalog_for_interceptor)));
@@ -453,7 +458,7 @@ impl StandardEngine {
 			interceptors,
 			catalog,
 			operator_library,
-			operator_state: OperatorStore::default(),
+			operator_state,
 			dictionary_allocators,
 			read_only: AtomicBool::new(false),
 			shutting_down: AtomicBool::new(false),

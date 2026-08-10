@@ -8,7 +8,13 @@ use reifydb_codec::{
 	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
 };
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId};
-use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_runtime::{shutdown::Shutdown, sync::mutex::Mutex};
+#[cfg(not(target_arch = "wasm32"))]
+use reifydb_sqlite::{
+	SqliteConfig,
+	connection::{connect, convert_flags, resolve_db_path},
+	pragma,
+};
 use reifydb_value::util::cowvec::CowVec;
 use rusqlite::{Connection, ToSql, params};
 
@@ -33,56 +39,77 @@ pub struct OperatorStore {
 }
 
 struct StoreInner {
-	conn: Mutex<Connection>,
+	conn: Mutex<Option<Connection>>,
 	uppers: Mutex<BTreeMap<OperatorId, CommitVersion>>,
 }
 
 impl Default for OperatorStore {
 	fn default() -> Self {
-		Self::memory()
+		Self::testing_memory()
 	}
 }
 
 impl OperatorStore {
 	pub fn memory() -> Self {
-		let conn = Connection::open_in_memory().expect("operator state database could not be opened");
+		Self::with_connection(
+			Connection::open_in_memory().expect("operator state database could not be opened"),
+		)
+	}
+
+	#[cfg(not(target_arch = "wasm32"))]
+	pub fn sqlite(config: SqliteConfig) -> Self {
+		let path = resolve_db_path(config.path.clone(), "operator.db");
+		let conn = connect(&path, convert_flags(&config.flags))
+			.expect("operator state database could not be opened");
+		pragma::apply(&conn, &config).expect("operator state pragmas could not be applied");
+		Self::with_connection(conn)
+	}
+
+	pub fn testing_memory() -> Self {
+		Self::memory()
+	}
+
+	fn with_connection(conn: Connection) -> Self {
 		ensure_schema(&conn);
 		Self {
 			inner: Arc::new(StoreInner {
-				conn: Mutex::new(conn),
+				conn: Mutex::new(Some(conn)),
 				uppers: Mutex::new(BTreeMap::new()),
 			}),
 		}
 	}
 
 	pub fn set(&self, operator: OperatorId, key: EncodedKey, row: EncodedOperatorRow) {
-		self.inner
-			.conn
-			.lock()
-			.execute(
-				r#"INSERT INTO "operator_state" ("operator", "key", "bytes") VALUES (?1, ?2, ?3)
-				   ON CONFLICT ("operator", "key") DO UPDATE SET "bytes" = excluded."bytes""#,
-				params![operator.0 as i64, key.as_slice(), &row.bytes()[..]],
-			)
-			.expect("operator state write failed");
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return;
+		};
+		conn.execute(
+			r#"INSERT INTO "operator_state" ("operator", "key", "bytes") VALUES (?1, ?2, ?3)
+			   ON CONFLICT ("operator", "key") DO UPDATE SET "bytes" = excluded."bytes""#,
+			params![operator.0 as i64, key.as_slice(), &row.bytes()[..]],
+		)
+		.expect("operator state write failed");
 	}
 
 	pub fn remove(&self, operator: OperatorId, key: &EncodedKey) {
-		self.inner
-			.conn
-			.lock()
-			.execute(
-				r#"DELETE FROM "operator_state" WHERE "operator" = ?1 AND "key" = ?2"#,
-				params![operator.0 as i64, key.as_slice()],
-			)
-			.expect("operator state delete failed");
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return;
+		};
+		conn.execute(
+			r#"DELETE FROM "operator_state" WHERE "operator" = ?1 AND "key" = ?2"#,
+			params![operator.0 as i64, key.as_slice()],
+		)
+		.expect("operator state delete failed");
 	}
 
 	pub fn freeze(&self, _operator: OperatorId) {}
 
 	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedOperatorRow> {
 		let guard = self.inner.conn.lock();
-		let mut stmt = guard
+		let conn = guard.as_ref()?;
+		let mut stmt = conn
 			.prepare_cached(r#"SELECT "bytes" FROM "operator_state" WHERE "operator" = ?1 AND "key" = ?2"#)
 			.expect("operator state read could not be prepared");
 		let mut rows = stmt
@@ -95,7 +122,10 @@ impl OperatorStore {
 
 	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> bool {
 		let guard = self.inner.conn.lock();
-		let mut stmt = guard
+		let Some(conn) = guard.as_ref() else {
+			return false;
+		};
+		let mut stmt = conn
 			.prepare_cached(
 				r#"SELECT 1 FROM "operator_state" WHERE "operator" = ?1 AND "key" = ?2 LIMIT 1"#,
 			)
@@ -124,7 +154,10 @@ impl OperatorStore {
 		bound_params.push(&limit_param);
 
 		let guard = self.inner.conn.lock();
-		let mut stmt = guard.prepare_cached(&sql).expect("operator state scan could not be prepared");
+		let Some(conn) = guard.as_ref() else {
+			return OperatorBatch::empty();
+		};
+		let mut stmt = conn.prepare_cached(&sql).expect("operator state scan could not be prepared");
 		let mut rows = stmt.query(bound_params.as_slice()).expect("operator state scan failed");
 
 		let mut items = Vec::new();
@@ -152,7 +185,10 @@ impl OperatorStore {
 
 	pub fn bytes(&self, operator: OperatorId) -> u64 {
 		let guard = self.inner.conn.lock();
-		guard.query_row(
+		let Some(conn) = guard.as_ref() else {
+			return 0;
+		};
+		conn.query_row(
 			r#"SELECT COALESCE(SUM(LENGTH("key") + LENGTH("bytes")), 0) FROM "operator_state"
 			   WHERE "operator" = ?1"#,
 			params![operator.0 as i64],
@@ -163,7 +199,10 @@ impl OperatorStore {
 
 	pub fn total_bytes(&self) -> u64 {
 		let guard = self.inner.conn.lock();
-		guard.query_row(
+		let Some(conn) = guard.as_ref() else {
+			return 0;
+		};
+		conn.query_row(
 			r#"SELECT COALESCE(SUM(LENGTH("key") + LENGTH("bytes")), 0) FROM "operator_state""#,
 			[],
 			|row| row.get::<_, i64>(0),
@@ -172,12 +211,25 @@ impl OperatorStore {
 	}
 
 	pub fn drop_arena(&self, operator: OperatorId) {
-		self.inner
-			.conn
-			.lock()
-			.execute(r#"DELETE FROM "operator_state" WHERE "operator" = ?1"#, params![operator.0 as i64])
-			.expect("operator state drop failed");
+		{
+			let guard = self.inner.conn.lock();
+			if let Some(conn) = guard.as_ref() {
+				conn.execute(
+					r#"DELETE FROM "operator_state" WHERE "operator" = ?1"#,
+					params![operator.0 as i64],
+				)
+				.expect("operator state drop failed");
+			}
+		}
 		self.inner.uppers.lock().remove(&operator);
+	}
+}
+
+impl Shutdown for OperatorStore {
+	fn shutdown(&self) {
+		if let Some(conn) = self.inner.conn.lock().take() {
+			let _ = conn.close();
+		}
 	}
 }
 

@@ -31,6 +31,7 @@ use reifydb_runtime::{
 	shutdown::Shutdown,
 };
 use reifydb_store_multi::MultiStore;
+use reifydb_store_operator::store::OperatorStore;
 use reifydb_store_single::SingleStore;
 use reifydb_sub_api::subsystem::HealthStatus;
 #[cfg(all(feature = "sub_flow", not(reifydb_single_threaded)))]
@@ -263,6 +264,9 @@ impl Database {
 		}
 		if let Some(single_store) = self.engine.ioc().try_resolve::<SingleStore>() {
 			single_store.shutdown();
+		}
+		if let Some(operator_store) = self.engine.ioc().try_resolve::<OperatorStore>() {
+			operator_store.shutdown();
 		}
 		if let Some(cdc_store) = self.engine.ioc().try_resolve::<CdcStore>() {
 			cdc_store.shutdown();

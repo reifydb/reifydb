@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "In-memory single-version arena storage for flow operator state"
+description = "Single-version storage for flow operator state"
 
 [build-dependencies]
 reifydb-build = { workspace = true }
@@ -14,5 +14,6 @@ reifydb-build = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
+reifydb-sqlite = { workspace = true }
 reifydb-value = { workspace = true }
 rusqlite = { workspace = true, features = ["bundled"] }

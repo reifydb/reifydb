@@ -208,7 +208,7 @@ impl EmbeddedBuilder {
 		let clock = runtime.clock().clone();
 		let rng = runtime.rng().clone();
 
-		let (multi_store, single_store, transaction_single, eventbus) =
+		let (multi_store, single_store, operator_store, transaction_single, eventbus) =
 			self.storage_factory.create_with_multi_commit_buffer(multi_commit_buffer, &spawner);
 		let catalog_cache = CatalogCache::new();
 		let version_epoch = VersionEpoch::new();
@@ -230,7 +230,7 @@ impl EmbeddedBuilder {
 		let mut builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus, version_epoch)
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime)
-			.with_stores(multi_store, single_store)
+			.with_stores(multi_store, single_store, operator_store)
 			.with_cdc_backend(cdc_backend);
 
 		for dependency in self.dependencies {

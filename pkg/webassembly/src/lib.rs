@@ -57,6 +57,7 @@ use reifydb_store_multi::{
 	config::{CommitBufferConfig, MultiStoreConfig},
 	tier::commit::buffer::MultiCommitBufferTier,
 };
+use reifydb_store_operator::{OperatorStoreVersion, store::OperatorStore};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_flow::{builder::FlowConfig, subsystem::FlowSubsystem};
 use reifydb_transaction::{
@@ -207,6 +208,7 @@ impl WasmDB {
 			clock: Clock::Real,
 		});
 		let single_store = SingleStore::testing_memory();
+		let operator_store = OperatorStore::memory();
 
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 		let catalog_cache = CatalogCache::new();
@@ -232,6 +234,8 @@ impl WasmDB {
 		ioc = ioc.register(MetricsRegistry::new());
 
 		ioc = ioc.register(single_store.clone());
+
+		ioc = ioc.register(operator_store.clone());
 
 		// Register CdcStore (required by sub-flow)
 		let cdc_store = CdcStore::memory();
@@ -324,6 +328,7 @@ impl WasmDB {
 			CatalogVersion.version(),
 			MultiStoreVersion.version(),
 			SingleStoreVersion.version(),
+			OperatorStoreVersion.version(),
 			TransactionVersion.version(),
 			AuthVersion.version(),
 			RqlVersion.version(),
