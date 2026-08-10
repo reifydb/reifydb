@@ -7,7 +7,7 @@ use reifydb_core::{
 		cdc::CdcConsumerId,
 	},
 	key::{
-		cdc_consumer::{CdcConsumerKey, FlowSnapshotPin, ToConsumerKey},
+		cdc_consumer::CdcConsumerKey,
 		flow::FlowKey,
 		flow_version::FlowVersionKey,
 		namespace_flow::NamespaceFlowKey,
@@ -44,7 +44,6 @@ impl CatalogStore {
 
 			txn.remove(&FlowVersionKey::encoded(flow_id))?;
 			txn.remove(&CdcConsumerKey::encoded(CdcConsumerId::new(format!("flow:{}", flow_id.0))))?;
-			txn.remove(&FlowSnapshotPin(flow_id).to_consumer_key())?;
 
 			txn.remove(&NamespaceFlowKey::encoded(flow.namespace, flow_id))?;
 

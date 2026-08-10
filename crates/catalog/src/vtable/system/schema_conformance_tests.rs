@@ -31,7 +31,7 @@ use super::{
 	operator_libraries::SystemOperatorLibraries,
 	operator_library_inputs::SystemOperatorLibraryInputs,
 	operator_library_outputs::SystemOperatorLibraryOutputs,
-	operator_store::OperatorLibraryStore,
+	operator_libary::OperatorLibrary,
 	operator_types::SystemOperatorTypes,
 	operators::SystemOperators,
 	policies::SystemPolicies,
@@ -67,7 +67,7 @@ use crate::{
 fn all_system_vtables() -> Vec<Box<dyn BaseVTable>> {
 	let ioc = IocContainer::new();
 	let catalog = Catalog::testing();
-	let operators = OperatorLibraryStore::new();
+	let operators = OperatorLibrary::new();
 
 	let result: Vec<Box<dyn BaseVTable>> = vec![
 		Box::new(SystemSequences::new()),

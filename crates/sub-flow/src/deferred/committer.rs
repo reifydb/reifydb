@@ -12,7 +12,7 @@ use reifydb_core::{
 		cdc::{CdcConsumerId, ConsumerClass},
 		change::Change,
 	},
-	key::{Key, cdc_consumer::FlowSnapshotPin, kind::KeyKind},
+	key::{Key, kind::KeyKind},
 	state::budget::OperatorStateBudgetHandle,
 };
 #[cfg(test)]
@@ -24,8 +24,6 @@ use reifydb_runtime::actor::{
 	traits::{Actor, Directive},
 };
 use reifydb_store_operator::store::OperatorStore;
-#[cfg(test)]
-use reifydb_transaction::transaction::Transaction;
 use reifydb_transaction::{
 	group::{GroupCommitApply, GroupCommitCompletion, GroupCommitHandle, GroupCommitSubmission},
 	transaction::command::CommandTransaction,
@@ -35,7 +33,7 @@ use reifydb_value::value::identity::IdentityId;
 use reifydb_value::{Result, byte_size::ByteSize};
 use tracing::{instrument, warn};
 
-use crate::deferred::{quiescence::FlowMaterialization, snapshot::SnapshotPinTracker, tracker::FlowPositionTracker};
+use crate::deferred::{quiescence::FlowMaterialization, tracker::FlowPositionTracker};
 
 pub type CommitterHandle = ActorHandle<CommitterMessage>;
 
@@ -77,7 +75,6 @@ impl CommitterActor {
 			checkpoint_deletes,
 			view_changes,
 			control_cursor,
-			snapshot_pins,
 		} = slice;
 		let produced_output = combined.iter_sorted().next().is_some() || !view_changes.is_empty();
 		let combined = Arc::new(combined);
@@ -90,7 +87,6 @@ impl CommitterActor {
 		let apply_combined = Arc::clone(&combined);
 		let apply_checkpoints = checkpoints.clone();
 		let apply_deletes = checkpoint_deletes.clone();
-		let apply_pins = snapshot_pins.clone();
 		let apply: GroupCommitApply = Box::new(move |transaction| {
 			apply_committer.apply_slice(
 				transaction,
@@ -99,7 +95,6 @@ impl CommitterActor {
 				&apply_deletes,
 				view_changes,
 				&control_cursor,
-				&apply_pins,
 			)
 		});
 
@@ -112,11 +107,7 @@ impl CommitterActor {
 					if produced_output {
 						completion_committer.materialization.record_output(version);
 					}
-					completion_committer.post_commit_slice(
-						&checkpoints,
-						&checkpoint_deletes,
-						&snapshot_pins,
-					);
+					completion_committer.post_commit_slice(&checkpoints, &checkpoint_deletes);
 					let combined =
 						Arc::try_unwrap(combined).unwrap_or_else(|shared| (*shared).clone());
 					(reply)(Ok((version, combined)));
@@ -205,8 +196,6 @@ pub struct FlowSlice {
 	pub view_changes: Vec<Change>,
 
 	pub control_cursor: Option<(CdcConsumerId, CommitVersion)>,
-
-	pub snapshot_pins: Vec<(FlowId, CommitVersion)>,
 }
 
 impl FlowSlice {
@@ -217,7 +206,6 @@ impl FlowSlice {
 			checkpoint_deletes: Vec::new(),
 			view_changes: Vec::new(),
 			control_cursor: None,
-			snapshot_pins: Vec::new(),
 		}
 	}
 }
@@ -227,7 +215,6 @@ pub struct Committer {
 	flow_tracker: FlowPositionTracker,
 	materialization: FlowMaterialization,
 	operators: OperatorStore,
-	snapshot_pins: SnapshotPinTracker,
 }
 
 impl Committer {
@@ -235,13 +222,11 @@ impl Committer {
 		flow_tracker: FlowPositionTracker,
 		materialization: FlowMaterialization,
 		operators: OperatorStore,
-		snapshot_pins: SnapshotPinTracker,
 	) -> Self {
 		Self {
 			flow_tracker,
 			materialization,
 			operators,
-			snapshot_pins,
 		}
 	}
 
@@ -255,7 +240,6 @@ impl Committer {
 		checkpoint_deletes: &[FlowId],
 		view_changes: Vec<Change>,
 		control_cursor: &Option<(CdcConsumerId, CommitVersion)>,
-		snapshot_pins: &[(FlowId, CommitVersion)],
 	) -> Result<()> {
 		apply_pending_writes(transaction, combined)?;
 
@@ -267,18 +251,8 @@ impl Committer {
 			CdcCheckpoint::persist(transaction, flow_id, *version, ConsumerClass::Pinning)?;
 		}
 
-		for (flow_id, version) in snapshot_pins {
-			CdcCheckpoint::persist(
-				transaction,
-				&FlowSnapshotPin(*flow_id),
-				*version,
-				ConsumerClass::Pinning,
-			)?;
-		}
-
 		for flow_id in checkpoint_deletes {
 			CdcCheckpoint::delete(transaction, flow_id)?;
-			CdcCheckpoint::delete(transaction, &FlowSnapshotPin(*flow_id))?;
 		}
 
 		if let Some((consumer_id, version)) = control_cursor {
@@ -292,23 +266,13 @@ impl Committer {
 		&self,
 		checkpoints: &[(FlowId, CommitVersion)],
 		checkpoint_deletes: &[FlowId],
-		snapshot_pins: &[(FlowId, CommitVersion)],
 	) {
 		for (flow_id, version) in checkpoints {
 			self.flow_tracker.update(*flow_id, *version);
 		}
 
-		for (flow_id, version) in checkpoints {
-			self.snapshot_pins.record_checkpoint(*flow_id, *version);
-		}
-
-		for (flow_id, version) in snapshot_pins {
-			self.snapshot_pins.record_pin(*flow_id, *version);
-		}
-
 		for flow_id in checkpoint_deletes {
 			self.flow_tracker.remove(*flow_id);
-			self.snapshot_pins.forget(*flow_id);
 		}
 	}
 
@@ -339,7 +303,6 @@ impl Committer {
 			checkpoint_deletes,
 			view_changes,
 			control_cursor,
-			snapshot_pins,
 		} = slice;
 
 		let mut transaction = engine.begin_command(IdentityId::system())?;
@@ -352,13 +315,12 @@ impl Committer {
 			&checkpoint_deletes,
 			view_changes,
 			&control_cursor,
-			&snapshot_pins,
 		)?;
 
 		let commit_version = transaction.commit_unchecked()?;
 
 		apply_operator_state(&self.operators, commit_version, &combined);
-		self.post_commit_slice(&checkpoints, &checkpoint_deletes, &snapshot_pins);
+		self.post_commit_slice(&checkpoints, &checkpoint_deletes);
 		Ok((commit_version, combined))
 	}
 }
@@ -410,7 +372,7 @@ mod group_commit_integration {
 		time::Duration as StdDuration,
 	};
 
-	use reifydb_cdc::consume::watermark::{CdcConsumerWatermark, compute_pinning_watermark};
+	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 	use reifydb_codec::{
 		key::encoded::EncodedKey,
 		row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
@@ -486,7 +448,6 @@ mod group_commit_integration {
 			tracker.clone(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
-			SnapshotPinTracker::new(),
 		);
 		let handle = engine.spawner().spawn_flow(
 			"group-commit-test-committer",
@@ -732,86 +693,4 @@ mod group_commit_integration {
 		);
 	}
 
-	#[test]
-	fn a_snapshot_pin_rides_the_commit_as_a_pinning_consumer() {
-		// The snapshot pin only protects replay if CDC truncation cannot pass it, and
-		// truncation honors nothing but ConsumerClass::Pinning rows: compute_pinning_watermark
-		// skips Ephemeral rows entirely. The pin must land under its derived consumer key at
-		// exactly min(upper) and pull the pinning watermark down below the flow's own
-		// checkpoint. Falsified by persisting the pin as Ephemeral (the watermark assertion
-		// then reads 9) or by writing it under the flow's regular checkpoint key.
-		let te = TestEngine::builder().with_cdc().build();
-		let engine = te.inner().clone();
-		let committer = Committer::new(
-			FlowPositionTracker::new(),
-			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
-			engine.operator_state(),
-			SnapshotPinTracker::new(),
-		);
-
-		let mut slice = FlowSlice::empty();
-		slice.checkpoints = vec![(FlowId(1), CommitVersion(9))];
-		slice.snapshot_pins = vec![(FlowId(1), CommitVersion(7))];
-		committer.commit_slice(&engine, slice).expect("commit slice with pin");
-
-		let mut query = engine.begin_query(IdentityId::system()).expect("query");
-		let pin = CdcCheckpoint::fetch_row(&mut Transaction::Query(&mut query), &FlowSnapshotPin(FlowId(1)))
-			.expect("fetch pin")
-			.expect("the pin row must exist under its derived consumer key");
-		assert_eq!(pin.version, CommitVersion(7));
-		assert_eq!(pin.class, ConsumerClass::Pinning, "an Ephemeral pin would not bound CDC truncation");
-
-		let checkpoint =
-			CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut query), &FlowId(1)).expect("fetch");
-		assert_eq!(checkpoint, Some(CommitVersion(9)), "the pin must not overwrite the regular checkpoint");
-
-		let watermark =
-			compute_pinning_watermark(&mut Transaction::Query(&mut query)).expect("pinning watermark");
-		assert_eq!(
-			watermark,
-			Some(CommitVersion(7)),
-			"CDC truncation must be bounded by the pin, not the (higher) flow checkpoint"
-		);
-	}
-
-	#[test]
-	fn deleting_a_flows_checkpoint_also_deletes_its_snapshot_pin() {
-		// Flow retirement cleans its checkpoint row; the snapshot pin must go with it, or a
-		// dropped flow pins cdc.db forever and truncation never advances past its last
-		// snapshot. The in-memory lag surface must forget the flow too. Falsified by removing
-		// only the checkpoint on checkpoint_deletes or by leaving the tracker entry behind.
-		let te = TestEngine::builder().with_cdc().build();
-		let engine = te.inner().clone();
-		let pins = SnapshotPinTracker::new();
-		let committer = Committer::new(
-			FlowPositionTracker::new(),
-			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
-			engine.operator_state(),
-			pins.clone(),
-		);
-
-		let mut slice = FlowSlice::empty();
-		slice.checkpoints = vec![(FlowId(1), CommitVersion(9))];
-		slice.snapshot_pins = vec![(FlowId(1), CommitVersion(7))];
-		committer.commit_slice(&engine, slice).expect("commit slice with pin");
-		assert_eq!(pins.lags(), vec![(FlowId(1), 2)], "precondition: the pin must be tracked before retire");
-
-		let mut retire = FlowSlice::empty();
-		retire.checkpoint_deletes = vec![FlowId(1)];
-		committer.commit_slice(&engine, retire).expect("commit retire slice");
-
-		let mut query = engine.begin_query(IdentityId::system()).expect("query");
-		assert_eq!(
-			CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut query), &FlowId(1)).expect("fetch"),
-			None,
-			"the regular checkpoint must be deleted"
-		);
-		assert_eq!(
-			CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut query), &FlowSnapshotPin(FlowId(1)))
-				.expect("fetch"),
-			None,
-			"the snapshot pin must be deleted with the flow or it pins cdc.db forever"
-		);
-		assert!(pins.lags().is_empty(), "the retired flow must leave the lag surface");
-	}
 }

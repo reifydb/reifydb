@@ -67,7 +67,6 @@ pub enum ConfigKey {
 	FlowBacklogMemoryLimit,
 	FlowPullBatchBytes,
 	FlowLoadBatchBytes,
-	OperatorSnapshotInterval,
 	CdcConsumeWaitTimeout,
 	FlowJoinProbeBlockSize,
 	ThreadsAsync,
@@ -124,7 +123,6 @@ impl ConfigKey {
 			Self::FlowBacklogMemoryLimit,
 			Self::FlowPullBatchBytes,
 			Self::FlowLoadBatchBytes,
-			Self::OperatorSnapshotInterval,
 			Self::CdcConsumeWaitTimeout,
 			Self::FlowJoinProbeBlockSize,
 			Self::ThreadsAsync,
@@ -183,7 +181,6 @@ impl ConfigKey {
 			Self::FlowBacklogMemoryLimit => Value::Uint8(64 * 1024 * 1024),
 			Self::FlowPullBatchBytes => Value::Uint8(8 * 1024 * 1024),
 			Self::FlowLoadBatchBytes => Value::Uint8(8 * 1024 * 1024),
-			Self::OperatorSnapshotInterval => Value::duration_seconds(300),
 			Self::CdcConsumeWaitTimeout => Value::duration_seconds(30),
 			Self::FlowJoinProbeBlockSize => Value::Uint8(1024),
 			Self::ThreadsAsync => Value::Uint2(1),
@@ -339,12 +336,6 @@ impl ConfigKey {
 				"Byte budget of one catch-up loader read from the CDC log on behalf of flows that are \
 				 behind the in-memory backlog. Identical concurrent requests share a single read."
 			}
-			Self::OperatorSnapshotInterval => {
-				"Cadence at which a flow persists durable snapshots of its operator-state arenas into \
-				 operator.db. Each completed generation advances the flow's CDC snapshot pin so the \
-				 change log always covers replay from the newest usable snapshot. None disables \
-				 snapshotting; the flow then rebuilds operator state from scratch after a restart."
-			}
 			Self::CdcConsumeWaitTimeout => {
 				"Backstop timeout for the CDC consumer's wait for a consume reply from the downstream \
 				 consumer. A lost reply would otherwise wedge the poll loop forever; on timeout the batch \
@@ -460,7 +451,6 @@ impl ConfigKey {
 			Self::FlowBacklogMemoryLimit => true,
 			Self::FlowPullBatchBytes => true,
 			Self::FlowLoadBatchBytes => true,
-			Self::OperatorSnapshotInterval => false,
 			Self::CdcConsumeWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
 			Self::ThreadsAsync => true,
@@ -517,7 +507,6 @@ impl ConfigKey {
 			Self::FlowBacklogMemoryLimit => &[ValueType::Uint8],
 			Self::FlowPullBatchBytes => &[ValueType::Uint8],
 			Self::FlowLoadBatchBytes => &[ValueType::Uint8],
-			Self::OperatorSnapshotInterval => &[ValueType::Duration],
 			Self::CdcConsumeWaitTimeout => &[ValueType::Duration],
 			Self::FlowJoinProbeBlockSize => &[ValueType::Uint8],
 			Self::ThreadsAsync => &[ValueType::Uint2],
@@ -574,7 +563,6 @@ impl ConfigKey {
 			Self::FlowBacklogMemoryLimit => false,
 			Self::FlowPullBatchBytes => false,
 			Self::FlowLoadBatchBytes => false,
-			Self::OperatorSnapshotInterval => true,
 			Self::CdcConsumeWaitTimeout => false,
 			Self::FlowJoinProbeBlockSize => false,
 			Self::ThreadsAsync => false,
@@ -919,7 +907,6 @@ impl fmt::Display for ConfigKey {
 			Self::FlowBacklogMemoryLimit => write!(f, "FLOW_BACKLOG_MEMORY_LIMIT"),
 			Self::FlowPullBatchBytes => write!(f, "FLOW_PULL_BATCH_BYTES"),
 			Self::FlowLoadBatchBytes => write!(f, "FLOW_LOAD_BATCH_BYTES"),
-			Self::OperatorSnapshotInterval => write!(f, "OPERATOR_SNAPSHOT_INTERVAL"),
 			Self::CdcConsumeWaitTimeout => write!(f, "CDC_CONSUME_WAIT_TIMEOUT"),
 			Self::FlowJoinProbeBlockSize => write!(f, "FLOW_JOIN_PROBE_BLOCK_SIZE"),
 			Self::ThreadsAsync => write!(f, "THREADS_ASYNC"),
@@ -980,7 +967,6 @@ impl FromStr for ConfigKey {
 			"FLOW_BACKLOG_MEMORY_LIMIT" => Ok(Self::FlowBacklogMemoryLimit),
 			"FLOW_PULL_BATCH_BYTES" => Ok(Self::FlowPullBatchBytes),
 			"FLOW_LOAD_BATCH_BYTES" => Ok(Self::FlowLoadBatchBytes),
-			"OPERATOR_SNAPSHOT_INTERVAL" => Ok(Self::OperatorSnapshotInterval),
 			"CDC_CONSUME_WAIT_TIMEOUT" => Ok(Self::CdcConsumeWaitTimeout),
 			"FLOW_JOIN_PROBE_BLOCK_SIZE" => Ok(Self::FlowJoinProbeBlockSize),
 			"THREADS_ASYNC" => Ok(Self::ThreadsAsync),
@@ -1218,7 +1204,6 @@ mod tests {
 		assert!(all.contains(&ConfigKey::FlowSampleInterval));
 		assert!(all.contains(&ConfigKey::MetricsSampleInterval));
 		assert!(all.contains(&ConfigKey::MetricsSnapshotInterval));
-		assert!(all.contains(&ConfigKey::OperatorSnapshotInterval));
 	}
 
 	#[test]

@@ -35,15 +35,6 @@ impl ToConsumerKey for FlowId {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FlowSnapshotPin(pub FlowId);
-
-impl ToConsumerKey for FlowSnapshotPin {
-	fn to_consumer_key(&self) -> EncodedKey {
-		CdcConsumerKey::encoded(CdcConsumerId::new(format!("flow:{}:snapshot", self.0.0)))
-	}
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CdcConsumerKey {
 	pub consumer: CdcConsumerId,
@@ -111,7 +102,7 @@ impl CdcConsumerKeyRange {
 pub mod tests {
 	use std::ops::RangeBounds;
 
-	use super::{CdcConsumerKey, CdcConsumerKeyRange, EncodableKey, FlowSnapshotPin, ToConsumerKey};
+	use super::{CdcConsumerKey, CdcConsumerKeyRange, EncodableKey, ToConsumerKey};
 	use crate::interface::{catalog::flow::FlowId, cdc::CdcConsumerId};
 
 	#[test]
@@ -157,21 +148,6 @@ pub mod tests {
 
 		let decoded = CdcConsumerKey::decode(&encoded).expect("Failed to decode key");
 		assert_eq!(decoded.consumer, CdcConsumerId::new("flow:42"));
-	}
-
-	#[test]
-	fn test_flow_snapshot_pin_key_is_distinct_and_scannable() {
-		// The pin must land under its own derived consumer id so it never collides with the
-		// flow's regular checkpoint row, yet still fall inside the full-scan range that
-		// compute_pinning_watermark walks; a pin outside that range would never bound CDC
-		// truncation. Falsified by deriving the pin key from "flow:{id}" without the suffix
-		// or by encoding it outside the CdcConsumer keyspace.
-		let pin = FlowSnapshotPin(FlowId(42)).to_consumer_key();
-
-		let decoded = CdcConsumerKey::decode(&pin).expect("pin key must decode as a consumer key");
-		assert_eq!(decoded.consumer, CdcConsumerId::new("flow:42:snapshot"));
-		assert_ne!(pin, FlowId(42).to_consumer_key());
-		assert!(CdcConsumerKeyRange::full_scan().contains(&pin), "pin must be visible to the pinning scan");
 	}
 
 	#[test]

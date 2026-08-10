@@ -115,7 +115,7 @@ impl OperatorStore {
 
 		let limit = batch_size.max(1);
 		let operator_param = operator.0 as i64;
-		let limit_param = limit as i64 + 1;
+		let limit_param = limit.min(i64::MAX as u64 - 1) as i64 + 1;
 		let mut bound_params: Vec<&dyn ToSql> = Vec::with_capacity(blobs.len() + 2);
 		bound_params.push(&operator_param);
 		for blob in &blobs {

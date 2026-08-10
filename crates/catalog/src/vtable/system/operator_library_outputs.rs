@@ -11,7 +11,7 @@ use reifydb_core::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::fragment::Fragment;
 
-use super::operator_store::OperatorLibraryStore;
+use super::operator_libary::OperatorLibrary;
 use crate::{
 	Result,
 	system::SystemCatalog,
@@ -21,11 +21,11 @@ use crate::{
 pub struct SystemOperatorLibraryOutputs {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
-	operator_store: OperatorLibraryStore,
+	operator_store: OperatorLibrary,
 }
 
 impl SystemOperatorLibraryOutputs {
-	pub fn new(operator_store: OperatorLibraryStore) -> Self {
+	pub fn new(operator_store: OperatorLibrary) -> Self {
 		Self {
 			vtable: SystemCatalog::get_system_operator_library_outputs_table().clone(),
 			exhausted: false,

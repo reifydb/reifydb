@@ -14,7 +14,5 @@ reifydb-build = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-runtime = { workspace = true }
-reifydb-sqlite = { workspace = true }
 reifydb-value = { workspace = true }
 rusqlite = { workspace = true, features = ["bundled"] }
-xxhash-rust = { workspace = true }

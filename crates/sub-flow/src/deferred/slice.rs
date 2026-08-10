@@ -103,7 +103,6 @@ impl SliceComputer {
 				checkpoint_deletes: Vec::new(),
 				view_changes,
 				control_cursor: None,
-				snapshot_pins: Vec::new(),
 			},
 			advance_to,
 			more,
@@ -136,24 +135,6 @@ impl SliceComputer {
 			more,
 			holds,
 		})
-	}
-
-	pub fn replay(
-		&self,
-		flow_engine: &mut FlowEngineInner,
-		flow_id: FlowId,
-		items: &[Arc<Cdc>],
-		source_objects: &BTreeSet<ObjectId>,
-		completeness_objects: Option<&BTreeSet<u64>>,
-		upto: CommitVersion,
-	) -> Result<Pending> {
-		let refs: Vec<&Cdc> = items.iter().map(Arc::as_ref).collect();
-		let changes = collect_flow_changes(&refs, source_objects, completeness_objects);
-		if changes.is_empty() {
-			return Ok(Pending::new());
-		}
-		let computed = self.compute(flow_engine, flow_id, upto, changes, PendingLayers::empty())?;
-		Ok(computed.0)
 	}
 
 	pub(crate) fn resolved_holds(
@@ -561,8 +542,7 @@ mod integration {
 		builder::CustomOperators,
 		catalog::FlowCatalog,
 		deferred::{
-			committer::Committer, quiescence::FlowMaterialization, routing, snapshot::SnapshotPinTracker,
-			tracker::FlowPositionTracker,
+			committer::Committer, quiescence::FlowMaterialization, routing, tracker::FlowPositionTracker,
 		},
 		execution::frontier::WatermarkHold,
 		operator::metrics::OperatorSampleRegistry,
@@ -876,7 +856,6 @@ mod integration {
 			FlowPositionTracker::new(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
-			SnapshotPinTracker::new(),
 		);
 		let config = SliceConfig {
 			checkpoint_lag: 10_000,
@@ -985,7 +964,6 @@ mod integration {
 			FlowPositionTracker::new(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
-			SnapshotPinTracker::new(),
 		);
 		let config = SliceConfig {
 			checkpoint_lag: 10_000,
@@ -1132,7 +1110,6 @@ mod integration {
 			FlowPositionTracker::new(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
 			engine.operator_state(),
-			SnapshotPinTracker::new(),
 		);
 		let config = SliceConfig {
 			checkpoint_lag: 10_000,

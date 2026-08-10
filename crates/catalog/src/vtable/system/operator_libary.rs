@@ -25,17 +25,17 @@ pub struct OperatorLibraryInfo {
 }
 
 #[derive(Clone)]
-pub struct OperatorLibraryStore {
+pub struct OperatorLibrary {
 	operators: Arc<RwLock<HashMap<String, OperatorLibraryInfo>>>,
 }
 
-impl Default for OperatorLibraryStore {
+impl Default for OperatorLibrary {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl OperatorLibraryStore {
+impl OperatorLibrary {
 	pub fn new() -> Self {
 		Self {
 			operators: Arc::new(RwLock::new(HashMap::new())),
@@ -56,11 +56,11 @@ impl OperatorLibraryStore {
 }
 
 pub struct OperatorLibraryEventListener {
-	store: OperatorLibraryStore,
+	store: OperatorLibrary,
 }
 
 impl OperatorLibraryEventListener {
-	pub fn new(store: OperatorLibraryStore) -> Self {
+	pub fn new(store: OperatorLibrary) -> Self {
 		Self {
 			store,
 		}

@@ -23,8 +23,6 @@ use reifydb_core::{
 	},
 	state::budget::OperatorStateBudgetHandle,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use reifydb_core::{interface::catalog::flow::OperatorId, key::cdc_consumer::FlowSnapshotPin};
 use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
 use reifydb_flow::transaction::substrate::FlowSubstrate;
 use reifydb_rql::flow::{analyzer::FlowGraphAnalyzer, flow::FlowDag, operator::OperatorDef};
@@ -45,8 +43,6 @@ use reifydb_value::{
 };
 use tracing::{debug, error, warn};
 
-#[cfg(not(target_arch = "wasm32"))]
-use crate::deferred::snapshot::FlowSnapshots;
 use crate::{
 	builder::CustomOperators,
 	catalog::FlowCatalog,
@@ -59,7 +55,6 @@ use crate::{
 		loader::LoaderMessage,
 		output_frontier,
 		routing::{self, ViewRoute},
-		snapshot::FlowSnapshotLoad,
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
 	},
 	operator::metrics::OperatorSampleRegistry,
@@ -93,8 +88,6 @@ pub struct FlowSupervisorParams {
 	pub checkpoint_lag: u64,
 	pub checkpoint_max_age: Duration,
 	pub frontier_persist: Duration,
-	#[cfg(not(target_arch = "wasm32"))]
-	pub snapshots: Option<FlowSnapshots>,
 }
 
 pub struct FlowSupervisor {
@@ -121,8 +114,6 @@ pub struct FlowSupervisor {
 	checkpoint_lag: u64,
 	checkpoint_max_age: Duration,
 	frontier_persist: Duration,
-	#[cfg(not(target_arch = "wasm32"))]
-	snapshots: Option<FlowSnapshots>,
 }
 
 pub struct SupervisorState {
@@ -159,8 +150,6 @@ impl FlowSupervisor {
 			checkpoint_lag: params.checkpoint_lag,
 			checkpoint_max_age: params.checkpoint_max_age,
 			frontier_persist: params.frontier_persist,
-			#[cfg(not(target_arch = "wasm32"))]
-			snapshots: params.snapshots,
 		}
 	}
 
@@ -175,18 +164,8 @@ impl FlowSupervisor {
 			}
 		};
 
-		#[cfg(not(target_arch = "wasm32"))]
-		let truncated_before = self
-			.snapshots
-			.as_ref()
-			.map(|_| self.engine.cdc_store().truncated_before().unwrap_or(CommitVersion(0)));
-
-		let mut to_spawn: Vec<(FlowDag, CommitVersion, FlowSnapshotLoad)> = Vec::new();
+		let mut to_spawn: Vec<(FlowDag, CommitVersion)> = Vec::new();
 		let mut seeds: Vec<(FlowId, CommitVersion)> = Vec::new();
-		#[cfg(not(target_arch = "wasm32"))]
-		let mut pins: Vec<(FlowId, CommitVersion)> = Vec::new();
-		#[cfg(target_arch = "wasm32")]
-		let pins: Vec<(FlowId, CommitVersion)> = Vec::new();
 		for flow_id in flows {
 			let flow = match self
 				.flow_catalog
@@ -203,40 +182,11 @@ impl FlowSupervisor {
 			let seed = CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut query), &flow_id)
 				.unwrap_or(None)
 				.unwrap_or(migration_base);
-			#[cfg(not(target_arch = "wasm32"))]
-			let snapshot_load = match (&self.snapshots, truncated_before) {
-				(Some(snapshots), Some(truncated_before)) => {
-					let loaded = snapshots.load_flow(
-						&self.substrate.operators,
-						flow.get_operator_ids(),
-						truncated_before,
-					);
-					let existing_pin = CdcCheckpoint::fetch_opt(
-						&mut Transaction::Query(&mut query),
-						&FlowSnapshotPin(flow_id),
-					)
-					.unwrap_or(None);
-					if existing_pin.is_none() {
-						pins.push((flow_id, seed));
-					}
-					loaded
-				}
-				_ => FlowSnapshotLoad::Empty,
-			};
-			#[cfg(target_arch = "wasm32")]
-			let snapshot_load = FlowSnapshotLoad::Empty;
 			seeds.push((flow_id, seed));
-			to_spawn.push((flow, seed, snapshot_load));
+			to_spawn.push((flow, seed));
 		}
 		drop(query);
 		self.publish_lineage(state);
-
-		#[cfg(not(target_arch = "wasm32"))]
-		if let Some(snapshots) = &self.snapshots {
-			let live: BTreeSet<OperatorId> =
-				to_spawn.iter().flat_map(|(flow, _, _)| flow.get_operator_ids()).collect();
-			snapshots.sweep_orphans(&live);
-		}
 
 		self.hydrate_frontiers();
 
@@ -247,16 +197,16 @@ impl FlowSupervisor {
 		self.poll_frontier.store(scan_cursor);
 		self.backlog.set_anchor(scan_cursor);
 
-		self.commit_control(seeds, pins, None);
+		self.commit_control(seeds, None);
 
-		let registered: BTreeSet<FlowId> = to_spawn.iter().map(|(f, _, _)| f.id).collect();
+		let registered: BTreeSet<FlowId> = to_spawn.iter().map(|(f, _)| f.id).collect();
 		let closure = state.analyzer.get_dependency_graph().upstream_closure();
-		for (flow, seed, snapshot_load) in to_spawn {
+		for (flow, seed) in to_spawn {
 			let flow_id = flow.id;
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
 			let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 			state.sources.insert(flow_id, source_objects.clone());
-			let handle = self.spawn_flow(flow, source_objects, completeness_objects, seed, snapshot_load);
+			let handle = self.spawn_flow(flow, source_objects, completeness_objects, seed);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned deferred flow actor");
 		}
@@ -334,15 +284,7 @@ impl FlowSupervisor {
 
 		let now = self.clock.now();
 		if !seeds.is_empty() || now - state.last_control_commit_at >= self.checkpoint_max_age {
-			#[cfg(not(target_arch = "wasm32"))]
-			let pins = if self.snapshots.is_some() {
-				seeds.clone()
-			} else {
-				Vec::new()
-			};
-			#[cfg(target_arch = "wasm32")]
-			let pins: Vec<(FlowId, CommitVersion)> = Vec::new();
-			self.commit_control(seeds, pins, Some(bound));
+			self.commit_control(seeds, Some(bound));
 			state.last_control_commit_at = now;
 		}
 
@@ -419,13 +361,7 @@ impl FlowSupervisor {
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
 			let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 			state.sources.insert(flow_id, source_objects.clone());
-			let handle = self.spawn_flow(
-				flow,
-				source_objects,
-				completeness_objects,
-				seed,
-				FlowSnapshotLoad::Empty,
-			);
+			let handle = self.spawn_flow(flow, source_objects, completeness_objects, seed);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, seed = seed.0, "spawned new deferred flow actor");
 		}
@@ -543,7 +479,6 @@ impl FlowSupervisor {
 		source_objects: Arc<BTreeSet<ObjectId>>,
 		completeness_objects: Option<Arc<BTreeSet<u64>>>,
 		cursor: CommitVersion,
-		snapshot_load: FlowSnapshotLoad,
 	) -> FlowActorHandle {
 		let flow_id = flow.id;
 
@@ -571,9 +506,6 @@ impl FlowSupervisor {
 			checkpoint_max_age: self.checkpoint_max_age,
 			retry_limit: FLOW_RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(FLOW_RETRY_BACKOFF_MS as i64).unwrap(),
-			#[cfg(not(target_arch = "wasm32"))]
-			snapshots: self.snapshots.clone(),
-			snapshot_load,
 		};
 		self.spawner.spawn_flow(&format!("flow-{}", flow_id.0), FlowActor::new(params))
 	}
@@ -581,15 +513,13 @@ impl FlowSupervisor {
 	fn commit_control(
 		&self,
 		seeds: Vec<(FlowId, CommitVersion)>,
-		pins: Vec<(FlowId, CommitVersion)>,
 		cursor: Option<CommitVersion>,
 	) {
-		if seeds.is_empty() && pins.is_empty() && cursor.is_none() {
+		if seeds.is_empty() && cursor.is_none() {
 			return;
 		}
 		let mut slice = FlowSlice::empty();
 		slice.checkpoints = seeds;
-		slice.snapshot_pins = pins;
 		slice.control_cursor = cursor.map(|v| (self.consumer_id.clone(), v));
 		let reply: SliceCommitReply = Box::new(|_| {});
 		let _ = self.committer.send(CommitterMessage::Slice {

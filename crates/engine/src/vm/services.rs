@@ -8,7 +8,7 @@ use reifydb_catalog::{
 	catalog::Catalog,
 	metrics::storage::metrics::MetricsReader,
 	vtable::{
-		system::operator_store::OperatorLibraryStore,
+		system::operator_libary::OperatorLibrary,
 		user::registry::UserVTableRegistry,
 	},
 };
@@ -46,7 +46,7 @@ pub struct Services {
 	pub compiler: Compiler,
 	pub routines: Routines,
 	pub transforms: Transforms,
-	pub operator_store: OperatorLibraryStore,
+	pub operators: OperatorLibrary,
 	pub virtual_table_registry: UserVTableRegistry,
 	pub metrics_reader: MetricsReader<SingleStore>,
 	pub ioc: IocContainer,
@@ -58,10 +58,10 @@ pub struct Services {
 
 impl Services {
 	pub fn new(
-		catalog: Catalog,
-		config: EngineConfig,
-		operator_store: OperatorLibraryStore,
-		metrics_reader: MetricsReader<SingleStore>,
+        catalog: Catalog,
+        config: EngineConfig,
+        operator_store: OperatorLibrary,
+        metrics_reader: MetricsReader<SingleStore>,
 	) -> Self {
 		let auth_registry = AuthenticationRegistry::new(config.runtime_context.clock.clone());
 		Self {
@@ -70,7 +70,7 @@ impl Services {
 			runtime_context: config.runtime_context,
 			routines: config.routines,
 			transforms: config.transforms,
-			operator_store,
+			operators: operator_store,
 			virtual_table_registry: UserVTableRegistry::new(),
 			metrics_reader,
 			ioc: config.ioc,
@@ -100,8 +100,8 @@ impl Services {
 		let routines = routines_builder.configure();
 
 		let mut services = Self::new(
-			Catalog::testing(),
-			EngineConfig {
+            Catalog::testing(),
+            EngineConfig {
 				runtime_context: RuntimeContext::with_clock(Clock::Real),
 				routines,
 				transforms: Transforms::empty(),
@@ -109,8 +109,8 @@ impl Services {
 				#[cfg(not(reifydb_single_threaded))]
 				remote_registry: None,
 			},
-			OperatorLibraryStore::new(),
-			MetricsReader::new(store),
+            OperatorLibrary::new(),
+            MetricsReader::new(store),
 		);
 		services.auth_registry = AuthenticationRegistry::default();
 		Arc::new(services)

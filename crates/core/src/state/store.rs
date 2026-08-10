@@ -26,6 +26,7 @@ pub trait StateStore {
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()>;
 
+	// FIXME remove
 	fn state_range_visit(
 		&mut self,
 		range: EncodedKeyRange,
@@ -37,6 +38,7 @@ pub trait StateStore {
 
 	fn lookup_group(&mut self, group: &EncodedKey) -> Result<Option<GroupId>>;
 
+	// FIXME remove
 	fn get_or_create_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<(RowNumber, bool)>;
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;

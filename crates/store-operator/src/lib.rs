@@ -8,7 +8,6 @@
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
-pub mod snapshot;
 pub mod store;
 
 pub struct OperatorStoreVersion;

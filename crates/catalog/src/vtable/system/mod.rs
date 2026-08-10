@@ -26,7 +26,7 @@ pub mod namespaces;
 pub mod operator_libraries;
 pub mod operator_library_inputs;
 pub mod operator_library_outputs;
-pub mod operator_store;
+pub mod operator_libary;
 pub mod operator_types;
 pub mod operators;
 pub mod policies;

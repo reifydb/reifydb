@@ -3391,10 +3391,8 @@ dependencies = [
  "reifydb-codec",
  "reifydb-core",
  "reifydb-runtime",
- "reifydb-sqlite",
  "reifydb-value",
  "rusqlite",
- "xxhash-rust",
 ]
 
 [[package]]
@@ -3449,7 +3447,6 @@ dependencies = [
  "reifydb-rql",
  "reifydb-runtime",
  "reifydb-sdk",
- "reifydb-sqlite",
  "reifydb-store-operator",
  "reifydb-store-single",
  "reifydb-sub-api",

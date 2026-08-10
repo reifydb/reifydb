@@ -15,7 +15,7 @@ use reifydb_catalog::{
 	interceptor::CatalogCacheInterceptor,
 	metrics::storage::metrics::MetricsReader,
 	vtable::{
-		system::operator_store::{OperatorLibraryEventListener, OperatorLibraryStore},
+		system::operator_libary::{OperatorLibraryEventListener, OperatorLibrary},
 		tables::UserVTableDataFunction,
 		user::{UserVTable, UserVTableColumn, registry::UserVTableEntry},
 	},
@@ -408,7 +408,7 @@ pub struct Inner {
 	executor: Executor,
 	interceptors: Arc<InterceptorFactory>,
 	catalog: Catalog,
-	operator_store: OperatorLibraryStore,
+	operator_library: OperatorLibrary,
 	operator_state: OperatorStore,
 	dictionary_allocators: DictionaryAllocatorRegistry,
 	read_only: AtomicBool,
@@ -424,8 +424,9 @@ impl StandardEngine {
 		catalog: Catalog,
 		config: EngineConfig,
 	) -> Self {
-		let operator_store = OperatorLibraryStore::new();
-		let listener = OperatorLibraryEventListener::new(operator_store.clone());
+		let operator_library = OperatorLibrary::new();
+		
+		let listener = OperatorLibraryEventListener::new(operator_library.clone());
 		event_bus.register(listener);
 
 		let metrics_store = config
@@ -448,10 +449,10 @@ impl StandardEngine {
 			multi,
 			single,
 			event_bus,
-			executor: Executor::new(catalog.clone(), config, operator_store.clone(), metrics_reader),
+			executor: Executor::new(catalog.clone(), config, operator_library.clone(), metrics_reader),
 			interceptors,
 			catalog,
-			operator_store,
+			operator_library,
 			operator_state: OperatorStore::default(),
 			dictionary_allocators,
 			read_only: AtomicBool::new(false),
@@ -535,8 +536,8 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn operator_store(&self) -> &OperatorLibraryStore {
-		&self.operator_store
+	pub fn operator_store(&self) -> &OperatorLibrary {
+		&self.operator_library
 	}
 
 	pub fn operator_state(&self) -> OperatorStore {

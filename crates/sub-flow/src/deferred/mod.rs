@@ -12,7 +12,6 @@ pub(crate) mod overlay;
 pub(crate) mod quiescence;
 pub(crate) mod routing;
 pub(crate) mod slice;
-pub(crate) mod snapshot;
 pub(crate) mod supervisor;
 pub(crate) mod tracker;
 pub(crate) mod watermark;
