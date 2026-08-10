@@ -133,7 +133,6 @@ impl FlowEngineInner {
 
 			let spec = operator.floors(txn, watermark)?;
 			let floor = spec.max_cutoff();
-			self.executor.services().node_retention_store.set_frontier(operator_id, floor);
 
 			let mut mapping_rows = 0;
 			if let Some(cutoff) = mapping_cutoff(spec.cutoff(Keyspace::ROW_NUMBER_MAPPING), identity) {

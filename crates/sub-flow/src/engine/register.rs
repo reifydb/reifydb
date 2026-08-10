@@ -3,7 +3,6 @@
 
 use std::{mem, sync::Arc};
 
-use reifydb_catalog::vtable::system::node_retention_store::NodeRetentionInfo;
 use reifydb_core::{
 	common::{JoinType, WindowKind},
 	interface::{
@@ -98,7 +97,6 @@ impl FlowEngineInner {
 			if let Err(err) = self.add(txn, &flow, operator, &ctx) {
 				for id in &added {
 					self.operators.remove(id);
-					self.executor.services().node_retention_store.remove(*id);
 				}
 				for entries in self.sources.values_mut() {
 					entries.retain(|(fid, _)| *fid != flow.id);
@@ -111,7 +109,6 @@ impl FlowEngineInner {
 				return Err(err);
 			}
 			self.check_declared_span(&flow, operator)?;
-			self.adopt_horizon(operator);
 			added.push(operator_id);
 		}
 
@@ -136,20 +133,6 @@ impl FlowEngineInner {
 			.into());
 		}
 		Ok(())
-	}
-
-	fn adopt_horizon(&self, operator: &FlowNode) {
-		let scale = self.node_retention_scale(operator);
-		self.executor.services().node_retention_store.set(NodeRetentionInfo {
-			operator: operator.id,
-			stateful: operator.ty.holds_state(),
-			scale,
-			frontier: None,
-		});
-	}
-
-	pub(crate) fn node_retention_scale(&self, operator: &FlowNode) -> Option<Duration> {
-		self.operators.get(&operator.id).and_then(|operator| operator.retention_scale())
 	}
 
 	#[instrument(name = "flow::add", level = "debug", skip(self, txn, flow, ctx), fields(flow_id = ?flow.id, operator_id = ?operator.id, node_type = ?mem::discriminant(&operator.ty)))]

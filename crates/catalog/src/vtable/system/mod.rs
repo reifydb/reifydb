@@ -23,7 +23,6 @@ pub mod identity_attributes;
 pub mod metrics;
 pub mod migrations;
 pub mod namespaces;
-pub mod node_retention_store;
 pub mod operator_libraries;
 pub mod operator_library_inputs;
 pub mod operator_library_outputs;

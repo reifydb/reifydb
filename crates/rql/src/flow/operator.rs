@@ -145,19 +145,6 @@ impl OperatorDef {
 		)
 	}
 
-	pub fn holds_state(&self) -> bool {
-		matches!(
-			self,
-			OperatorDef::Join { .. }
-				| OperatorDef::Distinct { .. }
-				| OperatorDef::Append { .. } | OperatorDef::Apply { .. }
-				| OperatorDef::Aggregate { .. }
-				| OperatorDef::Window { .. } | OperatorDef::Gate { .. }
-				| OperatorDef::Take { .. } | OperatorDef::SinkRingBufferView { .. }
-				| OperatorDef::SinkSubscription { .. }
-		)
-	}
-
 	pub fn consults_declared_span(&self) -> bool {
 		matches!(
 			self,
@@ -417,7 +404,7 @@ impl FlowEdge {
 mod tests {
 	use reifydb_core::{
 		common::{JoinType, WindowKind, WindowSize},
-		interface::catalog::id::{RingBufferId, SubscriptionId, ViewId},
+		interface::catalog::id::{RingBufferId, ViewId},
 		row::{JoinTtl, OperatorSettings, OperatorTtl},
 	};
 	use reifydb_value::value::duration::Duration;
@@ -571,9 +558,7 @@ mod tests {
 			}),
 		};
 
-		// This list is the assertion's whole reach, so it has to name every node type consults_declared_span
-		// accepts; a type missing from both this list and ticks() cancels out and reclaims nothing forever
-		// while system::operators still reports it bounded.
+		// Must name every node type consults_declared_span accepts, or a missing one reclaims nothing forever.
 		let reclaimable: Vec<(OperatorDef, Option<&OperatorSettings>)> = vec![
 			(join(), Some(&join_ttl)),
 			(
@@ -622,113 +607,5 @@ mod tests {
 			conditions: vec![]
 		}
 		.ticks());
-	}
-
-	#[test]
-	fn every_node_that_can_reclaim_is_also_reported_as_holding_state() {
-		// holds_state drives the system::operators listing used to find unbounded retention, so a node that
-		// reclaims but answers false here is absent from that listing in both directions - never reported as
-		// perpetual, never reported when it declares a span.
-		let ttl = OperatorSettings {
-			ttl: Some(OperatorTtl {
-				duration: ms(60_000),
-			}),
-			join: None,
-		};
-		let join_ttl = OperatorSettings {
-			ttl: None,
-			join: Some(JoinTtl {
-				left: Some(OperatorTtl {
-					duration: ms(60_000),
-				}),
-				right: Some(OperatorTtl {
-					duration: ms(60_000),
-				}),
-			}),
-		};
-
-		let reclaimable: Vec<(OperatorDef, Option<&OperatorSettings>)> = vec![
-			(join(), Some(&join_ttl)),
-			(
-				OperatorDef::Distinct {
-					expressions: vec![],
-				},
-				Some(&ttl),
-			),
-			(OperatorDef::Append {}, Some(&ttl)),
-			(apply(), Some(&ttl)),
-			(
-				OperatorDef::Aggregate {
-					by: vec![],
-					map: vec![],
-				},
-				Some(&ttl),
-			),
-		];
-
-		for (node, settings) in reclaimable {
-			assert!(
-				node.consults_declared_span() && settings.is_some(),
-				"precondition: this node must accept a declared span: {node:?}"
-			);
-			assert!(node.holds_state(), "a node that can reclaim must be listed as stateful: {node:?}");
-		}
-
-		// A window derives its horizon from its operator's seal, so it never reaches the loop above, but it
-		// holds group state and has to be listed all the same.
-		assert!(
-			window(
-				WindowKind::Tumbling {
-					size: WindowSize::Duration(ms(60_000)),
-				},
-				ms(0),
-			)
-			.holds_state(),
-			"a window keeps per-group accumulators and must be listed as stateful"
-		);
-
-		assert!(
-			!OperatorDef::Map {
-				expressions: vec![],
-			}
-			.holds_state(),
-			"a map keeps nothing between rows and must never appear in the retention listing"
-		);
-	}
-
-	#[test]
-	fn a_node_that_persists_state_without_a_reclaim_path_is_still_listed_as_stateful() {
-		// These keep state no declared span can ever age, so a false here hides the only retention the listing
-		// cannot otherwise reach.
-		assert!(
-			OperatorDef::Gate {
-				conditions: vec![],
-			}
-			.holds_state(),
-			"a gate keeps per-row visibility markers between changes"
-		);
-		assert!(
-			OperatorDef::Take {
-				limit: 1,
-			}
-			.holds_state(),
-			"a take keeps the retained rows and their candidates between changes"
-		);
-		assert!(
-			OperatorDef::SinkRingBufferView {
-				view: ViewId(1),
-				ringbuffer: RingBufferId(1),
-				capacity: 1,
-			}
-			.holds_state(),
-			"a ring buffer sink keeps per-partition occupancy between changes"
-		);
-		assert!(
-			OperatorDef::SinkSubscription {
-				subscription: SubscriptionId(1),
-			}
-			.holds_state(),
-			"a subscription sink keeps every delivered row number for the life of the subscription"
-		);
 	}
 }

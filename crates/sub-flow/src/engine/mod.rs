@@ -341,7 +341,6 @@ impl FlowEngineInner {
 			self.substrate.row.evict(operator_id);
 			self.substrate.operators.drop_arena(operator_id);
 			self.state_budget.release_lease(operator_id);
-			self.executor.services().node_retention_store.remove(operator_id);
 			self.mapping_cursors.remove(&operator_id);
 			self.compacted_at.remove(&operator_id);
 		}

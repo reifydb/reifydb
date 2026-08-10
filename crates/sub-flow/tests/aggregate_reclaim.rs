@@ -45,9 +45,7 @@ fn create_flow(db: &TestDb) {
 
 #[test]
 fn an_aggregates_idle_group_is_reclaimed_through_the_flow_tick() {
-	// The assertion is on work_done rather than a row count because the failure is silent in every
-	// other surface: a node absent from ticks() is never scheduled, so the sweep never runs while
-	// system::operators still reports the node as carrying a bounded span.
+	// Asserts on work_done because a node absent from ticks() is never scheduled and the sweep silently never runs.
 	let db = setup();
 	create_flow(&db);
 

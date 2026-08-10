@@ -13,22 +13,26 @@ use reifydb_value::fragment::Fragment;
 use crate::{
 	CatalogStore, Result,
 	system::SystemCatalog,
-	vtable::{BaseVTable, Batch, VTableContext, system::node_retention_store::NodeRetentionStore},
+	vtable::{BaseVTable, Batch, VTableContext},
 };
 
 pub struct SystemOperators {
 	pub(crate) vtable: Arc<VTable>,
-	retention: NodeRetentionStore,
 	exhausted: bool,
 }
 
 impl SystemOperators {
-	pub fn new(retention: NodeRetentionStore) -> Self {
+	pub fn new() -> Self {
 		Self {
 			vtable: SystemCatalog::get_system_operators_table().clone(),
-			retention,
 			exhausted: false,
 		}
+	}
+}
+
+impl Default for SystemOperators {
+	fn default() -> Self {
+		Self::new()
 	}
 }
 
@@ -49,37 +53,12 @@ impl BaseVTable for SystemOperators {
 		let mut flow_ids = ColumnBuffer::uint8_with_capacity(operators.len());
 		let mut node_types = ColumnBuffer::uint1_with_capacity(operators.len());
 		let mut data_column = ColumnBuffer::blob_with_capacity(operators.len());
-		let mut stateful = ColumnBuffer::bool_with_capacity(operators.len());
-		let mut retains_forever = ColumnBuffer::bool_with_capacity(operators.len());
-		let mut scales = ColumnBuffer::duration_with_capacity(operators.len());
-		let mut frontiers = ColumnBuffer::datetime_with_capacity(operators.len());
 
 		for operator in operators {
 			ids.push(operator.id.0);
 			flow_ids.push(operator.flow.0);
 			node_types.push(operator.node_type);
 			data_column.push(operator.data);
-
-			match self.retention.get(operator.id) {
-				None => {
-					stateful.push_none();
-					retains_forever.push_none();
-					scales.push_none();
-					frontiers.push_none();
-				}
-				Some(info) => {
-					stateful.push(info.stateful);
-					retains_forever.push(info.scale.is_none());
-					match info.scale {
-						None => scales.push_none(),
-						Some(scale) => scales.push(scale),
-					}
-					match info.frontier {
-						None => frontiers.push_none(),
-						Some(frontier) => frontiers.push(frontier),
-					}
-				}
-			}
 		}
 
 		let columns = vec![
@@ -87,10 +66,6 @@ impl BaseVTable for SystemOperators {
 			ColumnWithName::new(Fragment::internal("flow_id"), flow_ids),
 			ColumnWithName::new(Fragment::internal("node_type"), node_types),
 			ColumnWithName::new(Fragment::internal("data"), data_column),
-			ColumnWithName::new(Fragment::internal("stateful"), stateful),
-			ColumnWithName::new(Fragment::internal("retains_forever"), retains_forever),
-			ColumnWithName::new(Fragment::internal("retention_scale"), scales),
-			ColumnWithName::new(Fragment::internal("frontier"), frontiers),
 		];
 
 		self.exhausted = true;
