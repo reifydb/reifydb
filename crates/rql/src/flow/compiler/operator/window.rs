@@ -2,13 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{common::WindowKind, interface::catalog::flow::OperatorId};
-use reifydb_rql::{expression::Expression, flow::operator::OperatorDef::Window, nodes::WindowNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, value::duration::Duration};
 
-use crate::flow::{
-	aggregate::AggregateContext,
-	compiler::{CompileOperator, FlowCompiler, operator::aggregate_validation::validate_flow_aggregations},
+use crate::{
+	expression::Expression,
+	flow::{
+		aggregate::AggregateContext,
+		compiler::{CompileOperator, FlowCompiler, operator::aggregate_validation::validate_flow_aggregations},
+		operator::OperatorDef::Window,
+	},
+	nodes::WindowNode,
+	query::QueryPlan,
 };
 
 pub(crate) struct WindowCompiler {

@@ -6,16 +6,18 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	row::JoinTtl,
 };
-use reifydb_rql::{
-	expression::Expression,
-	flow::operator::OperatorDef,
-	nodes::{JoinInnerNode, JoinLeftNode, JoinNaturalNode},
-	query::QueryPlan,
-};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
-use crate::flow::compiler::{CompileOperator, FlowCompiler};
+use crate::{
+	expression::Expression,
+	flow::{
+		compiler::{CompileOperator, FlowCompiler},
+		operator::OperatorDef,
+	},
+	nodes::{JoinInnerNode, JoinLeftNode, JoinNaturalNode},
+	query::QueryPlan,
+};
 
 pub(crate) struct JoinCompiler {
 	pub join_type: JoinType,

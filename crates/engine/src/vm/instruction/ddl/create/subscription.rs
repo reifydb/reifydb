@@ -6,13 +6,14 @@ use reifydb_core::{
 	interface::catalog::{flow::FlowId, id::SubscriptionId},
 	value::column::columns::Columns,
 };
-use reifydb_rql::{nodes::CreateSubscriptionNode, query::QueryPlan};
+use reifydb_rql::{
+	flow::compiler::compile_subscription_flow_ephemeral, nodes::CreateSubscriptionNode, query::QueryPlan,
+};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{error::Error, fragment::Fragment, params::Params, value::Value};
 
 use crate::{
 	Result,
-	flow::compiler::compile_subscription_flow_ephemeral,
 	subscription::{SubscriptionContext, SubscriptionServiceRef},
 	vm::{services::Services, stack::SymbolTable},
 };

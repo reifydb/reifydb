@@ -2,15 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{interface::catalog::flow::OperatorId, row::OperatorTtl};
-use reifydb_rql::{
-	expression::Expression, flow::operator::OperatorDef::Aggregate, nodes::AggregateNode, query::QueryPlan,
-};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
-use crate::flow::{
-	aggregate::AggregateContext,
-	compiler::{CompileOperator, FlowCompiler, operator::aggregate_validation::validate_flow_aggregations},
+use crate::{
+	expression::Expression,
+	flow::{
+		aggregate::AggregateContext,
+		compiler::{CompileOperator, FlowCompiler, operator::aggregate_validation::validate_flow_aggregations},
+		operator::OperatorDef::Aggregate,
+	},
+	nodes::AggregateNode,
+	query::QueryPlan,
 };
 
 pub(crate) struct AggregateCompiler {

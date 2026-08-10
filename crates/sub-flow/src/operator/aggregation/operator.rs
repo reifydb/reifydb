@@ -15,7 +15,6 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
-use reifydb_engine::flow::aggregate::AggregateContext;
 use reifydb_flow::{
 	operator::Operator,
 	transaction::FlowTransaction,
@@ -25,7 +24,7 @@ use reifydb_flow::{
 	},
 };
 use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::expression::Expression;
+use reifydb_rql::{expression::Expression, flow::aggregate::AggregateContext};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,

@@ -17,6 +17,7 @@ reifydb-build = { workspace = true }
 bumpalo = { workspace = true }
 reifydb-core = {workspace = true}
 reifydb-catalog = { workspace = true }
+reifydb-routine-abi = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }

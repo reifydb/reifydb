@@ -20,14 +20,15 @@ use reifydb_core::{
 	row::{JoinTtl, OperatorSettings, OperatorTtl},
 };
 use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::{
+use reifydb_value::{Result, error::Error, value::blob::Blob};
+
+use crate::{
 	flow::{
 		flow::{FlowBuilder, FlowDag},
 		operator::{self as rql_operator, OperatorDef},
 	},
 	query::QueryPlan,
 };
-use reifydb_value::{Result, error::Error, value::blob::Blob};
 
 pub mod operator;
 pub mod source;

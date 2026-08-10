@@ -2,11 +2,16 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_rql::{flow::operator::OperatorDef::SourceRingBuffer, nodes::RingBufferScanNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
-use crate::flow::compiler::{CompileOperator, FlowCompiler};
+use crate::{
+	flow::{
+		compiler::{CompileOperator, FlowCompiler},
+		operator::OperatorDef::SourceRingBuffer,
+	},
+	nodes::RingBufferScanNode,
+};
 
 pub(crate) struct RingBufferScanCompiler {
 	pub ringbuffer_scan: RingBufferScanNode,

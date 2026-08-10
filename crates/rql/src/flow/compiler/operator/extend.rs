@@ -2,11 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_rql::{expression::Expression, flow::operator::OperatorDef::Extend, nodes::ExtendNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
-use crate::flow::compiler::{CompileOperator, FlowCompiler};
+use crate::{
+	expression::Expression,
+	flow::{
+		compiler::{CompileOperator, FlowCompiler},
+		operator::OperatorDef::Extend,
+	},
+	nodes::ExtendNode,
+	query::QueryPlan,
+};
 
 pub(crate) struct ExtendCompiler {
 	pub input: Option<Box<QueryPlan>>,

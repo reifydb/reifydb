@@ -2,13 +2,17 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_rql::{expression::Expression, flow::operator::OperatorDef::Filter, nodes::FilterNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
 use crate::{
-	flow::compiler::{CompileOperator, FlowCompiler},
-	vm::volcano::{compile::extract_resolved_source, filter::resolve_is_variant_tags},
+	expression::{Expression, variant::resolve_is_variant_tags},
+	flow::{
+		compiler::{CompileOperator, FlowCompiler},
+		operator::OperatorDef::Filter,
+	},
+	nodes::FilterNode,
+	query::{QueryPlan, extract_resolved_source},
 };
 
 pub(crate) struct FilterCompiler {

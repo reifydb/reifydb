@@ -2,11 +2,17 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{interface::catalog::flow::OperatorId, sort::SortKey};
-use reifydb_rql::{flow::operator::OperatorDef::Sort, nodes::SortNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
-use crate::flow::compiler::{CompileOperator, FlowCompiler};
+use crate::{
+	flow::{
+		compiler::{CompileOperator, FlowCompiler},
+		operator::OperatorDef::Sort,
+	},
+	nodes::SortNode,
+	query::QueryPlan,
+};
 
 pub(crate) struct SortCompiler {
 	pub input: Box<QueryPlan>,

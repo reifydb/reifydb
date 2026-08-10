@@ -2,11 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{interface::catalog::flow::OperatorId, row::OperatorTtl};
-use reifydb_rql::{expression::Expression, flow::operator::OperatorDef::Apply, nodes::ApplyNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, fragment::Fragment};
 
-use crate::flow::compiler::{CompileOperator, FlowCompiler};
+use crate::{
+	expression::Expression,
+	flow::{
+		compiler::{CompileOperator, FlowCompiler},
+		operator::OperatorDef::Apply,
+	},
+	nodes::ApplyNode,
+	query::QueryPlan,
+};
 
 pub(crate) struct ApplyCompiler {
 	pub input: Option<Box<QueryPlan>>,

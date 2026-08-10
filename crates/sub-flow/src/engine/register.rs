@@ -17,7 +17,6 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_engine::flow::time_domain::check_window_time_requirements;
 use reifydb_rql::{
 	expression::{ColumnExpression, Expression},
 	flow::{
@@ -31,6 +30,7 @@ use reifydb_rql::{
 				Window,
 			},
 		},
+		time_domain::check_window_time_requirements,
 	},
 };
 use reifydb_sdk::config::Config;

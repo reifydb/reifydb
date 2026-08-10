@@ -7,7 +7,7 @@ mod vtable;
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{catalog::id::IndexId, resolved::ResolvedObject};
+use reifydb_core::interface::catalog::id::IndexId;
 use reifydb_rql::{
 	nodes::{
 		AggregateNode as RqlAggregateNode, AssertNode as RqlAssertNode, GeneratorNode as RqlGeneratorNode,
@@ -60,24 +60,6 @@ fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {
 		RqlQueryPlan::Filter(node) => extract_source_name_from_query(&node.input),
 		RqlQueryPlan::Map(node) => node.input.as_ref().and_then(|p| extract_source_name_from_query(p)),
 		RqlQueryPlan::Take(node) => extract_source_name_from_query(&node.input),
-		_ => None,
-	}
-}
-
-pub(crate) fn extract_resolved_source(plan: &RqlQueryPlan) -> Option<ResolvedObject> {
-	match plan {
-		RqlQueryPlan::TableScan(node) => Some(ResolvedObject::Table(node.source.clone())),
-		RqlQueryPlan::ViewScan(node) => Some(ResolvedObject::View(node.source.clone())),
-		RqlQueryPlan::RingBufferScan(node) => Some(ResolvedObject::RingBuffer(node.source.clone())),
-		RqlQueryPlan::DictionaryScan(node) => Some(ResolvedObject::Dictionary(node.source.clone())),
-		RqlQueryPlan::SeriesScan(node) => Some(ResolvedObject::Series(node.source.clone())),
-		RqlQueryPlan::QueueScan(node) => Some(ResolvedObject::Queue(node.source.clone())),
-		RqlQueryPlan::RemoteScan(_) => None,
-		RqlQueryPlan::Filter(node) => extract_resolved_source(&node.input),
-		RqlQueryPlan::Assert(node) => node.input.as_ref().and_then(|p| extract_resolved_source(p)),
-		RqlQueryPlan::Map(node) => node.input.as_ref().and_then(|p| extract_resolved_source(p)),
-		RqlQueryPlan::Take(node) => extract_resolved_source(&node.input),
-		RqlQueryPlan::Sort(node) => extract_resolved_source(&node.input),
 		_ => None,
 	}
 }

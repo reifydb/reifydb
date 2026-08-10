@@ -3,10 +3,12 @@
 
 use reifydb_core::error::diagnostic::flow::flow_unsupported_aggregate_expression;
 use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_value::{Result, error::Error};
 
-use crate::flow::aggregate::{AggregateContext, is_representable};
+use crate::{
+	expression::{Expression, name::display_label},
+	flow::aggregate::{AggregateContext, is_representable},
+};
 
 pub(crate) fn validate_flow_aggregations(
 	routines: &Routines,

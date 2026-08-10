@@ -3,8 +3,9 @@
 
 use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnObject};
 use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::expression::{ColumnExpression, Expression};
 use reifydb_value::fragment::Fragment;
+
+use crate::expression::{ColumnExpression, Expression};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SlotKind {

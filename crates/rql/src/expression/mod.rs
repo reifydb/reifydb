@@ -8,6 +8,7 @@ pub mod fragment;
 pub mod join;
 pub mod json;
 pub mod name;
+pub mod variant;
 
 use bumpalo::Bump;
 

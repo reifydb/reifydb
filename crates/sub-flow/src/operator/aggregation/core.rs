@@ -14,19 +14,19 @@ use reifydb_core::{
 	state::{cache::StateCache, store::StateStore},
 	value::column::{ColumnWithName, columns::Columns},
 };
-use reifydb_engine::{
-	expression::{
-		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
-	},
-	flow::aggregate::{AggregateContext, SlotArg, SlotKind, rewrite_aggregates, synthetic_aggregate_column_name},
+use reifydb_engine::expression::{
+	compile::{CompiledExpr, compile_expression},
+	context::{CompileContext, EvalContext},
 };
 use reifydb_flow::window::{
 	engine::tumbling::TumblingEngine,
 	meta::{EngineMeta, EngineMetaKey},
 };
 use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::expression::{Expression, name::display_label};
+use reifydb_rql::{
+	expression::{Expression, name::display_label},
+	flow::aggregate::{AggregateContext, SlotArg, SlotKind, rewrite_aggregates, synthetic_aggregate_column_name},
+};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,

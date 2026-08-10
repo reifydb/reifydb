@@ -2,11 +2,16 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_rql::{flow::operator::OperatorDef::SourceTable, nodes::TableScanNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
-use crate::flow::compiler::{CompileOperator, FlowCompiler};
+use crate::{
+	flow::{
+		compiler::{CompileOperator, FlowCompiler},
+		operator::OperatorDef::SourceTable,
+	},
+	nodes::TableScanNode,
+};
 
 pub(crate) struct TableScanCompiler {
 	pub table_scan: TableScanNode,

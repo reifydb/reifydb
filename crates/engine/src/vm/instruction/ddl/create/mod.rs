@@ -11,14 +11,14 @@ use reifydb_core::{
 	sort::SortKey,
 };
 use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::query::QueryPlan;
+use reifydb_rql::{
+	flow::{compiler::compile_flow, time_domain::check_window_time_requirements},
+	query::QueryPlan,
+};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::fragment::Fragment;
 
-use crate::{
-	Result,
-	flow::{compiler::compile_flow, time_domain::check_window_time_requirements},
-};
+use crate::Result;
 
 fn outermost_sort(plan: &QueryPlan) -> Option<&Vec<SortKey>> {
 	match plan {

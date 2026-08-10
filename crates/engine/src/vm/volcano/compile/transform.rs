@@ -6,19 +6,22 @@ use std::{collections, sync::Arc};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::resolved::ResolvedObject;
 use reifydb_rql::{
-	expression::{AliasExpression, ConstantExpression, Expression, IdentExpression},
+	expression::{
+		AliasExpression, ConstantExpression, Expression, IdentExpression, variant::resolve_is_variant_tags,
+	},
 	nodes::{
 		ExtendNode as RqlExtendNode, FilterNode as RqlFilterNode, MapNode as RqlMapNode,
 		PatchNode as RqlPatchNode,
 	},
+	query::extract_resolved_source,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, value::constraint::Constraint};
 
-use super::{compile, extract_resolved_source};
+use super::compile;
 use crate::vm::volcano::{
 	extend::{ExtendNode, ExtendWithoutInputNode},
-	filter::{FilterNode, resolve_is_variant_tags},
+	filter::FilterNode,
 	map::{MapNode, MapWithoutInputNode},
 	patch::PatchNode,
 	query::{QueryContext, QueryNode},

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::interface::resolved::ResolvedObject;
+
 use crate::nodes::{
 	AggregateNode, AppendQueryNode, ApplyNode, AssertNode, CallFunctionNode, DictionaryScanNode, DistinctNode,
 	EnvironmentNode, ExtendNode, FilterNode, GateNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode,
@@ -95,5 +97,23 @@ impl QueryPlan {
 			QueryPlan::RunTests(_) => "run_tests",
 			QueryPlan::CallFunction(_) => "call_function",
 		}
+	}
+}
+
+pub fn extract_resolved_source(plan: &QueryPlan) -> Option<ResolvedObject> {
+	match plan {
+		QueryPlan::TableScan(node) => Some(ResolvedObject::Table(node.source.clone())),
+		QueryPlan::ViewScan(node) => Some(ResolvedObject::View(node.source.clone())),
+		QueryPlan::RingBufferScan(node) => Some(ResolvedObject::RingBuffer(node.source.clone())),
+		QueryPlan::DictionaryScan(node) => Some(ResolvedObject::Dictionary(node.source.clone())),
+		QueryPlan::SeriesScan(node) => Some(ResolvedObject::Series(node.source.clone())),
+		QueryPlan::QueueScan(node) => Some(ResolvedObject::Queue(node.source.clone())),
+		QueryPlan::RemoteScan(_) => None,
+		QueryPlan::Filter(node) => extract_resolved_source(&node.input),
+		QueryPlan::Assert(node) => node.input.as_ref().and_then(|p| extract_resolved_source(p)),
+		QueryPlan::Map(node) => node.input.as_ref().and_then(|p| extract_resolved_source(p)),
+		QueryPlan::Take(node) => extract_resolved_source(&node.input),
+		QueryPlan::Sort(node) => extract_resolved_source(&node.input),
+		_ => None,
 	}
 }

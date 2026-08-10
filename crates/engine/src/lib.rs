@@ -18,7 +18,6 @@ pub mod engine;
 pub mod environment;
 pub mod error;
 pub mod expression;
-pub mod flow;
 pub mod partition;
 pub mod policy;
 #[cfg(not(reifydb_single_threaded))]

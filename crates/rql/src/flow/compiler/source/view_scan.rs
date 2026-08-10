@@ -2,11 +2,16 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_rql::{flow::operator::OperatorDef::SourceView, nodes::ViewScanNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
-use crate::flow::compiler::{CompileOperator, FlowCompiler};
+use crate::{
+	flow::{
+		compiler::{CompileOperator, FlowCompiler},
+		operator::OperatorDef::SourceView,
+	},
+	nodes::ViewScanNode,
+};
 
 pub(crate) struct ViewScanCompiler {
 	pub view_scan: ViewScanNode,

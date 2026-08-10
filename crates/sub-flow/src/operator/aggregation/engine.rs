@@ -12,7 +12,6 @@ use reifydb_core::{
 	key::operator_state::GroupId,
 	value::column::columns::Columns,
 };
-use reifydb_engine::flow::aggregate::SlotKind;
 use reifydb_flow::{
 	transaction::FlowTransaction,
 	window::{
@@ -25,6 +24,7 @@ use reifydb_flow::{
 		span::{WindowCoord, WindowSpan},
 	},
 };
+use reifydb_rql::flow::aggregate::SlotKind;
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,

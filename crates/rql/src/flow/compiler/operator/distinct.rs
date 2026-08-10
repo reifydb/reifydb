@@ -9,16 +9,18 @@ use reifydb_core::{
 	},
 	row::OperatorTtl,
 };
-use reifydb_rql::{
-	expression::{ColumnExpression, Expression},
-	flow::operator::OperatorDef::Distinct,
-	nodes::DistinctNode,
-	query::QueryPlan,
-};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, fragment::Fragment};
 
-use crate::flow::compiler::{CompileOperator, FlowCompiler};
+use crate::{
+	expression::{ColumnExpression, Expression},
+	flow::{
+		compiler::{CompileOperator, FlowCompiler},
+		operator::OperatorDef::Distinct,
+	},
+	nodes::DistinctNode,
+	query::QueryPlan,
+};
 
 pub(crate) struct DistinctCompiler {
 	pub input: Box<QueryPlan>,

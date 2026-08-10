@@ -2,11 +2,16 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_rql::{flow::operator::OperatorDef::SourceSeries, nodes::SeriesScanNode};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 
-use crate::flow::compiler::{CompileOperator, FlowCompiler};
+use crate::{
+	flow::{
+		compiler::{CompileOperator, FlowCompiler},
+		operator::OperatorDef::SourceSeries,
+	},
+	nodes::SeriesScanNode,
+};
 
 pub(crate) struct SeriesScanCompiler {
 	pub series_scan: SeriesScanNode,

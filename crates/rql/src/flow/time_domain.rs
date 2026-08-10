@@ -6,9 +6,10 @@ use reifydb_core::{
 	common::{TimeDomain, WindowKind},
 	error::diagnostic::flow::flow_rolling_lag_requires_event_time,
 };
-use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, error::Error};
+
+use crate::flow::{flow::FlowDag, operator::OperatorDef};
 
 pub fn source_time_domain(_catalog: &Catalog, _txn: &mut Transaction<'_>, _flow: &FlowDag) -> Result<TimeDomain> {
 	unimplemented!(
