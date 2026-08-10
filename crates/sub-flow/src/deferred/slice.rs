@@ -523,7 +523,10 @@ mod integration {
 		},
 		key::{Key, kind::KeyKind},
 	};
-	use reifydb_flow::transaction::{read::ReadFrom, substrate::FlowSubstrate};
+	use reifydb_flow::{
+		operator::metrics::OperatorSampleRegistry,
+		transaction::{read::ReadFrom, substrate::FlowSubstrate},
+	};
 	use reifydb_rql::flow::{
 		flow::FlowDag,
 		operator::{FlowEdge, FlowNode, OperatorDef},
@@ -541,7 +544,6 @@ mod integration {
 			committer::Committer, quiescence::FlowMaterialization, routing, tracker::FlowPositionTracker,
 		},
 		execution::frontier::WatermarkHold,
-		operator::metrics::OperatorSampleRegistry,
 	};
 
 	fn view_row_count(te: &TestEngine, rql: &str) -> usize {

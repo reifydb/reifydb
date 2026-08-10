@@ -4,12 +4,12 @@
 use std::sync::Arc;
 
 use reifydb_engine::subscription::SubscriptionContext;
-use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
-use reifydb_sub_flow::{
+use reifydb_flow::{
 	context::FlowContext,
-	engine::FlowEngineInner,
 	operator::{OperatorCell, apply::ApplyOperator},
 };
+use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
+use reifydb_sub_flow::engine::FlowEngineInner;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::Result;
 

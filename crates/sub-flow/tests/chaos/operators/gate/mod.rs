@@ -7,12 +7,12 @@ pub mod workload;
 use std::sync::Arc;
 
 use rand::RngExt;
-use reifydb_rql::expression::parse_expression;
-use reifydb_runtime::context::RuntimeContext;
-use reifydb_sub_flow::{
+use reifydb_flow::{
 	context::FlowContext,
 	operator::{OperatorCell, gate::GateOperator, scan::series::SourceSeriesOperator},
 };
+use reifydb_rql::expression::parse_expression;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{run_reported, split},

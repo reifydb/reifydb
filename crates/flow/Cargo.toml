@@ -1,3 +1,4 @@
+
 [package]
 name = "reifydb-flow"
 authors.workspace = true
@@ -14,11 +15,16 @@ reifydb-build = { workspace = true }
 default = []
 runtime = [
     "dep:reifydb-catalog",
+    "dep:reifydb-evaluate",
+    "dep:reifydb-routine-abi",
+    "dep:reifydb-rql",
     "dep:reifydb-runtime",
     "dep:reifydb-store-operator",
     "dep:reifydb-transaction",
     "dep:dashmap",
+    "dep:indexmap",
     "dep:postcard",
+    "dep:smallvec",
 ]
 
 [dependencies]
@@ -26,6 +32,9 @@ reifydb-abi = { workspace = true }
 reifydb-catalog = { workspace = true, optional = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
+reifydb-evaluate = { workspace = true, optional = true }
+reifydb-routine-abi = { workspace = true, optional = true }
+reifydb-rql = { workspace = true, optional = true }
 reifydb-runtime = { workspace = true, optional = true }
 reifydb-store-operator = { workspace = true, optional = true }
 reifydb-transaction = { workspace = true, optional = true }
@@ -33,10 +42,13 @@ reifydb-value = { workspace = true }
 reifydb-macro = { workspace = true }
 
 dashmap = { workspace = true, optional = true }
+indexmap = { workspace = true, optional = true }
 postcard = { workspace = true, optional = true }
+smallvec = { workspace = true, optional = true }
 tracing = { workspace = true }
 serde = { workspace = true }
+serde_bytes = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
-reifydb-test-harness = { workspace = true }
-reifydb-engine = { workspace = true }
+reifydb-test-harness = { workspace = true, features = ["operator"] }

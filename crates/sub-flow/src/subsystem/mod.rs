@@ -42,7 +42,10 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
-use reifydb_flow::transaction::substrate::FlowSubstrate;
+use reifydb_flow::{
+	operator::metrics::{OperatorSampleCollector, OperatorSampleRegistry, RowNumberMetricsCollector},
+	transaction::substrate::FlowSubstrate,
+};
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock, shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::{
@@ -69,7 +72,6 @@ use crate::{
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
 		watermark::compute_flow_watermarks,
 	},
-	operator::metrics::{OperatorSampleCollector, OperatorSampleRegistry, RowNumberMetricsCollector},
 	subsystem::shutdown::FlowShutdownState,
 };
 

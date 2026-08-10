@@ -21,20 +21,21 @@ use reifydb_core::{
 		operator_state::{Keyspace, OperatorStateKey},
 	},
 };
-use reifydb_flow::{timer::Timer, window::meta::EngineMeta};
-use reifydb_routine::{
-	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
-};
-use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::expression::parse_expression;
-use reifydb_sub_flow::{
+use reifydb_flow::{
 	context::FlowContext,
 	operator::{
 		OperatorCell,
 		scan::series::SourceSeriesOperator,
 		window::operator::{WindowConfig, WindowOperator},
 	},
+	timer::Timer,
+	window::meta::EngineMeta,
 };
+use reifydb_routine::{
+	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
+};
+use reifydb_routine_abi::registry::Routines;
+use reifydb_rql::expression::parse_expression;
 use reifydb_testing_flow::{generator, harness::Harness};
 use reifydb_value::{
 	factory::time::at_millis,

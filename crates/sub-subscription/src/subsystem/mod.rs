@@ -41,7 +41,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{engine::StandardEngine, subscription::SubscriptionServiceRef};
-use reifydb_flow::transaction::substrate::FlowSubstrate;
+use reifydb_flow::{operator::metrics::OperatorSampleRegistry, transaction::substrate::FlowSubstrate};
 use reifydb_runtime::{
 	actor::{
 		mailbox::ActorRef,
@@ -52,7 +52,7 @@ use reifydb_runtime::{
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
-use reifydb_sub_flow::{builder::CustomOperators, engine::FlowEngineInner, operator::metrics::OperatorSampleRegistry};
+use reifydb_sub_flow::{builder::CustomOperators, engine::FlowEngineInner};
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_value::{Result, value::duration::Duration};
 

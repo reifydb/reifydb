@@ -60,19 +60,6 @@ pub enum EngineError {
 		operation: &'static str,
 	},
 
-	#[error("cannot change partition column via UPDATE on object {object}: partition columns are immutable")]
-	ImmutablePartitionColumn {
-		object: ObjectId,
-	},
-
-	#[error(
-		"partition hash collision on object {object}: hash {hash:032x} maps to two distinct partition value tuples"
-	)]
-	PartitionHashCollision {
-		object: ObjectId,
-		hash: u128,
-	},
-
 	#[error("`{object}` declares `{column}` as its #time populator but has no such column")]
 	TimePopulatorMissing {
 		object: String,
@@ -232,49 +219,6 @@ impl IntoDiagnostic for EngineError {
 				label: Some("missing partition address".to_string()),
 				help: Some(
 					"the query must carry the row's partition alongside its row number; rewrite the query so the partitioned source's columns flow through unmodified"
-						.to_string(),
-				),
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			EngineError::ImmutablePartitionColumn {
-				object,
-			} => Diagnostic {
-				code: "PART_002".to_string(),
-				rql: None,
-				message: format!(
-					"cannot change partition column via UPDATE on object {}: partition columns are immutable",
-					object
-				),
-				column: None,
-				fragment: Fragment::None,
-				label: Some("partition column change rejected".to_string()),
-				help: Some(
-					"partition columns determine a row's physical location and cannot be updated; delete and re-insert the row instead"
-						.to_string(),
-				),
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
-			EngineError::PartitionHashCollision {
-				object,
-				hash,
-			} => Diagnostic {
-				code: "PART_003".to_string(),
-				rql: None,
-				message: format!(
-					"partition hash collision on object {}: hash {:032x} maps to two distinct partition value tuples",
-					object, hash
-				),
-				column: None,
-				fragment: Fragment::None,
-				label: Some("128-bit hash collision".to_string()),
-				help: Some(
-					"two distinct partition value tuples produced the same 128-bit hash; this is astronomically unlikely and points to a hashing bug or data corruption, report it as a bug"
 						.to_string(),
 				),
 				notes: vec![],

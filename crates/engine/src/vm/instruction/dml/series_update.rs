@@ -31,6 +31,7 @@ use reifydb_core::{
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		series_row::SeriesRowKey,
 	},
+	partition::PartitionError,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -144,7 +145,7 @@ pub(crate) fn update_series(
 				let expected = columns.partitions()[row_idx];
 				let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
 				if series_partition_of_bytes(&series, &shape, &row) != expected {
-					return Err(EngineError::ImmutablePartitionColumn {
+					return Err(PartitionError::ImmutablePartitionColumn {
 						object: ObjectId::series(series.id),
 					}
 					.into());
@@ -259,7 +260,7 @@ fn build_series_updates_to_apply(
 			let old_partition = columns.partitions()[row_idx];
 			let new_partition = series_partition_of_columns(series, columns, row_idx)?;
 			if new_partition != old_partition {
-				return Err(EngineError::ImmutablePartitionColumn {
+				return Err(PartitionError::ImmutablePartitionColumn {
 					object: ObjectId::series(series.id),
 				}
 				.into());

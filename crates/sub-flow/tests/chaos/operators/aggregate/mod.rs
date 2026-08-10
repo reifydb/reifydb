@@ -5,11 +5,11 @@ pub mod oracle;
 pub mod workload;
 
 use rand::{RngExt, rngs::StdRng};
-use reifydb_rql::expression::parse_expression;
-use reifydb_runtime::context::RuntimeContext;
-use reifydb_sub_flow::operator::{
+use reifydb_flow::operator::{
 	OperatorCell, aggregation::operator::AggregateOperator, scan::series::SourceSeriesOperator,
 };
+use reifydb_rql::expression::parse_expression;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{run_reported, split},

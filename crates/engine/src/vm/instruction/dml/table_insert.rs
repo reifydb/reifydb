@@ -31,6 +31,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey},
+	partition::partition_col_indices,
 	value::column::columns::Columns,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -52,7 +53,7 @@ use super::{
 };
 use crate::{
 	Result,
-	partition::{partition_col_indices, partition_values, resolve_partition},
+	partition::{partition_values, resolve_partition},
 	policy::PolicyEvaluator,
 	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
 	vm::{

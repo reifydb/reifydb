@@ -23,7 +23,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
-use reifydb_flow::transaction::substrate::FlowSubstrate;
+use reifydb_flow::{operator::metrics::OperatorSampleRegistry, transaction::substrate::FlowSubstrate};
 use reifydb_rql::flow::{analyzer::FlowGraphAnalyzer, flow::FlowDag, operator::OperatorDef};
 use reifydb_runtime::{
 	actor::{
@@ -56,7 +56,6 @@ use crate::{
 		routing::{self, ViewRoute},
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
 	},
-	operator::metrics::OperatorSampleRegistry,
 };
 
 const FLOW_RETRY_LIMIT: u32 = 3;

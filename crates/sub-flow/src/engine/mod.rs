@@ -28,8 +28,13 @@ use reifydb_engine::vm::executor::Executor;
 #[cfg(reifydb_target = "native")]
 use reifydb_extension::operator::ffi_loader::ffi_operator_loader;
 #[cfg(reifydb_target = "native")]
+use reifydb_flow::error::FlowStateError;
+#[cfg(reifydb_target = "native")]
 use reifydb_flow::operator::BoxedOperator;
-use reifydb_flow::transaction::substrate::FlowSubstrate;
+use reifydb_flow::{
+	operator::{OperatorCell, metrics::OperatorSampleRegistry},
+	transaction::substrate::FlowSubstrate,
+};
 use reifydb_rql::flow::{
 	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
 	flow::FlowDag,
@@ -44,16 +49,13 @@ use reifydb_sdk::config::Config;
 use reifydb_value::{Result, error::Error, params::Params, value::Value};
 use tracing::instrument;
 
+use crate::builder::CustomOperators;
 #[cfg(reifydb_target = "native")]
-use crate::error::{FlowStateError, NativeOperatorError};
+use crate::error::NativeOperatorError;
 #[cfg(reifydb_target = "native")]
 use crate::operator::ffi::FFIOperatorHandle;
 #[cfg(reifydb_target = "native")]
 use crate::operator::native::native_operator_loader;
-use crate::{
-	builder::CustomOperators,
-	operator::{OperatorCell, metrics::OperatorSampleRegistry},
-};
 
 pub struct FlowEngineInner {
 	pub(crate) catalog: Catalog,
@@ -325,6 +327,7 @@ mod tests {
 			catalog::{flow::FlowId, id::SeriesId},
 		},
 	};
+	use reifydb_flow::operator::scan::series::SourceSeriesOperator;
 	use reifydb_rql::flow::{
 		flow::FlowDag,
 		operator::{FlowNode, OperatorDef},
@@ -332,7 +335,6 @@ mod tests {
 	use reifydb_test_harness::engine::TestEngine;
 
 	use super::*;
-	use crate::operator::scan::series::SourceSeriesOperator;
 
 	#[test]
 	fn removing_a_flow_drops_its_operators_arenas() {

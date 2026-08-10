@@ -18,12 +18,14 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_flow::operator::Operator;
-use reifydb_rql::expression::parse_expression;
-use reifydb_sub_flow::{
+use reifydb_flow::{
 	context::FlowContext,
-	operator::join::operator::{JoinOperator, JoinSideConfig},
+	operator::{
+		Operator,
+		join::operator::{JoinOperator, JoinSideConfig},
+	},
 };
+use reifydb_rql::expression::parse_expression;
 use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 use reifydb_value::{
 	fragment::Fragment,
@@ -98,7 +100,8 @@ fn join(engine: &TestEngine) -> JoinOperator {
 		JOIN_OPERATOR,
 		JoinType::Inner,
 		None,
-		engine.executor(),
+		engine.executor().routines.clone(),
+		engine.executor().runtime_context.clone(),
 		true,
 		false,
 		true,

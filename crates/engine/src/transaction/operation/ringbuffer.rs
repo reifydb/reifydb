@@ -23,6 +23,7 @@ use reifydb_core::{
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		row::RowKey,
 	},
+	partition::{PartitionError, partition_col_indices},
 	row::row_shape_from_columns,
 	value::column::columns::Columns,
 };
@@ -36,11 +37,7 @@ use reifydb_value::{
 };
 use smallvec::smallvec;
 
-use crate::{
-	Result,
-	error::EngineError,
-	partition::{partition_col_indices, partition_values},
-};
+use crate::{Result, partition::partition_values};
 
 fn ringbuffer_key(ringbuffer: &RingBuffer, partition: Option<Partition>, row_number: RowNumber) -> EncodedKey {
 	match partition {
@@ -222,7 +219,7 @@ impl RingBufferOperations for CommandTransaction {
 			let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns);
 			let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
 			if Partition::of(&partition_values(&shape, &bytes, &indices)) != expected {
-				return Err(EngineError::ImmutablePartitionColumn {
+				return Err(PartitionError::ImmutablePartitionColumn {
 					object: ObjectId::ringbuffer(ringbuffer.id),
 				}
 				.into());
@@ -346,7 +343,7 @@ impl RingBufferOperations for AdminTransaction {
 			let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns);
 			let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
 			if Partition::of(&partition_values(&shape, &bytes, &indices)) != expected {
-				return Err(EngineError::ImmutablePartitionColumn {
+				return Err(PartitionError::ImmutablePartitionColumn {
 					object: ObjectId::ringbuffer(ringbuffer.id),
 				}
 				.into());

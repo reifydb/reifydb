@@ -9,31 +9,21 @@ use reifydb_codec::{
 	row::shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_core::{
-	interface::catalog::{column::Column, id::TableId, object::ObjectId, table::Table},
+	interface::catalog::{id::TableId, object::ObjectId, table::Table},
 	key::{
 		partition::PartitionKey,
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		row::RowKey,
 	},
+	partition::{PartitionError, partition_col_indices},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{Value, blob::Blob, partition::Partition, row_number::RowNumber, value_type::ValueType};
 
-use crate::{Result, error::EngineError};
+use crate::Result;
 
 static REGISTRY_SHAPE: LazyLock<RowShape> =
 	LazyLock::new(|| RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("values", ValueType::Blob)]));
-
-pub fn partition_col_indices(columns: &[Column], partition_by: &[String]) -> Vec<usize> {
-	partition_by
-		.iter()
-		.map(|pb| {
-			columns.iter()
-				.position(|c| c.name == *pb)
-				.expect("partition column must exist (validated during planning)")
-		})
-		.collect()
-}
 
 pub fn partition_values(shape: &RowShape, row: &[u8], indices: &[usize]) -> Vec<Value> {
 	indices.iter().map(|&i| shape.get_value(row, i)).collect()
@@ -78,7 +68,7 @@ pub fn resolve_partition(
 	match txn.get(&key)? {
 		Some(multi) => {
 			if REGISTRY_SHAPE.get_value(&multi.bytes, 0) != candidate {
-				return Err(EngineError::PartitionHashCollision {
+				return Err(PartitionError::PartitionHashCollision {
 					object,
 					hash: partition.0,
 				}

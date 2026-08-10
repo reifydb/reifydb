@@ -19,7 +19,7 @@ use reifydb_core::{
 	key::{EncodableKey, Key, kind::KeyKind, operator_state::OperatorStateKey},
 };
 use reifydb_flow::{
-	operator::Operator,
+	operator::{Operator, OperatorCell, apply::ApplyOperator, scan::series::SourceSeriesOperator},
 	timer::Timer,
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
@@ -31,12 +31,7 @@ use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 };
 use reifydb_sdk::{config::Config, operator::OperatorLogic};
-use reifydb_sub_flow::operator::{
-	OperatorCell,
-	apply::ApplyOperator,
-	native::{NativeBridgedOperator, NativeOperatorAdapter},
-	scan::series::SourceSeriesOperator,
-};
+use reifydb_sub_flow::operator::native::{NativeBridgedOperator, NativeOperatorAdapter};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject};
 use reifydb_transaction::{

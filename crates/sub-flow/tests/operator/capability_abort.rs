@@ -15,7 +15,7 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_sub_flow::operator::guard::enforce_apply_capabilities;
+use reifydb_flow::operator::guard::enforce_apply_capabilities;
 use reifydb_value::value::datetime::DateTime;
 
 const CHILD_ENV: &str = "REIFYDB_CAPABILITY_ABORT_CHILD";

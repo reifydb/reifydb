@@ -32,16 +32,18 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
-use reifydb_runtime::context::RuntimeContext;
-use reifydb_sub_flow::operator::{
-	OperatorCell,
-	scan::series::SourceSeriesOperator,
-	sink::{
-		ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
-		view::SinkTableViewOperator,
+use reifydb_flow::{
+	operator::{
+		Operator, OperatorCell,
+		scan::series::SourceSeriesOperator,
+		sink::{
+			ringbuffer_view::SinkRingBufferViewOperator, series_view::SinkSeriesViewOperator,
+			view::SinkTableViewOperator,
+		},
 	},
+	transaction::FlowTransaction,
 };
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{run_reported, split},

@@ -23,12 +23,7 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_routine::{
-	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
-};
-use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::expression::parse_expression;
-use reifydb_sub_flow::{
+use reifydb_flow::{
 	context::FlowContext,
 	operator::{
 		OperatorCell,
@@ -43,6 +38,11 @@ use reifydb_sub_flow::{
 		window::operator::{WindowConfig, WindowOperator},
 	},
 };
+use reifydb_routine::{
+	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
+};
+use reifydb_routine_abi::registry::Routines;
+use reifydb_rql::expression::parse_expression;
 use reifydb_testing_flow::{generator, harness::Harness};
 use reifydb_value::value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber};
 
@@ -303,11 +303,11 @@ mod join {
 		},
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
-	use reifydb_rql::expression::parse_expression;
-	use reifydb_sub_flow::{
+	use reifydb_flow::{
 		context::FlowContext,
 		operator::join::operator::{JoinOperator, JoinSideConfig},
 	};
+	use reifydb_rql::expression::parse_expression;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_testing_flow::harness::Harness;
 	use reifydb_value::{
@@ -417,7 +417,8 @@ mod join {
 				false => JoinType::Inner,
 			},
 			None,
-			engine.executor(),
+			engine.executor().routines.clone(),
+			engine.executor().runtime_context.clone(),
 			snapshot,
 			false,
 			latest,
@@ -549,10 +550,12 @@ mod source {
 		},
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
-	use reifydb_flow::operator::Operator;
-	use reifydb_sub_flow::operator::scan::{
-		ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator, table::SourceTableOperator,
-		view::SourceViewOperator,
+	use reifydb_flow::operator::{
+		Operator,
+		scan::{
+			ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator, table::SourceTableOperator,
+			view::SourceViewOperator,
+		},
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_testing_flow::harness::Harness;

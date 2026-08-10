@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{HashMap, VecDeque};
+#[cfg(not(reifydb_single_threaded))]
+use std::collections::HashMap;
+use std::collections::VecDeque;
 #[cfg(not(reifydb_single_threaded))]
 use std::sync::Arc;
 
@@ -15,7 +17,6 @@ use reifydb_value::fragment::Fragment;
 use reifydb_value::{params::Params, value::Value};
 use tracing::instrument;
 
-#[cfg(not(reifydb_single_threaded))]
 use crate::{
 	Result,
 	vm::volcano::query::{QueryContext, QueryNode},

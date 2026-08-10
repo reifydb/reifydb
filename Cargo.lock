@@ -3072,20 +3072,26 @@ name = "reifydb-flow"
 version = "0.8.1"
 dependencies = [
  "dashmap",
+ "indexmap",
  "postcard",
  "reifydb-abi",
  "reifydb-build",
  "reifydb-catalog",
  "reifydb-codec",
  "reifydb-core",
- "reifydb-engine",
+ "reifydb-evaluate",
  "reifydb-macro",
+ "reifydb-routine-abi",
+ "reifydb-rql",
  "reifydb-runtime",
  "reifydb-store-operator",
  "reifydb-test-harness",
  "reifydb-transaction",
  "reifydb-value",
  "serde",
+ "serde_bytes",
+ "smallvec",
+ "thiserror 2.0.18",
  "tracing",
 ]
 

@@ -7,11 +7,11 @@ use reifydb_core::interface::catalog::{
 	flow::{FlowId, OperatorId},
 	object::ObjectId,
 };
-use reifydb_flow::{transaction::FlowTransaction, window::engine::seal_horizon};
+use reifydb_flow::{operator::OperatorCell, transaction::FlowTransaction, window::engine::seal_horizon};
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::{Result, value::datetime::DateTime};
 
-use crate::{engine::FlowEngineInner, operator::OperatorCell};
+use crate::engine::FlowEngineInner;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct WatermarkHold {
@@ -117,7 +117,10 @@ mod tests {
 			change::Change,
 		},
 	};
-	use reifydb_flow::{operator::Operator, transaction::substrate::FlowSubstrate};
+	use reifydb_flow::{
+		operator::{Operator, metrics::OperatorSampleRegistry},
+		transaction::substrate::FlowSubstrate,
+	};
 	use reifydb_rql::flow::{
 		flow::FlowBuilder,
 		operator::{FlowEdge, FlowNode, OperatorDef},
@@ -134,7 +137,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::{builder::CustomOperators, operator::metrics::OperatorSampleRegistry};
+	use crate::builder::CustomOperators;
 
 	const FLOW: FlowId = FlowId(1);
 

@@ -6,7 +6,7 @@ pub mod workload;
 
 use rand::{RngExt, rngs::StdRng};
 use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_sub_flow::operator::{OperatorCell, append::AppendOperator, scan::series::SourceSeriesOperator};
+use reifydb_flow::operator::{OperatorCell, append::AppendOperator, scan::series::SourceSeriesOperator};
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{run_reported, split},

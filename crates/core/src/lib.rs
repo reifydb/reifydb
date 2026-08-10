@@ -57,6 +57,7 @@ pub mod interface;
 pub mod key;
 pub mod lifecycle;
 pub mod metrics;
+pub mod partition;
 pub mod profiler;
 pub mod row;
 pub mod sort;

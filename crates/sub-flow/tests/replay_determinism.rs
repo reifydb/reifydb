@@ -29,22 +29,21 @@ use reifydb_core::{
 	key::operator_state::Keyspace,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
-use reifydb_flow::operator::Operator;
-use reifydb_routine::{
-	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
-};
-use reifydb_routine_abi::registry::Routines;
-use reifydb_rql::expression::parse_expression;
-use reifydb_sub_flow::{
+use reifydb_flow::{
 	context::FlowContext,
 	operator::{
-		OperatorCell,
+		Operator, OperatorCell,
 		distinct::operator::DistinctOperator,
 		join::operator::{JoinOperator, JoinSideConfig},
 		scan::series::SourceSeriesOperator,
 		window::operator::{WindowConfig, WindowOperator},
 	},
 };
+use reifydb_routine::{
+	function::default_native_functions, monoid::default_native_monoids, procedure::default_native_procedures,
+};
+use reifydb_routine_abi::registry::Routines;
+use reifydb_rql::expression::parse_expression;
 use reifydb_testing_flow::{
 	generator,
 	harness::Harness,
@@ -551,7 +550,8 @@ mod join {
 				JOIN,
 				JoinType::Inner,
 				None,
-				engine.executor(),
+				engine.executor().routines.clone(),
+				engine.executor().runtime_context.clone(),
 				false,
 				false,
 				false,

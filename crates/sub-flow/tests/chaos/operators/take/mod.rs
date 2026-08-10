@@ -5,7 +5,7 @@ pub mod oracle;
 pub mod workload;
 
 use rand::RngExt;
-use reifydb_sub_flow::operator::{OperatorCell, scan::series::SourceSeriesOperator, take::TakeOperator};
+use reifydb_flow::operator::{OperatorCell, scan::series::SourceSeriesOperator, take::TakeOperator};
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{run_reported, split},

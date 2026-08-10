@@ -15,11 +15,18 @@ pub mod timer;
 pub mod window;
 
 #[cfg(feature = "runtime")]
+pub mod context;
+#[cfg(feature = "runtime")]
+pub mod error;
+#[cfg(feature = "runtime")]
 pub mod host;
 #[cfg(feature = "runtime")]
 pub mod operator;
 #[cfg(feature = "runtime")]
 pub mod transaction;
+
+#[cfg(all(test, feature = "runtime"))]
+pub(crate) mod testing;
 
 #[cfg(all(test, feature = "runtime"))]
 pub(crate) mod test_util {

@@ -25,7 +25,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_flow::transaction::substrate::FlowSubstrate;
+use reifydb_flow::{operator::metrics::OperatorSampleRegistry, transaction::substrate::FlowSubstrate};
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
 	actor::{
@@ -57,7 +57,6 @@ use crate::{
 	},
 	engine::FlowEngineInner,
 	execution::frontier::WatermarkHolds,
-	operator::metrics::OperatorSampleRegistry,
 };
 
 pub struct FlowActorParams {

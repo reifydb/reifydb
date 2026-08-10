@@ -12,6 +12,7 @@ use reifydb_core::{
 		catalog::{object::ObjectId, table::Table},
 		change::{Change, ChangeOrigin, Diff},
 	},
+	partition::PartitionError,
 	row::row_shape_from_columns,
 	value::column::columns::Columns,
 };
@@ -25,7 +26,6 @@ use smallvec::smallvec;
 
 use crate::{
 	Result,
-	error::EngineError,
 	partition::{row_key_from_partition, table_partition_of_row, table_row_key},
 };
 
@@ -162,7 +162,7 @@ impl TableOperations for CommandTransaction {
 				if let Some(&expected) = partitions.get(idx)
 					&& table_partition_of_row(table, &shape, row) != expected
 				{
-					return Err(EngineError::ImmutablePartitionColumn {
+					return Err(PartitionError::ImmutablePartitionColumn {
 						object: ObjectId::Table(table.id),
 					}
 					.into());
@@ -315,7 +315,7 @@ impl TableOperations for AdminTransaction {
 				if let Some(&expected) = partitions.get(idx)
 					&& table_partition_of_row(table, &shape, row) != expected
 				{
-					return Err(EngineError::ImmutablePartitionColumn {
+					return Err(PartitionError::ImmutablePartitionColumn {
 						object: ObjectId::Table(table.id),
 					}
 					.into());

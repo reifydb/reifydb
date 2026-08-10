@@ -11,9 +11,7 @@ pub mod tumbling;
 use std::sync::Arc;
 
 use reifydb_core::{common::WindowKind, interface::catalog::flow::OperatorId};
-use reifydb_rql::expression::parse_expression;
-use reifydb_runtime::context::RuntimeContext;
-use reifydb_sub_flow::{
+use reifydb_flow::{
 	context::FlowContext,
 	operator::{
 		OperatorCell,
@@ -21,6 +19,8 @@ use reifydb_sub_flow::{
 		window::operator::{WindowConfig, WindowOperator},
 	},
 };
+use reifydb_rql::expression::parse_expression;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::value::duration::Duration;
 
 pub struct WindowSpec {

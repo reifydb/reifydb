@@ -22,16 +22,16 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change},
 	value::column::columns::Columns,
 };
-use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
-use reifydb_rql::expression::parse_expression;
-use reifydb_runtime::context::RuntimeContext;
-use reifydb_sub_flow::{
+use reifydb_flow::{
 	context::FlowContext,
 	operator::{
-		OperatorCell, aggregation::operator::AggregateOperator, filter::FilterOperator, gate::GateOperator,
-		map::MapOperator, scan::series::SourceSeriesOperator,
+		Operator, OperatorCell, aggregation::operator::AggregateOperator, filter::FilterOperator,
+		gate::GateOperator, map::MapOperator, scan::series::SourceSeriesOperator,
 	},
+	transaction::FlowTransaction,
 };
+use reifydb_rql::expression::parse_expression;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{run_reported, split},

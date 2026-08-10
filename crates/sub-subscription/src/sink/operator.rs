@@ -15,14 +15,13 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_flow::{
-	operator::Operator,
+	operator::{
+		Operator, OperatorCell,
+		stateful::{raw::RawStatefulOperator, utils},
+	},
 	transaction::{FlowTransaction, slot::PersistFn},
 };
 use reifydb_macro::operator_state;
-use reifydb_sub_flow::operator::{
-	OperatorCell,
-	stateful::{raw::RawStatefulOperator, utils},
-};
 use reifydb_value::{
 	Result,
 	error::Error,

@@ -34,6 +34,7 @@ use reifydb_core::{
 use reifydb_engine::vm::executor::Executor;
 use reifydb_extension::ffi_callbacks::builder::{BuilderRegistry, with_registry};
 use reifydb_flow::{
+	operator::{Operator, scale_from_millis},
 	timer::Timer,
 	transaction::{FlowTransaction, slot::PersistFn},
 };
@@ -46,10 +47,7 @@ use reifydb_value::{
 };
 use tracing::{Span, error, field, instrument};
 
-use crate::{
-	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
-	operator::{Operator, scale_from_millis},
-};
+use crate::ffi::{callbacks::create_host_callbacks, context::new_ffi_context};
 
 thread_local! {
 	static FFI_MARSHAL_ARENA: UnsafeCell<Arena> = UnsafeCell::new(Arena::new());

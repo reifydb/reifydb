@@ -31,6 +31,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{EncodableKey, index_entry::IndexEntryKey},
+	partition::PartitionError,
 	value::column::columns::Columns,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -200,7 +201,7 @@ fn run_table_update(
 			if let Some(old) = partition {
 				let new_partition = table_partition_of_row(target.table, shape, &row);
 				if new_partition != old {
-					return Err(EngineError::ImmutablePartitionColumn {
+					return Err(PartitionError::ImmutablePartitionColumn {
 						object: ObjectId::Table(target.table.id),
 					}
 					.into());
