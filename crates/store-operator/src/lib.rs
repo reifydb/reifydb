@@ -8,9 +8,6 @@
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
-mod arena;
-pub mod config;
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 pub mod snapshot;
 pub mod store;
 
