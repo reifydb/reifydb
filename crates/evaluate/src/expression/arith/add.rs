@@ -19,7 +19,7 @@ use crate::{
 	expression::{context::EvalContext, option::binary_op_unwrap_option},
 };
 
-pub(crate) fn add_columns(
+pub fn add_columns(
 	ctx: &EvalContext,
 	left: &ColumnWithName,
 	right: &ColumnWithName,

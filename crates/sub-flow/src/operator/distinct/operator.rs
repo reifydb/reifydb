@@ -20,7 +20,7 @@ use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 	value::column::columns::Columns,
 };
-use reifydb_engine::expression::{
+use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::CompileContext,
 };

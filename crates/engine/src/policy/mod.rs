@@ -11,6 +11,13 @@ use reifydb_core::{
 	interface::catalog::policy::{CallableOp, DataOp, PolicyTargetType, SessionOp},
 	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_evaluate::{
+	expression::{
+		compile::compile_expression,
+		context::{CompileContext, EvalContext},
+	},
+	stack::SymbolTable,
+};
 use reifydb_policy::{
 	enforce::{PolicyTarget, enforce_identity_policy, enforce_session_policy, enforce_write_policies},
 	evaluate::PolicyEvaluator as PolicyEvaluatorTrait,
@@ -19,13 +26,7 @@ use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, params::Params, value::identity::IdentityId};
 
-use crate::{
-	expression::{
-		compile::compile_expression,
-		context::{CompileContext, EvalContext},
-	},
-	vm::{services::Services, stack::SymbolTable},
-};
+use crate::vm::services::Services;
 
 pub struct PolicyEvaluator<'a> {
 	services: &'a Arc<Services>,

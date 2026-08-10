@@ -2,19 +2,19 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, columns::Columns};
-use reifydb_rql::expression::PrefixOperator;
-use reifydb_value::fragment::Fragment;
-
-use super::broadcast::broadcast_to_match;
-use crate::{
-	Result,
+use reifydb_evaluate::{
 	expression::{
 		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
 		context::EvalContext,
 		prefix::prefix_apply,
 	},
-	vm::{stack::Variable, vm::Vm},
+	stack::Variable,
 };
+use reifydb_rql::expression::PrefixOperator;
+use reifydb_value::fragment::Fragment;
+
+use super::broadcast::broadcast_to_match;
+use crate::{Result, vm::vm::Vm};
 
 impl<'a> Vm<'a> {
 	fn exec_binary_column_op<F>(&mut self, op: F, frag: fn() -> Fragment) -> Result<()>

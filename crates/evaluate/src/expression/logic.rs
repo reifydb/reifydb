@@ -74,7 +74,7 @@ fn is_all_none(bv: Option<&BitVec>) -> bool {
 	}
 }
 
-pub(crate) fn execute_logical_op(
+pub fn execute_logical_op(
 	left: &ColumnWithName,
 	right: &ColumnWithName,
 	fragment: &Fragment,

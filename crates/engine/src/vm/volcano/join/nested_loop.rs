@@ -2,6 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
+use reifydb_evaluate::expression::{
+	compile::compile_expression,
+	context::{CompileContext, EvalContext},
+};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -14,11 +18,7 @@ use tracing::instrument;
 use super::common::{JoinContext, build_eval_columns, load_and_merge_all, resolve_column_names};
 use crate::{
 	Result,
-	expression::{
-		compile::compile_expression,
-		context::{CompileContext, EvalContext},
-	},
-	vm::volcano::query::{QueryContext, QueryNode},
+	vm::volcano::query::{QueryContext, QueryNode, eval_context_from_query},
 };
 
 #[derive(Clone, Copy, PartialEq)]
@@ -108,7 +108,7 @@ impl QueryNode for NestedLoopJoinNode {
 
 		let resolved = resolve_column_names(&left_columns, &right_columns, &self.alias, None);
 
-		let session = EvalContext::from_query(ctx);
+		let session = eval_context_from_query(ctx);
 		let (result_rows, result_row_numbers) = self.probe(
 			&session,
 			&left_columns,

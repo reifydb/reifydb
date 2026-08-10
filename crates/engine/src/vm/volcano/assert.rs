@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders};
+use reifydb_evaluate::expression::{context::EvalContext, eval::evaluate};
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::reifydb_assertions;
@@ -12,8 +13,7 @@ use tracing::instrument;
 use crate::{
 	Result,
 	error::EngineError,
-	expression::{context::EvalContext, eval::evaluate},
-	vm::volcano::query::{QueryContext, QueryNode},
+	vm::volcano::query::{QueryContext, QueryNode, eval_context_from_query},
 };
 
 pub(crate) struct AssertNode {
@@ -121,7 +121,7 @@ impl QueryNode for AssertNode {
 
 		if let Some(columns) = self.input.next(rx, ctx)? {
 			let row_count = columns.row_count();
-			let session = EvalContext::from_query(stored_ctx);
+			let session = eval_context_from_query(stored_ctx);
 
 			for assert_expr in &self.expressions {
 				let result = Self::eval(&session, &columns, row_count, assert_expr)?;
@@ -236,7 +236,7 @@ impl QueryNode for AssertWithoutInputNode {
 			assert!(self.context.is_some(), "AssertWithoutInputNode::next() called before initialize()");
 		}
 		let stored_ctx = self.context.as_ref().unwrap();
-		let session = EvalContext::from_query(stored_ctx);
+		let session = eval_context_from_query(stored_ctx);
 
 		for assert_expr in &self.expressions {
 			let result = Self::eval(&session, assert_expr)?;

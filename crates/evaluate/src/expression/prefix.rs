@@ -103,11 +103,7 @@ macro_rules! prefix_not_error {
 	};
 }
 
-pub(crate) fn prefix_apply(
-	column: &ColumnWithName,
-	operator: &PrefixOperator,
-	fragment: &Fragment,
-) -> Result<ColumnWithName> {
+pub fn prefix_apply(column: &ColumnWithName, operator: &PrefixOperator, fragment: &Fragment) -> Result<ColumnWithName> {
 	unary_op_unwrap_option(column, |column| match column.data() {
 		ColumnBuffer::Bool(container) => match operator {
 			PrefixOperator::Not(_) => {

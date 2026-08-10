@@ -8,6 +8,10 @@ use reifydb_core::{
 	interface::{catalog::identity::IdentityAttribute, evaluate::TargetColumn},
 	value::column::columns::Columns,
 };
+use reifydb_evaluate::{
+	expression::{context::EvalContext, eval::evaluate},
+	stack::SymbolTable,
+};
 use reifydb_rql::nodes::{CreateIdentityNode, IdentityAttributeAssignment};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
@@ -15,11 +19,7 @@ use reifydb_value::{
 	value::{Value, identity::IdentityId},
 };
 
-use crate::{
-	Result,
-	expression::{context::EvalContext, eval::evaluate},
-	vm::{services::Services, stack::SymbolTable},
-};
+use crate::{Result, vm::services::Services};
 
 pub(crate) fn create_identity(
 	services: &Services,

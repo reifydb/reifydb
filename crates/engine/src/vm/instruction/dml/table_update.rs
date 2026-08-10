@@ -33,6 +33,7 @@ use reifydb_core::{
 	key::{EncodableKey, index_entry::IndexEntryKey},
 	value::column::columns::Columns,
 };
+use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::UpdateTableNode;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -57,7 +58,6 @@ use crate::{
 	vm::{
 		instruction::dml::{coerce::coerce_value_to_column_type, time::resolve_time_for_update},
 		services::Services,
-		stack::SymbolTable,
 		volcano::{
 			compile::compile,
 			query::{QueryContext, QueryNode, query_budget},

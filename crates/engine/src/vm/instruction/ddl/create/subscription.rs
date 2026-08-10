@@ -6,6 +6,7 @@ use reifydb_core::{
 	interface::catalog::{flow::FlowId, id::SubscriptionId},
 	value::column::columns::Columns,
 };
+use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{
 	flow::compiler::compile_subscription_flow_ephemeral, nodes::CreateSubscriptionNode, query::QueryPlan,
 };
@@ -15,7 +16,7 @@ use reifydb_value::{error::Error, fragment::Fragment, params::Params, value::Val
 use crate::{
 	Result,
 	subscription::{SubscriptionContext, SubscriptionServiceRef},
-	vm::{services::Services, stack::SymbolTable},
+	vm::services::Services,
 };
 
 pub(crate) fn create_subscription(

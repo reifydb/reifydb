@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_engine::vm::stack::SymbolTable;
+use reifydb_evaluate::stack::SymbolTable;
 use reifydb_value::{params::Params, value::identity::IdentityId};
 
 #[derive(Debug, Clone)]

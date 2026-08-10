@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
+use reifydb_evaluate::{error::EvaluateError, stack::Variable};
 use reifydb_rql::expression::VariableExpression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::reifydb_assertions;
@@ -11,11 +12,7 @@ use tracing::instrument;
 
 use crate::{
 	Result,
-	error::EngineError,
-	vm::{
-		stack::Variable,
-		volcano::query::{QueryContext, QueryNode},
-	},
+	vm::volcano::query::{QueryContext, QueryNode},
 };
 
 pub(crate) struct VariableNode {
@@ -68,11 +65,11 @@ impl QueryNode for VariableNode {
 
 				Ok(Some(columns.clone()))
 			}
-			Some(Variable::Closure(_)) => Err(EngineError::VariableNotFound {
+			Some(Variable::Closure(_)) => Err(EvaluateError::VariableNotFound {
 				name: variable_name.to_string(),
 			}
 			.into()),
-			None => Err(EngineError::VariableNotFound {
+			None => Err(EvaluateError::VariableNotFound {
 				name: variable_name.to_string(),
 			}
 			.into()),

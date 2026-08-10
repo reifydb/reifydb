@@ -7,6 +7,7 @@ use reifydb_core::{
 	interface::catalog::config::{ConfigKey, GetConfig},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders},
 };
+use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_rql::query::QueryPlan;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::value_type::ValueType};
@@ -15,7 +16,6 @@ use crate::{
 	Result,
 	vm::{
 		services::Services,
-		stack::{SymbolTable, Variable},
 		vm::Vm,
 		volcano::{
 			compile::compile,

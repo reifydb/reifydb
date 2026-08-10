@@ -4,6 +4,14 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders};
+use reifydb_evaluate::{
+	expression::{
+		compile::{CompiledExpr, compile_expression},
+		context::{CompileContext, EvalContext},
+		udf_extract::{ExtractedUdf, extract_udf_calls},
+	},
+	stack::{SymbolTable, Variable, strip_dollar_prefix},
+};
 use reifydb_rql::{
 	expression::Expression,
 	instruction::{Instruction, ScopeType},
@@ -14,16 +22,10 @@ use tracing::instrument;
 
 use crate::{
 	Result,
-	expression::{
-		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
-		udf_extract::{ExtractedUdf, extract_udf_calls},
-	},
 	vm::{
-		exec::{call::collect_call_result, stack::strip_dollar_prefix},
-		stack::{SymbolTable, Variable},
+		exec::call::collect_call_result,
 		vm::{EMPTY_PARAMS, Vm},
-		volcano::query::{QueryContext, QueryNode},
+		volcano::query::{QueryContext, QueryNode, eval_context_from_query},
 	},
 };
 
@@ -232,7 +234,7 @@ impl QueryNode for UdfEvalNode {
 		}
 
 		for call in compiled_calls {
-			let session = EvalContext::from_query(stored_ctx);
+			let session = eval_context_from_query(stored_ctx);
 			let eval_ctx = session.with_eval(columns.clone(), row_count);
 
 			let arg_columns = Self::eval_args(call, &eval_ctx)?;
@@ -339,7 +341,7 @@ pub(crate) fn evaluate_udfs_no_input(
 	let compile_ctx = CompileContext {
 		symbols: &ctx.symbols,
 	};
-	let session = EvalContext::from_query(ctx);
+	let session = eval_context_from_query(ctx);
 	let mut result_columns = Vec::new();
 
 	for udf in &all_udfs {

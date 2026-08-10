@@ -10,7 +10,11 @@ use reifydb_value::{
 	value::{Value, value_type::ValueType},
 };
 
-use crate::{Result, error::EngineError, expression::context::EvalContext, vm::volcano::query::QueryContext};
+use crate::{
+	Result,
+	error::EngineError,
+	vm::volcano::query::{QueryContext, eval_context_from_query},
+};
 
 pub(crate) fn coerce_value_to_column_type(
 	value: Value,
@@ -43,7 +47,7 @@ pub(crate) fn coerce_value_to_column_type(
 	let temp_column_data = ColumnBuffer::from(value.clone());
 	let value_str = value.to_string();
 
-	let base = EvalContext::from_query(ctx);
+	let base = eval_context_from_query(ctx);
 	let mut eval_ctx = base.with_eval_empty();
 	eval_ctx.target = Some(TargetColumn::Resolved(column));
 	let coerced_column = cast_column_data(&eval_ctx, &temp_column_data, target, || Fragment::internal(&value_str))?;

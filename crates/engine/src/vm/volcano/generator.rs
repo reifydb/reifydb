@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::{ColumnWithName, columns::Columns, headers::ColumnHeaders};
+use reifydb_evaluate::expression::{context::EvalContext, eval::evaluate};
 use reifydb_routine_abi::{
 	Function, Procedure,
 	context::{FunctionContext, ProcedureContext},
@@ -16,8 +17,7 @@ use tracing::instrument;
 use crate::{
 	Result,
 	error::EngineError,
-	expression::{context::EvalContext, eval::evaluate},
-	vm::volcano::query::{QueryContext, QueryNode},
+	vm::volcano::query::{QueryContext, QueryNode, eval_context_from_query},
 };
 
 enum GeneratorImpl {
@@ -125,7 +125,7 @@ impl QueryNode for GeneratorNode {
 
 		let stored_ctx = self.context.as_ref().unwrap().clone();
 
-		let session = EvalContext::from_query(&stored_ctx);
+		let session = eval_context_from_query(&stored_ctx);
 		let evaluated_columns = self.eval_params(&session)?;
 
 		let columns = self.invoke(txn, &stored_ctx, evaluated_columns)?;

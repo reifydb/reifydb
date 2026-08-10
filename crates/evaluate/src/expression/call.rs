@@ -11,7 +11,7 @@ use reifydb_routine_abi::{FunctionKind, context::FunctionContext, error::Routine
 use reifydb_rql::expression::{CallExpression, Expression, name::display_label};
 use reifydb_value::{error::Error, fragment::Fragment, value::value_type::ValueType};
 
-use crate::{Result, error::EngineError, expression::context::EvalContext};
+use crate::{Result, error::EvaluateError, expression::context::EvalContext};
 
 pub(crate) fn call_builtin(ctx: &EvalContext, call: &CallExpression, arguments: Columns) -> Result<ColumnWithName> {
 	let function_name = call.func.0.text();
@@ -25,7 +25,7 @@ pub(crate) fn call_builtin(ctx: &EvalContext, call: &CallExpression, arguments: 
 	);
 
 	let routine = ctx.routines.get_function(function_name).ok_or_else(|| -> Error {
-		EngineError::UnknownFunction {
+		EvaluateError::UnknownFunction {
 			name: function_name.to_string(),
 			fragment: fn_fragment.clone(),
 		}

@@ -2,6 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns};
+use reifydb_evaluate::{
+	expression::{
+		compare::{Equal, GreaterThanEqual, LessThanEqual, compare_columns},
+		logic::execute_logical_op,
+		prefix::prefix_apply,
+	},
+	stack::Variable,
+};
 use reifydb_rql::expression::PrefixOperator;
 use reifydb_value::{
 	error::{BinaryOp, IntoDiagnostic, LogicalOp, TypeError},
@@ -10,15 +18,7 @@ use reifydb_value::{
 };
 
 use super::broadcast::broadcast_many;
-use crate::{
-	Result,
-	expression::{
-		compare::{Equal, GreaterThanEqual, LessThanEqual, compare_columns},
-		logic::execute_logical_op,
-		prefix::prefix_apply,
-	},
-	vm::{stack::Variable, vm::Vm},
-};
+use crate::{Result, vm::vm::Vm};
 
 impl<'a> Vm<'a> {
 	pub(crate) fn exec_between(&mut self) -> Result<()> {

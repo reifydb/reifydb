@@ -8,6 +8,7 @@ mod vtable;
 use std::sync::Arc;
 
 use reifydb_core::interface::catalog::id::IndexId;
+use reifydb_evaluate::stack::Variable;
 use reifydb_rql::{
 	nodes::{
 		AggregateNode as RqlAggregateNode, AssertNode as RqlAssertNode, GeneratorNode as RqlGeneratorNode,
@@ -22,29 +23,26 @@ use reifydb_value::fragment::Fragment;
 use tracing::instrument;
 
 use super::{apply_transform::ApplyTransformNode, run_tests::RunTestsQueryNode};
-use crate::vm::{
-	stack::Variable,
-	volcano::{
-		aggregate::AggregateNode,
-		assert::{AssertNode, AssertWithoutInputNode},
-		distinct::DistinctNode,
-		environment::EnvironmentNode,
-		filter::FilterNode,
-		generator::GeneratorNode,
-		inline::InlineDataNode,
-		query::{QueryContext, QueryNode},
-		row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
-		scalarize::ScalarizeNode,
-		scan::{
-			dictionary::DictionaryScanNode, index::IndexScanNode, queue::QueueScan,
-			remote::RemoteFetchNode, ringbuffer::RingBufferScan,
-			series::SeriesScanNode as VolcanoSeriesScanNode, table::TableScanNode, view::ViewScanNode,
-		},
-		sort::SortNode,
-		take::TakeNode,
-		top_k::TopKNode,
-		variable::VariableNode,
+use crate::vm::volcano::{
+	aggregate::AggregateNode,
+	assert::{AssertNode, AssertWithoutInputNode},
+	distinct::DistinctNode,
+	environment::EnvironmentNode,
+	filter::FilterNode,
+	generator::GeneratorNode,
+	inline::InlineDataNode,
+	query::{QueryContext, QueryNode},
+	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
+	scalarize::ScalarizeNode,
+	scan::{
+		dictionary::DictionaryScanNode, index::IndexScanNode, queue::QueueScan, remote::RemoteFetchNode,
+		ringbuffer::RingBufferScan, series::SeriesScanNode as VolcanoSeriesScanNode, table::TableScanNode,
+		view::ViewScanNode,
 	},
+	sort::SortNode,
+	take::TakeNode,
+	top_k::TopKNode,
+	variable::VariableNode,
 };
 
 fn extract_source_name_from_query(plan: &RqlQueryPlan) -> Option<Fragment> {

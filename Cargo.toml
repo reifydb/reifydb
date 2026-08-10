@@ -16,6 +16,7 @@ members = [
     "crates/column",
     "crates/core",
     "crates/engine",
+    "crates/evaluate",
     "crates/export",
     "crates/extension",
     "crates/flow",
@@ -100,6 +101,7 @@ default-members = [
     "crates/column",
     "crates/core",
     "crates/engine",
+    "crates/evaluate",
     "crates/export",
     "crates/extension",
     "crates/flow",
@@ -220,6 +222,7 @@ reifydb-column = { version = "0.8.1", path = "crates/column" }
 reifydb-codec = { version = "0.8.1", path = "crates/codec" }
 reifydb-core = { version = "0.8.1", path = "crates/core" }
 reifydb-engine = { version = "0.8.1", path = "crates/engine" }
+reifydb-evaluate = { version = "0.8.1", path = "crates/evaluate" }
 reifydb-export = { version = "0.8.1", path = "crates/export" }
 reifydb-extension = { version = "0.8.1", path = "crates/extension" }
 reifydb-flow = { version = "0.8.1", path = "crates/flow" }

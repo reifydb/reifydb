@@ -7,6 +7,7 @@ use reifydb_core::{
 	internal_error,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_evaluate::stack::Variable;
 use reifydb_rql::{
 	compiler::CompilationResult,
 	nodes::{AssertBlockNode, DispatchNode, MigrateNode, RollbackMigrationNode},
@@ -23,7 +24,6 @@ use crate::{
 			dml::dispatch::dispatch,
 		},
 		services::Services,
-		stack::Variable,
 		vm::Vm,
 	},
 };

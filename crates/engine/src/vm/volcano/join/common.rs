@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use postcard::to_stdvec;
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns};
+use reifydb_evaluate::expression::compile::CompiledExpr;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
@@ -14,8 +15,7 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	expression::{compile::CompiledExpr, context::EvalContext},
-	vm::volcano::query::{QueryContext, QueryNode, charge_query_memory},
+	vm::volcano::query::{QueryContext, QueryNode, charge_query_memory, eval_context_from_query},
 };
 
 pub(crate) fn load_and_merge_all<'a>(
@@ -211,7 +211,7 @@ pub(crate) fn eval_join_condition(
 		return true;
 	}
 	let eval_columns = build_eval_columns(left_columns, right_columns, left_row, right_row, alias);
-	let session = EvalContext::from_query(ctx);
+	let session = eval_context_from_query(ctx);
 	let exec_ctx = session.with_eval_join(Columns::new(eval_columns));
 	compiled.iter().all(|compiled_expr| {
 		let col = compiled_expr.execute(&exec_ctx).unwrap();

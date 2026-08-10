@@ -9,6 +9,7 @@ use reifydb_core::{
 	testing::{CapturedEvent, CapturedInvocation},
 	value::column::columns::Columns,
 };
+use reifydb_evaluate::stack::Variable;
 use reifydb_rql::{
 	compiler::CompilationResult,
 	nodes::{RunTestsNode, RunTestsScope},
@@ -19,7 +20,7 @@ use reifydb_value::value::{Value, duration::Duration, frame::frame::Frame};
 use crate::{
 	Result,
 	run_tests::result::{TestOutcome, classify_outcome},
-	vm::{services::Services, stack::Variable, vm::Vm},
+	vm::{services::Services, vm::Vm},
 };
 
 fn run_single(

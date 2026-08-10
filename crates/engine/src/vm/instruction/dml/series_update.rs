@@ -33,6 +33,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::UpdateSeriesNode;
 use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
 use reifydb_value::{
@@ -56,7 +57,6 @@ use crate::{
 	vm::{
 		instruction::dml::{shape::get_or_create_series_shape, time::resolve_time_for_update},
 		services::Services,
-		stack::SymbolTable,
 		volcano::{
 			compile::compile,
 			query::{QueryContext, QueryNode, query_budget},

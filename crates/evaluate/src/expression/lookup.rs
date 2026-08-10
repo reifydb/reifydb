@@ -19,7 +19,7 @@ use reifydb_value::value::{
 	value_type::ValueType,
 };
 
-use crate::{Result, expression::context::EvalContext, vm::stack::Variable};
+use crate::{Result, expression::context::EvalContext, stack::Variable};
 
 macro_rules! extract_typed_column {
 	($col:expr, $take:expr, $variant:ident($x:ident) => $transform:expr, $default:expr, $constructor:ident) => {{
@@ -167,7 +167,7 @@ pub mod tests {
 	use reifydb_value::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
 	use super::column_lookup;
-	use crate::{expression::context::EvalContext, vm::stack::SymbolTable};
+	use crate::{expression::context::EvalContext, stack::SymbolTable};
 
 	#[test]
 	fn test_column_not_found_returns_correct_row_count() {

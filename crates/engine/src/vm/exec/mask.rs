@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns};
+use reifydb_evaluate::stack::Variable;
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	reifydb_assertions,
@@ -13,10 +14,7 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	vm::{
-		stack::{ControlFlow, Variable},
-		vm::Vm,
-	},
+	vm::{stack::ControlFlow, vm::Vm},
 };
 
 pub(crate) fn value_is_truthy(value: &Value) -> bool {

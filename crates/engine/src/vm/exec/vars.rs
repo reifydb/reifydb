@@ -5,16 +5,13 @@ use reifydb_core::{
 	internal_error,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_evaluate::stack::{Variable, strip_dollar_prefix};
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	fragment::Fragment,
 };
 
-use super::stack::strip_dollar_prefix;
-use crate::{
-	Result,
-	vm::{stack::Variable, vm::Vm},
-};
+use crate::{Result, vm::vm::Vm};
 
 impl<'a> Vm<'a> {
 	pub(crate) fn exec_load_var(&mut self, fragment: &Fragment) -> Result<()> {

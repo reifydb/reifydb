@@ -7,6 +7,10 @@ use reifydb_core::{
 	interface::{evaluate::TargetColumn, resolved::ResolvedColumn},
 	value::column::{ColumnWithName, cast::cast_column_data, columns::Columns, headers::ColumnHeaders},
 };
+use reifydb_evaluate::expression::{
+	compile::{CompiledExpr, compile_expression},
+	context::{CompileContext, EvalContext},
+};
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::{Expression, name::display_label};
 use reifydb_transaction::transaction::Transaction;
@@ -16,12 +20,8 @@ use tracing::instrument;
 use super::NoopNode;
 use crate::{
 	Result,
-	expression::{
-		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
-	},
 	vm::volcano::{
-		query::{QueryContext, QueryNode},
+		query::{QueryContext, QueryNode, eval_context_from_query, eval_context_from_transform},
 		udf::{UdfEvalNode, evaluate_udfs_no_input, strip_udf_columns},
 	},
 };
@@ -108,7 +108,7 @@ impl Transform for MapNode {
 			self.context.as_ref().expect("MapNode::apply() called before initialize()");
 
 		let row_count = input.row_count();
-		let session = EvalContext::from_transform(ctx, stored_ctx);
+		let session = eval_context_from_transform(ctx, stored_ctx);
 		let mut new_columns = Vec::with_capacity(compiled.len());
 
 		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {
@@ -221,7 +221,7 @@ impl QueryNode for MapWithoutInputNode {
 			return Ok(None);
 		}
 
-		let session = EvalContext::from_query(stored_ctx);
+		let session = eval_context_from_query(stored_ctx);
 		let mut columns = vec![];
 
 		for compiled_expr in compiled {

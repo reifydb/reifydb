@@ -11,15 +11,15 @@ use reifydb_rql::expression::{
 };
 use reifydb_value::fragment::Fragment;
 
-use crate::vm::stack::{Callable, SymbolTable};
+use crate::stack::{Callable, SymbolTable};
 
-pub(crate) struct ExtractedUdf {
+pub struct ExtractedUdf {
 	pub callable: Callable,
 	pub arg_expressions: Vec<Expression>,
 	pub result_column: Fragment,
 }
 
-pub(crate) fn extract_udf_calls(
+pub fn extract_udf_calls(
 	expr: &Expression,
 	symbols: &SymbolTable,
 	counter: &mut usize,

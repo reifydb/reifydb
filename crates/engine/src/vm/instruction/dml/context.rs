@@ -4,9 +4,10 @@
 use std::sync::Arc;
 
 use reifydb_core::interface::catalog::{namespace::Namespace, ringbuffer::RingBuffer, series::Series, table::Table};
+use reifydb_evaluate::stack::SymbolTable;
 use reifydb_value::fragment::Fragment;
 
-use crate::vm::{services::Services, stack::SymbolTable};
+use crate::vm::services::Services;
 
 pub(super) struct TableTarget<'a> {
 	pub namespace: &'a Namespace,

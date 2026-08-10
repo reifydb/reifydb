@@ -5,11 +5,12 @@ use reifydb_core::{
 	interface::catalog::column::Column,
 	value::column::{buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
 };
+use reifydb_evaluate::{expression::context::EvalContext, stack::SymbolTable};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_value::{fragment::Fragment, params::Params, value::identity::IdentityId};
 
-use crate::{Result, expression::context::EvalContext, vm::stack::SymbolTable};
+use crate::Result;
 
 pub(super) fn coerce_columns(
 	column_data: &[ColumnBuffer],

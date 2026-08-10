@@ -11,6 +11,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::InsertDictionaryNode;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -27,7 +28,6 @@ use crate::{
 	transaction::operation::dictionary::DictionaryOperations,
 	vm::{
 		services::Services,
-		stack::SymbolTable,
 		volcano::{
 			compile::compile,
 			query::{QueryContext, QueryNode, query_budget},

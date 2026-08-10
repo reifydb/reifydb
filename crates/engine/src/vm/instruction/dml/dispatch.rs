@@ -8,6 +8,10 @@ use reifydb_core::{
 	testing::CapturedInvocation,
 	value::column::{ColumnWithName, columns::Columns},
 };
+use reifydb_evaluate::{
+	expression::{context::EvalContext, eval::evaluate},
+	stack::Variable,
+};
 use reifydb_routine_abi::context::ProcedureContext;
 use reifydb_rql::{compiler::CompilationResult, instruction::ScopeType, nodes::DispatchNode};
 use reifydb_transaction::transaction::Transaction;
@@ -19,8 +23,7 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	expression::{context::EvalContext, eval::evaluate},
-	vm::{services::Services, stack::Variable, vm::Vm},
+	vm::{services::Services, vm::Vm},
 };
 
 pub(crate) const MAX_DISPATCH_DEPTH: u8 = 32;

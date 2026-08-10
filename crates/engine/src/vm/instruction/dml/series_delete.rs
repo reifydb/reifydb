@@ -26,6 +26,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
@@ -51,7 +52,6 @@ use crate::{
 	vm::{
 		instruction::dml::shape::get_or_create_series_shape,
 		services::Services,
-		stack::SymbolTable,
 		volcano::{
 			compile::compile,
 			query::{QueryContext, QueryNode, query_budget},

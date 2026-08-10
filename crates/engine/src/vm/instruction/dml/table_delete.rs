@@ -30,6 +30,7 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
+use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::DeleteTableNode, query::QueryPlan};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
@@ -52,7 +53,6 @@ use crate::{
 	transaction::operation::table::TableOperations,
 	vm::{
 		services::Services,
-		stack::SymbolTable,
 		volcano::{
 			compile::compile,
 			query::{QueryContext, QueryNode, query_budget},

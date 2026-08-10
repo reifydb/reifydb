@@ -7,12 +7,11 @@ use reifydb_core::{
 	interface::{catalog::property::ColumnSaturationStrategy, evaluate::TargetColumn},
 	value::column::{cast::convert::TargetConvert, columns::Columns},
 };
-use reifydb_extension::transform::context::TransformContext;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_value::{params::Params, value::identity::IdentityId};
 
-use crate::vm::{stack::SymbolTable, volcano::query::QueryContext};
+use crate::stack::SymbolTable;
 
 pub struct EvalContext<'a> {
 	pub target: Option<TargetColumn>,
@@ -72,36 +71,6 @@ impl<'a> EvalContext<'a> {
 		let mut ctx = self.with_eval(columns, 1);
 		ctx.take = Some(1);
 		ctx
-	}
-
-	pub fn from_query(ctx: &'a QueryContext) -> Self {
-		EvalContext {
-			target: None,
-			columns: Columns::empty(),
-			row_count: 1,
-			take: None,
-			params: &ctx.params,
-			symbols: &ctx.symbols,
-			is_aggregate_context: false,
-			routines: &ctx.services.routines,
-			runtime_context: &ctx.services.runtime_context,
-			identity: ctx.identity,
-		}
-	}
-
-	pub fn from_transform(ctx: &'a TransformContext, stored: &'a QueryContext) -> Self {
-		EvalContext {
-			target: None,
-			columns: Columns::empty(),
-			row_count: 1,
-			take: None,
-			params: ctx.params,
-			symbols: &stored.symbols,
-			is_aggregate_context: false,
-			routines: &stored.services.routines,
-			runtime_context: ctx.runtime_context,
-			identity: stored.identity,
-		}
 	}
 
 	pub(crate) fn saturation_policy(&self) -> ColumnSaturationStrategy {

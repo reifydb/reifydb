@@ -4,6 +4,10 @@
 use std::collections::HashMap;
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
+use reifydb_evaluate::expression::{
+	compile::{CompiledExpr, compile_expression},
+	context::CompileContext,
+};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -20,10 +24,6 @@ use super::common::{
 };
 use crate::{
 	Result,
-	expression::{
-		compile::{CompiledExpr, compile_expression},
-		context::CompileContext,
-	},
 	vm::volcano::query::{QueryContext, QueryNode},
 };
 

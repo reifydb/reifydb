@@ -23,6 +23,7 @@ reifydb-routine-abi = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
+reifydb-evaluate = { workspace = true }
 reifydb-extension = { workspace = true }
 reifydb-policy = { workspace = true }
 reifydb-runtime = { workspace = true }

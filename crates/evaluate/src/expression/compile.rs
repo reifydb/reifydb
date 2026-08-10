@@ -34,7 +34,7 @@ use crate::{
 		parameter::parameter_lookup,
 		prefix::prefix_apply,
 	},
-	vm::stack::Variable,
+	stack::Variable,
 };
 
 type SingleExprFn = Box<dyn Fn(&EvalContext) -> Result<ColumnWithName> + Send + Sync>;

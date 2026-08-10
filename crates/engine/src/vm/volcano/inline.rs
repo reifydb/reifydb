@@ -13,6 +13,7 @@ use reifydb_core::{
 		ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns, headers::ColumnHeaders,
 	},
 };
+use reifydb_evaluate::expression::{context::EvalContext, eval::evaluate};
 use reifydb_rql::expression::{AliasExpression, ConstantExpression, Expression, IdentExpression};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -24,8 +25,7 @@ use tracing::instrument;
 
 use crate::{
 	Result,
-	expression::{context::EvalContext, eval::evaluate},
-	vm::volcano::query::{QueryContext, QueryNode},
+	vm::volcano::query::{QueryContext, QueryNode, eval_context_from_query},
 };
 
 pub(crate) struct InlineDataNode {
@@ -493,7 +493,7 @@ impl InlineDataNode {
 		let all_columns = Self::collect_column_names(&self.rows);
 		let rows_data = Self::build_row_maps(&self.rows);
 
-		let session = EvalContext::from_query(ctx);
+		let session = eval_context_from_query(ctx);
 
 		let mut columns = Vec::new();
 
@@ -518,7 +518,7 @@ impl InlineDataNode {
 	fn next_with_source(&mut self, ctx: &QueryContext) -> Result<Option<Columns>> {
 		let source = ctx.source.as_ref().unwrap();
 		let headers = self.headers.as_ref().unwrap();
-		let session = EvalContext::from_query(ctx);
+		let session = eval_context_from_query(ctx);
 
 		let rows_data = Self::build_row_maps(&self.rows);
 

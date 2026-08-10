@@ -8,6 +8,13 @@ use reifydb_core::{
 	interface::catalog::{column::Column, dictionary::Dictionary},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_evaluate::{
+	expression::{
+		compile::{CompiledExpr, compile_expression},
+		context::{CompileContext, EvalContext},
+	},
+	stack::SymbolTable,
+};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -18,11 +25,7 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	expression::{
-		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
-	},
-	vm::{services::Services, stack::SymbolTable, volcano::decode_dictionary_columns},
+	vm::{services::Services, volcano::decode_dictionary_columns},
 };
 
 pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, EncodedBytes)]) -> Columns {

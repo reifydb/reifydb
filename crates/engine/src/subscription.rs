@@ -7,11 +7,12 @@ use reifydb_core::{
 	common::CommitVersion, interface::catalog::id::SubscriptionId, metrics::execution::ExecutionMetrics,
 	value::column::columns::Columns,
 };
+use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
 use reifydb_value::{Result, error::Error as TypeError, params::Params, value::identity::IdentityId};
 
-use crate::{engine::StandardEngine, vm::stack::SymbolTable};
+use crate::engine::StandardEngine;
 
 #[derive(Debug, Clone)]
 pub struct SubscriptionContext {

@@ -4,6 +4,10 @@
 use std::sync::{Arc, LazyLock};
 
 use reifydb_core::{internal_error, value::column::columns::Columns};
+use reifydb_evaluate::{
+	expression::context::EvalContext,
+	stack::{SymbolTable, Variable, strip_dollar_prefix},
+};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::instruction::{Instruction, ScopeType};
 use reifydb_runtime::context::RuntimeContext;
@@ -15,10 +19,7 @@ use reifydb_value::{
 };
 
 use super::{
-	exec::{
-		mask::{LoopMaskState, MaskFrame, extract_bool_bitvec},
-		stack::strip_dollar_prefix,
-	},
+	exec::mask::{LoopMaskState, MaskFrame, extract_bool_bitvec},
 	instruction::{
 		ddl::{
 			alter::{
@@ -53,11 +54,10 @@ use super::{
 		},
 	},
 	services::Services,
-	stack::{ControlFlow, Stack, SymbolTable, Variable},
+	stack::{ControlFlow, Stack},
 };
 use crate::{
 	Result,
-	expression::context::EvalContext,
 	vm::instruction::ddl::{
 		alter::policy::alter_policy,
 		create::{

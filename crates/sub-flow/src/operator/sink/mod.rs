@@ -24,7 +24,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
 };
-use reifydb_engine::{expression::context::EvalContext, vm::stack::SymbolTable};
+use reifydb_evaluate::{expression::context::EvalContext, stack::SymbolTable};
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};

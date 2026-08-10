@@ -17,18 +17,7 @@ pub mod hex;
 pub mod utf8;
 
 #[repr(transparent)]
-#[derive(
-	Default,
-	Debug,
-	Clone,
-	PartialEq,
-	Eq,
-	Hash,
-	PartialOrd,
-	Ord,
-	Serialize,
-	Deserialize,
-)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Blob(Vec<u8>);
 
 impl Blob {

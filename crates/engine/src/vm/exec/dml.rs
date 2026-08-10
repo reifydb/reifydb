@@ -4,16 +4,13 @@
 use std::sync::Arc;
 
 use reifydb_core::{internal_error, value::column::columns::Columns};
+use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::params::Params;
 
 use crate::{
 	Result,
-	vm::{
-		services::Services,
-		stack::{SymbolTable, Variable},
-		vm::Vm,
-	},
+	vm::{services::Services, vm::Vm},
 };
 
 fn reject_query_txn(tx: &Transaction<'_>) -> Result<()> {

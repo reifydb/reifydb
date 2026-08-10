@@ -21,6 +21,7 @@ use reifydb_core::{
 	internal_error,
 	value::column::columns::Columns,
 };
+use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{expression::Expression, nodes::InsertRingBufferNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -48,7 +49,6 @@ use crate::{
 	vm::{
 		instruction::dml::time::resolve_time,
 		services::Services,
-		stack::SymbolTable,
 		volcano::{
 			compile::compile,
 			query::{QueryContext, QueryNode, query_budget},

@@ -12,6 +12,7 @@ use reifydb_core::{
 	internal_error,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, cast::cast_column_data, columns::Columns},
 };
+use reifydb_evaluate::stack::{Callable, ClosureValue, Variable, strip_dollar_prefix};
 use reifydb_routine_abi::{
 	Function as RoutineFunction, Procedure as RoutineProcedure,
 	context::{FunctionContext as RoutineFunctionContext, ProcedureContext as RoutineProcedureContext},
@@ -30,7 +31,6 @@ use reifydb_value::{
 	value::{Value, constraint::TypeConstraint, frame::frame::Frame, row_number::RowNumber, value_type::ValueType},
 };
 
-use super::stack::strip_dollar_prefix;
 use crate::{
 	Result,
 	error::EngineError,
@@ -38,7 +38,7 @@ use crate::{
 	vm::{
 		exec::broadcast::broadcast_many,
 		services::Services,
-		stack::{Callable, ClosureValue, ControlFlow, Variable},
+		stack::ControlFlow,
 		vm::{EMPTY_PARAMS, Vm},
 		volcano::udf::is_vectorizable,
 	},

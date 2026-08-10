@@ -1,0 +1,22 @@
+[package]
+name = "reifydb-evaluate"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Runtime expression evaluator and variable environment for ReifyDB"
+
+[features]
+default = []
+
+[dependencies]
+reifydb-core = { workspace = true }
+reifydb-routine-abi = { workspace = true }
+reifydb-rql = { workspace = true }
+reifydb-runtime = { workspace = true }
+reifydb-value = { workspace = true }
+thiserror = { workspace = true }
+
+[build-dependencies]
+reifydb-build = { workspace = true }

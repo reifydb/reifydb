@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::{columns::Columns, headers::ColumnHeaders};
+use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::RunTestsNode;
 use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
@@ -13,7 +14,6 @@ use crate::{
 	run_tests::run::run_tests,
 	vm::{
 		services::Services,
-		stack::SymbolTable,
 		vm::{EMPTY_PARAMS, Vm},
 		volcano::query::{QueryContext, QueryNode},
 	},

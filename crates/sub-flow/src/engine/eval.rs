@@ -4,12 +4,12 @@
 use std::{collections::BTreeMap, sync::LazyLock};
 
 use reifydb_core::value::column::columns::Columns;
-use reifydb_engine::{
+use reifydb_evaluate::{
 	expression::{
 		compile::compile_expression,
 		context::{CompileContext, EvalContext},
 	},
-	vm::stack::SymbolTable,
+	stack::SymbolTable,
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::Expression;

@@ -140,19 +140,19 @@ macro_rules! dispatch_compare {
 	};
 }
 
-pub(crate) trait CompareOp {
+pub trait CompareOp {
 	fn compare_ordering(ordering: Option<Ordering>) -> bool;
 	fn compare_bool(_l: bool, _r: bool) -> Option<bool> {
 		None
 	}
 }
 
-pub(crate) struct Equal;
-pub(crate) struct NotEqual;
-pub(crate) struct GreaterThan;
-pub(crate) struct GreaterThanEqual;
-pub(crate) struct LessThan;
-pub(crate) struct LessThanEqual;
+pub struct Equal;
+pub struct NotEqual;
+pub struct GreaterThan;
+pub struct GreaterThanEqual;
+pub struct LessThan;
+pub struct LessThanEqual;
 
 impl CompareOp for Equal {
 	#[inline]
@@ -333,7 +333,7 @@ fn compare_bool<Op: CompareOp>(l: &BoolContainer, r: &BoolContainer, fragment: F
 	}
 }
 
-pub(crate) fn compare_columns<Op: CompareOp>(
+pub fn compare_columns<Op: CompareOp>(
 	left: &ColumnWithName,
 	right: &ColumnWithName,
 	fragment: Fragment,

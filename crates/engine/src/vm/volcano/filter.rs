@@ -4,6 +4,10 @@
 use std::{mem, sync::Arc};
 
 use reifydb_core::value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns, headers::ColumnHeaders};
+use reifydb_evaluate::expression::{
+	compile::{CompiledExpr, compile_expression},
+	context::{CompileContext, EvalContext},
+};
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_rql::expression::Expression;
 use reifydb_transaction::transaction::Transaction;
@@ -13,12 +17,8 @@ use tracing::instrument;
 use super::NoopNode;
 use crate::{
 	Result,
-	expression::{
-		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
-	},
 	vm::volcano::{
-		query::{QueryContext, QueryNode},
+		query::{QueryContext, QueryNode, eval_context_from_transform},
 		udf::{UdfEvalNode, strip_udf_columns},
 	},
 };
@@ -153,7 +153,7 @@ impl Transform for FilterNode {
 		let (stored_ctx, compiled) =
 			self.context.as_ref().expect("FilterNode::apply() called before initialize()");
 
-		let session = EvalContext::from_transform(ctx, stored_ctx);
+		let session = eval_context_from_transform(ctx, stored_ctx);
 		let mut columns = input;
 		let mut row_count = columns.row_count();
 

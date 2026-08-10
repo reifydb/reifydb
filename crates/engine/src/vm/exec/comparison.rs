@@ -2,14 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::columns::Columns;
-use reifydb_value::{
-	error::{BinaryOp, IntoDiagnostic, LogicalOp, TypeError},
-	fragment::Fragment,
-};
-
-use super::broadcast::broadcast_to_match;
-use crate::{
-	Result,
+use reifydb_evaluate::{
 	expression::{
 		compare::{
 			CompareOp, Equal, GreaterThan, GreaterThanEqual, LessThan, LessThanEqual, NotEqual,
@@ -17,8 +10,15 @@ use crate::{
 		},
 		logic::execute_logical_op,
 	},
-	vm::{stack::Variable, vm::Vm},
+	stack::Variable,
 };
+use reifydb_value::{
+	error::{BinaryOp, IntoDiagnostic, LogicalOp, TypeError},
+	fragment::Fragment,
+};
+
+use super::broadcast::broadcast_to_match;
+use crate::{Result, vm::vm::Vm};
 
 impl<'a> Vm<'a> {
 	fn exec_columnar_cmp<Op: CompareOp>(&mut self, binary_op: BinaryOp) -> Result<()> {

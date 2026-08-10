@@ -16,12 +16,10 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	value::column::{ColumnWithName, columns::Columns},
 };
-use reifydb_engine::{
-	expression::{
-		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
-	},
-	vm::executor::Executor,
+use reifydb_engine::vm::executor::Executor;
+use reifydb_evaluate::expression::{
+	compile::{CompiledExpr, compile_expression},
+	context::{CompileContext, EvalContext},
 };
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_routine_abi::registry::Routines;

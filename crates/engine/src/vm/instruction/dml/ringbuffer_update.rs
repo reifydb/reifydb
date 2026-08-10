@@ -30,6 +30,7 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
+use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::UpdateRingBufferNode;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -54,7 +55,6 @@ use crate::{
 	vm::{
 		instruction::dml::time::resolve_time_for_update,
 		services::Services,
-		stack::SymbolTable,
 		volcano::{
 			compile::compile,
 			query::{QueryContext, QueryNode, query_budget},

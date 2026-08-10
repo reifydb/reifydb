@@ -14,6 +14,7 @@ use reifydb_core::{
 	metrics::execution::{ExecutionMetrics, StatementMetrics},
 	value::column::columns::Columns,
 };
+use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_policy::inject_from_policies;
 use reifydb_rql::{
 	ast::parse_str,
@@ -43,7 +44,6 @@ use crate::{
 	vm::{
 		Admin, Command, Query, Subscription, Test,
 		services::{EngineConfig, Services},
-		stack::{SymbolTable, Variable},
 		vm::Vm,
 	},
 };

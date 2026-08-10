@@ -5,12 +5,10 @@ use reifydb_core::{
 	internal_error,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_evaluate::stack::Variable;
 use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
-use crate::{
-	Result,
-	vm::{stack::Variable, vm::Vm},
-};
+use crate::{Result, vm::vm::Vm};
 
 impl<'a> Vm<'a> {
 	pub(crate) fn exec_for_init(&mut self, variable_name: &Fragment) -> Result<()> {

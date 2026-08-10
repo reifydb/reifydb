@@ -9,7 +9,7 @@ use reifydb_value::{
 	value::{
 		container::number::NumberContainer,
 		is::IsNumber,
-		number::{promote::Promote, safe::div::SafeDiv},
+		number::{promote::Promote, safe::remainder::SafeRemainder},
 		value_type::{ValueType, get::GetType},
 	},
 };
@@ -19,7 +19,7 @@ use crate::{
 	expression::{context::EvalContext, option::binary_op_unwrap_option},
 };
 
-pub(crate) fn div_columns(
+pub fn rem_columns(
 	ctx: &EvalContext,
 	left: &ColumnWithName,
 	right: &ColumnWithName,
@@ -30,10 +30,10 @@ pub(crate) fn div_columns(
 
 		dispatch_arith!(
 			&left.data(), &right.data();
-			fixed: div_numeric, arb: div_numeric_clone (ctx, target, fragment);
+			fixed: rem_numeric, arb: rem_numeric_clone (ctx, target, fragment);
 
 			_ => Err(TypeError::BinaryOperatorNotApplicable {
-				operator: BinaryOp::Div,
+				operator: BinaryOp::Rem,
 				left: left.get_type(),
 				right: right.get_type(),
 				fragment: fragment.fragment(),
@@ -42,7 +42,7 @@ pub(crate) fn div_columns(
 	})
 }
 
-fn div_numeric<L, R>(
+fn rem_numeric<L, R>(
 	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
@@ -53,7 +53,7 @@ where
 	L: GetType + Promote<R> + IsNumber,
 	R: GetType + IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
-	<L as Promote<R>>::Output: SafeDiv,
+	<L as Promote<R>>::Output: SafeRemainder,
 	ColumnBuffer: Push<<L as Promote<R>>::Output>,
 {
 	reifydb_assertions! {
@@ -64,7 +64,7 @@ where
 	let l_data = l.data();
 	let r_data = r.data();
 	for i in 0..l.len() {
-		if let Some(value) = ctx.div(&l_data[i], &r_data[i], fragment)? {
+		if let Some(value) = ctx.remainder(&l_data[i], &r_data[i], fragment)? {
 			data.push(value);
 		} else {
 			data.push_none()
@@ -76,7 +76,7 @@ where
 	})
 }
 
-fn div_numeric_clone<L, R>(
+fn rem_numeric_clone<L, R>(
 	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
@@ -87,7 +87,7 @@ where
 	L: Clone + GetType + Promote<R> + IsNumber,
 	R: Clone + GetType + IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
-	<L as Promote<R>>::Output: SafeDiv,
+	<L as Promote<R>>::Output: SafeRemainder,
 	ColumnBuffer: Push<<L as Promote<R>>::Output>,
 {
 	reifydb_assertions! {
@@ -100,7 +100,7 @@ where
 	for i in 0..l.len() {
 		let l_clone = l_data[i].clone();
 		let r_clone = r_data[i].clone();
-		if let Some(value) = ctx.div(&l_clone, &r_clone, fragment)? {
+		if let Some(value) = ctx.remainder(&l_clone, &r_clone, fragment)? {
 			data.push(value);
 		} else {
 			data.push_none()

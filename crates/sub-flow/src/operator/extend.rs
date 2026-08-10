@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	value::column::{ColumnWithName, columns::Columns},
 };
-use reifydb_engine::expression::{
+use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::{CompileContext, EvalContext},
 };

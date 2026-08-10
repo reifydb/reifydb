@@ -7,9 +7,9 @@ use reifydb_value::{
 	fragment::LazyFragment,
 	reifydb_assertions,
 	value::{
-		container::{number::NumberContainer, temporal::TemporalContainer},
+		container::number::NumberContainer,
 		is::IsNumber,
-		number::{promote::Promote, safe::sub::SafeSub},
+		number::{promote::Promote, safe::div::SafeDiv},
 		value_type::{ValueType, get::GetType},
 	},
 };
@@ -19,7 +19,7 @@ use crate::{
 	expression::{context::EvalContext, option::binary_op_unwrap_option},
 };
 
-pub(crate) fn sub_columns(
+pub fn div_columns(
 	ctx: &EvalContext,
 	left: &ColumnWithName,
 	right: &ColumnWithName,
@@ -30,22 +30,10 @@ pub(crate) fn sub_columns(
 
 		dispatch_arith!(
 			&left.data(), &right.data();
-			fixed: sub_numeric, arb: sub_numeric_clone (ctx, target, fragment);
-
-
-			(ColumnBuffer::Duration(l), ColumnBuffer::Duration(r)) => {
-				let mut container = TemporalContainer::with_capacity(l.len());
-				for i in 0..l.len() {
-					match (l.get(i), r.get(i)) {
-						(Some(lv), Some(rv)) => container.push(*lv - *rv),
-						_ => container.push_default(),
-					}
-				}
-				Ok(ColumnWithName::new(fragment.fragment(), ColumnBuffer::Duration(container)))
-			}
+			fixed: div_numeric, arb: div_numeric_clone (ctx, target, fragment);
 
 			_ => Err(TypeError::BinaryOperatorNotApplicable {
-				operator: BinaryOp::Sub,
+				operator: BinaryOp::Div,
 				left: left.get_type(),
 				right: right.get_type(),
 				fragment: fragment.fragment(),
@@ -54,7 +42,7 @@ pub(crate) fn sub_columns(
 	})
 }
 
-fn sub_numeric<L, R>(
+fn div_numeric<L, R>(
 	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
@@ -65,7 +53,7 @@ where
 	L: GetType + Promote<R> + IsNumber,
 	R: GetType + IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
-	<L as Promote<R>>::Output: SafeSub,
+	<L as Promote<R>>::Output: SafeDiv,
 	ColumnBuffer: Push<<L as Promote<R>>::Output>,
 {
 	reifydb_assertions! {
@@ -76,7 +64,7 @@ where
 	let l_data = l.data();
 	let r_data = r.data();
 	for i in 0..l.len() {
-		if let Some(value) = ctx.sub(&l_data[i], &r_data[i], fragment)? {
+		if let Some(value) = ctx.div(&l_data[i], &r_data[i], fragment)? {
 			data.push(value);
 		} else {
 			data.push_none()
@@ -88,7 +76,7 @@ where
 	})
 }
 
-fn sub_numeric_clone<L, R>(
+fn div_numeric_clone<L, R>(
 	ctx: &EvalContext,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
@@ -99,7 +87,7 @@ where
 	L: Clone + GetType + Promote<R> + IsNumber,
 	R: Clone + GetType + IsNumber,
 	<L as Promote<R>>::Output: IsNumber,
-	<L as Promote<R>>::Output: SafeSub,
+	<L as Promote<R>>::Output: SafeDiv,
 	ColumnBuffer: Push<<L as Promote<R>>::Output>,
 {
 	reifydb_assertions! {
@@ -112,7 +100,7 @@ where
 	for i in 0..l.len() {
 		let l_clone = l_data[i].clone();
 		let r_clone = r_data[i].clone();
-		if let Some(value) = ctx.sub(&l_clone, &r_clone, fragment)? {
+		if let Some(value) = ctx.div(&l_clone, &r_clone, fragment)? {
 			data.push(value);
 		} else {
 			data.push_none()

@@ -26,6 +26,7 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
+use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::DeleteRingBufferNode, query::QueryPlan};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
@@ -46,7 +47,6 @@ use crate::{
 	transaction::operation::ringbuffer::{RingBufferOperations, apply_ringbuffer_partition_metadata_after_delete},
 	vm::{
 		services::Services,
-		stack::SymbolTable,
 		volcano::{
 			compile::compile,
 			query::{QueryContext, QueryNode, query_budget},

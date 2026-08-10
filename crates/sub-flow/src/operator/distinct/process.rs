@@ -8,7 +8,7 @@ use reifydb_core::{
 	key::operator_state::GroupId,
 	value::column::{ColumnWithName, columns::Columns},
 };
-use reifydb_engine::expression::context::EvalContext;
+use reifydb_evaluate::expression::context::EvalContext;
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_value::{
 	Result,

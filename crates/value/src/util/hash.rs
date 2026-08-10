@@ -30,18 +30,7 @@ impl Hash for Hash64 {
 }
 
 #[repr(transparent)]
-#[derive(
-	Default,
-	Debug,
-	Clone,
-	Copy,
-	PartialEq,
-	Eq,
-	PartialOrd,
-	Ord,
-	Serialize,
-	Deserialize,
-)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Hash128(pub u128);
 

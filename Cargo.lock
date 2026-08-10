@@ -3004,6 +3004,7 @@ dependencies = [
  "reifydb-client",
  "reifydb-codec",
  "reifydb-core",
+ "reifydb-evaluate",
  "reifydb-extension",
  "reifydb-policy",
  "reifydb-routine",
@@ -3021,6 +3022,19 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "reifydb-evaluate"
+version = "0.8.1"
+dependencies = [
+ "reifydb-build",
+ "reifydb-core",
+ "reifydb-routine-abi",
+ "reifydb-rql",
+ "reifydb-runtime",
+ "reifydb-value",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -3364,6 +3378,7 @@ dependencies = [
  "reifydb-codec",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-evaluate",
  "reifydb-extension",
  "reifydb-flow",
  "reifydb-macro",

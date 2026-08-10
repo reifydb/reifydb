@@ -19,7 +19,7 @@ use crate::{
 	expression::{context::EvalContext, option::binary_op_unwrap_option},
 };
 
-pub(crate) fn mul_columns(
+pub fn mul_columns(
 	ctx: &EvalContext,
 	left: &ColumnWithName,
 	right: &ColumnWithName,

@@ -27,6 +27,7 @@ use reifydb_core::{
 	return_internal_error,
 	value::column::{buffer::ColumnBuffer, columns::Columns},
 };
+use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{
 	expression::Expression,
 	nodes::{InsertQueueNode, QUEUE_CREATED_COLUMN, QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD},
@@ -57,7 +58,6 @@ use crate::{
 	vm::{
 		instruction::dml::{coerce::coerce_value_to_column_type, time::resolve_time},
 		services::Services,
-		stack::SymbolTable,
 		volcano::{
 			compile::compile,
 			query::{QueryContext, QueryNode, query_budget},
