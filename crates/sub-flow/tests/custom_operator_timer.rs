@@ -15,7 +15,7 @@ use reifydb_abi::{
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_group_state::{Keyspace, OperatorGroupStateKey},
+	key::operator_state::{Keyspace, OperatorStateKey},
 };
 use reifydb_sdk::{
 	config::Config,
@@ -41,7 +41,7 @@ const DELAY_MS: u64 = 1_000;
 // assertion. It is declared only because declaring it is what puts the node in the event domain.
 const SEAL_AFTER_MS: u64 = 3_600_000;
 
-const ALARM_STATE: Keyspace = Keyspace::FIRST_CUSTOM;
+const ALARM_STATE: Keyspace = Keyspace::CUSTOM;
 
 struct AlarmRow {
 	g: i32,
@@ -135,7 +135,7 @@ impl OperatorLogic for Alarm {
 		// Per-group state, so the group has something for the retention pass to erase once it ages
 		// past its horizon. Without it a group is nothing but an identity and reclaim has no work.
 		let fired_at = timer.at.to_millis() as i64;
-		self.state_set(ctx, &OperatorGroupStateKey::inner_encoded(group, ALARM_STATE, []), &fired_at)?;
+		self.state_set(ctx, &OperatorStateKey::inner_encoded(group, ALARM_STATE, []), &fired_at)?;
 
 		let (row_number, _is_new) = ctx.get_or_create_row_number(group, &key)?;
 		ctx.emit_insert(
@@ -282,7 +282,7 @@ fn interning_inside_a_callback_stamps_the_firing_instant_not_the_change_that_wok
 	);
 }
 
-const SNOOZE_ARMED: Keyspace = Keyspace::FIRST_CUSTOM;
+const SNOOZE_ARMED: Keyspace = Keyspace::CUSTOM;
 
 struct Snooze {
 	disarm_offset_ms: u64,
@@ -333,7 +333,7 @@ impl OperatorLogic for Snooze {
 					.expect("the substrate must populate #time on an event-time source");
 				let key = group_key(g);
 				let group = ctx.intern_group(&key)?;
-				let armed_key = OperatorGroupStateKey::inner_encoded(group, SNOOZE_ARMED, []);
+				let armed_key = OperatorStateKey::inner_encoded(group, SNOOZE_ARMED, []);
 
 				if let Some(prior) = self.state_get::<i64>(ctx, &armed_key)? {
 					// Zero in the honest case; non-zero aims the disarm past what

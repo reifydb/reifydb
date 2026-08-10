@@ -19,7 +19,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
-	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
+	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 	metrics::heap::HeapSize,
 	value::column::columns::Columns,
 };
@@ -133,11 +133,11 @@ impl DistinctOperator {
 	}
 
 	pub(super) fn entry_key(group: GroupId) -> GroupStateKey {
-		OperatorGroupStateKey::inner_encoded(group, Keyspace::DISTINCT_ENTRY, vec![])
+		OperatorStateKey::inner_encoded(group, Keyspace::DISTINCT_ENTRY, vec![])
 	}
 
 	pub(super) fn layout_storage_key() -> GroupStateKey {
-		GroupStateKey::node_scoped(Keyspace::DISTINCT_LAYOUT, vec![LAYOUT_KEY_PREFIX])
+		GroupStateKey::root(Keyspace::DISTINCT_LAYOUT, vec![LAYOUT_KEY_PREFIX])
 	}
 
 	#[instrument(name = "flow::operator::distinct::load_entry", level = "trace", skip_all)]

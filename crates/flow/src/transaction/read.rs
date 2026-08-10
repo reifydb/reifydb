@@ -25,7 +25,11 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	key::{Key, kind::KeyKind, operator_state::OperatorStateKey},
+	key::{
+		Key,
+		kind::KeyKind,
+		operator_state::{OperatorStateKey, node_prefix},
+	},
 };
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::multi::RangeScope;
@@ -478,7 +482,7 @@ fn arena_scope(range: &EncodedKeyRange) -> Option<(OperatorId, EncodedKeyRange)>
 	}
 	let (operator, _) =
 		operator_state_coordinates(start_key).expect("an OperatorState-routed key must carry an operator id");
-	let prefix = OperatorStateKey::encoded(operator, Vec::<u8>::new());
+	let prefix = EncodedKey::new(node_prefix(operator));
 	let strip = |bound: Bound<&EncodedKey>| match bound {
 		Included(key) if key.as_slice().starts_with(prefix.as_slice()) => {
 			Included(EncodedKey::new(&key.as_slice()[prefix.len()..]))
@@ -531,7 +535,13 @@ impl Iterator for ArenaRangeIter {
 			if let Some((inner_key, bytes)) = self.buffered.next() {
 				self.cursor = Bound::Excluded(inner_key.clone());
 				return Some(Ok(MultiVersionRow {
-					key: OperatorStateKey::encoded(self.operator, inner_key.as_slice()),
+					key: {
+						let (group, keyspace, suffix) = OperatorStateKey::decode_inner(
+							inner_key.as_slice(),
+						)
+						.expect("arena inner keys must carry a structured inner encoding");
+						OperatorStateKey::encoded(self.operator, group, keyspace, suffix)
+					},
 					bytes,
 					version: self.version,
 				}));

@@ -7,7 +7,7 @@ use reifydb_core::{
 		flow::{FlowId, OperatorId},
 		storage::StorageId,
 	},
-	key::operator_group_state::{GroupId, Keyspace},
+	key::operator_state::{GroupId, Keyspace},
 	state::horizon::Cutoff,
 };
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
@@ -46,7 +46,7 @@ pub fn compact_operator(
 	if let Some(cutoff) = mapping_cutoff(spec.cutoff(Keyspace::ROW_NUMBER_MAPPING), identity) {
 		mapping_rows = txn.evict_row_numbers(
 			operator.id(),
-			GroupId::NODE_SCOPE,
+			GroupId::ROOT,
 			Cutoff(cutoff),
 			mapping_cursor,
 			MAPPING_ROWS_PER_TICK,
@@ -140,7 +140,7 @@ impl FlowEngineInner {
 				let mut cursor = self.mapping_cursors.entry(operator_id).or_default().clone();
 				mapping_rows = txn.evict_row_numbers(
 					operator_id,
-					GroupId::NODE_SCOPE,
+					GroupId::ROOT,
 					Cutoff(cutoff),
 					&mut cursor,
 					MAPPING_ROWS_PER_TICK,

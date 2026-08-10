@@ -27,7 +27,7 @@ impl BatchIterator {
 			.into_iter()
 			.filter_map(|multi| {
 				let state_key = OperatorStateKey::decode(&multi.key)?;
-				Some((state_key.key, multi.bytes.to_vec()))
+				Some((state_key.inner().as_slice().to_vec(), multi.bytes.to_vec()))
 			})
 			.collect();
 
@@ -97,14 +97,21 @@ pub mod tests {
 			catalog::flow::OperatorId,
 			store::{MultiVersionBatch, MultiVersionRow},
 		},
-		key::{EncodableKey, operator_state::OperatorStateKey},
+		key::{
+			EncodableKey,
+			operator_state::{GroupId, Keyspace, OperatorStateKey},
+		},
 	};
 	use reifydb_value::util::cowvec::CowVec;
 
 	use super::*;
 
 	fn make_state_key(operator_id: u64, key: &[u8]) -> EncodedKey {
-		OperatorStateKey::new(OperatorId(operator_id), key.to_vec()).encode()
+		OperatorStateKey::new(OperatorId(operator_id), GroupId::ROOT, Keyspace::CUSTOM, key.to_vec()).encode()
+	}
+
+	fn decoded_suffix(framed: &[u8]) -> Vec<u8> {
+		OperatorStateKey::decode_inner(framed).expect("iterator must hand back a framed group state key").2
 	}
 
 	fn make_value(data: &[u8]) -> EncodedBytes {
@@ -169,11 +176,11 @@ pub mod tests {
 		let handle = create_iterator(batch);
 
 		let (key1, val1) = next_one(handle).unwrap();
-		assert_eq!(key1, b"key1");
+		assert_eq!(decoded_suffix(&key1), b"key1");
 		assert_eq!(val1, b"value1");
 
 		let (key2, val2) = next_one(handle).unwrap();
-		assert_eq!(key2, b"key2");
+		assert_eq!(decoded_suffix(&key2), b"key2");
 		assert_eq!(val2, b"value2");
 
 		assert!(next_one(handle).is_none());
@@ -246,8 +253,8 @@ pub mod tests {
 		let (key1, _) = next_one(handle1).unwrap();
 		let (key2, _) = next_one(handle2).unwrap();
 
-		assert_eq!(key1, b"iter1");
-		assert_eq!(key2, b"iter2");
+		assert_eq!(decoded_suffix(&key1), b"iter1");
+		assert_eq!(decoded_suffix(&key2), b"iter2");
 
 		free_iterator(handle1);
 		free_iterator(handle2);

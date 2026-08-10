@@ -418,10 +418,7 @@ mod group_commit_integration {
 	use reifydb_core::{
 		interface::{catalog::flow::OperatorId, cdc::SystemChange},
 		internal_error,
-		key::{
-			operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
-			operator_state::OperatorStateKey,
-		},
+		key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 	};
 	use reifydb_runtime::sync::{mutex::Mutex, waiter::WaiterHandle};
 	use reifydb_test_harness::engine::TestEngine;
@@ -605,14 +602,16 @@ mod group_commit_integration {
 	}
 
 	fn state_inner(suffix: &[u8]) -> GroupStateKey {
-		OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, suffix)
+		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM, suffix)
 	}
 
 	fn state_slice(entries: &[(OperatorId, &GroupStateKey, u8)]) -> FlowSlice {
 		let mut combined = Pending::new();
 		for (operator, inner, tag) in entries {
+			let (group, keyspace, suffix) = OperatorStateKey::decode_inner(inner.as_slice())
+				.expect("test fixture group-state key must decode");
 			combined.insert(
-				OperatorStateKey::encoded(*operator, inner.as_slice()),
+				OperatorStateKey::encoded(*operator, group, keyspace, suffix),
 				EncodedOperatorRow::timeless(&[*tag; 4]).into_bytes(),
 			);
 		}

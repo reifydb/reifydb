@@ -23,7 +23,7 @@ use reifydb_core::{
 		},
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
-	key::operator_state::OperatorStateKey,
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 	lifecycle::{class::RetentionClass, progress::Progress, task::LifecycleTask},
 };
 use reifydb_runtime::{context::clock::Clock, version_epoch::VersionEpoch};
@@ -82,7 +82,7 @@ impl GetConfig for StubConfig {
 }
 
 fn opkey(n: u8) -> reifydb_codec::key::encoded::EncodedKey {
-	OperatorStateKey::encoded(NODE, vec![n])
+	OperatorStateKey::encoded(NODE, GroupId::ROOT, Keyspace::CUSTOM, vec![n])
 }
 
 fn commit_set(store: &StandardMultiStore, n: u8, version: u64) {

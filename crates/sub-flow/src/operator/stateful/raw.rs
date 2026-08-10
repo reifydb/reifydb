@@ -5,7 +5,7 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
 };
-use reifydb_core::key::operator_group_state::GroupStateKey;
+use reifydb_core::key::operator_state::GroupStateKey;
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_value::Result;
 

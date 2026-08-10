@@ -107,8 +107,8 @@ fn drains_a_stranded_window_group(view_kind: &str) {
 	assert_eq!(
 		reclaimed,
 		1,
-		"no window group was ever reclaimed: the operator's state is either still addressed at node scope \
-		 (nothing inside a group range to erase), stamped in a domain the seal cutoff cannot read, or the \
+		"no window group was ever reclaimed: the operator's state is either still addressed under the root \
+		 group (nothing inside a group range to erase), stamped in a domain the seal cutoff cannot read, or the \
 		 node was skipped for want of the Reclaim capability; ledger now: {:?}",
 		db.query_as_root(
 			"from system::metrics::runtime::operators::current filter { metric == 'state_compaction_dropped' }",

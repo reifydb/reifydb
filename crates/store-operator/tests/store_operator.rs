@@ -10,9 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::OperatorId,
-	key::operator_group_state::{
-		GroupId, Keyspace, OperatorGroupStateKey, group_data_of_inner, keyspace_inner_range,
-	},
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey, group_data_of_inner, keyspace_inner_range},
 };
 use reifydb_store_operator::{config::OperatorStoreConfig, floor::FloorSpec, store::OperatorStore};
 use reifydb_value::value::datetime::DateTime;
@@ -34,7 +32,7 @@ fn key(bytes: &[u8]) -> EncodedKey {
 }
 
 fn data_key(group: u64, keyspace: Keyspace, suffix: &[u8]) -> EncodedKey {
-	OperatorGroupStateKey::inner_encoded(GroupId(group), keyspace, suffix).into_encoded()
+	OperatorStateKey::inner_encoded(GroupId(group), keyspace, suffix).into_encoded()
 }
 
 fn value(payload: &[u8]) -> EncodedOperatorRow {
@@ -391,22 +389,20 @@ fn floor_drops_strictly_below_the_cutoff_and_keeps_the_boundary() {
 
 #[test]
 fn floor_only_drops_real_group_data_of_the_specified_keyspace() {
-	// Cancellation-by-floor must be surgical: a cutoff for keyspace A must not touch keyspace B,
-	// and identity keyspaces, node-scoped keys, and undecodable keys are never floor-droppable even
-	// when their keyspace byte appears in the spec - those die only by tombstone or supersede.
+	// A keyspace-A cutoff must never drop keyspace B, identity keyspaces, root group keys, or undecodable keys.
 	let store = manual_store();
 
 	let in_spec = data_key(3, Keyspace::ACCUMULATOR, b"x");
 	let other_keyspace = data_key(3, Keyspace::BUFFER, b"x");
 	let counter = data_key(3, Keyspace::NODE_COUNTER, b"x");
-	let node_scope = data_key(GroupId::NODE_SCOPE.0, Keyspace::ACCUMULATOR, b"x");
+	let root = data_key(GroupId::ROOT.0, Keyspace::ACCUMULATOR, b"x");
 	let undecodable = key(&[0xAB]);
 	assert_eq!(group_data_of_inner(undecodable.as_slice()), None);
 
 	store.set(OP, in_spec.clone(), stamped(b"v", 10));
 	store.set(OP, other_keyspace.clone(), stamped(b"v", 10));
 	store.set(OP, counter.clone(), stamped(b"v", 10));
-	store.set(OP, node_scope.clone(), stamped(b"v", 10));
+	store.set(OP, root.clone(), stamped(b"v", 10));
 	store.set(OP, undecodable.clone(), stamped(b"v", 10));
 
 	let floor = FloorSpec::new()
@@ -417,27 +413,27 @@ fn floor_only_drops_real_group_data_of_the_specified_keyspace() {
 	assert_eq!(store.get(OP, &in_spec), None, "expired real-group data in the spec must be dropped");
 	assert_eq!(store.get(OP, &other_keyspace), Some(stamped(b"v", 10)), "keyspace B must outlive a floor for A");
 	assert_eq!(store.get(OP, &counter), Some(stamped(b"v", 10)), "identity keyspaces are never floor-droppable");
-	assert_eq!(store.get(OP, &node_scope), Some(stamped(b"v", 10)), "node-scope keys are never floor-droppable");
+	assert_eq!(store.get(OP, &root), Some(stamped(b"v", 10)), "root group keys are never floor-droppable");
 	assert_eq!(store.get(OP, &undecodable), Some(stamped(b"v", 10)), "undecodable keys are never floor-droppable");
 }
 
 #[test]
 fn a_data_wide_floor_reaches_every_data_keyspace_but_an_explicit_entry_outranks_it() {
 	// An operator cannot enumerate every keyspace its state lives in (a guest invents its own above
-	// FIRST_CUSTOM), so the data-wide floor must reach data keyspaces it never heard of, while an
+	// CUSTOM), so the data-wide floor must reach data keyspaces it never heard of, while an
 	// explicit per-keyspace cutoff overrides it for the keyspaces that age on their own horizon.
-	// Identity keyspaces and node scope stay immune even under a data-wide floor.
+	// Identity keyspaces and root group data stay immune even under a data-wide floor.
 	// Mutation falsified against: cutoff() resolving the data default before the explicit entry
 	// (JOIN_LEFT row would die), and the data default applying to non-data keyspaces (counter dies).
 	let store = manual_store();
 
-	let custom = data_key(3, Keyspace::FIRST_CUSTOM, b"x");
+	let custom = data_key(3, Keyspace::CUSTOM, b"x");
 	let accumulator = data_key(3, Keyspace::ACCUMULATOR, b"x");
 	let overridden = data_key(3, Keyspace::JOIN_LEFT, b"x");
 	let counter = data_key(3, Keyspace::NODE_COUNTER, b"x");
-	let node_scope = data_key(GroupId::NODE_SCOPE.0, Keyspace::ACCUMULATOR, b"x");
+	let root = data_key(GroupId::ROOT.0, Keyspace::ACCUMULATOR, b"x");
 
-	for key in [&custom, &accumulator, &overridden, &counter, &node_scope] {
+	for key in [&custom, &accumulator, &overridden, &counter, &root] {
 		store.set(OP, key.clone(), stamped(b"v", 500));
 	}
 
@@ -452,7 +448,7 @@ fn a_data_wide_floor_reaches_every_data_keyspace_but_an_explicit_entry_outranks_
 		"an explicit per-keyspace cutoff must outrank the data-wide floor"
 	);
 	assert_eq!(store.get(OP, &counter), Some(stamped(b"v", 500)), "identity stays immune to a data-wide floor");
-	assert_eq!(store.get(OP, &node_scope), Some(stamped(b"v", 500)), "node scope stays immune");
+	assert_eq!(store.get(OP, &root), Some(stamped(b"v", 500)), "the root group stays immune");
 	assert_eq!(outcome.dropped, 2, "exactly the two floor-expired rows are reported dropped");
 	assert!(outcome.reclaimed_bytes > 0, "the dropped rows' bytes must be reported reclaimed");
 }
@@ -634,10 +630,10 @@ fn model_floor_expired(floor: &[(Keyspace, u64)], key: &EncodedKey, row: &Encode
 	let Some(group) = group_data_of_inner(key.as_slice()) else {
 		return false;
 	};
-	if group.is_node_scope() {
+	if group.is_root() {
 		return false;
 	}
-	let Some((_, keyspace, _)) = OperatorGroupStateKey::decode_inner(key.as_slice()) else {
+	let Some((_, keyspace, _)) = OperatorStateKey::decode_inner(key.as_slice()) else {
 		return false;
 	};
 	let Some((_, cutoff)) = floor.iter().find(|(candidate, _)| *candidate == keyspace) else {
@@ -657,12 +653,12 @@ fn randomized_operations_match_a_naive_model() {
 	let store = store_with(400, 3);
 	let mut model: BTreeMap<EncodedKey, EncodedOperatorRow> = BTreeMap::new();
 
-	let keyspaces = [Keyspace::ACCUMULATOR, Keyspace::BUFFER, Keyspace::NODE_COUNTER, Keyspace::FIRST_CUSTOM];
+	let keyspaces = [Keyspace::ACCUMULATOR, Keyspace::BUFFER, Keyspace::NODE_COUNTER, Keyspace::CUSTOM];
 
 	let random_key = |rng: &mut Xorshift| -> EncodedKey {
 		match rng.next() % 10 {
 			0 => key(&[0xAB]),
-			1 => data_key(GroupId::NODE_SCOPE.0, Keyspace::ACCUMULATOR, &[(rng.next() % 8) as u8]),
+			1 => data_key(GroupId::ROOT.0, Keyspace::ACCUMULATOR, &[(rng.next() % 8) as u8]),
 			_ => {
 				let group = 1 + rng.next() % 3;
 				let keyspace = keyspaces[(rng.next() % keyspaces.len() as u64) as usize];

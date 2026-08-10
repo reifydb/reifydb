@@ -13,8 +13,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey, keyspace_inner_range},
-		operator_state::OperatorStateKey,
+		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
 	},
 };
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
@@ -36,14 +35,14 @@ fn timer_suffix(at: DateTime, kind: TimerKind, key: &EncodedKey) -> Vec<u8> {
 }
 
 fn timer_key(at: DateTime, kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
-	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::TIMER_WHEEL, timer_suffix(at, kind, key))
+	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::TIMER_WHEEL, timer_suffix(at, kind, key))
 }
 
 fn index_key(kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
 	let mut suffix = Vec::with_capacity(1 + key.len());
 	suffix.push(kind as u8);
 	suffix.extend_from_slice(key.as_ref());
-	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::TIMER_INDEX, suffix)
+	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::TIMER_INDEX, suffix)
 }
 
 fn armed_at(operator: OperatorId, txn: &mut FlowTransaction, index: &GroupStateKey) -> Result<Option<u64>> {
@@ -170,7 +169,7 @@ impl TimerWheel {
 			state.hydrated = false;
 		}
 
-		let base = keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::TIMER_WHEEL);
+		let base = keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL);
 		let ceiling = watermark.to_millis();
 		let mut due = Vec::new();
 		let mut next_earliest = None;
@@ -183,15 +182,13 @@ impl TimerWheel {
 			for item in &batch.items {
 				let decoded = OperatorStateKey::decode(&item.key)
 					.expect("state_range must return OperatorState keys");
-				let inner = OperatorGroupStateKey::decode_inner(&decoded.key)
-					.expect("the timer wheel range must yield structured operator state keys");
-				let timer = decode_timer(&inner.2);
+				let timer = decode_timer(&decoded.suffix);
 				if timer.at.to_millis() > ceiling || due.len() == limit {
 					next_earliest = Some(timer.at.to_millis());
 					break 'scan;
 				}
 				due.push(timer);
-				last_inner = Some(EncodedKey::new(decoded.key.clone()));
+				last_inner = Some(decoded.inner());
 			}
 			if !batch.has_more {
 				break;
@@ -223,14 +220,12 @@ impl TimerWheel {
 			return Ok(());
 		}
 		state.hydrated = true;
-		let range = keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::TIMER_WHEEL);
+		let range = keyspace_inner_range(GroupId::ROOT, Keyspace::TIMER_WHEEL);
 		let batch = txn.state_range(operator, range, Some(1), "timer::hydrate_probe")?;
 		state.earliest = batch.items.first().map(|item| {
 			let decoded = OperatorStateKey::decode(&item.key)
 				.expect("state_range must return OperatorState keys");
-			let inner = OperatorGroupStateKey::decode_inner(&decoded.key)
-				.expect("the timer wheel range must yield structured operator state keys");
-			decode_timer(&inner.2).at.to_millis()
+			decode_timer(&decoded.suffix).at.to_millis()
 		});
 		Ok(())
 	}

@@ -12,7 +12,7 @@ use reifydb_core::{
 	key::{
 		Key,
 		kind::KeyKind,
-		operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
+		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 	},
 	state::budget::OperatorStateBudgetHandle,
 };
@@ -33,7 +33,7 @@ pub fn make_row(body: &str, time: u64) -> EncodedOperatorRow {
 }
 
 pub fn key(s: &str) -> GroupStateKey {
-	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, s.as_bytes())
+	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM, s.as_bytes())
 }
 
 pub fn engine() -> TestEngine {

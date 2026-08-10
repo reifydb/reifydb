@@ -21,7 +21,7 @@ use rkyv::seal::Seal;
 use tracing::instrument;
 
 use crate::{
-	key::operator_group_state::{GroupStateKey, IntoGroupStateKey},
+	key::operator_state::{GroupStateKey, IntoGroupStateKey},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		budget::OperatorStateBudgetHandle,
@@ -897,7 +897,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		error::diagnostic::flow::flow_error,
-		key::operator_group_state::{GroupId, GroupStateKey, IntoGroupStateKey, Keyspace},
+		key::operator_state::{GroupId, GroupStateKey, IntoGroupStateKey, Keyspace},
 	};
 
 	/// A bare `String` would read as some other group's prefix; this frames the tests' string keys
@@ -919,7 +919,7 @@ mod tests {
 
 	impl IntoGroupStateKey for &Key {
 		fn into_group_state_key(self) -> GroupStateKey {
-			GroupStateKey::node_scoped(Keyspace::FIRST_CUSTOM, self.0.as_bytes())
+			GroupStateKey::root(Keyspace::CUSTOM, self.0.as_bytes())
 		}
 	}
 
@@ -2309,7 +2309,7 @@ mod tests {
 
 	impl IntoGroupStateKey for &CollidingKey {
 		fn into_group_state_key(self) -> GroupStateKey {
-			GroupStateKey::node_scoped(Keyspace::FIRST_CUSTOM, self.id.as_bytes())
+			GroupStateKey::root(Keyspace::CUSTOM, self.id.as_bytes())
 		}
 	}
 

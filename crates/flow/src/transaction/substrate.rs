@@ -6,7 +6,7 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	interface::catalog::flow::OperatorId,
-	key::{EncodableKey, operator_state::OperatorStateKey},
+	key::operator_state::OperatorStateKey,
 };
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
@@ -42,7 +42,7 @@ impl FlowSubstrate {
 }
 
 pub fn operator_state_coordinates(key: &EncodedKey) -> Option<(OperatorId, EncodedKey)> {
-	OperatorStateKey::decode(key).map(|decoded| (decoded.operator, EncodedKey::new(decoded.key)))
+	OperatorStateKey::decode_operator(key)
 }
 
 pub fn apply_operator_state(store: &OperatorStore, version: CommitVersion, pending: &Pending) {

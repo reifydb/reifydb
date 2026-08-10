@@ -31,9 +31,7 @@ impl Iterator for StateIterator<'_> {
 		match self.inner.next()? {
 			Ok(multi) => {
 				let pair = if let Some(state_key) = OperatorStateKey::decode(&multi.key) {
-					(EncodedKey::new(state_key.key), multi.bytes)
-				} else if let Some(internal_key) = OperatorStateKey::decode(&multi.key) {
-					(EncodedKey::new(internal_key.key), multi.bytes)
+					(state_key.inner(), multi.bytes)
 				} else {
 					(multi.key, multi.bytes)
 				};

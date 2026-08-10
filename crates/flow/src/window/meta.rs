@@ -5,8 +5,8 @@ use std::mem::size_of;
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
-	key::operator_group_state::{
-		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorGroupStateKey, keyspace_inner_range,
+	key::operator_state::{
+		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range,
 	},
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
@@ -116,7 +116,7 @@ impl HeapSize for CountKey {
 
 impl IntoGroupStateKey for &CountKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorGroupStateKey::inner_encoded(self.0, Keyspace::COUNT, vec![])
+		OperatorStateKey::inner_encoded(self.0, Keyspace::COUNT, vec![])
 	}
 }
 
@@ -131,7 +131,7 @@ impl HeapSize for RowIndexKey {
 
 impl IntoGroupStateKey for &RowIndexKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorGroupStateKey::inner_encoded(self.0, Keyspace::ROW_INDEX, self.1.0.to_be_bytes())
+		OperatorStateKey::inner_encoded(self.0, Keyspace::ROW_INDEX, self.1.0.to_be_bytes())
 	}
 }
 
@@ -146,7 +146,7 @@ impl HeapSize for SessionKey {
 
 impl IntoGroupStateKey for &SessionKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorGroupStateKey::inner_encoded(self.0, Keyspace::SESSION, vec![])
+		OperatorStateKey::inner_encoded(self.0, Keyspace::SESSION, vec![])
 	}
 }
 
@@ -161,7 +161,7 @@ impl HeapSize for EngineMetaKey {
 
 impl IntoGroupStateKey for &EngineMetaKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorGroupStateKey::inner_encoded(self.0, Keyspace::ENGINE_META, vec![])
+		OperatorStateKey::inner_encoded(self.0, Keyspace::ENGINE_META, vec![])
 	}
 }
 
@@ -176,21 +176,21 @@ impl HeapSize for RollingMetaKey {
 
 impl IntoGroupStateKey for &RollingMetaKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorGroupStateKey::inner_encoded(self.0, Keyspace::ROLLING_META, vec![])
+		OperatorStateKey::inner_encoded(self.0, Keyspace::ROLLING_META, vec![])
 	}
 }
 
-fn node_scoped_range(keyspace: Keyspace) -> EncodedKeyRange {
-	keyspace_inner_range(GroupId::NODE_SCOPE, keyspace)
+fn root_range(keyspace: Keyspace) -> EncodedKeyRange {
+	keyspace_inner_range(GroupId::ROOT, keyspace)
 }
 
-fn node_scoped_suffix(keyspace: Keyspace, key: &EncodedKey) -> Option<Vec<u8>> {
-	let (group, found, suffix) = OperatorGroupStateKey::decode_inner(key.as_bytes())?;
-	(group == GroupId::NODE_SCOPE && found == keyspace).then_some(suffix)
+fn root_suffix(keyspace: Keyspace, key: &EncodedKey) -> Option<Vec<u8>> {
+	let (group, found, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
+	(group == GroupId::ROOT && found == keyspace).then_some(suffix)
 }
 
 fn decode_seal_ledger_key(key: &EncodedKey) -> Option<SealLedgerKey> {
-	let suffix = node_scoped_suffix(Keyspace::SEAL_LEDGER, key)?;
+	let suffix = root_suffix(Keyspace::SEAL_LEDGER, key)?;
 	suffix.is_empty().then_some(SealLedgerKey)
 }
 
@@ -219,7 +219,7 @@ impl WindowMeta {
 		if self.hydrated {
 			return Ok(());
 		}
-		self.seal_ledger.hydrate(store, node_scoped_range(Keyspace::SEAL_LEDGER), decode_seal_ledger_key)?;
+		self.seal_ledger.hydrate(store, root_range(Keyspace::SEAL_LEDGER), decode_seal_ledger_key)?;
 		self.hydrated = true;
 		Ok(())
 	}
@@ -369,9 +369,7 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::{
-		key::operator_group_state::{
-			GroupId, IntoGroupStateKey, OperatorGroupStateKey, group_data_inner_range,
-		},
+		key::operator_state::{GroupId, IntoGroupStateKey, OperatorStateKey, group_data_inner_range},
 		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_value::{
@@ -412,9 +410,8 @@ mod tests {
 
 	#[test]
 	fn partition_scoped_meta_lands_inside_the_group_the_substrate_reclaims() {
-		// This state spans every window of one partition, so it fits in no window group. At operator
-		// scope no group range could reach it, one row per partition kept forever; landing it in
-		// the partition group's data range is what makes reclaim_group_data take it.
+		// landing this in the root group would leave no group range able to reach it, stranding one row per
+		// partition forever, so it lives in the partition group's data range instead
 		let range = group_data_inner_range(GROUP);
 		for key in [
 			(&CountKey(GROUP)).into_group_state_key(),
@@ -422,7 +419,7 @@ mod tests {
 			(&RowIndexKey(GROUP, RowNumber(7))).into_group_state_key(),
 		] {
 			let (group, keyspace, _) =
-				OperatorGroupStateKey::decode_inner(key.as_bytes()).expect("meta keys are structured");
+				OperatorStateKey::decode_inner(key.as_bytes()).expect("meta keys are structured");
 			assert_eq!(group, GROUP, "partition-scoped meta escaped its group");
 			assert!(keyspace.is_data(), "{keyspace:?} must be a data keyspace to be reclaimed by phase 1");
 			assert!(contains(&range, key.as_bytes()), "{keyspace:?} landed outside the group data range");
@@ -434,9 +431,8 @@ mod tests {
 		// The seal ledger is per operator, one entry for the whole operator. Under a real group id,
 		// reclaiming that group would reset it and every later event would look admissible again.
 		let key = (&SealLedgerKey).into_group_state_key();
-		let (group, _, _) =
-			OperatorGroupStateKey::decode_inner(key.as_bytes()).expect("meta keys are structured");
-		assert_eq!(group, GroupId::NODE_SCOPE);
+		let (group, _, _) = OperatorStateKey::decode_inner(key.as_bytes()).expect("meta keys are structured");
+		assert_eq!(group, GroupId::ROOT);
 		assert!(!contains(&group_data_inner_range(GROUP), key.as_bytes()));
 	}
 
@@ -449,10 +445,9 @@ mod tests {
 		let session = (&SessionKey(GROUP)).into_group_state_key();
 		assert_ne!(count, session, "count and session must not share a key");
 
-		let (count_group, count_ks, count_suffix) =
-			OperatorGroupStateKey::decode_inner(count.as_bytes()).unwrap();
+		let (count_group, count_ks, count_suffix) = OperatorStateKey::decode_inner(count.as_bytes()).unwrap();
 		let (session_group, session_ks, session_suffix) =
-			OperatorGroupStateKey::decode_inner(session.as_bytes()).unwrap();
+			OperatorStateKey::decode_inner(session.as_bytes()).unwrap();
 		assert_eq!(count_group, session_group, "both belong to the same partition");
 		assert_ne!(count_ks, session_ks, "only the keyspace may distinguish them");
 		assert!(count_suffix.is_empty() && session_suffix.is_empty());

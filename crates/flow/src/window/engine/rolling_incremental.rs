@@ -13,7 +13,7 @@ use reifydb_codec::{
 	row::operator::OperatorState,
 };
 use reifydb_core::{
-	key::operator_group_state::GroupId,
+	key::operator_state::GroupId,
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{cache::StateCache, store::StateStore},
 };

@@ -8,7 +8,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::operator_group_state::{GroupId, GroupSet, Keyspace},
+	key::operator_state::{GroupId, GroupSet, Keyspace},
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
@@ -291,7 +291,7 @@ impl AppendOperator {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		common::CommitVersion, key::operator_group_state::group_inner_range, value::column::columns::Columns,
+		common::CommitVersion, key::operator_state::group_inner_range, value::column::columns::Columns,
 	};
 	use reifydb_flow::transaction::ChangeCoordinate;
 	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};

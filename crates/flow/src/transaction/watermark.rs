@@ -6,7 +6,7 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
+	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 };
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 use tracing::{info, warn};
@@ -21,7 +21,7 @@ const PERSIST_BUCKET_MS: u64 = 1_000;
 const IMPLAUSIBLE_JUMP_MS: u64 = 3_600_000;
 
 fn source_watermark_key() -> GroupStateKey {
-	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SOURCE_WATERMARK, vec![])
+	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::SOURCE_WATERMARK, vec![])
 }
 
 #[derive(Default)]
@@ -295,10 +295,10 @@ mod tests {
 		// A drifted encoding would make hydration read an absent key and silently restart every
 		// watermark at zero, which reads as a healthy cold start rather than as lost state.
 		let key = source_watermark_key();
-		let (group, keyspace, suffix) = OperatorGroupStateKey::decode_inner(key.as_slice())
-			.expect("the key must decode as inner state");
+		let (group, keyspace, suffix) =
+			OperatorStateKey::decode_inner(key.as_slice()).expect("the key must decode as inner state");
 
-		assert_eq!(group, GroupId::NODE_SCOPE);
+		assert_eq!(group, GroupId::ROOT);
 		assert_eq!(keyspace, Keyspace::SOURCE_WATERMARK);
 		assert!(suffix.is_empty());
 	}

@@ -31,7 +31,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
+		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 		partitioned_row::{PartitionedRowKey, RowLocator},
 		ringbuffer::RingBufferMetadataKey,
 		row::RowKey,
@@ -73,17 +73,15 @@ fn partition_suffix(partition: Option<Partition>) -> Vec<u8> {
 }
 
 fn row_entry_prefix(partition: Option<Partition>) -> Vec<u8> {
-	let mut prefix = OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_ENTRY, [])
-		.as_slice()
-		.to_vec();
+	let mut prefix =
+		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::RINGBUFFER_ENTRY, []).as_slice().to_vec();
 	prefix.extend_from_slice(&partition_suffix(partition));
 	prefix
 }
 
 fn expiry_scan_prefix(partition: Option<Partition>) -> Vec<u8> {
-	let mut prefix = OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_EXPIRY, [])
-		.as_slice()
-		.to_vec();
+	let mut prefix =
+		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::RINGBUFFER_EXPIRY, []).as_slice().to_vec();
 	prefix.extend_from_slice(&partition_suffix(partition));
 	prefix
 }
@@ -171,11 +169,7 @@ impl SinkRingBufferViewOperator {
 	}
 
 	fn meta_key(&self, partition: Option<Partition>) -> GroupStateKey {
-		OperatorGroupStateKey::inner_encoded(
-			GroupId::NODE_SCOPE,
-			Keyspace::RINGBUFFER_META,
-			partition_suffix(partition),
-		)
+		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::RINGBUFFER_META, partition_suffix(partition))
 	}
 
 	fn read_meta_mirror(
@@ -283,8 +277,8 @@ impl SinkRingBufferViewOperator {
 	}
 
 	fn forward_key(&self, source_rn: RowNumber) -> GroupStateKey {
-		OperatorGroupStateKey::inner_encoded(
-			GroupId::NODE_SCOPE,
+		OperatorStateKey::inner_encoded(
+			GroupId::ROOT,
 			Keyspace::RINGBUFFER_FORWARD,
 			encode_u64_asc(source_rn.0),
 		)
@@ -314,19 +308,19 @@ impl SinkRingBufferViewOperator {
 			suffix.extend_from_slice(&encode_u128_asc(partition.0));
 		}
 		suffix.extend_from_slice(&encode_u64_asc(storage_rn.0));
-		OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_ENTRY, suffix)
+		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::RINGBUFFER_ENTRY, suffix)
 	}
 
 	fn expiry_key(&self, partition: Option<Partition>, expires_at: u64, storage_rn: RowNumber) -> GroupStateKey {
 		let mut suffix = partition_suffix(partition);
 		suffix.extend_from_slice(&encode_u64_asc(expires_at));
 		suffix.extend_from_slice(&encode_u64_asc(storage_rn.0));
-		OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_EXPIRY, suffix)
+		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::RINGBUFFER_EXPIRY, suffix)
 	}
 
 	fn arm_key(&self, partition: Option<Partition>) -> GroupStateKey {
-		OperatorGroupStateKey::inner_encoded(
-			GroupId::NODE_SCOPE,
+		OperatorStateKey::inner_encoded(
+			GroupId::ROOT,
 			Keyspace::RINGBUFFER_TTL_ARM,
 			partition_suffix(partition),
 		)
@@ -1274,10 +1268,9 @@ mod tests {
 	}
 
 	#[test]
-	fn every_ringbuffer_state_key_is_node_scoped_in_its_own_keyspace() {
-		// A hand-rolled leading byte is indistinguishable from a group-id varint, so such a key
-		// sits inside whatever group range shares its prefix and can be range-deleted by an
-		// unrelated reclaim. Node scope is group 0, which both reclaim phases refuse outright.
+	fn every_ringbuffer_state_key_lives_in_the_root_group_in_its_own_keyspace() {
+		// A hand-rolled leading byte aliases a group-id varint, so only the root group is exempt from both
+		// reclaim phases' range deletes.
 		let op = build_op(true, false, None);
 		let partition = Partition::of(&[Value::Utf8("sol".to_string())]);
 
@@ -1286,13 +1279,9 @@ mod tests {
 			(op.row_entry_key(Some(partition), RowNumber(42)), Keyspace::RINGBUFFER_ENTRY),
 			(op.row_entry_key(None, RowNumber(42)), Keyspace::RINGBUFFER_ENTRY),
 		] {
-			let (group, keyspace, _) = OperatorGroupStateKey::decode_inner(key.as_bytes())
+			let (group, keyspace, _) = OperatorStateKey::decode_inner(key.as_bytes())
 				.expect("a ringbuffer state key must decode as a structured operator-state key");
-			assert_eq!(
-				group,
-				GroupId::NODE_SCOPE,
-				"ringbuffer state must not live inside a reclaimable group"
-			);
+			assert_eq!(group, GroupId::ROOT, "ringbuffer state must not live inside a reclaimable group");
 			assert_eq!(keyspace, expected);
 		}
 	}
@@ -1305,8 +1294,7 @@ mod tests {
 
 	fn forward_count(engine: &TestEngine, op: &SinkRingBufferViewOperator) -> usize {
 		let mut txn = deferred_txn(engine);
-		let prefix =
-			OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::RINGBUFFER_FORWARD, vec![]);
+		let prefix = OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::RINGBUFFER_FORWARD, vec![]);
 		op.state_range(&mut txn, EncodedKeyRange::prefix(prefix.as_ref()))
 			.collect::<Result<Vec<_>>>()
 			.unwrap()

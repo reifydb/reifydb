@@ -91,7 +91,8 @@ mod tests {
 
 	#[test]
 	fn expire_is_reachable_through_all_but_never_through_standard() {
-		// STANDARD must never carry Expire, or every in-tree operator silently opts into rows it has no arm for.
+		// STANDARD must never carry Expire, or every in-tree operator silently opts into rows it has no arm
+		// for.
 		assert!(!OperatorCapability::STANDARD.contains(&OperatorCapability::Expire));
 		assert!(OperatorCapability::ALL.contains(&OperatorCapability::Expire));
 		assert!(from_bitmask(to_bitmask(&[OperatorCapability::Expire])).contains(&OperatorCapability::Expire));

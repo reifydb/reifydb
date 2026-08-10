@@ -12,7 +12,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::operator_group_state::{GroupId, Keyspace},
+	key::operator_state::{GroupId, Keyspace},
 	metrics::heap::OperatorSample,
 	value::column::{ColumnWithName, columns::Columns},
 };
@@ -342,12 +342,12 @@ impl JoinOperator {
 	) -> Result<(Vec<RowNumber>, Vec<usize>, Vec<usize>)> {
 		match identity {
 			Identity::Mint => {
-				let minted = txn.get_or_create_row_numbers(self.operator, GroupId::NODE_SCOPE, keys)?;
+				let minted = txn.get_or_create_row_numbers(self.operator, GroupId::ROOT, keys)?;
 				let (fresh, existing) = (0..keys.len()).partition(|index| minted[*index].1);
 				Ok((minted.iter().map(|(number, _)| *number).collect(), fresh, existing))
 			}
 			Identity::Existing | Identity::Consume => {
-				let resolved = txn.get_row_numbers(self.operator, GroupId::NODE_SCOPE, keys)?;
+				let resolved = txn.get_row_numbers(self.operator, GroupId::ROOT, keys)?;
 				let existing: Vec<usize> = resolved
 					.iter()
 					.enumerate()
@@ -355,11 +355,7 @@ impl JoinOperator {
 					.collect();
 				if identity == Identity::Consume {
 					for index in &existing {
-						txn.remove_row_number(
-							self.operator,
-							GroupId::NODE_SCOPE,
-							&keys[*index],
-						)?;
+						txn.remove_row_number(self.operator, GroupId::ROOT, &keys[*index])?;
 					}
 				}
 				Ok((
@@ -413,7 +409,7 @@ impl JoinOperator {
 		serializer.extend_u64(left_number);
 		let prefix = serializer.finish();
 
-		txn.remove_row_numbers_by_prefix(self.operator, GroupId::NODE_SCOPE, &prefix)
+		txn.remove_row_numbers_by_prefix(self.operator, GroupId::ROOT, &prefix)
 	}
 
 	fn make_composite_key(left_num: RowNumber, right_num: RowNumber) -> EncodedKey {
@@ -958,7 +954,7 @@ mod span_tests {
 	}
 
 	#[test]
-	fn the_node_scope_mapping_ages_on_the_left_ttl_and_not_at_all_without_one() {
+	fn the_root_group_mapping_ages_on_the_left_ttl_and_not_at_all_without_one() {
 		// The mapping is keyed by the left row, so the left ttl is the only span that bounds it.
 		// The right ttl would drop mappings whose left row is still live and the join would mint a
 		// second row number over it; nothing at all reinstates unbounded growth.
@@ -1084,21 +1080,21 @@ mod span_tests {
 
 		let old = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
 		at(&mut txn, 0);
-		txn.get_or_create_row_number(op.operator, GroupId::NODE_SCOPE, &old).unwrap();
+		txn.get_or_create_row_number(op.operator, GroupId::ROOT, &old).unwrap();
 
 		let young = JoinOperator::make_composite_key(RowNumber(2), RowNumber(1));
 		at(&mut txn, 40);
-		txn.get_or_create_row_number(op.operator, GroupId::NODE_SCOPE, &young).unwrap();
+		txn.get_or_create_row_number(op.operator, GroupId::ROOT, &young).unwrap();
 
 		let mut cursor = None;
-		txn.evict_row_numbers(op.operator, GroupId::NODE_SCOPE, cutoff_at(10), &mut cursor, 100).unwrap();
+		txn.evict_row_numbers(op.operator, GroupId::ROOT, cutoff_at(10), &mut cursor, 100).unwrap();
 
 		assert!(
-			txn.get_row_number(op.operator, GroupId::NODE_SCOPE, &old).unwrap().is_none(),
+			txn.get_row_number(op.operator, GroupId::ROOT, &old).unwrap().is_none(),
 			"a mapping stamped at or before the cutoff must be evicted"
 		);
 		assert!(
-			txn.get_row_number(op.operator, GroupId::NODE_SCOPE, &young).unwrap().is_some(),
+			txn.get_row_number(op.operator, GroupId::ROOT, &young).unwrap().is_some(),
 			"a mapping stamped after the cutoff must survive; the version-anchored sweep could not \
 			 express this and evicted both"
 		);
@@ -1114,15 +1110,15 @@ mod span_tests {
 
 		let first = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
 		at(&mut txn, 0);
-		let (n1, _) = txn.get_or_create_row_number(op.operator, GroupId::NODE_SCOPE, &first).unwrap();
+		let (n1, _) = txn.get_or_create_row_number(op.operator, GroupId::ROOT, &first).unwrap();
 
 		let mut cursor = None;
-		txn.evict_row_numbers(op.operator, GroupId::NODE_SCOPE, cutoff_at(100), &mut cursor, 100).unwrap();
-		assert!(txn.get_row_number(op.operator, GroupId::NODE_SCOPE, &first).unwrap().is_none());
+		txn.evict_row_numbers(op.operator, GroupId::ROOT, cutoff_at(100), &mut cursor, 100).unwrap();
+		assert!(txn.get_row_number(op.operator, GroupId::ROOT, &first).unwrap().is_none());
 
 		let second = JoinOperator::make_composite_key(RowNumber(7), RowNumber(7));
 		at(&mut txn, 200);
-		let (n2, is_new) = txn.get_or_create_row_number(op.operator, GroupId::NODE_SCOPE, &second).unwrap();
+		let (n2, is_new) = txn.get_or_create_row_number(op.operator, GroupId::ROOT, &second).unwrap();
 		assert!(is_new);
 		assert!(n2.0 > n1.0, "counter must keep advancing past evicted mappings, not recycle ids");
 	}

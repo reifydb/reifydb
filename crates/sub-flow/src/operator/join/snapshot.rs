@@ -10,7 +10,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Diff},
-	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
+	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 	value::column::columns::Columns,
 };
 use reifydb_flow::transaction::FlowTransaction;
@@ -102,12 +102,11 @@ impl SnapshotLedger {
 		suffix.extend_from_slice(&encode_u64_asc(left.0));
 		suffix.push(tag);
 		suffix.extend_from_slice(&encode_u64_asc(right.0));
-		OperatorGroupStateKey::inner_encoded(group, Keyspace::JOIN_PUBLISHED, suffix)
+		OperatorStateKey::inner_encoded(group, Keyspace::JOIN_PUBLISHED, suffix)
 	}
 
 	fn published_prefix(&self, group: GroupId, left: RowNumber) -> EncodedKeyRange {
-		let prefix =
-			OperatorGroupStateKey::inner_encoded(group, Keyspace::JOIN_PUBLISHED, encode_u64_asc(left.0));
+		let prefix = OperatorStateKey::inner_encoded(group, Keyspace::JOIN_PUBLISHED, encode_u64_asc(left.0));
 		EncodedKeyRange::prefix(prefix.as_ref())
 	}
 
@@ -115,7 +114,7 @@ impl SnapshotLedger {
 		let mut suffix = Vec::with_capacity(2 * ROW_NUMBER_BYTES);
 		suffix.extend_from_slice(&encode_u64_asc(right.0));
 		suffix.extend_from_slice(&encode_u64_asc(version.0));
-		OperatorGroupStateKey::inner_encoded(group, Keyspace::JOIN_PIN, suffix)
+		OperatorStateKey::inner_encoded(group, Keyspace::JOIN_PIN, suffix)
 	}
 
 	pub(crate) fn publish(

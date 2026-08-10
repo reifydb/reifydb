@@ -24,7 +24,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, change::Change},
-	key::operator_group_state::{GroupId, GroupStateKey},
+	key::operator_state::{GroupId, GroupStateKey},
 	metrics::heap::OperatorSample,
 };
 use reifydb_extension::loader::ffi::LibraryCache;
@@ -619,7 +619,7 @@ impl Operator for NativeBridgedOperator {
 #[cfg(test)]
 mod tests {
 	use reifydb_abi::constants::OPERATOR_ABI_TAG;
-	use reifydb_core::{common::CommitVersion, interface::change::Change, key::operator_group_state::GroupId};
+	use reifydb_core::{common::CommitVersion, interface::change::Change, key::operator_state::GroupId};
 	use reifydb_extension::operator::ffi_loader::check_operator_abi_tag;
 	use reifydb_flow::{operator::Operator, transaction::ChangeCoordinate};
 	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};

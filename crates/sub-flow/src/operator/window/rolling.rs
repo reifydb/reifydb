@@ -625,7 +625,7 @@ mod tests {
 		row::operator::EncodedOperatorRow,
 	};
 	use reifydb_core::{
-		key::operator_group_state::{GroupId, GroupStateKey},
+		key::operator_state::{GroupId, GroupStateKey},
 		state::{budget::OperatorStateBudgetHandle, store::StateStore},
 	};
 	use reifydb_flow::window::{engine::config::WindowEngineConfig, policy::EvictionPolicy, span::WindowCoord};
@@ -830,7 +830,7 @@ mod tests {
 	}
 
 	fn group_key(hash: &Hash128) -> (GroupId, EncodedKey) {
-		(GroupId::NODE_SCOPE, EncodedKey::builder().u128(hash.0).build())
+		(GroupId::ROOT, EncodedKey::builder().u128(hash.0).build())
 	}
 
 	fn contribution(seq: u64, dollars: [f64; 3]) -> (WindowSlotKey, Vec<Option<Value>>) {

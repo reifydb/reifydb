@@ -16,7 +16,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_group_state::{GroupId, GroupStateKey},
+	key::operator_state::{GroupId, GroupStateKey},
 };
 use reifydb_value::value::{
 	Value,

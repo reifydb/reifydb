@@ -12,7 +12,7 @@ use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapabili
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_group_state::{Keyspace, OperatorGroupStateKey},
+	key::operator_state::{Keyspace, OperatorStateKey},
 };
 use reifydb_sdk::{
 	config::Config,
@@ -34,7 +34,7 @@ const TIMEOUT: StdDuration = StdDuration::from_secs(20);
 // operator declares it as its seal span, which is what makes the node event-domain.
 const SEAL_AFTER_MS: u64 = 1_000;
 
-const TALLY_STATE: Keyspace = Keyspace::FIRST_CUSTOM;
+const TALLY_STATE: Keyspace = Keyspace::CUSTOM;
 
 struct TallyRow {
 	g: i32,
@@ -120,7 +120,7 @@ impl OperatorLogic for Tally {
 				// #time - and later compares that stamp against the seal cutoff.
 				let key = group_key(g);
 				let group = ctx.intern_group(&key)?;
-				let state_key = OperatorGroupStateKey::inner_encoded(group, TALLY_STATE, []);
+				let state_key = OperatorStateKey::inner_encoded(group, TALLY_STATE, []);
 
 				let prior: i64 = self.state_get(ctx, &state_key)?.unwrap_or(0);
 				let total = prior + 1;

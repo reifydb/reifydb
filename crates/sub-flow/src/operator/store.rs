@@ -10,8 +10,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_group_state::{GroupId, GroupStateKey},
-		operator_state::OperatorStateKey,
+		operator_state::{GroupId, GroupStateKey, OperatorStateKey},
 	},
 	state::store::StateStore,
 };
@@ -79,7 +78,7 @@ impl StateStore for OperatorStateStore<'_> {
 			let Some(decoded) = OperatorStateKey::decode(&r.key) else {
 				continue;
 			};
-			let Some(inner) = GroupStateKey::from_framed(EncodedKey::new(decoded.key)) else {
+			let Some(inner) = GroupStateKey::from_framed(decoded.inner()) else {
 				continue;
 			};
 			visit(inner, EncodedOperatorRow::try_from(r.bytes)?)?;
@@ -104,7 +103,7 @@ impl StateStore for OperatorStateStore<'_> {
 		let batch = self.txn.state_range(self.operator, range, limit, "operator::store_visit")?;
 		for r in batch.items {
 			if let Some(decoded) = OperatorStateKey::decode(&r.key)
-				&& let Some(inner) = GroupStateKey::from_framed(EncodedKey::new(decoded.key))
+				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
 			{
 				visit(inner, EncodedOperatorRow::try_from(r.bytes)?)?;
 			}

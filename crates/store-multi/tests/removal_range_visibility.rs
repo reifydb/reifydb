@@ -13,10 +13,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
-	key::{
-		operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
-		operator_state::OperatorStateKey,
-	},
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 };
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -51,8 +48,7 @@ fn memory_store() -> StandardMultiStore {
 }
 
 fn coord_key(node: u64, suffix: &[u8]) -> EncodedKey {
-	let inner = OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::BUFFER, suffix);
-	OperatorStateKey::encoded(OperatorId(node), inner.as_slice())
+	OperatorStateKey::encoded(OperatorId(node), GroupId::ROOT, Keyspace::BUFFER, suffix)
 }
 
 fn node_range(node: u64) -> reifydb_codec::key::encoded::EncodedKeyRange {

@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
-use reifydb_core::key::operator_group_state::{Keyspace, OperatorGroupStateKey, group_data_of_inner};
+use reifydb_core::key::operator_state::{Keyspace, OperatorStateKey, group_data_of_inner};
 use reifydb_value::value::datetime::DateTime;
 
 #[derive(Debug, Clone, Default)]
@@ -65,10 +65,10 @@ pub(crate) fn floor_expired(floor: &FloorSpec, key: &EncodedKey, row: &EncodedOp
 	let Some(group) = group_data_of_inner(key.as_slice()) else {
 		return false;
 	};
-	if group.is_node_scope() {
+	if group.is_root() {
 		return false;
 	}
-	let Some((_, keyspace, _)) = OperatorGroupStateKey::decode_inner(key.as_slice()) else {
+	let Some((_, keyspace, _)) = OperatorStateKey::decode_inner(key.as_slice()) else {
 		return false;
 	};
 	let Some(cutoff) = floor.cutoff(keyspace) else {

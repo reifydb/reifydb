@@ -84,8 +84,8 @@ unsafe fn get_test_context(ctx: *mut ContextFFI) -> &'static TestContext {
 	}
 }
 
-fn test_state_envelope(operator_id: u64, user_key_bytes: &[u8]) -> EncodedKey {
-	OperatorStateKey::new(OperatorId(operator_id), user_key_bytes.to_vec()).encode()
+fn test_state_envelope(operator_id: u64, group: GroupId, keyspace: Keyspace, suffix: impl Into<Vec<u8>>) -> EncodedKey {
+	OperatorStateKey::encoded(OperatorId(operator_id), group, keyspace, suffix.into())
 }
 
 #[unsafe(no_mangle)]
@@ -635,11 +635,7 @@ use reifydb_abi::{
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::{
-		EncodableKey,
-		operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
-		operator_state::OperatorStateKey,
-	},
+	key::operator_state::{GroupId, Keyspace, OperatorStateKey},
 };
 use reifydb_value::value::datetime::DateTime;
 
@@ -672,20 +668,6 @@ unsafe extern "C" fn test_rql(
 	FFI_ERROR_INTERNAL
 }
 
-fn test_row_number_map_key(group: GroupId, user_key_bytes: &[u8]) -> Vec<u8> {
-	OperatorGroupStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, user_key_bytes).as_slice().to_vec()
-}
-
-fn test_row_number_map_prefix(group: GroupId) -> Vec<u8> {
-	OperatorGroupStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, vec![]).as_slice().to_vec()
-}
-
-fn test_group_dictionary_key(group_bytes: &[u8]) -> Vec<u8> {
-	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group_bytes)
-		.as_slice()
-		.to_vec()
-}
-
 extern "C" fn test_intern_groups(
 	operator_id: u64,
 	ctx: *mut ContextFFI,
@@ -703,7 +685,12 @@ extern "C" fn test_intern_groups(
 	// SAFETY: ctx checked; groups and ids_out checked when groups_len > 0; writes stay under groups_len.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
-		let counter_key = test_state_envelope(operator_id, b"__group_alloc__");
+		let counter_key = test_state_envelope(
+			operator_id,
+			GroupId::ROOT,
+			Keyspace::NODE_COUNTER,
+			b"__group_alloc__".to_vec(),
+		);
 		let group_refs = if groups_len == 0 {
 			&[]
 		} else {
@@ -715,7 +702,12 @@ extern "C" fn test_intern_groups(
 			} else {
 				from_raw_parts(group_ref.ptr, group_ref.len)
 			};
-			let dictionary_key = test_state_envelope(operator_id, &test_group_dictionary_key(group_bytes));
+			let dictionary_key = test_state_envelope(
+				operator_id,
+				GroupId::ROOT,
+				Keyspace::GROUP_DICTIONARY,
+				group_bytes.to_vec(),
+			);
 			match test_ctx.get_state(&dictionary_key) {
 				Some(bytes) if bytes.len() >= 8 => {
 					*ids_out.add(i) = u64::from_le_bytes(bytes[..8].try_into().unwrap());
@@ -864,7 +856,12 @@ extern "C" fn test_lookup_groups(
 			} else {
 				from_raw_parts(group_ref.ptr, group_ref.len)
 			};
-			let dictionary_key = test_state_envelope(operator_id, &test_group_dictionary_key(group_bytes));
+			let dictionary_key = test_state_envelope(
+				operator_id,
+				GroupId::ROOT,
+				Keyspace::GROUP_DICTIONARY,
+				group_bytes.to_vec(),
+			);
 			*ids_out.add(i) = match test_ctx.get_state(&dictionary_key) {
 				Some(bytes) if bytes.len() >= 8 => u64::from_le_bytes(bytes[..8].try_into().unwrap()),
 				_ => GROUP_ABSENT,
@@ -893,7 +890,12 @@ extern "C" fn test_get_or_create_row_numbers(
 	// SAFETY: ctx checked; keys and both out arrays checked when keys_len > 0; writes stay under it.
 	unsafe {
 		let test_ctx = get_test_context(ctx);
-		let counter_key = test_state_envelope(operator_id, b"__row_number_alloc__");
+		let counter_key = test_state_envelope(
+			operator_id,
+			GroupId::ROOT,
+			Keyspace::NODE_COUNTER,
+			b"__row_number_alloc__".to_vec(),
+		);
 		let key_refs = if keys_len == 0 {
 			&[]
 		} else {
@@ -905,8 +907,12 @@ extern "C" fn test_get_or_create_row_numbers(
 			} else {
 				from_raw_parts(key_ref.ptr, key_ref.len)
 			};
-			let map_key =
-				test_state_envelope(operator_id, &test_row_number_map_key(GroupId(group), key_bytes));
+			let map_key = test_state_envelope(
+				operator_id,
+				GroupId(group),
+				Keyspace::ROW_NUMBER_MAPPING,
+				key_bytes.to_vec(),
+			);
 			match test_ctx.get_state(&map_key) {
 				Some(bytes) if bytes.len() >= 8 => {
 					*row_numbers_out.add(i) = u64::from_le_bytes(bytes[..8].try_into().unwrap());
@@ -948,7 +954,12 @@ extern "C" fn test_remove_row_number(
 		} else {
 			from_raw_parts(key_ptr, key_len)
 		};
-		let map_key = test_state_envelope(operator_id, &test_row_number_map_key(GroupId(group), key_bytes));
+		let map_key = test_state_envelope(
+			operator_id,
+			GroupId(group),
+			Keyspace::ROW_NUMBER_MAPPING,
+			key_bytes.to_vec(),
+		);
 		test_ctx.remove_state(&map_key);
 		FFI_OK
 	}
@@ -975,12 +986,22 @@ extern "C" fn test_remove_row_numbers_below(
 		} else {
 			from_raw_parts(upper_ptr, upper_len)
 		};
-		let boundary = test_state_envelope(operator_id, &test_row_number_map_key(GroupId(group), upper_bytes))
-			.as_slice()
-			.to_vec();
-		let prefix = test_state_envelope(operator_id, &test_row_number_map_prefix(GroupId(group)))
-			.as_slice()
-			.to_vec();
+		let boundary = test_state_envelope(
+			operator_id,
+			GroupId(group),
+			Keyspace::ROW_NUMBER_MAPPING,
+			upper_bytes.to_vec(),
+		)
+		.as_slice()
+		.to_vec();
+		let prefix = test_state_envelope(
+			operator_id,
+			GroupId(group),
+			Keyspace::ROW_NUMBER_MAPPING,
+			Vec::<u8>::new(),
+		)
+		.as_slice()
+		.to_vec();
 
 		let mut dropped: Vec<u64> = Vec::new();
 		let mut to_remove: Vec<EncodedKey> = Vec::new();

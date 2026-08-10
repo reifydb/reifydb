@@ -3,7 +3,7 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::key::encoded::EncodedKeyRange;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -16,8 +16,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
-		operator_state::OperatorStateKey,
+		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 	},
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
@@ -101,11 +100,9 @@ fn persisted_rows(op: &DistinctOperator, txn: &mut FlowTransaction) -> BTreeMap<
 	let mut out = BTreeMap::new();
 	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None, "test").unwrap();
 	for item in batch.items {
-		let inner = OperatorStateKey::decode(&item.key).expect("internal state key");
-		if let Some((_, keyspace, _)) = OperatorGroupStateKey::decode_inner(&inner.key) {
-			if keyspace == Keyspace::DISTINCT_ENTRY {
-				out.insert(inner.key.clone(), item.bytes.to_vec());
-			}
+		let decoded = OperatorStateKey::decode(&item.key).expect("internal state key");
+		if decoded.keyspace == Keyspace::DISTINCT_ENTRY {
+			out.insert(decoded.inner().as_bytes().to_vec(), item.bytes.to_vec());
 		}
 	}
 	if let Some(row) = layout_row(op, txn) {
@@ -122,11 +119,9 @@ fn entry_groups(op: &DistinctOperator, txn: &mut FlowTransaction) -> Vec<GroupId
 	let mut out = Vec::new();
 	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None, "test").unwrap();
 	for item in batch.items {
-		let inner = OperatorStateKey::decode(&item.key).expect("internal state key");
-		if let Some((group, keyspace, _)) = OperatorGroupStateKey::decode_inner(&inner.key)
-			&& keyspace == Keyspace::DISTINCT_ENTRY
-		{
-			out.push(group);
+		let decoded = OperatorStateKey::decode(&item.key).expect("internal state key");
+		if decoded.keyspace == Keyspace::DISTINCT_ENTRY {
+			out.push(decoded.group);
 		}
 	}
 	out
@@ -136,11 +131,9 @@ fn erase_group_data(op: &DistinctOperator, txn: &mut FlowTransaction, group: Gro
 	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None, "test").unwrap();
 	let mut erased = 0;
 	for item in batch.items {
-		let inner = OperatorStateKey::decode(&item.key).expect("internal state key");
-		if let Some((found, keyspace, _)) = OperatorGroupStateKey::decode_inner(&inner.key)
-			&& found == group && keyspace.is_data()
-		{
-			let key = GroupStateKey::from_framed(EncodedKey::new(inner.key.clone()))
+		let decoded = OperatorStateKey::decode(&item.key).expect("internal state key");
+		if decoded.group == group && decoded.keyspace.is_data() {
+			let key = GroupStateKey::from_framed(decoded.inner())
 				.expect("distinct state rows carry a framed inner key");
 			txn.state_remove(op.id(), &key).unwrap();
 			erased += 1;

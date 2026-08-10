@@ -14,7 +14,7 @@ use reifydb_codec::{
 	row::operator::OperatorState,
 };
 use reifydb_core::{
-	key::operator_group_state::GroupId,
+	key::operator_state::GroupId,
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		cache::{StateCache, StateView},
@@ -1038,7 +1038,7 @@ mod tests {
 	use std::collections::{BTreeMap, BTreeSet};
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::{key::operator_group_state::GroupId, state::budget::OperatorStateBudgetHandle};
+	use reifydb_core::{key::operator_state::GroupId, state::budget::OperatorStateBudgetHandle};
 	use reifydb_value::{
 		factory::time::{at_millis, millis},
 		value::datetime::DateTime,
@@ -1058,7 +1058,7 @@ mod tests {
 	}
 
 	fn row_key(group: &u32) -> (GroupId, EncodedKey) {
-		(GroupId::NODE_SCOPE, node_row_key(group))
+		(GroupId::ROOT, node_row_key(group))
 	}
 
 	fn node_row_key(group: &u32) -> EncodedKey {

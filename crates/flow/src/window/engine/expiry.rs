@@ -8,7 +8,7 @@ use reifydb_codec::{
 	row::operator::{OperatorState, decode},
 };
 use reifydb_core::{
-	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
+	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 	metrics::heap::StateMemory,
 	state::store::StateStore,
 };
@@ -22,7 +22,7 @@ fn expiry_all_range() -> EncodedKeyRange {
 }
 
 fn due_start(threshold: u64) -> GroupStateKey {
-	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::EXPIRY, encode_u64(threshold))
+	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::EXPIRY, encode_u64(threshold))
 }
 
 pub(crate) struct ExpiryIndex<E> {
@@ -88,7 +88,7 @@ impl<E: OperatorState + Clone> ExpiryIndex<E> {
 	pub(crate) fn earliest(&mut self, store: &mut impl StateStore) -> Result<Option<u64>> {
 		let map = self.hydrate(store)?;
 		Ok(map.last_key_value().and_then(|(key, _)| {
-			let (_, _, suffix) = OperatorGroupStateKey::decode_inner(key.as_bytes())?;
+			let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
 			suffix.get(..8).map(|bytes| decode_u64(bytes.try_into().expect("eight expiry bytes")))
 		}))
 	}
@@ -105,7 +105,7 @@ fn entry_bytes<E>(key: &GroupStateKey) -> u64 {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::key::operator_group_state::GroupStateKey;
+	use reifydb_core::key::operator_state::GroupStateKey;
 	use reifydb_macro::operator_state;
 
 	use super::ExpiryIndex;

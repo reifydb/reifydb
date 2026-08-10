@@ -18,8 +18,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_group_state::{Keyspace, OperatorGroupStateKey},
-		operator_state::OperatorStateKey,
+		operator_state::{Keyspace, OperatorStateKey},
 	},
 	state::budget::OperatorStateBudgetHandle,
 };
@@ -94,9 +93,7 @@ fn snapshot(h: &mut Harness<WindowOperator>) -> Snapshot {
 	let mut armed_timers = 0usize;
 	for (key, row) in h.state_items().expect("the state range reads") {
 		keys.push(key.to_vec());
-		let Some((_, keyspace, _)) = OperatorStateKey::decode(&key)
-			.and_then(|state| OperatorGroupStateKey::decode_inner(&state.key))
-		else {
+		let Some(keyspace) = OperatorStateKey::decode(&key).map(|state| state.keyspace) else {
 			continue;
 		};
 		if keyspace == Keyspace::TIMER_WHEEL {

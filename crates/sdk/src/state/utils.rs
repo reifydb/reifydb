@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::key::operator_group_state::GroupStateKey;
+use reifydb_core::key::operator_state::GroupStateKey;
 
 pub fn empty_key() -> EncodedKey {
 	EncodedKey::new(Vec::new())

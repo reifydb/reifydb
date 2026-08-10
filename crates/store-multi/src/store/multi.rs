@@ -1266,7 +1266,11 @@ mod cache_tests {
 			catalog::{flow::OperatorId, id::TableId, storage::StorageId},
 			store::{EntryKind, MultiVersionCommit, MultiVersionGet},
 		},
-		key::{EncodableKey, operator_state::OperatorStateKey, row::RowKey},
+		key::{
+			EncodableKey,
+			operator_state::{GroupId, Keyspace, OperatorStateKey},
+			row::RowKey,
+		},
 	};
 	use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
@@ -1372,7 +1376,8 @@ mod cache_tests {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 		let read = store.read.clone().expect("read tier configured");
 
-		let opkey = OperatorStateKey::new(OperatorId(7), vec![1, 2, 3]).encode();
+		let opkey =
+			OperatorStateKey::new(OperatorId(7), GroupId::ROOT, Keyspace::CUSTOM, vec![1, 2, 3]).encode();
 		MultiVersionCommit::commit(
 			&store,
 			cow_vec![Delta::Set {

@@ -17,7 +17,7 @@ use std::{collections::HashMap, hash::Hash};
 use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	key::operator_group_state::GroupId,
+	key::operator_state::GroupId,
 	metrics::heap::StatePool,
 	state::{budget::OperatorStateBudgetHandle, store::StateStore},
 };
@@ -123,7 +123,7 @@ impl WindowedBudget {
 mod tests {
 	use std::collections::BTreeMap;
 
-	use reifydb_core::key::operator_group_state::group_data_of_inner;
+	use reifydb_core::key::operator_state::group_data_of_inner;
 	use reifydb_value::{byte_size::ByteSize, value::Value};
 
 	use crate::{
@@ -134,15 +134,14 @@ mod tests {
 
 	#[test]
 	fn state_a_driver_addresses_without_a_group_can_never_be_reclaimed() {
-		// Node-scope state belongs to no group and reclamation must never touch it. The guarantee is
-		// structural: its key is empty, carries no group id, and the drop predicate refuses it outright.
+		// State addressed without a group carries no group id, so reclamation must never attribute or touch it.
 		let key = empty_key();
 
 		assert!(key.as_bytes().is_empty());
 		assert_eq!(
 			group_data_of_inner(key.as_bytes()),
 			None,
-			"node-scope state must not be attributable to any group"
+			"state addressed without a group must not be attributable to any group"
 		);
 	}
 

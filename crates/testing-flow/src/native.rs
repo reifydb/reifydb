@@ -18,7 +18,7 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, change::Change},
-	key::{Key, kind::KeyKind, operator_group_state::GroupStateKey},
+	key::{Key, kind::KeyKind, operator_state::GroupStateKey},
 	row::Row,
 	state::budget::OperatorStateBudgetHandle,
 	value::column::columns::Columns,

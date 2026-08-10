@@ -13,7 +13,7 @@ use reifydb_codec::{
 	row::operator::OperatorState,
 };
 use reifydb_core::{
-	key::operator_group_state::GroupId,
+	key::operator_state::GroupId,
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{cache::StateCache, map::PersistedMap, store::StateStore},
 };
@@ -583,9 +583,9 @@ mod tests {
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
 		engine.apply(&mut store, buckets, 4, state_key, row_key, combine).unwrap();
 		engine.flush(&mut store).unwrap();
-		// The mapping is scoped to the interned group, not NODE_SCOPE, and reclamation deletes by
-		// group prefix - a lookup under the wrong group would report absence and pass while the
-		// mapping leaked. The group is read back rather than assumed from the allocator.
+		// The mapping is scoped to the interned group, not ROOT, and reclamation deletes by group prefix - a
+		// lookup under the wrong group would report absence and pass while the mapping leaked, so the group is
+		// read back rather than assumed from the allocator.
 		let group = store.lookup_group(&state_key(&1)).unwrap().expect("applying the group interns it");
 		assert!(store.contains_row_mapping(group, &ranked_key), "publishing the ranking mints its mapping");
 

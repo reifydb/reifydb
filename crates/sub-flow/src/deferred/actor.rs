@@ -931,8 +931,7 @@ mod pull_protocol {
 			Key,
 			cdc_consumer::FlowSnapshotPin,
 			kind::KeyKind,
-			operator_group_state::{Keyspace, OperatorGroupStateKey},
-			operator_state::OperatorStateKey,
+			operator_state::{Keyspace, OperatorStateKey, node_prefix},
 		},
 	};
 	use reifydb_flow::transaction::{DeferredParams, FlowTransaction};
@@ -1306,7 +1305,7 @@ mod pull_protocol {
 		fn arena_state(&self, substrate: &FlowSubstrate) -> State {
 			let mut out = State::new();
 			for operator in self.flow.get_operator_ids() {
-				let prefix = OperatorStateKey::encoded(operator, vec![]);
+				let prefix = EncodedKey::new(node_prefix(operator));
 				let batch = substrate.operators.range_batch(
 					operator,
 					EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded),
@@ -2324,7 +2323,7 @@ mod pull_protocol {
 					.items
 					.into_iter()
 					.filter(|(key, _)| {
-						OperatorGroupStateKey::decode_inner(key.as_slice())
+						OperatorStateKey::decode_inner(key.as_slice())
 							.is_some_and(|(_, ks, _)| ks == Keyspace::RINGBUFFER_META)
 					})
 					.map(|(_, row)| {

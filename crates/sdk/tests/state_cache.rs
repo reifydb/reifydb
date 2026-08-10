@@ -4,7 +4,7 @@
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_group_state::{GroupStateKey, IntoGroupStateKey, Keyspace},
+	key::operator_state::{GroupStateKey, IntoGroupStateKey, Keyspace},
 	metrics::heap::HeapSize,
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache},
 };
@@ -58,13 +58,13 @@ impl IntoGroupStateKey for &TestPair {
 		suffix.extend_from_slice(self.0.0.as_bytes());
 		suffix.push(0xFF);
 		suffix.extend_from_slice(self.1.0.as_bytes());
-		GroupStateKey::node_scoped(Keyspace::FIRST_CUSTOM, suffix)
+		GroupStateKey::root(Keyspace::CUSTOM, suffix)
 	}
 }
 
 impl IntoGroupStateKey for &TestKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		GroupStateKey::node_scoped(Keyspace::FIRST_CUSTOM, self.0.as_bytes())
+		GroupStateKey::root(Keyspace::CUSTOM, self.0.as_bytes())
 	}
 }
 

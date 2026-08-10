@@ -9,8 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::key::{
 	EncodableKey,
-	operator_group_state::{Keyspace, OperatorGroupStateKey},
-	operator_state::OperatorStateKey,
+	operator_state::{Keyspace, OperatorStateKey},
 };
 
 pub const ROW_STAMPED: &[Keyspace] = &[Keyspace::DISTINCT_ENTRY, Keyspace::DISTINCT_LAYOUT];
@@ -18,9 +17,7 @@ pub const ROW_STAMPED: &[Keyspace] = &[Keyspace::DISTINCT_ENTRY, Keyspace::DISTI
 pub type State = Vec<(EncodedKey, EncodedBytes)>;
 
 pub fn keyspace_of(key: &EncodedKey) -> Option<Keyspace> {
-	OperatorStateKey::decode(key)
-		.and_then(|state| OperatorGroupStateKey::decode_inner(&state.key))
-		.map(|(_, keyspace, _)| keyspace)
+	OperatorStateKey::decode(key).map(|state| state.keyspace)
 }
 
 pub fn body_of(row: &EncodedBytes) -> Vec<u8> {

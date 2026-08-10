@@ -9,7 +9,7 @@ pub mod test {
 	};
 	use reifydb_core::{
 		interface::{catalog::flow::OperatorId, change::Change},
-		key::operator_group_state::{GroupStateKey, Keyspace},
+		key::operator_state::{GroupStateKey, Keyspace},
 	};
 	use reifydb_flow::transaction::FlowTransaction;
 	use reifydb_test_harness::engine::TestEngine;
@@ -75,7 +75,7 @@ pub mod test {
 	}
 
 	pub fn test_key(suffix: &str) -> GroupStateKey {
-		GroupStateKey::node_scoped(Keyspace::FIRST_CUSTOM, format!("test_{}", suffix).into_bytes())
+		GroupStateKey::root(Keyspace::CUSTOM, format!("test_{}", suffix).into_bytes())
 	}
 
 	pub fn assert_row_eq(actual: &EncodedOperatorRow, expected: &EncodedOperatorRow) {

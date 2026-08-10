@@ -20,7 +20,7 @@ use reifydb_codec::{
 use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey, keyspace_inner_range},
+	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
 	value::column::columns::Columns,
 };
 use reifydb_flow::transaction::FlowTransaction;
@@ -106,11 +106,11 @@ impl Store {
 		let mut suffix = Vec::with_capacity(1 + 8);
 		suffix.push(self.side.tag());
 		suffix.extend_from_slice(&fingerprint.to_le_bytes());
-		OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::JOIN_SCHEMA, suffix)
+		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::JOIN_SCHEMA, suffix)
 	}
 
 	fn row_key(&self, group: GroupId, row_number: RowNumber) -> GroupStateKey {
-		OperatorGroupStateKey::inner_encoded(group, self.side.keyspace(), encode_u64_asc(row_number.0))
+		OperatorStateKey::inner_encoded(group, self.side.keyspace(), encode_u64_asc(row_number.0))
 	}
 
 	fn rows_range(&self, group: GroupId) -> EncodedKeyRange {
@@ -553,7 +553,7 @@ mod tests {
 	}
 
 	#[test]
-	fn each_side_keeps_its_own_shape_under_one_node_scoped_keyspace() {
+	fn each_side_keeps_its_own_shape_under_one_root_group_keyspace() {
 		// Both sides share the operator-scoped JOIN_SCHEMA keyspace, separated only by the side tag:
 		// without it they collide on identical fingerprints and a side decodes the other's shape.
 		let engine = TestEngine::new();

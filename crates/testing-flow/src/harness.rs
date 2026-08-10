@@ -16,10 +16,7 @@ use reifydb_core::{
 		catalog::{flow::OperatorId, object::ObjectId},
 		change::{Change, Diff},
 	},
-	key::{
-		EncodableKey, Key, kind::KeyKind, operator_group_state::OperatorGroupStateKey,
-		operator_state::OperatorStateKey,
-	},
+	key::{EncodableKey, Key, kind::KeyKind, operator_state::OperatorStateKey},
 	state::budget::OperatorStateBudgetHandle,
 };
 use reifydb_flow::{
@@ -161,11 +158,10 @@ impl<O: Operator> Harness<O> {
 		let batch = txn.state_range(operator, EncodedKeyRange::all(), None, "test::harness")?;
 		let mut footprint = StateFootprint::default();
 		for item in &batch.items {
-			let decoded = OperatorStateKey::decode(&item.key)
-				.and_then(|state| OperatorGroupStateKey::decode_inner(&state.key));
+			let decoded = OperatorStateKey::decode(&item.key);
 			match decoded {
-				Some((group, keyspace, _)) if keyspace.is_identity() => footprint.identity_rows += 1,
-				Some((group, _, _)) if group.is_node_scope() => footprint.node_scoped_data_rows += 1,
+				Some(state) if state.keyspace.is_identity() => footprint.identity_rows += 1,
+				Some(state) if state.group.is_root() => footprint.node_scoped_data_rows += 1,
 				_ => footprint.data_rows += 1,
 			}
 		}

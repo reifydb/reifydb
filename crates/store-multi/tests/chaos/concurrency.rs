@@ -22,7 +22,11 @@ use reifydb_core::{
 		catalog::{flow::OperatorId, id::TableId, storage::StorageId},
 		store::{MultiVersionCommit, MultiVersionGet},
 	},
-	key::{EncodableKey, operator_state::OperatorStateKey, row::RowKey},
+	key::{
+		EncodableKey,
+		operator_state::{GroupId, Keyspace, OperatorStateKey},
+		row::RowKey,
+	},
 };
 use reifydb_store_multi::{MultiVersionScope, store::StandardMultiStore};
 use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
@@ -32,7 +36,7 @@ const STORAGE: StorageId = StorageId::Table(TableId(1));
 const OP_NODE: OperatorId = OperatorId(9);
 
 fn conc_op_key(row: u64) -> reifydb_codec::key::encoded::EncodedKey {
-	OperatorStateKey::encoded(OP_NODE, row.to_be_bytes().to_vec())
+	OperatorStateKey::encoded(OP_NODE, GroupId::ROOT, Keyspace::CUSTOM, row.to_be_bytes().to_vec())
 }
 
 fn scan_op_rows(store: &StandardMultiStore, read: u64, batch: usize, reverse: bool) -> Vec<(u64, Vec<u8>)> {
@@ -48,7 +52,7 @@ fn scan_op_rows(store: &StandardMultiStore, read: u64, batch: usize, reverse: bo
 	rows.into_iter()
 		.map(|r| {
 			let decoded = OperatorStateKey::decode(&r.key).unwrap();
-			(u64::from_be_bytes(decoded.key.as_slice().try_into().unwrap()), r.bytes.to_vec())
+			(u64::from_be_bytes(decoded.suffix.as_slice().try_into().unwrap()), r.bytes.to_vec())
 		})
 		.collect()
 }

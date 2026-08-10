@@ -1949,9 +1949,7 @@ fn group_data_rows_stamped_below(
 	// Counts group-scoped data rows whose write stamp sits strictly below the cutoff; those are
 	// exactly the rows a floor at `cutoff_ms` must have cancelled at merge time.
 	use reifydb_codec::row::operator::EncodedOperatorRow;
-	use reifydb_core::key::{
-		EncodableKey, operator_group_state::OperatorGroupStateKey, operator_state::OperatorStateKey,
-	};
+	use reifydb_core::key::{EncodableKey, operator_state::OperatorStateKey};
 	let cutoff = DateTime::from_epoch_millis(cutoff_ms).unwrap();
 	harness.state_items()
 		.expect("state scan must succeed")
@@ -1960,10 +1958,7 @@ fn group_data_rows_stamped_below(
 			let Some(decoded) = OperatorStateKey::decode(key) else {
 				return false;
 			};
-			let Some((group, keyspace, _)) = OperatorGroupStateKey::decode_inner(&decoded.key) else {
-				return false;
-			};
-			if group.is_node_scope() || !keyspace.is_data() {
+			if decoded.group.is_root() || !decoded.keyspace.is_data() {
 				return false;
 			}
 			EncodedOperatorRow::try_from(row.clone()).map(|row| row.time() < cutoff).unwrap_or(false)
@@ -1974,16 +1969,14 @@ fn group_data_rows_stamped_below(
 fn mapping_rows(harness: &mut Harness<impl reifydb_flow::operator::Operator>) -> usize {
 	use reifydb_core::key::{
 		EncodableKey,
-		operator_group_state::{Keyspace, OperatorGroupStateKey},
-		operator_state::OperatorStateKey,
+		operator_state::{Keyspace, OperatorStateKey},
 	};
 	harness.state_items()
 		.expect("state scan must succeed")
 		.into_iter()
 		.filter(|(key, _)| {
 			OperatorStateKey::decode(key)
-				.and_then(|decoded| OperatorGroupStateKey::decode_inner(&decoded.key))
-				.is_some_and(|(_, keyspace, _)| keyspace == Keyspace::ROW_NUMBER_MAPPING)
+				.is_some_and(|decoded| decoded.keyspace == Keyspace::ROW_NUMBER_MAPPING)
 		})
 		.count()
 }
@@ -2088,12 +2081,9 @@ fn join_side_floors_drop_expired_entries_and_keep_the_boundary_row() {
 		.filter(|(key, _)| {
 			use reifydb_core::key::{
 				EncodableKey,
-				operator_group_state::{Keyspace, OperatorGroupStateKey},
-				operator_state::OperatorStateKey,
+				operator_state::{Keyspace, OperatorStateKey},
 			};
-			OperatorStateKey::decode(key)
-				.and_then(|decoded| OperatorGroupStateKey::decode_inner(&decoded.key))
-				.is_some_and(|(_, keyspace, _)| keyspace == Keyspace::JOIN_LEFT)
+			OperatorStateKey::decode(key).is_some_and(|decoded| decoded.keyspace == Keyspace::JOIN_LEFT)
 		})
 		.count();
 	assert_eq!(survivors, 2, "the boundary entry (== cutoff) and the young entry must both survive");

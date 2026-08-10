@@ -27,8 +27,7 @@ use reifydb_core::{
 	},
 	key::{
 		EncodableKey,
-		operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
-		operator_state::OperatorStateKey,
+		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 	},
 	row::Row,
 };
@@ -219,17 +218,12 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 	}
 
 	pub fn group_id(&self, group_key: &[u8]) -> Option<GroupId> {
-		let dictionary_key = OperatorStateKey::new(
+		let dictionary_key = OperatorStateKey::encoded(
 			self.operator_id,
-			OperatorGroupStateKey::inner_encoded(
-				GroupId::NODE_SCOPE,
-				Keyspace::GROUP_DICTIONARY,
-				group_key,
-			)
-			.as_slice()
-			.to_vec(),
-		)
-		.encode();
+			GroupId::ROOT,
+			Keyspace::GROUP_DICTIONARY,
+			group_key,
+		);
 		self.context
 			.get_state(&dictionary_key)
 			.filter(|bytes| bytes.len() >= 8)
@@ -268,12 +262,7 @@ impl<T: FFIOperator> FFIOperatorHarness<T> {
 			if decoded.operator != self.operator_id {
 				return true;
 			}
-			match OperatorGroupStateKey::decode_inner(&decoded.key) {
-				Some((group, keyspace, _)) => {
-					group.is_node_scope() || !groups.contains(&group) || !erase(keyspace)
-				}
-				None => true,
-			}
+			decoded.group.is_root() || !groups.contains(&decoded.group) || !erase(decoded.keyspace)
 		});
 		before - state.len()
 	}
@@ -1111,12 +1100,9 @@ pub mod tests {
 	}
 
 	fn group_state_key(operator: OperatorId, group: GroupId, keyspace: Keyspace) -> OperatorStateKey {
-		// Must compose the key the way the substrate does, or what these tests seed is not
-		// addressable by the phase ranges the sweep scans.
-		OperatorStateKey::new(
-			operator,
-			OperatorGroupStateKey::inner_encoded(group, keyspace, b"k").as_slice().to_vec(),
-		)
+		// Must compose the key the way the substrate does, or seeded state is unaddressable by the sweep's
+		// phase ranges.
+		OperatorStateKey::new(operator, group, keyspace, b"k".to_vec())
 	}
 
 	#[test]
@@ -1147,26 +1133,23 @@ pub mod tests {
 	}
 
 	#[test]
-	fn erasing_a_group_never_reaches_the_node_scoped_dictionary_that_resolves_it() {
-		// Node scope holds the interning dictionary and id counter every other group depends on;
-		// erasing it would make the next lookup mint a second id for a key that already had one.
+	fn erasing_a_group_never_reaches_the_root_scoped_dictionary_that_resolves_it() {
+		// The root group holds every group's interning dictionary and id counter; erasing it would mint
+		// duplicate ids.
 		const NODE: OperatorId = OperatorId(1);
-		let dictionary = group_state_key(NODE, GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY).encode();
-		let counter = group_state_key(NODE, GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER).encode();
+		let dictionary = group_state_key(NODE, GroupId::ROOT, Keyspace::GROUP_DICTIONARY).encode();
+		let counter = group_state_key(NODE, GroupId::ROOT, Keyspace::NODE_COUNTER).encode();
 		let mut harness = FFIOperatorHarnessBuilder::<TestOperator>::new()
 			.with_node_id(NODE)
-			.with_initial_state(
-				group_state_key(NODE, GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY),
-				vec![1],
-			)
-			.with_initial_state(group_state_key(NODE, GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER), vec![2])
+			.with_initial_state(group_state_key(NODE, GroupId::ROOT, Keyspace::GROUP_DICTIONARY), vec![1])
+			.with_initial_state(group_state_key(NODE, GroupId::ROOT, Keyspace::NODE_COUNTER), vec![2])
 			.build()
 			.unwrap();
 
-		harness.reclaim_groups(&[GroupId::NODE_SCOPE]);
+		harness.reclaim_groups(&[GroupId::ROOT]);
 
 		let state = harness.snapshot_state();
-		assert!(state.contains_key(&dictionary), "the dictionary survives even a sweep naming operator scope");
+		assert!(state.contains_key(&dictionary), "the dictionary survives even a sweep naming the root group");
 		assert!(state.contains_key(&counter), "so does the id counter");
 	}
 }

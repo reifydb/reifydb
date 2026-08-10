@@ -9,7 +9,7 @@ use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapabili
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_group_state::{Keyspace, OperatorGroupStateKey},
+	key::operator_state::{Keyspace, OperatorStateKey},
 };
 use reifydb_sdk::{
 	config::Config,
@@ -29,7 +29,7 @@ fn setup() -> TestDb {
 	TestDb::from(embedded::memory().with_flow(|f| f).build().expect("build memory db with flow"))
 }
 
-const HOARDER_STATE: Keyspace = Keyspace::FIRST_CUSTOM;
+const HOARDER_STATE: Keyspace = Keyspace::CUSTOM;
 
 struct HoarderRow {
 	g: i32,
@@ -94,7 +94,7 @@ fn tally_apply(
 
 			let key = EncodedKey::new(g.to_be_bytes());
 			let group = ctx.intern_group(&key)?;
-			let state_key = OperatorGroupStateKey::inner_encoded(group, HOARDER_STATE, []);
+			let state_key = OperatorStateKey::inner_encoded(group, HOARDER_STATE, []);
 
 			let total: i64 = operator.state_get(ctx, &state_key)?.unwrap_or(0) + 1;
 			operator.state_set(ctx, &state_key, &total)?;

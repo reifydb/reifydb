@@ -5,7 +5,7 @@ use reifydb_codec::row::operator::{OperatorState, decode};
 #[cfg(feature = "runtime")]
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_core::{
-	key::operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey},
+	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 	metrics::heap::HeapSize,
 	state::store::StateStore,
 };
@@ -32,7 +32,7 @@ impl HeapSize for SealLedgerState {
 }
 
 pub fn seal_ledger_key() -> GroupStateKey {
-	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::SEAL_LEDGER, vec![])
+	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::SEAL_LEDGER, vec![])
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -164,14 +164,14 @@ mod tests {
 	}
 
 	#[test]
-	fn the_ledger_is_node_scoped_and_carries_no_group_or_suffix() {
-		// Reclaim reads this key without knowing which operator wrote it, so it must be derivable
-		// from the operator alone; a group-scoped or suffixed key would need the operator to answer.
+	fn the_ledger_lives_in_the_root_group_and_carries_no_suffix() {
+		// the key must be derivable from the operator alone, since reclaim reads it without knowing which group
+		// wrote it
 		let key = seal_ledger_key();
 		let (group, keyspace, suffix) =
-			OperatorGroupStateKey::decode_inner(key.as_encoded().as_bytes()).expect("structured key");
+			OperatorStateKey::decode_inner(key.as_encoded().as_bytes()).expect("structured key");
 
-		assert_eq!(group, GroupId::NODE_SCOPE);
+		assert_eq!(group, GroupId::ROOT);
 		assert_eq!(keyspace, Keyspace::SEAL_LEDGER);
 		assert!(suffix.is_empty());
 	}

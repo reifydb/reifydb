@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 //
 //! Per-key guest state addressed under an interned group is what the chaindex operators keep, and
-//! state addressed under node scope is unreachable by every reclaim path, so these assert on the
+//! state addressed under the root group is unreachable by every reclaim path, so these assert on the
 //! state rows themselves rather than only on a metrics row.
 
 use std::time::Duration as StdDuration;
@@ -12,7 +12,7 @@ use reifydb_abi::{flow::diff::DiffType, operator::capabilities::OperatorCapabili
 use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator_group_state::{GroupStateKey, Keyspace, OperatorGroupStateKey},
+	key::operator_state::{GroupStateKey, Keyspace, OperatorStateKey},
 };
 use reifydb_sdk::{
 	config::Config,
@@ -68,8 +68,8 @@ const COUNTER_COLUMNS: &[OperatorColumn] = &[
 	},
 ];
 
-// Written the way a chaindex operator is: the state key is interned from the serialized key values,
-// so it lands under a group rather than node scope. That addressing alone decides reclaimability.
+// Written the way a chaindex operator is: the state key is interned from the serialized key values, so it lands under a
+// group rather than the root group, and that addressing alone decides reclaimability.
 struct Counter;
 
 impl RawStatefulOperator for Counter {}
@@ -81,7 +81,7 @@ impl Counter {
 			serializer.extend_value(value);
 		}
 		let group = ctx.intern_group(&EncodedKey::new(serializer.finish().as_ref()))?;
-		Ok(OperatorGroupStateKey::inner_encoded(group, Keyspace::FIRST_CUSTOM, []))
+		Ok(OperatorStateKey::inner_encoded(group, Keyspace::CUSTOM, []))
 	}
 }
 
@@ -127,9 +127,9 @@ impl OperatorLogic for Counter {
 				let total = self.state_get::<i64>(ctx, &state_key)?.unwrap_or(0) + 1;
 				self.state_set(ctx, &state_key, &total)?;
 
-				// Interned from the raw key bytes rather than the serialized key values the
-				// state key uses, so this is its own group; the point is only that the
-				// output row number is group-scoped rather than node-scoped.
+				// Interned from the raw key bytes rather than the serialized key values the state key
+				// uses, so this is its own group, and the row number ends up group-scoped rather than
+				// root-group-scoped.
 				let group = ctx.intern_group(&group_key(g))?;
 				let (row_number, _is_new) = ctx.get_or_create_row_number(group, &group_key(g))?;
 				row_numbers.push(row_number);
@@ -165,8 +165,8 @@ const RECLAIMED_A_GROUP: &str = "from system::metrics::runtime::operators::curre
 
 #[test]
 fn a_keyed_stateful_guests_idle_group_is_reclaimed() {
-	// The ergonomic guest state path must be reachable by a sweep at all. Addressed at node scope
-	// it never is, and it fails silently: the node is reported bounded while its state grows.
+	// The ergonomic guest state path must be reachable by a sweep at all; addressed under the root group it never
+	// is, and it fails silently as the node is reported bounded while its state grows.
 	let db = setup();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");

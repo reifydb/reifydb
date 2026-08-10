@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_group_state::Keyspace};
+use reifydb_core::{interface::catalog::flow::OperatorId, key::operator_state::Keyspace};
 
 use crate::operator::join::store::Store;
 

@@ -6,13 +6,16 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::Delta,
 	interface::{catalog::flow::OperatorId, store::MultiVersionCommit},
-	key::{EncodableKey, operator_state::OperatorStateKey},
+	key::{
+		EncodableKey,
+		operator_state::{GroupId, Keyspace, OperatorStateKey},
+	},
 };
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::util::cowvec::CowVec;
 
 fn fns(node: u64, payload: &[u8]) -> EncodedKey {
-	OperatorStateKey::new(OperatorId(node), payload.to_vec()).encode()
+	OperatorStateKey::new(OperatorId(node), GroupId::ROOT, Keyspace::CUSTOM, payload.to_vec()).encode()
 }
 
 fn encoded_bytes(bytes: &[u8]) -> EncodedBytes {

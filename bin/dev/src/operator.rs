@@ -7,8 +7,7 @@ use reifydb::{
 	codec::key::encoded::EncodedKey,
 	core::key::{
 		EncodableKey,
-		operator_group_state::{OperatorGroupStateKey, is_framed_inner},
-		operator_state::OperatorStateKey,
+		operator_state::{OperatorStateKey, is_framed_inner},
 	},
 };
 use rusqlite::{Connection, OpenFlags};
@@ -94,13 +93,10 @@ fn classify(key: &[u8]) -> (String, Option<u64>) {
 	let Some(decoded) = OperatorStateKey::decode(&EncodedKey::new(key)) else {
 		return (UNDECODABLE.to_string(), None);
 	};
-	if !is_framed_inner(&decoded.key) {
+	if !is_framed_inner(decoded.inner().as_bytes()) {
 		return (UNFRAMED.to_string(), None);
 	}
-	match OperatorGroupStateKey::decode_inner(&decoded.key) {
-		Some((group, keyspace, _)) => (keyspace.name().to_string(), Some(group.0)),
-		None => (UNDECODABLE.to_string(), None),
-	}
+	(decoded.keyspace.name().to_string(), Some(decoded.group.0))
 }
 
 fn operator_tables(conn: &Connection, only: Option<u64>) -> Result<Vec<u64>, String> {

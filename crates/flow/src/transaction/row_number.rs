@@ -15,10 +15,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_group_state::{
-			GroupId, GroupSet, GroupStateKey, Keyspace, OperatorGroupStateKey, keyspace_inner_range,
-		},
-		operator_state::OperatorStateKey,
+		operator_state::{GroupId, GroupSet, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
 	},
 	metrics::heap::{StateCompleteness, StateMemory},
 	state::horizon::Cutoff,
@@ -43,7 +40,7 @@ fn entry_bytes(key: &EncodedKey) -> u64 {
 }
 
 fn mapping_key(group: GroupId, key: &EncodedKey) -> GroupStateKey {
-	OperatorGroupStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key)
+	OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key)
 }
 
 fn mapping_range(group: GroupId) -> EncodedKeyRange {
@@ -51,7 +48,7 @@ fn mapping_range(group: GroupId) -> EncodedKeyRange {
 }
 
 fn counter_key() -> GroupStateKey {
-	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, ROW_NUMBER_COUNTER_SUFFIX)
+	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::NODE_COUNTER, ROW_NUMBER_COUNTER_SUFFIX)
 }
 
 fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedOperatorRow> {
@@ -188,7 +185,7 @@ impl RowNumberProvider {
 	}
 
 	pub fn mark_fresh(&self, operator: OperatorId, group: GroupId) {
-		if group.is_node_scope() {
+		if group.is_root() {
 			return;
 		}
 		let mut state = self.inner.operators.entry(operator).or_default();
@@ -248,7 +245,7 @@ impl RowNumberProvider {
 			for item in batch.items {
 				let decoded = OperatorStateKey::decode(&item.key)
 					.expect("state_get_many must return OperatorState keys");
-				found.insert(EncodedKey::new(decoded.key), item.bytes);
+				found.insert(decoded.inner(), item.bytes);
 			}
 			found
 		};
@@ -336,7 +333,7 @@ impl RowNumberProvider {
 		for item in batch.items {
 			let decoded = OperatorStateKey::decode(&item.key)
 				.expect("state_get_many must return OperatorState keys");
-			found.insert(EncodedKey::new(decoded.key), item.bytes);
+			found.insert(decoded.inner(), item.bytes);
 		}
 		for (slot, map_key) in map_keys.iter().enumerate() {
 			let i = to_resolve[slot];
@@ -423,11 +420,12 @@ impl RowNumberProvider {
 		for item in batch.items {
 			let decoded = OperatorStateKey::decode(&item.key)
 				.expect("state_range must return OperatorState keys");
-			let inner = GroupStateKey::from_framed(EncodedKey::new(decoded.key))
-				.expect("the mapping range yields framed inner keys");
-			let (_, _, suffix) = OperatorGroupStateKey::decode_inner(inner.as_slice())
-				.expect("the mapping range must yield structured operator state keys");
-			let original = EncodedKey::new(suffix);
+			let inner = OperatorStateKey::inner_encoded(
+				decoded.group,
+				decoded.keyspace,
+				decoded.suffix.clone(),
+			);
+			let original = EncodedKey::new(decoded.suffix);
 			let row_number = RowNumber(decode_bytes::<u64>(&item.bytes)?);
 			txn.state_remove(operator, &inner)?;
 			state.forget(group, &original);
@@ -443,8 +441,7 @@ impl RowNumberProvider {
 		txn: &mut FlowTransaction,
 		key_prefix: &[u8],
 	) -> Result<()> {
-		let inner_prefix =
-			OperatorGroupStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix);
+		let inner_prefix = OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix);
 		let range = EncodedKeyRange::prefix(inner_prefix.as_ref());
 		let batch = txn.state_range(operator, range, None, "rownum::remove_by_prefix")?;
 
@@ -453,11 +450,12 @@ impl RowNumberProvider {
 		for item in batch.items {
 			let decoded = OperatorStateKey::decode(&item.key)
 				.expect("state_range must return OperatorState keys");
-			let inner = GroupStateKey::from_framed(EncodedKey::new(decoded.key))
-				.expect("the mapping range yields framed inner keys");
-			let (_, _, suffix) = OperatorGroupStateKey::decode_inner(inner.as_slice())
-				.expect("the mapping range must yield structured operator state keys");
-			let original = EncodedKey::new(suffix);
+			let inner = OperatorStateKey::inner_encoded(
+				decoded.group,
+				decoded.keyspace,
+				decoded.suffix.clone(),
+			);
+			let original = EncodedKey::new(decoded.suffix);
 			txn.state_remove(operator, &inner)?;
 			state.forget(group, &original);
 		}
@@ -482,11 +480,7 @@ impl RowNumberProvider {
 		let batch = txn.state_range(operator, range, Some(batch_size), "rownum::evict_expired")?;
 		let reached_end = !batch.has_more;
 		let last_key = batch.items.last().map(|item| {
-			EncodedKey::new(
-				OperatorStateKey::decode(&item.key)
-					.expect("state_range must return OperatorState keys")
-					.key,
-			)
+			OperatorStateKey::decode(&item.key).expect("state_range must return OperatorState keys").inner()
 		});
 
 		let mut guard = self.inner.operators.entry(operator).or_default();
@@ -497,15 +491,14 @@ impl RowNumberProvider {
 			if row.time() > cutoff.instant() {
 				continue;
 			}
-			let inner = GroupStateKey::from_framed(EncodedKey::new(
-				OperatorStateKey::decode(&item.key)
-					.expect("state_range must return OperatorState keys")
-					.key,
-			))
-			.expect("the mapping range yields framed inner keys");
-			let (_, _, suffix) = OperatorGroupStateKey::decode_inner(inner.as_slice())
-				.expect("the mapping range must yield structured operator state keys");
-			let original = EncodedKey::new(suffix);
+			let decoded = OperatorStateKey::decode(&item.key)
+				.expect("state_range must return OperatorState keys");
+			let inner = OperatorStateKey::inner_encoded(
+				decoded.group,
+				decoded.keyspace,
+				decoded.suffix.clone(),
+			);
+			let original = EncodedKey::new(decoded.suffix);
 			txn.state_remove(operator, &inner)?;
 			state.forget(group, &original);
 			removed += 1;
@@ -606,10 +599,8 @@ impl RowNumberProvider {
 			for item in &batch.items {
 				let decoded = OperatorStateKey::decode(&item.key)
 					.expect("state_range must return OperatorState keys");
-				let inner = OperatorGroupStateKey::decode_inner(&decoded.key)
-					.expect("the mapping range must yield structured operator state keys");
 				reifydb_assertions! {
-					let (found_group, keyspace) = (inner.0, inner.1);
+					let (found_group, keyspace) = (decoded.group, decoded.keyspace);
 					assert!(
 						found_group == group && keyspace == Keyspace::ROW_NUMBER_MAPPING,
 						"the mapping-range scan must only yield this group's mapping keys; any \
@@ -619,9 +610,9 @@ impl RowNumberProvider {
 						 keyspace={keyspace:?})"
 					);
 				}
-				let original = EncodedKey::new(inner.2);
+				let original = EncodedKey::new(decoded.suffix.clone());
 				state.remember(group, &original, RowNumber(decode_bytes::<u64>(&item.bytes)?));
-				last_inner = Some(EncodedKey::new(decoded.key.clone()));
+				last_inner = Some(decoded.inner());
 			}
 			state.evict_to_budget(budget);
 			if !batch.has_more {
@@ -1336,10 +1327,9 @@ mod tests {
 
 	#[test]
 	fn the_row_number_counter_never_collides_with_the_interners_group_counter() {
-		// Both operator counters live in the operator-scope NODE_COUNTER keyspace. Sharing a cell would let
-		// a group mint advance the row-number sequence, breaking the contiguity consumers rely on.
-		let group_counter =
-			OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![]);
+		// Both operator counters live in the root group's NODE_COUNTER keyspace, so a group mint must never
+		// advance the row-number sequence.
+		let group_counter = OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::NODE_COUNTER, vec![]);
 		assert_ne!(counter_key(), group_counter, "the row-number counter must not alias the group-id counter");
 		assert_ne!(
 			mapping_key(GROUP, &key("x")),

@@ -15,8 +15,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_group_state::{GroupId, GroupStateKey, Keyspace, OperatorGroupStateKey, keyspace_inner_range},
-		operator_state::OperatorStateKey,
+		operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
 	},
 	metrics::heap::{StateCompleteness, StateMemory},
 	state::{
@@ -43,15 +42,15 @@ fn membership_hash(key: &EncodedKey) -> u64 {
 }
 
 fn dictionary_key(group: &EncodedKey) -> GroupStateKey {
-	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY, group)
+	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::GROUP_DICTIONARY, group)
 }
 
 fn record_key(id: GroupId) -> GroupStateKey {
-	OperatorGroupStateKey::inner_encoded(id, Keyspace::GROUP_RECORD, vec![])
+	OperatorStateKey::inner_encoded(id, Keyspace::GROUP_RECORD, vec![])
 }
 
 fn counter_key() -> GroupStateKey {
-	OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::NODE_COUNTER, vec![])
+	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::NODE_COUNTER, vec![])
 }
 
 pub(super) fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedOperatorRow> {
@@ -233,7 +232,7 @@ impl GroupInterner {
 				for item in batch.items {
 					let decoded = OperatorStateKey::decode(&item.key)
 						.expect("state_get_many must return OperatorState keys");
-					found.insert(decoded.key, item.bytes);
+					found.insert(decoded.inner().as_slice().to_vec(), item.bytes);
 				}
 				found
 			}
@@ -400,7 +399,7 @@ impl GroupInterner {
 		}
 		state.hydrated = true;
 		state.complete = true;
-		let base = keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::GROUP_DICTIONARY);
+		let base = keyspace_inner_range(GroupId::ROOT, Keyspace::GROUP_DICTIONARY);
 		let mut hashes: Vec<u64> = Vec::new();
 		let mut start = base.start.clone();
 		loop {
@@ -410,12 +409,10 @@ impl GroupInterner {
 			for item in &batch.items {
 				let decoded = OperatorStateKey::decode(&item.key)
 					.expect("state_range must return OperatorState keys");
-				let inner = OperatorGroupStateKey::decode_inner(&decoded.key)
-					.expect("the dictionary range must yield structured operator state keys");
 				reifydb_assertions! {
-					let (group_id, keyspace) = (inner.0, inner.1);
+					let (group_id, keyspace) = (decoded.group, decoded.keyspace);
 					assert!(
-						group_id == GroupId::NODE_SCOPE
+						group_id == GroupId::ROOT
 							&& keyspace == Keyspace::GROUP_DICTIONARY,
 						"the dictionary range scan must only yield operator-scope dictionary keys; \
 						 anything else means the range bounds are wrong and hydration would \
@@ -423,11 +420,11 @@ impl GroupInterner {
 						 (group={group_id:?}, keyspace={keyspace:?})"
 					);
 				}
-				let group = EncodedKey::new(inner.2);
+				let group = EncodedKey::new(decoded.suffix.clone());
 				hashes.push(membership_hash(&group));
 				let id = GroupId(decode_bytes::<u64>(&item.bytes)?);
 				state.remember(&group, id);
-				last_inner = Some(EncodedKey::new(decoded.key.clone()));
+				last_inner = Some(decoded.inner());
 			}
 			state.evict_to_budget(budget);
 			if !batch.has_more {
@@ -471,7 +468,7 @@ mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
 		actors::pending::{Pending, PendingLayers},
-		key::operator_group_state::group_data_inner_range,
+		key::operator_state::group_data_inner_range,
 		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -635,7 +632,7 @@ mod tests {
 		let (id, is_new) = intern_at(&interner, NODE, &mut txn, &group("first")).unwrap();
 
 		assert_eq!(id, GroupId::FIRST, "the first group must not take the operator-scope id");
-		assert!(!id.is_node_scope());
+		assert!(!id.is_root());
 		assert!(is_new, "a never-seen group must report as newly interned");
 	}
 
@@ -836,7 +833,7 @@ mod tests {
 			.expect("the group data range must scan");
 		for item in batch.items {
 			let decoded = OperatorStateKey::decode(&item.key).expect("state keys decode");
-			let inner = GroupStateKey::from_framed(EncodedKey::new(decoded.key))
+			let inner = GroupStateKey::from_framed(decoded.inner())
 				.expect("the data range yields framed inner keys");
 			txn.state_remove(NODE, &inner).unwrap();
 		}

@@ -16,7 +16,7 @@ use reifydb_codec::{
 	row::operator::OperatorState,
 };
 use reifydb_core::{
-	key::operator_group_state::GroupId,
+	key::operator_state::GroupId,
 	metrics::heap::{StateCompleteness, StateMemory},
 	state::{cache::StateCache, store::StateStore},
 };
@@ -400,7 +400,7 @@ mod tests {
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
-		key::operator_group_state::GroupId,
+		key::operator_state::GroupId,
 		metrics::heap::HeapSize,
 		state::{budget::OperatorStateBudgetHandle, cache::StateView},
 	};
@@ -428,7 +428,7 @@ mod tests {
 	}
 
 	fn slot_key(group: &u32, window_start: DateTime) -> (GroupId, EncodedKey) {
-		(GroupId::NODE_SCOPE, row_key(group, window_start))
+		(GroupId::ROOT, row_key(group, window_start))
 	}
 
 	fn order_of<C>(buckets: &TumblingBuckets<u32, DateTime, C>) -> Vec<(u32, WindowSpan<DateTime>)> {
@@ -467,7 +467,7 @@ mod tests {
 			store,
 			group,
 			window_start,
-			GroupId::NODE_SCOPE,
+			GroupId::ROOT,
 			&row_key(group, window_start),
 			prior,
 			new,
@@ -558,9 +558,9 @@ mod tests {
 
 	#[test]
 	fn an_expired_window_names_the_group_its_state_lived_in() {
-		// The expiry index is operator scoped and ordered by due time, so the group rides in the key
-		// tail and in the entry. The driver needs that id to drop the per-window meta and release
-		// the row number; without it it strands both or erases another group's identity.
+		// The expiry index lives in the root group ordered by due time, so the group rides in the key tail and
+		// the entry - the driver needs that id to drop the per-window meta and release the row number, or it
+		// strands both or erases another group's identity.
 		let mut store = MockStore::default();
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::group_scoped(test_config());
 		let results = apply_group_scoped(&mut engine, &mut store, one_bucket(3, 40, 5));
@@ -670,7 +670,7 @@ mod tests {
 		let published = seed_window(&mut store, 0, 5);
 		assert_eq!(store.drop_accumulator_entries(), 1, "precondition: reclaim erased the accumulator");
 		assert!(
-			store.contains_row_mapping(GroupId::NODE_SCOPE, &row_key(&1, at_millis(0))),
+			store.contains_row_mapping(GroupId::ROOT, &row_key(&1, at_millis(0))),
 			"precondition: the identity half must survive the data phase"
 		);
 
@@ -701,7 +701,7 @@ mod tests {
 
 		assert!(results.is_empty(), "a window that finalizes to nothing publishes nothing");
 		assert!(
-			!store.contains_row_mapping(GroupId::NODE_SCOPE, &row_key(&1, at_millis(0))),
+			!store.contains_row_mapping(GroupId::ROOT, &row_key(&1, at_millis(0))),
 			"and must leave no identity behind for a row it never published"
 		);
 

@@ -11,7 +11,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::key::operator_group_state::{GroupId, GroupStateKey};
+use crate::key::operator_state::{GroupId, GroupStateKey};
 
 pub trait StateStore {
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>>;

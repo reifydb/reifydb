@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use reifydb_core::{
 	interface::change::{Change, Diff},
-	key::operator_group_state::{GroupId, IntoGroupStateKey},
+	key::operator_state::{GroupId, IntoGroupStateKey},
 	state::store::StateStore,
 	value::column::columns::Columns,
 };

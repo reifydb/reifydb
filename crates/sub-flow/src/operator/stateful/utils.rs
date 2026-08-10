@@ -7,7 +7,10 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::{EncodableKey, operator_group_state::GroupStateKey, operator_state::OperatorStateKey},
+	key::{
+		EncodableKey,
+		operator_state::{GroupStateKey, OperatorStateKey, node_prefix},
+	},
 };
 use reifydb_flow::transaction::FlowTransaction;
 use reifydb_transaction::multi::RangeScope;
@@ -29,9 +32,7 @@ pub fn state_set(
 }
 
 pub fn state_remove(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<()> {
-	let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
-	txn.remove_silent(&encoded_key)?;
-	Ok(())
+	txn.state_remove(id, key)
 }
 
 pub fn state_scan_all(id: OperatorId, txn: &mut FlowTransaction) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
@@ -41,7 +42,7 @@ pub fn state_scan_all(id: OperatorId, txn: &mut FlowTransaction) -> Result<Vec<(
 	for result in stream {
 		let multi = result?;
 		if let Some(state_key) = OperatorStateKey::decode(&multi.key) {
-			items.push((EncodedKey::new(state_key.key), multi.bytes));
+			items.push((state_key.inner(), multi.bytes));
 		} else {
 			items.push((multi.key, multi.bytes));
 		}
@@ -50,7 +51,7 @@ pub fn state_scan_all(id: OperatorId, txn: &mut FlowTransaction) -> Result<Vec<(
 }
 
 pub fn state_range<'a>(id: OperatorId, txn: &'a mut FlowTransaction, range: EncodedKeyRange) -> StateIterator<'a> {
-	let prefixed_range = range.with_prefix(OperatorStateKey::encoded(id, vec![]));
+	let prefixed_range = range.with_prefix(EncodedKey::new(node_prefix(id)));
 	StateIterator::new(txn.range(prefixed_range, RangeScope::All, 1024))
 }
 
@@ -202,7 +203,7 @@ pub mod tests {
 
 		let entries = {
 			let range = EncodedKeyRange::new(Unbounded, Excluded(test_key("range_3").into_encoded()));
-			let prefixed_range = range.with_prefix(OperatorStateKey::encoded(operator_id, vec![]));
+			let prefixed_range = range.with_prefix(EncodedKey::new(node_prefix(operator_id)));
 			let mut stream = txn.range(prefixed_range, RangeScope::All, 1024);
 			let mut entries = Vec::new();
 			while let Some(result) = stream.next() {
@@ -214,7 +215,7 @@ pub mod tests {
 
 		let entries = {
 			let range = EncodedKeyRange::new(Included(test_key("range_3").into_encoded()), Unbounded);
-			let prefixed_range = range.with_prefix(OperatorStateKey::encoded(operator_id, vec![]));
+			let prefixed_range = range.with_prefix(EncodedKey::new(node_prefix(operator_id)));
 			let mut stream = txn.range(prefixed_range, RangeScope::All, 1024);
 			let mut entries = Vec::new();
 			while let Some(result) = stream.next() {

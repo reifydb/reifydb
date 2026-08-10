@@ -9,7 +9,7 @@ use reifydb_codec::{
 	row::operator::EncodedOperatorRow,
 };
 use reifydb_core::{
-	key::operator_group_state::{GroupId, GroupStateKey},
+	key::operator_state::{GroupId, GroupStateKey},
 	state::store::StateStore,
 };
 use reifydb_value::{

@@ -13,7 +13,7 @@ use reifydb_codec::{
 	row::operator::OperatorState,
 };
 use reifydb_core::{
-	key::operator_group_state::GroupId,
+	key::operator_state::GroupId,
 	metrics::heap::{HeapSize, StateCompleteness, StateMemory},
 	state::{
 		cache::{StateCache, StateView},
@@ -455,7 +455,7 @@ mod tests {
 	use reifydb_abi::operator::timer::TimerKind;
 	use reifydb_codec::{key::encoded::EncodedKeyRange, row::operator::EncodedOperatorRow};
 	use reifydb_core::{
-		key::operator_group_state::{GroupStateKey, Keyspace, OperatorGroupStateKey},
+		key::operator_state::{GroupStateKey, Keyspace, OperatorStateKey},
 		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_value::{
@@ -483,8 +483,7 @@ mod tests {
 			self.data
 				.keys()
 				.filter(|k| {
-					OperatorGroupStateKey::decode_inner(k)
-						.is_some_and(|(_, found, _)| found == keyspace)
+					OperatorStateKey::decode_inner(k).is_some_and(|(_, found, _)| found == keyspace)
 				})
 				.count()
 		}
@@ -505,16 +504,14 @@ mod tests {
 		}
 
 		fn drop_group_data_entries(&mut self) -> usize {
-			// Phase-1 reclamation: every data keyspace inside a real group goes, operator scope stays,
-			// and the row-number mappings live outside `data` so they survive as they do in
-			// production.
+			// Phase-1 reclamation clears every data keyspace inside a real group but leaves the root group
+			// alone; row-number mappings live outside `data` and survive it the same way production does.
 			let keys: Vec<Vec<u8>> = self
 				.data
 				.keys()
 				.filter(|k| {
-					OperatorGroupStateKey::decode_inner(k).is_some_and(|(group, found, _)| {
-						!group.is_node_scope() && found.is_data()
-					})
+					OperatorStateKey::decode_inner(k)
+						.is_some_and(|(group, found, _)| !group.is_root() && found.is_data())
 				})
 				.cloned()
 				.collect();

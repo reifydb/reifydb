@@ -12,7 +12,7 @@ use reifydb_core::{
 		change::Diff,
 	},
 	internal,
-	key::operator_group_state::GroupId,
+	key::operator_state::GroupId,
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_flow::transaction::FlowTransaction;

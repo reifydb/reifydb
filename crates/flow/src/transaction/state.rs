@@ -10,7 +10,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	key::{operator_group_state::GroupStateKey, operator_state::OperatorStateKey},
+	key::operator_state::{GroupStateKey, OperatorStateKey, node_prefix},
 	metrics::scan::ScanCounters,
 };
 use reifydb_transaction::multi::RangeScope;
@@ -84,7 +84,7 @@ impl FlowTransaction {
 		operator_id = id.0
 	))]
 	pub fn state_range_all(&mut self, id: OperatorId, range: EncodedKeyRange) -> Result<MultiVersionBatch> {
-		let prefixed_range = range.with_prefix(OperatorStateKey::encoded(id, vec![]));
+		let prefixed_range = range.with_prefix(EncodedKey::new(node_prefix(id)));
 		let iter = self.range(prefixed_range, RangeScope::All, 1024);
 		let mut items = Vec::new();
 		for result in iter {
@@ -110,7 +110,7 @@ impl FlowTransaction {
 		site: &'static str,
 	) -> Result<MultiVersionBatch> {
 		let before = ScanCounters::sample();
-		let prefixed_range = range.with_prefix(OperatorStateKey::encoded(id, vec![]));
+		let prefixed_range = range.with_prefix(EncodedKey::new(node_prefix(id)));
 		let iter = self.range(prefixed_range, RangeScope::All, 1024);
 		let mut items = Vec::new();
 		let mut has_more = false;
@@ -168,14 +168,12 @@ impl FlowTransaction {
 	}
 
 	fn scoped_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedBytes>> {
-		let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
-		self.get(&encoded_key)
+		self.get(&scoped_key(id, key))
 	}
 
 	fn scoped_get_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<MultiVersionBatch> {
 		let version = self.version();
-		let encoded: Vec<EncodedKey> =
-			keys.iter().map(|key| OperatorStateKey::encoded(id, key.as_slice())).collect();
+		let encoded: Vec<EncodedKey> = keys.iter().map(|key| scoped_key(id, key)).collect();
 
 		let mut items: Vec<MultiVersionRow> = Vec::new();
 		let mut to_batch: Vec<EncodedKey> = Vec::new();
@@ -271,13 +269,18 @@ impl FlowTransaction {
 	}
 
 	fn scoped_set(&mut self, id: OperatorId, key: &GroupStateKey, value: EncodedBytes) -> Result<()> {
-		self.set(&OperatorStateKey::encoded(id, key.as_slice()), value)
+		self.set(&scoped_key(id, key), value)
 	}
 
 	fn scoped_remove(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<()> {
-		let encoded_key = OperatorStateKey::encoded(id, key.as_slice());
-		self.remove_silent(&encoded_key)
+		self.remove_silent(&scoped_key(id, key))
 	}
+}
+
+fn scoped_key(id: OperatorId, key: &GroupStateKey) -> EncodedKey {
+	let mut bytes = node_prefix(id);
+	bytes.extend_from_slice(key.as_slice());
+	EncodedKey::new(bytes)
 }
 
 #[cfg(test)]
@@ -298,7 +301,7 @@ pub mod tests {
 		interface::catalog::{flow::OperatorId, id::TableId, storage::StorageId},
 		key::{
 			EncodableKey,
-			operator_group_state::{GroupId, Keyspace, OperatorGroupStateKey},
+			operator_state::{GroupId, Keyspace, OperatorStateKey},
 			row::RowKey,
 		},
 		state::budget::OperatorStateBudgetHandle,
@@ -342,13 +345,19 @@ pub mod tests {
 	}
 
 	fn make_key(s: &str) -> GroupStateKey {
-		// Framed as an operator composes its keys. A bare byte string encodes as some other group's
-		// prefix, so these tests would assert against keys reclamation could prefix-delete.
-		OperatorGroupStateKey::inner_encoded(GroupId::NODE_SCOPE, Keyspace::FIRST_CUSTOM, s.as_bytes())
+		// Framed as an operator composes its keys, or these tests would assert against a key reclamation could
+		// prefix-delete.
+		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::CUSTOM, s.as_bytes())
 	}
 
 	fn make_value(s: &str) -> EncodedOperatorRow {
 		EncodedOperatorRow::timeless(s.as_bytes())
+	}
+
+	fn full_key(operator: OperatorId, key: &GroupStateKey) -> EncodedKey {
+		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
+			.expect("scoped state keys must carry a structured inner encoding");
+		OperatorStateKey::encoded(operator, group, keyspace, suffix)
 	}
 
 	fn stamped_row(payload: &[u8], time: u64) -> EncodedOperatorRow {
@@ -403,7 +412,12 @@ pub mod tests {
 		let mut decoded: Vec<(Vec<u8>, EncodedBytes)> = batch
 			.items
 			.iter()
-			.map(|item| (OperatorStateKey::decode(&item.key).unwrap().key, item.bytes.clone()))
+			.map(|item| {
+				(
+					OperatorStateKey::decode(&item.key).unwrap().inner().as_slice().to_vec(),
+					item.bytes.clone(),
+				)
+			})
 			.collect();
 		decoded.sort_by(|a, b| a.0.cmp(&b.0));
 		assert_eq!(decoded[0], (make_key("a").as_slice().to_vec(), make_value("data").into_bytes()));
@@ -837,11 +851,8 @@ pub mod tests {
 		let overlaid_key = make_key("overlaid");
 		let overlaid_value = make_value("overlaid_value");
 		let mut base_pending = Pending::new();
-		base_pending.insert(
-			OperatorStateKey::encoded(operator_id, overlaid_key.as_slice()),
-			overlaid_value.clone().into_bytes(),
-		);
-		base_pending.remove(OperatorStateKey::encoded(operator_id, committed_key.as_slice()));
+		base_pending.insert(full_key(operator_id, &overlaid_key), overlaid_value.clone().into_bytes());
+		base_pending.remove(full_key(operator_id, &committed_key));
 
 		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
 			version: low_version,
@@ -957,10 +968,7 @@ pub mod tests {
 		let seeded_value = make_value("seeded_value");
 
 		let mut state = HashMap::new();
-		state.insert(
-			OperatorStateKey::encoded(operator_id, seeded_key.as_slice()),
-			seeded_value.clone().into_bytes(),
-		);
+		state.insert(full_key(operator_id, &seeded_key), seeded_value.clone().into_bytes());
 
 		let mut txn = FlowTransaction::ephemeral(
 			CommitVersion(1),

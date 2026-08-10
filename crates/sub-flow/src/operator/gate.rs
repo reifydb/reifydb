@@ -13,8 +13,8 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
-	key::operator_group_state::{
-		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorGroupStateKey, keyspace_inner_range,
+	key::operator_state::{
+		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range,
 	},
 	metrics::heap::{HeapSize, OperatorSample},
 	state::{budget::OperatorStateBudgetHandle, cache::StateCache, store::StateStore},
@@ -63,17 +63,13 @@ impl HeapSize for VisibilityKey {
 
 impl IntoGroupStateKey for &VisibilityKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		OperatorGroupStateKey::inner_encoded(
-			GroupId::NODE_SCOPE,
-			Keyspace::GATE_VISIBILITY,
-			encode_u64_asc(self.0.0),
-		)
+		OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::GATE_VISIBILITY, encode_u64_asc(self.0.0))
 	}
 }
 
 fn decode_visibility_key(key: &EncodedKey) -> Option<VisibilityKey> {
-	let (group, keyspace, suffix) = OperatorGroupStateKey::decode_inner(key.as_bytes())?;
-	if group != GroupId::NODE_SCOPE || keyspace != Keyspace::GATE_VISIBILITY {
+	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())?;
+	if group != GroupId::ROOT || keyspace != Keyspace::GATE_VISIBILITY {
 		return None;
 	}
 	let rn = decode_u64_asc(suffix.as_slice().try_into().ok()?);
@@ -81,7 +77,7 @@ fn decode_visibility_key(key: &EncodedKey) -> Option<VisibilityKey> {
 }
 
 fn visibility_range() -> EncodedKeyRange {
-	keyspace_inner_range(GroupId::NODE_SCOPE, Keyspace::GATE_VISIBILITY)
+	keyspace_inner_range(GroupId::ROOT, Keyspace::GATE_VISIBILITY)
 }
 
 struct GateState {
@@ -401,23 +397,22 @@ impl GateOperator {
 mod tests {
 	use std::ops::Bound;
 
-	use reifydb_core::key::operator_group_state::{
-		GroupId, IntoGroupStateKey, Keyspace, OperatorGroupStateKey, group_inner_range,
+	use reifydb_core::key::operator_state::{
+		GroupId, IntoGroupStateKey, Keyspace, OperatorStateKey, group_inner_range,
 	};
 	use reifydb_value::value::row_number::RowNumber;
 
 	use super::{VisibilityKey, decode_visibility_key, visibility_range};
 
 	#[test]
-	fn a_visibility_key_is_node_scoped_in_its_own_keyspace() {
-		// A hand-rolled leading byte is indistinguishable from a group-id varint, and b'G' (0x47)
-		// decodes into the two-byte tier, putting the key inside the range of a reachable group
-		// id. Node scope is what keeps a reclaim of that group from range-deleting gate state.
+	fn a_visibility_key_lives_in_the_root_group_in_its_own_keyspace() {
+		// b'G' (0x47) aliases a two-byte group-id varint, so the root group is what keeps a group reclaim from
+		// deleting this key.
 		let key = (&VisibilityKey(RowNumber(42))).into_group_state_key();
 
-		let (group, keyspace, suffix) = OperatorGroupStateKey::decode_inner(key.as_bytes())
+		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_bytes())
 			.expect("a visibility marker must decode as a structured operator-state key");
-		assert_eq!(group, GroupId::NODE_SCOPE, "gate visibility must not live inside a reclaimable group");
+		assert_eq!(group, GroupId::ROOT, "gate visibility must not live inside a reclaimable group");
 		assert_eq!(keyspace, Keyspace::GATE_VISIBILITY);
 		assert_eq!(suffix, 42u64.to_be_bytes().to_vec());
 	}
@@ -463,11 +458,7 @@ mod tests {
 		};
 		assert!(start && end, "hydration scans this range, so it must contain the keys the operator writes");
 
-		let foreign = OperatorGroupStateKey::inner_encoded(
-			GroupId::NODE_SCOPE,
-			Keyspace::ACCUMULATOR,
-			7u64.to_be_bytes(),
-		);
+		let foreign = OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::ACCUMULATOR, 7u64.to_be_bytes());
 		assert!(
 			decode_visibility_key(foreign.as_encoded()).is_none(),
 			"a neighbouring keyspace must not decode as visibility"

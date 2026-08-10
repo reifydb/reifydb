@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::key::encoded::EncodedKeyRange;
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		EncodableKey,
-		operator_group_state::{GroupId, GroupStateKey, group_identity_inner_range},
-		operator_state::OperatorStateKey,
+		operator_state::{GroupId, GroupStateKey, OperatorStateKey, group_identity_inner_range},
 	},
 };
 use reifydb_value::{Result, reifydb_assertions};
@@ -36,12 +35,11 @@ impl FlowTransaction {
 	) -> Result<ReclaimOutcome> {
 		reifydb_assertions! {
 			assert!(
-				!group.is_node_scope(),
-				"group id 0 addresses operator scope; reclaiming its identity would delete the \
-				 interning dictionary itself"
+				!group.is_root(),
+				"group id 0 is the root group; reclaiming its identity would delete the interning dictionary itself"
 			);
 		}
-		if group.is_node_scope() {
+		if group.is_root() {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
 		let group_bytes = self.group_bytes(operator, group)?;
@@ -70,7 +68,7 @@ impl FlowTransaction {
 			.map(|item| {
 				let decoded = OperatorStateKey::decode(&item.key)
 					.expect("state_range must return OperatorState keys");
-				GroupStateKey::from_framed(EncodedKey::new(decoded.key))
+				GroupStateKey::from_framed(decoded.inner())
 					.expect("operator state rows carry a framed inner key")
 			})
 			.collect();
@@ -88,12 +86,15 @@ impl FlowTransaction {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_codec::row::operator::{EncodedOperatorRow, OperatorState};
+	use reifydb_codec::{
+		key::encoded::EncodedKey,
+		row::operator::{EncodedOperatorRow, OperatorState},
+	};
 	use reifydb_core::{
 		actors::pending::{Pending, PendingLayers},
 		common::CommitVersion,
 		interface::catalog::flow::OperatorId,
-		key::operator_group_state::{Keyspace, OperatorGroupStateKey, group_inner_range},
+		key::operator_state::{Keyspace, OperatorStateKey, group_inner_range},
 		state::budget::OperatorStateBudgetHandle,
 	};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -143,7 +144,7 @@ mod tests {
 	}
 
 	fn write(txn: &mut FlowTransaction, group: GroupId, keyspace: Keyspace, suffix: u8) {
-		let key = OperatorGroupStateKey::inner_encoded(group, keyspace, vec![suffix]);
+		let key = OperatorStateKey::inner_encoded(group, keyspace, vec![suffix]);
 		txn.state_set(NODE, &key, payload()).unwrap();
 	}
 

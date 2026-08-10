@@ -104,7 +104,6 @@ pub mod namespace_sumtype;
 pub mod namespace_table;
 pub mod namespace_view;
 pub mod operator;
-pub mod operator_group_state;
 pub mod operator_settings;
 pub mod operator_state;
 pub mod output_frontier;
@@ -422,12 +421,23 @@ pub mod tests {
 			storage::StorageId,
 		},
 		key::{
-			Key, column::ColumnKey, column_sequence::ColumnSequenceKey, columns::ColumnsKey,
-			index::IndexKey, namespace::NamespaceKey, namespace_sumtype::NamespaceSumTypeKey,
-			namespace_table::NamespaceTableKey, operator_state::OperatorStateKey,
-			property::ColumnPropertyKey, relationship::RelationshipKey, row::RowKey,
-			row_sequence::RowSequenceKey, sumtype::SumTypeKey, system_sequence::SystemSequenceKey,
-			table::TableKey, transaction_version::TransactionVersionKey,
+			Key,
+			column::ColumnKey,
+			column_sequence::ColumnSequenceKey,
+			columns::ColumnsKey,
+			index::IndexKey,
+			namespace::NamespaceKey,
+			namespace_sumtype::NamespaceSumTypeKey,
+			namespace_table::NamespaceTableKey,
+			operator_state::{GroupId, Keyspace, OperatorStateKey},
+			property::ColumnPropertyKey,
+			relationship::RelationshipKey,
+			row::RowKey,
+			row_sequence::RowSequenceKey,
+			sumtype::SumTypeKey,
+			system_sequence::SystemSequenceKey,
+			table::TableKey,
+			transaction_version::TransactionVersionKey,
 		},
 	};
 
@@ -641,7 +651,9 @@ pub mod tests {
 	fn test_operator_state() {
 		let key = Key::OperatorState(OperatorStateKey {
 			operator: OperatorId(0xCAFEBABE),
-			key: vec![1, 2, 3],
+			group: GroupId::ROOT,
+			keyspace: Keyspace::CUSTOM,
+			suffix: vec![1, 2, 3],
 		});
 
 		let encoded = key.encode();
@@ -650,7 +662,7 @@ pub mod tests {
 		match decoded {
 			Key::OperatorState(decoded_inner) => {
 				assert_eq!(decoded_inner.operator, 0xCAFEBABE);
-				assert_eq!(decoded_inner.key, vec![1, 2, 3]);
+				assert_eq!(decoded_inner.suffix, vec![1, 2, 3]);
 			}
 			_ => unreachable!(),
 		}
