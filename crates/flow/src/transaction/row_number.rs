@@ -709,18 +709,6 @@ impl FlowTransaction {
 		provider.remove_by_prefix(operator, group, self, key_prefix)
 	}
 
-	pub fn evict_row_numbers(
-		&mut self,
-		operator: OperatorId,
-		group: GroupId,
-		cutoff: Cutoff,
-		cursor: &mut Option<EncodedKey>,
-		batch_size: usize,
-	) -> Result<usize> {
-		let provider = self.row_numbers();
-		provider.evict_expired(operator, group, self, cutoff, cursor, batch_size)
-	}
-
 	pub fn invalidate_row_number_groups(&mut self, operator: OperatorId, groups: &GroupSet) {
 		let provider = self.row_numbers();
 		provider.invalidate_groups(operator, groups)

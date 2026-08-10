@@ -42,7 +42,6 @@ use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	operator::{OperatorLogic, timer::Timer as SdkTimer, view::native::NativeChangeView},
 };
-use reifydb_store_operator::floor::FloorSpec;
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
@@ -63,7 +62,6 @@ use crate::{
 	error::NativeOperatorError,
 	operator::{
 		context::native::{NativeBridge, NativeOperatorContext},
-		sealed_or_idle_floor,
 	},
 };
 
@@ -593,16 +591,8 @@ impl Operator for NativeBridgedOperator {
 		self.inner.apply(&mut bridge, change)
 	}
 
-	fn retention_scale(&self) -> Option<Duration> {
-		self.inner.seal_after().filter(|span| !span.is_zero())
-	}
-
 	fn seal_span(&self) -> Option<Duration> {
 		self.inner.seal_after().filter(|span| !span.is_zero())
-	}
-
-	fn floors(&self, txn: &mut FlowTransaction, watermark: DateTime) -> Result<FloorSpec> {
-		sealed_or_idle_floor(txn, self.operator, watermark, self.retention_scale())
 	}
 
 	fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
@@ -704,15 +694,6 @@ mod tests {
 		fn seal_after(&self) -> Option<Duration> {
 			Some(Duration::from_milliseconds_const(65_000))
 		}
-	}
-
-	#[test]
-	fn the_host_wrapper_forwards_the_seal_span_from_the_dylib() {
-		// The retention scale sizes both the activity grid and the floor derivation, so a wrapper
-		// that swallowed seal_after_ms would register a sealing native operator as perpetual.
-		let wrapper = NativeBridgedOperator::new(Box::new(RecordingBridged), NODE, &[]);
-
-		assert_eq!(Operator::retention_scale(&wrapper), Some(Duration::from_milliseconds(65_000).unwrap()));
 	}
 
 	#[test]

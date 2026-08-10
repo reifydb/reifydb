@@ -42,7 +42,6 @@ use reifydb_flow::{
 	},
 };
 use reifydb_sdk::{error::SdkError, ffi::arena::Arena};
-use reifydb_store_operator::floor::FloorSpec;
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
@@ -54,7 +53,7 @@ use tracing::{Span, error, field, instrument};
 use crate::{
 	engine::lease_demand,
 	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
-	operator::{Operator, scale_from_millis, sealed_or_idle_floor},
+	operator::{Operator, scale_from_millis},
 };
 
 thread_local! {
@@ -249,20 +248,10 @@ impl Operator for FFIOperatorHandle {
 		&self.capabilities
 	}
 
-	fn retention_scale(&self) -> Option<Duration> {
-		// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
-		// Drop calls destroy; the call passes no host pointers.
-		scale_from_millis(Some(unsafe { (self.vtable.seal_after_ms)(self.instance) }))
-	}
-
 	fn seal_span(&self) -> Option<Duration> {
 		// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
 		// Drop calls destroy; the call passes no host pointers.
 		scale_from_millis(Some(unsafe { (self.vtable.seal_after_ms)(self.instance) }))
-	}
-
-	fn floors(&self, txn: &mut FlowTransaction, watermark: DateTime) -> Result<FloorSpec> {
-		sealed_or_idle_floor(txn, self.operator_id, watermark, self.retention_scale())
 	}
 
 	#[instrument(name = "flow::ffi::apply", level = "trace", skip_all, fields(

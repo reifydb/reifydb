@@ -12,9 +12,7 @@ use std::{
 	sync::Arc,
 };
 
-use dashmap::DashMap;
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(reifydb_target = "native")]
 use reifydb_codec::value::encode_params;
 use reifydb_core::{
@@ -47,7 +45,7 @@ use reifydb_runtime::{
 use reifydb_sdk::config::Config;
 #[cfg(reifydb_target = "native")]
 use reifydb_value::{Result, error::Error, params::Params, value::Value};
-use reifydb_value::{byte_size::ByteSize, value::datetime::DateTime};
+use reifydb_value::byte_size::ByteSize;
 use tracing::{debug, instrument};
 
 #[cfg(reifydb_target = "native")]
@@ -74,9 +72,6 @@ pub struct FlowEngineInner {
 	pub(crate) flow_creation_versions: BTreeMap<FlowId, CommitVersion>,
 	pub(crate) runtime_context: RuntimeContext,
 	pub(crate) custom_operators: CustomOperators,
-	pub(crate) mapping_cursors: DashMap<OperatorId, Option<EncodedKey>>,
-
-	pub(crate) compacted_at: DashMap<OperatorId, DateTime>,
 	pub(crate) substrate: FlowSubstrate,
 	pub(crate) operator_samples: OperatorSampleRegistry,
 	pub(crate) state_budget: OperatorStateBudgetHandle,
@@ -164,8 +159,6 @@ impl FlowEngineInner {
 			flow_creation_versions: BTreeMap::new(),
 			runtime_context,
 			custom_operators,
-			mapping_cursors: DashMap::new(),
-			compacted_at: DashMap::new(),
 			substrate,
 			operator_samples,
 			state_budget,
@@ -341,8 +334,6 @@ impl FlowEngineInner {
 			self.substrate.row.evict(operator_id);
 			self.substrate.operators.drop_arena(operator_id);
 			self.state_budget.release_lease(operator_id);
-			self.mapping_cursors.remove(&operator_id);
-			self.compacted_at.remove(&operator_id);
 		}
 
 		for entries in self.sources.values_mut() {
@@ -401,7 +392,7 @@ pub(crate) fn lease_demand(report: &LeaseReport) -> ByteSize {
 mod tests {
 	use std::collections::HashMap;
 
-	use reifydb_codec::row::operator::EncodedOperatorRow;
+	use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
 	use reifydb_core::{
 		common::TimeDomain,
 		interface::{

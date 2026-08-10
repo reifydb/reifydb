@@ -145,16 +145,6 @@ impl OperatorDef {
 		)
 	}
 
-	pub fn consults_declared_span(&self) -> bool {
-		matches!(
-			self,
-			OperatorDef::Join { .. }
-				| OperatorDef::Distinct { .. }
-				| OperatorDef::Append { .. } | OperatorDef::Apply { .. }
-				| OperatorDef::Aggregate { .. }
-		)
-	}
-
 	pub fn label(&self) -> String {
 		match self {
 			OperatorDef::SourceInlineData {
@@ -403,82 +393,11 @@ impl FlowEdge {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		common::{JoinType, WindowKind, WindowSize},
+		common::JoinType,
 		interface::catalog::id::{RingBufferId, ViewId},
-		row::{JoinTtl, OperatorSettings, OperatorTtl},
 	};
-	use reifydb_value::value::duration::Duration;
 
 	use super::OperatorDef;
-
-	fn ms(milliseconds: i64) -> Duration {
-		Duration::from_milliseconds(milliseconds).expect("test duration must be representable")
-	}
-
-	fn window(kind: WindowKind, grace: Duration) -> OperatorDef {
-		OperatorDef::Window {
-			kind,
-			group_by: vec![],
-			aggregations: vec![],
-			grace,
-		}
-	}
-
-	fn apply() -> OperatorDef {
-		OperatorDef::Apply {
-			operator: "custom".into(),
-			expressions: vec![],
-		}
-	}
-
-	#[test]
-	fn a_window_node_consults_no_declared_span_because_its_operator_owns_that_answer() {
-		// A window's retention is intrinsic (span + grace) and the operator computes it. Two sources for one
-		// fact is how a node stamps activity in one domain while the substrate ages it in another, which is
-		// silent in release and reclaims live state.
-		let node = window(
-			WindowKind::Tumbling {
-				size: WindowSize::Duration(ms(60_000)),
-			},
-			ms(5_000),
-		);
-
-		assert!(!node.consults_declared_span(), "a declared ttl must never reach a window");
-	}
-
-	#[test]
-	fn the_node_types_that_accept_a_declared_span_are_exactly_those_that_keep_keyed_state() {
-		// The substrate cannot know what keyed state means or how it ages, so the ttl clause is the only
-		// source. An aggregate is the case worth naming: its groups are reclaimable, but any future row with
-		// the same key folds into the accumulator, so nothing can derive when a key is done.
-		for node in [
-			apply(),
-			join(),
-			OperatorDef::Aggregate {
-				by: vec![],
-				map: vec![],
-			},
-			OperatorDef::Distinct {
-				expressions: vec![],
-			},
-			OperatorDef::Append {},
-		] {
-			assert!(node.consults_declared_span(), "{node:?} keeps keyed state and must accept a span");
-		}
-
-		// Filter and map hold nothing per group, so accepting a span here takes a declaration the substrate
-		// then silently ignores.
-		for node in [
-			OperatorDef::Filter {
-				conditions: vec![],
-			},
-			OperatorDef::Map {
-				expressions: vec![],
-			},
-		] {
-			assert!(!node.consults_declared_span(), "{node:?} keeps no keyed state");
-		}
-	}
 
 	fn join() -> OperatorDef {
 		OperatorDef::Join {
@@ -531,70 +450,6 @@ mod tests {
 			capacity: 1,
 		}
 		.ticks());
-	}
-
-	#[test]
-	fn every_node_that_can_reclaim_also_requests_ticks() {
-		// Reclamation runs only on the tick path, and a flow ticks only if some node asks for it. A node that
-		// derives a horizon but answers false to ticks() accumulates state nothing ever scans, and the
-		// retention report calls it healthy because the driver never ran for it.
-		let ttl = OperatorSettings {
-			ttl: Some(OperatorTtl {
-				duration: ms(60_000),
-			}),
-			join: None,
-		};
-		// Both sides must be declared: reclaiming one side while the other still holds the group changes the
-		// join's output rather than just freeing memory.
-		let join_ttl = OperatorSettings {
-			ttl: None,
-			join: Some(JoinTtl {
-				left: Some(OperatorTtl {
-					duration: ms(60_000),
-				}),
-				right: Some(OperatorTtl {
-					duration: ms(60_000),
-				}),
-			}),
-		};
-
-		// Must name every node type consults_declared_span accepts, or a missing one reclaims nothing forever.
-		let reclaimable: Vec<(OperatorDef, Option<&OperatorSettings>)> = vec![
-			(join(), Some(&join_ttl)),
-			(
-				OperatorDef::Distinct {
-					expressions: vec![],
-				},
-				Some(&ttl),
-			),
-			(OperatorDef::Append {}, Some(&ttl)),
-			(apply(), Some(&ttl)),
-			(
-				OperatorDef::Aggregate {
-					by: vec![],
-					map: vec![],
-				},
-				Some(&ttl),
-			),
-		];
-
-		for (node, settings) in reclaimable {
-			assert!(
-				node.consults_declared_span() && settings.is_some(),
-				"precondition: this node must accept a declared span: {node:?}"
-			);
-			assert!(node.ticks(), "a reclaimable node that never ticks is never reclaimed: {node:?}");
-		}
-
-		// A window reclaims through its operator's seal span rather than a declared one, so the pairing has to
-		// hold for it without going through declared_horizon.
-		let window_node = window(
-			WindowKind::Tumbling {
-				size: WindowSize::Duration(ms(60_000)),
-			},
-			ms(0),
-		);
-		assert!(window_node.ticks(), "a window reclaims on tick, so it must request one: {window_node:?}");
 	}
 
 	#[test]

@@ -3392,7 +3392,6 @@ dependencies = [
  "reifydb-core",
  "reifydb-runtime",
  "reifydb-sqlite",
- "reifydb-testing",
  "reifydb-value",
  "rusqlite",
  "xxhash-rust",

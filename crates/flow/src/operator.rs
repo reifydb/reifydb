@@ -7,11 +7,7 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
-use reifydb_store_operator::{floor::FloorSpec, store::CompactionOutcome};
-use reifydb_value::{
-	Result,
-	value::{datetime::DateTime, duration::Duration},
-};
+use reifydb_value::{Result, value::duration::Duration};
 
 use crate::{timer::Timer, transaction::FlowTransaction};
 
@@ -26,19 +22,9 @@ pub trait Operator: Send {
 		Ok(None)
 	}
 
-	fn retention_scale(&self) -> Option<Duration> {
-		None
-	}
-
 	fn seal_span(&self) -> Option<Duration> {
 		None
 	}
-
-	fn floors(&self, _txn: &mut FlowTransaction, _watermark: DateTime) -> Result<FloorSpec> {
-		Ok(FloorSpec::default())
-	}
-
-	fn on_compacted(&self, _outcome: &CompactionOutcome) {}
 
 	fn sample(&self) -> Option<OperatorSample> {
 		None

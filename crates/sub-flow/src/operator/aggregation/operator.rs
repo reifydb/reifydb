@@ -27,7 +27,6 @@ use reifydb_flow::{
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_store_operator::{floor::FloorSpec, store::CompactionOutcome};
 use reifydb_value::{
 	Result,
 	util::hash::Hash128,
@@ -48,7 +47,7 @@ type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKey, Vec<Opti
 
 pub struct AggregateOperator {
 	core: Aggregation,
-	ttl: Option<Duration>,
+	_ttl: Option<Duration>,
 }
 
 impl AggregateOperator {
@@ -72,7 +71,7 @@ impl AggregateOperator {
 				AggregateContext::Grouped,
 				Arc::new(FlowContext::default()),
 			),
-			ttl,
+			_ttl: ttl,
 		}
 	}
 
@@ -90,23 +89,8 @@ impl Operator for AggregateOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn retention_scale(&self) -> Option<Duration> {
-		self.ttl
-	}
-
-	fn floors(&self, _txn: &mut FlowTransaction, watermark: DateTime) -> Result<FloorSpec> {
-		Ok(self.ttl.map(|ttl| FloorSpec::data(watermark.saturating_sub(ttl))).unwrap_or_default())
-	}
-
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		apply_aggregate_engine(&self.core, txn, change)
-	}
-
-	fn on_compacted(&self, outcome: &CompactionOutcome) {
-		if outcome.dropped == 0 {
-			return;
-		}
-		self.core.reset_engine_caches();
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

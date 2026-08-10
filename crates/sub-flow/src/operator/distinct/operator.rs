@@ -34,7 +34,6 @@ use reifydb_flow::{
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_store_operator::floor::FloorSpec;
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
@@ -90,7 +89,7 @@ pub struct DistinctOperator {
 	pub(super) runtime_context: RuntimeContext,
 	pub(super) ctx: Arc<FlowContext>,
 	pub(super) dropped: SealedDrops,
-	pub(super) ttl: Option<Duration>,
+	pub(super) _ttl: Option<Duration>,
 }
 
 impl DistinctOperator {
@@ -120,7 +119,7 @@ impl DistinctOperator {
 			runtime_context,
 			ctx,
 			dropped: SealedDrops::new(operator, DROP_REASON),
-			ttl,
+			_ttl: ttl,
 		}
 	}
 
@@ -221,14 +220,6 @@ impl Operator for DistinctOperator {
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		CAPABILITIES
-	}
-
-	fn retention_scale(&self) -> Option<Duration> {
-		self.ttl
-	}
-
-	fn floors(&self, _txn: &mut FlowTransaction, watermark: DateTime) -> Result<FloorSpec> {
-		Ok(self.ttl.map(|ttl| FloorSpec::data(watermark.saturating_sub(ttl))).unwrap_or_default())
 	}
 
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {

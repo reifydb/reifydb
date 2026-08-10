@@ -8,17 +8,16 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::operator_state::{GroupId, GroupSet, Keyspace},
+	key::operator_state::{GroupId, GroupSet},
 	metrics::heap::OperatorSample,
 	value::column::columns::Columns,
 };
 use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
-use reifydb_store_operator::floor::FloorSpec;
 use reifydb_value::{
 	Result,
 	error::Error,
 	reifydb_assertions,
-	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+	value::{duration::Duration, row_number::RowNumber},
 };
 use tracing::instrument;
 
@@ -42,7 +41,7 @@ pub struct AppendOperator {
 
 	dropped: SealedDrops,
 
-	ttl: Option<Duration>,
+	_ttl: Option<Duration>,
 }
 
 impl AppendOperator {
@@ -62,7 +61,7 @@ impl AppendOperator {
 			parents,
 			input_nodes,
 			dropped: SealedDrops::new(operator, DROP_REASON),
-			ttl,
+			_ttl: ttl,
 		}
 	}
 
@@ -73,7 +72,7 @@ impl AppendOperator {
 			parents: Vec::new(),
 			input_nodes: Vec::new(),
 			dropped: SealedDrops::new(operator, DROP_REASON),
-			ttl: None,
+			_ttl: None,
 		}
 	}
 
@@ -113,21 +112,6 @@ impl Operator for AppendOperator {
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		CAPABILITIES
-	}
-
-	fn retention_scale(&self) -> Option<Duration> {
-		self.ttl
-	}
-
-	fn floors(&self, _txn: &mut FlowTransaction, watermark: DateTime) -> Result<FloorSpec> {
-		Ok(self.ttl
-			.map(|ttl| {
-				let behind = watermark.saturating_sub(ttl);
-				let mut spec = FloorSpec::data(behind);
-				spec.set(Keyspace::ROW_NUMBER_MAPPING, behind);
-				spec
-			})
-			.unwrap_or_default())
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

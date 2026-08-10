@@ -8,7 +8,7 @@ use reifydb_core::{
 	common::{CommitVersion, WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, change::Change},
 	metrics::heap::OperatorSample,
-	state::{budget::OperatorStateBudgetHandle, horizon::window_retention_scale},
+	state::budget::OperatorStateBudgetHandle,
 	value::column::columns::Columns,
 };
 use reifydb_engine::flow::aggregate::AggregateContext;
@@ -19,16 +19,14 @@ use reifydb_flow::{
 	window::{
 		coord::OrdinalCoord,
 		engine::{config::WindowEngineConfig, rolling::RollingEngine},
-		ledger::{FiredAt, read_sealed_through},
+		ledger::FiredAt,
 		meta::WindowMeta,
-		policy::SealPolicy,
 		span::WindowCoord,
 	},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_store_operator::floor::FloorSpec;
 use reifydb_value::{
 	Result, reifydb_assertions,
 	util::hash::Hash128,
@@ -214,19 +212,6 @@ impl Operator for WindowOperator {
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		CAPABILITIES
-	}
-
-	fn retention_scale(&self) -> Option<Duration> {
-		window_retention_scale(&self.kind, self.grace())
-	}
-
-	fn floors(&self, txn: &mut FlowTransaction, _watermark: DateTime) -> Result<FloorSpec> {
-		let (Some(sealed), Some(admissible)) =
-			(read_sealed_through(txn, self.core.operator)?, self.retention_scale())
-		else {
-			return Ok(FloorSpec::default());
-		};
-		Ok(SealPolicy::of(admissible).sealed_anchor(sealed.at()).map(FloorSpec::data).unwrap_or_default())
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {

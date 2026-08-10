@@ -7,7 +7,6 @@
 use reifydb_core::interface::catalog::{id::TableId, object::ObjectId};
 
 mod batch;
-pub mod compaction;
 mod dispatch;
 pub(crate) mod frontier;
 mod routing;

@@ -108,30 +108,12 @@ impl FlowEngineInner {
 				self.sinks.retain(|_, v| !v.is_empty());
 				return Err(err);
 			}
-			self.check_declared_span(&flow, operator)?;
 			added.push(operator_id);
 		}
 
 		self.analyzer.add(flow.clone());
 		self.flows.insert(flow.id, flow.clone());
 
-		Ok(())
-	}
-
-	fn check_declared_span(&self, flow: &FlowDag, operator: &FlowNode) -> Result<()> {
-		let Some(settings) = self.catalog.find_operator_settings_latest(operator.id) else {
-			return Ok(());
-		};
-		if settings.ttl.is_none() && settings.join.is_none() {
-			return Ok(());
-		}
-		if !operator.ty.consults_declared_span() {
-			return Err(FlowGraphError::SpanOnUnageableNode {
-				flow_id: flow.id.0,
-				operator: operator.ty.label(),
-			}
-			.into());
-		}
 		Ok(())
 	}
 

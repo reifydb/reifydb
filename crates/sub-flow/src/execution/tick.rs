@@ -29,8 +29,6 @@ impl FlowEngineInner {
 		let topo = flow.topological_order()?;
 
 		self.dispatch_due_timers(txn, &flow, checkpoint, &topo)?;
-
-		self.compact_flow(txn, flow_id)?;
 		Ok(())
 	}
 }

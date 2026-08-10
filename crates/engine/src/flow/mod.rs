@@ -6,5 +6,4 @@
 
 pub mod aggregate;
 pub mod compiler;
-pub mod span;
 pub mod time_domain;

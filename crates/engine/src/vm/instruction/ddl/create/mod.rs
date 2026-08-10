@@ -17,7 +17,7 @@ use reifydb_value::fragment::Fragment;
 
 use crate::{
 	Result,
-	flow::{compiler::compile_flow, span::check_declared_spans, time_domain::check_window_time_requirements},
+	flow::{compiler::compile_flow, time_domain::check_window_time_requirements},
 };
 
 fn outermost_sort(plan: &QueryPlan) -> Option<&Vec<SortKey>> {
@@ -96,6 +96,5 @@ pub(crate) fn create_deferred_view_flow(
 	)?;
 
 	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow.id)?;
-	check_window_time_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
-	check_declared_spans(catalog, &mut Transaction::Admin(txn), &dag)
+	check_window_time_requirements(catalog, &mut Transaction::Admin(txn), &dag)
 }

@@ -22,24 +22,15 @@ use reifydb_flow::transaction::{
 };
 use reifydb_runtime::sync::mutex::Mutex;
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct CompactionTotals {
-	pub dropped: u64,
-	pub reclaimed_bytes: u64,
-	pub mapping_rows: u64,
-}
-
 #[derive(Clone)]
 pub struct OperatorSampleRegistry {
 	inner: Arc<Mutex<HashMap<OperatorId, OperatorSample>>>,
-	compactions: Arc<Mutex<HashMap<OperatorId, CompactionTotals>>>,
 }
 
 impl OperatorSampleRegistry {
 	pub fn new() -> Self {
 		Self {
 			inner: Arc::new(Mutex::new(HashMap::new())),
-			compactions: Arc::new(Mutex::new(HashMap::new())),
 		}
 	}
 
@@ -47,20 +38,8 @@ impl OperatorSampleRegistry {
 		self.inner.lock().insert(operator, sample);
 	}
 
-	pub fn record_compaction(&self, operator: OperatorId, dropped: u64, reclaimed_bytes: u64, mapping_rows: u64) {
-		if dropped == 0 && reclaimed_bytes == 0 && mapping_rows == 0 {
-			return;
-		}
-		let mut guard = self.compactions.lock();
-		let totals = guard.entry(operator).or_default();
-		totals.dropped += dropped;
-		totals.reclaimed_bytes += reclaimed_bytes;
-		totals.mapping_rows += mapping_rows;
-	}
-
 	pub fn forget(&self, operator: OperatorId) {
 		self.inner.lock().remove(&operator);
-		self.compactions.lock().remove(&operator);
 	}
 
 	pub fn snapshot(&self) -> Vec<(OperatorId, OperatorSample)> {
@@ -70,12 +49,6 @@ impl OperatorSampleRegistry {
 		out
 	}
 
-	fn compaction_snapshot(&self) -> Vec<(OperatorId, CompactionTotals)> {
-		let mut out: Vec<(OperatorId, CompactionTotals)> =
-			self.compactions.lock().iter().map(|(operator, totals)| (*operator, *totals)).collect();
-		out.sort_by_key(|(operator, _)| *operator);
-		out
-	}
 }
 
 impl Default for OperatorSampleRegistry {
@@ -166,25 +139,10 @@ pub(crate) fn push_operator_samples(out: &mut Vec<MetricsSample>, operator: Oper
 	}
 }
 
-pub(crate) fn push_compaction_totals(out: &mut Vec<MetricsSample>, operator: OperatorId, totals: &CompactionTotals) {
-	for (metric, count) in [
-		("state_compaction_dropped", totals.dropped),
-		("state_compaction_reclaimed_bytes", totals.reclaimed_bytes),
-		("state_mapping_evictions", totals.mapping_rows),
-	] {
-		if count > 0 {
-			out.push(MetricsSample::counter(format!("flow_node::{operator}"), metric, count));
-		}
-	}
-}
-
 impl MetricsCollector for OperatorSampleCollector {
 	fn collect(&self, out: &mut Vec<MetricsSample>) {
 		for (operator, sample) in self.registry.snapshot() {
 			push_operator_samples(out, operator, &sample);
-		}
-		for (operator, totals) in self.registry.compaction_snapshot() {
-			push_compaction_totals(out, operator, &totals);
 		}
 	}
 }

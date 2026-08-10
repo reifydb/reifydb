@@ -33,7 +33,6 @@ use reifydb_runtime::context::{
 };
 use reifydb_sdk::{config::Config, operator::OperatorLogic};
 use reifydb_sub_flow::{
-	execution::compaction::{OperatorCompaction, compact_operator, identity_cutoff},
 	operator::{
 		OperatorCell,
 		apply::ApplyOperator,
@@ -60,8 +59,6 @@ pub struct Harness<O: Operator> {
 	pending: Pending,
 	substrate: FlowSubstrate,
 	catalog: Catalog,
-	sink_row_ttl: Option<Duration>,
-	mapping_cursor: Option<EncodedKey>,
 }
 
 impl<O: Operator> Harness<O> {
@@ -90,8 +87,6 @@ impl<O: Operator> Harness<O> {
 			pending: Pending::new(),
 			substrate,
 			catalog: Catalog::testing(),
-			sink_row_ttl: None,
-			mapping_cursor: None,
 		}
 	}
 }
@@ -145,11 +140,6 @@ impl<O: Operator> Harness<O> {
 
 	pub fn engine(&self) -> &TestEngine {
 		&self.engine
-	}
-
-	pub fn with_sink_row_ttl(mut self, ttl: Duration) -> Self {
-		self.sink_row_ttl = Some(ttl);
-		self
 	}
 
 	pub fn footprint(&mut self) -> Result<StateFootprint> {
@@ -288,19 +278,6 @@ impl<O: Operator> Harness<O> {
 		self.substrate.operators.bytes(self.operator.id())
 	}
 
-	pub fn compact(&mut self, at_ms: u64) -> Result<OperatorCompaction> {
-		let watermark = DateTime::from_epoch_millis(at_ms)?;
-		let identity = identity_cutoff(self.sink_row_ttl, watermark);
-		let store = self.substrate.operators.clone();
-
-		let mut txn = self.begin(watermark);
-		let mut cursor = self.mapping_cursor.take();
-		let compacted = compact_operator(&mut txn, &store, &self.operator, watermark, identity, &mut cursor)?;
-		self.mapping_cursor = cursor;
-		txn.flush_operator_states()?;
-		self.end(txn);
-		Ok(compacted)
-	}
 }
 
 fn coordinate_of(change: &Change) -> DateTime {

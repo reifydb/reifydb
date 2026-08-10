@@ -54,13 +54,6 @@ pub(crate) enum PublishedRight {
 	Unmatched,
 }
 
-pub(crate) fn snapshot_ledger_keyspaces(snapshot: bool) -> Vec<Keyspace> {
-	match snapshot {
-		true => vec![Keyspace::JOIN_PUBLISHED, Keyspace::JOIN_PIN],
-		false => Vec::new(),
-	}
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct ContentVersion(u64);
 

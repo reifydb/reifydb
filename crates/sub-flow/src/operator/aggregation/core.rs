@@ -212,15 +212,6 @@ impl Aggregation {
 		))
 	}
 
-	pub(crate) fn reset_engine_caches(&self) {
-		// SAFETY: compaction runs on the tick path, sequential with apply on the same actor, so
-		// no other borrow of either UnsafeCell is live while these &mut exist.
-		unsafe {
-			*self.tumbling_engine.get() = None;
-			*self.engine_meta.get() = None;
-		}
-	}
-
 	pub fn compute_groups(&self, columns: &Columns) -> Result<Vec<(Hash128, Vec<Value>)>> {
 		let row_count = columns.row_count();
 		if row_count == 0 {

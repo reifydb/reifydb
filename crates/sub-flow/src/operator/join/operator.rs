@@ -12,7 +12,7 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, ChangeOrigin, Diff},
 	},
-	key::operator_state::{GroupId, Keyspace},
+	key::operator_state::GroupId,
 	metrics::heap::OperatorSample,
 	value::column::{ColumnWithName, columns::Columns},
 };
@@ -27,7 +27,6 @@ use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::Expression;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_store_operator::floor::FloorSpec;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -38,7 +37,7 @@ use tracing::instrument;
 
 use super::{
 	column::JoinedColumnsBuilder,
-	snapshot::{SnapshotLedger, snapshot_ledger_keyspaces},
+	snapshot::SnapshotLedger,
 	state::{JoinSide, JoinState},
 	strategy::{JoinContext, JoinStrategy, UpdateKeys},
 };
@@ -139,8 +138,8 @@ pub struct JoinOperator {
 	pub(crate) snapshot: bool,
 	natural: bool,
 	pub(crate) latest: bool,
-	left_ttl: Option<Duration>,
-	right_ttl: Option<Duration>,
+	_left_ttl: Option<Duration>,
+	_right_ttl: Option<Duration>,
 	ctx: Arc<FlowContext>,
 }
 
@@ -200,38 +199,9 @@ impl JoinOperator {
 			snapshot,
 			natural,
 			latest,
-			left_ttl,
-			right_ttl,
+			_left_ttl: left_ttl,
+			_right_ttl: right_ttl,
 			ctx,
-		}
-	}
-
-	#[cfg(test)]
-	#[allow(clippy::too_many_arguments)]
-	pub(crate) fn new_for_state_tests(
-		operator: OperatorId,
-		left_ttl: Option<Duration>,
-		right_ttl: Option<Duration>,
-		routines: Routines,
-		runtime_context: RuntimeContext,
-	) -> Self {
-		Self {
-			operator,
-			strategy: JoinStrategy::from(JoinType::Inner, false),
-			left_node: OperatorId(0),
-			right_node: OperatorId(0),
-			compiled_left_exprs: Vec::new(),
-			compiled_right_exprs: Vec::new(),
-			alias: None,
-			right_schema: Columns::empty(),
-			routines,
-			runtime_context,
-			snapshot: true,
-			natural: false,
-			latest: false,
-			left_ttl,
-			right_ttl,
-			ctx: Arc::new(FlowContext::default()),
 		}
 	}
 
@@ -554,40 +524,6 @@ impl Operator for JoinOperator {
 		Some(OperatorSample::default())
 	}
 
-	fn retention_scale(&self) -> Option<Duration> {
-		match (self.left_ttl, self.right_ttl) {
-			(Some(left), Some(right)) => Some(left.max(right)),
-			(Some(only), None) | (None, Some(only)) => Some(only),
-			(None, None) => None,
-		}
-	}
-
-	fn floors(&self, _txn: &mut FlowTransaction, watermark: DateTime) -> Result<FloorSpec> {
-		let behind = |span: Duration| watermark.saturating_sub(span);
-
-		let mut spec = FloorSpec::default();
-		if let Some(ttl) = self.left_ttl {
-			spec.set(Keyspace::JOIN_LEFT, behind(ttl));
-			for keyspace in snapshot_ledger_keyspaces(self.snapshot) {
-				spec.set(keyspace, behind(ttl));
-			}
-			if !self.latest {
-				spec.set(Keyspace::ROW_NUMBER_MAPPING, behind(ttl));
-			}
-		}
-		if let Some(ttl) = self.right_ttl
-			&& !self.latest
-		{
-			spec.set(Keyspace::JOIN_RIGHT, behind(ttl));
-		}
-		if !self.latest
-			&& let (Some(left), Some(right)) = (self.left_ttl, self.right_ttl)
-		{
-			spec.set_data(behind(left.max(right)));
-		}
-		Ok(spec)
-	}
-
 	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.operator
@@ -829,297 +765,3 @@ impl JoinOperator {
 	}
 }
 
-#[cfg(test)]
-mod span_tests {
-	use reifydb_core::{common::CommitVersion, state::horizon::Cutoff};
-	use reifydb_flow::transaction::ChangeCoordinate;
-	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
-
-	use super::*;
-
-	fn watermark() -> DateTime {
-		// Frontiers are instants, not durations, so pinning the watermark keeps `WATERMARK - ttl`
-		// readable at every call site.
-		DateTime::from_millis(10_000_000)
-	}
-
-	fn behind(span: Duration) -> DateTime {
-		watermark().saturating_sub(span)
-	}
-
-	fn frontier(op: &JoinOperator, engine: &TestEngine) -> FloorSpec {
-		let mut txn = engine.flow_txn().deferred();
-		op.floors(&mut txn, watermark()).expect("the join reports its floors")
-	}
-
-	#[test]
-	fn each_declared_side_ttl_becomes_a_span_on_that_sides_keyspace_when_not_snapshotting() {
-		// Naming the wrong keyspace here silently reclaims the other side's rows, and a side
-		// declared but omitted never ages at all.
-		let engine = TestEngine::new();
-		let left = Duration::from_seconds(60).unwrap();
-		let right = Duration::from_seconds(3_600).unwrap();
-
-		let mut op = make_op(70, Some(left), Some(right), &engine);
-		op.snapshot = false;
-
-		let spec = frontier(&op, &engine);
-		assert_eq!(
-			spec.cutoff(Keyspace::JOIN_LEFT),
-			Some(behind(left)),
-			"each side must age on its own keyspace at its own declared ttl"
-		);
-		assert_eq!(spec.cutoff(Keyspace::JOIN_RIGHT), Some(behind(right)));
-		assert_eq!(
-			spec.data_cutoff(),
-			Some(behind(right)),
-			"the shared group data floors at the longer of the two declared ttls"
-		);
-	}
-
-	#[test]
-	fn a_side_without_a_ttl_declares_no_span_when_not_snapshotting() {
-		// No ttl means the side is bounded by the operator's own horizon, not by a per-side sweep.
-		// Declaring a span here would retire rows the user never asked to expire.
-		let engine = TestEngine::new();
-		let left = Duration::from_seconds(60).unwrap();
-
-		let mut untimed_right = make_op(71, Some(left), None, &engine);
-		untimed_right.snapshot = false;
-		let spec = frontier(&untimed_right, &engine);
-		assert_eq!(spec.cutoff(Keyspace::JOIN_LEFT), Some(behind(left)));
-		assert_eq!(spec.cutoff(Keyspace::JOIN_RIGHT), None, "the untimed right side must not be enrolled");
-
-		let mut untimed = make_op(72, None, None, &engine);
-		untimed.snapshot = false;
-		assert!(frontier(&untimed, &engine).is_empty(), "a join with no ttl at all never floors anything");
-	}
-
-	#[test]
-	fn a_join_naming_only_one_side_still_reports_a_scale_but_no_data_frontier() {
-		// Erasing the shared group range would drop rows the undeclared side can still match, so
-		// there is no data frontier. The declared side still needs a scale: without one the sweep
-		// stamps every entry into a single bucket and can neither locate nor bound them.
-		let engine = TestEngine::new();
-		let left = ttl(1_000);
-
-		let mut op = make_op(90, Some(left), None, &engine);
-		op.snapshot = false;
-
-		assert_eq!(op.retention_scale(), Some(left), "the side floor needs an event-time grid to stamp on");
-		assert_eq!(
-			frontier(&op, &engine).data_cutoff(),
-			None,
-			"one declared side cannot floor the shared group data"
-		);
-	}
-
-	#[test]
-	fn a_frontier_saturates_while_the_watermark_is_younger_than_the_ttl() {
-		// Early in a operator's life the watermark is below the declared ttl, and wrapping would put
-		// the frontier near u64::MAX and make every group due on the first tick. The saturation
-		// has to hold at the subtraction, not at the sweep.
-		let engine = TestEngine::new();
-		let mut op = make_op(94, Some(ttl(60_000)), Some(ttl(60_000)), &engine);
-		op.snapshot = false;
-
-		let mut txn = engine.flow_txn().deferred();
-		let young = op.floors(&mut txn, DateTime::from_millis(1_000)).unwrap();
-
-		assert_eq!(young.data_cutoff(), Some(DateTime::EPOCH), "a watermark below the ttl floors at the epoch");
-		assert_eq!(young.cutoff(Keyspace::JOIN_LEFT), Some(DateTime::EPOCH));
-		assert_eq!(young.cutoff(Keyspace::JOIN_RIGHT), Some(DateTime::EPOCH));
-	}
-
-	#[test]
-	fn the_scale_takes_the_longer_side_so_slack_is_never_understated() {
-		// Slack is one bucket width (scale/16), so a grid derived from the SHORTER side would
-		// understate the longer side's slack and retire a group mid-bucket, while a coarser grid
-		// can only delay. The max, never the min, whichever order the sides are declared in.
-		let engine = TestEngine::new();
-
-		assert_eq!(
-			make_op(91, Some(ttl(600_000)), Some(ttl(1_000)), &engine).retention_scale(),
-			Some(ttl(600_000))
-		);
-		assert_eq!(
-			make_op(92, Some(ttl(1_000)), Some(ttl(600_000)), &engine).retention_scale(),
-			Some(ttl(600_000))
-		);
-		assert_eq!(
-			make_op(93, None, None, &engine).retention_scale(),
-			None,
-			"a operator that declares nothing anywhere stays ungridded and is skipped entirely"
-		);
-	}
-
-	#[test]
-	fn the_root_group_mapping_ages_on_the_left_ttl_and_not_at_all_without_one() {
-		// The mapping is keyed by the left row, so the left ttl is the only span that bounds it.
-		// The right ttl would drop mappings whose left row is still live and the join would mint a
-		// second row number over it; nothing at all reinstates unbounded growth.
-		let engine = TestEngine::new();
-		let left = ttl(50);
-
-		assert_eq!(
-			frontier(&make_op(74, Some(left), Some(ttl(9_000)), &engine), &engine)
-				.cutoff(Keyspace::ROW_NUMBER_MAPPING),
-			Some(behind(left))
-		);
-		assert_eq!(
-			frontier(&make_op(75, None, Some(ttl(9_000)), &engine), &engine)
-				.cutoff(Keyspace::ROW_NUMBER_MAPPING),
-			None,
-			"a join with no left ttl declares no mapping span"
-		);
-	}
-
-	#[test]
-	fn a_latest_join_never_ages_its_mapping() {
-		// Latest reuses the left row's number rather than minting a composite, so there is no
-		// per-pair mapping to age; sweeping would evict the identity rows are emitted under.
-		let engine = TestEngine::new();
-		let mut op = make_op(76, Some(ttl(50)), None, &engine);
-		op.latest = true;
-
-		assert_eq!(frontier(&op, &engine).cutoff(Keyspace::ROW_NUMBER_MAPPING), None);
-	}
-
-	#[test]
-	fn a_latest_join_never_ages_its_right_side_when_not_snapshotting() {
-		// In latest mode the right side is a one-row-per-key slot read on every left arrival, so
-		// it is live state rather than a window of history: ageing it would make a left row
-		// silently stop matching a right row that is still current.
-		let engine = TestEngine::new();
-		let mut op = make_op(
-			73,
-			Some(Duration::from_seconds(60).unwrap()),
-			Some(Duration::from_seconds(60).unwrap()),
-			&engine,
-		);
-		op.latest = true;
-		op.snapshot = false;
-
-		let spec = frontier(&op, &engine);
-		assert_eq!(spec.cutoff(Keyspace::JOIN_LEFT), Some(behind(Duration::from_seconds(60).unwrap())));
-		assert_eq!(
-			spec.cutoff(Keyspace::JOIN_RIGHT),
-			None,
-			"latest mode declares the left span and withholds the right"
-		);
-		assert_eq!(
-			spec.data_cutoff(),
-			None,
-			"a latest join must not set a data-wide floor: it would reach the withheld right side"
-		);
-	}
-
-	#[test]
-	fn a_snapshot_join_ages_its_ledger_on_the_left_span() {
-		// The ledger is only meaningful as long as the left row it describes, hence the left ttl;
-		// a ledger floored at the right span would strip live left rows of what they published and
-		// their joined rows could never be withdrawn again.
-		let engine = TestEngine::new();
-		let left = ttl(50);
-
-		let op = make_op(77, Some(left), Some(ttl(9_000)), &engine);
-
-		let spec = frontier(&op, &engine);
-		assert_eq!(spec.cutoff(Keyspace::JOIN_LEFT), Some(behind(left)));
-		assert_eq!(spec.cutoff(Keyspace::JOIN_PUBLISHED), Some(behind(left)));
-		assert_eq!(spec.cutoff(Keyspace::JOIN_PIN), Some(behind(left)));
-		assert_eq!(spec.cutoff(Keyspace::JOIN_RIGHT), Some(behind(ttl(9_000))));
-	}
-
-	fn ttl(millis: i64) -> Duration {
-		Duration::from_milliseconds_const(millis)
-	}
-
-	// Every test time is an offset from this base rather than from the epoch. A row written at the
-	// epoch is byte-identical to one whose writer forgot to stamp it, which is precisely what the
-	// per-row sweep asserts against, so a test starting at zero would trip that guard for the wrong
-	// reason - or worse, hide a real unstamped writer behind a test that looks correct.
-	const BASE_MS: u64 = 1_000_000;
-
-	fn at(txn: &mut FlowTransaction, millis: u64) {
-		// Mappings are stamped from the change coordinate, not the clock, so a write is placed in
-		// event time by setting it rather than by advancing a mock clock.
-		txn.set_change_coordinate(ChangeCoordinate {
-			at: Some(DateTime::from_millis(BASE_MS + millis)),
-			version: CommitVersion(0),
-		});
-	}
-
-	fn cutoff_at(millis: u64) -> Cutoff {
-		// Shares BASE_MS with `at` so the two stay on one timeline; a cutoff built straight from
-		// from_millis would sit a thousand seconds before every write and reclaim nothing.
-		Cutoff(DateTime::from_millis(BASE_MS + millis))
-	}
-
-	fn make_op(
-		operator: u64,
-		left_ttl: Option<Duration>,
-		right_ttl: Option<Duration>,
-		engine: &TestEngine,
-	) -> JoinOperator {
-		// No version epoch is seeded: spans are declared against the flow watermark, so these
-		// tests place writes in event time via `at` instead.
-		let routines = engine.executor().routines.clone();
-		let rc = RuntimeContext::with_clock(engine.clock().clone());
-		JoinOperator::new_for_state_tests(OperatorId(operator), left_ttl, right_ttl, routines, rc)
-	}
-
-	#[test]
-	fn the_mapping_sweep_evicts_rownumbers_past_the_left_ttl() {
-		// One mapping is minted per (left,right) output pair, so without eviction past the left
-		// ttl the join's state grows without bound (430M rows / 66GB on a live ingestor). The
-		// mapping's own event time decides, so the bound holds during a replay too.
-		let engine = TestEngine::new();
-		let op = make_op(30, Some(ttl(50)), None, &engine);
-		let mut txn = engine.flow_txn().deferred();
-
-		let old = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
-		at(&mut txn, 0);
-		txn.get_or_create_row_number(op.operator, GroupId::ROOT, &old).unwrap();
-
-		let young = JoinOperator::make_composite_key(RowNumber(2), RowNumber(1));
-		at(&mut txn, 40);
-		txn.get_or_create_row_number(op.operator, GroupId::ROOT, &young).unwrap();
-
-		let mut cursor = None;
-		txn.evict_row_numbers(op.operator, GroupId::ROOT, cutoff_at(10), &mut cursor, 100).unwrap();
-
-		assert!(
-			txn.get_row_number(op.operator, GroupId::ROOT, &old).unwrap().is_none(),
-			"a mapping stamped at or before the cutoff must be evicted"
-		);
-		assert!(
-			txn.get_row_number(op.operator, GroupId::ROOT, &young).unwrap().is_some(),
-			"a mapping stamped after the cutoff must survive; the version-anchored sweep could not \
-			 express this and evicted both"
-		);
-	}
-
-	#[test]
-	fn the_mapping_sweep_preserves_the_row_number_counter() {
-		// A recycled row number would corrupt any downstream consumer that tracks rows by
-		// number, so a mapping minted after a full eviction must still be strictly larger.
-		let engine = TestEngine::new();
-		let op = make_op(30, Some(ttl(50)), None, &engine);
-		let mut txn = engine.flow_txn().deferred();
-
-		let first = JoinOperator::make_composite_key(RowNumber(1), RowNumber(1));
-		at(&mut txn, 0);
-		let (n1, _) = txn.get_or_create_row_number(op.operator, GroupId::ROOT, &first).unwrap();
-
-		let mut cursor = None;
-		txn.evict_row_numbers(op.operator, GroupId::ROOT, cutoff_at(100), &mut cursor, 100).unwrap();
-		assert!(txn.get_row_number(op.operator, GroupId::ROOT, &first).unwrap().is_none());
-
-		let second = JoinOperator::make_composite_key(RowNumber(7), RowNumber(7));
-		at(&mut txn, 200);
-		let (n2, is_new) = txn.get_or_create_row_number(op.operator, GroupId::ROOT, &second).unwrap();
-		assert!(is_new);
-		assert!(n2.0 > n1.0, "counter must keep advancing past evicted mappings, not recycle ids");
-	}
-}

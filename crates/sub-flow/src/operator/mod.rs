@@ -3,13 +3,7 @@
 
 use std::{ops::Deref, sync::Arc};
 
-#[cfg(reifydb_target = "native")]
-use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_flow::transaction::FlowTransaction;
-#[cfg(reifydb_target = "native")]
-use reifydb_flow::window::{ledger::read_sealed_through, policy::SealPolicy};
-#[cfg(reifydb_target = "native")]
-use reifydb_store_operator::floor::FloorSpec;
 #[cfg(reifydb_target = "native")]
 use reifydb_value::value::duration::Duration;
 use reifydb_value::{Result, value::datetime::DateTime};
@@ -22,21 +16,6 @@ pub(crate) fn scale_from_millis(span: Option<u64>) -> Option<Duration> {
 }
 
 #[cfg(reifydb_target = "native")]
-pub(crate) fn sealed_or_idle_floor(
-	txn: &mut FlowTransaction,
-	operator: OperatorId,
-	watermark: DateTime,
-	scale: Option<Duration>,
-) -> Result<FloorSpec> {
-	let Some(scale) = scale else {
-		return Ok(FloorSpec::default());
-	};
-	if let Some(sealed) = read_sealed_through(txn, operator)? {
-		return Ok(SealPolicy::of(scale).sealed_anchor(sealed.at()).map(FloorSpec::data).unwrap_or_default());
-	}
-	Ok(FloorSpec::data(watermark.saturating_sub(scale)))
-}
-
 pub mod aggregation;
 pub mod append;
 pub mod apply;
