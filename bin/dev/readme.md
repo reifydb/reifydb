@@ -22,9 +22,11 @@ expected to be added over time; `storage` is just the first.
 - `storage <dir>` - attribute on-disk bytes/rows to logical objects (`namespace::name`), by
   joining `dbstat` sizing with the real `system::*` catalog.
 - `catalog <dir>` - dump the id -> name map for every object kind (no sizing).
+- `operator snapshot <dir>` - attribute `operator.db` checkpoint bytes to (operator, generation,
+  keyspace), by decoding the `SnapshotStore` chunk payloads.
 
 `<dir>` is the path to the already-copied, stopped sqlite database directory (the one
-containing `multi.db`).
+containing `multi.db` / `operator.db`).
 
 ## Usage
 
@@ -48,6 +50,12 @@ cargo run -p dev -- storage /path/to/db-copy --filter orders
 
 # Dump the id -> name reference
 cargo run -p dev -- catalog /path/to/db-copy
+
+# operator.db breakdown by operator, checkpoint generation, and keyspace
+cargo run -p dev -- operator snapshot /path/to/db-copy
+
+# Only operator 14, with logical operator labels resolved, JSON output
+cargo run -p dev -- operator snapshot /path/to/db-copy --operator 14 --names --json
 ```
 
 Or run the built binary directly:
@@ -79,6 +87,16 @@ cargo build -p dev --release
 | `<dir>` | Path to the already-copied, stopped sqlite database directory. |
 | `--json` | Emit JSON lines instead of a listing. |
 
+### `operator snapshot`
+
+| Flag | Description |
+| --- | --- |
+| `<dir>` | Path to the already-copied, stopped sqlite database directory. |
+| `--operator <ID>` | Only this operator. |
+| `--top <N>` | Show at most N rows (default: 40). |
+| `--names` | Resolve operator ids to logical `view  [stage]{operator}` labels (boots the engine). |
+| `--json` | Emit JSON lines instead of a table. |
+
 ## How it works
 
 The tool joins two independent data sources: sizing from SQLite, names from ReifyDB's catalog.
@@ -109,11 +127,26 @@ The tool joins two independent data sources: sizing from SQLite, names from Reif
 - **`context.rs` (shared handles).** `Context` holds handles shared across subcommands -
   currently just the `Clock` used for timing. It is the seam future inspectors share.
 
+- **`snapshot.rs` (`operator.db` checkpoint breakdown).** `operator.db` is a separate
+  `SnapshotStore`, not `multi.db`: it holds periodic checkpoint/recovery snapshots of operator
+  state, up to two retained generations per operator (the write path prunes `generation <
+  current - 1`, so both a current and a previous generation can be physically present at once).
+  Opens `operator.db` read-only, reads `snapshot_manifest` for each `(operator, generation)`,
+  then decodes each `snapshot_chunk`'s length-prefixed `(key, row)` payload and classifies every
+  key's tag via the same `OperatorStateKey`/`OperatorGroupStateKey` decoder `operator.rs` uses
+  for `multi.db`. Each generation renders as its own row so retention overhead (two generations
+  of similar size) is visible separately from genuine per-generation bloat. A synthetic
+  `<manifest>` row per (operator, generation) accounts for the manifest's own blob overhead
+  (`content_hash` + `dictionary_max`).
+
 ## Limitations / notes
 
 - `NODE_TYPE` in `catalog.rs` mirrors the `FlowNodeType` declaration order in
   `crates/rql/src/flow/node.rs` by hand; if that enum's order changes, operator labels here go
   wrong until it is re-synced.
 - Physical tables with no catalog entry are shown as `(unmapped)` rather than dropped.
+- `operator snapshot`'s grand total is logical key+value payload bytes decoded from
+  `snapshot_chunk`, not `dbstat` physical page bytes, so it will be somewhat below the actual
+  `operator.db` file size (SQLite page/index overhead is not counted).
 - `reifydb-dev --help` lists argument names without descriptions; the per-flag documentation
   lives in this readme instead.

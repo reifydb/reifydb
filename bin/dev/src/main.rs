@@ -6,6 +6,7 @@ mod context;
 mod dbstat;
 mod operator;
 mod report;
+mod snapshot;
 
 use std::{path::Path, process::exit};
 
@@ -41,6 +42,7 @@ struct OperatorArgs {
 #[derive(Subcommand)]
 enum OperatorCommand {
 	Keyspace(KeyspaceArgs),
+	Snapshot(SnapshotArgs),
 }
 
 #[derive(Parser)]
@@ -52,6 +54,19 @@ struct KeyspaceArgs {
 	top: usize,
 	#[arg(long)]
 	groups: bool,
+	#[arg(long)]
+	names: bool,
+	#[arg(long)]
+	json: bool,
+}
+
+#[derive(Parser)]
+struct SnapshotArgs {
+	dir: String,
+	#[arg(long)]
+	operator: Option<u64>,
+	#[arg(long, default_value_t = 40)]
+	top: usize,
 	#[arg(long)]
 	names: bool,
 	#[arg(long)]
@@ -93,6 +108,7 @@ fn main() {
 		Command::Catalog(args) => catalog_dump(args),
 		Command::Operator(args) => match args.command {
 			OperatorCommand::Keyspace(args) => operator_keyspace(args),
+			OperatorCommand::Snapshot(args) => operator_snapshot(args),
 		},
 	};
 	if let Err(e) = result {
@@ -150,6 +166,25 @@ fn operator_keyspace(args: KeyspaceArgs) -> Result<()> {
 	)
 }
 
+fn operator_snapshot(args: SnapshotArgs) -> Result<()> {
+	let operator_db = require_operator_db(&args.dir)?;
+	let cat = if args.names {
+		eprintln!("opening {} via the embedded engine (this writes to the directory - use a copy)", args.dir);
+		Some(catalog::with_open(&args.dir, catalog::load)?)
+	} else {
+		None
+	};
+	snapshot::report(
+		&operator_db,
+		cat.as_ref(),
+		snapshot::Options {
+			operator: args.operator,
+			top: args.top,
+			json: args.json,
+		},
+	)
+}
+
 fn catalog_dump(args: CatalogArgs) -> Result<()> {
 	eprintln!("opening {} via the embedded engine (this writes to the directory - use a copy)", args.dir);
 	let cat = catalog::with_open(&args.dir, catalog::load)?;
@@ -161,6 +196,14 @@ fn require_multi_db(dir: &str) -> Result<String> {
 	let path = Path::new(dir).join("multi.db");
 	if !path.exists() {
 		return Err(format!("no multi.db in '{dir}' (expected a sqlite database directory)"));
+	}
+	Ok(path.to_string_lossy().into_owned())
+}
+
+fn require_operator_db(dir: &str) -> Result<String> {
+	let path = Path::new(dir).join("operator.db");
+	if !path.exists() {
+		return Err(format!("no operator.db in '{dir}' (expected a sqlite database directory)"));
 	}
 	Ok(path.to_string_lossy().into_owned())
 }

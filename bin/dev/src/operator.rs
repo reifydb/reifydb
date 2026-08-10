@@ -89,7 +89,7 @@ pub fn keyspace(multi_db: &str, cat: Option<&Catalog>, opts: Options) -> Result<
 	Ok(())
 }
 
-fn classify(key: &[u8]) -> (String, Option<u64>) {
+pub(crate) fn classify(key: &[u8]) -> (String, Option<u64>) {
 	let Some(decoded) = OperatorStateKey::decode(&EncodedKey::new(key)) else {
 		return (UNDECODABLE.to_string(), None);
 	};
@@ -215,7 +215,7 @@ fn render(
 	);
 }
 
-fn shown(len: usize, top: usize) -> usize {
+pub(crate) fn shown(len: usize, top: usize) -> usize {
 	if top == 0 {
 		len
 	} else {
@@ -223,7 +223,7 @@ fn shown(len: usize, top: usize) -> usize {
 	}
 }
 
-fn human(bytes: u64) -> String {
+pub(crate) fn human(bytes: u64) -> String {
 	const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
 	let mut value = bytes as f64;
 	let mut unit = 0;
