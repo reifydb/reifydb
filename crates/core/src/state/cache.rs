@@ -5,17 +5,11 @@ use std::{hash::Hash, marker::PhantomData};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::operator::{OperatorState, SealMutableState, decode},
+	row::operator::{OperatorState, decode},
 };
 use reifydb_value::Result;
-use rkyv::seal::Seal;
 
 use crate::{key::operator_state::IntoGroupStateKey, metrics::heap::HeapSize, state::store::StateStore};
-
-pub enum StateView<'a, V: OperatorState> {
-	Archived(&'a V::Archived),
-	Native(&'a V),
-}
 
 pub struct StateCache<K, V> {
 	marker: PhantomData<fn(K) -> V>,
@@ -49,19 +43,6 @@ where
 		}
 	}
 
-	pub fn read<R>(
-		&mut self,
-		store: &mut impl StateStore,
-		key: &K,
-		f: impl FnOnce(StateView<'_, V>) -> R,
-	) -> Result<Option<R>> {
-		let encoded_key = key.into_group_state_key();
-		let Some(bytes) = store.state_get(&encoded_key)? else {
-			return Ok(None);
-		};
-		Ok(Some(f(StateView::Archived(V::archived(&bytes)?))))
-	}
-
 	pub fn take(&mut self, store: &mut impl StateStore, key: &K) -> Result<Option<V>> {
 		self.get(store, key)
 	}
@@ -89,39 +70,17 @@ where
 		self.set(store, key, &value)
 	}
 
-	pub fn modify_in_place<R, A>(
-		&mut self,
-		store: &mut impl StateStore,
-		key: &K,
-		seal_f: impl FnOnce(Seal<'_, A>) -> Option<R>,
-		native_f: impl FnOnce(&mut V) -> R,
-	) -> Result<R>
+	pub fn modify<R>(&mut self, store: &mut impl StateStore, key: &K, f: impl FnOnce(&mut V) -> R) -> Result<R>
 	where
-		V: SealMutableState + Default + OperatorState<Archived = A>,
+		V: Default,
 	{
 		let encoded_key = key.into_group_state_key();
 		let now = store.written_at();
-
-		let Some(mut bytes) = store.state_get(&encoded_key)? else {
-			let mut value = V::default();
-			let result = native_f(&mut value);
-			store.state_set(&encoded_key, value.encode_state(now)?)?;
-			return Ok(result);
+		let mut value = match store.state_get(&encoded_key)? {
+			Some(bytes) => decode::<V>(&bytes)?,
+			None => V::default(),
 		};
-
-		V::archived(&bytes)?;
-		// SAFETY: bytes passed V::archived validation above.
-		let seal = unsafe { V::archived_seal_trusted(&mut bytes) };
-		if let Some(result) = seal_f(seal) {
-			bytes.set_time(now);
-			store.state_set(&encoded_key, bytes)?;
-			return Ok(result);
-		}
-
-		// SAFETY: bytes passed V::archived validation above.
-		let archived = unsafe { V::archived_trusted(&bytes) };
-		let mut value = V::materialize(archived)?;
-		let result = native_f(&mut value);
+		let result = f(&mut value);
 		store.state_set(&encoded_key, value.encode_state(now)?)?;
 		Ok(result)
 	}
@@ -168,7 +127,6 @@ mod tests {
 	use reifydb_codec::row::operator::EncodedOperatorRow;
 	use reifydb_macro::operator_state;
 	use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
-	use rkyv::{munge::munge, primitive::ArchivedU64};
 	use serde::{Deserialize, Serialize};
 
 	use super::*;
@@ -434,42 +392,6 @@ mod tests {
 	}
 
 	#[test]
-	fn read_serves_the_archived_view_of_the_last_write() {
-		// No native tier survives, so an operator matching on Native would never fire.
-		let mut store = MockStore::default();
-		let mut cache: StateCache<Key, SealCell> = StateCache::new();
-		cache.put(
-			&mut store,
-			&Key::new("a"),
-			SealCell {
-				value: 9,
-			},
-		)
-		.unwrap();
-
-		let seen = cache
-			.read(&mut store, &Key::new("a"), |view| match view {
-				StateView::Archived(a) => a.value.to_native(),
-				StateView::Native(_) => panic!("a store-backed read is always archived"),
-			})
-			.unwrap();
-
-		assert_eq!(seen, Some(9));
-	}
-
-	#[test]
-	fn read_of_an_absent_key_never_invokes_the_closure() {
-		let mut store = MockStore::default();
-		let mut cache: StateCache<Key, Cell> = StateCache::new();
-
-		let seen = cache
-			.read(&mut store, &Key::new("gone"), |_| panic!("closure must not run on a miss"))
-			.unwrap();
-
-		assert_eq!(seen, None::<()>);
-	}
-
-	#[test]
 	fn warm_and_hydrate_are_inert_and_touch_no_storage() {
 		// Both were prefetch for a residency tier that is gone; reading here would rescan every pass.
 		let mut store = MockStore::default();
@@ -482,130 +404,54 @@ mod tests {
 		assert_eq!(store.sets, 0, "prefetch must not write");
 	}
 
-	#[operator_state(seal)]
-	#[derive(Debug, Clone, Default, PartialEq)]
-	struct SealCell {
-		value: u64,
-	}
-
-	impl HeapSize for SealCell {
-		fn heap_size(&self) -> usize {
-			0
-		}
-	}
-
-	fn seal_cell_write(seal: Seal<'_, ArchivedSealCell>, value: u64) {
-		munge!(let ArchivedSealCell { value: mut slot } = seal);
-		*slot = ArchivedU64::from_native(value);
-	}
-
-	fn seeded_seal_cache(store: &mut MockStore, value: u64) -> StateCache<Key, SealCell> {
-		let mut cache: StateCache<Key, SealCell> = StateCache::new();
-		cache.put(
-			store,
-			&Key::new("a"),
-			SealCell {
-				value,
-			},
-		)
-		.unwrap();
-		cache
-	}
-
 	#[test]
-	fn modify_in_place_seals_stored_bytes_without_materializing() {
-		// The seal path is the zero-copy branch; the native closure must never run for a present key.
+	fn modify_mutates_the_stored_value_and_persists_it() {
+		// modify is load-mutate-persist in one call; skipping the persist half would strand the mutation.
 		let mut store = MockStore::default();
-		let mut cache = seeded_seal_cache(&mut store, 1);
+		let mut cache: StateCache<Key, Cell> = StateCache::new();
+		cache.set(&mut store, &Key::new("a"), &cell(1)).unwrap();
 
-		cache.modify_in_place(
-			&mut store,
-			&Key::new("a"),
-			|seal| {
-				seal_cell_write(seal, 7);
-				Some(())
-			},
-			|_| panic!("a stored entry must be served by the seal closure"),
-		)
-		.unwrap();
-
-		assert_eq!(
-			cache.get(&mut store, &Key::new("a")).unwrap(),
-			Some(SealCell {
-				value: 7,
+		let returned = cache
+			.modify(&mut store, &Key::new("a"), |value| {
+				value.value += 6;
+				value.value
 			})
-		);
+			.unwrap();
+
+		assert_eq!(returned, 7);
+		assert_eq!(cache.get(&mut store, &Key::new("a")).unwrap(), Some(cell(7)));
 	}
 
 	#[test]
-	fn a_sealed_write_persists_the_bytes_with_a_refreshed_time() {
-		// Sealed bytes go back verbatim, so the row keeps its original time unless re-stamped.
+	fn modify_persists_the_row_with_a_refreshed_time() {
+		// The rewritten row must carry the store's current clock, or floor expiry reads a stale stamp.
 		let mut store = MockStore::default();
-		let mut cache = seeded_seal_cache(&mut store, 1);
+		let mut cache: StateCache<Key, Cell> = StateCache::new();
+		cache.set(&mut store, &Key::new("a"), &cell(1)).unwrap();
 		store.now = DateTime::from_nanos(4_000);
 
-		cache.modify_in_place(
-			&mut store,
-			&Key::new("a"),
-			|seal| {
-				seal_cell_write(seal, 3);
-				Some(())
-			},
-			|_| panic!("the seal closure accepted"),
-		)
+		cache.modify(&mut store, &Key::new("a"), |value| {
+			value.value = 3;
+		})
 		.unwrap();
 
 		let key = (&Key::new("a")).into_group_state_key();
-		let stored = store.data.get(key.as_slice()).expect("the sealed row was written");
+		let stored = store.data.get(key.as_slice()).expect("the row was written");
 		assert_eq!(stored.time(), DateTime::from_nanos(4_000));
 	}
 
 	#[test]
-	fn modify_in_place_falls_back_to_native_when_seal_declines() {
-		// A declining seal must still persist through the native path, never drop the write.
-		let mut store = MockStore::default();
-		let mut cache = seeded_seal_cache(&mut store, 2);
-
-		cache.modify_in_place(
-			&mut store,
-			&Key::new("a"),
-			|_| None,
-			|value| {
-				value.value = 11;
-			},
-		)
-		.unwrap();
-
-		assert_eq!(
-			cache.get(&mut store, &Key::new("a")).unwrap(),
-			Some(SealCell {
-				value: 11,
-			})
-		);
-	}
-
-	#[test]
-	fn modify_in_place_on_a_miss_starts_from_default_and_persists() {
+	fn modify_on_a_miss_starts_from_default_and_persists() {
 		// Otherwise the first mutation of a never-written group is lost.
 		let mut store = MockStore::default();
-		let mut cache: StateCache<Key, SealCell> = StateCache::new();
+		let mut cache: StateCache<Key, Cell> = StateCache::new();
 
-		cache.modify_in_place(
-			&mut store,
-			&Key::new("fresh"),
-			|_| panic!("an absent key has no bytes to seal"),
-			|value| {
-				value.value = 5;
-			},
-		)
+		cache.modify(&mut store, &Key::new("fresh"), |value| {
+			value.value = 5;
+		})
 		.unwrap();
 
-		assert_eq!(
-			cache.get(&mut store, &Key::new("fresh")).unwrap(),
-			Some(SealCell {
-				value: 5,
-			})
-		);
+		assert_eq!(cache.get(&mut store, &Key::new("fresh")).unwrap(), Some(cell(5)));
 	}
 
 	#[test]

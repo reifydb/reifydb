@@ -107,7 +107,7 @@ impl GateState {
 	}
 
 	fn is_visible<S: StateStore>(&mut self, store: &mut S, rn: RowNumber) -> Result<bool> {
-		Ok(self.visibility.read(store, &VisibilityKey(rn), |_| ())?.is_some())
+		Ok(self.visibility.get(store, &VisibilityKey(rn))?.is_some())
 	}
 
 	fn mark_visible<S: StateStore>(&mut self, store: &mut S, rn: RowNumber) -> Result<()> {

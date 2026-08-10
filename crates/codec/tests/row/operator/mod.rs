@@ -5,14 +5,11 @@ use std::mem::align_of;
 
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
-	operator::{
-		EncodedOperatorRow, OPERATOR_HEADER_SIZE, OperatorError, access_archive, access_archive_trusted,
-		encode_archive, materialize_archive,
-	},
+	operator::{EncodedOperatorRow, OPERATOR_HEADER_SIZE, OperatorError, decode_archive, encode_archive},
 };
 use reifydb_value::{factory::time::at_nanos, util::cowvec::CowVec, value::datetime::DateTime};
 use rkyv::{
-	Archive, Deserialize, Serialize, access,
+	Archive, Deserialize, Serialize, access, deserialize,
 	primitive::{ArchivedF64, ArchivedI64, ArchivedU64},
 	rancor::Error as TestRancorError,
 };
@@ -31,22 +28,16 @@ fn probe() -> Probe {
 }
 
 #[test]
-fn test_encode_access_materialize_round_trip() {
-	// Encode -> validate -> read archived -> materialize must be lossless at every step.
+fn test_encode_decode_round_trip() {
+	// Encode -> validate -> decode must be lossless at every step, or a flush loses state.
 	let value = probe();
 	let row = encode_archive(&value, at_nanos(7)).unwrap();
 
-	let archived = access_archive::<Probe>(&row).unwrap();
-	assert_eq!(archived.total, 42);
-	assert_eq!(archived.names.len(), 2);
-	assert_eq!(archived.names[1].as_str(), "bb");
-
-	let restored: Probe = materialize_archive(archived).unwrap();
+	let restored: Probe = decode_archive(&row).unwrap();
 	assert_eq!(restored, value);
-
-	// SAFETY: row passed access_archive validation above.
-	let trusted = unsafe { access_archive_trusted::<Probe>(&row) };
-	assert_eq!(trusted.total, 42);
+	assert_eq!(restored.total, 42);
+	assert_eq!(restored.names.len(), 2);
+	assert_eq!(restored.names[1].as_str(), "bb");
 }
 
 #[test]
@@ -60,12 +51,12 @@ fn test_set_time_preserves_body() {
 	row.set_time(at_nanos(99));
 	assert_eq!(row.time(), at_nanos(99));
 	assert_eq!(row.body(), &body[..], "the body must stay untouched");
-	assert_eq!(access_archive::<Probe>(&row).unwrap().total, 42);
+	assert_eq!(decode_archive::<Probe>(&row).unwrap().total, 42);
 }
 
 #[test]
 fn test_body_mut_windows_the_same_bytes_as_body() {
-	// body_mut must window exactly body(), otherwise sealed writes land outside the archive.
+	// body_mut must window exactly body(), otherwise a write lands outside the archive.
 	let value = probe();
 	let mut row = encode_archive(&value, DateTime::EPOCH).unwrap();
 	let body = row.body().to_vec();
@@ -90,7 +81,7 @@ fn test_archived_access_is_alignment_free() {
 			panic!("archived access must not require alignment (offset {offset}): {e}")
 		});
 		assert_eq!(archived.total, 42);
-		let restored: Probe = materialize_archive(archived).unwrap();
+		let restored: Probe = deserialize::<Probe, TestRancorError>(archived).unwrap();
 		assert_eq!(restored, value, "round trip from misaligned offset {offset}");
 	}
 }
@@ -104,7 +95,7 @@ fn test_row_round_trip_preserves_time() {
 	let reloaded = EncodedOperatorRow::try_from(encoded).unwrap();
 	assert_eq!(reloaded, row);
 	assert_eq!(reloaded.time(), at_nanos(1234));
-	assert_eq!(access_archive::<Probe>(&reloaded).unwrap().total, 42);
+	assert_eq!(decode_archive::<Probe>(&reloaded).unwrap().total, 42);
 }
 
 #[test]
@@ -125,7 +116,7 @@ fn test_try_from_rejects_a_row_too_short_to_hold_the_header() {
 fn test_zeroed_row_fails_archive_validation() {
 	// A zeroed body must fail bytecheck rather than be read as a valid archive.
 	let zeroed = EncodedOperatorRow::new(&[0u8; 16], DateTime::EPOCH);
-	assert!(matches!(access_archive::<Probe>(&zeroed), Err(OperatorError::Validation(_))));
+	assert!(matches!(decode_archive::<Probe>(&zeroed), Err(OperatorError::Validation(_))));
 }
 
 #[test]
@@ -134,7 +125,7 @@ fn test_truncated_body_fails_validation() {
 	let row = encode_archive(&probe(), DateTime::EPOCH).unwrap();
 	let body = row.body();
 	let truncated = EncodedOperatorRow::new(&body[..body.len() / 2], DateTime::EPOCH);
-	assert!(matches!(access_archive::<Probe>(&truncated), Err(OperatorError::Validation(_))));
+	assert!(matches!(decode_archive::<Probe>(&truncated), Err(OperatorError::Validation(_))));
 }
 
 #[test]
@@ -174,8 +165,8 @@ fn test_consecutive_encodes_share_a_buffer_without_bleed() {
 	let big_row = encode_archive(&big, DateTime::EPOCH).unwrap();
 	let small_row = encode_archive(&small, DateTime::EPOCH).unwrap();
 	assert!(small_row.body().len() < big_row.body().len());
-	let restored: Probe = materialize_archive::<Probe>(access_archive::<Probe>(&small_row).unwrap()).unwrap();
+	let restored: Probe = decode_archive::<Probe>(&small_row).unwrap();
 	assert_eq!(restored, small);
-	let restored_big: Probe = materialize_archive::<Probe>(access_archive::<Probe>(&big_row).unwrap()).unwrap();
+	let restored_big: Probe = decode_archive::<Probe>(&big_row).unwrap();
 	assert_eq!(restored_big, big);
 }

@@ -10,7 +10,7 @@ use reifydb_codec::{
 	},
 	row::{
 		bytes::EncodedBytes,
-		operator::{EncodedOperatorRow, access_archive, encode_archive, materialize_archive},
+		operator::{EncodedOperatorRow, decode_archive, encode_archive},
 		shape::{
 			RowFamily, RowShape, RowShapeField, cache::RowShapeCacheCell, fingerprint::RowShapeFingerprint,
 		},
@@ -266,9 +266,8 @@ impl Store {
 				if row.is_empty() {
 					return Ok(None);
 				}
-				let fields: Vec<RowShapeField> = access_archive::<Vec<RowShapeField>>(&row)
-					.and_then(materialize_archive::<Vec<RowShapeField>>)
-					.map_err(|e| {
+				let fields: Vec<RowShapeField> =
+					decode_archive::<Vec<RowShapeField>>(&row).map_err(|e| {
 						Error::from(FlowStateError::Decode {
 							state: "row shape",
 							cause: e.to_string(),

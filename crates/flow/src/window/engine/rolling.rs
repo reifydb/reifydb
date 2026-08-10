@@ -16,11 +16,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	key::operator_state::GroupId,
 	metrics::heap::HeapSize,
-	state::{
-		cache::{StateCache, StateView},
-		map::PersistedMap,
-		store::StateStore,
-	},
+	state::{cache::StateCache, map::PersistedMap, store::StateStore},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
@@ -28,8 +24,8 @@ use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 use crate::window::{
 	accumulator::WindowAccumulator,
 	engine::{
-		AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, MetaHighWater, MetaKey, RunningKey,
-		buffer_range, config::WindowEngineConfig, decode_buffer_key, decode_meta_key, decode_running_key,
+		AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, MetaKey, RunningKey, buffer_range,
+		config::WindowEngineConfig, decode_buffer_key, decode_meta_key, decode_running_key,
 		expiry::ExpiryIndex, expiry_key, load_batch_meta, meta_key_for, meta_range, note_when_expiry_capped,
 		persist_batch_meta, running_range, sweep_stale_meta,
 	},
@@ -794,16 +790,8 @@ where
 			} else {
 				let lag = self.lag;
 				self.meta
-					.read(store, &meta_key_for(&entry.group), |view| match view {
-						StateView::Archived(meta) => {
-							GroupMeta::<C>::archived_high_water_order(meta).map(|hw| {
-								<C::Coord as WindowCoord>::from_order(hw)
-									.saturating_sub_span(lag)
-							})
-						}
-						StateView::Native(meta) => frontier_for::<C>(lag, &meta.high_water),
-					})?
-					.flatten()
+					.get(store, &meta_key_for(&entry.group))?
+					.and_then(|meta| frontier_for::<C>(lag, &meta.high_water))
 			};
 			let mut buffer: RollingBuffer<C, Accumulator> =
 				self.buffers.get(store, &BufferKey::new(group_id, slot.clone()))?.unwrap_or_default();

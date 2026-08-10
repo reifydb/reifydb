@@ -11,14 +11,12 @@ use reifydb_value::{
 	value::datetime::DateTime,
 };
 use rkyv::{
-	Archive, Deserialize as RkyvDeserialize, Portable, Serialize as RkyvSerialize, access, access_unchecked,
-	access_unchecked_mut,
+	Archive, Deserialize as RkyvDeserialize, Portable, Serialize as RkyvSerialize, access,
 	api::high::{HighSerializer, HighValidator, to_bytes_in},
 	bytecheck::CheckBytes,
 	de::Pool,
 	deserialize,
 	rancor::{Error as RancorError, Strategy},
-	seal::Seal,
 	ser::allocator::ArenaHandle,
 	util::AlignedVec,
 };
@@ -216,31 +214,10 @@ impl EncodedOperatorRow {
 }
 
 pub trait OperatorState: Sized + Send + 'static {
-	type Archived;
-
 	fn encode_state(&self, now: DateTime) -> Result<EncodedOperatorRow, OperatorError>;
 
-	fn archived(row: &EncodedOperatorRow) -> Result<&Self::Archived, OperatorError>;
-
-	/// # Safety
-	///
-	/// `row` must previously have passed [`OperatorState::archived`]
-	/// validation, or have been produced by [`OperatorState::encode_state`]
-	/// for exactly `Self`; otherwise the archived access reads
-	/// unvalidated memory through mismatched layout.
-	unsafe fn archived_trusted(row: &EncodedOperatorRow) -> &Self::Archived;
-
-	/// # Safety
-	///
-	/// Same contract as [`OperatorState::archived_trusted`]; `row` must
-	/// hold a validated archive of exactly `Self`. Writes through the
-	/// returned [`Seal`] cannot invalidate the archive.
-	unsafe fn archived_seal_trusted(row: &mut EncodedOperatorRow) -> Seal<'_, Self::Archived>;
-
-	fn materialize(archived: &Self::Archived) -> Result<Self, OperatorError>;
+	fn decode_state(row: &EncodedOperatorRow) -> Result<Self, OperatorError>;
 }
-
-pub trait SealMutableState: OperatorState {}
 
 thread_local! {
 	static ENCODE_BUFFER: RefCell<AlignedVec> = RefCell::new(AlignedVec::new());
@@ -259,54 +236,20 @@ where
 	Ok(result)
 }
 
-pub fn access_archive<T>(row: &EncodedOperatorRow) -> Result<&T::Archived, OperatorError>
+pub fn decode_archive<T>(row: &EncodedOperatorRow) -> Result<T, OperatorError>
 where
 	T: Archive,
-	T::Archived: Portable + for<'a> CheckBytes<HighValidator<'a, RancorError>>,
+	T::Archived: Portable
+		+ for<'a> CheckBytes<HighValidator<'a, RancorError>>
+		+ RkyvDeserialize<T, Strategy<Pool, RancorError>>,
 {
-	access::<T::Archived, RancorError>(row.body()).map_err(|e| OperatorError::Validation(e.to_string()))
-}
-
-/// # Safety
-///
-/// `row` must hold an archive of exactly `T` that has either been produced
-/// by [`encode_archive`] in this process or passed [`access_archive`]
-/// validation; the unchecked access relies on that for pointer and layout
-/// validity.
-pub unsafe fn access_archive_trusted<T>(row: &EncodedOperatorRow) -> &T::Archived
-where
-	T: Archive,
-	T::Archived: Portable,
-{
-	// SAFETY: the caller guarantees `row` holds a validated archive of exactly `T`, so the
-	// body is a well-formed `T::Archived` with valid relative pointers.
-	unsafe { access_unchecked::<T::Archived>(row.body()) }
-}
-
-/// # Safety
-///
-/// Same contract as [`access_archive_trusted`]; `row` must hold a validated
-/// archive of exactly `T`. Seal writes cannot invalidate the archive.
-pub unsafe fn access_archive_seal_trusted<T>(row: &mut EncodedOperatorRow) -> Seal<'_, T::Archived>
-where
-	T: Archive,
-	T::Archived: Portable,
-{
-	// SAFETY: the caller guarantees `row` holds a validated archive of exactly `T`, and the
-	// exclusive borrow makes the sealed mutable access non-aliasing.
-	unsafe { access_unchecked_mut::<T::Archived>(row.body_mut()) }
-}
-
-pub fn materialize_archive<T>(archived: &T::Archived) -> Result<T, OperatorError>
-where
-	T: Archive,
-	T::Archived: RkyvDeserialize<T, Strategy<Pool, RancorError>>,
-{
+	let archived =
+		access::<T::Archived, RancorError>(row.body()).map_err(|e| OperatorError::Validation(e.to_string()))?;
 	deserialize::<T, RancorError>(archived).map_err(|e| OperatorError::Deserialization(e.to_string()))
 }
 
 pub fn decode<T: OperatorState>(row: &EncodedOperatorRow) -> Result<T, OperatorError> {
-	T::materialize(T::archived(row)?)
+	T::decode_state(row)
 }
 
 pub mod archive {
@@ -341,30 +284,12 @@ impl<T> ArchiveState for T where
 macro_rules! leaf_operator_state {
 	($($ty:ty),* $(,)?) => {
 		$(impl OperatorState for $ty {
-			type Archived = <$ty as Archive>::Archived;
-
 			fn encode_state(&self, now: DateTime) -> Result<EncodedOperatorRow, OperatorError> {
 				encode_archive(self, now)
 			}
 
-			fn archived(row: &EncodedOperatorRow) -> Result<&Self::Archived, OperatorError> {
-				access_archive::<Self>(row)
-			}
-
-			unsafe fn archived_trusted(row: &EncodedOperatorRow) -> &Self::Archived {
-				// SAFETY: the caller of archived_trusted guarantees `row` holds a
-				// validated archive of exactly `Self`, which is what the callee needs.
-				unsafe { access_archive_trusted::<Self>(row) }
-			}
-
-			unsafe fn archived_seal_trusted(row: &mut EncodedOperatorRow) -> Seal<'_, Self::Archived> {
-				// SAFETY: the caller of archived_seal_trusted guarantees `row` holds a
-				// validated archive of exactly `Self`, which is what the callee needs.
-				unsafe { access_archive_seal_trusted::<Self>(row) }
-			}
-
-			fn materialize(archived: &Self::Archived) -> Result<Self, OperatorError> {
-				materialize_archive::<Self>(archived)
+			fn decode_state(row: &EncodedOperatorRow) -> Result<Self, OperatorError> {
+				decode_archive::<Self>(row)
 			}
 		})*
 	};
@@ -382,30 +307,12 @@ where
 		+ for<'a> CheckBytes<HighValidator<'a, RancorError>>
 		+ RkyvDeserialize<Self, Strategy<Pool, RancorError>>,
 {
-	type Archived = <Self as Archive>::Archived;
-
 	fn encode_state(&self, now: DateTime) -> Result<EncodedOperatorRow, OperatorError> {
 		encode_archive(self, now)
 	}
 
-	fn archived(row: &EncodedOperatorRow) -> Result<&Self::Archived, OperatorError> {
-		access_archive::<Self>(row)
-	}
-
-	unsafe fn archived_trusted(row: &EncodedOperatorRow) -> &Self::Archived {
-		// SAFETY: the caller of archived_trusted guarantees `row` holds a validated archive
-		// of exactly `Self`, which is what the callee needs.
-		unsafe { access_archive_trusted::<Self>(row) }
-	}
-
-	unsafe fn archived_seal_trusted(row: &mut EncodedOperatorRow) -> Seal<'_, Self::Archived> {
-		// SAFETY: the caller of archived_seal_trusted guarantees `row` holds a validated
-		// archive of exactly `Self`, which is what the callee needs.
-		unsafe { access_archive_seal_trusted::<Self>(row) }
-	}
-
-	fn materialize(archived: &Self::Archived) -> Result<Self, OperatorError> {
-		materialize_archive::<Self>(archived)
+	fn decode_state(row: &EncodedOperatorRow) -> Result<Self, OperatorError> {
+		decode_archive::<Self>(row)
 	}
 }
 

@@ -15,10 +15,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	key::operator_state::GroupId,
 	metrics::heap::HeapSize,
-	state::{
-		cache::{StateCache, StateView},
-		store::StateStore,
-	},
+	state::{cache::StateCache, store::StateStore},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions};
@@ -81,10 +78,10 @@ impl<C, Carry, Output> Default for CarryMeta<C, Carry, Output> {
 
 impl<C: WindowAnchor, Carry: Archive, Output: Archive> MetaHighWater for CarryMeta<C, Carry, Output>
 where
-	Self: OperatorState<Archived = ArchivedCarryMeta<C, Carry, Output>>,
+	Self: OperatorState,
 {
-	fn archived_high_water_order(archived: &Self::Archived) -> Option<u64> {
-		archived.high_water.as_ref().map(|hw| C::archived_order_key(hw).to_order())
+	fn high_water_order(&self) -> Option<u64> {
+		self.high_water.map(|hw| hw.order_key().to_order())
 	}
 }
 
@@ -113,7 +110,7 @@ where
 	Output: HeapSize,
 	Carry: Archive,
 	Output: Archive,
-	CarryMeta<C, Carry, Output>: OperatorState<Archived = ArchivedCarryMeta<C, Carry, Output>>,
+	CarryMeta<C, Carry, Output>: OperatorState,
 {
 	pub fn new(config: TumblingCarryConfig<C>) -> Self {
 		Self {
@@ -235,19 +232,8 @@ where
 				let value = match store.lookup_group(&slot_key)? {
 					Some(coord_group) => self
 						.accumulators
-						.read(
-							store,
-							&WindowStateKey::new(coord_group, slot_key.clone()),
-							|view| match view {
-								StateView::Native(a) => Ok(a.finalize()),
-								StateView::Archived(archived) => {
-									Accumulator::materialize(archived)
-										.map(|a| a.finalize())
-								}
-							},
-						)?
-						.transpose()?
-						.flatten(),
+						.get(store, &WindowStateKey::new(coord_group, slot_key.clone()))?
+						.and_then(|a| a.finalize()),
 					None => None,
 				};
 				match value.as_ref().and_then(|v| build_output(&group, span, v, prev_carry.as_ref())) {
@@ -436,7 +422,10 @@ mod tests {
 	};
 
 	use reifydb_abi::operator::timer::TimerKind;
-	use reifydb_codec::{key::encoded::EncodedKeyRange, row::operator::EncodedOperatorRow};
+	use reifydb_codec::{
+		key::encoded::EncodedKeyRange,
+		row::operator::{EncodedOperatorRow, decode},
+	};
 	use reifydb_core::key::operator_state::{GroupStateKey, Keyspace, OperatorStateKey};
 	use reifydb_value::{
 		factory::time::{at_millis, millis},
@@ -886,16 +875,12 @@ mod tests {
 	}
 
 	#[test]
-	fn carry_meta_projects_its_high_water_without_touching_its_window_map() {
-		// CarryMeta is why the archived projection exists: it carries a whole BTreeMap of windows
-		// the meta sweep has no use for, and deserializing all of it per group to read one u64 is
-		// what the projection avoids. It must agree with the owned path however much state it holds.
+	fn carry_meta_projects_its_high_water_independently_of_its_window_map() {
+		// The meta sweep reclaims on this projection alone, so window entries must never skew it.
 		let mut meta: CarryMeta<DateTime, i64, i64> = CarryMeta::default();
 		let empty_bytes = meta.encode_state(DateTime::EPOCH).unwrap();
 		assert_eq!(
-			CarryMeta::<DateTime, i64, i64>::archived_high_water_order(
-				CarryMeta::<DateTime, i64, i64>::archived(&empty_bytes).unwrap()
-			),
+			decode::<CarryMeta<DateTime, i64, i64>>(&empty_bytes).unwrap().high_water_order(),
 			None,
 			"a default CarryMeta has no high water"
 		);
@@ -910,9 +895,7 @@ mod tests {
 			},
 		);
 		let bytes = meta.encode_state(DateTime::EPOCH).unwrap();
-		let projected = CarryMeta::<DateTime, i64, i64>::archived_high_water_order(
-			CarryMeta::<DateTime, i64, i64>::archived(&bytes).unwrap(),
-		);
+		let projected = decode::<CarryMeta<DateTime, i64, i64>>(&bytes).unwrap().high_water_order();
 		assert_eq!(projected, Some(99), "the populated window map must not disturb the high water");
 	}
 

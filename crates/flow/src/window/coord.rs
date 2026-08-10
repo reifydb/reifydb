@@ -6,7 +6,6 @@ use std::fmt::Debug;
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
-use rkyv::{Archive, munge::munge, primitive::ArchivedU64, seal::Seal};
 
 use crate::window::span::{IsZero, Slot, WindowCoord};
 
@@ -61,7 +60,7 @@ impl IsZero for RowSpan {
 	}
 }
 
-#[operator_state(seal)]
+#[operator_state]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[rkyv(derive(Hash, PartialEq, Eq, PartialOrd, Ord))]
 pub struct OrdinalCoord {
@@ -153,18 +152,6 @@ impl Slot for OrdinalCoord {
 
 	fn from_order_key(coord: OrdinalCoord) -> Self {
 		coord
-	}
-
-	fn archived_order_key(archived: &<Self as Archive>::Archived) -> OrdinalCoord {
-		OrdinalCoord {
-			ordinal: archived.ordinal.to_native(),
-		}
-	}
-
-	fn seal_write(archived: Seal<'_, <Self as Archive>::Archived>, value: Self) -> bool {
-		munge!(let ArchivedOrdinalCoord { mut ordinal } = archived);
-		*ordinal = ArchivedU64::from_native(value.ordinal);
-		true
 	}
 }
 

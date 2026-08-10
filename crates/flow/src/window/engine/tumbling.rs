@@ -380,7 +380,7 @@ mod tests {
 	};
 
 	use reifydb_codec::key::encoded::EncodedKey;
-	use reifydb_core::{key::operator_state::GroupId, metrics::heap::HeapSize, state::cache::StateView};
+	use reifydb_core::{key::operator_state::GroupId, metrics::heap::HeapSize};
 	use reifydb_macro::operator_state;
 	use reifydb_value::{Result, factory::time::at_millis, value::datetime::DateTime};
 
@@ -1021,19 +1021,12 @@ mod tests {
 		store: &mut MockStore,
 		group: u32,
 	) -> Option<u64> {
-		engine.meta
-			.read(store, &meta_key_for(&group), |view| match view {
-				StateView::Archived(meta) => GroupMeta::<DateTime>::archived_high_water_order(meta),
-				StateView::Native(meta) => meta.high_water.map(|c| c.to_order()),
-			})
-			.unwrap()
-			.flatten()
+		engine.meta.get(store, &meta_key_for(&group)).unwrap().and_then(|meta| meta.high_water_order())
 	}
 
 	#[test]
-	fn warmed_meta_high_water_advances_through_the_sealed_path() {
-		// A store-warmed GroupMeta must never materialize while batches only advance its high
-		// water: the load is a read() snapshot and the persist a sealed in-place write.
+	fn warmed_meta_high_water_advances_across_engine_restarts() {
+		// A bump applied by one engine must be visible to the next, or a restart replays late events.
 		let mut store = MockStore::default();
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let mut buckets: TumblingBuckets<u32, DateTime, i64> = BTreeMap::new();
@@ -1046,14 +1039,10 @@ mod tests {
 		buckets.insert((1u32, WindowSpan::new(at_millis(200), at_millis(201))), vec![AccumulatorEvent::Add(7)]);
 		apply_sums(&mut fresh, &mut store, buckets).unwrap();
 
-		let archived_resident = fresh
-			.meta
-			.read(&mut store, &meta_key_for(&1u32), |view| matches!(view, StateView::Archived(_)))
-			.unwrap();
 		assert_eq!(
-			archived_resident,
-			Some(true),
-			"the pending bump is sealed archived bytes, not a materialized value"
+			read_high_water(&mut fresh, &mut store, 1),
+			Some(200),
+			"the bump must be durable the moment it is applied"
 		);
 		fresh.flush(&mut store).unwrap();
 
@@ -1061,15 +1050,13 @@ mod tests {
 		assert_eq!(
 			read_high_water(&mut third, &mut store, 1),
 			Some(200),
-			"the sealed write round-trips through the store"
+			"the write round-trips through the store"
 		);
 	}
 
 	#[test]
-	fn persisted_none_meta_takes_the_native_fallback() {
-		// Legacy rows carry a none high water for retraction-only groups, and ArchivedOption cannot
-		// express none -> Some through a Seal, so the sealed persist must decline and the native
-		// fallback must still land the bump.
+	fn a_persisted_none_high_water_still_accepts_a_bump() {
+		// Retraction-only groups persist a none high water; refusing to advance it strands them.
 		let mut store = MockStore::default();
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		engine.meta
@@ -1093,7 +1080,7 @@ mod tests {
 		assert_eq!(
 			read_high_water(&mut third, &mut store, 1),
 			Some(100),
-			"the declined seal must land the bump via the native fallback"
+			"a none high water must advance to the first observed coordinate"
 		);
 	}
 }

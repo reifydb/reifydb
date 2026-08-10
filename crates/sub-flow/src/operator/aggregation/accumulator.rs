@@ -23,7 +23,6 @@ use reifydb_value::{
 		number::safe::{add::SafeAdd, div::SafeDiv, sub::SafeSub},
 	},
 };
-use rkyv::Archive;
 
 #[operator_state]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -60,10 +59,6 @@ impl Slot for WindowSlotKey {
 			timestamp: coord,
 			seq: 0,
 		}
-	}
-
-	fn archived_order_key(archived: &<Self as Archive>::Archived) -> DateTime {
-		DateTime::from_epoch_millis(archived.timestamp.to_epoch_millis() as u64).unwrap_or_default()
 	}
 }
 
@@ -691,7 +686,7 @@ fn finalize_compensated(accumulator: &Value, compensation: f64, seen_negative: b
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::row::operator::OperatorState;
+	use reifydb_codec::row::operator::{OperatorState, decode};
 	use reifydb_flow::window::span::WindowSpan;
 
 	use super::*;
@@ -701,19 +696,18 @@ mod tests {
 	}
 
 	#[test]
-	fn window_slot_key_archived_order_key_matches_the_owned_one() {
-		// The order key deliberately ignores seq, and the archived read must agree with the owned
-		// one or the meta sweep reclaims on a different ordering than the path that wrote it.
+	fn window_slot_key_order_key_survives_storage_and_ignores_seq() {
+		// A stored key that orders differently from the writer makes the sweep reclaim live groups.
 		let key = WindowSlotKey {
 			timestamp: DateTime::from_nanos(1_700_000_000_123_456_789),
 			seq: 7,
 		};
 		let bytes = key.encode_state(DateTime::EPOCH).unwrap();
-		let archived = WindowSlotKey::archived(&bytes).unwrap();
+		let restored = decode::<WindowSlotKey>(&bytes).unwrap();
 
-		assert_eq!(WindowSlotKey::archived_order_key(archived), key.order_key());
+		assert_eq!(restored.order_key(), key.order_key());
 		assert_eq!(
-			WindowSlotKey::archived_order_key(archived).to_order(),
+			restored.order_key().to_order(),
 			1_700_000_000_123,
 			"the order key is milliseconds; sub-millisecond detail must not reach it"
 		);
@@ -724,8 +718,8 @@ mod tests {
 		};
 		let other_bytes = same_millis_other_seq.encode_state(DateTime::EPOCH).unwrap();
 		assert_eq!(
-			WindowSlotKey::archived_order_key(WindowSlotKey::archived(&other_bytes).unwrap()),
-			WindowSlotKey::archived_order_key(archived),
+			decode::<WindowSlotKey>(&other_bytes).unwrap().order_key(),
+			restored.order_key(),
 			"seq must not leak into the order key"
 		);
 	}
@@ -782,8 +776,7 @@ mod tests {
 		add(&mut acc, 3, vec![i4(9), i4(9), i4(9), i4(9)]);
 
 		let bytes = acc.encode_state(DateTime::from_nanos(42)).unwrap();
-		let archived = RowAccumulator::archived(&bytes).unwrap();
-		let restored = RowAccumulator::materialize(archived).unwrap();
+		let restored = decode::<RowAccumulator>(&bytes).unwrap();
 
 		assert_eq!(restored.finalize(), acc.finalize());
 		assert_eq!(

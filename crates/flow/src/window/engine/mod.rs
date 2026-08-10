@@ -20,21 +20,17 @@ use reifydb_codec::{
 		encode_u64, encode_u64_asc,
 		encoded::{EncodedKey, EncodedKeyRange, IntoEncodedKey},
 	},
-	row::operator::OperatorState,
+	row::operator::{OperatorState, decode},
 };
 use reifydb_core::{
 	key::operator_state::{
 		GroupId, GroupStateKey, IntoGroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range,
 	},
 	metrics::heap::HeapSize,
-	state::{
-		cache::{StateCache, StateView},
-		store::StateStore,
-	},
+	state::{cache::StateCache, store::StateStore},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, value::row_number::RowNumber};
-use rkyv::{munge::munge, option::ArchivedOption, seal::Seal};
 use tracing::{debug, instrument};
 
 use crate::window::span::{Slot, WindowCoord, WindowSpan};
@@ -86,7 +82,7 @@ pub struct WindowResult<G, Coord, Output> {
 }
 
 /// The highest window start seen for a group, used to drop late events for already-closed windows.
-#[operator_state(seal)]
+#[operator_state]
 #[derive(Debug, Clone)]
 pub struct GroupMeta<K> {
 	pub high_water: Option<K>,
@@ -110,20 +106,12 @@ impl<K> HeapSize for GroupMeta<K> {
 /// engines. Callers sweep at the seal horizon, so a group below it has seen nothing since its own
 /// windows sealed and the late-event rejection this meta drives has nothing left to reject.
 pub(crate) trait MetaHighWater: OperatorState {
-	fn archived_high_water_order(archived: &Self::Archived) -> Option<u64>;
+	fn high_water_order(&self) -> Option<u64>;
 }
 
 impl<C: Slot> MetaHighWater for GroupMeta<C> {
-	fn archived_high_water_order(archived: &Self::Archived) -> Option<u64> {
-		archived.high_water.as_ref().map(|hw| C::archived_order_key(hw).to_order())
-	}
-}
-
-impl<C: Slot> GroupMeta<C> {
-	fn seal_bump(seal: Seal<'_, ArchivedGroupMeta<C>>, bumped: C) -> Option<()> {
-		munge!(let ArchivedGroupMeta { high_water } = seal);
-		let payload = ArchivedOption::as_seal(high_water)?;
-		C::seal_write(payload, bumped).then_some(())
+	fn high_water_order(&self) -> Option<u64> {
+		self.high_water.map(|hw| hw.order_key().to_order())
 	}
 }
 
@@ -166,13 +154,7 @@ where
 	S: StateStore,
 	C: Slot,
 {
-	let initial = meta
-		.read(store, key, |view| match view {
-			StateView::Archived(archived) => GroupMeta::<C>::archived_high_water_order(archived)
-				.map(|order| C::from_order_key(<C::Coord as WindowCoord>::from_order(order))),
-			StateView::Native(native) => native.high_water,
-		})?
-		.flatten();
+	let initial = meta.get(store, key)?.and_then(|meta| meta.high_water);
 	Ok(BatchMeta {
 		initial,
 		bumped: None,
@@ -193,16 +175,11 @@ where
 		let Some(bumped) = batch.bumped else {
 			continue;
 		};
-		meta.modify_in_place(
-			store,
-			&meta_key_for(&group),
-			|seal| GroupMeta::<C>::seal_bump(seal, bumped),
-			|native| {
-				if native.high_water.is_none_or(|hw| bumped > hw) {
-					native.high_water = Some(bumped);
-				}
-			},
-		)?;
+		meta.modify(store, &meta_key_for(&group), |native| {
+			if native.high_water.is_none_or(|hw| bumped > hw) {
+				native.high_water = Some(bumped);
+			}
+		})?;
 	}
 	Ok(())
 }
@@ -236,7 +213,7 @@ where
 	let mut stale: Vec<MetaKey> = Vec::new();
 	let mut min_surviving: Option<u64> = None;
 	store.state_range_visit(meta_range(), None, &mut |key, bytes| {
-		if let Some(hw) = M::archived_high_water_order(M::archived(&bytes)?) {
+		if let Some(hw) = decode::<M>(&bytes)?.high_water_order() {
 			if hw < threshold {
 				let Some(key) = decode_meta_key(key.as_encoded()) else {
 					return Ok(());
@@ -862,44 +839,38 @@ mod archived_projection_tests {
 
 	use super::*;
 
-	/// Projects the high water the way `sweep_stale_meta` does: encode, then read the archive
-	/// without ever materializing the value.
-	fn via_archive<M: MetaHighWater>(meta: &M) -> Option<u64> {
+	/// Projects the high water the way `sweep_stale_meta` does: encode, decode, then read it.
+	fn via_storage<M: MetaHighWater>(meta: &M) -> Option<u64> {
 		let bytes = meta.encode_state(DateTime::EPOCH).unwrap();
-		M::archived_high_water_order(M::archived(&bytes).unwrap())
+		decode::<M>(&bytes).unwrap().high_water_order()
 	}
 
 	#[test]
-	fn archived_high_water_yields_the_slot_order_key() {
-		// sweep_stale_meta reclaims purely on this projection, so a wrong order key silently drops
-		// a live group's meta or keeps dead meta forever. The expected values are spelled out
-		// rather than derived, so the archive is checked against meaning, not another implementation.
+	fn stored_high_water_yields_the_slot_order_key() {
+		// A wrong order key silently drops a live group's meta or keeps dead meta forever.
 		let millis = 1_700_000_000_123u64;
 		let datetime_meta = GroupMeta {
 			high_water: Some(DateTime::from_epoch_millis(millis).unwrap()),
 		};
 		assert_eq!(
-			via_archive(&datetime_meta),
+			via_storage(&datetime_meta),
 			Some(millis),
-			"DateTime orders by milliseconds, not by archived layout"
+			"DateTime orders by milliseconds, not by stored layout"
 		);
 
-		// Sub-millisecond detail is below the coordinate resolution and must not reach the order
-		// key. An archived read that kept nanoseconds would compare against a millisecond cutoff
-		// and sweep every live group on the first tick.
+		// Nanoseconds surviving into the order key would sweep every live group on the first tick.
 		let sub_milli = GroupMeta {
 			high_water: Some(DateTime::from_nanos(millis * 1_000_000 + 999_999)),
 		};
-		assert_eq!(via_archive(&sub_milli), Some(millis));
+		assert_eq!(via_storage(&sub_milli), Some(millis));
 	}
 
 	#[test]
-	fn a_group_that_never_advanced_projects_to_none_through_the_archive() {
-		// none must survive the archive as none. An accidental Some(0) compares below every
-		// threshold and makes the sweep reclaim meta for groups that simply have not seen an event.
+	fn a_group_that_never_advanced_projects_to_none_through_storage() {
+		// An accidental Some(0) compares below every threshold and reclaims meta for live groups.
 		let empty: GroupMeta<DateTime> = GroupMeta {
 			high_water: None,
 		};
-		assert_eq!(via_archive(&empty), None);
+		assert_eq!(via_storage(&empty), None);
 	}
 }

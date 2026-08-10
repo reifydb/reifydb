@@ -6,13 +6,7 @@ use std::fmt::Debug;
 use reifydb_codec::row::operator::ArchiveState;
 use reifydb_core::metrics::heap::HeapSize;
 use reifydb_macro::operator_state;
-use reifydb_value::value::{
-	date::Date,
-	datetime::{ArchivedDateTime, DateTime},
-	duration::Duration,
-	time::Time,
-};
-use rkyv::{Archive, seal::Seal};
+use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 use serde::{Deserialize, Serialize};
 
 pub trait WindowCoord: Copy + Ord + Debug {
@@ -89,13 +83,6 @@ pub trait Slot: Copy + Ord + Debug + ArchiveState {
 	fn order_key(&self) -> Self::Coord;
 
 	fn from_order_key(coord: Self::Coord) -> Self;
-
-	fn archived_order_key(archived: &<Self as Archive>::Archived) -> Self::Coord;
-
-	fn seal_write(archived: Seal<'_, <Self as Archive>::Archived>, value: Self) -> bool {
-		let _ = (archived, value);
-		false
-	}
 }
 
 pub trait IsZero {
@@ -146,15 +133,6 @@ impl Slot for DateTime {
 
 	fn from_order_key(coord: DateTime) -> Self {
 		coord
-	}
-
-	fn archived_order_key(archived: &<Self as Archive>::Archived) -> DateTime {
-		DateTime::from_epoch_millis(archived.to_epoch_millis() as u64).unwrap_or_default()
-	}
-
-	fn seal_write(archived: Seal<'_, <Self as Archive>::Archived>, value: Self) -> bool {
-		ArchivedDateTime::seal_write(archived, value);
-		true
 	}
 }
 
