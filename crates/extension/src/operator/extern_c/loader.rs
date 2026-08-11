@@ -24,7 +24,10 @@ use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::error::{Result as ExternCResult, SdkError};
 use reifydb_value::value::constraint::TypeConstraint;
 
-use crate::loader::extern_c::{LibraryCache, buffer_to_string, validate_api_version};
+use crate::loader::{
+	cache::LibraryCache,
+	extern_c::{buffer_to_string, validate_api_version},
+};
 
 static GLOBAL_EXTERN_C_OPERATOR_LOADER: OnceLock<RwLock<ExternCOperatorLoader>> = OnceLock::new();
 

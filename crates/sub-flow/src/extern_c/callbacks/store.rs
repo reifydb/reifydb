@@ -5,14 +5,14 @@ use std::{ops::Bound, ptr, slice::from_raw_parts};
 
 use reifydb_abi::{
 	constants::{
-		FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK,
+		EXTERN_C_END_OF_ITERATION, EXTERN_C_ERROR_ALLOC, EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_NULL_PTR, EXTERN_C_NOT_FOUND, EXTERN_C_OK,
 	},
-	context::{context::ContextFFI, iterators::StoreIteratorFFI},
-	data::buffer::BufferFFI,
+	context::{context::ExternCContext, iterators::ExternCStoreIterator},
+	data::buffer::ExternCBuffer,
 };
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::interface::store::MultiVersionBatch;
-use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
+use reifydb_extension::procedure::callbacks::extern_c::memory::{host_alloc, host_free};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::error::Error;
 
@@ -20,7 +20,7 @@ use super::{
 	marshal::{encoded_key, write_buffer},
 	store_iterator::{self, StoreIteratorHandle},
 };
-use crate::ffi::context::get_transaction_mut;
+use crate::extern_c::context::get_transaction_mut;
 
 #[repr(C)]
 struct StoreIteratorInternal {
@@ -29,18 +29,18 @@ struct StoreIteratorInternal {
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_store_get(
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	key_ptr: *const u8,
 	key_len: usize,
-	output: *mut BufferFFI,
+	output: *mut ExternCBuffer,
 ) -> i32 {
 	if ctx.is_null() || key_ptr.is_null() || output.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: `ctx`, `key_ptr` and `output` are null-checked above; the guest must pass back the
-	// ContextFFI the host handed it for this call, a `key_ptr` valid for `key_len` reads (discharging
-	// encoded_key), and an `output` valid for one BufferFFI write that it frees via memory.free.
+	// ExternCContext the host handed it for this call, a `key_ptr` valid for `key_len` reads (discharging
+	// encoded_key), and an `output` valid for one ExternCBuffer write that it frees via memory.free.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -49,25 +49,25 @@ pub(super) extern "C" fn host_store_get(
 
 		match flow_txn.get(&key) {
 			Ok(Some(value)) => write_buffer(output, value.as_slice()),
-			Ok(None) => FFI_NOT_FOUND,
-			Err(_) => FFI_ERROR_INTERNAL,
+			Ok(None) => EXTERN_C_NOT_FOUND,
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
 	}
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_store_contains_key(
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	key_ptr: *const u8,
 	key_len: usize,
 	result: *mut u8,
 ) -> i32 {
 	if ctx.is_null() || key_ptr.is_null() || result.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: `ctx`, `key_ptr` and `result` are null-checked above; the guest must pass back the
-	// ContextFFI the host handed it for this call, a `key_ptr` valid for `key_len` reads (discharging
+	// ExternCContext the host handed it for this call, a `key_ptr` valid for `key_len` reads (discharging
 	// encoded_key), and a `result` valid for one u8 write.
 	unsafe {
 		let ctx_handle = &mut *ctx;
@@ -82,25 +82,25 @@ pub(super) extern "C" fn host_store_contains_key(
 				} else {
 					0
 				};
-				FFI_OK
+				EXTERN_C_OK
 			}
-			Err(_) => FFI_ERROR_INTERNAL,
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
 	}
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_store_prefix(
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	prefix_ptr: *const u8,
 	prefix_len: usize,
-	iterator_out: *mut *mut StoreIteratorFFI,
+	iterator_out: *mut *mut ExternCStoreIterator,
 ) -> i32 {
 	if ctx.is_null() || iterator_out.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: `ctx` and `iterator_out` are null-checked above; the guest must pass back the ContextFFI
+	// SAFETY: `ctx` and `iterator_out` are null-checked above; the guest must pass back the ExternCContext
 	// the host handed it for this call, a `prefix_ptr` that is null or valid for `prefix_len` reads,
 	// and an `iterator_out` valid for one pointer write; the handle is freed via store.iterator_free.
 	unsafe {
@@ -123,7 +123,7 @@ pub(super) extern "C" fn host_store_prefix(
 					host_alloc(size_of::<StoreIteratorInternal>()) as *mut StoreIteratorInternal;
 				if iter_ptr.is_null() {
 					store_iterator::free_iterator(handle);
-					return FFI_ERROR_ALLOC;
+					return EXTERN_C_ERROR_ALLOC;
 				}
 
 				ptr::write(
@@ -133,10 +133,10 @@ pub(super) extern "C" fn host_store_prefix(
 					},
 				);
 
-				*iterator_out = iter_ptr as *mut StoreIteratorFFI;
-				FFI_OK
+				*iterator_out = iter_ptr as *mut ExternCStoreIterator;
+				EXTERN_C_OK
 			}
-			Err(_) => FFI_ERROR_INTERNAL,
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
 	}
 }
@@ -147,21 +147,21 @@ const BOUND_EXCLUDED: u8 = 2;
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_store_range(
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	start_ptr: *const u8,
 	start_len: usize,
 	start_bound_type: u8,
 	end_ptr: *const u8,
 	end_len: usize,
 	end_bound_type: u8,
-	iterator_out: *mut *mut StoreIteratorFFI,
+	iterator_out: *mut *mut ExternCStoreIterator,
 ) -> i32 {
 	if ctx.is_null() || iterator_out.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: `ctx` and `iterator_out` are null-checked above, and each bound pointer is null-checked
-	// on the arm that reads it; the guest must pass back the ContextFFI the host handed it for this
+	// on the arm that reads it; the guest must pass back the ExternCContext the host handed it for this
 	// call, bound pointers valid for their stated lengths, and an `iterator_out` valid for one pointer
 	// write; the handle is freed via store.iterator_free.
 	unsafe {
@@ -172,38 +172,38 @@ pub(super) extern "C" fn host_store_range(
 			BOUND_UNBOUNDED => Bound::Unbounded,
 			BOUND_INCLUDED => {
 				if start_ptr.is_null() {
-					return FFI_ERROR_NULL_PTR;
+					return EXTERN_C_ERROR_NULL_PTR;
 				}
 				let start_bytes = from_raw_parts(start_ptr, start_len).to_vec();
 				Bound::Included(EncodedKey::new(start_bytes))
 			}
 			BOUND_EXCLUDED => {
 				if start_ptr.is_null() {
-					return FFI_ERROR_NULL_PTR;
+					return EXTERN_C_ERROR_NULL_PTR;
 				}
 				let start_bytes = from_raw_parts(start_ptr, start_len).to_vec();
 				Bound::Excluded(EncodedKey::new(start_bytes))
 			}
-			_ => return FFI_ERROR_INTERNAL,
+			_ => return EXTERN_C_ERROR_INTERNAL,
 		};
 
 		let end_bound = match end_bound_type {
 			BOUND_UNBOUNDED => Bound::Unbounded,
 			BOUND_INCLUDED => {
 				if end_ptr.is_null() {
-					return FFI_ERROR_NULL_PTR;
+					return EXTERN_C_ERROR_NULL_PTR;
 				}
 				let end_bytes = from_raw_parts(end_ptr, end_len).to_vec();
 				Bound::Included(EncodedKey::new(end_bytes))
 			}
 			BOUND_EXCLUDED => {
 				if end_ptr.is_null() {
-					return FFI_ERROR_NULL_PTR;
+					return EXTERN_C_ERROR_NULL_PTR;
 				}
 				let end_bytes = from_raw_parts(end_ptr, end_len).to_vec();
 				Bound::Excluded(EncodedKey::new(end_bytes))
 			}
-			_ => return FFI_ERROR_INTERNAL,
+			_ => return EXTERN_C_ERROR_INTERNAL,
 		};
 
 		let range = EncodedKeyRange::new(start_bound, end_bound);
@@ -227,7 +227,7 @@ pub(super) extern "C" fn host_store_range(
 					host_alloc(size_of::<StoreIteratorInternal>()) as *mut StoreIteratorInternal;
 				if iter_ptr.is_null() {
 					store_iterator::free_iterator(handle);
-					return FFI_ERROR_ALLOC;
+					return EXTERN_C_ERROR_ALLOC;
 				}
 
 				ptr::write(
@@ -237,27 +237,27 @@ pub(super) extern "C" fn host_store_range(
 					},
 				);
 
-				*iterator_out = iter_ptr as *mut StoreIteratorFFI;
-				FFI_OK
+				*iterator_out = iter_ptr as *mut ExternCStoreIterator;
+				EXTERN_C_OK
 			}
-			Err(_) => FFI_ERROR_INTERNAL,
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
 	}
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_store_iterator_next(
-	iterator: *mut StoreIteratorFFI,
-	key_out: *mut BufferFFI,
-	value_out: *mut BufferFFI,
+	iterator: *mut ExternCStoreIterator,
+	key_out: *mut ExternCBuffer,
+	value_out: *mut ExternCBuffer,
 ) -> i32 {
 	if iterator.is_null() || key_out.is_null() || value_out.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
 	// SAFETY: all three pointers are null-checked above; `iterator` must be an unfreed handle this
 	// host handed out, so it is a live StoreIteratorInternal-shaped block at align 8, and `key_out`
-	// and `value_out` must be valid and aligned for one BufferFFI write each. On FFI_OK the guest owns
+	// and `value_out` must be valid and aligned for one ExternCBuffer write each. On EXTERN_C_OK the guest owns
 	// both buffers and must release them via memory.free with the reported lengths.
 	unsafe {
 		let iter_internal = iterator as *mut StoreIteratorInternal;
@@ -267,7 +267,7 @@ pub(super) extern "C" fn host_store_iterator_next(
 			Some((key, value)) => {
 				let key_ptr = host_alloc(key.len());
 				if key_ptr.is_null() {
-					return FFI_ERROR_ALLOC;
+					return EXTERN_C_ERROR_ALLOC;
 				}
 				ptr::copy_nonoverlapping(key.as_ptr(), key_ptr, key.len());
 				(*key_out).ptr = key_ptr;
@@ -277,22 +277,22 @@ pub(super) extern "C" fn host_store_iterator_next(
 				let value_ptr = host_alloc(value.len());
 				if value_ptr.is_null() {
 					host_free(key_ptr, key.len());
-					return FFI_ERROR_ALLOC;
+					return EXTERN_C_ERROR_ALLOC;
 				}
 				ptr::copy_nonoverlapping(value.as_ptr(), value_ptr, value.len());
 				(*value_out).ptr = value_ptr;
 				(*value_out).len = value.len();
 				(*value_out).cap = value.len();
 
-				FFI_OK
+				EXTERN_C_OK
 			}
-			None => FFI_END_OF_ITERATION,
+			None => EXTERN_C_END_OF_ITERATION,
 		}
 	}
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
-pub(super) extern "C" fn host_store_iterator_free(iterator: *mut StoreIteratorFFI) {
+pub(super) extern "C" fn host_store_iterator_free(iterator: *mut ExternCStoreIterator) {
 	if iterator.is_null() {
 		return;
 	}

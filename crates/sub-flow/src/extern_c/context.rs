@@ -3,19 +3,19 @@
 
 use core::ffi::c_void;
 
-use reifydb_abi::{callbacks::host::HostCallbacks, context::context::ContextFFI};
+use reifydb_abi::{callbacks::host::HostCallbacks, context::context::ExternCContext};
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_engine::vm::executor::Executor;
 use reifydb_flow::transaction::DepFlowTransaction;
 
-pub(crate) fn new_ffi_context(
+pub(crate) fn new_extern_c_context(
 	txn: &mut DepFlowTransaction,
 	executor: &Executor,
 	operator_id: OperatorId,
 	callbacks: HostCallbacks,
-) -> ContextFFI {
+) -> ExternCContext {
 	let written_at_nanos = txn.written_at().to_nanos();
-	ContextFFI {
+	ExternCContext {
 		txn_ptr: txn as *mut _ as *mut c_void,
 		executor_ptr: executor as *const _ as *const c_void,
 		operator_id: operator_id.0,
@@ -26,10 +26,10 @@ pub(crate) fn new_ffi_context(
 
 /// # Safety
 ///
-/// `ctx.txn_ptr` must be the pointer stored by [`new_ffi_context`] from a live
+/// `ctx.txn_ptr` must be the pointer stored by [`new_extern_c_context`] from a live
 /// `&mut FlowTransaction` that is still borrowed exclusively, so the returned
 /// reference is the only one aliasing it for its lifetime.
-pub(crate) unsafe fn get_transaction_mut(ctx: &mut ContextFFI) -> &mut DepFlowTransaction {
+pub(crate) unsafe fn get_transaction_mut(ctx: &mut ExternCContext) -> &mut DepFlowTransaction {
 	// SAFETY: discharges this function's own contract; `ctx.txn_ptr` is then a live, aligned
 	// FlowTransaction that nothing else aliases for the returned lifetime.
 	unsafe { &mut *(ctx.txn_ptr as *mut DepFlowTransaction) }

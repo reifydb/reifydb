@@ -18,7 +18,10 @@ use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::error::{Result as ExternCResult, SdkError};
 
 use super::ExternCProcedure;
-use crate::loader::extern_c::{LibraryCache, buffer_to_string, validate_api_version};
+use crate::loader::{
+	cache::LibraryCache,
+	extern_c::{buffer_to_string, validate_api_version},
+};
 
 static GLOBAL_EXTERN_C_PROCEDURE_LOADER: OnceLock<RwLock<ProcedureLoader>> = OnceLock::new();
 

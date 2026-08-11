@@ -4,33 +4,33 @@
 use std::{mem, ptr, slice::from_raw_parts};
 
 use reifydb_abi::{
-	catalog::row_shape::{RowShapeFFI, RowShapeFieldFFI},
-	constants::{FFI_ERROR_MARSHAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK},
-	context::context::ContextFFI,
-	data::buffer::BufferFFI,
+	catalog::row_shape::{ExternCRowShape, ExternCRowShapeField},
+	constants::{EXTERN_C_ERROR_MARSHAL, EXTERN_C_ERROR_NULL_PTR, EXTERN_C_NOT_FOUND, EXTERN_C_OK},
+	context::context::ExternCContext,
+	data::buffer::ExternCBuffer,
 };
 use reifydb_codec::{
 	row::shape::{RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 	tag::type_tag_byte,
 };
-use reifydb_extension::procedure::ffi_callbacks::memory::{host_alloc, host_free};
+use reifydb_extension::procedure::callbacks::extern_c::memory::{host_alloc, host_free};
 use reifydb_value::value::constraint::{Constraint, TypeConstraint};
 
-use crate::ffi::context::get_transaction_mut;
+use crate::extern_c::context::get_transaction_mut;
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_catalog_find_row_shape(
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	fingerprint: u64,
-	output: *mut RowShapeFFI,
+	output: *mut ExternCRowShape,
 ) -> i32 {
 	if ctx.is_null() || output.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: `ctx` and `output` are null-checked above; the guest must pass back the ContextFFI the
+	// SAFETY: `ctx` and `output` are null-checked above; the guest must pass back the ExternCContext the
 	// host handed it for this call (discharging get_transaction_mut) and an `output` valid and
-	// aligned for one RowShapeFFI write.
+	// aligned for one ExternCRowShape write.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let flow_txn = get_transaction_mut(ctx_handle);
@@ -42,24 +42,24 @@ pub(super) extern "C" fn host_catalog_find_row_shape(
 			Some(shape) => match marshal_row_shape(&shape) {
 				Ok(shape_ffi) => {
 					*output = shape_ffi;
-					FFI_OK
+					EXTERN_C_OK
 				}
-				Err(_) => FFI_ERROR_MARSHAL,
+				Err(_) => EXTERN_C_ERROR_MARSHAL,
 			},
-			None => FFI_NOT_FOUND,
+			None => EXTERN_C_NOT_FOUND,
 		}
 	}
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
-pub(super) extern "C" fn host_catalog_free_row_shape(row_shape: *mut RowShapeFFI) {
+pub(super) extern "C" fn host_catalog_free_row_shape(row_shape: *mut ExternCRowShape) {
 	if row_shape.is_null() {
 		return;
 	}
 
 	// SAFETY: `row_shape` is null-checked above and must point to a readable, not-yet-freed
-	// RowShapeFFI that marshal_row_shape produced and the guest left unmodified, so `fields` holds
-	// `field_count` initialised RowShapeFieldFFI and every pointer/size pair below is exactly the
+	// ExternCRowShape that marshal_row_shape produced and the guest left unmodified, so `fields` holds
+	// `field_count` initialised ExternCRowShapeField and every pointer/size pair below is exactly the
 	// host_alloc block and its size (discharges host_free).
 	unsafe {
 		let shape = &*row_shape;
@@ -72,16 +72,16 @@ pub(super) extern "C" fn host_catalog_free_row_shape(row_shape: *mut RowShapeFFI
 				}
 			}
 
-			host_free(shape.fields as *mut u8, shape.field_count * mem::size_of::<RowShapeFieldFFI>());
+			host_free(shape.fields as *mut u8, shape.field_count * mem::size_of::<ExternCRowShapeField>());
 		}
 	}
 }
 
-fn marshal_row_shape(shape: &RowShape) -> Result<RowShapeFFI, &'static str> {
+fn marshal_row_shape(shape: &RowShape) -> Result<ExternCRowShape, &'static str> {
 	let field_count = shape.fields().len();
 	let fields_ptr = if field_count > 0 {
-		let size = field_count * mem::size_of::<RowShapeFieldFFI>();
-		let ptr = host_alloc(size) as *mut RowShapeFieldFFI;
+		let size = field_count * mem::size_of::<ExternCRowShapeField>();
+		let ptr = host_alloc(size) as *mut ExternCRowShapeField;
 		if ptr.is_null() {
 			return Err("Failed to allocate row shape fields array");
 		}
@@ -89,8 +89,8 @@ fn marshal_row_shape(shape: &RowShape) -> Result<RowShapeFFI, &'static str> {
 		for (i, field) in shape.fields().iter().enumerate() {
 			match marshal_row_shape_field(field) {
 				// SAFETY: `ptr` is the non-null host_alloc block of `size` bytes above, so it holds
-				// `field_count` slots at align 8 >= align_of::<RowShapeFieldFFI>(), and `i` is below
-				// that count; RowShapeFieldFFI is Copy, so the write drops nothing uninitialised.
+				// `field_count` slots at align 8 >= align_of::<ExternCRowShapeField>(), and `i` is below
+				// that count; ExternCRowShapeField is Copy, so the write drops nothing uninitialised.
 				Ok(field_ffi) => unsafe {
 					*ptr.add(i) = field_ffi;
 				},
@@ -121,7 +121,7 @@ fn marshal_row_shape(shape: &RowShape) -> Result<RowShapeFFI, &'static str> {
 		ptr::null_mut()
 	};
 
-	Ok(RowShapeFFI {
+	Ok(ExternCRowShape {
 		fingerprint: shape.fingerprint().as_u64(),
 		family: shape.family() as u8,
 		fields: fields_ptr,
@@ -129,7 +129,7 @@ fn marshal_row_shape(shape: &RowShape) -> Result<RowShapeFFI, &'static str> {
 	})
 }
 
-fn marshal_row_shape_field(field: &RowShapeField) -> Result<RowShapeFieldFFI, &'static str> {
+fn marshal_row_shape_field(field: &RowShapeField) -> Result<ExternCRowShapeField, &'static str> {
 	let name_bytes = field.name.as_bytes();
 	let name_ptr = host_alloc(name_bytes.len());
 	if name_ptr.is_null() && !name_bytes.is_empty() {
@@ -146,8 +146,8 @@ fn marshal_row_shape_field(field: &RowShapeField) -> Result<RowShapeFieldFFI, &'
 
 	let (base_type, constraint_type, param1, param2) = encode_type_constraint(&field.constraint);
 
-	Ok(RowShapeFieldFFI {
-		name: BufferFFI {
+	Ok(ExternCRowShapeField {
+		name: ExternCBuffer {
 			ptr: name_ptr,
 			len: name_bytes.len(),
 			cap: name_bytes.len(),
@@ -213,7 +213,7 @@ mod tests {
 			.iter()
 			.map(|f| {
 				// SAFETY: each marshalled name is a host allocation of `len` bytes owned by
-				// the same still-live RowShapeFFI.
+				// the same still-live ExternCRowShape.
 				let bytes = unsafe { from_raw_parts(f.name.ptr, f.name.len) };
 				from_utf8(bytes).expect("marshalled names must be valid UTF-8")
 			})
@@ -232,6 +232,6 @@ mod tests {
 		// Freeing here surfaces a crash on well-formed marshal output rather than leaking into
 		// other tests' allocations.
 		let mut ffi_mut = ffi;
-		host_catalog_free_row_shape(&mut ffi_mut as *mut RowShapeFFI);
+		host_catalog_free_row_shape(&mut ffi_mut as *mut ExternCRowShape);
 	}
 }

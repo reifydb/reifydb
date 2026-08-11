@@ -667,10 +667,10 @@ impl FlowEngineInner {
 			{
 				let parent = self.parent(first_input(inputs)?)?;
 
-				let inner = if self.is_native_operator(operator.as_str()) {
-					self.create_native_operator(operator.as_str(), operator_id, &cfg)?
-				} else if self.is_ffi_operator(operator.as_str()) {
-					self.create_ffi_operator(operator.as_str(), operator_id, &config)?
+				let inner = if self.is_extern_rust_operator(operator.as_str()) {
+					self.create_extern_rust_operator(operator.as_str(), operator_id, &cfg)?
+				} else if self.is_extern_c_operator(operator.as_str()) {
+					self.create_extern_c_operator(operator.as_str(), operator_id, &config)?
 				} else {
 					return Err(Error::from(FlowGraphError::UnknownOperator {
 						operator: operator.to_string(),

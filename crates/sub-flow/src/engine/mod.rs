@@ -26,7 +26,7 @@ use reifydb_core::{
 };
 use reifydb_engine::vm::executor::Executor;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use reifydb_extension::operator::ffi_loader::ffi_operator_loader;
+use reifydb_extension::operator::extern_c::loader::extern_c_operator_loader;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_flow::error::FlowStateError;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
@@ -51,11 +51,11 @@ use tracing::instrument;
 
 use crate::builder::CustomOperators;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use crate::error::NativeOperatorError;
+use crate::error::ExternOperatorError;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use crate::operator::ffi::FFIOperatorHandle;
+use crate::operator::extern_c::ExternCOperatorHandle;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use crate::operator::native::native_operator_loader;
+use crate::operator::extern_rust::extern_rust_operator_loader;
 
 pub struct FlowEngineInner {
 	pub(crate) catalog: Catalog,
@@ -194,14 +194,14 @@ impl FlowEngineInner {
 	}
 
 	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-	#[instrument(name = "flow::engine::create_ffi_operator", level = "debug", skip(self, config), fields(operator = %operator, operator_id = ?operator_id))]
-	pub(crate) fn create_ffi_operator(
+	#[instrument(name = "flow::engine::create_extern_c_operator", level = "debug", skip(self, config), fields(operator = %operator, operator_id = ?operator_id))]
+	pub(crate) fn create_extern_c_operator(
 		&self,
 		operator: &str,
 		operator_id: OperatorId,
 		config: &BTreeMap<String, Value>,
 	) -> Result<BoxedOperator> {
-		let loader = ffi_operator_loader();
+		let loader = extern_c_operator_loader();
 		let mut loader_write = loader.write();
 
 		let config_params =
@@ -217,43 +217,43 @@ impl FlowEngineInner {
 		let (descriptor, instance) = match created {
 			Ok(created) => created,
 			Err(e) => {
-				return Err(Error::from(NativeOperatorError::CreateFailed {
+				return Err(Error::from(ExternOperatorError::CreateFailed {
 					cause: format!("{:?}", e),
 				}));
 			}
 		};
 
-		Ok(Box::new(FFIOperatorHandle::new(descriptor, instance, operator_id, self.executor.clone())))
+		Ok(Box::new(ExternCOperatorHandle::new(descriptor, instance, operator_id, self.executor.clone())))
 	}
 
 	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-	pub(crate) fn is_ffi_operator(&self, operator: &str) -> bool {
-		let loader = ffi_operator_loader();
+	pub(crate) fn is_extern_c_operator(&self, operator: &str) -> bool {
+		let loader = extern_c_operator_loader();
 		let loader_read = loader.read();
 		loader_read.has_operator(operator)
 	}
 
 	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-	#[instrument(name = "flow::engine::create_native_operator", level = "debug", skip(self, config), fields(operator = %operator, operator_id = ?operator_id))]
-	pub(crate) fn create_native_operator(
+	#[instrument(name = "flow::engine::create_extern_rust_operator", level = "debug", skip(self, config), fields(operator = %operator, operator_id = ?operator_id))]
+	pub(crate) fn create_extern_rust_operator(
 		&self,
 		operator: &str,
 		operator_id: OperatorId,
 		config: &Config,
 	) -> Result<BoxedOperator> {
-		let loader = native_operator_loader();
+		let loader = extern_rust_operator_loader();
 		let mut loader_write = loader.write();
 		loader_write.create_operator_by_name(operator, operator_id, config)
 	}
 
 	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-	pub(crate) fn is_native_operator(&self, operator: &str) -> bool {
-		native_operator_loader().read().has_operator(operator)
+	pub(crate) fn is_extern_rust_operator(&self, operator: &str) -> bool {
+		extern_rust_operator_loader().read().has_operator(operator)
 	}
 
 	#[cfg(not(all(reifydb_target = "host", not(reifydb_dst))))]
 	#[allow(dead_code)]
-	pub(crate) fn is_ffi_operator(&self, _operator: &str) -> bool {
+	pub(crate) fn is_extern_c_operator(&self, _operator: &str) -> bool {
 		false
 	}
 

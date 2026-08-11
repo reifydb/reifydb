@@ -7,10 +7,9 @@ use reifydb_abi::callbacks::{
 	store::StoreCallbacks,
 };
 use reifydb_extension::{
-	callbacks::builder,
-	procedure::ffi_callbacks::{logging, memory},
+	callbacks::extern_c::builder,
+	procedure::callbacks::extern_c::{logging, memory},
 };
-use reifydb_extension::procedure::callbacks::extern_c::logging;
 
 pub mod catalog;
 pub mod dictionary;

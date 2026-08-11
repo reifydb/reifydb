@@ -21,6 +21,6 @@ pub mod engine;
 pub mod error;
 pub mod execution;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-pub(crate) mod ffi;
+pub(crate) mod extern_c;
 pub mod operator;
 pub mod subsystem;

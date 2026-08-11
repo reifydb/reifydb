@@ -37,61 +37,61 @@ impl From<FlowLoadError> for Error {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum NativeOperatorError {
-	#[error("native operator ABI tag mismatch: plugin {plugin:#06x}, host {host:#06x}")]
+pub enum ExternOperatorError {
+	#[error("extern operator ABI tag mismatch: plugin {plugin:#06x}, host {host:#06x}")]
 	AbiTagMismatch {
 		plugin: u32,
 		host: u32,
 	},
 
-	#[error("native operator library not loaded: {path}")]
+	#[error("extern operator library not loaded: {path}")]
 	LibraryNotLoaded {
 		path: String,
 	},
 
-	#[error("native operator symbol '{symbol}' not found: {cause}")]
+	#[error("extern operator symbol '{symbol}' not found: {cause}")]
 	SymbolNotFound {
 		symbol: &'static str,
 		cause: String,
 	},
 
-	#[error("native operator '{operator}' not found")]
+	#[error("extern operator '{operator}' not found")]
 	OperatorNotFound {
 		operator: String,
 	},
 
-	#[error("failed to create native/FFI operator: {cause}")]
+	#[error("failed to create extern operator: {cause}")]
 	CreateFailed {
 		cause: String,
 	},
 }
 
-impl IntoDiagnostic for NativeOperatorError {
+impl IntoDiagnostic for ExternOperatorError {
 	fn into_diagnostic(self) -> Diagnostic {
 		match self {
-			NativeOperatorError::AbiTagMismatch {
+			ExternOperatorError::AbiTagMismatch {
 				plugin,
 				host,
 			} => native_abi_tag_mismatch(plugin, host),
-			NativeOperatorError::LibraryNotLoaded {
+			ExternOperatorError::LibraryNotLoaded {
 				path,
 			} => native_library_not_loaded(&path),
-			NativeOperatorError::SymbolNotFound {
+			ExternOperatorError::SymbolNotFound {
 				symbol,
 				cause,
 			} => native_symbol_not_found(symbol, cause),
-			NativeOperatorError::OperatorNotFound {
+			ExternOperatorError::OperatorNotFound {
 				operator,
 			} => native_operator_not_found(&operator),
-			NativeOperatorError::CreateFailed {
+			ExternOperatorError::CreateFailed {
 				cause,
 			} => native_create_failed(cause),
 		}
 	}
 }
 
-impl From<NativeOperatorError> for Error {
-	fn from(err: NativeOperatorError) -> Self {
+impl From<ExternOperatorError> for Error {
+	fn from(err: ExternOperatorError) -> Self {
 		Error(Box::new(err.into_diagnostic()))
 	}
 }

@@ -9,14 +9,14 @@ use std::{collections::HashMap, sync::Arc};
 use reifydb_sdk::{
 	config::Config,
 	connector::{
-		sink::{FFISink, FFISinkMetadata},
-		source::{FFISource, FFISourceMetadata},
+		sink::{InProcessSink, InProcessSinkMetadata},
+		source::{InProcessSource, InProcessSourceMetadata},
 	},
 	error::{Result as SdkResult, SdkError},
 };
 
-type SourceFactory = Arc<dyn Fn(&Config) -> SdkResult<Box<dyn FFISource>> + Send + Sync>;
-type SinkFactory = Arc<dyn Fn(&Config) -> SdkResult<Box<dyn FFISink>> + Send + Sync>;
+type SourceFactory = Arc<dyn Fn(&Config) -> SdkResult<Box<dyn InProcessSource>> + Send + Sync>;
+type SinkFactory = Arc<dyn Fn(&Config) -> SdkResult<Box<dyn InProcessSink>> + Send + Sync>;
 
 pub struct ConnectorRegistry {
 	sources: HashMap<String, SourceFactory>,
@@ -31,29 +31,29 @@ impl ConnectorRegistry {
 		}
 	}
 
-	pub fn register_source<S: FFISource + FFISourceMetadata>(&mut self) {
+	pub fn register_source<S: InProcessSource + InProcessSourceMetadata>(&mut self) {
 		let name = S::NAME.to_string();
 		self.sources.insert(
 			name,
 			Arc::new(|config: &Config| {
 				let source = S::new(config)?;
-				Ok(Box::new(source) as Box<dyn FFISource>)
+				Ok(Box::new(source) as Box<dyn InProcessSource>)
 			}),
 		);
 	}
 
-	pub fn register_sink<S: FFISink + FFISinkMetadata>(&mut self) {
+	pub fn register_sink<S: InProcessSink + InProcessSinkMetadata>(&mut self) {
 		let name = S::NAME.to_string();
 		self.sinks.insert(
 			name,
 			Arc::new(|config: &Config| {
 				let sink = S::new(config)?;
-				Ok(Box::new(sink) as Box<dyn FFISink>)
+				Ok(Box::new(sink) as Box<dyn InProcessSink>)
 			}),
 		);
 	}
 
-	pub fn create_source(&self, name: &str, config: &Config) -> SdkResult<Box<dyn FFISource>> {
+	pub fn create_source(&self, name: &str, config: &Config) -> SdkResult<Box<dyn InProcessSource>> {
 		let factory = self
 			.sources
 			.get(name)
@@ -61,7 +61,7 @@ impl ConnectorRegistry {
 		factory(config)
 	}
 
-	pub fn create_sink(&self, name: &str, config: &Config) -> SdkResult<Box<dyn FFISink>> {
+	pub fn create_sink(&self, name: &str, config: &Config) -> SdkResult<Box<dyn InProcessSink>> {
 		let factory = self
 			.sinks
 			.get(name)
@@ -99,7 +99,7 @@ mod tests {
 
 	struct MockSource;
 
-	impl FFISourceMetadata for MockSource {
+	impl InProcessSourceMetadata for MockSource {
 		const NAME: &'static str = "mock";
 		const VERSION: &'static str = "0.1.0";
 		const DESCRIPTION: &'static str = "Mock source for testing";
@@ -107,7 +107,7 @@ mod tests {
 		const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	}
 
-	impl FFISource for MockSource {
+	impl InProcessSource for MockSource {
 		fn new(_config: &Config) -> Result<Self> {
 			Ok(MockSource)
 		}
@@ -127,14 +127,14 @@ mod tests {
 
 	struct MockSink;
 
-	impl FFISinkMetadata for MockSink {
+	impl InProcessSinkMetadata for MockSink {
 		const NAME: &'static str = "mock";
 		const VERSION: &'static str = "0.1.0";
 		const DESCRIPTION: &'static str = "Mock sink for testing";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
 	}
 
-	impl FFISink for MockSink {
+	impl InProcessSink for MockSink {
 		fn new(_config: &Config) -> Result<Self> {
 			Ok(MockSink)
 		}

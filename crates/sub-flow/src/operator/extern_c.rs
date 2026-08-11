@@ -12,14 +12,14 @@ use std::{
 
 use reifydb_abi::{
 	callbacks::builder::EmitDiffKind,
-	constants::{FFI_OK, FFI_SAMPLE_NO_DATA},
-	context::context::ContextFFI,
-	data::state::StateUsageFFI,
-	flow::change::ChangeFFI,
+	constants::{EXTERN_C_OK, EXTERN_C_SAMPLE_NO_DATA},
+	context::context::ExternCContext,
+	data::state::ExternCStateUsage,
+	flow::change::ExternCChange,
 	operator::{
 		capabilities::{OperatorCapability, from_bitmask},
-		descriptor::OperatorDescriptorFFI,
-		vtable::OperatorVTableFFI,
+		descriptor::ExternCOperatorDescriptor,
+		vtable::ExternCOperatorVTable,
 	},
 };
 use reifydb_core::{
@@ -32,13 +32,13 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::vm::executor::Executor;
-use reifydb_extension::callbacks::builder::{BuilderRegistry, with_registry};
+use reifydb_extension::callbacks::extern_c::builder::{BuilderRegistry, with_registry};
 use reifydb_flow::{
 	operator::{Operator, scale_from_millis},
 	timer::Timer,
 	transaction::{DepFlowTransaction, slot::PersistFn},
 };
-use reifydb_sdk::{error::SdkError, ffi::arena::Arena};
+use reifydb_sdk::{error::SdkError, extern_c::arena::Arena};
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
@@ -47,10 +47,10 @@ use reifydb_value::{
 };
 use tracing::{Span, error, field, instrument};
 
-use crate::ffi::{callbacks::create_host_callbacks, context::new_ffi_context};
+use crate::extern_c::{callbacks::create_host_callbacks, context::new_extern_c_context};
 
 thread_local! {
-	static FFI_MARSHAL_ARENA: UnsafeCell<Arena> = UnsafeCell::new(Arena::new());
+	static EXTERN_C_MARSHAL_ARENA: UnsafeCell<Arena> = UnsafeCell::new(Arena::new());
 }
 
 #[derive(Clone, Copy)]
@@ -58,10 +58,10 @@ struct SendableInstance(*mut c_void);
 unsafe impl Send for SendableInstance {}
 unsafe impl Sync for SendableInstance {}
 
-pub struct FFIOperatorHandle {
+pub struct ExternCOperatorHandle {
 	capabilities: Box<[OperatorCapability]>,
 
-	vtable: OperatorVTableFFI,
+	vtable: ExternCOperatorVTable,
 
 	instance: *mut c_void,
 
@@ -73,12 +73,12 @@ pub struct FFIOperatorHandle {
 
 	last_registered_txn: Cell<u64>,
 
-	cached_ctx: UnsafeCell<ContextFFI>,
+	cached_ctx: UnsafeCell<ExternCContext>,
 }
 
-impl FFIOperatorHandle {
+impl ExternCOperatorHandle {
 	pub fn new(
-		descriptor: OperatorDescriptorFFI,
+		descriptor: ExternCOperatorDescriptor,
 		instance: *mut c_void,
 		operator_id: OperatorId,
 		executor: Executor,
@@ -94,7 +94,7 @@ impl FFIOperatorHandle {
 			executor,
 			builder_registry: BuilderRegistry::new(),
 			last_registered_txn: Cell::new(u64::MAX),
-			cached_ctx: UnsafeCell::new(ContextFFI {
+			cached_ctx: UnsafeCell::new(ExternCContext {
 				txn_ptr: ptr::null_mut(),
 				executor_ptr: ptr::null(),
 				operator_id: operator_id.0,
@@ -120,10 +120,10 @@ impl FFIOperatorHandle {
 	}
 }
 
-// SAFETY: FFIOperatorHandle is only accessed from a single actor at a time.
-unsafe impl Send for FFIOperatorHandle {}
+// SAFETY: ExternCOperatorHandle is only accessed from a single actor at a time.
+unsafe impl Send for ExternCOperatorHandle {}
 
-impl Drop for FFIOperatorHandle {
+impl Drop for ExternCOperatorHandle {
 	fn drop(&mut self) {
 		if !self.instance.is_null() {
 			unsafe { (self.vtable.destroy)(self.instance) };
@@ -132,24 +132,24 @@ impl Drop for FFIOperatorHandle {
 }
 
 #[inline]
-#[instrument(name = "flow::ffi::marshal", level = "trace", skip_all)]
-fn marshal_input(arena: &mut Arena, change: &Change) -> ChangeFFI {
+#[instrument(name = "flow::extern_c::marshal", level = "trace", skip_all)]
+fn marshal_input(arena: &mut Arena, change: &Change) -> ExternCChange {
 	arena.marshal_change(change)
 }
 
 #[inline]
-#[instrument(name = "flow::ffi::vtable_call", level = "trace", skip_all, fields(operator_id = operator_id.0))]
+#[instrument(name = "flow::extern_c::vtable_call", level = "trace", skip_all, fields(operator_id = operator_id.0))]
 fn call_vtable(
-	vtable: &OperatorVTableFFI,
+	vtable: &ExternCOperatorVTable,
 	instance: *mut c_void,
-	ffi_ctx_ptr: *mut ContextFFI,
-	ffi_input: &ChangeFFI,
+	extern_c_ctx_ptr: *mut ExternCContext,
+	extern_c_input: &ExternCChange,
 	operator_id: OperatorId,
 ) -> i32 {
 	// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
-	// FFIOperatorHandle::drop calls destroy; ffi_ctx_ptr and ffi_input point at caller-owned values that outlive
+	// ExternCOperatorHandle::drop calls destroy; extern_c_ctx_ptr and extern_c_input point at caller-owned values that outlive
 	// the call, and the host holds no Rust borrow of either while the guest runs.
-	let result = catch_unwind(AssertUnwindSafe(|| unsafe { (vtable.apply)(instance, ffi_ctx_ptr, ffi_input) }));
+	let result = catch_unwind(AssertUnwindSafe(|| unsafe { (vtable.apply)(instance, extern_c_ctx_ptr, extern_c_input) }));
 
 	match result {
 		Ok(code) => code,
@@ -161,7 +161,7 @@ fn call_vtable(
 			} else {
 				"Unknown panic".to_string()
 			};
-			error!(operator_id = operator_id.0, "FFI operator panicked during apply: {}", msg);
+			error!(operator_id = operator_id.0, "extern-C operator panicked during apply: {}", msg);
 			abort();
 		}
 	}
@@ -170,7 +170,7 @@ fn call_vtable(
 fn ensure_flush_slot(
 	txn: &mut DepFlowTransaction,
 	operator_id: OperatorId,
-	vtable: OperatorVTableFFI,
+	vtable: ExternCOperatorVTable,
 	instance: *mut c_void,
 	executor: Executor,
 ) -> Result<()> {
@@ -181,25 +181,25 @@ fn ensure_flush_slot(
 		let captured_executor = executor;
 		let captured_id = operator_id;
 		let persist: PersistFn = Box::new(move |txn, _value: Box<dyn Any>| {
-			let ffi_ctx = new_ffi_context(txn, &captured_executor, captured_id, create_host_callbacks());
-			let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut ContextFFI;
+			let extern_c_ctx = new_extern_c_context(txn, &captured_executor, captured_id, create_host_callbacks());
+			let extern_c_ctx_ptr = &extern_c_ctx as *const _ as *mut ExternCContext;
 			let inst = captured_instance;
-			let mut usage = StateUsageFFI::default();
+			let mut usage = ExternCStateUsage::default();
 			// SAFETY: captured_vtable and inst.0 come from the loaded operator's descriptor and the
-			// operator outlives the transaction running this persist closure; ffi_ctx and usage are
+			// operator outlives the transaction running this persist closure; extern_c_ctx and usage are
 			// locals that stay alive for the call with no Rust borrow of them live during it.
 			let result = catch_unwind(AssertUnwindSafe(|| unsafe {
-				(captured_vtable.flush_state)(inst.0, ffi_ctx_ptr, &mut usage)
+				(captured_vtable.flush_state)(inst.0, extern_c_ctx_ptr, &mut usage)
 			}));
 			match result {
-				Ok(FFI_OK) | Ok(FFI_SAMPLE_NO_DATA) => Ok(()),
+				Ok(EXTERN_C_OK) | Ok(EXTERN_C_SAMPLE_NO_DATA) => Ok(()),
 				Ok(code) => Err(SdkError::Other(format!(
-					"FFI operator flush_state failed with code: {}",
+					"extern-C operator flush_state failed with code: {}",
 					code
 				))
 				.into()),
 				Err(_) => {
-					error!(operator_id = captured_id.0, "FFI operator panicked during flush_state");
+					error!(operator_id = captured_id.0, "extern-C operator panicked during flush_state");
 					abort();
 				}
 			}
@@ -211,7 +211,7 @@ fn ensure_flush_slot(
 	Ok(())
 }
 
-impl Operator for FFIOperatorHandle {
+impl Operator for ExternCOperatorHandle {
 	fn id(&self) -> OperatorId {
 		self.operator_id
 	}
@@ -226,7 +226,7 @@ impl Operator for FFIOperatorHandle {
 		scale_from_millis(Some(unsafe { (self.vtable.seal_after_ms)(self.instance) }))
 	}
 
-	#[instrument(name = "flow::ffi::apply", level = "trace", skip_all, fields(
+	#[instrument(name = "flow::extern_c::apply", level = "trace", skip_all, fields(
 		operator_id = self.operator_id.0,
 		input_diff_count = change.diffs.len(),
 		output_diff_count = field::Empty
@@ -236,22 +236,22 @@ impl Operator for FFIOperatorHandle {
 
 		// SAFETY: the arena is thread-local and the previous apply's guest call has returned, so
 		// no pointer into it is still live when it is cleared and re-borrowed.
-		FFI_MARSHAL_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
-		let ffi_input = FFI_MARSHAL_ARENA.with(|cell| marshal_input(unsafe { &mut *cell.get() }, &change));
+		EXTERN_C_MARSHAL_ARENA.with(|cell| unsafe { (*cell.get()).clear() });
+		let extern_c_input = EXTERN_C_MARSHAL_ARENA.with(|cell| marshal_input(unsafe { &mut *cell.get() }, &change));
 
 		let version = change.version;
 		let changed_at = change.changed_at;
 
-		let ffi_ctx_ptr = self.cached_ctx.get();
+		let extern_c_ctx_ptr = self.cached_ctx.get();
 
 		let result_code = with_registry(&self.builder_registry, || {
-			call_vtable(&self.vtable, self.instance, ffi_ctx_ptr, &ffi_input, self.operator_id)
+			call_vtable(&self.vtable, self.instance, extern_c_ctx_ptr, &extern_c_input, self.operator_id)
 		});
 
 		if result_code != 0 {
 			let _ = self.builder_registry.drain();
 			return Err(
-				SdkError::Other(format!("FFI operator apply failed with code: {}", result_code)).into()
+				SdkError::Other(format!("extern-C operator apply failed with code: {}", result_code)).into()
 			);
 		}
 
@@ -262,7 +262,7 @@ impl Operator for FFIOperatorHandle {
 		Ok(output_change)
 	}
 
-	#[instrument(name = "flow::ffi::on_timer", level = "trace", skip_all, fields(
+	#[instrument(name = "flow::extern_c::on_timer", level = "trace", skip_all, fields(
 		operator_id = self.operator_id.0,
 		output_diff_count = field::Empty
 	))]
@@ -271,15 +271,15 @@ impl Operator for FFIOperatorHandle {
 
 		let version = txn.version();
 		let key = timer.key.as_ref();
-		let ffi_ctx_ptr = self.cached_ctx.get();
+		let extern_c_ctx_ptr = self.cached_ctx.get();
 
 		// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
-		// Drop calls destroy; ffi_ctx_ptr is this operator's cached ContextFFI with no Rust borrow of it
+		// Drop calls destroy; extern_c_ctx_ptr is this operator's cached ExternCContext with no Rust borrow of it
 		// live during the call, and key's ptr/len describe a slice of `timer`, which outlives the call.
 		let result_code = self.invoke_under_panic_guard("on_timer", || unsafe {
 			(self.vtable.on_timer)(
 				self.instance,
-				ffi_ctx_ptr,
+				extern_c_ctx_ptr,
 				timer.at.to_millis(),
 				timer.kind as u8,
 				key.as_ptr(),
@@ -290,7 +290,7 @@ impl Operator for FFIOperatorHandle {
 		if result_code < 0 {
 			let _ = self.builder_registry.drain();
 			return Err(SdkError::Other(format!(
-				"FFI operator on_timer failed with code: {}",
+				"extern-C operator on_timer failed with code: {}",
 				result_code
 			))
 			.into());
@@ -305,16 +305,16 @@ impl Operator for FFIOperatorHandle {
 	}
 
 	fn sample(&self) -> Option<OperatorSample> {
-		let mut usage = StateUsageFFI::default();
+		let mut usage = ExternCStateUsage::default();
 		// SAFETY: vtable and instance come from the descriptor of the loaded operator and stay valid until
 		// Drop calls destroy; `usage` is an initialised local, exclusively borrowed for the call.
 		match unsafe { (self.vtable.sample)(self.instance, &mut usage) } {
-			FFI_OK => Some(sample_from_usage(&usage)),
-			FFI_SAMPLE_NO_DATA => None,
+			EXTERN_C_OK => Some(sample_from_usage(&usage)),
+			EXTERN_C_SAMPLE_NO_DATA => None,
 			code => {
 				error!(
 					operator_id = self.operator_id.0,
-					code, "FFI operator failed to report state usage"
+					code, "extern-C operator failed to report state usage"
 				);
 				None
 			}
@@ -322,14 +322,14 @@ impl Operator for FFIOperatorHandle {
 	}
 }
 
-fn sample_from_usage(usage: &StateUsageFFI) -> OperatorSample {
+fn sample_from_usage(usage: &ExternCStateUsage) -> OperatorSample {
 	let state = StateMemory::new(Count::new(usage.state_entries), ByteSize::from_bytes(usage.state_bytes));
 	let row_numbers =
 		StateMemory::new(Count::new(usage.row_number_entries), ByteSize::from_bytes(usage.row_number_bytes));
 	OperatorSample::with_memory(state).with_row_number_cache(row_numbers)
 }
 
-impl FFIOperatorHandle {
+impl ExternCOperatorHandle {
 	#[inline]
 	fn invoke_under_panic_guard<F>(&self, op: &'static str, call: F) -> i32
 	where
@@ -349,7 +349,7 @@ impl FFIOperatorHandle {
 					};
 					error!(
 						operator_id = self.operator_id.0,
-						"FFI operator panicked during {}: {}", op, msg
+						"extern-C operator panicked during {}: {}", op, msg
 					);
 					abort();
 				}
@@ -381,14 +381,14 @@ fn drain_emitted_diffs(
 
 #[cfg(test)]
 mod tests {
-	use reifydb_abi::data::state::StateUsageFFI;
+	use reifydb_abi::data::state::ExternCStateUsage;
 
 	use super::sample_from_usage;
 
 	#[test]
 	fn host_sample_decode_keeps_the_row_number_cache_off_the_state_total() {
 		// The two pairs cross on separate fields; folding either into the other double-counts it.
-		let usage = StateUsageFFI {
+		let usage = ExternCStateUsage {
 			state_entries: 3,
 			state_bytes: 128,
 			row_number_entries: 2,

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod factory;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-pub mod ffi;
+pub mod extern_c;
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
+pub mod extern_rust;
+pub mod factory;
 pub mod shutdown;
 
 use std::{
@@ -16,7 +18,9 @@ use std::{
 };
 
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use ffi::{load_ffi_operators, load_native_operators};
+use extern_c::load_extern_c_operators;
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
+use extern_rust::load_extern_rust_operators;
 use reifydb_cdc::{
 	consume::{
 		backlog::FlowBacklog,
@@ -97,7 +101,7 @@ impl FlowSubsystem {
 	}
 
 	pub fn new(config: FlowConfig, engine: StandardEngine, ioc: &IocContainer) -> Result<Self> {
-		Self::maybe_load_ffi_operators(&config, &engine);
+		Self::maybe_load_extern_operators(&config, &engine);
 
 		let clock = ioc.resolve::<Clock>().expect("Clock must be registered");
 		let spawner = ioc.resolve::<ActorSpawner>().expect("ActorSpawner must be registered");
@@ -239,15 +243,15 @@ impl FlowSubsystem {
 	}
 
 	#[inline]
-	fn maybe_load_ffi_operators(config: &FlowConfig, engine: &StandardEngine) {
+	fn maybe_load_extern_operators(config: &FlowConfig, engine: &StandardEngine) {
 		#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 		if let Some(ref operators_dir) = config.operators_dir {
 			let event_bus = engine.event_bus();
-			if let Err(e) = load_native_operators(operators_dir, event_bus) {
-				panic!("Failed to load native operators from {:?}: {}", operators_dir, e);
+			if let Err(e) = load_extern_rust_operators(operators_dir, event_bus) {
+				panic!("Failed to load extern-Rust operators from {:?}: {}", operators_dir, e);
 			}
-			if let Err(e) = load_ffi_operators(operators_dir, event_bus) {
-				panic!("Failed to load FFI operators from {:?}: {}", operators_dir, e);
+			if let Err(e) = load_extern_c_operators(operators_dir, event_bus) {
+				panic!("Failed to load extern-C operators from {:?}: {}", operators_dir, e);
 			}
 			event_bus.wait_for_completion();
 		}

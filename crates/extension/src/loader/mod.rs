@@ -2,5 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
+pub mod cache;
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub mod extern_c;
 pub mod extern_wasm;

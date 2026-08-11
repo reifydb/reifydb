@@ -12,15 +12,15 @@ use reifydb_sdk::operator::{OperatorLogic, OperatorMetadata, column::operator::O
 use reifydb_sdk::{
 	config::Config,
 	connector::{
-		sink::{FFISink, FFISinkMetadata},
-		source::{FFISource, FFISourceMetadata},
+		sink::{InProcessSink, InProcessSinkMetadata},
+		source::{InProcessSource, InProcessSourceMetadata},
 	},
 };
 use reifydb_value::Result;
 
 use crate::connector::ConnectorRegistry;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use crate::operator::native::{NativeBridgedOperator, NativeOperatorAdapter};
+use crate::operator::bridge::{BridgeOperator, BridgeOperatorAdapter};
 
 pub(crate) type OperatorFactory = Arc<dyn Fn(OperatorId, &Config) -> Result<BoxedOperator> + Send + Sync>;
 
@@ -103,8 +103,8 @@ impl FlowConfigurator {
 			CustomOperatorEntry {
 				factory: Arc::new(|operator, config| {
 					let logic = O::create(operator, config)?;
-					let adapter = NativeOperatorAdapter::new(logic, operator, O::CAPABILITIES);
-					let bridged: BoxedOperator = Box::new(NativeBridgedOperator::new(
+					let adapter = BridgeOperatorAdapter::new(logic, operator, O::CAPABILITIES);
+					let bridged: BoxedOperator = Box::new(BridgeOperator::new(
 						Box::new(adapter),
 						operator,
 						O::CAPABILITIES,
@@ -122,12 +122,12 @@ impl FlowConfigurator {
 		self
 	}
 
-	pub fn register_source<S: FFISource + FFISourceMetadata>(mut self) -> Self {
+	pub fn register_source<S: InProcessSource + InProcessSourceMetadata>(mut self) -> Self {
 		self.connector_registry.register_source::<S>();
 		self
 	}
 
-	pub fn register_sink<S: FFISink + FFISinkMetadata>(mut self) -> Self {
+	pub fn register_sink<S: InProcessSink + InProcessSinkMetadata>(mut self) -> Self {
 		self.connector_registry.register_sink::<S>();
 		self
 	}

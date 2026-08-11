@@ -18,7 +18,10 @@ use reifydb_sdk::error::{Result as ExternCResult, SdkError};
 
 use super::ExternCTransform;
 use crate::{
-	loader::extern_c::{LibraryCache, buffer_to_string, validate_api_version},
+	loader::{
+		cache::LibraryCache,
+		extern_c::{buffer_to_string, validate_api_version},
+	},
 	transform::registry::{Transforms, TransformsConfigurator},
 };
 

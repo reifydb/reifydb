@@ -4,14 +4,10 @@
 use std::{
 	any::Any,
 	cell::{Cell, UnsafeCell},
-	collections::HashMap,
 	panic::{AssertUnwindSafe, catch_unwind},
-	path::{Path, PathBuf},
 	process::abort,
-	sync::OnceLock,
 };
 
-use libloading::Symbol;
 use reifydb_abi::operator::{capabilities::OperatorCapability, timer::TimerKind};
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -27,25 +23,20 @@ use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey},
 	metrics::heap::OperatorSample,
 };
-use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_flow::{
-	operator::{BoxedOperator, Operator},
+	operator::Operator,
 	timer::Timer,
 	transaction::{DepFlowTransaction, slot::PersistFn},
 };
-use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::{
-	config::Config,
 	error::{Result as SdkResult, SdkError},
-	operator::{OperatorLogic, timer::Timer as SdkTimer, view::native::NativeChangeView},
+	operator::{OperatorLogic, timer::Timer as SdkTimer, view::bridge::BridgeChangeView},
 };
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
-	error::Error,
 	value::{
 		Value,
-		constraint::TypeConstraint,
 		datetime::DateTime,
 		dictionary::{DictionaryEntryId, DictionaryId},
 		duration::Duration,
@@ -54,10 +45,7 @@ use reifydb_value::{
 };
 use tracing::error;
 
-use crate::{
-	error::NativeOperatorError,
-	operator::context::native::{NativeBridge, NativeOperatorContext},
-};
+use crate::operator::context::bridge::{Bridge, BridgeOperatorContext};
 
 fn run_or_abort<R>(operator: OperatorId, stage: &'static str, f: impl FnOnce() -> SdkResult<R>) -> R {
 	match catch_unwind(AssertUnwindSafe(f)) {
@@ -65,51 +53,15 @@ fn run_or_abort<R>(operator: OperatorId, stage: &'static str, f: impl FnOnce() -
 		Ok(Err(e)) => {
 			error!(
 				operator_id = operator.0,
-				stage, "native operator returned an error; operators must not fail - aborting: {:?}", e
+				stage, "bridged operator returned an error; operators must not fail - aborting: {:?}", e
 			);
 			abort();
 		}
 		Err(_) => {
-			error!(operator_id = operator.0, stage, "native operator panicked - aborting");
+			error!(operator_id = operator.0, stage, "bridged operator panicked - aborting");
 			abort();
 		}
 	}
-}
-
-pub const NATIVE_OPERATOR_MAGIC: u32 = 0x5244_424E;
-
-pub const NATIVE_ABI_TAG: u32 = 0x0308;
-
-pub type NativeOperatorCreateFn = fn(OperatorId, &Config) -> Result<BoxedBridgedOperator>;
-
-pub struct NativeOperatorColumn {
-	pub name: String,
-	pub field_type: TypeConstraint,
-	pub description: String,
-}
-
-pub struct NativeOperatorDescriptor {
-	pub abi_tag: u32,
-	pub name: String,
-	pub version: String,
-	pub description: String,
-	pub capabilities: u32,
-	pub input_columns: Vec<NativeOperatorColumn>,
-	pub output_columns: Vec<NativeOperatorColumn>,
-}
-
-pub fn native_operator_magic() -> u32 {
-	NATIVE_OPERATOR_MAGIC
-}
-
-pub fn check_native_abi_tag(abi_tag: u32) -> Result<()> {
-	if abi_tag != NATIVE_ABI_TAG {
-		return Err(Error::from(NativeOperatorError::AbiTagMismatch {
-			plugin: abi_tag,
-			host: NATIVE_ABI_TAG,
-		}));
-	}
-	Ok(())
 }
 
 pub trait BridgedOperator: Send {
@@ -117,9 +69,9 @@ pub trait BridgedOperator: Send {
 
 	fn capabilities(&self) -> &'static [OperatorCapability];
 
-	fn apply(&self, bridge: &mut dyn NativeBridge, change: Change) -> Result<Change>;
+	fn apply(&self, bridge: &mut dyn Bridge, change: Change) -> Result<Change>;
 
-	fn on_timer(&self, _bridge: &mut dyn NativeBridge, _timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&self, _bridge: &mut dyn Bridge, _timer: Timer) -> Result<Option<Change>> {
 		Ok(None)
 	}
 
@@ -127,7 +79,7 @@ pub trait BridgedOperator: Send {
 		None
 	}
 
-	fn flush_state(&self, _bridge: &mut dyn NativeBridge) -> Result<()> {
+	fn flush_state(&self, _bridge: &mut dyn Bridge) -> Result<()> {
 		Ok(())
 	}
 
@@ -138,13 +90,13 @@ pub trait BridgedOperator: Send {
 
 pub type BoxedBridgedOperator = Box<dyn BridgedOperator>;
 
-pub struct FlowNativeBridge<'a> {
+pub struct FlowBridge<'a> {
 	txn: &'a mut DepFlowTransaction,
 	operator: OperatorId,
 	now: DateTime,
 }
 
-impl<'a> FlowNativeBridge<'a> {
+impl<'a> FlowBridge<'a> {
 	pub fn new(txn: &'a mut DepFlowTransaction, operator: OperatorId) -> Self {
 		let now = txn.written_at();
 		Self {
@@ -155,7 +107,7 @@ impl<'a> FlowNativeBridge<'a> {
 	}
 }
 
-impl NativeBridge for FlowNativeBridge<'_> {
+impl Bridge for FlowBridge<'_> {
 	fn written_at(&self) -> DateTime {
 		self.now
 	}
@@ -276,150 +228,13 @@ impl NativeBridge for FlowNativeBridge<'_> {
 	}
 }
 
-pub struct LoadedNativeOperatorInfo {
-	pub operator: String,
-	pub library_path: PathBuf,
-	pub version: String,
-	pub description: String,
-	pub input_columns: Vec<NativeOperatorColumn>,
-	pub output_columns: Vec<NativeOperatorColumn>,
-	pub capabilities: u32,
-}
-
-static GLOBAL_NATIVE_OPERATOR_LOADER: OnceLock<RwLock<NativeOperatorLoader>> = OnceLock::new();
-
-pub fn native_operator_loader() -> &'static RwLock<NativeOperatorLoader> {
-	GLOBAL_NATIVE_OPERATOR_LOADER.get_or_init(|| RwLock::new(NativeOperatorLoader::new()))
-}
-
-pub struct NativeOperatorLoader {
-	cache: LibraryCache,
-	operator_paths: HashMap<String, PathBuf>,
-}
-
-impl NativeOperatorLoader {
-	fn new() -> Self {
-		Self {
-			cache: LibraryCache::new(),
-			operator_paths: HashMap::new(),
-		}
-	}
-
-	fn load_library(&mut self, path: &Path) -> Result<bool> {
-		self.cache.check_magic(path, b"reifydb_native_operator_magic\0", NATIVE_OPERATOR_MAGIC).map_err(|_e| {
-			Error::from(NativeOperatorError::LibraryNotLoaded {
-				path: path.display().to_string(),
-			})
-		})
-	}
-
-	fn descriptor(&self, path: &Path) -> Result<NativeOperatorDescriptor> {
-		let library = self.cache.get(path).ok_or_else(|| {
-			Error::from(NativeOperatorError::LibraryNotLoaded {
-				path: path.display().to_string(),
-			})
-		})?;
-
-		// SAFETY: load_library accepted this path only after the native-operator magic symbol matched, so
-		// the object was built against this crate and declares the descriptor symbol with this signature;
-		// Symbol borrows library, which stays loaded for the call.
-		let descriptor = unsafe {
-			let get_descriptor: Symbol<fn() -> NativeOperatorDescriptor> =
-				library.get(b"reifydb_native_operator_descriptor\0").map_err(|e| {
-					Error::from(NativeOperatorError::SymbolNotFound {
-						symbol: "reifydb_native_operator_descriptor",
-						cause: e.to_string(),
-					})
-				})?;
-			get_descriptor()
-		};
-
-		check_native_abi_tag(descriptor.abi_tag)?;
-
-		Ok(descriptor)
-	}
-
-	pub fn register_operator(&mut self, path: &Path) -> Result<Option<LoadedNativeOperatorInfo>> {
-		if !self.load_library(path)? {
-			return Ok(None);
-		}
-
-		let descriptor = self.descriptor(path)?;
-		self.operator_paths.insert(descriptor.name.clone(), path.to_path_buf());
-
-		Ok(Some(LoadedNativeOperatorInfo {
-			operator: descriptor.name,
-			library_path: path.to_path_buf(),
-			version: descriptor.version,
-			description: descriptor.description,
-			input_columns: descriptor.input_columns,
-			output_columns: descriptor.output_columns,
-			capabilities: descriptor.capabilities,
-		}))
-	}
-
-	pub fn has_operator(&self, operator: &str) -> bool {
-		self.operator_paths.contains_key(operator)
-	}
-
-	pub fn create_operator_by_name(
-		&mut self,
-		operator: &str,
-		operator_id: OperatorId,
-		config: &Config,
-	) -> Result<BoxedOperator> {
-		let path = self
-			.operator_paths
-			.get(operator)
-			.ok_or_else(|| {
-				Error::from(NativeOperatorError::OperatorNotFound {
-					operator: operator.to_string(),
-				})
-			})?
-			.clone();
-
-		if !self.load_library(&path)? {
-			return Err(Error::from(NativeOperatorError::LibraryNotLoaded {
-				path: operator.to_string(),
-			}));
-		}
-
-		self.descriptor(&path)?;
-
-		let library = self.cache.get(&path).unwrap();
-		// SAFETY: load_library and descriptor accepted this path, so the object was built against this
-		// crate and declares the create symbol with this signature; the copied-out pointer is called
-		// before this method returns, while &mut self still holds the cache entry that keeps it mapped.
-		let create: NativeOperatorCreateFn = unsafe {
-			let create_symbol: Symbol<NativeOperatorCreateFn> =
-				library.get(b"reifydb_native_operator_create\0").map_err(|e| {
-					Error::from(NativeOperatorError::SymbolNotFound {
-						symbol: "reifydb_native_operator_create",
-						cause: e.to_string(),
-					})
-				})?;
-			*create_symbol
-		};
-
-		let bridged = create(operator_id, config)?;
-		let capabilities = bridged.capabilities();
-		Ok(Box::new(NativeBridgedOperator::new(bridged, operator_id, capabilities)))
-	}
-}
-
-impl Default for NativeOperatorLoader {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
-pub struct NativeOperatorAdapter<C> {
+pub struct BridgeOperatorAdapter<C> {
 	logic: UnsafeCell<C>,
 	operator: OperatorId,
 	capabilities: &'static [OperatorCapability],
 }
 
-impl<C> NativeOperatorAdapter<C> {
+impl<C> BridgeOperatorAdapter<C> {
 	pub fn new(logic: C, operator: OperatorId, capabilities: &'static [OperatorCapability]) -> Self {
 		Self {
 			logic: UnsafeCell::new(logic),
@@ -429,9 +244,9 @@ impl<C> NativeOperatorAdapter<C> {
 	}
 }
 
-unsafe impl<C: Send> Send for NativeOperatorAdapter<C> {}
+unsafe impl<C: Send> Send for BridgeOperatorAdapter<C> {}
 
-impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
+impl<C: OperatorLogic + 'static> BridgedOperator for BridgeOperatorAdapter<C> {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -440,12 +255,12 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 		self.capabilities
 	}
 
-	fn apply(&self, bridge: &mut dyn NativeBridge, change: Change) -> Result<Change> {
+	fn apply(&self, bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 		let version = change.version;
 		let changed_at = change.changed_at;
-		let mut ctx = NativeOperatorContext::new(bridge, self.operator);
+		let mut ctx = BridgeOperatorContext::new(bridge, self.operator);
 		{
-			let view = NativeChangeView::new(&change);
+			let view = BridgeChangeView::new(&change);
 			// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time, and the
 			// logic only reaches the context, never back into this cell; no other borrow is live.
 			let logic = unsafe { &mut *self.logic.get() };
@@ -469,10 +284,10 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 		logic.seal_after()
 	}
 
-	fn on_timer(&self, bridge: &mut dyn NativeBridge, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&self, bridge: &mut dyn Bridge, timer: Timer) -> Result<Option<Change>> {
 		let at = timer.at;
 		let version = bridge.version();
-		let mut ctx = NativeOperatorContext::new(bridge, self.operator);
+		let mut ctx = BridgeOperatorContext::new(bridge, self.operator);
 		{
 			// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time, and the
 			// logic only reaches the context, never back into this cell; no other borrow is live.
@@ -495,8 +310,8 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 		Ok(Some(Change::from_flow(self.operator, version, diffs, at)))
 	}
 
-	fn flush_state(&self, bridge: &mut dyn NativeBridge) -> Result<()> {
-		let mut ctx = NativeOperatorContext::new(bridge, self.operator);
+	fn flush_state(&self, bridge: &mut dyn Bridge) -> Result<()> {
+		let mut ctx = BridgeOperatorContext::new(bridge, self.operator);
 		// SAFETY: the adapter is Send but not Sync, so one actor holds &self at a time, and the logic
 		// only reaches the context, never back into this cell; no other borrow is live.
 		let logic = unsafe { &mut *self.logic.get() };
@@ -509,14 +324,14 @@ impl<C: OperatorLogic + 'static> BridgedOperator for NativeOperatorAdapter<C> {
 struct SendableBridged(*const dyn BridgedOperator);
 unsafe impl Send for SendableBridged {}
 
-pub struct NativeBridgedOperator {
+pub struct BridgeOperator {
 	inner: BoxedBridgedOperator,
 	operator: OperatorId,
 	capabilities: &'static [OperatorCapability],
 	last_registered_txn: Cell<u64>,
 }
 
-impl NativeBridgedOperator {
+impl BridgeOperator {
 	pub fn new(
 		inner: BoxedBridgedOperator,
 		operator: OperatorId,
@@ -541,7 +356,7 @@ impl NativeBridgedOperator {
 				// across moves of the wrapper and outlives the transaction running this persist
 				// closure, since the actor owning the operator also drives that transaction.
 				let bridged = unsafe { &*captured.0 };
-				let mut bridge = FlowNativeBridge::new(txn, operator);
+				let mut bridge = FlowBridge::new(txn, operator);
 				bridged.flush_state(&mut bridge)?;
 				Ok(())
 			});
@@ -553,9 +368,9 @@ impl NativeBridgedOperator {
 	}
 }
 
-unsafe impl Send for NativeBridgedOperator {}
+unsafe impl Send for BridgeOperator {}
 
-impl Operator for NativeBridgedOperator {
+impl Operator for BridgeOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -566,7 +381,7 @@ impl Operator for NativeBridgedOperator {
 
 	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		self.ensure_flush_slot(txn)?;
-		let mut bridge = FlowNativeBridge::new(txn, self.operator);
+		let mut bridge = FlowBridge::new(txn, self.operator);
 		self.inner.apply(&mut bridge, change)
 	}
 
@@ -576,7 +391,7 @@ impl Operator for NativeBridgedOperator {
 
 	fn on_timer(&self, txn: &mut DepFlowTransaction, timer: Timer) -> Result<Option<Change>> {
 		self.ensure_flush_slot(txn)?;
-		let mut bridge = FlowNativeBridge::new(txn, self.operator);
+		let mut bridge = FlowBridge::new(txn, self.operator);
 		self.inner.on_timer(&mut bridge, timer)
 	}
 
@@ -587,9 +402,7 @@ impl Operator for NativeBridgedOperator {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_abi::constants::OPERATOR_ABI_TAG;
 	use reifydb_core::{common::CommitVersion, interface::change::Change, key::operator_state::GroupId};
-	use reifydb_extension::operator::ffi_loader::check_operator_abi_tag;
 	use reifydb_flow::{operator::Operator, transaction::ChangeCoordinate};
 	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 	use reifydb_value::{
@@ -597,10 +410,7 @@ mod tests {
 		value::{datetime::DateTime, duration::Duration},
 	};
 
-	use super::{
-		BridgedOperator, EncodedKey, FlowNativeBridge, NATIVE_ABI_TAG, NativeBridge, NativeBridgedOperator,
-		OperatorCapability, OperatorId, check_native_abi_tag,
-	};
+	use super::{Bridge, BridgeOperator, BridgedOperator, EncodedKey, FlowBridge, OperatorCapability, OperatorId};
 
 	const NODE: OperatorId = OperatorId(1);
 
@@ -610,16 +420,14 @@ mod tests {
 
 	#[test]
 	fn a_dylib_read_resolves_a_group_without_creating_one() {
-		// Eviction and diagnostic paths walk groups that may already be reclaimed, so a read that
-		// interned would resurrect them and the dictionary could never shrink - and on this seam
-		// it is the driver, not the host, that decides which keys get touched.
+		// A read must never intern, or groups already reclaimed resurrect and the dictionary never shrinks.
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().at(CommitVersion(7)).deferred();
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(DateTime::from_millis(0)),
 			version: CommitVersion(7),
 		});
-		let mut bridge = FlowNativeBridge::new(&mut txn, NODE);
+		let mut bridge = FlowBridge::new(&mut txn, NODE);
 
 		assert_eq!(bridge.lookup_groups(&[key("absent")]).unwrap(), vec![None]);
 
@@ -629,30 +437,6 @@ mod tests {
 			vec![GroupId::FIRST],
 			"the earlier read must not have consumed an id from the counter"
 		);
-	}
-
-	#[test]
-	fn native_abi_tag_accepts_match_rejects_mismatch() {
-		// A mismatched tag must be refused, or an operator built against a different toolchain
-		// gets loaded.
-		assert!(check_native_abi_tag(NATIVE_ABI_TAG).is_ok());
-		assert!(check_native_abi_tag(NATIVE_ABI_TAG ^ 0x1).is_err());
-		assert!(check_native_abi_tag(0).is_err());
-	}
-
-	#[test]
-	fn ffi_abi_tag_accepts_match_rejects_mismatch() {
-		assert!(check_operator_abi_tag(OPERATOR_ABI_TAG).is_ok());
-		assert!(check_operator_abi_tag(OPERATOR_ABI_TAG ^ 0x1).is_err());
-		assert!(check_operator_abi_tag(0).is_err());
-	}
-
-	#[test]
-	fn native_and_ffi_tags_do_not_accept_each_other() {
-		// The two tags must reject each other, or a native `.so` validates against the ffi check.
-		assert_ne!(NATIVE_ABI_TAG, OPERATOR_ABI_TAG);
-		assert!(check_native_abi_tag(OPERATOR_ABI_TAG).is_err());
-		assert!(check_operator_abi_tag(NATIVE_ABI_TAG).is_err());
 	}
 
 	struct RecordingBridged;
@@ -666,7 +450,7 @@ mod tests {
 			&[]
 		}
 
-		fn apply(&self, _bridge: &mut dyn NativeBridge, change: Change) -> Result<Change> {
+		fn apply(&self, _bridge: &mut dyn Bridge, change: Change) -> Result<Change> {
 			Ok(change)
 		}
 
@@ -677,9 +461,8 @@ mod tests {
 
 	#[test]
 	fn the_host_wrapper_forwards_the_seal_span_to_the_frontier_walk() {
-		// The walk subtracts this span, so a wrapper that swallowed it would claim a frontier covering buckets
-		// the operator can still amend.
-		let wrapper = NativeBridgedOperator::new(Box::new(RecordingBridged), NODE, &[]);
+		// A wrapper that swallows the seal span claims a frontier covering buckets still amendable.
+		let wrapper = BridgeOperator::new(Box::new(RecordingBridged), NODE, &[]);
 
 		assert_eq!(Operator::seal_span(&wrapper), Some(Duration::from_milliseconds(65_000).unwrap()));
 	}

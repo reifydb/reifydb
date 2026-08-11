@@ -4,9 +4,9 @@
 use std::{slice::from_raw_parts, str::from_utf8};
 
 use reifydb_abi::{
-	constants::{FFI_ERROR_INTERNAL, FFI_ERROR_INVALID_UTF8, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK},
-	context::context::ContextFFI,
-	data::buffer::BufferFFI,
+	constants::{EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_ERROR_NULL_PTR, EXTERN_C_NOT_FOUND, EXTERN_C_OK},
+	context::context::ExternCContext,
+	data::buffer::ExternCBuffer,
 };
 use reifydb_codec::{
 	tag::type_tag_byte,
@@ -18,27 +18,27 @@ use reifydb_value::value::{
 };
 
 use super::marshal::write_buffer;
-use crate::ffi::context::get_transaction_mut;
+use crate::extern_c::context::get_transaction_mut;
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_dictionary_id_by_name(
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	name_ptr: *const u8,
 	name_len: usize,
 	out_id: *mut u64,
 	found: *mut u8,
 ) -> i32 {
 	if ctx.is_null() || name_ptr.is_null() || out_id.is_null() || found.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: all four pointers are null-checked above; the guest must pass back the ContextFFI the
+	// SAFETY: all four pointers are null-checked above; the guest must pass back the ExternCContext the
 	// host handed it for this call (discharging get_transaction_mut), a `name_ptr` valid for reads of
 	// `name_len` bytes, and `out_id`/`found` valid and aligned for one u64 and one u8 write.
 	unsafe {
 		let name = match from_utf8(from_raw_parts(name_ptr, name_len)) {
 			Ok(name) => name,
-			Err(_) => return FFI_ERROR_INVALID_UTF8,
+			Err(_) => return EXTERN_C_ERROR_INVALID_UTF8,
 		};
 
 		let flow_txn = get_transaction_mut(&mut *ctx);
@@ -49,13 +49,13 @@ pub(super) extern "C" fn host_dictionary_id_by_name(
 			}
 			None => *found = 0,
 		}
-		FFI_OK
+		EXTERN_C_OK
 	}
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_dictionary_find(
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	dictionary_id: u64,
 	value_ptr: *const u8,
 	value_len: usize,
@@ -64,22 +64,22 @@ pub(super) extern "C" fn host_dictionary_find(
 	found: *mut u8,
 ) -> i32 {
 	if ctx.is_null() || value_ptr.is_null() || out_id.is_null() || out_id_type.is_null() || found.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: all five pointers are null-checked above; the guest must pass back the ContextFFI the
+	// SAFETY: all five pointers are null-checked above; the guest must pass back the ExternCContext the
 	// host handed it for this call, a `value_ptr` valid for reads of `value_len` bytes, and
 	// `out_id`/`out_id_type`/`found` valid and aligned for one u128, u8 and u8 write.
 	unsafe {
 		let value: Value = match decode_value(from_raw_parts(value_ptr, value_len)) {
 			Ok(value) => value,
-			Err(_) => return FFI_ERROR_INTERNAL,
+			Err(_) => return EXTERN_C_ERROR_INTERNAL,
 		};
 
 		let flow_txn = get_transaction_mut(&mut *ctx);
 		let Some(dictionary) = flow_txn.find_dictionary(DictionaryId(dictionary_id)) else {
 			*found = 0;
-			return FFI_OK;
+			return EXTERN_C_OK;
 		};
 
 		match flow_txn.find_in_dictionary(&dictionary, &value) {
@@ -87,49 +87,49 @@ pub(super) extern "C" fn host_dictionary_find(
 				*out_id = id.to_u128();
 				*out_id_type = type_tag_byte(&id.id_type());
 				*found = 1;
-				FFI_OK
+				EXTERN_C_OK
 			}
 			Ok(None) => {
 				*found = 0;
-				FFI_OK
+				EXTERN_C_OK
 			}
-			Err(_) => FFI_ERROR_INTERNAL,
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
 	}
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_dictionary_get(
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	dictionary_id: u64,
 	id: u128,
-	output: *mut BufferFFI,
+	output: *mut ExternCBuffer,
 ) -> i32 {
 	if ctx.is_null() || output.is_null() {
-		return FFI_ERROR_NULL_PTR;
+		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: `ctx` and `output` are null-checked above; the guest must pass back the ContextFFI the
+	// SAFETY: `ctx` and `output` are null-checked above; the guest must pass back the ExternCContext the
 	// host handed it for this call (discharging get_transaction_mut) and an `output` valid and aligned
-	// for one BufferFFI write whose buffer it then releases via memory.free.
+	// for one ExternCBuffer write whose buffer it then releases via memory.free.
 	unsafe {
 		let flow_txn = get_transaction_mut(&mut *ctx);
 		let Some(dictionary) = flow_txn.find_dictionary(DictionaryId(dictionary_id)) else {
-			return FFI_NOT_FOUND;
+			return EXTERN_C_NOT_FOUND;
 		};
 
 		let entry_id = match DictionaryEntryId::from_u128(id, dictionary.id_type.clone()) {
 			Ok(entry_id) => entry_id,
-			Err(_) => return FFI_ERROR_INTERNAL,
+			Err(_) => return EXTERN_C_ERROR_INTERNAL,
 		};
 
 		match flow_txn.get_from_dictionary(&dictionary, entry_id) {
 			Ok(Some(value)) => match encode_value(&value) {
 				Ok(bytes) => write_buffer(output, &bytes),
-				Err(_) => FFI_ERROR_INTERNAL,
+				Err(_) => EXTERN_C_ERROR_INTERNAL,
 			},
-			Ok(None) => FFI_NOT_FOUND,
-			Err(_) => FFI_ERROR_INTERNAL,
+			Ok(None) => EXTERN_C_NOT_FOUND,
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
 	}
 }
