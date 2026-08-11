@@ -20,7 +20,7 @@ pub struct SinkRecord {
 	pub columns: Columns,
 }
 
-pub trait FFISinkMetadata {
+pub trait InProcessSinkMetadata {
 	const NAME: &'static str;
 
 	const VERSION: &'static str;
@@ -30,7 +30,7 @@ pub trait FFISinkMetadata {
 	const INPUT_COLUMNS: &'static [OperatorColumn];
 }
 
-pub trait FFISink: Send + 'static {
+pub trait InProcessSink: Send + 'static {
 	fn new(config: &Config) -> Result<Self>
 	where
 		Self: Sized;
@@ -40,5 +40,5 @@ pub trait FFISink: Send + 'static {
 	fn shutdown(&mut self) -> Result<()>;
 }
 
-pub trait FFISinkWithMetadata: FFISink + FFISinkMetadata {}
-impl<T> FFISinkWithMetadata for T where T: FFISink + FFISinkMetadata {}
+pub trait InProcessSinkWithMetadata: InProcessSink + InProcessSinkMetadata {}
+impl<T> InProcessSinkWithMetadata for T where T: InProcessSink + InProcessSinkMetadata {}

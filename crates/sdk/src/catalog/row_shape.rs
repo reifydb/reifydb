@@ -4,41 +4,41 @@
 use std::{mem::MaybeUninit, slice::from_raw_parts, str};
 
 use reifydb_abi::{
-	catalog::row_shape::{RowShapeFFI, RowShapeFieldFFI},
-	constants::{FFI_NOT_FOUND, FFI_OK},
+	catalog::row_shape::{ExternCRowShape, ExternCRowShapeField},
+	constants::{EXTERN_C_NOT_FOUND, EXTERN_C_OK},
 };
 use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint};
 #[cfg(test)]
 use reifydb_codec::tag::type_tag_byte;
 
 use super::decode_type_constraint;
-use crate::{error::SdkError, operator::context::ffi::FFIOperatorContext};
+use crate::{error::SdkError, operator::context::extern_c::ExternCOperatorContext};
 
 pub(super) fn raw_catalog_find_row_shape(
-	ctx: &FFIOperatorContext,
+	ctx: &ExternCOperatorContext,
 	fingerprint: RowShapeFingerprint,
 ) -> Result<Option<RowShape>, SdkError> {
-	// SAFETY: `FFIOperatorContext::new` asserts `ctx.ctx` is non-null and the host keeps the ContextFFI
-	// alive for the call; on FFI_OK the host has written a fully initialised RowShapeFFI into `output`
+	// SAFETY: `ExternCOperatorContext::new` asserts `ctx.ctx` is non-null and the host keeps the ExternCContext
+	// alive for the call; on EXTERN_C_OK the host has written a fully initialised ExternCRowShape into `output`
 	// whose field array stays live until `free_row_shape`, discharging `unmarshal_row_shape`.
 	unsafe {
 		let callback = (*ctx.ctx).callbacks.row_shape.find_row_shape;
 
-		let mut output = MaybeUninit::<RowShapeFFI>::uninit();
+		let mut output = MaybeUninit::<ExternCRowShape>::uninit();
 
 		let result = callback(ctx.ctx, fingerprint.as_u64(), output.as_mut_ptr());
 
 		match result {
-			FFI_OK => {
-				let ffi_shape = output.assume_init();
-				let shape = unmarshal_row_shape(&ffi_shape)?;
+			EXTERN_C_OK => {
+				let extern_c_shape = output.assume_init();
+				let shape = unmarshal_row_shape(&extern_c_shape)?;
 
 				let free_callback = (*ctx.ctx).callbacks.row_shape.free_row_shape;
 				free_callback(&mut output.as_mut_ptr().read());
 
 				Ok(Some(shape))
 			}
-			FFI_NOT_FOUND => Ok(None),
+			EXTERN_C_NOT_FOUND => Ok(None),
 			_ => Err(SdkError::Other("Failed to find row shape".to_string())),
 		}
 	}
@@ -46,40 +46,40 @@ pub(super) fn raw_catalog_find_row_shape(
 
 /// # Safety
 ///
-/// `ffi_shape.fields` must be null or valid for reads of `ffi_shape.field_count`
-/// initialised, aligned `RowShapeFieldFFI` for the duration of the call, each of
+/// `extern_c_shape.fields` must be null or valid for reads of `extern_c_shape.field_count`
+/// initialised, aligned `ExternCRowShapeField` for the duration of the call, each of
 /// which must satisfy the contract of [`unmarshal_row_shape_field`].
-unsafe fn unmarshal_row_shape(ffi_shape: &RowShapeFFI) -> Result<RowShape, SdkError> {
-	let fields = if !ffi_shape.fields.is_null() && ffi_shape.field_count > 0 {
+unsafe fn unmarshal_row_shape(extern_c_shape: &ExternCRowShape) -> Result<RowShape, SdkError> {
+	let fields = if !extern_c_shape.fields.is_null() && extern_c_shape.field_count > 0 {
 		// SAFETY: discharges this function's own contract; the branch above established that `fields`
 		// is non-null and `field_count` is non-zero.
-		let slice = unsafe { from_raw_parts(ffi_shape.fields, ffi_shape.field_count) };
+		let slice = unsafe { from_raw_parts(extern_c_shape.fields, extern_c_shape.field_count) };
 		let mut out = Vec::with_capacity(slice.len());
-		for ffi_field in slice {
+		for extern_c_field in slice {
 			// SAFETY: this function's contract requires every element of `fields` to satisfy
 			// `unmarshal_row_shape_field`.
-			out.push(unsafe { unmarshal_row_shape_field(ffi_field)? });
+			out.push(unsafe { unmarshal_row_shape_field(extern_c_field)? });
 		}
 		out
 	} else {
 		Vec::new()
 	};
 
-	let family = RowFamily::from_u8(ffi_shape.family)
-		.ok_or_else(|| SdkError::Other(format!("Unknown row family {} in row shape", ffi_shape.family)))?;
+	let family = RowFamily::from_u8(extern_c_shape.family)
+		.ok_or_else(|| SdkError::Other(format!("Unknown row family {} in row shape", extern_c_shape.family)))?;
 
-	Ok(RowShape::from_parts(family, RowShapeFingerprint::new(ffi_shape.fingerprint), fields))
+	Ok(RowShape::from_parts(family, RowShapeFingerprint::new(extern_c_shape.fingerprint), fields))
 }
 
 /// # Safety
 ///
-/// `ffi_field.name.ptr` must be null or valid for reads of `ffi_field.name.len`
+/// `extern_c_field.name.ptr` must be null or valid for reads of `extern_c_field.name.len`
 /// initialised bytes for the duration of the call.
-unsafe fn unmarshal_row_shape_field(ffi_field: &RowShapeFieldFFI) -> Result<RowShapeField, SdkError> {
-	let name_bytes = if !ffi_field.name.ptr.is_null() && ffi_field.name.len > 0 {
+unsafe fn unmarshal_row_shape_field(extern_c_field: &ExternCRowShapeField) -> Result<RowShapeField, SdkError> {
+	let name_bytes = if !extern_c_field.name.ptr.is_null() && extern_c_field.name.len > 0 {
 		// SAFETY: discharges this function's own contract; the branch above established that
 		// `name.ptr` is non-null and `name.len` is non-zero.
-		unsafe { from_raw_parts(ffi_field.name.ptr, ffi_field.name.len) }
+		unsafe { from_raw_parts(extern_c_field.name.ptr, extern_c_field.name.len) }
 	} else {
 		&[]
 	};
@@ -89,17 +89,17 @@ unsafe fn unmarshal_row_shape_field(ffi_field: &RowShapeFieldFFI) -> Result<RowS
 		.to_string();
 
 	let constraint = decode_type_constraint(
-		ffi_field.base_type,
-		ffi_field.constraint_type,
-		ffi_field.constraint_param1,
-		ffi_field.constraint_param2,
+		extern_c_field.base_type,
+		extern_c_field.constraint_type,
+		extern_c_field.constraint_param1,
+		extern_c_field.constraint_param2,
 	)?;
 
 	Ok(RowShapeField {
 		name,
 		constraint,
-		offset: ffi_field.offset,
-		size: ffi_field.size,
+		offset: extern_c_field.offset,
+		size: extern_c_field.size,
 	})
 }
 
@@ -107,17 +107,17 @@ unsafe fn unmarshal_row_shape_field(ffi_field: &RowShapeFieldFFI) -> Result<RowS
 mod tests {
 	use std::ptr;
 
-	use reifydb_abi::data::buffer::BufferFFI;
+	use reifydb_abi::data::buffer::ExternCBuffer;
 	use reifydb_codec::row::shape::{RowShape, RowShapeField};
 	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 	use super::*;
 
-	fn make_name_buffer(s: &str) -> (BufferFFI, Box<[u8]>) {
+	fn make_name_buffer(s: &str) -> (ExternCBuffer, Box<[u8]>) {
 		// The caller keeps the returned slice alive, so if the unmarshaller ever retained the host pointer
 		// instead of copying the name bytes the test would still read live memory rather than crash.
 		let bytes: Box<[u8]> = s.as_bytes().into();
-		let buffer = BufferFFI {
+		let buffer = ExternCBuffer {
 			ptr: bytes.as_ptr(),
 			len: bytes.len(),
 			cap: bytes.len(),
@@ -142,11 +142,11 @@ mod tests {
 		let (mint_name, _mint_keep) = make_name_buffer("mint");
 		let (dec_name, _dec_keep) = make_name_buffer("decimals");
 
-		let fields: Vec<RowShapeFieldFFI> = original
+		let fields: Vec<ExternCRowShapeField> = original
 			.fields()
 			.iter()
 			.zip([id_name, mint_name, dec_name])
-			.map(|(f, name_buf)| RowShapeFieldFFI {
+			.map(|(f, name_buf)| ExternCRowShapeField {
 				name: name_buf,
 				base_type: type_tag_byte(&f.constraint.get_type()),
 				constraint_type: 0,
@@ -157,7 +157,7 @@ mod tests {
 			})
 			.collect();
 
-		let ffi = RowShapeFFI {
+		let extern_c = ExternCRowShape {
 			fingerprint: original.fingerprint().as_u64(),
 			family: original.family() as u8,
 			fields: fields.as_ptr(),
@@ -165,7 +165,7 @@ mod tests {
 		};
 
 		// SAFETY: `fields` and every name buffer borrow locals that stay alive past this call.
-		let decoded = unsafe { unmarshal_row_shape(&ffi).expect("unmarshal must succeed for valid FFI") };
+		let decoded = unsafe { unmarshal_row_shape(&extern_c).expect("unmarshal must succeed for valid extern-C") };
 
 		assert_eq!(
 			decoded.fingerprint(),
@@ -189,7 +189,7 @@ mod tests {
 	fn unmarshal_empty_shape_returns_empty_fields() {
 		// No callsite marshals a metadata-only shape today, but the unmarshaller must not deref a null
 		// fields pointer when field_count is 0.
-		let ffi = RowShapeFFI {
+		let extern_c = ExternCRowShape {
 			fingerprint: 0,
 			family: RowFamily::Table as u8,
 			fields: ptr::null(),
@@ -197,7 +197,7 @@ mod tests {
 		};
 
 		// SAFETY: `fields` is null with `field_count` 0, which the contract admits.
-		let decoded = unsafe { unmarshal_row_shape(&ffi).expect("empty shape must unmarshal cleanly") };
+		let decoded = unsafe { unmarshal_row_shape(&extern_c).expect("empty shape must unmarshal cleanly") };
 		assert!(decoded.fields().is_empty());
 		assert_eq!(decoded.fingerprint().as_u64(), 0);
 	}
@@ -207,7 +207,7 @@ mod tests {
 		// The family sets header_size, so a shape defaulted to the wrong one reads every field at a shifted
 		// offset.
 		for family in [RowFamily::Pod, RowFamily::Catalog, RowFamily::Series, RowFamily::Queue] {
-			let ffi = RowShapeFFI {
+			let extern_c = ExternCRowShape {
 				fingerprint: 0,
 				family: family as u8,
 				fields: ptr::null(),
@@ -215,7 +215,7 @@ mod tests {
 			};
 
 			// SAFETY: `fields` is null with `field_count` 0, which the contract admits.
-			let decoded = unsafe { unmarshal_row_shape(&ffi).expect("shape must unmarshal cleanly") };
+			let decoded = unsafe { unmarshal_row_shape(&extern_c).expect("shape must unmarshal cleanly") };
 
 			assert_eq!(decoded.family(), family);
 			assert_eq!(decoded.header_size(), family.header_size(), "{family:?} header width drifted");
@@ -225,7 +225,7 @@ mod tests {
 	#[test]
 	fn unmarshal_rejects_a_family_byte_it_does_not_know() {
 		// A host one version ahead must fail loudly here, never silently decode rows at the wrong offsets.
-		let ffi = RowShapeFFI {
+		let extern_c = ExternCRowShape {
 			fingerprint: 0,
 			family: 0xEE,
 			fields: ptr::null(),
@@ -233,6 +233,6 @@ mod tests {
 		};
 
 		// SAFETY: `fields` is null with `field_count` 0, which the contract admits.
-		assert!(unsafe { unmarshal_row_shape(&ffi) }.is_err());
+		assert!(unsafe { unmarshal_row_shape(&extern_c) }.is_err());
 	}
 }

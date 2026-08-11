@@ -1,30 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::{column::OperatorColumnsFFI, vtable::OperatorVTableFFI};
-use crate::data::buffer::BufferFFI;
+use super::{column::ExternCOperatorColumns, vtable::ExternCOperatorVTable};
+use crate::data::buffer::ExternCBuffer;
 
 #[repr(C)]
-pub struct OperatorDescriptorFFI {
+pub struct ExternCOperatorDescriptor {
 	pub api: u32,
 
 	pub abi_tag: u32,
 
-	pub operator: BufferFFI,
+	pub operator: ExternCBuffer,
 
-	pub version: BufferFFI,
+	pub version: ExternCBuffer,
 
-	pub description: BufferFFI,
+	pub description: ExternCBuffer,
 
-	pub input_columns: OperatorColumnsFFI,
+	pub input_columns: ExternCOperatorColumns,
 
-	pub output_columns: OperatorColumnsFFI,
+	pub output_columns: ExternCOperatorColumns,
 
 	pub capabilities: u32,
 
-	pub vtable: OperatorVTableFFI,
+	pub vtable: ExternCOperatorVTable,
 }
 
 // SAFETY: every pointer in the descriptor addresses immutable module-static data (strings, symbols).
-unsafe impl Send for OperatorDescriptorFFI {}
-unsafe impl Sync for OperatorDescriptorFFI {}
+unsafe impl Send for ExternCOperatorDescriptor {}
+unsafe impl Sync for ExternCOperatorDescriptor {}

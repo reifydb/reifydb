@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use std::slice;
+
+use tracing::{debug, error, info, trace, warn};
+
+/// `level` maps 0=trace, 1=debug, 2=info, 3=warn, 4=error; anything else falls back to info.
+/// `message` is not null-terminated and invalid UTF-8 is replaced rather than rejected.
+///
+/// # Safety
+///
+/// - `message` must be valid for reading `message_len` bytes, or null (in which case this is a no-op).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn host_log_message(operator_id: u64, level: u32, message: *const u8, message_len: usize) {
+	if message.is_null() {
+		return;
+	}
+
+	// SAFETY: message is non-null here and the caller guarantees message_len readable bytes.
+	let msg_str = unsafe {
+		let bytes = slice::from_raw_parts(message, message_len);
+		String::from_utf8_lossy(bytes)
+	};
+
+	match level {
+		0 => trace!("extern-C Operator[{}]: {}", operator_id, msg_str),
+		1 => debug!("extern-C Operator[{}]: {}", operator_id, msg_str),
+		2 => info!("extern-C Operator[{}]: {}", operator_id, msg_str),
+		3 => warn!("extern-C Operator[{}]: {}", operator_id, msg_str),
+		4 => error!("extern-C Operator[{}]: {}", operator_id, msg_str),
+		_ => info!("extern-C Operator[{}]: {}", operator_id, msg_str),
+	}
+}

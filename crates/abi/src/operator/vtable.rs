@@ -3,16 +3,16 @@
 
 use core::ffi::c_void;
 
-use crate::{context::context::ContextFFI, data::state::StateUsageFFI, flow::change::ChangeFFI};
+use crate::{context::context::ExternCContext, data::state::ExternCStateUsage, flow::change::ExternCChange};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct OperatorVTableFFI {
-	pub apply: unsafe extern "C" fn(instance: *mut c_void, ctx: *mut ContextFFI, input: *const ChangeFFI) -> i32,
+pub struct ExternCOperatorVTable {
+	pub apply: unsafe extern "C" fn(instance: *mut c_void, ctx: *mut ExternCContext, input: *const ExternCChange) -> i32,
 
 	pub on_timer: unsafe extern "C" fn(
 		instance: *mut c_void,
-		ctx: *mut ContextFFI,
+		ctx: *mut ExternCContext,
 		at_millis: u64,
 		kind: u8,
 		key: *const u8,
@@ -22,9 +22,9 @@ pub struct OperatorVTableFFI {
 	pub destroy: unsafe extern "C" fn(instance: *mut c_void),
 
 	pub flush_state:
-		unsafe extern "C" fn(instance: *mut c_void, ctx: *mut ContextFFI, usage: *mut StateUsageFFI) -> i32,
+		unsafe extern "C" fn(instance: *mut c_void, ctx: *mut ExternCContext, usage: *mut ExternCStateUsage) -> i32,
 
-	pub sample: unsafe extern "C" fn(instance: *mut c_void, out: *mut StateUsageFFI) -> i32,
+	pub sample: unsafe extern "C" fn(instance: *mut c_void, out: *mut ExternCStateUsage) -> i32,
 
 	pub seal_after_ms: unsafe extern "C" fn(instance: *mut c_void) -> u64,
 }

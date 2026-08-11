@@ -2,8 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod column;
+pub mod extern_wasm;
 pub mod types;
 pub mod util;
-pub mod wasm;
 
 pub(crate) mod flow;

@@ -32,7 +32,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::vm::executor::Executor;
-use reifydb_extension::ffi_callbacks::builder::{BuilderRegistry, with_registry};
+use reifydb_extension::callbacks::builder::{BuilderRegistry, with_registry};
 use reifydb_flow::{
 	operator::{Operator, scale_from_millis},
 	timer::Timer,

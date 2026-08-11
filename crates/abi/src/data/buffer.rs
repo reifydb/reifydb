@@ -3,7 +3,7 @@
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct BufferFFI {
+pub struct ExternCBuffer {
 	pub ptr: *const u8,
 
 	pub len: usize,
@@ -11,7 +11,7 @@ pub struct BufferFFI {
 	pub cap: usize,
 }
 
-impl BufferFFI {
+impl ExternCBuffer {
 	pub const fn empty() -> Self {
 		Self {
 			ptr: core::ptr::null(),

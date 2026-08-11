@@ -5,8 +5,8 @@ use std::{collections::HashMap, ffi::c_void, ptr, slice, sync::Arc};
 
 use reifydb_abi::{
 	constants::CURRENT_API,
-	data::buffer::BufferFFI,
-	procedure::{descriptor::ProcedureDescriptorFFI, types::PROCEDURE_MAGIC},
+	data::buffer::ExternCBuffer,
+	procedure::{descriptor::ExternCProcedureDescriptor, types::PROCEDURE_MAGIC},
 };
 use reifydb_codec::value::decode_params;
 use reifydb_value::params::Params;
@@ -14,21 +14,21 @@ use reifydb_value::params::Params;
 use crate::{
 	config::Config,
 	procedure::{
-		FFIProcedureWithMetadata,
+		ExternCProcedureWithMetadata,
 		wrapper::{ProcedureWrapper, create_procedure_vtable},
 	},
 };
 
-fn str_to_buffer(s: &'static str) -> BufferFFI {
-	BufferFFI {
+fn str_to_buffer(s: &'static str) -> ExternCBuffer {
+	ExternCBuffer {
 		ptr: s.as_ptr(),
 		len: s.len(),
 		cap: s.len(),
 	}
 }
 
-pub fn create_procedure_descriptor<T: FFIProcedureWithMetadata>() -> ProcedureDescriptorFFI {
-	ProcedureDescriptorFFI {
+pub fn create_procedure_descriptor<T: ExternCProcedureWithMetadata>() -> ExternCProcedureDescriptor {
+	ExternCProcedureDescriptor {
 		api: CURRENT_API,
 		name: str_to_buffer(T::NAME),
 		version: str_to_buffer(T::VERSION),
@@ -40,7 +40,7 @@ pub fn create_procedure_descriptor<T: FFIProcedureWithMetadata>() -> ProcedureDe
 /// # Safety
 /// - config_ptr must be valid for config_len bytes or null
 /// - The returned pointer must be freed by calling the destroy function
-pub unsafe extern "C" fn create_procedure_instance<T: FFIProcedureWithMetadata>(
+pub unsafe extern "C" fn create_procedure_instance<T: ExternCProcedureWithMetadata>(
 	config_ptr: *const u8,
 	config_len: usize,
 ) -> *mut c_void {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! `repr(C)` shapes crossing the host-extension FFI boundary. Types and constants only, no logic.
+//! `repr(C)` shapes crossing the host-extension extern-C boundary. Types and constants only, no logic.
 //!
 //! Every type here is wire-stable: adding, removing, reordering or resizing a field breaks every extension linked
 //! against an older version. The only version negotiation is the descriptor's `api` field, checked against

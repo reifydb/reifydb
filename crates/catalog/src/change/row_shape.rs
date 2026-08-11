@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_abi::data::constraint::FFITypeConstraint;
+use reifydb_abi::data::constraint::ExternCTypeConstraint;
 use reifydb_codec::{
-	constraint::type_constraint_from_ffi,
+	constraint::type_constraint_from_extern_c,
 	key::encoded::EncodedKey,
 	row::{
 		bytes::EncodedBytes,
@@ -97,7 +97,7 @@ fn try_reconstruct(
 					shape_field::SHAPE.get::<u32>(bytes.as_slice(), shape_field::CONSTRAINT_P1);
 				let constraint_param2 =
 					shape_field::SHAPE.get::<u32>(bytes.as_slice(), shape_field::CONSTRAINT_P2);
-				let constraint = type_constraint_from_ffi(&FFITypeConstraint {
+				let constraint = type_constraint_from_extern_c(&ExternCTypeConstraint {
 					base_type,
 					constraint_type,
 					constraint_param1,

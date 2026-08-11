@@ -5,15 +5,15 @@ use core::ptr;
 
 use reifydb_abi::{
 	callbacks::builder::{ColumnBufferHandle, EmitDiffKind},
-	context::context::ContextFFI,
+	context::context::ExternCContext,
 	data::column::ColumnTypeCode,
 };
 use reifydb_value::{reifydb_assertions, value::row_number::RowNumber};
 
-use crate::{error::SdkError, operator::context::ffi::FFIOperatorContext};
+use crate::{error::SdkError, operator::context::extern_c::ExternCOperatorContext};
 
 pub struct ColumnBuilder<'a> {
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	handle: *mut ColumnBufferHandle,
 	type_code: ColumnTypeCode,
 	committed: bool,
@@ -28,7 +28,7 @@ pub struct CommittedColumn {
 
 impl<'a> ColumnBuilder<'a> {
 	pub fn data_ptr(&self) -> *mut u8 {
-		// SAFETY: `self.ctx` is the non-null ContextFFI borrowed for `'a`, so its builder callback
+		// SAFETY: `self.ctx` is the non-null ExternCContext borrowed for `'a`, so its builder callback
 		// table is live; `self.handle` is the handle `acquire` returned and is released only once,
 		// in `Drop`.
 		unsafe {
@@ -38,7 +38,7 @@ impl<'a> ColumnBuilder<'a> {
 	}
 
 	pub fn offsets_ptr(&self) -> *mut u64 {
-		// SAFETY: `self.ctx` is the non-null ContextFFI borrowed for `'a`, so its builder callback
+		// SAFETY: `self.ctx` is the non-null ExternCContext borrowed for `'a`, so its builder callback
 		// table is live; `self.handle` is the handle `acquire` returned and is released only once,
 		// in `Drop`.
 		unsafe {
@@ -48,7 +48,7 @@ impl<'a> ColumnBuilder<'a> {
 	}
 
 	pub fn bitvec_ptr(&self) -> *mut u8 {
-		// SAFETY: `self.ctx` is the non-null ContextFFI borrowed for `'a`, so its builder callback
+		// SAFETY: `self.ctx` is the non-null ExternCContext borrowed for `'a`, so its builder callback
 		// table is live; `self.handle` is the handle `acquire` returned and is released only once,
 		// in `Drop`.
 		unsafe {
@@ -58,7 +58,7 @@ impl<'a> ColumnBuilder<'a> {
 	}
 
 	pub fn grow(&self, additional: usize) -> Result<(), SdkError> {
-		// SAFETY: `self.ctx` is the non-null ContextFFI borrowed for `'a`, so its builder callback
+		// SAFETY: `self.ctx` is the non-null ExternCContext borrowed for `'a`, so its builder callback
 		// table is live; `self.handle` is the handle `acquire` returned and is released only once,
 		// in `Drop`.
 		let code = unsafe {
@@ -72,7 +72,7 @@ impl<'a> ColumnBuilder<'a> {
 	}
 
 	pub fn commit(mut self, written_count: usize) -> Result<CommittedColumn, SdkError> {
-		// SAFETY: `self.ctx` is the non-null ContextFFI borrowed for `'a`, so its builder callback
+		// SAFETY: `self.ctx` is the non-null ExternCContext borrowed for `'a`, so its builder callback
 		// table is live; `self.handle` is the handle `acquire` returned, still uncommitted because
 		// `commit` consumes the builder.
 		let code = unsafe {
@@ -322,7 +322,7 @@ where
 impl<'a> Drop for ColumnBuilder<'a> {
 	fn drop(&mut self) {
 		if !self.committed {
-			// SAFETY: `self.ctx` is the non-null ContextFFI borrowed for `'a`, so its builder callback
+			// SAFETY: `self.ctx` is the non-null ExternCContext borrowed for `'a`, so its builder callback
 			// table is live; the `committed` check makes this the only release of `self.handle`.
 			unsafe {
 				let cb = (*self.ctx).callbacks.builder;
@@ -333,19 +333,19 @@ impl<'a> Drop for ColumnBuilder<'a> {
 }
 
 pub struct ColumnsBuilder<'a> {
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	_phantom: core::marker::PhantomData<&'a mut ()>,
 }
 
 impl<'a> ColumnsBuilder<'a> {
-	pub fn new(ctx: &'a mut FFIOperatorContext) -> Self {
+	pub fn new(ctx: &'a mut ExternCOperatorContext) -> Self {
 		Self {
 			ctx: ctx.ctx,
 			_phantom: core::marker::PhantomData,
 		}
 	}
 
-	pub fn from_raw_ctx(ctx: *mut ContextFFI) -> Self {
+	pub fn from_raw_ctx(ctx: *mut ExternCContext) -> Self {
 		Self {
 			ctx,
 			_phantom: core::marker::PhantomData,
@@ -353,7 +353,7 @@ impl<'a> ColumnsBuilder<'a> {
 	}
 
 	pub fn acquire(&mut self, type_code: ColumnTypeCode, capacity: usize) -> Result<ColumnBuilder<'_>, SdkError> {
-		// SAFETY: `self.ctx` is the non-null ContextFFI borrowed for `'a`, so its builder callback
+		// SAFETY: `self.ctx` is the non-null ExternCContext borrowed for `'a`, so its builder callback
 		// table is live; `acquire` accepts any type_code and capacity and signals failure by
 		// returning null, which is checked below.
 		let handle = unsafe {
@@ -450,7 +450,7 @@ impl<'a> ColumnsBuilder<'a> {
 		let post_name_lens: Vec<usize> = post_names.iter().map(|n| n.len()).collect();
 		let post_row_nums: Vec<u64> = post_row_numbers.iter().map(|r| r.0).collect();
 
-		// SAFETY: `self.ctx` is the non-null ContextFFI borrowed for `'a`, so its builder callback
+		// SAFETY: `self.ctx` is the non-null ExternCContext borrowed for `'a`, so its builder callback
 		// table is live; every array argument is either the base of one of the local `Vec`s above,
 		// passed with that `Vec`'s own length, or null when the `Vec` is empty.
 		let code = unsafe {

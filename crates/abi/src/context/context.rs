@@ -6,7 +6,7 @@ use core::ffi::c_void;
 use crate::callbacks::host::HostCallbacks;
 
 #[repr(C)]
-pub struct ContextFFI {
+pub struct ExternCContext {
 	pub txn_ptr: *mut c_void,
 
 	pub executor_ptr: *const c_void,

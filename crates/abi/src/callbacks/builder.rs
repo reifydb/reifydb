@@ -3,7 +3,7 @@
 
 use core::ffi::c_void;
 
-use crate::{context::context::ContextFFI, data::column::ColumnTypeCode};
+use crate::{context::context::ExternCContext, data::column::ColumnTypeCode};
 
 pub type ColumnBufferHandle = c_void;
 
@@ -19,7 +19,7 @@ pub enum EmitDiffKind {
 #[derive(Clone, Copy)]
 pub struct BuilderCallbacks {
 	pub acquire: unsafe extern "C" fn(
-		ctx: *mut ContextFFI,
+		ctx: *mut ExternCContext,
 		type_code: ColumnTypeCode,
 		capacity: usize,
 	) -> *mut ColumnBufferHandle,
@@ -37,7 +37,7 @@ pub struct BuilderCallbacks {
 	pub release: unsafe extern "C" fn(handle: *mut ColumnBufferHandle),
 
 	pub emit_diff: unsafe extern "C" fn(
-		ctx: *mut ContextFFI,
+		ctx: *mut ExternCContext,
 		kind: EmitDiffKind,
 		pre_handles_ptr: *const *mut ColumnBufferHandle,
 		pre_name_ptrs: *const *const u8,

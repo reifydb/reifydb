@@ -8,18 +8,18 @@ use std::{
 	slice,
 };
 
-use reifydb_abi::{context::context::ContextFFI, procedure::vtable::ProcedureVTableFFI};
+use reifydb_abi::{context::context::ExternCContext, procedure::vtable::ExternCProcedureVTable};
 use reifydb_codec::value::decode_params;
 use reifydb_value::params::Params;
 use tracing::error;
 
-use crate::procedure::{FFIProcedure, FFIProcedureContext};
+use crate::procedure::{ExternCProcedure, ExternCProcedureContext};
 
-pub struct ProcedureWrapper<T: FFIProcedure> {
+pub struct ProcedureWrapper<T: ExternCProcedure> {
 	procedure: T,
 }
 
-impl<T: FFIProcedure> ProcedureWrapper<T> {
+impl<T: ExternCProcedure> ProcedureWrapper<T> {
 	pub fn new(procedure: T) -> Self {
 		Self {
 			procedure,
@@ -34,10 +34,10 @@ impl<T: FFIProcedure> ProcedureWrapper<T> {
 /// # Safety
 ///
 /// - `instance` must be a valid pointer to a `ProcedureWrapper<T>`.
-/// - `ctx` must point to a valid `ContextFFI` for the duration of the call.
-pub unsafe extern "C" fn ffi_procedure_call<T: FFIProcedure>(
+/// - `ctx` must point to a valid `ExternCContext` for the duration of the call.
+pub unsafe extern "C" fn extern_c_procedure_call<T: ExternCProcedure>(
 	instance: *mut c_void,
-	ctx: *mut ContextFFI,
+	ctx: *mut ExternCContext,
 	params_ptr: *const u8,
 	params_len: usize,
 ) -> i32 {
@@ -59,7 +59,7 @@ pub unsafe extern "C" fn ffi_procedure_call<T: FFIProcedure>(
 			}
 		};
 
-		let mut pctx = FFIProcedureContext::new(ctx);
+		let mut pctx = ExternCProcedureContext::new(ctx);
 
 		match wrapper.procedure.call(&mut pctx, params) {
 			Ok(()) => 0,
@@ -71,11 +71,11 @@ pub unsafe extern "C" fn ffi_procedure_call<T: FFIProcedure>(
 	}));
 
 	let code = result.unwrap_or_else(|e| {
-		error!(?e, "Panic in ffi_procedure_call");
+		error!(?e, "Panic in extern_c_procedure_call");
 		-99
 	});
 	if code < 0 {
-		error!(code, "ffi_procedure_call failed - aborting");
+		error!(code, "extern_c_procedure_call failed - aborting");
 		abort();
 	}
 	code
@@ -84,26 +84,26 @@ pub unsafe extern "C" fn ffi_procedure_call<T: FFIProcedure>(
 /// # Safety
 ///
 /// - `instance` must be a valid pointer to a `ProcedureWrapper<T>`, or null.
-pub unsafe extern "C" fn ffi_procedure_destroy<T: FFIProcedure>(instance: *mut c_void) {
+pub unsafe extern "C" fn extern_c_procedure_destroy<T: ExternCProcedure>(instance: *mut c_void) {
 	if instance.is_null() {
 		return;
 	}
 
-	// SAFETY: instance was checked non-null above and ffi_procedure_destroy's contract makes it a Box::new
+	// SAFETY: instance was checked non-null above and extern_c_procedure_destroy's contract makes it a Box::new
 	// allocated ProcedureWrapper<T>; the host calls destroy once, so ownership is taken exactly once.
 	let result = catch_unwind(AssertUnwindSafe(|| unsafe {
 		let _wrapper = Box::from_raw(instance as *mut ProcedureWrapper<T>);
 	}));
 
 	if let Err(e) = result {
-		error!(?e, "Panic in ffi_procedure_destroy - aborting");
+		error!(?e, "Panic in extern_c_procedure_destroy - aborting");
 		abort();
 	}
 }
 
-pub fn create_procedure_vtable<T: FFIProcedure>() -> ProcedureVTableFFI {
-	ProcedureVTableFFI {
-		call: ffi_procedure_call::<T>,
-		destroy: ffi_procedure_destroy::<T>,
+pub fn create_procedure_vtable<T: ExternCProcedure>() -> ExternCProcedureVTable {
+	ExternCProcedureVTable {
+		call: extern_c_procedure_call::<T>,
+		destroy: extern_c_procedure_destroy::<T>,
 	}
 }

@@ -5,12 +5,12 @@ use core::{slice, str};
 
 use reifydb_abi::{
 	data::{
-		buffer::BufferFFI,
-		column::{ColumnFFI, ColumnTypeCode, ColumnsFFI},
+		buffer::ExternCBuffer,
+		column::{ColumnTypeCode, ExternCColumn, ExternCColumns},
 	},
 	flow::{
-		change::{ChangeFFI, OriginFFI},
-		diff::{DiffFFI, DiffType},
+		change::{ExternCChange, ExternCOrigin},
+		diff::{DiffType, ExternCDiff},
 	},
 };
 use reifydb_value::{
@@ -20,50 +20,50 @@ use reifydb_value::{
 
 #[derive(Clone, Copy)]
 pub struct BorrowedChange<'a> {
-	ffi: &'a ChangeFFI,
+	extern_c: &'a ExternCChange,
 }
 
 impl<'a> BorrowedChange<'a> {
 	/// # Safety
 	///
-	/// `ptr` must be non-null and point to a valid `ChangeFFI` whose backing
+	/// `ptr` must be non-null and point to a valid `ExternCChange` whose backing
 	/// buffers remain live for the lifetime `'a`.
-	pub unsafe fn from_raw(ptr: *const ChangeFFI) -> Self {
+	pub unsafe fn from_raw(ptr: *const ExternCChange) -> Self {
 		reifydb_assertions! {
 			assert!(!ptr.is_null(), "BorrowedChange::from_raw: null pointer");
 		}
 		Self {
 			// SAFETY: the `from_raw` contract above makes `ptr` non-null and a live, initialized
-			// `ChangeFFI` that outlives `'a`.
-			ffi: unsafe { &*ptr },
+			// `ExternCChange` that outlives `'a`.
+			extern_c: unsafe { &*ptr },
 		}
 	}
 
-	pub fn origin(&self) -> OriginFFI {
-		self.ffi.origin
+	pub fn origin(&self) -> ExternCOrigin {
+		self.extern_c.origin
 	}
 
 	pub fn version(&self) -> u64 {
-		self.ffi.version
+		self.extern_c.version
 	}
 
 	pub fn changed_at_nanos(&self) -> u64 {
-		self.ffi.changed_at
+		self.extern_c.changed_at
 	}
 
 	pub fn diff_count(&self) -> usize {
-		self.ffi.diff_count
+		self.extern_c.diff_count
 	}
 
 	pub fn diffs(&self) -> impl Iterator<Item = BorrowedDiff<'a>> + 'a {
-		let count = self.ffi.diff_count;
-		let base = self.ffi.diffs;
+		let count = self.extern_c.diff_count;
+		let base = self.extern_c.diffs;
 		(0..count).map(move |i| {
-			// SAFETY: `base` is the `diff_count`-element `DiffFFI` array `marshal_change` wrote and
+			// SAFETY: `base` is the `diff_count`-element `ExternCDiff` array `marshal_change` wrote and
 			// fully initialized; `i < count` keeps the offset inside it.
-			let diff_ffi: &'a DiffFFI = unsafe { &*base.add(i) };
+			let diff: &'a ExternCDiff = unsafe { &*base.add(i) };
 			BorrowedDiff {
-				ffi: diff_ffi,
+				extern_c: diff,
 			}
 		})
 	}
@@ -71,89 +71,89 @@ impl<'a> BorrowedChange<'a> {
 
 #[derive(Clone, Copy)]
 pub struct BorrowedDiff<'a> {
-	ffi: &'a DiffFFI,
+	extern_c: &'a ExternCDiff,
 }
 
 impl<'a> BorrowedDiff<'a> {
 	pub fn kind(&self) -> DiffType {
-		self.ffi.diff_type
+		self.extern_c.diff_type
 	}
 
 	pub fn pre(&self) -> BorrowedColumns<'a> {
 		BorrowedColumns {
-			ffi: &self.ffi.pre,
+			extern_c: &self.extern_c.pre,
 		}
 	}
 
 	pub fn post(&self) -> BorrowedColumns<'a> {
 		BorrowedColumns {
-			ffi: &self.ffi.post,
+			extern_c: &self.extern_c.post,
 		}
 	}
 }
 
 #[derive(Clone, Copy)]
 pub struct BorrowedColumns<'a> {
-	ffi: &'a ColumnsFFI,
+	extern_c: &'a ExternCColumns,
 }
 
 impl<'a> BorrowedColumns<'a> {
 	/// # Safety
-	/// - `ptr` must be non-null and point at a `ColumnsFFI` whose buffer pointers are valid for at least `'a`.
-	pub unsafe fn from_ffi(ptr: *const ColumnsFFI) -> Self {
+	/// - `ptr` must be non-null and point at a `ExternCColumns` whose buffer pointers are valid for at least `'a`.
+	pub unsafe fn from_extern_c(ptr: *const ExternCColumns) -> Self {
 		reifydb_assertions! {
-			assert!(!ptr.is_null(), "BorrowedColumns::from_ffi: null pointer");
+			assert!(!ptr.is_null(), "BorrowedColumns::from_extern_c: null pointer");
 		}
 		Self {
-			// SAFETY: the `from_ffi` contract above makes `ptr` non-null and a live, initialized
-			// `ColumnsFFI` that outlives `'a`.
-			ffi: unsafe { &*ptr },
+			// SAFETY: the `from_extern_c` contract above makes `ptr` non-null and a live, initialized
+			// `ExternCColumns` that outlives `'a`.
+			extern_c: unsafe { &*ptr },
 		}
 	}
 
 	pub fn row_count(&self) -> usize {
-		self.ffi.row_count
+		self.extern_c.row_count
 	}
 
 	pub fn column_count(&self) -> usize {
-		self.ffi.column_count
+		self.extern_c.column_count
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.ffi.row_count == 0 && self.ffi.column_count == 0
+		self.extern_c.row_count == 0 && self.extern_c.column_count == 0
 	}
 
 	pub fn row_numbers(&self) -> &'a [u64] {
-		if self.ffi.row_numbers.is_null() || self.ffi.row_count == 0 {
+		if self.extern_c.row_numbers.is_null() || self.extern_c.row_count == 0 {
 			&[]
 		} else {
 			// SAFETY: `row_numbers` is non-null here and a non-empty system sidecar holds exactly
 			// `row_count` entries (`Columns::with_system` asserts it); `RowNumber` is
 			// `repr(transparent)` over `u64`.
-			unsafe { slice::from_raw_parts(self.ffi.row_numbers, self.ffi.row_count) }
+			unsafe { slice::from_raw_parts(self.extern_c.row_numbers, self.extern_c.row_count) }
 		}
 	}
 
 	pub fn time(&self) -> &'a [u64] {
-		if self.ffi.time.is_null() || self.ffi.row_count == 0 {
+		if self.extern_c.time.is_null() || self.extern_c.row_count == 0 {
 			&[]
 		} else {
 			// SAFETY: `time` is non-null here and a non-empty system sidecar holds exactly `row_count`
 			// entries (`Columns::with_system` asserts it); `DateTime` is `repr(transparent)` over
 			// `u64`.
-			unsafe { slice::from_raw_parts(self.ffi.time, self.ffi.row_count) }
+			unsafe { slice::from_raw_parts(self.extern_c.time, self.extern_c.row_count) }
 		}
 	}
 
 	pub fn columns(&self) -> impl Iterator<Item = BorrowedColumn<'a>> + 'a {
-		let count = self.ffi.column_count;
-		let base = self.ffi.columns;
+		let count = self.extern_c.column_count;
+		let base = self.extern_c.columns;
 		(0..count).map(move |i| {
-			// SAFETY: `base` is the `column_count`-element `ColumnFFI` array `marshal_columns` wrote
+			// SAFETY: `base` is the `column_count`-element `ExternCColumn` array `marshal_columns` wrote
 			// and fully initialized; `i < count` keeps the offset inside it.
-			let col_ffi: &'a ColumnFFI = unsafe { &*base.add(i) };
+			let col: &'a ExternCColumn = unsafe { &*base.add(i) };
 			BorrowedColumn {
-				ffi: col_ffi,
+				extern_c: col,
 			}
 		})
 	}
@@ -163,14 +163,14 @@ impl<'a> BorrowedColumns<'a> {
 	}
 
 	pub fn column_at_index(&self, idx: usize) -> Option<BorrowedColumn<'a>> {
-		if idx >= self.ffi.column_count {
+		if idx >= self.extern_c.column_count {
 			return None;
 		}
 		// SAFETY: `idx < column_count` was checked above, so the offset stays inside the initialized
-		// `ColumnFFI` array.
-		let col_ffi: &'a ColumnFFI = unsafe { &*self.ffi.columns.add(idx) };
+		// `ExternCColumn` array.
+		let col: &'a ExternCColumn = unsafe { &*self.extern_c.columns.add(idx) };
 		Some(BorrowedColumn {
-			ffi: col_ffi,
+			extern_c: col,
 		})
 	}
 
@@ -181,32 +181,32 @@ impl<'a> BorrowedColumns<'a> {
 
 #[derive(Clone, Copy)]
 pub struct BorrowedColumn<'a> {
-	ffi: &'a ColumnFFI,
+	extern_c: &'a ExternCColumn,
 }
 
 impl<'a> BorrowedColumn<'a> {
 	pub fn name(&self) -> &'a str {
-		// SAFETY: `self.ffi` came from a `BorrowedChange::from_raw` / `BorrowedColumns::from_ffi`
-		// caller, whose contract keeps every buffer this `ColumnFFI` describes live for `'a`.
-		unsafe { read_buffer_str(&self.ffi.name) }
+		// SAFETY: `self.extern_c` came from a `BorrowedChange::from_raw` / `BorrowedColumns::from_extern_c`
+		// caller, whose contract keeps every buffer this `ExternCColumn` describes live for `'a`.
+		unsafe { read_buffer_str(&self.extern_c.name) }
 	}
 
 	pub fn type_code(&self) -> ColumnTypeCode {
-		self.ffi.data.type_code
+		self.extern_c.data.type_code
 	}
 
 	pub fn row_count(&self) -> usize {
-		self.ffi.data.row_count
+		self.extern_c.data.row_count
 	}
 
 	pub fn data_bytes(&self) -> &'a [u8] {
-		// SAFETY: `self.ffi` came from a `BorrowedChange::from_raw` / `BorrowedColumns::from_ffi`
-		// caller, whose contract keeps every buffer this `ColumnFFI` describes live for `'a`.
-		unsafe { read_buffer(&self.ffi.data.data) }
+		// SAFETY: `self.extern_c` came from a `BorrowedChange::from_raw` / `BorrowedColumns::from_extern_c`
+		// caller, whose contract keeps every buffer this `ExternCColumn` describes live for `'a`.
+		unsafe { read_buffer(&self.extern_c.data.data) }
 	}
 
 	pub fn offsets(&self) -> &'a [u64] {
-		let buf = &self.ffi.data.offsets;
+		let buf = &self.extern_c.data.offsets;
 		if buf.ptr.is_null() || buf.len == 0 {
 			&[]
 		} else {
@@ -219,9 +219,9 @@ impl<'a> BorrowedColumn<'a> {
 	}
 
 	pub fn defined_bitvec(&self) -> &'a [u8] {
-		// SAFETY: `self.ffi` came from a `BorrowedChange::from_raw` / `BorrowedColumns::from_ffi`
-		// caller, whose contract keeps every buffer this `ColumnFFI` describes live for `'a`.
-		unsafe { read_buffer(&self.ffi.data.defined_bitvec) }
+		// SAFETY: `self.extern_c` came from a `BorrowedChange::from_raw` / `BorrowedColumns::from_extern_c`
+		// caller, whose contract keeps every buffer this `ExternCColumn` describes live for `'a`.
+		unsafe { read_buffer(&self.extern_c.data.defined_bitvec) }
 	}
 
 	/// # Safety
@@ -536,7 +536,7 @@ impl<'a> BorrowedColumn<'a> {
 ///
 /// `buf` must be a host-produced descriptor: either empty, or `buf.ptr` valid for `buf.len`
 /// initialized bytes that stay live as long as `buf` itself is borrowed.
-unsafe fn read_buffer(buf: &BufferFFI) -> &[u8] {
+unsafe fn read_buffer(buf: &ExternCBuffer) -> &[u8] {
 	if buf.ptr.is_null() || buf.len == 0 {
 		&[]
 	} else {
@@ -549,7 +549,7 @@ unsafe fn read_buffer(buf: &BufferFFI) -> &[u8] {
 /// # Safety
 ///
 /// Same contract as [`read_buffer`].
-unsafe fn read_buffer_str(buf: &BufferFFI) -> &str {
+unsafe fn read_buffer_str(buf: &ExternCBuffer) -> &str {
 	// SAFETY: forwarding this function's own contract, which is `read_buffer`'s.
 	let bytes: &[u8] = unsafe { read_buffer(buf) };
 	str::from_utf8(bytes).unwrap_or("")

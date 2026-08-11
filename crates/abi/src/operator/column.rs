@@ -3,12 +3,12 @@
 
 use core::ptr::null;
 
-use crate::data::buffer::BufferFFI;
+use crate::data::buffer::ExternCBuffer;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct OperatorColumnFFI {
-	pub name: BufferFFI,
+pub struct ExternCOperatorColumn {
+	pub name: ExternCBuffer,
 
 	pub base_type: u8,
 
@@ -18,18 +18,18 @@ pub struct OperatorColumnFFI {
 
 	pub constraint_param2: u32,
 
-	pub description: BufferFFI,
+	pub description: ExternCBuffer,
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct OperatorColumnsFFI {
-	pub columns: *const OperatorColumnFFI,
+pub struct ExternCOperatorColumns {
+	pub columns: *const ExternCOperatorColumn,
 
 	pub column_count: usize,
 }
 
-impl OperatorColumnsFFI {
+impl ExternCOperatorColumns {
 	pub const fn empty() -> Self {
 		Self {
 			columns: null(),

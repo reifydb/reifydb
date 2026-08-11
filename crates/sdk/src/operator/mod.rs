@@ -18,7 +18,7 @@ pub mod windowed;
 
 use change::BorrowedChange;
 use column::operator::OperatorColumn;
-use context::{OperatorContext, ffi::FFIOperatorContext};
+use context::{OperatorContext, extern_c::ExternCOperatorContext};
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::{interface::catalog::flow::OperatorId, metrics::heap::OperatorSample};
 use reifydb_value::value::duration::Duration;
@@ -27,14 +27,14 @@ use view::ChangeView;
 
 use crate::error::Result;
 
-pub trait FFIOperator: 'static {
+pub trait ExternCOperator: 'static {
 	fn new(operator_id: OperatorId, config: &Config) -> Result<Self>
 	where
 		Self: Sized;
 
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()>;
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, input: BorrowedChange<'_>) -> Result<()>;
 
-	fn on_timer(&mut self, _ctx: &mut FFIOperatorContext, _timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, _ctx: &mut ExternCOperatorContext, _timer: Timer<'_>) -> Result<()> {
 		Ok(())
 	}
 
@@ -42,7 +42,7 @@ pub trait FFIOperator: 'static {
 		None
 	}
 
-	fn flush_state(&mut self, _ctx: &mut FFIOperatorContext) -> Result<()> {
+	fn flush_state(&mut self, _ctx: &mut ExternCOperatorContext) -> Result<()> {
 		Ok(())
 	}
 
@@ -85,11 +85,11 @@ pub trait OperatorLogic: Send + Sync {
 	}
 }
 
-pub struct FFIOperatorAdapter<C> {
+pub struct ExternCOperatorAdapter<C> {
 	core: C,
 }
 
-impl<C: OperatorMetadata> OperatorMetadata for FFIOperatorAdapter<C> {
+impl<C: OperatorMetadata> OperatorMetadata for ExternCOperatorAdapter<C> {
 	const NAME: &'static str = C::NAME;
 	const API: u32 = C::API;
 	const VERSION: &'static str = C::VERSION;
@@ -99,18 +99,18 @@ impl<C: OperatorMetadata> OperatorMetadata for FFIOperatorAdapter<C> {
 	const CAPABILITIES: &'static [OperatorCapability] = C::CAPABILITIES;
 }
 
-impl<C: OperatorLogic + OperatorMetadata + 'static> FFIOperator for FFIOperatorAdapter<C> {
+impl<C: OperatorLogic + OperatorMetadata + 'static> ExternCOperator for ExternCOperatorAdapter<C> {
 	fn new(operator_id: OperatorId, config: &Config) -> Result<Self> {
 		Ok(Self {
 			core: C::create(operator_id, config)?,
 		})
 	}
 
-	fn apply(&mut self, ctx: &mut FFIOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, ctx: &mut ExternCOperatorContext, input: BorrowedChange<'_>) -> Result<()> {
 		self.core.apply(ctx, input)
 	}
 
-	fn on_timer(&mut self, ctx: &mut FFIOperatorContext, timer: Timer<'_>) -> Result<()> {
+	fn on_timer(&mut self, ctx: &mut ExternCOperatorContext, timer: Timer<'_>) -> Result<()> {
 		self.core.on_timer(ctx, timer)
 	}
 
@@ -118,7 +118,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> FFIOperator for FFIOperatorA
 		self.core.seal_after()
 	}
 
-	fn flush_state(&mut self, ctx: &mut FFIOperatorContext) -> Result<()> {
+	fn flush_state(&mut self, ctx: &mut ExternCOperatorContext) -> Result<()> {
 		self.core.flush_state(ctx)
 	}
 

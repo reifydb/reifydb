@@ -4,7 +4,7 @@
 pub mod exports;
 pub mod wrapper;
 
-use reifydb_abi::{constants::FFI_OK, context::context::ContextFFI, data::buffer::BufferFFI};
+use reifydb_abi::{constants::EXTERN_C_OK, context::context::ExternCContext, data::buffer::ExternCBuffer};
 use reifydb_codec::{frame::decode::decode_frames, value::encode_params};
 use reifydb_value::{params::Params, value::frame::frame::Frame};
 
@@ -14,7 +14,7 @@ use crate::{
 	operator::builder::ColumnsBuilder,
 };
 
-pub trait FFIProcedureMetadata {
+pub trait ExternCProcedureMetadata {
 	const NAME: &'static str;
 
 	const API: u32;
@@ -24,24 +24,24 @@ pub trait FFIProcedureMetadata {
 	const DESCRIPTION: &'static str;
 }
 
-pub trait FFIProcedure: 'static {
+pub trait ExternCProcedure: 'static {
 	fn new(config: &Config) -> Result<Self>
 	where
 		Self: Sized;
 
-	fn call(&mut self, ctx: &mut FFIProcedureContext, params: Params) -> Result<()>;
+	fn call(&mut self, ctx: &mut ExternCProcedureContext, params: Params) -> Result<()>;
 }
 
-pub trait FFIProcedureWithMetadata: FFIProcedure + FFIProcedureMetadata {}
-impl<T> FFIProcedureWithMetadata for T where T: FFIProcedure + FFIProcedureMetadata {}
+pub trait ExternCProcedureWithMetadata: ExternCProcedure + ExternCProcedureMetadata {}
+impl<T> ExternCProcedureWithMetadata for T where T: ExternCProcedure + ExternCProcedureMetadata {}
 
-pub struct FFIProcedureContext {
-	pub(crate) ctx: *mut ContextFFI,
+pub struct ExternCProcedureContext {
+	pub(crate) ctx: *mut ExternCContext,
 }
 
-impl FFIProcedureContext {
-	pub fn new(ctx: *mut ContextFFI) -> Self {
-		assert!(!ctx.is_null(), "ContextFFI pointer must not be null");
+impl ExternCProcedureContext {
+	pub fn new(ctx: *mut ExternCContext) -> Self {
+		assert!(!ctx.is_null(), "ExternCContext pointer must not be null");
 		Self {
 			ctx,
 		}
@@ -56,14 +56,14 @@ impl FFIProcedureContext {
 	}
 }
 
-pub(crate) fn raw_procedure_query(ctx: &FFIProcedureContext, query: &str, params: Params) -> Result<Vec<Frame>> {
+pub(crate) fn raw_procedure_query(ctx: &ExternCProcedureContext, query: &str, params: Params) -> Result<Vec<Frame>> {
 	let params_bytes = encode_params(&params)
 		.map_err(|e| SdkError::Serialization(format!("failed to serialize params: {}", e)))?;
 
-	let mut output = BufferFFI::empty();
+	let mut output = ExternCBuffer::empty();
 
-	// SAFETY: FFIProcedureContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
-	// whole procedure call; query and params_bytes outlive the callback. Discharges BufferFFI::as_slice: the host
+	// SAFETY: ExternCProcedureContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid for the
+	// whole procedure call; query and params_bytes outlive the callback. Discharges ExternCBuffer::as_slice: the host
 	// leaves output either empty or pointing at a live host allocation of output.len bytes that nothing here frees.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.rql.rql)(
@@ -75,7 +75,7 @@ pub(crate) fn raw_procedure_query(ctx: &FFIProcedureContext, query: &str, params
 			&mut output,
 		);
 
-		if result == FFI_OK {
+		if result == EXTERN_C_OK {
 			let result_bytes = output.as_slice();
 			let frames: Vec<Frame> = decode_frames(result_bytes)
 				.map_err(|e| SdkError::Serialization(format!("failed to deserialize result: {}", e)))?;

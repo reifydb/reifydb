@@ -10,8 +10,8 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
+pub mod callbacks;
 pub mod error;
-pub mod ffi_callbacks;
 pub mod function;
 pub mod loader;
 pub mod operator;

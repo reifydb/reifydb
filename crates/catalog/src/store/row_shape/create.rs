@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{constraint::type_constraint_to_ffi, row::shape::RowShape};
+use reifydb_codec::{constraint::type_constraint_to_extern_c, row::shape::RowShape};
 use reifydb_core::key::row_shape::{RowShapeFieldKey, RowShapeKey};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::reifydb_assertions;
@@ -32,14 +32,14 @@ pub(crate) fn create_row_shape(txn: &mut Transaction<'_>, shape: &RowShape) -> R
 	)?;
 
 	for (idx, field) in shape.fields().iter().enumerate() {
-		let ffi = type_constraint_to_ffi(&field.constraint).expect("constraint exceeds tag capacity");
+		let extern_c = type_constraint_to_extern_c(&field.constraint).expect("constraint exceeds tag capacity");
 
 		let mut field_row = shape_field::SHAPE.allocate_catalog();
 		shape_field::SHAPE.set_utf8(&mut field_row, shape_field::NAME, &field.name);
-		shape_field::SHAPE.set::<u8>(&mut field_row, shape_field::TYPE, ffi.base_type);
-		shape_field::SHAPE.set::<u8>(&mut field_row, shape_field::CONSTRAINT_TYPE, ffi.constraint_type);
-		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::CONSTRAINT_P1, ffi.constraint_param1);
-		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::CONSTRAINT_P2, ffi.constraint_param2);
+		shape_field::SHAPE.set::<u8>(&mut field_row, shape_field::TYPE, extern_c.base_type);
+		shape_field::SHAPE.set::<u8>(&mut field_row, shape_field::CONSTRAINT_TYPE, extern_c.constraint_type);
+		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::CONSTRAINT_P1, extern_c.constraint_param1);
+		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::CONSTRAINT_P2, extern_c.constraint_param2);
 		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::OFFSET, field.offset);
 		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::SIZE, field.size);
 

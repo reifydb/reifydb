@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod ffi;
+pub mod extern_c;
 
 use std::ops::Bound;
 
-use ffi::{raw_store_contains_key, raw_store_get, raw_store_prefix, raw_store_range};
+use extern_c::{raw_store_contains_key, raw_store_get, raw_store_prefix, raw_store_range};
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use tracing::{Span, instrument};
 
-use crate::{error::Result, operator::context::ffi::FFIOperatorContext};
+use crate::{error::Result, operator::context::extern_c::ExternCOperatorContext};
 
 pub struct Store<'a> {
-	ctx: &'a mut FFIOperatorContext,
+	ctx: &'a mut ExternCOperatorContext,
 }
 
 impl<'a> Store<'a> {
-	pub(crate) fn new(ctx: &'a mut FFIOperatorContext) -> Self {
+	pub(crate) fn new(ctx: &'a mut ExternCOperatorContext) -> Self {
 		Self {
 			ctx,
 		}

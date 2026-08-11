@@ -3,7 +3,7 @@
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct FFITypeConstraint {
+pub struct ExternCTypeConstraint {
 	pub base_type: u8,
 
 	pub constraint_type: u8,

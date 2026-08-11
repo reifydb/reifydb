@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::buffer::BufferFFI;
+use super::buffer::ExternCBuffer;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,62 +79,62 @@ impl ColumnTypeCode {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct ColumnDataFFI {
+pub struct ExternCColumnData {
 	pub type_code: ColumnTypeCode,
 
 	pub row_count: usize,
 
-	pub data: BufferFFI,
+	pub data: ExternCBuffer,
 
-	pub defined_bitvec: BufferFFI,
+	pub defined_bitvec: ExternCBuffer,
 
-	pub offsets: BufferFFI,
+	pub offsets: ExternCBuffer,
 }
 
-impl ColumnDataFFI {
+impl ExternCColumnData {
 	pub const fn empty() -> Self {
 		Self {
 			type_code: ColumnTypeCode::Undefined,
 			row_count: 0,
-			data: BufferFFI::empty(),
-			defined_bitvec: BufferFFI::empty(),
-			offsets: BufferFFI::empty(),
+			data: ExternCBuffer::empty(),
+			defined_bitvec: ExternCBuffer::empty(),
+			offsets: ExternCBuffer::empty(),
 		}
 	}
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct ColumnFFI {
-	pub name: BufferFFI,
+pub struct ExternCColumn {
+	pub name: ExternCBuffer,
 
-	pub data: ColumnDataFFI,
+	pub data: ExternCColumnData,
 }
 
-impl ColumnFFI {
+impl ExternCColumn {
 	pub const fn empty() -> Self {
 		Self {
-			name: BufferFFI::empty(),
-			data: ColumnDataFFI::empty(),
+			name: ExternCBuffer::empty(),
+			data: ExternCColumnData::empty(),
 		}
 	}
 }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct ColumnsFFI {
+pub struct ExternCColumns {
 	pub row_count: usize,
 
 	pub column_count: usize,
 
 	pub row_numbers: *const u64,
 
-	pub columns: *const ColumnFFI,
+	pub columns: *const ExternCColumn,
 
 	pub time: *const u64,
 }
 
-impl ColumnsFFI {
+impl ExternCColumns {
 	pub const fn empty() -> Self {
 		Self {
 			row_count: 0,

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_abi::data::column::ColumnTypeCode;
-use reifydb_codec::ffi::cells::encode_decimal_cell;
+use reifydb_codec::extern_c::cells::encode_decimal_cell;
 use reifydb_value::value::{date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, time::Time};
 
 use crate::{

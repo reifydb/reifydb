@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+pub mod loader;
+
+use postcard::to_stdvec;
+use reifydb_core::value::column::columns::Columns;
+use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
+use reifydb_sdk::{error::SdkError, marshal::extern_wasm::unmarshal_columns_from_bytes};
+use reifydb_value::{error::Error, value::value_type::ValueType};
+
+use crate::{error::ExtensionError, loader::extern_wasm::invoke_extern_wasm_module};
+
+fn ext_err(err: ExtensionError) -> RoutineError {
+	RoutineError::Wrapped(Box::new(Error::from(SdkError::Other(err.to_string()))))
+}
+
+pub struct ExternWasmProcedure {
+	info: RoutineInfo,
+	wasm_bytes: Vec<u8>,
+}
+
+impl ExternWasmProcedure {
+	pub fn new(name: impl Into<String>, wasm_bytes: Vec<u8>) -> Self {
+		let name = name.into();
+		Self {
+			info: RoutineInfo::new(&name),
+			wasm_bytes,
+		}
+	}
+
+	pub fn name(&self) -> &str {
+		&self.info.name
+	}
+}
+
+// SAFETY: holds only a name and module bytes; each call instantiates the module fresh, sharing nothing.
+unsafe impl Send for ExternWasmProcedure {}
+unsafe impl Sync for ExternWasmProcedure {}
+
+impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for ExternWasmProcedure {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
+
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Any
+	}
+
+	fn execute(&self, ctx: &mut ProcedureContext<'a, 'tx>, _args: &Columns) -> Result<Columns, RoutineError> {
+		let params_bytes = to_stdvec(ctx.params).map_err(|e| {
+			ext_err(ExtensionError::Invocation(format!(
+				"WASM procedure '{}' failed to serialize params: {}",
+				self.info.name, e
+			)))
+		})?;
+
+		let label = format!("WASM procedure '{}'", self.info.name);
+		let output_bytes =
+			invoke_extern_wasm_module(&self.wasm_bytes, "procedure", &params_bytes, &label).map_err(ext_err)?;
+
+		Ok(unmarshal_columns_from_bytes(&output_bytes))
+	}
+}

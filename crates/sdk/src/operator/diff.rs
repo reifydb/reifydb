@@ -4,14 +4,14 @@
 use std::{collections::HashMap, thread};
 
 use reifydb_abi::data::column::ColumnTypeCode;
-use reifydb_codec::ffi::cells::encode_decimal_cell;
+use reifydb_codec::extern_c::cells::encode_decimal_cell;
 use reifydb_value::value::{Value, decimal::Decimal, row_number::RowNumber, value_type::ValueType};
 
 use crate::{
 	error::SdkError,
 	operator::{
 		builder::{ColumnBuilder, ColumnsBuilder, CommittedColumn},
-		context::ffi::FFIOperatorContext,
+		context::extern_c::ExternCOperatorContext,
 	},
 };
 
@@ -20,7 +20,7 @@ pub struct DiffStart<'a> {
 }
 
 impl<'a> DiffStart<'a> {
-	pub(crate) fn new(ctx: &'a mut FFIOperatorContext) -> Self {
+	pub(crate) fn new(ctx: &'a mut ExternCOperatorContext) -> Self {
 		Self {
 			inner: ColumnsBuilder::new(ctx),
 		}

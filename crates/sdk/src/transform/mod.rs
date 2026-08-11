@@ -6,10 +6,10 @@ pub mod exports;
 pub mod wrapper;
 
 use crate::{
-	config::Config, error::Result, operator::change::BorrowedColumns, transform::context::FFITransformContext,
+	config::Config, error::Result, operator::change::BorrowedColumns, transform::context::ExternCTransformContext,
 };
 
-pub trait FFITransformMetadata {
+pub trait ExternCTransformMetadata {
 	const NAME: &'static str;
 
 	const API: u32;
@@ -19,13 +19,13 @@ pub trait FFITransformMetadata {
 	const DESCRIPTION: &'static str;
 }
 
-pub trait FFITransform: 'static {
+pub trait ExternCTransform: 'static {
 	fn new(config: &Config) -> Result<Self>
 	where
 		Self: Sized;
 
-	fn transform(&mut self, ctx: &mut FFITransformContext, input: BorrowedColumns<'_>) -> Result<()>;
+	fn transform(&mut self, ctx: &mut ExternCTransformContext, input: BorrowedColumns<'_>) -> Result<()>;
 }
 
-pub trait FFITransformWithMetadata: FFITransform + FFITransformMetadata {}
-impl<T> FFITransformWithMetadata for T where T: FFITransform + FFITransformMetadata {}
+pub trait ExternCTransformWithMetadata: ExternCTransform + ExternCTransformMetadata {}
+impl<T> ExternCTransformWithMetadata for T where T: ExternCTransform + ExternCTransformMetadata {}

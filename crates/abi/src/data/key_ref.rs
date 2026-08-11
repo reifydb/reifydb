@@ -3,7 +3,7 @@
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct KeyRefFFI {
+pub struct ExternCKeyRef {
 	pub ptr: *const u8,
 
 	pub len: usize,

@@ -13,11 +13,11 @@ use reifydb_sdk::{
 	config::Config,
 	error::Result,
 	operator::{
-		FFIOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
-		context::ffi::FFIOperatorContext, windowed::bridge::OperatorContextStore,
+		ExternCOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
+		context::extern_c::ExternCOperatorContext, windowed::bridge::OperatorContextStore,
 	},
 };
-use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::FFIOperatorHarnessBuilder};
+use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};
 use reifydb_value::value::Value;
 
 /// A bare `String` cannot be a cache key: `IntoGroupStateKey` exists to force every key through the operator-state
@@ -87,7 +87,7 @@ impl HeapSize for SumState {
 	}
 }
 
-/// Exists only so the harness can hand out a real `FFIOperatorContext`; the cache, not the operator, is under test.
+/// Exists only so the harness can hand out a real `ExternCOperatorContext`; the cache, not the operator, is under test.
 struct PassthroughOperator;
 
 impl OperatorMetadata for PassthroughOperator {
@@ -100,12 +100,12 @@ impl OperatorMetadata for PassthroughOperator {
 	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 }
 
-impl FFIOperator for PassthroughOperator {
+impl ExternCOperator for PassthroughOperator {
 	fn new(_operator_id: OperatorId, _config: &Config) -> Result<Self> {
 		Ok(Self)
 	}
 
-	fn apply(&mut self, _ctx: &mut FFIOperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
+	fn apply(&mut self, _ctx: &mut ExternCOperatorContext, _input: BorrowedChange<'_>) -> Result<()> {
 		Ok(())
 	}
 }
@@ -113,7 +113,7 @@ impl FFIOperator for PassthroughOperator {
 #[test]
 fn test_cache_set_and_get() {
 	let mut harness =
-		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<TestKey, CounterState> = StateCache::new();
 	let key = TestKey::new("test_key");
@@ -133,9 +133,9 @@ fn test_cache_set_and_get() {
 }
 
 #[test]
-fn test_cache_set_persists_to_ffi_and_flush_is_inert() {
+fn test_cache_set_persists_to_extern_c_and_flush_is_inert() {
 	let mut harness =
-		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<TestKey, CounterState> = StateCache::new();
 	let key = TestKey::new("persist_key");
@@ -158,7 +158,7 @@ fn test_cache_set_persists_to_ffi_and_flush_is_inert() {
 #[test]
 fn test_cache_get_or_default_creates_default() {
 	let mut harness =
-		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<TestKey, CounterState> = StateCache::new();
 	let key = TestKey::new("new_key");
@@ -172,7 +172,7 @@ fn test_cache_get_or_default_creates_default() {
 #[test]
 fn test_cache_get_or_default_returns_existing() {
 	let mut harness =
-		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<TestKey, CounterState> = StateCache::new();
 	let key = TestKey::new("existing_key");
@@ -197,7 +197,7 @@ fn test_cache_get_or_default_returns_existing() {
 #[test]
 fn test_cache_update() {
 	let mut harness =
-		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<TestKey, CounterState> = StateCache::new();
 	let key = TestKey::new("counter");
@@ -242,7 +242,7 @@ fn test_cache_update() {
 #[test]
 fn test_cache_multiple_keys() {
 	let mut harness =
-		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<TestKey, SumState> = StateCache::new();
 
@@ -278,7 +278,7 @@ fn test_cache_multiple_keys() {
 #[test]
 fn test_cache_tuple_keys() {
 	let mut harness =
-		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<TestPair, SumState> = StateCache::new();
 
@@ -312,7 +312,7 @@ fn test_cache_tuple_keys() {
 #[test]
 fn test_cache_tuple_key_update() {
 	let mut harness =
-		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let mut cache: StateCache<TestPair, SumState> = StateCache::new();
 	let key = TestPair(TestKey::new("account"), TestKey::new("balance"));
@@ -345,7 +345,7 @@ fn test_cache_tuple_key_update() {
 #[test]
 fn test_cache_get_reloads_from_host_storage() {
 	let mut harness =
-		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	let key = TestKey::new("miss_hit_key");
 	let value = CounterState {
@@ -378,7 +378,7 @@ fn test_cache_get_reloads_from_host_storage() {
 #[test]
 fn test_cache_with_operator_apply() {
 	let mut harness =
-		FFIOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
 
 	// Every apply gets a fresh context, so the count must accumulate through host storage, never restart at zero.
 	let mut cache: StateCache<TestKey, CounterState> = StateCache::new();

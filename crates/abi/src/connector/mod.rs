@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! C ABI shapes for FFI sources and sinks. The magic constants let the host reject, at load time, a binary that
-//! exports some other kind of FFI object; a mismatch is a hard load failure.
+//! C ABI shapes for extern-C sources and sinks. The magic constants let the host reject, at load time, a binary that
+//! exports some other kind of extern-C object; a mismatch is a hard load failure.
 
 pub mod sink;
 pub mod source;

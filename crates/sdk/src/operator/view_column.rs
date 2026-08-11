@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::data::column::ColumnTypeCode;
-use reifydb_codec::ffi::cells::decode_decimal_cell;
+use reifydb_codec::extern_c::cells::decode_decimal_cell;
 use reifydb_value::value::decimal::Decimal;
 
 use crate::operator::change::{BorrowedColumn, BorrowedColumns};

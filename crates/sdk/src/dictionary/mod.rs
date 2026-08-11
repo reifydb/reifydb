@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod ffi;
+pub mod extern_c;
 
-use ffi::{raw_find, raw_get, raw_id_by_name};
+use extern_c::{raw_find, raw_get, raw_id_by_name};
 use reifydb_value::value::{
 	Value,
 	dictionary::{DictionaryEntryId, DictionaryId},
 };
 
-use crate::{error::Result, operator::context::ffi::FFIOperatorContext};
+use crate::{error::Result, operator::context::extern_c::ExternCOperatorContext};
 
 pub struct Dictionary<'a> {
-	ctx: &'a mut FFIOperatorContext,
+	ctx: &'a mut ExternCOperatorContext,
 }
 
 impl<'a> Dictionary<'a> {
-	pub(crate) fn new(ctx: &'a mut FFIOperatorContext) -> Self {
+	pub(crate) fn new(ctx: &'a mut ExternCOperatorContext) -> Self {
 		Self {
 			ctx,
 		}
@@ -39,15 +39,15 @@ impl<'a> Dictionary<'a> {
 mod tests {
 	use std::{ffi::c_void, ptr::null};
 
-	use reifydb_abi::context::context::ContextFFI;
+	use reifydb_abi::context::context::ExternCContext;
 	use reifydb_core::common::CommitVersion;
 	use reifydb_testing_sdk::{callbacks::create_test_callbacks, context::TestContext};
 	use reifydb_value::value::{Value, dictionary::DictionaryId, value_type::ValueType};
 
-	use crate::operator::context::ffi::FFIOperatorContext;
+	use crate::operator::context::extern_c::ExternCOperatorContext;
 
 	#[test]
-	fn dictionary_round_trips_through_ffi() {
+	fn dictionary_round_trips_through_extern_c() {
 		let test_ctx = TestContext::new(CommitVersion(1));
 		test_ctx.seed_dictionary(
 			"solana::mints",
@@ -56,14 +56,14 @@ mod tests {
 			&[(1, Value::Utf8("MINTA".to_string())), (2, Value::Utf8("MINTB".to_string()))],
 		);
 
-		let mut ffi_context = ContextFFI {
+		let mut extern_c_context = ExternCContext {
 			txn_ptr: &test_ctx as *const TestContext as *mut c_void,
 			executor_ptr: null(),
 			operator_id: 1,
 			written_at_nanos: 0,
 			callbacks: create_test_callbacks(),
 		};
-		let mut ctx = FFIOperatorContext::new(&mut ffi_context as *mut ContextFFI);
+		let mut ctx = ExternCOperatorContext::new(&mut extern_c_context as *mut ExternCContext);
 
 		let id = ctx.dictionary().id_by_name("solana::mints").unwrap().expect("dictionary id");
 		assert_eq!(id, DictionaryId(7));

@@ -11,14 +11,14 @@ use reifydb_value::value::constraint::{
 	Constraint, TypeConstraint, bytes::MaxBytes, precision::Precision, scale::Scale,
 };
 
-use crate::{error::SdkError, operator::context::ffi::FFIOperatorContext};
+use crate::{error::SdkError, operator::context::extern_c::ExternCOperatorContext};
 
 pub struct RowShapeResolver<'a> {
-	ctx: &'a mut FFIOperatorContext,
+	ctx: &'a mut ExternCOperatorContext,
 }
 
 impl<'a> RowShapeResolver<'a> {
-	pub(crate) fn new(ctx: &'a mut FFIOperatorContext) -> Self {
+	pub(crate) fn new(ctx: &'a mut ExternCOperatorContext) -> Self {
 		Self {
 			ctx,
 		}

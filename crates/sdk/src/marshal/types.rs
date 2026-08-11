@@ -3,8 +3,8 @@
 
 use std::{slice::from_raw_parts, str::from_utf8};
 
-use reifydb_abi::data::{buffer::BufferFFI, column::ColumnDataFFI};
-use reifydb_codec::ffi::cells::{
+use reifydb_abi::data::{buffer::ExternCBuffer, column::ExternCColumnData};
+use reifydb_codec::extern_c::cells::{
 	decode_any_cell, decode_decimal_cell, decode_dictionary_id_cell, decode_int_cell, decode_uint_cell,
 };
 use reifydb_value::value::{
@@ -29,10 +29,10 @@ use reifydb_value::value::{
 };
 use uuid::Uuid;
 
-use crate::ffi::arena::Arena;
+use crate::extern_c::arena::Arena;
 
 impl Arena {
-	pub(super) fn unmarshal_bool_data(&self, ffi: &ColumnDataFFI) -> BoolContainer {
+	pub(super) fn unmarshal_bool_data(&self, ffi: &ExternCColumnData) -> BoolContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
 			return BoolContainer::new(vec![false; row_count]);
@@ -59,7 +59,7 @@ impl Arena {
 
 	pub(super) fn unmarshal_numeric_data<T: Copy + Default + IsNumber>(
 		&self,
-		ffi: &ColumnDataFFI,
+		ffi: &ExternCColumnData,
 	) -> NumberContainer<T> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
@@ -77,7 +77,7 @@ impl Arena {
 		}
 	}
 
-	pub(super) fn unmarshal_utf8_data(&self, ffi: &ColumnDataFFI) -> Utf8Container {
+	pub(super) fn unmarshal_utf8_data(&self, ffi: &ExternCColumnData) -> Utf8Container {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
 			return Utf8Container::new(vec![String::new(); row_count]);
@@ -101,7 +101,7 @@ impl Arena {
 		}
 	}
 
-	pub(super) fn unmarshal_date_data(&self, ffi: &ColumnDataFFI) -> TemporalContainer<Date> {
+	pub(super) fn unmarshal_date_data(&self, ffi: &ExternCColumnData) -> TemporalContainer<Date> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
 			return TemporalContainer::new(vec![Date::default(); row_count]);
@@ -122,7 +122,7 @@ impl Arena {
 		}
 	}
 
-	pub(super) fn unmarshal_datetime_data(&self, ffi: &ColumnDataFFI) -> TemporalContainer<DateTime> {
+	pub(super) fn unmarshal_datetime_data(&self, ffi: &ExternCColumnData) -> TemporalContainer<DateTime> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
 			return TemporalContainer::new(vec![DateTime::default(); row_count]);
@@ -140,7 +140,7 @@ impl Arena {
 		}
 	}
 
-	pub(super) fn unmarshal_time_data(&self, ffi: &ColumnDataFFI) -> TemporalContainer<Time> {
+	pub(super) fn unmarshal_time_data(&self, ffi: &ExternCColumnData) -> TemporalContainer<Time> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
 			return TemporalContainer::new(vec![Time::default(); row_count]);
@@ -161,7 +161,7 @@ impl Arena {
 		}
 	}
 
-	pub(super) fn unmarshal_duration_data(&self, ffi: &ColumnDataFFI) -> TemporalContainer<Duration> {
+	pub(super) fn unmarshal_duration_data(&self, ffi: &ExternCColumnData) -> TemporalContainer<Duration> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
 			return TemporalContainer::new(vec![Duration::default(); row_count]);
@@ -178,7 +178,7 @@ impl Arena {
 		}
 	}
 
-	pub(super) fn unmarshal_identity_id_data(&self, ffi: &ColumnDataFFI) -> IdentityIdContainer {
+	pub(super) fn unmarshal_identity_id_data(&self, ffi: &ExternCColumnData) -> IdentityIdContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
 			return IdentityIdContainer::new(vec![IdentityId::default(); row_count]);
@@ -201,7 +201,7 @@ impl Arena {
 		}
 	}
 
-	pub(super) fn unmarshal_uuid4_data(&self, ffi: &ColumnDataFFI) -> UuidContainer<Uuid4> {
+	pub(super) fn unmarshal_uuid4_data(&self, ffi: &ExternCColumnData) -> UuidContainer<Uuid4> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
 			return UuidContainer::new(vec![Uuid4::default(); row_count]);
@@ -223,7 +223,7 @@ impl Arena {
 		}
 	}
 
-	pub(super) fn unmarshal_uuid7_data(&self, ffi: &ColumnDataFFI) -> UuidContainer<Uuid7> {
+	pub(super) fn unmarshal_uuid7_data(&self, ffi: &ExternCColumnData) -> UuidContainer<Uuid7> {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() {
 			return UuidContainer::new(vec![Uuid7::default(); row_count]);
@@ -245,7 +245,7 @@ impl Arena {
 		}
 	}
 
-	pub(super) fn unmarshal_blob_data(&self, ffi: &ColumnDataFFI) -> BlobContainer {
+	pub(super) fn unmarshal_blob_data(&self, ffi: &ExternCColumnData) -> BlobContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
 			return BlobContainer::new(vec![Blob::empty(); row_count]);
@@ -268,21 +268,21 @@ impl Arena {
 		}
 	}
 
-	pub(super) fn unmarshal_int_data(&self, ffi: &ColumnDataFFI) -> NumberContainer<Int> {
+	pub(super) fn unmarshal_int_data(&self, ffi: &ExternCColumnData) -> NumberContainer<Int> {
 		self.unmarshal_cells(ffi, decode_int_cell)
 	}
 
-	pub(super) fn unmarshal_uint_data(&self, ffi: &ColumnDataFFI) -> NumberContainer<Uint> {
+	pub(super) fn unmarshal_uint_data(&self, ffi: &ExternCColumnData) -> NumberContainer<Uint> {
 		self.unmarshal_cells(ffi, decode_uint_cell)
 	}
 
-	pub(super) fn unmarshal_decimal_data(&self, ffi: &ColumnDataFFI) -> NumberContainer<Decimal> {
+	pub(super) fn unmarshal_decimal_data(&self, ffi: &ExternCColumnData) -> NumberContainer<Decimal> {
 		self.unmarshal_cells(ffi, |bytes| decode_decimal_cell(bytes).unwrap_or_default())
 	}
 
 	fn unmarshal_cells<T: Default + Clone + IsNumber>(
 		&self,
-		ffi: &ColumnDataFFI,
+		ffi: &ExternCColumnData,
 		decode: impl Fn(&[u8]) -> T,
 	) -> NumberContainer<T> {
 		let row_count = ffi.row_count;
@@ -307,7 +307,7 @@ impl Arena {
 		}
 	}
 
-	pub(super) fn unmarshal_any_data(&self, ffi: &ColumnDataFFI) -> AnyContainer {
+	pub(super) fn unmarshal_any_data(&self, ffi: &ExternCColumnData) -> AnyContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
 			return AnyContainer::new(vec![Value::none(); row_count]);
@@ -331,7 +331,7 @@ impl Arena {
 		}
 	}
 
-	pub(super) fn unmarshal_dictionary_id_data(&self, ffi: &ColumnDataFFI) -> DictionaryContainer {
+	pub(super) fn unmarshal_dictionary_id_data(&self, ffi: &ExternCColumnData) -> DictionaryContainer {
 		let row_count = ffi.row_count;
 		if ffi.data.is_empty() || ffi.offsets.is_empty() {
 			return DictionaryContainer::new(vec![DictionaryEntryId::U16(0); row_count]);
@@ -356,7 +356,7 @@ impl Arena {
 		}
 	}
 
-	pub(super) fn read_offsets(&self, ffi: &BufferFFI) -> Vec<u64> {
+	pub(super) fn read_offsets(&self, ffi: &ExternCBuffer) -> Vec<u64> {
 		if ffi.is_empty() {
 			return Vec::new();
 		}
@@ -378,7 +378,7 @@ mod tests {
 		container::temporal::TemporalContainer, date::Date, datetime::DateTime, duration::Duration, time::Time,
 	};
 
-	use crate::ffi::arena::Arena;
+	use crate::extern_c::arena::Arena;
 
 	#[test]
 	fn datetime_column_marshal_unmarshal_roundtrip() {

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::data::buffer::BufferFFI;
+use crate::data::buffer::ExternCBuffer;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct RowShapeFieldFFI {
-	pub name: BufferFFI,
+pub struct ExternCRowShapeField {
+	pub name: ExternCBuffer,
 
 	pub base_type: u8,
 
@@ -23,12 +23,12 @@ pub struct RowShapeFieldFFI {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct RowShapeFFI {
+pub struct ExternCRowShape {
 	pub fingerprint: u64,
 
 	pub family: u8,
 
-	pub fields: *const RowShapeFieldFFI,
+	pub fields: *const ExternCRowShapeField,
 
 	pub field_count: usize,
 }

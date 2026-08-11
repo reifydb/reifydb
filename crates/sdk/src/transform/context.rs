@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_abi::context::context::ContextFFI;
+use reifydb_abi::context::context::ExternCContext;
 
 use crate::operator::builder::ColumnsBuilder;
 
-pub struct FFITransformContext {
-	pub(crate) ctx: *mut ContextFFI,
+pub struct ExternCTransformContext {
+	pub(crate) ctx: *mut ExternCContext,
 }
 
-impl FFITransformContext {
-	pub fn new(ctx: *mut ContextFFI) -> Self {
-		assert!(!ctx.is_null(), "ContextFFI pointer must not be null");
+impl ExternCTransformContext {
+	pub fn new(ctx: *mut ExternCContext) -> Self {
+		assert!(!ctx.is_null(), "ExternCContext pointer must not be null");
 		Self {
 			ctx,
 		}

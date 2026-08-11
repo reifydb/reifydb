@@ -5,8 +5,8 @@ use std::{collections::HashMap, ffi::c_void, ptr, slice, sync::Arc};
 
 use reifydb_abi::{
 	constants::CURRENT_API,
-	data::buffer::BufferFFI,
-	transform::{descriptor::TransformDescriptorFFI, types::TRANSFORM_MAGIC},
+	data::buffer::ExternCBuffer,
+	transform::{descriptor::ExternCTransformDescriptor, types::TRANSFORM_MAGIC},
 };
 use reifydb_codec::value::decode_params;
 use reifydb_value::params::Params;
@@ -14,21 +14,21 @@ use reifydb_value::params::Params;
 use crate::{
 	config::Config,
 	transform::{
-		FFITransformWithMetadata,
+		ExternCTransformWithMetadata,
 		wrapper::{TransformWrapper, create_transform_vtable},
 	},
 };
 
-fn str_to_buffer(s: &'static str) -> BufferFFI {
-	BufferFFI {
+fn str_to_buffer(s: &'static str) -> ExternCBuffer {
+	ExternCBuffer {
 		ptr: s.as_ptr(),
 		len: s.len(),
 		cap: s.len(),
 	}
 }
 
-pub fn create_transform_descriptor<T: FFITransformWithMetadata>() -> TransformDescriptorFFI {
-	TransformDescriptorFFI {
+pub fn create_transform_descriptor<T: ExternCTransformWithMetadata>() -> ExternCTransformDescriptor {
+	ExternCTransformDescriptor {
 		api: CURRENT_API,
 		name: str_to_buffer(T::NAME),
 		version: str_to_buffer(T::VERSION),
@@ -40,7 +40,7 @@ pub fn create_transform_descriptor<T: FFITransformWithMetadata>() -> TransformDe
 /// # Safety
 ///
 /// - `config_ptr` must either be null or point to `config_len` valid bytes of codec-encoded named params.
-pub unsafe extern "C" fn create_transform_instance<T: FFITransformWithMetadata>(
+pub unsafe extern "C" fn create_transform_instance<T: ExternCTransformWithMetadata>(
 	config_ptr: *const u8,
 	config_len: usize,
 ) -> *mut c_void {

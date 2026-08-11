@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use crate::data::column::ColumnsFFI;
+use crate::data::column::ExternCColumns;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,10 +15,10 @@ pub enum DiffType {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
-pub struct DiffFFI {
+pub struct ExternCDiff {
 	pub diff_type: DiffType,
 
-	pub pre: ColumnsFFI,
+	pub pre: ExternCColumns,
 
-	pub post: ColumnsFFI,
+	pub post: ExternCColumns,
 }

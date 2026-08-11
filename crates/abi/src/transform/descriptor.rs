@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use super::vtable::TransformVTableFFI;
-use crate::data::buffer::BufferFFI;
+use super::vtable::ExternCTransformVTable;
+use crate::data::buffer::ExternCBuffer;
 
 #[repr(C)]
-pub struct TransformDescriptorFFI {
+pub struct ExternCTransformDescriptor {
 	pub api: u32,
 
-	pub name: BufferFFI,
+	pub name: ExternCBuffer,
 
-	pub version: BufferFFI,
+	pub version: ExternCBuffer,
 
-	pub description: BufferFFI,
+	pub description: ExternCBuffer,
 
-	pub vtable: TransformVTableFFI,
+	pub vtable: ExternCTransformVTable,
 }
 
 // SAFETY: every pointer in the descriptor addresses immutable module-static data (strings, symbols).
-unsafe impl Send for TransformDescriptorFFI {}
-unsafe impl Sync for TransformDescriptorFFI {}
+unsafe impl Send for ExternCTransformDescriptor {}
+unsafe impl Sync for ExternCTransformDescriptor {}

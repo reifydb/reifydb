@@ -38,7 +38,7 @@ impl SourceBatch {
 	}
 }
 
-pub trait FFISourceMetadata {
+pub trait InProcessSourceMetadata {
 	const NAME: &'static str;
 
 	const VERSION: &'static str;
@@ -50,7 +50,7 @@ pub trait FFISourceMetadata {
 	const OUTPUT_COLUMNS: &'static [OperatorColumn];
 }
 
-pub trait FFISource: Send + 'static {
+pub trait InProcessSource: Send + 'static {
 	fn new(config: &Config) -> Result<Self>
 	where
 		Self: Sized;
@@ -78,5 +78,5 @@ impl SourceEmitter {
 	}
 }
 
-pub trait FFISourceWithMetadata: FFISource + FFISourceMetadata {}
-impl<T> FFISourceWithMetadata for T where T: FFISource + FFISourceMetadata {}
+pub trait InProcessSourceWithMetadata: InProcessSource + InProcessSourceMetadata {}
+impl<T> InProcessSourceWithMetadata for T where T: InProcessSource + InProcessSourceMetadata {}

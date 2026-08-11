@@ -4,10 +4,10 @@
 use std::{ptr, slice::from_raw_parts};
 
 use reifydb_abi::{
-	data::column::ColumnsFFI,
+	data::column::ExternCColumns,
 	flow::{
-		change::{ChangeFFI, OriginFFI},
-		diff::{DiffFFI, DiffType},
+		change::{ExternCChange, ExternCOrigin},
+		diff::{DiffType, ExternCDiff},
 	},
 };
 use reifydb_core::{
@@ -25,24 +25,24 @@ use reifydb_core::{
 use reifydb_value::value::{datetime::DateTime, dictionary::DictionaryId};
 use tracing::instrument;
 
-use crate::ffi::arena::Arena;
+use crate::extern_c::arena::Arena;
 
 impl Arena {
 	#[instrument(name = "flow::marshal::change", level = "trace", skip_all, fields(diff_count = change.diffs.len()))]
-	pub fn marshal_change(&mut self, change: &Change) -> ChangeFFI {
+	pub fn marshal_change(&mut self, change: &Change) -> ExternCChange {
 		let diffs_count = change.diffs.len();
 		let diffs_ptr = if diffs_count > 0 {
-			let diffs_array = self.alloc(diffs_count * size_of::<DiffFFI>()) as *mut DiffFFI;
+			let diffs_array = self.alloc(diffs_count * size_of::<ExternCDiff>()) as *mut ExternCDiff;
 
 			// SAFETY: `diffs_count > 0` makes the arena block non-null, and it reserved
-			// `diffs_count * size_of::<DiffFFI>()` bytes at alignment 8, so every `add(i)` with
-			// `i < diffs_count` is in bounds; DiffFFI is Copy, so the stores drop nothing. The
+			// `diffs_count * size_of::<ExternCDiff>()` bytes at alignment 8, so every `add(i)` with
+			// `i < diffs_count` is in bounds; ExternCDiff is Copy, so the stores drop nothing. The
 			// writes go through the raw pointer because a reference to the block would be invalid
 			// until every `diff_type` discriminant is written.
 			unsafe {
 				for (i, diff) in change.diffs.iter().enumerate() {
-					let diff_ffi = self.marshal_diff(diff);
-					*diffs_array.add(i) = diff_ffi;
+					let marshalled = self.marshal_diff(diff);
+					*diffs_array.add(i) = marshalled;
 				}
 			}
 
@@ -51,7 +51,7 @@ impl Arena {
 			ptr::null_mut()
 		};
 
-		ChangeFFI {
+		ExternCChange {
 			origin: Self::marshal_origin(&change.origin),
 			diff_count: diffs_count,
 			diffs: diffs_ptr,
@@ -60,38 +60,38 @@ impl Arena {
 		}
 	}
 
-	fn marshal_origin(origin: &ChangeOrigin) -> OriginFFI {
+	fn marshal_origin(origin: &ChangeOrigin) -> ExternCOrigin {
 		match origin {
-			ChangeOrigin::Flow(operator_id) => OriginFFI {
+			ChangeOrigin::Flow(operator_id) => ExternCOrigin {
 				origin: 0,
 				id: operator_id.0,
 			},
 			ChangeOrigin::Object(object_id) => match object_id {
-				ObjectId::Table(id) => OriginFFI {
+				ObjectId::Table(id) => ExternCOrigin {
 					origin: 1,
 					id: id.0,
 				},
-				ObjectId::View(id) => OriginFFI {
+				ObjectId::View(id) => ExternCOrigin {
 					origin: 2,
 					id: id.0,
 				},
-				ObjectId::TableVirtual(id) => OriginFFI {
+				ObjectId::TableVirtual(id) => ExternCOrigin {
 					origin: 3,
 					id: id.0,
 				},
-				ObjectId::RingBuffer(id) => OriginFFI {
+				ObjectId::RingBuffer(id) => ExternCOrigin {
 					origin: 4,
 					id: id.0,
 				},
-				ObjectId::Dictionary(id) => OriginFFI {
+				ObjectId::Dictionary(id) => ExternCOrigin {
 					origin: 6,
 					id: id.0,
 				},
-				ObjectId::Series(id) => OriginFFI {
+				ObjectId::Series(id) => ExternCOrigin {
 					origin: 7,
 					id: id.0,
 				},
-				ObjectId::Queue(id) => OriginFFI {
+				ObjectId::Queue(id) => ExternCOrigin {
 					origin: 8,
 					id: id.0,
 				},
@@ -100,21 +100,21 @@ impl Arena {
 	}
 
 	#[instrument(name = "flow::marshal::diff", level = "trace", skip_all, fields(diff_type = ?diff.kind()))]
-	fn marshal_diff(&mut self, diff: &Diff) -> DiffFFI {
+	fn marshal_diff(&mut self, diff: &Diff) -> ExternCDiff {
 		match diff {
 			Diff::Insert {
 				post,
 				..
-			} => DiffFFI {
+			} => ExternCDiff {
 				diff_type: DiffType::Insert,
-				pre: ColumnsFFI::empty(),
+				pre: ExternCColumns::empty(),
 				post: self.marshal_columns(post),
 			},
 			Diff::Update {
 				pre,
 				post,
 				..
-			} => DiffFFI {
+			} => ExternCDiff {
 				diff_type: DiffType::Update,
 				pre: self.marshal_columns(pre),
 				post: self.marshal_columns(post),
@@ -122,76 +122,76 @@ impl Arena {
 			Diff::Remove {
 				pre,
 				..
-			} => DiffFFI {
+			} => ExternCDiff {
 				diff_type: DiffType::Remove,
 				pre: self.marshal_columns(pre),
-				post: ColumnsFFI::empty(),
+				post: ExternCColumns::empty(),
 			},
 		}
 	}
 
-	pub fn unmarshal_change(&self, ffi: &ChangeFFI) -> Result<Change, String> {
-		let mut diffs: Diffs = Diffs::with_capacity(ffi.diff_count);
+	pub fn unmarshal_change(&self, extern_c: &ExternCChange) -> Result<Change, String> {
+		let mut diffs: Diffs = Diffs::with_capacity(extern_c.diff_count);
 
-		if !ffi.diffs.is_null() && ffi.diff_count > 0 {
+		if !extern_c.diffs.is_null() && extern_c.diff_count > 0 {
 			// SAFETY: the branch above rules out a null pointer and a zero count; `marshal_change`
-			// points `diffs` at an 8-aligned arena array of exactly `diff_count` initialised `DiffFFI`.
+			// points `diffs` at an 8-aligned arena array of exactly `diff_count` initialised `ExternCDiff`.
 			unsafe {
-				let diffs_slice = from_raw_parts(ffi.diffs, ffi.diff_count);
+				let diffs_slice = from_raw_parts(extern_c.diffs, extern_c.diff_count);
 
-				for diff_ffi in diffs_slice {
-					diffs.push(self.unmarshal_diff(diff_ffi)?);
+				for diff in diffs_slice {
+					diffs.push(self.unmarshal_diff(diff)?);
 				}
 			}
 		}
 
 		Ok(Change {
-			origin: Self::unmarshal_origin(&ffi.origin)?,
+			origin: Self::unmarshal_origin(&extern_c.origin)?,
 			diffs,
-			version: CommitVersion(ffi.version),
-			changed_at: DateTime::from_nanos(ffi.changed_at),
+			version: CommitVersion(extern_c.version),
+			changed_at: DateTime::from_nanos(extern_c.changed_at),
 		})
 	}
 
-	fn unmarshal_origin(ffi: &OriginFFI) -> Result<ChangeOrigin, String> {
-		match ffi.origin {
-			0 => Ok(ChangeOrigin::Flow(OperatorId(ffi.id))),
-			1 => Ok(ChangeOrigin::Object(ObjectId::Table(TableId(ffi.id)))),
-			2 => Ok(ChangeOrigin::Object(ObjectId::View(ViewId(ffi.id)))),
-			3 => Ok(ChangeOrigin::Object(ObjectId::TableVirtual(VTableId(ffi.id)))),
-			4 => Ok(ChangeOrigin::Object(ObjectId::RingBuffer(RingBufferId(ffi.id)))),
-			6 => Ok(ChangeOrigin::Object(ObjectId::Dictionary(DictionaryId(ffi.id)))),
-			7 => Ok(ChangeOrigin::Object(ObjectId::Series(SeriesId(ffi.id)))),
-			8 => Ok(ChangeOrigin::Object(ObjectId::Queue(QueueId(ffi.id)))),
-			_ => Err(format!("Invalid origin_type: {}", ffi.origin)),
+	fn unmarshal_origin(extern_c: &ExternCOrigin) -> Result<ChangeOrigin, String> {
+		match extern_c.origin {
+			0 => Ok(ChangeOrigin::Flow(OperatorId(extern_c.id))),
+			1 => Ok(ChangeOrigin::Object(ObjectId::Table(TableId(extern_c.id)))),
+			2 => Ok(ChangeOrigin::Object(ObjectId::View(ViewId(extern_c.id)))),
+			3 => Ok(ChangeOrigin::Object(ObjectId::TableVirtual(VTableId(extern_c.id)))),
+			4 => Ok(ChangeOrigin::Object(ObjectId::RingBuffer(RingBufferId(extern_c.id)))),
+			6 => Ok(ChangeOrigin::Object(ObjectId::Dictionary(DictionaryId(extern_c.id)))),
+			7 => Ok(ChangeOrigin::Object(ObjectId::Series(SeriesId(extern_c.id)))),
+			8 => Ok(ChangeOrigin::Object(ObjectId::Queue(QueueId(extern_c.id)))),
+			_ => Err(format!("Invalid origin_type: {}", extern_c.origin)),
 		}
 	}
 
-	fn unmarshal_diff(&self, ffi: &DiffFFI) -> Result<Diff, String> {
-		match ffi.diff_type {
+	fn unmarshal_diff(&self, extern_c: &ExternCDiff) -> Result<Diff, String> {
+		match extern_c.diff_type {
 			DiffType::Insert => {
-				if ffi.post.is_empty() {
+				if extern_c.post.is_empty() {
 					return Err("Insert diff missing post columns".to_string());
 				}
 
-				let post = self.unmarshal_columns(&ffi.post);
+				let post = self.unmarshal_columns(&extern_c.post);
 				Ok(Diff::insert(post))
 			}
 			DiffType::Update => {
-				if ffi.pre.is_empty() || ffi.post.is_empty() {
+				if extern_c.pre.is_empty() || extern_c.post.is_empty() {
 					return Err("Update diff missing pre or post columns".to_string());
 				}
 
-				let pre = self.unmarshal_columns(&ffi.pre);
-				let post = self.unmarshal_columns(&ffi.post);
+				let pre = self.unmarshal_columns(&extern_c.pre);
+				let post = self.unmarshal_columns(&extern_c.post);
 				Ok(Diff::update(pre, post))
 			}
 			DiffType::Remove => {
-				if ffi.pre.is_empty() {
+				if extern_c.pre.is_empty() {
 					return Err("Remove diff missing pre columns".to_string());
 				}
 
-				let pre = self.unmarshal_columns(&ffi.pre);
+				let pre = self.unmarshal_columns(&extern_c.pre);
 				Ok(Diff::remove(pre))
 			}
 		}

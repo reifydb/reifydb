@@ -2,11 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 #[repr(C)]
-pub struct StateIteratorFFI {
+pub struct ExternCStateIterator {
 	_opaque: [u8; 0],
 }
 
 #[repr(C)]
-pub struct StoreIteratorFFI {
+pub struct ExternCStoreIterator {
 	_opaque: [u8; 0],
 }

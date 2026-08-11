@@ -4,44 +4,44 @@
 use core::ffi::c_void;
 
 use crate::{
-	data::{buffer::BufferFFI, column::ColumnsFFI},
-	operator::column::OperatorColumnsFFI,
+	data::{buffer::ExternCBuffer, column::ExternCColumns},
+	operator::column::ExternCOperatorColumns,
 };
 
-pub type SinkMagicFnFFI = extern "C" fn() -> u32;
+pub type ExternCSinkMagicFn = extern "C" fn() -> u32;
 
-pub type SinkCreateFnFFI = extern "C" fn(config: *const u8, config_len: usize) -> *mut c_void;
+pub type ExternCSinkCreateFn = extern "C" fn(config: *const u8, config_len: usize) -> *mut c_void;
 
 #[repr(C)]
-pub struct SinkDescriptorFFI {
+pub struct ExternCSinkDescriptor {
 	pub api: u32,
 
-	pub name: BufferFFI,
+	pub name: ExternCBuffer,
 
-	pub version: BufferFFI,
+	pub version: ExternCBuffer,
 
-	pub description: BufferFFI,
+	pub description: ExternCBuffer,
 
-	pub input_columns: OperatorColumnsFFI,
+	pub input_columns: ExternCOperatorColumns,
 
-	pub vtable: SinkVTableFFI,
+	pub vtable: ExternCSinkVTable,
 }
 
 // SAFETY: every pointer in the descriptor addresses immutable module-static data (strings, symbols).
-unsafe impl Send for SinkDescriptorFFI {}
-unsafe impl Sync for SinkDescriptorFFI {}
+unsafe impl Send for ExternCSinkDescriptor {}
+unsafe impl Sync for ExternCSinkDescriptor {}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct SinkVTableFFI {
-	pub write: extern "C" fn(instance: *mut c_void, records: *const SinkRecordFFI, count: usize) -> i32,
+pub struct ExternCSinkVTable {
+	pub write: extern "C" fn(instance: *mut c_void, records: *const ExternCSinkRecord, count: usize) -> i32,
 
 	pub destroy: extern "C" fn(instance: *mut c_void),
 }
 
 #[repr(C)]
-pub struct SinkRecordFFI {
+pub struct ExternCSinkRecord {
 	pub op: u8,
 
-	pub columns: ColumnsFFI,
+	pub columns: ExternCColumns,
 }

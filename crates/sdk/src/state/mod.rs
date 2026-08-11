@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod ffi;
+pub mod extern_c;
 pub mod utils;
 
 use std::ops::Bound;
@@ -15,15 +15,15 @@ use reifydb_value::{error::Error as ValueError, value::datetime::DateTime};
 
 use crate::{
 	error::Result,
-	operator::context::{OperatorContext, StateApi, ffi::FFIOperatorContext},
+	operator::context::{OperatorContext, StateApi, extern_c::ExternCOperatorContext},
 };
 
 pub struct State<'a> {
-	ctx: &'a mut FFIOperatorContext,
+	ctx: &'a mut ExternCOperatorContext,
 }
 
 impl<'a> State<'a> {
-	pub(crate) fn new(ctx: &'a mut FFIOperatorContext) -> Self {
+	pub(crate) fn new(ctx: &'a mut ExternCOperatorContext) -> Self {
 		Self {
 			ctx,
 		}
@@ -38,23 +38,23 @@ impl<'a> State<'a> {
 
 	pub fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> Result<()> {
 		let row = encode_payload(value, self.written_at())?;
-		ffi::set(self.ctx, key.as_encoded(), &row.into_bytes())
+		extern_c::set(self.ctx, key.as_encoded(), &row.into_bytes())
 	}
 
 	pub fn remove(&mut self, key: &GroupStateKey) -> Result<()> {
-		ffi::remove(self.ctx, key.as_encoded())
+		extern_c::remove(self.ctx, key.as_encoded())
 	}
 
 	pub fn contains(&self, key: &GroupStateKey) -> Result<bool> {
-		Ok(ffi::get(self.ctx, key.as_encoded())?.is_some())
+		Ok(extern_c::get(self.ctx, key.as_encoded())?.is_some())
 	}
 
 	pub fn clear(&mut self) -> Result<()> {
-		ffi::clear(self.ctx)
+		extern_c::clear(self.ctx)
 	}
 
 	pub fn scan_prefix<T: OperatorState>(&self, prefix: &GroupStateKey) -> Result<Vec<(GroupStateKey, T)>> {
-		ffi::prefix(self.ctx, prefix.as_encoded())?
+		extern_c::prefix(self.ctx, prefix.as_encoded())?
 			.into_iter()
 			.filter_map(|(k, row)| GroupStateKey::from_framed(k).map(|k| (k, row)))
 			.map(|(k, row)| {
@@ -65,7 +65,7 @@ impl<'a> State<'a> {
 
 	pub fn get_many<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, T)>> {
 		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
-		ffi::get_many(self.ctx, &raw)?
+		extern_c::get_many(self.ctx, &raw)?
 			.into_iter()
 			.filter_map(|(k, row)| GroupStateKey::from_framed(k).map(|k| (k, row)))
 			.map(|(k, row)| {
@@ -75,7 +75,7 @@ impl<'a> State<'a> {
 	}
 
 	pub fn keys_with_prefix(&self, prefix: &GroupStateKey) -> Result<Vec<GroupStateKey>> {
-		Ok(ffi::prefix(self.ctx, prefix.as_encoded())?
+		Ok(extern_c::prefix(self.ctx, prefix.as_encoded())?
 			.into_iter()
 			.filter_map(|(k, _)| GroupStateKey::from_framed(k))
 			.collect())
@@ -86,7 +86,7 @@ impl<'a> State<'a> {
 		start: Bound<&GroupStateKey>,
 		end: Bound<&GroupStateKey>,
 	) -> Result<Vec<(GroupStateKey, T)>> {
-		ffi::range(self.ctx, start.map(GroupStateKey::as_encoded), end.map(GroupStateKey::as_encoded))?
+		extern_c::range(self.ctx, start.map(GroupStateKey::as_encoded), end.map(GroupStateKey::as_encoded))?
 			.into_iter()
 			.filter_map(|(k, row)| GroupStateKey::from_framed(k).map(|k| (k, row)))
 			.map(|(k, row)| {
@@ -96,14 +96,14 @@ impl<'a> State<'a> {
 	}
 
 	pub fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
-		match ffi::get(self.ctx, key.as_encoded())? {
+		match extern_c::get(self.ctx, key.as_encoded())? {
 			Some(row) => Ok(Some(EncodedOperatorRow::try_from(row).map_err(ValueError::from)?)),
 			None => Ok(None),
 		}
 	}
 
 	pub fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedOperatorRow) -> Result<()> {
-		ffi::set(self.ctx, key.as_encoded(), &payload.into_bytes())
+		extern_c::set(self.ctx, key.as_encoded(), &payload.into_bytes())
 	}
 
 	pub fn get_many_bytes_visit(
@@ -112,7 +112,7 @@ impl<'a> State<'a> {
 		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 	) -> Result<()> {
 		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
-		for (k, row) in ffi::get_many(self.ctx, &raw)? {
+		for (k, row) in extern_c::get_many(self.ctx, &raw)? {
 			let Some(k) = GroupStateKey::from_framed(k) else {
 				continue;
 			};
@@ -128,7 +128,7 @@ impl<'a> State<'a> {
 		visit: &mut dyn FnMut(GroupStateKey, EncodedOperatorRow) -> Result<()>,
 	) -> Result<()> {
 		for (k, row) in
-			ffi::range(self.ctx, start.map(GroupStateKey::as_encoded), end.map(GroupStateKey::as_encoded))?
+			extern_c::range(self.ctx, start.map(GroupStateKey::as_encoded), end.map(GroupStateKey::as_encoded))?
 		{
 			let Some(k) = GroupStateKey::from_framed(k) else {
 				continue;
@@ -140,7 +140,7 @@ impl<'a> State<'a> {
 
 	#[inline]
 	fn written_at(&self) -> DateTime {
-		// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null, and the host keeps the ContextFFI alive
+		// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null, and the host keeps the ExternCContext alive
 		// and aligned for at least the lifetime of the borrow this State was created from.
 		DateTime::from_nanos(unsafe { (*self.ctx.ctx).written_at_nanos })
 	}

@@ -8,11 +8,11 @@ use reifydb_value::error::Error as TypeError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExtensionError {
-	#[error("FFI load error: {0}")]
-	FFILoad(String),
+	#[error("extern-C load error: {0}")]
+	ExternCLoad(String),
 
-	#[error("WASM load error: {0}")]
-	WasmLoad(String),
+	#[error("extern-WASM load error: {0}")]
+	ExternWasmLoad(String),
 
 	#[error("API version mismatch: expected {expected}, got {actual}")]
 	ApiVersionMismatch {
@@ -39,7 +39,7 @@ pub enum ExtensionError {
 	Io(#[from] io::Error),
 
 	#[error(transparent)]
-	FFI(#[from] SdkError),
+	ExternC(#[from] SdkError),
 
 	#[error(transparent)]
 	Other(Box<dyn Error + Send + Sync>),

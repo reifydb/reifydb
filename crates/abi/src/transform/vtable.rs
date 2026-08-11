@@ -3,13 +3,13 @@
 
 use core::ffi::c_void;
 
-use crate::{context::context::ContextFFI, data::column::ColumnsFFI};
+use crate::{context::context::ExternCContext, data::column::ExternCColumns};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct TransformVTableFFI {
+pub struct ExternCTransformVTable {
 	pub transform:
-		unsafe extern "C" fn(instance: *mut c_void, ctx: *mut ContextFFI, input: *const ColumnsFFI) -> i32,
+		unsafe extern "C" fn(instance: *mut c_void, ctx: *mut ExternCContext, input: *const ExternCColumns) -> i32,
 
 	pub destroy: unsafe extern "C" fn(instance: *mut c_void),
 }

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod ffi;
-pub mod native;
+pub mod bridge;
+pub mod extern_c;
 
 use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 

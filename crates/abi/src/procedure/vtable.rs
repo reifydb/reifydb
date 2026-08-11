@@ -3,14 +3,14 @@
 
 use core::ffi::c_void;
 
-use crate::context::context::ContextFFI;
+use crate::context::context::ExternCContext;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct ProcedureVTableFFI {
+pub struct ExternCProcedureVTable {
 	pub call: unsafe extern "C" fn(
 		instance: *mut c_void,
-		ctx: *mut ContextFFI,
+		ctx: *mut ExternCContext,
 		params_ptr: *const u8,
 		params_len: usize,
 	) -> i32,

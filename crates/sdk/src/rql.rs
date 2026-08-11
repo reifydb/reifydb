@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_abi::{constants::FFI_OK, data::buffer::BufferFFI};
+use reifydb_abi::{constants::EXTERN_C_OK, data::buffer::ExternCBuffer};
 use reifydb_codec::{frame::decode::decode_frames, value::encode_params};
 use reifydb_value::{params::Params, value::frame::frame::Frame};
 
 use crate::{
 	error::{Result, SdkError},
-	operator::context::ffi::FFIOperatorContext,
+	operator::context::extern_c::ExternCOperatorContext,
 };
 
-pub(crate) fn raw_query(ctx: &FFIOperatorContext, query: &str, params: Params) -> Result<Vec<Frame>> {
+pub(crate) fn raw_query(ctx: &ExternCOperatorContext, query: &str, params: Params) -> Result<Vec<Frame>> {
 	let params_bytes = encode_params(&params)
 		.map_err(|e| SdkError::Serialization(format!("failed to serialize params: {}", e)))?;
 
-	let mut output = BufferFFI::empty();
+	let mut output = ExternCBuffer::empty();
 
-	// SAFETY: FFIOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ContextFFI valid for the
-	// whole guest call; query and params_bytes outlive the callback. Discharges BufferFFI::as_slice: the host
+	// SAFETY: ExternCOperatorContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContext valid for the
+	// whole guest call; query and params_bytes outlive the callback. Discharges ExternCBuffer::as_slice: the host
 	// leaves output either empty or pointing at a live host allocation of output.len bytes that nothing here frees.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.rql.rql)(
@@ -29,7 +29,7 @@ pub(crate) fn raw_query(ctx: &FFIOperatorContext, query: &str, params: Params) -
 			&mut output,
 		);
 
-		if result == FFI_OK {
+		if result == EXTERN_C_OK {
 			let result_bytes = output.as_slice();
 			let frames: Vec<Frame> = decode_frames(result_bytes)
 				.map_err(|e| SdkError::Serialization(format!("failed to deserialize result: {}", e)))?;
