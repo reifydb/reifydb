@@ -15,20 +15,27 @@ use reifydb_sdk::{
 	error::{Result as ExternCResult, SdkError},
 	procedure::extern_c::wire::{
 		descriptor::ExternCProcedureDescriptor,
-		types::{ExternCProcedureCreateFn, PROCEDURE_MAGIC},
+		types::{ExternCProcedureCreateFn, PROCEDURE_ABI_TAG, PROCEDURE_MAGIC},
 	},
 };
 
 use super::ExternCProcedure;
-use crate::loader::{
-	extern_c::{buffer_to_string, validate_api_version},
-	extern_load::ExternLoad,
-};
+use crate::loader::{extern_c::buffer_to_string, extern_load::ExternLoad};
 
 static GLOBAL_EXTERN_C_PROCEDURE_LOADER: OnceLock<RwLock<ProcedureLoader>> = OnceLock::new();
 
 pub fn extern_c_procedure_loader() -> &'static RwLock<ProcedureLoader> {
 	GLOBAL_EXTERN_C_PROCEDURE_LOADER.get_or_init(|| RwLock::new(ProcedureLoader::new()))
+}
+
+pub fn check_procedure_abi_tag(abi_tag: u32) -> ExternCResult<()> {
+	if abi_tag != PROCEDURE_ABI_TAG {
+		return Err(SdkError::Other(format!(
+			"extern-C procedure ABI tag mismatch: plugin reports {:#06x}, host expects {:#06x}",
+			abi_tag, PROCEDURE_ABI_TAG
+		)));
+	}
+	Ok(())
 }
 
 pub struct ProcedureLoader {
@@ -71,7 +78,7 @@ impl ProcedureLoader {
 			}
 
 			Ok(ExternCProcedureDescriptor {
-				api: (*descriptor_ptr).api,
+				abi_tag: (*descriptor_ptr).abi_tag,
 				name: (*descriptor_ptr).name,
 				version: (*descriptor_ptr).version,
 				description: (*descriptor_ptr).description,
@@ -84,14 +91,14 @@ impl ProcedureLoader {
 		&mut self,
 		descriptor: &ExternCProcedureDescriptor,
 		path: &Path,
-	) -> ExternCResult<(String, u32)> {
-		validate_api_version(descriptor.api).map_err(|e| SdkError::Other(e.to_string()))?;
+	) -> ExternCResult<String> {
+		check_procedure_abi_tag(descriptor.abi_tag)?;
 
 		// SAFETY: the buffer points into the loaded image's static data, which outlives this read.
 		let name = unsafe { buffer_to_string(&descriptor.name) };
 		self.procedure_paths.insert(name.clone(), path.to_path_buf());
 
-		Ok((name, descriptor.api))
+		Ok(name)
 	}
 
 	pub fn register_procedure(&mut self, path: &Path) -> ExternCResult<Option<LoadedProcedureInfo>> {
@@ -100,14 +107,13 @@ impl ProcedureLoader {
 		}
 
 		let descriptor = self.get_descriptor(path)?;
-		let (name, api) = self.validate_and_register(&descriptor, path)?;
+		let name = self.validate_and_register(&descriptor, path)?;
 
 		// SAFETY: the descriptor's buffers are module-static data.
 		let info = unsafe {
 			LoadedProcedureInfo {
 				name,
 				library_path: path.to_path_buf(),
-				api,
 				version: buffer_to_string(&descriptor.version),
 				description: buffer_to_string(&descriptor.description),
 			}
@@ -165,7 +171,6 @@ impl ProcedureLoader {
 pub struct LoadedProcedureInfo {
 	pub name: String,
 	pub library_path: PathBuf,
-	pub api: u32,
 	pub version: String,
 	pub description: String,
 }

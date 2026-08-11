@@ -348,7 +348,6 @@ mod tests {
 
 	impl OperatorMetadata for NoOpOperator {
 		const NAME: &'static str = "noop";
-		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
 		const DESCRIPTION: &'static str = "no-op operator for chaos builder tests";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];

@@ -539,16 +539,6 @@ impl TestMetadataHarness {
 		assert_eq!(T::NAME, expected, "Operator name mismatch. Expected: {}, Actual: {}", expected, T::NAME);
 	}
 
-	pub fn assert_api<T: OperatorMetadata>(expected: u32) {
-		assert_eq!(
-			T::API,
-			expected,
-			"Operator API version mismatch. Expected: {}, Actual: {}",
-			expected,
-			T::API
-		);
-	}
-
 	pub fn assert_version<T: OperatorMetadata>(expected: &str) {
 		assert_eq!(
 			T::VERSION,
@@ -596,7 +586,6 @@ pub mod tests {
 
 	impl OperatorMetadata for TestOperator {
 		const NAME: &'static str = "test_operator";
-		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
 		const DESCRIPTION: &'static str = "Simple pass-through test operator";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -621,7 +610,6 @@ pub mod tests {
 
 	impl OperatorMetadata for StatefulTestOperator {
 		const NAME: &'static str = "stateful_test_operator";
-		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
 		const DESCRIPTION: &'static str = "Stateful test operator that stores values";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -751,7 +739,6 @@ pub mod tests {
 	#[test]
 	fn test_operator_metadata() {
 		TestMetadataHarness::assert_name::<TestOperator>("test_operator");
-		TestMetadataHarness::assert_api::<TestOperator>(1);
 		TestMetadataHarness::assert_version::<TestOperator>("1.0.0");
 	}
 
@@ -859,7 +846,6 @@ pub mod tests {
 
 	impl OperatorMetadata for TimerTestOperator {
 		const NAME: &'static str = "timer_test_operator";
-		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
 		const DESCRIPTION: &'static str = "Arms one Seal timer per inserted row and records every fire";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -910,7 +896,6 @@ pub mod tests {
 
 	impl OperatorMetadata for SealEmittingOperator {
 		const NAME: &'static str = "seal_emitting_operator";
-		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
 		const DESCRIPTION: &'static str =
 			"Emits a finalized row from on_timer, the way a windowed operator seals";
@@ -977,7 +962,6 @@ pub mod tests {
 
 	impl OperatorMetadata for RearmingTimerTestOperator {
 		const NAME: &'static str = "rearming_timer_test_operator";
-		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
 		const DESCRIPTION: &'static str = "Re-arms itself one millisecond later, up to a bounded limit";
 		const INPUT_COLUMNS: &'static [OperatorColumn] = &[];

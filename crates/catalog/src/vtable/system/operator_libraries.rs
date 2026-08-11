@@ -49,7 +49,7 @@ impl BaseVTable for SystemOperatorLibraries {
 		let capacity = infos.len();
 		let mut operators = ColumnBuffer::utf8_with_capacity(capacity);
 		let mut library_paths = ColumnBuffer::utf8_with_capacity(capacity);
-		let mut apis = ColumnBuffer::uint4_with_capacity(capacity);
+		let mut abis = ColumnBuffer::uint4_with_capacity(capacity);
 		let mut cap_inserts = ColumnBuffer::bool_with_capacity(capacity);
 		let mut cap_updates = ColumnBuffer::bool_with_capacity(capacity);
 		let mut cap_deletes = ColumnBuffer::bool_with_capacity(capacity);
@@ -57,7 +57,10 @@ impl BaseVTable for SystemOperatorLibraries {
 		for info in infos {
 			operators.push(info.operator.as_str());
 			library_paths.push(info.library_path.to_str().unwrap_or("<invalid path>"));
-			apis.push(info.api);
+			match info.abi {
+				Some(abi) => abis.push(abi),
+				None => abis.push_none(),
+			}
 
 			cap_inserts.push(info.capabilities & OperatorCapability::Insert.bit() != 0);
 			cap_updates.push(info.capabilities & OperatorCapability::Update.bit() != 0);
@@ -67,7 +70,7 @@ impl BaseVTable for SystemOperatorLibraries {
 		let columns = vec![
 			ColumnWithName::new(Fragment::internal("operator"), operators),
 			ColumnWithName::new(Fragment::internal("library_path"), library_paths),
-			ColumnWithName::new(Fragment::internal("api"), apis),
+			ColumnWithName::new(Fragment::internal("abi"), abis),
 			ColumnWithName::new(Fragment::internal("cap_insert"), cap_inserts),
 			ColumnWithName::new(Fragment::internal("cap_update"), cap_updates),
 			ColumnWithName::new(Fragment::internal("cap_delete"), cap_deletes),

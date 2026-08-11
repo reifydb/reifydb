@@ -7,13 +7,16 @@ use reifydb_codec::value::decode_params;
 use reifydb_value::{config::Config, params::Params};
 
 use crate::{
-	common::{api::CURRENT_API, extern_c::wire::buffer::ExternCBuffer},
+	common::extern_c::wire::buffer::ExternCBuffer,
 	transform::extern_c::{
 		binding::{
 			transform::ExternCTransformWithMetadata,
 			wrapper::{TransformWrapper, create_transform_vtable},
 		},
-		wire::{descriptor::ExternCTransformDescriptor, types::TRANSFORM_MAGIC},
+		wire::{
+			descriptor::ExternCTransformDescriptor,
+			types::{TRANSFORM_ABI_TAG, TRANSFORM_MAGIC},
+		},
 	},
 };
 
@@ -27,7 +30,7 @@ fn str_to_buffer(s: &'static str) -> ExternCBuffer {
 
 pub fn create_transform_descriptor<T: ExternCTransformWithMetadata>() -> ExternCTransformDescriptor {
 	ExternCTransformDescriptor {
-		api: CURRENT_API,
+		abi_tag: TRANSFORM_ABI_TAG,
 		name: str_to_buffer(T::NAME),
 		version: str_to_buffer(T::VERSION),
 		description: str_to_buffer(T::DESCRIPTION),

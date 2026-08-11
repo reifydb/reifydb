@@ -30,7 +30,6 @@ row!(U8Row {
 struct OpU8;
 impl OperatorMetadata for OpU8 {
 	const NAME: &'static str = "writer_u8";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -76,7 +75,6 @@ row!(U16Row {
 struct OpU16;
 impl OperatorMetadata for OpU16 {
 	const NAME: &'static str = "writer_u16";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -122,7 +120,6 @@ row!(U32Row {
 struct OpU32;
 impl OperatorMetadata for OpU32 {
 	const NAME: &'static str = "writer_u32";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -168,7 +165,6 @@ row!(U64Row {
 struct OpU64;
 impl OperatorMetadata for OpU64 {
 	const NAME: &'static str = "writer_u64";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -214,7 +210,6 @@ row!(I8Row {
 struct OpI8;
 impl OperatorMetadata for OpI8 {
 	const NAME: &'static str = "writer_i8";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -260,7 +255,6 @@ row!(I16Row {
 struct OpI16;
 impl OperatorMetadata for OpI16 {
 	const NAME: &'static str = "writer_i16";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -306,7 +300,6 @@ row!(I32Row {
 struct OpI32;
 impl OperatorMetadata for OpI32 {
 	const NAME: &'static str = "writer_i32";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -352,7 +345,6 @@ row!(I64Row {
 struct OpI64;
 impl OperatorMetadata for OpI64 {
 	const NAME: &'static str = "writer_i64";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -398,7 +390,6 @@ row!(F32Row {
 struct OpF32;
 impl OperatorMetadata for OpF32 {
 	const NAME: &'static str = "writer_f32";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -444,7 +435,6 @@ row!(F64Row {
 struct OpF64;
 impl OperatorMetadata for OpF64 {
 	const NAME: &'static str = "writer_f64";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -490,7 +480,6 @@ row!(BoolRow {
 struct OpBool;
 impl OperatorMetadata for OpBool {
 	const NAME: &'static str = "writer_bool";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -536,7 +525,6 @@ row!(Utf8Row {
 struct OpUtf8;
 impl OperatorMetadata for OpUtf8 {
 	const NAME: &'static str = "writer_utf8";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -576,7 +564,6 @@ fn utf8_roundtrip() {
 struct OpUtf8Growth;
 impl OperatorMetadata for OpUtf8Growth {
 	const NAME: &'static str = "writer_utf8_growth";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -623,7 +610,6 @@ row!(BlobRow { b: Vec<u8> });
 struct OpBlob;
 impl OperatorMetadata for OpBlob {
 	const NAME: &'static str = "writer_blob";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -675,7 +661,6 @@ row!(DecimalRow {
 struct OpDecimal;
 impl OperatorMetadata for OpDecimal {
 	const NAME: &'static str = "writer_decimal";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -733,7 +718,6 @@ row!(WideRow {
 struct OpWide;
 impl OperatorMetadata for OpWide {
 	const NAME: &'static str = "writer_wide";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -777,7 +761,6 @@ row!(DateRow {
 struct OpDate;
 impl OperatorMetadata for OpDate {
 	const NAME: &'static str = "writer_date";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -825,7 +808,6 @@ row!(DateTimeRow {
 struct OpDateTime;
 impl OperatorMetadata for OpDateTime {
 	const NAME: &'static str = "writer_datetime";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -876,7 +858,6 @@ row!(TimeRow {
 struct OpTime;
 impl OperatorMetadata for OpTime {
 	const NAME: &'static str = "writer_time";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -927,7 +908,6 @@ row!(DurationRow {
 struct OpDuration;
 impl OperatorMetadata for OpDuration {
 	const NAME: &'static str = "writer_duration";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];

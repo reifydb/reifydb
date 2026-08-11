@@ -8,7 +8,7 @@ use reifydb_core::interface::{catalog::flow::OperatorId, flow::to_bitmask};
 use reifydb_value::{config::Config, params::Params};
 
 use crate::{
-	common::{api::CURRENT_API, extern_c::wire::buffer::ExternCBuffer},
+	common::extern_c::wire::buffer::ExternCBuffer,
 	flow::{
 		extern_c::wire::schema::{ExternCOperatorColumn, ExternCOperatorColumns},
 		operator::{
@@ -68,7 +68,6 @@ fn columns_to_extern_c(columns: &'static [OperatorColumn]) -> ExternCOperatorCol
 
 pub fn create_descriptor<O: ExternCOperator + OperatorMetadata>() -> ExternCOperatorDescriptor {
 	ExternCOperatorDescriptor {
-		api: CURRENT_API,
 		abi_tag: OPERATOR_ABI_TAG,
 		operator: str_to_buffer(O::NAME),
 		version: str_to_buffer(O::VERSION),

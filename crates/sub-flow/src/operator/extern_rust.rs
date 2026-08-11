@@ -58,6 +58,7 @@ pub fn check_extern_rust_abi_tag(abi_tag: u32) -> Result<()> {
 pub struct LoadedExternRustOperatorInfo {
 	pub operator: String,
 	pub library_path: PathBuf,
+	pub abi_tag: u32,
 	pub version: String,
 	pub description: String,
 	pub input_columns: Vec<ExternRustOperatorColumn>,
@@ -131,6 +132,7 @@ impl ExternRustOperatorLoader {
 		Ok(Some(LoadedExternRustOperatorInfo {
 			operator: descriptor.name,
 			library_path: path.to_path_buf(),
+			abi_tag: descriptor.abi_tag,
 			version: descriptor.version,
 			description: descriptor.description,
 			input_columns: descriptor.input_columns,

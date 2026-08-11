@@ -317,7 +317,7 @@ pub fn flow_unknown_operator(operator: &str) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_026",
 		format!("unknown flow operator '{}'", operator),
-		"The flow references an operator that is not registered in this build. Check for a missing native \
+		"The flow references an operator that is not registered in this build. Check for a missing extern \
 		 operator or a typo in the operator name.",
 	)
 }

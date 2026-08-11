@@ -73,7 +73,6 @@ impl RawStatefulOperator for Alarm {}
 
 impl OperatorMetadata for Alarm {
 	const NAME: &'static str = "alarm";
-	const API: u32 = 1;
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "test-only operator that emits solely from timer callbacks";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = ALARM_COLUMNS;
@@ -291,7 +290,6 @@ impl RawStatefulOperator for Snooze {}
 
 impl OperatorMetadata for Snooze {
 	const NAME: &'static str = "snooze";
-	const API: u32 = 2;
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str =
 		"test-only operator that re-arms one timer per group, cancelling the instant it armed before";

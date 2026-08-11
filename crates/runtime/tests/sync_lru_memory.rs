@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! MOKA_LRU_ENTRY_OVERHEAD in native.rs was derived from this measurement (moka 0.12.15, LRU, no
+//! MOKA_LRU_ENTRY_OVERHEAD was derived from this measurement (moka 0.12.15, LRU, no
 //! TTL), so this is the tripwire when a moka upgrade changes its per-entry structures. The file
 //! holds exactly one test, or concurrent test threads pollute the live-bytes counter.
 #![cfg(not(reifydb_single_threaded))]

@@ -24,10 +24,7 @@ use reifydb_sdk::{
 };
 use reifydb_value::value::constraint::TypeConstraint;
 
-use crate::loader::{
-	extern_c::{buffer_to_string, validate_api_version},
-	extern_load::ExternLoad,
-};
+use crate::loader::{extern_c::buffer_to_string, extern_load::ExternLoad};
 
 static GLOBAL_EXTERN_C_OPERATOR_LOADER: OnceLock<RwLock<ExternCOperatorLoader>> = OnceLock::new();
 
@@ -86,7 +83,6 @@ impl ExternCOperatorLoader {
 			}
 
 			Ok(ExternCOperatorDescriptor {
-				api: (*descriptor_ptr).api,
 				abi_tag: (*descriptor_ptr).abi_tag,
 				operator: (*descriptor_ptr).operator,
 				version: (*descriptor_ptr).version,
@@ -104,15 +100,13 @@ impl ExternCOperatorLoader {
 		descriptor: &ExternCOperatorDescriptor,
 		path: &Path,
 	) -> ExternCResult<(String, u32)> {
-		validate_api_version(descriptor.api).map_err(|e| SdkError::Other(e.to_string()))?;
-
 		check_operator_abi_tag(descriptor.abi_tag)?;
 
 		// SAFETY: the buffer points into the loaded image's static data, which outlives this read.
 		let operator = unsafe { buffer_to_string(&descriptor.operator) };
 		self.operator_paths.insert(operator.clone(), path.to_path_buf());
 
-		Ok((operator, descriptor.api))
+		Ok((operator, descriptor.abi_tag))
 	}
 
 	pub fn register_operator(&mut self, path: &Path) -> ExternCResult<Option<LoadedOperatorInfo>> {
@@ -121,14 +115,14 @@ impl ExternCOperatorLoader {
 		}
 
 		let descriptor = self.get_descriptor(path)?;
-		let (operator, api) = self.validate_and_register(&descriptor, path)?;
+		let (operator, abi) = self.validate_and_register(&descriptor, path)?;
 
 		// SAFETY: the descriptor's buffers and column arrays are module-static data.
 		let info = unsafe {
 			LoadedOperatorInfo {
 				operator,
 				library_path: path.to_path_buf(),
-				api,
+				abi,
 				version: buffer_to_string(&descriptor.version),
 				description: buffer_to_string(&descriptor.description),
 				input_columns: extract_column_defs(&descriptor.input_columns),
@@ -202,7 +196,7 @@ impl ExternCOperatorLoader {
 					operators.push(LoadedOperatorInfo {
 						operator: buffer_to_string(&descriptor.operator),
 						library_path: path.clone(),
-						api: descriptor.api,
+						abi: descriptor.abi_tag,
 						version: buffer_to_string(&descriptor.version),
 						description: buffer_to_string(&descriptor.description),
 						input_columns: extract_column_defs(&descriptor.input_columns),
@@ -221,7 +215,7 @@ impl ExternCOperatorLoader {
 pub struct LoadedOperatorInfo {
 	pub operator: String,
 	pub library_path: PathBuf,
-	pub api: u32,
+	pub abi: u32,
 	pub version: String,
 	pub description: String,
 	pub input_columns: Vec<ColumnInfo>,

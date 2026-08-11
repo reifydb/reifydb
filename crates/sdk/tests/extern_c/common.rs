@@ -36,7 +36,6 @@ pub struct PassthroughOperator;
 
 impl OperatorMetadata for PassthroughOperator {
 	const NAME: &'static str = "extern_c_round_trip_passthrough";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "echoes every input diff back via ctx.builder";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];

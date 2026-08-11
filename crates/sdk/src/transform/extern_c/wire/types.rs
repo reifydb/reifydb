@@ -5,6 +5,8 @@ use core::ffi::c_void;
 
 pub const TRANSFORM_MAGIC: u32 = 230424;
 
+pub const TRANSFORM_ABI_TAG: u32 = 0x2830;
+
 pub type ExternCTransformMagicFn = extern "C" fn() -> u32;
 
 pub type ExternCTransformCreateFn = extern "C" fn(config: *const u8, config_len: usize) -> *mut c_void;

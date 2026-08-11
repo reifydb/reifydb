@@ -21,7 +21,7 @@ pub(crate) type OperatorFactory = Arc<dyn Fn(OperatorId, &Config) -> Result<Boxe
 #[derive(Clone)]
 pub struct CustomOperatorEntry {
 	pub factory: OperatorFactory,
-	pub api: u32,
+	pub abi: Option<u32>,
 	pub version: String,
 	pub description: String,
 	pub capabilities: u32,
@@ -103,7 +103,7 @@ impl FlowConfigurator {
 					));
 					Ok(bridged)
 				}),
-				api: <O as OperatorMetadata>::API,
+				abi: None,
 				version: <O as OperatorMetadata>::VERSION.to_string(),
 				description: <O as OperatorMetadata>::DESCRIPTION.to_string(),
 				capabilities: to_bitmask(<O as OperatorMetadata>::CAPABILITIES),

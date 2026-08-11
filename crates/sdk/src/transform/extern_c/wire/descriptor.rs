@@ -6,8 +6,7 @@ use crate::common::extern_c::wire::buffer::ExternCBuffer;
 
 #[repr(C)]
 pub struct ExternCTransformDescriptor {
-	pub api: u32,
-
+	pub abi_tag: u32,
 	pub name: ExternCBuffer,
 
 	pub version: ExternCBuffer,

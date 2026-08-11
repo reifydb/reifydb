@@ -63,7 +63,6 @@ impl RawStatefulOperator for ParityWindow {}
 
 impl OperatorMetadata for ParityWindow {
 	const NAME: &'static str = "parity_window";
-	const API: u32 = 1;
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "Buckets events into fixed windows and counts per window";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = WINDOW_INPUT_COLUMNS;
@@ -151,7 +150,6 @@ pub struct RowNumberProbe;
 
 impl OperatorMetadata for RowNumberProbe {
 	const NAME: &'static str = "row_number_probe";
-	const API: u32 = 1;
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "Allocates a row number for a fixed key and reports (row_number, is_new)";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -184,7 +182,6 @@ pub struct FlushProbe;
 
 impl OperatorMetadata for FlushProbe {
 	const NAME: &'static str = "flush_probe";
-	const API: u32 = 1;
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "Writes state only in flush_state to observe flush cadence";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -217,7 +214,6 @@ pub struct NoopOperator;
 
 impl OperatorMetadata for NoopOperator {
 	const NAME: &'static str = "noop";
-	const API: u32 = 1;
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "Does nothing";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -240,7 +236,6 @@ pub struct ErroringOperator;
 
 impl OperatorMetadata for ErroringOperator {
 	const NAME: &'static str = "erroring";
-	const API: u32 = 1;
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "Always returns Err from apply";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];

@@ -24,7 +24,7 @@ define_event! {
 
 		pub library_path: PathBuf,
 
-		pub api: u32,
+		pub abi: Option<u32>,
 
 		pub version: String,
 

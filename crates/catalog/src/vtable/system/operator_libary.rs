@@ -18,7 +18,7 @@ pub struct OperatorLibraryColumnInfo {
 pub struct OperatorLibraryInfo {
 	pub operator: String,
 	pub library_path: PathBuf,
-	pub api: u32,
+	pub abi: Option<u32>,
 	pub capabilities: u32,
 	pub input_columns: Vec<OperatorLibraryColumnInfo>,
 	pub output_columns: Vec<OperatorLibraryColumnInfo>,
@@ -72,7 +72,7 @@ impl EventListener<OperatorLoadedEvent> for OperatorLibraryEventListener {
 		self.store.add(OperatorLibraryInfo {
 			operator: event.operator().clone(),
 			library_path: event.library_path().clone(),
-			api: *event.api(),
+			abi: *event.abi(),
 			capabilities: *event.capabilities(),
 			input_columns: event
 				.input()

@@ -11,7 +11,7 @@ use reifydb_core::interface::catalog::{
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
 use super::ids::{
-	columns::operator_libraries::{API, CAP_DELETE, CAP_INSERT, CAP_UPDATE, LIBRARY_PATH, OPERATOR},
+	columns::operator_libraries::{ABI, CAP_DELETE, CAP_INSERT, CAP_UPDATE, LIBRARY_PATH, OPERATOR},
 	vtable::OPERATOR_LIBRARIES,
 };
 
@@ -43,8 +43,8 @@ pub fn operator_libraries() -> Arc<VTable> {
 					dictionary_id: None,
 				},
 				Column {
-					id: API,
-					name: "api".to_string(),
+					id: ABI,
+					name: "abi".to_string(),
 					constraint: TypeConstraint::unconstrained(ValueType::Uint4),
 					properties: vec![],
 					index: ColumnIndex(2),

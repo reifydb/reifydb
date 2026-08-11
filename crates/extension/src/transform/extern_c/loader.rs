@@ -14,16 +14,13 @@ use reifydb_sdk::{
 	error::{Result as ExternCResult, SdkError},
 	transform::extern_c::wire::{
 		descriptor::ExternCTransformDescriptor,
-		types::{ExternCTransformCreateFn, TRANSFORM_MAGIC},
+		types::{ExternCTransformCreateFn, TRANSFORM_ABI_TAG, TRANSFORM_MAGIC},
 	},
 };
 
 use super::ExternCTransform;
 use crate::{
-	loader::{
-		extern_c::{buffer_to_string, validate_api_version},
-		extern_load::ExternLoad,
-	},
+	loader::{extern_c::buffer_to_string, extern_load::ExternLoad},
 	transform::registry::{Transforms, TransformsConfigurator},
 };
 
@@ -31,6 +28,16 @@ static GLOBAL_EXTERN_C_TRANSFORM_LOADER: OnceLock<RwLock<TransformLoader>> = Onc
 
 pub fn extern_c_transform_loader() -> &'static RwLock<TransformLoader> {
 	GLOBAL_EXTERN_C_TRANSFORM_LOADER.get_or_init(|| RwLock::new(TransformLoader::new()))
+}
+
+pub fn check_transform_abi_tag(abi_tag: u32) -> ExternCResult<()> {
+	if abi_tag != TRANSFORM_ABI_TAG {
+		return Err(SdkError::Other(format!(
+			"extern-C transform ABI tag mismatch: plugin reports {:#06x}, host expects {:#06x}",
+			abi_tag, TRANSFORM_ABI_TAG
+		)));
+	}
+	Ok(())
 }
 
 pub struct TransformLoader {
@@ -73,7 +80,7 @@ impl TransformLoader {
 			}
 
 			Ok(ExternCTransformDescriptor {
-				api: (*descriptor_ptr).api,
+				abi_tag: (*descriptor_ptr).abi_tag,
 				name: (*descriptor_ptr).name,
 				version: (*descriptor_ptr).version,
 				description: (*descriptor_ptr).description,
@@ -86,14 +93,14 @@ impl TransformLoader {
 		&mut self,
 		descriptor: &ExternCTransformDescriptor,
 		path: &Path,
-	) -> ExternCResult<(String, u32)> {
-		validate_api_version(descriptor.api).map_err(|e| SdkError::Other(e.to_string()))?;
+	) -> ExternCResult<String> {
+		check_transform_abi_tag(descriptor.abi_tag)?;
 
 		// SAFETY: the buffer points into the loaded image's static data, which outlives this read.
 		let name = unsafe { buffer_to_string(&descriptor.name) };
 		self.transform_paths.insert(name.clone(), path.to_path_buf());
 
-		Ok((name, descriptor.api))
+		Ok(name)
 	}
 
 	pub fn register_transform(&mut self, path: &Path) -> ExternCResult<Option<LoadedTransformInfo>> {
@@ -102,14 +109,13 @@ impl TransformLoader {
 		}
 
 		let descriptor = self.get_descriptor(path)?;
-		let (name, api) = self.validate_and_register(&descriptor, path)?;
+		let name = self.validate_and_register(&descriptor, path)?;
 
 		// SAFETY: the descriptor's buffers are module-static data.
 		let info = unsafe {
 			LoadedTransformInfo {
 				name,
 				library_path: path.to_path_buf(),
-				api,
 				version: buffer_to_string(&descriptor.version),
 				description: buffer_to_string(&descriptor.description),
 			}
@@ -165,7 +171,6 @@ impl TransformLoader {
 pub struct LoadedTransformInfo {
 	pub name: String,
 	pub library_path: PathBuf,
-	pub api: u32,
 	pub version: String,
 	pub description: String,
 }

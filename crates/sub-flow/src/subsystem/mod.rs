@@ -235,7 +235,7 @@ impl FlowSubsystem {
 			event_bus.emit(OperatorLoadedEvent::new(
 				name.clone(),
 				PathBuf::new(),
-				entry.api,
+				entry.abi,
 				entry.version.clone(),
 				entry.description.clone(),
 				entry.input.clone(),

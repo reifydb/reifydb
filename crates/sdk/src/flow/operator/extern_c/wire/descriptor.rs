@@ -6,8 +6,6 @@ use crate::{common::extern_c::wire::buffer::ExternCBuffer, flow::extern_c::wire:
 
 #[repr(C)]
 pub struct ExternCOperatorDescriptor {
-	pub api: u32,
-
 	pub abi_tag: u32,
 
 	pub operator: ExternCBuffer,

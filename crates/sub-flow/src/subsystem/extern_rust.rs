@@ -55,7 +55,7 @@ pub fn load_extern_rust_operators(dir: &PathBuf, event_bus: &EventBus) -> Result
 		let event = OperatorLoadedEvent::new(
 			info.operator,
 			info.library_path,
-			0,
+			Some(info.abi_tag),
 			info.version,
 			info.description,
 			convert_columns(&info.input_columns),

@@ -263,7 +263,6 @@ where
 	for<'a> &'a A::GroupKey: IntoEncodedKey,
 {
 	const NAME: &'static str = A::NAME;
-	const API: u32 = 1;
 	const VERSION: &'static str = A::VERSION;
 	const DESCRIPTION: &'static str = A::DESCRIPTION;
 	const INPUT_COLUMNS: &'static [OperatorColumn] = A::INPUT_COLUMNS;

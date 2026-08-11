@@ -7,13 +7,16 @@ use reifydb_codec::value::decode_params;
 use reifydb_value::{config::Config, params::Params};
 
 use crate::{
-	common::{api::CURRENT_API, extern_c::wire::buffer::ExternCBuffer},
+	common::extern_c::wire::buffer::ExternCBuffer,
 	procedure::extern_c::{
 		binding::{
 			procedure::ExternCProcedureWithMetadata,
 			wrapper::{ProcedureWrapper, create_procedure_vtable},
 		},
-		wire::{descriptor::ExternCProcedureDescriptor, types::PROCEDURE_MAGIC},
+		wire::{
+			descriptor::ExternCProcedureDescriptor,
+			types::{PROCEDURE_ABI_TAG, PROCEDURE_MAGIC},
+		},
 	},
 };
 
@@ -27,7 +30,7 @@ fn str_to_buffer(s: &'static str) -> ExternCBuffer {
 
 pub fn create_procedure_descriptor<T: ExternCProcedureWithMetadata>() -> ExternCProcedureDescriptor {
 	ExternCProcedureDescriptor {
-		api: CURRENT_API,
+		abi_tag: PROCEDURE_ABI_TAG,
 		name: str_to_buffer(T::NAME),
 		version: str_to_buffer(T::VERSION),
 		description: str_to_buffer(T::DESCRIPTION),

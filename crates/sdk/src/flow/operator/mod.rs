@@ -29,7 +29,6 @@ use crate::{
 
 pub trait OperatorMetadata {
 	const NAME: &'static str;
-	const API: u32;
 	const VERSION: &'static str;
 	const DESCRIPTION: &'static str;
 	const INPUT_COLUMNS: &'static [OperatorColumn];

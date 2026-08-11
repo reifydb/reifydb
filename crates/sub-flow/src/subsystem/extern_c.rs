@@ -54,7 +54,7 @@ pub fn load_extern_c_operators(dir: &PathBuf, event_bus: &EventBus) -> Result<()
 		let event = OperatorLoadedEvent::new(
 			info.operator,
 			info.library_path,
-			info.api,
+			Some(info.abi),
 			info.version,
 			info.description,
 			convert_columns(&info.input_columns),

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub const CURRENT_API: u32 = 2;
-
 pub const EXTERN_C_OK: i32 = 0;
 
 pub const EXTERN_C_NOT_FOUND: i32 = 1;

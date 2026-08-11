@@ -45,7 +45,6 @@ pub struct ExternCOperatorAdapter<C> {
 
 impl<C: OperatorMetadata> OperatorMetadata for ExternCOperatorAdapter<C> {
 	const NAME: &'static str = C::NAME;
-	const API: u32 = C::API;
 	const VERSION: &'static str = C::VERSION;
 	const DESCRIPTION: &'static str = C::DESCRIPTION;
 	const INPUT_COLUMNS: &'static [OperatorColumn] = C::INPUT_COLUMNS;

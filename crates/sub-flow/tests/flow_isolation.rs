@@ -49,7 +49,6 @@ const COUNT_OUTPUT_COLUMNS: &[OperatorColumn] = &[OperatorColumn {
 
 impl OperatorMetadata for SlowCounter {
 	const NAME: &'static str = "slow_counter";
-	const API: u32 = 1;
 	const VERSION: &'static str = "0.0.1";
 	const DESCRIPTION: &'static str = "Sleeps, then tallies rows seen - used to prove flow isolation";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];

@@ -11,8 +11,6 @@ use crate::{
 pub trait ExternCTransformMetadata {
 	const NAME: &'static str;
 
-	const API: u32;
-
 	const VERSION: &'static str;
 
 	const DESCRIPTION: &'static str;

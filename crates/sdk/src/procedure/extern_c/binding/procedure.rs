@@ -8,8 +8,6 @@ use crate::{error::Result, procedure::extern_c::binding::context::ExternCProcedu
 pub trait ExternCProcedureMetadata {
 	const NAME: &'static str;
 
-	const API: u32;
-
 	const VERSION: &'static str;
 
 	const DESCRIPTION: &'static str;

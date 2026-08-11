@@ -93,7 +93,6 @@ struct PassthroughOperator;
 
 impl OperatorMetadata for PassthroughOperator {
 	const NAME: &'static str = "passthrough";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "Pass-through operator for testing";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];

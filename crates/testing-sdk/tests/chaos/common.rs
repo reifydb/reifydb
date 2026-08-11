@@ -29,7 +29,6 @@ pub struct PassthroughOperator;
 
 impl OperatorMetadata for PassthroughOperator {
 	const NAME: &'static str = "chaos_passthrough";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "echoes every input diff back via ctx.builder";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -62,7 +61,6 @@ pub struct DoubleInsertOperator;
 
 impl OperatorMetadata for DoubleInsertOperator {
 	const NAME: &'static str = "chaos_double_insert";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "echoes every Insert twice under the same row numbers";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -97,7 +95,6 @@ pub struct SwallowsRemoveOperator;
 
 impl OperatorMetadata for SwallowsRemoveOperator {
 	const NAME: &'static str = "chaos_swallows_remove";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "passthrough except Remove is silently dropped";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];

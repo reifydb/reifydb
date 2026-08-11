@@ -37,7 +37,6 @@ row!(Bar {
 struct EmitOpInsert;
 impl OperatorMetadata for EmitOpInsert {
 	const NAME: &'static str = "batch_op_insert";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -116,7 +115,6 @@ fn insert_batch_emits_typed_columns_in_one_diff() {
 struct EmitOpEmpty;
 impl OperatorMetadata for EmitOpEmpty {
 	const NAME: &'static str = "batch_op_empty";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -142,7 +140,6 @@ fn empty_batch_emits_no_diff() {
 struct EmitOpUpdate;
 impl OperatorMetadata for EmitOpUpdate {
 	const NAME: &'static str = "batch_op_update";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -202,7 +199,6 @@ fn update_batch_roundtrips_all_fields() {
 struct EmitOpRemove;
 impl OperatorMetadata for EmitOpRemove {
 	const NAME: &'static str = "batch_op_remove";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -252,7 +248,6 @@ fn remove_batch_emits_one_diff_with_n_rows() {
 struct EmitOpBig;
 impl OperatorMetadata for EmitOpBig {
 	const NAME: &'static str = "batch_op_big";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -305,7 +300,6 @@ row!(OptU64Row { v: Option<u64> });
 struct EmitOpOptU64;
 impl OperatorMetadata for EmitOpOptU64 {
 	const NAME: &'static str = "batch_op_opt_u64";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -374,7 +368,6 @@ row!(OptStrRow { s: Option<String> });
 struct EmitOpOptStr;
 impl OperatorMetadata for EmitOpOptStr {
 	const NAME: &'static str = "batch_op_opt_str";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
@@ -443,7 +436,6 @@ row!(OptBlobRow { b: Option<Vec<u8>> });
 struct EmitOpOptBlob;
 impl OperatorMetadata for EmitOpOptBlob {
 	const NAME: &'static str = "batch_op_opt_blob";
-	const API: u32 = 1;
 	const VERSION: &'static str = "1.0.0";
 	const DESCRIPTION: &'static str = "test fixture";
 	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];

@@ -14,12 +14,6 @@ pub enum ExtensionError {
 	#[error("extern-WASM load error: {0}")]
 	ExternWasmLoad(String),
 
-	#[error("API version mismatch: expected {expected}, got {actual}")]
-	ApiVersionMismatch {
-		expected: u32,
-		actual: u32,
-	},
-
 	#[error("magic number mismatch for {kind}: expected {expected}, got {actual}")]
 	MagicMismatch {
 		kind: String,
