@@ -12,7 +12,7 @@ pub(crate) mod actor_pool;
 pub mod compute;
 
 #[cfg(all(not(reifydb_single_threaded), not(reifydb_dst)))]
-mod native;
+mod host;
 
 #[cfg(all(not(reifydb_single_threaded), not(reifydb_dst)))]
 pub(crate) mod task;
@@ -21,7 +21,7 @@ pub(crate) mod task;
 mod wasm;
 
 #[cfg(all(not(reifydb_single_threaded), not(reifydb_dst)))]
-pub use native::Pools;
+pub use host::Pools;
 #[cfg(any(reifydb_single_threaded, reifydb_dst))]
 pub use wasm::Pools;
 

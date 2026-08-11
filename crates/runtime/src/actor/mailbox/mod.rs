@@ -14,7 +14,7 @@ use std::sync::atomic::AtomicBool;
 use cfg_if::cfg_if;
 
 #[cfg(not(reifydb_single_threaded))]
-pub(crate) mod native;
+pub(crate) mod host;
 
 #[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 pub(crate) mod wasm;
@@ -26,7 +26,7 @@ cfg_if! {
 	if #[cfg(reifydb_dst)] {
 		type ActorRefInnerImpl<M> = dst::ActorRefInner<M>;
 	} else if #[cfg(not(reifydb_single_threaded))] {
-		type ActorRefInnerImpl<M> = native::ActorRefInner<M>;
+		type ActorRefInnerImpl<M> = host::ActorRefInner<M>;
 	} else {
 		type ActorRefInnerImpl<M> = wasm::ActorRefInner<M>;
 	}
@@ -139,7 +139,7 @@ impl<M: Send> ActorRef<M> {
 	#[inline]
 	pub(crate) fn new(tx: Sender<M>) -> Self {
 		Self {
-			inner: native::ActorRefInner::new(tx),
+			inner: host::ActorRefInner::new(tx),
 		}
 	}
 
@@ -253,6 +253,6 @@ use crossbeam_channel::Sender;
 #[cfg(reifydb_dst)]
 pub(crate) use dst::create_mailbox as create_dst_mailbox;
 #[cfg(not(reifydb_single_threaded))]
-pub(crate) use native::create_mailbox;
+pub(crate) use host::create_mailbox;
 #[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 pub(crate) use wasm::create_actor_ref;

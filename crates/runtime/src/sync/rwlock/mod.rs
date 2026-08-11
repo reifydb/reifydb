@@ -10,18 +10,18 @@ use std::{
 use cfg_if::cfg_if;
 
 #[cfg(not(reifydb_single_threaded))]
-pub(crate) mod native;
+pub(crate) mod host;
 #[cfg(reifydb_single_threaded)]
 pub(crate) mod wasm;
 
 cfg_if! {
 	if #[cfg(not(reifydb_single_threaded))] {
-		type RwLockInnerImpl<T> = native::RwLockInner<T>;
-		type RwLockReadGuardInnerImpl<'a, T> = native::RwLockReadGuardInner<'a, T>;
-		type RwLockWriteGuardInnerImpl<'a, T> = native::RwLockWriteGuardInner<'a, T>;
-		type ArcRwLockInnerImpl<T> = native::ArcRwLockInner<T>;
-		type OwnedRwLockReadGuardInnerImpl<T> = native::OwnedRwLockReadGuardInner<T>;
-		type OwnedRwLockWriteGuardInnerImpl<T> = native::OwnedRwLockWriteGuardInner<T>;
+		type RwLockInnerImpl<T> = host::RwLockInner<T>;
+		type RwLockReadGuardInnerImpl<'a, T> = host::RwLockReadGuardInner<'a, T>;
+		type RwLockWriteGuardInnerImpl<'a, T> = host::RwLockWriteGuardInner<'a, T>;
+		type ArcRwLockInnerImpl<T> = host::ArcRwLockInner<T>;
+		type OwnedRwLockReadGuardInnerImpl<T> = host::OwnedRwLockReadGuardInner<T>;
+		type OwnedRwLockWriteGuardInnerImpl<T> = host::OwnedRwLockWriteGuardInner<T>;
 	} else {
 		type RwLockInnerImpl<T> = wasm::RwLockInner<T>;
 		type RwLockReadGuardInnerImpl<'a, T> = wasm::RwLockReadGuardInner<'a, T>;

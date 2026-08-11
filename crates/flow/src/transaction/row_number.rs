@@ -20,13 +20,7 @@ use reifydb_core::{
 	metrics::heap::{StateCompleteness, StateMemory},
 };
 use reifydb_runtime::cache::slab::SlabLru;
-use reifydb_value::{
-	Result,
-	byte_size::ByteSize,
-	count::Count,
-	reifydb_assertions,
-	value::row_number::RowNumber,
-};
+use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertions, value::row_number::RowNumber};
 
 use super::DepFlowTransaction;
 

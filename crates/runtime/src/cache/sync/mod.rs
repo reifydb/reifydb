@@ -7,13 +7,13 @@ use cfg_if::cfg_if;
 use reifydb_value::{byte_size::ByteSize, count::Count};
 
 #[cfg(not(reifydb_single_threaded))]
-pub(crate) mod native;
+pub(crate) mod host;
 #[cfg(reifydb_single_threaded)]
 pub(crate) mod wasm;
 
 cfg_if! {
 	if #[cfg(not(reifydb_single_threaded))] {
-		type LruImpl<K, V> = native::NativeLru<K, V>;
+		type LruImpl<K, V> = host::HostLru<K, V>;
 	} else {
 		type LruImpl<K, V> = wasm::WasmLru<K, V>;
 	}

@@ -2,14 +2,14 @@
 // Copyright (c) 2026 ReifyDB
 
 #[cfg(any(reifydb_target = "host", reifydb_dst))]
-mod native;
+mod host;
 #[cfg(reifydb_target = "wasi")]
 mod wasi;
 #[cfg(reifydb_target = "wasm")]
 mod wasm;
 
 #[cfg(any(reifydb_target = "host", reifydb_dst))]
-pub use native::{Clock, Instant, MockClock};
+pub use host::{Clock, Instant, MockClock};
 use reifydb_value::{clock::ClockNow, value::datetime::DateTime};
 #[cfg(reifydb_target = "wasi")]
 pub use wasi::{Clock, Instant, MockClock};

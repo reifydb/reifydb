@@ -28,7 +28,7 @@ struct Metrics<K, V> {
 	payload: AtomicU64,
 }
 
-pub struct NativeLru<K, V>
+pub struct HostLru<K, V>
 where
 	K: Hash + Eq + Clone + Send + Sync + 'static,
 	V: Clone + Send + Sync + 'static,
@@ -38,7 +38,7 @@ where
 	metrics: Option<Arc<Metrics<K, V>>>,
 }
 
-impl<K, V> NativeLru<K, V>
+impl<K, V> HostLru<K, V>
 where
 	K: Hash + Eq + Clone + Send + Sync + 'static,
 	V: Clone + Send + Sync + 'static,

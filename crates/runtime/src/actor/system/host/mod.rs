@@ -19,7 +19,7 @@ use crossbeam_channel::{Receiver, RecvTimeoutError as CcRecvTimeoutError};
 
 use crate::{
 	actor::{
-		context::CancellationToken, system::native::pool::PoolActorHandle, timers::scheduler::SchedulerHandle,
+		context::CancellationToken, system::host::pool::PoolActorHandle, timers::scheduler::SchedulerHandle,
 		traits::Actor,
 	},
 	context::clock::Clock,

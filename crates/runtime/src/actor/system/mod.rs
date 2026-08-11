@@ -5,7 +5,7 @@
 pub mod dst;
 
 #[cfg(all(not(reifydb_single_threaded), not(reifydb_dst)))]
-pub mod native;
+pub mod host;
 
 #[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 pub mod wasm;
@@ -13,7 +13,7 @@ pub mod wasm;
 #[cfg(reifydb_dst)]
 pub use dst::{ActorHandle, ActorSpawner, ActorSystem, JoinError};
 #[cfg(all(not(reifydb_single_threaded), not(reifydb_dst)))]
-pub use native::{ActorHandle, ActorSpawner, ActorSystem, JoinError};
+pub use host::{ActorHandle, ActorSpawner, ActorSystem, JoinError};
 #[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 pub use wasm::{ActorHandle, ActorSpawner, ActorSystem, JoinError};
 

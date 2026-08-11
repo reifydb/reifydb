@@ -10,14 +10,14 @@ use std::{
 use cfg_if::cfg_if;
 
 #[cfg(not(reifydb_single_threaded))]
-pub(crate) mod native;
+pub(crate) mod host;
 #[cfg(reifydb_single_threaded)]
 pub(crate) mod wasm;
 
 cfg_if! {
 	if #[cfg(not(reifydb_single_threaded))] {
-		type MutexInnerImpl<T> = native::MutexInner<T>;
-		type MutexGuardInnerImpl<'a, T> = native::MutexGuardInner<'a, T>;
+		type MutexInnerImpl<T> = host::MutexInner<T>;
+		type MutexGuardInnerImpl<'a, T> = host::MutexGuardInner<'a, T>;
 	} else {
 		type MutexInnerImpl<T> = wasm::MutexInner<T>;
 		type MutexGuardInnerImpl<'a, T> = wasm::MutexGuardInner<'a, T>;
