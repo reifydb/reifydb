@@ -1,46 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-use reifydb_core::actors::pending::PendingLayers;
-use reifydb_value::Result;
-
-use super::DepFlowTransaction;
-
-impl DepFlowTransaction {
-	fn pending_mut(&mut self) -> &mut PendingLayers {
-		match self {
-			Self::Deferred(d) => &mut d.pending,
-			Self::Ephemeral(e) => &mut e.pending,
-		}
-	}
-
-	pub fn set(&mut self, key: &EncodedKey, value: impl Into<EncodedBytes>) -> Result<()> {
-		self.pending_mut().insert(key.clone(), value.into());
-		Ok(())
-	}
-
-	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		self.pending_mut().remove(key.clone());
-		Ok(())
-	}
-
-	pub fn remove_silent(&mut self, key: &EncodedKey) -> Result<()> {
-		self.pending_mut().remove_silent(key.clone());
-		Ok(())
-	}
-
-	pub fn set_batch(&mut self, keys: &[EncodedKey], values: &[EncodedBytes]) -> Result<()> {
-		self.pending_mut().insert_batch(keys, values);
-		Ok(())
-	}
-
-	pub fn remove_batch(&mut self, keys: &[EncodedKey]) -> Result<()> {
-		self.pending_mut().remove_batch(keys);
-		Ok(())
-	}
-}
-
 #[cfg(test)]
 pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
@@ -50,8 +10,10 @@ pub mod tests {
 	use reifydb_transaction::{interceptor::interceptors::Interceptors, transaction::admin::AdminTransaction};
 	use reifydb_value::util::cowvec::CowVec;
 
-	use super::*;
-	use crate::test_util::create_test_transaction;
+	use crate::{
+		test_util::create_test_transaction,
+		transaction::{deferred::DeferredTransaction, interface::FlowTransaction},
+	};
 
 	fn make_key(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes())
@@ -68,7 +30,7 @@ pub mod tests {
 	#[test]
 	fn test_set_buffers_to_pending() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -87,7 +49,7 @@ pub mod tests {
 	#[test]
 	fn test_set_multiple_keys() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -107,7 +69,7 @@ pub mod tests {
 	#[test]
 	fn test_set_overwrites_same_key() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -125,7 +87,7 @@ pub mod tests {
 	#[test]
 	fn test_remove_buffers_to_pending() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -142,7 +104,7 @@ pub mod tests {
 	#[test]
 	fn test_remove_multiple_keys() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -162,7 +124,7 @@ pub mod tests {
 	#[test]
 	fn test_set_then_remove() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -182,7 +144,7 @@ pub mod tests {
 	#[test]
 	fn test_remove_then_set() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -202,7 +164,7 @@ pub mod tests {
 	#[test]
 	fn test_writes_not_visible_to_parent() {
 		let mut parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -228,7 +190,7 @@ pub mod tests {
 		assert_eq!(get_row(&mut parent, &key), Some(value.clone()));
 
 		let parent_version = parent.version();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			parent_version,
 			Catalog::testing(),
@@ -243,7 +205,7 @@ pub mod tests {
 	#[test]
 	fn test_mixed_writes_and_removes() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),

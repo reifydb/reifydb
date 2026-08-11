@@ -3,28 +3,23 @@
 
 use std::{
 	cmp::Ordering,
-	collections, iter,
+	iter,
 	ops::{
 		Bound,
 		Bound::{Excluded, Included, Unbounded},
-		RangeBounds,
 	},
 	vec,
 };
 
-use collections::BTreeMap;
 use iter::Peekable;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
+	row::bytes::EncodedBytes,
 };
 use reifydb_core::{
 	actors::pending::PendingWrite,
 	common::CommitVersion,
-	interface::{
-		catalog::flow::OperatorId,
-		store::{MultiVersionBatch, MultiVersionRow},
-	},
+	interface::{catalog::flow::OperatorId, store::MultiVersionRow},
 	key::{
 		Key,
 		kind::KeyKind,
@@ -32,11 +27,10 @@ use reifydb_core::{
 	},
 };
 use reifydb_store_operator::store::OperatorStore;
-use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
 use vec::IntoIter;
 
-use super::{DepFlowTransaction, substrate::operator_state_coordinates};
+use crate::transaction::substrate::operator_state_coordinates;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadFrom {
@@ -47,107 +41,6 @@ pub enum ReadFrom {
 	Query,
 
 	OwnedRow,
-}
-
-impl DepFlowTransaction {
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		match self {
-			Self::Ephemeral(e) => {
-				if e.pending.is_removed(key) {
-					return Ok(None);
-				}
-				if let Some(value) = e.pending.get(key) {
-					return Ok(Some(value.clone()));
-				}
-
-				match Self::read_from(key) {
-					ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(e.state.get(key).cloned()),
-					ReadFrom::Query | ReadFrom::OwnedRow => match e.query.get(key)? {
-						Some(multi) => Ok(Some(multi.bytes().clone())),
-						None => Ok(None),
-					},
-				}
-			}
-			Self::Deferred(d) => {
-				if d.pending.is_removed(key) {
-					return Ok(None);
-				}
-				if let Some(value) = d.pending.get(key) {
-					return Ok(Some(value.clone()));
-				}
-
-				let route = Self::read_from(key);
-				if matches!(route, ReadFrom::OperatorState) {
-					let (operator, inner_key) = operator_state_coordinates(key)
-						.expect("an OperatorState-routed key must carry an operator id");
-					let result = d
-						.substrate
-						.operators
-						.get(operator, &inner_key)
-						.map(EncodedOperatorRow::into_bytes);
-					return Ok(result);
-				}
-				let query = match route {
-					ReadFrom::StateQuery | ReadFrom::OwnedRow => &d.state_query,
-					ReadFrom::Query => &d.query,
-					ReadFrom::OperatorState => unreachable!(),
-				};
-				let result = query.get(key)?.map(|multi| multi.bytes().clone());
-				Ok(result)
-			}
-		}
-	}
-
-	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
-		match self {
-			Self::Ephemeral(e) => {
-				if e.pending.is_removed(key) {
-					return Ok(false);
-				}
-				if e.pending.get(key).is_some() {
-					return Ok(true);
-				}
-
-				match Self::read_from(key) {
-					ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(e.state.contains_key(key)),
-					ReadFrom::Query | ReadFrom::OwnedRow => e.query.contains_key(key),
-				}
-			}
-			Self::Deferred(d) => {
-				if d.pending.is_removed(key) {
-					return Ok(false);
-				}
-				if d.pending.get(key).is_some() {
-					return Ok(true);
-				}
-
-				let query = match Self::read_from(key) {
-					ReadFrom::OperatorState => {
-						let (operator, inner_key) = operator_state_coordinates(key).expect(
-							"an OperatorState-routed key must carry an operator id",
-						);
-						return Ok(d.substrate.operators.contains(operator, &inner_key));
-					}
-					ReadFrom::StateQuery | ReadFrom::OwnedRow => &d.state_query,
-					ReadFrom::Query => &d.query,
-				};
-				query.contains_key(key)
-			}
-		}
-	}
-
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
-		let range = EncodedKeyRange::prefix(prefix);
-		let items = self.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>>>()?;
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
-	}
-
-	pub fn read_from(key: &EncodedKey) -> ReadFrom {
-		read_from(key)
-	}
 }
 
 pub fn read_from(key: &EncodedKey) -> ReadFrom {
@@ -239,189 +132,6 @@ pub fn read_from(key: &EncodedKey) -> ReadFrom {
 			KeyKind::VersionEpoch => ReadFrom::Query,
 			KeyKind::Relationship => ReadFrom::Query,
 		},
-	}
-}
-
-impl DepFlowTransaction {
-	pub fn range(
-		&mut self,
-		range: EncodedKeyRange,
-		scope: RangeScope,
-		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
-		match self {
-			Self::Deferred(d) => {
-				let mut merged: BTreeMap<EncodedKey, PendingWrite> = BTreeMap::new();
-				d.pending.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
-				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
-
-				if let Some((operator, inner_range)) = operator_state_scope(&range) {
-					let storage_iter = OperatorStateRangeIter::new(
-						d.substrate.operators.clone(),
-						operator,
-						inner_range,
-						batch_size,
-						d.version,
-					);
-					return Box::new(flow_merge_pending_iterator(
-						pending_vec,
-						storage_iter,
-						d.version,
-					));
-				}
-
-				let query = match range.start.as_ref() {
-					Included(start) | Excluded(start) => match Self::read_from(start) {
-						ReadFrom::OperatorState => {
-							unreachable!(
-								"operator-state ranges take the operator-state path"
-							)
-						}
-						ReadFrom::StateQuery | ReadFrom::OwnedRow => &d.state_query,
-						ReadFrom::Query => &d.query,
-					},
-					Unbounded => &d.query,
-				};
-
-				let storage_iter = query.range(range, scope, batch_size);
-				let v = d.version;
-				Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
-			}
-			Self::Ephemeral(e) => {
-				let is_state_range = match range.start.as_ref() {
-					Included(start) | Excluded(start) => {
-						matches!(
-							Self::read_from(start),
-							ReadFrom::OperatorState | ReadFrom::StateQuery
-						)
-					}
-					Unbounded => false,
-				};
-
-				let mut merged: BTreeMap<EncodedKey, PendingWrite> = BTreeMap::new();
-				e.pending.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
-				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
-
-				if is_state_range {
-					let state_items: Vec<Result<MultiVersionRow>> =
-						e.state.iter()
-							.filter(|(k, _)| range.contains(k))
-							.map(|(k, v)| {
-								Ok(MultiVersionRow {
-									key: k.clone(),
-									bytes: v.clone(),
-									version: e.version,
-								})
-							})
-							.collect();
-					let v = e.version;
-
-					let mut sorted_items = state_items;
-					sorted_items.sort_by(|a, b| match (a, b) {
-						(Ok(a), Ok(b)) => a.key.cmp(&b.key),
-						_ => Ordering::Equal,
-					});
-					Box::new(flow_merge_pending_iterator(pending_vec, sorted_items.into_iter(), v))
-				} else {
-					let storage_iter = e.query.range(range, scope, batch_size);
-					let v = e.version;
-					Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
-				}
-			}
-		}
-	}
-
-	pub fn range_rev(
-		&mut self,
-		range: EncodedKeyRange,
-		scope: RangeScope,
-		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
-		match self {
-			Self::Deferred(d) => {
-				let mut merged: BTreeMap<EncodedKey, PendingWrite> = BTreeMap::new();
-				d.pending.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
-				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
-
-				if let Some((operator, inner_range)) = operator_state_scope(&range) {
-					let mut items = OperatorStateRangeIter::new(
-						d.substrate.operators.clone(),
-						operator,
-						inner_range,
-						batch_size,
-						d.version,
-					)
-					.collect::<Vec<_>>();
-					items.reverse();
-					return Box::new(flow_merge_pending_iterator_rev(
-						pending_vec,
-						items.into_iter(),
-						d.version,
-					));
-				}
-
-				let query = match range.start.as_ref() {
-					Included(start) | Excluded(start) => match Self::read_from(start) {
-						ReadFrom::OperatorState => {
-							unreachable!(
-								"operator-state ranges take the operator-state path"
-							)
-						}
-						ReadFrom::StateQuery | ReadFrom::OwnedRow => &d.state_query,
-						ReadFrom::Query => &d.query,
-					},
-					Unbounded => &d.query,
-				};
-
-				let storage_iter = query.range_rev(range, scope, batch_size);
-				let v = d.version;
-				Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
-			}
-			Self::Ephemeral(e) => {
-				let is_state_range = match range.start.as_ref() {
-					Included(start) | Excluded(start) => {
-						matches!(
-							Self::read_from(start),
-							ReadFrom::OperatorState | ReadFrom::StateQuery
-						)
-					}
-					Unbounded => false,
-				};
-
-				let mut merged: BTreeMap<EncodedKey, PendingWrite> = BTreeMap::new();
-				e.pending.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
-				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
-
-				if is_state_range {
-					let mut state_items: Vec<Result<MultiVersionRow>> =
-						e.state.iter()
-							.filter(|(k, _)| range.contains(k))
-							.map(|(k, v)| {
-								Ok(MultiVersionRow {
-									key: k.clone(),
-									bytes: v.clone(),
-									version: e.version,
-								})
-							})
-							.collect();
-					let v = e.version;
-
-					state_items.sort_by(|a, b| match (a, b) {
-						(Ok(a), Ok(b)) => b.key.cmp(&a.key),
-						_ => Ordering::Equal,
-					});
-					Box::new(flow_merge_pending_iterator_rev(
-						pending_vec,
-						state_items.into_iter(),
-						v,
-					))
-				} else {
-					let storage_iter = e.query.range_rev(range, scope, batch_size);
-					let v = e.version;
-					Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
-				}
-			}
-		}
 	}
 }
 
@@ -700,11 +410,14 @@ pub mod tests {
 	};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_transaction::interceptor::interceptors::Interceptors;
+	use reifydb_transaction::{interceptor::interceptors::Interceptors, multi::RangeScope};
 	use reifydb_value::{util::cowvec::CowVec, value::identity::IdentityId};
 
 	use super::*;
-	use crate::test_util::create_test_transaction;
+	use crate::{
+		test_util::create_test_transaction,
+		transaction::{deferred::DeferredTransaction, interface::FlowTransaction},
+	};
 
 	fn make_key(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes())
@@ -717,7 +430,7 @@ pub mod tests {
 	#[test]
 	fn test_get_from_pending() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -750,7 +463,7 @@ pub mod tests {
 		let parent = t.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
 
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			version,
 			Catalog::testing(),
@@ -770,7 +483,7 @@ pub mod tests {
 		parent.set(&key, make_value("old")).unwrap();
 		let version = parent.version();
 
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			version,
 			Catalog::testing(),
@@ -793,7 +506,7 @@ pub mod tests {
 		parent.set(&key, make_value("value1")).unwrap();
 		let version = parent.version();
 
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			version,
 			Catalog::testing(),
@@ -810,7 +523,7 @@ pub mod tests {
 	#[test]
 	fn test_get_nonexistent_key() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -825,7 +538,7 @@ pub mod tests {
 	#[test]
 	fn test_contains_key_pending() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -853,7 +566,7 @@ pub mod tests {
 
 		let parent = t.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			version,
 			Catalog::testing(),
@@ -872,7 +585,7 @@ pub mod tests {
 		parent.set(&key, make_value("value1")).unwrap();
 		let version = parent.version();
 
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			version,
 			Catalog::testing(),
@@ -887,7 +600,7 @@ pub mod tests {
 	#[test]
 	fn test_contains_key_nonexistent() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -901,7 +614,7 @@ pub mod tests {
 	#[test]
 	fn test_scan_empty() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -916,7 +629,7 @@ pub mod tests {
 	#[test]
 	fn test_scan_only_pending() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -940,7 +653,7 @@ pub mod tests {
 	#[test]
 	fn test_scan_filters_removes() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -963,7 +676,7 @@ pub mod tests {
 	#[test]
 	fn test_range_empty() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -979,7 +692,7 @@ pub mod tests {
 	#[test]
 	fn test_range_only_pending() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -1003,7 +716,7 @@ pub mod tests {
 	#[test]
 	fn test_prefix_empty() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -1019,7 +732,7 @@ pub mod tests {
 	#[test]
 	fn test_prefix_only_pending() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),

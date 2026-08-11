@@ -22,7 +22,7 @@ use reifydb_core::{
 use reifydb_runtime::cache::slab::SlabLru;
 use reifydb_value::{Result, byte_size::ByteSize, reifydb_assertions, value::datetime::DateTime};
 
-use crate::transaction::{DepFlowTransaction, interface::FlowTransaction};
+use crate::transaction::interface::FlowTransaction;
 
 const DEFAULT_BYTE_BUDGET: u64 = 1024 * 1024;
 const HYDRATE_CHUNK: usize = 8_192;
@@ -389,6 +389,7 @@ mod tests {
 	use super::*;
 	use crate::transaction::{
 		DeferredParams,
+		deferred::DeferredTransaction,
 		substrate::{FlowSubstrate, apply_operator_state},
 	};
 
@@ -398,10 +399,10 @@ mod tests {
 		EncodedKey::new(s.as_bytes())
 	}
 
-	fn deferred(engine: &TestEngine) -> DepFlowTransaction {
+	fn deferred(engine: &TestEngine) -> DeferredTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		DepFlowTransaction::deferred_from_parts(DeferredParams {
+		DeferredTransaction::from_parts(DeferredParams {
 			version,
 			pending: PendingLayers::empty(),
 			query: parent.multi.begin_query().unwrap(),
@@ -416,7 +417,7 @@ mod tests {
 		})
 	}
 
-	fn commit_pending(engine: &TestEngine, txn: &mut DepFlowTransaction) {
+	fn commit_pending(engine: &TestEngine, txn: &mut DeferredTransaction) {
 		let pending = txn.take_pending();
 		apply_operator_state(&engine.inner().operator_state(), &pending);
 	}
@@ -672,43 +673,5 @@ mod tests {
 			"a group interned on one operator must not resolve on another"
 		);
 		assert_ne!(other, first);
-	}
-}
-
-impl DepFlowTransaction {
-	pub fn intern_group(&mut self, operator: OperatorId, group: &EncodedKey) -> Result<(GroupId, bool)> {
-		let interner = self.group_interner();
-		let (id, is_new) = interner.intern(operator, self, group)?;
-		if is_new {
-			self.row_numbers().mark_fresh(operator, id);
-		}
-		Ok((id, is_new))
-	}
-
-	pub fn intern_groups(&mut self, operator: OperatorId, groups: &[EncodedKey]) -> Result<Vec<(GroupId, bool)>> {
-		let interner = self.group_interner();
-		let results = interner.intern_many(operator, self, groups)?;
-		let provider = self.row_numbers();
-		for (id, is_new) in &results {
-			if *is_new {
-				provider.mark_fresh(operator, *id);
-			}
-		}
-		Ok(results)
-	}
-
-	pub fn lookup_group(&mut self, operator: OperatorId, group: &EncodedKey) -> Result<Option<GroupId>> {
-		let interner = self.group_interner();
-		interner.lookup(operator, self, group)
-	}
-
-	pub fn forget_group(&mut self, operator: OperatorId, group: &EncodedKey) -> Result<bool> {
-		let interner = self.group_interner();
-		interner.forget(operator, self, group)
-	}
-
-	pub fn group_bytes(&mut self, operator: OperatorId, id: GroupId) -> Result<Option<EncodedKey>> {
-		let interner = self.group_interner();
-		interner.group_bytes(operator, self, id)
 	}
 }

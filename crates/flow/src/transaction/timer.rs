@@ -244,21 +244,22 @@ mod tests {
 
 	use super::*;
 	use crate::transaction::{
-		DeferredParams, DepFlowTransaction,
+		DeferredParams,
+		deferred::DeferredTransaction,
 		substrate::{FlowSubstrate, apply_operator_state},
 	};
 
 	const NODE: OperatorId = OperatorId(1);
 	const NO_LIMIT: usize = usize::MAX;
 
-	fn deferred(engine: &TestEngine) -> DepFlowTransaction {
+	fn deferred(engine: &TestEngine) -> DeferredTransaction {
 		deferred_with_clock(engine, MockClock::from_millis(0))
 	}
 
-	fn deferred_with_clock(engine: &TestEngine, clock: MockClock) -> DepFlowTransaction {
+	fn deferred_with_clock(engine: &TestEngine, clock: MockClock) -> DeferredTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		DepFlowTransaction::deferred_from_parts(DeferredParams {
+		DeferredTransaction::from_parts(DeferredParams {
 			version,
 			pending: PendingLayers::empty(),
 			query: parent.multi.begin_query().unwrap(),

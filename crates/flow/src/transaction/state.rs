@@ -1,261 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
-};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	interface::{
-		catalog::flow::OperatorId,
-		store::{MultiVersionBatch, MultiVersionRow},
-	},
-	key::operator_state::{GroupStateKey, OperatorStateKey, node_prefix},
-	metrics::scan::ScanCounters,
+	interface::catalog::flow::OperatorId,
+	key::operator_state::{GroupStateKey, node_prefix},
 };
-use reifydb_transaction::multi::RangeScope;
-use reifydb_value::{Result, error::Error as ValueError};
-use tracing::{Span, field, instrument};
-
-use super::{DepFlowTransaction, substrate::operator_state_coordinates};
-
-impl DepFlowTransaction {
-	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
-		operator_id = id.0,
-		key_len = key.as_slice().len(),
-		found = field::Empty
-	))]
-	pub fn state_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
-		let result = match self.scoped_get(id, key)? {
-			Some(bytes) => Some(EncodedOperatorRow::try_from(bytes).map_err(ValueError::from)?),
-			None => None,
-		};
-		Span::current().record("found", result.is_some());
-		Ok(result)
-	}
-
-	#[instrument(name = "flow::state::get_many", level = "debug", skip(self, keys), fields(
-		operator_id = id.0,
-		key_count = keys.len(),
-		found_count = field::Empty
-	))]
-	pub fn state_get_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<MultiVersionBatch> {
-		let batch = self.scoped_get_many(id, keys)?;
-		Span::current().record("found_count", batch.items.len());
-		Ok(batch)
-	}
-
-	#[instrument(name = "flow::state::set", level = "trace", skip(self, row), fields(
-		operator_id = id.0,
-		key_len = key.as_slice().len(),
-		value_len = row.len()
-	))]
-	pub fn state_set(&mut self, id: OperatorId, key: &GroupStateKey, row: EncodedOperatorRow) -> Result<()> {
-		self.scoped_set(id, key, row.into_bytes())
-	}
-
-	#[instrument(name = "flow::state::remove", level = "trace", skip(self), fields(
-		operator_id = id.0,
-		key_len = key.as_slice().len()
-	))]
-	pub fn state_remove(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<()> {
-		self.scoped_remove(id, key)
-	}
-
-	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
-		operator_id = id.0,
-		result_count = field::Empty
-	))]
-	pub fn state_scan_all(&mut self, id: OperatorId) -> Result<MultiVersionBatch> {
-		let range = OperatorStateKey::node_range(id);
-		let iter = self.range(range, RangeScope::All, 1024);
-		let mut items = Vec::new();
-		for result in iter {
-			items.push(result?);
-		}
-		Span::current().record("result_count", items.len());
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
-	}
-
-	#[instrument(name = "flow::state::range", level = "debug", skip(self, range), fields(
-		operator_id = id.0
-	))]
-	pub fn state_range_all(&mut self, id: OperatorId, range: EncodedKeyRange) -> Result<MultiVersionBatch> {
-		let prefixed_range = range.with_prefix(EncodedKey::new(node_prefix(id)));
-		let iter = self.range(prefixed_range, RangeScope::All, 1024);
-		let mut items = Vec::new();
-		for result in iter {
-			items.push(result?);
-		}
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
-	}
-
-	#[instrument(name = "flow::state::range_limited", level = "debug", skip(self, range), fields(
-		operator_id = id.0,
-		site = site,
-		rows_fetched = field::Empty,
-		rows_tombstoned = field::Empty
-	))]
-	pub fn state_range(
-		&mut self,
-		id: OperatorId,
-		range: EncodedKeyRange,
-		limit: Option<usize>,
-		site: &'static str,
-	) -> Result<MultiVersionBatch> {
-		let before = ScanCounters::sample();
-		let prefixed_range = range.with_prefix(EncodedKey::new(node_prefix(id)));
-		let iter = self.range(prefixed_range, RangeScope::All, 1024);
-		let mut items = Vec::new();
-		let mut has_more = false;
-		for result in iter {
-			if limit.is_some_and(|l| items.len() == l) {
-				has_more = true;
-				break;
-			}
-			items.push(result?);
-		}
-		let scanned = before.since();
-		let span = Span::current();
-		span.record("rows_fetched", scanned.fetched);
-		span.record("rows_tombstoned", scanned.tombstones);
-		Ok(MultiVersionBatch {
-			items,
-			has_more,
-		})
-	}
-
-	#[instrument(name = "flow::state::clear", level = "trace", skip(self), fields(
-		operator_id = id.0,
-		keys_removed = field::Empty
-	))]
-	pub fn state_clear(&mut self, id: OperatorId) -> Result<()> {
-		let keys_to_remove = self.scan_keys_for_clear(id)?;
-
-		let count = keys_to_remove.len();
-		self.remove_keys(keys_to_remove)?;
-
-		Span::current().record("keys_removed", count);
-		Ok(())
-	}
-
-	#[inline]
-	#[instrument(name = "flow::state::clear::scan", level = "trace", skip(self), fields(operator_id = id.0))]
-	fn scan_keys_for_clear(&mut self, id: OperatorId) -> Result<Vec<EncodedKey>> {
-		let range = OperatorStateKey::node_range(id);
-		let iter = self.range(range, RangeScope::All, 1024);
-		let mut keys = Vec::new();
-		for result in iter {
-			let multi = result?;
-			keys.push(multi.key);
-		}
-		Ok(keys)
-	}
-
-	#[inline]
-	#[instrument(name = "flow::state::clear::remove", level = "trace", skip(self, keys), fields(count = keys.len()))]
-	fn remove_keys(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
-		for key in keys {
-			self.remove(&key)?;
-		}
-		Ok(())
-	}
-
-	fn scoped_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedBytes>> {
-		self.get(&scoped_key(id, key))
-	}
-
-	fn scoped_get_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<MultiVersionBatch> {
-		let version = self.version();
-		let encoded: Vec<EncodedKey> = keys.iter().map(|key| scoped_key(id, key)).collect();
-
-		let mut items: Vec<MultiVersionRow> = Vec::new();
-		let mut to_batch: Vec<EncodedKey> = Vec::new();
-
-		for encoded_key in &encoded {
-			match self.lookup_overlays(encoded_key) {
-				Some(None) => continue,
-				Some(Some(bytes)) => items.push(MultiVersionRow {
-					key: encoded_key.clone(),
-					bytes,
-					version,
-				}),
-				None => to_batch.push(encoded_key.clone()),
-			}
-		}
-
-		self.fetch_external(&to_batch, &mut items)?;
-
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
-	}
-
-	#[inline]
-	fn lookup_overlays(&self, encoded_key: &EncodedKey) -> Option<Option<EncodedBytes>> {
-		let pending = match self {
-			Self::Deferred(d) => &d.pending,
-			Self::Ephemeral(e) => &e.pending,
-		};
-		if pending.is_removed(encoded_key) {
-			return Some(None);
-		}
-		pending.get(encoded_key).map(|row| Some(row.clone()))
-	}
-
-	#[inline]
-	fn fetch_external(&mut self, to_batch: &[EncodedKey], items: &mut Vec<MultiVersionRow>) -> Result<()> {
-		if to_batch.is_empty() {
-			return Ok(());
-		}
-
-		match self {
-			Self::Ephemeral(e) => {
-				let version = e.version;
-				for encoded_key in to_batch {
-					if let Some(bytes) = e.state.get(encoded_key) {
-						items.push(MultiVersionRow {
-							key: encoded_key.clone(),
-							bytes: bytes.clone(),
-							version,
-						});
-					}
-				}
-			}
-			Self::Deferred(d) => {
-				let version = d.version;
-				for encoded_key in to_batch {
-					let (operator, inner_key) = operator_state_coordinates(encoded_key)
-						.expect("state_get_many keys must carry an operator id");
-					if let Some(row) = d.substrate.operators.get(operator, &inner_key) {
-						items.push(MultiVersionRow {
-							key: encoded_key.clone(),
-							bytes: row.into_bytes(),
-							version,
-						});
-					}
-				}
-			}
-		}
-
-		Ok(())
-	}
-
-	fn scoped_set(&mut self, id: OperatorId, key: &GroupStateKey, value: EncodedBytes) -> Result<()> {
-		self.set(&scoped_key(id, key), value)
-	}
-
-	fn scoped_remove(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<()> {
-		self.remove_silent(&scoped_key(id, key))
-	}
-}
 
 pub(crate) fn scoped_key(id: OperatorId, key: &GroupStateKey) -> EncodedKey {
 	let mut bytes = node_prefix(id);
@@ -270,7 +20,7 @@ pub mod tests {
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{
 		key::encoded::{EncodedKey, EncodedKeyRange},
-		row::bytes::EncodedBytes,
+		row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
 	};
 	use reifydb_core::{
 		actors::pending::{Pending, PendingLayers},
@@ -290,7 +40,10 @@ pub mod tests {
 	use super::*;
 	use crate::{
 		test_util::create_test_transaction,
-		transaction::{DeferredParams, substrate::FlowSubstrate},
+		transaction::{
+			DeferredParams, deferred::DeferredTransaction, ephemeral::EphemeralTransaction,
+			interface::FlowTransaction, substrate::FlowSubstrate,
+		},
 	};
 
 	fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey, row: EncodedOperatorRow) {
@@ -298,11 +51,11 @@ pub mod tests {
 		engine.inner().operator_state().set(operator, EncodedKey::new(key.as_slice()), row);
 	}
 
-	fn deferred_shared(engine: &TestEngine) -> DepFlowTransaction {
+	fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {
 		// Shares the engine's operator state store like every production deferred txn.
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		DepFlowTransaction::deferred_from_parts(DeferredParams {
+		DeferredTransaction::from_parts(DeferredParams {
 			version,
 			pending: PendingLayers::empty(),
 			query: parent.multi.begin_query().unwrap(),
@@ -340,7 +93,7 @@ pub mod tests {
 	#[test]
 	fn test_state_get_set() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -361,7 +114,7 @@ pub mod tests {
 	#[test]
 	fn test_state_get_many() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -400,7 +153,7 @@ pub mod tests {
 	#[test]
 	fn test_state_get_nonexistent() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -418,7 +171,7 @@ pub mod tests {
 	#[test]
 	fn test_state_remove() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -440,7 +193,7 @@ pub mod tests {
 	#[test]
 	fn test_state_isolation_between_nodes() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -462,7 +215,7 @@ pub mod tests {
 	#[test]
 	fn test_state_scan_all() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -485,7 +238,7 @@ pub mod tests {
 	#[test]
 	fn test_state_scan_only_own_node() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -510,7 +263,7 @@ pub mod tests {
 	#[test]
 	fn test_state_scan_empty() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -527,7 +280,7 @@ pub mod tests {
 	#[test]
 	fn test_state_range_all() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -555,7 +308,7 @@ pub mod tests {
 	#[test]
 	fn test_state_clear() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -579,7 +332,7 @@ pub mod tests {
 	#[test]
 	fn test_state_clear_only_own_node() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -603,7 +356,7 @@ pub mod tests {
 	#[test]
 	fn test_state_clear_empty_node() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -619,7 +372,7 @@ pub mod tests {
 	#[test]
 	fn test_state_multiple_nodes() {
 		let parent = create_test_transaction();
-		let mut txn = DepFlowTransaction::deferred(
+		let mut txn = DeferredTransaction::new(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -709,7 +462,7 @@ pub mod tests {
 		seed_state_row(&engine, operator_id, &make_key("warmup_a"), make_value("a"));
 		seed_state_row(&engine, operator_id, &inner_key, value.clone());
 
-		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DeferredTransaction::from_parts(DeferredParams {
 			version: object_version,
 			pending: PendingLayers::empty(),
 			query: engine.multi().begin_query().unwrap(),
@@ -749,7 +502,7 @@ pub mod tests {
 		base_pending.insert(full_key(operator_id, &overlaid_key), overlaid_value.clone().into_bytes());
 		base_pending.remove(full_key(operator_id, &committed_key));
 
-		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DeferredTransaction::from_parts(DeferredParams {
 			version: low_version,
 			pending: PendingLayers::over(vec![base_pending]),
 			query: engine.multi().begin_query().unwrap(),
@@ -814,7 +567,7 @@ pub mod tests {
 		let committed_at = cmd.commit_unchecked().unwrap();
 		assert!(low_version < committed_at);
 
-		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DeferredTransaction::from_parts(DeferredParams {
 			version: low_version,
 			pending: PendingLayers::empty(),
 			query: engine.multi().begin_query().unwrap(),
@@ -831,7 +584,7 @@ pub mod tests {
 		);
 		assert!(txn.contains_key(&row_key).unwrap());
 
-		let mut ephemeral = DepFlowTransaction::ephemeral(
+		let mut ephemeral = EphemeralTransaction::new(
 			low_version,
 			engine.multi().begin_query().unwrap(),
 			Catalog::testing(),
@@ -857,7 +610,7 @@ pub mod tests {
 		let mut state = HashMap::new();
 		state.insert(full_key(operator_id, &seeded_key), seeded_value.clone().into_bytes());
 
-		let mut txn = DepFlowTransaction::ephemeral(
+		let mut txn = EphemeralTransaction::new(
 			CommitVersion(1),
 			engine.multi().begin_query().unwrap(),
 			Catalog::testing(),

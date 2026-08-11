@@ -138,17 +138,18 @@ mod tests {
 
 	use super::*;
 	use crate::transaction::{
-		DeferredParams, DepFlowTransaction,
+		DeferredParams,
+		deferred::DeferredTransaction,
 		substrate::{FlowSubstrate, apply_operator_state},
 	};
 
 	const SOURCE_A: OperatorId = OperatorId(1);
 	const SOURCE_B: OperatorId = OperatorId(2);
 
-	fn deferred(engine: &TestEngine, clock: MockClock) -> DepFlowTransaction {
+	fn deferred(engine: &TestEngine, clock: MockClock) -> DeferredTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		DepFlowTransaction::deferred_from_parts(DeferredParams {
+		DeferredTransaction::from_parts(DeferredParams {
 			version,
 			pending: PendingLayers::empty(),
 			query: parent.multi.begin_query().unwrap(),
