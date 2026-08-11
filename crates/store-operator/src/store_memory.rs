@@ -45,8 +45,6 @@ impl OperatorStore {
 
 	pub fn remove(&self, _operator: OperatorId, _key: &EncodedKey) {}
 
-	pub fn freeze(&self, _operator: OperatorId) {}
-
 	pub fn get(&self, _operator: OperatorId, _key: &EncodedKey) -> Option<EncodedOperatorRow> {
 		None
 	}
@@ -57,12 +55,6 @@ impl OperatorStore {
 
 	pub fn range_batch(&self, _operator: OperatorId, _range: EncodedKeyRange, _batch_size: u64) -> OperatorBatch {
 		OperatorBatch::empty()
-	}
-
-	pub fn set_upper(&self, _operator: OperatorId, _version: CommitVersion) {}
-
-	pub fn upper(&self, _operator: OperatorId) -> CommitVersion {
-		CommitVersion(0)
 	}
 
 	pub fn bytes(&self, _operator: OperatorId) -> u64 {

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, ops::Bound, sync::Arc};
+use std::{ops::Bound, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
 };
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId};
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_runtime::{shutdown::Shutdown, sync::mutex::Mutex};
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::{
@@ -40,7 +40,6 @@ pub struct OperatorStore {
 
 struct StoreInner {
 	conn: Mutex<Option<Connection>>,
-	uppers: Mutex<BTreeMap<OperatorId, CommitVersion>>,
 }
 
 impl Default for OperatorStore {
@@ -74,7 +73,6 @@ impl OperatorStore {
 		Self {
 			inner: Arc::new(StoreInner {
 				conn: Mutex::new(Some(conn)),
-				uppers: Mutex::new(BTreeMap::new()),
 			}),
 		}
 	}
@@ -103,8 +101,6 @@ impl OperatorStore {
 		)
 		.expect("operator state delete failed");
 	}
-
-	pub fn freeze(&self, _operator: OperatorId) {}
 
 	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedOperatorRow> {
 		let guard = self.inner.conn.lock();
@@ -173,14 +169,6 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn set_upper(&self, operator: OperatorId, version: CommitVersion) {
-		self.inner.uppers.lock().insert(operator, version);
-	}
-
-	pub fn upper(&self, operator: OperatorId) -> CommitVersion {
-		self.inner.uppers.lock().get(&operator).copied().unwrap_or(CommitVersion(0))
-	}
-
 	pub fn bytes(&self, operator: OperatorId) -> u64 {
 		let guard = self.inner.conn.lock();
 		let Some(conn) = guard.as_ref() else {
@@ -219,7 +207,6 @@ impl OperatorStore {
 				.expect("operator state drop failed");
 			}
 		}
-		self.inner.uppers.lock().remove(&operator);
 	}
 }
 

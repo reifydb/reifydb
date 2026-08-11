@@ -69,7 +69,4 @@ pub fn apply_operator_state(store: &OperatorStore, version: CommitVersion, pendi
 	if version == CommitVersion(0) {
 		return;
 	}
-	for operator in touched {
-		store.set_upper(operator, version);
-	}
 }
