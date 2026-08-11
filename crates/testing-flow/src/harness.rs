@@ -23,7 +23,9 @@ use reifydb_flow::{
 	operator::{Operator, OperatorCell, apply::ApplyOperator, scan::series::SourceSeriesOperator},
 	timer::Timer,
 	transaction::{
-		ChangeCoordinate, DeferredParams, DepFlowTransaction,
+		ChangeCoordinate, DeferredParams,
+		deferred::DeferredTransaction,
+		interface::FlowTransaction,
 		substrate::{FlowSubstrate, apply_operator_state},
 	},
 };
@@ -45,7 +47,7 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 
-pub struct Harness<O: Operator<DepFlowTransaction>> {
+pub struct Harness<O: Operator<DeferredTransaction>> {
 	engine: TestEngine,
 	operator: O,
 	clock: MockClock,
@@ -55,7 +57,7 @@ pub struct Harness<O: Operator<DepFlowTransaction>> {
 	catalog: Catalog,
 }
 
-impl<O: Operator<DepFlowTransaction>> Harness<O> {
+impl<O: Operator<DeferredTransaction>> Harness<O> {
 	pub fn new(build: impl FnOnce(RuntimeContext) -> O) -> Self {
 		Self::with_engine(|_, runtime| build(runtime))
 	}
@@ -85,7 +87,7 @@ impl<O: Operator<DepFlowTransaction>> Harness<O> {
 	}
 }
 
-impl Harness<ApplyOperator<DepFlowTransaction>> {
+impl Harness<ApplyOperator<DeferredTransaction>> {
 	pub fn guest<C: OperatorLogic + 'static>(
 		logic: C,
 		operator: OperatorId,
@@ -118,7 +120,7 @@ impl Harness<ApplyOperator<DepFlowTransaction>> {
 	}
 }
 
-impl<O: Operator<DepFlowTransaction>> Harness<O> {
+impl<O: Operator<DeferredTransaction>> Harness<O> {
 	pub fn with_dictionaries(mut self) -> Self {
 		self.catalog = self.engine.inner().catalog().clone();
 		let single = self.engine.begin_admin(IdentityId::system()).expect("begin admin").single.clone();
@@ -162,10 +164,10 @@ impl<O: Operator<DepFlowTransaction>> Harness<O> {
 		Ok(items)
 	}
 
-	fn begin(&mut self, at: DateTime) -> DepFlowTransaction {
+	fn begin(&mut self, at: DateTime) -> DeferredTransaction {
 		let query = self.engine.multi().begin_query().expect("begin_query");
 		let state_query = self.engine.multi().begin_query().expect("begin_query");
-		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DeferredTransaction::from_parts(DeferredParams {
 			version: CommitVersion(self.version),
 			pending: PendingLayers::with_top(mem::take(&mut self.pending)),
 			query,
@@ -182,7 +184,7 @@ impl<O: Operator<DepFlowTransaction>> Harness<O> {
 		txn
 	}
 
-	fn end(&mut self, mut txn: DepFlowTransaction) {
+	fn end(&mut self, mut txn: DeferredTransaction) {
 		let pending = txn.take_pending();
 		apply_operator_state(&self.substrate.operators, &pending);
 		let mut rest = Pending::new();
@@ -320,7 +322,7 @@ mod tests {
 	}
 }
 
-impl<O: Operator<DepFlowTransaction>> Subject for Harness<O> {
+impl<O: Operator<DeferredTransaction>> Subject for Harness<O> {
 	fn apply(&mut self, change: Change) -> Result<Change> {
 		Harness::apply(self, change)
 	}

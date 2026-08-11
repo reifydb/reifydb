@@ -19,7 +19,7 @@ use reifydb_flow::{
 		Operator, OperatorCell,
 		stateful::{raw::RawStatefulOperator, utils},
 	},
-	transaction::{DepFlowTransaction, slot::PersistFn},
+	transaction::{ephemeral::EphemeralTransaction, interface::FlowTransaction, slot::PersistFn},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
@@ -40,7 +40,7 @@ struct DeliveredState {
 
 pub struct EphemeralSinkSubscriptionOperator {
 	#[allow(dead_code)]
-	parent: OperatorCell<DepFlowTransaction>,
+	parent: OperatorCell<EphemeralTransaction>,
 	operator: OperatorId,
 	subscription_id: SubscriptionId,
 	delivery: Arc<DeliveryBuffer>,
@@ -48,7 +48,7 @@ pub struct EphemeralSinkSubscriptionOperator {
 
 impl EphemeralSinkSubscriptionOperator {
 	pub fn new(
-		parent: OperatorCell<DepFlowTransaction>,
+		parent: OperatorCell<EphemeralTransaction>,
 		operator: OperatorId,
 		subscription_id: SubscriptionId,
 		delivery: Arc<DeliveryBuffer>,
@@ -61,7 +61,7 @@ impl EphemeralSinkSubscriptionOperator {
 		}
 	}
 
-	fn load_delivered_state(&self, txn: &mut DepFlowTransaction) -> Result<DeliveredState> {
+	fn load_delivered_state(&self, txn: &mut EphemeralTransaction) -> Result<DeliveredState> {
 		let key = utils::empty_state_key();
 		let Some(row) = utils::state_get(self.operator, txn, &key)? else {
 			return Ok(DeliveredState::default());
@@ -102,9 +102,9 @@ impl EphemeralSinkSubscriptionOperator {
 	}
 }
 
-impl RawStatefulOperator<DepFlowTransaction> for EphemeralSinkSubscriptionOperator {}
+impl RawStatefulOperator<EphemeralTransaction> for EphemeralSinkSubscriptionOperator {}
 
-impl Operator<DepFlowTransaction> for EphemeralSinkSubscriptionOperator {
+impl Operator<EphemeralTransaction> for EphemeralSinkSubscriptionOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -113,7 +113,7 @@ impl Operator<DepFlowTransaction> for EphemeralSinkSubscriptionOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut EphemeralTransaction, change: Change) -> Result<Change> {
 		let (mut state, persist) = self.take_delivered_state(txn)?;
 
 		for diff in change.diffs.iter() {
@@ -142,12 +142,15 @@ impl Operator<DepFlowTransaction> for EphemeralSinkSubscriptionOperator {
 
 impl EphemeralSinkSubscriptionOperator {
 	#[inline]
-	fn take_delivered_state(&self, txn: &mut DepFlowTransaction) -> Result<(DeliveredState, PersistFn)> {
+	fn take_delivered_state(
+		&self,
+		txn: &mut EphemeralTransaction,
+	) -> Result<(DeliveredState, PersistFn<EphemeralTransaction>)> {
 		let operator_id = self.operator;
 
 		txn.take_operator_state::<DeliveredState, _>(operator_id, |txn| {
 			let s = self.load_delivered_state(txn)?;
-			let persist: PersistFn = Box::new(move |txn, value| {
+			let persist: PersistFn<EphemeralTransaction> = Box::new(move |txn, value| {
 				let state = value.downcast::<DeliveredState>().expect("DeliveredState slot type");
 				let row = encode(&*state, DateTime::MAX).map_err(|e| {
 					Error(Box::new(internal!("Failed to serialize DeliveredState: {}", e)))

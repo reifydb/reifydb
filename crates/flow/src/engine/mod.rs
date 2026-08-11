@@ -263,7 +263,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::{provider::EmptyOperatorProvider, scan::series::SourceSeriesOperator},
-		transaction::DepFlowTransaction,
+		transaction::deferred::DeferredTransaction,
 	};
 
 	#[test]
@@ -273,7 +273,7 @@ mod tests {
 		// Mutation falsified against: removing the drop_operator_state call from remove_flow (per-operator
 		// bytes and the process-wide total both stay non-zero).
 		let engine = TestEngine::new();
-		let mut inner = FlowEngineInner::<DepFlowTransaction>::new(
+		let mut inner = FlowEngineInner::<DeferredTransaction>::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
 			engine.event_bus().clone(),

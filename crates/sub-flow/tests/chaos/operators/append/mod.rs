@@ -8,7 +8,7 @@ use rand::{RngExt, rngs::StdRng};
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_flow::{
 	operator::{OperatorCell, append::AppendOperator, scan::series::SourceSeriesOperator},
-	transaction::DepFlowTransaction,
+	transaction::deferred::DeferredTransaction,
 };
 use reifydb_testing_chaos::{
 	corpus::Corpus,
@@ -28,11 +28,11 @@ use crate::{
 	},
 };
 
-pub fn build(inputs: usize) -> AppendOperator<DepFlowTransaction> {
+pub fn build(inputs: usize) -> AppendOperator<DeferredTransaction> {
 	build_with_ttl(inputs, None)
 }
 
-pub fn build_with_ttl(inputs: usize, ttl: Option<Duration>) -> AppendOperator<DepFlowTransaction> {
+pub fn build_with_ttl(inputs: usize, ttl: Option<Duration>) -> AppendOperator<DeferredTransaction> {
 	let operators: Vec<OperatorId> = (0..inputs).map(input).collect();
 	let parents =
 		operators.iter().map(|operator| OperatorCell::new(SourceSeriesOperator::new(*operator))).collect();

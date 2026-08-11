@@ -7,7 +7,7 @@ pub mod workload;
 use rand::RngExt;
 use reifydb_flow::{
 	operator::{OperatorCell, scan::series::SourceSeriesOperator, take::TakeOperator},
-	transaction::DepFlowTransaction,
+	transaction::deferred::DeferredTransaction,
 };
 use reifydb_testing_chaos::{
 	corpus::Corpus,
@@ -32,7 +32,7 @@ pub const fn exact_oracle_ceiling(limit: usize) -> usize {
 	limit * 5
 }
 
-pub fn build(limit: usize) -> TakeOperator<DepFlowTransaction> {
+pub fn build(limit: usize) -> TakeOperator<DeferredTransaction> {
 	let parent = OperatorCell::new(SourceSeriesOperator::new(SOURCE_OPERATOR));
 	TakeOperator::new(parent, TAKE_OPERATOR, limit)
 }

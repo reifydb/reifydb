@@ -10,7 +10,10 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin},
 	},
 };
-use reifydb_flow::{engine::FlowEngineInner, transaction::DepFlowTransaction};
+use reifydb_flow::{
+	engine::FlowEngineInner,
+	transaction::{ephemeral::EphemeralTransaction, interface::FlowTransaction},
+};
 use reifydb_transaction::{error::TransactionError, multi::transaction::read::MultiReadTransaction};
 use reifydb_value::Result;
 use tracing::warn;
@@ -99,7 +102,7 @@ impl SubscriptionWorkerActor {
 	#[inline]
 	fn evaluate_flow(
 		&self,
-		flow_engine: &FlowEngineInner<DepFlowTransaction>,
+		flow_engine: &FlowEngineInner<EphemeralTransaction>,
 		flow_state: &mut SubscriptionFlowState,
 		base_query: &MultiReadTransaction,
 		change: &Change,
@@ -118,7 +121,7 @@ impl SubscriptionWorkerActor {
 		let mut query = base_query.clone();
 		query.read_as_of_version_inclusive(change.version);
 
-		let mut txn = DepFlowTransaction::ephemeral(
+		let mut txn = EphemeralTransaction::new(
 			change.version,
 			query,
 			self.catalog.clone(),

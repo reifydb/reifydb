@@ -346,7 +346,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
-		transaction::{DepFlowTransaction, substrate::FlowSubstrate},
+		transaction::{deferred::DeferredTransaction, substrate::FlowSubstrate},
 	};
 
 	const SOURCE: OperatorId = OperatorId(1);
@@ -364,10 +364,10 @@ mod tests {
 		}
 	}
 
-	fn deferred(engine: &TestEngine) -> DepFlowTransaction {
+	fn deferred(engine: &TestEngine) -> DeferredTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		DepFlowTransaction::deferred(
+		DeferredTransaction::new(
 			&parent,
 			version,
 			Catalog::testing(),

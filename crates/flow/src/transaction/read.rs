@@ -150,7 +150,7 @@ impl DepFlowTransaction {
 	}
 }
 
-pub(crate) fn read_from(key: &EncodedKey) -> ReadFrom {
+pub fn read_from(key: &EncodedKey) -> ReadFrom {
 	match Key::kind(key) {
 		None => ReadFrom::Query,
 		Some(kind) => match kind {

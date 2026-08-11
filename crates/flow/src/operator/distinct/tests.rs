@@ -37,10 +37,10 @@ use crate::{
 		stateful::utils,
 	},
 	testing::FlowTxn,
-	transaction::DepFlowTransaction,
+	transaction::{deferred::DeferredTransaction, interface::FlowTransaction},
 };
 
-fn noop_parent() -> OperatorCell<DepFlowTransaction> {
+fn noop_parent() -> OperatorCell<DeferredTransaction> {
 	let view = View::Table(TableView {
 		id: ViewId(1),
 		namespace: NamespaceId(1),
@@ -54,7 +54,7 @@ fn noop_parent() -> OperatorCell<DepFlowTransaction> {
 	OperatorCell::new(SourceViewOperator::new(OperatorId(0), view))
 }
 
-fn make_op(operator_id: u64, engine: &TestEngine) -> DistinctOperator<DepFlowTransaction> {
+fn make_op(operator_id: u64, engine: &TestEngine) -> DistinctOperator<DeferredTransaction> {
 	let routines = engine.executor().routines.clone();
 	let rc = RuntimeContext::with_clock(engine.clock().clone());
 	DistinctOperator::new(
@@ -99,8 +99,8 @@ fn build_remove(value: i64, row_num: u64) -> Change {
 }
 
 fn persisted_rows(
-	op: &DistinctOperator<DepFlowTransaction>,
-	txn: &mut DepFlowTransaction,
+	op: &DistinctOperator<DeferredTransaction>,
+	txn: &mut DeferredTransaction,
 ) -> BTreeMap<Vec<u8>, Vec<u8>> {
 	let mut out = BTreeMap::new();
 	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None, "test").unwrap();
@@ -116,13 +116,13 @@ fn persisted_rows(
 	out
 }
 
-fn layout_row(op: &DistinctOperator<DepFlowTransaction>, txn: &mut DepFlowTransaction) -> Option<Vec<u8>> {
-	utils::state_get(op.id(), txn, &DistinctOperator::<DepFlowTransaction>::layout_storage_key())
+fn layout_row(op: &DistinctOperator<DeferredTransaction>, txn: &mut DeferredTransaction) -> Option<Vec<u8>> {
+	utils::state_get(op.id(), txn, &DistinctOperator::<DeferredTransaction>::layout_storage_key())
 		.unwrap()
 		.map(|row| row.body().to_vec())
 }
 
-fn entry_groups(op: &DistinctOperator<DepFlowTransaction>, txn: &mut DepFlowTransaction) -> Vec<GroupId> {
+fn entry_groups(op: &DistinctOperator<DeferredTransaction>, txn: &mut DeferredTransaction) -> Vec<GroupId> {
 	let mut out = Vec::new();
 	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None, "test").unwrap();
 	for item in batch.items {
@@ -134,7 +134,11 @@ fn entry_groups(op: &DistinctOperator<DepFlowTransaction>, txn: &mut DepFlowTran
 	out
 }
 
-fn erase_group_data(op: &DistinctOperator<DepFlowTransaction>, txn: &mut DepFlowTransaction, group: GroupId) -> usize {
+fn erase_group_data(
+	op: &DistinctOperator<DeferredTransaction>,
+	txn: &mut DeferredTransaction,
+	group: GroupId,
+) -> usize {
 	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None, "test").unwrap();
 	let mut erased = 0;
 	for item in batch.items {

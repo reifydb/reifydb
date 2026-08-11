@@ -27,7 +27,7 @@ use reifydb_extension::{
 use reifydb_flow::{
 	operator::{Operator, scale_from_millis},
 	timer::Timer,
-	transaction::{DepFlowTransaction, slot::PersistFn},
+	transaction::{deferred::DeferredTransaction, interface::FlowTransaction, slot::PersistFn},
 };
 use reifydb_sdk::{
 	common::extern_c::wire::{
@@ -100,7 +100,7 @@ impl ExternCOperatorHandle {
 		}
 	}
 
-	fn ensure_txn_setup(&self, txn: &mut DepFlowTransaction) -> Result<()> {
+	fn ensure_txn_setup(&self, txn: &mut DeferredTransaction) -> Result<()> {
 		let txn_version = txn.version().0;
 		// SAFETY: one actor drives this operator and no guest call is in flight here, so
 		// the context cell is not aliased while this &mut exists.
@@ -165,7 +165,7 @@ fn call_vtable(
 }
 
 fn ensure_flush_slot(
-	txn: &mut DepFlowTransaction,
+	txn: &mut DeferredTransaction,
 	operator_id: OperatorId,
 	vtable: ExternCOperatorVTable,
 	instance: *mut c_void,
@@ -175,7 +175,7 @@ fn ensure_flush_slot(
 		let captured_instance = send_instance;
 		let captured_vtable = vtable;
 		let captured_id = operator_id;
-		let persist: PersistFn = Box::new(move |txn, _value: Box<dyn Any>| {
+		let persist: PersistFn<DeferredTransaction> = Box::new(move |txn, _value: Box<dyn Any>| {
 			let extern_c_ctx = new_extern_c_context(txn, captured_id, create_host_callbacks());
 			let extern_c_ctx_ptr = &extern_c_ctx as *const _ as *mut ExternCContext;
 			let inst = captured_instance;
@@ -209,7 +209,7 @@ fn ensure_flush_slot(
 	Ok(())
 }
 
-impl Operator<DepFlowTransaction> for ExternCOperatorHandle {
+impl Operator<DeferredTransaction> for ExternCOperatorHandle {
 	fn id(&self) -> OperatorId {
 		self.operator_id
 	}
@@ -229,7 +229,7 @@ impl Operator<DepFlowTransaction> for ExternCOperatorHandle {
 		input_diff_count = change.diffs.len(),
 		output_diff_count = field::Empty
 	))]
-	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 		self.ensure_txn_setup(txn)?;
 
 		// SAFETY: the arena is thread-local and the previous apply's guest call has returned, so
@@ -267,7 +267,7 @@ impl Operator<DepFlowTransaction> for ExternCOperatorHandle {
 		operator_id = self.operator_id.0,
 		output_diff_count = field::Empty
 	))]
-	fn on_timer(&self, txn: &mut DepFlowTransaction, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&self, txn: &mut DeferredTransaction, timer: Timer) -> Result<Option<Change>> {
 		self.ensure_txn_setup(txn)?;
 
 		let version = txn.version();

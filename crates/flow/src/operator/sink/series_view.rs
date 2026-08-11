@@ -43,12 +43,12 @@ use super::{
 };
 use crate::{
 	operator::{Operator, OperatorCell},
-	transaction::DepFlowTransaction,
+	transaction::{deferred::DeferredTransaction, interface::FlowTransaction},
 };
 
 pub struct SinkSeriesViewOperator {
 	#[allow(dead_code)]
-	parent: OperatorCell<DepFlowTransaction>,
+	parent: OperatorCell<DeferredTransaction>,
 	operator: OperatorId,
 	view: ResolvedView,
 	series_id: SeriesId,
@@ -60,7 +60,7 @@ pub struct SinkSeriesViewOperator {
 
 impl SinkSeriesViewOperator {
 	pub fn new(
-		parent: OperatorCell<DepFlowTransaction>,
+		parent: OperatorCell<DeferredTransaction>,
 		operator: OperatorId,
 		view: ResolvedView,
 		series_id: SeriesId,
@@ -92,7 +92,7 @@ impl SinkSeriesViewOperator {
 	}
 }
 
-impl Operator<DepFlowTransaction> for SinkSeriesViewOperator {
+impl Operator<DeferredTransaction> for SinkSeriesViewOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -101,7 +101,7 @@ impl Operator<DepFlowTransaction> for SinkSeriesViewOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
 		let shape = row_shape_from_columns(RowFamily::Series, view.columns());
 		let object_id = StorageId::series(self.series_id);
@@ -133,7 +133,7 @@ impl SinkSeriesViewOperator {
 	#[instrument(name = "flow::operator::sink::series::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_series_view_insert(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut DeferredTransaction,
 		view: &View,
 		shape: &RowShape,
 		object_id: StorageId,
@@ -179,7 +179,7 @@ impl SinkSeriesViewOperator {
 	#[instrument(name = "flow::operator::sink::series::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_series_view_update(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut DeferredTransaction,
 		view: &View,
 		shape: &RowShape,
 		object_id: StorageId,
@@ -255,7 +255,7 @@ impl SinkSeriesViewOperator {
 	#[instrument(name = "flow::operator::sink::series::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
 	fn apply_series_view_remove(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut DeferredTransaction,
 		view: &View,
 		object_id: StorageId,
 		pre: &Columns,
@@ -290,7 +290,7 @@ impl SinkSeriesViewOperator {
 }
 
 #[inline]
-fn emit_view_change(txn: &mut DepFlowTransaction, view: &View, diff: Diff) {
+fn emit_view_change(txn: &mut DeferredTransaction, view: &View, diff: Diff) {
 	let version = txn.version();
 	let changed_at = txn.clock().now();
 	txn.track_flow_change(Change {

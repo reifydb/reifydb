@@ -27,7 +27,7 @@ use reifydb_flow::{
 		Operator, OperatorCell, aggregation::operator::AggregateOperator, filter::FilterOperator,
 		gate::GateOperator, map::MapOperator, scan::series::SourceSeriesOperator,
 	},
-	transaction::DepFlowTransaction,
+	transaction::deferred::DeferredTransaction,
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -163,11 +163,11 @@ pub const MATRIX: [Chain; 3] = [
 /// operator's output change to the next, so composing them inside one `apply` is both the smallest
 /// change and the faithful one.
 pub struct Pipeline {
-	stage: Box<dyn Operator<DepFlowTransaction> + Send>,
-	terminal: AggregateOperator<DepFlowTransaction>,
+	stage: Box<dyn Operator<DeferredTransaction> + Send>,
+	terminal: AggregateOperator<DeferredTransaction>,
 }
 
-impl Operator<DepFlowTransaction> for Pipeline {
+impl Operator<DeferredTransaction> for Pipeline {
 	fn id(&self) -> OperatorId {
 		self.terminal.id()
 	}
@@ -176,7 +176,7 @@ impl Operator<DepFlowTransaction> for Pipeline {
 		self.terminal.capabilities()
 	}
 
-	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change, reifydb_value::error::Error> {
+	fn apply(&self, txn: &mut DeferredTransaction, change: Change) -> Result<Change, reifydb_value::error::Error> {
 		let staged = self.stage.apply(txn, change)?;
 		self.terminal.apply(txn, staged)
 	}
@@ -195,7 +195,7 @@ pub fn build(chain: Chain, runtime: RuntimeContext) -> Pipeline {
 		.collect();
 	let ctx = Arc::new(FlowContext::default());
 
-	let stage: Box<dyn Operator<DepFlowTransaction> + Send> = match chain {
+	let stage: Box<dyn Operator<DeferredTransaction> + Send> = match chain {
 		Chain::Filter {
 			..
 		} => Box::new(FilterOperator::new(

@@ -137,7 +137,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::{Operator, metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
-		transaction::{DepFlowTransaction, substrate::FlowSubstrate},
+		transaction::{deferred::DeferredTransaction, substrate::FlowSubstrate},
 	};
 
 	const FLOW: FlowId = FlowId(1);
@@ -169,7 +169,7 @@ mod tests {
 		horizon: Option<Duration>,
 	}
 
-	impl Operator<DepFlowTransaction> for Sealing {
+	impl Operator<DeferredTransaction> for Sealing {
 		fn id(&self) -> OperatorId {
 			self.operator
 		}
@@ -178,7 +178,7 @@ mod tests {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&self, _txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+		fn apply(&self, _txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 			Ok(change)
 		}
 
@@ -191,7 +191,7 @@ mod tests {
 		Duration::from_milliseconds_const(seconds * 1_000)
 	}
 
-	fn engine_inner(engine: &TestEngine) -> FlowEngineInner<DepFlowTransaction> {
+	fn engine_inner(engine: &TestEngine) -> FlowEngineInner<DeferredTransaction> {
 		FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
@@ -203,10 +203,10 @@ mod tests {
 		)
 	}
 
-	fn deferred(engine: &TestEngine) -> DepFlowTransaction {
+	fn deferred(engine: &TestEngine) -> DeferredTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		DepFlowTransaction::deferred(
+		DeferredTransaction::new(
 			&parent,
 			version,
 			Catalog::testing(),
@@ -256,7 +256,7 @@ mod tests {
 
 	struct Harness {
 		engine: TestEngine,
-		inner: FlowEngineInner<DepFlowTransaction>,
+		inner: FlowEngineInner<DeferredTransaction>,
 		builder: FlowBuilder,
 		edges: u64,
 	}

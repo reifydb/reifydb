@@ -22,7 +22,7 @@ use reifydb_core::{
 use reifydb_flow::{
 	operator::Operator,
 	timer::Timer,
-	transaction::{DepFlowTransaction, slot::PersistFn},
+	transaction::{interface::FlowTransaction, slot::PersistFn},
 };
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
@@ -87,14 +87,14 @@ pub trait BridgedOperator: Send {
 
 pub type BoxedBridgedOperator = Box<dyn BridgedOperator>;
 
-pub struct FlowBridge<'a> {
-	txn: &'a mut DepFlowTransaction,
+pub struct FlowBridge<'a, T: FlowTransaction> {
+	txn: &'a mut T,
 	operator: OperatorId,
 	now: DateTime,
 }
 
-impl<'a> FlowBridge<'a> {
-	pub fn new(txn: &'a mut DepFlowTransaction, operator: OperatorId) -> Self {
+impl<'a, T: FlowTransaction> FlowBridge<'a, T> {
+	pub fn new(txn: &'a mut T, operator: OperatorId) -> Self {
 		let now = txn.written_at();
 		Self {
 			txn,
@@ -104,7 +104,7 @@ impl<'a> FlowBridge<'a> {
 	}
 }
 
-impl Bridge for FlowBridge<'_> {
+impl<T: FlowTransaction> Bridge for FlowBridge<'_, T> {
 	fn written_at(&self) -> DateTime {
 		self.now
 	}
@@ -326,12 +326,12 @@ impl BridgeOperator {
 		}
 	}
 
-	fn ensure_flush_slot(&self, txn: &mut DepFlowTransaction) -> Result<()> {
+	fn ensure_flush_slot<T: FlowTransaction>(&self, txn: &mut T) -> Result<()> {
 		let txn_version = txn.version().0;
 		if self.last_registered_txn.get() != txn_version {
 			let captured = SendableBridged(&*self.inner as *const dyn BridgedOperator);
 			let operator = self.operator;
-			let persist: PersistFn = Box::new(move |txn: &mut DepFlowTransaction, _value: Box<dyn Any>| {
+			let persist: PersistFn<T> = Box::new(move |txn: &mut T, _value: Box<dyn Any>| {
 				let captured = captured;
 				// SAFETY: captured.0 points at the heap allocation of self.inner, which is stable
 				// across moves of the wrapper and outlives the transaction running this persist
@@ -351,7 +351,7 @@ impl BridgeOperator {
 
 unsafe impl Send for BridgeOperator {}
 
-impl Operator<DepFlowTransaction> for BridgeOperator {
+impl<T: FlowTransaction> Operator<T> for BridgeOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -360,7 +360,7 @@ impl Operator<DepFlowTransaction> for BridgeOperator {
 		self.capabilities
 	}
 
-	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
 		self.ensure_flush_slot(txn)?;
 		let mut bridge = FlowBridge::new(txn, self.operator);
 		self.inner.apply(&mut bridge, change)
@@ -370,7 +370,7 @@ impl Operator<DepFlowTransaction> for BridgeOperator {
 		self.inner.seal_after().filter(|span| !span.is_zero())
 	}
 
-	fn on_timer(&self, txn: &mut DepFlowTransaction, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&self, txn: &mut T, timer: Timer) -> Result<Option<Change>> {
 		self.ensure_flush_slot(txn)?;
 		let mut bridge = FlowBridge::new(txn, self.operator);
 		self.inner.on_timer(&mut bridge, timer)
@@ -384,7 +384,10 @@ impl Operator<DepFlowTransaction> for BridgeOperator {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{common::CommitVersion, interface::change::Change, key::operator_state::GroupId};
-	use reifydb_flow::{operator::Operator, transaction::ChangeCoordinate};
+	use reifydb_flow::{
+		operator::Operator,
+		transaction::{ChangeCoordinate, deferred::DeferredTransaction, interface::FlowTransaction},
+	};
 	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 	use reifydb_value::{
 		Result,
@@ -445,6 +448,9 @@ mod tests {
 		// A wrapper that swallows the seal span claims a frontier covering buckets still amendable.
 		let wrapper = BridgeOperator::new(Box::new(RecordingBridged), NODE, &[]);
 
-		assert_eq!(Operator::seal_span(&wrapper), Some(Duration::from_milliseconds(65_000).unwrap()));
+		assert_eq!(
+			Operator::<DeferredTransaction>::seal_span(&wrapper),
+			Some(Duration::from_milliseconds(65_000).unwrap())
+		);
 	}
 }

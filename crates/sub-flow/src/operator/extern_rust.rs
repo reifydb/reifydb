@@ -10,7 +10,7 @@ use std::{
 use libloading::Symbol;
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_extension::loader::extern_load::ExternLoad;
-use reifydb_flow::{operator::BoxedOperator, transaction::DepFlowTransaction};
+use reifydb_flow::{operator::BoxedOperator, transaction::deferred::DeferredTransaction};
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_value::{Result, config::Config, error::Error, value::constraint::TypeConstraint};
 
@@ -150,7 +150,7 @@ impl ExternRustOperatorLoader {
 		operator: &str,
 		operator_id: OperatorId,
 		config: &Config,
-	) -> Result<BoxedOperator<DepFlowTransaction>> {
+	) -> Result<BoxedOperator<DeferredTransaction>> {
 		let path = self
 			.operator_paths
 			.get(operator)

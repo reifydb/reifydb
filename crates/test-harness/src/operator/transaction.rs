@@ -16,7 +16,10 @@ use reifydb_core::{
 	},
 };
 use reifydb_flow::transaction::{
-	ChangeCoordinate, DeferredParams, DepFlowTransaction,
+	ChangeCoordinate, DeferredParams,
+	deferred::DeferredTransaction,
+	ephemeral::EphemeralTransaction,
+	interface::FlowTransaction,
 	substrate::{FlowSubstrate, apply_operator_state},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -62,9 +65,9 @@ impl<'a> FlowTxnBuilder<'a> {
 		self
 	}
 
-	pub fn deferred(self) -> DepFlowTransaction {
+	pub fn deferred(self) -> DeferredTransaction {
 		let version = self.version;
-		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DeferredTransaction::from_parts(DeferredParams {
 			version,
 			pending: PendingLayers::empty(),
 			query: self.engine.multi().begin_query().unwrap(),
@@ -81,10 +84,10 @@ impl<'a> FlowTxnBuilder<'a> {
 		txn
 	}
 
-	pub fn ephemeral(self) -> DepFlowTransaction {
+	pub fn ephemeral(self) -> EphemeralTransaction {
 		let query = self.engine.multi().begin_query().unwrap();
 		let version = self.version;
-		let mut txn = DepFlowTransaction::ephemeral(version, query, self.catalog, HashMap::new(), self.clock);
+		let mut txn = EphemeralTransaction::new(version, query, self.catalog, HashMap::new(), self.clock);
 		txn.set_change_coordinate(default_coordinate(version));
 		txn
 	}
@@ -100,7 +103,7 @@ fn default_coordinate(version: CommitVersion) -> ChangeCoordinate {
 pub trait FlowTxn {
 	fn flow_txn(&self) -> FlowTxnBuilder<'_>;
 
-	fn commit_pending(&self, txn: &mut DepFlowTransaction);
+	fn commit_pending(&self, txn: &mut DeferredTransaction);
 }
 
 impl FlowTxn for TestEngine {
@@ -113,7 +116,7 @@ impl FlowTxn for TestEngine {
 		}
 	}
 
-	fn commit_pending(&self, txn: &mut DepFlowTransaction) {
+	fn commit_pending(&self, txn: &mut DeferredTransaction) {
 		let pending = txn.take_pending();
 		let mut cmd = self.begin_command(IdentityId::system()).unwrap();
 		cmd.disable_conflict_tracking().unwrap();

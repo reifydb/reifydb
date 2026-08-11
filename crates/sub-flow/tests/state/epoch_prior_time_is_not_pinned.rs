@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_flow::transaction::DepFlowTransaction;
+use reifydb_flow::transaction::interface::FlowTransaction;
 use reifydb_test_harness::operator::transaction::{FlowTxn, OPERATOR_ID, engine, key, make_row};
 use reifydb_value::value::datetime::DateTime;
 
-fn assert_epoch_prior_time_is_not_pinned(txn: &mut DepFlowTransaction) {
+fn assert_epoch_prior_time_is_not_pinned<T: FlowTransaction>(txn: &mut T) {
 	// Writes carry the time their caller stamped and never inherit from the row they replace, so a
 	// row stamped at the epoch heals on its next write instead of pinning the stamp forever.
 	let k = key("legacy-key");

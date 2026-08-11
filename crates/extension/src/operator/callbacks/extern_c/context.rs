@@ -4,11 +4,11 @@
 use core::ffi::c_void;
 
 use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_flow::transaction::DepFlowTransaction;
+use reifydb_flow::transaction::{deferred::DeferredTransaction, interface::FlowTransaction};
 use reifydb_sdk::flow::operator::extern_c::wire::{callbacks::OperatorCallbacks, context::ExternCContext};
 
 pub fn new_extern_c_context(
-	txn: &mut DepFlowTransaction,
+	txn: &mut DeferredTransaction,
 	operator_id: OperatorId,
 	callbacks: OperatorCallbacks,
 ) -> ExternCContext {
@@ -26,8 +26,8 @@ pub fn new_extern_c_context(
 /// `ctx.txn_ptr` must be the pointer stored by [`new_extern_c_context`] from a live
 /// `&mut FlowTransaction` that is still borrowed exclusively, so the returned
 /// reference is the only one aliasing it for its lifetime.
-pub(crate) unsafe fn get_transaction_mut(ctx: &mut ExternCContext) -> &mut DepFlowTransaction {
+pub(crate) unsafe fn get_transaction_mut(ctx: &mut ExternCContext) -> &mut DeferredTransaction {
 	// SAFETY: discharges this function's own contract; `ctx.txn_ptr` is then a live, aligned
 	// FlowTransaction that nothing else aliases for the returned lifetime.
-	unsafe { &mut *(ctx.txn_ptr as *mut DepFlowTransaction) }
+	unsafe { &mut *(ctx.txn_ptr as *mut DeferredTransaction) }
 }

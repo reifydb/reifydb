@@ -95,14 +95,14 @@ mod tests {
 	use super::ApplyOperator;
 	use crate::{
 		operator::{Operator, OperatorCell, scale_from_millis, scan::view::SourceViewOperator},
-		transaction::DepFlowTransaction,
+		transaction::deferred::DeferredTransaction,
 	};
 
 	fn ms(milliseconds: i64) -> Duration {
 		Duration::from_milliseconds(milliseconds).expect("representable duration")
 	}
 
-	fn noop_parent() -> OperatorCell<DepFlowTransaction> {
+	fn noop_parent() -> OperatorCell<DeferredTransaction> {
 		let view = View::Table(TableView {
 			id: ViewId(1),
 			namespace: NamespaceId(1),
@@ -134,7 +134,7 @@ mod tests {
 		seal: Option<Duration>,
 	}
 
-	impl Operator<DepFlowTransaction> for SealingInner {
+	impl Operator<DeferredTransaction> for SealingInner {
 		fn id(&self) -> OperatorId {
 			OperatorId(7)
 		}
@@ -143,7 +143,7 @@ mod tests {
 			&[]
 		}
 
-		fn apply(&self, _txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+		fn apply(&self, _txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 			Ok(change)
 		}
 

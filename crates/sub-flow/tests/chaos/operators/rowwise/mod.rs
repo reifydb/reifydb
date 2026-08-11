@@ -17,7 +17,7 @@ use reifydb_flow::{
 		Operator, OperatorCell, extend::ExtendOperator, filter::FilterOperator, map::MapOperator,
 		scan::series::SourceSeriesOperator,
 	},
-	transaction::DepFlowTransaction,
+	transaction::deferred::DeferredTransaction,
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -148,12 +148,12 @@ pub const MATRIX: [Shape; 3] = [
 /// itself implement `Operator`, and the harness needs a sized subject; an enum that delegates is the
 /// smallest thing that gives all three shapes one driver.
 pub enum Rowwise {
-	Filter(FilterOperator<DepFlowTransaction>),
-	Map(MapOperator<DepFlowTransaction>),
-	Extend(ExtendOperator<DepFlowTransaction>),
+	Filter(FilterOperator<DeferredTransaction>),
+	Map(MapOperator<DeferredTransaction>),
+	Extend(ExtendOperator<DeferredTransaction>),
 }
 
-impl Operator<DepFlowTransaction> for Rowwise {
+impl Operator<DeferredTransaction> for Rowwise {
 	fn id(&self) -> OperatorId {
 		match self {
 			Rowwise::Filter(op) => op.id(),
@@ -170,7 +170,7 @@ impl Operator<DepFlowTransaction> for Rowwise {
 		}
 	}
 
-	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 		match self {
 			Rowwise::Filter(op) => op.apply(txn, change),
 			Rowwise::Map(op) => op.apply(txn, change),

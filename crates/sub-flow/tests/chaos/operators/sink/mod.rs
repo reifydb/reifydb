@@ -41,7 +41,7 @@ use reifydb_flow::{
 			view::SinkTableViewOperator,
 		},
 	},
-	transaction::DepFlowTransaction,
+	transaction::deferred::DeferredTransaction,
 };
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_testing_chaos::{
@@ -154,7 +154,7 @@ pub enum SinkOp {
 	Ring(SinkRingBufferViewOperator),
 }
 
-impl Operator<DepFlowTransaction> for SinkOp {
+impl Operator<DeferredTransaction> for SinkOp {
 	fn id(&self) -> OperatorId {
 		match self {
 			SinkOp::Table(o) => o.id(),
@@ -171,7 +171,7 @@ impl Operator<DepFlowTransaction> for SinkOp {
 		}
 	}
 
-	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
 		match self {
 			SinkOp::Table(o) => o.apply(txn, change),
 			SinkOp::Series(o) => o.apply(txn, change),

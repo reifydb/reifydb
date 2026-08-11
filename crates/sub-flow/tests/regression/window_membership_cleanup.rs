@@ -25,7 +25,7 @@ use reifydb_flow::{
 		scan::series::SourceSeriesOperator,
 		window::operator::{WindowConfig, WindowOperator},
 	},
-	transaction::DepFlowTransaction,
+	transaction::deferred::DeferredTransaction,
 };
 use reifydb_routine::{
 	function::default_in_process_functions, monoid::default_in_process_monoids,
@@ -55,7 +55,7 @@ fn routines() -> Routines {
 	default_in_process_monoids(b).configure()
 }
 
-fn harness(kind: WindowKind) -> Harness<WindowOperator<DepFlowTransaction>> {
+fn harness(kind: WindowKind) -> Harness<WindowOperator<DeferredTransaction>> {
 	Harness::new(move |runtime| {
 		WindowOperator::new(WindowConfig {
 			parent: OperatorCell::new(SourceSeriesOperator::new(SOURCE)),

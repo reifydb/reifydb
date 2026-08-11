@@ -28,7 +28,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_flow::{
 	engine::{FlowEngineInner, execution::frontier::WatermarkHolds},
 	operator::metrics::OperatorSampleRegistry,
-	transaction::{DepFlowTransaction, substrate::FlowSubstrate},
+	transaction::{deferred::DeferredTransaction, substrate::FlowSubstrate},
 };
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
@@ -113,7 +113,7 @@ pub struct FlowActor {
 }
 
 pub struct FlowActorState {
-	flow_engine: FlowEngineInner<DepFlowTransaction>,
+	flow_engine: FlowEngineInner<DeferredTransaction>,
 	source_objects: Arc<BTreeSet<ObjectId>>,
 	completeness_objects: Option<Arc<BTreeSet<u64>>>,
 	cursor: CommitVersion,
@@ -202,7 +202,7 @@ impl FlowActor {
 		ctx.schedule_once(backoff, || FlowActorMessage::Drain);
 	}
 
-	fn build_flow_engine(&self) -> FlowEngineInner<DepFlowTransaction> {
+	fn build_flow_engine(&self) -> FlowEngineInner<DeferredTransaction> {
 		FlowEngineInner::new(
 			self.engine.catalog(),
 			self.engine.executor().routines.clone(),
@@ -214,7 +214,7 @@ impl FlowActor {
 		)
 	}
 
-	fn register_flow(&self, flow_engine: &mut FlowEngineInner<DepFlowTransaction>) -> Result<()> {
+	fn register_flow(&self, flow_engine: &mut FlowEngineInner<DeferredTransaction>) -> Result<()> {
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		flow_engine.register(&mut txn, self.flow.clone())?;
 		txn.rollback()?;
@@ -1018,7 +1018,7 @@ mod pull_protocol {
 				.filter(|id| self.flow.get_operator(id).is_some_and(|op| op.ty.is_source()))
 				.collect();
 			assert!(!sources.is_empty(), "the flow under test must have a source to advance");
-			let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
+			let mut txn = DeferredTransaction::from_parts(DeferredParams {
 				version: self.engine.current_version().expect("current version"),
 				pending: PendingLayers::empty(),
 				query: self.engine.multi().begin_query().expect("query"),

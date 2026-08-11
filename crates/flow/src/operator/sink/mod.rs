@@ -249,12 +249,12 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::transaction::{DeferredParams, DepFlowTransaction, substrate::FlowSubstrate};
+	use crate::transaction::{DeferredParams, deferred::DeferredTransaction, substrate::FlowSubstrate};
 
-	fn flow_txn(engine: &TestEngine, registry: &DictionaryAllocatorRegistry) -> DepFlowTransaction {
+	fn flow_txn(engine: &TestEngine, registry: &DictionaryAllocatorRegistry) -> DeferredTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		DepFlowTransaction::deferred_from_parts(DeferredParams {
+		DeferredTransaction::from_parts(DeferredParams {
 			version,
 			pending: PendingLayers::empty(),
 			query: parent.multi.begin_query().unwrap(),

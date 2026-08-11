@@ -19,7 +19,7 @@ use reifydb_flow::{
 		FlowEngineInner,
 		execution::{COMPLETENESS_OBJECT, frontier::WatermarkHolds},
 	},
-	transaction::{DeferredParams, DepFlowTransaction},
+	transaction::{DeferredParams, deferred::DeferredTransaction, interface::FlowTransaction},
 };
 use reifydb_transaction::change_accumulator::ChangeAccumulator;
 use reifydb_value::{
@@ -70,7 +70,7 @@ impl SliceComputer {
 	#[allow(clippy::too_many_arguments)]
 	pub fn compute_pulled(
 		&self,
-		flow_engine: &mut FlowEngineInner<DepFlowTransaction>,
+		flow_engine: &mut FlowEngineInner<DeferredTransaction>,
 		items: &[Arc<Cdc>],
 		cursor: SliceCursor,
 		advance_to: CommitVersion,
@@ -114,7 +114,7 @@ impl SliceComputer {
 
 	fn skip_or_checkpoint(
 		&self,
-		flow_engine: &mut FlowEngineInner<DepFlowTransaction>,
+		flow_engine: &mut FlowEngineInner<DeferredTransaction>,
 		flow_id: FlowId,
 		advance_to: CommitVersion,
 		durable_cursor: CommitVersion,
@@ -141,7 +141,7 @@ impl SliceComputer {
 
 	pub(crate) fn resolved_holds(
 		&self,
-		flow_engine: &mut FlowEngineInner<DepFlowTransaction>,
+		flow_engine: &mut FlowEngineInner<DeferredTransaction>,
 		flow_id: FlowId,
 		state_version: CommitVersion,
 	) -> Result<WatermarkHolds> {
@@ -155,7 +155,7 @@ impl SliceComputer {
 		let mut query = base_query;
 		query.read_as_of_version_inclusive(state_version);
 
-		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DeferredTransaction::from_parts(DeferredParams {
 			version: state_version,
 			pending: PendingLayers::empty(),
 			query,
@@ -172,7 +172,7 @@ impl SliceComputer {
 
 	fn compute(
 		&self,
-		flow_engine: &mut FlowEngineInner<DepFlowTransaction>,
+		flow_engine: &mut FlowEngineInner<DeferredTransaction>,
 		flow_id: FlowId,
 		state_version: CommitVersion,
 		changes: Vec<Change>,
@@ -188,7 +188,7 @@ impl SliceComputer {
 		let mut query = base_query;
 		query.read_as_of_version_inclusive(state_version);
 
-		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DeferredTransaction::from_parts(DeferredParams {
 			version: state_version,
 			pending,
 			query,
@@ -211,7 +211,7 @@ impl SliceComputer {
 
 	fn consolidated_view_changes(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut DeferredTransaction,
 		state_version: CommitVersion,
 	) -> Result<Vec<Change>> {
 		let mut accumulator = ChangeAccumulator::new();
@@ -223,7 +223,7 @@ impl SliceComputer {
 
 	pub fn tick(
 		&self,
-		flow_engine: &mut FlowEngineInner<DepFlowTransaction>,
+		flow_engine: &mut FlowEngineInner<DeferredTransaction>,
 		flow_id: FlowId,
 		timestamp: DateTime,
 		checkpoint: CommitVersion,
@@ -232,7 +232,7 @@ impl SliceComputer {
 		let query = self.engine.multi().begin_query_at_version(&lease)?;
 		let state_query = self.engine.multi().begin_query_at_version(&lease)?;
 
-		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DeferredTransaction::from_parts(DeferredParams {
 			version: state_version,
 			pending: PendingLayers::empty(),
 			query,
@@ -517,7 +517,10 @@ mod integration {
 	use reifydb_flow::{
 		engine::execution::frontier::WatermarkHold,
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
-		transaction::{read::ReadFrom, substrate::FlowSubstrate},
+		transaction::{
+			read::{ReadFrom, read_from},
+			substrate::FlowSubstrate,
+		},
 	};
 	use reifydb_rql::flow::{
 		flow::FlowDag,
@@ -544,7 +547,7 @@ mod integration {
 	fn pull_step(
 		engine: &StandardEngine,
 		computer: &SliceComputer,
-		flow_engine: &mut FlowEngineInner<DepFlowTransaction>,
+		flow_engine: &mut FlowEngineInner<DeferredTransaction>,
 		cursor: SliceCursor,
 		config: &SliceConfig,
 		overlay: &mut FlowWriteOverlay,
@@ -570,7 +573,7 @@ mod integration {
 			.expect("compute_pulled"))
 	}
 
-	fn build_flow_engine(engine: &StandardEngine) -> FlowEngineInner<DepFlowTransaction> {
+	fn build_flow_engine(engine: &StandardEngine) -> FlowEngineInner<DeferredTransaction> {
 		FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
@@ -584,15 +587,15 @@ mod integration {
 
 	fn seeding_txn(
 		engine: &StandardEngine,
-		flow_engine: &FlowEngineInner<DepFlowTransaction>,
+		flow_engine: &FlowEngineInner<DeferredTransaction>,
 		version: CommitVersion,
-	) -> DepFlowTransaction {
+	) -> DeferredTransaction {
 		let (_current, lease) = engine.acquire_current_snapshot_lease().unwrap();
 		let mut query = engine.multi().begin_query_at_version(&lease).unwrap();
 		let state_query = engine.multi().begin_query_at_version(&lease).unwrap();
 		query.read_as_of_version_inclusive(version);
 
-		DepFlowTransaction::deferred_from_parts(DeferredParams {
+		DeferredTransaction::from_parts(DeferredParams {
 			version,
 			pending: PendingLayers::empty(),
 			query,
@@ -1000,7 +1003,7 @@ mod integration {
 					overlay.promote(commit_version, pending);
 
 					let pinned_txn = |pending: PendingLayers| {
-						DepFlowTransaction::deferred_from_parts(DeferredParams {
+						DeferredTransaction::from_parts(DeferredParams {
 							version: advance_to,
 							pending,
 							query: engine.multi().begin_query().unwrap(),
@@ -1127,7 +1130,7 @@ mod integration {
 					let mut live_keys = Vec::new();
 					for (key, write) in pending.iter_sorted() {
 						committed_kinds.insert(Key::kind(key));
-						if DepFlowTransaction::read_from(key) == ReadFrom::Query {
+						if read_from(key) == ReadFrom::Query {
 							stale_reads.insert(Key::kind(key));
 						}
 						if matches!(write, PendingWrite::Set(_)) {
@@ -1138,17 +1141,16 @@ mod integration {
 
 					// The restart window asserted directly rather than by inference, and
 					// it reaches OperatorState as well as Row.
-					let mut empty_overlay =
-						DepFlowTransaction::deferred_from_parts(DeferredParams {
-							version: advance_to,
-							pending: PendingLayers::empty(),
-							query: engine.multi().begin_query().unwrap(),
-							state_query: engine.multi().begin_query().unwrap(),
-							catalog: engine.catalog(),
-							interceptors: engine.create_interceptors(),
-							clock: engine.clock().clone(),
-							substrate: flow_engine.substrate().clone(),
-						});
+					let mut empty_overlay = DeferredTransaction::from_parts(DeferredParams {
+						version: advance_to,
+						pending: PendingLayers::empty(),
+						query: engine.multi().begin_query().unwrap(),
+						state_query: engine.multi().begin_query().unwrap(),
+						catalog: engine.catalog(),
+						interceptors: engine.create_interceptors(),
+						clock: engine.clock().clone(),
+						substrate: flow_engine.substrate().clone(),
+					});
 					for key in &live_keys {
 						assert!(
 							empty_overlay.get(key).unwrap().is_some(),

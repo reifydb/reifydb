@@ -27,7 +27,7 @@ use reifydb_engine::{
 };
 use reifydb_flow::{
 	engine::FlowEngineInner,
-	transaction::{DepFlowTransaction, slot::CarriedOperatorState},
+	transaction::{ephemeral::EphemeralTransaction, slot::CarriedOperatorState},
 };
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
@@ -47,7 +47,7 @@ use crate::{sink::DeliveryBuffer, store::SubscriptionStore, subsystem::registrat
 mod dispatch;
 mod hydrate;
 
-pub type SubscriptionEngineFactory = Box<dyn FnOnce() -> FlowEngineInner<DepFlowTransaction> + Send>;
+pub type SubscriptionEngineFactory = Box<dyn FnOnce() -> FlowEngineInner<EphemeralTransaction> + Send>;
 
 pub enum SubscriptionWorkerMessage {
 	Dispatch {
@@ -100,7 +100,7 @@ impl SubscriptionFlowState {
 }
 
 pub struct SubscriptionWorkerState {
-	flow_engine: FlowEngineInner<DepFlowTransaction>,
+	flow_engine: FlowEngineInner<EphemeralTransaction>,
 	flows: HashMap<FlowId, SubscriptionFlowState>,
 	carry_lease: Option<VersionLeaseGuard>,
 }
@@ -122,7 +122,7 @@ impl SubscriptionWorkerActor {
 		delivery: Arc<DeliveryBuffer>,
 	) -> Self
 	where
-		F: FnOnce() -> FlowEngineInner<DepFlowTransaction> + Send + 'static,
+		F: FnOnce() -> FlowEngineInner<EphemeralTransaction> + Send + 'static,
 	{
 		Self {
 			engine,

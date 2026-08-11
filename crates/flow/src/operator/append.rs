@@ -269,16 +269,16 @@ mod tests {
 	use super::*;
 	use crate::{
 		testing::FlowTxn,
-		transaction::{ChangeCoordinate, DepFlowTransaction},
+		transaction::{ChangeCoordinate, deferred::DeferredTransaction},
 	};
 
-	type AppendOperator = crate::operator::append::AppendOperator<DepFlowTransaction>;
+	type AppendOperator = crate::operator::append::AppendOperator<DeferredTransaction>;
 
 	fn op(operator: u64) -> AppendOperator {
 		AppendOperator::new_for_state_tests(OperatorId(operator))
 	}
 
-	fn txn_at(engine: &TestEngine, _operator: OperatorId, coordinate: u64) -> DepFlowTransaction {
+	fn txn_at(engine: &TestEngine, _operator: OperatorId, coordinate: u64) -> DeferredTransaction {
 		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(DateTime::from_nanos(coordinate)),
@@ -291,11 +291,16 @@ mod tests {
 		Columns::empty().with_row_numbers(source_rows.iter().map(|r| RowNumber(*r)).collect())
 	}
 
-	fn group_of(txn: &mut DepFlowTransaction, op: &AppendOperator, parent: u8, source_row: u64) -> Option<GroupId> {
+	fn group_of(
+		txn: &mut DeferredTransaction,
+		op: &AppendOperator,
+		parent: u8,
+		source_row: u64,
+	) -> Option<GroupId> {
 		txn.lookup_group(op.operator, &AppendOperator::group_bytes(parent, RowNumber(source_row))).unwrap()
 	}
 
-	fn group_rows(txn: &mut DepFlowTransaction, op: &AppendOperator, group: GroupId) -> usize {
+	fn group_rows(txn: &mut DeferredTransaction, op: &AppendOperator, group: GroupId) -> usize {
 		txn.state_range(op.operator, group_inner_range(group), None, "test").unwrap().items.len()
 	}
 

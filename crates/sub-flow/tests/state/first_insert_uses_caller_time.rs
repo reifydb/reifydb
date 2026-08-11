@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_flow::transaction::DepFlowTransaction;
+use reifydb_flow::transaction::interface::FlowTransaction;
 use reifydb_test_harness::operator::transaction::{FlowTxn, OPERATOR_ID, engine, key, make_row};
 use reifydb_value::value::datetime::DateTime;
 
-fn assert_first_insert_uses_caller_time(txn: &mut DepFlowTransaction) {
+fn assert_first_insert_uses_caller_time<T: FlowTransaction>(txn: &mut T) {
 	// With no prior row the caller's time must round-trip unchanged, so an implementation that
 	// always overwrites the stamp cannot zero out fresh inserts.
 	let k = key("fresh-key");

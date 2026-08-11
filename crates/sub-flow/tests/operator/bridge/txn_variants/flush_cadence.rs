@@ -5,7 +5,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::change::{Change, Diffs},
 };
-use reifydb_flow::{operator::Operator, transaction::DepFlowTransaction};
+use reifydb_flow::{operator::Operator, transaction::interface::FlowTransaction};
 use reifydb_sdk::flow::operator::OperatorMetadata;
 use reifydb_sub_flow::operator::bridge::{BridgeOperator, BridgeOperatorAdapter};
 use reifydb_test_harness::operator::transaction::{FlowTxn, OPERATOR_ID, engine};
@@ -13,7 +13,7 @@ use reifydb_value::value::datetime::DateTime;
 
 use crate::common::{FlushProbe, flush_probe_key};
 
-fn assert_flush_is_deferred(txn: &mut DepFlowTransaction) {
+fn assert_flush_is_deferred<T: FlowTransaction>(txn: &mut T) {
 	// Re-asserted across every FlowTransaction variant, or a variant that flushed during apply would go unnoticed.
 	let capabilities = <FlushProbe as OperatorMetadata>::CAPABILITIES;
 	let inner = BridgeOperatorAdapter::new(FlushProbe, OPERATOR_ID, capabilities);

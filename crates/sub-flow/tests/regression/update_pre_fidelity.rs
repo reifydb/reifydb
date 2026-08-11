@@ -37,7 +37,7 @@ use reifydb_flow::{
 		take::TakeOperator,
 		window::operator::{WindowConfig, WindowOperator},
 	},
-	transaction::DepFlowTransaction,
+	transaction::deferred::DeferredTransaction,
 };
 use reifydb_routine::{
 	function::default_in_process_functions, monoid::default_in_process_monoids,
@@ -61,7 +61,7 @@ fn routines() -> Routines {
 	default_in_process_monoids(b).configure()
 }
 
-fn source() -> OperatorCell<DepFlowTransaction> {
+fn source() -> OperatorCell<DeferredTransaction> {
 	OperatorCell::new(SourceSeriesOperator::new(SOURCE))
 }
 
@@ -560,7 +560,7 @@ mod source {
 				table::SourceTableOperator, view::SourceViewOperator,
 			},
 		},
-		transaction::DepFlowTransaction,
+		transaction::deferred::DeferredTransaction,
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_testing_flow::harness::Harness;
@@ -745,23 +745,23 @@ mod source {
 		Ring(SourceRingBufferOperator),
 	}
 
-	impl Operator<DepFlowTransaction> for Op {
+	impl Operator<DeferredTransaction> for Op {
 		fn id(&self) -> OperatorId {
 			SOURCE
 		}
 
 		fn capabilities(&self) -> &[reifydb_core::interface::flow::OperatorCapability] {
 			match self {
-				Op::Series(o) => Operator::<DepFlowTransaction>::capabilities(o),
-				Op::Table(o) => Operator::<DepFlowTransaction>::capabilities(o),
-				Op::View(o) => Operator::<DepFlowTransaction>::capabilities(o),
-				Op::Ring(o) => Operator::<DepFlowTransaction>::capabilities(o),
+				Op::Series(o) => Operator::<DeferredTransaction>::capabilities(o),
+				Op::Table(o) => Operator::<DeferredTransaction>::capabilities(o),
+				Op::View(o) => Operator::<DeferredTransaction>::capabilities(o),
+				Op::Ring(o) => Operator::<DeferredTransaction>::capabilities(o),
 			}
 		}
 
 		fn apply(
 			&self,
-			txn: &mut reifydb_flow::transaction::DepFlowTransaction,
+			txn: &mut reifydb_flow::transaction::deferred::DeferredTransaction,
 			change: Change,
 		) -> reifydb_value::Result<Change> {
 			match self {

@@ -67,10 +67,10 @@ use crate::{
 		take::TakeOperator,
 		window::operator::{WindowConfig, WindowOperator},
 	},
-	transaction::{DepFlowTransaction, interface::FlowTransaction},
+	transaction::{deferred::DeferredTransaction, interface::FlowTransaction},
 };
 
-impl FlowEngineInner<DepFlowTransaction> {
+impl FlowEngineInner<DeferredTransaction> {
 	#[instrument(name = "flow::register", level = "info", skip(self, txn), fields(flow_id = ?flow.id))]
 	pub fn register(&mut self, txn: &mut CommandTransaction, flow: FlowDag) -> Result<()> {
 		self.register_with_transaction(&mut Transaction::Command(txn), flow)
