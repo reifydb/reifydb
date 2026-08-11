@@ -288,7 +288,7 @@ tikv-jemalloc-ctl = { version = "0.6", features = ["stats", "profiling", "use_st
 libm = { version = "0.2.16" }
 
 once_cell = { version = "1.21.4" }
-uuid = { version = "1.23.2", default-features = false, features = ["v4", "v7", "serde", "std", "js"] }
+uuid = { version = "1.23.2", default-features = false, features = ["serde", "std"] }
 num-bigint = { version = "0.4.6", features = ["serde"] }
 bigdecimal = { version = "0.4.10", features = ["serde"] }
 num-traits = { version = "0.2.19" }

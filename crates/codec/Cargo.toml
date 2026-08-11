@@ -7,8 +7,9 @@ authors.workspace = true
 license.workspace = true
 
 [features]
-default = ["json"]
+default = ["json", "host"]
 json = ["dep:serde_json"]
+host = ["reifydb-value/host"]
 
 [build-dependencies]
 reifydb-build = { workspace = true }

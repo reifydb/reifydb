@@ -23,6 +23,7 @@ pub mod parse;
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Uuid4(pub StdUuid);
 
+#[cfg(feature = "host")]
 impl Uuid4 {
 	pub fn generate() -> Self {
 		Uuid4(StdUuid::new_v4())

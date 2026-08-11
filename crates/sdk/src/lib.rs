@@ -11,7 +11,11 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod common;
+#[cfg(feature = "host")]
 pub mod error;
+#[cfg(feature = "host")]
 pub mod flow;
+#[cfg(feature = "host")]
 pub mod procedure;
+#[cfg(feature = "host")]
 pub mod transform;
