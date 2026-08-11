@@ -31,7 +31,8 @@ use super::bytes::{
 use crate::row::{
 	catalog::EncodedCatalogRowBuilder,
 	operator::{
-		EncodedOperatorRowBuilder, OPERATOR_HEADER_SIZE, read_time as read_operator_time,
+		EncodedOperatorRowBuilder, OPERATOR_HEADER_SIZE, read_created_at as read_operator_created_at,
+		read_time as read_operator_time, read_updated_at as read_operator_updated_at,
 		write_time as write_operator_time,
 	},
 	pod::{EncodedPodRowBuilder, POD_HEADER_SIZE},
@@ -277,7 +278,7 @@ impl RowShape {
 	pub fn created_at(&self, row: &[u8]) -> DateTime {
 		match self.family {
 			RowFamily::Pod => panic!("pod rows carry no created_at"),
-			RowFamily::Operator => panic!("operator rows carry no created_at"),
+			RowFamily::Operator => read_operator_created_at(row),
 			_ => read_created_at(row),
 		}
 	}
@@ -286,7 +287,7 @@ impl RowShape {
 	pub fn updated_at(&self, row: &[u8]) -> DateTime {
 		match self.family {
 			RowFamily::Pod => panic!("pod rows carry no updated_at"),
-			RowFamily::Operator => panic!("operator rows carry no updated_at"),
+			RowFamily::Operator => read_operator_updated_at(row),
 			_ => read_updated_at(row),
 		}
 	}

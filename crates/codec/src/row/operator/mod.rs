@@ -15,7 +15,11 @@ use thiserror::Error;
 
 use crate::row::bytes::{EncodedBytes, EncodedRowBuilder, RowBuilder, read_defined_at, sealed::Sealed};
 
-const TIME_OFFSET: usize = 0;
+const CREATED_AT_OFFSET: usize = 0;
+
+const UPDATED_AT_OFFSET: usize = CREATED_AT_OFFSET + DateTime::ENCODED_SIZE;
+
+const TIME_OFFSET: usize = UPDATED_AT_OFFSET + DateTime::ENCODED_SIZE;
 
 pub const OPERATOR_HEADER_SIZE: usize = TIME_OFFSET + DateTime::ENCODED_SIZE;
 
@@ -61,6 +65,30 @@ pub fn write_time(buf: &mut [u8], time: DateTime) {
 	buf[TIME_OFFSET..OPERATOR_HEADER_SIZE].copy_from_slice(&time.to_le_bytes());
 }
 
+#[inline]
+pub fn read_created_at(buf: &[u8]) -> DateTime {
+	DateTime::from_le_bytes(
+		buf[CREATED_AT_OFFSET..UPDATED_AT_OFFSET].try_into().expect("the operator header is length-checked"),
+	)
+}
+
+#[inline]
+pub fn write_created_at(buf: &mut [u8], created_at: DateTime) {
+	buf[CREATED_AT_OFFSET..UPDATED_AT_OFFSET].copy_from_slice(&created_at.to_le_bytes());
+}
+
+#[inline]
+pub fn read_updated_at(buf: &[u8]) -> DateTime {
+	DateTime::from_le_bytes(
+		buf[UPDATED_AT_OFFSET..TIME_OFFSET].try_into().expect("the operator header is length-checked"),
+	)
+}
+
+#[inline]
+pub fn write_updated_at(buf: &mut [u8], updated_at: DateTime) {
+	buf[UPDATED_AT_OFFSET..TIME_OFFSET].copy_from_slice(&updated_at.to_le_bytes());
+}
+
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct EncodedOperatorRow(EncodedBytes);
@@ -68,6 +96,8 @@ pub struct EncodedOperatorRow(EncodedBytes);
 impl EncodedOperatorRow {
 	pub fn new(body: &[u8], time: DateTime) -> Self {
 		let mut buffer = Vec::with_capacity(OPERATOR_HEADER_SIZE + body.len());
+		buffer.extend_from_slice(&DateTime::EPOCH.to_le_bytes());
+		buffer.extend_from_slice(&DateTime::EPOCH.to_le_bytes());
 		buffer.extend_from_slice(&time.to_le_bytes());
 		buffer.extend_from_slice(body);
 		Self(EncodedBytes(CowVec::new(buffer)))
@@ -165,6 +195,21 @@ impl EncodedOperatorRowBuilder {
 
 	pub fn set_time(&mut self, time: DateTime) {
 		write_time(self.as_mut_slice(), time);
+	}
+
+	#[inline]
+	pub fn created_at(&self) -> DateTime {
+		read_created_at(self.as_slice())
+	}
+
+	#[inline]
+	pub fn updated_at(&self) -> DateTime {
+		read_updated_at(self.as_slice())
+	}
+
+	pub fn set_timestamps(&mut self, created_at: DateTime, updated_at: DateTime) {
+		write_created_at(self.as_mut_slice(), created_at);
+		write_updated_at(self.as_mut_slice(), updated_at);
 	}
 
 	#[inline]

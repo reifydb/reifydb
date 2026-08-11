@@ -449,7 +449,7 @@ impl Columns {
 
 		let row_numbers: Vec<RowNumber> = ids.to_vec();
 		let (created_at, updated_at): (Vec<DateTime>, Vec<DateTime>) = match shape.family() {
-			RowFamily::Pod | RowFamily::Operator => (Vec::new(), Vec::new()),
+			RowFamily::Pod => (Vec::new(), Vec::new()),
 			_ => (
 				bytes_slice.iter().map(|r| shape.created_at(r)).collect(),
 				bytes_slice.iter().map(|r| shape.updated_at(r)).collect(),

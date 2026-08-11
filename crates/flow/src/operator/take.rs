@@ -61,13 +61,20 @@ fn row_shape_from_columns(cols: &Columns) -> RowShape {
 		.zip(cols.columns.iter())
 		.map(|(name, buf)| RowShapeField::unconstrained(name.text().to_string(), buf.get_type()))
 		.collect();
-	RowShape::new(RowFamily::Pod, fields)
+	RowShape::new(RowFamily::Operator, fields)
 }
 
 fn encode_take_bytes(shape: &RowShape, columns: &Columns, row_idx: usize) -> EncodedBytes {
 	let values: Vec<Value> = columns.columns.iter().map(|buf| buf.get_value(row_idx)).collect();
-	let mut encoded = shape.allocate_pod();
+	let mut encoded = shape.allocate_operator();
 	shape.set_values(&mut encoded, &values);
+	encoded.set_timestamps(
+		columns.created_at().get(row_idx).copied().unwrap_or_default(),
+		columns.updated_at().get(row_idx).copied().unwrap_or_default(),
+	);
+	if let Some(time) = columns.time().get(row_idx).copied() {
+		encoded.set_time(time);
+	}
 	encoded.freeze_bytes()
 }
 
