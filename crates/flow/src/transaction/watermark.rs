@@ -168,7 +168,7 @@ mod tests {
 	fn commit_pending(engine: &TestEngine, txn: &mut DepFlowTransaction) {
 		// Persists the pending writes so a cold instance resolves them as a restarted process would.
 		let pending = txn.take_pending();
-		apply_operator_state(&engine.inner().operator_state(), txn.version(), &pending);
+		apply_operator_state(&engine.inner().operator_state(), &pending);
 	}
 
 	#[test]

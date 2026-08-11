@@ -5,7 +5,7 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::operator::EncodedOperatorRow,
 };
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId};
+use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_runtime::shutdown::Shutdown;
 
 #[derive(Debug, Clone)]
@@ -28,16 +28,12 @@ pub struct OperatorStore;
 
 impl Default for OperatorStore {
 	fn default() -> Self {
-		Self::testing_memory()
+		Self::memory()
 	}
 }
 
 impl OperatorStore {
 	pub fn memory() -> Self {
-		Self
-	}
-
-	pub fn testing_memory() -> Self {
 		Self
 	}
 
@@ -65,7 +61,7 @@ impl OperatorStore {
 		0
 	}
 
-	pub fn drop_arena(&self, _operator: OperatorId) {}
+	pub fn drop_operator_state(&self, _operator: OperatorId) {}
 }
 
 impl Shutdown for OperatorStore {

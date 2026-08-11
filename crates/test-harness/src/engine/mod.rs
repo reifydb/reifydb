@@ -227,7 +227,7 @@ impl TestEngineBuilder {
 		let eventbus = EventBus::new(&spawner);
 		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 		let single_store = SingleStore::testing_memory();
-		let operator_store = OperatorStore::testing_memory();
+		let operator_store = OperatorStore::memory();
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 		let catalog_cache = CatalogCache::new();
 		let version_epoch = VersionEpoch::new();

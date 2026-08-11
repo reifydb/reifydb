@@ -94,7 +94,7 @@ impl CommitterActor {
 		let completion_committer = self.committer.clone();
 		let completion: GroupCommitCompletion = Box::new(move |result| match result {
 			Ok(version) => {
-				apply_operator_state(&completion_committer.operators, version, &combined);
+				apply_operator_state(&completion_committer.operators, &combined);
 				if produced_output {
 					completion_committer.materialization.record_output(version);
 				}
@@ -123,7 +123,7 @@ impl CommitterActor {
 		let completion_committer = self.committer.clone();
 		let completion: GroupCommitCompletion = Box::new(move |result| match result {
 			Ok(version) => {
-				apply_operator_state(&completion_committer.operators, version, &pending);
+				apply_operator_state(&completion_committer.operators, &pending);
 				completion_committer.materialization.record_output(version);
 				let pending = Arc::try_unwrap(pending).unwrap_or_else(|shared| (*shared).clone());
 				(reply)(Some((version, pending)));
@@ -296,7 +296,7 @@ impl Committer {
 
 		let commit_version = transaction.commit_unchecked()?;
 
-		apply_operator_state(&self.operators, commit_version, &combined);
+		apply_operator_state(&self.operators, &combined);
 		self.post_commit_slice(&checkpoints, &checkpoint_deletes);
 		Ok((commit_version, combined))
 	}
@@ -548,9 +548,9 @@ mod group_commit_integration {
 	}
 
 	#[test]
-	fn a_failed_group_commit_leaves_the_arena_untouched() {
-		// A rolled-back group must leave no arena state: otherwise flows read versions that
-		// never became durable. Falsified by applying arena writes on the failure side or
+	fn a_failed_group_commit_leaves_the_operator_state_untouched() {
+		// A rolled-back group must leave no operator state: otherwise flows read versions that
+		// never became durable. Falsified by applying operator state writes on the failure side or
 		// inside the apply closure.
 		let te = TestEngine::builder().with_cdc().build();
 		let engine = te.inner().clone();
@@ -589,17 +589,14 @@ mod group_commit_integration {
 		assert_eq!(
 			store.get(operator, &EncodedKey::new(inner.as_slice())),
 			None,
-			"a failed commit must not leak its operator-state writes into the arena"
+			"a failed commit must not leak its operator-state writes into the store"
 		);
-		assert_eq!(store.upper(operator), CommitVersion(0), "a failed commit must not move upper");
-		assert_eq!(store.total_bytes(), 0, "the arena must be byte-for-byte untouched");
+		assert_eq!(store.total_bytes(), 0, "the operator state store must be byte-for-byte untouched");
 	}
 
 	#[test]
-	fn arena_state_becomes_visible_only_with_the_commit_and_carries_upper() {
-		// Arena state must not appear before the commit completes (falsified by applying at
-		// submission time) and upper must equal the commit version for touched operators only
-		// (falsified by skipping set_upper).
+	fn operator_state_becomes_visible_only_with_the_commit() {
+		// Operator state must never appear before the commit completes, falsified by applying at submission.
 		let te = TestEngine::builder().with_cdc().build();
 		let engine = te.inner().clone();
 		let begin_engine = engine.clone();
@@ -632,7 +629,7 @@ mod group_commit_integration {
 		assert_eq!(
 			store.total_bytes(),
 			0,
-			"operator state must not become visible in the arena before the group flushes and \
+			"operator state must not become visible in the store before the group flushes and \
 			 the commit completes"
 		);
 
@@ -643,18 +640,11 @@ mod group_commit_integration {
 		assert_eq!(
 			store.get(op_a, &EncodedKey::new(inner_a.as_slice())),
 			Some(EncodedOperatorRow::timeless(&[1; 4])),
-			"the committed slice's state must be readable from the arena"
+			"the committed slice's state must be readable from the store"
 		);
 		assert_eq!(
 			store.get(op_b, &EncodedKey::new(inner_b.as_slice())),
 			Some(EncodedOperatorRow::timeless(&[2; 4]))
-		);
-		assert_eq!(store.upper(op_a), version, "upper must track the commit version for touched operators");
-		assert_eq!(store.upper(op_b), version);
-		assert_eq!(
-			store.upper(OperatorId(5)),
-			CommitVersion(0),
-			"an operator this slice never touched must keep its previous upper"
 		);
 	}
 }

@@ -259,8 +259,8 @@ impl DepFlowTransaction {
 				}
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
 
-				if let Some((operator, inner_range)) = arena_scope(&range) {
-					let storage_iter = ArenaRangeIter::new(
+				if let Some((operator, inner_range)) = operator_state_scope(&range) {
+					let storage_iter = OperatorStateRangeIter::new(
 						inner.substrate.operators.clone(),
 						operator,
 						inner_range,
@@ -277,7 +277,9 @@ impl DepFlowTransaction {
 				let query = match range.start.as_ref() {
 					Included(start) | Excluded(start) => match Self::read_from(start) {
 						ReadFrom::OperatorState => {
-							unreachable!("operator-state ranges take the arena path")
+							unreachable!(
+								"operator-state ranges take the operator-state path"
+							)
 						}
 						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 						ReadFrom::Query => &inner.query,
@@ -361,8 +363,8 @@ impl DepFlowTransaction {
 				}
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
 
-				if let Some((operator, inner_range)) = arena_scope(&range) {
-					let mut items = ArenaRangeIter::new(
+				if let Some((operator, inner_range)) = operator_state_scope(&range) {
+					let mut items = OperatorStateRangeIter::new(
 						inner.substrate.operators.clone(),
 						operator,
 						inner_range,
@@ -381,7 +383,9 @@ impl DepFlowTransaction {
 				let query = match range.start.as_ref() {
 					Included(start) | Excluded(start) => match Self::read_from(start) {
 						ReadFrom::OperatorState => {
-							unreachable!("operator-state ranges take the arena path")
+							unreachable!(
+								"operator-state ranges take the operator-state path"
+							)
 						}
 						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
 						ReadFrom::Query => &inner.query,
@@ -450,7 +454,7 @@ impl DepFlowTransaction {
 	}
 }
 
-fn arena_scope(range: &EncodedKeyRange) -> Option<(OperatorId, EncodedKeyRange)> {
+fn operator_state_scope(range: &EncodedKeyRange) -> Option<(OperatorId, EncodedKeyRange)> {
 	let start_key = match range.start.as_ref() {
 		Included(key) | Excluded(key) => key,
 		Unbounded => return None,
@@ -473,7 +477,7 @@ fn arena_scope(range: &EncodedKeyRange) -> Option<(OperatorId, EncodedKeyRange)>
 	Some((operator, EncodedKeyRange::new(strip(range.start.as_ref()), strip(range.end.as_ref()))))
 }
 
-struct ArenaRangeIter {
+struct OperatorStateRangeIter {
 	store: OperatorStore,
 	operator: OperatorId,
 	end: Bound<EncodedKey>,
@@ -484,7 +488,7 @@ struct ArenaRangeIter {
 	version: CommitVersion,
 }
 
-impl ArenaRangeIter {
+impl OperatorStateRangeIter {
 	fn new(
 		store: OperatorStore,
 		operator: OperatorId,
@@ -505,7 +509,7 @@ impl ArenaRangeIter {
 	}
 }
 
-impl Iterator for ArenaRangeIter {
+impl Iterator for OperatorStateRangeIter {
 	type Item = Result<MultiVersionRow>;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -514,10 +518,9 @@ impl Iterator for ArenaRangeIter {
 				self.cursor = Bound::Excluded(inner_key.clone());
 				return Some(Ok(MultiVersionRow {
 					key: {
-						let (group, keyspace, suffix) = OperatorStateKey::decode_inner(
-							inner_key.as_slice(),
-						)
-						.expect("arena inner keys must carry a structured inner encoding");
+						let (group, keyspace, suffix) =
+							OperatorStateKey::decode_inner(inner_key.as_slice())
+								.expect("inner keys must carry a structured encoding");
 						OperatorStateKey::encoded(self.operator, group, keyspace, suffix)
 					},
 					bytes,

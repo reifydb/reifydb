@@ -90,7 +90,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 
 	fn end_txn(&mut self, mut txn: DepFlowTransaction) {
 		let pending = txn.take_pending();
-		apply_operator_state(&self.substrate.operators, CommitVersion(self.version), &pending);
+		apply_operator_state(&self.substrate.operators, &pending);
 		let mut rest = Pending::new();
 		for (key, write) in pending.iter_sorted() {
 			if matches!(Key::kind(key), Some(KeyKind::OperatorState)) {

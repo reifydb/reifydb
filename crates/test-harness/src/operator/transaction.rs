@@ -140,7 +140,7 @@ impl FlowTxn for TestEngine {
 				} => cmd.remove_silent(key).unwrap(),
 			};
 		}
-		let version = cmd.commit_unchecked().unwrap();
-		apply_operator_state(&self.inner().operator_state(), version, &pending);
+		cmd.commit_unchecked().unwrap();
+		apply_operator_state(&self.inner().operator_state(), &pending);
 	}
 }

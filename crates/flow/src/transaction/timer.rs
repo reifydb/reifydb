@@ -274,9 +274,9 @@ mod tests {
 	}
 
 	fn commit_pending(engine: &TestEngine, txn: &mut DepFlowTransaction) {
-		// Persists into the operator arena so a cold wheel resolves them from the store.
+		// Persists into the operator state store so a cold wheel resolves them from the store.
 		let pending = txn.take_pending();
-		apply_operator_state(&engine.inner().operator_state(), txn.version(), &pending);
+		apply_operator_state(&engine.inner().operator_state(), &pending);
 	}
 
 	fn is_hydrated(wheel: &TimerWheel) -> bool {

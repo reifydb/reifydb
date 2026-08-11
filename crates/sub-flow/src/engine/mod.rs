@@ -277,7 +277,7 @@ impl FlowEngineInner {
 		for operator_id in node_ids {
 			self.operators.remove(&operator_id);
 			self.substrate.row.evict(operator_id);
-			self.substrate.operators.drop_arena(operator_id);
+			self.substrate.operators.drop_operator_state(operator_id);
 		}
 
 		for entries in self.sources.values_mut() {
@@ -337,10 +337,10 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn removing_a_flow_drops_its_operators_arenas() {
-		// remove_flow is the only arena teardown a retired flow gets: without drop_arena its
+	fn removing_a_flow_drops_its_operators_state() {
+		// remove_flow is the only operator state teardown a retired flow gets: without drop_operator_state its
 		// operators' state stays resident (and counted in total_bytes) until the process restarts.
-		// Mutation falsified against: removing the drop_arena call from remove_flow (per-operator
+		// Mutation falsified against: removing the drop_operator_state call from remove_flow (per-operator
 		// bytes and the process-wide total both stay non-zero).
 		let engine = TestEngine::new();
 		let mut inner = FlowEngineInner::new(
@@ -370,11 +370,11 @@ mod tests {
 
 		let store = inner.substrate.operators.clone();
 		store.set(operator, EncodedKey::new(b"k"), EncodedOperatorRow::timeless(&[1u8; 64]));
-		assert!(store.bytes(operator) > 0, "precondition: the operator's arena holds state");
+		assert!(store.bytes(operator) > 0, "precondition: the operator's state is resident");
 
 		inner.remove_flow(FlowId(1));
 
-		assert_eq!(store.bytes(operator), 0, "the retired operator's arena must be dropped");
+		assert_eq!(store.bytes(operator), 0, "the retired operator's state must be dropped");
 		assert_eq!(store.total_bytes(), 0, "and its bytes must leave the process-wide accounting");
 	}
 }

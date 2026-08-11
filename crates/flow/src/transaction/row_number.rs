@@ -689,7 +689,7 @@ mod tests {
 		// Persists the pending writes so a later transaction or a cold provider resolves them the
 		// way a committed flow would.
 		let pending = txn.take_pending();
-		apply_operator_state(&engine.inner().operator_state(), txn.version(), &pending);
+		apply_operator_state(&engine.inner().operator_state(), &pending);
 	}
 
 	#[test]

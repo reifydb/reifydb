@@ -1266,16 +1266,16 @@ mod pull_protocol {
 		h.await_safe_watermark(gap);
 		assert!(gap > target, "the test needs unconsumed safe versions above the settled cursor");
 
-		let arena_before = h.substrate.operators.total_bytes();
-		assert!(arena_before > 0, "precondition: the sealed window groups must hold arena state to retire");
+		let state_before = h.substrate.operators.total_bytes();
+		assert!(state_before > 0, "precondition: the sealed window groups must hold operator state to retire");
 		assert!(actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
 
 		assert!(
-			h.poll_until(seconds(10), || (h.substrate.operators.total_bytes() < arena_before)
+			h.poll_until(seconds(10), || (h.substrate.operators.total_bytes() < state_before)
 				.then_some(()))
 				.is_some(),
 			"precondition: the tick must actually reach a commit - its reclaim must retire \
-			 the sealed window groups from the arena. A tick that produces no output leaves \
+			 the sealed window groups from the store. A tick that produces no output leaves \
 			 `committing` false and falls straight through to on_tick's own trailing Drain, \
 			 which would satisfy the assertion below for the wrong reason"
 		);
@@ -1484,7 +1484,7 @@ mod pull_protocol {
 	}
 
 	#[test]
-	fn operator_state_lives_in_the_arena_and_never_reaches_the_multi_store() {
+	fn operator_state_lives_in_the_operator_store_and_never_reaches_the_multi_store() {
 		let h = harness_with(
 			"CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }",
 			"CREATE DEFERRED VIEW app::v { g: int4, total: int8 } \
@@ -1510,7 +1510,7 @@ mod pull_protocol {
 
 		assert!(
 			h.substrate.operators.total_bytes() > 0,
-			"the aggregate's operator state must land in the shared arena"
+			"the aggregate's operator state must land in the shared operator store"
 		);
 
 		let query = h.engine.multi().begin_query().expect("query");
@@ -1549,7 +1549,7 @@ mod pull_protocol {
 
 		let substrate2 =
 			FlowSubstrate::with_dictionary(h.engine.dictionary_allocators(), OperatorStore::default());
-		assert_eq!(substrate2.operators.total_bytes(), 0, "the restarted arena starts empty");
+		assert_eq!(substrate2.operators.total_bytes(), 0, "the restarted operator store starts empty");
 		let committer2 = Committer::new(
 			h.tracker.clone(),
 			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
@@ -1596,18 +1596,18 @@ mod pull_protocol {
 
 		assert!(
 			h.await_position_at_least(after_restart, seconds(10)).is_some(),
-			"the restarted actor must boot against an empty arena and keep consuming \
+			"the restarted actor must boot against an empty operator store and keep consuming \
 			 (position is {:?})",
 			h.tracker.all().get(&h.flow_id).copied()
 		);
 		assert!(
 			health2.poisoned().is_empty(),
-			"an empty arena at boot must not poison the flow: {:?}",
+			"an empty operator store at boot must not poison the flow: {:?}",
 			health2.poisoned()
 		);
 		assert!(
 			substrate2.operators.total_bytes() > 0,
-			"the restarted flow must rebuild its state in its own arena"
+			"the restarted flow must rebuild its state in its own operator store"
 		);
 		drop(actor2);
 	}
@@ -1679,7 +1679,7 @@ mod pull_protocol {
 		assert_eq!(mirrored.len(), 1, "the sink must keep exactly one mirror for its global metadata");
 		assert_eq!(
 			mirrored[0], stored,
-			"the arena mirror and the mvcc row must carry the same count, head and tail: \
+			"the operator state mirror and the mvcc row must carry the same count, head and tail: \
 			 the mirror is what a replay reads, so any drift makes the replay assign different \
 			 storage row numbers than the live run did"
 		);

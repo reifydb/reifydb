@@ -5,7 +5,7 @@
 //! runs flows resolves it.
 //!
 //! Unlike the sdk harness, which erases the group state a test names, [`harness::Harness`] drives
-//! operators against a real `FlowTransaction` and arena, so the state a test observes is the state
+//! operators against a real `FlowTransaction` and operator state store, so the state a test observes is the state
 //! production would hold.
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]

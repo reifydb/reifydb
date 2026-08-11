@@ -4,7 +4,6 @@
 use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
-	common::CommitVersion,
 	interface::catalog::flow::OperatorId,
 	key::operator_state::OperatorStateKey,
 };
@@ -45,8 +44,7 @@ pub fn operator_state_coordinates(key: &EncodedKey) -> Option<(OperatorId, Encod
 	OperatorStateKey::decode_operator(key)
 }
 
-pub fn apply_operator_state(store: &OperatorStore, version: CommitVersion, pending: &Pending) {
-	let mut touched: Vec<OperatorId> = Vec::new();
+pub fn apply_operator_state(store: &OperatorStore, pending: &Pending) {
 	for (key, write) in pending.iter_sorted() {
 		let Some((operator, inner)) = operator_state_coordinates(key) else {
 			continue;
@@ -62,11 +60,5 @@ pub fn apply_operator_state(store: &OperatorStore, version: CommitVersion, pendi
 				..
 			} => store.remove(operator, &inner),
 		}
-		if touched.last() != Some(&operator) {
-			touched.push(operator);
-		}
-	}
-	if version == CommitVersion(0) {
-		return;
 	}
 }

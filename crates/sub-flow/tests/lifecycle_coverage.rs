@@ -2,9 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 //! The lifecycle boot report is the only place that answers "is anything reclaiming this class?".
-//! Coverage is declared by whoever executes it; operator state now ages through per-operator arena
-//! compaction on the flow tick and has no retention class of its own, so the report accounts only
-//! for the store-side classes.
+//! Coverage is declared by whoever executes it; operator state has no retention class of its own,
+//! so the report accounts only for the store-side classes.
 
 use reifydb::{WithSubsystem, embedded};
 use reifydb_core::lifecycle::{class::RetentionClass, coverage::RetentionCoverage};

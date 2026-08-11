@@ -44,7 +44,7 @@ struct StoreInner {
 
 impl Default for OperatorStore {
 	fn default() -> Self {
-		Self::testing_memory()
+		Self::memory()
 	}
 }
 
@@ -62,10 +62,6 @@ impl OperatorStore {
 			.expect("operator state database could not be opened");
 		pragma::apply(&conn, &config).expect("operator state pragmas could not be applied");
 		Self::with_connection(conn)
-	}
-
-	pub fn testing_memory() -> Self {
-		Self::memory()
 	}
 
 	fn with_connection(conn: Connection) -> Self {
@@ -196,7 +192,7 @@ impl OperatorStore {
 		.expect("operator state size query failed") as u64
 	}
 
-	pub fn drop_arena(&self, operator: OperatorId) {
+	pub fn drop_operator_state(&self, operator: OperatorId) {
 		{
 			let guard = self.inner.conn.lock();
 			if let Some(conn) = guard.as_ref() {

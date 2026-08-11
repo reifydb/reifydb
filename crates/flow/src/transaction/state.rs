@@ -310,12 +310,12 @@ pub mod tests {
 	};
 
 	fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey, row: EncodedOperatorRow) {
-		// Stands in for a prior slice's success-side arena apply.
+		// Stands in for a prior slice's success-side operator state apply.
 		engine.inner().operator_state().set(operator, EncodedKey::new(key.as_slice()), row);
 	}
 
 	fn deferred_shared(engine: &TestEngine) -> DepFlowTransaction {
-		// Shares the engine's operator arena like every production deferred txn.
+		// Shares the engine's operator state store like every production deferred txn.
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
 		DepFlowTransaction::deferred_from_parts(DeferredParams {
@@ -790,7 +790,7 @@ pub mod tests {
 
 	#[test]
 	fn deferred_read_sees_state_committed_above_object_version() {
-		// State reads resolve read-latest from the arena; bounding them to the pinned object
+		// State reads resolve read-latest from the operator state store; bounding them to the pinned object
 		// version would hide the other side of a join.
 		let engine = TestEngine::new();
 		let operator_id = OperatorId(1);
@@ -829,7 +829,7 @@ pub mod tests {
 
 	#[test]
 	fn deferred_read_sees_base_pending_overlay() {
-		// base_pending must shadow whatever the arena already holds.
+		// base_pending must shadow whatever the operator state store already holds.
 		let engine = TestEngine::new();
 		let operator_id = OperatorId(1);
 

@@ -210,7 +210,7 @@ impl SinkRingBufferViewOperator {
 				mirrored, stored,
 				"the ringbuffer metadata mirror and its mvcc row disagree right after a write; the \
 				 mirror is what replay reads, so any drift hands catch-up a different tail than the \
-				 live run assigned and the arena forward map diverges silently"
+				 live run assigned and the operator state forward map diverges silently"
 			);
 		}
 		Ok(())
@@ -1176,7 +1176,7 @@ mod tests {
 	}
 
 	fn commit_flow_pending(engine: &TestEngine, txn: &mut DepFlowTransaction) {
-		// Mirrors the committer split: state to the arena, everything else to the multi store.
+		// Mirrors the committer split: state to the operator state store, everything else to the multi store.
 		let pending = txn.take_pending();
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 		for (key, pw) in pending.iter_sorted() {
@@ -1193,8 +1193,8 @@ mod tests {
 				} => cmd.remove_silent(key).unwrap(),
 			};
 		}
-		let version = cmd.commit().unwrap();
-		apply_operator_state(&engine.inner().operator_state(), version, &pending);
+		cmd.commit().unwrap();
+		apply_operator_state(&engine.inner().operator_state(), &pending);
 	}
 
 	fn columns_at(partitioned: bool, rows: &[(&str, i32)], first_source_rn: u64, time: u64) -> Columns {

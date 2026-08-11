@@ -398,7 +398,7 @@ impl MultiWriteTransaction {
 		reifydb_assertions! {
 			assert!(
 				OperatorStateKey::decode(pending.key()).is_none(),
-				"operator state must reach the arena through the committer split, never the \
+				"operator state must reach the operator store through the committer split, never the \
 				 multi store: {}",
 				hex_display(pending.key().as_ref())
 			);

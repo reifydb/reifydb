@@ -418,7 +418,7 @@ mod tests {
 
 	fn commit_pending(engine: &TestEngine, txn: &mut DepFlowTransaction) {
 		let pending = txn.take_pending();
-		apply_operator_state(&engine.inner().operator_state(), txn.version(), &pending);
+		apply_operator_state(&engine.inner().operator_state(), &pending);
 	}
 
 	fn intern_at(
