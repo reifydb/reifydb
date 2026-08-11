@@ -25,7 +25,7 @@ use reifydb_engine::{
 	engine::StandardEngine,
 	subscription::{HydrateError, HydrateOutcome, SubscriptionContext},
 };
-use reifydb_flow::transaction::slot::CarriedOperatorState;
+use reifydb_flow::{engine::FlowEngineInner, transaction::slot::CarriedOperatorState};
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
 	actor::{
@@ -35,7 +35,6 @@ use reifydb_runtime::{
 	},
 	sync::mutex::Mutex,
 };
-use reifydb_sub_flow::engine::FlowEngineInner;
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
 use reifydb_value::{Result, value::identity::IdentityId};
 use tracing::error;

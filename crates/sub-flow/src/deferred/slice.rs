@@ -14,18 +14,20 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_flow::transaction::{DeferredParams, DepFlowTransaction};
+use reifydb_flow::{
+	engine::{
+		FlowEngineInner,
+		execution::{COMPLETENESS_OBJECT, frontier::WatermarkHolds},
+	},
+	transaction::{DeferredParams, DepFlowTransaction},
+};
 use reifydb_transaction::change_accumulator::ChangeAccumulator;
 use reifydb_value::{
 	Result,
 	value::{Value, datetime::DateTime},
 };
 
-use crate::{
-	deferred::{committer::FlowSlice, overlay::FlowWriteOverlay},
-	engine::FlowEngineInner,
-	execution::{COMPLETENESS_OBJECT, frontier::WatermarkHolds},
-};
+use crate::deferred::{committer::FlowSlice, overlay::FlowWriteOverlay};
 
 pub struct SliceConfig {
 	pub checkpoint_lag: u64,
@@ -163,7 +165,7 @@ impl SliceComputer {
 			catalog,
 			interceptors,
 			clock: self.engine.clock().clone(),
-			substrate: flow_engine.substrate.clone(),
+			substrate: flow_engine.substrate().clone(),
 		});
 
 		flow_engine.fold_published_arrivals(&mut txn, flow_id, state_version)?;
@@ -198,7 +200,7 @@ impl SliceComputer {
 			catalog,
 			interceptors,
 			clock: self.engine.clock().clone(),
-			substrate: flow_engine.substrate.clone(),
+			substrate: flow_engine.substrate().clone(),
 		});
 
 		flow_engine.process_batch(&mut txn, changes, flow_id)?;
@@ -244,7 +246,7 @@ impl SliceComputer {
 			catalog: self.engine.catalog(),
 			interceptors: self.engine.create_interceptors(),
 			clock: self.engine.clock().clone(),
-			substrate: flow_engine.substrate.clone(),
+			substrate: flow_engine.substrate().clone(),
 		});
 
 		flow_engine.process_tick(&mut txn, flow_id, timestamp, checkpoint)?;
@@ -519,6 +521,7 @@ mod integration {
 		key::{Key, kind::KeyKind},
 	};
 	use reifydb_flow::{
+		engine::execution::frontier::WatermarkHold,
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::{read::ReadFrom, substrate::FlowSubstrate},
 	};
@@ -537,7 +540,6 @@ mod integration {
 		deferred::{
 			committer::Committer, quiescence::FlowMaterialization, routing, tracker::FlowPositionTracker,
 		},
-		execution::frontier::WatermarkHold,
 	};
 
 	fn view_row_count(te: &TestEngine, rql: &str) -> usize {
@@ -606,7 +608,7 @@ mod integration {
 			catalog: engine.catalog(),
 			interceptors: engine.create_interceptors(),
 			clock: engine.clock().clone(),
-			substrate: flow_engine.substrate.clone(),
+			substrate: flow_engine.substrate().clone(),
 		})
 	}
 
@@ -637,7 +639,7 @@ mod integration {
 		));
 		builder.add_edge(FlowEdge::new(1, OperatorId(1), OperatorId(3))).unwrap();
 		flow_engine.register_flow_dag(builder.build());
-		flow_engine.sinks.insert(ObjectId::View(ViewId(3)), vec![(flow, OperatorId(3))]);
+		flow_engine.add_sink(flow, OperatorId(3), ObjectId::View(ViewId(3)));
 
 		let mut seed = seeding_txn(&engine, &flow_engine, version);
 		let watermarks = seed.source_watermarks();
@@ -830,7 +832,7 @@ mod integration {
 		}
 
 		let source_objects = {
-			let graph = flow_engine.analyzer.get_dependency_graph();
+			let graph = flow_engine.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
 			let view_route = |vid| {
 				flow_catalog.find_view(vid).map(|v| routing::ViewRoute {
@@ -838,7 +840,7 @@ mod integration {
 					storage: v.storage_id(),
 				})
 			};
-			routing::flow_source_objects(graph, flow_id, &registered, &view_route)
+			routing::flow_source_objects(&graph, flow_id, &registered, &view_route)
 		};
 
 		let computer = SliceComputer::new(engine.clone());
@@ -938,7 +940,7 @@ mod integration {
 		}
 
 		let source_objects = {
-			let graph = flow_engine.analyzer.get_dependency_graph();
+			let graph = flow_engine.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
 			let view_route = |vid| {
 				flow_catalog.find_view(vid).map(|v| routing::ViewRoute {
@@ -946,7 +948,7 @@ mod integration {
 					storage: v.storage_id(),
 				})
 			};
-			routing::flow_source_objects(graph, flow_id, &registered, &view_route)
+			routing::flow_source_objects(&graph, flow_id, &registered, &view_route)
 		};
 
 		let computer = SliceComputer::new(engine.clone());
@@ -1016,7 +1018,7 @@ mod integration {
 							catalog: engine.catalog(),
 							interceptors: engine.create_interceptors(),
 							clock: engine.clock().clone(),
-							substrate: flow_engine.substrate.clone(),
+							substrate: flow_engine.substrate().clone(),
 						})
 					};
 
@@ -1083,7 +1085,7 @@ mod integration {
 		}
 
 		let source_objects = {
-			let graph = flow_engine.analyzer.get_dependency_graph();
+			let graph = flow_engine.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
 			let view_route = |vid| {
 				flow_catalog.find_view(vid).map(|v| routing::ViewRoute {
@@ -1091,7 +1093,7 @@ mod integration {
 					storage: v.storage_id(),
 				})
 			};
-			routing::flow_source_objects(graph, flow_id, &registered, &view_route)
+			routing::flow_source_objects(&graph, flow_id, &registered, &view_route)
 		};
 
 		let computer = SliceComputer::new(engine.clone());
@@ -1157,7 +1159,7 @@ mod integration {
 							catalog: engine.catalog(),
 							interceptors: engine.create_interceptors(),
 							clock: engine.clock().clone(),
-							substrate: flow_engine.substrate.clone(),
+							substrate: flow_engine.substrate().clone(),
 						});
 					for key in &live_keys {
 						assert!(

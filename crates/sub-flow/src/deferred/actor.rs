@@ -25,7 +25,11 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_flow::{operator::metrics::OperatorSampleRegistry, transaction::substrate::FlowSubstrate};
+use reifydb_flow::{
+	engine::{FlowEngineInner, execution::frontier::WatermarkHolds},
+	operator::metrics::OperatorSampleRegistry,
+	transaction::substrate::FlowSubstrate,
+};
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_runtime::{
 	actor::{
@@ -55,8 +59,6 @@ use crate::{
 		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep},
 		tracker::FlowPositionTracker,
 	},
-	engine::FlowEngineInner,
-	execution::frontier::WatermarkHolds,
 	operator::provider::StandardOperatorProvider,
 };
 
@@ -813,7 +815,7 @@ mod pull_protocol {
 		txn.rollback().expect("rollback probe");
 
 		let source_objects = {
-			let graph = probe.analyzer.get_dependency_graph();
+			let graph = probe.get_dependency_graph();
 			let registered = |f: FlowId| f == flow_id;
 			let view_route = |vid| {
 				flow_catalog.find_view(vid).map(|v| routing::ViewRoute {
@@ -821,7 +823,7 @@ mod pull_protocol {
 					storage: v.storage_id(),
 				})
 			};
-			Arc::new(routing::flow_source_objects(graph, flow_id, &registered, &view_route))
+			Arc::new(routing::flow_source_objects(&graph, flow_id, &registered, &view_route))
 		};
 
 		let tracker = FlowPositionTracker::new();

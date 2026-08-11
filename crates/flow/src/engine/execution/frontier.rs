@@ -7,22 +7,23 @@ use reifydb_core::interface::catalog::{
 	flow::{FlowId, OperatorId},
 	object::ObjectId,
 };
-use reifydb_flow::{operator::OperatorCell, transaction::DepFlowTransaction, window::engine::seal_horizon};
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::{Result, value::datetime::DateTime};
 
-use crate::engine::FlowEngineInner;
+use crate::{
+	engine::FlowEngineInner, operator::OperatorCell, transaction::DepFlowTransaction, window::engine::seal_horizon,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WatermarkHold {
+pub struct WatermarkHold {
 	pub object: ObjectId,
 	pub frontier: DateTime,
 }
 
-pub(crate) type WatermarkHolds = Vec<WatermarkHold>;
+pub type WatermarkHolds = Vec<WatermarkHold>;
 
 impl FlowEngineInner {
-	pub(crate) fn holds(&self, txn: &mut DepFlowTransaction, flow_id: FlowId) -> Result<WatermarkHolds> {
+	pub fn holds(&self, txn: &mut DepFlowTransaction, flow_id: FlowId) -> Result<WatermarkHolds> {
 		let Some(flow) = self.flows.get(&flow_id) else {
 			return Ok(Vec::new());
 		};
@@ -117,10 +118,6 @@ mod tests {
 			change::Change,
 		},
 	};
-	use reifydb_flow::{
-		operator::{Operator, metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
-		transaction::substrate::FlowSubstrate,
-	};
 	use reifydb_rql::flow::{
 		flow::FlowBuilder,
 		operator::{FlowEdge, FlowNode, OperatorDef},
@@ -137,6 +134,10 @@ mod tests {
 	};
 
 	use super::*;
+	use crate::{
+		operator::{Operator, metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
+		transaction::substrate::FlowSubstrate,
+	};
 
 	const FLOW: FlowId = FlowId(1);
 

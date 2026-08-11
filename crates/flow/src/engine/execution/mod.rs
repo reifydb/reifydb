@@ -8,9 +8,9 @@ use reifydb_core::interface::catalog::{id::TableId, object::ObjectId};
 
 mod batch;
 mod dispatch;
-pub(crate) mod frontier;
+pub mod frontier;
 mod routing;
 mod tick;
 mod timers;
 
-pub(crate) const COMPLETENESS_OBJECT: ObjectId = ObjectId::Table(TableId::SOURCE_COMPLETENESS);
+pub const COMPLETENESS_OBJECT: ObjectId = ObjectId::Table(TableId::SOURCE_COMPLETENESS);

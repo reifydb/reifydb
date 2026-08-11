@@ -5,6 +5,7 @@
 //! graph against incoming change deltas, writing the outputs back through the catalog.
 
 pub mod eval;
+pub mod execution;
 pub mod register;
 
 use std::{
@@ -22,10 +23,6 @@ use reifydb_core::{
 		object::ObjectId,
 	},
 };
-use reifydb_flow::{
-	operator::{OperatorCell, metrics::OperatorSampleRegistry, provider::OperatorProvider},
-	transaction::substrate::FlowSubstrate,
-};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::flow::{
 	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
@@ -36,6 +33,11 @@ use reifydb_runtime::{
 	sync::rwlock::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 use tracing::instrument;
+
+use crate::{
+	operator::{OperatorCell, metrics::OperatorSampleRegistry, provider::OperatorProvider},
+	transaction::substrate::FlowSubstrate,
+};
 
 pub struct FlowEngineInner {
 	pub(crate) catalog: Catalog,
@@ -148,6 +150,10 @@ impl FlowEngineInner {
 		&self.runtime_context.clock
 	}
 
+	pub fn substrate(&self) -> &FlowSubstrate {
+		&self.substrate
+	}
+
 	pub fn operator(&self, operator_id: OperatorId) -> Option<OperatorCell> {
 		self.operators.get(&operator_id).cloned()
 	}
@@ -241,7 +247,6 @@ mod tests {
 			catalog::{flow::FlowId, id::SeriesId},
 		},
 	};
-	use reifydb_flow::operator::{provider::EmptyOperatorProvider, scan::series::SourceSeriesOperator};
 	use reifydb_rql::flow::{
 		flow::FlowDag,
 		operator::{FlowNode, OperatorDef},
@@ -249,6 +254,7 @@ mod tests {
 	use reifydb_test_harness::engine::TestEngine;
 
 	use super::*;
+	use crate::operator::{provider::EmptyOperatorProvider, scan::series::SourceSeriesOperator};
 
 	#[test]
 	fn removing_a_flow_drops_its_operators_state() {

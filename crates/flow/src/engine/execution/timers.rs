@@ -7,14 +7,14 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, change::Change},
 };
-use reifydb_flow::{
-	timer::Timer,
-	transaction::{ChangeCoordinate, DepFlowTransaction},
-};
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::Result;
 
-use crate::engine::FlowEngineInner;
+use crate::{
+	engine::FlowEngineInner,
+	timer::Timer,
+	transaction::{ChangeCoordinate, DepFlowTransaction},
+};
 
 const MAX_TIMER_ROUNDS: u32 = 4_096;
 const MAX_TIMERS_PER_DISPATCH: usize = 8_192;

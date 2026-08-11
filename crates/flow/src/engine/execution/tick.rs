@@ -2,11 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
-use reifydb_flow::transaction::DepFlowTransaction;
 use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
 
-use crate::engine::FlowEngineInner;
+use crate::{engine::FlowEngineInner, transaction::DepFlowTransaction};
 
 impl FlowEngineInner {
 	#[instrument(name = "flow::engine::process_tick", level = "debug", skip(self, txn), fields(

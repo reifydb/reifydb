@@ -13,13 +13,6 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin},
 	},
 };
-use reifydb_flow::{
-	operator::max_input_time,
-	transaction::{
-		ChangeCoordinate, DepFlowTransaction,
-		frontier::{Frontier, OutputFrontiers},
-	},
-};
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::{
 	Result, reifydb_assertions,
@@ -27,7 +20,14 @@ use reifydb_value::{
 };
 use tracing::{Span, field, info, instrument};
 
-use crate::{engine::FlowEngineInner, execution::COMPLETENESS_OBJECT};
+use crate::{
+	engine::{FlowEngineInner, execution::COMPLETENESS_OBJECT},
+	operator::max_input_time,
+	transaction::{
+		ChangeCoordinate, DepFlowTransaction,
+		frontier::{Frontier, OutputFrontiers},
+	},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SourceArrival {
@@ -81,7 +81,7 @@ impl FlowEngineInner {
 		Ok(())
 	}
 
-	pub(crate) fn fold_published_arrivals(
+	pub fn fold_published_arrivals(
 		&self,
 		txn: &mut DepFlowTransaction,
 		flow_id: FlowId,
@@ -337,10 +337,6 @@ mod tests {
 		},
 		value::column::columns::Columns,
 	};
-	use reifydb_flow::{
-		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
-		transaction::substrate::FlowSubstrate,
-	};
 	use reifydb_rql::flow::operator::{FlowNode, OperatorDef};
 	use reifydb_runtime::context::{
 		RuntimeContext,
@@ -352,6 +348,10 @@ mod tests {
 	use smallvec::smallvec;
 
 	use super::*;
+	use crate::{
+		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
+		transaction::substrate::FlowSubstrate,
+	};
 
 	const SOURCE: OperatorId = OperatorId(1);
 

@@ -17,8 +17,32 @@ use reifydb_core::{
 	},
 	value::column::columns::Columns,
 };
-use reifydb_flow::{
+use reifydb_rql::{
+	expression::{ColumnExpression, Expression},
+	flow::{
+		flow::FlowDag,
+		operator::{
+			FlowNode,
+			OperatorDef::{
+				Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map,
+				SinkRingBufferView, SinkSeriesView, SinkSubscription, SinkTableView, Sort,
+				SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable, SourceView, Take,
+				Window,
+			},
+		},
+		time_domain::check_window_time_requirements,
+	},
+};
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
+use reifydb_value::{
+	Result, config::Config, error::Error, fragment::Fragment, reifydb_assertions, value::duration::Duration,
+};
+use tracing::{info, instrument};
+
+use super::eval::evaluate_operator_config;
+use crate::{
 	context::FlowContext,
+	engine::FlowEngineInner,
 	error::FlowGraphError,
 	operator::{
 		OperatorCell,
@@ -44,30 +68,6 @@ use reifydb_flow::{
 		window::operator::{WindowConfig, WindowOperator},
 	},
 };
-use reifydb_rql::{
-	expression::{ColumnExpression, Expression},
-	flow::{
-		flow::FlowDag,
-		operator::{
-			FlowNode,
-			OperatorDef::{
-				Aggregate, Append, Apply, Distinct, Extend, Filter, Gate, Join, Map,
-				SinkRingBufferView, SinkSeriesView, SinkSubscription, SinkTableView, Sort,
-				SourceInlineData, SourceRingBuffer, SourceSeries, SourceTable, SourceView, Take,
-				Window,
-			},
-		},
-		time_domain::check_window_time_requirements,
-	},
-};
-use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
-use reifydb_value::{
-	Result, config::Config, error::Error, fragment::Fragment, reifydb_assertions, value::duration::Duration,
-};
-use tracing::{info, instrument};
-
-use super::eval::evaluate_operator_config;
-use crate::engine::FlowEngineInner;
 
 impl FlowEngineInner {
 	#[instrument(name = "flow::register", level = "info", skip(self, txn), fields(flow_id = ?flow.id))]
