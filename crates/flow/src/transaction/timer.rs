@@ -234,7 +234,7 @@ impl TimerWheel {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::actors::pending::{Pending, PendingLayers};
+	use reifydb_core::actors::pending::PendingLayers;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
@@ -258,8 +258,7 @@ mod tests {
 		let version = parent.version();
 		DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version,
-			pending: Pending::new(),
-			base_pending: PendingLayers::empty(),
+			pending: PendingLayers::empty(),
 			query: parent.multi.begin_query().unwrap(),
 			state_query: parent.multi.begin_query().unwrap(),
 			single: parent.single.clone(),

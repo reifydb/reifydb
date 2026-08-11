@@ -58,12 +58,6 @@ impl DepFlowTransaction {
 		if let Some(value) = inner.pending.get(key) {
 			return Ok(Some(value.clone()));
 		}
-		if inner.base_pending.is_removed(key) {
-			return Ok(None);
-		}
-		if let Some(value) = inner.base_pending.get(key) {
-			return Ok(Some(value.clone()));
-		}
 
 		if let Self::Ephemeral {
 			inner,
@@ -105,12 +99,6 @@ impl DepFlowTransaction {
 			return Ok(false);
 		}
 		if inner.pending.get(key).is_some() {
-			return Ok(true);
-		}
-		if inner.base_pending.is_removed(key) {
-			return Ok(false);
-		}
-		if inner.base_pending.get(key).is_some() {
 			return Ok(true);
 		}
 
@@ -252,11 +240,7 @@ impl DepFlowTransaction {
 				..
 			} => {
 				let mut merged: BTreeMap<EncodedKey, PendingWrite> = BTreeMap::new();
-				inner.base_pending
-					.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
-				for (k, v) in inner.pending.range((range.start.as_ref(), range.end.as_ref())) {
-					merged.insert(k.clone(), v.clone());
-				}
+				inner.pending.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
 
 				if let Some((operator, inner_range)) = operator_state_scope(&range) {
@@ -308,11 +292,8 @@ impl DepFlowTransaction {
 					Unbounded => false,
 				};
 
-				let merged: BTreeMap<EncodedKey, PendingWrite> = inner
-					.pending
-					.range((range.start.as_ref(), range.end.as_ref()))
-					.map(|(k, v)| (k.clone(), v.clone()))
-					.collect();
+				let mut merged: BTreeMap<EncodedKey, PendingWrite> = BTreeMap::new();
+				inner.pending.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
 
 				if is_state_range {
@@ -356,11 +337,7 @@ impl DepFlowTransaction {
 				..
 			} => {
 				let mut merged: BTreeMap<EncodedKey, PendingWrite> = BTreeMap::new();
-				inner.base_pending
-					.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
-				for (k, v) in inner.pending.range((range.start.as_ref(), range.end.as_ref())) {
-					merged.insert(k.clone(), v.clone());
-				}
+				inner.pending.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
 
 				if let Some((operator, inner_range)) = operator_state_scope(&range) {
@@ -414,11 +391,8 @@ impl DepFlowTransaction {
 					Unbounded => false,
 				};
 
-				let merged: BTreeMap<EncodedKey, PendingWrite> = inner
-					.pending
-					.range((range.start.as_ref(), range.end.as_ref()))
-					.map(|(k, v)| (k.clone(), v.clone()))
-					.collect();
+				let mut merged: BTreeMap<EncodedKey, PendingWrite> = BTreeMap::new();
+				inner.pending.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
 
 				if is_state_range {

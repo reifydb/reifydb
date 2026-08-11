@@ -50,7 +50,7 @@ mod tests {
 
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
-		actors::pending::{Pending, PendingLayers},
+		actors::pending::PendingLayers,
 		interface::catalog::{dictionary::Dictionary, id::NamespaceId},
 	};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -87,8 +87,7 @@ mod tests {
 		let version = parent.version();
 		DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version,
-			pending: Pending::new(),
-			base_pending: PendingLayers::empty(),
+			pending: PendingLayers::empty(),
 			query: parent.multi.begin_query().unwrap(),
 			state_query: parent.multi.begin_query().unwrap(),
 			single: parent.single.clone(),

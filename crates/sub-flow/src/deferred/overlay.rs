@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::VecDeque, sync::Arc};
+use std::collections::VecDeque;
 
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers},
@@ -9,7 +9,7 @@ use reifydb_core::{
 };
 
 pub struct FlowWriteOverlay {
-	generations: VecDeque<(CommitVersion, Arc<Pending>)>,
+	generations: VecDeque<(CommitVersion, Pending)>,
 }
 
 impl FlowWriteOverlay {
@@ -23,7 +23,7 @@ impl FlowWriteOverlay {
 		if pending.is_empty() {
 			return;
 		}
-		self.generations.push_back((version, Arc::new(pending)));
+		self.generations.push_back((version, pending));
 	}
 
 	pub fn prune_through(&mut self, version: CommitVersion) {
@@ -33,7 +33,7 @@ impl FlowWriteOverlay {
 	}
 
 	pub fn merged(&self) -> PendingLayers {
-		PendingLayers::from_oldest_first(self.generations.iter().map(|(_, p)| Arc::clone(p)).collect())
+		PendingLayers::over(self.generations.iter().map(|(_, p)| p.clone()).collect())
 	}
 
 	#[cfg(test)]

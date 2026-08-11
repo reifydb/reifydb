@@ -2,10 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{
-	actors::pending::{Pending, PendingLayers},
-	common::CommitVersion,
-};
+use reifydb_core::{actors::pending::PendingLayers, common::CommitVersion};
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
@@ -40,8 +37,7 @@ impl<'a> FlowTxnBuilder<'a> {
 		let version = self.version;
 		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version,
-			pending: Pending::new(),
-			base_pending: PendingLayers::empty(),
+			pending: PendingLayers::empty(),
 			query: self.engine.multi().begin_query().unwrap(),
 			state_query: self.engine.multi().begin_query().unwrap(),
 			single: self.engine.inner().single().clone(),

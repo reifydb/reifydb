@@ -91,7 +91,7 @@ mod tests {
 		row::operator::{EncodedOperatorRow, OperatorState},
 	};
 	use reifydb_core::{
-		actors::pending::{Pending, PendingLayers},
+		actors::pending::PendingLayers,
 		common::CommitVersion,
 		interface::catalog::flow::OperatorId,
 		key::operator_state::{Keyspace, OperatorStateKey, group_inner_range},
@@ -115,8 +115,7 @@ mod tests {
 		let version = parent.version();
 		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version,
-			pending: Pending::new(),
-			base_pending: PendingLayers::empty(),
+			pending: PendingLayers::empty(),
 			query: parent.multi.begin_query().unwrap(),
 			state_query: parent.multi.begin_query().unwrap(),
 			single: parent.single.clone(),

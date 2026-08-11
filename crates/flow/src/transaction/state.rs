@@ -201,23 +201,10 @@ impl DepFlowTransaction {
 	#[inline]
 	fn lookup_overlays(&self, encoded_key: &EncodedKey) -> Option<Option<EncodedBytes>> {
 		let inner = self.inner();
-		let pending = if inner.pending.is_removed(encoded_key) {
-			Some(None)
-		} else {
-			inner.pending.get(encoded_key).map(|row| Some(row.clone()))
-		};
-		if pending.is_some() {
-			return pending;
-		}
-
-		if inner.base_pending.is_removed(encoded_key) {
+		if inner.pending.is_removed(encoded_key) {
 			return Some(None);
 		}
-		if let Some(row) = inner.base_pending.get(encoded_key) {
-			return Some(Some(row.clone()));
-		}
-
-		None
+		inner.pending.get(encoded_key).map(|row| Some(row.clone()))
 	}
 
 	#[inline]
@@ -278,10 +265,7 @@ fn scoped_key(id: OperatorId, key: &GroupStateKey) -> EncodedKey {
 
 #[cfg(test)]
 pub mod tests {
-	use std::{
-		collections::{Bound, HashMap},
-		sync::Arc,
-	};
+	use std::collections::{Bound, HashMap};
 
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_codec::{
@@ -320,8 +304,7 @@ pub mod tests {
 		let version = parent.version();
 		DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version,
-			pending: Pending::new(),
-			base_pending: PendingLayers::empty(),
+			pending: PendingLayers::empty(),
 			query: parent.multi.begin_query().unwrap(),
 			state_query: parent.multi.begin_query().unwrap(),
 			single: parent.single.clone(),
@@ -804,8 +787,7 @@ pub mod tests {
 
 		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version: object_version,
-			pending: Pending::new(),
-			base_pending: PendingLayers::empty(),
+			pending: PendingLayers::empty(),
 			query: engine.multi().begin_query().unwrap(),
 			state_query: engine.multi().begin_query().unwrap(),
 			single: engine.single().clone(),
@@ -846,8 +828,7 @@ pub mod tests {
 
 		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version: low_version,
-			pending: Pending::new(),
-			base_pending: PendingLayers::single(Arc::new(base_pending)),
+			pending: PendingLayers::over(vec![base_pending]),
 			query: engine.multi().begin_query().unwrap(),
 			state_query: engine.multi().begin_query().unwrap(),
 			single: engine.single().clone(),
@@ -913,8 +894,7 @@ pub mod tests {
 
 		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version: low_version,
-			pending: Pending::new(),
-			base_pending: PendingLayers::empty(),
+			pending: PendingLayers::empty(),
 			query: engine.multi().begin_query().unwrap(),
 			state_query: engine.multi().begin_query().unwrap(),
 			single: engine.single().clone(),

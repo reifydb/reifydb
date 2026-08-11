@@ -112,8 +112,7 @@ pub struct ChangeCoordinate {
 
 pub struct DeferredParams {
 	pub version: CommitVersion,
-	pub pending: Pending,
-	pub base_pending: PendingLayers,
+	pub pending: PendingLayers,
 	pub query: MultiReadTransaction,
 	pub state_query: MultiReadTransaction,
 	pub single: SingleTransaction,
@@ -126,8 +125,7 @@ pub struct DeferredParams {
 
 pub struct FlowTransactionInner {
 	pub version: CommitVersion,
-	pub pending: Pending,
-	pub base_pending: PendingLayers,
+	pub pending: PendingLayers,
 	pub query: MultiReadTransaction,
 	pub state_query: Option<MultiReadTransaction>,
 	pub single: SingleTransaction,
@@ -201,8 +199,7 @@ impl DepFlowTransaction {
 		Self::Deferred {
 			inner: FlowTransactionInner {
 				version,
-				pending: Pending::new(),
-				base_pending: PendingLayers::empty(),
+				pending: PendingLayers::empty(),
 				query,
 				state_query: Some(state_query),
 				single: parent.single.clone(),
@@ -228,7 +225,6 @@ impl DepFlowTransaction {
 			inner: FlowTransactionInner {
 				version: params.version,
 				pending: params.pending,
-				base_pending: params.base_pending,
 				query,
 				state_query: Some(state_query),
 				single: params.single,
@@ -317,8 +313,7 @@ impl DepFlowTransaction {
 		Self::Ephemeral {
 			inner: FlowTransactionInner {
 				version,
-				pending: Pending::new(),
-				base_pending: PendingLayers::empty(),
+				pending: PendingLayers::empty(),
 				query: pq,
 				state_query: None,
 				single,
@@ -342,7 +337,8 @@ impl DepFlowTransaction {
 			state,
 		} = self
 		{
-			for (key, write) in inner.pending.iter_sorted() {
+			let own = inner.pending.take_top();
+			for (key, write) in own.iter_sorted() {
 				if matches!(Self::read_from(key), ReadFrom::OperatorState | ReadFrom::StateQuery) {
 					match write {
 						PendingWrite::Set(row) => {
@@ -356,7 +352,6 @@ impl DepFlowTransaction {
 					}
 				}
 			}
-			inner.pending = Pending::new();
 		}
 	}
 
@@ -381,7 +376,7 @@ impl DepFlowTransaction {
 	}
 
 	pub fn take_pending(&mut self) -> Pending {
-		mem::take(&mut self.inner_mut().pending)
+		self.inner_mut().pending.take_top()
 	}
 
 	pub fn track_flow_change(&mut self, change: Change) {
@@ -400,7 +395,7 @@ impl DepFlowTransaction {
 	}
 
 	pub fn pending(&self) -> &Pending {
-		&self.inner().pending
+		self.inner().pending.top()
 	}
 
 	pub fn catalog(&self) -> &Catalog {

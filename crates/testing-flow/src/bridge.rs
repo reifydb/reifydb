@@ -61,8 +61,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> BridgeOperatorHarness<C> {
 		let state_query = self.engine.multi().begin_query().expect("begin_query");
 		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version: CommitVersion(self.version),
-			pending: mem::take(&mut self.pending),
-			base_pending: PendingLayers::empty(),
+			pending: PendingLayers::with_top(mem::take(&mut self.pending)),
 			query,
 			state_query,
 			single: self.engine.inner().single().clone(),

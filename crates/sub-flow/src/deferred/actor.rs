@@ -1022,8 +1022,7 @@ mod pull_protocol {
 			assert!(!sources.is_empty(), "the flow under test must have a source to advance");
 			let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 				version: self.engine.current_version().expect("current version"),
-				pending: Pending::new(),
-				base_pending: PendingLayers::empty(),
+				pending: PendingLayers::empty(),
 				query: self.engine.multi().begin_query().expect("query"),
 				state_query: self.engine.multi().begin_query().expect("state query"),
 				single: self.engine.single().clone(),

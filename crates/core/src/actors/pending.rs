@@ -6,8 +6,9 @@ use std::{
 		BTreeMap,
 		btree_map::{Iter, Range},
 	},
+	iter::once,
+	mem::take,
 	ops::RangeBounds,
-	sync::Arc,
 };
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
@@ -112,25 +113,29 @@ impl Pending {
 
 #[derive(Debug, Default, Clone)]
 pub struct PendingLayers {
-	layers: Vec<Arc<Pending>>,
+	layers: Vec<Pending>,
+	top: Pending,
 }
 
 impl PendingLayers {
 	pub fn empty() -> Self {
 		Self {
 			layers: Vec::new(),
+			top: Pending::new(),
 		}
 	}
 
-	pub fn single(pending: Arc<Pending>) -> Self {
-		Self {
-			layers: vec![pending],
-		}
-	}
-
-	pub fn from_oldest_first(layers: Vec<Arc<Pending>>) -> Self {
+	pub fn over(layers: Vec<Pending>) -> Self {
 		Self {
 			layers,
+			top: Pending::new(),
+		}
+	}
+
+	pub fn with_top(top: Pending) -> Self {
+		Self {
+			layers: Vec::new(),
+			top,
 		}
 	}
 
@@ -139,15 +144,46 @@ impl PendingLayers {
 	}
 
 	pub fn len(&self) -> usize {
-		self.layers.iter().map(|layer| layer.len()).sum()
+		self.layers.iter().map(|layer| layer.len()).sum::<usize>() + self.top.len()
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.layers.iter().all(|layer| layer.is_empty())
+		self.top.is_empty() && self.layers.iter().all(|layer| layer.is_empty())
+	}
+
+	pub fn top(&self) -> &Pending {
+		&self.top
+	}
+
+	pub fn take_top(&mut self) -> Pending {
+		take(&mut self.top)
+	}
+
+	pub fn insert(&mut self, key: EncodedKey, value: EncodedBytes) {
+		self.top.insert(key, value);
+	}
+
+	pub fn remove(&mut self, key: EncodedKey) {
+		self.top.remove(key);
+	}
+
+	pub fn remove_silent(&mut self, key: EncodedKey) {
+		self.top.remove_silent(key);
+	}
+
+	pub fn insert_batch(&mut self, keys: &[EncodedKey], values: &[EncodedBytes]) {
+		self.top.insert_batch(keys, values);
+	}
+
+	pub fn remove_batch(&mut self, keys: &[EncodedKey]) {
+		self.top.remove_batch(keys);
 	}
 
 	fn newest_containing(&self, key: &EncodedKey) -> Option<&Pending> {
-		self.layers.iter().rev().map(|layer| layer.as_ref()).find(|layer| layer.contains_key(key))
+		if self.top.contains_key(key) {
+			return Some(&self.top);
+		}
+		self.layers.iter().rev().find(|layer| layer.contains_key(key))
 	}
 
 	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedBytes> {
@@ -166,7 +202,7 @@ impl PendingLayers {
 	where
 		R: RangeBounds<EncodedKey> + Clone,
 	{
-		for layer in &self.layers {
+		for layer in self.layers.iter().chain(once(&self.top)) {
 			for (key, write) in layer.range(range.clone()) {
 				out.insert(key.clone(), write.clone());
 			}

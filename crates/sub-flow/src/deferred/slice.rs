@@ -157,8 +157,7 @@ impl SliceComputer {
 
 		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version: state_version,
-			pending: Pending::new(),
-			base_pending: PendingLayers::empty(),
+			pending: PendingLayers::empty(),
 			query,
 			state_query,
 			single: self.engine.single().clone(),
@@ -178,7 +177,7 @@ impl SliceComputer {
 		flow_id: FlowId,
 		state_version: CommitVersion,
 		changes: Vec<Change>,
-		base_pending: PendingLayers,
+		pending: PendingLayers,
 	) -> Result<(Pending, Vec<Change>, WatermarkHolds)> {
 		let catalog: Catalog = self.engine.catalog();
 		let interceptors = self.engine.create_interceptors();
@@ -192,8 +191,7 @@ impl SliceComputer {
 
 		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version: state_version,
-			pending: Pending::new(),
-			base_pending,
+			pending,
 			query,
 			state_query,
 			single: self.engine.single().clone(),
@@ -238,8 +236,7 @@ impl SliceComputer {
 
 		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version: state_version,
-			pending: Pending::new(),
-			base_pending: PendingLayers::empty(),
+			pending: PendingLayers::empty(),
 			query,
 			state_query,
 			single: self.engine.single().clone(),
@@ -600,8 +597,7 @@ mod integration {
 
 		DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version,
-			pending: Pending::new(),
-			base_pending: PendingLayers::empty(),
+			pending: PendingLayers::empty(),
 			query,
 			state_query,
 			single: engine.single().clone(),
@@ -1007,11 +1003,10 @@ mod integration {
 
 					overlay.promote(commit_version, pending);
 
-					let pinned_txn = |base_pending: PendingLayers| {
+					let pinned_txn = |pending: PendingLayers| {
 						DepFlowTransaction::deferred_from_parts(DeferredParams {
 							version: advance_to,
-							pending: Pending::new(),
-							base_pending,
+							pending,
 							query: engine.multi().begin_query().unwrap(),
 							state_query: engine.multi().begin_query().unwrap(),
 							single: engine.single().clone(),
@@ -1151,8 +1146,7 @@ mod integration {
 					let mut empty_overlay =
 						DepFlowTransaction::deferred_from_parts(DeferredParams {
 							version: advance_to,
-							pending: Pending::new(),
-							base_pending: PendingLayers::empty(),
+							pending: PendingLayers::empty(),
 							query: engine.multi().begin_query().unwrap(),
 							state_query: engine.multi().begin_query().unwrap(),
 							single: engine.single().clone(),

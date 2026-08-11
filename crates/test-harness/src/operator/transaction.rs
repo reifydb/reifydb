@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::operator::EncodedOperatorRow;
 use reifydb_core::{
-	actors::pending::{Pending, PendingLayers, PendingWrite},
+	actors::pending::{PendingLayers, PendingWrite},
 	common::CommitVersion,
 	interface::catalog::flow::OperatorId,
 	key::{
@@ -66,8 +66,7 @@ impl<'a> FlowTxnBuilder<'a> {
 		let version = self.version;
 		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version,
-			pending: Pending::new(),
-			base_pending: PendingLayers::empty(),
+			pending: PendingLayers::empty(),
 			query: self.engine.multi().begin_query().unwrap(),
 			state_query: self.engine.multi().begin_query().unwrap(),
 			single: self.engine.inner().single().clone(),
