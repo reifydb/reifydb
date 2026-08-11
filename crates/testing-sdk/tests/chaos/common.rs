@@ -7,7 +7,6 @@ use reifydb_abi::{data::column::ColumnTypeCode, flow::diff::DiffType, operator::
 use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_sdk::{
-	config::Config,
 	error::Result,
 	operator::{
 		ExternCOperator, OperatorMetadata,
@@ -19,7 +18,10 @@ use reifydb_sdk::{
 };
 use reifydb_testing_chaos::operator::{event::ChaosBatch, view::MaterializedView};
 use reifydb_testing_sdk::chaos::{context::ChaosContext, materialize::materialize_batches};
-use reifydb_value::value::{row_number::RowNumber, value_type::ValueType};
+use reifydb_value::{
+	config::Config,
+	value::{row_number::RowNumber, value_type::ValueType},
+};
 
 pub struct PassthroughOperator;
 

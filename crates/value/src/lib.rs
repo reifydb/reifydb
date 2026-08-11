@@ -14,6 +14,7 @@ mod assertions;
 
 pub mod byte_size;
 pub mod clock;
+pub mod config;
 pub mod count;
 pub mod encoding;
 pub mod error;

@@ -329,7 +329,6 @@ mod tests {
 	use reifydb_abi::operator::capabilities::OperatorCapability;
 	use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
 	use reifydb_sdk::{
-		config::Config,
 		error::Result,
 		operator::{
 			ExternCOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
@@ -337,7 +336,7 @@ mod tests {
 		},
 	};
 	use reifydb_testing_chaos::operator::scenario::BatchSize;
-	use reifydb_value::value::value_type::ValueType;
+	use reifydb_value::{config::Config, value::value_type::ValueType};
 
 	use super::*;
 

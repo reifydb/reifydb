@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::dictionary::DictionaryEntryId;
-
 use super::Config;
+use crate::value::dictionary::DictionaryEntryId;
 
 impl Config {
 	pub fn dictionary_id(&self, key: &str) -> Option<DictionaryEntryId> {
@@ -21,9 +20,8 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::{Value, dictionary::DictionaryEntryId};
-
 	use super::super::testutil::config;
+	use crate::value::{Value, dictionary::DictionaryEntryId};
 
 	#[test]
 	fn casts_dictionary_id_values() {

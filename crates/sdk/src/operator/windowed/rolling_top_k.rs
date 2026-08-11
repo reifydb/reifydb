@@ -25,11 +25,13 @@ use reifydb_flow::{
 		span::WindowCoord,
 	},
 };
-use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
+use reifydb_value::{
+	config::Config,
+	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
+};
 use tracing::debug;
 
 use crate::{
-	config::Config,
 	error::Result,
 	operator::{
 		OperatorLogic, OperatorMetadata,

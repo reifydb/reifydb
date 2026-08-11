@@ -18,7 +18,6 @@ use reifydb_core::{
 	key::operator_state::{Keyspace, OperatorStateKey},
 };
 use reifydb_sdk::{
-	config::Config,
 	error::Result as SdkResult,
 	operator::{
 		OperatorLogic, OperatorMetadata,
@@ -30,7 +29,10 @@ use reifydb_sdk::{
 	row,
 	state::RawStatefulOperator,
 };
-use reifydb_value::value::{constraint::TypeConstraint, datetime::DateTime, duration::Duration, value_type::ValueType};
+use reifydb_value::{
+	config::Config,
+	value::{constraint::TypeConstraint, datetime::DateTime, duration::Duration, value_type::ValueType},
+};
 
 const TIMEOUT: StdDuration = StdDuration::from_secs(20);
 

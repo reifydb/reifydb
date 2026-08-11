@@ -15,10 +15,9 @@ use reifydb_abi::{
 };
 use reifydb_codec::{constraint::type_constraint_to_extern_c, value::decode_params};
 use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_value::params::Params;
+use reifydb_value::{config::Config, params::Params};
 
 use crate::{
-	config::Config,
 	extern_c::wrapper::{OperatorWrapper, create_vtable},
 	operator::{ExternCOperator, OperatorMetadata, column::operator::OperatorColumn},
 };

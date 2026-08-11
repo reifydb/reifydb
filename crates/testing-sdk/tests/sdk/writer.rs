@@ -4,7 +4,6 @@
 use reifydb_abi::operator::capabilities::OperatorCapability;
 use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_sdk::{
-	config::Config,
 	error::Result,
 	operator::{
 		ExternCOperator, OperatorMetadata,
@@ -15,8 +14,11 @@ use reifydb_sdk::{
 	row,
 };
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};
-use reifydb_value::value::{
-	date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, row_number::RowNumber, time::Time,
+use reifydb_value::{
+	config::Config,
+	value::{
+		date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, row_number::RowNumber, time::Time,
+	},
 };
 
 struct U8Row {

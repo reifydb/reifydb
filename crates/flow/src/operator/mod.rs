@@ -35,6 +35,7 @@ pub mod guard;
 pub mod join;
 pub mod map;
 pub mod metrics;
+pub mod provider;
 pub mod scan;
 pub mod sink;
 pub mod sort;

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::duration::Duration;
-
 use super::Config;
+use crate::value::duration::Duration;
 
 impl Config {
 	pub fn duration(&self, key: &str) -> Option<Duration> {
@@ -21,9 +20,8 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::{Value, duration::Duration, time::Time};
-
 	use super::super::testutil::config;
+	use crate::value::{Value, duration::Duration, time::Time};
 
 	#[test]
 	fn casts_duration_values() {

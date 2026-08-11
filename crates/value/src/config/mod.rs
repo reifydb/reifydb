@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_value::value::{
+use crate::value::{
 	Value,
 	try_from::{TryFromValue, TryFromValueCoerce},
 };
@@ -80,9 +80,8 @@ impl Config {
 pub(super) mod testutil {
 	use std::collections::BTreeMap;
 
-	use reifydb_value::value::Value;
-
 	use super::Config;
+	use crate::value::Value;
 
 	pub fn config(pairs: Vec<(&str, Value)>) -> Config {
 		let values: BTreeMap<String, Value> = pairs.into_iter().map(|(k, v)| (k.to_string(), v)).collect();

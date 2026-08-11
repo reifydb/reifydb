@@ -8,7 +8,6 @@ use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowShapeField};
 use reifydb_core::{interface::catalog::flow::OperatorId, row::Row as CoreRow};
 use reifydb_flow::window::accumulator::invertible::{LastValue, Moments};
 use reifydb_sdk::{
-	config::Config,
 	error::Result,
 	operator::{
 		ExternCOperatorAdapter,
@@ -27,6 +26,7 @@ use reifydb_testing_sdk::{
 	harness::ExternCOperatorHarnessBuilder,
 };
 use reifydb_value::{
+	config::Config,
 	factory::time::millis,
 	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
 };

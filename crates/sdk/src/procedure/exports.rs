@@ -9,14 +9,11 @@ use reifydb_abi::{
 	procedure::{descriptor::ExternCProcedureDescriptor, types::PROCEDURE_MAGIC},
 };
 use reifydb_codec::value::decode_params;
-use reifydb_value::params::Params;
+use reifydb_value::{config::Config, params::Params};
 
-use crate::{
-	config::Config,
-	procedure::{
-		ExternCProcedureWithMetadata,
-		wrapper::{ProcedureWrapper, create_procedure_vtable},
-	},
+use crate::procedure::{
+	ExternCProcedureWithMetadata,
+	wrapper::{ProcedureWrapper, create_procedure_vtable},
 };
 
 fn str_to_buffer(s: &'static str) -> ExternCBuffer {

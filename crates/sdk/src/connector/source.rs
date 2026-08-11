@@ -4,9 +4,9 @@
 use std::sync::mpsc::SyncSender;
 
 use reifydb_core::value::column::columns::Columns;
+use reifydb_value::config::Config;
 
 use crate::{
-	config::Config,
 	error::{Result, SdkError},
 	operator::column::operator::OperatorColumn,
 };

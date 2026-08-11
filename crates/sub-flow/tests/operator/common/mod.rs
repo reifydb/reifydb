@@ -10,7 +10,6 @@ use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey, Keyspace, OperatorStateKey},
 };
 use reifydb_sdk::{
-	config::Config,
 	error::{Result as SdkResult, SdkError},
 	operator::{
 		OperatorLogic, OperatorMetadata,
@@ -21,7 +20,10 @@ use reifydb_sdk::{
 	row,
 	state::RawStatefulOperator,
 };
-use reifydb_value::value::{constraint::TypeConstraint, row_number::RowNumber, value_type::ValueType};
+use reifydb_value::{
+	config::Config,
+	value::{constraint::TypeConstraint, row_number::RowNumber, value_type::ValueType},
+};
 
 pub const WINDOW_SIZE: i64 = 100;
 

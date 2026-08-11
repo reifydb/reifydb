@@ -2,8 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::columns::Columns;
+use reifydb_value::config::Config;
 
-use crate::{config::Config, error::Result, operator::column::operator::OperatorColumn};
+use crate::{error::Result, operator::column::operator::OperatorColumn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]

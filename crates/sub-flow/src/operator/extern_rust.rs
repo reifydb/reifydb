@@ -12,8 +12,7 @@ use reifydb_core::interface::catalog::flow::OperatorId;
 use reifydb_extension::loader::extern_load::ExternLoad;
 use reifydb_flow::operator::BoxedOperator;
 use reifydb_runtime::sync::rwlock::RwLock;
-use reifydb_sdk::config::Config;
-use reifydb_value::{Result, error::Error, value::constraint::TypeConstraint};
+use reifydb_value::{Result, config::Config, error::Error, value::constraint::TypeConstraint};
 
 use crate::{
 	error::ExternOperatorError,

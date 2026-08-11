@@ -52,7 +52,9 @@ use reifydb_runtime::{
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
-use reifydb_sub_flow::{builder::CustomOperators, engine::FlowEngineInner};
+use reifydb_sub_flow::{
+	builder::CustomOperators, engine::FlowEngineInner, operator::provider::StandardOperatorProvider,
+};
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
 use reifydb_value::{Result, value::duration::Duration};
 
@@ -176,13 +178,22 @@ impl SubscriptionSubsystem {
 		for i in 0..num_workers {
 			let cat = catalog.clone();
 			let exec = engine.executor();
+			let routines = exec.routines.clone();
 			let bus = engine.event_bus().clone();
 			let rc = RuntimeContext::with_clock(clock.clone());
-			let co = custom_operators.clone();
+			let provider = Arc::new(StandardOperatorProvider::new(custom_operators.clone(), exec));
 			let substrate =
 				FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state());
 			let factory = move || {
-				FlowEngineInner::new(cat, exec, bus, rc, co, substrate, OperatorSampleRegistry::new())
+				FlowEngineInner::new(
+					cat,
+					routines,
+					bus,
+					rc,
+					provider,
+					substrate,
+					OperatorSampleRegistry::new(),
+				)
 			};
 
 			let worker = SubscriptionWorkerActor::new(

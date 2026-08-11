@@ -33,7 +33,6 @@ use reifydb_core::{
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::{
-	config::Config,
 	error::Result,
 	extern_c::{
 		arena::Arena,
@@ -47,6 +46,7 @@ use reifydb_sdk::{
 use reifydb_testing_chaos::operator::subject::Subject;
 use reifydb_value::{
 	Result as ValueResult,
+	config::Config,
 	count::Count,
 	util::cowvec::CowVec,
 	value::{Value, datetime::DateTime, value_type::ValueType},

@@ -6,10 +6,9 @@ pub mod wrapper;
 
 use reifydb_abi::{constants::EXTERN_C_OK, context::context::ExternCContext, data::buffer::ExternCBuffer};
 use reifydb_codec::{frame::decode::decode_frames, value::encode_params};
-use reifydb_value::{params::Params, value::frame::frame::Frame};
+use reifydb_value::{config::Config, params::Params, value::frame::frame::Frame};
 
 use crate::{
-	config::Config,
 	error::{Result, SdkError},
 	operator::builder::ColumnsBuilder,
 };

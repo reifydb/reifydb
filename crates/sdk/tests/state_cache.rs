@@ -10,7 +10,6 @@ use reifydb_core::{
 };
 use reifydb_macro::operator_state;
 use reifydb_sdk::{
-	config::Config,
 	error::Result,
 	operator::{
 		ExternCOperator, OperatorMetadata, change::BorrowedChange, column::operator::OperatorColumn,
@@ -18,7 +17,7 @@ use reifydb_sdk::{
 	},
 };
 use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};
-use reifydb_value::value::Value;
+use reifydb_value::{config::Config, value::Value};
 
 /// A bare `String` cannot be a cache key: `IntoGroupStateKey` exists to force every key through the operator-state
 /// framing, so this wrapper frames the test's keys exactly as an operator would.

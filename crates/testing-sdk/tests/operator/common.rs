@@ -27,7 +27,6 @@ use reifydb_flow::window::{
 	span::{WindowCoord, WindowSpan},
 };
 use reifydb_sdk::{
-	config::Config,
 	error::Result,
 	operator::{
 		column::operator::OperatorColumn,
@@ -46,6 +45,7 @@ use reifydb_sdk::{
 use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::strategy::{ColumnSampler, samplers};
 use reifydb_value::{
+	config::Config,
 	factory::time::{at_millis, millis},
 	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
 };

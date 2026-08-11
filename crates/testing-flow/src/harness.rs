@@ -30,7 +30,7 @@ use reifydb_runtime::context::{
 	RuntimeContext,
 	clock::{Clock, MockClock},
 };
-use reifydb_sdk::{config::Config, operator::OperatorLogic};
+use reifydb_sdk::operator::OperatorLogic;
 use reifydb_sub_flow::operator::bridge::{BridgeOperator, BridgeOperatorAdapter};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject};
@@ -40,6 +40,7 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	Result,
+	config::Config,
 	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 

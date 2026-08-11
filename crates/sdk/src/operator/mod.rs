@@ -4,7 +4,7 @@
 //! Operator authoring surface: the builder, the column and row views, the diff an operator emits, and the context
 //! through which it reaches engine services. Everything an extension needs to write an operator lives here.
 
-use crate::config::Config;
+use reifydb_value::config::Config;
 
 pub mod builder;
 pub mod change;

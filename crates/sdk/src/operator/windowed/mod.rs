@@ -25,10 +25,11 @@ use reifydb_flow::window::{
 };
 use reifydb_value::{
 	Result,
+	config::Config,
 	value::{datetime::DateTime, duration::Duration},
 };
 
-use crate::{config::Config, operator::context::OperatorContext};
+use crate::operator::context::OperatorContext;
 
 pub(crate) fn seal_frontier(store: &mut impl StateStore) -> Result<DateTime> {
 	let ledger = SealLedger::read_order(store)?.unwrap_or(0);

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::decimal::Decimal;
-
 use super::Config;
+use crate::value::decimal::Decimal;
 
 impl Config {
 	pub fn decimal(&self, key: &str) -> Option<Decimal> {
@@ -21,9 +20,8 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::{Value, decimal::Decimal};
-
 	use super::super::testutil::config;
+	use crate::value::{Value, decimal::Decimal};
 
 	#[test]
 	fn casts_decimal_values() {

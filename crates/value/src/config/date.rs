@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::date::Date;
-
 use super::Config;
+use crate::value::date::Date;
 
 impl Config {
 	pub fn date(&self, key: &str) -> Option<Date> {
@@ -21,9 +20,8 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::{Value, date::Date, datetime::DateTime};
-
 	use super::super::testutil::config;
+	use crate::value::{Value, date::Date, datetime::DateTime};
 
 	#[test]
 	fn casts_date_values() {

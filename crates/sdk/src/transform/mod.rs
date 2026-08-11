@@ -5,9 +5,9 @@ pub mod context;
 pub mod exports;
 pub mod wrapper;
 
-use crate::{
-	config::Config, error::Result, operator::change::BorrowedColumns, transform::context::ExternCTransformContext,
-};
+use reifydb_value::config::Config;
+
+use crate::{error::Result, operator::change::BorrowedColumns, transform::context::ExternCTransformContext};
 
 pub trait ExternCTransformMetadata {
 	const NAME: &'static str;

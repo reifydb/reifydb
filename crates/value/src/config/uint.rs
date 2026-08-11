@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::uint::Uint;
-
 use super::Config;
+use crate::value::uint::Uint;
 
 impl Config {
 	pub fn uint(&self, key: &str) -> Option<Uint> {
@@ -21,9 +20,8 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::{Value, uint::Uint};
-
 	use super::super::testutil::config;
+	use crate::value::{Value, uint::Uint};
 
 	#[test]
 	fn casts_bignum_uint_values() {

@@ -30,12 +30,9 @@ use reifydb_flow::{
 	},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
-use reifydb_sdk::{
-	config::Config,
-	operator::{
-		ExternCOperatorAdapter, OperatorLogic, OperatorMetadata,
-		context::{OperatorContext, StateApi, StoreApi},
-	},
+use reifydb_sdk::operator::{
+	ExternCOperatorAdapter, OperatorLogic, OperatorMetadata,
+	context::{OperatorContext, StateApi, StoreApi},
 };
 use reifydb_sub_flow::operator::{
 	bridge::{BridgeOperator, BridgeOperatorAdapter, FlowBridge},
@@ -46,6 +43,7 @@ use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorH
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
 	Result,
+	config::Config,
 	value::{Value, datetime::DateTime, row_number::RowNumber},
 };
 

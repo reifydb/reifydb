@@ -11,7 +11,6 @@ use reifydb_flow::window::accumulator::{
 	invertible::{KeyedInvertibleAccumulator, Moments},
 };
 use reifydb_sdk::{
-	config::Config,
 	error::Result,
 	operator::{
 		ExternCOperatorAdapter, column::operator::OperatorColumn, context::OperatorContext, view::RowView,
@@ -24,6 +23,7 @@ use reifydb_testing_sdk::{
 	harness::ExternCOperatorHarnessBuilder,
 };
 use reifydb_value::{
+	config::Config,
 	factory::time::millis,
 	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
 };

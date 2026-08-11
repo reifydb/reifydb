@@ -19,9 +19,8 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::Value;
-
 	use super::super::testutil::config;
+	use crate::value::Value;
 
 	#[test]
 	fn casts_widths_that_fit() {

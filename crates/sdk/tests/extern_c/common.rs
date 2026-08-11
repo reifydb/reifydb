@@ -13,7 +13,6 @@ use reifydb_core::{
 	value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 };
 use reifydb_sdk::{
-	config::Config,
 	error::Result,
 	operator::{
 		ExternCOperator, OperatorMetadata,
@@ -25,6 +24,7 @@ use reifydb_sdk::{
 };
 use reifydb_testing_sdk::harness::ExternCOperatorHarnessBuilder;
 use reifydb_value::{
+	config::Config,
 	fragment::Fragment,
 	value::{Value, datetime::DateTime, row_number::RowNumber, system_columns::SystemColumns},
 };

@@ -13,8 +13,6 @@ use std::{
 };
 
 use reifydb_catalog::catalog::Catalog;
-#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use reifydb_codec::value::encode_params;
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
@@ -24,17 +22,11 @@ use reifydb_core::{
 		object::ObjectId,
 	},
 };
-use reifydb_engine::vm::executor::Executor;
-#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use reifydb_extension::operator::extern_c::loader::extern_c_operator_loader;
-#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use reifydb_flow::error::FlowStateError;
-#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use reifydb_flow::operator::BoxedOperator;
 use reifydb_flow::{
-	operator::{OperatorCell, metrics::OperatorSampleRegistry},
+	operator::{OperatorCell, metrics::OperatorSampleRegistry, provider::OperatorProvider},
 	transaction::substrate::FlowSubstrate,
 };
+use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::flow::{
 	analyzer::{FlowDependencyGraph, FlowGraphAnalyzer},
 	flow::FlowDag,
@@ -43,23 +35,11 @@ use reifydb_runtime::{
 	context::{RuntimeContext, clock::Clock},
 	sync::rwlock::{RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
-#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use reifydb_sdk::config::Config;
-#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use reifydb_value::{Result, error::Error, params::Params, value::Value};
 use tracing::instrument;
-
-use crate::builder::CustomOperators;
-#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use crate::error::ExternOperatorError;
-#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use crate::operator::extern_c::ExternCOperatorHandle;
-#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-use crate::operator::extern_rust::extern_rust_operator_loader;
 
 pub struct FlowEngineInner {
 	pub(crate) catalog: Catalog,
-	pub(crate) executor: Executor,
+	pub(crate) routines: Routines,
 	pub(crate) operators: BTreeMap<OperatorId, OperatorCell>,
 	pub(crate) flows: BTreeMap<FlowId, FlowDag>,
 	pub(crate) sources: BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
@@ -69,7 +49,7 @@ pub struct FlowEngineInner {
 	pub(crate) event_bus: EventBus,
 	pub(crate) flow_creation_versions: BTreeMap<FlowId, CommitVersion>,
 	pub(crate) runtime_context: RuntimeContext,
-	pub(crate) custom_operators: CustomOperators,
+	pub(crate) operator_provider: Arc<dyn OperatorProvider>,
 	pub(crate) substrate: FlowSubstrate,
 	pub(crate) operator_samples: OperatorSampleRegistry,
 }
@@ -83,20 +63,20 @@ impl FlowEngine {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		catalog: Catalog,
-		executor: Executor,
+		routines: Routines,
 		event_bus: EventBus,
 		runtime_context: RuntimeContext,
-		custom_operators: CustomOperators,
+		operator_provider: Arc<dyn OperatorProvider>,
 		substrate: FlowSubstrate,
 		operator_samples: OperatorSampleRegistry,
 	) -> Self {
 		Self {
 			inner: Arc::new(RwLock::new(FlowEngineInner::new(
 				catalog,
-				executor,
+				routines,
 				event_bus,
 				runtime_context,
-				custom_operators,
+				operator_provider,
 				substrate,
 				operator_samples,
 			))),
@@ -120,21 +100,21 @@ impl FlowEngineInner {
 	#[instrument(
 		name = "flow::engine::new",
 		level = "debug",
-		skip(catalog, executor, event_bus, runtime_context, custom_operators, substrate, operator_samples)
+		skip(catalog, routines, event_bus, runtime_context, operator_provider, substrate, operator_samples)
 	)]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		catalog: Catalog,
-		executor: Executor,
+		routines: Routines,
 		event_bus: EventBus,
 		runtime_context: RuntimeContext,
-		custom_operators: CustomOperators,
+		operator_provider: Arc<dyn OperatorProvider>,
 		substrate: FlowSubstrate,
 		operator_samples: OperatorSampleRegistry,
 	) -> Self {
 		Self {
 			catalog,
-			executor,
+			routines,
 			operators: BTreeMap::new(),
 			flows: BTreeMap::new(),
 			sources: BTreeMap::new(),
@@ -143,7 +123,7 @@ impl FlowEngineInner {
 			event_bus,
 			flow_creation_versions: BTreeMap::new(),
 			runtime_context,
-			custom_operators,
+			operator_provider,
 			substrate,
 			operator_samples,
 		}
@@ -191,70 +171,6 @@ impl FlowEngineInner {
 
 	pub fn flows_for_source_object(&self, object: ObjectId) -> Option<Vec<(FlowId, OperatorId)>> {
 		self.sources.get(&object).cloned()
-	}
-
-	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-	#[instrument(name = "flow::engine::create_extern_c_operator", level = "debug", skip(self, config), fields(operator = %operator, operator_id = ?operator_id))]
-	pub(crate) fn create_extern_c_operator(
-		&self,
-		operator: &str,
-		operator_id: OperatorId,
-		config: &BTreeMap<String, Value>,
-	) -> Result<BoxedOperator> {
-		let loader = extern_c_operator_loader();
-		let mut loader_write = loader.write();
-
-		let config_params =
-			Params::Named(Arc::new(config.iter().map(|(k, v)| (k.clone(), v.clone())).collect()));
-		let config_bytes = encode_params(&config_params).map_err(|e| {
-			Error::from(FlowStateError::Encode {
-				state: "operator config",
-				cause: e.to_string(),
-			})
-		})?;
-
-		let created = loader_write.create_operator_by_name(operator, operator_id, &config_bytes);
-		let (descriptor, instance) = match created {
-			Ok(created) => created,
-			Err(e) => {
-				return Err(Error::from(ExternOperatorError::CreateFailed {
-					cause: format!("{:?}", e),
-				}));
-			}
-		};
-
-		Ok(Box::new(ExternCOperatorHandle::new(descriptor, instance, operator_id, self.executor.clone())))
-	}
-
-	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-	pub(crate) fn is_extern_c_operator(&self, operator: &str) -> bool {
-		let loader = extern_c_operator_loader();
-		let loader_read = loader.read();
-		loader_read.has_operator(operator)
-	}
-
-	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-	#[instrument(name = "flow::engine::create_extern_rust_operator", level = "debug", skip(self, config), fields(operator = %operator, operator_id = ?operator_id))]
-	pub(crate) fn create_extern_rust_operator(
-		&self,
-		operator: &str,
-		operator_id: OperatorId,
-		config: &Config,
-	) -> Result<BoxedOperator> {
-		let loader = extern_rust_operator_loader();
-		let mut loader_write = loader.write();
-		loader_write.create_operator_by_name(operator, operator_id, config)
-	}
-
-	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-	pub(crate) fn is_extern_rust_operator(&self, operator: &str) -> bool {
-		extern_rust_operator_loader().read().has_operator(operator)
-	}
-
-	#[cfg(not(all(reifydb_target = "host", not(reifydb_dst))))]
-	#[allow(dead_code)]
-	pub(crate) fn is_extern_c_operator(&self, _operator: &str) -> bool {
-		false
 	}
 
 	pub fn flow_ids(&self) -> BTreeSet<FlowId> {
@@ -317,8 +233,6 @@ impl FlowEngineInner {
 
 #[cfg(test)]
 mod tests {
-	use std::collections::HashMap;
-
 	use reifydb_codec::{key::encoded::EncodedKey, row::operator::EncodedOperatorRow};
 	use reifydb_core::{
 		common::TimeDomain,
@@ -327,7 +241,7 @@ mod tests {
 			catalog::{flow::FlowId, id::SeriesId},
 		},
 	};
-	use reifydb_flow::operator::scan::series::SourceSeriesOperator;
+	use reifydb_flow::operator::{provider::EmptyOperatorProvider, scan::series::SourceSeriesOperator};
 	use reifydb_rql::flow::{
 		flow::FlowDag,
 		operator::{FlowNode, OperatorDef},
@@ -345,10 +259,10 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
-			engine.executor(),
+			engine.executor().routines.clone(),
 			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
-			CustomOperators::new(HashMap::new()),
+			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate {
 				operators: engine.inner().operator_state(),
 				..FlowSubstrate::default()

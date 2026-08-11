@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::identity::IdentityId;
-
 use super::Config;
+use crate::value::identity::IdentityId;
 
 impl Config {
 	pub fn identity_id(&self, key: &str) -> Option<IdentityId> {
@@ -21,9 +20,8 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::{Value, identity::IdentityId};
-
 	use super::super::testutil::config;
+	use crate::value::{Value, identity::IdentityId};
 
 	#[test]
 	fn casts_identity_id_values() {

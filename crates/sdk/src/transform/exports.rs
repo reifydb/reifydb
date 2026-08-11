@@ -9,14 +9,11 @@ use reifydb_abi::{
 	transform::{descriptor::ExternCTransformDescriptor, types::TRANSFORM_MAGIC},
 };
 use reifydb_codec::value::decode_params;
-use reifydb_value::params::Params;
+use reifydb_value::{config::Config, params::Params};
 
-use crate::{
-	config::Config,
-	transform::{
-		ExternCTransformWithMetadata,
-		wrapper::{TransformWrapper, create_transform_vtable},
-	},
+use crate::transform::{
+	ExternCTransformWithMetadata,
+	wrapper::{TransformWrapper, create_transform_vtable},
 };
 
 fn str_to_buffer(s: &'static str) -> ExternCBuffer {

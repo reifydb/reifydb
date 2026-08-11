@@ -57,6 +57,7 @@ use crate::{
 	},
 	engine::FlowEngineInner,
 	execution::frontier::WatermarkHolds,
+	operator::provider::StandardOperatorProvider,
 };
 
 pub struct FlowActorParams {
@@ -203,10 +204,10 @@ impl FlowActor {
 	fn build_flow_engine(&self) -> FlowEngineInner {
 		FlowEngineInner::new(
 			self.engine.catalog(),
-			self.engine.executor(),
+			self.engine.executor().routines.clone(),
 			self.engine.event_bus().clone(),
 			RuntimeContext::with_clock(self.clock.clone()),
-			self.custom_operators.clone(),
+			Arc::new(StandardOperatorProvider::new(self.custom_operators.clone(), self.engine.executor())),
 			self.substrate.clone(),
 			self.operator_samples.clone(),
 		)
@@ -725,7 +726,10 @@ mod pull_protocol {
 			operator_state::{Keyspace, OperatorStateKey},
 		},
 	};
-	use reifydb_flow::transaction::{DeferredParams, DepFlowTransaction};
+	use reifydb_flow::{
+		operator::provider::EmptyOperatorProvider,
+		transaction::{DeferredParams, DepFlowTransaction},
+	};
 	use reifydb_runtime::sync::waiter::WaiterHandle;
 	use reifydb_store_operator::store::OperatorStore;
 	use reifydb_test_harness::engine::TestEngine;
@@ -795,10 +799,10 @@ mod pull_protocol {
 		let substrate = FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state());
 		let mut probe = FlowEngineInner::new(
 			engine.catalog(),
-			engine.executor(),
+			engine.executor().routines.clone(),
 			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
-			CustomOperators::new(HashMap::new()),
+			Arc::new(EmptyOperatorProvider),
 			substrate.clone(),
 			OperatorSampleRegistry::new(),
 		);

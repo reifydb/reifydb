@@ -7,13 +7,13 @@
 use std::{collections::HashMap, sync::Arc};
 
 use reifydb_sdk::{
-	config::Config,
 	connector::{
 		sink::{InProcessSink, InProcessSinkMetadata},
 		source::{InProcessSource, InProcessSourceMetadata},
 	},
 	error::{Result as SdkResult, SdkError},
 };
+use reifydb_value::config::Config;
 
 type SourceFactory = Arc<dyn Fn(&Config) -> SdkResult<Box<dyn InProcessSource>> + Send + Sync>;
 type SinkFactory = Arc<dyn Fn(&Config) -> SdkResult<Box<dyn InProcessSink>> + Send + Sync>;

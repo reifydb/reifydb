@@ -105,7 +105,7 @@ fn output_frontiers(
 
 #[cfg(test)]
 mod tests {
-	use std::collections::HashMap;
+	use std::sync::Arc;
 
 	use reifydb_abi::operator::capabilities::OperatorCapability;
 	use reifydb_catalog::catalog::Catalog;
@@ -118,7 +118,7 @@ mod tests {
 		},
 	};
 	use reifydb_flow::{
-		operator::{Operator, metrics::OperatorSampleRegistry},
+		operator::{Operator, metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::substrate::FlowSubstrate,
 	};
 	use reifydb_rql::flow::{
@@ -137,7 +137,6 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::builder::CustomOperators;
 
 	const FLOW: FlowId = FlowId(1);
 
@@ -193,10 +192,10 @@ mod tests {
 	fn engine_inner(engine: &TestEngine) -> FlowEngineInner {
 		FlowEngineInner::new(
 			engine.catalog(),
-			engine.executor(),
+			engine.executor().routines.clone(),
 			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
-			CustomOperators::new(HashMap::new()),
+			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::default(),
 			OperatorSampleRegistry::new(),
 		)

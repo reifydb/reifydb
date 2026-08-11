@@ -11,7 +11,6 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod catalog;
-pub mod config;
 pub mod connector;
 pub mod dictionary;
 pub mod error;

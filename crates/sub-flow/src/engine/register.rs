@@ -60,9 +60,10 @@ use reifydb_rql::{
 		time_domain::check_window_time_requirements,
 	},
 };
-use reifydb_sdk::config::Config;
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
-use reifydb_value::{Result, error::Error, fragment::Fragment, reifydb_assertions, value::duration::Duration};
+use reifydb_value::{
+	Result, config::Config, error::Error, fragment::Fragment, reifydb_assertions, value::duration::Duration,
+};
 use tracing::{info, instrument};
 
 use super::eval::evaluate_operator_config;
@@ -388,7 +389,7 @@ impl FlowEngineInner {
 				parent,
 				operator_id,
 				conditions,
-				self.executor.routines.clone(),
+				self.routines.clone(),
 				self.runtime_context.clone(),
 				Arc::clone(ctx),
 			)),
@@ -411,7 +412,7 @@ impl FlowEngineInner {
 				parent,
 				operator_id,
 				conditions,
-				self.executor.routines.clone(),
+				self.routines.clone(),
 				self.runtime_context.clone(),
 				Arc::clone(ctx),
 			)),
@@ -434,7 +435,7 @@ impl FlowEngineInner {
 				parent,
 				operator_id,
 				expressions,
-				self.executor.routines.clone(),
+				self.routines.clone(),
 				self.runtime_context.clone(),
 				Arc::clone(ctx),
 			)),
@@ -457,7 +458,7 @@ impl FlowEngineInner {
 				parent,
 				operator_id,
 				expressions,
-				self.executor.routines.clone(),
+				self.routines.clone(),
 				self.runtime_context.clone(),
 				Arc::clone(ctx),
 			)),
@@ -561,8 +562,8 @@ impl FlowEngineInner {
 				operator_id,
 				join_type,
 				alias,
-				self.executor.routines.clone(),
-				self.executor.runtime_context.clone(),
+				self.routines.clone(),
+				self.runtime_context.clone(),
 				snapshot,
 				natural,
 				latest,
@@ -591,7 +592,7 @@ impl FlowEngineInner {
 				parent,
 				operator_id,
 				expressions,
-				self.executor.routines.clone(),
+				self.routines.clone(),
 				self.runtime_context.clone(),
 				Arc::clone(ctx),
 				ttl,
@@ -647,48 +648,16 @@ impl FlowEngineInner {
 		operator: String,
 		expressions: Vec<Expression>,
 	) -> Result<()> {
-		let config = evaluate_operator_config(
-			expressions.as_slice(),
-			&self.executor.routines,
-			&self.runtime_context,
-		)?;
-		let cfg = Config::new(operator.as_str(), config.clone());
+		let config = evaluate_operator_config(expressions.as_slice(), &self.routines, &self.runtime_context)?;
+		let cfg = Config::new(operator.as_str(), config);
 		let ttl = self.operator_ttl(txn, operator_id)?;
+		let parent = self.parent(first_input(inputs)?)?;
 
-		if let Some(factory) = self.custom_operators.get(operator.as_str()) {
-			let parent = self.parent(first_input(inputs)?)?;
-			let inner = factory(operator_id, &cfg)?;
-			self.operators.insert(
-				operator_id,
-				OperatorCell::new(ApplyOperator::new(parent, operator_id, inner, ttl)),
-			);
-		} else {
-			#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-			{
-				let parent = self.parent(first_input(inputs)?)?;
+		let provider = self.operator_provider.clone();
+		let inner = provider.provide(operator_id, &cfg)?;
 
-				let inner = if self.is_extern_rust_operator(operator.as_str()) {
-					self.create_extern_rust_operator(operator.as_str(), operator_id, &cfg)?
-				} else if self.is_extern_c_operator(operator.as_str()) {
-					self.create_extern_c_operator(operator.as_str(), operator_id, &config)?
-				} else {
-					return Err(Error::from(FlowGraphError::UnknownOperator {
-						operator: operator.to_string(),
-					}));
-				};
-
-				self.operators.insert(
-					operator_id,
-					OperatorCell::new(ApplyOperator::new(parent, operator_id, inner, ttl)),
-				);
-			}
-			#[cfg(not(all(reifydb_target = "host", not(reifydb_dst))))]
-			{
-				let _ = (operator, inputs);
-
-				return Err(Error::from(FlowGraphError::ExternUnsupportedOnWasm));
-			}
-		}
+		self.operators
+			.insert(operator_id, OperatorCell::new(ApplyOperator::new(parent, operator_id, inner, ttl)));
 		Ok(())
 	}
 
@@ -712,7 +681,7 @@ impl FlowEngineInner {
 			group_by: group_by.clone(),
 			aggregations: aggregations.clone(),
 			runtime_context: self.runtime_context.clone(),
-			routines: self.executor.routines.clone(),
+			routines: self.routines.clone(),
 			grace,
 			ctx: Arc::clone(ctx),
 		});
@@ -735,7 +704,7 @@ impl FlowEngineInner {
 			operator_id,
 			by,
 			map,
-			self.executor.routines.clone(),
+			self.routines.clone(),
 			self.runtime_context.clone(),
 			self.operator_ttl(txn, operator_id)?,
 		);

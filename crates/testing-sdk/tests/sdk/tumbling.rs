@@ -15,7 +15,6 @@ use reifydb_flow::window::{
 	span::{WindowCoord, WindowSpan},
 };
 use reifydb_sdk::{
-	config::Config,
 	error::Result,
 	extern_c::exports::create_descriptor,
 	operator::{
@@ -29,6 +28,7 @@ use reifydb_testing_sdk::{
 	harness::ExternCOperatorHarnessBuilder,
 };
 use reifydb_value::{
+	config::Config,
 	factory::time::millis,
 	value::{Value, datetime::DateTime, duration::Duration, value_type::ValueType},
 };

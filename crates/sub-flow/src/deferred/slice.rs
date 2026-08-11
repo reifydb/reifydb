@@ -502,12 +502,7 @@ mod tests {
 
 #[cfg(test)]
 mod integration {
-	use std::{
-		collections::{HashMap, HashSet},
-		ops::Bound,
-		thread::sleep,
-		time::Duration as StdDuration,
-	};
+	use std::{collections::HashSet, ops::Bound, thread::sleep, time::Duration as StdDuration};
 
 	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
@@ -524,7 +519,7 @@ mod integration {
 		key::{Key, kind::KeyKind},
 	};
 	use reifydb_flow::{
-		operator::metrics::OperatorSampleRegistry,
+		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::{read::ReadFrom, substrate::FlowSubstrate},
 	};
 	use reifydb_rql::flow::{
@@ -538,7 +533,6 @@ mod integration {
 
 	use super::*;
 	use crate::{
-		builder::CustomOperators,
 		catalog::FlowCatalog,
 		deferred::{
 			committer::Committer, quiescence::FlowMaterialization, routing, tracker::FlowPositionTracker,
@@ -583,10 +577,10 @@ mod integration {
 	fn build_flow_engine(engine: &StandardEngine) -> FlowEngineInner {
 		FlowEngineInner::new(
 			engine.catalog(),
-			engine.executor(),
+			engine.executor().routines.clone(),
 			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
-			CustomOperators::new(HashMap::new()),
+			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state()),
 			OperatorSampleRegistry::new(),
 		)

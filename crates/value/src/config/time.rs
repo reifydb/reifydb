@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::time::Time;
-
 use super::Config;
+use crate::value::time::Time;
 
 impl Config {
 	pub fn time(&self, key: &str) -> Option<Time> {
@@ -21,9 +20,8 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::{Value, date::Date, time::Time};
-
 	use super::super::testutil::config;
+	use crate::value::{Value, date::Date, time::Time};
 
 	#[test]
 	fn casts_time_values() {

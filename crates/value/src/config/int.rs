@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::value::int::Int;
-
 use super::Config;
+use crate::value::int::Int;
 
 impl Config {
 	pub fn int(&self, key: &str) -> Option<Int> {
@@ -21,9 +20,8 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_value::value::{Value, int::Int};
-
 	use super::super::testutil::config;
+	use crate::value::{Value, int::Int};
 
 	#[test]
 	fn casts_bignum_int_values() {

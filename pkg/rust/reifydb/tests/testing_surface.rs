@@ -5,7 +5,6 @@ use reifydb::{
 	abi::operator::capabilities::OperatorCapability,
 	core::interface::catalog::flow::OperatorId,
 	sdk::{
-		config::Config,
 		error::Result as SdkResult,
 		operator::{
 			OperatorLogic, OperatorMetadata, column::operator::OperatorColumn, context::OperatorContext,
@@ -13,7 +12,7 @@ use reifydb::{
 		},
 	},
 	testing::flow::harness::Harness,
-	value::value::duration::Duration,
+	value::{config::Config, value::duration::Duration},
 };
 
 const NODE: OperatorId = OperatorId(1);

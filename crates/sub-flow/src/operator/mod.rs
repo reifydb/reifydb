@@ -9,3 +9,4 @@ pub mod context;
 pub mod extern_c;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub mod extern_rust;
+pub mod provider;

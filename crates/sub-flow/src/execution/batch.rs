@@ -325,6 +325,8 @@ fn freeze_arrival_frontier(
 
 #[cfg(test)]
 mod tests {
+	use std::sync::Arc;
+
 	use reifydb_catalog::catalog::Catalog;
 	use reifydb_core::{
 		common::TimeDomain,
@@ -335,7 +337,10 @@ mod tests {
 		},
 		value::column::columns::Columns,
 	};
-	use reifydb_flow::{operator::metrics::OperatorSampleRegistry, transaction::substrate::FlowSubstrate};
+	use reifydb_flow::{
+		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
+		transaction::substrate::FlowSubstrate,
+	};
 	use reifydb_rql::flow::operator::{FlowNode, OperatorDef};
 	use reifydb_runtime::context::{
 		RuntimeContext,
@@ -347,7 +352,6 @@ mod tests {
 	use smallvec::smallvec;
 
 	use super::*;
-	use crate::builder::CustomOperators;
 
 	const SOURCE: OperatorId = OperatorId(1);
 
@@ -567,10 +571,10 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
-			engine.executor(),
+			engine.executor().routines.clone(),
 			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
-			CustomOperators::new(HashMap::new()),
+			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::default(),
 			OperatorSampleRegistry::new(),
 		);
@@ -607,10 +611,10 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut inner = FlowEngineInner::new(
 			engine.catalog(),
-			engine.executor(),
+			engine.executor().routines.clone(),
 			engine.event_bus().clone(),
 			RuntimeContext::with_clock(engine.clock().clone()),
-			CustomOperators::new(HashMap::new()),
+			Arc::new(EmptyOperatorProvider),
 			FlowSubstrate::default(),
 			OperatorSampleRegistry::new(),
 		);
