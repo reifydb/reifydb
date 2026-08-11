@@ -16,7 +16,7 @@ use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
 
 use super::StateIterator;
-use crate::transaction::interface::FlowTransaction;
+use crate::transaction::FlowTransaction;
 
 pub fn state_get<T: FlowTransaction>(
 	id: OperatorId,

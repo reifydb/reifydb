@@ -23,7 +23,7 @@ use crate::{
 		},
 		stateful::utils,
 	},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 };
 
 fn row_time<T: FlowTransaction>(txn: &T, columns: &Columns, row_idx: usize) -> DateTime {

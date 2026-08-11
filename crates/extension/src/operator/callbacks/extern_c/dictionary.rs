@@ -7,7 +7,7 @@ use reifydb_codec::{
 	tag::type_tag_byte,
 	value::{decode_value, encode_value},
 };
-use reifydb_flow::transaction::interface::FlowTransaction;
+use reifydb_flow::transaction::FlowTransaction;
 use reifydb_sdk::{
 	common::extern_c::wire::{
 		buffer::ExternCBuffer,

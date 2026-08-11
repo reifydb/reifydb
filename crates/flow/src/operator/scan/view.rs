@@ -13,7 +13,7 @@ use reifydb_value::Result;
 
 use crate::{
 	operator::{Operator, sink::decode_dictionary_columns},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 };
 
 pub struct SourceViewOperator {

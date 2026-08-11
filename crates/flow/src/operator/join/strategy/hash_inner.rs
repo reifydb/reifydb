@@ -16,7 +16,7 @@ use crate::{
 		snapshot::{SnapshotJoinContext, publish_joined, resync_joined, retire_right, withdraw_joined},
 		state::JoinSide,
 	},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 };
 
 pub(crate) struct InnerHashJoin;

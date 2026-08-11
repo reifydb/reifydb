@@ -9,7 +9,7 @@ use reifydb_core::key::operator_state::GroupStateKey;
 use reifydb_value::Result;
 
 use super::{StateIterator, utils};
-use crate::{operator::Operator, transaction::interface::FlowTransaction};
+use crate::{operator::Operator, transaction::FlowTransaction};
 
 pub trait RawStatefulOperator<T: FlowTransaction>: Operator<T> {
 	fn state_get(&self, txn: &mut T, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {

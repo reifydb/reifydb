@@ -5,7 +5,7 @@ use std::any::Any;
 
 use reifydb_value::Result;
 
-use crate::transaction::interface::FlowTransaction;
+use crate::transaction::FlowTransaction;
 
 pub type PersistFn<T> = Box<dyn FnOnce(&mut T, Box<dyn Any>) -> Result<()> + Send>;
 

@@ -24,7 +24,7 @@ use tracing::instrument;
 use crate::{
 	context::FlowContext,
 	operator::{Operator, OperatorCell},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 };
 
 pub struct ExtendOperator<T: FlowTransaction> {

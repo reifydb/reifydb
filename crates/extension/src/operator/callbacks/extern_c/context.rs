@@ -4,7 +4,7 @@
 use core::ffi::c_void;
 
 use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_flow::transaction::{deferred::DeferredTransaction, interface::FlowTransaction};
+use reifydb_flow::transaction::{FlowTransaction, deferred::DeferredTransaction};
 use reifydb_sdk::flow::operator::extern_c::wire::{callbacks::OperatorCallbacks, context::ExternCContext};
 
 pub fn new_extern_c_context(

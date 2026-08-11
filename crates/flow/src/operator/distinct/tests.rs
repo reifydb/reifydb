@@ -37,7 +37,7 @@ use crate::{
 		stateful::utils,
 	},
 	testing::FlowTxn,
-	transaction::{deferred::DeferredTransaction, interface::FlowTransaction},
+	transaction::{FlowTransaction, deferred::DeferredTransaction},
 };
 
 fn noop_parent() -> OperatorCell<DeferredTransaction> {

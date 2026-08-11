@@ -17,7 +17,7 @@ pub mod test {
 		value::{identity::IdentityId, value_type::ValueType},
 	};
 
-	use crate::{operator::Operator, transaction::interface::FlowTransaction};
+	use crate::{operator::Operator, transaction::FlowTransaction};
 
 	pub struct TestOperator {
 		pub id: OperatorId,

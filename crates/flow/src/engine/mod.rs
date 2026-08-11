@@ -36,7 +36,7 @@ use tracing::instrument;
 
 use crate::{
 	operator::{OperatorCell, metrics::OperatorSampleRegistry, provider::OperatorProvider},
-	transaction::{interface::FlowTransaction, substrate::FlowSubstrate},
+	transaction::{FlowTransaction, substrate::FlowSubstrate},
 };
 
 pub struct FlowEngineInner<T: FlowTransaction> {

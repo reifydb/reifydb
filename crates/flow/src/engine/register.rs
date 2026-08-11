@@ -67,7 +67,7 @@ use crate::{
 		take::TakeOperator,
 		window::operator::{WindowConfig, WindowOperator},
 	},
-	transaction::{deferred::DeferredTransaction, interface::FlowTransaction},
+	transaction::{FlowTransaction, deferred::DeferredTransaction},
 };
 
 impl FlowEngineInner<DeferredTransaction> {

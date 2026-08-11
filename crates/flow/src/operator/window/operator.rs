@@ -35,7 +35,7 @@ use crate::{
 		store::OperatorStateStore,
 	},
 	timer::Timer,
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 	window::{
 		coord::OrdinalCoord,
 		engine::{config::WindowEngineConfig, rolling::RollingEngine},

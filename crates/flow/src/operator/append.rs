@@ -23,7 +23,7 @@ use tracing::instrument;
 use crate::{
 	error::FlowGraphError,
 	operator::{Operator, OperatorCell, drops::SealedDrops},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;

@@ -28,7 +28,7 @@ use crate::{
 		stateful::utils,
 		store::OperatorStateStore,
 	},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 	window::{
 		coord::{EventCoord, RowSpan},
 		driver::{gate::disarm_seal, sweep::SealSweep},

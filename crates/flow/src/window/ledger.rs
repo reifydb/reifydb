@@ -13,7 +13,7 @@ use reifydb_macro::operator_state;
 use reifydb_value::{Result, value::datetime::DateTime};
 
 #[cfg(feature = "runtime")]
-use crate::transaction::interface::FlowTransaction;
+use crate::transaction::FlowTransaction;
 use crate::{
 	timer::Timer,
 	window::{policy::SealedThrough, span::WindowCoord},

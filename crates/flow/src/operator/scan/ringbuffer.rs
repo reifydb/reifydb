@@ -13,7 +13,7 @@ use reifydb_value::{Result, fragment::Fragment};
 
 use crate::{
 	operator::{Operator, sink::decode_dictionary_columns},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 };
 
 pub struct SourceRingBufferOperator {

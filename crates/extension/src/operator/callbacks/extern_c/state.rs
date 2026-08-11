@@ -12,7 +12,7 @@ use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey},
 	state::store::TimerKind,
 };
-use reifydb_flow::{timer::Timer, transaction::interface::FlowTransaction};
+use reifydb_flow::{timer::Timer, transaction::FlowTransaction};
 use reifydb_sdk::{
 	common::extern_c::wire::{
 		buffer::ExternCBuffer,

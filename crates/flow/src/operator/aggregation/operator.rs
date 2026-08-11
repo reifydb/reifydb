@@ -32,7 +32,7 @@ use super::{
 use crate::{
 	context::FlowContext,
 	operator::{Operator, OperatorCell, store::OperatorStateStore},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 	window::{
 		engine::{ExpiryAnchor, config::WindowEngineConfig, tumbling::TumblingBuckets},
 		span::{WindowCoord, WindowSpan},

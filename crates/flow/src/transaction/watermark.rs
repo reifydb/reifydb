@@ -12,8 +12,8 @@ use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 use tracing::{info, warn};
 
 use crate::transaction::{
+	FlowTransaction,
 	group::{decode_payload, encode_payload},
-	interface::FlowTransaction,
 };
 
 const PERSIST_BUCKET_MS: u64 = 1_000;

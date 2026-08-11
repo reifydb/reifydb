@@ -6,7 +6,7 @@ use reifydb_rql::flow::operator::FlowNode;
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
-use crate::{engine::FlowEngineInner, transaction::interface::FlowTransaction};
+use crate::{engine::FlowEngineInner, transaction::FlowTransaction};
 
 impl<T: FlowTransaction> FlowEngineInner<T> {
 	pub(super) fn dispatch_node(&self, txn: &mut T, operator: &FlowNode, inbox: Vec<Change>) -> Result<Change> {

@@ -37,7 +37,7 @@ use tracing::instrument;
 use crate::{
 	context::FlowContext,
 	operator::{Operator, OperatorCell, stateful::raw::RawStatefulOperator, store::OperatorStateStore},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 };
 
 #[operator_state]

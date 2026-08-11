@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	engine::FlowEngineInner,
-	transaction::{ephemeral::EphemeralTransaction, interface::FlowTransaction},
+	transaction::{FlowTransaction, ephemeral::EphemeralTransaction},
 };
 use reifydb_transaction::{error::TransactionError, multi::transaction::read::MultiReadTransaction};
 use reifydb_value::Result;

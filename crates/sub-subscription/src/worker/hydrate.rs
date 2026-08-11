@@ -13,7 +13,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::subscription::{HydrateError, HydrateOutcome};
-use reifydb_flow::transaction::{ephemeral::EphemeralTransaction, interface::FlowTransaction};
+use reifydb_flow::transaction::{FlowTransaction, ephemeral::EphemeralTransaction};
 use reifydb_rql::fingerprint::request::fingerprint_request;
 use reifydb_runtime::context::clock::Instant;
 use reifydb_transaction::multi::lease::VersionLeaseGuard;

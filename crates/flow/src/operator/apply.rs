@@ -11,7 +11,7 @@ use reifydb_value::{Result, value::duration::Duration};
 use crate::{
 	operator::{BoxedOperator, Operator, OperatorCell, max_input_time, stamp_output_time},
 	timer::Timer,
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 };
 
 pub struct ApplyOperator<T: FlowTransaction> {

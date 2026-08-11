@@ -9,7 +9,7 @@ use crate::{
 		operator::JoinOperator,
 		state::{JoinSide, JoinState},
 	},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 };
 
 pub(crate) mod hash;

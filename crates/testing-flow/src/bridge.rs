@@ -19,9 +19,8 @@ use reifydb_core::{
 use reifydb_flow::{
 	operator::Operator,
 	transaction::{
-		ChangeCoordinate, DeferredParams,
+		ChangeCoordinate, DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
-		interface::FlowTransaction,
 		substrate::{FlowSubstrate, apply_operator_state},
 	},
 };

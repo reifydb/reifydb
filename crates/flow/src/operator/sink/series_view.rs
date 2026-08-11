@@ -43,7 +43,7 @@ use super::{
 };
 use crate::{
 	operator::{Operator, OperatorCell},
-	transaction::{deferred::DeferredTransaction, interface::FlowTransaction},
+	transaction::{FlowTransaction, deferred::DeferredTransaction},
 };
 
 pub struct SinkSeriesViewOperator {

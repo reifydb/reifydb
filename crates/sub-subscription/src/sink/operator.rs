@@ -19,7 +19,7 @@ use reifydb_flow::{
 		Operator, OperatorCell,
 		stateful::{raw::RawStatefulOperator, utils},
 	},
-	transaction::{ephemeral::EphemeralTransaction, interface::FlowTransaction, slot::PersistFn},
+	transaction::{FlowTransaction, ephemeral::EphemeralTransaction, slot::PersistFn},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{

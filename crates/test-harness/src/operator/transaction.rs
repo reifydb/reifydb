@@ -16,10 +16,9 @@ use reifydb_core::{
 	},
 };
 use reifydb_flow::transaction::{
-	ChangeCoordinate, DeferredParams,
+	ChangeCoordinate, DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
 	ephemeral::EphemeralTransaction,
-	interface::FlowTransaction,
 	substrate::{FlowSubstrate, apply_operator_state},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};

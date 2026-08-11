@@ -14,7 +14,7 @@ use reifydb_value::{
 use super::operator::WindowOperator;
 use crate::{
 	operator::{aggregation::engine::partition_group_key, store::OperatorStateStore},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 	window::{
 		coord::{EventCoord, OrdinalCoord, RowSpan},
 		driver::{gate::SealGate, mint::Mint},

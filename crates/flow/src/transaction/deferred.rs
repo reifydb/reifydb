@@ -83,8 +83,7 @@ use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
 
 use crate::transaction::{
-	ChangeCoordinate, DeferredParams,
-	interface::FlowTransaction,
+	ChangeCoordinate, DeferredParams, FlowTransaction,
 	read::{OperatorStateRangeIter, ReadFrom, operator_state_scope, read_from},
 	slot::OperatorStateSlot,
 	substrate::{FlowSubstrate, operator_state_coordinates},

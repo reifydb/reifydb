@@ -27,7 +27,7 @@ use reifydb_extension::{
 use reifydb_flow::{
 	operator::{Operator, scale_from_millis},
 	timer::Timer,
-	transaction::{deferred::DeferredTransaction, interface::FlowTransaction, slot::PersistFn},
+	transaction::{FlowTransaction, deferred::DeferredTransaction, slot::PersistFn},
 };
 use reifydb_sdk::{
 	common::extern_c::wire::{

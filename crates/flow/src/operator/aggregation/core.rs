@@ -35,7 +35,7 @@ use crate::{
 	context::FlowContext,
 	error::FlowStateError,
 	operator::{OperatorCell, aggregation::accumulator::RowAccumulator},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 	window::{
 		engine::tumbling::TumblingEngine,
 		meta::{EngineMeta, EngineMetaKey},

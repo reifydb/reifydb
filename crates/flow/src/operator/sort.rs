@@ -10,7 +10,7 @@ use reifydb_value::Result;
 
 use crate::{
 	operator::{Operator, OperatorCell},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 };
 
 pub struct SortOperator<T: FlowTransaction> {

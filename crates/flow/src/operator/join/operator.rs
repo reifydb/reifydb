@@ -45,7 +45,7 @@ use crate::{
 		join::{Emitted, Identity},
 		stateful::raw::RawStatefulOperator,
 	},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;

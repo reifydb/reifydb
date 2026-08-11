@@ -24,9 +24,8 @@ use crate::{
 	engine::{FlowEngineInner, execution::COMPLETENESS_OBJECT},
 	operator::max_input_time,
 	transaction::{
-		ChangeCoordinate,
+		ChangeCoordinate, FlowTransaction,
 		frontier::{Frontier, OutputFrontiers},
-		interface::FlowTransaction,
 	},
 };
 

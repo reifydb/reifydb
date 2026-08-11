@@ -5,7 +5,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	interface::change::{Change, Diffs},
 };
-use reifydb_flow::{operator::Operator, transaction::interface::FlowTransaction};
+use reifydb_flow::{operator::Operator, transaction::FlowTransaction};
 use reifydb_sdk::flow::operator::OperatorMetadata;
 use reifydb_sub_flow::operator::bridge::{BridgeOperator, BridgeOperatorAdapter};
 use reifydb_test_harness::operator::transaction::{FlowTxn, OPERATOR_ID, engine};

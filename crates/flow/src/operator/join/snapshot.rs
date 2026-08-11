@@ -38,7 +38,7 @@ use crate::{
 		},
 		stateful::utils::{state_get, state_range, state_remove, state_set},
 	},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 };
 
 const ROW_NUMBER_BYTES: usize = 8;

@@ -9,8 +9,7 @@ use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::value::datetime::DateTime;
 
 use crate::transaction::{
-	ChangeCoordinate, DeferredParams, deferred::DeferredTransaction, interface::FlowTransaction,
-	substrate::FlowSubstrate,
+	ChangeCoordinate, DeferredParams, FlowTransaction, deferred::DeferredTransaction, substrate::FlowSubstrate,
 };
 
 pub struct FlowTxnBuilder<'a> {

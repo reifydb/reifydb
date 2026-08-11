@@ -13,7 +13,7 @@ use reifydb_value::Result;
 use crate::{
 	engine::FlowEngineInner,
 	timer::Timer,
-	transaction::{ChangeCoordinate, interface::FlowTransaction},
+	transaction::{ChangeCoordinate, FlowTransaction},
 };
 
 const MAX_TIMER_ROUNDS: u32 = 4_096;

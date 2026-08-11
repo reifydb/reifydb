@@ -33,7 +33,7 @@ mod tests {
 	use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 
 	use crate::transaction::{
-		ChangeCoordinate, DeferredParams, deferred::DeferredTransaction, interface::FlowTransaction,
+		ChangeCoordinate, DeferredParams, FlowTransaction, deferred::DeferredTransaction,
 		substrate::FlowSubstrate,
 	};
 

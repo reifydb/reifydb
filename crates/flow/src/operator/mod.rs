@@ -13,7 +13,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
-use crate::{timer::Timer, transaction::interface::FlowTransaction};
+use crate::{timer::Timer, transaction::FlowTransaction};
 
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub fn scale_from_millis(span: Option<u64>) -> Option<Duration> {

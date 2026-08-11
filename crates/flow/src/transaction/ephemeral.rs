@@ -29,8 +29,7 @@ use reifydb_transaction::{
 use reifydb_value::{Result, value::datetime::DateTime};
 
 use crate::transaction::{
-	ChangeCoordinate,
-	interface::FlowTransaction,
+	ChangeCoordinate, FlowTransaction,
 	read::{ReadFrom, read_from},
 	slot::OperatorStateSlot,
 	substrate::FlowSubstrate,

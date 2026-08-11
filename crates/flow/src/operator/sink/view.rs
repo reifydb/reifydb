@@ -50,7 +50,7 @@ use super::{
 use crate::{
 	error::FlowSinkError,
 	operator::{Operator, OperatorCell},
-	transaction::{deferred::DeferredTransaction, interface::FlowTransaction},
+	transaction::{FlowTransaction, deferred::DeferredTransaction},
 };
 
 const CREATED_AT_CACHE_CAPACITY: usize = 16_384;

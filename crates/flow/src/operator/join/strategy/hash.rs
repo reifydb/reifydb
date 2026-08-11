@@ -28,7 +28,7 @@ use tracing::{Span, instrument};
 
 use crate::{
 	operator::join::{Identity, operator::JoinOperator, row::JoinStateRow, state::JoinSide, store::Store},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 };
 
 #[cfg(test)]

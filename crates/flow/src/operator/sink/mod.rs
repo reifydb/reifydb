@@ -35,7 +35,7 @@ use reifydb_value::{
 	value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, row_number::RowNumber},
 };
 
-use crate::{error::FlowSinkError, transaction::interface::FlowTransaction};
+use crate::{error::FlowSinkError, transaction::FlowTransaction};
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);

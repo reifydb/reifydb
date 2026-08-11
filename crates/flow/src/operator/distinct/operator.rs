@@ -44,7 +44,7 @@ use crate::{
 		drops::SealedDrops,
 		stateful::{raw::RawStatefulOperator, utils},
 	},
-	transaction::{interface::FlowTransaction, slot::PersistFn},
+	transaction::{FlowTransaction, slot::PersistFn},
 };
 
 const LAYOUT_KEY_PREFIX: u8 = 0x02;

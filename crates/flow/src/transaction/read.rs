@@ -416,7 +416,7 @@ pub mod tests {
 	use super::*;
 	use crate::{
 		test_util::create_test_transaction,
-		transaction::{deferred::DeferredTransaction, interface::FlowTransaction},
+		transaction::{FlowTransaction, deferred::DeferredTransaction},
 	};
 
 	fn make_key(s: &str) -> EncodedKey {

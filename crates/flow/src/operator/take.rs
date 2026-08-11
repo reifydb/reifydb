@@ -34,7 +34,7 @@ use crate::{
 		Operator, OperatorCell,
 		stateful::{raw::RawStatefulOperator, utils},
 	},
-	transaction::{interface::FlowTransaction, slot::PersistFn},
+	transaction::{FlowTransaction, slot::PersistFn},
 };
 
 #[operator_state]

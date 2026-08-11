@@ -9,7 +9,7 @@ use tracing::instrument;
 use super::hash::{build_shape, columns_from_block, encode_row};
 use crate::{
 	operator::join::store::{Store, body_bytes},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 };
 
 #[instrument(name = "flow::operator::join::latest::overwrite_right_slot", level = "trace", skip_all, fields(rows = indices.len()))]

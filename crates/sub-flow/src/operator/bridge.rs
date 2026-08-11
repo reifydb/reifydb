@@ -22,7 +22,7 @@ use reifydb_core::{
 use reifydb_flow::{
 	operator::Operator,
 	timer::Timer,
-	transaction::{interface::FlowTransaction, slot::PersistFn},
+	transaction::{FlowTransaction, slot::PersistFn},
 };
 use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
@@ -386,7 +386,7 @@ mod tests {
 	use reifydb_core::{common::CommitVersion, interface::change::Change, key::operator_state::GroupId};
 	use reifydb_flow::{
 		operator::Operator,
-		transaction::{ChangeCoordinate, deferred::DeferredTransaction, interface::FlowTransaction},
+		transaction::{ChangeCoordinate, FlowTransaction, deferred::DeferredTransaction},
 	};
 	use reifydb_test_harness::{engine::TestEngine, operator::transaction::FlowTxn};
 	use reifydb_value::{

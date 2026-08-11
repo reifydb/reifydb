@@ -26,7 +26,7 @@ use super::{
 };
 use crate::{
 	operator::{stateful::utils, store::OperatorStateStore},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 	window::{
 		engine::{
 			AccumulatorEvent, EmitKind, ExpiryAnchor,

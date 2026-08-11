@@ -16,7 +16,7 @@ use crate::{
 		snapshot::{SnapshotJoinContext, publish_slot, retire_slot, withdraw_slot},
 		state::JoinSide,
 	},
-	transaction::interface::FlowTransaction,
+	transaction::FlowTransaction,
 };
 
 pub(crate) struct LatestLeftHashJoin;

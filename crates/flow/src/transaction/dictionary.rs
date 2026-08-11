@@ -20,7 +20,7 @@ mod tests {
 	use reifydb_value::value::{Value, dictionary::DictionaryId, identity::IdentityId, value_type::ValueType};
 
 	use crate::transaction::{
-		DeferredParams, deferred::DeferredTransaction, interface::FlowTransaction, substrate::FlowSubstrate,
+		DeferredParams, FlowTransaction, deferred::DeferredTransaction, substrate::FlowSubstrate,
 	};
 
 	fn mints() -> Dictionary {

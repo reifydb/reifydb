@@ -18,7 +18,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::{timer::Timer, transaction::interface::FlowTransaction};
+use crate::{timer::Timer, transaction::FlowTransaction};
 
 pub struct OperatorStateStore<'a, T: FlowTransaction> {
 	txn: &'a mut T,

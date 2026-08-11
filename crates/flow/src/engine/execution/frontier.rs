@@ -11,8 +11,7 @@ use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::{Result, value::datetime::DateTime};
 
 use crate::{
-	engine::FlowEngineInner, operator::OperatorCell, transaction::interface::FlowTransaction,
-	window::engine::seal_horizon,
+	engine::FlowEngineInner, operator::OperatorCell, transaction::FlowTransaction, window::engine::seal_horizon,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -21,8 +21,8 @@ use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 use crate::{
 	timer::Timer,
 	transaction::{
+		FlowTransaction,
 		group::{decode_payload, encode_payload},
-		interface::FlowTransaction,
 	},
 };
 

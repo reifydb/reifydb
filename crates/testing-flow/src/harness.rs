@@ -23,9 +23,8 @@ use reifydb_flow::{
 	operator::{Operator, OperatorCell, apply::ApplyOperator, scan::series::SourceSeriesOperator},
 	timer::Timer,
 	transaction::{
-		ChangeCoordinate, DeferredParams,
+		ChangeCoordinate, DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
-		interface::FlowTransaction,
 		substrate::{FlowSubstrate, apply_operator_state},
 	},
 };

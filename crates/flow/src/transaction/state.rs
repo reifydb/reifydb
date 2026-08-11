@@ -41,8 +41,8 @@ pub mod tests {
 	use crate::{
 		test_util::create_test_transaction,
 		transaction::{
-			DeferredParams, deferred::DeferredTransaction, ephemeral::EphemeralTransaction,
-			interface::FlowTransaction, substrate::FlowSubstrate,
+			DeferredParams, FlowTransaction, deferred::DeferredTransaction,
+			ephemeral::EphemeralTransaction, substrate::FlowSubstrate,
 		},
 	};
 
