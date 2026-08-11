@@ -8,6 +8,11 @@
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+pub mod store;
+
+#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
+#[path = "store_memory.rs"]
 pub mod store;
 
 pub struct OperatorStoreVersion;
