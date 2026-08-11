@@ -191,7 +191,6 @@ impl Bridge {
 		let flow_config = FlowConfig {
 			operators_dir: None,
 			custom_operators: Default::default(),
-			connector_registry: Default::default(),
 		};
 		eprintln!("[WASI] Creating FlowSubsystem...");
 		FlowSubsystem::publish_operator_catalog(&flow_config, &engine);

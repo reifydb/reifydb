@@ -9,16 +9,9 @@ use reifydb_core::{event::operator::OperatorColumn, interface::catalog::flow::Op
 use reifydb_flow::operator::BoxedOperator;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::OperatorLogic;
-use reifydb_sdk::flow::{
-	connector::{
-		sink::{InProcessSink, InProcessSinkMetadata},
-		source::{InProcessSource, InProcessSourceMetadata},
-	},
-	operator::{OperatorMetadata, column::operator::OperatorColumn as SdkOperatorColumn},
-};
+use reifydb_sdk::flow::operator::{OperatorMetadata, column::operator::OperatorColumn as SdkOperatorColumn};
 use reifydb_value::{Result, config::Config};
 
-use crate::connector::ConnectorRegistry;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use crate::operator::bridge::{BridgeOperator, BridgeOperatorAdapter};
 
@@ -70,7 +63,6 @@ fn describe_columns(columns: &[SdkOperatorColumn]) -> Vec<OperatorColumn> {
 pub struct FlowConfigurator {
 	operators_dir: Option<PathBuf>,
 	custom_operators: HashMap<String, CustomOperatorEntry>,
-	connector_registry: ConnectorRegistry,
 }
 
 impl Default for FlowConfigurator {
@@ -84,7 +76,6 @@ impl FlowConfigurator {
 		Self {
 			operators_dir: None,
 			custom_operators: HashMap::new(),
-			connector_registry: ConnectorRegistry::new(),
 		}
 	}
 
@@ -122,21 +113,10 @@ impl FlowConfigurator {
 		self
 	}
 
-	pub fn register_source<S: InProcessSource + InProcessSourceMetadata>(mut self) -> Self {
-		self.connector_registry.register_source::<S>();
-		self
-	}
-
-	pub fn register_sink<S: InProcessSink + InProcessSinkMetadata>(mut self) -> Self {
-		self.connector_registry.register_sink::<S>();
-		self
-	}
-
 	pub(crate) fn configure(self) -> FlowConfig {
 		FlowConfig {
 			operators_dir: self.operators_dir,
 			custom_operators: CustomOperators::new(self.custom_operators),
-			connector_registry: self.connector_registry,
 		}
 	}
 }
@@ -145,6 +125,4 @@ pub struct FlowConfig {
 	pub operators_dir: Option<PathBuf>,
 
 	pub custom_operators: CustomOperators,
-
-	pub connector_registry: ConnectorRegistry,
 }

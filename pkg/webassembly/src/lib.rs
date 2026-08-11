@@ -298,7 +298,6 @@ impl WasmDB {
 		let flow_config = FlowConfig {
 			operators_dir: None,
 			custom_operators: Default::default(),
-			connector_registry: Default::default(),
 		};
 		console_log("[WASM] Creating FlowSubsystem...");
 		FlowSubsystem::publish_operator_catalog(&flow_config, &inner);
