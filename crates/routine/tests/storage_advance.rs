@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb_catalog::bootstrap::bootstrap_system_objects;
 use reifydb_core::{event::EventBus, value::column::columns::Columns};
-use reifydb_routine::procedure::source::complete_through::CompleteThroughProcedure;
+use reifydb_routine::procedure::storage::advance::StorageAdvanceProcedure;
 use reifydb_routine_abi::{Routine, context::ProcedureContext, error::RoutineError};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
@@ -58,11 +58,11 @@ fn at(instant: &str) -> String {
 }
 
 fn assert_through(t: &TestEngine, objects: &str, instant: &str) -> Vec<Frame> {
-	t.command(&format!("call system::source::complete_through({objects}, cast('{instant}Z', datetime))"))
+	t.command(&format!("call storage::advance({objects}, cast('{instant}Z', datetime))"))
 }
 
 fn assert_through_err(t: &TestEngine, objects: &str, instant: &str) -> String {
-	t.command_err(&format!("call system::source::complete_through({objects}, cast('{instant}Z', datetime))"))
+	t.command_err(&format!("call storage::advance({objects}, cast('{instant}Z', datetime))"))
 }
 
 fn run_directly(t: &TestEngine, identity: IdentityId, args: Vec<Value>) -> Result<Columns, RoutineError> {
@@ -72,7 +72,7 @@ fn run_directly(t: &TestEngine, identity: IdentityId, args: Vec<Value>) -> Resul
 	let mut txn = t.inner().begin_command(identity).expect("command transaction");
 	let mut tx = Transaction::Command(&mut txn);
 	let mut ctx = ProcedureContext {
-		fragment: Fragment::internal("system::source::complete_through"),
+		fragment: Fragment::internal("storage::advance"),
 		identity,
 		row_count: 1,
 		runtime_context: &services.runtime_context,
@@ -81,7 +81,7 @@ fn run_directly(t: &TestEngine, identity: IdentityId, args: Vec<Value>) -> Resul
 		catalog: &catalog,
 		ioc: &services.ioc,
 	};
-	CompleteThroughProcedure::new().execute(&mut ctx, &Columns::empty())
+	StorageAdvanceProcedure::new().execute(&mut ctx, &Columns::empty())
 }
 
 #[test]
@@ -239,7 +239,7 @@ fn the_ingestor_statement_shape_asserts_every_table_it_lists() {
 
 	let result = t.inner().command_as(
 		IdentityId::system(),
-		"call system::source::complete_through([solana::pump-trade, solana::raydium-swap], $complete_through)",
+		"call storage::advance([solana::pump-trade, solana::raydium-swap], $complete_through)",
 		Params::Named(Arc::new(map)),
 	);
 

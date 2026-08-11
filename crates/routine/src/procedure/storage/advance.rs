@@ -19,27 +19,27 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, frame::frame::Frame, value_type::ValueType},
 };
 
-static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("system::source::complete_through"));
+static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("storage::advance"));
 
-const NAME: &str = "system::source::complete_through";
+const NAME: &str = "storage::advance";
 
 const COMPLETENESS: &str = "system::source::completeness";
 
-pub struct CompleteThroughProcedure;
+pub struct StorageAdvanceProcedure;
 
-impl Default for CompleteThroughProcedure {
+impl Default for StorageAdvanceProcedure {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl CompleteThroughProcedure {
+impl StorageAdvanceProcedure {
 	pub fn new() -> Self {
 		Self
 	}
 }
 
-impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for CompleteThroughProcedure {
+impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for StorageAdvanceProcedure {
 	fn info(&self) -> &RoutineInfo {
 		&INFO
 	}

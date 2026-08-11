@@ -202,12 +202,12 @@ pub fn bootstrap_system_procedures(
 			namespace: ensure_namespace(
 				&catalog_api,
 				&mut admin,
-				NamespaceId::SYSTEM_SOURCE,
-				"system::source",
-				"source",
-				NamespaceId::SYSTEM,
+				NamespaceId::STORAGE,
+				"storage",
+				"storage",
+				NamespaceId::ROOT,
 			)?,
-			name: "complete_through".to_string(),
+			name: "advance".to_string(),
 			params: vec![
 				ProcedureParam {
 					name: "objects".to_string(),
@@ -219,7 +219,7 @@ pub fn bootstrap_system_procedures(
 				},
 			],
 			return_type: None,
-			handler_name: "system::source::complete_through".to_string(),
+			handler_name: "storage::advance".to_string(),
 		},
 		EphemeralProcedureDescriptor::InProcess {
 			namespace: rql_namespace,

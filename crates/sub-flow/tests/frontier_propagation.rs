@@ -82,7 +82,7 @@ fn a_complete_silent_table_lifts_the_window_reading_it_directly() {
 		db.query("FROM dir::w")
 	);
 
-	db.admin("call system::source::complete_through(dir::quiet, cast('2026-01-01T00:00:10Z', datetime))");
+	db.admin("call storage::advance(dir::quiet, cast('2026-01-01T00:00:10Z', datetime))");
 	db.command(r#"INSERT dir::busy [{ id: 4, g: 1, v: 1000, ts: "2026-01-01T00:00:00.500Z" }]"#);
 	db.await_all_flows(TIMEOUT);
 
@@ -120,7 +120,7 @@ fn a_silent_view_source_lifts_its_reader_across_the_hop() {
 
 	// The silent table emits no row when it goes complete, so only a frontier can carry that through
 	// sil::mid_quiet.
-	db.admin("call system::source::complete_through(sil::quiet, cast('2026-01-01T00:00:10Z', datetime))");
+	db.admin("call storage::advance(sil::quiet, cast('2026-01-01T00:00:10Z', datetime))");
 	// One view hop between the silent table and the window, so one round before the late row.
 	settle_round(&db, "sil::busy", 5, 2);
 	db.command(r#"INSERT sil::busy [{ id: 4, g: 1, v: 1000, ts: "2026-01-01T00:00:00.500Z" }]"#);
@@ -175,7 +175,7 @@ fn a_frontier_converges_down_a_two_hop_chain() {
 		db.query("FROM deep::w")
 	);
 
-	db.admin("call system::source::complete_through(deep::quiet, cast('2026-01-01T00:00:10Z', datetime))");
+	db.admin("call storage::advance(deep::quiet, cast('2026-01-01T00:00:10Z', datetime))");
 	// Two view hops between the silent table and the window, so two rounds before the late row.
 	settle_round(&db, "deep::busy", 5, 2);
 	settle_round(&db, "deep::busy", 6, 3);
