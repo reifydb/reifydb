@@ -39,7 +39,6 @@ pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Columns 
 	let mut input_rows = ColumnBuffer::uint8_with_capacity(capacity);
 	let mut output_rows = ColumnBuffer::uint8_with_capacity(capacity);
 	let mut lock_wait = ColumnBuffer::duration_with_capacity(capacity);
-	let mut store_reads = ColumnBuffer::uint8_with_capacity(capacity);
 
 	for record in records.iter() {
 		ts.push(now);
@@ -64,7 +63,6 @@ pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Columns 
 		lock_wait
 			.push(Duration::from_microseconds(extras[2].min(9_000_000_000_000_000) as i64)
 				.unwrap_or_default());
-		store_reads.push(extras[3]);
 	}
 
 	Columns::new(vec![
@@ -86,6 +84,5 @@ pub fn spans_columns(records: &mut [AggregateRecord], now: DateTime) -> Columns 
 		ColumnWithName::new(Fragment::internal("input_rows"), input_rows),
 		ColumnWithName::new(Fragment::internal("output_rows"), output_rows),
 		ColumnWithName::new(Fragment::internal("lock_wait"), lock_wait),
-		ColumnWithName::new(Fragment::internal("store_reads"), store_reads),
 	])
 }

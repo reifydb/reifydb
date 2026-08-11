@@ -142,8 +142,8 @@ mod tests {
 
 	#[test]
 	fn apply_fields_land_in_the_slots_its_spec_declares() {
-		// Slot order is what the formatter prints as lock=/io=/gets=, so a field landing in the
-		// wrong slot silently relabels the counters rather than failing.
+		// Slot order is what the formatter prints as lock=/io=, so a field in the wrong slot silently relabels
+		// counters instead of failing.
 		let captured = capture(|| {
 			let _span = debug_span!(
 				"flow::engine::apply",
@@ -153,12 +153,11 @@ mod tests {
 				output_rows = 7u64,
 				apply_time_us = 250u64,
 				lock_wait_us = 5u64,
-				store_reads = 3u64,
 			);
 		});
 		assert_eq!(captured.dims()[0], "map");
 		assert_eq!(captured.dims()[1], "op79", "operator_id must label the second dimension");
-		assert_eq!(captured.extras(), &[10, 7, 5, 3]);
+		assert_eq!(captured.extras(), &[10, 7, 5, 0]);
 		assert_eq!(captured.duration_override(), Some(250));
 	}
 

@@ -34,8 +34,7 @@ impl FlowEngineInner {
 		output_rows = field::Empty,
 		lock_wait_us = field::Empty,
 		apply_time_us = field::Empty,
-		coalesce_time_us = field::Empty,
-		store_reads = field::Empty
+		coalesce_time_us = field::Empty
 	))]
 	fn apply(&self, txn: &mut DepFlowTransaction, operator: &FlowNode, change: Change) -> Result<Change> {
 		let lock_start = self.runtime_context.clock.instant();
@@ -44,11 +43,9 @@ impl FlowEngineInner {
 
 		Span::current().record("input_rows", change.row_count());
 
-		let reads_before = txn.store_reads();
 		let apply_start = self.runtime_context.clock.instant();
 		let result = operator.apply(txn, change)?;
 		Span::current().record("apply_time_us", apply_start.elapsed().as_micros() as u64);
-		Span::current().record("store_reads", txn.store_reads() - reads_before);
 		Span::current().record("output_diffs_raw", result.diffs.len());
 
 		let coalesce_start = self.runtime_context.clock.instant();

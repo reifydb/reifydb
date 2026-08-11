@@ -230,7 +230,6 @@ impl DepFlowTransaction {
 				}
 			}
 			Self::Deferred(d) => {
-				d.store_reads += to_batch.len() as u64;
 				let version = d.version;
 				for encoded_key in to_batch {
 					let (operator, inner_key) = operator_state_coordinates(encoded_key)
@@ -647,79 +646,6 @@ pub mod tests {
 	}
 
 	#[test]
-	fn store_reads_counts_store_reaching_reads_only() {
-		// store_reads drives per-operator attribution of store traffic, so it must count exactly
-		// the reads that leave the transaction and never the ones the pending overlay serves, or
-		// the profiler misattributes the read amplification it exists to measure.
-		let engine = TestEngine::new();
-		let operator_id = OperatorId(1);
-		let committed_key = make_key("committed");
-		seed_state_row(&engine, operator_id, &committed_key, make_value("v"));
-
-		let mut txn = deferred_shared(&engine);
-		assert_eq!(txn.store_reads(), 0);
-
-		// A write is a pure overlay operation: neither it nor its overlay-served read-back counts.
-		let pending_key = make_key("pending");
-		txn.state_set(operator_id, &pending_key, make_value("p")).unwrap();
-		assert_eq!(txn.state_get(operator_id, &pending_key).unwrap(), Some(make_value("p")));
-		assert_eq!(txn.store_reads(), 0, "overlay-served reads must not count as store reads");
-
-		// A committed row and a miss both reach the store: one point get each.
-		assert!(txn.state_get(operator_id, &committed_key).unwrap().is_some());
-		assert_eq!(txn.store_reads(), 1);
-		assert!(txn.state_get(operator_id, &make_key("absent")).unwrap().is_none());
-		assert_eq!(txn.store_reads(), 2, "a store-reaching miss is still a store read");
-
-		// Batched reads count per external key, not per call.
-		let batch = txn.state_get_many(operator_id, &[make_key("absent_a"), make_key("absent_b")]).unwrap();
-		assert!(batch.items.is_empty());
-		assert_eq!(txn.store_reads(), 4);
-
-		// State writes carry their own time, so no write ever reads the prior row back.
-		let wide_key = make_key("wide");
-		txn.state_set(operator_id, &wide_key, EncodedOperatorRow::timeless(&[0u8; 32])).unwrap();
-		assert_eq!(txn.store_reads(), 4, "a state write must never reach the store");
-	}
-
-	#[test]
-	fn state_reads_are_cached_within_a_transaction() {
-		// The snapshot is immutable within a txn, so a second read of the same key (hit or miss,
-		// point or batch) must come from the read-through cache. Without it every operator re-pays
-		// a store roundtrip for state it already loaded in the same slice.
-		let engine = TestEngine::new();
-		let operator_id = OperatorId(1);
-		let committed_key = make_key("committed");
-		seed_state_row(&engine, operator_id, &committed_key, make_value("v"));
-
-		let mut txn = deferred_shared(&engine);
-
-		assert_eq!(txn.state_get(operator_id, &committed_key).unwrap(), Some(make_value("v")));
-		assert_eq!(txn.store_reads(), 1);
-		assert_eq!(txn.state_get(operator_id, &committed_key).unwrap(), Some(make_value("v")));
-		assert_eq!(txn.store_reads(), 1, "a repeated state read must be served from the cache");
-
-		assert_eq!(txn.state_get(operator_id, &make_key("absent")).unwrap(), None);
-		assert_eq!(txn.store_reads(), 2);
-		assert_eq!(txn.state_get(operator_id, &make_key("absent")).unwrap(), None);
-		assert_eq!(txn.store_reads(), 2, "a miss must be cached too, or absent-key probes re-scan forever");
-
-		// The batch path shares the cache in both directions: prior point reads are not
-		// re-fetched, and batch-fetched keys serve later point reads.
-		let batch = txn
-			.state_get_many(
-				operator_id,
-				&[committed_key.clone(), make_key("absent"), make_key("batch_only")],
-			)
-			.unwrap();
-		assert_eq!(batch.items.len(), 1);
-		assert_eq!(batch.items[0].bytes, make_value("v").into_bytes());
-		assert_eq!(txn.store_reads(), 3, "only the never-read key may reach the store");
-		assert_eq!(txn.state_get(operator_id, &make_key("batch_only")).unwrap(), None);
-		assert_eq!(txn.store_reads(), 3);
-	}
-
-	#[test]
 	fn cached_state_reads_never_mask_writes_or_removes() {
 		// The cache sits below the pending overlays, so a write or remove issued after a cached read
 		// wins on every later read. Consulting the cache first would let an operator read back its
@@ -758,9 +684,7 @@ pub mod tests {
 		let mut txn = deferred_shared(&engine);
 
 		assert!(txn.state_get(operator_id, &key).unwrap().is_some());
-		assert_eq!(txn.store_reads(), 1);
 		txn.state_set(operator_id, &key, stamped_row(b"v1", 5_000)).unwrap();
-		assert_eq!(txn.store_reads(), 1, "a save must not read the prior row back");
 
 		let stored = txn.state_get(operator_id, &key).unwrap().unwrap();
 		assert_eq!(

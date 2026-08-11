@@ -93,28 +93,6 @@ mod tests {
 	}
 
 	#[test]
-	fn a_verified_partition_never_rereads_the_store() {
-		// The same partition arrives on every apply for a partitioned ring buffer, so only the
-		// first resolution may touch the store and every repeat must come from memory.
-		let mut txn = txn();
-		let mut verified: HashMap<Partition, Vec<Value>> = HashMap::new();
-		let object = ObjectId::table(TableId(1));
-		let values = vec![Value::Utf8("sol".to_string())];
-		let partition = Partition::of(&values);
-
-		resolve_partition_flow(&mut txn, object, partition, &values, &mut verified).unwrap();
-		let reads_after_first = txn.store_reads();
-		assert!(reads_after_first > 0, "the first resolution must verify against the store");
-
-		resolve_partition_flow(&mut txn, object, partition, &values, &mut verified).unwrap();
-		assert_eq!(
-			txn.store_reads(),
-			reads_after_first,
-			"a partition verified within this operator's lifetime must resolve from memory"
-		);
-	}
-
-	#[test]
 	fn a_verified_partition_still_detects_hash_collisions() {
 		// Caching across applies must not drop the collision guard: different values under an
 		// already-verified partition hash are corruption and must fail loudly. A real 128-bit

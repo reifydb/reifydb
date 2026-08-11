@@ -404,7 +404,6 @@ impl MetricsDomain {
 					counter("input_rows", ValueType::Uint8),
 					counter("output_rows", ValueType::Uint8),
 					counter("lock_wait", ValueType::Duration),
-					counter("store_reads", ValueType::Uint8),
 				],
 				has_total: true,
 			},

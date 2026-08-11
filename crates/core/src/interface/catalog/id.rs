@@ -76,7 +76,6 @@ impl ColumnId {
 	pub const PROFILER_SPANS_SNAPSHOTS_INPUT_ROWS: ColumnId = ColumnId(1063);
 	pub const PROFILER_SPANS_SNAPSHOTS_OUTPUT_ROWS: ColumnId = ColumnId(1064);
 	pub const PROFILER_SPANS_SNAPSHOTS_LOCK_WAIT: ColumnId = ColumnId(1065);
-	pub const PROFILER_SPANS_SNAPSHOTS_STORE_READS: ColumnId = ColumnId(1066);
 	pub const READ_BUFFER_SNAPSHOTS_TS: ColumnId = ColumnId(1067);
 	pub const READ_BUFFER_SNAPSHOTS_SHARD: ColumnId = ColumnId(1068);
 	pub const READ_BUFFER_SNAPSHOTS_USED: ColumnId = ColumnId(1069);
@@ -181,7 +180,7 @@ impl ColumnId {
 		Self::INSTRUMENTS_SNAPSHOTS_KIND,
 	];
 
-	pub const PROFILER_SPANS_SNAPSHOTS_COLUMNS: [ColumnId; 19] = [
+	pub const PROFILER_SPANS_SNAPSHOTS_COLUMNS: [ColumnId; 18] = [
 		Self::PROFILER_SPANS_SNAPSHOTS_TS,
 		Self::PROFILER_SPANS_SNAPSHOTS_CATEGORY,
 		Self::PROFILER_SPANS_SNAPSHOTS_SPAN_NAME,
@@ -200,7 +199,6 @@ impl ColumnId {
 		Self::PROFILER_SPANS_SNAPSHOTS_INPUT_ROWS,
 		Self::PROFILER_SPANS_SNAPSHOTS_OUTPUT_ROWS,
 		Self::PROFILER_SPANS_SNAPSHOTS_LOCK_WAIT,
-		Self::PROFILER_SPANS_SNAPSHOTS_STORE_READS,
 	];
 
 	pub const READ_BUFFER_SNAPSHOTS_COLUMNS: [ColumnId; 24] = [
@@ -2197,7 +2195,7 @@ mod reserved_id_tests {
 			}
 		}
 
-		assert_eq!(count, 4 * 6 + 19 + 24 + 7 + 12 + 14 + 8, "expected exactly 108 reserved system column ids");
+		assert_eq!(count, 4 * 6 + 18 + 24 + 7 + 12 + 14 + 8, "expected exactly 107 reserved system column ids");
 	}
 
 	#[test]
@@ -2208,7 +2206,7 @@ mod reserved_id_tests {
 		for array in &arrays[..4] {
 			assert_eq!(array.len(), 6, "long-format snapshot series must declare 6 column ids");
 		}
-		assert_eq!(arrays[4].len(), 19, "spans snapshot series must declare 19 column ids");
+		assert_eq!(arrays[4].len(), 18, "spans snapshot series must declare 18 column ids");
 		assert_eq!(arrays[5].len(), 24, "read_buffer snapshot series must declare 24 column ids");
 		assert_eq!(arrays[6].len(), 7, "epoch snapshot series must declare 7 column ids");
 		assert_eq!(arrays[7].len(), 12, "lifecycle snapshot series must declare 12 column ids");

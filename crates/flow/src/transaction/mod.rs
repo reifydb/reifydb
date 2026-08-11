@@ -133,8 +133,6 @@ pub struct FlowTransactionDeferred {
 
 	pub operator_states: HashMap<OperatorId, OperatorStateSlot>,
 
-	pub store_reads: u64,
-
 	pub change_coordinate: Option<ChangeCoordinate>,
 
 	pub flow_watermark: Option<DateTime>,
@@ -152,8 +150,6 @@ pub struct FlowTransactionEphemeral {
 	pub clock: Clock,
 
 	pub operator_states: HashMap<OperatorId, OperatorStateSlot>,
-
-	pub store_reads: u64,
 
 	pub change_coordinate: Option<ChangeCoordinate>,
 
@@ -193,7 +189,6 @@ impl DepFlowTransaction {
 			accumulator: ChangeAccumulator::new(),
 			clock,
 			operator_states: HashMap::new(),
-			store_reads: 0,
 			change_coordinate: None,
 			flow_watermark: None,
 			substrate: FlowSubstrate::new(),
@@ -215,7 +210,6 @@ impl DepFlowTransaction {
 			accumulator: ChangeAccumulator::new(),
 			clock: params.clock,
 			operator_states: HashMap::new(),
-			store_reads: 0,
 			change_coordinate: None,
 			flow_watermark: None,
 			substrate: params.substrate,
@@ -329,7 +323,6 @@ impl DepFlowTransaction {
 			accumulator: ChangeAccumulator::new(),
 			clock,
 			operator_states: HashMap::new(),
-			store_reads: 0,
 			change_coordinate: None,
 			flow_watermark: None,
 			substrate: FlowSubstrate::new(),
@@ -369,13 +362,6 @@ impl DepFlowTransaction {
 		match self {
 			Self::Deferred(d) => d.version,
 			Self::Ephemeral(e) => e.version,
-		}
-	}
-
-	pub fn store_reads(&self) -> u64 {
-		match self {
-			Self::Deferred(d) => d.store_reads,
-			Self::Ephemeral(e) => e.store_reads,
 		}
 	}
 

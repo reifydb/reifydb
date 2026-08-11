@@ -112,6 +112,5 @@ fn spans_snapshot_columns() -> Vec<SeriesColumnToCreate> {
 		series_col("input_rows", ValueType::Uint8),
 		series_col("output_rows", ValueType::Uint8),
 		series_col("lock_wait", ValueType::Duration),
-		series_col("store_reads", ValueType::Uint8),
 	]
 }

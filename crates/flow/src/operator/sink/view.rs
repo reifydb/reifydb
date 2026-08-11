@@ -582,7 +582,6 @@ mod tests {
 		assert_eq!(stored_view_bytes(&engine, &sink, 1).created_at(), DateTime::from_nanos(1_000));
 
 		let mut txn = engine.flow_txn().clock_millis(0).deferred();
-		let before = txn.store_reads();
 		sink.apply(
 			&mut txn,
 			Change::from_flow(
@@ -593,11 +592,6 @@ mod tests {
 			),
 		)
 		.unwrap();
-		assert_eq!(
-			txn.store_reads() - before,
-			0,
-			"an update on a warm operator must preserve created_at without any store read"
-		);
 		commit_flow_pending(&engine, &mut txn);
 		let stored = stored_view_bytes(&engine, &sink, 1);
 		assert_eq!(
@@ -609,7 +603,6 @@ mod tests {
 
 		let rebuilt = test_sink();
 		let mut txn = engine.flow_txn().clock_millis(0).deferred();
-		let before = txn.store_reads();
 		rebuilt.apply(
 			&mut txn,
 			Change::from_flow(
@@ -620,10 +613,6 @@ mod tests {
 			),
 		)
 		.unwrap();
-		assert!(
-			txn.store_reads() - before >= 1,
-			"a rebuilt operator has a cold cache and must fall back to the store"
-		);
 		commit_flow_pending(&engine, &mut txn);
 		let stored = stored_view_bytes(&engine, &rebuilt, 1);
 		assert_eq!(

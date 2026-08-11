@@ -290,7 +290,7 @@ mod tests {
 	use std::sync::Arc;
 
 	use reifydb_runtime::{context::clock::Clock, sync::mutex::Mutex as StdMutex};
-	use tracing::{debug_span, field::Empty, subscriber::with_default, trace_span};
+	use tracing::{debug_span, subscriber::with_default, trace_span};
 	use tracing_subscriber::{Registry, layer::SubscriberExt};
 
 	use super::*;
@@ -480,41 +480,6 @@ mod tests {
 		let rec = recs[0];
 		assert_eq!(rec.extras[0], 431, "rows fetched from storage must reach extras[0]");
 		assert_eq!(rec.extras[1], 430, "of which tombstones must reach extras[1]");
-	}
-
-	#[test]
-	fn flow_apply_store_reads_recorded_late_lands_in_extras() {
-		// store_reads is a delta around apply, so it is recorded after the operator ran and
-		// arrives through on_record. Capturing only creation-time attributes would report
-		// gets=0 for every operator and lose per-node read attribution.
-		let sink: Arc<RecordingSink> = Arc::new(RecordingSink::default());
-		let (layer, _interner) = build_layer(sink.clone(), CategorySet::all());
-		let subscriber = Registry::default().with(layer);
-		with_default(subscriber, || {
-			let handle = ProfilerScope::start_with_sink("scope", sink.clone(), Clock::Real);
-			handle.run_sync(|| {
-				let span = trace_span!(
-					"flow::engine::apply",
-					node_id = "n1",
-					node_type = "window",
-					input_rows = 4u64,
-					output_rows = 2u64,
-					apply_time_us = 100u64,
-					lock_wait_us = 1u64,
-					store_reads = Empty,
-				);
-				let _g = span.enter();
-				span.record("store_reads", 37u64);
-			});
-			let _ = handle.finish();
-		});
-		let recs = sink.records.lock();
-		assert_eq!(recs.len(), 1);
-		let rec = recs[0];
-		assert_eq!(rec.category(), ProfilerCategory::Flow);
-		assert_eq!(rec.extras[0], 4);
-		assert_eq!(rec.extras[1], 2);
-		assert_eq!(rec.extras[3], 37, "a late-recorded store_reads must land in extras[3]");
 	}
 
 	#[test]

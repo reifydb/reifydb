@@ -76,7 +76,6 @@ impl DepFlowTransaction {
 					return Ok(Some(value.clone()));
 				}
 
-				d.store_reads += 1;
 				let route = Self::read_from(key);
 				if matches!(route, ReadFrom::OperatorState) {
 					let (operator, inner_key) = operator_state_coordinates(key)

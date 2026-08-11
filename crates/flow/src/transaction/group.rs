@@ -485,64 +485,6 @@ mod tests {
 	}
 
 	#[test]
-	fn minting_a_group_never_reads_the_record_it_is_about_to_write() {
-		// An Append mints one group per source row, so a read here is a store round trip per row.
-		// Measured at 1,550,000 load_record calls in 150s against zero reads from every other
-		// path in the same operator. The id comes straight from the counter, so the record cannot
-		// exist and the read can only ever return None.
-		let engine = TestEngine::new();
-		let interner = GroupInterner::default();
-		let mut txn = deferred(&engine);
-
-		// Warms the one-time hydrate and the counter read so neither is billed to the mints below.
-		intern_at(&interner, NODE, &mut txn, &group("warmup")).unwrap();
-		let before = txn.store_reads();
-
-		for i in 0..16 {
-			let (_, is_new) = intern_at(&interner, NODE, &mut txn, &group(&format!("fresh-{i}"))).unwrap();
-			assert!(is_new, "precondition: every key here must be newly minted");
-		}
-
-		assert_eq!(
-			txn.store_reads(),
-			before,
-			"minting groups must not reach the store; hydration left the dictionary complete and the \
-			 record cannot exist for an id the counter just handed out"
-		);
-	}
-
-	#[test]
-	fn re_interning_a_cached_group_never_reaches_the_store() {
-		// A Join probes one group per join key on every batch, so any read on this path is a store
-		// round trip per probe. Measured at 88,208 point reads per profile window before the path
-		// stopped reading; a cache hit must answer from the id alone and consult nothing.
-		let engine = TestEngine::new();
-		let interner = GroupInterner::default();
-		let key = group("hot");
-
-		// The record must be committed, not pending. A read served by the transaction's own
-		// overlay never reaches the store and so never counts, which makes a same-transaction
-		// version of this test pass even with the read restored.
-		let mut txn = deferred(&engine);
-		intern_at(&interner, NODE, &mut txn, &key).unwrap();
-		commit_pending(&engine, &mut txn);
-
-		let mut txn = deferred(&engine);
-		let before = txn.store_reads();
-
-		for _ in 1..=8u64 {
-			intern_at(&interner, NODE, &mut txn, &key).unwrap();
-		}
-
-		assert_eq!(
-			txn.store_reads(),
-			before,
-			"a cached group already resolves to its id; reading its record back is the round trip \
-			 this path exists to avoid"
-		);
-	}
-
-	#[test]
 	fn a_repeated_group_resolves_to_the_same_id() {
 		let engine = TestEngine::new();
 		let interner = GroupInterner::default();
