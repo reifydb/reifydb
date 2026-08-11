@@ -9,30 +9,30 @@ use reifydb_core::key::operator_state::GroupStateKey;
 use reifydb_value::Result;
 
 use super::{StateIterator, utils};
-use crate::{operator::Operator, transaction::FlowTransaction};
+use crate::{operator::Operator, transaction::DepFlowTransaction};
 
 pub trait RawStatefulOperator: Operator {
-	fn state_get(&self, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+	fn state_get(&self, txn: &mut DepFlowTransaction, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
 		utils::state_get(self.id(), txn, key)
 	}
 
-	fn state_set(&self, txn: &mut FlowTransaction, key: &GroupStateKey, row: EncodedOperatorRow) -> Result<()> {
+	fn state_set(&self, txn: &mut DepFlowTransaction, key: &GroupStateKey, row: EncodedOperatorRow) -> Result<()> {
 		utils::state_set(self.id(), txn, key, row)
 	}
 
-	fn state_remove(&self, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<()> {
+	fn state_remove(&self, txn: &mut DepFlowTransaction, key: &GroupStateKey) -> Result<()> {
 		utils::state_remove(self.id(), txn, key)
 	}
 
-	fn state_scan_all(&self, txn: &mut FlowTransaction) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
+	fn state_scan_all(&self, txn: &mut DepFlowTransaction) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 		utils::state_scan_all(self.id(), txn)
 	}
 
-	fn state_range<'a>(&self, txn: &'a mut FlowTransaction, range: EncodedKeyRange) -> StateIterator<'a> {
+	fn state_range<'a>(&self, txn: &'a mut DepFlowTransaction, range: EncodedKeyRange) -> StateIterator<'a> {
 		utils::state_range(self.id(), txn, range)
 	}
 
-	fn state_clear(&self, txn: &mut FlowTransaction) -> Result<()> {
+	fn state_clear(&self, txn: &mut DepFlowTransaction) -> Result<()> {
 		utils::state_clear(self.id(), txn)
 	}
 }

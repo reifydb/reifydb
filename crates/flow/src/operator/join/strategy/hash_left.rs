@@ -17,7 +17,7 @@ use crate::{
 		snapshot::{SnapshotJoinContext, publish_joined, resync_joined, retire_right, withdraw_joined},
 		state::JoinSide,
 	},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 
 pub(crate) struct LeftHashJoin;
@@ -25,7 +25,7 @@ pub(crate) struct LeftHashJoin;
 impl LeftHashJoin {
 	pub(crate) fn handle_insert_undefined(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		post: &Columns,
 		row_idx: usize,
 		ctx: &mut JoinContext,
@@ -40,7 +40,7 @@ impl LeftHashJoin {
 
 	pub(crate) fn handle_remove_undefined(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		pre: &Columns,
 		row_idx: usize,
 		ctx: &mut JoinContext,
@@ -60,7 +60,7 @@ impl LeftHashJoin {
 
 	pub(crate) fn handle_update_both_undefined(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		pre: &Columns,
 		post: &Columns,
 		row_idx: usize,
@@ -83,7 +83,7 @@ impl LeftHashJoin {
 
 	pub(crate) fn handle_insert(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -101,7 +101,7 @@ impl LeftHashJoin {
 	#[inline]
 	fn handle_insert_left(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -134,7 +134,7 @@ impl LeftHashJoin {
 	#[inline]
 	fn handle_insert_right(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -176,7 +176,7 @@ impl LeftHashJoin {
 
 	pub(crate) fn handle_remove(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		pre: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -194,7 +194,7 @@ impl LeftHashJoin {
 	#[inline]
 	fn handle_remove_left(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		pre: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -246,7 +246,7 @@ impl LeftHashJoin {
 	#[inline]
 	fn handle_remove_right(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		pre: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -303,7 +303,7 @@ impl LeftHashJoin {
 
 	pub(crate) fn handle_update(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		pre: &Columns,
 		post: &Columns,
 		indices: &[usize],
@@ -334,7 +334,7 @@ impl LeftHashJoin {
 	#[inline]
 	fn update_in_place_left(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		pre: &Columns,
 		post: &Columns,
 		row_idx: usize,
@@ -382,7 +382,7 @@ impl LeftHashJoin {
 	#[inline]
 	fn update_in_place_right(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		pre: &Columns,
 		post: &Columns,
 		row_idx: usize,

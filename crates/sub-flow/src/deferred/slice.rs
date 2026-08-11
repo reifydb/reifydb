@@ -14,7 +14,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_flow::transaction::{DeferredParams, FlowTransaction};
+use reifydb_flow::transaction::{DeferredParams, DepFlowTransaction};
 use reifydb_transaction::change_accumulator::ChangeAccumulator;
 use reifydb_value::{
 	Result,
@@ -153,7 +153,7 @@ impl SliceComputer {
 		let mut query = base_query;
 		query.read_as_of_version_inclusive(state_version);
 
-		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version: state_version,
 			pending: Pending::new(),
 			base_pending: PendingLayers::empty(),
@@ -188,7 +188,7 @@ impl SliceComputer {
 		let mut query = base_query;
 		query.read_as_of_version_inclusive(state_version);
 
-		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version: state_version,
 			pending: Pending::new(),
 			base_pending,
@@ -213,7 +213,7 @@ impl SliceComputer {
 
 	fn consolidated_view_changes(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		state_version: CommitVersion,
 	) -> Result<Vec<Change>> {
 		let mut accumulator = ChangeAccumulator::new();
@@ -234,7 +234,7 @@ impl SliceComputer {
 		let query = self.engine.multi().begin_query_at_version(&lease)?;
 		let state_query = self.engine.multi().begin_query_at_version(&lease)?;
 
-		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version: state_version,
 			pending: Pending::new(),
 			base_pending: PendingLayers::empty(),
@@ -596,13 +596,13 @@ mod integration {
 		engine: &StandardEngine,
 		flow_engine: &FlowEngineInner,
 		version: CommitVersion,
-	) -> FlowTransaction {
+	) -> DepFlowTransaction {
 		let (_current, lease) = engine.acquire_current_snapshot_lease().unwrap();
 		let mut query = engine.multi().begin_query_at_version(&lease).unwrap();
 		let state_query = engine.multi().begin_query_at_version(&lease).unwrap();
 		query.read_as_of_version_inclusive(version);
 
-		FlowTransaction::deferred_from_parts(DeferredParams {
+		DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version,
 			pending: Pending::new(),
 			base_pending: PendingLayers::empty(),
@@ -1012,7 +1012,7 @@ mod integration {
 					overlay.promote(commit_version, pending);
 
 					let pinned_txn = |base_pending: PendingLayers| {
-						FlowTransaction::deferred_from_parts(DeferredParams {
+						DepFlowTransaction::deferred_from_parts(DeferredParams {
 							version: advance_to,
 							pending: Pending::new(),
 							base_pending,
@@ -1141,7 +1141,7 @@ mod integration {
 					let mut live_keys = Vec::new();
 					for (key, write) in pending.iter_sorted() {
 						committed_kinds.insert(Key::kind(key));
-						if FlowTransaction::read_from(key) == ReadFrom::Query {
+						if DepFlowTransaction::read_from(key) == ReadFrom::Query {
 							stale_reads.insert(Key::kind(key));
 						}
 						if matches!(write, PendingWrite::Set(_)) {
@@ -1152,18 +1152,19 @@ mod integration {
 
 					// The restart window asserted directly rather than by inference, and
 					// it reaches OperatorState as well as Row.
-					let mut empty_overlay = FlowTransaction::deferred_from_parts(DeferredParams {
-						version: advance_to,
-						pending: Pending::new(),
-						base_pending: PendingLayers::empty(),
-						query: engine.multi().begin_query().unwrap(),
-						state_query: engine.multi().begin_query().unwrap(),
-						single: engine.single().clone(),
-						catalog: engine.catalog(),
-						interceptors: engine.create_interceptors(),
-						clock: engine.clock().clone(),
-						substrate: flow_engine.substrate.clone(),
-					});
+					let mut empty_overlay =
+						DepFlowTransaction::deferred_from_parts(DeferredParams {
+							version: advance_to,
+							pending: Pending::new(),
+							base_pending: PendingLayers::empty(),
+							query: engine.multi().begin_query().unwrap(),
+							state_query: engine.multi().begin_query().unwrap(),
+							single: engine.single().clone(),
+							catalog: engine.catalog(),
+							interceptors: engine.create_interceptors(),
+							clock: engine.clock().clone(),
+							substrate: flow_engine.substrate.clone(),
+						});
 					for key in &live_keys {
 						assert!(
 							empty_overlay.get(key).unwrap().is_some(),

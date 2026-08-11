@@ -23,7 +23,7 @@ use tracing::instrument;
 use crate::{
 	error::FlowGraphError,
 	operator::{Operator, OperatorCell, drops::SealedDrops},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
@@ -118,7 +118,7 @@ impl Operator for AppendOperator {
 		None
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		let parent_origin = change.origin.clone();
 		let mut result_diffs = Vec::with_capacity(change.diffs.len());
 
@@ -172,7 +172,7 @@ impl AppendOperator {
 	#[instrument(name = "flow::operator::append::create_row_numbers", level = "trace", skip_all, fields(groups = groups.len()))]
 	fn translate_create_row_numbers(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		groups: &[EncodedKey],
 	) -> Result<Vec<RowNumber>> {
 		let interned = txn.intern_groups(self.operator, groups)?;
@@ -189,7 +189,7 @@ impl AppendOperator {
 	#[instrument(name = "flow::operator::append::lookup_row_numbers", level = "trace", skip_all, fields(groups = groups.len()))]
 	fn lookup_row_numbers(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		groups: &[EncodedKey],
 	) -> Result<Option<(Vec<RowNumber>, Vec<GroupId>)>> {
 		let mut output_row_numbers = Vec::with_capacity(groups.len());
@@ -211,7 +211,7 @@ impl AppendOperator {
 	#[instrument(name = "flow::operator::append::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn translate_append_insert(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		parent_index: usize,
 		post: Columns,
 	) -> Result<Option<Diff>> {
@@ -228,7 +228,7 @@ impl AppendOperator {
 	#[instrument(name = "flow::operator::append::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn translate_append_update(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		parent_index: usize,
 		pre: Columns,
 		post: Columns,
@@ -251,7 +251,7 @@ impl AppendOperator {
 	#[instrument(name = "flow::operator::append::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
 	fn translate_append_remove(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		parent_index: usize,
 		pre: Columns,
 	) -> Result<Option<Diff>> {
@@ -287,7 +287,7 @@ mod tests {
 		AppendOperator::new_for_state_tests(OperatorId(operator))
 	}
 
-	fn txn_at(engine: &TestEngine, _operator: OperatorId, coordinate: u64) -> FlowTransaction {
+	fn txn_at(engine: &TestEngine, _operator: OperatorId, coordinate: u64) -> DepFlowTransaction {
 		let mut txn = engine.flow_txn().at(CommitVersion(coordinate)).deferred();
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(DateTime::from_nanos(coordinate)),
@@ -300,11 +300,11 @@ mod tests {
 		Columns::empty().with_row_numbers(source_rows.iter().map(|r| RowNumber(*r)).collect())
 	}
 
-	fn group_of(txn: &mut FlowTransaction, op: &AppendOperator, parent: u8, source_row: u64) -> Option<GroupId> {
+	fn group_of(txn: &mut DepFlowTransaction, op: &AppendOperator, parent: u8, source_row: u64) -> Option<GroupId> {
 		txn.lookup_group(op.operator, &AppendOperator::group_bytes(parent, RowNumber(source_row))).unwrap()
 	}
 
-	fn group_rows(txn: &mut FlowTransaction, op: &AppendOperator, group: GroupId) -> usize {
+	fn group_rows(txn: &mut DepFlowTransaction, op: &AppendOperator, group: GroupId) -> usize {
 		txn.state_range(op.operator, group_inner_range(group), None, "test").unwrap().items.len()
 	}
 

@@ -37,7 +37,7 @@ use tracing::instrument;
 use crate::{
 	context::FlowContext,
 	operator::{Operator, OperatorCell, stateful::raw::RawStatefulOperator, store::OperatorStateStore},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 
 #[operator_state]
@@ -219,8 +219,8 @@ impl GateOperator {
 
 	fn with_state<R>(
 		&self,
-		txn: &mut FlowTransaction,
-		f: impl FnOnce(&mut FlowTransaction) -> Result<R>,
+		txn: &mut DepFlowTransaction,
+		f: impl FnOnce(&mut DepFlowTransaction) -> Result<R>,
 	) -> Result<R> {
 		self.state_slot().hydrate_once(&mut OperatorStateStore::new(txn, self.operator))?;
 		let out = f(txn)?;
@@ -228,15 +228,15 @@ impl GateOperator {
 		Ok(out)
 	}
 
-	fn is_visible(&self, txn: &mut FlowTransaction, rn: RowNumber) -> Result<bool> {
+	fn is_visible(&self, txn: &mut DepFlowTransaction, rn: RowNumber) -> Result<bool> {
 		self.state_slot().is_visible(&mut OperatorStateStore::new(txn, self.operator), rn)
 	}
 
-	fn mark_visible(&self, txn: &mut FlowTransaction, rn: RowNumber) -> Result<()> {
+	fn mark_visible(&self, txn: &mut DepFlowTransaction, rn: RowNumber) -> Result<()> {
 		self.state_slot().mark_visible(&mut OperatorStateStore::new(txn, self.operator), rn)
 	}
 
-	fn mark_invisible(&self, txn: &mut FlowTransaction, rn: RowNumber) -> Result<()> {
+	fn mark_invisible(&self, txn: &mut DepFlowTransaction, rn: RowNumber) -> Result<()> {
 		self.state_slot().mark_invisible(&mut OperatorStateStore::new(txn, self.operator), rn)
 	}
 }
@@ -256,7 +256,7 @@ impl Operator for GateOperator {
 		self.state_slot().sample()
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		self.with_state(txn, |txn| {
 			let mut result = Vec::new();
 
@@ -290,7 +290,12 @@ impl Operator for GateOperator {
 impl GateOperator {
 	#[inline]
 	#[instrument(name = "flow::operator::gate::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn apply_gate_insert(&self, txn: &mut FlowTransaction, post: &Columns, result: &mut Vec<Diff>) -> Result<()> {
+	fn apply_gate_insert(
+		&self,
+		txn: &mut DepFlowTransaction,
+		post: &Columns,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
 		if post.row_numbers().is_empty() {
 			let mask = self.evaluate(post)?;
 			let passing_indices: Vec<usize> =
@@ -320,7 +325,7 @@ impl GateOperator {
 	#[instrument(name = "flow::operator::gate::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_gate_update(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		pre: Columns,
 		post: Columns,
 		result: &mut Vec<Diff>,
@@ -361,7 +366,7 @@ impl GateOperator {
 
 	#[inline]
 	#[instrument(name = "flow::operator::gate::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
-	fn apply_gate_remove(&self, txn: &mut FlowTransaction, pre: Columns, result: &mut Vec<Diff>) -> Result<()> {
+	fn apply_gate_remove(&self, txn: &mut DepFlowTransaction, pre: Columns, result: &mut Vec<Diff>) -> Result<()> {
 		if pre.row_numbers().is_empty() {
 			result.push(Diff::Remove {
 				pre,

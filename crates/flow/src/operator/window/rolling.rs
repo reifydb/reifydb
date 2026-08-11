@@ -30,7 +30,7 @@ use crate::{
 		stateful::utils,
 		store::OperatorStateStore,
 	},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 	window::{
 		accumulator::WindowAccumulator,
 		coord::{OrdinalCoord, RowSpan},
@@ -167,7 +167,7 @@ type RollingEngineBuckets<C> = RollingBuckets<Hash128, C, (WindowSlotKey, Vec<Op
 #[instrument(name = "flow::operator::window::intern_partitions", level = "trace", skip_all, fields(partitions = touched.len()))]
 fn intern_partitions(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	touched: &[Hash128],
 ) -> Result<WindowGroups> {
 	let partitions: Vec<(Hash128, u64)> = touched.iter().map(|hash| (*hash, 0)).collect();
@@ -279,7 +279,7 @@ fn route_rolling_columns<C: RollingDomain>(
 }
 
 #[instrument(name = "flow::operator::window::rolling", level = "trace", skip_all)]
-pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 	if operator.is_count_based() {
 		apply_rolling::<OrdinalCoord>(operator, txn, change)
 	} else {
@@ -289,7 +289,7 @@ pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 
 fn apply_rolling<C: RollingDomain>(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	change: Change,
 ) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
@@ -423,7 +423,7 @@ fn apply_rolling<C: RollingDomain>(
 
 fn rolling_earliest_expiry<C: RollingDomain>(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	runnable: bool,
 	lag: C::Span,
 ) -> Result<Option<C>> {
@@ -433,7 +433,7 @@ fn rolling_earliest_expiry<C: RollingDomain>(
 
 fn rearm_rolling_seal<C: RollingDomain>(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	before: Option<C>,
 	runnable: bool,
 	lag: C::Span,
@@ -453,7 +453,7 @@ fn rearm_rolling_seal<C: RollingDomain>(
 
 fn finish_rolling_results(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	change: &Change,
 	results: &[RollingResult<Hash128, Vec<Value>>],
 	group_values: &HashMap<Hash128, Vec<Value>>,
@@ -511,7 +511,11 @@ fn finish_rolling_results(
 }
 
 #[tracing::instrument(name = "flow::window::seal_rolling", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
-pub fn seal_rolling_engine(operator: &WindowOperator, txn: &mut FlowTransaction, fired: FiredAt) -> Result<Vec<Diff>> {
+pub fn seal_rolling_engine(
+	operator: &WindowOperator,
+	txn: &mut DepFlowTransaction,
+	fired: FiredAt,
+) -> Result<Vec<Diff>> {
 	let Some(size) = operator.size_duration() else {
 		return Ok(Vec::new());
 	};

@@ -41,7 +41,7 @@ use reifydb_flow::{
 			view::SinkTableViewOperator,
 		},
 	},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_testing_chaos::{
@@ -171,7 +171,7 @@ impl Operator for SinkOp {
 		}
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		match self {
 			SinkOp::Table(o) => o.apply(txn, change),
 			SinkOp::Series(o) => o.apply(txn, change),

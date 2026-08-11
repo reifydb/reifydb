@@ -38,7 +38,7 @@ use crate::{
 		},
 		stateful::utils::{state_get, state_range, state_remove, state_set},
 	},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 
 const ROW_NUMBER_BYTES: usize = 8;
@@ -110,7 +110,7 @@ impl SnapshotLedger {
 
 	pub(crate) fn publish(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		group: GroupId,
 		left: RowNumber,
 		right: RowNumber,
@@ -131,7 +131,7 @@ impl SnapshotLedger {
 
 	pub(crate) fn published(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		group: GroupId,
 		left: RowNumber,
 	) -> Result<Vec<(PublishedRight, ContentVersion)>> {
@@ -148,7 +148,7 @@ impl SnapshotLedger {
 
 	pub(crate) fn publish_unmatched(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		group: GroupId,
 		left: RowNumber,
 	) -> Result<()> {
@@ -161,7 +161,7 @@ impl SnapshotLedger {
 
 	pub(crate) fn release_unmatched(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		group: GroupId,
 		left: RowNumber,
 	) -> Result<()> {
@@ -170,7 +170,7 @@ impl SnapshotLedger {
 
 	pub(crate) fn release(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		group: GroupId,
 		left: RowNumber,
 		right: RowNumber,
@@ -186,7 +186,7 @@ impl SnapshotLedger {
 
 	pub(crate) fn retire(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		group: GroupId,
 		right: RowNumber,
 		content: &EncodedBytes,
@@ -206,7 +206,7 @@ impl SnapshotLedger {
 
 	fn pin(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		group: GroupId,
 		right: RowNumber,
 		version: ContentVersion,
@@ -225,7 +225,7 @@ impl SnapshotLedger {
 
 	fn unpin(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		group: GroupId,
 		right: RowNumber,
 		version: ContentVersion,
@@ -259,7 +259,7 @@ fn decode_published(bytes: &[u8]) -> Option<PublishedRight> {
 	}
 }
 
-fn encode_version(txn: &FlowTransaction, version: ContentVersion) -> Result<EncodedOperatorRow> {
+fn encode_version(txn: &DepFlowTransaction, version: ContentVersion) -> Result<EncodedOperatorRow> {
 	encode(&version.0, txn.written_at()).map_err(|e| {
 		Error::from(FlowStateError::Encode {
 			state: "snapshot published version",
@@ -277,7 +277,7 @@ fn decode_version(row: &EncodedOperatorRow) -> Result<ContentVersion> {
 	})
 }
 
-fn encode_pin(txn: &FlowTransaction, pin: &Pin) -> Result<EncodedOperatorRow> {
+fn encode_pin(txn: &DepFlowTransaction, pin: &Pin) -> Result<EncodedOperatorRow> {
 	encode(pin, txn.written_at()).map_err(|e| {
 		Error::from(FlowStateError::Encode {
 			state: "snapshot pin",
@@ -514,7 +514,7 @@ pub(crate) struct SnapshotJoinContext<'a> {
 }
 
 pub(crate) fn publish_joined(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	ctx: &SnapshotJoinContext,
 	key_hash: &Hash128,
 	left: &Columns,
@@ -559,7 +559,7 @@ pub(crate) fn publish_joined(
 }
 
 pub(crate) fn withdraw_joined(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	ctx: &SnapshotJoinContext,
 	key_hash: &Hash128,
 	left: &Columns,
@@ -604,7 +604,7 @@ pub(crate) fn withdraw_joined(
 }
 
 pub(crate) fn resync_joined(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	ctx: &SnapshotJoinContext,
 	keys: UpdateKeys,
 	pre: &Columns,
@@ -618,7 +618,7 @@ pub(crate) fn resync_joined(
 }
 
 pub(crate) fn publish_slot(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	ctx: &SnapshotJoinContext,
 	key_hash: &Hash128,
 	left: &Columns,
@@ -648,7 +648,7 @@ pub(crate) fn publish_slot(
 }
 
 pub(crate) fn withdraw_slot(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	ctx: &SnapshotJoinContext,
 	group: GroupId,
 	left: &Columns,
@@ -678,7 +678,7 @@ pub(crate) fn withdraw_slot(
 }
 
 pub(crate) fn retain_published_slot(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	ctx: &SnapshotJoinContext,
 	group: GroupId,
 	left: RowNumber,
@@ -696,12 +696,12 @@ pub(crate) fn retain_published_slot(
 	Ok(Some(slot))
 }
 
-pub(crate) fn retire_slot(txn: &mut FlowTransaction, ctx: &SnapshotJoinContext, key_hash: &Hash128) -> Result<()> {
+pub(crate) fn retire_slot(txn: &mut DepFlowTransaction, ctx: &SnapshotJoinContext, key_hash: &Hash128) -> Result<()> {
 	retire_right(txn, ctx, key_hash, SLOT)
 }
 
 pub(crate) fn retire_right(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	ctx: &SnapshotJoinContext,
 	key_hash: &Hash128,
 	row_number: RowNumber,

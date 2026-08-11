@@ -36,7 +36,7 @@ use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
 use vec::IntoIter;
 
-use super::{FlowTransaction, FlowTransactionInner, substrate::operator_state_coordinates};
+use super::{DepFlowTransaction, substrate::operator_state_coordinates};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadFrom {
@@ -49,21 +49,7 @@ pub enum ReadFrom {
 	OwnedRow,
 }
 
-pub(crate) const PREFETCH_MEMO_BYTE_CAP: u64 = 64 * 1024 * 1024;
-
-impl FlowTransactionInner {
-	pub(crate) fn memoize_prefetch(&mut self, key: &EncodedKey, bytes: Option<EncodedBytes>) {
-		let entry_bytes = (key.as_bytes().len() + bytes.as_ref().map_or(0, |bytes| bytes.len())) as u64;
-		if self.prefetch_bytes.saturating_add(entry_bytes) <= PREFETCH_MEMO_BYTE_CAP {
-			self.prefetch_bytes += entry_bytes;
-			self.prefetch.insert(key.clone(), bytes);
-		} else {
-			self.prefetch_rejections += 1;
-		}
-	}
-}
-
-impl FlowTransaction {
+impl DepFlowTransaction {
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		let inner = self.inner();
 		if inner.pending.is_removed(key) {
@@ -93,10 +79,6 @@ impl FlowTransaction {
 			};
 		}
 
-		if let Some(cached) = self.inner().prefetch.get(key) {
-			return Ok(cached.clone());
-		}
-
 		let inner = self.inner_mut();
 		inner.store_reads += 1;
 		let route = Self::read_from(key);
@@ -105,7 +87,6 @@ impl FlowTransaction {
 				.expect("an OperatorState-routed key must carry an operator id");
 			let result =
 				inner.substrate.operators.get(operator, &inner_key).map(EncodedOperatorRow::into_bytes);
-			inner.memoize_prefetch(key, result.clone());
 			return Ok(result);
 		}
 		let query = match route {
@@ -115,9 +96,6 @@ impl FlowTransaction {
 			ReadFrom::OperatorState => unreachable!(),
 		};
 		let result = query.get(key)?.map(|multi| multi.bytes().clone());
-		if matches!(route, ReadFrom::StateQuery) {
-			inner.memoize_prefetch(key, result.clone());
-		}
 		Ok(result)
 	}
 
@@ -765,7 +743,7 @@ pub mod tests {
 	#[test]
 	fn test_get_from_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -798,7 +776,7 @@ pub mod tests {
 		let parent = t.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
 
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			version,
 			Catalog::testing(),
@@ -818,7 +796,7 @@ pub mod tests {
 		parent.set(&key, make_value("old")).unwrap();
 		let version = parent.version();
 
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			version,
 			Catalog::testing(),
@@ -841,7 +819,7 @@ pub mod tests {
 		parent.set(&key, make_value("value1")).unwrap();
 		let version = parent.version();
 
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			version,
 			Catalog::testing(),
@@ -858,7 +836,7 @@ pub mod tests {
 	#[test]
 	fn test_get_nonexistent_key() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -873,7 +851,7 @@ pub mod tests {
 	#[test]
 	fn test_contains_key_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -901,7 +879,7 @@ pub mod tests {
 
 		let parent = t.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			version,
 			Catalog::testing(),
@@ -920,7 +898,7 @@ pub mod tests {
 		parent.set(&key, make_value("value1")).unwrap();
 		let version = parent.version();
 
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			version,
 			Catalog::testing(),
@@ -935,7 +913,7 @@ pub mod tests {
 	#[test]
 	fn test_contains_key_nonexistent() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -949,7 +927,7 @@ pub mod tests {
 	#[test]
 	fn test_scan_empty() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -964,7 +942,7 @@ pub mod tests {
 	#[test]
 	fn test_scan_only_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -988,7 +966,7 @@ pub mod tests {
 	#[test]
 	fn test_scan_filters_removes() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -1011,7 +989,7 @@ pub mod tests {
 	#[test]
 	fn test_range_empty() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -1027,7 +1005,7 @@ pub mod tests {
 	#[test]
 	fn test_range_only_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -1051,7 +1029,7 @@ pub mod tests {
 	#[test]
 	fn test_prefix_empty() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -1067,7 +1045,7 @@ pub mod tests {
 	#[test]
 	fn test_prefix_only_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),

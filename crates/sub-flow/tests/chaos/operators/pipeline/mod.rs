@@ -28,7 +28,7 @@ use reifydb_flow::{
 		Operator, OperatorCell, aggregation::operator::AggregateOperator, filter::FilterOperator,
 		gate::GateOperator, map::MapOperator, scan::series::SourceSeriesOperator,
 	},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -177,7 +177,7 @@ impl Operator for Pipeline {
 		self.terminal.capabilities()
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change, reifydb_value::error::Error> {
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change, reifydb_value::error::Error> {
 		let staged = self.stage.apply(txn, change)?;
 		self.terminal.apply(txn, staged)
 	}

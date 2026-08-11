@@ -59,7 +59,7 @@ pub use reifydb_flow::window;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_flow::{
 	operator::{BoxedOperator, Operator},
-	transaction::{FlowTransaction, row_number::RowNumberProvider},
+	transaction::{DepFlowTransaction, row_number::RowNumberProvider},
 };
 pub use reifydb_macro as r#macro;
 pub use reifydb_policy as policy;

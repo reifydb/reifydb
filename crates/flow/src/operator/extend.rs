@@ -24,7 +24,7 @@ use tracing::instrument;
 use crate::{
 	context::FlowContext,
 	operator::{Operator, OperatorCell},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 
 pub struct ExtendOperator {
@@ -134,7 +134,7 @@ impl Operator for ExtendOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, _txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs.into_iter() {

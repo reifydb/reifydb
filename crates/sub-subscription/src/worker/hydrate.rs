@@ -13,7 +13,7 @@ use reifydb_core::{
 	value::column::columns::Columns,
 };
 use reifydb_engine::subscription::{HydrateError, HydrateOutcome};
-use reifydb_flow::transaction::FlowTransaction;
+use reifydb_flow::transaction::DepFlowTransaction;
 use reifydb_rql::fingerprint::request::fingerprint_request;
 use reifydb_runtime::context::clock::Instant;
 use reifydb_transaction::multi::lease::VersionLeaseGuard;
@@ -78,7 +78,7 @@ impl SubscriptionWorkerActor {
 		let keyed = mem::take(&mut flow_state.keyed_state);
 		let operators = mem::take(&mut flow_state.operator_states);
 
-		let mut txn = FlowTransaction::ephemeral(
+		let mut txn = DepFlowTransaction::ephemeral(
 			version,
 			self.engine.multi().begin_query()?,
 			self.engine.single_owned(),

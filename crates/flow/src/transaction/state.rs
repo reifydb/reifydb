@@ -17,9 +17,9 @@ use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{Result, error::Error as ValueError};
 use tracing::{Span, field, instrument};
 
-use super::{FlowTransaction, substrate::operator_state_coordinates};
+use super::{DepFlowTransaction, substrate::operator_state_coordinates};
 
-impl FlowTransaction {
+impl DepFlowTransaction {
 	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
 		operator_id = id.0,
 		key_len = key.as_slice().len(),
@@ -217,7 +217,7 @@ impl FlowTransaction {
 			return Some(Some(row.clone()));
 		}
 
-		inner.prefetch.get(encoded_key).cloned()
+		None
 	}
 
 	#[inline]
@@ -248,19 +248,12 @@ impl FlowTransaction {
 			for encoded_key in to_batch {
 				let (operator, inner_key) = operator_state_coordinates(encoded_key)
 					.expect("state_get_many keys must carry an operator id");
-				match inner.substrate.operators.get(operator, &inner_key) {
-					Some(row) => {
-						let bytes = row.into_bytes();
-						inner.memoize_prefetch(encoded_key, Some(bytes.clone()));
-						items.push(MultiVersionRow {
-							key: encoded_key.clone(),
-							bytes,
-							version,
-						});
-					}
-					None => {
-						inner.memoize_prefetch(encoded_key, None);
-					}
+				if let Some(row) = inner.substrate.operators.get(operator, &inner_key) {
+					items.push(MultiVersionRow {
+						key: encoded_key.clone(),
+						bytes: row.into_bytes(),
+						version,
+					});
 				}
 			}
 		}
@@ -313,7 +306,7 @@ pub mod tests {
 	use super::*;
 	use crate::{
 		test_util::create_test_transaction,
-		transaction::{DeferredParams, read::PREFETCH_MEMO_BYTE_CAP, substrate::FlowSubstrate},
+		transaction::{DeferredParams, substrate::FlowSubstrate},
 	};
 
 	fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey, row: EncodedOperatorRow) {
@@ -321,11 +314,11 @@ pub mod tests {
 		engine.inner().operator_state().set(operator, EncodedKey::new(key.as_slice()), row);
 	}
 
-	fn deferred_shared(engine: &TestEngine) -> FlowTransaction {
+	fn deferred_shared(engine: &TestEngine) -> DepFlowTransaction {
 		// Shares the engine's operator arena like every production deferred txn.
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		FlowTransaction::deferred_from_parts(DeferredParams {
+		DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version,
 			pending: Pending::new(),
 			base_pending: PendingLayers::empty(),
@@ -365,7 +358,7 @@ pub mod tests {
 	#[test]
 	fn test_state_get_set() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -386,7 +379,7 @@ pub mod tests {
 	#[test]
 	fn test_state_get_many() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -425,7 +418,7 @@ pub mod tests {
 	#[test]
 	fn test_state_get_nonexistent() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -443,7 +436,7 @@ pub mod tests {
 	#[test]
 	fn test_state_remove() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -465,7 +458,7 @@ pub mod tests {
 	#[test]
 	fn test_state_isolation_between_nodes() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -487,7 +480,7 @@ pub mod tests {
 	#[test]
 	fn test_state_scan_all() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -510,7 +503,7 @@ pub mod tests {
 	#[test]
 	fn test_state_scan_only_own_node() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -535,7 +528,7 @@ pub mod tests {
 	#[test]
 	fn test_state_scan_empty() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -552,7 +545,7 @@ pub mod tests {
 	#[test]
 	fn test_state_range_all() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -580,7 +573,7 @@ pub mod tests {
 	#[test]
 	fn test_state_clear() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -604,7 +597,7 @@ pub mod tests {
 	#[test]
 	fn test_state_clear_only_own_node() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -628,7 +621,7 @@ pub mod tests {
 	#[test]
 	fn test_state_clear_empty_node() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -644,7 +637,7 @@ pub mod tests {
 	#[test]
 	fn test_state_multiple_nodes() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -809,7 +802,7 @@ pub mod tests {
 		seed_state_row(&engine, operator_id, &make_key("warmup_a"), make_value("a"));
 		seed_state_row(&engine, operator_id, &inner_key, value.clone());
 
-		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version: object_version,
 			pending: Pending::new(),
 			base_pending: PendingLayers::empty(),
@@ -851,7 +844,7 @@ pub mod tests {
 		base_pending.insert(full_key(operator_id, &overlaid_key), overlaid_value.clone().into_bytes());
 		base_pending.remove(full_key(operator_id, &committed_key));
 
-		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version: low_version,
 			pending: Pending::new(),
 			base_pending: PendingLayers::single(Arc::new(base_pending)),
@@ -918,7 +911,7 @@ pub mod tests {
 		let committed_at = cmd.commit_unchecked().unwrap();
 		assert!(low_version < committed_at);
 
-		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version: low_version,
 			pending: Pending::new(),
 			base_pending: PendingLayers::empty(),
@@ -937,7 +930,7 @@ pub mod tests {
 		);
 		assert!(txn.contains_key(&row_key).unwrap());
 
-		let mut ephemeral = FlowTransaction::ephemeral(
+		let mut ephemeral = DepFlowTransaction::ephemeral(
 			low_version,
 			engine.multi().begin_query().unwrap(),
 			engine.single().clone(),
@@ -964,7 +957,7 @@ pub mod tests {
 		let mut state = HashMap::new();
 		state.insert(full_key(operator_id, &seeded_key), seeded_value.clone().into_bytes());
 
-		let mut txn = FlowTransaction::ephemeral(
+		let mut txn = DepFlowTransaction::ephemeral(
 			CommitVersion(1),
 			engine.multi().begin_query().unwrap(),
 			engine.single().clone(),
@@ -983,59 +976,5 @@ pub mod tests {
 		let live = txn.state_get_many(operator_id, &[live_key]).unwrap();
 		assert_eq!(live.items.len(), 1);
 		assert_eq!(live.items[0].bytes, live_value.into_bytes());
-	}
-
-	#[test]
-	fn batch_prefetch_respects_byte_cap() {
-		// fetch_external memoizes what it fetched, so without the cap the batch path reopens the
-		// unbounded per-transaction memo growth the point-path cap closed. A rejected entry must
-		// not be counted, must not enter the memo, and must not shrink the batch result.
-		let engine = TestEngine::new();
-		let operator_id = OperatorId(1);
-		let key = make_key("k1");
-		seed_state_row(&engine, operator_id, &key, make_value("v"));
-
-		let mut txn = deferred_shared(&engine);
-
-		// Fill the counter to the cap so the next memoization cannot fit.
-		txn.inner_mut().prefetch_bytes = PREFETCH_MEMO_BYTE_CAP;
-
-		let batch = txn.state_get_many(operator_id, &[key.clone()]).unwrap();
-		assert_eq!(batch.items.len(), 1, "the cap bounds the memo, not the batch result");
-		assert_eq!(txn.inner().prefetch_rejections, 1, "an over-cap batch memoization must be rejected");
-		assert_eq!(txn.inner().prefetch_bytes, PREFETCH_MEMO_BYTE_CAP, "a rejected entry must not be counted");
-
-		// The rejected entry is not memoized: a re-read reaches the store again.
-		let reads_before = txn.store_reads();
-		let again = txn.state_get_many(operator_id, &[key]).unwrap();
-		assert_eq!(again.items.len(), 1);
-		assert_eq!(txn.store_reads(), reads_before + 1, "a rejected entry must not serve later reads");
-	}
-
-	#[test]
-	fn batch_prefetch_accounts_bytes_like_the_point_path() {
-		// prefetch_bytes must reflect the memo no matter which path filled it, or the cap is
-		// meaningless for batch-heavy operators.
-		let engine = TestEngine::new();
-		let operator_id = OperatorId(1);
-		let hit = make_key("hit");
-		let miss = make_key("miss");
-		seed_state_row(&engine, operator_id, &hit, make_value("v"));
-
-		let mut batch_txn = deferred_shared(&engine);
-		let fetched = batch_txn.state_get_many(operator_id, &[hit.clone(), miss.clone()]).unwrap();
-		assert_eq!(fetched.items.len(), 1);
-		let batch_bytes = batch_txn.inner().prefetch_bytes;
-		assert!(batch_bytes > 0, "batch memoization must be counted");
-		assert_eq!(batch_txn.inner().prefetch_rejections, 0);
-
-		let mut point_txn = deferred_shared(&engine);
-		assert!(point_txn.state_get(operator_id, &hit).unwrap().is_some());
-		assert!(point_txn.state_get(operator_id, &miss).unwrap().is_none());
-		assert_eq!(
-			point_txn.inner().prefetch_bytes,
-			batch_bytes,
-			"the batch path must account bytes with the exact point-path formula"
-		);
 	}
 }

@@ -28,7 +28,7 @@ use tracing::{Span, instrument};
 
 use crate::{
 	operator::join::{Identity, operator::JoinOperator, row::JoinStateRow, state::JoinSide, store::Store},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 
 #[cfg(test)]
@@ -137,7 +137,7 @@ pub(crate) fn encode_row(shape: &RowShape, columns: &Columns, row_idx: usize, no
 
 #[instrument(name = "flow::operator::join::add_state_entry", level = "trace", skip_all)]
 pub(crate) fn add_to_state_entry_batch(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	store: &mut Store,
 	key_hash: &Hash128,
 	columns: &Columns,
@@ -162,7 +162,7 @@ pub(crate) struct EntryUpdate {
 }
 
 pub(crate) fn prepare_entry_update(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	store: &Store,
 	key_hash: &Hash128,
 	post: &Columns,
@@ -179,7 +179,7 @@ pub(crate) fn prepare_entry_update(
 }
 
 pub(crate) fn update_row_in_entry(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	store: &Store,
 	prepared: &EntryUpdate,
 	pre_row_number: RowNumber,
@@ -201,7 +201,7 @@ pub(crate) fn update_row_in_entry(
 }
 
 pub(crate) fn update_single_row_in_entry(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	store: &Store,
 	key_hash: &Hash128,
 	pre_row_number: RowNumber,
@@ -223,13 +223,17 @@ pub(crate) fn update_single_row_in_entry(
 	}
 }
 
-pub(crate) fn is_first_right_row(txn: &mut FlowTransaction, right_store: &Store, key_hash: &Hash128) -> Result<bool> {
+pub(crate) fn is_first_right_row(
+	txn: &mut DepFlowTransaction,
+	right_store: &Store,
+	key_hash: &Hash128,
+) -> Result<bool> {
 	Ok(!right_store.contains_key(txn, key_hash)?)
 }
 
 #[instrument(name = "flow::operator::join::decode_run", level = "trace", skip_all, fields(rows = bytes_slice.len()))]
 fn decode_run(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	store: &Store,
 	fingerprint: RowShapeFingerprint,
 	ids: &[RowNumber],
@@ -296,7 +300,7 @@ fn merge_runs(runs: Vec<Columns>) -> Columns {
 
 #[instrument(name = "flow::operator::join::columns_from_block", level = "trace", skip_all, fields(rows = block.len()))]
 pub(crate) fn columns_from_block(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	store: &Store,
 	block: Vec<(RowNumber, EncodedBytes)>,
 ) -> Result<Columns> {
@@ -327,13 +331,13 @@ pub(crate) fn columns_from_block(
 }
 
 fn stream_join_blocks<F>(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	store: &Store,
 	key_hash: &Hash128,
 	join_block: F,
 ) -> Result<Vec<Diff>>
 where
-	F: FnMut(&mut FlowTransaction, &Columns) -> Result<Vec<Diff>>,
+	F: FnMut(&mut DepFlowTransaction, &Columns) -> Result<Vec<Diff>>,
 {
 	let mut join_block = join_block;
 	stream_join_blocks_encoded(txn, store, key_hash, false, |txn, opposite, _| join_block(txn, opposite))
@@ -341,14 +345,14 @@ where
 
 #[instrument(name = "flow::operator::join::probe", level = "trace", skip_all, fields(blocks = tracing::field::Empty, rows = tracing::field::Empty))]
 pub(crate) fn stream_join_blocks_encoded<F>(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	store: &Store,
 	key_hash: &Hash128,
 	want_encoded: bool,
 	mut join_block: F,
 ) -> Result<Vec<Diff>>
 where
-	F: FnMut(&mut FlowTransaction, &Columns, &[(RowNumber, EncodedBytes)]) -> Result<Vec<Diff>>,
+	F: FnMut(&mut DepFlowTransaction, &Columns, &[(RowNumber, EncodedBytes)]) -> Result<Vec<Diff>>,
 {
 	let limit = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
 	let mut out = Vec::new();
@@ -389,7 +393,7 @@ pub(crate) struct JoinEmitContext<'a> {
 
 #[instrument(name = "flow::operator::join::emit_update_joined", level = "trace", skip_all)]
 pub(crate) fn emit_update_joined_columns(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	pre: &Columns,
 	post: &Columns,
 	row_idx: usize,
@@ -442,7 +446,7 @@ pub(crate) fn emit_update_joined_columns(
 
 #[instrument(name = "flow::operator::join::emit_joined", level = "trace", skip_all)]
 pub(crate) fn emit_joined_columns_batch(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	primary: &Columns,
 	primary_indices: &[usize],
 	primary_side: JoinSide,
@@ -479,7 +483,7 @@ pub(crate) fn emit_joined_columns_batch(
 
 #[instrument(name = "flow::operator::join::emit_remove_joined", level = "trace", skip_all)]
 pub(crate) fn emit_remove_joined_columns_batch(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	primary: &Columns,
 	primary_indices: &[usize],
 	primary_side: JoinSide,
@@ -516,13 +520,13 @@ pub(crate) fn emit_remove_joined_columns_batch(
 
 #[instrument(name = "flow::operator::join::for_each_left_block", level = "trace", skip_all)]
 pub(crate) fn for_each_left_block<F>(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	left_store: &Store,
 	key_hash: &Hash128,
 	mut on_block: F,
 ) -> Result<()>
 where
-	F: FnMut(&mut FlowTransaction, &Columns) -> Result<()>,
+	F: FnMut(&mut DepFlowTransaction, &Columns) -> Result<()>,
 {
 	let limit = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize) as usize;
 	let mut after: Option<RowNumber> = None;

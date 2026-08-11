@@ -11,7 +11,7 @@ use reifydb_value::Result;
 
 use crate::{
 	operator::{Operator, OperatorCell},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 
 pub struct SortOperator {
@@ -45,7 +45,7 @@ impl Operator for SortOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, _txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		// TODO: Implement single-encoded sort processing
 
 		Ok(Change::from_flow(self.operator, change.version, change.diffs, change.changed_at))

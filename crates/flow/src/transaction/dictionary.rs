@@ -12,9 +12,9 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use super::FlowTransaction;
+use super::DepFlowTransaction;
 
-impl FlowTransaction {
+impl DepFlowTransaction {
 	pub fn find_dictionary(&self, id: DictionaryId) -> Option<Dictionary> {
 		self.catalog().cache().find_dictionary_at(id, self.version())
 	}
@@ -62,7 +62,7 @@ mod tests {
 	};
 	use reifydb_value::value::{Value, dictionary::DictionaryId, identity::IdentityId, value_type::ValueType};
 
-	use crate::transaction::{DeferredParams, FlowTransaction, substrate::FlowSubstrate};
+	use crate::transaction::{DeferredParams, DepFlowTransaction, substrate::FlowSubstrate};
 
 	fn mints() -> Dictionary {
 		Dictionary {
@@ -82,10 +82,10 @@ mod tests {
 		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())))
 	}
 
-	fn flow_txn(engine: &TestEngine, registry: DictionaryAllocatorRegistry) -> FlowTransaction {
+	fn flow_txn(engine: &TestEngine, registry: DictionaryAllocatorRegistry) -> DepFlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		FlowTransaction::deferred_from_parts(DeferredParams {
+		DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version,
 			pending: Pending::new(),
 			base_pending: PendingLayers::empty(),

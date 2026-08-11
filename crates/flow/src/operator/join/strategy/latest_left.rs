@@ -16,7 +16,7 @@ use crate::{
 		snapshot::{SnapshotJoinContext, publish_slot, retire_slot, withdraw_slot},
 		state::JoinSide,
 	},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 
 pub(crate) struct LatestLeftHashJoin;
@@ -24,7 +24,7 @@ pub(crate) struct LatestLeftHashJoin;
 impl LatestLeftHashJoin {
 	pub(crate) fn handle_insert_undefined(
 		&self,
-		_txn: &mut FlowTransaction,
+		_txn: &mut DepFlowTransaction,
 		post: &Columns,
 		row_idx: usize,
 		ctx: &mut JoinContext,
@@ -37,7 +37,7 @@ impl LatestLeftHashJoin {
 
 	pub(crate) fn handle_remove_undefined(
 		&self,
-		_txn: &mut FlowTransaction,
+		_txn: &mut DepFlowTransaction,
 		pre: &Columns,
 		row_idx: usize,
 		ctx: &mut JoinContext,
@@ -50,7 +50,7 @@ impl LatestLeftHashJoin {
 
 	pub(crate) fn handle_update_both_undefined(
 		&self,
-		_txn: &mut FlowTransaction,
+		_txn: &mut DepFlowTransaction,
 		pre: &Columns,
 		post: &Columns,
 		row_idx: usize,
@@ -69,7 +69,7 @@ impl LatestLeftHashJoin {
 	#[instrument(name = "flow::operator::join::latest_left::handle_insert", level = "trace", skip_all, fields(rows = indices.len()))]
 	pub(crate) fn handle_insert(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -107,7 +107,7 @@ impl LatestLeftHashJoin {
 	#[instrument(name = "flow::operator::join::latest_left::handle_right_insert", level = "trace", skip_all, fields(rows = indices.len()))]
 	fn handle_right_insert(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -151,7 +151,7 @@ impl LatestLeftHashJoin {
 	#[instrument(name = "flow::operator::join::latest_left::handle_remove", level = "trace", skip_all)]
 	pub(crate) fn handle_remove(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		pre: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -199,7 +199,7 @@ impl LatestLeftHashJoin {
 
 	fn handle_right_remove(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
@@ -233,7 +233,7 @@ impl LatestLeftHashJoin {
 	#[instrument(name = "flow::operator::join::latest_left::handle_update", level = "trace", skip_all)]
 	pub(crate) fn handle_update(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		pre: &Columns,
 		post: &Columns,
 		indices: &[usize],

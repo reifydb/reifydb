@@ -36,7 +36,7 @@ use reifydb_extension::ffi_callbacks::builder::{BuilderRegistry, with_registry};
 use reifydb_flow::{
 	operator::{Operator, scale_from_millis},
 	timer::Timer,
-	transaction::{FlowTransaction, slot::PersistFn},
+	transaction::{DepFlowTransaction, slot::PersistFn},
 };
 use reifydb_sdk::{error::SdkError, ffi::arena::Arena};
 use reifydb_value::{
@@ -104,7 +104,7 @@ impl FFIOperatorHandle {
 		}
 	}
 
-	fn ensure_txn_setup(&self, txn: &mut FlowTransaction) -> Result<()> {
+	fn ensure_txn_setup(&self, txn: &mut DepFlowTransaction) -> Result<()> {
 		let txn_version = txn.version().0;
 		// SAFETY: one actor drives this operator and no guest call is in flight here, so
 		// the context cell is not aliased while this &mut exists.
@@ -168,7 +168,7 @@ fn call_vtable(
 }
 
 fn ensure_flush_slot(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	operator_id: OperatorId,
 	vtable: OperatorVTableFFI,
 	instance: *mut c_void,
@@ -231,7 +231,7 @@ impl Operator for FFIOperatorHandle {
 		input_diff_count = change.diffs.len(),
 		output_diff_count = field::Empty
 	))]
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		self.ensure_txn_setup(txn)?;
 
 		// SAFETY: the arena is thread-local and the previous apply's guest call has returned, so
@@ -266,7 +266,7 @@ impl Operator for FFIOperatorHandle {
 		operator_id = self.operator_id.0,
 		output_diff_count = field::Empty
 	))]
-	fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&self, txn: &mut DepFlowTransaction, timer: Timer) -> Result<Option<Change>> {
 		self.ensure_txn_setup(txn)?;
 
 		let version = txn.version();

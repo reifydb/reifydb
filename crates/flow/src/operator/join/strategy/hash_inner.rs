@@ -16,7 +16,7 @@ use crate::{
 		snapshot::{SnapshotJoinContext, publish_joined, resync_joined, retire_right, withdraw_joined},
 		state::JoinSide,
 	},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 
 pub(crate) struct InnerHashJoin;
@@ -24,7 +24,7 @@ pub(crate) struct InnerHashJoin;
 impl InnerHashJoin {
 	pub(crate) fn handle_insert_undefined(
 		&self,
-		_txn: &mut FlowTransaction,
+		_txn: &mut DepFlowTransaction,
 		_post: &Columns,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
@@ -34,7 +34,7 @@ impl InnerHashJoin {
 
 	pub(crate) fn handle_remove_undefined(
 		&self,
-		_txn: &mut FlowTransaction,
+		_txn: &mut DepFlowTransaction,
 		_pre: &Columns,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
@@ -44,7 +44,7 @@ impl InnerHashJoin {
 
 	pub(crate) fn handle_update_both_undefined(
 		&self,
-		_txn: &mut FlowTransaction,
+		_txn: &mut DepFlowTransaction,
 		_pre: &Columns,
 		_post: &Columns,
 		_row_idx: usize,
@@ -55,7 +55,7 @@ impl InnerHashJoin {
 
 	pub(crate) fn handle_insert(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -107,7 +107,7 @@ impl InnerHashJoin {
 
 	pub(crate) fn handle_remove(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		pre: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -183,7 +183,7 @@ impl InnerHashJoin {
 
 	pub(crate) fn handle_update(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		pre: &Columns,
 		post: &Columns,
 		indices: &[usize],
@@ -210,7 +210,7 @@ impl InnerHashJoin {
 	#[inline]
 	fn update_in_place_one_row(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		pre: &Columns,
 		post: &Columns,
 		row_idx: usize,

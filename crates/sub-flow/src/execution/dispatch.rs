@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::interface::change::Change;
-use reifydb_flow::transaction::FlowTransaction;
+use reifydb_flow::transaction::DepFlowTransaction;
 use reifydb_rql::flow::operator::FlowNode;
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
@@ -12,7 +12,7 @@ use crate::engine::FlowEngineInner;
 impl FlowEngineInner {
 	pub(super) fn dispatch_node(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		operator: &FlowNode,
 		inbox: Vec<Change>,
 	) -> Result<Change> {
@@ -38,7 +38,7 @@ impl FlowEngineInner {
 		coalesce_time_us = field::Empty,
 		store_reads = field::Empty
 	))]
-	fn apply(&self, txn: &mut FlowTransaction, operator: &FlowNode, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DepFlowTransaction, operator: &FlowNode, change: Change) -> Result<Change> {
 		let lock_start = self.runtime_context.clock.instant();
 		let operator = self.operators.get(&operator.id).unwrap().clone();
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);

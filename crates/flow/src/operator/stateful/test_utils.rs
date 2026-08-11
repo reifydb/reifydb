@@ -18,7 +18,7 @@ pub mod test {
 		value::{identity::IdentityId, value_type::ValueType},
 	};
 
-	use crate::{operator::Operator, transaction::FlowTransaction};
+	use crate::{operator::Operator, transaction::DepFlowTransaction};
 
 	pub struct TestOperator {
 		pub id: OperatorId,
@@ -64,7 +64,7 @@ pub mod test {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&self, _txn: &mut FlowTransaction, _change: Change) -> Result<Change> {
+		fn apply(&self, _txn: &mut DepFlowTransaction, _change: Change) -> Result<Change> {
 			todo!()
 		}
 	}

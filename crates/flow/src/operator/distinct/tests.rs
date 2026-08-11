@@ -37,7 +37,7 @@ use crate::{
 		stateful::utils,
 	},
 	testing::FlowTxn,
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 
 fn noop_parent() -> OperatorCell {
@@ -98,7 +98,7 @@ fn build_remove(value: i64, row_num: u64) -> Change {
 	Change::from_flow(OperatorId(99), CommitVersion(1), diffs, now)
 }
 
-fn persisted_rows(op: &DistinctOperator, txn: &mut FlowTransaction) -> BTreeMap<Vec<u8>, Vec<u8>> {
+fn persisted_rows(op: &DistinctOperator, txn: &mut DepFlowTransaction) -> BTreeMap<Vec<u8>, Vec<u8>> {
 	let mut out = BTreeMap::new();
 	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None, "test").unwrap();
 	for item in batch.items {
@@ -113,11 +113,11 @@ fn persisted_rows(op: &DistinctOperator, txn: &mut FlowTransaction) -> BTreeMap<
 	out
 }
 
-fn layout_row(op: &DistinctOperator, txn: &mut FlowTransaction) -> Option<Vec<u8>> {
+fn layout_row(op: &DistinctOperator, txn: &mut DepFlowTransaction) -> Option<Vec<u8>> {
 	utils::state_get(op.id(), txn, &DistinctOperator::layout_storage_key()).unwrap().map(|row| row.body().to_vec())
 }
 
-fn entry_groups(op: &DistinctOperator, txn: &mut FlowTransaction) -> Vec<GroupId> {
+fn entry_groups(op: &DistinctOperator, txn: &mut DepFlowTransaction) -> Vec<GroupId> {
 	let mut out = Vec::new();
 	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None, "test").unwrap();
 	for item in batch.items {
@@ -129,7 +129,7 @@ fn entry_groups(op: &DistinctOperator, txn: &mut FlowTransaction) -> Vec<GroupId
 	out
 }
 
-fn erase_group_data(op: &DistinctOperator, txn: &mut FlowTransaction, group: GroupId) -> usize {
+fn erase_group_data(op: &DistinctOperator, txn: &mut DepFlowTransaction, group: GroupId) -> usize {
 	let batch = txn.state_range(op.id(), EncodedKeyRange::all(), None, "test").unwrap();
 	let mut erased = 0;
 	for item in batch.items {

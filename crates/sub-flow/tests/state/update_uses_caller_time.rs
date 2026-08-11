@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_flow::transaction::FlowTransaction;
+use reifydb_flow::transaction::DepFlowTransaction;
 use reifydb_test_harness::operator::transaction::{FlowTxn, OPERATOR_ID, engine, key, make_row};
 use reifydb_value::value::datetime::DateTime;
 
-fn assert_update_uses_caller_time(txn: &mut FlowTransaction) {
+fn assert_update_uses_caller_time(txn: &mut DepFlowTransaction) {
 	// The host must not read the prior row back to carry a stamp forward: that costs a store
 	// roundtrip per written key on every flush and defeats the caches above it.
 	let k = key("update-key");

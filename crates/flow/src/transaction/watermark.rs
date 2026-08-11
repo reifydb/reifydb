@@ -12,7 +12,7 @@ use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 use tracing::{info, warn};
 
 use super::{
-	FlowTransaction,
+	DepFlowTransaction,
 	group::{decode_payload, encode_payload},
 };
 
@@ -36,7 +36,7 @@ pub struct SourceWatermarks {
 }
 
 impl SourceWatermarks {
-	pub fn advance(&self, source: OperatorId, txn: &mut FlowTransaction, at: DateTime) -> Result<()> {
+	pub fn advance(&self, source: OperatorId, txn: &mut DepFlowTransaction, at: DateTime) -> Result<()> {
 		let coordinate = at.to_millis();
 		let mut state = self.inner.entry(source).or_default();
 		Self::hydrate_once(&mut state, source, txn)?;
@@ -69,11 +69,11 @@ impl SourceWatermarks {
 		Ok(())
 	}
 
-	pub fn source_watermark(&self, source: OperatorId, txn: &mut FlowTransaction) -> Result<DateTime> {
+	pub fn source_watermark(&self, source: OperatorId, txn: &mut DepFlowTransaction) -> Result<DateTime> {
 		Ok(DateTime::from_millis(self.raw(source, txn)?))
 	}
 
-	pub fn flow_watermark(&self, sources: &[OperatorId], txn: &mut FlowTransaction) -> Result<DateTime> {
+	pub fn flow_watermark(&self, sources: &[OperatorId], txn: &mut DepFlowTransaction) -> Result<DateTime> {
 		reifydb_assertions! {
 			assert!(
 				!sources.is_empty(),
@@ -109,13 +109,13 @@ impl SourceWatermarks {
 		Ok(DateTime::from_millis(merged))
 	}
 
-	fn raw(&self, source: OperatorId, txn: &mut FlowTransaction) -> Result<u64> {
+	fn raw(&self, source: OperatorId, txn: &mut DepFlowTransaction) -> Result<u64> {
 		let mut state = self.inner.entry(source).or_default();
 		Self::hydrate_once(&mut state, source, txn)?;
 		Ok(state.value.unwrap_or(0))
 	}
 
-	fn hydrate_once(state: &mut SourceState, source: OperatorId, txn: &mut FlowTransaction) -> Result<()> {
+	fn hydrate_once(state: &mut SourceState, source: OperatorId, txn: &mut DepFlowTransaction) -> Result<()> {
 		if state.hydrated {
 			return Ok(());
 		}
@@ -145,10 +145,10 @@ mod tests {
 	const SOURCE_A: OperatorId = OperatorId(1);
 	const SOURCE_B: OperatorId = OperatorId(2);
 
-	fn deferred(engine: &TestEngine, clock: MockClock) -> FlowTransaction {
+	fn deferred(engine: &TestEngine, clock: MockClock) -> DepFlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		FlowTransaction::deferred_from_parts(DeferredParams {
+		DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version,
 			pending: Pending::new(),
 			base_pending: PendingLayers::empty(),
@@ -165,7 +165,7 @@ mod tests {
 		})
 	}
 
-	fn commit_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
+	fn commit_pending(engine: &TestEngine, txn: &mut DepFlowTransaction) {
 		// Persists the pending writes so a cold instance resolves them as a restarted process would.
 		let pending = txn.take_pending();
 		apply_operator_state(&engine.inner().operator_state(), txn.version(), &pending);

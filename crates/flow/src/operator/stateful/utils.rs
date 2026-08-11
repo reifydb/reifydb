@@ -16,26 +16,30 @@ use reifydb_transaction::multi::RangeScope;
 use reifydb_value::Result;
 
 use super::StateIterator;
-use crate::transaction::FlowTransaction;
+use crate::transaction::DepFlowTransaction;
 
-pub fn state_get(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+pub fn state_get(
+	id: OperatorId,
+	txn: &mut DepFlowTransaction,
+	key: &GroupStateKey,
+) -> Result<Option<EncodedOperatorRow>> {
 	txn.state_get(id, key)
 }
 
 pub fn state_set(
 	id: OperatorId,
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	key: &GroupStateKey,
 	row: EncodedOperatorRow,
 ) -> Result<()> {
 	txn.state_set(id, key, row)
 }
 
-pub fn state_remove(id: OperatorId, txn: &mut FlowTransaction, key: &GroupStateKey) -> Result<()> {
+pub fn state_remove(id: OperatorId, txn: &mut DepFlowTransaction, key: &GroupStateKey) -> Result<()> {
 	txn.state_remove(id, key)
 }
 
-pub fn state_scan_all(id: OperatorId, txn: &mut FlowTransaction) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
+pub fn state_scan_all(id: OperatorId, txn: &mut DepFlowTransaction) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	let range = OperatorStateKey::node_range(id);
 	let stream = txn.range(range, RangeScope::All, 1024);
 	let mut items = Vec::new();
@@ -50,12 +54,12 @@ pub fn state_scan_all(id: OperatorId, txn: &mut FlowTransaction) -> Result<Vec<(
 	Ok(items)
 }
 
-pub fn state_range<'a>(id: OperatorId, txn: &'a mut FlowTransaction, range: EncodedKeyRange) -> StateIterator<'a> {
+pub fn state_range<'a>(id: OperatorId, txn: &'a mut DepFlowTransaction, range: EncodedKeyRange) -> StateIterator<'a> {
 	let prefixed_range = range.with_prefix(EncodedKey::new(node_prefix(id)));
 	StateIterator::new(txn.range(prefixed_range, RangeScope::All, 1024))
 }
 
-pub fn state_clear(id: OperatorId, txn: &mut FlowTransaction) -> Result<()> {
+pub fn state_clear(id: OperatorId, txn: &mut DepFlowTransaction) -> Result<()> {
 	let range = OperatorStateKey::node_range(id);
 	let keys_to_remove = {
 		let stream = txn.range(range, RangeScope::All, 1024);

@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_value::{Result, reifydb_assertions};
 
-use super::FlowTransaction;
+use super::DepFlowTransaction;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReclaimOutcome {
@@ -26,7 +26,7 @@ impl ReclaimOutcome {
 	};
 }
 
-impl FlowTransaction {
+impl DepFlowTransaction {
 	pub fn reclaim_group_identity(
 		&mut self,
 		operator: OperatorId,
@@ -110,10 +110,10 @@ mod tests {
 		1u64.encode_state(DateTime::EPOCH).unwrap()
 	}
 
-	fn deferred(engine: &TestEngine) -> FlowTransaction {
+	fn deferred(engine: &TestEngine) -> DepFlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version,
 			pending: Pending::new(),
 			base_pending: PendingLayers::empty(),
@@ -136,17 +136,17 @@ mod tests {
 		txn
 	}
 
-	fn seed_identity(txn: &mut FlowTransaction, id: GroupId) {
+	fn seed_identity(txn: &mut DepFlowTransaction, id: GroupId) {
 		write(txn, id, Keyspace::GROUP_RECORD, 1);
 		write(txn, id, Keyspace::ROW_NUMBER_MAPPING, 1);
 	}
 
-	fn write(txn: &mut FlowTransaction, group: GroupId, keyspace: Keyspace, suffix: u8) {
+	fn write(txn: &mut DepFlowTransaction, group: GroupId, keyspace: Keyspace, suffix: u8) {
 		let key = OperatorStateKey::inner_encoded(group, keyspace, vec![suffix]);
 		txn.state_set(NODE, &key, payload()).unwrap();
 	}
 
-	fn count(txn: &mut FlowTransaction, range: EncodedKeyRange) -> usize {
+	fn count(txn: &mut DepFlowTransaction, range: EncodedKeyRange) -> usize {
 		txn.state_range(NODE, range, None, "test").unwrap().items.len()
 	}
 

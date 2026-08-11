@@ -16,7 +16,7 @@ use reifydb_core::{
 use reifydb_flow::{
 	operator::max_input_time,
 	transaction::{
-		ChangeCoordinate, FlowTransaction,
+		ChangeCoordinate, DepFlowTransaction,
 		frontier::{Frontier, OutputFrontiers},
 	},
 };
@@ -46,7 +46,7 @@ impl FlowEngineInner {
 		row_count = change.row_count(),
 		nodes_processed = field::Empty
 	))]
-	pub fn process(&self, txn: &mut FlowTransaction, change: Change, flow_id: FlowId) -> Result<()> {
+	pub fn process(&self, txn: &mut DepFlowTransaction, change: Change, flow_id: FlowId) -> Result<()> {
 		self.process_batch(txn, vec![change], flow_id)
 	}
 
@@ -57,7 +57,7 @@ impl FlowEngineInner {
 		version_count = field::Empty,
 		nodes_processed = field::Empty
 	))]
-	pub fn process_batch(&self, txn: &mut FlowTransaction, changes: Vec<Change>, flow_id: FlowId) -> Result<()> {
+	pub fn process_batch(&self, txn: &mut DepFlowTransaction, changes: Vec<Change>, flow_id: FlowId) -> Result<()> {
 		let flow = match self.flows.get(&flow_id) {
 			Some(f) => f.clone(),
 			None => return Ok(()),
@@ -83,7 +83,7 @@ impl FlowEngineInner {
 
 	pub(crate) fn fold_published_arrivals(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		flow_id: FlowId,
 		version: CommitVersion,
 	) -> Result<()> {
@@ -107,7 +107,7 @@ impl FlowEngineInner {
 	#[inline]
 	fn process_version(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		flow: &FlowDag,
 		flow_id: FlowId,
 		version: CommitVersion,
@@ -152,7 +152,7 @@ impl FlowEngineInner {
 
 	pub(super) fn run_topology(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		flow: &FlowDag,
 		mut pending: HashMap<OperatorId, Vec<Change>>,
 		topo: &[OperatorId],
@@ -308,7 +308,7 @@ fn collect_completeness(change: &Change, asserted: &mut BTreeMap<u64, DateTime>)
 }
 
 fn freeze_arrival_frontier(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	sources: &[OperatorId],
 	arrivals: &[SourceArrival],
 ) -> Result<()> {
@@ -364,10 +364,10 @@ mod tests {
 		}
 	}
 
-	fn deferred(engine: &TestEngine) -> FlowTransaction {
+	fn deferred(engine: &TestEngine) -> DepFlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		FlowTransaction::deferred(
+		DepFlowTransaction::deferred(
 			&parent,
 			version,
 			Catalog::testing(),

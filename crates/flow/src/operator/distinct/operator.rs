@@ -44,7 +44,7 @@ use crate::{
 		drops::SealedDrops,
 		stateful::{raw::RawStatefulOperator, utils},
 	},
-	transaction::{FlowTransaction, slot::PersistFn},
+	transaction::{DepFlowTransaction, slot::PersistFn},
 };
 
 const LAYOUT_KEY_PREFIX: u8 = 0x02;
@@ -124,7 +124,7 @@ impl DistinctOperator {
 	}
 
 	#[instrument(name = "flow::operator::distinct::load_entry", level = "trace", skip_all)]
-	fn load_entry(&self, txn: &mut FlowTransaction, group: GroupId) -> Result<LoadedEntry> {
+	fn load_entry(&self, txn: &mut DepFlowTransaction, group: GroupId) -> Result<LoadedEntry> {
 		match utils::state_get(self.operator, txn, &Self::entry_key(group))? {
 			Some(row) => {
 				if row.is_empty() {
@@ -143,7 +143,7 @@ impl DistinctOperator {
 	}
 
 	#[instrument(name = "flow::operator::distinct::load_layout", level = "trace", skip_all)]
-	fn load_layout(&self, txn: &mut FlowTransaction) -> Result<DistinctLayout> {
+	fn load_layout(&self, txn: &mut DepFlowTransaction) -> Result<DistinctLayout> {
 		match utils::state_get(self.operator, txn, &Self::layout_storage_key())? {
 			Some(row) => {
 				if row.is_empty() {
@@ -206,7 +206,7 @@ impl Operator for DistinctOperator {
 		CAPABILITIES
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		let operator_id = self.operator;
 		let ordered = self.batch_hashes(&change.diffs)?;
 

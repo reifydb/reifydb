@@ -28,7 +28,7 @@ use crate::{
 		stateful::utils,
 		store::OperatorStateStore,
 	},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 	window::{
 		coord::{EventCoord, RowSpan},
 		driver::{gate::disarm_seal, sweep::SealSweep},
@@ -76,7 +76,7 @@ fn route_engine_columns(
 #[allow(clippy::too_many_arguments)]
 fn intern_window_group(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	hash: Hash128,
 	span: WindowSpan<DateTime>,
 ) -> Result<()> {
@@ -116,7 +116,7 @@ fn push_count_event(
 
 fn route_count_tumbling(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	change: &Change,
 	buckets: &mut EngineBuckets,
 	group_values: &mut HashMap<Hash128, Vec<Value>>,
@@ -268,7 +268,11 @@ fn route_count_tumbling(
 }
 
 #[instrument(name = "flow::operator::window::tumbling", level = "trace", skip_all)]
-pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+pub fn apply_tumbling_engine(
+	operator: &WindowOperator,
+	txn: &mut DepFlowTransaction,
+	change: Change,
+) -> Result<Change> {
 	let window_size = operator.size_duration().unwrap_or_default();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 
@@ -382,7 +386,7 @@ pub fn apply_tumbling_engine(operator: &WindowOperator, txn: &mut FlowTransactio
 #[instrument(name = "flow::operator::window::intern", level = "trace", skip_all, fields(windows = arrival.len()))]
 fn intern_batch(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	arrival: &[(Hash128, WindowSpan<DateTime>)],
 ) -> Result<WindowGroups> {
 	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start.to_order())).collect();
@@ -391,7 +395,7 @@ fn intern_batch(
 
 fn sliding_insert_anchors(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	hash: Hash128,
 	event_ts: DateTime,
 	is_count: bool,
@@ -405,7 +409,7 @@ fn sliding_insert_anchors(
 }
 
 #[instrument(name = "flow::operator::window::sliding", level = "trace", skip_all)]
-pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let is_count = operator.is_count_based();
 	let window_size = operator.size_duration().unwrap_or_default();
@@ -632,7 +636,7 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 
 fn session_assign(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	hash: Hash128,
 	event_ts: DateTime,
 	kind: &SessionKind,
@@ -654,7 +658,7 @@ fn session_assign(
 }
 
 #[instrument(name = "flow::operator::window::session", level = "trace", skip_all)]
-pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+pub fn apply_session_engine(operator: &WindowOperator, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let kind = operator.session_kind();
 
@@ -925,7 +929,7 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction
 #[instrument(name = "flow::operator::window::gate_seals", level = "trace", skip_all)]
 fn gate_and_arm_seals(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	buckets: &mut EngineBuckets,
 	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
 	window_max_ts: &HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
@@ -994,7 +998,7 @@ fn gate_and_arm_seals(
 #[instrument(name = "flow::operator::window::seal", level = "trace", skip_all)]
 fn seal_due_windows(
 	operator: &WindowOperator,
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	fired: FiredAt,
 	policy: SealPolicy,
 ) -> Result<Vec<Diff>> {
@@ -1021,11 +1025,19 @@ fn seal_due_windows(
 	Ok(Vec::new())
 }
 
-pub fn seal_session_engine(operator: &WindowOperator, txn: &mut FlowTransaction, fired: FiredAt) -> Result<Vec<Diff>> {
+pub fn seal_session_engine(
+	operator: &WindowOperator,
+	txn: &mut DepFlowTransaction,
+	fired: FiredAt,
+) -> Result<Vec<Diff>> {
 	seal_due_windows(operator, txn, fired, operator.session_policy())
 }
 
-pub fn seal_engine_windows(operator: &WindowOperator, txn: &mut FlowTransaction, fired: FiredAt) -> Result<Vec<Diff>> {
+pub fn seal_engine_windows(
+	operator: &WindowOperator,
+	txn: &mut DepFlowTransaction,
+	fired: FiredAt,
+) -> Result<Vec<Diff>> {
 	let Some(window_size) = operator.size_duration() else {
 		return Ok(Vec::new());
 	};

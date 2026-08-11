@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
-use reifydb_flow::transaction::FlowTransaction;
+use reifydb_flow::transaction::DepFlowTransaction;
 use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
 
@@ -16,7 +16,7 @@ impl FlowEngineInner {
 	))]
 	pub fn process_tick(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		flow_id: FlowId,
 		timestamp: DateTime,
 		checkpoint: CommitVersion,

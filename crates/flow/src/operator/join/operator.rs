@@ -45,7 +45,7 @@ use crate::{
 		join::{Emitted, Identity},
 		stateful::raw::RawStatefulOperator,
 	},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
@@ -278,7 +278,7 @@ impl JoinOperator {
 
 	pub(crate) fn unmatched_left_columns(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		left: &Columns,
 		left_idx: usize,
 		identity: Identity,
@@ -302,7 +302,7 @@ impl JoinOperator {
 
 	fn identities(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		keys: &[EncodedKey],
 		identity: Identity,
 	) -> Result<(Vec<RowNumber>, Vec<usize>, Vec<usize>)> {
@@ -342,7 +342,7 @@ impl JoinOperator {
 
 	pub(crate) fn unmatched_left_columns_batch(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		left: &Columns,
 		left_indices: &[usize],
 		identity: Identity,
@@ -369,7 +369,7 @@ impl JoinOperator {
 		Ok(Self::split(built, &fresh, &existing))
 	}
 
-	pub(crate) fn cleanup_left_row_joins(&self, txn: &mut FlowTransaction, left_number: u64) -> Result<()> {
+	pub(crate) fn cleanup_left_row_joins(&self, txn: &mut DepFlowTransaction, left_number: u64) -> Result<()> {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L');
 		serializer.extend_u64(left_number);
@@ -388,7 +388,7 @@ impl JoinOperator {
 
 	pub(crate) fn join_columns_one_to_many(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		left: &Columns,
 		left_idx: usize,
 		right: &Columns,
@@ -417,7 +417,7 @@ impl JoinOperator {
 
 	pub(crate) fn join_columns_many_to_one(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		left: &Columns,
 		right: &Columns,
 		right_idx: usize,
@@ -446,7 +446,7 @@ impl JoinOperator {
 
 	pub(crate) fn join_columns_cartesian(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		left: &Columns,
 		left_indices: &[usize],
 		right: &Columns,
@@ -520,7 +520,7 @@ impl Operator for JoinOperator {
 		Some(OperatorSample::default())
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.operator
 		{
@@ -583,7 +583,7 @@ impl JoinOperator {
 	#[instrument(name = "flow::operator::join::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_join_insert(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		post: &Columns,
 		compiled_exprs: &[CompiledExpr],
 		side: JoinSide,
@@ -643,7 +643,7 @@ impl JoinOperator {
 	#[instrument(name = "flow::operator::join::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
 	fn apply_join_remove(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		pre: &Columns,
 		compiled_exprs: &[CompiledExpr],
 		side: JoinSide,
@@ -699,7 +699,7 @@ impl JoinOperator {
 	#[instrument(name = "flow::operator::join::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_join_update(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		pre: &Columns,
 		post: &Columns,
 		compiled_exprs: &[CompiledExpr],

@@ -26,7 +26,7 @@ use super::{
 };
 use crate::{
 	operator::{stateful::utils, store::OperatorStateStore},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 	window::{
 		engine::{
 			AccumulatorEvent, EmitKind, ExpiryAnchor,
@@ -63,7 +63,7 @@ pub(crate) fn partition_group_key(partition: Hash128) -> EncodedKey {
 #[instrument(name = "flow::operator::aggregation::intern_groups", level = "trace", skip_all, fields(windows = windows.len()))]
 pub(crate) fn intern_window_groups(
 	operator: OperatorId,
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	windows: &[(Hash128, u64)],
 ) -> Result<WindowGroups> {
 	if windows.is_empty() {
@@ -133,7 +133,7 @@ where
 #[instrument(name = "flow::operator::aggregation::finish", level = "trace", skip_all, fields(buckets = buckets.len()))]
 pub(crate) fn finish_tumbling_engine(
 	core: &Aggregation,
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	change: &Change,
 	buckets: EngineBuckets,
 	group_values: &HashMap<Hash128, Vec<Value>>,

@@ -31,7 +31,7 @@ use reifydb_extension::loader::ffi::LibraryCache;
 use reifydb_flow::{
 	operator::{BoxedOperator, Operator},
 	timer::Timer,
-	transaction::{FlowTransaction, slot::PersistFn},
+	transaction::{DepFlowTransaction, slot::PersistFn},
 };
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sdk::{
@@ -139,13 +139,13 @@ pub trait BridgedOperator: Send {
 pub type BoxedBridgedOperator = Box<dyn BridgedOperator>;
 
 pub struct FlowNativeBridge<'a> {
-	txn: &'a mut FlowTransaction,
+	txn: &'a mut DepFlowTransaction,
 	operator: OperatorId,
 	now: DateTime,
 }
 
 impl<'a> FlowNativeBridge<'a> {
-	pub fn new(txn: &'a mut FlowTransaction, operator: OperatorId) -> Self {
+	pub fn new(txn: &'a mut DepFlowTransaction, operator: OperatorId) -> Self {
 		let now = txn.written_at();
 		Self {
 			txn,
@@ -530,12 +530,12 @@ impl NativeBridgedOperator {
 		}
 	}
 
-	fn ensure_flush_slot(&self, txn: &mut FlowTransaction) -> Result<()> {
+	fn ensure_flush_slot(&self, txn: &mut DepFlowTransaction) -> Result<()> {
 		let txn_version = txn.version().0;
 		if self.last_registered_txn.get() != txn_version {
 			let captured = SendableBridged(&*self.inner as *const dyn BridgedOperator);
 			let operator = self.operator;
-			let persist: PersistFn = Box::new(move |txn: &mut FlowTransaction, _value: Box<dyn Any>| {
+			let persist: PersistFn = Box::new(move |txn: &mut DepFlowTransaction, _value: Box<dyn Any>| {
 				let captured = captured;
 				// SAFETY: captured.0 points at the heap allocation of self.inner, which is stable
 				// across moves of the wrapper and outlives the transaction running this persist
@@ -564,7 +564,7 @@ impl Operator for NativeBridgedOperator {
 		self.capabilities
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		self.ensure_flush_slot(txn)?;
 		let mut bridge = FlowNativeBridge::new(txn, self.operator);
 		self.inner.apply(&mut bridge, change)
@@ -574,7 +574,7 @@ impl Operator for NativeBridgedOperator {
 		self.inner.seal_after().filter(|span| !span.is_zero())
 	}
 
-	fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&self, txn: &mut DepFlowTransaction, timer: Timer) -> Result<Option<Change>> {
 		self.ensure_flush_slot(txn)?;
 		let mut bridge = FlowNativeBridge::new(txn, self.operator);
 		self.inner.on_timer(&mut bridge, timer)

@@ -142,10 +142,6 @@ pub struct FlowTransactionInner {
 
 	pub operator_states: HashMap<OperatorId, OperatorStateSlot>,
 
-	pub prefetch: HashMap<EncodedKey, Option<EncodedBytes>>,
-	pub prefetch_bytes: u64,
-	pub prefetch_rejections: u64,
-
 	pub store_reads: u64,
 
 	pub change_coordinate: Option<ChangeCoordinate>,
@@ -155,7 +151,7 @@ pub struct FlowTransactionInner {
 	pub substrate: FlowSubstrate,
 }
 
-pub enum FlowTransaction {
+pub enum DepFlowTransaction {
 	Deferred {
 		inner: FlowTransactionInner,
 	},
@@ -167,7 +163,7 @@ pub enum FlowTransaction {
 	},
 }
 
-impl FlowTransaction {
+impl DepFlowTransaction {
 	fn inner(&self) -> &FlowTransactionInner {
 		match self {
 			Self::Deferred {
@@ -220,9 +216,6 @@ impl FlowTransaction {
 				accumulator: ChangeAccumulator::new(),
 				clock,
 				operator_states: HashMap::new(),
-				prefetch: HashMap::new(),
-				prefetch_bytes: 0,
-				prefetch_rejections: 0,
 				store_reads: 0,
 				change_coordinate: None,
 				flow_watermark: None,
@@ -250,9 +243,6 @@ impl FlowTransaction {
 				accumulator: ChangeAccumulator::new(),
 				clock: params.clock,
 				operator_states: HashMap::new(),
-				prefetch: HashMap::new(),
-				prefetch_bytes: 0,
-				prefetch_rejections: 0,
 				store_reads: 0,
 				change_coordinate: None,
 				flow_watermark: None,
@@ -344,9 +334,6 @@ impl FlowTransaction {
 				accumulator: ChangeAccumulator::new(),
 				clock,
 				operator_states: HashMap::new(),
-				prefetch: HashMap::new(),
-				prefetch_bytes: 0,
-				prefetch_rejections: 0,
 				store_reads: 0,
 				change_coordinate: None,
 				flow_watermark: None,
@@ -545,7 +532,7 @@ macro_rules! interceptor_method {
 	};
 }
 
-impl WithInterceptors for FlowTransaction {
+impl WithInterceptors for DepFlowTransaction {
 	interceptor_method!(table_row_pre_insert_interceptors, table_row_pre_insert, TableRowPreInsertInterceptor);
 	interceptor_method!(table_row_post_insert_interceptors, table_row_post_insert, TableRowPostInsertInterceptor);
 	interceptor_method!(table_row_pre_update_interceptors, table_row_pre_update, TableRowPreUpdateInterceptor);

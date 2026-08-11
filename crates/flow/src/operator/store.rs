@@ -19,16 +19,16 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::{timer::Timer, transaction::FlowTransaction};
+use crate::{timer::Timer, transaction::DepFlowTransaction};
 
 pub struct OperatorStateStore<'a> {
-	txn: &'a mut FlowTransaction,
+	txn: &'a mut DepFlowTransaction,
 	operator: OperatorId,
 	now: DateTime,
 }
 
 impl<'a> OperatorStateStore<'a> {
-	pub fn new(txn: &'a mut FlowTransaction, operator: OperatorId) -> Self {
+	pub fn new(txn: &'a mut DepFlowTransaction, operator: OperatorId) -> Self {
 		let now = txn.written_at();
 		Self {
 			txn,

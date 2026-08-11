@@ -22,7 +22,7 @@ use reifydb_flow::{
 	operator::{Operator, OperatorCell, apply::ApplyOperator, scan::series::SourceSeriesOperator},
 	timer::Timer,
 	transaction::{
-		ChangeCoordinate, DeferredParams, FlowTransaction,
+		ChangeCoordinate, DeferredParams, DepFlowTransaction,
 		substrate::{FlowSubstrate, apply_operator_state},
 	},
 };
@@ -160,10 +160,10 @@ impl<O: Operator> Harness<O> {
 		Ok(items)
 	}
 
-	fn begin(&mut self, at: DateTime) -> FlowTransaction {
+	fn begin(&mut self, at: DateTime) -> DepFlowTransaction {
 		let query = self.engine.multi().begin_query().expect("begin_query");
 		let state_query = self.engine.multi().begin_query().expect("begin_query");
-		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version: CommitVersion(self.version),
 			pending: mem::take(&mut self.pending),
 			base_pending: PendingLayers::empty(),
@@ -182,7 +182,7 @@ impl<O: Operator> Harness<O> {
 		txn
 	}
 
-	fn end(&mut self, mut txn: FlowTransaction) {
+	fn end(&mut self, mut txn: DepFlowTransaction) {
 		let pending = txn.take_pending();
 		apply_operator_state(&self.substrate.operators, CommitVersion(self.version), &pending);
 		let mut rest = Pending::new();

@@ -25,7 +25,7 @@ use reifydb_core::{
 use reifydb_flow::{
 	operator::Operator,
 	transaction::{
-		ChangeCoordinate, DeferredParams, FlowTransaction,
+		ChangeCoordinate, DeferredParams, DepFlowTransaction,
 		substrate::{FlowSubstrate, apply_operator_state},
 	},
 };
@@ -56,7 +56,7 @@ pub struct NativeOperatorHarness<C: OperatorLogic + OperatorMetadata + 'static> 
 	version: u64,
 	pending: Pending,
 	substrate: FlowSubstrate,
-	current: Option<FlowTransaction>,
+	current: Option<DepFlowTransaction>,
 	history: Vec<Change>,
 	_phantom: PhantomData<C>,
 }
@@ -66,10 +66,10 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 		NativeOperatorHarnessBuilder::new()
 	}
 
-	fn begin_txn(&mut self) -> FlowTransaction {
+	fn begin_txn(&mut self) -> DepFlowTransaction {
 		let query = self.engine.multi().begin_query().expect("begin_query");
 		let state_query = self.engine.multi().begin_query().expect("begin_query");
-		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version: CommitVersion(self.version),
 			pending: mem::take(&mut self.pending),
 			base_pending: PendingLayers::empty(),
@@ -88,7 +88,7 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> NativeOperatorHarness<C> {
 		txn
 	}
 
-	fn end_txn(&mut self, mut txn: FlowTransaction) {
+	fn end_txn(&mut self, mut txn: DepFlowTransaction) {
 		let pending = txn.take_pending();
 		apply_operator_state(&self.substrate.operators, CommitVersion(self.version), &pending);
 		let mut rest = Pending::new();

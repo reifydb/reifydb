@@ -36,7 +36,7 @@ use crate::{
 		store::OperatorStateStore,
 	},
 	timer::Timer,
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 	window::{
 		coord::OrdinalCoord,
 		engine::{config::WindowEngineConfig, rolling::RollingEngine},
@@ -106,8 +106,8 @@ impl WindowOperator {
 
 	fn with_meta<R>(
 		&self,
-		txn: &mut FlowTransaction,
-		f: impl FnOnce(&mut FlowTransaction) -> Result<R>,
+		txn: &mut DepFlowTransaction,
+		f: impl FnOnce(&mut DepFlowTransaction) -> Result<R>,
 	) -> Result<R> {
 		let operator = self.core.operator;
 		self.meta_slot().hydrate_once(&mut OperatorStateStore::new(txn, operator))?;
@@ -209,7 +209,7 @@ impl Operator for WindowOperator {
 		None
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		self.with_meta(txn, |txn| match &self.kind {
 			WindowKind::Tumbling {
 				..
@@ -226,7 +226,7 @@ impl Operator for WindowOperator {
 		})
 	}
 
-	fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&self, txn: &mut DepFlowTransaction, timer: Timer) -> Result<Option<Change>> {
 		let fired = FiredAt::of(&timer);
 		self.with_meta(txn, |txn| {
 			let diffs = match &self.kind {

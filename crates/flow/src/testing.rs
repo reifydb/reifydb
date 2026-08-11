@@ -11,7 +11,7 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::value::datetime::DateTime;
 
-use crate::transaction::{ChangeCoordinate, DeferredParams, FlowTransaction, substrate::FlowSubstrate};
+use crate::transaction::{ChangeCoordinate, DeferredParams, DepFlowTransaction, substrate::FlowSubstrate};
 
 pub struct FlowTxnBuilder<'a> {
 	engine: &'a TestEngine,
@@ -36,9 +36,9 @@ impl<'a> FlowTxnBuilder<'a> {
 		self
 	}
 
-	pub fn deferred(self) -> FlowTransaction {
+	pub fn deferred(self) -> DepFlowTransaction {
 		let version = self.version;
-		let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+		let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version,
 			pending: Pending::new(),
 			base_pending: PendingLayers::empty(),

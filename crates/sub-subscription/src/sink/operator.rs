@@ -19,7 +19,7 @@ use reifydb_flow::{
 		Operator, OperatorCell,
 		stateful::{raw::RawStatefulOperator, utils},
 	},
-	transaction::{FlowTransaction, slot::PersistFn},
+	transaction::{DepFlowTransaction, slot::PersistFn},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
@@ -61,7 +61,7 @@ impl EphemeralSinkSubscriptionOperator {
 		}
 	}
 
-	fn load_delivered_state(&self, txn: &mut FlowTransaction) -> Result<DeliveredState> {
+	fn load_delivered_state(&self, txn: &mut DepFlowTransaction) -> Result<DeliveredState> {
 		let key = utils::empty_state_key();
 		let Some(row) = utils::state_get(self.operator, txn, &key)? else {
 			return Ok(DeliveredState::default());
@@ -113,7 +113,7 @@ impl Operator for EphemeralSinkSubscriptionOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		let (mut state, persist) = self.take_delivered_state(txn)?;
 
 		for diff in change.diffs.iter() {
@@ -142,7 +142,7 @@ impl Operator for EphemeralSinkSubscriptionOperator {
 
 impl EphemeralSinkSubscriptionOperator {
 	#[inline]
-	fn take_delivered_state(&self, txn: &mut FlowTransaction) -> Result<(DeliveredState, PersistFn)> {
+	fn take_delivered_state(&self, txn: &mut DepFlowTransaction) -> Result<(DeliveredState, PersistFn)> {
 		let operator_id = self.operator;
 
 		txn.take_operator_state::<DeliveredState, _>(operator_id, |txn| {

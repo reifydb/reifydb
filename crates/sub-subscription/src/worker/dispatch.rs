@@ -10,7 +10,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin},
 	},
 };
-use reifydb_flow::transaction::FlowTransaction;
+use reifydb_flow::transaction::DepFlowTransaction;
 use reifydb_sub_flow::engine::FlowEngineInner;
 use reifydb_transaction::{error::TransactionError, multi::transaction::read::MultiReadTransaction};
 use reifydb_value::Result;
@@ -119,7 +119,7 @@ impl SubscriptionWorkerActor {
 		let mut query = base_query.clone();
 		query.read_as_of_version_inclusive(change.version);
 
-		let mut txn = FlowTransaction::ephemeral(
+		let mut txn = DepFlowTransaction::ephemeral(
 			change.version,
 			query,
 			self.engine.single_owned(),

@@ -5,9 +5,9 @@ use std::any::Any;
 
 use reifydb_value::Result;
 
-use super::FlowTransaction;
+use super::DepFlowTransaction;
 
-pub type PersistFn = Box<dyn FnOnce(&mut FlowTransaction, Box<dyn Any>) -> Result<()> + Send>;
+pub type PersistFn = Box<dyn FnOnce(&mut DepFlowTransaction, Box<dyn Any>) -> Result<()> + Send>;
 
 pub struct OperatorStateSlot {
 	pub value: Box<dyn Any + Send>,

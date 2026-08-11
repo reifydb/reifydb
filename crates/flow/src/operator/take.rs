@@ -34,7 +34,7 @@ use crate::{
 		Operator, OperatorCell,
 		stateful::{raw::RawStatefulOperator, utils},
 	},
-	transaction::{FlowTransaction, slot::PersistFn},
+	transaction::{DepFlowTransaction, slot::PersistFn},
 };
 
 #[operator_state]
@@ -84,7 +84,7 @@ impl TakeOperator {
 		}
 	}
 
-	fn load_take_state(&self, txn: &mut FlowTransaction) -> Result<TakeState> {
+	fn load_take_state(&self, txn: &mut DepFlowTransaction) -> Result<TakeState> {
 		let key = utils::empty_state_key();
 		let Some(row) = utils::state_get(self.operator, txn, &key)? else {
 			return Ok(TakeState::default());
@@ -101,7 +101,7 @@ impl TakeOperator {
 	}
 
 	#[inline]
-	fn acquire_take_state(&self, txn: &mut FlowTransaction) -> Result<(TakeState, PersistFn)> {
+	fn acquire_take_state(&self, txn: &mut DepFlowTransaction) -> Result<(TakeState, PersistFn)> {
 		let operator_id = self.operator;
 		txn.take_operator_state::<TakeState, _>(operator_id, |txn| {
 			let s = self.load_take_state(txn)?;
@@ -302,7 +302,7 @@ impl Operator for TakeOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		let operator_id = self.operator;
 		let (mut state, persist) = self.acquire_take_state(txn)?;
 

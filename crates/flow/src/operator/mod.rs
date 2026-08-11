@@ -14,7 +14,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
-use crate::{timer::Timer, transaction::FlowTransaction};
+use crate::{timer::Timer, transaction::DepFlowTransaction};
 
 #[cfg(reifydb_target = "native")]
 pub fn scale_from_millis(span: Option<u64>) -> Option<Duration> {
@@ -50,9 +50,9 @@ pub trait Operator: Send {
 
 	fn capabilities(&self) -> &[OperatorCapability];
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change>;
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change>;
 
-	fn on_timer(&self, _txn: &mut FlowTransaction, _timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&self, _txn: &mut DepFlowTransaction, _timer: Timer) -> Result<Option<Change>> {
 		Ok(None)
 	}
 
@@ -80,7 +80,7 @@ impl OperatorCell {
 		Self(Arc::new(operator))
 	}
 
-	pub fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	pub fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		enforce_apply_capabilities(self.id(), self.capabilities(), &change);
 		self.0.apply(txn, change)
 	}

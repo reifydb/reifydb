@@ -63,7 +63,7 @@ use crate::{
 	error::FlowStateError,
 	operator::{Operator, OperatorCell, join::column::JoinedColumnsBuilder, stateful::raw::RawStatefulOperator},
 	timer::Timer,
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 
 fn partition_suffix(partition: Option<Partition>) -> Vec<u8> {
@@ -175,7 +175,7 @@ impl SinkRingBufferViewOperator {
 
 	fn read_meta_mirror(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		partition: Option<Partition>,
 	) -> Result<Option<RingBufferMetadata>> {
 		let key = self.meta_key(partition);
@@ -187,7 +187,7 @@ impl SinkRingBufferViewOperator {
 
 	fn write_meta_mirror(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		partition: Option<Partition>,
 		metadata: &RingBufferMetadata,
 	) -> Result<()> {
@@ -199,7 +199,7 @@ impl SinkRingBufferViewOperator {
 	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
 	fn assert_mirrors_mvcc(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		partition: Option<Partition>,
 		mvcc: &EncodedKey,
 	) -> Result<()> {
@@ -216,7 +216,7 @@ impl SinkRingBufferViewOperator {
 		Ok(())
 	}
 
-	fn read_metadata(&self, txn: &mut FlowTransaction) -> Result<RingBufferMetadata> {
+	fn read_metadata(&self, txn: &mut DepFlowTransaction) -> Result<RingBufferMetadata> {
 		if let Some(metadata) = self.read_meta_mirror(txn, None)? {
 			return Ok(metadata);
 		}
@@ -229,7 +229,7 @@ impl SinkRingBufferViewOperator {
 		Ok(metadata)
 	}
 
-	fn write_metadata(&self, txn: &mut FlowTransaction, metadata: &RingBufferMetadata) -> Result<()> {
+	fn write_metadata(&self, txn: &mut DepFlowTransaction, metadata: &RingBufferMetadata) -> Result<()> {
 		let key = RingBufferMetadataKey::encoded(self.ringbuffer_id);
 		let row = encode_ringbuffer_metadata(metadata);
 		txn.set(&key, row.into_bytes())?;
@@ -239,7 +239,7 @@ impl SinkRingBufferViewOperator {
 
 	fn read_partition_metadata(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		partition_values: &[Value],
 	) -> Result<RingBufferMetadata> {
 		let partition = partition_of_values(partition_values);
@@ -257,7 +257,7 @@ impl SinkRingBufferViewOperator {
 
 	fn write_partition_metadata(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		partition_values: &[Value],
 		metadata: &RingBufferMetadata,
 	) -> Result<()> {
@@ -269,7 +269,7 @@ impl SinkRingBufferViewOperator {
 		self.assert_mirrors_mvcc(txn, partition, &key)
 	}
 
-	fn remove_partition_metadata(&self, txn: &mut FlowTransaction, partition_values: &[Value]) -> Result<()> {
+	fn remove_partition_metadata(&self, txn: &mut DepFlowTransaction, partition_values: &[Value]) -> Result<()> {
 		let key = RingBufferMetadataKey::encoded_partition(self.ringbuffer_id, partition_values.to_vec());
 		txn.remove(&key)?;
 		let partition = partition_of_values(partition_values);
@@ -285,7 +285,7 @@ impl SinkRingBufferViewOperator {
 		)
 	}
 
-	fn get_forward(&self, txn: &mut FlowTransaction, source_rn: RowNumber) -> Result<Option<RowNumber>> {
+	fn get_forward(&self, txn: &mut DepFlowTransaction, source_rn: RowNumber) -> Result<Option<RowNumber>> {
 		let key = self.forward_key(source_rn);
 		match self.state_get(txn, &key)? {
 			Some(row) => Ok(Some(RowNumber(decode_u64(&row, "RingBufferForward")?))),
@@ -293,12 +293,12 @@ impl SinkRingBufferViewOperator {
 		}
 	}
 
-	fn set_forward(&self, txn: &mut FlowTransaction, source_rn: RowNumber, storage_rn: RowNumber) -> Result<()> {
+	fn set_forward(&self, txn: &mut DepFlowTransaction, source_rn: RowNumber, storage_rn: RowNumber) -> Result<()> {
 		let key = self.forward_key(source_rn);
 		self.state_set(txn, &key, encode_u64(storage_rn.0, "RingBufferForward")?)
 	}
 
-	fn drop_forward(&self, txn: &mut FlowTransaction, source_rn: RowNumber) -> Result<()> {
+	fn drop_forward(&self, txn: &mut DepFlowTransaction, source_rn: RowNumber) -> Result<()> {
 		let key = self.forward_key(source_rn);
 		self.state_remove(txn, &key)
 	}
@@ -336,7 +336,7 @@ impl SinkRingBufferViewOperator {
 
 	fn set_row_entry(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		partition: Option<Partition>,
 		storage_rn: RowNumber,
 		source_rn: RowNumber,
@@ -363,7 +363,7 @@ impl SinkRingBufferViewOperator {
 
 	fn readdress_row_entry(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		partition: Option<Partition>,
 		storage_rn: RowNumber,
 		source_rn: RowNumber,
@@ -378,7 +378,7 @@ impl SinkRingBufferViewOperator {
 
 	fn drop_row_entry(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		partition: Option<Partition>,
 		storage_rn: RowNumber,
 	) -> Result<()> {
@@ -395,7 +395,7 @@ impl SinkRingBufferViewOperator {
 
 	fn take_row_entry(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		partition: Option<Partition>,
 		storage_rn: RowNumber,
 	) -> Result<Option<RowNumber>> {
@@ -460,7 +460,7 @@ impl Operator for SinkRingBufferViewOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def().clone();
 		let shape = row_shape_from_columns(RowFamily::RingBuffer, view.columns());
 		let object_id = StorageId::ringbuffer(self.ringbuffer_id);
@@ -533,7 +533,7 @@ impl Operator for SinkRingBufferViewOperator {
 		Ok(Change::from_flow(self.operator, change.version, Vec::new(), change.changed_at))
 	}
 
-	fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&self, txn: &mut DepFlowTransaction, timer: Timer) -> Result<Option<Change>> {
 		if timer.kind != TimerKind::RowTtl || self.ttl.is_none() {
 			return Ok(None);
 		}
@@ -567,7 +567,7 @@ impl Operator for SinkRingBufferViewOperator {
 impl SinkRingBufferViewOperator {
 	fn due_storage_rows(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		partition: Option<Partition>,
 		at: u64,
 	) -> Result<Vec<u64>> {
@@ -586,7 +586,11 @@ impl SinkRingBufferViewOperator {
 			.collect()
 	}
 
-	fn lowest_storage_row(&self, txn: &mut FlowTransaction, partition: Option<Partition>) -> Result<Option<u64>> {
+	fn lowest_storage_row(
+		&self,
+		txn: &mut DepFlowTransaction,
+		partition: Option<Partition>,
+	) -> Result<Option<u64>> {
 		let range = EncodedKeyRange::prefix(&row_entry_prefix(partition));
 		match self.state_range(txn, range).next() {
 			Some(result) => {
@@ -604,7 +608,7 @@ impl SinkRingBufferViewOperator {
 		}
 	}
 
-	fn earliest_expiry(&self, txn: &mut FlowTransaction, partition: Option<Partition>) -> Result<Option<u64>> {
+	fn earliest_expiry(&self, txn: &mut DepFlowTransaction, partition: Option<Partition>) -> Result<Option<u64>> {
 		let range = EncodedKeyRange::prefix(&expiry_scan_prefix(partition));
 		match self.state_range(txn, range).next() {
 			Some(result) => {
@@ -633,14 +637,14 @@ impl SinkRingBufferViewOperator {
 		})
 	}
 
-	fn read_armed(&self, txn: &mut FlowTransaction, partition: Option<Partition>) -> Result<Option<u64>> {
+	fn read_armed(&self, txn: &mut DepFlowTransaction, partition: Option<Partition>) -> Result<Option<u64>> {
 		match self.state_get(txn, &self.arm_key(partition))? {
 			Some(row) => Ok(Some(decode_u64(&row, "RingBufferTtlArm")?)),
 			None => Ok(None),
 		}
 	}
 
-	fn sync_row_ttl_timer(&self, txn: &mut FlowTransaction, partition_values: &[Value]) -> Result<()> {
+	fn sync_row_ttl_timer(&self, txn: &mut DepFlowTransaction, partition_values: &[Value]) -> Result<()> {
 		if self.ttl.is_none() {
 			return Ok(());
 		}
@@ -680,7 +684,7 @@ impl SinkRingBufferViewOperator {
 
 	fn evict_due(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		object_id: StorageId,
 		partition_values: &[Value],
 		at: u64,
@@ -742,7 +746,7 @@ impl SinkRingBufferViewOperator {
 	#[allow(clippy::too_many_arguments)]
 	fn apply_ringbuffer_insert(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		view: &View,
 		shape: &RowShape,
 		object_id: StorageId,
@@ -832,7 +836,7 @@ impl SinkRingBufferViewOperator {
 	#[allow(clippy::too_many_arguments)]
 	fn insert_group(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		object_id: StorageId,
 		meta: &mut RingBufferMetadata,
 		partition: Option<Partition>,
@@ -904,7 +908,7 @@ impl SinkRingBufferViewOperator {
 
 	fn build_evicted_diff(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		view: &View,
 		shape: &RowShape,
 		evicted_rns: Vec<RowNumber>,
@@ -938,7 +942,7 @@ impl SinkRingBufferViewOperator {
 	#[allow(clippy::too_many_arguments)]
 	fn apply_ringbuffer_update(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		view: &View,
 		shape: &RowShape,
 		object_id: StorageId,
@@ -1006,7 +1010,7 @@ impl SinkRingBufferViewOperator {
 	#[allow(clippy::too_many_arguments)]
 	fn apply_ringbuffer_remove(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		view: &View,
 		object_id: StorageId,
 		metadata: &mut Option<RingBufferMetadata>,
@@ -1068,7 +1072,7 @@ impl SinkRingBufferViewOperator {
 }
 
 #[inline]
-fn emit_view_change(txn: &mut FlowTransaction, view: &View, diff: Diff) {
+fn emit_view_change(txn: &mut DepFlowTransaction, view: &View, diff: Diff) {
 	let version = txn.version();
 	let changed_at = txn.clock().now();
 	txn.track_flow_change(Change {
@@ -1167,11 +1171,11 @@ mod tests {
 		SinkRingBufferViewOperator::new(parent, OperatorId(1), resolved, RB, 100, propagate, ttl, partition_by)
 	}
 
-	fn deferred_txn(engine: &TestEngine) -> FlowTransaction {
+	fn deferred_txn(engine: &TestEngine) -> DepFlowTransaction {
 		engine.flow_txn().clock_millis(0).deferred()
 	}
 
-	fn commit_flow_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
+	fn commit_flow_pending(engine: &TestEngine, txn: &mut DepFlowTransaction) {
 		// Mirrors the committer split: state to the arena, everything else to the multi store.
 		let pending = txn.take_pending();
 		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();

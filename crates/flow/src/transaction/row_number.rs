@@ -29,7 +29,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use super::FlowTransaction;
+use super::DepFlowTransaction;
 
 const DEFAULT_BYTE_BUDGET: u64 = 1024 * 1024;
 const HYDRATE_CHUNK: usize = 8_192;
@@ -202,7 +202,7 @@ impl RowNumberProvider {
 		&self,
 		operator: OperatorId,
 		group: GroupId,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		key: &EncodedKey,
 	) -> Result<(RowNumber, bool)> {
 		Ok(self.get_or_create_row_numbers(operator, group, txn, from_ref(key))?.into_iter().next().unwrap())
@@ -212,7 +212,7 @@ impl RowNumberProvider {
 		&self,
 		operator: OperatorId,
 		group: GroupId,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		keys: &[EncodedKey],
 	) -> Result<Vec<(RowNumber, bool)>> {
 		let now = txn.written_at();
@@ -302,7 +302,7 @@ impl RowNumberProvider {
 		&self,
 		operator: OperatorId,
 		group: GroupId,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		keys: &[EncodedKey],
 	) -> Result<Vec<Option<RowNumber>>> {
 		let budget = self.inner.budget;
@@ -352,7 +352,7 @@ impl RowNumberProvider {
 		&self,
 		operator: OperatorId,
 		group: GroupId,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		key: &EncodedKey,
 	) -> Result<Option<RowNumber>> {
 		let budget = self.inner.budget;
@@ -381,7 +381,7 @@ impl RowNumberProvider {
 		&self,
 		operator: OperatorId,
 		group: GroupId,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		key: &EncodedKey,
 	) -> Result<bool> {
 		let budget = self.inner.budget;
@@ -406,7 +406,7 @@ impl RowNumberProvider {
 		&self,
 		operator: OperatorId,
 		group: GroupId,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		upper: &EncodedKey,
 	) -> Result<Vec<RowNumber>> {
 		let base = mapping_range(group);
@@ -438,7 +438,7 @@ impl RowNumberProvider {
 		&self,
 		operator: OperatorId,
 		group: GroupId,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		key_prefix: &[u8],
 	) -> Result<()> {
 		let inner_prefix = OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix);
@@ -466,7 +466,7 @@ impl RowNumberProvider {
 		&self,
 		operator: OperatorId,
 		group: GroupId,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		cutoff: Cutoff,
 		cursor: &mut Option<EncodedKey>,
 		batch_size: usize,
@@ -572,7 +572,7 @@ impl RowNumberProvider {
 	fn hydrate_group(
 		state: &mut NodeState,
 		operator: OperatorId,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		group: GroupId,
 		budget: ByteSize,
 	) -> Result<()> {
@@ -623,7 +623,7 @@ impl RowNumberProvider {
 		Ok(())
 	}
 
-	fn mint(state: &mut NodeState, operator: OperatorId, txn: &mut FlowTransaction, count: u64) -> Result<u64> {
+	fn mint(state: &mut NodeState, operator: OperatorId, txn: &mut DepFlowTransaction, count: u64) -> Result<u64> {
 		let seed = match state.next {
 			Some(next) => next,
 			None => match txn.state_get(operator, &counter_key())? {
@@ -639,7 +639,7 @@ impl RowNumberProvider {
 	}
 }
 
-impl FlowTransaction {
+impl DepFlowTransaction {
 	pub fn get_or_create_row_number(
 		&mut self,
 		operator: OperatorId,
@@ -742,10 +742,10 @@ mod tests {
 		EncodedKey::builder().u64(slot).u32(1u32).u32(2u32).build()
 	}
 
-	fn deferred(engine: &TestEngine) -> FlowTransaction {
+	fn deferred(engine: &TestEngine) -> DepFlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		FlowTransaction::deferred_from_parts(DeferredParams {
+		DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version,
 			pending: Pending::new(),
 			base_pending: PendingLayers::empty(),
@@ -762,7 +762,7 @@ mod tests {
 		})
 	}
 
-	fn commit_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
+	fn commit_pending(engine: &TestEngine, txn: &mut DepFlowTransaction) {
 		// Persists the pending writes so a later transaction or a cold provider resolves them the
 		// way a committed flow would.
 		let pending = txn.take_pending();

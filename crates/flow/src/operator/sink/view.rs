@@ -50,7 +50,7 @@ use super::{
 use crate::{
 	error::FlowSinkError,
 	operator::{Operator, OperatorCell},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 
 const CREATED_AT_CACHE_CAPACITY: usize = 16_384;
@@ -175,7 +175,7 @@ impl Operator for SinkTableViewOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		let view = self.view.def();
 		let shape = &self.shape;
 
@@ -206,7 +206,7 @@ impl SinkTableViewOperator {
 	#[instrument(name = "flow::operator::sink::view::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_table_view_insert(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		view: &View,
 		shape: &RowShape,
 		post: &Columns,
@@ -252,7 +252,7 @@ impl SinkTableViewOperator {
 	#[instrument(name = "flow::operator::sink::view::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn apply_table_view_update(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		view: &View,
 		shape: &RowShape,
 		pre: &Columns,
@@ -363,7 +363,7 @@ impl SinkTableViewOperator {
 
 	#[inline]
 	#[instrument(name = "flow::operator::sink::view::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
-	fn apply_table_view_remove(&self, txn: &mut FlowTransaction, view: &View, pre: &Columns) -> Result<()> {
+	fn apply_table_view_remove(&self, txn: &mut DepFlowTransaction, view: &View, pre: &Columns) -> Result<()> {
 		let coerced = coerce_columns(pre, view.columns())?;
 		let dict_encoded = dictionary_encode_view_columns(txn, view, &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
@@ -400,7 +400,7 @@ fn remember_created_at(cache: &mut HashMap<RowNumber, DateTime>, row_number: Row
 }
 
 #[inline]
-fn emit_view_change(txn: &mut FlowTransaction, view: &View, diff: Diff) {
+fn emit_view_change(txn: &mut DepFlowTransaction, view: &View, diff: Diff) {
 	let version = txn.version();
 	let changed_at = txn.clock().now();
 	txn.track_flow_change(Change {
@@ -412,7 +412,7 @@ fn emit_view_change(txn: &mut FlowTransaction, view: &View, diff: Diff) {
 }
 
 pub(crate) fn dictionary_encode_view_columns(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	view: &View,
 	columns: &Columns,
 ) -> Result<Option<Columns>> {
@@ -539,7 +539,7 @@ mod tests {
 		)
 	}
 
-	fn commit_flow_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
+	fn commit_flow_pending(engine: &TestEngine, txn: &mut DepFlowTransaction) {
 		let pending = txn.take_pending();
 		let mut cmd = engine.begin_admin(IdentityId::system()).unwrap();
 		for (key, pw) in pending.iter_sorted() {

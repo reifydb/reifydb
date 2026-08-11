@@ -12,7 +12,7 @@ use reifydb_value::{Result, value::duration::Duration};
 use crate::{
 	operator::{BoxedOperator, Operator, OperatorCell, max_input_time, stamp_output_time},
 	timer::Timer,
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 
 pub struct ApplyOperator {
@@ -52,14 +52,14 @@ impl Operator for ApplyOperator {
 		self.inner.seal_span()
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		let inherited = max_input_time(&change);
 		let mut out = self.inner.apply(txn, change)?;
 		stamp_output_time(&mut out, inherited);
 		Ok(out)
 	}
 
-	fn on_timer(&self, txn: &mut FlowTransaction, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&self, txn: &mut DepFlowTransaction, timer: Timer) -> Result<Option<Change>> {
 		let at = timer.at;
 		let mut out = self.inner.on_timer(txn, timer)?;
 		if let Some(change) = out.as_mut() {
@@ -93,7 +93,7 @@ mod tests {
 	use super::ApplyOperator;
 	use crate::{
 		operator::{Operator, OperatorCell, scale_from_millis, scan::view::SourceViewOperator},
-		transaction::FlowTransaction,
+		transaction::DepFlowTransaction,
 	};
 
 	fn ms(milliseconds: i64) -> Duration {
@@ -141,7 +141,7 @@ mod tests {
 			&[]
 		}
 
-		fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+		fn apply(&self, _txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 			Ok(change)
 		}
 

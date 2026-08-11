@@ -19,7 +19,7 @@ use reifydb_core::{
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 
 use super::{
-	FlowTransaction,
+	DepFlowTransaction,
 	group::{decode_payload, encode_payload},
 };
 use crate::timer::Timer;
@@ -45,7 +45,7 @@ fn index_key(kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::TIMER_INDEX, suffix)
 }
 
-fn armed_at(operator: OperatorId, txn: &mut FlowTransaction, index: &GroupStateKey) -> Result<Option<u64>> {
+fn armed_at(operator: OperatorId, txn: &mut DepFlowTransaction, index: &GroupStateKey) -> Result<Option<u64>> {
 	match txn.state_get(operator, index)? {
 		Some(row) => Ok(Some(decode_payload::<u64>(&row)?)),
 		None => Ok(None),
@@ -84,7 +84,7 @@ pub struct TimerWheel {
 }
 
 impl TimerWheel {
-	pub fn arm(&self, operator: OperatorId, txn: &mut FlowTransaction, timer: &Timer) -> Result<()> {
+	pub fn arm(&self, operator: OperatorId, txn: &mut DepFlowTransaction, timer: &Timer) -> Result<()> {
 		let now = txn.written_at();
 		let at = timer.at.to_millis();
 		if !timer.kind.is_unique() {
@@ -135,7 +135,7 @@ impl TimerWheel {
 		Ok(())
 	}
 
-	pub fn disarm(&self, operator: OperatorId, txn: &mut FlowTransaction, timer: &Timer) -> Result<()> {
+	pub fn disarm(&self, operator: OperatorId, txn: &mut DepFlowTransaction, timer: &Timer) -> Result<()> {
 		let at = timer.at.to_millis();
 		if timer.kind.is_unique() {
 			let index = index_key(timer.kind, &timer.key);
@@ -151,7 +151,7 @@ impl TimerWheel {
 	pub fn take_due(
 		&self,
 		operator: OperatorId,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		watermark: DateTime,
 		limit: usize,
 	) -> Result<Vec<Timer>> {
@@ -215,7 +215,7 @@ impl TimerWheel {
 		Ok(due)
 	}
 
-	fn hydrate_once(state: &mut WheelState, operator: OperatorId, txn: &mut FlowTransaction) -> Result<()> {
+	fn hydrate_once(state: &mut WheelState, operator: OperatorId, txn: &mut DepFlowTransaction) -> Result<()> {
 		if state.hydrated {
 			return Ok(());
 		}
@@ -249,14 +249,14 @@ mod tests {
 	const NODE: OperatorId = OperatorId(1);
 	const NO_LIMIT: usize = usize::MAX;
 
-	fn deferred(engine: &TestEngine) -> FlowTransaction {
+	fn deferred(engine: &TestEngine) -> DepFlowTransaction {
 		deferred_with_clock(engine, MockClock::from_millis(0))
 	}
 
-	fn deferred_with_clock(engine: &TestEngine, clock: MockClock) -> FlowTransaction {
+	fn deferred_with_clock(engine: &TestEngine, clock: MockClock) -> DepFlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		FlowTransaction::deferred_from_parts(DeferredParams {
+		DepFlowTransaction::deferred_from_parts(DeferredParams {
 			version,
 			pending: Pending::new(),
 			base_pending: PendingLayers::empty(),
@@ -273,7 +273,7 @@ mod tests {
 		})
 	}
 
-	fn commit_pending(engine: &TestEngine, txn: &mut FlowTransaction) {
+	fn commit_pending(engine: &TestEngine, txn: &mut DepFlowTransaction) {
 		// Persists into the operator arena so a cold wheel resolves them from the store.
 		let pending = txn.take_pending();
 		apply_operator_state(&engine.inner().operator_state(), txn.version(), &pending);

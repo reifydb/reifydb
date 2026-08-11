@@ -725,7 +725,7 @@ mod pull_protocol {
 			operator_state::{Keyspace, OperatorStateKey},
 		},
 	};
-	use reifydb_flow::transaction::{DeferredParams, FlowTransaction};
+	use reifydb_flow::transaction::{DeferredParams, DepFlowTransaction};
 	use reifydb_runtime::sync::waiter::WaiterHandle;
 	use reifydb_store_operator::store::OperatorStore;
 	use reifydb_test_harness::engine::TestEngine;
@@ -1014,7 +1014,7 @@ mod pull_protocol {
 				.filter(|id| self.flow.get_operator(id).is_some_and(|op| op.ty.is_source()))
 				.collect();
 			assert!(!sources.is_empty(), "the flow under test must have a source to advance");
-			let mut txn = FlowTransaction::deferred_from_parts(DeferredParams {
+			let mut txn = DepFlowTransaction::deferred_from_parts(DeferredParams {
 				version: self.engine.current_version().expect("current version"),
 				pending: Pending::new(),
 				base_pending: PendingLayers::empty(),

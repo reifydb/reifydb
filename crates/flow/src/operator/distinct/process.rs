@@ -23,10 +23,10 @@ use crate::{
 		},
 		stateful::utils,
 	},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 
-fn row_time(txn: &FlowTransaction, columns: &Columns, row_idx: usize) -> DateTime {
+fn row_time(txn: &DepFlowTransaction, columns: &Columns, row_idx: usize) -> DateTime {
 	if columns.time().is_empty() {
 		txn.written_at()
 	} else {
@@ -117,7 +117,7 @@ impl DistinctOperator {
 
 	pub(super) fn process_insert(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		state: &mut DistinctState,
 		groups: &HashMap<Hash128, GroupId>,
 		columns: &Columns,
@@ -208,7 +208,7 @@ impl DistinctOperator {
 
 	pub(super) fn process_update(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		state: &mut DistinctState,
 		groups: &HashMap<Hash128, GroupId>,
 		pre_columns: &Columns,
@@ -367,7 +367,7 @@ impl DistinctOperator {
 
 	pub(super) fn process_remove(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		state: &mut DistinctState,
 		groups: &HashMap<Hash128, GroupId>,
 		columns: &Columns,

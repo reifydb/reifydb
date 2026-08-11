@@ -38,7 +38,7 @@ use crate::{
 		join::strategy::hash::columns_from_block,
 		stateful::utils::{state_get, state_range, state_remove, state_set},
 	},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 
 const ROW_NUMBER_BYTES: usize = 8;
@@ -72,7 +72,7 @@ impl Store {
 
 	pub(crate) fn slot(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		group: GroupId,
 	) -> Result<Option<(EncodedBytes, Columns)>> {
 		if let Some(cached) = self.cache.get(group) {
@@ -93,11 +93,11 @@ impl Store {
 		self.cache.remove(group);
 	}
 
-	fn resolve(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<Option<GroupId>> {
+	fn resolve(&self, txn: &mut DepFlowTransaction, hash: &Hash128) -> Result<Option<GroupId>> {
 		txn.lookup_group(self.operator_id, &group_bytes(hash))
 	}
 
-	fn intern(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<GroupId> {
+	fn intern(&self, txn: &mut DepFlowTransaction, hash: &Hash128) -> Result<GroupId> {
 		let (group, _) = txn.intern_group(self.operator_id, &group_bytes(hash))?;
 		Ok(group)
 	}
@@ -120,7 +120,7 @@ impl Store {
 	#[instrument(name = "flow::operator::join::store::put_row", level = "trace", skip_all)]
 	pub(crate) fn put_row(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		hash: &Hash128,
 		row_number: RowNumber,
 		row: &EncodedOperatorRow,
@@ -131,7 +131,7 @@ impl Store {
 
 	pub(crate) fn write_row(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		group: GroupId,
 		row_number: RowNumber,
 		row: &EncodedOperatorRow,
@@ -141,17 +141,17 @@ impl Store {
 		state_set(self.operator_id, txn, &key, row.clone())
 	}
 
-	pub(crate) fn group_of(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<Option<GroupId>> {
+	pub(crate) fn group_of(&self, txn: &mut DepFlowTransaction, hash: &Hash128) -> Result<Option<GroupId>> {
 		self.resolve(txn, hash)
 	}
 
-	pub(crate) fn group_for(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<GroupId> {
+	pub(crate) fn group_for(&self, txn: &mut DepFlowTransaction, hash: &Hash128) -> Result<GroupId> {
 		self.intern(txn, hash)
 	}
 
 	pub(crate) fn get_row_in(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<Option<EncodedBytes>> {
@@ -161,7 +161,7 @@ impl Store {
 
 	pub(crate) fn update_row(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		hash: &Hash128,
 		row_number: RowNumber,
 		row: &EncodedOperatorRow,
@@ -174,7 +174,7 @@ impl Store {
 
 	pub(crate) fn update_row_in(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		group: GroupId,
 		row_number: RowNumber,
 		row: &EncodedOperatorRow,
@@ -190,7 +190,7 @@ impl Store {
 
 	pub(crate) fn remove_row(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		hash: &Hash128,
 		row_number: RowNumber,
 	) -> Result<bool> {
@@ -206,7 +206,7 @@ impl Store {
 
 	pub(crate) fn remove_row_in(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<()> {
@@ -218,7 +218,7 @@ impl Store {
 	#[instrument(name = "flow::operator::join::rows_for_key", level = "trace", skip_all, fields(limit = limit))]
 	pub(crate) fn rows_for_key(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		hash: &Hash128,
 		after: Option<&RowNumber>,
 		limit: usize,
@@ -244,7 +244,7 @@ impl Store {
 		Ok(out)
 	}
 
-	pub(crate) fn contains_key(&self, txn: &mut FlowTransaction, hash: &Hash128) -> Result<bool> {
+	pub(crate) fn contains_key(&self, txn: &mut DepFlowTransaction, hash: &Hash128) -> Result<bool> {
 		let Some(group) = self.resolve(txn, hash)? else {
 			return Ok(false);
 		};
@@ -254,7 +254,7 @@ impl Store {
 
 	pub(crate) fn get_row_shape(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		fingerprint: RowShapeFingerprint,
 	) -> Result<Option<RowShape>> {
 		if let Some(shape) = self.shape_cache.get(&fingerprint) {
@@ -281,7 +281,7 @@ impl Store {
 		}
 	}
 
-	pub(crate) fn set_row_shape(&self, txn: &mut FlowTransaction, shape: &RowShape) -> Result<()> {
+	pub(crate) fn set_row_shape(&self, txn: &mut DepFlowTransaction, shape: &RowShape) -> Result<()> {
 		let fingerprint = shape.fingerprint();
 		if self.shape_cache.contains_key(&fingerprint) {
 			return Ok(());
@@ -336,7 +336,7 @@ mod tests {
 	/// across a batch. Kept here so the read-path assertions still exercise both halves together.
 	fn get_row(
 		store: &Store,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		hash: &Hash128,
 		row_number: RowNumber,
 	) -> Result<Option<EncodedBytes>> {

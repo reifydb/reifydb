@@ -4,9 +4,9 @@
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_value::Result;
 
-use super::FlowTransaction;
+use super::DepFlowTransaction;
 
-impl FlowTransaction {
+impl DepFlowTransaction {
 	pub fn set(&mut self, key: &EncodedKey, value: impl Into<EncodedBytes>) -> Result<()> {
 		self.inner_mut().pending.insert(key.clone(), value.into());
 		Ok(())
@@ -60,7 +60,7 @@ pub mod tests {
 	#[test]
 	fn test_set_buffers_to_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -79,7 +79,7 @@ pub mod tests {
 	#[test]
 	fn test_set_multiple_keys() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -99,7 +99,7 @@ pub mod tests {
 	#[test]
 	fn test_set_overwrites_same_key() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -117,7 +117,7 @@ pub mod tests {
 	#[test]
 	fn test_remove_buffers_to_pending() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -134,7 +134,7 @@ pub mod tests {
 	#[test]
 	fn test_remove_multiple_keys() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -154,7 +154,7 @@ pub mod tests {
 	#[test]
 	fn test_set_then_remove() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -174,7 +174,7 @@ pub mod tests {
 	#[test]
 	fn test_remove_then_set() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -194,7 +194,7 @@ pub mod tests {
 	#[test]
 	fn test_writes_not_visible_to_parent() {
 		let mut parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),
@@ -220,7 +220,7 @@ pub mod tests {
 		assert_eq!(get_row(&mut parent, &key), Some(value.clone()));
 
 		let parent_version = parent.version();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			parent_version,
 			Catalog::testing(),
@@ -235,7 +235,7 @@ pub mod tests {
 	#[test]
 	fn test_mixed_writes_and_removes() {
 		let parent = create_test_transaction();
-		let mut txn = FlowTransaction::deferred(
+		let mut txn = DepFlowTransaction::deferred(
 			&parent,
 			CommitVersion(1),
 			Catalog::testing(),

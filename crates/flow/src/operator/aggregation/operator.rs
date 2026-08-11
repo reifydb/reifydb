@@ -32,7 +32,7 @@ use super::{
 use crate::{
 	context::FlowContext,
 	operator::{Operator, OperatorCell, store::OperatorStateStore},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 	window::{
 		engine::{ExpiryAnchor, config::WindowEngineConfig, tumbling::TumblingBuckets},
 		span::{WindowCoord, WindowSpan},
@@ -85,7 +85,7 @@ impl Operator for AggregateOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		apply_aggregate_engine(&self.core, txn, change)
 	}
 
@@ -98,7 +98,7 @@ impl Operator for AggregateOperator {
 	}
 }
 
-pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 	core.engine_meta_open();
 	let kinds = core.slot_kinds.clone().expect("aggregate requires representable slot kinds");
 

@@ -756,7 +756,7 @@ mod source {
 
 		fn apply(
 			&self,
-			txn: &mut reifydb_flow::transaction::FlowTransaction,
+			txn: &mut reifydb_flow::transaction::DepFlowTransaction,
 			change: Change,
 		) -> reifydb_value::Result<Change> {
 			match self {

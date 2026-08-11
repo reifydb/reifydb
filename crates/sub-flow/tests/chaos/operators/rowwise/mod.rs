@@ -18,7 +18,7 @@ use reifydb_flow::{
 		Operator, OperatorCell, extend::ExtendOperator, filter::FilterOperator, map::MapOperator,
 		scan::series::SourceSeriesOperator,
 	},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -171,7 +171,7 @@ impl Operator for Rowwise {
 		}
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		match self {
 			Rowwise::Filter(op) => op.apply(txn, change),
 			Rowwise::Map(op) => op.apply(txn, change),

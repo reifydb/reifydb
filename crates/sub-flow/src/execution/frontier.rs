@@ -7,7 +7,7 @@ use reifydb_core::interface::catalog::{
 	flow::{FlowId, OperatorId},
 	object::ObjectId,
 };
-use reifydb_flow::{operator::OperatorCell, transaction::FlowTransaction, window::engine::seal_horizon};
+use reifydb_flow::{operator::OperatorCell, transaction::DepFlowTransaction, window::engine::seal_horizon};
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::{Result, value::datetime::DateTime};
 
@@ -22,7 +22,7 @@ pub(crate) struct WatermarkHold {
 pub(crate) type WatermarkHolds = Vec<WatermarkHold>;
 
 impl FlowEngineInner {
-	pub(crate) fn holds(&self, txn: &mut FlowTransaction, flow_id: FlowId) -> Result<WatermarkHolds> {
+	pub(crate) fn holds(&self, txn: &mut DepFlowTransaction, flow_id: FlowId) -> Result<WatermarkHolds> {
 		let Some(flow) = self.flows.get(&flow_id) else {
 			return Ok(Vec::new());
 		};
@@ -62,7 +62,7 @@ impl FlowEngineInner {
 }
 
 fn output_frontiers(
-	txn: &mut FlowTransaction,
+	txn: &mut DepFlowTransaction,
 	flow: &FlowDag,
 	operators: &BTreeMap<OperatorId, OperatorCell>,
 	topo: &[OperatorId],
@@ -177,7 +177,7 @@ mod tests {
 			OperatorCapability::STANDARD
 		}
 
-		fn apply(&self, _txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+		fn apply(&self, _txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 			Ok(change)
 		}
 
@@ -202,10 +202,10 @@ mod tests {
 		)
 	}
 
-	fn deferred(engine: &TestEngine) -> FlowTransaction {
+	fn deferred(engine: &TestEngine) -> DepFlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();
 		let version = parent.version();
-		FlowTransaction::deferred(
+		DepFlowTransaction::deferred(
 			&parent,
 			version,
 			Catalog::testing(),

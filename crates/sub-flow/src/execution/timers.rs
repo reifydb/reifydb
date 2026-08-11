@@ -9,7 +9,7 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	timer::Timer,
-	transaction::{ChangeCoordinate, FlowTransaction},
+	transaction::{ChangeCoordinate, DepFlowTransaction},
 };
 use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::Result;
@@ -22,7 +22,7 @@ const MAX_TIMERS_PER_DISPATCH: usize = 8_192;
 impl FlowEngineInner {
 	pub(super) fn dispatch_due_timers(
 		&self,
-		txn: &mut FlowTransaction,
+		txn: &mut DepFlowTransaction,
 		flow: &FlowDag,
 		version: CommitVersion,
 		topo: &[OperatorId],

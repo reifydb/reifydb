@@ -39,7 +39,7 @@ use reifydb_flow::{
 			view::SourceViewOperator,
 		},
 	},
-	transaction::FlowTransaction,
+	transaction::DepFlowTransaction,
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::{
@@ -102,7 +102,7 @@ impl Operator for SourceOp {
 		}
 	}
 
-	fn apply(&self, txn: &mut FlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
 		match self {
 			SourceOp::Series(o) => o.apply(txn, change),
 			SourceOp::Table(o) => o.apply(txn, change),
