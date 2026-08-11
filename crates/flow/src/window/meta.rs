@@ -448,5 +448,4 @@ mod tests {
 			SessionTracker::resumed(0, at_millis(0), at_millis(0))
 		);
 	}
-
 }

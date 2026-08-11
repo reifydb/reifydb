@@ -892,5 +892,4 @@ mod tests {
 		let projected = decode::<CarryMeta<DateTime, i64, i64>>(&bytes).unwrap().high_water_order();
 		assert_eq!(projected, Some(99), "the populated window map must not disturb the high water");
 	}
-
 }
