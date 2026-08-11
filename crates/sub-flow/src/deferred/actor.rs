@@ -209,7 +209,7 @@ impl FlowActor {
 			self.engine.executor().routines.clone(),
 			self.engine.event_bus().clone(),
 			RuntimeContext::with_clock(self.clock.clone()),
-			Arc::new(StandardOperatorProvider::new(self.custom_operators.clone(), self.engine.executor())),
+			Arc::new(StandardOperatorProvider::new(self.custom_operators.clone())),
 			self.substrate.clone(),
 			self.operator_samples.clone(),
 		)

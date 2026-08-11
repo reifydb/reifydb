@@ -7,7 +7,6 @@ use std::sync::Arc;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_codec::value::encode_params;
 use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_engine::vm::executor::Executor;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_extension::operator::extern_c::loader::extern_c_operator_loader;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
@@ -31,15 +30,12 @@ use crate::{
 
 pub struct StandardOperatorProvider {
 	custom: CustomOperators,
-	#[allow(dead_code)]
-	executor: Executor,
 }
 
 impl StandardOperatorProvider {
-	pub fn new(custom: CustomOperators, executor: Executor) -> Self {
+	pub fn new(custom: CustomOperators) -> Self {
 		Self {
 			custom,
-			executor,
 		}
 	}
 }
@@ -109,6 +105,6 @@ impl StandardOperatorProvider {
 			}
 		};
 
-		Ok(Box::new(ExternCOperatorHandle::new(descriptor, instance, operator_id, self.executor.clone())))
+		Ok(Box::new(ExternCOperatorHandle::new(descriptor, instance, operator_id)))
 	}
 }

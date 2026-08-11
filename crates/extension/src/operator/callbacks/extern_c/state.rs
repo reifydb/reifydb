@@ -12,7 +12,6 @@ use reifydb_core::{
 	key::operator_state::{GroupId, GroupStateKey},
 	state::store::TimerKind,
 };
-use reifydb_extension::procedure::callbacks::extern_c::memory::{host_alloc, host_free};
 use reifydb_flow::timer::Timer;
 use reifydb_sdk::{
 	common::extern_c::wire::{
@@ -33,10 +32,11 @@ use reifydb_sdk::{
 use reifydb_value::value::datetime::DateTime;
 
 use super::{
+	context::get_transaction_mut,
 	marshal::{encoded_bytes, encoded_key, encoded_keys, state_key, write_buffer},
 	state_iterator::{self, StateIteratorHandle},
 };
-use crate::extern_c::context::get_transaction_mut;
+use crate::procedure::callbacks::extern_c::memory::{host_alloc, host_free};
 
 #[repr(C)]
 struct StateIteratorInternal {

@@ -18,7 +18,5 @@ pub mod connector;
 
 pub(crate) mod deferred;
 pub mod error;
-#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
-pub(crate) mod extern_c;
 pub mod operator;
 pub mod subsystem;

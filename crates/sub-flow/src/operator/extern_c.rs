@@ -20,8 +20,10 @@ use reifydb_core::{
 	metrics::heap::{OperatorSample, StateMemory},
 	value::column::columns::Columns,
 };
-use reifydb_engine::vm::executor::Executor;
-use reifydb_extension::callbacks::extern_c::builder::{BuilderRegistry, with_registry};
+use reifydb_extension::{
+	callbacks::extern_c::builder::{BuilderRegistry, with_registry},
+	operator::callbacks::extern_c::{context::new_extern_c_context, create_host_callbacks},
+};
 use reifydb_flow::{
 	operator::{Operator, scale_from_millis},
 	timer::Timer,
@@ -52,8 +54,6 @@ use reifydb_value::{
 };
 use tracing::{Span, error, field, instrument};
 
-use crate::extern_c::{callbacks::create_host_callbacks, context::new_extern_c_context};
-
 thread_local! {
 	static EXTERN_C_MARSHAL_ARENA: UnsafeCell<Arena> = UnsafeCell::new(Arena::new());
 }
@@ -72,8 +72,6 @@ pub struct ExternCOperatorHandle {
 
 	operator_id: OperatorId,
 
-	executor: Executor,
-
 	builder_registry: BuilderRegistry,
 
 	last_registered_txn: Cell<u64>,
@@ -82,12 +80,7 @@ pub struct ExternCOperatorHandle {
 }
 
 impl ExternCOperatorHandle {
-	pub fn new(
-		descriptor: ExternCOperatorDescriptor,
-		instance: *mut c_void,
-		operator_id: OperatorId,
-		executor: Executor,
-	) -> Self {
+	pub fn new(descriptor: ExternCOperatorDescriptor, instance: *mut c_void, operator_id: OperatorId) -> Self {
 		let vtable = descriptor.vtable;
 		let capabilities = from_bitmask(descriptor.capabilities).into_boxed_slice();
 
@@ -96,12 +89,10 @@ impl ExternCOperatorHandle {
 			vtable,
 			instance,
 			operator_id,
-			executor,
 			builder_registry: BuilderRegistry::new(),
 			last_registered_txn: Cell::new(u64::MAX),
 			cached_ctx: UnsafeCell::new(ExternCContext {
 				txn_ptr: ptr::null_mut(),
-				executor_ptr: ptr::null(),
 				written_at_nanos: 0,
 				operator_id: operator_id.0,
 				callbacks: create_host_callbacks(),
@@ -115,10 +106,9 @@ impl ExternCOperatorHandle {
 		// the context cell is not aliased while this &mut exists.
 		let ctx = unsafe { &mut *self.cached_ctx.get() };
 		if self.last_registered_txn.get() != txn_version {
-			ensure_flush_slot(txn, self.operator_id, self.vtable, self.instance, self.executor.clone())?;
+			ensure_flush_slot(txn, self.operator_id, self.vtable, self.instance)?;
 			self.last_registered_txn.set(txn_version);
 			ctx.txn_ptr = txn as *mut _ as *mut c_void;
-			ctx.executor_ptr = &self.executor as *const _ as *const c_void;
 		}
 		ctx.written_at_nanos = txn.written_at().to_nanos();
 		Ok(())
@@ -179,17 +169,14 @@ fn ensure_flush_slot(
 	operator_id: OperatorId,
 	vtable: ExternCOperatorVTable,
 	instance: *mut c_void,
-	executor: Executor,
 ) -> Result<()> {
 	let send_instance = SendableInstance(instance);
 	let _ = txn.operator_state(operator_id, move |_txn| {
 		let captured_instance = send_instance;
 		let captured_vtable = vtable;
-		let captured_executor = executor;
 		let captured_id = operator_id;
 		let persist: PersistFn = Box::new(move |txn, _value: Box<dyn Any>| {
-			let extern_c_ctx =
-				new_extern_c_context(txn, &captured_executor, captured_id, create_host_callbacks());
+			let extern_c_ctx = new_extern_c_context(txn, captured_id, create_host_callbacks());
 			let extern_c_ctx_ptr = &extern_c_ctx as *const _ as *mut ExternCContext;
 			let inst = captured_instance;
 			let mut usage = ExternCStateUsage::default();

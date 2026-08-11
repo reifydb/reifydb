@@ -4,7 +4,6 @@
 use std::{
 	collections::{BTreeMap, BTreeSet, HashMap},
 	ffi::c_void,
-	ptr::null,
 };
 
 use reifydb_core::{
@@ -42,7 +41,6 @@ fn with_oracle_ctx<R>(f: impl FnOnce(&mut ExternCOperatorContext) -> R) -> R {
 	let test_ctx = TestContext::new(CommitVersion(1));
 	let mut extern_c_context = ExternCContext {
 		txn_ptr: &test_ctx as *const TestContext as *mut c_void,
-		executor_ptr: null(),
 		written_at_nanos: 0,
 		operator_id: 1,
 		callbacks: create_test_callbacks(),

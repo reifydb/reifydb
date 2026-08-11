@@ -16,6 +16,7 @@ default = []
 [dependencies]
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
+reifydb-flow = { workspace = true, features = ["runtime"] }
 reifydb-routine-abi = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-sdk = { workspace = true }

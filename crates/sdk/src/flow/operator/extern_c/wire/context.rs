@@ -9,8 +9,6 @@ use crate::flow::operator::extern_c::wire::callbacks::OperatorCallbacks;
 pub struct ExternCContext {
 	pub txn_ptr: *mut c_void,
 
-	pub executor_ptr: *const c_void,
-
 	pub written_at_nanos: u64,
 
 	pub operator_id: u64,

@@ -22,8 +22,7 @@ use reifydb_value::value::{
 	dictionary::{DictionaryEntryId, DictionaryId},
 };
 
-use super::marshal::write_buffer;
-use crate::extern_c::context::get_transaction_mut;
+use super::{context::get_transaction_mut, marshal::write_buffer};
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_dictionary_id_by_name(

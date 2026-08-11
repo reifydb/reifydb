@@ -14,19 +14,15 @@ use reifydb_core::{
 	state::store::TimerKind,
 };
 use reifydb_flow::window::event::Polarity;
-use reifydb_value::{
-	params::Params,
-	value::{
-		Value,
-		datetime::DateTime,
-		dictionary::{DictionaryEntryId, DictionaryId},
-		frame::frame::Frame,
-		row_number::RowNumber,
-	},
+use reifydb_value::value::{
+	Value,
+	datetime::DateTime,
+	dictionary::{DictionaryEntryId, DictionaryId},
+	row_number::RowNumber,
 };
 
 use crate::{
-	common::extern_c::binding::{builder::ColumnsBuilder, rql::raw_query},
+	common::extern_c::binding::builder::ColumnsBuilder,
 	error::Result,
 	flow::operator::{
 		column::row::Row,
@@ -165,10 +161,6 @@ impl ExternCOperatorContext {
 
 	pub fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
 		remove_row_numbers_below(self, group, upper)
-	}
-
-	pub fn query(&self, query: &str, params: Params) -> Result<Vec<Frame>> {
-		raw_query(self.ctx as *mut c_void, unsafe { (*self.ctx).callbacks.rql }, query, params)
 	}
 
 	pub fn builder(&mut self) -> ColumnsBuilder<'_> {

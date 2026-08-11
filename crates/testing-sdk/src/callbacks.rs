@@ -3,7 +3,6 @@
 
 use std::{
 	alloc::{Layout, alloc, dealloc},
-	ffi::c_void,
 	slice::from_raw_parts,
 	str::from_utf8,
 };
@@ -408,7 +407,7 @@ use reifydb_core::{
 use reifydb_sdk::{
 	common::extern_c::wire::{
 		buffer::ExternCBuffer,
-		callbacks::{builder::BuilderCallbacks, memory::MemoryCallbacks, rql::RqlCallbacks},
+		callbacks::{builder::BuilderCallbacks, memory::MemoryCallbacks},
 		key_ref::ExternCKeyRef,
 		status::{
 			EXTERN_C_END_OF_ITERATION, EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_NULL_PTR,
@@ -435,21 +434,6 @@ use crate::{
 		test_release,
 	},
 };
-
-/// # Safety
-///
-/// Unconditional stub: it returns an error without reading any argument, so no pointer
-/// contract applies yet. Reinstate one here before giving it a body.
-unsafe extern "C" fn test_rql(
-	_ctx: *mut c_void,
-	_rql_ptr: *const u8,
-	_rql_len: usize,
-	_params_ptr: *const u8,
-	_params_len: usize,
-	_result_out: *mut ExternCBuffer,
-) -> i32 {
-	EXTERN_C_ERROR_INTERNAL
-}
 
 extern "C" fn test_intern_groups(
 	operator_id: u64,
@@ -940,9 +924,6 @@ pub fn create_test_callbacks() -> OperatorCallbacks {
 			arm_timer: test_arm_timer,
 			disarm_timer: test_disarm_timer,
 			flow_watermark: test_flow_watermark,
-		},
-		rql: RqlCallbacks {
-			rql: test_rql,
 		},
 		dictionary: DictionaryCallbacks {
 			id_by_name: test_dictionary_id_by_name,

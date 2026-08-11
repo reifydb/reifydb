@@ -6,10 +6,8 @@ use std::{
 	ffi::c_void,
 	marker::PhantomData,
 	ops::Index,
-	ptr,
 };
 
-use ptr::null;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
@@ -484,7 +482,6 @@ impl<T: ExternCOperator> ExternCOperatorHarnessBuilder<T> {
 
 		let extern_c_context = Box::new(ExternCContext {
 			txn_ptr: &*context as *const TestContext as *mut c_void,
-			executor_ptr: null(),
 			written_at_nanos: self.clock.now().to_nanos(),
 			operator_id: self.operator_id.0,
 			callbacks: create_test_callbacks(),
@@ -511,7 +508,6 @@ pub fn drive_extern_c_apply<O: ExternCOperator + OperatorMetadata>(input: &Chang
 	let context = Box::new(TestContext::new(CommitVersion(1)));
 	let mut extern_c_context = ExternCContext {
 		txn_ptr: &*context as *const TestContext as *mut c_void,
-		executor_ptr: null(),
 		written_at_nanos: 0,
 		operator_id: 1,
 		callbacks: create_test_callbacks(),

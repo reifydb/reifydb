@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ffi::c_void, ptr::null};
+use std::ffi::c_void;
 
 use reifydb_core::common::CommitVersion;
 use reifydb_sdk::flow::operator::extern_c::{binding::context::ExternCOperatorContext, wire::context::ExternCContext};
@@ -20,7 +20,6 @@ fn dictionary_round_trips_through_extern_c() {
 
 	let mut extern_c_context = ExternCContext {
 		txn_ptr: &test_ctx as *const TestContext as *mut c_void,
-		executor_ptr: null(),
 		written_at_nanos: 0,
 		operator_id: 1,
 		callbacks: create_test_callbacks(),

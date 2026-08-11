@@ -5,13 +5,14 @@ use std::{ptr, slice::from_raw_parts};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::key::operator_state::GroupStateKey;
-use reifydb_extension::procedure::callbacks::extern_c::memory::host_alloc;
 use reifydb_sdk::common::extern_c::wire::{
 	buffer::ExternCBuffer,
 	key_ref::ExternCKeyRef,
 	status::{EXTERN_C_ERROR_ALLOC, EXTERN_C_OK},
 };
 use reifydb_value::util::cowvec::CowVec;
+
+use crate::procedure::callbacks::extern_c::memory::host_alloc;
 
 // SAFETY: `ptr` must be valid for reads of `len` bytes.
 pub(super) unsafe fn encoded_key(ptr: *const u8, len: usize) -> EncodedKey {

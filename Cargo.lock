@@ -3046,6 +3046,7 @@ dependencies = [
  "reifydb-build",
  "reifydb-codec",
  "reifydb-core",
+ "reifydb-flow",
  "reifydb-routine-abi",
  "reifydb-runtime",
  "reifydb-sdk",
