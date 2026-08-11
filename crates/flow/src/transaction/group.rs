@@ -22,7 +22,7 @@ use reifydb_core::{
 use reifydb_runtime::cache::slab::SlabLru;
 use reifydb_value::{Result, byte_size::ByteSize, reifydb_assertions, value::datetime::DateTime};
 
-use super::DepFlowTransaction;
+use crate::transaction::{DepFlowTransaction, interface::FlowTransaction};
 
 const DEFAULT_BYTE_BUDGET: u64 = 1024 * 1024;
 const HYDRATE_CHUNK: usize = 8_192;
@@ -135,7 +135,7 @@ impl GroupInterner {
 	pub fn intern(
 		&self,
 		operator: OperatorId,
-		txn: &mut DepFlowTransaction,
+		txn: &mut impl FlowTransaction,
 		group: &EncodedKey,
 	) -> Result<(GroupId, bool)> {
 		Ok(self.intern_many(operator, txn, from_ref(group))?.into_iter().next().unwrap())
@@ -144,7 +144,7 @@ impl GroupInterner {
 	pub fn intern_many(
 		&self,
 		operator: OperatorId,
-		txn: &mut DepFlowTransaction,
+		txn: &mut impl FlowTransaction,
 		groups: &[EncodedKey],
 	) -> Result<Vec<(GroupId, bool)>> {
 		let now = txn.written_at();
@@ -236,7 +236,7 @@ impl GroupInterner {
 	}
 
 	fn stamp(
-		txn: &mut DepFlowTransaction,
+		txn: &mut impl FlowTransaction,
 		operator: OperatorId,
 		id: GroupId,
 		group: &EncodedKey,
@@ -252,7 +252,7 @@ impl GroupInterner {
 	pub fn lookup(
 		&self,
 		operator: OperatorId,
-		txn: &mut DepFlowTransaction,
+		txn: &mut impl FlowTransaction,
 		group: &EncodedKey,
 	) -> Result<Option<GroupId>> {
 		let budget = self.inner.budget;
@@ -275,7 +275,7 @@ impl GroupInterner {
 		Ok(Some(id))
 	}
 
-	pub fn forget(&self, operator: OperatorId, txn: &mut DepFlowTransaction, group: &EncodedKey) -> Result<bool> {
+	pub fn forget(&self, operator: OperatorId, txn: &mut impl FlowTransaction, group: &EncodedKey) -> Result<bool> {
 		let budget = self.inner.budget;
 		let mut guard = self.inner.operators.entry(operator).or_default();
 		Self::hydrate_once(&mut guard, operator, txn, budget)?;
@@ -291,7 +291,7 @@ impl GroupInterner {
 	pub fn group_bytes(
 		&self,
 		operator: OperatorId,
-		txn: &mut DepFlowTransaction,
+		txn: &mut impl FlowTransaction,
 		id: GroupId,
 	) -> Result<Option<EncodedKey>> {
 		let Some(row) = txn.state_get(operator, &record_key(id))? else {
@@ -303,7 +303,7 @@ impl GroupInterner {
 	fn hydrate_once(
 		state: &mut NodeState,
 		operator: OperatorId,
-		txn: &mut DepFlowTransaction,
+		txn: &mut impl FlowTransaction,
 		budget: ByteSize,
 	) -> Result<()> {
 		if state.hydrated {
@@ -348,7 +348,12 @@ impl GroupInterner {
 		Ok(())
 	}
 
-	fn mint(state: &mut NodeState, operator: OperatorId, txn: &mut DepFlowTransaction, count: u64) -> Result<u64> {
+	fn mint(
+		state: &mut NodeState,
+		operator: OperatorId,
+		txn: &mut impl FlowTransaction,
+		count: u64,
+	) -> Result<u64> {
 		let seed = match state.next {
 			Some(next) => next,
 			None => match txn.state_get(operator, &counter_key())? {
@@ -419,7 +424,7 @@ mod tests {
 	fn intern_at(
 		interner: &GroupInterner,
 		operator: OperatorId,
-		txn: &mut DepFlowTransaction,
+		txn: &mut impl FlowTransaction,
 		group: &EncodedKey,
 	) -> Result<(GroupId, bool)> {
 		interner.intern(operator, txn, group)
@@ -428,7 +433,7 @@ mod tests {
 	fn intern_many_at(
 		interner: &GroupInterner,
 		operator: OperatorId,
-		txn: &mut DepFlowTransaction,
+		txn: &mut impl FlowTransaction,
 		groups: &[EncodedKey],
 	) -> Result<Vec<(GroupId, bool)>> {
 		interner.intern_many(operator, txn, groups)

@@ -14,7 +14,7 @@ use reifydb_value::{
 use super::operator::WindowOperator;
 use crate::{
 	operator::{aggregation::engine::partition_group_key, store::OperatorStateStore},
-	transaction::DepFlowTransaction,
+	transaction::interface::FlowTransaction,
 	window::{
 		coord::{EventCoord, OrdinalCoord, RowSpan},
 		driver::{gate::SealGate, mint::Mint},
@@ -30,7 +30,7 @@ use crate::{
 	},
 };
 
-impl WindowOperator {
+impl<T: FlowTransaction> WindowOperator<T> {
 	pub(super) fn session_gap(&self) -> Duration {
 		match &self.kind {
 			WindowKind::Session {
@@ -49,11 +49,7 @@ impl WindowOperator {
 		self.session_kind().seal_policy(self.grace())
 	}
 
-	pub(super) fn load_session_tracker(
-		&self,
-		txn: &mut DepFlowTransaction,
-		group_hash: Hash128,
-	) -> Result<SessionTracker> {
+	pub(super) fn load_session_tracker(&self, txn: &mut T, group_hash: Hash128) -> Result<SessionTracker> {
 		let group = self.partition_group(txn, group_hash)?;
 		let mut store = OperatorStateStore::new(txn, self.core.operator);
 		self.meta_slot().load_session(&mut store, group)
@@ -61,7 +57,7 @@ impl WindowOperator {
 
 	pub(super) fn save_session_tracker(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		group_hash: Hash128,
 		tracker: &SessionTracker,
 	) -> Result<()> {
@@ -113,14 +109,14 @@ impl WindowOperator {
 		)
 	}
 
-	pub(super) fn partition_group(&self, txn: &mut DepFlowTransaction, partition: Hash128) -> Result<GroupId> {
+	pub(super) fn partition_group(&self, txn: &mut T, partition: Hash128) -> Result<GroupId> {
 		let (group, _) = txn.intern_group(self.core.operator, &partition_group_key(partition))?;
 		Ok(group)
 	}
 
 	pub fn store_row_index(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		group_hash: Hash128,
 		row_number: RowNumber,
 		window_id: u64,
@@ -132,7 +128,7 @@ impl WindowOperator {
 
 	pub(super) fn lookup_row_index(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		group_hash: Hash128,
 		row_number: RowNumber,
 	) -> Result<Vec<u64>> {
@@ -141,38 +137,29 @@ impl WindowOperator {
 		Mint::new(self.meta_slot()).membership(&mut store, group, row_number)
 	}
 
-	pub(super) fn drop_row_index(
-		&self,
-		txn: &mut DepFlowTransaction,
-		group_hash: Hash128,
-		row_number: RowNumber,
-	) -> Result<()> {
+	pub(super) fn drop_row_index(&self, txn: &mut T, group_hash: Hash128, row_number: RowNumber) -> Result<()> {
 		let group = self.partition_group(txn, group_hash)?;
 		let mut store = OperatorStateStore::new(txn, self.core.operator);
 		Mint::new(self.meta_slot()).drop_membership(&mut store, group, row_number)
 	}
 
-	pub fn get_and_increment_global_count(
-		&self,
-		txn: &mut DepFlowTransaction,
-		group_hash: Hash128,
-	) -> Result<OrdinalCoord> {
+	pub fn get_and_increment_global_count(&self, txn: &mut T, group_hash: Hash128) -> Result<OrdinalCoord> {
 		let group = self.partition_group(txn, group_hash)?;
 		let mut store = OperatorStateStore::new(txn, self.core.operator);
 		Mint::new(self.meta_slot()).ordinal(&mut store, group)
 	}
 
-	pub(super) fn seal_ledger(&self, txn: &mut DepFlowTransaction) -> Result<SealedThrough> {
+	pub(super) fn seal_ledger(&self, txn: &mut T) -> Result<SealedThrough> {
 		let mut store = OperatorStateStore::new(txn, self.core.operator);
 		Ok(SealedThrough::from_order(self.meta_slot().seal_ledger(&mut store)?))
 	}
 
-	pub(super) fn advance_seal_ledger(&self, txn: &mut DepFlowTransaction, fired: FiredAt) -> Result<()> {
+	pub(super) fn advance_seal_ledger(&self, txn: &mut T, fired: FiredAt) -> Result<()> {
 		let mut store = OperatorStateStore::new(txn, self.core.operator);
 		self.meta_slot().advance_seal_ledger(&mut store, fired.at().to_order())
 	}
 
-	pub(super) fn seal_gate(&self, txn: &mut DepFlowTransaction, policy: SealPolicy) -> Result<SealGate> {
+	pub(super) fn seal_gate(&self, txn: &mut T, policy: SealPolicy) -> Result<SealGate> {
 		let watermark = txn.flow_watermark();
 		let ledger = self.seal_ledger(txn)?;
 		Ok(SealGate::new(policy, Some(ledger), watermark))

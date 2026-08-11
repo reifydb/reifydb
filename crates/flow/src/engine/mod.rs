@@ -36,13 +36,13 @@ use tracing::instrument;
 
 use crate::{
 	operator::{OperatorCell, metrics::OperatorSampleRegistry, provider::OperatorProvider},
-	transaction::substrate::FlowSubstrate,
+	transaction::{interface::FlowTransaction, substrate::FlowSubstrate},
 };
 
-pub struct FlowEngineInner {
+pub struct FlowEngineInner<T: FlowTransaction> {
 	pub(crate) catalog: Catalog,
 	pub(crate) routines: Routines,
-	pub(crate) operators: BTreeMap<OperatorId, OperatorCell>,
+	pub(crate) operators: BTreeMap<OperatorId, OperatorCell<T>>,
 	pub(crate) flows: BTreeMap<FlowId, FlowDag>,
 	pub(crate) sources: BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
 	pub(crate) sinks: BTreeMap<ObjectId, Vec<(FlowId, OperatorId)>>,
@@ -51,24 +51,31 @@ pub struct FlowEngineInner {
 	pub(crate) event_bus: EventBus,
 	pub(crate) flow_creation_versions: BTreeMap<FlowId, CommitVersion>,
 	pub(crate) runtime_context: RuntimeContext,
-	pub(crate) operator_provider: Arc<dyn OperatorProvider>,
+	pub(crate) operator_provider: Arc<dyn OperatorProvider<T>>,
 	pub(crate) substrate: FlowSubstrate,
 	pub(crate) operator_samples: OperatorSampleRegistry,
 }
 
-#[derive(Clone)]
-pub struct FlowEngine {
-	inner: Arc<RwLock<FlowEngineInner>>,
+pub struct FlowEngine<T: FlowTransaction> {
+	inner: Arc<RwLock<FlowEngineInner<T>>>,
 }
 
-impl FlowEngine {
+impl<T: FlowTransaction> Clone for FlowEngine<T> {
+	fn clone(&self) -> Self {
+		Self {
+			inner: self.inner.clone(),
+		}
+	}
+}
+
+impl<T: FlowTransaction> FlowEngine<T> {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		catalog: Catalog,
 		routines: Routines,
 		event_bus: EventBus,
 		runtime_context: RuntimeContext,
-		operator_provider: Arc<dyn OperatorProvider>,
+		operator_provider: Arc<dyn OperatorProvider<T>>,
 		substrate: FlowSubstrate,
 		operator_samples: OperatorSampleRegistry,
 	) -> Self {
@@ -85,20 +92,20 @@ impl FlowEngine {
 		}
 	}
 
-	pub fn read(&self) -> RwLockReadGuard<'_, FlowEngineInner> {
+	pub fn read(&self) -> RwLockReadGuard<'_, FlowEngineInner<T>> {
 		self.inner.read()
 	}
 
-	pub fn read_recursive(&self) -> RwLockReadGuard<'_, FlowEngineInner> {
+	pub fn read_recursive(&self) -> RwLockReadGuard<'_, FlowEngineInner<T>> {
 		self.inner.read_recursive()
 	}
 
-	pub fn write(&self) -> RwLockWriteGuard<'_, FlowEngineInner> {
+	pub fn write(&self) -> RwLockWriteGuard<'_, FlowEngineInner<T>> {
 		self.inner.write()
 	}
 }
 
-impl FlowEngineInner {
+impl<T: FlowTransaction> FlowEngineInner<T> {
 	#[instrument(
 		name = "flow::engine::new",
 		level = "debug",
@@ -110,7 +117,7 @@ impl FlowEngineInner {
 		routines: Routines,
 		event_bus: EventBus,
 		runtime_context: RuntimeContext,
-		operator_provider: Arc<dyn OperatorProvider>,
+		operator_provider: Arc<dyn OperatorProvider<T>>,
 		substrate: FlowSubstrate,
 		operator_samples: OperatorSampleRegistry,
 	) -> Self {
@@ -154,11 +161,11 @@ impl FlowEngineInner {
 		&self.substrate
 	}
 
-	pub fn operator(&self, operator_id: OperatorId) -> Option<OperatorCell> {
+	pub fn operator(&self, operator_id: OperatorId) -> Option<OperatorCell<T>> {
 		self.operators.get(&operator_id).cloned()
 	}
 
-	pub fn insert_operator(&mut self, operator_id: OperatorId, operator: OperatorCell) {
+	pub fn insert_operator(&mut self, operator_id: OperatorId, operator: OperatorCell<T>) {
 		self.operators.insert(operator_id, operator);
 	}
 
@@ -254,7 +261,10 @@ mod tests {
 	use reifydb_test_harness::engine::TestEngine;
 
 	use super::*;
-	use crate::operator::{provider::EmptyOperatorProvider, scan::series::SourceSeriesOperator};
+	use crate::{
+		operator::{provider::EmptyOperatorProvider, scan::series::SourceSeriesOperator},
+		transaction::DepFlowTransaction,
+	};
 
 	#[test]
 	fn removing_a_flow_drops_its_operators_state() {
@@ -263,7 +273,7 @@ mod tests {
 		// Mutation falsified against: removing the drop_operator_state call from remove_flow (per-operator
 		// bytes and the process-wide total both stay non-zero).
 		let engine = TestEngine::new();
-		let mut inner = FlowEngineInner::new(
+		let mut inner = FlowEngineInner::<DepFlowTransaction>::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
 			engine.event_bus().clone(),

@@ -35,7 +35,7 @@ use reifydb_value::{
 	value::{Value, dictionary::DictionaryEntryId, identity::IdentityId, row_number::RowNumber},
 };
 
-use crate::{error::FlowSinkError, transaction::DepFlowTransaction};
+use crate::{error::FlowSinkError, transaction::interface::FlowTransaction};
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
@@ -188,7 +188,7 @@ fn stamp_source_row<B: SourceRowBuilder>(
 	Ok((row_number, encoded.freeze_bytes()))
 }
 
-pub(crate) fn decode_dictionary_columns(columns: &mut Columns, txn: &mut DepFlowTransaction) -> Result<()> {
+pub(crate) fn decode_dictionary_columns<T: FlowTransaction>(columns: &mut Columns, txn: &mut T) -> Result<()> {
 	let dict_columns: Vec<(usize, Dictionary)> = {
 		let catalog = txn.catalog();
 		columns.iter()
@@ -249,7 +249,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::transaction::{DeferredParams, substrate::FlowSubstrate};
+	use crate::transaction::{DeferredParams, DepFlowTransaction, substrate::FlowSubstrate};
 
 	fn flow_txn(engine: &TestEngine, registry: &DictionaryAllocatorRegistry) -> DepFlowTransaction {
 		let parent = engine.begin_admin(IdentityId::system()).unwrap();

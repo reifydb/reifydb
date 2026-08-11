@@ -11,7 +11,8 @@ use reifydb_rql::flow::flow::FlowDag;
 use reifydb_value::{Result, value::datetime::DateTime};
 
 use crate::{
-	engine::FlowEngineInner, operator::OperatorCell, transaction::DepFlowTransaction, window::engine::seal_horizon,
+	engine::FlowEngineInner, operator::OperatorCell, transaction::interface::FlowTransaction,
+	window::engine::seal_horizon,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,8 +23,8 @@ pub struct WatermarkHold {
 
 pub type WatermarkHolds = Vec<WatermarkHold>;
 
-impl FlowEngineInner {
-	pub fn holds(&self, txn: &mut DepFlowTransaction, flow_id: FlowId) -> Result<WatermarkHolds> {
+impl<T: FlowTransaction> FlowEngineInner<T> {
+	pub fn holds(&self, txn: &mut T, flow_id: FlowId) -> Result<WatermarkHolds> {
 		let Some(flow) = self.flows.get(&flow_id) else {
 			return Ok(Vec::new());
 		};
@@ -62,10 +63,10 @@ impl FlowEngineInner {
 	}
 }
 
-fn output_frontiers(
-	txn: &mut DepFlowTransaction,
+fn output_frontiers<T: FlowTransaction>(
+	txn: &mut T,
 	flow: &FlowDag,
-	operators: &BTreeMap<OperatorId, OperatorCell>,
+	operators: &BTreeMap<OperatorId, OperatorCell<T>>,
 	topo: &[OperatorId],
 ) -> Result<BTreeMap<OperatorId, DateTime>> {
 	let watermarks = txn.source_watermarks();
@@ -136,7 +137,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::{Operator, metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
-		transaction::substrate::FlowSubstrate,
+		transaction::{DepFlowTransaction, substrate::FlowSubstrate},
 	};
 
 	const FLOW: FlowId = FlowId(1);
@@ -168,7 +169,7 @@ mod tests {
 		horizon: Option<Duration>,
 	}
 
-	impl Operator for Sealing {
+	impl Operator<DepFlowTransaction> for Sealing {
 		fn id(&self) -> OperatorId {
 			self.operator
 		}
@@ -190,7 +191,7 @@ mod tests {
 		Duration::from_milliseconds_const(seconds * 1_000)
 	}
 
-	fn engine_inner(engine: &TestEngine) -> FlowEngineInner {
+	fn engine_inner(engine: &TestEngine) -> FlowEngineInner<DepFlowTransaction> {
 		FlowEngineInner::new(
 			engine.catalog(),
 			engine.executor().routines.clone(),
@@ -255,7 +256,7 @@ mod tests {
 
 	struct Harness {
 		engine: TestEngine,
-		inner: FlowEngineInner,
+		inner: FlowEngineInner<DepFlowTransaction>,
 		builder: FlowBuilder,
 		edges: u64,
 	}

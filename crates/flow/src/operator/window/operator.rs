@@ -35,7 +35,7 @@ use crate::{
 		store::OperatorStateStore,
 	},
 	timer::Timer,
-	transaction::DepFlowTransaction,
+	transaction::interface::FlowTransaction,
 	window::{
 		coord::OrdinalCoord,
 		engine::{config::WindowEngineConfig, rolling::RollingEngine},
@@ -47,8 +47,8 @@ use crate::{
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
 
-pub struct WindowConfig {
-	pub parent: OperatorCell,
+pub struct WindowConfig<T: FlowTransaction> {
+	pub parent: OperatorCell<T>,
 	pub operator: OperatorId,
 	pub kind: WindowKind,
 	pub group_by: Vec<Expression>,
@@ -64,8 +64,8 @@ pub(crate) enum RollingEngineSlot {
 	TimedRow(Box<RollingEngine<Hash128, DateTime, RowAccumulator>>),
 }
 
-pub struct WindowOperator {
-	pub core: Aggregation,
+pub struct WindowOperator<T: FlowTransaction> {
+	pub core: Aggregation<T>,
 	pub kind: WindowKind,
 
 	pub grace: Duration,
@@ -74,8 +74,8 @@ pub struct WindowOperator {
 	meta: UnsafeCell<WindowMeta>,
 }
 
-impl WindowOperator {
-	pub fn new(config: WindowConfig) -> Self {
+impl<T: FlowTransaction> WindowOperator<T> {
+	pub fn new(config: WindowConfig<T>) -> Self {
 		let core = Aggregation::new(
 			config.operator,
 			config.parent,
@@ -103,11 +103,7 @@ impl WindowOperator {
 		unsafe { &mut *self.meta.get() }
 	}
 
-	fn with_meta<R>(
-		&self,
-		txn: &mut DepFlowTransaction,
-		f: impl FnOnce(&mut DepFlowTransaction) -> Result<R>,
-	) -> Result<R> {
+	fn with_meta<R>(&self, txn: &mut T, f: impl FnOnce(&mut T) -> Result<R>) -> Result<R> {
 		let operator = self.core.operator;
 		self.meta_slot().hydrate_once(&mut OperatorStateStore::new(txn, operator))?;
 		self.core.engine_meta_open();
@@ -193,9 +189,9 @@ impl WindowOperator {
 	}
 }
 
-impl RawStatefulOperator for WindowOperator {}
+impl<T: FlowTransaction> RawStatefulOperator<T> for WindowOperator<T> {}
 
-impl Operator for WindowOperator {
+impl<T: FlowTransaction> Operator<T> for WindowOperator<T> {
 	fn id(&self) -> OperatorId {
 		self.core.operator
 	}
@@ -208,7 +204,7 @@ impl Operator for WindowOperator {
 		None
 	}
 
-	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
 		self.with_meta(txn, |txn| match &self.kind {
 			WindowKind::Tumbling {
 				..
@@ -225,7 +221,7 @@ impl Operator for WindowOperator {
 		})
 	}
 
-	fn on_timer(&self, txn: &mut DepFlowTransaction, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&self, txn: &mut T, timer: Timer) -> Result<Option<Change>> {
 		let fired = FiredAt::of(&timer);
 		self.with_meta(txn, |txn| {
 			let diffs = match &self.kind {

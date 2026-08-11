@@ -28,11 +28,11 @@ use tracing::instrument;
 use crate::{
 	context::FlowContext,
 	operator::{Operator, OperatorCell},
-	transaction::DepFlowTransaction,
+	transaction::interface::FlowTransaction,
 };
 
-pub struct FilterOperator {
-	parent: OperatorCell,
+pub struct FilterOperator<T: FlowTransaction> {
+	parent: OperatorCell<T>,
 	operator: OperatorId,
 	compiled_conditions: Vec<CompiledExpr>,
 	routines: Routines,
@@ -40,9 +40,9 @@ pub struct FilterOperator {
 	ctx: Arc<FlowContext>,
 }
 
-impl FilterOperator {
+impl<T: FlowTransaction> FilterOperator<T> {
 	pub fn new(
-		parent: OperatorCell,
+		parent: OperatorCell<T>,
 		operator: OperatorId,
 		conditions: Vec<Expression>,
 		routines: Routines,
@@ -128,7 +128,7 @@ impl FilterOperator {
 	}
 }
 
-impl Operator for FilterOperator {
+impl<T: FlowTransaction> Operator<T> for FilterOperator<T> {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -137,7 +137,7 @@ impl Operator for FilterOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, _txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, _txn: &mut T, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs {
@@ -166,7 +166,7 @@ impl Operator for FilterOperator {
 	}
 }
 
-impl FilterOperator {
+impl<T: FlowTransaction> FilterOperator<T> {
 	#[inline]
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
 		self.parent.output_schema()

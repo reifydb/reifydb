@@ -351,7 +351,7 @@ impl BridgeOperator {
 
 unsafe impl Send for BridgeOperator {}
 
-impl Operator for BridgeOperator {
+impl Operator<DepFlowTransaction> for BridgeOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}

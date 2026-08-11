@@ -7,12 +7,12 @@ use reifydb_value::Result;
 
 use super::DepFlowTransaction;
 
-pub type PersistFn = Box<dyn FnOnce(&mut DepFlowTransaction, Box<dyn Any>) -> Result<()> + Send>;
+pub type PersistFn<T = DepFlowTransaction> = Box<dyn FnOnce(&mut T, Box<dyn Any>) -> Result<()> + Send>;
 
-pub struct OperatorStateSlot {
+pub struct OperatorStateSlot<T = DepFlowTransaction> {
 	pub value: Box<dyn Any + Send>,
 	pub dirty: bool,
-	pub persist: PersistFn,
+	pub persist: PersistFn<T>,
 }
 
 pub struct CarriedOperatorState {

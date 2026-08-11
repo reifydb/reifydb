@@ -163,11 +163,11 @@ pub const MATRIX: [Chain; 3] = [
 /// operator's output change to the next, so composing them inside one `apply` is both the smallest
 /// change and the faithful one.
 pub struct Pipeline {
-	stage: Box<dyn Operator + Send>,
-	terminal: AggregateOperator,
+	stage: Box<dyn Operator<DepFlowTransaction> + Send>,
+	terminal: AggregateOperator<DepFlowTransaction>,
 }
 
-impl Operator for Pipeline {
+impl Operator<DepFlowTransaction> for Pipeline {
 	fn id(&self) -> OperatorId {
 		self.terminal.id()
 	}
@@ -195,7 +195,7 @@ pub fn build(chain: Chain, runtime: RuntimeContext) -> Pipeline {
 		.collect();
 	let ctx = Arc::new(FlowContext::default());
 
-	let stage: Box<dyn Operator + Send> = match chain {
+	let stage: Box<dyn Operator<DepFlowTransaction> + Send> = match chain {
 		Chain::Filter {
 			..
 		} => Box::new(FilterOperator::new(

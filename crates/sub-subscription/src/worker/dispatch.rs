@@ -99,7 +99,7 @@ impl SubscriptionWorkerActor {
 	#[inline]
 	fn evaluate_flow(
 		&self,
-		flow_engine: &FlowEngineInner,
+		flow_engine: &FlowEngineInner<DepFlowTransaction>,
 		flow_state: &mut SubscriptionFlowState,
 		base_query: &MultiReadTransaction,
 		change: &Change,

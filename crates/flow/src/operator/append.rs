@@ -23,7 +23,7 @@ use tracing::instrument;
 use crate::{
 	error::FlowGraphError,
 	operator::{Operator, OperatorCell, drops::SealedDrops},
-	transaction::DepFlowTransaction,
+	transaction::interface::FlowTransaction,
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
@@ -32,10 +32,10 @@ const REMOVE_RECLAIM_LIMIT: usize = 8;
 
 const DROP_REASON: &str = "mutations whose source row mapping was reclaimed";
 
-pub struct AppendOperator {
+pub struct AppendOperator<T: FlowTransaction> {
 	operator: OperatorId,
 
-	parents: Vec<OperatorCell>,
+	parents: Vec<OperatorCell<T>>,
 
 	input_nodes: Vec<OperatorId>,
 
@@ -44,10 +44,10 @@ pub struct AppendOperator {
 	_ttl: Option<Duration>,
 }
 
-impl AppendOperator {
+impl<T: FlowTransaction> AppendOperator<T> {
 	pub fn new(
 		operator: OperatorId,
-		parents: Vec<OperatorCell>,
+		parents: Vec<OperatorCell<T>>,
 		input_nodes: Vec<OperatorId>,
 		ttl: Option<Duration>,
 	) -> Self {
@@ -105,7 +105,7 @@ impl AppendOperator {
 	}
 }
 
-impl Operator for AppendOperator {
+impl<T: FlowTransaction> Operator<T> for AppendOperator<T> {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -118,7 +118,7 @@ impl Operator for AppendOperator {
 		None
 	}
 
-	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
 		let parent_origin = change.origin.clone();
 		let mut result_diffs = Vec::with_capacity(change.diffs.len());
 
@@ -167,14 +167,10 @@ impl Operator for AppendOperator {
 	}
 }
 
-impl AppendOperator {
+impl<T: FlowTransaction> AppendOperator<T> {
 	#[inline]
 	#[instrument(name = "flow::operator::append::create_row_numbers", level = "trace", skip_all, fields(groups = groups.len()))]
-	fn translate_create_row_numbers(
-		&self,
-		txn: &mut DepFlowTransaction,
-		groups: &[EncodedKey],
-	) -> Result<Vec<RowNumber>> {
+	fn translate_create_row_numbers(&self, txn: &mut T, groups: &[EncodedKey]) -> Result<Vec<RowNumber>> {
 		let interned = txn.intern_groups(self.operator, groups)?;
 		let mut output_row_numbers = Vec::with_capacity(interned.len());
 		for (group, _) in interned {
@@ -189,7 +185,7 @@ impl AppendOperator {
 	#[instrument(name = "flow::operator::append::lookup_row_numbers", level = "trace", skip_all, fields(groups = groups.len()))]
 	fn lookup_row_numbers(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		groups: &[EncodedKey],
 	) -> Result<Option<(Vec<RowNumber>, Vec<GroupId>)>> {
 		let mut output_row_numbers = Vec::with_capacity(groups.len());
@@ -209,12 +205,7 @@ impl AppendOperator {
 
 	#[inline]
 	#[instrument(name = "flow::operator::append::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn translate_append_insert(
-		&self,
-		txn: &mut DepFlowTransaction,
-		parent_index: usize,
-		post: Columns,
-	) -> Result<Option<Diff>> {
+	fn translate_append_insert(&self, txn: &mut T, parent_index: usize, post: Columns) -> Result<Option<Diff>> {
 		if post.row_count() == 0 {
 			return Ok(None);
 		}
@@ -228,7 +219,7 @@ impl AppendOperator {
 	#[instrument(name = "flow::operator::append::update", level = "trace", skip_all, fields(rows = post.row_count()))]
 	fn translate_append_update(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		parent_index: usize,
 		pre: Columns,
 		post: Columns,
@@ -249,12 +240,7 @@ impl AppendOperator {
 
 	#[inline]
 	#[instrument(name = "flow::operator::append::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
-	fn translate_append_remove(
-		&self,
-		txn: &mut DepFlowTransaction,
-		parent_index: usize,
-		pre: Columns,
-	) -> Result<Option<Diff>> {
+	fn translate_append_remove(&self, txn: &mut T, parent_index: usize, pre: Columns) -> Result<Option<Diff>> {
 		if pre.row_count() == 0 {
 			return Ok(None);
 		}
@@ -281,7 +267,12 @@ mod tests {
 	use reifydb_value::{count::Count, value::datetime::DateTime};
 
 	use super::*;
-	use crate::{testing::FlowTxn, transaction::ChangeCoordinate};
+	use crate::{
+		testing::FlowTxn,
+		transaction::{ChangeCoordinate, DepFlowTransaction},
+	};
+
+	type AppendOperator = crate::operator::append::AppendOperator<DepFlowTransaction>;
 
 	fn op(operator: u64) -> AppendOperator {
 		AppendOperator::new_for_state_tests(OperatorId(operator))

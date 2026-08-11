@@ -29,6 +29,7 @@ use reifydb_flow::{
 		window::operator::{WindowConfig, WindowOperator},
 	},
 	timer::Timer,
+	transaction::DepFlowTransaction,
 	window::meta::EngineMeta,
 };
 use reifydb_routine::{
@@ -59,7 +60,7 @@ fn routines() -> Routines {
 	default_in_process_monoids(b).configure()
 }
 
-fn harness(kind: WindowKind, clock_ms: u64) -> Harness<WindowOperator> {
+fn harness(kind: WindowKind, clock_ms: u64) -> Harness<WindowOperator<DepFlowTransaction>> {
 	Harness::with_engine(move |engine, runtime| {
 		engine.mock_clock().set_millis(clock_ms);
 		WindowOperator::new(WindowConfig {
@@ -86,7 +87,7 @@ struct Snapshot {
 	armed_timers: usize,
 }
 
-fn snapshot(h: &mut Harness<WindowOperator>) -> Snapshot {
+fn snapshot(h: &mut Harness<WindowOperator<DepFlowTransaction>>) -> Snapshot {
 	let mut keys = Vec::new();
 	let mut data_values = Vec::new();
 	let mut metas = Vec::new();

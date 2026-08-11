@@ -34,7 +34,7 @@ use crate::{
 		Operator, OperatorCell,
 		stateful::{raw::RawStatefulOperator, utils},
 	},
-	transaction::{DepFlowTransaction, slot::PersistFn},
+	transaction::{interface::FlowTransaction, slot::PersistFn},
 };
 
 #[operator_state]
@@ -48,8 +48,8 @@ struct TakeState {
 	row_data: HashMap<RowNumber, EncodedBytes>,
 }
 
-pub struct TakeOperator {
-	parent: OperatorCell,
+pub struct TakeOperator<T: FlowTransaction> {
+	parent: OperatorCell<T>,
 	operator: OperatorId,
 	limit: usize,
 }
@@ -82,8 +82,8 @@ fn decode_take_bytes(shape: &RowShape, row_number: RowNumber, encoded: &EncodedB
 	Columns::from_encoded_bytes(shape, &[row_number], from_ref(encoded))
 }
 
-impl TakeOperator {
-	pub fn new(parent: OperatorCell, operator: OperatorId, limit: usize) -> Self {
+impl<T: FlowTransaction> TakeOperator<T> {
+	pub fn new(parent: OperatorCell<T>, operator: OperatorId, limit: usize) -> Self {
 		Self {
 			parent,
 			operator,
@@ -91,7 +91,7 @@ impl TakeOperator {
 		}
 	}
 
-	fn load_take_state(&self, txn: &mut DepFlowTransaction) -> Result<TakeState> {
+	fn load_take_state(&self, txn: &mut T) -> Result<TakeState> {
 		let key = utils::empty_state_key();
 		let Some(row) = utils::state_get(self.operator, txn, &key)? else {
 			return Ok(TakeState::default());
@@ -108,11 +108,11 @@ impl TakeOperator {
 	}
 
 	#[inline]
-	fn acquire_take_state(&self, txn: &mut DepFlowTransaction) -> Result<(TakeState, PersistFn)> {
+	fn acquire_take_state(&self, txn: &mut T) -> Result<(TakeState, PersistFn<T>)> {
 		let operator_id = self.operator;
 		txn.take_operator_state::<TakeState, _>(operator_id, |txn| {
 			let s = self.load_take_state(txn)?;
-			let persist: PersistFn = Box::new(move |txn, value| {
+			let persist: PersistFn<T> = Box::new(move |txn, value| {
 				let state = value.downcast::<TakeState>().expect("TakeState slot type");
 				let row = encode(&*state, DateTime::MAX).map_err(|e| {
 					Error::from(FlowStateError::Encode {
@@ -298,9 +298,9 @@ impl TakeOperator {
 	}
 }
 
-impl RawStatefulOperator for TakeOperator {}
+impl<T: FlowTransaction> RawStatefulOperator<T> for TakeOperator<T> {}
 
-impl Operator for TakeOperator {
+impl<T: FlowTransaction> Operator<T> for TakeOperator<T> {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -309,7 +309,7 @@ impl Operator for TakeOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
 		let operator_id = self.operator;
 		let (mut state, persist) = self.acquire_take_state(txn)?;
 

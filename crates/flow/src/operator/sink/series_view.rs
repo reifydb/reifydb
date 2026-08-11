@@ -48,7 +48,7 @@ use crate::{
 
 pub struct SinkSeriesViewOperator {
 	#[allow(dead_code)]
-	parent: OperatorCell,
+	parent: OperatorCell<DepFlowTransaction>,
 	operator: OperatorId,
 	view: ResolvedView,
 	series_id: SeriesId,
@@ -60,7 +60,7 @@ pub struct SinkSeriesViewOperator {
 
 impl SinkSeriesViewOperator {
 	pub fn new(
-		parent: OperatorCell,
+		parent: OperatorCell<DepFlowTransaction>,
 		operator: OperatorId,
 		view: ResolvedView,
 		series_id: SeriesId,
@@ -92,7 +92,7 @@ impl SinkSeriesViewOperator {
 	}
 }
 
-impl Operator for SinkSeriesViewOperator {
+impl Operator<DepFlowTransaction> for SinkSeriesViewOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}

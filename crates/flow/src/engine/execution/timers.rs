@@ -13,16 +13,16 @@ use reifydb_value::Result;
 use crate::{
 	engine::FlowEngineInner,
 	timer::Timer,
-	transaction::{ChangeCoordinate, DepFlowTransaction},
+	transaction::{ChangeCoordinate, interface::FlowTransaction},
 };
 
 const MAX_TIMER_ROUNDS: u32 = 4_096;
 const MAX_TIMERS_PER_DISPATCH: usize = 8_192;
 
-impl FlowEngineInner {
+impl<T: FlowTransaction> FlowEngineInner<T> {
 	pub(super) fn dispatch_due_timers(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		flow: &FlowDag,
 		version: CommitVersion,
 		topo: &[OperatorId],

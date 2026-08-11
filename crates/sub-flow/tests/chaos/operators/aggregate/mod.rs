@@ -5,8 +5,9 @@ pub mod oracle;
 pub mod workload;
 
 use rand::{RngExt, rngs::StdRng};
-use reifydb_flow::operator::{
-	OperatorCell, aggregation::operator::AggregateOperator, scan::series::SourceSeriesOperator,
+use reifydb_flow::{
+	operator::{OperatorCell, aggregation::operator::AggregateOperator, scan::series::SourceSeriesOperator},
+	transaction::DepFlowTransaction,
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -92,7 +93,7 @@ impl Agg {
 	}
 }
 
-pub fn build(agg: Agg, runtime: RuntimeContext) -> AggregateOperator {
+pub fn build(agg: Agg, runtime: RuntimeContext) -> AggregateOperator<DepFlowTransaction> {
 	let parent = OperatorCell::new(SourceSeriesOperator::new(SOURCE_OPERATOR));
 	AggregateOperator::new(
 		parent,

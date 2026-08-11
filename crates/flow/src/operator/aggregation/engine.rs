@@ -26,7 +26,7 @@ use super::{
 };
 use crate::{
 	operator::{stateful::utils, store::OperatorStateStore},
-	transaction::DepFlowTransaction,
+	transaction::interface::FlowTransaction,
 	window::{
 		engine::{
 			AccumulatorEvent, EmitKind, ExpiryAnchor,
@@ -61,9 +61,9 @@ pub(crate) fn partition_group_key(partition: Hash128) -> EncodedKey {
 }
 
 #[instrument(name = "flow::operator::aggregation::intern_groups", level = "trace", skip_all, fields(windows = windows.len()))]
-pub(crate) fn intern_window_groups(
+pub(crate) fn intern_window_groups<T: FlowTransaction>(
 	operator: OperatorId,
-	txn: &mut DepFlowTransaction,
+	txn: &mut T,
 	windows: &[(Hash128, u64)],
 ) -> Result<WindowGroups> {
 	if windows.is_empty() {
@@ -89,8 +89,8 @@ pub(crate) fn slot_coord(is_count: bool, event_ts: DateTime, row_number: u64) ->
 
 #[allow(clippy::too_many_arguments)]
 #[instrument(name = "flow::operator::aggregation::route", level = "trace", skip_all, fields(rows = columns.row_count()))]
-pub(crate) fn route_into_buckets<F>(
-	core: &Aggregation,
+pub(crate) fn route_into_buckets<T: FlowTransaction, F>(
+	core: &Aggregation<T>,
 	columns: &Columns,
 	is_add: bool,
 	assign: F,
@@ -131,9 +131,9 @@ where
 
 #[allow(clippy::too_many_arguments)]
 #[instrument(name = "flow::operator::aggregation::finish", level = "trace", skip_all, fields(buckets = buckets.len()))]
-pub(crate) fn finish_tumbling_engine(
-	core: &Aggregation,
-	txn: &mut DepFlowTransaction,
+pub(crate) fn finish_tumbling_engine<T: FlowTransaction>(
+	core: &Aggregation<T>,
+	txn: &mut T,
 	change: &Change,
 	buckets: EngineBuckets,
 	group_values: &HashMap<Hash128, Vec<Value>>,

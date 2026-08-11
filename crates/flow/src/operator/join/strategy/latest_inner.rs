@@ -15,15 +15,15 @@ use crate::{
 		snapshot::{SnapshotJoinContext, publish_slot, retain_published_slot, retire_slot, withdraw_slot},
 		state::JoinSide,
 	},
-	transaction::DepFlowTransaction,
+	transaction::interface::FlowTransaction,
 };
 
 pub(crate) struct LatestInnerHashJoin;
 
 impl LatestInnerHashJoin {
-	pub(crate) fn handle_insert_undefined(
+	pub(crate) fn handle_insert_undefined<T: FlowTransaction>(
 		&self,
-		_txn: &mut DepFlowTransaction,
+		_txn: &mut T,
 		_post: &Columns,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
@@ -31,9 +31,9 @@ impl LatestInnerHashJoin {
 		Ok(Vec::new())
 	}
 
-	pub(crate) fn handle_remove_undefined(
+	pub(crate) fn handle_remove_undefined<T: FlowTransaction>(
 		&self,
-		_txn: &mut DepFlowTransaction,
+		_txn: &mut T,
 		_pre: &Columns,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
@@ -41,9 +41,9 @@ impl LatestInnerHashJoin {
 		Ok(Vec::new())
 	}
 
-	pub(crate) fn handle_update_both_undefined(
+	pub(crate) fn handle_update_both_undefined<T: FlowTransaction>(
 		&self,
-		_txn: &mut DepFlowTransaction,
+		_txn: &mut T,
 		_pre: &Columns,
 		_post: &Columns,
 		_row_idx: usize,
@@ -53,9 +53,9 @@ impl LatestInnerHashJoin {
 	}
 
 	#[instrument(name = "flow::operator::join::latest_inner::handle_insert", level = "trace", skip_all, fields(rows = indices.len()))]
-	pub(crate) fn handle_insert(
+	pub(crate) fn handle_insert<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -92,9 +92,9 @@ impl LatestInnerHashJoin {
 	}
 
 	#[instrument(name = "flow::operator::join::latest_inner::handle_right_insert", level = "trace", skip_all, fields(rows = indices.len()))]
-	fn handle_right_insert(
+	fn handle_right_insert<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -138,9 +138,9 @@ impl LatestInnerHashJoin {
 	}
 
 	#[instrument(name = "flow::operator::join::latest_inner::handle_remove", level = "trace", skip_all)]
-	pub(crate) fn handle_remove(
+	pub(crate) fn handle_remove<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		pre: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -189,9 +189,9 @@ impl LatestInnerHashJoin {
 		}
 	}
 
-	fn handle_right_remove(
+	fn handle_right_remove<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
@@ -221,9 +221,9 @@ impl LatestInnerHashJoin {
 	}
 
 	#[instrument(name = "flow::operator::join::latest_inner::handle_update", level = "trace", skip_all)]
-	pub(crate) fn handle_update(
+	pub(crate) fn handle_update<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		pre: &Columns,
 		post: &Columns,
 		indices: &[usize],
@@ -313,8 +313,8 @@ impl LatestInnerHashJoin {
 	}
 }
 
-pub(crate) fn republished_slot(
-	txn: &mut DepFlowTransaction,
+pub(crate) fn republished_slot<T: FlowTransaction>(
+	txn: &mut T,
 	ctx: &SnapshotJoinContext,
 	group: Option<GroupId>,
 	pre: &Columns,

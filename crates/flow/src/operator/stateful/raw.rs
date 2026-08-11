@@ -9,30 +9,30 @@ use reifydb_core::key::operator_state::GroupStateKey;
 use reifydb_value::Result;
 
 use super::{StateIterator, utils};
-use crate::{operator::Operator, transaction::DepFlowTransaction};
+use crate::{operator::Operator, transaction::interface::FlowTransaction};
 
-pub trait RawStatefulOperator: Operator {
-	fn state_get(&self, txn: &mut DepFlowTransaction, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
+pub trait RawStatefulOperator<T: FlowTransaction>: Operator<T> {
+	fn state_get(&self, txn: &mut T, key: &GroupStateKey) -> Result<Option<EncodedOperatorRow>> {
 		utils::state_get(self.id(), txn, key)
 	}
 
-	fn state_set(&self, txn: &mut DepFlowTransaction, key: &GroupStateKey, row: EncodedOperatorRow) -> Result<()> {
+	fn state_set(&self, txn: &mut T, key: &GroupStateKey, row: EncodedOperatorRow) -> Result<()> {
 		utils::state_set(self.id(), txn, key, row)
 	}
 
-	fn state_remove(&self, txn: &mut DepFlowTransaction, key: &GroupStateKey) -> Result<()> {
+	fn state_remove(&self, txn: &mut T, key: &GroupStateKey) -> Result<()> {
 		utils::state_remove(self.id(), txn, key)
 	}
 
-	fn state_scan_all(&self, txn: &mut DepFlowTransaction) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
+	fn state_scan_all(&self, txn: &mut T) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 		utils::state_scan_all(self.id(), txn)
 	}
 
-	fn state_range<'a>(&self, txn: &'a mut DepFlowTransaction, range: EncodedKeyRange) -> StateIterator<'a> {
+	fn state_range<'a>(&self, txn: &'a mut T, range: EncodedKeyRange) -> StateIterator<'a> {
 		utils::state_range(self.id(), txn, range)
 	}
 
-	fn state_clear(&self, txn: &mut DepFlowTransaction) -> Result<()> {
+	fn state_clear(&self, txn: &mut T) -> Result<()> {
 		utils::state_clear(self.id(), txn)
 	}
 }
@@ -47,7 +47,7 @@ pub mod tests {
 	use super::*;
 	use crate::{operator::stateful::test_utils::test::*, testing::FlowTxn};
 
-	impl RawStatefulOperator for TestOperator {}
+	impl<T: FlowTransaction> RawStatefulOperator<T> for TestOperator {}
 
 	#[test]
 	fn test_simple_state_get_set() {

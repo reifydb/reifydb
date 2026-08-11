@@ -257,7 +257,7 @@ impl DepFlowTransaction {
 	}
 }
 
-fn scoped_key(id: OperatorId, key: &GroupStateKey) -> EncodedKey {
+pub(crate) fn scoped_key(id: OperatorId, key: &GroupStateKey) -> EncodedKey {
 	let mut bytes = node_prefix(id);
 	bytes.extend_from_slice(key.as_slice());
 	EncodedKey::new(bytes)

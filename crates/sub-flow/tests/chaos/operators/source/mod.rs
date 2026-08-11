@@ -83,22 +83,22 @@ pub enum SourceOp {
 	RingBuffer(SourceRingBufferOperator),
 }
 
-impl Operator for SourceOp {
+impl Operator<DepFlowTransaction> for SourceOp {
 	fn id(&self) -> OperatorId {
 		match self {
-			SourceOp::Series(o) => o.id(),
-			SourceOp::Table(o) => o.id(),
-			SourceOp::View(o) => o.id(),
-			SourceOp::RingBuffer(o) => o.id(),
+			SourceOp::Series(o) => Operator::<DepFlowTransaction>::id(o),
+			SourceOp::Table(o) => Operator::<DepFlowTransaction>::id(o),
+			SourceOp::View(o) => Operator::<DepFlowTransaction>::id(o),
+			SourceOp::RingBuffer(o) => Operator::<DepFlowTransaction>::id(o),
 		}
 	}
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		match self {
-			SourceOp::Series(o) => o.capabilities(),
-			SourceOp::Table(o) => o.capabilities(),
-			SourceOp::View(o) => o.capabilities(),
-			SourceOp::RingBuffer(o) => o.capabilities(),
+			SourceOp::Series(o) => Operator::<DepFlowTransaction>::capabilities(o),
+			SourceOp::Table(o) => Operator::<DepFlowTransaction>::capabilities(o),
+			SourceOp::View(o) => Operator::<DepFlowTransaction>::capabilities(o),
+			SourceOp::RingBuffer(o) => Operator::<DepFlowTransaction>::capabilities(o),
 		}
 	}
 
@@ -113,10 +113,10 @@ impl Operator for SourceOp {
 
 	fn output_schema(&self) -> Option<Columns> {
 		match self {
-			SourceOp::Series(o) => Operator::output_schema(o),
-			SourceOp::Table(o) => Operator::output_schema(o),
-			SourceOp::View(o) => Operator::output_schema(o),
-			SourceOp::RingBuffer(o) => Operator::output_schema(o),
+			SourceOp::Series(o) => Operator::<DepFlowTransaction>::output_schema(o),
+			SourceOp::Table(o) => Operator::<DepFlowTransaction>::output_schema(o),
+			SourceOp::View(o) => Operator::<DepFlowTransaction>::output_schema(o),
+			SourceOp::RingBuffer(o) => Operator::<DepFlowTransaction>::output_schema(o),
 		}
 	}
 }

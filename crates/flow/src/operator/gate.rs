@@ -37,7 +37,7 @@ use tracing::instrument;
 use crate::{
 	context::FlowContext,
 	operator::{Operator, OperatorCell, stateful::raw::RawStatefulOperator, store::OperatorStateStore},
-	transaction::DepFlowTransaction,
+	transaction::interface::FlowTransaction,
 };
 
 #[operator_state]
@@ -129,8 +129,8 @@ impl GateState {
 	}
 }
 
-pub struct GateOperator {
-	parent: OperatorCell,
+pub struct GateOperator<T: FlowTransaction> {
+	parent: OperatorCell<T>,
 	operator: OperatorId,
 	compiled_conditions: Vec<CompiledExpr>,
 	routines: Routines,
@@ -139,9 +139,9 @@ pub struct GateOperator {
 	state: UnsafeCell<GateState>,
 }
 
-impl GateOperator {
+impl<T: FlowTransaction> GateOperator<T> {
 	pub fn new(
-		parent: OperatorCell,
+		parent: OperatorCell<T>,
 		operator: OperatorId,
 		conditions: Vec<Expression>,
 		routines: Routines,
@@ -217,33 +217,29 @@ impl GateOperator {
 		unsafe { &mut *self.state.get() }
 	}
 
-	fn with_state<R>(
-		&self,
-		txn: &mut DepFlowTransaction,
-		f: impl FnOnce(&mut DepFlowTransaction) -> Result<R>,
-	) -> Result<R> {
+	fn with_state<R>(&self, txn: &mut T, f: impl FnOnce(&mut T) -> Result<R>) -> Result<R> {
 		self.state_slot().hydrate_once(&mut OperatorStateStore::new(txn, self.operator))?;
 		let out = f(txn)?;
 		self.state_slot().flush(&mut OperatorStateStore::new(txn, self.operator))?;
 		Ok(out)
 	}
 
-	fn is_visible(&self, txn: &mut DepFlowTransaction, rn: RowNumber) -> Result<bool> {
+	fn is_visible(&self, txn: &mut T, rn: RowNumber) -> Result<bool> {
 		self.state_slot().is_visible(&mut OperatorStateStore::new(txn, self.operator), rn)
 	}
 
-	fn mark_visible(&self, txn: &mut DepFlowTransaction, rn: RowNumber) -> Result<()> {
+	fn mark_visible(&self, txn: &mut T, rn: RowNumber) -> Result<()> {
 		self.state_slot().mark_visible(&mut OperatorStateStore::new(txn, self.operator), rn)
 	}
 
-	fn mark_invisible(&self, txn: &mut DepFlowTransaction, rn: RowNumber) -> Result<()> {
+	fn mark_invisible(&self, txn: &mut T, rn: RowNumber) -> Result<()> {
 		self.state_slot().mark_invisible(&mut OperatorStateStore::new(txn, self.operator), rn)
 	}
 }
 
-impl RawStatefulOperator for GateOperator {}
+impl<T: FlowTransaction> RawStatefulOperator<T> for GateOperator<T> {}
 
-impl Operator for GateOperator {
+impl<T: FlowTransaction> Operator<T> for GateOperator<T> {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -256,7 +252,7 @@ impl Operator for GateOperator {
 		self.state_slot().sample()
 	}
 
-	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
 		self.with_state(txn, |txn| {
 			let mut result = Vec::new();
 
@@ -287,15 +283,10 @@ impl Operator for GateOperator {
 	}
 }
 
-impl GateOperator {
+impl<T: FlowTransaction> GateOperator<T> {
 	#[inline]
 	#[instrument(name = "flow::operator::gate::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn apply_gate_insert(
-		&self,
-		txn: &mut DepFlowTransaction,
-		post: &Columns,
-		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	fn apply_gate_insert(&self, txn: &mut T, post: &Columns, result: &mut Vec<Diff>) -> Result<()> {
 		if post.row_numbers().is_empty() {
 			let mask = self.evaluate(post)?;
 			let passing_indices: Vec<usize> =
@@ -323,13 +314,7 @@ impl GateOperator {
 
 	#[inline]
 	#[instrument(name = "flow::operator::gate::update", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn apply_gate_update(
-		&self,
-		txn: &mut DepFlowTransaction,
-		pre: Columns,
-		post: Columns,
-		result: &mut Vec<Diff>,
-	) -> Result<()> {
+	fn apply_gate_update(&self, txn: &mut T, pre: Columns, post: Columns, result: &mut Vec<Diff>) -> Result<()> {
 		if post.row_numbers().is_empty() {
 			result.push(Diff::Update {
 				pre,
@@ -366,7 +351,7 @@ impl GateOperator {
 
 	#[inline]
 	#[instrument(name = "flow::operator::gate::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
-	fn apply_gate_remove(&self, txn: &mut DepFlowTransaction, pre: Columns, result: &mut Vec<Diff>) -> Result<()> {
+	fn apply_gate_remove(&self, txn: &mut T, pre: Columns, result: &mut Vec<Diff>) -> Result<()> {
 		if pre.row_numbers().is_empty() {
 			result.push(Diff::Remove {
 				pre,

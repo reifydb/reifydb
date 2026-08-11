@@ -20,4 +20,5 @@ pub use bridge::assert_backend_parity;
 
 /// Named here so a guest author never has to import `ApplyOperator` from `reifydb-sub-flow` just
 /// to write down the type of a fixture.
-pub type GuestHarness = harness::Harness<reifydb_flow::operator::apply::ApplyOperator>;
+pub type GuestHarness =
+	harness::Harness<reifydb_flow::operator::apply::ApplyOperator<reifydb_flow::transaction::DepFlowTransaction>>;

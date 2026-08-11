@@ -24,8 +24,9 @@ use crate::{
 	engine::{FlowEngineInner, execution::COMPLETENESS_OBJECT},
 	operator::max_input_time,
 	transaction::{
-		ChangeCoordinate, DepFlowTransaction,
+		ChangeCoordinate,
 		frontier::{Frontier, OutputFrontiers},
+		interface::FlowTransaction,
 	},
 };
 
@@ -37,7 +38,7 @@ pub(crate) struct SourceArrival {
 
 pub(crate) type SourceArrivals = Vec<SourceArrival>;
 
-impl FlowEngineInner {
+impl<T: FlowTransaction> FlowEngineInner<T> {
 	#[instrument(name = "flow::engine::process", level = "debug", skip(self, txn, change), fields(
 		flow_id = ?flow_id,
 		origin = ?change.origin,
@@ -46,7 +47,7 @@ impl FlowEngineInner {
 		row_count = change.row_count(),
 		nodes_processed = field::Empty
 	))]
-	pub fn process(&self, txn: &mut DepFlowTransaction, change: Change, flow_id: FlowId) -> Result<()> {
+	pub fn process(&self, txn: &mut T, change: Change, flow_id: FlowId) -> Result<()> {
 		self.process_batch(txn, vec![change], flow_id)
 	}
 
@@ -57,7 +58,7 @@ impl FlowEngineInner {
 		version_count = field::Empty,
 		nodes_processed = field::Empty
 	))]
-	pub fn process_batch(&self, txn: &mut DepFlowTransaction, changes: Vec<Change>, flow_id: FlowId) -> Result<()> {
+	pub fn process_batch(&self, txn: &mut T, changes: Vec<Change>, flow_id: FlowId) -> Result<()> {
 		let flow = match self.flows.get(&flow_id) {
 			Some(f) => f.clone(),
 			None => return Ok(()),
@@ -81,12 +82,7 @@ impl FlowEngineInner {
 		Ok(())
 	}
 
-	pub fn fold_published_arrivals(
-		&self,
-		txn: &mut DepFlowTransaction,
-		flow_id: FlowId,
-		version: CommitVersion,
-	) -> Result<()> {
+	pub fn fold_published_arrivals(&self, txn: &mut T, flow_id: FlowId, version: CommitVersion) -> Result<()> {
 		let flow = match self.flows.get(&flow_id) {
 			Some(f) => f.clone(),
 			None => return Ok(()),
@@ -107,7 +103,7 @@ impl FlowEngineInner {
 	#[inline]
 	fn process_version(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		flow: &FlowDag,
 		flow_id: FlowId,
 		version: CommitVersion,
@@ -152,7 +148,7 @@ impl FlowEngineInner {
 
 	pub(super) fn run_topology(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		flow: &FlowDag,
 		mut pending: HashMap<OperatorId, Vec<Change>>,
 		topo: &[OperatorId],
@@ -307,8 +303,8 @@ fn collect_completeness(change: &Change, asserted: &mut BTreeMap<u64, DateTime>)
 	}
 }
 
-fn freeze_arrival_frontier(
-	txn: &mut DepFlowTransaction,
+fn freeze_arrival_frontier<T: FlowTransaction>(
+	txn: &mut T,
 	sources: &[OperatorId],
 	arrivals: &[SourceArrival],
 ) -> Result<()> {
@@ -350,7 +346,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
-		transaction::substrate::FlowSubstrate,
+		transaction::{DepFlowTransaction, substrate::FlowSubstrate},
 	};
 
 	const SOURCE: OperatorId = OperatorId(1);

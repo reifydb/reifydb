@@ -13,7 +13,7 @@ use reifydb_value::Result;
 
 use crate::{
 	operator::{Operator, sink::decode_dictionary_columns},
-	transaction::DepFlowTransaction,
+	transaction::interface::FlowTransaction,
 };
 
 pub struct SourceViewOperator {
@@ -30,7 +30,7 @@ impl SourceViewOperator {
 	}
 }
 
-impl Operator for SourceViewOperator {
+impl<T: FlowTransaction> Operator<T> for SourceViewOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -39,7 +39,7 @@ impl Operator for SourceViewOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
 		let mut decoded_diffs = Vec::with_capacity(change.diffs.len());
 		for diff in change.diffs {
 			decoded_diffs.push(match diff {

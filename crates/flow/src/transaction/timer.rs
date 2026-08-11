@@ -18,11 +18,13 @@ use reifydb_core::{
 };
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 
-use super::{
-	DepFlowTransaction,
-	group::{decode_payload, encode_payload},
+use crate::{
+	timer::Timer,
+	transaction::{
+		group::{decode_payload, encode_payload},
+		interface::FlowTransaction,
+	},
 };
-use crate::timer::Timer;
 
 const TAKE_CHUNK: usize = 1_024;
 
@@ -45,7 +47,7 @@ fn index_key(kind: TimerKind, key: &EncodedKey) -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::TIMER_INDEX, suffix)
 }
 
-fn armed_at(operator: OperatorId, txn: &mut DepFlowTransaction, index: &GroupStateKey) -> Result<Option<u64>> {
+fn armed_at(operator: OperatorId, txn: &mut impl FlowTransaction, index: &GroupStateKey) -> Result<Option<u64>> {
 	match txn.state_get(operator, index)? {
 		Some(row) => Ok(Some(decode_payload::<u64>(&row)?)),
 		None => Ok(None),
@@ -84,7 +86,7 @@ pub struct TimerWheel {
 }
 
 impl TimerWheel {
-	pub fn arm(&self, operator: OperatorId, txn: &mut DepFlowTransaction, timer: &Timer) -> Result<()> {
+	pub fn arm(&self, operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<()> {
 		let now = txn.written_at();
 		let at = timer.at.to_millis();
 		if !timer.kind.is_unique() {
@@ -135,7 +137,7 @@ impl TimerWheel {
 		Ok(())
 	}
 
-	pub fn disarm(&self, operator: OperatorId, txn: &mut DepFlowTransaction, timer: &Timer) -> Result<()> {
+	pub fn disarm(&self, operator: OperatorId, txn: &mut impl FlowTransaction, timer: &Timer) -> Result<()> {
 		let at = timer.at.to_millis();
 		if timer.kind.is_unique() {
 			let index = index_key(timer.kind, &timer.key);
@@ -151,7 +153,7 @@ impl TimerWheel {
 	pub fn take_due(
 		&self,
 		operator: OperatorId,
-		txn: &mut DepFlowTransaction,
+		txn: &mut impl FlowTransaction,
 		watermark: DateTime,
 		limit: usize,
 	) -> Result<Vec<Timer>> {
@@ -215,7 +217,7 @@ impl TimerWheel {
 		Ok(due)
 	}
 
-	fn hydrate_once(state: &mut WheelState, operator: OperatorId, txn: &mut DepFlowTransaction) -> Result<()> {
+	fn hydrate_once(state: &mut WheelState, operator: OperatorId, txn: &mut impl FlowTransaction) -> Result<()> {
 		if state.hydrated {
 			return Ok(());
 		}
@@ -242,7 +244,7 @@ mod tests {
 
 	use super::*;
 	use crate::transaction::{
-		DeferredParams,
+		DeferredParams, DepFlowTransaction,
 		substrate::{FlowSubstrate, apply_operator_state},
 	};
 
@@ -271,7 +273,7 @@ mod tests {
 		})
 	}
 
-	fn commit_pending(engine: &TestEngine, txn: &mut DepFlowTransaction) {
+	fn commit_pending(engine: &TestEngine, txn: &mut impl FlowTransaction) {
 		// Persists into the operator state store so a cold wheel resolves them from the store.
 		let pending = txn.take_pending();
 		apply_operator_state(&engine.inner().operator_state(), &pending);

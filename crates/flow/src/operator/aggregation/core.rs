@@ -35,6 +35,7 @@ use crate::{
 	context::FlowContext,
 	error::FlowStateError,
 	operator::{OperatorCell, aggregation::accumulator::RowAccumulator},
+	transaction::interface::FlowTransaction,
 	window::{
 		engine::tumbling::TumblingEngine,
 		meta::{EngineMeta, EngineMetaKey},
@@ -58,9 +59,9 @@ fn build_aggregation_shape(names: &[String], types: &[ValueType]) -> RowShape {
 	RowShape::new(RowFamily::Table, fields)
 }
 
-pub struct Aggregation {
+pub struct Aggregation<T: FlowTransaction> {
 	pub operator: OperatorId,
-	pub parent: OperatorCell,
+	pub parent: OperatorCell<T>,
 	pub compiled_group_by: Vec<CompiledExpr>,
 	pub group_names: Vec<String>,
 	pub aggregate_output_names: Vec<String>,
@@ -80,11 +81,11 @@ pub struct Aggregation {
 	pub ctx: Arc<FlowContext>,
 }
 
-impl Aggregation {
+impl<T: FlowTransaction> Aggregation<T> {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		operator: OperatorId,
-		parent: OperatorCell,
+		parent: OperatorCell<T>,
 		group_by: Vec<Expression>,
 		aggregations: Vec<Expression>,
 		routines: Routines,

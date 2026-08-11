@@ -14,6 +14,7 @@ use reifydb_flow::error::FlowStateError;
 use reifydb_flow::{
 	error::FlowGraphError,
 	operator::{BoxedOperator, provider::OperatorProvider},
+	transaction::DepFlowTransaction,
 };
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_value::params::Params;
@@ -40,8 +41,8 @@ impl StandardOperatorProvider {
 	}
 }
 
-impl OperatorProvider for StandardOperatorProvider {
-	fn provide(&self, operator_id: OperatorId, config: &Config) -> Result<BoxedOperator> {
+impl OperatorProvider<DepFlowTransaction> for StandardOperatorProvider {
+	fn provide(&self, operator_id: OperatorId, config: &Config) -> Result<BoxedOperator<DepFlowTransaction>> {
 		let operator = config.name();
 
 		if let Some(factory) = self.custom.get(operator) {
@@ -82,7 +83,7 @@ impl StandardOperatorProvider {
 		operator: &str,
 		operator_id: OperatorId,
 		config: &Config,
-	) -> Result<BoxedOperator> {
+	) -> Result<BoxedOperator<DepFlowTransaction>> {
 		let loader = extern_c_operator_loader();
 		let mut loader_write = loader.write();
 

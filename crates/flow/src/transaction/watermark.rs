@@ -11,9 +11,9 @@ use reifydb_core::{
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 use tracing::{info, warn};
 
-use super::{
-	DepFlowTransaction,
+use crate::transaction::{
 	group::{decode_payload, encode_payload},
+	interface::FlowTransaction,
 };
 
 const PERSIST_BUCKET_MS: u64 = 1_000;
@@ -36,7 +36,7 @@ pub struct SourceWatermarks {
 }
 
 impl SourceWatermarks {
-	pub fn advance(&self, source: OperatorId, txn: &mut DepFlowTransaction, at: DateTime) -> Result<()> {
+	pub fn advance(&self, source: OperatorId, txn: &mut impl FlowTransaction, at: DateTime) -> Result<()> {
 		let coordinate = at.to_millis();
 		let mut state = self.inner.entry(source).or_default();
 		Self::hydrate_once(&mut state, source, txn)?;
@@ -69,11 +69,11 @@ impl SourceWatermarks {
 		Ok(())
 	}
 
-	pub fn source_watermark(&self, source: OperatorId, txn: &mut DepFlowTransaction) -> Result<DateTime> {
+	pub fn source_watermark(&self, source: OperatorId, txn: &mut impl FlowTransaction) -> Result<DateTime> {
 		Ok(DateTime::from_millis(self.raw(source, txn)?))
 	}
 
-	pub fn flow_watermark(&self, sources: &[OperatorId], txn: &mut DepFlowTransaction) -> Result<DateTime> {
+	pub fn flow_watermark(&self, sources: &[OperatorId], txn: &mut impl FlowTransaction) -> Result<DateTime> {
 		reifydb_assertions! {
 			assert!(
 				!sources.is_empty(),
@@ -109,13 +109,13 @@ impl SourceWatermarks {
 		Ok(DateTime::from_millis(merged))
 	}
 
-	fn raw(&self, source: OperatorId, txn: &mut DepFlowTransaction) -> Result<u64> {
+	fn raw(&self, source: OperatorId, txn: &mut impl FlowTransaction) -> Result<u64> {
 		let mut state = self.inner.entry(source).or_default();
 		Self::hydrate_once(&mut state, source, txn)?;
 		Ok(state.value.unwrap_or(0))
 	}
 
-	fn hydrate_once(state: &mut SourceState, source: OperatorId, txn: &mut DepFlowTransaction) -> Result<()> {
+	fn hydrate_once(state: &mut SourceState, source: OperatorId, txn: &mut impl FlowTransaction) -> Result<()> {
 		if state.hydrated {
 			return Ok(());
 		}
@@ -138,7 +138,7 @@ mod tests {
 
 	use super::*;
 	use crate::transaction::{
-		DeferredParams,
+		DeferredParams, DepFlowTransaction,
 		substrate::{FlowSubstrate, apply_operator_state},
 	};
 
@@ -163,7 +163,7 @@ mod tests {
 		})
 	}
 
-	fn commit_pending(engine: &TestEngine, txn: &mut DepFlowTransaction) {
+	fn commit_pending(engine: &TestEngine, txn: &mut impl FlowTransaction) {
 		// Persists the pending writes so a cold instance resolves them as a restarted process would.
 		let pending = txn.take_pending();
 		apply_operator_state(&engine.inner().operator_state(), &pending);

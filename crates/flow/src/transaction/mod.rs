@@ -5,13 +5,17 @@ use std::{collections::HashMap, mem};
 
 use read::ReadFrom;
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::{EncodedKey, EncodedKeyRange},
+	row::bytes::EncodedBytes,
+};
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,
 	interface::{
 		catalog::{flow::OperatorId, object::ObjectId},
 		change::{Change, ChangeOrigin, Diff},
+		store::MultiVersionRow,
 	},
 };
 use reifydb_runtime::context::clock::Clock;
@@ -75,15 +79,18 @@ use reifydb_transaction::{
 			ViewPreUpdateInterceptor,
 		},
 	},
-	multi::transaction::read::MultiReadTransaction,
+	multi::{RangeScope, transaction::read::MultiReadTransaction},
 	transaction::admin::AdminTransaction,
 };
 use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
 
+pub mod deferred;
 pub mod dictionary;
+pub mod ephemeral;
 pub mod frontier;
 pub mod group;
+pub mod interface;
 pub mod read;
 pub mod reclaim;
 pub mod row_number;
@@ -101,7 +108,20 @@ use substrate::FlowSubstrate;
 use timer::TimerWheel;
 use watermark::SourceWatermarks;
 
-use crate::timer::Timer;
+use crate::{
+	timer::Timer,
+	transaction::{
+		deferred::{
+			deferred_fetch_state_external, deferred_storage_contains, deferred_storage_get,
+			deferred_storage_range, deferred_storage_range_rev,
+		},
+		ephemeral::{
+			ephemeral_fetch_state_external, ephemeral_storage_contains, ephemeral_storage_get,
+			ephemeral_storage_range, ephemeral_storage_range_rev,
+		},
+		interface::FlowTransaction,
+	},
+};
 
 #[derive(Clone, Copy)]
 pub struct ChangeCoordinate {
@@ -714,4 +734,169 @@ impl WithInterceptors for DepFlowTransaction {
 		authentication_pre_delete,
 		AuthenticationPreDeleteInterceptor
 	);
+}
+
+impl FlowTransaction for DepFlowTransaction {
+	fn version(&self) -> CommitVersion {
+		match self {
+			Self::Deferred(d) => d.version,
+			Self::Ephemeral(e) => e.version,
+		}
+	}
+
+	fn clock(&self) -> &Clock {
+		match self {
+			Self::Deferred(d) => &d.clock,
+			Self::Ephemeral(e) => &e.clock,
+		}
+	}
+
+	fn catalog(&self) -> &Catalog {
+		match self {
+			Self::Deferred(d) => &d.catalog,
+			Self::Ephemeral(e) => &e.catalog,
+		}
+	}
+
+	fn query(&self) -> MultiReadTransaction {
+		match self {
+			Self::Deferred(d) => d.query.clone(),
+			Self::Ephemeral(e) => e.query.clone(),
+		}
+	}
+
+	fn substrate(&self) -> &FlowSubstrate {
+		match self {
+			Self::Deferred(d) => &d.substrate,
+			Self::Ephemeral(e) => &e.substrate,
+		}
+	}
+
+	fn pending_layers(&self) -> &PendingLayers {
+		match self {
+			Self::Deferred(d) => &d.pending,
+			Self::Ephemeral(e) => &e.pending,
+		}
+	}
+
+	fn pending_layers_mut(&mut self) -> &mut PendingLayers {
+		match self {
+			Self::Deferred(d) => &mut d.pending,
+			Self::Ephemeral(e) => &mut e.pending,
+		}
+	}
+
+	fn accumulator_mut(&mut self) -> &mut ChangeAccumulator {
+		match self {
+			Self::Deferred(d) => &mut d.accumulator,
+			Self::Ephemeral(e) => &mut e.accumulator,
+		}
+	}
+
+	fn operator_states_mut(&mut self) -> &mut HashMap<OperatorId, OperatorStateSlot<Self>> {
+		match self {
+			Self::Deferred(d) => &mut d.operator_states,
+			Self::Ephemeral(e) => &mut e.operator_states,
+		}
+	}
+
+	fn change_coordinate(&self) -> Option<ChangeCoordinate> {
+		match self {
+			Self::Deferred(d) => d.change_coordinate,
+			Self::Ephemeral(e) => e.change_coordinate,
+		}
+	}
+
+	fn set_change_coordinate(&mut self, coordinate: ChangeCoordinate) {
+		match self {
+			Self::Deferred(d) => d.change_coordinate = Some(coordinate),
+			Self::Ephemeral(e) => e.change_coordinate = Some(coordinate),
+		}
+	}
+
+	fn flow_watermark(&self) -> Option<DateTime> {
+		match self {
+			Self::Deferred(d) => d.flow_watermark,
+			Self::Ephemeral(e) => e.flow_watermark,
+		}
+	}
+
+	fn set_flow_watermark(&mut self, watermark: DateTime) {
+		match self {
+			Self::Deferred(d) => d.flow_watermark = Some(watermark),
+			Self::Ephemeral(e) => e.flow_watermark = Some(watermark),
+		}
+	}
+
+	fn storage_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
+		match self {
+			Self::Deferred(d) => {
+				deferred_storage_get(&d.substrate.operators, &d.query, &d.state_query, key)
+			}
+			Self::Ephemeral(e) => ephemeral_storage_get(&e.state, &e.query, key),
+		}
+	}
+
+	fn storage_contains(&mut self, key: &EncodedKey) -> Result<bool> {
+		match self {
+			Self::Deferred(d) => {
+				deferred_storage_contains(&d.substrate.operators, &d.query, &d.state_query, key)
+			}
+			Self::Ephemeral(e) => ephemeral_storage_contains(&e.state, &e.query, key),
+		}
+	}
+
+	fn storage_range(
+		&mut self,
+		range: EncodedKeyRange,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+		match self {
+			Self::Deferred(d) => deferred_storage_range(
+				&d.substrate.operators,
+				&d.query,
+				&d.state_query,
+				d.version,
+				range,
+				scope,
+				batch_size,
+			),
+			Self::Ephemeral(e) => {
+				ephemeral_storage_range(&e.state, &e.query, e.version, range, scope, batch_size)
+			}
+		}
+	}
+
+	fn storage_range_rev(
+		&mut self,
+		range: EncodedKeyRange,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
+		match self {
+			Self::Deferred(d) => deferred_storage_range_rev(
+				&d.substrate.operators,
+				&d.query,
+				&d.state_query,
+				d.version,
+				range,
+				scope,
+				batch_size,
+			),
+			Self::Ephemeral(e) => {
+				ephemeral_storage_range_rev(&e.state, &e.query, e.version, range, scope, batch_size)
+			}
+		}
+	}
+
+	fn fetch_state_external(&mut self, keys: &[EncodedKey], items: &mut Vec<MultiVersionRow>) -> Result<()> {
+		match self {
+			Self::Deferred(d) => {
+				deferred_fetch_state_external(&d.substrate.operators, d.version, keys, items)
+			}
+			Self::Ephemeral(e) => ephemeral_fetch_state_external(&e.state, e.version, keys, items),
+		}
+		Ok(())
+	}
 }

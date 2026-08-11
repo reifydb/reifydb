@@ -22,7 +22,7 @@ use reifydb_core::{
 use reifydb_runtime::cache::slab::SlabLru;
 use reifydb_value::{Result, byte_size::ByteSize, count::Count, reifydb_assertions, value::row_number::RowNumber};
 
-use super::DepFlowTransaction;
+use crate::transaction::{DepFlowTransaction, interface::FlowTransaction};
 
 const DEFAULT_BYTE_BUDGET: u64 = 1024 * 1024;
 const HYDRATE_CHUNK: usize = 8_192;
@@ -186,7 +186,7 @@ impl RowNumberProvider {
 		&self,
 		operator: OperatorId,
 		group: GroupId,
-		txn: &mut DepFlowTransaction,
+		txn: &mut impl FlowTransaction,
 		key: &EncodedKey,
 	) -> Result<(RowNumber, bool)> {
 		Ok(self.get_or_create_row_numbers(operator, group, txn, from_ref(key))?.into_iter().next().unwrap())
@@ -196,7 +196,7 @@ impl RowNumberProvider {
 		&self,
 		operator: OperatorId,
 		group: GroupId,
-		txn: &mut DepFlowTransaction,
+		txn: &mut impl FlowTransaction,
 		keys: &[EncodedKey],
 	) -> Result<Vec<(RowNumber, bool)>> {
 		let now = txn.written_at();
@@ -286,7 +286,7 @@ impl RowNumberProvider {
 		&self,
 		operator: OperatorId,
 		group: GroupId,
-		txn: &mut DepFlowTransaction,
+		txn: &mut impl FlowTransaction,
 		keys: &[EncodedKey],
 	) -> Result<Vec<Option<RowNumber>>> {
 		let budget = self.inner.budget;
@@ -336,7 +336,7 @@ impl RowNumberProvider {
 		&self,
 		operator: OperatorId,
 		group: GroupId,
-		txn: &mut DepFlowTransaction,
+		txn: &mut impl FlowTransaction,
 		key: &EncodedKey,
 	) -> Result<Option<RowNumber>> {
 		let budget = self.inner.budget;
@@ -365,7 +365,7 @@ impl RowNumberProvider {
 		&self,
 		operator: OperatorId,
 		group: GroupId,
-		txn: &mut DepFlowTransaction,
+		txn: &mut impl FlowTransaction,
 		key: &EncodedKey,
 	) -> Result<bool> {
 		let budget = self.inner.budget;
@@ -390,7 +390,7 @@ impl RowNumberProvider {
 		&self,
 		operator: OperatorId,
 		group: GroupId,
-		txn: &mut DepFlowTransaction,
+		txn: &mut impl FlowTransaction,
 		upper: &EncodedKey,
 	) -> Result<Vec<RowNumber>> {
 		let base = mapping_range(group);
@@ -422,7 +422,7 @@ impl RowNumberProvider {
 		&self,
 		operator: OperatorId,
 		group: GroupId,
-		txn: &mut DepFlowTransaction,
+		txn: &mut impl FlowTransaction,
 		key_prefix: &[u8],
 	) -> Result<()> {
 		let inner_prefix = OperatorStateKey::inner_encoded(group, Keyspace::ROW_NUMBER_MAPPING, key_prefix);
@@ -498,7 +498,7 @@ impl RowNumberProvider {
 	fn hydrate_group(
 		state: &mut NodeState,
 		operator: OperatorId,
-		txn: &mut DepFlowTransaction,
+		txn: &mut impl FlowTransaction,
 		group: GroupId,
 		budget: ByteSize,
 	) -> Result<()> {
@@ -549,7 +549,12 @@ impl RowNumberProvider {
 		Ok(())
 	}
 
-	fn mint(state: &mut NodeState, operator: OperatorId, txn: &mut DepFlowTransaction, count: u64) -> Result<u64> {
+	fn mint(
+		state: &mut NodeState,
+		operator: OperatorId,
+		txn: &mut impl FlowTransaction,
+		count: u64,
+	) -> Result<u64> {
 		let seed = match state.next {
 			Some(next) => next,
 			None => match txn.state_get(operator, &counter_key())? {

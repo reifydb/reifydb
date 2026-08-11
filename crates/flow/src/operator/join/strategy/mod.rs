@@ -9,7 +9,7 @@ use crate::{
 		operator::JoinOperator,
 		state::{JoinSide, JoinState},
 	},
-	transaction::DepFlowTransaction,
+	transaction::interface::FlowTransaction,
 };
 
 pub(crate) mod hash;
@@ -55,9 +55,9 @@ impl JoinStrategy {
 		}
 	}
 
-	pub(crate) fn handle_insert_undefined(
+	pub(crate) fn handle_insert_undefined<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		post: &Columns,
 		row_idx: usize,
 		ctx: &mut JoinContext,
@@ -70,9 +70,9 @@ impl JoinStrategy {
 		}
 	}
 
-	pub(crate) fn handle_remove_undefined(
+	pub(crate) fn handle_remove_undefined<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		pre: &Columns,
 		row_idx: usize,
 		ctx: &mut JoinContext,
@@ -85,9 +85,9 @@ impl JoinStrategy {
 		}
 	}
 
-	pub(crate) fn handle_update_both_undefined(
+	pub(crate) fn handle_update_both_undefined<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		pre: &Columns,
 		post: &Columns,
 		row_idx: usize,
@@ -101,9 +101,9 @@ impl JoinStrategy {
 		}
 	}
 
-	pub(crate) fn handle_insert(
+	pub(crate) fn handle_insert<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -117,9 +117,9 @@ impl JoinStrategy {
 		}
 	}
 
-	pub(crate) fn handle_remove(
+	pub(crate) fn handle_remove<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		pre: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -133,9 +133,9 @@ impl JoinStrategy {
 		}
 	}
 
-	pub(crate) fn handle_update(
+	pub(crate) fn handle_update<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		pre: &Columns,
 		post: &Columns,
 		indices: &[usize],

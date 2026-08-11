@@ -38,6 +38,7 @@ use reifydb_flow::{
 		scan::series::SourceSeriesOperator,
 		window::operator::{WindowConfig, WindowOperator},
 	},
+	transaction::DepFlowTransaction,
 };
 use reifydb_routine::{
 	function::default_in_process_functions, monoid::default_in_process_monoids,
@@ -118,7 +119,7 @@ fn change_of(events: &[Event]) -> Change {
 	Change::from_flow(SOURCE, CommitVersion(1), diffs, DateTime::default())
 }
 
-fn feed<O: Operator>(h: &mut Harness<O>, events: &[Event], slices: &[usize]) -> Vec<Diff> {
+fn feed<O: Operator<DepFlowTransaction>>(h: &mut Harness<O>, events: &[Event], slices: &[usize]) -> Vec<Diff> {
 	let mut emitted = Vec::new();
 	for chunk in chunks(events, slices) {
 		let out = h.apply(change_of(chunk)).expect("the change applies");
@@ -606,7 +607,7 @@ mod join {
 	}
 }
 
-fn window_harness(kind: WindowKind, grace: Duration, clock_ms: u64) -> Harness<WindowOperator> {
+fn window_harness(kind: WindowKind, grace: Duration, clock_ms: u64) -> Harness<WindowOperator<DepFlowTransaction>> {
 	Harness::with_engine(move |engine, runtime| {
 		engine.mock_clock().set_millis(clock_ms);
 		WindowOperator::new(WindowConfig {

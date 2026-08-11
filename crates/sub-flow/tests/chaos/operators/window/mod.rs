@@ -18,6 +18,7 @@ use reifydb_flow::{
 		scan::series::SourceSeriesOperator,
 		window::operator::{WindowConfig, WindowOperator},
 	},
+	transaction::DepFlowTransaction,
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -32,7 +33,7 @@ pub struct WindowSpec {
 
 use crate::operators::routines;
 
-pub fn build(spec: &WindowSpec, runtime: RuntimeContext) -> WindowOperator {
+pub fn build(spec: &WindowSpec, runtime: RuntimeContext) -> WindowOperator<DepFlowTransaction> {
 	let operator = OperatorId(1);
 	let parent = OperatorCell::new(SourceSeriesOperator::new(OperatorId(0)));
 

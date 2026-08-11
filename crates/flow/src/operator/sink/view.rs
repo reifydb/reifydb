@@ -57,7 +57,7 @@ const CREATED_AT_CACHE_CAPACITY: usize = 16_384;
 
 pub struct SinkTableViewOperator {
 	#[allow(dead_code)]
-	parent: OperatorCell,
+	parent: OperatorCell<DepFlowTransaction>,
 	operator: OperatorId,
 	view: ResolvedView,
 	storage: TableId,
@@ -73,7 +73,7 @@ pub struct SinkTableViewOperator {
 
 impl SinkTableViewOperator {
 	pub fn new(
-		parent: OperatorCell,
+		parent: OperatorCell<DepFlowTransaction>,
 		operator: OperatorId,
 		view: ResolvedView,
 		storage: TableId,
@@ -166,7 +166,7 @@ impl SinkTableViewOperator {
 	}
 }
 
-impl Operator for SinkTableViewOperator {
+impl Operator<DepFlowTransaction> for SinkTableViewOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}

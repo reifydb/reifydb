@@ -40,7 +40,7 @@ struct DeliveredState {
 
 pub struct EphemeralSinkSubscriptionOperator {
 	#[allow(dead_code)]
-	parent: OperatorCell,
+	parent: OperatorCell<DepFlowTransaction>,
 	operator: OperatorId,
 	subscription_id: SubscriptionId,
 	delivery: Arc<DeliveryBuffer>,
@@ -48,7 +48,7 @@ pub struct EphemeralSinkSubscriptionOperator {
 
 impl EphemeralSinkSubscriptionOperator {
 	pub fn new(
-		parent: OperatorCell,
+		parent: OperatorCell<DepFlowTransaction>,
 		operator: OperatorId,
 		subscription_id: SubscriptionId,
 		delivery: Arc<DeliveryBuffer>,
@@ -102,9 +102,9 @@ impl EphemeralSinkSubscriptionOperator {
 	}
 }
 
-impl RawStatefulOperator for EphemeralSinkSubscriptionOperator {}
+impl RawStatefulOperator<DepFlowTransaction> for EphemeralSinkSubscriptionOperator {}
 
-impl Operator for EphemeralSinkSubscriptionOperator {
+impl Operator<DepFlowTransaction> for EphemeralSinkSubscriptionOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}

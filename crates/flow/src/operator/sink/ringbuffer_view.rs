@@ -113,7 +113,7 @@ fn decode_expiry_key(bytes: &[u8]) -> Result<(u64, u64)> {
 
 pub struct SinkRingBufferViewOperator {
 	#[allow(dead_code)]
-	parent: OperatorCell,
+	parent: OperatorCell<DepFlowTransaction>,
 	operator: OperatorId,
 	view: ResolvedView,
 	ringbuffer_id: RingBufferId,
@@ -127,7 +127,7 @@ pub struct SinkRingBufferViewOperator {
 impl SinkRingBufferViewOperator {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
-		parent: OperatorCell,
+		parent: OperatorCell<DepFlowTransaction>,
 		operator: OperatorId,
 		view: ResolvedView,
 		ringbuffer_id: RingBufferId,
@@ -450,9 +450,9 @@ fn decode_u64(row: &EncodedOperatorRow, state: &'static str) -> Result<u64> {
 	})
 }
 
-impl RawStatefulOperator for SinkRingBufferViewOperator {}
+impl RawStatefulOperator<DepFlowTransaction> for SinkRingBufferViewOperator {}
 
-impl Operator for SinkRingBufferViewOperator {
+impl Operator<DepFlowTransaction> for SinkRingBufferViewOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}

@@ -44,7 +44,7 @@ use crate::{
 		drops::SealedDrops,
 		stateful::{raw::RawStatefulOperator, utils},
 	},
-	transaction::{DepFlowTransaction, slot::PersistFn},
+	transaction::{interface::FlowTransaction, slot::PersistFn},
 };
 
 const LAYOUT_KEY_PREFIX: u8 = 0x02;
@@ -65,8 +65,8 @@ enum LoadedEntry {
 	Present(DistinctEntry),
 }
 
-pub struct DistinctOperator {
-	parent: OperatorCell,
+pub struct DistinctOperator<T: FlowTransaction> {
+	parent: OperatorCell<T>,
 	pub(super) operator: OperatorId,
 	pub(super) compiled_expressions: Vec<CompiledExpr>,
 	pub(super) routines: Routines,
@@ -76,9 +76,9 @@ pub struct DistinctOperator {
 	pub(super) _ttl: Option<Duration>,
 }
 
-impl DistinctOperator {
+impl<T: FlowTransaction> DistinctOperator<T> {
 	pub fn new(
-		parent: OperatorCell,
+		parent: OperatorCell<T>,
 		operator: OperatorId,
 		expressions: Vec<Expression>,
 		routines: Routines,
@@ -124,7 +124,7 @@ impl DistinctOperator {
 	}
 
 	#[instrument(name = "flow::operator::distinct::load_entry", level = "trace", skip_all)]
-	fn load_entry(&self, txn: &mut DepFlowTransaction, group: GroupId) -> Result<LoadedEntry> {
+	fn load_entry(&self, txn: &mut T, group: GroupId) -> Result<LoadedEntry> {
 		match utils::state_get(self.operator, txn, &Self::entry_key(group))? {
 			Some(row) => {
 				if row.is_empty() {
@@ -143,7 +143,7 @@ impl DistinctOperator {
 	}
 
 	#[instrument(name = "flow::operator::distinct::load_layout", level = "trace", skip_all)]
-	fn load_layout(&self, txn: &mut DepFlowTransaction) -> Result<DistinctLayout> {
+	fn load_layout(&self, txn: &mut T) -> Result<DistinctLayout> {
 		match utils::state_get(self.operator, txn, &Self::layout_storage_key())? {
 			Some(row) => {
 				if row.is_empty() {
@@ -195,9 +195,9 @@ impl DistinctOperator {
 	}
 }
 
-impl RawStatefulOperator for DistinctOperator {}
+impl<T: FlowTransaction> RawStatefulOperator<T> for DistinctOperator<T> {}
 
-impl Operator for DistinctOperator {
+impl<T: FlowTransaction> Operator<T> for DistinctOperator<T> {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -206,7 +206,7 @@ impl Operator for DistinctOperator {
 		CAPABILITIES
 	}
 
-	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
 		let operator_id = self.operator;
 		let ordered = self.batch_hashes(&change.diffs)?;
 
@@ -222,7 +222,7 @@ impl Operator for DistinctOperator {
 				loaded: HashSet::new(),
 				groups: HashMap::new(),
 			};
-			let persist: PersistFn = Box::new(move |txn, value| {
+			let persist: PersistFn<T> = Box::new(move |txn, value| {
 				let working =
 					*value.downcast::<DistinctWorkingSet>().expect("DistinctWorkingSet slot type");
 				for (hash, at) in &working.state.dirty {

@@ -28,7 +28,7 @@ use crate::{
 		stateful::utils,
 		store::OperatorStateStore,
 	},
-	transaction::DepFlowTransaction,
+	transaction::interface::FlowTransaction,
 	window::{
 		coord::{EventCoord, RowSpan},
 		driver::{gate::disarm_seal, sweep::SealSweep},
@@ -47,8 +47,8 @@ use crate::{
 
 #[allow(clippy::too_many_arguments)]
 #[instrument(name = "flow::operator::window::route", level = "trace", skip_all, fields(rows = columns.row_count()))]
-fn route_engine_columns(
-	operator: &WindowOperator,
+fn route_engine_columns<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
 	columns: &Columns,
 	is_add: bool,
 	window_size: Duration,
@@ -74,9 +74,9 @@ fn route_engine_columns(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn intern_window_group(
-	operator: &WindowOperator,
-	txn: &mut DepFlowTransaction,
+fn intern_window_group<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
 	hash: Hash128,
 	span: WindowSpan<DateTime>,
 ) -> Result<()> {
@@ -114,9 +114,9 @@ fn push_count_event(
 	group_values.entry(hash).or_insert_with(|| gvals.to_vec());
 }
 
-fn route_count_tumbling(
-	operator: &WindowOperator,
-	txn: &mut DepFlowTransaction,
+fn route_count_tumbling<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
 	change: &Change,
 	buckets: &mut EngineBuckets,
 	group_values: &mut HashMap<Hash128, Vec<Value>>,
@@ -268,9 +268,9 @@ fn route_count_tumbling(
 }
 
 #[instrument(name = "flow::operator::window::tumbling", level = "trace", skip_all)]
-pub fn apply_tumbling_engine(
-	operator: &WindowOperator,
-	txn: &mut DepFlowTransaction,
+pub fn apply_tumbling_engine<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
 	change: Change,
 ) -> Result<Change> {
 	let window_size = operator.size_duration().unwrap_or_default();
@@ -384,18 +384,18 @@ pub fn apply_tumbling_engine(
 }
 
 #[instrument(name = "flow::operator::window::intern", level = "trace", skip_all, fields(windows = arrival.len()))]
-fn intern_batch(
-	operator: &WindowOperator,
-	txn: &mut DepFlowTransaction,
+fn intern_batch<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
 	arrival: &[(Hash128, WindowSpan<DateTime>)],
 ) -> Result<WindowGroups> {
 	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start.to_order())).collect();
 	intern_window_groups(operator.core.operator, txn, &windows)
 }
 
-fn sliding_insert_anchors(
-	operator: &WindowOperator,
-	txn: &mut DepFlowTransaction,
+fn sliding_insert_anchors<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
 	hash: Hash128,
 	event_ts: DateTime,
 	is_count: bool,
@@ -409,7 +409,11 @@ fn sliding_insert_anchors(
 }
 
 #[instrument(name = "flow::operator::window::sliding", level = "trace", skip_all)]
-pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+pub fn apply_sliding_engine<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
+	change: Change,
+) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let is_count = operator.is_count_based();
 	let window_size = operator.size_duration().unwrap_or_default();
@@ -634,9 +638,9 @@ pub fn apply_sliding_engine(operator: &WindowOperator, txn: &mut DepFlowTransact
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
-fn session_assign(
-	operator: &WindowOperator,
-	txn: &mut DepFlowTransaction,
+fn session_assign<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
 	hash: Hash128,
 	event_ts: DateTime,
 	kind: &SessionKind,
@@ -658,7 +662,11 @@ fn session_assign(
 }
 
 #[instrument(name = "flow::operator::window::session", level = "trace", skip_all)]
-pub fn apply_session_engine(operator: &WindowOperator, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+pub fn apply_session_engine<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
+	change: Change,
+) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let kind = operator.session_kind();
 
@@ -927,9 +935,9 @@ pub fn apply_session_engine(operator: &WindowOperator, txn: &mut DepFlowTransact
 }
 
 #[instrument(name = "flow::operator::window::gate_seals", level = "trace", skip_all)]
-fn gate_and_arm_seals(
-	operator: &WindowOperator,
-	txn: &mut DepFlowTransaction,
+fn gate_and_arm_seals<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
 	buckets: &mut EngineBuckets,
 	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
 	window_max_ts: &HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
@@ -996,9 +1004,9 @@ fn gate_and_arm_seals(
 
 #[tracing::instrument(name = "flow::window::seal", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
 #[instrument(name = "flow::operator::window::seal", level = "trace", skip_all)]
-fn seal_due_windows(
-	operator: &WindowOperator,
-	txn: &mut DepFlowTransaction,
+fn seal_due_windows<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
 	fired: FiredAt,
 	policy: SealPolicy,
 ) -> Result<Vec<Diff>> {
@@ -1025,17 +1033,17 @@ fn seal_due_windows(
 	Ok(Vec::new())
 }
 
-pub fn seal_session_engine(
-	operator: &WindowOperator,
-	txn: &mut DepFlowTransaction,
+pub fn seal_session_engine<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
 	fired: FiredAt,
 ) -> Result<Vec<Diff>> {
 	seal_due_windows(operator, txn, fired, operator.session_policy())
 }
 
-pub fn seal_engine_windows(
-	operator: &WindowOperator,
-	txn: &mut DepFlowTransaction,
+pub fn seal_engine_windows<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
 	fired: FiredAt,
 ) -> Result<Vec<Diff>> {
 	let Some(window_size) = operator.size_duration() else {

@@ -6,15 +6,10 @@ use reifydb_rql::flow::operator::FlowNode;
 use reifydb_value::Result;
 use tracing::{Span, field, instrument};
 
-use crate::{engine::FlowEngineInner, transaction::DepFlowTransaction};
+use crate::{engine::FlowEngineInner, transaction::interface::FlowTransaction};
 
-impl FlowEngineInner {
-	pub(super) fn dispatch_node(
-		&self,
-		txn: &mut DepFlowTransaction,
-		operator: &FlowNode,
-		inbox: Vec<Change>,
-	) -> Result<Change> {
+impl<T: FlowTransaction> FlowEngineInner<T> {
+	pub(super) fn dispatch_node(&self, txn: &mut T, operator: &FlowNode, inbox: Vec<Change>) -> Result<Change> {
 		let merged = Change::merge(inbox)?;
 		let version = merged.version;
 		let changed_at = merged.changed_at;
@@ -36,7 +31,7 @@ impl FlowEngineInner {
 		apply_time_us = field::Empty,
 		coalesce_time_us = field::Empty
 	))]
-	fn apply(&self, txn: &mut DepFlowTransaction, operator: &FlowNode, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut T, operator: &FlowNode, change: Change) -> Result<Change> {
 		let lock_start = self.runtime_context.clock.instant();
 		let operator = self.operators.get(&operator.id).unwrap().clone();
 		Span::current().record("lock_wait_us", lock_start.elapsed().as_micros() as u64);

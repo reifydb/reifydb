@@ -37,6 +37,7 @@ use reifydb_flow::{
 		take::TakeOperator,
 		window::operator::{WindowConfig, WindowOperator},
 	},
+	transaction::DepFlowTransaction,
 };
 use reifydb_routine::{
 	function::default_in_process_functions, monoid::default_in_process_monoids,
@@ -60,7 +61,7 @@ fn routines() -> Routines {
 	default_in_process_monoids(b).configure()
 }
 
-fn source() -> OperatorCell {
+fn source() -> OperatorCell<DepFlowTransaction> {
 	OperatorCell::new(SourceSeriesOperator::new(SOURCE))
 }
 
@@ -551,12 +552,15 @@ mod source {
 		},
 		value::column::{ColumnWithName, buffer::ColumnBuffer, columns::Columns},
 	};
-	use reifydb_flow::operator::{
-		Operator,
-		scan::{
-			ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator, table::SourceTableOperator,
-			view::SourceViewOperator,
+	use reifydb_flow::{
+		operator::{
+			Operator,
+			scan::{
+				ringbuffer::SourceRingBufferOperator, series::SourceSeriesOperator,
+				table::SourceTableOperator, view::SourceViewOperator,
+			},
 		},
+		transaction::DepFlowTransaction,
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_testing_flow::harness::Harness;
@@ -741,17 +745,17 @@ mod source {
 		Ring(SourceRingBufferOperator),
 	}
 
-	impl Operator for Op {
+	impl Operator<DepFlowTransaction> for Op {
 		fn id(&self) -> OperatorId {
 			SOURCE
 		}
 
 		fn capabilities(&self) -> &[reifydb_core::interface::flow::OperatorCapability] {
 			match self {
-				Op::Series(o) => o.capabilities(),
-				Op::Table(o) => o.capabilities(),
-				Op::View(o) => o.capabilities(),
-				Op::Ring(o) => o.capabilities(),
+				Op::Series(o) => Operator::<DepFlowTransaction>::capabilities(o),
+				Op::Table(o) => Operator::<DepFlowTransaction>::capabilities(o),
+				Op::View(o) => Operator::<DepFlowTransaction>::capabilities(o),
+				Op::Ring(o) => Operator::<DepFlowTransaction>::capabilities(o),
 			}
 		}
 

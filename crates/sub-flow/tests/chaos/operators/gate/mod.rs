@@ -10,6 +10,7 @@ use rand::RngExt;
 use reifydb_flow::{
 	context::FlowContext,
 	operator::{OperatorCell, gate::GateOperator, scan::series::SourceSeriesOperator},
+	transaction::DepFlowTransaction,
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -37,7 +38,7 @@ pub fn condition(threshold: i64) -> String {
 	format!("{PAYLOAD_COLUMN} > {threshold}")
 }
 
-pub fn build(threshold: i64, runtime: RuntimeContext) -> GateOperator {
+pub fn build(threshold: i64, runtime: RuntimeContext) -> GateOperator<DepFlowTransaction> {
 	let parent = OperatorCell::new(SourceSeriesOperator::new(SOURCE_OPERATOR));
 	GateOperator::new(
 		parent,

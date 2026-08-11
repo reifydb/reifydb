@@ -45,7 +45,7 @@ use crate::{
 		join::{Emitted, Identity},
 		stateful::raw::RawStatefulOperator,
 	},
-	transaction::DepFlowTransaction,
+	transaction::interface::FlowTransaction,
 };
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
@@ -276,9 +276,9 @@ impl JoinOperator {
 		Ok(hashes)
 	}
 
-	pub(crate) fn unmatched_left_columns(
+	pub(crate) fn unmatched_left_columns<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		left: &Columns,
 		left_idx: usize,
 		identity: Identity,
@@ -300,9 +300,9 @@ impl JoinOperator {
 		Ok(Self::split(built, &fresh, &existing))
 	}
 
-	fn identities(
+	fn identities<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		keys: &[EncodedKey],
 		identity: Identity,
 	) -> Result<(Vec<RowNumber>, Vec<usize>, Vec<usize>)> {
@@ -340,9 +340,9 @@ impl JoinOperator {
 		}
 	}
 
-	pub(crate) fn unmatched_left_columns_batch(
+	pub(crate) fn unmatched_left_columns_batch<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		left: &Columns,
 		left_indices: &[usize],
 		identity: Identity,
@@ -369,7 +369,7 @@ impl JoinOperator {
 		Ok(Self::split(built, &fresh, &existing))
 	}
 
-	pub(crate) fn cleanup_left_row_joins(&self, txn: &mut DepFlowTransaction, left_number: u64) -> Result<()> {
+	pub(crate) fn cleanup_left_row_joins<T: FlowTransaction>(&self, txn: &mut T, left_number: u64) -> Result<()> {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L');
 		serializer.extend_u64(left_number);
@@ -386,9 +386,9 @@ impl JoinOperator {
 		serializer.finish()
 	}
 
-	pub(crate) fn join_columns_one_to_many(
+	pub(crate) fn join_columns_one_to_many<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		left: &Columns,
 		left_idx: usize,
 		right: &Columns,
@@ -415,9 +415,9 @@ impl JoinOperator {
 		Ok(Self::split(built, &fresh, &existing))
 	}
 
-	pub(crate) fn join_columns_many_to_one(
+	pub(crate) fn join_columns_many_to_one<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		left: &Columns,
 		right: &Columns,
 		right_idx: usize,
@@ -444,9 +444,9 @@ impl JoinOperator {
 		Ok(Self::split(built, &fresh, &existing))
 	}
 
-	pub(crate) fn join_columns_cartesian(
+	pub(crate) fn join_columns_cartesian<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		left: &Columns,
 		left_indices: &[usize],
 		right: &Columns,
@@ -505,9 +505,9 @@ impl JoinOperator {
 	}
 }
 
-impl RawStatefulOperator for JoinOperator {}
+impl<T: FlowTransaction> RawStatefulOperator<T> for JoinOperator {}
 
-impl Operator for JoinOperator {
+impl<T: FlowTransaction> Operator<T> for JoinOperator {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -520,7 +520,7 @@ impl Operator for JoinOperator {
 		Some(OperatorSample::default())
 	}
 
-	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.operator
 		{
@@ -581,9 +581,9 @@ impl JoinOperator {
 	#[inline]
 	#[allow(clippy::too_many_arguments)]
 	#[instrument(name = "flow::operator::join::insert", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn apply_join_insert(
+	fn apply_join_insert<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		post: &Columns,
 		compiled_exprs: &[CompiledExpr],
 		side: JoinSide,
@@ -641,9 +641,9 @@ impl JoinOperator {
 	#[inline]
 	#[allow(clippy::too_many_arguments)]
 	#[instrument(name = "flow::operator::join::remove", level = "trace", skip_all, fields(rows = pre.row_count()))]
-	fn apply_join_remove(
+	fn apply_join_remove<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		pre: &Columns,
 		compiled_exprs: &[CompiledExpr],
 		side: JoinSide,
@@ -697,9 +697,9 @@ impl JoinOperator {
 	#[inline]
 	#[allow(clippy::too_many_arguments)]
 	#[instrument(name = "flow::operator::join::update", level = "trace", skip_all, fields(rows = post.row_count()))]
-	fn apply_join_update(
+	fn apply_join_update<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		pre: &Columns,
 		post: &Columns,
 		compiled_exprs: &[CompiledExpr],

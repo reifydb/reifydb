@@ -67,9 +67,10 @@ use crate::{
 		take::TakeOperator,
 		window::operator::{WindowConfig, WindowOperator},
 	},
+	transaction::{DepFlowTransaction, interface::FlowTransaction},
 };
 
-impl FlowEngineInner {
+impl FlowEngineInner<DepFlowTransaction> {
 	#[instrument(name = "flow::register", level = "info", skip(self, txn), fields(flow_id = ?flow.id))]
 	pub fn register(&mut self, txn: &mut CommandTransaction, flow: FlowDag) -> Result<()> {
 		self.register_with_transaction(&mut Transaction::Command(txn), flow)
@@ -126,6 +127,157 @@ impl FlowEngineInner {
 		operator: &FlowNode,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
+		let operator_id = operator.id;
+		let inputs = operator.inputs.clone();
+
+		match operator.ty.clone() {
+			SinkTableView {
+				view,
+				table,
+			} => {
+				reifydb_assertions! {
+					assert!(!self.operators.contains_key(&operator_id), "Operator already registered");
+				}
+				self.add_sink_table_view(txn, flow, operator_id, &inputs, view, table)
+			}
+			SinkRingBufferView {
+				view,
+				ringbuffer,
+				capacity,
+			} => {
+				reifydb_assertions! {
+					assert!(!self.operators.contains_key(&operator_id), "Operator already registered");
+				}
+				self.add_sink_ringbuffer_view(
+					txn,
+					flow,
+					operator_id,
+					&inputs,
+					view,
+					ringbuffer,
+					capacity,
+				)
+			}
+			SinkSeriesView {
+				view,
+				series,
+				key,
+			} => {
+				reifydb_assertions! {
+					assert!(!self.operators.contains_key(&operator_id), "Operator already registered");
+				}
+				self.add_sink_series_view(txn, flow, operator_id, &inputs, view, series, key)
+			}
+			_ => self.add_core(txn, flow, operator, ctx),
+		}
+	}
+
+	#[inline]
+	fn add_sink_table_view(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow: &FlowDag,
+		operator_id: OperatorId,
+		inputs: &[OperatorId],
+		view: ViewId,
+		table: TableId,
+	) -> Result<()> {
+		let parent = self.parent(first_input(inputs)?)?;
+
+		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
+		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
+		let partition_by = self.catalog.get_table(&mut txn.reborrow(), table)?.partition_by;
+		self.operators.insert(
+			operator_id,
+			OperatorCell::new(SinkTableViewOperator::new(
+				parent,
+				operator_id,
+				resolved,
+				table,
+				partition_by,
+			)),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn add_sink_ringbuffer_view(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow: &FlowDag,
+		operator_id: OperatorId,
+		inputs: &[OperatorId],
+		view: ViewId,
+		ringbuffer: RingBufferId,
+		capacity: u64,
+	) -> Result<()> {
+		let parent = self.parent(first_input(inputs)?)?;
+		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
+		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
+		let partition_by = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?.partition_by;
+		let ttl = self
+			.catalog
+			.find_row_settings(&mut txn.reborrow(), StorageId::ringbuffer(ringbuffer))?
+			.and_then(|settings| settings.ttl);
+		let announce_evictions = ttl.as_ref().map(|ttl| ttl.announce).unwrap_or(true);
+		let row_ttl = ttl.as_ref().map(|t| t.duration);
+		self.operators.insert(
+			operator_id,
+			OperatorCell::new(SinkRingBufferViewOperator::new(
+				parent,
+				operator_id,
+				resolved,
+				ringbuffer,
+				capacity,
+				announce_evictions,
+				row_ttl,
+				partition_by,
+			)),
+		);
+		Ok(())
+	}
+
+	#[inline]
+	#[allow(clippy::too_many_arguments)]
+	fn add_sink_series_view(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow: &FlowDag,
+		operator_id: OperatorId,
+		inputs: &[OperatorId],
+		view: ViewId,
+		series: SeriesId,
+		key: SeriesKey,
+	) -> Result<()> {
+		let parent = self.parent(first_input(inputs)?)?;
+		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
+		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
+		let partition_by = self.catalog.get_series(&mut txn.reborrow(), series)?.partition_by;
+		self.operators.insert(
+			operator_id,
+			OperatorCell::new(SinkSeriesViewOperator::new(
+				parent,
+				operator_id,
+				resolved,
+				series,
+				key.clone(),
+				partition_by,
+			)),
+		);
+		Ok(())
+	}
+}
+
+impl<T: FlowTransaction> FlowEngineInner<T> {
+	#[instrument(name = "flow::add_core", level = "debug", skip(self, txn, flow, ctx), fields(flow_id = ?flow.id, operator_id = ?operator.id, node_type = ?mem::discriminant(&operator.ty)))]
+	pub fn add_core(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		flow: &FlowDag,
+		operator: &FlowNode,
+		ctx: &Arc<FlowContext>,
+	) -> Result<()> {
 		reifydb_assertions! {
 			assert!(!self.operators.contains_key(&operator.id), "Operator already registered");
 		}
@@ -153,19 +305,26 @@ impl FlowEngineInner {
 				..
 			} => self.add_source_series(txn, flow, operator_id, series)?,
 			SinkTableView {
-				view,
-				table,
-			} => self.add_sink_table_view(txn, flow, operator_id, &inputs, view, table)?,
+				..
+			} => {
+				return Err(Error::from(FlowGraphError::UnsupportedNode {
+					kind: "SinkTableView",
+				}));
+			}
 			SinkRingBufferView {
-				view,
-				ringbuffer,
-				capacity,
-			} => self.add_sink_ringbuffer_view(txn, flow, operator_id, &inputs, view, ringbuffer, capacity)?,
+				..
+			} => {
+				return Err(Error::from(FlowGraphError::UnsupportedNode {
+					kind: "SinkRingBufferView",
+				}));
+			}
 			SinkSeriesView {
-				view,
-				series,
-				key,
-			} => self.add_sink_series_view(txn, flow, operator_id, &inputs, view, series, key)?,
+				..
+			} => {
+				return Err(Error::from(FlowGraphError::UnsupportedNode {
+					kind: "SinkSeriesView",
+				}));
+			}
 			SinkSubscription {
 				..
 			} => {
@@ -275,102 +434,6 @@ impl FlowEngineInner {
 		let s = self.catalog.get_series(&mut txn.reborrow(), series)?;
 		self.add_source(flow.id, operator_id, ObjectId::series(s.id));
 		self.operators.insert(operator_id, OperatorCell::new(SourceSeriesOperator::new(operator_id)));
-		Ok(())
-	}
-
-	#[inline]
-	fn add_sink_table_view(
-		&mut self,
-		txn: &mut Transaction<'_>,
-		flow: &FlowDag,
-		operator_id: OperatorId,
-		inputs: &[OperatorId],
-		view: ViewId,
-		table: TableId,
-	) -> Result<()> {
-		let parent = self.parent(first_input(inputs)?)?;
-
-		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
-		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
-		let partition_by = self.catalog.get_table(&mut txn.reborrow(), table)?.partition_by;
-		self.operators.insert(
-			operator_id,
-			OperatorCell::new(SinkTableViewOperator::new(
-				parent,
-				operator_id,
-				resolved,
-				table,
-				partition_by,
-			)),
-		);
-		Ok(())
-	}
-
-	#[inline]
-	#[allow(clippy::too_many_arguments)]
-	fn add_sink_ringbuffer_view(
-		&mut self,
-		txn: &mut Transaction<'_>,
-		flow: &FlowDag,
-		operator_id: OperatorId,
-		inputs: &[OperatorId],
-		view: ViewId,
-		ringbuffer: RingBufferId,
-		capacity: u64,
-	) -> Result<()> {
-		let parent = self.parent(first_input(inputs)?)?;
-		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
-		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
-		let partition_by = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?.partition_by;
-		let ttl = self
-			.catalog
-			.find_row_settings(&mut txn.reborrow(), StorageId::ringbuffer(ringbuffer))?
-			.and_then(|settings| settings.ttl);
-		let announce_evictions = ttl.as_ref().map(|ttl| ttl.announce).unwrap_or(true);
-		let row_ttl = ttl.as_ref().map(|t| t.duration);
-		self.operators.insert(
-			operator_id,
-			OperatorCell::new(SinkRingBufferViewOperator::new(
-				parent,
-				operator_id,
-				resolved,
-				ringbuffer,
-				capacity,
-				announce_evictions,
-				row_ttl,
-				partition_by,
-			)),
-		);
-		Ok(())
-	}
-
-	#[inline]
-	#[allow(clippy::too_many_arguments)]
-	fn add_sink_series_view(
-		&mut self,
-		txn: &mut Transaction<'_>,
-		flow: &FlowDag,
-		operator_id: OperatorId,
-		inputs: &[OperatorId],
-		view: ViewId,
-		series: SeriesId,
-		key: SeriesKey,
-	) -> Result<()> {
-		let parent = self.parent(first_input(inputs)?)?;
-		self.add_sink(flow.id, operator_id, ObjectId::view(*view));
-		let resolved = self.catalog.resolve_view(&mut txn.reborrow(), view)?;
-		let partition_by = self.catalog.get_series(&mut txn.reborrow(), series)?.partition_by;
-		self.operators.insert(
-			operator_id,
-			OperatorCell::new(SinkSeriesViewOperator::new(
-				parent,
-				operator_id,
-				resolved,
-				series,
-				key.clone(),
-				partition_by,
-			)),
-		);
 		Ok(())
 	}
 
@@ -716,7 +779,7 @@ impl FlowEngineInner {
 		Ok(self.catalog.find_operator_settings(txn, operator_id)?.and_then(|s| s.ttl).map(|ttl| ttl.duration))
 	}
 
-	fn parent(&self, input: OperatorId) -> Result<OperatorCell> {
+	fn parent(&self, input: OperatorId) -> Result<OperatorCell<T>> {
 		Ok(self.operators
 			.get(&input)
 			.ok_or_else(|| {

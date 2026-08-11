@@ -13,7 +13,7 @@ use reifydb_macro::operator_state;
 use reifydb_value::{Result, value::datetime::DateTime};
 
 #[cfg(feature = "runtime")]
-use crate::transaction::DepFlowTransaction;
+use crate::transaction::interface::FlowTransaction;
 use crate::{
 	timer::Timer,
 	window::{policy::SealedThrough, span::WindowCoord},
@@ -79,7 +79,7 @@ impl SealLedger {
 }
 
 #[cfg(feature = "runtime")]
-pub fn read_sealed_through(txn: &mut DepFlowTransaction, operator: OperatorId) -> Result<Option<SealedThrough>> {
+pub fn read_sealed_through<T: FlowTransaction>(txn: &mut T, operator: OperatorId) -> Result<Option<SealedThrough>> {
 	let Some(row) = txn.state_get(operator, &seal_ledger_key())? else {
 		return Ok(None);
 	};

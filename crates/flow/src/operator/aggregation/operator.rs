@@ -32,7 +32,7 @@ use super::{
 use crate::{
 	context::FlowContext,
 	operator::{Operator, OperatorCell, store::OperatorStateStore},
-	transaction::DepFlowTransaction,
+	transaction::interface::FlowTransaction,
 	window::{
 		engine::{ExpiryAnchor, config::WindowEngineConfig, tumbling::TumblingBuckets},
 		span::{WindowCoord, WindowSpan},
@@ -41,14 +41,14 @@ use crate::{
 
 type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKey, Vec<Option<Value>>)>;
 
-pub struct AggregateOperator {
-	core: Aggregation,
+pub struct AggregateOperator<T: FlowTransaction> {
+	core: Aggregation<T>,
 	_ttl: Option<Duration>,
 }
 
-impl AggregateOperator {
+impl<T: FlowTransaction> AggregateOperator<T> {
 	pub fn new(
-		parent: OperatorCell,
+		parent: OperatorCell<T>,
 		operator: OperatorId,
 		by: Vec<Expression>,
 		map: Vec<Expression>,
@@ -76,7 +76,7 @@ impl AggregateOperator {
 	}
 }
 
-impl Operator for AggregateOperator {
+impl<T: FlowTransaction> Operator<T> for AggregateOperator<T> {
 	fn id(&self) -> OperatorId {
 		self.core.operator
 	}
@@ -85,7 +85,7 @@ impl Operator for AggregateOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
 		apply_aggregate_engine(&self.core, txn, change)
 	}
 
@@ -98,7 +98,11 @@ impl Operator for AggregateOperator {
 	}
 }
 
-pub fn apply_aggregate_engine(core: &Aggregation, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+pub fn apply_aggregate_engine<T: FlowTransaction>(
+	core: &Aggregation<T>,
+	txn: &mut T,
+	change: Change,
+) -> Result<Change> {
 	core.engine_meta_open();
 	let kinds = core.slot_kinds.clone().expect("aggregate requires representable slot kinds");
 

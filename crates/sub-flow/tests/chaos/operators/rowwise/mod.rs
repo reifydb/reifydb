@@ -144,16 +144,16 @@ pub const MATRIX: [Shape; 3] = [
 	Shape::Extend,
 ];
 
-/// One of the three, as a concrete type. `OperatorCell` erases to `Arc<dyn Operator>` and so does not
+/// One of the three, as a concrete type. `OperatorCell` erases to `Arc<dyn Operator<T>>` and so does not
 /// itself implement `Operator`, and the harness needs a sized subject; an enum that delegates is the
 /// smallest thing that gives all three shapes one driver.
 pub enum Rowwise {
-	Filter(FilterOperator),
-	Map(MapOperator),
-	Extend(ExtendOperator),
+	Filter(FilterOperator<DepFlowTransaction>),
+	Map(MapOperator<DepFlowTransaction>),
+	Extend(ExtendOperator<DepFlowTransaction>),
 }
 
-impl Operator for Rowwise {
+impl Operator<DepFlowTransaction> for Rowwise {
 	fn id(&self) -> OperatorId {
 		match self {
 			Rowwise::Filter(op) => op.id(),

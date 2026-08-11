@@ -8,6 +8,7 @@ use reifydb_flow::{
 	context::FlowContext,
 	engine::FlowEngineInner,
 	operator::{OperatorCell, apply::ApplyOperator},
+	transaction::DepFlowTransaction,
 };
 use reifydb_rql::flow::{flow::FlowDag, operator::OperatorDef};
 use reifydb_transaction::transaction::Transaction;
@@ -16,7 +17,7 @@ use reifydb_value::Result;
 use crate::sink::{DeliveryBuffer, operator::EphemeralSinkSubscriptionOperator};
 
 pub(crate) fn register_ephemeral_flow(
-	engine: &mut FlowEngineInner,
+	engine: &mut FlowEngineInner<DepFlowTransaction>,
 	txn: &mut Transaction<'_>,
 	flow: FlowDag,
 	ctx: &SubscriptionContext,
@@ -46,7 +47,7 @@ pub(crate) fn register_ephemeral_flow(
 				);
 			}
 			_ => {
-				engine.add(txn, &flow, operator, &flow_ctx)?;
+				engine.add_core(txn, &flow, operator, &flow_ctx)?;
 			}
 		}
 	}

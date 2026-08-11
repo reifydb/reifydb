@@ -154,7 +154,7 @@ pub enum SinkOp {
 	Ring(SinkRingBufferViewOperator),
 }
 
-impl Operator for SinkOp {
+impl Operator<DepFlowTransaction> for SinkOp {
 	fn id(&self) -> OperatorId {
 		match self {
 			SinkOp::Table(o) => o.id(),

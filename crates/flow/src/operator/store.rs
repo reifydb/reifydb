@@ -18,16 +18,16 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::{timer::Timer, transaction::DepFlowTransaction};
+use crate::{timer::Timer, transaction::interface::FlowTransaction};
 
-pub struct OperatorStateStore<'a> {
-	txn: &'a mut DepFlowTransaction,
+pub struct OperatorStateStore<'a, T: FlowTransaction> {
+	txn: &'a mut T,
 	operator: OperatorId,
 	now: DateTime,
 }
 
-impl<'a> OperatorStateStore<'a> {
-	pub fn new(txn: &'a mut DepFlowTransaction, operator: OperatorId) -> Self {
+impl<'a, T: FlowTransaction> OperatorStateStore<'a, T> {
+	pub fn new(txn: &'a mut T, operator: OperatorId) -> Self {
 		let now = txn.written_at();
 		Self {
 			txn,
@@ -37,7 +37,7 @@ impl<'a> OperatorStateStore<'a> {
 	}
 }
 
-impl StateStore for OperatorStateStore<'_> {
+impl<T: FlowTransaction> StateStore for OperatorStateStore<'_, T> {
 	fn arm_timer(&mut self, at: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.txn.arm_timer(
 			self.operator,

@@ -209,7 +209,7 @@ fn ensure_flush_slot(
 	Ok(())
 }
 
-impl Operator for ExternCOperatorHandle {
+impl Operator<DepFlowTransaction> for ExternCOperatorHandle {
 	fn id(&self) -> OperatorId {
 		self.operator_id
 	}

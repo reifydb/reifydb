@@ -5,9 +5,9 @@ use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
 use reifydb_value::{Result, value::datetime::DateTime};
 use tracing::instrument;
 
-use crate::{engine::FlowEngineInner, transaction::DepFlowTransaction};
+use crate::{engine::FlowEngineInner, transaction::interface::FlowTransaction};
 
-impl FlowEngineInner {
+impl<T: FlowTransaction> FlowEngineInner<T> {
 	#[instrument(name = "flow::engine::process_tick", level = "debug", skip(self, txn), fields(
 		flow_id = ?flow_id,
 		timestamp = %timestamp,
@@ -15,7 +15,7 @@ impl FlowEngineInner {
 	))]
 	pub fn process_tick(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		flow_id: FlowId,
 		timestamp: DateTime,
 		checkpoint: CommitVersion,

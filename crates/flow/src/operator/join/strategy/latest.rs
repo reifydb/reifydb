@@ -9,12 +9,12 @@ use tracing::instrument;
 use super::hash::{build_shape, columns_from_block, encode_row};
 use crate::{
 	operator::join::store::{Store, body_bytes},
-	transaction::DepFlowTransaction,
+	transaction::interface::FlowTransaction,
 };
 
 #[instrument(name = "flow::operator::join::latest::overwrite_right_slot", level = "trace", skip_all, fields(rows = indices.len()))]
-pub(crate) fn overwrite_right_slot(
-	txn: &mut DepFlowTransaction,
+pub(crate) fn overwrite_right_slot<T: FlowTransaction>(
+	txn: &mut T,
 	right: &Store,
 	key_hash: &Hash128,
 	columns: &Columns,
@@ -38,8 +38,8 @@ pub(crate) fn overwrite_right_slot(
 }
 
 #[instrument(name = "flow::operator::join::latest::read_right_slot", level = "trace", skip_all)]
-pub(crate) fn read_right_slot(
-	txn: &mut DepFlowTransaction,
+pub(crate) fn read_right_slot<T: FlowTransaction>(
+	txn: &mut T,
 	right: &Store,
 	key_hash: &Hash128,
 ) -> Result<Option<Columns>> {
@@ -50,7 +50,7 @@ pub(crate) fn read_right_slot(
 }
 
 #[instrument(name = "flow::operator::join::latest::remove_right_slot", level = "trace", skip_all)]
-pub(crate) fn remove_right_slot(txn: &mut DepFlowTransaction, right: &Store, key_hash: &Hash128) -> Result<()> {
+pub(crate) fn remove_right_slot<T: FlowTransaction>(txn: &mut T, right: &Store, key_hash: &Hash128) -> Result<()> {
 	right.remove_row(txn, key_hash, RowNumber::MAX)?;
 	Ok(())
 }

@@ -146,97 +146,103 @@ impl DepFlowTransaction {
 	}
 
 	pub fn read_from(key: &EncodedKey) -> ReadFrom {
-		match Key::kind(key) {
-			None => ReadFrom::Query,
-			Some(kind) => match kind {
-				KeyKind::OperatorState => ReadFrom::OperatorState,
-				KeyKind::RingBufferMetadata => ReadFrom::StateQuery,
-				KeyKind::SeriesMetadata => ReadFrom::StateQuery,
-
-				KeyKind::Row => ReadFrom::OwnedRow,
-				KeyKind::PartitionedRow => ReadFrom::OwnedRow,
-				KeyKind::Partition => ReadFrom::OwnedRow,
-
-				KeyKind::Namespace => ReadFrom::Query,
-				KeyKind::Table => ReadFrom::Query,
-				KeyKind::NamespaceTable => ReadFrom::Query,
-				KeyKind::SystemSequence => ReadFrom::Query,
-				KeyKind::Columns => ReadFrom::Query,
-				KeyKind::Column => ReadFrom::Query,
-				KeyKind::RowSequence => ReadFrom::Query,
-				KeyKind::ColumnProperty => ReadFrom::Query,
-				KeyKind::SystemVersion => ReadFrom::Query,
-				KeyKind::TransactionVersion => ReadFrom::Query,
-				KeyKind::Index => ReadFrom::Query,
-				KeyKind::IndexEntry => ReadFrom::Query,
-				KeyKind::ColumnSequence => ReadFrom::Query,
-				KeyKind::CdcConsumer => ReadFrom::Query,
-				KeyKind::OutputFrontier => ReadFrom::Query,
-				KeyKind::View => ReadFrom::Query,
-				KeyKind::NamespaceView => ReadFrom::Query,
-				KeyKind::PrimaryKey => ReadFrom::Query,
-				KeyKind::RingBuffer => ReadFrom::Query,
-				KeyKind::NamespaceRingBuffer => ReadFrom::Query,
-				KeyKind::Queue => ReadFrom::Query,
-				KeyKind::NamespaceQueue => ReadFrom::Query,
-				KeyKind::QueueDeduplication => ReadFrom::Query,
-				KeyKind::Flow => ReadFrom::Query,
-				KeyKind::NamespaceFlow => ReadFrom::Query,
-				KeyKind::Operator => ReadFrom::Query,
-				KeyKind::OperatorByFlow => ReadFrom::Query,
-				KeyKind::FlowEdge => ReadFrom::Query,
-				KeyKind::FlowEdgeByFlow => ReadFrom::Query,
-				KeyKind::Dictionary => ReadFrom::Query,
-				KeyKind::DictionaryEntry => ReadFrom::Query,
-				KeyKind::DictionaryEntryIndex => ReadFrom::Query,
-				KeyKind::NamespaceDictionary => ReadFrom::Query,
-				KeyKind::Metric => ReadFrom::Query,
-				KeyKind::FlowVersion => ReadFrom::Query,
-				KeyKind::Subscription => ReadFrom::Query,
-				KeyKind::SubscriptionRow => ReadFrom::Query,
-				KeyKind::SubscriptionColumn => ReadFrom::Query,
-				KeyKind::RowShape => ReadFrom::Query,
-				KeyKind::RowShapeField => ReadFrom::Query,
-				KeyKind::SumType => ReadFrom::Query,
-				KeyKind::NamespaceSumType => ReadFrom::Query,
-				KeyKind::Handler => ReadFrom::Query,
-				KeyKind::NamespaceHandler => ReadFrom::Query,
-				KeyKind::VariantHandler => ReadFrom::Query,
-				KeyKind::Series => ReadFrom::Query,
-				KeyKind::NamespaceSeries => ReadFrom::Query,
-				KeyKind::Identity => ReadFrom::Query,
-				KeyKind::IdentityAttribute => ReadFrom::Query,
-				KeyKind::IdentityAttributeValue => ReadFrom::Query,
-				KeyKind::Role => ReadFrom::Query,
-				KeyKind::GrantedRole => ReadFrom::Query,
-				KeyKind::Policy => ReadFrom::Query,
-				KeyKind::PolicyOp => ReadFrom::Query,
-				KeyKind::Migration => ReadFrom::Query,
-				KeyKind::MigrationEvent => ReadFrom::Query,
-				KeyKind::Authentication => ReadFrom::Query,
-				KeyKind::ConfigStorage => ReadFrom::Query,
-				KeyKind::Token => ReadFrom::Query,
-				KeyKind::Source => ReadFrom::Query,
-				KeyKind::NamespaceSource => ReadFrom::Query,
-				KeyKind::Sink => ReadFrom::Query,
-				KeyKind::NamespaceSink => ReadFrom::Query,
-				KeyKind::SourceCheckpoint => ReadFrom::Query,
-				KeyKind::RowSettings => ReadFrom::Query,
-				KeyKind::OperatorSettings => ReadFrom::Query,
-				KeyKind::Procedure => ReadFrom::Query,
-				KeyKind::NamespaceProcedure => ReadFrom::Query,
-				KeyKind::ProcedureParam => ReadFrom::Query,
-				KeyKind::Binding => ReadFrom::Query,
-				KeyKind::NamespaceBinding => ReadFrom::Query,
-				KeyKind::ColumnSnapshot => ReadFrom::Query,
-				KeyKind::SeriesColumnSnapshot => ReadFrom::Query,
-				KeyKind::TableColumnSnapshot => ReadFrom::Query,
-				KeyKind::VersionEpoch => ReadFrom::Query,
-				KeyKind::Relationship => ReadFrom::Query,
-			},
-		}
+		read_from(key)
 	}
+}
 
+pub(crate) fn read_from(key: &EncodedKey) -> ReadFrom {
+	match Key::kind(key) {
+		None => ReadFrom::Query,
+		Some(kind) => match kind {
+			KeyKind::OperatorState => ReadFrom::OperatorState,
+			KeyKind::RingBufferMetadata => ReadFrom::StateQuery,
+			KeyKind::SeriesMetadata => ReadFrom::StateQuery,
+
+			KeyKind::Row => ReadFrom::OwnedRow,
+			KeyKind::PartitionedRow => ReadFrom::OwnedRow,
+			KeyKind::Partition => ReadFrom::OwnedRow,
+
+			KeyKind::Namespace => ReadFrom::Query,
+			KeyKind::Table => ReadFrom::Query,
+			KeyKind::NamespaceTable => ReadFrom::Query,
+			KeyKind::SystemSequence => ReadFrom::Query,
+			KeyKind::Columns => ReadFrom::Query,
+			KeyKind::Column => ReadFrom::Query,
+			KeyKind::RowSequence => ReadFrom::Query,
+			KeyKind::ColumnProperty => ReadFrom::Query,
+			KeyKind::SystemVersion => ReadFrom::Query,
+			KeyKind::TransactionVersion => ReadFrom::Query,
+			KeyKind::Index => ReadFrom::Query,
+			KeyKind::IndexEntry => ReadFrom::Query,
+			KeyKind::ColumnSequence => ReadFrom::Query,
+			KeyKind::CdcConsumer => ReadFrom::Query,
+			KeyKind::OutputFrontier => ReadFrom::Query,
+			KeyKind::View => ReadFrom::Query,
+			KeyKind::NamespaceView => ReadFrom::Query,
+			KeyKind::PrimaryKey => ReadFrom::Query,
+			KeyKind::RingBuffer => ReadFrom::Query,
+			KeyKind::NamespaceRingBuffer => ReadFrom::Query,
+			KeyKind::Queue => ReadFrom::Query,
+			KeyKind::NamespaceQueue => ReadFrom::Query,
+			KeyKind::QueueDeduplication => ReadFrom::Query,
+			KeyKind::Flow => ReadFrom::Query,
+			KeyKind::NamespaceFlow => ReadFrom::Query,
+			KeyKind::Operator => ReadFrom::Query,
+			KeyKind::OperatorByFlow => ReadFrom::Query,
+			KeyKind::FlowEdge => ReadFrom::Query,
+			KeyKind::FlowEdgeByFlow => ReadFrom::Query,
+			KeyKind::Dictionary => ReadFrom::Query,
+			KeyKind::DictionaryEntry => ReadFrom::Query,
+			KeyKind::DictionaryEntryIndex => ReadFrom::Query,
+			KeyKind::NamespaceDictionary => ReadFrom::Query,
+			KeyKind::Metric => ReadFrom::Query,
+			KeyKind::FlowVersion => ReadFrom::Query,
+			KeyKind::Subscription => ReadFrom::Query,
+			KeyKind::SubscriptionRow => ReadFrom::Query,
+			KeyKind::SubscriptionColumn => ReadFrom::Query,
+			KeyKind::RowShape => ReadFrom::Query,
+			KeyKind::RowShapeField => ReadFrom::Query,
+			KeyKind::SumType => ReadFrom::Query,
+			KeyKind::NamespaceSumType => ReadFrom::Query,
+			KeyKind::Handler => ReadFrom::Query,
+			KeyKind::NamespaceHandler => ReadFrom::Query,
+			KeyKind::VariantHandler => ReadFrom::Query,
+			KeyKind::Series => ReadFrom::Query,
+			KeyKind::NamespaceSeries => ReadFrom::Query,
+			KeyKind::Identity => ReadFrom::Query,
+			KeyKind::IdentityAttribute => ReadFrom::Query,
+			KeyKind::IdentityAttributeValue => ReadFrom::Query,
+			KeyKind::Role => ReadFrom::Query,
+			KeyKind::GrantedRole => ReadFrom::Query,
+			KeyKind::Policy => ReadFrom::Query,
+			KeyKind::PolicyOp => ReadFrom::Query,
+			KeyKind::Migration => ReadFrom::Query,
+			KeyKind::MigrationEvent => ReadFrom::Query,
+			KeyKind::Authentication => ReadFrom::Query,
+			KeyKind::ConfigStorage => ReadFrom::Query,
+			KeyKind::Token => ReadFrom::Query,
+			KeyKind::Source => ReadFrom::Query,
+			KeyKind::NamespaceSource => ReadFrom::Query,
+			KeyKind::Sink => ReadFrom::Query,
+			KeyKind::NamespaceSink => ReadFrom::Query,
+			KeyKind::SourceCheckpoint => ReadFrom::Query,
+			KeyKind::RowSettings => ReadFrom::Query,
+			KeyKind::OperatorSettings => ReadFrom::Query,
+			KeyKind::Procedure => ReadFrom::Query,
+			KeyKind::NamespaceProcedure => ReadFrom::Query,
+			KeyKind::ProcedureParam => ReadFrom::Query,
+			KeyKind::Binding => ReadFrom::Query,
+			KeyKind::NamespaceBinding => ReadFrom::Query,
+			KeyKind::ColumnSnapshot => ReadFrom::Query,
+			KeyKind::SeriesColumnSnapshot => ReadFrom::Query,
+			KeyKind::TableColumnSnapshot => ReadFrom::Query,
+			KeyKind::VersionEpoch => ReadFrom::Query,
+			KeyKind::Relationship => ReadFrom::Query,
+		},
+	}
+}
+
+impl DepFlowTransaction {
 	pub fn range(
 		&mut self,
 		range: EncodedKeyRange,
@@ -419,7 +425,7 @@ impl DepFlowTransaction {
 	}
 }
 
-fn operator_state_scope(range: &EncodedKeyRange) -> Option<(OperatorId, EncodedKeyRange)> {
+pub(crate) fn operator_state_scope(range: &EncodedKeyRange) -> Option<(OperatorId, EncodedKeyRange)> {
 	let start_key = match range.start.as_ref() {
 		Included(key) | Excluded(key) => key,
 		Unbounded => return None,
@@ -442,7 +448,7 @@ fn operator_state_scope(range: &EncodedKeyRange) -> Option<(OperatorId, EncodedK
 	Some((operator, EncodedKeyRange::new(strip(range.start.as_ref()), strip(range.end.as_ref()))))
 }
 
-struct OperatorStateRangeIter {
+pub(crate) struct OperatorStateRangeIter {
 	store: OperatorStore,
 	operator: OperatorId,
 	end: Bound<EncodedKey>,
@@ -454,7 +460,7 @@ struct OperatorStateRangeIter {
 }
 
 impl OperatorStateRangeIter {
-	fn new(
+	pub(crate) fn new(
 		store: OperatorStore,
 		operator: OperatorId,
 		range: EncodedKeyRange,
@@ -511,7 +517,7 @@ impl Iterator for OperatorStateRangeIter {
 	}
 }
 
-struct FlowMergePendingIterator<I>
+pub(crate) struct FlowMergePendingIterator<I>
 where
 	I: Iterator<Item = Result<MultiVersionRow>>,
 {
@@ -583,7 +589,7 @@ where
 	}
 }
 
-fn flow_merge_pending_iterator<I>(
+pub(crate) fn flow_merge_pending_iterator<I>(
 	pending: Vec<(EncodedKey, PendingWrite)>,
 	storage_iter: I,
 	version: CommitVersion,
@@ -598,7 +604,7 @@ where
 	}
 }
 
-struct FlowMergePendingIteratorRev<I>
+pub(crate) struct FlowMergePendingIteratorRev<I>
 where
 	I: Iterator<Item = Result<MultiVersionRow>>,
 {
@@ -670,7 +676,7 @@ where
 	}
 }
 
-fn flow_merge_pending_iterator_rev<I>(
+pub(crate) fn flow_merge_pending_iterator_rev<I>(
 	pending: Vec<(EncodedKey, PendingWrite)>,
 	storage_iter: I,
 	version: CommitVersion,

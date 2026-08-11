@@ -24,11 +24,11 @@ use tracing::instrument;
 use crate::{
 	context::FlowContext,
 	operator::{Operator, OperatorCell},
-	transaction::DepFlowTransaction,
+	transaction::interface::FlowTransaction,
 };
 
-pub struct MapOperator {
-	parent: OperatorCell,
+pub struct MapOperator<T: FlowTransaction> {
+	parent: OperatorCell<T>,
 	operator: OperatorId,
 	expressions: Vec<Expression>,
 	compiled_expressions: Vec<CompiledExpr>,
@@ -37,9 +37,9 @@ pub struct MapOperator {
 	ctx: Arc<FlowContext>,
 }
 
-impl MapOperator {
+impl<T: FlowTransaction> MapOperator<T> {
 	pub fn new(
-		parent: OperatorCell,
+		parent: OperatorCell<T>,
 		operator: OperatorId,
 		expressions: Vec<Expression>,
 		routines: Routines,
@@ -124,7 +124,7 @@ impl MapOperator {
 	}
 }
 
-impl Operator for MapOperator {
+impl<T: FlowTransaction> Operator<T> for MapOperator<T> {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -133,7 +133,7 @@ impl Operator for MapOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&self, _txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, _txn: &mut T, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
 
 		for diff in change.diffs.into_iter() {

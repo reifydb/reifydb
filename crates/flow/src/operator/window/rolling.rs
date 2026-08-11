@@ -30,7 +30,7 @@ use crate::{
 		stateful::utils,
 		store::OperatorStateStore,
 	},
-	transaction::DepFlowTransaction,
+	transaction::interface::FlowTransaction,
 	window::{
 		accumulator::WindowAccumulator,
 		coord::{OrdinalCoord, RowSpan},
@@ -51,21 +51,25 @@ use crate::{
 
 pub(crate) trait RollingDomain: WindowAnchor + Hash + HeapSize + Send + Sync {
 	#[allow(clippy::mut_from_ref)]
-	fn engine(
-		operator: &WindowOperator,
+	fn engine<T: FlowTransaction>(
+		operator: &WindowOperator<T>,
 		runnable: bool,
 		lag: Self::Span,
 	) -> &mut RollingEngine<Hash128, Self, RowAccumulator>;
 
 	fn lag(declared: Duration) -> Self::Span;
 
-	fn eviction(operator: &WindowOperator, ledger: DateTime, lag: Self::Span) -> RollingEviction<Self>;
+	fn eviction<T: FlowTransaction>(
+		operator: &WindowOperator<T>,
+		ledger: DateTime,
+		lag: Self::Span,
+	) -> RollingEviction<Self>;
 
 	fn coord(columns: &Columns, row_idx: usize, timestamps: &[DateTime]) -> Self;
 
 	fn slot_key(coord: Self, row_number: u64) -> WindowSlotKey;
 
-	fn seal_horizon(operator: &WindowOperator, ledger: DateTime) -> Option<Self>;
+	fn seal_horizon<T: FlowTransaction>(operator: &WindowOperator<T>, ledger: DateTime) -> Option<Self>;
 
 	fn needs_event_timestamps() -> bool;
 
@@ -73,8 +77,8 @@ pub(crate) trait RollingDomain: WindowAnchor + Hash + HeapSize + Send + Sync {
 }
 
 impl RollingDomain for OrdinalCoord {
-	fn engine(
-		operator: &WindowOperator,
+	fn engine<T: FlowTransaction>(
+		operator: &WindowOperator<T>,
 		runnable: bool,
 		lag: RowSpan,
 	) -> &mut RollingEngine<Hash128, OrdinalCoord, RowAccumulator> {
@@ -85,7 +89,11 @@ impl RollingDomain for OrdinalCoord {
 		RowSpan::ZERO
 	}
 
-	fn eviction(operator: &WindowOperator, _ledger: DateTime, _lag: RowSpan) -> RollingEviction<OrdinalCoord> {
+	fn eviction<T: FlowTransaction>(
+		operator: &WindowOperator<T>,
+		_ledger: DateTime,
+		_lag: RowSpan,
+	) -> RollingEviction<OrdinalCoord> {
 		RollingEviction::Capacity(
 			RollingOverRows::new(RowSpan::of(operator.size_count().unwrap_or(0))).capacity(),
 		)
@@ -99,7 +107,7 @@ impl RollingDomain for OrdinalCoord {
 		WindowSlotKey::new(DateTime::default(), row_number)
 	}
 
-	fn seal_horizon(_operator: &WindowOperator, _ledger: DateTime) -> Option<OrdinalCoord> {
+	fn seal_horizon<T: FlowTransaction>(_operator: &WindowOperator<T>, _ledger: DateTime) -> Option<OrdinalCoord> {
 		None
 	}
 
@@ -113,8 +121,8 @@ impl RollingDomain for OrdinalCoord {
 }
 
 impl RollingDomain for DateTime {
-	fn engine(
-		operator: &WindowOperator,
+	fn engine<T: FlowTransaction>(
+		operator: &WindowOperator<T>,
 		runnable: bool,
 		lag: Duration,
 	) -> &mut RollingEngine<Hash128, DateTime, RowAccumulator> {
@@ -125,7 +133,11 @@ impl RollingDomain for DateTime {
 		declared
 	}
 
-	fn eviction(operator: &WindowOperator, ledger: DateTime, lag: Duration) -> RollingEviction<DateTime> {
+	fn eviction<T: FlowTransaction>(
+		operator: &WindowOperator<T>,
+		ledger: DateTime,
+		lag: Duration,
+	) -> RollingEviction<DateTime> {
 		match rolling_over_time(operator, lag).eviction_cutoff(ledger) {
 			Some(cutoff) => RollingEviction::Before(cutoff),
 			None => RollingEviction::Nothing,
@@ -140,7 +152,7 @@ impl RollingDomain for DateTime {
 		WindowSlotKey::new(coord, row_number)
 	}
 
-	fn seal_horizon(operator: &WindowOperator, ledger: DateTime) -> Option<DateTime> {
+	fn seal_horizon<T: FlowTransaction>(operator: &WindowOperator<T>, ledger: DateTime) -> Option<DateTime> {
 		Some(rolling_over_time(operator, Self::lag(operator.rolling_lag()))
 			.seal_horizon(ledger, operator.grace()))
 	}
@@ -154,32 +166,32 @@ impl RollingDomain for DateTime {
 	}
 }
 
-fn rolling_over_time(operator: &WindowOperator, lag: Duration) -> RollingOverTime {
+fn rolling_over_time<T: FlowTransaction>(operator: &WindowOperator<T>, lag: Duration) -> RollingOverTime {
 	RollingOverTime::new(operator.size_duration().unwrap_or_default(), lag)
 }
 
-fn rolling_span(operator: &WindowOperator, lag: Duration) -> Duration {
+fn rolling_span<T: FlowTransaction>(operator: &WindowOperator<T>, lag: Duration) -> Duration {
 	rolling_over_time(operator, lag).span()
 }
 
 type RollingEngineBuckets<C> = RollingBuckets<Hash128, C, (WindowSlotKey, Vec<Option<Value>>)>;
 
 #[instrument(name = "flow::operator::window::intern_partitions", level = "trace", skip_all, fields(partitions = touched.len()))]
-fn intern_partitions(
-	operator: &WindowOperator,
-	txn: &mut DepFlowTransaction,
+fn intern_partitions<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
 	touched: &[Hash128],
 ) -> Result<WindowGroups> {
 	let partitions: Vec<(Hash128, u64)> = touched.iter().map(|hash| (*hash, 0)).collect();
 	intern_window_groups(operator.core.operator, txn, &partitions)
 }
 
-fn rolling_runnable(operator: &WindowOperator, kinds: &[SlotKind]) -> bool {
+fn rolling_runnable<T: FlowTransaction>(operator: &WindowOperator<T>, kinds: &[SlotKind]) -> bool {
 	!operator.is_count_based() && RowAccumulator::invertible(kinds, operator.grace())
 }
 
-fn counted_row_engine(
-	operator: &WindowOperator,
+fn counted_row_engine<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
 	runnable: bool,
 	lag: RowSpan,
 ) -> &mut RollingEngine<Hash128, OrdinalCoord, RowAccumulator> {
@@ -198,8 +210,8 @@ fn counted_row_engine(
 	}
 }
 
-fn timed_row_engine(
-	operator: &WindowOperator,
+fn timed_row_engine<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
 	runnable: bool,
 	lag: Duration,
 ) -> &mut RollingEngine<Hash128, DateTime, RowAccumulator> {
@@ -240,8 +252,8 @@ fn combine_rolling<C: RollingDomain>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn route_rolling_columns<C: RollingDomain>(
-	operator: &WindowOperator,
+fn route_rolling_columns<C: RollingDomain, T: FlowTransaction>(
+	operator: &WindowOperator<T>,
 	columns: &Columns,
 	is_add: bool,
 	buckets: &mut RollingEngineBuckets<C>,
@@ -279,17 +291,21 @@ fn route_rolling_columns<C: RollingDomain>(
 }
 
 #[instrument(name = "flow::operator::window::rolling", level = "trace", skip_all)]
-pub fn apply_rolling_engine(operator: &WindowOperator, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+pub fn apply_rolling_engine<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
+	change: Change,
+) -> Result<Change> {
 	if operator.is_count_based() {
-		apply_rolling::<OrdinalCoord>(operator, txn, change)
+		apply_rolling::<OrdinalCoord, T>(operator, txn, change)
 	} else {
-		apply_rolling::<DateTime>(operator, txn, change)
+		apply_rolling::<DateTime, T>(operator, txn, change)
 	}
 }
 
-fn apply_rolling<C: RollingDomain>(
-	operator: &WindowOperator,
-	txn: &mut DepFlowTransaction,
+fn apply_rolling<C: RollingDomain, T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
 	change: Change,
 ) -> Result<Change> {
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
@@ -305,7 +321,7 @@ fn apply_rolling<C: RollingDomain>(
 			Diff::Insert {
 				post,
 				..
-			} => route_rolling_columns::<C>(
+			} => route_rolling_columns::<C, T>(
 				operator,
 				post,
 				true,
@@ -317,7 +333,7 @@ fn apply_rolling<C: RollingDomain>(
 			Diff::Remove {
 				pre,
 				..
-			} => route_rolling_columns::<C>(
+			} => route_rolling_columns::<C, T>(
 				operator,
 				pre,
 				false,
@@ -331,7 +347,7 @@ fn apply_rolling<C: RollingDomain>(
 				post,
 				..
 			} => {
-				route_rolling_columns::<C>(
+				route_rolling_columns::<C, T>(
 					operator,
 					pre,
 					false,
@@ -340,7 +356,7 @@ fn apply_rolling<C: RollingDomain>(
 					&mut touched,
 					&mut touched_set,
 				)?;
-				route_rolling_columns::<C>(
+				route_rolling_columns::<C, T>(
 					operator,
 					post,
 					true,
@@ -384,7 +400,7 @@ fn apply_rolling<C: RollingDomain>(
 	}
 
 	let runnable = rolling_runnable(operator, &kinds);
-	let armed_before = rolling_earliest_expiry::<C>(operator, txn, runnable, lag)?;
+	let armed_before = rolling_earliest_expiry::<C, T>(operator, txn, runnable, lag)?;
 
 	let groups = intern_partitions(operator, txn, &touched)?;
 	let results = {
@@ -415,15 +431,15 @@ fn apply_rolling<C: RollingDomain>(
 		}
 	};
 
-	rearm_rolling_seal::<C>(operator, txn, armed_before, runnable, lag)?;
+	rearm_rolling_seal::<C, T>(operator, txn, armed_before, runnable, lag)?;
 
 	let diffs = finish_rolling_results(operator, txn, &change, &results, &group_values, &groups)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
-fn rolling_earliest_expiry<C: RollingDomain>(
-	operator: &WindowOperator,
-	txn: &mut DepFlowTransaction,
+fn rolling_earliest_expiry<C: RollingDomain, T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
 	runnable: bool,
 	lag: C::Span,
 ) -> Result<Option<C>> {
@@ -431,9 +447,9 @@ fn rolling_earliest_expiry<C: RollingDomain>(
 	Ok(C::engine(operator, runnable, lag).earliest_expiry(&mut store)?.map(C::from_order))
 }
 
-fn rearm_rolling_seal<C: RollingDomain>(
-	operator: &WindowOperator,
-	txn: &mut DepFlowTransaction,
+fn rearm_rolling_seal<C: RollingDomain, T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
 	before: Option<C>,
 	runnable: bool,
 	lag: C::Span,
@@ -441,7 +457,7 @@ fn rearm_rolling_seal<C: RollingDomain>(
 	if !C::seals_on_timer() {
 		return Ok(());
 	}
-	let after = rolling_earliest_expiry::<C>(operator, txn, runnable, lag)?;
+	let after = rolling_earliest_expiry::<C, T>(operator, txn, runnable, lag)?;
 	if before == after {
 		return Ok(());
 	}
@@ -451,9 +467,9 @@ fn rearm_rolling_seal<C: RollingDomain>(
 	gate.rearm(&mut store, &EncodedKey::new(Vec::new()), before.map(C::to_order), after.map(C::to_order))
 }
 
-fn finish_rolling_results(
-	operator: &WindowOperator,
-	txn: &mut DepFlowTransaction,
+fn finish_rolling_results<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
 	change: &Change,
 	results: &[RollingResult<Hash128, Vec<Value>>],
 	group_values: &HashMap<Hash128, Vec<Value>>,
@@ -511,9 +527,9 @@ fn finish_rolling_results(
 }
 
 #[tracing::instrument(name = "flow::window::seal_rolling", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
-pub fn seal_rolling_engine(
-	operator: &WindowOperator,
-	txn: &mut DepFlowTransaction,
+pub fn seal_rolling_engine<T: FlowTransaction>(
+	operator: &WindowOperator<T>,
+	txn: &mut T,
 	fired: FiredAt,
 ) -> Result<Vec<Diff>> {
 	let Some(size) = operator.size_duration() else {
@@ -530,7 +546,7 @@ pub fn seal_rolling_engine(
 	let cutoff = rolling_over_time(operator, lag).eviction_cutoff(ts);
 	let time = ts;
 	let runnable = rolling_runnable(operator, &kinds);
-	let armed_before = rolling_earliest_expiry::<DateTime>(operator, txn, runnable, lag)?;
+	let armed_before = rolling_earliest_expiry::<DateTime, T>(operator, txn, runnable, lag)?;
 
 	let expiries = match cutoff {
 		Some(cutoff) => {
@@ -552,7 +568,7 @@ pub fn seal_rolling_engine(
 		None => Vec::new(),
 	};
 	Span::current().record("expired", expiries.len());
-	rearm_rolling_seal::<DateTime>(operator, txn, armed_before, runnable, lag)?;
+	rearm_rolling_seal::<DateTime, T>(operator, txn, armed_before, runnable, lag)?;
 
 	let mut diffs = Vec::new();
 	let mut store = OperatorStateStore::new(txn, operator.core.operator);

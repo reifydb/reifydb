@@ -11,18 +11,23 @@ use reifydb_value::{Result, value::duration::Duration};
 use crate::{
 	operator::{BoxedOperator, Operator, OperatorCell, max_input_time, stamp_output_time},
 	timer::Timer,
-	transaction::DepFlowTransaction,
+	transaction::interface::FlowTransaction,
 };
 
-pub struct ApplyOperator {
-	parent: OperatorCell,
+pub struct ApplyOperator<T: FlowTransaction> {
+	parent: OperatorCell<T>,
 	operator: OperatorId,
-	inner: BoxedOperator,
+	inner: BoxedOperator<T>,
 	_ttl: Option<Duration>,
 }
 
-impl ApplyOperator {
-	pub fn new(parent: OperatorCell, operator: OperatorId, inner: BoxedOperator, ttl: Option<Duration>) -> Self {
+impl<T: FlowTransaction> ApplyOperator<T> {
+	pub fn new(
+		parent: OperatorCell<T>,
+		operator: OperatorId,
+		inner: BoxedOperator<T>,
+		ttl: Option<Duration>,
+	) -> Self {
 		Self {
 			parent,
 			operator,
@@ -30,15 +35,13 @@ impl ApplyOperator {
 			_ttl: ttl,
 		}
 	}
-}
 
-impl ApplyOperator {
 	pub(crate) fn output_schema(&self) -> Option<Columns> {
 		self.parent.output_schema()
 	}
 }
 
-impl Operator for ApplyOperator {
+impl<T: FlowTransaction> Operator<T> for ApplyOperator<T> {
 	fn id(&self) -> OperatorId {
 		self.operator
 	}
@@ -51,14 +54,14 @@ impl Operator for ApplyOperator {
 		self.inner.seal_span()
 	}
 
-	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
 		let inherited = max_input_time(&change);
 		let mut out = self.inner.apply(txn, change)?;
 		stamp_output_time(&mut out, inherited);
 		Ok(out)
 	}
 
-	fn on_timer(&self, txn: &mut DepFlowTransaction, timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&self, txn: &mut T, timer: Timer) -> Result<Option<Change>> {
 		let at = timer.at;
 		let mut out = self.inner.on_timer(txn, timer)?;
 		if let Some(change) = out.as_mut() {
@@ -99,7 +102,7 @@ mod tests {
 		Duration::from_milliseconds(milliseconds).expect("representable duration")
 	}
 
-	fn noop_parent() -> OperatorCell {
+	fn noop_parent() -> OperatorCell<DepFlowTransaction> {
 		let view = View::Table(TableView {
 			id: ViewId(1),
 			namespace: NamespaceId(1),
@@ -131,7 +134,7 @@ mod tests {
 		seal: Option<Duration>,
 	}
 
-	impl Operator for SealingInner {
+	impl Operator<DepFlowTransaction> for SealingInner {
 		fn id(&self) -> OperatorId {
 			OperatorId(7)
 		}

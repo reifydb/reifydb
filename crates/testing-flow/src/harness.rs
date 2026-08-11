@@ -45,7 +45,7 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId},
 };
 
-pub struct Harness<O: Operator> {
+pub struct Harness<O: Operator<DepFlowTransaction>> {
 	engine: TestEngine,
 	operator: O,
 	clock: MockClock,
@@ -55,7 +55,7 @@ pub struct Harness<O: Operator> {
 	catalog: Catalog,
 }
 
-impl<O: Operator> Harness<O> {
+impl<O: Operator<DepFlowTransaction>> Harness<O> {
 	pub fn new(build: impl FnOnce(RuntimeContext) -> O) -> Self {
 		Self::with_engine(|_, runtime| build(runtime))
 	}
@@ -85,7 +85,7 @@ impl<O: Operator> Harness<O> {
 	}
 }
 
-impl Harness<ApplyOperator> {
+impl Harness<ApplyOperator<DepFlowTransaction>> {
 	pub fn guest<C: OperatorLogic + 'static>(
 		logic: C,
 		operator: OperatorId,
@@ -118,7 +118,7 @@ impl Harness<ApplyOperator> {
 	}
 }
 
-impl<O: Operator> Harness<O> {
+impl<O: Operator<DepFlowTransaction>> Harness<O> {
 	pub fn with_dictionaries(mut self) -> Self {
 		self.catalog = self.engine.inner().catalog().clone();
 		let single = self.engine.begin_admin(IdentityId::system()).expect("begin admin").single.clone();
@@ -320,7 +320,7 @@ mod tests {
 	}
 }
 
-impl<O: Operator> Subject for Harness<O> {
+impl<O: Operator<DepFlowTransaction>> Subject for Harness<O> {
 	fn apply(&mut self, change: Change) -> Result<Change> {
 		Harness::apply(self, change)
 	}

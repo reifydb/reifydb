@@ -13,7 +13,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
-use crate::{timer::Timer, transaction::DepFlowTransaction};
+use crate::{timer::Timer, transaction::interface::FlowTransaction};
 
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub fn scale_from_millis(span: Option<u64>) -> Option<Duration> {
@@ -45,14 +45,14 @@ pub mod window;
 
 use guard::enforce_apply_capabilities;
 
-pub trait Operator: Send {
+pub trait Operator<T: FlowTransaction>: Send {
 	fn id(&self) -> OperatorId;
 
 	fn capabilities(&self) -> &[OperatorCapability];
 
-	fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change>;
+	fn apply(&self, txn: &mut T, change: Change) -> Result<Change>;
 
-	fn on_timer(&self, _txn: &mut DepFlowTransaction, _timer: Timer) -> Result<Option<Change>> {
+	fn on_timer(&self, _txn: &mut T, _timer: Timer) -> Result<Option<Change>> {
 		Ok(None)
 	}
 
@@ -69,25 +69,30 @@ pub trait Operator: Send {
 	}
 }
 
-pub type BoxedOperator = Box<dyn Operator + Send>;
+pub type BoxedOperator<T> = Box<dyn Operator<T> + Send>;
 
-#[derive(Clone)]
-pub struct OperatorCell(Arc<dyn Operator + Send>);
+pub struct OperatorCell<T: FlowTransaction>(Arc<dyn Operator<T> + Send>);
 
-impl OperatorCell {
+impl<T: FlowTransaction> Clone for OperatorCell<T> {
+	fn clone(&self) -> Self {
+		Self(self.0.clone())
+	}
+}
+
+impl<T: FlowTransaction> OperatorCell<T> {
 	#[allow(clippy::arc_with_non_send_sync)]
-	pub fn new(operator: impl Operator + 'static) -> Self {
+	pub fn new(operator: impl Operator<T> + 'static) -> Self {
 		Self(Arc::new(operator))
 	}
 
-	pub fn apply(&self, txn: &mut DepFlowTransaction, change: Change) -> Result<Change> {
+	pub fn apply(&self, txn: &mut T, change: Change) -> Result<Change> {
 		enforce_apply_capabilities(self.id(), self.capabilities(), &change);
 		self.0.apply(txn, change)
 	}
 }
 
-impl Deref for OperatorCell {
-	type Target = dyn Operator + Send;
+impl<T: FlowTransaction> Deref for OperatorCell<T> {
+	type Target = dyn Operator<T> + Send;
 
 	fn deref(&self) -> &Self::Target {
 		&*self.0
@@ -97,8 +102,8 @@ impl Deref for OperatorCell {
 // SAFETY: operators are keyed by OperatorId and never shared between flows, so an OperatorCell value
 // is reachable from exactly one thread at a time and the inner Arc is only cloned or dereferenced
 // from that owning thread. No aliasing of the !Sync interior can occur.
-unsafe impl Send for OperatorCell {}
-unsafe impl Sync for OperatorCell {}
+unsafe impl<T: FlowTransaction> Send for OperatorCell<T> {}
+unsafe impl<T: FlowTransaction> Sync for OperatorCell<T> {}
 
 pub fn max_input_time(change: &Change) -> Option<DateTime> {
 	change.diffs

@@ -9,9 +9,9 @@ use reifydb_core::interface::{
 };
 use reifydb_rql::flow::flow::FlowDag;
 
-use crate::engine::FlowEngineInner;
+use crate::{engine::FlowEngineInner, transaction::interface::FlowTransaction};
 
-impl FlowEngineInner {
+impl<T: FlowTransaction> FlowEngineInner<T> {
 	pub(super) fn seed_entry_nodes(
 		&self,
 		flow: &FlowDag,

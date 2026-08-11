@@ -6,7 +6,10 @@ pub mod workload;
 
 use rand::{RngExt, rngs::StdRng};
 use reifydb_core::interface::catalog::flow::OperatorId;
-use reifydb_flow::operator::{OperatorCell, append::AppendOperator, scan::series::SourceSeriesOperator};
+use reifydb_flow::{
+	operator::{OperatorCell, append::AppendOperator, scan::series::SourceSeriesOperator},
+	transaction::DepFlowTransaction,
+};
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	fuzz::{run_reported, split},
@@ -25,11 +28,11 @@ use crate::{
 	},
 };
 
-pub fn build(inputs: usize) -> AppendOperator {
+pub fn build(inputs: usize) -> AppendOperator<DepFlowTransaction> {
 	build_with_ttl(inputs, None)
 }
 
-pub fn build_with_ttl(inputs: usize, ttl: Option<Duration>) -> AppendOperator {
+pub fn build_with_ttl(inputs: usize, ttl: Option<Duration>) -> AppendOperator<DepFlowTransaction> {
 	let operators: Vec<OperatorId> = (0..inputs).map(input).collect();
 	let parents =
 		operators.iter().map(|operator| OperatorCell::new(SourceSeriesOperator::new(*operator))).collect();

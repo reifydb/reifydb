@@ -16,15 +16,15 @@ use crate::{
 		snapshot::{SnapshotJoinContext, publish_joined, resync_joined, retire_right, withdraw_joined},
 		state::JoinSide,
 	},
-	transaction::DepFlowTransaction,
+	transaction::interface::FlowTransaction,
 };
 
 pub(crate) struct InnerHashJoin;
 
 impl InnerHashJoin {
-	pub(crate) fn handle_insert_undefined(
+	pub(crate) fn handle_insert_undefined<T: FlowTransaction>(
 		&self,
-		_txn: &mut DepFlowTransaction,
+		_txn: &mut T,
 		_post: &Columns,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
@@ -32,9 +32,9 @@ impl InnerHashJoin {
 		Ok(Vec::new())
 	}
 
-	pub(crate) fn handle_remove_undefined(
+	pub(crate) fn handle_remove_undefined<T: FlowTransaction>(
 		&self,
-		_txn: &mut DepFlowTransaction,
+		_txn: &mut T,
 		_pre: &Columns,
 		_row_idx: usize,
 		_ctx: &mut JoinContext,
@@ -42,9 +42,9 @@ impl InnerHashJoin {
 		Ok(Vec::new())
 	}
 
-	pub(crate) fn handle_update_both_undefined(
+	pub(crate) fn handle_update_both_undefined<T: FlowTransaction>(
 		&self,
-		_txn: &mut DepFlowTransaction,
+		_txn: &mut T,
 		_pre: &Columns,
 		_post: &Columns,
 		_row_idx: usize,
@@ -53,9 +53,9 @@ impl InnerHashJoin {
 		Ok(Vec::new())
 	}
 
-	pub(crate) fn handle_insert(
+	pub(crate) fn handle_insert<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		post: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -105,9 +105,9 @@ impl InnerHashJoin {
 		Ok(result)
 	}
 
-	pub(crate) fn handle_remove(
+	pub(crate) fn handle_remove<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		pre: &Columns,
 		indices: &[usize],
 		key_hash: &Hash128,
@@ -181,9 +181,9 @@ impl InnerHashJoin {
 		Ok(result)
 	}
 
-	pub(crate) fn handle_update(
+	pub(crate) fn handle_update<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		pre: &Columns,
 		post: &Columns,
 		indices: &[usize],
@@ -208,9 +208,9 @@ impl InnerHashJoin {
 	}
 
 	#[inline]
-	fn update_in_place_one_row(
+	fn update_in_place_one_row<T: FlowTransaction>(
 		&self,
-		txn: &mut DepFlowTransaction,
+		txn: &mut T,
 		pre: &Columns,
 		post: &Columns,
 		row_idx: usize,

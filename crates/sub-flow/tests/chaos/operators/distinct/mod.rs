@@ -10,6 +10,7 @@ use rand::{RngExt, rngs::StdRng};
 use reifydb_flow::{
 	context::FlowContext,
 	operator::{OperatorCell, distinct::operator::DistinctOperator, scan::series::SourceSeriesOperator},
+	transaction::DepFlowTransaction,
 };
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::RuntimeContext;
@@ -33,7 +34,7 @@ use crate::{
 	},
 };
 
-pub fn build(runtime: RuntimeContext) -> DistinctOperator {
+pub fn build(runtime: RuntimeContext) -> DistinctOperator<DepFlowTransaction> {
 	let parent = OperatorCell::new(SourceSeriesOperator::new(SOURCE_OPERATOR));
 	DistinctOperator::new(
 		parent,

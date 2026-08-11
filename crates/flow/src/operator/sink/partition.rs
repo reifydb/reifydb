@@ -14,7 +14,7 @@ use reifydb_value::{
 	value::{Value, blob::Blob, partition::Partition, value_type::ValueType},
 };
 
-use crate::transaction::DepFlowTransaction;
+use crate::transaction::interface::FlowTransaction;
 
 static REGISTRY_SHAPE: LazyLock<RowShape> =
 	LazyLock::new(|| RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("values", ValueType::Blob)]));
@@ -36,8 +36,8 @@ pub(crate) fn ensure_partition_unchanged(object: ObjectId, pre: Partition, post:
 
 const VERIFIED_PARTITIONS_CAPACITY: usize = 65_536;
 
-pub(crate) fn resolve_partition_flow(
-	txn: &mut DepFlowTransaction,
+pub(crate) fn resolve_partition_flow<T: FlowTransaction>(
+	txn: &mut T,
 	object: ObjectId,
 	partition: Partition,
 	values: &[Value],
@@ -85,7 +85,7 @@ mod tests {
 	use reifydb_test_harness::engine::TestEngine;
 
 	use super::*;
-	use crate::testing::FlowTxn;
+	use crate::{testing::FlowTxn, transaction::DepFlowTransaction};
 
 	fn txn() -> DepFlowTransaction {
 		let engine = TestEngine::new();
