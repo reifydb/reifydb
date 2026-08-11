@@ -41,7 +41,7 @@ use reifydb_core::{
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_engine::remote::RemoteRegistry;
 use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
-#[cfg(reifydb_target = "native")]
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_extension::procedure::ffi_loader::register_procedures_from_dir;
 use reifydb_extension::{
 	procedure::wasm_loader::register_wasm_procedures_from_dir,
@@ -114,7 +114,7 @@ pub struct DatabaseBuilder {
 	runtime: Option<Runtime>,
 	routines_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	handlers_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
-	#[cfg(reifydb_target = "native")]
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	procedure_dir: Option<PathBuf>,
 	wasm_procedure_dir: Option<PathBuf>,
 	transforms_configurator:
@@ -164,7 +164,7 @@ impl DatabaseBuilder {
 			runtime: None,
 			routines_configurator: None,
 			handlers_configurator: None,
-			#[cfg(reifydb_target = "native")]
+			#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 			procedure_dir: None,
 			wasm_procedure_dir: None,
 			transforms_configurator: None,
@@ -285,7 +285,7 @@ impl DatabaseBuilder {
 		self
 	}
 
-	#[cfg(reifydb_target = "native")]
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	pub fn with_procedure_dir(mut self, dir: impl Into<PathBuf>) -> Self {
 		self.procedure_dir = Some(dir.into());
 		self
@@ -470,7 +470,7 @@ impl DatabaseBuilder {
 			routines_builder = default_native_procedures(routines_builder);
 			routines_builder = default_native_monoids(routines_builder);
 
-			#[cfg(reifydb_target = "native")]
+			#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 			if let Some(dir) = &self.procedure_dir {
 				routines_builder = register_procedures_from_dir(dir, routines_builder)?;
 			}

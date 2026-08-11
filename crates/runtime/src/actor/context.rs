@@ -10,7 +10,7 @@ use reifydb_value::value::duration::Duration;
 
 #[cfg(not(reifydb_single_threaded))]
 use crate::actor::timers::Repeat;
-#[cfg(reifydb_target = "dst")]
+#[cfg(reifydb_dst)]
 use crate::actor::timers::dst as dst_timers;
 #[cfg(reifydb_target = "wasi")]
 use crate::actor::timers::wasi::{schedule_once_fn, schedule_repeat, schedule_repeat_fn};
@@ -100,7 +100,7 @@ impl<M: Send + 'static> Context<M> {
 		})
 	}
 
-	#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
+	#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 	pub fn schedule_once<F: FnOnce() -> M + Send + 'static>(
 		&self,
 		delay: impl Into<Duration>,
@@ -110,7 +110,7 @@ impl<M: Send + 'static> Context<M> {
 		schedule_once_fn(self.self_ref.clone(), delay, factory)
 	}
 
-	#[cfg(reifydb_target = "dst")]
+	#[cfg(reifydb_dst)]
 	pub fn schedule_once<F: FnOnce() -> M + Send + 'static>(
 		&self,
 		delay: impl Into<Duration>,
@@ -137,13 +137,13 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 			.schedule_repeat(interval, move || Repeat::after_send(actor_ref.send(msg.clone())))
 	}
 
-	#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
+	#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 	pub fn schedule_repeat(&self, interval: impl Into<Duration>, msg: M) -> TimerHandle {
 		let interval = interval.into().to_std();
 		schedule_repeat(self.self_ref.clone(), interval, msg)
 	}
 
-	#[cfg(reifydb_target = "dst")]
+	#[cfg(reifydb_dst)]
 	pub fn schedule_repeat(&self, interval: impl Into<Duration>, msg: M) -> TimerHandle {
 		let interval = interval.into().to_std();
 		dst_timers::schedule_repeat(
@@ -166,7 +166,7 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 		self.system.scheduler().schedule_repeat(interval, move || Repeat::after_send(actor_ref.send(factory())))
 	}
 
-	#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
+	#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 	pub fn schedule_repeat_fn<F: Fn() -> M + Send + Sync + 'static>(
 		&self,
 		interval: impl Into<Duration>,
@@ -176,7 +176,7 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 		schedule_repeat_fn(self.self_ref.clone(), interval, factory)
 	}
 
-	#[cfg(reifydb_target = "dst")]
+	#[cfg(reifydb_dst)]
 	pub fn schedule_repeat_fn<F: Fn() -> M + Send + Sync + 'static>(
 		&self,
 		interval: impl Into<Duration>,
@@ -209,7 +209,7 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 			})
 		}
 
-		#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
+		#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 		{
 			schedule_repeat_fn(actor_ref, interval, move || {
 				let now = clock.now().to_nanos();
@@ -217,7 +217,7 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 			})
 		}
 
-		#[cfg(reifydb_target = "dst")]
+		#[cfg(reifydb_dst)]
 		{
 			dst_timers::schedule_repeat_fn(
 				self.system.timer_heap(),

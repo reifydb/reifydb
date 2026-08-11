@@ -5,24 +5,24 @@
 //! actor pool (`coordination` for tiny high-frequency handlers, `flow` for heavy flow execution), short-lived work
 //! on the task pool, data-parallel work on the compute pool, async I/O on the embedded tokio runtime.
 
-#[cfg(all(not(reifydb_single_threaded), not(reifydb_target = "dst")))]
+#[cfg(all(not(reifydb_single_threaded), not(reifydb_dst)))]
 pub(crate) mod actor_pool;
 
-#[cfg(all(not(reifydb_single_threaded), not(reifydb_target = "dst")))]
+#[cfg(all(not(reifydb_single_threaded), not(reifydb_dst)))]
 pub mod compute;
 
-#[cfg(all(not(reifydb_single_threaded), not(reifydb_target = "dst")))]
+#[cfg(all(not(reifydb_single_threaded), not(reifydb_dst)))]
 mod native;
 
-#[cfg(all(not(reifydb_single_threaded), not(reifydb_target = "dst")))]
+#[cfg(all(not(reifydb_single_threaded), not(reifydb_dst)))]
 pub(crate) mod task;
 
-#[cfg(any(reifydb_single_threaded, reifydb_target = "dst"))]
+#[cfg(any(reifydb_single_threaded, reifydb_dst))]
 mod wasm;
 
-#[cfg(all(not(reifydb_single_threaded), not(reifydb_target = "dst")))]
+#[cfg(all(not(reifydb_single_threaded), not(reifydb_dst)))]
 pub use native::Pools;
-#[cfg(any(reifydb_single_threaded, reifydb_target = "dst"))]
+#[cfg(any(reifydb_single_threaded, reifydb_dst))]
 pub use wasm::Pools;
 
 #[derive(Debug, Clone)]

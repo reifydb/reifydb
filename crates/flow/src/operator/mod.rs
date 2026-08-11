@@ -16,7 +16,7 @@ use reifydb_value::{
 
 use crate::{timer::Timer, transaction::DepFlowTransaction};
 
-#[cfg(reifydb_target = "native")]
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub fn scale_from_millis(span: Option<u64>) -> Option<Duration> {
 	span.filter(|millis| *millis > 0)
 		.and_then(|millis| i64::try_from(millis).ok())

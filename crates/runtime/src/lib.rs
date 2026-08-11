@@ -25,10 +25,10 @@ pub mod actor;
 
 pub mod version_epoch;
 
-#[cfg(reifydb_target = "dst")]
+#[cfg(reifydb_dst)]
 pub mod testing;
 
-#[cfg(not(reifydb_target = "dst"))]
+#[cfg(not(reifydb_dst))]
 use std::future::Future;
 
 use crate::{
@@ -70,9 +70,9 @@ use std::{
 
 #[cfg(target_arch = "wasm32")]
 use futures_util::future::LocalBoxFuture;
-#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use tokio::runtime as tokio_runtime;
-#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use tokio::task::JoinHandle;
 
 #[cfg(target_arch = "wasm32")]
@@ -160,7 +160,7 @@ impl Runtime {
 		&self.rng
 	}
 
-	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	pub fn tokio(&self) -> tokio_runtime::Handle {
 		self.pools.handle()
 	}
@@ -170,7 +170,7 @@ impl Runtime {
 		WasmHandle
 	}
 
-	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
 	where
 		F: Future + Send + 'static,
@@ -190,7 +190,7 @@ impl Runtime {
 		}
 	}
 
-	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	pub fn block_on<F>(&self, future: F) -> F::Output
 	where
 		F: Future,
@@ -256,7 +256,7 @@ impl RuntimeHandle {
 		&self.rng
 	}
 
-	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	pub fn tokio(&self) -> tokio_runtime::Handle {
 		self.pools.handle()
 	}
@@ -266,7 +266,7 @@ impl RuntimeHandle {
 		WasmHandle
 	}
 
-	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
 	where
 		F: Future + Send + 'static,
@@ -286,7 +286,7 @@ impl RuntimeHandle {
 		}
 	}
 
-	#[cfg(all(not(target_arch = "wasm32"), not(reifydb_target = "dst")))]
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	pub fn block_on<F>(&self, future: F) -> F::Output
 	where
 		F: Future,

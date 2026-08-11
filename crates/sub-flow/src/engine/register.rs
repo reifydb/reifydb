@@ -663,7 +663,7 @@ impl FlowEngineInner {
 				OperatorCell::new(ApplyOperator::new(parent, operator_id, inner, ttl)),
 			);
 		} else {
-			#[cfg(reifydb_target = "native")]
+			#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 			{
 				let parent = self.parent(first_input(inputs)?)?;
 
@@ -682,7 +682,7 @@ impl FlowEngineInner {
 					OperatorCell::new(ApplyOperator::new(parent, operator_id, inner, ttl)),
 				);
 			}
-			#[cfg(not(reifydb_target = "native"))]
+			#[cfg(not(all(reifydb_target = "host", not(reifydb_dst))))]
 			{
 				let _ = (operator, inputs);
 

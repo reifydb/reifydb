@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[cfg(reifydb_target = "native")]
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -132,7 +132,7 @@ pub struct ServerBuilder {
 	subsystem_factories: Vec<Box<dyn SubsystemFactory>>,
 	routines_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	handlers_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
-	#[cfg(reifydb_target = "native")]
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	procedure_dir: Option<PathBuf>,
 	#[cfg(feature = "sub_tracing")]
 	tracing_configurator: Option<Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send + 'static>>,
@@ -163,7 +163,7 @@ impl ServerBuilder {
 			subsystem_factories: Vec::new(),
 			routines_configurator: None,
 			handlers_configurator: None,
-			#[cfg(reifydb_target = "native")]
+			#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 			procedure_dir: None,
 			#[cfg(feature = "sub_tracing")]
 			tracing_configurator: None,
@@ -237,7 +237,7 @@ impl ServerBuilder {
 		self
 	}
 
-	#[cfg(reifydb_target = "native")]
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	pub fn with_procedure_dir(mut self, dir: impl Into<PathBuf>) -> Self {
 		self.procedure_dir = Some(dir.into());
 		self
@@ -460,7 +460,7 @@ impl ServerBuilder {
 			database_builder = database_builder.with_handlers_configurator(configurator);
 		}
 
-		#[cfg(reifydb_target = "native")]
+		#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 		if let Some(dir) = self.procedure_dir {
 			database_builder = database_builder.with_procedure_dir(dir);
 		}

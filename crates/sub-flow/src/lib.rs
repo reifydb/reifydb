@@ -20,7 +20,7 @@ pub(crate) mod deferred;
 pub mod engine;
 pub mod error;
 pub mod execution;
-#[cfg(reifydb_target = "native")]
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub(crate) mod ffi;
 pub mod operator;
 pub mod subsystem;

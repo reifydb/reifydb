@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Resolves the `reifydb_target` and `reifydb_single_threaded` cfg flags from each downstream crate's `build.rs`,
-//! keeping target detection in one place.
+//! Resolves the `reifydb_target`, `reifydb_dst` and `reifydb_single_threaded` cfg flags from each downstream
+//! crate's `build.rs`, keeping target detection in one place. `reifydb_target` names the execution substrate;
+//! `reifydb_dst` is a mode that rides on top of it.
 
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
@@ -14,20 +15,25 @@ use std::env;
 pub fn emit_target_cfg() {
 	let target = env::var("TARGET").unwrap_or_default();
 
-	let (reifydb_target, single_threaded) = if env::var("REIFYDB_DST").ok().is_some_and(|v| v == "1") {
-		("dst", true)
-	} else if target.contains("wasm32") && target.contains("wasi") {
-		("wasi", true)
+	let reifydb_target = if target.contains("wasm32") && target.contains("wasi") {
+		"wasi"
 	} else if target.contains("wasm32") {
-		("wasm", true)
+		"wasm"
 	} else {
-		("native", false)
+		"host"
 	};
 
-	println!("cargo::rustc-check-cfg=cfg(reifydb_target, values(\"native\", \"wasm\", \"wasi\", \"dst\"))");
+	let dst = env::var("REIFYDB_DST").ok().is_some_and(|v| v == "1");
+	let single_threaded = dst || reifydb_target != "host";
+
+	println!("cargo::rustc-check-cfg=cfg(reifydb_target, values(\"host\", \"wasm\", \"wasi\"))");
+	println!("cargo::rustc-check-cfg=cfg(reifydb_dst)");
 	println!("cargo::rustc-check-cfg=cfg(reifydb_single_threaded)");
 	println!("cargo::rustc-check-cfg=cfg(reifydb_assertions)");
 	println!("cargo:rustc-cfg=reifydb_target=\"{}\"", reifydb_target);
+	if dst {
+		println!("cargo:rustc-cfg=reifydb_dst");
+	}
 	if single_threaded {
 		println!("cargo:rustc-cfg=reifydb_single_threaded");
 	}

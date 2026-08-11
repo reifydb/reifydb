@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
+#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 use std::cell::{Cell, RefCell};
 use std::fmt;
-#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
+#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 use std::rc::Rc;
-#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
+#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 use std::sync::Arc;
-#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
+#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 use std::sync::atomic::AtomicBool;
 
 use cfg_if::cfg_if;
@@ -16,14 +16,14 @@ use cfg_if::cfg_if;
 #[cfg(not(reifydb_single_threaded))]
 pub(crate) mod native;
 
-#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
+#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 pub(crate) mod wasm;
 
-#[cfg(reifydb_target = "dst")]
+#[cfg(reifydb_dst)]
 pub(crate) mod dst;
 
 cfg_if! {
-	if #[cfg(reifydb_target = "dst")] {
+	if #[cfg(reifydb_dst)] {
 		type ActorRefInnerImpl<M> = dst::ActorRefInner<M>;
 	} else if #[cfg(not(reifydb_single_threaded))] {
 		type ActorRefInnerImpl<M> = native::ActorRefInner<M>;
@@ -164,7 +164,7 @@ impl<M: Send> ActorRef<M> {
 	}
 }
 
-#[cfg(reifydb_target = "dst")]
+#[cfg(reifydb_dst)]
 impl<M> ActorRef<M> {
 	#[inline]
 	pub fn send(&self, msg: M) -> Result<(), SendError<M>> {
@@ -192,7 +192,7 @@ impl<M> ActorRef<M> {
 	}
 }
 
-#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
+#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 impl<M> ActorRef<M> {
 	#[inline]
 	pub(crate) fn new(
@@ -250,9 +250,9 @@ use std::sync;
 
 #[cfg(not(reifydb_single_threaded))]
 use crossbeam_channel::Sender;
-#[cfg(reifydb_target = "dst")]
+#[cfg(reifydb_dst)]
 pub(crate) use dst::create_mailbox as create_dst_mailbox;
 #[cfg(not(reifydb_single_threaded))]
 pub(crate) use native::create_mailbox;
-#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
+#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 pub(crate) use wasm::create_actor_ref;

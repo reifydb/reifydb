@@ -8,11 +8,11 @@ use crossbeam_channel::unbounded;
 
 #[cfg(not(reifydb_single_threaded))]
 use crate::actor::mailbox::ActorRef;
-#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
+#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 use crate::actor::mailbox::create_actor_ref;
-#[cfg(reifydb_target = "dst")]
+#[cfg(reifydb_dst)]
 use crate::actor::mailbox::create_dst_mailbox;
-#[cfg(reifydb_target = "dst")]
+#[cfg(reifydb_dst)]
 use crate::context::clock::MockClock;
 use crate::{
 	actor::{
@@ -161,10 +161,10 @@ impl<M: Send + 'static> TestContext<M> {
 			ActorRef::new(tx)
 		};
 
-		#[cfg(all(reifydb_single_threaded, not(reifydb_target = "dst")))]
+		#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 		let actor_ref = create_actor_ref();
 
-		#[cfg(reifydb_target = "dst")]
+		#[cfg(reifydb_dst)]
 		let actor_ref = {
 			let (actor_ref, _queue) = create_dst_mailbox();
 			actor_ref
@@ -172,9 +172,9 @@ impl<M: Send + 'static> TestContext<M> {
 
 		let pools = Pools::new(PoolConfig::default());
 
-		#[cfg(reifydb_target = "dst")]
+		#[cfg(reifydb_dst)]
 		let clock = Clock::Mock(MockClock::new(0));
-		#[cfg(not(reifydb_target = "dst"))]
+		#[cfg(not(reifydb_dst))]
 		let clock = Clock::Real;
 
 		let system = ActorSystem::new(pools, clock);

@@ -3,11 +3,11 @@
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
-#[cfg(reifydb_target = "native")]
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_abi::operator::capabilities::to_bitmask;
 use reifydb_core::{event::operator::OperatorColumn, interface::catalog::flow::OperatorId};
 use reifydb_flow::operator::BoxedOperator;
-#[cfg(reifydb_target = "native")]
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::operator::{OperatorLogic, OperatorMetadata, column::operator::OperatorColumn as SdkOperatorColumn};
 use reifydb_sdk::{
 	config::Config,
@@ -19,7 +19,7 @@ use reifydb_sdk::{
 use reifydb_value::Result;
 
 use crate::connector::ConnectorRegistry;
-#[cfg(reifydb_target = "native")]
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use crate::operator::native::{NativeBridgedOperator, NativeOperatorAdapter};
 
 pub(crate) type OperatorFactory = Arc<dyn Fn(OperatorId, &Config) -> Result<BoxedOperator> + Send + Sync>;
@@ -56,7 +56,7 @@ impl CustomOperators {
 	}
 }
 
-#[cfg(reifydb_target = "native")]
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 fn describe_columns(columns: &[SdkOperatorColumn]) -> Vec<OperatorColumn> {
 	columns.iter()
 		.map(|column| OperatorColumn {
@@ -93,7 +93,7 @@ impl FlowConfigurator {
 		self
 	}
 
-	#[cfg(reifydb_target = "native")]
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	pub fn register_operator<O>(mut self) -> Self
 	where
 		O: OperatorLogic + OperatorMetadata + 'static,

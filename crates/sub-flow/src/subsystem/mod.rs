@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod factory;
-#[cfg(reifydb_target = "native")]
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub mod ffi;
 pub mod shutdown;
 
@@ -15,7 +15,7 @@ use std::{
 	},
 };
 
-#[cfg(reifydb_target = "native")]
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use ffi::{load_ffi_operators, load_native_operators};
 use reifydb_cdc::{
 	consume::{
@@ -240,7 +240,7 @@ impl FlowSubsystem {
 
 	#[inline]
 	fn maybe_load_ffi_operators(config: &FlowConfig, engine: &StandardEngine) {
-		#[cfg(reifydb_target = "native")]
+		#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 		if let Some(ref operators_dir) = config.operators_dir {
 			let event_bus = engine.event_bus();
 			if let Err(e) = load_native_operators(operators_dir, event_bus) {
@@ -251,7 +251,7 @@ impl FlowSubsystem {
 			}
 			event_bus.wait_for_completion();
 		}
-		#[cfg(not(reifydb_target = "native"))]
+		#[cfg(not(all(reifydb_target = "host", not(reifydb_dst))))]
 		{
 			let _ = (config, engine);
 		}

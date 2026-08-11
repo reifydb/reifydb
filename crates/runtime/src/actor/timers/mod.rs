@@ -10,9 +10,9 @@ use std::{
 	},
 };
 
-#[cfg(reifydb_target = "dst")]
+#[cfg(reifydb_dst)]
 pub(crate) mod dst;
-#[cfg(reifydb_target = "native")]
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub mod scheduler;
 #[cfg(reifydb_target = "wasi")]
 pub(crate) mod wasi;
@@ -96,7 +96,7 @@ pub fn drain_expired_timers() {
 #[cfg(not(reifydb_target = "wasi"))]
 pub fn drain_expired_timers() {}
 
-#[cfg(all(test, reifydb_target = "native"))]
+#[cfg(all(test, reifydb_target = "host", not(reifydb_dst)))]
 mod tests {
 	use super::*;
 	use crate::actor::mailbox::create_mailbox;

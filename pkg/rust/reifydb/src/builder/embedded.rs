@@ -79,7 +79,7 @@ pub struct EmbeddedBuilder {
 	dependencies: Vec<Box<dyn FnOnce(DatabaseBuilder) -> DatabaseBuilder + Send>>,
 	routines_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	handlers_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
-	#[cfg(reifydb_target = "native")]
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	procedure_dir: Option<PathBuf>,
 	wasm_procedure_dir: Option<PathBuf>,
 	transforms_configurator:
@@ -106,7 +106,7 @@ impl EmbeddedBuilder {
 			dependencies: Vec::new(),
 			routines_configurator: None,
 			handlers_configurator: None,
-			#[cfg(reifydb_target = "native")]
+			#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 			procedure_dir: None,
 			wasm_procedure_dir: None,
 			transforms_configurator: None,
@@ -154,7 +154,7 @@ impl EmbeddedBuilder {
 		self
 	}
 
-	#[cfg(reifydb_target = "native")]
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	pub fn with_procedure_dir(mut self, dir: impl Into<PathBuf>) -> Self {
 		self.procedure_dir = Some(dir.into());
 		self
@@ -253,7 +253,7 @@ impl EmbeddedBuilder {
 			builder = builder.with_handlers_configurator(configurator);
 		}
 
-		#[cfg(reifydb_target = "native")]
+		#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 		if let Some(dir) = self.procedure_dir {
 			builder = builder.with_procedure_dir(dir);
 		}

@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[cfg(any(reifydb_target = "native", reifydb_target = "dst"))]
+#[cfg(any(reifydb_target = "host", reifydb_dst))]
 mod native;
 #[cfg(reifydb_target = "wasi")]
 mod wasi;
 #[cfg(reifydb_target = "wasm")]
 mod wasm;
 
-#[cfg(any(reifydb_target = "native", reifydb_target = "dst"))]
+#[cfg(any(reifydb_target = "host", reifydb_dst))]
 pub use native::{Clock, Instant, MockClock};
 use reifydb_value::{clock::ClockNow, value::datetime::DateTime};
 #[cfg(reifydb_target = "wasi")]
@@ -24,7 +24,7 @@ impl ClockNow for Clock {
 
 #[cfg(test)]
 mod tests {
-	#[cfg(reifydb_target = "native")]
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	use std::thread;
 
 	use super::*;
@@ -82,7 +82,7 @@ mod tests {
 		assert_eq!(clock.now().to_millis(), 2500);
 	}
 
-	#[cfg(reifydb_target = "native")]
+	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	#[test]
 	fn test_mock_clock_thread_safe() {
 		let mock = MockClock::from_millis(1000);

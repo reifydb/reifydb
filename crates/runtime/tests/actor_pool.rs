@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#![cfg(all(not(reifydb_single_threaded), not(reifydb_target = "dst")))]
+#![cfg(all(not(reifydb_single_threaded), not(reifydb_dst)))]
 #![allow(clippy::disallowed_methods)]
 #![allow(clippy::disallowed_types)]
 

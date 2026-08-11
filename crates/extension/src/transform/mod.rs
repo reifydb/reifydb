@@ -2,9 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod context;
-#[cfg(reifydb_target = "native")]
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub mod ffi;
-#[cfg(reifydb_target = "native")]
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub mod ffi_loader;
 pub mod registry;
 pub mod wasm;
