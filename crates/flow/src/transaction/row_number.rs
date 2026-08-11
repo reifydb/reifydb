@@ -18,7 +18,6 @@ use reifydb_core::{
 		operator_state::{GroupId, GroupSet, GroupStateKey, Keyspace, OperatorStateKey, keyspace_inner_range},
 	},
 	metrics::heap::{StateCompleteness, StateMemory},
-	state::horizon::Cutoff,
 };
 use reifydb_runtime::cache::slab::SlabLru;
 use reifydb_value::{
@@ -26,7 +25,7 @@ use reifydb_value::{
 	byte_size::ByteSize,
 	count::Count,
 	reifydb_assertions,
-	value::{datetime::DateTime, row_number::RowNumber},
+	value::row_number::RowNumber,
 };
 
 use super::DepFlowTransaction;
@@ -51,16 +50,8 @@ fn counter_key() -> GroupStateKey {
 	OperatorStateKey::inner_encoded(GroupId::ROOT, Keyspace::NODE_COUNTER, ROW_NUMBER_COUNTER_SUFFIX)
 }
 
-fn encode_payload<T: OperatorState>(value: &T, now: DateTime) -> Result<EncodedOperatorRow> {
-	Ok(value.encode_state(now)?)
-}
-
-fn decode_payload<T: OperatorState>(row: &EncodedOperatorRow) -> Result<T> {
-	Ok(decode(row)?)
-}
-
 fn decode_bytes<T: OperatorState>(bytes: &EncodedBytes) -> Result<T> {
-	decode_payload(&EncodedOperatorRow::try_from(bytes.clone())?)
+	Ok(decode(&EncodedOperatorRow::try_from(bytes.clone())?)?)
 }
 
 #[derive(Clone, Copy)]
@@ -154,7 +145,6 @@ impl NodeState {
 
 pub struct RowNumberSample {
 	pub cache: StateMemory,
-	pub membership: StateMemory,
 	pub completeness: StateCompleteness,
 }
 
@@ -279,7 +269,7 @@ impl RowNumberProvider {
 				let i = to_resolve[slot];
 				let map_key = &map_keys[slot];
 				let row_number = RowNumber(start + offset as u64);
-				txn.state_set(operator, map_key, encode_payload(&row_number.0, now)?)?;
+				txn.state_set(operator, map_key, row_number.0.encode_state(now)?)?;
 				state.remember(group, &keys[i], row_number);
 				assigned.insert(map_key.clone(), row_number);
 			}
@@ -368,7 +358,7 @@ impl RowNumberProvider {
 		}
 		match txn.state_get(operator, &mapping_key(group, key))? {
 			Some(existing_row) => {
-				let row_number = RowNumber(decode_payload::<u64>(&existing_row)?);
+				let row_number = RowNumber(decode::<u64>(&existing_row)?);
 				state.remember(group, key, row_number);
 				state.evict_to_budget(budget);
 				Ok(Some(row_number))
@@ -462,56 +452,6 @@ impl RowNumberProvider {
 		Ok(())
 	}
 
-	pub fn evict_expired(
-		&self,
-		operator: OperatorId,
-		group: GroupId,
-		txn: &mut DepFlowTransaction,
-		cutoff: Cutoff,
-		cursor: &mut Option<EncodedKey>,
-		batch_size: usize,
-	) -> Result<usize> {
-		let base = mapping_range(group);
-		let start = match cursor.clone() {
-			Some(c) => Bound::Excluded(c),
-			None => base.start.clone(),
-		};
-		let range = EncodedKeyRange::new(start, base.end.clone());
-		let batch = txn.state_range(operator, range, Some(batch_size), "rownum::evict_expired")?;
-		let reached_end = !batch.has_more;
-		let last_key = batch.items.last().map(|item| {
-			OperatorStateKey::decode(&item.key).expect("state_range must return OperatorState keys").inner()
-		});
-
-		let mut guard = self.inner.operators.entry(operator).or_default();
-		let state = &mut *guard;
-		let mut removed = 0;
-		for item in batch.items {
-			let row = EncodedOperatorRow::try_from(item.bytes.clone())?;
-			if row.time() > cutoff.instant() {
-				continue;
-			}
-			let decoded = OperatorStateKey::decode(&item.key)
-				.expect("state_range must return OperatorState keys");
-			let inner = OperatorStateKey::inner_encoded(
-				decoded.group,
-				decoded.keyspace,
-				decoded.suffix.clone(),
-			);
-			let original = EncodedKey::new(decoded.suffix);
-			txn.state_remove(operator, &inner)?;
-			state.forget(group, &original);
-			removed += 1;
-		}
-
-		*cursor = if reached_end {
-			None
-		} else {
-			last_key
-		};
-		Ok(removed)
-	}
-
 	pub fn invalidate_groups(&self, operator: OperatorId, groups: &GroupSet) {
 		if groups.is_empty() {
 			return;
@@ -533,13 +473,6 @@ impl RowNumberProvider {
 		}
 	}
 
-	pub fn completeness(&self, operator: OperatorId) -> StateCompleteness {
-		self.inner
-			.operators
-			.get(&operator)
-			.map_or(StateCompleteness::MERGE_IDENTITY, |state| state.completeness())
-	}
-
 	pub fn memory(&self, operator: OperatorId) -> StateMemory {
 		self.inner.operators.get(&operator).map_or(StateMemory::ZERO, |state| state.memory())
 	}
@@ -555,7 +488,6 @@ impl RowNumberProvider {
 					*entry.key(),
 					RowNumberSample {
 						cache: state.memory(),
-						membership: StateMemory::ZERO,
 						completeness: state.completeness(),
 					},
 				)
@@ -627,14 +559,14 @@ impl RowNumberProvider {
 		let seed = match state.next {
 			Some(next) => next,
 			None => match txn.state_get(operator, &counter_key())? {
-				Some(row) => decode_payload::<u64>(&row)?,
+				Some(row) => decode::<u64>(&row)?,
 				None => 1,
 			},
 		};
 		let high_water = seed + count;
 		state.next = Some(high_water);
 		let now = txn.written_at();
-		txn.state_set(operator, &counter_key(), encode_payload(&high_water, now)?)?;
+		txn.state_set(operator, &counter_key(), high_water.encode_state(now)?)?;
 		Ok(seed)
 	}
 }
@@ -714,10 +646,7 @@ impl DepFlowTransaction {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_core::{
-		actors::pending::{Pending, PendingLayers},
-		common::CommitVersion,
-	};
+	use reifydb_core::actors::pending::{Pending, PendingLayers};
 	use reifydb_runtime::context::clock::{Clock, MockClock};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::interceptor::interceptors::Interceptors;
@@ -725,7 +654,7 @@ mod tests {
 
 	use super::*;
 	use crate::transaction::{
-		ChangeCoordinate, DeferredParams,
+		DeferredParams,
 		substrate::{FlowSubstrate, apply_operator_state},
 	};
 
@@ -1096,14 +1025,6 @@ mod tests {
 	}
 
 	#[test]
-	fn an_idle_node_merges_as_the_completeness_identity() {
-		// A operator that has never resolved anything proves nothing and must merge as the identity,
-		// so a healthy operator's completeness is not dragged down by an untouched provider.
-		let provider = RowNumberProvider::default();
-		assert_eq!(provider.completeness(NODE), StateCompleteness::MERGE_IDENTITY);
-	}
-
-	#[test]
 	fn a_complete_group_proves_absence_without_a_store_read() {
 		// A fully hydrated or freshly interned group is complete, and a complete group answers
 		// "never minted" from the cache alone. That is what keeps the firehose new-key path off the
@@ -1170,8 +1091,10 @@ mod tests {
 		let mut txn = deferred(&engine);
 		restarted.get_row_number(NODE, GROUP, &mut txn, &key("k1")).unwrap();
 
+		let samples = restarted.samples();
+		assert_eq!(samples.len(), 1, "the hydrated operator must surface exactly one sample");
 		assert!(
-			!restarted.completeness(NODE).values_complete,
+			!samples[0].1.completeness.values_complete,
 			"three mappings cannot be values-complete at capacity two"
 		);
 		let reads_before = txn.store_reads();
@@ -1201,52 +1124,6 @@ mod tests {
 			0,
 			"the removed key's absence must be answered from the complete group, not the store"
 		);
-	}
-
-	#[test]
-	fn eviction_drops_only_expired_mappings_and_keeps_the_rest_in_memory() {
-		// The reclaim sweep runs evict_expired against every operator that declares a mapping span.
-		// Clearing the whole cache instead silently downgrades the provider to one store roundtrip
-		// per key for the rest of its life, so the survivor and its completeness must both outlive it.
-		let engine = TestEngine::new();
-		let provider = RowNumberProvider::default();
-
-		let mut first = deferred(&engine);
-		first.set_change_coordinate(ChangeCoordinate {
-			at: Some(DateTime::from_millis(0)),
-			version: CommitVersion(0),
-		});
-		let (minted_old, _) = provider.get_or_create_row_number(NODE, GROUP, &mut first, &key("old")).unwrap();
-		commit_pending(&engine, &mut first);
-
-		let mut second = deferred(&engine);
-		second.set_change_coordinate(ChangeCoordinate {
-			at: Some(DateTime::from_millis(100)),
-			version: CommitVersion(0),
-		});
-		let (minted_young, _) =
-			provider.get_or_create_row_number(NODE, GROUP, &mut second, &key("young")).unwrap();
-		commit_pending(&engine, &mut second);
-
-		let mut third = deferred(&engine);
-		provider.evict_expired(NODE, GROUP, &mut third, Cutoff(DateTime::from_millis(50)), &mut None, 100)
-			.unwrap();
-
-		let reads_before = third.store_reads();
-		let (resolved, is_new) =
-			provider.get_or_create_row_number(NODE, GROUP, &mut third, &key("young")).unwrap();
-		assert!(!is_new, "the surviving mapping must not be re-minted");
-		assert_eq!(resolved, minted_young, "the surviving mapping keeps its row number");
-		assert_eq!(
-			third.store_reads() - reads_before,
-			0,
-			"an eviction must not cost the survivor its in-memory resolution"
-		);
-
-		let (reminted, is_new) =
-			provider.get_or_create_row_number(NODE, GROUP, &mut third, &key("old")).unwrap();
-		assert!(is_new, "the expired mapping is gone, so it re-mints");
-		assert_ne!(reminted, minted_old, "row numbers are never reused");
 	}
 
 	#[test]

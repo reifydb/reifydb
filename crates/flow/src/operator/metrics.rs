@@ -8,7 +8,7 @@ use reifydb_core::{
 	metrics::{
 		collect::MetricsCollector,
 		heap::OperatorSample,
-		operator::{ROW_NUMBER_CACHE_BYTES, ROW_NUMBER_MEMBERSHIP_BYTES, STATE_RESIDENT_BYTES},
+		operator::{ROW_NUMBER_CACHE_BYTES, STATE_RESIDENT_BYTES},
 		sample::MetricsSample,
 	},
 };
@@ -272,18 +272,6 @@ impl MetricsCollector for RowNumberMetricsCollector {
 					sample.cache.bytes,
 				));
 			}
-			if sample.membership.entries.as_u64() > 0 || sample.membership.bytes.as_bytes() > 0 {
-				out.push(MetricsSample::count(
-					scope.clone(),
-					"row_number_membership_entries",
-					sample.membership.entries.as_u64(),
-				));
-				out.push(MetricsSample::heap(
-					scope.clone(),
-					ROW_NUMBER_MEMBERSHIP_BYTES,
-					sample.membership.bytes,
-				));
-			}
 			out.push(MetricsSample::count(
 				scope.clone(),
 				"row_number_values_complete",
@@ -296,7 +284,6 @@ impl MetricsCollector for RowNumberMetricsCollector {
 			));
 			for (metric, count) in [
 				("row_number_absences_served", sample.completeness.absences_served),
-				("row_number_false_positives", sample.completeness.false_positives),
 				("row_number_revocations", sample.completeness.revocations),
 			] {
 				if count.as_u64() > 0 {
