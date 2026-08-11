@@ -9,7 +9,7 @@ use std::sync::{
 use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 use reifydb_core::common::CommitVersion;
 
-use super::tracker::FlowPositionTracker;
+use crate::progress::tracker::FlowPositionTracker;
 
 #[derive(Clone)]
 pub struct FlowMaterialization {

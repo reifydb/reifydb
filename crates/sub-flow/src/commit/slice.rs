@@ -27,7 +27,7 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime},
 };
 
-use crate::deferred::{committer::FlowSlice, overlay::FlowWriteOverlay};
+use crate::commit::{committer::FlowSlice, overlay::FlowWriteOverlay};
 
 pub struct SliceConfig {
 	pub checkpoint_lag: u64,
@@ -531,9 +531,9 @@ mod integration {
 	use super::*;
 	use crate::{
 		catalog::FlowCatalog,
-		deferred::{
-			committer::Committer, quiescence::FlowMaterialization, routing, tracker::FlowPositionTracker,
-		},
+		commit::{committer::Committer, quiescence::FlowMaterialization},
+		discovery::routing,
+		progress::tracker::FlowPositionTracker,
 	};
 
 	fn view_row_count(te: &TestEngine, rql: &str) -> usize {

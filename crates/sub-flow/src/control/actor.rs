@@ -50,16 +50,15 @@ use tracing::{error, warn};
 
 use crate::{
 	builder::CustomOperators,
-	deferred::{
+	commit::{
 		committer::{CommitterMessage, FlowSlice, SliceCommitReply, TickCommitReply},
-		frontier::ControlFrontier,
-		health::FlowHealthRegistry,
-		loader::{LoaderMessage, LoaderReply},
 		overlay::FlowWriteOverlay,
 		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep},
-		tracker::FlowPositionTracker,
 	},
+	control::health::FlowHealthRegistry,
+	discovery::loader::{LoaderMessage, LoaderReply},
 	operator::provider::StandardOperatorProvider,
+	progress::{frontier::ControlFrontier, tracker::FlowPositionTracker},
 };
 
 pub struct FlowActorParams {
@@ -745,10 +744,12 @@ mod pull_protocol {
 	use super::*;
 	use crate::{
 		catalog::FlowCatalog,
-		deferred::{
+		commit::{
 			committer::{Committer, CommitterActor, CommitterHandle},
-			loader::{LoaderActor, LoaderHandle, LoaderMetrics},
 			quiescence::FlowMaterialization,
+		},
+		discovery::{
+			loader::{LoaderActor, LoaderHandle, LoaderMetrics},
 			routing,
 		},
 	};

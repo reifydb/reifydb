@@ -3,8 +3,10 @@
 
 use reifydb_core::{common::CommitVersion, interface::flow::FlowWatermarkRow};
 
-use super::tracker::{FlowPositionTracker, ObjectVersionTracker};
-use crate::catalog::FlowCatalog;
+use crate::{
+	catalog::FlowCatalog,
+	progress::tracker::{FlowPositionTracker, ObjectVersionTracker},
+};
 
 pub(crate) fn compute_flow_watermarks(
 	object_tracker: &ObjectVersionTracker,

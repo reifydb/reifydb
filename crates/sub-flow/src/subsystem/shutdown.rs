@@ -4,7 +4,7 @@
 use reifydb_engine::engine::StandardEngine;
 use reifydb_flow::transaction::substrate::FlowSubstrate;
 
-use crate::deferred::output_frontier;
+use crate::progress::output_frontier;
 
 pub struct FlowShutdownState {
 	engine: StandardEngine,

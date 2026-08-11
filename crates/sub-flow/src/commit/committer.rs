@@ -32,7 +32,7 @@ use reifydb_value::Result;
 use reifydb_value::value::identity::IdentityId;
 use tracing::{instrument, warn};
 
-use crate::deferred::{quiescence::FlowMaterialization, tracker::FlowPositionTracker};
+use crate::{commit::quiescence::FlowMaterialization, progress::tracker::FlowPositionTracker};
 
 pub type CommitterHandle = ActorHandle<CommitterMessage>;
 

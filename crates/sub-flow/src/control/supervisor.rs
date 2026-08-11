@@ -45,15 +45,19 @@ use tracing::{debug, error, warn};
 use crate::{
 	builder::CustomOperators,
 	catalog::FlowCatalog,
-	deferred::{
+	commit::committer::{CommitterMessage, FlowSlice, SliceCommitReply},
+	control::{
 		actor::{FlowActor, FlowActorParams},
-		committer::{CommitterMessage, FlowSlice, SliceCommitReply},
-		ddl::{extract_deleted_flow_ids, extract_new_flows},
-		frontier::ControlFrontier,
 		health::FlowHealthRegistry,
+	},
+	discovery::{
+		ddl::{extract_deleted_flow_ids, extract_new_flows},
 		loader::LoaderMessage,
-		output_frontier,
 		routing::{self, ViewRoute},
+	},
+	progress::{
+		frontier::ControlFrontier,
+		output_frontier,
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
 	},
 };

@@ -14,8 +14,10 @@
 
 pub mod builder;
 pub(crate) mod catalog;
-
-pub(crate) mod deferred;
+pub(crate) mod commit;
+pub(crate) mod control;
+pub(crate) mod discovery;
 pub mod error;
 pub mod operator;
+pub(crate) mod progress;
 pub mod subsystem;

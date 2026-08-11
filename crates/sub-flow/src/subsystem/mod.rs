@@ -66,13 +66,17 @@ use tracing::warn;
 use crate::{
 	builder::{CustomOperators, FlowConfig},
 	catalog::FlowCatalog,
-	deferred::{
+	commit::{
 		committer::{Committer, CommitterActor, CommitterHandle},
-		frontier::ControlFrontier,
-		health::FlowHealthRegistry,
-		loader::{LoaderActor, LoaderHandle, LoaderMetrics},
 		quiescence::FlowMaterialization,
+	},
+	control::{
+		health::FlowHealthRegistry,
 		supervisor::{FlowSupervisor, FlowSupervisorParams},
+	},
+	discovery::loader::{LoaderActor, LoaderHandle, LoaderMetrics},
+	progress::{
+		frontier::ControlFrontier,
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
 		watermark::compute_flow_watermarks,
 	},
