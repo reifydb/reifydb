@@ -9,6 +9,7 @@ use reifydb_core::{event::operator::OperatorColumn, interface::catalog::flow::Op
 use reifydb_flow::operator::BoxedOperator;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::OperatorLogic;
+#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::{OperatorMetadata, column::operator::OperatorColumn as SdkOperatorColumn};
 use reifydb_value::{Result, config::Config};
 
