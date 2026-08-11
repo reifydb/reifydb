@@ -6,10 +6,7 @@ pub mod loader;
 use std::{cell::UnsafeCell, ffi::c_void, ptr};
 
 use reifydb_abi::{
-	callbacks::{
-		builder::BuilderCallbacks, host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks,
-		rql::RqlCallbacks,
-	},
+	callbacks::{builder::BuilderCallbacks, host::HostCallbacks, memory::MemoryCallbacks, rql::RqlCallbacks},
 	context::context::ExternCContext,
 	procedure::{descriptor::ExternCProcedureDescriptor, vtable::ExternCProcedureVTable},
 };
@@ -22,7 +19,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{reifydb_assertions, value::value_type::ValueType};
 use tracing::instrument;
 
-use super::callbacks::extern_c::{logging, memory, rql};
+use super::callbacks::extern_c::{memory, rql};
 use crate::{
 	callbacks::extern_c::{
 		builder::{
@@ -94,14 +91,8 @@ fn procedure_host_callbacks() -> HostCallbacks {
 		memory: MemoryCallbacks {
 			alloc: memory::host_alloc,
 			free: memory::host_free,
-			realloc: memory::host_realloc,
 		},
 		state: stubs::state(),
-		log: LogCallbacks {
-			message: logging::host_log_message,
-		},
-		store: stubs::store(),
-		row_shape: stubs::row_shape(),
 		rql: RqlCallbacks {
 			rql: rql::host_rql,
 		},

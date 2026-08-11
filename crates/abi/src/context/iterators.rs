@@ -5,8 +5,3 @@
 pub struct ExternCStateIterator {
 	_opaque: [u8; 0],
 }
-
-#[repr(C)]
-pub struct ExternCStoreIterator {
-	_opaque: [u8; 0],
-}

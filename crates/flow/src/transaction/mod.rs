@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, mem, sync::Arc};
+use std::{collections::HashMap, mem};
 
 use read::ReadFrom;
 use reifydb_catalog::catalog::Catalog;
@@ -102,10 +102,7 @@ use substrate::FlowSubstrate;
 use timer::TimerWheel;
 use watermark::SourceWatermarks;
 
-use crate::{
-	host::{HostRowShape, StandardHostRowShape},
-	timer::Timer,
-};
+use crate::timer::Timer;
 
 #[derive(Clone, Copy)]
 pub struct ChangeCoordinate {
@@ -135,7 +132,6 @@ pub struct FlowTransactionInner {
 	pub state_query: Option<MultiReadTransaction>,
 	pub single: SingleTransaction,
 	pub catalog: Catalog,
-	pub host_row_shape: Arc<dyn HostRowShape>,
 	pub interceptors: Interceptors,
 	pub accumulator: ChangeAccumulator,
 	pub clock: Clock,
@@ -211,7 +207,6 @@ impl DepFlowTransaction {
 				state_query: Some(state_query),
 				single: parent.single.clone(),
 				catalog: catalog.clone(),
-				host_row_shape: Arc::new(StandardHostRowShape::new(catalog)),
 				interceptors,
 				accumulator: ChangeAccumulator::new(),
 				clock,
@@ -238,7 +233,6 @@ impl DepFlowTransaction {
 				state_query: Some(state_query),
 				single: params.single,
 				catalog: params.catalog.clone(),
-				host_row_shape: Arc::new(StandardHostRowShape::new(params.catalog)),
 				interceptors: params.interceptors,
 				accumulator: ChangeAccumulator::new(),
 				clock: params.clock,
@@ -329,7 +323,6 @@ impl DepFlowTransaction {
 				state_query: None,
 				single,
 				catalog: catalog.clone(),
-				host_row_shape: Arc::new(StandardHostRowShape::new(catalog)),
 				interceptors: Interceptors::new(),
 				accumulator: ChangeAccumulator::new(),
 				clock,
@@ -417,10 +410,6 @@ impl DepFlowTransaction {
 	pub fn query_and_single(&self) -> (MultiReadTransaction, SingleTransaction) {
 		let inner = self.inner();
 		(inner.query.clone(), inner.single.clone())
-	}
-
-	pub fn host_row_shape(&self) -> &dyn HostRowShape {
-		&*self.inner().host_row_shape
 	}
 
 	pub fn clock(&self) -> &Clock {

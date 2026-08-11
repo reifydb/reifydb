@@ -2,4 +2,3 @@
 // Copyright (c) 2026 ReifyDB
 
 mod flush_cadence;
-mod store_range;

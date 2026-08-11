@@ -2,30 +2,22 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::callbacks::{
-	builder::BuilderCallbacks, dictionary::DictionaryCallbacks, host::HostCallbacks, log::LogCallbacks,
-	memory::MemoryCallbacks, row_shape::RowShapeCallbacks, rql::RqlCallbacks, state::StateCallbacks,
-	store::StoreCallbacks,
+	builder::BuilderCallbacks, dictionary::DictionaryCallbacks, host::HostCallbacks, memory::MemoryCallbacks,
+	rql::RqlCallbacks, state::StateCallbacks,
 };
-use reifydb_extension::{
-	callbacks::extern_c::builder,
-	procedure::callbacks::extern_c::{logging, memory},
-};
+use reifydb_extension::{callbacks::extern_c::builder, procedure::callbacks::extern_c::memory};
 
-pub mod catalog;
 pub mod dictionary;
 mod marshal;
 pub mod rql;
 pub mod state;
 pub mod state_iterator;
-pub mod store;
-pub mod store_iterator;
 
 pub fn create_host_callbacks() -> HostCallbacks {
 	HostCallbacks {
 		memory: MemoryCallbacks {
 			alloc: memory::host_alloc,
 			free: memory::host_free,
-			realloc: memory::host_realloc,
 		},
 		state: StateCallbacks {
 			get: state::host_state_get,
@@ -45,21 +37,6 @@ pub fn create_host_callbacks() -> HostCallbacks {
 			arm_timer: state::host_arm_timer,
 			disarm_timer: state::host_disarm_timer,
 			flow_watermark: state::host_flow_watermark,
-		},
-		log: LogCallbacks {
-			message: logging::host_log_message,
-		},
-		store: StoreCallbacks {
-			get: store::host_store_get,
-			contains_key: store::host_store_contains_key,
-			prefix: store::host_store_prefix,
-			range: store::host_store_range,
-			iterator_next: store::host_store_iterator_next,
-			iterator_free: store::host_store_iterator_free,
-		},
-		row_shape: RowShapeCallbacks {
-			find_row_shape: catalog::host_catalog_find_row_shape,
-			free_row_shape: catalog::host_catalog_free_row_shape,
 		},
 		rql: RqlCallbacks {
 			rql: rql::host_rql,

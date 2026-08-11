@@ -21,8 +21,6 @@ pub mod engine;
 #[cfg(feature = "runtime")]
 pub mod error;
 #[cfg(feature = "runtime")]
-pub mod host;
-#[cfg(feature = "runtime")]
 pub mod operator;
 #[cfg(feature = "runtime")]
 pub mod transaction;

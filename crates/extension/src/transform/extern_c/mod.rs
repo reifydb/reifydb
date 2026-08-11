@@ -6,7 +6,7 @@ pub mod loader;
 use std::{cell::UnsafeCell, ffi::c_void, ptr};
 
 use reifydb_abi::{
-	callbacks::{builder::BuilderCallbacks, host::HostCallbacks, log::LogCallbacks, memory::MemoryCallbacks},
+	callbacks::{builder::BuilderCallbacks, host::HostCallbacks, memory::MemoryCallbacks},
 	context::context::ExternCContext,
 	transform::{descriptor::ExternCTransformDescriptor, vtable::ExternCTransformVTable},
 };
@@ -26,7 +26,7 @@ use crate::{
 		panic::call_with_abort_on_panic,
 		single_columns_from_registry,
 	},
-	procedure::callbacks::extern_c::{logging, memory},
+	procedure::callbacks::extern_c::memory,
 };
 
 thread_local! {
@@ -122,14 +122,8 @@ fn pure_host_callbacks() -> HostCallbacks {
 		memory: MemoryCallbacks {
 			alloc: memory::host_alloc,
 			free: memory::host_free,
-			realloc: memory::host_realloc,
 		},
 		state: stubs::state(),
-		log: LogCallbacks {
-			message: logging::host_log_message,
-		},
-		store: stubs::store(),
-		row_shape: stubs::row_shape(),
 		rql: stubs::rql(),
 		dictionary: stubs::dictionary(),
 		builder: BuilderCallbacks {
@@ -147,16 +141,9 @@ fn pure_host_callbacks() -> HostCallbacks {
 
 pub(crate) mod stubs {
 	use reifydb_abi::{
-		callbacks::{
-			dictionary::DictionaryCallbacks, row_shape::RowShapeCallbacks, rql::RqlCallbacks,
-			state::StateCallbacks, store::StoreCallbacks,
-		},
-		catalog::row_shape::ExternCRowShape,
+		callbacks::{dictionary::DictionaryCallbacks, rql::RqlCallbacks, state::StateCallbacks},
 		constants::EXTERN_C_ERROR_INTERNAL,
-		context::{
-			context::ExternCContext,
-			iterators::{ExternCStateIterator, ExternCStoreIterator},
-		},
+		context::{context::ExternCContext, iterators::ExternCStateIterator},
 		data::{buffer::ExternCBuffer, key_ref::ExternCKeyRef, state::ExternCStateEntry},
 	};
 
@@ -294,64 +281,6 @@ pub(crate) mod stubs {
 		EXTERN_C_ERROR_INTERNAL
 	}
 	extern "C" fn state_iterator_free(_: *mut ExternCStateIterator) {}
-
-	pub fn store() -> StoreCallbacks {
-		StoreCallbacks {
-			get: store_get,
-			contains_key: store_contains_key,
-			prefix: store_prefix,
-			range: store_range,
-			iterator_next: store_iterator_next,
-			iterator_free: store_iterator_free,
-		}
-	}
-
-	extern "C" fn store_get(_: *mut ExternCContext, _: *const u8, _: usize, _: *mut ExternCBuffer) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-	extern "C" fn store_contains_key(_: *mut ExternCContext, _: *const u8, _: usize, _: *mut u8) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-	extern "C" fn store_prefix(
-		_: *mut ExternCContext,
-		_: *const u8,
-		_: usize,
-		_: *mut *mut ExternCStoreIterator,
-	) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-	extern "C" fn store_range(
-		_: *mut ExternCContext,
-		_: *const u8,
-		_: usize,
-		_: u8,
-		_: *const u8,
-		_: usize,
-		_: u8,
-		_: *mut *mut ExternCStoreIterator,
-	) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-	extern "C" fn store_iterator_next(
-		_: *mut ExternCStoreIterator,
-		_: *mut ExternCBuffer,
-		_: *mut ExternCBuffer,
-	) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-	extern "C" fn store_iterator_free(_: *mut ExternCStoreIterator) {}
-
-	pub fn row_shape() -> RowShapeCallbacks {
-		RowShapeCallbacks {
-			find_row_shape: row_shape_find,
-			free_row_shape: row_shape_free,
-		}
-	}
-
-	extern "C" fn row_shape_find(_: *mut ExternCContext, _: u64, _: *mut ExternCRowShape) -> i32 {
-		EXTERN_C_ERROR_INTERNAL
-	}
-	extern "C" fn row_shape_free(_: *mut ExternCRowShape) {}
 
 	pub fn dictionary() -> DictionaryCallbacks {
 		DictionaryCallbacks {

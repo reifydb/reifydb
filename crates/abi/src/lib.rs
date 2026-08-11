@@ -13,7 +13,6 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod callbacks;
-pub mod catalog;
 pub mod connector;
 pub mod constants;
 pub mod context;

@@ -6,11 +6,7 @@ use std::{ops::Bound, slice::from_ref};
 use reifydb_abi::{context::context::ExternCContext, operator::timer::TimerKind};
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::{
-		bytes::{EncodedBytes, read_fingerprint},
-		operator::{EncodedOperatorRow, OperatorState},
-		shape::{RowShape, fingerprint::RowShapeFingerprint},
-	},
+	row::operator::{EncodedOperatorRow, OperatorState},
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -28,11 +24,10 @@ use reifydb_value::{
 	},
 };
 
-use super::{DictionaryApi, OperatorContext, RowEmit, RowShapeApi, StateApi, StoreApi, UpdateEmit};
+use super::{DictionaryApi, OperatorContext, RowEmit, StateApi, UpdateEmit};
 use crate::{
-	catalog::RowShapeResolver,
 	dictionary::Dictionary,
-	error::{Result, SdkError},
+	error::Result,
 	operator::{
 		builder::ColumnsBuilder,
 		column::{row::Row, sink::extern_c::ExternCRowSink},
@@ -46,7 +41,6 @@ use crate::{
 			lookup_groups, remove_row_number, remove_row_numbers_below,
 		},
 	},
-	store::Store,
 };
 
 pub struct ExternCRowEmit<'a> {
@@ -125,27 +119,8 @@ impl ExternCOperatorContext {
 		State::new(self)
 	}
 
-	pub fn store(&mut self) -> Store<'_> {
-		Store::new(self)
-	}
-
-	pub fn row_shape(&mut self) -> RowShapeResolver<'_> {
-		RowShapeResolver::new(self)
-	}
-
 	pub fn dictionary(&mut self) -> Dictionary<'_> {
 		Dictionary::new(self)
-	}
-
-	pub fn shape_for_bytes(&mut self, bytes: &EncodedBytes) -> Result<RowShape> {
-		let fingerprint = read_fingerprint(bytes);
-		match self.row_shape().find_row_shape(fingerprint)? {
-			Some(shape) => Ok(shape),
-			None => Err(SdkError::Other(format!(
-				"row shape with fingerprint {} not registered in catalog",
-				fingerprint.as_u64()
-			))),
-		}
 	}
 
 	pub fn intern_groups(&mut self, groups: &[EncodedKey]) -> Result<Vec<GroupId>> {
@@ -260,27 +235,6 @@ impl StateApi for State<'_> {
 	}
 }
 
-impl StoreApi for Store<'_> {
-	fn get(&self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		Store::get(self, key)
-	}
-	fn contains(&self, key: &EncodedKey) -> Result<bool> {
-		Store::contains(self, key)
-	}
-	fn prefix(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
-		Store::prefix(self, prefix)
-	}
-	fn range(&self, start: Bound<&EncodedKey>, end: Bound<&EncodedKey>) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
-		Store::range(self, start, end)
-	}
-}
-
-impl RowShapeApi for RowShapeResolver<'_> {
-	fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>> {
-		RowShapeResolver::find_row_shape(self, fingerprint)
-	}
-}
-
 impl DictionaryApi for Dictionary<'_> {
 	fn id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>> {
 		Dictionary::id_by_name(self, name)
@@ -308,12 +262,6 @@ impl OperatorContext for ExternCOperatorContext {
 	}
 	fn state(&mut self) -> impl StateApi + '_ {
 		ExternCOperatorContext::state(self)
-	}
-	fn store(&mut self) -> impl StoreApi + '_ {
-		ExternCOperatorContext::store(self)
-	}
-	fn row_shape(&mut self) -> impl RowShapeApi + '_ {
-		ExternCOperatorContext::row_shape(self)
 	}
 	fn dictionary(&mut self) -> impl DictionaryApi + '_ {
 		ExternCOperatorContext::dictionary(self)
@@ -345,9 +293,6 @@ impl OperatorContext for ExternCOperatorContext {
 	}
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
 		ExternCOperatorContext::remove_row_numbers_below(self, group, upper)
-	}
-	fn shape_for_bytes(&mut self, bytes: &EncodedBytes) -> Result<RowShape> {
-		ExternCOperatorContext::shape_for_bytes(self, bytes)
 	}
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCRowEmit<'_>> {
 		let mut builder = self.builder();

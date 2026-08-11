@@ -3,8 +3,7 @@
 
 use std::{
 	cell::RefCell,
-	collections::{BTreeMap, HashMap, HashSet},
-	ops::Bound,
+	collections::{HashMap, HashSet},
 	sync::Arc,
 };
 
@@ -95,7 +94,6 @@ pub struct ArmedTimer {
 #[derive(Clone)]
 pub struct TestContext {
 	state_store: Arc<Mutex<HashMap<EncodedKey, EncodedBytes>>>,
-	store: Arc<Mutex<BTreeMap<EncodedKey, EncodedBytes>>>,
 	dictionaries: Arc<Mutex<DictionaryData>>,
 	version: CommitVersion,
 	logs: Arc<Mutex<Vec<String>>>,
@@ -116,7 +114,6 @@ impl TestContext {
 			.unwrap_or_else(|| Arc::new(Mutex::new(DictionaryData::default())));
 		Self {
 			state_store: Arc::new(Mutex::new(HashMap::new())),
-			store: Arc::new(Mutex::new(BTreeMap::new())),
 			dictionaries,
 			version,
 			logs: Arc::new(Mutex::new(Vec::new())),
@@ -222,31 +219,6 @@ impl TestContext {
 
 	pub fn state_keys(&self) -> Vec<EncodedKey> {
 		self.state_store.lock().keys().cloned().collect()
-	}
-
-	pub fn store(&self) -> &Arc<Mutex<BTreeMap<EncodedKey, EncodedBytes>>> {
-		&self.store
-	}
-
-	pub fn get_store(&self, key: &EncodedKey) -> Option<EncodedBytes> {
-		self.store.lock().get(key).cloned()
-	}
-
-	pub fn set_store(&self, key: EncodedKey, value: EncodedBytes) {
-		self.store.lock().insert(key, value);
-	}
-
-	pub fn store_range(&self, start: Bound<EncodedKey>, end: Bound<EncodedKey>) -> Vec<(EncodedKey, EncodedBytes)> {
-		self.store.lock().range((start, end)).map(|(k, v)| (k.clone(), v.clone())).collect()
-	}
-
-	pub fn store_prefix(&self, prefix: &EncodedKey) -> Vec<(EncodedKey, EncodedBytes)> {
-		self.store
-			.lock()
-			.iter()
-			.filter(|(k, _)| k.as_slice().starts_with(prefix.as_slice()))
-			.map(|(k, v)| (k.clone(), v.clone()))
-			.collect()
 	}
 }
 

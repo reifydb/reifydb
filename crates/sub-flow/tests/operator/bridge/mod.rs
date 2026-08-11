@@ -8,5 +8,4 @@ pub type Harness<C> = BridgeOperatorHarness<C>;
 mod error_abort;
 mod flush_cadence;
 mod row_number_registry;
-mod store_range;
 mod window_count;

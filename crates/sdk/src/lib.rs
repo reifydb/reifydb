@@ -10,7 +10,6 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 #![allow(clippy::tabs_in_doc_comments)]
 
-pub mod catalog;
 pub mod connector;
 pub mod dictionary;
 pub mod error;
@@ -20,5 +19,4 @@ pub mod operator;
 pub mod procedure;
 pub mod rql;
 pub mod state;
-pub mod store;
 pub mod transform;

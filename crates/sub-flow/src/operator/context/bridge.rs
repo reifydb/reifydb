@@ -7,9 +7,8 @@ use reifydb_abi::operator::timer::TimerKind;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{
-		bytes::{EncodedBytes, read_fingerprint},
+		bytes::EncodedBytes,
 		operator::{EncodedOperatorRow, OperatorState},
-		shape::{RowShape, fingerprint::RowShapeFingerprint},
 	},
 };
 use reifydb_core::{
@@ -22,7 +21,7 @@ use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	operator::{
 		column::{row::Row, sink::bridge::BridgeRowSink},
-		context::{DictionaryApi, OperatorContext, RowEmit, RowShapeApi, StateApi, StoreApi, UpdateEmit},
+		context::{DictionaryApi, OperatorContext, RowEmit, StateApi, UpdateEmit},
 	},
 	state::{decode_payload, encode_payload},
 };
@@ -56,13 +55,6 @@ pub trait Bridge {
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>>;
-
-	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>>;
-	fn store_contains(&mut self, key: &EncodedKey) -> Result<bool>;
-	fn store_prefix(&mut self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedBytes)>>;
-	fn store_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedBytes)>>;
-
-	fn catalog_find_row_shape(&mut self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>>;
 
 	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>>;
 	fn dictionary_find(&mut self, dictionary: DictionaryId, value: &Value) -> Result<Option<DictionaryEntryId>>;
@@ -279,52 +271,6 @@ impl StateApi for BridgeState<'_> {
 	}
 }
 
-pub struct BridgeStore<'a> {
-	bridge: *mut (dyn Bridge + 'a),
-	_marker: PhantomData<&'a mut (dyn Bridge + 'a)>,
-}
-
-impl StoreApi for BridgeStore<'_> {
-	fn get(&self, key: &EncodedKey) -> SdkResult<Option<EncodedBytes>> {
-		// SAFETY: bridge is the &'a mut dyn Bridge BridgeOperatorContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.bridge).store_get(key) }.map_err(to_sdk_err)
-	}
-	fn contains(&self, key: &EncodedKey) -> SdkResult<bool> {
-		// SAFETY: bridge is the &'a mut dyn Bridge BridgeOperatorContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.bridge).store_contains(key) }.map_err(to_sdk_err)
-	}
-	fn prefix(&self, prefix: &EncodedKey) -> SdkResult<Vec<(EncodedKey, EncodedBytes)>> {
-		// SAFETY: bridge is the &'a mut dyn Bridge BridgeOperatorContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.bridge).store_prefix(prefix) }.map_err(to_sdk_err)
-	}
-	fn range(
-		&self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-	) -> SdkResult<Vec<(EncodedKey, EncodedBytes)>> {
-		let range = EncodedKeyRange::new(start.map(|k| k.clone()), end.map(|k| k.clone()));
-		// SAFETY: bridge is the &'a mut dyn Bridge BridgeOperatorContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.bridge).store_range(range) }.map_err(to_sdk_err)
-	}
-}
-
-pub struct BridgeRowShapeResolver<'a> {
-	bridge: *mut (dyn Bridge + 'a),
-	_marker: PhantomData<&'a mut (dyn Bridge + 'a)>,
-}
-
-impl RowShapeApi for BridgeRowShapeResolver<'_> {
-	fn find_row_shape(&self, fingerprint: RowShapeFingerprint) -> SdkResult<Option<RowShape>> {
-		// SAFETY: bridge is the &'a mut dyn Bridge BridgeOperatorContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.bridge).catalog_find_row_shape(fingerprint) }.map_err(to_sdk_err)
-	}
-}
-
 pub struct BridgeDictionary<'a> {
 	bridge: *mut (dyn Bridge + 'a),
 	_marker: PhantomData<&'a mut (dyn Bridge + 'a)>,
@@ -372,18 +318,6 @@ impl OperatorContext for BridgeOperatorContext<'_> {
 		BridgeState {
 			bridge: self.bridge,
 			now: self.now,
-			_marker: PhantomData,
-		}
-	}
-	fn store(&mut self) -> impl StoreApi + '_ {
-		BridgeStore {
-			bridge: self.bridge,
-			_marker: PhantomData,
-		}
-	}
-	fn row_shape(&mut self) -> impl RowShapeApi + '_ {
-		BridgeRowShapeResolver {
-			bridge: self.bridge,
 			_marker: PhantomData,
 		}
 	}
@@ -446,16 +380,6 @@ impl OperatorContext for BridgeOperatorContext<'_> {
 		// SAFETY: bridge is the &'a mut dyn Bridge this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.bridge).remove_row_numbers_below(group, upper) }.map_err(to_sdk_err)
-	}
-	fn shape_for_bytes(&mut self, bytes: &EncodedBytes) -> SdkResult<RowShape> {
-		let fingerprint = read_fingerprint(bytes);
-		match self.row_shape().find_row_shape(fingerprint)? {
-			Some(shape) => Ok(shape),
-			None => Err(SdkError::Other(format!(
-				"row shape with fingerprint {} not registered in catalog",
-				fingerprint.as_u64()
-			))),
-		}
 	}
 	fn insert_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<BridgeRowEmit<'_>> {
 		let now = self.now;

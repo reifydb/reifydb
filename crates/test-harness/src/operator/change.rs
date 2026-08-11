@@ -2,27 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_abi::flow::diff::DiffType;
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{
-		bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
-		shape::RowShapeField,
-	},
-};
-use reifydb_core::{
-	interface::{catalog::storage::StorageId, change::Change},
-	key::{EncodableKey, row::RowKey},
-	row::Row,
-};
+use reifydb_codec::row::shape::RowShapeField;
+use reifydb_core::{interface::change::Change, row::Row};
 use reifydb_testing_sdk::builders::{TestChangeBuilder, TestOperatorRowBuilder};
-use reifydb_value::{
-	util::cowvec::CowVec,
-	value::{Value, row_number::RowNumber, value_type::ValueType},
-};
-
-pub const STORE_TABLE: u64 = 4096;
-
-pub const STORE_ROW_COUNT: u64 = 1500;
+use reifydb_value::value::{Value, row_number::RowNumber, value_type::ValueType};
 
 pub fn ts_row(row_number: u64, timestamp: i64) -> Row {
 	TestOperatorRowBuilder::new(RowNumber(row_number))
@@ -37,25 +20,6 @@ pub fn window_change(row_number: u64, timestamp: i64) -> Change {
 
 pub fn trigger() -> Change {
 	TestChangeBuilder::new().insert_row(1u64, vec![Value::Int8(0)]).build()
-}
-
-fn store_value(payload: &str) -> EncodedBytes {
-	let mut buf = vec![0u8; SHAPE_HEADER_SIZE + payload.len()];
-	buf[SHAPE_HEADER_SIZE..].copy_from_slice(payload.as_bytes());
-	EncodedBytes(CowVec::new(buf))
-}
-
-pub fn store_seed() -> Vec<(EncodedKey, EncodedBytes)> {
-	(1..=STORE_ROW_COUNT)
-		.map(|n| {
-			let key = RowKey {
-				storage: StorageId::table(STORE_TABLE),
-				row: RowNumber(n),
-			}
-			.encode();
-			(key, store_value(&format!("row-{n}")))
-		})
-		.collect()
 }
 
 pub fn row_ints(change: &Change) -> Vec<i64> {

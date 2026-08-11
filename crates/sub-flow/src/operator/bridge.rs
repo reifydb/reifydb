@@ -11,11 +11,7 @@ use std::{
 use reifydb_abi::operator::{capabilities::OperatorCapability, timer::TimerKind};
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{
-		bytes::EncodedBytes,
-		operator::EncodedOperatorRow,
-		shape::{RowShape, fingerprint::RowShapeFingerprint},
-	},
+	row::{bytes::EncodedBytes, operator::EncodedOperatorRow},
 };
 use reifydb_core::{
 	common::CommitVersion,
@@ -32,7 +28,6 @@ use reifydb_sdk::{
 	error::{Result as SdkResult, SdkError},
 	operator::{OperatorLogic, timer::Timer as SdkTimer, view::bridge::BridgeChangeView},
 };
-use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
 	value::{
@@ -182,22 +177,6 @@ impl Bridge for FlowBridge<'_> {
 	}
 	fn remove_row_numbers_below(&mut self, group: GroupId, upper: &EncodedKey) -> Result<Vec<RowNumber>> {
 		self.txn.remove_row_numbers_below(self.operator, group, upper)
-	}
-	fn store_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		self.txn.get(key)
-	}
-	fn store_contains(&mut self, key: &EncodedKey) -> Result<bool> {
-		self.txn.contains_key(key)
-	}
-	fn store_prefix(&mut self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
-		Ok(self.txn.prefix(prefix)?.items.into_iter().map(|r| (r.key, r.bytes)).collect())
-	}
-	fn store_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
-		let rows = self.txn.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>>>()?;
-		Ok(rows.into_iter().map(|r| (r.key, r.bytes)).collect())
-	}
-	fn catalog_find_row_shape(&mut self, fingerprint: RowShapeFingerprint) -> Result<Option<RowShape>> {
-		Ok(self.txn.host_row_shape().find_row_shape(fingerprint))
 	}
 	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>> {
 		Ok(self.txn.find_dictionary_by_name(name).map(|d| d.id))

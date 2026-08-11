@@ -1,8 +1,0 @@
-// SPDX-License-Identifier: Apache-2.0
-// Copyright (c) 2026 ReifyDB
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct LogCallbacks {
-	pub message: unsafe extern "C" fn(operator_id: u64, level: u32, message: *const u8, message_len: usize),
-}

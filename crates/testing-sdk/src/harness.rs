@@ -5,7 +5,7 @@ use std::{
 	collections::{BTreeMap, HashMap},
 	ffi::c_void,
 	marker::PhantomData,
-	ops::{Bound, Index},
+	ops::Index,
 	ptr,
 };
 
@@ -271,21 +271,6 @@ impl<T: ExternCOperator> ExternCOperatorHarness<T> {
 	pub fn state_value<V: OperatorState>(&mut self, key: &GroupStateKey) -> Option<V> {
 		let mut ctx = self.create_operator_context();
 		ctx.state().get::<V>(key).expect("state get")
-	}
-
-	pub fn seed_store(&mut self, rows: &[(EncodedKey, EncodedBytes)]) {
-		for (key, value) in rows {
-			self.context.set_store(key.clone(), value.clone());
-		}
-	}
-
-	pub fn store_range(
-		&mut self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-	) -> Vec<(EncodedKey, EncodedBytes)> {
-		let mut ctx = self.create_operator_context();
-		ctx.store().range(start, end).expect("store range")
 	}
 
 	pub fn insert(&mut self, row: Row) -> &mut Self {

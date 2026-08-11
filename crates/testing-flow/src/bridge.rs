@@ -1,19 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::HashMap,
-	marker::PhantomData,
-	mem,
-	ops::{Bound, Index},
-};
+use std::{collections::HashMap, marker::PhantomData, mem, ops::Index};
 
 use reifydb_abi::flow::diff::DiffType;
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::{bytes::EncodedBytes, operator::OperatorState},
-};
+use reifydb_codec::row::operator::OperatorState;
 use reifydb_core::{
 	actors::pending::{Pending, PendingLayers, PendingWrite},
 	common::CommitVersion,
@@ -32,7 +24,7 @@ use reifydb_flow::{
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::operator::{
 	ExternCOperatorAdapter, OperatorLogic, OperatorMetadata,
-	context::{OperatorContext, StateApi, StoreApi},
+	context::{OperatorContext, StateApi},
 };
 use reifydb_sub_flow::operator::{
 	bridge::{BridgeOperator, BridgeOperatorAdapter, FlowBridge},
@@ -150,30 +142,6 @@ impl<C: OperatorLogic + OperatorMetadata + 'static> BridgeOperatorHarness<C> {
 		};
 		self.end_txn(txn);
 		value
-	}
-
-	pub fn seed_store(&mut self, rows: &[(EncodedKey, EncodedBytes)]) {
-		let keys: Vec<EncodedKey> = rows.iter().map(|(k, _)| k.clone()).collect();
-		let values: Vec<EncodedBytes> = rows.iter().map(|(_, v)| v.clone()).collect();
-		let mut txn = self.begin_txn();
-		txn.set_batch(&keys, &values).expect("seed_store set_batch");
-		self.end_txn(txn);
-	}
-
-	pub fn store_range(
-		&mut self,
-		start: Bound<&EncodedKey>,
-		end: Bound<&EncodedKey>,
-	) -> Vec<(EncodedKey, EncodedBytes)> {
-		let operator = self.operator_id;
-		let mut txn = self.begin_txn();
-		let rows = {
-			let mut bridge = FlowBridge::new(&mut txn, operator);
-			let mut ctx = BridgeOperatorContext::new(&mut bridge, operator);
-			ctx.store().range(start, end).expect("store range")
-		};
-		self.end_txn(txn);
-		rows
 	}
 
 	pub fn insert(&mut self, row: Row) -> &mut Self {

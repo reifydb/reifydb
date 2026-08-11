@@ -2,8 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	alloc::{Layout, alloc, dealloc, realloc as system_realloc},
-	ops::Bound,
+	alloc::{Layout, alloc, dealloc},
 	slice::from_raw_parts,
 	str::from_utf8,
 };
@@ -25,7 +24,7 @@ extern "C" fn test_alloc(size: usize) -> *mut u8 {
 
 /// # Safety
 ///
-/// `ptr` must come from `test_alloc`/`test_realloc` and `size` must be the size it was
+/// `ptr` must come from `test_alloc` and `size` must be the size it was
 /// allocated with, since the layout is reconstructed from `size` rather than recorded.
 #[unsafe(no_mangle)]
 unsafe extern "C" fn test_free(ptr: *mut u8, size: usize) {
@@ -40,36 +39,6 @@ unsafe extern "C" fn test_free(ptr: *mut u8, size: usize) {
 
 	// SAFETY: the caller guarantees ptr came from this allocator with exactly this size.
 	unsafe { dealloc(ptr, layout) }
-}
-
-/// # Safety
-///
-/// `ptr` must come from this allocator and `old_size` must be the size it was allocated with;
-/// the returned pointer replaces it and the old one must not be used again.
-#[unsafe(no_mangle)]
-unsafe extern "C" fn test_realloc(ptr: *mut u8, old_size: usize, new_size: usize) -> *mut u8 {
-	if ptr.is_null() {
-		return test_alloc(new_size);
-	}
-
-	if new_size == 0 {
-		// SAFETY: ptr and old_size are forwarded unchanged from this function's own contract.
-		unsafe { test_free(ptr, old_size) };
-		return ptr::null_mut();
-	}
-
-	let old_layout = match Layout::from_size_align(old_size, 8) {
-		Ok(layout) => layout,
-		Err(_) => return ptr::null_mut(),
-	};
-
-	let new_layout = match Layout::from_size_align(new_size, 8) {
-		Ok(layout) => layout,
-		Err(_) => return ptr::null_mut(),
-	};
-
-	// SAFETY: ptr is non-null, was allocated with old_layout per contract, and new_size is non-zero.
-	unsafe { system_realloc(ptr, old_layout, new_layout.size()) }
 }
 
 /// # Safety
@@ -427,220 +396,18 @@ extern "C" fn test_state_range(
 	}
 }
 
-/// # Safety
-///
-/// Unimplemented stub: it panics before touching any argument, so no pointer contract applies
-/// yet. Reinstate one here before giving it a body.
-#[unsafe(no_mangle)]
-unsafe extern "C" fn test_log_message(_operator_id: u64, _level: u32, _message: *const u8, _message_len: usize) {
-	unimplemented!()
-}
-
-struct TestStoreIterator {
-	items: Vec<(Vec<u8>, Vec<u8>)>,
-	position: usize,
-}
-
-extern "C" fn test_store_get(
-	ctx: *mut ExternCContext,
-	key: *const u8,
-	key_len: usize,
-	output: *mut ExternCBuffer,
-) -> i32 {
-	if ctx.is_null() || key.is_null() || output.is_null() {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-
-	// SAFETY: pointers null-checked above; caller owns (key, key_len); value_ptr checked before the copy.
-	unsafe {
-		let test_ctx = get_test_context(ctx);
-		let encoded = EncodedKey::new(from_raw_parts(key, key_len));
-		match test_ctx.get_store(&encoded) {
-			Some(value) => {
-				let bytes = value.0.as_ref();
-				let value_ptr = test_alloc(bytes.len());
-				if value_ptr.is_null() {
-					return -2;
-				}
-				ptr::copy_nonoverlapping(bytes.as_ptr(), value_ptr, bytes.len());
-				(*output).ptr = value_ptr;
-				(*output).len = bytes.len();
-				(*output).cap = bytes.len();
-				EXTERN_C_OK
-			}
-			None => EXTERN_C_NOT_FOUND,
-		}
-	}
-}
-
-extern "C" fn test_store_contains_key(
-	ctx: *mut ExternCContext,
-	key: *const u8,
-	key_len: usize,
-	result: *mut u8,
-) -> i32 {
-	if ctx.is_null() || key.is_null() || result.is_null() {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-
-	// SAFETY: pointers null-checked above; caller owns (key, key_len) to read and result to write.
-	unsafe {
-		let test_ctx = get_test_context(ctx);
-		let encoded = EncodedKey::new(from_raw_parts(key, key_len));
-		*result = u8::from(test_ctx.get_store(&encoded).is_some());
-		EXTERN_C_OK
-	}
-}
-
-extern "C" fn test_store_prefix(
-	ctx: *mut ExternCContext,
-	prefix: *const u8,
-	prefix_len: usize,
-	iterator_out: *mut *mut ExternCStoreIterator,
-) -> i32 {
-	if ctx.is_null() || iterator_out.is_null() {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-
-	// SAFETY: ctx and iterator_out null-checked; prefix read only when non-null with a non-zero len.
-	unsafe {
-		let test_ctx = get_test_context(ctx);
-		let prefix_bytes = if prefix_len == 0 || prefix.is_null() {
-			Vec::new()
-		} else {
-			from_raw_parts(prefix, prefix_len).to_vec()
-		};
-		let prefix_key = EncodedKey::new(prefix_bytes);
-		let items: Vec<(Vec<u8>, Vec<u8>)> = test_ctx
-			.store_prefix(&prefix_key)
-			.into_iter()
-			.map(|(k, v)| (k.to_vec(), v.0.to_vec()))
-			.collect();
-
-		let iter = Box::new(TestStoreIterator {
-			items,
-			position: 0,
-		});
-		*iterator_out = Box::into_raw(iter) as *mut ExternCStoreIterator;
-		EXTERN_C_OK
-	}
-}
-
-extern "C" fn test_store_range(
-	ctx: *mut ExternCContext,
-	start: *const u8,
-	start_len: usize,
-	start_bound_type: u8,
-	end: *const u8,
-	end_len: usize,
-	end_bound_type: u8,
-	iterator_out: *mut *mut ExternCStoreIterator,
-) -> i32 {
-	if ctx.is_null() || iterator_out.is_null() {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-
-	// SAFETY: ctx and iterator_out null-checked; a bound pointer is read only when bounded and non-null.
-	unsafe {
-		let test_ctx = get_test_context(ctx);
-
-		let bound = |bound_type: u8, ptr: *const u8, len: usize| -> Bound<EncodedKey> {
-			if bound_type == BOUND_UNBOUNDED || ptr.is_null() {
-				Bound::Unbounded
-			} else {
-				let key = EncodedKey::new(from_raw_parts(ptr, len));
-				if bound_type == BOUND_EXCLUDED {
-					Bound::Excluded(key)
-				} else {
-					Bound::Included(key)
-				}
-			}
-		};
-
-		let items: Vec<(Vec<u8>, Vec<u8>)> = test_ctx
-			.store_range(bound(start_bound_type, start, start_len), bound(end_bound_type, end, end_len))
-			.into_iter()
-			.map(|(k, v)| (k.to_vec(), v.0.to_vec()))
-			.collect();
-
-		let iter = Box::new(TestStoreIterator {
-			items,
-			position: 0,
-		});
-		*iterator_out = Box::into_raw(iter) as *mut ExternCStoreIterator;
-		EXTERN_C_OK
-	}
-}
-
-extern "C" fn test_store_iterator_next(
-	iterator: *mut ExternCStoreIterator,
-	key_out: *mut ExternCBuffer,
-	value_out: *mut ExternCBuffer,
-) -> i32 {
-	if iterator.is_null() || key_out.is_null() || value_out.is_null() {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-
-	// SAFETY: all three pointers null-checked; iterator is one this module minted; copies are checked.
-	unsafe {
-		let iter = &mut *(iterator as *mut TestStoreIterator);
-		if iter.position >= iter.items.len() {
-			return EXTERN_C_END_OF_ITERATION;
-		}
-
-		let (key, value) = &iter.items[iter.position];
-		iter.position += 1;
-
-		let key_ptr = test_alloc(key.len());
-		if key_ptr.is_null() {
-			return -2;
-		}
-		ptr::copy_nonoverlapping(key.as_ptr(), key_ptr, key.len());
-		(*key_out).ptr = key_ptr;
-		(*key_out).len = key.len();
-		(*key_out).cap = key.len();
-
-		let value_ptr = test_alloc(value.len());
-		if value_ptr.is_null() {
-			test_free(key_ptr, key.len());
-			return -2;
-		}
-		ptr::copy_nonoverlapping(value.as_ptr(), value_ptr, value.len());
-		(*value_out).ptr = value_ptr;
-		(*value_out).len = value.len();
-		(*value_out).cap = value.len();
-
-		EXTERN_C_OK
-	}
-}
-
-extern "C" fn test_store_iterator_free(iterator: *mut ExternCStoreIterator) {
-	if iterator.is_null() {
-		return;
-	}
-	// SAFETY: iterator null-checked, was minted by this module, and per contract is freed exactly once.
-	unsafe {
-		drop(Box::from_raw(iterator as *mut TestStoreIterator));
-	}
-}
-
 use std::ptr;
 
 use reifydb_abi::{
 	callbacks::{
-		builder::BuilderCallbacks, dictionary::DictionaryCallbacks, host::HostCallbacks, log::LogCallbacks,
-		memory::MemoryCallbacks, row_shape::RowShapeCallbacks, rql::RqlCallbacks, state::StateCallbacks,
-		store::StoreCallbacks,
+		builder::BuilderCallbacks, dictionary::DictionaryCallbacks, host::HostCallbacks,
+		memory::MemoryCallbacks, rql::RqlCallbacks, state::StateCallbacks,
 	},
-	catalog::row_shape::ExternCRowShape,
 	constants::{
 		EXTERN_C_END_OF_ITERATION, EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_NULL_PTR, EXTERN_C_NOT_FOUND,
 		EXTERN_C_OK, GROUP_ABSENT,
 	},
-	context::{
-		context::ExternCContext,
-		iterators::{ExternCStateIterator, ExternCStoreIterator},
-	},
+	context::{context::ExternCContext, iterators::ExternCStateIterator},
 	data::{
 		buffer::ExternCBuffer,
 		key_ref::ExternCKeyRef,
@@ -662,16 +429,6 @@ use crate::{
 		test_release,
 	},
 };
-
-extern "C" fn test_catalog_find_row_shape(
-	_ctx: *mut ExternCContext,
-	_fingerprint: u64,
-	_output: *mut ExternCRowShape,
-) -> i32 {
-	1
-}
-
-extern "C" fn test_catalog_free_row_shape(_row_shape: *mut ExternCRowShape) {}
 
 /// # Safety
 ///
@@ -1158,7 +915,6 @@ pub fn create_test_callbacks() -> HostCallbacks {
 		memory: MemoryCallbacks {
 			alloc: test_alloc,
 			free: test_free,
-			realloc: test_realloc,
 		},
 		state: StateCallbacks {
 			get: test_state_get,
@@ -1178,21 +934,6 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			arm_timer: test_arm_timer,
 			disarm_timer: test_disarm_timer,
 			flow_watermark: test_flow_watermark,
-		},
-		log: LogCallbacks {
-			message: test_log_message,
-		},
-		store: StoreCallbacks {
-			get: test_store_get,
-			contains_key: test_store_contains_key,
-			prefix: test_store_prefix,
-			range: test_store_range,
-			iterator_next: test_store_iterator_next,
-			iterator_free: test_store_iterator_free,
-		},
-		row_shape: RowShapeCallbacks {
-			find_row_shape: test_catalog_find_row_shape,
-			free_row_shape: test_catalog_free_row_shape,
 		},
 		rql: RqlCallbacks {
 			rql: test_rql,
