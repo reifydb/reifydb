@@ -200,11 +200,14 @@ impl DepFlowTransaction {
 
 	#[inline]
 	fn lookup_overlays(&self, encoded_key: &EncodedKey) -> Option<Option<EncodedBytes>> {
-		let inner = self.inner();
-		if inner.pending.is_removed(encoded_key) {
+		let pending = match self {
+			Self::Deferred(d) => &d.pending,
+			Self::Ephemeral(e) => &e.pending,
+		};
+		if pending.is_removed(encoded_key) {
 			return Some(None);
 		}
-		inner.pending.get(encoded_key).map(|row| Some(row.clone()))
+		pending.get(encoded_key).map(|row| Some(row.clone()))
 	}
 
 	#[inline]
@@ -213,34 +216,32 @@ impl DepFlowTransaction {
 			return Ok(());
 		}
 
-		if let Self::Ephemeral {
-			inner,
-			state,
-		} = self
-		{
-			let version = inner.version;
-			for encoded_key in to_batch {
-				if let Some(bytes) = state.get(encoded_key) {
-					items.push(MultiVersionRow {
-						key: encoded_key.clone(),
-						bytes: bytes.clone(),
-						version,
-					});
+		match self {
+			Self::Ephemeral(e) => {
+				let version = e.version;
+				for encoded_key in to_batch {
+					if let Some(bytes) = e.state.get(encoded_key) {
+						items.push(MultiVersionRow {
+							key: encoded_key.clone(),
+							bytes: bytes.clone(),
+							version,
+						});
+					}
 				}
 			}
-		} else {
-			let inner = self.inner_mut();
-			inner.store_reads += to_batch.len() as u64;
-			let version = inner.version;
-			for encoded_key in to_batch {
-				let (operator, inner_key) = operator_state_coordinates(encoded_key)
-					.expect("state_get_many keys must carry an operator id");
-				if let Some(row) = inner.substrate.operators.get(operator, &inner_key) {
-					items.push(MultiVersionRow {
-						key: encoded_key.clone(),
-						bytes: row.into_bytes(),
-						version,
-					});
+			Self::Deferred(d) => {
+				d.store_reads += to_batch.len() as u64;
+				let version = d.version;
+				for encoded_key in to_batch {
+					let (operator, inner_key) = operator_state_coordinates(encoded_key)
+						.expect("state_get_many keys must carry an operator id");
+					if let Some(row) = d.substrate.operators.get(operator, &inner_key) {
+						items.push(MultiVersionRow {
+							key: encoded_key.clone(),
+							bytes: row.into_bytes(),
+							version,
+						});
+					}
 				}
 			}
 		}

@@ -121,11 +121,11 @@ pub struct DeferredParams {
 	pub substrate: FlowSubstrate,
 }
 
-pub struct FlowTransactionInner {
+pub struct FlowTransactionDeferred {
 	pub version: CommitVersion,
 	pub pending: PendingLayers,
 	pub query: MultiReadTransaction,
-	pub state_query: Option<MultiReadTransaction>,
+	pub state_query: MultiReadTransaction,
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
 	pub accumulator: ChangeAccumulator,
@@ -142,45 +142,35 @@ pub struct FlowTransactionInner {
 	pub substrate: FlowSubstrate,
 }
 
+pub struct FlowTransactionEphemeral {
+	pub version: CommitVersion,
+	pub pending: PendingLayers,
+	pub query: MultiReadTransaction,
+	pub catalog: Catalog,
+	pub interceptors: Interceptors,
+	pub accumulator: ChangeAccumulator,
+	pub clock: Clock,
+
+	pub operator_states: HashMap<OperatorId, OperatorStateSlot>,
+
+	pub store_reads: u64,
+
+	pub change_coordinate: Option<ChangeCoordinate>,
+
+	pub flow_watermark: Option<DateTime>,
+
+	pub substrate: FlowSubstrate,
+
+	pub state: HashMap<EncodedKey, EncodedBytes>,
+}
+
 pub enum DepFlowTransaction {
-	Deferred {
-		inner: FlowTransactionInner,
-	},
+	Deferred(FlowTransactionDeferred),
 
-	Ephemeral {
-		inner: FlowTransactionInner,
-
-		state: HashMap<EncodedKey, EncodedBytes>,
-	},
+	Ephemeral(FlowTransactionEphemeral),
 }
 
 impl DepFlowTransaction {
-	fn inner(&self) -> &FlowTransactionInner {
-		match self {
-			Self::Deferred {
-				inner,
-				..
-			}
-			| Self::Ephemeral {
-				inner,
-				..
-			} => inner,
-		}
-	}
-
-	pub(crate) fn inner_mut(&mut self) -> &mut FlowTransactionInner {
-		match self {
-			Self::Deferred {
-				inner,
-				..
-			}
-			| Self::Ephemeral {
-				inner,
-				..
-			} => inner,
-		}
-	}
-
 	#[instrument(name = "flow::transaction::deferred", level = "debug", skip(parent, catalog, interceptors, clock), fields(version = version.0))]
 	pub fn deferred(
 		parent: &AdminTransaction,
@@ -193,23 +183,21 @@ impl DepFlowTransaction {
 		query.read_as_of_version_inclusive(version);
 
 		let state_query = parent.multi.begin_query().unwrap();
-		Self::Deferred {
-			inner: FlowTransactionInner {
-				version,
-				pending: PendingLayers::empty(),
-				query,
-				state_query: Some(state_query),
-				catalog: catalog.clone(),
-				interceptors,
-				accumulator: ChangeAccumulator::new(),
-				clock,
-				operator_states: HashMap::new(),
-				store_reads: 0,
-				change_coordinate: None,
-				flow_watermark: None,
-				substrate: FlowSubstrate::new(),
-			},
-		}
+		Self::Deferred(FlowTransactionDeferred {
+			version,
+			pending: PendingLayers::empty(),
+			query,
+			state_query,
+			catalog: catalog.clone(),
+			interceptors,
+			accumulator: ChangeAccumulator::new(),
+			clock,
+			operator_states: HashMap::new(),
+			store_reads: 0,
+			change_coordinate: None,
+			flow_watermark: None,
+			substrate: FlowSubstrate::new(),
+		})
 	}
 
 	pub fn deferred_from_parts(params: DeferredParams) -> Self {
@@ -217,47 +205,63 @@ impl DepFlowTransaction {
 		query.read_as_of_version_inclusive(params.version);
 		let state_query = params.state_query;
 
-		Self::Deferred {
-			inner: FlowTransactionInner {
-				version: params.version,
-				pending: params.pending,
-				query,
-				state_query: Some(state_query),
-				catalog: params.catalog.clone(),
-				interceptors: params.interceptors,
-				accumulator: ChangeAccumulator::new(),
-				clock: params.clock,
-				operator_states: HashMap::new(),
-				store_reads: 0,
-				change_coordinate: None,
-				flow_watermark: None,
-				substrate: params.substrate,
-			},
-		}
+		Self::Deferred(FlowTransactionDeferred {
+			version: params.version,
+			pending: params.pending,
+			query,
+			state_query,
+			catalog: params.catalog.clone(),
+			interceptors: params.interceptors,
+			accumulator: ChangeAccumulator::new(),
+			clock: params.clock,
+			operator_states: HashMap::new(),
+			store_reads: 0,
+			change_coordinate: None,
+			flow_watermark: None,
+			substrate: params.substrate,
+		})
 	}
 
 	pub fn row_numbers(&self) -> RowNumberProvider {
-		self.inner().substrate.row.clone()
+		match self {
+			Self::Deferred(d) => d.substrate.row.clone(),
+			Self::Ephemeral(e) => e.substrate.row.clone(),
+		}
 	}
 
 	pub fn group_interner(&self) -> GroupInterner {
-		self.inner().substrate.group.clone()
+		match self {
+			Self::Deferred(d) => d.substrate.group.clone(),
+			Self::Ephemeral(e) => e.substrate.group.clone(),
+		}
 	}
 
 	pub fn dictionary_allocators(&self) -> DictionaryAllocatorRegistry {
-		self.inner().substrate.dictionary.clone()
+		match self {
+			Self::Deferred(d) => d.substrate.dictionary.clone(),
+			Self::Ephemeral(e) => e.substrate.dictionary.clone(),
+		}
 	}
 
 	pub fn source_watermarks(&self) -> SourceWatermarks {
-		self.inner().substrate.watermarks.clone()
+		match self {
+			Self::Deferred(d) => d.substrate.watermarks.clone(),
+			Self::Ephemeral(e) => e.substrate.watermarks.clone(),
+		}
 	}
 
 	pub fn timer_wheel(&self) -> TimerWheel {
-		self.inner().substrate.timers.clone()
+		match self {
+			Self::Deferred(d) => d.substrate.timers.clone(),
+			Self::Ephemeral(e) => e.substrate.timers.clone(),
+		}
 	}
 
 	pub fn operator_store(&self) -> OperatorStore {
-		self.inner().substrate.operators.clone()
+		match self {
+			Self::Deferred(d) => d.substrate.operators.clone(),
+			Self::Ephemeral(e) => e.substrate.operators.clone(),
+		}
 	}
 
 	pub fn arm_timer(&mut self, operator: OperatorId, timer: &Timer) -> Result<()> {
@@ -269,11 +273,17 @@ impl DepFlowTransaction {
 	}
 
 	pub fn set_change_coordinate(&mut self, coordinate: ChangeCoordinate) {
-		self.inner_mut().change_coordinate = Some(coordinate);
+		match self {
+			Self::Deferred(d) => d.change_coordinate = Some(coordinate),
+			Self::Ephemeral(e) => e.change_coordinate = Some(coordinate),
+		}
 	}
 
 	pub(crate) fn change_coordinate(&self) -> Option<ChangeCoordinate> {
-		self.inner().change_coordinate
+		match self {
+			Self::Deferred(d) => d.change_coordinate,
+			Self::Ephemeral(e) => e.change_coordinate,
+		}
 	}
 
 	/// The event time a write made now should carry. Operator state ages against the same clock the
@@ -287,11 +297,17 @@ impl DepFlowTransaction {
 	}
 
 	pub fn set_flow_watermark(&mut self, watermark: DateTime) {
-		self.inner_mut().flow_watermark = Some(watermark);
+		match self {
+			Self::Deferred(d) => d.flow_watermark = Some(watermark),
+			Self::Ephemeral(e) => e.flow_watermark = Some(watermark),
+		}
 	}
 
 	pub fn flow_watermark(&self) -> Option<DateTime> {
-		self.inner().flow_watermark
+		match self {
+			Self::Deferred(d) => d.flow_watermark,
+			Self::Ephemeral(e) => e.flow_watermark,
+		}
 	}
 
 	pub fn ephemeral(
@@ -304,43 +320,36 @@ impl DepFlowTransaction {
 		let mut pq = query;
 		pq.read_as_of_version_inclusive(version);
 
-		Self::Ephemeral {
-			inner: FlowTransactionInner {
-				version,
-				pending: PendingLayers::empty(),
-				query: pq,
-				state_query: None,
-				catalog: catalog.clone(),
-				interceptors: Interceptors::new(),
-				accumulator: ChangeAccumulator::new(),
-				clock,
-				operator_states: HashMap::new(),
-				store_reads: 0,
-				change_coordinate: None,
-				flow_watermark: None,
-				substrate: FlowSubstrate::new(),
-			},
+		Self::Ephemeral(FlowTransactionEphemeral {
+			version,
+			pending: PendingLayers::empty(),
+			query: pq,
+			catalog: catalog.clone(),
+			interceptors: Interceptors::new(),
+			accumulator: ChangeAccumulator::new(),
+			clock,
+			operator_states: HashMap::new(),
+			store_reads: 0,
+			change_coordinate: None,
+			flow_watermark: None,
+			substrate: FlowSubstrate::new(),
 			state,
-		}
+		})
 	}
 
 	pub fn merge_state(&mut self) {
-		if let Self::Ephemeral {
-			inner,
-			state,
-		} = self
-		{
-			let own = inner.pending.take_top();
+		if let Self::Ephemeral(e) = self {
+			let own = e.pending.take_top();
 			for (key, write) in own.iter_sorted() {
 				if matches!(Self::read_from(key), ReadFrom::OperatorState | ReadFrom::StateQuery) {
 					match write {
 						PendingWrite::Set(row) => {
-							state.insert(key.clone(), row.clone());
+							e.state.insert(key.clone(), row.clone());
 						}
 						PendingWrite::Remove {
 							..
 						} => {
-							state.remove(key);
+							e.state.remove(key);
 						}
 					}
 				}
@@ -349,58 +358,89 @@ impl DepFlowTransaction {
 	}
 
 	pub fn take_state(&mut self) -> HashMap<EncodedKey, EncodedBytes> {
-		if let Self::Ephemeral {
-			state,
-			..
-		} = self
-		{
-			mem::take(state)
+		if let Self::Ephemeral(e) = self {
+			mem::take(&mut e.state)
 		} else {
 			HashMap::new()
 		}
 	}
 
 	pub fn version(&self) -> CommitVersion {
-		self.inner().version
+		match self {
+			Self::Deferred(d) => d.version,
+			Self::Ephemeral(e) => e.version,
+		}
 	}
 
 	pub fn store_reads(&self) -> u64 {
-		self.inner().store_reads
+		match self {
+			Self::Deferred(d) => d.store_reads,
+			Self::Ephemeral(e) => e.store_reads,
+		}
 	}
 
 	pub fn take_pending(&mut self) -> Pending {
-		self.inner_mut().pending.take_top()
+		match self {
+			Self::Deferred(d) => d.pending.take_top(),
+			Self::Ephemeral(e) => e.pending.take_top(),
+		}
 	}
 
 	pub fn track_flow_change(&mut self, change: Change) {
 		if let ChangeOrigin::Object(id) = change.origin {
+			let accumulator = match self {
+				Self::Deferred(d) => &mut d.accumulator,
+				Self::Ephemeral(e) => &mut e.accumulator,
+			};
 			for diff in change.diffs {
-				self.inner_mut().accumulator.track(id, diff);
+				accumulator.track(id, diff);
 			}
 		}
 	}
 
 	pub fn take_accumulator_entries(&mut self) -> Vec<(ObjectId, Diff)> {
-		let acc = &mut self.inner_mut().accumulator;
+		let acc = match self {
+			Self::Deferred(d) => &mut d.accumulator,
+			Self::Ephemeral(e) => &mut e.accumulator,
+		};
 		let entries: Vec<_> = acc.entries_from(0).to_vec();
 		acc.clear();
 		entries
 	}
 
 	pub fn pending(&self) -> &Pending {
-		self.inner().pending.top()
+		match self {
+			Self::Deferred(d) => d.pending.top(),
+			Self::Ephemeral(e) => e.pending.top(),
+		}
 	}
 
 	pub fn catalog(&self) -> &Catalog {
-		&self.inner().catalog
+		match self {
+			Self::Deferred(d) => &d.catalog,
+			Self::Ephemeral(e) => &e.catalog,
+		}
 	}
 
 	pub fn query(&self) -> MultiReadTransaction {
-		self.inner().query.clone()
+		match self {
+			Self::Deferred(d) => d.query.clone(),
+			Self::Ephemeral(e) => e.query.clone(),
+		}
 	}
 
 	pub fn clock(&self) -> &Clock {
-		&self.inner().clock
+		match self {
+			Self::Deferred(d) => &d.clock,
+			Self::Ephemeral(e) => &e.clock,
+		}
+	}
+
+	fn operator_states_mut(&mut self) -> &mut HashMap<OperatorId, OperatorStateSlot> {
+		match self {
+			Self::Deferred(d) => &mut d.operator_states,
+			Self::Ephemeral(e) => &mut e.operator_states,
+		}
 	}
 
 	pub fn operator_state<S, F>(&mut self, operator: OperatorId, load: F) -> Result<&mut S>
@@ -408,22 +448,21 @@ impl DepFlowTransaction {
 		S: 'static + Send,
 		F: FnOnce(&mut Self) -> Result<(S, PersistFn)>,
 	{
-		if !self.inner().operator_states.contains_key(&operator) {
+		if !self.operator_states_mut().contains_key(&operator) {
 			let (state, persist) = load(self)?;
-			let inner = self.inner_mut();
 			let slot = OperatorStateSlot {
 				value: Box::new(state),
 				dirty: false,
 				persist,
 			};
-			inner.operator_states.insert(operator, slot);
+			self.operator_states_mut().insert(operator, slot);
 		}
-		let slot = self.inner_mut().operator_states.get_mut(&operator).expect("just inserted");
+		let slot = self.operator_states_mut().get_mut(&operator).expect("just inserted");
 		Ok(slot.value.downcast_mut::<S>().expect("operator state type mismatch"))
 	}
 
 	pub fn mark_state_dirty(&mut self, operator: OperatorId) {
-		if let Some(slot) = self.inner_mut().operator_states.get_mut(&operator) {
+		if let Some(slot) = self.operator_states_mut().get_mut(&operator) {
 			slot.dirty = true;
 		}
 	}
@@ -433,7 +472,7 @@ impl DepFlowTransaction {
 		S: 'static + Send,
 		F: FnOnce(&mut Self) -> Result<(S, PersistFn)>,
 	{
-		if let Some(slot) = self.inner_mut().operator_states.remove(&operator) {
+		if let Some(slot) = self.operator_states_mut().remove(&operator) {
 			let value = slot.value.downcast::<S>().map_err(|_| ()).expect("operator state type mismatch");
 			Ok((*value, slot.persist))
 		} else {
@@ -445,8 +484,7 @@ impl DepFlowTransaction {
 	where
 		S: 'static + Send,
 	{
-		let inner = self.inner_mut();
-		inner.operator_states.insert(
+		self.operator_states_mut().insert(
 			operator,
 			OperatorStateSlot {
 				value: Box::new(state),
@@ -458,7 +496,7 @@ impl DepFlowTransaction {
 
 	#[instrument(name = "flow::actor::flush_state", level = "debug", skip_all)]
 	pub fn flush_operator_states(&mut self) -> Result<()> {
-		let states = mem::take(&mut self.inner_mut().operator_states);
+		let states = mem::take(self.operator_states_mut());
 		for (_, slot) in states {
 			if slot.dirty {
 				(slot.persist)(self, slot.value)?;
@@ -468,12 +506,11 @@ impl DepFlowTransaction {
 	}
 
 	pub fn install_operator_states(&mut self, states: HashMap<OperatorId, CarriedOperatorState>) {
-		let inner = self.inner_mut();
 		for (operator, carried) in states {
-			if inner.operator_states.contains_key(&operator) {
+			if self.operator_states_mut().contains_key(&operator) {
 				continue;
 			}
-			inner.operator_states.insert(
+			self.operator_states_mut().insert(
 				operator,
 				OperatorStateSlot {
 					value: carried.value,
@@ -485,8 +522,7 @@ impl DepFlowTransaction {
 	}
 
 	pub fn drain_operator_states(&mut self) -> HashMap<OperatorId, CarriedOperatorState> {
-		let inner = self.inner_mut();
-		mem::take(&mut inner.operator_states)
+		mem::take(self.operator_states_mut())
 			.into_iter()
 			.map(|(operator, slot)| {
 				(
@@ -503,7 +539,10 @@ impl DepFlowTransaction {
 macro_rules! interceptor_method {
 	($method:ident, $field:ident, $trait_name:ident) => {
 		fn $method(&mut self) -> &mut Chain<dyn $trait_name + Send + Sync> {
-			&mut self.inner_mut().interceptors.$field
+			match self {
+				Self::Deferred(d) => &mut d.interceptors.$field,
+				Self::Ephemeral(e) => &mut e.interceptors.$field,
+			}
 		}
 	};
 }

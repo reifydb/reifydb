@@ -2,33 +2,41 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_core::actors::pending::PendingLayers;
 use reifydb_value::Result;
 
 use super::DepFlowTransaction;
 
 impl DepFlowTransaction {
+	fn pending_mut(&mut self) -> &mut PendingLayers {
+		match self {
+			Self::Deferred(d) => &mut d.pending,
+			Self::Ephemeral(e) => &mut e.pending,
+		}
+	}
+
 	pub fn set(&mut self, key: &EncodedKey, value: impl Into<EncodedBytes>) -> Result<()> {
-		self.inner_mut().pending.insert(key.clone(), value.into());
+		self.pending_mut().insert(key.clone(), value.into());
 		Ok(())
 	}
 
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<()> {
-		self.inner_mut().pending.remove(key.clone());
+		self.pending_mut().remove(key.clone());
 		Ok(())
 	}
 
 	pub fn remove_silent(&mut self, key: &EncodedKey) -> Result<()> {
-		self.inner_mut().pending.remove_silent(key.clone());
+		self.pending_mut().remove_silent(key.clone());
 		Ok(())
 	}
 
 	pub fn set_batch(&mut self, keys: &[EncodedKey], values: &[EncodedBytes]) -> Result<()> {
-		self.inner_mut().pending.insert_batch(keys, values);
+		self.pending_mut().insert_batch(keys, values);
 		Ok(())
 	}
 
 	pub fn remove_batch(&mut self, keys: &[EncodedKey]) -> Result<()> {
-		self.inner_mut().pending.remove_batch(keys);
+		self.pending_mut().remove_batch(keys);
 		Ok(())
 	}
 }

@@ -51,80 +51,90 @@ pub enum ReadFrom {
 
 impl DepFlowTransaction {
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		let inner = self.inner();
-		if inner.pending.is_removed(key) {
-			return Ok(None);
-		}
-		if let Some(value) = inner.pending.get(key) {
-			return Ok(Some(value.clone()));
-		}
+		match self {
+			Self::Ephemeral(e) => {
+				if e.pending.is_removed(key) {
+					return Ok(None);
+				}
+				if let Some(value) = e.pending.get(key) {
+					return Ok(Some(value.clone()));
+				}
 
-		if let Self::Ephemeral {
-			inner,
-			state,
-		} = self
-		{
-			return match Self::read_from(key) {
-				ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(state.get(key).cloned()),
-				ReadFrom::Query | ReadFrom::OwnedRow => match inner.query.get(key)? {
-					Some(multi) => Ok(Some(multi.bytes().clone())),
-					None => Ok(None),
-				},
-			};
-		}
+				match Self::read_from(key) {
+					ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(e.state.get(key).cloned()),
+					ReadFrom::Query | ReadFrom::OwnedRow => match e.query.get(key)? {
+						Some(multi) => Ok(Some(multi.bytes().clone())),
+						None => Ok(None),
+					},
+				}
+			}
+			Self::Deferred(d) => {
+				if d.pending.is_removed(key) {
+					return Ok(None);
+				}
+				if let Some(value) = d.pending.get(key) {
+					return Ok(Some(value.clone()));
+				}
 
-		let inner = self.inner_mut();
-		inner.store_reads += 1;
-		let route = Self::read_from(key);
-		if matches!(route, ReadFrom::OperatorState) {
-			let (operator, inner_key) = operator_state_coordinates(key)
-				.expect("an OperatorState-routed key must carry an operator id");
-			let result =
-				inner.substrate.operators.get(operator, &inner_key).map(EncodedOperatorRow::into_bytes);
-			return Ok(result);
+				d.store_reads += 1;
+				let route = Self::read_from(key);
+				if matches!(route, ReadFrom::OperatorState) {
+					let (operator, inner_key) = operator_state_coordinates(key)
+						.expect("an OperatorState-routed key must carry an operator id");
+					let result = d
+						.substrate
+						.operators
+						.get(operator, &inner_key)
+						.map(EncodedOperatorRow::into_bytes);
+					return Ok(result);
+				}
+				let query = match route {
+					ReadFrom::StateQuery | ReadFrom::OwnedRow => &d.state_query,
+					ReadFrom::Query => &d.query,
+					ReadFrom::OperatorState => unreachable!(),
+				};
+				let result = query.get(key)?.map(|multi| multi.bytes().clone());
+				Ok(result)
+			}
 		}
-		let query = match route {
-			ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
-			ReadFrom::Query => &inner.query,
-			ReadFrom::OwnedRow => inner.state_query.as_ref().unwrap_or(&inner.query),
-			ReadFrom::OperatorState => unreachable!(),
-		};
-		let result = query.get(key)?.map(|multi| multi.bytes().clone());
-		Ok(result)
 	}
 
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
-		let inner = self.inner();
-		if inner.pending.is_removed(key) {
-			return Ok(false);
-		}
-		if inner.pending.get(key).is_some() {
-			return Ok(true);
-		}
+		match self {
+			Self::Ephemeral(e) => {
+				if e.pending.is_removed(key) {
+					return Ok(false);
+				}
+				if e.pending.get(key).is_some() {
+					return Ok(true);
+				}
 
-		if let Self::Ephemeral {
-			inner,
-			state,
-		} = self
-		{
-			return match Self::read_from(key) {
-				ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(state.contains_key(key)),
-				ReadFrom::Query | ReadFrom::OwnedRow => inner.query.contains_key(key),
-			};
-		}
-
-		let inner = self.inner_mut();
-		let query = match Self::read_from(key) {
-			ReadFrom::OperatorState => {
-				let (operator, inner_key) = operator_state_coordinates(key)
-					.expect("an OperatorState-routed key must carry an operator id");
-				return Ok(inner.substrate.operators.contains(operator, &inner_key));
+				match Self::read_from(key) {
+					ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(e.state.contains_key(key)),
+					ReadFrom::Query | ReadFrom::OwnedRow => e.query.contains_key(key),
+				}
 			}
-			ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
-			ReadFrom::Query => &inner.query,
-			ReadFrom::OwnedRow => inner.state_query.as_ref().unwrap_or(&inner.query),
-		};
-		query.contains_key(key)
+			Self::Deferred(d) => {
+				if d.pending.is_removed(key) {
+					return Ok(false);
+				}
+				if d.pending.get(key).is_some() {
+					return Ok(true);
+				}
+
+				let query = match Self::read_from(key) {
+					ReadFrom::OperatorState => {
+						let (operator, inner_key) = operator_state_coordinates(key).expect(
+							"an OperatorState-routed key must carry an operator id",
+						);
+						return Ok(d.substrate.operators.contains(operator, &inner_key));
+					}
+					ReadFrom::StateQuery | ReadFrom::OwnedRow => &d.state_query,
+					ReadFrom::Query => &d.query,
+				};
+				query.contains_key(key)
+			}
+		}
 	}
 
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch> {
@@ -235,26 +245,23 @@ impl DepFlowTransaction {
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		match self {
-			Self::Deferred {
-				inner,
-				..
-			} => {
+			Self::Deferred(d) => {
 				let mut merged: BTreeMap<EncodedKey, PendingWrite> = BTreeMap::new();
-				inner.pending.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
+				d.pending.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
 
 				if let Some((operator, inner_range)) = operator_state_scope(&range) {
 					let storage_iter = OperatorStateRangeIter::new(
-						inner.substrate.operators.clone(),
+						d.substrate.operators.clone(),
 						operator,
 						inner_range,
 						batch_size,
-						inner.version,
+						d.version,
 					);
 					return Box::new(flow_merge_pending_iterator(
 						pending_vec,
 						storage_iter,
-						inner.version,
+						d.version,
 					));
 				}
 
@@ -265,23 +272,17 @@ impl DepFlowTransaction {
 								"operator-state ranges take the operator-state path"
 							)
 						}
-						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
-						ReadFrom::Query => &inner.query,
-						ReadFrom::OwnedRow => {
-							inner.state_query.as_ref().unwrap_or(&inner.query)
-						}
+						ReadFrom::StateQuery | ReadFrom::OwnedRow => &d.state_query,
+						ReadFrom::Query => &d.query,
 					},
-					Unbounded => &inner.query,
+					Unbounded => &d.query,
 				};
 
 				let storage_iter = query.range(range, scope, batch_size);
-				let v = inner.version;
+				let v = d.version;
 				Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
 			}
-			Self::Ephemeral {
-				inner,
-				state,
-			} => {
+			Self::Ephemeral(e) => {
 				let is_state_range = match range.start.as_ref() {
 					Included(start) | Excluded(start) => {
 						matches!(
@@ -293,22 +294,22 @@ impl DepFlowTransaction {
 				};
 
 				let mut merged: BTreeMap<EncodedKey, PendingWrite> = BTreeMap::new();
-				inner.pending.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
+				e.pending.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
 
 				if is_state_range {
-					let state_items: Vec<Result<MultiVersionRow>> = state
-						.iter()
-						.filter(|(k, _)| range.contains(k))
-						.map(|(k, v)| {
-							Ok(MultiVersionRow {
-								key: k.clone(),
-								bytes: v.clone(),
-								version: inner.version,
+					let state_items: Vec<Result<MultiVersionRow>> =
+						e.state.iter()
+							.filter(|(k, _)| range.contains(k))
+							.map(|(k, v)| {
+								Ok(MultiVersionRow {
+									key: k.clone(),
+									bytes: v.clone(),
+									version: e.version,
+								})
 							})
-						})
-						.collect();
-					let v = inner.version;
+							.collect();
+					let v = e.version;
 
 					let mut sorted_items = state_items;
 					sorted_items.sort_by(|a, b| match (a, b) {
@@ -317,8 +318,8 @@ impl DepFlowTransaction {
 					});
 					Box::new(flow_merge_pending_iterator(pending_vec, sorted_items.into_iter(), v))
 				} else {
-					let storage_iter = inner.query.range(range, scope, batch_size);
-					let v = inner.version;
+					let storage_iter = e.query.range(range, scope, batch_size);
+					let v = e.version;
 					Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, v))
 				}
 			}
@@ -332,28 +333,25 @@ impl DepFlowTransaction {
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow>> + Send + '_> {
 		match self {
-			Self::Deferred {
-				inner,
-				..
-			} => {
+			Self::Deferred(d) => {
 				let mut merged: BTreeMap<EncodedKey, PendingWrite> = BTreeMap::new();
-				inner.pending.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
+				d.pending.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
 
 				if let Some((operator, inner_range)) = operator_state_scope(&range) {
 					let mut items = OperatorStateRangeIter::new(
-						inner.substrate.operators.clone(),
+						d.substrate.operators.clone(),
 						operator,
 						inner_range,
 						batch_size,
-						inner.version,
+						d.version,
 					)
 					.collect::<Vec<_>>();
 					items.reverse();
 					return Box::new(flow_merge_pending_iterator_rev(
 						pending_vec,
 						items.into_iter(),
-						inner.version,
+						d.version,
 					));
 				}
 
@@ -364,23 +362,17 @@ impl DepFlowTransaction {
 								"operator-state ranges take the operator-state path"
 							)
 						}
-						ReadFrom::StateQuery => inner.state_query.as_ref().unwrap(),
-						ReadFrom::Query => &inner.query,
-						ReadFrom::OwnedRow => {
-							inner.state_query.as_ref().unwrap_or(&inner.query)
-						}
+						ReadFrom::StateQuery | ReadFrom::OwnedRow => &d.state_query,
+						ReadFrom::Query => &d.query,
 					},
-					Unbounded => &inner.query,
+					Unbounded => &d.query,
 				};
 
 				let storage_iter = query.range_rev(range, scope, batch_size);
-				let v = inner.version;
+				let v = d.version;
 				Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
 			}
-			Self::Ephemeral {
-				inner,
-				state,
-			} => {
+			Self::Ephemeral(e) => {
 				let is_state_range = match range.start.as_ref() {
 					Included(start) | Excluded(start) => {
 						matches!(
@@ -392,22 +384,22 @@ impl DepFlowTransaction {
 				};
 
 				let mut merged: BTreeMap<EncodedKey, PendingWrite> = BTreeMap::new();
-				inner.pending.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
+				e.pending.collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
 				let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().rev().collect();
 
 				if is_state_range {
-					let mut state_items: Vec<Result<MultiVersionRow>> = state
-						.iter()
-						.filter(|(k, _)| range.contains(k))
-						.map(|(k, v)| {
-							Ok(MultiVersionRow {
-								key: k.clone(),
-								bytes: v.clone(),
-								version: inner.version,
+					let mut state_items: Vec<Result<MultiVersionRow>> =
+						e.state.iter()
+							.filter(|(k, _)| range.contains(k))
+							.map(|(k, v)| {
+								Ok(MultiVersionRow {
+									key: k.clone(),
+									bytes: v.clone(),
+									version: e.version,
+								})
 							})
-						})
-						.collect();
-					let v = inner.version;
+							.collect();
+					let v = e.version;
 
 					state_items.sort_by(|a, b| match (a, b) {
 						(Ok(a), Ok(b)) => b.key.cmp(&a.key),
@@ -419,8 +411,8 @@ impl DepFlowTransaction {
 						v,
 					))
 				} else {
-					let storage_iter = inner.query.range_rev(range, scope, batch_size);
-					let v = inner.version;
+					let storage_iter = e.query.range_rev(range, scope, batch_size);
+					let v = e.version;
 					Box::new(flow_merge_pending_iterator_rev(pending_vec, storage_iter, v))
 				}
 			}
